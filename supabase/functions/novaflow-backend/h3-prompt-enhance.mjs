@@ -65,6 +65,8 @@ const policy = {
   ]
 };
 const instruction = policy.instructions.join('\n');
+// The breathing-idle rule freezes head, arms and body: send it only when the user's own words ask for idle breathing.
+const instructionFor = (intentText = '') => policy.instructions.filter(item => !/^仅呼吸待机/.test(item) || /待机|呼吸|\bidle\b|\bbreath(?:e[sd]?|ing)?\b/i.test(String(intentText))).join('\n');
 function narrative(value) {
   let text = String(value || '');
   const detailed = /【递进式详细提示词】\s*([\s\S]*?)(?=【台词】|$)/.exec(text);
@@ -181,13 +183,15 @@ function compileReferenceFields(value, options) {
   return fields;
 }
 // The user's own words: the source prompt plus the requirement tail after it.
+const requirementTail = (options = {}) => (String(options.requirements || '').split(/Source prompt:\n/)[1] || '').slice(String(options.currentPrompt || '').length);
 function userIntent(options = {}) {
-  const sourcePrompt = String(options.currentPrompt || '');
-  return sourcePrompt + '\n' + (String(options.requirements || '').split(/Source prompt:\n/)[1] || '').slice(sourcePrompt.length);
+  return String(options.currentPrompt || '') + '\n' + requirementTail(options);
 }
 const loopRequested = intent => new RegExp(policy.loopPattern, 'i').test(intent) && !new RegExp(policy.cancelLoopPattern, 'i').test(intent);
 const loopClosure = {en:'It ends by returning smoothly to the starting pose and motion phase so the loop joins naturally.', zh:'结束时平滑回到起始姿态与运动相位，使循环自然衔接。'};
 const cameraPattern = /镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b|\bpans?\b|\btracking\b|\bpush(?:es)?[- ]in\b|\b(?:static|medium|wide|close-up|two)[- ]?shot\b/i;
+// A subject looking at the lens (看向镜头, waves toward the camera) names no camera behaviour.
+const namesCamera = text => cameraPattern.test(String(text).replace(/(?:[看望面朝]?向|朝|对着?)镜头|镜头前|\b(?:at|to|toward|towards|into|facing|faces|face)\s+the\s+(?:camera|lens)\b/gi, ''));
 // MM:SS.mmm for a cut time in seconds.
 const shotStamp = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
 function validateReferenceResult(value, options = {}) {
@@ -209,9 +213,9 @@ function validateReferenceResult(value, options = {}) {
     modelPrompt = appendNarrative(modelPrompt, loopClosure.en);
     if (!new RegExp(policy.closurePattern, 'i').test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, loopClosure.zh);
   }
-  if (!/summary:\s*\[[^\]]*\bvideo editing\b/.test(modelPrompt) && !cameraPattern.test(narrativeOf(modelPrompt) + intent)) {
-    modelPrompt = appendNarrative(modelPrompt, 'The camera remains static and the framing stays stable.');
-    if (!cameraPattern.test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '镜头固定，构图保持稳定。');
+  if (!/summary:\s*\[[^\]]*\bvideo editing\b/.test(modelPrompt) && !namesCamera(narrativeOf(modelPrompt) + intent)) {
+    modelPrompt = appendNarrative(modelPrompt, baseCamera.en);
+    if (!namesCamera(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, baseCamera.zh);
   }
   const narrative = modelPrompt.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
   const prose = narrative.replace(/<d>[\s\S]*?<\/d>|<(?:Picture|Video|Audio|Subject) \d+>|\[Shot \d+\]|"[^"\n]*"|“[^”\n]*”/g, '');
@@ -225,9 +229,9 @@ function validateReferenceResult(value, options = {}) {
   if (editPolicy && !/<Picture [1-9]\d*>/.test(modelPrompt)) editPolicy.sameShapeAppearanceOnly = false;
   return JSON.stringify({modelPrompt,displayPrompt,...(editPolicy ? {editPolicy} : {})});
 }
-// Drop the space a sentence reflow leaves after a Chinese full stop; quoted dialogue stays verbatim.
+// Drop the space a sentence reflow leaves after a Chinese full stop or before Chinese after a dialogue block; quoted dialogue stays verbatim.
 function joinChineseSentences(text) {
-  return String(text).replace(/(<d>[\s\S]*?<\/d>|“[^”]*”|"[^"\n]*")|([。！？])[ \t]+(?=\S)/gu, (all, quoted, stop) => quoted || stop);
+  return String(text).replace(/(<d>[\s\S]*?<\/d>)[ \t]+(?=[\u3400-\u9fff])|(<d>[\s\S]*?<\/d>|“[^”]*”|"[^"\n]*")|([。！？])[ \t]+(?=\S)/gu, (all, spoken, quoted, stop) => spoken || quoted || stop);
 }
 const referenceDisplayFields = ['主体定义', '任务说明', '保留规则', '画面与动作', '环境声音', '背景音乐'];
 const referenceDisplayTerms = {
@@ -246,9 +250,9 @@ function toReferenceDisplay(value) {
     .replace(/Source assets:/g, '素材来源：').replace(/([^\s。！？；;，,：:、.!?])[ \t]+素材来源：/g, '$1。素材来源：').replace(/The shot shows (<主体 [1-9]\d*>)\./g, '画面中呈现 $1。').replace(/The shot features ((?:<主体 [1-9]\d*>(?:, | and )?)+)\./g, (_, list) => '画面中有 ' + list.replace(/, | and /g, '、') + '。')
     .replace(/^(<主体 [1-9]\d*>) is /gm, '$1：').replace(/^(<主体 [1-9]\d*>) appearance from ([^\n:：]+?)\s*[:：]\s*/gm, (_, subject, from) => subject + '：外观来自 ' + from.trim().replace(/\s*(?:,|\band\b)\s*/g, '、') + '，').replace(/^N\/A\.?$/gm, '无');
   text = text.replace(/\[([^\]\n]+)\]/g, (all, terms) => terms.split(/\s*\+\s*/).every(t => referenceDisplayTerms[t]) ? '[' + terms.split(/\s*\+\s*/).map(t => referenceDisplayTerms[t]).join(' + ') + ']' : all);
-  // Chinese sentences follow each other without a space; in 画面与动作 each subject's sentence starts a line.
+  // Chinese sentences follow each other without a space; in 画面与动作 each subject's sentence and each later shot starts a line.
   text = joinChineseSentences(text)
-    .replace(/(^【画面与动作】\n)([\s\S]*?)(?=\n【(?:环境声音|背景音乐)】|$(?![\s\S]))/m, (_, head, body) => head + body.replace(/([。！？])(?=<主体 [1-9]\d*>)/g, '$1\n'));
+    .replace(/(^【画面与动作】\n)([\s\S]*?)(?=\n【(?:环境声音|背景音乐)】|$(?![\s\S]))/m, (_, head, body) => head + body.replace(/([。！？])(?=<主体 [1-9]\d*>)/g, '$1\n').replace(/\s*(【镜头 (?:[2-9]|[1-9]\d+)】)/g, '\n$1'));
   return text.replace(/:\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/g, (_, term) => ': ' + referenceDisplayTerms[term]);
 }
 function fromReferenceDisplay(value) {
@@ -356,6 +360,12 @@ function validateReference(value, options = {}) {
   for (const m of fields.detailed_description.matchAll(/\[Shot \d+\] At (\d+):(\d+)\.(\d+)/g)) {
     if (Number(m[1])*60 + Number(m[2]) + Number('0.'+m[3]) > Number(options.durationSeconds || 30)) throw new Error('H3 多参镜头超出所选时长');
   }
+  // The English half (a Chinese name may appear in it) reads like the official guide: one line per shot, "<Subject N>: " definitions.
+  const prose = proseOf(fields.detailed_description);
+  if (!options.requireChineseOutput && (prose.match(/[A-Za-z]/g) || []).length > (prose.match(/[\u3400-\u9fff]/g) || []).length * 2) {
+    fields.detailed_description = officialEnglish(fields.detailed_description).replace(/\s*\n\s*\n\s*(?=\[Shot )/g, '\n').replace(/[ \t]*\n\s*\n\s*/g, ' ');
+    fields.subject_definitions = fields.subject_definitions.replace(/^(<Subject [1-9]\d*>)[ \t]*[：:][ \t]*/gm, '$1: ');
+  }
   return referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
 }
 const baseIssue = {
@@ -364,8 +374,10 @@ const baseIssue = {
   shotTime: 'H3 镜头切换时间必须严格递增且在所选时长内',
   subject: 'H3 文生、图生和首尾帧提示词不能使用 <Subject N> 主体标签',
   chinese: '请将画面与动作、环境声音和背景音乐改为简体中文，保留原台词和媒体标签',
+  english: 'H3 中文显示稿夹带英文单词，请译为简体中文，仅台词、屏幕文字和媒体标签保持原样',
   pairShots: 'H3 中英文提示词的镜头或切换时间不一致',
   pairLiterals: 'H3 中英文提示词的台词或屏幕文字不一致',
+  pairCoverage: 'H3 英文提示词遗漏了中文内容，请逐句完整翻译每个镜头',
 };
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
@@ -373,7 +385,7 @@ const validationIssues = [
   ['sections', [baseIssue.sections]],
   ['timeline', [baseIssue.shotOrder, baseIssue.shotTime, baseIssue.pairShots]],
   ['references', [baseIssue.subject]],
-  ['language', [baseIssue.chinese]],
+  ['language', [baseIssue.chinese, baseIssue.english, baseIssue.pairCoverage]],
   ['dialogue', [baseIssue.pairLiterals]],
   ['language', ['请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签']],
   ['references', ['H3 中英文提示词的素材关系不一致']],
@@ -558,6 +570,15 @@ const hanPattern = /[\u3400-\u9fff]/;
 const literalSplit = /(<d>[\s\S]*?<\/d>|"[^"\n]*"|“[^”\n]*”)/;
 const outsideLiterals = (text, edit) => text.split(literalSplit).map((part, i) => i % 2 ? part : edit(part)).join('');
 const proseOf = text => text.split(literalSplit).filter((_, i) => !(i % 2)).join(' ');
+// The official English wording (H3 guides): a later shot names its cut, a still camera holds a static shot, a vertical pan is a tilt.
+const cutVerb = /\b(?:cut|cuts|cutting|transitions?|changes?|switch(?:es)?|dissolves?|fades?|wipes?)\b/i;
+const officialEnglish = text => outsideLiterals(String(text), part => part
+  .replace(/(\[Shot (?:[2-9]|[1-9]\d+)\] At \d{2}:\d{2}\.\d{3})[ \t]*,?[ \t]*(?=([^.;!?\n]*))/g, (_, head, clause) => head + ', ' + (!clause.trim() || cutVerb.test(clause) ? '' : 'the shot cuts to '))
+  .replace(/(the shot cuts to )(A|An|The)\b/g, (_, cut, article) => cut + article.toLowerCase())
+  .replace(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps) (?:completely |fully |perfectly )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: throughout(?: the (?:shot|clip|video))?)?(?=\s*(?:[.,;!]|$|(?:and|as|while|with|during)\b))/g, (_, article) => (article || 'The') + ' camera holds a static shot')
+  .replace(/\b(?:(the|The) camera|Camera) (?:holds|maintains|keeps|retains|preserves) (?:its |the |a )?(?:(?:steady|stable|fixed|same|initial|original|current) )?(?:composition|framing)\b/g, (_, article) => (article || 'The') + ' camera holds a static shot')
+  .replace(/,\s*(?:a\s+)?static shot(?=\s*(?:[.;!]|$))/gi, '. The camera holds a static shot')
+  .replace(/\b([Pp])an(s|ned|ning)? (down|up)(?:wards?)?\b/g, (_, p, suffix = '', direction) => (p === 'P' ? 'T' : 't') + 'ilt' + ({ned:'ed', ning:'ing'}[suffix] ?? suffix) + ' ' + direction));
 function baseModeName(mode) {
   const name = String(mode || '').toLowerCase();
   return /^(?:text_video|t2va?)$/.test(name) ? 'text_video' : /^(?:image_video|i2va?)$/.test(name) ? 'image_video' : /^(?:first_last|fl2va?)$/.test(name) ? 'first_last' : '';
@@ -616,7 +637,7 @@ function normalizeBase(fields, duration) {
   if (count > 1 && duration > 0 && !/\[Shot \d+\] At \d/.test(text)) {
     text = text.replace(/\[Shot ([2-9]|[1-9]\d+)\] ?(?=([\s\S]?))/g, (_, n, next) => '[Shot ' + n + '] At ' + shotStamp(duration * (n - 1) / count) + (hanPattern.test(next) ? ' ' : ', '));
   }
-  return {...out, integrated_multimodal_description:text.trim()};
+  return {...out, integrated_multimodal_description:relayoutBaseFacts(text.trim())};
 }
 const inferBaseMode = parsed => /Picture 2/.test(parsed.alignment + parsed.fields.integrated_multimodal_description) ? 'first_last' : /Picture 1/.test(parsed.alignment + parsed.fields.integrated_multimodal_description) ? 'image_video' : 'text_video';
 const alignmentDuration = alignment => Math.max(0, ...[...String(alignment).matchAll(/(\d+(?:\.\d+)?)\s*(?:-second mark|秒|seconds?)/g)].map(m => Number(m[1])));
@@ -626,16 +647,19 @@ function legacyBase(text, options = {}) {
   const {sections} = parseFormat(text);
   const mode = baseModeOf(options) || (/首尾帧|FL2V|first[_ ]last/i.test(sections[0]) ? 'first_last' : /图生|图片到视频|I2V|image[_ ]video/i.test(sections[0]) ? 'image_video' : 'text_video');
   const phases = sections[2].split(/\n+/).map(p => p.replace(/^\s*\d+(?:\.\d+)?\s*[-–—~至]\s*\d+(?:\.\d+)?\s*(?:s|秒)\s*[:：]\s*/, '').trim()).filter(Boolean);
-  const dialogue = [...sections[3].matchAll(/\((S[1-9]\d*)\)\s*[:：]\s*[“"]([^”"]+)[”"]/g)].map(m => `(${m[1]}) 说：<d>${m[2]}</d>`);
+  // A real speaker identity (<Subject 1> = (S1)，机械少女) introduces the line; a generic placeholder does not.
+  const identities = Object.fromEntries([...sections[1].matchAll(/<Subject [1-9]\d*>\s*=\s*\((S[1-9]\d*)\)\s*[，,、:：]?\s*([^\n]*)/g)]
+    .map(m => [m[1], m[2].replace(/[。.]\s*$/, '').replace(/^(?:画面|<Picture [12]>\s*)中的?/, '').trim()]).filter(([, name]) => name && !/原文|说这句台词|说话者|说话的角色/.test(name)));
+  const dialogue = [...sections[3].matchAll(/\((S[1-9]\d*)\)\s*[:：]\s*[“"]([^”"]+)[”"]/g)].map(m => `${identities[m[1]] ? identities[m[1]] + ' ' : ''}(${m[1]}) 说：<d>${m[2]}</d>`);
   const speaking = phases.findIndex((p, i) => i && /说|开口|speak|says?\b|talk/i.test(p));
   phases.splice(speaking < 0 ? phases.length : speaking + 1, 0, ...dialogue);
+  // 【连续性与约束】 items are meta rules (official rule 9); only the sound and music lines carry content.
   const audio = {};
-  const constraints = sections[4].split(/\n+/).map(item => item.replace(/^\s*\d+\s*[.、．)）]\s*/, '').trim()).filter(item => {
-    const sound = /^(环境与动作声音|配乐)\s*[:：]\s*(.*)$/.exec(item);
+  for (const item of sections[4].split(/\n+/)) {
+    const sound = /^\s*(?:\d+\s*[.、．)）]\s*)?(环境与动作声音|配乐)\s*[:：]\s*(.*)$/.exec(item);
     if (sound) audio[sound[1]] = sound[2].trim();
-    return item && !sound && !/^保持上述人物身份、参考帧绑定及原文明确的约束。?$/.test(item);
-  });
-  const narrative = [...phases, ...constraints].reduce((all, sentence) => appendSentence(all, sentence), '').replace(/<Subject [1-9]\d*>\s*(?:=\s*)?/g, '');
+  }
+  const narrative = phases.reduce((all, sentence) => appendSentence(all, sentence), '').replace(/<Subject [1-9]\d*>\s*(?:=\s*)?/g, '');
   return {mode, duration:Number(options.durationSeconds ?? legacyDurationPattern.exec(sections[0])?.[1]) || undefined,
     text:serializeBase({integrated_multimodal_description:'[Shot 1] ' + narrative, overall_soundscape:audio['环境与动作声音'] || '与画面动作一致的自然环境声和动作声。', non_diegetic_music:audio['配乐'] || 'N/A'})};
 }
@@ -645,27 +669,61 @@ function readBase(value, options = {}) {
   return parsed && {parsed, mode:baseModeOf(options) || legacy?.mode || inferBaseMode(parsed),
     duration:Number(options.durationSeconds ?? (legacy?.duration || alignmentDuration(parsed.alignment))) || undefined};
 }
-// Local reverse fact slots → one readable line each; prose paragraphs pass through.
+// Local reverse fact slots → readable sentences, one per line, that translate into official prose; prose
+// paragraphs pass through. The style comes first, scene/framing/look read as sentences, FL2V frame groups
+// become time phrases, and without a motion line one neutral sentence carries the opening into the ending.
 const countWord = /^(?:[一二两三四五六七八九十几数多]+|\d+)\s*[名位只个头条匹辆架群对件张把]$/;
+const styleWord = /风格|画风|插画|渲染|写实|动画|动漫|卡通|摄影|水彩|油画|国风|像素|二次元|漫画|\b(?:CG|3D|2D|style|illustration|render(?:ing|ed)?|anime|cartoon|photo(?:graphy|realistic)?|watercolor)\b/i;
+const factLeads = {场景:'场景是', 画面:'画面为', 光色材质:'光色与质感为', Scene:'The scene is ', Framing:'The framing is ', Look:'The look is '};
+const groupLeads = {shared:['两帧中都有', '两帧中，', 'Both frames show ', 'In both frames, '], open:['开头画面 <Picture 1> 中，', '开头画面 <Picture 1> 中，', 'In the opening frame <Picture 1>, ', 'In the opening frame <Picture 1>, '], close:['结尾画面 <Picture 2> 中，', '结尾画面 <Picture 2> 中，', 'In the ending frame <Picture 2>, ', 'In the ending frame <Picture 2>, ']};
+const factTransition = {zh:'随后画面从开头状态连续、自然地过渡到结尾状态。', en:'The shot then moves continuously and naturally from the opening state into the ending state.'};
 function relayoutBaseFacts(narrative) {
   if (!new RegExp(`(?:^|[\\n\\]。.] ?)(?:${legacyFactHeading}|${legacyFactLabel})`, 'u').test(narrative)) return narrative;
   const heading = new RegExp(`^(${legacyFactHeading})\\s*(.*)$`, 'u'), fact = new RegExp(`^(${legacyFactLabel}|随后[：:]|Then:)\\s*(.*)$`, 'u');
-  // The camera the user asked for reads as a sentence, not behind a label.
-  const line = raw => {
-    const text = raw.replace(/按用户运镜[：:]\s*/g, ''), group = heading.exec(text);
-    if (group) return (/<Picture [12]>.*<Picture [12]>|共同|shared/.test(group[1]) ? '两帧共有：' : /<Picture 2>|尾帧|ending/.test(group[1]) ? '结尾（<Picture 2>）：' : '开头（<Picture 1>）：') + group[2];
-    const slot = fact.exec(text);
-    if (!slot) return text;
-    const label = slot[1].slice(0, -1), english = /^[A-Z]/.test(label);
-    // A count belongs to its identity: 一名红色战甲女性, not 一名，红色战甲女性.
-    let value = slot[2].split(/\s*[；;]\s*/).map(part => part.replace(/^(?:[\u4e00-\u9fff]{1,4}[：:]|(?:count|pose|action)\s+)/, '')).filter(Boolean)
-      .reduce((all, part, i, parts) => all + (i && !countWord.test(parts[i - 1]) ? (english ? ', ' : '，') : '') + part, '');
-    if (!/[。！？.!?]$/.test(value)) value += english ? '.' : '。';
-    return /^(?:场景|画面|光色材质|Scene|Framing|Look)$/.test(label) ? slot[1] + (english ? ' ' : '') + value : /^(?:随后|Then)$/.test(label) ? label + (english ? ', ' : '，') + value : value;
-  };
   return narrative.split(/(?=\[Shot [1-9]\d*\])/).map(shot => {
     const head = /^\[Shot [1-9]\d*\](?: At [\d:.]+,?)? ?/.exec(shot)?.[0] || '';
-    return head + relayoutLegacyFacts(shot.slice(head.length)).split(/\n+/).map(line).join('\n');
+    const styles = [], lines = [], motions = [];
+    let group = '', lead = false, english = false, moved = false, closing = -1;
+    for (const raw of relayoutLegacyFacts(shot.slice(head.length)).split(/\n+/)) {
+      // The camera the user asked for reads as a sentence, not behind a label.
+      let text = raw.replace(/按用户运镜[：:]\s*/g, '').trim();
+      if (!text) continue;
+      const title = heading.exec(text);
+      if (title) {
+        group = /<Picture [12]>.*<Picture [12]>|共同|shared/.test(title[1]) ? 'shared' : /<Picture 2>|尾帧|ending/.test(title[1]) ? 'close' : 'open';
+        english = /shared|opening|ending|\band\b/.test(title[1]);
+        if (group === 'close') closing = lines.length;
+        lead = true;
+        text = title[2].trim();
+        if (!text) continue;
+      }
+      const slot = fact.exec(text);
+      let sentence = text, subject = false, motion = false;
+      if (slot) {
+        const label = slot[1].slice(0, -1), latin = /^[A-Z]/.test(label);
+        let parts = slot[2].split(/\s*[；;]\s*/).map(part => part.replace(/^(?:[\u4e00-\u9fff]{1,4}[：:]|(?:count|pose|action)\s+)/, '')).filter(Boolean);
+        // The style facts open the shot; the rest of the look stays in its sentence.
+        if (/^(?:光色材质|Look)$/.test(label)) parts = parts.flatMap(part => part.replace(/[。.]$/, '').split(/\s*[，,]\s*/)).filter(atom => !styleWord.test(atom) || (styles.includes(atom) || styles.push(atom), false));
+        // A count belongs to its identity: 一名红色战甲女性, not 一名，红色战甲女性.
+        let value = parts.reduce((all, part, i) => all + (i && !countWord.test(parts[i - 1]) ? (latin ? ', ' : '，') : '') + part, '');
+        if (!value.replace(/[。！？.!?]/g, '')) continue;
+        if (!/[。！？.!?]$/.test(value)) value += latin ? '.' : '。';
+        subject = /^(?:主体\d+|Subject \d+)$/.test(label);
+        motion = /^(?:随后|Then)$/.test(label);
+        sentence = factLeads[label] ? factLeads[label] + value : motion ? label + (latin ? ', ' : '，') + value : value;
+      }
+      // FL2V: the motion between the frames is told before the ending frame, not after it.
+      if (motion && closing >= 0) { motions.push(sentence); continue; }
+      moved = moved || motion;
+      if (lead && group) {
+        sentence = groupLeads[group][(english ? 2 : 0) + (subject ? 0 : 1)] + (english ? sentence.replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase()) : sentence);
+        lead = false;
+      }
+      lines.push(sentence);
+    }
+    if (closing >= 0) lines.splice(closing, 0, ...(motions.length ? motions : moved ? [] : [factTransition[english ? 'en' : 'zh']]));
+    if (styles.length) lines.unshift(styles.join(english ? ', ' : '，') + (english ? '.' : '。'));
+    return head + lines.join('\n');
   }).join('\n');
 }
 function toBaseDisplay(value, options = {}) {
@@ -675,7 +733,7 @@ function toBaseDisplay(value, options = {}) {
   const fields = normalizeBase(base.parsed.fields, base.duration), alignment = baseDisplayAlignment(base.mode, base.duration);
   const audio = text => text === 'N/A' ? '无' : joinChineseSentences(text);
   return [alignment && '【参考帧对齐】\n' + alignment,
-    '【画面与动作】\n' + joinChineseSentences(relayoutBaseFacts(fields.integrated_multimodal_description)).replace(/\[Shot ([1-9]\d*)\](?:[ \t]+(?![ \t]|At\b))?/g, '【镜头 $1】'),
+    '【画面与动作】\n' + joinChineseSentences(fields.integrated_multimodal_description).replace(/\[Shot ([1-9]\d*)\](?:[ \t]+(?![ \t]|At\b))?/g, '【镜头 $1】'),
     '【环境声音】\n' + audio(fields.overall_soundscape), '【背景音乐】\n' + audio(fields.non_diegetic_music)].filter(Boolean).join('\n\n');
 }
 function fromBaseDisplay(value) {
@@ -712,6 +770,12 @@ function checkBase(value, options = {}) {
     const words = prose.match(/[A-Za-z]{2,}/g) || [];
     return words.length >= 8 && words.join('').length > (prose.match(/[\u3400-\u9fff]/g) || []).length * 2;
   })) throw new Error(baseIssue.chinese);
+  // Single English words left in the Chinese half (faint, says, thud); capitals (3D, CG) and the user's own words stay.
+  if (options.language === 'zh') {
+    const own = new Set((userIntent(options).match(/[A-Za-z]+/g) || []).map(word => word.toLowerCase()));
+    if ((proseOf(all).replace(/<(?:Picture|Video|Audio) \d+>|\[Shot \d+\]|\bAt \d{2}:\d{2}\.\d{3}|N\/A/g, '').match(/[A-Za-z]+/g) || []).some(word => word.length > 2 && word === word.toLowerCase() && !own.has(word))) throw new Error(baseIssue.english);
+  }
+  if (options.language === 'en') text = officialEnglish(text);
   // Every supplied frame is named in the narrative: the opening frame after the style sentence, the final frame at the end.
   const language = options.language || (hanPattern.test(proseOf(text)) ? 'zh' : 'en');
   if (allowed.length && !text.includes('<Picture 1>')) text = text.replace(/^\[Shot 1\] ?([^\n]*)/, (_, line) => {
@@ -743,16 +807,27 @@ function validateBaseResult(value, options = {}) {
     if (missing(narrativeOf(results[0]))) for (const r of results) if (r === results[0] || missing(narrativeOf(r))) r.fields.integrated_multimodal_description = appendSentence(narrativeOf(r), sentences[r.language]);
   };
   if (loopRequested(intent)) complete(text => !new RegExp(policy.closurePattern, 'i').test(text), loopClosure);
-  complete(text => !cameraPattern.test(text + intent), baseCamera);
-  if (!pair) return serializeBase(results[0].fields);
+  complete(text => !namesCamera(text + intent), baseCamera);
   const [model, display] = results.map(r => serializeBase(r.fields));
-  const shots = text => (text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|');
-  const tokens = text => [...new Set(text.match(/<Picture [1-9]\d*>/g) || [])].sort().join('|');
   // Speech quoted in one half may be a <d>[Chinese] …</d> block in the other: compare the words, not the language tag.
   const literals = text => [...text.matchAll(/<d>([\s\S]*?)<\/d>|"([^"\n]*)"|“([^”\n]*)”/g)].map(m => m[1]?.replace(/^\s*\[[^\]\n]*\]\s*/, '') ?? m[2] ?? m[3]).sort().join('\n');
-  if (shots(model) !== shots(display)) throw new Error(baseIssue.pairShots);
-  if (tokens(model) !== tokens(display)) throw new Error('H3 中英文提示词的素材关系不一致');
-  if (literals(model) !== literals(display)) throw new Error(baseIssue.pairLiterals);
-  return JSON.stringify({modelPrompt:model, displayPrompt:display});
+  if (pair) {
+    const shots = text => (text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|');
+    const tokens = text => [...new Set(text.match(/<Picture [1-9]\d*>/g) || [])].sort().join('|');
+    if (shots(model) !== shots(display)) throw new Error(baseIssue.pairShots);
+    if (tokens(model) !== tokens(display)) throw new Error('H3 中英文提示词的素材关系不一致');
+    if (literals(model) !== literals(display)) throw new Error(baseIssue.pairLiterals);
+    // A faithful English shot has about 3-4 letters per Chinese character (every real pair measured ≥ 2.6); far fewer means a dropped block.
+    const shotTexts = r => narrativeOf(r).split(/(?=\[Shot [1-9]\d*\])/).map(shot => proseOf(shot).replace(/<(?:Picture|Video|Audio) \d+>|\[Shot \d+\](?: At [\d:.]+,?)?/g, ''));
+    const [english, chinese] = results.map(shotTexts);
+    if (chinese.some((shot, i) => (english[i].match(/[A-Za-z]/g) || []).length < (shot.match(/[\u3400-\u9fff]/g) || []).length * 2.5 - 40)) throw new Error(baseIssue.pairCoverage);
+  }
+  // Speech the user quotes (说：“…”, 喊道“…”, says "…") or writes as <d> reaches H3 in a <d> block or quoted text.
+  // A requirement about the dialogue replaces the source lines: then one line it quotes (if any) must arrive instead.
+  const tail = requirementTail(options), aboutSpeech = /台词|对白|对话|说的?话|dialogue|speech|\blines?\b/i.test(tail);
+  const lines = [...(aboutSpeech ? tail : String(options.currentPrompt || '')).matchAll(aboutSpeech ? /[“"]([^”"\n]+)[”"]/g
+    : /(?:说|道|喊|问|唱|\b(?:says?|asks?|shouts?|sings?))\s*[:：,，]?\s*[“"]([^”"\n]+)[”"]|<d>(?:\s*\[[^\]\n]*\])?\s*([\s\S]*?)<\/d>/gi)].map(m => (m[1] || m[2]).trim().replace(/[。！？.!?，,]+$/, '')).filter(Boolean);
+  if (lines.length && !lines[aboutSpeech ? 'some' : 'every'](line => literals(model).includes(line))) throw new Error('原台词未完整保留');
+  return pair ? JSON.stringify({modelPrompt:model, displayPrompt:display}) : model;
 }
-export { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult, referenceFrames, baseFields, baseDisplayFields, baseModeName, baseInstruction, baseResultInstruction, baseTranslateInstruction, baseResultSchema, baseAlignmentLine, baseDisplayAlignment, parseBaseFields, validateBaseFields, composeBaseModelPrompt, toBaseDisplay, fromBaseDisplay, validateBaseResult };
+export { instruction, instructionFor, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult, referenceFrames, baseFields, baseDisplayFields, baseModeName, baseInstruction, baseResultInstruction, baseTranslateInstruction, baseResultSchema, baseAlignmentLine, baseDisplayAlignment, parseBaseFields, validateBaseFields, composeBaseModelPrompt, toBaseDisplay, fromBaseDisplay, validateBaseResult };

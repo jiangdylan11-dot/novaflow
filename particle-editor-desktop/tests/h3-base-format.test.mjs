@@ -186,18 +186,20 @@ test('legacy five-section prompts convert to the display without a model', () =>
     const shown = api.toBaseDisplay(five);
     assert.match(shown, /^【参考帧对齐】\n<Picture 1> 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】Use <Picture 1> as the exact starting frame\. /);
     assert.doesNotMatch(shown, /【任务定位】|【说话者】|【递进式详细提示词】|【台词】|【连续性与约束】|\d\s*-\s*\d+(?:\.\d+)?s：|<Subject/);
-    // Dialogue follows the first phase that mentions speaking; the other constraints end the narrative.
-    assert.match(shown, /镜头缓慢推进。\(S1\) 说：<d>\[Chinese\] 系统自检完成。动力核心已上线，下一条指令——可以直接下达。<\/d> S1抬起右手/);
-    assert.match(shown, /人物保持冷静。口型与说话自然，脸部、身份稳定。赛博细节丰富，不增加随机饰件或过度闪烁。保持上半身机械联动，不突然切远景。保持16:9横图构图。\n\n【环境声音】\n与画面动作一致的自然环境声和动作声。\n\n【背景音乐】\n无$/);
-    assert.equal(api.toBaseDisplay(fl2v), '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】穿红色战甲的女性站在雪山前，镜头固定。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。保持红色战甲与雪山背景。\n\n【环境声音】\n风声和铠甲摩擦声\n\n【背景音乐】\n无');
+    // Dialogue follows the first phase that mentions speaking, after the speaker's real identity; constraint items are meta rules and are dropped.
+    assert.match(shown, /镜头缓慢推进。紫眸赛博仿生女性 \(S1\) 说：<d>\[Chinese\] 系统自检完成。动力核心已上线，下一条指令——可以直接下达。<\/d> S1抬起右手/);
+    assert.match(shown, /人物保持冷静。\n\n【环境声音】\n与画面动作一致的自然环境声和动作声。\n\n【背景音乐】\n无$/);
+    assert.doesNotMatch(shown, /口型与说话自然|随机饰件|16:9/);
+    // A generic speaker placeholder (…中说这句台词的角色) adds no identity.
+    assert.equal(api.toBaseDisplay(fl2v), '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】穿红色战甲的女性站在雪山前，镜头固定。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。\n\n【环境声音】\n风声和铠甲摩擦声\n\n【背景音乐】\n无');
     // Explicit options win over the task line; the result validates as Chinese fields.
     assert.match(api.toBaseDisplay(fl2v, {mode:'first_last', durationSeconds:6}), /对齐第 6\.00 秒（结尾）/);
-    assert.equal(api.validateBaseResult(fl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), 'integrated_multimodal_description: [Shot 1] 穿红色战甲的女性站在雪山前，镜头固定。画面从 <Picture 1> 的位置与构图开始。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。保持红色战甲与雪山背景。结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。\n\noverall_soundscape: 风声和铠甲摩擦声\n\nnon_diegetic_music: N/A');
+    assert.equal(api.validateBaseResult(fl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), 'integrated_multimodal_description: [Shot 1] 穿红色战甲的女性站在雪山前，镜头固定。画面从 <Picture 1> 的位置与构图开始。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。\n\noverall_soundscape: 风声和铠甲摩擦声\n\nnon_diegetic_music: N/A');
     assert.equal(api.toBaseDisplay(api.fromBaseDisplay(api.toBaseDisplay(fl2v)), {mode:'first_last', durationSeconds:5}), api.toBaseDisplay(fl2v));
   }
 });
 
-test('reverse outputs: local fact slots become readable lines, Grok prose passes through', () => {
+test('reverse outputs: local fact slots become readable sentences, Grok prose passes through', () => {
   const localI2v = '参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n\nintegrated_multimodal_description: [Shot 1] 主体1：数量：一名；身份：红色战甲女性；外观：黑色长发；姿态：站立；动作：抬手。\n\n场景：雪山。\n\n画面：全身景；平视。\n\n光色材质：自然光。\n\n随后：她转身向镜头挥手。按用户运镜：镜头缓慢推近。\n\n她说：<d>出发吧。</d>\n\noverall_soundscape: 与场景一致的低强度环境底声。\n\nnon_diegetic_music: N/A';
   const localFl2v = '参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = 5.00 秒\n\nintegrated_multimodal_description: [Shot 1]\n<Picture 1> 与 <Picture 2> 共同：\n主体1：数量：一名；身份：红色战甲女性；外观：黑色长发；动作：抬手。\n场景：雪山。\n画面：全身景；平视。\n光色材质：自然光。\n\n<Picture 1> 首帧：\n主体1：姿态：站立。\n\n<Picture 2> 尾帧：\n主体1：姿态：坐下。\n\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\noverall_soundscape: 与场景一致的低强度环境底声。\n\nnon_diegetic_music: N/A';
   const localEn = 'Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds\n\nintegrated_multimodal_description: [Shot 1] Subject 1: count 一名; 红色战甲女性, 黑色长发; pose 站立; action 抬手.\n\nScene: 雪山.\n\nFraming: 全身景, 平视.\n\nLook: 自然光.\n\nThen: 她转身向镜头挥手. Camera follows: 镜头缓慢推近.\n\n她说：<d>出发吧。</d>\n\noverall_soundscape: Low ambience consistent with the scene.\n\nnon_diegetic_music: N/A';
@@ -207,8 +209,9 @@ test('reverse outputs: local fact slots become readable lines, Grok prose passes
   const i2v = {mode:'image_video', durationSeconds:5};
   for (const api of apis) {
     const expected = {
-      localI2v: '【参考帧对齐】\n<Picture 1> 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】一名红色战甲女性，黑色长发，站立，抬手。\n场景：雪山。\n画面：全身景，平视。\n光色材质：自然光。\n随后，她转身向镜头挥手。镜头缓慢推近。\n她说：<d>[Chinese] 出发吧。</d>\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
-      localFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】两帧共有：\n一名红色战甲女性，黑色长发，抬手。\n场景：雪山。\n画面：全身景，平视。\n光色材质：自然光。\n开头（<Picture 1>）：\n站立。\n结尾（<Picture 2>）：\n坐下。\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
+      localI2v: '【参考帧对齐】\n<Picture 1> 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】一名红色战甲女性，黑色长发，站立，抬手。\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n随后，她转身向镜头挥手。镜头缓慢推近。\n她说：<d>[Chinese] 出发吧。</d>\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
+      // FL2V frame groups read as time phrases; without a motion line a neutral sentence carries the opening into the ending.
+      localFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】两帧中都有一名红色战甲女性，黑色长发，抬手。\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n开头画面 <Picture 1> 中，站立。\n随后画面从开头状态连续、自然地过渡到结尾状态。\n结尾画面 <Picture 2> 中，坐下。\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
       grokFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】写实摄影；中景；平视\n一名 少女；黑色短发；橙色衬衫；站在路边\n乡村公路；远处稻田\n午后自然光；暖橙色调\n动作从首帧姿态轻缓开始，以小幅、连续的姿态变化自然推进，随后逐渐收稳。\n镜头保持固定，延续首帧的视角与构图。\n过渡过程中逐步到达尾帧状态：坐在路边\n到 5.00 秒，动作连续收束至 <Picture 2> 的准确姿态、物体位置与构图。\n\n【环境声音】\n低声、平稳的环境底声贯穿画面，轻微的动作声随可见运动同步起落。\n\n【背景音乐】\n无',
     };
     assert.equal(api.toBaseDisplay(localI2v, i2v), expected.localI2v);
@@ -217,6 +220,10 @@ test('reverse outputs: local fact slots become readable lines, Grok prose passes
     assert.match(api.toBaseDisplay(cat, i2v), /【镜头 1】两只橘猫，黑色长发，站立，抬手。\n[\s\S]*\n随后，她转身向镜头挥手。\n镜头缓慢推近。\n/);
     // The mode and duration also come from the reverse alignment line itself.
     assert.equal(api.toBaseDisplay(localFl2v), expected.localFl2v);
+    // A style fact opens the shot, and a motion line between the frames is told before the ending frame.
+    const styled = localFl2v.replace('光色材质：自然光。', '光色材质：自然光；国风插画。').replace('\n\n画面从首帧状态', '\n\n随后：她缓缓坐下。\n\n画面从首帧状态');
+    assert.match(api.toBaseDisplay(styled), /【镜头 1】国风插画。\n两帧中都有[^\n]*\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n开头画面 <Picture 1> 中，站立。\n随后，她缓缓坐下。\n结尾画面 <Picture 2> 中，坐下。\n画面从首帧状态/);
+    assert.doesNotMatch(api.toBaseDisplay(styled), /随后画面从开头状态/);
     assert.equal(api.toBaseDisplay(grokFl2v), expected.grokFl2v);
     assert.match(api.toBaseDisplay(grokI2v, i2v), /\n【镜头 1】写实摄影；中景；平视\n一名 少女；黑色短发；橙色衬衫；站在路边\n<Picture 1> 她转身向镜头挥手，说：“出发吧。”\n镜头保持固定/);
     // Every fact value survives, and the display is stable through another round.
@@ -226,9 +233,9 @@ test('reverse outputs: local fact slots become readable lines, Grok prose passes
       assert.equal(api.toBaseDisplay(api.fromBaseDisplay(shown), {mode:/<Picture 2>/.test(shown) ? 'first_last' : 'image_video', durationSeconds:5}), shown);
     }
     const english = api.toBaseDisplay(localEn, i2v);
-    assert.match(english, /\n【镜头 1】一名红色战甲女性, 黑色长发, 站立, 抬手\.\nScene: 雪山\.\nFraming: 全身景, 平视\.\nLook: 自然光\.\nThen, 她转身向镜头挥手\. Camera follows: 镜头缓慢推近\.\n她说：<d>\[Chinese\] 出发吧。<\/d>\n/);
-    // The reverse display is valid Chinese fields for the later compile step.
-    assert.match(api.validateBaseFields(expected.localFl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), /^integrated_multimodal_description: \[Shot 1\] 两帧共有：\n/);
+    assert.match(english, /\n【镜头 1】一名红色战甲女性, 黑色长发, 站立, 抬手\.\nThe scene is 雪山\.\nThe framing is 全身景, 平视\.\nThe look is 自然光\.\nThen, 她转身向镜头挥手\. Camera follows: 镜头缓慢推近\.\n她说：<d>\[Chinese\] 出发吧。<\/d>\n/);
+    // The reverse display is valid Chinese fields for the later compile step; the frame groups name both pictures.
+    assert.match(api.validateBaseFields(expected.localFl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), /^integrated_multimodal_description: \[Shot 1\] 两帧中都有一名红色战甲女性，黑色长发，抬手。\n[^]*\n开头画面 <Picture 1> 中，站立。\n/);
   }
 });
 
@@ -264,6 +271,92 @@ test('new messages are app-owned repair reasons and the instructions never trigg
   }
 });
 
+const fields = (narrative, soundscape = 'Wind.', music = 'N/A') => `integrated_multimodal_description: ${narrative}\n\noverall_soundscape: ${soundscape}\n\nnon_diegetic_music: ${music}`;
+
+test('a translation that drops a block of the Chinese fails the per-shot coverage check', () => {
+  // Round 1 rev_fl2v: the English half left out the whole ending-frame block and still passed.
+  const zh = '[Shot 1] 写实数字渲染风格，中景，略仰视视角。紫发女子坐在大理石台阶上，长直紫发披肩，穿白色透视长裙配金色腰封，右手握金色月牙法杖，赤足伸展双腿，左臂撑在台阶上。橘色长毛猫蹲坐于下方台阶。背景为夜色山脉与古建筑遗迹，前景是白色大理石台阶，散落红色花瓣。上方柔和暮光照射台阶，整体色板为深蓝紫与粉橙渐变。过渡过程中逐步到达尾帧状态：女子身着白色半透明长裙搭配金色腰带，右手握持金色月牙法杖，赤足坐在大理石台阶上，左手撑在台阶上，双腿交叠。台阶下方有一只橙色长毛猫咪蹲坐，法杖周围飘散金色光粒子，裙摆带有星光效果。背景为层层大理石台阶延伸向上，中景为山脉与古建筑剪影，光源来自画面右上方的柔和暮光。镜头保持固定。';
+  const en = '[Shot 1] Realistic digital rendering style, medium shot, slightly low angle. A purple-haired woman sits on marble steps, long straight purple hair over her shoulders, wearing a sheer white long dress with a golden waist sash, holding a golden crescent staff in her right hand, bare feet with legs extended, left arm propped on the steps. An orange long-haired cat crouches on a lower step. The background shows night mountains and ancient ruins, with white marble steps in the foreground scattered with red petals. Soft twilight from above lights the steps, and the palette is deep blue-purple with pink-orange gradients. Over the transition she gradually reaches the final state: she wears a sheer white long dress with a golden belt, holds the golden crescent staff in her right hand, sits barefoot on the marble steps with her left hand propped on a step and her legs crossed. Below the steps an orange long-haired cat crouches, golden light particles drift around the staff, and the hem of her dress sparkles with starlight. Layers of marble steps rise in the background, with mountains and silhouettes of ancient buildings in the middle ground, lit by soft twilight from the upper right. The camera holds a static shot.';
+  const options = {mode:'text_video', durationSeconds:6};
+  for (const api of apis) {
+    assert.doesNotThrow(() => api.validateBaseResult({modelPrompt:fields(en), displayPrompt:fields(zh, '风声。')}, options));
+    const dropped = en.replace(/ Over the transition[\s\S]*upper right\./, '');
+    assert.throws(() => api.validateBaseResult({modelPrompt:fields(dropped), displayPrompt:fields(zh, '风声。')}, options), /遗漏了中文内容/);
+    // Translate-only checks it too: the display half is the user's own source.
+    assert.throws(() => api.validateBaseResult({modelPrompt:fields(dropped), displayPrompt:fields(zh, '风声。')}, {...options, displayIsSource:true}), /遗漏了中文内容/);
+    // Each shot is measured on its own: a dropped later shot fails even when the first is long.
+    const cut = ' [Shot 2] At 00:04.000, the camera cuts to a close-up of the cat, which flicks its tail twice, lifts its head toward the woman and slowly closes its amber eyes as petals drift past.';
+    const cutZh = '\n[Shot 2] At 00:04.000 镜头切到猫的特写，它轻轻甩尾两次，抬头望向女子，在飘过的花瓣中慢慢闭上琥珀色的眼睛。';
+    assert.doesNotThrow(() => api.validateBaseResult({modelPrompt:fields(en + cut), displayPrompt:fields(zh + cutZh, '风声。')}, options));
+    assert.throws(() => api.validateBaseResult({modelPrompt:fields(en + ' [Shot 2] At 00:04.000, the camera cuts to the cat.'), displayPrompt:fields(zh + cutZh, '风声。')}, options), /遗漏了中文内容/);
+    assert.equal(api.validationIssue(new Error('H3 英文提示词遗漏了中文内容，请逐句完整翻译每个镜头')).reason, 'language');
+  }
+});
+
+test('the Chinese half of an optimize pair may not keep single English words; a translate-only source may', () => {
+  const options = {mode:'text_video', durationSeconds:10, currentPrompt:'先是城市夜景全景，然后切到街角咖啡店里的女孩'};
+  const model = fields('[Shot 1] Live-action, cinematic, a wide night view of the city skyline. The camera holds a static shot.', 'Distant traffic hums with faint city ambience.');
+  for (const api of apis) {
+    for (const leak of ['远处交通声和 faint 城市氛围。', '女孩 says 你好。', '猫落地时一声 thud。'])
+      assert.throws(() => api.validateBaseResult({modelPrompt:model, displayPrompt:fields('[Shot 1] 写实电影风格，城市夜景全景。镜头固定。', leak)}, options), /夹带英文单词/);
+    // Capitals (3D, CG), tags, times, N/A and the user's own words stay.
+    assert.doesNotThrow(() => api.validateBaseResult({modelPrompt:model, displayPrompt:fields('[Shot 1] 3D CG 风格，城市夜景全景。镜头固定。', '远处交通声。')}, options));
+    assert.doesNotThrow(() => api.validateBaseResult({modelPrompt:model, displayPrompt:fields('[Shot 1] 写实风格，vlog 画面中的城市夜景。镜头固定。', '远处交通声。')}, {...options, currentPrompt:'拍一段城市夜景 vlog'}));
+    assert.doesNotThrow(() => api.validateBaseResult({modelPrompt:model, displayPrompt:fields('[Shot 1] A girl walks, 城市夜景。镜头固定。', '远处交通声。')}, {...options, displayIsSource:true}));
+    assert.equal(api.validationIssue(new Error('H3 中文显示稿夹带英文单词，请译为简体中文，仅台词、屏幕文字和媒体标签保持原样')).reason, 'language');
+  }
+});
+
+test('the English half uses the official wording for cuts, a still camera and vertical moves', () => {
+  const t2v = {mode:'text_video', durationSeconds:8};
+  for (const api of apis) {
+    const english = api.validateBaseFields(fields('[Shot 1] Live-action. The camera remains static throughout the shot as she reads. A sign reads "The camera is static". [Shot 2] At 00:03.000 close-up of her hands. The camera slowly pans downward to the page. [Shot 3] At 00:05.000, A wide shot of the room, static shot. The camera holds its composition while she says: <d>[English] The camera maintains composition.</d>'), {...t2v, language:'en'});
+    assert.match(english, /^integrated_multimodal_description: \[Shot 1\] Live-action\. The camera holds a static shot as she reads\. A sign reads "The camera is static"\.\n/);
+    assert.match(english, /\n\[Shot 2\] At 00:03\.000, the shot cuts to close-up of her hands\. The camera slowly tilts down to the page\.\n/);
+    assert.match(english, /\n\[Shot 3\] At 00:05\.000, the shot cuts to a wide shot of the room\. The camera holds a static shot\. The camera holds a static shot while she says: <d>\[English\] The camera maintains composition\.<\/d>\n/);
+    // An existing cut verb stays; the Chinese display and 'zh' fields are never rewritten.
+    assert.match(api.composeBaseModelPrompt(fields('[Shot 1] A cat sits. [Shot 2] At 00:04.000, the camera cuts to a close-up.'), t2v), /\[Shot 2\] At 00:04\.000, the camera cuts to a close-up\./);
+    const chinese = fields('[Shot 1] 猫坐着。镜头固定。\n[Shot 2] At 00:04.000 猫的特写。', '风声。');
+    assert.equal(api.validateBaseFields(chinese, {...t2v, language:'zh'}), chinese);
+  }
+});
+
+test('quoted speech, labelled or not, must reach a <d> block unless the requirement changes the dialogue', () => {
+  const i2v = {mode:'image_video', durationSeconds:5};
+  const kept = fields('[Shot 1] <Picture 1> 中的女孩抬手向镜头挥手，(S1) 说：<d>[Chinese] 出发吧。</d>镜头固定。', '风声。');
+  const lost = fields('[Shot 1] <Picture 1> 中的女孩抬手向镜头挥手。镜头固定。', '风声。');
+  for (const api of apis) {
+    for (const source of ['<Picture 1> 中的女孩抬手向镜头挥手并说：“出发吧。”', '<Picture 1> 中的女孩挥手喊道“出发吧！”', '<Picture 1> waves and says "出发吧"', '<Picture 1> 挥手，(S1) 说：<d>[Chinese] 出发吧。</d>']) {
+      assert.doesNotThrow(() => api.validateBaseResult(kept, {...i2v, currentPrompt:source}), source);
+      assert.throws(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source}), /原台词未完整保留/, source);
+    }
+    // In a pair the English half is what H3 hears.
+    const english = fields('[Shot 1] The girl shown in <Picture 1> waves toward the camera. The camera holds a static shot.', 'Wind.');
+    assert.throws(() => api.validateBaseResult({modelPrompt:english, displayPrompt:lost}, {...i2v, currentPrompt:'<Picture 1> 挥手并说：“出发吧。”'}), /原台词未完整保留/);
+    // A requirement about the dialogue replaces the old line; one line it quotes must arrive instead.
+    const source = '<Picture 1> 中的女孩挥手并说：“出发吧。”';
+    const requirements = changed => 'Source prompt:\n' + source + '\n\n' + changed;
+    const renamed = kept.replace('出发吧。', '走吧。');
+    assert.doesNotThrow(() => api.validateBaseResult(renamed, {...i2v, currentPrompt:source, requirements:requirements('把台词改成“走吧。”')}));
+    assert.throws(() => api.validateBaseResult(kept, {...i2v, currentPrompt:source, requirements:requirements('把台词改成“走吧。”')}), /原台词未完整保留/);
+    assert.doesNotThrow(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source, requirements:requirements('删掉台词')}));
+    // Quoted on-screen text is no speech.
+    assert.doesNotThrow(() => api.validateBaseResult(lost, {...i2v, currentPrompt:'<Picture 1> 旁的招牌写着“营业中”'}));
+  }
+});
+
+test('looking at the lens names no camera; the idle-breathing rule only reaches idle requests', () => {
+  for (const api of apis) {
+    const pair = {modelPrompt:fields('[Shot 1] Live-action, the cat looks up toward the camera and blinks slowly.'), displayPrompt:fields('[Shot 1] 写实风格，猫抬头看向镜头，慢慢眨眼。', '风声。')};
+    const completed = JSON.parse(api.validateBaseResult(pair, {mode:'text_video', durationSeconds:5, currentPrompt:'猫抬头看向镜头，慢慢眨眼'}));
+    assert.match(completed.modelPrompt, /blinks slowly\. The camera holds a static shot and the framing stays stable\./);
+    assert.match(completed.displayPrompt, /慢慢眨眼。镜头固定，构图保持稳定。/);
+    assert.doesNotMatch(api.instructionFor('紫发女神闭目养神，晚风轻拂长发'), /仅呼吸待机/);
+    for (const idle of ['机器人原地待机', '胸口随呼吸起伏', 'an idle loop', 'slow breathing']) assert.match(api.instructionFor(idle), /仅呼吸待机/, idle);
+    assert.equal(api.instructionFor('原地待机'), api.instruction);
+  }
+});
+
 test('the five copies stay in sync with the shared source and policy', () => {
   const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
   assert.equal(read('../../novaflow-web/admin/admin-server/h3-prompt-enhance.js'), read('../admin-server/h3-prompt-enhance.js'));
@@ -272,7 +365,7 @@ test('the five copies stay in sync with the shared source and policy', () => {
   const names = Object.keys(local).sort();
   assert.deepEqual(Object.keys(edge).sort(), names);
   assert.deepEqual(Object.keys(renderer).sort(), names);
-  for (const name of ['baseFields', 'baseDisplayFields', 'baseModeName', 'baseInstruction', 'baseResultInstruction', 'baseTranslateInstruction', 'baseResultSchema', 'baseAlignmentLine', 'baseDisplayAlignment', 'parseBaseFields', 'validateBaseFields', 'composeBaseModelPrompt', 'toBaseDisplay', 'fromBaseDisplay', 'validateBaseResult']) assert.ok(names.includes(name), name);
+  for (const name of ['instructionFor', 'baseFields', 'baseDisplayFields', 'baseModeName', 'baseInstruction', 'baseResultInstruction', 'baseTranslateInstruction', 'baseResultSchema', 'baseAlignmentLine', 'baseDisplayAlignment', 'parseBaseFields', 'validateBaseFields', 'composeBaseModelPrompt', 'toBaseDisplay', 'fromBaseDisplay', 'validateBaseResult']) assert.ok(names.includes(name), name);
   const policy = JSON.parse(read('../prompt_assistant/h3_prompt_enhance_policy.json'));
   assert.equal(local.baseInstruction, policy.baseInstructions.join('\n'));
   assert.doesNotMatch(policy.instructions.join('\n'), /时间段|timed actions/);

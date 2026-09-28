@@ -666,14 +666,16 @@
     return `Available resource labels: ${labels || '(none)'}. Never invent a resource label.`
   }
 
-  function buildInstructions(protocol, compiledPrompt) {
+  function buildInstructions(protocol, compiledPrompt, intent) {
     const format = globalThis.NovaFlowH3PromptFormat
+    // The idle-breathing rule only reaches a request whose own words (source + requirement) ask for it.
+    const policy = format.instructionFor(intent)
     if (protocol.mode === 'multi_reference') {
-      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', format.referenceInstruction + '\nH3 response format: bilingual-v1\nSource prompt:')
+      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', policy + '\n' + format.referenceInstruction + '\nH3 response format: bilingual-v1\nSource prompt:')
     }
     // Base modes answer in the official three fields: a bilingual pair (Grok) or Chinese fields (local).
     const lines = [
-      format.instruction,
+      policy,
       format.baseInstruction,
       format.baseResultInstruction,
       'H3 response format: bilingual-v1',
@@ -718,6 +720,8 @@
       contentPolicy: protocol.contentPolicy,
       requireReady: true,
     })
+    // The user's requirement decides which quoted lines the result must keep (a dialogue change replaces them).
+    const userRequirement = stringValue(input.requirements).trim()
     const context = deepFreeze({
       schemaVersion: SNAPSHOT_VERSION,
       modelId,
@@ -725,13 +729,14 @@
       durationSeconds: protocol.durationSeconds,
       sourcePrompt,
       compiledPrompt,
+      userRequirement,
       snapshot,
       fingerprint: snapshot.fingerprint,
       resources: snapshot.references.map((reference) => Object.assign({}, reference)),
       visualSchema: H3_VISUAL_SCHEMA,
       contentPolicy: protocol.contentPolicy,
     })
-    const requirements = input.promptFormat === 'legacy' ? buildLegacyInstructions(protocol, compiledPrompt) : buildInstructions(protocol, compiledPrompt)
+    const requirements = input.promptFormat === 'legacy' ? buildLegacyInstructions(protocol, compiledPrompt) : buildInstructions(protocol, compiledPrompt, sourcePrompt + '\n' + userRequirement)
     return deepFreeze({
       requirements,
       text: requirements,
@@ -974,36 +979,10 @@
   }
 
   function formatPromptLayout(text, sections, fieldOrder) {
-    const formatNarrative = (content) => {
-      // Only insert paragraph breaks outside quoted text and verbatim dialogue.
-      const protectedRanges = Array.from(content.matchAll(/<d>[\s\S]*?<\/d>|"(?:\\.|[^"\\])*"|“[^”]*”/gu),
-        (match) => [match.index, match.index + match[0].length])
-      const boundaries = new Set([0, content.length])
-      for (const part of new Intl.Segmenter('zh', { granularity: 'sentence' }).segment(content)) {
-        boundaries.add(part.index + part.segment.length)
-      }
-      for (const match of content.matchAll(/\[Shot [1-9][0-9]*\]|\n[ \t]*\n/gu)) boundaries.add(match.index)
-      const offsets = Array.from(boundaries).filter((offset) =>
-        !protectedRanges.some(([start, end]) => offset > start && offset < end)).sort((a, b) => a - b)
-      const paragraphs = []
-      let paragraph = ''
-      for (let index = 1; index < offsets.length; index += 1) {
-        const raw = content.slice(offsets[index - 1], offsets[index])
-        const chunk = raw.trim()
-        if (!chunk) continue
-        if (paragraph && (paragraph.length + chunk.length > 220 || /^\s*\[Shot /u.test(raw) || /^\n[ \t]*\n/u.test(raw))) {
-          paragraphs.push(paragraph)
-          paragraph = ''
-        }
-        paragraph += (paragraph ? ' ' : '') + chunk
-        if (/\n[ \t]*\n\s*$/u.test(raw)) {
-          paragraphs.push(paragraph)
-          paragraph = ''
-        }
-      }
-      if (paragraph) paragraphs.push(paragraph)
-      return paragraphs.join('\n\n')
-    }
+    // The official Ref2V layout: the style sentence, then one line per shot, no blank lines (the
+    // editor display breaks its own lines); dialogue and quoted text stay verbatim.
+    const formatNarrative = (content) => content.split(/(<d>[\s\S]*?<\/d>|"(?:\\.|[^"\\])*"|“[^”]*”)/u)
+      .map((part, index) => index % 2 ? part : part.replace(/\s*\n\s*/g, ' ').replace(/\s*(\[Shot [1-9][0-9]*\])/g, '\n$1')).join('').trim()
     const prefix = text.slice(0, sections[fieldOrder[0]].headerIndex).trim()
     return [prefix, ...fieldOrder.map((field) => {
       let content = sections[field].content
@@ -1041,7 +1020,7 @@
     // alignment line) and keep the canonical three fields; the shared validator
     // completes a missing camera instead of rejecting it.
     value = base
-      ? format.validateBaseResult(value, { mode: protocol.mode, durationSeconds: protocol.durationSeconds, currentPrompt: stringValue(options?.currentPrompt) })
+      ? format.validateBaseResult(value, { mode: protocol.mode, durationSeconds: protocol.durationSeconds, currentPrompt: stringValue(options?.currentPrompt), requirements: stringValue(options?.requirements) })
       : format.validateReference(value, {
         mode: protocol.mode, durationSeconds: protocol.durationSeconds,
         requirements: 'Available resource labels: ' + protocol.references.references.map(r => r.modelToken).join('; '),
@@ -1109,6 +1088,8 @@
     // The user's words for the default camera / loop checks: a base display's 【镜头 1】
     // label is not a camera, so base modes read the source in fields form.
     const currentPrompt = base ? stringValue(context.compiledPrompt) : stringValue(input.current?.prompt)
+    // The requirement tail after the source, as the engines receive it: the quoted-line check follows it.
+    const requirements = 'Source prompt:\n' + currentPrompt + (context.userRequirement ? '\n\n' + context.userRequirement : '')
     const validationOptions = {
       mode: context.mode,
       durationSeconds: context.durationSeconds,
@@ -1116,12 +1097,13 @@
       contentPolicy: context.contentPolicy,
       requireReady: true,
       currentPrompt,
+      requirements,
     }
     // Echoed aliases bind before the pair checks, so neither half reads them as prose.
     const text = typeof input.text === 'string' ? bindEchoedAliases(input.text, catalog) : input.text
     let pair = format.referenceResult(text)
     if (pair) pair = format.referenceResult(base
-      ? format.validateBaseResult(text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt })
+      ? format.validateBaseResult(text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt, requirements })
       : format.validateReferenceResult(text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt}))
     const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : text, validationOptions)
     const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), validationOptions) : validation
@@ -1148,9 +1130,6 @@
   // Chinese is allowed only inside <d>…</d> and quoted on-screen text.
   const LITERAL_EXPRESSION = /<d>([\s\S]*?)<\/d>|"([^"\n]*)"|“([^”\n]*)”/g
   const hasChineseProse = (text) => /[\u3400-\u9fff]/.test(text.replace(LITERAL_EXPRESSION, ''))
-  // What a translation must keep from its source: shots and cut times, picture tags, dialogue and quoted text.
-  const baseShape = (text) => [(text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|'), [...new Set(text.match(/<Picture [1-9]\d*>/g))].sort().join('|'),
-    Array.from(text.matchAll(LITERAL_EXPRESSION), (m) => m[1] ?? m[2] ?? m[3]).sort().join('\n')]
 
   // 文生 / 图生 / 首尾帧: the Chinese display becomes the official English base
   // format. English fields go straight through, a known text uses its cached
@@ -1190,21 +1169,9 @@
     // never send that prose to H3 from a structured prompt.
     const pair = format.referenceResult(typeof text === 'string' ? bindEchoedAliases(text, catalog) : text)
     if (!pair) throw new Error(COMPILE_UPDATE_REQUIRED)
-    let checked
-    try {
-      checked = format.validateBaseResult({ modelPrompt: pair.modelPrompt, displayPrompt: fields }, options)
-    } catch (error) {
-      // English prose around a Chinese name is not a Chinese display: check the English half
-      // alone, still holding it to the source's shots, pictures, dialogue and quoted text.
-      if (!/简体中文/.test(String(error?.message))) throw error
-      const modelPrompt = format.validateBaseResult(pair.modelPrompt, { ...options, language: 'en' })
-      const [model, shown] = [modelPrompt, fields].map(baseShape)
-      if (model[0] !== shown[0]) throw new Error('H3 中英文提示词的镜头或切换时间不一致')
-      if (model[1] !== shown[1]) throw new Error('H3 中英文提示词的素材关系不一致')
-      if (model[2] !== shown[2]) throw new Error('H3 中英文提示词的台词或屏幕文字不一致')
-      checked = JSON.stringify({ modelPrompt, displayPrompt: fields })
-    }
-    const compiled = JSON.parse(checked)
+    // The display half is the user's own source (it may mix in English around a Chinese name): only the
+    // English half is language-checked, held to the source's shots, pictures, dialogue, quotes and length.
+    const compiled = JSON.parse(format.validateBaseResult({ modelPrompt: pair.modelPrompt, displayPrompt: fields }, { ...options, currentPrompt: fields, displayIsSource: true }))
     rememberTranslation(current, [source], compiled)
     return finish(compiled)
   }

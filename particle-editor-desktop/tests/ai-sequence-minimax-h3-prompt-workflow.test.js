@@ -745,13 +745,39 @@ test('generation compiles the base display to the official English text', async 
 
 test('generation writes the mode-exact official alignment: none for 文生, bare labels and the final shot for 首尾帧', async () => {
   const t2v = await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: textVideoPrompt(), resources: [] })
-  assert.equal(t2v.modelText, 'integrated_multimodal_description: [Shot 1] A quiet city wakes before dawn while the locked camera remains static. [Shot 2] At 00:02.000, warm sunlight travels gradually across the buildings while the camera slowly pans right.\n\noverall_soundscape: Distant traffic and a light morning breeze.\n\nnon_diegetic_music: Soft restrained strings.')
+  // A later shot always names its cut, as the official guide writes it ([Shot N] At MM:SS.mmm, the shot cuts to …).
+  assert.equal(t2v.modelText, 'integrated_multimodal_description: [Shot 1] A quiet city wakes before dawn while the locked camera remains static. [Shot 2] At 00:02.000, the shot cuts to warm sunlight travels gradually across the buildings while the camera slowly pans right.\n\noverall_soundscape: Distant traffic and a light morning breeze.\n\nnon_diegetic_music: Soft restrained strings.')
   const fl2v = await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'first_last', durationSeconds: 5, prompt: firstLastPrompt(5).replace(/<Picture 1>/g, '@首帧').replace(/<Picture 2>/g, '@尾帧'), resources: [firstFrame(), lastFrame()] })
   assert.equal(fl2v.modelText.split('\n\n')[0], 'How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 2) aligns with the 5.00-second mark of the target video.')
-  assert.match(fl2v.modelText, /\[Shot 1\] Picture 1 is the exact opening composition[^\n]* \[Shot 2\] At 00:03\.500, motion gradually resolves into Picture 2 /)
+  assert.match(fl2v.modelText, /\[Shot 1\] Picture 1 is the exact opening composition[^\n]* \[Shot 2\] At 00:03\.500, the shot cuts to motion gradually resolves into Picture 2 /)
   assert.doesNotMatch(fl2v.modelText, /<Picture|@/)
   // An empty prompt reaches the graph builder's own empty-prompt error unchanged.
   assert.equal((await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: ' ', resources: [] })).modelText, '')
+})
+
+test('the policy follows the user\'s words, quoted lines follow the requirement, and a short translation is refused', async () => {
+  // The idle-breathing rule reaches only idle requests (source or requirement), for base and 多参 alike.
+  assert.doesNotMatch(workflow.prepareRequest(i2vCurrent('@参考图 中的女神闭目养神，晚风轻拂长发')).requirements, /仅呼吸待机/)
+  assert.match(workflow.prepareRequest(i2vCurrent('@参考图 中的机器人原地待机')).requirements, /仅呼吸待机/)
+  assert.match(workflow.prepareRequest({ ...i2vCurrent('@参考图 中的机器人站着'), requirements: '改成轻微呼吸的循环待机' }).requirements, /仅呼吸待机/)
+  const multi = workflow.prepareRequest({ modelId: 'minimax_h3_local', mode: 'multi_reference', durationSeconds: 5, prompt: 'Use @\u53c2\u8003\u56fe2.', resources: multiResources() }).requirements
+  assert.ok(multi.includes(format.instructionFor('')))
+  assert.doesNotMatch(multi, /仅呼吸待机/)
+  // A quoted line must reach H3 unless the requirement changes the dialogue.
+  const speaking = i2vCurrent('@参考图 中的少女挥手并说：“出发吧。”')
+  const lost = JSON.stringify({ modelPrompt: englishFields(), displayPrompt: chineseFields() })
+  assert.throws(() => workflow.validateAndRestore({ text: lost, context: workflow.prepareRequest(speaking).context, current: speaking }), /原台词未完整保留/)
+  const said = JSON.stringify({ modelPrompt: englishFields('[Shot 1] The girl shown in <Picture 1> waves and (S1) says: <d>[Chinese] 走吧。</d> The camera holds a static shot.'), displayPrompt: chineseFields('[Shot 1] <Picture 1> 中的少女挥手，(S1) 说：<d>[Chinese] 走吧。</d>镜头固定。') })
+  assert.throws(() => workflow.validateAndRestore({ text: said, context: workflow.prepareRequest(speaking).context, current: speaking }), /原台词未完整保留/)
+  const renamed = workflow.prepareRequest({ ...speaking, requirements: '把台词改成“走吧。”' })
+  assert.match(workflow.validateAndRestore({ text: said, context: renamed.context, current: speaking }).modelText, /<d>\[Chinese\] 走吧。<\/d>/)
+  // A translation that drops part of the display is refused instead of reaching H3.
+  const station = '[Shot 1] <Picture 1> 中的少女站在站台上，身穿米色风衣，背着棕色皮包，缓慢转身面向驶来的列车，抬起右手挥动三次，风吹起她的长发与衣摆，列车灯光在她脸上掠过。镜头保持固定，构图稳定。'
+  const shown = format.toBaseDisplay(chineseFields(station), { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图')
+  const translate = (narrative) => async () => JSON.stringify({ modelPrompt: englishFields(narrative), displayPrompt: '' })
+  await assert.rejects(workflow.compileForGeneration(i2vCurrent(shown, 'compile-h'), translate('[Shot 1] The girl shown in <Picture 1> waves. The camera holds a static shot.')), /遗漏了中文内容/)
+  const full = '[Shot 1] The girl shown in <Picture 1> stands on the platform in a beige trench coat with a brown leather bag, slowly turns toward the arriving train and waves her right hand three times while the wind lifts her long hair and coat hem and the train lights sweep across her face. The camera holds a static shot and the framing stays stable.'
+  assert.equal((await workflow.compileForGeneration(i2vCurrent(shown, 'compile-h'), translate(full))).modelText, I2V_LINE + '\n\n' + englishFields(full))
 })
 
 test('stays a pure prompt module with no DOM, network, runtime, or filesystem dependency', () => {

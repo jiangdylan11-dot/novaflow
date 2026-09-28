@@ -347,3 +347,22 @@ print(out)`],{input:JSON.stringify(plan),encoding:'utf8',cwd:new URL('../../',im
  const service=fs.readFileSync(new URL('../prompt-assistant-service.py',import.meta.url),'utf8');
  assert.doesNotMatch(service,/compile_h3_explicit_replacement|explicit-reference-edit/);
 });
+test('多参 cuts read like the official guide: each shot on its own display line, a named cut and one line per shot for H3',async()=>{
+ const asText=fields=>local.referenceFields.map(k=>k+':\n'+fields[k]).join('\n\n');
+ // Round 1 mr_cut: the local English half had "<Subject 1>：", blank lines and a cut without its verb.
+ const english=asText({subject_definitions:'<Subject 1>：young woman with short dark hair, from <Picture 1>\n<Subject 2>：small teal robot, from <Picture 2>',summary:'[reference generation] <Subject 1> walks toward <Subject 2>; at the 3-second mark the camera cuts to a close-up of both.',retention_analysis:'<Subject 1>: fully_preserved - short dark hair\n<Subject 2>: fully_preserved - teal body',detailed_description:'In a vibrant anime illustration style.\n\n[Shot 1] <Subject 1> walks along a rural road toward <Subject 2> in a garden.\n\nThe camera remains static.\n\n[Shot 2] At 00:03.000 close-up of <Subject 1> and <Subject 2> facing each other.',overall_soundscape:'Footsteps on the path and soft garden ambience.',non_diegetic_music:'N/A'});
+ const chinese=asText({subject_definitions:'<Subject 1>: 短黑发年轻女性，来自 <Picture 1>\n<Subject 2>: 青绿色小机器人，来自 <Picture 2>',summary:'[reference generation] <Subject 1> 走向 <Subject 2>，第3秒切到两人的近景。',retention_analysis:'<Subject 1>: fully_preserved - 短黑发\n<Subject 2>: fully_preserved - 青绿色机身',detailed_description:'采用鲜艳的动漫插画风格。 [Shot 1] <Subject 1> 沿着乡村道路走向花园中的 <Subject 2>。镜头固定。 [Shot 2] At 00:03.000 <Subject 1> 与 <Subject 2> 面对面的近景。',overall_soundscape:'小径上的脚步声与柔和的花园环境音。',non_diegetic_music:'N/A'});
+ const two=[{key:'multi_ref_image_1',kind:'image',identity:'woman',occupied:true,fileName:'woman.png',mimeType:'image/png'},{key:'multi_ref_image_2',kind:'image',identity:'robot',occupied:true,fileName:'robot.png',mimeType:'image/png'}];
+ const c={modelId:'minimax_h3_local',mode:'multi_reference',durationSeconds:5,prompt:'@参考图1 中的角色走向 @参考图2 中的角色，第3秒切到两人的近景',resources:two};
+ const restored=prompt.validateAndRestore({text:JSON.stringify({modelPrompt:english,displayPrompt:chinese}),context:prompt.prepareRequest(c).context,current:c});
+ assert.match(restored.text,/\n【镜头 1】<主体 1> 沿着乡村道路走向花园中的 <主体 2>。镜头固定。\n【镜头 2】 At 00:03\.000 <主体 1> 与 <主体 2> 面对面的近景。\n/);
+ const narrative=restored.modelText.split('detailed_description:')[1].split('overall_soundscape:')[0].trim();
+ assert.equal(narrative,'In a vibrant anime illustration style.\n[Shot 1] <Subject 1> walks along a rural road toward <Subject 2> in a garden. The camera holds a static shot.\n[Shot 2] At 00:03.000, the shot cuts to close-up of <Subject 1> and <Subject 2> facing each other.');
+ assert.match(restored.modelText,/^<Subject 1>: young woman[^\n]*\n<Subject 2>: small teal robot/m);
+ // The compile of the same display reuses the translation and shows the same text.
+ const compiled=await prompt.compileForGeneration({...c,prompt:restored.text},()=>{throw Error('the optimize pair is cached')});
+ assert.equal(compiled.text,restored.text);assert.equal(compiled.modelText,restored.modelText);
+ // The Chinese half and a display keep their own wording.
+ for(const api of [local,edge]) assert.match(api.validateReference(chinese,{mode:'multi_reference',durationSeconds:5,requirements:'Available resource labels: <Picture 1>; <Picture 2>'}),/\[Shot 2\] At 00:03\.000 <Subject 1> 与/);
+ assert.match(local.toReferenceDisplay(chinese),/<主体 2>。镜头固定。\n【镜头 2】 At 00:03\.000 /);
+});

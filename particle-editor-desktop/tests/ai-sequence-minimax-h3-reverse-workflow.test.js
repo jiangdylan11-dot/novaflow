@@ -126,6 +126,11 @@ test('refinement includes verified facts, original intent and supplementary requ
   assert.equal(refinement.purpose, 'minimax-h3-prompt-enhance')
   const blank = workflow.prepareRequest(firstLastOptions({ requirements: '' }))
   assert.equal(workflow.prepareRefinement({ text: verified.text, context: blank.context }), null)
+  // The idle-breathing rule follows the refinement's own words.
+  assert.doesNotMatch(refinement.requirements, /仅呼吸待机/)
+  const idle = workflow.prepareRequest(firstLastOptions({ requirements: '改成原地待机，轻微呼吸' }))
+  const idleVerified = workflow.validateAndRestore({ text: firstLastOutput(), context: idle.context, current: firstLastOptions({ requirements: '改成原地待机，轻微呼吸' }) })
+  assert.match(workflow.prepareRefinement({ text: idleVerified.text, context: idle.context }).requirements, /仅呼吸待机/)
 })
 
 test('exports one immutable pure reverse workflow through CommonJS and the browser global', () => {
@@ -353,7 +358,7 @@ test('validates and restores I2V and FL2V through the existing H3 prompt workflo
   assert.match(fl.text, /resolves into @尾帧/)
 })
 
-test('local fact inventories show as readable Chinese lines and every fact value survives', () => {
+test('local fact inventories show as readable Chinese sentences in timeline order and every fact value survives', () => {
   const local = [
     '参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = 8.00 秒',
     '',
@@ -382,14 +387,11 @@ test('local fact inventories show as readable Chinese lines and every fact value
     '@首帧 对齐视频第 0.00 秒（开头）；@尾帧 对齐第 8.00 秒（结尾）。',
     '',
     '【画面与动作】',
-    '【镜头 1】两帧共有：',
-    '一名红色战甲女性，黑色长发，抬手。',
-    '场景：雪山。',
-    '开头（@首帧）：',
-    '站立。',
-    '结尾（@尾帧）：',
-    '蹲下。',
+    '【镜头 1】两帧中都有一名红色战甲女性，黑色长发，抬手。',
+    '场景是雪山。',
+    '开头画面 @首帧 中，站立。',
     '随后，她缓缓蹲下。镜头缓慢推近。',
+    '结尾画面 @尾帧 中，蹲下。',
     '',
     '【环境声音】',
     '与场景一致的低强度环境底声。',

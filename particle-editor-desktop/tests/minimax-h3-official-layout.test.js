@@ -81,11 +81,11 @@ for (const mode of Object.keys(resources)) {
       assert.deepEqual(parts.slice(-3).map((part) => part.split(':')[0]), Array.from(workflow.BASE_FIELD_ORDER))
       assert.ok(parts.every((part) => !part.includes('\n')), 'shots and sentences stay inline')
     } else {
-      assert.ok(visual.split('\n\n').filter(Boolean).length >= 2)
-      assert.ok(visual.split('\n\n').every((paragraph) => paragraph.trim().length < 300))
+      // Official Ref2V layout: the style sentence, then one line per shot, no blank lines inside the field.
+      assert.doesNotMatch(visual.trim(), /\n\n/)
       assert.match(text, /subject_definitions:\n<Subject 1>/)
       assert.match(text, /retention_analysis:\n<Subject 1>/)
-      assert.match(text, /detailed_description: Cinematic[^\n]+\n\n\[Shot 1\]/)
+      assert.match(text, /detailed_description: Cinematic photography with soft lighting\.\n\[Shot 1\] <Subject 1> is seated\. [^\n]+\n\noverall_soundscape:/)
       assert.match(prepared.requirements, /fully_copy, partially_copy, reference, weak_reference/)
     }
   })

@@ -414,6 +414,8 @@
       mode: selectedCapability.mode,
       durationSeconds: normalized.durationSeconds,
       prompt: sourcePrompt,
+      // The user's requirement decides which of their quoted lines the result must keep.
+      requirements: normalized.requirements,
       resources: h3Resources,
       contentPolicy: normalized.contentPolicy,
       requireReady: true,
@@ -497,6 +499,8 @@
       mode: context.mode,
       durationSeconds: context.durationSeconds,
       prompt: stringValue(options.text).trim(),
+      // Base instructions follow the refinement's own words (the idle-breathing rule only when asked for).
+      requirements: context.snapshot.requirements,
       resources: resourcesForPromptWorkflow(context.snapshot.resources),
       contentPolicy: context.contentPolicy,
     }
