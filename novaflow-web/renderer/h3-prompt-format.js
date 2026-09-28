@@ -5,9 +5,9 @@
 const policy = {
   "version": 1,
   "instructions": [
-    "仅呼吸待机时，只细化胸肩随呼吸的微幅起伏与回落；头部朝向、手臂和身体位置保持不变，不把呼吸改写为抬头、转头、抬手等额外动作。静止或持续状态允许贯穿多个时间段，不必为了阶段差异新增事件。",
+    "仅呼吸待机时，只细化胸肩随呼吸的微幅起伏与回落；头部朝向、手臂和身体位置保持不变，不把呼吸改写为抬头、转头、抬手等额外动作。静止或持续状态可以贯穿整个镜头的动作顺序，不必为了制造先后差异新增事件。",
     "补充要求是用户本次的新编辑指令，优先于原提示词中的冲突设定。例如原文为镜头固定而补充要求为镜头缓慢拉近，应将所有相关镜头描述改成缓慢拉近，不能继续沿用固定机位。对每条补充要求逐项融合，保留未被修改的具体细节。对白完整保留，并在动作时间线安排自然说话和口型。",
-    "Fuse supplementary requirements into the rewritten narrative, relevant timed actions and constraints. Do not paste requirements after an unchanged source. Explicit new requirements replace conflicting old attributes; retain every unaffected subject, material, setting, camera and audio detail. Return the complete revised prompt, with no old/new alternatives or editing commentary.",
+    "Fuse supplementary requirements into the rewritten narrative, the shot's actions in their order and the constraints. Do not paste requirements after an unchanged source. Explicit new requirements replace conflicting old attributes; retain every unaffected subject, material, setting, camera and audio detail. Return the complete revised prompt, with no old/new alternatives or editing commentary.",
     "Improve the actual video prompt, not just its H3 formatting. Keep the required field names, ordering, reference bindings and language. Return one concise final prompt, with no explanation of your edits.",
     "Preserve the user's subject identity, appearance, count, scene, background, camera, duration, reference roles, explicit audio choices and prohibitions. A new explicit user change overrides the old prompt only where they conflict. Never invent visible appearance from an unseen reference.",
     "Replace vague motion adjectives such as vivid, natural and smooth with a small number of observable actions: what moves, in which direction, by how much, at what rhythm, and how it starts and ends. Choose only details consistent with the requested action and available duration. Improve clarity rather than adding length, cinematic buzzwords or a list of new events.",
@@ -24,6 +24,17 @@ const policy = {
   "genericPaddingPattern": "让动作更生动|动作连贯推进|动作从当前状态开始|随后连续推进|保持主体身份与场景连续|镜头遵循指定运镜|未指定时保持构图|动画生动自然|动作连贯流畅|make the motion more vivid|action progresses continuously|the action begins from the current state|then progresses continuously|camera follows the specified movement|holding the framing otherwise",
   "noChangeMessage": "H3 优化仅复述原文或添加格式/泛化修饰；请细化可见动作、节奏或消除歧义，保留原约束。",
   "loopMessage": "H3 循环描述缺少回到起始状态的衔接；请补充循环闭合，不新增镜头或无关动作。",
+  "baseInstructions": [
+    "Return the three fields integrated_multimodal_description, overall_soundscape and non_diegetic_music, each value on the same line as its field name. The app adds the reference-alignment line; never write it. Use only the supplied <Picture N> tags and never <Subject N> labels.",
+    "integrated_multimodal_description starts with [Shot 1], then a concrete visual style (for example Live-action, cinematic; 2D-animated; 3D CG; watercolor) and the initial composition, then the observable actions in order and the ending state. When <Picture 1> is the opening frame, first establish the subjects, composition and scene shown in <Picture 1>, then continue the action from there. When <Picture 2> is the final frame, start in the state of <Picture 1> and let the action settle into the pose, spacing and composition of <Picture 2> at the end of the final shot.",
+    "Camera: write each move as one natural English sentence with a motion type (push in, pull out, pan left/right, truck left/right, tilt up/down, pedestal up/down, arc shot, tracking shot, static shot, zoom in/out, shake, POV, roll), optionally with small or large amplitude and at slow or fast speed, e.g. The camera pushes in with small amplitude at slow speed toward her hands. Never stack camera labels.",
+    "Write one continuous shot by default. Use [Shot N] At MM:SS.mmm, the camera cuts to ... only when the user asks for a cut, a scene change or several shots; cut times strictly increase and stay inside the selected duration, and each cut introduces new information. Never change the scene without a cut.",
+    "Dialogue: the speaker's identity phrase and delivery stay outside the tag; only the language tag and the verbatim words go inside, e.g. The young woman with a calm voice (S1) says: <d>[Chinese] 出发吧。</d> A voiceover uses says in an off-screen voiceover: followed by the <d> block and while his/her lips remain closed. Never invent dialogue. Visible on-screen text stays verbatim in double quotes.",
+    "overall_soundscape: 1-4 sentences of diegetic ambience and physical action sounds that match the visible events; no dialogue. Use N/A only when the user asks for silence.",
+    "non_diegetic_music: only when the user asks for music, 1-3 sentences on instrumentation, tempo, rhythm and dynamics, without mood words; otherwise N/A.",
+    "Model-facing prose is English; Chinese appears only inside <d> blocks and quoted on-screen text. In a bilingual result, displayPrompt is a faithful Simplified Chinese translation with identical shots, times, tags, <d> blocks and quotes.",
+    "Describe only visible and audible content: no meta sentences about consistency, stability, quality or following the prompt."
+  ],
   "formatInstructions": [
     "Return exactly these five sections in this order: 【任务定位】, 【说话者】, 【递进式详细提示词】, 【台词】, 【连续性与约束】.",
     "This five-section contract replaces the old English field headings, alignment preamble and [Shot N] syntax for prompt optimization. Do not output them.",
@@ -170,6 +181,16 @@ function compileReferenceFields(value, options) {
   fields.retention_analysis = retention;
   return fields;
 }
+// The user's own words: the source prompt plus the requirement tail after it.
+function userIntent(options = {}) {
+  const sourcePrompt = String(options.currentPrompt || '');
+  return sourcePrompt + '\n' + (String(options.requirements || '').split(/Source prompt:\n/)[1] || '').slice(sourcePrompt.length);
+}
+const loopRequested = intent => new RegExp(policy.loopPattern, 'i').test(intent) && !new RegExp(policy.cancelLoopPattern, 'i').test(intent);
+const loopClosure = {en:'It ends by returning smoothly to the starting pose and motion phase so the loop joins naturally.', zh:'结束时平滑回到起始姿态与运动相位，使循环自然衔接。'};
+const cameraPattern = /镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b|\bpans?\b|\btracking\b|\bpush(?:es)?[- ]in\b|\b(?:static|medium|wide|close-up|two)[- ]?shot\b/i;
+// MM:SS.mmm for a cut time in seconds.
+const shotStamp = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
 function validateReferenceResult(value, options = {}) {
   const pair = referenceResult(value);
   if (!pair) {
@@ -183,15 +204,11 @@ function validateReferenceResult(value, options = {}) {
   // rejected: a requested loop gets its closure, a generated shot its camera.
   const appendNarrative = (text, sentence) => text.replace(/(detailed_description:\n[\s\S]*?)(?=\n\noverall_soundscape:)/, m => m.trimEnd() + ' ' + sentence);
   const narrativeOf = text => text.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
-  const sourcePrompt = String(options.currentPrompt || '');
-  const userTail = (String(options.requirements || '').split(/Source prompt:\n/)[1] || '').slice(sourcePrompt.length);
-  const intent = sourcePrompt + '\n' + userTail;
-  if (new RegExp(policy.loopPattern, 'i').test(intent) && !new RegExp(policy.cancelLoopPattern, 'i').test(intent)
-      && !new RegExp(policy.closurePattern, 'i').test(narrativeOf(modelPrompt))) {
-    modelPrompt = appendNarrative(modelPrompt, 'It ends by returning smoothly to the starting pose and motion phase so the loop joins naturally.');
-    if (!new RegExp(policy.closurePattern, 'i').test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '结束时平滑回到起始姿态与运动相位，使循环自然衔接。');
+  const intent = userIntent(options);
+  if (loopRequested(intent) && !new RegExp(policy.closurePattern, 'i').test(narrativeOf(modelPrompt))) {
+    modelPrompt = appendNarrative(modelPrompt, loopClosure.en);
+    if (!new RegExp(policy.closurePattern, 'i').test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, loopClosure.zh);
   }
-  const cameraPattern = /镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b|\bpans?\b|\btracking\b|\bpush(?:es)?[- ]in\b|\b(?:static|medium|wide|close-up|two)[- ]?shot\b/i;
   if (!/summary:\s*\[[^\]]*\bvideo editing\b/.test(modelPrompt) && !cameraPattern.test(narrativeOf(modelPrompt) + intent)) {
     modelPrompt = appendNarrative(modelPrompt, 'The camera remains static and the framing stays stable.');
     if (!cameraPattern.test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '镜头固定，构图保持稳定。');
@@ -334,17 +351,30 @@ function validateReference(value, options = {}) {
   // Later shots need a cut time. When the model gives none, space the cuts evenly.
   const shotCount = (fields.detailed_description.match(/\[Shot [1-9]\d*\]/g) || []).length;
   if (shotCount > 1 && !/\[Shot \d+\] At \d/.test(fields.detailed_description)) {
-    const at = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
-    fields.detailed_description = fields.detailed_description.replace(/\[Shot ([2-9]|[1-9]\d+)\]/g, (tag, n) => tag + ' At ' + at(Number(options.durationSeconds || 30) * (n - 1) / shotCount));
+    fields.detailed_description = fields.detailed_description.replace(/\[Shot ([2-9]|[1-9]\d+)\]/g, (tag, n) => tag + ' At ' + shotStamp(Number(options.durationSeconds || 30) * (n - 1) / shotCount));
   }
   for (const m of fields.detailed_description.matchAll(/\[Shot \d+\] At (\d+):(\d+)\.(\d+)/g)) {
     if (Number(m[1])*60 + Number(m[2]) + Number('0.'+m[3]) > Number(options.durationSeconds || 30)) throw new Error('H3 多参镜头超出所选时长');
   }
   return referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
 }
+const baseIssue = {
+  sections: 'H3 提示词需要画面与动作、环境声音和背景音乐三个字段',
+  shotOrder: 'H3 镜头编号必须从 [Shot 1] 起连续递增',
+  shotTime: 'H3 镜头切换时间必须严格递增且在所选时长内',
+  subject: 'H3 文生、图生和首尾帧提示词不能使用 <Subject N> 主体标签',
+  chinese: '请将画面与动作、环境声音和背景音乐改为简体中文，保留原台词和媒体标签',
+  pairShots: 'H3 中英文提示词的镜头或切换时间不一致',
+  pairLiterals: 'H3 中英文提示词的台词或屏幕文字不一致',
+};
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
 const validationIssues = [
+  ['sections', [baseIssue.sections]],
+  ['timeline', [baseIssue.shotOrder, baseIssue.shotTime, baseIssue.pairShots]],
+  ['references', [baseIssue.subject]],
+  ['language', [baseIssue.chinese]],
+  ['dialogue', [baseIssue.pairLiterals]],
   ['language', ['请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签']],
   ['references', ['H3 中英文提示词的素材关系不一致']],
   ['language', ['H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示']],
@@ -374,7 +404,8 @@ function requiresChineseOutput(userRequirement = '') {
   return !/(?:用|使用|改为|输出|写成|以).{0,6}英文|英文.{0,6}(?:输出|提示词|撰写)|(?:write|respond|output|return).{0,20}(?:in )?english|^(?:英文|english)$/i.test(request.trim());
 }
 
-function validateFormat(value, options = {}) {
+// Parses the five sections from text or JSON; shared by the validator and the legacy converter.
+function parseFormat(value) {
   let text = String(value || '').trim().replace(/^```(?:json|text|plaintext)?\s*\n([\s\S]*?)\n```$/i, '$1').trim().replace(/\\(?=<(?:Picture|Video|Audio|Subject) )/g, '');
   text = text.replace(/\*\*([^*\n]+)\*\*/g, '$1')
     .replace(/[（(\[【]?(\d+(?:\.\d+)?)\s*(?:s|秒)?\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*(?:s|秒)\s*[）)\]】]?\s*[:：]/gi, '$1-$2s：');
@@ -391,6 +422,11 @@ function validateFormat(value, options = {}) {
   if (headers.length !== 5 || headers.some((m, i) => m[1] !== sectionNames[i]) || text.slice(0, headers[0].index).trim()) throw new Error('请按任务定位、说话者、递进式详细提示词、台词、连续性与约束输出完整五段');
   const sections = headers.map((m, i) => text.slice(m.index + m[0].length, headers[i + 1]?.index ?? text.length).trim());
   if (sections.some(s => !s)) throw new Error('五段提示词内容不能为空');
+  return {text, sections};
+}
+const legacyDurationPattern = /(?:时长\s*[:：]?\s*|duration\s*[:：]?\s*|lasts?\s+)?(\d+(?:\.\d+)?)\s*(?:秒|s\b|seconds?\b)/i;
+function validateFormat(value, options = {}) {
+  const {text, sections} = parseFormat(value);
   if (options.requireChineseOutput) {
     const modeNames = { full_reference:'多参视频', multi_reference:'多参视频', ref2va:'多参视频', image_video:'图生视频', i2va:'图生视频', first_last:'首尾帧视频', fl2va:'首尾帧视频', text_video:'文生视频', t2va:'文生视频' };
     sections[0] = sections[0].replace(/\b(full_reference|multi_reference|Ref2VA|image_video|I2VA|first_last|FL2VA|text_video|T2VA)\b/gi, mode => modeNames[mode.toLowerCase()]);
@@ -413,7 +449,7 @@ function validateFormat(value, options = {}) {
     end = Number(range[2]);
   }
   if (Math.abs(end - duration) > 0.051) throw new Error('动作时间段未覆盖完整时长');
-  const taskDuration = /(?:时长\s*[:：]?\s*|duration\s*[:：]?\s*|lasts?\s+)?(\d+(?:\.\d+)?)\s*(?:秒|s\b|seconds?\b)/i.exec(sections[0]);
+  const taskDuration = legacyDurationPattern.exec(sections[0]);
   if (!taskDuration || Math.abs(Number(taskDuration[1]) - duration) > 0.051) throw new Error('任务定位时长与当前设置不一致');
   // Camera direction is generation guidance, not a literal-keyword validity rule.
   const mode = String(options.mode || options.minimaxH3Mode || '').toLowerCase();
@@ -497,7 +533,223 @@ function fromValidatedLegacy(text, options = {}) {
   const overall=visual.replace(/\[Shot \d+\](?:\s+At\s+\d{2}:\d{2}\.\d{3},?)?/g,'').trim();
   return validateFormat(JSON.stringify({task,speakers:definitions,description:overall+'\n\n'+phases.join('\n\n'),dialogue,constraints:`1. 保持上述人物身份、参考帧绑定及原文明确的约束。\n2. 环境与动作声音：${values.overall_soundscape}\n3. 配乐：${values.non_diegetic_music}`}),options);
 }
-const api = { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult, referenceFrames };
+// Base modes (text_video / image_video / first_last) use the official three fields for H3
+// and the 多参 labels in the editor: 【参考帧对齐】【画面与动作】(【镜头 N】)【环境声音】【背景音乐】.
+const baseFields = ['integrated_multimodal_description', 'overall_soundscape', 'non_diegetic_music'];
+const baseDisplayFields = ['参考帧对齐', '画面与动作', '环境声音', '背景音乐'];
+const baseInstruction = policy.baseInstructions.join('\n');
+const baseResultInstruction = 'Return a bilingual object with modelPrompt and displayPrompt. Both contain the same three H3 fields integrated_multimodal_description, overall_soundscape and non_diegetic_music, without the reference-alignment line. modelPrompt has English prose for H3; Chinese appears only inside <d>...</d> and double-quoted on-screen text. displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every [Shot N] marker and At MM:SS.mmm time, <Picture N> tag, speaker ID, <d> block and quoted text identical in both. Do not add creative changes while translating.';
+const baseTranslateInstruction = 'Translate only. The source prompt is a finished Simplified Chinese H3 prompt in the three fields integrated_multimodal_description, overall_soundscape and non_diegetic_music. Return modelPrompt as its faithful English translation and displayPrompt as the unchanged Chinese source. Keep the same shots, [Shot N] markers and At MM:SS.mmm times, <Picture N> tags, speaker IDs such as (S1), every <d>...</d> block and every double-quoted on-screen text exactly as written; N/A stays N/A. Where the Chinese names a camera move, use the official camera vocabulary: push in, pull out, pan, truck, tilt, pedestal, arc shot, tracking shot, static shot, zoom, shake, POV or roll, with small/large amplitude and at slow/fast speed. Add, remove, reorder or improve nothing, and do not write the reference-alignment line.';
+const baseFieldNotes = {
+  en: ['English. Starts with [Shot 1], then a concrete visual style and the initial composition, the observable actions in order, one natural camera sentence and the ending state. Later shots only for a requested cut: [Shot N] At MM:SS.mmm, the camera cuts to ... Dialogue as (S1) says: <d>[Language] verbatim words</d>; on-screen text verbatim in double quotes. Only the supplied <Picture N> tags, never <Subject N>.',
+    '1-4 English sentences of diegetic ambience and action sounds matching the visible events, no dialogue. N/A only when the user asks for silence. Never an empty string.',
+    'Only when the user asks for music: 1-3 English sentences on instrumentation, tempo, rhythm and dynamics. Otherwise N/A. Never an empty string.'],
+  zh: '本字段是对应英文内容的完整简体中文翻译，说明句全部使用简体中文；[Shot N]、At 时间、<Picture N>、(S1)、<d>…</d> 与引号内文字和英文完全一致，N/A 保持 N/A。',
+};
+const baseFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(baseFields.map((k, i) => [k, {type:'string', minLength:1, description:language === 'zh' ? baseFieldNotes.zh : baseFieldNotes.en[i]}])), required:baseFields});
+const baseResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:baseFieldSchema('en'), displayPrompt:baseFieldSchema('zh')}, required:['modelPrompt','displayPrompt']};
+const baseAnchors = {
+  open: {en:'The shot begins in the position and framing established by <Picture 1>.', zh:'画面从 <Picture 1> 的位置与构图开始。'},
+  close: {en:'At the end of the shot, the action settles into the pose, spacing, and composition established by <Picture 2>.', zh:'结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。'},
+};
+const baseCamera = {en:'The camera holds a static shot and the framing stays stable.', zh:'镜头固定，构图保持稳定。'};
+const hanPattern = /[\u3400-\u9fff]/;
+// Dialogue blocks and quoted on-screen text stay verbatim in every language.
+const literalSplit = /(<d>[\s\S]*?<\/d>|"[^"\n]*"|“[^”\n]*”)/;
+const outsideLiterals = (text, edit) => text.split(literalSplit).map((part, i) => i % 2 ? part : edit(part)).join('');
+const proseOf = text => text.split(literalSplit).filter((_, i) => !(i % 2)).join(' ');
+function baseModeName(mode) {
+  const name = String(mode || '').toLowerCase();
+  return /^(?:text_video|t2va?)$/.test(name) ? 'text_video' : /^(?:image_video|i2va?)$/.test(name) ? 'image_video' : /^(?:first_last|fl2va?)$/.test(name) ? 'first_last' : '';
+}
+const baseModeOf = options => baseModeName(options.mode || options.h3Mode || options.minimaxH3Mode);
+function baseAlignmentLine(mode, durationSeconds, finalShot = 1) {
+  const name = baseModeName(mode);
+  return name === 'image_video' ? 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.'
+    : name === 'first_last' ? `How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot ${finalShot || 1}) aligns with the ${Number(durationSeconds).toFixed(2)}-second mark of the target video.` : '';
+}
+function baseDisplayAlignment(mode, durationSeconds) {
+  const name = baseModeName(mode), duration = Number(durationSeconds);
+  return name === 'image_video' ? '<Picture 1> 是视频第 0.00 秒的起始画面，完整参考。'
+    : name === 'first_last' ? '<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐' + (duration > 0 ? `第 ${duration.toFixed(2)} 秒（结尾）。` : '视频结尾。') : '';
+}
+// Ends the text's last sentence and appends the next; Chinese sentences follow without a space.
+function appendSentence(text, sentence) {
+  const head = String(text || '').trim().replace(/[，,；;：:、]+$/, '');
+  if (!head) return sentence;
+  const han = hanPattern.test(head.replace(/<[^<>]*>/g, '').match(/[\u3400-\u9fffA-Za-z][^\u3400-\u9fffA-Za-z]*$/)?.[0] || '');
+  const ended = /(?:[。！？.!?…”"」』）)]|<\/d>)$/.test(head) ? head : head + (han ? '。' : '.');
+  return ended + (/[。！？]$/.test(ended) || (/[”」』）>]$/.test(ended) && hanPattern.test(sentence.charAt(0))) ? '' : ' ') + sentence;
+}
+// Fields form: a JSON object or `name: value` blocks, with any alignment line before them (dropped) or the editor display.
+function parseBaseFields(value) {
+  const source = value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+  const shown = /^【参考帧对齐】[ \t]*\n?([^\n]*)/m.exec(source)?.[1] || '';
+  const text = fromBaseDisplay(source).trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
+  if (text.startsWith('{')) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (_) { return null; }
+    if (!parsed || !baseFields.some(k => typeof parsed[k] === 'string')) return null;
+    return {fields:Object.fromEntries(baseFields.map(k => [k, String(parsed[k] ?? '').trim()])), alignment:String(parsed.reference_alignment || '').trim()};
+  }
+  const headers = [...text.matchAll(/^[ \t]*(integrated_multimodal_description|overall_soundscape|non_diegetic_music)[ \t]*[:：][ \t]*/gm)];
+  if (!headers.length || new Set(headers.map(m => m[1])).size !== headers.length) return null;
+  const fields = Object.fromEntries(baseFields.map(k => [k, '']));
+  headers.forEach((m, i) => { fields[m[1]] = text.slice(m.index + m[0].length, headers[i + 1]?.index ?? text.length).trim(); });
+  return {fields, alignment:text.slice(0, headers[0].index).trim() || shown.trim()};
+}
+const serializeBase = fields => baseFields.map(k => k + ': ' + fields[k]).join('\n\n');
+// Layout only, never fails: one line per shot, [Shot 1] first, cut times, <Picture N> tags, <d> language tags, N/A.
+function normalizeBase(fields, duration) {
+  const out = Object.fromEntries(baseFields.map(k => [k, outsideLiterals(String(fields[k] || '').replace(/\r\n/g, '\n').trim().replace(/[ \t]*\n\s*/g, '\n'), part => part.replace(/(^|[^<\w])Picture ([1-9])\b(?!>)/g, '$1<Picture $2>'))
+    .replace(/<d>(?!\s*\[[A-Za-z][\w -]*\])\s*([\s\S]*?)<\/d>/g, (_, words) => '<d>[' + (hanPattern.test(words) ? 'Chinese' : 'English') + '] ' + words + '</d>')]));
+  for (const k of baseFields.slice(1)) if (/^(?:无|N\/A|none)[。.]?$/i.test(out[k]) || (k === 'non_diegetic_music' && !out[k])) out[k] = 'N/A';
+  let text = out.integrated_multimodal_description.replace(/\[\s*shot\s*([1-9]\d*)\s*\](?:[ \t]*at[ \t]*(\d{1,2}):(\d{2})\.(\d{3})[ \t]*[,，]?)?\s*(?=([\s\S]?))/gi, (_, n, m, s, ms, next) => {
+    const time = m == null || (n === '1' && !+m && !+s && !+ms) ? '' : ' At ' + m.padStart(2, '0') + ':' + s + '.' + ms;
+    return '[Shot ' + n + ']' + time + (time && !hanPattern.test(next) ? ', ' : ' ');
+  }).replace(/\s*(\[Shot (?:[2-9]|[1-9]\d+)\])/g, '\n$1').trim();
+  const first = text.indexOf('[Shot 1]');
+  // "Watercolor style, [Shot 1] ..." keeps the style sentence, behind the marker.
+  if (first < 0) text = '[Shot 1] ' + text;
+  else if (first > 0 && !text.slice(0, first).includes('[Shot')) text = '[Shot 1] ' + appendSentence(text.slice(0, first), text.slice(first + 8).trim());
+  const count = (text.match(/\[Shot \d+\]/g) || []).length;
+  if (count > 1 && duration > 0 && !/\[Shot \d+\] At \d/.test(text)) {
+    text = text.replace(/\[Shot ([2-9]|[1-9]\d+)\] ?(?=([\s\S]?))/g, (_, n, next) => '[Shot ' + n + '] At ' + shotStamp(duration * (n - 1) / count) + (hanPattern.test(next) ? ' ' : ', '));
+  }
+  return {...out, integrated_multimodal_description:text.trim()};
+}
+const inferBaseMode = parsed => /Picture 2/.test(parsed.alignment + parsed.fields.integrated_multimodal_description) ? 'first_last' : /Picture 1/.test(parsed.alignment + parsed.fields.integrated_multimodal_description) ? 'image_video' : 'text_video';
+const alignmentDuration = alignment => Math.max(0, ...[...String(alignment).matchAll(/(\d+(?:\.\d+)?)\s*(?:-second mark|秒|seconds?)/g)].map(m => Number(m[1])));
+// Old five-section prompts (history, old engines) → fields form, deterministically.
+function legacyBase(text, options = {}) {
+  if (!/^\s*(?:【任务定位】|\{\s*"task"\s*:)/.test(text)) return null;
+  const {sections} = parseFormat(text);
+  const mode = baseModeOf(options) || (/首尾帧|FL2V|first[_ ]last/i.test(sections[0]) ? 'first_last' : /图生|图片到视频|I2V|image[_ ]video/i.test(sections[0]) ? 'image_video' : 'text_video');
+  const phases = sections[2].split(/\n+/).map(p => p.replace(/^\s*\d+(?:\.\d+)?\s*[-–—~至]\s*\d+(?:\.\d+)?\s*(?:s|秒)\s*[:：]\s*/, '').trim()).filter(Boolean);
+  const dialogue = [...sections[3].matchAll(/\((S[1-9]\d*)\)\s*[:：]\s*[“"]([^”"]+)[”"]/g)].map(m => `(${m[1]}) 说：<d>${m[2]}</d>`);
+  const speaking = phases.findIndex((p, i) => i && /说|开口|speak|says?\b|talk/i.test(p));
+  phases.splice(speaking < 0 ? phases.length : speaking + 1, 0, ...dialogue);
+  const audio = {};
+  const constraints = sections[4].split(/\n+/).map(item => item.replace(/^\s*\d+\s*[.、．)）]\s*/, '').trim()).filter(item => {
+    const sound = /^(环境与动作声音|配乐)\s*[:：]\s*(.*)$/.exec(item);
+    if (sound) audio[sound[1]] = sound[2].trim();
+    return item && !sound && !/^保持上述人物身份、参考帧绑定及原文明确的约束。?$/.test(item);
+  });
+  const narrative = [...phases, ...constraints].reduce((all, sentence) => appendSentence(all, sentence), '').replace(/<Subject [1-9]\d*>\s*(?:=\s*)?/g, '');
+  return {mode, duration:Number(options.durationSeconds ?? legacyDurationPattern.exec(sections[0])?.[1]) || undefined,
+    text:serializeBase({integrated_multimodal_description:'[Shot 1] ' + narrative, overall_soundscape:audio['环境与动作声音'] || '与画面动作一致的自然环境声和动作声。', non_diegetic_music:audio['配乐'] || 'N/A'})};
+}
+function readBase(value, options = {}) {
+  const text = value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+  const legacy = legacyBase(text, options), parsed = parseBaseFields(legacy ? legacy.text : text);
+  return parsed && {parsed, mode:baseModeOf(options) || legacy?.mode || inferBaseMode(parsed),
+    duration:Number(options.durationSeconds ?? (legacy?.duration || alignmentDuration(parsed.alignment))) || undefined};
+}
+// Local reverse fact slots → one readable line each; prose paragraphs pass through.
+function relayoutBaseFacts(narrative) {
+  if (!new RegExp(`(?:^|[\\n\\]。.] ?)(?:${legacyFactHeading}|${legacyFactLabel})`, 'u').test(narrative)) return narrative;
+  const heading = new RegExp(`^(${legacyFactHeading})\\s*(.*)$`, 'u'), fact = new RegExp(`^(${legacyFactLabel}|随后[：:]|Then:)\\s*(.*)$`, 'u');
+  const line = text => {
+    const group = heading.exec(text);
+    if (group) return (/<Picture [12]>.*<Picture [12]>|共同|shared/.test(group[1]) ? '两帧共有：' : /<Picture 2>|尾帧|ending/.test(group[1]) ? '结尾（<Picture 2>）：' : '开头（<Picture 1>）：') + group[2];
+    const slot = fact.exec(text);
+    if (!slot) return text;
+    const label = slot[1].slice(0, -1), english = /^[A-Z]/.test(label);
+    let value = slot[2].split(/\s*[；;]\s*/).map(part => part.replace(/^(?:[\u4e00-\u9fff]{1,4}[：:]|(?:count|pose|action)\s+)/, '')).filter(Boolean).join(english ? ', ' : '，');
+    if (!/[。！？.!?]$/.test(value)) value += english ? '.' : '。';
+    return /^(?:场景|画面|光色材质|Scene|Framing|Look)$/.test(label) ? slot[1] + (english ? ' ' : '') + value : /^(?:随后|Then)$/.test(label) ? label + (english ? ', ' : '，') + value : value;
+  };
+  return narrative.split(/(?=\[Shot [1-9]\d*\])/).map(shot => {
+    const head = /^\[Shot [1-9]\d*\](?: At [\d:.]+,?)? ?/.exec(shot)?.[0] || '';
+    return head + relayoutLegacyFacts(shot.slice(head.length)).split(/\n+/).map(line).join('\n');
+  }).join('\n');
+}
+function toBaseDisplay(value, options = {}) {
+  const pair = referenceResult(value), source = pair ? pair.displayPrompt : value;
+  const base = readBase(source, options);
+  if (!base) return typeof source === 'string' ? source : JSON.stringify(source ?? '');
+  const fields = normalizeBase(base.parsed.fields, base.duration), alignment = baseDisplayAlignment(base.mode, base.duration);
+  const audio = text => text === 'N/A' ? '无' : joinChineseSentences(text);
+  return [alignment && '【参考帧对齐】\n' + alignment,
+    '【画面与动作】\n' + joinChineseSentences(relayoutBaseFacts(fields.integrated_multimodal_description)).replace(/\[Shot ([1-9]\d*)\](?:[ \t]+(?![ \t]|At\b))?/g, '【镜头 $1】'),
+    '【环境声音】\n' + audio(fields.overall_soundscape), '【背景音乐】\n' + audio(fields.non_diegetic_music)].filter(Boolean).join('\n\n');
+}
+function fromBaseDisplay(value) {
+  let text = String(value ?? '').replace(/\r\n/g, '\n');
+  if (!/^【画面与动作】/m.test(text) || /^【主体定义】/m.test(text)) return text;
+  text = text.replace(/^【参考帧对齐】[\s\S]*?(?=^【画面与动作】)/m, '');
+  baseDisplayFields.slice(1).forEach((field, i) => { text = text.replace(new RegExp('^【' + field + '】[ \\t]*\\n?', 'gm'), baseFields[i] + ': '); });
+  text = text.replace(/【镜头 ([1-9]\d*)】[ \t]*(?=(\S?))/g, (_, n, next) => '[Shot ' + n + ']' + (next ? ' ' : ''));
+  const parsed = parseBaseFields(text);
+  return parsed ? serializeBase(normalizeBase(parsed.fields)) : text;
+}
+function checkBase(value, options = {}) {
+  const base = readBase(value, options);
+  if (!base) throw new Error(baseIssue.sections);
+  const {mode} = base, duration = base.duration ?? 30;
+  if (!(duration >= 1 && duration <= 30)) throw new Error('H3 时长必须为 1-30 秒');
+  const fields = normalizeBase(base.parsed.fields, duration);
+  let text = fields.integrated_multimodal_description;
+  if (!text.replace(/\[Shot \d+\]/g, '').trim() || !fields.overall_soundscape) throw new Error(baseIssue.sections);
+  let previous = 0;
+  [...text.matchAll(/\[Shot (\d+)\](?: At (\d{2}):(\d{2})\.(\d{3}))?/g)].forEach((m, i) => {
+    if (Number(m[1]) !== i + 1) throw new Error(baseIssue.shotOrder);
+    const at = m[2] == null ? NaN : Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000;
+    if (i ? !(at > previous && at < duration) : m[2] != null) throw new Error(baseIssue.shotTime);
+    if (i) previous = at;
+  });
+  const all = baseFields.map(k => fields[k]).join('\n');
+  if (/<Subject [1-9]\d*>/.test(all)) throw new Error(baseIssue.subject);
+  const allowed = mode === 'first_last' ? ['<Picture 1>', '<Picture 2>'] : mode === 'image_video' ? ['<Picture 1>'] : [];
+  if ((all.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || []).some(t => !allowed.includes(t))) throw new Error('参考媒体标签缺失或引用了未提供的媒体');
+  if (options.language === 'en' && hanPattern.test(proseOf(all))) throw new Error('H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示');
+  if (options.language === 'zh' && baseFields.some(k => {
+    const prose = proseOf(fields[k]).replace(/<(?:Picture|Video|Audio) \d+>|\[Shot \d+\](?: At [\d:.]+)?|\(S\d+(?:,\s*S\d+)*\)|N\/A/g, '');
+    const words = prose.match(/[A-Za-z]{2,}/g) || [];
+    return words.length >= 8 && words.join('').length > (prose.match(/[\u3400-\u9fff]/g) || []).length * 2;
+  })) throw new Error(baseIssue.chinese);
+  // Every supplied frame is named in the narrative: the opening frame after the style sentence, the final frame at the end.
+  const language = options.language || (hanPattern.test(proseOf(text)) ? 'zh' : 'en');
+  if (allowed.length && !text.includes('<Picture 1>')) text = text.replace(/^\[Shot 1\] ?([^\n]*)/, (_, line) => {
+    const first = /^(.*?[。！？]|.*?[.!?](?=\s|$))\s*(.+)$/.exec(line);
+    return '[Shot 1] ' + (first ? appendSentence(appendSentence(first[1], baseAnchors.open[language]), first[2]) : appendSentence(line, baseAnchors.open[language]));
+  });
+  if (allowed.length > 1 && !text.includes('<Picture 2>')) text = appendSentence(text, baseAnchors.close[language]);
+  fields.integrated_multimodal_description = text;
+  return {fields, mode, duration, language};
+}
+function validateBaseFields(value, options = {}) {
+  return serializeBase(checkBase(value, options).fields);
+}
+function composeBaseModelPrompt(value, options = {}) {
+  const pair = referenceResult(value);
+  const {fields, mode, duration} = checkBase(pair ? pair.modelPrompt : value, {...options, language:'en'});
+  const shots = fields.integrated_multimodal_description.match(/\[Shot (\d+)\]/g) || ['[Shot 1]'];
+  const flat = text => (mode === 'first_last' ? text.replace(/<Picture ([12])>/g, 'Picture $1') : text).replace(/\s*\n\s*/g, ' ');
+  const line = baseAlignmentLine(mode, duration, shots[shots.length - 1].match(/\d+/)[0]);
+  return (line ? line + '\n\n' : '') + baseFields.map(k => k + ': ' + flat(fields[k])).join('\n\n');
+}
+function validateBaseResult(value, options = {}) {
+  const pair = referenceResult(value);
+  const results = pair ? [checkBase(pair.modelPrompt, {...options, language:'en'}), checkBase(pair.displayPrompt, {...options, language:'zh'})] : [checkBase(value, options)];
+  // Mirror validateReferenceResult: complete a requested loop closure and a default camera, never reject for them.
+  const intent = userIntent(options), narrativeOf = r => r.fields.integrated_multimodal_description;
+  const complete = (missing, sentences) => {
+    if (missing(narrativeOf(results[0]))) for (const r of results) if (r === results[0] || missing(narrativeOf(r))) r.fields.integrated_multimodal_description = appendSentence(narrativeOf(r), sentences[r.language]);
+  };
+  if (loopRequested(intent)) complete(text => !new RegExp(policy.closurePattern, 'i').test(text), loopClosure);
+  complete(text => !cameraPattern.test(text + intent), baseCamera);
+  if (!pair) return serializeBase(results[0].fields);
+  const [model, display] = results.map(r => serializeBase(r.fields));
+  const shots = text => (text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|');
+  const tokens = text => [...new Set(text.match(/<Picture [1-9]\d*>/g) || [])].sort().join('|');
+  const literals = text => [...text.matchAll(/<d>([\s\S]*?)<\/d>|"([^"\n]*)"|“([^”\n]*)”/g)].map(m => m[1] ?? m[2] ?? m[3]).sort().join('\n');
+  if (shots(model) !== shots(display)) throw new Error(baseIssue.pairShots);
+  if (tokens(model) !== tokens(display)) throw new Error('H3 中英文提示词的素材关系不一致');
+  if (literals(model) !== literals(display)) throw new Error(baseIssue.pairLiterals);
+  return JSON.stringify({modelPrompt:model, displayPrompt:display});
+}
+const api = { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult, referenceFrames, baseFields, baseDisplayFields, baseModeName, baseInstruction, baseResultInstruction, baseTranslateInstruction, baseResultSchema, baseAlignmentLine, baseDisplayAlignment, parseBaseFields, validateBaseFields, composeBaseModelPrompt, toBaseDisplay, fromBaseDisplay, validateBaseResult };
 if (typeof module === 'object' && module.exports) module.exports = api;
 globalThis.NovaFlowH3PromptFormat = api;
 

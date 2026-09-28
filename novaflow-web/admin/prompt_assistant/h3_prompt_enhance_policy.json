@@ -1,9 +1,9 @@
 {
   "version": 1,
   "instructions": [
-    "仅呼吸待机时，只细化胸肩随呼吸的微幅起伏与回落；头部朝向、手臂和身体位置保持不变，不把呼吸改写为抬头、转头、抬手等额外动作。静止或持续状态允许贯穿多个时间段，不必为了阶段差异新增事件。",
+    "仅呼吸待机时，只细化胸肩随呼吸的微幅起伏与回落；头部朝向、手臂和身体位置保持不变，不把呼吸改写为抬头、转头、抬手等额外动作。静止或持续状态可以贯穿整个镜头的动作顺序，不必为了制造先后差异新增事件。",
     "补充要求是用户本次的新编辑指令，优先于原提示词中的冲突设定。例如原文为镜头固定而补充要求为镜头缓慢拉近，应将所有相关镜头描述改成缓慢拉近，不能继续沿用固定机位。对每条补充要求逐项融合，保留未被修改的具体细节。对白完整保留，并在动作时间线安排自然说话和口型。",
-    "Fuse supplementary requirements into the rewritten narrative, relevant timed actions and constraints. Do not paste requirements after an unchanged source. Explicit new requirements replace conflicting old attributes; retain every unaffected subject, material, setting, camera and audio detail. Return the complete revised prompt, with no old/new alternatives or editing commentary.",
+    "Fuse supplementary requirements into the rewritten narrative, the shot's actions in their order and the constraints. Do not paste requirements after an unchanged source. Explicit new requirements replace conflicting old attributes; retain every unaffected subject, material, setting, camera and audio detail. Return the complete revised prompt, with no old/new alternatives or editing commentary.",
     "Improve the actual video prompt, not just its H3 formatting. Keep the required field names, ordering, reference bindings and language. Return one concise final prompt, with no explanation of your edits.",
     "Preserve the user's subject identity, appearance, count, scene, background, camera, duration, reference roles, explicit audio choices and prohibitions. A new explicit user change overrides the old prompt only where they conflict. Never invent visible appearance from an unseen reference.",
     "Replace vague motion adjectives such as vivid, natural and smooth with a small number of observable actions: what moves, in which direction, by how much, at what rhythm, and how it starts and ends. Choose only details consistent with the requested action and available duration. Improve clarity rather than adding length, cinematic buzzwords or a list of new events.",
@@ -20,6 +20,17 @@
   "genericPaddingPattern": "让动作更生动|动作连贯推进|动作从当前状态开始|随后连续推进|保持主体身份与场景连续|镜头遵循指定运镜|未指定时保持构图|动画生动自然|动作连贯流畅|make the motion more vivid|action progresses continuously|the action begins from the current state|then progresses continuously|camera follows the specified movement|holding the framing otherwise",
   "noChangeMessage": "H3 优化仅复述原文或添加格式/泛化修饰；请细化可见动作、节奏或消除歧义，保留原约束。",
   "loopMessage": "H3 循环描述缺少回到起始状态的衔接；请补充循环闭合，不新增镜头或无关动作。",
+  "baseInstructions": [
+    "Return the three fields integrated_multimodal_description, overall_soundscape and non_diegetic_music, each value on the same line as its field name. The app adds the reference-alignment line; never write it. Use only the supplied <Picture N> tags and never <Subject N> labels.",
+    "integrated_multimodal_description starts with [Shot 1], then a concrete visual style (for example Live-action, cinematic; 2D-animated; 3D CG; watercolor) and the initial composition, then the observable actions in order and the ending state. When <Picture 1> is the opening frame, first establish the subjects, composition and scene shown in <Picture 1>, then continue the action from there. When <Picture 2> is the final frame, start in the state of <Picture 1> and let the action settle into the pose, spacing and composition of <Picture 2> at the end of the final shot.",
+    "Camera: write each move as one natural English sentence with a motion type (push in, pull out, pan left/right, truck left/right, tilt up/down, pedestal up/down, arc shot, tracking shot, static shot, zoom in/out, shake, POV, roll), optionally with small or large amplitude and at slow or fast speed, e.g. The camera pushes in with small amplitude at slow speed toward her hands. Never stack camera labels.",
+    "Write one continuous shot by default. Use [Shot N] At MM:SS.mmm, the camera cuts to ... only when the user asks for a cut, a scene change or several shots; cut times strictly increase and stay inside the selected duration, and each cut introduces new information. Never change the scene without a cut.",
+    "Dialogue: the speaker's identity phrase and delivery stay outside the tag; only the language tag and the verbatim words go inside, e.g. The young woman with a calm voice (S1) says: <d>[Chinese] 出发吧。</d> A voiceover uses says in an off-screen voiceover: followed by the <d> block and while his/her lips remain closed. Never invent dialogue. Visible on-screen text stays verbatim in double quotes.",
+    "overall_soundscape: 1-4 sentences of diegetic ambience and physical action sounds that match the visible events; no dialogue. Use N/A only when the user asks for silence.",
+    "non_diegetic_music: only when the user asks for music, 1-3 sentences on instrumentation, tempo, rhythm and dynamics, without mood words; otherwise N/A.",
+    "Model-facing prose is English; Chinese appears only inside <d> blocks and quoted on-screen text. In a bilingual result, displayPrompt is a faithful Simplified Chinese translation with identical shots, times, tags, <d> blocks and quotes.",
+    "Describe only visible and audible content: no meta sentences about consistency, stability, quality or following the prompt."
+  ],
   "formatInstructions": [
     "Return exactly these five sections in this order: 【任务定位】, 【说话者】, 【递进式详细提示词】, 【台词】, 【连续性与约束】.",
     "This five-section contract replaces the old English field headings, alignment preamble and [Shot N] syntax for prompt optimization. Do not output them.",
