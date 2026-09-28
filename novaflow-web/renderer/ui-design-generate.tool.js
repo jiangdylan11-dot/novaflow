@@ -725,24 +725,50 @@
     }, [createElement(record.documentRef, 'span', { text: axis === 'width' ? 'W' : 'H' }), input])
   }
 
-  function compactParameterSection(record) {
-    const header = createElement(record.documentRef, 'div', {
-      'data-novaflow-ui-design-node-params-header': '1',
-      text: '生成参数',
-      style: {
-        minWidth: '0', color: 'rgba(255,255,255,0.82)', fontSize: '10px', fontWeight: '850',
-      },
+  // On the node every generation setting is a row at 输出尺寸's level — its label, then the control —
+  // with no 生成参数 heading or box: 本地 随机种子, GPT 质量, Google 分辨率.
+  function compactParamRow(record, key, label, control) {
+    return createElement(record.documentRef, 'div', {
+      'data-novaflow-ui-design-param-row': key,
+      style: { minWidth: '0', display: 'grid', gridTemplateColumns: '54px minmax(0, 1fr)', gap: '6px', alignItems: 'center' },
+    }, [
+      createElement(record.documentRef, 'span', {
+        text: label,
+        style: { color: 'rgba(255,255,255,0.66)', fontSize: '9px', fontWeight: '600', whiteSpace: 'nowrap' },
+      }),
+      control,
+    ])
+  }
+
+  function compactParameterRows(record) {
+    const state = record.state
+    if (state.provider === 'gpt') {
+      return [compactParamRow(record, 'gptQualityImg2img', '质量', compactSelectControl(record, 'gptQualityImg2img', '质量', [
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+      ], state.gptQualityImg2img))]
+    }
+    if (state.provider === 'google') {
+      const resolution = compactSelectControl(record, 'googleResolution', '分辨率', ['1K', '2K', '4K'], state.googleResolution)
+      resolution.setAttribute('title', '画幅 ' + state.googleAspectRatioImg2img + '，按输出尺寸自动匹配；实际像素由 Google 返回')
+      return [compactParamRow(record, 'googleResolution', '分辨率', resolution)]
+    }
+    const rows = []
+    if (!localQwen21Engine()) {
+      rows.push(compactParamRow(record, 'localEditStrength', '编辑强度', compactSelectControl(record, 'localEditStrength', '编辑强度', [
+        { value: 'faithful', label: '保真' },
+        { value: 'enhanced', label: '增强' },
+      ], state.localEditStrength)))
+    }
+    // The switch and Seed stand in the control column; the row label names the setting.
+    const seed = switchField(record, 'randomSeed', '随机种子', state.randomSeed, {
+      trailing: seedField(record, { inline: true, disabled: state.randomSeed }),
     })
-    const parameterBody = createElement(record.documentRef, 'div', {
-      'data-novaflow-ui-design-node-params-body': '1',
-      style: {
-        display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px', minWidth: '0',
-        padding: '8px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(8,11,14,0.28)', boxSizing: 'border-box',
-      },
-    }, dynamicParameterNodes(record))
-    parameterBody.hidden = false
-    return [header, parameterBody]
+    seed.children[0].style.display = 'none'
+    seed.style.gridTemplateColumns = '34px minmax(0, 1fr)'
+    rows.push(compactParamRow(record, 'randomSeed', '随机种子', seed))
+    return rows
   }
 
   function negativePromptSourceLabel(source) {
@@ -1135,17 +1161,16 @@
     const contractNotice = outputContractNotice(record, size)
     if (contractNotice) children.push(contractNotice)
     if (record.customSizeMode || !presetForProviderSize(record.state.provider, size.width, size.height)) {
-      // W and H sit under the size select and the orientation pair, in the same columns as 输出尺寸's row.
+      // W and H take the node's full width, edge to edge.
       children.push(createElement(record.documentRef, 'div', {
         'data-novaflow-ui-design-custom-size': '1',
-        style: { display: 'grid', gridTemplateColumns: '54px minmax(0, 1fr) minmax(0, 1fr)', gap: '6px', minWidth: '0', alignItems: 'center' },
+        style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px', minWidth: '0', alignItems: 'center' },
       }, [
-        createElement(record.documentRef, 'span', { 'aria-hidden': 'true' }),
         compactDimensionInput(record, 'width', size.width, size.height),
         compactDimensionInput(record, 'height', size.height, size.width),
       ]))
     }
-    children.push(...compactParameterSection(record))
+    children.push(...compactParameterRows(record))
     record.fields.replaceChildren(...children)
     activatePromptMentions(record)
   }

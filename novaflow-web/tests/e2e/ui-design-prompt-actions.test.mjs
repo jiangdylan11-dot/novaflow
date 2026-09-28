@@ -100,27 +100,30 @@ test('pressing a button keeps 设计要求 focused, so its save cannot rebuild t
   }
 });
 
-// GPT and Google (2026-09-28): the same rows — 输出尺寸, W/H under it when custom, 生成参数 with one setting.
-test('GPT and Google lay the node out the same way', () => {
-  const rows = {};
-  for (const provider of ['gpt', 'google']) {
+// GPT, Google and 本地 (2026-09-29): 输出尺寸, then W / H edge to edge when custom, then each generation
+// setting as a row at 输出尺寸's level — no 生成参数 heading or box.
+test('every provider lays the settings out as rows at the level of 输出尺寸', () => {
+  const expected = { gpt: ['gptQualityImg2img'], google: ['googleResolution'], local: ['randomSeed'] };
+  for (const provider of ['gpt', 'google', 'local']) {
     const { host } = mountTool(provider, { width: 1536, height: 1024 });
-    const params = byAttr(host, 'data-novaflow-ui-design-node-params-body', '1');
-    rows[provider] = {
-      label: byAttr(host, 'data-novaflow-ui-design-output-size-label', '1').textContent,
-      notice: byAttr(host, 'data-novaflow-ui-design-output-contract', provider),
-      settings: walk(params).filter((node) => node.tagName === 'SELECT').length,
-      outputs: walk(params).filter((node) => node.tagName === 'OUTPUT').length,
-    };
+    assert.equal(byAttr(host, 'data-novaflow-ui-design-output-size-label', '1').textContent, '输出尺寸');
+    assert.equal(byAttr(host, 'data-novaflow-ui-design-output-contract', provider), null);
+    assert.equal(byAttr(host, 'data-novaflow-ui-design-node-params-header', '1'), null, 'no 生成参数 heading');
+    assert.equal(byAttr(host, 'data-novaflow-ui-design-node-params-body', '1'), null, 'no settings box');
+    const rows = walk(host).filter((node) => node.getAttribute?.('data-novaflow-ui-design-param-row')).map((node) => node.getAttribute('data-novaflow-ui-design-param-row'));
+    assert.deepEqual(rows.filter((key) => key !== 'localEditStrength'), expected[provider], provider);
+    const sizeRow = byAttr(host, 'data-novaflow-ui-design-output-size-row', '1');
+    for (const key of rows) assert.equal(byAttr(host, 'data-novaflow-ui-design-param-row', key).parentElement, sizeRow.parentElement, key + ' sits beside 输出尺寸');
   }
-  assert.deepEqual(rows.gpt, { label: '输出尺寸', notice: null, settings: 1, outputs: 0 });
-  assert.deepEqual(rows.google, rows.gpt);
+  const seedRow = byAttr(mountTool('local').host, 'data-novaflow-ui-design-param-row', 'randomSeed');
+  assert.equal(seedRow.children[0].textContent, '随机种子');
 });
 
-test('custom W and H fill the columns under the size select', () => {
+test('custom W and H take the full width, edge to edge', () => {
   const { host } = mountTool('gpt', { width: 1536, height: 1008 });
   const custom = byAttr(host, 'data-novaflow-ui-design-custom-size', '1');
-  assert.equal(custom.style.gridTemplateColumns, '54px minmax(0, 1fr) minmax(0, 1fr)');
+  assert.equal(custom.style.gridTemplateColumns, 'minmax(0, 1fr) minmax(0, 1fr)');
+  assert.equal(custom.children.length, 2);
   for (const axis of ['width', 'height']) {
     const input = byAttr(host, 'data-novaflow-ui-design-dimension-input', axis);
     assert.deepEqual(input.important, { width: '100%', 'max-width': 'none' });
