@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 module = ast.parse((ROOT / 'prompt-assistant-service.py').read_text(encoding='utf-8-sig'))
 assistant_class = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == 'PromptAssistant')
 method = next(n for n in assistant_class.body if isinstance(n, ast.FunctionDef) and n.name == 'write_h3_reference_scene')
@@ -112,7 +113,8 @@ class SceneTest(unittest.TestCase):
                   '动作2：<Subject 1> 举起 <Subject 2>\n镜头：固定\n声音：金属碰撞声\n配乐：胜利主题轻快音乐')
         result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
         self.assertEqual(result['music'], 'N/A')
-        self.assertEqual(result['soundscape'], '金属碰撞声。')
+        # A sound written as a noun reads as a sentence.
+        self.assertEqual(result['soundscape'], '可以听到金属碰撞声。')
         result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯，配上欢快的音乐', output)
         self.assertEqual(result['music'], '胜利主题轻快音乐。')
 
@@ -199,19 +201,19 @@ class SceneTest(unittest.TestCase):
         self.assertIn('另有一张参考图只借用画风：水墨手绘，那张图里的角色和物品都不出现\n', prompt)
 
     def test_a_requested_cut_adds_later_shots_with_program_times(self):
-        sys.path.insert(0, str(ROOT))
-        plan = {'references': [subject(1, '<Picture 1>', '橘色长毛猫', '橘色长毛')], 'summary': '<Subject 1> 跳下桌子'}
+        plan ={'references': [subject(1, '<Picture 1>', '橘色长毛猫', '橘色长毛')], 'summary': '<Subject 1> 跳下桌子'}
         output = ('事件：<Subject 1> 跳下桌子后回头\n画风：写实照片\n场景：客厅\n动作1：<Subject 1> 在桌边蹲低身体\n动作2：<Subject 1> 向前跳下桌子\n'
                   '镜头2（第3秒）：近景，<Subject 1> 落地后回头看向镜头\n镜头3（第4秒）：<Subject 2> 跑过来\n镜头：跟随\n声音：落地声\n配乐：无')
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子，第3秒切到近景', output, cut=True)
         self.assertIn('\n镜头2（第X秒）：用户要求切换镜头', prompt)
         # The cut time is the user's; a shot acting out an undefined subject is dropped.
-        self.assertEqual(result['description'], '写实照片风格。场景是客厅。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
+        # The style sentence comes before [Shot 1], as in the official reference layout.
+        self.assertEqual(result['description'], '视频采用写实照片风格。\n[Shot 1] 场景是客厅。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
                                                 '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 落地后回头看向镜头。')
         # Without a requested cut the writer is not asked for shots and stray shot lines are ignored.
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子', output)
         self.assertNotIn('镜头2', prompt)
-        self.assertNotIn('[Shot', result['description'])
+        self.assertNotRegex(result['description'], r'\[Shot [2-9]')
 
 
 class StyleTechniqueTest(unittest.TestCase):

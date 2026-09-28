@@ -105,6 +105,14 @@ class TranslationTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(phrases, ['背着'])
         self.assertIn('Appearance from <Picture 1>, carrying a green backpack.', pair['modelPrompt'])
+        # A phrase put back inside a sentence is not capitalized ("slight联动" -> "slight coordinated action").
+        translations['外观来自 TOKEN_0，背着绿色双肩包。'] = 'Appearance from TOKEN_0 with slight联动 of the arms.'
+
+        class CapitalizingAssistant(FakeAssistant):
+            def generate(self, request, **kwargs):
+                return 'Coordinated action' if 'Input JSON:\n' not in request else super().generate(request, **kwargs)
+        pair = json.loads(CapitalizingAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)['positivePrompt'])
+        self.assertIn('Appearance from <Picture 1> with slight coordinated action of the arms.', pair['modelPrompt'])
 
     def test_an_opening_tag_folded_into_its_noun_is_put_back(self):
         # Qwen3 read "<Subject 1> 三个石板" as one noun on every attempt and the

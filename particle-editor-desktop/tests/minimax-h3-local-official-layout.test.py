@@ -43,7 +43,8 @@ class LocalH3OfficialLayoutTest(unittest.TestCase):
         # 多参 (Ref2VA) has its own six-field pipeline, covered by h3-multireference tests.
         phases = ("概述：穿红色战甲的女性站在雪山前，镜头固定。\n起始：她缓慢抬起右手。\n"
                   "递进：右手举到肩高，停顿片刻。\n收束：右手缓缓放下，回到身侧。\n约束：1. 保持红色战甲与雪山背景")
-        shot = "[Shot 1] 穿红色战甲的女性站在雪山前，镜头固定。保持红色战甲与雪山背景。{}她缓慢抬起右手。右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。{}"
+        # The writer's own "保持红色战甲与雪山背景" is no limit the user set; it goes.
+        shot = "[Shot 1] 穿红色战甲的女性站在雪山前，镜头固定。{}她缓慢抬起右手。右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。{}"
         expected = {"T2VA": shot.format("", ""), "I2VA": shot.format("画面从 <Picture 1> 开始，", ""),
                     "FL2VA": shot.format("画面从 <Picture 1> 开始，", "结束时画面与 <Picture 2> 一致。")}
         for mode, narrative in expected.items():

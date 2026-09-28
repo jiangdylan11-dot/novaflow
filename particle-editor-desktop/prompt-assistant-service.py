@@ -27,6 +27,8 @@ from prompt_assistant.h3_prompt_enhance import (
     asks_cut as h3_asks_cut,
     fold_cut as h3_fold_cut,
     base_source_view as h3_base_source_view,
+    label_speech as h3_label_speech,
+    later_shots as h3_later_shots,
     literal_free as h3_literal_free,
     parse_base_fields as parse_h3_base_fields,
     requested_cut as h3_requested_cut,
@@ -1506,7 +1508,7 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
     # The official layout opens the first shot with the visual style.
     style = (("先用几个字写图中的画风（如写实照片、动漫插画、三维渲染），" if sees_frames else "")
              if mode in ("I2VA", "FL2VA") else "先用几个字写画风（视频描述写了就照写，没写就写写实电影风格），")
-    overview_hint = style + "再用一两句通顺的话点明主体、场景和镜头怎样拍（镜头全程只选一种），不细写外观"
+    overview_hint = style + "再用一两句通顺的话点明开场画面里的主体、场景和景别，再写镜头怎样拍（镜头全程只选一种），不细写外观，不写动作过程"
     # Only a held thing the picture or the user's words show; a bare "手里的东西" invents one.
     ending_hint = "动作怎样收尾，最后停在动作完成后的样子，" + ("图中" if mode == "I2VA" and sees_frames else "描述里") + "拿着的东西继续拿着"
     appearance = (
@@ -1541,7 +1543,8 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
         task = f"任务：{H3_MODE_NAMES.get(mode, mode)}，时长{seconds}秒。把下面的视频描述写成一段完整、连贯的视频提示词。"
         if media_tokens:
             task += "本次参考媒体：" + "、".join(media_tokens) + "，保持各自原来的作用。"
-        overview_hint = style + "再用一到两句，用视频描述里的原词写主体、场景和动作，再写镜头怎样拍（镜头全程只选一种）"
+        # The overview is the opening picture; the actions belong to the beats (told once).
+        overview_hint = style + "再用一两句写开场画面：用视频描述里的原词写主体是谁、在什么场景、在画面中的位置和景别（全景、中景或近景），不写动作过程，再写镜头怎样拍（镜头全程只选一种）"
     asked = h3_requested_rules(source + "\n" + user_requirement)
     if "loop" in asked and mode != "FL2VA":
         ending_hint = "动作怎样平滑回到起始姿态，首尾衔接"
@@ -1561,7 +1564,8 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
         lines += ["", "本次有对白：在起始、递进、收束里写出说话者开始说、继续说、说完，只写说话，不写嘴和口型。原句由程序完整保留，不要改写：", *dialogue_lines]
     points = minimax_h3_writer_points(source, user_requirement)
     if points:
-        lines += ["", "下面每一条都要写进起始、递进或收束，不能只写在概述里："] + ["- " + point for point in points]
+        # "跳下窗台" came back as a jump that lands on the windowsill: the words carry the direction.
+        lines += ["", "下面每一条都要写进起始、递进或收束，照原词写出动作和它的方向、去向，不能只写在概述里："] + ["- " + point for point in points]
     lines += [
         "", "按下面的格式输出" + ("" if cut else "六行") + "，每行以标签开头，冒号后面换成你写的内容" + ("：" if points else "；视频描述里每个主体的每个动作都要写进起始、递进或收束："),
         f"概述：{overview_hint}",
@@ -1572,12 +1576,16 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
     ]
     if cut:
         # The user asked for a cut: each later shot is one line; the program owns its time.
+        # What the user shows only after the cut ("街角咖啡店里的女孩") is not in the first shot yet.
+        shown_later = h3_later_shots(source + "\n" + user_requirement)[0]
         lines += ["镜头2（第X秒）：用户要求切换镜头，切换后的画面写在这里：先写切到什么景别或场景，再写动作在这个镜头里怎样接着进行、怎样完成，停在动作完成后的样子，内容里不写秒数。"
-                  "要几个镜头就按顺序写几行（镜头2、镜头3），X 写用户说的切换秒数，没说就不写；起始、递进、收束只写切换前的第一个镜头"]
+                  "要几个镜头就按顺序写几行（镜头2、镜头3），X 写用户说的切换秒数，没说就不写；起始、递进、收束只写切换前的第一个镜头"
+                  + ("，" + "、".join(f"“{part}”" for part in shown_later) + "切换后才出现，不写进第一个镜头" if shown_later else "")]
     # The soundscape field: what is heard on screen; speech and music have their own places.
-    lines.append("声音：用一两句写画面里听得到的环境声和动作声（" + ("视频描述写到的声音要写进去；" if re.search(r"声", source + user_requirement) else "")
+    lines.append("声音：用一两句完整的话写画面里听得到的环境声和动作声，写清是什么发出声音，不要只列名词（" + ("视频描述写到的声音要写进去；" if re.search(r"声", source + user_requirement) else "")
                  + "不写说话、台词和音乐）")
-    lines.append("约束：写1到3条，用 1. 2. 3. 编号，只写全程保持不变、画面里看得见的内容" + ("，以及用户写明要一直保持的内容" if user_requirement or rules else ""))
+    # Constraints are the user's own limits; the writer's "始终在窗台上" contradicts a jump down.
+    lines.append("约束：只写用户写明要一直保持或禁止的内容，写成画面里看得见的样子，用 1. 2. 编号；没有就写 无")
     return "\n".join(lines)
 
 
@@ -13985,7 +13993,8 @@ class PromptAssistant:
         # H3 punctuation and asset IDs stay application-owned. Translating a
         # complete protocol document made the local VLM copy it verbatim.
         # base_mode (T2VA/I2VA/FL2VA): the three official fields instead of 多参's six.
-        from prompt_assistant.h3_prompt_enhance import DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK
+        from prompt_assistant.h3_prompt_enhance import (DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK, CAMERA_SUBJECT, CAMERA_GLOSSARY, CAMERA_SPEED,
+                                                        CAMERA_AMPLITUDE, camera_english, camera_wording, translation_flips)
         check = ((lambda text, language=None: validate_h3_base_fields(text, base_mode, duration, language)) if base_mode else
                  (lambda text, language=None: validate_h3_reference(text, inventory, duration)))
         display = check(display)
@@ -14008,6 +14017,15 @@ class PromptAssistant:
             shot_marks.append(re.sub(r'[,，]$', '', match.group()))
             return '\x02' + str(len(shot_marks)-1) + '\x03'
         masked_display = re.sub(SHOT_MARK + r'[,，]?', protect_shot, re.sub(r'(?<=[^\n:：\s])[ \t]*(?=\[Shot [1-9]\d*\])', '\n', masked_display))
+        # A clause that is only a camera move gets the official wording from the program
+        # ("镜头缓缓下移" came back as "pans downward"); the translator keeps it as a placeholder.
+        def protect_camera(match):
+            english = camera_english(match.group(2))
+            if not english:
+                return match.group()
+            literals.append(english)
+            return match.group(1) + 'LITERAL_' + str(len(literals)-1)
+        masked_display = re.sub(r'(^|[，,。；;！？!?：:\x03]|\] )([^，,。；;！？!?：:\n\x02\x03]+)(?=[，,。；;！？!?]|$)', protect_camera, masked_display, flags=re.M)
         protected = re.compile(r'LITERAL_\d+|<(?:Subject|Picture|Video|Audio) [1-9]\d*>|\[Shot [1-9]\d*\]|[（(]S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*[）)]|(?<![A-Za-z])\d+(?:\.\d+)?(?![A-Za-z])')
         # A sentence may open with a tag or a Latin word ("<Subject 1> 走向…",
         # "3D渲染风格"); it belongs to the translated clause, not left outside.
@@ -14039,10 +14057,13 @@ class PromptAssistant:
                 word = word.strip().strip('`"\'').strip()
                 if not word or re.search(r'[㐀-鿿]', word) or len(word) > 80:
                     return False
+                # "slight联动 of" -> "slight coordinated action of", not "Coordinated action".
+                if re.search(r'[A-Za-z,;]\s*$', candidate[:candidate.find(run)]) and re.match(r'[A-Z][a-z]', word):
+                    word = word[0].lower() + word[1:]
                 candidate = candidate.replace(run, ' ' + word + ' ')
             source_text = pending.pop(key)
             tokens = protected_fragments[source_text][1]
-            candidate = re.sub(r'\s+([,.;:])', r'\1', re.sub(r'\s{2,}', ' ', candidate)).strip()
+            candidate = camera_wording(protected_fragments[source_text][0], re.sub(r'\s+([,.;:])', r'\1', re.sub(r'\s{2,}', ' ', candidate)).strip())
             translated[source_text] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], candidate)
             return True
 
@@ -14050,11 +14071,20 @@ class PromptAssistant:
             batch = {str(i): fragment for i, fragment in enumerate(fragments[offset:offset+8])}
             pending = dict(batch)
             leftovers = {}
+            # A speed or direction the translation turned around is asked again with its meaning.
+            hints = set()
             # Greedy decoding repeats the same leftover Chinese phrase on retry
             # (e.g. 背着 kept twice); the last attempt samples lightly instead.
             for attempt in range(3):
                 fresh = set()
-                request = 'Translate each Chinese text value to English. Example: {"0":"金币旋转，背景不变。"} -> {"0":"The gold coin rotates; the background remains unchanged."}\nInput JSON:\n' + json.dumps({key: protected_fragments[value][0] for key, value in pending.items()}, ensure_ascii=False)
+                # Camera words inside a longer clause ("镜头从天际线缓缓下移") with their official wording.
+                camera_words = {m.group(): english for value in pending.values() for clause in re.split(r'[，,。；;]', protected_fragments[value][0])
+                                if re.search(CAMERA_SUBJECT, clause) for english, word in CAMERA_GLOSSARY + CAMERA_SPEED + CAMERA_AMPLITUDE
+                                for m in re.finditer(word, clause)}
+                request = ('Translate each Chinese text value to English. Example: {"0":"金币旋转，背景不变。"} -> {"0":"The gold coin rotates; the background remains unchanged."}\n'
+                           + ('Camera words: ' + '; '.join(f'{zh} -> {en}' for zh, en in camera_words.items()) + '.\n' if camera_words else '')
+                           + ('Keep these meanings exact: ' + '; '.join(sorted(hints)) + '.\n' if hints else '')
+                           + 'Input JSON:\n' + json.dumps({key: protected_fragments[value][0] for key, value in pending.items()}, ensure_ascii=False))
                 raw = self.generate(request, llama_template=template, max_length=1500, seed=attempt+1, temperature=0.3 if attempt == 2 else 0.0, do_sample=attempt == 2, trace_label='minimaxH3ReferenceTranslate')
                 raw_outputs.append(raw)
                 try:
@@ -14100,6 +14130,12 @@ class PromptAssistant:
                     # whitelist rejects valid wording such as "exchange ...
                     # for ...; leave the backdrop intact". Validate protected
                     # bindings/literals here, not a preferred English phrase.
+                    # Speed and direction words are the exception: "缓慢加快" became "slows down".
+                    candidate = camera_wording(original, candidate)
+                    flips = translation_flips(original, candidate)
+                    if flips and attempt < 2:
+                        hints.update(flips)
+                        continue
                     translated[source_text] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], candidate.strip())
                     del pending[key]
                 # An English translation with a short Chinese phrase left in it
@@ -14117,6 +14153,12 @@ class PromptAssistant:
                 raise ValueError('H3 本地翻译未完整保留内容，正在保留原提示词')
         model_prompt = prose.sub(lambda m: translated[m.group()], masked_display)
         model_prompt = re.sub(r'LITERAL_(\d+)', lambda m: literals[int(m[1])], model_prompt)
+        # A camera sentence the program wrote opens with a capital, and a Chinese stop after it
+        # (a shot that is only "镜头缓慢推近。") becomes an English one; spoken lines and quotes stay verbatim.
+        model_prompt = re.sub(r'(^|[.!?][ \t]+|\x03[ \t]*|:[ \t]+)the camera\b', lambda m: m.group(1) + 'The camera', model_prompt, flags=re.M)
+        model_prompt = ''.join(part if re.match(r'<d>|"|“', part) else re.sub(r'(?<=[A-Za-z0-9])[ \t]*([。，；])[ \t]*', lambda m: {'。': '. ', '，': ', ', '；': '; '}[m.group(1)], part)
+                               for part in re.split(r'(<d>[\s\S]*?</d>|"[^"\n]*"|“[^”\n]*”)', model_prompt))
+        model_prompt = re.sub(r'[ \t]+(?=\n|$)', '', model_prompt)
         # "[Shot 2] At 00:03.000, the camera cuts to …" as in the official guide.
         model_prompt = re.sub(r'\x02(\d+)\x03[ \t]*(?:(The|A|An|Cut|Cuts|Camera|Close)\b)?', lambda m: shot_marks[int(m[1])] + (
             ', ' + (m[2] or '').lower() if ' At ' in shot_marks[int(m[1])] else ' ' + (m[2] or '')), model_prompt)
@@ -14509,8 +14551,9 @@ class PromptAssistant:
                           and len(grams(scene) & grams(str(item.get('description', '')))) >= 0.4 * len(grams(scene))), None)
             if place:
                 scene = place + '：' + scene
-        description = ''.join([
-            sentence(style if re.search(r'风格|画风', style) else style + '风格') if style else '',
+        # The style sentence opens detailed_description before [Shot 1] (official ref §5.2).
+        opening = sentence('视频采用' + (style if re.search(r'风格|画风', style) else style + '风格')) if style else ''
+        description = '[Shot 1] ' + ''.join([
             sentence(('场景是 ' if scene.startswith('<') else '场景是') + scene) if scene else '',
             ''.join(sentence(action) for action in actions),
             sentence(camera if camera.startswith('镜头') else '镜头' + camera) if camera else '',
@@ -14525,14 +14568,17 @@ class PromptAssistant:
         for item in subjects:
             label = item['label']
             if label in attribute_only and label not in description:
-                description += (f'画面采用 {label} 的画风。' if str(item.get('description', '')).startswith('仅借用此图的画风')
-                                else f"{lent.get(label, '服装和盔甲等外观')}来自 {label}，{label} 中的人物不出现。")
+                if str(item.get('description', '')).startswith('仅借用此图的画风'):
+                    opening += f'画面采用 {label} 的画风。'
+                else:
+                    description += f"{lent.get(label, '服装和盔甲等外观')}来自 {label}，{label} 中的人物不出现。"
         silent = lambda text: not text or re.fullmatch(r'(?:无|没有|N/?A|静音)[。.]?', text.strip(), re.I)
-        plan['description'] = description
+        plan['description'] = (opening + '\n' if opening else '') + description
         if fields.get('事件', '').strip():
             plan['summary'] = sentence(fields['事件'].strip())
         if not has_audio:
-            plan['soundscape'] = 'N/A' if silent(fields.get('声音', '')) else sentence(fields['声音'].strip())
+            from prompt_assistant.h3_prompt_enhance import sound_sentence
+            plan['soundscape'] = 'N/A' if silent(fields.get('声音', '')) else sound_sentence(sentence(fields['声音'].strip()))
             # Music only when the user asks for it; the writer adds a victory theme by habit.
             asked = re.search(r'音乐|配乐|乐曲|歌|旋律|伴奏|BGM|music', requested, re.I)
             plan['music'] = 'N/A' if silent(fields.get('配乐', '')) or not asked else sentence(fields['配乐'].strip())
@@ -14754,6 +14800,10 @@ class PromptAssistant:
                 if generating:
                     plan = self.write_h3_reference_scene(plan, source, user_requirement, duration, has_audio, observed, observed_scene, attribute_pictures,
                                                          cut=h3_asks_cut(source, user_requirement))
+                    # The soundscape is N/A only for a requested silence; otherwise the shot's own sounds.
+                    if (not has_audio and not MINIMAX_H3_SILENCE.search(source + "\n" + user_requirement)
+                            and re.fullmatch(r"(?:N/?A|无)[。.]?", str(plan.get('soundscape') or 'N/A').strip(), re.I)):
+                        plan['soundscape'] = H3_DEFAULT_SOUNDSCAPE_ZH
                 positive = render_h3_reference_plan(json.dumps(plan, ensure_ascii=False), inventory_text, duration, source, user_requirement)
                 validate_h3_prompt_enhancement(positive, source, user_requirement)
                 bilingual = self.translate_h3_reference(positive, inventory_text, duration)
@@ -14796,6 +14846,9 @@ class PromptAssistant:
         # A prompt already in fields form is read as prose: no field names or shot marks.
         fields = parse_h3_base_fields(source)
         view = h3_base_source_view(source)
+        # Unlabelled speech ("并说：“出发吧。”") becomes a spoken line the program keeps, in the requirement too.
+        user_requirement, spoken = h3_label_speech(user_requirement, re.findall(r"\bS[1-9]\d*\b", view))
+        view = "\n".join([view, *spoken]).strip()
         # The requirement's own word on cuts wins over shots the source already has.
         cut = h3_asks_cut(source, user_requirement)
         inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
@@ -14827,6 +14880,11 @@ class PromptAssistant:
                 compile_h3_action_phases(output, mode, duration, view, requirements, user_requirement, strict_rules=strict_rules,
                                          keep_pose=same_frames, audio=audio, cut=cut)
             )
+            # Every spoken line of the user's words reaches the result verbatim; a result without one is asked again.
+            said = [re.sub(r"^\[[A-Za-z ]+\]\s*", "", m.strip()) for m in re.findall(r"<d>([\s\S]*?)</d>", positive)]
+            lost = next((m.group(3).strip() for m in re.finditer(H3_SPEECH_LINE, view) if m.group(3).strip() not in said), None)
+            if lost:
+                raise ValueError(f"漏掉了台词“{lost}”，请写出说话者说这句话")
             written = han_pairs((parse_h3_base_fields(positive) or {}).get("integrated_multimodal_description", ""))
             # Only a point with almost nothing left counts: rewording keeps some of its words.
             dropped = next((point for point, pairs in actions if len(pairs) >= 3 and len(pairs & written) <= 0.15 * len(pairs)), None)
