@@ -567,18 +567,21 @@
     return Object.freeze(hydrated);
   }
 
-  // 图生视频/首尾帧 send their frames only to the local model (localFrames),
-  // so it animates what the pictures show; Grok requests stay text-only.
+  // 图生视频/首尾帧 optimize sends its first (and last) frame to the local model
+  // (localFrames) and to Grok alike, so the writer takes the style, subjects and
+  // composition from the pictures. Grok gets them at 512 px, which keeps a
+  // first/last pair well inside the 512 KB prompt-optimize request.
   async function captureH3ReferenceFrames(captured, prepared, localFrames = false) {
     const frameMode = captured?.mode === 'image_video' || captured?.mode === 'first_last';
-    if (captured?.mode !== 'multi_reference' && !(localFrames && frameMode)) return [];
+    if (captured?.mode !== 'multi_reference' && !frameMode) return [];
+    const side = frameMode && !localFrames ? 512 : 768;
     const catalog = prepared?.protocol?.references?.references
       || getMiniMaxH3PromptWorkflow().createReferenceCatalog({mode:captured.mode, resources:captured.resources}).references;
     const frames = [];
     const draw = media => {
       const w = media.videoWidth || media.naturalWidth, h = media.videoHeight || media.naturalHeight;
       if (!w || !h) throw new Error('参考画面尺寸无效');
-      const scale = Math.min(1, 768 / Math.max(w, h));
+      const scale = Math.min(1, side / Math.max(w, h));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(w * scale)); canvas.height = Math.max(1, Math.round(h * scale));
       const ctx = canvas.getContext('2d');

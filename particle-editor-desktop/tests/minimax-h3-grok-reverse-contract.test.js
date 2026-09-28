@@ -777,6 +777,14 @@ const optimizeContext = {
     contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
   }),
   miniMaxH3EnhanceMode: (payload) => String(payload?.h3Mode || "text_video"),
+  miniMaxH3OptimizeFrameContent: vm.runInNewContext(
+    `(${extractNamedFunction(source, "miniMaxH3OptimizeFrameContent")})`,
+    {
+      h3PromptEnhance: require('../admin-server/h3-prompt-enhance'),
+      smartAiInputText: context.smartAiInputText,
+      Error,
+    },
+  ),
   MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS: 4096,
   adminData: context.adminData,
   Error,
@@ -846,7 +854,21 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   const user = (built) => built.body.input[1].content[0].text;
   const pair = request("text_video", ["H3 response format: bilingual-v1"]);
   assert.deepEqual(pair.body.text.format.schema, JSON.parse(JSON.stringify(h3.baseResultSchema)));
-  assert.ok(system(pair).includes(h3.instruction) && system(pair).includes(h3.baseInstruction));
+  assert.ok(system(pair).includes(h3.instructionFor("白色纸飞机从桌面起飞")) && system(pair).includes(h3.baseInstruction));
+  // The idle-breathing rule only for an idle request, as on the Edge.
+  assert.ok(!system(pair).includes("仅呼吸待机时"));
+  assert.ok(system(request("text_video", ["H3 response format: bilingual-v1"], "机器人原地呼吸待机")).includes(h3.instruction));
+  // 图生/首尾帧 optimize shows Grok its frames, as on the Edge; a translation does not.
+  const frames = [{ label: "<Picture 1>", dataUrl: "data:image/jpeg;base64,aGVsbG8=" }];
+  const withFrames = (markers) => buildOptimize({
+    purpose: "minimax-h3-prompt-enhance", currentPrompt: "女孩挥手", h3Mode: "image_video", durationSeconds: 5, h3ReferenceFrames: frames,
+    requirements: [...markers, "Available resource labels: <Picture 1> = captured image slot first_frame.", "Source prompt:", "女孩挥手"].join("\n"),
+  });
+  const seen = withFrames(["H3 response format: bilingual-v1"]);
+  assert.equal(seen.inputMeta.imageCount, 1);
+  assert.deepEqual(Array.from(seen.body.input[1].content, (item) => item.type), ["input_text", "input_text", "input_text", "input_image"]);
+  assert.match(seen.body.input[1].content[1].text, /<Picture 1> is the opening frame of the target video\. Take the visual style, the subjects/);
+  assert.equal(withFrames(["H3 compile: translate-only", "H3 response format: bilingual-v1"]).inputMeta.imageCount, 0);
   assert.ok(user(pair).includes(h3.baseResultInstruction) && user(pair).includes(optimizeContext.MINIMAX_H3_BASE_PAIR_RULES));
   assert.doesNotMatch(user(pair), /【任务定位】|consecutive time ranges/);
   assert.equal(pair.resultOptions.minimaxH3BaseResult, true);

@@ -1504,3 +1504,91 @@ test("H3 first/last reverse turns the editor's @首帧/@尾帧 mentions into pic
   assert.match(result.data.output_text, /<Picture 1> 在旅途中遇到了 <Picture 2> 中的机器人/);
   assert.doesNotMatch(result.data.output_text, /@首帧|@尾帧/);
 });
+
+// Round-1 live Grok answers (robot.jpg; goddess_a.jpg -> goddess_b.jpg). The compiled facts had been split inside
+// words (柔和阴影 -> 柔；阴影, 猫与女子之间 -> 猫；女子之间), had lost the subject sentence, carried a stray "一名 "
+// and "交叠；双腿交叠", and the ending frame repeated a whole second inventory.
+const liveRobotRich = [
+  "[风格设定]",
+  "采用精细3D渲染风格，呈现圆润机械轮廓，金属表面带有锈蚀和划痕质感，关节处显示铆钉连接细节。",
+  "[主体物品]",
+  "画面中央有一个青铜色机器人。机器人头部圆形，配备两个发光黄色眼睛和两根天线。身体为青绿色金属，关节部位棕色。右手紧握银色浇水壶，壶口朝下。左手自然下垂，手指微曲。机器人双腿站立，脚踩在苔藓地面，金属靴底可见磨损。",
+  "[环境背景]",
+  "背景为温室内部，周围有木质种植箱和茂密绿色植物。前景地面覆盖绿色苔藓，机器人位于路径中央，与花箱形成前后层次。",
+  "[光线与色彩]",
+  "光源来自左侧上方，阳光照射形成明亮高光和柔和阴影。整体色板以青绿和棕色为主，金属表面反射暖光，植物叶片呈现鲜绿调。",
+  "[拍摄参数]",
+  "采用中景构图，平视视角，机器人居中，背景虚化呈现浅景深效果，镜头带有轻微光晕。"
+].join("\n");
+const liveGoddessOpeningRich = [
+  "[风格设定]",
+  "采用写实数字渲染风格，流畅人体轮廓与柔和造型，丝绸布料呈现飘逸褶皱质感，金色金属饰品带有光泽反光，皮肤表面光滑并附着细微光粒子。",
+  "[主体物品]",
+  "紫发女子坐在台阶上，长直紫发披肩，穿白色透视长裙配金色腰封与臂环，右手握金色月牙法杖，赤足伸展双腿，左臂撑在台阶上；橘色长毛猫蹲坐于下方台阶；法杖与女子手部接触并释放金色光点；女子裙摆垂落接触台阶；猫与女子之间相隔数级台阶。",
+  "[环境背景]",
+  "背景为夜色山脉与古建筑遗迹，前景是白色大理石台阶，女子位于中景台阶上，猫处于前景较低台阶，散落红色花瓣点缀台阶表面。",
+  "[光线与色彩]",
+  "上方柔和暮光照射台阶，整体色板为深蓝紫与粉橙渐变，法杖金色光点形成局部高光，女子皮肤与裙摆受侧光呈现柔和明暗过渡。",
+  "[拍摄参数]",
+  "中景构图，略仰视视角，台阶引导线条透视，镜头呈现清晰前景到模糊远景的景深效果。"
+].join("\n");
+const liveGoddessEndingRich = [
+  "[风格设定]",
+  "采用数字艺术渲染风格，轮廓线条流畅，表面呈现光滑皮肤质感与半透明布料垂坠效果，金色金属饰品具反射光泽。",
+  "[主体物品]",
+  "画面中有一名紫发女子，身着白色半透明长裙搭配金色腰带与臂环，右手握持金色月牙法杖。",
+  "女子赤足坐在大理石台阶上，双腿交叠，左手撑在台阶上。",
+  "台阶下方有一只橙色长毛猫咪蹲坐。",
+  "法杖周围飘散金色光粒子，裙摆带有星光效果。",
+  "[环境背景]",
+  "背景为层层大理石台阶延伸向上，前景台阶上散落红色花瓣，中景为山脉与古建筑剪影。",
+  "女子与猫咪位于台阶中下部，与远景山脉形成层次对比。",
+  "[光线与色彩]",
+  "光源来自画面右上方柔和暮光，皮肤与金色饰品受暖光照亮，整体色板以蓝紫渐变天空为主。",
+  "[拍摄参数]",
+  "中景构图，低角度视角，主体居中偏右，透视沿台阶向上延伸，景深浅聚焦于女子与法杖。"
+].join("\n");
+const h3Visual = (text) => text.split("integrated_multimodal_description: ")[1].split("\n\noverall_soundscape:")[0];
+
+test("H3 rich-primary keeps the sentences Grok wrote whole, with the subject sentence and each fact once", async () => {
+  const request = buildH3({ contentPolicy: { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false } });
+  const result = await callGrokResponseWithVisualRetry(request.body, request.inputMeta, request.resultOptions, async () => (
+    h3AttemptFromText(liveRobotRich, request.resultOptions, "h3-live-robot")
+  ));
+  assertH3ReverseLayout(result.data.output_text);
+  const visual = h3Visual(result.data.output_text);
+  for (const sentence of [
+    "采用精细3D渲染风格，呈现圆润机械轮廓，金属表面带有锈蚀和划痕质感，关节处显示铆钉连接细节。",
+    "画面中央有一个青铜色机器人。机器人头部圆形，配备两个发光黄色眼睛和两根天线。",
+    "机器人双腿站立，脚踩在苔藓地面，金属靴底可见磨损。",
+    "背景为温室内部，周围有木质种植箱和茂密绿色植物。",
+    "光源来自左侧上方，阳光照射形成明亮高光和柔和阴影。整体色板以青绿和棕色为主"
+  ]) assert.ok(visual.includes(sentence), sentence);
+  assert.doesNotMatch(visual, /；|一名 /u);
+  const sentences = visual.split(/(?<=。)|\n+/u).map((sentence) => sentence.trim()).filter(Boolean);
+  assert.equal(new Set(sentences).size, sentences.length, "each fact once");
+});
+
+test("H3 rich-primary FL2VA ending adds only what differs from the opening frame", async () => {
+  const request = buildH3({
+    purpose: "minimax-h3-fl2v-reverse",
+    durationSeconds: 6,
+    images: [{ dataUrl: "data:image/png;base64,FIRST", role: "first_frame", label: "首帧" }, { dataUrl: "data:image/png;base64,LAST", role: "last_frame", label: "尾帧" }],
+    contentPolicy: { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false }
+  });
+  let calls = 0;
+  const result = await callGrokResponseWithVisualRetry(request.body, request.inputMeta, request.resultOptions, async () => {
+    calls += 1;
+    return h3AttemptFromText(calls === 1 ? liveGoddessOpeningRich : liveGoddessEndingRich, request.resultOptions, `h3-live-goddess-${calls}`);
+  });
+  const visual = h3Visual(result.data.output_text);
+  for (const sentence of ["紫发女子坐在台阶上，长直紫发披肩，穿白色透视长裙配金色腰封与臂环", "猫与女子之间相隔数级台阶。", "上方柔和暮光照射台阶"]) {
+    assert.ok(visual.includes(sentence), sentence);
+  }
+  assert.doesNotMatch(visual, /；|一名 /u);
+  const ending = /过渡过程中逐步到达尾帧状态：([^\n]*)/u.exec(visual)?.[1] || "";
+  // The pose change survives; the restated woman, cat, style, scene and light do not.
+  assert.match(ending, /双腿交叠。/u);
+  assert.doesNotMatch(ending, /紫发女子|猫咪|渲染风格|大理石台阶延伸|暮光|星光|交叠[^。]*交叠/u);
+  assert.match(visual, /到 6\.00 秒，动作连续收束至 <Picture 2> 的准确姿态/u);
+});

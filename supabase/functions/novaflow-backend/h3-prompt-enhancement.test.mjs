@@ -24,7 +24,7 @@ test('Grok request includes improvement policy and rejects narrative copy even i
   const source = '角色随后抬起右手，镜头固定。';
   const built = request(source);
   assert.equal(built.resultOptions.minimaxH3Enhance, true);
-  assert.ok(built.body.input[0].content[0].text.includes(edge.instruction));
+  assert.ok(built.body.input[0].content[0].text.includes(edge.instructionFor(source)));
   assert.throws(() => normalizeMiniMaxH3PromptOutput(fiveWrap(source).replace('N/A', '轻微风声'), built.resultOptions), e => e.errorCode === 'h3_contract_enhancement_not_applied');
 });
 
@@ -77,7 +77,7 @@ test('base optimize with the bilingual flag asks Grok for the official pair; wit
   for (const h3Mode of ['text_video', 'image_video', 'first_last']) {
     const built = baseRequest(h3Mode, citySource, ['H3 response format: bilingual-v1']);
     assert.deepEqual(built.body.text.format.schema, JSON.parse(JSON.stringify(edge.baseResultSchema)));
-    assert.ok(systemText(built).includes(edge.instruction) && systemText(built).includes(edge.baseInstruction));
+    assert.ok(systemText(built).includes(edge.instructionFor(citySource)) && systemText(built).includes(edge.baseInstruction));
     assert.ok(userText(built).includes(edge.baseResultInstruction));
     assert.match(userText(built), /\[Shot 2\] At 00:04\.000 镜头切到近景/);
     assert.doesNotMatch(userText(built) + systemText(built), /【任务定位】|five sections/);
@@ -212,16 +212,17 @@ test('the quoted line is kept verbatim unless the user asks to change the dialog
   assert.throws(() => normalizeMiniMaxH3PromptOutput(answer(''), request('\n保留原台词，把镜头改成缓慢推近')), /原台词未完整保留/);
 });
 
+const repairText = async (built, answer) => {
+  const bodies = [];
+  await assert.rejects(callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async body => {
+    bodies.push(body);
+    return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(answer, built.resultOptions)}, providerCallCount:1};
+  }));
+  assert.equal(bodies.length, 2);
+  return bodies[1].input.at(-1).content.at(-1).text;
+};
+
 test('the repair body carries the instruction for the pair schema and the specific registered failure', async () => {
-  const repairText = async (built, answer) => {
-    const bodies = [];
-    await assert.rejects(callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async body => {
-      bodies.push(body);
-      return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(answer, built.resultOptions)}, providerCallCount:1};
-    }));
-    assert.equal(bodies.length, 2);
-    return bodies[1].input.at(-1).content.at(-1).text;
-  };
   const optimize = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel, cityModel));
   assert.ok(optimize.includes(edge.baseResultInstruction));
   assert.match(optimize, /Failed gate: h3_contract_fields\.\n具体失败项：请将画面与动作、环境声音和背景音乐改为简体中文/);
@@ -232,4 +233,58 @@ test('the repair body carries the instruction for the pair schema and the specif
   assert.match(translate, /具体失败项：H3 中英文提示词的镜头或切换时间不一致/);
   assert.match(translate, /Translate the source prompt again/);
   assert.doesNotMatch(translate, /【任务定位】|Rebuild from the original/);
+});
+
+test('the shared validator\'s coverage, English-leak and dialogue failures get the instruction that fixes them', async () => {
+  const rainy = fields('[Shot 1] 写实电影风格，一位穿红色风衣的女子站在雨夜的街角，霓虹灯在湿漉漉的路面上投下粉色和蓝色的倒影，她撑着黑色雨伞慢慢转身，望向远处驶来的电车。镜头缓慢推近她的侧脸。', '雨点打在伞面上，电车铃声由远及近。');
+  const coverage = await repairText(translateRequest('text_video', rainy), pair(fields('[Shot 1] Live-action, a woman turns. The camera pushes in slowly.', 'Rain patters on the umbrella as a tram bell approaches.'), rainy));
+  assert.match(coverage, /具体失败项：H3 英文提示词遗漏了中文内容[^\n]*\nmodelPrompt left out Chinese content: translate every sentence of every shot completely/);
+  assert.match(coverage, /Translate the source prompt again/);
+  const leak = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel, cityDisplay.replace('远处车流低鸣', '远处 faint 车流低鸣')));
+  assert.match(leak, /具体失败项：H3 中文显示稿夹带英文单词[^\n]*\ndisplayPrompt must be Simplified Chinese throughout: translate every remaining English word/);
+  assert.doesNotMatch(leak, /modelPrompt left out|Keep each line the user quoted/);
+  const silent = text => text.replace(/, and the girl[^\n]*|，嗓音轻柔[^\n]*/, '.');
+  const dialogue = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(silent(cityModel), silent(cityDisplay)));
+  assert.match(dialogue, /具体失败项：原台词未完整保留。[^\n]*\nKeep each line the user quoted in the source prompt, or the new line the requirements ask for, word for word/);
+  const english = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel.replace('a city skyline', '城市天际线'), cityDisplay));
+  assert.match(english, /\nmodelPrompt prose is English; Chinese appears only inside <d>\.\.\.<\/d> blocks/);
+});
+
+test('the idle-breathing rule reaches Grok only when the user\'s own words ask for idle breathing', () => {
+  const idleRule = /^仅呼吸待机时[^。]*。/.exec(edge.instruction)[0];
+  // The renderer sends the whole policy ahead of the source prompt; only the source and the requirement after it count.
+  const rest = baseRequest('first_last', '<Picture 1> 中坐在台阶上的女神闭目养神，晚风轻拂长发，画面最终停在 <Picture 2>', ['H3 response format: bilingual-v1']);
+  assert.ok(!systemText(rest).includes(idleRule));
+  assert.ok(systemText(rest).includes(edge.instructionFor('')));
+  assert.ok(systemText(baseRequest('text_video', '绿幕前的机器人原地待机，轻微呼吸，循环动画', ['H3 response format: bilingual-v1'])).includes(edge.instruction));
+  const tail = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'image_video', durationSeconds:6, prompt:'女孩站在窗前',
+    requirements:[edge.instruction, 'H3 response format: bilingual-v1', 'Source prompt:', '女孩站在窗前\n改成原地呼吸待机'].join('\n')}, 'test-model');
+  assert.ok(systemText(tail).includes(idleRule));
+  // Old renderers' five-section requests follow the same rule.
+  assert.ok(!systemText(baseRequest('image_video', '女孩挥手', [], [edge.instruction, edge.formatInstruction])).includes(idleRule));
+});
+
+test('base I2V/FL2V optimize shows Grok its own frames; a translation, 文生 and foreign labels get none', () => {
+  const labels = {image_video:'Available resource labels: <Picture 1> = captured image slot first_frame. Never invent a resource label.',
+    first_last:'Available resource labels: <Picture 1> = captured image slot first_frame; <Picture 2> = captured image slot last_frame. Never invent a resource label.'};
+  const frame = label => ({label, dataUrl:'data:image/jpeg;base64,aGVsbG8='});
+  const optimize = (h3Mode, frames, markers = ['H3 response format: bilingual-v1']) => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode, durationSeconds:6, prompt:'女孩挥手', h3ReferenceFrames:frames,
+    requirements:[...markers, labels[h3Mode] || '', 'Source prompt:', '女孩挥手'].join('\n')}, 'test-model');
+  const content = built => built.body.input[1].content;
+  const i2v = optimize('image_video', [frame('<Picture 1>')]);
+  assert.equal(i2v.inputMeta.imageCount, 1);
+  assert.match(content(i2v)[1].text, /^Actual frame pixels follow: <Picture 1> is the opening frame of the target video\. Take the visual style, the subjects and their appearance, the composition and the setting from these frames/);
+  assert.deepEqual(content(i2v).slice(2).map(item => item.text || item.image_url), ['<Picture 1> opening frame', 'data:image/jpeg;base64,aGVsbG8=']);
+  const fl2v = optimize('first_last', [frame('<Picture 1>'), frame('<Picture 2>')]);
+  assert.equal(fl2v.inputMeta.imageCount, 2);
+  assert.match(content(fl2v)[1].text, /<Picture 1> is the opening frame of the target video and <Picture 2> is its final frame\./);
+  assert.deepEqual(content(fl2v).slice(2).map(item => item.text || item.type), ['<Picture 1> opening frame', 'input_image', '<Picture 2> final frame', 'input_image']);
+  assert.equal(optimize('first_last', [frame('<Picture 1>'), frame('<Picture 2>')], ['H3 compile: translate-only', 'H3 response format: bilingual-v1']).inputMeta.imageCount, 0);
+  assert.equal(content(optimize('text_video', [frame('<Picture 1>')])).length, 1);
+  // Only the mode's own anchors, in order, as the resource labels list them.
+  assert.throws(() => optimize('image_video', [frame('<Picture 2>')]), /H3 参考画面与素材不匹配/);
+  assert.throws(() => optimize('first_last', [frame('<Picture 2>'), frame('<Picture 1>')]), /H3 参考画面与素材不匹配/);
+  // Without pixels the writer is told not to guess what the frames show.
+  assert.match(content(optimize('image_video', []))[1].text, /^No frame pixels are attached\. Do not name a visual style/);
+  assert.equal(optimize('image_video', []).inputMeta.imageCount, 0);
 });

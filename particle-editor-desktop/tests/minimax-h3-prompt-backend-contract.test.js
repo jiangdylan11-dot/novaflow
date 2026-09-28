@@ -222,6 +222,13 @@ const buildRequest = vm.runInNewContext(
       contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
     }),
     miniMaxH3EnhanceMode: () => "full_reference",
+    miniMaxH3OptimizeFrameContent: vm.runInNewContext(
+      `(${extractNamedFunction(serverSource, "miniMaxH3OptimizeFrameContent")})`,
+      {
+        h3PromptEnhance: require('../admin-server/h3-prompt-enhance'),
+        smartAiInputText: (text) => ({ type: "input_text", text }),
+      },
+    ),
     smartAiImageArtDirectorRules: () => "generic image rules",
     smartAiChinesePromptOutputRules: () => "generic output rules",
     smartAiInputText: (text) => ({ type: "input_text", text }),
