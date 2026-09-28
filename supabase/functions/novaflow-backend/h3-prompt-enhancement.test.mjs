@@ -52,7 +52,7 @@ const fields = (narrative, soundscape, music = 'N/A') => `integrated_multimodal_
 const t2v = {mode:'text_video', durationSeconds:6};
 const citySource = '先是城市夜景全景，然后切到街角咖啡店里的女孩说：“到了。”';
 const cityModel = fields('[Shot 1] Live-action, cinematic, a wide shot shows a city skyline at night. The camera holds a static shot.\n[Shot 2] At 00:03.000, the camera cuts to a medium shot of a girl in a corner café who looks up, and the girl with a soft voice (S1) says: <d>[Chinese] 到了。</d>', 'Distant traffic hums, then cups clink softly inside the café.');
-const cityDisplay = fields('[Shot 1] 写实电影风格，夜晚城市天际线的全景。镜头保持固定。\n[Shot 2] At 00:03.000 镜头切到街角咖啡店里女孩的中景，她抬起头，嗓音轻柔的女孩 (S1) 说：<d>[Chinese] 到了。</d>', '远处车流低鸣，随后咖啡店里杯子轻轻碰响。');
+const cityDisplay = fields('[Shot 1] 写实电影风格，夜晚城市天际线的远景。镜头保持固定。\n[Shot 2] At 00:03.000 镜头切到街角咖啡店里女孩的中景，她抬起头，嗓音轻柔的女孩 (S1) 说：<d>[Chinese] 到了。</d>', '远处车流低鸣，随后咖啡店里杯子轻轻碰响。');
 const pair = (modelPrompt, displayPrompt) => JSON.stringify({modelPrompt, displayPrompt});
 const baseRequest = (h3Mode, source, markers, head = [edge.instruction, edge.baseInstruction, edge.baseResultInstruction]) => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode, durationSeconds:6, prompt:source,
   requirements:[...head, ...markers, `Protocol: ${h3Mode}; duration: 6.00 seconds.`, 'Source prompt:', source].join('\n')}, 'test-model');
@@ -408,4 +408,55 @@ test('everyday words next to a child are no sensitive content: bare rock, light 
   ]) assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer(en, zh), i2v.resultOptions), en);
   assert.throws(() => normalizeMiniMaxH3PromptOutput(answer('runs forward along the rocks by the sea, fully nude', '全裸着沿着海边的礁石向前奔跑'), i2v.resultOptions),
     error => error.errorCode === 'provider_content_policy' && error.statusCode === 422);
+});
+
+test('a Grok 多参 pair gets every quality gate in one repair call, and the repaired answer is final', async () => {
+  const six = values => edge.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
+  const source = '<Picture 1> 中的角色走向 <Picture 2> 中的角色，第3秒切到两人的近景';
+  const built = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:source,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', source].join('\n')}, 'test-model');
+  // The pair rules ask for the official depth, the user's words in the display and exact colours; the translation maps the sizes.
+  assert.match(userText(built), /Stage every subject in one shared setting[\s\S]*近景 stays 近景; modelPrompt writes medium close-up[\s\S]*translates every colour exactly/);
+  const english = six(['<Subject 1>: A girl with short dark hair, from <Picture 1>\n<Subject 2>: A small teal and copper robot, from <Picture 2>', '[reference generation] <Subject 1> walks toward <Subject 2>. At the 3-second mark the camera cuts to a close-up of both.',
+    '<Subject 1>: fully_preserved - short dark hair\n<Subject 2>: fully_preserved - teal and copper body', 'In a vibrant anime illustration style. [Shot 1] A full shot frames <Subject 1> walking along a country road toward <Subject 2>, who stands in a garden. The camera tracks her slowly. [Shot 2] At 00:03.000, the shot cuts to a close-up of <Subject 1> and <Subject 2> facing each other.', 'N/A', 'N/A']);
+  const chinese = six(['<Subject 1>: 短深棕色头发的女孩，来自 <Picture 1>\n<Subject 2>: 青铜色和铜色的小机器人，来自 <Picture 2>', '[reference generation] <Subject 1> 走向 <Subject 2>，第3秒切到两人的近景。',
+    '<Subject 1>: fully_preserved - 短深棕色头发、youthful 面容\n<Subject 2>: fully_preserved - 青铜色和铜色机身', '采用生动的动漫插画风格。[Shot 1] 全景中 <Subject 1> 沿乡间小路走向花园里的 <Subject 2>。镜头缓慢跟随她。[Shot 2] At 00:03.000 镜头切到 <Subject 1> 与 <Subject 2> 面对面的特写。', 'N/A', 'N/A']);
+  const answer = JSON.stringify({modelPrompt:english, displayPrompt:chinese, editPolicy:{preserveBackground:false, preserveMotion:false, sameShapeAppearanceOnly:false}});
+  const bodies = [];
+  const result = await callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async body => {
+    bodies.push(body);
+    return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(answer, built.resultOptions)}, providerCallCount:1};
+  });
+  assert.equal(bodies.length, 2);
+  const repair = bodies[1].input.at(-1).content.at(-1).text;
+  assert.match(repair, /具体失败项：H3 环境声音只有用户要求静音时才能写 N\/A[^；\n]*；请将多参主体[^；\n]*；H3 中文显示稿的颜色与英文不一致[^。\n]*。请针对这些项修正/);
+  assert.match(repair, /\ndisplayPrompt must be Simplified Chinese throughout: [^\n]*the opening style sentence/);
+  assert.match(repair, /\ndisplayPrompt must translate the colours of every subject exactly/);
+  assert.match(repair, /Stage every subject in one shared setting/);
+  // The same answer again is accepted: the gates asked for the one repair, the contract still holds, and the flag is gone.
+  const pair = JSON.parse(result.data.output_text);
+  assert.match(pair.modelPrompt, /\[Shot 2\] At 00:03\.000, the shot cuts to a medium close-up of <Subject 1> and <Subject 2>/);
+  assert.match(pair.displayPrompt, /面对面的近景。/);
+  assert.equal(built.resultOptions.minimaxH3RepairAnswer, undefined);
+  assert.equal(result.h3ContractRepairUsed, true);
+});
+
+test('a base pair written as comma-stacked tags is repaired once; the translation carries the exact shot sizes', async () => {
+  const source = '一只橘猫坐在窗台上晒太阳，然后舔爪子';
+  const built = baseRequest('text_video', source, ['H3 response format: bilingual-v1']);
+  const tags = pair(fields('[Shot 1] Live-action, ginger cat on sunny windowsill, fur glowing, tail curled around paws, eyes half closed, curtains moving behind, potted plants on sill, warm afternoon glow. The cat licks its paw. The camera holds a static shot.', 'Soft purring and a faint breeze.'),
+    fields('[Shot 1] 写实风格，阳光照耀的窗台上的橘猫，毛发发光，尾巴卷在爪边，眼睛半闭，身后窗帘飘动，窗台上有盆栽，午后暖光。猫舔爪子。镜头固定。', '轻柔的呼噜声和微风。'));
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(tags, built.resultOptions), error => error.errorCode === 'h3_contract_fields' && /逗号堆叠标签/.test(error.message));
+  const repair = await (async () => {
+    const bodies = [];
+    await callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async body => {
+      bodies.push(body);
+      return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(tags, built.resultOptions)}, providerCallCount:1};
+    });
+    return bodies[1].input.at(-1).content.at(-1).text;
+  })();
+  assert.match(repair, /\nmodelPrompt must be complete English sentences with articles and verbs, never a comma-separated list of tags/);
+  for (const text of [edge.baseTranslateInstruction, userText(translateRequest('text_video', cityDisplay))]) assert.match(text, /Shot sizes map exactly: 大特写 extreme close-up, 特写 close-up, 近景 medium close-up/);
+  assert.match(userText(buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:'x',
+    requirements:'Available resource labels: <Picture 1>\nH3 compile: translate-only\nH3 response format: bilingual-v1\nSource prompt:\nx'}, 'test-model')), /Shot sizes map exactly: 大特写 extreme close-up/);
 });

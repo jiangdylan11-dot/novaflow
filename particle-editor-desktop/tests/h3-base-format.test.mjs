@@ -429,3 +429,56 @@ test('a Grok pair writes N/A sound only when the user asks for silence; "is a st
     assert.match(JSON.parse(api.validateBaseResult(pair('A low mechanical hum.'), {mode:'text_video', durationSeconds:8, currentPrompt:'绿幕前的机器人原地待机'})).modelPrompt, /The camera holds a static shot\./);
   }
 });
+
+test("shot sizes follow the words: the user's size stays in the display and each English size follows its shot", () => {
+  const pairOf = (model, display) => JSON.stringify({modelPrompt:fields(model, 'Wind moves through the leaves.'), displayPrompt:fields(display, '风吹过树叶。')});
+  const cut = '一只橘猫坐在窗台上，第3秒切到近景，它开始舔爪子';
+  const model = '[Shot 1] Live-action, a full shot frames a ginger cat sitting on a sunny windowsill. The camera holds a static shot.\n[Shot 2] At 00:03.000, the camera cuts to a close-up of the cat licking its paw.';
+  for (const api of apis) {
+    const sized = display => JSON.parse(api.validateBaseResult(pairOf(model, display), {mode:'text_video', durationSeconds:6, currentPrompt:cut}));
+    // The display says 近景 (the user's word): the English is a medium close-up, not a close-up; 全景 stays a full shot.
+    const kept = sized('[Shot 1] 写实风格，全景中一只橘猫坐在阳光照耀的窗台上。镜头固定。\n[Shot 2] At 00:03.000 镜头切到猫舔爪子的近景。');
+    assert.match(kept.modelPrompt, /a full shot frames[\s\S]*cuts to a medium close-up of the cat/);
+    // The writer turned the user's 近景 into 特写 in the cut shot: the display gets the user's word back, the English follows it.
+    const swapped = sized('[Shot 1] 写实风格，全景中一只橘猫坐在阳光照耀的窗台上。镜头固定。\n[Shot 2] At 00:03.000 镜头切到猫舔爪子的特写。');
+    assert.match(swapped.displayPrompt, /\[Shot 2\] At 00:03\.000 镜头切到猫舔爪子的近景。/);
+    assert.match(swapped.modelPrompt, /cuts to a medium close-up of the cat/);
+    // A translation keeps the source as written and only maps the English; 前景/中景/后景 layers are no shot sizes.
+    const translated = JSON.parse(api.validateBaseResult(pairOf(model, '[Shot 1] 写实风格，全景中一只橘猫坐在阳光照耀的窗台上。镜头固定。\n[Shot 2] At 00:03.000 镜头切到猫舔爪子的特写。'), {mode:'text_video', durationSeconds:6, currentPrompt:cut, displayIsSource:true}));
+    assert.match(translated.displayPrompt, /舔爪子的特写/);
+    assert.match(translated.modelPrompt, /cuts to a close-up of the cat/);
+    const layered = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, a wide shot frames a garden with roses in front, a bench in the middle and trees behind. The camera holds a static shot.', '[Shot 1] 写实风格，远景画面，前景是玫瑰，中景是长椅，后景是树林。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:'花园'}));
+    assert.match(layered.modelPrompt, /a wide shot frames a garden/);
+    // A cut time written at the end of the previous shot moves behind its marker, with its verb.
+    const early = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, a full shot frames a ginger cat on a windowsill. The camera holds a static shot. At 00:03.000 the camera cuts to [Shot 2] A medium close-up of the cat licking its paw.', '[Shot 1] 写实风格，全景中一只橘猫坐在窗台上。镜头固定。00:03.000 时镜头切到 [Shot 2] 猫舔爪子的近景。'), {mode:'text_video', durationSeconds:6, currentPrompt:cut}));
+    assert.match(early.modelPrompt, /static shot\.\n\[Shot 2\] At 00:03\.000, the camera cuts to a medium close-up of the cat/);
+    assert.match(early.displayPrompt, /镜头固定。\n\[Shot 2\] At 00:03\.000 镜头切到 猫舔爪子的近景。/);
+  }
+});
+
+test("a writer's pair (strictPair) reports every quality gate at once; the renderer re-validates without them", () => {
+  const six = values => local.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
+  const source = '<Picture 1> 中的角色走向 <Picture 2> 中的角色，第3秒切到两人的近景';
+  const options = {durationSeconds:5, currentPrompt:source, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + source};
+  const english = six(['<Subject 1>: A girl with short dark hair, from <Picture 1>\n<Subject 2>: A small teal and copper robot, from <Picture 2>', '[reference generation] <Subject 1> walks toward <Subject 2>. At the 3-second mark the camera cuts to a close-up of both.',
+    '<Subject 1>: fully_preserved - short dark hair\n<Subject 2>: fully_preserved - teal and copper body', 'In a vibrant anime illustration style. [Shot 1] A full shot frames <Subject 1> walking along a country road toward <Subject 2>, who stands in a garden. The camera tracks her slowly. At 00:03.000 the view cuts to [Shot 2] a close-up of <Subject 1> and <Subject 2> facing each other.', 'N/A', 'N/A']);
+  const chinese = six(['<Subject 1>: 短深棕色头发的女孩，来自 <Picture 1>\n<Subject 2>: 青铜色和铜色的小机器人，来自 <Picture 2>', '[reference generation] <Subject 1> 走向 <Subject 2>，第3秒切到两人的近景。',
+    '<Subject 1>: fully_preserved - 短深棕色头发、youthful 面容\n<Subject 2>: fully_preserved - 青铜色和铜色机身', '采用生动的动漫插画风格 [Shot 1] 全景中 <Subject 1> 沿乡间小路走向花园里的 <Subject 2>。镜头缓慢跟随她。00:03.000 时画面切至 [Shot 2] <Subject 1> 与 <Subject 2> 面对面的特写。', 'N/A', 'N/A']);
+  const answer = JSON.stringify({modelPrompt:english, displayPrompt:chinese});
+  for (const api of apis) {
+    assert.throws(() => api.validateReferenceResult(answer, {...options, strictPair:true}), error => JSON.stringify(error.issues) === JSON.stringify([
+      'H3 环境声音只有用户要求静音时才能写 N/A，请写出与画面一致的具体环境声和动作声', '请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签', 'H3 中文显示稿的颜色与英文不一致，请逐词准确翻译颜色']));
+    assert.equal(api.validationIssue(new Error('H3 中文显示稿的颜色与英文不一致，请逐词准确翻译颜色')).reason, 'language');
+    // Deterministic in every pair: the official style opening and cut wording, the cut time at its marker, the sizes, the shots of each retention line.
+    const pair = JSON.parse(api.validateReferenceResult(answer, options));
+    assert.match(pair.modelPrompt, /detailed_description:\nThe target video is in a vibrant anime illustration style\. \[Shot 1\][^\n]*The camera tracks her slowly\.\s*\[Shot 2\] At 00:03\.000, the shot cuts to a medium close-up of <Subject 1> and <Subject 2>/);
+    assert.match(pair.modelPrompt, /cuts to a medium close-up of both\./);
+    assert.match(pair.modelPrompt, /^<Subject 1> \(appears in \[Shot 1\], \[Shot 2\]\): fully_preserved - short dark hair$/m);
+    assert.match(pair.displayPrompt, /^<Subject 2>（出现在 \[Shot 1\]、\[Shot 2\]）: fully_preserved - 青铜色和铜色机身$/m);
+    assert.match(pair.displayPrompt, /采用生动的动漫插画风格。 \[Shot 1\][\s\S]*\[Shot 2\] At 00:03\.000 画面切至 <Subject 1> 与 <Subject 2> 面对面的近景。/);
+    assert.match(api.toReferenceDisplay(pair.displayPrompt), /^【主体定义】\n<主体 1>: [\s\S]*^<主体 1>（出现在 【镜头 1】、【镜头 2】）: 完全保留 - /m);
+    // A translation keeps its source display: no appearances are added to it and only the shot and speech parity is gated.
+    const translated = JSON.parse(api.validateReferenceResult(answer, {...options, strictPair:true, displayIsSource:true}));
+    assert.doesNotMatch(translated.displayPrompt, /出现在/);
+  }
+});

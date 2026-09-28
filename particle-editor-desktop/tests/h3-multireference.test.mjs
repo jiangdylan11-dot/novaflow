@@ -307,7 +307,8 @@ test('compiler merges a model subject repeated for appearance and motion without
  for(const api of [local,edge,context.NovaFlowH3PromptFormat]) {
   const pair=JSON.parse(api.validateReferenceResult('```json\n'+JSON.stringify({modelPrompt:duplicated,displayPrompt:zh})+'\n```',chineseOptions));
   assert.equal((pair.modelPrompt.split('summary:')[0].match(/^<Subject 1>/gm)||[]).length,1);
-  assert.match(pair.modelPrompt,/<Subject 1>: attribute_transfer/);
+  // The official retention line names the shots its subject appears in.
+  assert.match(pair.modelPrompt,/<Subject 1> \(appears in \[Shot 1\]\): attribute_transfer/);
   assert.match(pair.modelPrompt,/motion from <Video 1>/);
  }
 });
@@ -360,7 +361,8 @@ test('多参 cuts read like the official guide: each shot on its own display lin
  const restored=prompt.validateAndRestore({text:JSON.stringify({modelPrompt:english,displayPrompt:chinese}),context:prompt.prepareRequest(c).context,current:c});
  assert.match(restored.text,/\n【镜头 1】<主体 1> 沿着乡村道路走向花园中的 <主体 2>。镜头固定。\n【镜头 2】 At 00:03\.000 <主体 1> 与 <主体 2> 面对面的近景。\n/);
  const narrative=restored.modelText.split('detailed_description:')[1].split('overall_soundscape:')[0].trim();
- assert.equal(narrative,'In a vibrant anime illustration style.\n[Shot 1] <Subject 1> walks along a rural road toward <Subject 2> in a garden. The camera holds a static shot.\n[Shot 2] At 00:03.000, the shot cuts to close-up of <Subject 1> and <Subject 2> facing each other.');
+ // The style opening reads officially and the display's 近景 (the user's word) is a medium close-up in English, not a close-up.
+ assert.equal(narrative,'The target video is in a vibrant anime illustration style.\n[Shot 1] <Subject 1> walks along a rural road toward <Subject 2> in a garden. The camera holds a static shot.\n[Shot 2] At 00:03.000, the shot cuts to medium close-up of <Subject 1> and <Subject 2> facing each other.');
  assert.match(restored.modelText,/^<Subject 1>: young woman[^\n]*\n<Subject 2>: small teal robot/m);
  // The compile of the same display reuses the translation and shows the same text.
  const compiled=await prompt.compileForGeneration({...c,prompt:restored.text},()=>{throw Error('the optimize pair is cached')});

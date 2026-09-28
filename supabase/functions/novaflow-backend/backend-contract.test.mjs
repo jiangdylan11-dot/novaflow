@@ -6552,3 +6552,31 @@ test("license route uses service-role exact lookup and durable fail-closed RPC r
   assert.match(indexSource, /if \(error\) throw error;[\s\S]*typeof result\.allowed !== "boolean"[\s\S]*throw new Error/);
   assert.doesNotMatch(indexSource, /new Map\([^)]*license/i);
 });
+
+test("美工 role reference labels each picture with its number and role, and the answer names pictures the way the user did", () => {
+  const images = [
+    { dataUrl: "data:image/png;base64,AA==", role: "subject", label: "图1" },
+    { dataUrl: "data:image/png;base64,AQ==", role: "background", label: "图2" }
+  ];
+  const build = (currentPrompt, requirements = "") => buildGrokImageReverseRequest({
+    images, scenario: "role_reference", surface: "art", purpose: "roleReference", currentPrompt, requirements
+  }, "grok-contract-test");
+  const plain = build("", "用户生成要求：图1的角色站在图2的场景中央，看向镜头");
+  // Still one image call: each picture follows its own label; the style comes from the subject picture.
+  const content = plain.body.input[0].content;
+  assert.deepEqual(content.slice(0, 4).map((item) => item.text || item.type), ["图1（主体）", "input_image", "图2（背景）", "input_image"]);
+  assert.equal(plain.inputMeta.imageCount, 2);
+  const text = content.at(-1).text;
+  assert.match(text, /每张图前标注了图号与职责/);
+  assert.match(text, /\[风格设定\]沿用职责为主体的图的画风/);
+  assert.match(text, /不写 @参考图 等界面标签/);
+  assert.match(text, /当前任务类型：参考图生成。/);
+  assert.deepEqual(plain.resultOptions, { artFiveSectionPrompt: true, artReferenceUserLabels: ["图1", "图2"] });
+  const safety = { explicitMinorEvidence: false, sensitiveContent: false };
+  const five = ["[风格设定]", "二维动漫插画风格。", "[主体物品]", "@参考图1 中的女孩站在中央，看向镜头。", "[环境背景]", "@参考图2 的大厅，白色 T 台延伸向远处。", "[光线与色彩]", "暖色顶光。", "[拍摄参数]", "全景，平视。"].join("\n");
+  const written = (options) => grokResponsesPublicResult({ output_text: JSON.stringify({ prompt: five, negative_prompt: "模糊", contentSafety: safety }) }, options).output_text;
+  assert.match(written(plain.resultOptions), /\[主体物品\]\n图1中的女孩站在中央，看向镜头。\n\[环境背景\]\n图2的大厅，白色 T 台/);
+  // No picture names in the user's words: none in the answer; an alias the user typed stays.
+  assert.match(written(build("女孩站在大厅中央").resultOptions), /\[主体物品\]\n女孩站在中央，看向镜头。\n\[环境背景\]\n大厅，白色 T 台/);
+  assert.match(written(build("@参考图1 的女孩站在大厅中央").resultOptions), /\[主体物品\]\n@参考图1 中的女孩站在中央[\s\S]*\[环境背景\]\n大厅，白色 T 台/);
+});
