@@ -2,7 +2,7 @@
   "name": "novaflow-worker",
   "productName": "NovaFlow",
   "private": true,
-  "version": "0.4.74",
+  "version": "0.4.75",
   "description": "NovaFlow",
   "type": "commonjs",
   "main": "electron/main.cjs",
