@@ -3766,22 +3766,25 @@
       && ["adult_appearing", "age_unverifiable"].includes(age);
   }
 
-  // 美工 with 1-3 references (role reference) grades its pictures and words in its one call. Both engines
-  // return contentSafety: { sensitiveContent: boolean, explicitMinorEvidence: boolean } beside the prompt
-  // (Grok: the strict answer field, the user's words counted in; local reverse_art_role_prompt: its check
-  // line). It stands for the static reverse's generationGate:
+  // 美工 with 1-3 references (role reference) grades its pictures and words in its one call and reports it
+  // beside the prompt. Grok returns contentSafety: { sensitiveContent: boolean, explicitMinorEvidence: boolean }
+  // (its strict answer field, a child named by the user counted in); the local reverse_art_role_prompt returns
+  // the static reverse's own generationGate ("adult_confirmation" | "direct", from its check line). Either
+  // stands for the static reverse's generationGate:
   //   sensitiveContent only       -> adult_confirmation: 生图 switches to NSFW, then the prompt is written
   //   no sensitiveContent         -> direct: written, NSFW untouched
   //   both, or a blocked result   -> blocked: nothing written, the static route's minor message
-  // A result without the field (an older engine) is written as before, without a switch.
+  // A result without either (an older engine) is written as before, without a switch.
   const ART_REFERENCE_MINOR_BLOCKED_MESSAGE = "分析完成—未写入：检测到年轻或未成年人特征，敏感提示词已阻止。";
 
   function artReferenceGenerationGate(parsed) {
     if (parsed?.generationGate === "blocked" || parsed?.sensitivePromptBlocked === true) return "blocked";
     const safety = parsed?.contentSafety;
-    if (typeof safety?.sensitiveContent !== "boolean" || typeof safety?.explicitMinorEvidence !== "boolean") return "";
-    if (safety.sensitiveContent && safety.explicitMinorEvidence) return "blocked";
-    return safety.sensitiveContent ? "adult_confirmation" : "direct";
+    if (typeof safety?.sensitiveContent === "boolean" && typeof safety?.explicitMinorEvidence === "boolean") {
+      if (safety.sensitiveContent && safety.explicitMinorEvidence) return "blocked";
+      return safety.sensitiveContent ? "adult_confirmation" : "direct";
+    }
+    return ["adult_confirmation", "direct"].includes(parsed?.generationGate) ? parsed.generationGate : "";
   }
 
   // An engine that refuses explicit minor + sensitive content answers with a failure instead of a gate:

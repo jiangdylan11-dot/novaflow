@@ -8215,13 +8215,14 @@ const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前
 // the H3 optimize in its one call; grokResponsesPublicResult ends a marked or child-plus-sensitive answer as provider_content_policy.
 const ART_REFERENCE_CONTENT_SAFETY_RULE = `人物称呼沿用用户原词（女孩仍写女孩，女神仍写女神）；用户文字或图中文字未写明时，不写年龄或年龄段（成年、未成年、N岁）。若图中明确是儿童或婴儿（年轻外观或年龄不明不算），且图片或要求同时涉及裸露或性内容，只输出 ${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}: explicit_minor_sensitive_content。`;
 
-// A child named in the words of the user is recorded, with whether the text also asks for sensitive content, for the answer check;
-// a sensitive request alone is recorded for the reported signal.
+// A child named in the words of the user is recorded, with whether the text also asks for sensitive content, for the answer check.
+// Sensitive words alone are not: 去掉裸露 or 别裸露 ask to cover up, and the model's contentSafety grades the request in its one call.
 function artReferenceUserContentState(currentPrompt, requirements) {
   const text = `${currentPrompt || ""}\n${requirements || ""}`;
-  const sensitive = miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0;
-  if (miniMaxH3HasExplicitYouthIndicator(text)) return { explicitYouthUserRequest: true, authorizedSensitiveUserRequest: sensitive };
-  return sensitive ? { authorizedSensitiveUserRequest: true } : {};
+  return miniMaxH3HasExplicitYouthIndicator(text) ? {
+    explicitYouthUserRequest: true,
+    authorizedSensitiveUserRequest: miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0
+  } : {};
 }
 
 // The one call answers a strict JSON object whose contentSafety is the in-call grading of the H3 image action. It takes the place
@@ -8244,10 +8245,12 @@ function artReferenceContentSafety(rawText, options) {
   };
 }
 
+// The answer's own wording pairs only with a child named by the user (裸露的双腿 of a child in shorts is no refusal);
+// the pictures are graded by the model's contentSafety alone, as the static reverse graded them.
 function artReferenceAssertContentSafety(rawText, prompt, options, safety = null) {
   const minor = options.explicitYouthUserRequest === true || safety?.explicitMinorEvidence === true;
   const sensitive = options.authorizedSensitiveUserRequest === true || safety?.sensitiveContent === true
-    || miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0;
+    || (options.explicitYouthUserRequest === true && miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0);
   if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(rawText) || (minor && sensitive)) {
     throw miniMaxH3ContractError("provider_content_policy", "Grok art reference blocked explicit minor sensitive content", 422, "provider_content_policy");
   }

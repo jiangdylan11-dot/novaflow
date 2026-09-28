@@ -465,18 +465,27 @@ test('美工 references: explicit minor wording with sensitive wording is stoppe
   assert.match(p.api.state.message, /^分析完成—未写入：/);
 });
 
-// The reference route grades its pictures in its one call (contentSafety beside the prompt) and the dialog
-// uses it as the static reverse used generationGate: adult sensitive content switches 生图 to NSFW, anything
-// else is written untouched, explicit minor evidence with sensitive content shows the static route's message.
+// The reference route grades its pictures in its one call and reports it beside the prompt; the dialog uses
+// it as the static reverse used generationGate: adult sensitive content switches 生图 to NSFW, anything else
+// is written untouched, explicit minor evidence with sensitive content shows the static route's message.
 const REFERENCE_MINOR_BLOCKED = '分析完成—未写入：检测到年轻或未成年人特征，敏感提示词已阻止。';
 const REFERENCE_PROMPT = '[风格设定]\n写实摄影风格。\n\n[主体物品]\n一名成年女性坐在木质窗台边。';
 const REFERENCE_SETS = [['https://refs.test/a.png'], ['https://refs.test/a.png', 'https://refs.test/b.png']];
-// Each bridge's own shape: the web Grok bridge wraps the Edge JSON in result, the local worker answers in data.
-function referenceAnswer(engine, contentSafety, extra = {}) {
-  const fields = { ...(contentSafety === undefined ? {} : { contentSafety }), ...extra };
-  return engine === 'grok'
-    ? { ok: true, result: { ok: true, provider: 'grok', prompt: REFERENCE_PROMPT, negative_prompt: '模糊', has_negative_prompt: true, visualSchema: '', contentWarnings: [], sensitivePromptBlocked: false, ...fields } }
-    : { ok: true, data: { prompt: REFERENCE_PROMPT, negativePrompt: '模糊', ...fields } };
+// Each engine's own answer through its bridge, the grading given as { sensitiveContent, explicitMinorEvidence }:
+// the web Grok bridge wraps the Edge JSON (contentSafety beside the prompt) in result; the local worker answers in
+// data with what reverse_art_role_prompt returns, the static route's generationGate and its contentCheck.
+function referenceAnswer(engine, grading, extra = {}) {
+  if (engine === 'grok') {
+    return { ok: true, result: { ok: true, provider: 'grok', prompt: REFERENCE_PROMPT, negative_prompt: '模糊', has_negative_prompt: true, visualSchema: '', contentWarnings: [], sensitivePromptBlocked: false, ...(grading === undefined ? {} : { contentSafety: grading }), ...extra } };
+  }
+  // The local service refuses minor + sensitive with an error; it never answers both.
+  assert.ok(!(grading?.sensitiveContent && grading?.explicitMinorEvidence), 'the local engine refuses instead');
+  const local = grading === undefined ? {} : {
+    generationGate: grading.sensitiveContent ? 'adult_confirmation' : 'direct',
+    sensitivePromptBlocked: false,
+    contentCheck: { minor: grading.explicitMinorEvidence, sensitive: grading.sensitiveContent },
+  };
+  return { ok: true, data: { prompt: REFERENCE_PROMPT, negativePrompt: '模糊', rawOutput: REFERENCE_PROMPT, qualityGateFailed: false, ...local, ...extra } };
 }
 // The 生图 panel's NSFW switch, as window.__NovaFlowArtGenerate exposes it.
 function withNsfwSwitch(p, surface, available = true) {
@@ -547,10 +556,11 @@ test('美工 references: explicit minor evidence with sensitive content is never
       { ok: false, error: 'Grok 未通过未成年人敏感内容安全校验', errorCode: 'provider_content_policy', retryable: false },
       referenceAnswer('grok', { sensitiveContent: true, explicitMinorEvidence: true }),
     ],
+    // The worker's failure envelope for reverse_art_role_prompt's VisualContractError, and a blocked result.
     local: [
-      { ok: false, error: 'MiniMax H3 敏感内容检测到明确未成年人证据，已阻断', errorCode: 'h3-sensitive-young-evidence-blocked', generationGate: 'blocked' },
-      referenceAnswer('local', { sensitiveContent: true, explicitMinorEvidence: true }),
-      { ok: true, data: { prompt: '', negativePrompt: '', generationGate: 'blocked', sensitivePromptBlocked: true, contentSafety: { sensitiveContent: true, explicitMinorEvidence: true } } },
+      { ok: false, runtimeStatus: '推理失败', error: '检测到明确未成年人特征，敏感提示词已阻止', errorCode: 'art-sensitive-young-evidence-blocked', generationGate: 'blocked', sensitivePromptBlocked: true },
+      { ok: false, runtimeStatus: '推理失败', error: '提示词或补充要求包含明确未成年人内容，敏感提示词已阻止', errorCode: 'art-sensitive-minor-request-blocked', generationGate: 'blocked', sensitivePromptBlocked: true },
+      { ok: true, data: { prompt: '', negativePrompt: '', generationGate: 'blocked', sensitivePromptBlocked: true } },
     ],
   };
   for (const references of REFERENCE_SETS) {

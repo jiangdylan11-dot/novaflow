@@ -3970,8 +3970,11 @@ test("美工 role reference reports its in-call content grading beside the promp
   assert.match(format.schema.properties.contentSafety.properties.explicitMinorEvidence.description, /False for a young-looking, petite or age-unknown person/);
   assert.deepEqual(build("剑客", "", { supportsNegativePrompt: false }).body.text.format.schema.required, ["prompt", "contentSafety"]);
   assert.equal(plain.inputMeta.imageCount, 1, "no extra call: the grading rides in the one image call");
-  // A sensitive request alone is recorded for the signal; a child still pairs with it.
-  assert.deepEqual(build("成年女性全裸站在窗边").resultOptions, { artFiveSectionPrompt: true, authorizedSensitiveUserRequest: true });
+  // Sensitive words alone record nothing: a request to cover up is no sensitive request, and the model grades the words in its
+  // one call. A child named by the user is still recorded, with whether the text also asks for sensitive content.
+  for (const text of ["成年女性全裸站在窗边", "去掉裸露部分，穿上衣服", "别裸露", "把裸露的地方遮住", "减少裸露", "穿上外套，不再裸露", "取消裸露"]) {
+    assert.deepEqual(build("", `用户生成要求：${text}`).resultOptions, { artFiveSectionPrompt: true }, text);
+  }
   assert.deepEqual(build("小孩坐在树根上看书").resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false });
 
   const five = ["[风格设定]", "写实插画。", "[主体物品]", "一名剑客站在雪地里。", "[环境背景]", "雪夜。", "[光线与色彩]", "冷色月光。", "[拍摄参数]", "中景，平视。"].join("\n");
@@ -3987,8 +3990,13 @@ test("美工 role reference reports its in-call content grading beside the promp
   assert.equal("generationGate" in neutral, false);
   assert.deepEqual(read({ explicitMinorEvidence: false, sensitiveContent: true }).contentSafety, { sensitiveContent: true, explicitMinorEvidence: false }, "adult sensitive content is written and reported");
   assert.deepEqual(read({ explicitMinorEvidence: true, sensitiveContent: false }).contentSafety, { sensitiveContent: false, explicitMinorEvidence: true }, "a child without sensitive content is an ordinary picture");
-  // The words of the user count in: a sensitive request reports sensitive content even when the model says none.
-  assert.deepEqual(read({ explicitMinorEvidence: false, sensitiveContent: false }, build("成年女性全裸站在窗边").resultOptions).contentSafety, { sensitiveContent: true, explicitMinorEvidence: false });
+  // The model's grading decides the switch: a cover-up request it grades as not sensitive leaves 生图 as it is,
+  // and with a picture of a child it is an ordinary picture, never a refusal.
+  const coverUp = build("", "用户生成要求：给她穿上外套，别裸露").resultOptions;
+  assert.deepEqual(read({ explicitMinorEvidence: false, sensitiveContent: false }, coverUp).contentSafety, { sensitiveContent: false, explicitMinorEvidence: false });
+  assert.deepEqual(read({ explicitMinorEvidence: true, sensitiveContent: false }, coverUp).contentSafety, { sensitiveContent: false, explicitMinorEvidence: true });
+  // A child named by the user is counted in beside the model's answer.
+  assert.deepEqual(read({ explicitMinorEvidence: false, sensitiveContent: false }, build("小孩坐在树根上看书").resultOptions).contentSafety, { sensitiveContent: false, explicitMinorEvidence: true });
   // An answer without the field (an older prompt, a plain-text answer) reports nothing and is written as before.
   assert.equal(read(undefined).contentSafety, null);
   assert.equal(grokResponsesPublicResult({ output_text: five }, plain.resultOptions).contentSafety, null);
@@ -3997,7 +4005,6 @@ test("美工 role reference reports its in-call content grading beside the promp
   // Explicit minor evidence with sensitive content is refused for good: 422, one call, no layout repair.
   for (const [contentSafety, options] of [
     [{ explicitMinorEvidence: true, sensitiveContent: true }, plain.resultOptions],
-    [{ explicitMinorEvidence: true, sensitiveContent: false }, build("成年女性全裸站在窗边").resultOptions],
     [{ explicitMinorEvidence: false, sensitiveContent: true }, build("小孩坐在树根上看书").resultOptions]
   ]) {
     let calls = 0;
@@ -4007,8 +4014,11 @@ test("美工 role reference reports its in-call content grading beside the promp
     }), (error) => error.errorCode === "provider_content_policy" && error.statusCode === 422);
     assert.equal(calls, 1);
   }
-  // Model minor evidence pairs with a sensitive answer too, as in the H3 optimize.
-  assert.throws(() => grokResponsesPublicResult({ output_text: JSON.stringify({ prompt: five.replace("一名剑客站在雪地里。", "一名剑客全裸站在雪地里。"), negative_prompt: "模糊", contentSafety: { explicitMinorEvidence: true, sensitiveContent: false } }) }, plain.resultOptions),
+  // The answer's own wording pairs only with a child named by the user: everyday wording about a child in the picture
+  // (裸露的双腿 in shorts) is written when the model reports no sensitive content, and refused beside a named child.
+  const shorts = JSON.stringify({ prompt: five.replace("一名剑客站在雪地里。", "一个穿短裤的男孩在雪地里奔跑，裸露的双腿沾着雪。"), negative_prompt: "模糊", contentSafety: { explicitMinorEvidence: true, sensitiveContent: false } });
+  assert.match(grokResponsesPublicResult({ output_text: shorts }, plain.resultOptions).output_text, /裸露的双腿/);
+  assert.throws(() => grokResponsesPublicResult({ output_text: shorts }, build("小孩坐在树根上看书").resultOptions),
     (error) => error.errorCode === "provider_content_policy");
   // A layout repair keeps the strict object, so the second answer is graded the same way.
   let calls = 0;
