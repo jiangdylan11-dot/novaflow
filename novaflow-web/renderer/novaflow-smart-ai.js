@@ -1146,9 +1146,6 @@
         outline: none;
         box-sizing: border-box;
       }
-      .novaflow-smart-ai-textarea:focus {
-        border-color: rgba(35, 196, 137, 0.46);
-      }
       .novaflow-smart-ai-message {
         display: none;
         margin: 0 14px 8px;

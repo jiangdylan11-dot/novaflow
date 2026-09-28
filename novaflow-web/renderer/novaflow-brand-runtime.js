@@ -21498,13 +21498,7 @@
         box-shadow: none !important;
       }
       [data-novaflow-template-save-tile="1"]:hover,
-      [data-novaflow-template-save-tile="1"]:focus,
-      [data-novaflow-template-save-tile="1"]:focus-visible,
-      [data-novaflow-template-save-tile="1"]:focus-within,
-      [data-novaflow-template-card="1"]:hover,
-      [data-novaflow-template-card="1"]:focus,
-      [data-novaflow-template-card="1"]:focus-visible,
-      [data-novaflow-template-card="1"]:focus-within {
+      [data-novaflow-template-card="1"]:hover {
         border-color: rgba(32, 201, 151, 0.96) !important;
         box-shadow: none !important;
         outline: none !important;
@@ -25775,9 +25769,7 @@
         outline: 0 !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-preview-toggle-card="1"][data-novaflow-ribbon-preview-enabled="1"]:hover,
-      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-preview-toggle-card="1"][data-novaflow-ribbon-preview-enabled="1"]:focus-visible,
-      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-chain-toggle-card="1"][data-novaflow-ribbon-chain-enabled="1"]:hover,
-      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-chain-toggle-card="1"][data-novaflow-ribbon-chain-enabled="1"]:focus-visible {
+      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-chain-toggle-card="1"][data-novaflow-ribbon-chain-enabled="1"]:hover {
         box-shadow: inset 0 0 0 1px rgba(32, 201, 151, 0.24) !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-label="1"] {
@@ -27612,7 +27604,6 @@
         border-color: transparent !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-system-row="1"]:hover,
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-system-row="1"]:focus-within,
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-system-row="1"][data-novaflow-system-row-hover="1"] {
         border: 1px solid rgba(32, 201, 151, 0.96) !important;
         border-color: rgba(32, 201, 151, 0.96) !important;
@@ -28249,9 +28240,7 @@
         box-shadow: none !important;
         outline: 0 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-editor-card="1"]:hover,
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-editor-card="1"]:focus,
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-editor-card="1"]:focus-within {
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-editor-card="1"]:hover {
         border: 1px solid rgba(32, 201, 151, 0.82) !important;
         box-shadow: none !important;
         outline: 0 !important;
