@@ -809,7 +809,7 @@
     const context = state ? generationContext(state, generatorNodeId) : null
     const modules = dependencies()
     if (!state || !context?.generator) throw new Error('请先选择一个 UI 生成器节点')
-    if (typeof modules.assistantDialog?.open !== 'function') throw new Error('设计助手尚未就绪')
+    if (typeof modules.assistantDialog?.open !== 'function') throw new Error('AI 助手尚未就绪')
     const profile = generatorProfile(state, context.generator, false)
     return modules.assistantDialog.open({
       documentRef: payload.promptTextarea?.ownerDocument || root?.document,

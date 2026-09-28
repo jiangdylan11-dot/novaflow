@@ -178,11 +178,11 @@
     const normalizedEngine = normalizeEngine(engine)
     const limit = analysisReferenceLimit(normalizedEngine)
     if (source.length > limit) {
-      const label = normalizedEngine === 'local' ? '本地设计助手' : '云端设计助手'
+      const label = normalizedEngine === 'local' ? '本地模型' : '云端模型'
       throw new Error(`${label}一次最多分析 ${limit} 张参考图，请取消多余选择后再提交。`)
     }
     const references = source.map(normalizeReference).filter(Boolean)
-    if (references.length !== source.length) throw new Error('参考图数据无效，设计助手只接受 PNG、JPEG 或 WebP 图片。')
+    if (references.length !== source.length) throw new Error('参考图数据无效，AI 助手只接受 PNG、JPEG 或 WebP 图片。')
     return Object.freeze(references)
   }
 
@@ -330,7 +330,7 @@
   }
 
   function unwrapResult(result) {
-    if (!result || result.ok === false) throw new Error(text(result?.error) || '设计助手执行失败')
+    if (!result || result.ok === false) throw new Error(text(result?.error) || 'AI 助手执行失败')
     const data = result.result && typeof result.result === 'object'
       ? result.result
       : result.data && typeof result.data === 'object'
@@ -343,7 +343,7 @@
     const negativePrompt = text(
       result?.negativePrompt || result?.negative_prompt || data?.negativePrompt || data?.negative_prompt,
     )
-    if (!prompt) throw new Error('设计助手未返回可用的设计要求')
+    if (!prompt) throw new Error('AI 助手未返回可用的设计要求')
     return { prompt, negativePrompt }
   }
 
@@ -357,7 +357,7 @@
     const ms = timeoutForEngine(engine, timeoutMs)
     let timer = 0
     return new Promise((resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('设计助手请求超时，请稍后重试')), ms)
+      timer = setTimeout(() => reject(new Error('AI 助手请求超时，请稍后重试')), ms)
       Promise.resolve().then(task).then(resolve, reject).finally(() => clearTimeout(timer))
     })
   }
@@ -407,7 +407,7 @@
       : (references.length ? 'ui-design-reference' : (currentPrompt.trim() ? 'ui-design-optimize' : 'ui-design-create'))
 
     const call = engine === 'local' ? localApi(options, references) : grokApi(options, references)
-    if (typeof call !== 'function') throw new Error(engine === 'local' ? '本地设计助手未就绪' : '云端设计助手未就绪')
+    if (typeof call !== 'function') throw new Error(engine === 'local' ? '本地模型未就绪' : '云端模型未就绪')
 
     let result
     if (engine === 'grok') {
@@ -503,7 +503,7 @@
         const requestToken = ++token
         const result = await run(options)
         if (requestToken !== token) {
-          const error = new Error('设计助手请求已取消')
+          const error = new Error('AI 助手请求已取消')
           error.name = 'AbortError'
           throw error
         }

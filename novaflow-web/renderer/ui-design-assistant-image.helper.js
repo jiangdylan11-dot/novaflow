@@ -96,7 +96,7 @@
   async function normalizeDataUrlForGrok(value) {
     const dataUrl = text(value)
     if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(dataUrl)) {
-      throw new Error('设计助手只接受 PNG、JPEG 或 WebP 参考图')
+      throw new Error('AI 助手只接受 PNG、JPEG 或 WebP 参考图')
     }
     if (typeof root?.fetch !== 'function') throw new Error('当前环境不支持参考图读取')
     const response = await root.fetch(dataUrl)

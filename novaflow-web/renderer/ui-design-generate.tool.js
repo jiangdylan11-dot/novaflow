@@ -901,7 +901,7 @@
     if (!record.active) return false
     const callback = record.options.onOpenDesignAssistant
     if (typeof callback !== 'function') {
-      record.assistantError = '设计助手暂不可用'
+      record.assistantError = 'AI 助手暂不可用'
       record.assistantMessage = ''
       renderFields(record)
       return false
@@ -933,7 +933,7 @@
       }
       if (!Object.keys(applied).length) return false
       record.assistantError = ''
-      record.assistantMessage = '设计助手已应用'
+      record.assistantMessage = 'AI 助手已应用'
       notifyChange(record, 'designAssistant', applied)
       renderFields(record)
       return true
@@ -955,7 +955,7 @@
           if (value && typeof value === 'object') apply(value)
         }).catch((error) => {
           if (!record.active || record.generatorKey !== generatorKey) return
-          record.assistantError = String(error?.message || error || '设计助手打开失败')
+          record.assistantError = String(error?.message || error || 'AI 助手打开失败')
           record.assistantMessage = ''
           renderFields(record)
         })
@@ -965,25 +965,36 @@
       return true
     } catch (error) {
       if (!record.active || record.generatorKey !== generatorKey) return false
-      record.assistantError = String(error?.message || error || '设计助手打开失败')
+      record.assistantError = String(error?.message || error || 'AI 助手打开失败')
       record.assistantMessage = ''
       renderFields(record)
       return false
     }
   }
 
-  function promptEditorSection(record) {
-    const assistant = createElement(record.documentRef, 'button', {
+  // The same two buttons as 绘图's prompt bar (AI 助手 / 编辑): 24 high, a 16 outline icon drawn by the
+  // brand sheet from data-novaflow-prompt-action-kind, 11/500 grey, bare until the pointer lifts it.
+  function promptActionButton(record, label, kind, attributes) {
+    return createElement(record.documentRef, 'button', {
       type: 'button',
-      text: '设计助手',
-      'data-novaflow-ui-design-design-assistant': '1',
+      text: label,
+      'data-novaflow-prompt-action-button': '1',
+      'data-novaflow-prompt-action-kind': kind,
+      'data-novaflow-canvas-bar-button': 'idle',
+      ...attributes,
       style: {
-        height: '26px', padding: '0 9px', borderRadius: '6px',
-        border: '1px solid rgba(34,197,139,0.34)', background: 'rgba(34,197,139,0.1)',
-        color: '#6ee7b7', fontSize: '9px', fontWeight: '850',
-        cursor: 'pointer',
+        height: '24px', minHeight: '24px', maxHeight: '24px', padding: '3px 7px', gap: '7px', minWidth: '0',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
+        border: '1px solid transparent', borderRadius: '7px', boxShadow: 'none',
+        background: 'var(--nf-cb-hover-bg, transparent)', color: 'var(--nf-cb-hover-fg, #9f9f9f)',
+        fontSize: '11px', fontWeight: '500', lineHeight: '1', whiteSpace: 'nowrap', boxSizing: 'border-box', cursor: 'pointer',
       },
     })
+  }
+
+  function promptEditorSection(record) {
+    const assistant = promptActionButton(record, 'AI 助手', 'assistant', { 'data-novaflow-ui-design-design-assistant': '1' })
+    const edit = promptActionButton(record, '编辑', 'edit', { 'data-novaflow-ui-design-prompt-edit': '1', title: '编辑完整设计要求' })
 
     const positive = promptTextarea(
       record,
@@ -998,13 +1009,22 @@
       event?.stopPropagation?.()
       openDesignAssistant(record, positive)
     })
+    // 编辑 opens the same full-prompt editor as 绘图; its 确认编辑 writes back through input/change.
+    edit.addEventListener('click', (event) => {
+      event?.preventDefault?.()
+      event?.stopPropagation?.()
+      const editor = globalThis.__NovaFlowSmartAI?.openPromptEditor
+      if (typeof editor !== 'function' || editor(positive, '设计要求') === false) positive.focus?.()
+    })
     const feedback = record.assistantError || record.assistantMessage
     const children = [
       createElement(record.documentRef, 'div', {
         style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minWidth: '0' },
       }, [
         createElement(record.documentRef, 'span', { text: '设计要求', style: { color: 'rgba(255,255,255,0.78)', fontSize: '10px', fontWeight: '850' } }),
-        assistant,
+        createElement(record.documentRef, 'div', {
+          style: { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: '0 0 auto' },
+        }, [assistant, edit]),
       ]),
       positive,
     ]

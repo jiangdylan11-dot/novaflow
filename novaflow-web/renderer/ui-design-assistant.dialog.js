@@ -104,7 +104,7 @@
     const wasLimitError = Boolean(record.referenceLimitError)
     record.referenceLimitError = selectedCount > limit
     if (record.referenceLimitError) {
-      const label = record.engine === 'local' ? '本地设计助手' : '云端设计助手'
+      const label = record.engine === 'local' ? '本地模型' : '云端模型'
       setStatus(record, `${label}最多分析 ${limit} 张参考图；当前已选择 ${selectedCount} 张，请取消多余选择。`, true)
     } else if (wasLimitError) {
       setStatus(record, '')
@@ -120,7 +120,7 @@
     const limit = referenceLimit(record)
     record.referencesHost.appendChild(element(record.documentRef, 'div', {
       'data-novaflow-ui-design-assistant-reference-note': '1',
-      text: `${record.engine === 'local' ? '本地设计助手' : '云端设计助手'}最多分析 ${limit} 张。未勾选的连接图仍会参与最终 UI 生成，只是不用于本次设计助手分析。`,
+      text: `${record.engine === 'local' ? '本地模型' : '云端模型'}最多分析 ${limit} 张。未勾选的连接图仍会参与最终 UI 生成，只是不用于本次设计助手分析。`,
       style: { color: 'rgba(255,255,255,0.5)', fontSize: '10px', lineHeight: '1.5' },
     }))
     if (!record.references.length) {
@@ -139,7 +139,7 @@
         const current = selectedReferences(record).length
         if (checkbox.checked && current >= referenceLimit(record)) {
           checkbox.checked = false
-          setStatus(record, `${record.engine === 'local' ? '本地设计助手' : '云端设计助手'}一次最多分析 ${referenceLimit(record)} 张参考图。`, true)
+          setStatus(record, `${record.engine === 'local' ? '本地模型' : '云端模型'}一次最多分析 ${referenceLimit(record)} 张参考图。`, true)
           return
         }
         reference.selected = checkbox.checked
@@ -223,7 +223,7 @@
     }
     const workflow = workflowFor(record.options)
     if (!workflow?.createSession || !record.session) {
-      setStatus(record, '设计助手工作流未就绪', true)
+      setStatus(record, 'AI 助手工作流未就绪', true)
       return false
     }
     record.pending = true
@@ -294,7 +294,7 @@
       return true
     } catch (error) {
       if (active === record && error?.novaflowStopped) setStatus(record, '任务已中止')
-      else if (active === record && error?.name !== 'AbortError') setStatus(record, error?.message || error || '设计助手执行失败', true)
+      else if (active === record && error?.name !== 'AbortError') setStatus(record, error?.message || error || 'AI 助手执行失败', true)
       return false
     } finally {
       record.stopRun = null
@@ -427,14 +427,14 @@
     close('replace')
     const documentRef = options.documentRef || root?.document
     const workflow = workflowFor(options)
-    if (!documentRef?.createElement || !workflow?.createSession) throw new Error('设计助手工作流或文档环境未就绪')
+    if (!documentRef?.createElement || !workflow?.createSession) throw new Error('AI 助手工作流或文档环境未就绪')
 
     const host = element(documentRef, 'div', {
       [ROOT_ATTRIBUTE]: '1',
       'data-novaflow-runtime-ignore': '1',
       role: 'dialog',
       'aria-modal': 'true',
-      'aria-label': '设计助手',
+      'aria-label': 'AI 助手',
       style: {
         position: 'fixed', inset: '0', zIndex: '2147483645', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '24px', background: 'rgba(0,0,0,0.62)', color: '#fff', boxSizing: 'border-box', pointerEvents: 'auto',
@@ -449,7 +449,7 @@
       },
     })
     const closeButton = element(documentRef, 'button', {
-      type: 'button', text: '×', 'aria-label': '关闭设计助手', 'data-nf-dialog': 'close',
+      type: 'button', text: '×', 'aria-label': '关闭 AI 助手', 'data-nf-dialog': 'close',
       style: { border: '0', background: 'transparent', color: 'rgba(255,255,255,0.68)', fontSize: '20px', cursor: 'pointer' },
     })
     closeButton.addEventListener('click', () => { if (!active?.pending) close('close') })
@@ -461,7 +461,7 @@
       style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '13px 15px', borderBottom: '1px solid rgba(255,255,255,0.08)' },
     }, [
       element(documentRef, 'div', {}, [
-        element(documentRef, 'div', { text: '设计助手', 'data-nf-dialog': 'title', style: { fontSize: '14px', fontWeight: '600' } }),
+        element(documentRef, 'div', { text: 'AI 助手', 'data-nf-dialog': 'title', style: { fontSize: '14px', fontWeight: '600' } }),
         contextSummary,
       ]),
       closeButton,
