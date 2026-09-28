@@ -1499,7 +1499,7 @@
     if (root instanceof HTMLElement && root.parentElement) root.parentElement.removeChild(root);
   }
 
-  function openSmartAiPromptEditor(control, titleText = "提示词") {
+  function openSmartAiPromptEditor(control, titleText = "提示词", options = {}) {
     if (!isPromptTextControl(control) || !document.body) return false;
     const existing = document.querySelector('[data-novaflow-smart-ai-prompt-editor="1"]');
     if (existing instanceof HTMLElement) closeSmartAiPromptEditor(existing);
@@ -1641,7 +1641,9 @@
       if (event.key === "Escape") close();
     });
     confirmButton.addEventListener("click", () => {
-      setTextareaValue(control, textarea.value);
+      // A page that rebuilt its field while the editor was open hands over the field that replaced it.
+      const target = control.isConnected ? control : (typeof options.resolveTarget === "function" && options.resolveTarget()) || control;
+      setTextareaValue(target, textarea.value);
       close();
     });
     window.setTimeout(() => {
@@ -5170,8 +5172,8 @@
         return compileH3ForGeneration({ ...options, mode: "multi_reference" });
       },
       // The full-prompt editor behind 编辑, shared with the UI 生成器's 设计要求.
-      openPromptEditor(control, title) {
-        return openSmartAiPromptEditor(control, title || "提示词");
+      openPromptEditor(control, title, options) {
+        return openSmartAiPromptEditor(control, title || "提示词", options || {});
       },
       version: VERSION,
       refresh: mountSmartAiButtons,

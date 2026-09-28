@@ -32,7 +32,7 @@ const byAttr = (root, name, value) => walk(root).find((node) => node.getAttribut
 
 function mountTool() {
   const opened = [];
-  const context = { module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, __NovaFlowSmartAI: { openPromptEditor: (control, title) => { opened.push({ control, title }); return true; } } };
+  const context = { module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, __NovaFlowSmartAI: { openPromptEditor: (control, title, options) => { opened.push({ control, title, options }); return true; } } };
   context.globalThis = context;
   vm.runInNewContext(readFileSync(new URL('../../renderer/ui-design-generate.tool.js', import.meta.url), 'utf8'), context);
   const tool = context.module.exports;
@@ -72,6 +72,7 @@ test('「编辑」 opens the shared full-prompt editor on 设计要求; 「AI �
   assert.equal(opened.length, 1);
   assert.equal(opened[0].control, prompt);
   assert.equal(opened[0].title, '设计要求');
+  assert.equal(typeof opened[0].options.resolveTarget, 'function');
   byAttr(host, 'data-novaflow-ui-design-design-assistant', '1').dispatchEvent({ type: 'click' });
   assert.equal(assistantOpenings.length, 1);
   assert.equal(assistantOpenings[0].promptTextarea, prompt);
@@ -79,8 +80,19 @@ test('「编辑」 opens the shared full-prompt editor on 设计要求; 「AI �
 
 test('the overlay exposes the editor, and the dialog is titled 「AI 助手」', () => {
   const overlay = readFileSync(new URL('../../renderer/novaflow-smart-ai.js', import.meta.url), 'utf8');
-  assert.match(overlay, /openPromptEditor\(control, title\) \{\s*return openSmartAiPromptEditor\(control, title \|\| "提示词"\);/);
+  assert.match(overlay, /openPromptEditor\(control, title, options\) \{\s*return openSmartAiPromptEditor\(control, title \|\| "提示词", options \|\| \{\}\);/);
+  // 确认编辑 writes into the field that replaced a rebuilt one.
+  assert.match(overlay, /const target = control\.isConnected \? control : \(typeof options\.resolveTarget === "function" && options\.resolveTarget\(\)\) \|\| control;/);
   const dialog = readFileSync(new URL('../../renderer/ui-design-assistant.dialog.js', import.meta.url), 'utf8');
   assert.match(dialog, /text: 'AI 助手', 'data-nf-dialog': 'title'/);
   assert.doesNotMatch(dialog, /'设计助手'/);
+});
+
+test('pressing a button keeps 设计要求 focused, so its save cannot rebuild the node under the click', () => {
+  const { host } = mountTool();
+  for (const attr of ['data-novaflow-ui-design-design-assistant', 'data-novaflow-ui-design-prompt-edit']) {
+    let prevented = false;
+    byAttr(host, attr, '1').dispatchEvent({ type: 'mousedown', preventDefault() { prevented = true; } });
+    assert.equal(prevented, true, attr);
+  }
 });

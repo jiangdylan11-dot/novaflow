@@ -1009,12 +1009,22 @@
       event?.stopPropagation?.()
       openDesignAssistant(record, positive)
     })
-    // 编辑 opens the same full-prompt editor as 绘图; its 确认编辑 writes back through input/change.
+    // Pressing either button keeps the text box focused: its blur would save 设计要求 and rebuild the
+    // node under the pointer, so the click that follows would land on nothing.
+    for (const button of [assistant, edit]) button.addEventListener('mousedown', (event) => event?.preventDefault?.())
+    // 编辑 opens the same full-prompt editor as 绘图; its 确认编辑 writes back through input/change, into
+    // the 设计要求 field that replaced this one if the node was rebuilt meanwhile.
     edit.addEventListener('click', (event) => {
       event?.preventDefault?.()
       event?.stopPropagation?.()
       const editor = globalThis.__NovaFlowSmartAI?.openPromptEditor
-      if (typeof editor !== 'function' || editor(positive, '设计要求') === false) positive.focus?.()
+      const nodeId = positive.closest?.('[data-novaflow-ui-design-generator-controls]')?.getAttribute('data-novaflow-ui-design-generator-controls')
+      const resolveTarget = () => {
+        if (!nodeId || typeof record.documentRef.querySelector !== 'function') return null
+        const hostSelector = '[data-novaflow-ui-design-generator-controls="' + String(nodeId).replace(/["\\]/g, '\\$&') + '"]'
+        return record.documentRef.querySelector(hostSelector + ' [data-novaflow-ui-design-prompt-field="prompt"]')
+      }
+      if (typeof editor !== 'function' || editor(positive, '设计要求', { resolveTarget }) === false) positive.focus?.()
     })
     const feedback = record.assistantError || record.assistantMessage
     const children = [
