@@ -785,12 +785,53 @@ class ArtRoleReferenceUserFitTest(unittest.TestCase):
         # Night next to the picture's white backdrop, or a dropped action, is asked about once.
         self.assertIn('[环境背景] 还是图片原来的纯色背景', service.art_requirement_unfit(requirement, fit))
         self.assertEqual(service.art_requirement_unfit(requirement, fit.replace('纯白色背景', '夜色中的古城街道')), '')
-        self.assertIn('漏写了视频描述里的“看向”', service.art_requirement_unfit('角色看向镜头', '[主体物品]\n武将站立'))
+        self.assertIn('漏写了用户写的“看向”：请在[主体物品]里写出“看向”', service.art_requirement_unfit('角色看向镜头', '[主体物品]\n武将站立'))
+        # [拍摄参数]'s "正面视角" is the camera, not the subject looking; an action the user rules out is none.
+        five = '[风格设定]\n国潮插画\n\n[主体物品]\n武将站在大厅中央\n\n[环境背景]\nT台秀场大厅\n\n[光线与色彩]\n顶光\n\n[拍摄参数]\n全身景别，正面视角，视线平视'
+        self.assertIn('“看向”', service.art_requirement_unfit('图1的角色站在图2的场景中央，看向镜头', five))
+        self.assertEqual(service.art_requirement_unfit('让角色不要拿剑，双手自然下垂', five), '')
+        # The user's palette and a style name stay in [风格设定]; the user's choice of an either/or is kept.
+        # A background there goes even in the user's own words: [环境背景] has the scene.
+        self.assertIn('[风格设定]\n国潮插画风格，线条硬朗\n', service.art_role_reference_user_fit(text.replace('背景为纯白', '背景为雪夜古城街道的冷色调灯光'), '把背景换成雪夜古城街道，冷色调灯光'))
+        for style in ['赛博朋克风格，霓虹配色', '厚涂光影的油画风格，笔触厚重']:
+            self.assertIn('[风格设定]\n' + style + '\n', service.art_role_reference_user_fit(text.replace('国潮插画风格，线条硬朗，上色采用高饱和度的红金配色，背景为纯白，整体氛围充满热血', style), '改成赛博朋克风格，霓虹配色'))
+        lit = service.art_role_reference_user_fit(text.replace('月光或环境光作为辅助光源', '月光或灯笼的光照亮人物'), requirement)
+        self.assertIn('灯笼的光照亮人物', lit)
+        self.assertNotIn('月光的光', lit)
+        # A sword the answer lets go of for the new lantern is held again; one background colour and one mood.
+        swapped = text.replace('武将右手持一盏发光的灯笼，左手握剑', '武将右手持一盏发光的灯笼，左手前伸似欲挥剑').replace(
+            '纯白色背景', '纯黑夜空背景，整体氛围静谧而神秘').replace('夜晚，主光来自灯笼', '夜晚，主光来自灯笼，背景为深蓝与墨黑，营造出威严')
+        fit = service.art_role_reference_user_fit(swapped, requirement)
+        self.assertIn('武将一只手持一盏发光的灯笼，另一只手仍握着剑', fit)
+        self.assertIn('[环境背景]\n纯黑夜空背景\n', fit)
+        self.assertNotIn('深蓝与墨黑', fit)
         request = service.art_role_reference_request(['subject'], requirement)
         self.assertIn('只写画法，背景、光线、颜色和氛围写在后面几段', request)
         self.assertIn('时间是夜晚，环境也是夜晚的样子', request)
         self.assertIn('视角照图中主体的朝向写', request)
         self.assertIn('新拿的东西拿在图中空着的手里', request)
+        self.assertIn('身边飘着或环绕的物件和特效', request)
+        self.assertIn('图中主体手里原来拿着的道具照样写出、继续拿着，用户要求新拿的东西拿在另一只手里', request)
+        self.assertNotIn('原来拿着的道具照样写出', service.art_role_reference_request(['subject'], '夜晚'))
+
+    def test_the_reverse_fits_the_answer_and_asks_about_a_dropped_action_once(self):
+        answer = ('[风格设定]\n国潮插画风格，背景为纯白\n\n[主体物品]\n武将右手持一盏发光的灯笼，左手前伸似欲挥剑\n\n[环境背景]\n夜色中的古城街道\n\n'
+                  '[光线与色彩]\n夜晚，主光来自灯笼\n\n[拍摄参数]\n全身景别，正面视角\n检查：人物=有；未成年=无；敏感=无')
+        for requirement, answers, calls_made in [('让角色手持一盏发光的灯笼，夜晚', [answer], 1),
+                                                 ('让角色手持一盏发光的灯笼，夜晚，看向镜头', [answer, answer.replace('全身景别', '武将看向镜头，全身景别').replace(
+                                                     '左手前伸似欲挥剑', '左手握剑，看向镜头')], 2)]:
+            with self.subTest(requirement=requirement):
+                assistant, prompts, replies = service.PromptAssistant(), [], iter(answers)
+                assistant.generate = lambda prompt, **kwargs: prompts.append(prompt) or next(replies)
+                result = assistant.reverse_art_role_prompt([{'tensor': 'image', 'role': 'subject'}], '用户补充要求：' + requirement, 'roleReference')
+                self.assertEqual(len(prompts), calls_made)
+                self.assertNotRegex(result['prompt'], '[左右]手|背景为纯白')
+                self.assertIn('一只手持一盏发光的灯笼，另一只手', result['prompt'])
+                if calls_made == 2:
+                    self.assertIn('漏写了用户写的“看向”', prompts[1])
+                    self.assertIn('看向镜头', result['prompt'])
+                else:
+                    self.assertIn('另一只手仍握着剑', result['prompt'])
 
 
 if __name__ == '__main__':

@@ -238,6 +238,30 @@ class StyleTechniqueTest(unittest.TestCase):
         self.assertEqual(self.observe('技法：粗犷墨线勾边、卷云纹金色勾线、纸张纹理、暖黄色调、熊猫黑白分明'),
                          ['粗犷墨线勾边', '纸张纹理', '暖黄色调'])
 
+    def test_a_missing_user_action_is_asked_about_once(self):
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', GIRL, '黑短发')], 'summary': '<Subject 1> 和 <Subject 2> 见面'}
+        lost = ('事件：<Subject 1> 和 <Subject 2> 相遇\n画风：写实照片\n场景：公园\n动作1：<Subject 1> 走向 <Subject 2>\n动作2：<Subject 2> 停下脚步\n'
+                '镜头：固定\n声音：脚步声\n配乐：无')
+        kept = lost.replace('动作2：<Subject 2> 停下脚步', '动作2：<Subject 1> 和 <Subject 2> 面对面抱拳行礼')
+        for answers, labels, bowed in [((lost, kept), ['minimaxH3ReferenceScene', 'minimaxH3ReferenceSceneRepair'], True),
+                                       ((lost, lost), ['minimaxH3ReferenceScene', 'minimaxH3ReferenceSceneRepair'], False),
+                                       ((kept,), ['minimaxH3ReferenceScene'], True)]:
+            with self.subTest(answers=len(answers), bowed=bowed):
+                calls, replies = [], iter(answers)
+
+                class FakeAssistant:
+                    write = scope['write_h3_reference_scene']
+
+                    def generate(self, prompt, **kwargs):
+                        calls.append((kwargs.get('trace_label'), prompt))
+                        return next(replies)
+                result = FakeAssistant().write(dict({'tasks': ['reference generation'], 'description': '计划描述', 'soundscape': 'N/A', 'music': 'N/A'}, **plan),
+                                               '<Picture 1> 和 <Picture 2> 面对面抱拳行礼', '', 5, False, {}, {}, {})
+                self.assertEqual([label for label, _ in calls], labels)
+                if len(calls) > 1:
+                    self.assertIn('漏写了用户写的“面对面”：请在动作里写出“面对面”', calls[1][1])
+                self.assertEqual('抱拳行礼' in result['description'], bowed)
+
     def test_an_unusable_or_failed_answer_adds_nothing(self):
         self.assertEqual(self.observe('动漫插画'), [])
         self.assertEqual(self.observe(RuntimeError('model busy')), [])

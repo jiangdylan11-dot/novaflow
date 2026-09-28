@@ -64,6 +64,8 @@ class TranslationTest(unittest.TestCase):
         self.assertIn('1.500 seconds', pair['modelPrompt'])
         self.assertIn('[Shot 1] <Subject 1> rotates as in the source video', pair['modelPrompt'])
         self.assertIn('把 <Video 1> 中的金币替换成 <Subject 1>', pair['displayPrompt'])
+        # Each retained item says which shots show it (official ref §4); one no shot shows says nothing.
+        self.assertIn('<Subject 1> (appears in [Shot 1]): attribute_transfer - Keep the image appearance.\n<Video 1>: partially_preserved', pair['modelPrompt'])
 
     def test_sentence_openers_join_their_clause_and_quoted_sounds_are_translated(self):
         # "3D" and a leading tag used to stay outside the translated clause
@@ -113,6 +115,20 @@ class TranslationTest(unittest.TestCase):
                 return 'Coordinated action' if 'Input JSON:\n' not in request else super().generate(request, **kwargs)
         pair = json.loads(CapitalizingAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)['positivePrompt'])
         self.assertIn('Appearance from <Picture 1> with slight coordinated action of the arms.', pair['modelPrompt'])
+        # "壶口" came back as "Kuokou": the phrase is asked again with the sentence it is in.
+        translations['外观来自 TOKEN_0，背着绿色双肩包。'] = 'Appearance from TOKEN_0 with the 壶口 facing the lens.'
+        asked = []
+
+        class RomanizingAssistant(FakeAssistant):
+            def generate(self, request, **kwargs):
+                if 'Input JSON:\n' in request:
+                    return super().generate(request, **kwargs)
+                asked.append(request)
+                return 'Kuokou' if len(asked) == 1 else 'spout'
+        pair = json.loads(RomanizingAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)['positivePrompt'])
+        self.assertIn('Appearance from <Picture 1> with the spout facing the lens.', pair['modelPrompt'])
+        self.assertIn('as it is used in this sentence', asked[1])
+        self.assertIn('外观来自 TOKEN_0，背着绿色双肩包。', asked[1])
 
     def test_an_opening_tag_folded_into_its_noun_is_put_back(self):
         # Qwen3 read "<Subject 1> 三个石板" as one noun on every attempt and the
