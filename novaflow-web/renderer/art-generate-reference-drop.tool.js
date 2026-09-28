@@ -5,10 +5,14 @@
   const REFERENCE_SELECTOR = '[data-ais-import^="art_reference_"]';
   const WORKSPACE_SELECTOR = "#novaflow-art-generate-workspace";
   const DRAG_ACTIVE_ATTR = "data-novaflow-art-generate-ref-drag";
+  const DRAG_GHOST_SIZE = 48;
+  const DRAG_GHOST_HOST_ATTR = "data-novaflow-drag-ghost-host";
 
   let activeResourceId = "";
   let controller = null;
   let captureBound = false;
+  let ghostCaptureBound = false;
+  let ghostCanvas = null;
 
   function stringValue(value) {
     return value == null ? "" : String(value);
@@ -243,7 +247,118 @@
     Promise.resolve(result).catch(reportError);
   }
 
+  // The browser's default drag ghost is the whole card (or the picture itself, up to 200px) anchored
+  // at the grab point, so it looks big and off the cursor. Every drag of a picture, or of a card that
+  // holds one, gets the same small thumbnail centred under the cursor instead.
+  function ensureDragGhostCanvas() {
+    const doc = root.document;
+    if (ghostCanvas && ghostCanvas.isConnected) return ghostCanvas;
+    if (!doc?.body || typeof doc.createElement !== "function") return null;
+    const host = doc.createElement("div");
+    host.setAttribute(DRAG_GHOST_HOST_ATTR, "1");
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = `position:fixed;left:-1000px;top:-1000px;width:${DRAG_GHOST_SIZE}px;height:${DRAG_GHOST_SIZE}px;pointer-events:none;overflow:hidden;`;
+    const dpr = Math.max(1, Math.min(3, Number(root.devicePixelRatio) || 1));
+    const canvas = doc.createElement("canvas");
+    canvas.width = Math.round(DRAG_GHOST_SIZE * dpr);
+    canvas.height = Math.round(DRAG_GHOST_SIZE * dpr);
+    canvas.style.cssText = `display:block;width:${DRAG_GHOST_SIZE}px;height:${DRAG_GHOST_SIZE}px;`;
+    host.appendChild(canvas);
+    doc.body.appendChild(host);
+    ghostCanvas = canvas;
+    return canvas;
+  }
+
+  function dragPreviewMedia(target) {
+    const ElementCtor = root.Element;
+    if (typeof ElementCtor !== "function" || !(target instanceof ElementCtor)) return null;
+    if (target.matches("img, video, canvas")) return target;
+    const source = target.closest('[draggable="true"]');
+    return source ? source.querySelector("img, video, canvas") : null;
+  }
+
+  function dragMediaSize(media) {
+    if (typeof root.HTMLImageElement === "function" && media instanceof root.HTMLImageElement) {
+      return media.complete && media.naturalWidth ? [media.naturalWidth, media.naturalHeight] : null;
+    }
+    if (typeof root.HTMLVideoElement === "function" && media instanceof root.HTMLVideoElement) {
+      return media.readyState >= 2 && media.videoWidth ? [media.videoWidth, media.videoHeight] : null;
+    }
+    if (typeof root.HTMLCanvasElement === "function" && media instanceof root.HTMLCanvasElement) {
+      return media.width && media.height ? [media.width, media.height] : null;
+    }
+    return null;
+  }
+
+  function traceRoundedSquare(ctx, size, radius) {
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(size - radius, 0);
+    ctx.arcTo(size, 0, size, radius, radius);
+    ctx.lineTo(size, size - radius);
+    ctx.arcTo(size, size, size - radius, size, radius);
+    ctx.lineTo(radius, size);
+    ctx.arcTo(0, size, 0, size - radius, radius);
+    ctx.lineTo(0, radius);
+    ctx.arcTo(0, 0, radius, 0, radius);
+    ctx.closePath();
+  }
+
+  function paintDragGhost(canvas, media) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    const size = canvas.width;
+    const scale = size / DRAG_GHOST_SIZE;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.globalAlpha = 0.92;
+    traceRoundedSquare(ctx, size, 6 * scale);
+    ctx.fillStyle = "#1f1f1f";
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    const mediaSize = dragMediaSize(media);
+    if (mediaSize) {
+      const inner = size - 6 * scale;
+      const fit = Math.min(inner / mediaSize[0], inner / mediaSize[1]);
+      const width = mediaSize[0] * fit;
+      const height = mediaSize[1] * fit;
+      try {
+        ctx.drawImage(media, (size - width) / 2, (size - height) / 2, width, height);
+      } catch (_) {}
+    }
+    ctx.restore();
+    traceRoundedSquare(ctx, size, 6 * scale);
+    ctx.lineWidth = scale;
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.stroke();
+    return true;
+  }
+
+  function decorateDragGhost(event) {
+    const dataTransfer = event?.dataTransfer;
+    if (!dataTransfer || typeof dataTransfer.setDragImage !== "function") return false;
+    const media = dragPreviewMedia(event.target);
+    if (!media) return false;
+    const canvas = ensureDragGhostCanvas();
+    if (!canvas) return false;
+    try {
+      if (!paintDragGhost(canvas, media)) return false;
+      dataTransfer.setDragImage(canvas, DRAG_GHOST_SIZE / 2, DRAG_GHOST_SIZE / 2);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function bindDragGhostCapture() {
+    if (ghostCaptureBound || !root.document?.addEventListener) return;
+    ghostCaptureBound = true;
+    root.document.addEventListener("dragstart", decorateDragGhost, true);
+  }
+
   function bindCapture() {
+    bindDragGhostCapture();
     if (captureBound || !root.document?.addEventListener) return;
     captureBound = true;
     root.document.addEventListener("dragenter", handleDragEnterOrOver, true);
@@ -257,11 +372,15 @@
     bindCapture();
   }
 
+  bindDragGhostCapture();
+
   root.NovaFlowArtGenerateReferenceDropTool = Object.freeze({
     RESOURCE_MIME,
+    DRAG_GHOST_SIZE,
     configure,
     beginResourceDrag,
     endResourceDrag,
+    decorateDragGhost,
     syncSourceResourceCards,
     filesFromDataTransfer,
     isSupportedImageFile,
