@@ -18641,6 +18641,10 @@ class PromptAssistant:
                             static_result.get("richPromptFallback")
                         ),
                     })
+            elif purpose == "roleReference":
+                # 美工 AI 助手 with one reference: the same five-section call reads the picture
+                # (the subject) together with the user's text.
+                description = output = self.reverse_art_role_prompt(image_items, requirements, purpose)
             else:
                 prompt = (
                     "任务：根据图片内容写一段适合图像生成模型使用的中文自然语言提示词。\n\n"

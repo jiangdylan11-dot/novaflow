@@ -150,10 +150,12 @@
       userIntent,
       imageCount,
       hasReferences,
-      route: imageCount === 0 ? "optimize" : imageCount === 1 ? "static_reverse" : "role_reference",
+      // One AI 助手 action: any number of references is one role-reference call that reads the
+      // pictures together with the user's text; a lone picture is the subject.
+      route: imageCount === 0 ? "optimize" : "role_reference",
       purpose: imageCount === 0
         ? (source.hadInitialPrompt ? "optimize" : "create")
-        : imageCount === 1 ? "static-image-reverse" : "roleReference",
+        : "roleReference",
       generationMode: hasReferences ? "img2img" : "txt2img",
       task: inferTask(userIntent, imageCount),
       style: inferredStyle === "original" && referencePlan.roles.includes("style") ? "reference" : inferredStyle,

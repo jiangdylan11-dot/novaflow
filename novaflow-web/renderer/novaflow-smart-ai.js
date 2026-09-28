@@ -3041,11 +3041,16 @@
   function deriveArtAutoIntent() {
     const workflow = window.NovaFlowSmartAiArtAutoIntent;
     const fallbackRoles = state.images.map((_, index) => index === 0 ? "subject" : (index === 1 ? "style" : "background"));
+    // With references the request carries the prompt box and 补充要求 together, so the
+    // roles are read from the same words ("图2作为背景参考" works in either box).
+    const userIntent = state.images.length
+      ? buildArtReferenceUserText(getPromptTextareasFromContext(state.context).positive?.value, state.requirements)
+      : String(state.requirements || "").trim();
     const fallback = {
       imageCount: state.images.length,
       hasReferences: state.images.length > 0,
-      route: state.images.length ? (state.images.length === 1 ? "static_reverse" : "role_reference") : "optimize",
-      purpose: state.images.length ? (state.images.length === 1 ? "static-image-reverse" : "roleReference") : (state.hadInitialPrompt ? "optimize" : "create"),
+      route: state.images.length ? "role_reference" : "optimize",
+      purpose: state.images.length ? "roleReference" : (state.hadInitialPrompt ? "optimize" : "create"),
       generationMode: state.images.length ? "img2img" : "txt2img",
       task: state.images.length > 1 ? "combine" : state.images.length ? "preserve" : "create",
       style: state.images.length ? "original" : "auto",
@@ -3054,7 +3059,7 @@
       roles: fallbackRoles,
       unresolvedRoleIndices: state.images.length > 1 ? state.images.slice(1).map((_, index) => index + 1) : [],
       roleConfidence: state.images.length > 1 ? "low" : "high",
-      userIntent: String(state.requirements || "").trim(),
+      userIntent,
       canSubmit: state.images.length > 0
         || Boolean(String(state.requirements || "").trim())
         || Boolean(state.hadInitialPrompt)
@@ -3063,7 +3068,7 @@
     try {
       return workflow.derive({
         imageCount: state.images.length,
-        userIntent: state.requirements,
+        userIntent,
         hadInitialPrompt: state.hadInitialPrompt,
         roleOverrides: state.referenceRoleOverrides
       });
@@ -4064,21 +4069,20 @@
     };
   }
 
-  // 美工 with references: the image routes read the prompt box and 补充要求 together.
-  // The cap keeps every requirement built from it (prefixes and the fusion wording
-  // included) inside the 2000 characters the transports accept.
-  const ART_REFERENCE_USER_TEXT_MAX = 1600;
+  // 美工 with references: one call reads the pictures with the prompt box and 补充要求.
+  // The text is never cut; past this many characters (labels and the
+  // '用户生成要求：' prefix still fit in the 2000 the transports accept) the dialog
+  // asks for a shorter text instead.
+  const ART_REFERENCE_USER_TEXT_MAX = 1900;
   function buildArtReferenceUserText(currentPrompt, requirements) {
     const box = String(currentPrompt || "").trim();
     const extra = String(requirements || "").trim();
-    if (!box || !extra) return (box || extra).slice(0, ART_REFERENCE_USER_TEXT_MAX);
-    const extraLine = `用户补充要求：${extra}`.slice(0, ART_REFERENCE_USER_TEXT_MAX - 16);
-    const boxLine = `用户提示词：${box}`.slice(0, ART_REFERENCE_USER_TEXT_MAX - extraLine.length - 1);
-    return `${boxLine}\n${extraLine}`;
+    if (!box || !extra) return box || extra;
+    return `用户提示词：${box}\n用户补充要求：${extra}`;
   }
 
   function buildStaticArtReverseRequirements(userRequirements) {
-    const user = String(userRequirements || "").trim().slice(0, ART_REFERENCE_USER_TEXT_MAX);
+    const user = String(userRequirements || "").trim().slice(0, 900);
     return user
       ? `用户补充要求（只作为最终提示词约束，不作为图片可见事实）：${user}`
       : "";
@@ -4219,7 +4223,9 @@
       && isReverseRequest
       && artIntent?.route === "static_reverse";
     const usesStaticImageReverse = isArt && (isReverseRequest || isSingleMainPreserveReverse);
-    const usesStaticVisualV2 = usesStaticImageReverse && state.images.length === 1;
+    // The dialog no longer picks the static route (a lone reference goes to role reference);
+    // the static visual-v2 handling below stays for that route only.
+    const usesStaticVisualV2 = isSingleMainPreserveReverse && state.images.length === 1;
     const analysisNsfw = usesStaticVisualV2 ? true : (isArt ? readArtGenerateNsfw(state.context?.button) : false);
     const roleAwareReferences = isArt
       && isReverseRequest
@@ -4236,6 +4242,18 @@
     }
     if (!currentPrompt && !String(state.requirements || "").trim()) {
       state.message = SMART_AI_TEXT_REQUIRED_MESSAGE;
+      renderDialog();
+      return;
+    }
+    if (roleAwareReferences && currentPrompt.length + String(state.requirements || "").trim().length > ART_REFERENCE_USER_TEXT_MAX) {
+      state.message = `提示词和补充要求合计超过 ${ART_REFERENCE_USER_TEXT_MAX} 字，请精简后再试`;
+      renderDialog();
+      return;
+    }
+    // Explicit minor wording together with sensitive wording never leaves the UI with pictures attached.
+    if (roleAwareReferences && smartAiRequirementsContainExplicitMinorTerms(prompt)
+      && smartAiRequirementsContainSensitiveIntent(prompt)) {
+      state.message = "检测到明确未成年人内容与敏感意图同时存在，已阻止处理";
       renderDialog();
       return;
     }
@@ -4311,7 +4329,10 @@
       miniMaxH3ReversePrepared = isMiniMaxH3ReverseRequest
         ? await prepareMiniMaxH3ReverseRequest(prompt, requirements)
         : null;
-      const protectPrompt = (isOptimizeRequest || (isArt && isReverseRequest)) && !isMiniMaxH3Request;
+      // Only the text routes rewrite a draft that holds the protected mentions. On the
+      // reference route the user's words are an instruction, so a model need not echo a
+      // placeholder; preserveSmartAiReverseResourceMentions puts back a dropped @参考图N.
+      const protectPrompt = isOptimizeRequest && !isMiniMaxH3Request;
       const promptMentionProtection = protectPrompt
         ? protectSmartAiResourceMentions(prompt)
         : null;
@@ -4322,9 +4343,7 @@
         ? buildStaticArtReverseRequirements(promptMentionProtection?.text ?? prompt)
         : requirements;
       const roleRequirements = roleAwareReferences
-        ? (String(promptMentionProtection?.text ?? prompt).trim().slice(0, ART_REFERENCE_USER_TEXT_MAX)
-          ? `用户生成要求：${String(promptMentionProtection?.text ?? prompt).trim().slice(0, ART_REFERENCE_USER_TEXT_MAX)}`
-          : "")
+        ? (prompt ? `用户生成要求：${prompt}` : "")
         : requirements;
       let result;
       if (isSingleMainPreserveReverse && useGrok) {
@@ -4725,6 +4744,17 @@
       if (supportsNegativePrompt && qualityNegativeGuard) {
         nextNegativePrompt = mergeSmartAiNegativePrompt(nextNegativePrompt, qualityNegativeGuard);
       }
+      // The reference route has no picture-side content grading: explicit minor wording
+      // together with sensitive wording, in the user's text or the answer, is never written.
+      const referenceAnswerText = roleAwareReferences ? `${prompt}\n${nextPrompt}` : "";
+      if (referenceAnswerText && smartAiRequirementsContainExplicitMinorTerms(referenceAnswerText)
+        && smartAiRequirementsContainSensitiveIntent(referenceAnswerText)) {
+        ART_REFERENCE_PLAN = null;
+        state.loading = false;
+        state.message = "分析完成—未写入：描述或模型提示词中包含明确未成年人内容，敏感提示词已阻止。";
+        renderDialog();
+        return;
+      }
       let currentTextareas = textareas;
       if (isVisualV2Result && generationGate === "adult_confirmation") {
         if (!isSmartAiSensitiveAutoApplyCandidate(parsed)) {
@@ -4771,7 +4801,8 @@
         negativePrompt: nextNegativePrompt,
         hasNegativePrompt: isMiniMaxH3Request ? false : parsed.hasNegativePrompt || Boolean(qualityNegativeGuard)
       });
-      if (roleAwareReferences) {
+      // A lone reference is the subject and goes to generation as it is, as before: no plan to compile.
+      if (roleAwareReferences && state.images.length > 1) {
         state.message = "正在按参考职责生成专用约束...";
         renderDialog();
         const compiledPlan = await compileArtReferencePlan();
@@ -4784,7 +4815,7 @@
           capabilities: compiledPlan.capabilities || {},
           createdAt: Date.now()
         };
-      } else if (isArt && isOptimizeRequest) {
+      } else if (isArt) {
         ART_REFERENCE_PLAN = null;
       }
       if (!useGrok && usesStaticImageReverse) {

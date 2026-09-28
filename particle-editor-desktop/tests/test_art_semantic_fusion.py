@@ -313,6 +313,20 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertEqual(prompt.count('<|vision_start|><|image_pad|><|vision_end|>'), 3)
         self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
 
+    def test_role_reference_with_one_picture_reads_it_with_the_user_text_in_one_call(self):
+        # The one AI 助手 action sends a lone reference as the subject of the same five-section call.
+        requirements = '用户生成要求：用户提示词：穿红色斗篷的少女站在雪山顶\n用户补充要求：画面改为夜晚'
+        captured, result = self.reverse(['subject'], requirements, QWEN3_INLINE_SECTIONS)
+        prompt = captured['prompt']
+        self.assertEqual(captured['trace_label'], 'artRoleReference')
+        self.assertEqual(captured['max_length'], service.ART_ROLE_REFERENCE_MAX_LENGTH)
+        self.assertEqual(len(captured['images']), 1)
+        self.assertEqual(prompt.count('<|vision_start|><|image_pad|><|vision_end|>'), 1)
+        self.assertIn('用户要求（优先于图片内容，写进相关段落，不单独成段）：', prompt)
+        self.assertIn('穿红色斗篷的少女站在雪山顶', prompt)
+        self.assertIn('画面改为夜晚', prompt)
+        self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
+
 
 class ArtPromptCleanup(unittest.TestCase):
     """Small deterministic fixes for what Qwen3 reliably writes despite the instructions."""

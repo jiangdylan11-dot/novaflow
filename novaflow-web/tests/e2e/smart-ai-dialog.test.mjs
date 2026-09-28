@@ -107,11 +107,11 @@ function page({ respond } = {}) {
   });
   context.window = context;
   context.globalThis = context;
-  for (const file of ['h3-prompt-format.js', 'ai-sequence-minimax-h3-prompt.workflow.js', 'ai-sequence-minimax-h3-reverse.workflow.js', 'smart-ai-art-auto-intent.workflow.js']) {
+  for (const file of ['h3-prompt-format.js', 'ai-sequence-minimax-h3-prompt.workflow.js', 'ai-sequence-minimax-h3-reverse.workflow.js', 'smart-ai-art-auto-intent.workflow.js', 'resource-mention.tool.js']) {
     vm.runInContext(read(file), context, { filename: file });
   }
   const overlay = read('novaflow-smart-ai.js');
-  const exposed = overlay.replace(/\n  migrateMiniMaxH3PromptHistory\(\);/, '\n  window.__smartAiDialogTest = { state, openDialog, runSmartAi, captureMiniMaxH3PromptContext, buildArtReferenceUserText, prepareStaticArtReverseFusion };\n  migrateMiniMaxH3PromptHistory();');
+  const exposed = overlay.replace(/\n  migrateMiniMaxH3PromptHistory\(\);/, '\n  window.__smartAiDialogTest = { state, openDialog, runSmartAi, captureMiniMaxH3PromptContext };\n  migrateMiniMaxH3PromptHistory();');
   assert.notEqual(exposed, overlay, 'the overlay still ends with its history migration');
   vm.runInContext(exposed, context, { filename: 'novaflow-smart-ai.js' });
   const api = context.__smartAiDialogTest;
@@ -353,26 +353,40 @@ test('美工 生图 routes from the references and sends the prompt box with 补
   assert.equal(p.calls.grok[0].purpose, 'optimize');
   assert.equal(p.calls.grok[0].images, undefined);
 
-  // One reference: the static route reads the picture with both texts.
-  p = page();
-  let root = await open(p, artSurface('冰系女剑客，蓝白配色', ['https://refs.test/a.png']));
-  assert.equal(p.api.state.mode, 'reverse');
-  assert.match(root.html, /已检测 1 张参考图；将结合参考图、提示词与补充要求/);
-  assert.match(root.html, /补充要求（可选）/);
-  assert.equal(root.querySelector('.novaflow-smart-ai-submit').textContent, '优化并写入提示词');
-  p.type('背景换成雪夜');
-  await p.api.runSmartAi();
-  assert.equal(p.calls.grokReverse.length, 1);
-  assert.equal(p.calls.grokReverse[0].purpose, 'static-image-reverse');
-  assert.equal(p.calls.grokReverse[0].images.length, 1);
-  assert.equal(p.calls.grokReverse[0].requirements, '用户补充要求（只作为最终提示词约束，不作为图片可见事实）：用户提示词：冰系女剑客，蓝白配色\n用户补充要求：背景换成雪夜');
+  // One reference: one role-reference call reads the picture (the subject) with both texts,
+  // on both engines, and its answer is written; no text-only second pass.
+  const written = { ok: true, prompt: '冰系女剑客站在雪夜街头，蓝白配色。', negativePrompt: '低质量，模糊' };
+  let root;
+  for (const engine of ['grok', 'local']) {
+    p = page({ respond: (payload, kind) => kind.endsWith('reverse') ? written : { ok: false, error: 'unexpected' } });
+    const single = artSurface('冰系女剑客，蓝白配色', ['https://refs.test/a.png']);
+    root = await open(p, single, engine);
+    assert.equal(p.api.state.mode, 'reverse');
+    assert.match(root.html, /已检测 1 张参考图；将结合参考图、提示词与补充要求/);
+    assert.match(root.html, /补充要求（可选）/);
+    assert.doesNotMatch(root.html, /参考图用途/);
+    assert.equal(root.querySelector('.novaflow-smart-ai-submit').textContent, '优化并写入提示词');
+    p.type('背景换成雪夜');
+    await p.api.runSmartAi();
+    const sent = engine === 'grok' ? p.calls.grokReverse : p.calls.localReverse;
+    assert.equal(sent.length, 1, `${engine}: one call`);
+    assert.equal(p.calls.grokReverse.length + p.calls.localReverse.length + p.calls.grok.length + p.calls.local.length, 1, `${engine}: nothing else`);
+    assert.equal(sent[0].purpose, 'roleReference');
+    assert.equal(sent[0].visualSchema, undefined);
+    assert.deepEqual(Array.from(sent[0].images, (image) => image.role), ['subject']);
+    assert.equal(sent[0].requirements, '用户生成要求：用户提示词：冰系女剑客，蓝白配色\n用户补充要求：背景换成雪夜');
+    if (engine === 'grok') assert.equal(sent[0].scenario, 'role_reference');
+    assert.equal(p.api.state.message, '');
+    assert.equal(p.api.state.open, false);
+    assert.equal(single.positive.value, written.prompt);
+  }
 
   // Only the prompt box: it is sent as written.
   p = page();
   await open(p, artSurface('冰系女剑客', ['https://refs.test/a.png']), 'local');
   await p.api.runSmartAi();
   assert.equal(p.calls.localReverse.length, 1);
-  assert.equal(p.calls.localReverse[0].requirements, '用户补充要求（只作为最终提示词约束，不作为图片可见事实）：冰系女剑客');
+  assert.equal(p.calls.localReverse[0].requirements, '用户生成要求：冰系女剑客');
 
   // Two references: 参考图用途 shows without any choice, and the role route gets both texts.
   p = page({ respond: (payload, engine) => engine === 'grok-reverse' ? { ok: true, prompt: '冰系女剑客站在雪夜街头，蓝白配色。' } : { ok: false, error: 'unexpected' } });
@@ -390,14 +404,65 @@ test('美工 生图 routes from the references and sends the prompt box with 补
   assert.equal(p.api.state.open, false);
 });
 
-test('美工 merged text stays inside the 2000-character requirements with room for the fusion wording', () => {
-  const p = page();
-  const merged = p.api.buildArtReferenceUserText('冰'.repeat(3000), '雪'.repeat(300));
-  assert.equal(merged.length, 1600);
-  assert.ok(merged.endsWith('用户补充要求：' + '雪'.repeat(300)), 'the 补充要求 is never cut for the prompt box');
-  const fusion = p.api.prepareStaticArtReverseFusion('画面：一名女剑客站在桥上。', merged);
-  assert.ok(fusion.request.requirements.length <= 2000);
-  assert.match(fusion.request.requirements, /^用户本次修改要求（最高优先级）：用户提示词：冰+；用户补充要求：雪+\n/);
+test('美工 reference roles follow the words in the prompt box as well as in 补充要求', async () => {
+  for (const [box, extra] of [['冰系女剑客，图2作为背景参考', ''], ['冰系女剑客', '图2作为背景参考']]) {
+    const p = page();
+    await open(p, artSurface(box, ['https://refs.test/a.png', 'https://refs.test/b.png']));
+    if (extra) p.type(extra);
+    await p.api.runSmartAi();
+    assert.equal(p.calls.grokReverse.length, 1);
+    assert.deepEqual(Array.from(p.calls.grokReverse[0].images, (image) => image.role), ['subject', 'background'], `${box} / ${extra}`);
+  }
+});
+
+test('美工 references: an @参考图 mention in the prompt box survives the one call', async () => {
+  const answer = { ok: true, prompt: '[风格设定]\n写实摄影风格。\n\n[主体物品]\n一名成年女性坐在木质窗台边。', negativePrompt: '模糊，低质量' };
+  for (const references of [['https://refs.test/a.png'], ['https://refs.test/a.png', 'https://refs.test/b.png']]) {
+    for (const engine of ['grok', 'local']) {
+      const p = page({ respond: (payload, kind) => kind.endsWith('reverse') ? answer : { ok: false, error: 'unexpected' } });
+      const surface = artSurface('@参考图1 的女性坐在窗边', references);
+      await open(p, surface, engine);
+      await p.api.runSmartAi();
+      const sent = engine === 'grok' ? p.calls.grokReverse : p.calls.localReverse;
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].requirements, '用户生成要求：@参考图1 的女性坐在窗边', 'the words go as written, without placeholders');
+      assert.equal(p.api.state.message, '', `${references.length} refs / ${engine}`);
+      assert.equal(p.api.state.open, false);
+      assert.equal(surface.positive.value, `@参考图1\n${answer.prompt}`, 'a mention the answer dropped is put back');
+    }
+  }
+});
+
+test('美工 references: an over-long text is refused with a notice, never cut', async () => {
+  const p = page({ respond: () => ({ ok: false, error: 'stop' }) });
+  await open(p, artSurface('冰'.repeat(1850), ['https://refs.test/a.png']));
+  p.type('雪'.repeat(51));
+  await p.api.runSmartAi();
+  assert.equal(p.calls.grokReverse.length + p.calls.grok.length, 0, 'nothing is sent');
+  assert.equal(p.api.state.message, '提示词和补充要求合计超过 1900 字，请精简后再试');
+  // At the limit the whole text goes, both parts intact, inside the 2000 characters the transports accept.
+  p.type('雪'.repeat(50));
+  await p.api.runSmartAi();
+  assert.equal(p.calls.grokReverse.length, 1);
+  assert.equal(p.calls.grokReverse[0].requirements, `用户生成要求：用户提示词：${'冰'.repeat(1850)}\n用户补充要求：${'雪'.repeat(50)}`);
+  assert.ok(p.calls.grokReverse[0].requirements.length <= 2000);
+});
+
+test('美工 references: explicit minor wording with sensitive wording is stopped before and after the call', async () => {
+  let p = page();
+  await open(p, artSurface('未成年人', ['https://refs.test/a.png']));
+  p.type('裸露');
+  await p.api.runSmartAi();
+  assert.equal(p.calls.grokReverse.length + p.calls.grok.length, 0, 'blocked in the UI');
+  assert.equal(p.api.state.message, '检测到明确未成年人内容与敏感意图同时存在，已阻止处理');
+  // An answer that pairs them is not written.
+  p = page({ respond: () => ({ ok: true, prompt: '一名儿童站在海边，裸露上身。', negativePrompt: '模糊' }) });
+  const surface = artSurface('海边的人物', ['https://refs.test/a.png']);
+  await open(p, surface);
+  await p.api.runSmartAi();
+  assert.equal(p.calls.grokReverse.length, 1);
+  assert.equal(surface.positive.value, '海边的人物');
+  assert.match(p.api.state.message, /^分析完成—未写入：/);
 });
 
 test('the plain animation dialog reads its frames together with the prompt and 补充要求', async () => {
