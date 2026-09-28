@@ -594,7 +594,9 @@ class H3BaseLocalTest(unittest.TestCase):
 
     def test_the_call_that_sees_the_frames_answers_the_minor_check(self):
         frame = "data:image/jpeg;base64,/9j/AAAA"
-        i2v = {"h3Mode": "image_video", "currentPrompt": "她转身向镜头挥手", "h3ReferenceFrames": [{"label": "<Picture 1>", "dataUrl": frame}]}
+        # Only the AI 助手 dialog sends sensitiveVisualAnalysis=true, and only its request is checked.
+        dialog = {"contentPolicy": {"sensitiveVisualAnalysis": True, "allSubjectsConfirmedAdult": False}}
+        i2v = {"h3Mode": "image_video", "currentPrompt": "她转身向镜头挥手", "h3ReferenceFrames": [{"label": "<Picture 1>", "dataUrl": frame}], **dialog}
         with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
             result, calls = self.run_local([phases() + "\n检查：未成年=无；敏感=无"], i2v)
             self.assertIn("按下面的格式输出七行", calls[0][0])
@@ -615,8 +617,23 @@ class H3BaseLocalTest(unittest.TestCase):
                     self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
                     self.assertEqual(str(raised.exception), "MiniMax H3 敏感内容检测到明确未成年人证据，已阻断")
                     self.assertEqual(len(calls), 1)
+            # A young word in the sounds the writer adds is no minor evidence; one in its picture lines is.
+            result, _ = self.run_local([phases() + "\n声音：远处传来孩童嬉闹声\n检查：未成年=无；敏感=有"], i2v)
+            self.assertIn("橘猫", result["positivePrompt"])
+            with self.assertRaises(service.VisualContractError) as raised:
+                self.run_local([phases().replace("橘猫趴在", "小孩和橘猫趴在") + "\n检查：未成年=无；敏感=有"], i2v)
+            self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
+            # An old dialog (no policy) and a generation compile (policy false) run as before: nothing is asked
+            # or read, and the same words are not checked.
+            for policy in [{}, {"contentPolicy": {"sensitiveVisualAnalysis": False, "allSubjectsConfirmedAdult": False}}]:
+                with self.subTest(policy=policy):
+                    old = {key: value for key, value in i2v.items() if key != "contentPolicy"}
+                    result, calls = self.run_local([phases()], {**old, **policy, "currentPrompt": "小孩把钥匙插入锁孔"})
+                    self.assertEqual(len(calls), 1)
+                    self.assertIn("按下面的格式输出六行", calls[0][0])
+                    self.assertNotIn("未成年", calls[0][0])
         # Without frames nothing is asked or read.
-        _, calls = self.run_local([phases()], {})
+        _, calls = self.run_local([phases()], dialog)
         self.assertNotIn("未成年", calls[0][0])
         self.assertIn("按下面的格式输出六行", calls[0][0])
         # The writer keeps the user's person words and assigns no age.
@@ -637,8 +654,26 @@ class H3BaseLocalTest(unittest.TestCase):
                     self.assertEqual(raised.exception.code, "h3-sensitive-minor-request-blocked")
                     self.assertEqual(calls, [])
         # A negated request is no sensitive request.
-        result, _ = self.run_local([phases()], {"contentPolicy": {}, "requirements": "Source prompt:\n" + CAT + "\n\n不要裸露，小孩在旁边看"})
+        result, _ = self.run_local([phases()], {"contentPolicy": {"sensitiveVisualAnalysis": True}, "requirements": "Source prompt:\n" + CAT + "\n\n不要裸露，小孩在旁边看"})
         self.assertIn("橘猫", result["positivePrompt"])
+        # A generation compile is never checked: a translate-only one whatever its policy, and the
+        # free text 多参 compile (policy false) gets no check; an old dialog sends no policy.
+        fields = "integrated_multimodal_description: [Shot 1] 写实电影风格，医生用听诊器贴着儿童的胸部检查。\n\noverall_soundscape: 环境声。\n\nnon_diegetic_music: N/A"
+        for policy in [{"sensitiveVisualAnalysis": False, "allSubjectsConfirmedAdult": False}, {"sensitiveVisualAnalysis": True, "allSubjectsConfirmedAdult": False}]:
+            with self.subTest(policy=policy):
+                assistant, calls = service.PromptAssistant(), []
+                assistant.translate_h3_base = lambda *args, **kwargs: calls.append("translate") or {"positivePrompt": "{}", "negativePrompt": "", "rawOutput": ""}
+                assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, "h3Mode": "text_video", "currentPrompt": fields,
+                                           "requirements": service.H3_TRANSLATE_ONLY + "\nSource prompt:\n" + fields, "contentPolicy": policy})
+                self.assertEqual(calls, ["translate"])
+        assistant, checks = service.PromptAssistant(), []
+        assistant.optimize_h3_reference = lambda *args: checks.append(args[-1]) or {}
+        assistant.optimize_h3_base = lambda *args: checks.append(args[-1]) or {}
+        for mode in ["multi_reference", "image_video"]:
+            for policy in [None, {"sensitiveVisualAnalysis": False, "allSubjectsConfirmedAdult": False}, {"sensitiveVisualAnalysis": True, "allSubjectsConfirmedAdult": False}]:
+                assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, "h3Mode": mode, "currentPrompt": "<Picture 1> 向镜头挥手",
+                                           **({"contentPolicy": policy} if policy else {})})
+        self.assertEqual(checks, [False, False, True] * 2)
 
     def test_a_supplement_alone_is_the_video_description(self):
         # The renderer sends the 补充要求 as the source; an empty source with the 补充要求 after it reads the same.
@@ -664,7 +699,7 @@ class H3BaseLocalTest(unittest.TestCase):
                 assistant.generate = generate
                 with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
                     with self.assertRaises(service.VisualContractError if blocked else ValueError) as raised:
-                        assistant._optimize_h3_reference("<Picture 1> 中的人物向镜头挥手", requirements, 5, frames)
+                        assistant._optimize_h3_reference("<Picture 1> 中的人物向镜头挥手", requirements, 5, frames, check=True)
                 observe = [prompt for label, prompt in calls if label == "minimaxH3ReferenceObserve"]
                 self.assertEqual(len(observe), 1)
                 self.assertIn("按下面四行输出", observe[0])
@@ -677,6 +712,58 @@ class H3BaseLocalTest(unittest.TestCase):
                 else:
                     self.assertIn("穿红色外套的人物", plans[0])
                     self.assertNotRegex(plans[0], "未成年|敏感")
+        # A generation compile (no check) observes as before: three lines, nothing asked.
+        assistant, calls = service.PromptAssistant(), []
+        assistant.generate = lambda prompt, **kwargs: calls.append((kwargs.get("trace_label"), prompt)) or "{}"
+        with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+            with self.assertRaises(ValueError):
+                assistant._optimize_h3_reference("<Picture 1> 中的人物向镜头挥手", requirements, 5, frames)
+        observe = [prompt for label, prompt in calls if label == "minimaxH3ReferenceObserve"]
+        self.assertIn("按下面三行输出", observe[0])
+        self.assertNotIn("未成年", observe[0])
+
+    def test_minor_evidence_in_one_picture_and_sensitive_content_in_another_block_together(self):
+        frames = [{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}, {"label": "<Picture 2>", "dataUrl": "data:image/jpeg;base64,/9j/BBBB"}]
+        requirements = "Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n<Picture 1> 和 <Picture 2> 在卧室里相拥"
+        second = "画风：写实照片\n主体：长发人物\n背景：卧室\n检查：未成年=无；敏感=有"
+        for first in ["画风：写实照片\n主体：短发人物，穿白色T恤\n背景：纯色背景\n检查：未成年=有；敏感=无",
+                      "画风：写实照片\n主体：一名幼童，穿白色T恤\n背景：纯色背景\n检查：未成年=无；敏感=无"]:
+            with self.subTest(first=first):
+                assistant, calls = service.PromptAssistant(), []
+
+                def generate(prompt, **kwargs):
+                    calls.append(kwargs.get("trace_label"))
+                    if kwargs.get("trace_label") != "minimaxH3ReferenceObserve":
+                        return "{}"
+                    return first if kwargs["images"][0][1].endswith("AAAA") else second
+                assistant.generate = generate
+                with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+                    with self.assertRaises(service.VisualContractError) as raised:
+                        assistant._optimize_h3_reference("<Picture 1> 和 <Picture 2> 在卧室里相拥", requirements, 5, frames, check=True)
+                self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
+                # Stopped after the second look, before any plan is written.
+                self.assertEqual(calls.count("minimaxH3ReferenceObserve"), 2)
+                self.assertNotIn("minimaxH3ReferenceEnhance", calls)
+
+    def test_the_check_is_read_from_its_own_line_or_the_end_of_the_last_line(self):
+        body = "概述：写实照片，女子站在海边，固定镜头\n起始：女子抬手\n递进：女子挥手\n收束：女子放下手\n声音：海浪声\n约束：1. 镜头固定"
+        for answer, minor, sensitive in [
+                (body + "\n检查：未成年人=有；敏感=有", True, True),
+                (body + "\n检查：未成年=有；敏感内容=有", True, True),
+                (body + "\n检查：未成年=有\n敏感=有", True, True),
+                (body + "\n【检查】未成年 有；敏感 无", True, False),
+                (body + "\n检查：未成年=有或无；敏感=有或无", False, False),
+                (body + "\n" + service.MINIMAX_H3_FRAME_CHECK, False, False),
+                (body + "\n检查：未成年人是否出现=否；敏感=无", False, False),
+                (body + " 检查：未成年=无；敏感=有", False, True),
+                (body + "；未成年=有；敏感=无", True, False)]:
+            with self.subTest(answer=answer[len(body):]):
+                # Only the check is removed; the 约束 text before an inline check stays.
+                self.assertEqual(service.minimax_h3_take_frame_check(answer), (body, minor, sensitive))
+        # A one-paragraph observation keeps its description.
+        seen = "画面中一只白猫坐在灰色沙发上，背景是米色墙面。"
+        self.assertEqual(service.minimax_h3_take_frame_check(seen + "检查：未成年=无；敏感=无"), (seen, False, False))
+        self.assertEqual(service.minimax_h3_take_frame_check("主体：白猫\n背景：米色墙面 检查：未成年=无；敏感=无"), ("主体：白猫\n背景：米色墙面", False, False))
 
     def test_requested_cut_becomes_later_shots_with_program_times(self):
         cut = phases().replace("\n约束", "\n镜头2（第3秒）：近景，橘猫落地后回头看向镜头。\n约束")

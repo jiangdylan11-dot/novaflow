@@ -329,16 +329,19 @@ class Qwen3ArtFlows(unittest.TestCase):
 
     def test_role_reference_sees_the_prompt_box_and_the_supplement_together(self):
         # The one AI 助手 action sends both texts; the vision call reads both, without their labels.
-        requirements = '用户提示词：橘猫坐在大厅的地毯上，抬头看向镜头\n用户补充要求：画面改为夜晚'
+        # The renderer's own strings: role reference prefixes 用户生成要求, 单图反推 its carrier label.
+        both = '用户提示词：橘猫坐在大厅的地毯上，抬头看向镜头\n用户补充要求：画面改为夜晚'
+        requirements = '用户生成要求：' + both
         captured, _ = self.reverse(['subject', 'background'], requirements, QWEN3_INLINE_SECTIONS)
         prompt = captured['prompt']
         self.assertIn('用户要求（优先于图片内容，写进相关段落，不单独成段）：橘猫坐在大厅的地毯上，抬头看向镜头\n画面改为夜晚\n', prompt)
         self.assertIn('时间是夜晚', prompt)
-        self.assertNotRegex(prompt, '用户提示词|用户补充要求')
+        self.assertNotRegex(prompt, '用户生成要求|用户提示词|用户补充要求')
         self.assertEqual(len(captured['images']), 2)
         # 单图反推 keeps all of it as the final constraint, within the 2000 characters the worker sends.
-        self.assertTrue(service.append_rich_generation_requirements('[风格设定]\n写实', requirements).endswith(
-            '[用户附加要求]\n要求 = "用户提示词：橘猫坐在大厅的地毯上，抬头看向镜头 用户补充要求：画面改为夜晚"'))
+        static = '用户补充要求（只作为最终提示词约束，不作为图片可见事实）：' + both
+        self.assertTrue(service.append_rich_generation_requirements('[风格设定]\n写实', static).endswith(
+            '[用户附加要求]\n要求 = "用户补充要求（只作为最终提示词约束，不作为图片可见事实）：用户提示词：橘猫坐在大厅的地毯上，抬头看向镜头 用户补充要求：画面改为夜晚"'))
         self.assertTrue(service.append_rich_generation_requirements('写实', 'x' * 2600).endswith('\n要求 = "' + 'x' * 2000 + '"'))
 
 

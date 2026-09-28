@@ -158,14 +158,18 @@ try {
   const longH3 = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(30000) + '\n用户修改要求：镜头慢慢推近' });
   check(longH3.request.requirements.endsWith('用户修改要求：镜头慢慢推近'), 'a long H3 requirement keeps the user request at its end');
   equal(normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(60000) }).request.requirements.length, 48000, 'the H3 cap is the script\'s own 48000');
-  // H3 优化提示词 carries the content policy the way reverse does; without one the request stays as old clients sent it.
+  // H3 优化提示词 carries the content policy the way reverse does. The script checks only sensitiveVisualAnalysis=true
+  // (the AI 助手 dialog); a generation compile sends false and an old dialog none, and both run as before.
   const policed = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', contentPolicy: { sensitiveVisualAnalysis: true, extra: 1 } }).request.contentPolicy;
   check(policed.sensitiveVisualAnalysis === true && policed.allSubjectsConfirmedAdult === false && !('extra' in policed), 'H3 optimize forwards only the two policy switches');
   check(!('contentPolicy' in normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance' }).request) && !('contentPolicy' in normalizeOptimizeRequest({ purpose: 'optimize', contentPolicy: {} }).request), 'no policy is invented, and art never gets one');
+  const compilePolicy = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'H3 compile: translate-only\nSource prompt:\nx', contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false } }).request.contentPolicy;
+  check(compilePolicy.sensitiveVisualAnalysis === false, 'a generation compile keeps its policy false, so the script does not check it');
   // 美工 反推: prompt box and 补充要求 together stay within 2000, the 补充要求 whole.
-  const artText = '用户提示词：' + '猫'.repeat(2500) + '\n用户补充要求：画面改为夜晚';
+  // The renderer's role reference string: 用户生成要求：用户提示词：…\n用户补充要求：…
+  const artText = '用户生成要求：用户提示词：' + '猫'.repeat(2500) + '\n用户补充要求：画面改为夜晚';
   const artReverse2000 = normalizeReverseRequest({ purpose: 'roleReference', requirements: artText }).request.requirements;
-  check(artReverse2000.length === 2000 && artReverse2000.startsWith('用户提示词：猫') && artReverse2000.endsWith('\n用户补充要求：画面改为夜晚'), 'a long prompt box is cut, never the 补充要求');
+  check(artReverse2000.length === 2000 && artReverse2000.startsWith('用户生成要求：用户提示词：猫') && artReverse2000.endsWith('\n用户补充要求：画面改为夜晚'), 'a long prompt box is cut, never the 补充要求');
   equal(normalizeReverseRequest({ purpose: 'static-image-reverse', requirements: 'x'.repeat(3000) }).request.requirements.length, 2000, 'other text keeps the plain 2000 cap');
   const shortArt = '用户提示词：一只橘猫\n用户补充要求：画面改为夜晚';
   equal(normalizeReverseRequest({ purpose: 'static-image-reverse', requirements: shortArt }).request.requirements, shortArt, 'a short request is passed whole');
