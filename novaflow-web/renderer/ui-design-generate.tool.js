@@ -479,10 +479,10 @@
         { value: 'high', label: 'High' },
       ], state.gptQualityImg2img)]
     }
-    return [
-      outputField(record, '画幅', state.googleAspectRatioImg2img),
-      selectControl(record, 'googleResolution', '分辨率', ['1K', '2K', '4K'], state.googleResolution),
-    ]
+    // The aspect follows 输出尺寸 (the closest Google ratio); GPT and Google show one setting each here.
+    const resolution = selectControl(record, 'googleResolution', '分辨率', ['1K', '2K', '4K'], state.googleResolution)
+    resolution.setAttribute('title', '画幅 ' + state.googleAspectRatioImg2img + '，按输出尺寸自动匹配；实际像素由 Google 返回')
+    return [resolution]
   }
 
   function compactSelectControl(record, key, label, values, value, attributeName, onChange) {
@@ -587,7 +587,7 @@
     const selectedPreset = !record.customSizeMode && presetForProviderSize(provider, size.width, size.height)
     const values = outputSizePresets(provider).map((item) => ({ value: item.value, label: item.label }))
       .concat({ value: 'custom', label: 'Custom 自定义' })
-    const sizeLabel = provider === 'google' ? '构图画布' : '输出尺寸'
+    const sizeLabel = '输出尺寸'
     const preset = compactSelectControl(
       record,
       'outputSizePreset',
@@ -676,7 +676,7 @@
 
   function outputContractNotice(record, size) {
     const contract = resolveOutputContract(record.state.provider, size, record.state)
-    if (contract.provider !== 'google' && contract.valid) return null
+    if (contract.valid) return null
     const error = !contract.valid
     const text = error
       ? contract.error
@@ -711,6 +711,9 @@
       },
     })
     input.value = String(value)
+    // The page's number fields default to a narrow box; this one fills its column.
+    input.style.setProperty?.('width', '100%', 'important')
+    input.style.setProperty?.('max-width', 'none', 'important')
     input.addEventListener('change', () => {
       const next = outputDimension(input.value, value)
       if (axis === 'width') applyOutputSize(record, next, otherValue, 'custom-width')
@@ -1131,10 +1134,12 @@
     const contractNotice = outputContractNotice(record, size)
     if (contractNotice) children.push(contractNotice)
     if (record.customSizeMode || !presetForProviderSize(record.state.provider, size.width, size.height)) {
+      // W and H sit under the size select and the orientation pair, in the same columns as 输出尺寸's row.
       children.push(createElement(record.documentRef, 'div', {
         'data-novaflow-ui-design-custom-size': '1',
-        style: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', minWidth: '0' },
+        style: { display: 'grid', gridTemplateColumns: '54px minmax(0, 1fr) minmax(0, 1fr)', gap: '6px', minWidth: '0', alignItems: 'center' },
       }, [
+        createElement(record.documentRef, 'span', { 'aria-hidden': 'true' }),
         compactDimensionInput(record, 'width', size.width, size.height),
         compactDimensionInput(record, 'height', size.height, size.width),
       ]))
@@ -1218,7 +1223,7 @@
         lineHeight: '1.4', overflowWrap: 'anywhere',
       },
     })
-    const sizeLabel = record.state.provider === 'google' ? '构图画布' : '输出尺寸'
+    const sizeLabel = '输出尺寸'
     const contractNotice = outputContractNotice(record, size)
     record.fields.replaceChildren(...[
       provider,
