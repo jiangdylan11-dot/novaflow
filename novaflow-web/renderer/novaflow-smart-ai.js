@@ -5171,7 +5171,7 @@
       compileH3ReferenceForGeneration(options) {
         return compileH3ForGeneration({ ...options, mode: "multi_reference" });
       },
-      // The full-prompt editor behind 编辑, shared with the UI 生成器's 设计要求.
+      // The full-prompt editor behind 编辑, shared with 设计要求 in the UI 生成器.
       openPromptEditor(control, title, options) {
         return openSmartAiPromptEditor(control, title || "提示词", options || {});
       },
