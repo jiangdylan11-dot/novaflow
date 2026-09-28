@@ -13993,11 +13993,12 @@ class PromptAssistant:
         # H3 punctuation and asset IDs stay application-owned. Translating a
         # complete protocol document made the local VLM copy it verbatim.
         # base_mode (T2VA/I2VA/FL2VA): the three official fields instead of 多参's six.
-        from prompt_assistant.h3_prompt_enhance import (DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK, CAMERA_SUBJECT, CAMERA_GLOSSARY, CAMERA_SPEED,
-                                                        CAMERA_AMPLITUDE, camera_english, camera_wording, translation_flips)
+        from prompt_assistant.h3_prompt_enhance import (DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK, CAMERA_GLOSSARY, CAMERA_SPEED, CAMERA_AMPLITUDE,
+                                                        camera_english, camera_move_clause, camera_wording, translation_flips, reference_layout)
         check = ((lambda text, language=None: validate_h3_base_fields(text, base_mode, duration, language)) if base_mode else
                  (lambda text, language=None: validate_h3_reference(text, inventory, duration)))
-        display = check(display)
+        # 多参: one line per shot, as the official guide lays it out; the English follows the display's lines.
+        display = check(display) if base_mode else reference_layout(check(display))
         # Translate complete clauses: splitting at <Picture N> loses verbs
         # such as 'replace X with Y'. Placeholders keep tags and literal speech.
         literals = []
@@ -14019,12 +14020,14 @@ class PromptAssistant:
         masked_display = re.sub(SHOT_MARK + r'[,，]?', protect_shot, re.sub(r'(?<=[^\n:：\s])[ \t]*(?=\[Shot [1-9]\d*\])', '\n', masked_display))
         # A clause that is only a camera move gets the official wording from the program
         # ("镜头缓缓下移" came back as "pans downward"); the translator keeps it as a placeholder.
+        # Its "最后" or "同时" stays outside and is translated with the sentence.
         def protect_camera(match):
-            english = camera_english(match.group(2))
+            lead = re.match(r'\s*(?:随后|然后|接着|同时|最后|最终|并且?|且)?\s*', match.group(2)).group()
+            english = camera_english(match.group(2)[len(lead):])
             if not english:
                 return match.group()
             literals.append(english)
-            return match.group(1) + 'LITERAL_' + str(len(literals)-1)
+            return match.group(1) + lead + 'LITERAL_' + str(len(literals)-1)
         masked_display = re.sub(r'(^|[，,。；;！？!?：:\x03]|\] )([^，,。；;！？!?：:\n\x02\x03]+)(?=[，,。；;！？!?]|$)', protect_camera, masked_display, flags=re.M)
         protected = re.compile(r'LITERAL_\d+|<(?:Subject|Picture|Video|Audio) [1-9]\d*>|\[Shot [1-9]\d*\]|[（(]S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*[）)]|(?<![A-Za-z])\d+(?:\.\d+)?(?![A-Za-z])')
         # A sentence may open with a tag or a Latin word ("<Subject 1> 走向…",
@@ -14057,8 +14060,9 @@ class PromptAssistant:
                 word = word.strip().strip('`"\'').strip()
                 if not word or re.search(r'[㐀-鿿]', word) or len(word) > 80:
                     return False
-                # "slight联动 of" -> "slight coordinated action of", not "Coordinated action".
-                if re.search(r'[A-Za-z,;]\s*$', candidate[:candidate.find(run)]) and re.match(r'[A-Z][a-z]', word):
+                # "slight联动 of" -> "slight coordinated action of", not "Coordinated action"; only a phrase
+                # in sentence case: one capitalized word or "Great Wall" may be a name ("the Tokyo streets").
+                if re.search(r'[A-Za-z,;]\s*$', candidate[:candidate.find(run)]) and re.fullmatch(r"[A-Z][a-z]+(?:[ -][a-z][a-z'-]*)+", word):
                     word = word[0].lower() + word[1:]
                 candidate = candidate.replace(run, ' ' + word + ' ')
             source_text = pending.pop(key)
@@ -14077,10 +14081,11 @@ class PromptAssistant:
             # (e.g. 背着 kept twice); the last attempt samples lightly instead.
             for attempt in range(3):
                 fresh = set()
-                # Camera words inside a longer clause ("镜头从天际线缓缓下移") with their official wording.
+                # Camera words inside a longer clause that moves the camera ("镜头从天际线缓缓下移") with their
+                # official wording; "看向镜头" moves nothing, and a bare 手持 is no move.
                 camera_words = {m.group(): english for value in pending.values() for clause in re.split(r'[，,。；;]', protected_fragments[value][0])
-                                if re.search(CAMERA_SUBJECT, clause) for english, word in CAMERA_GLOSSARY + CAMERA_SPEED + CAMERA_AMPLITUDE
-                                for m in re.finditer(word, clause)}
+                                if camera_move_clause(clause) for english, word in CAMERA_GLOSSARY + CAMERA_SPEED + CAMERA_AMPLITUDE
+                                for m in re.finditer(word, clause) if m.group() != '手持'}
                 request = ('Translate each Chinese text value to English. Example: {"0":"金币旋转，背景不变。"} -> {"0":"The gold coin rotates; the background remains unchanged."}\n'
                            + ('Camera words: ' + '; '.join(f'{zh} -> {en}' for zh, en in camera_words.items()) + '.\n' if camera_words else '')
                            + ('Keep these meanings exact: ' + '; '.join(sorted(hints)) + '.\n' if hints else '')
@@ -14160,7 +14165,7 @@ class PromptAssistant:
                                for part in re.split(r'(<d>[\s\S]*?</d>|"[^"\n]*"|“[^”\n]*”)', model_prompt))
         model_prompt = re.sub(r'[ \t]+(?=\n|$)', '', model_prompt)
         # "[Shot 2] At 00:03.000, the camera cuts to …" as in the official guide.
-        model_prompt = re.sub(r'\x02(\d+)\x03[ \t]*(?:(The|A|An|Cut|Cuts|Camera|Close)\b)?', lambda m: shot_marks[int(m[1])] + (
+        model_prompt = re.sub(r'\x02(\d+)\x03[ \t]*(?:(The|A|An|Cut|Cuts|Camera|Close|Then|Finally|Meanwhile|At)\b)?', lambda m: shot_marks[int(m[1])] + (
             ', ' + (m[2] or '').lower() if ' At ' in shot_marks[int(m[1])] else ' ' + (m[2] or '')), model_prompt)
         # The compiler's default locked-camera clause must survive translation
         # in a form the renderer's camera check recognizes.
@@ -14846,8 +14851,9 @@ class PromptAssistant:
         # A prompt already in fields form is read as prose: no field names or shot marks.
         fields = parse_h3_base_fields(source)
         view = h3_base_source_view(source)
-        # Unlabelled speech ("并说：“出发吧。”") becomes a spoken line the program keeps, in the requirement too.
-        user_requirement, spoken = h3_label_speech(user_requirement, re.findall(r"\bS[1-9]\d*\b", view))
+        # Unlabelled speech ("并说：“出发吧。”") becomes a spoken line the program keeps, in the requirement too;
+        # its speaker is one the source already has unless another subject is named, and a line it has is not added.
+        user_requirement, spoken = h3_label_speech(user_requirement, [source, view])
         view = "\n".join([view, *spoken]).strip()
         # The requirement's own word on cuts wins over shots the source already has.
         cut = h3_asks_cut(source, user_requirement)

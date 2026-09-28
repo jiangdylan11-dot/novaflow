@@ -9,8 +9,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from prompt_assistant.h3_prompt_enhance import (validate_enhancement, compile_action_phases, INSTRUCTION, requested_cut,
-                                                validate_base_fields, validate_reference, render_reference_plan,
-                                                asks_cut, cut_seconds, shot_times, base_source_view)
+                                                validate_base_fields, validate_reference, render_reference_plan, reference_layout,
+                                                asks_cut, cut_seconds, shot_times, base_source_view, label_speech)
 
 spec = importlib.util.spec_from_file_location("h3_enhance_service", ROOT / "prompt-assistant-service.py")
 service = importlib.util.module_from_spec(spec)
@@ -267,7 +267,12 @@ class H3EnhancementTest(unittest.TestCase):
         self.assertIn("detailed_description:\n视频采用写实照片风格。\n[Shot 1] 场景是客厅。<Subject 1> 跳下桌子。<Subject 1> 回头。\n"
                       "[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 坐下。\n\noverall_soundscape:", text)
         english = text.replace("场景是客厅。<Subject 1> 跳下桌子。<Subject 1> 回头。", "A living room.\n\n<Subject 1> jumps off the table.")
-        self.assertIn("[Shot 1] A living room. <Subject 1> jumps off the table.\n[Shot 2]", validate_reference(english, "Available resource labels: <Picture 1>", 5))
+        self.assertIn("[Shot 1] A living room. <Subject 1> jumps off the table.\n[Shot 2]", reference_layout(english))
+        # validate_reference keeps the layout it is given, as the renderer's validateReference does
+        # (h3-multireference.test.mjs holds both to the same text).
+        self.assertEqual(validate_reference(english, "Available resource labels: <Picture 1>", 5), english)
+        inline = english.replace("视频采用写实照片风格。\n[Shot 1]", "视频采用写实照片风格。 [Shot 1]")
+        self.assertEqual(validate_reference(inline, "Available resource labels: <Picture 1>", 5), inline)
 
 
 PHASES = ["橘猫趴在洒满阳光的窗台上，镜头从侧面跟随。", "橘猫前爪向前伸直，背部下压，缓慢伸懒腰。",
@@ -410,6 +415,12 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertNotRegex(text, "始终|全程")
         # The user's own limit is kept with the writer's wording of it.
         self.assertIn("镜头从侧面跟随。尾巴始终可见。橘猫前爪", compile_action_phases(answer, "T2VA", 5, CAT + "，尾巴始终露在画面里"))
+        # So is a limit stated as a wish, or written in English.
+        limited = phases().replace("1. 保持橘猫外观一致\n2. 动作连贯", "1. 背景始终为纯白色\n2. 画面中不出现任何文字")
+        self.assertIn("镜头从侧面跟随。背景始终为纯白色。橘猫前爪", compile_action_phases(limited, "T2VA", 5, CAT + "，背景要纯白"))
+        self.assertIn("镜头从侧面跟随。背景保持不变。画面中不出现任何文字。橘猫前爪",
+                      compile_action_phases(limited.replace("背景始终为纯白色", "背景保持不变"), "T2VA", 5,
+                                            "An orange cat stretches on the windowsill. Keep the background unchanged and do not add any on-screen text."))
         # The user's own camera ban stays; the either-or move falls to the user's fixed camera.
         fixed = compile_action_phases(answer.replace("镜头从侧面跟随", "镜头固定"), "T2VA", 5, CAT + "，镜头固定，不要推拉")
         self.assertIn("不切换角度或推拉", fixed)
@@ -697,6 +708,12 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertEqual(camera_wording("镜头从天际线缓缓下移", "The camera slowly pushes down from the skyline."), "The camera slowly pedestals down from the skyline.")
         self.assertEqual(camera_wording("她按下开关", "She pushes down the switch."), "She pushes down the switch.")
         self.assertEqual(camera_wording("女孩走来，镜头拉远。", "The girl walks in as the camera pulls out at slow speed."), "The girl walks in as the camera pulls out.")
+        self.assertEqual(camera_wording("镜头缓缓下移", "With the camera panning down from the skyline, the street appears; the camera panned down."),
+                         "With the camera tilting down from the skyline, the street appears; the camera tilted down.")
+        # Only the camera's own move: the chef's pan and switch, a tail's amplitude or a train's speed stay.
+        for chinese, english in [("镜头跟随厨师，他把锅向上抛起，按下开关", "Flipping the pan up, the chef cooks. The camera follows the chef as he pushes down the switch."),
+                                 ("尾巴左右摆动，幅度很小", "The tail swings left and right with a small amplitude."), ("列车高速驶过", "The train passes at a fast speed.")]:
+            self.assertEqual(camera_wording(chinese, english), english)
         # Speed and direction words that were turned around.
         self.assertEqual(translation_flips("光点流转速度缓慢加快", "The flow of light slowly slows down."), ["加快 means speeds up"])
         self.assertEqual(translation_flips("光点流转速度缓慢加快", "The flow of light slowly speeds up."), [])
@@ -727,6 +744,24 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("Keep these meanings exact: 加快 means speeds up.", requests[1])
         self.assertIn("[Shot 1] Live-action, cinematic; the camera slowly tilts down from the city skyline. "
                       "The light points flow and gradually speed up. The camera pulls out.\n\n", pair["modelPrompt"])
+        # "最后" is translated with its sentence; "看向镜头" and "镜头前太阳缓缓升起" give the camera no words;
+        # a name put back inside a sentence keeps its capital.
+        fields = ("integrated_multimodal_description: [Shot 1] 写实电影风格，女孩手持雨伞看向镜头，走进东京街头，最后镜头拉远。镜头前太阳缓缓升起。\n\n"
+                  "overall_soundscape: 风声。\n\nnon_diegetic_music: N/A")
+        requests.clear()
+
+        def generate(prompt, **kwargs):
+            requests.append(prompt)
+            if "Input JSON:\n" not in prompt:
+                return "Tokyo"
+            pending = json.loads(prompt.split("Input JSON:\n", 1)[1])
+            return json.dumps({key: "Wind." if value == "风声。" else "Live-action, cinematic; the girl holds an umbrella, looks at the camera and walks into "
+                               "the 东京 streets, and finally TOKEN_0. The sun slowly rises in front of the camera." for key, value in pending.items()}, ensure_ascii=False)
+        assistant.generate = generate
+        pair = json.loads(assistant.translate_h3_base(fields, "T2VA", 5)["positivePrompt"])
+        self.assertIn("走进东京街头，最后TOKEN_0。", requests[0])
+        self.assertNotIn("Camera words", requests[0])
+        self.assertIn("walks into the Tokyo streets, and finally the camera pulls out. The sun", pair["modelPrompt"])
 
     def test_user_turns_a_multi_shot_prompt_back_into_one_shot(self):
         source = CAT_TEXT.replace("站稳后抬头。", "站稳后抬头。\n[Shot 2] At 00:03.000 镜头切到近景，橘猫回头。")
@@ -826,7 +861,26 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertIn("漏掉了台词“出发吧。”", calls[1][0])
         self.assertIn("(S1) 说：<d>[Chinese] 出发吧。</d>", result["positivePrompt"])
-        self.assertIn("(S2) 说：<d>[Chinese] 走吧！</d>", result["positivePrompt"])
+        # The one robot keeps its ID across its lines (official base §4.4).
+        self.assertIn("(S1) 说：<d>[Chinese] 走吧！</d>", result["positivePrompt"])
+        self.assertNotIn("(S2)", result["positivePrompt"])
+
+    def test_a_speaker_keeps_one_id_and_no_line_is_invented(self):
+        view = base_source_view
+        # An action before the verb names nobody new; a name met before keeps its ID.
+        self.assertEqual(view("女孩挥手说：“你好。”然后转身说：“再见。”"), '女孩挥手说，然后转身说\n(S1)："你好。"\n(S1)："再见。"')
+        self.assertEqual(view("店员问道：“要喝点什么？”顾客回答：“一杯拿铁。”店员又说：“好的。”"),
+                         '店员问道，顾客回答，店员又说\n(S1)："要喝点什么？"\n(S2)："一杯拿铁。"\n(S1)："好的。"')
+        self.assertEqual(view("女孩站在门口挥手\n(S1)：“你好。”\n女孩说：“再见。”"), '女孩站在门口挥手\n(S1)：“你好。”\n女孩说\n(S1)："再见。"')
+        self.assertIn('(S2)："嗨。"', view("女孩 (S1) 说：<d>[Chinese] 你好。</d>男孩回答：“嗨。”"))
+        # A speaker ID the user wrote stays; a quoted title after 小说/传说 is no speech.
+        self.assertEqual(view("女孩(S1)说：“你好。”"), '女孩说\n(S1)："你好。"')
+        self.assertEqual(view("女孩坐在窗边读小说“三体”"), "女孩坐在窗边读小说“三体”")
+        self.assertEqual(view("老人讲起传说“龙会回来”"), "老人讲起传说“龙会回来”")
+        # A requirement goes on with the source's speaker, and a line the source has is not added again.
+        source = "女孩站在门口挥手\n(S1)：“你好。”"
+        self.assertEqual(label_speech("然后她又说“再见。”", [source, view(source)]), ("然后她又说", ['(S1)："再见。"']))
+        self.assertEqual(label_speech("说“你好。”时要微笑", [source, view(source)]), ("说“你好。”时要微笑", []))
 
     def test_overview_is_the_opening_picture_and_a_cut_stays_out_of_shot_1(self):
         answer = ("概述：写实电影风格，一只橘猫趴在窗台上，然后跳下窗台；固定镜头全程拍摄。\n起始：橘猫前爪向前伸直，缓慢伸懒腰。\n"
@@ -856,6 +910,26 @@ class H3BaseLocalTest(unittest.TestCase):
         prompt = service.build_minimax_h3_writer_request(city, "", "T2VA", 10, cut=True)
         self.assertIn("“街角咖啡店里的女孩”切换后才出现，不写进第一个镜头", prompt)
         self.assertNotIn("切换后才出现", service.build_minimax_h3_writer_request(CAT, "第3秒切到近景", "T2VA", 5, cut=True))
+        # A cut that reframes the same cat, named 橘猫 after it, keeps the cat and its windowsill in shot 1.
+        cat = ("概述：写实电影风格，一只橘猫趴在窗台上，中景，镜头固定。\n起始：橘猫蜷缩在窗台上熟睡，闭着眼睛，身体随呼吸轻轻起伏。\n"
+               "递进：橘猫的尾巴轻轻摆动一下。\n收束：橘猫继续安睡，耳朵微微抖动。\n镜头2（第3秒）：切到近景，橘猫缓缓睁开眼睛。\n约束：无")
+        self.assertIn("[Shot 1] 写实电影风格，一只橘猫趴在窗台上，中景，镜头固定。橘猫蜷缩在窗台上熟睡，闭着眼睛，身体随呼吸轻轻起伏。",
+                      compile_action_phases(cat, "T2VA", 5, "一只猫在窗台上睡觉，第3秒切到近景，橘猫睁开眼睛", cut=True, strict_rules=True))
+        # Shot 1 showing the later girl is asked again; after that her sentences go whole, no fragment stays.
+        shown = cut.replace("递进：街角处女孩从咖啡店里侧身走出。", "递进：车流闪烁。女孩从街角咖啡店侧身走出，脚步轻缓，左手自然垂落。")
+        with self.assertRaisesRegex(ValueError, "第一个镜头"):
+            compile_action_phases(shown, "T2VA", 10, city, cut=True, strict_rules=True)
+        self.assertIn("远处高楼亮着灯。车流闪烁。车流继续移动。\n[Shot 2]", compile_action_phases(shown, "T2VA", 10, city, cut=True))
+        # The overview keeps the camera the user asked for, though a beat says it too.
+        kite = ("概述：写实电影风格，一个小男孩在草地上放风筝，镜头缓慢推近。\n起始：小男孩双手握紧风筝线向前跑动。\n"
+                "递进：他奔跑中身体前倾，镜头缓慢推近，风筝随风起伏。\n收束：他停下脚步，抬头凝视风筝。\n约束：无")
+        self.assertIn("[Shot 1] 写实电影风格，一个小男孩在草地上放风筝，镜头缓慢推近。小男孩", compile_action_phases(kite, "T2VA", 5, "一个小男孩在草地上放风筝", "", "镜头缓慢推近"))
+        # The user's own freeze frame or still ending stays.
+        wave = "概述：写实电影风格，女孩站在海边，中景，镜头固定。\n起始：女孩转身面向镜头。\n递进：女孩抬手挥动。\n收束：女孩微笑，画面定格在她微笑的样子。\n约束：无"
+        self.assertIn("女孩微笑，画面定格在她微笑的样子。", compile_action_phases(wave, "T2VA", 5, "女孩在海边转身挥手，最后画面定格在她微笑的样子"))
+        self.assertIn("女孩微笑，画面保持静止。", compile_action_phases(wave.replace("画面定格在她微笑的样子", "画面保持静止"), "T2VA", 5, "女孩在海边转身挥手，结尾画面静止两秒"))
+        # A subject's move toward the camera is no camera move against the fixed camera.
+        self.assertIn("女孩面向镜头后撤一步。", compile_action_phases(wave.replace("女孩抬手挥动", "女孩面向镜头后撤一步"), "T2VA", 5, "女孩在海边抬手后退"))
 
     def test_cut_times_and_the_first_shots_camera(self):
         answer = ("概述：写实电影风格，一只橘猫在窗台上伸懒腰；镜头全程固定拍摄。\n起始：橘猫前爪前伸伸懒腰。\n递进：橘猫后腿蹬起，身体前倾。\n收束：橘猫跃出窗台，准备切换。\n"
