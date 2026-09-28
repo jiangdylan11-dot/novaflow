@@ -833,6 +833,8 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   }
   const lf = (text) => text.replace(/\r\n/g, "\n");
   assert.equal(lf(extractNamedFunction(source, "miniMaxH3EnhanceMode")), lf(extractNamedFunction(edgeSource, "miniMaxH3EnhanceMode")));
+  assert.equal(lf(extractNamedFunction(source, "miniMaxH3DialogueBlocks")), lf(extractNamedFunction(edgeSource, "miniMaxH3DialogueBlocks")));
+  optimizeContext.miniMaxH3DialogueBlocks = vm.runInNewContext(`(${extractNamedFunction(source, "miniMaxH3DialogueBlocks")})`);
   const enhanceBranch = (text) => lf(extractNamedFunction(text, "normalizeMiniMaxH3PromptOutput")).split("const raw = normalizeGeneratedPrompt(text);")[0];
   assert.equal(enhanceBranch(source), enhanceBranch(edgeSource));
   const chineseFields = "integrated_multimodal_description: [Shot 1] 写实风格，<Picture 1> 中的白色纸飞机从桌面起飞，滑出窗外。镜头保持固定。\n\noverall_soundscape: 纸张轻响，窗外有风声。\n\nnon_diegetic_music: N/A";
@@ -856,6 +858,10 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   assert.ok(system(translate).startsWith(optimizeContext.MINIMAX_H3_TRANSLATOR_ROLE) && !system(translate).includes(h3.instruction));
   assert.equal(translate.body.temperature, 0.1);
   assert.equal(translate.resultOptions.minimaxH3TranslateOnly, true);
+  // Speech typed in quotes reaches the translator as a <d> block; the display half stays as typed.
+  const spoken = chineseFields.replace("滑出窗外。", "滑出窗外，女孩说：“再见。”");
+  assert.match(user(request("image_video", ["H3 compile: translate-only", "H3 response format: bilingual-v1"], spoken)), /女孩说：<d>\[Chinese\] 再见。<\/d>/);
+  assert.match(user(request("image_video", ["H3 response format: bilingual-v1"], spoken)), /女孩说：“再见。”/);
   const reference = request("full_reference", ["H3 response format: bilingual-v1", "H3 compile: translate-only"]);
   assert.deepEqual(reference.body.text.format.schema.required, ["modelPrompt", "displayPrompt", "editPolicy"]);
   assert.ok(user(reference).includes(optimizeContext.MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION));

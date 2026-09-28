@@ -161,6 +161,51 @@ test('translate-only compile for 多参 uses the reference translation and schem
   assert.equal(result.displayPrompt, edge.validateReference(source, {...built.resultOptions, requireChineseOutput:true}));
   assert.equal(result.modelPrompt, edge.validateReference(english, {...built.resultOptions, requireChineseOutput:false}));
   assert.deepEqual(result.editPolicy, editPolicy);
+  // The source is the display as the user wrote it: a mostly English prompt with one Chinese sentence is not gated.
+  const mixed = english.replace('as the camera tracks her.', 'as the camera tracks her. 她停下来回头看。');
+  const mixedBuilt = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:mixed,
+    requirements:[labels, 'H3 response format: bilingual-v1', 'H3 compile: translate-only', 'Source prompt:', mixed].join('\n')}, 'test-model');
+  const translated = english.replace('as the camera tracks her.', 'as the camera tracks her. She stops and looks back.');
+  assert.equal(JSON.parse(normalizeMiniMaxH3PromptOutput(JSON.stringify({modelPrompt:translated, displayPrompt:'x', editPolicy}), mixedBuilt.resultOptions)).displayPrompt,
+    edge.validateReference(mixed, {...mixedBuilt.resultOptions, requireChineseOutput:false}));
+  // Copying the untranslated sentence into the model half is not a translation, even below 多参's usual tolerance.
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(JSON.stringify({modelPrompt:mixed, displayPrompt:'x', editPolicy}), mixedBuilt.resultOptions), /英文正文/);
+});
+
+test('translate-only keeps a mixed-language source as typed and accepts quoted speech written as a <d> block', () => {
+  const mixed = fields('[Shot 1] A girl walks through the park at golden hour while the camera slowly tracks her from the side, 阳光透过树叶洒下。', 'Birds and wind in the leaves.');
+  const english = fields('[Shot 1] A girl walks through the park at golden hour while the camera slowly tracks her from the side, and sunlight filters through the leaves.', 'Birds and wind in the leaves.');
+  const result = JSON.parse(normalizeMiniMaxH3PromptOutput(pair(english, 'x'), translateRequest('text_video', mixed).resultOptions));
+  assert.deepEqual(result, {modelPrompt:edge.validateBaseFields(english, {...t2v, language:'en'}), displayPrompt:edge.validateBaseFields(mixed, t2v)});
+  // An optimize still needs a Chinese display half from Grok.
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(pair(english, mixed), baseRequest('text_video', '女孩在公园散步', ['H3 response format: bilingual-v1']).resultOptions), /简体中文/);
+  // Speech typed in quotes reaches the translator as an official <d> block; the display stays as typed.
+  const quoted = fields('[Shot 1] 写实风格，女孩 (S1) 对着镜头说：“我们出发吧！”然后转身离开。镜头保持固定。', '脚步声。');
+  const translating = translateRequest('text_video', quoted);
+  assert.match(userText(translating), /\(S1\) 对着镜头说：<d>\[Chinese\] 我们出发吧！<\/d>然后/);
+  assert.equal(translating.resultOptions.currentPrompt, quoted);
+  assert.match(userText(baseRequest('text_video', quoted, ['H3 response format: bilingual-v1'])), /说：“我们出发吧！”/);
+  // The official <d> dialogue and kept quotes both match the words of the source; other words do not.
+  const says = words => fields(`[Shot 1] Live-action. The girl (S1) says to the camera: ${words} Then she turns and leaves. The camera holds a static shot.`, 'Footsteps.');
+  for (const words of ['<d>[Chinese] 我们出发吧！</d>', '"我们出发吧！"']) {
+    assert.equal(JSON.parse(normalizeMiniMaxH3PromptOutput(pair(says(words), quoted), translateRequest('text_video', quoted).resultOptions)).modelPrompt, edge.validateBaseFields(says(words), {...t2v, language:'en'}));
+  }
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(pair(says('<d>[Chinese] 我们走吧！</d>'), quoted), translateRequest('text_video', quoted).resultOptions), /台词或屏幕文字不一致/);
+});
+
+test('the quoted line is kept verbatim unless the user asks to change the dialogue', () => {
+  const source = '女孩在车站挥手说：“出发吧。”';
+  const request = tail => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'text_video', durationSeconds:6, prompt:source,
+    requirements:[edge.instruction, edge.baseInstruction, edge.baseResultInstruction, 'H3 response format: bilingual-v1', 'Source prompt:', source + tail].join('\n')}, 'test-model').resultOptions;
+  const answer = words => pair(fields(`[Shot 1] Live-action, cinematic, a medium shot of a girl at a train station who raises her right hand and waves${words ? `, and the girl (S1) says: <d>[Chinese] ${words}</d>` : '.'} The camera holds a static shot.`, 'Platform announcements echo and footsteps pass.'),
+    fields(`[Shot 1] 写实电影风格，火车站里女孩的中景，她举起右手挥动${words ? `，女孩 (S1) 说：<d>[Chinese] ${words}</d>` : '。'}镜头保持固定。`, '站台广播回响，脚步声经过。'));
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer('我们走吧。'), request('\n把台词改成“我们走吧。”')));
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer('Let\'s go.'), request('\nChange the line to "Let\'s go."')));
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer(''), request('\n去掉台词')));
+  // Asked for a new line, an answer without it is not accepted.
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(answer(''), request('\n把台词改成“我们走吧。”')), /原台词未完整保留/);
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(answer('我们走吧。'), request('')), /原台词未完整保留/);
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer('出发吧。'), request('')));
 });
 
 test('the repair body carries the instruction for the pair schema and the specific registered failure', async () => {

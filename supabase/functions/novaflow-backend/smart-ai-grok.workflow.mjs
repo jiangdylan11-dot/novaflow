@@ -798,6 +798,11 @@ const MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION = "Translate only. The source p
 const MINIMAX_H3_TRANSLATOR_ROLE = "You are NovaFlow's MiniMax H3 prompt translator. The source prompt is finished: translate it faithfully under the translation rules in the request, which override every writing rule below; the rules below only describe the official English H3 wording. Write natural English sentences (a long Chinese comma chain may become several sentences) and each camera move as an official sentence such as The camera trucks right at slow speed or The camera holds a static shot. Return only the requested JSON.";
 // Grok copies whole English phrases into the display half when told to keep the markers identical, and may time a cut without its marker.
 const MINIMAX_H3_BASE_PAIR_RULES = "Every cut starts its own numbered marker, e.g. [Shot 2] At 00:04.000, the camera cuts to a close-up of ...; never write a cut time inside the previous shot. Place each <d> line where it is spoken in the action order. overall_soundscape is N/A only when the user asks for silence; otherwise describe the ambience and the sounds of the visible actions, even when someone speaks. In displayPrompt only the markers stay literal ([Shot N], At MM:SS.mmm, <Picture N>, (S1), <d>...</d> blocks and quoted text); translate every other word into Simplified Chinese, including camera phrases, speech verbs and sound words (the camera cuts to → 镜头切到, says → 说, thud → 闷响), e.g. [Shot 2] At 00:04.000 镜头切到近景 and 女孩 (S1) 说：<d>[Chinese] 出发吧。</d>";
+// Speech typed in quotes (说：“…”) reaches the translator as an official <d> dialogue block, which it keeps verbatim.
+function miniMaxH3DialogueBlocks(text) {
+  return String(text || "").replace(/((?:说|道|喊|问|唱|\b(?:says?|asks?|shouts?|sings?))\s*[:：,，]?\s*)[“\x22]([^”\x22\n]+)[”\x22]/gi,
+    (_, verb, words) => `${verb}<d>[${/\p{Script=Han}/u.test(words) ? "Chinese" : "English"}] ${words}</d>`);
+}
 
 function miniMaxH3PromptProtocolRules(mode, contentPolicy) {
   mode = String(mode || "");
@@ -953,18 +958,25 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     const basePair = options.minimaxH3BaseResult === true;
     let formatted;
     try {
-      // A translate-only compile keeps the Chinese source as the display half.
-      const value = options.minimaxH3TranslateOnly === true
+      // A translate-only compile keeps the user source as the display half; its language is not gated.
+      const translateOnly = options.minimaxH3TranslateOnly === true;
+      const value = translateOnly
         ? { ...(h3PromptEnhance.referenceResult(text) || { modelPrompt: text }), displayPrompt: options.currentPrompt }
         : text;
+      const checked = { ...options, displayIsSource: translateOnly };
       formatted = h3PromptEnhance.isReferenceMode(options)
-        ? h3PromptEnhance.validateReferenceResult(value, options)
-        : basePair ? h3PromptEnhance.validateBaseResult(value, options) : h3PromptEnhance.validateFormat(text, options);
+        ? h3PromptEnhance.validateReferenceResult(value, checked)
+        : basePair ? h3PromptEnhance.validateBaseResult(value, checked) : h3PromptEnhance.validateFormat(text, options);
       // Pair parity compares the two halves only; speech the user quotes must also reach the model half verbatim.
+      // A requirement about the dialogue replaces the source lines: then one line it quotes (if any) must arrive instead.
+      const requirement = miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt);
+      const aboutSpeech = /台词|对白|对话|说的?话|dialogue|speech|\blines?\b/i.test(requirement);
+      const lines = [...(aboutSpeech ? requirement : String(options.currentPrompt || "")).matchAll(aboutSpeech ? /[“\x22]([^”\x22\n]+)[”\x22]/g
+        : /(?:说|道|喊|问|唱|\b(?:says?|asks?|shouts?|sings?))\s*[:：,，]?\s*[“\x22]([^”\x22\n]+)[”\x22]|<d>(?:\s*\[[^\]\n]*\])?\s*([\s\S]*?)<\/d>/gi)].map((m) => (m[1] || m[2]).trim().replace(/[。！？.!?，,]+$/, ""));
       const model = basePair ? String(h3PromptEnhance.referenceResult(formatted)?.modelPrompt ?? formatted) : "";
-      for (const m of String(options.currentPrompt || "").matchAll(/(?:说|道|喊|问|唱|\b(?:says?|asks?|shouts?|sings?))\s*[:：,，]?\s*[“\x22]([^”\x22\n]+)[”\x22]|<d>(?:\s*\[[^\]\n]*\])?\s*([\s\S]*?)<\/d>/gi)) {
-        if (basePair && !model.includes((m[1] || m[2]).trim().replace(/[。！？.!?，,]+$/, ""))) throw new Error("原台词未完整保留");
-      }
+      if (basePair && lines.length && !lines[aboutSpeech ? "some" : "every"]((line) => model.includes(line))) throw new Error("原台词未完整保留");
+      // A translation leaves no Chinese outside <d> blocks and quoted text (the 多参 English check tolerates a few characters).
+      if (translateOnly && /[\u3400-\u9fff]/.test(String(h3PromptEnhance.referenceResult(formatted)?.modelPrompt ?? "").replace(/<d>[\s\S]*?<\/d>|\x22[^\x22\n]*\x22|“[^”\n]*”/g, ""))) throw new Error("H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示");
     } catch (error) {
       throw miniMaxH3ContractError(basePair ? "h3_contract_fields" : "h3_contract_five_sections", error.message);
     }
@@ -7891,7 +7903,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
     `mode: ${mode}`,
     `durationSeconds: ${durationSeconds}`,
     "currentPrompt:",
-    prompt || "N/A",
+    (basePair && translateOnly ? miniMaxH3DialogueBlocks(prompt) : prompt) || "N/A",
     "",
     "requirements:",
     miniMaxH3PromptEnhanceUserRequirement(requirements, prompt) || "N/A",

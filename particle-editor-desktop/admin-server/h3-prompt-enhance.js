@@ -135,7 +135,8 @@ function validateReferenceResult(value, options = {}) {
   }
   const serialize = v => typeof v === 'string' ? v : JSON.stringify(v);
   let modelPrompt = validateReference(serialize(compileReferenceFields(pair.modelPrompt, {...options,requireChineseOutput:false})), {...options,requireChineseOutput:false});
-  let displayPrompt = validateReference(serialize(compileReferenceFields(pair.displayPrompt, {...options,requireChineseOutput:true})), {...options,requireChineseOutput:true});
+  // displayIsSource: the display half is the user source itself (translate-only), so its language is not gated.
+  let displayPrompt = validateReference(serialize(compileReferenceFields(pair.displayPrompt, {...options,requireChineseOutput:true})), {...options,requireChineseOutput:!options.displayIsSource});
   // Mirror the local compiler's defaults so a provider result is completed, not
   // rejected: a requested loop gets its closure, a generated shot its camera.
   const appendNarrative = (text, sentence) => text.replace(/(detailed_description:\n[\s\S]*?)(?=\n\noverall_soundscape:)/, m => m.trimEnd() + ' ' + sentence);
@@ -671,7 +672,8 @@ function composeBaseModelPrompt(value, options = {}) {
 }
 function validateBaseResult(value, options = {}) {
   const pair = referenceResult(value);
-  const results = pair ? [checkBase(pair.modelPrompt, {...options, language:'en'}), checkBase(pair.displayPrompt, {...options, language:'zh'})] : [checkBase(value, options)];
+  // displayIsSource: the display half is the user source itself (translate-only), so its language is not gated.
+  const results = pair ? [checkBase(pair.modelPrompt, {...options, language:'en'}), checkBase(pair.displayPrompt, {...options, language:options.displayIsSource ? undefined : 'zh'})] : [checkBase(value, options)];
   // Mirror validateReferenceResult: complete a requested loop closure and a default camera, never reject for them.
   const intent = userIntent(options), narrativeOf = r => r.fields.integrated_multimodal_description;
   const complete = (missing, sentences) => {
@@ -683,7 +685,8 @@ function validateBaseResult(value, options = {}) {
   const [model, display] = results.map(r => serializeBase(r.fields));
   const shots = text => (text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|');
   const tokens = text => [...new Set(text.match(/<Picture [1-9]\d*>/g) || [])].sort().join('|');
-  const literals = text => [...text.matchAll(/<d>([\s\S]*?)<\/d>|"([^"\n]*)"|“([^”\n]*)”/g)].map(m => m[1] ?? m[2] ?? m[3]).sort().join('\n');
+  // Speech quoted in one half may be a <d>[Chinese] …</d> block in the other: compare the words, not the language tag.
+  const literals = text => [...text.matchAll(/<d>([\s\S]*?)<\/d>|"([^"\n]*)"|“([^”\n]*)”/g)].map(m => m[1]?.replace(/^\s*\[[^\]\n]*\]\s*/, '') ?? m[2] ?? m[3]).sort().join('\n');
   if (shots(model) !== shots(display)) throw new Error(baseIssue.pairShots);
   if (tokens(model) !== tokens(display)) throw new Error('H3 中英文提示词的素材关系不一致');
   if (literals(model) !== literals(display)) throw new Error(baseIssue.pairLiterals);
