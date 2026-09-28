@@ -930,12 +930,26 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   // 图生/首尾帧/多参 optimize is the image action: reverse's content-safety handling rides in its one call, as on the Edge.
   // The shared sensitive categories and the 美工 role-reference safety match the Edge copy too.
   for (const name of ["miniMaxH3OptimizeSafetyRules", "miniMaxH3ContentSafetySchema", "miniMaxH3AssertOptimizeContentSafety",
-    "miniMaxH3SensitiveCategories", "artReferenceUserContentState", "artReferenceAssertContentSafety"]) {
+    "miniMaxH3SensitiveCategories", "artReferenceUserContentState", "artReferenceAssertContentSafety",
+    "artReferenceResultFormat", "artReferenceContentSafety"]) {
     assert.equal(lf(extractNamedFunction(source, name)), lf(extractNamedFunction(edgeSource, name)), `${name} must match the Edge copy`);
   }
   for (const name of ["MINIMAX_H3_FAITHFUL_PICTURE_RULE", "MINIMAX_H3_BENIGN_EXPOSURE_PATTERN", "ART_REFERENCE_CONTENT_SAFETY_RULE"]) {
     assert.equal(extractNamedConstant(source, name), extractNamedConstant(edgeSource, name), `${name} must match the Edge copy`);
   }
+  // The role reference asks for its strict prompt + contentSafety object and reports the grading beside the prompt, as on the Edge.
+  for (const copy of [source, edgeSource]) {
+    assert.match(copy, /if \(usesArtFiveSectionReverse\) body\.text = artReferenceResultFormat\(supportsNegativePrompt\);/);
+    assert.match(copy, /artReferenceAssertContentSafety\(rawText, parsed\.prompt, options, artReferenceSafety\);/);
+    assert.match(copy, /contentSafety: artReferenceSafety \|\| \(sensitiveState\.contentSafety \?/);
+  }
+  const artSafety = vm.runInNewContext(`(${extractNamedFunction(source, "artReferenceContentSafety")})`, {
+    parseSmartAiPromptJson: vm.runInNewContext(`(${extractNamedFunction(source, "parseSmartAiPromptJson")})`, { JSON }),
+    normalizeGeneratedPrompt: (text) => String(text || "").trim(),
+  });
+  assert.deepEqual({ ...artSafety(JSON.stringify({ prompt: "p", negative_prompt: "n", contentSafety: { explicitMinorEvidence: false, sensitiveContent: true } }), {}) },
+    { sensitiveContent: true, explicitMinorEvidence: false });
+  assert.equal(artSafety(JSON.stringify({ prompt: "p" }), {}), null);
   const framedRequest = (currentPrompt, contentPolicy = { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false }) => buildOptimize({
     purpose: "minimax-h3-prompt-enhance", currentPrompt, h3Mode: "image_video", durationSeconds: 5, h3ReferenceFrames: frames, contentPolicy, surface: "animation", provider: "grok",
     requirements: ["H3 response format: bilingual-v1", "Available resource labels: <Picture 1> = captured image slot first_frame.", "Source prompt:", currentPrompt].join("\n"),

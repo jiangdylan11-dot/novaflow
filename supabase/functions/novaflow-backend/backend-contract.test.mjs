@@ -3953,6 +3953,80 @@ test("美工 role reference carries the content-safety rule and ends a marked or
   }
 });
 
+test("美工 role reference reports its in-call content grading beside the prompt and never inside it", async () => {
+  const image = { dataUrl: "data:image/png;base64,AA==", role: "subject", label: "参考图" };
+  const build = (currentPrompt, requirements = "", extra = {}) => buildGrokImageReverseRequest({
+    images: [image], scenario: "role_reference", surface: "art", purpose: "roleReference", currentPrompt, requirements, ...extra
+  }, "grok-contract-test");
+  const plain = build("穿红色斗篷的剑客站在雪地里", "用户生成要求：改成夜景");
+  // The one call answers a strict object: the prompt pair plus the H3 image action's contentSafety field.
+  const format = plain.body.text.format;
+  assert.equal(format.type, "json_schema");
+  assert.equal(format.strict, true);
+  assert.deepEqual(format.schema.required, ["prompt", "negative_prompt", "contentSafety"]);
+  assert.equal(format.schema.additionalProperties, false);
+  assert.deepEqual(format.schema.properties.contentSafety.required, ["explicitMinorEvidence", "sensitiveContent"]);
+  assert.match(format.schema.properties.contentSafety.description, /both true, every prompt field is exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content\.$/);
+  assert.match(format.schema.properties.contentSafety.properties.explicitMinorEvidence.description, /False for a young-looking, petite or age-unknown person/);
+  assert.deepEqual(build("剑客", "", { supportsNegativePrompt: false }).body.text.format.schema.required, ["prompt", "contentSafety"]);
+  assert.equal(plain.inputMeta.imageCount, 1, "no extra call: the grading rides in the one image call");
+  // A sensitive request alone is recorded for the signal; a child still pairs with it.
+  assert.deepEqual(build("成年女性全裸站在窗边").resultOptions, { artFiveSectionPrompt: true, authorizedSensitiveUserRequest: true });
+  assert.deepEqual(build("小孩坐在树根上看书").resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false });
+
+  const five = ["[风格设定]", "写实插画。", "[主体物品]", "一名剑客站在雪地里。", "[环境背景]", "雪夜。", "[光线与色彩]", "冷色月光。", "[拍摄参数]", "中景，平视。"].join("\n");
+  const answer = (contentSafety) => JSON.stringify({ prompt: five, negative_prompt: "模糊，低质量", ...(contentSafety === undefined ? {} : { contentSafety }) });
+  const read = (contentSafety, options = plain.resultOptions) => grokResponsesPublicResult({ output_text: answer(contentSafety) }, options);
+  // Stripped: the prompt and negative prompt carry no field, the signal goes beside them.
+  const neutral = read({ explicitMinorEvidence: false, sensitiveContent: false });
+  assert.equal(neutral.output_text, five);
+  assert.equal(neutral.negative_prompt, "模糊，低质量");
+  assert.doesNotMatch(`${neutral.output_text}\n${neutral.negative_prompt}`, /contentSafety|explicitMinorEvidence|sensitiveContent/);
+  assert.deepEqual(neutral.contentSafety, { sensitiveContent: false, explicitMinorEvidence: false });
+  assert.equal(neutral.visualSchema, "");
+  assert.equal("generationGate" in neutral, false);
+  assert.deepEqual(read({ explicitMinorEvidence: false, sensitiveContent: true }).contentSafety, { sensitiveContent: true, explicitMinorEvidence: false }, "adult sensitive content is written and reported");
+  assert.deepEqual(read({ explicitMinorEvidence: true, sensitiveContent: false }).contentSafety, { sensitiveContent: false, explicitMinorEvidence: true }, "a child without sensitive content is an ordinary picture");
+  // The words of the user count in: a sensitive request reports sensitive content even when the model says none.
+  assert.deepEqual(read({ explicitMinorEvidence: false, sensitiveContent: false }, build("成年女性全裸站在窗边").resultOptions).contentSafety, { sensitiveContent: true, explicitMinorEvidence: false });
+  // An answer without the field (an older prompt, a plain-text answer) reports nothing and is written as before.
+  assert.equal(read(undefined).contentSafety, null);
+  assert.equal(grokResponsesPublicResult({ output_text: five }, plain.resultOptions).contentSafety, null);
+  assert.equal(read({ explicitMinorEvidence: "no", sensitiveContent: false }).contentSafety, null);
+
+  // Explicit minor evidence with sensitive content is refused for good: 422, one call, no layout repair.
+  for (const [contentSafety, options] of [
+    [{ explicitMinorEvidence: true, sensitiveContent: true }, plain.resultOptions],
+    [{ explicitMinorEvidence: true, sensitiveContent: false }, build("成年女性全裸站在窗边").resultOptions],
+    [{ explicitMinorEvidence: false, sensitiveContent: true }, build("小孩坐在树根上看书").resultOptions]
+  ]) {
+    let calls = 0;
+    await assert.rejects(callGrokResponseWithVisualRetry(plain.body, plain.inputMeta, { ...options, visualRetryAllowed: true }, async () => {
+      calls += 1;
+      return { ok: true, data: grokResponsesPublicResult({ output_text: answer(contentSafety) }, options), providerCallCount: 1 };
+    }), (error) => error.errorCode === "provider_content_policy" && error.statusCode === 422);
+    assert.equal(calls, 1);
+  }
+  // Model minor evidence pairs with a sensitive answer too, as in the H3 optimize.
+  assert.throws(() => grokResponsesPublicResult({ output_text: JSON.stringify({ prompt: five.replace("一名剑客站在雪地里。", "一名剑客全裸站在雪地里。"), negative_prompt: "模糊", contentSafety: { explicitMinorEvidence: true, sensitiveContent: false } }) }, plain.resultOptions),
+    (error) => error.errorCode === "provider_content_policy");
+  // A layout repair keeps the strict object, so the second answer is graded the same way.
+  let calls = 0;
+  const repaired = await callGrokResponseWithVisualRetry(plain.body, plain.inputMeta, { ...plain.resultOptions, visualRetryAllowed: true }, async (body) => {
+    calls += 1;
+    assert.equal(body.text.format.name, "novaflow_art_reference_v1");
+    const text = calls === 1 ? JSON.stringify({ prompt: "一段没有分段的提示词", negative_prompt: "模糊", contentSafety: { explicitMinorEvidence: false, sensitiveContent: false } }) : answer({ explicitMinorEvidence: false, sensitiveContent: true });
+    return { ok: true, data: grokResponsesPublicResult({ output_text: text }, plain.resultOptions), providerCallCount: 1 };
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(repaired.data.contentSafety, { sensitiveContent: true, explicitMinorEvidence: false });
+  // The Edge and Admin handlers pass the field through beside the prompt.
+  const edgeIndexSource = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  const desktopSource = readFileSync(new URL("../../../particle-editor-desktop/admin-server/server.js", import.meta.url), "utf8");
+  assert.match(edgeIndexSource, /prompt: data\.output_text,[\s\S]{0,300}contentSafety: data\.contentSafety \|\| null/);
+  assert.match(desktopSource, /prompt: grok\.data\.output_text,[\s\S]{0,300}contentSafety: grok\.data\.contentSafety \|\| null/);
+});
+
 test("nf.visual.v2 is explicit opt-in for one static reference and never widens legacy routes", () => {
   const image = { dataUrl: "data:image/png;base64,AA==", role: "source", label: "主图" };
   const v2 = buildGrokImageReverseRequest({
@@ -4056,7 +4130,8 @@ test("nf.visual.v2 is explicit opt-in for one static reference and never widens 
     const request = buildGrokImageReverseRequest(payload, "grok-contract-test");
     assert.equal(request.inputMeta.visualIrSchema, "");
     assert.equal(request.body.max_output_tokens, 2048);
-    assert.equal("text" in request.body, false);
+    // Role reference answers its own strict prompt + contentSafety object, never the v2 visual contract.
+    assert.equal(request.body.text?.format?.name, payload.scenario === "role_reference" ? "novaflow_art_reference_v1" : undefined);
     assert.deepEqual(request.resultOptions, payload.scenario === "role_reference"
       ? { artFiveSectionPrompt: true }
       : {});

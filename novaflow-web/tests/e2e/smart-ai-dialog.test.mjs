@@ -127,7 +127,7 @@ function page({ respond } = {}) {
     textarea.value = text;
     textarea.dispatch('input');
   };
-  return { context, api, calls, dialog, settle, type };
+  return { context, api, calls, dialog, settle, type, byId };
 }
 
 // A MiniMax H3 bottom workspace in one generation mode with the given upload slots.
@@ -162,7 +162,7 @@ function artSurface(prompt, references = []) {
   });
   const button = new HTMLButtonElement();
   button.ancestors = { '#novaflow-art-generate-workspace': workspace };
-  return { surface: 'art', button, artGenerateMode: references.length ? 'img2img' : 'txt2img', nsfw: false, promptTarget: null, positive, negative };
+  return { surface: 'art', button, artGenerateMode: references.length ? 'img2img' : 'txt2img', nsfw: false, promptTarget: null, positive, negative, workspace };
 }
 
 // The plain animation dialog (a model other than H3) with optional frames.
@@ -463,6 +463,112 @@ test('美工 references: explicit minor wording with sensitive wording is stoppe
   assert.equal(p.calls.grokReverse.length, 1);
   assert.equal(surface.positive.value, '海边的人物');
   assert.match(p.api.state.message, /^分析完成—未写入：/);
+});
+
+// The reference route grades its pictures in its one call (contentSafety beside the prompt) and the dialog
+// uses it as the static reverse used generationGate: adult sensitive content switches 生图 to NSFW, anything
+// else is written untouched, explicit minor evidence with sensitive content shows the static route's message.
+const REFERENCE_MINOR_BLOCKED = '分析完成—未写入：检测到年轻或未成年人特征，敏感提示词已阻止。';
+const REFERENCE_PROMPT = '[风格设定]\n写实摄影风格。\n\n[主体物品]\n一名成年女性坐在木质窗台边。';
+const REFERENCE_SETS = [['https://refs.test/a.png'], ['https://refs.test/a.png', 'https://refs.test/b.png']];
+// Each bridge's own shape: the web Grok bridge wraps the Edge JSON in result, the local worker answers in data.
+function referenceAnswer(engine, contentSafety, extra = {}) {
+  const fields = { ...(contentSafety === undefined ? {} : { contentSafety }), ...extra };
+  return engine === 'grok'
+    ? { ok: true, result: { ok: true, provider: 'grok', prompt: REFERENCE_PROMPT, negative_prompt: '模糊', has_negative_prompt: true, visualSchema: '', contentWarnings: [], sensitivePromptBlocked: false, ...fields } }
+    : { ok: true, data: { prompt: REFERENCE_PROMPT, negativePrompt: '模糊', ...fields } };
+}
+// The 生图 panel's NSFW switch, as window.__NovaFlowArtGenerate exposes it.
+function withNsfwSwitch(p, surface, available = true) {
+  p.byId.set('novaflow-art-generate-workspace', surface.workspace);
+  const switched = [];
+  if (available) {
+    p.context.__NovaFlowArtGenerate = { setNsfw(value) { switched.push(value); surface.workspace.setAttribute('data-novaflow-art-generate-nsfw', value ? '1' : '0'); } };
+  }
+  return switched;
+}
+async function runReference(answer, { engine, references, prompt = '成年女性坐在窗边', nsfwSwitch = true }) {
+  const p = page({ respond: (payload, kind) => kind.endsWith('reverse') ? answer : { ok: false, error: 'unexpected second call' } });
+  const surface = artSurface(prompt, references);
+  const switched = withNsfwSwitch(p, surface, nsfwSwitch);
+  await open(p, surface, engine);
+  await p.api.runSmartAi();
+  const label = `${references.length} refs / ${engine}`;
+  assert.equal(p.calls.grokReverse.length + p.calls.localReverse.length, 1, `${label}: one call`);
+  assert.equal(p.calls.grok.length + p.calls.local.length, 0, `${label}: no second pass`);
+  assert.equal((engine === 'grok' ? p.calls.grokReverse : p.calls.localReverse)[0].purpose, 'roleReference');
+  return { p, surface, switched, label };
+}
+
+test('美工 references: adult sensitive content switches 生图 to NSFW, then writes, on both engines', async () => {
+  for (const references of REFERENCE_SETS) {
+    for (const engine of ['grok', 'local']) {
+      const { p, surface, switched, label } = await runReference(referenceAnswer(engine, { sensitiveContent: true, explicitMinorEvidence: false }), { engine, references });
+      assert.deepEqual(switched, [true], label);
+      assert.equal(surface.workspace.getAttribute('data-novaflow-art-generate-nsfw'), '1', label);
+      assert.equal(surface.positive.value, REFERENCE_PROMPT, label);
+      assert.equal(p.api.state.message, '', label);
+      assert.equal(p.api.state.open, false, label);
+    }
+  }
+  // Without the panel's switch nothing is written, as on the static route.
+  const { p, surface } = await runReference(referenceAnswer('grok', { sensitiveContent: true, explicitMinorEvidence: false }), { engine: 'grok', references: REFERENCE_SETS[0], nsfwSwitch: false });
+  assert.equal(surface.positive.value, '成年女性坐在窗边');
+  assert.equal(p.api.state.message, '分析结果尚未写入：无法自动开启 Art NSFW 生成开关，请确认 Art 生成面板可用后重新分析。');
+  // Explicit minor words in the answer still stop an adult-sensitive write.
+  const young = referenceAnswer('local', { sensitiveContent: true, explicitMinorEvidence: false });
+  young.data.prompt = REFERENCE_PROMPT.replace('一名成年女性', '一名儿童');
+  const stopped = await runReference(young, { engine: 'local', references: REFERENCE_SETS[1] });
+  assert.equal(stopped.surface.positive.value, '成年女性坐在窗边');
+  assert.deepEqual(stopped.switched, []);
+  assert.match(stopped.p.api.state.message, /^分析完成—未写入：/);
+});
+
+test('美工 references: neutral content and older engines write without touching NSFW', async () => {
+  for (const references of REFERENCE_SETS) {
+    for (const engine of ['grok', 'local']) {
+      for (const contentSafety of [{ sensitiveContent: false, explicitMinorEvidence: false }, { sensitiveContent: false, explicitMinorEvidence: true }, undefined]) {
+        const { p, surface, switched, label } = await runReference(referenceAnswer(engine, contentSafety), { engine, references, prompt: '海边的人物' });
+        const caseLabel = `${label} / ${JSON.stringify(contentSafety ?? 'no signal')}`;
+        assert.deepEqual(switched, [], caseLabel);
+        assert.equal(surface.workspace.getAttribute('data-novaflow-art-generate-nsfw'), '0', caseLabel);
+        assert.equal(surface.positive.value, REFERENCE_PROMPT, caseLabel);
+        assert.equal(p.api.state.message, '', caseLabel);
+        assert.equal(p.api.state.open, false, caseLabel);
+      }
+    }
+  }
+});
+
+test('美工 references: explicit minor evidence with sensitive content is never written and shows the static route message', async () => {
+  const refusals = {
+    grok: [
+      { ok: false, error: 'Grok 未通过未成年人敏感内容安全校验' },
+      { ok: false, error: 'Grok 未通过未成年人敏感内容安全校验', errorCode: 'provider_content_policy', retryable: false },
+      referenceAnswer('grok', { sensitiveContent: true, explicitMinorEvidence: true }),
+    ],
+    local: [
+      { ok: false, error: 'MiniMax H3 敏感内容检测到明确未成年人证据，已阻断', errorCode: 'h3-sensitive-young-evidence-blocked', generationGate: 'blocked' },
+      referenceAnswer('local', { sensitiveContent: true, explicitMinorEvidence: true }),
+      { ok: true, data: { prompt: '', negativePrompt: '', generationGate: 'blocked', sensitivePromptBlocked: true, contentSafety: { sensitiveContent: true, explicitMinorEvidence: true } } },
+    ],
+  };
+  for (const references of REFERENCE_SETS) {
+    for (const [engine, answers] of Object.entries(refusals)) {
+      for (const [index, answer] of answers.entries()) {
+        const { p, surface, switched, label } = await runReference(answer, { engine, references, prompt: '海边的人物' });
+        const caseLabel = `${label} / refusal ${index}`;
+        assert.equal(surface.positive.value, '海边的人物', caseLabel);
+        assert.deepEqual(switched, [], caseLabel);
+        assert.equal(p.api.state.message, REFERENCE_MINOR_BLOCKED, caseLabel);
+        assert.equal(p.api.state.loading, false, caseLabel);
+        assert.equal(p.api.state.open, true, caseLabel);
+      }
+    }
+  }
+  // Any other failure keeps its own message.
+  const { p } = await runReference({ ok: false, error: '提示词版式未通过检查' }, { engine: 'grok', references: REFERENCE_SETS[0] });
+  assert.equal(p.api.state.message, '生成失败\n提示词版式未通过检查');
 });
 
 test('the plain animation dialog reads its frames together with the prompt and 补充要求', async () => {

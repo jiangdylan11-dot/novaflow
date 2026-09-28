@@ -3766,6 +3766,32 @@
       && ["adult_appearing", "age_unverifiable"].includes(age);
   }
 
+  // 美工 with 1-3 references (role reference) grades its pictures and words in its one call. Both engines
+  // return contentSafety: { sensitiveContent: boolean, explicitMinorEvidence: boolean } beside the prompt
+  // (Grok: the strict answer field, the user's words counted in; local reverse_art_role_prompt: its check
+  // line). It stands for the static reverse's generationGate:
+  //   sensitiveContent only       -> adult_confirmation: 生图 switches to NSFW, then the prompt is written
+  //   no sensitiveContent         -> direct: written, NSFW untouched
+  //   both, or a blocked result   -> blocked: nothing written, the static route's minor message
+  // A result without the field (an older engine) is written as before, without a switch.
+  const ART_REFERENCE_MINOR_BLOCKED_MESSAGE = "分析完成—未写入：检测到年轻或未成年人特征，敏感提示词已阻止。";
+
+  function artReferenceGenerationGate(parsed) {
+    if (parsed?.generationGate === "blocked" || parsed?.sensitivePromptBlocked === true) return "blocked";
+    const safety = parsed?.contentSafety;
+    if (typeof safety?.sensitiveContent !== "boolean" || typeof safety?.explicitMinorEvidence !== "boolean") return "";
+    if (safety.sensitiveContent && safety.explicitMinorEvidence) return "blocked";
+    return safety.sensitiveContent ? "adult_confirmation" : "direct";
+  }
+
+  // An engine that refuses explicit minor + sensitive content answers with a failure instead of a gate:
+  // Grok 422 provider_content_policy, the local *-sensitive-*minor/young*-blocked codes.
+  function smartAiFailureIsMinorSensitiveBlock(failure) {
+    const markers = [failure?.errorCode, failure?.providerFailureCode, failure?.failureClass, failure?.message].join(" ");
+    return (failure?.generationGate === "blocked" && failure?.sensitivePromptBlocked === true)
+      || /provider[-_ ]?content[-_ ]?policy|sensitive[-_a-z0-9]*(?:minor|young|underage|child)[-_a-z0-9]*blocked|explicit[-_ ]?minor|未成年/i.test(markers);
+  }
+
   function smartAiSensitiveIntentHasDisallowedYoungOrMinorTerms(value) {
     const normalized = String(value || "")
       .normalize("NFKC")
@@ -4681,6 +4707,15 @@
         renderDialog();
         return;
       }
+      const referenceGate = roleAwareReferences ? artReferenceGenerationGate(parsed) : "";
+      if (referenceGate === "blocked") {
+        if (!useGrok) showLocalStaticReverseWarning(result?.warning);
+        ART_REFERENCE_PLAN = null;
+        state.loading = false;
+        state.message = ART_REFERENCE_MINOR_BLOCKED_MESSAGE;
+        renderDialog();
+        return;
+      }
       if (!nextPrompt) {
         const invalidResultError = new Error(result?.error || "生成失败");
         if (isMiniMaxH3ReverseRequest) invalidResultError.miniMaxH3FallbackFailureType = "invalid_response";
@@ -4808,8 +4843,9 @@
         return;
       }
       let currentTextareas = textareas;
-      if (isVisualV2Result && generationGate === "adult_confirmation") {
-        if (!isSmartAiSensitiveAutoApplyCandidate(parsed)) {
+      // Adult sensitive content switches 生图 to NSFW before writing, for the static gate and the reference signal alike.
+      if ((isVisualV2Result && generationGate === "adult_confirmation") || referenceGate === "adult_confirmation") {
+        if (isVisualV2Result && !isSmartAiSensitiveAutoApplyCandidate(parsed)) {
           throw new Error("图片反推返回的敏感候选状态不完整或不一致，已阻止写入");
         }
         const declaredAdultSensitiveText = `所有人物均为成年人。\n${prompt || ""}\n${nextPrompt || ""}`;
@@ -4909,6 +4945,12 @@
       }
       state.loading = false;
       state.messageTone = isMiniMaxH3ReverseRequest ? "error" : "";
+      if (roleAwareReferences && smartAiFailureIsMinorSensitiveBlock(readSmartAiFailureEnvelope(err))) {
+        ART_REFERENCE_PLAN = null;
+        state.message = ART_REFERENCE_MINOR_BLOCKED_MESSAGE;
+        renderDialog();
+        return;
+      }
       state.message = smartAiFailureMessage(err);
       renderDialog();
     }

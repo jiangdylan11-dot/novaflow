@@ -8913,9 +8913,12 @@ function grokResponsesPublicResult(data, options = {}) {
     if (options.nsfw && ordinaryArtPromptCoreAffirmativeMinorPresent(parsed.prompt)) throw new Error("提示词融合未通过内容检查");
     if (options.supportsNegativePrompt && !parsed.negative_prompt) throw new Error("提示词融合未返回反向提示词");
   }
+  const artReferenceSafety = options.artFiveSectionPrompt === true && options.artSemanticFusion !== true
+    ? artReferenceContentSafety(rawText, options)
+    : null;
   if (options.artFiveSectionPrompt === true && options.artSemanticFusion !== true) {
     // Before the layout check, so a refusal is final (422, no repair call).
-    artReferenceAssertContentSafety(rawText, parsed.prompt, options);
+    artReferenceAssertContentSafety(rawText, parsed.prompt, options, artReferenceSafety);
     const layoutFailure = artFiveSectionFailure(parsed.prompt);
     if (layoutFailure) {
       const layoutError = new Error("提示词版式未通过检查：" + layoutFailure + "；原提示词未修改");
@@ -8934,10 +8937,10 @@ function grokResponsesPublicResult(data, options = {}) {
     negative_prompt: parsed.negative_prompt,
     has_negative_prompt: parsed.has_negative_prompt,
     visualSchema: expectedVisualSchema,
-    contentSafety: sensitiveState.contentSafety ? {
+    contentSafety: artReferenceSafety || (sensitiveState.contentSafety ? {
       ...sensitiveState.contentSafety,
       sensitive_visible_facts: []
-    } : null,
+    } : null),
     contentWarnings: sensitiveState.contentWarnings,
     sensitivePromptBlocked: sensitiveState.sensitivePromptBlocked,
     ...(expectedVisualSchema === GROK_VISUAL_IR_SCHEMA_V2
@@ -8968,18 +8971,40 @@ const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前
 // the H3 optimize in its one call; grokResponsesPublicResult ends a marked or child-plus-sensitive answer as provider_content_policy.
 const ART_REFERENCE_CONTENT_SAFETY_RULE = `人物称呼沿用用户原词（女孩仍写女孩，女神仍写女神）；用户文字或图中文字未写明时，不写年龄或年龄段（成年、未成年、N岁）。若图中明确是儿童或婴儿（年轻外观或年龄不明不算），且图片或要求同时涉及裸露或性内容，只输出 ${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}: explicit_minor_sensitive_content。`;
 
-// A child named in the words of the user is recorded, with whether the text also asks for sensitive content, for the answer check.
+// A child named in the words of the user is recorded, with whether the text also asks for sensitive content, for the answer check;
+// a sensitive request alone is recorded for the reported signal.
 function artReferenceUserContentState(currentPrompt, requirements) {
   const text = `${currentPrompt || ""}\n${requirements || ""}`;
-  return miniMaxH3HasExplicitYouthIndicator(text) ? {
-    explicitYouthUserRequest: true,
-    authorizedSensitiveUserRequest: miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0
-  } : {};
+  const sensitive = miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0;
+  if (miniMaxH3HasExplicitYouthIndicator(text)) return { explicitYouthUserRequest: true, authorizedSensitiveUserRequest: sensitive };
+  return sensitive ? { authorizedSensitiveUserRequest: true } : {};
 }
 
-function artReferenceAssertContentSafety(rawText, prompt, options) {
-  if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(rawText) || (options.explicitYouthUserRequest === true
-    && (options.authorizedSensitiveUserRequest === true || miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0))) {
+// The one call answers a strict JSON object whose contentSafety is the in-call grading of the H3 image action. It takes the place
+// of the static reverse's generationGate and never reaches the prompt: parseSmartAiPromptResult reads prompt and negative_prompt only.
+function artReferenceResultFormat(supportsNegativePrompt) {
+  return { format: { type: "json_schema", name: "novaflow_art_reference_v1", strict: true,
+    schema: { type: "object", additionalProperties: false,
+      properties: { prompt: { type: "string" }, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}), contentSafety: miniMaxH3ContentSafetySchema() },
+      required: [...(supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"]), "contentSafety"] } } };
+}
+
+// The signal returned beside the prompt, the words of the user counted in: { sensitiveContent, explicitMinorEvidence }.
+// An answer without it gives null, and the renderer then writes without switching 生图 to NSFW, as for an older engine.
+function artReferenceContentSafety(rawText, options) {
+  const safety = parseSmartAiPromptJson(normalizeGeneratedPrompt(rawText))?.contentSafety;
+  if (typeof safety?.sensitiveContent !== "boolean" || typeof safety?.explicitMinorEvidence !== "boolean") return null;
+  return {
+    sensitiveContent: safety.sensitiveContent || options.authorizedSensitiveUserRequest === true,
+    explicitMinorEvidence: safety.explicitMinorEvidence || options.explicitYouthUserRequest === true
+  };
+}
+
+function artReferenceAssertContentSafety(rawText, prompt, options, safety = null) {
+  const minor = options.explicitYouthUserRequest === true || safety?.explicitMinorEvidence === true;
+  const sensitive = options.authorizedSensitiveUserRequest === true || safety?.sensitiveContent === true
+    || miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0;
+  if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(rawText) || (minor && sensitive)) {
     throw miniMaxH3ContractError("provider_content_policy", "Grok art reference blocked explicit minor sensitive content", 422, "provider_content_policy");
   }
 }
@@ -9570,6 +9595,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
     max_output_tokens: 2048
   };
   if (usesVisualIrV2) body.text = GROK_VISUAL_IR_V2_TEXT_FORMAT;
+  if (usesArtFiveSectionReverse) body.text = artReferenceResultFormat(supportsNegativePrompt);
   return {
     body,
     inputMeta: {
