@@ -2690,7 +2690,7 @@
       imageOutpaint: '\u65e0\u9650\u6269\u56fe\u751f\u6210\u4e2d...',
       imageAngleAdjust: '正在角度调整...',
       penCutout: '图层分割中...',
-      penFill: '智能补全中...',
+      penFill: '快速补缺中...',
       merge: '\u6b63\u5728\u5408\u5e76\u56fe\u5c42...',
       export: '\u6b63\u5728\u5bfc\u51fa PSD...'
     }
@@ -4101,8 +4101,8 @@
     }
     splitLayerRedoStack.push(splitLayerHistorySnapshot('redo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerRedoStack)
-    const message = snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销智能补全'
-    const fallbackMessage = '智能补全撤销失败'
+    const message = snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销快速补缺'
+    const fallbackMessage = '快速补缺撤销失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
       render()
@@ -4125,8 +4125,8 @@
     }
     splitLayerUndoStack.push(splitLayerHistorySnapshot('undo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerUndoStack)
-    const message = '已重做智能补全'
-    const fallbackMessage = '智能补全重做失败'
+    const message = '已重做快速补缺'
+    const fallbackMessage = '快速补缺重做失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
       render()
@@ -9002,10 +9002,10 @@
     if (route.provider === FLUX_COMPLETION_PROVIDER) return buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options || {})
     const qwen21 = qwen21Runtime(info)
     const can21 = !!(qwen21 && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite)
-    // 局部编辑 and 智能补全 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
+    // 局部编辑 and 智能补图 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
     // every node carries it.
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
-    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补图'}。请在本地助手里重新启动 NovaFlow 后再试`)
     if (wantsQwen21) {
       // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
       const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
@@ -13413,7 +13413,7 @@
         { action: 'inpaintEdit', label: '局部编辑', title: '增加、替换、修改或恢复结构，需要输入编辑要求' },
         { action: 'inpaintRepair', label: '去除物体', title: '删除遮罩区域内内容并自动补全背景' },
         { action: 'inpaintCompletion', label: '智能补图', title: '补全缺失结构，保留提示词输入' },
-        { action: 'penFill', label: '智能补全', title: '使用可调曲线的钢笔闭合路径标记缺失区域，并根据当前图层已有内容智能补全；仅支持当前图层' },
+        { action: 'penFill', label: '快速补缺', title: '使用可调曲线的钢笔闭合路径标记缺失区域，并根据当前图层已有内容快速补缺；仅支持当前图层' },
         { action: 'mask', label: '蒙版编辑', title: '[ ] 调整画笔，；缩小羽化，“放大羽化，E/R 切换，Esc 退出' },
         { action: 'canvasResize', label: '画布扩展', title: '扩展画布：设置新宽高和定位锚点' }
       ]
@@ -13977,7 +13977,7 @@
       inpaintEdit: isInpainting && selectedInpaintMode === 'edit' ? selectionInpaintModeBusyLabel('edit') : (inpaintActive && selectedInpaintMode === 'edit' ? selectionInpaintModeExecuteLabel('edit') : selectionInpaintModeStartLabel('edit')),
       inpaintRepair: isEffectRemoving ? '特效去除中…' : (isInpainting && selectedInpaintMode === 'repair' ? selectionInpaintModeBusyLabel('repair') : (inpaintActive && selectedInpaintMode === 'repair' ? (effectRemovalActive ? '执行特效去除' : selectionInpaintModeExecuteLabel('repair')) : selectionInpaintModeStartLabel('repair'))),
       penCutout: state.busy && state.busyAction === 'penCutout' ? '钢笔抠图中…' : (penCutoutActive ? '执行抠图' : '钢笔抠图'),
-      penFill: state.busy && state.busyAction === 'penFill' ? '智能补全中…' : (penFillActive ? '执行补全' : '智能补全'),
+      penFill: state.busy && state.busyAction === 'penFill' ? '快速补缺中…' : (penFillActive ? '执行补全' : '快速补缺'),
       merge: isMerging ? '正在合并…' : '合并图层',
       mask: maskApplying ? '应用中…' : (maskActive ? '应用蒙版' : '蒙版编辑'),
       export: isExporting ? '导出中…' : 'PSD导出'
@@ -23506,7 +23506,7 @@
   }
 
   function penToolName(mode) {
-    if (mode === 'fill') return '智能补全'
+    if (mode === 'fill') return '快速补缺'
     return '图层分割'
   }
 
@@ -23530,13 +23530,13 @@
     let activePart = !sourceTarget && activeId ? state.parts.find((part) => part && part.id === activeId && part.dataUrl) : null
     let selected = activePart || (sourceTarget ? null : selectedSplitPart())
     if (nextMode === 'fill' && (!selected || !selected.dataUrl || !state.activePartId)) {
-      const inserted = await ensureSourceAsEditableLayer('智能补全')
+      const inserted = await ensureSourceAsEditableLayer('快速补缺')
       if (inserted) {
         activeId = String(state.activePartId || inserted.id || '')
         activePart = activeId ? state.parts.find((part) => part && part.id === activeId && part.dataUrl) : null
         selected = activePart || inserted
       } else {
-        setMessage('智能补全只能在选中的图层中使用', true)
+        setMessage('快速补缺只能在选中的图层中使用', true)
         render()
         syncSplitWorkspace()
         return
@@ -23650,7 +23650,7 @@
         top: `${(y / Math.max(1, size.height)) * 100}%`,
         width: `${(w / Math.max(1, size.width)) * 100}%`,
         height: `${(hgt / Math.max(1, size.height)) * 100}%`
-      }, part.name || part.id || '智能补全图层')]
+      }, part.name || part.id || '快速补缺图层')]
     }
     if (state.source && state.source.dataUrl) {
       return [makeImage(state.source.dataUrl, sourceImagePlacementStyle(size), '钢笔工具原图')]
@@ -26937,13 +26937,13 @@
     if (!penPathReadyOrWarn()) return
     const part = penToolPart()
     if (!part || !part.dataUrl) {
-      setMessage('智能补全只能在选中的图层中使用', true)
+      setMessage('快速补缺只能在选中的图层中使用', true)
       render()
       return
     }
     state.busy = true
     state.busyAction = 'penFill'
-    setMessage('正在执行智能补全...')
+    setMessage('正在执行快速补缺...')
     render()
     let smartCompleteStatsContext = null
     let smartCompleteStatsStrategy = null
@@ -26984,7 +26984,7 @@
       state.lastSmartCompleteStats = normalizeSmartCompleteStats(baseStats, splitContext, strategy)
       if (strategy.strategy === 'reference-insufficient') {
         splitRuntimeTrace('smart-complete-v3', state.lastSmartCompleteStats)
-        throw new Error('智能补全参考不足，建议使用 AI补图')
+        throw new Error('快速补缺参考不足，建议使用 AI补图')
       }
       const bounds = splitContext.maskBounds || maskBBoxEngine(fullMask, 8)
       const longest = Math.max(Number(bounds && bounds.width) || 1, Number(bounds && bounds.height) || 1)
@@ -27020,10 +27020,10 @@
       splitRuntimeTrace('smart-complete-v3', fillStats)
       const constrainedCrop = mergeHardMaskedCrop(cropBase, filledCrop, cropMask, 8)
       const outsideChanges = countMaskOutsidePixelChanges(cropBase, constrainedCrop, cropMask, 8)
-      if (outsideChanges > 0) throw new Error(`智能补全保护失败：mask 外像素被改动 ${outsideChanges}`)
+      if (outsideChanges > 0) throw new Error(`快速补缺保护失败：mask 外像素被改动 ${outsideChanges}`)
       const filledFull = pasteCanvasAtRect(originalFull, constrainedCrop, rect)
       const updatedPart = await updatePartFromFullCanvas(part, filledFull)
-      if (!updatedPart) throw new Error('智能补全后图层为空')
+      if (!updatedPart) throw new Error('快速补缺后图层为空')
       pushSplitLayerUndoSnapshot('smart complete', part.id)
       state.parts = normalizeSpineLayerOrder(state.parts.map((item) => item.id === part.id ? updatedPart : item))
       state.activePartId = part.id
@@ -27033,7 +27033,7 @@
       await refreshSplitPreview()
       syncActiveSplitSet()
       await cacheTempSplitPackage()
-      setMessage(`已智能补全：${updatedPart.name || updatedPart.id}`)
+      setMessage(`已快速补缺：${updatedPart.name || updatedPart.id}`)
       render()
       updatePreviewOverlay()
       syncSplitWorkspace()
@@ -27048,7 +27048,7 @@
         ok: false
       }), smartCompleteStatsContext, smartCompleteStatsStrategy)
       splitRuntimeTrace('smart-complete-v3', state.lastSmartCompleteStats)
-      setMessage(String(error && error.message || error || '智能补全失败'), true)
+      setMessage(String(error && error.message || error || '快速补缺失败'), true)
     } finally {
       state.busy = false
       state.busyAction = ''
