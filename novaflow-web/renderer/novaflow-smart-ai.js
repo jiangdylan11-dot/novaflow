@@ -27,6 +27,7 @@
   ].join(", ");
   const ART_REQUIREMENTS_PLACEHOLDER = "例如：设计一个国风修仙手游的冰系女剑客，蓝白配色，手持长剑。";
   const ANIMATION_REQUIREMENTS_PLACEHOLDER = "例如：人物缓慢转身，镜头轻微推进，5 秒内完成，并保持脸、服装和背景稳定。";
+  const SMART_AI_TEXT_REQUIRED_MESSAGE = "请先在提示词或补充要求里写想要的效果";
   const ART_STARTER_PRESETS = [
     ["character", "角色设计"],
     ["scene", "场景设计"],
@@ -103,7 +104,6 @@
   const state = {
     open: false,
     mode: "optimize",
-    artModeTouched: false,
     engine: "grok",
     starterPreset: "",
     artTask: "create",
@@ -454,19 +454,16 @@
     });
   }
 
-  // 多参视频 has no dedicated reverse bridge: reversing means compiling the
-  // uploaded references themselves into a six-field plan, so it rides the
-  // optimize pipeline with the uploads as the brief and any text as a hint.
+  // 多参视频 with an empty prompt box and a 补充要求: the uploads are the brief,
+  // so it rides the optimize pipeline with a placeholder source and the
+  // 补充要求 plus this hint as the requirement.
   const MINIMAX_H3_REFERENCE_REVERSE_PLACEHOLDER = "根据已上传的参考图、视频和音频反推视频提示词";
   const MINIMAX_H3_REFERENCE_REVERSE_HINT = "素材反推：没有原提示词，请以已上传素材的实际内容为依据编写完整计划；上传了什么就参考什么，不要求未上传的素材。";
-  function isMiniMaxH3ReferenceReverse(captured = state.context?.miniMaxH3) {
-    return Boolean(captured && captured.modelId === MINIMAX_H3_MODEL_ID && captured.mode === "multi_reference");
-  }
   function miniMaxH3ReferenceReverseError(captured = state.context?.miniMaxH3) {
     const resources = Array.isArray(captured?.resources) ? captured.resources : [];
     return resources.some((resource) => resource?.occupied && resource.kind !== "audio")
       ? ""
-      : "请先添加参考图或参考视频，再进行素材反推";
+      : "提示词为空时，请先添加参考图或参考视频";
   }
 
   function validateMiniMaxH3PromptResult(text, prepared, textareas) {
@@ -509,19 +506,6 @@
     } catch {
       return null;
     }
-  }
-
-  function miniMaxH3ActionOptions() {
-    const captured = state.context?.miniMaxH3;
-    if (!captured || captured.modelId !== MINIMAX_H3_MODEL_ID) return null;
-    const options = [["optimize", "提示词优化"]];
-    const capability = miniMaxH3ReverseCapability(captured);
-    if (capability?.supportsReverse && captured.mode === "image_video") {
-      options.push(["reverse", "参考图反推"]);
-    } else if (capability?.supportsReverse && captured.mode === "first_last") {
-      options.push(["reverse", "首尾动作反推"]);
-    }
-    return options;
   }
 
   async function miniMaxH3ImageDataUrl(src) {
@@ -567,14 +551,14 @@
     return Object.freeze(hydrated);
   }
 
-  // 图生视频/首尾帧 optimize sends its first (and last) frame to the local model
-  // (localFrames) and to Grok alike, so the writer takes the style, subjects and
-  // composition from the pictures. Grok gets them at 512 px, which keeps a
-  // first/last pair well inside the 512 KB prompt-optimize request.
-  async function captureH3ReferenceFrames(captured, prepared, localFrames = false) {
+  // 图生视频/首尾帧/多参 optimize sends its frames to the local model and to Grok
+  // alike, so the writer takes the style, subjects and composition from the
+  // pictures. Both get them at 768 px: small details such as closed eyes and
+  // hand positions survive, and a first/last pair stays far below the 10 MB request.
+  async function captureH3ReferenceFrames(captured, prepared) {
     const frameMode = captured?.mode === 'image_video' || captured?.mode === 'first_last';
     if (captured?.mode !== 'multi_reference' && !frameMode) return [];
-    const side = frameMode && !localFrames ? 512 : 768;
+    const side = 768;
     const catalog = prepared?.protocol?.references?.references
       || getMiniMaxH3PromptWorkflow().createReferenceCatalog({mode:captured.mode, resources:captured.resources}).references;
     const frames = [];
@@ -2995,23 +2979,16 @@
         : await collectAnimationImages(button);
       if (!isCurrentRefresh()) return;
       state.images = context?.surface === "art" ? images.slice(0, 3) : images;
-      if (context?.surface === "art") {
-        if (!state.artModeTouched) {
-          const currentPrompt = String(
-            getPromptTextareasFromContext(context).positive?.value || ""
-          ).trim();
-          state.mode = currentPrompt ? "optimize" : (state.images.length ? "reverse" : "optimize");
-        }
-        syncArtAutoIntent();
-      }
+      // One action per surface: with references the assistant reads them together
+      // with the text the user wrote, without references it works on the text alone.
+      state.mode = state.images.length ? "reverse" : "optimize";
+      if (context?.surface === "art") syncArtAutoIntent();
       state.targetIndex = Math.max(0, Math.min(state.targetIndex, Math.max(0, images.length - 1)));
     } catch {
       if (!isCurrentRefresh()) return;
       state.images = [];
-      if (context?.surface === "art" && !state.artModeTouched) {
-        state.mode = "optimize";
-        syncArtAutoIntent();
-      }
+      state.mode = "optimize";
+      if (context?.surface === "art") syncArtAutoIntent();
     } finally {
       if (isCurrentRefresh()) {
         state.imagesLoading = false;
@@ -3059,21 +3036,6 @@
       event.preventDefault();
       closeDialog();
     }
-  }
-
-  function renderModeRadios() {
-    const modes = miniMaxH3ActionOptions() || [["optimize", "视频提示优化"], ["reverse", "画面反推"]];
-    return `<div class="novaflow-smart-ai-mode-grid">${modes.map(([value, label]) => `
-      <button type="button" class="novaflow-smart-ai-mode-card" data-smart-ai-mode="${value}" data-active="${state.mode === value ? "1" : "0"}">${label}</button>
-    `).join("")}</div>`;
-  }
-
-  function renderArtModeRadios(intent) {
-    const modes = [["optimize", "优化提示词"], ["reverse", "图片反推"]];
-    return `<div class="novaflow-smart-ai-mode-grid">${modes.map(([value, label]) => `
-      <button type="button" class="novaflow-smart-ai-mode-card" data-smart-ai-mode="${value}" data-active="${state.mode === value ? "1" : "0"}"
-        ${value === "reverse" && !intent?.hasReferences ? "disabled" : ""}>${label}</button>
-    `).join("")}</div>`;
   }
 
   function deriveArtAutoIntent() {
@@ -3128,30 +3090,23 @@
     if (state.imagesLoading) {
       return `<div class="novaflow-smart-ai-auto-status">正在读取参考图...</div>`;
     }
-    if (state.mode === "optimize") {
-      if (intent?.hasReferences) {
-        return `<div class="novaflow-smart-ai-auto-status">结合原提示词与补充要求，分析并融合为完整生图提示词。参考图用于后续生成；需要分析图片内容时请选择图片反推。</div>`;
-      }
+    if (state.mode === "optimize" || !intent?.hasReferences) {
       return `<div class="novaflow-smart-ai-auto-status">结合原提示词与补充要求，分析并融合为完整生图提示词</div>`;
-    }
-    if (!intent?.hasReferences) {
-      return `<div class="novaflow-smart-ai-auto-status">图片反推需要至少一张参考图</div>`;
     }
     const roleNote = intent.imageCount > 1 && intent.roleConfidence === "low"
       ? "；可在下方选择辅助图用途"
       : "";
-    return `<div class="novaflow-smart-ai-auto-status">已检测 ${intent.imageCount} 张参考图；有补充要求时，先分析图片，再融合修改并写入完整提示词${roleNote}</div>`;
+    return `<div class="novaflow-smart-ai-auto-status">已检测 ${intent.imageCount} 张参考图；将结合参考图、提示词与补充要求，写入完整提示词${roleNote}</div>`;
   }
 
   function artAutoSubmitLabel(intent, currentPrompt = "") {
-    if (state.mode === "optimize") return String(currentPrompt || "").trim() ? "优化并写入提示词" : "生成并写入提示词";
-    if (intent?.imageCount > 1) return "结合多参考图生成提示词";
-    return "反推并写入提示词";
+    if (state.mode === "reverse" && intent?.imageCount > 1) return "结合多参考图生成提示词";
+    return String(currentPrompt || "").trim() ? "优化并写入提示词" : "生成并写入提示词";
   }
 
   function renderArtReferenceRoles(intent) {
     const unresolved = Array.isArray(intent?.unresolvedRoleIndices) ? intent.unresolvedRoleIndices : [];
-    const editableRoleIndices = state.mode === "reverse" && intent?.imageCount > 1
+    const editableRoleIndices = intent?.imageCount > 1
       ? Array.from({ length: intent.imageCount - 1 }, (_, index) => index + 1)
       : [];
     const roleFields = editableRoleIndices.map((index) => {
@@ -3493,17 +3448,38 @@
   function renderAnimationProcessingNote() {
     if (state.context?.surface === "art") return "";
     let note = "只设计并写入提示词，不会直接生成视频";
-    if (state.mode === "optimize" && isMiniMaxH3ReferenceReverse()) {
-      const labels = (state.context?.miniMaxH3?.resources || [])
+    const captured = state.context?.miniMaxH3;
+    if (state.mode === "optimize" && captured?.modelId === MINIMAX_H3_MODEL_ID
+      && ["image_video", "first_last", "multi_reference"].includes(captured.mode)) {
+      const labels = (captured.resources || [])
         .filter((resource) => resource?.occupied)
         .map((resource) => String(resource.label || resource.key || ""))
         .filter(Boolean);
       const hasPrompt = Boolean(String(getPromptTextareasFromContext(state.context).positive?.value || "").trim());
       note += labels.length
-        ? `。将参考已上传的 ${labels.join("、")}${hasPrompt ? "" : "；提示词为空，将直接根据素材反推"}`
+        ? `。将参考已上传的 ${labels.join("、")}${hasPrompt ? "" : "；提示词为空，将按补充要求编写"}`
         : "";
     }
     return `<div class="novaflow-smart-ai-context-note">${escapeSmartAiHtml(note)}</div>`;
+  }
+
+  // The assistant always works from words the user wrote: the prompt box or 补充要求.
+  function smartAiUserTextMissing() {
+    const prompt = String(getPromptTextareasFromContext(state.context).positive?.value || "").trim();
+    return !prompt && !String(state.requirements || "").trim();
+  }
+
+  // One submit rule for the render and for the live re-check while typing.
+  function smartAiSubmitBlocked(artIntent) {
+    if (smartAiUserTextMissing()) return true;
+    const isMiniMaxH3 = state.context?.miniMaxH3?.modelId === MINIMAX_H3_MODEL_ID;
+    // Art and the plain animation dialog pick their route from the references, so they wait for them.
+    if (state.imagesLoading && (!isMiniMaxH3 || state.mode === "reverse")) return true;
+    if (state.mode !== "reverse") return false;
+    if (state.context?.surface === "art") return artIntent?.hasReferences !== true;
+    return isMiniMaxH3
+      ? miniMaxH3ReverseCapability()?.supportsReverse !== true || Boolean(state.miniMaxH3ReverseError)
+      : !state.images.length;
   }
 
   function renderMiniMaxH3SensitiveAnalysisControls() {
@@ -3868,15 +3844,14 @@
       ? String(getPromptTextareasFromContext(state.context).positive?.value || "").trim()
       : "";
     const isMiniMaxH3 = state.context?.miniMaxH3?.modelId === MINIMAX_H3_MODEL_ID;
-    const miniMaxH3ReverseReady = isMiniMaxH3
-      && state.mode === "reverse"
-      && miniMaxH3ReverseCapability()?.supportsReverse === true
-      && !state.miniMaxH3ReverseError;
-    const requirementsLabel = isArt ? "要求（可选）" : isMiniMaxH3 ? "H3 补充要求（可选）" : "动作与镜头要求（可选）";
+    const hasPromptText = Boolean(String(getPromptTextareasFromContext(state.context).positive?.value || "").trim());
+    // 补充要求 is optional only while the prompt box already says what the user wants.
+    const optionalMark = hasPromptText ? "（可选）" : "";
+    const requirementsLabel = isMiniMaxH3 ? `H3 补充要求${optionalMark}` : `动作与镜头要求${optionalMark}`;
     const isArtTextEdit = isArt && state.mode === "optimize" && Boolean(currentArtPrompt);
     const requirementsPlaceholder = isArt
       ? (state.mode === "reverse"
-        ? "可留空直接反推；也可以补充希望保留、修改或强化的内容。"
+        ? "例如：保留参考图中的人物和服装，把背景换成雪夜街景，冷色调灯光。"
         : isArtTextEdit
           ? "例如：背景过于曝光，降低背景高光并恢复层次；主体、服装、动作、构图和整体风格保持不变。"
           : ART_REQUIREMENTS_PLACEHOLDER)
@@ -3884,7 +3859,7 @@
         ? "例如：保留人物身份与对白，强化镜头节奏，并让环境声与动作同步。"
         : ANIMATION_REQUIREMENTS_PLACEHOLDER;
     const artRequirementsLabel = state.mode === "reverse"
-      ? "补充反推要求（可选）"
+      ? (currentArtPrompt ? "补充要求（可选）" : "描述你想要的效果")
       : isArtTextEdit
         ? "说明你希望修改的内容（可选）"
         : "描述你想生成的画面";
@@ -3893,15 +3868,11 @@
       && (state.analysisResult?.generationGate === "blocked"
         || state.analysisResult?.analysisDegraded === true);
     const analysisFailed = Boolean(state.analysisFailure);
-    const artCanSubmit = state.mode === "reverse"
-      ? artIntent?.hasReferences === true
-      : Boolean(currentArtPrompt || String(state.requirements || "").trim());
-    const submitDisabled = state.loading || (!awaitingNeutralApply && (
-      (isArt && ((state.mode === "reverse" && state.imagesLoading) || !artCanSubmit))
-      || (!isArt && state.mode === "reverse" && (
-        state.imagesLoading || (isMiniMaxH3 ? !miniMaxH3ReverseReady : !state.images.length)
-      ))
-    ));
+    const submitDisabled = state.loading || (!awaitingNeutralApply && smartAiSubmitBlocked(artIntent));
+    const textNotice = !state.loading && !awaitingNeutralApply && smartAiUserTextMissing()
+      ? SMART_AI_TEXT_REQUIRED_MESSAGE
+      : "";
+    const visibleMessage = state.message || textNotice;
     const submitLabel = awaitingNeutralApply
       ? "应用中性提示词继续"
       : state.loading
@@ -3910,9 +3881,7 @@
       ? "重新分析参考图"
       : (isArt
         ? artAutoSubmitLabel(artIntent, currentArtPrompt)
-        : (isMiniMaxH3
-          ? (state.mode === "reverse" ? "反推并写入提示词" : "优化并写入提示词")
-          : "生成并写入提示词"));
+        : (hasPromptText ? "优化并写入提示词" : "生成并写入提示词"));
     root.innerHTML = `
       <div class="novaflow-smart-ai-dialog" role="dialog" aria-modal="true" aria-label="AI 助手">
         <div class="novaflow-smart-ai-header">
@@ -3920,13 +3889,6 @@
           <button type="button" class="novaflow-smart-ai-close" aria-label="关闭">×</button>
         </div>
         <div class="novaflow-smart-ai-body">
-          ${isArt ? `<div class="novaflow-smart-ai-section">
-            <div class="novaflow-smart-ai-label">你希望 AI 做什么</div>
-            <div>${renderArtModeRadios(artIntent)}</div>
-          </div>` : `<div class="novaflow-smart-ai-section">
-            <div class="novaflow-smart-ai-label">你希望 AI 做什么</div>
-            <div>${renderModeRadios()}</div>
-          </div>`}
           ${renderEngineOptions()}
           ${isArt ? renderArtAutoStatus(artIntent) : ""}
           ${renderAnimationProcessingNote()}
@@ -3939,7 +3901,7 @@
           ${isArt ? renderArtReferenceRoles(artIntent) : ""}
           ${renderSmartAiAnalysisResult()}
         </div>
-        <div class="novaflow-smart-ai-message" data-visible="${state.message ? "1" : "0"}" data-tone="${state.messageTone === "error" ? "error" : (state.messageTone === "warning" ? "warning" : "")}" role="${state.messageTone === "error" ? "alert" : "status"}" aria-live="${state.messageTone === "error" ? "assertive" : "polite"}" aria-atomic="true">${escapeSmartAiHtml(state.message || "")}</div>
+        <div class="novaflow-smart-ai-message" data-visible="${visibleMessage ? "1" : "0"}" data-tone="${state.messageTone === "error" ? "error" : (state.messageTone === "warning" ? "warning" : "")}" role="${state.messageTone === "error" ? "alert" : "status"}" aria-live="${state.messageTone === "error" ? "assertive" : "polite"}" aria-atomic="true">${escapeSmartAiHtml(visibleMessage)}</div>
         <div class="novaflow-smart-ai-footer" data-single="1">
           <button type="button" class="novaflow-smart-ai-submit" ${submitDisabled ? "disabled" : ""}>${submitLabel}</button>
         </div>
@@ -3960,18 +3922,25 @@
       textarea.value = state.requirements;
       textarea.addEventListener("input", () => {
         state.requirements = textarea.value;
-        if (isArt && !state.pendingApply) {
-          const intent = syncArtAutoIntent();
-          const currentPrompt = String(
-            getPromptTextareasFromContext(state.context).positive?.value || ""
-          ).trim();
-          const canSubmit = state.mode === "reverse"
-            ? intent?.hasReferences === true
-            : Boolean(currentPrompt || String(state.requirements || "").trim());
+        if (!state.pendingApply) {
+          // Live re-check: the button follows the text, and so does the reminder.
+          if (state.message === SMART_AI_TEXT_REQUIRED_MESSAGE) state.message = "";
+          const intent = isArt ? syncArtAutoIntent() : null;
           const submit = root.querySelector(".novaflow-smart-ai-submit");
           if (submit instanceof HTMLButtonElement) {
-            submit.disabled = state.loading || (state.mode === "reverse" && state.imagesLoading) || !canSubmit;
-            submit.textContent = artAutoSubmitLabel(intent, currentPrompt);
+            submit.disabled = state.loading || smartAiSubmitBlocked(intent);
+            if (isArt) {
+              const currentPrompt = String(
+                getPromptTextareasFromContext(state.context).positive?.value || ""
+              ).trim();
+              submit.textContent = artAutoSubmitLabel(intent, currentPrompt);
+            }
+          }
+          const notice = root.querySelector(".novaflow-smart-ai-message");
+          if (notice instanceof HTMLElement) {
+            const text = state.message || (smartAiUserTextMissing() ? SMART_AI_TEXT_REQUIRED_MESSAGE : "");
+            notice.textContent = text;
+            notice.setAttribute("data-visible", text ? "1" : "0");
           }
         }
         if (state.analysisResult || state.analysisFailure || state.pendingApply) {
@@ -3980,16 +3949,6 @@
         }
       });
     }
-    Array.from(root.querySelectorAll("[data-smart-ai-mode]")).forEach((button) => {
-      button.addEventListener("click", () => {
-        const mode = String(button.getAttribute("data-smart-ai-mode") || "optimize");
-        invalidateSmartAiAnalysis();
-        if (isArt) state.artModeTouched = true;
-        state.mode = mode === "reverse" ? "reverse" : "optimize";
-        state.message = "";
-        renderDialog();
-      });
-    });
     Array.from(root.querySelectorAll('input[name="novaflow-smart-ai-engine"]')).forEach((radio) => {
       radio.addEventListener("change", () => {
         invalidateSmartAiAnalysis();
@@ -4105,8 +4064,21 @@
     };
   }
 
+  // 美工 with references: the image routes read the prompt box and 补充要求 together.
+  // The cap keeps every requirement built from it (prefixes and the fusion wording
+  // included) inside the 2000 characters the transports accept.
+  const ART_REFERENCE_USER_TEXT_MAX = 1600;
+  function buildArtReferenceUserText(currentPrompt, requirements) {
+    const box = String(currentPrompt || "").trim();
+    const extra = String(requirements || "").trim();
+    if (!box || !extra) return (box || extra).slice(0, ART_REFERENCE_USER_TEXT_MAX);
+    const extraLine = `用户补充要求：${extra}`.slice(0, ART_REFERENCE_USER_TEXT_MAX - 16);
+    const boxLine = `用户提示词：${box}`.slice(0, ART_REFERENCE_USER_TEXT_MAX - extraLine.length - 1);
+    return `${boxLine}\n${extraLine}`;
+  }
+
   function buildStaticArtReverseRequirements(userRequirements) {
-    const user = String(userRequirements || "").trim().slice(0, 900);
+    const user = String(userRequirements || "").trim().slice(0, ART_REFERENCE_USER_TEXT_MAX);
     return user
       ? `用户补充要求（只作为最终提示词约束，不作为图片可见事实）：${user}`
       : "";
@@ -4194,8 +4166,8 @@
     const isOptimizeRequest = state.mode === "optimize";
     const isReverseRequest = state.mode === "reverse";
     const isMiniMaxH3Context = state.context?.miniMaxH3?.modelId === "minimax_h3_local";
-    // 多参视频 optimization already observes every upload; with an empty prompt
-    // box it becomes a pure 素材反推 through the same pipeline.
+    // H3 has one action: optimize, which sees the 图生/首尾帧/多参 frames. 多参 with an
+    // empty prompt box writes from the uploads and the 补充要求 through the same pipeline.
     const isMiniMaxH3OptimizeRequest = isMiniMaxH3Context && isOptimizeRequest;
     const isMiniMaxH3ReverseRequest = isMiniMaxH3Context && isReverseRequest;
     const isMiniMaxH3ReferenceReverseRequest = isMiniMaxH3OptimizeRequest
@@ -4233,7 +4205,7 @@
     const prompt = isArt
       ? (isArtTextRequest
         ? (artTextPurpose === "optimize" ? currentPrompt : "")
-        : String(state.requirements || "").trim())
+        : buildArtReferenceUserText(currentPrompt, state.requirements))
       : currentPrompt;
     const negativePrompt = String(textareas.negative?.value || "").trim();
     const requirements = buildSmartAiRequirements({
@@ -4262,6 +4234,11 @@
       renderDialog();
       return;
     }
+    if (!currentPrompt && !String(state.requirements || "").trim()) {
+      state.message = SMART_AI_TEXT_REQUIRED_MESSAGE;
+      renderDialog();
+      return;
+    }
     if (isMiniMaxH3ReverseRequest && miniMaxH3ReverseCapability()?.supportsReverse !== true) {
       state.message = "当前 MiniMax H3 模式不支持参考图反推";
       renderDialog();
@@ -4278,7 +4255,10 @@
         return;
       }
     }
-    const miniMaxH3ContentPolicyAtRequest = isMiniMaxH3ReverseRequest ? miniMaxH3ContentPolicy() : null;
+    // Explicit minor + sensitive wording never leaves the UI with pictures attached.
+    const isMiniMaxH3ImageRequest = isMiniMaxH3ReverseRequest || (isMiniMaxH3OptimizeRequest
+      && ["image_video", "first_last", "multi_reference"].includes(state.context?.miniMaxH3?.mode));
+    const miniMaxH3ContentPolicyAtRequest = isMiniMaxH3ImageRequest ? miniMaxH3ContentPolicy() : null;
     if (miniMaxH3ContentPolicyAtRequest?.sensitiveVisualAnalysis) {
       const actualUserIntent = `${prompt}\n${requirements}`;
       if (miniMaxH3SensitiveRequestHasExplicitMinorTerms(actualUserIntent)
@@ -4287,21 +4267,6 @@
         renderDialog();
         return;
       }
-    }
-    const artCanSubmit = isReverseRequest
-      ? state.images.length > 0
-      : Boolean(currentPrompt || String(state.requirements || "").trim());
-    if (isArt && !artCanSubmit) {
-      state.message = isReverseRequest
-        ? "请先添加参考图"
-        : "请输入需要优化的提示词或描述你想生成的画面";
-      renderDialog();
-      return;
-    }
-    if (!isArt && isOptimizeRequest && !prompt && !requirements && !isMiniMaxH3ReferenceReverseRequest) {
-      state.message = isArt ? "请选择预设或描述你的想法" : "请输入Prompt";
-      renderDialog();
-      return;
     }
     if (isReverseRequest && state.imagesLoading) return;
     if (isMiniMaxH3ReverseRequest && state.miniMaxH3ReverseError) {
@@ -4332,18 +4297,16 @@
     let miniMaxH3ReversePrepared = null;
     try {
       const api = window.electronAPI || {};
+      // 文生/图生/首尾帧 with only a 补充要求: it becomes the source prompt.
       const miniMaxH3Prepared = isMiniMaxH3OptimizeRequest
         ? prepareMiniMaxH3PromptRequest(
-          isMiniMaxH3ReferenceReverseRequest ? (prompt || MINIMAX_H3_REFERENCE_REVERSE_PLACEHOLDER) : prompt,
-          isMiniMaxH3ReferenceReverseRequest ? [requirements, MINIMAX_H3_REFERENCE_REVERSE_HINT].filter(Boolean).join("\n") : requirements
+          isMiniMaxH3ReferenceReverseRequest ? (prompt || MINIMAX_H3_REFERENCE_REVERSE_PLACEHOLDER) : (prompt || requirements),
+          isMiniMaxH3ReferenceReverseRequest ? [requirements, MINIMAX_H3_REFERENCE_REVERSE_HINT].filter(Boolean).join("\n") : (prompt ? requirements : "")
         )
         : null;
+      // The action looks at the pictures: an unreadable frame stops it rather than going text-only.
       const h3ReferenceFrames = isMiniMaxH3OptimizeRequest
-        ? await captureH3ReferenceFrames(state.context?.miniMaxH3, miniMaxH3Prepared, !useGrok).catch((error) => {
-          // An unreadable first/last frame must not block 优化提示词; the text still goes.
-          if (state.context?.miniMaxH3?.mode === 'multi_reference') throw error;
-          return [];
-        })
+        ? await captureH3ReferenceFrames(state.context?.miniMaxH3, miniMaxH3Prepared)
         : [];
       miniMaxH3ReversePrepared = isMiniMaxH3ReverseRequest
         ? await prepareMiniMaxH3ReverseRequest(prompt, requirements)
@@ -4359,8 +4322,8 @@
         ? buildStaticArtReverseRequirements(promptMentionProtection?.text ?? prompt)
         : requirements;
       const roleRequirements = roleAwareReferences
-        ? (String(promptMentionProtection?.text ?? prompt).trim().slice(0, 900)
-          ? `用户生成要求：${String(promptMentionProtection?.text ?? prompt).trim().slice(0, 900)}`
+        ? (String(promptMentionProtection?.text ?? prompt).trim().slice(0, ART_REFERENCE_USER_TEXT_MAX)
+          ? `用户生成要求：${String(promptMentionProtection?.text ?? prompt).trim().slice(0, ART_REFERENCE_USER_TEXT_MAX)}`
           : "")
         : requirements;
       let result;
@@ -4455,6 +4418,7 @@
           durationSeconds: miniMaxH3Prepared.context?.durationSeconds || state.context?.miniMaxH3?.durationSeconds || 0,
           visualSchema: MINIMAX_H3_VISUAL_SCHEMA,
           purpose: MINIMAX_H3_PROMPT_PURPOSE,
+          contentPolicy: miniMaxH3ContentPolicy(),
           surface: "animation"
         });
       } else if (isOptimizeRequest && useGrok) {
@@ -4766,7 +4730,7 @@
         if (!isSmartAiSensitiveAutoApplyCandidate(parsed)) {
           throw new Error("图片反推返回的敏感候选状态不完整或不一致，已阻止写入");
         }
-        const declaredAdultSensitiveText = `所有人物均为成年人。\n${state.requirements || ""}\n${nextPrompt || ""}`;
+        const declaredAdultSensitiveText = `所有人物均为成年人。\n${prompt || ""}\n${nextPrompt || ""}`;
         if (smartAiSensitiveIntentHasDisallowedYoungOrMinorTerms(declaredAdultSensitiveText)) {
           if (isArt) ART_REFERENCE_PLAN = null;
           if (!useGrok) showLocalStaticReverseWarning(result?.warning);
@@ -4866,10 +4830,8 @@
       : "";
     state.open = true;
     state.context = context;
-    state.mode = isArt && !initialPrompt && context?.artGenerateMode === "img2img"
-      ? "reverse"
-      : "optimize";
-    state.artModeTouched = false;
+    // Art and the plain animation dialog settle their mode from the references once they load.
+    state.mode = isArt && context?.artGenerateMode === "img2img" ? "reverse" : "optimize";
     state.starterPreset = "";
     state.artTask = context?.surface === "art" && context?.artGenerateMode === "img2img" ? "preserve" : "create";
     state.artStyle = context?.surface === "art" && context?.artGenerateMode !== "img2img" ? "auto" : "original";

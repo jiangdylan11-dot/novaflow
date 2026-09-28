@@ -463,29 +463,11 @@ assert.equal(activeMode(new FakeHTMLElement()), "first_last", "active button sem
 delete activeButton.attributes["data-novaflow-ai-generation-mode"];
 assert.equal(activeMode(new FakeHTMLElement()), "first_last", "Chinese label remains a compatibility fallback");
 
-const actionOptionsSource = extractNamedFunction(source, "miniMaxH3ActionOptions");
-const actionState = { context: { miniMaxH3: { modelId: "minimax_h3_local", mode: "text_video" } } };
-const actionContext = vm.createContext({
-  state: actionState,
-  MINIMAX_H3_MODEL_ID: "minimax_h3_local",
-  miniMaxH3ReverseCapability: (captured) => ({
-    supportsReverse: ["image_video", "first_last"].includes(captured.mode)
-  })
-});
-const h3ActionOptions = vm.runInContext(`(${actionOptionsSource})`, actionContext);
-assert.deepEqual(Array.from(h3ActionOptions(), (entry) => Array.from(entry)), [["optimize", "提示词优化"]]);
-actionState.context.miniMaxH3.mode = "image_video";
-assert.deepEqual(Array.from(h3ActionOptions(), (entry) => Array.from(entry)), [
-  ["optimize", "提示词优化"],
-  ["reverse", "参考图反推"]
-]);
-actionState.context.miniMaxH3.mode = "first_last";
-assert.deepEqual(Array.from(h3ActionOptions(), (entry) => Array.from(entry)), [
-  ["optimize", "提示词优化"],
-  ["reverse", "首尾动作反推"]
-]);
-actionState.context.miniMaxH3.mode = "multi_reference";
-assert.deepEqual(Array.from(h3ActionOptions(), (entry) => Array.from(entry)), [["optimize", "提示词优化"]]);
+// One action on every H3 mode (2026-09-28): the dialog offers no optimize / reverse choice; 图生 and
+// 首尾帧 optimize with their frames, and the dialog never switches the H3 mode to reverse.
+// novaflow-web/tests/e2e/smart-ai-dialog.test.mjs renders the real dialog for every surface.
+assert.doesNotMatch(source, /function miniMaxH3ActionOptions\(|data-smart-ai-mode=|你希望 AI 做什么|参考图反推"\]|首尾动作反推/);
+assert.doesNotMatch(source, /state\.mode = mode === "reverse"/);
 
 const refreshImageContextSource = extractNamedFunction(source, "refreshImageContext");
 const refreshCalls = { strict: 0, generic: 0 };
@@ -1010,6 +992,8 @@ async function verifySubmitRouting() {
     assert.equal(payloads[0].h3Mode, "first_last");
     assert.equal(payloads[0].durationSeconds, 4);
     assert.equal(payloads[0].visualSchema, "nf.h3.visual.v1");
+    assert.deepEqual({ ...payloads[0].contentPolicy }, { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
+      "both engines receive the H3 content policy with the optimize request");
     assert.equal(Object.hasOwn(payloads[0], "promptSchema"), false,
       "H3 prompt enhancement must stay outside the ordinary Art structured schema");
     assert.match(payloads[0].requirements, /H3 protocol/);

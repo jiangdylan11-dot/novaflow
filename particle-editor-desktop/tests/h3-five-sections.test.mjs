@@ -209,10 +209,11 @@ test('Grok retry receives the exact safe failed gate and final error retains rea
   assert.ok(!JSON.stringify(miniMaxH3FailureEnvelope({errorCode:'h3_contract_five_sections',message:privateMessage})).includes('PRIVATE SOURCE'));
 });
 
-test('I2V/FL2V optimize sends the first/last frames to the local model and to Grok (512 px); T2V stays text-only', async()=>{
+test('I2V/FL2V optimize sends the first/last frames to the local model and to Grok (768 px); T2V stays text-only', async()=>{
   const renderer=new URL('../../novaflow-web/renderer/',import.meta.url);
   const source=fs.readFileSync(new URL('novaflow-smart-ai.js',renderer),'utf8').replace(/\r\n/g,'\n');
-  assert.match(source,/captureH3ReferenceFrames\(state\.context\?\.miniMaxH3, miniMaxH3Prepared, !useGrok\)/);
+  // One capture for both engines, and no fallback that swallows a failed capture.
+  assert.match(source,/await captureH3ReferenceFrames\(state\.context\?\.miniMaxH3, miniMaxH3Prepared\)\n/);
   const start=source.indexOf('  async function captureH3ReferenceFrames(');
   const capture=source.slice(start,source.indexOf('\n  }\n',start)+4);
   const h3={console};h3.globalThis=h3;
@@ -228,12 +229,10 @@ test('I2V/FL2V optimize sends the first/last frames to the local model and to Gr
   const i2v={mode:'image_video',resources:[slot('first_frame','first')]};
   const fl2v={mode:'first_last',resources:[slot('first_frame','first'),slot('last_frame','last')]};
   const frames=async(...args)=>JSON.parse(JSON.stringify(await captureH3ReferenceFrames(...args)));
-  assert.deepEqual(await frames(i2v,null,true),[{label:'<Picture 1>',dataUrl:'data:image/jpeg;base64,768x384'}]);
-  assert.deepEqual((await frames(fl2v,null,true)).map(frame=>frame.label),['<Picture 1>','<Picture 2>']);
-  // Grok sees the same frames at 512 px, so an FL2V pair stays well inside the 512 KB prompt-optimize request.
-  assert.deepEqual(await frames(i2v,null,false),[{label:'<Picture 1>',dataUrl:'data:image/jpeg;base64,512x256'}]);
-  assert.deepEqual(await frames(fl2v,null,false),[{label:'<Picture 1>',dataUrl:'data:image/jpeg;base64,512x256'},{label:'<Picture 2>',dataUrl:'data:image/jpeg;base64,512x256'}]);
-  for(const localFrames of [true,false]) assert.deepEqual(await frames({mode:'text_video',resources:[]},null,localFrames),[]);
+  assert.deepEqual(await frames(i2v,null),[{label:'<Picture 1>',dataUrl:'data:image/jpeg;base64,768x384'}]);
+  // Grok and the local model see the same 768 px frames; the edge takes request bodies up to 10 MB.
+  assert.deepEqual(await frames(fl2v,null),[{label:'<Picture 1>',dataUrl:'data:image/jpeg;base64,768x384'},{label:'<Picture 2>',dataUrl:'data:image/jpeg;base64,768x384'}]);
+  assert.deepEqual(await frames({mode:'text_video',resources:[]},null),[]);
 });
 
 test('seconds abbreviation in the task is equivalent, mismatched duration remains invalid',()=>{
