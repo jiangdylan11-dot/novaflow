@@ -87,26 +87,42 @@ test('多参 display joins Chinese sentences without spaces and starts each subj
   }
 });
 
-test('example format accepted by desktop, Edge and renderer and preserves speaker and dialogue', () => {
+// The shipped renderer no longer asks for or shows five sections: an old five-section answer or a
+// prompt kept from before becomes the base display, and generation sends the official English text.
+const rendererContext = () => {
+  const context = {module:{exports:{}}, console}; context.globalThis=context; context.window=context;
+  for (const file of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js','ai-sequence-minimax-h3.workflow.js']) vm.runInNewContext(fs.readFileSync(new URL('../../novaflow-web/renderer/'+file,import.meta.url),'utf8'), context);
+  return context;
+};
+const fiveCurrent={modelId:'minimax_h3_local', mode:'image_video', durationSeconds:10, prompt:'机械女性先抬眼，再抬手，说话时镜头拉近。',resources:[{key:'first_frame',identity:'first',occupied:true,kind:'image',fileName:'first.png',mimeType:'image/png'}]};
+
+test('an old five-section answer or prompt becomes the base display and fields in the renderer', () => {
   assert.equal(local.formatInstruction, edge.formatInstruction);
   assert.equal(edge.validateFormat(formatted, options), formatted);
-  const context = {module:{exports:{}}, console}; context.globalThis=context;
-  for (const file of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js']) vm.runInNewContext(fs.readFileSync(new URL('../../particle-editor/'+file,import.meta.url),'utf8'), context);
-  const workflow = context.NovaFlowAiSequenceMiniMaxH3PromptWorkflow;
-  const current={modelId:'minimax_h3_local', mode:'image_video', durationSeconds:10, prompt:'机械女性先抬眼，再抬手，说话时镜头拉近。',resources:[{key:'first_frame',identity:'first',occupied:true,kind:'image',fileName:'first.png',mimeType:'image/png'}]};
-  const request=workflow.prepareRequest(current);
-  assert.match(request.requirements,/【任务定位】/);
-  assert.equal(workflow.validateAndRestore({text:formatted, context:request.context,current}).text,formatted);
-  assert.equal(workflow.prepareRequest({...current,prompt:formatted}).prompt,formatted);
-  assert.throws(()=>workflow.validateAndRestore({text:formatted, context:request.context,current:{...current,durationSeconds:5}}),/stale/);
+  const workflow = rendererContext().NovaFlowAiSequenceMiniMaxH3PromptWorkflow;
+  const request=workflow.prepareRequest(fiveCurrent);
+  assert.doesNotMatch(request.requirements,/【任务定位】|Return exactly these five sections/);
+  assert.ok(request.requirements.includes(local.baseInstruction));
+  const restored=workflow.validateAndRestore({text:formatted, context:request.context,current:fiveCurrent});
+  assert.match(restored.text,/^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】Use @参考图 as the exact starting frame\./);
+  assert.match(restored.text,/\(S1\) 说：<d>\[Chinese\] 系统自检完成。动力核心已上线，下一条指令——可以直接下达。<\/d>/);
+  assert.doesNotMatch(restored.text,/【任务定位】|【说话者】|【台词】|【连续性与约束】|\d-\d+(?:\.\d+)?s：|<Subject/);
+  assert.match(restored.modelText,/^integrated_multimodal_description: \[Shot 1\] Use <Picture 1> as the exact starting frame\./);
+  assert.equal(workflow.prepareRequest({...fiveCurrent,prompt:formatted.replaceAll('<Picture 1>','@参考图')}).prompt,local.fromBaseDisplay(local.toBaseDisplay(formatted)));
+  assert.throws(()=>workflow.validateAndRestore({text:formatted, context:request.context,current:{...fiveCurrent,durationSeconds:5}}),/stale/);
 });
 
-test('five-section text reaches I2V conditioning unchanged with only the supplied first frame', () => {
-  const context={console};context.window=context;context.globalThis=context;
-  vm.runInNewContext(fs.readFileSync(new URL('../../particle-editor/ai-sequence-minimax-h3.workflow.js',import.meta.url),'utf8'),context);
-  const graph=context.NovaFlowAiSequenceMiniMaxH3Workflow.buildWorkflow({mode:'i2v',params:{prompt:formatted,images:['first.png'],duration:10,seed:1}});
+test('generation turns a five-section prompt into the official English I2V text before conditioning', async () => {
+  const context = rendererContext();
+  const english='integrated_multimodal_description: [Shot 1] Use <Picture 1> as the exact starting frame. The cyber woman (S1) slowly raises her eyes and says: <d>[Chinese] 系统自检完成。动力核心已上线，下一条指令——可以直接下达。</d> The camera pushes in with small amplitude at slow speed.\n\noverall_soundscape: Soft servo whirs accompany her movements.\n\nnon_diegetic_music: N/A';
+  const compiled=await context.NovaFlowAiSequenceMiniMaxH3PromptWorkflow.compileForGeneration({...fiveCurrent,prompt:formatted.replaceAll('<Picture 1>','@参考图')},async payload=>{
+    assert.match(payload.requirements,/^H3 compile: translate-only$/m);
+    assert.match(payload.prompt,/^integrated_multimodal_description: \[Shot 1\] Use <Picture 1> as the exact starting frame\./);
+    return JSON.stringify({modelPrompt:english,displayPrompt:payload.prompt});
+  });
+  const graph=context.NovaFlowAiSequenceMiniMaxH3Workflow.buildWorkflow({mode:'i2v',params:{prompt:compiled.modelText,images:['first.png'],duration:10,seed:1}});
   const conditioning=Object.values(graph).find(node=>node.class_type==='MiniMaxH3ImageToVideo');
-  assert.equal(conditioning.inputs.prompt,formatted);
+  assert.equal(conditioning.inputs.prompt,'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n'+english);
   assert.equal(conditioning.inputs.last_frame,undefined);
 });
 

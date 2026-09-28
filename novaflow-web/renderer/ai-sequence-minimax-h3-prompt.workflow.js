@@ -59,6 +59,10 @@
     ['image', 'reference_image', 'referenceImage', 'start_image', 'startImage', 'i2v_image', 'ref_image'],
   )
 
+  // 图生视频 shows its one frame as @参考图 in the editor (the mention tool's alias), 首尾帧 as @首帧.
+  const IMAGE_FRAME_SLOT = referenceSlot('first_frame', FIRST_FRAME_SLOT.label, 'image', '<Picture 1>',
+    ['@\u53c2\u8003\u56fe', '@\u9996\u5e27', '@\u56fe\u72471'], FIRST_FRAME_SLOT.keyAliases.slice(1))
+
   const LAST_FRAME_SLOT = referenceSlot(
     'last_frame',
     '\u5c3e\u5e27',
@@ -89,7 +93,7 @@
 
   const MODE_DEFINITIONS = Object.freeze({
     text_video: mode('text_video', 't2v', 'T2VA', BASE_FIELD_ORDER, Object.freeze([])),
-    image_video: mode('image_video', 'i2v', 'I2VA', BASE_FIELD_ORDER, Object.freeze([FIRST_FRAME_SLOT])),
+    image_video: mode('image_video', 'i2v', 'I2VA', BASE_FIELD_ORDER, Object.freeze([IMAGE_FRAME_SLOT])),
     first_last: mode('first_last', 'fl2v', 'FL2VA', BASE_FIELD_ORDER, Object.freeze([FIRST_FRAME_SLOT, LAST_FRAME_SLOT])),
     multi_reference: mode('multi_reference', 'r2v', 'Ref2VA', REFERENCE_FIELD_ORDER, MULTI_REFERENCE_SLOTS),
   })
@@ -119,9 +123,9 @@
   const MARKDOWN_TOP_LEVEL_FIELD_EXPRESSION = /^(?:#{1,6}[ \t]+|[-+*>][ \t]+|(?:\*\*|__))[ \t]*(?:\*\*|__)?[ \t]*([a-z][a-z0-9_]*)[ \t]*(?:\*\*|__)?[ \t]*[:\uff1a]/i
   const MODEL_REFERENCE_EXPRESSION = /<(Picture|Video|Audio|Subject) ([1-9][0-9]*)>/g
   const MEDIA_REFERENCE_EXPRESSION = /<(Picture|Video|Audio) ([1-9][0-9]*)>/g
+  // Five-section prompts written before the official layout (history, old engines).
+  const LEGACY_EXPRESSION = /^\s*(?:【任务定位】|\{\s*"task"\s*:)/
   const UI_REFERENCE_ALIAS_EXPRESSION = /@(?:\u9996\u5e27|\u5c3e\u5e27|\u7ed3\u675f\u5e27|\u53c2\u8003\u56fe(?:[1-4])?|\u56fe\u7247[1-4]|\u89c6\u9891\u53c2\u8003|\u89c6\u98911|\u58f0\u97f3\u53c2\u8003|\u97f3\u9891\u53c2\u8003|\u97f3\u98911)(?:\s*\((?:image|video|audio)\))?/iu
-  const CAMERA_DIRECTION_EXPRESSION = /(?:\u8fd0\u955c|\u955c\u5934(?:\u4fdd\u6301|\u56fa\u5b9a|\u9759\u6b62|\u7a33\u5b9a|\u7f13\u6162|\u8f7b\u5fae|\u5e73\u7a33|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u79fb\u52a8|\u73af\u7ed5|\u4e0a\u5347|\u4e0b\u964d|\u53d8\u7126|\u5207\u6362)|(?:\u56fa\u5b9a|\u9759\u6b62|\u624b\u6301|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u73af\u7ed5|\u5347\u964d|\u53d8\u7126|\u63a8\u8f68)[^\u3002\n]{0,10}\u955c\u5934)|\bcamera\b[^.\n]{0,100}\b(?:preserved|unchanged|matches|holds|remains|stays|static|locked|moves|pushes|pulls|pans|tilts|tracks|orbits|dollies|cranes|follows)\b|\b(?:static camera|fixed camera|locked[- ]off camera|handheld camera|camera (?:movement|motion)|dolly|tracking shot|push[- ]in|pull[- ]out)\b/iu
-  const ACTION_PROGRESSION_EXPRESSION = /(?:\u5f00\u59cb|\u968f\u540e|\u63a5\u7740|\u9010\u6e10|\u6301\u7eed|\u8fc7\u7a0b|\u8f6c\u8eab|\u79fb\u52a8|\u62ac\u8d77|\u653e\u4e0b|\u5b8c\u6210|\u6700\u7ec8|\u8fc7\u6e21|\u52a8\u4f5c|\u53cd\u590d|\u6765\u56de|\u5f80\u590d|\u4e0d\u65ad|\u5faa\u73af|\u8282\u594f|\u9891\u7387|\u52a0\u5feb|\u52a0\u901f|\u653e\u6162|\u51cf\u901f|\u63a8\u8fdb|\u8fdb\u51fa|\u8d77\u4f0f|\u6446\u52a8|\u6643\u52a8|\u62bd\u52a8|\u6bcf\u6b21)|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action|repeat\w*|repetition|rhythm\w*|cycl\w*|thrust\w*|accelerat\w*|decelerat\w*|oscillat\w*|pulse\w*|rotat\w*|return\w*|spins?)\b/iu
   const EXPLICIT_MINOR_EXPRESSION = /(?:\u672a\u6210\u5e74\u4eba?|\u672a\u6ee1\s*(?:18|\u5341\u516b)\s*\u5c81?|(?:18|\u5341\u516b)\s*\u5c81?\s*(?:\u4ee5\u4e0b|\u4ee5\u5185)|(?<![0-9])(?:1[0-7]|[0-9])\s*\u5c81(?![0-9])|\u513f\u7ae5|\u5b69\u7ae5|\u5c0f\u5b69|\u5e7c\u5973|\u5e7c\u7ae5|\u5e7c\u513f|\u5a74\u5e7c\u513f?|\u5a74\u513f|\u841d\u8389|\u6b63\u592a)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu
 
   function stringValue(value) {
@@ -616,9 +620,6 @@
   }
 
   function buildLegacyInstructions(protocol, compiledPrompt) {
-    const references = protocol.references.references.length
-      ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
-      : '(none)'
     const lines = [
       'You are a MiniMax H3 video-prompt optimizer and compiler. Improve the narrative itself, then preserve the required H3 format.',
       'Replace vague motion adjectives with observable action, direction, amplitude, rhythm and a clear ending. Keep details concise and achievable within the selected duration; do not add unrelated events, camera moves, effects or appearance details.',
@@ -628,7 +629,7 @@
       `Output fields in this exact order: ${protocol.fieldOrder.join(' -> ')}.`,
       'Separate the alignment line and core fields with blank lines. Use short paragraphs for the opening, action progression, and ending; describe each visual fact once and omit internal validation commentary.',
       'Use [Shot 1] without a timestamp. Every later shot must use [Shot N] At MM:SS.mmm, with strictly increasing times not beyond the requested duration.',
-      `Available resource labels: ${references}. Never invent a resource label.`,
+      resourceLabels(protocol.references),
       'Describe a continuous, physically achievable action from its initial state through intermediate progression to its final state; do not stop at a static image caption.',
       'For every shot, state the camera behavior explicitly, including movement type or locked position, direction, amplitude, and speed.',
       'Keep character identity, anatomy, wardrobe/material state, composition, lighting, and environment continuous unless the source prompt explicitly changes them.',
@@ -660,22 +661,39 @@
     return lines.join('\n')
   }
 
+  function resourceLabels(catalog) {
+    const labels = catalog.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
+    return `Available resource labels: ${labels || '(none)'}. Never invent a resource label.`
+  }
+
   function buildInstructions(protocol, compiledPrompt) {
+    const format = globalThis.NovaFlowH3PromptFormat
     if (protocol.mode === 'multi_reference') {
-      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', globalThis.NovaFlowH3PromptFormat.referenceInstruction + '\nH3 response format: bilingual-v1\nSource prompt:')
+      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', format.referenceInstruction + '\nH3 response format: bilingual-v1\nSource prompt:')
     }
-    const references = protocol.references.references.length
-      ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
-      : '(none)'
+    // Base modes answer in the official three fields: a bilingual pair (Grok) or Chinese fields (local).
     const lines = [
-      globalThis.NovaFlowH3PromptFormat.instruction,
-      globalThis.NovaFlowH3PromptFormat.formatInstruction,
+      format.instruction,
+      format.baseInstruction,
+      format.baseResultInstruction,
+      'H3 response format: bilingual-v1',
       `Protocol: ${protocol.protocolName}; duration: ${protocol.durationSeconds.toFixed(2)} seconds.`,
-      `Available resource labels: ${references}. Never invent a resource label.`,
+      resourceLabels(protocol.references),
       ...(protocol.contentPolicy.sensitiveVisualAnalysis ? ['Fact-faithful analysis is enabled. Preserve only user-supported facts; do not guess age or add appearance.'] : []),
       'Source prompt:', compiledPrompt,
     ]
     return lines.join('\n')
+  }
+
+  // Editor text → the text an engine reads: aliases become protocol tokens, a
+  // display becomes fields, an old five-section prompt is converted first, and
+  // unstructured free text stays as written.
+  function sourceForEngine(sourcePrompt, protocol) {
+    const format = globalThis.NovaFlowH3PromptFormat
+    const tokens = toModelReferences(sourcePrompt, protocol.references)
+    if (protocol.mode === 'multi_reference') return format.fromReferenceDisplay(tokens)
+    const options = { mode: protocol.mode, durationSeconds: protocol.durationSeconds }
+    return format.fromBaseDisplay(LEGACY_EXPRESSION.test(tokens) ? format.toBaseDisplay(tokens, options) : tokens)
   }
 
   function prepareRequest(options) {
@@ -690,7 +708,7 @@
     })
     const sourcePrompt = stringValue(input.prompt).trim()
     if (!sourcePrompt) throw new Error('MiniMax H3 source prompt cannot be empty')
-    const compiledPrompt = globalThis.NovaFlowH3PromptFormat.fromReferenceDisplay(toModelReferences(sourcePrompt, protocol.references))
+    const compiledPrompt = sourceForEngine(sourcePrompt, protocol)
     const snapshot = createPromptSnapshot({
       modelId,
       mode: protocol.mode,
@@ -843,39 +861,11 @@
     return Object.freeze(shots)
   }
 
-  function validateAlignment(text, protocol, shots) {
+  // 多参 only: the base alignment line is regenerated from mode and duration at generation.
+  function validateAlignment(text) {
     const firstLine = stringValue(text).split(/\r?\n/).map((line) => line.trim()).find(Boolean) || ''
-    const alignedSeconds = Array.from(firstLine.matchAll(/([0-9]+(?:\.[0-9]+)?)\s*(?:\u79d2|s(?:ec(?:onds?)?)?\b)/gi))
-      .map((entry) => Number(entry[1]))
-      .filter(Number.isFinite)
-    const hasAlignedSecond = (expected) => alignedSeconds.some((value) => Math.abs(value - expected) <= 0.0005)
-    if (protocol.mode === 'text_video' && !firstLine.startsWith('integrated_multimodal_description:')) {
-      throw new Error('MiniMax H3 T2VA output must begin with integrated_multimodal_description')
-    }
-    if (protocol.mode === 'multi_reference' && !firstLine.startsWith('subject_definitions:')) {
+    if (!firstLine.startsWith('subject_definitions:')) {
       throw new Error('MiniMax H3 Ref2VA output must begin with subject_definitions')
-    }
-    if (protocol.mode === 'image_video') {
-      if (
-        !firstLine.includes('<Picture 1>') ||
-        !firstLine.includes('[Shot 1]') ||
-        !hasAlignedSecond(0)
-      ) {
-        throw new Error('MiniMax H3 I2VA output must begin with the 0.00-second <Picture 1> / [Shot 1] alignment')
-      }
-    }
-    if (protocol.mode === 'first_last') {
-      const lastShot = shots[shots.length - 1]
-      if (
-        !firstLine.includes('<Picture 1>') ||
-        !firstLine.includes('<Picture 2>') ||
-        !firstLine.includes('[Shot 1]') ||
-        !firstLine.includes(`[Shot ${lastShot.number}]`) ||
-        !hasAlignedSecond(0) ||
-        !hasAlignedSecond(protocol.durationSeconds)
-      ) {
-        throw new Error('MiniMax H3 FL2VA output must begin with first/last frame alignment at 0.00 seconds and the selected duration')
-      }
     }
   }
 
@@ -1031,49 +1021,39 @@
     let value = stripResponseFence(text)
     if (!value) throw new Error('MiniMax H3 enhanced prompt is empty')
     const protocol = createPromptProtocol(options)
+    const format = globalThis.NovaFlowH3PromptFormat
+    const base = protocol.mode !== 'multi_reference'
     if (UI_REFERENCE_ALIAS_EXPRESSION.test(value)) {
-      // In 多参视频 the editor text round-trips through display aliases
-      // (@参考图1); a translated or provider result may echo one for a bound
-      // resource. Bind it to the protocol token instead of failing. Other modes
-      // keep the strict contract, and an alias without an upload stays an error.
-      if (protocol.mode === 'multi_reference') {
-        const byDisplayToken = protocol.references.byDisplayToken || {}
-        value = value.replace(new RegExp(UI_REFERENCE_ALIAS_EXPRESSION.source, 'giu'), (match) => {
-          const alias = match.replace(/\s*\((?:image|video|audio)\)$/i, '')
-          return byDisplayToken[alias] || match
-        })
-      }
+      // The editor text round-trips through display aliases (@参考图1, @首帧);
+      // a translated or provider result may echo one for a bound resource.
+      // Bind it to the protocol token instead of failing; an alias without an
+      // upload stays an error.
+      const byDisplayToken = protocol.references.byDisplayToken || {}
+      value = value.replace(new RegExp(UI_REFERENCE_ALIAS_EXPRESSION.source, 'giu'), (match) => {
+        const alias = match.replace(/\s*\((?:image|video|audio)\)$/i, '')
+        return byDisplayToken[alias] || match
+      })
       const remaining = UI_REFERENCE_ALIAS_EXPRESSION.exec(value)
       if (remaining) throw new Error(`MiniMax H3 model output must use protocol references, not UI aliases (${remaining[0]})`)
     }
-    if (protocol.mode === 'multi_reference') {
-      value = globalThis.NovaFlowH3PromptFormat.validateReference(value, {
+    // Base modes accept every engine shape (a bilingual half, Chinese fields, an old
+    // five-section answer, a reverse fact inventory, official English with its
+    // alignment line) and keep the canonical three fields; the shared validator
+    // completes a missing camera instead of rejecting it.
+    value = base
+      ? format.validateBaseResult(value, { mode: protocol.mode, durationSeconds: protocol.durationSeconds, currentPrompt: stringValue(options?.currentPrompt) })
+      : format.validateReference(value, {
         mode: protocol.mode, durationSeconds: protocol.durationSeconds,
         requirements: 'Available resource labels: ' + protocol.references.references.map(r => r.modelToken).join('; '),
       })
-    }
-    if (/^【任务定位】/.test(value)) {
-      const formatted = globalThis.NovaFlowH3PromptFormat.validateFormat(value, {
-        mode: protocol.mode, durationSeconds: protocol.durationSeconds,
-        requirements: 'Available resource labels: ' + protocol.references.references.map(r => r.modelToken).join('; '),
-      })
-      if (protocol.contentPolicy.sensitiveVisualAnalysis && containsExplicitMinorTerms(formatted) && containsSensitiveContentTerms(formatted)) {
-        throw new Error('MiniMax H3 sensitive visual output is blocked because explicit minor evidence coexists with sensitive content')
-      }
-      return deepFreeze({ valid: true, text: formatted, mode: protocol.mode,
-        protocolName: protocol.protocolName, durationSeconds: protocol.durationSeconds,
-        fieldOrder: globalThis.NovaFlowH3PromptFormat.sectionNames.slice(),
-        usedReferences: protocol.references.references.map(r => r.modelToken).filter(token => value.includes(token)), shots: [], subjects: [], relations: [],
-      })
-    }
     value = value.replace(new RegExp(`^([ \\t]*)(${protocol.fieldOrder.join('|')})[ \\t]*$`, 'gm'), '$1$2:')
     value = completeMissingSubjectDefinitions(value, protocol.fieldOrder, protocol.mode)
     const sections = parseFieldSections(value, protocol.fieldOrder)
-    const narrative = protocol.mode === 'multi_reference'
-      ? sections.detailed_description.content
-      : sections.integrated_multimodal_description.content
+    const narrative = base
+      ? sections.integrated_multimodal_description.content
+      : sections.detailed_description.content
     const shots = parseShotTimeline(narrative, protocol.durationSeconds)
-    validateAlignment(value, protocol, shots)
+    if (!base) validateAlignment(value)
     const usedReferences = validateReferenceUsage(value, protocol)
     const subjects = validateSubjectDefinitions(sections, protocol.mode)
     const relations = validateReferenceSummary(sections, protocol)
@@ -1082,32 +1062,11 @@
       && containsSensitiveContentTerms(value)) {
       throw new Error('MiniMax H3 sensitive visual output is blocked because explicit minor evidence coexists with sensitive content')
     }
-    const hasIdleOrStillMotion = /呼吸|起伏|待机|(?:全程|保持|完全|持续)(?:静止|不动)|\b(?:breath\w*|idle|remain\w* still|completely still)\b/iu.test(narrative)
-    const sourceVideoEdit = protocol.mode === 'multi_reference' && relations.includes('video editing') && /<Video [1-9]\d*>/.test(value)
-    const hasSourceMotion = sourceVideoEdit && /(?:保留|按照|沿用|跟随|保持|遵循)[^。\n]{0,60}(?:轨迹|速度|运动|动作)|\b(?:follow\w*|match\w*|retain\w*|preserv\w*)\b[^.\n]{0,80}\b(?:trajector(?:y|ies)|movements?|motion|direction|phase)\b/iu.test(narrative)
-    const sourceCameraBindings = sourceVideoEdit
-      ? (sections.retention_analysis?.content || '').split('\n').filter(line => /^<Video [1-9]\d*>[^\n]*:\s*(?:fully_preserved|partially_preserved)\b/.test(line)).join('\n')
-      : ''
-    const hasSourceCamera = sourceVideoEdit && (
-      /(?:保留|沿用|跟随|保持)[^。\n]{0,35}(?:原|源|参考|相同)[^。\n]{0,20}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,35}(?:沿用|跟随|保留)[^。\n]{0,20}(?:原|源|参考)/u.test(narrative)
-      || /(?:保留|沿用|保持)[^。\n]{0,80}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,80}(?:保留|沿用|保持)|\b(?:keep|retain\w*|preserv\w*|maintain\w*)\b[^.\n]{0,80}\bcamera\b|\bcamera\b[^.\n]{0,80}\b(?:retain\w*|preserv\w*|maintain\w*|unchanged)\b/iu.test(sourceCameraBindings)
-    )
-    // Keyword gates misread real 多参 motion ("approaches", "meet") as a static
-    // caption. The reference validator already completes a missing camera, so
-    // these gates stay for the single-protocol modes only.
-    const skipKeywordGates = protocol.mode === 'multi_reference'
-    if (!skipKeywordGates && !ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion && !hasSourceMotion && !sourceVideoEdit) {
-      throw new Error('MiniMax H3 narrative must describe action progression, not only a static image caption')
-    }
-    // An edit inherits the source camera unless the edit asks to change it.
-    // Requiring users/models to restate that implicit choice rejected valid
-    // wardrobe, color and style edits with otherwise complete video bindings.
-    if (!skipKeywordGates && !CAMERA_DIRECTION_EXPRESSION.test(narrative) && !hasSourceCamera && !sourceVideoEdit) {
-      throw new Error('MiniMax H3 narrative must state an explicit camera movement or locked-camera choice')
-    }
+    // No action/camera keyword gates: they misread real motion ("approaches",
+    // "挥手") as a static caption, and the shared validators complete a missing camera.
     return deepFreeze({
       valid: true,
-      text: formatPromptLayout(value, protocol.mode === 'multi_reference' && !/^\[/.test(sections.summary.content)
+      text: base ? value : formatPromptLayout(value, !/^\[/.test(sections.summary.content)
         ? Object.assign({}, sections, { summary: Object.assign({}, sections.summary, { content: `[${relations.join(' + ')}] ${sections.summary.content}` }) })
         : sections, protocol.fieldOrder),
       mode: protocol.mode,
@@ -1121,8 +1080,22 @@
     })
   }
 
+  // Translations for generation, keyed on the model-token text so the editor's
+  // aliases (@参考图1) and the generator's compiled tokens (<Picture 1>) meet.
+  // A base translation is text-only, so a new picture or duration reuses it;
+  // a 多参 compile also reads the media and the duration.
   const referenceTranslations = new Map()
-  function validateAndRestore(options) {
+  function translationKey(current, prompt) {
+    const catalog = createReferenceCatalog({ mode: current.mode, resources: current.resources, requireReady: true })
+    const scope = catalog.mode === 'multi_reference' ? [normalizeDurationSeconds(current.durationSeconds), catalog.signature] : catalog.modelTokens
+    return fingerprintText(JSON.stringify([catalog.mode, toModelReferences(stringValue(prompt).trim(), catalog), scope]))
+  }
+  function rememberTranslation(current, prompts, compiled) {
+    prompts.forEach((prompt) => referenceTranslations.set(translationKey(current, prompt), compiled))
+    while (referenceTranslations.size > 40) referenceTranslations.delete(referenceTranslations.keys().next().value)
+  }
+
+  function validateAndRestore(options, compileSource) {
     const input = options && typeof options === 'object' ? options : {}
     const context = input.context
     assertContextIntegrity(context)
@@ -1130,55 +1103,116 @@
       throw new Error('MiniMax H3 prompt response is stale; discard it and request enhancement again')
     }
     const catalog = catalogFromContext(context)
-    let pair = context.mode === 'multi_reference' ? globalThis.NovaFlowH3PromptFormat.referenceResult(input.text) : null
+    const format = globalThis.NovaFlowH3PromptFormat
+    const base = context.mode !== 'multi_reference'
     const serialized = value => typeof value === 'string' ? value : JSON.stringify(value)
+    const currentPrompt = stringValue(input.current?.prompt)
     const validationOptions = {
       mode: context.mode,
       durationSeconds: context.durationSeconds,
       resources: resourcesFromSnapshot(context.snapshot),
       contentPolicy: context.contentPolicy,
       requireReady: true,
+      currentPrompt,
     }
-    if (pair) pair = globalThis.NovaFlowH3PromptFormat.referenceResult(globalThis.NovaFlowH3PromptFormat.validateReferenceResult(input.text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt:input.current?.prompt || ''}))
+    let pair = format.referenceResult(input.text)
+    if (pair) pair = format.referenceResult(base
+      ? format.validateBaseResult(input.text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt })
+      : format.validateReferenceResult(input.text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt}))
     const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : input.text, validationOptions)
     const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), validationOptions) : validation
-    const restoredText = context.mode === 'multi_reference'
-      ? globalThis.NovaFlowH3PromptFormat.toReferenceDisplay(toDisplayReferences(displayed.text, catalog))
-      : validation.text
+    // The editor shows Chinese with the 多参 labels and its own aliases; H3 gets
+    // the official English when a translation came back, otherwise the fields.
+    const baseOptions = { mode: context.mode, durationSeconds: context.durationSeconds }
+    const restoredText = base
+      ? toDisplayReferences(format.toBaseDisplay(displayed.text, baseOptions), catalog)
+      : format.toReferenceDisplay(toDisplayReferences(displayed.text, catalog))
     if (pair && input.current) {
-      const key = createPromptSnapshot({...input.current,prompt:restoredText}).fingerprint
       const compiled = {modelPrompt:validation.text,displayPrompt:displayed.text,...(pair.editPolicy ? {editPolicy:pair.editPolicy} : {})}
-      referenceTranslations.set(key, compiled)
-      referenceTranslations.set(createPromptSnapshot(input.current).fingerprint, compiled)
-      while (referenceTranslations.size > 40) referenceTranslations.delete(referenceTranslations.keys().next().value)
+      rememberTranslation(input.current, compileSource == null ? [restoredText] : [restoredText, compileSource], compiled)
     }
     return deepFreeze({
       text: restoredText,
-      modelText: validation.text,
+      modelText: base && pair ? format.composeBaseModelPrompt(validation.text, baseOptions) : validation.text,
       referenceEditPolicy: pair?.editPolicy || null,
       validation,
       fingerprint: context.fingerprint,
     })
   }
 
+  const COMPILE_UPDATE_REQUIRED = '云端或本机提示词服务需要更新后才能转换为官方英文提示词'
+
+  // 文生 / 图生 / 首尾帧: the Chinese display becomes the official English base
+  // format. English fields go straight through, a known text uses its cached
+  // translation, anything else is translated without creative change. Free text
+  // without fields is sent as written.
+  async function compileBaseForGeneration(current, optimize) {
+    const format = globalThis.NovaFlowH3PromptFormat
+    const source = stringValue(current.prompt).trim()
+    if (!source) return deepFreeze({ text: '', modelText: '', referenceEditPolicy: null })
+    const catalog = createReferenceCatalog({ mode: current.mode, resources: current.resources, requireReady: true })
+    const options = { mode: catalog.mode, durationSeconds: normalizeDurationSeconds(current.durationSeconds) }
+    let tokens = toModelReferences(source, catalog)
+    if (LEGACY_EXPRESSION.test(tokens)) tokens = format.toBaseDisplay(tokens, options)
+    if (!format.parseBaseFields(tokens)) return deepFreeze({ text: source, modelText: tokens, referenceEditPolicy: null })
+    const fields = format.validateBaseFields(tokens, options)
+    const finish = (compiled) => deepFreeze({
+      text: toDisplayReferences(format.toBaseDisplay(compiled.displayPrompt, options), catalog),
+      modelText: format.composeBaseModelPrompt(compiled.modelPrompt, options),
+      referenceEditPolicy: null,
+    })
+    if (!/[\u3400-\u9fff]/.test(fields.replace(/<d>[\s\S]*?<\/d>|"[^"\n]*"|“[^”\n]*”/g, ''))) return finish({ modelPrompt: fields, displayPrompt: fields })
+    const cached = referenceTranslations.get(translationKey(current, source))
+    if (cached) return finish(cached)
+    if (typeof optimize !== 'function') throw new Error('提示词编译服务不可用')
+    const text = await optimize({
+      prompt: fields,
+      requirements: [format.baseTranslateInstruction, 'H3 compile: translate-only', 'H3 response format: bilingual-v1', resourceLabels(catalog), 'Source prompt:', fields].join('\n'),
+      h3Mode: catalog.mode, durationSeconds: options.durationSeconds,
+      purpose: 'minimax-h3-prompt-enhance', surface: 'animation',
+      visualSchema: H3_VISUAL_SCHEMA, contentPolicy: normalizeContentPolicy(current.contentPolicy),
+      supportsNegativePrompt: false,
+    })
+    // An engine without the translate step answers with Chinese (or five sections):
+    // never send that prose to H3 from a structured prompt.
+    const pair = format.referenceResult(text)
+    if (!pair) throw new Error(COMPILE_UPDATE_REQUIRED)
+    let checked
+    try {
+      checked = format.validateBaseResult({ modelPrompt: pair.modelPrompt, displayPrompt: fields }, options)
+    } catch (error) {
+      // English prose around a Chinese name is not a Chinese display; check the English half alone.
+      if (!/简体中文/.test(String(error?.message))) throw error
+      checked = JSON.stringify({ modelPrompt: format.validateBaseResult(pair.modelPrompt, { ...options, language: 'en' }), displayPrompt: fields })
+    }
+    const compiled = JSON.parse(checked)
+    rememberTranslation(current, [source], compiled)
+    return finish(compiled)
+  }
+
   async function compileForGeneration(options, optimize) {
-    const current = { ...options, modelId: MINIMAX_H3_MODEL_ID, mode: 'multi_reference' }
+    // 多参 callers predate the mode option.
+    const current = { ...options, modelId: MINIMAX_H3_MODEL_ID, mode: normalizeMode(options?.mode || 'multi_reference') }
+    if (current.mode !== 'multi_reference') return compileBaseForGeneration(current, optimize)
     const prepared = prepareRequest(current)
+    const source = stringValue(current.prompt).trim()
     if (globalThis.NovaFlowH3PromptFormat.referenceResult(prepared.prompt)) return validateAndRestore({text:prepared.prompt,context:prepared.context,current})
-    const cached = referenceTranslations.get(createPromptSnapshot(current).fingerprint)
+    const cached = referenceTranslations.get(translationKey(current, source))
     if (cached) return validateAndRestore({text:JSON.stringify(cached),context:prepared.context,current})
-    if (/^subject_definitions\s*:/.test(prepared.prompt) && !/(?:^|\n)summary:\s*\[[^\]]*\bvideo editing\b/.test(prepared.prompt) && !/[\u3400-\u9fff]/.test(prepared.prompt.replace(/<d>[\s\S]*?<\/d>/g,''))) {
+    const structured = /^subject_definitions\s*:/.test(prepared.prompt)
+    if (structured && !/(?:^|\n)summary:\s*\[[^\]]*\bvideo editing\b/.test(prepared.prompt) && !/[\u3400-\u9fff]/.test(prepared.prompt.replace(/<d>[\s\S]*?<\/d>/g,''))) {
       return validateAndRestore({ text: prepared.prompt, context: prepared.context, current })
     }
     if (typeof optimize !== 'function') throw new Error('多参提示词编译服务不可用')
     const text = await optimize({
-      prompt: prepared.prompt, requirements: prepared.requirements,
+      // A finished six-field prompt is only translated; free text is compiled into the fields.
+      prompt: prepared.prompt, requirements: structured ? prepared.requirements.replace('\nSource prompt:\n', '\nH3 compile: translate-only\nSource prompt:\n') : prepared.requirements,
       h3Mode: 'multi_reference', durationSeconds: current.durationSeconds,
       purpose: 'minimax-h3-prompt-enhance', surface: 'animation',
       visualSchema: H3_VISUAL_SCHEMA, contentPolicy: prepared.context.contentPolicy,
       supportsNegativePrompt: false,
     })
-    return validateAndRestore({ text, context: prepared.context, current })
+    return validateAndRestore({ text, context: prepared.context, current }, source)
   }
 
   const API = {

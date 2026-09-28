@@ -5,7 +5,7 @@ const test = require('node:test')
 const vm = require('node:vm')
 
 const root = path.resolve(__dirname, '..', '..')
-const workflowPath = path.join(root, 'particle-editor', 'ai-sequence-minimax-h3-prompt.workflow.js')
+const workflowPath = path.join(root, 'novaflow-web', 'renderer', 'ai-sequence-minimax-h3-prompt.workflow.js')
 const buildRendererPath = path.join(root, 'particle-editor-desktop', 'scripts', 'build-renderer.mjs')
 const workflowSource = fs.readFileSync(workflowPath, 'utf8')
 const buildRendererSource = fs.readFileSync(buildRendererPath, 'utf8')
@@ -298,10 +298,15 @@ test('validates and restores a response for every H3 product mode', () => {
     prompt: 'Animate @\u9996\u5e27.',
     resources: [firstFrame()],
   })
+  // Base modes show the Chinese-labelled display with the editor alias (图生视频: @参考图);
+  // the alignment section is regenerated from mode and duration, not copied from the engine.
   const restored = workflow.validateAndRestore({ text: imageVideoPrompt(), context: imageRequest.context })
-  assert.doesNotMatch(restored.text, /@\u9996\u5e27/)
-  assert.match(restored.text, /<Picture 1>/)
-  assert.match(restored.modelText, /<Picture 1>/)
+  assert.match(restored.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 establishes the hero/)
+  assert.match(restored.text, /\n【镜头 2】 At 00:02\.250, the hero gradually turns[^\n]*\n\n【环境声音】\nCloth movement and a quiet room tone\.\n\n【背景音乐】\n无$/)
+  assert.doesNotMatch(restored.text, /<Picture 1>|integrated_multimodal_description|参考图片与目标视频对齐/)
+  assert.match(restored.modelText, /^integrated_multimodal_description: \[Shot 1\] <Picture 1> establishes/)
+  // The display goes back to the engine as fields with protocol tokens.
+  assert.equal(workflow.prepareRequest({ modelId: 'minimax_h3_local', mode: 'image_video', durationSeconds: 5, prompt: restored.text, resources: [firstFrame()] }).prompt, restored.modelText)
 
   const multiRequest = workflow.prepareRequest({
     modelId: 'minimax_h3_local',
@@ -319,29 +324,21 @@ test('validates and restores a response for every H3 product mode', () => {
   assert.doesNotMatch(multiRestored.text, /<Picture 1>/)
 })
 
-test('rejects wrong field order, missing fields, and illegal mode references', () => {
+test('base fields are read in any order, unrequested music becomes N/A, and illegal mode references fail', () => {
+  const textVideo = { mode: 'text_video', durationSeconds: 5, resources: [] }
+  assert.equal(workflow.validatePromptText([
+    'overall_soundscape: wind',
+    'integrated_multimodal_description: [Shot 1] skyline, the camera holds a static shot',
+    'non_diegetic_music: N/A',
+  ].join('\n'), textVideo).text, 'integrated_multimodal_description: [Shot 1] skyline, the camera holds a static shot\n\noverall_soundscape: wind\n\nnon_diegetic_music: N/A')
+  assert.match(workflow.validatePromptText([
+    'integrated_multimodal_description: [Shot 1] skyline, the camera holds a static shot',
+    'overall_soundscape: wind',
+  ].join('\n'), textVideo).text, /\n\nnon_diegetic_music: N\/A$/)
+  assert.throws(() => workflow.validatePromptText('integrated_multimodal_description: [Shot 1] skyline', textVideo), /三个字段/)
   assert.throws(
-    () => workflow.validatePromptText([
-      'overall_soundscape: wind',
-      'integrated_multimodal_description: [Shot 1] skyline',
-      'non_diegetic_music: N/A',
-    ].join('\n'), { mode: 'text_video', durationSeconds: 5, resources: [] }),
-    /fields must appear exactly in this order/,
-  )
-  assert.throws(
-    () => workflow.validatePromptText([
-      'integrated_multimodal_description: [Shot 1] skyline',
-      'overall_soundscape: wind',
-    ].join('\n'), { mode: 'text_video', durationSeconds: 5, resources: [] }),
-    /fields must appear exactly in this order/,
-  )
-  assert.throws(
-    () => workflow.validatePromptText(textVideoPrompt().replace('A quiet city', '<Picture 1> A quiet city'), {
-      mode: 'text_video',
-      durationSeconds: 5,
-      resources: [],
-    }),
-    /unavailable reference <Picture 1>/,
+    () => workflow.validatePromptText(textVideoPrompt().replace('A quiet city', '<Picture 1> A quiet city'), textVideo),
+    /参考媒体标签/,
   )
   assert.throws(
     () => workflow.validatePromptText(imageVideoPrompt().replace(
@@ -352,8 +349,9 @@ test('rejects wrong field order, missing fields, and illegal mode references', (
       durationSeconds: 5,
       resources: [firstFrame()],
     }),
-    /unavailable reference <Picture 2>/,
+    /参考媒体标签/,
   )
+  assert.throws(() => workflow.validatePromptText(textVideoPrompt().replace('A quiet city', '<Subject 1> A quiet city'), textVideo), /Subject N/)
 })
 
 test('rejects extra top-level fields without treating ordinary body colons as fields', () => {
@@ -404,52 +402,41 @@ test('rejects Markdown-wrapped and Chinese negative-prompt headings', () => {
   })
 })
 
-test('rejects malformed, non-contiguous, non-increasing, and out-of-range shot times', () => {
+test('canonicalizes shot layout and rejects non-contiguous, non-increasing, and out-of-range cut times', () => {
   const options = { mode: 'text_video', durationSeconds: 5, resources: [] }
-  assert.doesNotThrow(
-    () => workflow.validatePromptText(textVideoPrompt().replace('00:02.000', '00:05.000'), options),
-  )
-  assert.doesNotThrow(
-    () => workflow.validatePromptText(textVideoPrompt().replace('00:02.000,', '00:02.000，'), options),
-  )
-  assert.doesNotThrow(
-    () => workflow.validatePromptText(textVideoPrompt().replace('00:02.000,', '00:02.000 '), options),
-  )
-  assert.throws(
-    () => workflow.validatePromptText(textVideoPrompt().replace('[Shot 1]', '[Shot 1] At 00:00.000,'), options),
-    /\[Shot 1\] must not contain a timestamp/,
-  )
-  assert.throws(
-    () => workflow.validatePromptText(textVideoPrompt().replace('[Shot 2]', '[Shot 3]'), options),
-    /shot numbers must be contiguous/,
-  )
-  assert.throws(
-    () => workflow.validatePromptText(textVideoPrompt().replace('[Shot 2] At 00:02.000,', '[Shot 2] moves'), options),
-    /must contain an At MM:SS\.mmm timestamp/,
-  )
-  assert.throws(
-    () => workflow.validatePromptText(textVideoPrompt().replace('00:02.000', '00:00.000'), options),
-    /strictly increasing/,
-  )
-  assert.throws(
-    () => workflow.validatePromptText(textVideoPrompt().replace('00:02.000', '00:05.001'), options),
-    /exceeds the selected duration/,
-  )
+  const narrative = (text) => text.split('overall_soundscape:')[0]
+  for (const variant of [textVideoPrompt(), textVideoPrompt().replace('00:02.000,', '00:02.000，'), textVideoPrompt().replace('00:02.000,', '00:02.000 ')]) {
+    assert.match(narrative(workflow.validatePromptText(variant, options).text), /\n\[Shot 2\] At 00:02\.000, warm sunlight/)
+  }
+  // A zero time on [Shot 1] is dropped; a later shot without a time is placed evenly, like 多参.
+  assert.match(workflow.validatePromptText(textVideoPrompt().replace('[Shot 1]', '[Shot 1] At 00:00.000,'), options).text, /^integrated_multimodal_description: \[Shot 1\] A quiet city/)
+  assert.match(workflow.validatePromptText(textVideoPrompt().replace('[Shot 2] At 00:02.000,', '[Shot 2] moves'), options).text, /\[Shot 2\] At 00:02\.500, moves warm sunlight/)
+  assert.throws(() => workflow.validatePromptText(textVideoPrompt().replace('[Shot 1]', '[Shot 1] At 00:01.000,'), options), /切换时间/)
+  assert.throws(() => workflow.validatePromptText(textVideoPrompt().replace('[Shot 2]', '[Shot 3]'), options), /镜头编号/)
+  assert.throws(() => workflow.validatePromptText(textVideoPrompt().replace('00:02.000', '00:00.000'), options), /切换时间/)
+  // Official rule: a cut starts strictly inside the selected duration.
+  for (const time of ['00:05.000', '00:05.001']) {
+    assert.throws(() => workflow.validatePromptText(textVideoPrompt().replace('00:02.000', time), options), /切换时间/)
+  }
 })
 
-test('accepts numerically equivalent first-last alignment seconds', () => {
-  const options = {
+test('the first-last alignment is regenerated from mode and duration, whatever line the engine wrote', () => {
+  const current = {
+    modelId: 'minimax_h3_local',
     mode: 'first_last',
     durationSeconds: 8,
-    resources: [
-      { key: 'first_frame', kind: 'image', occupied: true, identity: 'first' },
-      { key: 'last_frame', kind: 'image', occupied: true, identity: 'last' },
-    ],
+    prompt: 'Move from @首帧 to @尾帧.',
+    resources: [firstFrame(), lastFrame()],
   }
-  const response = firstLastPrompt(8)
-    .replace('8.00 \u79d2', '8 seconds')
-    .replace('00:03.500,', '00:08.000，')
-  assert.doesNotThrow(() => workflow.validatePromptText(response, options))
+  const request = workflow.prepareRequest(current)
+  const [chinese, ...body] = firstLastPrompt(8).split('\n')
+  const official = 'How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 2) aligns with the 8.00-second mark of the target video.'
+  for (const line of [chinese, chinese.replace('8.00 秒', '8 seconds'), official, 'Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 1] = 3.00 seconds', '']) {
+    const response = [line, ...body].filter(Boolean).join('\n').replace('00:03.500,', '00:07.500，')
+    const restored = workflow.validateAndRestore({ text: response, context: request.context, current })
+    assert.match(restored.text, /^【参考帧对齐】\n@首帧 对齐视频第 0\.00 秒（开头）；@尾帧 对齐第 8\.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】@首帧 is the exact opening composition/)
+    assert.match(restored.text, /\n【镜头 2】 At 00:07\.500, motion gradually resolves into @尾帧/)
+  }
 })
 
 test('validates Ref2VA relations and contiguous subject definitions', () => {
@@ -545,16 +532,21 @@ test('locks fact-faithful H3 analysis and rejects only minor-sensitive, alias, o
     context: request.context,
     current: sensitive,
   }), /explicit minor evidence coexists with sensitive content/)
-  assert.throws(() => workflow.validatePromptText(
-    imageVideoPrompt().replace('<Picture 1>', '@\u9996\u5e27 (image)'),
-    { mode: 'image_video', durationSeconds: 5, resources: [firstFrame()] },
-  ), /not UI aliases/)
-  assert.throws(() => workflow.validatePromptText(
+  // An editor alias echoed for a bound frame binds to its protocol token; an unbound one fails.
+  const imageOptions = { mode: 'image_video', durationSeconds: 5, resources: [firstFrame()] }
+  for (const alias of ['@首帧 (image)', '@参考图']) {
+    const bound = workflow.validatePromptText(imageVideoPrompt().replace('<Picture 1>', alias), imageOptions)
+    assert.match(bound.text, /\[Shot 1\] <Picture 1> establishes/)
+  }
+  assert.throws(() => workflow.validatePromptText(imageVideoPrompt().replace('<Picture 1>', '@尾帧'), imageOptions), /not UI aliases \(@尾帧\)/)
+  // A shallow caption is not rejected by keyword lists; the missing camera is completed instead.
+  const shallow = workflow.validatePromptText(
     imageVideoPrompt()
       .replace(' while the camera begins locked', '')
       .replace('gradually turns and completes the motion as the camera slowly pushes in', 'is visible'),
-    { mode: 'image_video', durationSeconds: 5, resources: [firstFrame()] },
-  ), /action progression/)
+    imageOptions,
+  )
+  assert.match(shallow.text, /the hero is visible\. The camera holds a static shot and the framing stays stable\.\n/)
 })
 
 test('validateAndRestore can reject a response against current state before restoring it', () => {
@@ -631,6 +623,104 @@ test('sensitive validation ignores ambiguous age wording and blocks only explici
     contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
   })
   assert.doesNotThrow(() => workflow.validateAndRestore({ text: ambiguousYouth, context: ordinary.context }))
+})
+
+const format = require('../admin-server/h3-prompt-enhance.js')
+const I2V_LINE = 'For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.'
+const chineseFields = (narrative = '[Shot 1] <Picture 1> 中的少女缓慢转身，抬手挥动。镜头保持固定，构图稳定。') =>
+  `integrated_multimodal_description: ${narrative}\n\noverall_soundscape: 站台环境声，衣袖摩擦声。\n\nnon_diegetic_music: N/A`
+const englishFields = (narrative = '[Shot 1] The girl shown in <Picture 1> slowly turns and raises her hand to wave. The camera holds a static shot and the framing stays stable.') =>
+  `integrated_multimodal_description: ${narrative}\n\noverall_soundscape: Platform ambience hums while her sleeve rustles.\n\nnon_diegetic_music: N/A`
+const legacyI2v = '【任务定位】\n图生视频，时长5秒。<Picture 1> 为起始首帧。\n\n【说话者】\n无说话者\n\n【递进式详细提示词】\n少女站在站台上，镜头固定。\n\n0-2.5s：她缓慢转身。\n\n2.5-5s：她抬手挥动。\n\n【台词】\n无台词\n\n【连续性与约束】\n1. 环境与动作声音：站台环境声\n2. 配乐：N/A'
+const i2vCurrent = (prompt, identity = 'first-a') => ({ modelId: 'minimax_h3_local', mode: 'image_video', durationSeconds: 5, prompt, resources: [firstFrame(identity)] })
+
+test('base optimize asks for the official fields with the bilingual flag and sends fields, never five sections', () => {
+  const current = i2vCurrent('@参考图 中的少女转身挥手')
+  const request = workflow.prepareRequest(current)
+  assert.ok(request.requirements.includes(format.baseInstruction))
+  assert.ok(request.requirements.includes(format.baseResultInstruction))
+  assert.match(request.requirements, /^H3 response format: bilingual-v1$/m)
+  assert.doesNotMatch(request.requirements, /【任务定位】|Return exactly these five sections/)
+  assert.match(request.requirements, /\nSource prompt:\n<Picture 1> 中的少女转身挥手$/)
+  // Free text stays free text; a display goes to the engine as fields; an old five-section prompt is converted first.
+  assert.equal(request.prompt, '<Picture 1> 中的少女转身挥手')
+  const display = workflow.validateAndRestore({ text: chineseFields(), context: request.context, current }).text
+  assert.equal(workflow.prepareRequest({ ...current, prompt: display }).prompt, chineseFields())
+  assert.equal(workflow.prepareRequest({ ...current, prompt: legacyI2v.replace('<Picture 1>', '@参考图') }).prompt,
+    'integrated_multimodal_description: [Shot 1] 少女站在站台上，镜头固定。她缓慢转身。她抬手挥动。\n\noverall_soundscape: 站台环境声\n\nnon_diegetic_music: N/A')
+})
+
+test('base results: a bilingual pair gives the official English, Chinese fields and old five sections show as the display', () => {
+  const current = i2vCurrent('@参考图 中的少女转身挥手')
+  const { context } = workflow.prepareRequest(current)
+  const pair = workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields(), displayPrompt: chineseFields() }), context, current })
+  assert.equal(pair.text, '【参考帧对齐】\n@参考图 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 中的少女缓慢转身，抬手挥动。镜头保持固定，构图稳定。\n\n【环境声音】\n站台环境声，衣袖摩擦声。\n\n【背景音乐】\n无')
+  assert.equal(pair.modelText, I2V_LINE + '\n\n' + englishFields())
+  const local = workflow.validateAndRestore({ text: chineseFields(), context, current })
+  assert.equal(local.text, pair.text)
+  assert.equal(local.modelText, chineseFields())
+  const legacy = workflow.validateAndRestore({ text: legacyI2v, context, current })
+  assert.match(legacy.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒[^\n]*\n\n【画面与动作】\n【镜头 1】少女站在站台上，镜头固定。画面从 @参考图 的位置与构图开始。她缓慢转身。她抬手挥动。\n\n【环境声音】\n站台环境声\n\n【背景音乐】\n无$/)
+  assert.throws(() => workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: chineseFields(), displayPrompt: chineseFields() }), context, current }), /英文正文/)
+  assert.throws(() => workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields().replace('slowly turns', 'slowly turns [Shot 2] At 00:02.000, the camera cuts to her hand'), displayPrompt: chineseFields() }), context, current }), /镜头或切换时间不一致/)
+})
+
+test('generation compiles the base display to the official English text', async () => {
+  const noEngine = async () => { throw new Error('no engine call expected') }
+  // A translation received while optimizing is reused, keyed on the model-token text.
+  const optimized = i2vCurrent('@参考图 中的少女转身挥手', 'compile-a')
+  const { context } = workflow.prepareRequest(optimized)
+  const shown = workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields(), displayPrompt: chineseFields() }), context, current: optimized }).text
+  for (const prompt of [shown, shown.replace(/@参考图/g, '<Picture 1>'), shown.replace(/@参考图/g, '@首帧')]) {
+    assert.equal((await workflow.compileForGeneration({ ...optimized, prompt }, noEngine)).modelText, I2V_LINE + '\n\n' + englishFields())
+  }
+  // English fields go straight to H3; free text is sent as written (aliases become tokens).
+  const english = i2vCurrent(format.toBaseDisplay(englishFields(), { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图'), 'compile-b')
+  assert.equal((await workflow.compileForGeneration(english, noEngine)).modelText, I2V_LINE + '\n\n' + englishFields())
+  assert.deepEqual({ ...(await workflow.compileForGeneration(i2vCurrent('@参考图 里的少女转身挥手', 'compile-c'), noEngine)) }, { text: '@参考图 里的少女转身挥手', modelText: '<Picture 1> 里的少女转身挥手', referenceEditPolicy: null })
+  // A Chinese display is translated once without creative change, then cached.
+  const girl = chineseFields('[Shot 1] <Picture 1> 中的女孩缓慢转身，抬手挥动。镜头保持固定，构图稳定。')
+  const chinese = i2vCurrent(format.toBaseDisplay(girl, { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图'), 'compile-d')
+  const requests = []
+  const translate = async (payload) => { requests.push(payload); return JSON.stringify({ modelPrompt: englishFields(), displayPrompt: payload.prompt }) }
+  const compiled = await workflow.compileForGeneration(chinese, translate)
+  assert.equal(compiled.modelText, I2V_LINE + '\n\n' + englishFields())
+  assert.equal(compiled.text, chinese.prompt)
+  assert.equal(requests.length, 1)
+  const [request] = requests
+  assert.equal(request.prompt, girl)
+  assert.equal(request.h3Mode, 'image_video')
+  assert.equal(request.durationSeconds, 5)
+  assert.equal(request.purpose, 'minimax-h3-prompt-enhance')
+  assert.ok(request.requirements.startsWith(format.baseTranslateInstruction + '\n'))
+  assert.match(request.requirements, /^H3 compile: translate-only$/m)
+  assert.match(request.requirements, /^H3 response format: bilingual-v1$/m)
+  assert.match(request.requirements, /^Available resource labels: <Picture 1> = captured image slot first_frame\./m)
+  assert.ok(request.requirements.endsWith('\nSource prompt:\n' + girl), 'nothing follows the source')
+  // The translation is text-only: compiled mentions, a new picture or a new duration reuse it.
+  await workflow.compileForGeneration({ ...chinese, prompt: chinese.prompt.replace(/@参考图/g, '<Picture 1>') }, noEngine)
+  await workflow.compileForGeneration({ ...chinese, resources: [firstFrame('another-picture')] }, noEngine)
+  assert.match((await workflow.compileForGeneration({ ...chinese, durationSeconds: 8 }, noEngine)).modelText, /^For the target video/)
+  // An old five-section prompt from the history is converted and translated too.
+  const legacy = await workflow.compileForGeneration(i2vCurrent(legacyI2v.replace('<Picture 1>', '@参考图'), 'compile-e'), translate)
+  assert.match(requests[1].prompt, /^integrated_multimodal_description: \[Shot 1\] 少女站在站台上，镜头固定。画面从 <Picture 1> 的位置与构图开始。/)
+  assert.equal(legacy.modelText, I2V_LINE + '\n\n' + englishFields())
+  // An engine without the translate step answers in Chinese or five sections: never sent to H3.
+  for (const answer of [legacyI2v, chineseFields()]) {
+    await assert.rejects(workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '姑娘'), 'compile-f'), async () => answer), /云端或本机提示词服务需要更新后才能转换为官方英文提示词/)
+  }
+  await assert.rejects(workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '男孩'), 'compile-g'), async () => JSON.stringify({ modelPrompt: chineseFields(), displayPrompt: chineseFields() })), /英文正文/)
+})
+
+test('generation writes the mode-exact official alignment: none for 文生, bare labels and the final shot for 首尾帧', async () => {
+  const t2v = await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: textVideoPrompt(), resources: [] })
+  assert.equal(t2v.modelText, 'integrated_multimodal_description: [Shot 1] A quiet city wakes before dawn while the locked camera remains static. [Shot 2] At 00:02.000, warm sunlight travels gradually across the buildings while the camera slowly pans right.\n\noverall_soundscape: Distant traffic and a light morning breeze.\n\nnon_diegetic_music: Soft restrained strings.')
+  const fl2v = await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'first_last', durationSeconds: 5, prompt: firstLastPrompt(5).replace(/<Picture 1>/g, '@首帧').replace(/<Picture 2>/g, '@尾帧'), resources: [firstFrame(), lastFrame()] })
+  assert.equal(fl2v.modelText.split('\n\n')[0], 'How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 2) aligns with the 5.00-second mark of the target video.')
+  assert.match(fl2v.modelText, /\[Shot 1\] Picture 1 is the exact opening composition[^\n]* \[Shot 2\] At 00:03\.500, motion gradually resolves into Picture 2 /)
+  assert.doesNotMatch(fl2v.modelText, /<Picture|@/)
+  // An empty prompt reaches the graph builder's own empty-prompt error unchanged.
+  assert.equal((await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: ' ', resources: [] })).modelText, '')
 })
 
 test('stays a pure prompt module with no DOM, network, runtime, or filesystem dependency', () => {

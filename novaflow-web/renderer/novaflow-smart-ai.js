@@ -4999,6 +4999,57 @@
       : window.setTimeout(run, 0);
   }
 
+  // Generation turns the editor's H3 prompt into the official English text (文生 / 图生 /
+  // 首尾帧 / 多参). Compilation is local and does not silently spend cloud credits - where
+  // there is a local machine to ask. The hosted site has none (the Web runtime answers that
+  // it is provided through 智能 AI), and there the compile goes the same way the dialog's
+  // Grok choice does. A translate-only compile needs no reference frames.
+  async function compileH3ForGeneration(options) {
+    const workflow = getMiniMaxH3PromptWorkflow();
+    return workflow.compileForGeneration(options, async (payload) => {
+      const api = window.electronAPI || {};
+      const translateOnly = /^H3 compile: translate-only$/m.test(String(payload?.requirements || ""));
+      const h3ReferenceFrames = translateOnly ? [] : await captureH3ReferenceFrames({ ...options, mode: "multi_reference" });
+      let response = await api.promptAssistantOptimizePrompt?.({ ...payload, h3ReferenceFrames });
+      const noLocalMachine = !response || (response.ok === false && /Web 版通过智能 AI/.test(String(response.error || "")));
+      if (noLocalMachine && typeof api.smartAiPromptOptimize === "function") {
+        const token = readSessionToken();
+        if (!token) throw new Error("H3 提示词编译需要先登录 NovaFlow 账号");
+        response = await api.smartAiPromptOptimize({ ...payload, h3ReferenceFrames, token });
+      }
+      if (!response || response.ok === false) throw new Error(response?.error || "H3 提示词编译失败");
+      return readSmartAiResult(response).prompt;
+    });
+  }
+
+  // H3 prompts kept in the prompt history before the official layout (【任务定位】 five
+  // sections) open in the current display with the editor's aliases. This script runs
+  // before the bundle mounts React and reads the key, so entries are rewritten in place.
+  const MINIMAX_H3_PROMPT_HISTORY_KEY = "nf_text_history:ai_seq_prompt";
+  function migrateMiniMaxH3PromptHistory() {
+    try {
+      const format = window.NovaFlowH3PromptFormat;
+      const raw = window.localStorage?.getItem(MINIMAX_H3_PROMPT_HISTORY_KEY);
+      if (!raw || !raw.includes("【任务定位】") || typeof format?.toBaseDisplay !== "function") return;
+      const convert = (entry) => {
+        const task = /^\s*【任务定位】\s*([^\n]*)/.exec(String(entry?.text ?? ""))?.[1];
+        if (task == null || /多参/.test(task)) return entry;
+        try {
+          const shown = format.toBaseDisplay(entry.text);
+          const aliases = /<Picture 2>/.test(shown) ? { "<Picture 1>": "@首帧", "<Picture 2>": "@尾帧" } : { "<Picture 1>": "@参考图" };
+          return { ...entry, text: shown.replace(/<Picture [12]>/g, (token) => aliases[token]) };
+        } catch {
+          return entry;
+        }
+      };
+      const history = JSON.parse(raw);
+      for (const list of ["recent", "pinnedSlots", "pinned"]) {
+        if (Array.isArray(history?.[list])) history[list] = history[list].map((entry) => entry && convert(entry));
+      }
+      window.localStorage.setItem(MINIMAX_H3_PROMPT_HISTORY_KEY, JSON.stringify(history));
+    } catch {}
+  }
+
   function start() {
     document.addEventListener("keydown", onKeyDown, true);
     document.addEventListener("click", trackMiniMaxH3ResourceClick, true);
@@ -5011,24 +5062,9 @@
     });
     observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
     window.__NovaFlowSmartAI = {
-      async compileH3ReferenceForGeneration(options) {
-        const workflow = getMiniMaxH3PromptWorkflow();
-        return workflow.compileForGeneration(options, async payload => {
-          const api = window.electronAPI || {};
-          const h3ReferenceFrames = await captureH3ReferenceFrames({...options, mode:'multi_reference'});
-          // Compilation is local and does not silently spend cloud credits - where there is a local
-          // machine to ask. The hosted site has none (the Web runtime answers that it is provided
-          // through 智能 AI), and there the compile goes the same way the dialog's Grok choice does.
-          let response = await api.promptAssistantOptimizePrompt?.({...payload, h3ReferenceFrames});
-          const noLocalMachine = !response || (response.ok === false && /Web 版通过智能 AI/.test(String(response.error || '')));
-          if (noLocalMachine && typeof api.smartAiPromptOptimize === 'function') {
-            const token = readSessionToken();
-            if (!token) throw new Error('多参提示词编译需要先登录 NovaFlow 账号');
-            response = await api.smartAiPromptOptimize({...payload, h3ReferenceFrames, token});
-          }
-          if (!response || response.ok === false) throw new Error(response?.error || '多参提示词编译失败');
-          return readSmartAiResult(response).prompt;
-        });
+      compileH3ForGeneration,
+      compileH3ReferenceForGeneration(options) {
+        return compileH3ForGeneration({ ...options, mode: "multi_reference" });
       },
       version: VERSION,
       refresh: mountSmartAiButtons,
@@ -5052,6 +5088,7 @@
     };
   }
 
+  migrateMiniMaxH3PromptHistory();
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", start, { once: true });
   } else {

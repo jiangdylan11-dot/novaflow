@@ -5,8 +5,9 @@ const test = require('node:test')
 const vm = require('node:vm')
 
 const root = path.resolve(__dirname, '..', '..')
-const promptPath = path.join(root, 'particle-editor', 'ai-sequence-minimax-h3-prompt.workflow.js')
-const reversePath = path.join(root, 'particle-editor', 'ai-sequence-minimax-h3-reverse.workflow.js')
+const promptPath = path.join(root, 'novaflow-web', 'renderer', 'ai-sequence-minimax-h3-prompt.workflow.js')
+const reversePath = path.join(root, 'novaflow-web', 'renderer', 'ai-sequence-minimax-h3-reverse.workflow.js')
+const format = require('../admin-server/h3-prompt-enhance.js')
 const promptSource = fs.readFileSync(promptPath, 'utf8')
 const reverseSource = fs.readFileSync(reversePath, 'utf8')
 
@@ -111,7 +112,11 @@ test('refinement includes verified facts, original intent and supplementary requ
   const prepared = workflow.prepareRequest(current)
   const verified = workflow.validateAndRestore({ text: firstLastOutput(), context: prepared.context, current })
   const refinement = workflow.prepareRefinement({ text: verified.text, context: prepared.context })
-  assert.ok(refinement.prompt.includes(verified.text))
+  // The display goes back as the verified fields, with the official base rules instead of five sections.
+  assert.equal(refinement.prompt, verified.modelText)
+  assert.ok(refinement.requirements.includes(format.baseInstruction))
+  assert.match(refinement.requirements, /^H3 response format: bilingual-v1$/m)
+  assert.doesNotMatch(refinement.requirements, /【任务定位】|Return exactly these five sections/)
   assert.ok(refinement.requirements.includes(current.prompt))
   assert.ok(refinement.requirements.endsWith(current.requirements))
   assert.match(refinement.requirements, /<Picture 1>/)
@@ -328,7 +333,11 @@ test('validates and restores I2V and FL2V through the existing H3 prompt workflo
   assert.equal(i2v.operation, 'reverse')
   assert.equal(i2v.purpose, 'minimax-h3-i2v-reverse')
   assert.equal(i2v.validation.protocolName, 'I2VA')
-  assert.match(i2v.text, /<Picture 1>/)
+  // The reverse result shows as the Chinese-labelled base display with the editor alias.
+  assert.match(i2v.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 establishes/)
+  assert.match(i2v.text, /\n【镜头 2】 At 00:03\.000, the subject/)
+  assert.match(i2v.modelText, /^integrated_multimodal_description: \[Shot 1\] <Picture 1> establishes/)
+  assert.doesNotMatch(i2v.text + i2v.modelText, /【任务定位】|\d-\d+(?:\.\d+)?s：/)
 
   const flOptions = firstLastOptions()
   const flPrepared = workflow.prepareRequest(flOptions)
@@ -340,6 +349,55 @@ test('validates and restores I2V and FL2V through the existing H3 prompt workflo
   assert.equal(fl.purpose, 'minimax-h3-fl2v-reverse')
   assert.equal(fl.validation.protocolName, 'FL2VA')
   assert.deepEqual(Array.from(fl.validation.usedReferences), ['<Picture 1>', '<Picture 2>'])
+  assert.match(fl.text, /^【参考帧对齐】\n@首帧 对齐视频第 0\.00 秒（开头）；@尾帧 对齐第 8\.00 秒（结尾）。\n/)
+  assert.match(fl.text, /resolves into @尾帧/)
+})
+
+test('local fact inventories show as readable Chinese lines and every fact value survives', () => {
+  const local = [
+    '参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = 8.00 秒',
+    '',
+    'integrated_multimodal_description: [Shot 1]',
+    '<Picture 1> 与 <Picture 2> 共同：',
+    '主体1：数量：一名；身份：红色战甲女性；外观：黑色长发；动作：抬手。',
+    '场景：雪山。',
+    '',
+    '<Picture 1> 首帧：',
+    '主体1：姿态：站立。',
+    '',
+    '<Picture 2> 尾帧：',
+    '主体1：姿态：蹲下。',
+    '',
+    '随后：她缓缓蹲下。按用户运镜：镜头缓慢推近。',
+    '',
+    'overall_soundscape: 与场景一致的低强度环境底声。',
+    '',
+    'non_diegetic_music: N/A',
+  ].join('\n')
+  const options = firstLastOptions()
+  const prepared = workflow.prepareRequest(options)
+  const restored = workflow.validateAndRestore({ text: local, context: prepared.context, current: options })
+  assert.equal(restored.text, [
+    '【参考帧对齐】',
+    '@首帧 对齐视频第 0.00 秒（开头）；@尾帧 对齐第 8.00 秒（结尾）。',
+    '',
+    '【画面与动作】',
+    '【镜头 1】两帧共有：',
+    '一名红色战甲女性，黑色长发，抬手。',
+    '场景：雪山。',
+    '开头（@首帧）：',
+    '站立。',
+    '结尾（@尾帧）：',
+    '蹲下。',
+    '随后，她缓缓蹲下。镜头缓慢推近。',
+    '',
+    '【环境声音】',
+    '与场景一致的低强度环境底声。',
+    '',
+    '【背景音乐】',
+    '无',
+  ].join('\n'))
+  for (const value of ['一名', '红色战甲女性', '黑色长发', '抬手', '雪山', '站立', '蹲下', '镜头缓慢推近']) assert.ok(restored.text.includes(value), value)
 })
 
 test('rejects generic protocol fallbacks that contain no backend-validated picture facts', () => {
@@ -388,7 +446,7 @@ test('discards stale responses and malformed H3 protocol output before writeback
     text: '普通 WAN 视频提示词',
     context: prepared.context,
     current: options,
-  }), /missing required field|field order|fields must appear|structured/i)
+  }), /三个字段/)
   assert.throws(() => workflow.validateAndRestore({
     text: imageVideoOutput(),
     context: prepared.context,

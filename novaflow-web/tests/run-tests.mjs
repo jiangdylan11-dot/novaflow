@@ -22,6 +22,7 @@ const SUITES = [
   { name: 'local-launcher', file: 'e2e/local-launcher.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'local-assistant', file: 'e2e/local-assistant.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'local-prompt-assistant', file: 'e2e/local-prompt-assistant.test.mjs', needs: [], timeoutMs: 90000 },
+  { name: 'h3-generate-compile', file: 'e2e/h3-generate-compile.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-compute-mode', file: 'e2e/web-compute-mode.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-compute-node', file: 'e2e/web-compute-node.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'worker-account-binding', file: 'e2e/worker-account-binding.test.mjs', needs: [], timeoutMs: 90000 },

@@ -51,10 +51,19 @@ test("the global dropdown controller never adopts runtime-owned popovers such as
 
 test("mention tool exposes H3 frame surfaces with display aliases the H3 prompt workflow accepts", () => {
   const tool = loadMentionTool();
-  const h3Workflow = read("particle-editor/ai-sequence-minimax-h3-prompt.workflow.js");
+  const h3Workflow = read("novaflow-web/renderer/ai-sequence-minimax-h3-prompt.workflow.js");
   // The aliases used for the frame slots must be accepted by the H3 workflow alias lists.
   assert.match(h3Workflow, /'@\\u9996\\u5e27', '@\\u53c2\\u8003\\u56fe', '@\\u56fe\\u72471'/);
   assert.match(h3Workflow, /'@\\u5c3e\\u5e27', '@\\u7ed3\\u675f\\u5e27', '@\\u56fe\\u72472'/);
+  // The workflow writes its display back with the same alias the mention tool shows as a chip.
+  const h3 = { console };
+  h3.globalThis = h3;
+  for (const file of ["h3-prompt-format.js", "ai-sequence-minimax-h3-prompt.workflow.js"]) vm.runInNewContext(read(`novaflow-web/renderer/${file}`), h3);
+  const catalog = (mode, keys) => Array.from(h3.NovaFlowAiSequenceMiniMaxH3PromptWorkflow.createReferenceCatalog({
+    mode, resources: keys.map((key) => ({ key, occupied: true, kind: "image", identity: key })),
+  }).displayTokens);
+  assert.deepEqual(catalog("image_video", ["first_frame"]), ["@参考图"]);
+  assert.deepEqual(catalog("first_last", ["first_frame", "last_frame"]), ["@首帧", "@尾帧"]);
 
   const imageVideo = tool.compileText({
     text: "让@参考图缓慢转身",

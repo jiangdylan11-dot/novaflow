@@ -4,9 +4,9 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..", "..");
-const source = fs.readFileSync(path.join(root, "particle-editor", "novaflow-smart-ai.js"), "utf8");
-const index = fs.readFileSync(path.join(root, "particle-editor", "index.html"), "utf8");
-const bundle = fs.readFileSync(path.join(root, "particle-editor", "assets", "index-BbIa-2NM.js"), "utf8");
+const source = fs.readFileSync(path.join(root, "novaflow-web", "renderer", "novaflow-smart-ai.js"), "utf8");
+const index = fs.readFileSync(path.join(root, "novaflow-web", "renderer", "index.html"), "utf8");
+const bundle = fs.readFileSync(path.join(root, "novaflow-web", "renderer", "assets", "index-BbIa-2NM.js"), "utf8");
 
 const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260918-progression-vocab-1";
 const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260914-h3-history-15-1";
@@ -230,8 +230,8 @@ function loadRealH3WorkflowModule(moduleSource, filename, dependency = null) {
   vm.runInNewContext(moduleSource, context, { filename });
   return context.module.exports;
 }
-const realPromptWorkflowPath = path.join(root, "particle-editor", "ai-sequence-minimax-h3-prompt.workflow.js");
-const realReverseWorkflowPath = path.join(root, "particle-editor", "ai-sequence-minimax-h3-reverse.workflow.js");
+const realPromptWorkflowPath = path.join(root, "novaflow-web", "renderer", "ai-sequence-minimax-h3-prompt.workflow.js");
+const realReverseWorkflowPath = path.join(root, "novaflow-web", "renderer", "ai-sequence-minimax-h3-reverse.workflow.js");
 const realPromptWorkflow = loadRealH3WorkflowModule(fs.readFileSync(realPromptWorkflowPath, "utf8"), realPromptWorkflowPath);
 const realReverseWorkflow = loadRealH3WorkflowModule(
   fs.readFileSync(realReverseWorkflowPath, "utf8"),
@@ -847,6 +847,8 @@ function createSubmitHarness(engine, validationFailure = "") {
     compileArtReferencePlan: async () => ({ version: "test", results: [], capabilities: {} }),
     smartAiReferenceFingerprint: () => "fingerprint",
     buildSmartAiRequestFingerprint: () => "h3-request-fingerprint",
+    // The shipped overlay sends local first/last frames; this harness checks the text routing only.
+    captureH3ReferenceFrames: async () => [],
     miniMaxH3ContentPolicy: () => ({ sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false }),
     miniMaxH3SensitiveRequestHasExplicitMinorTerms: () => false,
     showLocalStaticReverseWarning: () => {},
@@ -1234,7 +1236,81 @@ async function verifySubmitRouting() {
   assert.equal(businessRejected.calls.writes.length, 0);
 }
 
-verifySubmitRouting().then(() => {
+// Generation compile hook: every H3 mode goes through compileH3ForGeneration (the 多参 name
+// stays as an alias). A translate-only compile needs no frames; the hosted site falls back to Grok.
+async function verifyGenerationCompile() {
+  const startSource = extractNamedFunction(source, "start");
+  assert.match(startSource, /compileH3ForGeneration,\s*compileH3ReferenceForGeneration\(options\) \{\s*return compileH3ForGeneration\(\{ \.\.\.options, mode: "multi_reference" \}\);/);
+  const compileSource = extractNamedFunction(source, "compileH3ForGeneration");
+  const translation = {
+    modelPrompt: "integrated_multimodal_description: [Shot 1] The girl shown in <Picture 1> turns and waves. The camera holds a static shot.\n\noverall_soundscape: Platform ambience.\n\nnon_diegetic_music: N/A",
+    displayPrompt: ""
+  };
+  const run = async (local) => {
+    const calls = { frames: 0, local: [], grok: [] };
+    const context = vm.createContext({
+      window: { electronAPI: {
+        async promptAssistantOptimizePrompt(payload) { calls.local.push(payload); return local(payload); },
+        async smartAiPromptOptimize(payload) { calls.grok.push(payload); return { ok: true, prompt: JSON.stringify({ ...translation, displayPrompt: payload.prompt }) }; }
+      } },
+      getMiniMaxH3PromptWorkflow: () => realPromptWorkflow,
+      captureH3ReferenceFrames: async () => { calls.frames += 1; return []; },
+      readSessionToken: () => "session-token",
+      readSmartAiResult: (result) => ({ prompt: result.prompt })
+    });
+    const compile = vm.runInContext(`(${compileSource})`, context);
+    const result = await compile({
+      mode: "image_video",
+      durationSeconds: 5,
+      // Each run has its own text: a base translation is cached on the text alone.
+      prompt: `【参考帧对齐】\n@参考图 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 中的女孩转身挥手（${local.name || "本机"}）。镜头保持固定。\n\n【环境声音】\n站台环境声。\n\n【背景音乐】\n无`,
+      resources: [{ key: "first_frame", occupied: true, kind: "image", previewUrl: "data:image/png;base64,Zmlyc3Q=" }]
+    });
+    return { calls, result };
+  };
+  const local = await run((payload) => ({ ok: true, prompt: JSON.stringify({ ...translation, displayPrompt: payload.prompt }) }));
+  assert.equal(local.calls.frames, 0, "a translate-only compile sends no frames");
+  assert.equal(local.calls.local.length, 1);
+  assert.equal(local.calls.grok.length, 0);
+  assert.match(local.calls.local[0].requirements, /^H3 compile: translate-only$/m);
+  assert.deepEqual(Array.from(local.calls.local[0].h3ReferenceFrames), []);
+  assert.match(local.result.modelText, /^For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.\n\nintegrated_multimodal_description: \[Shot 1\] The girl shown in <Picture 1> turns and waves\./);
+  const web = await run(function webRuntime() { return { ok: false, error: "提示词助手在 Web 版通过智能 AI 提供" }; });
+  assert.equal(web.calls.grok.length, 1, "the hosted site translates through Grok");
+  assert.equal(web.calls.grok[0].token, "session-token");
+  assert.match(web.result.modelText, /turns and waves/);
+  await assert.rejects(run(function oldEngine() { return { ok: true, prompt: "【任务定位】\n图生视频" }; }), /需要更新后才能转换为官方英文提示词/);
+
+  // History entries saved in the old five sections open in the new display with the editor aliases.
+  const store = new Map([["nf_text_history:ai_seq_prompt", JSON.stringify({
+    recent: [
+      { text: "【任务定位】\n首尾帧视频，时长5秒。<Picture 1> 为起始首帧，<Picture 2> 为结束尾帧。\n\n【说话者】\n无说话者\n\n【递进式详细提示词】\n女孩站在长椅旁，镜头固定。\n\n0-2.5s：她慢慢屈膝。\n\n2.5-5s：她坐到长椅上。\n\n【台词】\n无台词\n\n【连续性与约束】\n1. 环境与动作声音：脚步声\n2. 配乐：N/A", at: 1 },
+      { text: "普通提示词", at: 2 }
+    ],
+    pinnedSlots: [{ text: "【任务定位】\n图生视频，时长5秒。<Picture 1> 为起始首帧。\n\n【说话者】\n无说话者\n\n【递进式详细提示词】\n<Picture 1> 中的女孩转身。\n\n0-5s：她挥手。\n\n【台词】\n无台词\n\n【连续性与约束】\n1. 配乐：N/A", at: 3 }, null, null, null, null]
+  })]]);
+  const migrate = vm.runInContext(`(${extractNamedFunction(source, "migrateMiniMaxH3PromptHistory")})`, vm.createContext({
+    MINIMAX_H3_PROMPT_HISTORY_KEY: "nf_text_history:ai_seq_prompt",
+    JSON,
+    window: {
+      NovaFlowH3PromptFormat: require("../admin-server/h3-prompt-enhance.js"),
+      localStorage: { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value) }
+    }
+  }));
+  migrate();
+  const history = JSON.parse(store.get("nf_text_history:ai_seq_prompt"));
+  assert.equal(history.recent[0].text, "【参考帧对齐】\n@首帧 对齐视频第 0.00 秒（开头）；@尾帧 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】女孩站在长椅旁，镜头固定。她慢慢屈膝。她坐到长椅上。\n\n【环境声音】\n脚步声\n\n【背景音乐】\n无");
+  assert.equal(history.recent[0].at, 1);
+  assert.equal(history.recent[1].text, "普通提示词");
+  assert.match(history.pinnedSlots[0].text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 中的女孩转身。她挥手。\n/);
+  assert.equal(history.pinnedSlots[1], null);
+  // The overlay migrates while the page parses, before the bundle module mounts React and reads the key.
+  assert.match(source, /\n  migrateMiniMaxH3PromptHistory\(\);\r?\n  if \(document\.readyState === "loading"\)/);
+  assert.ok(index.indexOf("./h3-prompt-format.js") < index.indexOf("./novaflow-smart-ai.js"));
+  assert.match(index, /<script type="module" crossorigin src="\.\/assets\/index-BbIa-2NM\.js/);
+}
+
+verifySubmitRouting().then(verifyGenerationCompile).then(() => {
   console.log("ai-sequence-minimax-h3-smart-ai-contract: passed");
 }).catch((error) => {
   console.error(error);

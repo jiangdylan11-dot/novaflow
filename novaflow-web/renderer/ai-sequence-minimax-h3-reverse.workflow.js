@@ -550,16 +550,10 @@
         contentPolicy: current.contentPolicy,
       },
     })
-    const formatted = context.mode === 'multi_reference' ? restored.text : globalThis.NovaFlowH3PromptFormat.fromValidatedLegacy(restored.text, {
-        mode: context.mode,
-        durationSeconds: context.durationSeconds,
-        currentPrompt: context.sourcePrompt,
-        userPrompt: current.prompt,
-      })
+    // The prompt workflow already shows the result as the Chinese base display
+    // (toBaseDisplay: fact slots as readable lines, @参考图 / @首帧 / @尾帧).
     return deepFreeze({
       ...restored,
-      text: formatted,
-      modelText: formatted,
       operation: 'reverse',
       purpose: context.purpose,
       mode: context.mode,

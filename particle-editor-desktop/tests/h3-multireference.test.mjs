@@ -9,7 +9,7 @@ import * as edge from '../../supabase/functions/novaflow-backend/h3-prompt-enhan
 const require=createRequire(import.meta.url);
 const local=require('../admin-server/h3-prompt-enhance.js');
 const context={console};context.globalThis=context;context.window=context;
-for(const f of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js','ai-sequence-minimax-h3.workflow.js']) vm.runInNewContext(fs.readFileSync(new URL('../../particle-editor/'+f,import.meta.url),'utf8'),context);
+for(const f of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js','ai-sequence-minimax-h3.workflow.js']) vm.runInNewContext(fs.readFileSync(new URL('../../novaflow-web/renderer/'+f,import.meta.url),'utf8'),context);
 const prompt=context.NovaFlowAiSequenceMiniMaxH3PromptWorkflow;
 const workflow=context.NovaFlowAiSequenceMiniMaxH3Workflow;
 const fixture={
@@ -81,9 +81,9 @@ test('a bound editor alias echoed in a multi-reference result binds to its proto
  await assert.rejects(prompt.compileForGeneration(current,async()=>text.replace('<Picture 1>','@参考图3')),/not UI aliases \(@参考图3\)/);
 });
 test('generation compiles free text and upgrades legacy video edits with missing processing controls',async()=>{
- let calls=0;const result=await prompt.compileForGeneration(current,async payload=>{calls++;assert.equal(payload.h3Mode,'multi_reference');return text});
+ let calls=0;const result=await prompt.compileForGeneration(current,async payload=>{calls++;assert.equal(payload.h3Mode,'multi_reference');assert.doesNotMatch(payload.requirements,/H3 compile: translate-only/);return text});
  assert.equal(result.modelText.replace(/\s+/g,' '),text.replace(/\s+/g,' '));assert.equal(calls,1);
- await prompt.compileForGeneration({...current,prompt:text},async payload=>{calls++;assert.match(payload.prompt,/subject_definitions:/);return text});
+ await prompt.compileForGeneration({...current,prompt:text},async payload=>{calls++;assert.match(payload.prompt,/subject_definitions:/);assert.match(payload.requirements,/\nH3 compile: translate-only\nSource prompt:\n/);return text});
  assert.equal(calls,2);
  await assert.rejects(prompt.compileForGeneration(current,async()=> '【任务定位】\nold output'),/六个参考字段/);
 });
@@ -172,6 +172,8 @@ test('Chinese editor uses English generation text and recompiles changed instruc
  assert.match(r.text,/【主体定义】/);assert.match(r.text,/@参考图1/);assert.match(r.text,/部分保留/);
  assert.doesNotMatch(r.text,/subject_definitions|attribute_transfer|The target video/);
  await prompt.compileForGeneration({...c,prompt:r.text},()=>{throw Error('unchanged translation should be reused')});
+ // The generator compiles the mentions first (@参考图1 -> <Picture 1>); the cache is keyed on that model-token text.
+ await prompt.compileForGeneration({...c,prompt:r.text.replace(/@参考图1/g,'<Picture 1>')},()=>{throw Error('compiled mentions should reuse the translation')});
  let translated=0;
  const again=await prompt.compileForGeneration({...c,prompt:r.text.replace('原金币轨迹','原金币轨迹和旋转方向')},()=>{translated++;return JSON.stringify({modelPrompt:{...english,detailed_description:english.detailed_description.replace('original coin trajectory','original coin trajectory and rotation direction')},displayPrompt:{...chinese,detailed_description:chinese.detailed_description.replace('原金币轨迹','原金币轨迹和旋转方向')}})});
  assert.equal(translated,1);assert.match(again.modelText,/trajectory and rotation direction/);assert.doesNotMatch(again.modelText,/[\u3400-\u9fff]/);assert.match(again.text,/轨迹和旋转方向/);
