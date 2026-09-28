@@ -44566,6 +44566,9 @@
       if (!(container instanceof HTMLElement) || container === root || !isVisible(container)) return;
       if (container.getAttribute("data-novaflow-secondary-group") === "1") return;
       if (container.closest('[data-novaflow-art-lora="1"]')) return;
+      // The drawing card's own wrapper (spine-split-runtime rebuilds it on every toggle): pinning
+      // it to the 218 panel width made it 20 wider than its 198 card until the next rebuild.
+      if (container.closest('[data-psd-fusion-ui="1"]')) return;
       if (container.closest("[data-novaflow-ai-mode-section='1'], [data-novaflow-ai-post-section='1'], [data-novaflow-ai-bottom-workspace='1']")) return;
       const rect = container.getBoundingClientRect();
       // A group pinned before keeps its old width when the window crosses a layout
