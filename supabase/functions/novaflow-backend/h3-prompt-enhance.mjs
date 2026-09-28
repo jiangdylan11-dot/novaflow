@@ -352,6 +352,8 @@ function validateReference(value, options = {}) {
   if (!fields.detailed_description.includes('[Shot 1]')) throw new Error('H3 多参缺少镜头描述');
   // "In a watercolor style, [Shot 1] ..." leaves the style sentence unfinished.
   fields.detailed_description = fields.detailed_description.replace(/(\S)\s*[,，]\s*(\[Shot 1\])/, (_, last, shot) => last + (/[\u3400-\u9fff]/.test(last) ? '。' : '.') + ' ' + shot);
+  // A cut time written just before its marker ("… At 00:03.000, [Shot 2] …") belongs to that marker.
+  fields.detailed_description = fields.detailed_description.replace(/\bAt (\d{2}:\d{2}\.\d{3})[ \t]*[,，]?\s*(\[Shot (?:[2-9]|[1-9]\d+)\])(?! At \d)[ \t]*/g, '$2 At $1 ');
   // Later shots need a cut time. When the model gives none, space the cuts evenly.
   const shotCount = (fields.detailed_description.match(/\[Shot [1-9]\d*\]/g) || []).length;
   if (shotCount > 1 && !/\[Shot \d+\] At \d/.test(fields.detailed_description)) {
@@ -581,7 +583,7 @@ const officialEnglish = text => outsideLiterals(String(text), part => part
   .replace(/(\[Shot (?:[2-9]|[1-9]\d+)\] At \d{2}:\d{2}\.\d{3})[ \t]*,?[ \t]*(?=([^.;!?\n]*))/g, (_, head, clause) => head + ', ' + (!clause.trim() || cutVerb.test(clause) ? '' : shotPhrase.test(clause.trim()) ? 'the shot cuts to ' : 'the shot cuts. '))
   .replace(/(the shot cuts to )(A|An|The)\b/g, (_, cut, article) => cut + article.toLowerCase())
   .replace(/(the shot cuts\. )([a-z])/g, (_, cut, letter) => cut + letter.toUpperCase())
-  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps) (?:completely |fully |perfectly )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: throughout(?: the (?:shot|clip|video))?)?/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
+  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps|holds) (?:completely |fully |perfectly )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: throughout(?: the (?:shot|clip|video))?)?/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
   .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:holds|maintains|keeps|retains|preserves) (?:its |the |a )?(?:(?:steady|stable|fixed|same|initial|original|current) )?(?:composition|framing)\b/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
   // ", static shot" as a trailing label, not an adjective list ("ending on a wide, static shot").
   .replace(/(?<!\b(?:a|an)\s+[\w-]+),\s*(?:a\s+)?static shot(?=\s*(?:[.;!]|$))/gi, '. The camera holds a static shot')
@@ -782,8 +784,16 @@ function checkBase(value, options = {}) {
   // Every supplied frame is named in the narrative: the opening frame after the style sentence, the final frame at the end.
   const language = options.language || (hanPattern.test(proseOf(text)) ? 'zh' : 'en');
   if (allowed.length && !text.includes('<Picture 1>')) text = text.replace(/^\[Shot 1\] ?([^\n]*)/, (_, line) => {
-    const first = /^(.*?[。！？]|.*?[.!?](?=\s|$))\s*(.+)$/.exec(line);
-    return '[Shot 1] ' + (first ? appendSentence(appendSentence(first[1], baseAnchors.open[language]), first[2]) : appendSentence(line, baseAnchors.open[language]));
+    // The first sentence ends outside dialogue and quoted text ("出发吧。" inside <d> is not the end).
+    let offset = 0, end = -1;
+    line.split(literalSplit).some((part, i) => {
+      const stop = i % 2 ? null : /[。！？]|[.!?](?=\s|$)/.exec(part);
+      if (stop) end = offset + stop.index + 1;
+      offset += part.length;
+      return stop;
+    });
+    const rest = end < 0 ? '' : line.slice(end).trim();
+    return '[Shot 1] ' + (rest ? appendSentence(appendSentence(line.slice(0, end), baseAnchors.open[language]), rest) : appendSentence(line, baseAnchors.open[language]));
   });
   if (allowed.length > 1 && !text.includes('<Picture 2>')) text = appendSentence(text, baseAnchors.close[language]);
   fields.integrated_multimodal_description = text;

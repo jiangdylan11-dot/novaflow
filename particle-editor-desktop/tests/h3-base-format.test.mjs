@@ -405,3 +405,14 @@ test('the five copies stay in sync with the shared source and policy', () => {
   assert.equal(local.baseInstruction, policy.baseInstructions.join('\n'));
   assert.doesNotMatch(policy.instructions.join('\n'), /时间段|timed actions/);
 });
+
+test('the opening-frame anchor never lands inside dialogue; a static camera and a cut time before its marker read officially', () => {
+  const i2v = 'integrated_multimodal_description: [Shot 1] The girl (S1) says: <d>[Chinese] 出发吧。</d> Then she waves. The camera holds static.\n\noverall_soundscape: Wind blows softly.\n\nnon_diegetic_music: N/A';
+  const ref = 'subject_definitions:\n<Subject 1>: A woman from <Picture 1>.\n\nsummary:\n[reference generation] <Subject 1> walks.\n\nretention_analysis:\n<Subject 1>: fully_preserved - face and hair.\n\ndetailed_description:\nLive-action. [Shot 1] <Subject 1> walks along the road. At 00:03.000, [Shot 2] a close-up of <Subject 1> smiling.\n\noverall_soundscape:\nFootsteps.\n\nnon_diegetic_music:\nN/A';
+  for (const api of apis) {
+    const text = api.validateBaseFields(i2v, {mode:'image_video', durationSeconds:5, language:'en'});
+    assert.match(text, /<d>\[Chinese\] 出发吧。<\/d> Then she waves\. The shot begins in the position and framing established by <Picture 1>\./);
+    assert.match(text, /The camera holds a static shot\./);
+    assert.match(api.validateReference(ref, {durationSeconds:5, requirements:'Available resource labels: <Picture 1>'}), /walks along the road\.\n?\s*\[Shot 2\] At 00:03\.000, the shot cuts to a close-up/);
+  }
+});

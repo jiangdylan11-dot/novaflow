@@ -10239,7 +10239,8 @@ async function handleGrokPromptOptimizeRequest(req, res) {
 
   let payload;
   try {
-    payload = await parseBody(req, { maxBytes: MAX_GROK_BODY_BYTES });
+    // Prompt optimize carries the H3 reference frames (图生/首尾帧/多参), like image reverse.
+    payload = await parseBody(req, { maxBytes: MAX_GROK_IMAGE_BODY_BYTES });
   } catch (err) {
     sendErrorJson(res, err, 400);
     return;
