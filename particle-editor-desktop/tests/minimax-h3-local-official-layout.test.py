@@ -39,13 +39,14 @@ def frame(name="红色战甲女性", pose="站立", background="雪山"):
 
 
 class LocalH3OfficialLayoutTest(unittest.TestCase):
-    def test_three_frame_modes_use_real_local_five_section_pipeline(self):
+    def test_three_frame_modes_use_the_official_fields_layout(self):
         # 多参 (Ref2VA) has its own six-field pipeline, covered by h3-multireference tests.
         phases = ("概述：穿红色战甲的女性站在雪山前，镜头固定。\n起始：她缓慢抬起右手。\n"
                   "递进：右手举到肩高，停顿片刻。\n收束：右手缓缓放下，回到身侧。\n约束：1. 保持红色战甲与雪山背景")
-        expected = {"T2VA": "文生视频，时长5秒。无参考媒体。", "I2VA": "图生视频，时长5秒。<Picture 1> 为起始首帧。",
-                    "FL2VA": "首尾帧视频，时长5秒。<Picture 1> 为起始首帧，<Picture 2> 为结束尾帧。"}
-        for mode, task in expected.items():
+        shot = "[Shot 1] 穿红色战甲的女性站在雪山前，镜头固定。保持红色战甲与雪山背景。{}她缓慢抬起右手。右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。{}"
+        expected = {"T2VA": shot.format("", ""), "I2VA": shot.format("画面从 <Picture 1> 开始，", ""),
+                    "FL2VA": shot.format("画面从 <Picture 1> 开始，", "结束时画面与 <Picture 2> 一致。")}
+        for mode, narrative in expected.items():
             with self.subTest(mode=mode):
                 assistant = SERVICE.PromptAssistant()
                 calls = []
@@ -62,11 +63,10 @@ class LocalH3OfficialLayoutTest(unittest.TestCase):
                 })
                 text = result["positivePrompt"]
                 self.assertEqual(len(calls), 1)
-                self.assertIn(SERVICE.MINIMAX_H3_FIVE_SECTION_RULES, calls[0]["llama_template"])
-                self.assertTrue(text.startswith("【任务定位】\n" + task))
-                self.assertIn("0-1.7s：她缓慢抬起右手。", text)
-                self.assertIn("【连续性与约束】\n1. 保持红色战甲与雪山背景。", text)
-                self.assertNotIn("[Shot", text)
+                self.assertIn(SERVICE.MINIMAX_H3_WRITER_RULES, calls[0]["llama_template"])
+                # Chinese fields, one shot, no time ranges; the renderer adds the alignment line.
+                self.assertEqual(text, "integrated_multimodal_description: " + narrative
+                                 + "\n\noverall_soundscape: 与画面动作一致的自然环境声和动作声。\n\nnon_diegetic_music: N/A")
 
     def test_json_sections_and_bare_headers_share_layout(self):
         fields = dict(zip(SERVICE.MINIMAX_H3_BASE_PROMPT_FIELDS, (

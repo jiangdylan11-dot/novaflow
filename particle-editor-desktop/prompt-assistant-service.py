@@ -19,11 +19,16 @@ from prompt_assistant.h3_prompt_enhance import (
     compile_action_phases as compile_h3_action_phases,
     CONDITIONAL_RULES as H3_CONDITIONAL_RULES,
     MODE_NAMES as H3_MODE_NAMES,
-    phase_edges as h3_phase_edges,
+    DEFAULT_SOUNDSCAPE_ZH as H3_DEFAULT_SOUNDSCAPE_ZH,
+    TRANSLATE_ONLY as H3_TRANSLATE_ONLY,
+    base_source_view as h3_base_source_view,
+    literal_free as h3_literal_free,
+    parse_base_fields as parse_h3_base_fields,
+    requested_cut as h3_requested_cut,
     requested_rules as h3_requested_rules,
     INSTRUCTION as H3_PROMPT_ENHANCE_INSTRUCTION,
+    validate_base_fields as validate_h3_base_fields,
     validate_enhancement as validate_h3_prompt_enhancement,
-    validate_format as validate_h3_five_sections,
     REFERENCE_INSTRUCTION as H3_REFERENCE_INSTRUCTION,
     validate_reference as validate_h3_reference,
     render_reference_plan as render_h3_reference_plan,
@@ -1372,19 +1377,43 @@ def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt
 
 # The local model's own short instruction for 文生/图生/首尾帧视频 优化提示词.
 # The shared policy block stays with Grok: its conditional idle, loop and
-# green-screen rules hijack ordinary actions on the local model.
-MINIMAX_H3_FIVE_SECTION_RULES = (
+# green-screen rules hijack ordinary actions on the local model. The writer
+# answers in labelled beats; the program assembles the official fields.
+MINIMAX_H3_WRITER_RULES = (
     "你是 MiniMax H3 视频提示词优化助手，把用户的视频想法改写成清楚、能直接用来生成视频的中文提示词。\n"
     "1. 保留用户写明的主体、动作、场景和每一条明确要求，不删除、不替换，也不改成别的动作。\n"
     "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，节奏快慢，怎样开始、怎样结束；动作要真正做出来，不只写准备或摆好姿势。幅度照视频描述写：“轻轻”就小幅，“缓缓”就缓慢，“大幅”“舒展”就充分伸展，没写幅度就不写。\n"
     "3. 用“缓慢”“迅速”“小幅”“大幅”这类看得见的说法，不写厘米、角度、速度、频率等数字，阶段内容里也不写秒数。\n"
     "4. 写清镜头怎样拍：固定、跟随、推近、拉远或环绕，选最适合这个动作的一种，全程只用这一种；用户指定了镜头就按用户的写。\n"
     "5. 不添加用户没有提到的台词、声音、音乐、特效、服装、光线色调或新场景；可以细化用户写到的场景，但不要换成别的场景。用户写到的特效保持原来的样子和程度。\n"
-    "6. 只输出规定的五个标签和内容，不写标题、解释或备注。"
+    "6. 只输出规定的标签和内容，不写标题、解释或备注。"
 )
 
 
-def minimax_h3_five_section_frames(mode: str, frames) -> list:
+def minimax_h3_base_audio(view: str, fields, user_requirement: str) -> tuple[str, str]:
+    """Sound fields of an optimized 文生/图生/首尾帧 prompt: the user's own audio
+    facts. A prompt that already has its sound keeps it; a new sound request is
+    added to it, a music request replaces the music, silence clears both."""
+    fields = fields or {}
+    previous = fields.get("overall_soundscape", "").strip()
+    generic = lambda text: text in ("", "N/A", H3_DEFAULT_SOUNDSCAPE_ZH, "与场景一致的低强度环境底声。")
+    if not previous:
+        sound, music = minimax_h3_deterministic_audio_fields(view, user_requirement, "zh-CN")
+    else:
+        sound, music = previous, fields.get("non_diegetic_music") or "N/A"
+        added, asked_music = minimax_h3_deterministic_audio_fields("", user_requirement, "zh-CN")
+        if added == "N/A":
+            sound = music = "N/A"
+        elif not generic(added):
+            sound = added if generic(previous) else previous.rstrip("。.") + "，" + added + "。"
+        if asked_music != "N/A" or re.search(r"音乐|配乐|music", user_requirement, re.I):
+            music = asked_music
+    if generic(sound) and sound != "N/A":
+        sound = H3_DEFAULT_SOUNDSCAPE_ZH
+    return sound, "N/A" if re.fullmatch(r"(?:N/?A|无)(?:[（(][^）)]*[）)])?[。.]?", music.strip(), re.I) else music
+
+
+def minimax_h3_writer_frames(mode: str, frames) -> list:
     """First/last frames the local model looks at for 图生视频 and 首尾帧.
 
     A missing or unreadable picture only drops the pictures; the prompt is
@@ -1425,20 +1454,23 @@ def minimax_h3_frames_nearly_same(frames) -> bool:
         return False
 
 
-def minimax_h3_five_section_points(source, user_requirement) -> list:
-    """The user's actions and requirements, one per line, so each one lands in a phase."""
-    text = re.sub(r"(?m)^.*[（(]S[1-9]\d*[）)]\s*[:：].*$|^\s*<Subject [1-9]\d*>\s*=.*$", "", source)
+def minimax_h3_writer_points(source, user_requirement) -> list:
+    """The user's actions and requirements, one per line, so each one lands in a phase.
+    A requested cut is written as its own shot, not as a phase."""
+    text = re.sub(r"(?m)^.*[（(]S[1-9]\d*[）)]\s*[:：].*$|^\s*<Subject [1-9]\d*>\s*=.*$|^镜头[2-9].*$", "", source)
     points = list(dict.fromkeys(p.strip() for p in re.split(r"[，,。；;！!？?\n]+", text + "\n" + user_requirement)
-                                if re.search(r"[\u3400-\u9fffA-Za-z]", p)))
+                                if re.search(r"[\u3400-\u9fffA-Za-z]", p) and not h3_requested_cut(p)))
     return points if 2 <= len(points) <= 8 and all(len(p) <= 40 for p in points) else []
 
 
-def build_minimax_h3_five_section_request(source, user_requirement, mode, duration, media_tokens=(), sees_frames=False, dialogue_lines=(), same_frames=False) -> str:
+def build_minimax_h3_writer_request(source, user_requirement, mode, duration, media_tokens=(), sees_frames=False, dialogue_lines=(), same_frames=False, cut=False) -> str:
     mode = clean_text(mode).upper()
     seconds = f"{float(duration):g}"
-    edges = [f"{edge:.1f}".rstrip("0").rstrip(".") for edge in h3_phase_edges(duration)]
     image = QWEN3_CHAT_VISION_TOKEN
-    overview_hint = "用一两句通顺的话点明主体、场景和镜头怎样拍（镜头全程只选一种），不细写外观"
+    # The official layout opens the first shot with the visual style.
+    style = (("先用几个字写图中的画风（如写实照片、动漫插画、三维渲染），" if sees_frames else "")
+             if mode in ("I2VA", "FL2VA") else "先用几个字写画风（视频描述写了就照写，没写就写写实电影风格），")
+    overview_hint = style + "再用一两句通顺的话点明主体、场景和镜头怎样拍（镜头全程只选一种），不细写外观"
     # Only a held thing the picture or the user's words show; a bare "手里的东西" invents one.
     ending_hint = "动作怎样收尾，最后停在动作完成后的样子，" + ("图中" if mode == "I2VA" and sees_frames else "描述里") + "拿着的东西继续拿着"
     appearance = (
@@ -1464,7 +1496,7 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
             if sees_frames else
             f"任务：首尾帧视频，时长{seconds}秒。<Picture 1> 是第一帧，<Picture 2> 是第{seconds}秒的最后一帧，写出从第一帧连续过渡到最后一帧的过程。"
         ) + appearance.replace("这张图", "这两张图")
-        overview_hint = "用一两句写画面里每个人物和动物的姿态和所在位置（坐着还是站着、手里拿着什么）和镜头怎样拍，不写服装和长相"
+        overview_hint = style + "再用一两句写画面里每个人物和动物的姿态和所在位置（坐着还是站着、手里拿着什么）和镜头怎样拍，不写服装和长相"
         ending_hint = (
             "动作怎样平稳完成，最后的画面与 <Picture 2> 一致" if same_frames and sees_frames else
             "动作怎样平稳完成，姿态、位置和光效变成 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致"
@@ -1473,12 +1505,14 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
         task = f"任务：{H3_MODE_NAMES.get(mode, mode)}，时长{seconds}秒。把下面的视频描述写成一段完整、连贯的视频提示词。"
         if media_tokens:
             task += "本次参考媒体：" + "、".join(media_tokens) + "，保持各自原来的作用。"
-        overview_hint = "一到两句，用视频描述里的原词写主体、场景和动作，再写镜头怎样拍（镜头全程只选一种）"
+        overview_hint = style + "再用一到两句，用视频描述里的原词写主体、场景和动作，再写镜头怎样拍（镜头全程只选一种）"
     asked = h3_requested_rules(source + "\n" + user_requirement)
     if "loop" in asked and mode != "FL2VA":
         ending_hint = "动作怎样平滑回到起始姿态，首尾衔接"
     elif "idle" in asked and mode != "FL2VA":
         ending_hint = "呼吸继续平稳起伏，画面最后是什么样"
+    if cut:
+        ending_hint = "切换镜头之前，这个镜头里的动作进行到哪里"
     lines = [task, "", "视频描述：", source]
     if user_requirement:
         lines += ["", "补充要求（本次修改；与视频描述冲突时以补充要求为准；每一条都写进对应阶段，声音和动作同步）：", user_requirement]
@@ -1487,18 +1521,22 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
         lines += ["", "用户明确要求："] + ["- " + rule for rule in rules]
     if dialogue_lines:
         lines += ["", "本次有对白：在起始、递进、收束里写出说话者开始说、继续说、说完，只写说话，不写嘴和口型。原句由程序完整保留，不要改写：", *dialogue_lines]
-    points = minimax_h3_five_section_points(source, user_requirement)
+    points = minimax_h3_writer_points(source, user_requirement)
     if points:
         lines += ["", "下面每一条都要写进起始、递进或收束，不能只写在概述里："] + ["- " + point for point in points]
     lines += [
-        "", "按下面的格式输出五行，每行以标签开头，冒号后面换成你写的内容" + ("：" if points else "；视频描述里每个主体的每个动作都要写进起始、递进或收束："),
+        "", "按下面的格式输出" + ("" if cut else "五行") + "，每行以标签开头，冒号后面换成你写的内容" + ("：" if points else "；视频描述里每个主体的每个动作都要写进起始、递进或收束："),
         f"概述：{overview_hint}",
-        f"起始（{edges[0]}-{edges[1]}秒）：动作怎样开始，朝哪个方向",
+        "起始：动作怎样开始，朝哪个方向",
         # A held pose is not the action: the watering can tilts, the hand waves.
-        f"递进（{edges[1]}-{edges[2]}秒）：动作怎样继续发展" + ("" if mode == "FL2VA" or asked & {"idle", "still"} else "、真正做出来") + "，节奏怎样变化",
-        f"收束（{edges[2]}-{edges[3]}秒）：{ending_hint}",
-        "约束：写2到3条，用 1. 2. 3. 编号，只写全程保持不变的内容：主体和场景前后保持一致" + ("，以及用户写明要一直保持的内容" if user_requirement or rules else ""),
+        "递进：动作怎样继续发展" + ("" if mode == "FL2VA" or asked & {"idle", "still"} else "、真正做出来") + "，节奏怎样变化",
+        f"收束：{ending_hint}",
     ]
+    if cut:
+        # The user asked for a cut: each later shot is one line; the program owns its time.
+        lines += ["镜头2（第X秒）：用户要求切换镜头，切换后的画面写在这里：先写切到什么景别或场景，再写动作在这个镜头里怎样接着进行、怎样完成，停在动作完成后的样子，内容里不写秒数。"
+                  "要几个镜头就按顺序写几行（镜头2、镜头3），X 写用户说的切换秒数，没说就不写；起始、递进、收束只写切换前的第一个镜头"]
+    lines.append("约束：写1到3条，用 1. 2. 3. 编号，只写全程保持不变、画面里看得见的内容" + ("，以及用户写明要一直保持的内容" if user_requirement or rules else ""))
     return "\n".join(lines)
 
 
@@ -13902,20 +13940,32 @@ class PromptAssistant:
             "promptSchema": ART_PROMPT_SCHEMA_VERSION,
         }
 
-    def translate_h3_reference(self, display, inventory, duration):
+    def translate_h3_reference(self, display, inventory, duration, base_mode=""):
         # H3 punctuation and asset IDs stay application-owned. Translating a
         # complete protocol document made the local VLM copy it verbatim.
-        display = validate_h3_reference(display, inventory, duration)
+        # base_mode (T2VA/I2VA/FL2VA): the three official fields instead of 多参's six.
+        from prompt_assistant.h3_prompt_enhance import DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK
+        check = ((lambda text, language=None: validate_h3_base_fields(text, base_mode, duration, language)) if base_mode else
+                 (lambda text, language=None: validate_h3_reference(text, inventory, duration)))
+        display = check(display)
         # Translate complete clauses: splitting at <Picture N> loses verbs
         # such as 'replace X with Y'. Placeholders keep tags and literal speech.
         literals = []
         def protect_literal(match):
             literals.append(match.group())
             return 'LITERAL_' + str(len(literals)-1)
-        # Only spoken lines stay verbatim; a quoted sound such as 的“嗒”声 is translated.
+        # Only spoken lines and on-screen text stay verbatim; a quoted sound such as 的“嗒”声 is translated.
         masked_display = re.sub(r'<d>[\s\S]*?</d>|[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"][^”"\n]*[”"]'
-                                r'|(?:(?<=[说喊唱念道问答叫吼])|(?<=[说喊唱念道问答叫吼][：:]))[“"][^”"\n]*[”"]', protect_literal, display)
-        protected = re.compile(r'LITERAL_\d+|<(?:Subject|Picture|Video|Audio) [1-9]\d*>|\[Shot [1-9]\d*\]|(?<![A-Za-z])\d+(?:\.\d+)?(?![A-Za-z])')
+                                r'|(?:(?<=[说喊唱念道问答叫吼])|(?<=[说喊唱念道问答叫吼][：:]))[“"][^”"\n]*[”"]'
+                                r'|(?:(?<=写着)|(?<=写有)|(?<=印着)|(?<=标着)|(?<=写着：))[“"][^”"\n]*[”"]|[“"][^”"\n]*[”"](?=字样)', protect_literal, display)
+        # Each shot starts its own line and its mark ([Shot 2] At 00:03.000) stays
+        # outside the translated prose as one unit.
+        shot_marks = []
+        def protect_shot(match):
+            shot_marks.append(re.sub(r'[,，]$', '', match.group()))
+            return '\x02' + str(len(shot_marks)-1) + '\x03'
+        masked_display = re.sub(SHOT_MARK + r'[,，]?', protect_shot, re.sub(r'(?<=[^\n:：\s])[ \t]*(?=\[Shot [1-9]\d*\])', '\n', masked_display))
+        protected = re.compile(r'LITERAL_\d+|<(?:Subject|Picture|Video|Audio) [1-9]\d*>|\[Shot [1-9]\d*\]|[（(]S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*[）)]|(?<![A-Za-z])\d+(?:\.\d+)?(?![A-Za-z])')
         # A sentence may open with a tag or a Latin word ("<Subject 1> 走向…",
         # "3D渲染风格"); it belongs to the translated clause, not left outside.
         prose = re.compile(r'(?:(?:<(?:Subject|Picture|Video|Audio) [1-9]\d*>|LITERAL_\d+(?!\d)|[A-Za-z0-9]+(?![A-Za-z0-9]))[ \t]*)*[\u3400-\u9fff][^\n]*')
@@ -14016,13 +14066,27 @@ class PromptAssistant:
                 raise ValueError('H3 本地翻译未完整保留内容，正在保留原提示词')
         model_prompt = prose.sub(lambda m: translated[m.group()], masked_display)
         model_prompt = re.sub(r'LITERAL_(\d+)', lambda m: literals[int(m[1])], model_prompt)
+        # "[Shot 2] At 00:03.000, the camera cuts to …" as in the official guide.
+        model_prompt = re.sub(r'\x02(\d+)\x03[ \t]*(?:(The|A|An|Cut|Cuts|Camera|Close)\b)?', lambda m: shot_marks[int(m[1])] + (
+            ', ' + (m[2] or '').lower() if ' At ' in shot_marks[int(m[1])] else ' ' + (m[2] or '')), model_prompt)
         # The compiler's default locked-camera clause must survive translation
         # in a form the renderer's camera check recognizes.
-        from prompt_assistant.h3_prompt_enhance import DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN
         if DEFAULT_CAMERA_ZH in display and not re.search(r'\bcamera\b[^.\n]{0,100}\b(?:remains|stays|static|locked|unchanged|holds)\b', model_prompt, re.I):
-            model_prompt = re.sub(r'(?ms)^(detailed_description:\n.*?)(?=\n\noverall_soundscape:)', lambda m: m.group(1).rstrip() + ' ' + DEFAULT_CAMERA_EN, model_prompt, count=1)
-        model_prompt = validate_h3_reference(model_prompt, inventory, duration)
+            field = 'integrated_multimodal_description' if base_mode else 'detailed_description'
+            model_prompt = re.sub(r'(?ms)^(' + field + r':\s.*?)(?=\n\noverall_soundscape:)', lambda m: m.group(1).rstrip() + ' ' + DEFAULT_CAMERA_EN, model_prompt, count=1)
+        model_prompt = check(model_prompt, 'en')
         return {"positivePrompt": json.dumps({"modelPrompt": model_prompt, "displayPrompt": display}, ensure_ascii=False), "negativePrompt": "", "rawOutput": '\n'.join(raw_outputs)}
+
+    def translate_h3_base(self, fields, mode, duration):
+        """The generation-time copy of a finished 文生/图生/首尾帧 prompt: a faithful
+        English fields text beside the Chinese source, no creative changes."""
+        display = validate_h3_base_fields(fields, mode, duration)
+        if not re.search(r'[㐀-鿿]', h3_literal_free(display)):
+            english = validate_h3_base_fields(display, mode, duration, 'en')
+            return {"positivePrompt": json.dumps({"modelPrompt": english, "displayPrompt": display}, ensure_ascii=False), "negativePrompt": "", "rawOutput": ""}
+        result = self.translate_h3_reference(display, '', duration, base_mode=mode)
+        self.status = "模型可用"
+        return result
 
     def optimize_h3_reference(self, source, requirements, duration, media_frames=None, reverse=False):
         # Reuse the installed instruction model used by local visual analysis.
@@ -14125,13 +14189,14 @@ class PromptAssistant:
                  if 2 <= len(term) <= 10 and re.fullmatch(r'[㐀-鿿]+', term) and re.search(vocabulary, term) and not grams(term) & subject_grams]
         return list(dict.fromkeys(terms))[:4]
 
-    def write_h3_reference_scene(self, plan, source, user_requirement, duration, has_audio=False, observed=None, observed_scene=None, attribute_pictures=()):
+    def write_h3_reference_scene(self, plan, source, user_requirement, duration, has_audio=False, observed=None, observed_scene=None, attribute_pictures=(), cut=False):
         """Write the shot of a picture-only 多参 video as short labelled lines.
 
         The small local model loses the action inside the nested plan JSON; a
         plain line format lets it spend its output on the event itself. The
         subjects stay exactly as the plan bound them. When the lines cannot be
-        read, the plan's own description is kept.
+        read, the plan's own description is kept. cut: the user asked for a cut,
+        so later shots are written one per line and the program sets their times.
         """
         observed, observed_scene = observed or {}, observed_scene or {}
         # A subject taken from one picture looks exactly as that picture was
@@ -14336,15 +14401,17 @@ class PromptAssistant:
             '动作1：\n动作2：\n动作3：\n'
             '（动作写 2 到 4 条，按时间顺序，并与“事件”一致：谁向哪里移动或做什么、另一方如何反应，最后一条写结束状态；每条动作都以 <Subject 1>、<Subject 2> 这样的标签开头，不用“女子”“机器人”等称呼代替标签；只写现实中合理、可见的动作，不写悬浮、融化、发光等用户没要求的特效；用户要求静止时才写静止；只提供服装等属性的主体写成“穿着 <Subject N> 的盔甲”这样的用法，不让它自己行动；不把其他图原背景里的物件带进场景）\n'
             '示例：两个角色相遇 → <Subject 1> 沿路走来；<Subject 2> 转身迎上去；两人面对面停下，<Subject 1> 挥手打招呼。没有文字要求、一个角色一个物品 → <Subject 1> 看见 <Subject 2>，走过去弯腰把它拾起，举到面前端详。示例只说明写法，内容按本次主体和要求来写。\n'
-            '镜头：固定，或推、拉、摇、跟，写明方向和速度\n'
-            '声音：与动作相符的环境声和动作声；用户要求安静或无声时写 无\n'
+            + '镜头：固定，或推、拉、摇、跟，写明方向和速度\n'
+            + ('镜头2（第X秒）：用户要求切换镜头：动作和镜头只写切换前的第一个镜头；切换后的画面写在这里：先写切到什么景别或场景，再写 <Subject N> 在这个镜头里接着做什么、怎样完成，内容里不写秒数。'
+               '要几个镜头就按顺序写几行（镜头2、镜头3），X 写用户说的切换秒数，没说就不写\n' if cut else '')
+            + '声音：与动作相符的环境声和动作声；用户要求安静或无声时写 无\n'
             '配乐：用户要求配乐时写，否则写 无'
         )
         output = self.generate(prompt, images=[], max_length=600, trace_label='minimaxH3ReferenceScene',
                                llama_template='<|im_start|>system\n你是短视频分镜编剧，只按要求的格式输出简体中文。<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n')
-        fields, actions = {}, []
+        fields, actions, shots = {}, [], []
         for line in output.replace('�', '').splitlines():
-            match = re.match(r'^\s*(事件|画风|场景|动作\s*\d*|镜头|声音|配乐)\s*[:：]\s*(.+?)\s*$', line)
+            match = re.match(r'^\s*(事件|画风|场景|动作\s*\d*|镜头(?:\s*[2-9]\s*(?:[（(][^）)\n]{0,16}[）)])?)?|声音|配乐)\s*[:：]\s*(.+?)\s*$', line)
             if not match:
                 continue
             value = spaced(re.sub(r'<主体\s*([1-9]\d*)>', r'<Subject \1>', match.group(2)))
@@ -14353,6 +14420,11 @@ class PromptAssistant:
             key = match.group(1).replace(' ', '')
             if key.startswith('动作'):
                 actions.append(value)
+            elif re.match(r'镜头[2-9]', key):
+                # A later shot only when the user asked for a cut.
+                seconds = re.search(r'\d+(?:\.\d+)?', key[3:])
+                if cut:
+                    shots.append((float(seconds.group()) if seconds else None, value))
             else:
                 fields.setdefault(key, value)
         # The writer may still act out a subject that the plan merged away or
@@ -14360,6 +14432,7 @@ class PromptAssistant:
         defined = {item['label'] for item in subjects}
         stray = lambda text: any(label not in defined for label in re.findall(r'<Subject [1-9]\d*>', text))
         actions = [action for action in (tidy(action) for action in actions if not stray(action)) if action]
+        shots = [(seconds, text) for seconds, text in ((seconds, tidy(text)) for seconds, text in shots if not stray(text)) if text]
         if fields.get('事件') and stray(fields['事件']):
             fields.pop('事件')
         elif fields.get('事件'):
@@ -14385,6 +14458,11 @@ class PromptAssistant:
             ''.join(sentence(action) for action in actions),
             sentence(camera if camera.startswith('镜头') else '镜头' + camera) if camera else '',
         ])
+        if shots:
+            from prompt_assistant.h3_prompt_enhance import shot_stamp, shot_times
+            times = shot_times([seconds for seconds, _ in shots], float(duration))
+            description += ''.join(f'\n[Shot {number}] At {shot_stamp(seconds)} ' + ('' if re.match(r'镜头|画面', text) else '镜头' if text.startswith('切') else '镜头切到') + sentence(text)
+                                   for number, (seconds, (_, text)) in enumerate(zip(times, shots), 2))
         # Name each borrowed-look subject in its role here; otherwise the H3
         # check adds "the shot features <Subject N>" and brings it on screen.
         for item in subjects:
@@ -14426,8 +14504,14 @@ class PromptAssistant:
         if reverse:
             user_requirement = "\n".join(value for value in (source.strip(), user_requirement) if value)
             source = ""
-        if source.strip().startswith('subject_definitions:') and not user_requirement and re.search(r'[\u3400-\u9fff]', re.sub(r'<d>[\s\S]*?</d>', '', source)):
-            result = self.translate_h3_reference(validate_h3_reference(source, inventory_text, duration), inventory_text, duration)
+        # A finished Chinese display is only translated for generation; the
+        # renderer's compile step says so explicitly (H3 compile: translate-only).
+        translate_only = H3_TRANSLATE_ONLY in requirements
+        if translate_only or source.strip().startswith('subject_definitions:') and not user_requirement and re.search(r'[\u3400-\u9fff]', re.sub(r'<d>[\s\S]*?</d>', '', source)):
+            checked = validate_h3_reference(source, inventory_text, duration)
+            result = (self.translate_h3_reference(checked, inventory_text, duration)
+                      if re.search(r'[\u3400-\u9fff]', h3_literal_free(checked)) else
+                      {"positivePrompt": json.dumps({"modelPrompt": checked, "displayPrompt": checked}, ensure_ascii=False), "negativePrompt": "", "rawOutput": ""})
             pair = json.loads(result['positivePrompt'])
             _, policy = self.route_h3_reference_sources(source, '', inventory_text)
             pair['editPolicy'] = policy if policy is not None else self.infer_h3_reference_edit_policy(source)
@@ -14611,7 +14695,8 @@ class PromptAssistant:
                 from prompt_assistant.h3_prompt_enhance import normalize_reference_plan
                 plan = normalize_reference_plan(output.replace('�', ''), inventory_text, source, user_requirement)
                 if generating:
-                    plan = self.write_h3_reference_scene(plan, source, user_requirement, duration, has_audio, observed, observed_scene, attribute_pictures)
+                    plan = self.write_h3_reference_scene(plan, source, user_requirement, duration, has_audio, observed, observed_scene, attribute_pictures,
+                                                         cut=h3_requested_cut(source + '\n' + user_requirement))
                 positive = render_h3_reference_plan(json.dumps(plan, ensure_ascii=False), inventory_text, duration, source, user_requirement)
                 validate_h3_prompt_enhancement(positive, source, user_requirement)
                 bilingual = self.translate_h3_reference(positive, inventory_text, duration)
@@ -14639,30 +14724,45 @@ class PromptAssistant:
                 failure = str(error)
         raise ValueError("H3 多参编译失败：" + failure + "；原提示词未修改。")
 
-    def optimize_h3_five_sections(self, source, requirements, mode, duration, frames=None):
+    def optimize_h3_base(self, source, requirements, mode, duration, frames=None):
+        """文生/图生/首尾帧 优化提示词 -> the Chinese official fields text.
+
+        The local writer answers in labelled beats; the program assembles one
+        [Shot 1] (later shots only for a requested cut), the dialogue, media
+        labels and the two sound fields. A translate-only compile returns the
+        English copy instead.
+        """
+        if H3_TRANSLATE_ONLY in requirements:
+            return self.translate_h3_base(source, mode, duration)
         # Do not feed the retired renderer field instructions back into the model.
         user_requirement = minimax_h3_prompt_enhance_user_requirement(requirements, source)
+        # A prompt already in fields form is read as prose: no field names or shot marks.
+        fields = parse_h3_base_fields(source)
+        view = h3_base_source_view(source)
+        cut = h3_requested_cut(source + "\n" + user_requirement)
         inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
-        media_tokens = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group(1) if inventory else source)))
-        dialogue_lines = re.findall(r'[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"][^”"]+[”"]', source)
-        rules = MINIMAX_H3_FIVE_SECTION_RULES + ("\n按原台词安排说话的过程，不改写台词。" if dialogue_lines else "")
+        media_tokens = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group(1) if inventory else view)))
+        dialogue_lines = re.findall(r'[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"][^”"]+[”"]', view)
+        rules = MINIMAX_H3_WRITER_RULES + ("\n按原台词安排说话的过程，不改写台词。" if dialogue_lines else "")
         template = "<|im_start|>system\n" + rules + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         # 图生视频/首尾帧: the model sees the frames it animates, so it neither
         # invents the scene nor starts from a pose the picture does not show.
-        images = minimax_h3_five_section_frames(mode, frames)
+        images = minimax_h3_writer_frames(mode, frames)
         # Two nearly identical 首尾帧 keep their pose; the model is not pushed to find a big change.
         same_frames = len(images) == 2 and minimax_h3_frames_nearly_same(frames)
-        request = build_minimax_h3_five_section_request(source, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines, same_frames)
+        request = build_minimax_h3_writer_request(view, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines, same_frames, cut)
         # Only the user's own words ask for a loop; a first/last-frame video ends on its last frame.
-        loop = "loop" in h3_requested_rules(source + "\n" + user_requirement) and clean_text(mode).upper() != "FL2VA"
+        loop = "loop" in h3_requested_rules(view + "\n" + user_requirement) and clean_text(mode).upper() != "FL2VA"
+        audio = minimax_h3_base_audio(view, fields, user_requirement)
 
         def finish(output, strict_rules):
             positive = (
-                validate_h3_five_sections(output, mode, duration, source, requirements)
-                if output.strip().startswith("【任务定位】") else
-                compile_h3_action_phases(output, mode, duration, source, requirements, user_requirement, strict_rules=strict_rules, keep_pose=same_frames)
+                validate_h3_base_fields(output, mode, duration, "zh", requirements)
+                if parse_h3_base_fields(output) else
+                compile_h3_action_phases(output, mode, duration, view, requirements, user_requirement, strict_rules=strict_rules,
+                                         keep_pose=same_frames, audio=audio, cut=cut)
             )
-            return validate_h3_prompt_enhancement(positive, source, user_requirement, loop=loop)
+            return validate_h3_prompt_enhancement(positive, view, user_requirement, loop=loop)
 
         failure = ""
         fallback = None
@@ -14893,7 +14993,7 @@ class PromptAssistant:
         if is_minimax_h3:
             if minimax_h3_mode.upper() == "REF2VA":
                 return self.optimize_h3_reference(raw_prompt, requirements, minimax_h3_duration, payload.get('h3ReferenceFrames'), payload.get('h3Reverse') is True)
-            return self.optimize_h3_five_sections(raw_prompt, requirements, minimax_h3_mode, minimax_h3_duration, payload.get('h3ReferenceFrames'))
+            return self.optimize_h3_base(raw_prompt, requirements, minimax_h3_mode, minimax_h3_duration, payload.get('h3ReferenceFrames'))
         is_animation = is_minimax_h3 or is_animation_prompt_payload(payload)
         is_ui_design = is_ui_design_prompt_payload(payload)
         is_create = not raw_prompt and not is_animation

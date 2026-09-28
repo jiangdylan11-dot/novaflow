@@ -8,13 +8,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from prompt_assistant.h3_prompt_enhance import validate_reference
+from prompt_assistant.h3_prompt_enhance import validate_reference, validate_base_fields
 
 # Exercise the production method without importing GPU dependencies.
 module = ast.parse((ROOT / 'prompt-assistant-service.py').read_text(encoding='utf-8-sig'))
 assistant_class = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == 'PromptAssistant')
 method = next(n for n in assistant_class.body if isinstance(n, ast.FunctionDef) and n.name == 'translate_h3_reference')
-scope = {'json': json, 're': re, 'validate_h3_reference': validate_reference}
+scope = {'json': json, 're': re, 'validate_h3_reference': validate_reference, 'validate_h3_base_fields': validate_base_fields}
 exec(compile(ast.Module(body=[method], type_ignores=[]), str(ROOT / 'prompt-assistant-service.py'), 'exec'), scope)
 
 FIELDS = {
@@ -126,6 +126,48 @@ class TranslationTest(unittest.TestCase):
         pair, calls = self.run_translation(lambda value: 'Exchange the coin in TOKEN_0 for TOKEN_1; leave the backdrop intact.')
         self.assertEqual(len(calls), 1)
         self.assertIn('Exchange the coin in <Video 1> for <Subject 1>', pair['modelPrompt'])
+
+    def test_later_shot_marks_stay_outside_the_translated_prose(self):
+        # The style line, [Shot 1] and "[Shot 2] At 00:02.000" each open a line, as in the official layout.
+        pair, calls = self.run_translation(
+            fields={'detailed_description': '动漫风格。[Shot 1] <Subject 1> 按原视频旋转。\n[Shot 2] At 00:02.000 镜头切到近景，<Subject 1> 停下。'},
+            translations={'动漫风格。': 'Anime style.', 'TOKEN_0 按原视频旋转。': 'TOKEN_0 rotates as in the source video.',
+                          '镜头切到近景，TOKEN_0 停下。': 'The camera cuts to a close-up and TOKEN_0 stops.'})
+        self.assertEqual(len(calls), 1)
+        self.assertIn('detailed_description:\nAnime style.\n[Shot 1] <Subject 1> rotates as in the source video.\n'
+                      '[Shot 2] At 00:02.000, the camera cuts to a close-up and <Subject 1> stops.', pair['modelPrompt'])
+
+    def test_base_fields_translate_faithfully_with_shots_speech_and_on_screen_text(self):
+        display = ('integrated_multimodal_description: [Shot 1] 写实电影风格，女孩站在窗边，画面从 <Picture 1> 开始，她抬起右手，招牌上写着“营业中”。\n'
+                   '[Shot 2] At 00:03.000 镜头切到近景，(S1) 说：<d>[Chinese] 出发吧。</d>结束时画面与 <Picture 2> 一致。\n\n'
+                   'overall_soundscape: 与画面动作一致的自然环境声和动作声。\n\nnon_diegetic_music: N/A')
+        english = {
+            '写实电影风格，女孩站在窗边，画面从 TOKEN_0 开始，她抬起右手，招牌上写着TOKEN_1。':
+                'Live-action, cinematic, a girl stands by the window; the shot begins from TOKEN_0 as she raises her right hand, and the sign reads TOKEN_1.',
+            '镜头切到近景，TOKEN_0 说：TOKEN_1结束时画面与 TOKEN_2 一致。':
+                'The camera cuts to a close-up as TOKEN_0 says: TOKEN_1 The frame ends matching TOKEN_2.',
+            '与画面动作一致的自然环境声和动作声。': 'Natural ambience and action sounds that match the visuals.'}
+        calls = []
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                calls.append(pending)
+                return json.dumps({key: english[value] for key, value in pending.items()})
+        pair = json.loads(FakeAssistant().translate(display, '', 5, base_mode='FL2VA')['positivePrompt'])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(pair['displayPrompt'], display)
+        self.assertEqual(pair['modelPrompt'],
+                         'integrated_multimodal_description: [Shot 1] Live-action, cinematic, a girl stands by the window; the shot begins from <Picture 1> '
+                         'as she raises her right hand, and the sign reads “营业中”.\n'
+                         '[Shot 2] At 00:03.000, the camera cuts to a close-up as (S1) says: <d>[Chinese] 出发吧。</d> The frame ends matching <Picture 2>.\n\n'
+                         'overall_soundscape: Natural ambience and action sounds that match the visuals.\n\nnon_diegetic_music: N/A')
+        # A copied Chinese clause is never returned as the English half.
+        english['与画面动作一致的自然环境声和动作声。'] = '与画面动作一致的自然环境声和动作声。'
+        with self.assertRaisesRegex(ValueError, '本地翻译未完整保留内容'):
+            FakeAssistant().translate(display, '', 5, base_mode='FL2VA')
 
 
 if __name__ == '__main__':

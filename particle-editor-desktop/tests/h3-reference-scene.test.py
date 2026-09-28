@@ -23,7 +23,7 @@ def subject(n, picture, description, keep, relation='fully_preserved'):
 
 
 class SceneTest(unittest.TestCase):
-    def write(self, plan, source, output, attribute_pictures=None, observed=None, observed_scene=None, requirement=''):
+    def write(self, plan, source, output, attribute_pictures=None, observed=None, observed_scene=None, requirement='', cut=False):
         prompts = []
 
         class FakeAssistant:
@@ -33,7 +33,7 @@ class SceneTest(unittest.TestCase):
                 prompts.append(prompt)
                 return output
         plan = dict({'tasks': ['reference generation'], 'description': '计划描述', 'soundscape': 'N/A', 'music': 'N/A'}, **plan)
-        result = FakeAssistant().write(plan, source, requirement, 5, False, observed or {}, observed_scene or {}, attribute_pictures or {})
+        result = FakeAssistant().write(plan, source, requirement, 5, False, observed or {}, observed_scene or {}, attribute_pictures or {}, cut=cut)
         return result, prompts[0] if prompts else ''
 
     def test_style_picture_lends_only_its_style(self):
@@ -197,6 +197,21 @@ class SceneTest(unittest.TestCase):
         self.assertEqual(result['references'][1]['description'], '仅借用此图的画风（水墨手绘，墨线勾边，纸张纹理），此图中的角色不出现')
         self.assertEqual(result['references'][1]['keep'], '水墨手绘风格、墨线勾边、纸张纹理')
         self.assertIn('另有一张参考图只借用画风：水墨手绘，那张图里的角色和物品都不出现\n', prompt)
+
+    def test_a_requested_cut_adds_later_shots_with_program_times(self):
+        sys.path.insert(0, str(ROOT))
+        plan = {'references': [subject(1, '<Picture 1>', '橘色长毛猫', '橘色长毛')], 'summary': '<Subject 1> 跳下桌子'}
+        output = ('事件：<Subject 1> 跳下桌子后回头\n画风：写实照片\n场景：客厅\n动作1：<Subject 1> 在桌边蹲低身体\n动作2：<Subject 1> 向前跳下桌子\n'
+                  '镜头2（第3秒）：近景，<Subject 1> 落地后回头看向镜头\n镜头3（第4秒）：<Subject 2> 跑过来\n镜头：跟随\n声音：落地声\n配乐：无')
+        result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子，第3秒切到近景', output, cut=True)
+        self.assertIn('\n镜头2（第X秒）：用户要求切换镜头', prompt)
+        # The cut time is the user's; a shot acting out an undefined subject is dropped.
+        self.assertEqual(result['description'], '写实照片风格。场景是客厅。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
+                                                '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 落地后回头看向镜头。')
+        # Without a requested cut the writer is not asked for shots and stray shot lines are ignored.
+        result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子', output)
+        self.assertNotIn('镜头2', prompt)
+        self.assertNotIn('[Shot', result['description'])
 
 
 class StyleTechniqueTest(unittest.TestCase):

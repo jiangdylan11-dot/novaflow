@@ -8,9 +8,171 @@ POLICY = json.loads(Path(__file__).with_name("h3_prompt_enhance_policy.json").re
 INSTRUCTION = "\n".join(POLICY["instructions"])
 REFERENCE_INSTRUCTION = "\n".join(POLICY["referenceInstructions"])
 REFERENCE_FIELDS = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
+BASE_FIELDS = ("integrated_multimodal_description", "overall_soundscape", "non_diegetic_music")
+# The renderer's compile step asks for a faithful English copy of a finished prompt.
+TRANSLATE_ONLY = "H3 compile: translate-only"
 CAMERA_PATTERN = r"镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b"
 DEFAULT_CAMERA_ZH = "镜头固定，构图保持稳定。"
-DEFAULT_CAMERA_EN = "The camera remains static and the framing stays stable."
+DEFAULT_CAMERA_EN = "The camera holds a static shot and the framing stays stable."
+DEFAULT_SOUNDSCAPE_ZH = "与画面动作一致的自然环境声和动作声。"
+HAN = r"[㐀-鿿]"
+SHOT_MARK = r"\[Shot ([1-9]\d*)\](?:[ \t]*At[ \t]+(\d{2}):(\d{2})\.(\d{3}),?)?"
+# A cut, scene change or several shots in the user's own words. Only then do
+# later [Shot N] exist; otherwise the video is one continuous shot.
+CUT_PATTERN = (r"切镜|切换镜头|镜头切(?:换|到|至)|切(?:到|至|换到)[^，。,；;\n]{0,6}?(?:近景|中景|远景|全景|特写|镜头|画面|场景|视角)"
+               r"|(?:第\s*\d+(?:\.\d+)?\s*秒|秒后|然后|接着|随后|之后|再)\s*切(?:到|至|换)|转场|分镜|第[二三四五六2-6]个?镜头"
+               r"|[两二三四五2-5]个镜头|多个镜头|多镜头|场景切换|切换场景|换(?:个|一个)?场景|\[Shot (?:[2-9]|[1-9]\d)\]|【镜头\s*[2-9]】"
+               r"|\bcuts? to\b|\b(?:camera|shot) cuts\b|\bmulti-shot\b|\bscene change\b")
+NO_CUT = r"(?:不要|不用|不需要|无需|不|别|禁止|避免|没有)[^，。,；;\n]{0,3}?(?:切镜|切换镜头|切换|转场|分镜|换场景|切)"
+
+
+def requested_cut(text):
+    """The user's own words ask for a cut, a scene change or several shots."""
+    return bool(re.search(CUT_PATTERN, re.sub(NO_CUT, "", str(text or "")), re.I))
+
+
+def shot_stamp(seconds):
+    ms = int(round(float(seconds) * 1000))
+    return f"{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000:03d}"
+
+
+def shot_times(asked, duration):
+    """Cut times of shots 2..n: the writer's seconds when they rise inside the clip, else evenly spaced."""
+    even = [round(float(duration) * k / (len(asked) + 1), 3) for k in range(1, len(asked) + 1)]
+    if all(t is not None for t in asked) and all(a < b for a, b in zip([0.0] + asked, asked + [float(duration)])):
+        return asked
+    return even
+
+
+def check_shots(narrative, duration, fill=False):
+    """[Shot 1] has no time; later shots are numbered 2, 3, … and cut at strictly
+    increasing times inside the clip. fill spaces later shots evenly when none has a time."""
+    marks = list(re.finditer(SHOT_MARK, narrative))
+    if not marks:
+        raise ValueError("H3 镜头描述缺少 [Shot 1]")
+    if [int(m[1]) for m in marks] != list(range(1, len(marks) + 1)):
+        raise ValueError("H3 镜头编号必须从 [Shot 1] 起按顺序递增")
+    if marks[0][2]:
+        raise ValueError("H3 [Shot 1] 不能带切换时间")
+    duration = float(duration or 30)
+    if fill and len(marks) > 1 and not any(m[2] for m in marks[1:]):
+        times = iter(shot_times([None] * (len(marks) - 1), duration))
+        return check_shots(re.sub(r"\[Shot ([2-9]|[1-9]\d+)\]", lambda m: f"[Shot {m[1]}] At {shot_stamp(next(times))}", narrative), duration)
+    previous = 0.0
+    for m in marks[1:]:
+        if not m[2]:
+            raise ValueError(f"H3 [Shot {m[1]}] 缺少 At MM:SS.mmm 切换时间")
+        seconds = int(m[2]) * 60 + int(m[3]) + int(m[4]) / 1000
+        if not previous < seconds < duration:
+            raise ValueError("H3 镜头切换时间必须严格递增并在所选时长内")
+        previous = seconds
+    return narrative
+
+
+def base_mode(mode):
+    value = str(mode or "").strip().lower().replace("-", "_")
+    return {"t2v": "T2VA", "t2va": "T2VA", "text_video": "T2VA", "i2v": "I2VA", "i2va": "I2VA", "image_video": "I2VA",
+            "fl2v": "FL2VA", "fl2va": "FL2VA", "first_last": "FL2VA", "l2va": "L2VA", "video_reference": "L2VA"}.get(value, "")
+
+
+def literal_free(text):
+    """Prose outside spoken lines, quoted on-screen text, tags and shot marks."""
+    return re.sub(r"<d>[\s\S]*?</d>|\"[^\"\n]*\"|“[^”\n]*”|<(?:Subject|Picture|Video|Audio) [1-9]\d*>|" + SHOT_MARK, "", str(text or ""))
+
+
+def dialogue_tag(words):
+    return "[Chinese]" if re.search(HAN, words) else "[English]"
+
+
+def parse_base_fields(value):
+    """The three official fields from text or JSON; a leading alignment line is dropped."""
+    text = re.sub(r"^```(?:json|text)?\s*\n([\s\S]*?)\n```$", r"\1", str(value or "").strip()).strip()
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return None
+        if not isinstance(data, dict) or not isinstance(data.get(BASE_FIELDS[0]), str):
+            return None
+        return {key: str(data.get(key) or "").strip() for key in BASE_FIELDS}
+    headers = list(re.finditer(r"(?m)^[ \t]*(" + "|".join(BASE_FIELDS) + r")[ \t]*[:：][ \t]*", text))
+    names = [m[1] for m in headers]
+    if not names or names != [name for name in BASE_FIELDS if name in names] or len(set(names)) != len(names):
+        return None
+    return {m[1]: text[m.end():headers[i + 1].start() if i + 1 < len(headers) else len(text)].strip() for i, m in enumerate(headers)}
+
+
+def validate_base_fields(value, mode="", duration=None, language=None, requirements=""):
+    """Canonical base-mode fields text (T2V/I2V/FL2V), shots one per line.
+
+    language 'en': no Chinese outside <d>…</d> and quoted text; 'zh': the prose is Chinese.
+    """
+    fields = parse_base_fields(value)
+    if not fields or BASE_FIELDS[0] not in fields:
+        raise ValueError("H3 提示词需要画面与动作、环境声音、背景音乐三个字段")
+    narrative, sound, music = (fields.get(key, "").strip() for key in BASE_FIELDS)
+    none = lambda text: "N/A" if re.fullmatch(r"(?:无|N/?A)(?:[（(][^）)]*[）)])?[。.]?", text, re.I) else text
+    sound, music = none(sound), none(music or "N/A")
+    if not narrative or not sound:
+        raise ValueError("H3 画面与动作、环境声音不能为空")
+    narrative = re.sub(r"【镜头\s*([1-9]\d*)】", r"[Shot \1]", narrative)
+    first = re.search(r"\[Shot 1\]", narrative)
+    if not first:
+        narrative = "[Shot 1] " + narrative
+    elif first.start() > 0:
+        # A style sentence written before [Shot 1] belongs to the first shot.
+        narrative = "[Shot 1] " + narrative[:first.start()].strip() + " " + narrative[first.end():].lstrip()
+    # One paragraph per shot; Chinese lines join without a space.
+    joined = lambda text: re.sub(r"\s*\n\s*", " ", re.sub(r"(?<=[㐀-鿿。，；：！？、”）])\s*\n\s*(?=[㐀-鿿“（])", "", text)).strip()
+    narrative = "\n".join(joined(shot) for shot in re.split(r"\s*(?=\[Shot (?:[2-9]|[1-9]\d+)\])", narrative) if shot.strip())
+    narrative = re.sub(r"\[Shot ([1-9]\d*)\][ \t]*At[ \t]+", r"[Shot \1] At ", narrative)
+    narrative = re.sub(r"<d>\s*(?!\[)([\s\S]*?)</d>", lambda m: f"<d>{dialogue_tag(m[1])} {m[1].strip()}</d>", narrative)
+    narrative = check_shots(narrative, duration, fill=True)
+    everything = "\n".join((narrative, sound, music))
+    if re.search(r"<Subject [1-9]\d*>", everything):
+        raise ValueError("H3 文生、图生和首尾帧提示词不能使用 <Subject N>")
+    kind = base_mode(mode)
+    used = set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", everything))
+    named = set(re.findall(r"<Picture [12]>", narrative)) | {f"<Picture {n}>" for n in re.findall(r"(?<![<\w])Picture ([12])(?![\w>])", narrative)}
+    if kind == "T2VA" and used:
+        raise ValueError("H3 文生视频不能引用参考素材")
+    if kind == "I2VA" and (used - {"<Picture 1>"} or named != {"<Picture 1>"}):
+        raise ValueError("H3 图生视频的画面描述必须引用 <Picture 1>，且不能引用其他素材")
+    if kind == "FL2VA" and (used - {"<Picture 1>", "<Picture 2>"} or named != {"<Picture 1>", "<Picture 2>"}):
+        raise ValueError("H3 首尾帧视频的画面描述必须引用 <Picture 1> 和 <Picture 2>")
+    if kind == "L2VA":
+        inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements or "")
+        if inventory and not used <= set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1])):
+            raise ValueError("H3 引用了未提供的素材")
+    prose = re.sub(r"\bN/A\b|\bAt \d{2}:\d{2}\.\d{3}", "", literal_free(everything))
+    if language == "en" and re.search(HAN, prose):
+        raise ValueError("H3 英文提示词中仍有未翻译的中文")
+    if language == "zh":
+        han = len(re.findall(HAN, prose))
+        if not han or len(re.findall(r"[A-Za-z]", prose)) > 2 * han:
+            raise ValueError("H3 中文提示词正文必须使用简体中文")
+    return "\n\n".join(f"{key}: {text}" for key, text in zip(BASE_FIELDS, (narrative, sound, music)))
+
+
+def base_source_view(source):
+    """What the local writer reads: the narrative without field names or shot marks,
+    later shots as 镜头N（第X秒）： lines and spoken lines as (S1)："…"."""
+    fields = parse_base_fields(source)
+    text = fields.get(BASE_FIELDS[0], "") if fields else str(source or "")
+    # The editor's Chinese display reads the same way (【画面与动作】 with 【镜头 N】).
+    display = re.search(r"【画面与动作】([\s\S]*?)(?=【环境声音】|【背景音乐】|$)", text)
+    if display:
+        text = re.sub(r"【镜头\s*([1-9]\d*)】", r"[Shot \1]", display[1])
+    spoken = []
+
+    def speech(match):
+        spoken.append(f'({match[1]})："{match[2].strip()}"')
+        return ""
+    text = re.sub(r"[（(](S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*)[）)]\s*[^<\n]{0,12}?\s*<d>\s*(?:\[[A-Za-z ]+\]\s*)?([\s\S]*?)</d>", speech, text)
+    text = re.sub(r"\s*\[Shot 1\]\s*", "", text)
+    text = re.sub(r"\s*" + SHOT_MARK + r"\s*", lambda m: f"\n镜头{m[1]}" + (
+        f"（第{int(m[2]) * 60 + int(m[3]) + int(m[4]) / 1000:g}秒）" if m[2] else "") + "：", text)
+    return "\n".join([text.strip(), *spoken]).strip()
 
 
 def reference_label(value):
@@ -241,6 +403,9 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
     # source camera. Default to a locked camera rather than rejecting the plan.
     if "video editing" not in plan["tasks"] and not re.search(CAMERA_PATTERN, description + " " + source + " " + user_requirement, re.I):
         description += " " + DEFAULT_CAMERA_ZH
+    if "video editing" in plan["tasks"] or not requested_cut(source + "\n" + user_requirement):
+        # One continuous shot unless the user asked for a cut; an edit keeps the source's timing.
+        description = re.sub(r"\s*\[Shot (?:[2-9]|[1-9]\d+)\](?:[ \t]*At[ \t]+\d{2}:\d{2}\.\d{3},?)?\s*", " ", description).strip()
     if "[Shot 1]" not in description:
         description = "[Shot 1] " + description
     result = dict(zip(REFERENCE_FIELDS, ("\n".join(definitions), "[" + " + ".join(plan["tasks"]) + "] " + summary, "\n".join(retention), description, plan["soundscape"], plan["music"])))
@@ -303,9 +468,7 @@ def validate_reference(value, requirements="", duration=30):
         raise ValueError("H3 多参镜头必须引用已定义主体")
     if "[Shot 1]" not in fields["detailed_description"]:
         raise ValueError("H3 多参缺少镜头描述")
-    for m in re.finditer(r"\[Shot \d+\] At (\d+):(\d+)\.(\d+)", fields["detailed_description"]):
-        if int(m[1])*60 + int(m[2]) + float("0."+m[3]) > float(duration or 30):
-            raise ValueError("H3 多参镜头超出所选时长")
+    fields["detailed_description"] = check_shots(fields["detailed_description"], duration, fill=True)
     return "\n\n".join(k + ":\n" + fields[k].strip() for k in REFERENCE_FIELDS)
 
 
@@ -348,11 +511,6 @@ def validate_enhancement(output, source, user_requirement="", loop=None):
         if not re.search(POLICY["closurePattern"], result_narrative, re.I):
             raise ValueError(POLICY["loopMessage"])
     return output
-
-
-SECTION_NAMES = ["任务定位", "说话者", "递进式详细提示词", "台词", "连续性与约束"]
-SECTION_FIELDS = ["task", "speakers", "description", "dialogue", "constraints"]
-FORMAT_INSTRUCTION = "\n".join(POLICY["formatInstructions"])
 
 
 PHASE_LABELS = ("概述", "起始", "递进", "收束", "约束")
@@ -470,11 +628,6 @@ def requested_rules(user_text):
     return names
 
 
-def phase_edges(duration):
-    """One decimal, the same edges the model is told (0-1.7s, 1.7-3.3s, 3.3-5s)."""
-    return [round(float(duration) * i / 3, 1) for i in range(4)]
-
-
 def split_action_phases(output):
     """Find the five labels, accepting 【概述】, **概述**, a bare label line or a short preamble."""
     text = str(output or "").replace("\ufffd", "").replace("\r\n", "\n").strip()
@@ -491,11 +644,17 @@ def split_action_phases(output):
         rf"{note}[ \t]*[:：]?[ \t]*")
     found = []
     for match in header.finditer(text):
-        if len(found) < len(PHASE_LABELS) and (match[1] or match[2] or match[3]) == PHASE_LABELS[len(found)]:
+        label = match[1] or match[2] or match[3]
+        if len(found) < len(PHASE_LABELS) and label == PHASE_LABELS[len(found)]:
             found.append(match)
+        elif not found and label == PHASE_LABELS[1] and re.sub(r"(?m)^.*[:：][ \t]*$", "", text[:match.start()]).strip():
+            # No 概述 label: the lines before 起始 are the overview ("三维渲染：小机器人…").
+            found += [None, match]
     if len(found) < len(PHASE_LABELS) - 1:
         raise ValueError("模型没有按格式给出概述、起始、递进、收束、约束五个标签")
-    parts = [text[m.end():found[i + 1].start() if i + 1 < len(found) else len(text)].strip() for i, m in enumerate(found)]
+    parts = [text[m.end() if m else 0:found[i + 1].start() if i + 1 < len(found) else len(text)].strip() for i, m in enumerate(found)]
+    if found[0] is None:
+        parts[0] = re.sub(r"(?m)^.*[:：][ \t]*$", "", parts[0]).strip()
     if len(parts) < len(PHASE_LABELS):
         # Only the 约束 label is missing: its numbered list (or "保持项1：") follows the last phase.
         split = re.search(r"(?m)^[ \t]*(?:(?:保持项?|限制项?)[ \t]*1[ \t]*[:：]|1[.、)）]|[（(]1[)）]|[-•])[ \t]*\S", parts[-1])
@@ -576,30 +735,50 @@ def neutral_speech(phase, step):
     return re.sub(r"[，,、]+(?=[。！？；;!?\n]|$)", "。", "".join(result)).strip(" ，,\n")
 
 
-def compile_action_phases(output, mode, duration, source, requirements="", user_requirement="", strict_rules=False, keep_pose=False):
-    """The model rewrites content; the application owns timing and literal speech.
+# A later shot the writer adds when the user asked for a cut: 镜头2（第3秒）：…
+SHOT_LINE = r"(?m)^[ \t>#*\-•]*【?镜头\s*[2-9]\s*】?\s*([（(][^）)\n]{0,16}[）)])?\s*[:：][ \t]*(.*)$"
+# "保持橘猫外观一致", "动作连贯": talk about consistency, nothing visible (official rule).
+GENERIC_CONSTRAINT = r"(?:身份|外观|形象|样貌|造型)[^，,。；;]{0,8}(?:一致|不变|统一)|^(?:保持)?动作(?:连贯|流畅|自然|衔接)[^，,。；;]{0,4}[。]?$"
+
+
+def compile_action_phases(output, mode, duration, source, requirements="", user_requirement="", strict_rules=False, keep_pose=False, audio=None, cut=False):
+    """The model rewrites content; the application owns shots, cut times, media
+    labels and literal speech. Returns the Chinese base fields text.
 
     With strict_rules an answer that copies a special-case rule the user never
     asked for is rejected, so the caller can ask once more; otherwise only the
     clauses carrying that rule are dropped. keep_pose keeps constraints that
-    hold the pose (two nearly identical first/last frames).
+    hold the pose (two nearly identical first/last frames). cut: the user asked
+    for a cut, so the writer's 镜头N lines become later shots; otherwise their
+    content stays in the one continuous shot. audio: (soundscape, music).
     """
-    parts = split_action_phases(output)
+    later, shot_texts = [], []
+
+    def take(match):
+        seconds = re.search(r"\d+(?:\.\d+)?", match[1] or "")
+        later.append(float(seconds[0]) if seconds else None)
+        shot_texts.append(match[2])
+        return ""
+    parts = split_action_phases(re.sub(SHOT_LINE, take, str(output or "")))
     mode = str(mode or "").upper()
     inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
-    refs = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else source)))
+    refs = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else source))) if mode == "L2VA" else []
     if mode == "I2VA":
         refs = ["<Picture 1>"]
-        binding = "<Picture 1> 为起始首帧。"
     elif mode == "FL2VA":
         refs = ["<Picture 1>", "<Picture 2>"]
-        binding = "<Picture 1> 为起始首帧，<Picture 2> 为结束尾帧。"
-    else:
-        binding = "参考媒体：" + "、".join(refs) + "。" if refs else "无参考媒体。"
     # The program owns media bindings; a label the model invented is dropped.
     keep_refs = lambda s: re.sub(r"<(?:Picture|Video|Audio) [1-9]\d*>", lambda m: m[0] if m[0] in refs else "", s)
-    overview = keep_refs(clean_phase_text(parts[0]))
+    # "三维渲染：小机器人…" opens with the style, not a label.
+    overview = re.sub(r"^([^，。；：:\n]{0,8}(?:风格|画风|渲染|写实|动画|动漫|插画|照片|摄影|电影|水墨|油画|卡通|3D|CG)[^，。；：:\n]{0,4})[：:；;]\s*", r"\1，",
+                      keep_refs(clean_phase_text(parts[0])))
     phases = [keep_refs(clean_phase_text(p)) for p in parts[1:4]]
+    if not cut:
+        # A cut nobody asked for: its content stays in the one shot.
+        phases[-1] += "".join(keep_refs(clean_phase_text(text)) for text in shot_texts)
+        later, shot_texts = [], []
+    beat_count = len(phases)
+    phases += [keep_refs(clean_phase_text(text)) for text in shot_texts]
     constraints = [keep_refs(item) for item in clean_constraints(parts[4])]
     asked = requested_rules(source + "\n" + (user_requirement or ""))
     everything = "\n".join([overview, *phases, *constraints])
@@ -614,6 +793,9 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     user_text = source + "\n" + (user_requirement or "")
     stop = lambda s: s if "定格" in user_text else map_clauses(s, settle_freeze)
     overview, phases, constraints = stop(overview), [stop(p) for p in phases], [stop(item) for item in constraints]
+    # The program owns the timing: a clause with the answer's own seconds goes ("爪尖离地0.5秒前").
+    own_seconds = lambda clause: any(m[0] not in user_text for m in re.finditer(r"\d+(?:\.\d+)?\s*秒", clause))
+    phases = [drop_clauses(p, own_seconds) for p in phases]
     if "loop" not in asked and mode != "FL2VA" and not re.search(USER_RETURN, user_text):
         phases = [drop_matching_clauses(p, RETURN_TO_START) for p in phases]
         constraints = [drop_matching_clauses(item, RETURN_TO_START) for item in constraints]
@@ -633,11 +815,12 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     overview, phases, constraints = either(overview), [either(p) for p in phases], [either(item) for item in constraints]
     user_anchor = camera_moves(user_text)
     anchor = user_anchor or next(
-        (moves for moves in map(camera_moves, re.split(r"[，,。；;\n]", "\n".join([overview, *phases]))) if moves), set())
+        (moves for moves in map(camera_moves, re.split(r"[，,。；;\n]", "\n".join([overview, *phases[:beat_count]]))) if moves), set())
     if anchor:
+        # A later shot the user asked for frames its own camera.
         other_move = lambda clause: camera_moves(clause) and not camera_moves(clause) & anchor
         overview = drop_clauses(overview, other_move) if user_anchor else overview
-        phases = [drop_clauses(p, other_move) for p in phases]
+        phases = [drop_clauses(p, other_move) if i < beat_count else p for i, p in enumerate(phases)]
         constraints = [drop_clauses(item, other_move) for item in constraints]
     if mode not in ("I2VA", "FL2VA"):
         # Without a picture, lighting and weather come only from the user's words.
@@ -661,105 +844,57 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     camera_asked = "camera" in asked or bool(re.search(USER_CAMERA_BAN, user_text))
     constraints = [drop_clauses(item, lambda clause: re.search(META_CONSTRAINT, clause) or re.search(STAGE_CONSTRAINT, clause)
                                 or invented_ban(clause, asked_text, camera_asked)) for item in constraints]
-    constraints = [item for item in constraints if has_text(item)]
-    if not has_text(overview) or not any(has_text(p) for p in phases):
+    # A constraint that only repeats the overview, its camera or an action adds nothing.
+    same_camera = lambda clause: re.match(r"\s*(?:且|并)?(?:镜头|机位)", clause) and camera_moves(clause) and camera_moves(clause) <= camera_moves(overview)
+    # "镜头全程固定，无移动或切换": the bans after a repeated camera go with it.
+    clauses = lambda item: [c for c in re.split(r"[，,；;。]", item) if c.strip()]
+    constraints = [drop_clauses(item, same_camera) for item in constraints if not (
+        clauses(item) and same_camera(clauses(item)[0]) and all(re.match(r"\s*(?:且|并)?(?:无|不|没有|禁止|避免)", c)
+                                                                and re.search(CAMERA_TERMS + r"|移动|切换", c) for c in clauses(item)[1:]))]
+    grams = lambda text: {text[i:i + 2] for i in range(len(text) - 1)}
+    written = grams(compact(overview + "".join(phases)))
+    constraints = [item for item in constraints if has_text(item) and not re.search(GENERIC_CONSTRAINT, item)
+                   and len(grams(compact(item)) & written) < 0.7 * len(grams(compact(item)))]
+    if not has_text(overview) or not any(has_text(p) for p in phases[:beat_count]):
         raise ValueError("优化内容不能为空")
-    if not constraints:
-        constraints = ["保持主体身份、外观与场景前后一致。"]
     # Sustained idle/stillness can span several phases; a loop may end at its
     # initial pose. Novelty belongs to the whole rewrite, not pairwise stages.
     validate_enhancement(overview + "\n" + "\n".join(phases), source, user_requirement, loop="loop" in asked and mode != "FL2VA")
+    beats, shots = [], [(seconds, text) for seconds, text in zip(later, phases[beat_count:]) if has_text(text)]
+    for phase in phases[:beat_count]:
+        # An emptied or repeated phase is part of the one before it.
+        if has_text(phase) and not (beats and compact(beats[-1]) == compact(phase)):
+            beats.append(phase)
+    if cut and not shots and strict_rules:
+        raise ValueError("用户要求切换镜头，请用“镜头2（第X秒）：”写出切换后的镜头")
+    texts = beats + [text for _, text in shots]
     speech = re.findall(r'[（(]S([1-9]\d*)[）)]\s*[:：]\s*[“"]([^”"]+)[”"]', source)
-    speakers = sorted({int(n) for n, _ in speech} | {int(n) for n in re.findall(r"<Subject ([1-9]\d*)>", source)})
-    speaker_lines = {}
-    for line in source.splitlines():
-        definition = re.match(r"\s*<Subject ([1-9]\d*)>\s*=\s*\(S\1\)[^\n]*", line)
-        if definition:
-            speaker_lines[int(definition[1])] = line.strip()
-    who = "<Picture 1> 中" if mode in ("I2VA", "FL2VA") else "画面中"
-    speaker_text = "\n".join(speaker_lines.get(n, f"<Subject {n}> = (S{n})，{who}说这句台词的角色。") for n in speakers) or "无说话者"
-    dialogue = "\n".join(f'(S{n})：“{words}”' for n, words in speech) or "无台词"
-    edges = phase_edges(duration)
-    spans = []
-    for i, phase in enumerate(phases):
-        # An emptied or repeated phase extends the one before it.
-        if spans and (not has_text(phase) or compact(spans[-1][2]) == compact(phase)):
-            spans[-1][1] = edges[i + 1]
-        elif has_text(phase):
-            spans.append([spans[-1][1] if spans else 0, edges[i + 1], phase])
-    if mode == "FL2VA" and "<Picture 2>" not in spans[-1][2]:
-        spans[-1][2] += "结束时画面与 <Picture 2> 一致。"
-    timeline = "\n\n".join(f"{start:g}-{end:g}s：{phase}" for start, end, phase in spans)
-    value = {"task": f"{MODE_NAMES.get(mode, mode)}，时长{float(duration):g}秒。{binding}", "speakers": speaker_text,
-             "description": overview + "\n\n" + timeline, "dialogue": dialogue,
-             "constraints": "\n".join(f"{n}. {item}" for n, item in enumerate(constraints, 1))}
-    return validate_format(json.dumps(value, ensure_ascii=False), mode, duration, source, requirements)
-
-
-def validate_format(value, mode, duration_seconds, source="", requirements=""):
-    text = re.sub(r"^```(?:json|text|plaintext)?\s*\n([\s\S]*?)\n```$", r"\1", str(value or "").strip(), flags=re.I).strip()
-    text = re.sub(r"\\(?=<(?:Picture|Video|Audio|Subject) )", "", text)
-    text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)
-    text = re.sub(r"[（(\[【]?(\d+(?:\.\d+)?)\s*(?:s|秒)?\s*[-–—~～至]\s*(\d+(?:\.\d+)?)\s*(?:s|秒)\s*[）)\]】]?\s*[:：]", r"\1-\2s：", text, flags=re.I)
-    try:
-        parsed = json.loads(text)
-    except (ValueError, TypeError):
-        parsed = None
-    if isinstance(parsed, dict):
-        if set(parsed) != set(SECTION_FIELDS) or any(not isinstance(parsed[f], str) or not parsed[f].strip() for f in SECTION_FIELDS):
-            raise ValueError("五段提示词字段缺失或为空")
-        text = "\n\n".join(f"【{name}】\n{parsed[field].strip()}" for name, field in zip(SECTION_NAMES, SECTION_FIELDS))
-    text = re.sub(r"(?m)^(" + "|".join(SECTION_NAMES) + r")\s*[:：]\s*", r"【\1】\n", text)
-    text = re.sub(r"([^\n\d.])(\d+(?:\.\d+)?\s*[-–—~至]\s*\d+(?:\.\d+)?\s*(?:s|秒)\s*[:：])", r"\1\n\n\2", text)
-    text = re.sub(r"（(S[1-9]\d*)）", r"(\1)", text)
-    headers = list(re.finditer(r"(?m)^\s*【([^】]+)】[ \t]*[:：]?[ \t]*", text))
-    if [m[1] for m in headers] != SECTION_NAMES or text[:headers[0].start()].strip():
-        raise ValueError("请按任务定位、说话者、递进式详细提示词、台词、连续性与约束输出完整五段")
-    sections = [text[m.end():headers[i + 1].start() if i + 1 < len(headers) else len(text)].strip() for i, m in enumerate(headers)]
-    if any(not s for s in sections):
-        raise ValueError("五段提示词内容不能为空")
-    duration = float(duration_seconds)
-    if not 1 <= duration <= 30:
-        raise ValueError("H3 时长必须为 1-30 秒")
-    ranges = list(re.finditer(r"(?m)^\s*(\d+(?:\.\d+)?)\s*[-–—~至]\s*(\d+(?:\.\d+)?)\s*(?:s|秒)\s*[:：]\s*(.+)", sections[2]))
-    if not ranges:
-        raise ValueError("详细提示词缺少分时段动作")
-    end = 0
-    for m in ranges:
-        if abs(float(m[1]) - end) > .051 or float(m[2]) <= float(m[1]) or float(m[2]) > duration + .051:
-            raise ValueError("动作时间段必须从 0 连续递进且不超过所选时长")
-        end = float(m[2])
-    if abs(end - duration) > .051:
-        raise ValueError("动作时间段未覆盖完整时长")
-    task_duration = re.search(r"(?:时长\s*[:：]?\s*|duration\s*[:：]?\s*|lasts?\s+)?(\d+(?:\.\d+)?)\s*(?:秒|s\b|seconds?\b)", sections[0], re.I)
-    if not task_duration or abs(float(task_duration[1]) - duration) > .051:
-        raise ValueError("任务定位时长与当前设置不一致")
-    # Camera direction is generation guidance, not a literal-keyword validity rule.
-    i2v = mode.lower() in ("i2va", "image_video", "i2v")
-    fl2v = mode.lower() in ("fl2va", "first_last", "fl2v")
-    tokens = lambda s: set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", s))
-    inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
-    allowed = {"<Picture 1>"} if i2v else {"<Picture 1>", "<Picture 2>"} if fl2v else tokens(inventory[1] if inventory else source + "\n" + requirements)
-    if tokens(text) != allowed:
-        raise ValueError("参考媒体标签缺失或引用了未提供的媒体")
-    if i2v or fl2v:
-        anchors = sections[0] + "\n" + sections[2]
-        if not re.search(r"<Picture 1>[^\n。]{0,100}(?:起始|首帧|开始|starting|opening|first frame)|(?:起始|首帧|starting|opening)[^\n。]{0,100}<Picture 1>", anchors, re.I):
-            raise ValueError("缺少首帧图片绑定")
-        if fl2v and not re.search(r"<Picture 2>[^\n。]{0,100}(?:末帧|尾帧|终帧|结束|final|last frame)|(?:末帧|尾帧|终帧|final)[^\n。]{0,100}<Picture 2>", anchors, re.I):
-            raise ValueError("缺少尾帧图片绑定")
-    definitions = re.findall(r"<Subject ([1-9]\d*)>\s*=\s*\(S([1-9]\d*)\)", sections[1])
-    if any(int(a) != i + 1 or a != b for i, (a, b) in enumerate(definitions)):
-        raise ValueError("说话者定义必须从 <Subject 1> = (S1) 连续编号")
-    uses = [int(a or b) for a, b in re.findall(r"<Subject ([1-9]\d*)>|\bS([1-9]\d*)\b", text)]
-    if any(n not in [int(a) for a, _ in definitions] for n in uses):
-        raise ValueError("存在未定义的说话者")
-    spoken = re.findall(r'\(S([1-9]\d*)\)\s*[:：]\s*[“"]([^”"]+)[”"]', sections[3])
-    if spoken and re.search(r"无台词|无对白|完全静音|no dialogue|complete silence", sections[2], re.I):
-        raise ValueError("说话时间线与台词冲突")
-    if not spoken and not re.fullmatch(r"(?:无台词|无对白|无|N/A|None|No dialogue)[。.]?", sections[3], re.I):
-        raise ValueError("台词须使用 (S1)：‘...’ 或无台词")
-    for words in re.findall(r'\(S[1-9]\d*\)\s*[:：]\s*[“"]([^”"]+)[”"]', source):
-        if words not in sections[3]:
-            raise ValueError("原台词未完整保留")
-    return "\n\n".join(f"【{name}】\n{content}" for name, content in zip(SECTION_NAMES, sections))
+    said = "".join(f"(S{n}) 说：<d>{dialogue_tag(words)} {words}</d>" for n, words in speech)
+    if said:
+        # The line goes where the answer has the speaker talk; H3 lip-syncs from it.
+        at = next((i for i, text in enumerate(texts) if re.search(SPEAKING, text)), None)
+        if at is None:
+            texts[len(beats) - 1] += said
+        else:
+            text = texts[at]
+            talk = re.search(SPEAKING, text)
+            if text[talk.start():talk.start() + 2] == "说完":
+                # "他说完这句话" comes after the line itself.
+                split = talk.start() - len(re.split(r"[。！？!?]", text[:talk.start()])[-1])
+            else:
+                end = re.search(r"[。！？!?]", text[talk.end():])
+                split = talk.end() + end.end() if end else len(text)
+            texts[at] = text[:split] + said + text[split:]
+    if mode in ("I2VA", "FL2VA") and "<Picture 1>" not in overview + "".join(texts):
+        texts[0] = "画面从 <Picture 1> 开始，" + texts[0]
+    if mode == "FL2VA" and "<Picture 2>" not in texts[-1]:
+        texts[-1] += "结束时画面与 <Picture 2> 一致。"
+    if not re.search(CAMERA_PATTERN, overview + "".join(texts[:len(beats)]) + user_text, re.I):
+        overview += DEFAULT_CAMERA_ZH
+    # What stays the same belongs with the opening composition; the shot ends on its ending.
+    narrative = "[Shot 1] " + overview + "".join(constraints) + "".join(texts[:len(beats)])
+    for number, (seconds, text) in enumerate(zip(shot_times([s for s, _ in shots], duration), texts[len(beats):]), 2):
+        narrative += f"\n[Shot {number}] At {shot_stamp(seconds)} " + ("" if re.match(r"镜头|画面", text) else "镜头" if text.startswith("切") else "镜头切到") + text
+    sound, music = audio or (DEFAULT_SOUNDSCAPE_ZH, "N/A")
+    return validate_base_fields("\n\n".join(f"{key}: {value}" for key, value in zip(BASE_FIELDS, (narrative, sound, music))),
+                                mode, duration, "zh", requirements)
