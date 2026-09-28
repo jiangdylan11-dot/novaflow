@@ -3210,8 +3210,10 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
   let totalDurationMs = 0;
   let providerCallCount = 0;
   let retryUsed = false;
-  const fusionRepairEnabled = resultOptions?.artSemanticFusion === true
-    || resultOptions?.artFiveSectionPrompt === true;
+  // The 美工 repair is a second call: only when the reservation holds one (a prompt optimize reserves a single call).
+  const fusionRepairEnabled = (resultOptions?.artSemanticFusion === true
+    || resultOptions?.artFiveSectionPrompt === true)
+    && !(Number(resultOptions?.providerCallBudget) < 2);
   const maxAttempts = retryEnabled || h3RetryEnabled || fusionRepairEnabled ? 2 : 1;
   const finalizeResult = (result, data = result?.data, finalOptions = {}) => {
     const generationGate = String(data?.generationGate || "");
@@ -7971,6 +7973,7 @@ function grokResponsesPublicResult(data, options = {}) {
       throw layoutError;
     }
   }
+  if (options.artFiveSectionPrompt === true || options.artSemanticFusion === true) parsed.negative_prompt = artNegativeVisibleTerms(parsed.negative_prompt);
   const result = {
     id: data?.id || "",
     object: data?.object || "",
@@ -8219,12 +8222,17 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
 const ART_SEMANTIC_FUSION_RULES = "你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。底稿没有标题时，必须按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段重新组织，不保持自然段，也不得自创段名。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。";
 
 // An empty requirement box still asks for work: enrich the draft instead of echoing it.
-const ART_SEMANTIC_FUSION_AUTO_ENRICH = "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，只针对底稿已有对象补足具体视觉细节，至少覆盖材质纹理、光影过渡、空间层次、色彩关系中的两项，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词，禁止新增底稿没有的人物、道具或场景。";
+const ART_SEMANTIC_FUSION_AUTO_ENRICH = "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，把底稿写成一幅具体完整的画面：底稿里的主体称呼、动作和场景词原样保留，为主体补足外观、姿态、表情与材质细节，为底稿中的场景补充合乎情境的环境陈设、光源与氛围，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词；不新增人物，不改变主题和主体动作。";
 
 // 单图反推产出的五段结构是用户认可的版式；多图反推与提示词优化统一对齐到它。
 const ART_FIVE_SECTIONS = ["[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]"];
 
-const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前面任何“写成一段自然语言”的说法）：只允许按顺序输出五个且仅五个 TOML 风格 section，每个 section 标题单独占一行——[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数]。\n[风格设定]写媒介、绘画或渲染语言、氛围与完成质感；[主体物品]逐个写主体与物品的数量、外观、姿势、动作、材质、颜色，以及彼此的空间、遮挡与接触关系；[环境背景]写环境、前中后景、承托面与遮挡层次；[光线与色彩]写光源方向、软硬、明暗、轮廓光、主辅色与局部颜色；[拍摄参数]只写景别、视角、构图、裁切、透视与景深。\n每个 section 都必须有具体内容，不得新增、合并、重命名或省略 section，不得输出 [用户附加要求]，不得输出 Markdown 代码围栏、标题、前言、总结或解释。版式化不得改变语义：底稿里的人物、数量、身份、年龄、动作、相互关系、道具、场景、风格、色彩、构图以及全部要求项与避免项，必须逐条落进对应 section；可以换措辞和重新组织，但不得删除、弱化、合并或改变含义，也不得新增底稿没有的事实。底稿中形如 __NOVAFLOW_…__ 的资源引用占位符是 @参考图 等引用的载体，必须原样、原次数出现在对应 section 中，不得翻译、改写、拆分、合并或删除。";
+const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前面任何“写成一段自然语言”的说法）：只允许按顺序输出五个且仅五个 TOML 风格 section，每个 section 标题单独占一行——[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数]。\n[风格设定]写媒介、绘画或渲染语言（线条、上色、材质表现）与整体氛围；[主体物品]逐个写主体与物品的数量、外观、姿势、动作、材质、颜色，以及彼此的空间、遮挡与接触关系；[环境背景]写场所与时间、前中后景的具体陈设、承托面与遮挡层次；[光线与色彩]写光源方向、软硬、明暗、轮廓光、主辅色与局部颜色；[拍摄参数]只写景别、视角、构图、裁切、透视与景深。\n每个 section 都必须有具体内容，不得新增、合并、重命名或省略 section，不得输出 [用户附加要求]，不得输出 Markdown 代码围栏、标题、前言、总结或解释。版式化不得改变语义：底稿里的人物、数量、身份、年龄、动作、相互关系、道具、场景、风格、色彩、构图以及全部要求项与避免项，必须逐条落进对应 section；可以换措辞、重新组织，并补充与之不矛盾的具体细节，但不得删除、弱化、合并或改变含义。底稿中形如 __NOVAFLOW_…__ 的资源引用占位符是 @参考图 等引用的载体，必须原样、原次数出现在对应 section 中，不得翻译、改写、拆分、合并或删除。";
+
+// How every 美工 answer in the five sections is written: one consistent picture in full sentences, creative inside the
+// framework of the user and the pictures. Neutral examples only.
+const ART_PROMPT_CRAFT_RULE = "写法（优先于前面任何“简短”的暗示）：像美术总监给画师的简报，五段写的是同一个瞬间的同一幅画面，每段用句号分成两句以上的完整句子，按下面的顺序写全：\n[风格设定]：直接以媒介与画风开头（如“水彩插画，……”）；再写线条、上色或渲染方式；用具体的词写氛围（如静谧、清冷、热闹）。\n[主体物品]：先原样写出用户原文里的主体称呼和动作短语（用户写“柴犬”就写“柴犬”，不改成“黄色的狗”）；再写姿势与重心、发型和发色、表情和视线、每件服装和配饰的颜色与材质、双手在做什么和怎么拿东西、与地面或物体的接触，至少六处具体细节。例如：“一位银发老人坐在藤椅上，左手扶着膝头摊开的旧相册，右手指尖停在一张泛黄照片的边角。他披着深灰色粗针羊毛开衫，袖口起了细小的毛球，嘴角带着浅浅的笑意。”\n[环境背景]：场所类型与年代、时间和天气；前景、中景、后景各有什么，写出材质与颜色；场景里的光源（如烛火、篝火、壁炉、霓虹招牌、灯具）；再补充合乎地点与时间的陈设和环境细节（如雨夜街道：积水里的灯光倒影、湿亮的石板、伞沿滴落的水珠）。陈设和光源合乎场景的年代与地点，古代场景不出现电灯、路灯等现代设施。至少写出五样具体可见的东西。\n[光线与色彩]：光源只能是[环境背景]里已经写出的那些；写清主光从哪个方向、以什么颜色落在主体哪里，辅光或反光在哪里；用户要求的光色也由这些光源实现（如冷色可来自月光、天光或反光）；主色、辅色和点缀色由主体与场景的颜色共同组成。\n[拍摄参数]：景别（全景、中景、近景、特写）、机位与角度（平视、低角度仰拍、俯拍）、构图（居中、三分法、对称、引导线）和景深（浅景深背景柔化，或前后都清晰的深景深），要装得下前面写的内容，背景写得具体清晰时不写背景虚化；不自造含糊的视角或景深说法。\n全篇不得自相矛盾（如正午阳光下满天繁星、室内衣摆飘动却没有风源、坐着却在奔跑），同一信息只写在一段里。不堆砌标签（如“长发，白色连衣裙，坐姿”），不写高质量、完成质感、细腻渲染、精美、细节丰富等空泛质量词；每一句都直接写画面里看得见的东西，不写评价、说明或总结画面的句子。\n在用户框架内有创造力：主体、动作、场景和风格按用户要求与参考图，不改题；补充的细节不得与用户要求或参考图矛盾，不新增文字、标识或额外人物（用户要求的除外）；“不凭空增加人物、道具”指不加与主题无关的角色和手持物，合乎场景的陈设与环境细节不算。CG、3D 等专业用词可以使用。\nnegative_prompt 在通用约束之外，补充这幅画面最可能出现的可见缺陷（如手部畸形、比例失调、塑料质感、光源方向错乱），共 12 至 24 个中文短词；每项都是看得见的缺陷，不写“缺少某物”“A变成B”这类要求式短语，不写与正向风格或内容相反的词（正向是二维动漫就不写卡通、动漫类词），不写“风格偏差”“元素混入”这类说明性词。";
+const ART_PROMPT_FIELD = { type: "string", description: "五段画面简报：[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 各占一行标题，每段是描述同一画面的两句以上完整句子。" };
 
 // The one 美工 image action (role reference) reads the pictures with the text of the user, so it carries the content safety of
 // the H3 optimize in its one call; grokResponsesPublicResult ends a marked or child-plus-sensitive answer as provider_content_policy.
@@ -8263,7 +8271,7 @@ function artReferenceUserContentState(currentPrompt, requirements) {
 function artReferenceResultFormat(supportsNegativePrompt) {
   return { format: { type: "json_schema", name: "novaflow_art_reference_v1", strict: true,
     schema: { type: "object", additionalProperties: false,
-      properties: { prompt: { type: "string" }, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}), contentSafety: miniMaxH3ContentSafetySchema() },
+      properties: { prompt: ART_PROMPT_FIELD, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}), contentSafety: miniMaxH3ContentSafetySchema() },
       required: [...(supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"]), "contentSafety"] } } };
 }
 
@@ -8306,6 +8314,13 @@ function artFiveSectionFailure(candidate) {
     if (!/[\u4e00-\u9fffA-Za-z0-9]/u.test(text.slice(start, end))) return "分段为空：" + matches[index][1];
   }
   return "";
+}
+
+// A 美工 negative lists visible defects; a term that names a deviation or a mix-up (风格偏差, 元素混入) shows nothing and goes.
+function artNegativeVisibleTerms(negative) {
+  const terms = String(negative || "").split(/[，,、；;\n]+/u).map((term) => term.trim()).filter(Boolean);
+  const kept = terms.filter((term) => !/偏差|混入/u.test(term));
+  return kept.length && kept.length < terms.length ? kept.join("，") : negative;
 }
 
 function artSemanticFusionInput(source, requirements) {
@@ -8376,21 +8391,23 @@ function buildArtSemanticFusionRequest(payload, model) {
     if (/构图|镜头|全身|半身|特写|俯视|仰视|平视|景别/u.test(instruction) && /全身|仰视/u.test(word)) return false;
     return true;
   });
-  const userText = "必须保留的原设定（除非用户明确要求替换）：" + preserve.join("、") + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction || ART_SEMANTIC_FUSION_AUTO_ENRICH)
-    + (instruction ? "" : "\n本次验收：最终提示词必须与底稿存在可辨的具体差异，新增细节必须落在底稿已有对象上。")
+  const userText = (preserve.length ? "必须保留的原设定（除非用户明确要求替换）：" + preserve.join("、") + "\n" : "") + "完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction || ART_SEMANTIC_FUSION_AUTO_ENRICH)
+    + (instruction ? "" : "\n本次验收：最终提示词必须比底稿更具体、更丰富，新增细节服务于底稿的主体与场景。")
     + "\n\n" + (supportsNegativePrompt
       ? '严格只返回 JSON：{"prompt":"完整中文提示词，原段落标题及换行保留","negative_prompt":"与最终画面一致的中文负向关键词"}，两个字段都不能为空。'
       : '严格只返回 JSON：{"prompt":"完整中文提示词，原段落标题及换行保留"}。没有负向通道，不返回 negative_prompt。')
     + (payload.nsfw === true ? "\n成人内容上下文：用户已开启 NSFW。保持未要求修改的性别、成年身份、裸体状态、身体姿势与人物关系；任何未成年人相关内容仍然禁止。" : "")
     + (payload.requirements && payload.requirements !== instruction ? "\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + payload.requirements : "")
     + (supportsNegativePrompt ? "\n原负向提示词：" + (payload.negativePrompt || payload.negative_prompt || "无") : "")
-    + "\n输出前逐字核对这些未要求修改的原设定，每项都必须出现在最终正文中，不能遗漏：" + preserve.join("、")
-    + (artPromptUsesOwnSections(source) ? "" : "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE);
+    + (preserve.length ? "\n输出前逐字核对这些未要求修改的原设定，每项都必须出现在最终正文中，不能遗漏：" + preserve.join("、") : "")
+    + (artPromptUsesOwnSections(source) ? "" : "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE)
+    // A draft in a layout of its own keeps it; the brief names the five sections.
+    + (artPromptUsesOwnSections(source) && !ART_FIVE_SECTIONS.every((title) => source.includes(title)) ? "" : "\n" + ART_PROMPT_CRAFT_RULE);
   return {
-    body: { model, store: false, temperature: 0.25, max_output_tokens: 4096,
+    body: { model, store: false, temperature: 0.4, max_output_tokens: 4096,
       text: { format: { type: "json_schema", name: "novaflow_art_semantic_fusion_v1", strict: true,
         schema: { type: "object", additionalProperties: false,
-          properties: { prompt: { type: "string" }, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}) },
+          properties: { prompt: artPromptUsesOwnSections(source) ? { type: "string" } : ART_PROMPT_FIELD, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}) },
           required: supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"] } } },
       input: [ { role: "system", content: [smartAiInputText(ART_SEMANTIC_FUSION_RULES)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
     inputMeta: { mode: "prompt_optimize", scenario: "prompt_optimize", charCount: source.length + instruction.length, imageCount: 0, supportsNegativePrompt, hasNegativePrompt: Boolean(payload.negativePrompt || payload.negative_prompt) },
@@ -8608,14 +8625,15 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       "先在内部建立图1内容锁和图2纯风格摘要，再输出一段可直接执行的最终中文风格迁移 Prompt；不要输出分析过程、字段表、多个方案或英文标签。",
       promptOutputRequest
     ].join("\n") : [
+      "你是资深美术总监：读懂参考图和用户要求，写一份给画师的完整画面简报。",
       `这是 ${scenario.images.length} 张具有独立职责的参考图，每张图前标注了图号与职责。必须严格按图号与职责提取信息。`,
       "主体图决定身份、核心设计和必须保留内容；风格、姿势、构图、配色、材质或UI布局参考图只允许贡献其指定维度。",
       "禁止把非主体参考图中的人物身份、脸、服装、道具、背景、文字或布局带入结果，除非该维度被明确指定。",
       "参考图中可见的界面按钮、菜单、标签、提示词示例、说明文字、水印和软件窗口都只是截图噪声，严禁抄写、枚举或当成生成内容。",
       "不得输出主图/原图、风格参考、保持原风格、处理方式、模型名称等界面词；最终只描述目标画面本身。",
       "[风格设定]沿用职责为主体的图的画风、媒介与渲染方式（如二维动漫插画、写实摄影），除非用户写明其他风格或另有风格参考图；背景、构图等参考图的内容按这一画风重绘。",
-      "把用户原文里写主体动作、视线、朝向和位置的短语原样抄进[主体物品]，不改写、不换近义词（用户写“挥手”就写“挥手”，不写“抬手”），并在相关 section 中保持一致；[环境背景]只写场景，不写主体。",
-      "先判断场景类型（如剧院、车站、会展厅），再用这类场所里的专有叫法命名其中的设施；多义词按图中语境选词，不照字面直译（如河边的 bank 是河岸，不是银行）；[光线与色彩]只写参考图中可见的光源与色调，不虚构图中没有的光源。",
+      "把用户原文里写主体动作、视线、朝向和位置的短语原样抄进[主体物品]，不改写、不换近义词（用户写“挥手”就写“挥手”，不写“抬手”），并在相关 section 中保持一致；用户写的姿势或位置取代主体图原有的姿势，再补上与之相符的手部动作、重心和持物方式；[环境背景]只写场景，不写主体。",
+      "参考图是外观的依据：写出主体图中可见的发色、发型、服装的颜色与材质、配饰和标志性设计，不改成图中没有的样子；用作背景的图写出它最有辨识度的结构、设施、灯具、材质与颜色。先判断场景类型（如剧院、车站、会展厅），再用这类场所里的专有叫法命名其中的设施；多义词按图中语境选词，不照字面直译（如河边的 bank 是河岸，不是银行）。[光线与色彩]的光源来自目标场景：保留原场景时用图中可见的光源，换成用户要求的新场景时用新场景里合理存在的光源。",
       "称呼参考图时沿用用户原文：用户写了“图1”“图2”才写图号，不写 @参考图 等界面标签；本任务没有 __NOVAFLOW_…__ 占位符。",
       "输出一段已经完成角色隔离、可直接用于图像生成或图像编辑的最终 Prompt。",
       promptOutputRequest
@@ -8663,7 +8681,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
         : (scenario.scenario === "role_reference" ? "参考图生成" : "图片反推"), {
         supportsNegativePrompt,
         animation: isVideoTask
-      })
+      }) + (usesArtFiveSectionReverse ? "\n" + ART_PROMPT_CRAFT_RULE + (isStyleTransfer ? "\n风格迁移：画面内容只来自图1，不补充图1没有的陈设和细节。" : "") : "")
   ].join("\n")));
   const body = {
     model: String(model || "grok-4.3"),
@@ -8674,7 +8692,8 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
         content
       }
     ],
-    temperature: 0.35,
+    // The 美工 five-section brief is written with some freedom; every other reverse stays close to the pictures.
+    temperature: usesArtFiveSectionReverse ? 0.6 : 0.35,
     max_output_tokens: 2048
   };
   if (usesVisualIrV2) body.text = GROK_VISUAL_IR_V2_TEXT_FORMAT;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildGrokPromptOptimizeRequest, buildGrokImageReverseRequest, grokResponsesPublicResult} from '../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs';
+import {buildGrokPromptOptimizeRequest, buildGrokImageReverseRequest, grokResponsesPublicResult, callGrokResponseWithVisualRetry} from '../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs';
 // A Windows checkout (core.autocrlf) gives the fixture CRLF line ends; the prompts are LF.
 const source = fs.readFileSync(new URL('./fixtures/art-reverse-outdoor-fusion.txt',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const instruction = '增加室外背景，提升画面质量和精美度。增加人物细节';
@@ -84,4 +84,28 @@ const cloud=fs.readFileSync(new URL('../../supabase/functions/novaflow-backend/s
 const desktop=fs.readFileSync(new URL('../admin-server/server.js',import.meta.url),'utf8');
 const fusionCode = text=>text.slice(text.indexOf('const ART_SEMANTIC_FUSION_RULES'),text.indexOf('function buildGrokPromptOptimizeRequest('));
 assert.equal(fusionCode(cloud),fusionCode(desktop),'desktop and hosted Grok must use the identical fusion contract');
+// Every 美工 answer in the five sections carries one brief: one consistent picture in full sentences, lights that exist in the
+// scene, creative detail inside the framework of the user. No rule forbids fitting detail any more.
+const briefTexts = [proseText, auto.body.input.at(-1).content[0].text, roleReverse.body.input[0].content.at(-1).text];
+for (const text of briefTexts) {
+  assert.ok(text.includes('像美术总监给画师的简报') && text.includes('光源只能是[环境背景]里已经写出的那些'), 'every five-section answer carries the brief');
+  assert.doesNotMatch(text, /不得新增底稿没有的事实|禁止新增底稿没有的人物、道具或场景|不虚构图中没有的光源/, 'no rule forbids fitting detail');
+}
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('用户写的姿势或位置取代主体图原有的姿势'), 'a requested pose replaces the reference pose');
+assert.ok(!buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'[画面]\n一只猫趴在沙发上\n[镜头]\n中景平视',requirements:'提示词编辑模式：以底稿为准。',supportsNegativePrompt:false},'grok-contract-test').body.input.at(-1).content[0].text.includes('像美术总监给画师的简报'), 'a layout of its own gets no five-section brief');
+const styleReverse = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'},{...refImage,dataUrl:'data:image/png;base64,AQ==',role:'style'}],scenario:'role_reference'},'grok-contract-test');
+assert.ok(styleReverse.body.input[0].content.at(-1).text.includes('风格迁移：画面内容只来自图1'), 'a style transfer keeps its content lock under the brief');
+// A negative lists visible defects: a deviation or mix-up phrase goes, everything else is written as the model wrote it.
+const roleNegative = negative => grokResponsesPublicResult({output_text:JSON.stringify({prompt:laidOut,negative_prompt:negative})},roleReverse.resultOptions).negative_prompt;
+assert.equal(roleNegative('画面模糊, 卡通风格偏差, 背景元素混入主体, 手部畸形'),'画面模糊，手部畸形');
+assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'),'画面模糊、手部畸形、塑料质感');
+// The repair is a second call: a prompt optimize reserves one, so its fusion failure is final; an image action reserves two.
+for (const [budget, expected] of [[1, 1], [2, 2]]) {
+  let calls = 0;
+  await assert.rejects(callGrokResponseWithVisualRetry(proseReq.body, proseReq.inputMeta, {...proseReq.resultOptions, providerCallBudget: budget}, async () => {
+    calls += 1;
+    return {ok: true, providerCallCount: 1, data: proseResult(proseDraft + '，材质细腻。')};
+  }), /未按五个固定分段输出/);
+  assert.equal(calls, expected, 'repair calls stay within the reserved budget ' + budget);
+}
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');
