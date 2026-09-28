@@ -2293,6 +2293,10 @@
       card.addEventListener('pointerdown', function (event) {
         if (finite(event && event.button, 0) !== 0) return
         emitSelection({ kind: 'node', nodeId: node.id })
+        // A press on the generator's own controls leaves the focus where it is: taking it to the canvas
+        // would save and rebuild 设计要求 under the pointer, and that first click would be lost.
+        const target = event && event.target
+        if (target && typeof target.closest === 'function' && target.closest('[data-novaflow-ui-design-generator-controls]')) return
         focusViewport()
       })
       card.addEventListener('keydown', function (event) {

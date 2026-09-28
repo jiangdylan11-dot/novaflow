@@ -126,3 +126,11 @@ test('custom W and H fill the columns under the size select', () => {
     assert.deepEqual(input.important, { width: '100%', 'max-width': 'none' });
   }
 });
+
+test('a press on the generator controls leaves the focus in 设计要求 (the canvas does not take it)', () => {
+  const workspace = readFileSync(new URL('../../renderer/ui-design.workspace.js', import.meta.url), 'utf8');
+  const handler = /card\.addEventListener\('pointerdown', function \(event\) \{[\s\S]*?\n      \}\)/.exec(workspace)?.[0] || '';
+  const guard = handler.indexOf("closest('[data-novaflow-ui-design-generator-controls]')");
+  assert.ok(guard > 0, 'the card handler checks for the generator controls');
+  assert.ok(guard < handler.indexOf('focusViewport()'), 'before it focuses the canvas');
+});
