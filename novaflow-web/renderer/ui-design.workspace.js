@@ -2106,7 +2106,7 @@
         if (!card || !host.isConnected) return
         const content = Math.ceil(finite(host.scrollHeight, 0))
         if (content < 120) return
-        const height = Math.ceil(finite(card.offsetHeight, 0) - finite(body.offsetHeight, 0)) + content + 12
+        const height = Math.ceil(finite(card.offsetHeight, 0) - finite(body.offsetHeight, 0)) + content
         if (Math.abs(height - finite(generatorFitHeights.get(nodeId), 0)) < 2 && Math.abs(height - finite(card.offsetHeight, 0)) < 2) return
         generatorFitHeights.set(nodeId, height)
         card.style.height = height + 'px'
