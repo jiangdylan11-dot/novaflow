@@ -834,5 +834,154 @@ class ArtRoleReferenceUserFitTest(unittest.TestCase):
                     self.assertIn('另一只手仍握着剑', result['prompt'])
 
 
+class ArtOnePictureTest(unittest.TestCase):
+    """The five sections describe one picture: the request says how they connect, and the cleanup takes out
+    what contradicts itself. A plain draft with no edit is written out as a whole picture around the user's words."""
+
+    def test_role_reference_request_ties_the_sections_together(self):
+        request = service.art_role_reference_request(['subject', 'background'], '图1的角色站在图2的场景中央，看向镜头')
+        # A posture the user writes replaces the picture's action.
+        self.assertIn('图中原来的动作不再写，姿态按用户要的“站”写', request)
+        # Every action the user writes is named for [主体物品], without the picture labels.
+        self.assertIn('用户写的动作“角色站在场景中央、看向镜头”在这一段照原话写出', request)
+        # The scene is read as its picture shows it, in its own style; the subject's props keep their own look.
+        self.assertIn('照图写出看得见的建筑结构和陈设，样式、材质和颜色与图中一致；环境的风格和年代只按这张图写，看不准就只写结构和材质', request)
+        self.assertIn('照图写出它们本来的颜色、纹样和附着物', request)
+        # The light comes from the scene and falls on the subject; the palette merges both; the camera fits the scene.
+        self.assertIn('光源是 [环境背景] 里有的东西，写它从哪边照到主体身上', request)
+        self.assertIn('主色取画面里面积最大的颜色（通常是环境），主体的颜色作辅色或点缀', request)
+        self.assertIn('环境写得清楚就不写背景虚化', request)
+        self.assertIn('[拍摄参数] 只写镜头', request)
+        self.assertIn('不写“突出……”“强调……”这类说明效果的话', request)
+        # A pose picture decides the pose; with no posture word the picture's own action stays.
+        posed = service.art_role_reference_request(['subject', 'pose'], '图1的角色站在中央')
+        self.assertIn('姿势按图2', posed)
+        self.assertNotIn('用户要的姿态', posed)
+        lantern = service.art_role_reference_request(['subject'], '让角色手持一盏发光的灯笼，夜晚')
+        self.assertIn('照图写姿态动作', lantern)
+        self.assertNotIn('用户写的动作', lantern)
+        # Night on a plain backdrop gets a place to be in, not an empty black sky.
+        self.assertIn('给主体安排一处与他的身份和用户要求相配的夜晚场所', lantern)
+        # A new scene is built out; its light comes from it and nothing in front hides the subject.
+        scene = service.art_role_reference_request(['subject'], '把背景换成海边沙滩')
+        self.assertIn('光线来自新环境里的光源', scene)
+        self.assertIn('前景只放地面、台阶这类低处的东西，不挡住主体', scene)
+        # The light the user asks for is quoted into the light duty, next to a night too.
+        cold = service.art_role_reference_request(['subject'], '把背景换成雪夜古城街道，冷色调灯光')
+        self.assertIn('用户要求的“冷色调灯光”照原意写进这一段', cold)
+        self.assertNotIn('用户要求的“', lantern)
+
+    def test_contradictions_and_asides_go_and_the_users_words_stay(self):
+        text = (
+            '[风格设定]\n国潮插画风格，线条硬朗有力，突出主体的视觉冲击力\n\n'
+            '[主体物品]\n武将站在长廊中央，颧骨突出，脚边是突出的岩石\n\n'
+            '[环境背景]\n雪夜古城街道，近处石板路与积雪清晰可见，背景虚化处理\n\n'
+            '[光线与色彩]\n主光来自灯笼，光线柔和但对比强烈，整体偏冷\n\n'
+            '[拍摄参数]\n全身景别，正面视角，构图居中突出人物，背景虚化处理，强调主体动态'
+        )
+        self.assertEqual(service.art_consistent_sections(text), (
+            '[风格设定]\n国潮插画风格，线条硬朗有力\n\n'
+            '[主体物品]\n武将站在长廊中央，颧骨突出，脚边是突出的岩石\n\n'
+            '[环境背景]\n雪夜古城街道，近处石板路与积雪清晰可见\n\n'
+            '[光线与色彩]\n主光来自灯笼，光线柔和，整体偏冷\n\n'
+            '[拍摄参数]\n全身景别，正面视角，构图居中'
+        ))
+        # A blurred background is a camera choice when the scene is not called sharp; the user's own words stay.
+        soft = service.art_consistent_sections(text.replace('近处石板路与积雪清晰可见，', ''))
+        self.assertIn('背景虚化处理', soft.split('[拍摄参数]')[1])
+        self.assertNotIn('背景虚化', soft.split('[环境背景]')[1].split('[光线与色彩]')[0])
+        self.assertIn('强调主体动态', service.art_consistent_sections(text, '强调主体动态'))
+        # [拍摄参数] keeps to the camera; robes do not blow in a hall with nothing to blow them.
+        hall = (
+            '[主体物品]\n武将站在长廊中央，红色战袍在气流中自然飘扬，发丝在风中剧烈翻飞\n\n'
+            '[环境背景]\n现代大厅，米白色地毯的长廊\n\n'
+            '[光线与色彩]\n暖色射灯从上方照下，营造出热血与威严交织的视觉张力\n\n'
+            '[拍摄参数]\n全身景别，正面视角，背景结构清晰可见，衣摆与发丝自然垂落，环境细节丰富'
+        )
+        self.assertEqual(service.art_consistent_sections(hall), (
+            '[主体物品]\n武将站在长廊中央，红色战袍自然垂落，发丝自然垂落\n\n'
+            '[环境背景]\n现代大厅，米白色地毯的长廊\n\n'
+            '[光线与色彩]\n暖色射灯从上方照下\n\n'
+            '[拍摄参数]\n全身景别，正面视角，背景结构清晰可见'
+        ))
+        outdoor = hall.replace('现代大厅，米白色地毯的长廊', '雪夜古城街道，青石板路')
+        self.assertIn('在气流中自然飘扬', service.art_consistent_sections(outdoor))
+        self.assertIn('在气流中自然飘扬', service.art_consistent_sections(hall.replace('现代大厅', '现代大厅，风扇吹动')))
+        # The style section holds the drawing: a colour claim there ("鲜艳饱和") fights the night the user asked for.
+        style = '[风格设定]\n国潮插画风格，线条遒劲有力，上色采用鲜艳饱和的矿物颜料\n\n[主体物品]\n武将'
+        self.assertIn('[风格设定]\n国潮插画风格，线条遒劲有力\n', service.art_role_reference_user_fit(style, '让角色手持一盏发光的灯笼，夜晚'))
+        # The user's own light words belong to [光线与色彩], not to the drawing.
+        lit = style.replace('上色采用鲜艳饱和的矿物颜料', '冷色调灯光营造出肃杀氛围')
+        self.assertIn('[风格设定]\n国潮插画风格，线条遒劲有力\n', service.art_role_reference_user_fit(lit, '把背景换成雪夜古城街道，冷色调灯光'))
+
+    def test_an_action_the_repair_still_leaves_out_is_written_in_the_users_words(self):
+        answer = ('[风格设定]\n国潮插画风格\n\n[主体物品]\n武将站立于大堂中央，面向镜头，剑尖斜指下方\n\n[环境背景]\n现代大堂，米白色地毯\n\n'
+                  '[光线与色彩]\n顶部暖色灯带照下\n\n[拍摄参数]\n全身景别，正面视角\n检查：人物=有；未成年=无；敏感=无')
+        assistant, prompts = service.PromptAssistant(), []
+        assistant.generate = lambda prompt, **kwargs: prompts.append(prompt) or answer
+        result = assistant.reverse_art_role_prompt([{'tensor': 'a', 'role': 'subject'}, {'tensor': 'b', 'role': 'background'}],
+                                                   '用户生成要求：图1的角色站在图2的场景中央，看向镜头', 'roleReference')
+        self.assertEqual(len(prompts), 2)
+        self.assertIn('漏写了用户写的“看向”', prompts[1])
+        self.assertIn('[主体物品]\n武将站立于大堂中央，面向镜头，剑尖斜指下方，看向镜头。', result['prompt'])
+        self.assertNotIn('图2', result['prompt'])
+
+    WRITTEN = (
+        '[风格设定]\n温暖的水彩绘本插画，笔触柔润。\n\n'
+        '[主体物品]\n一只圆润的橘猫趴在窗台上晒太阳，眯着眼睛，尾巴卷在身侧，年龄约三岁。\n\n'
+        '[环境背景]\n木质窗台上摆着一盆绿萝，窗外是午后的小院，远处有细雨，背景虚化。\n\n'
+        '[光线与色彩]\n午后阳光从窗外斜照进来，在猫背上落下暖黄的光斑，主色为橘黄与奶白。\n\n'
+        '[拍摄参数]\n中景平视，猫位于画面中央，浅景深，突出猫咪的慵懒。'
+    )
+
+    def enrich(self, *outputs, prompt='一只橘猫趴在窗台上晒太阳'):
+        assistant = service.PromptAssistant()
+        calls = []
+        assistant.generate = lambda request, **kwargs: calls.append((request, kwargs)) or outputs[min(len(calls), len(outputs)) - 1]
+        result = assistant.optimize_prompt({
+            'surface': 'art', 'purpose': 'optimize', 'prompt': prompt, 'currentPrompt': prompt,
+            'requirements': '提示词编辑模式：以 prompt / currentPrompt 中的完整原提示词为语义底稿。\n基础质量由系统自动负责：人物增强面部。',
+        })
+        return calls, result
+
+    def test_a_plain_draft_with_no_edit_becomes_a_whole_picture(self):
+        calls, result = self.enrich(self.WRITTEN)
+        self.assertEqual(len(calls), 1)
+        request, kwargs = calls[0]
+        self.assertIn('用户写的画面：\n一只橘猫趴在窗台上晒太阳', request)
+        self.assertIn(service.ART_ENRICH_INSTRUCTION, request)
+        self.assertIn(service.ART_ENRICH_SYSTEM_TEXT, kwargs['llama_template'])
+        self.assertNotIn('基础质量由系统自动负责', request)
+        text = result['positivePrompt']
+        # The style and the time of day chosen to fit stay; invented rain, a guessed age and asides go.
+        self.assertIn('[风格设定]\n温暖的水彩绘本插画', text)
+        self.assertIn('午后阳光从窗外斜照进来', text)
+        for gone in ('细雨', '三岁', '突出', '背景虚化'):
+            self.assertNotIn(gone, text)
+        self.assertIn('浅景深', text)
+        self.assertEqual(service.art_five_section_failure(text), '')
+        self.assertEqual(result['editContract'], 'nf.art.semantic-fusion.v1')
+        # An edit keeps to the edit: the same answer loses the style and the time nobody asked for.
+        edit = service.art_drop_invented_clauses(self.WRITTEN, '一只橘猫趴在窗台上晒太阳', '把窗台改成木质')
+        self.assertNotIn('水彩', edit)
+        self.assertNotIn('午后', edit)
+        # A draft that already has sections is enriched under the edit rules.
+        sectioned = service.normalize_art_sections(QWEN3_INLINE_SECTIONS)
+        calls, _ = self.enrich(sectioned.replace('远处连绵雪峰', '远处连绵雪峰，雪面反射冷蓝月光'), prompt=sectioned)
+        self.assertIn(service.ART_SEMANTIC_FUSION_RULES, calls[0][1]['llama_template'])
+
+    def test_an_enriched_draft_keeps_the_users_posture(self):
+        curled = self.WRITTEN.replace('趴在', '蜷缩在')
+        calls, result = self.enrich(curled, self.WRITTEN)
+        self.assertEqual(len(calls), 2)
+        self.assertIn('需求里的“趴”要按原词写进 [主体物品]', calls[1][0])
+        self.assertIn('趴在窗台上', result['positivePrompt'])
+        # A repair that comes back as one bare line leaves the first answer as the result.
+        calls, result = self.enrich(curled, '一只橘猫趴在窗台上。')
+        self.assertEqual(len(calls), 2)
+        self.assertIn('蜷缩在窗台上', result['positivePrompt'])
+        self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
+
+
 if __name__ == '__main__':
     unittest.main()

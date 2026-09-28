@@ -5337,7 +5337,7 @@ ART_SEMANTIC_FUSION_RULES = (
     "1. 修改要求优先。与修改冲突的旧描述要删除或改写，不能新旧并存；修改要求里的关键内容（如时间、天气、背景、画风、颜色）要在对应段落里用原词明确写出来。\n"
     "2. 修改场景时，把旧背景的描述换成新环境；时间、天气和整体色调保持底稿原样，修改要求提到时才改。\n"
     "3. 没被要求改变的内容全部保留：人物身份、人数、外貌、服饰、姿态动作、物品、画风和构图。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原有动作。\n"
-    "4. 不要新增底稿和修改要求都没有提到的人物、动物、年龄、发型、服饰、饰品、道具、植物、建筑或特效，也不要换成修改要求没提到的画风。\n"
+    "4. 不要新增底稿和修改要求都没有提到的人物、动物、年龄、发型、服饰、饰品、手持道具或特效，也不要换成修改要求没提到的画风；修改要求换了环境时，新环境里写与它相符的具体景物。\n"
     "5. 只输出最终完整提示词：不要分析过程、修改说明、新旧对比或负向提示词，也不要把修改要求原文或“用户附加要求”写进提示词。"
 )
 # Conditional rules go into the request only when the edit asks for them; listed on every request,
@@ -5746,16 +5746,39 @@ ART_CREATE_INSTRUCTION = (
     "写作要求：\n"
     "1. 紧扣用户需求：需求里写明的主体、数量、动作、场景和画风必须保留，不要改成别的题材；动作和状态词（如站在、躺在、飞在、漂浮在）按原词写进 [主体物品]。\n"
     "2. 用户指定了画风就照用；没有指定时，选一种最适合这个题材的画风写明，不要混用互相矛盾的画风。\n"
-    "3. 需求没写到的地方，只补充与题材相符的常见细节，每段一到三句，写能画出来的具体内容。\n"
-    "4. 不要添加需求以外的人物、动物、道具、文字或标志，也不要添加需求没提到的发光、光晕、粒子、魔法等特效。\n"
+    "3. 需求没写到的地方由你补全成一个具体可信的画面：主体的外貌与神态、环境里合情合理的陈设和远景、与画面相符的时间和光源（写清光落在主体和周围的什么地方）、主色与辅色；每段两三句通顺的完整句子，写能画出来的具体内容。\n"
+    "4. 不要添加需求以外的人物、动物、文字或标志，也不要添加需求没提到的发光、光晕、粒子、魔法等特效；不写“突出……”“强调……”这类说明效果的话。\n"
     "5. [拍摄参数] 按画面选景别：主体待在某个位置上（如站在屋顶、坐在树枝上）时用全景，主体完整入画并占画面的主要位置；"
     "只有画面本身是大场景（如整座城市、大片海面、连绵山脉）时才用远景，景深拉长；视角只写一种。\n"
     "6. [主体物品] 写画面的主要对象和它的外观（需求只写了场景时，写组成这个场景的几样主要景物，以及它们的形状、材质和颜色）；不写“高质量”“细节丰富”“精美”之类的空泛词，也不写否定说法。\n"
     "7. 只输出五段正文，每句以句号结尾，不要前言、解释、Markdown 符号或负向提示词。"
 )
 
+# 提示词优化，没有补充要求、底稿是一段没有分段的话：用户的话是画面的骨架，在骨架之内写成具体丰富的画面。
+ART_ENRICH_SYSTEM_TEXT = (
+    "你是 NovaFlow 的美术提示词作者，把用户写的简短画面扩写成可直接用于 AI 绘图的中文提示词。"
+    "严格按用户消息里的版式作答，只输出提示词正文。"
+)
+ART_ENRICH_INSTRUCTION = (
+    "请以上面这段话为骨架，写成一份具体生动、可直接用于 AI 绘图的中文提示词，按下面五段输出，"
+    "每段标题单独占一行，下一行写正文，段与段之间空一行：\n"
+    # "画面下方是浅灰水泥地面" under a cat on a windowsill: the ground is what the subject rests on.
+    + ART_FIVE_SECTION_SKELETON + "\n\n" + ART_CREATE_SECTION_GUIDE.replace("以及画面下方是什么", "以及主体身下或脚下是什么") + "\n\n"
+    "写作要求：\n"
+    "1. 用户写到的主体、数量、动作和状态、地点、画风、颜色以及要求和避免项，都按原词写进对应段落，不换题材，不换动作。\n"
+    "2. 用户没写到的地方由你补全成一个具体可信的画面：主体的外貌、毛色或衣着、神态，以及和动作相符的肢体细节；地点里合情合理的陈设、材质和远景；"
+    "和画面相符的时间与光源，写清光从哪里来、落在主体和周围的什么地方；主色与辅色。\n"
+    "3. 用户没写画风时，选一种最适合这个题材的画风写明名称，再写它的质感；用户写了就照用。\n"
+    "4. 五段写同一个瞬间：光源是环境里有的东西，色彩合得上主体和环境，镜头拍得到其他几段写的内容；每处只写一种，前后不矛盾，同一内容只在一段里写。"
+    "[拍摄参数] 写景别、视角、构图和景深，视角只写一种；[环境背景] 只写景物。\n"
+    "5. 不添加用户没写的人物、动物、文字或标志，也不添加发光、粒子、魔法等特效；不写“突出……”“强调……”“增强……感”这类说明效果的话，"
+    "不写“高质量”“细节丰富”之类的空话，也不写否定说法。\n"
+    "6. 每段写两三句通顺的完整句子，每句以句号结尾；只输出五段正文，不要前言、解释、Markdown 符号或负向提示词。"
+)
+
 # 多图反推（美工）：每张图只按职责贡献对应段落。
-ART_ROLE_REFERENCE_MAX_LENGTH = 900
+# Answers take 230-370 tokens; a greedy answer caught in a loop runs to the limit, so the limit is not far above them.
+ART_ROLE_REFERENCE_MAX_LENGTH = 700
 ART_ROLE_REFERENCE_SYSTEM_TEXT = (
     "你是 NovaFlow 的美术反推助手：看参考图，按每张图的职责写出可直接用于 AI 绘图的中文提示词。"
     "严格按用户消息里的版式作答，只输出提示词正文。"
@@ -5792,7 +5815,7 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     subject, style, background = pictures("subject"), pictures("style"), pictures("background")
     pose, composition, color = pictures("pose"), pictures("composition"), pictures("color")
     material, layout = pictures("material"), pictures("ui_layout")
-    medium = f"先判断最接近的媒介与画风（例如{ART_STYLE_MEDIUM_EXAMPLES}），写出名称，再写线条、笔触、上色方式和纸张或材质肌理"
+    medium = f"先判断最接近的媒介与画风（例如{ART_STYLE_MEDIUM_EXAMPLES}），写出名称，再照图写线条、笔触、上色方式和表面肌理"
     palette = color or style
     # A time-of-day or new-background requirement goes into that section's duty itself: as a separate
     # line Qwen3 still copied the pictures' daylight and background.
@@ -5800,29 +5823,48 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     # "夜晚" alone came back as one word before a daylight studio description; the duty says what the time looks like.
     time_look = ART_TIME_OF_DAY_LOOK[ART_TIME_OF_DAY_GROUPS.index(requested_time[0])] if requested_time else ""
     scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement))
+    # A posture the user writes ("站在…中央") replaces the picture's action; kept together they read as two moments.
+    user_pose = "、".join(dict.fromkeys(ART_STATE_WORD_PATTERN.findall(requirement)))
+    # "看向镜头" came back as "面向镜头" and cost a repair call: the user's actions are named for [主体物品].
+    from prompt_assistant.h3_prompt_enhance import action_clauses
+    user_actions = "、".join(dict.fromkeys(re.sub(r"(?:参考)?图\s*\d+(?:中|里)?的?", "", clause).strip()
+                                           for _, clause, verbs in action_clauses(requirement) if verbs))
+    # "冷色调灯光" next to a night: the time's own light (lanterns, warm) replaced the light the user asked for.
+    user_light = "，".join(clause for clause in re.split(r"[，,。；;\n]", requirement)
+                          if re.search(r"灯光|光线|光照|打光|色调|色温|冷光|暖光|逆光|侧光|顶光|冷调|暖调", clause))
     camera = ("写景别、视角与构图（景别按主体露出到哪里写：到脚写全身，到膝盖或大腿写七分身，到腰写中景，到胸写近景；视角照图中主体的朝向写，正面就写正面）；"
-              "图中背景确实模糊时才写景深。")
+              "景深和 [环境背景] 一致：环境写得清楚就不写背景虚化。")
     sources = [
         ("[风格设定]", f"只看{style}，{medium}，并写明整幅画面按这种画风重新绘制。只写这张图本身的画法与表面质感（笔触、颗粒、光泽、纸面），"
          f"不提它画的是什么，不拿它画的东西作比喻，也不写{subject}里主体的毛发、皮肤或背景。" if style
          else f"看{subject}，{medium}；只写画法，背景、光线、颜色和氛围写在后面几段。"),
-        ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、发型、服装、道具和颜色、身边飘着或环绕的物件和特效"
+        ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、发型和发色、服装、道具和颜色、身边飘着或环绕的物件和特效；"
+         # "剑身泛着寒光" for a red blade with gold patterns and talismans: stock wording replaced what the picture shows.
+         "服装、道具和特效照图写出它们本来的颜色、纹样和附着物（贴着或挂着的东西），道具按部位写颜色（如伞面和伞柄、杯身和把手各是什么颜色），不用套话代替图中看到的颜色"
          # The lantern the user added took the sword's hand, and the sword was gone.
          + ("；图中主体手里原来拿着的道具照样写出、继续拿着，用户要求新拿的东西拿在另一只手里" if re.search(r"手持|拿着|握着|举着|提着|捧着", requirement) else "")
-         + (f"；姿势按{pose}" if pose else "、姿态动作")
+         + (f"；姿势按{pose}" if pose else f"；图中原来的动作不再写，姿态按用户要的“{user_pose}”写，写清这个姿态下身体、双手和道具怎么放" if user_pose
+            else "；照图写姿态动作")
+         + (f"；用户写的动作“{user_actions}”在这一段照原话写出" if user_actions else "")
          + (f"；材质质感按{material}" if material else "")
          + "，以及主体之间的关系。"),
-        ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面，{subject}原来的背景一律不写。" if scene_change
-         else f"只看{background}，写它的环境、前中后景和地面，以及主体站或坐在这个环境的什么位置；{subject}原来的背景一律不写。" if background
+        ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面，{subject}原来的背景一律不写；挑这个地方有代表性的建筑、陈设或草木写具体，"
+         "写出材质和颜色，用户要的时间和天气要在景物上看得出来；前景只放地面、台阶这类低处的东西，不挡住主体。" if scene_change
+         else f"只看{background}，写它的环境、前中后景和地面，以及主体站或坐在这个环境的什么位置；{subject}原来的背景一律不写；"
+         "照图写出看得见的建筑结构和陈设，样式、材质和颜色与图中一致；环境的风格和年代只按这张图写，看不准就只写结构和材质。" if background
          else f"看{subject}，写所处环境、前中后景和地面。" + (f"时间是{requested_time[1]}，环境也是{requested_time[1]}的样子：图中是纯白等纯色背景时，"
-                                                              f"改成{requested_time[1]}的天空或{requested_time[1]}里的环境。" if requested_time else "")),
+                                                              f"给主体安排一处与他的身份和用户要求相配的{requested_time[1]}场所，写出脚下的地面、身边和远处的具体景物。"
+                                                              if requested_time else "")),
         ("[光线与色彩]", (f"时间是{requested_time[1]}：按{requested_time[1]}写光源方向、软硬与明暗（{time_look}），不照搬图片里的光线；" if requested_time
-                      else f"光线看{background or subject}" + ("（用户要求改了光线或天气时按用户要求写）" if requirement else "")
-                      + "，写光源方向、软硬与明暗；")
+                      else ("光线来自新环境里的光源" if scene_change and not background else f"光线看{background or subject}")
+                      + ("（用户要求改了光线或天气时按用户要求写）" if requirement else "") + "，写光源方向、软硬与明暗；")
+         + (f"用户要求的“{user_light}”照原意写进这一段，光源和色调按它写；" if user_light else "")
+         # "月光从上方洒落" under "纯黑天空", "以红金为主" in a cream hall: the light and colours came from nowhere in the picture.
+         + "光源是 [环境背景] 里有的东西，写它从哪边照到主体身上、在主体和地面上留下的亮面与阴影；软硬和明暗对比各只写一种说法；"
          # Without saying where the subject's own colours go, Qwen3 lists them as the palette's; the section
          # name it sometimes echoes ("保留于[主体物品]段") is cleaned out afterwards.
          + (f"整体色调、主色与辅色都只从{palette}里取颜色（只写颜色，不写它画的东西）；主体原有的颜色写在 [主体物品]。" if palette
-            else f"色彩看{subject}，写整体色调、主色与辅色和对比关系。")),
+            else "整体色调、主色与辅色把主体和环境的颜色合在一起写：主色取画面里面积最大的颜色（通常是环境），主体的颜色作辅色或点缀。")),
         ("[拍摄参数]", f"只看{composition or layout}，{camera}" if composition or layout else f"看{subject}，{camera}"),
     ]
     duties = "\n".join(
@@ -5836,6 +5878,12 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         # The night went into one section while [环境背景] kept 纯白色背景; the lantern took the sword's hand.
         "用户要求的改动在五段里都一致，哪一段都不再写回图片原来与它冲突的样子；每处只写一种，不写“月光或灯光”这样的二选一。",
         "用户没写左右就不写左右；新拿的东西拿在图中空着的手里，原来拿着的东西留在原来的手里。",
+        # The attack pose next to "站在…中央", "背景虚化" next to a sharp street, a lantern-lit face under a "纯黑天空".
+        "五段写同一个瞬间的同一个画面：主体的姿态、所在位置、光线和镜头互相吻合，前后不矛盾；每段只写自己那部分，同一内容不在两段里重复，[拍摄参数] 只写镜头。",
+        "主体的外观以主体图为准：不添加图中没有的衣物、配饰和道具（用户要求的除外），也不把图中的颜色和纹样换成别的。",
+        # A simple request should become a rich, specific picture - inside the user's words and the pictures.
+        "在用户要求和图片之内写得具体生动：环境和光线多写几处合情合理的细节（地面材质、天气痕迹、陈设、远景、光在主体和地面上的效果）；"
+        "每段写两三句通顺的完整句子，不堆砌词语，不写“突出……”“强调……”这类说明效果的话，也不写“高质量”之类的空话。",
     ]
     return (
         "".join(f"图{index + 1}（{ART_REFERENCE_ROLES[role][0]}）：{QWEN3_CHAT_VISION_TOKEN}\n" for index, role in enumerate(roles))
@@ -6015,7 +6063,7 @@ def art_content_bigrams(value: str) -> set[str]:
     return {pair for pair in ordinary_art_retention_bigrams(value) if not re.search(r"[的之与和在是有着了及并而其为]", pair)}
 
 
-def art_drop_invented_clauses(text: str, source: str, instruction: str) -> str:
+def art_drop_invented_clauses(text: str, source: str, instruction: str, enrich: bool = False) -> str:
     """提示词改写 keeps what the draft and the edit say, nothing more.
 
     Qwen3 adds a painting style, an age or a hairstyle, or a time of day ("夕阳余晖洒在海面" for
@@ -6023,6 +6071,8 @@ def art_drop_invented_clauses(text: str, source: str, instruction: str) -> str:
     the new text it wrote.  Such a piece is dropped unless it shares words with the draft or the edit.
     Invented weather ("远景有薄雾笼罩的树影") goes unless it shares two content words with them, and a
     painted style asked for by the edit loses the photographic 景深/虚化 the model added.
+    Enriching a plain draft with no edit (enrich) is asked to choose a fitting style and time of day, so those stay;
+    invented weather still goes.
     """
 
     known = ordinary_art_retention_bigrams(f"{source}\n{instruction}")
@@ -6039,14 +6089,17 @@ def art_drop_invented_clauses(text: str, source: str, instruction: str) -> str:
                           and len(art_content_bigrams(piece) & known_content) < 2))
     if ART_PAINTED_STYLE_EDIT.search(instruction) and not re.search(r"摄影|照片|相机|" + ART_FOCUS_PATTERN.pattern, instruction):
         edits.append((("拍摄参数",), lambda piece: bool(ART_FOCUS_PATTERN.search(piece)) and piece not in source))
-    if not ART_STYLE_NAME_PATTERN.search(given):
+    if not ART_STYLE_NAME_PATTERN.search(given) and not enrich:
         edits.append((("风格设定",), invented(ART_STYLE_NAME_PATTERN)))
     # A request for more detail may name the hair; any other edit keeps the person as the draft has it.
     if instruction and not re.search(r"细节|丰富|精美|质量|质感|人物|角色", instruction):
         for pattern in (ART_AGE_PATTERN, ART_HAIR_PATTERN):
             if not pattern.search(given):
                 edits.append((None, invented(pattern)))
-    if not ART_TIME_WORD_PATTERN.search(given):
+    elif enrich and not ART_AGE_PATTERN.search(given):
+        # A richer picture never guesses an age.
+        edits.append((None, invented(ART_AGE_PATTERN)))
+    if not ART_TIME_WORD_PATTERN.search(given) and not enrich:
         edits.append((None, invented(ART_TIME_WORD_PATTERN)))
     # The rewrite has no reference picture unless the draft carries one.
     if not re.search(ART_REFERENCE_TOKEN_PATTERN, source):
@@ -6224,8 +6277,10 @@ def art_role_reference_cleanup(text: str, roles: list) -> str:
 
 # [风格设定] is the drawing: a background, light, palette or mood there ("背景为纯白", "高饱和度的红金配色") fights the
 # sections that own them and the user's scene, time or colours. The user's own words ("霓虹配色") and a style name
-# ("厚涂光影的油画风格") stay; 光影 is a way of painting, not the light.
-ART_STYLE_NOT_DRAWING = re.compile(r"背景|场景|环境|光线|灯光|光照|氛围|色调|配色|主色|辅色|色彩搭配")
+# ("厚涂光影的油画风格") stay; 光影 is a way of painting, not the light. "鲜艳饱和的矿物颜料" under a night the
+# user asked for is a colour claim too. The user's own background or light words ("冷色调灯光") belong to the
+# sections that own them, so they go from here even so.
+ART_STYLE_NOT_DRAWING = re.compile(r"背景|场景|环境|光线|灯光|光照|氛围|色调|配色|主色|辅色|色彩搭配|鲜艳|饱和|艳丽")
 # "月光或环境光作为辅助光源": one of the two.
 ART_EITHER_OR = re.compile(r"(?<![或])([一-鿿]{1,6})或者?(?!许|是|多|少)([一-鿿]{1,6}?)(?=作为|为|来自|照|投|洒|的)")
 # A thing the picture's subject holds; the model hands it the user's new thing instead ("似欲挥剑" with no sword in hand).
@@ -6243,7 +6298,7 @@ def art_role_reference_user_fit(text: str, requirement: str) -> str:
     own = lambda piece: bool(art_content_bigrams(piece) & asked)
     text = art_edit_section_lines(text, ("风格设定",), lambda line: art_edit_line_segments(
         line, lambda piece: bool(ART_STYLE_NOT_DRAWING.search(piece)) and not re.search(ART_STYLE_NAME_PATTERN.pattern + "|风格|画风", piece, re.I)
-        and (bool(re.search(r"背景|场景|环境", piece)) or not own(piece))))
+        and (bool(re.search(r"背景|场景|环境|灯光|光线|光照", piece)) or not own(piece))))
 
     def either(match):
         head = re.split(r"来自|为|是|的|用|由|在|和|与", match[1])[-1]
@@ -6273,6 +6328,61 @@ def art_role_reference_user_fit(text: str, requirement: str) -> str:
         # One mood: "整体氛围静谧" next to "营造出夜晚的神秘与威严".
         text = art_edit_section_lines(text, ("环境背景",), lambda line: art_edit_line_segments(line, lambda piece: "氛围" in piece))
     return drop_sides([text], requirement)[0]
+
+
+# "突出人物与环境的融合", "强调主体动态": what a sentence is for, not what the picture shows. "突出的岩石" and
+# "颧骨突出" describe the picture and stay.
+ART_EVALUATIVE_PIECE = re.compile(r"^(?:以|用以|从而|来|更加?)?(?:突出|强调|凸显|彰显)(?!的)")
+ART_EVALUATIVE_TAIL = re.compile(r"(?<=[一-鿿])(?:以|来|从而)?(?:突出|强调|凸显|彰显)(?!的)[一-鿿][^，,。；;！？!?\n]*")
+ART_EVALUATIVE_WORDS = re.compile(r"视觉(?:张力|冲击|效果)|形成张力")
+# "光线柔和但对比强烈": the second half takes the first back.
+ART_SOFT_BUT_HARD = re.compile(r"((?:柔和|柔光|柔软|轻柔)[^，,。；;]{0,4}?)(?:但|却|而)[^，,。；;]{0,6}?(?:强烈|硬朗|锐利|刺眼)")
+ART_CAMERA_BLUR = re.compile(r"虚化|浅景深|景深浅|焦外|散景|背景模糊")
+# [拍摄参数] is the camera: "地面冰面反射出微弱冷光", "衣摆与发丝自然垂落" or "环境细节丰富" there belong elsewhere or nowhere.
+ART_CAMERA_WORD = re.compile(
+    r"景别|全身|半身|七分身|全景|中景|近景|远景|特写|视角|视线|平视|仰|俯|鸟瞰|正面|侧面|背面|构图|居中|中心|中央|对称|三分|对角|引导|留白|框"
+    r"|景深|虚化|焦|镜头|机位|透视|广角|长焦|微距|画面|画幅|占据|位于|偏[左右上下]|清晰|清楚|前景|取景|裁切|比例|拍摄|角度")
+# Robes "在气流中飘扬" in a hall: indoors nothing blows them unless something is there to.
+ART_INDOOR = re.compile(r"室内|屋内|房间|客厅|卧室|大厅|大堂|礼堂|厅堂|中庭|殿内|走廊|长廊|教室|办公室|秀场|T台")
+ART_WIND_MOTION = re.compile(
+    r"(?:随风|迎风|在风中|于风中|被风吹[得起]?|在气流中|因气流)[一-鿿]{0,2}?(?:飘扬|飞扬|扬起|飘动|翻飞|飘荡|飘舞|舞动|鼓荡|狂舞)")
+
+
+def art_consistent_sections(text: str, source: str = "") -> str:
+    """The five sections as one picture: evaluative asides go, a soft light is not also hard, [环境背景] leaves focus
+    to the camera, [拍摄参数] keeps to the camera and does not blur a scene [环境背景] calls sharp, and nothing blows
+    in a room with no wind. The user's own words stay."""
+
+    mine = lambda piece: bool(source) and piece in source
+    text = art_edit_section_lines(text, None, lambda line: art_edit_line_segments(
+        ART_SOFT_BUT_HARD.sub(lambda match: match[0] if match[0] in source else match[1],
+                              ART_EVALUATIVE_TAIL.sub(lambda match: match[0] if match[0] in source else "", line)),
+        lambda piece: bool(ART_EVALUATIVE_PIECE.match(piece) or ART_EVALUATIVE_WORDS.search(piece)) and not mine(piece)))
+    text = art_edit_section_lines(text, ("环境背景",), lambda line: art_edit_line_segments(
+        line, lambda piece: bool(re.search(r"虚化|景深|焦外|散景", piece)) and not mine(piece)))
+    text = art_edit_section_lines(text, ("拍摄参数",), lambda line: art_edit_line_segments(
+        line, lambda piece: not ART_CAMERA_WORD.search(piece) and not mine(piece)))
+    scene = art_section_map(text).get("环境背景", "")
+    if re.search(r"清晰|清楚", scene):
+        text = art_edit_section_lines(text, ("拍摄参数",), lambda line: art_edit_line_segments(
+            line, lambda piece: bool(ART_CAMERA_BLUR.search(piece)) and not mine(piece)))
+    if ART_INDOOR.search(scene) and not re.search(r"吹|风扇|微风|大风|寒风|狂风|穿堂风", scene + source):
+        text = art_edit_section_lines(text, ("主体物品",), lambda line: ART_WIND_MOTION.sub(
+            lambda match: match[0] if match[0] in source else "自然垂落", line))
+    return text
+
+
+def art_write_missing_actions(text: str, requirement: str) -> str:
+    """An action of the user's that the answer still leaves out after its one repair is written at the end of
+    [主体物品] in the user's own words, without the picture labels ("…剑尖斜指下方，看向镜头")."""
+
+    from prompt_assistant.h3_prompt_enhance import action_at, action_clauses, action_part
+    body = "\n".join(value for name, value in art_section_map(text).items() if name != "拍摄参数")
+    for _, clause, verbs in action_clauses(requirement):
+        phrase = re.sub(r"(?:参考)?图\s*\d+(?:中|里)?的?", "", clause).strip("，, ")
+        if phrase and any(action_at(found[0], action_part(clause, found), body) < 0 for found in verbs):
+            text = art_append_to_section(text, "主体物品", phrase)
+    return text
 
 
 def art_requirement_unfit(requirement: str, text: str) -> str:
@@ -15258,7 +15368,11 @@ class PromptAssistant:
 
     def fuse_art_prompt(self, payload, source, requirements):
         source, instruction = art_semantic_fusion_input(source, requirements)
-        template = "<|im_start|>system\n" + ART_SEMANTIC_FUSION_RULES + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        # A plain draft with no edit ("一只橘猫趴在窗台上晒太阳") is the user's frame for a whole picture: it is written out
+        # richly around the user's words; an edit, or a draft that already has sections, keeps to the edit.
+        enrich = not instruction and not art_prompt_uses_own_sections(source)
+        template = ("<|im_start|>system\n" + (ART_ENRICH_SYSTEM_TEXT if enrich else ART_SEMANTIC_FUSION_RULES)
+                    + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n")
         preserve = list(dict.fromkeys(re.findall(r"成年|女性|男性|站立|坐姿|跪姿|俯卧|仰卧|右手|左手|全身|仰视", source)))
         for requested, category in [(r"男|女|性别", r"女性|男性"), (r"动作|姿势|姿态|站|坐|躺|趴|跪",r"站立|坐姿|跪姿|俯卧|仰卧"), (r"右手|左手|手臂|抬手",r"右手|左手"), (r"构图|镜头|全身|半身|特写|俯视|仰视|平视|景别",r"全身|仰视")]:
             if re.search(requested, instruction):
@@ -15273,10 +15387,13 @@ class PromptAssistant:
             + "\n\n" + (ART_OWN_SECTION_OUTPUT_RULE if art_prompt_uses_own_sections(source) else ART_FIVE_SECTION_OUTPUT_RULE)
             + (ART_REFERENCE_KEEP_RULE if re.search(ART_REFERENCE_TOKEN_PATTERN, source) else "")
             + "\n\n只输出完整中文正向提示词，不要输出 JSON、负向提示词或解释。未修改的原有细节先保留，再融入修改，不要无关扩写。"
+        ) if not enrich else (
+            "用户写的画面：\n" + source + ("\n必须保留的原设定：" + preserved if preserved else "") + "\n\n" + ART_ENRICH_INSTRUCTION
+            + (ART_REFERENCE_KEEP_RULE if re.search(ART_REFERENCE_TOKEN_PATTERN, source) else "")
         )
         if re.search(r"(?:增加|丰富|增强|细化|完善).{0,8}(?:人物|角色|主体).{0,6}细节", instruction):
             request += ART_FUSION_PERSON_DETAIL_CHECK
-        if not instruction or re.search(r"质量|精美|丰富|细节|质感", instruction):
+        if not enrich and (not instruction or re.search(r"质量|精美|丰富|细节|质感", instruction)):
             request += ART_FUSION_QUALITY_CHECK
         if re.search(r"(?:室外|户外)", instruction):
             request += "\n本次验收：环境背景段必须写出具体室外环境，删除冲突的白底、无其他物体、后景无层次，保留原人物姿态。光线及景深与新环境一致。"
@@ -15286,6 +15403,7 @@ class PromptAssistant:
             request += "\n成人内容上下文：用户已开启 NSFW。保持未要求修改的性别、成年身份、裸体状态、身体姿势与人物关系；任何未成年人相关内容仍然禁止。"
         failure = ""
         output = ""
+        kept = ""
         for attempt in range(2):
             repair = (
                 "\n\n上次融合未通过检查：" + failure + "。"
@@ -15312,11 +15430,18 @@ class PromptAssistant:
             positive = finalize_art_semantic_fusion(art_positive_only_wording(art_drop_unknown_references(
                 art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output)), source,
             ), source), instruction)
-            positive = art_drop_section_mentions(art_write_requested_weather(art_write_requested_time(
-                art_drop_invented_clauses(positive, source, instruction), instruction), instruction), source)
+            positive = art_consistent_sections(art_drop_section_mentions(art_write_requested_weather(art_write_requested_time(
+                art_drop_invented_clauses(positive, source, instruction, enrich=enrich), instruction), instruction), source), source)
             if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(positive):
                 raise ValueError("提示词融合未通过内容检查，原提示词未修改")
             failure = patch_failure or art_semantic_fusion_failure(source, instruction, positive)
+            # An enriched draft keeps the user's posture word ("趴" is not "蜷缩"): asked about once, and the answer
+            # stays the result if the repair fails.
+            state_word = art_missing_state_word(source, positive) if enrich and not failure and not attempt else ""
+            if state_word:
+                failure, kept = "未保留需求里的动作：" + state_word, positive
+            if failure and attempt and kept:
+                positive, failure = kept, ""
             # On the last try a prompt that applied the edit is not thrown away for its layout alone.
             if (failure and attempt and art_failure_is_layout(failure)
                     and not art_semantic_fusion_failure(source, instruction, positive, require_layout=False)):
@@ -15357,8 +15482,8 @@ class PromptAssistant:
                                    temperature=0.0 if attempt else 0.5, top_p=1.0 if attempt else 0.9,
                                    trace_label="artCreateRepair" if attempt else "artCreate")
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            positive = art_drop_section_mentions(art_single_view_angle(
-                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))))
+            positive = art_consistent_sections(art_drop_section_mentions(art_single_view_angle(
+                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), requirement)
             failure = art_five_section_failure(positive)
             if not failure:
                 laid_out, laid_out_raw = positive, output
@@ -15426,8 +15551,9 @@ class PromptAssistant:
             person, minor, sensitive = person or said_person, minor or said_minor, sensitive or said_sensitive
             young_words = young_words or _requirements_contain_explicit_minor_terms(output)
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            description = art_role_reference_user_fit(art_role_reference_cleanup(art_plain_background_focus(art_single_view_angle(
-                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), roles), requirement)
+            description = art_consistent_sections(art_role_reference_user_fit(art_role_reference_cleanup(art_plain_background_focus(
+                art_single_view_angle(art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), roles),
+                requirement), requirement)
             # The prompt's own explicit words count as sensitive content too, in case the check says 无 while the
             # prompt writes what was asked for in words the user's text does not use (脱光 -> 一丝不挂).
             art_reference_block_sensitive_minor(requirement, minor or young_words,
@@ -15450,8 +15576,8 @@ class PromptAssistant:
         # With minor evidence it has already failed above. The renderer reads contentSafety (Grok's shape) or the gate.
         sensitive_content = sensitive and person
         return {
-            "prompt": art_close_sentences(art_write_requested_weather(
-                art_write_requested_time(laid_out or description, requirement), requirement)),
+            "prompt": art_close_sentences(art_write_requested_weather(art_write_requested_time(
+                art_write_missing_actions(laid_out or description, requirement), requirement), requirement)),
             "generationGate": "adult_confirmation" if sensitive_content else "direct",
             "sensitivePromptBlocked": False,
             "contentSafety": {
