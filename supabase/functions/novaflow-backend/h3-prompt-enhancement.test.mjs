@@ -326,7 +326,11 @@ test('the optimize that sees pictures carries the reverse content safety in its 
   assert.match(schema.properties.contentSafety.description, /both true, every prompt field is exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content\.$/);
   assert.match(schema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details included: never omit or soften a visible fact/);
   assert.equal(built.body.input[1].content.length, 4, 'the rules ride in the request text and schema, the frame items are unchanged');
-  assert.doesNotMatch(optimize('女孩挥手', {contentPolicy:{sensitiveVisualAnalysis:false, allSubjectsConfirmedAdult:false}}).body.text.format.schema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details/);
+  // Without the AI 助手's fact-faithful policy (the generation-time 多参 compile) the call is as it was: no field, rules or youth flag.
+  const compile = optimize('<Picture 1> 中的小孩在岩石上攀爬', {h3Mode:'multi_reference', contentPolicy:{sensitiveVisualAnalysis:false, allSubjectsConfirmedAdult:false}});
+  assert.deepEqual(compile.body.text.format.schema.required, ['modelPrompt', 'displayPrompt', 'editPolicy']);
+  assert.doesNotMatch(userText(compile), /Content safety|H3_CONTENT_POLICY_BLOCKED/);
+  assert.equal(compile.resultOptions.explicitYouthUserRequest, false);
   // An old page's five sections with pictures have no schema field to carry them: they go in the request text.
   assert.match(userText(optimize('女孩挥手', {markers:[]})), /sensitive details included: never omit or soften a visible fact, and add none that is not visible\.\nWhen explicit minor evidence coexists with sensitive content, write exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content as every field value\./);
   // 多参 reports the same signal next to editPolicy; without pixels the pair schema stays as it was.
@@ -365,4 +369,43 @@ test('the optimize that sees pictures carries the reverse content safety in its 
     });
     assert.equal(calls, 1);
   }
+});
+
+test('everyday words next to a child are no sensitive content: bare rock, light through the leaves, a bottle nipple', () => {
+  const policy = {sensitiveVisualAnalysis:true, allSubjectsConfirmedAdult:false};
+  const frame = {label:'<Picture 1>', dataUrl:'data:image/jpeg;base64,aGVsbG8='};
+  const build = (h3Mode, source, frames = []) => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode, durationSeconds:6, prompt:source, h3ReferenceFrames:frames, contentPolicy:policy,
+    requirements:['H3 response format: bilingual-v1', ...(frames.length ? ['Available resource labels: <Picture 1> = captured image slot first_frame. Never invent a resource label.'] : []), 'Source prompt:', source].join('\n')}, 'test-model');
+  // The user's own words pass the check before the call; a real request still does not.
+  for (const source of ['小孩在裸露的岩石上慢慢攀爬', '小孩坐在裸露的树根上看书', 'a child watches sunlight penetrating the clouds', '婴儿咬着奶嘴 / the baby chews on the rubber nipple of its bottle']) {
+    assert.equal(build('text_video', source).resultOptions.explicitYouthUserRequest, true, source);
+  }
+  for (const source of ['小孩全裸站在海边', '小孩裸露身体', 'a child, fully nude']) {
+    assert.throws(() => build('text_video', source), error => error.errorCode === 'provider_content_policy' && error.statusCode === 422, source);
+  }
+  // A child named in the user's words, and an answer with the same everyday words: written.
+  const t2v = build('text_video', '小孩在海边的礁石上奔跑，镜头跟随');
+  for (const [model, display] of [
+    ['a child runs across the exposed rocks by the sea as waves break behind', '小孩沿着海边裸露的礁石向前奔跑，身后海浪拍打'],
+    ['a child runs along the rocks by the sea while sunlight penetrates the clouds in bright shafts', '小孩沿着海边的礁石向前奔跑，阳光穿透云层洒下光束']
+  ]) {
+    assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(JSON.stringify({
+      modelPrompt:fields(`[Shot 1] Live-action, ${model}. The camera follows the child from the side at medium speed.`, 'Waves crash on the rocks and small footsteps slap the wet stone.'),
+      displayPrompt:fields(`[Shot 1] 写实风格，${display}。镜头从侧面以中速跟随小孩。`, '海浪拍打礁石，小脚踩在湿石头上啪嗒作响。')
+    }), t2v.resultOptions), model);
+  }
+  // Grok sees a child in the frame: everyday words are written, a nude answer is not.
+  const i2v = build('image_video', '<Picture 1> 中的人沿着海边往前跑', [frame]);
+  const answer = (en, zh) => JSON.stringify({
+    modelPrompt:fields(`[Shot 1] Live-action, the child shown in <Picture 1> ${en}. The camera follows from the side at medium speed.`, 'Waves crash on the rocks and footsteps slap the wet stone.'),
+    displayPrompt:fields(`[Shot 1] 写实风格，<Picture 1> 中的小孩${zh}。镜头从侧面以中速跟随。`, '海浪拍打礁石，脚步踩在湿石头上啪嗒作响。'),
+    contentSafety:{explicitMinorEvidence:true, sensitiveContent:false}
+  });
+  for (const [en, zh] of [
+    ['runs forward along the exposed rocks by the sea', '沿着海边裸露的礁石向前奔跑'],
+    ['runs forward along the rocks while warm sunlight penetrating the clouds lights the sea', '沿着海边的礁石向前奔跑，穿透云层的暖阳照亮海面'],
+    ['runs forward along the rocks by the sea, a baby bottle with its rubber nipple in one hand', '一手拿着带奶嘴的奶瓶，沿着海边的礁石向前奔跑']
+  ]) assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer(en, zh), i2v.resultOptions), en);
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(answer('runs forward along the rocks by the sea, fully nude', '全裸着沿着海边的礁石向前奔跑'), i2v.resultOptions),
+    error => error.errorCode === 'provider_content_policy' && error.statusCode === 422);
 });

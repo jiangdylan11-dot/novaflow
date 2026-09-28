@@ -336,9 +336,12 @@ function miniMaxH3PatternHasAffirmativeMatch(text, pattern) {
   return false;
 }
 
+// Everyday wording that shares a word with nudity is no sensitive request or answer: bare rock, roots or arms (裸露的礁石).
+const MINIMAX_H3_BENIGN_EXPOSURE_PATTERN = /裸露(?=(?:在外)?的?(?:岩|石|礁|树根|根|土|泥|地面|地表|山体|山坡|砖|墙|钢筋|管道|电线|线缆|木|沙|河床|海床|矿|手臂|胳膊|双臂|肩|脚|小腿))|(?<=(?:岩石|石头|礁石|岩层|山体|树根|根系|根部|土地|土壤|泥土|地面|地表|河床|海床|墙体|钢筋|管道|电线)(?:都|全|大片|大面积)?)裸露/gu;
+
 function miniMaxH3SensitiveCategories(value, options) {
   options = options && typeof options === "object" ? options : {};
-  const text = miniMaxH3SafetyText(value);
+  const text = miniMaxH3SafetyText(value).replace(MINIMAX_H3_BENIGN_EXPOSURE_PATTERN, "露出");
   const categories = new Set();
   const rules = [
     ["oral_sex", /(?:口交|oral\s+sex)/iu],
@@ -350,9 +353,10 @@ function miniMaxH3SensitiveCategories(value, options) {
     ["vulva", /(?:外阴|阴唇|阴蒂|vulva|clitoris|labia)/iu],
     ["anus", /(?:肛门|anus)/iu],
     ["genitals", /(?:生殖器|性器官|阴茎|阳具|龟头|阴道|外阴|阴唇|阴蒂|阴部|肛门|私处|下体|genitals?|penis|vagina|vulva|anus|clitoris|labia)/iu],
-    ["nipples", /(?:乳头|nipples?)/iu],
+    // The rubber nipple of a bottle, or light penetrating the leaves, is no sensitive fact; penetration needs a sexual object, as 插入 does.
+    ["nipples", /(?:乳头|(?<!(?:bottle|rubber|silicone|pacifier|feeding)(?:[\x27\u2019]s)?\s)nipples?)/iu],
     ["breasts", /(?:乳头|乳房|胸部暴露|胸部完全可见|bare\s+breasts?|exposed\s+breasts?|visible\s+breasts?|breasts?\s+(?:fully\s+)?(?:visible|exposed))/iu],
-    ["penetration", /(?:插入(?:阴道|肛门|性器官)|penetrat(?:e|ion|ing))/iu],
+    ["penetration", /(?:插入(?:阴道|肛门|性器官)|(?:sexual|vaginal|anal)\s+penetration|penetrative\s+sex|penetrat(?:e|es|ed|ing|ion)\s+(?:(?:of\s+)?(?:the|her|his|their)\s+)?(?:vagina|anus|vulva|genitals?))/iu],
     ["sexual_activity", /(?:性行为|性交|交合|性爱|性活动|插入(?:阴道|肛门|性器官)|sexual[_\s-]+(?:activity|act)|explicit[_\s-]+activity|intercourse)/iu],
     ["full_nudity", /(?:全裸|一丝不挂|赤裸身体|fully\s+nude|naked\s+(?:person|woman|man|body|figure|character))/iu],
     ["partial_nudity", /(?:半裸|partially\s+nude)/iu],
@@ -603,15 +607,16 @@ function miniMaxH3ValidateRawUserContent(userPrompt, userRequirements, contentPo
 
 // Optimize with frames is the H3 image action. Grok's fail-closed marker, or its in-call minor evidence (contentSafety, never
 // returned) together with sensitive content, ends the call as provider_content_policy before any contract check: no repair, no retry.
+// A child named only in the words of the user pairs with a sensitive signal, never with the wording of the answer.
 function miniMaxH3AssertOptimizeContentSafety(text, options) {
   const raw = String(text || "");
   const pair = h3PromptEnhance.referenceResult(raw);
   const safety = pair?.contentSafety || {};
   const written = pair ? miniMaxH3VisualIrTextValues([pair.modelPrompt, pair.displayPrompt]).join("\n") : raw;
-  const minor = safety.explicitMinorEvidence === true || options.explicitYouthUserRequest === true;
-  const sensitive = safety.sensitiveContent === true || options.authorizedSensitiveUserRequest === true
-    || miniMaxH3SensitiveCategories(written, { affirmativeOnly: true }).size > 0;
-  if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(raw) || (minor && sensitive)) {
+  const sensitive = safety.sensitiveContent === true || options.authorizedSensitiveUserRequest === true;
+  const blocked = (options.explicitYouthUserRequest === true && sensitive) || (safety.explicitMinorEvidence === true
+    && (sensitive || miniMaxH3SensitiveCategories(written, { affirmativeOnly: true }).size > 0));
+  if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(raw) || blocked) {
     const error = miniMaxH3ContractError("provider_content_policy", "MiniMax H3 prompt optimize blocked explicit minor sensitive content", 422, "provider_content_policy");
     error.h3FailureStage = "safety_policy";
     error.h3FailureReason = "explicit_minor_sensitive";
@@ -7937,6 +7942,8 @@ function grokResponsesPublicResult(data, options = {}) {
     if (options.supportsNegativePrompt && !parsed.negative_prompt) throw new Error("提示词融合未返回反向提示词");
   }
   if (options.artFiveSectionPrompt === true && options.artSemanticFusion !== true) {
+    // Before the layout check, so a refusal is final (422, no repair call).
+    artReferenceAssertContentSafety(rawText, parsed.prompt, options);
     const layoutFailure = artFiveSectionFailure(parsed.prompt);
     if (layoutFailure) {
       const layoutError = new Error("提示词版式未通过检查：" + layoutFailure + "；原提示词未修改");
@@ -7990,8 +7997,10 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   const basePair = bilingual && Boolean(h3PromptEnhance.baseModeName(mode));
   const mediaContent = miniMaxH3OptimizeFrameContent(payload, requirements, mode, translateOnly);
   // Content safety as in reverse, without another call: the raw-text block before it, the rules and a pixel signal inside it.
+  // Only under the fact-faithful policy of the AI 助手, as on the local engine; a generation-time compile keeps its plain call.
   const framed = mediaContent.some((item) => item.type === "input_image");
-  const rawContentState = translateOnly ? null : miniMaxH3ValidateRawUserContent(prompt, miniMaxH3PromptEnhanceUserRequirement(requirements, prompt), payload?.contentPolicy);
+  const safetyChecked = !translateOnly && payload?.contentPolicy?.sensitiveVisualAnalysis === true;
+  const rawContentState = safetyChecked ? miniMaxH3ValidateRawUserContent(prompt, miniMaxH3PromptEnhanceUserRequirement(requirements, prompt), payload?.contentPolicy) : null;
   const pairSchema = bilingualReference ? h3PromptEnhance.referenceResultSchema : basePair ? h3PromptEnhance.baseResultSchema : null;
   // The idle-breathing rule freezes head, arms and body; it is sent only when the source or the requirement asks for idle breathing.
   const instruction = h3PromptEnhance.instructionFor(`${prompt}\n${miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)}`);
@@ -8010,7 +8019,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
     miniMaxH3PromptEnhanceUserRequirement(requirements, prompt) || "N/A",
     requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || "",
     // Ahead of the format rules, so the pair rules stay the last writing rule.
-    ...(translateOnly ? [] : [miniMaxH3OptimizeSafetyRules(payload?.contentPolicy, framed, Boolean(pairSchema))]),
+    ...(safetyChecked ? [miniMaxH3OptimizeSafetyRules(payload?.contentPolicy, framed, Boolean(pairSchema))] : []),
     "",
     translateOnly ? "H3 compile: translate-only" : referenceMode ? h3PromptEnhance.referenceInstruction : basePair ? h3PromptEnhance.baseResultInstruction : h3PromptEnhance.formatInstruction,
     translateOnly ? (referenceMode ? MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION : h3PromptEnhance.baseTranslateInstruction)
@@ -8034,7 +8043,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
       ],
       temperature: translateOnly ? 0.1 : 0.35,
       max_output_tokens: MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS,
-      text: { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: pairSchema ? (framed ? { ...pairSchema, properties: { ...pairSchema.properties, contentSafety: miniMaxH3ContentSafetySchema(payload?.contentPolicy) }, required: [...pairSchema.required, "contentSafety"] } : pairSchema) : {
+      text: { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: pairSchema ? (framed && safetyChecked ? { ...pairSchema, properties: { ...pairSchema.properties, contentSafety: miniMaxH3ContentSafetySchema(payload?.contentPolicy) }, required: [...pairSchema.required, "contentSafety"] } : pairSchema) : {
         type: "object", additionalProperties: false,
         properties: Object.fromEntries(responseFields.map((field) => [field, {
           type: "string", minLength: 1,
@@ -8198,6 +8207,26 @@ const ART_SEMANTIC_FUSION_AUTO_ENRICH = "没有额外修改要求：保留全部
 const ART_FIVE_SECTIONS = ["[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]"];
 
 const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前面任何“写成一段自然语言”的说法）：只允许按顺序输出五个且仅五个 TOML 风格 section，每个 section 标题单独占一行——[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数]。\n[风格设定]写媒介、绘画或渲染语言、氛围与完成质感；[主体物品]逐个写主体与物品的数量、外观、姿势、动作、材质、颜色，以及彼此的空间、遮挡与接触关系；[环境背景]写环境、前中后景、承托面与遮挡层次；[光线与色彩]写光源方向、软硬、明暗、轮廓光、主辅色与局部颜色；[拍摄参数]只写景别、视角、构图、裁切、透视与景深。\n每个 section 都必须有具体内容，不得新增、合并、重命名或省略 section，不得输出 [用户附加要求]，不得输出 Markdown 代码围栏、标题、前言、总结或解释。版式化不得改变语义：底稿里的人物、数量、身份、年龄、动作、相互关系、道具、场景、风格、色彩、构图以及全部要求项与避免项，必须逐条落进对应 section；可以换措辞和重新组织，但不得删除、弱化、合并或改变含义，也不得新增底稿没有的事实。底稿中形如 __NOVAFLOW_…__ 的资源引用占位符是 @参考图 等引用的载体，必须原样、原次数出现在对应 section 中，不得翻译、改写、拆分、合并或删除。";
+
+// The one 美工 image action (role reference) reads the pictures with the text of the user, so it carries the content safety of
+// the H3 optimize in its one call; grokResponsesPublicResult ends a marked or child-plus-sensitive answer as provider_content_policy.
+const ART_REFERENCE_CONTENT_SAFETY_RULE = `人物称呼沿用用户原词（女孩仍写女孩，女神仍写女神）；用户文字或图中文字未写明时，不写年龄或年龄段（成年、未成年、N岁）。若图中明确是儿童或婴儿（年轻外观或年龄不明不算），且图片或要求同时涉及裸露或性内容，只输出 ${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}: explicit_minor_sensitive_content。`;
+
+// A child named in the words of the user is recorded, with whether the text also asks for sensitive content, for the answer check.
+function artReferenceUserContentState(currentPrompt, requirements) {
+  const text = `${currentPrompt || ""}\n${requirements || ""}`;
+  return miniMaxH3HasExplicitYouthIndicator(text) ? {
+    explicitYouthUserRequest: true,
+    authorizedSensitiveUserRequest: miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0
+  } : {};
+}
+
+function artReferenceAssertContentSafety(rawText, prompt, options) {
+  if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(rawText) || (options.explicitYouthUserRequest === true
+    && (options.authorizedSensitiveUserRequest === true || miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0))) {
+    throw miniMaxH3ContractError("provider_content_policy", "Grok art reference blocked explicit minor sensitive content", 422, "provider_content_policy");
+  }
+}
 
 function artPromptUsesOwnSections(value) {
   return /^[ \t]*\[[^\]\r\n]{1,40}\][ \t]*$/mu.test(String(value || ""));
@@ -8559,6 +8588,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
     ...(supportsNegativePrompt && !usesVisualIr ? ["当前负面 Prompt:", negativePrompt || "无", ""] : []),
     ...(usesVisualIr ? [] : ["附加要求:", requirements || "无", ""]),
     ...(effectiveCurrentPrompt ? ["最终必须把当前提示、图片可见信息和附加要求深度合并为一段提示，不能返回多个版本或机械拼接。", ""] : []),
+    ...(usesArtFiveSectionReverse ? [ART_REFERENCE_CONTENT_SAFETY_RULE, ""] : []),
     usesVisualIr
       ? grokVisualIrOutputRules(visualIrSchema)
       : (usesArtFiveSectionReverse ? ART_FIVE_SECTION_OUTPUT_RULE + "\n" : "") + smartAiChinesePromptOutputRules(isVideoTask
@@ -8594,7 +8624,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       supportsNegativePrompt,
       visualIrSchema
     },
-    resultOptions: usesArtFiveSectionReverse ? { artFiveSectionPrompt: true } : usesVisualIr ? {
+    resultOptions: usesArtFiveSectionReverse ? { artFiveSectionPrompt: true, ...artReferenceUserContentState(currentPrompt, requirements) } : usesVisualIr ? {
       visualIrSchema,
       requirements: resultRequirements,
       existingNegativePrompt: supportsNegativePrompt ? negativePrompt : "",

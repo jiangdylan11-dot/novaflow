@@ -3924,6 +3924,35 @@ test("ordinary Grok image reverse uses strict nf.visual.v1 while other image mod
   assert.doesNotMatch(genericReference.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
 });
 
+test("美工 role reference carries the content-safety rule and ends a marked or child-plus-sensitive answer for good", async () => {
+  const image = { dataUrl: "data:image/png;base64,AA==", role: "subject", label: "参考图" };
+  const build = (currentPrompt, requirements = "") => buildGrokImageReverseRequest({
+    images: [image], scenario: "role_reference", surface: "art", purpose: "roleReference", currentPrompt, requirements
+  }, "grok-contract-test");
+  const plain = build("穿红色斗篷的剑客站在雪地里", "用户生成要求：改成夜景");
+  // One call as before: the rule rides in the request text, ahead of the five-section layout.
+  assert.equal(plain.inputMeta.imageCount, 1);
+  assert.match(plain.body.input[0].content.at(-1).text, /人物称呼沿用用户原词（女孩仍写女孩[\s\S]*不写年龄或年龄段[\s\S]*年轻外观或年龄不明不算[\s\S]*只输出 H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content。\n\n最终正向提示词的版式/);
+  assert.deepEqual(plain.resultOptions, { artFiveSectionPrompt: true });
+  const child = build("小孩坐在裸露的树根上看书");
+  assert.deepEqual(child.resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false });
+  const five = (subject) => ["[风格设定]", "写实插画。", "[主体物品]", subject, "[环境背景]", "森林。", "[光线与色彩]", "暖色侧光。", "[拍摄参数]", "中景，平视。"].join("\n");
+  // Everyday words next to a child are written.
+  assert.match(grokResponsesPublicResult({ output_text: five("小孩坐在裸露的树根上看书。") }, child.resultOptions).output_text, /裸露的树根/);
+  for (const [text, options] of [
+    ["H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content", plain.resultOptions],
+    [five("小孩全裸坐在树根上看书。"), child.resultOptions],
+    [five("剑客站在雪地里。"), build("小孩全裸站在雪地里").resultOptions]
+  ]) {
+    let calls = 0;
+    await assert.rejects(callGrokResponseWithVisualRetry(plain.body, plain.inputMeta, { ...options, visualRetryAllowed: true }, async () => {
+      calls += 1;
+      return { ok: true, data: grokResponsesPublicResult({ output_text: text }, options), providerCallCount: 1 };
+    }), (error) => error.errorCode === "provider_content_policy" && error.statusCode === 422);
+    assert.equal(calls, 1, "no layout repair call after a refusal");
+  }
+});
+
 test("nf.visual.v2 is explicit opt-in for one static reference and never widens legacy routes", () => {
   const image = { dataUrl: "data:image/png;base64,AA==", role: "source", label: "主图" };
   const v2 = buildGrokImageReverseRequest({

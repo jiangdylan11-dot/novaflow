@@ -1330,6 +1330,11 @@ async function handleGrokPromptOptimize(
   try {
     request = buildGrokPromptOptimizeRequest(payload, grokModel()) as AnyRecord;
   } catch (error) {
+    // An explicit minor + sensitive H3 request is refused before any call, as in reverse: 422 with the Chinese message.
+    if ((error as AnyRecord)?.errorCode === "provider_content_policy") {
+      const refused = miniMaxH3FailureEnvelope(error);
+      return jsonResponse(req, 422, { ok: false, error: refused.message, provider: "grok", ...refused });
+    }
     return jsonResponse(req, 400, { ok: false, error: sanitizeError(error) });
   }
   const requiredProviderCalls = Math.max(
@@ -1512,10 +1517,13 @@ async function handleGrokImageReverse(
     }
     const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
     const h3Failure = isMiniMaxH3 ? miniMaxH3FailureEnvelope(error) : null;
+    // The 美工 role reference refuses a child with sensitive content for good; a retry would give the same answer.
+    const contentPolicyFailure = !h3Failure && (error as AnyRecord)?.errorCode === "provider_content_policy";
     return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: h3Failure?.message || "生成失败，请稍后重试",
+      error: h3Failure?.message || (contentPolicyFailure ? "Grok 未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
       provider: "grok",
+      ...(contentPolicyFailure ? { errorCode: "provider_content_policy", retryable: false } : {}),
       ...(h3Failure || {}),
       ...(isVisualV2 ? grokVisualFailureEnvelope(error) : {}),
       quota: providerQuotaPayload(failureQuota)

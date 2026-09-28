@@ -119,6 +119,9 @@ const sensitiveContext = {
   MINIMAX_H3_EXPLICIT_YOUTH_PATTERN: vm.runInNewContext(
     extractNamedConstant(source, "MINIMAX_H3_EXPLICIT_YOUTH_PATTERN"),
   ),
+  MINIMAX_H3_BENIGN_EXPOSURE_PATTERN: vm.runInNewContext(
+    extractNamedConstant(source, "MINIMAX_H3_BENIGN_EXPOSURE_PATTERN"),
+  ),
   miniMaxH3ContractError: (code, message, statusCode = 502, failureCategory = code) => Object.assign(new Error(message), {
     statusCode,
     errorCode: code,
@@ -857,8 +860,8 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   const enhanceBranch = (text) => lf(extractNamedFunction(text, "normalizeMiniMaxH3PromptOutput")).split("const raw = normalizeGeneratedPrompt(text);")[0];
   assert.equal(enhanceBranch(source), enhanceBranch(edgeSource));
   const chineseFields = "integrated_multimodal_description: [Shot 1] 写实风格，<Picture 1> 中的白色纸飞机从桌面起飞，滑出窗外。镜头保持固定。\n\noverall_soundscape: 纸张轻响，窗外有风声。\n\nnon_diegetic_music: N/A";
-  const request = (h3Mode, markers, currentPrompt = "白色纸飞机从桌面起飞") => buildOptimize({
-    purpose: "minimax-h3-prompt-enhance", currentPrompt, h3Mode, durationSeconds: 5, surface: "animation", provider: "grok",
+  const request = (h3Mode, markers, currentPrompt = "白色纸飞机从桌面起飞", contentPolicy = undefined) => buildOptimize({
+    purpose: "minimax-h3-prompt-enhance", currentPrompt, h3Mode, durationSeconds: 5, surface: "animation", provider: "grok", contentPolicy,
     requirements: [...markers, "Available resource labels: <Picture 1> = captured image slot first_frame.", "Source prompt:", currentPrompt].join("\n"),
   });
   const system = (built) => built.body.input[0].content[0].text;
@@ -925,10 +928,14 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
     (error) => error.errorCode === "h3_contract_fields" && /英文正文/.test(error.message));
 
   // 图生/首尾帧/多参 optimize is the image action: reverse's content-safety handling rides in its one call, as on the Edge.
-  for (const name of ["miniMaxH3OptimizeSafetyRules", "miniMaxH3ContentSafetySchema", "miniMaxH3AssertOptimizeContentSafety"]) {
+  // The shared sensitive categories and the 美工 role-reference safety match the Edge copy too.
+  for (const name of ["miniMaxH3OptimizeSafetyRules", "miniMaxH3ContentSafetySchema", "miniMaxH3AssertOptimizeContentSafety",
+    "miniMaxH3SensitiveCategories", "artReferenceUserContentState", "artReferenceAssertContentSafety"]) {
     assert.equal(lf(extractNamedFunction(source, name)), lf(extractNamedFunction(edgeSource, name)), `${name} must match the Edge copy`);
   }
-  assert.equal(extractNamedConstant(source, "MINIMAX_H3_FAITHFUL_PICTURE_RULE"), extractNamedConstant(edgeSource, "MINIMAX_H3_FAITHFUL_PICTURE_RULE"));
+  for (const name of ["MINIMAX_H3_FAITHFUL_PICTURE_RULE", "MINIMAX_H3_BENIGN_EXPOSURE_PATTERN", "ART_REFERENCE_CONTENT_SAFETY_RULE"]) {
+    assert.equal(extractNamedConstant(source, name), extractNamedConstant(edgeSource, name), `${name} must match the Edge copy`);
+  }
   const framedRequest = (currentPrompt, contentPolicy = { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false }) => buildOptimize({
     purpose: "minimax-h3-prompt-enhance", currentPrompt, h3Mode: "image_video", durationSeconds: 5, h3ReferenceFrames: frames, contentPolicy, surface: "animation", provider: "grok",
     requirements: ["H3 response format: bilingual-v1", "Available resource labels: <Picture 1> = captured image slot first_frame.", "Source prompt:", currentPrompt].join("\n"),
@@ -943,10 +950,18 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   assert.doesNotMatch(user(framed), /H3_CONTENT_POLICY_BLOCKED|sensitive details|\bminor\b|underage/);
   assert.match(framedSchema.properties.contentSafety.description, /both true, every prompt field is exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content\.$/);
   assert.match(framedSchema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details included: never omit or soften a visible fact/);
-  assert.doesNotMatch(framedRequest("白色纸飞机从桌面起飞", { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false }).body.text.format.schema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details/);
+  // Without the fact-faithful policy of the AI 助手 (the generation-time compile) the call is as it was: no field, rules or youth flag.
+  const compile = framedRequest("小孩在岩石上攀爬", { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(compile.body.text.format.schema.required)), ["modelPrompt", "displayPrompt"]);
+  assert.doesNotMatch(user(compile), /Content safety|H3_CONTENT_POLICY_BLOCKED/);
+  assert.equal(compile.resultOptions.explicitYouthUserRequest, false);
   // Without pixels there is nothing to report and the schema stays the plain pair; a translation carries no writing rules at all.
-  assert.match(user(pair), /keep 女孩 as 女孩 in displayPrompt and write girl in modelPrompt[\s\S]*as every field value\. A young-looking/);
-  assert.doesNotMatch(user(pair), /sensitive details included|contentSafety/);
+  // The rules come with the fact-faithful policy of the AI 助手 (every 文生视频 optimize from the dialog sends it).
+  const aiPair = request("text_video", ["H3 response format: bilingual-v1"], "白色纸飞机从桌面起飞", { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false });
+  assert.deepEqual(aiPair.body.text.format.schema, JSON.parse(JSON.stringify(h3.baseResultSchema)));
+  assert.match(user(aiPair), /keep 女孩 as 女孩 in displayPrompt and write girl in modelPrompt[\s\S]*as every field value\. A young-looking/);
+  assert.doesNotMatch(user(aiPair), /sensitive details included|contentSafety/);
+  assert.doesNotMatch(user(pair), /Content safety|H3_CONTENT_POLICY_BLOCKED/);
   assert.doesNotMatch(user(translate), /Content safety|H3_CONTENT_POLICY_BLOCKED/);
   assert.equal(translate.resultOptions.explicitYouthUserRequest, false);
   // Explicit minor wording with a sensitive request is refused before any call, as in reverse.
@@ -963,6 +978,13 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   blocked(JSON.stringify({ modelPrompt: { integrated_multimodal_description: "H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content", overall_soundscape: "N/A", non_diegetic_music: "N/A" }, displayPrompt: chineseFields }));
   assert.doesNotThrow(() => normalizeDesktop(framedPair({ explicitMinorEvidence: true, sensitiveContent: false }), framed.resultOptions), "a child without sensitive content is an ordinary video");
   assert.doesNotThrow(() => normalizeDesktop(framedPair({ explicitMinorEvidence: false, sensitiveContent: true }), framed.resultOptions), "adult sensitive content follows the content policy");
+  // Everyday words next to a child are no sensitive content: bare rock, light penetrating the clouds, a bottle nipple.
+  assert.equal(framedRequest("小孩在裸露的岩石上攀爬，阳光穿透云层").resultOptions.explicitYouthUserRequest, true);
+  assert.doesNotThrow(() => normalizeDesktop(framedPair({ explicitMinorEvidence: true, sensitiveContent: false },
+    english.replace("glides out of the window", "glides over the exposed rocks while sunlight penetrating the clouds catches a rubber nipple on the sill")),
+  framed.resultOptions), "everyday words beside a child are written");
+  assert.doesNotThrow(() => normalizeDesktop(framedPair({ explicitMinorEvidence: false, sensitiveContent: false }), framedRequest("小孩在海边奔跑").resultOptions),
+    "a child named by the user pairs only with a sensitive signal");
   import("../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs").then((edge) => {
     const edgeTranslate = edge.buildGrokPromptOptimizeRequest({
       purpose: "minimax-h3-prompt-enhance", prompt: chineseFields, h3Mode: "image_video", durationSeconds: 5,
