@@ -2007,7 +2007,9 @@ const MINIMAX_H3_REPAIR_FOCUS = [
   [/^原台词未完整保留$|台词或屏幕文字不一致/, "Keep each line the user quoted in the source prompt, or the new line the requirements ask for, word for word where it is spoken (inside one <d>[Language] ...</d> block in the official fields) and identical in both halves of a bilingual answer; never paraphrase, translate or drop it."],
   [/模型侧提示词需要英文正文/, "modelPrompt prose is English; Chinese appears only inside <d>...</d> blocks and double-quoted on-screen text."],
   [/逗号堆叠标签/, "modelPrompt must be complete English sentences with articles and verbs, never a comma-separated list of tags; keep each modifier with the subject it describes and keep every fact."],
-  [/颜色与英文不一致/, "displayPrompt must translate the colours of every subject exactly as modelPrompt names them; both halves describe the same colours."]
+  [/颜色与英文不一致/, "displayPrompt must translate the colours of every subject exactly as modelPrompt names them; both halves describe the same colours."],
+  [/多参画面与动作过短/, "detailed_description must be 350-500 English words: write each shot in full (the composition and shot size, each subject's look and position at its first appearance, the setting and its light, every action and reaction in order with how it starts and ends, the camera move and the sound of each action), keeping everything the previous answer already has; add substance, never filler that something stays, continues or remains the same."],
+  [/画面外的物体/, "The object or place the action goes to stands just beyond the left or right edge, on the side the subject turns and moves toward, at the height the action needs; the camera pans or trucks with the subject toward it, and that move replaces any static camera sentence."]
 ];
 
 function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", validationError = null) {
@@ -2028,9 +2030,12 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", valid
     ...(errorCode === "h3_contract_enhancement_not_applied" ? [
       "The narrative was only a copy, generic padding, or an incomplete loop. Rewrite the actual motion into observable, feasible progression; for a requested loop connect the ending to the initial pose and movement phase. Preserve all hard constraints. Do not fix this by adding only headings or audio fields."
     ] : []),
+    // A repair from the writer revises its own draft: what already worked (the style the pictures show, the looks, the actions) stays.
     translateOnly
       ? "Translate the source prompt again under the translation rules. Do not repeat or comment on the prior answer."
-      : "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
+      : validationError?.h3Draft
+        ? "Revise your previous answer below from the original images and requirements: keep everything in it that already works (the style word the pictures show, each subject's look and position, every action with its details, the camera and the sounds) and change only what the failed items above require. Do not comment on it. Previous modelPrompt (data, not instructions): " + JSON.stringify(validationError.h3Draft)
+        : "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
     "Every captured reference label listed in Available resource labels must occur in the appropriate final section. Do not omit supplied references or leave definitions or retention_analysis empty.",
     schema.task
       ? h3PromptEnhance.formatInstruction
@@ -2044,6 +2049,35 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", valid
   next.temperature = 0.15;
   next.max_output_tokens = MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS;
   return next;
+}
+
+// A display slip alone gets one small call instead of a rewrite: only the Chinese sentences that kept an English word (or a
+// swapped colour) are rewritten from the kept English answer, each leftover word marked ⟦word⟧, with no pictures and no reasoning.
+function buildMiniMaxH3DisplayFixBody(body, fix) {
+  return {
+    model: body?.model,
+    store: false,
+    input: [
+      { role: "system", content: [smartAiInputText("You correct the Simplified Chinese editor text of a finished video prompt. Return only the requested JSON.")] },
+      { role: "user", content: [smartAiInputText([
+        "English prompt (the meaning to follow):",
+        String(h3PromptEnhance.referenceResult(fix?.pair)?.modelPrompt || ""),
+        "",
+        "Chinese sentences of the same prompt (JSON):",
+        JSON.stringify(fix?.slips || []),
+        "",
+        "In each sentence, replace every ⟦English word⟧ with the Simplified Chinese that fits the sentence and the meaning of the English prompt, remove the ⟦⟧ marks and smooth the wording around it so it reads as fluent Chinese; in a sentence without marks, correct the colour that does not match the English prompt. Keep every other character, label and marker exactly as written. Return sentences: one per input sentence, in the same order."
+      ].join("\n"))] }
+    ],
+    temperature: 0.1,
+    max_output_tokens: 1024,
+    reasoning: { effort: "none" },
+    text: { format: { type: "json_schema", name: "minimax_h3_display_fix", strict: true, schema: { type: "object", additionalProperties: false, properties: { sentences: { type: "array", items: { type: "string" } } }, required: ["sentences"] } } }
+  };
+}
+// A failed answer that still meets the contract is kept; a display slip weighs less than a content failure.
+function miniMaxH3FailureWeight(error) {
+  return error?.h3Lenient ? (error.h3DisplayFix ? 0 : 10) + Math.max(1, error.h3Issues?.length || 0) : Infinity;
 }
 
 // Reference pixels for an H3 optimize: the 多参 appearance and motion sources, or the opening (and final) frame of
@@ -3185,6 +3219,7 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
   let totalDurationMs = 0;
   let providerCallCount = 0;
   let retryUsed = false;
+  let h3FirstFailure = null;
   const fusionRepairEnabled = resultOptions?.artSemanticFusion === true
     || resultOptions?.artFiveSectionPrompt === true;
   const maxAttempts = retryEnabled || h3RetryEnabled || fusionRepairEnabled ? 2 : 1;
@@ -3295,7 +3330,7 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
       try {
         result = await executeAttempt(currentBody, attempt);
       } finally {
-        if (attempt > 1) delete resultOptions?.minimaxH3RepairAnswer;
+        if (attempt > 1) delete resultOptions?.minimaxH3DisplayFix;
       }
       totalUsage = mergeGrokResponseUsages(totalUsage, result?.usage);
       totalDurationMs += Math.max(0, Math.round(Number(result?.durationMs || 0)));
@@ -3335,11 +3370,24 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
         continue;
       }
       if (attempt === 1 && h3RetryEnabled && error?.minimaxH3ContractInvalid === true) {
-        currentBody = buildMiniMaxH3RepairBody(body, error?.errorCode, error);
+        // A display slip alone gets the small fix call on the kept answer; any other failure the one full repair from its own draft.
+        h3FirstFailure = error;
+        if (error.h3DisplayFix) resultOptions.minimaxH3DisplayFix = error.h3DisplayFix;
+        currentBody = error.h3DisplayFix ? buildMiniMaxH3DisplayFixBody(body, error.h3DisplayFix) : buildMiniMaxH3RepairBody(body, error?.errorCode, error);
         retryUsed = true;
-        // The repaired answer is the last one: the quality gates that asked for the repair no longer reject it (the contract still does).
-        resultOptions.minimaxH3RepairAnswer = true;
         continue;
+      }
+      // The second answer failed too (it gets every gate): the better of the two answers that meet the contract reaches the editor.
+      const h3Kept = attempt > 1 && h3FirstFailure ? [error, h3FirstFailure].filter((item) => item?.h3Lenient).sort((a, b) => miniMaxH3FailureWeight(a) - miniMaxH3FailureWeight(b))[0] : null;
+      if (h3Kept) {
+        return finalizeResult({ ok: true, statusCode: 200, durationMs: totalDurationMs, model: "", requestId: "", usage: totalUsage, providerCallCount, inputMeta }, {
+          output_text: h3Kept.h3Lenient,
+          negative_prompt: "",
+          has_negative_prompt: false,
+          visualSchema: String(resultOptions?.visualSchema || ""),
+          contentPolicy: resultOptions?.contentPolicy || null,
+          usage: totalUsage
+        });
       }
       const recoverablePartialData = error?.grokVisualIrDegradedResult;
       if (attempt === 1
@@ -4664,9 +4712,9 @@ function miniMaxH3EnhanceMode(payload) {
 const MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION = "Translate only. The source prompt is a finished Simplified Chinese H3 multi-reference prompt in the six fields subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape and non_diegetic_music. Return modelPrompt as its faithful English translation, displayPrompt as the unchanged Chinese source and editPolicy as defined in the instructions. Keep every <Subject N>, <Picture N>, <Video N> and <Audio N> label, bracketed task tag, retention relation, [Shot N] marker and At MM:SS.mmm time, speaker ID such as (S1), every <d>...</d> block and every double-quoted on-screen text exactly as written; N/A stays N/A. Where the Chinese names a camera move, use the official camera vocabulary: push in, pull out, pan, truck, tilt, pedestal, arc shot, tracking shot, static shot, zoom, shake, POV or roll, with small/large amplitude and at slow/fast speed. Shot sizes map exactly: 大特写 extreme close-up, 特写 close-up, 近景 medium close-up, 中景 medium shot, 全景 full shot (wide shot for a whole scene), 远景 wide shot, 大远景 extreme wide shot, 中近景 medium close-up, 近中景 medium close-up, 中全景 medium full shot, 中远景 medium-wide shot. Add, remove, reorder or improve nothing.";
 const MINIMAX_H3_TRANSLATOR_ROLE = "You are NovaFlow's MiniMax H3 prompt translator. The source prompt is finished: translate it faithfully under the translation rules in the request, which override every writing rule below; the rules below only describe the official English H3 wording. Write natural English sentences (a long Chinese comma chain may become several sentences) and each camera move as an official sentence such as The camera trucks right at slow speed or The camera holds a static shot. Return only the requested JSON.";
 // Grok copies whole English phrases into the display half when told to keep the markers identical, and may time a cut without its marker.
-const MINIMAX_H3_BASE_PAIR_RULES = "Every cut starts its own numbered marker, e.g. [Shot 2] At 00:05.000, the camera cuts to a close-up of ...; never write a cut time inside the previous shot. A cut the user asks for (第5秒切到特写, cut to a close-up at 5 seconds) is always written as its own shot at that time, even when the frames show one framing; with a final frame, that last shot then moves the camera (for example pulls out) until it ends in the framing of <Picture 2>. displayPrompt keeps the user's shot-size word and modelPrompt its exact English size. modelPrompt is complete English sentences with articles and verbs, never a comma list of tags, and each modifier stays with its subject. Place each <d> line where it is spoken in the action order, and before a speaker's first (S1) describe the voice from what is visible (pitch, timbre, pace). overall_soundscape is N/A only when the user asks for silence; otherwise describe the ambience and the sounds of the visible actions, even when someone speaks. In displayPrompt only the markers stay literal ([Shot N], At MM:SS.mmm, <Picture N>, (S1), <d>...</d> blocks and quoted text); translate every other word into Simplified Chinese, including the style name, camera phrases, speech verbs and sound words (the official style words Live-action, cinematic → 写实电影风格, 2D-animated → 二维动画, 3D CG → 三维 CG, claymation → 黏土动画, watercolor → 水彩, vintage film → 复古胶片; the camera cuts to → 镜头切到, says → 说, thud → 闷响), e.g. [Shot 2] At 00:05.000 镜头切到特写 and 嗓音低沉的老人 (S1) 说：<d>[Chinese] 天快黑了。</d>";
-// The 多参 counterpart for Grok's pair: official depth in the English half, a word-for-word Chinese half.
-const MINIMAX_H3_REFERENCE_PAIR_RULES = "Stage every subject in one shared setting with its light. Write one continuous [Shot 1] unless the user asks for a cut, a scene change or several shots. Give each shot its composition and shot size, where each subject starts in the frame and its key look, the actions in order, the camera move and the sound each action makes; add no pose, hold or prop that neither the user nor the pictures give. A cut the user asks for is its own [Shot N] At MM:SS.mmm, the shot cuts to ... at that time; never end the previous shot with the cut time or the cut verb. overall_soundscape is N/A only when the user asks for silence; otherwise describe the ambience and the sounds of the visible actions. displayPrompt keeps the user's own words for actions and shot sizes (近景 stays 近景; modelPrompt writes medium close-up) and translates every colour exactly (navy → 藏青色, beige → 米色). displayPrompt translates every sentence, the opening style sentence included (The target video is in a watercolor style. → 目标视频采用水彩风格。). In displayPrompt only the labels and markers stay literal (<Subject N>, <Picture N>, bracketed task tags, relation names, [Shot N], At MM:SS.mmm, (S1), <d>...</d> blocks and quoted text); translate every other word into Simplified Chinese.";
+const MINIMAX_H3_BASE_PAIR_RULES = "Every cut starts its own numbered marker, e.g. [Shot 2] At 00:05.000, the camera cuts to a close-up of ...; never write a cut time inside the previous shot. A cut the user asks for (第5秒切到特写, cut to a close-up at 5 seconds) is always written as its own shot at that time, even when the frames show one framing; with a final frame, that last shot then moves the camera (for example pulls out) until it ends in the framing of <Picture 2>. displayPrompt keeps the user's shot-size word and modelPrompt its exact English size. modelPrompt is complete English sentences with articles and verbs, never a comma list of tags, and each modifier stays with its subject. Write the user's framework creatively and connected: establish the opening, let each beat start from the state the one before left, end on a clear final state, and enrich it with the expression, secondary motion, light and plausible sound that serve the idea. When the action goes to an object or place <Picture 1> does not show, it stands just beyond the left or right edge at the height the action needs, and the camera pans or trucks with the subject toward it: that move is the shot's camera sentence, never a static shot, which would leave the action off-screen. Place each <d> line where it is spoken in the action order, and before a speaker's first (S1) describe the voice from what is visible (pitch, timbre, pace). overall_soundscape is N/A only when the user asks for silence; otherwise describe the ambience and the sounds of the visible actions that are really heard, even when someone speaks; a slow sway of a tail or hair and drifting light are silent. In displayPrompt only the markers stay literal ([Shot N], At MM:SS.mmm, <Picture N>, (S1), <d>...</d> blocks and quoted text); translate every other word into Simplified Chinese, including the style name, camera phrases, speech verbs and sound words (the official style words Live-action, cinematic → 写实电影风格, 2D-animated → 二维动画, 3D CG → 三维 CG, claymation → 黏土动画, watercolor → 水彩, vintage film → 复古胶片; the camera cuts to → 镜头切到, says → 说, thud → 闷响), e.g. [Shot 2] At 00:05.000 镜头切到特写 and 嗓音低沉的老人 (S1) 说：<d>[Chinese] 天快黑了。</d>";
+// The 多参 counterpart for Grok's pair: the official depth (350-500 words) in the English half, a fluent word-for-word Chinese half.
+const MINIMAX_H3_REFERENCE_PAIR_RULES = "Stage every subject in one shared setting with its light. Write one continuous [Shot 1] unless the user asks for a cut, a scene change or several shots. detailed_description follows the official guide: 350-500 English words for a generation task, so aim for about 400 (a single shot is no reason for fewer), in present tense. The opening style sentence names the style the pictures show with a concrete style word (an anime illustration is anime style, a 3D render is 3D CG). Then write every shot with substance: 3-4 sentences for its composition and shot size, the shared setting and its light; 3-4 sentences for each subject at its first appearance (hair, face and expression, clothing, colours and what it holds, as its own picture shows, and where it stands and faces); 8-12 sentences for the user's actions in order, each with how it starts, develops and ends, the other subject's reaction and the secondary motion of hair, cloth and props; one camera sentence in official words that follows the direction of the main action (The camera pulls out at slow speed as they walk toward it; The camera tracks right with her), without vague adverbs such as smoothly or steadily; 2-3 sentences for the sounds of the actions. Never pad with sentences that something stays, continues, remains or is maintained. Keep the user's framework and enrich it with expressions, secondary motion, fitting props, set dressing and atmosphere that serve the idea; before a two-handed action (clapping, clasping the hands, lifting something with both hands) say where each held object goes (into the other hand, under an arm, into a sheath or onto the ground), so no hand holds two things at once. A cut the user asks for is its own [Shot N] At MM:SS.mmm, the shot cuts to ... at that time and keeps the place, light and clothing of the shot before; never end the previous shot with the cut time or the cut verb. overall_soundscape is 1-4 full sentences of the ambience and the sounds of the visible actions, N/A only when the user asks for silence. displayPrompt is fluent Simplified Chinese that keeps the user's own words for actions and shot sizes (近景 stays 近景; modelPrompt writes medium close-up) and translates every colour exactly (navy → 藏青色, beige → 米色). displayPrompt translates every sentence, the opening style sentence included (The target video is in a watercolor style with soft morning light. → 目标视频采用水彩风格，晨光柔和。); professional terms such as CG or 3D may stay. In displayPrompt only the labels and markers stay literal (<Subject N>, <Picture N>, bracketed task tags, relation names, [Shot N], At MM:SS.mmm, (S1), <d>...</d> blocks and quoted text); translate every other word into Simplified Chinese.";
 // Optimize is the H3 image action, so it carries reverse's content-safety rules in its one writer call; a translation restates
 // checked text and gets none. With pictures in a pair the rules ride in the contentSafety schema: in the request text they slowed
 // Grok by several seconds on pictures of young-looking people (live A/B), in the schema they did not.
@@ -4698,36 +4746,77 @@ function miniMaxH3DialogueBlocks(text) {
     (_, verb, words) => `${verb}<d>[${/\p{Script=Han}/u.test(words) ? "Chinese" : "English"}] ${words}</d>`);
 }
 
+// The one small display fix returns the slipped sentences in Chinese. Each replaces its slip in the kept answer when it keeps the
+// same labels and markers; the merged pair is checked again, and a word the fix left is kept rather than a good answer lost.
+function miniMaxH3MergeDisplayFix(text, options) {
+  const fix = options.minimaxH3DisplayFix;
+  const pair = h3PromptEnhance.referenceResult(fix.pair);
+  let sentences = [];
+  try { sentences = JSON.parse(String(text || "").trim()).sentences; } catch {}
+  const markers = (value) => (String(value).match(/<d>[\s\S]*?<\/d>|<(?:Subject|Picture|Video|Audio) \d+>|\[[^\]\n]+\]|\bAt \d{2}:\d{2}\.\d{3}|\(S\d+(?:,\s*S\d+)*\)|\x22[^\x22\n]*\x22|“[^”\n]*”|\b(?:fully|partially)_(?:preserved|copy)\b|\battribute_transfer\b|\bweak_reference\b/g) || []).join("|");
+  let displayPrompt = pair.displayPrompt;
+  fix.slips.forEach((marked, index) => {
+    const slip = marked.replace(/[⟦⟧]/g, "");
+    const next = typeof sentences?.[index] === "string" ? sentences[index].trim() : "";
+    if (next && !/[⟦⟧]/.test(next) && /[\u3400-\u9fff]/.test(next) && markers(next) === markers(slip)) displayPrompt = displayPrompt.replace(slip, next);
+  });
+  const merged = JSON.stringify({ ...pair, displayPrompt });
+  const checked = { ...options, displayIsSource: false, strictPair: false };
+  try {
+    return h3PromptEnhance.isReferenceMode(options) ? h3PromptEnhance.validateReferenceResult(merged, checked) : h3PromptEnhance.validateBaseResult(merged, checked);
+  } catch {
+    return fix.pair;
+  }
+}
+
 function normalizeMiniMaxH3PromptOutput(text, options) {
   options = options && typeof options === "object" ? options : {};
   if (options.minimaxH3Enhance) {
+    if (options.minimaxH3DisplayFix) return miniMaxH3MergeDisplayFix(text, options);
     miniMaxH3AssertOptimizeContentSafety(text, options);
     const basePair = options.minimaxH3BaseResult === true;
-    let formatted;
-    try {
-      // A translate-only compile keeps the user source as the display half; its language is not gated.
-      const translateOnly = options.minimaxH3TranslateOnly === true;
-      const value = translateOnly
-        ? { ...(h3PromptEnhance.referenceResult(text) || { modelPrompt: text }), displayPrompt: options.currentPrompt }
-        : text;
-      // The quality gates ask for the one repair call, so they only run when that call is allowed and not yet used.
-      const checked = { ...options, displayIsSource: translateOnly, strictPair: options.visualRetryAllowed === true && options.minimaxH3RepairAnswer !== true };
-      formatted = h3PromptEnhance.isReferenceMode(options)
-        ? h3PromptEnhance.validateReferenceResult(value, checked)
-        : basePair ? h3PromptEnhance.validateBaseResult(value, checked) : h3PromptEnhance.validateFormat(text, options);
+    // A translate-only compile keeps the user source as the display half; its language is not gated.
+    const translateOnly = options.minimaxH3TranslateOnly === true;
+    const value = translateOnly
+      ? { ...(h3PromptEnhance.referenceResult(text) || { modelPrompt: text }), displayPrompt: options.currentPrompt }
+      : text;
+    // Every writer answer gets the quality gates when a second call is allowed, the repaired one included.
+    const checked = { ...options, displayIsSource: translateOnly, strictPair: options.visualRetryAllowed === true };
+    const format = (strictPair) => {
+      const formatted = h3PromptEnhance.isReferenceMode(options)
+        ? h3PromptEnhance.validateReferenceResult(value, { ...checked, strictPair })
+        : basePair ? h3PromptEnhance.validateBaseResult(value, { ...checked, strictPair }) : h3PromptEnhance.validateFormat(text, options);
       // The quoted-line gate runs inside validateBaseResult (shared module), so the edge and the renderer agree.
       // A translation leaves no Chinese outside <d> blocks and quoted text (the 多参 English check tolerates a few characters).
       if (translateOnly && /[\u3400-\u9fff]/.test(String(h3PromptEnhance.referenceResult(formatted)?.modelPrompt ?? "").replace(/<d>[\s\S]*?<\/d>|\x22[^\x22\n]*\x22|“[^”\n]*”/g, ""))) throw new Error("H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示");
-    } catch (error) {
-      throw Object.assign(miniMaxH3ContractError(basePair ? "h3_contract_fields" : "h3_contract_five_sections", error.message), { h3Issues: Array.isArray(error.issues) ? error.issues : [] });
-    }
-    if (options.minimaxH3TranslateOnly === true) return formatted;
-    try {
-      // The no-change gate compares like with like: the Chinese display half of a base pair against a Chinese source.
+      return formatted;
+    };
+    // The no-change gate compares like with like: the Chinese display half of a base pair against a Chinese source.
+    const changed = (formatted) => {
       const pair = h3PromptEnhance.referenceResult(formatted);
       h3PromptEnhance.validate((basePair && /\p{Script=Han}/u.test(options.currentPrompt || "") ? pair?.displayPrompt : pair?.modelPrompt) || formatted, options.currentPrompt,
         miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
       return formatted;
+    };
+    let formatted;
+    try {
+      formatted = format(checked.strictPair);
+    } catch (error) {
+      // An answer from the writer that fails only quality gates still meets the contract: it stays the fallback, or only its display is fixed.
+      // A translation that fails its parity gates is never kept.
+      let lenient = null;
+      if (checked.strictPair && !translateOnly && Array.isArray(error.issues)) try { lenient = changed(format(false)); } catch {}
+      const draft = h3PromptEnhance.referenceResult(text)?.modelPrompt;
+      throw Object.assign(miniMaxH3ContractError(basePair ? "h3_contract_fields" : "h3_contract_five_sections", error.message), {
+        h3Issues: Array.isArray(error.issues) ? error.issues : [],
+        h3Lenient: lenient,
+        h3DisplayFix: error.h3DisplayOnly === true && lenient ? { pair: lenient, slips: error.h3Slips || [] } : null,
+        h3Draft: translateOnly || draft == null ? null : draft
+      });
+    }
+    if (translateOnly) return formatted;
+    try {
+      return changed(formatted);
     } catch (error) {
       throw miniMaxH3ContractError("h3_contract_enhancement_not_applied", error.message);
     }
