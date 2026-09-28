@@ -140,10 +140,10 @@ class TranslationTest(unittest.TestCase):
         pair, calls = self.run_translation(
             fields={'detailed_description': '动漫风格。[Shot 1] <Subject 1> 按原视频旋转。\n[Shot 2] At 00:02.000 镜头切到近景，<Subject 1> 停下。'},
             translations={'动漫风格。': 'Anime style.', 'TOKEN_0 按原视频旋转。': 'TOKEN_0 rotates as in the source video.',
-                          '镜头切到近景，TOKEN_0 停下。': 'The camera cuts to a close-up and TOKEN_0 stops.'})
+                          '镜头切到近景，TOKEN_0 停下。': 'The camera cuts to a medium close-up and TOKEN_0 stops.'})
         self.assertEqual(len(calls), 1)
         self.assertIn('detailed_description:\nAnime style.\n[Shot 1] <Subject 1> rotates as in the source video.\n'
-                      '[Shot 2] At 00:02.000, the camera cuts to a close-up and <Subject 1> stops.', pair['modelPrompt'])
+                      '[Shot 2] At 00:02.000, the camera cuts to a medium close-up and <Subject 1> stops.', pair['modelPrompt'])
 
     def test_base_fields_translate_faithfully_with_shots_speech_and_on_screen_text(self):
         display = ('integrated_multimodal_description: [Shot 1] 写实电影风格，女孩站在窗边，画面从 <Picture 1> 开始，她抬起右手，招牌上写着“营业中”。\n'
@@ -152,8 +152,9 @@ class TranslationTest(unittest.TestCase):
         english = {
             '写实电影风格，女孩站在窗边，画面从 TOKEN_0 开始，她抬起右手，招牌上写着TOKEN_1。':
                 'Live-action, cinematic, a girl stands by the window; the shot begins from TOKEN_0 as she raises her right hand, and the sign reads TOKEN_1.',
-            '镜头切到近景，TOKEN_0 说：TOKEN_1结束时画面与 TOKEN_2 一致。':
-                'The camera cuts to a close-up as TOKEN_0 says: TOKEN_1 The frame ends matching TOKEN_2.',
+            # The program's closing sentence keeps its official English (TOKEN_2).
+            '镜头切到近景，TOKEN_0 说：TOKEN_1TOKEN_2。':
+                'The camera cuts to a medium close-up as TOKEN_0 says: TOKEN_1 TOKEN_2.',
             '与画面动作一致的自然环境声和动作声。': 'Natural ambience and action sounds that match the visuals.'}
         calls = []
 
@@ -170,7 +171,7 @@ class TranslationTest(unittest.TestCase):
         self.assertEqual(pair['modelPrompt'],
                          'integrated_multimodal_description: [Shot 1] Live-action, cinematic, a girl stands by the window; the shot begins from <Picture 1> '
                          'as she raises her right hand, and the sign reads “营业中”.\n'
-                         '[Shot 2] At 00:03.000, the camera cuts to a close-up as (S1) says: <d>[Chinese] 出发吧。</d> The frame ends matching <Picture 2>.\n\n'
+                         '[Shot 2] At 00:03.000, the camera cuts to a medium close-up as (S1) says: <d>[Chinese] 出发吧。</d> The shot ends matching <Picture 2>.\n\n'
                          'overall_soundscape: Natural ambience and action sounds that match the visuals.\n\nnon_diegetic_music: N/A')
         # A copied Chinese clause is never returned as the English half.
         english['与画面动作一致的自然环境声和动作声。'] = '与画面动作一致的自然环境声和动作声。'

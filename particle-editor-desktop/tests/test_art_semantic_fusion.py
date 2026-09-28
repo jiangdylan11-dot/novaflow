@@ -771,6 +771,27 @@ class ArtCreateRuns(unittest.TestCase):
         self.assertNotIn('无地面', result['positivePrompt'])
         self.assertIn('积雪覆盖的岩石', result['positivePrompt'])
 
+class ArtRoleReferenceUserFitTest(unittest.TestCase):
+    def test_the_users_change_holds_in_every_section(self):
+        text = ('[风格设定]\n国潮插画风格，线条硬朗，上色采用高饱和度的红金配色，背景为纯白，整体氛围充满热血\n\n'
+                '[主体物品]\n武将右手持一盏发光的灯笼，左手握剑\n\n[环境背景]\n纯白色背景\n\n'
+                '[光线与色彩]\n夜晚，主光来自灯笼，月光或环境光作为辅助光源\n\n[拍摄参数]\n全身景别，正面视角')
+        requirement = '让角色手持一盏发光的灯笼，夜晚'
+        fit = service.art_role_reference_user_fit(text, requirement)
+        # The style is the drawing only; an either/or keeps one; the hands the user never named lose their sides.
+        self.assertIn('[风格设定]\n国潮插画风格，线条硬朗\n', fit)
+        self.assertIn('武将一只手持一盏发光的灯笼，另一只手握剑', fit)
+        self.assertIn('月光作为辅助光源', fit)
+        # Night next to the picture's white backdrop, or a dropped action, is asked about once.
+        self.assertIn('[环境背景] 还是图片原来的纯色背景', service.art_requirement_unfit(requirement, fit))
+        self.assertEqual(service.art_requirement_unfit(requirement, fit.replace('纯白色背景', '夜色中的古城街道')), '')
+        self.assertIn('漏写了视频描述里的“看向”', service.art_requirement_unfit('角色看向镜头', '[主体物品]\n武将站立'))
+        request = service.art_role_reference_request(['subject'], requirement)
+        self.assertIn('只写画法，背景、光线、颜色和氛围写在后面几段', request)
+        self.assertIn('时间是夜晚，环境也是夜晚的样子', request)
+        self.assertIn('视角照图中主体的朝向写', request)
+        self.assertIn('新拿的东西拿在图中空着的手里', request)
+
 
 if __name__ == '__main__':
     unittest.main()

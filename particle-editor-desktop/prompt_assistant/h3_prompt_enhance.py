@@ -87,6 +87,39 @@ def later_shots(text):
     return parts, set().union(set(), *map(own, parts))
 
 
+def asked_shots(text):
+    """How many later shots the user's words ask for ("分三个镜头" -> 2, "第4秒切到近景" -> 1); None when not said."""
+    text = re.sub(NO_CUT, "", str(text or ""), flags=re.I)
+    many = re.search(r"([两二三四五六2-6])个镜头", text)
+    if many:
+        return ({"两": 2, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6}.get(many[1]) or int(many[1])) - 1
+    cuts = [m for m in re.finditer(CUT_PATTERN, text, re.I) if re.search(r"切|\bcut", m[0], re.I)]
+    return len(cuts) or None
+
+
+def said_already(clause, text):
+    """The clause adds nothing: nearly all of its words are in the text ("橘猫尾巴摆动" after "尾巴摆动")."""
+    pairs = han_pairs(clause)
+    return compact(clause) in compact(text) or bool(pairs) and len(pairs - han_pairs(text)) <= 0.3 * len(pairs)
+
+
+def fold_repeated_beats(text):
+    """A beat label written again after a later shot ("镜头2：…" and then a second "收束：…") goes on with that shot."""
+    out, seen, shot = [], set(), None
+    for line in str(text or "").split("\n"):
+        label = re.match(r"^[ \t>#*\-•]*(起始|递进|收束)[ \t]*[:：][ \t]*(.*)$", line)
+        if label and label[1] in seen and shot is not None:
+            # Only what the shot line does not say already.
+            out[shot] = out[shot].rstrip("。，, \t") + "".join("，" + c.strip() for c in re.findall(r"[^，,。；;]+", label[2])
+                                                              if c.strip() and not said_already(c, out[shot]))
+            continue
+        if label:
+            seen.add(label[1])
+        shot = len(out) if re.match(r"^[ \t>#*\-•]*【?镜头\s*[2-9]", line) else shot if not line.strip() else None
+        out.append(line)
+    return "\n".join(out)
+
+
 def shot_stamp(seconds):
     ms = int(round(float(seconds) * 1000))
     return f"{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000:03d}"
@@ -196,7 +229,14 @@ FLIPS = (
     (FALL, RISE, r"\b(?:up|upward|upwards|rises?|ascends?)\b", "下移 or 下降 means the camera moves down (pedestals down, or tilts down)", True),
     (r"左", r"右", LEFT_EN.replace("left", "right"), "左 means left", False),
     (r"右", r"左", LEFT_EN, "右 means right", False),
+    # Shot sizes (official): 特写 close-up, 近景 medium close-up, 中景 medium shot, 全景 full shot, 远景 wide shot.
+    (r"近景", r"特写", r"(?<!medium )\bclose-?up\b|\bclose shot\b", "近景 means medium close-up", False),
+    (r"特写", r"近景", r"\bmedium close-?up\b", "特写 means close-up", False),
+    (r"中景", r"近景|特写|全景|远景", r"\bclose-?up\b|\bwide shot\b|\bfull shot\b", "中景 means medium shot", False),
+    (r"全景", r"远景", r"\bwide shot\b|\bpanoram", "全景 means full shot", False),
+    (r"远景", r"全景", r"\bfull shot\b", "远景 means wide shot", False),
 )
+SHOT_SIZE_WORDING = "特写 -> close-up; 近景 -> medium close-up; 中景 -> medium shot; 全景 -> full shot; 远景 -> wide shot"
 
 
 def translation_flips(chinese, english):
@@ -737,6 +777,32 @@ def validate_reference(value, requirements="", duration=30):
     return "\n\n".join(k + ":\n" + fields[k].strip() for k in REFERENCE_FIELDS)
 
 
+def retention_appearances(text):
+    """"<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - …" (official ref §4): each retained item says
+    which shots show it, read from detailed_description."""
+    text = str(text or "")
+    field = lambda name: rf"(?ms)^({name}:\n)(.*?)(?=\n\n[a-z_]+:\n|\Z)"
+    description = re.search(field("detailed_description"), text)
+    shots = re.split(r"(?=\[Shot [1-9]\d*\])", description[2]) if description else []
+
+    def mark(match):
+        seen = [shot[6:shot.index("]")] for shot in shots if shot.startswith("[Shot ") and match[1] in shot]
+        return match[1] + (" (appears in " + ", ".join(f"[Shot {n}]" for n in seen) + ")" if seen else "") + ":"
+    return re.sub(field("retention_analysis"), lambda block: block[1] + re.sub(r"(?m)^(<(?:Subject|Video|Audio) [1-9]\d*>):", mark, block[2]),
+                  text, count=1)
+
+
+# A 多参 shot with no sound line: the sounds of what it shows, never a generic placeholder.
+ACTION_SOUNDS = ((r"走|迈|步|踱", "脚步声"), (r"跑|奔|冲", "急促的脚步声"), (r"跳|跃|落地", "落地的轻响"), (r"甲|铠|盔", "甲片碰撞声"),
+                 (r"剑|刀|枪|戟|矛|兵器", "兵器的金属轻响"), (r"披风|斗篷|衣袂|衣摆|长袍|裙", "衣料摆动声"), (r"风", "风声"),
+                 (r"水|浇|雨|溪|河|海|浪", "水声"), (r"翅|飞", "振翅声"), (r"门", "开门声"), (r"鸟", "鸟鸣"))
+
+
+def action_sounds(text):
+    found = list(dict.fromkeys(sound for words, sound in ACTION_SOUNDS if re.search(words, str(text or ""))))[:3]
+    return "可以听到" + "、".join(found[:-1]) + ("和" if len(found) > 1 else "") + found[-1] + "。" if found else "动作带起轻微的衣料摩擦声。"
+
+
 def reference_layout(text):
     """The official 多参 layout of detailed_description (official ref §5.2): one line per shot, no blank
     lines, a style sentence before [Shot 1] on its own line. Only for the text the program writes or
@@ -1067,7 +1133,7 @@ USER_LIMIT = (r"始终|一直|全程|保持|不变|不动|静止|固定|不要|�
 USER_LIMIT_EN = r"\b(?:keep|keeps|always|remains?|stays?|unchanged|constant|only|never|avoid|without|no|not|don't)\b"
 LIMIT_CHARS = set("始终一直全程保持不变动静止固定要用得能可禁避免别勿无需只仅许准加添出现改和与及的了在是也都或")
 # "画面保持静止" in the middle of the action: nothing on screen stops.
-FROZEN_PICTURE = r"^\s*(?:整个|整体)?(?:画面|场景|一切)(?:随即|随后|最终|最后|随之)?(?:保持|维持|归于|回归|陷入|趋于)?(?:静止|定格|不动)"
+FROZEN_PICTURE = r"^\s*(?:整个|整体)?(?:画面|场景|一切)(?:随即|随后|最终|最后|随之)?(?:保持|维持|归于|回归|陷入|趋于)?(?:静止|定格|不动|原状|原样)"
 # The user's own freeze frame or still ending ("最后画面定格在她的笑脸", "结尾画面静止两秒") stays.
 USER_FROZEN = r"定格|(?:画面|场景|一切)[^，,。；;\n]{0,6}?(?:静止|不动)"
 # The overview is the opening picture; "然后跳下窗台" or a cut there tells an event twice.
@@ -1111,6 +1177,158 @@ def speaker_name(sentence, user_text):
     return next((head[:n] for n in (4, 3, 2) if re.fullmatch(r"[㐀-鿿]+", head[:n]) and head[:n] in user_text), "")
 
 
+def writer_name(sentences, known):
+    """The subject a sentence of the answer opens with ("机器人右臂缓慢抬起" -> 机器人), when the answer's
+    overview or the user's words name it too; the nearest sentence first."""
+    for sentence in reversed(sentences):
+        head = re.sub(r"^(?:然后|接着|随后|同时|最后|一只|一个|一位|一名|那只|这只)+", "", sentence.strip())
+        # A name ends before the verb or preposition after it ("橘猫在窗台上" -> 橘猫).
+        head = head[:next((k for k, ch in enumerate(head) if k and re.match(NAME_END, ch)), len(head))]
+        name = next((head[:n] for n in range(min(6, len(head)), 1, -1)
+                     if re.fullmatch(HAN + "+", head[:n]) and head[:n] in known and not re.match(r"画面|镜头|场景|背景|动作|身体|手|头", head[:n])), "")
+        if name:
+            return name
+    return ""
+
+
+# The user's own actions: each verb of the user's clause (挥 of 挥手, 回 of 回头) or action word (哈欠) is
+# written as that action, in any of the characters that write it; a later clause ("跳上桌子后回头") comes after.
+ACTION_VERBS = {
+    "挥": "挥摆招", "摆": "摆挥摇晃甩", "招": "招挥", "抬": "抬举扬", "举": "举抬扬", "扬": "扬抬举", "回": "回转扭",
+    "转": "转回扭旋", "扭": "扭转回", "摇": "摇晃摆", "点": "点", "仰": "仰抬", "看": "看望瞧盯视瞥瞄注凝", "望": "望看视眺",
+    "盯": "盯看视注凝", "眨": "眨", "眯": "眯", "睁": "睁张", "闭": "闭合", "笑": "笑", "哭": "哭泣", "跳": "跳跃蹦",
+    "跃": "跃跳蹦", "蹦": "蹦跳跃", "扑": "扑", "冲": "冲奔跑", "跑": "跑奔冲", "奔": "奔跑冲", "走": "走行迈踱步",
+    "迈": "迈走踏", "踢": "踢", "爬": "爬攀", "攀": "攀爬", "滚": "滚翻", "翻": "翻滚", "躺": "躺卧", "趴": "趴伏卧",
+    "卧": "卧趴伏躺", "坐": "坐", "蹲": "蹲", "跪": "跪", "站": "站立起", "伸": "伸展", "弯": "弯俯", "抱": "抱拥搂",
+    "拥": "拥抱搂", "握": "握持拿抓执", "拿": "拿持握抓取", "抓": "抓握拿", "捧": "捧", "推": "推", "拉": "拉拽",
+    "扔": "扔抛投掷", "抛": "抛扔投掷", "接": "接", "递": "递", "拍": "拍", "敲": "敲", "砍": "砍劈斩", "劈": "劈砍斩",
+    "刺": "刺戳", "飞": "飞翔", "舔": "舔", "咬": "咬", "吃": "吃", "喝": "喝饮", "亲": "亲吻", "吻": "吻亲", "甩": "甩", "浇": "浇洒",
+}
+ACTION_TOKEN = r"哈欠|懒腰|鞠躬|行礼|面对面|喷嚏|[" + "".join(ACTION_VERBS) + "]"
+# Nouns and connectors with a verb character that name no action.
+ACTION_NOUNS = (r"背景|接着|手指|指尖|落叶|角落|落地窗|飞机|飞快|光点|地点|重点|终点|点缀|站台|车站|坐垫|转场|回声|回应|回答|回复|回忆|拉链|推车|放大|放慢|放心"
+                r"|看台|看起来|看上去|希望|愿望|走廊|走道|跑道|拍摄|[一有快慢点]点儿?|点儿")
+ACTION_SEQUENCE = r"然后|接着|随后|之后|以后|随即|最后|最终|再|(?<=[㐀-鿿])后(?=[" + "".join(ACTION_VERBS) + "])"
+# Things the action lands on or goes into ("跳上桌子"): the answer shows them before the action uses them.
+ACTION_PLACE = r"(?:跳|爬|登|跃|攀|坐|躺|趴|站|落|放|钻|走|蹲)(?:上|到|进|在|入)了?([㐀-鿿]{1,3}?)(?=[上里中边前旁面顶内，,。；;！!？?\n后]|$)"
+
+
+def action_text(user_text):
+    return re.sub(r"<[^<>\n]*>\s*|@[^\s，,。；;]+\s*|[（(]S[1-9]\d*[）)][^\n]*|“[^”\n]*”|\"[^\"\n]*\"|" + ACTION_NOUNS, "，", str(user_text or ""))
+
+
+def action_order(user_text):
+    """The user's actions split where the user puts one after another ("跳上桌子后回头看镜头" -> 跳上桌子, 回头看镜头)."""
+    steps = [re.sub(r"^[，,。；;\s]+|[，,。；;！!？?\s]+$", "", part) for part in re.split(ACTION_SEQUENCE, action_text(user_text))]
+    return [step for step in steps if re.search(ACTION_TOKEN, step) and not requested_cut(step)]
+
+
+def action_places(user_text):
+    return [m[1] for m in re.finditer(ACTION_PLACE, re.sub(r"<[^<>\n]*>", "", str(user_text or "")))
+            if not re.match(r"[他她它我你这那]|镜头|画面|地|原地", m[1])]
+
+
+def action_clauses(user_text):
+    """(order index, clause, verb matches) of the user's action clauses; clauses joined by 然后/后/再 get later indexes."""
+    for index, segment in enumerate(re.split(ACTION_SEQUENCE, action_text(user_text))):
+        for clause in (c.strip() for c in re.split(r"[，,。；;！!？?\n]+", segment)):
+            if clause and not camera_moves(clause) and not requested_cut(clause) and not re.search(r"声|音乐|配乐|画风|风格|渲染", clause):
+                yield index, clause, list(re.finditer(ACTION_TOKEN, clause))
+
+
+def action_ways(word):
+    return list(ACTION_VERBS.get(word, "")) or [word]
+
+
+def action_gap(user_text, written, beats):
+    """A retry message for the first user action the answer leaves out or writes before the clause the user
+    put first; '' when every one is there in order. written: the whole shot text; beats: the actions only."""
+    leads = {}
+    for index, clause, verbs in action_clauses(user_text):
+        for found in verbs:
+            word = found[0]
+            if not any(way in written for way in action_ways(word)):
+                # The verb with the part it moves or its direction ("挥手", "回头", "跳上"), else the verb alone.
+                named = word + (clause[found.end()] if len(word) == 1 and re.match(r"[手头身腰尾眼腿脚拳上下起来去回过开到进出住向]", clause[found.end():]) else "")
+                return f"漏写了视频描述里的“{named}”：请在起始、递进或收束里原样写出“{clause}”这几个字，再写它看得见的过程"
+            if index not in leads:
+                at = [beats.find(way) for way in ([word] if word in beats else action_ways(word)) if way in beats]
+                leads[index] = (min(at) if at else -1, clause)
+    previous, previous_at = "", -1
+    for index in sorted(leads):
+        at, clause = leads[index]
+        if at >= 0:
+            if at < previous_at:
+                return f"“{clause}”要写在“{previous}”之后，在它之前不要写"
+            previous, previous_at = clause, at
+    return ""
+
+
+def write_missing_actions(texts, user_text, overview, names):
+    """An action both answers left out is written in the user's own words, at the start of the beat for its place in
+    the user's order, after the subject that beat opens with ("橘猫头部微微后仰" -> "橘猫打了个哈欠，头部微微后仰")."""
+    texts = list(texts)
+    for index, clause, verbs in action_clauses(user_text):
+        if not verbs or all(any(way in overview + "".join(texts) for way in action_ways(v[0])) for v in verbs):
+            continue
+        i = min(index, len(texts) - 1)
+        phrase = re.sub(r"^(?:一只|一个|一位|一名|一头|一条|那只|这只)|[并又再就]?(?:说|讲|喊|问|答)[^，,。]*$", "", clause).strip("，, ")
+        subject = writer_name([texts[i]], names)
+        if subject and texts[i].startswith(subject):
+            texts[i] = subject + (phrase[len(subject):] if phrase.startswith(subject) else phrase) + "，" + texts[i][len(subject):].lstrip("，,")
+        else:
+            # A beat that opens with no one ("猫腰身大幅拉长") takes the subject of the sentences before it.
+            earlier = writer_name(re.findall(r"[^。！？!?]+", "".join(texts[:i + 1])), names)
+            texts[i] = ("" if not earlier or phrase.startswith(earlier) else earlier) + phrase + "，" + texts[i]
+    return texts
+
+
+# Left and right the user never wrote: the small model mirrors them. The first side named becomes 一只/一侧,
+# the other 另一只/另一侧; the screen's own sides (画面左侧) and 左右 (side to side) stay.
+LIMB = r"手臂|胳膊|手掌|手腕|手|臂|前爪|后爪|爪子|爪|腿|脚|肩膀|肩|耳朵|耳|眼睛|眼"
+SIDED = re.compile(rf"(?<![左右])(?<!画面)(?<!屏幕)(?<!镜头)([向朝往]?)([左右])(?![左右])({LIMB}|侧|边|方)?")
+
+
+def drop_sides(parts, user_text):
+    if re.search(r"[左右]", str(user_text or "")):
+        return parts
+    found = [m for part in parts for clause in re.findall(r"[^，,。！？；;!?\n]+", part) if not camera_moves(clause)
+             for m in SIDED.finditer(clause) if m[1] or m[3]]
+    if not found:
+        return parts
+    first, seen = found[0][2], set()
+
+    def side(match):
+        if not (match[1] or match[3]):
+            return match[0]
+        other = match[2] != first
+        if match[1] or match[3] in ("侧", "边", "方"):
+            return match[1] + ("另一侧" if other else "一侧")
+        part = {"臂": "手臂", "肩": "肩膀", "耳": "耳朵", "眼": "眼睛", "爪": "爪子"}.get(match[3], match[3])
+        # A shoulder is on a side ("一侧肩膀"); hands, paws and eyes are counted ("一只手").
+        words = ("另一侧", "同一侧", "一侧") if part in ("肩膀", "肩") else ("另一只", "这只", "一只")
+        if other:
+            return words[0] + part
+        word = words[1] if seen else words[2]
+        seen.add(first)
+        return word + part
+    return [map_clauses(part, lambda clause: clause if camera_moves(clause) else SIDED.sub(side, clause)) for part in parts]
+
+
+# Leaning the whole body back before a jump or lying down is a motion nobody asked for.
+LEAN_BACK = r"(?:身体|身子|上身|躯干|身躯)[^，,。；;]{0,6}(?:后仰|后倾|向后仰|向后倾|向后靠)"
+# The answer's own "写实照片" names a still picture; a video in that look is 写实电影风格 (Live-action, cinematic).
+PHOTO_STYLE = r"(?:写实|真实|实拍)(?:照片|摄影)(?:风格)?"
+# The program's anchor sentences, with the official English the translation keeps.
+CUT_CLOSE_ZH = "结尾时，镜头回到 <Picture 2> 的景别与构图，动作落定在 <Picture 2> 的姿态与位置。"
+PROGRAM_SENTENCES = {
+    BASE_ANCHORS["open"]["zh"]: BASE_ANCHORS["open"]["en"], BASE_ANCHORS["close"]["zh"]: BASE_ANCHORS["close"]["en"],
+    "结束时画面与 <Picture 2> 一致。": "The shot ends matching <Picture 2>.",
+    CUT_CLOSE_ZH: "At the end of the final shot, the camera settles into the shot size and composition of <Picture 2>, "
+                  "and the action settles into the pose and spacing established by <Picture 2>.",
+}
+
+
 def compile_action_phases(output, mode, duration, source, requirements="", user_requirement="", strict_rules=False, keep_pose=False, audio=None, cut=False):
     """The model rewrites content; the application owns shots, cut times, media
     labels and literal speech. Returns the Chinese base fields text.
@@ -1135,7 +1353,14 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     def take_sound(match):
         heard.append(match[1])
         return ""
-    parts = split_action_phases(re.sub(SOUND_LINE, take_sound, re.sub(SHOT_LINE, take, str(output or ""))))
+    parts = split_action_phases(re.sub(SOUND_LINE, take_sound, re.sub(SHOT_LINE, take, fold_repeated_beats(output))))
+    asked_later = asked_shots(source + "\n" + (user_requirement or "")) if cut else None
+    if asked_later and len(shot_texts) > asked_later:
+        # A shot nobody asked for ("镜头3：拉远至 <Picture 2> 的构图") goes on in the last shot the user asked for.
+        kept = shot_texts[asked_later - 1]
+        extra = [c for text in shot_texts[asked_later:] for c in re.findall(r"[^，,。；;]+", fold_cut(text)) if not said_already(c, kept)]
+        shot_texts[asked_later - 1] = kept.rstrip("。，, ") + "".join("，" + (("镜头" + c) if re.match(r"推|拉|摇|移|升|降|环绕|跟", c) else c) for c in extra)
+        later, shot_texts = later[:asked_later], shot_texts[:asked_later]
     mode = str(mode or "").upper()
     inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
     refs = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else source))) if mode == "L2VA" else []
@@ -1171,6 +1396,16 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         constraints = [item for item in constraints if not re.search(rule["leak"], item, re.I)]
     has_text = lambda s: re.search(r"[\u3400-\u9fffA-Za-z]", s)
     user_text = source + "\n" + (user_requirement or "")
+    if not re.search(r"照片|摄影", user_text):
+        overview = re.sub(PHOTO_STYLE, "写实电影风格", overview)
+    # Sides the user never wrote; a whole-body lean back or "蹬地" on a sill nobody asked for.
+    sided = drop_sides([overview, *phases, *constraints], user_text)
+    overview, phases, constraints = sided[0], sided[1:1 + len(phases)], sided[1 + len(phases):]
+    if not re.search(r"仰|后倾|后靠", user_text):
+        leaned = [drop_matching_clauses(p, LEAN_BACK) for p in phases]
+        phases = [kept if has_text(kept) else p for kept, p in zip(leaned, phases)]
+    if "蹬" not in user_text:
+        phases = [re.sub(r"(?<=[爪腿脚])(?:猛地|用力)?蹬(?:地面|地)", "用力一蹬", p) for p in phases]
     # The overview is the opening picture (style, subjects, place, framing, camera): a pasted
     # "然后跳下窗台", a beat copied word for word or a cut there tells an event twice or cuts inside
     # shot 1; its camera ("镜头缓慢推近") stays. With a cut, what the user shows only after it
@@ -1199,6 +1434,9 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     # The program owns the timing: a clause with the answer's own seconds goes ("爪尖离地0.5秒前").
     own_seconds = lambda clause: any(m[0] not in user_text for m in re.finditer(r"\d+(?:\.\d+)?\s*秒", clause))
     phases = [drop_clauses(p, own_seconds) for p in phases]
+    # The cut's own second ("镜头在第4秒末缓慢拉远", "第4秒前，…") is the shot mark's; the content does not repeat it.
+    for second in cut_seconds(user_text) if cut else ():
+        phases = [re.sub(rf"(?:在)?第\s*{second:g}\s*秒(?:之前|之后|前|后|末|初|时|内)?[，,]?", "", p) for p in phases]
     if "loop" not in asked and mode != "FL2VA" and not re.search(USER_RETURN, user_text):
         phases = [drop_matching_clauses(p, RETURN_TO_START) for p in phases]
         constraints = [drop_matching_clauses(item, RETURN_TO_START) for item in constraints]
@@ -1294,8 +1532,23 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
             beats.append(phase)
     if cut and not shots and strict_rules:
         raise ValueError("用户要求切换镜头，请用“镜头2（第X秒）：”写出切换后的镜头")
+    # The user's own actions in the user's order (a requirement's, when it changes the prompt), and a
+    # thing an action lands on shown before it; asked about once with the dialogue's timing below.
+    asked_actions = user_requirement or source
+    problems = [problem for problem in (
+        action_gap(asked_actions, overview + "".join(phases), "".join(phases)),
+        next((f"“{p}”在画面里还没有出现：在概述里加一句它在画面哪里（如“画面前方放着{p}”），再写动作" for p in action_places(asked_actions) if p[0] not in overview + phases[0]), ""),
+    ) if problem] if strict_rules else []
     texts = beats + [text for _, text in shots]
+    if not strict_rules:
+        # What both answers left out of the user's actions is written in the user's own words, and a thing
+        # an action lands on that neither set up stands beside the one who uses it ("猫咪旁边放着桌子").
+        texts = write_missing_actions(texts, asked_actions, overview, overview + user_text)
+        for place in (p for p in dict.fromkeys(action_places(asked_actions)) if p[0] not in overview + texts[0]):
+            user = next((writer_name([c], user_text) for _, c, _ in action_clauses(asked_actions) if place in c), "")
+            overview = append_sentence(overview, (user + "旁边" if user else "画面中") + "放着" + place + "。")
     at, left = (0, 0), []
+    speakers = set(re.findall(r"\bS[1-9]\d*\b", " ".join(m[0] for m in re.findall(SPEECH_LINE, source))))
     for ids, tag, words in re.findall(SPEECH_LINE, source):
         # Each line goes after the next sentence where the answer has someone talk, in order,
         # named by that sentence's subject; H3 lip-syncs from it. The rest close the first shot.
@@ -1316,27 +1569,37 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
             # The sentence ends after any quoted words it carries.
             end = re.search(r'^(?:“[^”]*”|"[^"]*"|[^。！？!?“"])*?[。！？!?]', text[talk.end():])
             split = talk.end() + end.end() if end else len(text)
-        name = speaker_name(text[start:talk.start()], user_text)
+        # The speaker's identity (official base §4.4): the talking sentence's subject, else, with one
+        # speaker, the subject the answer's nearest sentence opens with, as its overview names it.
+        name = speaker_name(text[start:talk.start()], user_text) or (len(speakers) == 1 and writer_name(
+            re.findall(r"[^。！？!?]+", re.sub(r"<d>[\s\S]*?</d>", "。", "".join(texts[:i]) + text[:talk.start()])), overview + user_text))
         line = (name + " " if name else "") + line
+        # "…缓缓张开，说话。(S1) 说：" says it twice: a clause that only speaks gives way to the line.
+        bare = re.search(r"[，,]\s*(?:开口|张口)?(?:说话|说出|说道|说)[。！？!?]$", text[:split]) if split >= talk.end() else None
+        if bare:
+            text, split = text[:bare.start()] + "，" + text[split:], bare.start() + 1
         texts[i] = text[:split] + line + text[split:]
-        at = (i, split + len(line) if split >= talk.end() else talk.end() + len(line))
-    if left and strict_rules:
+        at = (i, split + len(line) if bare or split >= talk.end() else talk.end() + len(line))
+    if (left or problems) and strict_rules:
         # A line with nobody talking lands after the action has ended; ask once for the speaking moment.
-        raise ValueError("对白没有安排说话的时刻，请在起始、递进或收束里写出说话者开口说话")
+        raise ValueError("；".join((["对白没有安排说话的时刻，请在起始、递进或收束里写出说话者开口说话"] if left else []) + problems))
     if left:
         texts[len(beats) - 1] += "".join(left)
     if shots:
         # Several shots: the first shot's camera is not "全程" (for the whole video).
         whole = lambda text: re.sub(r"((?:镜头|机位)[^，,。；;\n]{0,4}?)全程|全程(?=固定|跟随|跟拍|推近|拉远)", r"\1", text)
         overview, constraints, texts = whole(overview), [whole(item) for item in constraints], [whole(t) for t in texts]
-    if mode in ("I2VA", "FL2VA") and "<Picture 1>" not in overview + "".join(texts):
-        texts[0] = "画面从 <Picture 1> 开始，" + texts[0]
-    if mode == "FL2VA" and "<Picture 2>" not in texts[-1]:
+    # The first frame is its own sentence about the picture, after the opening composition, never glued
+    # to the first action; a requested cut ends back in the last frame's framing.
+    anchor = BASE_ANCHORS["open"]["zh"] if mode in ("I2VA", "FL2VA") and "<Picture 1>" not in overview + "".join(texts) else ""
+    if mode == "FL2VA" and shots and not re.search(r"<Picture 2>[^。]*(?:景别|构图)|(?:景别|构图)[^。]*<Picture 2>", texts[-1]):
+        texts[-1] = append_sentence(texts[-1], CUT_CLOSE_ZH)
+    elif mode == "FL2VA" and "<Picture 2>" not in texts[-1]:
         texts[-1] += "结束时画面与 <Picture 2> 一致。"
     if not re.search(CAMERA_PATTERN, overview + "".join(texts[:len(beats)]) + user_text, re.I):
         overview += DEFAULT_CAMERA_ZH
     # What stays the same belongs with the opening composition; the shot ends on its ending.
-    narrative = "[Shot 1] " + overview + "".join(constraints) + "".join(texts[:len(beats)])
+    narrative = "[Shot 1] " + overview + anchor + "".join(constraints) + "".join(texts[:len(beats)])
     # A cut time the writer left out comes from the user's own words ("第4秒切到近景").
     times = shot_times([s for s, _ in shots], duration, cut_seconds(user_text))
     for number, (seconds, text) in enumerate(zip(times, texts[len(beats):]), 2):
@@ -1345,8 +1608,11 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     if sound is None:
         # The writer's sounds of what is on screen; speech, music and seconds belong elsewhere.
         music_asked = re.search(r"音乐|配乐|乐曲|旋律|伴奏|BGM|music", user_text, re.I)
+        # With dialogue, a sound clause that speaks ("机器人说出“出发吧”") repeats the line outside <d>.
+        spoken = [compact(m[2]) for m in re.findall(SPEECH_LINE, source)]
+        talking = lambda clause: spoken and (re.search(r"说|讲|喊道|念", clause) or any(w and w in compact(clause) for w in spoken))
         # A quoted sound ("啪") would read as on-screen text and stay Chinese in the English copy.
-        sound = drop_clauses(clean_phase_text(re.sub(r'[“”"]', "", "\n".join(heard))), lambda clause: re.search(
+        sound = drop_clauses(clean_phase_text(re.sub(r'[“”"]', "", "\n".join(heard))), lambda clause: talking(clause) or re.search(
             r"说话|台词|对白|人声|讲话|静音|无其他|没有其他|\d+(?:\.\d+)?\s*秒" + ("" if music_asked else r"|音乐|配乐|乐曲|旋律|伴奏"), clause))
         sound = "" if not has_text(sound) or re.fullmatch(r"(?:无|没有|N/?A|静音)[。.]?", sound, re.I) else sound_sentence(sound)
         # "海浪声" is already there as "海浪拍岸声"; a one-character source ("风声") must match whole.

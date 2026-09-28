@@ -202,14 +202,17 @@ class SceneTest(unittest.TestCase):
 
     def test_a_requested_cut_adds_later_shots_with_program_times(self):
         plan ={'references': [subject(1, '<Picture 1>', '橘色长毛猫', '橘色长毛')], 'summary': '<Subject 1> 跳下桌子'}
-        output = ('事件：<Subject 1> 跳下桌子后回头\n画风：写实照片\n场景：客厅\n动作1：<Subject 1> 在桌边蹲低身体\n动作2：<Subject 1> 向前跳下桌子\n'
+        output = ('事件：<Subject 1> 跳下桌子后回头\n画风：写实照片\n场景：客厅\n光线：午后阳光从窗外照进来\n动作1：<Subject 1> 在桌边蹲低身体\n动作2：<Subject 1> 向前跳下桌子\n'
                   '镜头2（第3秒）：近景，<Subject 1> 落地后回头看向镜头\n镜头3（第4秒）：<Subject 2> 跑过来\n镜头：跟随\n声音：落地声\n配乐：无')
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子，第3秒切到近景', output, cut=True)
         self.assertIn('\n镜头2（第X秒）：用户要求切换镜头', prompt)
         # The cut time is the user's; a shot acting out an undefined subject is dropped.
-        # The style sentence comes before [Shot 1], as in the official reference layout.
-        self.assertEqual(result['description'], '视频采用写实照片风格。\n[Shot 1] 场景是客厅。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
-                                                '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 落地后回头看向镜头。')
+        # The style sentence comes before [Shot 1], as in the official reference layout; every shot names its place and light.
+        self.assertEqual(result['description'], '视频采用写实照片风格。\n[Shot 1] 场景是客厅，午后阳光从窗外照进来。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
+                                                '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 落地后回头看向镜头。场景仍是客厅，午后阳光从窗外照进来。')
+        # One camera move, said once, with an official speed only.
+        result, _ = self.write(plan, '<Picture 1> 的猫跳下桌子', output.replace('镜头：跟随', '镜头：跟拍，镜头跟随 <Subject 1> 向前移动，速度适中'))
+        self.assertIn('向前跳下桌子。镜头跟随 <Subject 1> 向前移动。', result['description'])
         # Without a requested cut the writer is not asked for shots and stray shot lines are ignored.
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子', output)
         self.assertNotIn('镜头2', prompt)
