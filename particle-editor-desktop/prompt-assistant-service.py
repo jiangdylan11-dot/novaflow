@@ -63,6 +63,8 @@ from prompt_assistant.visual_contract import (
     SCHEMA_VERSION as VISUAL_SCHEMA_VERSION,
     SCHEMA_VERSION_V2 as VISUAL_SCHEMA_VERSION_V2,
     VisualContractError,
+    _requirements_contain_explicit_minor_terms,
+    _requirements_contain_sensitive_terms,
     append_rich_generation_requirements,
     compile_degraded_visual_prompt_details,
     compile_deterministic_rich_visual_prompt,
@@ -5806,8 +5808,27 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         + "按下面五段输出，每段标题单独占一行，下一行写正文，段与段之间空一行：\n" + ART_FIVE_SECTION_SKELETON + "\n\n"
         + "各段写什么、看哪张图：\n" + "\n".join(f"- {title}：{text}" for title, text in sources) + "\n\n"
         + "要求：\n" + "\n".join(f"{index + 1}. {rule}" for index, rule in enumerate(rules)) + "\n"
-        + "只输出这五段，不要前言、解释、Markdown 符号或负向提示词。"
+        + "只输出这五段和最后一行检查，不要前言、解释、Markdown 符号或负向提示词。\n"
+        # The same call grades the pictures, as the H3 writer does; the program reads the line and removes it.
+        + "五段之后另起一行：" + MINIMAX_H3_FRAME_CHECK
     )
+
+
+def art_reference_block_sensitive_minor(user_text: str, answer_text: str = "", minor: bool = False, sensitive: bool = False) -> None:
+    """The H3 check's rule with the static reverse's words, for the 美工 AI 助手 (role reference): explicit
+    minor evidence (the user's text, the answer's own words or the check's 未成年=有) together with sensitive
+    content (the user's text or the check's 敏感=有) fails as the static reverse's blocked gate. A young look
+    alone or a benign child never blocks."""
+    request_minor = _requirements_contain_explicit_minor_terms(user_text)
+    if not (sensitive or _requirements_contain_sensitive_terms(user_text)):
+        return
+    if request_minor or minor or _requirements_contain_explicit_minor_terms(answer_text):
+        code = "art-sensitive-minor-request-blocked" if request_minor else "art-sensitive-young-evidence-blocked"
+        raise VisualContractError(
+            "提示词或补充要求包含明确未成年人内容，敏感提示词已阻止" if request_minor else "检测到明确未成年人特征，敏感提示词已阻止",
+            code=code, semantic=True,
+            diagnostics={"errorCode": code, "generationGate": "blocked", "sensitivePromptBlocked": True},
+        )
 
 
 def art_semantic_fusion_input(source, requirements):
@@ -15127,8 +15148,11 @@ class PromptAssistant:
         # rawOutput is what the model wrote, for tracing; the user gets positivePrompt.
         return {"positivePrompt": positive, "negativePrompt": negative, "rawOutput": laid_out_raw or output}
 
-    def reverse_art_role_prompt(self, image_items: list, requirements: str, purpose: str) -> str:
-        """美工多图反推：主体、画风、背景等参考图各自只贡献对应段落，输出五段提示词。"""
+    def reverse_art_role_prompt(self, image_items: list, requirements: str, purpose: str) -> dict:
+        """美工多图反推：主体、画风、背景等参考图各自只贡献对应段落，输出五段提示词。
+
+        The same call answers the check line (未成年=有/无；敏感=有/无); it is read and removed before
+        the five sections are checked. The result carries the static reverse's grading fields."""
 
         roles = [art_reference_role(item) for item in image_items]
         if purpose == "styleTransfer" and ("style" not in roles or len(roles) < 2):
@@ -15136,6 +15160,8 @@ class PromptAssistant:
         if "subject" not in roles:
             roles[0] = "subject"
         requirement = art_user_requirement_text(requirements)
+        # The user's words alone: explicit minor and sensitive words never reach the model.
+        art_reference_block_sensitive_minor(requirement)
         request = art_role_reference_request(roles, requirement)
         template = (
             "<|im_start|>system\n" + ART_ROLE_REFERENCE_SYSTEM_TEXT
@@ -15145,6 +15171,7 @@ class PromptAssistant:
         output = ""
         description = ""
         laid_out = ""
+        minor = sensitive = False
         for attempt in range(2):
             repair = (
                 "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
@@ -15158,6 +15185,10 @@ class PromptAssistant:
                 seed=attempt + 1, do_sample=False, temperature=0.0,
                 trace_label="artRoleReferenceRepair" if attempt else "artRoleReference",
             )
+            # The check line is read and removed; a missing or unreadable one counts as 无.
+            output, said_minor, said_sensitive = minimax_h3_take_frame_check(output)
+            minor, sensitive = minor or said_minor, sensitive or said_sensitive
+            art_reference_block_sensitive_minor(requirement, output, minor, sensitive)
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
             description = art_role_reference_cleanup(art_plain_background_focus(art_single_view_angle(
                 art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), roles)
@@ -15174,8 +15205,14 @@ class PromptAssistant:
             log_prompt_assistant_event("art_role_reference_layout_accepted", command="reverseImagePrompt", failure=failure)
         elif failure:
             log_prompt_assistant_event("art_role_reference_check_accepted", command="reverseImagePrompt", failure=failure[:240])
-        return art_close_sentences(art_write_requested_weather(
-            art_write_requested_time(laid_out or description, requirement), requirement))
+        return {
+            "prompt": art_close_sentences(art_write_requested_weather(
+                art_write_requested_time(laid_out or description, requirement), requirement)),
+            # As the static reverse: sensitive pictures without minor evidence ask for NSFW; anything else goes as it is.
+            "generationGate": "adult_confirmation" if sensitive else "direct",
+            "sensitivePromptBlocked": False,
+            "contentCheck": {"minor": minor, "sensitive": sensitive},
+        }
 
     def optimize_prompt(self, payload: dict) -> dict:
         is_minimax_h3 = is_minimax_h3_prompt_payload(payload)
@@ -18643,6 +18680,7 @@ class PromptAssistant:
         description = ""
         quality_gate_failed = False
         reverse_diagnostics = {}
+        role_grading = {}
         if len(image_tensors) == 1:
             if is_animation:
                 prompt = (
@@ -18724,8 +18762,9 @@ class PromptAssistant:
                     })
             elif purpose == "roleReference":
                 # 美工 AI 助手 with one reference: the same five-section call reads the picture
-                # (the subject) together with the user's text.
-                description = output = self.reverse_art_role_prompt(image_items, requirements, purpose)
+                # (the subject) together with the user's text; its check is reported as the static route's grading.
+                role_grading = self.reverse_art_role_prompt(image_items, requirements, purpose)
+                description = output = role_grading.pop("prompt")
             else:
                 prompt = (
                     "任务：根据图片内容写一段适合图像生成模型使用的中文自然语言提示词。\n\n"
@@ -18819,7 +18858,8 @@ class PromptAssistant:
                     description = tidy_video_prompt(output, f"{current_prompt}\n{requirements}")
                 elif purpose == "styleTransfer" or purpose == "roleReference":
                     # 美工多图：主体、画风、背景等参考图各自只贡献对应段落，直接得到五段提示词。
-                    description = output = self.reverse_art_role_prompt(image_items, requirements, purpose)
+                    role_grading = self.reverse_art_role_prompt(image_items, requirements, purpose)
+                    description = output = role_grading.pop("prompt")
                 else:
                     prompt = (
                         f"{image_tokens}"
@@ -18859,6 +18899,7 @@ class PromptAssistant:
             "rawOutput": output,
             "qualityGateFailed": quality_gate_failed,
             **reverse_diagnostics,
+            **role_grading,
         }
 
 
