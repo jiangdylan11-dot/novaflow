@@ -17,7 +17,8 @@ export async function createLocalAssistant(options) {
   const tasks = await createLocalTasks(options.dataDir);
   const license = options.license || createLocalLicense(options.licenseDataDir || join(process.env.APPDATA, 'NovaFlow'));
   const progress = options.onProgress || (() => {});
-  const services = options.services || createRuntimeServices({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger });
+  const services = options.services || createRuntimeServices({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger,
+    stateFile: options.dataDir ? join(options.dataDir, 'owned-runtimes.json') : '' });
   let promptAssistant = null;
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
   // 提示词助手 shares the GPU with these runtimes, so it needs their addresses
