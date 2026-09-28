@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext } from 'node:vm';
 import { createLocalAssistant } from '../../worker/src/local-assistant.mjs';
-import { createPromptAssistant, isReverseCacheDir, normalizeOptimizeRequest, CACHE_DIR, MODEL_DIR, MODEL_MISSING_ERROR } from '../../worker/src/prompt-assistant.mjs';
+import { createPromptAssistant, isReverseCacheDir, normalizeOptimizeRequest, normalizeReverseRequest, CACHE_DIR, MODEL_DIR, MODEL_MISSING_ERROR } from '../../worker/src/prompt-assistant.mjs';
 import { createWorker } from '../../worker/src/worker-core.mjs';
 import { inspectModel } from '../../worker/src/models/model-manager.mjs';
 import { findModel } from '../../packages/shared/src/model-manifest.mjs';
@@ -158,6 +158,17 @@ try {
   const longH3 = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(30000) + '\n用户修改要求：镜头慢慢推近' });
   check(longH3.request.requirements.endsWith('用户修改要求：镜头慢慢推近'), 'a long H3 requirement keeps the user request at its end');
   equal(normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(60000) }).request.requirements.length, 48000, 'the H3 cap is the script\'s own 48000');
+  // H3 优化提示词 carries the content policy the way reverse does; without one the request stays as old clients sent it.
+  const policed = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', contentPolicy: { sensitiveVisualAnalysis: true, extra: 1 } }).request.contentPolicy;
+  check(policed.sensitiveVisualAnalysis === true && policed.allSubjectsConfirmedAdult === false && !('extra' in policed), 'H3 optimize forwards only the two policy switches');
+  check(!('contentPolicy' in normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance' }).request) && !('contentPolicy' in normalizeOptimizeRequest({ purpose: 'optimize', contentPolicy: {} }).request), 'no policy is invented, and art never gets one');
+  // 美工 反推: prompt box and 补充要求 together stay within 2000, the 补充要求 whole.
+  const artText = '用户提示词：' + '猫'.repeat(2500) + '\n用户补充要求：画面改为夜晚';
+  const artReverse2000 = normalizeReverseRequest({ purpose: 'roleReference', requirements: artText }).request.requirements;
+  check(artReverse2000.length === 2000 && artReverse2000.startsWith('用户提示词：猫') && artReverse2000.endsWith('\n用户补充要求：画面改为夜晚'), 'a long prompt box is cut, never the 补充要求');
+  equal(normalizeReverseRequest({ purpose: 'static-image-reverse', requirements: 'x'.repeat(3000) }).request.requirements.length, 2000, 'other text keeps the plain 2000 cap');
+  const shortArt = '用户提示词：一只橘猫\n用户补充要求：画面改为夜晚';
+  equal(normalizeReverseRequest({ purpose: 'static-image-reverse', requirements: shortArt }).request.requirements, shortArt, 'a short request is passed whole');
 
   // -- without the model the answer says so; another instance holding it too --
   const bare = createPromptAssistant({ ...promptAssistantOptions, runtimeJsonPath: join(dataDir, 'missing.json'), comfyUrls: [] });

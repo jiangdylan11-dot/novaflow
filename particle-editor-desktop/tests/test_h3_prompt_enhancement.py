@@ -592,6 +592,92 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("你看不到这张图", prompt)
         self.assertIn("<Picture 1>", result["positivePrompt"])
 
+    def test_the_call_that_sees_the_frames_answers_the_minor_check(self):
+        frame = "data:image/jpeg;base64,/9j/AAAA"
+        i2v = {"h3Mode": "image_video", "currentPrompt": "她转身向镜头挥手", "h3ReferenceFrames": [{"label": "<Picture 1>", "dataUrl": frame}]}
+        with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+            result, calls = self.run_local([phases() + "\n检查：未成年=无；敏感=无"], i2v)
+            self.assertIn("按下面的格式输出七行", calls[0][0])
+            self.assertTrue(calls[0][0].endswith("\n" + service.MINIMAX_H3_FRAME_CHECK))
+            # The line is read and removed: neither the prompt nor the raw answer keeps it.
+            self.assertNotRegex(result["positivePrompt"] + result["rawOutput"], "检查|未成年|敏感")
+            # The instruction copied back is no answer; minor evidence without sensitive content is no block.
+            for check in ["检查：未成年=有或无；敏感=有或无", "未成年=有；敏感=无"]:
+                result, _ = self.run_local([phases() + "\n" + check], i2v)
+                self.assertNotIn("未成年", result["rawOutput"])
+            # With sensitive content (the frame check or the user's words) it fails like the local reverse, without a repair call.
+            for check, words in [("检查：未成年=有；敏感=有", "她转身向镜头挥手"), ("检查：未成年：有；敏感：无", "explicit nude，她转身向镜头挥手")]:
+                with self.subTest(check=check):
+                    assistant, calls = service.PromptAssistant(), []
+                    assistant.generate = lambda prompt, **kwargs: calls.append(prompt) or phases() + "\n" + check
+                    with self.assertRaises(service.VisualContractError) as raised:
+                        assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, **i2v, "currentPrompt": words})
+                    self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
+                    self.assertEqual(str(raised.exception), "MiniMax H3 敏感内容检测到明确未成年人证据，已阻断")
+                    self.assertEqual(len(calls), 1)
+        # Without frames nothing is asked or read.
+        _, calls = self.run_local([phases()], {})
+        self.assertNotIn("未成年", calls[0][0])
+        self.assertIn("按下面的格式输出六行", calls[0][0])
+        # The writer keeps the user's person words and assigns no age.
+        self.assertIn("女孩就写女孩", service.MINIMAX_H3_WRITER_RULES)
+        self.assertIn("不写“成年”“未成年”，也不写年龄", service.MINIMAX_H3_WRITER_RULES)
+
+    def test_a_content_policy_checks_the_users_words_before_any_model_call(self):
+        for mode in ["text_video", "image_video", "multi_reference"]:
+            for payload in [{"currentPrompt": "explicit nude minor"},
+                            {"currentPrompt": "", "requirements": "Source prompt:\n\n\nexplicit nude 儿童"},
+                            {"currentPrompt": "海边的人", "requirements": "Source prompt:\n海边的人\n\n改成 explicit nude underage"}]:
+                with self.subTest(mode=mode, payload=payload):
+                    assistant, calls = service.PromptAssistant(), []
+                    assistant.generate = lambda prompt, **kwargs: calls.append(prompt) or phases()
+                    with self.assertRaises(service.VisualContractError) as raised:
+                        assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, "h3Mode": mode,
+                                                   "contentPolicy": {"sensitiveVisualAnalysis": True}, **payload})
+                    self.assertEqual(raised.exception.code, "h3-sensitive-minor-request-blocked")
+                    self.assertEqual(calls, [])
+        # A negated request is no sensitive request.
+        result, _ = self.run_local([phases()], {"contentPolicy": {}, "requirements": "Source prompt:\n" + CAT + "\n\n不要裸露，小孩在旁边看"})
+        self.assertIn("橘猫", result["positivePrompt"])
+
+    def test_a_supplement_alone_is_the_video_description(self):
+        # The renderer sends the 补充要求 as the source; an empty source with the 补充要求 after it reads the same.
+        result, calls = self.run_local([phases()], {"currentPrompt": CAT, "requirements": "Source prompt:\n" + CAT})
+        alone, alone_calls = self.run_local([phases()], {"currentPrompt": "", "requirements": "Source prompt:\n\n\n" + CAT})
+        self.assertIn("视频描述：\n" + CAT + "\n", alone_calls[0][0])
+        self.assertNotIn("补充要求（本次修改", alone_calls[0][0])
+        self.assertEqual(alone_calls[0][0], calls[0][0])
+        self.assertEqual(alone["positivePrompt"], result["positivePrompt"])
+        with self.assertRaisesRegex(ValueError, "请输入提示词或补充要求"):
+            self.run_local([phases()], {"currentPrompt": "", "requirements": "Source prompt:\n"})
+
+    def test_reference_observations_answer_the_minor_check(self):
+        frames = [{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}]
+        requirements = "Available resource labels: <Picture 1>\nSource prompt:\n<Picture 1> 中的人物向镜头挥手"
+        for check, blocked in [("检查：未成年=无；敏感=无", False), ("检查：未成年=有；敏感=有", True)]:
+            with self.subTest(check=check):
+                assistant, calls = service.PromptAssistant(), []
+
+                def generate(prompt, **kwargs):
+                    calls.append((kwargs.get("trace_label"), prompt))
+                    return "画风：写实照片\n主体：穿红色外套的人物\n背景：纯色背景\n" + check if kwargs.get("trace_label") == "minimaxH3ReferenceObserve" else "{}"
+                assistant.generate = generate
+                with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+                    with self.assertRaises(service.VisualContractError if blocked else ValueError) as raised:
+                        assistant._optimize_h3_reference("<Picture 1> 中的人物向镜头挥手", requirements, 5, frames)
+                observe = [prompt for label, prompt in calls if label == "minimaxH3ReferenceObserve"]
+                self.assertEqual(len(observe), 1)
+                self.assertIn("按下面四行输出", observe[0])
+                self.assertIn(service.MINIMAX_H3_FRAME_CHECK, observe[0])
+                plans = [prompt for label, prompt in calls if label in ("minimaxH3ReferenceEnhance", "minimaxH3ReferenceRepair")]
+                if blocked:
+                    # Stopped at the look, before any plan is written.
+                    self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
+                    self.assertEqual(plans, [])
+                else:
+                    self.assertIn("穿红色外套的人物", plans[0])
+                    self.assertNotRegex(plans[0], "未成年|敏感")
+
     def test_requested_cut_becomes_later_shots_with_program_times(self):
         cut = phases().replace("\n约束", "\n镜头2（第3秒）：近景，橘猫落地后回头看向镜头。\n约束")
         result, calls = self.run_local([cut], {"currentPrompt": CAT + "，第3秒切到近景"})

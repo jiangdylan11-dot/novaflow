@@ -232,6 +232,7 @@ export function normalizeOptimizeRequest(payload = {}) {
     && !/\[[^\]\r\n]{1,32}\]|【[^】\r\n]{1,32}】/u.test(currentPrompt)
     ? requestedDetail : '';
   const ordinaryArtPatch = purpose === 'optimize' && Boolean(currentPrompt) && ['', 'art', 'drawing', 'image'].includes(surface.toLowerCase());
+  const policy = payload.contentPolicy && typeof payload.contentPolicy === 'object' && !Array.isArray(payload.contentPolicy) ? payload.contentPolicy : null;
   return {
     timeoutMs: usesH3 || (ordinaryArtPatch && !promptSchema) ? 900000 : 300000,
     request: {
@@ -244,10 +245,21 @@ export function normalizeOptimizeRequest(payload = {}) {
       ...(usesH3 && h3Mode ? { h3Mode } : {}),
       ...(usesH3 && h3Duration !== undefined && h3Duration !== null && h3Duration !== '' ? { durationSeconds: h3Duration } : {}),
       ...(usesH3 && h3VisualSchema ? { visualSchema: h3VisualSchema } : {}),
+      // As for reverse: with a policy the script checks the user's words for minors before writing.
+      ...(usesH3 && policy ? { contentPolicy: { sensitiveVisualAnalysis: policy.sensitiveVisualAnalysis === true, allSubjectsConfirmedAdult: policy.allSubjectsConfirmedAdult === true } } : {}),
       ...(promptSchema ? { promptSchema } : {}),
       ...(promptDetailMode ? { promptDetailMode } : {})
     }
   };
+}
+
+// 美工 反推 sends '用户提示词：…\n用户补充要求：…'; past the cap the prompt is
+// shortened, never the 补充要求 after it.
+function keepSupplement(text, cap) {
+  if (text.length <= cap) return text;
+  const at = text.lastIndexOf('\n用户补充要求');
+  const tail = at > 0 ? text.slice(at) : '';
+  return tail && tail.length < cap ? text.slice(0, cap - tail.length) + tail : text.slice(0, cap);
 }
 
 export function normalizeReverseRequest(payload = {}) {
@@ -255,7 +267,7 @@ export function normalizeReverseRequest(payload = {}) {
   const purpose = String(payload.purpose || '').trim().slice(0, 80);
   const normalizedPurpose = purpose.toLowerCase().replace(/_/g, '-');
   const usesH3 = H3_REVERSE_PURPOSES.includes(normalizedPurpose);
-  const requirements = String(payload.requirements || '').trim().slice(0, usesH3 ? 12000 : 2000);
+  const requirements = usesH3 ? String(payload.requirements || '').trim().slice(0, 12000) : keepSupplement(String(payload.requirements || '').trim(), 2000);
   const currentPrompt = String(payload.currentPrompt ?? payload.current_prompt ?? payload.prompt ?? '').trim().slice(0, 20000);
   const language = String(payload.preferredOutputLanguage || '').trim().toLowerCase();
   const preferredOutputLanguage = usesH3 ? (language === 'en' ? 'en' : language === 'zh-cn' ? 'zh-CN' : '') : '';

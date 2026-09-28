@@ -327,6 +327,20 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertIn('画面改为夜晚', prompt)
         self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
 
+    def test_role_reference_sees_the_prompt_box_and_the_supplement_together(self):
+        # The one AI 助手 action sends both texts; the vision call reads both, without their labels.
+        requirements = '用户提示词：橘猫坐在大厅的地毯上，抬头看向镜头\n用户补充要求：画面改为夜晚'
+        captured, _ = self.reverse(['subject', 'background'], requirements, QWEN3_INLINE_SECTIONS)
+        prompt = captured['prompt']
+        self.assertIn('用户要求（优先于图片内容，写进相关段落，不单独成段）：橘猫坐在大厅的地毯上，抬头看向镜头\n画面改为夜晚\n', prompt)
+        self.assertIn('时间是夜晚', prompt)
+        self.assertNotRegex(prompt, '用户提示词|用户补充要求')
+        self.assertEqual(len(captured['images']), 2)
+        # 单图反推 keeps all of it as the final constraint, within the 2000 characters the worker sends.
+        self.assertTrue(service.append_rich_generation_requirements('[风格设定]\n写实', requirements).endswith(
+            '[用户附加要求]\n要求 = "用户提示词：橘猫坐在大厅的地毯上，抬头看向镜头 用户补充要求：画面改为夜晚"'))
+        self.assertTrue(service.append_rich_generation_requirements('写实', 'x' * 2600).endswith('\n要求 = "' + 'x' * 2000 + '"'))
+
 
 class ArtPromptCleanup(unittest.TestCase):
     """Small deterministic fixes for what Qwen3 reliably writes despite the instructions."""
