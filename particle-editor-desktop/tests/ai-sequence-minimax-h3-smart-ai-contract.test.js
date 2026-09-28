@@ -127,10 +127,11 @@ assert.match(source, /role="\$\{state\.messageTone === "error" \? "alert" : "sta
 
 const failureCategorySource = extractNamedFunction(source, "smartAiFailureCategoryLabel");
 const failureCategoryLabel = vm.runInNewContext(`(${failureCategorySource})`);
-assert.match(failureCategoryLabel({
+// User-facing text names no model (77744b2); the content-policy label stays specific to the video path.
+assert.equal(failureCategoryLabel({
   requestedVisualSchema: "nf.h3.visual.v1",
   failureCategory: "provider_content_policy"
-}), /H3/);
+}), "参考图或补充要求未通过内容与年龄校验");
 assert.match(failureCategoryLabel({
   requestedVisualSchema: "nf.h3.visual.v1",
   failureCategory: "h3_contract_alignment"
@@ -792,6 +793,9 @@ function createSubmitHarness(engine, validationFailure = "") {
       }
     },
     ART_REFERENCE_PLAN: null,
+    // 任务中止 (77744b2) wraps every engine call; the real helpers run here too.
+    smartAiStoppedError: vm.runInNewContext(`(${extractNamedFunction(source, "smartAiStoppedError")})`),
+    smartAiStoppableApi: vm.runInNewContext(`(${extractNamedFunction(source, "smartAiStoppableApi")})`, { Proxy, Promise }),
     getPromptTextareasFromContext: () => ({ positive, negative }),
     isPromptTextControl: (value) => Boolean(value),
     buildSmartAiRequirements: () => "保持原始对白",
@@ -893,6 +897,9 @@ function createReverseSubmitHarness(engine, h3Mode, validationFailure = "", resp
       }
     },
     ART_REFERENCE_PLAN: null,
+    // 任务中止 (77744b2) wraps every engine call; the real helpers run here too.
+    smartAiStoppedError: vm.runInNewContext(`(${extractNamedFunction(source, "smartAiStoppedError")})`),
+    smartAiStoppableApi: vm.runInNewContext(`(${extractNamedFunction(source, "smartAiStoppableApi")})`, { Proxy, Promise }),
     getPromptTextareasFromContext: () => ({ positive, negative }),
     isPromptTextControl: (value) => Boolean(value),
     buildSmartAiRequirements: () => "保持人物身份",
