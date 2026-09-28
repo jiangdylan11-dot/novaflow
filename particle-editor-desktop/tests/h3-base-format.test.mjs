@@ -416,3 +416,16 @@ test('the opening-frame anchor never lands inside dialogue; a static camera and 
     assert.match(api.validateReference(ref, {durationSeconds:5, requirements:'Available resource labels: <Picture 1>'}), /walks along the road\.\n?\s*\[Shot 2\] At 00:03\.000, the shot cuts to a close-up/);
   }
 });
+
+test('a Grok pair writes N/A sound only when the user asks for silence; "is a static shot" reads officially', () => {
+  const pair = sound => JSON.stringify({
+    modelPrompt: `integrated_multimodal_description: [Shot 1] 3D CG, a robot stands idle in front of a green screen. The camera is a static shot.\n\noverall_soundscape: ${sound}\n\nnon_diegetic_music: N/A`,
+    displayPrompt: `integrated_multimodal_description: [Shot 1] 三维动画风格，一个机器人在绿幕前原地待机。镜头固定。\n\noverall_soundscape: ${sound === 'N/A' ? 'N/A' : '低沉的机械嗡鸣声。'}\n\nnon_diegetic_music: N/A`,
+  });
+  for (const api of apis) {
+    assert.throws(() => api.validateBaseResult(pair('N/A'), {mode:'text_video', durationSeconds:8, currentPrompt:'绿幕前的机器人原地待机'}), /静音/);
+    assert.equal(api.validationIssue(new Error('H3 环境声音只有用户要求静音时才能写 N/A，请写出与画面一致的具体环境声和动作声')).reason, 'sections');
+    assert.doesNotThrow(() => api.validateBaseResult(pair('N/A'), {mode:'text_video', durationSeconds:8, currentPrompt:'绿幕前的机器人原地待机，完全静音'}));
+    assert.match(JSON.parse(api.validateBaseResult(pair('A low mechanical hum.'), {mode:'text_video', durationSeconds:8, currentPrompt:'绿幕前的机器人原地待机'})).modelPrompt, /The camera holds a static shot\./);
+  }
+});

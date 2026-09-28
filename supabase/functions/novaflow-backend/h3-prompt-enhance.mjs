@@ -381,11 +381,12 @@ const baseIssue = {
   pairShots: 'H3 中英文提示词的镜头或切换时间不一致',
   pairLiterals: 'H3 中英文提示词的台词或屏幕文字不一致',
   pairCoverage: 'H3 英文提示词遗漏了中文内容，请逐句完整翻译每个镜头',
+  silence: 'H3 环境声音只有用户要求静音时才能写 N/A，请写出与画面一致的具体环境声和动作声',
 };
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
 const validationIssues = [
-  ['sections', [baseIssue.sections]],
+  ['sections', [baseIssue.sections, baseIssue.silence]],
   ['timeline', [baseIssue.shotOrder, baseIssue.shotTime, baseIssue.pairShots]],
   ['references', [baseIssue.subject]],
   ['language', [baseIssue.chinese, baseIssue.english, baseIssue.pairCoverage]],
@@ -583,7 +584,7 @@ const officialEnglish = text => outsideLiterals(String(text), part => part
   .replace(/(\[Shot (?:[2-9]|[1-9]\d+)\] At \d{2}:\d{2}\.\d{3})[ \t]*,?[ \t]*(?=([^.;!?\n]*))/g, (_, head, clause) => head + ', ' + (!clause.trim() || cutVerb.test(clause) ? '' : shotPhrase.test(clause.trim()) ? 'the shot cuts to ' : 'the shot cuts. '))
   .replace(/(the shot cuts to )(A|An|The)\b/g, (_, cut, article) => cut + article.toLowerCase())
   .replace(/(the shot cuts\. )([a-z])/g, (_, cut, letter) => cut + letter.toUpperCase())
-  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps|holds) (?:completely |fully |perfectly )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: throughout(?: the (?:shot|clip|video))?)?/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
+  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps|holds) (?:completely |fully |perfectly )?(?:a )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: shot)?(?: throughout(?: the (?:shot|clip|video))?)?/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
   .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:holds|maintains|keeps|retains|preserves) (?:its |the |a )?(?:(?:steady|stable|fixed|same|initial|original|current) )?(?:composition|framing)\b/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
   // ", static shot" as a trailing label, not an adjective list ("ending on a wide, static shot").
   .replace(/(?<!\b(?:a|an)\s+[\w-]+),\s*(?:a\s+)?static shot(?=\s*(?:[.;!]|$))/gi, '. The camera holds a static shot')
@@ -834,6 +835,9 @@ function validateBaseResult(value, options = {}) {
     const own = new Set((userIntent(options).match(/[A-Za-z]+/g) || []).map(word => word.toLowerCase()));
     if ((proseOf(baseFields.map(k => results[1].fields[k]).join('\n')).replace(/<(?:Picture|Video|Audio) \d+>|\[Shot \d+\]|\bAt \d{2}:\d{2}\.\d{3}|N\/A/g, '').match(/[A-Za-z]+/g) || []).some(word => word.length > 2 && word === word.toLowerCase() && !own.has(word))) throw new Error(baseIssue.english);
   }
+  // Official 4.6: the soundscape is N/A only when the user asks for silence.
+  if (pair && !options.displayIsSource && /^N\/A\.?$/i.test(results[0].fields.overall_soundscape.trim())
+      && !/静音|无声|没有(?:任何)?声音|不要(?:任何)?声音|去掉(?:所有|全部)?声音|silen(?:t|ce)|no sound|mute/i.test(userIntent(options))) throw new Error(baseIssue.silence);
   // Mirror validateReferenceResult: complete a requested loop closure and a default camera, never reject for them.
   const intent = userIntent(options), narrativeOf = r => r.fields.integrated_multimodal_description;
   const complete = (missing, sentences) => {
