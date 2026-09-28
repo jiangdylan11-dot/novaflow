@@ -5,7 +5,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict'
 
-  const VERSION = '20260722-ui-design-assistant-dialog-3'
+  const VERSION = '20260928-ui-design-assistant-dialog-4'
   const ROOT_ATTRIBUTE = 'data-novaflow-ui-design-assistant-dialog'
   let active = null
 
@@ -85,9 +85,17 @@
     return record.engine === 'local' ? 3 : 4
   }
 
+  // Like the AI 助手: the design assistant writes from the user's own words (设计要求 or 补充要求).
+  function userTextMissing(record) {
+    return !currentPrompt(record).trim() && !text(record.requirements?.value).trim()
+  }
+
   function syncSubmitState(record) {
     if (!record.submit) return
-    record.submit.disabled = Boolean(record.pending || record.referenceLimitError)
+    const missing = userTextMissing(record)
+    if (record.notice) record.notice.style.display = missing && !record.pending ? 'block' : 'none'
+    record.submit.disabled = Boolean(record.pending || record.referenceLimitError || missing)
+    if (record.stop) record.stop.style.display = record.pending ? 'block' : 'none'
   }
 
   function syncReferenceLimitState(record) {
@@ -209,18 +217,32 @@
   async function submit(record) {
     if (record.pending || active !== record) return false
     if (!syncReferenceLimitState(record)) return false
+    if (userTextMissing(record)) {
+      syncSubmitState(record)
+      return false
+    }
     const workflow = workflowFor(record.options)
     if (!workflow?.createSession || !record.session) {
       setStatus(record, '设计助手工作流未就绪', true)
       return false
     }
     record.pending = true
-    record.submit.disabled = true
     record.submit.textContent = '处理中…'
+    syncSubmitState(record)
     setStatus(record, '')
     const startRevision = revision(record)
+    // 任务中止 settles the wait at once; whatever the engine returns later is never written.
+    const stopped = new Promise((_, reject) => {
+      record.stopRun = () => {
+        record.session?.cancel?.()
+        const error = new Error('任务已中止')
+        error.novaflowStopped = true
+        reject(error)
+      }
+    })
+    stopped.catch(() => {})
     try {
-      const result = await record.session.run({
+      const result = await Promise.race([stopped, record.session.run({
         electronAPI: record.options.electronAPI,
         engine: record.engine,
         provider: record.options.provider || record.options.state?.provider,
@@ -243,7 +265,7 @@
         getRevision: () => revision(record),
         revision: startRevision,
         timeoutMs: record.options.timeoutMs,
-      })
+      })])
       if (active !== record) return false
       const payload = {
         prompt: result.prompt,
@@ -271,9 +293,11 @@
       close('applied')
       return true
     } catch (error) {
-      if (active === record && error?.name !== 'AbortError') setStatus(record, error?.message || error || '设计助手执行失败', true)
+      if (active === record && error?.novaflowStopped) setStatus(record, '任务已中止')
+      else if (active === record && error?.name !== 'AbortError') setStatus(record, error?.message || error || '设计助手执行失败', true)
       return false
     } finally {
+      record.stopRun = null
       if (active === record) {
         record.pending = false
         record.submit.textContent = '生成并写入设计要求'
@@ -459,9 +483,18 @@
         },
       }),
       referencesHost: element(documentRef, 'div', { style: { display: 'grid', gap: '6px' } }),
+      // The same neutral box the AI 助手 shows while neither text field has words.
+      notice: element(documentRef, 'div', {
+        'data-novaflow-ui-design-assistant-notice': '1', text: '请先在设计要求或补充要求里写想要的效果',
+        style: {
+          display: 'none', padding: '8px 10px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px',
+          background: 'rgba(255,255,255,0.035)', color: 'rgba(160,160,160,0.96)', fontSize: '11px', lineHeight: '17px',
+        },
+      }),
       status: element(documentRef, 'div', { 'aria-live': 'polite', style: { minHeight: '16px', fontSize: '11px', lineHeight: '1.5' } }),
       session: workflow.createSession(),
     }
+    record.requirements.addEventListener('input', () => syncSubmitState(record))
     const section = (label, content) => element(documentRef, 'section', { style: { display: 'grid', gap: '7px' } }, [
       element(documentRef, 'div', { text: label, style: { color: 'rgba(255,255,255,0.76)', fontSize: '11px', fontWeight: '850' } }),
       content,
@@ -515,6 +548,7 @@
       section('处理方式', engineGrid),
       section('参考图 · 本次分析职责', record.referencesHost),
       section('补充要求', record.requirements),
+      record.notice,
       record.status,
     )
     const submit = element(documentRef, 'button', {
@@ -526,9 +560,18 @@
     })
     record.submit = submit
     submit.addEventListener('click', () => submitDesign(record))
+    const stop = element(documentRef, 'button', {
+      type: 'button', text: '任务中止', 'data-novaflow-ui-design-assistant-stop': '1',
+      style: {
+        display: 'none', width: 'min(320px, 100%)', height: '38px', border: '1px solid rgba(239,68,68,0.55)', borderRadius: '8px',
+        background: 'rgba(239,68,68,0.18)', color: '#fff', fontSize: '12px', fontWeight: '500', cursor: 'pointer',
+      },
+    })
+    record.stop = stop
+    stop.addEventListener('click', () => { if (record.pending) record.stopRun?.() })
     const footer = element(documentRef, 'footer', {
-      style: { display: 'flex', justifyContent: 'center', padding: '12px 15px', borderTop: '1px solid rgba(255,255,255,0.08)' },
-    }, [submit])
+      style: { display: 'flex', justifyContent: 'center', gap: '8px', padding: '12px 15px', borderTop: '1px solid rgba(255,255,255,0.08)' },
+    }, [submit, stop])
     panel.append(header, body, footer)
     host.appendChild(panel)
     host.addEventListener('pointerdown', (event) => { if (event.target === host && !record.pending) close('backdrop') })
@@ -543,6 +586,7 @@
     active = record
     updateReferenceRows(record)
     loadContext(record)
+    syncSubmitState(record)
     return Object.freeze({
       close: () => close('api'),
       submit: () => submitDesign(record),
