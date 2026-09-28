@@ -60,6 +60,7 @@ from prompt_assistant.qwen3_vl_adapter import Qwen3VLAbliteratedAdapter, Qwen3VL
 from prompt_assistant.visual_contract import (
     RICH_PLAIN_BACKGROUND_PATTERN,
     RICH_VISUAL_SYSTEM_TEXT,
+    SAFE_SENSITIVE_PATTERN,
     SCHEMA_VERSION as VISUAL_SCHEMA_VERSION,
     SCHEMA_VERSION_V2 as VISUAL_SCHEMA_VERSION_V2,
     VisualContractError,
@@ -5810,19 +5811,68 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         + "要求：\n" + "\n".join(f"{index + 1}. {rule}" for index, rule in enumerate(rules)) + "\n"
         + "只输出这五段和最后一行检查，不要前言、解释、Markdown 符号或负向提示词。\n"
         # The same call grades the pictures, as the H3 writer does; the program reads the line and removes it.
-        + "五段之后另起一行：" + MINIMAX_H3_FRAME_CHECK
+        + "五段之后另起一行：" + ART_REFERENCE_CHECK
     )
 
 
-def art_reference_block_sensitive_minor(user_text: str, answer_text: str = "", minor: bool = False, sensitive: bool = False) -> None:
-    """The H3 check's rule with the static reverse's words, for the 美工 AI 助手 (role reference): explicit
-    minor evidence (the user's text, the answer's own words or the check's 未成年=有) together with sensitive
-    content (the user's text or the check's 敏感=有) fails as the static reverse's blocked gate. A young look
-    alone or a benign child never blocks."""
+# The H3 writer's check with 人物 added (as in the static reverse, only a sensitive picture that shows a person asks for
+# NSFW), and 敏感 grading the user's request too, as the Grok role reference's contentSafety does: the model reads 别裸露
+# or 背景换成裸露的红砖墙 better than a word list.
+ART_REFERENCE_CHECK = ("检查：这一行只给程序看，写成“人物=有或无；未成年=有或无；敏感=有或无”。图中有人或人形角色（照片、绘画、动漫都算）才写人物=有；"
+                       "图中有明确的未成年人文字或直接证据（如婴儿、幼童、儿童）才写未成年=有，看起来年轻不算；"
+                       "图中有、或用户要求画出裸露、性暗示姿势或性行为才写敏感=有")
+# The check as Qwen3 may write it (检查：, 检查结果：, **检查**：, [检查], （检查：…）, or the items alone), on its own
+# line or after a section's text. It runs to the next section title or to the end, so a note written after it goes too.
+ART_REFERENCE_CHECK_ITEM = r"(?:人物|未成年人?|敏感(?:内容)?)[ \t]*{}[ \t]*[有无是否](?=[ \t]*(?:[；;，,。.、）)】\]*]|$))"
+ART_REFERENCE_CHECK_START = re.compile(
+    r"^[ \t>#*\-•]*[（(【\[]?\**[ \t]*检查(?:结果)?[ \t]*\**[】\]]?[ \t]*(?:[:：]|$|(?=人物|未成年|敏感))"
+    r"|^[ \t>#*\-•]*[（(【\[]?" + ART_REFERENCE_CHECK_ITEM.format("[=＝:：]")
+    + r"|[（(【\[]?\**检查(?:结果)?\**[】\]]?[ \t]*[:：]?(?=[\s*]*(?:人物|未成年人?|敏感(?:内容)?)[ \t]*[=＝:：])"
+    + r"|[（(【\[]?" + ART_REFERENCE_CHECK_ITEM.format("[=＝]"),
+    re.M,
+)
+ART_REFERENCE_SECTION_TITLE = re.compile(r"[\[【](?!检查)[^\]】\n]{1,12}[\]】]")
+# The static reverse's sensitive words (its requirements check), and the everyday ones among them: 裸露 (裸露的岩石,
+# 裸露的双腿, 别裸露) and the colour nude ("nude 色").
+ART_REFERENCE_SENSITIVE_WORDS = re.compile(SAFE_SENSITIVE_PATTERN.pattern + r"|(?<![a-z0-9_])(?:nude|naked)(?![a-z0-9_])", re.I)
+ART_REFERENCE_EVERYDAY_WORDS = re.compile(
+    r"裸露|(?<![a-z0-9_])nude(?=[\s-]*(?:色|colou?r|pink|beige|brown|tone|shade|lip|makeup|heel|shoe|nail|palette))", re.I)
+
+
+def art_reference_take_check(output) -> tuple:
+    """(the answer without its check, 人物, 未成年, 敏感) - the H3 writer's reading of its check line, for every
+    way the 美工 answer writes it. A missing, copied or unreadable check says 无."""
+    text = str(output or "").rstrip()
+    checks = []
+    while start := ART_REFERENCE_CHECK_START.search(text):
+        title = ART_REFERENCE_SECTION_TITLE.search(text, start.end())
+        end = title.start() if title else len(text)
+        checks.append(text[start.start():end])
+        text = text[:start.start()].rstrip(" \t；;，,") + text[end:]
+    # The instruction copied back ("…才写未成年=有", "有或无") is no answer.
+    answer = " ".join(check for check in checks if not re.search(r"只给程序看|才写", check))
+    said = lambda word: bool(re.search(word + r"\s*[=＝:：]?\s*[有是](?![或否])", answer))
+    return text.strip(), said("人物"), said("未成年人?"), said("敏感(?:内容)?")
+
+
+def art_reference_explicit_words(text: str, affirmative: bool = False) -> bool:
+    """The static reverse's sensitive words without the everyday ones (裸露, the colour nude): 裸体, 全裸, 一丝不挂,
+    "make her nude"...; with affirmative, a negated one (不要裸体) does not count either."""
+    words = ART_REFERENCE_EVERYDAY_WORDS.sub("", str(text or ""))
+    if affirmative:
+        return bool(minimax_h3_affirmative_pattern_matches(words, ART_REFERENCE_SENSITIVE_WORDS))
+    return bool(ART_REFERENCE_SENSITIVE_WORDS.search(words))
+
+
+def art_reference_block_sensitive_minor(user_text: str, minor: bool = False, sensitive: bool = False) -> None:
+    """The 美工 AI 助手 (role reference) fails as the static reverse's blocked gate for explicit minor evidence
+    (the user's words, or what the caller found: the check's 未成年=有, the answer's words) together with
+    sensitive content (what the caller found: the check's 敏感=有, the prompt's explicit words; or the user's
+    explicit words). The user's words alone follow the static reverse's own rule. A young look alone, or a
+    child with everyday words (裸露的岩石, 裸露的双腿, 别裸露, "nude 色"), never blocks."""
     request_minor = _requirements_contain_explicit_minor_terms(user_text)
-    if not (sensitive or _requirements_contain_sensitive_terms(user_text)):
-        return
-    if request_minor or minor or _requirements_contain_explicit_minor_terms(answer_text):
+    if ((request_minor and _requirements_contain_sensitive_terms(user_text))
+            or ((request_minor or minor) and (sensitive or art_reference_explicit_words(user_text, affirmative=True)))):
         code = "art-sensitive-minor-request-blocked" if request_minor else "art-sensitive-young-evidence-blocked"
         raise VisualContractError(
             "提示词或补充要求包含明确未成年人内容，敏感提示词已阻止" if request_minor else "检测到明确未成年人特征，敏感提示词已阻止",
@@ -15151,8 +15201,9 @@ class PromptAssistant:
     def reverse_art_role_prompt(self, image_items: list, requirements: str, purpose: str) -> dict:
         """美工多图反推：主体、画风、背景等参考图各自只贡献对应段落，输出五段提示词。
 
-        The same call answers the check line (未成年=有/无；敏感=有/无); it is read and removed before
-        the five sections are checked. The result carries the static reverse's grading fields."""
+        The same call answers the check line (人物=有/无；未成年=有/无；敏感=有/无); it is read and removed
+        before the five sections are checked. The result carries the static reverse's grading fields and
+        contentSafety, the signal the renderer reads (as the Grok role reference returns it)."""
 
         roles = [art_reference_role(item) for item in image_items]
         if purpose == "styleTransfer" and ("style" not in roles or len(roles) < 2):
@@ -15171,7 +15222,7 @@ class PromptAssistant:
         output = ""
         description = ""
         laid_out = ""
-        minor = sensitive = False
+        person = minor = sensitive = young_words = False
         for attempt in range(2):
             repair = (
                 "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
@@ -15186,12 +15237,16 @@ class PromptAssistant:
                 trace_label="artRoleReferenceRepair" if attempt else "artRoleReference",
             )
             # The check line is read and removed; a missing or unreadable one counts as 无.
-            output, said_minor, said_sensitive = minimax_h3_take_frame_check(output)
-            minor, sensitive = minor or said_minor, sensitive or said_sensitive
-            art_reference_block_sensitive_minor(requirement, output, minor, sensitive)
+            output, said_person, said_minor, said_sensitive = art_reference_take_check(output)
+            person, minor, sensitive = person or said_person, minor or said_minor, sensitive or said_sensitive
+            young_words = young_words or _requirements_contain_explicit_minor_terms(output)
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
             description = art_role_reference_cleanup(art_plain_background_focus(art_single_view_angle(
                 art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), roles)
+            # The prompt's own explicit words count as sensitive content too, in case the check says 无 while the
+            # prompt writes what was asked for in words the user's text does not use (脱光 -> 一丝不挂).
+            art_reference_block_sensitive_minor(requirement, minor or young_words,
+                                                sensitive or art_reference_explicit_words(description))
             failure = art_five_section_failure(description)
             if not failure:
                 laid_out = description
@@ -15205,13 +15260,21 @@ class PromptAssistant:
             log_prompt_assistant_event("art_role_reference_layout_accepted", command="reverseImagePrompt", failure=failure)
         elif failure:
             log_prompt_assistant_event("art_role_reference_check_accepted", command="reverseImagePrompt", failure=failure[:240])
+        # As the static reverse, sensitive content (the check grades the pictures and the user's request, as the Grok
+        # role reference's model does) with a person in the pictures asks for NSFW; the user's words alone never do.
+        # With minor evidence it has already failed above. The renderer reads contentSafety (Grok's shape) or the gate.
+        sensitive_content = sensitive and person
         return {
             "prompt": art_close_sentences(art_write_requested_weather(
                 art_write_requested_time(laid_out or description, requirement), requirement)),
-            # As the static reverse: sensitive pictures without minor evidence ask for NSFW; anything else goes as it is.
-            "generationGate": "adult_confirmation" if sensitive else "direct",
+            "generationGate": "adult_confirmation" if sensitive_content else "direct",
             "sensitivePromptBlocked": False,
-            "contentCheck": {"minor": minor, "sensitive": sensitive},
+            "contentSafety": {
+                "sensitiveContent": sensitive_content,
+                "explicitMinorEvidence": minor or young_words or _requirements_contain_explicit_minor_terms(requirement),
+            },
+            # What the check said, for tracing.
+            "contentCheck": {"person": person, "minor": minor, "sensitive": sensitive},
         }
 
     def optimize_prompt(self, payload: dict) -> dict:

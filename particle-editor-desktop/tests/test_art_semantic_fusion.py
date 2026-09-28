@@ -345,12 +345,13 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertTrue(service.append_rich_generation_requirements('写实', 'x' * 2600).endswith('\n要求 = "' + 'x' * 2000 + '"'))
 
     def role_check(self, roles, requirements, *outputs):
-        """The role reference with stubbed model answers, one per call; self.calls keeps what was sent."""
+        """The role reference with stubbed model answers, one per call (the last one repeats); self.calls keeps
+        what was sent."""
         self.calls = []
         original = service.data_url_to_tensor
         service.data_url_to_tensor = lambda _url: object()
         assistant = service.PromptAssistant()
-        assistant.generate = lambda prompt, **kwargs: self.calls.append(prompt) or outputs[len(self.calls) - 1]
+        assistant.generate = lambda prompt, **kwargs: self.calls.append(prompt) or outputs[min(len(self.calls), len(outputs)) - 1]
         try:
             return assistant.reverse_image_prompt({
                 'purpose': 'roleReference', 'requirements': requirements,
@@ -360,48 +361,97 @@ class Qwen3ArtFlows(unittest.TestCase):
             service.data_url_to_tensor = original
 
     def test_role_reference_answers_the_check_line_in_its_one_call(self):
+        # The H3 writer's line with 人物 added, its 未成年 rule as it is, and 敏感 grading the user's request too.
+        for part in ('写成“人物=有或无；未成年=有或无；敏感=有或无”。图中有人或人形角色',
+                     '图中有明确的未成年人文字或直接证据（如婴儿、幼童、儿童）才写未成年=有，看起来年轻不算；',
+                     '图中有、或用户要求画出裸露、性暗示姿势或性行为才写敏感=有'):
+            self.assertIn(part, service.ART_REFERENCE_CHECK)
+        self.assertIn('图中有明确的未成年人文字或直接证据（如婴儿、幼童、儿童）才写未成年=有，看起来年轻不算', service.MINIMAX_H3_FRAME_CHECK)
         plain = self.role_check(['subject'], '', QWEN3_INLINE_SECTIONS)
         self.assertTrue(self.calls[0].endswith('只输出这五段和最后一行检查，不要前言、解释、Markdown 符号或负向提示词。\n'
-                                               '五段之后另起一行：' + service.MINIMAX_H3_FRAME_CHECK))
+                                               '五段之后另起一行：' + service.ART_REFERENCE_CHECK))
         self.assertEqual((plain['generationGate'], plain['sensitivePromptBlocked']), ('direct', False))
-        # Wherever the line is written, it is read and removed before the five sections are checked; one call, no repair.
+        self.assertEqual(plain['contentSafety'], {'sensitiveContent': False, 'explicitMinorEvidence': False})
+        check = '人物=有；未成年=无；敏感=有'
+        one_line = QWEN3_INLINE_SECTIONS.replace('\n\n', ' ')
+        # Wherever and however the line is written, it is read and removed, with a note or a 负向 line after it,
+        # before the five sections are checked: the prompt is the one the same answer gives without it.
         for roles in (['subject'], ['subject', 'style']):
-            for written in (QWEN3_INLINE_SECTIONS + '\n检查：未成年=无；敏感=有',
-                            QWEN3_INLINE_SECTIONS + '。检查：未成年=无；敏感=有',
-                            '检查：未成年=无；敏感=有\n' + QWEN3_INLINE_SECTIONS,
-                            QWEN3_INLINE_SECTIONS + '\n\n[检查]\n未成年：无；敏感：有'):
+            for written, base in ((QWEN3_INLINE_SECTIONS + '\n检查：' + check, QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '。检查：' + check, QWEN3_INLINE_SECTIONS),
+                                  ('检查：' + check + '\n' + QWEN3_INLINE_SECTIONS, QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '\n\n[检查]\n人物：有；未成年：无；敏感：有', QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '\n检查结果：' + check, QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '\n**检查**：' + check, QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '。敏感=有；人物=有；未成年=无', QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '\n检查：' + check + '\n说明：图中为成年女性', QWEN3_INLINE_SECTIONS),
+                                  (QWEN3_INLINE_SECTIONS + '。检查：' + check + '\n负向提示词：模糊', QWEN3_INLINE_SECTIONS),
+                                  ('检查：' + check + ' ' + one_line, one_line)):
                 with self.subTest(roles=roles, written=written):
                     result = self.role_check(roles, '', written)
-                    self.assertEqual(len(self.calls), 1)
-                    self.assertEqual(result['positivePrompt'], self.role_check(roles, '', QWEN3_INLINE_SECTIONS)['positivePrompt'])
-                    self.assertNotRegex(result['positivePrompt'] + result['rawOutput'], '检查|未成年|敏感')
-                    self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
-                    # An adult-looking sensitive picture asks for NSFW, as the static reverse's adult_confirmation;
+                    calls = len(self.calls)
+                    self.assertEqual(result['positivePrompt'], self.role_check(roles, '', base)['positivePrompt'])
+                    self.assertEqual(calls, len(self.calls))
+                    self.assertEqual(calls, 2 if base == one_line else 1)
+                    self.assertNotRegex(result['positivePrompt'] + result['rawOutput'], '检查|未成年|敏感|人物[=＝:：]|说明|负向')
+                    # A sensitive picture with a person asks for NSFW, as the static reverse's adult_confirmation;
                     # a young look (少女) alone is no minor evidence.
                     self.assertEqual(result['generationGate'], 'adult_confirmation')
                     self.assertFalse(result['sensitivePromptBlocked'])
-                    self.assertEqual(result['contentCheck'], {'minor': False, 'sensitive': True})
+                    self.assertEqual(result['contentSafety'], {'sensitiveContent': True, 'explicitMinorEvidence': False})
+                    self.assertEqual(result['contentCheck'], {'person': True, 'minor': False, 'sensitive': True})
         # A benign picture goes as it is.
         night = '用户生成要求：画面改为夜晚'
-        result = self.role_check(['subject'], night, QWEN3_INLINE_SECTIONS + '\n检查：未成年=无；敏感=无')
-        self.assertEqual((result['generationGate'], result['contentCheck']), ('direct', {'minor': False, 'sensitive': False}))
+        result = self.role_check(['subject'], night, QWEN3_INLINE_SECTIONS + '\n检查：人物=有；未成年=无；敏感=无')
+        self.assertEqual((result['generationGate'], result['contentSafety']), ('direct', {'sensitiveContent': False, 'explicitMinorEvidence': False}))
         self.assertEqual(result['positivePrompt'], self.role_check(['subject'], night, QWEN3_INLINE_SECTIONS)['positivePrompt'])
-        # The repair sees the last answer without its check line; a 敏感=有 from either call counts.
-        prose = '一只橘猫趴在窗台上晒太阳。\n检查：未成年=无；敏感=有'
+        # The repair sees the last answer without its check line; what either call said counts.
+        prose = '一只橘猫趴在窗台上晒太阳。\n检查：人物=有；未成年=无；敏感=有'
         result = self.role_check(['subject'], '', prose, QWEN3_INLINE_SECTIONS + '\n检查：未成年=无；敏感=无')
         self.assertEqual(len(self.calls), 2)
         self.assertIn('上次结果：\n一只橘猫趴在窗台上晒太阳。', self.calls[1])
-        self.assertNotIn('检查：未成年=无', self.calls[1])
+        self.assertNotIn('检查：人物=有', self.calls[1])
         self.assertEqual(result['generationGate'], 'adult_confirmation')
+
+    def test_role_reference_reports_the_signal_the_renderer_reads(self):
+        adult = QWEN3_INLINE_SECTIONS.replace('少女', '成年女性')
+        cases = [
+            # (user text, check, sensitiveContent)
+            ('', '人物=有；未成年=无；敏感=有', True),
+            # No person: the static reverse gave no adult_confirmation, so no NSFW switch; an unanswered 人物 is 无.
+            ('', '人物=无；未成年=无；敏感=有', False),
+            ('', '未成年=无；敏感=有', False),
+            # The check grades the user's request too (as Grok's contentSafety): the model decides, the words alone never
+            # switch - a cover-up request (别裸露, 去掉裸露) is no request for nudity.
+            ('用户生成要求：用户提示词：nude woman portrait，裸体', '人物=有；未成年=无；敏感=有', True),
+            ('用户生成要求：用户提示词：nude woman portrait，裸体', '人物=有；未成年=无；敏感=无', False),
+            ('用户生成要求：用户提示词：给她穿上外套，别裸露', '人物=有；未成年=无；敏感=无', False),
+            ('用户生成要求：用户提示词：去掉裸露部分，穿上衣服', '人物=有；未成年=无；敏感=无', False),
+            ('用户生成要求：用户提示词：背景换成裸露的红砖墙', '人物=有；未成年=无；敏感=无', False),
+        ]
+        for requirements, check, sensitive in cases:
+            for roles in (['subject'], ['subject', 'background']):
+                with self.subTest(requirements=requirements, check=check, roles=roles):
+                    result = self.role_check(roles, requirements, adult + '\n检查：' + check)
+                    self.assertEqual(result['contentSafety'], {'sensitiveContent': sensitive, 'explicitMinorEvidence': False})
+                    self.assertEqual(result['generationGate'], 'adult_confirmation' if sensitive else 'direct')
+                    self.assertFalse(result['sensitivePromptBlocked'])
+                    self.assertNotRegex(result['positivePrompt'], '检查|未成年|敏感|人物[=＝:：]')
 
     def test_role_reference_blocks_explicit_minor_with_sensitive_content(self):
         child = QWEN3_INLINE_SECTIONS.replace('一个穿红色斗篷的少女', '一个穿红色斗篷的儿童')
         cases = [
             # (user text, answer, code, model calls)
-            ('', QWEN3_INLINE_SECTIONS + '\n检查：未成年=有；敏感=有', 'art-sensitive-young-evidence-blocked', 1),
-            ('', child + '\n检查：未成年=无；敏感=有', 'art-sensitive-young-evidence-blocked', 1),
-            ('用户生成要求：explicit nude', QWEN3_INLINE_SECTIONS + '\n检查：未成年=有；敏感=无', 'art-sensitive-young-evidence-blocked', 1),
-            ('用户生成要求：用户提示词：一个儿童站在雪山顶', QWEN3_INLINE_SECTIONS + '\n检查：未成年=无；敏感=有', 'art-sensitive-minor-request-blocked', 1),
+            ('', QWEN3_INLINE_SECTIONS + '\n检查：人物=有；未成年=有；敏感=有', 'art-sensitive-young-evidence-blocked', 1),
+            ('', child + '\n检查：人物=有；未成年=无；敏感=有', 'art-sensitive-young-evidence-blocked', 1),
+            ('用户生成要求：explicit nude', QWEN3_INLINE_SECTIONS + '\n检查：人物=有；未成年=有；敏感=无', 'art-sensitive-young-evidence-blocked', 1),
+            ('用户生成要求：用户提示词：画成裸体', QWEN3_INLINE_SECTIONS + '\n检查：人物=有；未成年=有；敏感=无', 'art-sensitive-young-evidence-blocked', 1),
+            ('用户生成要求：用户提示词：一个儿童站在雪山顶', QWEN3_INLINE_SECTIONS + '\n检查：人物=有；未成年=无；敏感=有', 'art-sensitive-minor-request-blocked', 1),
+            # The prompt's own words: the model wrote what the user asked for in words the user's text does not use.
+            ('用户生成要求：用户提示词：脱光她的衣服', QWEN3_INLINE_SECTIONS.replace('一个穿红色斗篷的少女', '一个一丝不挂的小女孩')
+             + '\n检查：人物=有；未成年=有；敏感=无', 'art-sensitive-young-evidence-blocked', 1),
+            ('用户生成要求：用户提示词：脱光她的衣服', child.replace('穿红色斗篷的', '全裸的') + '\n检查：人物=有；未成年=无；敏感=无',
+             'art-sensitive-young-evidence-blocked', 1),
             # The user's words alone never reach the model.
             ('用户生成要求：用户提示词：一个儿童站在雪山顶\n用户补充要求：explicit nude', QWEN3_INLINE_SECTIONS, 'art-sensitive-minor-request-blocked', 0),
         ]
@@ -409,30 +459,50 @@ class Qwen3ArtFlows(unittest.TestCase):
             for roles in (['subject'], ['subject', 'background']):
                 with self.subTest(requirements=requirements, answer=answer, roles=roles):
                     with self.assertRaises(service.VisualContractError) as raised:
-                        self.role_check(roles, requirements, answer, answer)
+                        self.role_check(roles, requirements, answer)
                     self.assertEqual(raised.exception.code, code)
                     self.assertEqual(raised.exception.diagnostics, {'errorCode': code, 'generationGate': 'blocked', 'sensitivePromptBlocked': True})
                     self.assertEqual(len(self.calls), calls)
         self.assertEqual(str(raised.exception), '提示词或补充要求包含明确未成年人内容，敏感提示词已阻止')
 
+    def test_role_reference_child_in_a_harmless_scene_passes(self):
+        # 未成年=有 with the user's everyday words that the static list matches (bare walls, the colour nude, a negated
+        # word, a cover-up): the static reverse wrote these, and so does the role reference.
+        answer = QWEN3_INLINE_SECTIONS.replace('一个穿红色斗篷的少女', '一个穿红色斗篷的小女孩') + '\n检查：人物=有；未成年=有；敏感=无'
+        for text in ('背景换成裸露的红砖墙', '小女孩站在雪山顶，脚下是裸露的岩石', '小女孩穿 nude 色连衣裙', '小女孩衣着完整，不要裸露',
+                     '小女孩挥动裸露的双臂', '给她穿上外套，别裸露', '去掉裸露部分，穿上衣服'):
+            for roles in (['subject'], ['subject', 'background']):
+                with self.subTest(text=text, roles=roles):
+                    result = self.role_check(roles, '用户生成要求：用户提示词：' + text, answer)
+                    self.assertEqual(result['generationGate'], 'direct')
+                    self.assertEqual(result['contentSafety'], {'sensitiveContent': False, 'explicitMinorEvidence': True})
+                    self.assertEqual(result['contentCheck'], {'person': True, 'minor': True, 'sensitive': False})
+        # The answer's own everyday words: a negation the cleanup removes, bare rock, bare arms, legs and back.
+        for written in ('衣着完整，没有裸露', '挥动裸露的双臂', '脚下是裸露的岩石', '裸露的双腿和后背'):
+            with self.subTest(written=written):
+                result = self.role_check(['subject'], '', answer.replace('斗篷在夜风中微扬', written))
+                self.assertEqual((result['generationGate'], len(self.calls)), ('direct', 1))
+
     def test_role_reference_check_defaults_never_block_or_ask_for_nsfw(self):
         child = QWEN3_INLINE_SECTIONS.replace('一个穿红色斗篷的少女', '一个穿红色斗篷的儿童')
         for answer in (QWEN3_INLINE_SECTIONS,                                          # no line
-                       QWEN3_INLINE_SECTIONS + '\n' + service.MINIMAX_H3_FRAME_CHECK,  # the instruction copied back
-                       QWEN3_INLINE_SECTIONS + '\n检查：未成年=有或无；敏感=有或无',
+                       QWEN3_INLINE_SECTIONS + '\n' + service.ART_REFERENCE_CHECK,     # the instruction copied back
+                       QWEN3_INLINE_SECTIONS + '\n' + service.MINIMAX_H3_FRAME_CHECK,
+                       QWEN3_INLINE_SECTIONS + '\n检查：人物=有或无；未成年=有或无；敏感=有或无',
                        QWEN3_INLINE_SECTIONS + '\n检查：看不清',
-                       QWEN3_INLINE_SECTIONS + '\n检查：未成年=有；敏感=无',            # a child, nothing sensitive
-                       child + '\n检查：未成年=有；敏感=无',
+                       QWEN3_INLINE_SECTIONS + '\n检查：人物=有；未成年=有；敏感=无',  # a child, nothing sensitive
+                       child + '\n检查：人物=有；未成年=有；敏感=无',
                        # The answer's own words are no sensitive request: bare rock is not a bare body.
-                       child.replace('积雪覆盖的岩石', '裸露的岩石') + '\n检查：未成年=有；敏感=无',
+                       child.replace('积雪覆盖的岩石', '裸露的岩石') + '\n检查：人物=有；未成年=有；敏感=无',
                        child):
             with self.subTest(answer=answer):
                 result = self.role_check(['subject'], '用户生成要求：用户提示词：一个儿童站在雪山顶', answer)
                 self.assertEqual(len(self.calls), 1)
                 self.assertEqual(result['generationGate'], 'direct')
                 self.assertFalse(result['sensitivePromptBlocked'])
+                self.assertEqual(result['contentSafety'], {'sensitiveContent': False, 'explicitMinorEvidence': True})
                 self.assertFalse(result['contentCheck']['sensitive'])
-                self.assertNotRegex(result['positivePrompt'], '检查|未成年|敏感')
+                self.assertNotRegex(result['positivePrompt'], '检查|未成年|敏感|人物[=＝:：]')
                 self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
 
 
