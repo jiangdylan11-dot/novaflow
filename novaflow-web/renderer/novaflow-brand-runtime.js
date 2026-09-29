@@ -81001,6 +81001,7 @@
     renderArtGeneratePromptHistoryPopover();
     syncArtGenerateBasePlaceholdersHidden(true);
     syncArtGeneratePreviewViewportProxy();
+    window.NovaFlowUiDesignDrawing?.syncOutputSize?.();
     scheduleArtGeneratePreviewRefresh([0, 16, 64, 160]);
   }
 
@@ -81239,11 +81240,13 @@
   }
 
   function renderArtGenerateNumber(label, key, min, max, options = {}) {
+    const isOutputSize = ["width", "height", "gptCustomWidth", "gptCustomHeight"].includes(key);
     const commit = (input) => {
       if (!(input instanceof HTMLInputElement)) return;
       const value = normalizeArtGenerateNumberValue(input.value, key, min, max, options);
       ART_GENERATE_STATE[key] = value;
       input.value = formatArtGenerateNumberValue(value, options);
+      if (isOutputSize) window.NovaFlowUiDesignDrawing?.syncOutputSize?.();
     };
     const input = createArtEl("input", {
       type: "text",
@@ -81271,6 +81274,13 @@
           ? inputNode.value.replace(/[^\d.-]/g, "").replace(/(?!^)-/g, "").replace(/(\..*)\./g, "$1")
           : inputNode.value.replace(/[^\d-]/g, "");
         if (next !== inputNode.value) inputNode.value = next;
+        if (isOutputSize && window.NovaFlowUiDesignDrawing?.isActive?.()) {
+          const value = Number(next);
+          if (next && Number.isInteger(value) && value >= min && value <= max) {
+            ART_GENERATE_STATE[key] = value;
+            window.NovaFlowUiDesignDrawing.syncOutputSize();
+          }
+        }
       },
       onchange: (event) => {
         commit(event.currentTarget);
@@ -81956,6 +81966,14 @@
       "data-novaflow-art-generate-reference-column": "1",
       "data-novaflow-art-generate-ref-expandable": limit > ART_GENERATE_BASE_REFERENCE_SLOTS ? "1" : "0"
     }, slots);
+  }
+
+  function refreshArtGenerateReferences() {
+    const grid = document.querySelector(`#${ART_GENERATE_WORKSPACE_ID} [data-novaflow-art-generate-reference-column]`);
+    if (!grid) return false;
+    // Layout resizing must not rebuild W/H inputs or interrupt typing and tab navigation.
+    grid.replaceWith(renderArtGenerateReferenceGrid());
+    return true;
   }
 
   function renderArtGenerateReferencePicker(index, options = {}) {
@@ -84626,6 +84644,7 @@
       references: artGenerateReferences,
       referenceLimit: artGenerateReferenceLimit,
       setReference: setArtGenerateReference,
+      refreshReferences: refreshArtGenerateReferences,
       capturePrompt: captureArtGeneratePromptSnapshot
     };
     const creditUpdateEvent = window.NovaFlowArtGenerateCreditPricing?.UPDATE_EVENT;

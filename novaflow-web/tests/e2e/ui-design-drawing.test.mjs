@@ -56,6 +56,21 @@ test('UI uses the real drawing batch path and preserves sampling, LoRA, size, ne
   }
   assert.equal(e.state.results.length,2);assert.equal(e.state.prompt,'设计一个角色装备界面');
 });
+test('module names stay in the editor and never enter assistant or generation payloads',async()=>{
+  const region = {name:'仅用户识别的内部标签',title:'旧标题',label:'旧标签',purpose:'辅助导航',requirements:'使用小号灰字',x:10,y:20,width:600,height:100};
+  const refs = [{uiLayoutId:'L',dataUrl:'data:image/png;base64,layout',uiStructure:{width:1280,height:720,regions:[region]}}];
+  let analysis;
+  const e = environment({references:refs,optimize:async input=>{analysis=input;return {prompt:'生成 UI'};}});
+  await e.run();
+  assert.deepEqual(e.failures,[]);
+  assert.doesNotMatch(JSON.stringify(analysis),/仅用户识别|旧标题|旧标签/);
+  assert.equal(analysis.structure.regions[0].purpose,'辅助导航\n使用小号灰字');
+  assert.equal(analysis.structure.regions[0].x,10);
+  assert.doesNotMatch(e.builds[0][4],/仅用户识别|旧标题|旧标签/);
+  assert.match(e.builds[0][4],/辅助导航/);
+  assert.equal(region.name,'仅用户识别的内部标签','editor storage is untouched');
+});
+
 test('UI accepts no layout and no image; failed optimization never submits a generation',async()=>{
   const e = environment();await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][1],'txt2img');
   const failed = environment({optimize:async()=>{throw Error('service unavailable');}});await failed.run();

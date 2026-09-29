@@ -5,6 +5,15 @@
   const copy = value => JSON.parse(JSON.stringify(value))
   const drawing = () => root.__NovaFlowArtGenerate
   const isActive = () => Boolean(root.document?.body?.classList.contains('novaflow-primary-target-art') && root.document.querySelector('[data-novaflow-art-ui-host="1"]'))
+  function modelStructure(value = {}) {
+    return {
+      width: value.width, height: value.height,
+      regions: (value.regions || []).filter(block => block.participates !== false).map(block => ({
+        x: block.x, y: block.y, width: block.width, height: block.height,
+        purpose: [...new Set([block.purpose || block.description, block.requirements].map(text => String(text || '').trim()).filter(Boolean))].join('\n'),
+      })),
+    }
+  }
   function outputSize(state) {
     if (state.provider === 'gpt') {
       if (state.gptSize === 'Custom') return { width: state.gptCustomWidth || 1024, height: state.gptCustomHeight || 1024 }
@@ -33,7 +42,7 @@
   }
   function mount({ leftHost, store, getSessionToken }) {
     const doc = leftHost.ownerDocument, accordion = root.NovaFlowLeftPanelAccordion
-    let editor, inspector, alive = true, opened = false, frame = 0, lastSize = '', lastLayout = ''
+    let editor, inspector, alive = true, opened = false, frame = 0, lastSize = '', lastLayout = '', resizing = false
     const host = element(doc, 'div', { 'data-novaflow-ui-layout-overlay': '1', style: { display: 'none', position: 'fixed', zIndex: '2147483000', background: '#222', overflow: 'hidden' } })
     doc.body.appendChild(host)
     const inspectorHost = element(doc, 'div')
@@ -46,7 +55,7 @@
       node.addEventListener('click', onClick)
       return node
     }
-    const actions = element(doc, 'div', { style: { display: 'flex', gap: '6px' } }, [button('+ 布局块', () => editor.addBlock()), button('撤销', () => editor.undo()), button('重做', () => editor.redo())])
+    const actions = element(doc, 'div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, [button('+ 布局块', () => editor.addBlock())])
     const body = element(doc, 'div', { class: 'nf-panel-body', style: accordion.bodyStyle(false) }, [actions, inspectorHost, message, button('生成布局参考', () => {
       editor.useLayout()
       publishLayout(true)
@@ -61,7 +70,7 @@
     header.addEventListener('click', () => show(!opened))
     function layoutContext() {
       const node = editor?.getLayout(), size = node?.data.canvasSize || { width: 1024, height: 1024 }
-      return { node, structure: { ...size, regions: (node?.data.blocks || []).filter(b => b.participates !== false).map(b => ({ ...b })) } }
+      return { node, structure: modelStructure({ ...size, regions: node?.data.blocks || [] }) }
     }
     function publishLayout(explicit = false) {
       const api = drawing(), { node, structure } = layoutContext()
@@ -78,22 +87,24 @@
       let target = index >= 0 ? index : refs.findIndex(ref => !ref?.dataUrl)
       if (target < 0) target = refs.length
       if (target >= api.referenceLimit()) { message.textContent = '参考图已满，请先移除一张再添加布局'; return }
-      const project = store.getState().project
-      const guide = root.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide({ ...project, ...node.data.canvasSize, graph: { ...project.graph, nodes: [node], edges: [] }, blocks: structure.regions })
+      const guide = root.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide({ width: structure.width, height: structure.height, blocks: structure.regions })
       api.setReference(target, { id: 'ui-layout-' + node.id, uiLayoutId: node.id, name: '布局参考.png', dataUrl: guide.dataUrl, width: structure.width, height: structure.height, role: 'layout', uiStructure: structure })
       // Layout dimensions are controlled by the same W/H fields, not by a reference-image autosize.
       api.state.referenceSizeFillPending = ''
       lastLayout = key
-      api.render({ forceBottom: true })
+      if (!resizing || !api.refreshReferences?.()) api.render({ forceBottom: true })
       message.textContent = '已加入参考图，编辑布局会同步更新'
       if (explicit) show(false)
     }
     function syncSize() {
       if (!editor || !drawing()) return
       const size = outputSize(drawing().state), key = size.width + ':' + size.height
-      if (lastSize === key) return
-      lastSize = key
-      editor.patchGeneratorOutput(editor.getActiveGeneratorId(), size)
+      if (lastSize !== key) {
+        lastSize = key
+        resizing = true
+        try { editor.patchGeneratorOutput(editor.getActiveGeneratorId(), size); inspector?.update() }
+        finally { resizing = false }
+      }
     }
     editor = root.NovaFlowUiDesignWorkbench.mount({
       host, layoutOnly: true, getProject: () => store.getState().project,
@@ -142,7 +153,7 @@
       root.localStorage.setItem('novaflow-ui-design-project-v1', JSON.stringify(store.serializeProject()))
       root.localStorage.setItem('novaflow-ui-design-project-initialized-v1', '1')
     } catch {} })
-    mounted = { store, editor, getSessionToken, layoutContext, sync }
+    mounted = { store, editor, getSessionToken, layoutContext, sync, syncSize }
     sync()
     return {
       workspaceHandle: editor, inspectorHandle: inspector, sync,
@@ -169,8 +180,8 @@
       provider: state.provider || 'local', engine: mounted?.store.getState().settings?.assistantEngine || 'grok',
       prompt, negativePrompt: String(state.negativePrompt || ''),
       size: outputSize(state),
-      structure: layout?.uiStructure || { regions: [] },
-      references: refs.map((ref, index) => ({ ...ref, id: ref.id || `drawing-ref-${index}`, role: ref.uiLayoutId ? 'layout' : (ref.role || 'reference') })),
+      structure: modelStructure(layout?.uiStructure),
+      references: refs.map((ref, index) => ({ ...ref, ...(ref.uiStructure ? { uiStructure: modelStructure(ref.uiStructure) } : {}), id: ref.id || `drawing-ref-${index}`, role: ref.uiLayoutId ? 'layout' : (ref.role || 'reference') })),
       electronAPI: root.electronAPI, getSessionToken: mounted?.getSessionToken,
     }
   }
@@ -228,6 +239,7 @@
     prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt })
   }
   root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, inputFor, prepare, openAssistant, recordResult,
+    syncOutputSize() { mounted?.syncSize() },
     cancelPreparation() { if (!preparation) return false; preparation.abort(); return true },
   })
 })(typeof window !== 'undefined' ? window : globalThis)
