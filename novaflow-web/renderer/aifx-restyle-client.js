@@ -122,6 +122,7 @@
       throw new Error('AI 特效：工作流被拒绝 (' + response.status + ') ' + detail)
     }
     const { prompt_id: promptId } = await response.json()
+    lastPromptId = promptId
     const deadline = Date.now() + (Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS)
     while (Date.now() < deadline) {
       if (options.signal && options.signal.aborted) throw new Error('AI 特效生成已取消')
@@ -152,8 +153,11 @@
     throw new Error('AI 特效生成超时')
   }
 
+  // Named, so on the Web the stop ends this run and not an 动画 task on the same runtime.
+  let lastPromptId = ''
   async function interrupt() {
-    try { await fetch(BASE_URL + '/interrupt', { method: 'POST' }) } catch (_) {}
+    const body = JSON.stringify(lastPromptId ? { prompt_id: lastPromptId } : {})
+    try { await fetch(BASE_URL + '/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }) } catch (_) {}
   }
 
   async function loadImage(src) {

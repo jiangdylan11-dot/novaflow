@@ -303,6 +303,7 @@
   // the same task. Cache what the control plane says and let the poll refresh
   // it, rather than turning one ComfyUI poll into two network round trips.
   const tasks = new Map();      // promptId -> task
+  const taskOrigins = new Map(); // promptId -> runtime origin it was sent to (8188 drawing, 8189 video)
   const grants = new Map();     // taskId -> download grant
   const uploads = new Map();    // filename -> { taskId, name }
   const pendingUploads = [];
@@ -503,7 +504,9 @@
   }
 
   // ------------------------------------------------------------- submission
-  async function submitPrompt(body) {
+  const originOf = (baseUrl) => { try { return new URL(String(baseUrl)).origin; } catch (_) { return String(baseUrl || ''); } };
+
+  async function submitPrompt(body, baseUrl) {
     const intent = intentFrom(body && body.prompt);
     if (!intent) {
       // Nothing recorded means a panel tried to submit a graph it built
@@ -544,6 +547,7 @@
 
     const promptId = task.task.id;
     tasks.set(promptId, task.task);
+    taskOrigins.set(promptId, originOf(baseUrl));
     if (intent.method === 'buildSeeThroughSplitWorkflow' || intent.module === 'NovaFlowAifxRestyleWorkflow') splitTasks.add(promptId);
     root.NovaFlowWebRuntime.lastTask = task.task;
 
@@ -665,7 +669,7 @@
         }
 
         if (method === 'POST' && (clean === '/prompt' || clean === '/api/prompt')) {
-          return { ok: true, status: 200, result: await submitPrompt(body) };
+          return { ok: true, status: 200, result: await submitPrompt(body, baseUrl) };
         }
 
         if (clean.startsWith('/history')) {
@@ -684,8 +688,25 @@
         }
 
         if (method === 'POST' && clean === '/interrupt') {
-          const running = [...tasks.entries()].find(([, t]) => RUNNING.includes(t.status));
-          if (running) await control('POST', '/api/web/tasks/' + running[1].id + '/cancel');
+          // Stop the caller's own task: the one it names (ComfyUI's /interrupt takes a prompt_id too),
+          // else the newest this page sent to the same runtime. An 动画 run left going in the
+          // background must survive a 任务中止 pressed in 美工, and the reverse.
+          const named = body && body.prompt_id && tasks.has(String(body.prompt_id)) ? [String(body.prompt_id)] : null;
+          const ids = (named || [...tasks.keys()].filter((id) => taskOrigins.get(id) === originOf(baseUrl)))
+            .filter((id) => RUNNING.includes(tasks.get(id)?.status));
+          // The cache can be stale (a panel stops polling once it asks for a stop): ask first.
+          await Promise.all(ids.map(refreshTask));
+          const promptId = ids.filter((id) => RUNNING.includes(tasks.get(id)?.status)).pop();
+          if (promptId) {
+            const task = tasks.get(promptId);
+            try {
+              const res = await control('POST', '/api/web/tasks/' + task.id + '/cancel');
+              tasks.set(promptId, res && res.task ? res.task : Object.assign({}, task, { status: 'cancelled' }));
+            } catch (error) {
+              // It ended on its own (or was stopped elsewhere) in between: nothing is left to stop.
+              if (RUNNING.includes((await refreshTask(promptId))?.status)) throw error;
+            }
+          }
           return { ok: true, status: 200, result: {} };
         }
 

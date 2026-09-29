@@ -80862,7 +80862,8 @@
       return;
     }
     try {
-      const interrupted = await artRequestJson(baseUrl, "/interrupt", { method: "POST" });
+      // Name the prompt: on the Web the stop must end this panel's task, not an 动画 run still going.
+      const interrupted = await artRequestJson(baseUrl, "/interrupt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(promptId ? { prompt_id: promptId } : {}) });
       if (!interrupted || !interrupted.ok) {
         setArtGenerateProgress("\u5df2\u8bf7\u6c42\u4e2d\u6b62", pct, { promptId });
         setArtGenerateStatus("\u5df2\u8bf7\u6c42\u4e2d\u6b62", false);

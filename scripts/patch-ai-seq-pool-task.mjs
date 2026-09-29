@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 export const POOL_PROGRESS_TICK =
   'nfPoolProgress=typeof o?.novaflow?.progress==`number`&&e.setAiSeqComfyProgress(nfState=>({...nfState,active:!0,value:o.novaflow.progress,max:100})),';
 export const POOL_CANCELLED = 'o?.novaflow?.status===`cancelled`';
+export const AI_SEQ_INTERRUPT_INIT =
+  '{method:`POST`,headers:{"Content-Type":`application/json`},body:JSON.stringify({prompt_id:e.aiSeqComfyPromptIdRef.current||void 0})}';
+
+export const AI_SEQ_SUBMIT_STOPPED = 'if(t!==e.aiSeqRunTokenRef.current)return;';
 
 export function patchAiSeqPoolTask(source) {
   const patches = [
@@ -16,6 +20,19 @@ export function patchAiSeqPoolTask(source) {
       'e.setAiSeqJob({state:`error`,message:f.includes(`error`)?`生成失败且未发现输出文件（请检查工作流执行日志）`',
       'e.setAiSeqJob({state:' + POOL_CANCELLED + '?`done`:`error`,message:' + POOL_CANCELLED +
         '?`任务已中止`:f.includes(`error`)?`生成失败且未发现输出文件（请检查工作流执行日志）`'
+    ],
+    // 任务中止 names its own prompt (ComfyUI's /interrupt takes a prompt_id too), so on the Web it
+    // stops this panel's task and not a 美工 or 特效 run of the same user; and it reads 任务已中止.
+    [
+      'if(!(await f(`/interrupt`,{method:`POST`}))?.ok){e.setAiSeqJob({state:`done`,message:`已请求中止`,promptId:e.aiSeqComfyPromptIdRef.current||void 0});return}e.setAiSeqJob({state:`done`,message:`已中止`',
+      'if(!(await f(`/interrupt`,' + AI_SEQ_INTERRUPT_INIT + '))?.ok){e.setAiSeqJob({state:`done`,message:`已请求中止`,promptId:e.aiSeqComfyPromptIdRef.current||void 0});return}e.setAiSeqJob({state:`done`,message:`任务已中止`'
+    ],
+    // A stop pressed while /prompt is still out (on the Web: a queued run waiting for a node to take
+    // its reference images) has already said 任务已中止. What /prompt answers afterwards belongs to
+    // the stopped run: it neither turns the panel into 下发失败 nor back into a 生成中 no poll will end.
+    [
+      'body:JSON.stringify({client_id:T,prompt:u?.prompt||u})});if(!k?.ok){',
+      'body:JSON.stringify({client_id:T,prompt:u?.prompt||u})});' + AI_SEQ_SUBMIT_STOPPED + 'if(!k?.ok){'
     ]
   ];
   for (const [before, after] of patches) {
