@@ -367,9 +367,12 @@
             ? [['execution_start', { prompt_id: task.id, timestamp: submittedAt }], ['execution_success', { prompt_id: task.id, timestamp: completedAt }]]
             : []
       },
-      // Extra, ignored by the renderer but useful when debugging in the console.
+      // Extra, beyond ComfyUI's shape: the 动画 panel shows the node's percentage from `progress`
+      // (a page has no ComfyUI websocket here) and reads a cancel from `status`, which the
+      // 'error' above cannot tell apart from a failure.
       novaflow: {
         taskId: task.id,
+        status: task.status,
         progress: task.progress,
         note: task.progress_note,
         worker: task.assigned_worker_id,

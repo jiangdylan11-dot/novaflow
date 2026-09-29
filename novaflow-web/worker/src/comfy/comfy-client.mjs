@@ -5,7 +5,47 @@
 // workflows/<task_type>.json, injects the parameters into named placeholder
 // slots, and submits.
 
+import { request } from 'node:http';
+import { randomBytes } from 'node:crypto';
+
 const LOCALHOST_RE = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+
+// ComfyUI reports sampler steps only on its websocket; its HTTP API says nothing between "queued"
+// and "done". The Node inside Electron 32 has no WebSocket, and this one is only read, so a reader
+// of the server's (unmasked) frames on a plain HTTP upgrade is enough.
+function readComfySocket(base, clientId, onMessage) {
+  const url = new URL(base);
+  const req = request({
+    host: url.hostname.replace(/^\[|\]$/g, ''),
+    port: url.port || 80,
+    path: '/ws?clientId=' + encodeURIComponent(clientId),
+    headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': randomBytes(16).toString('base64') }
+  });
+  let socket = null;
+  req.on('upgrade', (_res, upgraded) => {
+    socket = upgraded;
+    let buffer = Buffer.alloc(0);
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      while (buffer.length >= 2) {
+        let length = buffer[1] & 127;
+        let at = 2;
+        if (length === 126) { if (buffer.length < 4) return; length = buffer.readUInt16BE(2); at = 4; }
+        if (length === 127) { if (buffer.length < 10) return; length = Number(buffer.readBigUInt64BE(2)); at = 10; }
+        if (buffer.length < at + length) return;
+        const opcode = buffer[0] & 15;
+        const payload = buffer.subarray(at, at + length);
+        buffer = buffer.subarray(at + length);
+        if (opcode === 1) { try { onMessage(JSON.parse(payload.toString('utf8'))); } catch { /* not JSON */ } }
+        if (opcode === 8) socket.destroy();
+      }
+    });
+    socket.on('error', () => {});
+  });
+  req.on('error', () => {});
+  req.end();
+  return () => { req.destroy(); socket?.destroy(); };
+}
 
 export function assertLocalOnly(baseUrl) {
   const value = String(baseUrl || '').replace(/\/+$/, '');
@@ -24,6 +64,9 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
   const doFetch = fetchImpl || globalThis.fetch;
   const log = logger || (() => {});
   const clientId = 'novaflow-worker-' + Math.random().toString(36).slice(2, 10);
+  // promptId -> ids of the graph's sampling nodes (those that denoise a latent_image), whose step
+  // counts are the run's progress.
+  const samplers = new Map();
 
   async function json(path, init) {
     const res = await doFetch(base + path, { ...init, signal: init?.signal || AbortSignal.timeout(30000) });
@@ -79,6 +122,7 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
       });
       const promptId = String(body?.prompt_id || '');
       if (!promptId) throw new Error('ComfyUI did not return a prompt id');
+      samplers.set(promptId, Object.keys(graph || {}).filter((id) => graph[id]?.inputs && 'latent_image' in graph[id].inputs));
       log('queued', { promptId });
       return promptId;
     },
@@ -118,59 +162,75 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
 
     /**
      * Poll a prompt to completion.
-     * onProgress receives 0..100 estimated from the queue position and the
-     * executed-node count, which is the honest signal ComfyUI's HTTP API
-     * offers without a websocket.
+     * onProgress receives 0..100: the queue position while waiting, then the sampling nodes' steps
+     * from the websocket (15..90, decoding after), or the executed-node count without them.
      */
     async waitForPrompt(promptId, { onProgress, pollMs = 1000, timeoutMs = 30 * 60 * 1000, signal } = {}) {
       const started = Date.now();
       let lastProgress = -1;
-      for (;;) {
-        if (signal?.aborted) throw new Error('cancelled');
-        if (Date.now() - started > timeoutMs) throw new Error('ComfyUI prompt timed out');
+      const sampling = samplers.get(promptId) || [];
+      samplers.delete(promptId);
+      const steps = new Map();
+      const stopReading = sampling.length ? readComfySocket(base, clientId, (message) => {
+        const data = message?.type === 'progress' ? message.data : null;
+        if (!data || !(data.max > 0) || (data.prompt_id && data.prompt_id !== promptId) || !sampling.includes(String(data.node))) return;
+        steps.set(String(data.node), Math.min(1, Number(data.value) / data.max || 0));
+      }) : () => {};
+      try {
+        for (;;) {
+          if (signal?.aborted) throw new Error('cancelled');
+          if (Date.now() - started > timeoutMs) throw new Error('ComfyUI prompt timed out');
 
-        const hist = await json('/history/' + encodeURIComponent(promptId), { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined });
-        const entry = hist?.[promptId];
-        if (entry) {
-          const status = entry.status || {};
-          if (status.completed === true || String(status.status_str || '') === 'success') {
-            if (onProgress && lastProgress < 100) await onProgress(100, 'finished');
-            return entry;
+          const hist = await json('/history/' + encodeURIComponent(promptId), { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined });
+          const entry = hist?.[promptId];
+          if (entry) {
+            const status = entry.status || {};
+            if (status.completed === true || String(status.status_str || '') === 'success') {
+              if (onProgress && lastProgress < 100) await onProgress(100, 'finished');
+              return entry;
+            }
+            if (String(status.status_str || '') === 'error') {
+              const messages = Array.isArray(status.messages) ? status.messages : [];
+              const detail = messages
+                .filter((m) => Array.isArray(m) && m[0] === 'execution_error')
+                .map((m) => JSON.stringify(m[1]).slice(0, 400))
+                .join('; ');
+              throw new Error('ComfyUI execution error: ' + (detail || 'unknown'));
+            }
           }
-          if (String(status.status_str || '') === 'error') {
-            const messages = Array.isArray(status.messages) ? status.messages : [];
-            const detail = messages
-              .filter((m) => Array.isArray(m) && m[0] === 'execution_error')
-              .map((m) => JSON.stringify(m[1]).slice(0, 400))
-              .join('; ');
-            throw new Error('ComfyUI execution error: ' + (detail || 'unknown'));
+
+          const queue = await json('/queue', { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined }).catch(() => null);
+          if (queue) {
+            const running = (queue.queue_running || []).some((item) => item?.[1] === promptId);
+            const pendingIndex = (queue.queue_pending || []).findIndex((item) => item?.[1] === promptId);
+            let progress = 0;
+            let note = 'queued';
+            if (running && steps.size) {
+              const done = [...steps.values()].reduce((sum, value) => sum + value, 0) / sampling.length;
+              progress = 15 + Math.round(done * 75);
+              note = done < 1 ? 'sampling' : 'decoding';
+            } else if (running) {
+              const executed = Object.keys(entry?.outputs || {}).length;
+              progress = Math.min(95, 15 + executed * 20);
+              note = 'rendering';
+            } else if (pendingIndex >= 0) {
+              // The node has already reported 12 for "queued in ComfyUI"; the page now shows it.
+              progress = 12;
+              note = 'waiting in queue (' + (pendingIndex + 1) + ')';
+            } else if (!entry) {
+              // Neither queued nor in history: ComfyUI dropped it.
+              throw new Error('ComfyUI lost the prompt before it produced a result');
+            }
+            if (onProgress && progress !== lastProgress) {
+              lastProgress = progress;
+              await onProgress(progress, note);
+            }
           }
+
+          await new Promise((r) => setTimeout(r, pollMs));
         }
-
-        const queue = await json('/queue', { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined }).catch(() => null);
-        if (queue) {
-          const running = (queue.queue_running || []).some((item) => item?.[1] === promptId);
-          const pendingIndex = (queue.queue_pending || []).findIndex((item) => item?.[1] === promptId);
-          let progress = 0;
-          let note = 'queued';
-          if (running) {
-            const executed = Object.keys(entry?.outputs || {}).length;
-            progress = Math.min(95, 15 + executed * 20);
-            note = 'rendering';
-          } else if (pendingIndex >= 0) {
-            progress = 5;
-            note = 'waiting in queue (' + (pendingIndex + 1) + ')';
-          } else if (!entry) {
-            // Neither queued nor in history: ComfyUI dropped it.
-            throw new Error('ComfyUI lost the prompt before it produced a result');
-          }
-          if (onProgress && progress !== lastProgress) {
-            lastProgress = progress;
-            await onProgress(progress, note);
-          }
-        }
-
-        await new Promise((r) => setTimeout(r, pollMs));
+      } finally {
+        stopReading();
       }
     }
   };

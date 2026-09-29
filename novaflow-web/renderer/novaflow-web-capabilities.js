@@ -242,21 +242,11 @@
 
   api.runtimeStop = async () => ({ ok: false, error: 'Web 版不能停止别人的算力节点' });
 
-  api.minimaxH3RuntimeStop = async () => {
-    // Stopping H3 means cancelling whatever this user has running.
-    try {
-      const res = await runtime.control('GET', '/api/web/tasks?limit=20');
-      const running = (res.tasks || []).filter(
-        (t) => ['created', 'queued', 'assigned', 'uploading', 'processing'].includes(t.status)
-      );
-      for (const task of running) {
-        await runtime.control('POST', '/api/web/tasks/' + task.id + '/cancel').catch(() => {});
-      }
-      return ok({ cancelled: running.length });
-    } catch (error) {
-      return fail(error.message || error);
-    }
-  };
+  // The desktop calls this to unload its own video sidecar and free VRAM: on leaving 动画 and before
+  // a run on the other runtime. The Web has no such sidecar, and a compute node's memory is the
+  // node's to manage, so there is nothing to stop. It used to cancel every running task of the user,
+  // which killed a generation the moment they switched section. 任务中止 goes through /interrupt.
+  api.minimaxH3RuntimeStop = async () => ok({ stopped: false, cancelled: 0 });
 
   // ------------------------------------------------------------------ license
   //
