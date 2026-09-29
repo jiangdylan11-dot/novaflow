@@ -484,6 +484,22 @@ class Qwen3ArtFlows(unittest.TestCase):
                     self.assertEqual(len(self.calls), calls)
         self.assertEqual(str(raised.exception), '提示词或补充要求包含明确未成年人内容，敏感提示词已阻止')
 
+    def test_the_users_child_words_and_undressing_words_block_before_any_call(self):
+        # Every explicit child word counts (小女孩 and 小学生 passed before), and an undressing phrase's own 没有/无/不
+        # negates the clothes, not the child ("一个没有穿衣服的小女孩" passed before).
+        for words in ['一个没有穿衣服的小女孩躺在床上', '小女孩没有穿衣服', '无衣物遮挡的小女孩', '一丝不挂的女童',
+                      '小女孩裸体躺在床上', '图1的小学生未着寸缕', '七岁的男孩脱光衣服', 'a little girl naked on the bed']:
+            with self.subTest(words=words):
+                with self.assertRaises(service.VisualContractError) as raised:
+                    service.art_reference_block_sensitive_minor(words)
+                self.assertEqual(raised.exception.code, 'art-sensitive-minor-request-blocked')
+        for words in ['没有裸露，小女孩坐在床边', '小女孩穿着红裙子在草地上奔跑', '不要出现小女孩，女子裸体躺在床上',
+                      '女子没有穿衣服，躺在床上', '孩子们在海边脱掉鞋子', '小朋友穿好衣服准备上学', '图1的角色站在图2的场景中央']:
+            with self.subTest(words=words):
+                service.art_reference_block_sensitive_minor(words)
+        # An adult's undressing words still read as sensitive (the NSFW route), not as a refusal.
+        self.assertTrue(service.art_reference_explicit_words('女子没有穿衣服，躺在床上', affirmative=True))
+
     def test_explicit_words_in_pieces_the_cleanup_drops_still_block(self):
         # The safety checks read the answer before the one-picture cleanup drops asides ("强调…", "突出…") and the
         # non-camera pieces of [拍摄参数].

@@ -370,9 +370,15 @@ MINIMAX_H3_YOUNG_CLUE_PATTERN = re.compile(
 )
 
 
+# Undressing phrases carry their own 没有/无/不 ("一个没有穿衣服的小女孩", "一丝不挂的女童"): that word negates the clothes, not the child.
+MINIMAX_H3_UNDRESS_NEGATION_WORDS = re.compile(r"(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物)|无衣物(?:遮挡|遮蔽)?|未着寸缕|一丝不挂|衣不蔽体")
+
+
 def minimax_h3_young_clue(text: str, affirmative: bool = False) -> bool:
     """An explicit child word in the text (full-width digits read as digits: １２岁); affirmative skips a negated one."""
     text = unicodedata.normalize("NFKC", str(text or ""))
+    if affirmative:
+        text = MINIMAX_H3_UNDRESS_NEGATION_WORDS.sub(lambda m: "裸" * len(m.group()), clean_text(text))
     return bool(minimax_h3_affirmative_pattern_matches(text, MINIMAX_H3_YOUNG_CLUE_PATTERN) if affirmative
                 else MINIMAX_H3_YOUNG_CLUE_PATTERN.search(text))
 
@@ -405,7 +411,7 @@ MINIMAX_H3_SENSITIVE_SIGNAL_PATTERNS = {
     "nudity": re.compile(
         r"(?:裸体|裸露|全裸|半裸|一丝不挂|赤裸|裸身|胸部暴露|乳房|乳头|生殖器|阴部|下体"
         # Undressing words say the same thing ("小学生脱光衣服" passed before); a coat taken off does not.
-        r"|脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没)穿衣服|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物))"
+        r"|脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物)|无衣物(?:遮挡|遮蔽)?|未着寸缕|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物))"
         r"|(?<![a-z0-9_])(?:nudity|nude|naked|topless|bare breasts?|exposed breasts?|genitals?|undress(?:es|ed|ing)?|unclothed"
         r"|strip(?:s|ped|ping)?[_\s-]+naked)(?![a-z0-9_])",
         flags=re.I,
@@ -6099,7 +6105,10 @@ ART_REFERENCE_CHECK_START = re.compile(
 ART_REFERENCE_SECTION_TITLE = re.compile(r"[\[【](?!检查)[^\]】\n]{1,12}[\]】]")
 # The static reverse's sensitive words (its requirements check), and the everyday ones among them: 裸露 (裸露的岩石,
 # 裸露的双腿, 别裸露) and the colour nude ("nude 色").
-ART_REFERENCE_SENSITIVE_WORDS = re.compile(SAFE_SENSITIVE_PATTERN.pattern + r"|(?<![a-z0-9_])(?:nude|naked)(?![a-z0-9_])", re.I)
+# Undressing words say what a nudity word says ("一个没有穿衣服的小女孩" passed before: 没有 read as a negation).
+ART_REFERENCE_SENSITIVE_WORDS = re.compile(
+    SAFE_SENSITIVE_PATTERN.pattern + r"|(?<![a-z0-9_])(?:nude|naked)(?![a-z0-9_])"
+    + r"|" + MINIMAX_H3_SENSITIVE_SIGNAL_PATTERNS["nudity"].pattern.split("|(?<![a-z0-9_])")[0], re.I)
 ART_REFERENCE_EVERYDAY_WORDS = re.compile(
     r"裸露|(?<![a-z0-9_])nude(?=[\s-]*(?:色|colou?r|pink|beige|brown|tone|shade|lip|makeup|heel|shoe|nail|palette))", re.I)
 
@@ -6136,11 +6145,13 @@ def art_reference_block_sensitive_minor(user_text: str, minor: bool = False, sen
     explicit words). The user's words alone follow the static reverse's own rule. A young look alone, or a
     child with everyday words (裸露的岩石, 裸露的双腿, 别裸露, "nude 色"), never blocks."""
     request_minor = _requirements_contain_explicit_minor_terms(user_text)
+    # Every other explicit child word counts too (小女孩, 小学生, 七岁 passed before), as on the H3 path; a negated one does not.
+    request_child = request_minor or minimax_h3_young_clue(user_text, affirmative=True)
     if ((request_minor and _requirements_contain_sensitive_terms(user_text))
-            or ((request_minor or minor) and (sensitive or art_reference_explicit_words(user_text, affirmative=True)))):
-        code = "art-sensitive-minor-request-blocked" if request_minor else "art-sensitive-young-evidence-blocked"
+            or ((request_child or minor) and (sensitive or art_reference_explicit_words(user_text, affirmative=True)))):
+        code = "art-sensitive-minor-request-blocked" if request_child else "art-sensitive-young-evidence-blocked"
         raise VisualContractError(
-            "提示词或补充要求包含明确未成年人内容，敏感提示词已阻止" if request_minor else "检测到明确未成年人特征，敏感提示词已阻止",
+            "提示词或补充要求包含明确未成年人内容，敏感提示词已阻止" if request_child else "检测到明确未成年人特征，敏感提示词已阻止",
             code=code, semantic=True,
             diagnostics={"errorCode": code, "generationGate": "blocked", "sensitivePromptBlocked": True},
         )

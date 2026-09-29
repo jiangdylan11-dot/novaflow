@@ -4382,12 +4382,15 @@ function miniMaxH3ValidateCompiledPromptAgainstIr(prompt, trustedVisualIr, optio
 
 function miniMaxH3ValidateRawUserContent(userPrompt, userRequirements, contentPolicy) {
   const rawUserText = miniMaxH3SafetyText(`${userPrompt || ""}\n${userRequirements || ""}`);
-  const hasExplicitYouth = miniMaxH3HasExplicitYouthIndicator(rawUserText);
+  // An explicit child word the H3 pattern leaves to the model (小女孩, 小学生, 七岁) is a child here too, as on 美工 and the local engine;
+  // an undressing phrase carries its own 没有/无/不 ("一个没有穿衣服的小女孩"), which negates the clothes, not the child.
+  const childText = rawUserText.replace(/(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物)|无衣物(?:遮挡|遮蔽)?|未着寸缕|一丝不挂|衣不蔽体/gu, (words) => "裸".repeat(words.length));
+  const hasExplicitYouth = miniMaxH3HasExplicitYouthIndicator(rawUserText) || miniMaxH3PatternHasAffirmativeMatch(childText, ART_EXPLICIT_CHILD_PATTERN);
   const sensitiveCategories = miniMaxH3SensitiveCategories(rawUserText, { affirmativeOnly: true });
   const hasSensitiveRequest = sensitiveCategories.size > 0;
   // Undressing words say what a nudity word says next to an explicit child (小学生脱光衣服, the child undresses), as on the local
   // engine; a coat taken off does not. They count for this block only, so adult requests and the answer checks read as before.
-  const undressing = hasExplicitYouth && miniMaxH3PatternHasAffirmativeMatch(rawUserText, /(?:脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没)穿衣服|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物)|(?<![a-z0-9_])(?:undress(?:es|ed|ing)?|unclothed|strip(?:s|ped|ping)?[_\s-]+naked|(?:is|are|was|were|be|being|gets?|got|stands?|stood|lies?|lying|sits?|sitting|standing)\s+(?:completely\s+|fully\s+|totally\s+|stark\s+)?naked)(?![a-z0-9_]))/iu);
+  const undressing = hasExplicitYouth && miniMaxH3PatternHasAffirmativeMatch(rawUserText, /(?:脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物)|无衣物(?:遮挡|遮蔽)?|未着寸缕|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物)|(?<![a-z0-9_])(?:undress(?:es|ed|ing)?|unclothed|strip(?:s|ped|ping)?[_\s-]+naked|(?:is|are|was|were|be|being|gets?|got|stands?|stood|lies?|lying|sits?|sitting|standing)\s+(?:completely\s+|fully\s+|totally\s+|stark\s+)?naked)(?![a-z0-9_]))/iu);
   if (hasExplicitYouth && (hasSensitiveRequest || undressing)) {
     throw miniMaxH3ContractError("provider_content_policy", "MiniMax H3 request contains explicit minor content", 422, "provider_content_policy");
   }
@@ -9148,7 +9151,7 @@ function artReferenceNamedLikeUser(text, labels = []) {
 }
 
 // Child words the H3 pattern leaves to the model's grading (小女孩, 小学生, 孩子, 七岁, 十岁): 美工 reads them as the child they name.
-const ART_EXPLICIT_CHILD_PATTERN = /小女孩|小男孩|女童|男童|小学生|初中生|中学生|(?<![女男])孩子(?!气)|(?<![十百千][一二三四五六七八九]?)[一二三四五六七八九两]周?岁|(?<![一二三四五六七八九十两百千])十[一二三四五六七]?周?岁|(?<![0-9])(?:1[0-7]|[0-9])\s*周岁/u;
+const ART_EXPLICIT_CHILD_PATTERN = /小女孩|小男孩|女童|男童|小学生|初中生|中学生|(?<![女男])孩子(?!气)|(?<![十百千][一二三四五六七八九]?)[一二三四五六七八九两]周?岁|(?<![一二三四五六七八九十两百千])十[一二三四五六七]?周?岁|(?<![0-9])(?:1[0-7]|[0-9])\s*周岁|小朋友|幼儿园|新生儿|婴孩|高中生|(?<![猫狗犬熊鸟鸭鹅鸡兔龙马猴虎狮鹿羊猪牛象豹狼狐鼠称])(?<!称[她他你为呼])宝宝|(?<![a-z0-9_])(?:kids?(?![-\s]+(?:leather|gloves?|suede|skin))|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|newborns?|school(?:girl|boy|kid)s?|kindergart(?:en|ner)s?|pre-?school(?:ers?)?)(?![a-z0-9_])/u;
 
 function artHasExplicitChild(value) {
   return miniMaxH3HasExplicitYouthIndicator(value) || ART_EXPLICIT_CHILD_PATTERN.test(miniMaxH3SafetyText(value));

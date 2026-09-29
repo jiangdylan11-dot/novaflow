@@ -122,6 +122,10 @@ const sensitiveContext = {
   MINIMAX_H3_BENIGN_EXPOSURE_PATTERN: vm.runInNewContext(
     extractNamedConstant(source, "MINIMAX_H3_BENIGN_EXPOSURE_PATTERN"),
   ),
+  // The raw user check also reads the child words the H3 pattern leaves to the model (小女孩, 小学生, 七岁).
+  ART_EXPLICIT_CHILD_PATTERN: vm.runInNewContext(
+    extractNamedConstant(source, "ART_EXPLICIT_CHILD_PATTERN"),
+  ),
   miniMaxH3ContractError: (code, message, statusCode = 502, failureCategory = code) => Object.assign(new Error(message), {
     statusCode,
     errorCode: code,
