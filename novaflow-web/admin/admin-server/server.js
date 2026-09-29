@@ -9845,7 +9845,8 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
     scenario.scenario === "role_reference" && scenario.images.length === 2 && scenarioRoles.includes("subject") && scenarioRoles.includes("style")
   );
   const isVideoTask = isAnimation || scenario.scenario === "video_frames";
-  const usesArtFiveSectionReverse = scenario.scenario === "role_reference" && !isVideoTask;
+  const isUiDesign = payload?.surface === "ui-design" || purpose.startsWith("ui-design-");
+  const usesArtFiveSectionReverse = scenario.scenario === "role_reference" && !isVideoTask && !isUiDesign;
   const usesVisualIrV2 = purpose === "static-image-reverse"
     && !isVideoTask
     && scenario.scenario === "single_reference"
@@ -9864,7 +9865,15 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       ? "请同时给出中文正向提示词和中文反向提示词。"
       : "请只给出中文正向提示词。");
   let scenarioText = "";
-  if (scenario.scenario === "video_frames") {
+  if (isUiDesign) {
+    scenarioText = [
+      "这是 UI 设计任务。按用户文字确定各图承担布局、风格、人物、物品或修改底图的作用。保持明确指定的布局关系、数量和文案，将指定元素融合为统一的界面设计。",
+      "风格参考只提取配色、材质、边框、按钮、图标、排版层级，不复制无关内容。目标界面中的按钮、菜单和文字是有效设计内容；仅忽略外部软件工具栏、编辑手柄和辅助线。",
+      "用户明确要求优先；未指定整体重做时，仅修改要求的部分。没有布局参考时可根据需求组织布局，不套固定游戏模板。",
+      "__NOVAFLOW_ 开头并以双下划线结尾的占位符必须原样原次数保留。不要使用绘画五段式，不输出多个方案。",
+      promptOutputRequest,
+    ].join("\n");
+  } else if (scenario.scenario === "video_frames") {
     scenarioText = [
       "这是首帧和尾帧。生成适用于视频模型的连续动作 Prompt。",
       "必须保持人物身份、外观、服装、道具和场景一致，准确描述从首帧开始状态到尾帧结束状态的连续动作、速度节奏和自然过渡。",

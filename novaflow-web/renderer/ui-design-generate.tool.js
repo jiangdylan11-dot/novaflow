@@ -46,7 +46,7 @@
   const GPT_MAX_OUTPUT_SIZE = 3840
   const GPT_MAX_OUTPUT_PIXELS = 8294400
   const DEFAULT_UI_NEGATIVE_PROMPT = '低清晰度，模糊，文字乱码，错别字，水印，未要求的源Logo，布局混乱，元素重叠，按钮变形，控件裁切，界面拉伸，重复控件，空白占位，标注框，连接线，端口，编辑器网格'
-  const DEFAULT_PROMPT_ASSISTANT_REQUIREMENTS = '面向游戏 UI 设计，保持当前页面结构和区块职责，补充清晰的视觉风格、配色、材质、层级、可读性与交互状态要求。'
+  const DEFAULT_PROMPT_ASSISTANT_REQUIREMENTS = '根据用户需求及已提供的布局、风格和元素参考，编写清晰的 UI 设计指令；没有布局时合理组织界面，不强加预设风格。'
   const NEGATIVE_PROMPT_SOURCES = new Set(['default', 'assistant', 'user'])
   const mountedControls = new WeakMap()
 
@@ -96,7 +96,7 @@
       state.negativePromptSource = ''
     } else {
       state.negativePrompt = String(state.negativePrompt == null ? '' : state.negativePrompt)
-      state.negativePromptSource = negativePromptSource || 'user'
+      state.negativePromptSource = negativePromptSource || (state.negativePrompt.trim() ? 'user' : '')
     }
     state.localEditStrength = state.localEditStrength === 'enhanced' ? 'enhanced' : 'faithful'
     const hasRandomSeed = Object.prototype.hasOwnProperty.call(state, 'randomSeed')
@@ -132,6 +132,7 @@
   }
 
   function variantOf(options) {
+    if (options?.variant === 'workbench') return 'workbench'
     const value = String(options?.variant || '').trim().toLowerCase()
     return value === 'node' || value === 'compact' ? 'node' : 'ordinary'
   }
@@ -397,7 +398,7 @@
 
   function setExpanded(record, expanded, notify) {
     if (!record.active) return false
-    if (record.variant === 'node') {
+    if (record.variant === 'node' || record.variant === 'workbench') {
       record.expanded = true
       return true
     }
@@ -838,6 +839,7 @@
       }
       record.assistantMessage = ''
       record.assistantError = ''
+      if (record.variant === 'workbench') notifyChange(record, key, record.state[key])
     })
     textarea.addEventListener('change', () => {
       if (!record.active) return
@@ -949,7 +951,7 @@
         applied.prompt = record.state.prompt
       }
       if (
-        provider === 'local' && record.state.provider === 'local' &&
+        provider === 'local' && record.state.provider === 'local' && record.state.negativePromptSource !== 'user' &&
         Object.prototype.hasOwnProperty.call(result, 'negativePrompt') &&
         record.negativePromptRevision === negativePromptRevision
       ) {
@@ -1030,7 +1032,7 @@
       record,
       'prompt',
       '设计要求',
-      '补充视觉风格、配色、材质、层级和交互状态；页面结构由画布自动提供。',
+      '描述界面需求，例如：图1参考布局，图2参考风格，图3的人物放左侧。也可只输入文字生成。',
       3,
     )
     record.nextPromptTextarea = positive
@@ -1090,6 +1092,11 @@
         negative,
       )
     }
+    if (record.variant === 'workbench' && record.state.provider === 'local') {
+      const positiveColumn = createElement(record.documentRef, 'div', { style: { display: 'grid', gap: '6px', minWidth: '0' } }, children.splice(0, 2))
+      const negativeColumn = createElement(record.documentRef, 'div', { style: { display: 'grid', gap: '6px', minWidth: '0' } }, children.splice(0, 2))
+      children.push(createElement(record.documentRef, 'div', { 'data-ui-prompt-columns': '2', style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '12px' } }, [positiveColumn, negativeColumn]))
+    }
     children.push(createElement(record.documentRef, 'div', {
       'data-novaflow-ui-design-prompt-assistant-status': '1',
       'data-error': record.assistantError ? '1' : '0',
@@ -1124,6 +1131,7 @@
         opacity: generateDisabled ? '0.58' : '1', boxSizing: 'border-box',
       },
     })
+    generate.addEventListener('mousedown', event => event.preventDefault())
     generate.addEventListener('click', (event) => {
       event?.preventDefault?.()
       event?.stopPropagation?.()
@@ -1171,7 +1179,15 @@
       ]))
     }
     children.push(...compactParameterRows(record))
-    record.fields.replaceChildren(...children)
+    if (record.variant === 'workbench') {
+      const prompt = children.splice(2, 1)[0]
+      const progress = children.shift()
+      const row = createElement(record.documentRef, 'div', { 'data-ui-workbench-parameters': '', style: { display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' } }, children.filter(child => child !== primary))
+      primary.style.width = '140px'
+      primary.style.marginLeft = 'auto'
+      row.appendChild(primary)
+      record.fields.replaceChildren(...[row, record.options.referenceSlot, prompt, progress].filter(Boolean))
+    } else record.fields.replaceChildren(...children)
     activatePromptMentions(record)
   }
 
@@ -1226,7 +1242,7 @@
     record.nextPromptTextarea = null
     ensureState(record.state)
     const size = syncCanvasState(record)
-    if (record.variant === 'node') {
+    if (record.variant === 'node' || record.variant === 'workbench') {
       renderNodeFields(record, size)
       return
     }
@@ -1263,7 +1279,7 @@
   }
 
   function syncExpanded(record) {
-    if (record.variant === 'node') {
+    if (record.variant === 'node' || record.variant === 'workbench') {
       record.header.style.display = 'none'
       record.body.hidden = false
       record.body.style.display = 'grid'
@@ -1348,7 +1364,7 @@
       'data-novaflow-ui-design-generate-body': '1',
       style: {
         gap: requestedVariant === 'node' ? '6px' : '8px', minWidth: '0', width: '100%',
-        padding: requestedVariant === 'node' ? '10px 12px 12px' : '8px 0 0',
+        padding: requestedVariant === 'workbench' ? '0' : requestedVariant === 'node' ? '10px 12px 12px' : '8px 0 0',
         boxSizing: 'border-box',
       },
     }, requestedVariant === 'node' ? [fields] : [accountSlot, fields])

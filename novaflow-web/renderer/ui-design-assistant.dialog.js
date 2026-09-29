@@ -48,7 +48,7 @@
       id: text(reference?.id || reference?.sourceId || reference?.resourceId) || `ui_reference_${index + 1}`,
       label: text(reference?.label || reference?.name || reference?.fileName) || `参考图${index + 1}`,
       role: text(reference?.role || reference?.referenceRole) || 'reference',
-      selected: index < limit,
+      selected: true,
     }))
   }
 
@@ -65,7 +65,7 @@
   }
 
   function revision(record) {
-    return `${currentPrompt(record)}\u0000${currentNegativePrompt(record)}`
+    return `${currentPrompt(record)}\u0000${currentNegativePrompt(record)}\u0000${record.options.getInputRevision?.() || ""}`
   }
 
   function setStatus(record, message, error = false) {
@@ -87,7 +87,7 @@
 
   // Like the AI 助手: the design assistant writes from the user's own words (设计要求 or 补充要求).
   function userTextMissing(record) {
-    return !currentPrompt(record).trim() && !text(record.requirements?.value).trim()
+    return !currentPrompt(record).trim() && !text(record.requirements?.value).trim() && !record.references.length && !(record.structure.regions || record.structure.blocks || []).length
   }
 
   function syncSubmitState(record) {
@@ -105,7 +105,7 @@
     record.referenceLimitError = selectedCount > limit
     if (record.referenceLimitError) {
       const label = record.engine === 'local' ? '本地模型' : '云端模型'
-      setStatus(record, `${label}最多分析 ${limit} 张参考图；当前已选择 ${selectedCount} 张，请取消多余选择。`, true)
+      setStatus(record, `${label}最多分析 ${limit} 张参考图；当前已选择 ${selectedCount} 张，请回到参考图条移除多余图片，或更换处理方式。`, true)
     } else if (wasLimitError) {
       setStatus(record, '')
     }
@@ -114,76 +114,14 @@
   }
 
   function updateReferenceRows(record) {
-    if (!record.referencesHost) return
     record.referencesHost.replaceChildren()
-    const selectedCount = selectedReferences(record).length
-    const limit = referenceLimit(record)
-    record.referencesHost.appendChild(element(record.documentRef, 'div', {
-      'data-novaflow-ui-design-assistant-reference-note': '1',
-      text: `${record.engine === 'local' ? '本地模型' : '云端模型'}最多分析 ${limit} 张。未勾选的连接图仍会参与最终 UI 生成，只是不用于本次设计助手分析。`,
-      style: { color: 'rgba(255,255,255,0.5)', fontSize: '10px', lineHeight: '1.5' },
-    }))
-    if (!record.references.length) {
-      record.referencesHost.appendChild(element(record.documentRef, 'div', {
-        text: '当前生成器没有已连接的参考图。仍可只根据页面结构优化设计要求。',
-        style: { color: 'rgba(255,255,255,0.5)', fontSize: '11px', lineHeight: '1.5' },
-      }))
-      syncTargetStyleButtons(record)
-      return
-    }
-    record.references.forEach((reference, index) => {
-      const checkbox = element(record.documentRef, 'input', { type: 'checkbox' })
-      checkbox.checked = reference.selected
-      checkbox.disabled = !reference.selected && selectedCount >= limit
-      checkbox.addEventListener('change', () => {
-        const current = selectedReferences(record).length
-        if (checkbox.checked && current >= referenceLimit(record)) {
-          checkbox.checked = false
-          setStatus(record, `${record.engine === 'local' ? '本地模型' : '云端模型'}一次最多分析 ${referenceLimit(record)} 张参考图。`, true)
-          return
-        }
-        reference.selected = checkbox.checked
-        setStatus(record, '')
-        updateReferenceRows(record)
-      })
-      const role = element(record.documentRef, 'select', {
-        'aria-label': `${reference.label}本次分析职责`,
-        style: {
-          height: '28px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px',
-          background: '#141414', color: '#fff', fontSize: '10px', padding: '0 6px',
-        },
-      })
-      ;[
-        ['reference', '普通参考'], ['style', '风格'], ['layout', '辅助布局'], ['color', '配色'],
-        ['material', '材质'], ['content', '内容素材'], ['character', '角色'], ['subject', '主体'],
-      ].forEach(([value, label]) => {
-        const option = element(record.documentRef, 'option', { value, text: label })
-        option.value = value
-        role.appendChild(option)
-      })
-      role.value = reference.role
-      role.disabled = !reference.selected
-      role.addEventListener('change', () => {
-        reference.role = role.value
-        syncTargetStyleButtons(record)
-      })
-      record.referencesHost.appendChild(element(record.documentRef, 'label', {
-        'data-novaflow-ui-design-assistant-reference': String(index + 1),
-        style: {
-          display: 'grid', gridTemplateColumns: '18px minmax(0,1fr) 104px', alignItems: 'center',
-          gap: '8px', minWidth: '0', padding: '7px', borderRadius: '7px', background: 'rgba(255,255,255,0.035)',
-        },
-      }, [
-        checkbox,
-        element(record.documentRef, 'span', {
-          text: `${index + 1}. ${reference.label}`,
-          style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '11px' },
-        }),
-        role,
+    for (const [index, ref] of record.references.entries()) {
+      record.referencesHost.appendChild(element(record.documentRef, 'div', { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px' } }, [
+        element(record.documentRef, 'img', { src: ref.dataUrl || ref.imageUrl, alt: '', style: { width: '54px', height: '40px', objectFit: 'contain' } }),
+        element(record.documentRef, 'span', { text: `图${index + 1} · ${ref.label}` }),
       ]))
-    })
+    }
     syncReferenceLimitState(record)
-    syncTargetStyleButtons(record)
   }
 
   async function loadContext(record) {
@@ -207,7 +145,7 @@
         `已识别场景：${record.scene}`,
         width && height ? `${Math.round(width)} × ${Math.round(height)}` : '',
         `${blocks.length} 个页面区块`,
-        `${record.references.length} 张已连接参考图`,
+        `${record.references.length} 张参考图`,
       ].filter(Boolean).join(' · ')
     } catch (error) {
       if (active === record) setStatus(record, error?.message || error || '读取 UI 上下文失败', true)
@@ -246,11 +184,6 @@
         electronAPI: record.options.electronAPI,
         engine: record.engine,
         provider: record.options.provider || record.options.state?.provider,
-        action: record.action,
-        targetStyle: record.targetStyle,
-        contentType: record.contentType,
-        contentPurpose: record.contentPurpose,
-        qualityTendency: record.qualityTendency,
         prompt: currentPrompt(record),
         negativePrompt: currentNegativePrompt(record),
         requirements: record.requirements.value,
@@ -273,10 +206,6 @@
         engine: result.engine,
         provider: result.provider,
         referenceCount: result.referenceCount,
-        targetStyle: result.targetStyle,
-        contentType: result.contentType,
-        contentPurpose: result.contentPurpose,
-        qualityTendency: result.qualityTendency,
         scene: result.scene,
       }
       if (result.provider === 'local' && result.hasNegativePrompt) {
@@ -306,32 +235,6 @@
     }
   }
 
-  function syncActionButtons(record) {
-    for (const button of record.actionButtons || []) {
-      const selected = button.getAttribute('data-action') === record.action
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false')
-      button.style.borderColor = selected ? 'rgba(52,211,153,0.72)' : 'rgba(255,255,255,0.1)'
-      button.style.background = selected ? 'rgba(30,173,122,0.2)' : 'rgba(255,255,255,0.045)'
-      button.style.color = selected ? '#9ff6d4' : 'rgba(255,255,255,0.78)'
-    }
-  }
-
-  function createActionChoice(record, value, label) {
-    const button = element(record.documentRef, 'button', {
-      type: 'button', text: label, 'data-action': value, 'aria-pressed': 'false',
-      style: {
-        minHeight: '32px', padding: '0 8px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px',
-        background: 'rgba(255,255,255,0.045)', color: 'rgba(255,255,255,0.78)', fontSize: '10px', cursor: 'pointer',
-      },
-    })
-    button.addEventListener('click', () => {
-      record.action = value
-      syncActionButtons(record)
-    })
-    record.actionButtons.push(button)
-    return button
-  }
-
   function createEngineChoice(record, value, title, meta) {
     const input = element(record.documentRef, 'input', {
       type: 'radio', name: 'novaflow-ui-design-assistant-engine', value,
@@ -357,70 +260,6 @@
         style: { display: 'block', marginTop: '2px', color: 'rgba(232,237,242,0.46)', fontSize: '9px' },
       }),
     ])])
-  }
-
-  function hasSelectedStyleReference(record) {
-    return selectedReferences(record).some((reference) => text(reference.role).trim().toLowerCase() === 'style')
-  }
-
-  function syncTargetStyleButtons(record) {
-    const canFollowReference = hasSelectedStyleReference(record)
-    if (record.targetStyle === 'reference' && !canFollowReference) {
-      record.targetStyle = 'auto'
-      setStatus(record, '“跟随参考图”已恢复为“智能匹配”：当前没有已勾选的风格参考图。')
-    }
-    for (const button of record.targetStyleButtons || []) {
-      const value = button.getAttribute('data-target-style')
-      const selected = value === record.targetStyle
-      const disabled = value === 'reference' && !canFollowReference
-      button.disabled = disabled
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false')
-      button.setAttribute('aria-disabled', disabled ? 'true' : 'false')
-      button.style.borderColor = selected ? 'rgba(52,211,153,0.72)' : 'rgba(255,255,255,0.1)'
-      button.style.background = selected ? 'rgba(30,173,122,0.2)' : 'rgba(255,255,255,0.045)'
-      button.style.color = selected ? '#9ff6d4' : 'rgba(255,255,255,0.78)'
-      button.style.cursor = disabled ? 'not-allowed' : 'pointer'
-      button.style.opacity = disabled ? '0.42' : '1'
-      button.title = disabled ? '请先将至少一张已勾选参考图的职责设为“风格”' : ''
-    }
-  }
-
-  function createTargetStyleButton(record, preset) {
-    const button = element(record.documentRef, 'button', {
-      type: 'button',
-      text: preset.label,
-      'data-target-style': preset.value,
-      'aria-pressed': 'false',
-      style: {
-        minHeight: '32px', padding: '0 8px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px',
-        background: 'rgba(255,255,255,0.045)', color: 'rgba(255,255,255,0.78)', fontSize: '10px', cursor: 'pointer',
-      },
-    })
-    button.addEventListener('click', () => {
-      if (button.disabled) return
-      record.targetStyle = record.targetStyle === preset.value && preset.value !== 'auto' ? 'auto' : preset.value
-      syncTargetStyleButtons(record)
-    })
-    record.targetStyleButtons.push(button)
-    return button
-  }
-
-  function createSelect(documentRef, items, value, onChange, ariaLabel) {
-    const select = element(documentRef, 'select', {
-      'aria-label': ariaLabel,
-      style: {
-        width: '100%', height: '34px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '7px',
-        background: '#141414', color: '#fff', fontSize: '11px', padding: '0 8px',
-      },
-    })
-    for (const item of items || []) {
-      const option = element(documentRef, 'option', { value: item.value, text: item.label })
-      option.value = item.value
-      select.appendChild(option)
-    }
-    select.value = value
-    select.addEventListener('change', () => onChange(select.value))
-    return select
   }
 
   function open(options = {}) {
@@ -471,8 +310,7 @@
     })
     const record = {
       options, documentRef, host, panel, body, contextSummary,
-      references: [], structure: {}, scene: '通用页面', action: 'preserve', actionButtons: [], engine: 'grok', targetStyle: 'auto', targetStyleButtons: [],
-      contentType: 'auto', contentPurpose: 'auto', qualityTendency: 'commercial',
+      references: [], structure: {}, scene: '通用页面', engine: options.engine || 'grok',
       pending: false, referenceLimitError: false,
       requirements: element(documentRef, 'textarea', {
         rows: '3', placeholder: '补充视觉风格、配色、材质、信息层级或必须保留的要求。',
@@ -499,54 +337,13 @@
       element(documentRef, 'div', { text: label, style: { color: 'rgba(255,255,255,0.76)', fontSize: '11px', fontWeight: '850' } }),
       content,
     ])
-    const actionGrid = element(documentRef, 'div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: '6px' } })
-    ;[['preserve', '保持结构'], ['create', '新建设计'], ['style', '参考风格'], ['combine', '组合参考']].forEach(([value, label]) => {
-      actionGrid.appendChild(createActionChoice(record, value, label))
-    })
-    syncActionButtons(record)
-    const targetStyleGrid = element(documentRef, 'div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: '6px' } })
-    ;(workflow.UI_STYLE_PRESETS || []).forEach((preset) => targetStyleGrid.appendChild(createTargetStyleButton(record, preset)))
-    const qualityProfile = root?.NovaFlowUiDesignQualityProfile
-    const purposeHost = element(documentRef, 'div')
-    const syncPurposeSelect = () => {
-      const purposes = qualityProfile?.purposesFor?.(record.contentType) || [{ value: 'auto', label: '智能识别用途' }]
-      record.contentPurpose = qualityProfile?.normalizePurpose?.(record.contentType, record.contentPurpose) || 'auto'
-      purposeHost.replaceChildren(createSelect(documentRef, purposes, record.contentPurpose, (value) => {
-        record.contentPurpose = value
-      }, '内容用途'))
-    }
-    const contentTypeSelect = createSelect(
-      documentRef,
-      qualityProfile?.CONTENT_TYPES || [{ value: 'auto', label: '智能识别' }],
-      record.contentType,
-      (value) => {
-        record.contentType = value
-        record.contentPurpose = 'auto'
-        syncPurposeSelect()
-      },
-      '内容类型',
-    )
-    const tendencySelect = createSelect(
-      documentRef,
-      qualityProfile?.QUALITY_TENDENCIES || [{ value: 'commercial', label: '稳妥商业化' }],
-      record.qualityTendency,
-      (value) => { record.qualityTendency = value },
-      '质量倾向',
-    )
-    syncPurposeSelect()
-    const contentProfileGrid = element(documentRef, 'div', {
-      style: { display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '6px' },
-    }, [contentTypeSelect, purposeHost, tendencySelect])
     const engineGrid = element(documentRef, 'div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '6px' } })
     ;[['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 快速处理']].forEach(([value, title, meta]) => {
       engineGrid.appendChild(createEngineChoice(record, value, title, meta))
     })
     body.append(
-      section('设计目标', actionGrid),
-      section('内容类型 · 用途 · 质量倾向', contentProfileGrid),
-      section('目标风格（单选，再次点击恢复智能匹配）', targetStyleGrid),
       section('处理方式', engineGrid),
-      section('参考图 · 本次分析职责', record.referencesHost),
+      section('参考图', record.referencesHost),
       section('补充要求', record.requirements),
       record.notice,
       record.status,
@@ -594,10 +391,6 @@
         open: active === record,
         pending: record.pending,
         engine: record.engine,
-        targetStyle: record.targetStyle,
-        contentType: record.contentType,
-        contentPurpose: record.contentPurpose,
-        qualityTendency: record.qualityTendency,
         scene: record.scene,
         referenceLimit: referenceLimit(record),
         referenceCount: selectedReferences(record).length,

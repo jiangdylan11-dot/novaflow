@@ -226,8 +226,13 @@
 
     function renderBlock(selection) {
       const block = selection.block
-      heading('布局块', '位置和大小直接在页面结构节点中拖动调整')
+      heading('布局块', '在中央画板拖动调整位置和大小')
       shell.appendChild(field('名称', block.name, { selection: selection, key: 'name' }))
+      const geometry = createElement(documentRef, 'div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } })
+      for (const [key, label] of [['x', 'X'], ['y', 'Y'], ['width', '宽度'], ['height', '高度']]) {
+        geometry.appendChild(field(label, block[key], { selection, key }))
+      }
+      shell.appendChild(geometry)
       shell.appendChild(field('作用说明', block.purpose, { selection: selection, key: 'purpose', multiline: true }))
       shell.appendChild(field('生成要求', block.requirements, { selection: selection, key: 'requirements', multiline: true }))
       shell.appendChild(toggle('参与生成', block.participates !== false, selection, 'participates'))
@@ -288,7 +293,7 @@
       if (!selection) {
         heading('布局设计')
         shell.appendChild(createElement(documentRef, 'div', {
-          text: '在无限画布中选择参考图、页面结构、布局块、生成器或结果节点后，这里会显示对应设置。',
+          text: '点击画板上的模块编辑属性，或添加一个新模块。',
           'data-novaflow-ui-design-inspector-empty': '1',
           style: {
             padding: '12px',

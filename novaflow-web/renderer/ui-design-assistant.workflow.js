@@ -194,15 +194,16 @@
         ? source.blocks
         : []
     return Object.freeze({
-      name: compactText(source.name || source.title, 120),
-      description: compactText(source.description || source.summary || source.requirement, 500),
+      name: text(source.name || source.title),
+      description: text(source.description || source.summary || source.requirement),
       width: Math.max(0, Math.round(Number(source.width || source.canvas?.width) || 0)),
       height: Math.max(0, Math.round(Number(source.height || source.canvas?.height) || 0)),
-      regions: Object.freeze(regions.slice(0, 48).map((region, index) => Object.freeze({
-        name: compactText(region?.name || region?.title || region?.label, 80) || `区块${index + 1}`,
+      regions: Object.freeze(regions.map((region, index) => Object.freeze({
+        name: text(region?.name || region?.title || region?.label) || `区块${index + 1}`,
         role: compactText(region?.role || region?.kind || region?.type, 40) || 'region',
-        purpose: compactText(region?.purpose || region?.description, 240),
-        requirements: compactText(region?.requirements || region?.requirement, 240),
+        purpose: text(region?.purpose || region?.description),
+        requirements: text(region?.requirements || region?.requirement),
+        x: region?.x, y: region?.y, width: region?.width, height: region?.height,
       }))),
     })
   }
@@ -247,46 +248,19 @@
   }
 
   function buildRequirements(options, structure, references) {
-    const size = options?.size && typeof options.size === 'object' ? options.size : {}
-    const width = Math.max(0, Math.round(Number(size.width || structure.width) || 0))
-    const height = Math.max(0, Math.round(Number(size.height || structure.height) || 0))
-    const orientation = width && height ? (width > height ? '横屏' : width < height ? '竖屏' : '方形') : ''
-    const regions = structure.regions.slice(0, 32)
-    const regionSummary = budgetText(regions.map((region, index) => (
-      `${index + 1}.${compactText(region.name, 36)}（${compactText(region.role, 24)}）`
-    )).join('；'), 280)
-    const regionDetails = budgetText(regions.map((region) => {
-      const detail = [compactText(region.purpose, 70), compactText(region.requirements, 90)].filter(Boolean).join('；')
-      return detail ? `${compactText(region.name, 36)}：${detail}` : ''
-    }).filter(Boolean).join('；'), 300)
-    const referenceSummary = budgetText(references.map((reference, index) => (
-      `参考图${index + 1}（${reference.role}）：只提取该职责，不复制无关主体、文字、布局或界面内容`
-    )).join('；'), 240)
-    const targetStyle = normalizeTargetStyle(options?.targetStyle)
-    const stylePreset = UI_STYLE_PRESETS.find((item) => item.value === targetStyle)
-    const styleInstruction = targetStyleInstruction(targetStyle)
-    const scene = inferPageScene(structure)
-    const qualityProfileApi = root?.NovaFlowUiDesignQualityProfile
-    const qualityProfile = typeof qualityProfileApi?.compile === 'function'
-      ? qualityProfileApi.compile(options, structure)
-      : null
-    return [
-      qualityProfile?.instruction || '',
-      '你正在为 NovaFlow 的 UI 版块编写最终设计要求，不是普通绘画提示词。',
-      actionInstruction(options?.action),
-      '当前提示中任何 __NOVAFLOW_ 开头并以双下划线结尾的资源引用占位符都必须原样、原次数保留。',
-      '执行优先级：用户补充要求、页面目标、页面结构和区块生成要求高于目标风格与参考图；发生冲突时必须服从前者。目标风格只控制配色、材质、字体气质、图形语言、光影和装饰，不得改变布局结构、增加功能或删除控件。',
-      '输出应描述可直接生成成品 UI 的视觉结果，必须保持功能层级清晰、控件可读、间距和对齐一致。不要输出分析过程、多个方案、JSON、坐标、尺寸标注或编辑器操作说明。',
-      width && height ? `最终输出尺寸：${width} × ${height}，${orientation}。` : '',
-      text(options?.requirements) ? `用户补充要求：${budgetText(options.requirements, 400)}` : '',
-      structure.name ? `页面：${budgetText(structure.name, 90)}。` : '',
-      structure.description ? `页面目标：${budgetText(structure.description, 210)}` : '',
-      `页面场景（自动识别，仅用于视觉语境）：${scene}。不得据此增加页面结构中未声明的功能。`,
-      styleInstruction ? `目标风格（低优先级视觉约束）：${stylePreset?.label || '智能匹配'}。${styleInstruction}` : '',
-      referenceSummary ? `参考职责：${referenceSummary}` : '',
-      regionSummary ? `页面结构摘要：${regionSummary}` : '',
-      regionDetails ? `区块生成要求：${regionDetails}` : '',
-    ].filter(Boolean).join('\n').slice(0, REQUIREMENTS_TRANSPORT_LIMIT)
+    const size = options.size || structure
+    const content = [
+      '你是 UI 视觉设计助手。只输出可直接生成设计图的最终中文提示词。根据用户要求理解布局、风格和人物物品参考的分工，不强加预设风格、内容类型或商业化倾向。',
+      '用户明确要求优先；有自建布局时遵守各区域位置、用途和数量。没有布局时按用户需求和布局参考合理排布。风格图只借鉴配色、材质、按钮、边框、图标和排版，不移植无关人物、商品或文字。按要求融合指定元素。',
+      '区分软件编辑器外框和目标 UI 内容：不生成编辑器手柄与辅助线；目标 UI 的按钮、菜单和用户指定文案必须保留。局部修改时保留未要求改变的内容。不要擅自增加金币、角标等功能。',
+      '所有 __NOVAFLOW_ 开头并以双下划线结尾的引用占位符原样原次数保留；图片编号按输入顺序，不重新编号。不要输出分析过程或多套方案。',
+      `输出尺寸：${size.width || structure.width}×${size.height || structure.height}。`,
+      structure.regions.length ? `自建布局（坐标只指导构图，不作为画面文字）：${JSON.stringify(structure)}` : '',
+      references.length ? `参考图：${references.map((r,i) => `图${i+1}：${r.role === 'reference' ? '根据需求判断用途' : r.role}`).join('；')}` : '',
+      options.requirements ? `补充要求：${options.requirements}` : '',
+    ].filter(Boolean).join('\n')
+    if (content.length > REQUIREMENTS_TRANSPORT_LIMIT) throw new Error('布局说明和补充要求过长，请精简后再优化；本次未截断提交。')
+    return content
   }
 
   async function prepareReferencesForEngine(references, engine) {
@@ -382,7 +356,7 @@
     const engine = normalizeEngine(options.engine)
     const rawReferences = await resolveValue(options.getReferences, options.references || [])
     const references = referenceSnapshot(rawReferences, engine)
-    const targetStyle = normalizeTargetStyle(options?.targetStyle)
+    const targetStyle = 'auto'
     if (targetStyle === 'reference' && !references.some((reference) => reference.role === 'style')) {
       throw new Error('“跟随参考图”需要至少选择一张职责为“风格”的参考图。')
     }
@@ -391,13 +365,10 @@
     const structure = structureSnapshot(rawStructure)
     const scene = inferPageScene(structure)
     const requirements = buildRequirements(options, structure, references)
-    const qualityProfileApi = root?.NovaFlowUiDesignQualityProfile
-    const qualityProfile = typeof qualityProfileApi?.compile === 'function'
-      ? qualityProfileApi.compile(options, structure)
-      : null
     const currentPrompt = stripTargetStyleContract(options.prompt)
+    if (currentPrompt.length > 18000 || String(options.negativePrompt || '').length > 10000) throw new Error('提示词过长，请精简后再试；本次未截断提交。')
     const currentNegative = String(options.negativePrompt == null ? '' : options.negativePrompt)
-    const promptProtection = protectText(currentPrompt)
+    const promptProtection = protectText(currentPrompt.replace(/(?<!@参考)(?:参考图|图)\s*([1-9][0-9]*)/g, (token, index, offset, full) => full.slice(Math.max(0, offset - 1), offset) === '@' ? token : `@参考图${index}`))
     const negativeProtection = protectText(currentNegative)
     const revision = typeof options.getRevision === 'function' ? options.getRevision() : options.revision
     const supportsNegativePrompt = provider === 'local'
@@ -475,7 +446,7 @@
       if (!restoredNegative.ok) throw new Error('负面要求中的参考图引用保护失败，已保留原内容')
     }
 
-    const finalPrompt = applyTargetStyleContract(restoredPrompt.text, targetStyle)
+    const finalPrompt = restoredPrompt.text
 
     return Object.freeze({
       prompt: finalPrompt,
@@ -484,9 +455,6 @@
       provider,
       engine,
       targetStyle,
-      contentType: qualityProfile?.contentType || 'game-ui',
-      contentPurpose: qualityProfile?.purpose || 'auto',
-      qualityTendency: qualityProfile?.qualityTendency || 'commercial',
       purpose,
       referenceCount: references.length,
       references,

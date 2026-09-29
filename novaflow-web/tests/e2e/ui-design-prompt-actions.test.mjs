@@ -33,7 +33,7 @@ class FakeElement {
 const walk = (node) => [node, ...node.children.flatMap(walk)];
 const byAttr = (root, name, value) => walk(root).find((node) => node.getAttribute?.(name) === value) || null;
 
-function mountTool(provider = 'local', canvas = { width: 1280, height: 720 }) {
+function mountTool(provider = 'local', canvas = { width: 1280, height: 720 }, variant = 'node') {
   const opened = [];
   const context = { module: { exports: {} }, exports: {}, console, setTimeout, clearTimeout, __NovaFlowSmartAI: { openPromptEditor: (control, title, options) => { opened.push({ control, title, options }); return true; } } };
   context.globalThis = context;
@@ -43,7 +43,7 @@ function mountTool(provider = 'local', canvas = { width: 1280, height: 720 }) {
   const host = documentRef.createElement('div');
   const assistantOpenings = [];
   tool.mount({
-    host, variant: 'node', state: { provider, prompt: '暗色游戏商城' },
+    host, variant, state: { provider, prompt: '暗色游戏商城' },
     getCanvasSize: () => canvas,
     onChange() {},
     onOpenDesignAssistant(payload) { assistantOpenings.push(payload); },
@@ -145,4 +145,17 @@ test("GPT's own presets stay selected, and W / H opt out of the page's 49px numb
   for (const axis of ['width', 'height']) assert.equal(byAttr(custom, 'data-novaflow-ui-design-dimension-input', axis).getAttribute('data-novaflow-number-fill'), '1');
   const runtime = readFileSync(new URL('../../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8');
   assert.match(runtime, /function setNovaflowNumericFieldWidth\(field\) \{\s*if \(!\(field instanceof HTMLElement\)\) return;\s*\/\/[^\n]*\n\s*if \(field\.getAttribute\("data-novaflow-number-fill"\) === "1"\) return;/);
+});
+
+
+test('workbench uses parallel positive/negative editors and one horizontal generation action', () => {
+  const {host}=mountTool('local',{width:1280,height:720},'workbench');
+  const columns=byAttr(host,'data-ui-prompt-columns','2');
+  assert.ok(columns);
+  assert.equal(columns.children.length,2);
+  assert.ok(byAttr(columns.children[0],'data-novaflow-ui-design-prompt-field','prompt'));
+  assert.ok(byAttr(columns.children[1],'data-novaflow-ui-design-prompt-field','negativePrompt'));
+  assert.equal(walk(host).filter(n=>n.getAttribute?.('data-novaflow-ui-design-node-generate-action')==='1').length,1);
+  const cloud=mountTool('gpt',{width:1024,height:1024},'workbench');
+  assert.equal(byAttr(cloud.host,'data-novaflow-ui-design-prompt-field','negativePrompt'),null);
 });

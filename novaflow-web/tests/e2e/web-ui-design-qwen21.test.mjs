@@ -448,4 +448,22 @@ const artCompiled = globalThis.NovaFlowResourceMentionTool.compileText({ surface
 assert.deepEqual(artCompiled.invalidTokens, []);
 assert.ok(artCompiled.text.includes('5') && !artCompiled.text.includes('@参考图5'));
 
+// Optional structure: each provider receives only the actual references, or a text-only run.
+globalThis.electronAPI = {runtimeFeaturesSync:()=>({qwenImage21:true}),runtimeFeatures:async()=>({qwenImage21:true}),runtimeProviderUsageSettlement:'preload-price-v1'};
+globalThis.NovaFlowClientAuth = {createAuthorizationContext:()=>({release(){}})};
+for (const provider of ['local','gpt','google']) {
+  for (const count of [0,2]) {
+    uploads.length=0;
+    const output=await generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:runRefs.slice(0,count),state:{provider,width:1024,height:1024,gptQualityImg2img:'high',googleAspectRatioImg2img:'1:1',promptMentionBindings:{'@参考图1':'s'}},prompt:count?'按@参考图1设计背包界面':'简洁背包界面',pollIntervalMs:0});
+    assert.equal(uploads.length,count,provider+' must not upload a phantom layout');
+    assert.equal(built.mode,count?'img2img':'txt2img');
+    assert.equal(output.layoutGuideSource,'none');
+    assert.ok(built.referenceRoles.every(role=>role.role!=='ui_layout'));
+    assert.ok(!built.systemPrompt?.includes('image 1 is a non-visual'));
+    if(provider==='gpt') assert.equal(built.settings.quality,'high');
+    if(provider==='google') assert.equal(built.settings.aspectRatio,'1:1');
+    if(count) assert.ok(built.prompt.includes(provider==='local'?'<image1>':'图1'));
+  }
+}
+
 console.log(checks + ' passed, 0 failed: UI design on Qwen-Image-2.1 (page plan, worker graph, node probe)');

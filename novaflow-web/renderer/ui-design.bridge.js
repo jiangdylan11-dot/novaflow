@@ -36,7 +36,7 @@
       resource: root && root.NovaFlowUiDesignProjectResource,
       preview: root && root.NovaFlowUiDesignPreview,
       layoutGuide: root && root.NovaFlowUiDesignLayoutGuide,
-      workspace: root && root.NovaFlowUiDesignWorkspace,
+      workspace: root && root.NovaFlowUiDesignWorkbench,
       generateWorkflow: root && root.NovaFlowUiDesignGenerateWorkflow,
       mode: root && root.NovaFlowUiDesignModeTool,
       accordion: root && root.NovaFlowLeftPanelAccordion,
@@ -114,6 +114,8 @@
   }
 
   function selectedGeneratorId(state) {
+    const activeId = mounted?.workspaceHandle?.getActiveGeneratorId?.()
+    if (activeId) return activeId
     const selection = mounted?.workspaceHandle?.getSelection?.() || selectedEntity
     const selectedNode = selection?.node || selection
     if (selectedNode?.type === 'generator' && selectedNode.id) return String(selectedNode.id)
@@ -458,7 +460,7 @@
         'aria-hidden': 'true',
         style: accordion.iconStyle(),
       }),
-      createElement(documentRef, 'span', { text: '属性', style: accordion.labelStyle() }),
+      createElement(documentRef, 'span', { text: '结构生成器', style: accordion.labelStyle() }),
     ])
     const chevron = createElement(documentRef, 'i', {
       className: accordion.chevronClass(false),
@@ -473,7 +475,7 @@
       style: accordion.headerStyle(false),
     }, [title, chevron])
     const help = createElement(documentRef, 'div', {
-      text: '选择画布中的节点或布局块，在此查看和调整属性。',
+      text: '在中央画板规划布局，点击模块编辑属性。布局可选。',
       style: { color: 'rgba(255,255,255,0.46)', fontSize: '10px', lineHeight: '1.55' },
     })
 
@@ -482,10 +484,17 @@
       className: 'nf-panel-body',
       style: accordion.bodyStyle(false),
     }, [help, inspectorHost])
+    const add = createElement(documentRef, 'button', { type: 'button', text: '+ 添加模块', style: { padding: '8px', color: '#fff', background: '#292929', border: '1px solid #444', borderRadius: '6px' } })
+    add.addEventListener('click', () => mounted?.workspaceHandle?.addBlock?.())
+    const use = createElement(documentRef, 'button', { type: 'button', text: '生成布局参考', style: { padding: '8px', color: '#fff', background: '#17a582', border: '0', borderRadius: '6px' } })
+    use.addEventListener('click', () => mounted?.workspaceHandle?.useLayout?.())
+    body.prepend(add)
+    body.appendChild(use)
     let expanded = false
     header.addEventListener('click', () => {
       expanded = !expanded
       accordion.syncExpanded(section, header, body, chevron, expanded)
+      if (expanded) mounted?.workspaceHandle?.showLayout?.()
     })
     section.appendChild(header)
     section.appendChild(body)
@@ -639,10 +648,10 @@
     const connectedLayout = layoutEdge
       ? graph.nodes.find((node) => node.id === layoutEdge.fromNodeId && node.type === 'layout')
       : null
-    const layout = connectedLayout
-    const blocks = Array.isArray(layout?.data?.blocks)
-      ? layout.data.blocks.filter((block) => block && block.participates !== false)
+    const blocks = Array.isArray(connectedLayout?.data?.blocks)
+      ? connectedLayout.data.blocks.filter((block) => block && block.participates !== false)
       : []
+    const layout = blocks.length ? connectedLayout : null
     const connected = generator
       ? graph.edges.filter((edge) => edge.toNodeId === generator.id && (edge.kind === 'reference' || edge.kind === 'iteration'))
       : []
@@ -711,14 +720,14 @@
 
   function generatorReferenceDescriptors(state, requestedGeneratorId) {
     const context = generationContext(state, String(requestedGeneratorId || ''))
-    return context.references.slice(0, context.referenceLimit).map((reference, index) => ({
+    return context.references.map((reference, index) => ({
       key: `ui_reference_${index + 1}`,
       id: String(reference.id || reference.sourceId || reference.resourceId || reference.nodeId || `ui_reference_${index + 1}`),
       sourceId: String(reference.id || reference.sourceId || reference.resourceId || ''),
       nodeId: String(reference.nodeId || ''),
       label: String(reference.name || reference.fileName || `参考图${index + 1}`),
       // The model sees the layout guide as image 1 unless the engine takes none (Qwen-Image-2.1).
-      modelImageNumber: index + 1 + Math.max(0, Number(context.capability?.reservedLayoutReferences) || 0),
+      modelImageNumber: index + 1 + (context.layout ? Math.max(0, Number(context.capability?.reservedLayoutReferences) || 0) : 0),
       name: String(reference.name || reference.fileName || `ui_reference_${index + 1}.png`),
       fileName: String(reference.fileName || reference.name || `ui_reference_${index + 1}.png`),
       kind: 'image',
@@ -803,6 +812,20 @@
     })
   }
 
+  function assistantInput(state, context, profile) {
+    return {
+      provider: context.provider,
+      engine: profile.settings.assistantEngine || 'grok',
+      prompt: String(profile.settings.prompt || ''),
+      negativePrompt: String(profile.settings.negativePrompt || ''),
+      size: { ...profile.output },
+      references: generatorReferenceDescriptors(state, context.generator.id),
+      structure: generatorStructureContext(state, context.generator.id),
+      electronAPI: root?.electronAPI,
+      getSessionToken: readClientSessionToken,
+    }
+  }
+
   function openDesignAssistant(payload = {}) {
     const state = ensureStore()?.getState?.()
     const generatorNodeId = String(payload.generatorNodeId || '')
@@ -816,6 +839,12 @@
       workflow: modules.assistantWorkflow,
       electronAPI: root?.electronAPI,
       provider: context.provider,
+      engine: profile.settings.assistantEngine || 'grok',
+      getInputRevision: () => {
+        const latest = ensureStore().getState()
+        const ctx = generationContext(latest, context.generator.id)
+        return root.NovaFlowUiDesignPromptPipeline.key(assistantInput(latest, ctx, generatorProfile(latest, ctx.generator, false)))
+      },
       state: { ...profile.settings, ...profile.output },
       size: { ...profile.output },
       prompt: String(payload.prompt || profile.settings.prompt || ''),
@@ -827,7 +856,20 @@
       getReferences: () => generatorReferenceDescriptors(ensureStore()?.getState?.() || state, context.generator.id),
       getStructureContext: () => generatorStructureContext(ensureStore()?.getState?.() || state, context.generator.id),
       getSessionToken: readClientSessionToken,
-      apply: payload.apply,
+      apply(result) {
+        const input = assistantInput(state, context, profile)
+        input.prompt = String(payload.prompt ?? input.prompt)
+        input.engine = result.engine || input.engine
+        const applied = payload.apply?.(result)
+        if (applied === false) return false
+        mounted?.workspaceHandle?.patchGeneratorSettings?.(context.generator.id, { assistantEngine: input.engine })
+        const latest = ensureStore().getState()
+        const latestContext = generationContext(latest, context.generator.id)
+        const next = assistantInput(latest, latestContext, generatorProfile(latest, latestContext.generator, false))
+        root.NovaFlowUiDesignPromptPipeline.remember(context.generator.id, input, result, next)
+        mounted?.workspaceHandle?.recordOptimization?.(context.generator.id, input, result)
+        return true
+      },
     })
   }
 
@@ -913,21 +955,6 @@
       setGenerationStatus(error.message, { generatorNodeId, error: true, running: false })
       throw error
     }
-    if (!context.layout) {
-      const error = new Error('请先把页面结构连接到 UI 生成器的结构端口')
-      setGenerationStatus(error.message, { generatorNodeId, error: true, running: false })
-      throw error
-    }
-    if (!context.blocks.length) {
-      const allBlocks = Array.isArray(context.layout?.data?.blocks)
-        ? context.layout.data.blocks
-        : (Array.isArray(state.project.blocks) ? state.project.blocks : [])
-      const error = new Error(allBlocks.length
-        ? '请至少启用一个参与生成的布局块'
-        : '请先创建页面结构，并添加至少一个布局块')
-      setGenerationStatus(error.message, { generatorNodeId, error: true, running: false })
-      throw error
-    }
     if (context.referenceOverflow > 0) {
       const removeCount = context.referenceOverflow
       const message = context.iterationReferenceCount > 1
@@ -941,6 +968,11 @@
     }
 
     const profile = generatorProfile(state, context.generator)
+    if (!String(profile.settings.prompt || '').trim() && !context.references.length && !context.blocks.length) {
+      const error = new Error('请填写设计需求、添加参考图或创建布局')
+      setGenerationStatus(error.message, { generatorNodeId, error: true, running: false })
+      throw error
+    }
     const output = profile.output
     const outputContract = generationOutputContract(context.provider, output, profile.settings)
     if (outputContract?.valid === false) {
@@ -968,6 +1000,7 @@
       data: {
         ...(isObject(context.layout?.data) ? context.layout.data : {}),
         blocks: scaledBlocks,
+        canvasSize: { ...output },
       },
     }
     const project = {
@@ -976,10 +1009,10 @@
       width: output.width,
       height: output.height,
       canvas: { width: output.width, height: output.height },
-      graph: { ...context.graph, nodes: [scopedLayout], edges: [], lineage: [] },
+      graph: { ...context.graph, nodes: context.layout ? [scopedLayout] : [], edges: [], lineage: [] },
       blocks: scaledBlocks,
     }
-    const layoutGuide = modules.layoutGuide?.createCleanLayoutGuide?.(project, {
+    const layoutGuide = context.layout ? modules.layoutGuide?.createCleanLayoutGuide?.(project, {
       visualEncoding: context.provider === 'local'
         ? 'soft-ui-semantic-scaffold-v2'
         : context.provider === 'google'
@@ -987,8 +1020,8 @@
           : 'filled-regions-only',
       semanticSubgrid: context.provider === 'local',
       semanticText: context.provider === 'local' ? String(runState.prompt || '') : '',
-    })
-    if (!layoutGuide || layoutGuide.clean !== true || layoutGuide.editorSnapshot !== false) {
+    }) : null
+    if (context.layout && (!layoutGuide || layoutGuide.clean !== true || layoutGuide.editorSnapshot !== false)) {
       const error = new Error('无法编译当前页面结构的干净布局控制图')
       setGenerationStatus(error.message, { generatorNodeId, error: true, running: false })
       throw error
@@ -1008,7 +1041,7 @@
       signal: abort.signal,
       project,
       layoutGuide,
-      semanticLayout: layoutGuide.semantic || null,
+      semanticLayout: layoutGuide?.semantic || null,
       refs: references,
       prompt: String(runState.prompt || ''),
       negativePrompt: String(runState.negativePrompt || ''),
@@ -1016,7 +1049,25 @@
       onProgress: progressHandler,
     }
     const task = (async () => {
+      setGenerationStatus('理解需求…', { generatorNodeId, running: true })
+      const input = assistantInput(state, context, profile)
+      const optimized = await root.NovaFlowUiDesignPromptPipeline.run({ id: generatorNodeId, input, signal: abort.signal, assistant: modules.assistantWorkflow })
+      if (abort.signal.aborted) { const error = new Error('任务已中止'); error.name = 'AbortError'; throw error }
+      generationOptions.prompt = optimized.prompt
+      if (profile.settings.negativePromptSource !== 'user' && optimized.hasNegativePrompt) generationOptions.negativePrompt = optimized.negativePrompt
+      const promptMentionBindings = { ...(runState.promptMentionBindings || {}) }
+      for (const match of optimized.prompt.matchAll(/@参考图([1-9][0-9]*)/g)) {
+        const ref = references[Number(match[1]) - 1]
+        const sourceId = String(ref?.sourceId || ref?.id || '')
+        if (input.prompt.includes(match[0]) && promptMentionBindings[match[0]] && promptMentionBindings[match[0]] !== sourceId) throw new Error('参考图引用已变化，请重新选择该引用')
+        if (sourceId) promptMentionBindings[match[0]] = sourceId
+      }
+      generationOptions.state = { ...runState, prompt: generationOptions.prompt, negativePrompt: generationOptions.negativePrompt, promptMentionBindings }
+      mounted?.workspaceHandle?.recordOptimization?.(generatorNodeId, input, optimized)
+      setGenerationStatus('生成 UI…', { generatorNodeId, running: true })
       let result = await modules.generateWorkflow.run(generationOptions)
+      result = { ...result, originalUserPrompt: input.prompt, optimizedPrompt: optimized.prompt, optimizationEngine: input.engine }
+
       if (context.provider !== 'local' || runState.uiRunIntent === 'iteration') return result
       // Local UI is one Qwen-Image-2.1 pass; nothing refines or reviews it afterwards.
       return {
@@ -1138,7 +1189,7 @@
     const attribute = createAttributeSection(documentRef, inspectorHost)
     leftRoot.appendChild(modeHost)
     leftRoot.appendChild(attribute.section)
-    leftRoot.appendChild(createSplitPlaceholder(documentRef))
+
     hosts.leftHost.replaceChildren(leftRoot)
 
     const mountRoot = createElement(documentRef, 'div', {
@@ -1171,6 +1222,7 @@
     let modeHandle = null
     const workspaceHandle = modules.workspace.mount({
       host: canvasHost,
+      onActiveGeneratorChange: () => modeHandle?.update?.(),
       getProject: () => activeStore.getState().project,
       getResources: () => activeStore.getState().resources,
       getResults: () => activeStore.getState().results,
@@ -1252,6 +1304,8 @@
     const previewHandle = modules.preview.mount({
       host: previewHost,
       store: activeStore,
+      onSelectResource: item => workspaceHandle.showImage?.(item),
+      onSelectResult: item => workspaceHandle.showImage?.(item),
     })
     generationState = currentGenerationState()
 

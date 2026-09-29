@@ -64,7 +64,7 @@
     'Output only the finished full-canvas interface.',
   ].join(' ')
   const GOOGLE_UI_SYSTEM_PROMPT = [
-    'You are an expert game UI generation engine. Always output exactly one finished UI artwork.',
+    'You are an expert UI generation engine. Always output exactly one finished UI artwork.',
     'For this UI-design task, image 1 is a non-visual soft spatial occupancy guide, never source artwork.',
     'Read only region centers, relative coverage, ordering and whitespace from image 1.',
     'The presence of a region does not imply a card, frame, panel, halo, border, container or background band.',
@@ -854,10 +854,12 @@
     const referenceImageNumbers = Array.isArray(options.referenceImageNumbers)
       ? options.referenceImageNumbers
       : []
-    const lines = ['Create one complete, polished, review-ready game UI design.']
+    const lines = ['Create one complete, polished, review-ready UI design following the requested product and style.']
     if (enforceDigitalCanvas) lines.push(...DIGITAL_UI_CANVAS_CONTRACT)
     if (digitalReelUi) lines.push(...DIGITAL_REEL_UI_CONTRACT)
-    if (textSemanticLayout) {
+    if (options.hasLayout === false) {
+      lines.push('Arrange the UI from the user requirements and any explicitly designated layout reference. No generated layout guide is supplied.')
+    } else if (textSemanticLayout) {
       lines.push(
         'There is no visual layout reference in this synthesis pass. Build the interface directly from the semantic region requirements below.',
         'Treat region order, relative coverage, required item counts and functional groups as a layout contract, while inventing all finished shapes, materials and styling.',
@@ -1685,10 +1687,10 @@
       contentIdentityLock: options.contentIdentityLock,
     }), carrierIntent)
     const opening = iteration
-      ? `Edit <image1>, the current game UI design, into its next version at ${width}x${height}. Keep it one finished, opaque, edge-to-edge ${orientation} screen.`
+      ? `Edit <image1>, the current UI design, into its next version at ${width}x${height}. Keep it one finished, opaque, edge-to-edge ${orientation} screen.`
       : carrierIntent === 'hardware'
         ? `Render the requested physical device as one finished, front-facing ${width}x${height} product image.`
-        : `Design one finished, opaque, edge-to-edge ${width}x${height} ${orientation} game UI screen. The whole image is the screen itself, viewed straight-on.`
+        : `Design one finished, opaque, edge-to-edge ${width}x${height} ${orientation} UI screen. The whole image is the screen itself, viewed straight-on.`
     // The closing lines carry what to keep and what never to draw, so they are sized first and never
     // cut; the request, image roles and regions shrink to fit.
     const tail = [
@@ -1704,6 +1706,11 @@
       referenceLines.length ? ['Images:', ...referenceLines.map((line) => compactLocalModelText(line, referenceChars))].join('\n') : '',
       regionLines.length ? ['Screen structure, top to bottom:', ...regionLines.map((line) => line.prefix + compactLocalModelText(line.clause, regionChars))].join('\n') : '',
     ].filter(Boolean).join('\n')
+    if (options.strictRequirements) {
+      const complete = head(100000, 100000, 100000) + '\n' + tail
+      if (complete.length > QWEN21_UI_PROMPT_MAX_CHARS) throw new Error('当前模型的 UI 指令过长，请精简需求或模块说明；本次未截断生成。')
+      return complete
+    }
     const room = QWEN21_UI_PROMPT_MAX_CHARS - tail.length - 1
     let body = head(1200, 400, 400)
     for (const [targetChars, referenceChars, regionChars] of [[1200, 400, 90], [800, 160, 90], [500, 120, 70], [300, 90, 50]]) {
@@ -1926,7 +1933,8 @@
       : provider === 'google'
         ? SOFT_LAYOUT_GUIDE_ENCODING
         : ''
-    const layoutGuide = resolveCleanLayoutGuide(project, options, state, semanticLayout, requestedLayoutGuideEncoding)
+    const hasLayout = Array.isArray(semanticLayout.regions) && semanticLayout.regions.length > 0
+    const layoutGuide = hasLayout ? resolveCleanLayoutGuide(project, options, state, semanticLayout, requestedLayoutGuideEncoding) : { source: 'none', visualEncoding: '' }
     const layoutGuideEncoding = cleanText(layoutGuide.visualEncoding)
       || requestedLayoutGuideEncoding
       || FILLED_REGIONS_VISUAL_ENCODING
@@ -2062,12 +2070,17 @@
     const referenceGuidedRedesign = provider === 'local'
       && localIntent === 'redesign'
       && !qwen21
-    const executionMode = MODE
+    const executionMode = !hasLayout && !modelRefs.length ? 'txt2img' : MODE
     state.mode = executionMode
+    // The workbench has one set of controls; keep their values when the transport is text-only.
+    if (executionMode === 'txt2img') {
+      state.gptQualityTxt2img = state.gptQualityImg2img || state.gptQualityTxt2img
+      state.googleAspectRatioTxt2img = state.googleAspectRatioImg2img || state.googleAspectRatioTxt2img
+    }
     // 2.1 gets the page structure as text only. A guide image leaked grey haze and blobs into the
     // screen wherever it sat in the list (first it also pulled the layout off), so its references
     // are the connected images alone.
-    const synthesisPlan = qwen21
+    const synthesisPlan = qwen21 || !hasLayout
       ? Object.freeze({
           references: Object.freeze([...modelRefs]),
           externalModelImageNumbers: Object.freeze(modelRefs.map((_, index) => index + 1)),
@@ -2116,6 +2129,7 @@
           userPrompt: originalUserPrompt,
           layoutGuideEncoding,
           textOnlyLayout: false,
+          hasLayout,
           layoutGuideImageNumber: synthesisPlan.layoutGuideImageNumber,
           referenceImageNumbers: synthesisPlan.externalModelImageNumbers,
         })
@@ -2165,6 +2179,7 @@
     const supplementalPrompt = cleanText(compiledMentions.text)
     const basePrompt = qwen21
       ? compileQwen21UiPrompt({
+          strictRequirements: true,
           project,
           semantic: semanticLayout,
           intent: localIntent,
@@ -2291,7 +2306,7 @@
         negativePrompt,
         taskProfile: UI_TASK_PROFILE,
         layoutGuideEncoding,
-        systemPrompt: provider === 'google' ? GOOGLE_UI_SYSTEM_PROMPT : '',
+        systemPrompt: provider === 'google' ? (hasLayout ? GOOGLE_UI_SYSTEM_PROMPT : 'Create one finished UI design. Follow the user requirements and the assigned roles of all supplied images. No generated layout guide is supplied.') : '',
         semanticLayout,
         layoutGuide: {
           kind: layoutGuide.kind,

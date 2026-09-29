@@ -148,7 +148,7 @@
       card.addEventListener('keydown', (event) => {
         if (event?.key === 'Enter' || event?.key === ' ') selectResource(resource)
       })
-      enableResourceDrag(card, resource, '拖到中央无限画布')
+      enableResourceDrag(card, resource, '拖到中央画板加入参考')
       appendThumbnail(card, resource)
 
       const meta = createElement(documentRef, 'div', { 'data-novaflow-ui-design-card-meta': '1' })
