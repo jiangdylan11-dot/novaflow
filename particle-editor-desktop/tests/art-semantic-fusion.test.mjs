@@ -191,13 +191,26 @@ for (const text of briefTexts) {
   assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
   assert.ok(['户外写了天空', '景深句只说前景、中景和主体清晰', '中景以内没写脚和鞋', '全文没有“营造”“保持”“突出”“时间为”', '木面、路面、地毯、布料、泥土不反光'].every((item) => text.includes(item)), 'the final check names the recurring slips');
   assert.ok(text.includes('夜景和舞台不写欠曝、过暗') && text.includes('除纯色背景外不写背景杂乱、背景复杂'), 'negatives do not push away a dark stage or a furnished hall');
-  assert.ok(text.includes('用户在负面框里已写的每一项（原负向提示词、当前负面 Prompt）都原样保留，不计入 12 至 18 项'), 'the user\'s own negative terms all stay');
+  // The box also holds earlier answers and the guard: it counts toward the list, and a full box only gets terms for what is new.
+  assert.ok(text.includes('负面框里已有的项（原负向提示词、当前负面 Prompt）算在这 12 至 18 项里，也不受上面按主体选词的限制；框里已有 12 项以上时，只为这次新增或改动的内容补写。'), 'the box counts toward the list');
+  assert.doesNotMatch(text, /都原样保留，不计入 12 至 18 项|身后书架上的书脊也清晰可辨|柴犬坐在门口/, 'no growing box, no far-ground depth example, no test subject as the pose example');
+  assert.ok(text.includes('深景深让前景的藤椅扶手和老人膝头的相册都清晰。') && text.includes('松鼠立在树桩上，前爪捧着一颗松果，尾巴贴着后背竖起'), 'the depth example names the near ground');
 }
-// A negative box longer than the 12 to 18 the model writes itself goes to the model whole, with the rule that keeps it.
+// A negative box goes to the model whole, with the rule that keeps its terms except those that contradict the new picture
+// (a style changed to cel shading drops the guard's 粗黑描边), on every 美工 text request that has a box: the five-section and
+// own-layout optimize, and create.
+const KEEP_BOX = '已有的项照原样保留';
+const DROP_CONTRADICTING = '只删去与';
 const longUserNegative = '多余手指，畸形手指，五官扭曲，模糊，噪点，水印，文字，低质量，过曝，欠曝，色彩断层，透视错误，结构粘连，比例失调，塑料质感，脏色，锯齿，重影，低清晰度，构图拥挤';
 const castleFive = ['[风格设定]','写实风景插画，笔触细腻。气氛庄严肃穆。','[主体物品]','一座古堡矗立在悬崖上，灰色石墙爬满青苔。三座塔楼的尖顶覆着深蓝瓦片，城垛上插着褪色的旗帜。','[环境背景]','悬崖下是翻涌的海浪和黑色礁石。天空飘着灰云，画面右上方有西沉的夕阳。','[光线与色彩]','夕阳从画面右上方斜照在塔楼上。主色为灰蓝，点缀橙色。','[拍摄参数]','远景，低角度仰拍。古堡位于三分线上。'].join('\n');
 const longNegFusion = buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'一座古堡矗立在悬崖上',requirements:'',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test');
-assert.ok(longNegFusion.body.input.at(-1).content[0].text.includes('原负向提示词：' + longUserNegative) && longNegFusion.body.input.at(-1).content[0].text.includes('都原样保留，不计入 12 至 18 项'), 'a long user negative box is sent whole with the keep rule');
+for (const request of [longNegFusion,
+  buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'[角色]\n一只橘猫趴在窗台上。\n[场景]\n午后的窗台。',requirements:'',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test'),
+  buildGrokPromptOptimizeRequest({surface:'art',purpose:'create',prompt:'',requirements:'一只橘猫趴在窗台上晒太阳',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test')]) {
+  const sent = JSON.stringify(request.body.input);
+  assert.ok(sent.includes(longUserNegative) && sent.includes(KEEP_BOX) && sent.includes(DROP_CONTRADICTING) && sent.includes('新写的项不与已有的重复') && sent.includes('扁平赛璐璐'), 'the box is sent whole with the keep rule');
+}
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('当前负面 Prompt 里已有的项照原样保留，不受按主体选词的限制'), 'the reference route keeps the box too');
 assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:castleFive,negative_prompt:longUserNegative + '，城墙砖块错位'})},longNegFusion.resultOptions).negative_prompt,longUserNegative + '，城墙砖块错位');
 assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼（连同图号）和写主体动作') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台') && roleReverse.body.input[0].content.at(-1).text.includes('地面层的灯不写到顶层或天花板'), 'the subject keeps the user\'s name and label, the venue its own words');
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');

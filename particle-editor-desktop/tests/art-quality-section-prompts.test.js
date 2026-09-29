@@ -313,22 +313,33 @@ return { guard: artHighQualityCgNegativeGuardInstruction, merge: mergeSmartAiNeg
   assert.doesNotMatch(guard({ textOnly: true, prompt: sectioned("写实静物风格，薄雾般的柔光。", "一块怀表放在摊开的旧书上。", "近景。") }), /建筑|雾化/);
   assert.equal(merge("塑料质感，爪子畸形，噪点", "塑料材质，畸形爪子，塑料感，低完成度"), "塑料质感，爪子畸形，噪点，低完成度");
   assert.equal(api.mergeNegativePrompt("塑料质感，手指畸形", "塑料材质，畸形手指，噪点"), "塑料质感，手指畸形，噪点");
-  // A term the answer already says inside a longer one is not added again (画面噪点 / 噪点, 尾巴比例失调 / 比例失调), in the
-  // box and at 生图; the box merge also reads a list the model separated with 、.
+  // 画面噪点 is 噪点, but a term narrowed to one thing is another term: 尾巴比例失调 does not say the whole picture's 比例失调,
+  // 聚光灯光束过曝 not 过曝, 文字 not 文字标签 or 伪文字, in the box and at 生图 (round-5 re-review: 63 of 78 recorded boxes
+  // lost 文字标签 and 伪文字 at 生图). The box merge also reads a list the model separated with 、.
   for (const mergeTerms of [merge, api.mergeNegativePrompt]) {
-    assert.equal(mergeTerms("画面噪点，尾巴比例失调，聚光灯光束过曝", "噪点，比例失调，过曝，低完成度"), "画面噪点，尾巴比例失调，聚光灯光束过曝，低完成度");
+    assert.equal(mergeTerms("画面噪点，尾巴比例失调，聚光灯光束过曝", "噪点，比例失调，过曝，低完成度"), "画面噪点，尾巴比例失调，聚光灯光束过曝，比例失调，过曝，低完成度");
+    assert.equal(mergeTerms("画面模糊，文字，书架比例失调，通道透视错误", "模糊，文字标签，伪文字，比例失调，透视错误"), "画面模糊，文字，书架比例失调，通道透视错误，文字标签，伪文字，比例失调，透视错误");
   }
   assert.equal(merge("画面模糊、手部畸形", "手部畸形，低完成度"), "画面模糊，手部畸形，低完成度");
-  // The answer names its own body defects (手部畸形, 猫爪变形), so the box gets the list without its body terms; 生图 keeps them.
+  const castleBox = "画面模糊，低清晰度，水印，文字，低质量，塔楼透视错误，城墙结构变形，天空脏色，海浪噪点";
+  const castleFinal = api.compileFinal({ prompt: castle, negativePrompt: castleBox, provider: "gpt" }).negativePrompt.split("，");
+  for (const term of ["透视错误", "结构变形", "脏色", "噪点", "文字标签", "伪文字"]) assert.ok(castleFinal.includes(term), `生图 keeps ${term}`);
+  // The answer usually names its own body defects (手部畸形, 猫爪变形), and then the box gets the list without its body terms;
+  // an answer that names none keeps them, since local 2.1 draws with nothing but the box. 生图 keeps the whole list.
   const boxGuard = smartSource.match(/const qualityNegativeGuard = isArt && isOptimizeRequest\n\s+\? (.+)\n/)?.[1];
   assert.ok(boxGuard && boxGuard.includes("artHighQualityCgNegativeGuardInstruction({ textOnly: true, prompt: nextPrompt })"), "the box guard is read from the answer");
-  const answerGuard = new Function("artHighQualityCgNegativeGuardInstruction", "nextPrompt", `return ${boxGuard};`);
+  const answerGuard = new Function("artHighQualityCgNegativeGuardInstruction", "nextPrompt", "nextNegativePrompt", `return ${boxGuard};`);
   for (const [answer, grokNegative] of [[WARRIOR, "画面模糊，手部畸形，五官扭曲"], [CAT, "画面模糊，猫爪变形，尾巴比例失调"]]) {
-    const boxNegative = merge(grokNegative, answerGuard(guard, answer));
+    const boxNegative = merge(grokNegative, answerGuard(guard, answer, grokNegative));
     assert.doesNotMatch(boxNegative, /错误人体|畸形手指|多余手脚|五官错位|骨骼结构错误|畸形爪子|多余肢体|，比例失调/, "no body term said twice");
     assert.match(boxNegative, /^画面模糊，[^，]+，[^，]+，.*低完成度/);
-    assert.match(api.compileFinal({ prompt: answer, negativePrompt: boxNegative, provider: "gpt" }).negativePrompt, /错误人体|骨骼结构错误/, "生图 keeps the body list");
+    const final = api.compileFinal({ prompt: answer, negativePrompt: boxNegative, provider: "gpt" }).negativePrompt.split("，");
+    assert.ok(final.includes(answer === CAT ? "骨骼结构错误" : "错误人体") && (answer !== CAT || final.includes("比例失调")), "生图 keeps the body list");
   }
+  const knightNegative = "模糊，低清晰度，水印，文字，低质量，铠甲变形，剑柄扭曲，披风褶皱错误，羽饰形状不对称，眼神呆滞";
+  assert.match(merge(knightNegative, answerGuard(guard, WARRIOR, knightNegative)), /错误人体，畸形手指，多余手脚，五官错位/, "an answer without body defects keeps the list's");
+  const catNegative = "画面模糊，低清晰度，水印，文字，低质量，毛发蓬乱，窗帘褶皱不自然";
+  assert.match(merge(catNegative, answerGuard(guard, CAT, catNegative)), /骨骼结构错误.*比例失调.*畸形爪子.*多余肢体/);
 });
 
 test("a flat style names body defects only for a subject with that body", () => {
@@ -349,4 +360,10 @@ test("a flat style names body defects only for a subject with that body", () => 
   assert.match(api.compileFinal({ prompt: "像素画风格的游戏海报，一位骑士举盾", provider: "gpt" }).negativePrompt, /^错误人体，畸形手指/);
   assert.match(api.compileFinal({ prompt: "像素画风格的游戏海报，一只狐狸蹲在树桩上", provider: "gpt" }).negativePrompt, /^骨骼结构错误，畸形爪子/);
   assert.doesNotMatch(api.compileFinal({ prompt: sectioned("赛璐璐风格的宣传海报。", "一座古城城楼，旗帜在风中飘扬。"), provider: "gpt" }).negativePrompt, /错误人体|畸形手指|畸形爪子/);
+  // As inferAssetType reads a subject: a figure described by its looks is a person, and a plain prompt with neither a named
+  // figure nor an animal keeps the person list 5f79e3b gave every flat picture (剑士, 跑者; 马拉松 is not a horse).
+  for (const prompt of ["像素画风格的游戏海报，剑士举盾冲锋", "赛璐璐风格的演唱会海报，偶像歌手手持麦克风站在舞台中央", "像素画风格的马拉松海报，跑者冲过终点线",
+    sectioned("赛璐璐风格的宣传海报，主视觉构图。", "长发飘逸，身穿红色斗篷，双手握着长剑站在城楼上。")]) {
+    assert.match(api.compileFinal({ prompt, provider: "gpt" }).negativePrompt, /^错误人体，畸形手指，多余手脚，五官错位，/, prompt);
+  }
 });

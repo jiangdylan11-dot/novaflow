@@ -59,7 +59,7 @@
   // Who the picture is of. A person word wins over an animal word (猫耳少女, 骑马的武将, 兽人, 美人鱼);
   // 马尾, 猫眼, 龙纹, 蝴蝶结, 熊熊, 孔雀蓝, 鹅黄, 鱼肚白, 鸟居, 虎牙, 马丁靴 and the like are not animals.
   const PERSON_RE = /(角色|人物|人像|肖像|女性|男性|女子|男子|女人|男人|女孩|男孩|女生|男生|学生|少女|少年|娘|美女|帅哥|青年|老人|老者|儿童|小孩|孩子|婴儿|宝宝|妈妈|爸爸|母亲|父亲|奶奶|爷爷|女士|先生|小姐|英雄|武将|武士|战士|士兵|将军|骑士|剑客|侠客|猎人|渔夫|农夫|牧羊人|商人|僧人|厨师|弓箭手|刺客|公主|王子|国王|女王|皇帝|法师|巫师|女巫|魔女|忍者|兽人|狼人|人鱼|人马|女妖|女郎|人类|她|(?<![其吉])他|(?<![第唯同单统])[一两二三四五六七八九十几多](?:[位名]|个人)|一群人|人们|\b(?:character|girl|boy|woman|women|man|men|person|people|hero|knight|warrior|lady|portrait)s?\b)/i;
-  const ANIMAL_RE = /(动物|宠物|萌宠|幼崽|野兽|神兽|猫(?![耳眼娘])|狗|犬|狐狸(?!眼)|狼(?![尾烟藉狈])|老虎|虎(?![纹口牙])|(?<![石舞])狮|豹(?!纹)|熊猫|(?<!熊)熊(?!熊)|兔(?![耳牙])|鹿(?!角)|(?<!罗)马(?![尾甲靴车路赛克丁卡桶铃])|奶牛|公牛|水牛|牦牛|山羊|绵羊|羊驼|猪|松鼠|仓鼠|老鼠|猴|大象|鸟(?![瞰居])|鹰(?!钩)|鸽|鹤|鸭(?!舌)|鹅(?![黄蛋卵绒])|公鸡|母鸡|小鸡|孔雀(?![蓝绿石])|鹦鹉|企鹅|麻雀|鱼(?![尾鳞网肚骨竿])|鲸|海豚|鲨|乌龟|海龟|蛇|蜥蜴|青蛙|蝴蝶(?!结)|昆虫|恐龙|(?<!火)龙(?![纹袍头形鳞卷舟])|凤凰|独角兽|\b(?:animal|pet|cat|kitten|dog|puppy|fox|wolf|tiger|lion|bear|rabbit|bunny|deer|horse|bird|owl|fish|dragon|creature)s?\b)/i;
+  const ANIMAL_RE = /(动物|宠物|萌宠|幼崽|野兽|神兽|猫(?![耳眼娘])|狗|犬|狐狸(?!眼)|狼(?![尾烟藉狈])|老虎|虎(?![纹口牙])|(?<![石舞])狮|豹(?!纹)|熊猫|(?<!熊)熊(?!熊)|兔(?![耳牙])|鹿(?!角)|(?<!罗)马(?![尾甲靴车路赛克丁卡桶铃]|拉松)|奶牛|公牛|水牛|牦牛|山羊|绵羊|羊驼|猪|松鼠|仓鼠|老鼠|猴|大象|鸟(?![瞰居])|鹰(?!钩)|鸽|鹤|鸭(?!舌)|鹅(?![黄蛋卵绒])|公鸡|母鸡|小鸡|孔雀(?![蓝绿石])|鹦鹉|企鹅|麻雀|鱼(?![尾鳞网肚骨竿])|鲸|海豚|鲨|乌龟|海龟|蛇|蜥蜴|青蛙|蝴蝶(?!结)|昆虫|恐龙|(?<!火)龙(?![纹袍头形鳞卷舟])|凤凰|独角兽|\b(?:animal|pet|cat|kitten|dog|puppy|fox|wolf|tiger|lion|bear|rabbit|bunny|deer|horse|bird|owl|fish|dragon|creature)s?\b)/i;
   // A [主体物品] that describes a figure without naming one (长发, 鹅蛋脸, 身穿皮夹克).
   const FIGURE_HINT_RE = /(五官|脸|眼神|发型|长发|短发|卷发|发髻|辫|身穿|穿着|身披|头戴|手持|手握|双手)/;
 
@@ -184,10 +184,11 @@
     return style === "cel_comic" || style === "pixel" || EXPLICIT_FLAT_STYLE_RE.test(`${clean(style)} ${affirmative}`);
   }
 
-  // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形; 画面噪点 already says 噪点.
+  // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形, and 画面噪点 and 噪点. A narrower term is
+  // another term: 尾巴比例失调 does not say 比例失调, and 文字 does not say 文字标签.
   function sameNegativeTerm(first, second) {
-    const [a, b] = [first, second].map((term) => term.toLowerCase().replace(/^畸形(.+)$/u, "$1畸形").replace(/(?:质感|材质|感)$/u, ""));
-    return a === b || (Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a)));
+    const [a, b] = [first, second].map((term) => term.toLowerCase().replace(/^(?:画面|整体)(.+)$/u, "$1").replace(/^畸形(.+)$/u, "$1畸形").replace(/^(.+?)(?:质感|材质|感)$/u, "$1"));
+    return a === b;
   }
 
   function mergeNegativePrompt(base, addition) {
@@ -236,10 +237,11 @@
     const localTxt2img = String(source.provider || "").toLowerCase() === "local" && String(source.mode || "").toLowerCase() === "txt2img";
     const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) && !localTxt2img ? PURE_ARTWORK_INSTRUCTION : "";
     const positiveInstruction = [basePositiveInstruction, clothingDesignInstruction, pureArtworkInstruction].filter(Boolean).join("");
-    // A poster or a UI screen has the body of the figure or animal on it.
+    // A poster or a UI screen has the body of the figure or animal on it, read as inferAssetType reads a subject: a described
+    // figure is a person, and a plain prompt without a figure or an animal keeps the person list it always had.
     const figureOn = affirmativeClauses(sections ? sections["主体物品"] : prompt);
     const bodyType = assetType !== "poster" && assetType !== "game_ui" ? assetType
-      : PERSON_RE.test(figureOn) ? "character" : ANIMAL_RE.test(figureOn) ? "animal" : "";
+      : PERSON_RE.test(figureOn) || FIGURE_HINT_RE.test(figureOn) ? "character" : ANIMAL_RE.test(figureOn) ? "animal" : sections ? "" : "character";
     const baseNegativeInstruction = explicitFlatStyle
       ? mergeNegativePrompt(FLAT_STYLE_BODY_NEGATIVES[bodyType], "结构粘连，轮廓脏乱，噪点，低完成度")
       : PROFILE_NEGATIVES[assetType];
