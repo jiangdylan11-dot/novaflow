@@ -326,6 +326,22 @@ class SceneTest(unittest.TestCase):
         self.assertIn('身穿黑色长袍从左侧走来', result['description'])
         self.assertIn('<Subject 1> 在第2秒拔出长剑', result['description'])
         self.assertIn('抱拳回礼，画面定格', result['description'])
+        # The user's 黑袍 is the writer's 黑色长袍, the user's 第2秒 its 第二秒.
+        result, _ = self.write(plan, '', lines('<Subject 1> 身穿黑色长袍从左侧走来', '<Subject 1> 在第二秒拔出长剑'), observed=observed,
+                               requirement='图1的黑袍法师走向图2的女孩，第2秒拔剑')
+        self.assertIn('身穿黑色长袍从左侧走来', result['description'])
+        self.assertIn('<Subject 1> 在第二秒拔出长剑', result['description'])
+        # A writer's span of seconds goes whole, never leaving "从到" or "直到才".
+        result, _ = self.write(plan, '', lines('<Subject 1> 从第1秒到第3秒缓步走向 <Subject 2>', '<Subject 2> 静立直到第4秒才转身望向 <Subject 1>'),
+                               observed=observed, requirement='图1的男子走向图2的女孩')
+        self.assertIn('缓步走向 <Subject 2>', result['description'])
+        self.assertIn('静立，随后转身望向 <Subject 1>', result['description'])
+        self.assertNotRegex(result['description'], '第.秒|从到|直到才')
+        # A standoff the user wrote ("互相戒备", "蓄势待发") stays.
+        for requirement, beat, kept in [('图1的男子与图2的女孩隔着庭院互相戒备，然后男子缓缓走近', '<Subject 1> 与 <Subject 2> 隔着庭院互相戒备', '隔着庭院互相戒备'),
+                                        ('图1的男子蓄势待发，然后冲向图2的女孩', '<Subject 1> 屈膝蓄势待发', '屈膝蓄势待发')]:
+            result, _ = self.write(plan, '', lines('<Subject 1> 站在庭院一侧', beat, '<Subject 1> 冲向 <Subject 2>'), observed=observed, requirement=requirement)
+            self.assertIn(kept, result['description'])
         # A style picture named with its label ("参考 <Picture 2> 的…画风") still lends only its style.
         style = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'),
                                 subject(2, '<Picture 2>', '参考 <Picture 2> 的中国传统水墨画风格', '水墨', relation='attribute_transfer')],

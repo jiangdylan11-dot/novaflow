@@ -235,12 +235,13 @@ def camera_move_clause(clause):
 
 # A translation that turns a speed or direction around ("缓慢加快" -> "slows down"): the Chinese words,
 # the Chinese words that would allow it, the English that turns it around, and the retry hint.
-FASTER, SLOWER = r"加快|加速|变快|越来越快|更快|提速", r"减慢|放慢|变慢|减速|越来越慢|更慢|慢下来|放缓"
+FASTER, SLOWER = r"加快|加速|变快|越来越快|更快|提速", r"减慢|放慢|变慢|减速|越来越慢|更慢|慢了?下来|缓了?下来|放缓"
 CLOSER, FARTHER = r"推近|推进|拉近|前推", r"拉远|后拉|拉开|后撤"
 RISE, FALL = r"上移|上升|升起|升高|上摇|仰摇|向上", r"下移|下降|降低|下摇|俯摇|向下"
 LEFT_EN = r"\b(?:to|toward|towards|on|from) (?:the |her |his |its |their )?left\b|\bleft(?:ward|wards)?\b(?=[ -](?:side|hand|arm|leg|foot|shoulder|edge|corner|paw))|\b(?:pans?|trucks?|turns?|moves?|slides?|tilts?|rolls?|shifts?|looks?|swings?|sweeps?|glances?|leans?|steps?) (?:to the )?left\b"
 FLIPS = (
-    (FASTER, SLOWER, r"\bslow(?:s|ing|ed)? down\b|\bdecelerat|\bslower\b", "加快 means speeds up", False),
+    # "加快脚步，随后在门口停下" slows down to stop.
+    (FASTER, SLOWER + r"|停下|停住|停步|止步", r"\bslow(?:s|ing|ed)? down\b|\bdecelerat|\bslower\b", "加快 means speeds up", False),
     (SLOWER, FASTER, r"\bspeed(?:s|ing)? up\b|\baccelerat|\bfaster\b", "减慢 or 放缓 means slows down", False),
     (CLOSER, FARTHER, r"\bpull(?:s|ing|ed)? (?:out|back)\b|\bzoom(?:s|ing|ed)? out\b|\b(?:moves?|draws?) back\b", "推近 or 拉近 means the camera pushes in", True),
     (FARTHER, CLOSER, r"\bpush(?:es|ing|ed)? in\b|\bzoom(?:s|ing|ed)? in\b|\bmoves? closer\b", "拉远 or 后撤 means the camera pulls out", True),
@@ -255,10 +256,13 @@ FLIPS = (
     (r"全景", r"远景", r"\bwide shot\b|\bpanoram", "全景 means full shot", False),
     (r"远景", r"全景", r"\bfull shot\b", "远景 means wide shot", False),
     # A spear's parts in a chunk without its scene ("左手松开枪柄") came back as a gun.
-    # "松开枪柄" holds no 开枪.
-    (r"长枪|红缨枪|枪[杆尖头缨柄法]|出枪", r"[手步机猎水开]枪(?![杆尖头缨柄法])|枪械|枪管|枪口|枪声|子弹|射击", r"\bgun(?: barrel)?s?\b",
+    # "松开枪柄" holds no 开枪; 出枪 and 枪法 are a gun's as often as a spear's.
+    (r"长枪|红缨枪|枪[杆尖头缨柄]", r"(?:[手步机猎水拔]|开[了一二三四五六七八九十两几数]{0,2})枪(?![杆尖头缨柄])|枪械|枪管|枪口|枪声|子弹|射击|扳机|瞄准", r"\bgun(?: barrel)?s?\b",
      "枪 here is a spear, never a gun", False),
 )
+# The camera's own clause: "the girl sits down" in "The camera moves up as the girl sits down" is hers.
+CAMERA_CLAUSE = (r"\bcamera\b[^,;.!?]*?(?=\s+(?:(?:as|while|when|until|before|after|following|whereas)\b"
+                 r"|and\s+(?:(?:the|her|his|its|their|she|he|it|they)\b|TOKEN_|<))|[,;.!?]|$)")
 SHOT_SIZE_WORDING = "特写 -> close-up; 近景 -> medium close-up; 中景 -> medium shot; 全景 -> full shot; 远景 -> wide shot"
 # One pinyin syllable; "Kuokou" for 壶口 is two of them, one per character.
 PINYIN_SYLLABLE = r"(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?(?:iang|iong|uang|ueng|ang|eng|ing|ong|ian|iao|uai|uan|ai|ei|ao|ou|an|en|in|un|ia|ie|iu|ua|uo|ui|ve|er|[aeiouv])"
@@ -271,28 +275,36 @@ def pinyin_like(word, run):
 
 def translation_flips(chinese, english):
     """Hints for the speed and direction words a translation turned around; camera words are read in
-    the camera's own sentences."""
-    camera_en = " ".join(s for s in re.split(r"(?<=[.;!?])\s+", english) if re.search(r"\bcamera\b", s, re.I))
+    the camera's own clauses."""
+    camera_en = " ".join(re.findall(CAMERA_CLAUSE, english, re.I))
     camera_zh = "".join(c for c in re.split(r"[，,。；;！？]", chinese) if re.search(CAMERA_SUBJECT, c))
     return [hint for zh, allowed, flipped, hint, camera in FLIPS
             if re.search(zh, camera_zh if camera else chinese) and not re.search(allowed, camera_zh if camera else chinese)
             and re.search(flipped, camera_en if camera else english, re.I)]
 
 
-FLIP_SWAPS = {"left": "right", "right": "left", "slow": "speed", "speed": "slow", "slower": "faster", "faster": "slower",
-              "down": "up", "up": "down", "decelerat": "accelerat", "accelerat": "decelerat", "gun barrel": "spear shaft", "gun": "spear", "guns": "spears"}
+# Whole phrases: "slows down" is "speeds up", never "slows up".
+FLIP_SWAPS = {"left": "right", "right": "left", "slow down": "speed up", "slows down": "speeds up", "slowing down": "speeding up",
+              "slowed down": "sped up", "speed up": "slow down", "speeds up": "slows down", "speeding up": "slowing down", "sped up": "slowed down",
+              "slower": "faster", "faster": "slower", "decelerat": "accelerat", "accelerat": "decelerat", "down": "up", "up": "down",
+              "downward": "upward", "upward": "downward", "downwards": "upwards", "upwards": "downwards", "descend": "rise", "descends": "rises",
+              "lower": "rise", "lowers": "rises", "rise": "descend", "rises": "descends", "ascend": "descend", "ascends": "descends",
+              "gun barrel": "spear shaft", "gun barrels": "spear shafts", "gun": "spear", "guns": "spears"}
+FLIP_SWAP_WORDS = (r"\b(?:" + "|".join(sorted((word for word in FLIP_SWAPS if not word.endswith("celerat")), key=len, reverse=True))
+                   + r")\b|decelerat|accelerat")
 
 
 def unflip(chinese, english):
-    """A translation that turned left/right, a speed or up/down around (or made a spear a gun), turned back word for word
-    in the flagged words ("turns to the left" for 向右转身); '' when a flip is left (the caller fails rather than ship it)."""
+    """A translation that turned left/right, a speed or up/down around (or made a spear a gun), turned back phrase by
+    phrase in the flagged words ("turns to the left" for 向右转身), a camera's up/down only in the camera's own clause;
+    '' when a flip is left (the caller fails rather than ship it)."""
     def swap(m):
-        return re.sub(r"\b(?:left|right|slow|speed|slower|faster|down|up|gun barrel|guns?)\b|decelerat|accelerat",
-                      lambda w: FLIP_SWAPS[w[0].lower()].capitalize() if w[0][0].isupper() else FLIP_SWAPS[w[0].lower()], m[0], flags=re.I)
+        return re.sub(FLIP_SWAP_WORDS, lambda w: FLIP_SWAPS[w[0].lower()].capitalize() if w[0][0].isupper() else FLIP_SWAPS[w[0].lower()],
+                      m[0], flags=re.I)
     for zh, allowed, flipped, hint, camera in FLIPS:
         if hint in translation_flips(chinese, english):
-            english = "".join(re.sub(flipped, swap, part, flags=re.I) if not camera or re.search(r"\bcamera\b", part, re.I) else part
-                              for part in re.split(r"((?<=[.;!?])\s+)", english))
+            english = (re.sub(CAMERA_CLAUSE, lambda c: re.sub(flipped, swap, c[0], flags=re.I), english, flags=re.I) if camera
+                       else re.sub(flipped, swap, english, flags=re.I))
     return "" if translation_flips(chinese, english) else english
 
 
@@ -332,19 +344,22 @@ def official_english(text, opening_style=True):
         return m[1] + ("th" if 10 <= number % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th"))
 
     # A name keeps its capital and takes no article ("Nezha", "Zhong Kui"): only a word the text also writes in lower
-    # case, or a common opening word, is lowered.
-    common = lambda word: re.fullmatch(r"(?:the|an?|male|female|young|old|elderly|man|woman|girl|boy|robot|cat|dog|character|person|figure|"
-                                       r"warrior|she|he|it|they|two|both|each)", word.lower()) or re.search(rf"\b{word.lower()}\b", str(text or ""))
+    # case, or a common opening word, is lowered; the first word of a longer name ("Sun Wukong", "Jade Emperor") keeps it.
+    listed = lambda word: re.fullmatch(r"(?:the|an?|male|female|young|old|elderly|man|woman|girl|boy|robot|cat|dog|character|person|figure|"
+                                       r"warrior|she|he|it|they|two|both|each)", word.lower())
+    common = lambda word: listed(word) or re.search(rf"\b{word.lower()}\b", str(text or ""))
 
     def opening(m):
         if re.sub(rf"\b(?:{STYLE_EN})\b|[,\s-]", "", m[2], flags=re.I):
             return m[0]
-        following = m[3] if re.match(r"(?:Picture|I\b|<)", m[3]) or not common(re.match(r"\w*", m[3])[0]) else m[3][0].lower() + m[3][1:]
+        word = re.match(r"\w*", m[3])[0]
+        lower = not re.match(r"(?:Picture|I\b|<)", m[3]) and (listed(word) or not m[4] and common(word))
+        following = m[3][0].lower() + m[3][1:] if lower else m[3]
         return m[1] + re.sub(r"\s+style$", "", m[2].strip()) + ", " + following
     parts = re.split(r'(<d>[\s\S]*?</d>|"[^"\n]*"|“[^”\n]*”)', str(text or ""))
     for i in range(0, len(parts), 2):
         part = re.sub(r"\b(\d+)(?:st|nd|rd|th)\b", ordinal, parts[i])
-        part = re.sub(r"(\[Shot 1\] )([^.;:\n\[]{2,60}?)[.;:][ \t]+(\S+)", opening, part) if opening_style else part
+        part = re.sub(r"(\[Shot 1\] )([^.;:\n\[]{2,60}?)[.;:][ \t]+(\S+)(?=([ \t]+[A-Z])?)", opening, part) if opening_style else part
         part = re.sub(r"(\[Shot [2-9]\d*\] At \d{2}:\d{2}\.\d{3}, )cuts? to\b", r"\1the camera cuts to", part)
         # "<Subject 1>，一位…的男性角色，站在…" came back as "At <Subject 1>, a male character …": the tag opens the sentence.
         part = re.sub(r"\bAt (<Subject [1-9]\d*>), (?=(?:a|an|the) )", r"\1, ", part)
@@ -362,10 +377,17 @@ def subject_pronouns(english, display):
     bearded man): a sentence or clause about subjects of one sex, as the Chinese definitions name them, takes theirs; a
     robot or an animal without one is "it" ("strokes the cat with her left hand" for a robot)."""
     sex = {}
-    # The definitions come first; the retention lines after them name no sex.
+    # The definitions come first; the retention lines after them name no sex. Only the head noun makes a robot or an
+    # animal ("<Picture 1> 中的机器人，…"); a warrior in 机械铠甲 riding a 白马 is no "it".
+    head = lambda text: re.split(r"[，,；;]", re.sub(r"^\s*<Picture [1-9]\d*>\s*中的?", "", text))[0]
     for m in re.finditer(r"(?m)^(<Subject [1-9]\d*>)\s*[:：](.*)$", str(display or "")):
         sex.setdefault(m[1], "m" if "男" in m[2] and "女" not in m[2] else "f" if "女" in m[2] and "男" not in m[2] else "n" if "男" not in m[2]
-                       and "女" not in m[2] and re.search(r"机器人|机械|机甲|猫|狗|犬|鸟|鱼|马|兔|熊|龙|蛇|狐|狼|虎|狮|鹿|动物|宠物|怪兽", m[2]) else "")
+                       and "女" not in m[2] and re.search(r"机器人|机械|机甲|猫|狗|犬|鸟|鱼|马|兔|熊|龙|蛇|狐|狼|虎|狮|鹿|动物|宠物|怪兽", head(m[2])) else "")
+    # "her" before its noun is a possessive ("her tail"); before an adverb, a particle or the verb it is made to do
+    # ("holds her close", "lifts her up gently", "making her purr") it is the object.
+    possessive = (r"(?<!\bmake )(?<!\bmakes )(?<!\bmaking )(?<!\bmade )(?<!\blet )(?<!\blets )(?<!\bletting )\b([Hh])er(?=\s+(?!(?:and|as|or|with|in|on"
+                  r"|at|to|from|while|who|that|the|a|an|up|down|close|closer|back|away|again|off|out|over|around|aside|forward|tight|still"
+                  r"|(?!(?:belly|family|lily|jelly|butterfly)\b)[a-z]+ly)\b)[a-z])")
 
     def clause(m):
         kinds = {sex.get(label, "") for label in re.findall(r"<Subject [1-9]\d*>", m[0])}
@@ -373,7 +395,7 @@ def subject_pronouns(english, display):
         if kinds == {"m"}:
             text = re.sub(r"\b([Ss])he\b", lambda n: "H" + "e" if n[1] == "S" else "he", text)
             text = re.sub(r"\bherself\b", "himself", text)
-            text = re.sub(r"\b([Hh])er\b(?=\s+(?!(?:and|as|or|with|in|on|at|to|from|while|who|that|the|a|an)\b)[a-z])", lambda n: n[1] + "is", text)
+            text = re.sub(possessive, lambda n: n[1] + "is", text)
             text = re.sub(r"\bher\b", "him", text)
         elif kinds == {"f"}:
             text = re.sub(r"\b([Hh])e\b", lambda n: ("S" if n[1] == "H" else "s") + "he", text)
@@ -381,8 +403,7 @@ def subject_pronouns(english, display):
             text = re.sub(r"\b([Hh])is\b|\bhim\b", lambda n: (n[1] or "h") + "er" if n[1] else "her", text)
         elif kinds == {"n"}:
             text = re.sub(r"\b(?:her|him)self\b", "itself", text)
-            text = re.sub(r"\b(?:([Hh])er(?=\s+(?!(?:and|as|or|with|in|on|at|to|from|while|who|that|the|a|an)\b)[a-z])|([Hh])is)\b",
-                          lambda n: ("I" if n[0][0].isupper() else "i") + "ts", text)
+            text = re.sub(possessive + r"|\b[Hh]is\b", lambda n: ("I" if n[0][0].isupper() else "i") + "ts", text)
             text = re.sub(r"\b(?:[Ss]he|[Hh]e|[Hh]er|[Hh]im)\b", lambda n: "It" if n[0][0].isupper() else "it", text)
         return text
     parts = re.split(r'(<d>[\s\S]*?</d>|"[^"\n]*"|“[^”\n]*”)', str(english or ""))
@@ -1063,8 +1084,11 @@ SPEAKING = r"说|讲|台词|念"
 # A mouth doing something else than speaking: a smile, a spout at the lips, eating or drinking.
 MOUTH_OTHER = r"嘴角|嘴边|唇边|喝|饮|啜|吃|咬|嚼|吞|舔|吹|叼|衔|吻|亲|笑|哈欠"
 SPEAK_STEPS = ("开始说话", "继续说话", "说完这句话")
-# Age words the user did not give: "她" is a woman in the picture, not a 女孩 the writer guessed.
-AGE_NOUNS = r"女孩|男孩|少女|少年"
+# Age words the user did not give: "她" is a woman in the picture, not a 女孩 the writer guessed. A child the user
+# names (孩子, 女童, 小朋友, 七岁, a kid) is no such guess.
+AGE_NOUNS = (r"女孩|男孩|少女|少年|孩|童|婴|幼|宝宝|小朋友|[小中]学生|[初高]中生|(?<![0-9])(?:1[0-7]|[0-9])\s*周?岁"
+             r"|(?<![十百千万两零〇二三四五六七八九])(?:[一二三四五六七八九两几]|十[一二三四五六七几]?)[一二三四五六七八九]?\s*周?岁"
+             r"|\b(?:kids?|child(?:ren)?|bab(?:y|ies)|toddlers?|infants?|girls?|boys?)\b")
 # Times of day: the writer may light the scene as it likes, but never at another time than the user's words say
 # ("夜晚的厨房" lit by "午后阳光"); weather against the user's clear sky likewise.
 LOOK_TIMES = (r"白天|白昼|阳光|日光|烈日|正午|中午|午后|清晨|早晨|朝阳|晨光|晴空|晴朗|晴天", r"黄昏|傍晚|夕阳|落日|日落|晚霞|余晖",
@@ -1640,14 +1664,25 @@ OWN_MEASURE = r"(?:约|大约|大概)?\d+(?:\.\d+)?\s*(?:厘米|公分|毫米|�
 STYLE_WORDS = r"风格|画风|渲染|写实|动画|动漫|插画|照片|摄影|电影|水墨|油画|卡通|3D|CG"
 PLACE_OPENING = (r"^(?:在|从|于|当|画面|镜头|场景|背景|前景|远处|近处|一片|夜|白天|清晨|黄昏|阳光|月光|灯光|光线|[全中近远]景|特写|[他她它我你])"
                  r"|^[^在于从，,]{1,5}?[中里内](?![的间心央])")
+# Scenery that moves before the subject ("樱花飘落", "海浪拍岸", "街道两旁灯火通明") is the subject only when nothing else is.
+SCENERY = (r"^(?:[樱桃梨杏落]花|花瓣|花朵|鲜花|雪花|烟花|落叶|树叶|枫叶|树枝|树影|海浪|海水|海面|浪花?|波浪|潮水|湖面|河水|溪水|流水|水面|水花|"
+           r"雨滴|雨丝|云朵|云层|白云|乌云|薄雾|雾气|烟雾|尘土|尘埃|沙尘|星光|星空|灯火|霓虹|街道|街巷|道路|小路|竹林|竹叶|群山|远山|山峦|"
+           r"草地|草丛|篝火|火光|火焰|烛光)")
 
 
 def picture_subject(overview):
     """"三维渲染，女神闭眼坐于台阶" -> "三维渲染，<Picture 1> 中的女神闭眼坐于台阶": the opening's subject is the one the
     first frame shows (official I2V "the young woman shown in <Picture 1>"). A size, place, weather or light clause before
-    it ("中景", "温室中", "微风轻拂", "阴天", "随着镜头缓缓展开") is no subject; an opening without one stays as it is."""
+    it ("中景", "温室中", "微风轻拂", "阴天", "随着镜头缓缓展开") is no subject, nor is moving scenery ("樱花飘落",
+    "海浪拍岸") unless nothing else is; an opening without one stays as it is."""
     clauses = re.findall(r"[^，,。；;]+[，,。；;]?", str(overview or ""))
     i = 1 if clauses and re.search(STYLE_WORDS, clauses[0]) and len(re.sub(r"[，,。；;\s]", "", clauses[0])) <= 12 else 0
+
+    def anchor(j):
+        head = re.sub(r"^(?:一只|一个|一位|一名|一头|一条|一匹)", "", clauses[j].strip())
+        clauses[j] = "<Picture 1> 中" + ("" if "的" in head[:7] else "的") + re.sub(r"^\s*(?:一只|一个|一位|一名|一头|一条|一匹)?", "", clauses[j], 1)
+        return "".join(clauses)
+    scenery = None
     for j in range(i, min(len(clauses), i + 4)):
         clause = clauses[j].strip().rstrip("，,。；;")
         noun, head = clause_noun(clause), re.sub(r"^(?:一只|一个|一位|一名|一头|一条|一匹)", "", clause)
@@ -1658,8 +1693,13 @@ def picture_subject(overview):
             continue
         if not noun and re.match(PLACE_OPENING, head):
             break
-        clauses[j] = "<Picture 1> 中" + ("" if "的" in head[:7] else "的") + re.sub(r"^\s*(?:一只|一个|一位|一名|一头|一条|一匹)?", "", clauses[j], 1)
-        return "".join(clauses)
+        if re.match(SCENERY, noun or head):
+            scenery = j if scenery is None else scenery
+            continue
+        return anchor(j)
+    else:
+        if scenery is not None:
+            return anchor(scenery)
     return overview
 
 
@@ -1820,9 +1860,10 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     user_text = source + "\n" + (user_requirement or "")
     if not re.search(r"照片|摄影", user_text):
         overview = re.sub(PHOTO_STYLE, "写实电影风格", overview)
-    if not re.search(AGE_NOUNS, user_text):
-        # No age the user did not give: the writer's 女孩 or 少年 for "她" or a picture is a woman or a man.
-        ageless = lambda text: re.sub(r"小?女孩子?|少女", "女子", re.sub(r"小?男孩子?|少年", "男子", text))
+    if not re.search(AGE_NOUNS, user_text, re.I):
+        # No age the user did not give: the writer's 女孩 or 少年 for "她" or a picture is a woman or a man. Its
+        # 小女孩/小男孩 names a child it sees, which the program never turns into an adult.
+        ageless = lambda text: re.sub(r"(?<!小)女孩子?|少女", "女子", re.sub(r"(?<!小)男孩子?|少年", "男子", text))
         overview, phases, constraints = ageless(overview), [ageless(p) for p in phases], [ageless(item) for item in constraints]
     # "三维渲染动漫插画" names two looks ("3D CG, 2D-animated"); the first one stays.
     overview = re.sub(r"(三维渲染|动漫插画|写实电影风格)(?:风格)?[的、和与]?(?:三维渲染|动漫插画|写实电影风格)(?:风格)?", r"\1", overview)
@@ -1842,7 +1883,7 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     # "极小幅度" and "几乎看不见的轨迹" ask for no motion at all: a gentle move is a small one (official "with small amplitude").
     # A quoted line is the user's, word for word; 太极 and 北极 keep their 极.
     gentle = lambda text: re.sub(r"(?<![太北南积登])极(?=小(?:的)?幅|轻|微)", "", re.sub(r"幅度极小", "幅度很小", re.sub(r"(?<![太北南积登])极慢", "缓慢", text)))
-    own = lambda text: re.sub(r"(?:、|而|且)?几乎(?:看不见|不可见|察觉不到)的?", "", gentle(re.sub(rf"(?<!另)[这那][只条](?={LIMB})", "", text)))
+    own = lambda text: re.sub(r"(?:、|(?<![并而])且|(?<!然)而)?几乎(?:看不见|不可见|察觉不到)[的地]?", "", gentle(re.sub(rf"(?<!另)[这那][只条](?={LIMB})", "", text)))
     phases = ["".join(part if i % 2 else own(part) for i, part in enumerate(re.split(r'(<d>[\s\S]*?</d>|“[^”\n]*”|"[^"\n]*")', p)))
               for p in phases]
     if not re.search(r"仰|后倾|后靠", user_text):

@@ -13,6 +13,7 @@ import socket
 import sys
 import time
 import traceback
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from prompt_assistant.h3_prompt_enhance import (
@@ -27,6 +28,7 @@ from prompt_assistant.h3_prompt_enhance import (
     NO_CUT as H3_NO_CUT,
     ONE_SHOT as H3_ONE_SHOT,
     SPEECH_LINE as H3_SPEECH_LINE,
+    SOUND_LINE as H3_SOUND_LINE,
     asks_cut as h3_asks_cut,
     fold_cut as h3_fold_cut,
     base_source_view as h3_base_source_view,
@@ -346,17 +348,35 @@ MINIMAX_H3_CHILD_AGE_FACT_PATTERN = re.compile(
     r"(?:1[0-7]|[0-9])\s*y\s*/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])",
     flags=re.I,
 )
-# A clue that has the 图生/首尾帧 pictures looked at: the words above plus other explicit child words (女童, 孩子,
-# 小学生…), never 女孩子/男孩子/孩子气, 女孩 or an adult age. The look, not this list, answers 未成年.
+# An explicit child word: the words above plus 女童, 孩子, 小学生, 七八岁, 12周岁, preteen… It has the 图生/首尾帧
+# pictures looked at, and the user's own one counts as minor evidence for the block. Never 女孩子/男孩子/孩子气, 女孩,
+# an adult age (十八九岁, 二十岁), a likeness (像孩子一样), an animal's young (熊猫宝宝, baby dragon) or 互称宝宝.
 MINIMAX_H3_YOUNG_CLUE_PATTERN = re.compile(
     MINIMAX_H3_YOUNG_OUTPUT_PATTERN.pattern
-    + r"|女童|男童|(?<![女男])孩子(?!气)|小朋友|宝宝|小学生|初中生|幼儿园|小女孩|小男孩"
-    r"|(?<![一二三四五六七八九十百两零〇])(?:[一二三四五六七八九两]|十[一二三四五六七]?)\s*岁"
-    r"|(?<![a-z0-9_])(?:kids?|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|schoolchild(?:ren)?|"
-    r"bab(?:y|ies)(?![-\s]*(?:blue|pink|face|faced|oil|powder|doll|breath|shower))|kindergart(?:en|ner)s?|"
-    r"pre-?school(?:ers?)?|(?:elementary|primary|grade|middle)[-\s]*school(?:ers?|[-\s]+(?:students?|pupils?|kids?)))(?![a-z0-9_])",
+    + r"|女童|男童|新生儿|婴孩|小朋友|[小中]学生|[初高]中生|幼儿园|小女孩|小男孩"
+    r"|(?:(?<![女男])|(?<=[妇男]女))(?<!像)(?<!像个)孩子(?!气(?![喘息急]))(?!一样|般|似)"
+    r"|(?<![猫狗犬熊鸟鸭鹅鸡兔龙马猴虎狮鹿羊猪牛象豹狼狐鼠称])(?<!称[她他你为呼])宝宝"
+    r"|(?<![一二三四五六七八九十百千万两几零〇])(?:[一二三四五六七八九两几][一二三四五六七八九]?|十(?:[一二三四五六七几][一二三四五六七八]?)?)\s*周?岁"
+    r"|(?<![0-9])(?:1[0-7]|[0-9])\s*(?:[-~～至到]\s*1?[0-9]\s*)?周?岁"
+    r"|(?<![a-z0-9_])(?:kids?(?![-\s]+(?:leather|gloves?|suede|skin))|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|newborns?|"
+    r"schoolchild(?:ren)?|school(?:girl|boy|kid)s?|pre-?teens?|tweens?|"
+    r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)[-\s]+years?[-\s]+old|"
+    r"(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[-\s]+graders?|"
+    r"bab(?:y|ies)(?![-\s]*(?:blue|pink|face|faced|oil|powder|doll|breath|shower|dragons?|animals?|birds?|cats?|dogs?|pandas?|bears?|"
+    r"elephants?|fox(?:es)?|owls?|turtles?|dinosaurs?|monsters?|seals?|goats?|rabbits?|bunn(?:y|ies)|chicks?|ducks?|lions?|tigers?|"
+    r"wol(?:f|ves)|deer|horses?|sharks?|grand|steps?|carrots?|teeth))|kindergart(?:en|ner)s?|"
+    r"pre-?school(?:ers?)?|(?:elementary|primary|grade|middle|high)[-\s]*school(?:ers?|[-\s]+(?:students?|pupils?|kids?)))(?![a-z0-9_])",
     flags=re.I,
 )
+
+
+def minimax_h3_young_clue(text: str, affirmative: bool = False) -> bool:
+    """An explicit child word in the text (full-width digits read as digits: １２岁); affirmative skips a negated one."""
+    text = unicodedata.normalize("NFKC", str(text or ""))
+    return bool(minimax_h3_affirmative_pattern_matches(text, MINIMAX_H3_YOUNG_CLUE_PATTERN) if affirmative
+                else MINIMAX_H3_YOUNG_CLUE_PATTERN.search(text))
+
+
 MINIMAX_H3_SENSITIVE_REQUEST_NEGATION_PATTERN = re.compile(
     r"(?:不|不要|不得|禁止|避免|排除|不含|没有|无|勿|请勿|负面|负向|反向)"
     r"\s*[^，。；;,.!?！？]{0,12}$"
@@ -1531,8 +1551,10 @@ def minimax_h3_request_is_sensitive(text: str) -> bool:
 def minimax_h3_block_sensitive_minor(request_text: str, output_text: str = "", minor: bool = False, sensitive: bool = False) -> None:
     """The local reverse's rule for 优化提示词: explicit minor evidence (the user's
     words, the model's own text or its frame check) together with sensitive
-    content (the user's words or the frame check) fails with the reverse's error."""
-    request_young = minimax_h3_contains_affirmative_young(request_text)
+    content (the user's words or the frame check) fails with the reverse's error.
+    Every explicit child word the user writes (小女孩, 女童, 小学生, a little girl…) is minor evidence; in the
+    model's text only the unequivocal words are, and a look answers for the rest."""
+    request_young = minimax_h3_contains_affirmative_young(request_text) or minimax_h3_young_clue(request_text, affirmative=True)
     request_sensitive = bool(minimax_h3_authorized_request_sensitive_categories(request_text)
                              or minimax_h3_authorized_request_sensitive_facts(request_text))
     if (sensitive or request_sensitive) and (request_young or minor or minimax_h3_contains_affirmative_young(output_text)):
@@ -1541,8 +1563,10 @@ def minimax_h3_block_sensitive_minor(request_text: str, output_text: str = "", m
                                   diagnostics={"errorCode": code, "generationGate": "blocked"})
 
 
-# The writer's picture lines; its 声音 line may add sounds nobody asked for (孩童嬉闹声).
-MINIMAX_H3_PICTURE_LINE = re.compile(r"(?m)^[ \t>#*\-•]*(?:概述|起始|递进|收束|镜头[1-9]\d*)[^\n]*")
+def minimax_h3_pictured(output: str) -> str:
+    """What the writer puts on screen: its whole answer (【概述】, a label on its own line, numbered labels, 约束) minus
+    the 声音 line, which may add sounds nobody asked for (孩童嬉闹声). The check line is removed before."""
+    return re.sub(H3_SOUND_LINE, "", str(output or "")).strip()
 
 
 def minimax_h3_frames_nearly_same(frames) -> bool:
@@ -14452,8 +14476,7 @@ class PromptAssistant:
                         hints.update(flips)
                         flipped.setdefault(key, candidate)
                         continue
-                    # The last, sampled answer ships with what it turned around turned back where it can be.
-                    candidate = unflip(original, candidate) or candidate if flips else candidate
+                    # The last, sampled answer ships as it came: a flag can misread a right translation.
                     translated[source_text] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], candidate.strip())
                     del pending[key]
                 # An English translation with a short Chinese phrase left in it
@@ -14490,8 +14513,11 @@ class PromptAssistant:
                     candidate, (original, tokens) = (values.get(key) if isinstance(values, dict) else None), protected_fragments[pending[key]]
                     others = sorted(t for t in re.findall(r'TOKEN_\d+', original) if tokens[int(t[6:])] not in tagged[key])
                     if (not isinstance(candidate, str) or re.search(r'[㐀-鿿]', candidate) or sorted(re.findall(r'TOKEN_\d+', candidate)) != others
-                            or not all(re.search(rf'\b{names[n]}\b', candidate) for n in range(len(tagged[key])))
-                            or translation_flips(original, candidate)):
+                            or not all(re.search(rf'\b{names[n]}\b', candidate) for n in range(len(tagged[key])))):
+                        continue
+                    # A reversal is turned back as in the fallback above, or the chunk is not used.
+                    candidate = unflip(original, candidate) if translation_flips(original, candidate) else candidate
+                    if not candidate:
                         continue
                     for n, tag in enumerate(tagged[key]):
                         candidate = re.sub(rf'\b{names[n]}\b', tag, candidate)
@@ -14918,20 +14944,40 @@ class PromptAssistant:
         # props and clothes no picture shows ("剑鞘" for a bare sword) and shadows under a light without any.
         from prompt_assistant.h3_prompt_enhance import PHASE_NOTE, LEAD_LABELS, USER_FROZEN, cut_seconds, drop_clauses, requested_cut, drop_sides, face_the_approach, facing, written_turns
         colours = r'[红橙黄绿青蓝紫黑白灰金银棕褐粉]'
-        worn = lambda word: [c for item in subjects for c in re.findall(colours + r'色?的?[^，,；;。]{0,2}' + word, str(item.get('description', '')))]
+        # A garment by its family: the user's 黑袍 is the writer's 黑色长袍.
+        family = lambda word: '长?袍子?' if '袍' in word else '[铠战盔]?甲' if '甲' in word else '披风|斗篷'
+        worn = lambda word: [c for item in subjects for c in re.findall(colours + r'色?的?[^，,；;。]{0,2}(?:' + family(word) + ')', str(item.get('description', '')))]
         # A colour the user asked for ("换上黑色长袍", "黑袍法师") is no recolouring.
-        recoloured = lambda clause: any(worn(m[2]) and m[1] not in ''.join(worn(m[2])) and not re.search(m[1] + r'色?的?[^，,。；;]{0,2}' + m[2], requested)
-                                        for m in re.finditer(r'(' + colours + r')色?(长袍|袍|披风|铠甲|战甲|盔甲)', clause))
+        recoloured = lambda clause: any(worn(m[2]) and m[1] not in ''.join(worn(m[2])) and not re.search(m[1] + r'色?的?[^，,。；;]{0,2}(?:' + family(m[2]) + ')', requested)
+                                        for m in re.finditer(r'(' + colours + r')色?(长袍|袍|披风|斗篷|铠甲|战甲|盔甲)', clause))
         # A second or a colour the writer adds goes with its own words, never with the action they sit in ("在第2秒拔出长剑",
-        # "身穿黑色长袍从左侧走来"); the user's second stays in a beat, a cut's second is its shot mark and the cut its shot.
-        user_seconds = set(re.findall(r'第\s*([一二三四五六七八九十\d.]+)\s*秒', requested)) - {f'{second:g}' for second in cut_seconds(requested)}
-        trim = lambda text, beat=True: re.sub(r'(?:在|于)?第\s*([一二三四五六七八九十\d.]+)\s*秒(?:时|末|初|内|前|后)?[，,]?\s*',
-                                              lambda m: m[0] if beat and m[1] in user_seconds else '', re.sub(
-            r'(?:身穿|穿着|身披|披着)' + colours + r'色?的?(?:长袍|袍|披风|铠甲|战甲|盔甲)[，,]?\s*', lambda m: '' if recoloured(m[0]) else m[0], text))
+        # "从第1秒到第3秒缓步走向", "静立直到第4秒才转身", "身穿黑色长袍从左侧走来"); the user's second ("第2秒" or "第二秒") stays
+        # in a beat, a cut's second is its shot mark and the cut its shot.
+        def second_key(value):
+            if re.fullmatch(r'[\d.]+', value):
+                return f'{float(value):g}'
+            tens, _, ones = value.rpartition('十')
+            digit = lambda char, empty: '一二三四五六七八九'.find(char) + 1 if char else empty
+            return str(digit(tens, 1) * 10 + digit(ones, 0) if '十' in value else digit(value, 0))
+        user_seconds = {second_key(s) for s in re.findall(r'第\s*([一二三四五六七八九十\d.]+)\s*秒', requested)} - {f'{second:g}' for second in cut_seconds(requested)}
+
+        def trim(text, beat=True):
+            def second(m):
+                if beat and second_key(m[1] or m[2]) in user_seconds:
+                    return m[0]
+                # "静立直到第4秒才转身" -> "静立，随后转身"; a clause left with nothing before it takes no stop.
+                return '，随后' if m[1] and m[0].endswith('才') and re.search(r'[^\s，,。；;]$', m.string[:m.start()]) else ''
+            return re.sub(r'(?:直到|直至)第\s*([一二三四五六七八九十\d.]+)\s*秒(?:时|末)?才?'
+                          r'|(?:在|于|从|自|到|至)?第\s*([一二三四五六七八九十\d.]+)\s*秒(?:\s*(?:到|至)\s*第\s*[一二三四五六七八九十\d.]+\s*秒)?'
+                          r'(?:时|末|初|内|前|后|起|为止)?[，,]?\s*', second, re.sub(
+                r'(?:身穿|穿着|身披|披着)' + colours + r'色?的?(?:长袍|袍|披风|斗篷|铠甲|战甲|盔甲)[，,]?\s*', lambda m: '' if recoloured(m[0]) else m[0], text))
         fight = r'对峙|交手|交锋|厮杀|对决|打斗|决斗'
-        conflict = ('' if re.search(fight, requested) else '|' + fight + r'|静待回应|戒备|蓄势|严阵以待|对撞') + (
+        # A standoff or a weapon pointed at the other that the user wrote ("互相戒备", "蓄势待发", "剑尖直指对方") stays.
+        guard = '|'.join(word for word in ('静待回应', '戒备', '蓄势', '严阵以待', '对撞') if word not in requested)
+        aim = '|'.join(word for word in ('正对', '对准', '指向', '直指', '指着', '抵住', '对着') if word not in requested)
+        conflict = ('' if re.search(fight, requested) else '|' + fight + ('|' + guard if guard else '')) + (
             '' if re.search(fight + r'|战斗|攻|刺|砍|劈|指向|对准|[举抬横挺架][^，,。；;]{0,3}[剑枪刀矛戟斧棍]', requested) else
-            r'|(?:正对|对准|指向|直指|指着|抵住|对着)[^，,。；;]{0,4}(?:<Subject|对方|来者|[枪剑刀矛戟]尖)'
+            r'|(?:' + aim + r')[^，,。；;]{0,4}(?:<Subject|对方|来者|[枪剑刀矛戟]尖)'
             r'|(?:举|抬|横|提|挺|架)起?[^，,。；;]{0,3}[剑枪刀矛戟斧棍][^，,。；;]{0,3}(?:至|到|于)?(?:胸前|身前|面前|胸口)'
             r'|[枪剑刀矛戟](?:尖|锋|刃|身)?[^，,。；;]{0,6}(?:抬起|举起|抬至|举至)[^，,。；;]{0,6}(?:胸前|身前|胸口)'
             r'|[枪剑刀矛戟](?:尖|锋|刃)(?:离|距|对着?|指向|逼近|抵住?)[^，,。；;]{0,16}[枪剑刀矛戟](?:尖|锋|刃)'
@@ -15423,12 +15469,12 @@ class PromptAssistant:
         same_frames = len(images) == 2 and minimax_h3_frames_nearly_same(frames)
         # No age is judged without a clue. The check line at the end of the writer's request made its writing worse
         # (挥手 and 哈欠 lost): the writer answers it only for sensitive words. Explicit young or sensitive words in the
-        # user's words or the writer's picture lines have the pictures looked at once on their own for the other half.
+        # user's words or the writer's answer have the pictures looked at once on their own for the other half.
         spoken_check = check and minimax_h3_request_is_sensitive(user_words)
         request = build_minimax_h3_writer_request(view, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines, same_frames, cut,
                                                   spoken_check)
         looked = None
-        if images and check and not spoken_check and MINIMAX_H3_YOUNG_CLUE_PATTERN.search(user_words):
+        if images and check and not spoken_check and minimax_h3_young_clue(user_words):
             # A child the user names: the pictures are looked at before anything is written.
             looked = self.check_h3_frames(images)
             minimax_h3_block_sensitive_minor(user_words, "", *looked)
@@ -15480,11 +15526,11 @@ class PromptAssistant:
             )
             if images and check:
                 # The frame check line is read and removed before the answer is compiled; minor and sensitive
-                # words count in the picture lines, not in the sounds the writer adds.
+                # words count in whatever the writer puts on screen (any label spelling, 约束 too), not in its sounds.
                 answered = output.rstrip()
                 output, minor, sensitive = minimax_h3_take_frame_check(output)
-                pictured = "\n".join(MINIMAX_H3_PICTURE_LINE.findall(output))
-                clue = (spoken_check or MINIMAX_H3_YOUNG_CLUE_PATTERN.search(user_words + "\n" + pictured)
+                pictured = minimax_h3_pictured(output)
+                clue = (spoken_check or minimax_h3_young_clue(user_words + "\n" + pictured)
                         or minimax_h3_request_is_sensitive(pictured))
                 if looked is None and clue and output == answered:
                     # A clue without the writer's own check line: the pictures are looked at on their own.
