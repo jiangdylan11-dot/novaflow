@@ -3327,7 +3327,7 @@
   function artHighQualityCgNegativeGuardInstruction(options = {}) {
     const textOnly = options.textOnly === true;
     const sharedProfile = window.NovaFlowArtQualityProfile?.build?.({
-      prompt: state.requirements,
+      prompt: options.prompt ?? state.requirements,
       assetType: state.starterPreset,
       style: textOnly ? "auto" : state.artStyle
     });
@@ -3340,9 +3340,12 @@
   }
 
   function mergeSmartAiNegativePrompt(base, addition) {
-    const parts = String(base || "").split(/[，,]/).map((item) => item.trim()).filter(Boolean);
-    String(addition || "").split(/[，,]/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
-      if (!parts.some((existing) => existing.toLowerCase() === item.toLowerCase())) parts.push(item);
+    // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形, and 画面噪点 and 噪点; a narrower term
+    // (尾巴比例失调, 文字) is another term than 比例失调 or 文字标签.
+    const key = (term) => term.toLowerCase().replace(/^(?:画面|整体)(.+)$/u, "$1").replace(/^畸形(.+)$/u, "$1畸形").replace(/^(.+?)(?:质感|材质|感)$/u, "$1");
+    const parts = String(base || "").split(/[，,、]/).map((item) => item.trim()).filter(Boolean);
+    String(addition || "").split(/[，,、]/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
+      if (!parts.some((existing) => key(existing) === key(item))) parts.push(item);
     });
     return parts.join("，");
   }
@@ -4830,8 +4833,11 @@
           nextNegativePrompt = preserveSmartAiReverseResourceMentions(negativePrompt, nextNegativePrompt);
         }
       }
+      // Typed from the answer (a cat gets animal negatives, a trophy prop ones), as 生图 types its quality paragraph. The body
+      // terms of the list stay out of the box only when the answer names body defects of its own (手部畸形, 猫爪变形): local
+      // 2.1 gets nothing but this box.
       const qualityNegativeGuard = isArt && isOptimizeRequest
-        ? artHighQualityCgNegativeGuardInstruction({ textOnly: true })
+        ? artHighQualityCgNegativeGuardInstruction({ textOnly: true, prompt: nextPrompt }).split("，").filter((term) => !/人体|手指|手脚|肢体|五官|爪子|骨骼|比例/u.test(term) || !/手部|手指|手掌|手臂|肢|五官|人体|爪|骨骼/u.test(String(nextNegativePrompt || ""))).join("，")
         : "";
       if (supportsNegativePrompt && qualityNegativeGuard) {
         nextNegativePrompt = mergeSmartAiNegativePrompt(nextNegativePrompt, qualityNegativeGuard);

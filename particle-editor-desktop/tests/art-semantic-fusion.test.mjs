@@ -165,4 +165,53 @@ for (const [budget, expected] of [[1, 1], [2, 2]]) {
   }), /未按五个固定分段输出/);
   assert.equal(calls, expected, 'repair calls stay within the reserved budget ' + budget);
 }
+// Negatives fit the subject: a cat, a trophy or a landscape gets its own defects, never the human-anatomy list, and the
+// examples are not copied wholesale. Lights stand in [环境背景] under the same word, reflections only on what reflects,
+// and one pose is made concrete instead of being summarized twice.
+for (const text of briefTexts) {
+  assert.ok(text.includes('主体是人物才写手部畸形、五官扭曲、肢体错位这类人体缺陷') && text.includes('画面里没有人物就不写人体、手指、五官类词') && text.includes('不照抄上面的示例'), 'negatives are typed by the subject');
+  assert.ok(text.includes('意思相同的只写一个') && text.includes('用中文逗号分隔'), 'no near-duplicates, Chinese commas');
+  assert.ok(text.includes('用户点名的光和[光线与色彩]要用的每个光源都在这里写出它本身和位置') && text.includes('并用那里的原词称呼') && text.includes('反光和倒影只在会反光的表面'), 'lights come from the scene');
+  assert.ok(text.includes('身体姿态只用一个姿态词写定') && text.includes('身体只有一个姿态词'), 'one pose, made concrete and checked');
+  assert.doesNotMatch(text, /需要包含画面模糊、低清晰度、人物变形/, 'no picture is asked for human-anatomy negatives by default');
+}
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('画面里没有人物时不写人体、手指、五官类词'), 'the generic image negative is typed too');
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('形状照图写') && roleReverse.body.input[0].content.at(-1).text.includes('每件陈设和灯具写在它在图中的位置') && roleReverse.body.input[0].content.at(-1).text.includes('不加图中没有的窗户、天窗和灯具'), 'shapes, positions and lamps are read off the picture');
+// A negative the model separated with ASCII commas is written with Chinese commas; other separators stay as written.
+assert.equal(roleNegative('画面模糊,低清晰度, 手部畸形'), '画面模糊，低清晰度，手部畸形');
+assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面模糊、手部畸形、塑料质感');
+// Round-5 review: a lamp in the hand is written by the hand (a figure facing us has its left hand on picture right), lights
+// high on both sides fall in slanting, the fill light has a source too, a named light colour decides the key light while fire
+// stays warm, the sky examples carry a position and no quotable moon, and the final check names the recurring slips.
+for (const text of briefTexts) {
+  assert.ok(text.includes('主体手里拿着的灯不换算成画面方位，只按手写') && text.includes('面向画面的人物，右手在画面左侧') && text.includes('手里拿着的灯按手写'), 'a hand-held lamp is written by the hand');
+  assert.ok(text.includes('方向照抄这个光源在[环境背景]里写的位置（那里写“两侧高处的灯架”，这里就写“从两侧高处斜照”，不改成正上方）') && text.includes('主光方向照抄它在那里的位置') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
+  assert.ok(text.includes('要冷色调灯光时，写明冷色的灯罩（如淡蓝纱罩的灯笼、青白琉璃灯，不只写“冷色灯笼”），由它透出冷光') && text.includes('手里的东西在各段是同一只手') && text.includes('不加不合年代的路灯、街灯，火光只作暖色点缀') && text.includes('火光始终写成暖色（冷色灯罩透出的光除外）'), 'a named light colour and warm fire do not conflict');
+  assert.doesNotMatch(text, /雪夜云隙间的一轮冷月|用户要冷色调时在这里写出冷光的来源|纸面颗粒/, 'no quotable moon, no texture in the style example');
+  assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
+  assert.ok(['户外写了天空', '景深句只说前景、中景和主体清晰', '中景以内没写脚和鞋', '全文没有“营造”“保持”“突出”“时间为”', '木面、路面、地毯、布料、泥土不反光'].every((item) => text.includes(item)), 'the final check names the recurring slips');
+  assert.ok(text.includes('夜景和舞台不写欠曝、过暗') && text.includes('除纯色背景外不写背景杂乱、背景复杂'), 'negatives do not push away a dark stage or a furnished hall');
+  // The box also holds earlier answers and the guard: it stays whole outside the count (counting it in made Grok cut a 34-term
+  // box to 16), and a box of 12 or more only gets terms for what is new, so reruns do not grow it by a list each time.
+  assert.ok(text.includes('负面框里已有的项（原负向提示词、当前负面 Prompt）不计入这 12 至 18 项，也不受上面按主体选词的限制；框里已有 12 项以上时，不再另写 12 至 18 项，只为这次新增或改动的内容补写。'), 'a full box only gets terms for what is new');
+  assert.doesNotMatch(text, /都原样保留，不计入 12 至 18 项|身后书架上的书脊也清晰可辨|柴犬坐在门口/, 'no growing box, no far-ground depth example, no test subject as the pose example');
+  assert.ok(text.includes('深景深让前景的藤椅扶手和老人膝头的相册都清晰。') && text.includes('松鼠立在树桩上，前爪捧着一颗松果，尾巴贴着后背竖起'), 'the depth example names the near ground');
+}
+// A negative box goes to the model whole, with the rule that keeps its terms except those that contradict the new picture
+// (a style changed to cel shading drops the guard's 粗黑描边), on every 美工 text request that has a box: the five-section and
+// own-layout optimize, and create.
+const KEEP_BOX = '已有的项照原样保留';
+const DROP_CONTRADICTING = '只删去与';
+const longUserNegative = '多余手指，畸形手指，五官扭曲，模糊，噪点，水印，文字，低质量，过曝，欠曝，色彩断层，透视错误，结构粘连，比例失调，塑料质感，脏色，锯齿，重影，低清晰度，构图拥挤';
+const castleFive = ['[风格设定]','写实风景插画，笔触细腻。气氛庄严肃穆。','[主体物品]','一座古堡矗立在悬崖上，灰色石墙爬满青苔。三座塔楼的尖顶覆着深蓝瓦片，城垛上插着褪色的旗帜。','[环境背景]','悬崖下是翻涌的海浪和黑色礁石。天空飘着灰云，画面右上方有西沉的夕阳。','[光线与色彩]','夕阳从画面右上方斜照在塔楼上。主色为灰蓝，点缀橙色。','[拍摄参数]','远景，低角度仰拍。古堡位于三分线上。'].join('\n');
+const longNegFusion = buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'一座古堡矗立在悬崖上',requirements:'',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test');
+for (const request of [longNegFusion,
+  buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'[角色]\n一只橘猫趴在窗台上。\n[场景]\n午后的窗台。',requirements:'',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test'),
+  buildGrokPromptOptimizeRequest({surface:'art',purpose:'create',prompt:'',requirements:'一只橘猫趴在窗台上晒太阳',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test')]) {
+  const sent = JSON.stringify(request.body.input);
+  assert.ok(sent.includes(longUserNegative) && sent.includes(KEEP_BOX) && sent.includes(DROP_CONTRADICTING) && sent.includes('新写的项不与已有的重复') && sent.includes('扁平赛璐璐'), 'the box is sent whole with the keep rule');
+}
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('当前负面 Prompt 里已有的项照原样保留，不受按主体选词的限制'), 'the reference route keeps the box too');
+assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:castleFive,negative_prompt:longUserNegative + '，城墙砖块错位'})},longNegFusion.resultOptions).negative_prompt,longUserNegative + '，城墙砖块错位');
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼（连同图号）和写主体动作') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台') && roleReverse.body.input[0].content.at(-1).text.includes('地面层的灯不写到顶层或天花板'), 'the subject keeps the user\'s name and label, the venue its own words');
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');
