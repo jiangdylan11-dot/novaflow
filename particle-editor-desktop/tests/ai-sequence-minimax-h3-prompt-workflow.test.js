@@ -302,7 +302,7 @@ test('validates and restores a response for every H3 product mode', () => {
   // the alignment section is regenerated from mode and duration, not copied from the engine.
   const restored = workflow.validateAndRestore({ text: imageVideoPrompt(), context: imageRequest.context })
   assert.match(restored.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 establishes the hero/)
-  assert.match(restored.text, /\n【镜头 2】 At 00:02\.250, the hero gradually turns[^\n]*\n\n【环境声音】\nCloth movement and a quiet room tone\.\n\n【背景音乐】\n无$/)
+  assert.match(restored.text, /\n【镜头 2】（第 2\.25 秒）the hero gradually turns[^\n]*\n\n【环境声音】\nCloth movement and a quiet room tone\.\n\n【背景音乐】\n无$/)
   assert.doesNotMatch(restored.text, /<Picture 1>|integrated_multimodal_description|参考图片与目标视频对齐/)
   assert.match(restored.modelText, /^integrated_multimodal_description: \[Shot 1\] <Picture 1> establishes/)
   // The display goes back to the engine as fields with protocol tokens.
@@ -435,7 +435,7 @@ test('the first-last alignment is regenerated from mode and duration, whatever l
     const response = [line, ...body].filter(Boolean).join('\n').replace('00:03.500,', '00:07.500，')
     const restored = workflow.validateAndRestore({ text: response, context: request.context, current })
     assert.match(restored.text, /^【参考帧对齐】\n@首帧 对齐视频第 0\.00 秒（开头）；@尾帧 对齐第 8\.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】@首帧 is the exact opening composition/)
-    assert.match(restored.text, /\n【镜头 2】 At 00:07\.500, motion gradually resolves into @尾帧/)
+    assert.match(restored.text, /\n【镜头 2】（第 7\.5 秒）motion gradually resolves into @尾帧/)
   }
 })
 
@@ -753,6 +753,29 @@ test('generation compiles the base display to the official English text', async 
   }
   const chineseBack = await workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '男孩'), 'compile-g'), async () => JSON.stringify({ modelPrompt: chineseFields(), displayPrompt: chineseFields() }))
   assert.equal(chineseBack.asWritten, true)
+})
+
+test('a display with Chinese cut times and quoted lines compiles to the official markers, cached or edited', async () => {
+  const noEngine = async () => { throw new Error('no engine call expected') }
+  const zh = chineseFields('[Shot 1] <Picture 1> 中的少女挥手，声音清亮的少女 (S1) 说：<d>[Chinese] 出发吧。</d>\n[Shot 2] At 00:03.500 镜头切到她的近景，她微笑。')
+  const en = englishFields('[Shot 1] The girl shown in <Picture 1> waves as the girl with a clear voice (S1) says: <d>[Chinese] 出发吧。</d> The camera holds a static shot.\n[Shot 2] At 00:03.500, the camera cuts to a medium close-up of her as she smiles.')
+  const current = i2vCurrent('@参考图 中的少女挥手说：“出发吧。”，第3.5秒切到近景', 'marks-a')
+  const shown = workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: en, displayPrompt: zh }), context: workflow.prepareRequest(current).context, current })
+  assert.match(shown.text, /少女 \(S1\) 说：“出发吧。”\n【镜头 2】（第 3\.5 秒）镜头切到她的近景/)
+  assert.doesNotMatch(shown.text, /<d>|\bAt \d/)
+  // Unchanged, the cached pair reaches H3 with its official markers.
+  const cached = await workflow.compileForGeneration({ ...current, prompt: shown.text }, noEngine)
+  assert.match(cached.modelText, /says: <d>\[Chinese\] 出发吧。<\/d>[\s\S]*\[Shot 2\] At 00:03\.500, the camera cuts to/)
+  // Edited, the translator receives fields with the official markers; a display written before this layout reads the same.
+  const requests = []
+  const translate = async (payload) => { requests.push(payload.prompt); return JSON.stringify({ modelPrompt: en.replace('00:03.500', '00:04.000').replace('出发吧。', '我们走吧！'), displayPrompt: payload.prompt }) }
+  const edited = shown.text.replace('（第 3.5 秒）', '（第 4 秒）').replace('“出发吧。”', '“我们走吧！”')
+  const compiled = await workflow.compileForGeneration({ ...current, prompt: edited }, translate)
+  assert.match(requests[0], /说：<d>\[Chinese\] 我们走吧！<\/d>\n\[Shot 2\] At 00:04\.000 镜头切到她的近景/)
+  assert.match(compiled.modelText, /<d>\[Chinese\] 我们走吧！<\/d>[\s\S]*\[Shot 2\] At 00:04\.000, the camera cuts to/)
+  const old = edited.replace('（第 4 秒）', ' At 00:04.000 ').replace('“我们走吧！”', '<d>[Chinese] 我们走吧！</d>')
+  assert.equal((await workflow.compileForGeneration({ ...current, prompt: old }, translate)).modelText, compiled.modelText)
+  assert.equal(requests[1], requests[0])
 })
 
 test('generation writes the mode-exact official alignment: none for 文生, bare labels and the final shot for 首尾帧', async () => {

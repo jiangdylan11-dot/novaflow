@@ -145,7 +145,10 @@ test('a reverse is rebuilt from the pictures; only its refinement answer must ke
   const prepared = workflow.prepareRequest(options)
   assert.throws(() => workflow.validateAndRestore({ text: imageVideoOutput(), refinement: true, context: prepared.context, current: options }), /原台词未完整保留/)
   const spoken = imageVideoOutput().replace('completes one restrained turn', 'waves and (S1) says: <d>[Chinese] 出发吧。</d> It')
-  assert.match(workflow.validateAndRestore({ text: spoken, refinement: true, context: prepared.context, current: options }).text, /<d>\[Chinese\] 出发吧。<\/d>/)
+  const kept = workflow.validateAndRestore({ text: spoken, refinement: true, context: prepared.context, current: options })
+  // The editor shows the line as quoted speech; H3 gets its <d> block.
+  assert.match(kept.text, /\(S1\) says: “出发吧。”/)
+  assert.match(kept.modelText, /<d>\[Chinese\] 出发吧。<\/d>/)
 })
 
 test('exports one immutable pure reverse workflow through CommonJS and the browser global', () => {
@@ -355,7 +358,7 @@ test('validates and restores I2V and FL2V through the existing H3 prompt workflo
   assert.equal(i2v.validation.protocolName, 'I2VA')
   // The reverse result shows as the Chinese-labelled base display with the editor alias.
   assert.match(i2v.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 establishes/)
-  assert.match(i2v.text, /\n【镜头 2】 At 00:03\.000, the subject/)
+  assert.match(i2v.text, /\n【镜头 2】（第 3 秒）the subject/)
   assert.match(i2v.modelText, /^integrated_multimodal_description: \[Shot 1\] <Picture 1> establishes/)
   assert.doesNotMatch(i2v.text + i2v.modelText, /【任务定位】|\d-\d+(?:\.\d+)?s：/)
 

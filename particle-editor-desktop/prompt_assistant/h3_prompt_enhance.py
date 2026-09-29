@@ -425,6 +425,18 @@ def dialogue_tag(words):
     return "[Chinese]" if re.search(HAN, words) else "[English]"
 
 
+# The editor shows a cut time and a spoken line the Chinese way, 【镜头 2】（第 4 秒） and (S1) 说：“出发吧。”; they read back as the
+# official [Shot 2] At 00:04.000 and <d>[Chinese] 出发吧。</d> (readMarks in h3-prompt-enhance.js). Old displays (At 00:04.000, <d>) still read.
+DISPLAY_CUT = r"【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*(\d+(?:\.\d+)?)[ \t]*秒[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))"
+DISPLAY_LINE = r'([（(]S[1-9]\d*(?:,\s*S[1-9]\d*)*[）)][^“”"<>\n。！？.!?]{0,40}?[：:][ \t]*)[“"]([^“”"<\n]+)[”"]'
+
+
+def display_marks(text):
+    text = re.sub(DISPLAY_CUT, lambda m: f"[Shot {m[1]}]" + (f" At {shot_stamp(float(m[2]))}" if m[2] else "")
+                  + (" " if m[3] and not re.match(r"[,，、)）]", m[3]) else ""), str(text or ""))
+    return re.sub(DISPLAY_LINE, lambda m: f"{m[1]}<d>{dialogue_tag(m[2])} {m[2]}</d>", text)
+
+
 # A spoken line in the writer's view: (S1)："…", (S1, S2)：[Japanese]"…".
 SPEECH_LINE = r'[（(](S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*)[）)]\s*[:：]\s*(\[[A-Za-z ]+\])?\s*[“"]([^”"]+)[”"]'
 # A spoken line in the fields: 女孩 (S1) 说：<d>[Chinese] 你好。</d>.
@@ -538,7 +550,7 @@ def validate_base_fields(value, mode="", duration=None, language=None, requireme
     sound, music = none(sound), none(music or "N/A")
     if not narrative or not sound:
         raise ValueError("H3 画面与动作、环境声音不能为空")
-    narrative = re.sub(r"【镜头\s*([1-9]\d*)】", r"[Shot \1]", narrative)
+    narrative = display_marks(narrative)
     first = re.search(r"\[Shot 1\]", narrative)
     if not first:
         narrative = "[Shot 1] " + narrative
@@ -597,7 +609,7 @@ def base_source_view(source):
     # The editor's Chinese display reads the same way (【画面与动作】 with 【镜头 N】).
     display = re.search(r"【画面与动作】([\s\S]*?)(?=【环境声音】|【背景音乐】|$)", text)
     if display:
-        text = re.sub(r"【镜头\s*([1-9]\d*)】", r"[Shot \1]", display[1])
+        text = display_marks(display[1])
     spoken = []
 
     def speech(match):

@@ -76,7 +76,10 @@ test('an explicit h3Mode wins over mode names in the requirements text', () => {
 test('base optimize with the bilingual flag asks Grok for the official pair; without it the five sections stay', () => {
   for (const h3Mode of ['text_video', 'image_video', 'first_last']) {
     const built = baseRequest(h3Mode, citySource, ['H3 response format: bilingual-v1']);
-    assert.deepEqual(built.body.text.format.schema, JSON.parse(JSON.stringify(edge.baseResultSchema)));
+    const schema = JSON.parse(JSON.stringify(edge.baseResultSchema)), sent = built.body.text.format.schema;
+    // 首尾帧: the writer first states what <Picture 2> shows (a field the program drops); the pair itself is the official one.
+    assert.deepEqual(sent, h3Mode === 'first_last' ? {...schema, properties:{finalFrame:{type:'string', description:sent.properties.finalFrame.description}, ...schema.properties}, required:['finalFrame', ...schema.required]} : schema);
+    if (h3Mode === 'first_last') assert.deepEqual([Object.keys(sent.properties)[0], sent.required[0]], ['finalFrame', 'finalFrame']);
     assert.ok(systemText(built).includes(edge.instructionFor(citySource)) && systemText(built).includes(edge.baseInstruction));
     assert.ok(userText(built).includes(edge.baseResultInstruction));
     assert.match(userText(built), /\[Shot 2\] At 00:05\.000 镜头切到特写/);
@@ -89,6 +92,17 @@ test('base optimize with the bilingual flag asks Grok for the official pair; wit
     assert.ok(userText(old).includes(edge.formatInstruction));
     assert.equal(old.resultOptions.minimaxH3BaseResult, false);
   }
+});
+
+test('a 首尾帧 answer keeps only its prompt pair; the final-frame note is the writer\'s own and a translation gets none', () => {
+  const source = '<Picture 1> 中的女孩睁开眼睛，最后停在 <Picture 2>';
+  const built = baseRequest('first_last', source, ['H3 response format: bilingual-v1']);
+  const model = fields('[Shot 1] 3D CG, the girl shown in <Picture 1> sits with her eyes closed. The camera holds a static shot as she opens her eyes, then closes them again and settles into the pose of <Picture 2>.', 'A soft breeze moves through the room.');
+  const display = fields('[Shot 1] 三维 CG，<Picture 1> 中的女孩闭眼坐着。镜头固定，她睁开眼睛，随后又闭上，落定在 <Picture 2> 的姿态。', '微风轻轻吹过房间。');
+  const result = JSON.parse(normalizeMiniMaxH3PromptOutput(JSON.stringify({finalFrame:'<Picture 2> shows her eyes closed, so she closes them again before the end.', modelPrompt:model, displayPrompt:display}), built.resultOptions));
+  assert.deepEqual(Object.keys(result), ['modelPrompt', 'displayPrompt']);
+  assert.match(result.modelPrompt, /closes them again and settles into the pose of <Picture 2>/);
+  assert.equal(translateRequest('first_last', display).body.text.format.schema.properties.finalFrame, undefined);
 });
 
 test('the base pair is normalized through validateBaseResult with the no-change gate on the Chinese display half', () => {
