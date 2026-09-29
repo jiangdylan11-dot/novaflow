@@ -456,7 +456,8 @@ test("smart AI request builders preserve Responses API contracts", () => {
     originalPrompt: "一名剑客站在雪山前",
     requirements: "电影感",
     supportsNegativePrompt: true,
-    nsfw: false
+    nsfw: false,
+    userNegativePrompt: "模糊"
   });
 
   const imageRequest = buildGrokImageReverseRequest({

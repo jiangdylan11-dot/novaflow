@@ -41,6 +41,8 @@ try { autoResult(plain); assert.fail('expected failure'); } catch (error) {
   assert.equal(error.artSemanticFusionFailed,true,'a fusion failure must be repairable by one retry');
   assert.equal(error.artSemanticFusionReason,'未补足视觉细节');
 }
+// A white-background asset (this fixture) keeps its backdrop when the box is empty: the enrich brief and the craft rule both say so.
+assert.ok(auto.body.input.at(-1).content[0].text.includes('底稿是纯色、白底或透明背景时保留该背景'), 'the empty-box enrich keeps a plain backdrop');
 // A draft with no layout of its own is normalized to the five-section layout
 // that single-image reverse already produces.
 const proseDraft = '一个机器人站在台阶上，机器人的风格要和图2一样，整体图2做完背景保持不变。';
@@ -92,16 +94,21 @@ for (const text of briefTexts) {
   assert.doesNotMatch(text, /不得新增底稿没有的事实|禁止新增底稿没有的人物、道具或场景|不虚构图中没有的光源/, 'no rule forbids fitting detail');
   // Natural light needs its sun or moon in the scene, feet mean a full shot, and the brief ends with a consistency check.
   assert.ok(text.includes('那里没写月亮就不写月光') && text.includes('中景以内不写脚和鞋') && text.includes('输出前逐项核对并改正'), 'the sections are checked against each other');
+  // A plain-background single asset (a white-background draft, subject picture or request) keeps its backdrop and gets studio light.
+  assert.ok(text.includes('纯色、白底或透明背景的单体素材') && text.includes('不补场景陈设') && text.includes('影棚式主光与辅光'), 'a plain backdrop is not turned into a scene');
 }
-assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('用户写的姿势或位置取代主体图原有的姿势'), 'a requested pose replaces the reference pose');
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('用户写的姿势取代主体图原有的姿势') && roleReverse.body.input[0].content.at(-1).text.includes('只写位置、朝向或视线时保留主体图的姿势'), 'a requested pose replaces the reference pose; a position alone keeps it');
+assert.doesNotMatch(roleReverse.body.input[0].content.at(-1).text, /姿势或位置取代/, 'a position is not a pose');
 // The pictures stay the ground truth: every fixture of the background picture is counted, in-between colours stay mixed, and the
-// venue is named only from what its fixtures show. The brief samples closer to the pictures and has room to reason.
+// venue is named only from what its fixtures show. The one call also grades the pictures' contentSafety, so it samples as close to
+// the pictures as every other reverse (0.35, as before round 4) and has room to reason.
 assert.ok(['先逐一清点看得见的结构、陈设、灯具和材质', '介于两色之间的写成混合色', '场所类型只按看得见的陈设判断'].every((rule) => roleReverse.body.input[0].content.at(-1).text.includes(rule)), 'the background picture is read fixture by fixture');
-assert.equal(roleReverse.body.temperature, 0.45);
+assert.equal(roleReverse.body.temperature, 0.35);
 assert.equal(roleReverse.body.max_output_tokens, 3072);
 assert.ok(!buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'[画面]\n一只猫趴在沙发上\n[镜头]\n中景平视',requirements:'提示词编辑模式：以底稿为准。',supportsNegativePrompt:false},'grok-contract-test').body.input.at(-1).content[0].text.includes('像美术总监给画师的简报'), 'a layout of its own gets no five-section brief');
 const styleReverse = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'},{...refImage,dataUrl:'data:image/png;base64,AQ==',role:'style'}],scenario:'role_reference'},'grok-contract-test');
-assert.ok(styleReverse.body.input[0].content.at(-1).text.includes('风格迁移：画面内容只来自图1'), 'a style transfer keeps its content lock under the brief');
+assert.ok(styleReverse.body.input[0].content.at(-1).text.includes('风格迁移：画面内容只来自图1') && styleReverse.body.input[0].content.at(-1).text.includes('不凑“至少五样”'), 'a style transfer keeps its content lock under the brief');
+assert.equal(styleReverse.body.temperature, 0.35);
 // A negative lists visible defects: a deviation or mix-up phrase goes, everything else is written as the model wrote it.
 const roleNegative = negative => grokResponsesPublicResult({output_text:JSON.stringify({prompt:laidOut,negative_prompt:negative})},roleReverse.resultOptions).negative_prompt;
 assert.equal(roleNegative('画面模糊, 卡通风格偏差, 背景元素混入主体, 手部畸形'),'画面模糊，手部畸形');
@@ -109,6 +116,14 @@ assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'),'画面�
 // An absence, a change or a negation would put the requested content into the negative channel; real defects stay.
 assert.equal(roleNegative('画面模糊，灯笼不发光，夜晚变白天，阴影缺失，缺少背包，改变动作，椅子不稳，窗外场景矛盾，人物变形，左右不对称，光影不自然，色彩渐变断层'),'画面模糊，人物变形，左右不对称，光影不自然，色彩渐变断层');
 assert.equal(roleNegative('手部畸形 面部扭曲 椅子不稳 光源方向错误'),'手部畸形，面部扭曲，光源方向错误');
+// A deviation of the content goes (冷色调偏差, 服装颜色偏差); a visible defect named with 偏差 or 混入 stays.
+assert.equal(roleNegative('画面模糊，色彩偏差，比例偏差，文字水印混入，杂物混入画面，冷色调偏差，服装颜色偏差，手部畸形'),'画面模糊，色彩偏差，比例偏差，文字水印混入，杂物混入画面，手部畸形');
+// Every term the user wrote in the negative box stays, in the fusion and in the role reference.
+const catFive = ['[风格设定]','写实摄影风格，自然光质感。画面氛围温暖慵懒。','[主体物品]','一只橘猫趴在窗台上晒太阳，橘色短毛泛着光泽，眼睛眯成一条缝。它的前爪交叠压在木质窗台边缘，尾巴垂在窗沿外侧。','[环境背景]','室内窗边，木质窗台上摆着一盆绿萝。窗外是绿树和蓝天，半卷的米色窗帘垂在一侧。','[光线与色彩]','午后阳光从窗外斜射，落在猫背上。主色为橘色与米色，绿萝的绿色作点缀。','[拍摄参数]','中景，平视角度，三分法构图。深景深，窗外树影清晰。'].join('\n');
+const userNegFusion = buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'一只橘猫趴在窗台上晒太阳',requirements:'',negativePrompt:'模糊，色彩偏差，透视偏差，缺少尾巴，水印',supportsNegativePrompt:true},'grok-contract-test');
+assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:catFive,negative_prompt:'模糊，色彩偏差，透视偏差，缺少尾巴，水印，阴影缺失，风格偏差，手部畸形'})},userNegFusion.resultOptions).negative_prompt,'模糊，色彩偏差，透视偏差，缺少尾巴，水印，手部畸形');
+const userNegRole = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'},{...refImage,dataUrl:'data:image/png;base64,AQ==',role:'background'}],scenario:'role_reference',supportsNegativePrompt:true,negativePrompt:'风格偏差，改变动作'},'grok-contract-test');
+assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:laidOut,negative_prompt:'画面模糊，风格偏差，改变动作，阴影缺失'})},userNegRole.resultOptions).negative_prompt,'画面模糊，风格偏差，改变动作');
 // A section title written in front of its text is a right layout on the wrong line: it is moved, no repair call is spent.
 assert.equal(roleResult(laidOut.replace(/\]\n/g, '] ')).output_text, laidOut);
 // The repair is a second call: a prompt optimize reserves one, so its fusion failure is final; an image action reserves two.
