@@ -403,8 +403,11 @@ MINIMAX_H3_SENSITIVE_SIGNAL_PATTERNS = {
         flags=re.I,
     ),
     "nudity": re.compile(
-        r"(?:裸体|裸露|全裸|半裸|一丝不挂|赤裸|裸身|胸部暴露|乳房|乳头|生殖器|阴部|下体)"
-        r"|(?<![a-z0-9_])(?:nudity|nude|naked|topless|bare breasts?|exposed breasts?|genitals?)(?![a-z0-9_])",
+        r"(?:裸体|裸露|全裸|半裸|一丝不挂|赤裸|裸身|胸部暴露|乳房|乳头|生殖器|阴部|下体"
+        # Undressing words say the same thing ("小学生脱光衣服" passed before); a coat taken off does not.
+        r"|脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没)穿衣服|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物))"
+        r"|(?<![a-z0-9_])(?:nudity|nude|naked|topless|bare breasts?|exposed breasts?|genitals?|undress(?:es|ed|ing)?|unclothed"
+        r"|strip(?:s|ped|ping)?[_\s-]+naked)(?![a-z0-9_])",
         flags=re.I,
     ),
     "explicit_activity": re.compile(
