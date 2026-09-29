@@ -140,7 +140,35 @@ class TranslationTest(unittest.TestCase):
             translations={'TOKEN_0 三个石板缓缓升空，向 TOKEN_1 方向聚拢飞行。':
                           'The three stone slabs slowly rise into the air and fly toward TOKEN_1.'})
         self.assertEqual(len(calls), 1)
-        self.assertIn('[Shot 1] <Subject 1> The three stone slabs slowly rise into the air and fly toward <Picture 1>.', pair['modelPrompt'])
+        self.assertIn('[Shot 1] <Subject 1>, the three stone slabs slowly rise into the air and fly toward <Picture 1>.', pair['modelPrompt'])
+        # Round 5 review, rv_mr_fan: "The folding fan … faces TOKEN_1" (a noun no list knows) read "<Subject 2> The folding fan".
+        pair, calls = self.run_translation(
+            fields={'detailed_description': '[Shot 1] <Subject 1> 黑色扇面的折扇朝向 <Picture 1>，扇面微倾。'},
+            translations={'TOKEN_0 黑色扇面的折扇朝向 TOKEN_1，扇面微倾。': 'The folding fan with a black surface faces TOKEN_1, its surface slightly tilted.'})
+        self.assertEqual(len(calls), 1)
+        self.assertIn('[Shot 1] <Subject 1>, the folding fan with a black surface faces <Picture 1>, its surface slightly tilted.', pair['modelPrompt'])
+        # A limb is the subject's (ho_mr: "<Subject 1>, the two hands forcefully raise").
+        pair, calls = self.run_translation(
+            fields={'detailed_description': '[Shot 1] <Subject 1> 双手发力将长枪举至肩高。'},
+            translations={'TOKEN_0 双手发力将长枪举至肩高。': 'The two hands forcefully raise the spear to shoulder height.'})
+        self.assertIn("[Shot 1] <Subject 1>'s two hands forcefully raise the spear to shoulder height.", pair['modelPrompt'])
+        # A camera sentence the translator replaced ("The scene opens.", mr_cut) is no lost tag: the chunk is asked again.
+        opening = '<Subject 1> ' + '走' * 142 + '。'
+        answers = {'TOKEN_0 ' + '走' * 142 + '。': iter(['TOKEN_0 walks a long way.']),
+                   'TOKEN_0。TOKEN_1 停下。': iter(['The scene opens. TOKEN_1 stops.']), 'TOKEN_0。Aren 停下。': iter(['TOKEN_0. Aren stops.'])}
+        calls = []
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                calls.append(pending)
+                return json.dumps({key: next(answers[value]) if value in answers else TRANSLATIONS[value] for key, value in pending.items()})
+        fields = dict(FIELDS, detailed_description='[Shot 1] ' + opening + '镜头推近。<Subject 1> 停下。')
+        pair = json.loads(FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)['positivePrompt'])
+        self.assertIn('<Subject 1> walks a long way. The camera pushes in. <Subject 1> stops.', pair['modelPrompt'])
+        self.assertNotIn('scene opens', pair['modelPrompt'])
 
     def test_tags_every_attempt_drops_are_asked_once_as_names(self):
         # "TOKEN_0 走向 TOKEN_1" came back as "The character walks toward the other" on every attempt and the whole
@@ -208,7 +236,8 @@ class TranslationTest(unittest.TestCase):
                 calls.append(pending)
                 return json.dumps({key: english[value] for key, value in pending.items()})
         pair = json.loads(FakeAssistant().translate(display, '', 5, base_mode='FL2VA')['positivePrompt'])
-        self.assertEqual(len(calls), 1)
+        # One request for each field (two shots and the soundscape), none asked again.
+        self.assertEqual(len(calls), 3)
         self.assertEqual(pair['displayPrompt'], display)
         self.assertEqual(pair['modelPrompt'],
                          'integrated_multimodal_description: [Shot 1] Live-action, cinematic, a girl stands by the window; the shot begins from <Picture 1> '
@@ -230,9 +259,9 @@ class TranslationTest(unittest.TestCase):
             '0': 'Live-action, cinematic, a full shot frames the orange cat sitting calmly before a plain gray background. TOKEN_1. The orange cat yawns, opens its mouth, '
                  'tilts its head slightly back, and widens its eyes to reveal its pink mouth interior. It slowly slides its front paws forward, lowering its body while its '
                  'eyes gradually narrow and its head slowly droops. The cat fully lies down, resting its head on its front paws, eyes shut tight, fur hanging down, and its '
-                 'tail hanging naturally at its side.',
-            '1': 'As it yawns, its throat emits a soft purring sound; as its body settles to the ground, its fur brushes lightly against the surface, producing a soft '
-                 'rustling noise; a faint breeze sounds in the background.'})]
+                 'tail hanging naturally at its side.'}),
+            json.dumps({'0': 'As it yawns, its throat emits a soft purring sound; as its body settles to the ground, its fur brushes lightly against the surface, producing a soft '
+                             'rustling noise; a faint breeze sounds in the background.'})]
         calls = []
 
         class FakeAssistant:
@@ -243,7 +272,8 @@ class TranslationTest(unittest.TestCase):
                 return answers.pop(0) if answers else '{}'
         pair = json.loads(FakeAssistant().translate(display, '', 5, base_mode='I2VA')['positivePrompt'])
         english = pair['modelPrompt']
-        self.assertEqual(len(calls), 1)
+        # The shot and the soundscape, each once.
+        self.assertEqual(len(calls), 2)
         # The size the Chinese never names ("a full shot") is not invented either.
         self.assertIn('[Shot 1] Live-action, cinematic, as shown in <Picture 1>, the shot frames the orange cat sitting calmly before a plain gray background. '
                       'The camera holds a static shot. The orange cat yawns', english)
@@ -312,6 +342,76 @@ class TranslationTest(unittest.TestCase):
             FakeAssistant().translate(display, '', 5, base_mode='FL2VA')
         self.assertIn(later, requests[0])
         self.assertIn('紫发女子', requests[0])
+
+    def test_a_frame_lost_away_from_the_opening_is_asked_again(self):
+        # Round 5 review: a <Picture 2> the answer dropped near the end was named at the opening ("3D CG, as shown in <Picture 2>,
+        # the goddess shown in <Picture 1> …"): the first shot read as the last frame. Only the opening subject's frame is the
+        # program's to name; any other is asked again.
+        display = ('integrated_multimodal_description: [Shot 1] 三维渲染，<Picture 1> 中的女神闭眼坐在台阶上。女神缓缓睁开眼睛，又慢慢闭上，最后与 <Picture 2> 中的姿态一致。'
+                   '\n\noverall_soundscape: 微风吹过台阶。\n\nnon_diegetic_music: 竖琴，节奏缓慢。')
+        shot = '三维渲染，TOKEN_0 中的女神闭眼坐在台阶上。女神缓缓睁开眼睛，又慢慢闭上，最后与 TOKEN_1 中的姿态一致。'
+        opening = '3D CG, the goddess shown in TOKEN_0 sits on the steps with her eyes closed. She slowly opens her eyes, then slowly closes them, finally matching the pose '
+        answers = {shot: iter([opening + 'of the last frame.', opening + 'in TOKEN_1.']), '微风吹过台阶。': iter(['A light breeze passes over the steps.']),
+                   '竖琴，节奏缓慢。': iter(['A harp plays at a slow tempo.'])}
+        calls = []
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                calls.append(list(pending.values()))
+                return json.dumps({key: next(answers[value]) for key, value in pending.items()})
+        english = json.loads(FakeAssistant().translate(display, '', 5, base_mode='FL2VA')['positivePrompt'])['modelPrompt']
+        self.assertEqual(calls, [[shot], ['微风吹过台阶。'], ['竖琴，节奏缓慢。'], [shot]])
+        self.assertIn('[Shot 1] 3D CG, the goddess shown in <Picture 1> sits on the steps', english)
+        self.assertIn('finally matching the pose in <Picture 2>.', english)
+        self.assertNotIn('as shown in', english.lower())
+
+    def test_an_invented_size_is_the_shot_only_where_the_picture_frames_it(self):
+        # Round 5 review: "…in the early morning. the shot frames a fishing boat" (lowercase after a full stop). A text-to-video
+        # shot keeps the size the translator gives it; a picture's shot does not take one it never named.
+        english = {'写实电影风格，清晨的码头上老渔夫站在木板边缘。远处一艘渔船缓缓驶来，老渔夫抬手遮住阳光。':
+                   'Live-action, cinematic, an old fisherman stands at the edge of the dock planks in the early morning. A wide shot frames a fishing boat '
+                   'approaching slowly from afar as the old fisherman raises a hand to shade his eyes.',
+                   '写实电影风格，TOKEN_0 中的老渔夫站在木板边缘。远处一艘渔船缓缓驶来，老渔夫抬手遮住阳光。':
+                   'Live-action, cinematic, the old fisherman shown in TOKEN_0 stands at the edge of the dock planks. A wide shot frames a fishing boat '
+                   'approaching slowly from afar as the old fisherman raises a hand to shade his eyes.',
+                   '海浪拍打木桩。': 'Waves slap against the wooden piles.', '低沉的竖琴，节奏缓慢。': 'A low harp plays at a slow tempo.'}
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                return json.dumps({key: english[value] for key, value in pending.items()})
+        display = ('integrated_multimodal_description: [Shot 1] 写实电影风格，清晨的码头上老渔夫站在木板边缘。远处一艘渔船缓缓驶来，老渔夫抬手遮住阳光。'
+                   '\n\noverall_soundscape: 海浪拍打木桩。\n\nnon_diegetic_music: 低沉的竖琴，节奏缓慢。')
+        text = json.loads(FakeAssistant().translate(display, '', 5, base_mode='T2VA')['positivePrompt'])['modelPrompt']
+        self.assertIn('in the early morning. A wide shot frames a fishing boat', text)
+        display = display.replace('清晨的码头上老渔夫', '<Picture 1> 中的老渔夫')
+        text = json.loads(FakeAssistant().translate(display, '', 5, base_mode='I2VA')['positivePrompt'])['modelPrompt']
+        self.assertIn('the edge of the dock planks. The shot frames a fishing boat', text)
+
+    def test_a_name_written_more_often_than_its_tag_is_no_answer(self):
+        # Round 5 review: the tag asked as a name came back twice for its one place ("…, and Aren bows"); the extra copy became
+        # the literal "TOKEN_X", which the placeholder check cannot see, and it reached the generator. Such an answer is not
+        # used; the last ask maps every copy of the name back to its tag.
+        english = dict(TRANSLATIONS, **{'山崖上，随后 TOKEN_0 举起长枪，再躬身行礼。': 'On the cliff, the warrior then raises his spear and bows.',
+                                        '山崖上，随后 Aren 举起长枪，再躬身行礼。': 'On the cliff, Aren then raises his spear, and Aren bows.'})
+        calls = []
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                calls.append(pending)
+                return json.dumps({key: english[value] for key, value in pending.items()})
+        fields = dict(FIELDS, detailed_description='[Shot 1] 山崖上，随后 <Subject 1> 举起长枪，再躬身行礼。')
+        pair = json.loads(FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)['positivePrompt'])
+        self.assertNotIn('TOKEN', pair['modelPrompt'])
+        self.assertIn('[Shot 1] On the cliff, <Subject 1> then raises his spear, and <Subject 1> bows.', pair['modelPrompt'])
 
 
 if __name__ == '__main__':

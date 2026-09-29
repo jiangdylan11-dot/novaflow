@@ -1019,6 +1019,7 @@ class Qwen3VLAbliteratedAdapter:
             if self.model is None or self.processor is None:
                 self._load()
             import torch
+            from PIL import Image
 
             system = str(system_text).strip() if str(system_text or "").strip() else "你是 NovaFlow 的本地视觉事实提取器，只返回严格的版本化 JSON。"
             pictures = []
@@ -1027,7 +1028,7 @@ class Qwen3VLAbliteratedAdapter:
                     picture = self._tensor_to_pil(image)
                     if max(picture.size) > self.max_side:
                         scale = self.max_side / max(picture.size)
-                        picture = picture.resize((max(1, round(picture.width * scale)), max(1, round(picture.height * scale))))
+                        picture = picture.resize((max(1, round(picture.width * scale)), max(1, round(picture.height * scale))), Image.Resampling.LANCZOS)
                     pictures.append(picture)
             texts = [
                 self.processor.apply_chat_template(

@@ -128,6 +128,37 @@ class SceneTest(unittest.TestCase):
         self.assertIn('<Subject 2>，一个头部有发光的圆形眼睛、手持金属洒水壶的铜绿色机器人，两盏眼睛灯亮起。', result['description'])
         self.assertNotIn('悬停', result['description'])
 
+    def test_spoken_lines_and_asked_repeats_stay(self):
+        # Round 5 review: the quotes of any short quoted text before 声/响 went ("轻声说你好声音温柔"), and a clause written
+        # again in a later beat went even when the user asked for it again ("角色再次点头").
+        plan = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'), subject(2, '<Picture 2>', ROBOT, '铜绿色')],
+                'summary': '<Subject 1> 向 <Subject 2> 问好'}
+        output = ('事件：<Subject 1> 向 <Subject 2> 问好\n画风：动漫插画\n场景：公园\n动作1：<Subject 1> 轻声说“你好”声音温柔\n'
+                  '动作2：<Subject 2> 发出“滴滴”声，点头回应\n动作3：<Subject 1> 点头，嘴角上扬\n镜头：固定\n声音：风声\n配乐：无')
+        result, _ = self.write(plan, '<Picture 1> 中的女子轻声说“你好”，<Picture 2> 中的机器人点头回应', output)
+        self.assertIn('轻声说“你好”声音温柔', result['description'])
+        self.assertIn('发出滴滴声', result['description'])
+        nods = output.replace('动作1：<Subject 1> 轻声说“你好”声音温柔', '动作1：<Subject 1> 缓缓低下头向对方点头致意').replace(
+            '动作3：<Subject 1> 点头，嘴角上扬', '动作3：<Subject 1> 缓缓低下头向对方点头致意')
+        result, _ = self.write(plan, '<Picture 1> 中的角色点头，<Picture 2> 中的机器人点头回应，角色再次点头', nods)
+        self.assertEqual(result['description'].count('缓缓低下头向对方点头致意'), 2)
+        result, _ = self.write(plan, '<Picture 1> 中的角色点头，<Picture 2> 中的机器人点头回应', nods)
+        self.assertEqual(result['description'].count('缓缓低下头向对方点头致意'), 1)
+
+    def test_a_close_up_names_its_place_not_what_is_out_of_frame(self):
+        # Round 5, ho_mr: the close-up of the snake's head from above "remains … a deep valley shrouded in mist below; broken
+        # stone pillars …"; a close-up names its place and light, a wider shot the whole scene.
+        plan = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'), subject(2, '<Picture 2>', ROBOT, '铜绿色')],
+                'summary': '<Subject 1> 走向 <Subject 2>'}
+        output = ('事件：<Subject 1> 走向 <Subject 2>\n画风：动漫插画\n场景：山崖边缘，下方是深谷云雾缭绕，崖边有断裂石柱\n光线：正午阳光从上方直射\n'
+                  '动作1：<Subject 1> 走向 <Subject 2>\n动作2：<Subject 1> 停下脚步\n镜头：固定\n镜头2（第3秒）：切至特写，<Subject 2> 的眼睛亮起\n声音：风声\n配乐：无')
+        result, _ = self.write(plan, '<Picture 1> 中的女子走向 <Picture 2> 中的机器人，第3秒切到机器人的特写', output, cut=True)
+        self.assertIn('场景仍是山崖边缘，正午阳光从上方直射。', result['description'])
+        self.assertNotIn('场景仍是山崖边缘，下方', result['description'])
+        wide = output.replace('切至特写，<Subject 2> 的眼睛亮起', '切至中景，<Subject 2> 转身')
+        result, _ = self.write(plan, '<Picture 1> 中的女子走向 <Picture 2> 中的机器人，第3秒切到中景', wide, cut=True)
+        self.assertIn('场景仍是山崖边缘，下方是深谷云雾缭绕，崖边有断裂石柱，正午阳光从上方直射。', result['description'])
+
     def test_background_music_unless_the_user_refuses_it(self):
         plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '金色奖杯', '金色')],
                 'summary': '<Subject 1> 举起 <Subject 2>'}
@@ -135,9 +166,11 @@ class SceneTest(unittest.TestCase):
                   '动作2：<Subject 1> 举起 <Subject 2>\n镜头：固定\n声音：金属碰撞声\n配乐：“轻快”的钢琴与弦乐，节奏明快，音量渐强')
         result, prompt = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
         self.assertEqual(result['music'], '轻快的钢琴与弦乐，节奏明快，音量渐强。')
-        self.assertIn('配乐：一两句背景音乐：用什么乐器、速度快慢、节奏怎样、音量怎样变化', prompt)
-        # A sound written as a noun reads as a sentence.
-        self.assertEqual(result['soundscape'], '金属碰撞声清晰可闻。')
+        self.assertIn('配乐：一两句背景音乐：用什么乐器（只写乐器，不写人声和歌唱）、速度快慢、节奏怎样、音量怎样变化', prompt)
+        # A sound written as a noun reads as a sentence; a simile in the sound line goes, as in the music.
+        self.assertEqual(result['soundscape'], '金属碰撞声响起。')
+        result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output.replace('声音：金属碰撞声', '声音：奖杯底座轻磕桌面，轻响如星屑坠落'))
+        self.assertEqual(result['soundscape'], '奖杯底座轻磕桌面，轻响。')
         for words in ['，不要音乐', '，全程静音']:
             result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯' + words, output)
             self.assertEqual(result['music'], 'N/A')
