@@ -76,6 +76,7 @@ test('an explicit h3Mode wins over mode names in the requirements text', () => {
 test('base optimize with the bilingual flag asks Grok for the official pair; without it the five sections stay', () => {
   for (const h3Mode of ['text_video', 'image_video', 'first_last']) {
     const built = baseRequest(h3Mode, citySource, ['H3 response format: bilingual-v1']);
+    // Without frame pixels the pair is the official one; the frame notes come with the frames (see the frame test).
     assert.deepEqual(built.body.text.format.schema, JSON.parse(JSON.stringify(edge.baseResultSchema)));
     assert.ok(systemText(built).includes(edge.instructionFor(citySource)) && systemText(built).includes(edge.baseInstruction));
     assert.ok(userText(built).includes(edge.baseResultInstruction));
@@ -89,6 +90,17 @@ test('base optimize with the bilingual flag asks Grok for the official pair; wit
     assert.ok(userText(old).includes(edge.formatInstruction));
     assert.equal(old.resultOptions.minimaxH3BaseResult, false);
   }
+});
+
+test('a 首尾帧 answer keeps only its prompt pair; the final-frame note is the writer\'s own and a translation gets none', () => {
+  const source = '<Picture 1> 中的女孩睁开眼睛，最后停在 <Picture 2>';
+  const built = baseRequest('first_last', source, ['H3 response format: bilingual-v1']);
+  const model = fields('[Shot 1] 3D CG, the girl shown in <Picture 1> sits with her eyes closed. The camera holds a static shot as she opens her eyes, then closes them again and settles into the pose of <Picture 2>.', 'A soft breeze moves through the room.');
+  const display = fields('[Shot 1] 三维 CG，<Picture 1> 中的女孩闭眼坐着。镜头固定，她睁开眼睛，随后又闭上，落定在 <Picture 2> 的姿态。', '微风轻轻吹过房间。');
+  const result = JSON.parse(normalizeMiniMaxH3PromptOutput(JSON.stringify({finalFrame:'<Picture 2> shows her eyes closed, so she closes them again before the end.', modelPrompt:model, displayPrompt:display}), built.resultOptions));
+  assert.deepEqual(Object.keys(result), ['modelPrompt', 'displayPrompt']);
+  assert.match(result.modelPrompt, /closes them again and settles into the pose of <Picture 2>/);
+  assert.equal(translateRequest('first_last', display).body.text.format.schema.properties.finalFrame, undefined);
 });
 
 test('the base pair is normalized through validateBaseResult with the no-change gate on the Chinese display half', () => {
@@ -302,6 +314,24 @@ test('base I2V/FL2V optimize shows Grok its own frames; a translation, 文生 an
   assert.equal(fl2v.inputMeta.imageCount, 2);
   assert.match(content(fl2v)[1].text, /<Picture 1> is the opening frame of the target video and <Picture 2> is its final frame\./);
   assert.deepEqual(content(fl2v).slice(2).map(item => item.text || item.type), ['<Picture 1> opening frame', 'input_image', '<Picture 2> final frame', 'input_image']);
+  // With the frames the writer first notes what they show (a field the program drops): 图生 what <Picture 1> leaves out of frame and how
+  // each action stays on screen, 首尾帧 what <Picture 2> shows and the path to it. The opening names the light; 首尾帧 spends most on the path.
+  const schema = JSON.parse(JSON.stringify(edge.baseResultSchema));
+  for (const [built, note] of [[i2v, 'openingFrame'], [fl2v, 'finalFrame']]) {
+    const sent = built.body.text.format.schema;
+    assert.deepEqual(sent, {...schema, properties:{[note]:{type:'string', description:sent.properties[note].description}, ...schema.properties}, required:[note, ...schema.required]});
+    assert.deepEqual([Object.keys(sent.properties)[0], sent.required[0]], [note, note]);
+    assert.match(content(built)[1].text, /one of them naming the light the frame shows/);
+  }
+  assert.match(i2v.body.text.format.schema.properties.openingFrame.description, /out of frame[\s\S]*never with a noun from the request[\s\S]*pick up, take or eat, whether the request says it is the one already in hand; if not, it is a new one that lies within reach, named with its look, and the held thing is set aside first[\s\S]*Camera, written last from the Frame and Plan lines[\s\S]*pull-out or tilt[\s\S]*even when everything already fits the frame/);
+  // The note offers no static option; a still camera stays the user's choice in the base rules.
+  assert.doesNotMatch(i2v.body.text.format.schema.properties.openingFrame.description, /static/);
+  assert.match(fl2v.body.text.format.schema.properties.finalFrame.description, /closer or wider than <Picture 1> \(in this note only: the prompt names no shot size[\s\S]*large amplitude/);
+  assert.match(content(fl2v)[1].text, /about a third of the text; the rest is the path from <Picture 1> to <Picture 2>\./);
+  assert.doesNotMatch(content(i2v)[1].text, /a third of the text/);
+  assert.equal(optimize('text_video', [frame('<Picture 1>')]).body.text.format.schema.properties.openingFrame, undefined);
+  // The writer reads the official length as a figure for this clip: 135-195 words for six seconds.
+  assert.match(userText(fl2v), /\nLength: about 135-195 English words in integrated_multimodal_description for this 6-second clip, /);
   assert.equal(optimize('first_last', [frame('<Picture 1>'), frame('<Picture 2>')], ['H3 compile: translate-only', 'H3 response format: bilingual-v1']).inputMeta.imageCount, 0);
   assert.equal(content(optimize('text_video', [frame('<Picture 1>')])).length, 1);
   // Only the mode's own anchors, in order, as the resource labels list them.
@@ -321,7 +351,7 @@ test('the optimize that sees pictures carries the reverse content safety in its 
     requirements:[...markers, labels[h3Mode === 'multi_reference' ? 'full_reference' : h3Mode] || '', 'Source prompt:', source].join('\n')}, 'test-model');
   const built = optimize('女孩挥手');
   const schema = built.body.text.format.schema;
-  assert.deepEqual(schema.required, ['modelPrompt', 'displayPrompt', 'contentSafety']);
+  assert.deepEqual(schema.required, ['openingFrame', 'modelPrompt', 'displayPrompt', 'contentSafety']);
   assert.deepEqual(schema.properties.contentSafety.required, ['explicitMinorEvidence', 'sensitiveContent']);
   assert.deepEqual({...schema, properties:{modelPrompt:schema.properties.modelPrompt, displayPrompt:schema.properties.displayPrompt}, required:['modelPrompt', 'displayPrompt']}, JSON.parse(JSON.stringify(edge.baseResultSchema)));
   // With pictures in a pair the person rule stays in the request text; the faithful-facts and fail-closed rules ride in the schema.
@@ -356,6 +386,8 @@ test('the optimize that sees pictures carries the reverse content safety in its 
   const blocked = [
     [answer({explicitMinorEvidence:true, sensitiveContent:true}), built],
     [answer({explicitMinorEvidence:true, sensitiveContent:false}, model.replace('waves toward the camera', 'stands fully nude and waves toward the camera')), built],
+    // The writer's frame note is read too: minor evidence with nudity named only there (a misgraded sensitiveContent) is still blocked.
+    ...['openingFrame', 'finalFrame'].map(note => [JSON.stringify({[note]:'The picture shows the child after undressing, fully nude.', modelPrompt:model, displayPrompt:display, contentSafety:{explicitMinorEvidence:true, sensitiveContent:false}}), built]),
     [answer({explicitMinorEvidence:false, sensitiveContent:true}), optimize('小孩在海边奔跑')],
     [JSON.stringify({modelPrompt:{integrated_multimodal_description:'H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content', overall_soundscape:'H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content', non_diegetic_music:'N/A'}, displayPrompt:display}), built],
     ['H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content', optimize('女孩挥手', {markers:[]})]

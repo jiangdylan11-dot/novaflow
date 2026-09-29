@@ -74,15 +74,15 @@ test('多参 display joins Chinese sentences without spaces and starts each subj
   ].join('\n\n');
   for(const api of [local,edge]) {
     const shown=api.toReferenceDisplay(display);
-    assert.match(shown,/【画面与动作】\n【镜头 1】动漫插画风格。场景是乡村公路。\n<主体 1> 向右侧行走。\n<主体 2> 转头望向来者。镜头跟拍 <主体 1>。\n<主体 1> 说：“出发。 等等！”\n/);
-    // The definition ends its sentence before 素材来源 instead of a bare space.
+    // Each subject's sentence and the camera sentence start their own line, so the camera never reads as part of a subject.
+    assert.match(shown,/【画面与动作】\n【镜头 1】动漫插画风格。场景是乡村公路。\n<主体 1> 向右侧行走。\n<主体 2> 转头望向来者。\n镜头跟拍 <主体 1>。\n<主体 1> 说：“出发。 等等！”\n/);    // The definition ends its sentence before 素材来源 instead of a bare space.
     assert.match(shown,/\n<主体 1>：黑短发女性。素材来源：<Picture 1>。\n/);
     // Quoted dialogue keeps its own spacing.
     assert.doesNotMatch(shown.replace(/“[^”]*”/g,''),/[。！？] /);
     assert.match(api.fromReferenceDisplay(shown),/detailed_description:\n+\[Shot 1\] 动漫插画风格。场景是乡村公路。\n<Subject 1> 向右侧行走。/);
-    // A later shot keeps the space before its timestamp both ways.
+    // A later shot shows its cut time in Chinese and reads back as the official marker.
     const timed=display.replace('镜头跟拍 <Subject 1>。','[Shot 2] At 00:02.000 镜头跟拍 <Subject 1>。');
-    assert.match(api.toReferenceDisplay(timed),/【镜头 2】 At 00:02\.000 镜头跟拍/);
+    assert.match(api.toReferenceDisplay(timed),/【镜头 2】（第 2 秒）镜头跟拍/);
     assert.match(api.fromReferenceDisplay(api.toReferenceDisplay(timed)),/\[Shot 2\] At 00:02\.000 镜头跟拍/);
   }
 });
@@ -105,7 +105,9 @@ test('an old five-section answer or prompt becomes the base display and fields i
   assert.ok(request.requirements.includes(local.baseInstruction));
   const restored=workflow.validateAndRestore({text:formatted, context:request.context,current:fiveCurrent});
   assert.match(restored.text,/^【参考帧对齐】\n@参考图 是视频第 0\.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】Use @参考图 as the exact starting frame\./);
-  assert.match(restored.text,/\(S1\) 说：<d>\[Chinese\] 系统自检完成。动力核心已上线，下一条指令——可以直接下达。<\/d>/);
+  // The editor shows the line as quoted speech; the fields keep its <d> block.
+  assert.match(restored.text,/\(S1\) 说：“系统自检完成。动力核心已上线，下一条指令——可以直接下达。”/);
+  assert.match(restored.modelText,/\(S1\) 说：<d>\[Chinese\] 系统自检完成。动力核心已上线，下一条指令——可以直接下达。<\/d>/);
   assert.doesNotMatch(restored.text,/【任务定位】|【说话者】|【台词】|【连续性与约束】|\d-\d+(?:\.\d+)?s：|<Subject/);
   assert.match(restored.modelText,/^integrated_multimodal_description: \[Shot 1\] Use <Picture 1> as the exact starting frame\./);
   assert.equal(workflow.prepareRequest({...fiveCurrent,prompt:formatted.replaceAll('<Picture 1>','@参考图')}).prompt,local.fromBaseDisplay(local.toBaseDisplay(formatted)));

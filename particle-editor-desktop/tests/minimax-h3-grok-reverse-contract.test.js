@@ -799,6 +799,9 @@ const optimizeContext = {
       Error,
     },
   ),
+  miniMaxH3FrameNoteSchema: vm.runInNewContext(`(${extractNamedFunction(source, "miniMaxH3FrameNoteSchema")})`,
+    { MINIMAX_H3_FRAME_NOTES: vm.runInNewContext(`(${extractNamedConstant(source, "MINIMAX_H3_FRAME_NOTES")})`) }),
+  miniMaxH3BaseLength: vm.runInNewContext(`(${extractNamedFunction(source, "miniMaxH3BaseLength")})`, { Number, Math }),
   MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS: 4096,
   adminData: context.adminData,
   Error,
@@ -856,6 +859,9 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   const lf = (text) => text.replace(/\r\n/g, "\n");
   assert.equal(lf(extractNamedFunction(source, "miniMaxH3EnhanceMode")), lf(extractNamedFunction(edgeSource, "miniMaxH3EnhanceMode")));
   assert.equal(lf(extractNamedFunction(source, "miniMaxH3DialogueBlocks")), lf(extractNamedFunction(edgeSource, "miniMaxH3DialogueBlocks")));
+  // The writer's frame notes (图生 openingFrame, 首尾帧 finalFrame) and the length figure are the Edge's.
+  for (const name of ["miniMaxH3FrameNoteSchema", "miniMaxH3BaseLength"]) assert.equal(lf(extractNamedFunction(source, name)), lf(extractNamedFunction(edgeSource, name)), `${name} must match the Edge copy`);
+  assert.equal(lf(extractNamedConstant(source, "MINIMAX_H3_FRAME_NOTES")), lf(extractNamedConstant(edgeSource, "MINIMAX_H3_FRAME_NOTES")));
   optimizeContext.miniMaxH3DialogueBlocks = vm.runInNewContext(`(${extractNamedFunction(source, "miniMaxH3DialogueBlocks")})`);
   const enhanceBranch = (text) => lf(extractNamedFunction(text, "normalizeMiniMaxH3PromptOutput")).split("const raw = normalizeGeneratedPrompt(text);")[0];
   assert.equal(enhanceBranch(source), enhanceBranch(edgeSource));
@@ -885,6 +891,10 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   assert.equal(withFrames(["H3 compile: translate-only", "H3 response format: bilingual-v1"]).inputMeta.imageCount, 0);
   assert.ok(user(pair).includes(h3.baseResultInstruction) && user(pair).includes(optimizeContext.MINIMAX_H3_BASE_PAIR_RULES));
   assert.doesNotMatch(user(pair), /【任务定位】|consecutive time ranges/);
+  // The writer gets the official length as a figure for its clip; a translation gets none.
+  assert.match(user(pair), /\nLength: about 110-170 English words in integrated_multimodal_description for this 5-second clip, spent on the look and light, [^\n]*$/);
+  assert.ok(user(pair).indexOf(optimizeContext.MINIMAX_H3_BASE_PAIR_RULES) < user(pair).indexOf("\nLength: about"), "the length figure comes with the pair rules");
+  assert.doesNotMatch(user(request("image_video", ["H3 compile: translate-only", "H3 response format: bilingual-v1"], chineseFields)), /^Length: about/m);
   assert.equal(pair.resultOptions.minimaxH3BaseResult, true);
   assert.equal(pair.resultOptions.minimaxH3TranslateOnly, false);
   const translate = request("image_video", ["H3 compile: translate-only", "H3 response format: bilingual-v1"], chineseFields);
@@ -956,7 +966,9 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   });
   const framed = framedRequest("白色纸飞机从桌面起飞");
   const framedSchema = JSON.parse(JSON.stringify(framed.body.text.format.schema));
-  assert.deepEqual(framedSchema.required, ["modelPrompt", "displayPrompt", "contentSafety"]);
+  // 图生 asks the writer first what <Picture 1> shows and how each action stays on screen (openingFrame, dropped by the program).
+  assert.deepEqual(framedSchema.required, ["openingFrame", "modelPrompt", "displayPrompt", "contentSafety"]);
+  assert.match(framedSchema.properties.openingFrame.description, /which body parts are out of frame\. Body:[\s\S]*Hands:[\s\S]*never with a noun from the request\. Light:[\s\S]*Plan:[\s\S]*quoted word for word[\s\S]*the requested action nearest the cut\)\. Camera, written last from the Frame and Plan lines: [\s\S]*the Frame line leaves out, the pull-out or tilt[\s\S]*even when everything already fits the frame\.$/);
   assert.deepEqual(framedSchema.properties.contentSafety.required, ["explicitMinorEvidence", "sensitiveContent"]);
   assert.deepEqual(framedSchema.properties.modelPrompt, JSON.parse(JSON.stringify(h3.baseResultSchema.properties.modelPrompt)));
   // With pictures in a pair the person rule stays in the request text; the faithful-facts and fail-closed rules ride in the schema.
@@ -966,7 +978,7 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   assert.match(framedSchema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details included: never omit or soften a visible fact/);
   // Without the fact-faithful policy of the AI 助手 (the generation-time compile) the call is as it was: no field, rules or youth flag.
   const compile = framedRequest("小孩在岩石上攀爬", { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false });
-  assert.deepEqual(JSON.parse(JSON.stringify(compile.body.text.format.schema.required)), ["modelPrompt", "displayPrompt"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(compile.body.text.format.schema.required)), ["openingFrame", "modelPrompt", "displayPrompt"]);
   assert.doesNotMatch(user(compile), /Content safety|H3_CONTENT_POLICY_BLOCKED/);
   assert.equal(compile.resultOptions.explicitYouthUserRequest, false);
   // Without pixels there is nothing to report and the schema stays the plain pair; a translation carries no writing rules at all.
