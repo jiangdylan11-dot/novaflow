@@ -122,10 +122,24 @@ const sensitiveContext = {
   MINIMAX_H3_BENIGN_EXPOSURE_PATTERN: vm.runInNewContext(
     extractNamedConstant(source, "MINIMAX_H3_BENIGN_EXPOSURE_PATTERN"),
   ),
-  // The raw user check also reads the child words the H3 pattern leaves to the model (小女孩, 小学生, 七岁).
+  // The raw user check also reads the child words the H3 pattern leaves to the model (小女孩, 小学生, 七岁), and the child block's words.
   ART_EXPLICIT_CHILD_PATTERN: vm.runInNewContext(
     extractNamedConstant(source, "ART_EXPLICIT_CHILD_PATTERN"),
   ),
+  ...Object.fromEntries([
+    "MINIMAX_H3_CHILD_BLOCK_TRADITIONAL",
+    "MINIMAX_H3_CHILD_SENSITIVE_PATTERN",
+    "MINIMAX_H3_CHILD_BLOCK_EVERYDAY",
+    "MINIMAX_H3_CHILD_BLOCK_CHILD_NEGATION",
+    "MINIMAX_H3_CHILD_BLOCK_WORD_NEGATION",
+    "MINIMAX_H3_CHILD_BLOCK_LIST_NEGATION",
+    "MINIMAX_H3_CHILD_BLOCK_AVOID_LABEL",
+    "MINIMAX_H3_CHILD_BLOCK_LINE_END",
+    "MINIMAX_H3_CHILD_BLOCK_ITEM_END",
+    "MINIMAX_H3_CHILD_BLOCK_SUFFIX_NEGATION",
+    "MINIMAX_H3_CHILD_BLOCK_CHILD_LIST",
+    "MINIMAX_H3_CHILD_BLOCK_WORD_LIST",
+  ].map((name) => [name, vm.runInNewContext(extractNamedConstant(source, name))])),
   miniMaxH3ContractError: (code, message, statusCode = 502, failureCategory = code) => Object.assign(new Error(message), {
     statusCode,
     errorCode: code,
@@ -238,6 +252,16 @@ sensitiveContext.miniMaxH3SensitiveCategories = vm.runInNewContext(
   `(${extractNamedFunction(source, "miniMaxH3SensitiveCategories")})`,
   sensitiveContext,
 );
+for (const name of [
+  "miniMaxH3ChildBlockText",
+  "miniMaxH3ChildBlockShort",
+  "miniMaxH3ChildBlockNegated",
+  "miniMaxH3ExplicitChild",
+  "miniMaxH3ChildSensitiveWords",
+  "miniMaxH3ChildSensitiveRequest",
+]) {
+  sensitiveContext[name] = vm.runInNewContext(`(${extractNamedFunction(source, name)})`, sensitiveContext);
+}
 const validateRawUserContent = vm.runInNewContext(
   `(${extractNamedFunction(source, "miniMaxH3ValidateRawUserContent")})`,
   sensitiveContext,

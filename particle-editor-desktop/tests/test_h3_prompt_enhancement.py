@@ -831,6 +831,50 @@ class H3BaseLocalTest(unittest.TestCase):
                                            **({"contentPolicy": policy} if policy else {})})
         self.assertEqual(checks, [False, False, True] * 2)
 
+    def test_the_child_block_reads_every_phrasing_before_any_model_call(self):
+        # An explicit child with nudity, undressing or sexual words never reaches the writer, in any mode: every child word
+        # (小女孩, 小学女生, 女婴, 十二三岁, a twelve-year-old, a preteen, a third grader), undressing words in any order (把衣服脱了,
+        # 脱掉小女孩的衣服, 什么都没穿, 光着屁股, no clothes, wearing nothing), sexual words (做爱, 强奸, 猥亵, 性感, 私处, 色情, sex,
+        # lingerie), Traditional characters (裸體, 七歲) and spaced words, and a negation that governs another word ("不到十岁的小女孩",
+        # "天真无邪的小女孩", "不要背景音乐，小孩全裸"). The Grok engine reads the same fixture (h3-prompt-enhancement.test.mjs).
+        cases = json.loads((Path(__file__).parent / "fixtures/child-block-cases.json").read_text(encoding="utf-8"))
+        frames = [{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}]
+        for mode in ["text_video", "image_video", "first_last", "multi_reference"]:
+            for words in cases["block"]:
+                for payload in [{"currentPrompt": words}, {"currentPrompt": CAT, "requirements": "Source prompt:\n" + CAT + "\n\n" + words}]:
+                    with self.subTest(mode=mode, payload=payload):
+                        assistant, calls = service.PromptAssistant(), []
+                        assistant.generate = lambda prompt, **kwargs: calls.append(prompt) or phases()
+                        with self.assertRaises(service.VisualContractError) as raised:
+                            assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, "h3Mode": mode,
+                                                       "h3ReferenceFrames": frames, "contentPolicy": {"sensitiveVisualAnalysis": True}, **payload})
+                        self.assertEqual(raised.exception.code, "h3-sensitive-minor-request-blocked")
+                        self.assertEqual(calls, [])
+        # Children in everyday words (裸露的岩石, 把花插入花瓶, 听诊器贴着胸部, 给洋娃娃脱衣服, 不穿衣服会着凉…穿上外套, the naked eye), a
+        # negated sensitive word ("不要让她裸露", "no nudity, sex or violence", "避免：裸露、儿童化") and adult content (an age gap, a
+        # pet's age, 猫咪宝宝, “宝宝，我爱你”, 小孩子气) are no refusal.
+        for words in cases["everyday"] + cases["negated"] + cases["adult"]:
+            with self.subTest(words=words):
+                self.assertFalse(service.minimax_h3_child_sensitive_request(words))
+                service.minimax_h3_block_sensitive_minor(words)
+        for words in cases["adult"]:
+            with self.subTest(words=words):
+                self.assertFalse(service.minimax_h3_explicit_child(words))
+        # The writer is called for them, as before.
+        for words in ["小孩把钥匙插入锁孔", "小女孩给洋娃娃脱衣服", "医生用听诊器贴着儿童的胸部检查", "小孩在海边玩耍，不要裸露"]:
+            with self.subTest(words=words):
+                assistant, calls = service.PromptAssistant(), []
+                assistant.generate = lambda prompt, **kwargs: calls.append(prompt) or phases()
+                try:
+                    assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, "h3Mode": "text_video",
+                                               "contentPolicy": {"sensitiveVisualAnalysis": True},
+                                               "currentPrompt": CAT, "requirements": "Source prompt:\n" + CAT + "\n\n" + words})
+                except service.VisualContractError as error:
+                    self.fail(f"{words}: {error.code}")
+                except ValueError:
+                    pass  # the cat answer may leave the words out; only the check matters here
+                self.assertTrue(calls)
+
     def test_a_supplement_alone_is_the_video_description(self):
         # The renderer sends the 补充要求 as the source; an empty source with the 补充要求 after it reads the same.
         result, calls = self.run_local([phases()], {"currentPrompt": CAT, "requirements": "Source prompt:\n" + CAT})
@@ -2114,6 +2158,41 @@ class H3UserWordsTest(unittest.TestCase):
         text = compile_action_phases(fl2v, "FL2VA", 5, "女神缓缓睁开眼睛，又慢慢闭上")
         self.assertIn("画面与 <Picture 2> 一致。", text)
         self.assertNotIn("之态", text)
+
+
+
+class ChildBlockEnginesInStep(unittest.TestCase):
+    """The Grok engine (the edge function and both admin server.js copies) reads the local engine's child block words: a word
+    added on one engine only lets the two disagree again, as they did for 小女孩, 做爱, 裸體 and "a twelve-year-old"."""
+
+    def test_the_grok_engine_keeps_the_same_texts(self):
+        repo = ROOT.parent
+        paths = [repo / "supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs",
+                 repo / "novaflow-web/admin/admin-server/server.js", ROOT / "admin-server/server.js"]
+        literal = lambda text, name: re.search(r"^const " + name + r" = /(.*)/[a-z]*;\r?$", text, re.M).group(1).replace("\\/", "/")
+        blocks = []
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path=str(path)):
+                self.assertEqual(literal(text, "ART_EXPLICIT_CHILD_PATTERN"), service.MINIMAX_H3_YOUNG_CLUE_PATTERN.pattern)
+                self.assertEqual(literal(text, "MINIMAX_H3_CHILD_SENSITIVE_PATTERN"), service.MINIMAX_H3_CHILD_SENSITIVE_PATTERN.pattern)
+                for name in ["CHILD_NEGATION", "WORD_NEGATION", "LIST_NEGATION", "CHILD_LIST", "WORD_LIST", "AVOID_LABEL", "LINE_END", "ITEM_END"]:
+                    self.assertEqual(literal(text, "MINIMAX_H3_CHILD_BLOCK_" + name), getattr(service, "MINIMAX_H3_CHILD_BLOCK_" + name).pattern, name)
+                self.assertEqual(literal(text, "MINIMAX_H3_CHILD_BLOCK_SUFFIX_NEGATION"), "^(?:" + service.MINIMAX_H3_CHILD_BLOCK_SUFFIX_NEGATION.pattern + ")")
+                self.assertEqual(json.loads(re.search(r'^const MINIMAX_H3_CHILD_BLOCK_TRADITIONAL = (".*");\r?$', text, re.M).group(1)),
+                                 service.MINIMAX_H3_CHILD_BLOCK_TRADITIONAL)
+                start = text.index("// The child block, as on the local engine")
+                block = text[start:text.index("\n}", text.index("function miniMaxH3ChildSensitiveRequest(", start)) + 2]
+                everyday = re.findall(r'^  \[/(.*)/giu, (".*")\],\r?$', block, re.M)
+                self.assertEqual([(pattern.replace("\\/", "/"), json.loads(replacement)) for pattern, replacement in everyday],
+                                 [(pattern.pattern, replacement) for pattern, replacement in service.MINIMAX_H3_CHILD_BLOCK_EVERYDAY])
+                blocks.append(block.replace("\r\n", "\n"))
+        self.assertEqual(len(set(blocks)), 1)
+        # Each Traditional character reads as one simplified one, and no simplified character is itself rewritten.
+        pairs = service.MINIMAX_H3_CHILD_BLOCK_TRADITIONAL
+        self.assertEqual(len(pairs) % 2, 0)
+        self.assertEqual(len(set(pairs[0::2])), len(pairs) // 2)
+        self.assertFalse(set(pairs[0::2]) & set(pairs[1::2]))
 
 
 if __name__ == "__main__":
