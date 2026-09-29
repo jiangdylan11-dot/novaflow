@@ -61,8 +61,11 @@
     const anchor = new RegExp(`(?:图|图片|参考图)\\s*${imageNumber}\\s*(?:作为|用作|设为|是|提供|用于|只作为|只用作)?([^\\n。；，,]{0,32})`, "i");
     const match = source.match(anchor);
     const scope = clean(match?.[1]);
-    if (!scope) return "";
-    return ROLE_PATTERNS.find(([, pattern]) => pattern.test(scope))?.[0] || "";
+    const named = scope ? ROLE_PATTERNS.find(([, pattern]) => pattern.test(scope))?.[0] || "" : "";
+    // "坐在图2大厅的地毯上", "放到图2里": the subject is put inside that picture, so it is the background.
+    // Only a placing verb counts: 加入图2的翅膀, 引入图2的光影, 基于图2 and 在图2中出现的剑 take from 图2.
+    const placedIn = new RegExp(`(?:坐|站|躺|趴|立|放|摆|置|位|处|走|跑)(?:在|于|进|入|到)\\s*(?:图|图片|参考图)\\s*${imageNumber}(?![0-9])`).test(source);
+    return named || (placedIn ? "background" : "");
   }
 
   function normalizeRoleOverrides(value, count) {
