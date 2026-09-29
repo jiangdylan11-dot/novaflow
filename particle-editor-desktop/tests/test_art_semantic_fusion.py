@@ -465,6 +465,33 @@ class Qwen3ArtFlows(unittest.TestCase):
                     self.assertEqual(len(self.calls), calls)
         self.assertEqual(str(raised.exception), '提示词或补充要求包含明确未成年人内容，敏感提示词已阻止')
 
+    def test_explicit_words_in_pieces_the_cleanup_drops_still_block(self):
+        # The safety checks read the answer before the one-picture cleanup drops asides ("强调…", "突出…") and the
+        # non-camera pieces of [拍摄参数].
+        answer = ('[风格设定]\n日系动漫插画风格，线条细腻。\n\n[主体物品]\n一名人物站在海边，长发，面向镜头。\n\n'
+                  '[环境背景]\n海边沙滩，远处海浪。\n\n[光线与色彩]\n午后阳光从右侧照来，主色为蓝白。\n\n[拍摄参数]\n{}\n'
+                  '检查：人物=有；未成年=有；敏感=无')
+        for camera in ('全身景别，正面视角，强调其一丝不挂的身体', '全身景别，正面视角，一丝不挂'):
+            with self.subTest(camera=camera):
+                with self.assertRaises(service.VisualContractError) as raised:
+                    self.role_check(['subject'], '用户生成要求：让角色站在海边', answer.format(camera))
+                self.assertEqual(raised.exception.code, 'art-sensitive-young-evidence-blocked')
+        written = ('[风格设定]\n日系动漫插画风格，线条细腻。\n\n[主体物品]\n一名女子躺在床上，长发散开。\n\n'
+                   '[环境背景]\n卧室，白色床单。\n\n[光线与色彩]\n窗外月光照在床上，主色为冷蓝。\n\n[拍摄参数]\n{}')
+        draft = written.format('近景，俯视')
+        # The fuse path drops an age that shares no words with the draft before its check, as it did before the cleanup.
+        for camera in ('近景，俯视，突出床上12岁少女的身形', '近景，俯视，床上的12岁少女'):
+            with self.subTest(camera=camera):
+                assistant = service.PromptAssistant()
+                assistant.generate = lambda prompt, camera=camera, **kwargs: written.format(camera)
+                with self.assertRaisesRegex(ValueError, '提示词创作未通过内容检查'):
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'create', 'prompt': '', 'nsfw': True,
+                                               'requirements': '用户创作需求：一名女子躺在床上'})
+                assistant.generate = lambda prompt, camera=camera, **kwargs: written.replace('白色床单', '红色床单').format(camera)
+                with self.assertRaisesRegex(ValueError, '提示词融合未通过内容检查'):
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft,
+                                               'nsfw': True, 'requirements': '把床单改成红色'})
+
     def test_role_reference_child_in_a_harmless_scene_passes(self):
         # 未成年=有 with the user's everyday words that the static list matches (bare walls, the colour nude, a negated
         # word, a cover-up): the static reverse wrote these, and so does the role reference.
@@ -913,6 +940,11 @@ class ArtOnePictureTest(unittest.TestCase):
         # The user's own light words belong to [光线与色彩], not to the drawing.
         lit = style.replace('上色采用鲜艳饱和的矿物颜料', '冷色调灯光营造出肃杀氛围')
         self.assertIn('[风格设定]\n国潮插画风格，线条遒劲有力\n', service.art_role_reference_user_fit(lit, '把背景换成雪夜古城街道，冷色调灯光'))
+        # ... and are written in [光线与色彩] when the answer has them nowhere else.
+        moved = service.art_role_reference_user_fit(lit + '\n\n[光线与色彩]\n夜晚灯笼暖黄光从两侧照在人物身上', '把背景换成雪夜古城街道，冷色调灯光')
+        self.assertIn('[光线与色彩]\n夜晚灯笼暖黄光从两侧照在人物身上，冷色调灯光。', moved)
+        said = service.art_role_reference_user_fit(lit + '\n\n[光线与色彩]\n冷色调的灯光从两侧照下', '把背景换成雪夜古城街道，冷色调灯光')
+        self.assertEqual(said.count('冷色调'), 1)
 
     def test_an_action_the_repair_still_leaves_out_is_written_in_the_users_words(self):
         answer = ('[风格设定]\n国潮插画风格\n\n[主体物品]\n武将站立于大堂中央，剑尖斜指下方\n\n[环境背景]\n现代大堂，米白色地毯\n\n'
@@ -998,6 +1030,82 @@ class ArtOnePictureTest(unittest.TestCase):
         self.assertNotIn('午后', service.art_consistent_sections(lit))
         self.assertIn('晨光', service.art_consistent_sections(lit))
         self.assertEqual(service.art_consistent_sections(times, one_time=False), times)
+        fire = '[主体物品]\n武将站在大殿中央，周身火焰随风舞动，香炉青烟随风飘动，手中旗帜迎风飘扬\n\n[环境背景]\n宫殿大厅，红柱金瓦'
+        self.assertIn('周身火焰舞动，香炉青烟飘动，手中旗帜自然垂落', service.art_consistent_sections(fire))
+        camera = '[环境背景]\n远处是山影与飞檐，青石长街\n\n[拍摄参数]\n全身景别，正面视角，背景的山影与飞檐在画面中后景呈现，武将占据画面中央'
+        self.assertIn('[拍摄参数]\n全身景别，正面视角，武将占据画面中央', service.art_consistent_sections(camera))
+        for avoid in ('避免：过曝，画面模糊，多余肢体', '避免：背景虚化, 构图杂乱', '避免：黄昏色调'):
+            with self.subTest(avoid=avoid):
+                kept = '[环境背景]\n古城街道，远处屋檐清晰可见\n\n[光线与色彩]\n清晨阳光\n\n[拍摄参数]\n全身景别，正面视角。\n' + avoid
+                self.assertEqual(service.art_consistent_sections(kept), kept)
+        # Light on things leaves the scene; a scene's own highlight ("降低纯白高光") stays.
+        hall = '[环境背景]\n象牙白宫廷，降低纯白高光并恢复层次，灯笼在石阶上留下高光'
+        self.assertEqual(service.art_consistent_sections(hall), '[环境背景]\n象牙白宫廷，降低纯白高光并恢复层次')
+
+    def test_an_edit_keeps_its_own_words(self):
+        draft = ('[风格设定]\n国潮插画风格，线条硬朗。\n\n[主体物品]\n红袍武将站在长街中央，手握长剑，红色披风垂在身后。\n\n'
+                 '[环境背景]\n雪夜古城街道，两侧木楼挂着灯笼，远处城楼轮廓清晰可见。\n\n'
+                 '[光线与色彩]\n灯笼暖光从两侧照亮人物，整体冷蓝为主。\n\n[拍摄参数]\n全身景别，正面平视，构图居中。')
+        edits = (
+            ('背景虚化', draft.replace('构图居中。', '构图居中，背景虚化。'), '构图居中，背景虚化。'),
+            ('强调人物轮廓光', draft.replace('从两侧照亮人物，', '从两侧照亮人物，强调人物轮廓光，'), '强调人物轮廓光'),
+            ('把背景换成宫殿大厅，披风随风飘扬', draft.replace('雪夜古城街道，两侧木楼挂着灯笼，远处城楼轮廓清晰可见。', '宫殿大厅，红柱金瓦，殿门敞开。')
+             .replace('红色披风垂在身后。', '红色披风随风飘扬。'), '红色披风随风飘扬'),
+        )
+        for instruction, answer, kept in edits:
+            with self.subTest(instruction=instruction):
+                assistant, calls = service.PromptAssistant(), []
+                assistant.generate = lambda prompt, answer=answer, **kwargs: calls.append(prompt) or answer
+                result = assistant.optimize_prompt({'surface': 'art', 'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft,
+                                                    'requirements': instruction})
+                self.assertEqual(len(calls), 1)
+                self.assertIn(kept, result['positivePrompt'])
+
+    def test_posture_words_are_the_subjects_own(self):
+        for requirement in ('把背景换成地铁站', '把背景换成坐落在湖边的古镇', '背景换成骑楼街道', '让角色靠近镜头',
+                            '加上漂浮的花瓣环绕角色', '身边加一只盘旋的凤凰', '角色身边漂浮着花瓣'):
+            with self.subTest(requirement=requirement):
+                self.assertEqual(service.art_user_state_words(requirement), [])
+                self.assertIn('照图写姿态动作', service.art_role_reference_request(['subject'], requirement))
+        for requirement, words in (('让角色站在一只坐着的狗旁边', ['站']), ('让角色骑马', ['骑']), ('让角色靠在墙上', ['靠']),
+                                   ('猫咪漂浮在太空中', ['漂浮']), ('一只橘猫趴在窗台上晒太阳', ['趴']), ('角色站立，双手叉腰', ['站'])):
+            with self.subTest(requirement=requirement):
+                self.assertEqual(service.art_user_state_words(requirement), words)
+        # A place is no posture to repair in an enriched draft.
+        town = ('[风格设定]\n水彩插画风格，笔触柔润。\n\n[主体物品]\n{}\n\n[环境背景]\n{}\n\n'
+                '[光线与色彩]\n夕阳从西侧斜照，暖橙为主，辅以灰蓝。\n\n[拍摄参数]\n远景，平视，三分构图。')
+        for prompt, subject, scene in (('靠海的小镇，黄昏', '一座海边小镇，白墙红瓦的房屋沿坡排列。', '海港与石砌码头，远处灯塔。'),
+                                       ('未来空间站内部', '一座未来太空舱内部，环形走廊与控制台。', '舱壁金属面板，舷窗外是地球。')):
+            with self.subTest(prompt=prompt):
+                calls, _ = self.enrich(town.format(subject, scene), prompt=prompt)
+                self.assertEqual(len(calls), 1)
+
+    def test_a_missing_action_is_written_as_the_subjects_action(self):
+        text = ('[风格设定]\n国潮插画风格。\n\n[主体物品]\n红袍武将站立，手握长剑，面向前方。\n\n[环境背景]\n古城街道。\n\n'
+                '[光线与色彩]\n暖光。\n\n[拍摄参数]\n全身景别，正面视角。')
+        for requirement, written in (('让角色举起右手', '举起右手'), ('把主体图中的角色改成挥手打招呼', '挥手打招呼'),
+                                     ('第一张图的人物看向镜头', '看向镜头'), ('请让他转身回头看', '转身回头看')):
+            with self.subTest(requirement=requirement):
+                self.assertIn('[主体物品]\n红袍武将站立，手握长剑，面向前方，' + written + '。',
+                              service.art_write_missing_actions(text, requirement))
+
+    def test_an_enriched_draft_guesses_no_age_and_keeps_the_users_avoidance(self):
+        answer = ('[风格设定]\n日系动漫插画风格，线条细腻。\n\n[主体物品]\n{}\n\n[环境背景]\n海边礁石，远处海平线。\n\n'
+                  '[光线与色彩]\n夕阳从正前方照来，暖橙为主。\n\n[拍摄参数]\n中景，平视，构图居中。')
+        for subject in ('一个女孩坐在海边的礁石上看日落，约十二岁，黑色短发。', '一个看起来十几岁的女孩坐在海边的礁石上看日落，黑色短发。',
+                        '一个年约十来岁的女孩坐在海边的礁石上看日落，黑色短发。', '一个二十出头的女孩坐在海边的礁石上看日落，黑色短发。'):
+            with self.subTest(subject=subject):
+                calls, result = self.enrich(answer.format(subject), prompt='一个女孩坐在海边的礁石上看日落')
+                self.assertIn('[主体物品]\n一个女孩坐在海边的礁石上看日落，黑色短发。', result['positivePrompt'])
+        self.assertIn('年龄', calls[0][0])
+        # The user's own age stays.
+        _, result = self.enrich(answer.format('一个十六岁的女孩坐在海边的礁石上看日落，黑色短发。'), prompt='一个十六岁的女孩坐在海边的礁石上看日落')
+        self.assertIn('一个十六岁的女孩', result['positivePrompt'])
+        # The user's avoidance line stays in one call; the request adds no negatives of its own but keeps the user's.
+        calls, result = self.enrich(self.WRITTEN, prompt='一只橘猫趴在窗台上晒太阳，水彩风格。\n避免：文字、水印、多余的猫。')
+        self.assertEqual(len(calls), 1)
+        self.assertIn('\n避免：文字、水印、多余的猫。', result['positivePrompt'])
+        self.assertIn('也不添加用户没写的否定说法', calls[0][0])
 
     def test_the_role_reference_keeps_the_pictures_look_and_the_users_pose(self):
         text = ('[风格设定]\n国潮插画风格，线条刚劲有力，上色采用鲜明的红金对比\n\n'
