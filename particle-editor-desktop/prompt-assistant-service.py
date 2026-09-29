@@ -346,6 +346,17 @@ MINIMAX_H3_CHILD_AGE_FACT_PATTERN = re.compile(
     r"(?:1[0-7]|[0-9])\s*y\s*/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])",
     flags=re.I,
 )
+# A clue that has the 图生/首尾帧 pictures looked at: the words above plus other explicit child words (女童, 孩子,
+# 小学生…), never 女孩子/男孩子/孩子气, 女孩 or an adult age. The look, not this list, answers 未成年.
+MINIMAX_H3_YOUNG_CLUE_PATTERN = re.compile(
+    MINIMAX_H3_YOUNG_OUTPUT_PATTERN.pattern
+    + r"|女童|男童|(?<![女男])孩子(?!气)|小朋友|宝宝|小学生|初中生|幼儿园|小女孩|小男孩"
+    r"|(?<![一二三四五六七八九十百两零〇])(?:[一二三四五六七八九两]|十[一二三四五六七]?)\s*岁"
+    r"|(?<![a-z0-9_])(?:kids?|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|schoolchild(?:ren)?|"
+    r"bab(?:y|ies)(?![-\s]*(?:blue|pink|face|faced|oil|powder|doll|breath|shower))|kindergart(?:en|ner)s?|"
+    r"pre-?school(?:ers?)?|(?:elementary|primary|grade|middle)[-\s]*school(?:ers?|[-\s]+(?:students?|pupils?|kids?)))(?![a-z0-9_])",
+    flags=re.I,
+)
 MINIMAX_H3_SENSITIVE_REQUEST_NEGATION_PATTERN = re.compile(
     r"(?:不|不要|不得|禁止|避免|排除|不含|没有|无|勿|请勿|负面|负向|反向)"
     r"\s*[^，。；;,.!?！？]{0,12}$"
@@ -5351,7 +5362,7 @@ ART_SEMANTIC_FUSION_RULES = (
     "1. 修改要求优先。与修改冲突的旧描述要删除或改写，不能新旧并存；修改要求里的关键内容（如时间、天气、背景、画风、颜色）要在对应段落里用原词明确写出来。\n"
     "2. 修改场景时，把旧背景的描述换成新环境；时间、天气和整体色调保持底稿原样，修改要求提到时才改。\n"
     "3. 没被要求改变的内容全部保留：人物身份、人数、外貌、服饰、姿态动作、物品、画风和构图。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原有动作。\n"
-    "4. 不要新增底稿和修改要求都没有提到的人物、动物、年龄、发型、服饰、饰品、道具或特效，也不要换成修改要求没提到的画风；修改要求换了环境时，新环境可以补充与它相符的景物、陈设和氛围细节。\n"
+    "4. 不要新增底稿和修改要求都没有提到的人物、动物、年龄、发型、服饰、饰品、道具、植物、建筑或特效，也不要换成修改要求没提到的画风。\n"
     "5. 只输出最终完整提示词：不要分析过程、修改说明、新旧对比或负向提示词，也不要把修改要求原文或“用户附加要求”写进提示词。"
 )
 # Conditional rules go into the request only when the edit asks for them; listed on every request,
@@ -5369,7 +5380,7 @@ ART_FUSION_SCENE_CHANGE = r"(?:增加|添加|修改|更换|改为|改成|替换|
 
 # An empty requirement box still asks for work: enrich the draft instead of echoing it.
 ART_SEMANTIC_FUSION_AUTO_ENRICH = (
-    "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，在底稿的框架里补足具体视觉细节，至少覆盖材质纹理、光影过渡、空间层次、色彩关系中的两项，可以补充与画面相符的环境陈设和氛围，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词，禁止新增底稿没有的人物或换成别的场景。"
+    "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，只针对底稿已有对象补足具体视觉细节，至少覆盖材质纹理、光影过渡、空间层次、色彩关系中的两项，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词，禁止新增底稿没有的人物、道具或场景。"
 )
 
 # 单图反推产出的五段结构是用户认可的版式；提示词创作、提示词优化和多图反推统一对齐到它。
@@ -5761,7 +5772,7 @@ ART_CREATE_INSTRUCTION = (
     "1. 紧扣用户需求：需求里写明的主体、数量、动作、场景和画风必须保留，不要改成别的题材；动作和状态词（如站在、躺在、飞在、漂浮在）按原词写进 [主体物品]。\n"
     "2. 用户指定了画风就照用；没有指定时，选一种最适合这个题材的画风写明，不要混用互相矛盾的画风。\n"
     "3. 需求没写到的地方，只补充与题材相符的常见细节，每段一到三句，写能画出来的具体内容。\n"
-    "4. 可以补充与题材相符的道具、陈设、光影和氛围细节，让画面更丰富；不要添加需求以外的人物、动物、文字或标志，也不要添加与题材无关的发光、光晕、粒子、魔法等特效。\n"
+    "4. 不要添加需求以外的人物、动物、道具、文字或标志，也不要添加需求没提到的发光、光晕、粒子、魔法等特效。\n"
     "5. [拍摄参数] 按画面选景别：主体待在某个位置上（如站在屋顶、坐在树枝上）时用全景，主体完整入画并占画面的主要位置；"
     "只有画面本身是大场景（如整座城市、大片海面、连绵山脉）时才用远景，景深拉长；视角只写一种。\n"
     "6. [主体物品] 写画面的主要对象和它的外观（需求只写了场景时，写组成这个场景的几样主要景物，以及它们的形状、材质和颜色）；不写“高质量”“细节丰富”“精美”之类的空泛词，也不写否定说法。\n"
@@ -5815,14 +5826,12 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     time_look = ART_TIME_OF_DAY_LOOK[ART_TIME_OF_DAY_GROUPS.index(requested_time[0])] if requested_time else ""
     scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement))
     camera = ("写景别、视角与构图（景别按主体露出到哪里写：到脚写全身，到膝盖或大腿写七分身，到腰写中景，到胸写近景；视角照图中主体的朝向写，正面就写正面）；"
-              "图中背景确实模糊时才写景深。" + ("背景是按用户要求新写的环境，前中后景都写清楚，不写背景虚化。" if scene_change else ""))
+              "图中背景确实模糊时才写景深。")
     sources = [
         ("[风格设定]", f"只看{style}，{medium}，并写明整幅画面按这种画风重新绘制。只写这张图本身的画法与表面质感（笔触、颗粒、光泽、纸面），"
          f"不提它画的是什么，不拿它画的东西作比喻，也不写{subject}里主体的毛发、皮肤或背景。" if style
          else f"看{subject}，{medium}；只写画法，背景、光线、颜色和氛围写在后面几段。"),
         ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、发型、服装、道具和颜色、身边飘着或环绕的物件和特效"
-         # "剑身泛着寒光" came back for a red blade with gold patterns and paper talismans: the picture, not a stock phrase.
-         "（手里的兵器和道具照图写出颜色、花纹和上面贴着或挂着的东西，如剑身是什么颜色、刻着什么；服装照图写颜色和纹样；不用与图不符的套话）"
          # The lantern the user added took the sword's hand, and the sword was gone.
          + ("；图中主体手里原来拿着的道具照样写出、继续拿着，用户要求新拿的东西拿在另一只手里" if re.search(r"手持|拿着|握着|举着|提着|捧着", requirement) else "")
          + (f"；姿势按{pose}" if pose else "、姿态动作")
@@ -5852,9 +5861,6 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         # The night went into one section while [环境背景] kept 纯白色背景; the lantern took the sword's hand.
         "用户要求的改动在五段里都一致，哪一段都不再写回图片原来与它冲突的样子；每处只写一种，不写“月光或灯光”这样的二选一。",
         "用户没写左右就不写左右；新拿的东西拿在图中空着的手里，原来拿着的东西留在原来的手里。",
-        # "站在…中央" kept the picture's attack stride; "背景虚化" beside "近处清晰可见"; "光线柔和但对比强烈".
-        "用户要求了新的位置或姿势（站、坐、看向哪里）时照用户的写，不再写图中原来与它冲突的动作；五段之间不互相矛盾，光线的软硬和景深各只写一种。",
-        "在用户要求的范围里可以补充与画面相符的环境细节、光影和氛围，让画面更丰富；不加用户没要求的人物和文字。",
     ]
     return (
         "".join(f"图{index + 1}（{ART_REFERENCE_ROLES[role][0]}）：{QWEN3_CHAT_VISION_TOKEN}\n" for index, role in enumerate(roles))
@@ -6222,8 +6228,6 @@ def art_role_reference_cleanup(text: str, roles: list) -> str:
     """
 
     text = art_drop_section_mentions(text)
-    # "剑身泛着寒光" is a stock phrase that replaced a red, gold-patterned blade: a gleam the user did not ask for goes.
-    text = art_edit_section_lines(text, ("主体物品",), lambda line: art_edit_line_segments(line, lambda piece: bool(ART_STOCK_GLEAM.search(piece))))
     palette = "color" in roles or "style" in roles
     if "style" in roles:
         text = art_edit_section_lines(text, ("风格设定",), lambda line: art_edit_line_segments(
@@ -6243,7 +6247,6 @@ def art_role_reference_cleanup(text: str, roles: list) -> str:
     return text
 
 
-ART_STOCK_GLEAM = re.compile(r"(?:泛|闪)(?:着|出)?(?:寒光|冷光)|寒光(?:闪闪|凛凛|四射)")
 # [风格设定] is the drawing: a background, light, palette or mood there ("背景为纯白", "高饱和度的红金配色") fights the
 # sections that own them and the user's scene, time or colours. The user's own words ("霓虹配色") and a style name
 # ("厚涂光影的油画风格") stay; 光影 is a way of painting, not the light.
@@ -14244,7 +14247,7 @@ class PromptAssistant:
         # base_mode (T2VA/I2VA/FL2VA): the three official fields instead of 多参's six.
         from prompt_assistant.h3_prompt_enhance import (DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK, CAMERA_GLOSSARY, CAMERA_SPEED, CAMERA_AMPLITUDE,
                                                         PROGRAM_SENTENCES, SHOT_SIZE_WORDING, pinyin_like,
-                                                        camera_english, camera_move_clause, camera_wording, translation_flips, reference_layout)
+                                                        camera_english, camera_move_clause, camera_wording, translation_flips, unflip, reference_layout)
         check = ((lambda text, language=None: validate_h3_base_fields(text, base_mode, duration, language)) if base_mode else
                  (lambda text, language=None: validate_h3_reference(text, inventory, duration)))
         # 多参: one line per shot, as the official guide lays it out; the English follows the display's lines.
@@ -14371,7 +14374,8 @@ class PromptAssistant:
             pending = dict(batch)
             leftovers = {}
             # A complete translation that only turned a meaning around is kept in case every retry drops a placeholder
-            # ("TOKEN_0 走向 TOKEN_1" asked alone came back as "The character walks toward the other").
+            # ("TOKEN_0 走向 TOKEN_1" asked alone came back as "The character walks toward the other"); it is used turned
+            # back ("to the left" for 向右 -> "to the right"), never reversed.
             flipped = {}
             # A speed or direction the translation turned around is asked again with its meaning.
             hints = set()
@@ -14448,6 +14452,8 @@ class PromptAssistant:
                         hints.update(flips)
                         flipped.setdefault(key, candidate)
                         continue
+                    # The last, sampled answer ships with what it turned around turned back where it can be.
+                    candidate = unflip(original, candidate) or candidate if flips else candidate
                     translated[source_text] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], candidate.strip())
                     del pending[key]
                 # An English translation with a short Chinese phrase left in it
@@ -14461,9 +14467,9 @@ class PromptAssistant:
             for key in list(pending):
                 if key in leftovers:
                     patch_leftover(key, leftovers[key])
-                elif key in flipped:
-                    tokens = protected_fragments[pending[key]][1]
-                    translated[pending.pop(key)] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], flipped[key].strip())
+                elif key in flipped and unflip(protected_fragments[pending[key]][0], flipped[key]):
+                    original, tokens = protected_fragments[pending[key]]
+                    translated[pending.pop(key)] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], unflip(original, flipped[key]).strip())
             if pending:
                 # Every attempt dropped a tag ("TOKEN_0 走向 TOKEN_1" came back as "The character walks toward the other"):
                 # the tags are asked once more as names a translator keeps, then put back, instead of failing the plan.
@@ -14484,7 +14490,8 @@ class PromptAssistant:
                     candidate, (original, tokens) = (values.get(key) if isinstance(values, dict) else None), protected_fragments[pending[key]]
                     others = sorted(t for t in re.findall(r'TOKEN_\d+', original) if tokens[int(t[6:])] not in tagged[key])
                     if (not isinstance(candidate, str) or re.search(r'[㐀-鿿]', candidate) or sorted(re.findall(r'TOKEN_\d+', candidate)) != others
-                            or not all(re.search(rf'\b{names[n]}\b', candidate) for n in range(len(tagged[key])))):
+                            or not all(re.search(rf'\b{names[n]}\b', candidate) for n in range(len(tagged[key])))
+                            or translation_flips(original, candidate)):
                         continue
                     for n, tag in enumerate(tagged[key]):
                         candidate = re.sub(rf'\b{names[n]}\b', tag, candidate)
@@ -14655,7 +14662,8 @@ class PromptAssistant:
         # A subject taken from one picture looks exactly as that picture was
         # observed; the planner's own wording of it may drift into the event.
         plan = dict(plan, references=[dict(item) for item in plan.get('references', []) if isinstance(item, dict)])
-        style_only = lambda item: bool(re.match(r'\s*[^，,。；;]{0,16}(?:画风|风格)', str(item.get('description', ''))))
+        # "参考 <Picture 2> 的中国传统水墨画风格": the label and 参考/借用 are no subject before the style word.
+        style_only = lambda item: bool(re.match(r'[^，,。；;]{0,16}(?:画风|风格)', re.sub(r'<Picture [1-9]\d*>|参考|借用|采用|沿用|使用|\s', '', str(item.get('description', '')))))
         picture_subject = {}
         for item in plan['references']:
             sources = item.get('sources') or []
@@ -14908,10 +14916,18 @@ class PromptAssistant:
         # Notes about the action rather than the action ("动作结束，画面定格", "无声"), a conflict the user named none of
         # (a standoff, a weapon raised or pointed at the other subject: "剑格龙头正对枪尖", "枪尖与剑尖齐齐抬起至胸前"),
         # props and clothes no picture shows ("剑鞘" for a bare sword) and shadows under a light without any.
-        from prompt_assistant.h3_prompt_enhance import PHASE_NOTE, LEAD_LABELS, drop_clauses, drop_sides, face_the_approach, facing, written_turns
+        from prompt_assistant.h3_prompt_enhance import PHASE_NOTE, LEAD_LABELS, USER_FROZEN, cut_seconds, drop_clauses, requested_cut, drop_sides, face_the_approach, facing, written_turns
         colours = r'[红橙黄绿青蓝紫黑白灰金银棕褐粉]'
         worn = lambda word: [c for item in subjects for c in re.findall(colours + r'色?的?[^，,；;。]{0,2}' + word, str(item.get('description', '')))]
-        recoloured = lambda clause: any(worn(m[2]) and m[1] not in ''.join(worn(m[2])) for m in re.finditer(r'(' + colours + r')色?(长袍|袍|披风|铠甲|战甲|盔甲)', clause))
+        # A colour the user asked for ("换上黑色长袍", "黑袍法师") is no recolouring.
+        recoloured = lambda clause: any(worn(m[2]) and m[1] not in ''.join(worn(m[2])) and not re.search(m[1] + r'色?的?[^，,。；;]{0,2}' + m[2], requested)
+                                        for m in re.finditer(r'(' + colours + r')色?(长袍|袍|披风|铠甲|战甲|盔甲)', clause))
+        # A second or a colour the writer adds goes with its own words, never with the action they sit in ("在第2秒拔出长剑",
+        # "身穿黑色长袍从左侧走来"); the user's second stays in a beat, a cut's second is its shot mark and the cut its shot.
+        user_seconds = set(re.findall(r'第\s*([一二三四五六七八九十\d.]+)\s*秒', requested)) - {f'{second:g}' for second in cut_seconds(requested)}
+        trim = lambda text, beat=True: re.sub(r'(?:在|于)?第\s*([一二三四五六七八九十\d.]+)\s*秒(?:时|末|初|内|前|后)?[，,]?\s*',
+                                              lambda m: m[0] if beat and m[1] in user_seconds else '', re.sub(
+            r'(?:身穿|穿着|身披|披着)' + colours + r'色?的?(?:长袍|袍|披风|铠甲|战甲|盔甲)[，,]?\s*', lambda m: '' if recoloured(m[0]) else m[0], text))
         fight = r'对峙|交手|交锋|厮杀|对决|打斗|决斗'
         conflict = ('' if re.search(fight, requested) else '|' + fight + r'|静待回应|戒备|蓄势|严阵以待|对撞') + (
             '' if re.search(fight + r'|战斗|攻|刺|砍|劈|指向|对准|[举抬横挺架][^，,。；;]{0,3}[剑枪刀矛戟斧棍]', requested) else
@@ -14924,7 +14940,8 @@ class PromptAssistant:
         looks = {item['label']: str(item.get('description', '')).strip().rstrip('。') for item in subjects if item['label'] not in attribute_only}
         props = '|'.join(p for p in ('鞘', '披风', '斗篷', '头盔', '盾', '围巾', '面具', '帽', '背包') if p not in ''.join(looks.values()) + requested)
         shadowless = re.search(r'(?:无|没有|不见)[^，,。；;]{0,4}(?:阴影|影子)', fields.get('光线', ''))
-        note = lambda clause: (re.search(PHASE_NOTE + r'|动作(?:结束|完成)[。，,；;]?$|画面定格|定格[。，,；;]?$|^\s*无声(?:音)?[。，,；;]?$|第[一二三四五六七八九十\d]+秒' + conflict
+        freeze = '' if re.search(USER_FROZEN, requested) else r'|画面定格|定格[。，,；;]?$'
+        note = lambda clause: (re.search(PHASE_NOTE + r'|动作(?:结束|完成)[。，,；;]?$|^\s*无声(?:音)?[。，,；;]?$' + freeze + conflict
                                          + ('|' + props if props else '') + (r'|阴影|暗影|影子|投影' if shadowless else ''), clause) or recoloured(clause))
         # "两道披风" when only one subject wears a cloak.
         single = '|'.join(w for w in ('披风', '斗篷', '长袍', '铠甲') if sum(w in look for look in looks.values()) == 1)
@@ -14944,8 +14961,8 @@ class PromptAssistant:
                     kept.append(owner + ' ' + clause.lstrip() if owner and not lead else clause)
                     owner = ''
             return re.sub(r'[，,、；;]+(?=[。！？!?\n]|$)', '。', ''.join(kept)).strip(' ，,\n')
-        actions = [action for action in (counted(drop_owned(action, note)) for action in actions) if action]
-        shots = [(seconds, text) for seconds, text in ((seconds, tidy(counted(drop_owned(text, note)))) for seconds, text in shots if not stray(text)) if text]
+        actions = [action for action in (counted(drop_owned(trim(action), lambda clause: note(clause) or requested_cut(clause))) for action in actions) if action]
+        shots = [(seconds, text) for seconds, text in ((seconds, tidy(counted(drop_owned(trim(text, False), note)))) for seconds, text in shots if not stray(text)) if text]
         if fields.get('事件') and stray(fields['事件']):
             fields.pop('事件')
         elif fields.get('事件'):
@@ -15411,7 +15428,7 @@ class PromptAssistant:
         request = build_minimax_h3_writer_request(view, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines, same_frames, cut,
                                                   spoken_check)
         looked = None
-        if images and check and not spoken_check and minimax_h3_contains_affirmative_young(user_words):
+        if images and check and not spoken_check and MINIMAX_H3_YOUNG_CLUE_PATTERN.search(user_words):
             # A child the user names: the pictures are looked at before anything is written.
             looked = self.check_h3_frames(images)
             minimax_h3_block_sensitive_minor(user_words, "", *looked)
@@ -15467,7 +15484,7 @@ class PromptAssistant:
                 answered = output.rstrip()
                 output, minor, sensitive = minimax_h3_take_frame_check(output)
                 pictured = "\n".join(MINIMAX_H3_PICTURE_LINE.findall(output))
-                clue = (spoken_check or minimax_h3_contains_affirmative_young(user_words + "\n" + pictured)
+                clue = (spoken_check or MINIMAX_H3_YOUNG_CLUE_PATTERN.search(user_words + "\n" + pictured)
                         or minimax_h3_request_is_sensitive(pictured))
                 if looked is None and clue and output == answered:
                     # A clue without the writer's own check line: the pictures are looked at on their own.

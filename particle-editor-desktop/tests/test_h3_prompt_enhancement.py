@@ -648,7 +648,7 @@ class H3BaseLocalTest(unittest.TestCase):
         labels = lambda calls: [kwargs["trace_label"] for _, kwargs in calls]
         with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
             # Ordinary words and an ordinary answer: no age is judged, no extra look, one call.
-            for words in [CAT, "她在海边转身，望向远处", "女孩转身", "小女孩在卧室里转身"]:
+            for words in [CAT, "她在海边转身，望向远处", "女孩转身", "女孩子在海边转身", "他孩子气地笑着转身", "二十岁的女子转身"]:
                 with self.subTest(words=words):
                     result, calls = self.run_local([phases()], {**i2v, "currentPrompt": words})
                     self.assertEqual(labels(calls), ["minimaxH3PromptEnhance"])
@@ -669,6 +669,16 @@ class H3BaseLocalTest(unittest.TestCase):
                 assistant.optimize_prompt({"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, **young})
             self.assertEqual(seen, ["minimaxH3FrameCheck"])
             self.assertEqual(raised.exception.code, "h3-sensitive-minor-request-blocked")
+            # Every explicit child word is a clue, in the user's words or the writer's picture lines: a sensitive
+            # child picture is blocked as before, whatever word names the child.
+            for child in ["小女孩", "小男孩", "女童", "男童", "孩子", "小朋友", "宝宝", "小学生", "初中生", "幼儿园的孩子", "a little girl", "the kid"]:
+                with self.subTest(child=child):
+                    with self.assertRaises(service.VisualContractError) as raised:
+                        self.run_local(["未成年=有；敏感=有", phases()], {**i2v, "currentPrompt": child + "在卧室里转身"})
+                    self.assertIn(raised.exception.code, ["h3-sensitive-young-evidence-blocked", "h3-sensitive-minor-request-blocked"])
+                    with self.assertRaises(service.VisualContractError) as raised:
+                        self.run_local([phases().replace("橘猫趴在", child + "和橘猫趴在"), "未成年=有；敏感=有"], i2v)
+                    self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
             # A sensitive word in the writer's picture lines has the pictures looked at for the other half.
             bare = phases().replace("橘猫趴在", "裸露上身的人和橘猫趴在")
             result, calls = self.run_local([bare, "未成年=无；敏感=有"], i2v)
@@ -1053,8 +1063,8 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，背景是海浪声和海鸥叫声", None, ""), (None, "N/A", ["海浪声", "海鸥叫声"]))
         answer = phases().replace("\n约束", "\n声音：海浪拍岸声，风吹过窗台的轻响，远处传来钢琴音乐。\n约束")
         text = compile_action_phases(answer, "T2VA", 5, CAT, audio=(None, "N/A", ["海浪声", "海鸥叫声"]))
-        # A list of sounds reads as a sentence.
-        self.assertIn("overall_soundscape: 海浪拍岸声，随后传来风吹过窗台的轻响。海鸥叫声清晰可闻。\n\nnon_diegetic_music: N/A", text)
+        # A list of sounds reads as a sentence of sounds heard together (a list says no order: never 随后).
+        self.assertIn("overall_soundscape: 海浪拍岸声伴着风吹过窗台的轻响。海鸥叫声清晰可闻。\n\nnon_diegetic_music: N/A", text)
         sentence = compile_action_phases(answer.replace("声音：海浪拍岸声，", "声音：海浪拍打着礁石，"), "T2VA", 5, CAT, audio=(None, "N/A", []))
         self.assertIn("overall_soundscape: 海浪拍打着礁石，风吹过窗台的轻响。\n", sentence)
         self.assertIn("\n声音：用一两句完整的话写画面里听得到的环境声和动作声", service.build_minimax_h3_writer_request(CAT, "", "T2VA", 5))
@@ -1316,7 +1326,11 @@ class H3UserWordsTest(unittest.TestCase):
         # ("脚跟上" as a heel) keeps its count.
         self.assertEqual(drop_sides(["<Subject 1> 右手握枪，左手抱拳；<Subject 2> 右手握剑。<Subject 1> 与 <Subject 2> 左脚先迈出，右脚跟上"], "抱拳后并肩走"),
                          ["<Subject 1> 一只手握枪，另一只手抱拳；<Subject 2> 一只手握剑。<Subject 1> 与 <Subject 2> 一只脚先迈出，另一只脚跟上"])
-        self.assertEqual(drop_sides(["左脚迈出，右脚跟上，左脚跟上"], "走"), ["一只脚迈出，另一只脚跟上，同一只脚跟上"])
+        self.assertEqual(drop_sides(["左脚迈出，左脚跟上，右脚跟上"], "走"), ["一只脚迈出，同一只脚跟上，另一只脚跟上"])
+        # A first side named again after the other one could be either: that pair keeps its sides, the rest still go.
+        self.assertEqual(drop_sides(["左脚迈出，右脚跟上，左脚跟上"], "走"), ["左脚迈出，右脚跟上，左脚跟上"])
+        self.assertEqual(drop_sides(["武士右手持剑，左手握拳。", "右手将剑向前刺出，右脚踏前。", "左手松开，右手收剑。"], "武士刺剑后收剑"),
+                         ["武士右手持剑，左手握拳。", "右手将剑向前刺出，一只脚踏前。", "左手松开，右手收剑。"])
         self.assertEqual(drop_sides(["她右肩的背带滑落，左手抽出水壶"], "卸下背包"), ["她一侧肩膀的背带滑落，一只手抽出水壶"])
         self.assertEqual(drop_sides(["右手举刀，镜头向左摇"], "举刀劈砍"), ["一只手举刀，镜头向左摇"])
         self.assertEqual(drop_sides(["右手举刀"], "右手举刀向前劈砍"), ["右手举刀"])
@@ -1360,6 +1374,9 @@ class H3UserWordsTest(unittest.TestCase):
         self.assertEqual(translation_flips("镜头切到近景", "The camera cuts to a close-up."), ["近景 means medium close-up"])
         self.assertEqual(translation_flips("镜头切到近景", "The camera cuts to a medium close-up."), [])
         self.assertEqual(translation_flips("远景中女孩奔跑", "A full shot of the girl running."), ["远景 means wide shot"])
+        # A spear's parts in a chunk without its scene came back as a gun; "松开枪柄" holds no 开枪, a pistol is a gun.
+        self.assertEqual(translation_flips("左手松开枪柄，枪尖轻触地面", "The left hand releases the gun grip."), ["枪 here is a spear, never a gun"])
+        self.assertEqual(translation_flips("警察拔出手枪，枪口对准前方", "The officer draws his gun."), [])
         self.assertEqual(PROGRAM_SENTENCES["画面从 <Picture 1> 的位置与构图开始。"], "The shot begins in the position and framing established by <Picture 1>.")
 
     def test_the_english_copy_is_put_in_the_official_form(self):
@@ -1376,6 +1393,9 @@ class H3UserWordsTest(unittest.TestCase):
         self.assertEqual(official_english("subject_definitions:\n<Subject 1>: Male character, short black hair.\n<Subject 2>: Erlang Shen, a god."),
                          "subject_definitions:\n<Subject 1>: a male character, short black hair.\n<Subject 2>: Erlang Shen, a god.")
         self.assertEqual(official_english("She says: <d>[English] the 3nd</d>"), "She says: <d>[English] the 3nd</d>")
+        # A name keeps its capital and takes no article ("Nezha", "Zhong Kui"); a common word is lowered.
+        self.assertEqual(official_english("<Subject 1>: Nezha in <Picture 1>, with a red sash\n[Shot 1] 3D CG. Zhong Kui glares ahead. The goddess sits."),
+                         "<Subject 1>: Nezha in <Picture 1>, with a red sash\n[Shot 1] 3D CG, Zhong Kui glares ahead. The goddess sits.")
         self.assertEqual(official_english("[Shot 1] Anime style. <Subject 1> runs.", opening_style=False), "[Shot 1] Anime style. <Subject 1> runs.")
         # A tag that opens its sentence with a description after it is the subject, not a place or a noun's name.
         self.assertEqual(official_english("The background is white. At <Subject 1>, a man with black hair, stands still. The character <Subject 2> bows.", opening_style=False),
@@ -1388,6 +1408,12 @@ class H3UserWordsTest(unittest.TestCase):
                                           "<Subject 3> raises his hand. <Subject 1> meets <Subject 3>, her hand up. (S1) says: <d>[English] her book</d>", definitions),
                          "<Subject 2> turns his body, his beard trembling; <Subject 1> stops before <Subject 2>, who stares at him. She smiles. "
                          "<Subject 3> raises her hand. <Subject 1> meets <Subject 3>, her hand up. (S1) says: <d>[English] her book</d>")
+        # A robot and a cat without a sex are "it".
+        pets = "subject_definitions:\n<Subject 1>: <Picture 1> 中的机器人，头部呈圆顶状\n<Subject 2>: <Picture 2> 中的橘猫\n<Subject 3>: <Picture 3> 中的女子"
+        self.assertEqual(subject_pronouns("<Subject 1> strokes <Subject 2> with her left hand; <Subject 2> lowers his head toward her. "
+                                          "<Subject 1> looks at <Subject 3>, her hand up.", pets),
+                         "<Subject 1> strokes <Subject 2> with its left hand; <Subject 2> lowers its head toward it. "
+                         "<Subject 1> looks at <Subject 3>, her hand up.")
 
     def test_a_pair_the_translator_folds_into_the_two_is_put_back(self):
         # "TOKEN_0 与 TOKEN_1 面对面抱拳行礼" came back as "The two face each other ..." on every attempt.
@@ -1421,9 +1447,14 @@ class H3UserWordsTest(unittest.TestCase):
         assistant.generate = generate
         pair = json.loads(assistant.translate_h3_base(fields, "I2VA", 5)["positivePrompt"])
         # 近景 is written as the official medium close-up without asking again; the retries lost <Picture 1>, so the
-        # first complete answer stands instead of failing the whole compile.
+        # first complete answer stands instead of failing the whole compile, with its reversed speed turned back.
         self.assertEqual([list(r) for r in requests], [["0", "1", "2"], ["0"], ["0"]])
-        self.assertIn("the light points in <Picture 1> flow", pair["modelPrompt"])
+        self.assertIn("the light points in <Picture 1> flow and gradually speed up.", pair["modelPrompt"])
+        self.assertNotIn("slow down", pair["modelPrompt"])
+        # Only a reversal that can be turned back word for word is; a camera pushed in for 拉远 is not shipped.
+        from prompt_assistant.h3_prompt_enhance import unflip
+        self.assertEqual(unflip("金币消失后，TOKEN_0 向右转身。", "After the coin vanishes, TOKEN_0 turns to the left."), "After the coin vanishes, TOKEN_0 turns to the right.")
+        self.assertEqual(unflip("镜头缓慢拉远。", "The camera pushes in at slow speed."), "")
         self.assertIn("cuts to a medium close-up as the girl walks", pair["modelPrompt"])
 
     def test_a_long_shot_is_translated_a_few_sentences_at_a_time(self):
@@ -1459,7 +1490,7 @@ class H3UserWordsTest(unittest.TestCase):
         marked = retention_appearances(text)
         self.assertIn("<Subject 1> (appears in [Shot 1]): fully_preserved - hair\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - body", marked)
         self.assertEqual(validate_reference(marked, "Available resource labels: <Picture 1>; <Picture 2>", 5), marked)
-        self.assertEqual(action_sounds("<Subject 1> 从远处缓步走向 <Subject 2>，金色铠甲，手持长枪"), "脚步声，随后传来甲片碰撞声和兵器的金属轻响。")
+        self.assertEqual(action_sounds("<Subject 1> 从远处缓步走向 <Subject 2>，金色铠甲，手持长枪"), "脚步声伴着甲片碰撞声和兵器的金属轻响。")
         self.assertNotEqual(action_sounds("<Subject 1> 坐着"), "与画面动作一致的自然环境声和动作声。")
         # Whole words of the scene and actions: the style sentence is no wind, a subject's nails no armour.
         self.assertEqual(action_sounds("视频采用写实电影风格。\n[Shot 1] 场景是温室。<Subject 1> 走向 <Subject 2>。"), "脚步声清晰可闻。")
@@ -1508,6 +1539,18 @@ class H3UserWordsTest(unittest.TestCase):
         # A size the user asks for after a cut is that shot's, not the opening's.
         cut = answer.replace("约束：无", "镜头2（第3秒）：切到近景，机器人继续挥手\n约束：无")
         self.assertNotIn("中景", compile_action_phases(cut, "I2VA", 5, "机器人抬手向镜头挥手，第3秒切到中景", cut=True).split("[Shot 2]")[0])
+        from prompt_assistant.h3_prompt_enhance import picture_subject, size_first
+        # Weather, light or a camera move before the subject is no subject: the subject the first frame shows is.
+        self.assertEqual(picture_subject("三维渲染，微风轻拂，女神闭眼静坐于台阶上"), "三维渲染，微风轻拂，<Picture 1> 中的女神闭眼静坐于台阶上")
+        self.assertEqual(picture_subject("写实电影风格，雨夜，她撑伞站在街头"), "写实电影风格，雨夜，她撑伞站在街头")
+        # Only a size that opens its clause or that the camera films moves; a view of the city stays; clauses stay apart.
+        self.assertEqual(size_first("写实电影风格，全景镜头下，一只橘猫趴在窗台上，镜头固定"), "写实电影风格，全景，一只橘猫趴在窗台上，镜头固定")
+        for view in ("写实电影风格，一只橘猫趴在窗台上的全景画面，镜头固定", "写实电影风格，女孩站在天台上，身后是城市的全景，镜头固定"):
+            self.assertEqual(size_first(view), view)
+        # A quoted line is the user's word for word, 太极 keeps its 极, and "几乎看不见的" goes with its 、.
+        calm = compile_action_phases("概述：写实电影风格，老人站在公园里，镜头固定\n起始：老人打起太极轻推双掌\n递进：掌心画出连续的、几乎看不见的弧线\n"
+                                     "收束：老人说：“这只手好累。”\n约束：无", "T2VA", 5, "老人打太极，说：“这只手好累。”")
+        self.assertIn("老人打起太极轻推双掌。掌心画出连续的弧线。老人说：“这只手好累。”", calm)
 
     def test_a_cut_keeps_the_users_shots_and_the_state_the_user_holds(self):
         from prompt_assistant.h3_prompt_enhance import asked_shots

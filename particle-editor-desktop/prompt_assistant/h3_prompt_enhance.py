@@ -254,6 +254,10 @@ FLIPS = (
     (r"中景", r"近景|特写|全景|远景", r"\bclose-?up\b|\bwide shot\b|\bfull shot\b", "中景 means medium shot", False),
     (r"全景", r"远景", r"\bwide shot\b|\bpanoram", "全景 means full shot", False),
     (r"远景", r"全景", r"\bfull shot\b", "远景 means wide shot", False),
+    # A spear's parts in a chunk without its scene ("左手松开枪柄") came back as a gun.
+    # "松开枪柄" holds no 开枪.
+    (r"长枪|红缨枪|枪[杆尖头缨柄法]|出枪", r"[手步机猎水开]枪(?![杆尖头缨柄法])|枪械|枪管|枪口|枪声|子弹|射击", r"\bgun(?: barrel)?s?\b",
+     "枪 here is a spear, never a gun", False),
 )
 SHOT_SIZE_WORDING = "特写 -> close-up; 近景 -> medium close-up; 中景 -> medium shot; 全景 -> full shot; 远景 -> wide shot"
 # One pinyin syllable; "Kuokou" for 壶口 is two of them, one per character.
@@ -273,6 +277,23 @@ def translation_flips(chinese, english):
     return [hint for zh, allowed, flipped, hint, camera in FLIPS
             if re.search(zh, camera_zh if camera else chinese) and not re.search(allowed, camera_zh if camera else chinese)
             and re.search(flipped, camera_en if camera else english, re.I)]
+
+
+FLIP_SWAPS = {"left": "right", "right": "left", "slow": "speed", "speed": "slow", "slower": "faster", "faster": "slower",
+              "down": "up", "up": "down", "decelerat": "accelerat", "accelerat": "decelerat", "gun barrel": "spear shaft", "gun": "spear", "guns": "spears"}
+
+
+def unflip(chinese, english):
+    """A translation that turned left/right, a speed or up/down around (or made a spear a gun), turned back word for word
+    in the flagged words ("turns to the left" for 向右转身); '' when a flip is left (the caller fails rather than ship it)."""
+    def swap(m):
+        return re.sub(r"\b(?:left|right|slow|speed|slower|faster|down|up|gun barrel|guns?)\b|decelerat|accelerat",
+                      lambda w: FLIP_SWAPS[w[0].lower()].capitalize() if w[0][0].isupper() else FLIP_SWAPS[w[0].lower()], m[0], flags=re.I)
+    for zh, allowed, flipped, hint, camera in FLIPS:
+        if hint in translation_flips(chinese, english):
+            english = "".join(re.sub(flipped, swap, part, flags=re.I) if not camera or re.search(r"\bcamera\b", part, re.I) else part
+                              for part in re.split(r"((?<=[.;!?])\s+)", english))
+    return "" if translation_flips(chinese, english) else english
 
 
 def camera_wording(chinese, english):
@@ -310,10 +331,15 @@ def official_english(text, opening_style=True):
         number = int(m[1])
         return m[1] + ("th" if 10 <= number % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(number % 10, "th"))
 
+    # A name keeps its capital and takes no article ("Nezha", "Zhong Kui"): only a word the text also writes in lower
+    # case, or a common opening word, is lowered.
+    common = lambda word: re.fullmatch(r"(?:the|an?|male|female|young|old|elderly|man|woman|girl|boy|robot|cat|dog|character|person|figure|"
+                                       r"warrior|she|he|it|they|two|both|each)", word.lower()) or re.search(rf"\b{word.lower()}\b", str(text or ""))
+
     def opening(m):
         if re.sub(rf"\b(?:{STYLE_EN})\b|[,\s-]", "", m[2], flags=re.I):
             return m[0]
-        following = m[3] if re.match(r"(?:Picture|I\b|<)", m[3]) else m[3][0].lower() + m[3][1:]
+        following = m[3] if re.match(r"(?:Picture|I\b|<)", m[3]) or not common(re.match(r"\w*", m[3])[0]) else m[3][0].lower() + m[3][1:]
         return m[1] + re.sub(r"\s+style$", "", m[2].strip()) + ", " + following
     parts = re.split(r'(<d>[\s\S]*?</d>|"[^"\n]*"|“[^”\n]*”)', str(text or ""))
     for i in range(0, len(parts), 2):
@@ -326,18 +352,20 @@ def official_english(text, opening_style=True):
         part = re.sub(r"\b[Tt]he (?:character|figure|subject|warrior|man|woman) (<Subject [1-9]\d*>)", r"\1", part)
         # "<Subject 1> 另一只手松开枪柄" came back as "<Subject 1> The other hand releases": the limb is the subject's.
         part = re.sub(r"(<Subject [1-9]\d*>) (?:The|A|An|One) ((?:other |same )?(?:hand|arm|foot|leg|paw|shoulder|eye)s?)\b", r"\1's \2", part)
-        parts[i] = re.sub(r"(?m)^(<Subject [1-9]\d*>(?: \(S\d+\))?:[ \t]*)(?!(?:A|An|The)\b)([A-Z])(?=[a-z]+(?: [a-z]|,))",
-                          lambda m: m[1] + ("an " if m[2] in "AEIOU" else "a ") + m[2].lower(), part)
+        parts[i] = re.sub(r"(?m)^(<Subject [1-9]\d*>(?: \(S\d+\))?:[ \t]*)(?!(?:A|An|The)\b)([A-Z][a-z]+)(?= [a-z]|,)",
+                          lambda m: m[1] + ("an " if m[2][0] in "AEIOU" else "a ") + m[2].lower() if common(m[2]) else m[0], part)
     return "".join(parts)
 
 
 def subject_pronouns(english, display):
     """The translator guesses pronouns a few sentences at a time ("<Subject 2> turns her body, her beard trembling" for a
-    bearded man): a sentence or clause about subjects of one sex, as the Chinese definitions name them, takes theirs."""
+    bearded man): a sentence or clause about subjects of one sex, as the Chinese definitions name them, takes theirs; a
+    robot or an animal without one is "it" ("strokes the cat with her left hand" for a robot)."""
     sex = {}
     # The definitions come first; the retention lines after them name no sex.
     for m in re.finditer(r"(?m)^(<Subject [1-9]\d*>)\s*[:：](.*)$", str(display or "")):
-        sex.setdefault(m[1], "m" if "男" in m[2] and "女" not in m[2] else "f" if "女" in m[2] and "男" not in m[2] else "")
+        sex.setdefault(m[1], "m" if "男" in m[2] and "女" not in m[2] else "f" if "女" in m[2] and "男" not in m[2] else "n" if "男" not in m[2]
+                       and "女" not in m[2] and re.search(r"机器人|机械|机甲|猫|狗|犬|鸟|鱼|马|兔|熊|龙|蛇|狐|狼|虎|狮|鹿|动物|宠物|怪兽", m[2]) else "")
 
     def clause(m):
         kinds = {sex.get(label, "") for label in re.findall(r"<Subject [1-9]\d*>", m[0])}
@@ -351,6 +379,11 @@ def subject_pronouns(english, display):
             text = re.sub(r"\b([Hh])e\b", lambda n: ("S" if n[1] == "H" else "s") + "he", text)
             text = re.sub(r"\bhimself\b", "herself", text)
             text = re.sub(r"\b([Hh])is\b|\bhim\b", lambda n: (n[1] or "h") + "er" if n[1] else "her", text)
+        elif kinds == {"n"}:
+            text = re.sub(r"\b(?:her|him)self\b", "itself", text)
+            text = re.sub(r"\b(?:([Hh])er(?=\s+(?!(?:and|as|or|with|in|on|at|to|from|while|who|that|the|a|an)\b)[a-z])|([Hh])is)\b",
+                          lambda n: ("I" if n[0][0].isupper() else "i") + "ts", text)
+            text = re.sub(r"\b(?:[Ss]he|[Hh]e|[Hh]er|[Hh]im)\b", lambda n: "It" if n[0][0].isupper() else "it", text)
         return text
     parts = re.split(r'(<d>[\s\S]*?</d>|"[^"\n]*"|“[^”\n]*”)', str(english or ""))
     return "".join(part if i % 2 else re.sub(r"[^.;\n]+[.;]?", clause, part) for i, part in enumerate(parts))
@@ -911,7 +944,7 @@ def action_sounds(text, clothed=True):
             return sound_sentence(heard[0])
         return "，".join(heard) + ("，伴随着" + "和".join(found[:3 - len(heard)]) if len(heard) < 3 and found else "") + "。"
     found = found[:3]
-    # Sounds that follow one another, as sound_sentence writes them ("... can be heard" read as a meta frame).
+    # Sounds heard together, as sound_sentence writes them ("... can be heard" read as a meta frame).
     return sound_sentence("、".join(found)) if found else "动作带起轻微的衣料摩擦声。" if clothed else "动作带起轻微的声响。"
 
 
@@ -1279,15 +1312,15 @@ def within_limits(clause, limits):
 
 
 def sound_sentence(text):
-    """"A声，B轻响" reads as one sentence of sounds that follow one another: "A声响起，随后传来B轻响。" (English "A ...,
-    followed by B ..."), never "可以听到…" ("... can be heard")."""
+    """"A声，B轻响" reads as one sentence of sounds heard together, the footsteps and the armour of one walk: "A声伴着B轻响。"
+    (English "A ... accompanied by B ..."); a list says no order, so never "随后", and never "可以听到…" ("... can be heard")."""
     clauses = [c.strip() for c in re.split(r"[，,、；;]", re.sub(r"[。.！!]+$", "", str(text or "").strip())) if c.strip()]
     if (not clauses or re.search(r"[。.！!？?]", "".join(clauses)) or not all(re.search(rf"(?:{SOUND_NOUN})$", c) for c in clauses)
             or re.search(r"发出|传来|响起|作响|回荡|听到|听见", "".join(clauses))):
         return text
     if len(clauses) == 1:
         return clauses[0] + "清晰可闻。"
-    return clauses[0] + "，随后传来" + ("、".join(clauses[1:-1]) + "和" if len(clauses) > 2 else "") + clauses[-1] + "。"
+    return clauses[0] + "伴着" + ("、".join(clauses[1:-1]) + "和" if len(clauses) > 2 else "") + clauses[-1] + "。"
 
 
 # Where a speaker talks; the line goes after that sentence.
@@ -1487,8 +1520,9 @@ def write_missing_actions(texts, user_text, overview, names):
 # Left and right the user never wrote, on a limb that acts or holds ("右手持剑", "左臂抬起"): the small model mirrors
 # them. Each subject's pair of limbs counts on its own (a hand and its arm, a foot and its leg): the first side named
 # becomes 一只, the other 另一只, and the first side named again the limb alone ("手挥动"), or 同一只 where the bare limb
-# would fuse with the next word ("脚跟上" reads as a heel); never the demonstrative "这只". A direction or place
-# (向左转身, 走到右侧, 位于左侧) and words like 右手边 or 左眼角 stay.
+# would fuse with the next word ("脚跟上" reads as a heel); never the demonstrative "这只". A pair whose first side comes
+# back after the other was named ("右手持剑，左手握拳，右手收剑") keeps its sides: "手收剑" could be either. A direction
+# or place (向左转身, 走到右侧, 位于左侧) and words like 右手边 or 左眼角 stay.
 LIMB = r"手臂|胳膊|手掌|手腕|手|臂|前爪|后爪|爪子|爪|腿|脚|肩膀|肩|耳朵|耳|眼睛|眼"
 SIDED = re.compile(rf"(?<![左右])([左右])({LIMB})(?![边侧角旁方])")
 LIMB_PAIR = {"手臂": "手", "胳膊": "手", "手掌": "手", "手腕": "手", "腿": "脚", "爪子": "爪"}
@@ -1499,11 +1533,17 @@ LEAD_LABELS = r"\s*(?:然后|随后|接着|同时|最后|最终)?\s*(<Subject [1
 def drop_sides(parts, user_text):
     if re.search(r"[左右]", str(user_text or "")):
         return parts
-    first, owner = {}, [""]
+    first, both, mixed, owner = {}, set(), set(), [""]
 
-    def side(match):
+    def side(match, count=False):
         part = {"臂": "手臂", "肩": "肩膀", "耳": "耳朵", "眼": "眼睛", "爪": "爪子"}.get(match[2], match[2])
         key = (owner[0], LIMB_PAIR.get(part, part))
+        if count:
+            first.setdefault(key, match[1])
+            (both if match[1] != first[key] else mixed if key in both else set()).add(key)
+            return match[0]
+        if key in mixed:
+            return match[0]
         # A shoulder is on a side ("一侧肩膀"), a leg is 条; hands, paws and eyes are counted with 只.
         words = ("另一侧", "同一侧", "一侧") if part == "肩膀" else ("另一条", "同一条", "一条") if part == "腿" else ("另一只", "同一只", "一只")
         if key not in first:
@@ -1512,11 +1552,17 @@ def drop_sides(parts, user_text):
         fuses = re.match(r"[心背指掌腕臂势套跟尖底踝印角神皮眶珠弯部]", match.string[match.end():match.end() + 1])
         return (words[0] if match[1] != first[key] else words[1] if fuses or part == "肩膀" else "") + part
 
-    def clause(text):
-        lead = re.match(LEAD_LABELS, text)
-        owner[0] = re.sub(r"\s+", "", lead[1]) if lead else owner[0]
-        return text if camera_moves(text) else SIDED.sub(side, text)
-    return [map_clauses(part, clause) for part in parts]
+    def run(change):
+        owner[0] = ""
+
+        def clause(text):
+            lead = re.match(LEAD_LABELS, text)
+            owner[0] = re.sub(r"\s+", "", lead[1]) if lead else owner[0]
+            return text if camera_moves(text) else SIDED.sub(change, text)
+        return [map_clauses(part, clause) for part in parts]
+    run(lambda match: side(match, True))
+    first.clear()
+    return run(side)
 
 
 # Put down or taken off ("将水壶放回原位", "背包从双肩卸下"): a later "水壶仍握在左手" holds what is gone.
@@ -1598,33 +1644,39 @@ PLACE_OPENING = (r"^(?:在|从|于|当|画面|镜头|场景|背景|前景|远处
 
 def picture_subject(overview):
     """"三维渲染，女神闭眼坐于台阶" -> "三维渲染，<Picture 1> 中的女神闭眼坐于台阶": the opening's subject is the one the
-    first frame shows (official I2V "the young woman shown in <Picture 1>"). An opening that does not start with its
-    subject stays as it is."""
+    first frame shows (official I2V "the young woman shown in <Picture 1>"). A size, place, weather or light clause before
+    it ("中景", "温室中", "微风轻拂", "阴天", "随着镜头缓缓展开") is no subject; an opening without one stays as it is."""
     clauses = re.findall(r"[^，,。；;]+[，,。；;]?", str(overview or ""))
     i = 1 if clauses and re.search(STYLE_WORDS, clauses[0]) and len(re.sub(r"[，,。；;\s]", "", clauses[0])) <= 12 else 0
-    # A shot size the user asked for or a place stands before the subject ("三维渲染，中景，…", "三维渲染，温室中，…").
-    i += 1 if i < len(clauses) and re.fullmatch(rf"\s*(?:{SHOT_SIZE})[，,。；;]?", clauses[i]) else 0
-    i += 1 if i + 1 < len(clauses) and re.fullmatch(r"\s*(?:在|于)?[^，,。；;在于坐站躺趴蹲立走跑跳]{1,6}[中里内上][，,]", clauses[i]) else 0
-    if i >= len(clauses) or re.search(STYLE_WORDS, clauses[i]):
-        return overview
-    head = re.sub(r"^(?:一只|一个|一位|一名|一头|一条|一匹)", "", clauses[i].lstrip())
-    if not re.match(HAN, head) or re.match(PLACE_OPENING, head):
-        return overview
-    clauses[i] = "<Picture 1> 中" + ("" if "的" in head[:7] else "的") + head
-    return "".join(clauses)
+    for j in range(i, min(len(clauses), i + 4)):
+        clause = clauses[j].strip().rstrip("，,。；;")
+        noun, head = clause_noun(clause), re.sub(r"^(?:一只|一个|一位|一名|一头|一条|一匹)", "", clause)
+        if re.search(STYLE_WORDS, clause) or not re.match(HAN, head) or re.match(r"[他她它我你以用被把将让使]", head):
+            break
+        if (re.search(r"^(?:随着|伴随|伴着)|[风雨雪雾云夜天光色影]$", noun or head) or not noun and (
+                len(head) <= 4 or re.search(r"[上中里内边旁前下]$", head) and not re.search(r"[站坐躺趴蹲走跑跳立飞游]", head))):
+            continue
+        if not noun and re.match(PLACE_OPENING, head):
+            break
+        clauses[j] = "<Picture 1> 中" + ("" if "的" in head[:7] else "的") + re.sub(r"^\s*(?:一只|一个|一位|一名|一头|一条|一匹)?", "", clauses[j], 1)
+        return "".join(clauses)
+    return overview
 
 
 def size_first(overview):
     """The shot size opens the composition right after the style ("写实电影风格，全景，一只橘猫坐在窗台上"), as the official
-    "Live-action, cinematic, a full shot frames ..." does, not tacked onto the camera ("全景镜头固定拍摄")."""
-    size = re.search(rf"({SHOT_SIZE})(?:画面|构图)?(?:[，,]\s*|(?=镜头)|(?=[。；;]|$))", str(overview or ""))
+    "Live-action, cinematic, a full shot frames ..." does, not tacked onto the camera ("全景镜头固定拍摄"). Only a size
+    that opens its clause ("全景镜头下，…" with its 镜头下) or is what the camera films ("固定镜头拍摄全景") moves; "城市的全景"
+    is a view, not a framing."""
+    size = re.search(rf"(?:^|(?<=[，,。；;]))\s*({SHOT_SIZE})(?:(?:画面|构图|镜头下)(?=[，,。；;]|$))?(?:[，,]\s*|(?=镜头)|(?=[。；;]|$))"
+                     rf"|(?<=拍摄|呈现)({SHOT_SIZE})(?:画面|构图)?(?=[，,。；;]|$)", str(overview or ""))
     if not size:
         return overview
     rest = re.sub(r"[，,]+(?=[。；;]|$)", "", overview[:size.start()] + overview[size.end():]).strip("，, ")
     clauses = re.findall(r"[^，,。；;]+[，,。；;]?", rest)
     i = 1 if clauses and re.search(STYLE_WORDS, clauses[0]) and len(re.sub(r"[，,。；;\s]", "", clauses[0])) <= 12 else 0
-    head = "".join(clauses[:i])
-    return head + ("" if not head or re.search(r"[，,]$", head) else "，") + size[1] + "，" + "".join(clauses[i:])
+    head, tail = "".join(clauses[:i]).rstrip("，,。；; "), "".join(clauses[i:])
+    return head + ("，" if head else "") + (size[1] or size[2]) + ("，" + tail if tail else "。")
 
 
 def one_subject(text, subjects, user_text):
@@ -1788,8 +1840,11 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     overview, phases, constraints = sided[0], sided[1:1 + len(phases)], sided[1 + len(phases):]
     # The writer's own demonstrative on a limb ("这只手向镜头挥动", "女神这只手") reads as a stray pointer; the limb stays.
     # "极小幅度" and "几乎看不见的轨迹" ask for no motion at all: a gentle move is a small one (official "with small amplitude").
-    gentle = lambda text: re.sub(r"极(?=小(?:的)?幅|轻|微)", "", re.sub(r"幅度极小", "幅度很小", re.sub(r"极慢", "缓慢", text)))
-    phases = [re.sub(r"几乎(?:看不见|不可见|察觉不到)的?", "", gentle(re.sub(rf"(?<!另)[这那][只条](?={LIMB})", "", p))) for p in phases]
+    # A quoted line is the user's, word for word; 太极 and 北极 keep their 极.
+    gentle = lambda text: re.sub(r"(?<![太北南积登])极(?=小(?:的)?幅|轻|微)", "", re.sub(r"幅度极小", "幅度很小", re.sub(r"(?<![太北南积登])极慢", "缓慢", text)))
+    own = lambda text: re.sub(r"(?:、|而|且)?几乎(?:看不见|不可见|察觉不到)的?", "", gentle(re.sub(rf"(?<!另)[这那][只条](?={LIMB})", "", text)))
+    phases = ["".join(part if i % 2 else own(part) for i, part in enumerate(re.split(r'(<d>[\s\S]*?</d>|“[^”\n]*”|"[^"\n]*")', p)))
+              for p in phases]
     if not re.search(r"仰|后倾|后靠", user_text):
         leaned = [drop_matching_clauses(p, LEAN_BACK) for p in phases]
         phases = [kept if has_text(kept) else p for kept, p in zip(leaned, phases)]

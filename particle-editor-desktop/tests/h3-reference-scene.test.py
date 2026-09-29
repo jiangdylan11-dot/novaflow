@@ -308,6 +308,34 @@ class SceneTest(unittest.TestCase):
         self.assertIn('镜头切至近景，<Subject 1>，那位黑发束起、身穿金色铠甲的男性角色，停在离 <Subject 2> 半步远处。', result['description'])
 
 
+    def test_the_users_own_colour_second_and_freeze_stay(self):
+        # A recolouring, a second or a freeze the writer adds goes with its own words, never with the action it sits in;
+        # the ones the user wrote stay.
+        warrior = '男子，黑发束成发髻，身穿红色长袍，手持一把剑'
+        plan = {'references': [subject(1, '<Picture 1>', warrior, '红色长袍'), subject(2, '<Picture 2>', GIRL, '黑短发')],
+                'summary': '<Subject 1> 走向 <Subject 2>'}
+        observed = {'<Picture 1>': warrior, '<Picture 2>': GIRL}
+        lines = lambda *actions: ('事件：<Subject 1> 走向 <Subject 2>\n画风：3D渲染\n场景：庭院\n'
+                                  + ''.join(f'动作{i + 1}：{action}\n' for i, action in enumerate(actions)) + '镜头：固定\n声音：脚步声\n配乐：无')
+        walk = lines('<Subject 1> 身穿黑色长袍从左侧走来', '<Subject 1> 在第2秒拔出长剑', '<Subject 2> 抱拳回礼，画面定格')
+        result, _ = self.write(plan, '', walk, observed=observed, requirement='图1的男子走向图2的女孩')
+        self.assertIn('从左侧走来', result['description'])
+        self.assertIn('<Subject 1> 拔出长剑', result['description'])
+        self.assertNotRegex(result['description'], '黑色长袍|第2秒|定格')
+        result, _ = self.write(plan, '', walk, observed=observed, requirement='图1的男子换上黑色长袍走向图2的女孩，第2秒拔剑，最后画面定格')
+        self.assertIn('身穿黑色长袍从左侧走来', result['description'])
+        self.assertIn('<Subject 1> 在第2秒拔出长剑', result['description'])
+        self.assertIn('抱拳回礼，画面定格', result['description'])
+        # A style picture named with its label ("参考 <Picture 2> 的…画风") still lends only its style.
+        style = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'),
+                                subject(2, '<Picture 2>', '参考 <Picture 2> 的中国传统水墨画风格', '水墨', relation='attribute_transfer')],
+                 'summary': '<Subject 1> 在山间行走'}
+        result, _ = self.write(style, '', '事件：<Subject 1> 在山间行走\n画风：水墨\n场景：山间小路\n动作1：<Subject 1> 沿小路走来\n'
+                               '动作2：<Subject 1> 停下远望\n镜头：固定\n声音：脚步声\n配乐：无', observed={'<Picture 1>': GIRL, '<Picture 2>': '熊猫，手持红色长棍'},
+                               requirement='图1的女孩在山间行走，参考图2的水墨风')
+        self.assertIn('此图中的角色不出现', result['references'][1]['description'])
+        self.assertNotIn('熊猫', result['description'])
+
 class StyleTechniqueTest(unittest.TestCase):
     def observe(self, output):
         method = next(n for n in assistant_class.body if isinstance(n, ast.FunctionDef) and n.name == 'observe_h3_style_technique')
