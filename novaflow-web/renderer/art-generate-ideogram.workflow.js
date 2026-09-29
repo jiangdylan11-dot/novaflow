@@ -165,9 +165,29 @@
   const BACKGROUND_LABEL_RE = /(?:场景与背景|场景|背景|环境)(?:设定|描述)?\s*[：:]\s*([^。\n；;]+)/
   const BACKGROUND_WORD_RE = /(背景|场景|环境|室内|室外|房间|卧室|客厅|教室|办公室|厨房|走廊|庭院|花园|公园|街道|街头|城市|乡村|森林|山|海|湖|河|沙滩|天空|草原|沙漠|雪地|废墟|洞穴|神殿|寺庙|城堡|宫殿|舞台|田野|夜晚|黄昏|清晨|夕阳|星空|地板|地面|纸门|门|窗|墙|屋顶|榻榻米|桌|椅|灯光|光线|阳光|月光|树|樱花|花|草|云|雨|雪|雾|建筑|楼|桥|道路|background|scene|environment|room|street|forest|city|sky|beach|indoor|outdoor|landscape|castle|temple|night|sunset|floor|wall|window|door|tree|light)/i
   const SUBJECT_WORD_RE = /(少女|少年|女孩|男孩|女性|男性|人物|角色|英雄|主体包括|character|girl|boy|woman|man|hero)/i
+  const SECTION_NAMES = ['风格设定', '主体物品', '环境背景', '光线与色彩', '拍摄参数']
+  const SECTION_SPLIT_RE = /(?:^|\n)[ \t]*[[【](风格设定|主体物品|环境背景|光线与色彩|拍摄参数)[\]】]/
+
+  // The AI 助手's five-section prompt ([风格设定][主体物品][环境背景][光线与色彩][拍摄参数]) as
+  // { 环境背景, ..., text: the same prose without the headers }, or null when a header is missing.
+  function readSections(prompt) {
+    const parts = prompt.split(SECTION_SPLIT_RE)
+    const sections = {}
+    for (let index = 1; index < parts.length; index += 2) {
+      sections[parts[index]] = [sections[parts[index]], parts[index + 1].trim()].filter(Boolean).join('\n')
+    }
+    if (!SECTION_NAMES.every((name) => name in sections)) return null
+    sections.text = parts.filter((_, index) => index % 2 === 0).join('\n')
+      .split('\n').map((line) => line.trim()).filter(Boolean).join('\n')
+    return sections
+  }
 
   function extractBackground(value) {
-    const prompt = String(value == null ? '' : value).trim()
+    const source = String(value == null ? '' : value).trim()
+    // A five-section prompt has its background written out: the [环境背景] body, no headers.
+    const sections = readSections(source)
+    if (sections && sections['环境背景']) return sections['环境背景']
+    const prompt = sections ? sections.text : source
     const labelled = prompt.match(BACKGROUND_LABEL_RE)
     if (labelled && labelled[1].trim()) return labelled[1].trim().slice(0, 160)
     // Free-form prompts: keep the scene clauses, but not ones that also describe the subject,
@@ -182,8 +202,9 @@
 
   function compileStructuredPrompt(value) {
     const prompt = normalizePrompt(value)
+    const sections = readSections(prompt)
     return JSON.stringify({
-      high_level_description: prompt,
+      high_level_description: sections ? sections.text : prompt,
       compositional_deconstruction: {
         background: extractBackground(prompt),
         elements: [],
