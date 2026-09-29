@@ -190,6 +190,7 @@
     }
 
     function action(label, attribute, callback, tone) {
+      const compactDanger = options.compact && tone === 'danger'
       const button = createElement(documentRef, 'button', {
         type: 'button',
         text: label,
@@ -198,14 +199,21 @@
           width: '100%',
           minHeight: '33px',
           borderRadius: '7px',
-          border: tone === 'danger' ? '1px solid rgba(239,68,68,0.38)' : '1px solid rgba(255,255,255,0.1)',
-          background: tone === 'primary' ? '#1d7658' : tone === 'danger' ? 'rgba(127,29,29,0.18)' : '#292929',
-          color: tone === 'danger' ? '#fecaca' : '#f8fafc',
+          border: compactDanger ? '1px solid #343434' : tone === 'danger' ? '1px solid rgba(239,68,68,0.38)' : '1px solid rgba(255,255,255,0.1)',
+          background: compactDanger ? '#262626' : tone === 'primary' ? '#1d7658' : tone === 'danger' ? 'rgba(127,29,29,0.18)' : '#292929',
+          color: compactDanger ? '#bdbdbd' : tone === 'danger' ? '#fecaca' : '#f8fafc',
           cursor: 'pointer',
           fontSize: '11px',
           fontWeight: '600',
         },
       })
+      if (compactDanger) {
+        const updateTone = function () {
+          const emphasized = button.matches(':hover, :focus-visible')
+          style(button, { background: emphasized ? '#2e2e2e' : '#262626', color: emphasized ? '#e6aaaa' : '#bdbdbd' })
+        }
+        for (const event of ['mouseenter', 'mouseleave', 'focus', 'blur']) button.addEventListener(event, updateTone)
+      }
       button.addEventListener('click', function () {
         if (active && typeof callback === 'function') callback()
       })

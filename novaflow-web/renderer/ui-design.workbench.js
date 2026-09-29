@@ -258,7 +258,7 @@
       const output = profile().output
       const rect = stage.getBoundingClientRect()
       const scale = Math.min(Math.max(120, rect.width - 48) / output.width, Math.max(100, rect.height - 40) / output.height)
-      const board = el('div', { 'data-ui-workbench-board': '', style: { width: output.width * scale + 'px', height: output.height * scale + 'px' } })
+      const board = el('div', { 'data-ui-workbench-board': '', 'aria-label': `布局画板 ${output.width} × ${output.height}`, style: { width: output.width * scale + 'px', height: output.height * scale + 'px' } })
       for (const block of node.data.blocks) {
         const part = el('div', { 'data-ui-workbench-block': block.id, tabindex: '0', role: 'button', 'aria-label': block.name, 'aria-selected': String(selected === block.id), style: { left: block.x / size.width * 100 + '%', top: block.y / size.height * 100 + '%', width: block.width / size.width * 100 + '%', height: block.height / size.height * 100 + '%' } }, [el('span', { text: block.name }), el('small', { text: block.purpose })])
         const start = (event, resizing) => {
@@ -276,6 +276,7 @@
         board.append(part)
       }
       board.addEventListener('pointerdown', e => { if (e.target === board) { selectBlock(null); renderStage() } })
+      board.append(el('span', { 'data-ui-workbench-size': '', text: `${output.width} × ${output.height}`, style: { position: 'absolute', right: '8px', bottom: '6px', color: '#999', fontSize: '11px', pointerEvents: 'none' } }))
       stage.append(board)
     }
     stage.addEventListener('pointermove', event => {

@@ -33,7 +33,7 @@
   }
   function mount({ leftHost, store, getSessionToken }) {
     const doc = leftHost.ownerDocument, accordion = root.NovaFlowLeftPanelAccordion
-    let editor, inspector, alive = true, opened = false, frame = 0, lastSize = '', lastLayout = ''
+    let editor, inspector, alive = true, opened = false, frame = 0, lastSize = '', lastLayout = '', resizing = false
     const host = element(doc, 'div', { 'data-novaflow-ui-layout-overlay': '1', style: { display: 'none', position: 'fixed', zIndex: '2147483000', background: '#222', overflow: 'hidden' } })
     doc.body.appendChild(host)
     const inspectorHost = element(doc, 'div')
@@ -46,7 +46,7 @@
       node.addEventListener('click', onClick)
       return node
     }
-    const actions = element(doc, 'div', { style: { display: 'flex', gap: '6px' } }, [button('+ 布局块', () => editor.addBlock()), button('撤销', () => editor.undo()), button('重做', () => editor.redo())])
+    const actions = element(doc, 'div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' } }, [button('+ 布局块', () => editor.addBlock())])
     const body = element(doc, 'div', { class: 'nf-panel-body', style: accordion.bodyStyle(false) }, [actions, inspectorHost, message, button('生成布局参考', () => {
       editor.useLayout()
       publishLayout(true)
@@ -84,16 +84,19 @@
       // Layout dimensions are controlled by the same W/H fields, not by a reference-image autosize.
       api.state.referenceSizeFillPending = ''
       lastLayout = key
-      api.render({ forceBottom: true })
+      if (!resizing || !api.refreshReferences?.()) api.render({ forceBottom: true })
       message.textContent = '已加入参考图，编辑布局会同步更新'
       if (explicit) show(false)
     }
     function syncSize() {
       if (!editor || !drawing()) return
       const size = outputSize(drawing().state), key = size.width + ':' + size.height
-      if (lastSize === key) return
-      lastSize = key
-      editor.patchGeneratorOutput(editor.getActiveGeneratorId(), size)
+      if (lastSize !== key) {
+        lastSize = key
+        resizing = true
+        try { editor.patchGeneratorOutput(editor.getActiveGeneratorId(), size); inspector?.update() }
+        finally { resizing = false }
+      }
     }
     editor = root.NovaFlowUiDesignWorkbench.mount({
       host, layoutOnly: true, getProject: () => store.getState().project,
@@ -142,7 +145,7 @@
       root.localStorage.setItem('novaflow-ui-design-project-v1', JSON.stringify(store.serializeProject()))
       root.localStorage.setItem('novaflow-ui-design-project-initialized-v1', '1')
     } catch {} })
-    mounted = { store, editor, getSessionToken, layoutContext, sync }
+    mounted = { store, editor, getSessionToken, layoutContext, sync, syncSize }
     sync()
     return {
       workspaceHandle: editor, inspectorHandle: inspector, sync,
@@ -228,6 +231,7 @@
     prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt })
   }
   root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, inputFor, prepare, openAssistant, recordResult,
+    syncOutputSize() { mounted?.syncSize() },
     cancelPreparation() { if (!preparation) return false; preparation.abort(); return true },
   })
 })(typeof window !== 'undefined' ? window : globalThis)

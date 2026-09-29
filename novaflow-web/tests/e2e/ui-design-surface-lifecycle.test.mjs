@@ -6,6 +6,47 @@ import vm from 'node:vm';
 const source = name => readFileSync(new URL('../../renderer/' + name, import.meta.url), 'utf8');
 const split = source('spine-split-runtime.js');
 const brand = source('novaflow-brand-runtime.js');
+
+test('UI output fields resize during valid input and normalize on commit without changing drawing input behavior', () => {
+  class Input { constructor(value) { this.value = value; } }
+  let uiActive = true, syncs = 0;
+  const state = { width: 1024, height: 1024 };
+  const e = functionsBetween(brand, 'renderArtGenerateNumber', 'formatArtGenerateSamplingValue', {
+    HTMLInputElement: Input, ART_GENERATE_STATE: state,
+    window: { NovaFlowUiDesignDrawing: { isActive: () => uiActive, syncOutputSize: () => syncs++ } },
+    createArtEl: (tag, attrs, children) => ({ tag, attrs, children }),
+    formatArtGenerateNumberValue: value => String(value),
+    normalizeArtGenerateNumberValue: (value, key, min, max) => Math.min(max, Math.max(min, Number(value))),
+  });
+  const input = e.renderArtGenerateNumber('W', 'width', 256, 2048).children[1];
+  const field = new Input('1280');
+  input.attrs.oninput({ currentTarget: field });
+  assert.equal(state.width, 1280);
+  assert.equal(syncs, 1);
+  field.value = '12';
+  input.attrs.oninput({ currentTarget: field });
+  assert.equal(state.width, 1280, 'partial values must not collapse the canvas');
+  input.attrs.onblur({ currentTarget: field });
+  assert.equal(state.width, 256);
+  uiActive = false; field.value = '1920';
+  input.attrs.oninput({ currentTarget: field });
+  assert.equal(state.width, 256, 'ordinary drawing retains commit-based inputs');
+});
+
+test('layout reference refresh replaces only the reference grid, preserving parameter inputs', () => {
+  let replacement, selector;
+  const next = {};
+  const e = functionsBetween(brand, 'refreshArtGenerateReferences', 'renderArtGenerateReferencePicker', {
+    ART_GENERATE_WORKSPACE_ID: 'drawing',
+    document: { querySelector: value => { selector = value; return { replaceWith: node => { replacement = node; } }; } },
+    renderArtGenerateReferenceGrid: () => next,
+  });
+  assert.equal(e.refreshArtGenerateReferences(), true);
+  assert.equal(replacement, next);
+  assert.equal(selector, '#drawing [data-novaflow-art-generate-reference-column]');
+  e.document.querySelector = () => null;
+  assert.equal(e.refreshArtGenerateReferences(), false);
+});
 function functionsBetween(text, start, end, sandbox) {
   vm.createContext(sandbox);
   const from = text.indexOf('  function ' + start + '(');
