@@ -3340,11 +3340,12 @@
   }
 
   function mergeSmartAiNegativePrompt(base, addition) {
-    // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形.
+    // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形; 画面噪点 already says 噪点.
     const key = (term) => term.toLowerCase().replace(/^畸形(.+)$/u, "$1畸形").replace(/(?:质感|材质|感)$/u, "");
+    const same = (a, b) => a === b || (Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a)));
     const parts = String(base || "").split(/[，,、]/).map((item) => item.trim()).filter(Boolean);
     String(addition || "").split(/[，,、]/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
-      if (!parts.some((existing) => key(existing) === key(item))) parts.push(item);
+      if (!parts.some((existing) => same(key(existing), key(item)))) parts.push(item);
     });
     return parts.join("，");
   }
@@ -4832,9 +4833,10 @@
           nextNegativePrompt = preserveSmartAiReverseResourceMentions(negativePrompt, nextNegativePrompt);
         }
       }
-      // Typed from the answer (a cat gets animal negatives, a trophy prop ones), as 生图 types its quality paragraph.
+      // Typed from the answer (a cat gets animal negatives, a trophy prop ones), as 生图 types its quality paragraph. The answer
+      // names its own body defects (手部畸形, 猫爪变形, 尾巴比例失调), so the body terms of the list stay for 生图 and out of the box.
       const qualityNegativeGuard = isArt && isOptimizeRequest
-        ? artHighQualityCgNegativeGuardInstruction({ textOnly: true, prompt: nextPrompt })
+        ? artHighQualityCgNegativeGuardInstruction({ textOnly: true, prompt: nextPrompt }).split("，").filter((term) => !/人体|手指|手脚|肢体|五官|爪子|骨骼|比例/u.test(term)).join("，")
         : "";
       if (supportsNegativePrompt && qualityNegativeGuard) {
         nextNegativePrompt = mergeSmartAiNegativePrompt(nextNegativePrompt, qualityNegativeGuard);

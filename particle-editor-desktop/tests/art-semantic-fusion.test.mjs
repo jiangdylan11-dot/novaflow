@@ -180,4 +180,24 @@ assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('形状照图�
 // A negative the model separated with ASCII commas is written with Chinese commas; other separators stay as written.
 assert.equal(roleNegative('画面模糊,低清晰度, 手部畸形'), '画面模糊，低清晰度，手部畸形');
 assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面模糊、手部畸形、塑料质感');
+// Round-5 review: a lamp in the hand is written by the hand (a figure facing us has its left hand on picture right), lights
+// high on both sides fall in slanting, the fill light has a source too, a named light colour decides the key light while fire
+// stays warm, the sky examples carry a position and no quotable moon, and the final check names the recurring slips.
+for (const text of briefTexts) {
+  assert.ok(text.includes('主体手里拿着的灯不换算成画面方位，只按手写') && text.includes('面向画面的人物，右手在画面左侧') && text.includes('手里拿着的灯按手写'), 'a hand-held lamp is written by the hand');
+  assert.ok(text.includes('光源在两侧高处就从画面左上方和右上方斜照，不写成正上方') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
+  assert.ok(text.includes('要冷色调灯光时，写冷色灯罩透出的冷光') && text.includes('不加不合年代的路灯、街灯，火光只作暖色点缀') && text.includes('火光始终写成暖色（冷色灯罩透出的光除外）'), 'a named light colour and warm fire do not conflict');
+  assert.doesNotMatch(text, /雪夜云隙间的一轮冷月|用户要冷色调时在这里写出冷光的来源|纸面颗粒/, 'no quotable moon, no texture in the style example');
+  assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
+  assert.ok(['户外写了天空', '景深句只说前景、中景和主体清晰', '中景以内没写脚和鞋', '全文没有“营造”“保持”“突出”“时间为”', '木面、路面、地毯、布料、泥土不反光'].every((item) => text.includes(item)), 'the final check names the recurring slips');
+  assert.ok(text.includes('夜景和舞台不写欠曝、过暗') && text.includes('除纯色背景外不写背景杂乱、背景复杂'), 'negatives do not push away a dark stage or a furnished hall');
+  assert.ok(text.includes('用户在负面框里已写的每一项（原负向提示词、当前负面 Prompt）都原样保留，不计入 12 至 18 项'), 'the user\'s own negative terms all stay');
+}
+// A negative box longer than the 12 to 18 the model writes itself goes to the model whole, with the rule that keeps it.
+const longUserNegative = '多余手指，畸形手指，五官扭曲，模糊，噪点，水印，文字，低质量，过曝，欠曝，色彩断层，透视错误，结构粘连，比例失调，塑料质感，脏色，锯齿，重影，低清晰度，构图拥挤';
+const castleFive = ['[风格设定]','写实风景插画，笔触细腻。气氛庄严肃穆。','[主体物品]','一座古堡矗立在悬崖上，灰色石墙爬满青苔。三座塔楼的尖顶覆着深蓝瓦片，城垛上插着褪色的旗帜。','[环境背景]','悬崖下是翻涌的海浪和黑色礁石。天空飘着灰云，画面右上方有西沉的夕阳。','[光线与色彩]','夕阳从画面右上方斜照在塔楼上。主色为灰蓝，点缀橙色。','[拍摄参数]','远景，低角度仰拍。古堡位于三分线上。'].join('\n');
+const longNegFusion = buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'一座古堡矗立在悬崖上',requirements:'',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test');
+assert.ok(longNegFusion.body.input.at(-1).content[0].text.includes('原负向提示词：' + longUserNegative) && longNegFusion.body.input.at(-1).content[0].text.includes('都原样保留，不计入 12 至 18 项'), 'a long user negative box is sent whole with the keep rule');
+assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:castleFive,negative_prompt:longUserNegative + '，城墙砖块错位'})},longNegFusion.resultOptions).negative_prompt,longUserNegative + '，城墙砖块错位');
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼（连同图号）和写主体动作') && roleReverse.body.input[0].content.at(-1).text.includes('秀场的 runway 是T台，不是跑道') && roleReverse.body.input[0].content.at(-1).text.includes('地面层的灯不写到顶层或天花板'), 'the subject keeps the user\'s name and label, the venue its own words');
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');

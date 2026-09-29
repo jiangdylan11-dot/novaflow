@@ -184,15 +184,16 @@
     return style === "cel_comic" || style === "pixel" || EXPLICIT_FLAT_STYLE_RE.test(`${clean(style)} ${affirmative}`);
   }
 
-  // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形.
-  function negativeTermKey(term) {
-    return term.toLowerCase().replace(/^畸形(.+)$/u, "$1畸形").replace(/(?:质感|材质|感)$/u, "");
+  // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形; 画面噪点 already says 噪点.
+  function sameNegativeTerm(first, second) {
+    const [a, b] = [first, second].map((term) => term.toLowerCase().replace(/^畸形(.+)$/u, "$1畸形").replace(/(?:质感|材质|感)$/u, ""));
+    return a === b || (Math.min(a.length, b.length) >= 2 && (a.includes(b) || b.includes(a)));
   }
 
   function mergeNegativePrompt(base, addition) {
     const parts = clean(base).split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean);
     clean(addition).split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
-      if (!parts.some((existing) => negativeTermKey(existing) === negativeTermKey(item))) parts.push(item);
+      if (!parts.some((existing) => sameNegativeTerm(existing, item))) parts.push(item);
     });
     return parts.join("，");
   }
@@ -235,8 +236,12 @@
     const localTxt2img = String(source.provider || "").toLowerCase() === "local" && String(source.mode || "").toLowerCase() === "txt2img";
     const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) && !localTxt2img ? PURE_ARTWORK_INSTRUCTION : "";
     const positiveInstruction = [basePositiveInstruction, clothingDesignInstruction, pureArtworkInstruction].filter(Boolean).join("");
+    // A poster or a UI screen has the body of the figure or animal on it.
+    const figureOn = affirmativeClauses(sections ? sections["主体物品"] : prompt);
+    const bodyType = assetType !== "poster" && assetType !== "game_ui" ? assetType
+      : PERSON_RE.test(figureOn) ? "character" : ANIMAL_RE.test(figureOn) ? "animal" : "";
     const baseNegativeInstruction = explicitFlatStyle
-      ? mergeNegativePrompt(FLAT_STYLE_BODY_NEGATIVES[assetType], "结构粘连，轮廓脏乱，噪点，低完成度")
+      ? mergeNegativePrompt(FLAT_STYLE_BODY_NEGATIVES[bodyType], "结构粘连，轮廓脏乱，噪点，低完成度")
       : PROFILE_NEGATIVES[assetType];
     const negativeInstruction = mergeNegativePrompt(
       baseNegativeInstruction,
