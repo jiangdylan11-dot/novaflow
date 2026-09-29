@@ -106,9 +106,21 @@ class SemanticFusion(unittest.TestCase):
     def test_an_answer_that_went_round_again_says_each_clause_once(self):
         looped = ('[环境背景]\n枫树林小路，路旁有几根木桩，木桩之间有铁丝围栏，围栏呈锈红色，地面有落叶堆积，'
                   '路旁有几根木桩，木桩之间有铁丝围栏，围栏呈锈红色。\n\n[光线与色彩]\n暖光，暖光，斜阳从右侧照来')
-        self.assertEqual(service.art_finish_model_prompt(looped), (
+        self.assertEqual(service.art_drop_repeated_clauses(service.art_finish_model_prompt(looped)), (
             '[环境背景]\n枫树林小路，路旁有几根木桩，木桩之间有铁丝围栏，围栏呈锈红色，地面有落叶堆积。\n\n'
             '[光线与色彩]\n暖光，暖光，斜阳从右侧照来'))
+        # A repeat the user wrote stays.
+        steps = '[主体物品]\n一只小猫，一步一回头，一步一回头，走在小路上'
+        self.assertEqual(service.art_drop_repeated_clauses(steps, '一只小猫，一步一回头，一步一回头'), steps)
+        # A draft being edited keeps its own repeats: only the edit changes it.
+        self.assertEqual(service.art_finish_model_prompt(steps), steps)
+        draft = ('[风格设定]\n二次元插画风格，线条细腻。\n\n[主体物品]\n一位少女，银色长发，手持长剑，银色长发，身穿白色长裙。\n\n'
+                 '[环境背景]\n樱花林，粉色花瓣飘落。\n\n[光线与色彩]\n午后阳光从左侧照来，粉白为主。\n\n[拍摄参数]\n全身景别，平视。')
+        assistant = service.PromptAssistant()
+        assistant.generate = lambda prompt, **kwargs: draft.replace('樱花林，粉色花瓣飘落', '海边沙滩，浪花拍岸，远处灯塔')
+        result = assistant.optimize_prompt({'surface': 'art', 'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft,
+                                            'requirements': '把背景改成海边'})
+        self.assertIn('一位少女，银色长发，手持长剑，银色长发，身穿白色长裙', result['positivePrompt'])
 
     def test_written_prompts_keep_only_what_the_picture_shows(self):
         text = (
@@ -483,11 +495,13 @@ class Qwen3ArtFlows(unittest.TestCase):
                 with self.assertRaises(service.VisualContractError) as raised:
                     self.role_check(['subject'], '用户生成要求：让角色站在海边', answer.format(camera))
                 self.assertEqual(raised.exception.code, 'art-sensitive-young-evidence-blocked')
-        # A clause that starts with 未见 is no absence the cleanup drops before the safety read.
+        # A clause that starts with 未见, 没有 or 无 is read before the cleanup drops it as an absence.
         bedroom = ('[风格设定]\n写实摄影风格。\n\n[主体物品]\n{}\n\n[环境背景]\n卧室，木地板，白色床铺。\n\n'
                    '[光线与色彩]\n台灯暖光从左侧照来，暖黄为主。\n\n[拍摄参数]\n全身景别，平视。\n检查：{}')
         for subject, check in (('一个女孩站在床边，未见衣物遮挡的裸体。', '人物=有；未成年=有；敏感=无'),
-                               ('一个12岁的女孩站在床边，未见任何遮挡的赤裸身体。', '人物=有；未成年=无；敏感=无')):
+                               ('一个12岁的女孩站在床边，未见任何遮挡的赤裸身体。', '人物=有；未成年=无；敏感=无'),
+                               ('一个女孩站在床边，没有衣物遮挡的裸体。', '人物=有；未成年=有；敏感=无'),
+                               ('一个女孩站在床边，无衣物遮挡的一丝不挂的身体。', '人物=有；未成年=有；敏感=无')):
             with self.subTest(subject=subject):
                 with self.assertRaises(service.VisualContractError) as raised:
                     self.role_check(['subject'], '用户生成要求：把背景换成卧室', bedroom.format(subject, check))
@@ -512,12 +526,18 @@ class Qwen3ArtFlows(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, '提示词融合未通过内容检查'):
                     assistant.optimize_prompt({'surface': 'art', 'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft,
                                                'nsfw': True, 'requirements': '把床单改成红色'})
-        # An age in a clause that starts with 未见 is read too.
-        assistant = service.PromptAssistant()
-        assistant.generate = lambda prompt, **kwargs: written.replace('长发散开', '未见衣物遮挡的12岁身体').format('近景，俯视')
-        with self.assertRaisesRegex(ValueError, '提示词创作未通过内容检查'):
-            assistant.optimize_prompt({'surface': 'art', 'purpose': 'create', 'prompt': '', 'nsfw': True,
-                                       'requirements': '用户创作需求：一个女孩躺在卧室床上，性感'})
+        # An age in a clause that starts with 未见, 无 or 没有 is read too.
+        for hidden in ('未见衣物遮挡的12岁身体', '无衣物遮挡的12岁少女身体', '没有衣物遮挡的12岁少女身体'):
+            with self.subTest(hidden=hidden):
+                assistant = service.PromptAssistant()
+                assistant.generate = lambda prompt, hidden=hidden, **kwargs: written.replace('长发散开', hidden).format('近景，俯视')
+                with self.assertRaisesRegex(ValueError, '提示词创作未通过内容检查'):
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'create', 'prompt': '', 'nsfw': True,
+                                               'requirements': '用户创作需求：一个女孩躺在卧室床上，性感'})
+                assistant.generate = lambda prompt, hidden=hidden, **kwargs: written.replace('白色床单', '红色床单').replace('长发散开', hidden).format('近景，俯视')
+                with self.assertRaisesRegex(ValueError, '提示词融合未通过内容检查'):
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft,
+                                               'nsfw': True, 'requirements': '把床单改成红色'})
         # An enriched plain draft is checked before its cleanup drops the age the answer wrote.
         for subject in ('一个12岁的少女裸体躺在床上，长发散开。', '一个未满18岁的少女裸体躺在床上，长发散开。'):
             with self.subTest(subject=subject):
@@ -1130,7 +1150,9 @@ class ArtOnePictureTest(unittest.TestCase):
         self.assertNotIn('主光来自月光或灯光', lantern)
         # A thing put in a place is a new scene; it rests upright on something, and the hand that held it goes.
         put = '用户把它放到了新位置：写清它放在什么上面，照它平常放着的样子端正放稳，图中拿着或托着它的手和人不再写，也不照图写悬空或倾斜的摆法'
-        for requirement in ('把奖杯放在夜晚的颁奖舞台上，聚光灯照射', '把糖果放在木质餐桌上，午后窗边的暖光', '把这把折扇摆在书房的书桌上，深夜，烛光'):
+        for requirement in ('把奖杯放在夜晚的颁奖舞台上，聚光灯照射', '把糖果放在木质餐桌上，午后窗边的暖光', '把这把折扇摆在书房的书桌上，深夜，烛光',
+                            '将奖杯放在夜晚的颁奖舞台上', '把奖杯放置在颁奖舞台上', '把奖杯置于颁奖舞台中央', '把头盔放在木桌上', '把手机放在办公桌上',
+                            '把手办摆在书架上'):
             with self.subTest(requirement=requirement):
                 request = service.art_role_reference_request(['subject'], requirement)
                 self.assertIn(f'按用户要求写新环境（{requirement}）', request)
@@ -1140,7 +1162,7 @@ class ArtOnePictureTest(unittest.TestCase):
                 self.assertNotIn('冷光来自', request)
         # Hands, a book, a sword by the side, a place in the frame: no new place, the picture's pose stays. A person put
         # somewhere is a new scene but keeps the pose; a kept background stays.
-        for requirement, new_scene in (('让她把双手放在桌上', False), ('让她把双手交叠放在胸前，闭上眼睛', False), ('她把书放在膝上，微笑', False),
+        for requirement, new_scene in (('让她把双手放在桌上', False), ('让她把手放在桌上', False), ('让她把双手交叠放在胸前，闭上眼睛', False), ('她把书放在膝上，微笑', False),
                                        ('让角色把剑放在身侧，夜晚', False), ('把人物的位置在画面左侧', False),
                                        ('把剑放到桌上，保持原来的背景', False), ('把角色放在雪山顶上', True)):
             with self.subTest(requirement=requirement):
@@ -1149,6 +1171,11 @@ class ArtOnePictureTest(unittest.TestCase):
                 self.assertIn('照图写姿态动作', request)
                 self.assertEqual('按用户要求写新环境' in request, new_scene)
                 self.assertEqual('原来的背景一律不写' in request, new_scene)
+        # Keeping a blur, a light or a mood keeps no place: the user's new place is still built.
+        for requirement in ('让她站在海边的礁石上，保持背景虚化', '让她站在雪山顶上，保持环境光柔和', '坐在海边的礁石上，保持背景简洁',
+                            '让机器人坐在城市天台边缘，保持场景的赛博朋克氛围'):
+            with self.subTest(requirement=requirement):
+                self.assertIn(f'按用户要求写新环境（{requirement}）', service.art_role_reference_request(['subject'], requirement))
 
     def test_the_cleanup_keeps_descriptions_and_holds_one_picture(self):
         # 突出 that describes the picture stays; the aside and a "visual focus" go, the colours stay.
@@ -1162,6 +1189,13 @@ class ArtOnePictureTest(unittest.TestCase):
                 light = service.art_section_map(service.art_consistent_sections(text.replace('辅以主体的红金配色作为视觉焦点', said)))['光线与色彩']
                 self.assertEqual(light, '夕阳从左侧照来')
         self.assertNotIn('视觉', service.art_consistent_sections('[拍摄参数]\n全身景别，武将成为画面的视觉中心'))
+        # A clause that shows light or where it falls keeps its content; only the aside goes, in a one-clause line too.
+        for said, kept in (('金色奖杯反射耀眼高光成为视觉焦点', '金色奖杯反射耀眼高光'), ('主光从左上方照亮人物面部形成视觉中心', '主光从左上方照亮人物面部'),
+                           ('灯笼的暖黄光在暗色中成为视觉焦点', '灯笼的暖黄光在暗色中')):
+            with self.subTest(said=said):
+                light = service.art_section_map(service.art_consistent_sections(text.replace('辅以主体的红金配色作为视觉焦点', said)))['光线与色彩']
+                self.assertEqual(light, '夕阳从左侧照来，' + kept)
+        self.assertEqual(service.art_consistent_sections('[光线与色彩]\n暖黄灯光照亮奖杯杯身作为画面视觉焦点。'), '[光线与色彩]\n暖黄灯光照亮奖杯杯身。')
         # The subject is placed once; the light on things is [光线与色彩]'s; a hazy distance is not called sharp.
         scene = ('[主体物品]\n武将站立于大堂中央，看向镜头\n\n'
                  '[环境背景]\n米白色地毯铺满通道，远处楼层朦胧，主体位于地毯正中，正对镜头，射灯在武将肩头形成高光\n\n'

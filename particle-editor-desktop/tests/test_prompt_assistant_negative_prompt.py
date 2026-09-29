@@ -125,11 +125,18 @@ class TargetedNegativePrompt(unittest.TestCase):
         self.assertIn('主体模糊', soft)
         self.assertNotIn('模糊', soft)
         self.assertNotIn('背景模糊', terms(service.build_targeted_negative_prompt('一只猫', '一只猫，浅景深', '背景模糊，噪点')))
+        # Only the plain and background blur words go: a blurred face is a defect under a soft background too.
+        face = terms(service.build_targeted_negative_prompt('一只猫', trophy.replace('近景，平视', '近景，平视，背景虚化'), '背景模糊，失焦，面部模糊，五官失焦'))
+        self.assertFalse({'模糊', '背景模糊', '失焦'} & set(face))
+        self.assertTrue({'面部模糊', '五官失焦'} <= set(face))
+        self.assertIn('主体模糊', terms(service.build_targeted_negative_prompt('一只猫', trophy.replace('近景，平视', '近景，平视，背景非常虚化'))))
         # A clause that negates the blur, the avoidance line and a blurry thing ask for none: 模糊 and the model's blur
         # words stay.
         for sharp in ('近景，平视，背景虚化不明显', '近景，平视，背景无虚化', '近景，平视，环境清晰', '近景，平视。\n避免模糊的画面',
                       '近景，平视，背景清晰，没有虚化', '近景，平视，避免背景虚化，环境清晰', '近景，平视，背景不做虚化', '近景，平视，不要背景虚化',
-                      '近景，平视。\n避免：背景虚化，失焦', '近景，平视。\n避免出现模糊的画面', '近景，平视，窗外是模糊的雾气'):
+                      '近景，平视。\n避免：背景虚化，失焦', '近景，平视。\n避免出现模糊的画面', '近景，平视，窗外是模糊的雾气',
+                      '近景，平视，背景清晰而非虚化', '近景，平视，取消背景虚化', '近景，平视，去除背景虚化，环境清晰', '近景，平视，勿做背景虚化',
+                      '近景，平视，减少虚化', '近景，平视，背景清晰锐利，非浅景深'):
             with self.subTest(sharp=sharp):
                 negative = terms(service.build_targeted_negative_prompt('一只猫', trophy.replace('近景，平视', sharp), '背景模糊，失焦，构图杂乱'))
                 self.assertIn('模糊', negative)

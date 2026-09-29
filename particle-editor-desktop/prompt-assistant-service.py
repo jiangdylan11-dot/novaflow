@@ -1053,10 +1053,12 @@ NEGATIVE_FALLBACK = ["细节混乱", "结构错误", "画面脏污", "噪点"]
 NEGATIVE_SYNONYM_GROUPS = (("结构畸形", "结构错误", "形状畸形"), ("塑料质感", "塑料材质", "塑料感"))
 # A still picture whose positive asks for a soft background ("背景虚化", "浅景深"): a plain 模糊 in the negative pulls
 # against it, so the negative asks for a sharp subject instead. Read per clause: a clause that negates it ("没有虚化",
-# "不要背景虚化", "背景虚化不明显"), the avoidance line and a blurry thing ("模糊的雾气") ask for none.
-NEGATIVE_BLUR_ASKED = re.compile(r"^[^不无没未免别禁拒]*?(?:虚化|背景模糊|焦外|散景|浅景深|景深浅)(?![^，,。；;\n]{0,2}(?:不明显|不强|很弱))")
-# Motion blur is a defect in any picture.
-NEGATIVE_BLUR_WORD = re.compile(r"(?<!运动)(?<!动态)模糊|虚化|失焦")
+# "不要背景虚化", "背景清晰而非虚化", "取消背景虚化", "背景虚化不明显"), the avoidance line and a blurry thing ("模糊的雾气")
+# ask for none.
+NEGATIVE_BLUR_ASKED = re.compile(r"^(?:(?!不|无|没|未|免|别|禁|拒|非(?!常)|勿|取消|去除|去掉|减少).)*?"
+                                 r"(?:虚化|背景模糊|焦外|散景|浅景深|景深浅)(?![^，,。；;\n]{0,2}(?:不明显|不强|很弱))")
+# Only a plain or background blur goes; a blurred face or subject and motion blur are defects in any picture.
+NEGATIVE_BLUR_WORD = re.compile(r"^(?:背景|远景|焦外|画面|整体)?(?:模糊|虚化|失焦)$")
 
 FIRST_LAST_ACTION_TERMS = [
     "从", "逐渐", "缓慢", "进入", "转向", "转身", "抬起", "举起", "放下", "挥动",
@@ -5641,17 +5643,19 @@ def art_finish_model_prompt(output: str, *, truncated: bool = False) -> str:
     if not art_prompt_sections(text)[1] and len(paragraphs) == len(ART_FIVE_SECTIONS):
         # Five paragraphs in the asked order, only the headers missing: label them instead of re-asking.
         text = "\n\n".join(f"{title}\n{body}" for title, body in zip(ART_FIVE_SECTIONS, paragraphs))
-    return art_drop_repeated_clauses(normalize_art_sections(art_strip_leaked_instructions(normalize_art_sections(text))))
+    return normalize_art_sections(art_strip_leaked_instructions(normalize_art_sections(text)))
 
 
-def art_drop_repeated_clauses(text: str) -> str:
-    """A greedy answer that went round once more ("地面有落叶堆积，…，围栏呈锈红色" twice in one line) says each clause once."""
+def art_drop_repeated_clauses(text: str, user: str = "") -> str:
+    """A greedy answer that went round once more ("地面有落叶堆积，…，围栏呈锈红色" twice in one line) says each clause once.
+    Only for what the writer wrote from nothing (创作, 多图反推): a draft being edited keeps its own repeats, and so does a
+    repeat the user wrote ("一步一回头，一步一回头")."""
 
     def edit(line):
         seen = set()
 
         def repeated(piece):
-            if len(piece) >= 4 and piece in seen:
+            if len(piece) >= 4 and piece in seen and user.count(piece) < 2:
                 return True
             seen.add(piece)
             return False
@@ -5890,10 +5894,11 @@ ART_PLACE_WORDS = (
 ART_NEW_PLACE = re.compile(r"(?:[站坐躺趴蹲跪倚靠立走跑飞]|漂浮|悬浮|飘浮)(?:在|到|于|进|上)[^，,。；;\n]{0,10}?" + ART_PLACE_WORDS)
 # A thing the user puts in a place ("把奖杯放在颁奖舞台上", "把糖果放在木质餐桌上"); hands, a book on the knees or a sword
 # by the side stay in the picture ("把双手放在桌上", "把书放在膝上", "把剑放在身侧").
-ART_PUT_PLACE = re.compile(r"把(?![^，,。；;\n]{0,3}[手脚腿臂头])[^，,。；;\n]{1,10}?[放摆搁](?:在|到|于|进)[^，,。；;\n]{0,10}?"
-                           r"(?:" + ART_PLACE_WORDS + r"|桌|台|架|柜)")
-# "把剑放到桌上，保持原来的背景": the picture's place stays.
-ART_KEEP_BACKGROUND = re.compile(r"(?:保留|保持)[^，,。；;\n]{0,6}(?:背景|环境|场景)|(?:背景|环境|场景)[^，,。；;\n]{0,4}不变")
+# "将奖杯放置在…", "把奖杯置于…"; 手办, 手机 and 头盔 are things.
+ART_PUT_PLACE = re.compile(r"(?:把|将)(?![^，,。；;\n]{0,3}(?:[双两左右]手|手[掌臂指腕]|手(?=[放摆搁置])|头发|脚|腿|胳膊))"
+                           r"[^，,。；;\n]{1,10}?(?:[放摆搁]置?|置)(?:在|到|于|进)[^，,。；;\n]{0,10}?(?:" + ART_PLACE_WORDS + r"|桌|台|架|柜)")
+# "把剑放到桌上，保持原来的背景": the picture's place stays. "保持背景虚化", "保持环境光柔和" keep no place.
+ART_KEEP_BACKGROUND = re.compile(r"(?:保留|保持)(?:原来|原有|原|图中|图片|图里)的?(?:背景|环境|场景)|(?:背景|环境|场景)(?:保持)?不变")
 
 
 def art_user_action_phrase(clause: str) -> str:
@@ -5956,9 +5961,9 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     # "夜晚" alone came back as one word before a daylight studio description; the duty says what the time looks like.
     time_look = ART_TIME_OF_DAY_LOOK[ART_TIME_OF_DAY_GROUPS.index(requested_time[0])] if requested_time else ""
     # "坐在雨夜的城市天台边缘" with no background picture is a new scene too: its place, light and weather are built out.
-    keep_place = bool(ART_KEEP_BACKGROUND.search(requirement))
-    scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement) or not background and not keep_place
-                                              and (ART_NEW_PLACE.search(requirement) or ART_PUT_PLACE.search(requirement)))
+    put_place = not ART_KEEP_BACKGROUND.search(requirement) and bool(ART_PUT_PLACE.search(requirement))
+    scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement) or not background
+                                              and (ART_NEW_PLACE.search(requirement) or put_place))
     # A posture the user writes ("站在…中央") replaces the picture's action; kept together they read as two moments.
     user_pose = "、".join(art_user_state_words(requirement))
     # "看向镜头" came back as "面向镜头" and cost a repair call: the user's actions are named for [主体物品].
@@ -5967,7 +5972,7 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     placed = bool(re.search(r"[站坐躺趴蹲跪立倚靠](?:在|于|到)", requirement))
     # "把奖杯放在舞台上" for a cut-out that floats tilted: the thing now rests on something. A person or an animal the user
     # puts somewhere keeps the picture's pose.
-    put = not user_pose and not keep_place and bool(ART_PUT_PLACE.search(requirement)) and not any(
+    put = not user_pose and put_place and not any(
         re.search(item["pattern"], requirement) for item in NEGATIVE_CATEGORY_DEFINITIONS if item["name"] in ("person", "animal"))
     held = bool(re.search(r"手持|拿着|握着|举着|提着|捧着", requirement))
     # Only a glowing thing in or by the subject's hand is its main light: named in every request, it made the street's
@@ -6548,13 +6553,19 @@ ART_EVALUATIVE_VERB = r"(?:突出(?!的|明显|分明|于|在|[海水地墙岩�
 ART_EVALUATIVE_PIECE = re.compile(r"^(?:以|用以|从而|来|更加?)?" + ART_EVALUATIVE_VERB)
 ART_EVALUATIVE_TAIL = re.compile(r"(?<=[一-鿿])(?:以|来|从而)?" + ART_EVALUATIVE_VERB + r"[一-鿿][^，,。；;！？!?\n]*")
 ART_EVALUATIVE_WORDS = re.compile(r"视觉(?:张力|冲击|效果|焦点|中心|重心)|形成张力")
-# "辅以主体的红金配色作为视觉焦点": the colours stay, the aside goes. A clause that only says what the focus is ("人物为视觉
-# 焦点", "以金色奖杯为视觉中心") goes whole: cut, it was left as "人物为" or "红金配色为，".
+# "辅以主体的红金配色作为视觉焦点", "灯笼的暖黄光在暗色中成为视觉焦点": the colours and the light stay, the aside goes.
+# A clause that only names the focus ("人物为视觉焦点", "以金色奖杯为视觉中心", "人物服装的橙色与绿色形成视觉焦点") goes
+# whole: cut, it was left as "人物为" or "红金配色为，".
 ART_VISUAL_FOCUS = re.compile(r"(?<=[一-鿿])(?:作为|成为|形成|是|为)?(?:画面的?)?视觉(?:焦点|中心|重心)")
+# A clause that shows something before its aside: light, where a thing is, or an accent it adds.
+ART_VISUAL_FOCUS_CONTENT = re.compile(r"[辅配衬]以|光|影|亮|照|射|映|洒|泛|透|投|闪|燃|在|从|于|居|中")
 
 
-def art_visual_focus_aside(match) -> bool:
-    return bool(re.search(r"[辅配衬]以", re.split(r"[，,。；;]", match.string[:match.start()])[-1]))
+def art_visual_focus_rest(match) -> str:
+    """What stays of a focus aside: nothing after a clause that shows something; the aside itself after one that only
+    names the focus, so the whole clause goes."""
+    before = re.split(r"[，,。；;、]", match.string[:match.start()])[-1]
+    return "" if ART_VISUAL_FOCUS_CONTENT.search(before) and not before.startswith("以") else match[0]
 # "主体位于地毯正中，正对镜头" after [主体物品]'s "站立于大堂中央": the subject is placed once.
 ART_SCENE_PLACEMENT = re.compile(r"(?:主体|人物|角色)[^，,。；;]{0,3}(?:位于|站在|站于|坐在|立于|站立于|处于)|(?:正对|面向|面朝|背对|看向)镜头")
 # "光线柔和但对比强烈": the second half takes the first back.
@@ -6610,7 +6621,7 @@ def art_consistent_sections(text: str, source: str = "", one_time: bool = True, 
     user = source if user is None else user
     mine = lambda piece: bool(source) and (piece in source or art_says_user_words(piece, user))
     text = art_edit_lines_but_avoidance(text, None, lambda line: art_edit_line_segments(
-        ART_VISUAL_FOCUS.sub(lambda match: "" if art_visual_focus_aside(match) and not mine(match[0]) else match[0], ART_SOFT_BUT_HARD.sub(
+        ART_VISUAL_FOCUS.sub(lambda match: match[0] if mine(match[0]) else art_visual_focus_rest(match), ART_SOFT_BUT_HARD.sub(
             lambda match: match[0] if mine(match[0]) else match[1],
             ART_EVALUATIVE_TAIL.sub(lambda match: match[0] if mine(match[0]) else "", line))),
         lambda piece: bool(ART_EVALUATIVE_PIECE.match(piece) or ART_EVALUATIVE_WORDS.search(piece)) and not mine(piece)))
@@ -15998,13 +16009,15 @@ class PromptAssistant:
                     diagnostics = {}
                     positive_output = apply_ordinary_art_patch_output(source, requirements, output, diagnostics)
                     patch_failure = "" if positive_output else str(diagnostics.get("failureReason") or "patch-json-or-anchor-invalid")
+            finished = art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output))
             answered = finalize_art_semantic_fusion(art_positive_only_wording(art_drop_unknown_references(
-                art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output)), source,
+                finished, source,
             ), source), instruction)
             positive = art_drop_section_mentions(art_write_requested_weather(art_write_requested_time(
                 art_drop_invented_clauses(answered, source, instruction, enrich=enrich), instruction), instruction), source)
-            # The answer as written is checked too: the cleanups drop ages ("12岁的少女") and pieces ("突出12岁少女的身形").
-            if payload.get("nsfw") is True and any(map(ordinary_art_core_affirmative_minor_present, (answered, positive))):
+            # The answer as written is checked too: the cleanups drop ages ("12岁的少女"), pieces ("突出12岁少女的身形") and
+            # clauses that start with a negation ("无衣物遮挡的12岁少女身体").
+            if payload.get("nsfw") is True and any(map(ordinary_art_core_affirmative_minor_present, (finished, answered, positive))):
                 raise ValueError("提示词融合未通过内容检查，原提示词未修改")
             # An edit may change the time of day ("改成夜晚"), so only an enriched draft is held to one time; the edit's
             # own words ("背景虚化", "披风随风飘扬") stay, in the answer's wording too.
@@ -16051,7 +16064,8 @@ class PromptAssistant:
         positive = ""
         laid_out = ""
         laid_out_raw = ""
-        checked = laid_out_checked = ""
+        checked = finished = ""
+        laid_out_checked = ()
         for attempt in range(2):
             repair = (
                 "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
@@ -16063,12 +16077,12 @@ class PromptAssistant:
                                    temperature=0.0 if attempt else 0.5, top_p=1.0 if attempt else 0.9,
                                    trace_label="artCreateRepair" if attempt else "artCreate")
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            checked = art_drop_section_mentions(art_single_view_angle(
-                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))))
+            finished = art_drop_repeated_clauses(art_finish_model_prompt(output, truncated=truncated), requirement)
+            checked = art_drop_section_mentions(art_single_view_angle(art_positive_only_wording(finished)))
             positive = art_consistent_sections(checked, requirement)
             failure = art_five_section_failure(positive)
             if not failure:
-                laid_out, laid_out_raw, laid_out_checked = positive, output, checked
+                laid_out, laid_out_raw, laid_out_checked = positive, output, (checked, finished)
                 word = art_missing_state_word(requirement, positive)
                 failure = "未保留需求里的动作：" + word if word else ""
             if not failure:
@@ -16080,8 +16094,10 @@ class PromptAssistant:
         elif failure:
             log_prompt_assistant_event("art_create_check_accepted", command="optimizePrompt", failure=failure)
         positive = art_close_sentences(laid_out or positive)
-        # The answer as written, before the cleanup dropped asides and pieces ("突出12岁少女的身形").
-        if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(art_close_sentences(laid_out_checked or checked)):
+        # The answer as written, before the cleanup dropped asides, pieces ("突出12岁少女的身形") and clauses that start
+        # with a negation ("无衣物遮挡的12岁少女身体").
+        if payload.get("nsfw") is True and any(ordinary_art_core_affirmative_minor_present(art_close_sentences(text))
+                                                for text in laid_out_checked or (checked, finished)):
             raise ValueError("提示词创作未通过内容检查，请修改描述后重试")
         negative = (
             build_targeted_negative_prompt(requirement, positive, video=False)
@@ -16136,13 +16152,15 @@ class PromptAssistant:
             person, minor, sensitive = person or said_person, minor or said_minor, sensitive or said_sensitive
             young_words = young_words or _requirements_contain_explicit_minor_terms(output)
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
+            finished = art_drop_repeated_clauses(art_finish_model_prompt(output, truncated=truncated), requirement)
             checked = art_role_reference_cleanup(art_plain_background_focus(art_single_view_angle(art_positive_only_wording(
-                art_finish_model_prompt(output, truncated=truncated)))), roles)
+                finished))), roles)
             # The prompt's own explicit words count as sensitive content too, in case the check says 无 while the
             # prompt writes what was asked for in words the user's text does not use (脱光 -> 一丝不挂); they are read
-            # before the fit and the cleanup below drop asides and pieces ("强调其一丝不挂的身体").
+            # before the fit and the cleanup below drop asides and pieces ("强调其一丝不挂的身体"), and before a clause that
+            # starts with a negation goes ("没有衣物遮挡的裸体").
             art_reference_block_sensitive_minor(requirement, minor or young_words,
-                                                sensitive or art_reference_explicit_words(checked))
+                                                sensitive or any(map(art_reference_explicit_words, (finished, checked))))
             description = art_user_look_words(art_consistent_sections(art_role_reference_user_fit(
                 checked, requirement, roles), requirement), requirement)
             failure = art_five_section_failure(description)
