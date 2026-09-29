@@ -367,7 +367,8 @@ class H3BaseLocalTest(unittest.TestCase):
         for leaked in ["胸肩", "呼吸", "绿", "循环", "无缝", "下一轮", "User requirement", "补充要求", "I2VA", "T2VA", "镜头2", "秒）"]:
             self.assertNotIn(leaked, prompt + kwargs["llama_template"])
         self.assertIn("任务：文生视频，时长5秒。", prompt)
-        self.assertIn("\n起始：动作怎样开始", prompt)
+        self.assertIn("\n起始：先写一句镜头怎样运动", prompt)
+        self.assertIn("再写动作怎样开始", prompt)
         idle = "一位女战士站立，角色仅呼吸待机，绿幕背景，无缝循环，镜头固定"
         prompt = service.build_minimax_h3_writer_request(idle, "", "T2VA", 3)
         for asked in ["仅呼吸待机：", "纯色背景：", "循环：", "镜头固定："]:
@@ -519,19 +520,22 @@ class H3BaseLocalTest(unittest.TestCase):
 
     def test_request_asks_for_the_real_action_without_a_default_amplitude(self):
         prompt = service.build_minimax_h3_writer_request("她转身向镜头挥手", "", "I2VA", 5, sees_frames=True)
-        self.assertIn("\n起始：动作怎样开始，朝哪个方向\n", prompt)
-        self.assertIn("\n递进：动作怎样继续发展、真正做出来，节奏怎样变化", prompt)
+        self.assertIn("\n起始：先写一句镜头怎样运动（只选一种，写明幅度和快慢，如“镜头以小幅度缓慢推近”“镜头跟随它缓慢移动”），再写动作怎样开始，朝哪个方向，主体的神情\n", prompt)
+        self.assertIn("\n递进：动作怎样继续发展、真正做出来，节奏怎样变化，写出神情和随动作的细节", prompt)
         self.assertIn("最后停在动作完成后的样子，图中拿着的东西继续拿着", prompt)
         self.assertIn("先用几个字写图中的画风", prompt)
         self.assertNotRegex(prompt, r"\d(?:\.\d)?-\d(?:\.\d)?秒|幅度多大")
         self.assertNotIn("幅度多大", service.MINIMAX_H3_WRITER_RULES)
         kite = service.build_minimax_h3_writer_request("一个小男孩在草地上放风筝", "镜头缓慢推近，加上风声", "T2VA", 5)
         self.assertIn("最后停在动作完成后的样子，描述里拿着的东西继续拿着", kite)
-        self.assertNotIn("要求", kite.split("约束：")[1])
+        self.assertNotIn("要求", service.build_minimax_h3_writer_request("一个小男孩在草地上放风筝，不要回头", "", "T2VA", 5).split("约束：")[1])
         # The overview is the opening picture; the actions are told once, in the beats.
-        self.assertIn("再用一两句写开场画面：用视频描述里的原词写主体是谁、在什么场景、在画面中的位置和景别", kite)
+        self.assertIn("再用两三句写开场画面：用视频描述里的原词写主体是谁，补充它的外观（毛色或衣着和颜色）、在什么场景、在画面中的位置和景别", kite)
         self.assertIn("不写动作过程", kite)
-        self.assertIn("\n约束：只写用户写明要一直保持或禁止的内容，写成画面里看得见的样子", kite)
+        # Constraints are asked for only when the user sets a limit.
+        self.assertNotIn("\n约束：", kite)
+        self.assertIn("\n约束：只写用户写明要一直保持或禁止的内容，写成画面里看得见的样子",
+                      service.build_minimax_h3_writer_request("一个小男孩在草地上放风筝，镜头保持固定", "", "T2VA", 5))
         self.assertIn("没写就写写实电影风格", kite)
         self.assertNotIn("真正做出来", service.build_minimax_h3_writer_request("女战士站立，仅呼吸待机", "", "T2VA", 3))
         # A picture the model cannot see gets no style guess.
@@ -599,7 +603,10 @@ class H3BaseLocalTest(unittest.TestCase):
         same = service.build_minimax_h3_writer_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True, same_frames=True)
         self.assertIn("这两张图几乎相同：画面里每个人物和动物全程保持图中的姿态和位置", same)
         self.assertIn("不加图中没有的光效", same)
-        self.assertIn("\n收束：动作怎样平稳完成，最后的画面与 <Picture 2> 一致\n", same)
+        self.assertIn("\n收束：动作怎样平稳完成，做过的动作在结尾前回到 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致\n", same)
+        # An action that changes what <Picture 2> shows is done, then undone before the end; the camera stays with the framing.
+        self.assertIn("先做完这个动作，再在结尾前回到 <Picture 2> 的样子", same)
+        self.assertIn("两张图取景相同就写“镜头固定”", same)
         self.assertNotRegex(same, "胸肩|呼吸待机|- 从首帧|光影轻微变化|光效变成|真正做出来")
         differing = service.build_minimax_h3_writer_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True)
         self.assertNotIn("几乎相同", differing)
@@ -738,10 +745,11 @@ class H3BaseLocalTest(unittest.TestCase):
                     self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
                     self.assertEqual(str(raised.exception), "MiniMax H3 敏感内容检测到明确未成年人证据，已阻断")
                     self.assertEqual(len(calls), 1)
-            # A young word in the sounds the writer adds is no clue: nothing is looked at.
-            result, calls = self.run_local([phases() + "\n声音：远处传来孩童嬉闹声"], i2v)
-            self.assertEqual(labels(calls), ["minimaxH3PromptEnhance"])
-            self.assertIn("橘猫", result["positivePrompt"])
+            # A young word in the sounds or the music the writer adds is no clue: nothing is looked at.
+            for line in ["声音：远处传来孩童嬉闹声", "配乐：童声合唱配轻柔的钢琴，速度缓慢"]:
+                result, calls = self.run_local([phases() + "\n" + line], i2v)
+                self.assertEqual(labels(calls), ["minimaxH3PromptEnhance"])
+                self.assertIn("橘猫", result["positivePrompt"])
             # An old dialog (no policy) and a generation compile (policy false) run as before: nothing is asked
             # or read, and the same words are not checked.
             for policy in [{}, {"contentPolicy": {"sensitiveVisualAnalysis": False, "allSubjectsConfirmedAdult": False}}]:
@@ -855,6 +863,44 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("按下面三行输出", observe[0])
         self.assertNotIn("未成年", observe[0])
 
+    def test_a_picture_only_request_is_planned_by_the_program_with_the_users_nouns(self):
+        # Round 4: the router and the planner took ~60 s of a ~240 s 多参 request to copy the observations back; the
+        # user's 巨蛇 became a "purple dragon", a beast-head pauldron a "dragon".
+        frames = [{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}, {"label": "<Picture 2>", "dataUrl": "data:image/jpeg;base64,/9j/BBBB"}]
+        source = "<Picture 1> 中的角色举起兵器，与 <Picture 2> 中的巨蛇在山崖上对峙"
+        requirements = "Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n" + source
+        looks = {"AAAA": "画风：3D渲染\n主体：男性角色，黑发束起，身穿金色铠甲，兽头形护肩\n背景：纯白色背景",
+                 "BBBB": "画风：动漫插画\n主体：巨蛇，紫色鳞片，绿色冠刺\n背景：纯灰色背景"}
+        scene = ("事件：<Subject 1> 举起长枪，与 <Subject 2> 在山崖上对峙\n画风：3D渲染\n场景：山崖\n光线：柔和的天光\n"
+                 "动作1：<Subject 1> 双手举起长枪\n动作2：<Subject 2> 昂起头吐出信子\n镜头：固定\n声音：风声\n配乐：低沉的大鼓配古筝，节奏缓慢")
+        assistant, calls = service.PromptAssistant(), []
+
+        def generate(prompt, **kwargs):
+            calls.append((kwargs.get("trace_label"), prompt))
+            if kwargs.get("trace_label") == "minimaxH3ReferenceObserve":
+                return looks[kwargs["images"][0][1][-4:]]
+            return scene if kwargs.get("trace_label") == "minimaxH3ReferenceScene" else "{}"
+        assistant.generate = generate
+        written = []
+        with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)), \
+                mock.patch.object(service.PromptAssistant, "translate_h3_reference", side_effect=lambda positive, *args: written.append(positive) or {"positivePrompt": "{}"}):
+            assistant._optimize_h3_reference(source, requirements, 6, frames)
+        labels = [label for label, _ in calls]
+        self.assertEqual(labels, ["minimaxH3ReferenceObserve", "minimaxH3ReferenceObserve", "minimaxH3ReferenceScene"])
+        observe = [prompt for label, prompt in calls if label == "minimaxH3ReferenceObserve"]
+        self.assertIn("用户叫它“巨蛇”，就写“巨蛇”", observe[1])
+        self.assertNotIn("用户叫它", observe[0])
+        self.assertIn("按形状写（如兽头形护肩），不猜是龙还是狮子", observe[0])
+        self.assertIn("<Subject 1>: <Picture 1> 中的男性角色，黑发束起，身穿金色铠甲，兽头形护肩\n<Subject 2>: <Picture 2> 中的巨蛇，紫色鳞片，绿色冠刺", written[0])
+        self.assertIn("已确定事件：<Subject 1> 举起兵器，与 <Subject 2> 巨蛇在山崖上对峙", calls[-1][1])
+        self.assertIn("non_diegetic_music:\n低沉的大鼓配古筝，节奏缓慢。", written[0])
+        # A borrowed look keeps the planner.
+        calls.clear()
+        with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+            with self.assertRaises(ValueError):
+                assistant._optimize_h3_reference("<Picture 1> 中的角色穿上 <Picture 2> 的盔甲", requirements, 6, frames)
+        self.assertIn("minimaxH3ReferenceEnhance", [label for label, _ in calls])
+
     def test_minor_evidence_in_one_picture_and_sensitive_content_in_another_block_together(self):
         frames = [{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}, {"label": "<Picture 2>", "dataUrl": "data:image/jpeg;base64,/9j/BBBB"}]
         requirements = "Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n<Picture 1> 和 <Picture 2> 在卧室里相拥"
@@ -941,9 +987,24 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("overall_soundscape: 窗外鸟鸣，猫爪落在木地板上的轻响，风声。\n\nnon_diegetic_music: 钢琴曲", result["positivePrompt"])
         result, _ = self.run_local([answer], {"currentPrompt": source, "requirements": "Source prompt:\n" + source + "\n\n完全静音"})
         self.assertIn("overall_soundscape: N/A\n\nnon_diegetic_music: N/A", result["positivePrompt"])
-        # A plain source gets the user's named sounds as a sentence, else natural ambience; music only when asked.
-        result, _ = self.run_local([answer], {"requirements": "Source prompt:\n" + CAT + "\n\n加上风声"})
-        self.assertIn("overall_soundscape: 风声清晰可闻。\n\nnon_diegetic_music: N/A", result["positivePrompt"])
+        # A plain source gets the user's named sounds as a sentence, else natural ambience; background music unless the user
+        # asks for none: the writer's 配乐 line, else a plain default.
+        result, calls = self.run_local([answer], {"requirements": "Source prompt:\n" + CAT + "\n\n加上风声"})
+        self.assertIn("overall_soundscape: 风声清晰可闻。\n\nnon_diegetic_music: " + service.compile_h3_action_phases.__globals__["DEFAULT_MUSIC_ZH"], result["positivePrompt"])
+        self.assertIn("\n配乐：写适合这段画面的背景音乐，一两句：用什么乐器、速度快慢、节奏怎样、音量怎样变化", calls[0][0])
+        scored = answer.replace("\n约束", "\n配乐：“竹笛”独奏配轻柔的木鱼节拍，速度缓慢，音量逐渐减弱\n约束")
+        result, _ = self.run_local([scored], {"requirements": "Source prompt:\n" + CAT + "\n\n加上风声"})
+        self.assertIn("\n\nnon_diegetic_music: 竹笛独奏配轻柔的木鱼节拍，速度缓慢，音量逐渐减弱。", result["positivePrompt"])
+        # The user's own music wins; the writer's line is used when it keeps the user's instrument.
+        result, calls = self.run_local([scored], {"requirements": "Source prompt:\n" + CAT + "\n\n配上钢琴曲"})
+        self.assertIn("\n\nnon_diegetic_music: 钢琴曲。", result["positivePrompt"])
+        self.assertIn("\n配乐：用户要的音乐是“配上钢琴曲”，照它写", calls[0][0])
+        result, _ = self.run_local([scored.replace("“竹笛”独奏", "舒缓的钢琴独奏")], {"requirements": "Source prompt:\n" + CAT + "\n\n配上钢琴曲"})
+        self.assertIn("\n\nnon_diegetic_music: 舒缓的钢琴独奏配轻柔的木鱼节拍，速度缓慢，音量逐渐减弱。", result["positivePrompt"])
+        for words in ["不要音乐", "完全静音"]:
+            result, calls = self.run_local([scored], {"requirements": "Source prompt:\n" + CAT + "\n\n" + words})
+            self.assertIn("\n\nnon_diegetic_music: N/A", result["positivePrompt"])
+            self.assertNotIn("\n配乐：", calls[0][0])
 
     def test_translate_only_returns_the_english_copy_without_rewriting(self):
         # "镜头固定" is only a camera move: the program writes it (TOKEN_0), the model never sees it.
@@ -1101,7 +1162,10 @@ class H3BaseLocalTest(unittest.TestCase):
             self.assertEqual(service.minimax_h3_base_audio(view, fields, tail)[:2], expected, tail)
         # A plain prompt leaves the soundscape to the writer, with the sounds the user named.
         self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，配上钢琴配乐", None, ""), (None, "钢琴配乐。", []))
-        self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，背景是海浪声和海鸥叫声", None, ""), (None, "N/A", ["海浪声", "海鸥叫声"]))
+        # No music named: the writer's background music (None); a previous N/A the user did not ask for is no refusal.
+        self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，背景是海浪声和海鸥叫声", None, ""), (None, None, ["海浪声", "海鸥叫声"]))
+        self.assertEqual(service.minimax_h3_base_audio(view, dict(fields, non_diegetic_music="N/A"), "加上海鸥叫声")[1], None)
+        self.assertEqual(service.minimax_h3_base_audio(view, dict(fields, non_diegetic_music="N/A"), "不要音乐")[1], "N/A")
         answer = phases().replace("\n约束", "\n声音：海浪拍岸声，风吹过窗台的轻响，远处传来钢琴音乐。\n约束")
         text = compile_action_phases(answer, "T2VA", 5, CAT, audio=(None, "N/A", ["海浪声", "海鸥叫声"]))
         # A list of sounds reads as a sentence of sounds heard together (a list says no order: never 随后).
@@ -1259,7 +1323,7 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("镜头固定拍摄。橘猫前爪前伸伸懒腰。橘猫后腿蹬起，身体前倾。橘猫跃出窗台。\n[Shot 2] At 00:04.000 镜头切到近景，橘猫落地后回头。", text)
         self.assertNotRegex(text, "全程|准备切换|不拉远")
         prompt = service.build_minimax_h3_writer_request(CAT, "第4秒切近景", "T2VA", 5, cut=True)
-        self.assertIn("再写第一个镜头怎样拍（只选一种）", prompt)
+        self.assertIn("\n起始：先写一句第一个镜头怎样运动（只选一种", prompt)
         self.assertIn("视频描述写了位置就用原词", service.build_minimax_h3_writer_request("橘猫坐在台阶上摆尾", "", "FL2VA", 5, sees_frames=True))
 
     def test_answer_preambles_and_old_five_sections(self):
@@ -1319,8 +1383,11 @@ class H3UserWordsTest(unittest.TestCase):
         self.assertIn("动作的先后顺序：先“猫咪跳上桌子”，再“回头看镜头”；后面的动作不提前写。“回头”之前的动作让主体侧对或背对镜头，回头时才转向镜头。", request)
         self.assertIn("动作要用到：桌子。图中没有的，在用到它之前写清它在画面哪里（如“画面前方的桌子”），再写用到它的动作。", request)
         self.assertIn("先用几个字写图中的画风（如写实照片、动漫插画、三维渲染）", request)
-        # The picture sets the opening framing: the writer is not asked for a shot size there.
-        self.assertIn("点明开场画面里的主体、场景和光线，再写镜头怎样拍", request)
+        # The picture sets the opening framing: the writer is not asked for a shot size there, but for the look, pose, place and
+        # light it shows; a thing the picture lacks comes in with a camera move or on the side the subject goes to.
+        self.assertIn("再用两三句通顺的话写开场画面：图中主体的外观要点（毛色或服装和颜色、手里拿着的东西）、姿态和朝向、所在的场景和光线", request)
+        self.assertNotRegex(request.split("概述：")[1].split("\n")[0], "景别")
+        self.assertIn("用镜头运动把它带进画面", request)
         self.assertIn("有图时开场的景别由图决定，不另写", service.MINIMAX_H3_WRITER_RULES)
         answer = "概述：写实照片，橘猫端坐在灰色背景前，镜头固定\n起始：橘猫头部转向镜头，看着镜头\n递进：橘猫跃起\n收束：橘猫落在桌面上\n约束：无"
         good = "概述：写实照片，橘猫端坐在灰色背景前，旁边放着一张木桌，镜头固定\n起始：橘猫后腿发力，跳上桌子\n递进：橘猫稳稳落在桌面上\n收束：橘猫回头看向镜头\n约束：无"
@@ -1488,11 +1555,11 @@ class H3UserWordsTest(unittest.TestCase):
         self.assertIn("<Subject 1>: the man in <Picture 1>", pair["modelPrompt"])
 
     def test_a_complete_translation_is_kept_when_every_retry_drops_a_placeholder(self):
-        fields = ("integrated_multimodal_description: [Shot 1] 写实电影风格，<Picture 1> 中的光点流转速度缓慢加快。\n"
+        fields = ("integrated_multimodal_description: [Shot 1] 写实电影风格，<Picture 1> 中的光点流转速度缓慢加快，招牌上写着“营业中”。\n"
                   "[Shot 2] At 00:03.000 镜头切到近景，女孩走向镜头。\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: N/A")
-        answers = iter([{"0": "Live-action, cinematic, the light points in TOKEN_0 flow and gradually slow down.",
+        answers = iter([{"0": "Live-action, cinematic, the light points in TOKEN_0 flow and gradually slow down, and the sign reads TOKEN_1.",
                          "1": "The camera cuts to a close-up as the girl walks toward the camera.", "2": "Wind blows."},
-                        {"0": "The light points flow and speed up."}, {"0": "The light points flow faster."}])
+                        {"0": "The light points in TOKEN_0 flow and speed up."}, {"0": "The light points in TOKEN_0 flow faster."}])
         assistant, requests = service.PromptAssistant(), []
 
         def generate(prompt, **kwargs):
@@ -1501,10 +1568,10 @@ class H3UserWordsTest(unittest.TestCase):
             return json.dumps({key: value for key, value in next(answers).items() if key in pending})
         assistant.generate = generate
         pair = json.loads(assistant.translate_h3_base(fields, "I2VA", 5)["positivePrompt"])
-        # 近景 is written as the official medium close-up without asking again; the retries lost <Picture 1>, so the
+        # 近景 is written as the official medium close-up without asking again; the retries lost the sign's text, so the
         # first complete answer stands instead of failing the whole compile, with its reversed speed turned back.
         self.assertEqual([list(r) for r in requests], [["0", "1", "2"], ["0"], ["0"]])
-        self.assertIn("the light points in <Picture 1> flow and gradually speed up.", pair["modelPrompt"])
+        self.assertIn("the light points in <Picture 1> flow and gradually speed up, and the sign reads “营业中”.", pair["modelPrompt"])
         self.assertNotIn("slow down", pair["modelPrompt"])
         # Only a reversal that can be turned back word for word is; a camera pushed in for 拉远 is not shipped.
         from prompt_assistant.h3_prompt_enhance import unflip
@@ -1762,6 +1829,74 @@ class H3UserWordsTest(unittest.TestCase):
         result, calls = H3BaseLocalTest.run_local(self, [fixed.replace("橘猫后腿发力", "橘猫蹲低身体")], {"h3Mode": "image_video", "currentPrompt": "橘猫直接跳上桌子，然后回头"})
         self.assertEqual(len(calls), 1)
         self.assertIn("回头", result["positivePrompt"])
+
+    def test_round_five_answers_read_as_the_official_shot(self):
+        # Round 5, i2v_animal: "慢慢趴下" written as "缓缓…趴伏" was asked again (30 s) for its manner word alone.
+        answer = ("概述：写实照片风格。一只毛色为橘黄色、毛发蓬松浓密的长毛猫，端坐于纯灰色背景前，双眼直视镜头，姿态端正，神情平静。\n"
+                  "起始：镜头以小幅度缓慢推近，橘猫张嘴打了个哈欠，头部微微后仰，眼睛睁得更大，鼻尖轻颤。\n"
+                  "递进：它前爪先向地面缓缓滑出，身体随之低伏，毛发因动作而微微飘动，尾巴轻垂贴地，眼神逐渐柔和，眼皮开始下垂。\n"
+                  "收束：猫完全趴伏在地面，前爪并拢收于身前，后腿蜷曲，双眼眯成细缝，神情慵懒满足。\n"
+                  "声音：猫爪触地时发出轻微的摩擦声，网眼发出“嘎吱”轻响，安静的室内环境声持续萦绕。\n"
+                  "配乐：钢琴轻柔的分解和弦，节奏舒缓，音量渐弱。\n约束：无")
+        result, calls = H3BaseLocalTest.run_local(self, [answer], {"h3Mode": "image_video", "currentPrompt": "橘猫打了个哈欠，然后慢慢趴下，眯起眼睛"})
+        self.assertEqual(len(calls), 1)
+        text = result["positivePrompt"]
+        # The opening names the subject <Picture 1> shows; the camera is a sentence of its own at the action it starts on.
+        self.assertIn("<Picture 1> 中的毛色为橘黄色", text)
+        self.assertIn("镜头以小幅度缓慢推近。橘猫张嘴打了个哈欠", text)
+        # A quoted sound word is plain text (it stayed Chinese in the English copy), and the writer's music is the field.
+        self.assertIn("嘎吱轻响", text)
+        self.assertNotIn("“嘎吱”", text)
+        self.assertIn("non_diegetic_music: 钢琴轻柔的分解和弦，节奏舒缓，音量渐弱。", text)
+        # "动漫插画风格，纯色暖黄色背景。熊猫…": the backdrop is no subject of <Picture 1>.
+        panda = ("概述：动漫插画风格，纯色暖黄色背景。熊猫身着传统戏曲服饰，双手紧握一根长棍。\n起始：熊猫缓缓坐下。\n递进：熊猫把长棍靠在身旁，抱起竹子。\n"
+                 "收束：熊猫啃了一口竹子。\n约束：无")
+        self.assertIn("纯色暖黄色背景。<Picture 1> 中的熊猫身着传统戏曲服饰", compile_action_phases(panda, "I2VA", 5, "熊猫慢慢坐下，抱起竹子啃了一口"))
+        # A thing the user picks up that the picture lacks is set up before it is used.
+        request = service.build_minimax_h3_writer_request("熊猫慢慢坐下，抱起竹子啃了一口", "", "I2VA", 5, sees_frames=True)
+        self.assertIn("动作要用到：竹子。图中没有的，在用到它之前写清它在画面哪里", request)
+        self.assertIn("手里拿着东西的主体要用双手做动作时，先写拿着的东西放到哪里", request)
+        # The examples the writer copied into unrelated answers are gone: no yawn, no cat's paws on a floor.
+        self.assertNotRegex(service.MINIMAX_H3_WRITER_RULES + request, "打了个哈欠”|猫爪落在木地板")
+        # After a cut the held state reads "女神依旧闭眼", never "女神闭依旧眼".
+        goddess = ("概述：三维渲染，女神闭眼坐在台阶上手持权杖\n起始：女神轻转权杖\n递进：光点流转\n收束：权杖转到半圈\n"
+                   "镜头2（第4秒）：切到女神的近景，镜头缓慢拉远，女神闭目\n约束：无")
+        text = compile_action_phases(goddess, "FL2VA", 8, "女神闭着眼睛轻轻转动手中的权杖，第4秒切到近景", cut=True)
+        self.assertIn("女神依旧闭眼", text)
+        self.assertNotIn("闭依旧", text)
+        # Actions the answer left out go after the beat's camera sentence, in the user's order; one with a subject of its own
+        # is its own sentence ("女神橘猫抬头看着她" before). A simile or what the score is for is no music.
+        lifted = ("概述：三维渲染，紫发女子坐于大理石台阶，手持金色权杖，橘猫静坐阶下\n起始：镜头固定，女神眼睑轻启，睫毛微颤\n"
+                  "递进：权杖顶端星芒微曳\n收束：女神眼帘垂落复归闭合\n配乐：竖琴轻拨，节奏缓慢，如潮水退去，模拟星光的闪烁")
+        text = compile_action_phases(lifted, "FL2VA", 5, "女神缓缓睁开眼睛，微微抬起权杖", audio=(None, None, []))
+        self.assertIn("镜头固定。女神缓缓睁开眼睛，微微抬起权杖，眼睑轻启", text)
+        self.assertIn("non_diegetic_music: 竖琴轻拨，节奏缓慢。", text)
+        from prompt_assistant.h3_prompt_enhance import plain_music
+        self.assertEqual(plain_music("竖琴与弦乐交织的慢板，音符如光点般轻盈流转，节奏舒缓如呼吸，音量渐强后渐弱。"),
+                         "竖琴与弦乐交织的慢板，音符轻盈流转，节奏舒缓，音量渐强后渐弱。")
+        text = compile_action_phases(lifted.replace("女神眼睑轻启", "女神右手持权杖缓缓抬升"), "FL2VA", 6, "女神把权杖举过头顶，橘猫抬头看着她")
+        self.assertIn("镜头固定。橘猫抬头看着她。女神一只手持权杖缓缓抬升", text)
+        # "镜头跟随它缓慢移动" is a camera move of its own sentence (the official "follows in a tracking shot at slow speed").
+        from prompt_assistant.h3_prompt_enhance import camera_english, official_english
+        self.assertEqual(camera_english("镜头跟随它缓慢移动"), "the camera follows in a tracking shot at slow speed")
+        # 多参's style sentence and a tag with no article.
+        self.assertEqual(official_english("detailed_description:\nThe video is rendered in 3D CG style.\n[Shot 1] The <Subject 1> claps.", opening_style=False),
+                         "detailed_description:\nThe target video is in 3D CG style.\n[Shot 1] <Subject 1> claps.")
+        self.assertIn("每行以下面规定的标签开头（标签原样照写，每个只写一次），标签的冒号后面直接写这一行的全部内容，不换行", service.build_minimax_h3_writer_request(CAT, "", "T2VA", 5))
+
+    def test_a_decoding_loop_is_said_once(self):
+        # Round 5, ho_fl2v: the repair answer wrote a clause three times and ran its music out to the token limit.
+        looped = ("概述：三维渲染动漫插画，紫发女子身着白金相间长裙坐于大理石台阶，手持金色权杖，身旁橘猫静坐\n"
+                  "起始：镜头固定，女子眼帘微启，睫毛轻颤，视线自下方缓缓抬向正前方\n"
+                  "递进：她眼睫轻颤，目光凝定" + "，权杖顶端星芒流转，衣摆与发丝随呼吸微扬" * 3 + "\n"
+                  "收束：她眼帘垂落，权杖缓缓回落至原位，星芒微光收敛\n声音：权杖轻触台阶，石阶发出微响\n配乐：" + "竖琴与" * 400)
+        text = compile_action_phases(looped, "FL2VA", 5, "女神缓缓睁开眼睛，又慢慢闭上", audio=(None, None, []))
+        self.assertEqual(text.count("衣摆与发丝随呼吸微扬"), 1)
+        self.assertNotIn("竖琴与", text)
+        self.assertIn("non_diegetic_music: " + service.compile_h3_action_phases.__globals__["DEFAULT_MUSIC_ZH"], text)
+        # A doubled word ("咚咚") stays; a clause written again goes.
+        from prompt_assistant.h3_prompt_enhance import clean_phase_text
+        self.assertEqual(clean_phase_text("鼓点咚咚作响，雨越下越大，鼓点咚咚作响"), "鼓点咚咚作响，雨越下越大。")
 
 
 if __name__ == "__main__":

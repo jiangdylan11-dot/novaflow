@@ -1002,6 +1002,79 @@ class Qwen3VLAbliteratedAdapter:
             if unload_after:
                 self.unload()
 
+    def generate_batch(
+        self,
+        prompts,
+        *,
+        system_text: str | None = None,
+        max_new_tokens: int | None = None,
+        unload_after: bool = False,
+        images=None,
+    ) -> list[str]:
+        """Several user turns decoded together, greedy, each a text with at most one picture before it: a step for the
+        batch costs far less than one step for each, so independent requests finish sooner."""
+
+        self.last_generation_diagnostics = {}
+        try:
+            if self.model is None or self.processor is None:
+                self._load()
+            import torch
+
+            system = str(system_text).strip() if str(system_text or "").strip() else "你是 NovaFlow 的本地视觉事实提取器，只返回严格的版本化 JSON。"
+            pictures = []
+            for image in images or []:
+                if image is not None:
+                    picture = self._tensor_to_pil(image)
+                    if max(picture.size) > self.max_side:
+                        scale = self.max_side / max(picture.size)
+                        picture = picture.resize((max(1, round(picture.width * scale)), max(1, round(picture.height * scale))))
+                    pictures.append(picture)
+            texts = [
+                self.processor.apply_chat_template(
+                    [{"role": "system", "content": [{"type": "text", "text": system}]},
+                     {"role": "user", "content": ([{"type": "image"}] if images and images[index] is not None else [])
+                      + [{"type": "text", "text": str(prompt or "")}]}],
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+                for index, prompt in enumerate(prompts)
+            ]
+            tokenizer = self.processor.tokenizer
+            side = tokenizer.padding_side
+            # Left padding keeps every answer right after its own prompt.
+            tokenizer.padding_side = "left"
+            try:
+                inputs = self.processor(text=texts, **({"images": pictures} if pictures else {}), padding=True, return_tensors="pt")
+            finally:
+                tokenizer.padding_side = side
+            try:
+                device = next(self.model.parameters()).device
+            except StopIteration:
+                device = torch.device("cuda:0")
+            inputs = {key: value.to(device) if torch.is_tensor(value) else value for key, value in inputs.items()}
+            limit = self.max_new_tokens if max_new_tokens is None else max(128, min(2800, int(max_new_tokens)))
+            pad = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+            self._trim_cuda_cache(torch, "prefill-cache-trim")
+            with torch.inference_mode():
+                generated = self.model.generate(**inputs, max_new_tokens=limit, do_sample=False, repetition_penalty=1.0,
+                                                use_cache=True, pad_token_id=pad)
+            trimmed = generated[:, inputs["input_ids"].shape[1]:]
+            counts = [int((row != pad).sum()) for row in trimmed]
+            self.last_generation_diagnostics = {
+                "generatedTokens": max(counts, default=0),
+                "generatedTokensEach": counts,
+                "generationTokenLimit": limit,
+                "generationHitTokenLimit": any(count >= limit for count in counts),
+            }
+            return [text.strip() for text in self.processor.batch_decode(trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)]
+        except Qwen3VLProviderError:
+            raise
+        except Exception as exc:
+            raise Qwen3VLProviderError("inference-failed", str(exc)) from exc
+        finally:
+            if unload_after:
+                self.unload()
+
     def unload(self) -> None:
         self.model = None
         self.processor = None

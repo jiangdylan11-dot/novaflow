@@ -15,6 +15,8 @@ CAMERA_PATTERN = r"镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdoll
 DEFAULT_CAMERA_ZH = "镜头固定，构图保持稳定。"
 DEFAULT_CAMERA_EN = "The camera holds a static shot and the framing stays stable."
 DEFAULT_SOUNDSCAPE_ZH = "与画面动作一致的自然环境声和动作声。"
+# Background music by default (official base §4.7: instrumentation, tempo, rhythm, dynamics), for a writer that gave none.
+DEFAULT_MUSIC_ZH = "轻柔的钢琴单音配低音弦乐长音，速度缓慢，音量平稳，结尾渐弱。"
 HAN = r"[㐀-鿿]"
 SHOT_MARK = r"\[Shot ([1-9]\d*)\](?:[ \t]*At[ \t]+(\d{2}):(\d{2})\.(\d{3}),?)?"
 # A cut, scene change or several shots in the user's own words. Only then do
@@ -215,11 +217,11 @@ def camera_english(clause):
         return "the camera holds a static shot"
     moves = "|".join(f"(?P<m{i}>{word})" for i, (_, word) in enumerate(CAMERA_GLOSSARY))
     match = re.fullmatch(rf"(?:{CAMERA_SUBJECT})(?:全程|始终|一直|持续|开始|随即)?(?:保持|维持|以|用)?(?P<mods>(?:(?:{CAMERA_MODIFIERS})[地的、]?)*)"
-                         rf"(?:{moves})(?:拍摄|运动|移动|运镜)?", clause)
+                         rf"(?:{moves})(?:[它她他]们?(?P<after>(?:(?:{CAMERA_MODIFIERS})[地的、]?)*))?(?:拍摄|运动|移动|运镜)?", clause)
     if not match:
         return ""
     move = CAMERA_GLOSSARY[next(i for i in range(len(CAMERA_GLOSSARY)) if match[f"m{i}"])][0]
-    mods = match["mods"]
+    mods = match["mods"] + (match["after"] or "")
     if move.startswith(("holds", "shakes")):
         return "the camera " + ("shakes strongly" if move.startswith("shakes") and re.search(r"大幅", mods) else move)
     extra = [english for english, word in CAMERA_AMPLITUDE + CAMERA_SPEED if re.search(word, mods)]
@@ -251,7 +253,7 @@ FLIPS = (
     (r"右", r"左", LEFT_EN, "右 means right", False),
     # Shot sizes (official): 特写 close-up, 近景 medium close-up, 中景 medium shot, 全景 full shot, 远景 wide shot.
     (r"近景", r"特写", r"(?<!medium )\bclose-?up\b|\bclose shot\b", "近景 means medium close-up", False),
-    (r"特写", r"近景", r"\bmedium close-?up\b", "特写 means close-up", False),
+    (r"特写", r"近景|中景", r"\bmedium (?:close-?up|shot)\b", "特写 means close-up", False),
     (r"中景", r"近景|特写|全景|远景", r"\bclose-?up\b|\bwide shot\b|\bfull shot\b", "中景 means medium shot", False),
     (r"全景", r"远景", r"\bwide shot\b|\bpanoram", "全景 means full shot", False),
     (r"远景", r"全景", r"\bfull shot\b", "远景 means wide shot", False),
@@ -364,12 +366,17 @@ def official_english(text, opening_style=True):
         # "<Subject 1>，一位…的男性角色，站在…" came back as "At <Subject 1>, a male character …": the tag opens the sentence.
         part = re.sub(r"\bAt (<Subject [1-9]\d*>), (?=(?:a|an|the) )", r"\1, ", part)
         # "The character <Subject 1> takes half a step": the tag is the subject's name.
-        part = re.sub(r"\b[Tt]he (?:character|figure|subject|warrior|man|woman) (<Subject [1-9]\d*>)", r"\1", part)
+        part = re.sub(r"\b[Tt]he (?:(?:male |female |young |old )?(?:character|figure|subject|warrior|man|woman)(?: in)? )?(<Subject [1-9]\d*>)", r"\1", part)
         # "<Subject 1> 另一只手松开枪柄" came back as "<Subject 1> The other hand releases": the limb is the subject's.
         part = re.sub(r"(<Subject [1-9]\d*>) (?:The|A|An|One) ((?:other |same )?(?:hand|arm|foot|leg|paw|shoulder|eye)s?)\b", r"\1's \2", part)
         parts[i] = re.sub(r"(?m)^(<Subject [1-9]\d*>(?: \(S\d+\))?:[ \t]*)(?!(?:A|An|The)\b)([A-Z][a-z]+)(?= [a-z]|,)",
                           lambda m: m[1] + ("an " if m[2][0] in "AEIOU" else "a ") + m[2].lower() if common(m[2]) else m[0], part)
-    return "".join(parts)
+    text = "".join(parts)
+    if not opening_style:
+        # 多参's style sentence: "The target video is in a 3D CG style" (official ref §5.2), not "The video is rendered in".
+        text = re.sub(r"(?m)^(detailed_description:\n)(?:The|This) (?:target )?video (?:is (?:rendered |presented |shown |done |set |created |made )?in|adopts|uses|employs|features|has|is)\b ?",
+                      r"\1The target video is in ", text)
+    return text
 
 
 def subject_pronouns(english, display):
@@ -1029,7 +1036,7 @@ MODE_NAMES = {"T2VA": "文生视频", "I2VA": "图生视频", "FL2VA": "首尾�
 CONDITIONAL_RULES = (
     {"name": "idle", "ask": r"待机|(?:仅|只)[^，。；,;\n]{0,4}呼吸|\bidle\b|only\s+breath",
      "rule": "仅呼吸待机：只写胸肩随呼吸微微起伏、回落；头部朝向、手臂和身体位置保持不变，不要写成抬头、转头或抬手。状态不变时，几个阶段可以写同样的内容。",
-     "leak": r"胸肩|呼吸待机|仅呼吸", "label": "呼吸待机、胸肩起伏"},
+     "leak": r"胸肩(?:随呼吸|起伏)|呼吸待机|仅呼吸", "label": "呼吸待机、胸肩起伏"},
     {"name": "still", "ask": r"完全静止|保持静止|静止不动|一动不动|纹丝不动|\bmotionless\b",
      "rule": "静止：用户要求静止的主体或部分全程不动，只保留用户允许的变化；状态不变时几个阶段可以写同样的内容。", "leak": None, "label": ""},
     {"name": "loop", "ask": r"循环|无缝(?:循环|衔接|回到)|\bloop(?:ing)?\b|seamless\s+loop",
@@ -1211,14 +1218,32 @@ def split_action_phases(output):
 
 
 def clean_phase_text(value):
-    """One readable paragraph: no list marks, quote marks or copied time ranges."""
+    """One readable paragraph: no list marks, quote marks or copied time ranges. A decoding loop is gone: a stutter
+    ("竖琴与竖琴与竖琴与…" to the token limit) ends the line where it starts, a clause written three times over is said once."""
     lines = []
     for line in str(value or "").splitlines():
         line = re.sub(r"^[ \t>#*\-•]+", "", line).strip()
         line = re.sub(r"^[（(]?\d+(?:\.\d+)?\s*(?:s|秒)?\s*[-–—~～至]\s*\d+(?:\.\d+)?\s*(?:s|秒)[）)]?\s*[:：，,]?\s*", "", line, flags=re.I)
+        line = re.sub(r"([㐀-鿿]{1,4}?)\1{5,}.*$", "", line)
+        line = re.sub(r"([㐀-鿿，,、]{5,40}?)\1{2,}", r"\1", line)
         if line:
             lines.append(line if re.search(r"[。！？!?；;…，,、：:][”’」]?$", line) else line + "。")
-    return "".join(lines)
+    seen = set()
+
+    def once(clause):
+        key = compact(clause)
+        repeated = len(key) >= 6 and key in seen
+        seen.add(key)
+        return repeated
+    return drop_clauses("".join(lines), once) if lines else ""
+
+
+def plain_music(text):
+    """The score's instruments, tempo and dynamics, never what it is for ("营造出宁静的氛围", official base §4.7) or what it is
+    like ("音符如光点般流转", "节奏舒缓如呼吸")."""
+    text = re.sub(r"[如像][^，,。；;如像]{1,6}般地?|(?<=[㐀-鿿])[如像][^，,。；;]{1,6}(?=[，,。；;]|$)", "", str(text or ""))
+    moodless = drop_clauses(text, lambda clause: re.search(r"^\s*[如像]|营造|氛围|烘托|情绪|心情|模拟|仿佛|宛如|犹如|好似|如同", clause))
+    return moodless if re.search(r"[㐀-鿿A-Za-z]", moodless) else text
 
 
 def clean_constraints(value):
@@ -1296,6 +1321,8 @@ def neutral_speech(phase, step):
 SHOT_LINE = r"(?m)^[ \t>#*\-•]*【?镜头\s*[2-9]\s*】?\s*([（(][^）)\n]{0,16}[）)])?\s*[:：][ \t]*(.*)$"
 # The writer's own soundscape line: 声音：…
 SOUND_LINE = r"(?m)^[ \t>#*\-•]*【?声音】?[ \t]*[:：][ \t]*(.*)$"
+# The writer's background music line: 配乐：…
+MUSIC_LINE = r"(?m)^[ \t>#*\-•]*【?(?:配乐|背景音乐)】?[ \t]*[:：][ \t]*(.*)$"
 # "保持橘猫外观一致", "动作连贯": talk about consistency, nothing visible (official rule).
 GENERIC_CONSTRAINT = r"(?:身份|外观|形象|样貌|造型)[^，,。；;]{0,8}(?:一致|不变|统一)|^(?:保持)?动作(?:连贯|流畅|自然|衔接)[^，,。；;]{0,4}[。]?$"
 # "温室背景不变": a statement that nothing changes, unless the user asked for it.
@@ -1349,8 +1376,9 @@ def sound_sentence(text):
 
 # Where a speaker talks; the line goes after that sentence.
 SPEAK_AT = r"说|讲|台词|念|回答|回应|答道|问道|喊|开口|打招呼"
-# The words that end a speaker's name at the start of a sentence ("女孩抬起右手" -> 女孩).
-NAME_END = r"[在从向朝把将对给抬举挥转走跑跳看望站坐蹲躺趴伸弯低点摇笑开说回停放拿握拍迈俯仰侧背面微轻缓慢快迅猛突再又也正都仍继已便就随同和与跟用以被让使，,。！？]"
+# The words that end a speaker's name at the start of a sentence ("女孩抬起右手" -> 女孩; "橘猫打了个哈欠" -> 橘猫, never
+# "橘猫打了个哈").
+NAME_END = r"[在从向朝把将对给抬举挥转走跑跳看望站坐蹲躺趴伸弯低点摇笑开说回停放拿握拍迈俯仰侧背面微轻缓慢快迅猛突再又也正都仍继已便就随同和与跟用以被让使闭睁眯眨打张咬吃喝啃抱捧叼推拉扔踢，,。！？]"
 
 
 def speaker_name(sentence, user_text):
@@ -1519,6 +1547,7 @@ def write_missing_actions(texts, user_text, overview, names):
     user put after the last beat closes it."""
     texts, clauses = list(texts), list(action_clauses(user_text))
     steps = max((index for index, _, _ in clauses), default=0) + 1
+    missing = {}
     for index, clause, verbs in clauses:
         if not verbs or all(action_at(v[0], action_part(clause, v), overview + "".join(texts)) >= 0 for v in verbs):
             continue
@@ -1531,13 +1560,22 @@ def write_missing_actions(texts, user_text, overview, names):
             earlier = writer_name(re.findall(r"[^。！？!?]+", "".join(texts)), names)
             texts[i] = append_sentence(texts[i], ("" if not earlier or phrase.startswith(earlier) else earlier) + phrase + "。")
             continue
-        subject = writer_name([texts[i]], names)
-        if subject and texts[i].startswith(subject):
-            texts[i] = subject + (phrase[len(subject):] if phrase.startswith(subject) else phrase) + "，" + texts[i][len(subject):].lstrip("，,")
+        missing.setdefault(i, []).append(phrase)
+    for i, phrases in missing.items():
+        phrase = "，".join(phrases)
+        camera = re.match(r"[^，,。；;]+。", texts[i])
+        camera = camera[0] if camera and camera_english(camera[0][:-1]) else ""
+        text = texts[i][len(camera):]
+        subject = writer_name([text], names)
+        # A phrase with a subject of its own ("橘猫抬头看着她") is no action of the beat's subject ("女神橘猫抬头看着她").
+        other = speech_name(phrase) if subject and not phrase.startswith(subject) else ""
+        if subject and text.startswith(subject) and not other:
+            text = subject + (phrase[len(subject):] if phrase.startswith(subject) else phrase) + "，" + text[len(subject):].lstrip("，,")
         else:
             # A beat that opens with no one ("猫腰身大幅拉长") takes the subject of the sentences before it.
-            earlier = writer_name(re.findall(r"[^。！？!?]+", "".join(texts[:i + 1])), names)
-            texts[i] = ("" if not earlier or phrase.startswith(earlier) else earlier) + phrase + "，" + texts[i]
+            earlier = other or writer_name(re.findall(r"[^。！？!?]+", "".join(texts[:i]) + text), names)
+            text = ("" if not earlier or phrase.startswith(earlier) else earlier) + phrase + ("。" if other else "，") + text
+        texts[i] = camera + text
     return texts
 
 
@@ -1686,9 +1724,9 @@ def picture_subject(overview):
     for j in range(i, min(len(clauses), i + 4)):
         clause = clauses[j].strip().rstrip("，,。；;")
         noun, head = clause_noun(clause), re.sub(r"^(?:一只|一个|一位|一名|一头|一条|一匹)", "", clause)
-        if re.search(STYLE_WORDS, clause) or not re.match(HAN, head) or re.match(r"[他她它我你以用被把将让使]", head):
+        if re.search(STYLE_WORDS, clause) and not noun or not re.match(HAN, head) or re.match(r"[他她它我你以用被把将让使]", head):
             break
-        if (re.search(r"^(?:随着|伴随|伴着)|[风雨雪雾云夜天光色影]$", noun or head) or not noun and (
+        if (re.search(r"^(?:随着|伴随|伴着)|[风雨雪雾云夜天光色影]$|背景$|场景$", noun or head) or not noun and (
                 len(head) <= 4 or re.search(r"[上中里内边旁前下]$", head) and not re.search(r"[站坐躺趴蹲走跑跳立飞游]", head))):
             continue
         if not noun and re.match(PLACE_OPENING, head):
@@ -1800,9 +1838,9 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     for a cut, so the writer's 镜头N lines become later shots; otherwise their
     content stays in the one continuous shot. audio: (soundscape, music, cues);
     a soundscape of None takes the writer's 声音 line plus the sounds the user
-    named (cues).
+    named (cues); a music of None takes the writer's 配乐 line.
     """
-    later, shot_texts, heard = [], [], []
+    later, shot_texts, heard, scored = [], [], [], []
 
     def take(match):
         seconds = re.search(r"\d+(?:\.\d+)?", match[1] or "")
@@ -1813,7 +1851,11 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     def take_sound(match):
         heard.append(match[1])
         return ""
-    parts = split_action_phases(re.sub(SOUND_LINE, take_sound, re.sub(SHOT_LINE, take, fold_repeated_beats(merge_point_beats(output)))))
+
+    def take_music(match):
+        scored.append(match[1])
+        return ""
+    parts = split_action_phases(re.sub(MUSIC_LINE, take_music, re.sub(SOUND_LINE, take_sound, re.sub(SHOT_LINE, take, fold_repeated_beats(merge_point_beats(output))))))
     asked_later = asked_shots(source + "\n" + (user_requirement or "")) if cut else None
     back = lambda text: re.search(r"<Picture 2>|拉远|拉回|回到|恢复", text) and not re.search(r"特写|近景", text)
     if asked_later and len(shot_texts) > asked_later and all(back(text) for text in shot_texts[asked_later:]):
@@ -1922,6 +1964,9 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         noted = [drop_clauses(p, note(i)) for i, p in enumerate(phases)]
         phases = noted if any(has_text(p) for p in noted[:beat_count]) else phases
     stop = lambda s: s if "定格" in user_text else map_clauses(s, settle_freeze)
+    # A beat that opens with the camera ("镜头以小幅度缓慢推近，橘猫张嘴…") gives it a sentence of its own ("The camera pushes in
+    # with small amplitude at slow speed. The cat …"), never a comma splice with the action.
+    phases = [re.sub(r"^([^，,。；;]+)[，,]", lambda m: m[1] + "。" if camera_english(m[1]) else m[0], p) for p in phases]
     overview, phases, constraints = stop(overview), [stop(p) for p in phases], [stop(item) for item in constraints]
     # The program owns the timing: a clause with the answer's own seconds goes ("爪尖离地0.5秒前").
     own_seconds = lambda clause: any(m[0] not in user_text for m in re.finditer(r"\d+(?:\.\d+)?\s*秒", clause))
@@ -1986,10 +2031,11 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
                     + re.escape(re.sub(r"[。！？!?.…]+$", "", words)) + r'[。！？!?.…]*[”"]')
             phases = [re.sub(r"。(?=[。，,！？])", "", re.sub(copy, "。", p)) for p in phases]
         phases = [re.sub(r"(说|喊|念)出(?=。)|(?<=[，,、时并口])(说)(?=。)", lambda m: "说话" if (m[1] or m[2]) == "说" else m[1], p) for p in phases]
-    # The answer's own quotes around a word ("幅度始终为“轻轻”", "“噗”一声") would stay Chinese in the
+    # The answer's own quotes around a word ("幅度始终为“轻轻”", "“噗”一声", "发出“咔嚓”声") would stay Chinese in the
     # English copy; the user's quoted text and quoted speech or signs keep theirs.
     user_quotes = {m[1] or m[2] for m in re.finditer(r'“([^”\n]*)”|"([^"\n]*)"', user_text)}
-    unquote = lambda text: re.sub(r'(?<![说喊唱念道问答叫吼出着有示写印：:])[“"]([^”"\n]{1,12})[”"]', lambda m: m[0] if m[1] in user_quotes else m[1], text)
+    unquote = lambda text: re.sub(r'(?<![说喊唱念道问答叫吼出着有示写印：:])[“"]([^”"\n]{1,12})[”"]|[“"]([^”"\n]{1,8})[”"](?=[^，,。；;“”"]{0,3}[声响])',
+                                  lambda m: m[0] if (m[1] or m[2]) in user_quotes else (m[1] or m[2]), text)
     overview, phases, constraints = unquote(overview), [unquote(p) for p in phases], [unquote(item) for item in constraints]
     if mode == "FL2VA":
         phases = [re.sub(r"画面(?:回归|复归|复刻|还原|恢复|回到)(?:为|成|到|至)?与?\s*(<Picture 2>)(?:完全)?(?:一致|相同)?的?(?:静止)?(?:状态|形态|画面|样子)?", r"画面与 \1 一致", p) for p in phases]
@@ -2189,5 +2235,13 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         # "海浪声" is already there as "海浪拍岸声"; a one-character source ("风声") must match whole.
         missing = [cue for cue in cues if compact(cue) not in compact(sound) and not (len(cue) > 2 and cue[:2] in sound)]
         sound = (append_sentence(sound, "、".join(missing) + "清晰可闻。") if missing else sound) or DEFAULT_SOUNDSCAPE_ZH
+    # Background music is written unless the user's words ask for silence or no music (music "N/A"); the user's own music
+    # reads as the writer spells it out when the writer keeps its words (the same instrument).
+    written = plain_music(clean_phase_text(re.sub(r'[“”"]', "", "\n".join(scored))))
+    written = "" if not has_text(written) or re.fullmatch(r"(?:无|没有|N/?A)[。.]?", written, re.I) else written
+    if music is None:
+        music = written or DEFAULT_MUSIC_ZH
+    elif music != "N/A" and written and han_pairs(written) & han_pairs(music):
+        music = written
     return validate_base_fields("\n\n".join(f"{key}: {value}" for key, value in zip(BASE_FIELDS, (narrative, sound, music))),
                                 mode, duration, "zh", requirements)

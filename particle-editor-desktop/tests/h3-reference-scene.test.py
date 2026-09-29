@@ -128,17 +128,62 @@ class SceneTest(unittest.TestCase):
         self.assertIn('<Subject 2>，一个头部有发光的圆形眼睛、手持金属洒水壶的铜绿色机器人，两盏眼睛灯亮起。', result['description'])
         self.assertNotIn('悬停', result['description'])
 
-    def test_music_only_when_the_user_asks_for_it(self):
+    def test_background_music_unless_the_user_refuses_it(self):
         plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '金色奖杯', '金色')],
                 'summary': '<Subject 1> 举起 <Subject 2>'}
         output = ('事件：<Subject 1> 举起 <Subject 2>\n画风：3D渲染\n场景：温室\n动作1：<Subject 1> 走向 <Subject 2>\n'
-                  '动作2：<Subject 1> 举起 <Subject 2>\n镜头：固定\n声音：金属碰撞声\n配乐：胜利主题轻快音乐')
-        result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
-        self.assertEqual(result['music'], 'N/A')
+                  '动作2：<Subject 1> 举起 <Subject 2>\n镜头：固定\n声音：金属碰撞声\n配乐：“轻快”的钢琴与弦乐，节奏明快，音量渐强')
+        result, prompt = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
+        self.assertEqual(result['music'], '轻快的钢琴与弦乐，节奏明快，音量渐强。')
+        self.assertIn('配乐：一两句背景音乐：用什么乐器、速度快慢、节奏怎样、音量怎样变化', prompt)
         # A sound written as a noun reads as a sentence.
         self.assertEqual(result['soundscape'], '金属碰撞声清晰可闻。')
-        result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯，配上欢快的音乐', output)
-        self.assertEqual(result['music'], '胜利主题轻快音乐。')
+        for words in ['，不要音乐', '，全程静音']:
+            result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯' + words, output)
+            self.assertEqual(result['music'], 'N/A')
+        from prompt_assistant.h3_prompt_enhance import DEFAULT_MUSIC_ZH
+        result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output.replace('配乐：“轻快”的钢琴与弦乐，节奏明快，音量渐强', '配乐：无'))
+        self.assertEqual(result['music'], DEFAULT_MUSIC_ZH)
+
+    def test_a_beat_written_again_goes_and_a_quoted_sound_is_plain(self):
+        # Round 5, ho_mr: 动作4 wrote 动作2's "<Subject 2> 蛇身骤然绷紧…" again word for word; "发出“嗒”声" stayed Chinese in English.
+        plan = {'references': [subject(1, '<Picture 1>', '男性角色，手持金色长枪', '金色长枪'), subject(2, '<Picture 2>', '巨蛇，紫色鳞片', '紫色鳞片')],
+                'summary': '<Subject 1> 举起长枪，与 <Subject 2> 对峙'}
+        output = ('事件：<Subject 1> 举起长枪，与 <Subject 2> 对峙\n画风：3D渲染\n场景：山崖\n'
+                  '动作1：<Subject 1> 举起长枪，枪尖轻触岩面发出“嗒”声\n动作2：<Subject 1> 向前半步；<Subject 2> 蛇身骤然绷紧，尾部压向崖壁\n'
+                  '动作3：<Subject 1> 握紧长枪；<Subject 2> 蛇身骤然绷紧，尾部压向崖壁\n镜头：固定\n声音：风声\n配乐：大鼓，节奏缓慢')
+        result, _ = self.write(plan, '<Picture 1> 中的角色举起兵器，与 <Picture 2> 中的巨蛇对峙', output)
+        self.assertEqual(result['description'].count('蛇身骤然绷紧'), 1)
+        self.assertIn('<Subject 1> 握紧长枪。', result['description'])
+        self.assertIn('发出嗒声', result['description'])
+
+    def test_each_subjects_line_under_a_beat_is_kept(self):
+        # Round 5, x_mr_chess: "动作1：" with one line per subject under it kept only the panda's; the robot never moved.
+        plan = {'references': [subject(1, '<Picture 1>', '熊猫，手持红色长棍', '红色长棍'), subject(2, '<Picture 2>', '机器人，手持银色洒水壶', '洒水壶')],
+                'summary': '<Subject 1> 和 <Subject 2> 在竹林里下棋，<Subject 1> 落下一子后开心地拍手'}
+        output = ('事件：<Subject 1> 和 <Subject 2> 在竹林里下棋，<Subject 1> 落下一子后开心地拍手\n画风：动漫插画\n场景：竹林\n'
+                  '动作1：\n<Subject 1> 用右手将一枚黑子落在棋盘中央\n<Subject 2> 眼灯微闪，低头看向棋盘\n'
+                  '动作2：\n<Subject 1> 把长棍靠在身旁，开心地拍手\n<Subject 2> 抬起洒水壶轻轻点头\n镜头：固定\n声音：棋子轻碰棋盘\n配乐：古筝，节奏缓慢')
+        result, _ = self.write(plan, '<Picture 1> 中的熊猫和 <Picture 2> 中的机器人在竹林里下棋，熊猫落下一子后开心地拍手', output)
+        self.assertIn('眼灯微闪', result['description'])
+        self.assertIn('抬起洒水壶轻轻点头', result['description'])
+
+    def test_a_cutouts_plain_backdrop_is_no_scene_and_one_look_stays(self):
+        # "山崖；背景为纯白色，但改为山崖环境" read as "the background, previously pure white, is now replaced"; two pictures'
+        # looks ("3D渲染；动漫插画") are one style.
+        erlang = '男性角色，黑发束起，身穿金色铠甲，手持金色长枪'
+        plan = {'references': [subject(1, '<Picture 1>', erlang, '金色铠甲'), subject(2, '<Picture 2>', '巨蛇，紫色鳞片', '紫色鳞片')],
+                'summary': '<Subject 1> 举起长枪，与 <Subject 2> 在山崖上对峙'}
+        output = ('事件：<Subject 1> 举起长枪，与 <Subject 2> 在山崖上对峙\n画风：3D渲染；动漫插画\n场景：山崖；背景为纯白色，但改为山崖环境，有岩石和薄雾\n'
+                  '光线：柔和的自然光\n动作1：<Subject 1> 双手举起长枪\n动作2：<Subject 2> 昂起头吐出信子\n镜头：固定\n声音：风声\n配乐：低沉的大鼓配古筝，节奏缓慢')
+        result, prompt = self.write(plan, '<Picture 1> 中的角色举起兵器，与 <Picture 2> 中的巨蛇在山崖上对峙', output,
+                                    observed={'<Picture 1>': erlang, '<Picture 2>': '巨蛇，紫色鳞片'},
+                                    observed_scene={'<Picture 1>': {'style': '3D渲染', 'background': '纯白色背景'}, '<Picture 2>': {'style': '动漫插画', 'background': '纯灰色背景'}})
+        self.assertIn('原图是纯色背景的抠图，不是场景', prompt)
+        self.assertNotIn('原背景：纯白色背景', prompt)
+        self.assertIn('画风：用户指定的画风；没有指定就用 <Subject 1> 的原图画风；只写一种', prompt)
+        self.assertTrue(result['description'].startswith('视频采用3D渲染风格，柔和的自然光。\n[Shot 1] 场景是山崖；有岩石和薄雾。'), result['description'])
+        self.assertNotRegex(result['description'], '纯白|改为')
 
     def test_picture_place_is_the_scene_and_unrequested_hovering_is_dropped(self):
         plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '球形糖果', '球形'),
