@@ -191,8 +191,9 @@ for (const text of briefTexts) {
   assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
   assert.ok(['户外写了天空', '景深句只说前景、中景和主体清晰', '中景以内没写脚和鞋', '全文没有“营造”“保持”“突出”“时间为”', '木面、路面、地毯、布料、泥土不反光'].every((item) => text.includes(item)), 'the final check names the recurring slips');
   assert.ok(text.includes('夜景和舞台不写欠曝、过暗') && text.includes('除纯色背景外不写背景杂乱、背景复杂'), 'negatives do not push away a dark stage or a furnished hall');
-  // The box also holds earlier answers and the guard: it counts toward the list, and a full box only gets terms for what is new.
-  assert.ok(text.includes('负面框里已有的项（原负向提示词、当前负面 Prompt）算在这 12 至 18 项里，也不受上面按主体选词的限制；框里已有 12 项以上时，只为这次新增或改动的内容补写。'), 'the box counts toward the list');
+  // The box also holds earlier answers and the guard: it stays whole outside the count (counting it in made Grok cut a 34-term
+  // box to 16), and a box of 12 or more only gets terms for what is new, so reruns do not grow it by a list each time.
+  assert.ok(text.includes('负面框里已有的项（原负向提示词、当前负面 Prompt）不计入这 12 至 18 项，也不受上面按主体选词的限制；框里已有 12 项以上时，不再另写 12 至 18 项，只为这次新增或改动的内容补写。'), 'a full box only gets terms for what is new');
   assert.doesNotMatch(text, /都原样保留，不计入 12 至 18 项|身后书架上的书脊也清晰可辨|柴犬坐在门口/, 'no growing box, no far-ground depth example, no test subject as the pose example');
   assert.ok(text.includes('深景深让前景的藤椅扶手和老人膝头的相册都清晰。') && text.includes('松鼠立在树桩上，前爪捧着一颗松果，尾巴贴着后背竖起'), 'the depth example names the near ground');
 }
