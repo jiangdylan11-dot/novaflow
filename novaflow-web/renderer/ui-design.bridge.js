@@ -410,24 +410,7 @@
   }
 
   function getCurrentExportSource() {
-    const activeStore = ensureStore()
-    const state = activeStore?.getState?.()
-    if (!state || !isUiDesignRoute()) return null
-    const selection = mounted?.workspaceHandle?.getSelection?.() || selectedEntity
-    const selectedResultId = selection?.node?.type === 'result'
-      ? String(selection.node.data?.resultId || '')
-      : String(selection?.result?.id || '')
-    const results = Array.isArray(state.results) ? state.results : []
-    const result = results.find((item) => String(item?.id || '') === selectedResultId)
-      || results[results.length - 1]
-      || null
-    const dataUrl = String(result?.dataUrl || result?.imageUrl || '')
-    if (!dataUrl.startsWith('data:image/')) return null
-    return {
-      dataUrl,
-      name: result?.name || 'novaflow_ui_design.png',
-      label: '当前 UI 画板结果',
-    }
+    return isUiDesignRoute() ? root.NovaFlowSpineSplitBridge?.getCanvasExportSource?.() || null : null
   }
 
   function buttonStyle(active) {
@@ -1143,248 +1126,23 @@
   }
 
   function mountUi(hosts = locateHosts()) {
-    if (!hosts.active) return false
-    if (mounted && mounted.leftHost === hosts.leftHost && mounted.workspaceHost === hosts.workspaceHost) return true
+    if (!hosts.active || !root.NovaFlowUiDesignDrawing) return false
+    if (mounted && mounted.leftHost === hosts.leftHost) { mounted.handle.sync(); return true }
     unmountUi()
-    const missing = missingDependencies()
-    if (missing.length) {
-      console.error(`[NovaFlow] UI Design modules missing: ${missing.join(', ')}`)
-      return false
-    }
     const activeStore = ensureStore()
     if (!activeStore) return false
-    const documentRef = hosts.leftHost.ownerDocument || root.document
-    const modules = dependencies()
-
-    const previousLeftStyle = hosts.leftHost.getAttribute?.('style') || ''
-    Object.assign(hosts.leftHost.style, {
-      display: 'block',
-      width: '100%',
-      minWidth: '0',
-      minHeight: 'calc(100vh - 112px)',
-      padding: '0 0 24px',
-      border: '0',
-      borderRadius: '0',
-      background: 'transparent',
-      color: '#fff',
-      fontSize: '12px',
-      fontWeight: '400',
-      textAlign: 'left',
-      boxSizing: 'border-box',
-      overflow: 'visible',
-    })
-
-    const leftRoot = createElement(documentRef, 'div', {
-      'data-novaflow-ui-design-left-root': '1',
-      style: { display: 'grid', gap: accordionApi().TOKENS.panelGap, width: '100%', minWidth: '0' },
-    })
-    const inspectorHost = createElement(documentRef, 'div', {
-      'data-novaflow-ui-design-inspector-host': '1',
-      style: { minWidth: '0', borderRadius: '8px', background: '#1d1d1d', overflow: 'hidden' },
-    })
-    const modeHost = createElement(documentRef, 'div', {
-      'data-novaflow-ui-design-mode-host': '1',
-      style: { minWidth: '0', width: '100%' },
-    })
-    const attribute = createAttributeSection(documentRef, inspectorHost)
-    leftRoot.appendChild(modeHost)
-    leftRoot.appendChild(attribute.section)
-
-    hosts.leftHost.replaceChildren(leftRoot)
-
-    const mountRoot = createElement(documentRef, 'div', {
-      'data-novaflow-ui-design-mount-root': '1',
-      style: {
-        position: 'relative', width: '100%', height: '100%', minWidth: '0', minHeight: '0',
-        zIndex: '2147483000', overflow: 'hidden', background: '#101010',
-      },
-    })
-    const shell = createElement(documentRef, 'div', {
-      'data-novaflow-ui-design-shell': '1',
-      style: {
-        position: 'absolute', top: '0', right: '0', bottom: '0', left: '0', minWidth: '0', minHeight: '0',
-        display: 'grid', gridTemplateColumns: `minmax(0, 1fr) ${UI_RESOURCE_PANEL_WIDTH_PX}px`, overflow: 'hidden', background: '#101010',
-      },
-    })
-    const canvasHost = createElement(documentRef, 'main', {
-      'data-novaflow-ui-design-canvas-host': '1',
-      style: { minWidth: '0', minHeight: '0', overflow: 'hidden', position: 'relative' },
-    })
-    const previewHost = createElement(documentRef, 'aside', {
-      'data-novaflow-ui-design-preview-host': '1',
-      style: { minWidth: '0', minHeight: '0', overflow: 'hidden', borderLeft: '1px solid rgba(255,255,255,0.08)' },
-    })
-    shell.appendChild(canvasHost)
-    shell.appendChild(previewHost)
-    mountRoot.appendChild(shell)
-    hosts.workspaceHost.appendChild(mountRoot)
-
-    let modeHandle = null
-    const workspaceHandle = modules.workspace.mount({
-      host: canvasHost,
-      onActiveGeneratorChange: () => modeHandle?.update?.(),
-      getProject: () => activeStore.getState().project,
-      getResources: () => activeStore.getState().resources,
-      getResults: () => activeStore.getState().results,
-      getGenerationState(generatorNodeId) {
-        const state = activeStore.getState()
-        const id = String(generatorNodeId || '')
-        if (!id) return currentGenerationState()
-        const generator = projectGraph(state).nodes.find((node) => node.type === 'generator' && String(node.id) === id)
-        return currentGenerationState(generator)
-      },
-      onProjectChange(project) {
-        activeStore.patchProject(project)
-      },
-      onSelectionChange(id, entity) {
-        selectedEntity = entity || null
-        mounted?.inspectorHandle?.update?.()
-        modeHandle?.update?.()
-      },
-      onImportFiles(files) {
-        return importUiSharedFiles(activeStore, files)
-      },
-      onGenerateRequest(payload) {
-        return runGeneration(payload).catch(() => {})
-      },
-      // 任务中止: the workflow sees the signal, interrupts the runtime and reports 任务已中止.
-      onStopGenerateRequest() {
-        if (!generationAbort || generationAbort.signal.aborted) return false
-        generationAbort.abort('\u4efb\u52a1\u5df2\u4e2d\u6b62')
-        return true
-      },
-      mountPromptMentions(textarea, details) {
-        return mountGeneratorPromptMentions(textarea, details)
-      },
-      onOpenDesignAssistant(payload) {
-        return openDesignAssistant(payload)
-      },
-      onUseResultAsReference(result, node) {
-        useResultAsReference(result, node)
-      },
-    })
-    const inspectorHandle = modules.inspector.mount({
-      host: inspectorHost,
-      getProject: () => activeStore.getState().project,
-      getSelection: () => workspaceHandle.getSelection?.() || selectedEntity,
-      onPatchSelection(selection, patch) {
-        workspaceHandle.patchSelection?.(selection, patch)
-      },
-      onRemoveSelection() {
-        workspaceHandle.removeSelection?.()
-      },
-      onActivateRegionTool() {
-        workspaceHandle.setTool?.('region')
-      },
-      onUseResultAsReference(selection) {
-        useResultAsReference(selection)
-      },
-    })
-    modeHandle = modules.mode.mount({
-      host: modeHost,
-      getContext() {
-        const state = activeStore.getState()
-        const generatorId = selectedGeneratorId(state)
-        const generator = projectGraph(state).nodes.find((node) => node.type === 'generator' && String(node.id) === generatorId)
-        const profile = generator ? generatorProfile(state, generator) : null
-        return {
-          id: generator ? String(generator.id) : '',
-          title: String(generator?.title || 'UI 生成器'),
-          provider: String(profile?.settings?.provider || 'local'),
-          disabled: Boolean(generationPromise),
-        }
-      },
-      onProviderChange(provider, context) {
-        const generatorId = String(context?.id || selectedGeneratorId(activeStore.getState()) || '')
-        if (!generatorId) return false
-        workspaceHandle.patchGeneratorSettings?.(generatorId, { provider })
-        return true
-      },
-    })
-    const previewHandle = modules.preview.mount({
-      host: previewHost,
-      store: activeStore,
-      onSelectResource: item => workspaceHandle.showImage?.(item),
-      onSelectResult: item => workspaceHandle.showImage?.(item),
-    })
-    generationState = currentGenerationState()
-
-    const unsubscribe = activeStore.subscribe((state, previous, reason) => {
-      if (!mounted) return
-      if (reason === 'patch-project' || String(reason || '').startsWith('graph-')) {
-        workspaceHandle.update(state.project)
-        inspectorHandle.update()
-        modeHandle.update()
-        const generatorId = selectedGeneratorId(state)
-        const generator = projectGraph(state).nodes.find((node) => node.type === 'generator' && String(node.id) === generatorId)
-        generationState = currentGenerationState(generator)
-        persistState()
-      } else if (reason === 'patch-settings') {
-        const generatorId = selectedGeneratorId(state)
-        const generator = projectGraph(state).nodes.find((node) => node.type === 'generator' && String(node.id) === generatorId)
-        generationState = currentGenerationState(generator)
-        workspaceHandle.update(state.project)
-        modeHandle.update()
-        persistState()
-      } else if (reason === 'add-result' || reason === 'remove-result') {
-        workspaceHandle.update(state.project)
-        inspectorHandle.update()
-      } else if (reason === 'add-resources' || reason === 'remove-resource') {
-        workspaceHandle.update(state.project)
-        inspectorHandle.update()
-      } else if (reason === 'sync-shared-resources' || reason === 'update-resource' || reason === 'update-result') {
-        workspaceHandle.update(state.project)
-        inspectorHandle.update()
-      }
-    })
-
-    mounted = {
-      leftHost: hosts.leftHost,
-      workspaceHost: hosts.workspaceHost,
-      mountRoot,
-      shell,
-      previousLeftStyle,
-      workspaceHandle,
-      inspectorHandle,
-      previewHandle,
-      modeHandle,
-      unsubscribe,
-    }
-    attribute.syncToolButtons(workspaceHandle.getTool?.() || 'select')
-    if (generationStatus) {
-      workspaceHandle.setGeneratorStatus?.(generationStatusGeneratorId, generationStatus, {
-        error: generationStatusError,
-        running: Boolean(generationPromise),
-      })
-    }
-    documentRef.body?.setAttribute?.(ACTIVE_ATTRIBUTE, '1')
-    shell.setAttribute(MOUNTED_ATTRIBUTE, '1')
+    root.document.body.setAttribute(ACTIVE_ATTRIBUTE, '1')
+    const handle = root.NovaFlowUiDesignDrawing.mount({ leftHost: hosts.leftHost, store: activeStore, getSessionToken: readClientSessionToken })
+    mounted = { leftHost: hosts.leftHost, workspaceHandle: handle.workspaceHandle, inspectorHandle: handle.inspectorHandle, handle }
     return true
   }
 
   function unmountUi() {
-    try {
-      dependencies().assistantDialog?.close?.('route-change')
-    } catch {
-      // Route teardown must continue even if an assistant surface was already removed.
-    }
-    if (!mounted) {
-      root?.document?.body?.removeAttribute?.(ACTIVE_ATTRIBUTE)
-      return false
-    }
-    const record = mounted
+    dependencies().assistantDialog?.close?.('route-change')
+    if (!mounted) return false
+    mounted.handle?.destroy()
     mounted = null
-    record.unsubscribe?.()
-    record.modeHandle?.destroy?.()
-    record.inspectorHandle?.destroy?.()
-    record.workspaceHandle?.destroy?.()
-    record.previewHandle?.unmount?.()
-    record.mountRoot?.remove?.()
-    if (record.leftHost?.isConnected !== false) {
-      record.leftHost.replaceChildren?.()
-      if (typeof record.leftHost.setAttribute === 'function') record.leftHost.setAttribute('style', record.previousLeftStyle)
-    }
-    root?.document?.body?.removeAttribute?.(ACTIVE_ATTRIBUTE)
+    root.document.body.removeAttribute(ACTIVE_ATTRIBUTE)
     return true
   }
 

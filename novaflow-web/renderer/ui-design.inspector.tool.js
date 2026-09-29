@@ -70,7 +70,8 @@
         gap: '10px',
         width: '100%',
         minWidth: '0',
-        padding: '11px',
+        padding: options.compact ? '0' : '11px',
+        textAlign: 'left',
         boxSizing: 'border-box',
         color: '#f8fafc',
       },
@@ -89,7 +90,7 @@
     function field(labelText, value, config) {
       config = config || {}
       const label = createElement(documentRef, 'label', {
-        style: { display: 'grid', gap: '5px', minWidth: '0' },
+        style: { display: 'grid', gap: '5px', minWidth: '0', ...(options.compact && !config.multiline ? { gridTemplateColumns: (['x', 'y', 'width', 'height'].includes(config.key) ? '24px' : '32px') + ' minmax(0,1fr)', alignItems: 'center' } : {}) },
       })
       label.appendChild(createElement(documentRef, 'span', {
         text: labelText,

@@ -926,7 +926,9 @@
 
   function findArtDrawingHostCard() {
     if (!document.body || !document.body.classList.contains('novaflow-primary-target-art')) return null
-    if (hasVisibleArtUiPlaceholder()) return null
+    // UI design uses this exact drawing surface; only its layout editor is additional.
+    const uiHost = visibleArtHostBySelector(ART_UI_HOST_SELECTOR)
+    if (uiHost) return uiHost
     const explicitHost = visibleArtHostBySelector(ART_DRAWING_HOST_SELECTOR)
     if (explicitHost) return explicitHost
     if (!isArtDrawingSecondaryActive() && !hasVisibleArtDrawingPlaceholder()) return null
@@ -15436,7 +15438,7 @@
 
   function hasArtDrawingRouteEvidence() {
     if (!isArtPrimaryEntryConfirmed()) return false
-    if (hasVisibleArtUiPlaceholder()) return false
+    if (visibleArtHostBySelector(ART_UI_HOST_SELECTOR)) return true
     if (isArtDrawingSecondaryActive()) return true
     return hasVisibleArtDrawingPlaceholder()
   }

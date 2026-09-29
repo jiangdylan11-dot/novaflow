@@ -5,6 +5,7 @@
   const src = value => String(value?.dataUrl || value?.imageUrl || '')
   function mount(options) {
     const host = options.host, doc = host.ownerDocument
+    const layoutOnly = options.layoutOnly === true
     const structure = root.NovaFlowUiDesignStructureTool
     let project = structure.normalize(options.getProject()), graph = project.graph
     let activeId = graph.nodes.find(n => n.type === 'generator')?.id
@@ -54,7 +55,7 @@
     const message = el('div', { 'data-ui-workbench-message': '', 'aria-live': 'polite' })
     const optimization = el('details', { style: { fontSize: '11px', color: '#999' } })
     const bottom = el('div', { 'data-ui-workbench-bottom': '' }, [controlsHost, optimization, message])
-    const shell = el('div', { 'data-ui-workbench': '' }, [style, toolbar, stage, bottom])
+    const shell = el('div', { 'data-ui-workbench': '', ...(layoutOnly ? { 'data-ui-layout-editor': '1', style: { display: 'grid', gridTemplateRows: 'minmax(0,1fr)', background: 'transparent' } } : {}) }, layoutOnly ? [style, stage] : [style, toolbar, stage, bottom])
     host.replaceChildren(shell)
     function status(text, error = false) { message.textContent = text || ''; message.style.color = error ? '#fca5a5' : '#a7bcb5' }
     function generator(id = activeId) { return graph.nodes.find(n => n.id === id && n.type === 'generator') }
@@ -77,6 +78,7 @@
       project = structure.normalize({ ...project, graph })
       graph = project.graph
       options.onProjectChange(copy(project))
+      if (layoutOnly) options.onLayoutChange?.()
       if (!syncingControls) render()
     }
     function mutate(method, ...args) {
@@ -328,6 +330,7 @@
     }
     function render() {
       if (!active) return
+      if (layoutOnly) { renderStage(); return }
       renderToolbar(); renderStage(); renderReferences(); renderControls()
       const result = generator()?.data?.optimization
       optimization.hidden = !result
@@ -361,6 +364,7 @@
       setGeneratorStatus(id, text, opts = {}) { statuses.set(id || activeId, { message: text, ...opts }); if (!id || id === activeId) { status(text, opts.error); renderControls() } },
       recordOptimization(id, input, result) { mutate('updateGraphNode', id, { data: { optimization: { originalPrompt: input.prompt, prompt: result.prompt, negativePrompt: result.negativePrompt || '', engine: input.engine } } }); save(false) },
       showStatus: status, showImage, showLayout, addBlock, useLayout, patchSelection, removeSelection,
+      getLayout: () => layout() ? copy(layout()) : null,
       setTool(tool) { if (tool === 'region') addBlock(); else showLayout() }, getTool: () => 'select',
       addReferenceResource,
       addResultNode(item, sourceNodeId) { const result = mutate('createGraphNode', { type: 'result', data: { resultId: item.id, sourceNodeId } }); if (result.ok) save(false); showImage(item); return result },

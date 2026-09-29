@@ -30656,6 +30656,7 @@
     // like a number field it was 49 wide next to a 34-tall 保存.
     Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"]):not([data-novaflow-ribbon-preset-name]):not([data-novaflow-ribbon-event-preset-name])')).forEach((field) => {
       if (!(field instanceof HTMLInputElement)) return;
+      if (field.closest('[data-novaflow-ui-layout-section]')) return;
       nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");
       nfSetStyleIfChanged(field, "width", `${UI_NUM_FIELD_WIDTH}px`, "important");
       nfSetStyleIfChanged(field, "height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
@@ -79987,7 +79988,7 @@
     const body = document.body;
     if (!body || !body.classList.contains("novaflow-primary-target-art")) return false;
     const artSecondary = SECONDARY_ACTIVE_BY_GROUP.get(ART_DRAWING_SECONDARY_GROUP_KEY);
-    if (artSecondary && normalizeText(artSecondary) !== normalizeText(ART_DRAWING_SECONDARY_LABEL)) return false;
+    if (artSecondary && ![normalizeText(ART_DRAWING_SECONDARY_LABEL), "UI"].includes(normalizeText(artSecondary))) return false;
     return true;
   }
 
@@ -80043,7 +80044,7 @@
       : document.querySelector('[data-novaflow-left-content-root="1"]');
     if (!(root instanceof HTMLElement)) return false;
     return Array.from(root.querySelectorAll(".nf-panel")).some((candidate) => (
-      candidate instanceof HTMLElement && candidate !== panel && isArtGeneratePanelExpanded(candidate)
+      candidate instanceof HTMLElement && candidate !== panel && !candidate.hasAttribute('data-novaflow-ui-layout-section') && isArtGeneratePanelExpanded(candidate)
     ));
   }
 
@@ -80841,6 +80842,7 @@
   }
 
   async function cancelArtGenerateRun() {
+    if (window.NovaFlowUiDesignDrawing?.cancelPreparation?.()) return;
     if (!ART_GENERATE_STATE.running) return;
     const cancelToken = Math.max(0, Number(ART_GENERATE_STATE.runToken) || 0) + 1;
     const baseUrl = ART_GENERATE_STATE.activeBaseUrl || String(localStorage.getItem(ART_GENERATE_LAST_RUNTIME_KEY) || "").trim();
@@ -81668,8 +81670,7 @@
     return true;
   }
 
-  function compileArtGeneratePromptMentions(refs, promptText = ART_GENERATE_STATE.prompt) {
-    void refs;
+  function compileArtGeneratePromptMentions(refs, promptText = ART_GENERATE_STATE.prompt, useSnapshot = false) {
     const text = String(promptText || "");
     const tool = window.NovaFlowResourceMentionTool;
     if (!tool || typeof tool.compileText !== "function") {
@@ -81679,7 +81680,7 @@
     return tool.compileText({
       text,
       surface: "art-generate",
-      resources: artGenerateResourceMentionSnapshot()
+      resources: useSnapshot ? refs.map((item, index) => ({ key: `art_reference_${index + 1}`, label: `参考图${index + 1}`, kind: 'image', previewUrl: item.dataUrl, occupied: true })) : artGenerateResourceMentionSnapshot()
     });
   }
 
@@ -84205,11 +84206,28 @@
     }
   }
 
-  async function runArtGenerate() {
+  async function runArtGenerate(options = {}) {
     if (ART_GENERATE_STATE.running) return;
-    const promptSnapshot = captureArtGeneratePromptSnapshot();
-    const runProvider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(ART_GENERATE_STATE.provider) || "local";
-    const runMode = ART_GENERATE_STATE.mode === "img2img" ? "img2img" : "txt2img";
+    const ui = window.NovaFlowUiDesignDrawing;
+    if (!options.uiPrepared && ui?.isActive?.()) {
+      captureArtGeneratePromptSnapshot();
+      ART_GENERATE_STATE.running = true;
+      setArtGenerateProgress("理解 UI 设计需求…", 0);
+      setArtGenerateStatus("理解 UI 设计需求…");
+      try {
+        const prepared = await ui.prepare({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit() });
+        ART_GENERATE_STATE.running = false;
+        return await runArtGenerate({ uiPrepared: prepared });
+      } catch (error) {
+        ART_GENERATE_STATE.running = false;
+        setArtGenerateStatus(String(error?.message || error), true);
+        return;
+      }
+    }
+    const promptSnapshot = options.uiPrepared?.promptSnapshot || captureArtGeneratePromptSnapshot();
+    const settingsSnapshot = options.uiPrepared?.state || ART_GENERATE_STATE;
+    const runProvider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(settingsSnapshot.provider) || "local";
+    const runMode = options.uiPrepared ? (options.uiPrepared.references.length ? "img2img" : "txt2img") : (ART_GENERATE_STATE.mode === "img2img" ? "img2img" : "txt2img");
     const providerLabel = artGenerateProviderTitle(runProvider);
     if (runProvider !== "local" && window.electronAPI?.runtimeProviderUsageSettlement !== "preload-price-v1") {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
@@ -84221,7 +84239,7 @@
       setArtGenerateStatus("\u8bf7\u5148\u8f93\u5165\u63d0\u793a\u8bcd", true);
       return;
     }
-    const qualityCompiled = window.NovaFlowArtQualityProfile?.compileFinal?.({
+    const qualityCompiled = options.uiPrepared?.promptSnapshot || window.NovaFlowArtQualityProfile?.compileFinal?.({
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt,
       assetType: ART_GENERATE_STATE.starterPreset || "",
@@ -84232,8 +84250,8 @@
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt
     };
-    const allRefs = artGenerateReferences().slice(0, artGenerateReferenceLimit()).filter((item) => item && item.dataUrl);
-    const rolePlan = runMode === "img2img"
+    const allRefs = options.uiPrepared?.references || artGenerateReferences().slice(0, artGenerateReferenceLimit()).filter((item) => item && item.dataUrl);
+    const rolePlan = !options.uiPrepared && runMode === "img2img"
       ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs)
       : null;
     const refs = rolePlan
@@ -84258,7 +84276,7 @@
     const promptWithReferenceRoles = referenceRoleConstraint
       ? `${qualityCompiled.prompt}\n\n参考图职责（严格执行）：\n${referenceRoleConstraint}\n禁止任何辅助约束图改变主体身份。`
       : qualityCompiled.prompt;
-    const compiledPrompt = compileArtGeneratePromptMentions(refs, promptWithReferenceRoles);
+    const compiledPrompt = compileArtGeneratePromptMentions(refs, promptWithReferenceRoles, Boolean(options.uiPrepared));
     if (compiledPrompt.invalidTokens.length) {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
       setArtGenerateStatus(`\u8d44\u6e90\u5f15\u7528\u5df2\u5931\u6548: ${compiledPrompt.invalidTokens.join(", ")}`, true);
@@ -84322,11 +84340,11 @@
         uploadedNames = await uploadReferences(0);
         if (!uploadedNames) return;
       }
-      const batchCount = normalizeArtGenerateCount(ART_GENERATE_STATE.count);
+      const batchCount = normalizeArtGenerateCount(settingsSnapshot.count);
       ART_GENERATE_STATE.count = batchCount;
       // A fixed seed still has to give distinct images across the batch: image i runs seed + i.
-      const fixedSeed = !ART_GENERATE_STATE.randomSeed && Number(ART_GENERATE_STATE.seed) >= 0;
-      const baseSeed = fixedSeed ? Math.round(Number(ART_GENERATE_STATE.seed) || 0) : -1;
+      const fixedSeed = !settingsSnapshot.randomSeed && Number(settingsSnapshot.seed) >= 0;
+      const baseSeed = fixedSeed ? Math.round(Number(settingsSnapshot.seed) || 0) : -1;
       ART_GENERATE_STATE.batchIndex = 0;
       ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
       let lastPromptId = "";
@@ -84339,7 +84357,8 @@
         const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
         const workflowRun = buildArtGenerateWorkflowWithSeed(
           fixedSeed ? baseSeed + batchIndex : null,
-          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes)
+          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
+            options.uiPrepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE)
         );
         const workflow = workflowRun.workflow;
         const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
@@ -84443,7 +84462,7 @@
           source: "generate",
           mode: runMode,
           provider: runProvider,
-          nsfw: !!ART_GENERATE_STATE.nsfw,
+          nsfw: !!settingsSnapshot.nsfw,
           name: file.filename || `${prefix}.png`,
           imageUrl,
           createdAt: new Date().toISOString(),
@@ -84452,6 +84471,7 @@
         };
         artImageStartedAt = Date.now();
         ART_GENERATE_STATE.results.unshift(result);
+        if (options.uiPrepared) ui?.recordResult?.(result, options.uiPrepared);
         ART_GENERATE_STATE.selectedResultId = result.id;
         lastPromptId = promptId;
         if (batchIndex + 1 < batchCount) setArtGenerateProgress("已完成", 1, { promptId });
@@ -84595,7 +84615,11 @@
       render: renderArtGenerateSurfaces,
       setMode: setArtGenerateMode,
       setNsfw: setArtGenerateNsfwEnabled,
-      run: runArtGenerate
+      run: runArtGenerate,
+      references: artGenerateReferences,
+      referenceLimit: artGenerateReferenceLimit,
+      setReference: setArtGenerateReference,
+      capturePrompt: captureArtGeneratePromptSnapshot
     };
     const creditUpdateEvent = window.NovaFlowArtGenerateCreditPricing?.UPDATE_EVENT;
     if (creditUpdateEvent) {
@@ -84629,6 +84653,7 @@
       if (event.type !== "click") return;
       const header = target.closest(".nf-panel-header");
       if (header instanceof HTMLElement) {
+        if (header.closest('[data-novaflow-ui-layout-section="1"]')) return;
         const panel = header.parentElement;
         if (panel instanceof HTMLElement && isArtGeneratePanel(panel)) {
           if (ART_GENERATE_STATE.active && isArtGeneratePanelExpanded(panel)) {
@@ -84674,6 +84699,7 @@
           if (mutation.type !== "attributes" || mutation.attributeName !== "data-open") return;
           const panel = mutation.target instanceof HTMLElement ? mutation.target : null;
           if (!(panel instanceof HTMLElement) || !panel.classList.contains("nf-panel")) return;
+          if (panel.hasAttribute('data-novaflow-ui-layout-section')) return;
           if (isArtGeneratePanel(panel)) {
             shouldSync = true;
             if (isArtGeneratePanelExpanded(panel)) activateArtGenerate();

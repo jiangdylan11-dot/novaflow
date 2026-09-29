@@ -5067,6 +5067,10 @@
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (surface === "art" && window.NovaFlowUiDesignDrawing?.isActive?.()) {
+          window.NovaFlowUiDesignDrawing.openAssistant();
+          return;
+        }
         const promptTarget = surface === "animation" ? captureAnimationPromptTarget(button) : null;
         const miniMaxH3 = surface === "animation"
           ? captureMiniMaxH3PromptContext(button, promptTarget)
