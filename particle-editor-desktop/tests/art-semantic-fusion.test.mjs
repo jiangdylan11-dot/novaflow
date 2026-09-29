@@ -185,7 +185,7 @@ assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面
 // stays warm, the sky examples carry a position and no quotable moon, and the final check names the recurring slips.
 for (const text of briefTexts) {
   assert.ok(text.includes('主体手里拿着的灯不换算成画面方位，只按手写') && text.includes('面向画面的人物，右手在画面左侧') && text.includes('手里拿着的灯按手写'), 'a hand-held lamp is written by the hand');
-  assert.ok(text.includes('光源在两侧高处就从画面左上方和右上方斜照，不写成正上方') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
+  assert.ok(text.includes('方向照抄这个光源在[环境背景]里写的位置（那里写“两侧高处的灯架”，这里就写“从两侧高处斜照”，不改成正上方）') && text.includes('主光方向照抄它在那里的位置') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
   assert.ok(text.includes('要冷色调灯光时，写冷色灯罩透出的冷光') && text.includes('不加不合年代的路灯、街灯，火光只作暖色点缀') && text.includes('火光始终写成暖色（冷色灯罩透出的光除外）'), 'a named light colour and warm fire do not conflict');
   assert.doesNotMatch(text, /雪夜云隙间的一轮冷月|用户要冷色调时在这里写出冷光的来源|纸面颗粒/, 'no quotable moon, no texture in the style example');
   assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
@@ -199,5 +199,5 @@ const castleFive = ['[风格设定]','写实风景插画，笔触细腻。气氛
 const longNegFusion = buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'一座古堡矗立在悬崖上',requirements:'',negativePrompt:longUserNegative,supportsNegativePrompt:true},'grok-contract-test');
 assert.ok(longNegFusion.body.input.at(-1).content[0].text.includes('原负向提示词：' + longUserNegative) && longNegFusion.body.input.at(-1).content[0].text.includes('都原样保留，不计入 12 至 18 项'), 'a long user negative box is sent whole with the keep rule');
 assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:castleFive,negative_prompt:longUserNegative + '，城墙砖块错位'})},longNegFusion.resultOptions).negative_prompt,longUserNegative + '，城墙砖块错位');
-assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼（连同图号）和写主体动作') && roleReverse.body.input[0].content.at(-1).text.includes('秀场的 runway 是T台，不是跑道') && roleReverse.body.input[0].content.at(-1).text.includes('地面层的灯不写到顶层或天花板'), 'the subject keeps the user\'s name and label, the venue its own words');
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼（连同图号）和写主体动作') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台') && roleReverse.body.input[0].content.at(-1).text.includes('地面层的灯不写到顶层或天花板'), 'the subject keeps the user\'s name and label, the venue its own words');
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');
