@@ -1007,10 +1007,11 @@ NEGATIVE_CATEGORY_DEFINITIONS = [
         "pattern": (
             r"动物|宠物|猫|狗|犬|鸟(?!瞰)|熊猫|狐狸|狼|老虎|狮子|兔子|鹿|马匹|骏马|金鱼|锦鲤|"
             r"猴子|松鼠|鹦鹉|企鹅|海豚|鲸|"
-            # Creatures with limbs; 龙卷风、龙袍、水龙头、蛇形走位 are no animal.
-            r"(?<!水)龙(?![卷袍纹舟井须眼虾门宫])|蛇(?![形皮纹])|怪兽|魔兽|怪物|野兽|猛兽|(?<!机械)爪"
+            # Creatures with limbs; 龙卷风、龙袍、水龙头、蛇形走位 and an ornament (龙首雕饰, 雕龙长剑) are no animal.
+            r"(?<![水雕刻])龙(?![卷袍纹舟井须眼虾门宫首头形])|蛇(?![形皮纹])|怪兽|魔兽|怪物|野兽|猛兽|(?<!机械)爪"
         ),
-        "negative": ["错误解剖", "畸形肢体", "多余肢体", "五官错位"],
+        # 五官 is a person's face.
+        "negative": ["错误解剖", "畸形肢体", "多余肢体", "眼睛变形"],
     },
     {
         "name": "ui",
@@ -1043,11 +1044,21 @@ NEGATIVE_CATEGORY_DEFINITIONS = [
 ]
 
 NEGATIVE_ABSENT_SUBJECT_PATTERN = (
-    r"(?:无|没有|并无|不含|不出现|不要|避免|禁止)(?:明确的?|任何|其他|多余的?)?(?:主体)?(?:人物|人像|角色|人类|人|动物)"
+    r"(?:无|没有|并无|不含|不出现|未见|不要|避免|禁止)(?:明确的?|任何|其他|多余的?)?(?:主体)?(?:人物|人像|角色|人类|人|动物)(?:[或与和及、](?:人物|人像|角色|人类|人|动物))*"
 )
+# A person the word list does not know ("一位新娘…微笑回眸", "一名护士推着病床") is no thing.
+NEGATIVE_PERSON_HINT = re.compile(r"[一两几][位名]|神情|表情|微笑|眼神|面容|脸庞|五官|头发|发型|[左右双]手|手指|手臂")
 NEGATIVE_FALLBACK = ["细节混乱", "结构错误", "画面脏污", "噪点"]
 # Near-synonyms that different categories bring in; only the first one present is kept.
-NEGATIVE_SYNONYM_GROUPS = (("结构畸形", "结构错误", "形状畸形"),)
+NEGATIVE_SYNONYM_GROUPS = (("结构畸形", "结构错误", "形状畸形"), ("塑料质感", "塑料材质", "塑料感"))
+# A still picture whose positive asks for a soft background ("背景虚化", "浅景深"): a plain 模糊 in the negative pulls
+# against it, so the negative asks for a sharp subject instead. Read per clause: a clause that negates it ("没有虚化",
+# "不要背景虚化", "背景清晰而非虚化", "取消背景虚化", "背景虚化不明显"), the avoidance line and a blurry thing ("模糊的雾气")
+# ask for none.
+NEGATIVE_BLUR_ASKED = re.compile(r"^(?:(?!不|无|没|未|免|别|禁|拒|非(?!常)|勿|取消|去除|去掉|减少).)*?"
+                                 r"(?:虚化|背景模糊|焦外|散景|浅景深|景深浅)(?![^，,。；;\n]{0,2}(?:不明显|不强|很弱))")
+# Only a plain or background blur goes; a blurred face or subject and motion blur are defects in any picture.
+NEGATIVE_BLUR_WORD = re.compile(r"^(?:背景|远景|焦外|画面|整体)?(?:模糊|虚化|失焦)$")
 
 FIRST_LAST_ACTION_TERMS = [
     "从", "逐渐", "缓慢", "进入", "转向", "转身", "抬起", "举起", "放下", "挥动",
@@ -5460,7 +5471,8 @@ ART_TIME_OF_DAY_GROUP_LIGHT = {
 ART_TIME_OF_DAY_LOOK = (
     "阳光明亮，影子清晰",
     "低角度的暖色斜阳，影子拉长，天色偏橙红",
-    "主光来自月光或灯光，暗部加深，整体色调偏暗",
+    # "月光或灯光" gave the moon the light while the lantern in the subject's hand stayed dark.
+    "光来自夜里真实存在的光源，暗部加深，整体色调偏暗",
 )
 # Weather an edit asks for: (words that ask for it, words that show it in a prompt, what is written when it is missing).
 # Snow on the ground (积雪、覆雪) is not snowfall.
@@ -5634,6 +5646,23 @@ def art_finish_model_prompt(output: str, *, truncated: bool = False) -> str:
     return normalize_art_sections(art_strip_leaked_instructions(normalize_art_sections(text)))
 
 
+def art_drop_repeated_clauses(text: str, user: str = "") -> str:
+    """A greedy answer that went round once more ("地面有落叶堆积，…，围栏呈锈红色" twice in one line) says each clause once.
+    Only for what the writer wrote from nothing (创作, 多图反推): a draft being edited keeps its own repeats, and so does a
+    repeat the user wrote ("一步一回头，一步一回头")."""
+
+    def edit(line):
+        seen = set()
+
+        def repeated(piece):
+            if len(piece) >= 4 and piece in seen and user.count(piece) < 2:
+                return True
+            seen.add(piece)
+            return False
+        return art_edit_line_segments(line, repeated)
+    return art_edit_section_lines(text, None, edit)
+
+
 # "无佩戴任何饰品", "没有其他人物": a positive prompt that names what is absent tends to draw it.
 # "无数/无尽/无边…" are not negations.  A place may come first: "脚下无地面无水面", "城堡下方无地面承托",
 # "背景中没有人物".
@@ -5645,8 +5674,11 @@ ART_NEGATED_CLAUSE = re.compile(
     r"^(?:" + ART_NEGATION_PLACE + r")?(?:无(?!数|尽|边|瑕|限|垠|比|暇|穷|际|论|袖|人机)|没有|并无|不含|不带|不出现)"
 )
 ART_DANGLING_CONNECTIVE = re.compile(r"^(?:但是|但|却|不过|只是|然而)")
-# "城市夜景中无明确主体": a note about the prompt, not something to draw.
-ART_ABSENT_SUBJECT_CLAUSE = re.compile(r"(?:无|没有|并无)(?:明确|具体|特定|其他|任何)?的?(?:主体|人物|角色)")
+# "城市夜景中无明确主体": a note about the prompt, not something to draw. "未见任何人物或动物" only as a whole clause:
+# "未见天日的密林" is a place, and a clause such as "未见衣物遮挡的…" stays for the safety read.
+ART_ABSENT_SUBJECT_CLAUSE = re.compile(
+    r"(?:无|没有|并无)(?:明确|具体|特定|其他|任何)?的?(?:主体|人物|角色)"
+    r"|^(?:画面|背景|周围|四周|远处|场景)?[中里内]?未见(?:明确|具体|特定|其他|任何)?的?(?:主体|人物|角色|动物)(?:[或与和及、](?:人物|角色|动物))*$")
 
 
 def art_positive_only_wording(text: str, source: str | None = None) -> str:
@@ -5784,13 +5816,17 @@ ART_CREATE_SYSTEM_TEXT = (
 )
 # 创作的段落说明不点名地面、水面（Qwen3 照填成“地面铺着地毯”“脚下无地面无水面”），也不假定画面有主体
 # （“主体下方”“人物的姿态”让只写了城市夜景的需求多出一座塔或两个人）。
+# Each section says what it leaves to the others: a subject in [风格设定] and the light in [拍摄参数] came back when only the
+# section's own content was listed. 景深 is not named: listed, every watercolour got "景深浅，背景虚化", and a rule
+# naming it ("只有写实摄影和 3D 渲染才写景深") was read as "write 3D渲染，景深适中".
 ART_CREATE_SECTION_GUIDE = (
     "各段写什么：\n"
-    "- [风格设定]：媒介与画风、整体氛围、完成质感。\n"
+    # "笔触或渲染方式" (and "线条、上色或渲染方式" after it) drew three and four of six pictures to 水彩.
+    "- [风格设定]：媒介与画风的名称、整体氛围、完成质感；不写主体、景物和颜色。\n"
     "- [主体物品]：主体是谁或是什么（连同数量，如一个、两只）、外观、服装或材质、颜色、姿态动作，以及主体之间的关系。\n"
-    "- [环境背景]：所处环境、前中后景，以及画面下方是什么。\n"
-    "- [光线与色彩]：光源方向与软硬、明暗关系、主色与辅色。\n"
-    "- [拍摄参数]：景别、视角、构图与景深。"
+    "- [环境背景]：所处环境、前中后景，以及画面下方是什么；写清每样景物在哪里，只写景物。\n"
+    "- [光线与色彩]：光源是什么、从画面哪一侧多高处照来、软硬，照亮哪里，影子落在背光的另一侧，明暗关系、主色与辅色。\n"
+    "- [拍摄参数]：景别、视角、主体在画面中的位置和构图方式；不写光线和颜色。"
 )
 ART_CREATE_INSTRUCTION = (
     "请根据用户的创作需求从零构建一份可直接用于 AI 绘图的中文提示词，按下面五段输出，"
@@ -5819,11 +5855,13 @@ ART_ENRICH_INSTRUCTION = (
     + ART_FIVE_SECTION_SKELETON + "\n\n" + ART_CREATE_SECTION_GUIDE.replace("以及画面下方是什么", "以及主体身下或脚下是什么") + "\n\n"
     "写作要求：\n"
     "1. 用户写到的主体、数量、动作和状态、地点、画风、颜色以及要求和避免项，都按原词写进对应段落，不换题材，不换动作。\n"
-    "2. 用户没写到的地方由你补全成一个具体可信的画面：主体的外貌、毛色或衣着、神态，以及和动作相符的肢体细节；地点里合情合理的陈设、材质和远景；"
-    "和画面相符的时间与光源，写清光从哪里来、落在主体和周围的什么地方；主色与辅色。\n"
-    "3. 用户没写画风时，选一种最适合这个题材的画风写明名称，再写它的质感；用户写了就照用。\n"
-    "4. 五段写同一个瞬间：光源是环境里有的东西，色彩合得上主体和环境，镜头拍得到其他几段写的内容；每处只写一种，前后不矛盾，同一内容只在一段里写。"
-    "[拍摄参数] 写景别、视角、构图和景深，视角只写一种；[环境背景] 只写景物。\n"
+    # "尾巴自然垂落贴地" on a windowsill, "双手轻扶城垛" next to "右手握剑柄", a sunset "从画面右上方斜射" or "从西方地平线".
+    "2. 用户没写到的地方由你补全成一个具体可信的画面：主体的外貌、毛色或衣着、神态，以及和动作相符的肢体细节（身体、四肢和尾巴各放在哪里，合乎它所在的位置）；"
+    "地点里合情合理的陈设、材质和远景；和画面相符的时间与光源，写清光从画面哪一侧、多高处照来（合乎时间：清晨和傍晚的太阳低而斜，正午在头顶）、落在主体和周围的什么地方；主色与辅色。\n"
+    "3. 用户没写画风时，选一种最适合这个题材、时间和光线的画风写明名称，再写它的质感；用户写了就照用。\n"
+    "4. 五段写同一个瞬间：光源是环境里有的东西，色彩合得上主体和环境，镜头拍得到其他几段写的内容；每处只写一种，前后不矛盾，同一内容只在一段里写；"
+    # Style names listed here drew three of four pictures to 水彩.
+    "姿势只写一种，一只手只做一件事。[拍摄参数] 写景别、视角和构图，视角只写一种；[环境背景] 只写景物。\n"
     "5. 不添加用户没写的人物、动物、年龄、文字或标志，也不添加发光、粒子、魔法等特效；不写“突出……”“强调……”“增强……感”这类说明效果的话，"
     "不写“高质量”“细节丰富”之类的空话，也不添加用户没写的否定说法。\n"
     "6. 每段写两三句通顺的完整句子，每句以句号结尾；只输出五段正文，不要前言、解释、Markdown 符号或负向提示词。"
@@ -5849,11 +5887,18 @@ ART_REFERENCE_ROLES = {
 ART_STYLE_MEDIUM_EXAMPLES = (
     "水墨、水彩、油画、厚涂、赛璐璐动画、二次元插画、Q版卡通、像素画、素描或铅笔、版画、扁平矢量、低多边形、黏土、国潮插画、3D 渲染、写实摄影"
 )
-# A place the user puts the subject in ("坐在雨夜的城市天台边缘"); "站在中央" or "坐在椅子上" is no new scene.
-ART_NEW_PLACE = re.compile(
-    r"(?:[站坐躺趴蹲跪倚靠立走跑飞]|漂浮|悬浮|飘浮)(?:在|到|于|进|上)[^，,。；;\n]{0,10}?"
+ART_PLACE_WORDS = (
     r"(?:街|路|巷|广场|公园|森林|树林|山|海|湖|河|江|岸|滩|草地|草原|田野|花园|庭院|院子|房间|屋|室|厅|堂|殿|宫|城|桥|船|车站|舞台"
     r"|塔|崖|洞|谷|原野|荒野|沙漠|雪地|冰面|天台|阳台|寺|庙|村|镇|港|码头|甲板|战场|废墟|太空|云端)")
+# A place the user puts the subject in ("坐在雨夜的城市天台边缘"); "站在中央" or "坐在椅子上" is no new scene.
+ART_NEW_PLACE = re.compile(r"(?:[站坐躺趴蹲跪倚靠立走跑飞]|漂浮|悬浮|飘浮)(?:在|到|于|进|上)[^，,。；;\n]{0,10}?" + ART_PLACE_WORDS)
+# A thing the user puts in a place ("把奖杯放在颁奖舞台上", "把糖果放在木质餐桌上"); hands, a book on the knees or a sword
+# by the side stay in the picture ("把双手放在桌上", "把书放在膝上", "把剑放在身侧").
+# "将奖杯放置在…", "把奖杯置于…"; 手办, 手机 and 头盔 are things.
+ART_PUT_PLACE = re.compile(r"(?:把|将)(?![^，,。；;\n]{0,3}(?:[双两左右]手|手[掌臂指腕]|手(?=[放摆搁置])|头发|脚|腿|胳膊))"
+                           r"[^，,。；;\n]{1,10}?(?:[放摆搁]置?|置)(?:在|到|于|进)[^，,。；;\n]{0,10}?(?:" + ART_PLACE_WORDS + r"|桌|台|架|柜)")
+# "把剑放到桌上，保持原来的背景": the picture's place stays. "保持背景虚化", "保持环境光柔和" keep no place.
+ART_KEEP_BACKGROUND = re.compile(r"(?:保留|保持)(?:原来|原有|原|图中|图片|图里)的?(?:背景|环境|场景)|(?:背景|环境|场景)(?:保持)?不变")
 
 
 def art_user_action_phrase(clause: str) -> str:
@@ -5916,40 +5961,68 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     # "夜晚" alone came back as one word before a daylight studio description; the duty says what the time looks like.
     time_look = ART_TIME_OF_DAY_LOOK[ART_TIME_OF_DAY_GROUPS.index(requested_time[0])] if requested_time else ""
     # "坐在雨夜的城市天台边缘" with no background picture is a new scene too: its place, light and weather are built out.
-    scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement)
-                                              or not background and ART_NEW_PLACE.search(requirement))
+    put_place = not ART_KEEP_BACKGROUND.search(requirement) and bool(ART_PUT_PLACE.search(requirement))
+    scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement) or not background
+                                              and (ART_NEW_PLACE.search(requirement) or put_place))
     # A posture the user writes ("站在…中央") replaces the picture's action; kept together they read as two moments.
     user_pose = "、".join(art_user_state_words(requirement))
     # "看向镜头" came back as "面向镜头" and cost a repair call: the user's actions are named for [主体物品].
     user_actions = "、".join(dict.fromkeys(phrase for _, _, phrase in art_user_actions(requirement)))
     # The user already puts the subject somewhere ("站在…中央"): [主体物品] says where, [环境背景] is the place only.
     placed = bool(re.search(r"[站坐躺趴蹲跪立倚靠](?:在|于|到)", requirement))
+    # "把奖杯放在舞台上" for a cut-out that floats tilted: the thing now rests on something. A person or an animal the user
+    # puts somewhere keeps the picture's pose.
+    put = not user_pose and put_place and not any(
+        re.search(item["pattern"], requirement) for item in NEGATIVE_CATEGORY_DEFINITIONS if item["name"] in ("person", "animal"))
+    held = bool(re.search(r"手持|拿着|握着|举着|提着|捧着", requirement))
+    # Only a glowing thing in or by the subject's hand is its main light: named in every request, it made the street's
+    # red lanterns the main light of a "冷色调灯光" night.
+    glow = held or bool(re.search(r"灯笼|火把|烛|提灯|油灯|篝火|发光", requirement))
     # A snowy night on a new street: the snow falls on the subject too, not only on the roofs.
     weather = any(re.search(ask, requirement) for ask, _, _ in ART_WEATHER_GROUPS) or "雪夜" in requirement
     # "冷色调灯光" next to a night: the time's own light (lanterns, warm) replaced the light the user asked for.
     user_light = art_user_light(requirement)
-    camera = ("写景别、视角与构图（景别按主体露出到哪里写：到脚写全身，到膝盖或大腿写七分身，到腰写中景，到胸写近景；视角照图中主体的朝向写，正面就写正面）；"
-              "景深和 [环境背景] 一致：环境写得清楚就不写背景虚化。")
+    # "全身景别，正面视角，构图居中。" was all that was left once the light and the scenery were taken out.
+    camera = ("分两句写：先写景别、视角与构图（景别按主体露出到哪里写：到脚写全身，到膝盖或大腿写七分身，到腰写中景，到胸写近景；视角照图中主体的朝向写，正面就写正面），"
+              "再写主体在画面中的位置和构图方式（主体偏左或偏右时不写对称或居中构图）；景深和 [环境背景] 一致：环境写得清楚就不写背景虚化。")
     sources = [
         ("[风格设定]", f"只看{style}，{medium}，并写明整幅画面按这种画风重新绘制。只写这张图本身的画法与表面质感（笔触、颗粒、光泽、纸面），"
          f"不提它画的是什么，不拿它画的东西作比喻，也不写{subject}里主体的毛发、皮肤或背景。" if style
-         else f"看{subject}，{medium}；只写画法，背景、光线、颜色和氛围写在后面几段，主体是谁、长什么样写在 [主体物品]。"),
-        ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、神情、发型和发色、服装、道具和颜色、身边飘着或环绕的物件和特效；"
+         # A trophy's star and handles came back in the drawing.
+         else f"看{subject}，{medium}，写成“画风名称，线条或笔触，上色或渲染方式，表面质感”一两句；"
+         "只写画法，背景、光线、颜色和氛围写在后面几段，主体是谁、长什么样写在 [主体物品]，这里不提。"),
+        # "身着金黑配色的重型铠甲，…" named no one; "第一句先点明主体是谁" alone then lost the beard and the topknot.
+        ("[主体物品]", f"看{subject}，第一句写主体是谁或是什么、数量和一眼认得出它的特征（人物写脸、胡须和发型），再写外观、神情、服装、道具和颜色、身边飘着或环绕的物件和特效；"
          # "剑身泛着寒光" for a red blade with gold patterns and talismans: stock wording replaced what the picture shows.
-         "服装、道具和特效照图写出它们本来的颜色、纹样和附着物（贴着或挂着的东西），道具按部位写颜色（如伞面和伞柄、杯身和把手各是什么颜色），不用套话代替图中看到的颜色"
+         # Talisman strips came back as "纸钱". (Asking for "only the parts drawn" sent the greedy answer round a backpack's
+         # straps and zips until the token limit, and the invented scabbard stayed: no parts wording here.)
+         "服装、道具和特效照图写出它们本来的颜色、纹样和附着物（贴着或挂着的东西），道具按部位写颜色（如伞面和伞柄、杯身和把手各是什么颜色），不用套话代替图中看到的颜色；"
+         "看不准是什么的飘浮物照它的形状和颜色写"
          # The lantern the user added took the sword's hand, and the sword was gone.
-         + ("；图中主体手里原来拿着的道具照样写出、继续拿着，用户要求新拿的东西拿在另一只手里" if re.search(r"手持|拿着|握着|举着|提着|捧着", requirement) else "")
-         + (f"；姿势按{pose}" if pose else f"；图中原来的动作不再写，姿态按用户要的“{user_pose}”写，写清这个姿态下身体、双手和道具怎么放" if user_pose
-            else "；照图写姿态动作")
+         + ("；图中主体手里原来拿着的道具照样写出、继续拿着，用户要求新拿的东西拿在另一只手里" if held else "")
+         # "双手持一柄长剑" when the user's "站" replaced a one-handed slash.
+         # "身体、双手和道具怎么放" came back as "双手持一柄长剑".
+         + (f"；姿势按{pose}" if pose else f"；图中原来的动作不再写，姿态按用户要的“{user_pose}”写，写清这个姿态下身体和道具怎么放，"
+            "道具还按图中的拿法拿着（看清图中是一只手还是两只手拿着，照样写）" if user_pose
+            # "朝向哪边" brought back the cut-out's tilt ("杯口朝向画面右上方"), and a fan put on a desk was still held.
+            else "；用户把它放到了新位置：写清它放在什么上面，照它平常放着的样子端正放稳，图中拿着或托着它的手和人不再写，"
+            "也不照图写悬空或倾斜的摆法" if put
+            # The hands are the held clause's: "每只手在做什么" gave the free hand the picture's open palm and the sword went.
+            else "；照图写姿态动作：身体是站、坐、跃起还是奔跑" if held
+            else "；照图写姿态动作：身体是站、坐、跃起还是奔跑，每只手在做什么（看清道具是一只手还是两只手拿着）")
          # A robot on a rooftop came back as a pose with no robot: its look is written first.
          + (f"；用户写的动作“{user_actions}”在这一段照原话写出，写在外观之后" if user_actions else "")
          + ("；用户要的天气也落在主体身上，写出它在主体身上看得见的痕迹（如肩头的积雪、被打湿的表面）" if weather else "")
          + (f"；材质质感按{material}" if material else "")
          + "，以及主体之间的关系。"),
-        ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面" + ("" if placed else "，以及主体站在其中的什么位置、脚下是什么")
-         + f"，{subject}原来的背景一律不写；挑这个地方有代表性的建筑、陈设或草木写具体，写出材质和颜色，用户要的时间和天气要在景物上看得出来"
-         # "街道两侧的冷色调灯光" lit the subject while the only lanterns stood far away.
-         + (f"；发出“{user_light}”的灯具写在主体身边、照得到主体的位置" if user_light else "")
+        # "脚下是什么" turned a leap into "立于街心石阶之上", and "主体在其中的什么位置" into "主体立于街道中央偏左": the place
+        # is scenery only, the pose is [主体物品]'s and the place in the frame [拍摄参数]'s.
+        ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面"
+         + f"，{subject}原来的背景一律不写；挑这个地方有代表性的建筑、陈设或草木写具体，写出材质和颜色，每样只写一次，用户要的时间和天气要在景物上看得出来"
+         # "街道两侧的冷色调灯光" lit the subject while the only lanterns stood far away; "灯具写在主体身边" then gave
+         # lanterns a cold light ("两侧灯笼散发冷光"), and "本来就发这种光的光源" still made the red lanterns its source.
+         + (f"；“{user_light}”来自这里本来就发这种光的光源" + ("（灯笼、烛火和火光是暖光，冷光来自月光、雪光或天光）" if "冷" in user_light else "")
+            + "，写在照得到主体的位置" if user_light else "")
          + "；前景只放地面、台阶这类低处的东西，不挡住主体。" if scene_change
          else f"只看{background}，写它的环境、前中后景和地面" + ("" if placed else "，以及主体站或坐在这个环境的什么位置") + f"；{subject}原来的背景一律不写；"
          "照图写出看得见的建筑结构和陈设，样式、材质和颜色与图中一致；环境的风格和年代只按这张图写，看不准就只写结构和材质；"
@@ -5961,13 +6034,17 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         ("[光线与色彩]", (f"时间是{requested_time[1]}：按{requested_time[1]}写光源方向、软硬与明暗（{time_look}），不照搬图片里的光线；" if requested_time
                       else ("光线来自新环境里的光源" if scene_change and not background else f"光线看{background or subject}")
                       + ("（用户要求改了光线或天气时按用户要求写）" if requirement else "") + "，写光源方向、软硬与明暗；")
-         + (f"用户要求的“{user_light}”照原意写进这一段，光源和色调按它写；" if user_light else "")
+         + (f"用户要求的“{user_light}”照原意写进这一段，它就是照亮主体的主光，光源和色调按它写"
+            + ("（冷光来自月光、雪光或天光，灯笼、烛火和火光是暖光，只作点缀）" if "冷" in user_light else "") + "；" if user_light else "")
          # "月光从上方洒落" under "纯黑天空", "以红金为主" in a cream hall: the light and colours came from nowhere in the picture.
-         + "光源是 [环境背景] 里有的东西，写它从哪边照到主体身上、在主体和地面上留下的亮面与阴影；软硬和明暗对比各只写一种说法；"
+         + "光源是 [环境背景] 里有的东西，写它从哪边照到主体身上、在主体和地面上留下的亮面与阴影（阴影在背光的另一侧）；"
+         # The lantern in the subject's hand stayed dark under "主光源来自上方偏左的月光".
+         + ("主体拿着或身边有会发光的东西（灯笼、火把、烛台等）时，它就是照亮主体的主光；" if glow else "") + "软硬和明暗对比各只写一种说法；"
          # Without saying where the subject's own colours go, Qwen3 lists them as the palette's; the section
          # name it sometimes echoes ("保留于[主体物品]段") is cleaned out afterwards.
          + (f"整体色调、主色与辅色都只从{palette}里取颜色（只写颜色，不写它画的东西）；主体原有的颜色写在 [主体物品]。" if palette
-            else "整体色调、主色与辅色把主体和环境的颜色合在一起写：主色取画面里面积最大的颜色（通常是环境），主体的颜色作辅色或点缀。")),
+            # "金色奖杯作为辅色" in a close-up: the environment is not always the largest.
+            else "整体色调、主色与辅色把主体和环境的颜色合在一起写：主色取画面里面积最大的颜色，全身和远景取环境的颜色，近景和特写取主体的颜色，另一方作辅色或点缀。")),
         ("[拍摄参数]", f"只看{composition or layout}，{camera}" if composition or layout else f"看{subject}，{camera}"),
     ]
     duties = "\n".join(
@@ -5982,7 +6059,8 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         "用户要求的改动在五段里都一致，哪一段都不再写回图片原来与它冲突的样子；每处只写一种（地面也只写一种状态），不写“月光或灯光”这样的二选一。",
         "用户没写左右就不写左右；新拿的东西拿在图中空着的手里，原来拿着的东西留在原来的手里。",
         # The attack pose next to "站在…中央", "背景虚化" next to a sharp street, a lantern-lit face under a "纯黑天空".
-        "五段写同一个瞬间的同一个画面：主体的姿态、所在位置、光线和镜头互相吻合，前后不矛盾；每段只写自己那部分，同一内容不在两段里重复，[拍摄参数] 只写镜头，光落在哪里只写在 [光线与色彩]。",
+        "五段写同一个瞬间的同一个画面：主体的姿态、所在位置、光线和镜头互相吻合，前后不矛盾，身体只摆一个姿势，一只手只做一件事；"
+        "每段只写自己那部分，同一内容不在两段里重复，[环境背景] 只写景物，[拍摄参数] 只写镜头，光落在哪里只写在 [光线与色彩]。",
         "主体的外观以主体图为准：不添加图中没有的衣物、配饰和道具（用户要求的除外），也不把图中的颜色和纹样换成别的。",
         # A simple request should become a rich, specific picture - inside the user's words and the pictures.
         "在用户要求和图片之内写得具体生动：环境和光线多写几处合情合理的细节（地面材质、天气痕迹、陈设、远景、光在主体和地面上的效果）；"
@@ -6475,15 +6553,29 @@ ART_EVALUATIVE_VERB = r"(?:突出(?!的|明显|分明|于|在|[海水地墙岩�
 ART_EVALUATIVE_PIECE = re.compile(r"^(?:以|用以|从而|来|更加?)?" + ART_EVALUATIVE_VERB)
 ART_EVALUATIVE_TAIL = re.compile(r"(?<=[一-鿿])(?:以|来|从而)?" + ART_EVALUATIVE_VERB + r"[一-鿿][^，,。；;！？!?\n]*")
 ART_EVALUATIVE_WORDS = re.compile(r"视觉(?:张力|冲击|效果|焦点|中心|重心)|形成张力")
-# "辅以主体的红金配色作为视觉焦点": the colours stay, the aside goes.
-ART_VISUAL_FOCUS = re.compile(r"(?<=[一-鿿])(?:作为|成为|形成|是)?(?:画面的?)?视觉(?:焦点|中心|重心)")
+# "辅以主体的红金配色作为视觉焦点", "灯笼的暖黄光在暗色中成为视觉焦点": the colours and the light stay, the aside goes.
+# A clause that only names the focus ("人物为视觉焦点", "以金色奖杯为视觉中心", "人物服装的橙色与绿色形成视觉焦点") goes
+# whole: cut, it was left as "人物为" or "红金配色为，".
+ART_VISUAL_FOCUS = re.compile(r"(?<=[一-鿿])(?:作为|成为|形成|是|为)?(?:画面的?)?视觉(?:焦点|中心|重心)")
+# A clause that shows something before its aside: light, where a thing is, or an accent it adds.
+ART_VISUAL_FOCUS_CONTENT = re.compile(r"[辅配衬]以|光|影|亮|照|射|映|洒|泛|透|投|闪|燃|在|从|于|居|中")
+
+
+def art_visual_focus_rest(match) -> str:
+    """What stays of a focus aside: nothing after a clause that shows something; the aside itself after one that only
+    names the focus, so the whole clause goes."""
+    before = re.split(r"[，,。；;、]", match.string[:match.start()])[-1]
+    return "" if ART_VISUAL_FOCUS_CONTENT.search(before) and not before.startswith("以") else match[0]
 # "主体位于地毯正中，正对镜头" after [主体物品]'s "站立于大堂中央": the subject is placed once.
 ART_SCENE_PLACEMENT = re.compile(r"(?:主体|人物|角色)[^，,。；;]{0,3}(?:位于|站在|站于|坐在|立于|站立于|处于)|(?:正对|面向|面朝|背对|看向)镜头")
 # "光线柔和但对比强烈": the second half takes the first back.
 ART_SOFT_BUT_HARD = re.compile(r"((?:柔和|柔光|柔软|轻柔)[^，,。；;]{0,4}?)(?:但|却|而)[^，,。；;]{0,6}?(?:强烈|硬朗|锐利|刺眼)")
 ART_CAMERA_BLUR = re.compile(r"虚化|浅景深|景深浅|焦外|散景|背景模糊")
 # The camera itself; "画面", "清晰" or "位于" alone also carry scene description ("山影与飞檐在画面中后景清晰呈现").
-ART_CAMERA_CORE = re.compile(r"景别|全身|半身|七分身|全景|中景|近景|远景|特写|视角|平视|仰视|俯视|仰拍|俯拍|鸟瞰|构图|景深|虚化|对焦|镜头|机位|透视|广角|长焦|微距")
+# Where the subject sits in the frame is the camera too: "主体位于画面中央偏左" went because [环境背景] also placed it.
+# Scenery placed in the frame ("山影与飞檐位于画面上方") is still the scene's.
+ART_CAMERA_CORE = re.compile(r"景别|全身|半身|七分身|全景|中景|近景|远景|特写|视角|平视|仰视|俯视|仰拍|俯拍|鸟瞰|构图|景深|虚化|对焦|镜头|机位|透视|广角|长焦|微距"
+                             r"|(?:主体|人物|角色|主角)[^，,。；;]{0,6}(?:画面的?(?:中央|中心|正中|中部|[左右上下](?:侧|方|半|部|边)|偏[左右上下])|三分)")
 # Light that lands on things ("射灯在武将肩头形成高光") is [光线与色彩]'s; "降低纯白高光" in a scene is the scene.
 ART_LIGHT_ON_THINGS = re.compile(r"(?:形成|留下|映出|泛起|投下|落下|打出)[^，,。；;]{0,6}(?:高光|亮面)|[上头处]的?(?:高光|亮面)")
 # The user's avoidance line ("避免：过曝, 塑料皮肤") is no picture content: the cleanup leaves it as written.
@@ -6529,7 +6621,7 @@ def art_consistent_sections(text: str, source: str = "", one_time: bool = True, 
     user = source if user is None else user
     mine = lambda piece: bool(source) and (piece in source or art_says_user_words(piece, user))
     text = art_edit_lines_but_avoidance(text, None, lambda line: art_edit_line_segments(
-        ART_VISUAL_FOCUS.sub(lambda match: match[0] if mine(match[0]) else "", ART_SOFT_BUT_HARD.sub(
+        ART_VISUAL_FOCUS.sub(lambda match: match[0] if mine(match[0]) else art_visual_focus_rest(match), ART_SOFT_BUT_HARD.sub(
             lambda match: match[0] if mine(match[0]) else match[1],
             ART_EVALUATIVE_TAIL.sub(lambda match: match[0] if mine(match[0]) else "", line))),
         lambda piece: bool(ART_EVALUATIVE_PIECE.match(piece) or ART_EVALUATIVE_WORDS.search(piece)) and not mine(piece)))
@@ -15917,13 +16009,15 @@ class PromptAssistant:
                     diagnostics = {}
                     positive_output = apply_ordinary_art_patch_output(source, requirements, output, diagnostics)
                     patch_failure = "" if positive_output else str(diagnostics.get("failureReason") or "patch-json-or-anchor-invalid")
+            finished = art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output))
             answered = finalize_art_semantic_fusion(art_positive_only_wording(art_drop_unknown_references(
-                art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output)), source,
+                finished, source,
             ), source), instruction)
             positive = art_drop_section_mentions(art_write_requested_weather(art_write_requested_time(
                 art_drop_invented_clauses(answered, source, instruction, enrich=enrich), instruction), instruction), source)
-            # The answer as written is checked too: the cleanups drop ages ("12岁的少女") and pieces ("突出12岁少女的身形").
-            if payload.get("nsfw") is True and any(map(ordinary_art_core_affirmative_minor_present, (answered, positive))):
+            # The answer as written is checked too: the cleanups drop ages ("12岁的少女"), pieces ("突出12岁少女的身形") and
+            # clauses that start with a negation ("无衣物遮挡的12岁少女身体").
+            if payload.get("nsfw") is True and any(map(ordinary_art_core_affirmative_minor_present, (finished, answered, positive))):
                 raise ValueError("提示词融合未通过内容检查，原提示词未修改")
             # An edit may change the time of day ("改成夜晚"), so only an enriched draft is held to one time; the edit's
             # own words ("背景虚化", "披风随风飘扬") stay, in the answer's wording too.
@@ -15970,7 +16064,8 @@ class PromptAssistant:
         positive = ""
         laid_out = ""
         laid_out_raw = ""
-        checked = laid_out_checked = ""
+        checked = finished = ""
+        laid_out_checked = ()
         for attempt in range(2):
             repair = (
                 "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
@@ -15982,12 +16077,12 @@ class PromptAssistant:
                                    temperature=0.0 if attempt else 0.5, top_p=1.0 if attempt else 0.9,
                                    trace_label="artCreateRepair" if attempt else "artCreate")
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            checked = art_drop_section_mentions(art_single_view_angle(
-                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))))
+            finished = art_drop_repeated_clauses(art_finish_model_prompt(output, truncated=truncated), requirement)
+            checked = art_drop_section_mentions(art_single_view_angle(art_positive_only_wording(finished)))
             positive = art_consistent_sections(checked, requirement)
             failure = art_five_section_failure(positive)
             if not failure:
-                laid_out, laid_out_raw, laid_out_checked = positive, output, checked
+                laid_out, laid_out_raw, laid_out_checked = positive, output, (checked, finished)
                 word = art_missing_state_word(requirement, positive)
                 failure = "未保留需求里的动作：" + word if word else ""
             if not failure:
@@ -15999,8 +16094,10 @@ class PromptAssistant:
         elif failure:
             log_prompt_assistant_event("art_create_check_accepted", command="optimizePrompt", failure=failure)
         positive = art_close_sentences(laid_out or positive)
-        # The answer as written, before the cleanup dropped asides and pieces ("突出12岁少女的身形").
-        if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(art_close_sentences(laid_out_checked or checked)):
+        # The answer as written, before the cleanup dropped asides, pieces ("突出12岁少女的身形") and clauses that start
+        # with a negation ("无衣物遮挡的12岁少女身体").
+        if payload.get("nsfw") is True and any(ordinary_art_core_affirmative_minor_present(art_close_sentences(text))
+                                                for text in laid_out_checked or (checked, finished)):
             raise ValueError("提示词创作未通过内容检查，请修改描述后重试")
         negative = (
             build_targeted_negative_prompt(requirement, positive, video=False)
@@ -16034,12 +16131,14 @@ class PromptAssistant:
         output = ""
         description = ""
         laid_out = ""
-        person = minor = sensitive = young_words = False
+        person = minor = sensitive = young_words = truncated = False
         for attempt in range(2):
-            repair = (
+            # A greedy answer caught in a loop ("背包侧面有黑色束带，…" to the token limit) is not shown again: copied back,
+            # the repair looped the same way past the 300-second budget.
+            repair = "" if not attempt else "\n\n上次输出太长被截断了：同一样东西写了很多遍。这次每样东西只写一次，五段写完就停。" if truncated else (
                 "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
                 + "\n上次结果：\n" + output
-            ) if attempt else ""
+            )
             output = self.generate(
                 request + repair,
                 images=[item["tensor"] for item in image_items],
@@ -16053,13 +16152,15 @@ class PromptAssistant:
             person, minor, sensitive = person or said_person, minor or said_minor, sensitive or said_sensitive
             young_words = young_words or _requirements_contain_explicit_minor_terms(output)
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
+            finished = art_drop_repeated_clauses(art_finish_model_prompt(output, truncated=truncated), requirement)
             checked = art_role_reference_cleanup(art_plain_background_focus(art_single_view_angle(art_positive_only_wording(
-                art_finish_model_prompt(output, truncated=truncated)))), roles)
+                finished))), roles)
             # The prompt's own explicit words count as sensitive content too, in case the check says 无 while the
             # prompt writes what was asked for in words the user's text does not use (脱光 -> 一丝不挂); they are read
-            # before the fit and the cleanup below drop asides and pieces ("强调其一丝不挂的身体").
+            # before the fit and the cleanup below drop asides and pieces ("强调其一丝不挂的身体"), and before a clause that
+            # starts with a negation goes ("没有衣物遮挡的裸体").
             art_reference_block_sensitive_minor(requirement, minor or young_words,
-                                                sensitive or art_reference_explicit_words(checked))
+                                                sensitive or any(map(art_reference_explicit_words, (finished, checked))))
             description = art_user_look_words(art_consistent_sections(art_role_reference_user_fit(
                 checked, requirement, roles), requirement), requirement)
             failure = art_five_section_failure(description)
@@ -20378,6 +20479,16 @@ def detect_negative_categories(
             )
         if hit:
             matched.append(category)
+    # A 美工 prompt says what its subject and its place are: a [主体物品] with no person or animal is a thing (a trophy on
+    # a stage got only the fallback words), and an [环境背景] that describes a place is a scene, whatever the word lists know.
+    names = {item["name"] for item in matched}
+    sections = art_section_map(positive_prompt) if "ui" not in names else {}
+    place = sections.get("环境背景", "")
+    subject = sections.get("主体物品", "")
+    for name, wanted in (("prop", bool(subject) and not names & {"person", "animal", "prop"} and not NEGATIVE_PERSON_HINT.search(subject)),
+                         ("scene", bool(place) and "scene" not in names and not ART_PLAIN_BACKGROUND.search(place))):
+        if wanted:
+            matched.append(next(item for item in NEGATIVE_CATEGORY_DEFINITIONS if item["name"] == name))
     return matched
 
 
@@ -20466,16 +20577,21 @@ def build_targeted_negative_prompt(
     typed_keywords = category_negative_keywords(categories)
     body_limit = NEGATIVE_MAX_COUNT - len(NEGATIVE_COMMON_PREFIX) - len(NEGATIVE_SUFFIX)
     fixed_keys = {item.lower() for item in NEGATIVE_COMMON_PREFIX + NEGATIVE_SUFFIX}
+    # Video and UI keep their blur words (浅景深 in a shot does not make 运动模糊 or 失焦 wanted).
+    blur_asked = not {item["name"] for item in categories} & {"video", "ui"} and any(
+        NEGATIVE_BLUR_ASKED.search(clause) for line in str(positive_prompt or "").split("\n") if not ART_AVOID_LINE.match(line)
+        for clause in re.split(r"[，,。；;]", line))
+    prefix = ["主体模糊" if blur_asked and item == "模糊" else item for item in NEGATIVE_COMMON_PREFIX]
     middle = without_negative_synonyms([
         item for item in merge_keyword_list(
             typed_keywords[:10],
             negative_model_extras(model_negative, categories),
             typed_keywords[10:],
         )
-        if item.lower() not in fixed_keys
+        if item.lower() not in fixed_keys and not (blur_asked and NEGATIVE_BLUR_WORD.search(item))
     ])
     ordered = merge_keyword_list(
-        NEGATIVE_COMMON_PREFIX, middle[:body_limit], NEGATIVE_SUFFIX, max_count=NEGATIVE_MAX_COUNT,
+        prefix, middle[:body_limit], NEGATIVE_SUFFIX, max_count=NEGATIVE_MAX_COUNT,
     )
     return NEGATIVE_JOINER.join(ordered)
 
