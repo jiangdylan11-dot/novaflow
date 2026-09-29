@@ -88,6 +88,32 @@ class Element {
   getBoundingClientRect(){return {width:900,height:500,left:0,top:0}}
   querySelectorAll(){return []}
 }
+
+test('module description preserves both legacy fields and clears retired requirements on edit', () => {
+  renderer('ui-design.inspector.tool.js');
+  const inspector = globalThis.NovaFlowUiDesignInspectorTool;
+  const doc = { createElement: tag => new Element(tag, doc) };
+  const host = doc.createElement('main');
+  const block = { id: 'module', purpose: '辅助导航和版权信息', requirements: '版权居中，使用小号灰字' };
+  const handle = inspector.mount({ host, compact: true,
+    getSelection: () => ({ kind: 'block', block, blockId: block.id }),
+    onPatchSelection: (_, patch) => Object.assign(block, patch),
+  });
+  const descendants = node => [node, ...node.children.flatMap(descendants)];
+  const fields = () => descendants(host).filter(node => node.tagName === 'textarea');
+  assert.equal(fields().length, 1);
+  assert.equal(fields()[0].attributes['aria-label'], '模块说明');
+  assert.equal(fields()[0].value, '辅助导航和版权信息\n版权居中，使用小号灰字');
+  fields()[0].value = '只保留导航';
+  fields()[0].listeners.change();
+  assert.equal(block.purpose, '只保留导航');
+  assert.equal(block.requirements, '');
+  handle.update();
+  assert.equal(fields()[0].value, '只保留导航');
+  fields()[0].value = ''; fields()[0].listeners.blur(); handle.update();
+  assert.equal(fields()[0].value, '', 'clearing the description must not restore legacy text');
+  handle.destroy();
+});
 function workbench(project) {
   const doc={createElement:tag=>new Element(tag,doc)};
   const host=doc.createElement('main');
