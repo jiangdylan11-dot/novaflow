@@ -599,7 +599,10 @@ function miniMaxH3ValidateRawUserContent(userPrompt, userRequirements, contentPo
   const hasExplicitYouth = miniMaxH3HasExplicitYouthIndicator(rawUserText);
   const sensitiveCategories = miniMaxH3SensitiveCategories(rawUserText, { affirmativeOnly: true });
   const hasSensitiveRequest = sensitiveCategories.size > 0;
-  if (hasExplicitYouth && hasSensitiveRequest) {
+  // Undressing words say what a nudity word says next to an explicit child (小学生脱光衣服, the child undresses), as on the local
+  // engine; a coat taken off does not. They count for this block only, so adult requests and the answer checks read as before.
+  const undressing = hasExplicitYouth && miniMaxH3PatternHasAffirmativeMatch(rawUserText, /(?:脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没)穿衣服|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物)|(?<![a-z0-9_])(?:undress(?:es|ed|ing)?|unclothed|strip(?:s|ped|ping)?[_\s-]+naked|(?:is|are|was|were|be|being|gets?|got|stands?|stood|lies?|lying|sits?|sitting|standing)\s+(?:completely\s+|fully\s+|totally\s+|stark\s+)?naked)(?![a-z0-9_]))/iu);
+  if (hasExplicitYouth && (hasSensitiveRequest || undressing)) {
     throw miniMaxH3ContractError("provider_content_policy", "MiniMax H3 request contains explicit minor content", 422, "provider_content_policy");
   }
   return { hasExplicitYouth, hasSensitiveRequest, sensitiveCategories: Array.from(sensitiveCategories) };

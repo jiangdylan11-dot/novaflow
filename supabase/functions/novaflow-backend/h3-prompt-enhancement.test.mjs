@@ -430,6 +430,13 @@ test('everyday words next to a child are no sensitive content: bare rock, light 
   for (const source of ['小孩全裸站在海边', '小孩裸露身体', 'a child, fully nude']) {
     assert.throws(() => build('text_video', source), error => error.errorCode === 'provider_content_policy' && error.statusCode === 422, source);
   }
+  // Undressing words next to a child block before the call too, as on the local engine; a coat taken off, or none, does not.
+  for (const source of ['小孩脱光衣服', '小孩光着身子站在床边', '儿童不穿衣服躺着', 'the child undresses', 'the child strips naked', 'the child is naked']) {
+    assert.throws(() => build('text_video', source), error => error.errorCode === 'provider_content_policy' && error.statusCode === 422, source);
+    assert.throws(() => build('image_video', source, [frame]), error => error.errorCode === 'provider_content_policy' && error.statusCode === 422, source);
+  }
+  for (const source of ['小孩脱掉外套挂在椅子上', '小孩不要脱掉衣服', 'the child takes off his coat'])
+    assert.equal(build('text_video', source).resultOptions.explicitYouthUserRequest, true, source);
   // A child named in the user's words, and an answer with the same everyday words: written.
   const t2v = build('text_video', '小孩在海边的礁石上奔跑，镜头跟随');
   for (const [model, display] of [
