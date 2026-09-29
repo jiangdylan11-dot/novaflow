@@ -79,7 +79,10 @@ const roleReverse = buildGrokImageReverseRequest({
 },'grok-contract-test');
 assert.equal(roleReverse.resultOptions.artFiveSectionPrompt,true);
 assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('五个且仅五个'),'multi-reference reverse must request the five-section layout');
-const roleResult = text=>grokResponsesPublicResult({output_text:JSON.stringify({prompt:text})},roleReverse.resultOptions);
+// The answers below keep the 图2 of the user's draft (a request without it drops it, see the round-5 serpent replay below).
+const roleDraftReverse = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'},{...refImage,dataUrl:'data:image/png;base64,AQ==',role:'background'}],scenario:'role_reference',currentPrompt:laidOut},'grok-contract-test');
+assert.deepEqual(roleDraftReverse.resultOptions.artReferenceUserLabels,['图2']);
+const roleResult = text=>grokResponsesPublicResult({output_text:JSON.stringify({prompt:text})},roleDraftReverse.resultOptions);
 assert.equal(roleResult(laidOut).output_text,laidOut);
 assert.throws(()=>roleResult('一台机器人站在台阶上，背景是雪山。'),/未按五个固定分段输出/);
 const cloud=fs.readFileSync(new URL('../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs',import.meta.url),'utf8');
@@ -184,10 +187,14 @@ assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('画面里没�
   const roleText = roleReverse.body.input[0].content.at(-1).text;
   assert.ok(roleText.includes('主体图里看得见的部位逐一照图写出形状、颜色和纹样') && roleText.includes('也不补写画外的部位') && roleText.includes('动物和生物写头部、躯干、四肢、腹背和尾巴'), 'every visible part of the subject, nothing out of frame');
   const note = roleText.slice(roleText.indexOf('输出前逐项核对并改正'));
-  assert.ok(note.includes('背景参考图：[环境背景]就是这张图里的场景') && note.includes('按从前景到后景、从地面到上层的顺序都写进去') && note.includes('每样写出它在图中的形状、颜色、材质和位置') && note.includes('不另补图中没有的陈设'), 'shapes, positions and lamps are read off the picture, after the brief');
+  assert.ok(note.includes('背景参考图：[环境背景]就是这张图里的场景') && note.includes('按从前景到后景、从地面到上层的顺序都写进去') && note.includes('每样写出它在图中的形状、颜色、材质和位置') && note.includes('不另补图中没有的东西（陈设、灯具、窗户都算）'), 'shapes, positions and lamps are read off the picture, after the brief, and no lamp or window it lacks');
+  // Round-6 review: with the brief alone every hall run lit the girl from the ceiling; the note opens with where the lights come from.
+  assert.ok(note.includes('主光和辅光（用户点名的光除外）从图里看得见的灯具和光中选，方向按它在图中的位置写') && note.indexOf('从图里看得见的灯具和光中选') < note.indexOf('写成三句以上'), 'the key and fill lights are the picture\'s own lamps, where they are');
   const subjectOnly = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'}],scenario:'role_reference'},'grok-contract-test').body.input[0].content.at(-1).text;
   assert.ok(!subjectOnly.includes('背景参考图：') && !styleReverse.body.input[0].content.at(-1).text.includes('背景参考图：'), 'the note goes only with a background picture');
-  assert.doesNotMatch(roleText, /天花板|拱形|几角星|天窗|酒店大堂/, 'no wrong shape, place or venue is put in the writer\'s mind');
+  assert.doesNotMatch(roleText, /天花板|拱形|几角星|天窗/, 'no wrong shape or place is put in the writer\'s mind');
+  // Guessing a use stays banned: without 酒店 in the ban the first hall run guessed a hotel.
+  assert.ok(roleText.includes('不猜宴会、礼堂、酒店等用途'), 'no guessed venue use');
 }
 // A negative the model separated with ASCII commas is written with Chinese commas; other separators stay as written.
 assert.equal(roleNegative('画面模糊,低清晰度, 手部畸形'), '画面模糊，低清晰度，手部畸形');
@@ -197,7 +204,8 @@ assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面
 // stays warm, the sky examples carry a position and no quotable moon, and the final check names the recurring slips.
 for (const text of briefTexts) {
   assert.ok(text.includes('主体手里拿着的灯不换算成画面方位，只按手写') && text.includes('面向画面的人物，右手在画面左侧') && text.includes('手里拿着的灯按手写'), 'a hand-held lamp is written by the hand');
-  assert.ok(text.includes('方向照抄这个光源在[环境背景]里写的位置（那里写“画面左侧的壁炉”，这里就写“从画面左侧照来”）') && text.includes('主光方向照抄它在那里的位置') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
+  // The copied position is not turned into another direction, and 正上方 is no example direction (it came back 4 times in 12 runs).
+  assert.ok(text.includes('方向照抄这个光源在[环境背景]里写的位置（那里写“画面左侧的壁炉”，这里就写“从画面左侧照来”，不改成别的方位），按画面写（画面左侧、画面右上方）') && !text.includes('正上方') && text.includes('主光方向照抄它在那里的位置') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
   assert.ok(text.includes('要冷色调灯光时，写明冷色的灯罩（如淡蓝纱罩的灯笼、青白琉璃灯，不只写“冷色灯笼”），由它透出冷光') && text.includes('手里的东西在各段是同一只手') && text.includes('不加不合年代的路灯、街灯，火光只作暖色点缀') && text.includes('火光始终写成暖色（冷色灯罩透出的光除外）'), 'a named light colour and warm fire do not conflict');
   assert.doesNotMatch(text, /雪夜云隙间的一轮冷月|用户要冷色调时在这里写出冷光的来源|纸面颗粒/, 'no quotable moon, no texture in the style example');
   assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
@@ -225,15 +233,33 @@ for (const request of [longNegFusion,
 }
 assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('当前负面 Prompt 里已有的项照原样保留，不受按主体选词的限制'), 'the reference route keeps the box too');
 assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:castleFive,negative_prompt:longUserNegative + '，城墙砖块错位'})},longNegFusion.resultOptions).negative_prompt,longUserNegative + '，城墙砖块错位');
-// The subject section takes the user's action and position phrases, and a picture number only where the user wrote one (copying
-// the name "with its picture number" put 图1 and the whole request, weather included, into [主体物品]); time and weather go to the scene.
-assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里写主体动作、视线、朝向和位置的短语原样抄进[主体物品]') && roleReverse.body.input[0].content.at(-1).text.includes('用户原文里的时间和天气写进[环境背景]') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台'), 'the subject keeps the user\'s words, the venue its own words');
+// The subject section takes the user's subject name (a generic 角色 too) and action and position phrases, with a picture number
+// where the user wrote one and none where the user did not (copying the name "with its picture number" put 图1 and the whole
+// request, weather included, into [主体物品]; dropping the name lost the user's 图1的角色 in every round-6 hall run); time and
+// weather go to the scene.
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼和写主体动作、视线、朝向和位置的短语原样抄进[主体物品]') && roleReverse.body.input[0].content.at(-1).text.includes('用户原文里的时间和天气写进[环境背景]') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台'), 'the subject keeps the user\'s words, the venue its own words');
 for (const text of briefTexts) {
   assert.doesNotMatch(text, /连同图号|称呼里的图号照抄/, 'no picture number the user did not write is copied into the subject');
-  assert.ok(text.includes('用户的称呼带图号才照抄图号') && text.includes('动作写全，用户写“靠在树下看书”就不只写“靠在树下”'), 'the user\'s name, and the action phrase whole');
-  // Examples the writer copied word for word (物理渲染、全局光照; 从下方照亮), that primed a second body word (蜷曲、舒展) or put the
-  // banned term beside the test venue (大厅 next to 背景杂乱) are gone.
-  assert.doesNotMatch(text, /物理渲染、全局光照|从下方照亮他的下巴|蜷曲、舒展|两侧高处的灯架|集市、大厅/, 'no copied or priming example');
-  assert.ok(text.includes('右手端着的油灯照亮他的脸和前襟') && text.includes('构图和景深都点名画面里的具体景物'), 'a hand lamp lights the face, the camera names real things');
+  assert.ok(text.includes('先原样写出用户原文里的主体称呼和动作短语') && text.includes('“角色”“人物”这类泛称也照抄，称呼前用户写了图号就连图号一起抄，没写的不加') && text.includes('动作写全，用户写“靠在树下看书”就不只写“靠在树下”'), 'the user\'s name with the number the user wrote, and the action phrase whole');
+  assert.ok(text.includes('[主体物品]原样写出了用户原文的称呼、动作和视线短语'), 'the final check keeps the user\'s phrases as written');
+  // Every visible part is written for the kind of subject, not a person's list only (a serpent's legs were left out).
+  assert.ok(text.includes('再把看得见的每个部位写全：人物写发型和发色') && text.includes('动物和生物写头部、躯干、四肢、腹背和尾巴；物品和机械写每个部件'), 'the parts list fits the subject');
+  assert.ok(text.includes('后面不再写第二个姿态词或概括整个身体形态的词'), 'one pose word, no whole-body word after it');
+  // Examples the writer copied word for word (物理渲染、全局光照; 从下方照亮; 金属表面的高光, 毛发层次 in the style ban; 端着, 前襟),
+  // that primed a second body word (蜷曲、舒展) or put the banned term beside the test venue (大厅 next to 背景杂乱) are gone.
+  assert.doesNotMatch(text, /物理渲染、全局光照|从下方照亮他的下巴|蜷曲、舒展|两侧高处的灯架|集市、大厅|金属表面的高光|毛发层次|布料质感|端着的油灯|前襟/, 'no copied or priming example');
+  assert.ok(text.includes('只按手写（如“右手的灯照亮他的脸”）') && text.includes('构图和景深都点名画面里的具体景物'), 'a hand lamp lights the face, the camera names real things');
+}
+// Replay of the round-5 serpent answer: a picture number the user did not write leaves the answer with its particle; the user's own
+// numbers stay, and so does one the sentence needs.
+{
+  const serpent = buildGrokImageReverseRequest({images:[{...refImage,label:'图1',role:'subject'}],scenario:'role_reference',surface:'art',purpose:'roleReference',supportsNegativePrompt:true,negativePrompt:'',requirements:'用户生成要求：巨蛇盘绕在古老神殿的石柱上，清晨薄雾'},'grok-contract-test');
+  const r5Serpent = {output_text:JSON.stringify({prompt:'[风格设定]\n二维动漫插画风格，采用数字绘画媒介进行渲染。线条流畅清晰，色彩饱和度高，整体氛围神秘而生动。\n[主体物品]\n图1巨蛇盘绕在古老神殿的石柱上，清晨薄雾。紫色鳞片带有绿色斑纹，头部有绿色水晶冠，眼睛发光绿色。它身体缠绕在石柱上，尾巴卷曲，嘴巴微张吐出舌头。\n[环境背景]\n古老神殿的石柱场景，清晨薄雾弥漫。灰色石柱表面有古老雕刻纹路，周围有破旧神殿墙壁和台阶。地面散落枯叶，远处可见神殿入口。\n[光线与色彩]\n清晨柔和光线从画面左侧照来。薄雾中光线柔和，紫色和绿色为主色调，辅以金色高光。\n[拍摄参数]\n中景构图，平视视角。主体居中，深景深使背景清晰。',negative_prompt:'画面模糊,低清晰度,水印,文字,低质量,鳞片变形,尾巴扭曲,爪子畸形,姿势不自然,光影错误,颜色失真,结构崩坏,边缘毛刺,薄雾不均,石柱纹理模糊',contentSafety:{explicitMinorEvidence:false,sensitiveContent:false}})};
+  const replayed = grokResponsesPublicResult(r5Serpent,{...serpent.resultOptions,supportsNegativePrompt:true}).output_text;
+  assert.ok(replayed.includes('[主体物品]\n巨蛇盘绕在古老神殿的石柱上') && !/图[1-9]/.test(replayed), 'the unwritten 图1 is gone');
+  const twoRefs = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'},{...refImage,dataUrl:'data:image/png;base64,AQ==',role:'background'}],scenario:'role_reference',currentPrompt:'图1的角色站在图2的场景中央，看向镜头'},'grok-contract-test');
+  const kept = laidOut.replace('[主体物品]\n', '[主体物品]\n图1的角色站在图2的场景中央，看向镜头，姿势与图1相同。');
+  assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:kept})},twoRefs.resultOptions).output_text,kept, 'the user\'s numbers stay');
+  assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:kept})},roleReverse.resultOptions).output_text,laidOut.replace('整体图2做完','整体做完').replace('[主体物品]\n', '[主体物品]\n角色站在场景中央，看向镜头，姿势与图1相同。'), 'unwritten numbers go, one the sentence needs stays');
 }
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');
