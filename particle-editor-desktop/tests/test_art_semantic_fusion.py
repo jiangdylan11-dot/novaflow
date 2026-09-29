@@ -286,7 +286,7 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertIn('水墨', prompt)
         self.assertIn('用户要求（优先于图片内容，写进相关段落，不单独成段）：画面改为夜晚', prompt)
         self.assertLess(prompt.index('用户要求（优先于图片内容'), prompt.index('[风格设定]\n……'))
-        self.assertIn('[光线与色彩]：时间是夜晚：按夜晚写光源方向、软硬与明暗（主光来自月光或灯光，暗部加深，整体色调偏暗），不照搬图片里的光线；', prompt)
+        self.assertIn('[光线与色彩]：时间是夜晚：按夜晚写光源方向、软硬与明暗（光来自夜里真实存在的光源，暗部加深，整体色调偏暗），不照搬图片里的光线；', prompt)
         self.assertNotIn('用户生成要求', prompt)
         # An answer that ignored "夜晚" is asked about once; if it still ignores it, the time is written in.
         self.assertEqual(captured['trace_label'], 'artRoleReferenceRepair')
@@ -604,6 +604,7 @@ class ArtPromptCleanup(unittest.TestCase):
             '[主体物品]\n主体为城市夜景，可见高耸摩天楼',
         )
         self.assertEqual(service.art_positive_only_wording('[主体物品]\n高楼林立，但夜色很深'), '[主体物品]\n高楼林立，但夜色很深')
+        self.assertEqual(service.art_positive_only_wording('[主体物品]\n城堡漂浮于云海之上，未见任何人物或动物'), '[主体物品]\n城堡漂浮于云海之上')
         self.assertEqual(
             service.art_positive_only_wording('[光线与色彩]\n整体色调以图2中的暖黄色为主'),
             '[光线与色彩]\n整体色调以暖黄色为主',
@@ -668,6 +669,17 @@ class ArtPromptCleanup(unittest.TestCase):
         self.assertIn('大场景', service.ART_CREATE_INSTRUCTION)
         # The rewrite keeps its own section guide.
         self.assertIn('脚下或下方的地面、水面或云层', service.ART_FIVE_SECTION_OUTPUT_RULE)
+        # Each section says what it leaves to the others; no style name primes the pick.
+        for instruction in (service.ART_CREATE_INSTRUCTION, service.ART_ENRICH_INSTRUCTION):
+            self.assertIn('[风格设定]：媒介与画风的名称、笔触或渲染方式、完成质感和整体氛围；不写主体、景物和颜色', instruction)
+            self.assertIn('写清每样景物在哪里，只写景物', instruction)
+            self.assertIn('不写光线和颜色', instruction)
+            self.assertNotIn('水彩', instruction)
+        # Named, 景深 came back under every watercolour.
+        self.assertNotIn('景深', service.ART_CREATE_SECTION_GUIDE)
+        self.assertNotIn('景深', service.ART_ENRICH_INSTRUCTION)
+        self.assertIn('姿势只写一种，一只手只做一件事', service.ART_ENRICH_INSTRUCTION)
+        self.assertIn('身体、四肢和尾巴各放在哪里，合乎它所在的位置', service.ART_ENRICH_INSTRUCTION)
 
     def test_weather_edit_writes_the_weather_and_drops_the_sun(self):
         text = (
@@ -868,6 +880,24 @@ class ArtRoleReferenceUserFitTest(unittest.TestCase):
                 else:
                     self.assertIn('另一只手仍握着剑', result['prompt'])
 
+    def test_a_looped_answer_is_not_copied_into_the_repair(self):
+        looped = '二次元插画\n\n少女，背着双肩包，' + '背包侧面有黑色束带，' * 60
+        answers = iter([looped, looped.split('\n\n少女')[0] + '\n\n少女背着双肩包，站在枫林小路上\n\n枫树林小路，落叶铺地\n\n'
+                        '傍晚斜阳从右侧照来\n\n中景，平视\n检查：人物=有；未成年=无；敏感=无'])
+        assistant, prompts = service.PromptAssistant(), []
+
+        def generate(prompt, **kwargs):
+            prompts.append(prompt)
+            answer = next(answers)
+            assistant.last_generate_profile = {'hitTokenLimit': answer is looped}
+            return answer
+        assistant.generate = generate
+        result = assistant.reverse_art_role_prompt([{'tensor': 'image', 'role': 'subject'}], '用户生成要求：把背景换成秋天的枫树林小路，傍晚', 'roleReference')
+        self.assertEqual(len(prompts), 2)
+        self.assertNotIn('背包侧面有黑色束带', prompts[1])
+        self.assertIn('每样东西只写一次', prompts[1])
+        self.assertIn('枫树林小路', result['prompt'])
+
 
 class ArtOnePictureTest(unittest.TestCase):
     """The five sections describe one picture: the request says how they connect, and the cleanup takes out
@@ -884,7 +914,8 @@ class ArtOnePictureTest(unittest.TestCase):
         self.assertIn('照图写出它们本来的颜色、纹样和附着物', request)
         # The light comes from the scene and falls on the subject; the palette merges both; the camera fits the scene.
         self.assertIn('光源是 [环境背景] 里有的东西，写它从哪边照到主体身上', request)
-        self.assertIn('主色取画面里面积最大的颜色（通常是环境），主体的颜色作辅色或点缀', request)
+        self.assertIn('主色取画面里面积最大的颜色，全身和远景取环境的颜色，近景和特写取主体的颜色，另一方作辅色或点缀', request)
+        self.assertIn('第一句先点明主体是谁或是什么、数量', request)
         self.assertIn('环境写得清楚就不写背景虚化', request)
         self.assertIn('[拍摄参数] 只写镜头', request)
         self.assertIn('不写“突出……”“强调……”这类说明效果的话', request)
@@ -996,19 +1027,19 @@ class ArtOnePictureTest(unittest.TestCase):
         request = service.art_role_reference_request(['subject'], '让机器人坐在雨夜的城市天台边缘，霓虹灯光')
         # The place is a new scene: built out, lit by the user's light next to the subject, at night, in the rain.
         self.assertIn('按用户要求写新环境（让机器人坐在雨夜的城市天台边缘，霓虹灯光）', request)
-        self.assertIn('发出“霓虹灯光”的灯具写在主体身边、照得到主体的位置', request)
+        self.assertIn('“霓虹灯光”来自这里本来就发这种光的光源，写在照得到主体的位置', request)
         self.assertIn('时间是雨夜', request)
         self.assertIn('用户要的天气也落在主体身上', request)
         # The action is the user's words without 让, the time or the weather, written after the subject's look.
         self.assertIn('用户写的动作“机器人坐在城市天台边缘”在这一段照原话写出，写在外观之后', request)
         self.assertLess(request.index('外观、神情'), request.index('用户写的动作'))
         # The user places the subject, so [环境背景] only builds the place.
-        self.assertNotIn('主体站在其中的什么位置', request)
+        self.assertNotIn('主体在其中的什么位置', request)
         # A chair is no new scene; a new street with no placement asks where the subject stands.
         self.assertNotIn('按用户要求写新环境', service.art_role_reference_request(['subject'], '让角色坐在椅子上'))
         street = service.art_role_reference_request(['subject'], '把背景换成雪夜古城街道，冷色调灯光')
-        self.assertIn('以及主体站在其中的什么位置、脚下是什么', street)
-        self.assertIn('发出“冷色调灯光”的灯具写在主体身边', street)
+        self.assertIn('以及主体在其中的什么位置（只写位置，姿态写在 [主体物品]）', street)
+        self.assertIn('“冷色调灯光”来自这里本来就发这种光的光源', street)
         self.assertIn('用户要的天气也落在主体身上', street)
         # A background picture is read for its venue and its lights; a subject the user placed is placed once.
         hall = service.art_role_reference_request(['subject', 'background'], '图1的角色站在图2的场景中央，看向镜头')
@@ -1018,11 +1049,42 @@ class ArtOnePictureTest(unittest.TestCase):
         self.assertIn('每段写两句通顺的完整句子', hall)
         self.assertIn('主体是谁、长什么样写在 [主体物品]', street)
 
+    def test_the_request_keeps_the_pictures_facts_its_light_and_one_pose(self):
+        street = service.art_role_reference_request(['subject'], '把背景换成雪夜古城街道，冷色调灯光')
+        # Floating things are written as they look; no parts wording (it sent the answer round a backpack's zips until the
+        # token limit). The drawing is one or two sentences of how it is drawn.
+        self.assertIn('看不准是什么的飘浮物照它的形状和颜色写', street)
+        self.assertNotIn('部件', street)
+        self.assertIn('写成“画风名称，线条或笔触，上色或渲染方式，表面质感”一两句', street)
+        # One pose, each section its own job, and a camera of two sentences.
+        self.assertIn('身体只摆一个姿势，一只手只做一件事', street)
+        self.assertIn('[环境背景] 只写景物', street)
+        self.assertIn('分两句写', street)
+        self.assertIn('再写主体在画面中的位置和构图方式', street)
+        self.assertIn('照图写姿态动作：身体是站、坐、跃起还是奔跑，每只手在做什么', street)
+        # A new thing in the hand: the hands are the held clause's, the picture's free hand does not keep its gesture.
+        lantern = service.art_role_reference_request(['subject'], '让角色手持一盏发光的灯笼，夜晚')
+        self.assertIn('照图写姿态动作：身体是站、坐、跃起还是奔跑，以及', lantern)
+        self.assertNotIn('每只手在做什么', lantern)
+        # Something glowing in or by the subject's hand is its main light; the night look names no moon.
+        self.assertIn('主体拿着或身边有会发光的东西（灯笼、火把、烛台等）时，它就是照亮主体的主光', lantern)
+        self.assertNotIn('主光来自月光或灯光', lantern)
+        # A thing put somewhere new is a new scene and rests on something.
+        trophy = service.art_role_reference_request(['subject'], '把奖杯放在夜晚的颁奖舞台上，聚光灯照射')
+        self.assertIn('按用户要求写新环境（把奖杯放在夜晚的颁奖舞台上，聚光灯照射）', trophy)
+        self.assertIn('写清它立在或放在什么上面、朝向哪边，不照图写悬空或倾斜的摆法', trophy)
+        self.assertNotIn('照图写姿态动作', trophy)
+        self.assertNotIn('主体在其中的什么位置', trophy)
+
     def test_the_cleanup_keeps_descriptions_and_holds_one_picture(self):
         # 突出 that describes the picture stays; the aside and a "visual focus" go, the colours stay.
         text = ('[风格设定]\n水彩插画风格\n\n[主体物品]\n一块礁石突出海面，少年眉骨突出明显\n\n[环境背景]\n海边礁石\n\n'
                 '[光线与色彩]\n夕阳从左侧照来，辅以主体的红金配色作为视觉焦点\n\n[拍摄参数]\n中景，背景虚化突出人物')
-        self.assertEqual(service.art_consistent_sections(text), text.replace('作为视觉焦点', '').replace('突出人物', ''))
+        self.assertEqual(service.art_consistent_sections(text), text.replace('作为视觉焦点', '作点缀').replace('突出人物', ''))
+        # Colours that carried the aside keep a predicate instead of ending as a fragment ("…橙色与绿色。", "…配色为，").
+        for said in ('人物服装的橙色与绿色形成视觉焦点', '人物服装的橙色与绿色为视觉焦点'):
+            self.assertIn('人物服装的橙色与绿色作点缀', service.art_consistent_sections(text.replace('辅以主体的红金配色作为视觉焦点', said)))
+        self.assertNotIn('视觉', service.art_consistent_sections('[拍摄参数]\n全身景别，武将成为画面的视觉中心'))
         # The subject is placed once; the light on things is [光线与色彩]'s; a hazy distance is not called sharp.
         scene = ('[主体物品]\n武将站立于大堂中央，看向镜头\n\n'
                  '[环境背景]\n米白色地毯铺满通道，远处楼层朦胧，主体位于地毯正中，正对镜头，射灯在武将肩头形成高光\n\n'
@@ -1031,6 +1093,9 @@ class ArtOnePictureTest(unittest.TestCase):
             '[主体物品]\n武将站立于大堂中央，看向镜头\n\n[环境背景]\n米白色地毯铺满通道，远处楼层朦胧\n\n'
             '[光线与色彩]\n射灯从两侧照下\n\n[拍摄参数]\n全身景别，武将占据画面核心'))
         self.assertIn('主体位于地毯正中，正对镜头', service.art_consistent_sections(scene.replace('武将站立于大堂中央，', '武将')))
+        # The subject's place in the frame is the camera's, even when [环境背景] places it in the scene too.
+        framed = scene.replace('武将占据画面核心', '主体位于画面中央偏左').replace('主体位于地毯正中', '主体位于地毯中央偏左')
+        self.assertIn('[拍摄参数]\n全身景别，主体位于画面中央偏左', service.art_consistent_sections(framed.replace('武将站立于大堂中央，', '武将')))
         # A blurred camera keeps a sharp subject in focus but not a sharp background.
         blur = service.art_consistent_sections(scene.replace('远处楼层朦胧', '远处楼层').replace('景深清晰', '背景虚化，面部清晰对焦'))
         self.assertIn('[拍摄参数]\n全身景别，武将占据画面核心，背景虚化，面部清晰对焦', blur)
