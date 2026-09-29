@@ -74,14 +74,14 @@ const referenceResultSchema = {type:'object', additionalProperties:false, proper
 // A writer's 多参 narrative comes in parts, so its length follows from the structure the official 350-500 words need (a word target
 // alone gave 180-270 words, live); validateReferenceResult joins the parts into the official prose. A translation keeps the prose field.
 const narrativeSchema = zh => {
-  const text = en => ({type:'string', description:zh ? '对应英文部分的简体中文翻译。' : en});
+  const text = (en, cn = '') => ({type:'string', description:zh ? '对应英文部分的简体中文翻译。' + cn : en});
   const list = (items, en) => ({type:'array', items, description:zh ? '与英文逐条对应。' : en});
   const object = (properties, description) => ({type:'object', additionalProperties:false, properties, required:Object.keys(properties), ...(description ? {description} : {})});
   return object({
     style: text('The official style sentence with its light, naming the style the pictures show with a concrete style word, e.g. The target video is in an anime style with bright daylight.'),
     shots: list(object({
       opening: object({
-        frame: text('Starts with its marker, [Shot 1], or for a cut the user asks for [Shot N] At MM:SS.mmm, the shot cuts to ..., then the composition and shot size in one sentence. A later shot keeps the place, light and clothing and opens on the action still in progress at the cut.'),
+        frame: text('Starts with its marker, [Shot 1], or for a cut the user asks for its marker, time and the size it cuts to (e.g. [Shot 2] At 00:03.000, the shot cuts to a medium close-up of both), then the composition and shot size in one sentence. A later shot keeps the place, light and clothing and opens on the action still in progress at the cut.', '[Shot N] 与 At 时间原样保留，其后写中文，如 [Shot 2] At 00:03.000 镜头切到两人的近景。'),
         setting: text('One full sentence with a verb: the shared setting with two or three concrete set-dressing details that fit the pictures\' world, e.g. Weathered stone tiles cover the courtyard and red lanterns hang from the eaves; empty in a later shot.'),
         light: text('One sentence: the light, its direction and the atmosphere (air, dust, leaves, mist); empty in a later shot.')
       }),
@@ -169,11 +169,15 @@ const cutAsked = text => /切(?![开菜断割片成碎块肉丝丁])|转场|分�
 // A cut time written just before its marker belongs to that marker, with its cut verb:
 // "… At 00:03.000 the shot cuts to [Shot 2] a close-up …" → "[Shot 2] At 00:03.000, the shot cuts to a close-up …" (also 00:03.000 时画面切至 [Shot 2]).
 // A timed cut written inside a shot with no marker at all ("… her dress. At 00:04.000, the camera cuts to a close-up …") starts its own shot.
+const cutClause = /^(?:(?:[Tt]he )?(?:shot|camera|view|scene) (?:cuts?|switches|transitions)\b|(?:镜头|画面)(?:切至|切到|切换))/;
 const cutTimesToMarkers = text => {
-  // A cut announced once more right before its own marker ("At 00:03.000 the shot cuts to a close-up. [Shot 2] At 00:03.000, …",
-  // "At the three-second mark the shot cuts to a close-up. [Shot 2] At 00:03.000, …") is one cut.
-  const marked = String(text).replace(/(^|[。!?！？]\s*|\.(?!\d)\s*)[^.。!?！？\[\n]*(?:\b(?:cuts?|switches|transitions)\b|切至|切到|切换)[^.。!?！？\[\n]*[.。!?！？]\s*(?=\[Shot (?:[2-9]|[1-9]\d+)\] At \d)/g, '$1').replace(/(?:\bAt |在)?(\d{2}:\d{2}\.\d{3})[^.。!?！？\[\n]*[.。!?！？]\s*(?=\[Shot (?:[2-9]|[1-9]\d+)\] At \1(?!\d))/g, '').replace(/(?:\bAt |在)?(\d{2}:\d{2}\.\d{3})[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*((?:the (?:shot|camera|view|scene) )?(?:cuts?|switches|transitions|changes)(?: to)?|(?:画面|镜头)?(?:切至|切到|切换到|切换至|切换|切))?\s*(\[Shot (?:[2-9]|[1-9]\d+)\])(?! At \d)[ \t]*/g,
-    (_, time, verb, shot) => shot + ' At ' + time + (verb ? (hanPattern.test(verb) ? ' ' : ', ') + verb + ' ' : ' '))
+  // A camera cut announced right before its own marker ("At the three-second mark the shot cuts to a close-up. [Shot 2] At 00:03.000, …")
+  // is one cut: when the marker restates it the announcement goes, otherwise the announced cut moves into the marker. Only a sentence
+  // that is itself a camera cut counts; an action (the chef cuts a slice, 她切换频道) stays where it is.
+  const marked = String(text).replace(/(^|[。!?！？]\s*|\.(?!\d)\s*)(?:(?:At|In|at|in) [^.。!?！？\[\n]{0,30}?(?:mark|seconds?|\d{2}:\d{2}\.\d{3}),?\s+|(?:在[ \t]*)?(?:第[^，。！？\n]{1,6}秒|\d{2}:\d{2}\.\d{3})[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*)?(?:[Tt]hen,? |随后|然后|接着)?((?:(?:[Tt]he )?(?:shot|camera|view|scene) (?:cuts?|switches|transitions)\b|(?:镜头|画面)(?:切至|切到|切换))[^.。!?！？\[\n]*)([.。!?！？])\s*(\[Shot (?:[2-9]|[1-9]\d+)\] At \d{2}:\d{2}\.\d{3})([ \t]*[,，]?[ \t]*)([a-z]?)/g,
+    (all, lead, cut, stop, marker, gap, next, offset, whole) => cutClause.test(next + whole.slice(offset + all.length)) ? lead + marker + gap + next
+      : hanPattern.test(cut) ? lead + marker + ' ' + cut + stop + next : lead + marker + ', ' + cut.charAt(0).toLowerCase() + cut.slice(1) + stop + ' ' + next.toUpperCase()).replace(/(?:\bAt |在)?(\d{2}:\d{2}\.\d{3})[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*((?:the (?:shot|camera|view|scene) )?(?:cuts?|switches|transitions|changes)(?: to)?|(?:画面|镜头)?(?:切至|切到|切换到|切换至|切换|切))?\s*(\[Shot (?:[2-9]|[1-9]\d+)\])(?! At \d)[ \t]*/g,
+    (_, time, verb, shot) => shot + ' At ' + time + (verb ? (hanPattern.test(verb) ? ' ' + verb : ', ' + verb + ' ') : ' '))
     .replace(/([.。!?！？;；])[ \t]*(?:At |在[ \t]*)?(\d{2}:\d{2}\.\d{3})(?=[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*(?:(?:the (?:shot|camera|view|scene) )?(?:cuts?|switches|transitions)\b|(?:画面|镜头)?切))/g, '$1\n[Shot 0] At $2');
   // Renumber in order; text before the first new marker is [Shot 1] even when it has no marker yet.
   let n = /\[Shot (\d+)\]/.exec(marked)?.[1] === '0' ? 1 : 0;
@@ -219,7 +223,7 @@ function validateReferenceResult(value, options = {}) {
   let displayPrompt = validateReference(serialize(compileReferenceFields(pair.displayPrompt, {...options,requireChineseOutput:true})), {...options,requireChineseOutput:!options.displayIsSource});
   // Mirror the local compiler's defaults so a provider result is completed, not
   // rejected: a requested loop gets its closure, a generated shot its camera.
-  const appendNarrative = (text, sentence) => text.replace(/(detailed_description:\n[\s\S]*?)(?=\n\noverall_soundscape:)/, m => m.trimEnd() + ' ' + sentence);
+  const appendNarrative = (text, sentence) => text.replace(/(detailed_description:\n[\s\S]*?)(?=\n\noverall_soundscape:)/, m => appendSentence(m, sentence));
   const narrativeOf = text => text.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
   const intent = userIntent(options);
   if (loopRequested(intent) && !new RegExp(policy.closurePattern, 'i').test(narrativeOf(modelPrompt))) {
@@ -701,11 +705,16 @@ const silenceAsked = text => /静音|无声|没有(?:任何)?声音|不要(?:任
 // and most of its phrases name nobody who acts ("her cloak ripples, sparks drift from her lantern, embers glow" is prose).
 // A place the action goes to that stays outside a still frame, or a jump up onto something below the frame: the requested action
 // happens off-screen or against its own geometry.
+// Only a thing placed there counts (a table stands just beyond the right edge; a subject heads toward a bowl just outside the frame):
+// an exit (walks out of the frame), an off-screen voice and the edge of a thing (off the edge of the table) name no place.
+const frameEdge = (side, words = 'beyond|past|outside|below|off') => '\\b(?:' + words + ')\\s+(?:the\\s+)?' + side + '(?:edge|border)s?\\b(?!\\s+of\\s+(?!(?:(?:the|an?|its|his|her|their)\\s+)?(?:frame|shot|screen|picture|view)\\b))';
+const placedOffFrame = new RegExp('(?:\\b(?:stands?|standing|rests?|resting|lies|lying|sits?|sitting|waits?|waiting|hangs?|hanging|placed|located)|\\b(?:toward|towards|onto|to)\\s+(?:an?|the|its|his|her|their)(?:\\s+[\\w-]+){1,4}?)\\s+(?:(?:just|right|slightly|somewhere|far)\\s+)?(?:'
+  + frameEdge('(?:(?:left|right|bottom|lower)\\s+)?') + '|\\b(?:outside|below)\\s+(?:the\\s+)?(?:frame|shot)\\b)', 'i');
+const belowFrame = new RegExp(frameEdge('(?:bottom|lower)\\s+') + '|' + frameEdge('', 'below') + '|\\bbelow the frame\\b', 'i');
 const offFrame = text => {
   const prose = proseOf(text);
-  const outside = /\b(?:beyond|past|outside|below|off)\s+(?:the\s+)?(?:(?:left|right|top|bottom|lower|upper)\s+)?(?:edge|border)s?\b|\b(?:outside|out of|off|below)\s+(?:the\s+)?(?:frame|shot)\b|\boff[- ]?screen\b/i.test(prose);
-  return outside && (!/\b(?:pans?|panning|trucks?|trucking|tilts?|tilting|tracks?|tracking|follows?|following|pulls? (?:out|back)|pedestals?|arcs?)\b/i.test(prose)
-    || /\b(?:bottom|lower)\s+(?:edge|border)\b|\bbelow the (?:frame|edge)\b/i.test(prose) && /\b(?:jump|leap|hop|spring|climb|clamber)(?:s|ed|ing)?\b[^.;]{0,30}\b(?:up|upward|upwards|onto)\b/i.test(prose));
+  return belowFrame.test(prose) && /\b(?:jump|leap|hop|spring|climb|clamber)(?:s|ed|ing)?\b[^.;]{0,30}\b(?:up|upward|upwards|onto)\b/i.test(prose)
+    || placedOffFrame.test(prose) && !/\b(?:pans?|panning|trucks?|trucking|tilts?|tilting|tracks?|tracking|follows?|following|pulls? (?:out|back)|push(?:es|ing)? (?:in|out)|zooms?|zooming|dolly|dollies|dollying|pedestals?|arcs?)\b/i.test(prose);
 };
 // A pose no written action produced: a subject that rises, jumps or lands and is later seated, or a raised paw that nothing lifted.
 // The first sentence establishes the opening frame, so its poses stand.
@@ -747,9 +756,9 @@ const tagList = text => proseOf(text).replace(/\[Shot \d+\](?: At [\d:.]+,?)?|<(
 // English words left in a Chinese display: lower-case prose words. Labels, markers, task tags, relations, the user's own words and
 // professional terms, which are written in capitals or with digits (CG, 3D, 4K, HDR, VFX, POV), stay.
 const ownWords = intent => new Set((String(intent).match(/[A-Za-z]+/g) || []).map(word => word.toLowerCase()));
-const englishWords = (text, own) => (proseOf(String(text)).replace(/^[a-z_]+:$/gm, '').replace(/The shot (?:features|shows)[^.。]*[.。]|Source assets:|The target video is an edited version of/g, '')
+const englishWords = (text, own, min = 3) => (proseOf(String(text)).replace(/^[a-z_]+:$/gm, '').replace(/The shot (?:features|shows)[^.。]*[.。]|Source assets:|The target video is an edited version of/g, '')
   .replace(/<(?:Subject|Picture|Video|Audio) \d+>|\[[^\]\n]*\]|\bAt \d{2}:\d{2}\.\d{3}|\b(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b|N\/A/g, '')
-  .match(/[A-Za-z]+/g) || []).filter(word => word.length > 2 && word === word.toLowerCase() && !own.has(word));
+  .match(/[A-Za-z]+/g) || []).filter(word => word.length >= min && word === word.toLowerCase() && !own.has(word));
 const englishLeft = (text, intent) => englishWords(text, ownWords(intent)).length > 0;
 // The words a display most often leaves in English (official style words, cut and camera phrases, shot sizes, speech verbs, colours,
 // materials and sounds): the program writes them in Chinese, so only a rarer word costs the one small fix call.
@@ -767,22 +776,27 @@ const displayTerms = Object.entries({
   'patter(?:s|ing)?': '啪嗒声', 'crunch(?:es|ing)?': '嘎吱声', 'clatter(?:s|ing)?': '哐啷声', footsteps: '脚步声', 'room tone': '室内环境声', breeze: '微风', purr: '呼噜声', 'clicks?': '咔嗒声', 'splash(?:es)?': '水花声',
   faint: '细微的', subtle: '细微的', soft: '柔和的', softly: '轻轻地', gentle: '轻柔的', gently: '轻轻地', slowly: '缓缓地', steadily: '平稳地', bright: '明亮的', dim: '昏暗的',
 }).map(([en, zh]) => [new RegExp('^(?:' + en + ')$', 'i'), zh, en]);
-const termPattern = new RegExp('([ \\t]*)\\b(' + displayTerms.map(([, , en]) => en).sort((a, b) => b.length - a.length).join('|') + ')\\b([ \\t]*)', 'gi');
+const termPattern = new RegExp('([ \\t]*)((?:\\b(?:an?|the)[ \\t]+)?)\\b(' + displayTerms.map(([, , en]) => en).sort((a, b) => b.length - a.length).join('|') + ')\\b([ \\t]*)', 'gi');
 const hanOrMark = ch => /[\u3400-\u9fff，。、；：！？“”（）]/.test(ch);
 function fixDisplayWords(text, own) {
-  return outsideLiterals(String(text), part => part.replace(termPattern, (all, before, word, after, offset, whole) => {
-    const zh = own.has(word.toLowerCase()) ? '' : displayTerms.find(([pattern]) => pattern.test(word))?.[1];
+  return outsideLiterals(String(text), part => part.replace(termPattern, (all, before, article, word, after, offset, whole) => {
+    // Lower-case words only, as englishWords reads them: a capital is a name or a professional term (Golden Gate, RED); a phrase may open its sentence.
+    const lower = word === word.toLowerCase() || /[\s,-]/.test(word) && word.slice(1) === word.slice(1).toLowerCase();
+    const zh = !lower || article !== article.toLowerCase() || own.has(word.toLowerCase()) ? '' : displayTerms.find(([pattern]) => pattern.test(word))?.[1];
     if (!zh) return all;
     const prev = whole.charAt(offset - 1), next = whole.charAt(offset + all.length);
+    // The article of a replaced word goes with it, and two replaced words join (镜头切到近景); other spaces and single letters stay (A 字裙, 走向镜头 她停下).
     // A sound word before its own 声 or 响 (轻柔的 crunching 声响) keeps one: 嘎吱声响, not 嘎吱声声响.
-    return (!prev || hanOrMark(prev) ? '' : before) + (/[声响]/.test(next) ? zh.replace(/[声响]$/, '') : zh) + (!next || hanOrMark(next) ? '' : after);
-  }).replace(/([\u3400-\u9fff])[ \t]+(?:(?:an?|the)[ \t]+)?(?=[\u3400-\u9fff])/gi, '$1').replace(/环境室调[声音]?/g, '室内环境声').replace(/中景近景/g, '近景')).replace(/(<(?:Subject|Picture|Video|Audio) [1-9]\d*>)(?=[\u3400-\u9fff])/g, '$1 ').replace(/([\u3400-\u9fff])(?=<(?:Subject|Picture|Video|Audio) [1-9]\d*>)/g, '$1 ');
+    return (!prev || hanOrMark(prev) ? '' : before) + '\u0002' + (/[声响]/.test(next) ? zh.replace(/[声响]$/, '') : zh) + '\u0003' + (!next || hanOrMark(next) ? '' : after);
+  }).replace(/\u0003[ \t]+\u0002/g, '').replace(/[\u0002\u0003]/g, '').replace(/(\bAt \d{2}:\d{2}\.\d{3})[ \t]*(?:时|[,，])[ \t]*/g, '$1 ').replace(/以(?:缓慢|较慢|慢)的?速度?/g, '缓慢').replace(/以(?:快速|较快|快)的?速度?/g, '快速')
+    .replace(/镜头(?:最后|最终)?以([^。！？\n]{2,40}?)结束/g, '最后画面停在$1').replace(/环境室调[声音]?/g, '室内环境声').replace(/中景近景/g, '近景')).replace(/(<(?:Subject|Picture|Video|Audio) [1-9]\d*>)(?=[\u3400-\u9fff])/g, '$1 ').replace(/([\u3400-\u9fff])(?=<(?:Subject|Picture|Video|Audio) [1-9]\d*>)/g, '$1 ');
 }
 // The display sentences that still carry an English word, with each such word marked ⟦word⟧: the one small fix call rewrites
 // only these, and removing the marks gives the sentence back.
 const sentencesOf = text => outsideLiterals(String(text), part => part.replace(/([。！？])/g, '$1\u0001')).split(/\u0001|\n/).map(s => s.trim()).filter(Boolean);
 const displaySlips = (values, own) => [...new Set(values.flatMap(value => sentencesOf(value).map(sentence => {
-  const words = new Set(englishWords(sentence, own));
+  // A slipped sentence marks its short English words too (近景 ⟦of⟧ ⟦both⟧), so the fix call rewrites the whole phrase.
+  const words = englishWords(sentence, own).length ? new Set(englishWords(sentence, own, 2)) : new Set();
   return words.size ? outsideLiterals(sentence, part => part.replace(/(?<![A-Za-z_])[A-Za-z]+(?![A-Za-z_])/g, word => words.has(word) ? '⟦' + word + '⟧' : word)) : '';
 }).filter(Boolean)))];
 // A display slip alone never costs a rewrite: the pair is kept, and only its slips go to the fix call (error.h3Slips).
@@ -793,19 +807,24 @@ const colours = [['red|crimson|scarlet', '红|赤|绯'], ['orange', '橙|橘'], 
   ['blue|navy|azure', '蓝|藏青'], ['purple|violet|lavender|lilac', '紫'], ['pink', '粉'], ['brown|chestnut', '棕|褐|咖啡|栗'], ['black|dark(?=[ -]hair)', '黑(?!暗)'], ['white', '白(?!皙|天)'],
   ['gr[ae]y', '灰'], ['gold(?:en)?|blonde?', '金(?!属)'], ['silver', '银'], ['bronze', '青铜|古铜'], ['copper', '(?<![青古])铜']].map(([en, zh]) => [new RegExp('\\b(?:' + en + ')\\b', 'i'), new RegExp(zh)]);
 const subjectLines = text => new Map(String(text).split('\n').map(line => [/^<Subject [1-9]\d*>/.exec(line.trim())?.[0], line]).filter(([id]) => id));
+// An accepted Chinese rendering of an English colour is no swap: grey or silver hair is 花白 or 白发, white hair 银发, blonde 金黄.
+const renderings = [[/\b(?:gr[ae]y|silver)\b[^,.;]{0,12}\b(?:hair|haired|beard|bearded|mane|fur|whiskers)\b/i, '白'], [/\bwhite\b[^,.;]{0,12}\b(?:hair|haired|beard|bearded|mane|fur|whiskers)\b/i, '银'], [/\bblonde?\b/i, '黄']];
+const colourDiff = (line, zhLine) => ({missing:colours.filter(([en, zh]) => en.test(line) && !zh.test(zhLine)),
+  extra:colours.filter(([en, zh]) => zh.test(zhLine) && !en.test(line) && !renderings.some(([english, word]) => english.test(line) && zh.test(word)))});
 function coloursSwapped(model, display) {
-  const english = subjectLines(model), chinese = subjectLines(display);
-  return [...english].some(([id, line]) => chinese.has(id)
-    && colours.some(([en, zh]) => en.test(line) && !zh.test(chinese.get(id))) && colours.some(([en, zh]) => zh.test(chinese.get(id)) && !en.test(line)));
+  const chinese = subjectLines(display);
+  return [...subjectLines(model)].some(([id, line]) => chinese.has(id) && Object.values(colourDiff(line, chinese.get(id))).every(list => list.length));
 }
-// A colour a subject's display line names in place of its English colours (teal and copper → 青铜) is set back everywhere,
-// when the English names that wrong colour nowhere.
+// A colour a subject's display line names in place of its English colours (teal and copper → 青铜) is set back in that subject's
+// own definition and retention lines, outside quotes and dialogue, when the English names that wrong colour nowhere.
 const colourNames = ['红', '橙', '黄', '绿', '青绿', '蓝', '紫', '粉', '棕', '黑', '白', '灰', '金', '银', '青铜', '铜'];
 function recolour(model, display, english) {
   const chinese = subjectLines(display[0]);
   for (const [id, line] of subjectLines(model)) {
-    const zhLine = chinese.get(id) || '', missing = colours.filter(([en, zh]) => en.test(line) && !zh.test(zhLine)), extra = colours.filter(([en, zh]) => zh.test(zhLine) && !en.test(line));
-    if (missing.length && extra.length === 1 && !extra[0][0].test(english)) display = display.map(text => text.replace(new RegExp(extra[0][1].source, 'g'), missing.map(item => colourNames[colours.indexOf(item)]).join('与')));
+    const {missing, extra} = colourDiff(line, chinese.get(id) || '');
+    if (!missing.length || extra.length !== 1 || extra[0][0].test(english)) continue;
+    const wrong = new RegExp(extra[0][1].source, 'g'), right = missing.map(item => colourNames[colours.indexOf(item)]).join('与');
+    for (const i of [0, 2]) display[i] = display[i].split('\n').map(text => text.trim().startsWith(id) ? outsideLiterals(text, part => part.replace(wrong, right)) : text).join('\n');
   }
   return display;
 }

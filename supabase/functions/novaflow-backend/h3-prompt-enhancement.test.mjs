@@ -373,6 +373,17 @@ test('the optimize that sees pictures carries the reverse content safety in its 
     });
     assert.equal(calls, 1);
   }
+  // A repair whose own answer is blocked ends blocked as well: the first answer kept for a failed repair never outranks the safety rule.
+  const tags = fields('[Shot 1] Live-action, girl from <Picture 1>, right hand raised, waving toward camera, bright park, green trees, soft light, calm mood, gentle breeze over grass. The girl smiles. The camera holds a static shot.', 'A soft breeze moves through the leaves.');
+  for (const repair of [answer({explicitMinorEvidence:true, sensitiveContent:true}), 'H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content']) {
+    const answers = [answer({explicitMinorEvidence:false, sensitiveContent:false}, tags), repair], options = {...built.resultOptions, visualRetryAllowed:true};
+    let calls = 0;
+    await assert.rejects(callGrokResponseWithVisualRetry(built.body, built.inputMeta, options, async () => {
+      const text = answers[calls++];
+      try { return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(text, options)}, providerCallCount:1}; } catch (error) { throw Object.assign(error, {grokProviderCallCount:1}); }
+    }), error => error.statusCode === 422 && miniMaxH3FailureEnvelope(error).errorCode === 'provider_content_policy');
+    assert.equal(calls, 2);
+  }
 });
 
 test('everyday words next to a child are no sensitive content: bare rock, light through the leaves, a bottle nipple', () => {

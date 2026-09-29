@@ -3382,7 +3382,8 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
         continue;
       }
       // The second answer failed too (it gets every gate): the better of the two answers that meet the contract reaches the editor.
-      const h3Kept = attempt > 1 && h3FirstFailure ? [error, h3FirstFailure].filter((item) => item?.h3Lenient).sort((a, b) => miniMaxH3FailureWeight(a) - miniMaxH3FailureWeight(b))[0] : null;
+      // A blocked second answer (provider_content_policy) ends the call as blocked: the fallback never outranks the safety rule.
+      const h3Kept = attempt > 1 && h3FirstFailure && error?.errorCode !== "provider_content_policy" ? [error, h3FirstFailure].filter((item) => item?.h3Lenient).sort((a, b) => miniMaxH3FailureWeight(a) - miniMaxH3FailureWeight(b))[0] : null;
       if (h3Kept) {
         return finalizeResult({ ok: true, statusCode: 200, durationMs: totalDurationMs, model: "", requestId: "", usage: totalUsage, providerCallCount, inputMeta }, {
           output_text: h3Kept.h3Lenient,

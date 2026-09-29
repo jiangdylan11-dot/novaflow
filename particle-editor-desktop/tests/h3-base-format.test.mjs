@@ -672,3 +672,55 @@ test("承上启下 and plausibility in a writer's pair: a pose no action produce
     assert.match(crunch.displayPrompt, /碎石在爪下发出轻柔的嘎吱声响，落地一声闷声，随后是安静的室内环境声。/);
   }
 });
+
+test('program fixes touch only what they name: an action with a cut word stays, an announced cut moves into its marker, an exit or a voice is no off-frame place, capitals and letters stay, a colour is set back only in its subject\'s lines', () => {
+  const pairOf = (model, display, sound = 'Wind.', zhSound = '风声。') => ({modelPrompt:fields(model, sound), displayPrompt:fields(display, zhSound)});
+  const six = (api, values) => api.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
+  for (const api of apis) {
+    // A sentence right before a timed marker is dropped only when it is itself a camera cut: cutting bread, a changing sky, 切换频道 stay.
+    const kitchen = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a medium shot frames a chef at a counter at dusk. The chef cuts the loaf halfway through. [Shot 2] At 00:03.000, the camera cuts to a close-up of the bread. The sky outside transitions from orange to violet. [Shot 3] At 00:06.000, the camera cuts to a wide shot of the kitchen.',
+      '[Shot 1] 写实电影风格，黄昏时中景中一位厨师站在料理台前。厨师把面包切到一半。[Shot 2] At 00:03.000 镜头切到面包的特写。窗外天空从橙色渐变为紫色。[Shot 3] At 00:06.000 镜头切到厨房的远景。'), {mode:'text_video', durationSeconds:8, currentPrompt:'厨师切面包，第3秒切到面包特写，第6秒切到厨房远景'}));
+    assert.match(kitchen.modelPrompt, /The chef cuts the loaf halfway through\.\n\[Shot 2\][^\n]*The sky outside transitions from orange to violet\.\n\[Shot 3\]/);
+    assert.match(kitchen.displayPrompt, /厨师把面包切到一半。\n\[Shot 2\][^\n]*窗外天空从橙色渐变为紫色。\n\[Shot 3\]/);
+    assert.match(api.fromBaseDisplay('【画面与动作】\n【镜头 1】写实电影风格，中景中一位女子坐在沙发上。她拿起遥控器切换频道。\n【镜头 2】At 00:04.000 镜头切到电视屏幕的特写。\n\n【环境声音】\n遥控器按键声。\n\n【背景音乐】\n无'), /她拿起遥控器切换频道。\n\[Shot 2\]/);
+    // A camera cut announced before a marker that does not restate it moves into the marker with its size and subject.
+    const face = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a woman reading on a park bench. She lifts her head as a dog barks. The camera cuts to a close-up of her face. [Shot 2] At 00:04.000, her eyes widen and she smiles.',
+      '[Shot 1] 写实电影风格，全景中一位女子坐在公园长椅上看书。狗叫声响起，她抬起头。镜头切到她脸部的特写。[Shot 2] At 00:04.000 她睁大眼睛，露出微笑。'), {mode:'text_video', durationSeconds:8, currentPrompt:'女子看书，听到狗叫抬头，第4秒切到她脸部特写'}));
+    assert.match(face.modelPrompt, /a dog barks\.\n\[Shot 2\] At 00:04\.000, the camera cuts to a close-up of her face\. Her eyes widen and she smiles\./);
+    assert.match(face.displayPrompt, /她抬起头。\n\[Shot 2\] At 00:04\.000 镜头切到她脸部的特写。她睁大眼睛，露出微笑。/);
+    // An exit, an off-screen voice, the edge of a thing and a push-in name no place outside a still frame: no repair.
+    for (const [model, prompt] of [['The cat stands up, stretches and walks out of the frame to the right. The camera holds a static shot.', '猫起身走出画面'],
+      ['A woman with a calm, low voice (S1) says in an off-screen voiceover: <d>[Chinese] 我回来了。</d> The camera holds a static shot.', '女声画外音说“我回来了。”'],
+      ['A cat paws the cup and it slides off the edge of the table. The boy sits with his legs dangling off the edge of the pier. The camera holds a static shot.', '猫把杯子推下桌，男孩坐在码头边晃脚'],
+      ['A bowl rests just beyond the right edge. The cat walks toward it as the camera pushes in at slow speed.', '猫走向碗，镜头缓慢推近']])
+      assert.doesNotThrow(() => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a quiet room. ' + model, '[Shot 1] 写实电影风格，全景中一个安静的房间。' + (/voiceover/.test(model) ? '嗓音平静低沉的女子 (S1) 以画外音说：<d>[Chinese] 我回来了。</d> 镜头固定。' : '猫起身向右走出画面。镜头固定。')),
+        {mode:'text_video', durationSeconds:6, currentPrompt:prompt, strictPair:true}), model);
+    // Letters, names and capitals stay (A 字裙, Golden Gate Bridge, RED); a cut time takes no 时; a boundary before an appended camera stays a sentence end.
+    const letters = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a girl in an A-line skirt walking between point A and point B below the Golden Gate Bridge while a RED camera films. [Shot 2] At 00:03.000, the shot cuts to a close-up of her face. The camera holds a static shot.',
+      '[Shot 1] 写实电影风格，全景中穿着 A 字裙的女孩在 Golden Gate Bridge 下的 A 点和 B 点之间来回走，一台 RED 摄影机在拍摄。[Shot 2] At 00:03.000 时镜头切到她脸部的特写。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:'穿着 A 字裙的女孩在金门大桥下来回走，第3秒切到特写', strictPair:true})).displayPrompt;
+    assert.match(letters, /穿着 A 字裙的女孩在 Golden Gate Bridge 下的 A 点和 B 点之间来回走，一台 RED 摄影机在拍摄。\n\[Shot 2\] At 00:03\.000 镜头切到她脸部的特写。/);
+    // A slipped sentence marks its short words for the fix call as well: the phrase is rewritten whole.
+    assert.throws(() => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a girl by a window. [Shot 2] At 00:03.000, the shot cuts to a medium close-up of both of them. The camera holds a static shot.',
+      '[Shot 1] 写实电影风格，全景中女孩站在窗边。[Shot 2] At 00:03.000, the shot cuts to a medium close-up of both。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:'女孩站在窗边，第3秒切到近景', strictPair:true}),
+    error => error.h3DisplayOnly === true && JSON.stringify(error.h3Slips) === JSON.stringify(['[Shot 2] At 00:03.000 镜头切到近景 ⟦of⟧ ⟦both⟧。']));
+    // Two replaced words join: a frame written in English reads 镜头切到近景, not 镜头切到 近景.
+    assert.match(JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a girl by a window. [Shot 2] At 00:03.000, the shot cuts to a medium close-up of her face. The camera holds a static shot.',
+      '[Shot 1] 写实电影风格，全景中女孩站在窗边。[Shot 2] At 00:03.000, the shot cuts to a medium close-up 她的脸。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:'女孩站在窗边，第3秒切到近景'})).displayPrompt, /\[Shot 2\] At 00:03\.000 镜头切到近景她的脸。/);
+    // Calques of the official English read as Chinese: at slow speed is 缓慢, "The shot ends with …" is 最后画面停在 ….
+    assert.match(JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a cat on the floor. The cat jumps onto the sofa as the camera trucks right at slow speed. The shot ends with the cat seated on the sofa looking at the viewer.',
+      '[Shot 1] 写实电影风格，全景中一只猫在地板上。猫跳上沙发，镜头以缓慢速度向右横移。镜头最后以猫咪坐在沙发上看向观众结束。'), {mode:'text_video', durationSeconds:5, currentPrompt:'猫跳上沙发'})).displayPrompt, /猫跳上沙发，镜头缓慢向右横移。最后画面停在猫咪坐在沙发上看向观众。/);
+    // The writer fills a field with its example, never a placeholder: a cut frame shows a real size (a literal "cuts to ..." came back live).
+    assert.match(api.referenceWriterSchema.properties.displayPrompt.properties.detailed_description.properties.shots.items.properties.opening.properties.frame.description, /At 00:03\.000 镜头切到两人的近景/);
+    for (const half of ['modelPrompt', 'displayPrompt']) assert.doesNotMatch(api.referenceWriterSchema.properties[half].properties.detailed_description.properties.shots.items.properties.opening.properties.frame.description, /\.\.\.|…/);
+    const source = '<Picture 1> 中的老人对 <Picture 2> 中的机器人说：“我明白了。”然后并肩走向镜头';
+    const options = {durationSeconds:5, currentPrompt:source, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + source};
+    const english = six(api, ['<Subject 1> is the old man in <Picture 1>, with silver hair and a blue scarf.\n<Subject 2> is the small teal robot in <Picture 2>.', '[reference generation] <Subject 1> speaks to <Subject 2>, then they walk toward the camera side by side.', '<Subject 1>: fully_preserved - silver hair, blue scarf\n<Subject 2>: fully_preserved - teal body',
+      'The target video is in a live-action style with soft window light. [Shot 1] <Subject 1> and <Subject 2> stand by a window as surf breaks on the rocks outside. <Subject 1> with a low, slow voice (S1) says: <d>[Chinese] 我明白了。</d> He holds up a card that reads "白鹭". They walk toward the camera side by side', 'A clock ticks softly.', 'N/A']);
+    const chinese = six(api, ['<Subject 1> 是 <Picture 1> 中的老人，一头白发，围着蓝色围巾。\n<Subject 2> 是 <Picture 2> 中的青铜色小机器人。', '[reference generation] <Subject 1> 对 <Subject 2> 说话，然后两人并肩走向镜头。', '<Subject 1>: fully_preserved - 白发、蓝色围巾\n<Subject 2>: fully_preserved - 青铜色机身',
+      '目标视频采用写实风格，窗光柔和。[Shot 1] <Subject 1> 和 <Subject 2> 站在窗边，窗外浪花拍打岩石。嗓音低沉缓慢的 <Subject 1> (S1) 说：<d>[Chinese] 我明白了。</d> 他举起一张写着"白鹭"的卡片。两人并肩走向镜头', '时钟轻轻滴答。', 'N/A']);
+    const pair = JSON.parse(api.validateReferenceResult(JSON.stringify({modelPrompt:english, displayPrompt:chinese}), options));
+    assert.match(pair.displayPrompt, /<Subject 1> 是 <Picture 1> 中的老人，一头白发，围着蓝色围巾。\n<Subject 2> 是 <Picture 2> 中的青绿色小机器人。/);
+    assert.match(pair.displayPrompt, /<Subject 2>[^\n]*: fully_preserved - 青绿色机身/);
+    assert.match(pair.displayPrompt, /窗外浪花拍打岩石。[^\n]*<d>\[Chinese\] 我明白了。<\/d> 他举起一张写着"白鹭"的卡片。两人并肩走向镜头。镜头固定，构图保持稳定。/);
+  }
+});
