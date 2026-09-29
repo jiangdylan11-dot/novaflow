@@ -3327,7 +3327,7 @@
   function artHighQualityCgNegativeGuardInstruction(options = {}) {
     const textOnly = options.textOnly === true;
     const sharedProfile = window.NovaFlowArtQualityProfile?.build?.({
-      prompt: state.requirements,
+      prompt: options.prompt ?? state.requirements,
       assetType: state.starterPreset,
       style: textOnly ? "auto" : state.artStyle
     });
@@ -3340,9 +3340,11 @@
   }
 
   function mergeSmartAiNegativePrompt(base, addition) {
-    const parts = String(base || "").split(/[，,]/).map((item) => item.trim()).filter(Boolean);
-    String(addition || "").split(/[，,]/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
-      if (!parts.some((existing) => existing.toLowerCase() === item.toLowerCase())) parts.push(item);
+    // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形.
+    const key = (term) => term.toLowerCase().replace(/^畸形(.+)$/u, "$1畸形").replace(/(?:质感|材质|感)$/u, "");
+    const parts = String(base || "").split(/[，,、]/).map((item) => item.trim()).filter(Boolean);
+    String(addition || "").split(/[，,、]/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
+      if (!parts.some((existing) => key(existing) === key(item))) parts.push(item);
     });
     return parts.join("，");
   }
@@ -4830,8 +4832,9 @@
           nextNegativePrompt = preserveSmartAiReverseResourceMentions(negativePrompt, nextNegativePrompt);
         }
       }
+      // Typed from the answer (a cat gets animal negatives, a trophy prop ones), as 生图 types its quality paragraph.
       const qualityNegativeGuard = isArt && isOptimizeRequest
-        ? artHighQualityCgNegativeGuardInstruction({ textOnly: true })
+        ? artHighQualityCgNegativeGuardInstruction({ textOnly: true, prompt: nextPrompt })
         : "";
       if (supportsNegativePrompt && qualityNegativeGuard) {
         nextNegativePrompt = mergeSmartAiNegativePrompt(nextNegativePrompt, qualityNegativeGuard);

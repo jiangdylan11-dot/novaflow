@@ -165,4 +165,19 @@ for (const [budget, expected] of [[1, 1], [2, 2]]) {
   }), /未按五个固定分段输出/);
   assert.equal(calls, expected, 'repair calls stay within the reserved budget ' + budget);
 }
+// Negatives fit the subject: a cat, a trophy or a landscape gets its own defects, never the human-anatomy list, and the
+// examples are not copied wholesale. Lights stand in [环境背景] under the same word, reflections only on what reflects,
+// and one pose is made concrete instead of being summarized twice.
+for (const text of briefTexts) {
+  assert.ok(text.includes('主体是人物才写手部畸形、五官扭曲、肢体错位这类人体缺陷') && text.includes('画面里没有人物就不写人体、手指、五官类词') && text.includes('不照抄上面的示例'), 'negatives are typed by the subject');
+  assert.ok(text.includes('意思相同的只写一个') && text.includes('用中文逗号分隔'), 'no near-duplicates, Chinese commas');
+  assert.ok(text.includes('用户点名的光和[光线与色彩]要用的每个光源都在这里写出它本身和位置') && text.includes('并用那里的原词称呼') && text.includes('反光和倒影只在会反光的表面'), 'lights come from the scene');
+  assert.ok(text.includes('身体姿态只用一个姿态词写定') && text.includes('身体只有一个姿态词'), 'one pose, made concrete and checked');
+  assert.doesNotMatch(text, /需要包含画面模糊、低清晰度、人物变形/, 'no picture is asked for human-anatomy negatives by default');
+}
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('画面里没有人物时不写人体、手指、五官类词'), 'the generic image negative is typed too');
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('形状照图写') && roleReverse.body.input[0].content.at(-1).text.includes('每件陈设和灯具写在它在图中的位置') && roleReverse.body.input[0].content.at(-1).text.includes('不加图中没有的窗户、天窗和灯具'), 'shapes, positions and lamps are read off the picture');
+// A negative the model separated with ASCII commas is written with Chinese commas; other separators stay as written.
+assert.equal(roleNegative('画面模糊,低清晰度, 手部畸形'), '画面模糊，低清晰度，手部畸形');
+assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面模糊、手部畸形、塑料质感');
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');

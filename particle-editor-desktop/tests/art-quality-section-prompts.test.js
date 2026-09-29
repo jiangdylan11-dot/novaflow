@@ -286,3 +286,43 @@ test("a subject placed inside picture N makes picture N the background", () => {
     assert.deepEqual(roles(userIntent), ["subject+style", "low"], userIntent);
   }
 });
+
+// Round 5: the AI 助手's text-only negative guard was typed from the 补充要求 box, so an empty box gave a cat, a trophy or
+// a castle the human character list (错误人体，畸形手指，低细节头发). It is typed from the written answer now, as 生图 types
+// its quality paragraph, and 塑料质感 / 塑料材质 or 爪子畸形 / 畸形爪子 are merged as one term.
+test("the text-only negative guard is typed from the written answer", () => {
+  const smartSource = fs.readFileSync(path.join(renderer, "novaflow-smart-ai.js"), "utf8").replace(/\r\n/g, "\n");
+  const extract = (name) => {
+    const start = smartSource.indexOf(`\n  function ${name}(`);
+    assert.ok(start >= 0, name);
+    return smartSource.slice(start, smartSource.indexOf("\n  }\n", start) + 4);
+  };
+  assert.match(smartSource, /artHighQualityCgNegativeGuardInstruction\(\{ textOnly: true, prompt: nextPrompt \}\)/, "the guard reads the answer");
+  const state = { requirements: "", starterPreset: "", artStyle: "original" };
+  const { guard, merge } = new Function("window", "state", `${extract("artHighQualityCgNegativeGuardInstruction")}${extract("mergeSmartAiNegativePrompt")}
+return { guard: artHighQualityCgNegativeGuardInstruction, merge: mergeSmartAiNegativePrompt };`)(context, state);
+  const trophy = WARRIOR.replace(/\[主体物品\]\n[^\n]+/, "[主体物品]\n银色奖杯倾斜放置于画面中央，杯身刻有五角星图案。");
+  const castle = sectioned("写实风景插画风格。", "一座矗立在悬崖上的古堡，塔楼插着旗帜。", "远景。");
+  for (const [answer, own] of [[CAT, /畸形爪子/], [trophy, /轮廓模糊/], [castle, /透视错误/]]) {
+    const negative = guard({ textOnly: true, prompt: answer });
+    assert.match(negative, own);
+    assert.doesNotMatch(negative, /错误人体|畸形手指|多余手脚|低细节头发|蜡像皮肤|特效遮脸/);
+  }
+  assert.match(guard({ textOnly: true, prompt: WARRIOR }), /错误人体，畸形手指/, "a person keeps the human list");
+  // A still life is typed scene; the scene list names no buildings and does not push away a requested mist.
+  assert.doesNotMatch(guard({ textOnly: true, prompt: sectioned("写实静物风格，薄雾般的柔光。", "一块怀表放在摊开的旧书上。", "近景。") }), /建筑|雾化/);
+  assert.equal(merge("塑料质感，爪子畸形，噪点", "塑料材质，畸形爪子，塑料感，低完成度"), "塑料质感，爪子畸形，噪点，低完成度");
+  assert.equal(api.mergeNegativePrompt("塑料质感，手指畸形", "塑料材质，畸形手指，噪点"), "塑料质感，手指畸形，噪点");
+});
+
+test("a flat style names body defects only for a subject with that body", () => {
+  const pixelCat = CAT.replace(/\[风格设定\]\n[^\n]+/, "[风格设定]\n像素画风格，16色调色板，清晰像素边缘。");
+  const cat = api.compileFinal({ prompt: pixelCat, provider: "gpt" });
+  assert.equal(cat.explicitFlatStyle, true);
+  assert.match(cat.negativePrompt, /畸形爪子/);
+  assert.doesNotMatch(cat.negativePrompt, /错误人体|畸形手指|多余手脚/);
+  const sword = api.compileFinal({ prompt: sectioned("像素画风格。", "一柄长剑，剑身修长，护手雕有云纹。", "特写。"), provider: "gpt" });
+  assert.equal(sword.explicitFlatStyle, true);
+  assert.doesNotMatch(sword.negativePrompt, /错误人体|畸形手指|畸形爪子|多余肢体/);
+  assert.match(api.compileFinal({ prompt: "赛璐璐风格的骑士", provider: "gpt" }).negativePrompt, /^错误人体，畸形手指，多余手脚，五官错位，结构粘连，轮廓脏乱，噪点，低完成度/, "a figure keeps its list");
+});

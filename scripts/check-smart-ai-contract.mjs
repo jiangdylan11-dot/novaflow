@@ -325,7 +325,7 @@ function checkFrontendModule() {
   assertIncludes(runSmartAiBody, "const isArtTextRequest = isArt && isOptimizeRequest", "source routes explicit Art optimize requests through the text workflow even when references exist");
   assertIncludes(runSmartAiBody, "ignoreArtReferenceState: isArt && isOptimizeRequest", "source uses text-only freshness for Art optimization");
   assertIncludes(runSmartAiBody, "buildSmartAiRequestFingerprint(requestFingerprintOptions)", "source rechecks the same action-scoped request fingerprint");
-  assertIncludes(runSmartAiBody, "artHighQualityCgNegativeGuardInstruction({ textOnly: true })", "source text optimization negative quality rules ignore image-derived style state");
+  assertIncludes(runSmartAiBody, "artHighQualityCgNegativeGuardInstruction({ textOnly: true, prompt: nextPrompt })", "source text optimization negative quality rules ignore image-derived style state and are typed from the written answer");
   assertIncludes(runSmartAiBody, 'const artTextPurpose = isArtTextRequest ? (currentPrompt ? "optimize" : "create") : ""', "source derives text edit versus create from the live prompt");
   assertIncludes(runSmartAiBody, 'artTextPurpose === "optimize" ? currentPrompt : ""', "source keeps the live full prompt as edit base and an empty prompt for creation");
   assertIncludes(runSmartAiBody, "includeUserIntent: !isArt || isArtTextRequest", "source forwards the Art text instruction in requirements");

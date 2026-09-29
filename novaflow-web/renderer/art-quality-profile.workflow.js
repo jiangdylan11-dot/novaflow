@@ -65,13 +65,14 @@
 
   const PROFILE_NEGATIVES = {
     character: "粗黑描边，统一黑色外轮廓，厚重墨线，扁平赛璐璐，蜡像皮肤，塑料材质，材质无差异，低细节头发，结构粘连，无依据新增装饰，错误人体，畸形手指，多余手脚，五官错位，特效遮脸，过曝高光，噪点，低完成度",
-    animal: "粗黑描边，统一黑色外轮廓，厚重墨线，扁平赛璐璐，塑料材质，材质无差异，低细节毛发，毛发粘连，结构粘连，无依据新增装饰，骨骼结构错误，比例失调，畸形爪子，多余肢体，五官错位，特效遮脸，过曝高光，噪点，低完成度",
-    scene: "透视错误，尺度混乱，地面漂浮，建筑变形，材质重复，细节平均，焦点混乱，雾化过度，脏色，过曝，噪点，低完成度",
+    animal: "粗黑描边，统一黑色外轮廓，厚重墨线，扁平赛璐璐，塑料材质，材质无差异，低细节毛发，毛发粘连，结构粘连，无依据新增装饰，骨骼结构错误，比例失调，畸形爪子，多余肢体，五官错位，过曝高光，噪点，低完成度",
+    scene: "透视错误，尺度混乱，物体漂浮，结构变形，材质重复，细节平均，焦点混乱，脏色，过曝，噪点，低完成度",
     game_ui: "伪文字，乱码，信息层级混乱，按钮状态缺失，控件不可执行，间距不一致，装饰遮挡内容，低对比度，边缘脏污，低完成度",
     icon_prop: "轮廓模糊，结构错误，材质混合，塑料感，视角不一致，主体被裁切，背景遮挡，过曝，噪点，低完成度",
     vfx: "主体不明，能量糊成一团，边缘脏污，亮度过曝，黑底污染，无意义粒子，节奏平均，低完成度",
     poster: "焦点混乱，构图拥挤，标题无安全区，人物变形，材质塑料感，光源冲突，特效遮脸，过曝，噪点，低完成度"
   };
+  const FLAT_STYLE_BODY_NEGATIVES = { character: "错误人体，畸形手指，多余手脚，五官错位", animal: "骨骼结构错误，畸形爪子，多余肢体" };
   const PURE_ARTWORK_ASSET_TYPES = new Set(["character", "animal", "scene", "icon_prop", "vfx"]);
   const PURE_ARTWORK_INSTRUCTION = "只输出用户要求的纯画面内容，不添加游戏界面、界面边框、操作按钮、状态栏、菜单面板、文字标签、Logo或水印。";
   const PURE_ARTWORK_NEGATIVE = "游戏界面，界面边框，操作按钮，状态栏，菜单面板，文字标签，伪文字，Logo，水印";
@@ -183,10 +184,15 @@
     return style === "cel_comic" || style === "pixel" || EXPLICIT_FLAT_STYLE_RE.test(`${clean(style)} ${affirmative}`);
   }
 
+  // 塑料质感, 塑料材质 and 塑料感 are one term, and so are 畸形爪子 and 爪子畸形.
+  function negativeTermKey(term) {
+    return term.toLowerCase().replace(/^畸形(.+)$/u, "$1畸形").replace(/(?:质感|材质|感)$/u, "");
+  }
+
   function mergeNegativePrompt(base, addition) {
     const parts = clean(base).split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean);
     clean(addition).split(/[,，、;；\n]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => {
-      if (!parts.some((existing) => existing.toLowerCase() === item.toLowerCase())) parts.push(item);
+      if (!parts.some((existing) => negativeTermKey(existing) === negativeTermKey(item))) parts.push(item);
     });
     return parts.join("，");
   }
@@ -230,7 +236,7 @@
     const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) && !localTxt2img ? PURE_ARTWORK_INSTRUCTION : "";
     const positiveInstruction = [basePositiveInstruction, clothingDesignInstruction, pureArtworkInstruction].filter(Boolean).join("");
     const baseNegativeInstruction = explicitFlatStyle
-      ? "错误人体，畸形手指，多余手脚，五官错位，结构粘连，轮廓脏乱，噪点，低完成度"
+      ? mergeNegativePrompt(FLAT_STYLE_BODY_NEGATIVES[assetType], "结构粘连，轮廓脏乱，噪点，低完成度")
       : PROFILE_NEGATIVES[assetType];
     const negativeInstruction = mergeNegativePrompt(
       baseNegativeInstruction,
