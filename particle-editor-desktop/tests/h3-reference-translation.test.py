@@ -343,6 +343,46 @@ class TranslationTest(unittest.TestCase):
         self.assertIn(later, requests[0])
         self.assertIn('紫发女子', requests[0])
 
+    def test_base_fields_are_decoded_one_at_a_time_and_eyes_held_shut_need_no_second_ask(self):
+        # Speed fix after round 5: a 4-bit batch of the three base fields decoded ~1.5-2x slower per step than one sequence
+        # (ho_t2v 93 s against ~46 s in round 4), and "女神闭目" came back as "The goddess closes her eyes" on every ask
+        # (fl2v_two, nh_fl2v: two more asks, ~55 s). Each field is still a request of its own, one after another; the
+        # program writes the held state itself.
+        shot = '三维渲染，TOKEN_0 中的女神坐在台阶上。TOKEN_1。女神闭目，指尖轻旋权杖，画面与 TOKEN_2 一致。'
+        display = ('integrated_multimodal_description: [Shot 1] 三维渲染，<Picture 1> 中的女神坐在台阶上。镜头固定。女神闭目，指尖轻旋权杖，画面与 <Picture 2> 一致。'
+                   '\n\noverall_soundscape: 权杖轻响。\n\nnon_diegetic_music: 竖琴，节奏缓慢。')
+        english = {shot: '3D CG, the goddess shown in TOKEN_0 sits on the steps. TOKEN_1. The goddess closes her eyes, her fingertip gently '
+                         'twirls the staff, and the frame matches TOKEN_2.',
+                   '权杖轻响。': 'The staff chimes softly.', '竖琴，节奏缓慢。': 'A harp plays at a slow tempo.'}
+        requests, batches = [], []
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                requests.append(list(pending.values()))
+                return json.dumps({key: english[value] if value in english else 'The ' + ' and '.join(re.findall(r'TOKEN_\d+', value) or ['scene'])
+                                   + ' move on.' for key, value in pending.items()})
+
+            def generate_many(self, prompts, **kwargs):
+                batches.append(len(prompts))
+                return [self.generate(prompt) for prompt in prompts]
+        text = json.loads(FakeAssistant().translate(display, '', 6, base_mode='FL2VA')['positivePrompt'])['modelPrompt']
+        self.assertEqual(batches, [])
+        self.assertEqual(requests, [[shot], ['权杖轻响。'], ['竖琴，节奏缓慢。']])
+        self.assertIn('The camera holds a static shot. The goddess keeps her eyes closed, her fingertip gently twirls the staff, '
+                      'and the frame matches <Picture 2>.', text)
+        self.assertIn('overall_soundscape: The staff chimes softly.\n\nnon_diegetic_music: A harp plays at a slow tempo.', text)
+        # 多参's chunks keep their batched decode (~30 s instead of ~90 s one after another).
+        requests.clear()
+        fields = dict(FIELDS, detailed_description='[Shot 1] ' + '<Subject 1> 沿着石阶缓缓走向神殿大门，衣摆随风轻轻摆动，脚步声在空旷的大殿里回荡。' * 6)
+        try:
+            FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)
+        except ValueError:
+            pass  # the stand-in English need not pass; the decode is what counts
+        self.assertTrue(batches and batches[0] > 1, batches)
+
     def test_a_frame_lost_away_from_the_opening_is_asked_again(self):
         # Round 5 review: a <Picture 2> the answer dropped near the end was named at the opening ("3D CG, as shown in <Picture 2>,
         # the goddess shown in <Picture 1> …"): the first shot read as the last frame. Only the opening subject's frame is the

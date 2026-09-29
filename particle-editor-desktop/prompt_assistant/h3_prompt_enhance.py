@@ -242,6 +242,8 @@ FASTER, SLOWER = r"加快|加速|变快|越来越快|更快|提速", r"减慢|�
 CLOSER, FARTHER = r"推近|推进|拉近|前推", r"拉远|后拉|拉开|后撤"
 RISE, FALL = r"上移|上升|升起|升高|上摇|仰摇|向上", r"下移|下降|降低|下摇|俯摇|向下"
 LEFT_EN = r"\b(?:to|toward|towards|on|from) (?:the |her |his |its |their )?left\b|\bleft(?:ward|wards)?\b(?=[ -](?:side|hand|arm|leg|foot|shoulder|edge|corner|paw))|\b(?:pans?|trucks?|turns?|moves?|slides?|tilts?|rolls?|shifts?|looks?|swings?|sweeps?|glances?|leans?|steps?) (?:to the )?left\b"
+# Eyes held shut (a state), eyes that shut (an action), and the English that makes the state an action.
+EYES_SHUT, EYES_SHUTTING, EYES_CLOSING_EN = r"闭着眼|闭目", r"闭上|闭起|合上|缓缓闭|慢慢闭|渐渐闭", r"\bclos(?:es|ing) (?:her|his|its|their) eyes\b"
 FLIPS = (
     # "加快脚步，随后在门口停下" slows down to stop.
     (FASTER, SLOWER + r"|停下|停住|停步|止步", r"\bslow(?:s|ing|ed)? down\b|\bdecelerat|\bslower\b", "加快 means speeds up", False),
@@ -254,8 +256,7 @@ FLIPS = (
     (r"右", r"左", LEFT_EN, "右 means right", False),
     # "眼睛完全眯起" came back as "eyes completely shut"; "half-closed" is a narrowed eye.
     (r"眯", r"闭|合|关", r"(?<!half-)(?<!half )\b(?:shut|closed?|closes|closing)\b", "眯 means the eyes narrow to slits, never shut or closed", False),
-    (r"闭着眼|闭目", r"闭上|闭起|合上|缓缓闭|慢慢闭|渐渐闭", r"\bclos(?:es|ing) (?:her|his|its|their) eyes\b",
-     "闭着眼睛 or 闭目 is a state: with her eyes closed, never closes her eyes", False),
+    (EYES_SHUT, EYES_SHUTTING, EYES_CLOSING_EN, "闭着眼睛 or 闭目 is a state: with her eyes closed, never closes her eyes", False),
     # Shot sizes (official): 特写 close-up, 近景 medium close-up, 中景 medium shot, 全景 full shot, 远景 wide shot.
     (r"近景", r"特写", r"(?<!medium )\bclose-?up\b|\bclose shot\b", "近景 means medium close-up", False),
     (r"特写", r"近景|中景", r"\bmedium (?:close-?up|shot)\b", "特写 means close-up", False),
@@ -302,10 +303,21 @@ FLIP_SWAP_WORDS = (r"\b(?:" + "|".join(sorted((word for word in FLIP_SWAPS if no
                    + r")\b|decelerat|accelerat")
 
 
+def eyes_kept_closed(chinese, english):
+    """闭着眼睛 / 闭目 is a state the translator writes as an action ("The goddess closes her eyes") however often it is asked
+    (fl2v_two, nh_fl2v: two more asks, ~55 s, and the last answer still closed them): the program writes the state."""
+    if not re.search(EYES_SHUT, chinese) or re.search(EYES_SHUTTING, chinese):
+        return english
+    return re.sub(EYES_CLOSING_EN, lambda m: ("K" if m[0][0] == "C" else "k") + ("eeps" if m[0][4:6].lower() == "es" else "eeping")
+                  + m[0][m[0].index(" "):] + " closed", english, flags=re.I)
+
+
 def unflip(chinese, english):
     """A translation that turned left/right, a speed or up/down around (or made a spear a gun), turned back phrase by
     phrase in the flagged words ("turns to the left" for 向右转身), a camera's up/down only in the camera's own clause;
     '' when a flip is left (the caller fails rather than ship it)."""
+    english = eyes_kept_closed(chinese, english)
+
     def swap(m):
         return re.sub(FLIP_SWAP_WORDS, lambda w: FLIP_SWAPS[w[0].lower()].capitalize() if w[0][0].isupper() else FLIP_SWAPS[w[0].lower()],
                       m[0], flags=re.I)

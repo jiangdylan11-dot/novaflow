@@ -15013,7 +15013,7 @@ class PromptAssistant:
         # complete protocol document made the local VLM copy it verbatim.
         # base_mode (T2VA/I2VA/FL2VA): the three official fields instead of 多参's six.
         from prompt_assistant.h3_prompt_enhance import (DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK, CAMERA_GLOSSARY, CAMERA_SPEED, CAMERA_AMPLITUDE,
-                                                        PROGRAM_SENTENCES, SHOT_SIZE_WORDING, STYLE_EN, pinyin_like,
+                                                        PROGRAM_SENTENCES, SHOT_SIZE_WORDING, STYLE_EN, pinyin_like, eyes_kept_closed,
                                                         camera_english, camera_move_clause, camera_wording, translation_flips, unflip, reference_layout)
         check = ((lambda text, language=None: validate_h3_base_fields(text, base_mode, duration, language)) if base_mode else
                  (lambda text, language=None: validate_h3_reference(text, inventory, duration)))
@@ -15160,11 +15160,12 @@ class PromptAssistant:
                     + ('Keep these meanings exact: ' + '; '.join(sorted(hints)) + '.\n' if hints else '')
                     + 'Input JSON:\n' + json.dumps({key: naming(value) if named else protected_fragments[value][0] for key, value in pending.items()}, ensure_ascii=False))
         # With a batched decode 多参's chunks go in a few groups of similar length, answered together (the longest sets the
-        # time); otherwise groups of eight. Each base field (a shot line, the soundscape, the music) is a request of its own,
-        # decoded together: in one request the translator split the shot in two and every later key moved up one, so the
-        # ending was lost and the soundscape was the landing (t2v_cat, ho_t2v).
-        # (A generate replaced on the instance, as tests do, keeps one request at a time.)
-        batched = getattr(self, 'generate_many', None) if 'generate' not in vars(self) else None
+        # time); otherwise groups of eight. Each base field (a shot line, the soundscape, the music) is a request of its own:
+        # in one request the translator split the shot in two and every later key moved up one, so the ending was lost and
+        # the soundscape was the landing (t2v_cat, ho_t2v). They are decoded one after another: the 4-bit batch of three ran
+        # slower and unevenly (ho_t2v's three requests: 70-91 s batched, 57-60 s one at a time), and the shot is most of
+        # the tokens anyway. (A generate replaced on the instance, as tests do, keeps one request at a time.)
+        batched = getattr(self, 'generate_many', None) if 'generate' not in vars(self) and not base_mode else None
         groups, size = [[]], 0
         limit = max(160, -(-sum(map(len, fragments)) // 6)) if callable(batched) and not base_mode else None
         for fragment in fragments:
@@ -15283,8 +15284,9 @@ class PromptAssistant:
                     # whitelist rejects valid wording such as "exchange ...
                     # for ...; leave the backdrop intact". Validate protected
                     # bindings/literals here, not a preferred English phrase.
-                    # Speed and direction words are the exception: "缓慢加快" became "slows down".
-                    candidate = camera_wording(original, candidate)
+                    # Speed and direction words are the exception: "缓慢加快" became "slows down". Eyes held shut stay shut
+                    # without asking again (asked twice more, the translator still closed them).
+                    candidate = eyes_kept_closed(original, camera_wording(original, candidate))
                     if base_mode != 'T2VA' and not re.search(r'近景|中景|远景|全景|特写|景别', original):
                         candidate = re.sub(r'\b([Aa])n? (?:extreme |medium |full |wide |long |close )*(?:close-?up|shot)(?= frames\b)', lambda m: ('T' if m[1] == 'A' else 't') + 'he shot', candidate)
                     # 近景 is the official medium close-up; a bare "close-up" is 特写.

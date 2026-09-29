@@ -2100,6 +2100,12 @@ class H3UserWordsTest(unittest.TestCase):
         self.assertTrue(translation_flips("女神闭着眼睛，指尖轻触权杖", "The goddess closes her eyes, her fingertip touching the staff."))
         self.assertFalse(translation_flips("女神闭着眼睛，指尖轻触权杖", "With her eyes closed, the goddess touches the staff."))
         self.assertFalse(translation_flips("女神闭着眼睛，然后慢慢闭上嘴", "The goddess closes her eyes."))
+        # Asked again, the translator still closed them (fl2v_two, nh_fl2v): the program writes the held state itself.
+        from prompt_assistant.h3_prompt_enhance import eyes_kept_closed
+        self.assertEqual(eyes_kept_closed("女神闭着眼睛，指尖轻触权杖", "Closing her eyes, the goddess touches the staff; the cat closes its eyes."),
+                         "Keeping her eyes closed, the goddess touches the staff; the cat keeps its eyes closed.")
+        self.assertEqual(eyes_kept_closed("女神闭着眼睛，然后慢慢闭上嘴", "The goddess closes her eyes."), "The goddess closes her eyes.")
+        self.assertFalse(translation_flips("女神闭目，指尖轻触权杖", eyes_kept_closed("女神闭目，指尖轻触权杖", "The goddess closes her eyes.")))
         # A refused music is the music field's N/A, no action point, order step or picture limit (rv_i2v_hiker: "…远山。不要背景音乐。").
         hiker = "女孩把背包从肩上卸下放在路边，从包里取出水壶喝了两口，然后抬头望向远处的云，不要背景音乐"
         request = service.build_minimax_h3_writer_request(hiker, "", "I2VA", 6, sees_frames=True)
