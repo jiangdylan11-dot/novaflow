@@ -38,7 +38,14 @@
     panelBody.style.setProperty('padding', bodyPadding, 'important')
   }
 
-  function mountSharedAccount(record) {
+  function mountSharedAccount(record, enabled = true) {
+    if (!enabled) {
+      if (record.authMounted) root.NovaFlowClientAuth?.unmount?.('art-generate')
+      record.authMounted = false
+      record.accountSlot.remove()
+      return
+    }
+    if (record.accountSlot.parentElement !== record.host) record.host.insertBefore(record.accountSlot, record.modelField)
     if (record.authMounted) return
     const auth = root && root.NovaFlowClientAuth
     if (!auth || typeof auth.mount !== 'function') return
@@ -67,7 +74,7 @@
       existing.onProviderChange = options.onProviderChange
       existing.select.value = normalizeProvider(options.provider)
       syncDisabled(existing.select, options.disabled)
-      mountSharedAccount(existing)
+      mountSharedAccount(existing, options.showAccount !== false)
       return existing.handle
     }
 
@@ -96,6 +103,8 @@
     })
     select.value = normalizeProvider(options.provider)
     const record = {
+      host,
+      modelField,
       accountSlot,
       select,
       onProviderChange: options.onProviderChange,
@@ -108,7 +117,7 @@
 
     modelField.appendChild(label)
     modelField.appendChild(select)
-    host.replaceChildren(accountSlot, modelField)
+    host.replaceChildren(...(options.showAccount === false ? [modelField] : [accountSlot, modelField]))
 
     let active = true
     record.handle = Object.freeze({
@@ -125,7 +134,7 @@
       }
     })
     mountedControls.set(host, record)
-    mountSharedAccount(record)
+    mountSharedAccount(record, options.showAccount !== false)
     return record.handle
   }
 
@@ -230,6 +239,7 @@
     ensureWorkspaceStyles(options.workspaceId || 'novaflow-art-generate-workspace')
     mount({
       host,
+      showAccount: options.showAccount,
       provider: state.provider,
       disabled: Boolean(state.running),
       onProviderChange(provider) {

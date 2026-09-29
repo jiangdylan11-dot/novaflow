@@ -123,7 +123,11 @@
       if (!alive) return
       // The drawing runtime may rebuild its accordion; reattach the extension without replacing it.
       const generate = leftHost.querySelector('[data-novaflow-spine-split-control-category="generate"]')
-      if (!generate) return
+      // React may reuse the old Drawing host for one frame. Wait for the UI category
+      // set and shared canvas to be mounted before opening generation or measuring it.
+      if (!generate || leftHost.getAttribute('data-psd-fusion-ui') !== '1' ||
+          leftHost.querySelectorAll('[data-novaflow-spine-split-control-category]').length !== 1 ||
+          !doc.getElementById('novaflow-spine-split-workspace-content')) return
       if (!section.isConnected || section.previousElementSibling !== generate) generate.after(section)
       if (!started && drawing()) { started = true; drawing().activate(drawing().state.running ? undefined : 'img2img') }
       queuePosition()

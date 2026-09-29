@@ -971,39 +971,28 @@
     return button
   }
 
+  let artSecondarySwitchToken = 0
   function handleArtSecondarySwitchClick(event) {
     const button = artSecondaryButtonFromTarget(event && event.target)
     if (!button) return false
     const label = textOf(button)
-    if (label === CN_UI_TAB) {
-      removeSplitWorkspaceSurface()
-      return true
-    }
-    if (label === CN_DRAWING_TAB) {
-      const alreadyDrawing = button.getAttribute('data-novaflow-secondary-active') === '1' || button.getAttribute('aria-pressed') === 'true'
-      if (alreadyDrawing && isMountedCardVisible()) {
-        startSplitMountRetry()
-        syncSplitWorkspace()
-        return true
-      }
-      resetSplitDrawingCategoriesForEntry()
-      removeSplitWorkspaceSurface()
-      const remount = () => {
-        if (!isSplitCanvasRouteActive()) return
-        mount()
-        startSplitMountRetry()
-        syncSplitWorkspace()
-      }
-      window.requestAnimationFrame(remount)
-      ;[80, 220].forEach((delay) => {
-        window.setTimeout(() => {
-          if (!isSplitCanvasRouteActive()) return
-          if (isMountedCardVisible()) return
-          remount()
-        }, delay)
-      })
-    }
-    return false
+    const alreadyActive = button.getAttribute('data-novaflow-secondary-active') === '1' || button.getAttribute('aria-pressed') === 'true'
+    if (alreadyActive && isMountedCardVisible()) return true
+    const token = ++artSecondarySwitchToken
+    if (label === CN_DRAWING_TAB) resetSplitDrawingCategoriesForEntry()
+    // Both tabs use the same canvas and resource column. Handoff the sidebar after
+    // React commits, before paint; tearing down the shared surfaces exposes fallback
+    // geometry and a frame of the previous tab's controls.
+    window.requestAnimationFrame(() => {
+      if (token !== artSecondarySwitchToken || !isSplitCanvasRouteActive()) return
+      const selector = label === CN_UI_TAB ? ART_UI_HOST_SELECTOR : ART_DRAWING_HOST_SELECTOR
+      if (!visibleArtHostBySelector(selector)) return
+      mount()
+      window.NovaFlowUiDesignBridge?.sync?.()
+      if (label === CN_DRAWING_TAB && !splitDrawingCategoryExpanded.generate) window.__NovaFlowArtGenerate?.deactivate?.()
+      syncSplitWorkspace()
+    })
+    return true
   }
 
   function artPrimaryButtonFromTarget(rawTarget) {
@@ -14081,6 +14070,9 @@
 
   function splitEditorContentMounted(root) {
     if (!root || !root.querySelector) return false
+    if (root.matches?.(ART_UI_HOST_SELECTOR)) {
+      return !!root.querySelector(`[${CONTROL_CATEGORY_ATTR}="generate"]`)
+    }
     const text = textOf(root)
     const hasCategoryLayout = !!root.querySelector(`[${CONTROL_CATEGORY_ATTR}="edit"]`) && !!root.querySelector(`[${CONTROL_CATEGORY_ATTR}="split"]`)
     const hasSplitControl = text.includes(CN_ONE_CLICK_SPLIT) || !!root.querySelector(`button[${CONTROL_ACTION_ATTR}="split"]`)
@@ -29069,6 +29061,9 @@
     if (!(node instanceof HTMLElement)) return false
     if (node.id === RIGHT_WORKSPACE_ID || node.id === WORKSPACE_OVERLAY_ID) return false
     if (node.closest(`#${WORKSPACE_OVERLAY_ID}, #${RIGHT_WORKSPACE_ID}`)) return false
+    // Generated overlays are consumers of the right-column geometry, never its host.
+    // Picking their content during a tab switch nests the panels and feeds back old bounds.
+    if (node.closest('#novaflow-art-generate-right-panel, #novaflow-art-generate-workspace')) return false
     if (mountedCard && (node === mountedCard || node.contains(mountedCard) || mountedCard.contains(node))) return false
     const rect = node.getBoundingClientRect()
     if (!rect || rect.width < 150 || rect.width > 430 || rect.height < 260) return false

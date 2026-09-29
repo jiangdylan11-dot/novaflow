@@ -39848,7 +39848,7 @@
     const button = target.closest("button, [role='button']");
     if (!(button instanceof HTMLElement)) return null;
     if (button instanceof HTMLButtonElement && button.disabled) return null;
-    if (normalizeText(button.textContent || "") !== ART_DRAWING_SECONDARY_LABEL) return null;
+    if (![ART_DRAWING_SECONDARY_LABEL, "UI"].includes(normalizeText(button.textContent || ""))) return null;
     const group = button.closest('[data-novaflow-secondary-group="1"]');
     if (!(group instanceof HTMLElement)) return null;
     const controls = Array.from(group.children).filter((child) =>
@@ -39876,8 +39876,9 @@
     const visualActive =
       target.button.getAttribute("data-novaflow-secondary-active") === "1" ||
       target.button.getAttribute("aria-pressed") === "true";
-    if (!visualActive || normalizeText(previousSecondaryLabel) !== ART_DRAWING_SECONDARY_LABEL) return false;
-    SECONDARY_ACTIVE_BY_GROUP.set(target.groupKey, ART_DRAWING_SECONDARY_LABEL);
+    const targetLabel = normalizeText(target.button.textContent || "");
+    if (!visualActive || normalizeText(previousSecondaryLabel) !== targetLabel) return false;
+    SECONDARY_ACTIVE_BY_GROUP.set(target.groupKey, targetLabel);
     if (event && typeof event.preventDefault === "function" && event.cancelable !== false) {
       event.preventDefault();
     }
@@ -57715,14 +57716,13 @@
             const redundantArtDrawingClick = activePrimaryIndex === 2 &&
               isArtDrawingSecondaryGroup(labels) &&
               !programmaticActivation &&
-              normalizeText(label) === ART_DRAWING_SECONDARY_LABEL &&
-              normalizeText(previousSecondaryLabel) === ART_DRAWING_SECONDARY_LABEL &&
+              normalizeText(label) === normalizeText(previousSecondaryLabel) &&
               (
                 button.getAttribute("data-novaflow-secondary-active") === "1" ||
                 button.getAttribute("aria-pressed") === "true"
               );
             if (redundantArtDrawingClick) {
-              SECONDARY_ACTIVE_BY_GROUP.set(groupKey, ART_DRAWING_SECONDARY_LABEL);
+              SECONDARY_ACTIVE_BY_GROUP.set(groupKey, label);
               if (event && typeof event.preventDefault === "function") event.preventDefault();
               if (event && typeof event.stopImmediatePropagation === "function") {
                 event.stopImmediatePropagation();
@@ -57762,13 +57762,10 @@
             if (!programmaticActivation) SECONDARY_USER_SELECTED_BY_GROUP.add(groupKey);
             SECONDARY_ACTIVE_BY_GROUP.set(groupKey, label);
             if (activePrimaryIndex === 2 && isArtDrawingSecondaryGroup(labels)) {
-              if (normalizeText(label) === ART_DRAWING_SECONDARY_LABEL) {
-                armArtGenerateRouteHold(ART_GENERATE_ROUTE_HOLD_MS);
-                scheduleArtGenerateSync([80, 180, 360]);
-              } else {
-                clearArtGenerateRouteHold();
-                deactivateArtGenerateForRouteChange();
-              }
+              // Drawing and UI share this surface; the sidebar handoff decides
+              // whether generation stays open before the next paint.
+              armArtGenerateRouteHold(ART_GENERATE_ROUTE_HOLD_MS);
+              scheduleArtGenerateSync([80, 180, 360]);
             }
             const skeletonSecondarySwitch = aiSequenceGroup && isAiSequenceSecondarySkeletonLabel(label);
             const aiSequenceSecondarySwitch = aiSequenceGroup && isAiSequenceSecondaryAiLabel(label);
@@ -79843,6 +79840,7 @@
     const tool = window.NovaFlowArtGenerateModeTool;
     const mounted = !!(host instanceof HTMLElement && tool?.syncControlPanel?.({
       host, state: ART_GENERATE_STATE, workspaceId: ART_GENERATE_WORKSPACE_ID,
+      showAccount: !window.NovaFlowUiDesignDrawing?.isActive?.(),
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); syncArtGenerateRuntime(); scheduleArtGeneratePreviewRefresh([0, 16, 64]); }
     }));
     if (mounted) window.NovaFlowArtGenerateLora?.mount?.({
@@ -79977,7 +79975,7 @@
     const root = panel instanceof HTMLElement ? panel.closest('[data-novaflow-left-content-root="1"]') : null;
     if (!(root instanceof HTMLElement)) return;
     Array.from(root.querySelectorAll(".nf-panel")).forEach((candidate) => {
-      if (!(candidate instanceof HTMLElement) || candidate === panel) return;
+      if (!(candidate instanceof HTMLElement) || candidate === panel || candidate.hasAttribute('data-novaflow-ui-layout-section')) return;
       if (!isArtGeneratePanelExpanded(candidate)) return;
       clickArtGeneratePanelHeader(candidate);
     });
