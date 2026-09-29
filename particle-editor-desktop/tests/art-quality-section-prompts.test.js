@@ -3,9 +3,12 @@
 // 原有动作" against a new pose, "遵循…参考图已有的光照" against a new night scene, "线条纤细轻淡" against
 // "笔触粗犷有力", "不得擅自新增…" against new set dressing. The type was guessed over the whole prompt,
 // so the [环境背景] header made a girl a scene and an orange cat got the human paragraph.
-// Pins: after five sections only the non-conflicting quality items go on; the type comes from
-// [主体物品]; animals get animal wording; local runs keep the negated UI list out of the positive
-// prompt; the Ideogram background is the [环境背景] body; "坐在图2大厅" makes 图2 the background.
+// Pins: after five sections only the non-conflicting quality items go on; who the picture is of
+// comes from [主体物品] and its kind (UI, poster, effect, prop) from [风格设定][主体物品][拍摄参数], a
+// subject with no figure in it is a scene; animals get animal wording that sets no eye state and never
+// block the effect/prop/scene kinds; local txt2img keeps the negated UI list out of the positive prompt
+// (local img2img on 2.1 has no profile negative, so it keeps it); the Ideogram background is the
+// [环境背景] body; "坐在图2大厅" makes 图2 the background, "加入图2的帽子" does not.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -83,6 +86,45 @@ test("five sections are typed by [主体物品], not by the scene in [环境背�
   assert.equal(api.inferAssetType(trophy), "icon_prop");
 });
 
+const sectioned = (style, subject, camera = "中景，平视角度。") => [
+  "[风格设定]", style, "[主体物品]", subject, "[环境背景]", "远处是朦胧的山影与城市建筑。",
+  "[光线与色彩]", "午后暖阳，主色调为暖橘。", "[拍摄参数]", camera
+].join("\n");
+
+test("five sections without a person or animal are a scene or their stated kind, never the human paragraph", () => {
+  const cases = [
+    [sectioned("写意水墨山水风格。", "一座古老的石拱桥横跨清澈溪流，桥身布满青苔。", "远景。"), "scene"],
+    [sectioned("写实风景插画风格。", "一座覆盖积雪的高耸山峰，山体岩石裸露。", "远景。"), "scene"],
+    [sectioned("日系动漫背景美术风格。", "樱花盛开的神社参道，红色鸟居立于尽头。"), "scene"],
+    [sectioned("写实静物风格。", "一只青花瓷瓶，瓶身绘有缠枝莲纹。", "特写。"), "scene"],
+    [sectioned("写实静物风格。", "一只孔雀蓝的陶瓷花瓶，瓶口插着几支鹅黄色的小花。", "特写。"), "scene"],
+    [sectioned("写实风景插画风格。", "海边的白色灯塔，天边泛起鱼肚白。", "远景。"), "scene"],
+    [sectioned("游戏道具插画风格。", "一柄长剑，剑身修长，护手雕有云纹。", "特写。"), "icon_prop"],
+    [sectioned("游戏图标风格，扁平质感。", "一枚金币，正面刻有王冠纹样。", "特写，居中构图。"), "icon_prop"],
+    [sectioned("商业游戏宣传海报风格，史诗感主视觉。", "一位手持长枪的少年将军立于城头。", "全身，仰视。"), "poster"],
+    [sectioned("游戏插画风格。", "一名身披银甲的骑士。", "竖版海报构图，上方留出标题区。"), "poster"],
+    [sectioned("商业游戏UI界面风格。", "金色华丽边框，中央为羊皮纸质感的内容区域。"), "game_ui"],
+    [sectioned("游戏特效风格。", "一团熊熊燃烧的火焰法术特效，火星粒子四溅。"), "vfx"],
+    [sectioned("日系插画风格。", "一个男生牵着一只柴犬散步。"), "character"],
+    [sectioned("水彩插画风格。", "两个人并肩走在雨中，撑着一把黑伞。"), "character"],
+    [sectioned("时尚插画风格。", "狐狸眼，狼尾发型，身穿黑色皮夹克。"), "character"],
+    [sectioned("时尚插画风格。", "黑色长发编成鱼骨辫，鹅蛋脸，笑起来露出小虎牙，脚踩马丁靴。"), "character"]
+  ];
+  for (const [prompt, expected] of cases) {
+    const subject = prompt.split("\n")[3];
+    const result = api.compileFinal({ prompt, mode: "txt2img", provider: "gpt" });
+    assert.equal(result.assetType, expected, subject);
+    if (expected !== "character") {
+      assert.doesNotMatch(result.directorInstruction, /人体结构|发丝|皮肤|动物CG|爪掌/, subject);
+      assert.doesNotMatch(result.negativePrompt, /错误人体|畸形手指|畸形爪子/, subject);
+    }
+  }
+  // A UI or poster request does not get told to leave out UI, titles and logos.
+  for (const [prompt] of cases.slice(8, 11)) {
+    assert.doesNotMatch(api.compileFinal({ prompt, provider: "gpt" }).prompt, /不添加游戏界面/);
+  }
+});
+
 test("animals get animal wording, never the human character paragraph", () => {
   const sectioned = api.compileFinal({ prompt: CAT, mode: "txt2img", provider: "gpt" });
   const plain = api.compileFinal({ prompt: "一只橘猫趴在窗台上晒太阳", mode: "txt2img", provider: "gpt" });
@@ -91,8 +133,9 @@ test("animals get animal wording, never the human character paragraph", () => {
     assert.doesNotMatch(result.directorInstruction, /人体|发丝|皮肤|五官|角色|建筑、岩石|植被、水体/);
     assert.match(result.directorInstruction, /骨骼结构与身体比例准确/);
     assert.match(result.directorInstruction, /毛发、羽毛或鳞片分组清晰/);
-    assert.match(result.directorInstruction, /眼睛有神/);
-    assert.match(result.directorInstruction, /爪掌与四肢结构准确/);
+    // Structure only: the saved cats are 半眯眼 / 眼睛半闭, so no eye state (眼睛有神) is set here.
+    assert.match(result.directorInstruction, /眼部、爪掌与四肢结构准确/);
+    assert.doesNotMatch(result.directorInstruction, /眼睛有神|有神|炯炯/);
     assert.doesNotMatch(result.negativePrompt, /错误人体|畸形手指|蜡像皮肤|低细节头发/);
     assert.match(result.negativePrompt, /畸形爪子/);
   }
@@ -107,6 +150,24 @@ test("a person word wins over an animal word, and animal-shaped words are not an
   assert.equal(api.inferAssetType("一只小狗在草地上奔跑"), "animal");
   assert.equal(api.inferAssetType("蝴蝶结发卡道具"), "icon_prop");
   assert.equal(api.inferAssetType("冬日森林场景，远处的城堡"), "scene");
+  // A person with an animal, and humanoids, are characters.
+  for (const prompt of ["一个男生牵着一只柴犬散步", "他骑着一匹白马穿过草原", "女生抱着一只猫", "一个猎人牵着猎犬走在雪地里",
+    "老奶奶在公园喂鸽子", "渔夫抱着一条大鱼", "妈妈和宝宝在草地上逗小狗", "狼头兽人手持巨斧站在山顶", "狼人在月下嚎叫",
+    "美人鱼坐在礁石上梳头", "半人马弓箭手", "蛇发女妖美杜莎", "龙娘", "兔女郎",
+    "黑色长发编成鱼骨辫，鹅蛋脸，笑起来露出小虎牙，脚踩马丁靴", "狐狸眼，狼尾发型，身穿黑色皮夹克"]) {
+    assert.equal(api.inferAssetType(prompt), "character", prompt);
+  }
+  // Only a person blocks the effect, prop and scene kinds; words that look like animals are not animals.
+  for (const [prompt, expected] of [
+    ["熊熊燃烧的火焰特效", "vfx"], ["火焰凤凰法术特效", "vfx"], ["一只鹰的粒子光效", "vfx"],
+    ["猫咪头像图标", "icon_prop"], ["狐狸造型的游戏道具徽章", "icon_prop"], ["孔雀蓝配色的游戏道具宝箱", "icon_prop"],
+    ["马卡龙配色的甜品道具图标", "icon_prop"], ["鹅黄色花瓣的花朵图标", "icon_prop"],
+    ["日式神社场景，红色鸟居", "scene"], ["欧式宫殿大厅场景，罗马柱", "scene"], ["中式寺庙场景，门口两尊石狮", "scene"],
+    ["天边泛起鱼肚白的海边城市场景", "scene"], ["熊熊烈火中的古代城市废墟场景", "scene"], ["龙舟竞渡的河道场景", "scene"],
+    ["森林场景，远处有一只鹿", "scene"], ["夕阳下的海边城市风景，天空中几只飞鸟掠过", "scene"], ["森林中的小木屋，门口趴着一只狗", "scene"]
+  ]) {
+    assert.equal(api.inferAssetType(prompt), expected, prompt);
+  }
 });
 
 test("plain prompts keep the full paragraph they had", () => {
@@ -120,12 +181,14 @@ test("plain prompts keep the full paragraph they had", () => {
   assert.match(result.negativePrompt, /粗黑描边/);
 });
 
-test("local runs keep the negated UI list out of the positive prompt; GPT and Google keep it", () => {
+test("the negated UI list stays out of local txt2img only; local img2img, GPT and Google keep it", () => {
   for (const prompt of [WARRIOR, CAT, "一名少女站在窗边"]) {
+    const txt2img = api.compileFinal({ prompt, mode: "txt2img", provider: "local" });
+    assert.doesNotMatch(txt2img.prompt, /不添加游戏界面|界面边框|操作按钮|状态栏|菜单面板/, "local txt2img");
+    assert.match(txt2img.negativePrompt, /游戏界面，界面边框，操作按钮/, "the negative prompt still carries them");
+    // The 2.1 edit graph gets only the user's own negative box, so the sentence is its only UI suppression.
+    assert.match(api.compileFinal({ prompt, mode: "img2img", provider: "local" }).prompt, /只输出用户要求的纯画面内容，不添加游戏界面/, "local img2img");
     for (const mode of ["txt2img", "img2img"]) {
-      const local = api.compileFinal({ prompt, mode, provider: "local" });
-      assert.doesNotMatch(local.prompt, /不添加游戏界面|界面边框|操作按钮|状态栏|菜单面板/, `local ${mode}`);
-      assert.match(local.negativePrompt, /游戏界面，界面边框，操作按钮/, "the negative prompt still carries them");
       for (const provider of ["gpt", "google"]) {
         assert.match(api.compileFinal({ prompt, mode, provider }).prompt, /只输出用户要求的纯画面内容，不添加游戏界面/, `${provider} ${mode}`);
       }
@@ -156,6 +219,13 @@ test("compiling again is a no-op, and any paragraph ever appended is replaced", 
       assert.equal(api.stripTemplateText(compiled.prompt), base, `${assetType} after ${base.slice(0, 6)}`);
     }
   }
+  // The first animal wording (眼睛有神) is still removed from prompts that carry it.
+  for (const base of [CAT, "一只橘猫趴在窗台上晒太阳"]) {
+    const current = api.compileFinal({ prompt: base, provider: "gpt" }).prompt;
+    const old = current.replace("眼部、爪掌与四肢结构准确", "眼睛有神，爪掌与四肢结构准确");
+    assert.notEqual(old, current);
+    assert.equal(api.compileFinal({ prompt: old, provider: "gpt" }).prompt, current);
+  }
 });
 
 test("five sections take their line style from [风格设定] only", () => {
@@ -165,6 +235,20 @@ test("five sections take their line style from [风格设定] only", () => {
   const result = api.compileFinal({ prompt: sketchProp, provider: "gpt" });
   assert.equal(result.explicitFlatStyle, false, "a line drawing the warrior holds is content, not the style");
   assert.match(result.directorInstruction, /面部五官/);
+  // Pixel art or low poly in [风格设定] is not called 线稿/赛璐璐, and [拍摄参数] keeps the framing.
+  for (const style of ["像素画风格，16色调色板，清晰像素边缘。", "低多边形3D风格，简洁几何面。", "日式赛璐璐动画风格。"]) {
+    const prompt = WARRIOR.replace("国潮插画风格，厚涂技法，笔触粗犷有力，表面有金属与布料的细腻肌理。", style);
+    for (const provider of ["local", "gpt"]) {
+      const flat = api.compileFinal({ prompt, mode: "img2img", provider });
+      assert.equal(flat.explicitFlatStyle, true, style);
+      assert.match(flat.directorInstruction, /^商业资产完成度：保持用户明确指定的画风与表现语言，不改成写实厚涂/);
+      assert.doesNotMatch(flat.directorInstruction, /线稿|赛璐璐|像素|构图/, style);
+      assert.equal(api.stripTemplateText(flat.prompt), prompt);
+      assert.equal(api.compileFinal({ prompt: flat.prompt, mode: "img2img", provider }).prompt, flat.prompt);
+    }
+  }
+  // A plain prompt keeps its old sentence.
+  assert.match(api.compileFinal({ prompt: "赛璐璐风格的骑士", provider: "gpt" }).directorInstruction, /^商业资产完成度：保持用户明确指定的线稿\/赛璐璐表现语言/);
 });
 
 test("Ideogram: five sections give the [环境背景] body as background and a header-free description", () => {
@@ -196,4 +280,9 @@ test("a subject placed inside picture N makes picture N the background", () => {
   assert.deepEqual(roles("把图1画成图2的风格"), ["subject+style", "high"]);
   assert.deepEqual(roles("在图2的风格基础上重画图1"), ["subject+style", "high"], "a named role still wins");
   assert.deepEqual(roles("提升完成度"), ["subject+style", "low"], "no cue: the default stays and asks to confirm");
+  // Taking something from 图2 is not placing the subject in it: the default stays and asks to confirm.
+  for (const userIntent of ["给图1的角色加入图2的帽子", "给图1的角色加入图2的翅膀", "引入图2的光影", "融入图2的色调",
+    "基于图2重新绘制图1的角色", "在图1中加入图2的猫", "参考在图2中出现的剑，给图1的人物"]) {
+    assert.deepEqual(roles(userIntent), ["subject+style", "low"], userIntent);
+  }
 });

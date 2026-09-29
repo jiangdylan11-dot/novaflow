@@ -28,7 +28,7 @@
   const PREVIOUS_CHARACTER_INSTRUCTION = "高完成度角色CG质量：用户指定的角色身份、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须从头到脚完整入画，脚部和核心道具都保留在画面内。建立清晰轮廓、稳定重心和有表现力的动作线；面部五官、眼神、发丝分组、手脚与人体结构准确。皮肤、头发及原图已有材质分别呈现可信质感，遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓主要由明暗、色彩和材质边缘建立，边缘干净自然，与用户指定或原图已有的画风一致。画面达到高品质角色插画的精修完成度。";
   const PROFILE_INSTRUCTIONS = {
     character: "高完成度角色CG质量：用户指定的角色身份、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须从头到脚完整入画，脚部和核心道具都保留在画面内。保持稳定重心和原有动作；面部五官、眼神、发丝分组、手脚与人体结构准确。皮肤、头发及原图已有材质分别呈现可信质感，遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓由局部固有色与明暗过渡自然衔接，边缘轻柔细腻，线条纤细轻淡，与用户指定或原图已有的画风一致。画面达到高品质角色插画的精修完成度。",
-    animal: "高完成度动物CG质量：用户指定的动物种类、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须完整入画，四肢、尾巴和核心道具都保留在画面内。保持稳定重心和原有动作；骨骼结构与身体比例准确，毛发、羽毛或鳞片分组清晰，眼睛有神，爪掌与四肢结构准确。毛发及原图已有材质分别呈现可信质感，遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓由局部固有色与明暗过渡自然衔接，边缘轻柔细腻，线条纤细轻淡，与用户指定或原图已有的画风一致。画面达到高品质动物插画的精修完成度。",
+    animal: "高完成度动物CG质量：用户指定的动物种类、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须完整入画，四肢、尾巴和核心道具都保留在画面内。保持稳定重心和原有动作；骨骼结构与身体比例准确，毛发、羽毛或鳞片分组清晰，眼部、爪掌与四肢结构准确。毛发及原图已有材质分别呈现可信质感，遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓由局部固有色与明暗过渡自然衔接，边缘轻柔细腻，线条纤细轻淡，与用户指定或原图已有的画风一致。画面达到高品质动物插画的精修完成度。",
     scene: "高完成度场景CG质量：建立明确前中后景、主地标、视线引导、尺度参照和可用空间；透视、结构、接触关系与光源方向一致。建筑、岩石、植被、水体和空气透视具有不同材质层次，重点区域细节密度高、次要区域主动收敛，形成可读的大形与专业级氛围光。",
     game_ui: "商业游戏UI质量：建立明确的信息层级、功能分区、按钮状态、文字安全区和操作焦点；边框、面板、图标与装饰使用统一的形状语言和材质逻辑。保证文字区域可读、控件可执行、九宫格与切图可落地，不生成伪文字堆叠或只可观看而不可使用的概念图。",
     icon_prop: "高完成度图标与道具质量：轮廓一眼可识别，视角、结构、功能和受力关系明确；金属、木材、皮革、玻璃、宝石与能量体材质区分清楚。用受控高光、接触阴影和局部磨损表现体积，背景与特效不遮挡主体，适合缩小后识别及真实资产落地。",
@@ -41,19 +41,27 @@
   // and shade, colour hierarchy and finish.
   const SECTION_INSTRUCTIONS = {
     character: "高完成度角色CG质量：面部五官、眼神、发丝分组、手脚与人体结构准确；皮肤、头发与服饰材质分别呈现可信质感，以自然明暗转折塑造体积；配色遵循主色、辅色、点缀色层级，画面达到高品质角色插画的精修完成度。",
-    animal: "高完成度动物CG质量：骨骼结构与身体比例准确，毛发、羽毛或鳞片分组清晰，眼睛有神，爪掌与四肢结构准确；各部分材质呈现可信质感，以自然明暗转折塑造体积；配色遵循主色、辅色、点缀色层级，画面达到高品质插画的精修完成度。",
+    animal: "高完成度动物CG质量：骨骼结构与身体比例准确，毛发、羽毛或鳞片分组清晰，眼部、爪掌与四肢结构准确；各部分材质呈现可信质感，以自然明暗转折塑造体积；配色遵循主色、辅色、点缀色层级，画面达到高品质插画的精修完成度。",
     scene: "高完成度场景CG质量：透视、结构与接触关系准确，不同材质层次分明、质感可信，以明暗关系塑造空间与体积；重点区域细节密度高、次要区域主动收敛，配色层级清晰，画面达到专业场景插画的精修完成度。",
     game_ui: "商业游戏UI质量：信息层级清晰，边框、面板、图标与装饰使用统一的形状语言和材质逻辑，文字区域可读，不生成伪文字堆叠，画面达到可落地的精修完成度。",
     icon_prop: "高完成度道具质量：结构、功能与受力关系准确，各类材质区分清楚、质感可信，以受控高光与接触阴影表现体积，配色层级清晰，画面达到可落地资产的精修完成度。",
     vfx: "高完成度特效质量：核心形状、运动方向与能量层次分明，亮度不过曝，颜色不脏，避免无意义噪点和大面积雾化，画面达到精修完成度。",
     poster: "商业宣传主视觉质量：视觉焦点与叙事层级清晰，主体结构准确、材质可信，以明暗塑造体积与空间纵深，配色层级清晰，画面达到商业美宣的精修完成度。"
   };
+  // [风格设定] names the style (像素画, 低多边形, 赛璐璐 …) and [拍摄参数] the framing, so this neither
+  // names a style nor asks for composition. FLAT_STYLE_INSTRUCTION_RE removes it like the plain one.
+  const SECTION_FLAT_STYLE_INSTRUCTION = "商业资产完成度：保持用户明确指定的画风与表现语言，不改成写实厚涂；结构、色彩层级与细节准确，主体清晰、风格统一，可直接用于游戏资产。";
+  // Worded "眼睛有神" before 2026-09-29 (an eye state the sections own); kept so old copies are removed.
+  const PREVIOUS_ANIMAL_INSTRUCTIONS = [PROFILE_INSTRUCTIONS.animal, SECTION_INSTRUCTIONS.animal]
+    .map((text) => text.replace("眼部、爪掌与四肢结构准确", "眼睛有神，爪掌与四肢结构准确"));
   const SECTION_NAMES = ["风格设定", "主体物品", "环境背景", "光线与色彩", "拍摄参数"];
   const SECTION_SPLIT_RE = /(?:^|\n)[ \t]*[[【](风格设定|主体物品|环境背景|光线与色彩|拍摄参数)[\]】]/;
-  // Who the picture is of. A person word wins over an animal word (猫耳少女, 骑马的武将); 马尾, 猫眼,
-  // 龙纹, 蝴蝶结 and the like are not animals.
-  const PERSON_RE = /(角色|人物|人像|肖像|女性|男性|女子|男子|女人|男人|女孩|男孩|少女|少年|姑娘|美女|帅哥|青年|老人|老者|儿童|小孩|孩子|婴儿|英雄|武将|武士|战士|士兵|将军|骑士|剑客|侠客|公主|王子|国王|女王|皇帝|法师|巫师|女巫|魔女|忍者|猫娘|人类|她|(?<![第唯同单统])[一两二三四五六七八九十几多][位名]|\b(?:character|girl|boy|woman|women|man|men|person|people|hero|knight|warrior|lady|portrait)s?\b)/i;
-  const ANIMAL_RE = /(动物|宠物|萌宠|幼崽|野兽|神兽|猫(?![耳眼娘])|狗|犬|狐狸|狼|老虎|虎(?![纹口])|狮|豹(?!纹)|熊猫|熊(?!熊)|兔(?!耳)|鹿(?!角)|马(?![尾甲靴车路赛克])|奶牛|公牛|水牛|牦牛|山羊|绵羊|羊驼|猪|松鼠|仓鼠|老鼠|猴|大象|鸟(?!瞰)|鹰(?!钩)|鸽|鹤|鸭(?!舌)|鹅(?!卵)|公鸡|母鸡|小鸡|孔雀|鹦鹉|企鹅|麻雀|鱼(?![尾鳞网])|鲸|海豚|鲨|乌龟|海龟|蛇|蜥蜴|青蛙|蝴蝶(?!结)|昆虫|恐龙|龙(?![纹袍头形鳞卷])|凤凰|独角兽|\b(?:animal|pet|cat|kitten|dog|puppy|fox|wolf|tiger|lion|bear|rabbit|bunny|deer|horse|bird|owl|fish|dragon|creature)s?\b)/i;
+  // Who the picture is of. A person word wins over an animal word (猫耳少女, 骑马的武将, 兽人, 美人鱼);
+  // 马尾, 猫眼, 龙纹, 蝴蝶结, 熊熊, 孔雀蓝, 鹅黄, 鱼肚白, 鸟居, 虎牙, 马丁靴 and the like are not animals.
+  const PERSON_RE = /(角色|人物|人像|肖像|女性|男性|女子|男子|女人|男人|女孩|男孩|女生|男生|学生|少女|少年|娘|美女|帅哥|青年|老人|老者|儿童|小孩|孩子|婴儿|宝宝|妈妈|爸爸|母亲|父亲|奶奶|爷爷|女士|先生|小姐|英雄|武将|武士|战士|士兵|将军|骑士|剑客|侠客|猎人|渔夫|农夫|牧羊人|商人|僧人|厨师|弓箭手|刺客|公主|王子|国王|女王|皇帝|法师|巫师|女巫|魔女|忍者|兽人|狼人|人鱼|人马|女妖|女郎|人类|她|(?<![其吉])他|(?<![第唯同单统])[一两二三四五六七八九十几多](?:[位名]|个人)|一群人|人们|\b(?:character|girl|boy|woman|women|man|men|person|people|hero|knight|warrior|lady|portrait)s?\b)/i;
+  const ANIMAL_RE = /(动物|宠物|萌宠|幼崽|野兽|神兽|猫(?![耳眼娘])|狗|犬|狐狸(?!眼)|狼(?![尾烟藉狈])|老虎|虎(?![纹口牙])|(?<![石舞])狮|豹(?!纹)|熊猫|(?<!熊)熊(?!熊)|兔(?![耳牙])|鹿(?!角)|(?<!罗)马(?![尾甲靴车路赛克丁卡桶铃])|奶牛|公牛|水牛|牦牛|山羊|绵羊|羊驼|猪|松鼠|仓鼠|老鼠|猴|大象|鸟(?![瞰居])|鹰(?!钩)|鸽|鹤|鸭(?!舌)|鹅(?![黄蛋卵绒])|公鸡|母鸡|小鸡|孔雀(?![蓝绿石])|鹦鹉|企鹅|麻雀|鱼(?![尾鳞网肚骨竿])|鲸|海豚|鲨|乌龟|海龟|蛇|蜥蜴|青蛙|蝴蝶(?!结)|昆虫|恐龙|(?<!火)龙(?![纹袍头形鳞卷舟])|凤凰|独角兽|\b(?:animal|pet|cat|kitten|dog|puppy|fox|wolf|tiger|lion|bear|rabbit|bunny|deer|horse|bird|owl|fish|dragon|creature)s?\b)/i;
+  // A [主体物品] that describes a figure without naming one (长发, 鹅蛋脸, 身穿皮夹克).
+  const FIGURE_HINT_RE = /(五官|脸|眼神|发型|长发|短发|卷发|发髻|辫|身穿|穿着|身披|头戴|手持|手握|双手)/;
 
   const PROFILE_NEGATIVES = {
     character: "粗黑描边，统一黑色外轮廓，厚重墨线，扁平赛璐璐，蜡像皮肤，塑料材质，材质无差异，低细节头发，结构粘连，无依据新增装饰，错误人体，畸形手指，多余手脚，五官错位，特效遮脸，过曝高光，噪点，低完成度",
@@ -86,6 +94,7 @@
     LEGACY_CHARACTER_INSTRUCTION,
     ...Object.values(PROFILE_INSTRUCTIONS),
     ...Object.values(SECTION_INSTRUCTIONS),
+    ...PREVIOUS_ANIMAL_INSTRUCTIONS,
     CLOTHING_DESIGN_INSTRUCTION,
     PURE_ARTWORK_INSTRUCTION
   ].sort((a, b) => b.length - a.length);
@@ -147,18 +156,23 @@
     if (compiledType) return compiledType.toLowerCase();
     // Judged on the user's own affirmative text: template sentences and "不要 UI" clauses cannot
     // turn a character prompt into a game-UI prompt (which would append the UI quality paragraph).
-    // A five-section prompt is judged on its [主体物品]: [环境背景] is always there and names a scene.
+    // A five-section prompt: the kind (UI, poster, effect, prop) is read without [环境背景], which is
+    // always there and names a scene, and without [光线与色彩]; who it is of is read in [主体物品].
     const sections = readSections(stripped);
-    const text = affirmativeClauses(sections ? sections["主体物品"] : stripped);
-    if (/(UI|界面|HUD|按钮|面板|老虎机|slot|大厅页|登录页)/i.test(text)) return "game_ui";
-    if (/(海报|KV|主视觉|美宣|banner|landing\s*page|宣传图)/i.test(text)) return "poster";
-    const person = PERSON_RE.test(text);
-    const creature = person || ANIMAL_RE.test(text);
-    const figure = creature || /(全身|半身)/.test(text);
-    if (/(特效|VFX|法术|爆炸|拖尾|光效|粒子)/i.test(text) && !figure) return "vfx";
-    if (/(图标|icon|道具|武器|装备|宝箱|徽章|奖杯)/i.test(text) && !creature) return "icon_prop";
-    if (/(场景|环境|建筑|森林|城市|地牢|地图|背景)/i.test(text) && !figure) return "scene";
-    return creature && !person ? "animal" : "character";
+    const kind = affirmativeClauses(sections ? [sections["风格设定"], sections["主体物品"], sections["拍摄参数"]].join("\n") : stripped);
+    const subject = sections ? affirmativeClauses(sections["主体物品"]) : kind;
+    if (/(UI|界面|HUD|按钮|面板|老虎机|slot|大厅页|登录页)/i.test(kind)) return "game_ui";
+    if (/(海报|KV|主视觉|美宣|banner|landing\s*page|宣传图)/i.test(kind)) return "poster";
+    // Only a person blocks the effect, prop and scene kinds (猫咪头像图标, 森林场景里的一只鹿).
+    const person = PERSON_RE.test(subject);
+    const figure = person || /(全身|半身)/.test(kind);
+    if (/(特效|VFX|法术|爆炸|拖尾|光效|粒子)/i.test(kind) && !figure) return "vfx";
+    if (/(图标|icon|道具|武器|装备|宝箱|徽章|奖杯)/i.test(kind) && !person) return "icon_prop";
+    if (!sections && /(场景|环境|建筑|森林|城市|地牢|地图|背景)/i.test(kind) && !figure) return "scene";
+    if (!person && ANIMAL_RE.test(subject)) return "animal";
+    // A [主体物品] with no person, animal or figure in it is a landscape, a building or a thing: scene,
+    // as these prompts were typed before. A plain prompt keeps its character default.
+    return !sections || figure || FIGURE_HINT_RE.test(subject) ? "character" : "scene";
   }
 
   function hasExplicitFlatStyle(prompt, style) {
@@ -201,16 +215,19 @@
     // A five-section prompt states its drawing style in [风格设定]; 线稿 elsewhere in it is content.
     const explicitFlatStyle = hasExplicitFlatStyle(sections ? sections["风格设定"] : prompt, style);
     const basePositiveInstruction = explicitFlatStyle
-      ? `商业资产完成度：保持用户明确指定的${style === "pixel" ? "像素" : "线稿/赛璐璐"}表现语言，不改成写实厚涂；提升构图、结构、色彩层级、边缘控制和细节准确性，保证主体清晰、风格统一、可直接用于游戏资产。`
+      ? (sections
+        ? SECTION_FLAT_STYLE_INSTRUCTION
+        : `商业资产完成度：保持用户明确指定的${style === "pixel" ? "像素" : "线稿/赛璐璐"}表现语言，不改成写实厚涂；提升构图、结构、色彩层级、边缘控制和细节准确性，保证主体清晰、风格统一、可直接用于游戏资产。`)
       : (sections ? SECTION_INSTRUCTIONS : PROFILE_INSTRUCTIONS)[assetType];
     const clothingDesignInstruction = !sections && assetType === "character" && EXPLICIT_CLOTHING_DESIGN_RE.test(prompt)
       ? CLOTHING_DESIGN_INSTRUCTION
       : "";
-    // The local models (Qwen-Image-2.1, Rapid AIO, Ideogram 4 Instant) read a negated list of UI words
-    // in the positive prompt as a mention; they have a negative prompt for it. Only GPT and Google,
-    // which take no negative prompt, get the sentence.
-    const localRun = String(source.provider || "").toLowerCase() === "local";
-    const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) && !localRun ? PURE_ARTWORK_INSTRUCTION : "";
+    // Both local txt2img models (Ideogram 4 Instant, Qwen Rapid) sample at cfg 1: a negated list of UI
+    // words in the positive prompt is at best ignored and at worst read as a mention, so it stays out there.
+    // Local img2img keeps it: the Qwen-Image-2.1 edit graph gets only the user's own negative box (this
+    // profile's negative is for the 2511 route), so the sentence is the only UI suppression it has.
+    const localTxt2img = String(source.provider || "").toLowerCase() === "local" && String(source.mode || "").toLowerCase() === "txt2img";
+    const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) && !localTxt2img ? PURE_ARTWORK_INSTRUCTION : "";
     const positiveInstruction = [basePositiveInstruction, clothingDesignInstruction, pureArtworkInstruction].filter(Boolean).join("");
     const baseNegativeInstruction = explicitFlatStyle
       ? "错误人体，畸形手指，多余手脚，五官错位，结构粘连，轮廓脏乱，噪点，低完成度"
