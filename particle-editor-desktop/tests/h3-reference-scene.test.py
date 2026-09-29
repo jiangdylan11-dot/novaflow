@@ -37,6 +37,27 @@ class SceneTest(unittest.TestCase):
         result = FakeAssistant().write(plan, source, requirement, 5, False, observed or {}, observed_scene or {}, attribute_pictures or {}, cut=cut)
         return result, prompts[0] if prompts else ''
 
+    def test_a_character_whose_picture_names_its_style_is_no_style_picture(self):
+        # The planner may end a character with its picture's style ("…，3D渲染风格，纯白色背景"): it stays a character,
+        # described as its picture is observed, in apposition with where it stands at its first appearance; an event
+        # that starts face to face starts so.
+        erlang = '男性角色，黑发束起，身穿金色铠甲，手持金色长枪'
+        plan = {'references': [subject(1, '<Picture 1>', erlang + '，3D渲染风格，纯白色背景', '金色铠甲'),
+                               subject(2, '<Picture 2>', GIRL + '，动漫插画风格', '黑短发')],
+                'summary': '<Subject 1> 与 <Subject 2> 面对面抱拳行礼'}
+        output = ('事件：<Subject 1> 与 <Subject 2> 面对面抱拳行礼\n画风：3D渲染\n场景：庭院\n景别：中景，两人分站左右\n'
+                  '站位：<Subject 1> 站在画面左侧，面朝右；<Subject 2> 站在画面右侧，面朝左\n'
+                  '动作1：<Subject 1> 抱拳行礼\n动作2：<Subject 2> 抱拳回礼\n镜头：固定\n声音：衣料轻响\n配乐：无')
+        result, _ = self.write(plan, '', output, observed={'<Picture 1>': erlang, '<Picture 2>': GIRL}, requirement='图1的角色和图2的角色面对面抱拳行礼')
+        self.assertEqual([row['description'] for row in result['references']], [erlang, GIRL])
+        self.assertIn('[Shot 1] 中景，两人分站左右，<Subject 1> 与 <Subject 2> 面对面站立。场景是庭院。'
+                      '<Subject 1>，一位黑发束起、身穿金色铠甲、手持金色长枪的男性角色，站在画面左侧，面朝右。', result['description'])
+        self.assertNotIn(' 是', result['description'])
+        # A label that ends its line takes the line after it; a conflict nobody asked for goes with its clause.
+        broken = output.replace('动作1：<Subject 1> 抱拳行礼', '动作1：\n<Subject 1> 抱拳行礼，两人对峙').replace('动作2：<Subject 2> 抱拳回礼', '动作2：\n<Subject 2> 抱拳回礼')
+        again, _ = self.write(plan, '', broken, observed={'<Picture 1>': erlang, '<Picture 2>': GIRL}, requirement='图1的角色和图2的角色面对面抱拳行礼')
+        self.assertEqual(again['description'], result['description'])
+
     def test_style_picture_lends_only_its_style(self):
         panda = '熊猫，脸部有红色心形图案，头顶金色卷云纹饰，手持红色长棍'
         plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色、发光圆形眼睛'),
@@ -103,7 +124,8 @@ class SceneTest(unittest.TestCase):
         output = ('事件：<Subject 1> 遇到 <Subject 2>\n画风：动漫插画\n场景：乡村公路\n动作1：<Subject 1> 沿路走来\n'
                   '动作2：<Subject 2> 的洒水壶悬停在身侧，两盏眼睛灯亮起\n镜头：固定\n声音：风声\n配乐：无')
         result, _ = self.write(plan, '<Picture 1> 的女人遇到了 <Picture 2> 的机器人', output)
-        self.assertIn('<Subject 2> 两盏眼睛灯亮起。', result['description'])
+        # Without a stance line the first beat that names a subject describes it.
+        self.assertIn('<Subject 2>，一个头部有发光的圆形眼睛、手持金属洒水壶的铜绿色机器人，两盏眼睛灯亮起。', result['description'])
         self.assertNotIn('悬停', result['description'])
 
     def test_music_only_when_the_user_asks_for_it(self):
@@ -114,7 +136,7 @@ class SceneTest(unittest.TestCase):
         result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
         self.assertEqual(result['music'], 'N/A')
         # A sound written as a noun reads as a sentence.
-        self.assertEqual(result['soundscape'], '可以听到金属碰撞声。')
+        self.assertEqual(result['soundscape'], '金属碰撞声清晰可闻。')
         result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯，配上欢快的音乐', output)
         self.assertEqual(result['music'], '胜利主题轻快音乐。')
 
@@ -168,7 +190,8 @@ class SceneTest(unittest.TestCase):
                   '动作1：<Subject 1> 走向<Subject 2>\n动作2：<Subject 1> 右手轻托<Subject 2>举到面前\n镜头：固定\n声音：脚步声\n配乐：无')
         result, _ = self.write(plan, '', output, requirement='根据已上传的参考图反推视频提示词')
         self.assertEqual(result['summary'], '<Subject 1> 走向 <Subject 2>，弯腰把它拾起。')
-        self.assertIn('<Subject 1> 右手轻托 <Subject 2> 举到面前。', result['description'])
+        # The side the user never wrote goes, as in the base modes.
+        self.assertIn('<Subject 1> 一只手轻托 <Subject 2> 举到面前。', result['description'])
         # Stillness the user asked for is not filler.
         result, _ = self.write(plan, '<Picture 1> 的机器人拾起 <Picture 2>，安安静静的', output)
         self.assertIn('静置不动', result['summary'])
@@ -207,17 +230,127 @@ class SceneTest(unittest.TestCase):
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子，第3秒切到近景', output, cut=True)
         self.assertIn('\n镜头2（第X秒）：用户要求切换镜头', prompt)
         # The cut time is the user's; a shot acting out an undefined subject is dropped.
-        # The style sentence comes before [Shot 1], as in the official reference layout; every shot names its place and light.
-        self.assertEqual(result['description'], '视频采用写实照片风格。\n[Shot 1] 场景是客厅，午后阳光从窗外照进来。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
-                                                '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 落地后回头看向镜头。场景仍是客厅，午后阳光从窗外照进来。')
+        # The style sentence with its light comes before [Shot 1], as in the official reference layout; the subject is
+        # described in apposition at its first appearance, again where a later shot frames it; every shot names its place
+        # and light; the camera goes with the first beat, not after the ending.
+        self.assertEqual(result['description'], '视频采用写实照片风格，午后阳光从窗外照进来。\n[Shot 1] 场景是客厅。<Subject 1>，一只橘色长毛猫，在桌边蹲低身体。'
+                                                '镜头跟随。<Subject 1> 向前跳下桌子。'
+                                                '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1>，那只橘色长毛猫，落地后回头看向镜头。场景仍是客厅，午后阳光从窗外照进来。')
         # One camera move, said once, with an official speed only.
         result, _ = self.write(plan, '<Picture 1> 的猫跳下桌子', output.replace('镜头：跟随', '镜头：跟拍，镜头跟随 <Subject 1> 向前移动，速度适中'))
-        self.assertIn('向前跳下桌子。镜头跟随 <Subject 1> 向前移动。', result['description'])
+        self.assertIn('在桌边蹲低身体。镜头跟随 <Subject 1> 向前移动。<Subject 1> 向前跳下桌子。', result['description'])
         # Without a requested cut the writer is not asked for shots and stray shot lines are ignored.
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子', output)
         self.assertNotIn('镜头2', prompt)
         self.assertNotRegex(result['description'], r'\[Shot [2-9]')
 
+    def test_the_opening_is_the_state_before_the_first_beat_and_each_beat_goes_on_from_the_last(self):
+        # "面对面抱拳行礼，然后并肩走向镜头" opened side by side facing the camera, walked off without a turn, pushed the
+        # weapons at each other, grew a scabbard and a second cloak, and ended "并肩对视" in the summary while they
+        # looked into the camera; the stance carried a walk before the salute.
+        erlang = '男性角色，黑发束起，身穿金色铠甲，披着红色披风，手持金色长枪'
+        zhongkui = '男子，黑发束成发髻，面部有浓密胡须，身穿红色长袍，手持一把剑'
+        plan = {'references': [subject(1, '<Picture 1>', erlang, '金色铠甲'), subject(2, '<Picture 2>', zhongkui, '红色长袍')],
+                'summary': '<Subject 1> 与 <Subject 2> 面对面抱拳行礼后并肩走向镜头'}
+        output = ('事件：<Subject 1> 与 <Subject 2> 面对面抱拳行礼后并肩走向镜头，最终停于镜头前并肩对视\n画风：3D渲染\n场景：纯白色背景\n光线：柔和的顶光，无明显阴影\n'
+                  '景别：中景，两人并排站立于画面中央，面向镜头\n'
+                  '站位：<Subject 1> 身披红披风，站于画面左侧，右手持枪缓步向前；<Subject 2> 站于画面右侧，剑垂于身侧\n'
+                  '动作1：<Subject 1> 右手握枪，左手抬至胸前抱拳；<Subject 2> 抬剑鞘轻触腰带，右手握剑，左手抱拳回应，两道披风随动作微扬，剑身投下暗影\n'
+                  '动作2：<Subject 1> 与 <Subject 2> 收手，目光对视\n'
+                  '动作3：<Subject 1> 与 <Subject 2> 同时抬步，左脚先迈出，右脚跟上，朝镜头方向走来\n'
+                  '动作4：<Subject 1> 与 <Subject 2> 并肩停于镜头前，枪尖与剑尖齐齐抬起至胸前，目光平视镜头\n'
+                  '镜头：跟随\n声音：脚步声\n配乐：无')
+        result, prompt = self.write(plan, '', output, observed={'<Picture 1>': erlang, '<Picture 2>': zhongkui},
+                                    requirement='图1的角色和图2的角色面对面抱拳行礼，然后并肩走向镜头')
+        self.assertIn('景别：动作1 开始前的景别和构图', prompt)
+        self.assertIn('朝着另一个主体时写“面向 <Subject N>”；只写站着或坐着、手里的东西怎样拿，不写动作和外观', prompt)
+        self.assertIn('拿着兵器靠近或行礼时兵器竖在身侧，不指向对方', prompt)
+        self.assertEqual(result['summary'], '<Subject 1> 与 <Subject 2> 面对面抱拳行礼后并肩走向镜头。')
+        self.assertEqual(result['description'],
+                         '视频采用3D渲染风格，柔和的顶光，无明显阴影。\n[Shot 1] 中景，<Subject 1> 与 <Subject 2> 面对面站立。场景是纯白色背景。'
+                         '<Subject 1>，一位黑发束起、身穿金色铠甲、披着红色披风、手持金色长枪的男性角色，站于画面左侧。'
+                         '<Subject 2>，一位黑发束成发髻、面部有浓密胡须、身穿红色长袍、手持一把剑的男子，站于画面右侧，剑垂于身侧。'
+                         '<Subject 1> 一只手握枪，另一只手抬至胸前抱拳；<Subject 2> 一只手握剑，另一只手抱拳回应，披风随动作微扬。'
+                         '<Subject 1> 与 <Subject 2> 收手，目光对视。'
+                         '<Subject 1> 与 <Subject 2> 转身面向镜头，同时抬步，一只脚先迈出，另一只脚跟上，朝镜头方向走来。'
+                         '镜头随着 <Subject 1> 与 <Subject 2> 走近缓慢拉远。'
+                         '<Subject 1> 与 <Subject 2> 并肩停于镜头前，目光平视镜头。')
+
+    def test_an_approached_subject_faces_the_one_coming_and_a_cut_names_who_it_frames(self):
+        # "<Subject 2> 面向右方" had its back to <Subject 1> walking in from the left; a weapon raised at the other one
+        # is a standoff the user never asked for; after the cut "画面中清楚地看到 …" repeated looks as a meta line,
+        # also for a subject the close-up shows only as a hand.
+        erlang = '男性角色，黑发束起，身穿金色铠甲，手持金色长枪'
+        zhongkui = '男子，黑发束成发髻，面部有浓密胡须，身穿红色长袍，手持一把剑'
+        plan = {'references': [subject(1, '<Picture 1>', erlang, '金色铠甲'), subject(2, '<Picture 2>', zhongkui, '红色长袍')],
+                'summary': '<Subject 1> 走向 <Subject 2>，第3秒切到 <Subject 2> 的特写'}
+        output = ('事件：<Subject 1> 走向 <Subject 2>，第3秒切到 <Subject 2> 的特写\n画风：3D渲染\n场景：纯白色背景\n光线：均匀的顶光\n'
+                  '景别：中景，<Subject 1> 从左向右移动，<Subject 2> 面向右方静立\n站位：<Subject 2> 站定持剑\n'
+                  '动作1：<Subject 1> 缓步走向 <Subject 2>，甲片摩擦发出锵锵轻响\n动作2：<Subject 1> 停在 <Subject 2> 面前；<Subject 2> 举剑至胸前，剑格正对枪尖，静待回应\n'
+                  '镜头：跟随 <Subject 1> 向右移动\n镜头2（第3秒）：切至特写，<Subject 2> 的胡须微微颤动，目光落在 <Subject 1> 的手上\n声音：无\n配乐：无')
+        result, _ = self.write(plan, '<Picture 1> 中的角色走向 <Picture 2> 中的角色，第3秒切到 <Picture 2> 的特写', output,
+                               observed={'<Picture 1>': erlang, '<Picture 2>': zhongkui}, cut=True)
+        self.assertEqual(result['description'],
+                         '视频采用3D渲染风格，均匀的顶光。\n[Shot 1] 中景，<Subject 1> 从左向右移动，<Subject 2> 面向 <Subject 1> 静立。场景是纯白色背景。'
+                         '<Subject 2>，一位黑发束成发髻、面部有浓密胡须、身穿红色长袍、手持一把剑的男子，站定持剑。'
+                         '<Subject 1>，一位黑发束起、身穿金色铠甲、手持金色长枪的男性角色，缓步走向 <Subject 2>，甲片摩擦发出锵锵轻响。'
+                         '镜头跟随 <Subject 1> 向右移动。<Subject 1> 停在 <Subject 2> 面前。'
+                         '\n[Shot 2] At 00:03.000 镜头切至特写，<Subject 2>，那位黑发束成发髻、面部有浓密胡须的男子，胡须微微颤动，目光落在 <Subject 1> 的手上。'
+                         '场景仍是纯白色背景，均匀的顶光。')
+        # The user's own standoff stays.
+        result, _ = self.write(plan, '<Picture 1> 中的角色走向 <Picture 2> 中的角色，两人对峙，第3秒切到 <Picture 2> 的特写', output,
+                               observed={'<Picture 1>': erlang, '<Picture 2>': zhongkui}, cut=True)
+        self.assertIn('剑格正对枪尖，静待回应', result['description'])
+        # A subject named only inside another's clause ("停在离 <Subject 2> 半步远处") gets no description there.
+        near = output.replace('切至特写，<Subject 2> 的胡须微微颤动，目光落在 <Subject 1> 的手上', '切至近景，<Subject 1> 停在离 <Subject 2> 半步远处')
+        result, _ = self.write(plan, '<Picture 1> 中的角色走向 <Picture 2> 中的角色，第3秒切到近景', near,
+                               observed={'<Picture 1>': erlang, '<Picture 2>': zhongkui}, cut=True)
+        self.assertIn('镜头切至近景，<Subject 1>，那位黑发束起、身穿金色铠甲的男性角色，停在离 <Subject 2> 半步远处。', result['description'])
+
+
+    def test_the_users_own_colour_second_and_freeze_stay(self):
+        # A recolouring, a second or a freeze the writer adds goes with its own words, never with the action it sits in;
+        # the ones the user wrote stay.
+        warrior = '男子，黑发束成发髻，身穿红色长袍，手持一把剑'
+        plan = {'references': [subject(1, '<Picture 1>', warrior, '红色长袍'), subject(2, '<Picture 2>', GIRL, '黑短发')],
+                'summary': '<Subject 1> 走向 <Subject 2>'}
+        observed = {'<Picture 1>': warrior, '<Picture 2>': GIRL}
+        lines = lambda *actions: ('事件：<Subject 1> 走向 <Subject 2>\n画风：3D渲染\n场景：庭院\n'
+                                  + ''.join(f'动作{i + 1}：{action}\n' for i, action in enumerate(actions)) + '镜头：固定\n声音：脚步声\n配乐：无')
+        walk = lines('<Subject 1> 身穿黑色长袍从左侧走来', '<Subject 1> 在第2秒拔出长剑', '<Subject 2> 抱拳回礼，画面定格')
+        result, _ = self.write(plan, '', walk, observed=observed, requirement='图1的男子走向图2的女孩')
+        self.assertIn('从左侧走来', result['description'])
+        self.assertIn('<Subject 1> 拔出长剑', result['description'])
+        self.assertNotRegex(result['description'], '黑色长袍|第2秒|定格')
+        result, _ = self.write(plan, '', walk, observed=observed, requirement='图1的男子换上黑色长袍走向图2的女孩，第2秒拔剑，最后画面定格')
+        self.assertIn('身穿黑色长袍从左侧走来', result['description'])
+        self.assertIn('<Subject 1> 在第2秒拔出长剑', result['description'])
+        self.assertIn('抱拳回礼，画面定格', result['description'])
+        # The user's 黑袍 is the writer's 黑色长袍, the user's 第2秒 its 第二秒.
+        result, _ = self.write(plan, '', lines('<Subject 1> 身穿黑色长袍从左侧走来', '<Subject 1> 在第二秒拔出长剑'), observed=observed,
+                               requirement='图1的黑袍法师走向图2的女孩，第2秒拔剑')
+        self.assertIn('身穿黑色长袍从左侧走来', result['description'])
+        self.assertIn('<Subject 1> 在第二秒拔出长剑', result['description'])
+        # A writer's span of seconds goes whole, never leaving "从到" or "直到才".
+        result, _ = self.write(plan, '', lines('<Subject 1> 从第1秒到第3秒缓步走向 <Subject 2>', '<Subject 2> 静立直到第4秒才转身望向 <Subject 1>'),
+                               observed=observed, requirement='图1的男子走向图2的女孩')
+        self.assertIn('缓步走向 <Subject 2>', result['description'])
+        self.assertIn('静立，随后转身望向 <Subject 1>', result['description'])
+        self.assertNotRegex(result['description'], '第.秒|从到|直到才')
+        # A standoff the user wrote ("互相戒备", "蓄势待发") stays.
+        for requirement, beat, kept in [('图1的男子与图2的女孩隔着庭院互相戒备，然后男子缓缓走近', '<Subject 1> 与 <Subject 2> 隔着庭院互相戒备', '隔着庭院互相戒备'),
+                                        ('图1的男子蓄势待发，然后冲向图2的女孩', '<Subject 1> 屈膝蓄势待发', '屈膝蓄势待发')]:
+            result, _ = self.write(plan, '', lines('<Subject 1> 站在庭院一侧', beat, '<Subject 1> 冲向 <Subject 2>'), observed=observed, requirement=requirement)
+            self.assertIn(kept, result['description'])
+        # A style picture named with its label ("参考 <Picture 2> 的…画风") still lends only its style.
+        style = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'),
+                                subject(2, '<Picture 2>', '参考 <Picture 2> 的中国传统水墨画风格', '水墨', relation='attribute_transfer')],
+                 'summary': '<Subject 1> 在山间行走'}
+        result, _ = self.write(style, '', '事件：<Subject 1> 在山间行走\n画风：水墨\n场景：山间小路\n动作1：<Subject 1> 沿小路走来\n'
+                               '动作2：<Subject 1> 停下远望\n镜头：固定\n声音：脚步声\n配乐：无', observed={'<Picture 1>': GIRL, '<Picture 2>': '熊猫，手持红色长棍'},
+                               requirement='图1的女孩在山间行走，参考图2的水墨风')
+        self.assertIn('此图中的角色不出现', result['references'][1]['description'])
+        self.assertNotIn('熊猫', result['description'])
 
 class StyleTechniqueTest(unittest.TestCase):
     def observe(self, output):

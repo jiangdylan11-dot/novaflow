@@ -13,6 +13,7 @@ import socket
 import sys
 import time
 import traceback
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 from prompt_assistant.h3_prompt_enhance import (
@@ -27,6 +28,7 @@ from prompt_assistant.h3_prompt_enhance import (
     NO_CUT as H3_NO_CUT,
     ONE_SHOT as H3_ONE_SHOT,
     SPEECH_LINE as H3_SPEECH_LINE,
+    SOUND_LINE as H3_SOUND_LINE,
     asks_cut as h3_asks_cut,
     fold_cut as h3_fold_cut,
     base_source_view as h3_base_source_view,
@@ -346,6 +348,35 @@ MINIMAX_H3_CHILD_AGE_FACT_PATTERN = re.compile(
     r"(?:1[0-7]|[0-9])\s*y\s*/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])",
     flags=re.I,
 )
+# An explicit child word: the words above plus 女童, 孩子, 小学生, 七八岁, 12周岁, preteen… It has the 图生/首尾帧
+# pictures looked at, and the user's own one counts as minor evidence for the block. Never 女孩子/男孩子/孩子气, 女孩,
+# an adult age (十八九岁, 二十岁), a likeness (像孩子一样), an animal's young (熊猫宝宝, baby dragon) or 互称宝宝.
+MINIMAX_H3_YOUNG_CLUE_PATTERN = re.compile(
+    MINIMAX_H3_YOUNG_OUTPUT_PATTERN.pattern
+    + r"|女童|男童|新生儿|婴孩|小朋友|[小中]学生|[初高]中生|幼儿园|小女孩|小男孩"
+    r"|(?:(?<![女男])|(?<=[妇男]女))(?<!像)(?<!像个)孩子(?!气(?![喘息急]))(?!一样|般|似)"
+    r"|(?<![猫狗犬熊鸟鸭鹅鸡兔龙马猴虎狮鹿羊猪牛象豹狼狐鼠称])(?<!称[她他你为呼])宝宝"
+    r"|(?<![一二三四五六七八九十百千万两几零〇])(?:[一二三四五六七八九两几][一二三四五六七八九]?|十(?:[一二三四五六七几][一二三四五六七八]?)?)\s*周?岁"
+    r"|(?<![0-9])(?:1[0-7]|[0-9])\s*(?:[-~～至到]\s*1?[0-9]\s*)?周?岁"
+    r"|(?<![a-z0-9_])(?:kids?(?![-\s]+(?:leather|gloves?|suede|skin))|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|newborns?|"
+    r"schoolchild(?:ren)?|school(?:girl|boy|kid)s?|pre-?teens?|tweens?|"
+    r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)[-\s]+years?[-\s]+old|"
+    r"(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[-\s]+graders?|"
+    r"bab(?:y|ies)(?![-\s]*(?:blue|pink|face|faced|oil|powder|doll|breath|shower|dragons?|animals?|birds?|cats?|dogs?|pandas?|bears?|"
+    r"elephants?|fox(?:es)?|owls?|turtles?|dinosaurs?|monsters?|seals?|goats?|rabbits?|bunn(?:y|ies)|chicks?|ducks?|lions?|tigers?|"
+    r"wol(?:f|ves)|deer|horses?|sharks?|grand|steps?|carrots?|teeth))|kindergart(?:en|ner)s?|"
+    r"pre-?school(?:ers?)?|(?:elementary|primary|grade|middle|high)[-\s]*school(?:ers?|[-\s]+(?:students?|pupils?|kids?)))(?![a-z0-9_])",
+    flags=re.I,
+)
+
+
+def minimax_h3_young_clue(text: str, affirmative: bool = False) -> bool:
+    """An explicit child word in the text (full-width digits read as digits: １２岁); affirmative skips a negated one."""
+    text = unicodedata.normalize("NFKC", str(text or ""))
+    return bool(minimax_h3_affirmative_pattern_matches(text, MINIMAX_H3_YOUNG_CLUE_PATTERN) if affirmative
+                else MINIMAX_H3_YOUNG_CLUE_PATTERN.search(text))
+
+
 MINIMAX_H3_SENSITIVE_REQUEST_NEGATION_PATTERN = re.compile(
     r"(?:不|不要|不得|禁止|避免|排除|不含|没有|无|勿|请勿|负面|负向|反向)"
     r"\s*[^，。；;,.!?！？]{0,12}$"
@@ -1394,17 +1425,17 @@ def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt
 # green-screen rules hijack ordinary actions on the local model. The writer
 # answers in labelled beats; the program assembles the official fields.
 MINIMAX_H3_WRITER_RULES = (
-    "你是 MiniMax H3 视频提示词优化助手，把用户的视频想法改写成清楚、能直接用来生成视频的中文提示词。\n"
-    "1. 保留用户写明的主体、动作、场景和每一条明确要求，不删除、不替换，也不改成别的动作。\n"
-    "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，节奏快慢，怎样开始、怎样结束；动作要真正做出来，不只写准备或摆好姿势。幅度照视频描述写：“轻轻”就小幅，“缓缓”就缓慢，“大幅”“舒展”就充分伸展，没写幅度就不写。\n"
+    "你是 MiniMax H3 视频提示词优化助手，把用户的视频想法改写成清楚、生动、能直接用来生成视频的中文提示词。\n"
+    "1. 用户的框架不变：用户写明的主体、每个动作和它的快慢、方向、情绪、先后顺序、主体之间的关系、场景和每一条明确要求都保留，不删除、不替换，也不改成别的动作或别的故事。\n"
+    "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，节奏快慢，怎样开始、怎样结束；每一步从上一步结束时的样子接着写（位置、姿态、手里拿着什么、看向哪里），写清怎样过渡到下一步；动作要真正做出来，不只写准备或摆好姿势，做完后不再写成仍保持原来的姿势。幅度照视频描述写：“轻轻”就小幅，“缓缓”就缓慢，“大幅”“舒展”就充分伸展，没写幅度就不写。\n"
     "3. 用“缓慢”“迅速”“小幅”“大幅”这类看得见的说法，不写厘米、角度、速度、频率等数字，阶段内容里也不写秒数。\n"
     "4. 写清镜头怎样拍：固定、跟随、推近、拉远或环绕，选最适合这个动作的一种，全程只用这一种；用户指定了镜头就按用户的写。\n"
-    "5. 画面内容里不添加用户没有提到的台词、声音、音乐、特效、服装、光线色调或新场景（听得到的声音只写在“声音”一行）；可以细化用户写到的场景，但不要换成别的场景。用户写到的特效保持原来的样子和程度。\n"
-    "6. 人物称呼照用户的原词写（女孩就写女孩，不改成女子或少女）；不写“成年”“未成年”，也不写年龄。\n"
+    "5. 在用户的框架里发挥创意，让画面更丰富、更有电影感：可以补充表情和情绪、随动作的细节（毛发、衣角、尾巴轻轻摆动）、合适的道具和场景陈设、环境氛围和光线、动作发出的声音；补充的内容要服务用户的想法，符合常识和身体结构，不与用户的话和图矛盾，不加新的台词。用户写到的特效保持原来的样子和程度。\n"
+    "6. 人物称呼照用户的原词写（女孩就写女孩，不改成女子或少女）；用户只写了“她”“他”或没写称呼时，写女子、男子或人物，不写女孩、男孩、少女、少年；不写“成年”“未成年”，也不写年龄。\n"
     "7. 用户写的动作词原样写出来（挥手就写挥手，鞠躬就写鞠躬），再写它看得见的过程，按用户写的先后顺序；不加用户没写的准备动作（如起跳或趴下前身体后仰）；"
     "用户没写左右就不写左右，举手、挥手用空着的那只手，拿着的东西留在原来的手里。\n"
     "8. 景别（特写拍脸或手等局部，近景拍头部和肩膀，中景拍到腰部，全景拍全身，远景拍人物所在的大环境）：用户写了就照用户的词写；有图时开场的景别由图决定，不另写；某个景别里只写这个景别看得见的主体和动作。\n"
-    "9. 只输出规定的标签和内容，不写标题、解释或备注。"
+    "9. 每句写清是谁在做什么（不用“这只手”“它”这样说不清是谁的指代）；只写看得见、听得见的内容，不写“全程不变”“动作未完成”这类说明；只输出规定的标签和内容，不写标题、解释或备注。"
 )
 
 
@@ -1520,8 +1551,10 @@ def minimax_h3_request_is_sensitive(text: str) -> bool:
 def minimax_h3_block_sensitive_minor(request_text: str, output_text: str = "", minor: bool = False, sensitive: bool = False) -> None:
     """The local reverse's rule for 优化提示词: explicit minor evidence (the user's
     words, the model's own text or its frame check) together with sensitive
-    content (the user's words or the frame check) fails with the reverse's error."""
-    request_young = minimax_h3_contains_affirmative_young(request_text)
+    content (the user's words or the frame check) fails with the reverse's error.
+    Every explicit child word the user writes (小女孩, 女童, 小学生, a little girl…) is minor evidence; in the
+    model's text only the unequivocal words are, and a look answers for the rest."""
+    request_young = minimax_h3_contains_affirmative_young(request_text) or minimax_h3_young_clue(request_text, affirmative=True)
     request_sensitive = bool(minimax_h3_authorized_request_sensitive_categories(request_text)
                              or minimax_h3_authorized_request_sensitive_facts(request_text))
     if (sensitive or request_sensitive) and (request_young or minor or minimax_h3_contains_affirmative_young(output_text)):
@@ -1530,8 +1563,10 @@ def minimax_h3_block_sensitive_minor(request_text: str, output_text: str = "", m
                                   diagnostics={"errorCode": code, "generationGate": "blocked"})
 
 
-# The writer's picture lines; its 声音 line may add sounds nobody asked for (孩童嬉闹声).
-MINIMAX_H3_PICTURE_LINE = re.compile(r"(?m)^[ \t>#*\-•]*(?:概述|起始|递进|收束|镜头[1-9]\d*)[^\n]*")
+def minimax_h3_pictured(output: str) -> str:
+    """What the writer puts on screen: its whole answer (【概述】, a label on its own line, numbered labels, 约束) minus
+    the 声音 line, which may add sounds nobody asked for (孩童嬉闹声). The check line is removed before."""
+    return re.sub(H3_SOUND_LINE, "", str(output or "")).strip()
 
 
 def minimax_h3_frames_nearly_same(frames) -> bool:
@@ -1570,9 +1605,12 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
     style = (("先用几个字写图中的画风（如写实照片、动漫插画、三维渲染），" if sees_frames else "")
              if mode in ("I2VA", "FL2VA") else "先用几个字写画风（视频描述写了就照写，没写就写写实电影风格），")
     # The picture sets the opening framing: a size the writer names for it ("中景" for a full-body picture) contradicts it.
-    overview_hint = style + "再用一两句通顺的话点明开场画面里的主体和场景，再写镜头怎样拍（镜头全程只选一种），不细写外观，不写动作过程"
-    # Only a held thing the picture or the user's words show; a bare "手里的东西" invents one.
-    ending_hint = "动作怎样收尾，最后停在动作完成后的样子，" + ("图中" if mode == "I2VA" and sees_frames else "描述里") + "拿着的东西继续拿着"
+    overview_hint = style + "再用一两句通顺的话点明开场画面里的主体、场景和光线，再写镜头怎样拍（镜头全程只选一种），不细写外观，不写动作过程"
+    # Only a held thing the picture or the user's words show; a bare "手里的东西" invents one. A thing the user puts
+    # down or takes off is not held at the end ("背包从肩上卸下" ended "背包靠在她左肩").
+    released = re.search(r"放下|放回|放在|放到|卸下|摘下|脱下|取下|扔|丢|递给|交给", source + user_requirement)
+    ending_hint = ("动作怎样收尾，最后停在动作完成后的样子，" + ("" if released else ("图中" if mode == "I2VA" and sees_frames else "描述里") + "拿着的东西继续拿着，")
+                   + "写清最后的位置、姿态和神情")
     appearance = (
         "外观、服装和背景都以图为准，不要重新描述，也不要改变。" if sees_frames else
         "你看不到这张图，不要猜测或描述图中的外观、服装和背景，只写动作和镜头。"
@@ -1596,7 +1634,8 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
             if sees_frames else
             f"任务：首尾帧视频，时长{seconds}秒。<Picture 1> 是第一帧，<Picture 2> 是第{seconds}秒的最后一帧，写出从第一帧连续过渡到最后一帧的过程。"
         ) + appearance.replace("这张图", "这两张图")
-        overview_hint = style + "再用一两句写画面里每个人物和动物的姿态和所在位置（坐着还是站着、手里拿着什么；视频描述写了位置就用原词）和镜头怎样拍，不写服装和长相"
+        overview_hint = (style + "再用一两句写画面里每个人物和动物的姿态和所在位置（坐着还是站着、手里拿着什么；视频描述写了位置就用原词），"
+                         "用一句话写图中的场景和光线（如夕阳斜照在神殿台阶上），再写镜头怎样拍，不写服装和长相")
         ending_hint = (
             "动作怎样平稳完成，最后的画面与 <Picture 2> 一致" if same_frames and sees_frames else
             "动作怎样平稳完成，姿态、位置和光效变成 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致"
@@ -1606,7 +1645,8 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
         if media_tokens:
             task += "本次参考媒体：" + "、".join(media_tokens) + "，保持各自原来的作用。"
         # The overview is the opening picture; the actions belong to the beats (told once).
-        overview_hint = style + "再用一两句写开场画面：用视频描述里的原词写主体是谁、在什么场景、在画面中的位置和景别（全景、中景或近景），不写动作过程，再写镜头怎样拍（镜头全程只选一种）"
+        overview_hint = (style + "再用一两句写开场画面：用视频描述里的原词写主体是谁、在什么场景、在画面中的位置和景别（全景、中景或近景），"
+                         "可以补充合适的场景陈设、时间和光线，不写动作过程，再写镜头怎样拍（镜头全程只选一种）")
     asked = h3_requested_rules(source + "\n" + user_requirement)
     if "loop" in asked and mode != "FL2VA":
         ending_hint = "动作怎样平滑回到起始姿态，首尾衔接"
@@ -1627,7 +1667,9 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
     points = minimax_h3_writer_points(source, user_requirement)
     if points:
         # "跳下窗台" came back as a jump that lands on the windowsill: the words carry the direction.
-        lines += ["", "下面每一条都要写进起始、递进或收束：先原样写出这一条的动作词，再写它看得见的过程和方向、去向，不能只写在概述里："] + ["- " + point for point in points]
+        # One set of beats for all of them: the writer gave each point its own 起始/递进/收束 and repeated itself.
+        lines += ["", "下面每一条都要写进同一组起始、递进、收束里（同时发生的写在同一句里，不给每一条单独分组）：先原样写出这一条的动作词，"
+                  "再写它看得见的过程和方向、去向，不能只写在概述里："] + ["- " + point for point in points]
     # "跳上桌子后回头看镜头" came back with the head turning before, during and after the jump.
     order = h3_action_order(user_requirement or source)
     if len(order) >= 2:
@@ -1638,6 +1680,13 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
     if sees_frames and lying and not re.search(r"[跳跃蹦跑走爬攀扑冲]", (source + user_requirement)[:lying.start()]):
         # "前爪先轻轻触地" for a cat whose front paws were already down; after a jump it lies down from where it landed.
         lines += ["", "趴下或躺下从图中的姿态开始，写清身体先动哪里（坐着的动物是前爪向前滑出，身体随之放低）。"]
+    if re.search(r"伸懒腰", source + user_requirement) and re.search(r"猫|狗|犬|兔|狐|虎|豹|狮|马|鹿|熊|狼", source + user_requirement):
+        # "抬起前肢，身体向后拱起，头部后仰" is no stretch a four-legged animal makes.
+        lines += ["", "四足动物伸懒腰：前腿向前伸直，胸口压低，臀部抬高，再把重心移到前面伸展后腿。"]
+    jump = re.search(r"[跳跃蹦]下([㐀-鿿]{1,4}?)(?=[，,。；;！!？?\n]|然后|后|$)", source + "\n" + user_requirement)
+    if jump:
+        # "跳下窗台" ended "侧身站立于窗台边缘": the jump lands below.
+        lines += ["", f"“{jump[0]}”：原样写出“{jump[0]}”，写清落在{jump[1]}下方的什么地方（如地板上），最后停在{jump[1]}下面，不再回到{jump[1]}上。"]
     places = list(dict.fromkeys(h3_action_places(source + "\n" + user_requirement)))
     if places:
         # "跳上桌子" landed on a table the gray backdrop never had; <Picture 1> keeps its own opening composition.
@@ -1662,8 +1711,8 @@ def build_minimax_h3_writer_request(source, user_requirement, mode, duration, me
                   # The last frame is the video's last picture: the last shot ends in its framing.
                   + ("；最后一个镜头结尾要回到 <Picture 2> 的景别和构图：切到的景别比 <Picture 2> 近时，在这一行里写镜头最后缓慢拉远到 <Picture 2> 的构图，不为此多加镜头" if mode == "FL2VA" else "")]
     # The soundscape field: what is heard on screen; speech and music have their own places.
-    lines.append("声音：用一两句完整的话写画面里听得到的环境声和动作声，写清是什么发出声音，不要只列名词（" + ("视频描述写到的声音要写进去；" if re.search(r"声", source + user_requirement) else "")
-                 + "不写说话、台词和音乐）")
+    lines.append("声音：用一两句完整的话写画面里听得到的环境声和动作声，写清是什么发出声音，不要只列名词（按动作的先后写它们的声音，再加一种符合场景的环境声；"
+                 + ("视频描述写到的声音要写进去；" if re.search(r"声", source + user_requirement) else "") + "不写说话、台词和音乐）")
     # Constraints are the user's own limits; the writer's "始终在窗台上" contradicts a jump down.
     lines.append("约束：只写用户写明要一直保持或禁止的内容，写成画面里看得见的样子，用 1. 2. 编号；没有就写 无")
     if frame_check:
@@ -14507,7 +14556,7 @@ class PromptAssistant:
         # base_mode (T2VA/I2VA/FL2VA): the three official fields instead of 多参's six.
         from prompt_assistant.h3_prompt_enhance import (DEFAULT_CAMERA_ZH, DEFAULT_CAMERA_EN, SHOT_MARK, CAMERA_GLOSSARY, CAMERA_SPEED, CAMERA_AMPLITUDE,
                                                         PROGRAM_SENTENCES, SHOT_SIZE_WORDING, pinyin_like,
-                                                        camera_english, camera_move_clause, camera_wording, translation_flips, reference_layout)
+                                                        camera_english, camera_move_clause, camera_wording, translation_flips, unflip, reference_layout)
         check = ((lambda text, language=None: validate_h3_base_fields(text, base_mode, duration, language)) if base_mode else
                  (lambda text, language=None: validate_h3_reference(text, inventory, duration)))
         # 多参: one line per shot, as the official guide lays it out; the English follows the display's lines.
@@ -14554,7 +14603,16 @@ class PromptAssistant:
         # A sentence may open with a tag or a Latin word ("<Subject 1> 走向…",
         # "3D渲染风格"); it belongs to the translated clause, not left outside.
         prose = re.compile(r'(?:(?:<(?:Subject|Picture|Video|Audio) [1-9]\d*>|LITERAL_\d+(?!\d)|[A-Za-z0-9]+(?![A-Za-z0-9]))[ \t]*)*[\u3400-\u9fff][^\n]*')
-        fragments = list(dict.fromkeys(m.group() for m in prose.finditer(masked_display)))
+        lines = list(dict.fromkeys(m.group() for m in prose.finditer(masked_display)))
+        # A long shot line (多参 runs to 350-500 words) is translated a few sentences at a time: a placeholder the
+        # translator drops then costs one short retry, not the whole shot again.
+        chunks_of = {}
+        for line in lines:
+            chunks = [""]
+            for sentence in re.findall(r'[^。！？]*[。！？]+|[^。！？]+$', line):
+                chunks[-1:] = [chunks[-1] + sentence] if not chunks[-1] or len(chunks[-1]) + len(sentence) <= 160 else [chunks[-1], sentence]
+            chunks_of[line] = [chunk for chunk in chunks if chunk]
+        fragments = list(dict.fromkeys(chunk for chunks in chunks_of.values() for chunk in chunks))
         protected_fragments = {}
         for fragment in fragments:
             tokens = []
@@ -14564,14 +14622,33 @@ class PromptAssistant:
             protected_fragments[fragment] = (protected.sub(protect, fragment), tokens)
         translated = {}
         raw_outputs = []
-        template = '<|im_start|>system\nYou are a Chinese to English translator. Translate text values into English. Return JSON, preserving keys, numbers and every TOKEN_N placeholder. Translate complete sentences without omitting edit verbs or constraints, and do not add or remove actions. Keep a TOKEN_N even when the words after it name the same thing: TOKEN_0 两只小鸟飞向 TOKEN_1 -> TOKEN_0, the two birds, fly toward TOKEN_1. Do not copy Chinese text. In ancient, mythological or martial scenes 枪 is a spear (出枪 = thrusts the spear), never a gun; 信子 of a snake is its forked tongue.' + (
+        # Fluent English in the official form: a word-for-word copy of the Chinese clause chains read as participle lists
+        # ("head slightly tilted back, mouth open"), leftover demonstratives ("This arm continues to raise") and
+        # "One can hear ..." sounds.
+        template = ('<|im_start|>system\nYou are a Chinese to English translator for video prompts. Translate text values into fluent, natural English. Return JSON, preserving keys, numbers and every TOKEN_N placeholder. Keep every action, object and detail in its order: do not add or remove actions, edit verbs or constraints. Keep a TOKEN_N even when the words after it name the same thing: TOKEN_0 两只小鸟飞向 TOKEN_1 -> TOKEN_0, the two birds, fly toward TOKEN_1. Do not copy Chinese text. In ancient, mythological or martial scenes 枪 is a spear (出枪 = thrusts the spear), never a gun; 信子 of a snake is its forked tongue; an animal that 蹭 someone rubs or nuzzles against them (猫蹭手 -> the cat nuzzles the hand), never hitchhikes.'
+            ' Write the English as a film prompt: present tense, complete sentences. Every Chinese clause with its own subject keeps its own finite verb; split a long chain of comma clauses into sentences, or join two clauses with and, as or while'
+            ' (头部后仰，嘴巴张大，眼睛眯起 -> Its head tilts back and its mouth opens wide as its eyes narrow. 权杖停在原位，光点稳定流转，尾巴停在半空 -> The staff stops in place, the light points flow steadily, and the tail comes to rest in mid-air.),'
+            ' never an -ing or -ed fragment such as "head tilted back", "the light points flowing" or "the tail frozen".'
+            ' Translate each action verb with its plain English verb, not a paraphrase (跳下窗台 or 跃下窗台 -> jumps down from the windowsill, 挥手 -> waves).'
+            ' Name who moves instead of this or that (这只手臂继续抬高 -> The raised arm keeps rising.). Sounds are sentences in which the thing that makes the sound acts'
+            ' (可以听到窗框轻响和猫爪落地声 -> The window frame creaks softly and the cat\'s paws land with a soft thud.), never "One can hear" or "can be heard". 第TOKEN_0秒 -> the TOKEN_0-second mark.'
+            ' A shot size opens its sentence as the camera\'s framing: 中景，两人从画面两侧走向中间 -> A medium shot frames the two walking in from both sides toward the center.' + (
             # The official H3 camera and style wording, and a direction phrase small models flip.
-            ' Use the official wording: 镜头固定, 镜头固定拍摄 or 固定镜头 -> the camera holds a static shot; 镜头缓慢推近 -> the camera pushes in at slow speed; '
-            '镜头缓慢拉远 -> the camera pulls out at slow speed; 镜头跟随 -> the camera follows in a tracking shot; 写实电影风格 -> Live-action, cinematic; '
-            '三维渲染 -> 3D CG; 动漫插画 or 二维动画 -> 2D-animated. Keep directions exact: 朝窗台下方坠落 -> drops toward the area below the windowsill. '
-            'A speaker says the line: 机器人 TOKEN_0 用温和的声音说：TOKEN_1 -> the robot TOKEN_0 says in a gentle voice: TOKEN_1. '
-            'A hand that 挥动 or 挥手 waves (这只手轻轻挥动 -> the hand waves gently).'
-            if base_mode else '') + (' Shot sizes: ' + SHOT_SIZE_WORDING + '. Write grammatical English sentences: the possessive \'s (女神的眼睛闭着 -> the goddess\'s eyes are closed), '
+            ' Use the official wording: 镜头固定, 镜头固定拍摄 or 固定镜头 -> the camera holds a static shot | 镜头缓慢推近 -> the camera pushes in at slow speed | '
+            '镜头缓慢拉远 -> the camera pulls out at slow speed | 镜头跟随 -> the camera follows in a tracking shot | 写实电影风格 -> Live-action, cinematic | '
+            '三维渲染 -> 3D CG | 动漫插画 or 二维动画 -> 2D-animated. The opening sentence gives the style, then the shot size and the subject, joined by commas: '
+            '写实电影风格，全景，一只橘猫坐在窗台上 -> Live-action, cinematic, a full shot frames an orange cat sitting on the windowsill. TOKEN_0 中的女神 -> the goddess shown in TOKEN_0. '
+            'Keep directions exact: 朝窗台下方坠落 -> drops toward the area below the windowsill. '
+            'The voice goes with the speaker before the ID: 声音温和的机器人 TOKEN_0 说：TOKEN_1 -> the robot with a gentle voice TOKEN_0 says: TOKEN_1. '
+            'A hand that 挥动 or 挥手 waves (手轻轻挥动 -> the hand waves gently); what a hand holds is what turns (一只手持权杖轻轻转动 -> she turns the staff gently in one hand).'
+            if base_mode else
+            # 多参: the official style opening and "<Subject 1> is the young woman in <Picture 1>, with ..." definitions.
+            ' 视频采用3D渲染风格 -> The target video is in a 3D CG style. A subject definition is one noun phrase of what is visible:'
+            ' TOKEN_0 中的男性角色，黑色短发，金色铠甲 -> the male character in TOKEN_0, with short black hair and golden armor.'
+            # "<Subject 3> (S1), the young woman with long blonde hair …, sits on the sofa" (official ref §5.3).
+            ' A description after a tag stays with it: TOKEN_0，一位黑色短发、身穿金色铠甲的男性角色，站在画面左侧 -> TOKEN_0, a male character with'
+            ' short black hair and golden armor, stands on the left side of the frame.')
+            + ' Shot sizes: ' + SHOT_SIZE_WORDING + '. Write grammatical English sentences: the possessive \'s (女神的眼睛闭着 -> the goddess\'s eyes are closed), '
             'and a limb that moves by itself rises or lifts (右臂抬起 -> the right arm rises).<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n')
 
         def patch_leftover(key, candidate):
@@ -14605,6 +14682,10 @@ class PromptAssistant:
             batch = {str(i): fragment for i, fragment in enumerate(fragments[offset:offset+8])}
             pending = dict(batch)
             leftovers = {}
+            # A complete translation that only turned a meaning around is kept in case every retry drops a placeholder
+            # ("TOKEN_0 走向 TOKEN_1" asked alone came back as "The character walks toward the other"); it is used turned
+            # back ("to the left" for 向右 -> "to the right"), never reversed.
+            flipped = {}
             # A speed or direction the translation turned around is asked again with its meaning.
             hints = set()
             # Greedy decoding repeats the same leftover Chinese phrase on retry
@@ -14616,11 +14697,12 @@ class PromptAssistant:
                 camera_words = {m.group(): english for value in pending.values() for clause in re.split(r'[，,。；;]', protected_fragments[value][0])
                                 if camera_move_clause(clause) for english, word in CAMERA_GLOSSARY + CAMERA_SPEED + CAMERA_AMPLITUDE
                                 for m in re.finditer(word, clause) if m.group() != '手持'}
-                request = ('Translate each Chinese text value to English. Example: {"0":"金币旋转，背景不变。"} -> {"0":"The gold coin rotates; the background remains unchanged."}\n'
+                request = ('Translate each Chinese text value to English. Example: {"0":"橘猫打了个哈欠，头部后仰，随后慢慢趴下，背景不变。"} -> {"0":"The orange cat yawns and tilts its head back, then slowly lies down while the background remains unchanged."}\n'
                            + ('Camera words: ' + '; '.join(f'{zh} -> {en}' for zh, en in camera_words.items()) + '.\n' if camera_words else '')
                            + ('Keep these meanings exact: ' + '; '.join(sorted(hints)) + '.\n' if hints else '')
                            + 'Input JSON:\n' + json.dumps({key: protected_fragments[value][0] for key, value in pending.items()}, ensure_ascii=False))
-                raw = self.generate(request, llama_template=template, max_length=1500, seed=attempt+1, temperature=0.3 if attempt == 2 else 0.0, do_sample=attempt == 2, trace_label='minimaxH3ReferenceTranslate')
+                # 多参's detailed shots run to 350-500 English words; the batch has room for them.
+                raw = self.generate(request, llama_template=template, max_length=2200, seed=attempt+1, temperature=0.3 if attempt == 2 else 0.0, do_sample=attempt == 2, trace_label='minimaxH3ReferenceTranslate')
                 raw_outputs.append(raw)
                 try:
                     values = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))
@@ -14645,9 +14727,13 @@ class PromptAssistant:
                         unglued = re.sub(r'(?<=[A-Za-z])TOKEN_\d+', '', candidate)
                         # "TOKEN_0 三个石板缓缓升空" comes back as "The three stone
                         # slabs rise": the opening tag folds into its noun. Put it back.
-                        lead = re.match(r'TOKEN_\d+', original)
-                        if lead and sorted(re.findall(r'TOKEN_\d+', lead[0] + ' ' + unglued)) == expected_tokens:
-                            unglued = lead[0] + ' ' + unglued.strip()
+                        lead = re.match(r'TOKEN_\d+(?:\s*(?:与|和|、|及|跟)\s*TOKEN_\d+)*', original)
+                        names = re.findall(r'TOKEN_\d+', lead[0]) if lead else []
+                        pair = ', '.join(names[:-1]) + ' and ' + names[-1] if len(names) > 1 else ''.join(names)
+                        rest = unglued.strip() if len(names) < 2 else re.sub(
+                            r'^(?:The two|Both|They|The pair)\b(?:\s+(?:of them|figures|characters|men|women|warriors|subjects))?\s*', '', unglued.strip())
+                        if names and sorted(re.findall(r'TOKEN_\d+', pair + ' ' + rest)) == expected_tokens:
+                            unglued = pair + ' ' + rest
                         if sorted(re.findall(r'TOKEN_\d+', unglued)) != expected_tokens:
                             continue
                         candidate = unglued
@@ -14667,10 +14753,15 @@ class PromptAssistant:
                     # bindings/literals here, not a preferred English phrase.
                     # Speed and direction words are the exception: "缓慢加快" became "slows down".
                     candidate = camera_wording(original, candidate)
+                    # 近景 is the official medium close-up; a bare "close-up" is 特写.
+                    if '近景' in original and '特写' not in original:
+                        candidate = re.sub(r'(?<![Mm]edium )(?<![Mm]edium-)\b([Cc])lose-?up\b', lambda m: ('M' if m[1] == 'C' else 'm') + 'edium close-up', candidate)
                     flips = translation_flips(original, candidate)
                     if flips and attempt < 2:
                         hints.update(flips)
+                        flipped.setdefault(key, candidate)
                         continue
+                    # The last, sampled answer ships as it came: a flag can misread a right translation.
                     translated[source_text] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], candidate.strip())
                     del pending[key]
                 # An English translation with a short Chinese phrase left in it
@@ -14684,9 +14775,41 @@ class PromptAssistant:
             for key in list(pending):
                 if key in leftovers:
                     patch_leftover(key, leftovers[key])
+                elif key in flipped and unflip(protected_fragments[pending[key]][0], flipped[key]):
+                    original, tokens = protected_fragments[pending[key]]
+                    translated[pending.pop(key)] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], unflip(original, flipped[key]).strip())
+            if pending:
+                # Every attempt dropped a tag ("TOKEN_0 走向 TOKEN_1" came back as "The character walks toward the other"):
+                # the tags are asked once more as names a translator keeps, then put back, instead of failing the plan.
+                names = ('Aren', 'Bela', 'Cato', 'Dara', 'Enzo', 'Fira', 'Gael', 'Hana')
+                tagged = {key: list(dict.fromkeys(t for t in protected_fragments[value][1] if re.match(r'<(?:Subject|Picture|Video|Audio) ', t)))
+                          for key, value in pending.items()}
+                named = {key: re.sub(r'TOKEN_(\d+)', lambda m, key=key, value=value: names[tagged[key].index(protected_fragments[value][1][int(m[1])])]
+                                     if protected_fragments[value][1][int(m[1])] in tagged[key] else m[0], protected_fragments[value][0])
+                         for key, value in pending.items() if 0 < len(tagged[key]) <= len(names)}
+                raw = self.generate('Translate each Chinese text value to English. Keep every name and TOKEN_N.\nInput JSON:\n' + json.dumps(named, ensure_ascii=False),
+                                    llama_template=template, max_length=2200, trace_label='minimaxH3ReferenceTranslate') if named else ''
+                raw_outputs.append(raw)
+                try:
+                    values = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))
+                except (ValueError, TypeError):
+                    values = {}
+                for key in named:
+                    candidate, (original, tokens) = (values.get(key) if isinstance(values, dict) else None), protected_fragments[pending[key]]
+                    others = sorted(t for t in re.findall(r'TOKEN_\d+', original) if tokens[int(t[6:])] not in tagged[key])
+                    if (not isinstance(candidate, str) or re.search(r'[㐀-鿿]', candidate) or sorted(re.findall(r'TOKEN_\d+', candidate)) != others
+                            or not all(re.search(rf'\b{names[n]}\b', candidate) for n in range(len(tagged[key])))):
+                        continue
+                    # A reversal is turned back as in the fallback above, or the chunk is not used.
+                    candidate = unflip(original, candidate) if translation_flips(original, candidate) else candidate
+                    if not candidate:
+                        continue
+                    for n, tag in enumerate(tagged[key]):
+                        candidate = re.sub(rf'\b{names[n]}\b', tag, candidate)
+                    translated[pending.pop(key)] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], camera_wording(original, candidate).strip())
             if pending:
                 raise ValueError('H3 本地翻译未完整保留内容，正在保留原提示词')
-        model_prompt = prose.sub(lambda m: translated[m.group()], masked_display)
+        model_prompt = prose.sub(lambda m: ' '.join(translated[chunk].strip() for chunk in chunks_of[m.group()]), masked_display)
         # A program sentence follows the one before it after a space and ends with its own full stop
         # (a line with nothing else to translate keeps the Chinese one).
         model_prompt = re.sub(r'(\S)?LITERAL_(\d+)(。)?', lambda m: (m[1] or '') + (' ' if m[1] and int(m[2]) in program else '') + literals[int(m[2])]
@@ -14700,11 +14823,18 @@ class PromptAssistant:
         # "[Shot 2] At 00:03.000, the camera cuts to …" as in the official guide.
         model_prompt = re.sub(r'\x02(\d+)\x03[ \t]*(?:(The|A|An|Cut|Cuts|Camera|Close|Then|Finally|Meanwhile|At)\b)?', lambda m: shot_marks[int(m[1])] + (
             ', ' + (m[2] or '').lower() if ' At ' in shot_marks[int(m[1])] else ' ' + (m[2] or '')), model_prompt)
+        # Ordinals, the style opening, "the camera cuts to" and noun-phrase definitions in the official form.
+        from prompt_assistant.h3_prompt_enhance import official_english
+        model_prompt = official_english(model_prompt, opening_style=bool(base_mode))
         # The compiler's default locked-camera clause must survive translation
         # in a form the renderer's camera check recognizes.
         if DEFAULT_CAMERA_ZH in display and not re.search(r'\bcamera\b[^.\n]{0,100}\b(?:remains|stays|static|locked|unchanged|holds)\b', model_prompt, re.I):
             field = 'integrated_multimodal_description' if base_mode else 'detailed_description'
             model_prompt = re.sub(r'(?ms)^(' + field + r':\s.*?)(?=\n\noverall_soundscape:)', lambda m: m.group(1).rstrip() + ' ' + DEFAULT_CAMERA_EN, model_prompt, count=1)
+        if not base_mode:
+            # A man is "he" in every chunk the translator wrote ("<Subject 2> turns her body, her beard trembling").
+            from prompt_assistant.h3_prompt_enhance import subject_pronouns
+            model_prompt = subject_pronouns(model_prompt, display)
         # "<d>[Chinese] 你好。</d>." — the line already ends its sentence.
         model_prompt = check(re.sub(r'([。！？.!?…]</d>)\.', r'\1', model_prompt), 'en')
         if not base_mode:
@@ -14843,6 +14973,8 @@ class PromptAssistant:
         # A subject taken from one picture looks exactly as that picture was
         # observed; the planner's own wording of it may drift into the event.
         plan = dict(plan, references=[dict(item) for item in plan.get('references', []) if isinstance(item, dict)])
+        # "参考 <Picture 2> 的中国传统水墨画风格": the label and 参考/借用 are no subject before the style word.
+        style_only = lambda item: bool(re.match(r'[^，,。；;]{0,16}(?:画风|风格)', re.sub(r'<Picture [1-9]\d*>|参考|借用|采用|沿用|使用|\s', '', str(item.get('description', '')))))
         picture_subject = {}
         for item in plan['references']:
             sources = item.get('sources') or []
@@ -14850,7 +14982,9 @@ class PromptAssistant:
                 continue
             # A style-only subject keeps its style wording; the observation
             # would bring the picture's character back into the shot.
-            if len(sources) == 1 and observed.get(sources[0]) and not re.search(r'画风|风格', str(item.get('description', ''))):
+            if len(sources) == 1 and observed.get(sources[0]) and not style_only(item):
+                if str(item.get('keep', '')).strip() == str(item.get('description', '')).strip():
+                    item['keep'] = observed[sources[0]]
                 item['description'] = observed[sources[0]]
             for picture in sources:
                 picture_subject.setdefault(picture, item['label'])
@@ -14873,7 +15007,7 @@ class PromptAssistant:
         clothes = r'衣|衫|袖|裤|裙|袍|甲|铠|褂|服|西装|套装|外套|披风|斗篷|夹克|T恤|背心'
         for item in subjects:
             sources = item.get('sources') or []
-            if (sources and all(p in attribute_pictures for p in sources)) or re.search(r'画风|风格', str(item.get('description', ''))):
+            if (sources and all(p in attribute_pictures for p in sources)) or style_only(item):
                 attribute_only.add(item['label'])
                 item['relation'] = 'attribute_transfer'
                 words = list(dict.fromkeys(w for p in sources for w in attribute_pictures.get(p, [])))
@@ -15035,22 +15169,25 @@ class PromptAssistant:
             + f'\n用户要求：{request_text}\n补充要求：{user_requirement.strip() or "无"}\n'
             + (f'已确定事件：{planned}\n' if planned else '')
             + '请写这段视频的画面。严格按下面格式输出，每项一行，冒号后直接写内容，不输出其他文字：\n'
-            + ('事件：把“已确定事件”写成一句话，保持它的先后顺序，上面列出的主体用 <Subject N> 标签指代；用户没说的结果（如命中、躲开、格挡）不写\n' if planned else
+            + ('事件：把“已确定事件”写成一句话，保持它的先后顺序，上面列出的主体用 <Subject N> 标签指代；用户没说的冲突和结果（如对峙、交手、命中、躲开、格挡）不写\n' if planned else
                '事件：一句话概括谁做什么、另一方如何反应、最后如何结束，用 <Subject N> 标签；物品不会自己移动、旋转或变化，补充要求没有写明用法时，只写角色看见它、走过去拾起并端详，最后可以把它放下\n')
             + '画风：用户指定的画风；没有指定就用 <Subject 1> 的原图画风\n'
-            '场景：用户要求或点名的场景；没有就用 <Subject 1> 的原背景；用户要求的天气或环境与原背景冲突时（如下雨与室内），以用户要求为准，改成相符的地点；只写地点和环境，不写动作；所有主体都在这一个场景里\n'
-            '光线：这个场景的光线，一句话（如午后阳光从侧面照来、室内柔和的顶光）；用户写了时间或光线就照用户的写\n'
-            '动作1：\n动作2：\n动作3：\n'
-            '（动作写 2 到 4 条，按时间顺序，并与“事件”一致：谁向哪里移动或做什么、另一方如何反应，最后一条写结束状态；每条动作都以 <Subject 1>、<Subject 2> 这样的标签开头，不用“女子”“机器人”等称呼代替标签；只写现实中合理、可见的动作，不写悬浮、融化、发光等用户没要求的特效；用户要求静止时才写静止；只提供服装等属性的主体写成“穿着 <Subject N> 的盔甲”这样的用法，不让它自己行动；不把其他图原背景里的物件带进场景）\n'
+            '场景：用户要求或点名的场景；没有就用 <Subject 1> 的原背景；用户要求的天气或环境与原背景冲突时（如下雨与室内），以用户要求为准，改成相符的地点；只写地点和环境（地面、背景和周围的陈设），不写动作；所有主体都在这一个场景里\n'
+            '光线：这个场景的光线，一句话，写光从哪里来、软硬和颜色（如午后阳光从侧面照来、室内柔和的顶光）；用户写了时间或光线就照用户的写\n'
+            '景别：动作1 开始前的景别和构图，一句话（如全景，两人分别站在画面左右两侧），站法与“事件”的开头一致（事件从面对面开始就写面对面）\n'
+            '站位：动作1 开始前每个主体在画面中的位置、朝向和姿态，朝着另一个主体时写“面向 <Subject N>”；只写站着或坐着、手里的东西怎样拿，不写动作和外观；每个主体一句，以 <Subject N> 开头，用“；”分隔\n'
+            '动作1：\n动作2：\n动作3：\n动作4：\n动作5：\n'
+            '（动作写 4 到 5 条，按时间顺序，并与“事件”一致，每条写两句：先写这一步谁做什么，再写它带来的变化，每条写一个新的进展，不重复前面写过的细节：谁朝哪里移动或做什么、怎样做（快慢、方向、手里的东西怎样拿）、另一方如何反应，可以写脸上的神情和衣摆、头发随动作的变化；脚步、甲片、兵器这些发出声音的动作顺带写出声音；只写看得见、说得通的细节，不加用户没说的冲突（如对峙、交手）；'
+            '每一条从上一条结束时的位置和朝向接着写，朝向变了要写出转身；手里拿着东西的主体做需要双手的动作时，写清拿着的东西怎样处理，拿着兵器靠近或行礼时兵器竖在身侧，不指向对方；最后一条写结束状态；每条动作都以 <Subject 1>、<Subject 2> 这样的标签开头，不用“女子”“机器人”等称呼代替标签；只写现实中合理、可见的动作，不写悬浮、融化、发光等用户没要求的特效；用户要求静止时才写静止；只提供服装等属性的主体写成“穿着 <Subject N> 的盔甲”这样的用法，不让它自己行动；不把其他图原背景里的物件带进场景）\n'
             '示例：两个角色相遇 → <Subject 1> 沿路走来；<Subject 2> 转身迎上去；两人面对面停下，<Subject 1> 挥手打招呼。没有文字要求、一个角色一个物品 → <Subject 1> 看见 <Subject 2>，走过去弯腰把它拾起，举到面前端详。示例只说明写法，内容按本次主体和要求来写。\n'
             + '镜头：只选一种运动（固定、推近、拉远、摇或跟随），写明方向；速度只写缓慢或快速\n'
-            + ('镜头2（第X秒）：用户要求切换镜头：动作和镜头只写切换前的第一个镜头；切换后的画面写在这里：先写切到什么景别或场景，再写 <Subject N> 在这个镜头里接着做什么、怎样完成，内容里不写秒数。'
+            + ('镜头2（第X秒）：用户要求切换镜头：动作和镜头只写切换前的第一个镜头；切换后的画面写在这里：先写切到什么景别或场景、画面里谁在哪里、镜头怎样拍，再写 <Subject N> 在这个镜头里接着做什么、怎样完成、神情和发出的声音，内容里不写秒数。'
                '要几个镜头就按顺序写几行（镜头2、镜头3），X 写用户说的切换秒数，没说就不写\n' if cut else '')
             + '声音：画面里具体听得到的声音（如脚步声、甲片碰撞声、风声），用户要求安静或无声时才写 无\n'
             '配乐：用户要求配乐时写，否则写 无'
         )
         template = '<|im_start|>system\n你是短视频分镜编剧，只按要求的格式输出简体中文。<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n'
-        output = self.generate(prompt, images=[], max_length=600, trace_label='minimaxH3ReferenceScene', llama_template=template)
+        output = self.generate(prompt, images=[], max_length=1000, trace_label='minimaxH3ReferenceScene', llama_template=template)
         # The user's own actions (抱拳行礼, 面对面), in the user's order: an answer without them is asked once more and
         # kept only when the retry has them; the renderer's reverse placeholder and hint are no user actions.
         from prompt_assistant.h3_prompt_enhance import action_gap
@@ -15059,15 +15196,17 @@ class PromptAssistant:
         gap_of = lambda text: action_gap(asked, lines_of(text, r'事件|动作|镜头\s*[2-9]'), lines_of(text, r'动作|镜头\s*[2-9]'), where='动作')
         gap = gap_of(output)
         if gap:
-            retry = self.generate(prompt + f'\n\n上次的回答有问题：{gap}。请按上面的格式重新完整输出。', images=[], max_length=600,
+            retry = self.generate(prompt + f'\n\n上次的回答有问题：{gap}。请按上面的格式重新完整输出。', images=[], max_length=1000,
                                   trace_label='minimaxH3ReferenceSceneRepair', llama_template=template)
             output = retry if not gap_of(retry) else output
         fields, actions, shots = {}, [], []
+        labels = r'(?:事件|画风|场景|光线|景别|站位|动作\s*\d*|镜头(?:\s*[2-9][^:：\n]{0,16})?|声音|配乐)\s*[:：]'
+        output = re.sub(r'(?m)^(\s*' + labels + r')[ \t]*\n\s*(?!\s*' + labels + r')(?=\S)', r'\1', output)
         for line in output.replace('�', '').splitlines():
-            match = re.match(r'^\s*(事件|画风|场景|光线|动作\s*\d*|镜头(?:\s*[2-9]\s*(?:[（(][^）)\n]{0,16}[）)])?)?|声音|配乐)\s*[:：]\s*(.+?)\s*$', line)
+            match = re.match(r'^\s*(事件|画风|场景|光线|景别|站位|动作\s*\d*|镜头(?:\s*[2-9]\s*(?:[（(][^）)\n]{0,16}[）)])?)?|声音|配乐)\s*[:：]\s*(.+?)\s*$', line)
             if not match:
                 continue
-            value = spaced(re.sub(r'<主体\s*([1-9]\d*)>', r'<Subject \1>', match.group(2)))
+            value = spaced(re.sub(r'<主体\s*([1-9]\d*)>', r'<Subject \1>', match.group(2).rstrip('；;，, ')))
             # A picture label written for a place or style is that picture's subject.
             value = re.sub(r'<Picture [1-9]\d*>', lambda m: picture_subject.get(m.group(), m.group()), value)
             key = match.group(1).replace(' ', '')
@@ -15085,13 +15224,108 @@ class PromptAssistant:
         defined = {item['label'] for item in subjects}
         stray = lambda text: any(label not in defined for label in re.findall(r'<Subject [1-9]\d*>', text))
         actions = [action for action in (tidy(action) for action in actions if not stray(action)) if action]
-        shots = [(seconds, text) for seconds, text in ((seconds, tidy(text)) for seconds, text in shots if not stray(text)) if text]
+        # Notes about the action rather than the action ("动作结束，画面定格", "无声"), a conflict the user named none of
+        # (a standoff, a weapon raised or pointed at the other subject: "剑格龙头正对枪尖", "枪尖与剑尖齐齐抬起至胸前"),
+        # props and clothes no picture shows ("剑鞘" for a bare sword) and shadows under a light without any.
+        from prompt_assistant.h3_prompt_enhance import PHASE_NOTE, LEAD_LABELS, USER_FROZEN, cut_seconds, drop_clauses, requested_cut, drop_sides, face_the_approach, facing, written_turns
+        colours = r'[红橙黄绿青蓝紫黑白灰金银棕褐粉]'
+        # A garment by its family: the user's 黑袍 is the writer's 黑色长袍.
+        family = lambda word: '长?袍子?' if '袍' in word else '[铠战盔]?甲' if '甲' in word else '披风|斗篷'
+        worn = lambda word: [c for item in subjects for c in re.findall(colours + r'色?的?[^，,；;。]{0,2}(?:' + family(word) + ')', str(item.get('description', '')))]
+        # A colour the user asked for ("换上黑色长袍", "黑袍法师") is no recolouring.
+        recoloured = lambda clause: any(worn(m[2]) and m[1] not in ''.join(worn(m[2])) and not re.search(m[1] + r'色?的?[^，,。；;]{0,2}(?:' + family(m[2]) + ')', requested)
+                                        for m in re.finditer(r'(' + colours + r')色?(长袍|袍|披风|斗篷|铠甲|战甲|盔甲)', clause))
+        # A second or a colour the writer adds goes with its own words, never with the action they sit in ("在第2秒拔出长剑",
+        # "从第1秒到第3秒缓步走向", "静立直到第4秒才转身", "身穿黑色长袍从左侧走来"); the user's second ("第2秒" or "第二秒") stays
+        # in a beat, a cut's second is its shot mark and the cut its shot.
+        def second_key(value):
+            if re.fullmatch(r'[\d.]+', value):
+                return f'{float(value):g}'
+            tens, _, ones = value.rpartition('十')
+            digit = lambda char, empty: '一二三四五六七八九'.find(char) + 1 if char else empty
+            return str(digit(tens, 1) * 10 + digit(ones, 0) if '十' in value else digit(value, 0))
+        user_seconds = {second_key(s) for s in re.findall(r'第\s*([一二三四五六七八九十\d.]+)\s*秒', requested)} - {f'{second:g}' for second in cut_seconds(requested)}
+
+        def trim(text, beat=True):
+            def second(m):
+                if beat and second_key(m[1] or m[2]) in user_seconds:
+                    return m[0]
+                # "静立直到第4秒才转身" -> "静立，随后转身"; a clause left with nothing before it takes no stop.
+                return '，随后' if m[1] and m[0].endswith('才') and re.search(r'[^\s，,。；;]$', m.string[:m.start()]) else ''
+            return re.sub(r'(?:直到|直至)第\s*([一二三四五六七八九十\d.]+)\s*秒(?:时|末)?才?'
+                          r'|(?:在|于|从|自|到|至)?第\s*([一二三四五六七八九十\d.]+)\s*秒(?:\s*(?:到|至)\s*第\s*[一二三四五六七八九十\d.]+\s*秒)?'
+                          r'(?:时|末|初|内|前|后|起|为止)?[，,]?\s*', second, re.sub(
+                r'(?:身穿|穿着|身披|披着)' + colours + r'色?的?(?:长袍|袍|披风|斗篷|铠甲|战甲|盔甲)[，,]?\s*', lambda m: '' if recoloured(m[0]) else m[0], text))
+        fight = r'对峙|交手|交锋|厮杀|对决|打斗|决斗'
+        # A standoff or a weapon pointed at the other that the user wrote ("互相戒备", "蓄势待发", "剑尖直指对方") stays.
+        guard = '|'.join(word for word in ('静待回应', '戒备', '蓄势', '严阵以待', '对撞') if word not in requested)
+        aim = '|'.join(word for word in ('正对', '对准', '指向', '直指', '指着', '抵住', '对着') if word not in requested)
+        conflict = ('' if re.search(fight, requested) else '|' + fight + ('|' + guard if guard else '')) + (
+            '' if re.search(fight + r'|战斗|攻|刺|砍|劈|指向|对准|[举抬横挺架][^，,。；;]{0,3}[剑枪刀矛戟斧棍]', requested) else
+            r'|(?:' + aim + r')[^，,。；;]{0,4}(?:<Subject|对方|来者|[枪剑刀矛戟]尖)'
+            r'|(?:举|抬|横|提|挺|架)起?[^，,。；;]{0,3}[剑枪刀矛戟斧棍][^，,。；;]{0,3}(?:至|到|于)?(?:胸前|身前|面前|胸口)'
+            r'|[枪剑刀矛戟](?:尖|锋|刃|身)?[^，,。；;]{0,6}(?:抬起|举起|抬至|举至)[^，,。；;]{0,6}(?:胸前|身前|胸口)'
+            r'|[枪剑刀矛戟](?:尖|锋|刃)(?:离|距|对着?|指向|逼近|抵住?)[^，,。；;]{0,16}[枪剑刀矛戟](?:尖|锋|刃)'
+            r'|[枪剑刀矛戟][^，,。；;]{0,8}[与和][^，,。；;]{0,6}[枪剑刀矛戟][^，,。；;]{0,8}(?:相距|相对|相抵|对撞|交锋)'
+            r'|[枪剑刀矛戟](?:尖|锋|刃)[^，,。；;]{0,8}(?:朝前|指向前方|朝向镜头|指向镜头|对准镜头)')
+        looks = {item['label']: str(item.get('description', '')).strip().rstrip('。') for item in subjects if item['label'] not in attribute_only}
+        props = '|'.join(p for p in ('鞘', '披风', '斗篷', '头盔', '盾', '围巾', '面具', '帽', '背包') if p not in ''.join(looks.values()) + requested)
+        shadowless = re.search(r'(?:无|没有|不见)[^，,。；;]{0,4}(?:阴影|影子)', fields.get('光线', ''))
+        freeze = '' if re.search(USER_FROZEN, requested) else r'|画面定格|定格[。，,；;]?$'
+        note = lambda clause: (re.search(PHASE_NOTE + r'|动作(?:结束|完成)[。，,；;]?$|^\s*无声(?:音)?[。，,；;]?$' + freeze + conflict
+                                         + ('|' + props if props else '') + (r'|阴影|暗影|影子|投影' if shadowless else ''), clause) or recoloured(clause))
+        # "两道披风" when only one subject wears a cloak.
+        single = '|'.join(w for w in ('披风', '斗篷', '长袍', '铠甲') if sum(w in look for look in looks.values()) == 1)
+        counted = lambda text: re.sub(r'(?:两道|两件|两条|两袭|两面|双双)(' + single + ')', r'\1', text) if single else text
+
+        def drop_owned(text, drop):
+            # A dropped clause that opened with its subject leaves that subject to the next clause.
+            kept, owner = [], ''
+            for clause in re.findall(r'[^，,。！？；;!?\n]*[，,。！？；;!?\n]?', text):
+                lead = re.match(LEAD_LABELS, clause)
+                if clause and drop(clause):
+                    owner = owner or (lead[1] if lead else '')
+                    # "…微扬，<dropped>；<Subject 2> …" keeps the stop between the two subjects.
+                    if kept and re.search(r'[；;。！？]$', clause) and re.search(r'[，,]$', kept[-1]):
+                        kept[-1] = kept[-1][:-1] + clause[-1]
+                elif clause:
+                    kept.append(owner + ' ' + clause.lstrip() if owner and not lead else clause)
+                    owner = ''
+            return re.sub(r'[，,、；;]+(?=[。！？!?\n]|$)', '。', ''.join(kept)).strip(' ，,\n')
+        actions = [action for action in (counted(drop_owned(trim(action), lambda clause: note(clause) or requested_cut(clause))) for action in actions) if action]
+        shots = [(seconds, text) for seconds, text in ((seconds, tidy(counted(drop_owned(trim(text, False), note)))) for seconds, text in shots if not stray(text)) if text]
         if fields.get('事件') and stray(fields['事件']):
             fields.pop('事件')
         elif fields.get('事件'):
-            fields['事件'] = event_line(fields['事件'])
+            fields['事件'] = counted(event_line(fields['事件']))
+            # A freeze nobody asked for ("最终在镜头前并肩定格") is where they stop.
+            fields['事件'] = fields['事件'] if '定格' in requested else re.sub(r'定格', '停住', fields['事件'])
         if len(actions) < 2:
             return plan
+        # 景别 and 站位 are the state before 动作1. 站位 keeps where each subject stands, faces and holds its things: the
+        # actions it wrote ("蹲下，右手轻触 <Subject 2> 头顶") come from the beats in the user's order, the clothes from
+        # the definitions. An approached subject faces the one coming; an event that starts face to face starts so.
+        event = fields.get('事件', '') + '。' + str(plan.get('summary', ''))
+        stance_move = (r'走|迈|跑|奔|冲|跳|蹲下|跪下|坐下|躺下|起身|站起|转身|回头|抬|举|挥|摸|抚|触|碰|蹭|推|拉|放下|放在|拿起|拾|递|抱拳|行礼|鞠躬|逼近|靠近|向前|伸手|拍|接过|扔'
+                       r'|(?:穿|披|戴)[^，,。；;]{0,6}(?:' + clothes + ')')
+        stance = '；'.join(kept for kept in (drop_owned(part, lambda clause: re.search(stance_move, clause))
+                                            for part in re.split(r'[；;]', face_the_approach(fields.get('站位', ''), event))) if kept)
+        size = face_the_approach(fields.get('景别', '').strip().rstrip('。'), event)
+        start = re.split(r'然后|随后|接着|之后|再|最后|(?<=[㐀-鿿])后(?=[㐀-鿿])', event)[0]
+        relation = re.search(r'面对面|相对而立|背对背', start)
+        if relation:
+            # "面对面抱拳行礼，然后并肩走向镜头" starts face to face, not side by side facing the camera.
+            apart = lambda clause: facing(clause) or re.search(r'并排|并肩|面对面|相对|背对|面向彼此', clause)
+            pair = ' 与 '.join(label for label in looks if label in ''.join(actions))
+            size = '，'.join(part for part in (drop_clauses(size, apart).rstrip('。，,'), pair + ' ' + relation[0] + '站立' if ' 与 ' in pair else '') if part)
+            stance = '；'.join(kept for kept in (drop_clauses(part, apart) for part in stance.split('；')) if kept)
+        # Each beat goes on from where the last one faced: a turn the writer left out is written ("转身面向镜头").
+        sided = drop_sides([stance, *written_turns(actions, size + '。' + stance), *[text for _, text in shots]], requested)
+        stance, actions, shots = sided[0], sided[1:1 + len(actions)], [(seconds, text) for (seconds, _), text in zip(shots, sided[1 + len(actions):])]
+        # The task summary ends as the last beat does ("最终停于镜头前并肩对视" for two who look into the camera).
+        ending = re.search(r'[，,；;]\s*(?:最终|最后|结束时)[^，,。；;]*[。]?$', fields.get('事件', ''))
+        if ending and facing(ending[0]) and facing(actions[-1]) and facing(ending[0]) != facing(actions[-1]):
+            fields['事件'] = fields['事件'][:ending.start()]
         sentence = lambda text: text if re.search(r'[。！？.!?]$', text) else text + '。'
         style = fields.get('画风', '').strip()
         scene = fields.get('场景', '').strip()
@@ -15099,6 +15333,12 @@ class PromptAssistant:
         light = fields.get('光线', '').strip().rstrip('。')
         # "跟拍，镜头跟随…" names the move twice; "速度适中" is no official speed (slow or fast).
         camera = re.sub(r'[，,]?\s*(?:以)?(?:速度)?(?:适中|中等|均匀)(?:的)?(?:速度)?|[，,]?\s*匀速', '', re.sub(r'^[^，,。；;]{1,6}[，,]\s*(?=镜头)', '', camera))
+        # A bare "跟随" for subjects walking toward the camera: the camera pulls out as they come.
+        toward_at = next((i for i, action in enumerate(actions) if re.search(r'(?:走向|走近|迎向|朝)镜头|镜头方向', action)), 0)
+        toward = actions[toward_at] if re.search(r'(?:走向|走近|迎向|朝)镜头|镜头方向', actions[toward_at]) else ''
+        if toward and re.fullmatch(r'(?:镜头)?(?:跟随|跟拍)[。]?', camera):
+            lead = re.match(LEAD_LABELS, toward)
+            camera = '镜头随着' + (' ' + lead[1] + ' ' if lead else '主体') + '走近缓慢拉远'
         # A place taken from a picture (the hall of 图3) is named as the scene;
         # otherwise the H3 check prepends "画面中有 <Subject 3>".
         if scene and not re.search(r'<Subject [1-9]\d*>', scene):
@@ -15108,12 +15348,58 @@ class PromptAssistant:
                           and len(grams(scene) & grams(str(item.get('description', '')))) >= 0.4 * len(grams(scene))), None)
             if place:
                 scene = place + '：' + scene
-        # The style sentence opens detailed_description before [Shot 1] (official ref §5.2).
-        opening = sentence('视频采用' + (style if re.search(r'风格|画风', style) else style + '风格')) if style else ''
+        # The style sentence, with the light, opens detailed_description before [Shot 1] (official ref §5.2).
+        opening = sentence('视频采用' + (style if re.search(r'风格|画风', style) else style + '风格') + ('，' + light if light else '')) if style else ''
+        # At its first appearance each subject is described as its picture shows it, in apposition with where it stands
+        # (official ref §5.3 "<Subject 3> (S1), the young woman with long blonde hair …, sits on the sofa"); the framing
+        # opens the shot.
+        placed = {}
+        for part in re.split(r'[；;]', stance):
+            owner = re.match(r'\s*(<Subject [1-9]\d*>)', part)
+            if owner and owner[1] in looks:
+                placed.setdefault(owner[1], part.strip()[len(owner[1]):].strip(' ，,。'))
+        shown = [label for label in looks if label in ''.join(actions) + stance]
+        parts_of = lambda look: [part.strip() for part in re.split(r'[，,；;]', look) if part.strip()]
+        grams2 = lambda text: {text[i:i + 2] for i in range(len(text) - 1) if re.fullmatch(r'[㐀-鿿]{2}', text[i:i + 2])}
+        again_look = lambda part, look: bool(grams2(part)) and len(grams2(part) & grams2(look)) >= 0.6 * len(grams2(part))
+        where = lambda label: re.sub(r'^(?:画面)?([左右]侧|中央|中间|前方|后方)', r'站在画面\1', '，'.join(
+            part for part in parts_of(placed.get(label, '')) if not again_look(part, looks[label])))
+
+        def appositive(label, again=False):
+            # "一位黑发束起、身穿金色铠甲、手持金色长枪的男性角色"; after a cut "那位…" with two traits.
+            parts = [part for part in parts_of(looks[label]) if not re.match(r'无|没有|未', part)]
+            noun = parts[0] if parts and len(parts[0]) <= 6 and not re.search(r'[的有穿戴持披着]', parts[0]) else ''
+            traits = parts[1:] if noun else parts
+            traits = traits[:2] if again else traits[:4] + [part for part in traits[4:] if re.search(r'手持|手握|握着|拿着|持', part)][:1]
+            kind = ('只' if re.search(r'猫|狗|犬|鸟|兔|狐|熊|虎|狮|狼|鹿|马|猴|鼠|鹰|鸭|鹅|鸡|羊|牛|猪', noun) else '个' if re.search(r'机器|机甲|机械', noun)
+                    else '位' if re.search(r'人|角色|男|女|子|者|神|士|将|侠|师|客|王|仙', noun) else '个')
+            return ('那' if again else '一') + kind + ('、'.join(traits) + '的' if traits else '') + (noun or '角色')
+        # Where the subject opens a clause ("<Subject 2> 的眼睛紧闭" too); "离 <Subject 2> 剑尖半步" is no place for it.
+        opens = lambda text, label: re.search(r'(?:^|[，,；;。：:])\s*' + re.escape(label) + r'\s*的?\s*', text)
+        name_at = lambda text, label, again=False: (text[:opens(text, label).start()] + re.sub(r'\s*的?\s*$', f'，{appositive(label, again)}，', opens(text, label)[0], count=1)
+                                                    + text[opens(text, label).end():]) if opens(text, label) else text
+        introduced = ''
+        # The descriptions name a borrowed-look picture ("换上 <Subject 2> 的金色盔甲") without casting it.
+        described = lambda text: re.sub('|'.join(re.escape(appositive(label, again)) for label in looks if looks[label] for again in (False, True)) or '^$', '', text)
+        for label in shown:
+            if not looks[label]:
+                continue
+            if where(label):
+                introduced += sentence(f'{label}，{appositive(label)}，{where(label)}')
+                continue
+            # No stance: the first beat that names the subject describes it.
+            first = next((i for i, action in enumerate(actions) if opens(action, label)), None)
+            if first is None:
+                introduced += sentence(f'{label}，{appositive(label)}，出现在画面中')
+            else:
+                actions[first] = name_at(actions[first], label)
+        camera_line = sentence(camera if camera.startswith('镜头') else '镜头' + camera) if camera else ''
         description = '[Shot 1] ' + ''.join([
-            sentence(('场景是 ' if scene.startswith('<') else '场景是') + scene + ('，' + light if light else '')) if scene else '',
-            ''.join(sentence(action) for action in actions),
-            sentence(camera if camera.startswith('镜头') else '镜头' + camera) if camera else '',
+            sentence(size) if size else '',
+            sentence(('场景是 ' if scene.startswith('<') else '场景是') + scene + ('' if style or not light else '，' + light)) if scene else '',
+            introduced,
+            # The camera moves with its beat (the walk toward it, else the first), not as a label after the ending.
+            ''.join(sentence(action) + (camera_line if i == (toward_at if toward and '走近' in camera else 0) else '') for i, action in enumerate(actions)),
         ])
         if shots:
             from prompt_assistant.h3_prompt_enhance import cut_seconds, shot_stamp, shot_times
@@ -15121,13 +15407,22 @@ class PromptAssistant:
             # Each shot states its environment and light (official ref: every shot establishes them).
             pairs = lambda text: {text[i:i + 2] for i in range(len(text) - 1) if re.fullmatch(r'[㐀-鿿]{2}', text[i:i + 2])}
             again = lambda text: sentence(('场景仍是 ' if scene.startswith('<') else '场景仍是') + scene + ('，' + light if light else '')) if scene and len(pairs(text) & pairs(scene)) < 2 else ''
-            description += ''.join(f'\n[Shot {number}] At {shot_stamp(seconds)} ' + ('' if re.match(r'镜头|画面', text) else '镜头' if text.startswith('切') else '镜头切到') + sentence(text) + again(text)
+            # The subjects the new shot frames keep their looks, named where it first shows them (official ref "<Subject 4>
+            # (S2), the young man in the dark-grey hoodie from Shot 1"); one seen only as a hand or at the edge is not framed.
+            part_only = lambda text, label: all(re.match(r'\s*的?\s*(?:一只|另一只|同一只|一侧|另一侧)?(?:手|指|掌|腕|臂|爪|脚|腿|膝|袖|衣角|尾)', text[m.end():])
+                                                for m in re.finditer(re.escape(label), text))
+
+            def recalled(text):
+                for label in dict.fromkeys(re.findall(r'<Subject [1-9]\d*>', text)):
+                    text = name_at(text, label, True) if looks.get(label) and not part_only(text, label) else text
+                return text
+            description += ''.join(f'\n[Shot {number}] At {shot_stamp(seconds)} ' + ('' if re.match(r'镜头|画面', text) else '镜头' if text.startswith('切') else '镜头切到') + sentence(recalled(text)) + again(text)
                                    for number, (seconds, (_, text)) in enumerate(zip(times, shots), 2))
         # Name each borrowed-look subject in its role here; otherwise the H3
         # check adds "the shot features <Subject N>" and brings it on screen.
         for item in subjects:
             label = item['label']
-            if label in attribute_only and label not in description:
+            if label in attribute_only and label not in described(description):
                 if str(item.get('description', '')).startswith('仅借用此图的画风'):
                     opening += f'画面采用 {label} 的画风。'
                 else:
@@ -15138,7 +15433,8 @@ class PromptAssistant:
             plan['summary'] = sentence(fields['事件'].strip())
         if not has_audio:
             from prompt_assistant.h3_prompt_enhance import sound_sentence
-            plan['soundscape'] = 'N/A' if silent(fields.get('声音', '')) else sound_sentence(sentence(fields['声音'].strip()))
+            # A quoted sound ("嗒嗒") would read as on-screen text.
+            plan['soundscape'] = 'N/A' if silent(fields.get('声音', '')) else sound_sentence(sentence(re.sub(r'[“”"]', '', fields['声音'].strip())))
             # Music only when the user asks for it; the writer adds a victory theme by habit.
             asked = re.search(r'音乐|配乐|乐曲|歌|旋律|伴奏|BGM|music', requested, re.I)
             plan['music'] = 'N/A' if silent(fields.get('配乐', '')) or not asked else sentence(fields['配乐'].strip())
@@ -15236,7 +15532,7 @@ class PromptAssistant:
                 "每个主体从 <Subject 1> 连续编号，同一主体只写一次。\n"
                 "视觉 relation 只能是 fully_preserved, partially_preserved, attribute_transfer, weak_reference：身份和外观来自一张图的主体用 fully_preserved；用户改变其部分外观用 partially_preserved；只取某图的服装、颜色、图案或画风用 attribute_transfer；weak_reference 只用于用户要求的宽松参考。keep 写从图片保留的具体特征。声音 relation 只能是 fully_copy, partially_copy, reference, weak_reference。\n"
                 + tasks_rule +
-                "summary 用一句中文写事件：谁做什么、另一方如何反应、最后如何结束，使用 <Subject N> 标签，无标题、无任务前缀、不写时长。\n"
+                "summary 用一句中文写事件：谁做什么、另一方如何反应、最后如何结束，使用 <Subject N> 标签，无标题、无任务前缀、不写时长；不加用户没说的冲突或结果（如对峙、交手、命中）。\n"
                 "references 里每个主体的 description 写这张图的外观；顶层的 description 字段只用一句话概括事件，画面、镜头和声音由后续步骤补写；soundscape 和 music 都写 N/A。所有字符串都写在一行内，不换行。声音完整复用使用 fully_copy 和 audio reuse；风格、节奏或声线参考使用 reference 和 audio reference。\n"
                 + closing_rule
             )
@@ -15306,7 +15602,8 @@ class PromptAssistant:
                 f'{role}：<|vision_start|><|image_pad|><|vision_end|>\n{intent}'
                 + ('只观察当前这一张图，按下面' + ('四' if check else '三') + '行输出，每行一句，不输出其他文字：\n'
                    '画风：这张图的画风，如写实照片、3D 渲染、动漫插画、水墨画\n'
-                   '主体：图中主要对象本身的外观，写人物、生物或物体的脸部和发型、服装、颜色、材质、配饰和手持道具；这张图主要是场景时写场景的结构和材质；不写姿态和动作\n'
+                   '主体：先写图中主要对象是什么（如男子、橘猫、机器人），再照图写它的脸部和发型、服装、颜色、材质、配饰和手持道具（道具照图写颜色、花纹和上面贴着或挂着的东西）；'
+                   '这张图主要是场景时写场景的结构和材质；不写姿态、动作和年龄\n'
                    '背景：主体所处的背景，一句话；没有背景写纯色背景\n'
                    + (MINIMAX_H3_FRAME_CHECK + '\n' if check else '')
                    + '描述原素材，不执行编辑，不推测看不清的细节。'
@@ -15375,8 +15672,11 @@ class PromptAssistant:
                     if (not has_audio and not MINIMAX_H3_SILENCE.search(source + "\n" + user_requirement)
                             and re.fullmatch(r"(?:N/?A|无)[。.]?", str(plan.get('soundscape') or 'N/A').strip(), re.I)):
                         from prompt_assistant.h3_prompt_enhance import action_sounds
-                        # The subjects' looks (指甲, 洒水壶) are no sounds; the shots' scene and actions are.
-                        plan['soundscape'] = action_sounds(str(plan.get('description', '')))
+                        # The subjects' looks (指甲, 洒水壶) are no sounds; the shots' scene and actions are. Cloth
+                        # rustles only when someone wears clothes (a robot and a cat do not).
+                        worn = ''.join(str(item.get('description', '')) for item in plan.get('references', []) if isinstance(item, dict))
+                        plan['soundscape'] = action_sounds(str(plan.get('description', '')),
+                                                           clothed=bool(re.search(r'衣|衫|袍|裙|裤|甲|披风|斗篷|外套|服|袖', worn)))
                 positive = render_h3_reference_plan(json.dumps(plan, ensure_ascii=False), inventory_text, duration, source, user_requirement)
                 validate_h3_prompt_enhancement(positive, source, user_requirement)
                 bilingual = self.translate_h3_reference(positive, inventory_text, duration)
@@ -15452,14 +15752,16 @@ class PromptAssistant:
         images = minimax_h3_writer_frames(mode, frames)
         # Two nearly identical 首尾帧 keep their pose; the model is not pushed to find a big change.
         same_frames = len(images) == 2 and minimax_h3_frames_nearly_same(frames)
-        # The check line at the end of the writer's request made its writing worse (挥手 and 哈欠 lost): the writer
-        # answers it only for sensitive words. Otherwise the pictures are looked at once on their own before anything
-        # is written (about 1.5 s): a child the picture shows need not be named in anyone's words.
+        # No age is judged without a clue. The check line at the end of the writer's request made its writing worse
+        # (挥手 and 哈欠 lost): the writer answers it only for sensitive words. Explicit young or sensitive words in the
+        # user's words or the writer's answer have the pictures looked at once on their own for the other half.
         spoken_check = check and minimax_h3_request_is_sensitive(user_words)
         request = build_minimax_h3_writer_request(view, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines, same_frames, cut,
                                                   spoken_check)
-        looked = self.check_h3_frames(images) if images and check and not spoken_check else None
-        if looked:
+        looked = None
+        if images and check and not spoken_check and minimax_h3_young_clue(user_words):
+            # A child the user names: the pictures are looked at before anything is written.
+            looked = self.check_h3_frames(images)
             minimax_h3_block_sensitive_minor(user_words, "", *looked)
         # Only the user's own words ask for a loop; a first/last-frame video ends on its last frame.
         loop = "loop" in h3_requested_rules(view + "\n" + user_requirement) and clean_text(mode).upper() != "FL2VA"
@@ -15483,9 +15785,17 @@ class PromptAssistant:
             lost = next((m.group(3).strip() for m in re.finditer(H3_SPEECH_LINE, view) if m.group(3).strip() not in said), None)
             if lost:
                 raise ValueError(f"漏掉了台词“{lost}”，请写出说话者说这句话")
-            written = han_pairs((parse_h3_base_fields(positive) or {}).get("integrated_multimodal_description", ""))
-            # Only a point with almost nothing left counts: rewording keeps some of its words.
-            dropped = next((point for point, pairs in actions if len(pairs) >= 3 and len(pairs & written) <= 0.15 * len(pairs)), None)
+            narrative = (parse_h3_base_fields(positive) or {}).get("integrated_multimodal_description", "")
+            written = han_pairs(narrative)
+            # Only a point with almost nothing left counts: rewording keeps some of its words. "抬头笑着说" written as
+            # "头部向上抬起，嘴角上扬" keeps its actions and was asked again for nothing; "朋友走到她面前回应" without the
+            # friend is gone.
+            from prompt_assistant.h3_prompt_enhance import ACTION_TOKEN, action_at, action_part, action_text
+            acted = lambda point: [m for m in re.finditer(ACTION_TOKEN, action_text(point))]
+            lead = lambda point: re.sub(r"^(?:然后|接着|随后|之后|最后|最终|先|再|并且?|同时|又|还)+", "", action_text(point)[:acted(point)[0].start()]).strip("，, ")
+            kept = lambda point: acted(point) and all(action_at(m[0], action_part(action_text(point), m), narrative) >= 0 for m in acted(point)) and (
+                len(lead(point)) < 2 or lead(point) in narrative)
+            dropped = next((point for point, pairs in actions if len(pairs) >= 3 and len(pairs & written) <= 0.15 * len(pairs) and not kept(point)), None)
             if strict_rules and dropped:
                 raise ValueError(f"漏写了视频描述里的“{dropped}”")
             return validate_h3_prompt_enhancement(positive, view, user_requirement, loop=loop)
@@ -15500,15 +15810,17 @@ class PromptAssistant:
                 trace_label="minimaxH3PromptRepair" if attempt else "minimaxH3PromptEnhance",
             )
             if images and check:
-                # The frame check line is read and removed before the answer is compiled; minor
-                # words count in the picture lines, not in the sounds the writer adds.
+                # The frame check line is read and removed before the answer is compiled; minor and sensitive
+                # words count in whatever the writer puts on screen (any label spelling, 约束 too), not in its sounds.
                 answered = output.rstrip()
                 output, minor, sensitive = minimax_h3_take_frame_check(output)
-                if looked is None and output == answered:
-                    # The writer left its check line out: the pictures are looked at on their own.
+                pictured = minimax_h3_pictured(output)
+                clue = (spoken_check or minimax_h3_young_clue(user_words + "\n" + pictured)
+                        or minimax_h3_request_is_sensitive(pictured))
+                if looked is None and clue and output == answered:
+                    # A clue without the writer's own check line: the pictures are looked at on their own.
                     looked = self.check_h3_frames(images)
-                minimax_h3_block_sensitive_minor(user_words, "\n".join(MINIMAX_H3_PICTURE_LINE.findall(output)),
-                                                 minor or bool(looked and looked[0]), sensitive or bool(looked and looked[1]))
+                minimax_h3_block_sensitive_minor(user_words, pictured, minor or bool(looked and looked[0]), sensitive or bool(looked and looked[1]))
             try:
                 positive = finish(output, strict_rules=True)
                 self.status = "模型可用"
