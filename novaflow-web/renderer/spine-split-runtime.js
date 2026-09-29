@@ -13816,9 +13816,17 @@
     ])
   }
 
+  function splitDrawingSectionsForHost(host) {
+    // UI design shares the generation controls, not Drawing's editing tools.
+    return host?.matches?.(ART_UI_HOST_SELECTOR)
+      ? splitDrawingControlSections.filter((section) => section.id === 'generate')
+      : splitDrawingControlSections
+  }
+
   function splitDrawingCategoryDomMatchesState(root) {
     if (!root || !root.querySelector) return true
-    const matches = splitDrawingControlSections.every((section) => {
+    const sections = splitDrawingSectionsForHost(root)
+    const matches = root.querySelectorAll(`[${CONTROL_CATEGORY_ATTR}]`).length === sections.length && sections.every((section) => {
       const panel = root.querySelector(`[${CONTROL_CATEGORY_ATTR}="${section.id}"]`)
       if (!(panel instanceof HTMLElement)) return false
       const header = panel.querySelector(':scope > .nf-panel-header')
@@ -13917,7 +13925,7 @@
         boxSizing: 'border-box'
       }
     }, [
-      ...splitDrawingControlSections.map(renderSplitDrawingCategory),
+      ...splitDrawingSectionsForHost(mountedCard).map(renderSplitDrawingCategory),
       renderSplitDrawingActionGrid([
         renderSplitDrawingControlButton({ action: 'export', label: 'PSD导出', style: { gridColumn: '1 / -1' } })
       ], { gridTemplateColumns: 'minmax(0, 1fr)' }),

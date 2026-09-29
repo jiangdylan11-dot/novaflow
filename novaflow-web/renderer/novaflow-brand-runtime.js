@@ -78244,6 +78244,10 @@
       #${ART_GENERATE_WORKSPACE_ID} button {
         -webkit-app-region: no-drag;
       }
+      body[data-novaflow-ui-design-active="1"] .novaflow-art-generate-top {
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
       .novaflow-art-generate-top {
         grid-row: 1;
         grid-column: 1;
@@ -81130,6 +81134,10 @@
   }
 
   function renderArtGenerateTopBar() {
+    // UI design chooses the generation path from its references automatically.
+    if (window.NovaFlowUiDesignDrawing?.isActive?.()) {
+      return createArtEl("div", { className: "novaflow-art-generate-top" });
+    }
     return createArtEl("div", { className: "novaflow-art-generate-top" }, [
       renderArtGenerateModeButton("txt2img"),
       renderArtGenerateModeButton("img2img")
