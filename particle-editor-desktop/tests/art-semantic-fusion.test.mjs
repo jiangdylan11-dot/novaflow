@@ -176,7 +176,19 @@ for (const text of briefTexts) {
   assert.doesNotMatch(text, /需要包含画面模糊、低清晰度、人物变形/, 'no picture is asked for human-anatomy negatives by default');
 }
 assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('画面里没有人物时不写人体、手指、五官类词'), 'the generic image negative is typed too');
-assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('形状照图写') && roleReverse.body.input[0].content.at(-1).text.includes('每件陈设和灯具写在它在图中的位置') && roleReverse.body.input[0].content.at(-1).text.includes('不加图中没有的窗户、天窗和灯具'), 'shapes, positions and lamps are read off the picture');
+// Round-6 review: the pictures are described as they are. Every visible part of the subject (a creature's limbs and belly too),
+// nothing out of frame, and the background picture is the scene, in a note after the brief (as the style transfer's) so the brief's
+// invented fittings do not outrank it: its fixtures front to back in their shapes, colours and places, none it lacks. No list of
+// wrong shapes or places is named (天花板 and 拱形 in the rule came back as picture facts).
+{
+  const roleText = roleReverse.body.input[0].content.at(-1).text;
+  assert.ok(roleText.includes('主体图里看得见的部位逐一照图写出形状、颜色和纹样') && roleText.includes('也不补写画外的部位') && roleText.includes('动物和生物写头部、躯干、四肢、腹背和尾巴'), 'every visible part of the subject, nothing out of frame');
+  const note = roleText.slice(roleText.indexOf('输出前逐项核对并改正'));
+  assert.ok(note.includes('背景参考图：[环境背景]就是这张图里的场景') && note.includes('按从前景到后景、从地面到上层的顺序都写进去') && note.includes('每样写出它在图中的形状、颜色、材质和位置') && note.includes('不另补图中没有的陈设'), 'shapes, positions and lamps are read off the picture, after the brief');
+  const subjectOnly = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'}],scenario:'role_reference'},'grok-contract-test').body.input[0].content.at(-1).text;
+  assert.ok(!subjectOnly.includes('背景参考图：') && !styleReverse.body.input[0].content.at(-1).text.includes('背景参考图：'), 'the note goes only with a background picture');
+  assert.doesNotMatch(roleText, /天花板|拱形|几角星|天窗|酒店大堂/, 'no wrong shape, place or venue is put in the writer\'s mind');
+}
 // A negative the model separated with ASCII commas is written with Chinese commas; other separators stay as written.
 assert.equal(roleNegative('画面模糊,低清晰度, 手部畸形'), '画面模糊，低清晰度，手部畸形');
 assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面模糊、手部畸形、塑料质感');
@@ -185,7 +197,7 @@ assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'), '画面
 // stays warm, the sky examples carry a position and no quotable moon, and the final check names the recurring slips.
 for (const text of briefTexts) {
   assert.ok(text.includes('主体手里拿着的灯不换算成画面方位，只按手写') && text.includes('面向画面的人物，右手在画面左侧') && text.includes('手里拿着的灯按手写'), 'a hand-held lamp is written by the hand');
-  assert.ok(text.includes('方向照抄这个光源在[环境背景]里写的位置（那里写“两侧高处的灯架”，这里就写“从两侧高处斜照”，不改成正上方）') && text.includes('主光方向照抄它在那里的位置') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
+  assert.ok(text.includes('方向照抄这个光源在[环境背景]里写的位置（那里写“画面左侧的壁炉”，这里就写“从画面左侧照来”）') && text.includes('主光方向照抄它在那里的位置') && text.includes('辅光也来自[环境背景]写出的东西或天光'), 'side lights and fill lights');
   assert.ok(text.includes('要冷色调灯光时，写明冷色的灯罩（如淡蓝纱罩的灯笼、青白琉璃灯，不只写“冷色灯笼”），由它透出冷光') && text.includes('手里的东西在各段是同一只手') && text.includes('不加不合年代的路灯、街灯，火光只作暖色点缀') && text.includes('火光始终写成暖色（冷色灯罩透出的光除外）'), 'a named light colour and warm fire do not conflict');
   assert.doesNotMatch(text, /雪夜云隙间的一轮冷月|用户要冷色调时在这里写出冷光的来源|纸面颗粒/, 'no quotable moon, no texture in the style example');
   assert.ok(text.includes('户外一定写一句天空的样子，日月写明在画面哪个方位（不写东南西北）') && text.includes('也不因此少于五样') && text.includes('不写“夜晚氛围”'), 'sky with a position, five things, no time in the mood');
@@ -213,5 +225,15 @@ for (const request of [longNegFusion,
 }
 assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('当前负面 Prompt 里已有的项照原样保留，不受按主体选词的限制'), 'the reference route keeps the box too');
 assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:castleFive,negative_prompt:longUserNegative + '，城墙砖块错位'})},longNegFusion.resultOptions).negative_prompt,longUserNegative + '，城墙砖块错位');
-assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里的主体称呼（连同图号）和写主体动作') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台') && roleReverse.body.input[0].content.at(-1).text.includes('地面层的灯不写到顶层或天花板'), 'the subject keeps the user\'s name and label, the venue its own words');
+// The subject section takes the user's action and position phrases, and a picture number only where the user wrote one (copying
+// the name "with its picture number" put 图1 and the whole request, weather included, into [主体物品]); time and weather go to the scene.
+assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('把用户原文里写主体动作、视线、朝向和位置的短语原样抄进[主体物品]') && roleReverse.body.input[0].content.at(-1).text.includes('用户原文里的时间和天气写进[环境背景]') && roleReverse.body.input[0].content.at(-1).text.includes('秀场中间的 runway 是T台'), 'the subject keeps the user\'s words, the venue its own words');
+for (const text of briefTexts) {
+  assert.doesNotMatch(text, /连同图号|称呼里的图号照抄/, 'no picture number the user did not write is copied into the subject');
+  assert.ok(text.includes('用户的称呼带图号才照抄图号') && text.includes('动作写全，用户写“靠在树下看书”就不只写“靠在树下”'), 'the user\'s name, and the action phrase whole');
+  // Examples the writer copied word for word (物理渲染、全局光照; 从下方照亮), that primed a second body word (蜷曲、舒展) or put the
+  // banned term beside the test venue (大厅 next to 背景杂乱) are gone.
+  assert.doesNotMatch(text, /物理渲染、全局光照|从下方照亮他的下巴|蜷曲、舒展|两侧高处的灯架|集市、大厅/, 'no copied or priming example');
+  assert.ok(text.includes('右手端着的油灯照亮他的脸和前襟') && text.includes('构图和景深都点名画面里的具体景物'), 'a hand lamp lights the face, the camera names real things');
+}
 console.log('Semantic fusion: all requirements applied, conflict/copy/partial edits rejected, legacy carrier repaired, Grok routes identical');
