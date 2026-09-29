@@ -915,7 +915,7 @@ class ArtOnePictureTest(unittest.TestCase):
         self.assertIn('[风格设定]\n国潮插画风格，线条遒劲有力\n', service.art_role_reference_user_fit(lit, '把背景换成雪夜古城街道，冷色调灯光'))
 
     def test_an_action_the_repair_still_leaves_out_is_written_in_the_users_words(self):
-        answer = ('[风格设定]\n国潮插画风格\n\n[主体物品]\n武将站立于大堂中央，面向镜头，剑尖斜指下方\n\n[环境背景]\n现代大堂，米白色地毯\n\n'
+        answer = ('[风格设定]\n国潮插画风格\n\n[主体物品]\n武将站立于大堂中央，剑尖斜指下方\n\n[环境背景]\n现代大堂，米白色地毯\n\n'
                   '[光线与色彩]\n顶部暖色灯带照下\n\n[拍摄参数]\n全身景别，正面视角\n检查：人物=有；未成年=无；敏感=无')
         assistant, prompts = service.PromptAssistant(), []
         assistant.generate = lambda prompt, **kwargs: prompts.append(prompt) or answer
@@ -923,8 +923,108 @@ class ArtOnePictureTest(unittest.TestCase):
                                                    '用户生成要求：图1的角色站在图2的场景中央，看向镜头', 'roleReference')
         self.assertEqual(len(prompts), 2)
         self.assertIn('漏写了用户写的“看向”', prompts[1])
-        self.assertIn('[主体物品]\n武将站立于大堂中央，面向镜头，剑尖斜指下方，看向镜头。', result['prompt'])
+        self.assertIn('[主体物品]\n武将站立于大堂中央，剑尖斜指下方，看向镜头。', result['prompt'])
         self.assertNotIn('图2', result['prompt'])
+
+    def test_a_near_form_of_the_users_look_is_written_in_the_users_words_without_a_repair(self):
+        answer = ('[风格设定]\n国潮插画风格\n\n[主体物品]\n武将站立于大堂中央，面向镜头，剑尖斜指下方\n\n'
+                  '[环境背景]\n现代大堂，米白色地毯，主体位于地毯正中，正对镜头\n\n'
+                  '[光线与色彩]\n顶部暖色灯带照下\n\n[拍摄参数]\n全身景别，正面视角\n检查：人物=有；未成年=无；敏感=无')
+        assistant, prompts = service.PromptAssistant(), []
+        assistant.generate = lambda prompt, **kwargs: prompts.append(prompt) or answer
+        result = assistant.reverse_art_role_prompt([{'tensor': 'a', 'role': 'subject'}, {'tensor': 'b', 'role': 'background'}],
+                                                   '用户生成要求：图1的角色站在图2的场景中央，看向镜头', 'roleReference')
+        # One call; the look is said once, where the model put it, and the subject is placed once.
+        self.assertEqual(len(prompts), 1)
+        self.assertIn('[主体物品]\n武将站立于大堂中央，看向镜头，剑尖斜指下方。', result['prompt'])
+        self.assertIn('[环境背景]\n现代大堂，米白色地毯。', result['prompt'])
+        # A look the answer already writes in its own verb stays as it is.
+        gaze = '[主体物品]\n少女眺望远方，面朝远方的山\n\n[拍摄参数]\n全景'
+        self.assertEqual(service.art_user_look_words(gaze, '让少女望向远方'), gaze)
+        self.assertIn('少女望向远方', service.art_user_look_words('[主体物品]\n少女面朝远方\n\n[拍摄参数]\n全景', '让少女望向远方'))
+
+    def test_a_new_place_in_a_posture_is_a_new_scene_and_the_subject_is_described_first(self):
+        request = service.art_role_reference_request(['subject'], '让机器人坐在雨夜的城市天台边缘，霓虹灯光')
+        # The place is a new scene: built out, lit by the user's light next to the subject, at night, in the rain.
+        self.assertIn('按用户要求写新环境（让机器人坐在雨夜的城市天台边缘，霓虹灯光）', request)
+        self.assertIn('发出“霓虹灯光”的灯具写在主体身边、照得到主体的位置', request)
+        self.assertIn('时间是雨夜', request)
+        self.assertIn('用户要的天气也落在主体身上', request)
+        # The action is the user's words without 让, the time or the weather, written after the subject's look.
+        self.assertIn('用户写的动作“机器人坐在城市天台边缘”在这一段照原话写出，写在外观之后', request)
+        self.assertLess(request.index('外观、神情'), request.index('用户写的动作'))
+        # The user places the subject, so [环境背景] only builds the place.
+        self.assertNotIn('主体站在其中的什么位置', request)
+        # A chair is no new scene; a new street with no placement asks where the subject stands.
+        self.assertNotIn('按用户要求写新环境', service.art_role_reference_request(['subject'], '让角色坐在椅子上'))
+        street = service.art_role_reference_request(['subject'], '把背景换成雪夜古城街道，冷色调灯光')
+        self.assertIn('以及主体站在其中的什么位置、脚下是什么', street)
+        self.assertIn('发出“冷色调灯光”的灯具写在主体身边', street)
+        self.assertIn('用户要的天气也落在主体身上', street)
+        # A background picture is read for its venue and its lights; a subject the user placed is placed once.
+        hall = service.art_role_reference_request(['subject', 'background'], '图1的角色站在图2的场景中央，看向镜头')
+        self.assertIn('从座位排布、通道和台面看出这是什么场地，并照图写出看得见的灯具', hall)
+        self.assertNotIn('以及主体站或坐在这个环境的什么位置', hall)
+        self.assertIn('以及主体站或坐在这个环境的什么位置', service.art_role_reference_request(['subject', 'background'], '图1的角色放进图2'))
+        self.assertIn('每段写两句通顺的完整句子', hall)
+        self.assertIn('主体是谁、长什么样写在 [主体物品]', street)
+
+    def test_the_cleanup_keeps_descriptions_and_holds_one_picture(self):
+        # 突出 that describes the picture stays; the aside and a "visual focus" go, the colours stay.
+        text = ('[风格设定]\n水彩插画风格\n\n[主体物品]\n一块礁石突出海面，少年眉骨突出明显\n\n[环境背景]\n海边礁石\n\n'
+                '[光线与色彩]\n夕阳从左侧照来，辅以主体的红金配色作为视觉焦点\n\n[拍摄参数]\n中景，背景虚化突出人物')
+        self.assertEqual(service.art_consistent_sections(text), text.replace('作为视觉焦点', '').replace('突出人物', ''))
+        # The subject is placed once; the light on things is [光线与色彩]'s; a hazy distance is not called sharp.
+        scene = ('[主体物品]\n武将站立于大堂中央，看向镜头\n\n'
+                 '[环境背景]\n米白色地毯铺满通道，远处楼层朦胧，主体位于地毯正中，正对镜头，射灯在武将肩头形成高光\n\n'
+                 '[光线与色彩]\n射灯从两侧照下\n\n[拍摄参数]\n全身景别，武将占据画面核心，背景的楼层清晰呈现，景深清晰')
+        self.assertEqual(service.art_consistent_sections(scene), (
+            '[主体物品]\n武将站立于大堂中央，看向镜头\n\n[环境背景]\n米白色地毯铺满通道，远处楼层朦胧\n\n'
+            '[光线与色彩]\n射灯从两侧照下\n\n[拍摄参数]\n全身景别，武将占据画面核心'))
+        self.assertIn('主体位于地毯正中，正对镜头', service.art_consistent_sections(scene.replace('武将站立于大堂中央，', '武将')))
+        # A blurred camera keeps a sharp subject in focus but not a sharp background.
+        blur = service.art_consistent_sections(scene.replace('远处楼层朦胧', '远处楼层').replace('景深清晰', '背景虚化，面部清晰对焦'))
+        self.assertIn('[拍摄参数]\n全身景别，武将占据画面核心，背景虚化，面部清晰对焦', blur)
+        # An open courtyard is outdoors.
+        court = '[主体物品]\n少女的裙摆随风飘扬\n\n[环境背景]\n庭院中的长廊，青石地面\n\n[拍摄参数]\n全景'
+        self.assertIn('随风飘扬', service.art_consistent_sections(court))
+        self.assertIn('自然垂落', service.art_consistent_sections(court.replace('庭院中的', '')))
+        # One time of day: the user's, else the light section's, else the first; an edit leaves it to its own checks.
+        times = ('[风格设定]\n水彩插画风格，营造温暖宁静的午后氛围，画面质感如晨光轻拂纸面\n\n[主体物品]\n橘猫趴在窗台上\n\n'
+                 '[环境背景]\n木质窗台\n\n[光线与色彩]\n阳光从右侧斜射入窗\n\n[拍摄参数]\n中景')
+        self.assertEqual(service.art_consistent_sections(times), times.replace('，画面质感如晨光轻拂纸面', ''))
+        self.assertNotIn('午后', service.art_consistent_sections(times, '清晨的橘猫'))
+        lit = times.replace('阳光从右侧斜射入窗', '清晨阳光从右侧斜射入窗')
+        self.assertNotIn('午后', service.art_consistent_sections(lit))
+        self.assertIn('晨光', service.art_consistent_sections(lit))
+        self.assertEqual(service.art_consistent_sections(times, one_time=False), times)
+
+    def test_the_role_reference_keeps_the_pictures_look_and_the_users_pose(self):
+        text = ('[风格设定]\n国潮插画风格，线条刚劲有力，上色采用鲜明的红金对比\n\n'
+                '[主体物品]\n武将一只手持一柄通体银光、剑鞘为金色的长剑，剑身泛着寒光，剑柄为金色狮首，另一只手抬起呈防御姿态，站立于大堂中央\n\n'
+                '[环境背景]\n秀场通道\n\n[光线与色彩]\n射灯照下\n\n[拍摄参数]\n全身景别')
+        # No colours in the drawing; stock sheen and the picture's fight under the user's posture go.
+        fit = service.art_role_reference_user_fit(text, '图1的角色站在图2的场景中央，看向镜头', ['subject', 'background'])
+        self.assertIn('[风格设定]\n国潮插画风格，线条刚劲有力\n', fit)
+        self.assertIn('[主体物品]\n武将一只手持一柄剑鞘为金色的长剑，剑柄为金色狮首，站立于大堂中央\n', fit)
+        self.assertNotIn('铜色', service.art_role_reference_user_fit(text.replace('上色采用鲜明的红金对比', '上色为青绿色与铜色混合'), '夜晚'))
+        # A pose picture decides the pose; the user's own sheen stays; no posture asked for keeps the picture's stance.
+        self.assertIn('另一只手抬起呈防御姿态', service.art_role_reference_user_fit(text, '图1的角色站在中央', ['subject', 'pose']))
+        self.assertIn('一只手紧握一柄长剑', service.art_role_reference_user_fit(
+            text.replace('一只手持一柄通体银光、剑鞘为金色的长剑', '一只手紧握一柄寒光闪烁的长剑'), '让角色手持一盏发光的灯笼，夜晚'))
+        self.assertIn('剑身泛着寒光', service.art_role_reference_user_fit(text, '剑身泛着寒光'))
+        self.assertIn('另一只手抬起呈防御姿态', service.art_role_reference_user_fit(text, '让角色手持一盏发光的灯笼，夜晚'))
+
+    def test_enriching_keeps_fitting_weather_and_drops_it_under_the_users_sun(self):
+        raw = ('[风格设定]\n油画风格\n\n[主体物品]\n穿红色斗篷的女孩站在雪山顶上眺望远方\n\n'
+               '[环境背景]\n雪山之巅，远处是连绵雪峰与薄雾，山间飘着细碎的雪花\n\n[光线与色彩]\n冷光\n\n[拍摄参数]\n中景，景深拉长至远景雪峰')
+        kept = service.art_drop_invented_clauses(raw, '穿红色斗篷的女孩站在雪山顶上眺望远方', '', enrich=True)
+        self.assertIn('远处是连绵雪峰与薄雾，山间飘着细碎的雪花', kept)
+        sunny = service.art_drop_invented_clauses(raw, '穿红色斗篷的女孩在雪山顶上晒太阳', '', enrich=True)
+        self.assertNotIn('薄雾', sunny)
+        self.assertNotIn('雪花', sunny)
+        # An edit still keeps to the edit: weather nobody asked for goes.
+        self.assertNotIn('薄雾', service.art_drop_invented_clauses(raw, '穿红色斗篷的女孩站在雪山顶上眺望远方', '把斗篷改成蓝色'))
 
     WRITTEN = (
         '[风格设定]\n温暖的水彩绘本插画，笔触柔润。\n\n'

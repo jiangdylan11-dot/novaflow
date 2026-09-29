@@ -5395,7 +5395,8 @@ ART_REFERENCE_KEEP_RULE = "底稿中的 __NOVAFLOW_…__ 占位符是参考图�
 ART_TIME_OF_DAY_GROUPS = (
     ("白天", "白昼", "正午", "中午", "午后", "清晨", "早晨", "上午", "下午", "日间"),
     ("黄昏", "傍晚", "日落", "夕阳", "落日", "余晖", "晚霞", "暮色"),
-    ("夜晚", "夜间", "深夜", "午夜", "夜景", "夜空", "月夜", "雪夜", "夜色", "夜幕", "星夜", "晚上"),
+    ("夜晚", "夜间", "深夜", "午夜", "夜景", "夜空", "月夜", "雪夜", "雨夜", "寒夜", "冬夜", "秋夜", "夏夜", "春夜", "夜色", "夜幕", "星夜",
+     "晚上", "入夜", "夜里"),
 )
 # Light that already tells the time: a draft or edit that has none of these asked for no time of day.
 ART_TIME_OF_DAY_LIGHT = ("月光", "月色", "星空", "星光", "朝阳", "日出", "晨光", "黎明", "拂晓")
@@ -5796,6 +5797,20 @@ ART_REFERENCE_ROLES = {
 ART_STYLE_MEDIUM_EXAMPLES = (
     "水墨、水彩、油画、厚涂、赛璐璐动画、二次元插画、Q版卡通、像素画、素描或铅笔、版画、扁平矢量、低多边形、黏土、国潮插画、3D 渲染、写实摄影"
 )
+# A place the user puts the subject in ("坐在雨夜的城市天台边缘"); "站在中央" or "坐在椅子上" is no new scene.
+ART_NEW_PLACE = re.compile(
+    r"(?:[站坐躺趴蹲跪倚靠立走跑飞]|漂浮|悬浮|飘浮)(?:在|到|于|进|上)[^，,。；;\n]{0,10}?"
+    r"(?:街|路|巷|广场|公园|森林|树林|山|海|湖|河|江|岸|滩|草地|草原|田野|花园|庭院|院子|房间|屋|室|厅|堂|殿|宫|城|桥|船|车站|舞台"
+    r"|塔|崖|洞|谷|原野|荒野|沙漠|雪地|冰面|天台|阳台|寺|庙|村|镇|港|码头|甲板|战场|废墟|太空|云端)")
+
+
+def art_user_action_phrase(clause: str) -> str:
+    """The user's action clause as [主体物品] writes it: no picture labels, no "让", and no time of day or weather, which
+    belong to their own sections ("让机器人坐在雨夜的城市天台边缘" -> "机器人坐在城市天台边缘")."""
+
+    phrase = re.sub(r"^(?:让|使|叫|请)", "", re.sub(r"(?:参考)?图\s*\d+(?:中|里)?的?", "", clause).strip("，, "))
+    return re.sub(r"(?:" + "|".join(word for group in ART_TIME_OF_DAY_GROUPS for word in group)
+                  + r"|[大小暴细]?[雨雪](?:天|中)|风雪中|雾中)的?", "", phrase)
 
 
 def art_reference_role(item: dict) -> str:
@@ -5822,13 +5837,18 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     requested_time = art_requested_time(requirement)
     # "夜晚" alone came back as one word before a daylight studio description; the duty says what the time looks like.
     time_look = ART_TIME_OF_DAY_LOOK[ART_TIME_OF_DAY_GROUPS.index(requested_time[0])] if requested_time else ""
-    scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement))
+    # "坐在雨夜的城市天台边缘" with no background picture is a new scene too: its place, light and weather are built out.
+    scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement)
+                                              or not background and ART_NEW_PLACE.search(requirement))
     # A posture the user writes ("站在…中央") replaces the picture's action; kept together they read as two moments.
     user_pose = "、".join(dict.fromkeys(ART_STATE_WORD_PATTERN.findall(requirement)))
     # "看向镜头" came back as "面向镜头" and cost a repair call: the user's actions are named for [主体物品].
     from prompt_assistant.h3_prompt_enhance import action_clauses
-    user_actions = "、".join(dict.fromkeys(re.sub(r"(?:参考)?图\s*\d+(?:中|里)?的?", "", clause).strip()
-                                           for _, clause, verbs in action_clauses(requirement) if verbs))
+    user_actions = "、".join(dict.fromkeys(art_user_action_phrase(clause) for _, clause, verbs in action_clauses(requirement) if verbs))
+    # The user already puts the subject somewhere ("站在…中央"): [主体物品] says where, [环境背景] is the place only.
+    placed = bool(re.search(r"[站坐躺趴蹲跪立倚靠](?:在|于|到)", requirement))
+    # A snowy night on a new street: the snow falls on the subject too, not only on the roofs.
+    weather = any(re.search(ask, requirement) for ask, _, _ in ART_WEATHER_GROUPS) or "雪夜" in requirement
     # "冷色调灯光" next to a night: the time's own light (lanterns, warm) replaced the light the user asked for.
     user_light = "，".join(clause for clause in re.split(r"[，,。；;\n]", requirement)
                           if re.search(r"灯光|光线|光照|打光|色调|色温|冷光|暖光|逆光|侧光|顶光|冷调|暖调", clause))
@@ -5837,21 +5857,28 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     sources = [
         ("[风格设定]", f"只看{style}，{medium}，并写明整幅画面按这种画风重新绘制。只写这张图本身的画法与表面质感（笔触、颗粒、光泽、纸面），"
          f"不提它画的是什么，不拿它画的东西作比喻，也不写{subject}里主体的毛发、皮肤或背景。" if style
-         else f"看{subject}，{medium}；只写画法，背景、光线、颜色和氛围写在后面几段。"),
-        ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、发型和发色、服装、道具和颜色、身边飘着或环绕的物件和特效；"
+         else f"看{subject}，{medium}；只写画法，背景、光线、颜色和氛围写在后面几段，主体是谁、长什么样写在 [主体物品]。"),
+        ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、神情、发型和发色、服装、道具和颜色、身边飘着或环绕的物件和特效；"
          # "剑身泛着寒光" for a red blade with gold patterns and talismans: stock wording replaced what the picture shows.
          "服装、道具和特效照图写出它们本来的颜色、纹样和附着物（贴着或挂着的东西），道具按部位写颜色（如伞面和伞柄、杯身和把手各是什么颜色），不用套话代替图中看到的颜色"
          # The lantern the user added took the sword's hand, and the sword was gone.
          + ("；图中主体手里原来拿着的道具照样写出、继续拿着，用户要求新拿的东西拿在另一只手里" if re.search(r"手持|拿着|握着|举着|提着|捧着", requirement) else "")
          + (f"；姿势按{pose}" if pose else f"；图中原来的动作不再写，姿态按用户要的“{user_pose}”写，写清这个姿态下身体、双手和道具怎么放" if user_pose
             else "；照图写姿态动作")
-         + (f"；用户写的动作“{user_actions}”在这一段照原话写出" if user_actions else "")
+         # A robot on a rooftop came back as a pose with no robot: its look is written first.
+         + (f"；用户写的动作“{user_actions}”在这一段照原话写出，写在外观之后" if user_actions else "")
+         + ("；用户要的天气也落在主体身上，写出它在主体身上看得见的痕迹（如肩头的积雪、被打湿的表面）" if weather else "")
          + (f"；材质质感按{material}" if material else "")
          + "，以及主体之间的关系。"),
-        ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面，{subject}原来的背景一律不写；挑这个地方有代表性的建筑、陈设或草木写具体，"
-         "写出材质和颜色，用户要的时间和天气要在景物上看得出来；前景只放地面、台阶这类低处的东西，不挡住主体。" if scene_change
-         else f"只看{background}，写它的环境、前中后景和地面，以及主体站或坐在这个环境的什么位置；{subject}原来的背景一律不写；"
-         "照图写出看得见的建筑结构和陈设，样式、材质和颜色与图中一致；环境的风格和年代只按这张图写，看不准就只写结构和材质。" if background
+        ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面" + ("" if placed else "，以及主体站在其中的什么位置、脚下是什么")
+         + f"，{subject}原来的背景一律不写；挑这个地方有代表性的建筑、陈设或草木写具体，写出材质和颜色，用户要的时间和天气要在景物上看得出来"
+         # "街道两侧的冷色调灯光" lit the subject while the only lanterns stood far away.
+         + (f"；发出“{user_light}”的灯具写在主体身边、照得到主体的位置" if user_light else "")
+         + "；前景只放地面、台阶这类低处的东西，不挡住主体。" if scene_change
+         else f"只看{background}，写它的环境、前中后景和地面" + ("" if placed else "，以及主体站或坐在这个环境的什么位置") + f"；{subject}原来的背景一律不写；"
+         "照图写出看得见的建筑结构和陈设，样式、材质和颜色与图中一致；环境的风格和年代只按这张图写，看不准就只写结构和材质；"
+         # A runway lined with spotlight trusses came back as "酒店大堂…顶部有嵌入式灯带": the room's use and its lights are read.
+         "从座位排布、通道和台面看出这是什么场地，并照图写出看得见的灯具（样式、颜色和位置）。" if background
          else f"看{subject}，写所处环境、前中后景和地面。" + (f"时间是{requested_time[1]}，环境也是{requested_time[1]}的样子：图中是纯白等纯色背景时，"
                                                               f"给主体安排一处与他的身份和用户要求相配的{requested_time[1]}场所，写出脚下的地面、身边和远处的具体景物。"
                                                               if requested_time else "")),
@@ -5876,14 +5903,15 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         "参考图中可见的界面按钮、菜单、文字和水印都只是截图噪声，不要写进结果。",
         "正文直接描述最终画面，不要出现“图1”“图2”“参考图”“主体图”等字样，也不写“不要……”“无……”这类否定说法。",
         # The night went into one section while [环境背景] kept 纯白色背景; the lantern took the sword's hand.
-        "用户要求的改动在五段里都一致，哪一段都不再写回图片原来与它冲突的样子；每处只写一种，不写“月光或灯光”这样的二选一。",
+        "用户要求的改动在五段里都一致，哪一段都不再写回图片原来与它冲突的样子；每处只写一种（地面也只写一种状态），不写“月光或灯光”这样的二选一。",
         "用户没写左右就不写左右；新拿的东西拿在图中空着的手里，原来拿着的东西留在原来的手里。",
         # The attack pose next to "站在…中央", "背景虚化" next to a sharp street, a lantern-lit face under a "纯黑天空".
-        "五段写同一个瞬间的同一个画面：主体的姿态、所在位置、光线和镜头互相吻合，前后不矛盾；每段只写自己那部分，同一内容不在两段里重复，[拍摄参数] 只写镜头。",
+        "五段写同一个瞬间的同一个画面：主体的姿态、所在位置、光线和镜头互相吻合，前后不矛盾；每段只写自己那部分，同一内容不在两段里重复，[拍摄参数] 只写镜头，光落在哪里只写在 [光线与色彩]。",
         "主体的外观以主体图为准：不添加图中没有的衣物、配饰和道具（用户要求的除外），也不把图中的颜色和纹样换成别的。",
         # A simple request should become a rich, specific picture - inside the user's words and the pictures.
         "在用户要求和图片之内写得具体生动：环境和光线多写几处合情合理的细节（地面材质、天气痕迹、陈设、远景、光在主体和地面上的效果）；"
-        "每段写两三句通顺的完整句子，不堆砌词语，不写“突出……”“强调……”这类说明效果的话，也不写“高质量”之类的空话。",
+        # Two to three sentences made answers 45% slower (280 -> 360 tokens) for little more picture.
+        "每段写两句通顺的完整句子，不堆砌词语，不写“突出……”“强调……”这类说明效果的话，也不写“高质量”之类的空话。",
     ]
     return (
         "".join(f"图{index + 1}（{ART_REFERENCE_ROLES[role][0]}）：{QWEN3_CHAT_VISION_TOKEN}\n" for index, role in enumerate(roles))
@@ -6071,8 +6099,8 @@ def art_drop_invented_clauses(text: str, source: str, instruction: str, enrich: 
     the new text it wrote.  Such a piece is dropped unless it shares words with the draft or the edit.
     Invented weather ("远景有薄雾笼罩的树影") goes unless it shares two content words with them, and a
     painted style asked for by the edit loses the photographic 景深/虚化 the model added.
-    Enriching a plain draft with no edit (enrich) is asked to choose a fitting style and time of day, so those stay;
-    invented weather still goes.
+    Enriching a plain draft with no edit (enrich) is asked to choose a fitting style, time of day and weather, so those
+    stay; rain, fog or falling snow goes only under a sun the user wrote ("晒太阳").
     """
 
     known = ordinary_art_retention_bigrams(f"{source}\n{instruction}")
@@ -6083,8 +6111,10 @@ def art_drop_invented_clauses(text: str, source: str, instruction: str, enrich: 
         return lambda piece: bool(pattern.search(piece)) and not (ordinary_art_retention_bigrams(piece) & known)
 
     edits = []
+    # "远处是连绵雪峰与薄雾" on the user's snow peak is the picture; the whole clause went with the fog.
+    sunny = re.search(r"阳光|太阳|日光|晴|烈日|艳阳", given)
     for pattern in ART_INVENTED_WEATHER_PATTERNS:
-        if not pattern.search(given):
+        if not pattern.search(given) and (sunny or not enrich):
             edits.append((None, lambda piece, pattern=pattern: bool(pattern.search(piece))
                           and len(art_content_bigrams(piece) & known_content) < 2))
     if ART_PAINTED_STYLE_EDIT.search(instruction) and not re.search(r"摄影|照片|相机|" + ART_FOCUS_PATTERN.pattern, instruction):
@@ -6281,6 +6311,17 @@ def art_role_reference_cleanup(text: str, roles: list) -> str:
 # user asked for is a colour claim too. The user's own background or light words ("冷色调灯光") belong to the
 # sections that own them, so they go from here even so.
 ART_STYLE_NOT_DRAWING = re.compile(r"背景|场景|环境|光线|灯光|光照|氛围|色调|配色|主色|辅色|色彩搭配|鲜艳|饱和|艳丽")
+# "上色采用鲜明的红金对比", "上色为青绿色与铜色混合": the palette's colours, said in the drawing.
+ART_STYLE_COLOUR_CLAIM = re.compile(
+    r"上色(?:采用|为|以|是|用)[^，,。；;]*?[红橙黄绿青蓝紫黑白灰金银棕褐粉米]|[红橙黄绿青蓝紫黑白灰金银棕褐粉米]{1,3}色?(?:对比|搭配|相间|撞色|混合)")
+# "剑身泛着寒光", "一柄通体银光、…的长剑" for a red blade with gold patterns and talismans: stock sheen over what the subject
+# picture shows. The picture carries the look, so the stock words go and the rest of the sentence stays.
+ART_STOCK_SHEEN_PIECE = re.compile(r"^(?:[剑刀][身刃锋]|刃口|锋刃)[^，,。；;、]{0,4}(?:寒光|寒芒|银光)[^，,。；;、]{0,4}$")
+ART_STOCK_SHEEN = re.compile(r"通体(?:泛着)?(?:银光|寒光)(?:闪闪)?[、的]|(?:泛着|闪着|闪烁着|透着)(?:森冷|冷冽)?的?(?:寒光|寒芒|银光)的(?=[一-鿿])"
+                             r"|(?:寒光|寒芒|银光)(?:闪烁|闪闪|凛冽|逼人|四射)的(?=[一-鿿])")
+# "一只手抬起呈防御姿态" after the user's "站在…中央": the picture's fight is not the pose the user asked for.
+ART_COMBAT_STANCE = re.compile(
+    r"(?:劈斩|劈砍|挥砍|出招|攻击|进攻|防御|防守|迎战|御敌|战斗|厮杀|格挡)[^，,。；;、]{0,4}(?:之势|姿态|架势|姿势)|作[^，,。；;、]{0,4}之势")
 # "月光或环境光作为辅助光源": one of the two.
 ART_EITHER_OR = re.compile(r"(?<![或])([一-鿿]{1,6})或者?(?!许|是|多|少)([一-鿿]{1,6}?)(?=作为|为|来自|照|投|洒|的)")
 # A thing the picture's subject holds; the model hands it the user's new thing instead ("似欲挥剑" with no sword in hand).
@@ -6288,16 +6329,18 @@ ART_HELD_PROP = r"剑|刀|枪|戟|矛|斧|锤|鞭|弓|扇|杖|伞"
 ART_GENERIC_PAIRS = {"角色", "人物", "主体", "画面", "整体", "风格", "画风", "改成", "改为", "换成", "变成", "让角", "加上", "增加"}
 
 
-def art_role_reference_user_fit(text: str, requirement: str) -> str:
+def art_role_reference_user_fit(text: str, requirement: str, roles=()) -> str:
     """多图反推 after its cleanup: [风格设定] keeps the drawing only; an either/or keeps the choice the user asked for,
     else the first; a held prop the answer lets go of is held again; the background colour and the mood are said once;
-    left and right the user never wrote go (the small model mirrors the picture's hands)."""
+    stock blade sheen goes, and so does the picture's fighting stance when the user asks for a posture (and no pose
+    picture gives one); left and right the user never wrote go (the small model mirrors the picture's hands)."""
 
     from prompt_assistant.h3_prompt_enhance import drop_sides
     asked = {pair for pair in art_content_bigrams(requirement) - ART_GENERIC_PAIRS if not ART_STYLE_NOT_DRAWING.search(pair)}
     own = lambda piece: bool(art_content_bigrams(piece) & asked)
     text = art_edit_section_lines(text, ("风格设定",), lambda line: art_edit_line_segments(
-        line, lambda piece: bool(ART_STYLE_NOT_DRAWING.search(piece)) and not re.search(ART_STYLE_NAME_PATTERN.pattern + "|风格|画风", piece, re.I)
+        line, lambda piece: bool(ART_STYLE_NOT_DRAWING.search(piece) or ART_STYLE_COLOUR_CLAIM.search(piece))
+        and not re.search(ART_STYLE_NAME_PATTERN.pattern + "|风格|画风", piece, re.I)
         and (bool(re.search(r"背景|场景|环境|灯光|光线|光照", piece)) or not own(piece))))
 
     def either(match):
@@ -6327,14 +6370,25 @@ def art_role_reference_user_fit(text: str, requirement: str) -> str:
     if re.search(r"氛围|营造", art_section_map(text).get("光线与色彩", "")):
         # One mood: "整体氛围静谧" next to "营造出夜晚的神秘与威严".
         text = art_edit_section_lines(text, ("环境背景",), lambda line: art_edit_line_segments(line, lambda piece: "氛围" in piece))
+    if not re.search(r"寒光|寒芒|银光", requirement):
+        text = art_edit_section_lines(text, ("主体物品",), lambda line: ART_STOCK_SHEEN.sub("", art_edit_line_segments(
+            line, lambda piece: bool(ART_STOCK_SHEEN_PIECE.match(piece)))))
+    if "pose" not in roles and ART_STATE_WORD_PATTERN.search(requirement):
+        text = art_edit_section_lines(text, ("主体物品",), lambda line: art_edit_line_segments(
+            line, lambda piece: bool(ART_COMBAT_STANCE.search(piece)) and piece not in requirement))
     return drop_sides([text], requirement)[0]
 
 
-# "突出人物与环境的融合", "强调主体动态": what a sentence is for, not what the picture shows. "突出的岩石" and
-# "颧骨突出" describe the picture and stay.
-ART_EVALUATIVE_PIECE = re.compile(r"^(?:以|用以|从而|来|更加?)?(?:突出|强调|凸显|彰显)(?!的)")
-ART_EVALUATIVE_TAIL = re.compile(r"(?<=[一-鿿])(?:以|来|从而)?(?:突出|强调|凸显|彰显)(?!的)[一-鿿][^，,。；;！？!?\n]*")
-ART_EVALUATIVE_WORDS = re.compile(r"视觉(?:张力|冲击|效果)|形成张力")
+# "突出人物与环境的融合", "强调主体动态": what a sentence is for, not what the picture shows. "突出的岩石", "礁石突出海面"
+# and "眉骨突出明显" describe the picture and stay.
+ART_EVALUATIVE_VERB = r"(?:突出(?!的|明显|分明|于|在|[海水地墙岩崖山云石面表])|强调|凸显|彰显)"
+ART_EVALUATIVE_PIECE = re.compile(r"^(?:以|用以|从而|来|更加?)?" + ART_EVALUATIVE_VERB)
+ART_EVALUATIVE_TAIL = re.compile(r"(?<=[一-鿿])(?:以|来|从而)?" + ART_EVALUATIVE_VERB + r"[一-鿿][^，,。；;！？!?\n]*")
+ART_EVALUATIVE_WORDS = re.compile(r"视觉(?:张力|冲击|效果|焦点|中心|重心)|形成张力")
+# "辅以主体的红金配色作为视觉焦点": the colours stay, the aside goes.
+ART_VISUAL_FOCUS = re.compile(r"(?<=[一-鿿])(?:作为|成为|形成|是)?(?:画面的?)?视觉(?:焦点|中心|重心)")
+# "主体位于地毯正中，正对镜头" after [主体物品]'s "站立于大堂中央": the subject is placed once.
+ART_SCENE_PLACEMENT = re.compile(r"(?:主体|人物|角色)[^，,。；;]{0,3}(?:位于|站在|站于|坐在|立于|站立于|处于)|(?:正对|面向|面朝|背对|看向)镜头")
 # "光线柔和但对比强烈": the second half takes the first back.
 ART_SOFT_BUT_HARD = re.compile(r"((?:柔和|柔光|柔软|轻柔)[^，,。；;]{0,4}?)(?:但|却|而)[^，,。；;]{0,6}?(?:强烈|硬朗|锐利|刺眼)")
 ART_CAMERA_BLUR = re.compile(r"虚化|浅景深|景深浅|焦外|散景|背景模糊")
@@ -6343,32 +6397,77 @@ ART_CAMERA_WORD = re.compile(
     r"景别|全身|半身|七分身|全景|中景|近景|远景|特写|视角|视线|平视|仰|俯|鸟瞰|正面|侧面|背面|构图|居中|中心|中央|对称|三分|对角|引导|留白|框"
     r"|景深|虚化|焦|镜头|机位|透视|广角|长焦|微距|画面|画幅|占据|位于|偏[左右上下]|清晰|清楚|前景|取景|裁切|比例|拍摄|角度")
 # Robes "在气流中飘扬" in a hall: indoors nothing blows them unless something is there to.
-ART_INDOOR = re.compile(r"室内|屋内|房间|客厅|卧室|大厅|大堂|礼堂|厅堂|中庭|殿内|走廊|长廊|教室|办公室|秀场|T台")
+ART_INDOOR = re.compile(r"室内|屋内|房间|客厅|卧室|大厅|大堂|礼堂|厅堂|殿内|走廊|长廊|教室|办公室|秀场|T台")
 ART_WIND_MOTION = re.compile(
     r"(?:随风|迎风|在风中|于风中|被风吹[得起]?|在气流中|因气流)[一-鿿]{0,2}?(?:飘扬|飞扬|扬起|飘动|翻飞|飘荡|飘舞|舞动|鼓荡|狂舞)")
+# Morning, midday, dusk and night: "午后氛围" next to "画面质感如晨光轻拂纸面" is two times of day.
+ART_TIME_PHASES = (
+    ("清晨", "早晨", "上午", "晨光", "晨曦", "朝阳", "日出", "黎明", "拂晓", "破晓"),
+    ("正午", "中午", "午后", "下午", "午间"),
+    ART_TIME_OF_DAY_GROUPS[1],
+    ART_TIME_OF_DAY_GROUPS[2] + ART_TIME_OF_DAY_GROUP_LIGHT[ART_TIME_OF_DAY_GROUPS[2]],
+)
 
 
-def art_consistent_sections(text: str, source: str = "") -> str:
-    """The five sections as one picture: evaluative asides go, a soft light is not also hard, [环境背景] leaves focus
-    to the camera, [拍摄参数] keeps to the camera and does not blur a scene [环境背景] calls sharp, and nothing blows
-    in a room with no wind. The user's own words stay."""
+def art_consistent_sections(text: str, source: str = "", one_time: bool = True) -> str:
+    """The five sections as one picture: evaluative asides go, a soft light is not also hard, [环境背景] leaves focus to
+    the camera and the light on things to [光线与色彩], the subject is placed once, [拍摄参数] keeps to the camera and
+    agrees with the scene (no blur on a scene called sharp, no sharp background next to a hazy one or a blur), nothing
+    blows in a room with no wind, and (one_time) the picture has one time of day. The user's own words stay."""
 
     mine = lambda piece: bool(source) and piece in source
     text = art_edit_section_lines(text, None, lambda line: art_edit_line_segments(
-        ART_SOFT_BUT_HARD.sub(lambda match: match[0] if match[0] in source else match[1],
-                              ART_EVALUATIVE_TAIL.sub(lambda match: match[0] if match[0] in source else "", line)),
+        ART_VISUAL_FOCUS.sub(lambda match: match[0] if match[0] in source else "", ART_SOFT_BUT_HARD.sub(
+            lambda match: match[0] if match[0] in source else match[1],
+            ART_EVALUATIVE_TAIL.sub(lambda match: match[0] if match[0] in source else "", line))),
         lambda piece: bool(ART_EVALUATIVE_PIECE.match(piece) or ART_EVALUATIVE_WORDS.search(piece)) and not mine(piece)))
+    placed = re.search(r"[站坐立躺趴蹲跪位](?:于|在)", art_section_map(text).get("主体物品", ""))
     text = art_edit_section_lines(text, ("环境背景",), lambda line: art_edit_line_segments(
-        line, lambda piece: bool(re.search(r"虚化|景深|焦外|散景", piece)) and not mine(piece)))
+        line, lambda piece: bool(re.search(r"虚化|景深|焦外|散景|高光|亮面", piece) or placed and ART_SCENE_PLACEMENT.match(piece))
+        and not mine(piece)))
     text = art_edit_section_lines(text, ("拍摄参数",), lambda line: art_edit_line_segments(
         line, lambda piece: not ART_CAMERA_WORD.search(piece) and not mine(piece)))
     scene = art_section_map(text).get("环境背景", "")
     if re.search(r"清晰|清楚", scene):
         text = art_edit_section_lines(text, ("拍摄参数",), lambda line: art_edit_line_segments(
             line, lambda piece: bool(ART_CAMERA_BLUR.search(piece)) and not mine(piece)))
-    if ART_INDOOR.search(scene) and not re.search(r"吹|风扇|微风|大风|寒风|狂风|穿堂风", scene + source):
+    if re.search(r"朦胧|模糊|隐约", scene) or ART_CAMERA_BLUR.search(art_section_map(text).get("拍摄参数", "")):
+        # "远处是朦胧的山影" with "背景的山影…清晰呈现", "景深清晰" with "环境虚化处理": the camera keeps the soft one.
+        text = art_edit_section_lines(text, ("拍摄参数",), lambda line: art_edit_line_segments(
+            line, lambda piece: bool(re.search(r"清晰|清楚", piece)) and not re.search(r"对焦|焦点|聚焦|主体|面部|五官", piece)
+            and not mine(piece)))
+    if (ART_INDOOR.search(scene) and not re.search(r"露天|庭院|天井|院子|户外|室外", scene)
+            and not re.search(r"吹|风扇|微风|大风|寒风|狂风|穿堂风", scene + source)):
         text = art_edit_section_lines(text, ("主体物品",), lambda line: ART_WIND_MOTION.sub(
             lambda match: match[0] if match[0] in source else "自然垂落", line))
+    return art_one_time_of_day(text, source) if one_time else text
+
+
+def art_one_time_of_day(text: str, source: str = "") -> str:
+    """One time of day: the one the user wrote, else the one [光线与色彩] names, else the first written; pieces that
+    name another go."""
+
+    found = sorted((text.find(word), index) for index, words in enumerate(ART_TIME_PHASES) for word in words if word in text)
+    phases = list(dict.fromkeys(index for _, index in found))
+    if len(phases) < 2:
+        return text
+    light = art_section_map(text).get("光线与色彩", "")
+    keep = next((index for index in phases if any(word in source for word in ART_TIME_PHASES[index])),
+                next((index for index in phases if any(word in light for word in ART_TIME_PHASES[index])), phases[0]))
+    other = re.compile("|".join(word for index in phases if index != keep for word in ART_TIME_PHASES[index]))
+    return art_edit_section_lines(text, None, lambda line: art_edit_line_segments(
+        line, lambda piece: bool(other.search(piece)) and not (source and piece in source)))
+
+
+def art_user_look_words(text: str, requirement: str) -> str:
+    """"看向镜头" answered as "面向镜头": the user's look is written in its place in [主体物品], once, with no repair call."""
+
+    for clause in re.split(r"[，,。；;\n]", requirement):
+        look = re.search(r"(?:看|望|盯|注视|凝视|直视)[向着]?([一-鿿]{2,4})$", clause.strip())
+        body = "\n".join(value for name, value in art_section_map(text).items() if name != "拍摄参数")
+        if look and not re.search(r"(?:看|望|盯|视|瞧)[向着]?" + re.escape(look[1]), body):
+            text = art_edit_section_lines(text, ("主体物品",), lambda line, look=look: re.sub(
+                r"(?:面向|正对|面朝|朝向|对着|转向)着?" + re.escape(look[1]), look[0], line, count=1))
     return text
 
 
@@ -6379,7 +6478,7 @@ def art_write_missing_actions(text: str, requirement: str) -> str:
     from prompt_assistant.h3_prompt_enhance import action_at, action_clauses, action_part
     body = "\n".join(value for name, value in art_section_map(text).items() if name != "拍摄参数")
     for _, clause, verbs in action_clauses(requirement):
-        phrase = re.sub(r"(?:参考)?图\s*\d+(?:中|里)?的?", "", clause).strip("，, ")
+        phrase = art_user_action_phrase(clause)
         if phrase and any(action_at(found[0], action_part(clause, found), body) < 0 for found in verbs):
             text = art_append_to_section(text, "主体物品", phrase)
     return text
@@ -15430,8 +15529,10 @@ class PromptAssistant:
             positive = finalize_art_semantic_fusion(art_positive_only_wording(art_drop_unknown_references(
                 art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output)), source,
             ), source), instruction)
+            # An edit may change the time of day ("改成夜晚"), so only an enriched draft is held to one time.
             positive = art_consistent_sections(art_drop_section_mentions(art_write_requested_weather(art_write_requested_time(
-                art_drop_invented_clauses(positive, source, instruction, enrich=enrich), instruction), instruction), source), source)
+                art_drop_invented_clauses(positive, source, instruction, enrich=enrich), instruction), instruction), source), source,
+                one_time=enrich)
             if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(positive):
                 raise ValueError("提示词融合未通过内容检查，原提示词未修改")
             failure = patch_failure or art_semantic_fusion_failure(source, instruction, positive)
@@ -15551,9 +15652,9 @@ class PromptAssistant:
             person, minor, sensitive = person or said_person, minor or said_minor, sensitive or said_sensitive
             young_words = young_words or _requirements_contain_explicit_minor_terms(output)
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            description = art_consistent_sections(art_role_reference_user_fit(art_role_reference_cleanup(art_plain_background_focus(
-                art_single_view_angle(art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), roles),
-                requirement), requirement)
+            description = art_user_look_words(art_consistent_sections(art_role_reference_user_fit(art_role_reference_cleanup(
+                art_plain_background_focus(art_single_view_angle(art_positive_only_wording(art_finish_model_prompt(
+                    output, truncated=truncated)))), roles), requirement, roles), requirement), requirement)
             # The prompt's own explicit words count as sensitive content too, in case the check says 无 while the
             # prompt writes what was asked for in words the user's text does not use (脱光 -> 一丝不挂).
             art_reference_block_sensitive_minor(requirement, minor or young_words,
