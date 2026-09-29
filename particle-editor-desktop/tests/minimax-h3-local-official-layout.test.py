@@ -66,9 +66,11 @@ class LocalH3OfficialLayoutTest(unittest.TestCase):
                 text = result["positivePrompt"]
                 self.assertEqual(len(calls), 1)
                 self.assertIn(SERVICE.MINIMAX_H3_WRITER_RULES, calls[0]["llama_template"])
-                # Chinese fields, one shot, no time ranges; the renderer adds the alignment line.
+                # Chinese fields, one shot, no time ranges; the renderer adds the alignment line. Background music is
+                # written unless the user refuses it (a writer that gave no 配乐 line gets a plain one).
                 self.assertEqual(text, "integrated_multimodal_description: " + narrative
-                                 + "\n\noverall_soundscape: 与画面动作一致的自然环境声和动作声。\n\nnon_diegetic_music: N/A")
+                                 + "\n\noverall_soundscape: 与画面动作一致的自然环境声和动作声。\n\nnon_diegetic_music: "
+                                 + SERVICE.compile_h3_action_phases.__globals__["DEFAULT_MUSIC_ZH"])
 
     def test_json_sections_and_bare_headers_share_layout(self):
         fields = dict(zip(SERVICE.MINIMAX_H3_BASE_PROMPT_FIELDS, (
