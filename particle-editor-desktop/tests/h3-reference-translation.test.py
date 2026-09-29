@@ -140,6 +140,30 @@ class TranslationTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn('[Shot 1] <Subject 1> The three stone slabs slowly rise into the air and fly toward <Picture 1>.', pair['modelPrompt'])
 
+    def test_tags_every_attempt_drops_are_asked_once_as_names(self):
+        # "TOKEN_0 走向 TOKEN_1" came back as "The character walks toward the other" on every attempt and the whole
+        # 多参 plan failed after minutes; the tags asked as names come back and are put in their place.
+        calls = []
+        english = dict(TRANSLATIONS, **{'TOKEN_0 走向 TOKEN_1。': 'The character walks toward the other.',
+                                        'Aren 走向 Bela。': 'Aren walks toward Bela.'})
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                calls.append(pending)
+                return json.dumps({key: english[value] for key, value in pending.items()})
+        fields = dict(FIELDS, detailed_description='[Shot 1] <Subject 1> 走向 <Video 1>。')
+        pair = json.loads(FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)['positivePrompt'])
+        self.assertIn('[Shot 1] <Subject 1> walks toward <Video 1>.', pair['modelPrompt'])
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(list(calls[-1].values()), ['Aren 走向 Bela。'])
+        # A name that does not come back is no translation: the plan still fails rather than lose a tag.
+        english['Aren 走向 Bela。'] = 'He walks toward Bela.'
+        with self.assertRaisesRegex(ValueError, '本地翻译未完整保留内容'):
+            FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)
+
     def test_spatial_translation_may_introduce_3d_without_changing_literal_timing(self):
         pair, calls = self.run_translation(spatial=True)
         self.assertEqual(len(calls), 1)
