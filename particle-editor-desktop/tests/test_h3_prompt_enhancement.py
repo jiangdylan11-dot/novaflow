@@ -907,17 +907,30 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("<Subject 1>: <Picture 1> 中的男性角色，黑发束起，身穿金色铠甲，兽头形护肩\n<Subject 2>: <Picture 2> 中的巨蛇，紫色鳞片，绿色冠刺", written[0])
         self.assertIn("已确定事件：<Subject 1> 举起兵器，与 <Subject 2> 巨蛇在山崖上对峙", calls[-1][1])
         self.assertIn("non_diegetic_music:\n低沉的大鼓配古筝，节奏缓慢。", written[0])
-        # In check mode a person's name for a picture ("成年女子" for a child's) never replaces what the observer sees, so its
-        # minor evidence still counts; a thing or an animal keeps the user's noun.
+        # Checked, the observer is given no name, so a name for a child's picture ("熟妇", "艺伎", any word) never hides the
+        # child from the check; the user's name is given after it (巨蛇 for the observer's 紫色巨龙, 成年女子 for 男性角色).
         calls.clear()
+        written.clear()
         adult = source.replace("<Picture 1> 中的角色", "<Picture 1> 中的成年女子")
+        looks["BBBB"] = "画风：动漫插画\n主体：紫色巨龙，紫色鳞片，绿色冠刺\n背景：纯灰色背景\n未成年=无；敏感=无"
         with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)), \
-                mock.patch.object(service.PromptAssistant, "translate_h3_reference", side_effect=lambda positive, *args: {"positivePrompt": "{}"}):
+                mock.patch.object(service.PromptAssistant, "translate_h3_reference", side_effect=lambda positive, *args: written.append(positive) or {"positivePrompt": "{}"}):
             assistant._optimize_h3_reference(adult, requirements.replace(source, adult), 6, frames, check=True)
         observe = [prompt for label, prompt in calls if label == "minimaxH3ReferenceObserve"]
         self.assertEqual(len(observe), 2)
-        self.assertNotIn("用户叫它", observe[0])
-        self.assertIn("用户叫它“巨蛇”，就写“巨蛇”", observe[1])
+        self.assertFalse([prompt for prompt in observe if "用户叫它" in prompt])
+        self.assertIn("<Subject 1>: <Picture 1> 中的成年女子，黑发束起，身穿金色铠甲，兽头形护肩\n<Subject 2>: <Picture 2> 中的巨蛇，紫色鳞片，绿色冠刺", written[0])
+        # The observer (obeying any name it is given) sees a child: blocked with the sensitive check line, whatever the name.
+        observer = lambda prompt, **kwargs: ("画风：3D渲染\n主体：" + (re.search(r"用户叫它“([^”]*)”", prompt) or [None, "儿童"])[1]
+                                             + "，黑发，白色连衣裙\n背景：纯白色背景\n未成年=无；敏感=有") if kwargs.get("trace_label") == "minimaxH3ReferenceObserve" else "{}"
+        for noun in ["角色", "成年女子", "熟妇", "艺伎", "模特", "巨蛇"]:
+            named = f"<Picture 1> 中的{noun}走向 <Picture 2> 中的巨蛇"
+            child = service.PromptAssistant()
+            child.generate = observer
+            with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+                with self.assertRaises(service.VisualContractError, msg=noun) as raised:
+                    child._optimize_h3_reference(named, "Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n" + named, 6, frames, check=True)
+            self.assertEqual(raised.exception.code, "h3-sensitive-young-evidence-blocked")
         calls.clear()
         with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)), \
                 mock.patch.object(service.PromptAssistant, "translate_h3_reference", side_effect=lambda positive, *args: {"positivePrompt": "{}"}):
@@ -1192,10 +1205,10 @@ class H3BaseLocalTest(unittest.TestCase):
             self.assertEqual(service.minimax_h3_base_audio(view, fields, tail)[:2], expected, tail)
         # A plain prompt leaves the soundscape to the writer, with the sounds the user named.
         self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，配上钢琴配乐", None, ""), (None, "钢琴配乐。", []))
-        # No music named: the writer's background music (None); a prompt's own N/A stays on a later edit (the user may have
-        # refused music in an earlier round), and a prompt without the field gets the writer's music.
+        # No music named: the writer's background music (None); a prompt's own N/A is no refusal (the renderer writes N/A into
+        # an empty field, and the previous release wrote it for every prompt), and a prompt without the field gets the same.
         self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，背景是海浪声和海鸥叫声", None, ""), (None, None, ["海浪声", "海鸥叫声"]))
-        self.assertEqual(service.minimax_h3_base_audio(view, dict(fields, non_diegetic_music="N/A"), "加上海鸥叫声")[1], "N/A")
+        self.assertEqual(service.minimax_h3_base_audio(view, dict(fields, non_diegetic_music="N/A"), "加上海鸥叫声")[1], None)
         self.assertEqual(service.minimax_h3_base_audio(view, dict(fields, non_diegetic_music=""), "加上海鸥叫声")[1], None)
         self.assertEqual(service.minimax_h3_base_audio(view, dict(fields, non_diegetic_music="N/A"), "不要音乐")[1], "N/A")
         answer = phases().replace("\n约束", "\n声音：海浪拍岸声，风吹过窗台的轻响，远处传来钢琴音乐。\n约束")
@@ -1368,6 +1381,70 @@ class H3BaseLocalTest(unittest.TestCase):
         # The old answer never wrote 伸懒腰: the user's own words go in after the subject its beat opens with.
         self.assertIn("[Shot 1] 写实电影风格，橘猫趴在窗台上。镜头固定，构图保持稳定。橘猫在窗台上伸懒腰，前爪向前伸直。后腿蹬起，从窗台一跃而下。四爪落地，站稳后抬头。\n\n",
                       compile_action_phases(five, "T2VA", 5, CAT))
+
+    def test_round_five_recheck_scores_jumps_and_eyes(self):
+        from prompt_assistant.h3_prompt_enhance import DEFAULT_MUSIC_ZH, plain_music
+        nude = "一个女子全裸躺在床上，然后翻身"
+        dialog = {"contentPolicy": {"sensitiveVisualAnalysis": True, "allSubjectsConfirmedAdult": False}}
+        music = lambda text: re.search(r"non_diegetic_music: ([^\n]*)", text)[1]
+        # The writer's score reaches the generator: a performer nobody asked for goes with its clause, in any language, and a
+        # score left with no instrument is the default one (the text-to-video check has no picture to see it).
+        for written, expected in [("小女孩低声清唱，钢琴伴奏，速度缓慢", "钢琴伴奏，速度缓慢。"), ("童声合唱配钢琴，速度缓慢", DEFAULT_MUSIC_ZH),
+                                  ("小男孩吹奏的口琴，速度缓慢", DEFAULT_MUSIC_ZH), ("a little girl softly sings, piano", None)]:
+            result, _ = self.run_local([phases() + "\n配乐：" + written], {**dialog, "currentPrompt": nude})
+            self.assertNotRegex(music(result["positivePrompt"]), r"女孩|男孩|童|girl|sing")
+            if expected:
+                self.assertEqual(music(result["positivePrompt"]), expected)
+        # The user's own voice stays, and the writer is not told to leave it out; a voice the user did not name is the writer's.
+        self.assertEqual(service.minimax_h3_base_audio(CAT + "，配上童声合唱", None, "")[1], "童声合唱配乐。")
+        self.assertNotIn("不写人声", service.build_minimax_h3_writer_request(CAT + "，配上童声合唱", "", "T2VA", 5))
+        self.assertIn("（只写乐器，不写人声和歌唱）", service.build_minimax_h3_writer_request(CAT, "", "T2VA", 5))
+        result, _ = self.run_local([phases().replace("\n约束", "\n配乐：童声合唱，钢琴伴奏，速度缓慢\n约束")], {"currentPrompt": CAT + "，配上童声合唱"})
+        self.assertIn("non_diegetic_music: 童声合唱，钢琴伴奏，速度缓慢。", result["positivePrompt"])
+        answer = phases().replace("\n约束", "\n配乐：{}\n约束")
+        view = CAT + "，配上女声吟唱的古风歌曲"
+        audio = service.minimax_h3_base_audio(view, None, "")
+        self.assertEqual(music(compile_action_phases(answer.format("女声吟唱配古筝，速度缓慢"), "T2VA", 5, view, audio=audio)), "女声吟唱配古筝，速度缓慢。")
+        self.assertEqual(music(compile_action_phases(answer.format("小女孩低声清唱，古筝伴奏"), "T2VA", 5, view, audio=audio)), "女声吟唱的古风歌曲。")
+        # The user's instrument decides, not the user's mood word ("舒缓的钢琴配乐" reads as the writer spells it out).
+        for asked, written in [("配上舒缓的钢琴配乐", "钢琴独奏，速度缓慢，音量平稳，结尾渐弱"), ("配上低沉的大提琴音乐", "大提琴长音铺底，速度缓慢，音量由弱渐强")]:
+            view = CAT + "，" + asked
+            self.assertEqual(music(compile_action_phases(answer.format(written), "T2VA", 5, view, audio=service.minimax_h3_base_audio(view, None, ""))), written + "。")
+        # An editor display with only 【画面与动作】 arrives with the renderer's N/A: no refusal, the writer's music is used.
+        source = "integrated_multimodal_description: [Shot 1] 一只橘猫在窗台上伸懒腰，然后跳下窗台\n\noverall_soundscape: \n\nnon_diegetic_music: N/A"
+        scored = answer.format("钢琴独奏，速度缓慢，音量平稳")
+        result, _ = self.run_local([scored, scored], {"currentPrompt": source, "requirements": "Source prompt:\n" + source})
+        self.assertEqual(music(result["positivePrompt"]), "钢琴独奏，速度缓慢，音量平稳。")
+        # Music or silence in an action is the action: it stays a point, and "她无声流泪" silences nothing.
+        for words in ["女孩随着音乐起舞，然后向观众鞠躬", "他戴上耳机听音乐，然后闭上眼睛轻轻点头", "钢琴家弹奏一首钢琴曲，然后起身鞠躬", "她无声流泪，然后转身离开"]:
+            self.assertEqual(len(service.minimax_h3_writer_points(words, "")), 2, words)
+        self.assertEqual(service.minimax_h3_base_audio("她无声流泪，然后转身离开", None, ""), (None, None, []))
+        self.assertEqual(service.minimax_h3_base_audio("全程无声，女孩挥手", None, "")[:2], ("N/A", "N/A"))
+        self.assertIn("\n配乐：写适合这段画面的背景音乐", service.build_minimax_h3_writer_request("她无声流泪，然后转身离开", "", "T2VA", 5))
+        # A likeness in the sound line is a simile; a statue is not.
+        for sound in ["佛像前的铜铃轻响，钟声在大殿里回荡", "石像轰然碎裂", "老旧录像机咔哒作响"]:
+            self.assertEqual(plain_music(sound, sung=True), sound)
+        self.assertEqual(plain_music("风声低沉如潮", sung=True), "风声低沉")
+        # A jump is named where its jumper leaves or lands after the user's earlier actions; a glance or a ball that lands is
+        # none, so the jump keeps its place in the user's order.
+        for user, opening, expected in [
+                ("女孩看向窗外，然后跳起来欢呼", "女孩站在窗前\n起始：镜头固定，女孩转头，目光落在窗外的花园上\n递进：女孩嘴角上扬，眼睛亮起\n收束：女孩双手举过头顶欢呼",
+                 "女孩嘴角上扬，眼睛亮起。女孩跳起来欢呼，双手举过头顶欢呼。"),
+                ("男孩把球放在地上，然后跳起来投篮", "男孩站在篮球场上\n起始：镜头固定，男孩弯腰把球放在地上，篮球落在脚边\n递进：男孩捡起球，双手举过头顶\n收束：男孩把球投向篮筐",
+                 "男孩弯腰把球放在地上，篮球落在脚边。男孩捡起球，双手举过头顶。男孩跳起来投篮，把球投向篮筐。"),
+                ("小狗在草地上打滚，然后跳起来追蝴蝶", "一只小狗趴在草地中央\n起始：镜头跟随它缓慢移动，小狗在草地上打滚，草屑落在它背上，四爪着地\n递进：小狗翻身站起，看向飞过的蝴蝶\n收束：小狗追着蝴蝶跑远",
+                 "小狗在草地上打滚，草屑落在它背上，小狗跳起来追蝴蝶，四爪着地。")]:
+            self.assertIn(expected, compile_action_phases("概述：写实电影风格，全景，" + opening + "\n约束：无", "T2VA", 6, user))
+        # "眼睑轻启" opens the eyes (told once); "嘴唇轻启" and "大门缓缓开启" do not, and the user's words are written. The
+        # opening subject the writer names by its look (女神 as 女子, ho_fl2v) is no dropped action: one call.
+        eyes = "概述：三维渲染，紫发女子坐于大理石台阶，手持金色权杖\n起始：镜头固定，{}\n递进：权杖顶端星芒微曳\n收束：女子微微抬起权杖\n约束：无"
+        for opening in ["女神嘴唇轻启，睫毛微颤", "神殿大门缓缓开启，女神静坐"]:
+            self.assertIn("女神缓缓睁开眼睛", compile_action_phases(eyes.format(opening), "FL2VA", 5, "女神缓缓睁开眼睛，微微抬起权杖"))
+        result, calls = self.run_local([eyes.format("女子眼睑轻启，睫毛微颤")], {"h3Mode": "first_last", "currentPrompt": "女神缓缓睁开眼睛，微微抬起权杖"})
+        self.assertEqual(len(calls), 1)
+        self.assertIn("女子眼睑轻启，睫毛微颤", result["positivePrompt"])
+        self.assertNotIn("睁开", result["positivePrompt"])
+
 
 class H3UserWordsTest(unittest.TestCase):
     """What the writer is asked and what the program keeps: the user's own actions in order, no sides or lean-back the
@@ -2020,8 +2097,15 @@ class H3UserWordsTest(unittest.TestCase):
                          "detailed_description:\n[Shot 1] <Subject 2>, with black hair, walks toward the camera, and the man in <Subject 3>'s armor raises his spear.")
         self.assertEqual(official_english("detailed_description:\n[Shot 1] The spear aims at the <Subject 2>'s neck.", opening_style=False),
                          "detailed_description:\n[Shot 1] The spear aims at <Subject 2>'s neck.")
-        self.assertEqual(subject_pronouns("[Shot 1] <Subject 1>'s feet press the rock as its body leans forward.", "<Subject 1>: <Picture 1> 中的男性，黑发束起"),
-                         "[Shot 1] <Subject 1>'s feet press the rock as his body leans forward.")
+        # A person's body part is theirs ("<Subject 1> slightly shifts its body", run6); "its" after another thing named since
+        # the subject is that thing's (the horse's body, the crow's, the doll's face).
+        man = "<Subject 1>: <Picture 1> 中的男性，黑发束起"
+        self.assertEqual(subject_pronouns("[Shot 1] <Subject 1> slightly shifts its body, bringing both hands in front of its chest.", man),
+                         "[Shot 1] <Subject 1> slightly shifts his body, bringing both hands in front of his chest.")
+        for thing, who in [("<Subject 1> strokes the white horse beside him as its body shivers.", man),
+                           ("<Subject 1> watches the crow on the branch fold its wings, its body still.", man),
+                           ("<Subject 2> lifts the porcelain doll, its face glinting.", "<Subject 2>: <Picture 2> 中的女子，长发")]:
+            self.assertEqual(subject_pronouns(thing, who), thing)
         # "画面复归<Picture 2>之态" keeps no "之态".
         fl2v = "概述：三维渲染，紫发女子坐于大理石台阶\n起始：镜头固定，女神眼睑轻启\n递进：权杖顶端星芒微曳\n收束：女神眼帘垂落复归闭合，画面复归<Picture 2>之态\n约束：无"
         text = compile_action_phases(fl2v, "FL2VA", 5, "女神缓缓睁开眼睛，又慢慢闭上")

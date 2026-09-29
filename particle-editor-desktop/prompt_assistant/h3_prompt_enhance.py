@@ -412,16 +412,19 @@ def subject_pronouns(english, display):
     def clause(m):
         kinds = {sex.get(label, "") for label in re.findall(r"<Subject [1-9]\d*>", m[0])}
         text = m[0]
-        # "<Subject 1>'s feet … as its body leans forward": a person's body part is theirs.
+        # "<Subject 1> shifts its body": a person's body part is theirs, unless something else was named since the subject
+        # ("strokes the white horse beside him as its body shivers" is the horse's).
         body = r"\b([Ii])ts (?=(?:body|face|arms?|hands?|feet|legs?|shoulders?|torso|chest|waist)\b)"
+        theirs = lambda n, word: n[0] if re.search(r"\b(?:the|a|an|this|that|another)\s", re.split(r"<Subject [1-9]\d*>", n.string[:n.start()])[-1], re.I) else (
+            ("H" if n[1] == "I" else "h") + word + " ")
         if kinds == {"m"}:
-            text = re.sub(body, lambda n: ("H" if n[1] == "I" else "h") + "is ", text)
+            text = re.sub(body, lambda n: theirs(n, "is"), text)
             text = re.sub(r"\b([Ss])he\b", lambda n: "H" + "e" if n[1] == "S" else "he", text)
             text = re.sub(r"\bherself\b", "himself", text)
             text = re.sub(possessive, lambda n: n[1] + "is", text)
             text = re.sub(r"\bher\b", "him", text)
         elif kinds == {"f"}:
-            text = re.sub(body, lambda n: ("H" if n[1] == "I" else "h") + "er ", text)
+            text = re.sub(body, lambda n: theirs(n, "er"), text)
             text = re.sub(r"\b([Hh])e\b", lambda n: ("S" if n[1] == "H" else "s") + "he", text)
             text = re.sub(r"\bhimself\b", "herself", text)
             text = re.sub(r"\b([Hh])is\b|\bhim\b", lambda n: (n[1] or "h") + "er" if n[1] else "her", text)
@@ -1257,15 +1260,27 @@ def clean_phase_text(value):
     return drop_clauses("".join(lines), once) if lines else ""
 
 
-def plain_music(text, sung=False):
+# Who performs in a score ("小女孩轻声哼唱", "a little girl sings") and what makes one (an instrument, a kind, a voice).
+PERFORMER = (r"[人男女孩童娃婴歌唱哼吟嗓]|(?<![a-z])(?:girls?|boys?|child(?:ren)?|kids?|m[ae]n|wom[ae]n|lad(?:y|ies)|singers?|voices?"
+             r"|vocals?|sings?|singing|sung|hums?|humming|choirs?|chant(?:s|ing)?)(?![a-z])")
+SCORE_WORDS = (r"[琴笛鼓筝箫琶胡号管锣钹钟铃埙笙磬弦唱]|吉他|唢呐|贝斯|合成器|电子|爵士|摇滚|交响|乐团|乐队|旋律"
+               r"|(?<![a-z])(?:piano|guitars?|violins?|cellos?|strings|drums?|flutes?|harps?|synth\w*|bass|choirs?|vocals?)(?![a-z])")
+
+
+def plain_music(text, sung=False, asked=""):
     """The score's instruments, tempo and dynamics, never what it is for ("营造出宁静的氛围", official base §4.7) or what it is
-    like ("音符如光点般流转", "节奏舒缓如呼吸"; "音量如常" is no simile). An instrument written twice ("竖琴与竖琴弦音") is one.
-    Unless sung, a voice goes too ("小女孩轻声哼唱"): the writer is asked for instruments, and a singer is a person nobody checked.
-    The sound line (sung=True) keeps its voices."""
-    text = re.sub(r"[如像][^，,。；;如像]{1,6}般地?|(?<=[㐀-鿿])[如像](?![常一初故旧此今下何])[^，,。；;]{1,6}(?=[，,。；;]|$)", "", str(text or ""))
+    like ("音符如光点般流转", "节奏舒缓如呼吸"; "音量如常" is no simile, nor "佛像前的铜铃"). An instrument written twice
+    ("竖琴与竖琴弦音") is one. Unless sung, a clause with a performer the user's own music (asked) does not name goes
+    ("小女孩低声清唱", "a little girl sings"; "童声合唱" stays for "配上童声合唱"): the writer is asked for instruments, and a
+    singer is a person nobody checked. A score left with no instrument, kind or voice is none (""). The sound line
+    (sung=True) keeps its voices."""
+    text = re.sub(r"[如像][^，,。；;如像]{1,6}般地?|(?<=[㐀-鿿])(?<![佛雕石塑画人录偶影图镜肖神铜头想例比假譬])[如像](?![常一初故旧此今下何])"
+                  r"[^，,。；;]{1,6}(?=[，,。；;]|$)", "", str(text or ""))
     text = re.sub(r"([㐀-鿿]{2,3})[与和及、](?=\1)", "", text)
     if not sung:
-        text = drop_clauses(text, lambda clause: re.search(r"人声|童声|歌声|歌唱|演唱|合唱|哼唱|吟唱|唱着|唱歌|歌词", clause))
+        text = drop_clauses(text, lambda clause: any(m[0].lower() not in str(asked or "").lower() for m in re.finditer(PERFORMER, clause, re.I)))
+        if not re.search(SCORE_WORDS, text, re.I):
+            return ""
     moodless = drop_clauses(text, lambda clause: re.search(r"^\s*[如像]|营造|氛围|烘托|情绪|心情|模拟|仿佛|宛如|犹如|好似|如同", clause))
     return moodless if re.search(r"[㐀-鿿A-Za-z]", moodless) else text
 
@@ -1433,7 +1448,7 @@ def writer_name(sentences, known):
 ACTION_VERBS = {
     "挥": "挥摆招", "摆": "摆挥摇晃甩", "招": "招挥", "抬": "抬举扬", "举": "举抬扬", "扬": "扬抬举", "回": "回转扭",
     "转": "转回扭旋", "扭": "扭转回", "摇": "摇晃摆", "点": "点", "仰": "仰抬", "看": "看望瞧盯视瞥瞄注凝目", "望": "望看视眺目",
-    "盯": "盯看视注凝", "眨": "眨", "眯": "眯", "睁": "睁张启", "闭": "闭合", "笑": "笑", "哭": "哭泣", "跳": "跳跃蹦腾",
+    "盯": "盯看视注凝", "眨": "眨", "眯": "眯", "睁": "睁张", "闭": "闭合", "笑": "笑", "哭": "哭泣", "跳": "跳跃蹦腾",
     "跃": "跃跳蹦", "蹦": "蹦跳跃", "扑": "扑", "冲": "冲奔跑", "跑": "跑奔冲", "奔": "奔跑冲", "走": "走行迈踱步",
     "迈": "迈走踏", "踢": "踢", "爬": "爬攀", "攀": "攀爬", "滚": "滚翻", "翻": "翻滚", "躺": "躺卧", "趴": "趴伏卧",
     "卧": "卧趴伏躺", "坐": "坐", "蹲": "蹲", "跪": "跪", "站": "站立起", "伸": "伸展", "弯": "弯俯", "抱": "抱拥搂",
@@ -1443,7 +1458,7 @@ ACTION_VERBS = {
 }
 # Action words that are nouns, with the words that write them too (伸懒腰 is 舒展 as well).
 ACTION_WORDS = {"哈欠": ("哈欠",), "懒腰": ("懒腰", "伸展", "舒展"), "鞠躬": ("鞠躬", "躬身", "弯腰"), "行礼": ("行礼", "抱拳", "作揖"),
-                "抱拳": ("抱拳", "拱手", "作揖"),
+                "抱拳": ("抱拳", "拱手", "作揖"), "睁开": ("睁", "张开", "睑轻启", "睑微启", "帘轻启", "帘微启", "眸轻启", "眸微启"),
                 "面对面": ("面对面", "相对", "对视"), "喷嚏": ("喷嚏",)}
 ACTION_TOKEN = "|".join(ACTION_WORDS) + r"|[" + "".join(ACTION_VERBS) + "]"
 # Words with a verb character that name no action, in the user's words and in the answer ("直接", "来回", "视角").
@@ -1580,22 +1595,26 @@ def write_missing_actions(texts, user_text, overview, names):
         phrase = re.sub(r"^(?:一只|一个|一位|一名|一头|一条|那只|这只)|[并又再就]?(?:说|讲|喊|问|答)[^，,。]*$", "", clause).strip("，, ")
         if not phrase:
             continue
-        # A jump the answer already made ("后爪离地…前爪稳稳落地", t2v_cat ended "…落地。橘猫跳下窗台") is named where it leaves
-        # or lands, never after it.
-        landed = next(((j, m.start()) for j, text in enumerate(texts) for m in [re.search(r"离地|落地|着地|落在|落到", text)] if m),
-                      None) if any(v[0] in "跳跃蹦" for v in verbs) else None
+        # A jump the answer already made ("后爪离地…前爪稳稳落地", t2v_cat ended "…落地。橘猫跳下窗台") is named where its jumper
+        # leaves the ground or lands after the user's earlier actions, never after it; a ball or a glance that lands is none.
+        joined = "".join(texts)
+        before = [action_at(v[0], action_part(c, v), joined, c) for k, c, vs in clauses if k < index for v in vs]
+        landed = re.compile(r"离地|落地|着地").search(joined, max(before, default=-1) + 1) if (
+            any(v[0] in "跳跃蹦" for v in verbs) and min(before, default=0) >= 0) else None
         if landed:
-            j, at = landed
+            j = next(k for k in range(len(texts)) if landed.start() < len("".join(texts[:k + 1])))
+            at = landed.start() - len("".join(texts[:j]))
             start = max(texts[j].rfind(stop, 0, at) for stop in "，,。；;") + 1
             head, tail = texts[j][:start], texts[j][start:]
-            subject = writer_name([tail], names)
-            if subject and tail.startswith(subject):
-                tail = subject + (phrase[len(subject):] if phrase.startswith(subject) else phrase) + "，" + tail[len(subject):].lstrip("，,")
-            else:
-                earlier = writer_name(re.findall(r"[^。！？!?]+", "".join(texts[:j]) + head), names)
-                tail = ("" if not earlier or phrase.startswith(earlier) else earlier) + phrase + "，" + tail
-            texts[j] = head + tail
-            continue
+            named = writer_name([tail], names)
+            owner = named or writer_name(re.findall(r"[^。！？!?]+", "".join(texts[:j]) + head), names)
+            if owner and owner == (writer_name([re.split(r"[跳跃蹦]", phrase)[0]], names) or writer_name([user_text], names)):
+                if named and tail.startswith(named):
+                    tail = named + (phrase[len(named):] if phrase.startswith(named) else phrase) + "，" + tail[len(named):].lstrip("，,")
+                else:
+                    tail = ("" if phrase.startswith(owner) else owner) + phrase + "，" + tail
+                texts[j] = head + tail
+                continue
         if index >= len(texts):
             earlier = writer_name(re.findall(r"[^。！？!?]+", "".join(texts)), names)
             texts[i] = append_sentence(texts[i], ("" if not earlier or phrase.startswith(earlier) else earlier) + phrase + "。")
@@ -2281,9 +2300,11 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         sound = (append_sentence(sound, "、".join(missing) + "响起。") if missing else sound) or DEFAULT_SOUNDSCAPE_ZH
     # Background music is written unless the user's words ask for silence or no music (music "N/A"); the user's own music
     # reads as the writer spells it out when the writer keeps its words (the same instrument).
-    written = plain_music(clean_phase_text(re.sub(r'[“”"]', "", "\n".join(scored))))
+    written = plain_music(clean_phase_text(re.sub(r'[“”"]', "", "\n".join(scored))), asked=music or "")
     written = "" if not has_text(written) or re.fullmatch(r"(?:无|没有|N/?A)[。.]?", written, re.I) else written
-    own = lambda text: {pair for pair in han_pairs(text) if not re.search(r"[的和与及跟配上加乐曲音]", pair)}
+    # The user's instruments, kinds and voices count, not the user's mood words ("舒缓的钢琴配乐" reads "钢琴独奏，速度缓慢").
+    named = lambda text: {pair for pair in han_pairs(text) if not re.search(r"[的和与及跟配上加乐曲音]", pair)}
+    own = lambda text: {pair for pair in named(text) if re.search(SCORE_WORDS, pair)} or named(text)
     if music is None:
         music = written or DEFAULT_MUSIC_ZH
     elif music != "N/A" and written and own(music) and own(music) <= han_pairs(written):
