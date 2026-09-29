@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -499,6 +500,66 @@ class Qwen3ArtFlows(unittest.TestCase):
                 service.art_reference_block_sensitive_minor(words)
         # An adult's undressing words still read as sensitive (the NSFW route), not as a refusal.
         self.assertTrue(service.art_reference_explicit_words('女子没有穿衣服，躺在床上', affirmative=True))
+
+    def test_the_child_block_reads_the_users_words_on_every_art_path(self):
+        # 创作, 融合 and 丰富 read the user's words before any call too, with NSFW on or off (only the role reference did, and with NSFW
+        # off nothing was read): every explicit child word, undressing words in any order, sexual words, Traditional characters,
+        # 裸露 of a body (女童裸露上身), and a negation that governs another word. The Grok engine reads the same fixture.
+        cases = json.loads((Path(__file__).parent / 'fixtures' / 'child-block-cases.json').read_text(encoding='utf-8'))
+        draft = ('[风格设定]\n写实摄影风格。\n\n[主体物品]\n一名女子站在窗边，长发散开。\n\n[环境背景]\n卧室，白色床单。\n\n'
+                 '[光线与色彩]\n窗外月光照在床上，主色为冷蓝。\n\n[拍摄参数]\n近景，平视。')
+        for words in cases['block']:
+            with self.subTest(words=words):
+                for static_rule in (True, False):
+                    with self.assertRaises(service.VisualContractError) as raised:
+                        service.art_reference_block_sensitive_minor(words, static_rule=static_rule)
+                    self.assertEqual(raised.exception.code, 'art-sensitive-minor-request-blocked')
+            for nsfw in (False, True):
+                for payload in ({'purpose': 'create', 'prompt': '', 'requirements': '用户创作需求：' + words},
+                                {'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft, 'requirements': '把人物改成：' + words},
+                                {'purpose': 'optimize', 'prompt': words, 'currentPrompt': words, 'requirements': ''}):
+                    with self.subTest(words=words, nsfw=nsfw, purpose=payload['purpose'], prompt=payload['prompt'][:8]):
+                        assistant, calls = service.PromptAssistant(), []
+                        assistant.generate = lambda prompt, **kwargs: calls.append(prompt) or prompt
+                        with self.assertRaises(service.VisualContractError) as raised:
+                            assistant.optimize_prompt({'surface': 'art', 'nsfw': nsfw, **payload})
+                        self.assertEqual(raised.exception.code, 'art-sensitive-minor-request-blocked')
+                        self.assertEqual(calls, [])
+        # Children in everyday words and adult content pass every path; a negated sensitive word passes 创作, 融合 and 丰富 (the role
+        # reference keeps the static reverse's own rule for the words it lists).
+        for words in cases['everyday'] + cases['negated'] + cases['adult']:
+            with self.subTest(words=words):
+                if words not in cases['negated']:
+                    service.art_reference_block_sensitive_minor(words)
+                service.art_reference_block_sensitive_minor(words, static_rule=False)
+                assistant, calls = service.PromptAssistant(), []
+                assistant.generate = lambda prompt, **kwargs: calls.append(prompt) or ''
+                try:
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'create', 'prompt': '', 'requirements': '用户创作需求：' + words})
+                except service.VisualContractError as error:
+                    self.fail(f'{words}: {error.code}')
+                except ValueError:
+                    pass  # the empty answer; only the check matters here
+                self.assertTrue(calls, words)
+        # With NSFW on, the answer's own child word counts in every form (小女孩, 女童, 小学生, 七岁, little girl), not only 儿童 or 12岁.
+        written = draft.replace('一名女子站在窗边', '一个{}站在窗边')
+        for child in ('小女孩', '女童', '小学生', '七岁的女孩', 'little girl'):
+            with self.subTest(child=child):
+                assistant = service.PromptAssistant()
+                assistant.generate = lambda prompt, child=child, **kwargs: written.format(child)
+                with self.assertRaisesRegex(ValueError, '提示词创作未通过内容检查'):
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'create', 'prompt': '', 'nsfw': True,
+                                               'requirements': '用户创作需求：一名女子站在窗边'})
+                assistant.generate = lambda prompt, child=child, **kwargs: written.format(child).replace('白色床单', '红色床单')
+                with self.assertRaisesRegex(ValueError, '提示词融合未通过内容检查'):
+                    assistant.optimize_prompt({'surface': 'art', 'purpose': 'optimize', 'prompt': draft, 'currentPrompt': draft,
+                                               'nsfw': True, 'requirements': '把床单改成红色'})
+        # 裸露 counts where it bares a body; an everyday place or a negation is not sensitive (the role reference's answer too).
+        self.assertTrue(service.art_reference_explicit_words('女童裸露上身', affirmative=True))
+        for words in ('裸露的红砖墙', '挥动裸露的双臂', '衣着完整，没有裸露', '别裸露', 'nude 色连衣裙', 'visible to the naked eye'):
+            with self.subTest(words=words):
+                self.assertFalse(service.art_reference_explicit_words(words, affirmative=True))
+                self.assertFalse(service.art_reference_explicit_words(words))
 
     def test_explicit_words_in_pieces_the_cleanup_drops_still_block(self):
         # The safety checks read the answer before the one-picture cleanup drops asides ("强调…", "突出…") and the

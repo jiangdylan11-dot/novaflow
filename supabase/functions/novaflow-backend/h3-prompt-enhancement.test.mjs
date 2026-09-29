@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as edge from './h3-prompt-enhance.mjs';
-import { buildGrokPromptOptimizeRequest, normalizeMiniMaxH3PromptOutput, callGrokResponseWithVisualRetry, miniMaxH3FailureEnvelope } from './smart-ai-grok.workflow.mjs';
+import { buildGrokPromptOptimizeRequest, buildGrokImageReverseRequest, grokResponsesPublicResult, normalizeMiniMaxH3PromptOutput, callGrokResponseWithVisualRetry, miniMaxH3FailureEnvelope } from './smart-ai-grok.workflow.mjs';
 const require = createRequire(import.meta.url);
 const local = require('../../../particle-editor-desktop/admin-server/h3-prompt-enhance.js');
 const cases = JSON.parse(fs.readFileSync(new URL('../../../particle-editor-desktop/tests/fixtures/h3-prompt-enhance-cases.json', import.meta.url), 'utf8'));
@@ -472,6 +472,66 @@ test('everyday words next to a child are no sensitive content: bare rock, light 
   ]) assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer(en, zh), i2v.resultOptions), en);
   assert.throws(() => normalizeMiniMaxH3PromptOutput(answer('runs forward along the rocks by the sea, fully nude', '全裸着沿着海边的礁石向前奔跑'), i2v.resultOptions),
     error => error.errorCode === 'provider_content_policy' && error.statusCode === 422);
+});
+
+test('the child block reads the fixture both engines share: every phrasing is refused before any call, on H3 and 美工 alike', () => {
+  // An explicit child with nudity, undressing or sexual words: every child word (小女孩, 小学女生, 十二三岁, a twelve-year-old, a preteen,
+  // A Little Girl), undressing words in any order (把衣服脱了, 脱掉小女孩的衣服, 什么都没穿, no clothes, wearing nothing), sexual words
+  // (做爱, 强奸, 性感, 私处, sex, lingerie), Traditional characters and spaced words, and a negation that governs another word
+  // ("不要背景音乐，小孩全裸", "No music, a little girl stands fully nude"). The local engine reads the same fixture.
+  const cases = JSON.parse(fs.readFileSync(new URL('../../../particle-editor-desktop/tests/fixtures/child-block-cases.json', import.meta.url), 'utf8'));
+  const policy = {sensitiveVisualAnalysis:true, allSubjectsConfirmedAdult:false};
+  const frame = (n) => ({label:`<Picture ${n}>`, dataUrl:'data:image/jpeg;base64,aGVsbG8='});
+  const modes = {
+    text_video:[[], ''],
+    image_video:[[frame(1)], 'Available resource labels: <Picture 1> = captured image slot first_frame. Never invent a resource label.'],
+    first_last:[[frame(1), frame(2)], 'Available resource labels: <Picture 1> = captured image slot first_frame; <Picture 2> = captured image slot last_frame. Never invent a resource label.'],
+    multi_reference:[[frame(1)], 'Available resource labels: <Picture 1> = captured image slot multi_ref_image_1. Never invent a resource label.']
+  };
+  const h3 = (mode, source, format = ['H3 response format: bilingual-v1']) => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:mode, durationSeconds:6, prompt:source,
+    h3ReferenceFrames:modes[mode][0], contentPolicy:policy, requirements:[...format, ...(modes[mode][1] ? [modes[mode][1]] : []), 'Source prompt:', source].join('\n')}, 'test-model');
+  const art = (purpose, words, nsfw = false) => buildGrokPromptOptimizeRequest(purpose === 'create'
+    ? {surface:'art', purpose, prompt:'', requirements:'用户创作需求：' + words, nsfw}
+    : {surface:'art', purpose, prompt:words, currentPrompt:words, requirements:'', nsfw}, 'test-model');
+  const role = (words) => buildGrokImageReverseRequest({images:[{dataUrl:'data:image/png;base64,AA==', role:'subject'}], scenario:'role_reference', surface:'art',
+    purpose:'roleReference', requirements:'用户生成要求：' + words}, 'test-model');
+  const reverse = (words) => buildGrokImageReverseRequest({purpose:'minimax-h3-i2v-reverse', visualSchema:'nf.h3.visual.v1', contentPolicy:policy, durationSeconds:5,
+    requirements:'required', userPrompt:words, userRequirements:'', images:[{dataUrl:'data:image/png;base64,AA==', role:'first_frame', label:'first frame'}]}, 'test-model');
+  const five = (words) => ['[风格设定]','写实摄影风格。','[主体物品]', words + '。','[环境背景]','卧室。','[光线与色彩]','柔和光线。','[拍摄参数]','中景。'].join('\n');
+  const refused = (error) => error.errorCode === 'provider_content_policy' && error.statusCode === 422;
+  for (const words of cases.block) {
+    for (const mode of Object.keys(modes)) assert.throws(() => h3(mode, words), refused, `${mode}: ${words}`);
+    assert.throws(() => h3('text_video', words, []), refused, `five sections: ${words}`);
+    assert.throws(() => reverse(words), refused, `reverse: ${words}`);
+    for (const nsfw of [false, true]) for (const purpose of ['create', 'optimize']) assert.throws(() => art(purpose, words, nsfw), refused, `${purpose} nsfw=${nsfw}: ${words}`);
+    // The role reference pairs the child with the words, and its answer is refused even when Grok grades it harmless.
+    const state = role(words).resultOptions;
+    assert.deepEqual([state.explicitYouthUserRequest, state.authorizedSensitiveUserRequest], [true, true], `role reference: ${words}`);
+    assert.throws(() => grokResponsesPublicResult({output_text:JSON.stringify({prompt:five(words), contentSafety:{explicitMinorEvidence:false, sensitiveContent:false}})}, state), refused, words);
+  }
+  // Children in everyday words are written on every path; a negated sensitive word passes 美工; adult content names no child.
+  for (const words of cases.everyday) {
+    for (const mode of Object.keys(modes)) assert.doesNotThrow(() => h3(mode, words), `${mode}: ${words}`);
+    for (const purpose of ['create', 'optimize']) assert.doesNotThrow(() => art(purpose, words), `${purpose}: ${words}`);
+    const state = role(words).resultOptions;
+    assert.equal(state.explicitYouthUserRequest === true && state.authorizedSensitiveUserRequest === true, false, `role reference: ${words}`);
+  }
+  for (const words of cases.negated) for (const purpose of ['create', 'optimize']) assert.doesNotThrow(() => art(purpose, words), `${purpose}: ${words}`);
+  for (const words of cases.adult) {
+    assert.equal(h3('text_video', words).resultOptions.explicitYouthUserRequest, false, words);
+    assert.equal(reverse(words).resultOptions.explicitYouthUserRequest, false, words);
+    assert.doesNotThrow(() => art('create', words, true), words);
+  }
+  // A child the user named, and nudity, undressing or sexual words only in the answer (text_video has no contentSafety): refused.
+  const t2v = h3('text_video', '小女孩在床上');
+  assert.equal(t2v.resultOptions.explicitYouthUserRequest, true);
+  const answer = (en, zh) => JSON.stringify({modelPrompt:fields(`[Shot 1] Live-action, ${en}. The camera holds a static shot.`, 'A quiet room tone.'),
+    displayPrompt:fields(`[Shot 1] 写实风格，${zh}。镜头固定。`, '安静的室内环境声。')});
+  for (const [en, zh] of [['a little girl lies fully nude on the bed', '小女孩全裸躺在床上'], ['a little girl lies naked on the bed', '小女孩光着身子躺在床上'],
+    ['a little girl lies on the bed wearing nothing', '小女孩什么都没穿躺在床上'], ['a little girl in lingerie lies on the bed', '穿情趣内衣的小女孩躺在床上']]) {
+    assert.throws(() => normalizeMiniMaxH3PromptOutput(answer(en, zh), t2v.resultOptions), refused, en);
+  }
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer('a little girl in pajamas lies on the bed and slowly closes her eyes', '穿着睡衣的小女孩躺在床上，慢慢闭上眼睛'), t2v.resultOptions));
 });
 
 test('a Grok 多参 pair gets every quality gate in one repair call from its own draft; a repair that fails again leaves the better answer', async () => {

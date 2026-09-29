@@ -474,7 +474,7 @@ RICH_SENSITIVE_YOUNG_PATTERN = re.compile(
 )
 REQUIREMENTS_EXPLICIT_MINOR_PATTERN = re.compile(
     r"(?:未成年人?|未满\s*(?:18|十八)\s*岁?|(?:18|十八)\s*岁?\s*(?:以下|以内)|"
-    r"(?<![0-9])(?:1[0-7]|[0-9])\s*岁(?![0-9])|青少年|儿童|孩童|小孩|幼女|幼童|幼儿|婴幼儿?|婴儿|萝莉|正太)"
+    r"(?<![0-9])(?:1[0-7]|[0-9])\s*岁(?![0-9])|青少年|儿童|孩童|小孩(?!子气)|幼女|幼童|幼儿|婴幼儿?|婴儿|萝莉|正太)"
     r"|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?|teens?|teenagers?|loli|shota|under\s*18|"
     r"(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])",
     flags=re.I,

@@ -87,7 +87,7 @@ const MINIMAX_H3_VISUAL_IR_AUDIO_KEYS = Object.freeze([
 ]);
 const MINIMAX_H3_VISUAL_IR_AGE_VALUES = new Set(["adult", "minor", "young_looking", "age_unverifiable"]);
 const MINIMAX_H3_VISUAL_IR_SENSITIVE_LEVELS = new Set(["none", "suggestive", "nudity", "explicit"]);
-const MINIMAX_H3_EXPLICIT_YOUTH_PATTERN = /(?:未成年人?|未满\s*(?:18|十八)\s*岁?|(?:18|十八)\s*岁?\s*(?:以下|以内)|(?<![0-9])(?:1[0-7]|[0-9])\s*岁(?![0-9])|儿童|孩童|小孩|幼女|幼童|幼儿|婴幼儿|婴儿|萝莉|正太)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu;
+const MINIMAX_H3_EXPLICIT_YOUTH_PATTERN = /(?:未成年人?|未满\s*(?:18|十八)\s*岁?|(?:18|十八)\s*岁?\s*(?:以下|以内)|(?<![0-9])(?:1[0-7]|[0-9])\s*岁(?![0-9])(?!的?小?(?:猫|狗|犬|马|兔|鸟|宠物|牛|羊|猪|鱼|龟|仓鼠|鹦鹉))|儿童|孩童|小孩(?!子气)|幼女|幼童|幼儿|婴幼儿|婴儿|萝莉|正太)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu;
 const MINIMAX_H3_CAMERA_DIRECTION_PATTERN = /(?:\u8fd0\u955c|\u955c\u5934(?:\u4fdd\u6301|\u56fa\u5b9a|\u9759\u6b62|\u7a33\u5b9a|\u7f13\u6162|\u8f7b\u5fae|\u5e73\u7a33|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u79fb\u52a8|\u73af\u7ed5|\u4e0a\u5347|\u4e0b\u964d|\u53d8\u7126|\u5207\u6362)|(?:\u56fa\u5b9a|\u9759\u6b62|\u624b\u6301|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u73af\u7ed5|\u5347\u964d|\u53d8\u7126|\u63a8\u8f68)[^\u3002\n]{0,10}\u955c\u5934)|\bcamera\b[^.\n]{0,36}\b(?:holds|remains|stays|static|locked|moves|pushes|pulls|pans|tilts|tracks|orbits|dollies|cranes|follows)\b|\b(?:static camera|locked[- ]off camera|handheld camera|camera (?:movement|motion)|dolly|tracking shot|push[- ]in|pull[- ]out)\b/iu;
 const MINIMAX_H3_ACTION_PROGRESSION_PATTERN = /(?:\u5f00\u59cb|\u968f\u540e|\u63a5\u7740|\u9010\u6e10|\u6301\u7eed|\u8fc7\u7a0b|\u8f6c\u8eab|\u79fb\u52a8|\u62ac\u8d77|\u653e\u4e0b|\u5b8c\u6210|\u6700\u7ec8|\u8fc7\u6e21|\u52a8\u4f5c|\u53cd\u590d|\u6765\u56de|\u5f80\u590d|\u4e0d\u65ad|\u5faa\u73af|\u8282\u594f|\u9891\u7387|\u52a0\u5feb|\u52a0\u901f|\u653e\u6162|\u51cf\u901f|\u63a8\u8fdb|\u8fdb\u51fa|\u8d77\u4f0f|\u6446\u52a8|\u6643\u52a8|\u62bd\u52a8|\u6bcf\u6b21)|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action|repeat\w*|repetition|rhythm\w*|cycl\w*|thrust\w*|accelerat\w*|decelerat\w*|oscillat\w*|pulse\w*)\b/iu;
 const MINIMAX_H3_BASE_PROMPT_FIELDS = Object.freeze([
@@ -4125,6 +4125,137 @@ function miniMaxH3PatternHasAffirmativeMatch(text, pattern) {
 // Everyday wording that shares a word with nudity is no sensitive request or answer: bare rock, roots or arms (裸露的礁石).
 const MINIMAX_H3_BENIGN_EXPOSURE_PATTERN = /裸露(?=(?:在外)?的?(?:岩|石|礁|树根|根|土|泥|地面|地表|山体|山坡|砖|墙|钢筋|管道|电线|线缆|木|沙|河床|海床|矿|手臂|胳膊|双臂|肩|脚|小腿))|(?<=(?:岩石|石头|礁石|岩层|山体|树根|根系|根部|土地|土壤|泥土|地面|地表|河床|海床|墙体|钢筋|管道|电线)(?:都|全|大片|大面积)?)裸露/gu;
 
+// The child block, as on the local engine (minimax_h3_child_sensitive_request in prompt-assistant-service.py): an explicit child word
+// with nudity, undressing or sexual words in the user's own words is refused before any call, on H3 and 美工 alike, whatever the NSFW
+// setting; an adult's are the NSFW route. MINIMAX_H3_CHILD_BLOCK_TRADITIONAL, MINIMAX_H3_CHILD_SENSITIVE_PATTERN and
+// ART_EXPLICIT_CHILD_PATTERN are the local engine's texts, which the tests compare. Traditional characters read as the simplified
+// ones (裸體, 一絲不掛, 七歲, 兒童), in pairs.
+const MINIMAX_H3_CHILD_BLOCK_TRADITIONAL = "體体絲丝掛挂兒儿歲岁學学脫脱褲裤內内嬰婴寶宝園园蘿萝週周齡龄滿满幾几兩两個个著着縷缕無无沒没擋挡處处陰阴莖茎頭头愛爱強强姦奸褻亵誘诱態态勢势剝剥讓让給给別别們们許许準准麼么麽么裡里裏里為为發发氣气樣样貓猫鳥鸟鴨鸭鵝鹅雞鸡龍龙馬马獅狮豬猪稱称級级國国媽妈涼凉會会絕绝並并須须應应醫医聽听診诊檢检騷骚擾扰輪轮賣卖視视頻频圖图顯显現现畫画寵宠換换凍冻慮虑遠远動动說说話话猶犹風风鏡镜樂乐樹树鎖锁鑰钥積积雲云陽阳龜龟門门撫抚慾欲襪袜裝装親亲摟搂邊边戲戏遊游牀床燈灯隻只嬌娇齒齿濕湿髒脏舊旧獨独這这";
+// Nudity, undressing and sexual words, for this block only: 裸体, 光着屁股, 把衣服脱了, 脱掉她的衣服, 什么都没穿, 不要穿衣服, 私处, 做爱,
+// 强奸, 猥亵, 性感, 情趣内衣, 色情, naked, no clothes, wearing nothing, stripping, sex, sexy, lingerie, rape, molest … Not a coat, shoes
+// or 上衣 taken off, 光着脚, nude-coloured shoes, the naked eye, sex education or the sex of a baby.
+const MINIMAX_H3_CHILD_SENSITIVE_PATTERN = /(?:裸体|裸身|裸着|裸照|裸睡|裸泳|裸奔|全裸|半裸|赤裸|一丝不挂|裸露|胸部暴露|胸部完全可见|露出了?(?:胸部|胸口?|乳房|乳头|下体|私处|生殖器|屁股|臀部)|乳房|乳头|生殖器|性器官?|阴部|阴茎|阳具|龟头|阴道|外阴|阴唇|阴蒂|下体|私处|私密部位|肛门|脱光|脱得精光|扒光|剥光|赤身|光着(?:身子|身体|屁股|下身)|光身子|光溜溜|光屁股|脱衣|(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物|衣裳|内裤|内衣)|无衣物(?:遮挡|遮蔽)?|[不未]着寸缕|身无寸缕|衣不蔽体|什么(?:衣服)?(?:都|也)没有?穿|一件衣服(?:都|也)没有?穿|脱(?:了|掉了?|下了?|去了?|光了?)?(?:全部|所有|身上的)?的?(?:衣服|衣物|衣裳|内裤|内衣)|脱掉[^，,。.；;！!？?\n]{0,6}的(?:衣服|衣物|衣裳|内裤|内衣)|(?:衣服|衣物|衣裳|内裤|内衣)(?:都|全|全部|也)?被?(?:脱|扒|剥)(?:掉|光|了|下)|把[^，,。.；;！!？?\n]{0,8}(?:衣服|衣物|衣裳|内裤|内衣)(?:都|全|全部)?(?:脱|扒|剥)|被[^，,。.；;！!？?\n]{0,4}(?:脱|扒|剥)光|(?:不要|别|不许|不准|不让|禁止|不用|不必|无需)(?:让|给|叫)?[^，,。.；;！!？?\n忘自帮替现]{0,8}穿(?:任何)?(?:衣服|衣物|衣裳)|性行为|性交|交合|性爱|性活动|做爱|口交|肛交|乳交|自慰|手淫|性刺激|性侵|强奸|强暴|轮奸|奸淫|诱奸|迷奸|猥亵|性虐|性骚扰|性暗示|性感|(?:挑逗|诱惑|暴露)的?(?:姿势|姿态|动作)|暴露的?(?:服装|衣服|着装)|情趣(?:内衣|服装|用品|玩具)|色情|情色|成人内容|裸聊|援交|卖淫|嫖娼|精液|性体液|射精|插入)|(?<![a-z0-9_])(?:nudity|nudes?(?![-\s]*(?:colou?rs?|pinks?|beiges?|browns?|tones?|shades?|lips?|lipsticks?|makeup|heels?|shoes?|nails?|palettes?|tights|stockings|色))|naked(?![-\s]+(?:eyes?|flames?|truth|branch(?:es)?|trees?|walls?|bulbs?|steel|concrete|ambition))|topless|unclothed|undress(?:es|ed|ing)?|disrob(?:e|es|ed|ing)|in\s+the\s+(?:nude|buff)|in\s+(?:her|his|their)\s+birthday\s+suits?|skinny[-\s]?dip(?:s|ped|ping)?|strip(?:s|ped)?\s+(?:off|down|naked|nude)|stripping(?!\s+(?:paint|wallpaper|wires?|bark|the\s+(?:paint|wallpaper|bed|wires?)))|striptease|strippers?|no\s+clothes|without\s+(?:any\s+)?clothes|not\s+wearing\s+(?:any(?:thing)?|clothes)|with\s+nothing\s+on|wearing\s+nothing(?!\s+but\s+(?:a\s+|an\s+|her\s+|his\s+|their\s+)?(?:swim|bathing|t-?shirts?|shirts?|dress|pajamas?|pyjamas?|nightgown|diapers?|nappy|nappies|towel|robe|coat|jacket|hoodie|sweater|onesie|overalls))|(?:takes?|took|taking|pulls?|pulled|pulling)\s+off\s+(?:all\s+)?(?:(?:her|his|their|the)\s+)?(?:clothes|clothing|underwear|panties)|removes?\s+(?:all\s+)?(?:her|his|their|the)\s+(?:clothes|clothing|underwear|panties)|(?:bare|exposed|naked|nude|visible)\s+(?:breasts?|nipples?|genitals?|crotch|buttocks)|breasts?\s+(?:fully\s+)?(?:visible|exposed)|nipples?|genitals?|penis|vagina|vulva|anus|clitoris|labia|private\s+parts|(?<!same[-\s])(?<!opposite[-\s])(?<!'s\s)(?<!’s\s)sex(?![-\s]*(?:education|ed|of)(?![a-z0-9_]))(?!\s*[:：=])|sexy|sexual(?:ly)?[_\s-]+(?:activity|acts?|intercourse|abuse|assault|content|poses?|positions?|explicit|exploitation)|sexuali[sz](?:e|ed|es|ing|ation)|intercourse|rap(?:e|es|ed|ing)|molest(?:s|ed|ing|ation|er)?|masturbat(?:e|es|ed|ing|ion)|orgasms?|erotic(?:a|ally|ism)?|porn(?:o|ography|ographic)?|nsfw|hentai|lewd|seductive(?:ly)?|provocative(?:ly)?[_\s-]+(?:pose|posing|outfit|clothes|dance|dancing)|suggestive[_\s-]+(?:pose|posing)|sexualized[_\s-]+pose|lingerie|semen|ejaculat(?:e|es|ed|ing|ion)|penetrat(?:e|es|ed|ing|ion|ive)|oral\s+sex|anal\s+sex|blow\s?jobs?|handjobs?|explicit[_\s-]+(?:activity|anatomy))(?![a-z0-9_])/iu;
+// Everyday words that share a word with the list are set apart before it is read: bare rock, roots, arms or feet (裸露的岩石,
+// 赤裸的双脚, 裸着脚), the naked eye, nude-coloured shoes, a bottle's nipple, chicken breast, a chest listened to (贴着儿童的胸部), light
+// penetrating the clouds, a flower put into a vase (把花插入花瓶), a doll undressed (给洋娃娃脱衣服), a child who would catch cold
+// without clothes and is dressed (不穿衣服会着凉…穿上外套), and 不得不, which negates nothing.
+const MINIMAX_H3_CHILD_BLOCK_EVERYDAY = [
+  [/(?:裸露|赤裸|裸着)(?=(?:在外)?(?:着|的)?(?:[红灰黑白青黄褐棕旧老破湿干冷粗]|斑驳|粗糙|潮湿|古老|冰冷|大片|一片|一块){0,2}的?(?:双|一双|两只|两条)?(?:岩|石|礁|树根|根|土|泥|地面|地表|山体|山坡|砖|墙|钢筋|管道|电线|线缆|木|沙|河床|海床|矿|手臂|胳膊|臂|肩|脚|足|小腿|腿|锁骨|脖子|颈|手腕|脚踝|额头|膝盖))/giu, "外露"],
+  [/(?:岩石|石头|礁石|岩层|山体|树根|根系|根部|土地|土壤|泥土|地面|地表|河床|海床|墙体|钢筋|管道|电线)(?:都|全|大片|大面积)?裸露/giu, "地面外露"],
+  [/(?<![a-z0-9_])naked(?=[-\s]+(?:eyes?|flames?|truth|branch(?:es)?|trees?|walls?|bulbs?|steel|concrete|ambition)(?![a-z0-9_]))/giu, "bare"],
+  [/(?<![a-z0-9_])nudes?(?=[-\s]*(?:colou?r|pink|beige|brown|tone|shade|lip|makeup|heel|shoe|nail|palette|tights|stockings|色))/giu, "beige"],
+  [/(?:bottle|rubber|silicone|pacifier|feeding)(?:['’]s)?\s+nipples?|nipples?\s+of\s+(?:the|a|an|its|his|her|their)\s+(?:baby\s+)?bottles?|奶瓶的?乳头/giu, "teat"],
+  [/(?:chicken|turkey|duck)\s+breasts?|breasts?(?=[-\s]*(?:pockets?|stroke|feed|feeding|milk|pump|cancer|plate|bone))/giu, "fillet"],
+  [/(?<!露出)(?<!裸露)(?<!暴露)(?<!赤裸)(?<!露出的)(?<!裸露的)(?<!暴露的)胸部(?!暴露|完全可见|外露|裸露)/giu, "胸前"],
+  [/(?<!sexual\s)(?<!vaginal\s)(?<!anal\s)penetrat(?:e|es|ed|ing|ion)(?![a-z0-9_])(?!\s+(?:(?:of\s+)?(?:the|her|his|their)\s+)?(?:vagina|anus|vulva|genitals?)(?![a-z0-9_]))(?!\s+(?:her|him|them|(?:the|a|an|this|that)\s+(?:little\s+|young\s+)?(?:girl|boy|child|kid|baby|toddler)s?)(?![a-z0-9_]))/giu, "passing"],
+  [/插入(?!(?:了|进|到)?(?:(?:她|他|小女孩|小男孩|女童|男童|孩子|小孩|儿童|幼女|幼童|女孩|男孩)的?)?(?:身体|体内|下体|私处|阴道|肛门|性器官|嘴里|口中|屁股|臀部))(?!(?:了|进|到)?(?:她|他|小女孩|小男孩|女童|男童|孩子|小孩|儿童|幼女|幼童|女孩|男孩)(?:$|[，,。.！!？?；;\n]))/giu, "放入"],
+  [/给(?:洋娃娃|布娃娃|娃娃|玩偶|芭比(?:娃娃)?|小狗|小猫|狗狗|猫咪|宠物|小熊|玩具熊?)(?:脱|换)(?:掉|下|去|了)?(?:衣服|衣裳|衣物)/giu, "给玩偶换装"],
+  [/(?:不|没)穿(?:衣服|衣裳)(?=(?:的话)?(?:就|会|可能|容易)+(?:会)?(?:着凉|感冒|生病|冻着|冻坏|冷)[\s\S]*?(?:穿上|穿好|穿起|披上|裹上))/giu, "少穿衣"],
+  [/不得不|不能不|不可不|不会不/giu, "必须"],
+];
+// A negation governs a word only right in front of it, in its own clause ("不要背景音乐，小孩全裸" is no negated nudity, and
+// "不到十岁的小女孩", "天真无邪的小女孩" or "一个不爱说话的小女孩" no negated child), or after it ("…不出现"); a list after one
+// negation counts too ("禁止裸体、色情", "no nudity, sex or violence", "避免：裸露、儿童化") when no child sits in it.
+const MINIMAX_H3_CHILD_BLOCK_CHILD_NEGATION = /(?:(?:不要|不得|不能|不可以?|不许|不准|不需要|不用|不含|不包含|不是|并非|绝非|而非|禁止|严禁|避免|排除|去除|去掉|移除|删除|删去|拒绝|没有|没|无|并无|毫无|别|勿|请勿|切勿)(?:再|任何|出现|包含|含有|加入|添加|画出?|生成|显示|有|是|一个|一名|一位|个|名|位)*|(?:(?<![a-z0-9_])(?:no|not|never|without|avoid(?:s|ed|ing)?|exclud(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|omit(?:s|ted|ting)?|forbid(?:s|den|ding)?|prohibit(?:s|ed|ing)?|nor|zero|non)|n['’]t)[-\s]+(?:(?:any|a|an|the|more|be|being|get|getting|become|appear|appearing|look|looking|show(?:s|ing)?|depict(?:s|ing)?|includ(?:e|es|ing)|featur(?:e|es|ing)|hav(?:e|ing)|fully|completely|partially|totally|let\s+[a-z]+(?:\s+[a-z]+)?\s+(?:be|get))[-\s]+)*)\s*[:：]?\s*$/iu;
+const MINIMAX_H3_CHILD_BLOCK_WORD_NEGATION = /(?:(?:不|不要|不得|不能|不可以?|不许|不准|不会|不需要|不用|不必|不含|不包含|不是|并非|绝非|非|禁止|严禁|杜绝|防止|避免|排除|去除|去掉|移除|删除|拒绝|没有|没|无|无需|毫无|并无|未|别|勿|请勿|切勿)(?:再|任何|出现|包含|含有|有|要|会|被|是|过度|过于|太|完全|全部|明显|可见|任何形式的|画出?|生成|显示|(?:让|使|叫|令)[^，,、。.！!？?；;\n]{0,6})*|(?:(?<![a-z0-9_])(?:no|not|never|without|avoid(?:s|ed|ing)?|exclud(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|omit(?:s|ted|ting)?|forbid(?:s|den|ding)?|prohibit(?:s|ed|ing)?|nor|zero|non)|n['’]t)[-\s]+(?:(?:any|a|an|the|more|be|being|get|getting|become|appear|appearing|look|looking|show(?:s|ing)?|depict(?:s|ing)?|includ(?:e|es|ing)|featur(?:e|es|ing)|hav(?:e|ing)|fully|completely|partially|totally|let\s+[a-z]+(?:\s+[a-z]+)?\s+(?:be|get))[-\s]+)*)\s*[:：]?\s*$/iu;
+const MINIMAX_H3_CHILD_BLOCK_LIST_NEGATION = /(?:不要|不得|不能|不可以?|不许|不准|不需要|不用|不必|不含|不包含|禁止|严禁|杜绝|避免|排除|去除|去掉|移除|删除|删去|拒绝|没有|并无|毫无|无需|请勿|切勿|负面|负向|反向)(?:再|任何|出现|包含|含有|有|加入|添加|画出?|生成|显示)*|(?:(?<![a-z0-9_])(?:no|not|never|without|avoid(?:s|ed|ing)?|exclud(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|omit(?:s|ted|ting)?|forbid(?:s|den|ding)?|prohibit(?:s|ed|ing)?|nor|zero|non)|n['’]t)[-\s]+(?:(?:any|a|an|the|more|be|being|get|getting|become|appear|appearing|look|looking|show(?:s|ing)?|depict(?:s|ing)?|includ(?:e|es|ing)|featur(?:e|es|ing)|hav(?:e|ing)|fully|completely|partially|totally|let\s+[a-z]+(?:\s+[a-z]+)?\s+(?:be|get))[-\s]+)*/iu;
+// An avoidance label ("避免：", "负面提示词：", "Negative prompt:") scopes over the short items after it on its line, across ；.
+const MINIMAX_H3_CHILD_BLOCK_AVOID_LABEL = /(?:避免|禁止|不要|负面|负向|反向|排除|avoid|negative(?:\s+prompt)?|exclude)(?:内容|元素|出现|项|提示词|prompt)?\s*[:：]/iu;
+const MINIMAX_H3_CHILD_BLOCK_LINE_END = /[\n\r。．.！!？?]/u;
+const MINIMAX_H3_CHILD_BLOCK_ITEM_END = /[，,、\/／;；]|和|及|与|或|(?<![a-z0-9_])(?:or|and|nor)(?![a-z0-9_])/iu;
+const MINIMAX_H3_CHILD_BLOCK_SUFFIX_NEGATION = /^(?:\s*(?:不存在|未出现|不出现|不要出现|不得出现|不能出现|禁止出现|被排除|被禁止|除外|不允许(?:出现)?|是不允许的)\s*(?:$|[\n，,、。.！!？?；;])|\s*(?:(?:is|are|was|were|must\s+be|should\s+be)\s+)?(?:not\s+(?:present|shown|included|allowed|permitted)|absent|excluded|forbidden|prohibited)\s*(?:$|[\n,.;!?]))/iu;
+// A list of children runs on 、, 和, 或 and a colon, not on a comma ("No music, a little girl …" names a girl); a list of words
+// runs on commas too.
+const MINIMAX_H3_CHILD_BLOCK_CHILD_LIST = /[、\/／:：]|和|及|与|或|(?<![a-z0-9_])(?:or|nor)(?![a-z0-9_])/iu;
+const MINIMAX_H3_CHILD_BLOCK_WORD_LIST = /[，,、\/／:：]|和|及|与|或|(?<![a-z0-9_])(?:or|and|nor)(?![a-z0-9_])/iu;
+
+// The words the child block reads: NFKC (１２岁), Traditional as Simplified, lower case, no spaces between Han characters
+// ("小 女 孩"), and the everyday words set apart.
+function miniMaxH3ChildBlockText(value) {
+  const pairs = MINIMAX_H3_CHILD_BLOCK_TRADITIONAL;
+  let text = Array.from(String(value || "").normalize("NFKC"), (char) => {
+    const index = pairs.indexOf(char);
+    return index >= 0 && index % 2 === 0 ? pairs[index + 1] : char;
+  }).join("").toLowerCase().replace(/[ \t　]+/gu, " ").replace(/(?<=[㐀-鿿])[ \t]+(?=[㐀-鿿])/gu, "");
+  for (const [pattern, replacement] of MINIMAX_H3_CHILD_BLOCK_EVERYDAY) text = text.replace(pattern, replacement);
+  return text;
+}
+
+function miniMaxH3ChildBlockShort(item) {
+  const text = String(item || "").trim();
+  return /[㐀-鿿]/u.test(text) ? text.replace(/\s+/gu, "").length <= 8 : text.split(/\s+/u).filter(Boolean).length <= 3;
+}
+
+// Whether a negation governs the word at text[start, end) (a child word, or else a sensitive word).
+function miniMaxH3ChildBlockNegated(text, start, end, child) {
+  if (MINIMAX_H3_CHILD_BLOCK_SUFFIX_NEGATION.test(text.slice(end))) return true;
+  // Only the text just before the word is read (a negation farther back governs nothing; a long text stays quick).
+  const before = text.slice(Math.max(0, start - 256), start);
+  const sentence = before.split(/[\n\r。．.！!？?；;]/u).pop();
+  const negation = child ? MINIMAX_H3_CHILD_BLOCK_CHILD_NEGATION : MINIMAX_H3_CHILD_BLOCK_WORD_NEGATION;
+  if (negation.test(sentence.split(/[，,、\/／:：]/u).pop())) return true;
+  // After an avoidance label the word may sit anywhere in a short item ("避免：幼态儿童比例；复制脸"); an item, or one before it,
+  // that pairs a child with nudity is no avoidance ("避免：模糊；小女孩全裸").
+  const line = before.split(MINIMAX_H3_CHILD_BLOCK_LINE_END).pop();
+  const labels = Array.from(line.matchAll(new RegExp(MINIMAX_H3_CHILD_BLOCK_AVOID_LABEL.source, "giu")));
+  if (labels.length) {
+    const label = labels[labels.length - 1];
+    const pieces = line.slice(label.index + label[0].length).split(MINIMAX_H3_CHILD_BLOCK_ITEM_END);
+    const own = pieces[pieces.length - 1] + text.slice(start, start + 48).split(MINIMAX_H3_CHILD_BLOCK_LINE_END)[0].split(MINIMAX_H3_CHILD_BLOCK_ITEM_END)[0];
+    const other = child ? MINIMAX_H3_CHILD_SENSITIVE_PATTERN : ART_EXPLICIT_CHILD_PATTERN;
+    if ([...pieces.slice(0, -1), own].every((piece) => miniMaxH3ChildBlockShort(piece) && !other.test(piece))) return true;
+  }
+  // A list: the word starts a short item of its own, and every item back to the negation is short and names no child.
+  const separator = child ? MINIMAX_H3_CHILD_BLOCK_CHILD_LIST : MINIMAX_H3_CHILD_BLOCK_WORD_LIST;
+  const items = [];
+  let last = 0;
+  for (const match of sentence.matchAll(new RegExp(separator.source, "giu"))) {
+    items.push([sentence.slice(last, match.index), match[0]]);
+    last = match.index + match[0].length;
+  }
+  if (sentence.slice(last).trim()) return false;
+  const own = text.slice(start, start + 48).split(new RegExp(`${separator.source}|[\\n\\r。．.！!？?；;]`, "iu"))[0];
+  if (!miniMaxH3ChildBlockShort(own) || (child ? MINIMAX_H3_CHILD_SENSITIVE_PATTERN : ART_EXPLICIT_CHILD_PATTERN).test(own)) return false;
+  let comma = false;
+  let listed = false;
+  for (const [item, mark] of items.reverse()) {
+    comma = comma || mark === "，" || mark === ",";
+    const heads = Array.from(item.matchAll(new RegExp(MINIMAX_H3_CHILD_BLOCK_LIST_NEGATION.source, "giu")));
+    if (heads.length) {
+      const head = heads[heads.length - 1];
+      const rest = item.slice(head.index + head[0].length);
+      if (!miniMaxH3ChildBlockShort(rest) || ART_EXPLICIT_CHILD_PATTERN.test(rest)) return false;
+      // Across a comma the list is one of such words ("no nudity, sex"); "no music, nude" is no list.
+      return !comma || listed || !rest.trim() || MINIMAX_H3_CHILD_SENSITIVE_PATTERN.test(rest);
+    }
+    if (!item.trim()) continue;
+    if (!miniMaxH3ChildBlockShort(item) || ART_EXPLICIT_CHILD_PATTERN.test(item)) return false;
+    listed = listed || MINIMAX_H3_CHILD_SENSITIVE_PATTERN.test(item);
+  }
+  return false;
+}
+
+// An explicit child word no negation governs; a child inside an undressing phrase ("不许小女孩穿衣服") is never negated.
+function miniMaxH3ExplicitChild(value) {
+  const text = miniMaxH3ChildBlockText(value);
+  const inside = Array.from(text.matchAll(new RegExp(MINIMAX_H3_CHILD_SENSITIVE_PATTERN.source, "giu")), (match) => [match.index, match.index + match[0].length]);
+  return Array.from(text.matchAll(new RegExp(ART_EXPLICIT_CHILD_PATTERN.source, "giu"))).some((match) => match[0]
+    && (inside.some(([start, end]) => start < match.index && match.index + match[0].length <= end)
+      || !miniMaxH3ChildBlockNegated(text, match.index, match.index + match[0].length, true)));
+}
+
+// A nudity, undressing or sexual word no negation governs, the everyday ones set apart.
+function miniMaxH3ChildSensitiveWords(value) {
+  const text = miniMaxH3ChildBlockText(value);
+  return Array.from(text.matchAll(new RegExp(MINIMAX_H3_CHILD_SENSITIVE_PATTERN.source, "giu")))
+    .some((match) => match[0] && !miniMaxH3ChildBlockNegated(text, match.index, match.index + match[0].length, false));
+}
+
+// An explicit child together with nudity, undressing or sexual words: the words the child block refuses.
+function miniMaxH3ChildSensitiveRequest(value) {
+  return miniMaxH3ExplicitChild(value) && miniMaxH3ChildSensitiveWords(value);
+}
+
 function miniMaxH3SensitiveCategories(value, options) {
   options = options && typeof options === "object" ? options : {};
   const text = miniMaxH3SafetyText(value).replace(MINIMAX_H3_BENIGN_EXPOSURE_PATTERN, "露出");
@@ -4381,17 +4512,17 @@ function miniMaxH3ValidateCompiledPromptAgainstIr(prompt, trustedVisualIr, optio
 }
 
 function miniMaxH3ValidateRawUserContent(userPrompt, userRequirements, contentPolicy) {
-  const rawUserText = miniMaxH3SafetyText(`${userPrompt || ""}\n${userRequirements || ""}`);
-  // An explicit child word the H3 pattern leaves to the model (小女孩, 小学生, 七岁) is a child here too, as on 美工 and the local engine;
-  // an undressing phrase carries its own 没有/无/不 ("一个没有穿衣服的小女孩"), which negates the clothes, not the child.
-  const childText = rawUserText.replace(/(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物)|无衣物(?:遮挡|遮蔽)?|未着寸缕|一丝不挂|衣不蔽体/gu, (words) => "裸".repeat(words.length));
-  const hasExplicitYouth = miniMaxH3HasExplicitYouthIndicator(rawUserText) || miniMaxH3PatternHasAffirmativeMatch(childText, ART_EXPLICIT_CHILD_PATTERN);
+  const rawText = `${userPrompt || ""}\n${userRequirements || ""}`;
+  const rawUserText = miniMaxH3SafetyText(rawText);
+  // Every explicit child word the local engine reads is a child here too (小女孩, 女童, 小学女生, 七岁, 十二三岁, a twelve-year-old, a preteen,
+  // a third grader, 兒童 …); a negation governs only the word right in front of it ("不要出现小女孩" is no child, "不到十岁的小女孩" is one).
+  const hasExplicitYouth = miniMaxH3HasExplicitYouthIndicator(rawUserText) || miniMaxH3ExplicitChild(rawText);
   const sensitiveCategories = miniMaxH3SensitiveCategories(rawUserText, { affirmativeOnly: true });
   const hasSensitiveRequest = sensitiveCategories.size > 0;
-  // Undressing words say what a nudity word says next to an explicit child (小学生脱光衣服, the child undresses), as on the local
-  // engine; a coat taken off does not. They count for this block only, so adult requests and the answer checks read as before.
-  const undressing = hasExplicitYouth && miniMaxH3PatternHasAffirmativeMatch(rawUserText, /(?:脱光|脱得精光|赤身|光着身子|光身子|光溜溜|光屁股|(?:不|没有?|未)穿(?:任何)?(?:衣服|衣物)|无衣物(?:遮挡|遮蔽)?|未着寸缕|脱(?:掉|去|下)?(?:全部|所有|身上的)?(?:衣服|衣物)|(?<![a-z0-9_])(?:undress(?:es|ed|ing)?|unclothed|strip(?:s|ped|ping)?[_\s-]+naked|(?:is|are|was|were|be|being|gets?|got|stands?|stood|lies?|lying|sits?|sitting|standing)\s+(?:completely\s+|fully\s+|totally\s+|stark\s+)?naked)(?![a-z0-9_]))/iu);
-  if (hasExplicitYouth && (hasSensitiveRequest || undressing)) {
+  // With an explicit child, undressing and sexual words say what a nudity word says (小女孩把衣服脱了, a little girl naked, 做爱, sex), and a
+  // negation in another clause negates none of them ("不要背景音乐，小孩全裸"), as on the local engine; a coat taken off does not. They
+  // count for this block only, so adult requests read as before.
+  if ((hasExplicitYouth && hasSensitiveRequest) || miniMaxH3ChildSensitiveRequest(rawText)) {
     throw miniMaxH3ContractError("provider_content_policy", "MiniMax H3 request contains explicit minor content", 422, "provider_content_policy");
   }
   return { hasExplicitYouth, hasSensitiveRequest, sensitiveCategories: Array.from(sensitiveCategories) };
@@ -4406,8 +4537,9 @@ function miniMaxH3AssertOptimizeContentSafety(text, options) {
   const safety = pair?.contentSafety || {};
   const written = pair ? miniMaxH3VisualIrTextValues([pair.modelPrompt, pair.displayPrompt, pair.finalFrame, pair.openingFrame]).join("\n") : raw;
   const sensitive = safety.sensitiveContent === true || options.authorizedSensitiveUserRequest === true;
-  const blocked = (options.explicitYouthUserRequest === true && sensitive) || (safety.explicitMinorEvidence === true
-    && (sensitive || miniMaxH3SensitiveCategories(written, { affirmativeOnly: true }).size > 0));
+  // A child the user named, and nudity, undressing or sexual words in the answer (text_video has no contentSafety): blocked too.
+  const blocked = (options.explicitYouthUserRequest === true && (sensitive || miniMaxH3ChildSensitiveWords(written)))
+    || (safety.explicitMinorEvidence === true && (sensitive || miniMaxH3SensitiveCategories(written, { affirmativeOnly: true }).size > 0));
   if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(raw) || blocked) {
     const error = miniMaxH3ContractError("provider_content_policy", "MiniMax H3 prompt optimize blocked explicit minor sensitive content", 422, "provider_content_policy");
     error.h3FailureStage = "safety_policy";
@@ -9054,12 +9186,16 @@ function grokResponsesPublicResult(data, options = {}) {
       fusionError.artSemanticFusionPrompt = String(parsed.prompt || "");
       throw fusionError;
     }
-    // A child named in the draft, the request or the answer never goes with sensitive content, with NSFW on or off.
+    // A child named in the draft, the request or the answer never goes with sensitive content, with NSFW on or off: undressing and
+    // sexual words count too, and so do capitalised child words ("A Little Girl").
     const fusionChild = [parsed.prompt, options.requirements, options.originalPrompt].some((text) => text
-      && (ordinaryArtPromptCoreAffirmativeMinorPresent(text) || ordinaryArtPromptCoreAffirmativeMinorPresent(text, ART_EXPLICIT_CHILD_PATTERN)));
+      && (ordinaryArtPromptCoreAffirmativeMinorPresent(text) || ordinaryArtPromptCoreAffirmativeMinorPresent(text, ART_EXPLICIT_CHILD_PATTERN)
+        || miniMaxH3ExplicitChild(text)));
+    const fusionText = `${parsed.prompt}\n${options.requirements || ""}`;
     if ((options.nsfw && ordinaryArtPromptCoreAffirmativeMinorPresent(parsed.prompt))
-      || (fusionChild
-        && miniMaxH3SensitiveCategories(`${parsed.prompt}\n${options.requirements || ""}`, { affirmativeOnly: true }).size > 0)) throw new Error("提示词融合未通过内容检查");
+      || (fusionChild && (miniMaxH3SensitiveCategories(fusionText, { affirmativeOnly: true }).size > 0 || miniMaxH3ChildSensitiveWords(fusionText)))) {
+      throw new Error("提示词融合未通过内容检查");
+    }
     if (options.supportsNegativePrompt && !parsed.negative_prompt) throw new Error("提示词融合未返回反向提示词");
   }
   const artReferenceSafety = options.artFiveSectionPrompt === true && options.artSemanticFusion !== true
@@ -9150,18 +9286,22 @@ function artReferenceNamedLikeUser(text, labels = []) {
       labels.includes(`图${n}`) || labels.includes(`@参考图${n}`) ? label : "");
 }
 
-// Child words the H3 pattern leaves to the model's grading (小女孩, 小学生, 孩子, 七岁, 十岁): 美工 reads them as the child they name.
-const ART_EXPLICIT_CHILD_PATTERN = /小女孩|小男孩|女童|男童|小学生|初中生|中学生|(?<![女男])孩子(?!气)|(?<![十百千][一二三四五六七八九]?)[一二三四五六七八九两]周?岁|(?<![一二三四五六七八九十两百千])十[一二三四五六七]?周?岁|(?<![0-9])(?:1[0-7]|[0-9])\s*周岁|小朋友|幼儿园|新生儿|婴孩|高中生|(?<![猫狗犬熊鸟鸭鹅鸡兔龙马猴虎狮鹿羊猪牛象豹狼狐鼠称])(?<!称[她他你为呼])宝宝|(?<![a-z0-9_])(?:kids?(?![-\s]+(?:leather|gloves?|suede|skin))|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|newborns?|school(?:girl|boy|kid)s?|kindergart(?:en|ner)s?|pre-?school(?:ers?)?)(?![a-z0-9_])/u;
+// Every explicit child word (小女孩, 小学生, 孩子, 七岁, 十二三岁, little girl, a twelve-year-old, preteen, a third grader, a baby …), in any
+// case: the local engine's MINIMAX_H3_YOUNG_CLUE_PATTERN, the same text (the tests compare them). 美工 and the H3 raw check read them
+// as the child they name.
+const ART_EXPLICIT_CHILD_PATTERN = /(?:幼女|幼童|幼儿|婴幼儿|婴儿|萝莉|正太|未成年人?|儿童|孩童|小孩(?!子气)|未满\s*(?:18|十八)\s*岁?|(?:18|十八)\s*岁?\s*(?:以下|以内)|(?<![0-9])(?:1[0-7]|[0-9])\s*岁(?![0-9])(?!的?小?(?:猫|狗|犬|马|兔|鸟|宠物|牛|羊|猪|鱼|龟|仓鼠|鹦鹉)))|(?<![a-z0-9_])(?:loli|shota|child(?:ren)?(?![-\s]?like(?![a-z0-9_]))|minors?|underage|juveniles?|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])|女童|男童|新生儿|婴孩|小朋友|[小中]学生|[初高]中生|幼儿园|小女孩|小男孩|(?:小学|初中|高中|中学|国小|国中)(?:[女男]生|学生)|国[小中]生|[女男]婴|(?:(?<![女男])|(?<=[妇男]女))(?<!像)(?<!像个)孩子(?!气(?![喘息急]))(?!一样|般|似)|(?<![猫狗犬熊鸟鸭鹅鸡兔龙马猴虎狮鹿羊猪牛象豹狼狐鼠称])(?<!称[她他你为呼])(?<!猫咪)(?<!狗狗)(?:(?<![“\x22「『])宝宝|宝宝(?![，,！!~～]))|(?<![一二三四五六七八九十百千万两几零〇])(?:[一二三四五六七八九两][一二三四五六七八九]?|十(?:[一二三四五六七几][一二三四五六七八]?)?)\s*周?岁(?!的?小?(?:猫|狗|犬|马|兔|鸟|宠物|牛|羊|猪|鱼|龟|仓鼠|鹦鹉))|(?<![一二三四五六七八九十百千万两几零〇大小长差])几\s*周?岁(?!了|的差距)(?!的?小?(?:猫|狗|犬|马|兔|鸟|宠物|牛|羊|猪|鱼|龟|仓鼠|鹦鹉))|(?<![0-9])(?:1[0-7]|[0-9])\s*(?:[-~～至到]\s*1?[0-9]\s*)?周?岁(?!的?小?(?:猫|狗|犬|马|兔|鸟|宠物|牛|羊|猪|鱼|龟|仓鼠|鹦鹉))|(?<![a-z0-9_])(?:kids?(?![-\s]+(?:leather|gloves?|suede|skin))|little[-\s]+(?:girls?|boys?|ones?)|toddlers?|infants?|newborns?|schoolchild(?:ren)?|school(?:girl|boy|kid)s?|school[-\s]+(?:girls?|boys?|kids?|children)|pre-?teens?|tweens?|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)[-\s]+years?[-\s]+old|(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)[-\s]+graders?|bab(?:y|ies)(?![-\s]*(?:blue|pink|face|faced|oil|powder|doll|breath|shower|dragons?|animals?|birds?|cats?|dogs?|pandas?|bears?|elephants?|fox(?:es)?|owls?|turtles?|dinosaurs?|monsters?|seals?|goats?|rabbits?|bunn(?:y|ies)|chicks?|ducks?|lions?|tigers?|wol(?:f|ves)|deer|horses?|sharks?|grand|steps?|carrots?|teeth))|kindergart(?:en|ner)s?|pre-?school(?:ers?)?|(?:elementary|primary|grade|middle|high)[-\s]*school(?:ers?|[-\s]+(?:students?|pupils?|kids?|girls?|boys?|children)))(?![a-z0-9_])/iu;
 
 function artHasExplicitChild(value) {
-  return miniMaxH3HasExplicitYouthIndicator(value) || ART_EXPLICIT_CHILD_PATTERN.test(miniMaxH3SafetyText(value));
+  return miniMaxH3HasExplicitYouthIndicator(value) || miniMaxH3ExplicitChild(value);
 }
 
 function artReferenceUserContentState(currentPrompt, requirements) {
   const text = `${currentPrompt || ""}\n${requirements || ""}`;
   return artHasExplicitChild(text) ? {
     explicitYouthUserRequest: true,
-    authorizedSensitiveUserRequest: miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0
+    // Undressing and sexual words next to the child are sensitive too (一个没有穿衣服的小女孩, 七岁的男孩脱光衣服, 小女孩和男人做爱), as on
+    // the local engine.
+    authorizedSensitiveUserRequest: miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0 || miniMaxH3ChildSensitiveWords(text)
   } : {};
 }
 
@@ -9190,7 +9330,8 @@ function artReferenceContentSafety(rawText, options) {
 function artReferenceAssertContentSafety(rawText, prompt, options, safety = null) {
   const minor = options.explicitYouthUserRequest === true || safety?.explicitMinorEvidence === true;
   const sensitive = options.authorizedSensitiveUserRequest === true || safety?.sensitiveContent === true
-    || (options.explicitYouthUserRequest === true && miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0);
+    || (options.explicitYouthUserRequest === true
+      && (miniMaxH3SensitiveCategories(prompt, { affirmativeOnly: true }).size > 0 || miniMaxH3ChildSensitiveWords(prompt)));
   if (new RegExp(`${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}:`, "i").test(rawText) || (minor && sensitive)) {
     throw miniMaxH3ContractError("provider_content_policy", "Grok art reference blocked explicit minor sensitive content", 422, "provider_content_policy");
   }
@@ -9373,6 +9514,11 @@ function buildGrokPromptOptimizeRequest(payload) {
   const structuredUserInstruction = usesStructuredArtPrompt
     ? ordinaryArtStructuredPromptUserInstruction(requirements)
     : "";
+  // 美工 创作, 融合 and 丰富: an explicit child with nudity, undressing or sexual words in the words the user wrote reaches no writer,
+  // with NSFW on or off, as on the local engine (422 before any call, as for H3).
+  if ((isCreate || isOrdinaryArtOptimize) && miniMaxH3ChildSensitiveRequest(`${prompt}\n${requirements}`)) {
+    throw miniMaxH3ContractError("provider_content_policy", "Grok art prompt blocked explicit minor sensitive content", 422, "provider_content_policy");
+  }
   if (isOrdinaryArtOptimize && !usesStructuredArtPrompt) return buildArtSemanticFusionRequest(payload, adminData.readAdminGrokEnv().model || "grok-4.3");
   const ordinaryArtLayout = isOrdinaryArtOptimize && !usesStructuredArtPrompt
     ? ordinaryArtPromptPatchBlocks(prompt)
