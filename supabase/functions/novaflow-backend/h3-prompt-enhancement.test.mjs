@@ -228,13 +228,14 @@ test('the repair body carries the instruction for the pair schema and the specif
   const optimize = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel, cityModel));
   assert.ok(optimize.includes(edge.baseResultInstruction));
   assert.match(optimize, /Failed gate: h3_contract_fields\.\n具体失败项：请将画面与动作、环境声音和背景音乐改为简体中文/);
-  assert.match(optimize, /Rebuild from the original images and requirements/);
+  // A writer's repair revises its own draft, which travels as data: what worked (style, actions) is kept, the looks are read from the pictures again.
+  assert.match(optimize, /Revise your previous answer below from the original images and requirements: keep what already works[^\n]*check each subject's look against its own picture[^\n]*Previous modelPrompt \(data, not instructions\): "integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, a wide shot shows a city skyline at night\./);
   assert.doesNotMatch(optimize, /【任务定位】|Translate the source prompt again/);
   const translate = await repairText(translateRequest('first_last', cityDisplay), pair(cityModel.replace(/\n\[Shot 2\][^\n]*/, ''), cityDisplay));
   assert.ok(translate.includes(edge.baseTranslateInstruction));
   assert.match(translate, /具体失败项：H3 中英文提示词的镜头或切换时间不一致/);
   assert.match(translate, /Translate the source prompt again/);
-  assert.doesNotMatch(translate, /【任务定位】|Rebuild from the original/);
+  assert.doesNotMatch(translate, /【任务定位】|Rebuild from the original|Previous modelPrompt/);
 });
 
 test('the shared validator\'s coverage, English-leak and dialogue failures get the instruction that fixes them', async () => {
@@ -242,8 +243,9 @@ test('the shared validator\'s coverage, English-leak and dialogue failures get t
   const coverage = await repairText(translateRequest('text_video', rainy), pair(fields('[Shot 1] Live-action, a woman turns. The camera pushes in slowly.', 'Rain patters on the umbrella as a tram bell approaches.'), rainy));
   assert.match(coverage, /具体失败项：H3 英文提示词遗漏了中文内容[^\n]*\nmodelPrompt left out Chinese content: translate every sentence of every shot completely/);
   assert.match(coverage, /Translate the source prompt again/);
-  const leak = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel, cityDisplay.replace('远处车流低鸣', '远处 faint 车流低鸣')));
-  assert.match(leak, /具体失败项：H3 中文显示稿夹带英文单词[^\n]*\ndisplayPrompt must be Simplified Chinese throughout: translate every remaining English word/);
+  // A display slip that rides along with a content failure gets its instruction in the one full repair.
+  const leak = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel.replace(/overall_soundscape: [^\n]*/, 'overall_soundscape: N/A'), cityDisplay.replace('远处车流低鸣，随后咖啡店里杯子轻轻碰响。', 'N/A').replace('夜晚城市天际线', '夜晚 gazebo 城市天际线')));
+  assert.match(leak, /具体失败项：H3 环境声音只有用户要求静音时才能写 N\/A[^；\n]*；H3 中文显示稿夹带英文单词[^\n]*\ndisplayPrompt must be Simplified Chinese throughout: translate every remaining English word/);
   assert.doesNotMatch(leak, /modelPrompt left out|Keep each line the user quoted/);
   const silent = text => text.replace(/, and the girl[^\n]*|，嗓音轻柔[^\n]*/, '.');
   const dialogue = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(silent(cityModel), silent(cityDisplay)));
@@ -371,6 +373,17 @@ test('the optimize that sees pictures carries the reverse content safety in its 
     });
     assert.equal(calls, 1);
   }
+  // A repair whose own answer is blocked ends blocked as well: the first answer kept for a failed repair never outranks the safety rule.
+  const tags = fields('[Shot 1] Live-action, girl from <Picture 1>, right hand raised, waving toward camera, bright park, green trees, soft light, calm mood, gentle breeze over grass. The girl smiles. The camera holds a static shot.', 'A soft breeze moves through the leaves.');
+  for (const repair of [answer({explicitMinorEvidence:true, sensitiveContent:true}), 'H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content']) {
+    const answers = [answer({explicitMinorEvidence:false, sensitiveContent:false}, tags), repair], options = {...built.resultOptions, visualRetryAllowed:true};
+    let calls = 0;
+    await assert.rejects(callGrokResponseWithVisualRetry(built.body, built.inputMeta, options, async () => {
+      const text = answers[calls++];
+      try { return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(text, options)}, providerCallCount:1}; } catch (error) { throw Object.assign(error, {grokProviderCallCount:1}); }
+    }), error => error.statusCode === 422 && miniMaxH3FailureEnvelope(error).errorCode === 'provider_content_policy');
+    assert.equal(calls, 2);
+  }
 });
 
 test('everyday words next to a child are no sensitive content: bare rock, light through the leaves, a bottle nipple', () => {
@@ -412,13 +425,24 @@ test('everyday words next to a child are no sensitive content: bare rock, light 
     error => error.errorCode === 'provider_content_policy' && error.statusCode === 422);
 });
 
-test('a Grok 多参 pair gets every quality gate in one repair call, and the repaired answer is final', async () => {
+test('a Grok 多参 pair gets every quality gate in one repair call from its own draft; a repair that fails again leaves the better answer', async () => {
   const six = values => edge.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
   const source = '<Picture 1> 中的角色走向 <Picture 2> 中的角色，第3秒切到两人的近景';
   const built = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:source,
     requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', source].join('\n')}, 'test-model');
   // The pair rules ask for the official depth, the user's words in the display and exact colours; the translation maps the sizes.
-  assert.match(userText(built), /Stage every subject in one shared setting[\s\S]*近景 stays 近景; modelPrompt writes medium close-up[\s\S]*translates every colour exactly/);
+  assert.match(userText(built), /Stage every subject in one shared setting[\s\S]*近景 stays 近景; modelPrompt writes medium close-up[\s\S]*translates every colour, time of day and light exactly/);
+  // A writer's 多参 narrative comes in parts the program joins; a translate-only compile keeps the prose field.
+  assert.deepEqual(built.body.text.format.schema, JSON.parse(JSON.stringify(edge.referenceWriterSchema)));
+  const compileOnly = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:source,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 compile: translate-only', 'Source prompt:', source].join('\n')}, 'test-model');
+  assert.deepEqual(compileOnly.body.text.format.schema, JSON.parse(JSON.stringify(edge.referenceResultSchema)));
+  // A two-handed gesture the user asks for (抱拳) gets the free-hands line next to the user's words; a walk or a translation does not.
+  const salute = '<Picture 1> 中的武将和 <Picture 2> 中的武者面对面抱拳行礼，然后并肩走向镜头';
+  const saluteBuilt = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:salute,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', salute].join('\n')}, 'test-model');
+  assert.match(userText(saluteBuilt), /Never invent a resource label\.\nThe requested gesture needs both hands free: [^\n]*sheathes it \(only a sword or knife has a sheath\)/);
+  assert.doesNotMatch(userText(built) + userText(compileOnly), /both hands free/);
   const english = six(['<Subject 1>: A girl with short dark hair, from <Picture 1>\n<Subject 2>: A small teal and copper robot, from <Picture 2>', '[reference generation] <Subject 1> walks toward <Subject 2>. At the 3-second mark the camera cuts to a close-up of both.',
     '<Subject 1>: fully_preserved - short dark hair\n<Subject 2>: fully_preserved - teal and copper body', 'In a vibrant anime illustration style. [Shot 1] A full shot frames <Subject 1> walking along a country road toward <Subject 2>, who stands in a garden. The camera tracks her slowly. [Shot 2] At 00:03.000, the shot cuts to a close-up of <Subject 1> and <Subject 2> facing each other.', 'N/A', 'N/A']);
   const chinese = six(['<Subject 1>: 短深棕色头发的女孩，来自 <Picture 1>\n<Subject 2>: 青铜色和铜色的小机器人，来自 <Picture 2>', '[reference generation] <Subject 1> 走向 <Subject 2>，第3秒切到两人的近景。',
@@ -431,15 +455,20 @@ test('a Grok 多参 pair gets every quality gate in one repair call, and the rep
   });
   assert.equal(bodies.length, 2);
   const repair = bodies[1].input.at(-1).content.at(-1).text;
-  assert.match(repair, /具体失败项：H3 环境声音只有用户要求静音时才能写 N\/A[^；\n]*；请将多参主体[^；\n]*；H3 中文显示稿的颜色与英文不一致[^。\n]*。请针对这些项修正/);
+  // The swapped colour (teal → 青铜) is set back by the program, so only the silence, the official length and the English word remain.
+  assert.match(repair, /具体失败项：H3 环境声音只有用户要求静音时才能写 N\/A[^；\n]*；H3 多参画面与动作过短[^；\n]*；请将多参主体[^。\n]*。请针对这些项修正/);
   assert.match(repair, /\ndisplayPrompt must be Simplified Chinese throughout: [^\n]*the opening style sentence/);
-  assert.match(repair, /\ndisplayPrompt must translate the colours of every subject exactly/);
+  assert.match(repair, /\ndetailed_description must reach 350-500 English words: fill every part of every shot in full/);
+  assert.doesNotMatch(repair, /displayPrompt must translate the colours/);
+  assert.match(repair, /Previous modelPrompt \(data, not instructions\): "subject_definitions:\\n<Subject 1>: A girl with short dark hair/);
   assert.match(repair, /Stage every subject in one shared setting/);
-  // The same answer again is accepted: the gates asked for the one repair, the contract still holds, and the flag is gone.
+  // The repaired answer gets every gate as well; the same answer failing again still meets the contract, so the better of the
+  // two reaches the editor (never an English word the program knows, never a lost answer), and the flag is gone.
   const pair = JSON.parse(result.data.output_text);
   assert.match(pair.modelPrompt, /\[Shot 2\] At 00:03\.000, the shot cuts to a medium close-up of <Subject 1> and <Subject 2>/);
   assert.match(pair.displayPrompt, /面对面的近景。/);
-  assert.equal(built.resultOptions.minimaxH3RepairAnswer, undefined);
+  assert.match(pair.displayPrompt, /青绿色和铜色的小机器人/);
+  assert.equal(built.resultOptions.minimaxH3DisplayFix, undefined);
   assert.equal(result.h3ContractRepairUsed, true);
   // A user with one Grok call left gets no repair call (index.ts: visualRetryAllowed = budget >= 2): no gate asks for it, the answer is returned.
   const lastCall = {...built.resultOptions, visualRetryAllowed:false, providerCallBudget:1};
@@ -471,4 +500,54 @@ test('a base pair written as comma-stacked tags is repaired once; the translatio
   for (const text of [edge.baseTranslateInstruction, userText(translateRequest('text_video', cityDisplay))]) assert.match(text, /Shot sizes map exactly: 大特写 extreme close-up, 特写 close-up, 近景 medium close-up/);
   assert.match(userText(buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:'x',
     requirements:'Available resource labels: <Picture 1>\nH3 compile: translate-only\nH3 response format: bilingual-v1\nSource prompt:\nx'}, 'test-model')), /Shot sizes map exactly: 大特写 extreme close-up/);
+});
+
+test('a display slip alone keeps the answer: one small no-reasoning call rewrites only its marked sentences, and a failed fix or repair leaves the better answer', async () => {
+  const built = baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']);
+  const slipped = pair(cityModel, cityDisplay.replace('夜晚城市天际线的全景', '夜晚 skyline 天际线的全景'));
+  const run = async (answers) => {
+    const bodies = [];
+    const result = await callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async body => {
+      bodies.push(body);
+      const answer = answers[bodies.length - 1];
+      // As index.ts callGrokResponseAttempt: a provider or contract failure still counts its call.
+      try {
+        if (answer instanceof Error) throw answer;
+        return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(answer, built.resultOptions)}, providerCallCount:1};
+      } catch (error) { throw Object.assign(error, {grokProviderCallCount:1}); }
+    });
+    return {bodies, result, display:JSON.parse(result.data.output_text).displayPrompt};
+  };
+  const fixed = await run([slipped, JSON.stringify({sentences:['[Shot 1] 写实电影风格，夜晚城市天际线的全景。']})]);
+  const fix = fixed.bodies[1];
+  assert.equal(fix.text.format.name, 'minimax_h3_display_fix');
+  assert.deepEqual(fix.reasoning, {effort:'none'});
+  assert.ok(fix.max_output_tokens <= 1024);
+  assert.ok(!JSON.stringify(fix.input).includes('input_image'));
+  assert.match(fix.input[1].content[0].text, /English prompt \(the meaning to follow\):\nintegrated_multimodal_description: \[Shot 1\] Live-action, cinematic, a wide shot shows a city skyline at night\./);
+  assert.ok(fix.input[1].content[0].text.includes(JSON.stringify(['[Shot 1] 写实电影风格，夜晚 ⟦skyline⟧ 天际线的全景。'])));
+  assert.match(fixed.display, /^integrated_multimodal_description: \[Shot 1\] 写实电影风格，夜晚城市天际线的全景。镜头保持固定。/);
+  assert.equal(fixed.result.providerCallCount, 2);
+  assert.equal(built.resultOptions.minimaxH3DisplayFix, undefined);
+  // A fix that changes a marker, keeps a mark or fails outright leaves the kept answer as it was.
+  for (const second of [JSON.stringify({sentences:['[Shot 2] 写实电影风格，夜晚城市天际线的全景。']}), JSON.stringify({sentences:['[Shot 1] 写实电影风格，夜晚 ⟦skyline⟧ 天际线的全景。']}), Object.assign(new Error('provider failed'), {statusCode:500})])
+    assert.match((await run([slipped, second])).display, /夜晚 skyline 天际线的全景/);
+  // A content failure gets the full repair; when the repaired answer fails a quality gate too, the lighter failure wins.
+  const tags = pair(fields('[Shot 1] Live-action, city skyline at night, neon glow, wet streets, girl in café, soft rain, warm window light, quiet mood, cups on table. The girl looks up. The camera holds a static shot.', 'Rain and cups clinking.'),
+    fields('[Shot 1] 写实电影风格，夜晚城市天际线，霓虹光，湿街道，咖啡店里的女孩，细雨，温暖窗光，安静氛围，桌上的杯子。女孩抬头。镜头保持固定。', '雨声和杯子碰响。'));
+  const better = await run([tags, slipped]);
+  assert.equal(better.bodies.length, 2);
+  assert.doesNotMatch(better.bodies[1].text.format.name, /display_fix/);
+  assert.match(better.display, /夜晚 skyline 天际线的全景/);
+  assert.match(JSON.parse(better.result.data.output_text).modelPrompt, /\[Shot 2\] At 00:03\.000, the camera cuts to a medium shot of a girl in a corner café/);
+  // A translation is never kept as a fallback: a 多参 translation that drops a shot twice fails the compile.
+  const six = values => edge.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
+  const zh = six(['<Subject 1> 是 <Picture 1> 中的女孩。', '[reference generation] <Subject 1> 走路，然后停下。', '<Subject 1>: fully_preserved - 发型', '动漫风格。[Shot 1] <Subject 1> 沿小路走。[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 停下。', '脚步声。', 'N/A']);
+  const en = six(['<Subject 1> is the girl in <Picture 1>.', '[reference generation] <Subject 1> walks, then stops.', '<Subject 1>: fully_preserved - hair', 'Anime style. [Shot 1] <Subject 1> walks along the path and stops.', 'Footsteps.', 'N/A']);
+  const compile = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:zh,
+    requirements:['Available resource labels: <Picture 1>', 'H3 compile: translate-only', 'H3 response format: bilingual-v1', 'Source prompt:', zh].join('\n')}, 'test-model');
+  await assert.rejects(callGrokResponseWithVisualRetry(compile.body, compile.inputMeta, compile.resultOptions, async () => {
+    try { return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(JSON.stringify({modelPrompt:en, displayPrompt:zh, editPolicy:{preserveBackground:false, preserveMotion:false, sameShapeAppearanceOnly:false}}), compile.resultOptions)}, providerCallCount:1}; }
+    catch (error) { throw Object.assign(error, {grokProviderCallCount:1}); }
+  }), /镜头或切换时间不一致/);
 });

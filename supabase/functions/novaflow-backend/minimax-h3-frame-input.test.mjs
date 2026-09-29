@@ -281,7 +281,10 @@ for (const [mode, keys] of [["text_video", []], ["image_video", ["first_frame"]]
     const answer = (changes = {}) => JSON.stringify({ modelPrompt: Object.fromEntries(fields.map((key) => [key, changes[key] ?? english[key]])),
       displayPrompt: Object.fromEntries(fields.map((key) => [key, chinese[key]])),
       ...(reference ? { editPolicy: { preserveBackground: false, preserveMotion: false, sameShapeAppearanceOnly: false } } : {}) });
-    const result = JSON.parse(normalizeMiniMaxH3PromptOutput(answer(), built.resultOptions));
+    // A 多参 story this short asks for the one repair (official 350-500 words) and stays the fallback answer; the last call accepts it.
+    if (reference) assert.throws(() => normalizeMiniMaxH3PromptOutput(answer(), built.resultOptions),
+      (error) => /350-500/.test(error.message) && /人物开始挥手/.test(JSON.parse(error.h3Lenient).displayPrompt));
+    const result = JSON.parse(normalizeMiniMaxH3PromptOutput(answer(), reference ? { ...built.resultOptions, visualRetryAllowed: false } : built.resultOptions));
     assert.match(result.modelPrompt, reference ? /\n\noverall_soundscape:\n/ : /\n\noverall_soundscape: /);
     assert.match(result.displayPrompt, /人物开始挥手/);
     if (reference) {
