@@ -562,7 +562,8 @@ test('a display slip alone keeps the answer: one small no-reasoning call rewrite
   assert.equal(fixed.result.providerCallCount, 2);
   assert.equal(built.resultOptions.minimaxH3DisplayFix, undefined);
   // A fix that changes a marker, keeps a mark or fails outright leaves the kept answer as it was.
-  for (const second of [JSON.stringify({sentences:['[Shot 2] 写实电影风格，夜晚城市天际线的全景。']}), JSON.stringify({sentences:['[Shot 1] 写实电影风格，夜晚 ⟦skyline⟧ 天际线的全景。']}), Object.assign(new Error('provider failed'), {statusCode:500})])
+  for (const second of [JSON.stringify({sentences:['[Shot 2] 写实电影风格，夜晚城市天际线的全景。']}), JSON.stringify({sentences:['[Shot 1] 写实电影风格，夜晚 ⟦skyline⟧ 天际线的全景。']}),
+    JSON.stringify({sentences:['[Shot 1] 写实电影风格，夜晚 skyline 城市的全景。']}), Object.assign(new Error('provider failed'), {statusCode:500})])
     assert.match((await run([slipped, second])).display, /夜晚 skyline 天际线的全景/);
   // A content failure gets the full repair; when the repaired answer fails a quality gate too, the lighter failure wins.
   const tags = pair(fields('[Shot 1] Live-action, city skyline at night, neon glow, wet streets, girl in café, soft rain, warm window light, quiet mood, cups on table. The girl looks up. The camera holds a static shot.', 'Rain and cups clinking.'),
@@ -572,6 +573,14 @@ test('a display slip alone keeps the answer: one small no-reasoning call rewrite
   assert.doesNotMatch(better.bodies[1].text.format.name, /display_fix/);
   assert.match(better.display, /夜晚 skyline 天际线的全景/);
   assert.match(JSON.parse(better.result.data.output_text).modelPrompt, /\[Shot 2\] At 00:03\.000, the camera cuts to a medium shot of a girl in a corner café/);
+  // Of two answers that both fail a content gate (here a tag list) and still meet the contract, the longer one reaches the editor, whichever came first.
+  const tagged = extra => pair(cityModel.replace('a wide shot shows a city skyline at night.', 'city skyline at night, neon glow, wet streets, soft rain, warm window light, quiet mood, distant towers.' + extra),
+    cityDisplay.replace('夜晚城市天际线的全景。', '夜晚城市天际线，霓虹光，湿街道，细雨，温暖窗光，安静氛围，远处高楼。' + (extra ? '雨珠挂在玻璃上。' : '')));
+  for (const answers of [[tagged(''), tagged(' Rain beads on the glass.')], [tagged(' Rain beads on the glass.'), tagged('')]]) {
+    const kept = await run(answers);
+    assert.equal(kept.bodies.length, 2);
+    assert.match(JSON.parse(kept.result.data.output_text).modelPrompt, /Rain beads on the glass\./);
+  }
   // A translation is never kept as a fallback: a 多参 translation that drops a shot twice fails the compile.
   const six = values => edge.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
   const zh = six(['<Subject 1> 是 <Picture 1> 中的女孩。', '[reference generation] <Subject 1> 走路，然后停下。', '<Subject 1>: fully_preserved - 发型', '动漫风格。[Shot 1] <Subject 1> 沿小路走。[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 停下。', '脚步声。', 'N/A']);

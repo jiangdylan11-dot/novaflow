@@ -380,7 +380,8 @@ test('the Chinese half of an optimize pair: common English words are written in 
   const shown = (api, sound, extra = {}) => JSON.parse(api.validateBaseResult({modelPrompt:model, displayPrompt:fields('[Shot 1] 写实电影风格，城市夜景全景。镜头固定。', sound)}, {...options, ...extra})).displayPrompt;
   for (const api of apis) {
     // The program writes the words a display most often keeps (sound words, speech verbs, colours, materials, style and cut phrases) in Chinese.
-    for (const [leak, fixed] of [['远处交通声和 faint 城市氛围。', '远处交通声和细微的城市氛围。'], ['女孩 says 你好。', '女孩说你好。'], ['猫落地时一声 thud。', '猫落地时一声闷响。'], ['猫尾扫过 marble 台阶。', '猫尾扫过大理石台阶。']])
+    for (const [leak, fixed] of [['远处交通声和 faint 城市氛围。', '远处交通声和细微的城市氛围。'], ['女孩 says 你好。', '女孩说你好。'], ['猫落地时一声 thud。', '猫落地时一声闷响。'], ['猫尾扫过 marble 台阶。', '猫尾扫过大理石台阶。'],
+      ['猫发出一声惊讶的 meow。', '猫发出一声惊讶的喵叫声。'], ['笛声在追逐时 swell，拥抱时 soften。', '笛声在追逐时渐强，拥抱时变柔和。'], ['红色面具 markings 随喘息起伏。', '红色面具斑纹随喘息起伏。']])
       assert.ok(shown(api, leak, {strictPair:true}).endsWith('overall_soundscape: ' + fixed + '\n\nnon_diegetic_music: N/A'), leak);
     // A rarer word fails a writer's pair as a display slip only, its sentence marked for the one small fix call; the renderer keeps it.
     assert.throws(() => shown(api, '远处传来 gazebo 旁的风铃声。', {strictPair:true}), error => error.h3DisplayOnly === true && /夹带英文单词/.test(error.message)
@@ -680,6 +681,13 @@ test("多参: a writer's narrative in parts is joined into the official prose in
     const pair = JSON.parse(api.validateReferenceResult(answer, options));
     assert.match(pair.modelPrompt, /detailed_description:\nThe target video is in a 3D CG style with bright daylight\.\s\[Shot 1\] A full shot frames a stone courtyard\. <Subject 1> stands on the left facing right\. His black hair is tied under a golden crown\. His golden armour gleams\. His right hand grips a spear\. The camera pulls out at slow speed as they walk toward it\. <Subject 1> plants the spear upright beside him\. <Subject 1> and <Subject 2> salute with the right fist covered by the left palm\. They stand side by side\.\n/);
     assert.match(pair.displayPrompt, /detailed_description:\n目标视频采用三维 CG 风格，日光明亮。\s?\[Shot 1\] 全景展现石砌庭院。<Subject 1> 站在左侧面朝右。他的黑发束在金冠下。他的金甲闪亮。他右手握着长枪。镜头缓慢后拉，他们走向镜头。<Subject 1> 将长枪竖直插在身旁。<Subject 1> 与 <Subject 2> 右拳左掌抱拳行礼。两人并肩站立。\n/);
+    const withBeats = (narrative, beats) => ({...narrative, shots:[{...narrative.shots[0], beats}]});
+    const paired = JSON.parse(api.validateReferenceResult(JSON.stringify({
+      modelPrompt:six(false, withBeats(english, [{action:'<Subject 1> plants the spear upright beside him', detail:'Its red tassel sways in the wind'}, {action:'The camera pushes in', detail:'Dust drifts past'}])),
+      displayPrompt:six(true, withBeats(chinese, [{action:'<Subject 1> 将长枪竖直插在身旁', detail:'红色枪缨在风中摆动'}, {action:'镜头推近', detail:'尘土飘过'}]))}), options));
+    assert.match(paired.modelPrompt, /as they walk toward it\. <Subject 1> plants the spear upright beside him\. Its red tassel sways in the wind\. They stand side by side\.\n/);
+    assert.match(paired.displayPrompt, /他们走向镜头。<Subject 1> 将长枪竖直插在身旁。红色枪缨在风中摆动。两人并肩站立。\n/);
+    assert.deepEqual(json(api.referenceWriterSchema.properties.modelPrompt.properties.detailed_description.properties.shots.items.properties.beats.items.required), ['action', 'detail']);
     // The writer's schema asks for the parts in both halves; a translation keeps the one prose field.
     assert.equal(api.referenceWriterSchema.properties.modelPrompt.properties.detailed_description.type, 'object');
     assert.deepEqual(json(api.referenceWriterSchema.properties.displayPrompt.properties.detailed_description.properties.shots.items.required), ['opening', 'subjects', 'camera', 'beats', 'ending']);
