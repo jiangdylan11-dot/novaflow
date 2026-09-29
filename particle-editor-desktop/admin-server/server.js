@@ -5094,17 +5094,17 @@ function ordinaryArtPromptCoreMinorMentionIsNegated(source, index, length) {
     || ORDINARY_ART_PROMPT_CORE_MINOR_NEGATED_SUFFIX_PATTERN.test(suffix);
 }
 
-function ordinaryArtPromptCoreAffirmativeMinorPresent(value) {
+function ordinaryArtPromptCoreAffirmativeMinorPresent(value, minorPattern = ORDINARY_ART_PROMPT_CORE_AFFIRMATIVE_MINOR_PATTERN) {
   const { blocks } = ordinaryArtPromptPatchBlocks(value);
   return blocks.some((block) => {
     const label = ordinaryArtPromptCoreBlockLabel(block.text);
     if (/避免|禁止|负向|avoid|negative/i.test(label)) return false;
     const text = String(block.text || "");
     const pattern = new RegExp(
-      ORDINARY_ART_PROMPT_CORE_AFFIRMATIVE_MINOR_PATTERN.source,
-      ORDINARY_ART_PROMPT_CORE_AFFIRMATIVE_MINOR_PATTERN.flags.includes("g")
-        ? ORDINARY_ART_PROMPT_CORE_AFFIRMATIVE_MINOR_PATTERN.flags
-        : `${ORDINARY_ART_PROMPT_CORE_AFFIRMATIVE_MINOR_PATTERN.flags}g`
+      minorPattern.source,
+      minorPattern.flags.includes("g")
+        ? minorPattern.flags
+        : `${minorPattern.flags}g`
     );
     for (const match of text.matchAll(pattern)) {
       if (!ordinaryArtPromptCoreMinorMentionIsNegated(text, match.index, match[0].length)) return true;
@@ -8916,9 +8916,10 @@ function grokResponsesPublicResult(data, options = {}) {
         options.supportsNegativePrompt !== false
       )
       : parseSmartAiPromptResult(rawText, options);
-  // A section title written in front of its text is moved onto its own line; the layout itself is right, no repair call.
+  // A section title written in front of its text (also as "标题：" or "标题 - ") is moved onto its own line and the separator
+  // dropped; the layout itself is right, no repair call.
   if (options.artFiveSectionPrompt === true || options.artSemanticFusion === true) {
-    parsed.prompt = String(parsed.prompt || "").replace(/^([ \t]*\[(?:风格设定|主体物品|环境背景|光线与色彩|拍摄参数)\])[ \t]*(?=\S)/gmu, "$1\n");
+    parsed.prompt = String(parsed.prompt || "").replace(/^([ \t]*\[(?:风格设定|主体物品|环境背景|光线与色彩|拍摄参数)\])[ \t]*(?:(?:[：:]|——|[-–—](?=\s))[ \t]*)?(?:\r?\n)?(?=\S)/gmu, "$1\n");
   }
   if (options.artSemanticFusion === true) {
     parsed.prompt = finalizeArtSemanticFusion(parsed.prompt, options.requirements);
@@ -8930,7 +8931,12 @@ function grokResponsesPublicResult(data, options = {}) {
       fusionError.artSemanticFusionPrompt = String(parsed.prompt || "");
       throw fusionError;
     }
-    if (options.nsfw && ordinaryArtPromptCoreAffirmativeMinorPresent(parsed.prompt)) throw new Error("提示词融合未通过内容检查");
+    // A child named in the draft, the request or the answer never goes with sensitive content, with NSFW on or off.
+    const fusionChild = [parsed.prompt, options.requirements, options.originalPrompt].some((text) => text
+      && (ordinaryArtPromptCoreAffirmativeMinorPresent(text) || ordinaryArtPromptCoreAffirmativeMinorPresent(text, ART_EXPLICIT_CHILD_PATTERN)));
+    if ((options.nsfw && ordinaryArtPromptCoreAffirmativeMinorPresent(parsed.prompt))
+      || (fusionChild
+        && miniMaxH3SensitiveCategories(`${parsed.prompt}\n${options.requirements || ""}`, { affirmativeOnly: true }).size > 0)) throw new Error("提示词融合未通过内容检查");
     if (options.supportsNegativePrompt && !parsed.negative_prompt) throw new Error("提示词融合未返回反向提示词");
   }
   const artReferenceSafety = options.artFiveSectionPrompt === true && options.artSemanticFusion !== true
@@ -8949,7 +8955,7 @@ function grokResponsesPublicResult(data, options = {}) {
       throw layoutError;
     }
   }
-  if (options.artFiveSectionPrompt === true || options.artSemanticFusion === true) parsed.negative_prompt = artNegativeVisibleTerms(parsed.negative_prompt, options.userNegativePrompt);
+  if (options.artFiveSectionPrompt === true || options.artSemanticFusion === true) parsed.negative_prompt = artNegativeVisibleTerms(parsed.negative_prompt, [options.artUserText, options.requirements, options.originalPrompt].filter(Boolean).join("\n"));
   const result = {
     id: data?.id || "",
     object: data?.object || "",
@@ -8991,7 +8997,7 @@ const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前
 
 // How every 美工 answer in the five sections is written: one consistent picture in full sentences, creative inside the
 // framework of the user and the pictures. Neutral examples only.
-const ART_PROMPT_CRAFT_RULE = "写法（优先于前面任何“简短”的暗示）：像美术总监给画师的简报，五段写的是同一个瞬间的同一幅画面，每段（包括[风格设定]和[拍摄参数]）用句号分成两句以上的完整句子，按下面的顺序写全：\n[风格设定]：直接以媒介与画风开头，再写线条、上色或渲染方式；氛围只用情绪词直接写，时间、天气和地点只写在[环境背景]。例如：“水彩插画，湿画法让色块边缘自然晕开。纸面颗粒透出细腻的肌理，气氛安宁温柔。”\n[主体物品]：先原样写出用户原文里的主体称呼和动作短语（用户写“柴犬”就写“柴犬”，不改成“黄色的狗”；称呼里的图号照抄）；身体姿态用一句写定，其余细节不再写另一种身体形态。再写发型和发色、胡须等面部标志、表情和视线、每件服装和配饰的颜色与材质、手持物和武器的颜色、纹样与附着物、双手在做什么和怎么拿东西、与地面或物体的接触（写到脚和鞋就在[拍摄参数]用全景，中景以内不写脚和鞋），至少六处具体细节，每处只写一次。例如：“一位银发老人坐在藤椅上，左手扶着膝头摊开的旧相册，右手指尖停在一张泛黄照片的边角。他披着深灰色粗针羊毛开衫，袖口起了细小的毛球，嘴角带着浅浅的笑意。”\n[环境背景]：先写场所类型与年代、时间和天气，户外一定写一句天空的样子（如夜里的一弯新月或满天星斗、雪夜低垂的灰云、黄昏西沉的夕阳和晚霞）；前景、中景、后景各有什么，写出材质与颜色；场景里的人造光源（如烛火、灯笼、壁炉、霓虹招牌、灯具）和窗户；烛火、灯笼、篝火这类火光是暖色，用户要冷色调时在这里写出冷光的来源（如月亮、积雪、水面）；再补充合乎地点与时间的陈设和环境细节（如雨夜街道：积水里的灯光倒影、湿亮的石板、伞沿滴落的水珠）。陈设和光源合乎场景的年代与地点，古代场景不出现电灯、路灯、街灯等现代设施。至少写出五样具体可见的东西；光落在哪里留给[光线与色彩]写。纯色、白底或透明背景的单体素材（底稿或主体图就是这样且用户没要求换背景，或用户要求这类背景）保留该背景：[环境背景]只写背景颜色、承托面与投影，不补场景陈设，不受“至少五样”限制；[光线与色彩]写影棚式主光与辅光的方向，这类光不必写进[环境背景]。\n[光线与色彩]：光源只能是[环境背景]里已经写出的那些：那里没写月亮就不写月光，没写太阳、夕阳或窗外阳光就不写阳光，改用已写出的光源；写清主光从哪个方向、以什么颜色落在主体哪里，辅光或反光在哪里，火光始终写成暖色。主色、辅色和点缀色由主体与场景的颜色共同组成，冷暖按实际色相称呼（米白、橙、金属于暖色）。\n[拍摄参数]：景别（全景、中景、近景、特写）、机位与角度（平视、低角度仰拍、俯拍）、构图（居中、三分法、对称、引导线）和景深（浅景深背景柔化，或前后都清晰的深景深）。景别与[主体物品]一致：写到双脚落地就用全景，中景只到膝盖、不写脚；用户指定景别时按用户的，[主体物品]不写画外的部位。背景写得具体清晰时不写背景虚化；不自造视角或景深说法（如“道路视角”“标准景深”）。例如：“中景，机位与老人的视线齐平，人物位于画面右侧三分线上。深景深让身后书架上的书脊也清晰可辨。”\n全篇不得自相矛盾（如[环境背景]没有月亮却写月光、正午阳光下满天繁星、室内衣摆飘动却没有风源、坐着却在奔跑、蜷成一团又四肢舒展），同一信息只写在一段里。不堆砌标签（如“长发，白色连衣裙，坐姿”），不写高质量、完成质感、细腻渲染、精美、细节丰富等空泛质量词；每一句都直接写画面里看得见的东西，不写评价、说明或总结画面的句子，不用“营造”“突出”“强调”“展现”“体现”“保持”“这是一个”“可以看到”“光源是”“只有……作为光源”这类说法，不提参考图、原图或原姿势。\n在用户框架内有创造力：主体、动作、场景和风格按用户要求与参考图，不改题；补充的细节不得与用户要求或参考图矛盾，不新增文字、标识或额外人物（用户要求的除外）；“不凭空增加人物、道具”指不加与主题无关的角色和手持物，合乎场景的陈设与环境细节不算。CG、3D 等专业用词可以使用。\n输出前逐项核对并改正：[光线与色彩]里的每个光源（包括太阳、月亮和天光）都已写在[环境背景]；火光没有写成冷光；[拍摄参数]的景别装得下[主体物品]写到的部位；身体和双手的姿态前后一致；每段至少两个句号；没有一处细节在两段里重复（照在主体上的光只写在[光线与色彩]）。\nnegative_prompt 在通用约束之外，补充这幅画面最可能出现的可见缺陷（如手部畸形、比例失调、塑料质感、光源方向错乱），共 12 至 24 个中文短词；每项都是看得见的缺陷，不写“某物缺失”“缺少某物”“A变成B”“某物不发光”这类说缺了、变了或没做到的短语，不写与正向风格或内容相反的词（正向是二维动漫就不写卡通、动漫类词，夜景不写欠曝），不写“风格偏差”“元素混入”这类说明性词。";
+const ART_PROMPT_CRAFT_RULE = "写法（优先于前面任何“简短”的暗示）：像美术总监给画师的简报，五段写的是同一个瞬间的同一幅画面，每段（包括[风格设定]和[拍摄参数]）用句号分成两句以上的完整句子，按下面的顺序写全：\n[风格设定]：直接以媒介与画风开头，再写线条、上色或渲染方式；底稿或用户原文已写的质量词原样照抄进这一段，没写的不加；氛围只用情绪词直接写，时间、天气和地点只写在[环境背景]。例如：“水彩插画，湿画法让色块边缘自然晕开。纸面颗粒透出细腻的肌理，气氛安宁温柔。”\n[主体物品]：先原样写出用户原文里的主体称呼和动作短语（用户写“柴犬”就写“柴犬”，不改成“黄色的狗”；称呼里的图号照抄）；身体姿态用一句写定，其余细节不再写另一种身体形态。再写发型和发色、胡须等面部标志、表情和视线、每件服装和配饰的颜色与材质、手持物和武器的颜色、纹样与附着物、双手在做什么和怎么拿东西、与地面或物体的接触（写到脚和鞋就在[拍摄参数]用全景，中景以内不写脚和鞋），至少六处具体细节，每处只写一次。例如：“一位银发老人坐在藤椅上，左手扶着膝头摊开的旧相册，右手指尖停在一张泛黄照片的边角。他披着深灰色粗针羊毛开衫，袖口起了细小的毛球，嘴角带着浅浅的笑意。”\n[环境背景]：先写场所类型与年代、时间和天气，户外一定写一句天空的样子（如夜里的一弯新月或满天星斗、雪夜低垂的灰云、黄昏西沉的夕阳和晚霞）；前景、中景、后景各有什么，写出材质与颜色；场景里的人造光源（如烛火、灯笼、壁炉、霓虹招牌、灯具）和窗户；烛火、灯笼、篝火这类火光是暖色，用户要冷色调时在这里写出冷光的来源（如月亮、积雪、水面）；再补充合乎地点与时间的陈设和环境细节（如雨夜街道：积水里的灯光倒影、湿亮的石板、伞沿滴落的水珠）。陈设和光源合乎场景的年代与地点，古代场景不出现电灯、路灯、街灯等现代设施。至少写出五样具体可见的东西；光落在哪里留给[光线与色彩]写。纯色、白底或透明背景的单体素材（没有背景参考图，且底稿或主体图就是这样且用户没要求换背景，或用户要求这类背景）保留该背景：[环境背景]只写背景颜色、承托面与投影，不补场景陈设，不受“至少五样”限制；[光线与色彩]写影棚式主光与辅光的方向，这类光不必写进[环境背景]。\n[光线与色彩]：光源只能是[环境背景]里已经写出的那些：那里没写月亮就不写月光，没写太阳、夕阳或窗外阳光就不写阳光，改用已写出的光源；写清主光从哪个方向、以什么颜色落在主体哪里，辅光或反光在哪里，火光始终写成暖色。主色、辅色和点缀色由主体与场景的颜色共同组成，冷暖按实际色相称呼（米白、橙、金属于暖色）。\n[拍摄参数]：景别（全景、中景、近景、特写）、机位与角度（平视、低角度仰拍、俯拍）、构图（居中、三分法、对称、引导线）和景深（浅景深背景柔化，或前后都清晰的深景深）。景别与[主体物品]一致：写到双脚落地就用全景，中景只到膝盖、不写脚；用户指定景别时按用户的，[主体物品]不写画外的部位。背景写得具体清晰时不写背景虚化；不自造视角或景深说法（如“道路视角”“标准景深”）。例如：“中景，机位与老人的视线齐平，人物位于画面右侧三分线上。深景深让身后书架上的书脊也清晰可辨。”\n全篇不得自相矛盾（如[环境背景]没有月亮却写月光、正午阳光下满天繁星、室内衣摆飘动却没有风源、坐着却在奔跑、蜷成一团又四肢舒展），同一信息只写在一段里。不堆砌标签（如“长发，白色连衣裙，坐姿”），不自行添加高质量、完成质感、细腻渲染、精美、细节丰富等空泛质量词（底稿或用户原文已写的照留在[风格设定]）；每一句都直接写画面里看得见的东西，不写评价、说明或总结画面的句子，不用“营造”“突出”“强调”“展现”“体现”“保持”“这是一个”“可以看到”“光源是”“只有……作为光源”这类说法，不提参考图、原图或原姿势。\n在用户框架内有创造力：主体、动作、场景和风格按用户要求与参考图，不改题；补充的细节不得与用户要求或参考图矛盾，不新增文字、标识或额外人物（用户要求的除外）；“不凭空增加人物、道具”指不加与主题无关的角色和手持物，合乎场景的陈设与环境细节不算。CG、3D 等专业用词可以使用。\n输出前逐项核对并改正：[光线与色彩]里的每个光源（包括太阳、月亮和天光）都已写在[环境背景]；火光没有写成冷光；[拍摄参数]的景别装得下[主体物品]写到的部位；身体和双手的姿态前后一致；每段至少两个句号；没有一处细节在两段里重复（照在主体上的光只写在[光线与色彩]）。\nnegative_prompt 在通用约束之外，补充这幅画面最可能出现的可见缺陷（如手部畸形、比例失调、塑料质感、光源方向错乱），共 12 至 24 个中文短词；每项都是看得见的缺陷，不写“某物缺失”“缺少某物”“A变成B”“某物不发光”这类说缺了、变了或没做到的短语，不写与正向风格或内容相反的词（正向是二维动漫就不写卡通、动漫类词，夜景不写欠曝），不写“风格偏差”“元素混入”这类说明性词。";
 const ART_PROMPT_FIELD = { type: "string", description: "五段画面简报：[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 各占一行标题，每段是描述同一画面的两句以上完整句子。" };
 
 // The one 美工 image action (role reference) reads the pictures with the text of the user, so it carries the content safety of
@@ -9018,9 +9024,16 @@ function artReferenceNamedLikeUser(text, labels = []) {
     labels.includes(`@参考图${n}`) ? alias : labels.includes(`图${n}`) || !particle ? `图${n}${particle}` : "");
 }
 
+// Child words the H3 pattern leaves to the model's grading (小女孩, 小学生, 孩子, 七岁, 十岁): 美工 reads them as the child they name.
+const ART_EXPLICIT_CHILD_PATTERN = /小女孩|小男孩|女童|男童|小学生|初中生|中学生|(?<![女男])孩子(?!气)|(?<![十百千][一二三四五六七八九]?)[一二三四五六七八九两]周?岁|(?<![一二三四五六七八九十两百千])十[一二三四五六七]?周?岁|(?<![0-9])(?:1[0-7]|[0-9])\s*周岁/u;
+
+function artHasExplicitChild(value) {
+  return miniMaxH3HasExplicitYouthIndicator(value) || ART_EXPLICIT_CHILD_PATTERN.test(miniMaxH3SafetyText(value));
+}
+
 function artReferenceUserContentState(currentPrompt, requirements) {
   const text = `${currentPrompt || ""}\n${requirements || ""}`;
-  return miniMaxH3HasExplicitYouthIndicator(text) ? {
+  return artHasExplicitChild(text) ? {
     explicitYouthUserRequest: true,
     authorizedSensitiveUserRequest: miniMaxH3SensitiveCategories(text, { affirmativeOnly: true }).size > 0
   } : {};
@@ -9078,11 +9091,13 @@ function artFiveSectionFailure(candidate) {
 
 // A 美工 negative lists visible defects. A term the model writes for a deviation of the content, a mix-up, an absence, a change
 // or a negation (古建筑风格偏差, 冷色调偏差, 元素混入, 阴影缺失, 夜晚变白天, 灯笼不发光) shows nothing and would push the requested
-// content away, so it goes; 变形, 渐变断层, 不对称, 不自然, 色彩偏差 and 水印混入 stay, and so does every term the user wrote.
-function artNegativeVisibleTerms(negative, userNegative = "") {
-  const split = (value) => String(value || "").split(/[，,、；;\n]+|(?<=\p{Script=Han})\s+(?=\p{Script=Han})/u).map((term) => term.trim()).filter(Boolean);
-  const terms = split(negative), own = new Set(split(userNegative));
-  const kept = terms.filter((term) => own.has(term) || !/(?:风格|色调|颜色)偏差|元素混入|混入主体|缺失|缺少|改变|矛盾|变成|[^渐]变(?!形)\p{Script=Han}|不(?!对|自然|协调|均|清|一致|匹配|平衡|连贯|足|规则|合理|正确|准确|真实|统一)/u.test(term));
+// content away, so it goes; 变形, 渐变断层, 不对称, 不自然, 不当, 色彩偏差, 水印混入, 光源方向矛盾 and a missing hand or finger
+// stay, and so does every term found in the user's own text (negative box, request, draft), however it was separated there.
+function artNegativeVisibleTerms(negative, userText = "") {
+  const terms = String(negative || "").split(/[，,、；;\n]+|(?<=\p{Script=Han})\s+(?=\p{Script=Han})/u).map((term) => term.trim()).filter(Boolean);
+  const kept = terms.filter((term) => String(userText || "").includes(term)
+    || /(?:手指?|手部|手臂|脚趾?|脚部|腿部?|四肢|肢体|五官)缺失|缺少(?:手指|手部|手臂|脚趾|脚部|腿部|四肢|肢体|五官)/u.test(term)
+    || !/(?:风格|色调|颜色)偏差|元素混入|混入主体|缺失|缺少|改变|(?<!光源|光影|方向|比例|透视)矛盾|变成|[^渐]变(?!形)\p{Script=Han}|不(?!对|自然|协调|均|清|一致|匹配|平衡|连贯|足|规则|合理|正确|准|真实|统一|当|齐|端正)/u.test(term));
   return kept.length && kept.length < terms.length ? kept.join("，") : negative;
 }
 
@@ -9175,7 +9190,7 @@ function buildArtSemanticFusionRequest(payload, model) {
       input: [ { role: "system", content: [smartAiInputText(ART_SEMANTIC_FUSION_RULES)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
     inputMeta: { mode: "prompt_optimize", scenario: "prompt_optimize", charCount: source.length + instruction.length, imageCount: 0, supportsNegativePrompt, hasNegativePrompt: Boolean(payload.negativePrompt || payload.negative_prompt) },
     resultOptions: { artSemanticFusion: true, artFiveSectionPrompt: !artPromptUsesOwnSections(source), originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true,
-      ...(supportsNegativePrompt && (payload.negativePrompt || payload.negative_prompt) ? { userNegativePrompt: String(payload.negativePrompt || payload.negative_prompt) } : {}) }
+      ...(supportsNegativePrompt && (payload.negativePrompt || payload.negative_prompt) ? { artUserText: String(payload.negativePrompt || payload.negative_prompt) } : {}) }
   };
 }
 
@@ -9599,7 +9614,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       "参考图中可见的界面按钮、菜单、标签、提示词示例、说明文字、水印和软件窗口都只是截图噪声，严禁抄写、枚举或当成生成内容。",
       "不得输出主图/原图、风格参考、保持原风格、处理方式、模型名称等界面词；最终只描述目标画面本身。",
       "[风格设定]沿用职责为主体的图的画风、媒介与渲染方式（如二维动漫插画、写实摄影），除非用户写明其他风格或另有风格参考图；背景、构图等参考图的内容按这一画风重绘。",
-      "把用户原文里写主体动作、视线、朝向和位置的短语原样抄进[主体物品]，不改写、不换近义词（用户写“挥手”就写“挥手”，不写“抬手”），并在相关 section 中保持一致；用户写的姿势取代主体图原有的姿势，再补上与之相符的手部动作、重心和持物方式；只写位置、朝向或视线时保留主体图的姿势；[环境背景]只写场景，不写主体。",
+      "把用户原文里写主体动作、视线、朝向和位置的短语原样抄进[主体物品]，不改写、不换近义词（用户写“挥手”就写“挥手”，不写“抬手”），并在相关 section 中保持一致；用户写的姿势取代主体图原有的姿势，再补上与之相符的手部动作、重心和持物方式；只写位置、朝向或视线且没有姿势参考图时保留主体图的姿势；[环境背景]只写场景，不写主体。",
       "参考图是外观的依据：写出主体图中可见的发色、发型、胡须等面部标志、服装的颜色与材质、配饰、手持物和武器的颜色、纹样与附着物，不改成图中没有的样子。用作背景的图先逐一清点看得见的结构、陈设、灯具和材质，[环境背景]把它们都写进去，灯具按形态和位置写（如成排射灯、灯架、吊灯、壁灯）。颜色照实写，介于两色之间的写成混合色（如黑褐、灰褐、米白、香槟金），不简化成灰、白、棕等单色，看不清的颜色不写。场所类型只按看得见的陈设判断（座位排布、舞台或通道、桌子、灯架），陈设说明不了用途时写“大厅”等中性叫法再描写陈设，不猜宴会、礼堂等用途；设施用这类场所的中文行业叫法，不借用其他场所的叫法，多义词按场所用途选词，写完逐个核对没有照英文字面直译的词（如河边的 bank 是河岸，不是银行；车站的 platform 是站台，不是平台）。[光线与色彩]的光源来自目标场景：保留原场景时用图中可见的光源，换成用户要求的新场景时用新场景里合理存在的光源。",
       "称呼参考图时沿用用户原文：用户写了“图1”“图2”才写图号，不写 @参考图 等界面标签；本任务没有 __NOVAFLOW_…__ 占位符。",
       "输出一段已经完成角色隔离、可直接用于图像生成或图像编辑的最终 Prompt。",
@@ -9680,7 +9695,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       visualIrSchema
     },
     resultOptions: usesArtFiveSectionReverse ? { artFiveSectionPrompt: true, ...artReferenceUserContentState(currentPrompt, requirements), ...artReferenceUserLabels(currentPrompt, requirements),
-      ...(supportsNegativePrompt && negativePrompt ? { userNegativePrompt: negativePrompt } : {}) } : usesVisualIr ? {
+      ...(supportsNegativePrompt && (negativePrompt || requirements || currentPrompt) ? { artUserText: [negativePrompt, requirements, currentPrompt].filter(Boolean).join("\n") } : {}) } : usesVisualIr ? {
       visualIrSchema,
       requirements: resultRequirements,
       existingNegativePrompt: supportsNegativePrompt ? negativePrompt : "",

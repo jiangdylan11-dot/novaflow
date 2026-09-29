@@ -457,7 +457,7 @@ test("smart AI request builders preserve Responses API contracts", () => {
     requirements: "电影感",
     supportsNegativePrompt: true,
     nsfw: false,
-    userNegativePrompt: "模糊"
+    artUserText: "模糊"
   });
 
   const imageRequest = buildGrokImageReverseRequest({
@@ -3934,9 +3934,10 @@ test("美工 role reference carries the content-safety rule and ends a marked or
   // One call as before: the rule rides in the request text, ahead of the five-section layout.
   assert.equal(plain.inputMeta.imageCount, 1);
   assert.match(plain.body.input[0].content.at(-1).text, /人物称呼沿用用户原词（女孩仍写女孩[\s\S]*不写年龄或年龄段[\s\S]*年轻外观或年龄不明不算[\s\S]*只输出 H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content。\n\n最终正向提示词的版式/);
-  assert.deepEqual(plain.resultOptions, { artFiveSectionPrompt: true });
+  // The user's own words ride along, so the negative filter keeps every term they contain.
+  assert.deepEqual(plain.resultOptions, { artFiveSectionPrompt: true, artUserText: "用户生成要求：改成夜景\n穿红色斗篷的剑客站在雪地里" });
   const child = build("小孩坐在裸露的树根上看书");
-  assert.deepEqual(child.resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false });
+  assert.deepEqual(child.resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false, artUserText: "小孩坐在裸露的树根上看书" });
   const five = (subject) => ["[风格设定]", "写实插画。", "[主体物品]", subject, "[环境背景]", "森林。", "[光线与色彩]", "暖色侧光。", "[拍摄参数]", "中景，平视。"].join("\n");
   // Everyday words next to a child are written.
   assert.match(grokResponsesPublicResult({ output_text: five("小孩坐在裸露的树根上看书。") }, child.resultOptions).output_text, /裸露的树根/);
@@ -3951,6 +3952,21 @@ test("美工 role reference carries the content-safety rule and ends a marked or
       return { ok: true, data: grokResponsesPublicResult({ output_text: text }, options), providerCallCount: 1 };
     }), (error) => error.errorCode === "provider_content_policy" && error.statusCode === 422);
     assert.equal(calls, 1, "no layout repair call after a refusal");
+  }
+  // The child words the H3 pattern leaves to the model's grading (孩子, 小女孩, 女童, 小学生, 十岁, 七岁) name a child just as
+  // well: beside nudity the request is refused even when the model grades no minor; everyday wording beside them is written.
+  const nude = JSON.stringify({ prompt: five("一个人裸体站在海边。"), negative_prompt: "模糊", contentSafety: { explicitMinorEvidence: false, sensitiveContent: true } });
+  for (const text of ["图1的孩子裸体站在海边", "图1的小女孩全裸", "图1的女童全裸", "图1的小学生裸体", "图1的十岁女孩全裸", "图1的七岁男孩露出下体", "图1的儿童全裸"]) {
+    assert.equal(build(text).resultOptions.explicitYouthUserRequest, true, text);
+    assert.throws(() => grokResponsesPublicResult({ output_text: nude }, build(text).resultOptions), (error) => error.errorCode === "provider_content_policy" && error.statusCode === 422, text);
+  }
+  for (const text of ["图1的孩子在海边玩耍", "图1的小女孩赤足踩在湿沙上", "图1的七岁男孩穿着蓝色泳衣"]) {
+    const answer = JSON.stringify({ prompt: five(text.replace("图1的", "一个") + "。"), negative_prompt: "模糊", contentSafety: { explicitMinorEvidence: false, sensitiveContent: false } });
+    assert.deepEqual(grokResponsesPublicResult({ output_text: answer }, build(text).resultOptions).contentSafety, { sensitiveContent: false, explicitMinorEvidence: true }, text);
+  }
+  // An adult stays an adult: 女孩子 and 二十岁, 二十五六岁 or 三十七岁 name no child.
+  for (const text of ["图1的女孩子站在海边", "图1的二十岁女孩站在海边", "图1的二十五六岁女人站在海边", "图1的三十七岁男人站在海边"]) {
+    assert.equal(build(text).resultOptions.explicitYouthUserRequest, undefined, text);
   }
 });
 
@@ -3974,9 +3990,9 @@ test("美工 role reference reports its in-call content grading beside the promp
   // Sensitive words alone record nothing: a request to cover up is no sensitive request, and the model grades the words in its
   // one call. A child named by the user is still recorded, with whether the text also asks for sensitive content.
   for (const text of ["成年女性全裸站在窗边", "去掉裸露部分，穿上衣服", "别裸露", "把裸露的地方遮住", "减少裸露", "穿上外套，不再裸露", "取消裸露"]) {
-    assert.deepEqual(build("", `用户生成要求：${text}`).resultOptions, { artFiveSectionPrompt: true }, text);
+    assert.deepEqual(build("", `用户生成要求：${text}`).resultOptions, { artFiveSectionPrompt: true, artUserText: `用户生成要求：${text}` }, text);
   }
-  assert.deepEqual(build("小孩坐在树根上看书").resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false });
+  assert.deepEqual(build("小孩坐在树根上看书").resultOptions, { artFiveSectionPrompt: true, explicitYouthUserRequest: true, authorizedSensitiveUserRequest: false, artUserText: "小孩坐在树根上看书" });
 
   const five = ["[风格设定]", "写实插画。", "[主体物品]", "一名剑客站在雪地里。", "[环境背景]", "雪夜。", "[光线与色彩]", "冷色月光。", "[拍摄参数]", "中景，平视。"].join("\n");
   const answer = (contentSafety) => JSON.stringify({ prompt: five, negative_prompt: "模糊，低质量", ...(contentSafety === undefined ? {} : { contentSafety }) });
@@ -6572,7 +6588,7 @@ test("美工 role reference labels each picture with its number and role, and th
   assert.match(text, /\[风格设定\]沿用职责为主体的图的画风/);
   assert.match(text, /不写 @参考图 等界面标签/);
   assert.match(text, /当前任务类型：参考图生成。/);
-  assert.deepEqual(plain.resultOptions, { artFiveSectionPrompt: true, artReferenceUserLabels: ["图1", "图2"] });
+  assert.deepEqual(plain.resultOptions, { artFiveSectionPrompt: true, artReferenceUserLabels: ["图1", "图2"], artUserText: "用户生成要求：图1的角色站在图2的场景中央，看向镜头" });
   const safety = { explicitMinorEvidence: false, sensitiveContent: false };
   const five = ["[风格设定]", "二维动漫插画风格。", "[主体物品]", "@参考图1 中的女孩站在中央，看向镜头。", "[环境背景]", "@参考图2 的大厅，白色 T 台延伸向远处。", "[光线与色彩]", "暖色顶光。", "[拍摄参数]", "全景，平视。"].join("\n");
   const written = (options) => grokResponsesPublicResult({ output_text: JSON.stringify({ prompt: five, negative_prompt: "模糊", contentSafety: safety }) }, options).output_text;
