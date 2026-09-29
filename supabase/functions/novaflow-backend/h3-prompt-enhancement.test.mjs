@@ -473,8 +473,15 @@ test('a Grok 多参 pair gets every quality gate in one repair call from its own
   const salute = '<Picture 1> 中的武将和 <Picture 2> 中的武者面对面抱拳行礼，然后并肩走向镜头';
   const saluteBuilt = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:salute,
     requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', salute].join('\n')}, 'test-model');
-  assert.match(userText(saluteBuilt), /Never invent a resource label\.\nThe requested gesture needs both hands free: [^\n]*sheathes it \(only a sword or knife has a sheath\)/);
+  assert.match(userText(saluteBuilt), /Never invent a resource label\.\nThe requested gesture needs both hands free: [^\n]*tucks it under an arm, lays it down or leans it against something nearby;/);
+  assert.doesNotMatch(userText(saluteBuilt), /sheathes it/);
   assert.doesNotMatch(userText(built) + userText(compileOnly), /both hands free/);
+  // A 多参 hug needs free hands too; a 图生, 首尾帧 or 文生 hug does not ask for it (hugging the book in her hands is the request itself).
+  const hug = '<Picture 1> 中的女孩跑向 <Picture 2> 中的小狗，最后抱住了它';
+  assert.match(userText(buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:hug,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', hug].join('\n')}, 'test-model')), /\nThe requested gesture needs both hands free: /);
+  for (const mode of ['image_video', 'first_last', 'text_video'])
+    assert.doesNotMatch(userText(baseRequest(mode, '女孩紧紧抱住手里的书', ['H3 response format: bilingual-v1'])), /both hands free/, mode);
   const english = six(['<Subject 1>: A girl with short dark hair, from <Picture 1>\n<Subject 2>: A small teal and copper robot, from <Picture 2>', '[reference generation] <Subject 1> walks toward <Subject 2>. At the 3-second mark the camera cuts to a close-up of both.',
     '<Subject 1>: fully_preserved - short dark hair\n<Subject 2>: fully_preserved - teal and copper body', 'In a vibrant anime illustration style. [Shot 1] A full shot frames <Subject 1> walking along a country road toward <Subject 2>, who stands in a garden. The camera tracks her slowly. [Shot 2] At 00:03.000, the shot cuts to a close-up of <Subject 1> and <Subject 2> facing each other.', 'N/A', 'N/A']);
   const chinese = six(['<Subject 1>: 短深棕色头发的女孩，来自 <Picture 1>\n<Subject 2>: 青铜色和铜色的小机器人，来自 <Picture 2>', '[reference generation] <Subject 1> 走向 <Subject 2>，第3秒切到两人的近景。',
@@ -580,6 +587,14 @@ test('a display slip alone keeps the answer: one small no-reasoning call rewrite
     const kept = await run(answers);
     assert.equal(kept.bodies.length, 2);
     assert.match(JSON.parse(kept.result.data.output_text).modelPrompt, /Rain beads on the glass\./);
+  }
+  // Fewer issues come first: a longer tag list that also drops the requested cut loses to the shorter one with the cut, in either order.
+  const uncut = pair(fields('[Shot 1] Live-action, city skyline at night, neon glow, wet streets, soft rain, warm window light, quiet mood, distant towers, steam from vents, rainy taxis, puddles, reflections, umbrellas, tram bells, blinking signs, fogged windows. The camera holds a static shot. Then a girl in a corner café looks up, and the girl with a soft voice (S1) says: <d>[Chinese] 到了。</d>', 'Distant traffic hums, then cups clink softly inside the café.'),
+    fields('[Shot 1] 写实电影风格，夜晚城市天际线，霓虹光，湿街道，细雨，温暖窗光，安静氛围，远处高楼，通风口的蒸汽，雨中的出租车，水洼，倒影，雨伞，电车铃，闪烁的招牌，起雾的窗户。镜头保持固定。随后街角咖啡店里的女孩抬起头，嗓音轻柔的女孩 (S1) 说：<d>[Chinese] 到了。</d>', '远处车流低鸣，随后咖啡店里杯子轻轻碰响。'));
+  for (const answers of [[tagged(''), uncut], [uncut, tagged('')]]) {
+    const kept = await run(answers);
+    assert.equal(kept.bodies.length, 2);
+    assert.match(JSON.parse(kept.result.data.output_text).modelPrompt, /\[Shot 2\] At 00:03\.000, the camera cuts to a medium shot/);
   }
   // A translation is never kept as a fallback: a 多参 translation that drops a shot twice fails the compile.
   const six = values => edge.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');

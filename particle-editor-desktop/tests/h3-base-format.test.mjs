@@ -381,8 +381,15 @@ test('the Chinese half of an optimize pair: common English words are written in 
   for (const api of apis) {
     // The program writes the words a display most often keeps (sound words, speech verbs, colours, materials, style and cut phrases) in Chinese.
     for (const [leak, fixed] of [['远处交通声和 faint 城市氛围。', '远处交通声和细微的城市氛围。'], ['女孩 says 你好。', '女孩说你好。'], ['猫落地时一声 thud。', '猫落地时一声闷响。'], ['猫尾扫过 marble 台阶。', '猫尾扫过大理石台阶。'],
-      ['猫发出一声惊讶的 meow。', '猫发出一声惊讶的喵叫声。'], ['笛声在追逐时 swell，拥抱时 soften。', '笛声在追逐时渐强，拥抱时变柔和。'], ['红色面具 markings 随喘息起伏。', '红色面具斑纹随喘息起伏。']])
+      ['猫发出一声惊讶的 meow。', '猫发出一声惊讶的喵叫声。'], ['红色面具 stripes 随喘息起伏。', '红色面具条纹随喘息起伏。']])
       assert.ok(shown(api, leak, {strictPair:true}).endsWith('overall_soundscape: ' + fixed + '\n\nnon_diegetic_music: N/A'), leak);
+    // Music dynamics are written in the music field; there a swell is the music's. Elsewhere a word with another sense (tree bark,
+    // a sea swell, road markings) is never given the wrong Chinese: it is a display slip for the small fix call, which reads the sentence.
+    const scored = JSON.parse(api.validateBaseResult({modelPrompt:fields('[Shot 1] Live-action, cinematic, a wide night view of the city skyline. The camera holds a static shot.', 'Distant traffic hums.', 'A bamboo flute swells as the chase begins and softens at the hug.'),
+      displayPrompt:fields('[Shot 1] 写实电影风格，城市夜景全景。镜头固定。', '远处交通声。', '竹笛在追逐时 swell，拥抱时 soften。')}, {...options, strictPair:true})).displayPrompt;
+    assert.ok(scored.endsWith('non_diegetic_music: 竹笛在追逐时渐强，拥抱时变柔和。'), scored);
+    for (const [leak, word] of [['猫爪抓过老树粗糙的 bark。', 'bark'], ['海面的 swell 轻轻拍打船身。', 'swell'], ['路面的白色 markings 被雨打湿。', 'markings']])
+      assert.throws(() => shown(api, leak, {strictPair:true}), error => error.h3DisplayOnly === true && error.h3Slips.some(slip => slip.includes('⟦' + word + '⟧')), leak);
     // A rarer word fails a writer's pair as a display slip only, its sentence marked for the one small fix call; the renderer keeps it.
     assert.throws(() => shown(api, '远处传来 gazebo 旁的风铃声。', {strictPair:true}), error => error.h3DisplayOnly === true && /夹带英文单词/.test(error.message)
       && JSON.stringify(error.h3Slips) === JSON.stringify(['远处传来 ⟦gazebo⟧ 旁的风铃声。']));
@@ -664,6 +671,41 @@ test('承上启下 in a writer\'s pair: a place the action goes to outside a sti
   }
 });
 
+test("多参: the user's own noun for a pictured subject stays in its display definition, or the writer's pair gets the repair", () => {
+  const noun = 'H3 多参主体没有沿用用户给的名称，请在两份提示词的每个字段保留用户原词';
+  const issuesOf = (api, source, definition) => {
+    const options = {durationSeconds:5, currentPrompt:source, strictPair:true, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + source};
+    const six = zh => ({subject_definitions:zh ? '<Subject 1> 是 <Picture 1> 中的武士，黑发束起。\n' + definition : '<Subject 1> is the warrior in <Picture 1>, with tied black hair.\n<Subject 2> is the teapot in <Picture 2>, white porcelain.',
+      summary:'[reference generation] ' + (zh ? '<Subject 1> 把 <Subject 2> 放到桌上。' : '<Subject 1> sets <Subject 2> on the table.'),
+      retention_analysis:zh ? '<Subject 1>: fully_preserved - 黑发\n<Subject 2>: fully_preserved - 白瓷' : '<Subject 1>: fully_preserved - black hair\n<Subject 2>: fully_preserved - white porcelain',
+      detailed_description:zh ? '目标视频采用三维 CG 风格。[Shot 1] <Subject 1> 把 <Subject 2> 放到桌上。镜头缓慢推近。' : 'The target video is in a 3D CG style. [Shot 1] <Subject 1> sets <Subject 2> on the table. The camera pushes in at slow speed.',
+      overall_soundscape:zh ? '瓷器轻轻碰到木桌。' : 'Porcelain taps the wooden table.', non_diegetic_music:'N/A'});
+    try { api.validateReferenceResult(JSON.stringify({modelPrompt:six(false), displayPrompt:six(true)}), options); return []; } catch (error) { return error.issues || [error.message]; }
+  };
+  for (const api of apis) {
+    const teapot = '<Picture 1> 中的角色把 <Picture 2> 中的茶壶放到桌上';
+    assert.ok(issuesOf(api, teapot, '<Subject 2> 是 <Picture 2> 中的水壶，白瓷壶身。').includes(noun));
+    assert.ok(!issuesOf(api, teapot, '<Subject 2> 是 <Picture 2> 中的白瓷茶壶。').includes(noun));
+    // A generic word (角色) names no noun; a one-character noun is read from the definition's own noun.
+    assert.ok(!issuesOf(api, '<Picture 1> 中的角色把 <Picture 2> 中的壶放到桌上', '<Subject 2> 是 <Picture 2> 中的壶，白瓷壶身。').includes(noun));
+    assert.equal(api.validationIssue(new Error(noun)).reason, 'sections');
+  }
+});
+
+test('多参: the summary names a requested cut with its size, and a compile (the whole display as its source) never swaps in the size of a 全景镜头', () => {
+  const zh = '目标视频采用三维 CG 风格。[Shot 1] 全景镜头框住庭院。<Subject 1> 举起 <Subject 2>。镜头保持静态全景。[Shot 2] At 00:04.000 镜头切到 <Subject 2> 的特写。<Subject 2> 冒出热气。';
+  const six = cn => ({subject_definitions:cn ? '<Subject 1> 是 <Picture 1> 中的武士。\n<Subject 2> 是 <Picture 2> 中的茶壶。' : '<Subject 1> is the warrior in <Picture 1>.\n<Subject 2> is the teapot in <Picture 2>.',
+    summary:'[reference generation] ' + (cn ? '<Subject 1> 举起 <Subject 2>，第4秒镜头切到 <Subject 2> 的特写。' : '<Subject 1> lifts <Subject 2>; at the 4-second mark the shot cuts to a close-up of <Subject 2>.'),
+    retention_analysis:cn ? '<Subject 1>: fully_preserved - 黑发\n<Subject 2>: fully_preserved - 白瓷' : '<Subject 1>: fully_preserved - black hair\n<Subject 2>: fully_preserved - white porcelain',
+    detailed_description:cn ? zh : 'The target video is in a 3D CG style. [Shot 1] A full shot frames the courtyard. <Subject 1> lifts <Subject 2>. The camera holds a static full shot. [Shot 2] At 00:04.000, the shot cuts to a close-up of <Subject 2>. Steam rises from <Subject 2>.',
+    overall_soundscape:cn ? '瓷器轻响。' : 'Porcelain clinks.', non_diegetic_music:'N/A'});
+  for (const api of apis) {
+    const pair = JSON.parse(api.validateReferenceResult(JSON.stringify({modelPrompt:six(false), displayPrompt:six(true)}), {durationSeconds:6, currentPrompt:zh}));
+    assert.match(pair.modelPrompt, /the shot cuts to a close-up of <Subject 2>\.\n/);
+    assert.match(pair.displayPrompt, /镜头切到 <Subject 2> 的特写。\n/);
+  }
+});
+
 test("多参: a writer's narrative in parts is joined into the official prose in both halves; a beat that restates the camera is dropped", () => {
   const source = '图1的角色和图2的角色面对面抱拳行礼，然后并肩走向镜头';
   const options = {durationSeconds:5, currentPrompt:source, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + source};
@@ -687,6 +729,14 @@ test("多参: a writer's narrative in parts is joined into the official prose in
       displayPrompt:six(true, withBeats(chinese, [{action:'<Subject 1> 将长枪竖直插在身旁', detail:'红色枪缨在风中摆动'}, {action:'镜头推近', detail:'尘土飘过'}]))}), options));
     assert.match(paired.modelPrompt, /as they walk toward it\. <Subject 1> plants the spear upright beside him\. Its red tassel sways in the wind\. They stand side by side\.\n/);
     assert.match(paired.displayPrompt, /他们走向镜头。<Subject 1> 将长枪竖直插在身旁。红色枪缨在风中摆动。两人并肩站立。\n/);
+    // A camera clause inside a beat leaves both halves too (the shot has its one camera sentence), unless the user names a camera.
+    const clause = extra => JSON.parse(api.validateReferenceResult(JSON.stringify({
+      modelPrompt:six(false, withBeats(english, [{action:'<Subject 1> plants the spear upright beside him as the camera begins to move in', detail:'Its red tassel sways in the wind'}])),
+      displayPrompt:six(true, withBeats(chinese, [{action:'<Subject 1> 将长枪竖直插在身旁，镜头开始推进', detail:'红色枪缨在风中摆动'}]))}), {...options, ...extra}));
+    assert.match(clause().modelPrompt, /as they walk toward it\. <Subject 1> plants the spear upright beside him\. Its red tassel sways/);
+    assert.match(clause().displayPrompt, /他们走向镜头。<Subject 1> 将长枪竖直插在身旁。红色枪缨在风中摆动/);
+    const pushed = source + '，镜头随后推近';
+    assert.match(clause({currentPrompt:pushed, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + pushed}).modelPrompt, /beside him as the camera begins to move in\./);
     assert.deepEqual(json(api.referenceWriterSchema.properties.modelPrompt.properties.detailed_description.properties.shots.items.properties.beats.items.required), ['action', 'detail']);
     // The writer's schema asks for the parts in both halves; a translation keeps the one prose field.
     assert.equal(api.referenceWriterSchema.properties.modelPrompt.properties.detailed_description.type, 'object');
@@ -758,6 +808,14 @@ test("承上启下 and plausibility in a writer's pair: a pose no action produce
     assert.throws(() => api.validateBaseResult(pairOf(girl + ' She claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')), error => error.issues?.includes(held));
     assert.doesNotThrow(() => api.validateBaseResult(pairOf(girl + ' She tucks the fan under her left arm, then claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')));
     assert.throws(() => api.validateBaseResult(pairOf(girl.replace('a paper fan', 'a spear') + ' She sheathes her spear and claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')), error => error.issues?.includes(held));
+    // Laid or put down nearby, as the writer is told, frees the hands as well.
+    for (const away of ['She lays the fan down on the bench beside her', 'She sets the fan on a nearby table', 'She puts the fan down beside her'])
+      assert.doesNotThrow(() => api.validateBaseResult(pairOf(girl + ' ' + away + ', then claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')), away);
+    // A hug is no such gesture: hugging the book in her hands is the request itself, and armour that hugs a chest hides no held spear.
+    const book = '[Shot 1] Live-action, cinematic, the girl shown in <Picture 1> stands in a quiet library holding a red book in both hands, smiling. She hugs the book tightly to her chest and closes her eyes. The camera holds a static shot.';
+    assert.doesNotThrow(() => api.validateBaseResult(pairOf(book, '[Shot 1] 写实电影风格，<Picture 1> 中所示的女孩站在安静的图书馆里，双手捧着一本红色的书，微笑着。她把书紧紧抱在胸前，闭上眼睛。镜头保持固定。'), i2v('女孩紧紧抱住手里的书')));
+    const general = '[Shot 1] Live-action, cinematic, the general shown in <Picture 1> stands in a stone courtyard; his fitted golden armour hugs his broad chest. He grips a spear in his right hand. He raises his right fist into his open left palm in a salute. The camera holds a static shot.';
+    assert.throws(() => api.validateBaseResult(pairOf(general, '[Shot 1] 写实电影风格，<Picture 1> 中所示的将军站在石砌庭院里，合身的金色铠甲贴着他宽阔的胸膛。他右手握着长枪。他右拳抵住张开的左掌抱拳行礼。镜头保持固定。'), i2v('将军抱拳行礼')), error => error.issues?.includes(held));
     assert.equal(api.validationIssue(new Error(held)).reason, 'sections');
     // A slow tail sway is silent: its sound leaves both halves. A still camera names no size the user did not ask for (both halves).
     const sway = pairOf('[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> sits on a sunny windowsill and slowly sways its tail from side to side. The camera holds a static medium shot.',
