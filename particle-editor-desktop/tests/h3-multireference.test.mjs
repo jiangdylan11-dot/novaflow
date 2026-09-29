@@ -359,7 +359,7 @@ test('多参 cuts read like the official guide: each shot on its own display lin
  const two=[{key:'multi_ref_image_1',kind:'image',identity:'woman',occupied:true,fileName:'woman.png',mimeType:'image/png'},{key:'multi_ref_image_2',kind:'image',identity:'robot',occupied:true,fileName:'robot.png',mimeType:'image/png'}];
  const c={modelId:'minimax_h3_local',mode:'multi_reference',durationSeconds:5,prompt:'@参考图1 中的角色走向 @参考图2 中的角色，第3秒切到两人的近景',resources:two};
  const restored=prompt.validateAndRestore({text:JSON.stringify({modelPrompt:english,displayPrompt:chinese}),context:prompt.prepareRequest(c).context,current:c});
- assert.match(restored.text,/\n【镜头 1】<主体 1> 沿着乡村道路走向花园中的 <主体 2>。镜头固定。\n【镜头 2】（第 3 秒）<主体 1> 与 <主体 2> 面对面的近景。\n/);
+ assert.match(restored.text,/\n【镜头 1】<主体 1> 沿着乡村道路走向花园中的 <主体 2>。\n镜头固定。\n【镜头 2】（第 3 秒）<主体 1> 与 <主体 2> 面对面的近景。\n/);
  const narrative=restored.modelText.split('detailed_description:')[1].split('overall_soundscape:')[0].trim();
  // The style opening reads officially and the display's 近景 (the user's word) is a medium close-up in English, not a close-up.
  assert.equal(narrative,'The target video is in a vibrant anime illustration style.\n[Shot 1] <Subject 1> walks along a rural road toward <Subject 2> in a garden. The camera holds a static shot.\n[Shot 2] At 00:03.000, the shot cuts to medium close-up of <Subject 1> and <Subject 2> facing each other.');
@@ -370,7 +370,7 @@ test('多参 cuts read like the official guide: each shot on its own display lin
  assert.equal(compiled.text,restored.text);assert.equal(compiled.modelText,restored.modelText);
  // The Chinese half and a display keep their own wording.
  for(const api of [local,edge]) assert.match(api.validateReference(chinese,{mode:'multi_reference',durationSeconds:5,requirements:'Available resource labels: <Picture 1>; <Picture 2>'}),/\[Shot 2\] At 00:03\.000 <Subject 1> 与/);
- assert.match(local.toReferenceDisplay(chinese),/<主体 2>。镜头固定。\n【镜头 2】（第 3 秒）<主体 1>/);
+ assert.match(local.toReferenceDisplay(chinese),/<主体 2>。\n镜头固定。\n【镜头 2】（第 3 秒）<主体 1>/);
  // A short Chinese half full of subject tags stays Chinese: tags, shot markers and times are no English words.
  const tagged=chinese.replace(/detailed_description:\n[^\n]*/,'detailed_description:\n[Shot 1] <Subject 1> 走向 <Subject 2>，镜头跟随。\n[Shot 2] At 00:03.000 <Subject 1> 与 <Subject 2> 的近景。');
  for(const api of [local,edge]) assert.match(api.validateReference(tagged,{mode:'multi_reference',durationSeconds:5,requirements:'Available resource labels: <Picture 1>; <Picture 2>'}),/\n\[Shot 2\] At 00:03\.000 <Subject 1> 与 <Subject 2> 的近景。\n/);

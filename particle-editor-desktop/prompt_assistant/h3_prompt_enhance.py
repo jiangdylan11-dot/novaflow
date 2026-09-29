@@ -140,7 +140,8 @@ def fold_repeated_beats(text):
 
 
 def shot_stamp(seconds):
-    ms = int(round(float(seconds) * 1000))
+    # Half a millisecond rounds up, as Math.round does in h3-prompt-enhance.js (round() would round it to even).
+    ms = int(float(seconds) * 1000 + 0.5)
     return f"{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000:03d}"
 
 
@@ -427,12 +428,28 @@ def dialogue_tag(words):
 
 # The editor shows a cut time and a spoken line the Chinese way, 【镜头 2】（第 4 秒） and (S1) 说：“出发吧。”; they read back as the
 # official [Shot 2] At 00:04.000 and <d>[Chinese] 出发吧。</d> (readMarks in h3-prompt-enhance.js). Old displays (At 00:04.000, <d>) still read.
-DISPLAY_CUT = r"【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*(\d+(?:\.\d+)?)[ \t]*秒[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))"
-DISPLAY_LINE = r'([（(]S[1-9]\d*(?:,\s*S[1-9]\d*)*[）)][^“”"<>\n。！？.!?]{0,40}?[：:][ \t]*)[“"]([^“”"<\n]+)[”"]'
+# A cut time may be typed with full-width digits or Chinese numerals (（第４秒）, （第四秒）); a quote is a line only when a speech
+# verb (or nothing) stands between the speaker ID and the colon, so 木牌上写着：“营业中” stays on-screen text.
+DISPLAY_CUT = r"【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*([0-9０-９.．〇零一二两三四五六七八九十]{1,8})[ \t]*秒[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))"
+DISPLAY_LINE = (r'([（(]S[1-9]\d*(?:,\s*S[1-9]\d*)*[）)](?:[^“”"<>\n。！？.!?]{0,40}?(?:说|道|问|答|喊|吼|嚷|唱|念|低语|耳语|嘀咕'
+                r'|\b(?:says|said|asks|asked|shouts|shouted|whispers|whispered|sings|sang|replies|replied|answers|answered)))?[ \t]*[：:][ \t]*)[“"]([^“”"<\n]+)[”"]')
+ZH_DIGITS = "零一二三四五六七八九"
+
+
+def display_seconds(raw):
+    text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", raw).replace("两", "二").replace("〇", "零"))
+    tens = re.fullmatch(r"([一二三]?)十([一二三四五六七八九]?)", text)
+    if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", text):
+        return float(text)
+    if tens:
+        return (ZH_DIGITS.index(tens[1]) if tens[1] else 1) * 10 + (ZH_DIGITS.index(tens[2]) if tens[2] else 0)
+    if len(text) == 1 and text in ZH_DIGITS:
+        return ZH_DIGITS.index(text)
+    raise ValueError("H3 镜头切换时间必须严格递增并在所选时长内")
 
 
 def display_marks(text):
-    text = re.sub(DISPLAY_CUT, lambda m: f"[Shot {m[1]}]" + (f" At {shot_stamp(float(m[2]))}" if m[2] else "")
+    text = re.sub(DISPLAY_CUT, lambda m: f"[Shot {m[1]}]" + (f" At {shot_stamp(display_seconds(m[2]))}" if m[2] else "")
                   + (" " if m[3] and not re.match(r"[,，、)）]", m[3]) else ""), str(text or ""))
     return re.sub(DISPLAY_LINE, lambda m: f"{m[1]}<d>{dialogue_tag(m[2])} {m[2]}</d>", text)
 

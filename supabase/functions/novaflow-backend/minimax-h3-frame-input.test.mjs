@@ -262,8 +262,8 @@ for (const [mode, keys] of [["text_video", []], ["image_video", ["first_frame"]]
     const reference = mode === "multi_reference";
     const fields = reference ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
       : ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"];
-    // 首尾帧 asks the writer first what <Picture 2> shows (finalFrame, dropped by the program); the pair is the same in every mode.
-    assert.deepEqual(format.schema.required, reference ? ["modelPrompt", "displayPrompt", "editPolicy"] : [...(mode === "first_last" ? ["finalFrame"] : []), "modelPrompt", "displayPrompt"]);
+    // Without frame pixels no frame note is asked for (图生 openingFrame and 首尾帧 finalFrame read the pixels); the pair is the same in every mode.
+    assert.deepEqual(format.schema.required, reference ? ["modelPrompt", "displayPrompt", "editPolicy"] : ["modelPrompt", "displayPrompt"]);
     for (const half of ["modelPrompt", "displayPrompt"]) assert.deepEqual(format.schema.properties[half].required, fields);
     const english = {
       subject_definitions: '<Subject 1>: the figure in <Picture 1>.', summary: '[reference generation] The figure waves.',

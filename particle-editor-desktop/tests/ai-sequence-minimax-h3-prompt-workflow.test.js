@@ -660,7 +660,7 @@ test('base results: a bilingual pair gives the official English, Chinese fields 
   assert.equal(local.text, pair.text)
   assert.equal(local.modelText, chineseFields())
   const legacy = workflow.validateAndRestore({ text: legacyI2v, context, current })
-  assert.match(legacy.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒[^\n]*\n\n【画面与动作】\n【镜头 1】少女站在站台上，镜头固定。画面从 @参考图 的位置与构图开始。她缓慢转身。她抬手挥动。\n\n【环境声音】\n站台环境声\n\n【背景音乐】\n无$/)
+  assert.match(legacy.text, /^【参考帧对齐】\n@参考图 是视频第 0\.00 秒[^\n]*\n\n【画面与动作】\n【镜头 1】少女站在站台上，镜头固定，画面如 @参考图 所示。她缓慢转身。她抬手挥动。\n\n【环境声音】\n站台环境声\n\n【背景音乐】\n无$/)
   assert.throws(() => workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: chineseFields(), displayPrompt: chineseFields() }), context, current }), /英文正文/)
   assert.throws(() => workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields().replace('slowly turns', 'slowly turns [Shot 2] At 00:02.000, the camera cuts to her hand'), displayPrompt: chineseFields() }), context, current }), /镜头或切换时间不一致/)
 })
@@ -741,7 +741,7 @@ test('generation compiles the base display to the official English text', async 
   assert.match((await workflow.compileForGeneration({ ...chinese, durationSeconds: 8 }, noEngine)).modelText, /^For the target video/)
   // An old five-section prompt from the history is converted and translated too.
   const legacy = await workflow.compileForGeneration(i2vCurrent(legacyI2v.replace('<Picture 1>', '@参考图'), 'compile-e'), translate)
-  assert.match(requests[1].prompt, /^integrated_multimodal_description: \[Shot 1\] 少女站在站台上，镜头固定。画面从 <Picture 1> 的位置与构图开始。/)
+  assert.match(requests[1].prompt, /^integrated_multimodal_description: \[Shot 1\] 少女站在站台上，镜头固定，画面如 <Picture 1> 所示。她缓慢转身。/)
   assert.equal(legacy.modelText, I2V_LINE + '\n\n' + englishFields())
   // An engine without the translate step answers in Chinese or five sections: that answer is dropped and
   // the prompt goes out as written, its @参考图 bound to <Picture 1>.
