@@ -45,12 +45,26 @@ class DisplayMarksTest(unittest.TestCase):
         self.assertEqual(shot_stamp(1.0625), "00:01.063")
         with self.assertRaisesRegex(ValueError, "镜头切换时间"):
             validate_base_fields(as_fields(SHOWN.replace("（第 4.5 秒）", "（第十十秒）")), "I2VA", 8, "zh")
+        # 点, 半, an s suffix and spaces inside the number read as typed, as in h3-base-format.test.mjs.
+        for time, at in (("（第四点五秒）", "00:04.500"), ("（第七点二五秒）", "00:07.250"), ("（第4秒半）", "00:04.500"), ("（第 4 . 5 秒）", "00:04.500"),
+                         ("（第 5s）", "00:05.000"), ("（7.5s）", "00:07.500")):
+            self.assertIn(f"\n[Shot 2] At {at} 镜头切到近景", display_marks(SHOWN.replace("（第 4.5 秒）", time)))
+        for time in ("（第4.秒）", "（第四点五点五秒）"):
+            with self.assertRaisesRegex(ValueError, "镜头切换时间"):
+                display_marks(SHOWN.replace("（第 4.5 秒）", time))
         self.assertIn("[Shot 2] （持续 2 秒）镜头切到近景", display_marks(SHOWN.replace("（第 4.5 秒）", "（持续 2 秒）")))
 
     def test_on_screen_text_after_a_speaker_stays_a_quote(self):
         sign = "【镜头 1】女孩 (S1) 举起木牌，木牌上写着：“营业中”。店主 (S2) 指向灯牌，灯牌亮着：\"OPEN\"。(S1)：“欢迎。”"
         text = display_marks(sign)
         self.assertIn("木牌上写着：“营业中”。店主 (S2) 指向灯牌，灯牌亮着：\"OPEN\"。(S1)：<d>[Chinese] 欢迎。</d>", text)
+
+    def test_a_quote_after_a_speaker_is_a_line_whatever_the_verb(self):
+        for typed, line in (("(S1) 大叫：“快跑！”", "(S1) 大叫：<d>[Chinese] 快跑！</d>"), ("(S1) 惊呼：“小心！”", "(S1) 惊呼：<d>[Chinese] 小心！</d>"),
+                            ('(S1) says in an off-screen voiceover: "It is late."', "(S1) says in an off-screen voiceover: <d>[English] It is late.</d>"),
+                            ('(S1) reads: "Once upon a time."', "(S1) reads: <d>[English] Once upon a time.</d>"),
+                            ('(S2) holds up a sign that reads: "OPEN"', '(S2) holds up a sign that reads: "OPEN"')):
+            self.assertIn(line, display_marks("【镜头 1】女孩站在桥上。" + typed))
 
     def test_the_writer_view_of_a_display_keeps_the_cut_time_and_the_line(self):
         view = base_source_view(SHOWN)

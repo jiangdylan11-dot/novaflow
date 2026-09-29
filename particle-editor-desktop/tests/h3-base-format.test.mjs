@@ -113,12 +113,23 @@ test('the editor shows a cut time and a spoken line the Chinese way; every compi
     for (const [edit, back] of [[shown.replace('（第 4.5 秒）', '(第6秒)'), /\n\[Shot 2\] At 00:06\.000 镜头切到近景/], [shown.replace('（第 4.5 秒）', '（6.25 秒）'), /\n\[Shot 2\] At 00:06\.250 镜头切到近景/],
       [shown.replace('（第 4.5 秒）', ' At 00:05.000 '), /\n\[Shot 2\] At 00:05\.000 镜头切到近景/], [shown.replace('“出发吧。”', '"我们走吧！"'), /\(S1\) 说：<d>\[Chinese\] 我们走吧！<\/d>她放下手/],
       [shown.replace('“出发吧。”', '“Let\'s go.”'), /\(S1\) 说：<d>\[English\] Let's go\.<\/d>她放下手/]]) assert.match(api.validateBaseFields(edit, options), back);
-    // A cut time typed with full-width digits or Chinese numerals reads the same; one that is no number fails instead of being spaced evenly.
-    for (const [time, at] of [['（第４秒）', '00:04.000'], ['（第４．５秒）', '00:04.500'], ['（第四秒）', '00:04.000'], ['（第 两 秒）', '00:02.000'], ['（第十二秒）', '00:12.000'], ['（第二十秒）', '00:20.000']])
+    // A cut time typed with full-width digits, Chinese numerals, 点, 半 or s reads the same; one that is no number fails instead of being spaced evenly.
+    for (const [time, at] of [['（第４秒）', '00:04.000'], ['（第４．５秒）', '00:04.500'], ['（第四秒）', '00:04.000'], ['（第 两 秒）', '00:02.000'], ['（第十二秒）', '00:12.000'], ['（第二十秒）', '00:20.000'],
+      ['（第四点五秒）', '00:04.500'], ['（第七点二五秒）', '00:07.250'], ['（第4秒半）', '00:04.500'], ['（第 4 . 5 秒）', '00:04.500'], ['（第 5s）', '00:05.000'], ['（7.5s）', '00:07.500']])
       assert.match(api.fromBaseDisplay(shown.replace('（第 4.5 秒）', time)), new RegExp('\\n\\[Shot 2\\] At ' + at.replace('.', '\\.') + ' 镜头切到近景'));
-    assert.throws(() => api.validateBaseFields(shown.replace('（第 4.5 秒）', '（第十十秒）'), options), /镜头切换时间/);
+    for (const time of ['（第十十秒）', '（第4.秒）', '（第四点五点五秒）']) assert.throws(() => api.validateBaseFields(shown.replace('（第 4.5 秒）', time), options), /镜头切换时间/);
     assert.match(api.fromBaseDisplay(shown.replace('（第 4.5 秒）', '（持续 2 秒）')), /\[Shot 2\] （持续 2 秒）镜头切到近景/);
-    // On-screen text after a speaker ID stays a quote: only a speech verb (or nothing) before the colon makes a line, both ways.
+    // A quote after a speaker ID and a colon is a line whatever the verb, typed or shown (大叫, 惊呼, says softly, the official voiceover);
+    // on-screen text after a text-surface verb (写着, 亮着, reads) stays a quote, both ways.
+    for (const [typed, line] of [['(S1) 大叫：“快跑！”', '(S1) 大叫：<d>[Chinese] 快跑！</d>'], ['(S1) 惊呼：“小心！”', '(S1) 惊呼：<d>[Chinese] 小心！</d>'], ['声音沙哑的老人 (S1) 缓缓开口：“天黑了。”', '声音沙哑的老人 (S1) 缓缓开口：<d>[Chinese] 天黑了。</d>'],
+      ['(S1) says softly: "Run!"', '(S1) says softly: <d>[English] Run!</d>'], ['(S1) says in an off-screen voiceover: "It is late."', '(S1) says in an off-screen voiceover: <d>[English] It is late.</d>'],
+      ['(S1) reads: "Once upon a time."', '(S1) reads: <d>[English] Once upon a time.</d>'], ['(S2) holds up a sign that reads: "OPEN"', '(S2) holds up a sign that reads: "OPEN"'], ['(S2) 举起纸条，上面写：“别走”', '(S2) 举起纸条，上面写：“别走”']]) {
+      const edited = shown.replace('女孩 (S1) 说：“出发吧。”', typed);
+      assert.ok(api.fromBaseDisplay(edited).includes(line), typed);
+      assert.ok(api.fromBaseDisplay(api.toBaseDisplay(api.fromBaseDisplay(edited), options)).includes(line), typed);
+      // The editor shows it as a quote again: only the [Japanese] line keeps its <d> block.
+      assert.equal(api.toBaseDisplay(api.fromBaseDisplay(edited), options).split('<d>').length, 2, typed);
+    }
     const sign = 'integrated_multimodal_description: [Shot 1] 二维动画，<Picture 1> 中的女孩 (S1) 举起木牌，木牌上写着：“营业中”。店主 (S2) 指向灯牌，灯牌亮着："OPEN"。(S1)：<d>[Chinese] 欢迎。</d>\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: N/A';
     const signShown = api.toBaseDisplay(sign, options);
     assert.match(signShown, /木牌上写着：“营业中”。店主 \(S2\) 指向灯牌，灯牌亮着："OPEN"。\(S1\)：“欢迎。”/);
@@ -130,6 +141,11 @@ test('the editor shows a cut time and a spoken line the Chinese way; every compi
     const referenceShown = api.toReferenceDisplay(reference);
     assert.match(referenceShown, /<主体 1> 挥手，女孩 \(S1\) 说：“你好。”\n【镜头 2】（第 3 秒）镜头切到 <主体 1> 的特写。/);
     assert.match(api.fromReferenceDisplay(referenceShown), /女孩 \(S1\) 说：<d>\[Chinese\] 你好。<\/d>\n\[Shot 2\] At 00:03\.000 镜头切到 <Subject 1> 的特写。/);
+    // The camera sentence starts its own line, never inside a spoken line or quoted text: the round trip stays exact.
+    const director = reference.replace('<Subject 1> 挥手，女孩 (S1) 说：<d>[Chinese] 你好。</d>', '<Subject 1> 举起写着“禁止喧哗。镜头开拍”的牌子。镜头缓慢推近。<Subject 1> (S1) 说：<d>[Chinese] 看这里。镜头在这边！</d>');
+    const directorShown = api.toReferenceDisplay(director);
+    assert.match(directorShown, /<主体 1> 举起写着“禁止喧哗。镜头开拍”的牌子。\n镜头缓慢推近。\n<主体 1> \(S1\) 说：“看这里。镜头在这边！”\n/);
+    assert.equal(api.fromReferenceDisplay(directorShown).replace(/\s+/g, ''), director.replace(/\s+/g, ''));
   }
 });
 
@@ -176,11 +192,22 @@ test('validateBaseFields fixes the layout and rejects broken shots, media and la
     assert.throws(() => api.validateBaseFields(fields('[Shot 1] <Picture 1> turns into <Picture 2>.'), {mode:'image_video', durationSeconds:6}), /参考媒体标签/);
     assert.throws(() => api.validateBaseFields(fields('[Shot 1] <Picture 1> <Video 1>.'), {mode:'first_last', durationSeconds:6}), /参考媒体标签/);
     assert.throws(() => api.validateBaseFields(fields('[Shot 1] <Subject 1> waves.'), t2v), /Subject N/);
-    // A frame the narrative never names is folded into its sentence (official FL2V case): the opening frame closes the first sentence, the final frame the last.
+    // A frame the narrative never names is folded into its sentence (official FL2V case): the opening frame closes a style-led first sentence
+    // (the writer's opening), the final frame the last sentence.
     assert.equal(api.validateBaseFields(fields('[Shot 1] Live-action, a girl stands. She sits down.'), {mode:'first_last', durationSeconds:6}),
       fields('[Shot 1] Live-action, a girl stands, as shown in <Picture 1>. She sits down, settling into the pose, spacing, and composition established by <Picture 2>.', 'Wind.', 'N/A'));
     assert.match(api.validateBaseFields(fields('[Shot 1] 写实摄影；中景\n少女坐下', '风声。'), {mode:'image_video', durationSeconds:6}), /^integrated_multimodal_description: \[Shot 1\] 写实摄影；中景，画面如 <Picture 1> 所示。\n少女坐下\n/);
     assert.doesNotMatch(api.validateBaseFields(fields('[Shot 1] Live-action, a girl stands. She sits down.'), {mode:'first_last', durationSeconds:6}), /The shot begins|At the end of the shot/);
+    // Any other text may already act in its first sentence: it starts with the official sentence, so the frame comes before the action.
+    // A clause replaces only a full stop or ends an unfinished sentence; after ！, ？, …, a spoken line or a quote the sentence stands alone.
+    for (const [text, mode, anchored] of [
+      ['[Shot 1] 男人转身，向镜头挥手。', 'image_video', '[Shot 1] 画面从 <Picture 1> 的位置与构图开始。男人转身，向镜头挥手。'],
+      ['[Shot 1] The man turns around and waves at the camera. He smiles.', 'first_last', '[Shot 1] The shot begins in the position and framing established by <Picture 1>. The man turns around and waves at the camera. He smiles, settling into the pose, spacing, and composition established by <Picture 2>.'],
+      ['[Shot 1] 男人大喊一声！他转身跑开，你看到了吗？', 'first_last', '[Shot 1] 画面从 <Picture 1> 的位置与构图开始。男人大喊一声！他转身跑开，你看到了吗？结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。'],
+      ['[Shot 1] Live-action, cinematic, a man in a grey coat stands on a bridge at dusk… The camera pushes in.', 'image_video', '[Shot 1] The shot begins in the position and framing established by <Picture 1>. Live-action, cinematic, a man in a grey coat stands on a bridge at dusk… The camera pushes in.'],
+      ['[Shot 1] 写实电影风格，女孩站在门边。她把木牌翻到写着“打烊”的一面……', 'first_last', '[Shot 1] 写实电影风格，女孩站在门边，画面如 <Picture 1> 所示。她把木牌翻到写着“打烊”的一面……结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。'],
+      ['[Shot 1] Live-action, a girl stands by the door. She waves as the girl (S1) says: <d>[English] See you.</d>', 'first_last', '[Shot 1] Live-action, a girl stands by the door, as shown in <Picture 1>. She waves as the girl (S1) says: <d>[English] See you.</d> At the end of the shot, the action settles into the pose, spacing, and composition established by <Picture 2>.']])
+      assert.equal(api.validateBaseFields(fields(text), {mode, durationSeconds:6}).split('\n\n')[0], 'integrated_multimodal_description: ' + anchored, text);
     // FL2V bare labels are read as tags.
     assert.match(api.validateBaseFields(fields('[Shot 1] It starts as Picture 1 and ends as Picture 2.'), {mode:'first_last', durationSeconds:6}), /as <Picture 1> and ends as <Picture 2>\./);
     // Language: English model text keeps Chinese only in <d> and quotes; the display half must be Chinese.
@@ -242,7 +269,7 @@ test('legacy five-section prompts convert to the display without a model', () =>
     assert.match(api.toBaseDisplay(twoSpeakers), /开口说话。红衣少女 \(S1\) 说：“出发吧。”老人 \(S2\) 说：“再见。”右手举到肩高/);
     // Explicit options win over the task line; the result validates as Chinese fields.
     assert.match(api.toBaseDisplay(fl2v, {mode:'first_last', durationSeconds:6}), /对齐第 6\.00 秒（结尾）/);
-    assert.equal(api.validateBaseResult(fl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), 'integrated_multimodal_description: [Shot 1] 穿红色战甲的女性站在雪山前，镜头固定，画面如 <Picture 1> 所示。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧，最终落定在 <Picture 2> 的姿态、位置与构图。\n\noverall_soundscape: 风声和铠甲摩擦声\n\nnon_diegetic_music: N/A');
+    assert.equal(api.validateBaseResult(fl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), 'integrated_multimodal_description: [Shot 1] 画面从 <Picture 1> 的位置与构图开始。穿红色战甲的女性站在雪山前，镜头固定。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧，最终落定在 <Picture 2> 的姿态、位置与构图。\n\noverall_soundscape: 风声和铠甲摩擦声\n\nnon_diegetic_music: N/A');
     assert.equal(api.toBaseDisplay(api.fromBaseDisplay(api.toBaseDisplay(fl2v)), {mode:'first_last', durationSeconds:5}), api.toBaseDisplay(fl2v));
   }
 });
@@ -373,6 +400,9 @@ test('the English half uses the official wording for cuts, a still camera and ve
     const english = api.validateBaseFields(fields('[Shot 1] Live-action. The camera remains static throughout the shot as she reads. A sign reads "The camera is static". [Shot 2] At 00:03.000 close-up of her hands. The camera slowly pans downward to the page. [Shot 3] At 00:05.000, A wide shot of the room, static shot. The camera holds its composition while she says: <d>[English] The camera maintains composition.</d>'), {...t2v, language:'en'});
     assert.match(english, /^integrated_multimodal_description: \[Shot 1\] Live-action\. The camera holds a static shot as she reads\. A sign reads "The camera is static"\.\n/);
     assert.match(english, /\n\[Shot 2\] At 00:03\.000, the shot cuts to close-up of her hands\. The camera tilts down at slow speed to the page\.\n/);
+    // A speed the writer gave after the amplitude is not given twice (round 5: "pushes in at slow speed with small amplitude at slow speed").
+    assert.match(api.validateBaseFields(fields('[Shot 1] Live-action, a cat sits. The camera slowly pushes in with small amplitude at slow speed as it blinks.'), {...t2v, language:'en'}),
+      /The camera pushes in with small amplitude at slow speed as it blinks\./);
     assert.match(english, /\n\[Shot 3\] At 00:05\.000, the shot cuts to a wide shot of the room\. The camera holds a static shot\. The camera holds a static shot while she says: <d>\[English\] The camera maintains composition\.<\/d>\n/);
     // An existing cut verb stays; the Chinese display and 'zh' fields are never rewritten.
     assert.match(api.composeBaseModelPrompt(fields('[Shot 1] A cat sits. [Shot 2] At 00:04.000, the camera cuts to a close-up.'), t2v), /\[Shot 2\] At 00:04\.000, the camera cuts to a close-up\./);
@@ -470,10 +500,12 @@ test('the five copies stay in sync with the shared source and policy', () => {
 
 test('the opening-frame anchor never lands inside dialogue; a static camera and a cut time before its marker read officially', () => {
   const i2v = 'integrated_multimodal_description: [Shot 1] The girl (S1) says: <d>[Chinese] 出发吧。</d> Then she waves. The camera holds static.\n\noverall_soundscape: Wind blows softly.\n\nnon_diegetic_music: N/A';
+  const styled = i2v.replace('[Shot 1] The girl', '[Shot 1] Live-action, a girl stands under a sign that reads "OPEN. COME IN." by the door. The girl');
   const ref = 'subject_definitions:\n<Subject 1>: A woman from <Picture 1>.\n\nsummary:\n[reference generation] <Subject 1> walks.\n\nretention_analysis:\n<Subject 1>: fully_preserved - face and hair.\n\ndetailed_description:\nLive-action. [Shot 1] <Subject 1> walks along the road. At 00:03.000, [Shot 2] a close-up of <Subject 1> smiling.\n\noverall_soundscape:\nFootsteps.\n\nnon_diegetic_music:\nN/A';
   for (const api of apis) {
     const text = api.validateBaseFields(i2v, {mode:'image_video', durationSeconds:5, language:'en'});
-    assert.match(text, /<d>\[Chinese\] 出发吧。<\/d> Then she waves, as shown in <Picture 1>\. The camera/);
+    assert.match(text, /^integrated_multimodal_description: \[Shot 1\] The shot begins in the position and framing established by <Picture 1>\. The girl \(S1\) says: <d>\[Chinese\] 出发吧。<\/d> Then she waves\. The camera/);
+    assert.match(api.validateBaseFields(styled, {mode:'image_video', durationSeconds:5, language:'en'}), /a sign that reads "OPEN\. COME IN\." by the door, as shown in <Picture 1>\. The girl \(S1\) says: <d>\[Chinese\] 出发吧。<\/d> Then she waves\. The camera/);
     assert.match(text, /The camera holds a static shot\./);
     assert.match(api.validateReference(ref, {durationSeconds:5, requirements:'Available resource labels: <Picture 1>'}), /walks along the road\.\n?\s*\[Shot 2\] At 00:03\.000, the shot cuts to a close-up/);
   }
@@ -766,12 +798,14 @@ test('program fixes touch only what they name: an action with a cut word stays, 
     const letters = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a girl in an A-line skirt walking between point A and point B below the Golden Gate Bridge while a RED camera films. [Shot 2] At 00:03.000, the shot cuts to a close-up of her face. The camera holds a static shot.',
       '[Shot 1] 写实电影风格，全景中穿着 A 字裙的女孩在 Golden Gate Bridge 下的 A 点和 B 点之间来回走，一台 RED 摄影机在拍摄。[Shot 2] At 00:03.000 时镜头切到她脸部的特写。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:'穿着 A 字裙的女孩在金门大桥下来回走，第3秒切到特写', strictPair:true})).displayPrompt;
     assert.match(letters, /穿着 A 字裙的女孩在 Golden Gate Bridge 下的 A 点和 B 点之间来回走，一台 RED 摄影机在拍摄。\n\[Shot 2\] At 00:03\.000 镜头切到她脸部的特写。/);
-    // "of both" names no kind or count (two cats are not 两人), so the phrase goes to the fix call with its short words marked, rewritten whole.
+    // "of both" reads 两者的近景, which fits people, animals and things (two cats are not 两人): no English is left and no fix call is spent,
+    // whether the pair is strict or not; a rarer phrase (of the pair) still goes to the fix call with its short words marked.
     const both = (display, strictPair) => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a girl by a window. [Shot 2] At 00:03.000, the shot cuts to a medium close-up of both of them. The camera holds a static shot.',
       '[Shot 1] 写实电影风格，全景中女孩站在窗边。[Shot 2] At 00:03.000, the shot cuts to a medium close-up ' + display + '。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:'女孩站在窗边，第3秒切到近景', strictPair});
-    assert.throws(() => both('of both', true), error => error.h3DisplayOnly === true && JSON.stringify(error.h3Slips) === JSON.stringify(['[Shot 2] At 00:03.000 镜头切到近景 ⟦of⟧ ⟦both⟧。']));
+    for (const [display, strictPair] of [['of both', true], ['of both', false], ['of both of them', false], ['of them', true]])
+      assert.match(JSON.parse(both(display, strictPair)).displayPrompt, /\n\[Shot 2\] At 00:03\.000 镜头切到两者的近景。镜头固定。\n/, display);
     assert.throws(() => both('of the pair', true), error => error.h3DisplayOnly === true && JSON.stringify(error.h3Slips) === JSON.stringify(['[Shot 2] At 00:03.000 镜头切到近景 ⟦of⟧ ⟦the⟧ ⟦pair⟧。']));
-    assert.doesNotMatch(JSON.parse(both('of both', false)).displayPrompt, /两人/);
+    assert.doesNotMatch(JSON.parse(both('of both', false)).displayPrompt.replace(/\[Shot \d+\]|At \d{2}:\d{2}\.\d{3}|N\/A|[a-z_]+:/g, ''), /[A-Za-z]/);
     // A shot whose halves name a different number of sizes (切到近景 … 恢复全景构图 against "a close-up … full framing") still cuts to the user's size.
     const cutSize = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a full shot frames a man on a bridge. The camera holds a static shot. [Shot 2] At 00:04.000, the camera cuts to a close-up of his face, then pulls out to restore the original full framing.',
       '[Shot 1] 写实电影风格，全景中一个男人站在桥上。镜头固定。[Shot 2] At 00:04.000 镜头切到近景，随后镜头拉远，恢复最初的全景构图。'), {mode:'text_video', durationSeconds:8, currentPrompt:'男人站在桥上，第4秒切到近景'})).modelPrompt;

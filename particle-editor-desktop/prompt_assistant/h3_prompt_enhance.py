@@ -428,30 +428,32 @@ def dialogue_tag(words):
 
 # The editor shows a cut time and a spoken line the Chinese way, 【镜头 2】（第 4 秒） and (S1) 说：“出发吧。”; they read back as the
 # official [Shot 2] At 00:04.000 and <d>[Chinese] 出发吧。</d> (readMarks in h3-prompt-enhance.js). Old displays (At 00:04.000, <d>) still read.
-# A cut time may be typed with full-width digits or Chinese numerals (（第４秒）, （第四秒）); a quote is a line only when a speech
-# verb (or nothing) stands between the speaker ID and the colon, so 木牌上写着：“营业中” stays on-screen text.
-DISPLAY_CUT = r"【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*([0-9０-９.．〇零一二两三四五六七八九十]{1,8})[ \t]*秒[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))"
-DISPLAY_LINE = (r'([（(]S[1-9]\d*(?:,\s*S[1-9]\d*)*[）)](?:[^“”"<>\n。！？.!?]{0,40}?(?:说|道|问|答|喊|吼|嚷|唱|念|低语|耳语|嘀咕'
-                r'|\b(?:says|said|asks|asked|shouts|shouted|whispers|whispered|sings|sang|replies|replied|answers|answered)))?[ \t]*[：:][ \t]*)[“"]([^“”"<\n]+)[”"]')
+# A cut time may be typed with full-width digits, Chinese numerals, 点, 半 or s (（第４秒）, （第四点五秒）, （第4秒半）, （4.5s））; a quote
+# after a speaker ID and a colon is a line whatever the verb (大叫, says softly), unless a text-surface verb with a thing between it and
+# the speaker stands before the colon, so 木牌上写着：“营业中” stays on-screen text and (S1) reads: "…" is speech.
+DISPLAY_CUT = (r"【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*([0-9０-９.．〇零一二两三四五六七八九十点][0-9０-９.．〇零一二两三四五六七八九十点 \t]{0,11}?)"
+               r"[ \t]*(?:秒(半)?|[sS])[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))")
+DISPLAY_LINE = r'([（(]S[1-9]\d*(?:,\s*S[1-9]\d*)*[）)][^“”"<>\n。！？.!?]{0,40}?[：:][ \t]*)[“"]([^“”"<\n]+)[”"]'
+ON_SCREEN_LEAD = r"(?i)[)）][ \t]*\S.*?(?:写(?:着|有|的是)?|印着|刻着|标着|显示着?|亮着|贴着|挂着|\b(?:reads?|reading|displays?|shows?))[ \t]*[：:][ \t]*$"
 ZH_DIGITS = "零一二三四五六七八九"
 
 
-def display_seconds(raw):
+def display_seconds(raw, half=False):
     text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", raw).replace("两", "二").replace("〇", "零"))
-    tens = re.fullmatch(r"([一二三]?)十([一二三四五六七八九]?)", text)
-    if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", text):
-        return float(text)
-    if tens:
-        return (ZH_DIGITS.index(tens[1]) if tens[1] else 1) * 10 + (ZH_DIGITS.index(tens[2]) if tens[2] else 0)
-    if len(text) == 1 and text in ZH_DIGITS:
-        return ZH_DIGITS.index(text)
-    raise ValueError("H3 镜头切换时间必须严格递增并在所选时长内")
+    whole, fraction = (lambda m: (m[1], m[2] or "") if m else ("", "x"))(re.fullmatch(r"([^.点]*)(?:[.点](.+))?", text))
+    digits = "".join(str(ZH_DIGITS.index(ch)) if ch in ZH_DIGITS else ch for ch in fraction)
+    tens = re.fullmatch(r"([一二三]?)十([一二三四五六七八九]?)", whole)
+    seconds = (int(whole) if re.fullmatch(r"[0-9]+", whole) else (ZH_DIGITS.index(tens[1]) if tens[1] else 1) * 10 + (ZH_DIGITS.index(tens[2]) if tens[2] else 0)
+               if tens else ZH_DIGITS.index(whole) if len(whole) == 1 and whole in ZH_DIGITS else None)
+    if seconds is None or not re.fullmatch(r"[0-9]*", digits):
+        raise ValueError("H3 镜头切换时间必须严格递增并在所选时长内")
+    return float(f"{seconds}.{digits or '0'}") + (0.5 if half else 0)
 
 
 def display_marks(text):
-    text = re.sub(DISPLAY_CUT, lambda m: f"[Shot {m[1]}]" + (f" At {shot_stamp(display_seconds(m[2]))}" if m[2] else "")
-                  + (" " if m[3] and not re.match(r"[,，、)）]", m[3]) else ""), str(text or ""))
-    return re.sub(DISPLAY_LINE, lambda m: f"{m[1]}<d>{dialogue_tag(m[2])} {m[2]}</d>", text)
+    text = re.sub(DISPLAY_CUT, lambda m: f"[Shot {m[1]}]" + (f" At {shot_stamp(display_seconds(m[2], m[3]))}" if m[2] else "")
+                  + (" " if m[4] and not re.match(r"[,，、)）]", m[4]) else ""), str(text or ""))
+    return re.sub(DISPLAY_LINE, lambda m: m[0] if re.search(ON_SCREEN_LEAD, m[1]) else f"{m[1]}<d>{dialogue_tag(m[2])} {m[2]}</d>", text)
 
 
 # A spoken line in the writer's view: (S1)："…", (S1, S2)：[Japanese]"…".
@@ -592,8 +594,9 @@ def validate_base_fields(value, mode="", duration=None, language=None, requireme
     if kind == "FL2VA" and used - {"<Picture 1>", "<Picture 2>"}:
         raise ValueError("H3 首尾帧视频的画面描述必须引用 <Picture 1> 和 <Picture 2>")
     if kind in ("I2VA", "FL2VA"):
-        # Like the renderer's validateBaseFields: a frame the text does not name gets its anchor
-        # sentence, the opening frame after the style sentence, the last frame at the end.
+        # A frame the text does not name gets its official anchor sentence (PROGRAM_SENTENCES translates it), the opening
+        # frame after the first sentence, the last frame at the end. The renderer's validateBaseFields differs on purpose: it
+        # folds the anchor into a style-led opening and puts the sentence first before any other text.
         lang = language or ("zh" if re.search(HAN, literal_free(narrative)) else "en")
         if "<Picture 1>" not in named:
             def opening(match):

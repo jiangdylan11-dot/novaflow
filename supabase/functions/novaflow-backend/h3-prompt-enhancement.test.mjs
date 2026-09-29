@@ -323,7 +323,7 @@ test('base I2V/FL2V optimize shows Grok its own frames; a translation, 文生 an
     assert.deepEqual([Object.keys(sent.properties)[0], sent.required[0]], [note, note]);
     assert.match(content(built)[1].text, /one of them naming the light the frame shows/);
   }
-  assert.match(i2v.body.text.format.schema.properties.openingFrame.description, /out of frame[\s\S]*never with a noun from the request[\s\S]*even when everything already fits the frame[\s\S]*pick up, take or eat, whether the request says it is the one already in hand; if not, it is a new one that lies within reach, named with its look, and the held thing is set aside first/);
+  assert.match(i2v.body.text.format.schema.properties.openingFrame.description, /out of frame[\s\S]*never with a noun from the request[\s\S]*pick up, take or eat, whether the request says it is the one already in hand; if not, it is a new one that lies within reach, named with its look, and the held thing is set aside first[\s\S]*Camera, written last from the Frame and Plan lines[\s\S]*pull-out or tilt[\s\S]*even when everything already fits the frame/);
   // The note offers no static option; a still camera stays the user's choice in the base rules.
   assert.doesNotMatch(i2v.body.text.format.schema.properties.openingFrame.description, /static/);
   assert.match(fl2v.body.text.format.schema.properties.finalFrame.description, /closer or wider than <Picture 1> \(in this note only: the prompt names no shot size[\s\S]*large amplitude/);

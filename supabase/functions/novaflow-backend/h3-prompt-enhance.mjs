@@ -363,23 +363,28 @@ function joinChineseSentences(text) {
 // The editor shows a cut time and a spoken line the Chinese way, 【镜头 2】（第 4 秒） and (S1) 说：“出发吧。”, and every compile reads
 // them back as the official [Shot 2] At 00:04.000 and <d>[Chinese] 出发吧。</d>. A line whose tag is not the one its words give
 // ([Japanese]) or that holds a quote mark or a tag stays a <d> block, so the way back is exact; old displays (At 00:04.000, <d>) still read.
-// A quote is a line only when a speech verb (or nothing) stands between the speaker ID and the colon: 木牌上写着：“营业中” stays on-screen text.
-const spokenLead = /([(（]S[1-9]\d*(?:,\s*S[1-9]\d*)*[)）](?:[^“”"<>\n。！？.!?]{0,40}?(?:说|道|问|答|喊|吼|嚷|唱|念|低语|耳语|嘀咕|\b(?:says|said|asks|asked|shouts|shouted|whispers|whispered|sings|sang|replies|replied|answers|answered)))?[ \t]*[：:][ \t]*)/.source;
-// A cut time as the editor shows it or the user types it: （第 4 秒）, （第４．５秒）, （第四秒）, （第十二秒）.
+// A quote after a speaker ID and a colon is a spoken line whatever the verb (大叫, 喃喃自语, says softly, says in an off-screen voiceover);
+// only a text-surface verb before the colon with a thing between it and the speaker (木牌上写着：“营业中”, a sign that reads: "OPEN")
+// keeps it on-screen text, both ways; the speaker's own verb ((S1) reads: "…") is speech.
+const spokenLead = /([(（]S[1-9]\d*(?:,\s*S[1-9]\d*)*[)）][^“”"<>\n。！？.!?]{0,40}?[：:][ \t]*)/.source;
+const onScreenLead = /[)）][ \t]*\S.*?(?:写(?:着|有|的是)?|印着|刻着|标着|显示着?|亮着|贴着|挂着|\b(?:reads?|reading|displays?|shows?))[ \t]*[：:][ \t]*$/i;
+// A cut time as the editor shows it or the user types it: （第 4 秒）, （第４．５秒）, （第四秒）, （第十二秒）, （第四点五秒）, （第4秒半）, （4.5s）.
 const zhDigits = '零一二三四五六七八九';
-const secondsOf = raw => {
-  const text = raw.normalize('NFKC').replace(/两/g, '二').replace(/〇/g, '零').replace(/\s+/g, ''), tens = /^([一二三]?)十([一二三四五六七八九]?)$/.exec(text);
-  return /^\d+(?:\.\d+)?$/.test(text) ? Number(text) : tens ? (zhDigits.indexOf(tens[1]) > 0 ? zhDigits.indexOf(tens[1]) : 1) * 10 + Math.max(0, zhDigits.indexOf(tens[2]))
-    : text.length === 1 && zhDigits.includes(text) ? zhDigits.indexOf(text) : NaN;
+const secondsOf = (raw, half) => {
+  const [, whole = '', fraction = ''] = /^([^.点]*)(?:[.点](.+))?$/.exec(raw.normalize('NFKC').replace(/两/g, '二').replace(/〇/g, '零').replace(/\s+/g, '')) || [];
+  const tens = /^([一二三]?)十([一二三四五六七八九]?)$/.exec(whole), digits = [...fraction].map(ch => zhDigits.includes(ch) ? zhDigits.indexOf(ch) : ch).join('');
+  const seconds = /^\d+$/.test(whole) ? Number(whole) : tens ? (zhDigits.indexOf(tens[1]) > 0 ? zhDigits.indexOf(tens[1]) : 1) * 10 + Math.max(0, zhDigits.indexOf(tens[2]))
+    : whole.length === 1 && zhDigits.includes(whole) ? zhDigits.indexOf(whole) : NaN;
+  return /^\d*$/.test(digits) ? Number(seconds + '.' + (digits || '0')) + (half ? 0.5 : 0) : NaN;
 };
 const lineTag = words => hanPattern.test(words) ? 'Chinese' : 'English';
 const shownMarks = text => text.replace(/\[Shot ([1-9]\d*)\](?: At (\d{2}):(\d{2})\.(\d{3}),?)?[ \t]*/g, (_, n, m, s, ms) => '【镜头 ' + n + '】'
   + (m == null ? '' : '（第 ' + Number((Number(m) * 60 + Number(s) + Number(ms) / 1000).toFixed(3)) + ' 秒）'))
-  .replace(new RegExp(spokenLead + /<d>\[(Chinese|English)\] ([^“”"<\n]+?)<\/d>/.source, 'g'), (all, lead, tag, words) => tag === lineTag(words) ? lead + '“' + words + '”' : all);
-const readMarks = text => text.replace(/【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*([0-9０-９.．〇零一二两三四五六七八九十]{1,8})[ \t]*秒[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))/g,
-  (_, n, seconds, next) => { const at = seconds ? secondsOf(seconds) : 0; if (!Number.isFinite(at)) throw new Error(baseIssue.shotTime);
+  .replace(new RegExp(spokenLead + /<d>\[(Chinese|English)\] ([^“”"<\n]+?)<\/d>/.source, 'g'), (all, lead, tag, words) => tag === lineTag(words) && !onScreenLead.test(lead) ? lead + '“' + words + '”' : all);
+const readMarks = text => text.replace(/【镜头\s*([1-9]\d*)】[ \t]*(?:[（(][ \t]*第?[ \t]*([0-9０-９.．〇零一二两三四五六七八九十点][0-9０-９.．〇零一二两三四五六七八九十点 \t]{0,11}?)[ \t]*(?:秒(半)?|[sS])[ \t]*(?:时|处)?[ \t]*[）)][ \t]*)?(?=(\S?))/g,
+  (_, n, seconds, half, next) => { const at = seconds ? secondsOf(seconds, half) : 0; if (!Number.isFinite(at)) throw new Error(baseIssue.shotTime);
     return '[Shot ' + n + ']' + (seconds ? ' At ' + shotStamp(at) : '') + (next && !/[,，、)）]/.test(next) ? ' ' : ''); })
-  .replace(new RegExp(spokenLead + /[“"]([^“”"<\n]+)[”"]/.source, 'g'), (_, lead, words) => lead + '<d>[' + lineTag(words) + '] ' + words + '</d>');
+  .replace(new RegExp(spokenLead + /[“"]([^“”"<\n]+)[”"]/.source, 'g'), (all, lead, words) => onScreenLead.test(lead) ? all : lead + '<d>[' + lineTag(words) + '] ' + words + '</d>');
 const referenceDisplayFields = ['主体定义', '任务说明', '保留规则', '画面与动作', '环境声音', '背景音乐'];
 const referenceDisplayTerms = {
   'reference generation': '参考生成', 'keyframe completion': '关键帧补全', 'video editing': '视频编辑',
@@ -398,9 +403,10 @@ function toReferenceDisplay(value) {
     .replace(/Source assets:/g, '素材来源：').replace(/([^\s。！？；;，,：:、.!?])[ \t]+素材来源：/g, '$1。素材来源：').replace(/The shot shows (<主体 [1-9]\d*>)\./g, '画面中呈现 $1。').replace(/The shot features ((?:<主体 [1-9]\d*>(?:, | and )?)+)\./g, (_, list) => '画面中有 ' + list.replace(/, | and /g, '、') + '。')
     .replace(/^(<主体 [1-9]\d*>) is /gm, '$1：').replace(/^(<主体 [1-9]\d*>) appearance from ([^\n:：]+?)\s*[:：]\s*/gm, (_, subject, from) => subject + '：外观来自 ' + from.trim().replace(/\s*(?:,|\band\b)\s*/g, '、') + '，').replace(/^N\/A\.?$/gm, '无');
   text = text.replace(/\[([^\]\n]+)\]/g, (all, terms) => terms.split(/\s*\+\s*/).every(t => referenceDisplayTerms[t]) ? '[' + terms.split(/\s*\+\s*/).map(t => referenceDisplayTerms[t]).join(' + ') + ']' : all);
-  // Chinese sentences follow each other without a space; in 画面与动作 each subject's sentence and each later shot starts a line.
+  // Chinese sentences follow each other without a space; in 画面与动作 each subject's sentence, the camera sentence and each later shot
+  // starts a line, never inside a spoken line or quoted text (“看这里。镜头在这边！” stays one line and reads back as dialogue).
   text = joinChineseSentences(text)
-    .replace(/(^【画面与动作】\n)([\s\S]*?)(?=\n【(?:环境声音|背景音乐)】|$(?![\s\S]))/m, (_, head, body) => head + body.replace(/([。！？])(?=<主体 [1-9]\d*>|镜头)/g, '$1\n').replace(/\s*(【镜头 (?:[2-9]|[1-9]\d+)】)/g, '\n$1'));
+    .replace(/(^【画面与动作】\n)([\s\S]*?)(?=\n【(?:环境声音|背景音乐)】|$(?![\s\S]))/m, (_, head, body) => head + body.replace(/(“[^”\n]*”|"[^"\n]*"|<d>[\s\S]*?<\/d>)|([。！？])(?=<主体 [1-9]\d*>|镜头)/g, (all, literal, stop) => literal || stop + '\n').replace(/\s*(【镜头 (?:[2-9]|[1-9]\d+)】)/g, '\n$1'));
   return text.replace(/:\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/g, (_, term) => ': ' + referenceDisplayTerms[term]);
 }
 function fromReferenceDisplay(value) {
@@ -732,13 +738,18 @@ const baseFieldNotes = {
 };
 const baseFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(baseFields.map((k, i) => [k, {type:'string', minLength:1, description:language === 'zh' ? baseFieldNotes.zh : baseFieldNotes.en[i]}])), required:baseFields});
 const baseResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:baseFieldSchema('en'), displayPrompt:baseFieldSchema('zh')}, required:['modelPrompt','displayPrompt']};
-// A frame the text does not name joins the sentence it belongs to, as in the official FL2V case: the opening frame closes the first
-// sentence (…, as shown in <Picture 1>.), the final frame the last one (…, settling into the pose … established by <Picture 2>.).
+// A frame the text does not name is anchored as in the official FL2V case. The writer's opening (a first sentence that starts with
+// the style word) closes with the opening frame (…, as shown in <Picture 1>.); any other text, where the first sentence may already
+// act, starts with the official sentence instead. The final frame closes the last sentence (…, settling into … <Picture 2>.). A clause
+// replaces only a full stop or joins an unfinished sentence; after ！, ？, …, a spoken line or a quote the official sentence stands alone.
 const baseAnchors = {
   open: {en:', as shown in <Picture 1>', zh:'，画面如 <Picture 1> 所示'},
   close: {en:', settling into the pose, spacing, and composition established by <Picture 2>', zh:'，最终落定在 <Picture 2> 的姿态、位置与构图'},
+  openSentence: {en:'The shot begins in the position and framing established by <Picture 1>.', zh:'画面从 <Picture 1> 的位置与构图开始。'},
+  closeSentence: {en:'At the end of the shot, the action settles into the pose, spacing, and composition established by <Picture 2>.', zh:'结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。'},
 };
-const foldAnchor = (sentence, clause) => sentence.replace(/[\s.。!?！？]*$/, '') + clause + (hanPattern.test(clause) ? '。' : '.');
+const styleOpening = /^(?:live-action|2d-animated|3d cg|claymation|watercolou?r|vintage film|写实|二维动画|三维 ?CG|黏土动画|水彩|复古胶片)/i;
+const foldAnchor = (sentence, clause) => /[^\s.。!?！？…"”>][.。]?\s*$/.test(sentence) ? sentence.replace(/[.。]?\s*$/, '') + clause + (hanPattern.test(clause) ? '。' : '.') : '';
 const baseCamera = {en:'The camera holds a static shot and the framing stays stable.', zh:'镜头固定，构图保持稳定。'};
 const hanPattern = /[\u3400-\u9fff]/;
 // Dialogue blocks and quoted on-screen text stay verbatim in every language.
@@ -909,8 +920,9 @@ function fixDisplayWords(text, own) {
   }).replace(/\u0003[ \t]+\u0002/g, '').replace(/[\u0002\u0003]/g, '').replace(/(\bAt \d{2}:\d{2}\.\d{3})[ \t]*(?:(?:时|秒)[ \t]*[,，]?|[,，])[ \t]*/g, '$1 ').replace(/(?<=(?:镜头|摄影机|摄像机|相机)[^。！？\n]{0,20})(?<![所可难得用足借据予加])以(?:缓慢|较慢|慢(?=的?速))(?:的?速度|速)?/g, '缓慢')
     .replace(/(?<=(?:镜头|摄影机|摄像机|相机)[^。！？\n]{0,20})(?<![所可难得用足借据予加])以(?:快速|较快|快(?=的?速))(?:的?速度|速)?/g, '快速')
     .replace(/镜头(?:最后|最终)?以((?:(?!直到|开场|开始|拍摄|时)[^。！？，,；;\n]){2,40}?)结束(?=[。！？，,；;\n]|$)/g, '最后画面停在$1').replace(/环境室调[声音]?/g, '室内环境声').replace(/中景近景/g, '近景')
-    // A size the cut phrase left with its English "of" and a tag (镜头切到特写 of <Subject 2>) reads the Chinese way; "of both" goes to the fix call.
-    .replace(new RegExp('(' + sizeWords + ')[ \\t]+of[ \\t]+(<(?:Subject|Picture) [1-9]\\d*>)', 'g'), '$2 的$1')).replace(/(<(?:Subject|Picture|Video|Audio) [1-9]\d*>)(?=[\u3400-\u9fff])/g, '$1 ').replace(/([\u3400-\u9fff])(?=<(?:Subject|Picture|Video|Audio) [1-9]\d*>)/g, '$1 ');
+    // A size the cut phrase left with its English "of" reads the Chinese way (特写 of <Subject 2> → <Subject 2> 的特写); both or them
+    // becomes 两者, which fits people, animals and things alike (two cats are not 两人), so no English and no fix call is left.
+    .replace(new RegExp('(' + sizeWords + ')[ \\t]+of[ \\t]+(?:(both(?:[ \\t]+of[ \\t]+them)?|them)|(<(?:Subject|Picture) [1-9]\\d*>))', 'g'), (_, size, both, tag) => (both ? '两者' : tag + ' ') + '的' + size)).replace(/(<(?:Subject|Picture|Video|Audio) [1-9]\d*>)(?=[\u3400-\u9fff])/g, '$1 ').replace(/([\u3400-\u9fff])(?=<(?:Subject|Picture|Video|Audio) [1-9]\d*>)/g, '$1 ');
 }
 // The display sentences that still carry an English word, with each such word marked ⟦word⟧: the one small fix call rewrites
 // only these, and removing the marks gives the sentence back.
@@ -976,11 +988,12 @@ const officialEnglish = text => outsideLiterals(String(text), part => part
   // ", static shot" as a trailing label, not an adjective list ("ending on a wide, static shot").
   .replace(/(?<!\b(?:a|an)\s+[\w-]+),\s*(?:a\s+)?static shot(?=\s*(?:[.;!]|$))/gi, '. The camera holds a static shot')
   .replace(/\b((?:[Cc]amera|[Ss]hot|[Ii]t) (?:\w+ly )?)pan(s|ned|ning)? (down|up)(?:wards?)?\b/g, (_, subject, suffix = '', direction) => subject + 'tilt' + ({ned:'ed', ning:'ing'}[suffix] ?? suffix) + ' ' + direction)
-  // A camera move reads with the official speed words: pull out (not back), at slow or fast speed, no vague smoothly or steadily.
-  .replace(cameraSpeed, (_, camera, before, verb, direction, after, speed) => camera + ' ' + verb + (/^pull/.test(verb) && direction === ' back' ? ' out' : direction)
+  // A camera move reads with the official speed words: pull out (not back), at slow or fast speed, no vague smoothly or steadily;
+  // a speed the writer already gave after the amplitude (slowly pushes in with small amplitude at slow speed) is not given twice.
+  .replace(cameraSpeed, (_, camera, before, verb, direction, after, amplitude, speed) => camera + ' ' + verb + (/^pull/.test(verb) && direction === ' back' ? ' out' : direction) + amplitude
     + (/slow/.test(speed) || /slowly|gently/.test(before + after) ? ' at slow speed' : /fast/.test(speed) || /quickly|rapidly/.test(before + after) ? ' at fast speed' : '')));
 const cameraSpeed = new RegExp('\\b([Cc]amera)((?: (?:slowly|smoothly|steadily|gently|quickly|rapidly))*) ((?:pan|track|truck|tilt|push|pull|dolly|dollie|move|drift|glide|zoom|arc|pedestal|crane|follow|orbit|rise|descend|sweep)(?:s|es|ed|ing|ned|ning)?)'
-  + '((?: (?:in|out|back|left|right|up|down|forward|backward|closer))?)((?: (?:slowly|smoothly|steadily|gently|quickly|rapidly))*)((?: at (?:an? )?(?:slow|fast|medium|moderate|steady|constant|even|matching) (?:speed|pace))?)\\b', 'g');
+  + '((?: (?:in|out|back|left|right|up|down|forward|backward|closer))?)((?: (?:slowly|smoothly|steadily|gently|quickly|rapidly))*)((?: with (?:small|large) amplitude)?)((?: at (?:an? )?(?:slow|fast|medium|moderate|steady|constant|even|matching) (?:speed|pace))?)\\b', 'g');
 function baseModeName(mode) {
   const name = String(mode || '').toLowerCase();
   return /^(?:text_video|t2va?)$/.test(name) ? 'text_video' : /^(?:image_video|i2va?)$/.test(name) ? 'image_video' : /^(?:first_last|fl2va?)$/.test(name) ? 'first_last' : '';
@@ -1002,7 +1015,7 @@ function appendSentence(text, sentence) {
   if (!head) return sentence;
   const han = hanPattern.test(head.replace(/<[^<>]*>/g, '').match(/[\u3400-\u9fffA-Za-z][^\u3400-\u9fffA-Za-z]*$/)?.[0] || '');
   const ended = /(?:[。！？.!?…”"」』）)]|<\/d>)$/.test(head) ? head : head + (han ? '。' : '.');
-  return ended + (/[。！？]$/.test(ended) || (/[”」』）>]$/.test(ended) && hanPattern.test(sentence.charAt(0))) ? '' : ' ') + sentence;
+  return ended + (/[。！？]$/.test(ended) || (/[”」』）>…]$/.test(ended) && hanPattern.test(sentence.charAt(0))) ? '' : ' ') + sentence;
 }
 // Fields form: a JSON object or `name: value` blocks, with any alignment line before them (dropped) or the editor display.
 function parseBaseFields(value) {
@@ -1177,21 +1190,22 @@ function checkBase(value, options = {}) {
     return words.length >= 8 && words.join('').length > (prose.match(/[\u3400-\u9fff]/g) || []).length * 2;
   })) throw new Error(baseIssue.chinese);
   if (options.language === 'en') text = officialEnglish(text);
-  // Every supplied frame is named in the narrative: the opening frame in the first sentence, the final frame in the last one.
+  // Every supplied frame is named in the narrative: the opening frame at the start, the final frame at the end.
   const language = options.language || (hanPattern.test(proseOf(text)) ? 'zh' : 'en');
   if (allowed.length && !text.includes('<Picture 1>')) text = text.replace(/^\[Shot 1\] ?([^\n]*)/, (_, line) => {
     // The first sentence ends outside dialogue and quoted text ("出发吧。" inside <d> is not the end).
     let offset = 0, end = -1;
     line.split(literalSplit).some((part, i) => {
-      const stop = i % 2 ? null : /[。！？]|[.!?](?=\s|$)/.exec(part);
+      const stop = i % 2 ? null : /[。！？…]|[.!?](?=\s|$)/.exec(part);
       if (stop) end = offset + stop.index + 1;
       offset += part.length;
       return stop;
     });
-    const rest = end < 0 ? '' : line.slice(end).trim();
-    return '[Shot 1] ' + (rest ? appendSentence(foldAnchor(line.slice(0, end), baseAnchors.open[language]), rest) : foldAnchor(line, baseAnchors.open[language]));
+    const first = end < 0 ? line : line.slice(0, end), rest = end < 0 ? '' : line.slice(end).trim();
+    const folded = styleOpening.test(first) && foldAnchor(first, baseAnchors.open[language]);
+    return '[Shot 1] ' + (!folded ? appendSentence(baseAnchors.openSentence[language], line) : rest ? appendSentence(folded, rest) : folded);
   });
-  if (allowed.length > 1 && !text.includes('<Picture 2>')) text = foldAnchor(text, baseAnchors.close[language]);
+  if (allowed.length > 1 && !text.includes('<Picture 2>')) text = foldAnchor(text, baseAnchors.close[language]) || appendSentence(text, baseAnchors.closeSentence[language]);
   fields.integrated_multimodal_description = text;
   return {fields, mode, duration, language};
 }

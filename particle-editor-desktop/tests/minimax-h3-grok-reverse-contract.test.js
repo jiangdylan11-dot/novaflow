@@ -968,7 +968,7 @@ assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
   const framedSchema = JSON.parse(JSON.stringify(framed.body.text.format.schema));
   // 图生 asks the writer first what <Picture 1> shows and how each action stays on screen (openingFrame, dropped by the program).
   assert.deepEqual(framedSchema.required, ["openingFrame", "modelPrompt", "displayPrompt", "contentSafety"]);
-  assert.match(framedSchema.properties.openingFrame.description, /which body parts are out of frame\. Body:[\s\S]*Hands:[\s\S]*never with a noun from the request\. Light:[\s\S]*Camera:[\s\S]*even when everything already fits the frame\. Plan:[\s\S]*quoted word for word[\s\S]*the requested action nearest the cut/);
+  assert.match(framedSchema.properties.openingFrame.description, /which body parts are out of frame\. Body:[\s\S]*Hands:[\s\S]*never with a noun from the request\. Light:[\s\S]*Plan:[\s\S]*quoted word for word[\s\S]*the requested action nearest the cut\)\. Camera, written last from the Frame and Plan lines: [\s\S]*the Frame line leaves out, the pull-out or tilt[\s\S]*even when everything already fits the frame\.$/);
   assert.deepEqual(framedSchema.properties.contentSafety.required, ["explicitMinorEvidence", "sensitiveContent"]);
   assert.deepEqual(framedSchema.properties.modelPrompt, JSON.parse(JSON.stringify(h3.baseResultSchema.properties.modelPrompt)));
   // With pictures in a pair the person rule stays in the request text; the faithful-facts and fail-closed rules ride in the schema.
