@@ -37,19 +37,21 @@ const qwen21Info = {
 const rendererDir = fileURLToPath(new URL('../../worker-renderer/', import.meta.url));
 const host21 = await createWorkflowHost({ rendererDir, objectInfo: qwen21Info });
 const byClass = (graph, type) => Object.entries(graph).filter(([, node]) => node.class_type === type);
-// The shared Drawing surface must use a fresh latent for a complete UI redesign even at the
-// reference's exact aspect, while ordinary Drawing and explicit UI edits keep their edit latent.
-for (const intent of [undefined, 'redesign', 'iteration']) {
+// Match the reference's working size for UI edits that preserve layout. Explicit relayout
+// keeps the fresh-layout route; ordinary Drawing retains its original sampling behavior.
+for (const [intent, preserveLayout] of [[undefined,undefined], ['redesign',false], ['iteration',undefined], ['redesign',true], ['style-transfer',true]]) {
   const graph = await host21.buildGraph({
     module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
       'local', 'img2img', ['screen.png'], 'UI_redesign', '按新主题重新设计完整界面', '', 'test',
       [{ width: 758, height: 1640 }],
-      { provider: 'local', mode: 'img2img', width: 758, height: 1640, seed: 7, localDrawEngine: 'qwen-2.1', ...(intent ? {uiRunIntent:intent} : {}) }
+      { provider: 'local', mode: 'img2img', width: 758, height: 1640, seed: 7, localDrawEngine: 'qwen-2.1', uiPreserveLayout:preserveLayout, ...(intent ? {uiRunIntent:intent} : {}) }
     ] }
   });
-  assert.equal(graph['7'].inputs.latent_image[0], intent === 'redesign' ? '6' : '5');
+  assert.equal(graph['7'].inputs.latent_image[0], preserveLayout ? '5' : intent === 'redesign' ? '6' : '5');
+  assert.equal(graph['7'].inputs.denoise, 1);
   assert.equal(graph['7'].inputs.steps, 40);
-  if (intent === 'redesign') assert.doesNotMatch(graph['5'].inputs.prompt, /保持图1中主体的位置/);
+  if (preserveLayout) assert.match(graph['5'].inputs.prompt, /人物展示区必须保留/);
+  if (intent === 'redesign' || intent === 'style-transfer') assert.doesNotMatch(graph['5'].inputs.prompt, /保持图1中主体的位置/);
   else assert.match(graph['5'].inputs.prompt, /保持图1中主体的位置/);
 }
 const uiRoles = (roles) => roles.map((role, index) => ({ index, role }));

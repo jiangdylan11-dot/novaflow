@@ -166,6 +166,10 @@
       },
     }
   }
+  function explicitlyChangesLayout(prompt) {
+    const affirmative = String(prompt || '').replace(/不(?:要|用|必|需要)?(?:改变|修改|重做|更改|调整)(?:页面|界面)?布局|不(?:要|用|必|需要)?重新(?:布局|排版)|(?:布局|排版)(?:不变|不改|不要改)/g, '')
+    return /重新布局|重新排版|(?:改变|修改|重做|更改|调整)布局|布局.{0,8}(?:改成|改为|换成|重新|重做|调整)|不(?:需要|用)?保留布局|不要沿用.{0,6}布局|自由(?:布局|排版)/i.test(affirmative)
+  }
   function inputFor({ state, references, referenceLimit }) {
     const refs = references.filter(ref => ref?.dataUrl)
     if (refs.length > referenceLimit) throw new Error(`当前模型最多支持 ${referenceLimit} 张参考图，请先移除多余图片`)
@@ -179,8 +183,10 @@
     return {
       provider: state.provider || 'local', engine: mounted?.store.getState().settings?.assistantEngine || 'grok',
       prompt, negativePrompt: String(state.negativePrompt || ''),
+      preserveLayout: refs.length > 0 && !explicitlyChangesLayout(prompt),
       generationIntent: /(?:不(?:需要|用|必)?保留任何(?:元素|内容|东西)|无需保留任何|(?:全部|整体)重做|整(?:个|张)\s*(?:UI|界面).{0,8}重新设计|start over)/i.test(prompt)
         ? 'redesign'
+        : /(?:风格迁移|只.{0,8}(?:风格|画风)|(?:换|更换|改变|转换|切换).{0,8}(?:画风|风格)|(?:画风|风格).{0,8}(?:改成|换成|改为)|style.?transfer)/i.test(prompt) ? 'style-transfer'
         : /(?:其他|其它|其余|剩余|其[他它]部分).{0,12}(?:不变|保持|保留)|(?:只|仅)(?:修改|调整|替换|更改)|\b(?:only (?:change|edit|replace)|keep .{0,24}unchanged)\b/i.test(prompt) ? 'iteration' : 'redesign',
       size: outputSize(state),
       structure: modelStructure(layout?.uiStructure),
@@ -200,6 +206,7 @@
       const state = copy(Object.fromEntries(keys.filter(key => context.state[key] !== undefined).map(key => [key, context.state[key]])))
       state.nsfw = false
       state.uiRunIntent = input.generationIntent
+      state.uiPreserveLayout = input.preserveLayout
       state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider, state.mode, state)?.engine || ''
       // With no references the same img2img controls still own the text-only run's cloud settings.
       if (!input.references.length) {
@@ -209,16 +216,24 @@
       const result = await root.NovaFlowUiDesignPromptPipeline.run({ id: 'ui-drawing', input, signal: controller.signal, assistant: root.NovaFlowUiDesignAssistantWorkflow })
       if (controller.signal.aborted) throw new Error('任务已中止')
       const layoutText = input.structure.regions?.length ? `\n布局参考中的模块约束（只约束布局与功能，不把线框画入成品）：\n${JSON.stringify(input.structure)}` : ''
-      const intentText = input.generationIntent === 'iteration'
+      const intentText = input.generationIntent === 'style-transfer'
+        ? '本次是风格迁移：保留内容参考图的功能、文字、人物身份、姿势和物品；未要求改变的区域布局、网格行列及数量不变，只改变用户要求的画风、配色、材质和组件视觉。风格图只提供视觉语言，不带入它的内容或布局。'
+        : input.generationIntent === 'iteration'
         ? '本次是局部修改，只修改用户指定部分，保留用户要求不变的区域。'
         : '本次是完整 UI 重新设计。参考图提供用户指定的布局、风格或素材，不是必须保留的原图。除用户明确要求保留的内容外，按目标主题重新设计背景、人物、符号、面板、按钮和装饰；不能只给原人物换衣服或只修改局部。'
+      const designText = input.preserveLayout
+        ? (input.generationIntent === 'style-transfer'
+          ? result.prompt.match(/\[视觉规范\]([\s\S]*)/)?.[1]
+          : result.prompt.match(/\[区域设计\]([\s\S]*)/)?.[1]) || result.prompt
+        : result.prompt
       const prompt = [
-        '生成完整的 UI 界面设计图。',
+        input.preserveLayout ? '编辑布局参考图中的 UI，在原位置逐区执行用户要求。' : '生成完整的 UI 界面设计图。',
         `用户原始需求（最高优先级）：${input.prompt || '根据参考图生成新的完整 UI 设计'}`,
         intentText,
-        `设计方案：\n${result.prompt}`,
+        input.preserveLayout ? '布局硬约束：完整保留布局参考图的全部区域，包括人物展示区、图标区和底部操作区；相对位置、占比、顺序、叠放关系、图标网格行列数及控件数量不变。视觉重做不等于重新布局，不得删除区域或扩大图标区挤占人物区；按同一区域一一替换所有视觉。' : '',
+        `视觉要求：\n${designText}`,
         layoutText,
-        '执行优先级：用户原始需求 > 自建布局的功能与分布 > 设计方案。方案中与用户需求冲突的原人物、旧主题、背景、图标或文案不应保留；用户要求不保留任何元素时，全部视觉元素都要重新设计。',
+        '执行优先级：用户原始需求 > 布局参考的功能、分布和数量 > 设计方案。方案中与用户需求冲突的原人物、旧主题、背景、图标或文案不应保留；用户要求不保留任何元素时，全部视觉元素都要重新设计，但未明确要求重排时仍保留布局。',
       ].filter(Boolean).join('\n\n')
       return {
         promptSnapshot: { prompt, negativePrompt: input.negativePrompt || result.negativePrompt || '' },

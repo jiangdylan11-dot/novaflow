@@ -9173,6 +9173,23 @@ function grokResponsesPublicResult(data, options = {}) {
       )
       : parseSmartAiPromptResult(rawText, options);
   if (options.uiDesignPrompt === true) {
+    // The source reference tokens are transport identifiers, not visual decisions. Keep each
+    // exactly once as on the local UI assistant, without guessing a different image number.
+    const sourceTokens = [...new Set(String(options.originalPrompt || "").match(/__NOVAFLOW_[A-Z0-9_:-]+__/g) || [])];
+    const missing = [];
+    for (const token of sourceTokens) {
+      let count = 0;
+      parsed.prompt = String(parsed.prompt || "").replaceAll(token, () => ++count === 1 ? token : "");
+      if (!count) missing.push(token);
+    }
+    if (missing.length && String(parsed.prompt || "").includes("[参考用途]")) {
+      parsed.prompt = parsed.prompt.replace("[参考用途]", `[参考用途]\n参考标识：${missing.join("、")}。`);
+    }
+    if (options.uiPreserveLayout === true) {
+      // Reference geometry is authoritative. Do not turn a vision model's guessed grid size
+      // or occupancy into a new layout requirement; explicit changes remain in the original request.
+      parsed.prompt = String(parsed.prompt || "").replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, "[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n");
+    }
     const sections = ["界面目标", "参考用途", "布局与功能", "区域设计", "视觉规范"];
     const uiPrompt = String(parsed.prompt || "");
     if (!sections.every((title, index) => {
@@ -9493,12 +9510,14 @@ function buildUiDesignPromptRequest(payload, model) {
   content.push(smartAiInputText([
     "用户原始设计需求（最高优先级）：", prompt || "见补充要求",
     "布局、尺寸与参考职责：", requirements || "由用户需求和参考图判断",
+    payload?.uiDesignIntent === "style-transfer" ? "本次是风格迁移：保留内容图的功能、文案、人物身份和姿势、物品；未要求改变的布局、区域占比、网格行列及数量不变；只改变用户指定的画风、配色、材质和组件视觉。风格图不能改变内容或布局。" :
     `本次任务：${payload?.uiDesignIntent === "iteration" ? "局部修改，仅保留用户要求不变的部分" : "完整界面设计，参考图不默认锁定旧主题或身份"}。`,
+    "有完整UI布局参考时，先逐区清点原界面：人物展示区、图标区、提示栏和操作栏全部保留。记录相对位置、占比、顺序、叠放关系、网格准确行列数和控件数量，必须逐行逐列数清，不按常见模板猜测。主题重做只替换视觉，禁止重排、合并、删除区域或改变格数。用户说不保留任何元素，指美术内容，不代表取消布局；只有明确要求重新布局或重新排版时才改变结构。风格图和人物物品图不提供布局。",
     "先判断界面用途及每张参考图的职责，再形成一个完整 UI 方案。用户指定某图只参考布局，就只保留功能区域的位置与层级；风格图只参考配色、材质、边框、按钮、图标语言；人物物品图只使用指定素材。普通参考图按用户文字判断用途，不自动当作唯一主体。",
-    "新主题或重新设计必须贯穿整张界面：人物、背景、图标符号、边框装饰、按钮和面板均使用新主题；不能只给人物换衣服而沿用旧背景与旧符号。用户说不保留任何元素时，旧人物身份、道具、背景、图标、色彩和文案均不保留；只组织目标界面所需的功能和新视觉。局部修改才保留用户明确要求不变的部分。",
+    "新主题或重新设计必须贯穿整张界面：人物、背景、图标符号、边框装饰、按钮和面板均使用新主题；不能只给人物换衣服而沿用旧背景与旧符号。用户说不保留任何元素时，旧人物身份、道具、背景、图标、色彩和文案均不保留；保留布局参考中全部区域、占比和网格行列，只替换为新视觉。局部修改才保留用户明确要求不变的部分。",
     "有布局时保留区域与功能关系，矩形只是占位范围，不限制最终组件轮廓；没有布局时按需求组织合理界面。布局编辑名称只是用户识别标记，不是最终文案。不得把说明、辅助框和编辑工具画进成品。",
     "目标界面中的按钮、菜单和文字是有效设计内容；仅忽略外部软件工具栏、编辑手柄和辅助线。文字只用用户指定文案或必要的通用短标签，不虚构数据和长段文字。",
-    "输出 prompt 使用五个 UI 专用段落：[界面目标]写用途和新主题；[参考用途]写各图可借鉴内容及不继承内容；[布局与功能]写区域位置、内容层级和控件；[区域设计]逐区落实背景、人物、图标、面板和按钮的目标设计；[视觉规范]统一配色、材质、轮廓、排版、间距、对齐和可读性。每段必须有具体内容，不写空泛品质词，不用绘画五段式或摄影参数，不输出分析或多个方案。",
+    "输出 prompt 使用五个 UI 专用段落：[界面目标]写用途和新主题；[参考用途]写各图可借鉴内容及不继承内容；[布局与功能]逐区写准确位置、占比、叠放关系和控件数量；网格明确写几列几行，人物展示区单独列出，禁止遗漏；[区域设计]逐区落实背景、人物、图标、面板和按钮的目标设计；[视觉规范]统一配色、材质、轮廓、排版、间距、对齐和可读性。每段必须有具体内容，不写空泛品质词，不用绘画五段式或摄影参数，不输出分析或多个方案。",
     "所有 __NOVAFLOW_ 开头并以双下划线结尾的资源占位符原样保留一次，不改写、不重复。用户要求高于参考图外观；写完逐区检查没有遗留与新主题冲突的旧元素。",
     supportsNegativePrompt ? `当前避免内容：${negative || "无"}。negative_prompt 只列不希望出现的元素或效果，不删除用户要求。` : "当前模型没有独立负面提示通道，避免内容融入目标设计约束。",
   ].join("\n")));
@@ -9515,7 +9534,7 @@ function buildUiDesignPromptRequest(payload, model) {
     inputMeta: { mode: "ui_design", charCount: prompt.length + requirements.length + negative.length,
       imageCount: scenario.images.length, sourceImageCount: scenario.sourceCount, scenario: scenario.scenario,
       targetIndex: scenario.targetIndex, supportsNegativePrompt, hasNegativePrompt: Boolean(negative) },
-    resultOptions: { uiDesignPrompt: true, supportsNegativePrompt },
+    resultOptions: { uiDesignPrompt: true, supportsNegativePrompt, originalPrompt: prompt, uiPreserveLayout: payload?.uiPreserveLayout === true },
   };
 }
 

@@ -253,7 +253,10 @@
     const size = options.size || structure
     const content = [
       '你是 UI 视觉设计助手。只输出可直接生成设计图的最终中文提示词。根据用户要求理解布局、风格和人物物品参考的分工，不强加预设风格、内容类型或商业化倾向。',
-      options.generationIntent === 'iteration'
+      '有完整UI布局参考时，先逐区清点原界面：人物展示区、图标区、提示栏和操作栏全部保留。记录相对位置、占比、顺序、叠放关系、网格准确行列数和控件数量，必须逐行逐列数清，不按常见模板猜测。主题重做只替换视觉，禁止重排、合并、删除区域或改变格数。用户说不保留任何元素，指美术内容，不代表取消布局；只有明确要求重新布局或重新排版时才改变结构。风格图和人物物品图不提供布局。',
+      options.generationIntent === 'style-transfer'
+        ? '本次为风格迁移，保持参考界面的功能、文案和内容身份；用户未要求改变的布局、网格行列及物品数量不变，只改变指定视觉风格，不能重做内容。'
+        : options.generationIntent === 'iteration'
         ? '本次为局部编辑，用户指定要保留的部分不变。'
         : '本次为完整 UI 设计。参考图只按用户指定用途借鉴，不默认锁定原图的人物、背景、图标、文案或旧主题。用户要求重新设计或不保留任何元素时，全部视觉区域一起改成目标主题，不能只替换人物服装；最终提示词必须明确这些改动，不能描述成原图局部编辑。',
       '用户明确要求优先；有自建布局时遵守各区域位置、用途和数量。没有布局时按用户需求和布局参考合理排布。风格图只借鉴配色、材质、按钮、边框、图标和排版，不移植无关人物、商品或文字。按要求融合指定元素。',
@@ -398,7 +401,8 @@
         requirements,
         purpose,
         surface: 'ui-design',
-        uiDesignIntent: options.generationIntent === 'iteration' ? 'iteration' : 'redesign',
+        uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
+        uiPreserveLayout: options.preserveLayout === true,
         scenario: references.length ? 'role_reference' : undefined,
         sourceCount: references.length,
         targetIndex: 0,
@@ -417,7 +421,8 @@
         requirements,
         purpose,
         surface: 'ui-design',
-        uiDesignIntent: options.generationIntent === 'iteration' ? 'iteration' : 'redesign',
+        uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
+        uiPreserveLayout: options.preserveLayout === true,
         provider,
         images: references.map((reference) => ({
           dataUrl: reference.dataUrl,
@@ -434,7 +439,8 @@
         requirements,
         purpose,
         surface: 'ui-design',
-        uiDesignIntent: options.generationIntent === 'iteration' ? 'iteration' : 'redesign',
+        uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
+        uiPreserveLayout: options.preserveLayout === true,
         provider,
       }), options.timeoutMs, engine)
     }
@@ -446,6 +452,7 @@
     }
 
     const parsed = unwrapResult(result)
+    if (options.preserveLayout) parsed.prompt = parsed.prompt.replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, '[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n')
     const restoredPrompt = restoreText(parsed.prompt, promptProtection)
     if (!restoredPrompt.ok) throw new Error('参考图引用保护失败，已保留原设计要求')
     let restoredNegative = { ok: true, text: '' }

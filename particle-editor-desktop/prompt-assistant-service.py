@@ -5713,6 +5713,9 @@ def is_ui_design_prompt_payload(payload: dict) -> bool:
 
 
 UI_DESIGN_PLAN_RULES = (
+    "不确定的区域比例、控件数量和网格行列不要估算，直接按原图保留，不给生成模型伪造布局数据。"
+    "有完整UI布局参考时，先逐区清点原界面：人物展示区、图标区、提示栏和操作栏全部保留。记录相对位置、占比、顺序、叠放关系、网格准确行列数和控件数量，必须逐行逐列数清，不按常见模板猜测。主题重做只替换视觉，禁止重排、合并、删除区域或改变格数。用户说不保留任何元素，指美术内容，不代表取消布局；只有明确要求重新布局或重新排版时才改变结构。风格图和人物物品图不提供布局。"
+    "用户只要求换风格时，保留参考界面的功能、文案、人物身份和姿势；未要求改变的布局、网格行列及物品数量不变，只改变指定视觉风格。"
     "用户原始需求优先于参考图外观。先判断界面用途和每张图的职责：布局只决定功能区域的位置、主次和层级，"
     "风格只决定配色、材质、边框和组件语言，人物物品只使用用户指定素材；普通参考不默认锁定人物身份。"
     "完整设计或新主题须覆盖人物、背景、符号图标、装饰、面板和按钮，不能只给人物换衣服而沿用旧背景与符号。"
@@ -16806,7 +16809,7 @@ class PromptAssistant:
             system_prompt = qwen3_chatml(
                 "你是 NovaFlow UI 视觉设计师，设计完整界面，而不是反推照片或只修改主角。",
                 UI_DESIGN_PLAN_RULES
-                + f"\n任务：{'仅局部修改' if payload.get('uiDesignIntent') == 'iteration' else '完整界面设计'}"
+                + f"\n任务：{'风格迁移，保留内容及布局' if payload.get('uiDesignIntent') == 'style-transfer' else '仅局部修改' if payload.get('uiDesignIntent') == 'iteration' else '完整界面设计'}"
                 + f"\n用户原始设计需求（最高优先级）：\n{raw_prompt}"
                 + f"\n布局、尺寸与参考职责：\n{requirements}"
                 + "\n只输出约400到800字的最终五段中文 UI 设计方案。",
@@ -20125,7 +20128,7 @@ class PromptAssistant:
             prompt = (
                 f"{image_tokens}"
                 + UI_DESIGN_PLAN_RULES
-                + f"\n任务：{'仅局部修改' if payload.get('uiDesignIntent') == 'iteration' else '完整界面设计'}"
+                + f"\n任务：{'风格迁移，保留内容及布局' if payload.get('uiDesignIntent') == 'style-transfer' else '仅局部修改' if payload.get('uiDesignIntent') == 'iteration' else '完整界面设计'}"
                 + f"{prompt_context}{requirements_context}"
             )
             llama_template = (

@@ -83811,10 +83811,11 @@
     // size shifts the edit). So with W / H on reference 1's aspect, reference 1 goes in at the working
     // size and the run is an edit; another aspect is a new layout on an empty latent of that size.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
-    const editInPlace = state?.uiRunIntent !== "redesign" && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
+    const editInPlace = (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
-    if (editInPlace) encode.prompt += "\n\n未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变。";
+    if (state?.uiPreserveLayout === true) encode.prompt += "\n\nUI布局约束：保持布局参考图的全部区域、相对位置、占比、前后叠放关系、网格行列及控件数量。人物展示区必须保留，图标区不得扩张挤占人物区；按用户要求逐区处理视觉，风格迁移保留人物及内容身份，新主题才替换指定美术。";
+    else if (editInPlace) encode.prompt += "\n\n未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变。";
     const scaleTo =(index, image, width, height) => {
       const scaleId = String(200 + index);
       workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width, height, crop: "disabled" } };
@@ -84031,7 +84032,7 @@
     if (window.NovaFlowWebRuntime) {
       const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
         'samplingOverrides', 'negativePrompt',
-        'uiRunIntent', 'iterationReferenceCount', 'localUiEngine',
+        'uiRunIntent', 'uiPreserveLayout', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
         'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
       const runState = Object.fromEntries(stateKeys.filter((key) => state[key] !== undefined).map((key) => [key, state[key]]));
@@ -84580,7 +84581,8 @@
         randomSeed: source.randomSeed !== false,
         seed: Number.isFinite(Number(source.seed)) ? Math.round(Number(source.seed)) : -1,
         localEditStrength: source.localEditStrength === "enhanced" ? "enhanced" : "faithful",
-        uiRunIntent: source.uiRunIntent === "iteration" ? "iteration" : "redesign",
+        uiRunIntent: ["iteration", "style-transfer"].includes(source.uiRunIntent) ? source.uiRunIntent : "redesign",
+        uiPreserveLayout: source.uiPreserveLayout === true,
         localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",
