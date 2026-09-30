@@ -893,6 +893,49 @@
     }
   };
 
+  // Chromium's canvas video seek can lose VP8 alpha after the first frame.
+  // Decode saved cutout WebM with libvpx, whose yuva420p output retains the
+  // alpha plane, before exporting PNG frames or a Spine sequence.
+  api.exportDecodeAlphaVideoFrames = async (payload) => {
+    const sourceUrl = String(payload?.sourceUrl || '');
+    if (!sourceUrl) return fail('缺少透明视频源');
+    let ffmpeg;
+    const tag = 'alpha' + (++videoOutputSeq) + '_';
+    const input = tag + 'input.webm';
+    const outputPrefix = tag + 'frame_';
+    const outputPattern = outputPrefix + '%06d.png';
+    let names = [];
+    try {
+      ffmpeg = await loadFfmpeg();
+      if (typeof ffmpeg.listDir !== 'function') throw new Error('当前解码器不支持读取透明序列帧');
+      const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error('读取透明视频失败');
+      await ffmpeg.writeFile(input, new Uint8Array(await response.arrayBuffer()));
+      const args = ['-c:v', 'libvpx', '-i', input, '-an', '-vsync', '0', '-vf', 'format=rgba'];
+      const maxFrames = Number(payload?.maxFrames);
+      if (Number.isInteger(maxFrames) && maxFrames > 0) args.push('-frames:v', String(maxFrames));
+      args.push('-start_number', '0', '-y', outputPattern);
+      const code = await ffmpeg.exec(args);
+      if (code !== 0) throw new Error('透明视频解码失败：ffmpeg 退出码 ' + code);
+      names = (await ffmpeg.listDir('/')).map((entry) => entry.name)
+        .filter((name) => name.startsWith(outputPrefix) && name.endsWith('.png')).sort();
+      if (!names.length) throw new Error('透明视频没有可导出的帧');
+      const frames = [];
+      for (const name of names) {
+        const data = await ffmpeg.readFile(name);
+        frames.push(data instanceof Uint8Array ? data.slice() : new Uint8Array(data));
+      }
+      return { ok: true, frames };
+    } catch (error) {
+      return fail(String(error?.message || error));
+    } finally {
+      if (ffmpeg) {
+        for (const name of names) await ffmpeg.deleteFile(name).catch(() => {});
+        await ffmpeg.deleteFile(input).catch(() => {});
+      }
+    }
+  };
+
   // 颜色校正 is not offered on the Web line (removed 2026-09-25 at the user's request;
   // the brand runtime hides its 视频处理 entry). The helpers below are shared by
   // the video tools that remain.
@@ -1669,6 +1712,20 @@
    */
   const directoryHandles = new Map();
   let directorySeq = 0;
+  async function resolveWritableDirectory(dir) {
+    const token = String(dir || '');
+    const direct = directoryHandles.get(token);
+    if (direct) return direct;
+    for (const [base, handle] of directoryHandles) {
+      if (!token.startsWith(base) || !/^[\\/]/.test(token.slice(base.length))) continue;
+      const segments = token.slice(base.length).split(/[\\/]+/).filter(Boolean);
+      if (segments.some((segment) => segment === '.' || segment === '..')) return null;
+      let folder = handle;
+      for (const segment of segments) folder = await folder.getDirectoryHandle(segment, { create: true });
+      return folder;
+    }
+    return null;
+  }
   api.pickDirectory = async () => {
     if (typeof root.showDirectoryPicker !== 'function') {
       return fail('这个浏览器不支持选择文件夹，请改用拖拽或逐个选择文件', { canceled: false });
@@ -1799,7 +1856,9 @@
     }
     // Into the folder pickDirectory handed out, when the caller went through
     // it; otherwise the save dialog, one file at a time.
-    const folder = directoryHandles.get(String(options.dir || ''));
+    let folder;
+    try { folder = await resolveWritableDirectory(options.dir); }
+    catch (error) { return fail(error && error.message ? error.message : error); }
     if (folder) {
       try {
         const fileName = String(options.fileName || options.path || 'novaflow-output.bin').split(/[\\/]/).pop();

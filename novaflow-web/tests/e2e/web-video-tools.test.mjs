@@ -95,6 +95,56 @@ const api = sandbox.electronAPI;
 ok(typeof api.compressMp4 === 'function' && typeof api.convertVideoFormat === 'function', 'the Web build answers compressMp4 and convertVideoFormat');
 ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToolOutput === 'function', 'and the save / overwrite pair');
 
+// AI sequence export appends a NovaFlow folder to the picked Web directory.
+// Every frame must reuse that permission rather than opening a save dialog.
+{
+  const written = [];
+  const makeFolder = (path) => ({
+    name: path.split('/').pop(),
+    async getDirectoryHandle(name) { return makeFolder(path + '/' + name); },
+    async getFileHandle(name) {
+      return { async createWritable() { return {
+        async write(data) { written.push({ path: path + '/' + name, size: data.size }); },
+        async close() {}
+      }; } };
+    }
+  });
+  let pickerCalls = 0;
+  sandbox.showDirectoryPicker = async () => { pickerCalls += 1; return makeFolder('selected'); };
+  const originalSave = api.exportPickSaveFile;
+  api.exportPickSaveFile = async () => { throw new Error('unexpected per-frame save dialog'); };
+  const picked = await api.pickDirectory();
+  for (const index of [1, 2]) {
+    const saved = await api.writeBinaryFile({ dir: picked.dir + '\\NovaFlow\\images', fileName: `jc_000${index}.png`, bytes: new Uint8Array([index]) });
+    equal(saved.ok, true, `sequence frame ${index} is written through the picked folder`);
+  }
+  equal(pickerCalls, 1, 'the browser asks for a folder once');
+  equal(written.map((item) => item.path), ['selected/NovaFlow/images/jc_0001.png', 'selected/NovaFlow/images/jc_0002.png'], 'both frames are written to the nested export folder');
+  api.exportPickSaveFile = originalSave;
+}
+
+// Saved cutout WebM must be decoded with libvpx so every frame keeps alpha.
+{
+  const originalExec = fakeFfmpeg.exec;
+  const originalFetch = sandbox.fetch;
+  let decodeArgs;
+  fakeFfmpeg.exec = async (args) => {
+    decodeArgs = args;
+    const pattern = args[args.length - 1];
+    files.set(pattern.replace('%06d', '000000'), new Uint8Array([0, 1]));
+    files.set(pattern.replace('%06d', '000001'), new Uint8Array([2, 3]));
+    return 0;
+  };
+  fakeFfmpeg.listDir = async () => [...files.keys()].map((name) => ({ name }));
+  sandbox.fetch = async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([9, 8]).buffer });
+  const decoded = await api.exportDecodeAlphaVideoFrames({ sourceUrl: 'blob:saved-cutout' });
+  equal(decoded.ok, true, 'saved cutout video decodes');
+  equal(decodeArgs.slice(0, 4), ['-c:v', 'libvpx', '-i', decodeArgs[3]], 'alpha-aware decoder is selected before the input');
+  equal(decoded.frames.map((frame) => [...frame]), [[0, 1], [2, 3]], 'all decoded frames are returned in order');
+  fakeFfmpeg.exec = originalExec;
+  sandbox.fetch = originalFetch;
+}
+
 const progressSeen = [];
 api.onVideoToolProgress((data) => progressSeen.push(data));
 
@@ -186,4 +236,4 @@ ok(/^web-file:\/\//.test(clipToken), 'a dropped file gets a web-file token: ' + 
   ok(!gone.url, 'clearing the tool drops its results');
 }
 
-console.log(checks + ' passed, 0 failed: MP4 压缩 and 视频格式转换 run ffmpeg.wasm with the desktop\'s arguments');
+console.log(checks + ' passed, 0 failed: Web video tools, nested sequence export and alpha-aware decode');
