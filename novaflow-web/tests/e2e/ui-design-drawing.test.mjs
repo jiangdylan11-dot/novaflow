@@ -98,6 +98,45 @@ test('UI generation disables inherited NSFW without changing the drawing setting
   assert.equal(e.state.nsfw,true);
   assert.equal(e.calls.filter(x=>x==='optimize').length,1);
 });
+
+test('full UI redesign keeps the original instruction even when optimization carries old scenery back',async()=>{
+  let input;
+  const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}],optimize:async value=>{
+    input=value;return {prompt:'木乃伊法老站在黄昏海面与巨浪前'};
+  }});
+  e.state.prompt='参考@参考图1做一个埃及木乃伊主题的老虎机，不需要保留任何元素';
+  await e.run();
+  assert.deepEqual(e.failures,[]);
+  assert.equal(input.generationIntent,'redesign');
+  assert.equal(e.builds[0][8].uiRunIntent,'redesign');
+  assert.match(e.builds[0][4],/用户原始需求（最高优先级）：参考@参考图1做一个埃及木乃伊主题的老虎机，不需要保留任何元素/);
+  assert.match(e.builds[0][4],/全部视觉元素都要重新设计/);
+});
+
+test('explicit local editing retains iteration intent without making drawing a redesign',async()=>{
+  const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}]});
+  e.state.prompt='只修改旋转按钮颜色，其他保持不变';
+  await e.run();
+  assert.equal(e.builds[0][8].uiRunIntent,'iteration');
+  assert.match(e.builds[0][4],/本次是局部修改/);
+});
+
+for(const provider of ['gpt','google']) test(`${provider} UI submits through the registered Web settlement bridge`,async()=>{
+  const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}]});
+  e.state.provider=provider;
+  e.sandbox.electronAPI={runtimeProviderUsageSettlement:'web-control-plane-v1'};
+  await e.run();
+  assert.deepEqual(e.failures,[]);
+  assert.equal(e.builds[0][0],provider);
+  assert.equal(e.calls.filter(value=>value==='/prompt').length,2);
+});
+
+test('cloud UI still refuses an unknown settlement bridge before submitting a generation',async()=>{
+  const e=environment();e.state.provider='gpt';
+  await e.run();
+  assert.deepEqual(e.failures,['当前网页生成接口未就绪，请刷新页面后重试']);
+  assert.equal(e.builds.length,0);
+});
 test('cancel during UI preparation stops before uploads and repeat click does not start a second run',async()=>{
   let resolve;
   const e = environment({optimize:()=>new Promise(r=>{resolve=r;})});
@@ -114,6 +153,8 @@ test('reference gaps map to uploaded image order; overflow and missing mentions 
   assert.throws(()=>e.adapter.inputFor({state:{},references:[ref,ref],referenceLimit:1}),/最多支持/);
   const cloud=e.adapter.inputFor({state:{provider:'gpt',gptSize:'1536x1024'},references:[],referenceLimit:10});
   assert.equal(cloud.size.width,1536);assert.equal(cloud.size.height,1024);
+  const partial=e.adapter.inputFor({state:{prompt:'只修改背景，不保留旧背景，其他部分保持不变'},references:[],referenceLimit:10});
+  assert.equal(partial.generationIntent,'iteration');
 });
 test('edits made while optimization is pending cannot change its parameter or original-text snapshot',async()=>{
   let finish;

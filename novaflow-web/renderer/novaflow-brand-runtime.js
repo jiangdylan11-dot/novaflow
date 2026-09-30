@@ -83811,7 +83811,7 @@
     // size shifts the edit). So with W / H on reference 1's aspect, reference 1 goes in at the working
     // size and the run is an edit; another aspect is a new layout on an empty latent of that size.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
-    const editInPlace = firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
+    const editInPlace = state?.uiRunIntent !== "redesign" && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
     if (editInPlace) encode.prompt += "\n\n未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变。";
@@ -84278,9 +84278,9 @@
     const runProvider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(settingsSnapshot.provider) || "local";
     const runMode = options.uiPrepared ? (options.uiPrepared.references.length ? "img2img" : "txt2img") : (ART_GENERATE_STATE.mode === "img2img" ? "img2img" : "txt2img");
     const providerLabel = artGenerateProviderTitle(runProvider);
-    if (runProvider !== "local" && window.electronAPI?.runtimeProviderUsageSettlement !== "preload-price-v1") {
+    if (runProvider !== "local" && !["preload-price-v1", "web-control-plane-v1"].includes(window.electronAPI?.runtimeProviderUsageSettlement)) {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
-      setArtGenerateStatus("GPT/Google \u751f\u6210\u8bf7\u5728 NovaFlow \u684c\u9762\u7aef\u4f7f\u7528", true);
+      setArtGenerateStatus("当前网页生成接口未就绪，请刷新页面后重试", true);
       return;
     }
     if (!promptSnapshot.prompt) {
@@ -84340,7 +84340,7 @@
     addArtGeneratePromptHistory("prompt");
     addArtGeneratePromptHistory("negativePrompt");
     let authorizationContext = null;
-    if (runProvider !== "local") {
+    if (runProvider !== "local" && window.electronAPI?.runtimeProviderUsageSettlement !== "web-control-plane-v1") {
       authorizationContext = window.NovaFlowClientAuth?.createAuthorizationContext?.() || null;
       if (!authorizationContext) {
         resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);

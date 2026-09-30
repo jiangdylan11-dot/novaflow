@@ -56,9 +56,10 @@ test('UI assistant ignores retired style controls, protects natural image number
 
 test('cloud UI references use UI instructions while drawing retains its existing output contract', () => {
   const source=readFileSync(new URL('../../admin/admin-server/server.js',import.meta.url),'utf8');
-  const fn=source.slice(source.indexOf('function buildGrokImageReverseRequest('),source.indexOf('function isGrokResponseAttemptResultUsable('));
+  const helpers=source.slice(source.indexOf('function isUiDesignPromptPayload('),source.indexOf('function buildGrokPromptOptimizeRequest('));
+  const fn=helpers+source.slice(source.indexOf('function buildGrokImageReverseRequest('),source.indexOf('function isGrokResponseAttemptResultUsable('));
   const context={
-    miniMaxH3ReverseMode:()=>false,smartAiSupportsNegativePrompt:()=>true,isSmartAiAnimationPayload:()=>false,
+    miniMaxH3ReverseMode:()=>false,miniMaxH3ChildSensitiveRequest:()=>false,smartAiSupportsNegativePrompt:()=>true,isSmartAiAnimationPayload:()=>false,
     smartAiCurrentPrompt:p=>p.prompt,normalizeSmartAiText:v=>String(v || ''),
     selectGrokSmartAiImageScenario:p=>({scenario:'role_reference',images:p.images,sourceCount:p.images.length,targetIndex:0}),
     smartAiInputText:text=>({text}),smartAiImageInput:image=>({image}),artReferenceImageLabel:(_,i)=>'图'+(i+1),

@@ -179,6 +179,9 @@
     return {
       provider: state.provider || 'local', engine: mounted?.store.getState().settings?.assistantEngine || 'grok',
       prompt, negativePrompt: String(state.negativePrompt || ''),
+      generationIntent: /(?:不(?:需要|用|必)?保留任何(?:元素|内容|东西)|无需保留任何|(?:全部|整体)重做|整(?:个|张)\s*(?:UI|界面).{0,8}重新设计|start over)/i.test(prompt)
+        ? 'redesign'
+        : /(?:其他|其它|其余|剩余|其[他它]部分).{0,12}(?:不变|保持|保留)|(?:只|仅)(?:修改|调整|替换|更改)|\b(?:only (?:change|edit|replace)|keep .{0,24}unchanged)\b/i.test(prompt) ? 'iteration' : 'redesign',
       size: outputSize(state),
       structure: modelStructure(layout?.uiStructure),
       references: refs.map((ref, index) => ({ ...ref, ...(ref.uiStructure ? { uiStructure: modelStructure(ref.uiStructure) } : {}), id: ref.id || `drawing-ref-${index}`, role: ref.uiLayoutId ? 'layout' : (ref.role || 'reference') })),
@@ -196,6 +199,7 @@
       const keys = ['mode', 'provider', 'width', 'height', 'count', 'nsfw', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'negativePrompt', 'gptQualityImg2img', 'gptQualityTxt2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight', 'googleAspectRatioImg2img', 'googleAspectRatioTxt2img', 'googleResolution']
       const state = copy(Object.fromEntries(keys.filter(key => context.state[key] !== undefined).map(key => [key, context.state[key]])))
       state.nsfw = false
+      state.uiRunIntent = input.generationIntent
       state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider, state.mode, state)?.engine || ''
       // With no references the same img2img controls still own the text-only run's cloud settings.
       if (!input.references.length) {
@@ -205,8 +209,19 @@
       const result = await root.NovaFlowUiDesignPromptPipeline.run({ id: 'ui-drawing', input, signal: controller.signal, assistant: root.NovaFlowUiDesignAssistantWorkflow })
       if (controller.signal.aborted) throw new Error('任务已中止')
       const layoutText = input.structure.regions?.length ? `\n布局参考中的模块约束（只约束布局与功能，不把线框画入成品）：\n${JSON.stringify(input.structure)}` : ''
+      const intentText = input.generationIntent === 'iteration'
+        ? '本次是局部修改，只修改用户指定部分，保留用户要求不变的区域。'
+        : '本次是完整 UI 重新设计。参考图提供用户指定的布局、风格或素材，不是必须保留的原图。除用户明确要求保留的内容外，按目标主题重新设计背景、人物、符号、面板、按钮和装饰；不能只给原人物换衣服或只修改局部。'
+      const prompt = [
+        '生成完整的 UI 界面设计图。',
+        `用户原始需求（最高优先级）：${input.prompt || '根据参考图生成新的完整 UI 设计'}`,
+        intentText,
+        `设计方案：\n${result.prompt}`,
+        layoutText,
+        '执行优先级：用户原始需求 > 自建布局的功能与分布 > 设计方案。方案中与用户需求冲突的原人物、旧主题、背景、图标或文案不应保留；用户要求不保留任何元素时，全部视觉元素都要重新设计。',
+      ].filter(Boolean).join('\n\n')
       return {
-        promptSnapshot: { prompt: result.prompt + layoutText, negativePrompt: input.negativePrompt || result.negativePrompt || '' },
+        promptSnapshot: { prompt, negativePrompt: input.negativePrompt || result.negativePrompt || '' },
         references: input.references, originalPrompt, optimizedPrompt: result.prompt, state,
         store: session?.store,
       }

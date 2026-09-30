@@ -253,6 +253,9 @@
     const size = options.size || structure
     const content = [
       '你是 UI 视觉设计助手。只输出可直接生成设计图的最终中文提示词。根据用户要求理解布局、风格和人物物品参考的分工，不强加预设风格、内容类型或商业化倾向。',
+      options.generationIntent === 'iteration'
+        ? '本次为局部编辑，用户指定要保留的部分不变。'
+        : '本次为完整 UI 设计。参考图只按用户指定用途借鉴，不默认锁定原图的人物、背景、图标、文案或旧主题。用户要求重新设计或不保留任何元素时，全部视觉区域一起改成目标主题，不能只替换人物服装；最终提示词必须明确这些改动，不能描述成原图局部编辑。',
       '用户明确要求优先；有自建布局时遵守各区域位置、用途和数量。没有布局时按用户需求和布局参考合理排布。风格图只借鉴配色、材质、按钮、边框、图标和排版，不移植无关人物、商品或文字。按要求融合指定元素。',
       '区分软件编辑器外框和目标 UI 内容：不生成编辑器手柄与辅助线；目标 UI 的按钮、菜单和用户指定文案必须保留。局部修改时保留未要求改变的内容。不要擅自增加金币、角标等功能。',
       '所有 __NOVAFLOW_ 开头并以双下划线结尾的引用占位符原样原次数保留；图片编号按输入顺序，不重新编号。不要输出分析过程或多套方案。',
@@ -395,6 +398,7 @@
         requirements,
         purpose,
         surface: 'ui-design',
+        uiDesignIntent: options.generationIntent === 'iteration' ? 'iteration' : 'redesign',
         scenario: references.length ? 'role_reference' : undefined,
         sourceCount: references.length,
         targetIndex: 0,
@@ -413,6 +417,7 @@
         requirements,
         purpose,
         surface: 'ui-design',
+        uiDesignIntent: options.generationIntent === 'iteration' ? 'iteration' : 'redesign',
         provider,
         images: references.map((reference) => ({
           dataUrl: reference.dataUrl,
@@ -429,6 +434,7 @@
         requirements,
         purpose,
         surface: 'ui-design',
+        uiDesignIntent: options.generationIntent === 'iteration' ? 'iteration' : 'redesign',
         provider,
       }), options.timeoutMs, engine)
     }

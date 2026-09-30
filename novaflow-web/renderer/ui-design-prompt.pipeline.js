@@ -7,7 +7,7 @@
   // One record per active generator; retain original and manually applied text as equivalent inputs.
   const cache = new Map()
   function key(input) {
-    return JSON.stringify({ provider: input.provider, engine: input.engine || 'grok', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ provider: input.provider, engine: input.engine || 'grok', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     cache.set(id, { keys: [key(input), ...(appliedInput ? [key(appliedInput)] : [])], result: { ...result } })

@@ -5712,6 +5712,34 @@ def is_ui_design_prompt_payload(payload: dict) -> bool:
 
 
 
+UI_DESIGN_PLAN_RULES = (
+    "用户原始需求优先于参考图外观。先判断界面用途和每张图的职责：布局只决定功能区域的位置、主次和层级，"
+    "风格只决定配色、材质、边框和组件语言，人物物品只使用用户指定素材；普通参考不默认锁定人物身份。"
+    "完整设计或新主题须覆盖人物、背景、符号图标、装饰、面板和按钮，不能只给人物换衣服而沿用旧背景与符号。"
+    "用户说不保留任何元素时，不继承旧人物、背景、道具、图标、色彩和文案。仅明确局部修改时保留指定不变部分。"
+    "有布局则保持区域与功能关系，矩形只是占位范围，不限制组件的最终轮廓；没有布局则根据需求组织界面。"
+    "目标界面内按钮、菜单和指定文字是有效设计内容，只忽略软件工具栏、辅助框和编辑手柄。"
+    "模块名称只供编辑识别，不是最终文案；只使用用户文案或必要短标签，不编数据。"
+    "原样保留全部 __NOVAFLOW_...__ 资源占位符一次，不改写或重复。"
+    "只输出一个最终中文 UI 设计方案，按[界面目标][参考用途][布局与功能][区域设计][视觉规范]五段："
+    "依次写用途及主题、各图可借鉴和不继承的内容、区域位置和控件、逐区目标视觉、统一配色材质轮廓排版间距与可读性。"
+    "每段写具体内容，不输出分析、多个方案、JSON、摄影参数或绘画五段式。"
+)
+
+
+def validate_ui_design_plan(text: str) -> str:
+    sections = ("界面目标", "参考用途", "布局与功能", "区域设计", "视觉规范")
+    value = str(text or "").strip()
+    for index, title in enumerate(sections):
+        start = value.find(f"[{title}]")
+        end = value.find(f"[{sections[index + 1]}]") if index + 1 < len(sections) else len(value)
+        if start < 0 or end <= start or not value[start + len(title) + 2:end].strip():
+            raise ValueError("UI 设计方案不完整，请重试；本次未使用绘图提示词生成")
+    if re.search(r"\[(?:风格设定|主体物品|环境背景|光线与色彩|拍摄参数)\]", value):
+        raise ValueError("UI 设计方案不完整，请重试；本次未使用绘图提示词生成")
+    return value
+
+
 ART_SEMANTIC_FUSION_RULES = (
     "你是 NovaFlow 的绘图提示词编辑。用户会给你一份完整底稿和修改要求，请把修改融合进底稿，输出修改后的完整提示词。\n"
     "规则：\n"
@@ -16775,42 +16803,13 @@ class PromptAssistant:
         if is_minimax_h3:
             system_prompt = build_minimax_h3_prompt_instruction(raw_prompt, requirements)
         elif is_ui_design:
-            # The negative prompt is built by rules from the positive, so the model writes the positive only.
-            has_resource_placeholders = bool(re.search(r"__NOVAFLOW_", f"{raw_prompt}{requirements}"))
-            task_instruction = (
-                "根据页面结构、参考图职责和用户要求，从零建立一段可直接用于生成成品 UI 的中文设计要求。"
-                if is_create else
-                "优化当前 UI 设计要求，同时严格保留页面功能、信息层级和结构约束"
-                f"{'，以及所有资源引用占位符' if has_resource_placeholders else ''}。"
-            )
-            ui_rules = [
-                "这不是普通绘画提示词：写出这个页面由哪些具体区域和控件组成、各自在画面中的位置和主次，"
-                "再写视觉风格、配色、材质、间距和对齐；用这些具体内容代替“功能分区明确”“信息层级清晰”这类概括词。"
-                "不得擅自改变页面结构或删减用户指定功能。",
-                "只写成品画面上看得见的内容：配色写颜色名称；大小、间距和对齐用自然的中文短语写，"
-                "例如“大号标题居中”“按钮等宽并排”；用户没写的色号、像素、字号数值、比例和几分之几不写。"
-                "界面上的文字只写用户给出的字或通用的短标签，不编数量和统计数字。",
-                "参考图只允许贡献被指定的职责；布局、风格、配色、材质、内容素材和主体必须彼此隔离，禁止整图照抄。",
-            ]
-            if has_resource_placeholders:
-                ui_rules.append(
-                    "文中以 __NOVAFLOW_ 开头、双下划线结尾的资源引用占位符，每个都原样保留一次，不改写、不翻译、不重复。"
-                )
-            ui_rules.append(
-                "最终结果只能描述成品 UI，不得输出分析过程、多个方案、JSON、坐标、百分比、节点、连线、矩形标注、"
-                "画布操作或软件界面说明；也不得把提示文字和区块说明当成最终 UI 文案照抄。"
-            )
-            if not ui_design_uses_negative_prompt(payload):
-                ui_rules.append("当前生成模型不使用独立负面提示通道，禁止输出负向或避免项。")
             system_prompt = qwen3_chatml(
-                "你是 NovaFlow UI 版块专用的设计助手。你把界面需求写成一段可直接用于生成成品 UI 的中文设计要求，只输出这段设计要求本身。",
-                f"任务：{task_instruction}\n\n"
-                "要求：\n"
-                + "".join(f"{index}. {rule}\n" for index, rule in enumerate(ui_rules, 1))
-                + f"{requirements_section if not is_create else ''}"
-                f"\n{'用户创作需求' if is_create else '当前设计要求'}：\n{requirements if is_create else raw_prompt}\n\n"
-                "输出格式：只输出一段约150到300字的中文设计要求，分成几句，每句以句号结尾：第一句写整体风格与配色，"
-                "之后按从上到下的顺序每句写一个区域，写清它的位置、包含的控件和样式；不要标题、前缀、负向词或负面要求。",
+                "你是 NovaFlow UI 视觉设计师，设计完整界面，而不是反推照片或只修改主角。",
+                UI_DESIGN_PLAN_RULES
+                + f"\n任务：{'仅局部修改' if payload.get('uiDesignIntent') == 'iteration' else '完整界面设计'}"
+                + f"\n用户原始设计需求（最高优先级）：\n{raw_prompt}"
+                + f"\n布局、尺寸与参考职责：\n{requirements}"
+                + "\n只输出约400到800字的最终五段中文 UI 设计方案。",
             )
         elif is_animation:
             # The negative prompt is built by rules (build_targeted_negative_prompt), so only the positive is asked for.
@@ -16933,7 +16932,7 @@ class PromptAssistant:
             minimax_h3_prompt_max_length(minimax_h3_mode)
             if is_minimax_h3
             else 240 if is_animation
-            else 260 if is_ui_design
+            else 768 if is_ui_design
             else ordinary_art_prompt_output_max_length(raw_prompt)
             if not is_create and is_ordinary_art_prompt_payload(payload)
             else ORDINARY_ART_PROMPT_BASE_MAX_LENGTH
@@ -17081,7 +17080,7 @@ class PromptAssistant:
             positive = tidy_video_prompt(positive, f"{raw_prompt}\n{requirements}")
             positive = tidy_video_optimize_prompt(positive, raw_prompt, requirements)
         if is_ui_design:
-            positive = tidy_ui_design_prompt(positive, f"{raw_prompt}\n{requirements}")
+            positive = validate_ui_design_plan(tidy_ui_design_prompt(positive, f"{raw_prompt}\n{requirements}"))
         if is_animation or is_ui_design:
             positive = keep_resource_placeholders_once(positive, raw_prompt or requirements)
         if not positive:
@@ -20125,19 +20124,12 @@ class PromptAssistant:
             )
             prompt = (
                 f"{image_tokens}"
-                "你是 NovaFlow UI 版块专用的设计助手。联合分析这些参考图，优先按用户文字判断每张图的用途，已标注的职责作为补充："
-                "layout只提取页面分区与信息层级，style只提取配色、线条、材质、光影和装饰语言，color只提取配色关系，"
-                "material只提取材质，content只提取可用内容素材，subject和character保持指定主体身份，reference根据用户需求承担布局、风格或元素作用。"
-                "不复制参考图的无关内容。目标UI内的按钮、菜单和明确指定的文案是有效设计内容，不当作噪声删除；只忽略外部软件窗口、编辑手柄和辅助线。"
-                "生成一段可直接用于 UI 图像生成模型的中文设计要求，明确页面目标、功能分区、视觉层级、配色、材质、"
-                "间距、对齐和可读性。用户明确需求优先；有自建结构时保持区域分布，没有结构时根据需求和布局参考排布。局部修改时保留未要求改变的部分。"
-                "只能输出一段最终设计要求，不要输出图片分析、多个方案、英文、SD 标签、JSON、坐标、百分比、"
-                "节点、连线、矩形标注或操作说明。"
-                "如果当前设计要求含有 __NOVAFLOW_ 开头并以双下划线结尾的占位符，必须原样且原次数保留。"
-                f"{prompt_context}{requirements_context}"
+                + UI_DESIGN_PLAN_RULES
+                + f"\n任务：{'仅局部修改' if payload.get('uiDesignIntent') == 'iteration' else '完整界面设计'}"
+                + f"{prompt_context}{requirements_context}"
             )
             llama_template = (
-                "<|im_start|>system\n你是 NovaFlow 的 UI 设计助手，只输出一段最终中文 UI 设计要求。<|im_end|>\n"
+                "<|im_start|>system\n你是 NovaFlow 的 UI 视觉设计师，只输出最终五段中文 UI 设计方案。<|im_end|>\n"
                 "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
             )
             self.status = "推理中"
@@ -20145,10 +20137,10 @@ class PromptAssistant:
                 prompt,
                 images=image_tensors,
                 llama_template=llama_template,
-                max_length=320,
+                max_length=768,
                 trace_label="uiDesignReferenceAssistant",
             )
-            description = keep_resource_placeholders_once(clean_reverse_output(output), current_prompt)
+            description = validate_ui_design_plan(keep_resource_placeholders_once(clean_reverse_output(output), current_prompt))
             if not description:
                 raise ValueError("模型未返回可用的 UI 设计要求")
             negative_prompt = ""

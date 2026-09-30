@@ -3611,7 +3611,7 @@ test("ordinary Art mixed-adult merge ignores model hard-block rewrites and seque
 test("ordinary Art Edge and Admin failures expose a stable application error contract", () => {
   const edgeIndexSource = readFileSync(new URL("./index.ts", import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const desktopSource = readFileSync(
-    new URL("../../../particle-editor-desktop/admin-server/server.js", import.meta.url),
+    new URL("../../../novaflow-web/admin/admin-server/server.js", import.meta.url),
     "utf8"
   ).replaceAll("\r\n", "\n");
   const edgeHandler = edgeIndexSource.slice(
@@ -3827,7 +3827,6 @@ test("ordinary Art create and animation retain their existing full-result contra
   assert.equal("resultOptions" in animationRequest, false);
 
   for (const payload of [
-    { surface: "ui-design", purpose: "ui-design-optimize", prompt: "登录页布局", requirements: "按钮更清晰" },
     { surface: "art", purpose: "static-image-reverse", prompt: "当前提示", requirements: "根据图片反推" },
     { surface: "art", purpose: "roleReference", prompt: "当前提示", requirements: "参考角色" }
   ]) {
@@ -6383,7 +6382,7 @@ test("nf.visual.v2 retry accounts for second failure and quota-one disables the 
 test("desktop and Edge keep the visual IR validator, compiler, and routing guards synchronized", () => {
   const edgeSource = readFileSync(new URL("./smart-ai-grok.workflow.mjs", import.meta.url), "utf8").replaceAll("\r\n", "\n");
   const desktopSource = readFileSync(
-    new URL("../../../particle-editor-desktop/admin-server/server.js", import.meta.url),
+    new URL("../../../novaflow-web/admin/admin-server/server.js", import.meta.url),
     "utf8"
   ).replaceAll("\r\n", "\n");
   const edgeIndexSource = readFileSync(new URL("./index.ts", import.meta.url), "utf8").replaceAll("\r\n", "\n");

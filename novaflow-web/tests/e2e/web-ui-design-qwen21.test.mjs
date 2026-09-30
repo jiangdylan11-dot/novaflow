@@ -37,6 +37,21 @@ const qwen21Info = {
 const rendererDir = fileURLToPath(new URL('../../worker-renderer/', import.meta.url));
 const host21 = await createWorkflowHost({ rendererDir, objectInfo: qwen21Info });
 const byClass = (graph, type) => Object.entries(graph).filter(([, node]) => node.class_type === type);
+// The shared Drawing surface must use a fresh latent for a complete UI redesign even at the
+// reference's exact aspect, while ordinary Drawing and explicit UI edits keep their edit latent.
+for (const intent of [undefined, 'redesign', 'iteration']) {
+  const graph = await host21.buildGraph({
+    module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+      'local', 'img2img', ['screen.png'], 'UI_redesign', '按新主题重新设计完整界面', '', 'test',
+      [{ width: 758, height: 1640 }],
+      { provider: 'local', mode: 'img2img', width: 758, height: 1640, seed: 7, localDrawEngine: 'qwen-2.1', ...(intent ? {uiRunIntent:intent} : {}) }
+    ] }
+  });
+  assert.equal(graph['7'].inputs.latent_image[0], intent === 'redesign' ? '6' : '5');
+  assert.equal(graph['7'].inputs.steps, 40);
+  if (intent === 'redesign') assert.doesNotMatch(graph['5'].inputs.prompt, /保持图1中主体的位置/);
+  else assert.match(graph['5'].inputs.prompt, /保持图1中主体的位置/);
+}
 const uiRoles = (roles) => roles.map((role, index) => ({ index, role }));
 const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse(JSON.stringify(await host.buildGraph({
   module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
@@ -171,7 +186,9 @@ const largeSaved = drawLarge[byClass(drawLarge, 'SaveImage')[0][1].inputs.images
 assert.deepEqual([largeSaved.width, largeSaved.height], [2048, 2048]);
 // Up to ten references (the model card's limit); the ones after reference 1 share 1.5 MP, 0.5 MP at
 // most each.
-const many = Array.from({ length: 11 }, (_, i) => `r${i}.png`);
+const overflow = Array.from({ length: 11 }, (_, i) => `r${i}.png`);
+await assert.rejects(buildDraw(overflow, overflow.map(() => ({ width: 1024, height: 1024 })), 1024, 1024), /本次未截断提交/);
+const many = overflow.slice(0, 10);
 const drawMany = await buildDraw(many, many.map(() => ({ width: 1024, height: 1024 })), 1024, 1024);
 const manyEncode = byClass(drawMany, 'TextEncodeQwenImage21')[0][1].inputs;
 assert.equal(Object.keys(manyEncode).filter((key) => key.startsWith('images.')).length, 10);

@@ -9172,6 +9172,19 @@ function grokResponsesPublicResult(data, options = {}) {
         options.supportsNegativePrompt !== false
       )
       : parseSmartAiPromptResult(rawText, options);
+  if (options.uiDesignPrompt === true) {
+    const sections = ["界面目标", "参考用途", "布局与功能", "区域设计", "视觉规范"];
+    const uiPrompt = String(parsed.prompt || "");
+    if (!sections.every((title, index) => {
+      const start = uiPrompt.indexOf(`[${title}]`);
+      const end = index + 1 < sections.length ? uiPrompt.indexOf(`[${sections[index + 1]}]`) : uiPrompt.length;
+      return start >= 0 && end > start && Boolean(uiPrompt.slice(start + title.length + 2, end).trim());
+    }) || /\[(?:风格设定|主体物品|环境背景|光线与色彩|拍摄参数)\]/u.test(uiPrompt)) {
+      const error = new Error("UI 设计方案不完整，请重试；本次未使用绘图提示词生成");
+      error.uiDesignPromptInvalid = true;
+      throw error;
+    }
+  }
   // A section title written in front of its text (also as "标题：" or "标题 - ") is moved onto its own line and the separator
   // dropped; the layout itself is right, no repair call.
   if (options.artFiveSectionPrompt === true || options.artSemanticFusion === true) {
@@ -9462,7 +9475,52 @@ function buildArtSemanticFusionRequest(payload, model) {
   };
 }
 
+function isUiDesignPromptPayload(payload) {
+  return payload?.surface === "ui-design" || String(payload?.purpose || "").startsWith("ui-design-");
+}
+
+function buildUiDesignPromptRequest(payload, model) {
+  const prompt = smartAiCurrentPrompt(payload, 20000);
+  const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || payload?.instructions || "", 4000);
+  const negative = normalizeSmartAiText(payload?.negative_prompt || payload?.negativePrompt || "", 12000);
+  const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
+  const scenario = payload?.images?.length ? selectGrokSmartAiImageScenario(payload) : { images: [], sourceCount: 0, scenario: "ui_design", targetIndex: 0 };
+  if (!prompt && !requirements && !scenario.images.length) throw new Error("请描述设计需求或添加参考图");
+  if (miniMaxH3ChildSensitiveRequest(`${prompt}\n${requirements}`)) {
+    throw miniMaxH3ContractError("provider_content_policy", "UI request blocked explicit minor sensitive content", 422, "provider_content_policy");
+  }
+  const content = scenario.images.flatMap((image, index) => [smartAiInputText(artReferenceImageLabel(image, index)), smartAiImageInput(image)]);
+  content.push(smartAiInputText([
+    "用户原始设计需求（最高优先级）：", prompt || "见补充要求",
+    "布局、尺寸与参考职责：", requirements || "由用户需求和参考图判断",
+    `本次任务：${payload?.uiDesignIntent === "iteration" ? "局部修改，仅保留用户要求不变的部分" : "完整界面设计，参考图不默认锁定旧主题或身份"}。`,
+    "先判断界面用途及每张参考图的职责，再形成一个完整 UI 方案。用户指定某图只参考布局，就只保留功能区域的位置与层级；风格图只参考配色、材质、边框、按钮、图标语言；人物物品图只使用指定素材。普通参考图按用户文字判断用途，不自动当作唯一主体。",
+    "新主题或重新设计必须贯穿整张界面：人物、背景、图标符号、边框装饰、按钮和面板均使用新主题；不能只给人物换衣服而沿用旧背景与旧符号。用户说不保留任何元素时，旧人物身份、道具、背景、图标、色彩和文案均不保留；只组织目标界面所需的功能和新视觉。局部修改才保留用户明确要求不变的部分。",
+    "有布局时保留区域与功能关系，矩形只是占位范围，不限制最终组件轮廓；没有布局时按需求组织合理界面。布局编辑名称只是用户识别标记，不是最终文案。不得把说明、辅助框和编辑工具画进成品。",
+    "目标界面中的按钮、菜单和文字是有效设计内容；仅忽略外部软件工具栏、编辑手柄和辅助线。文字只用用户指定文案或必要的通用短标签，不虚构数据和长段文字。",
+    "输出 prompt 使用五个 UI 专用段落：[界面目标]写用途和新主题；[参考用途]写各图可借鉴内容及不继承内容；[布局与功能]写区域位置、内容层级和控件；[区域设计]逐区落实背景、人物、图标、面板和按钮的目标设计；[视觉规范]统一配色、材质、轮廓、排版、间距、对齐和可读性。每段必须有具体内容，不写空泛品质词，不用绘画五段式或摄影参数，不输出分析或多个方案。",
+    "所有 __NOVAFLOW_ 开头并以双下划线结尾的资源占位符原样保留一次，不改写、不重复。用户要求高于参考图外观；写完逐区检查没有遗留与新主题冲突的旧元素。",
+    supportsNegativePrompt ? `当前避免内容：${negative || "无"}。negative_prompt 只列不希望出现的元素或效果，不删除用户要求。` : "当前模型没有独立负面提示通道，避免内容融入目标设计约束。",
+  ].join("\n")));
+  return {
+    body: {
+      model: String(model || "grok-4.3"), store: false,
+      input: [{ role: "system", content: [smartAiInputText("你是 NovaFlow UI 视觉设计师。设计完整可用的界面，而不是反推照片或只修改主角。只输出符合 schema 的最终中文 UI 设计方案 JSON。")] }, { role: "user", content }],
+      temperature: 0.4, max_output_tokens: 3072,
+      text: { format: { type: "json_schema", name: "novaflow_ui_design_v1", strict: true,
+        schema: { type: "object", additionalProperties: false,
+          properties: { prompt: { type: "string" }, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}) },
+          required: supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"] } } },
+    },
+    inputMeta: { mode: "ui_design", charCount: prompt.length + requirements.length + negative.length,
+      imageCount: scenario.images.length, sourceImageCount: scenario.sourceCount, scenario: scenario.scenario,
+      targetIndex: scenario.targetIndex, supportsNegativePrompt, hasNegativePrompt: Boolean(negative) },
+    resultOptions: { uiDesignPrompt: true, supportsNegativePrompt },
+  };
+}
+
 function buildGrokPromptOptimizeRequest(payload) {
+  if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, adminData.readAdminGrokEnv().model || "grok-4.3");
   const isMiniMaxH3 = isMiniMaxH3PromptEnhancePayload(payload);
   const supportsNegativePrompt = isMiniMaxH3 ? false : smartAiSupportsNegativePrompt(payload);
   const isAnimation = isMiniMaxH3 || isSmartAiAnimationPayload(payload);
@@ -9831,6 +9889,7 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
 }
 
 function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
+  if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
   if (miniMaxH3ReverseMode(payload)) return buildMiniMaxH3GrokReverseRequest(payload, String(model || "grok-4.3"));
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
   const nsfw = payload?.nsfw === true;
@@ -9846,8 +9905,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
     scenario.scenario === "role_reference" && scenario.images.length === 2 && scenarioRoles.includes("subject") && scenarioRoles.includes("style")
   );
   const isVideoTask = isAnimation || scenario.scenario === "video_frames";
-  const isUiDesign = payload?.surface === "ui-design" || purpose.startsWith("ui-design-");
-  const usesArtFiveSectionReverse = scenario.scenario === "role_reference" && !isVideoTask && !isUiDesign;
+  const usesArtFiveSectionReverse = scenario.scenario === "role_reference" && !isVideoTask;
   const usesVisualIrV2 = purpose === "static-image-reverse"
     && !isVideoTask
     && scenario.scenario === "single_reference"
@@ -9866,15 +9924,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       ? "请同时给出中文正向提示词和中文反向提示词。"
       : "请只给出中文正向提示词。");
   let scenarioText = "";
-  if (isUiDesign) {
-    scenarioText = [
-      "这是 UI 设计任务。按用户文字确定各图承担布局、风格、人物、物品或修改底图的作用。保持明确指定的布局关系、数量和文案，将指定元素融合为统一的界面设计。",
-      "风格参考只提取配色、材质、边框、按钮、图标、排版层级，不复制无关内容。目标界面中的按钮、菜单和文字是有效设计内容；仅忽略外部软件工具栏、编辑手柄和辅助线。",
-      "用户明确要求优先；未指定整体重做时，仅修改要求的部分。没有布局参考时可根据需求组织布局，不套固定游戏模板。",
-      "__NOVAFLOW_ 开头并以双下划线结尾的占位符必须原样原次数保留。不要使用绘画五段式，不输出多个方案。",
-      promptOutputRequest,
-    ].join("\n");
-  } else if (scenario.scenario === "video_frames") {
+  if (scenario.scenario === "video_frames") {
     scenarioText = [
       "这是首帧和尾帧。生成适用于视频模型的连续动作 Prompt。",
       "必须保持人物身份、外观、服装、道具和场景一致，准确描述从首帧开始状态到尾帧结束状态的连续动作、速度节奏和自然过渡。",
