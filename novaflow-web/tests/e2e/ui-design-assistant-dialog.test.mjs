@@ -50,15 +50,15 @@ vm.runInNewContext(readFileSync(new URL('../../renderer/ui-design-assistant.dial
 const dialogApi = sandbox.NovaFlowUiDesignAssistantDialog;
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function openDialog({ prompt = '', run } = {}) {
+function openDialog({ prompt = '', run, references = [] } = {}) {
   const documentRef = fakeDocument();
   const applied = [];
   let cancelled = 0;
   const workflow = {
-    analysisReferenceLimit: () => 3,
+    analysisReferenceLimit: () => Infinity,
     createSession: () => ({ cancel() { cancelled += 1; }, run: run || (async () => ({ prompt: '写入的设计要求', engine: 'grok', provider: 'grok' })) }),
   };
-  const handle = dialogApi.open({ documentRef, workflow, getPrompt: () => prompt, references: [], structure: {}, apply: (payload) => applied.push(payload) });
+  const handle = dialogApi.open({ documentRef, workflow, getPrompt: () => prompt, references, structure: {}, apply: (payload) => applied.push(payload) });
   const host = documentRef.body.children[0];
   const find = (predicate) => host.find(predicate);
   return {
@@ -92,6 +92,16 @@ test('the page 设计要求 alone is enough', async () => {
   await tick();
   assert.equal(d.notice.style.display, 'none');
   assert.equal(d.submit.disabled, false);
+  d.handle.close();
+});
+
+test('sixteen selected references do not disable the UI assistant action', async () => {
+  let count=0;
+  const d=openDialog({references:Array.from({length:16},(_,i)=>({id:String(i),dataUrl:'data:image/png;base64,AA=='})),run:async input=>{count=input.references.length;return {prompt:'完整设计'};}});
+  await tick();
+  assert.equal(d.submit.disabled,false);
+  assert.equal(await d.handle.submit(),true);
+  assert.equal(count,16);
   d.handle.close();
 });
 

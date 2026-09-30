@@ -139,6 +139,10 @@ try {
   const small = [{ name: 'a.png', dataUrl: 'data:image/png;base64,QQ==' }];
   const artReverse = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: 'art-reverse', surface: 'art', images: small })).body;
   check(artReverse.ok === true && artReverse.data.purpose === 'art-reverse', 'every reverse mode runs on the one Qwen3 model, not only the static one');
+  for (const surface of ['art', 'ui-design']) {
+    const multi = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: surface === 'art' ? 'roleReference' : 'ui-design-reference', surface, images: Array.from({length:16}, (_, i) => ({...small[0], name:`reference_${i + 1}.png`})) })).body;
+    check(multi.ok === true && multi.data.images === 16, surface + ': all sixteen references reach the Python transport');
+  }
   const h3Reverse = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: 'minimax-h3-i2v-reverse', visualSchema: 'nf.h3.visual.v1', userPrompt: '', userRequirements: '', images: small })).body;
   check(h3Reverse.ok === true && h3Reverse.data.purpose === 'minimax-h3-i2v-reverse', 'H3 reverse needs no second model either');
   equal((await call('POST', '/local/bind-account', { token: 'x'.repeat(300000) })).status, 413, 'other local routes keep their small limit');

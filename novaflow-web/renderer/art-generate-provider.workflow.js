@@ -29,7 +29,7 @@
   }
 
   function normalizeMaxReferences(value, provider) {
-    if (value == null || value === '') return MAX_REFERENCES
+    if (value == null || value === '') return PROVIDER_REFERENCE_LIMITS[provider] || MAX_REFERENCES
     const parsed = Number(value)
     if (!Number.isInteger(parsed) || parsed < 1) throw new Error('maxReferences must be a positive integer')
     const providerLimit = PROVIDER_REFERENCE_LIMITS[provider] || MAX_REFERENCES

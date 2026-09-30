@@ -2900,7 +2900,7 @@
         slotType: "reference"
       });
     }
-    return images.slice(0, 4);
+    return images;
   }
 
   function getImageScenario(images) {
@@ -2998,7 +2998,7 @@
         ? await collectArtImages(button)
         : await collectAnimationImages(button);
       if (!isCurrentRefresh()) return;
-      state.images = context?.surface === "art" ? images.slice(0, 3) : images;
+      state.images = images;
       // One action per surface: with references the assistant reads them together
       // with the text the user wrote, without references it works on the text alone.
       state.mode = state.images.length ? "reverse" : "optimize";
@@ -4458,6 +4458,13 @@
           }))
         });
       } else if (roleAwareReferences && useGrok) {
+        const rolePayload = buildRoleReferenceImagesPayload();
+        const normalize = window.NovaFlowUiDesignAssistantImageHelper?.normalizeReferencesForGrok;
+        if (typeof normalize === "function") {
+          const prepared = await normalize(rolePayload.images);
+          if (prepared.length !== rolePayload.images.length) throw new Error("参考图预处理失败，本次未截断提交");
+          rolePayload.images = prepared.map(({ dataUrl, ...item }) => item);
+        }
         result = await api.smartAiImageReverse?.({
           token,
           negativePrompt,
@@ -4465,7 +4472,7 @@
           requirements: roleRequirements,
           purpose: "roleReference",
           surface: "art",
-          ...buildRoleReferenceImagesPayload()
+          ...rolePayload
         });
       } else if (roleAwareReferences) {
         const rolePayload = buildRoleReferenceImagesPayload();

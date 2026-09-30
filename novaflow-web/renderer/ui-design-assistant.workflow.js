@@ -6,7 +6,9 @@
   'use strict'
 
   const VERSION = '20260722-ui-design-assistant-workflow-6'
-  const ANALYSIS_REFERENCE_LIMITS = Object.freeze({ grok: 4, local: 3 })
+  // These vision routes have no fixed image-count limit. Transport size, context and
+  // local memory limits still apply; do not confuse them with generation-model slots.
+  const ANALYSIS_REFERENCE_LIMITS = Object.freeze({ grok: Infinity, local: Infinity })
   const MAX_ANALYSIS_REFERENCES = ANALYSIS_REFERENCE_LIMITS.grok
   const UI_STYLE_PRESETS = Object.freeze([
     Object.freeze({

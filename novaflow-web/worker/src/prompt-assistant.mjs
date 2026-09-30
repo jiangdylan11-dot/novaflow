@@ -272,13 +272,14 @@ export function normalizeReverseRequest(payload = {}) {
   const language = String(payload.preferredOutputLanguage || '').trim().toLowerCase();
   const preferredOutputLanguage = usesH3 ? (language === 'en' ? 'en' : language === 'zh-cn' ? 'zh-CN' : '') : '';
   const checklist = mandatoryChecklist(payload.mandatoryChecklist);
-  const images = Array.isArray(payload.images) ? payload.images.slice(0, 3).map((item, index) => ({
+  const images = Array.isArray(payload.images) ? payload.images.map((item, index) => ({
     name: sanitizeFileName(item?.name, 'reference_' + (index + 1) + '.png'),
     slotType: String(item?.slotType || item?.role || '').slice(0, 80),
     role: String(item?.role || item?.slotType || '').slice(0, 80),
     label: String(item?.label || '').slice(0, 80),
     dataUrl: String(item?.dataUrl || '')
   })).filter(item => item.dataUrl) : [];
+  if (Array.isArray(payload.images) && images.length !== payload.images.length) throw new Error('参考图数据无效，本次未截断提交');
   const visualSchema = String(payload.visualSchema || '').trim().slice(0, 80);
   if (usesH3 && visualSchema !== 'nf.h3.visual.v1') throw new Error('MiniMax H3 reverse requires visualSchema nf.h3.visual.v1');
   if (usesH3 && (typeof payload.userPrompt !== 'string' || typeof payload.userRequirements !== 'string')) throw new Error('MiniMax H3 reverse requires explicit userPrompt and userRequirements fields');

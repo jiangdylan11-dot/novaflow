@@ -20,11 +20,11 @@
     }),
     gpt: Object.freeze({
       txt2img: capability(0, ['quality', 'size'], false),
-      img2img: capability(3, ['quality', 'size'], false),
+      img2img: capability(16, ['quality', 'size'], false),
     }),
     google: Object.freeze({
       txt2img: capability(0, ['aspectRatio'], false),
-      img2img: capability(3, ['aspectRatio', 'resolution'], false),
+      img2img: capability(14, ['aspectRatio', 'resolution'], false),
     }),
   })
 

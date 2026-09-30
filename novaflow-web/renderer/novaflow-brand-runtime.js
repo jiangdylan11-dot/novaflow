@@ -81601,10 +81601,9 @@
     }, children);
   }
 
-  // Storage holds as many references as the largest model takes (Qwen-Image-2.1: 10). The grid and a
-  // run use the first ones the active model accepts, so a switch to a three-reference route keeps the
-  // rest for switching back.
-  const ART_GENERATE_MAX_REFERENCES = 10;
+  // Keep references across model switches. Excess references stay visible/removable;
+  // submission validates the active model's capacity instead of silently dropping them.
+  const ART_GENERATE_MAX_REFERENCES = 16;
   const ART_GENERATE_BASE_REFERENCE_SLOTS = 3;
 
   function artGenerateImg2imgCapability() {
@@ -81618,7 +81617,7 @@
   }
 
   function artGenerateReferences() {
-    const refs = Array.isArray(ART_GENERATE_STATE.references) ? ART_GENERATE_STATE.references.slice(0, ART_GENERATE_MAX_REFERENCES) : [];
+    const refs = Array.isArray(ART_GENERATE_STATE.references) ? ART_GENERATE_STATE.references.slice() : [];
     while (refs.length < ART_GENERATE_BASE_REFERENCE_SLOTS) refs.push(null);
     // An emptied slot past the fixed three closes up, so the grid ends at the last filled one.
     while (refs.length > ART_GENERATE_BASE_REFERENCE_SLOTS && !refs[refs.length - 1]) refs.pop();
@@ -81628,16 +81627,15 @@
     return refs;
   }
 
-  // Slots on screen. A model that takes more than three references (2.1) shows the slots up to the
-  // last filled one and a + tile, nothing else to start with; the others keep their three fixed slots.
+  // Show all filled slots, including overflow after a model switch, plus an add tile if allowed.
   function artGenerateVisibleReferenceCount() {
     const limit = artGenerateReferenceLimit();
-    if (limit <= ART_GENERATE_BASE_REFERENCE_SLOTS) return limit;
     let lastFilled = -1;
     artGenerateReferences().forEach((item, index) => {
       if (item && item.dataUrl) lastFilled = index;
     });
-    return Math.min(limit, lastFilled + 1);
+    const normalCount = limit <= ART_GENERATE_BASE_REFERENCE_SLOTS ? limit : Math.min(limit, lastFilled + 1);
+    return Math.max(normalCount, lastFilled + 1);
   }
 
   function setArtGenerateReference(index, value) {
@@ -83097,7 +83095,7 @@
     armArtGenerateRouteHold();
     const api = getPromptAssistantApi();
     if (!api) throw new Error("Prompt Assistant IPC \u672a\u5c31\u7eea");
-    const selected = Array.isArray(sources) ? sources.filter((item) => item && item.dataUrl).slice(0, 3) : [];
+    const selected = Array.isArray(sources) ? sources.filter((item) => item && item.dataUrl) : [];
     if (!selected.length) throw new Error("\u8bf7\u5148\u6dfb\u52a0\u53c2\u8003\u56fe");
     const token = ART_GENERATE_STATE.promptAssistantToken + 1;
     ART_GENERATE_STATE.promptAssistantToken = token;
@@ -83742,8 +83740,9 @@
     if (state?.nsfw === true) return null;
     if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
     const references = mode === "img2img"
-      ? (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean).slice(0, QWEN21_ART_MAX_REFERENCES)
+      ? (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean)
       : [];
+    if (references.length > QWEN21_ART_MAX_REFERENCES) throw new Error(`Qwen-Image 2.1 最多支持 ${QWEN21_ART_MAX_REFERENCES} 张参考图，本次未截断提交。`);
     if (mode === "img2img" && !references.length) return null;
     const runtime = artQwen21Runtime();
     if (!runtime) return null;
@@ -84275,7 +84274,13 @@
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt
     };
-    const allRefs = options.uiPrepared?.references || artGenerateReferences().slice(0, artGenerateReferenceLimit()).filter((item) => item && item.dataUrl);
+    const allRefs = options.uiPrepared?.references || artGenerateReferences().filter((item) => item && item.dataUrl);
+    const referenceLimit = Number(window.NovaFlowArtGenerateModels?.capabilityFor?.(runProvider, "img2img", settingsSnapshot)?.referenceLimit) || artGenerateReferenceLimit();
+    if (runMode === "img2img" && allRefs.length > referenceLimit) {
+      resetArtGenerateProgress("等待生成", 0);
+      setArtGenerateStatus(`${providerLabel} 最多支持 ${referenceLimit} 张参考图，当前 ${allRefs.length} 张。请移除多余图片或切换模型；本次未截断提交。`, true);
+      return;
+    }
     const rolePlan = !options.uiPrepared && runMode === "img2img"
       ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs)
       : null;

@@ -80,6 +80,14 @@ test('drawing retains its existing pipeline and never invokes UI optimization',a
   const e = environment({ui:false,references:[{dataUrl:'data:image/png;base64,ref'}]});await e.run();
   assert.deepEqual(e.failures,[]);assert.equal(e.calls.includes('optimize'),false);assert.equal(e.calls.includes('drawing-quality'),true);assert.equal(e.builds.length,2);
 });
+
+test('ordinary drawing refuses overflow before uploads instead of generating from a truncated set', async()=>{
+  const e=environment({ui:false,references:Array.from({length:11},()=>({dataUrl:'data:image/png;base64,ref'}))});
+  await e.run();
+  assert.match(e.failures[0],/最多支持 10 张.*当前 11 张/);
+  assert.equal(e.calls.includes('upload'),false);
+  assert.equal(e.builds.length,0);
+});
 test('cancel during UI preparation stops before uploads and repeat click does not start a second run',async()=>{
   let resolve;
   const e = environment({optimize:()=>new Promise(r=>{resolve=r;})});

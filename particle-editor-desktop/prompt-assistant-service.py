@@ -19710,15 +19710,13 @@ class PromptAssistant:
         merge_instruction = f"{current_prompt_instruction}{requirements_instruction}"
         if not isinstance(images, list) or not images:
             raise ValueError("请先选择可分析的图片")
-        if is_ui_design and len(images) > 3:
-            raise ValueError("设计助手一次最多分析 3 张参考图，请先选择需要分析的图片")
         image_items = []
-        for item in images[:3]:
+        for item in images:
             if not isinstance(item, dict):
-                continue
+                raise ValueError("参考图数据无效，本次未截断提交")
             tensor = data_url_to_tensor(str(item.get("dataUrl") or ""))
             if tensor is None:
-                continue
+                raise ValueError("参考图数据无效，本次未截断提交")
             image_items.append({
                 "tensor": tensor,
                 "name": str(item.get("name") or ""),

@@ -8,6 +8,9 @@
   const VERSION = '20260722-ui-design-assistant-image-helper-1'
   const MAX_SIDE = 1536
   const TARGET_BLOB_BYTES = 1.5 * 1024 * 1024
+  // The admin vision endpoint accepts 10 MiB of JSON. Six MiB of binary images
+  // leaves room for base64 expansion, prompts and metadata, regardless of count.
+  const TOTAL_BLOB_BYTES = 6 * 1024 * 1024
   const MIN_QUALITY = 0.58
   const OUTPUT_MIME = 'image/jpeg'
 
@@ -93,7 +96,7 @@
     return canvas
   }
 
-  async function normalizeDataUrlForGrok(value) {
+  async function normalizeDataUrlForGrok(value, targetBytes = TARGET_BLOB_BYTES) {
     const dataUrl = text(value)
     if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(dataUrl)) {
       throw new Error('AI 助手只接受 PNG、JPEG 或 WebP 参考图')
@@ -104,7 +107,7 @@
     const drawable = await loadDrawable(blob)
     try {
       const initialSize = scaledSize(drawable.width, drawable.height, MAX_SIDE)
-      if (blob.size <= TARGET_BLOB_BYTES && Math.max(drawable.width, drawable.height) <= MAX_SIDE) return dataUrl
+      if (blob.size <= targetBytes && Math.max(drawable.width, drawable.height) <= MAX_SIDE) return dataUrl
 
       let size = initialSize
       let quality = 0.86
@@ -113,7 +116,7 @@
       for (let index = 0; index < 9; index += 1) {
         const nextBlob = await canvasToBlob(canvas, OUTPUT_MIME, quality)
         if (!bestBlob || nextBlob.size < bestBlob.size) bestBlob = nextBlob
-        if (nextBlob.size <= TARGET_BLOB_BYTES) return await dataUrlFromBlob(nextBlob)
+        if (nextBlob.size <= targetBytes) return await dataUrlFromBlob(nextBlob)
         if (quality > MIN_QUALITY) {
           quality = Math.max(MIN_QUALITY, quality - 0.12)
           continue
@@ -123,7 +126,7 @@
         canvas = drawToCanvas(drawable.image, size.width, size.height)
         quality = 0.82
       }
-      if (!bestBlob) throw new Error('参考图压缩失败')
+      if (!bestBlob || bestBlob.size > targetBytes) throw new Error('参考图总大小超过分析接口容量，请缩小图片后重试；本次未丢弃图片。')
       return await dataUrlFromBlob(bestBlob)
     } finally {
       drawable.release?.()
@@ -133,8 +136,9 @@
   async function normalizeReferencesForGrok(values) {
     const references = Array.isArray(values) ? values : []
     const normalized = []
+    const targetBytes = Math.min(TARGET_BLOB_BYTES, Math.floor(TOTAL_BLOB_BYTES / Math.max(1, references.length)))
     for (const reference of references) {
-      const dataUrl = await normalizeDataUrlForGrok(reference?.dataUrl || reference?.imageUrl)
+      const dataUrl = await normalizeDataUrlForGrok(reference?.dataUrl || reference?.imageUrl, targetBytes)
       normalized.push({ ...reference, dataUrl, imageUrl: dataUrl })
     }
     return normalized
@@ -144,6 +148,7 @@
     VERSION,
     MAX_SIDE,
     TARGET_BLOB_BYTES,
+    TOTAL_BLOB_BYTES,
     normalizeDataUrlForGrok,
     normalizeReferencesForGrok,
   })

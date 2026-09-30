@@ -41,8 +41,7 @@
     return true
   }
 
-  function normalizeReferences(values, selectedLimit = 4) {
-    const limit = Math.max(0, Number(selectedLimit) || 0)
+  function normalizeReferences(values) {
     return (Array.isArray(values) ? values : []).map((reference, index) => ({
       ...reference,
       id: text(reference?.id || reference?.sourceId || reference?.resourceId) || `ui_reference_${index + 1}`,
@@ -82,7 +81,7 @@
   function referenceLimit(record) {
     const workflow = workflowFor(record.options)
     if (typeof workflow?.analysisReferenceLimit === 'function') return workflow.analysisReferenceLimit(record.engine)
-    return record.engine === 'local' ? 3 : 4
+    return Infinity
   }
 
   // Like the AI 助手: the design assistant writes from the user's own words (设计要求 or 补充要求).

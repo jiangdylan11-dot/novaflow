@@ -50,7 +50,7 @@ test('UI assistant ignores retired style controls, protects natural image number
   assert.equal(result.prompt,'@参考图1用于布局，@参考图2只参考风格');
   assert.match(request.requirements,/"x":12/);
   assert.doesNotMatch(request.requirements,/暗黑史诗|稳妥商业化/);
-  await assert.rejects(assistant.run({...input(),references:Array(4).fill({dataUrl:'data:image/png;base64,AA=='})}),/最多分析 3 张/);
+  assert.equal(assistant.referenceSnapshot(Array(16).fill({dataUrl:'data:image/png;base64,AA=='}), 'local').length, 16);
   assert.throws(()=>assistant.buildRequirements({requirements:'长'.repeat(3000)},{regions:[]},[]),/未截断/);
 });
 
