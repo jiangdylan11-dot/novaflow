@@ -83809,9 +83809,10 @@
     const working = artQwen21WorkingSize(requested.width, requested.height);
     // The encoder's own latent is reference 1's size; sampling on it keeps an edit in place (any other
     // size shifts the edit). So with W / H on reference 1's aspect, reference 1 goes in at the working
-    // size and the run is an edit; another aspect is a new layout on an empty latent of that size.
+    // size and the run is an edit. Native UI preservation also keeps that spatial input
+    // when resized; Drawing retains its aspect-dependent fresh-layout behavior.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
-    const editInPlace = (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
+    const editInPlace = (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
     if (state?.uiNativeEditPrompt === true) { /* UI compiler already supplies one native edit directive. */ }

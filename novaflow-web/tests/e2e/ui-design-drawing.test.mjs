@@ -71,13 +71,13 @@ test('Qwen partial layout changes retain protected areas without a global positi
   assert.doesNotMatch(e.builds[0][4],/沿用布局参考图的全部区域|本次是局部修改，沿用全部/);
 });
 
-test('Qwen sends the second layout image first and remaps image identifiers consistently',async()=>{
+test('Qwen sends the second layout image as native source and keeps style reference in the planner',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'用@参考图1的卡通风格，沿用@参考图2的结构。',uiPlan:planFor(refs,{layoutReference:2})})});
   e.state.prompt='用@参考图1的卡通风格，沿用@参考图2的布局';
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
-  assert.equal(prepared.references[0].role,'layout');assert.equal(prepared.references[1].role,'style');
-  assert.match(prepared.promptSnapshot.prompt,/用<image2>的卡通风格，沿用<image1>的结构/);
+  assert.equal(prepared.references.length,1);assert.equal(prepared.references[0].role,'layout');
+  assert.match(prepared.promptSnapshot.prompt,/用指定风格的卡通风格，沿用图片的结构/);
   assert.doesNotMatch(prepared.promptSnapshot.prompt,/@参考图|用户设计需求|[\r\n]/);
   assert.equal(prepared.state.uiNativeEditPrompt,true);
   assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
@@ -102,13 +102,13 @@ test('Qwen planning cache separates generation engines and rejects missing refer
   assert.throws(()=>p.compileQwenPlan({prompt:'设计',uiPlan:planFor(input.references)},input),/不存在的参考图/);
 });
 
-test('Qwen native editing carries counted layout facts and maps all image identifier forms once',()=>{
+test('Qwen native editing carries supplied layout facts and maps all image identifier forms once',()=>{
   const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
   const references=[{role:'style'},{role:'layout'}];
   const input={references,prompt:'参考图2是画布，用<image1>的风格'};
   const result={prompt:'将参考图2改成海盗主题，图1只提供材质。',uiPlan:planFor(references,{layoutReference:2,preserve:['符号区6列5行','四个奖池','五个底部按钮']})};
   const compiled=p.compileQwenPlan(result,input);
-  assert.match(compiled.prompt,/将<image1>改成海盗主题，<image2>只提供材质/);
+  assert.match(compiled.prompt,/将图片改成海盗主题，指定风格只提供材质/);
   assert.match(compiled.prompt,/符号区6列5行；四个奖池；五个底部按钮/);
   assert.doesNotMatch(compiled.prompt,/@参考图|参考图2|[\r\n]/);
   assert.equal((compiled.prompt.match(/符号区6列5行/g)||[]).length,1);
@@ -118,7 +118,16 @@ test('Qwen native editing carries counted layout facts and maps all image identi
   assert.doesNotMatch(single.prompt,/<image/);
 });
 
-test('style-only Qwen edits analyze the style image but generate from content instead of its identities',async()=>{
+test('vision grid estimates never become a template while explicit user changes survive',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+  const references=[{role:'layout'}];
+  const result={prompt:'将符号区调整为4列3行，其他区域不变。',uiPlan:planFor(references,{layoutMode:'partial',layoutChanges:['符号区调整为4列3行'],preserve:['其余区域不变'],grids:[{description:'模型估计的符号区',columns:6,rows:7}]})};
+  const compiled=p.compileQwenPlan(result,{references,prompt:'符号区改成4列3行'});
+  assert.match(compiled.prompt,/4列3行/);
+  assert.doesNotMatch(compiled.prompt,/6列7行|42个位置|网格保持/);
+});
+
+test('anchored Qwen edits analyze style separately and use the content image as the native layout source',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将图1的水彩纸纹与柔和光影用于图2，保留图2每个角色物品。',uiPlan:planFor(refs,{layoutReference:2,visualMode:'style-transfer',grids:[{description:'物品格',columns:6,rows:5}]})})});
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});

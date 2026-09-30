@@ -30,7 +30,6 @@ test('assistant restores image tokens in the partial-layout plan as well as its 
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
   const result=await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'缩小@参考图1的人物',references:[{dataUrl:'data:image/png;base64,AA==',role:'layout'}],electronAPI:{smartAiImageReverse:async payload=>{
-    if(payload.purpose==='ui-design-layout-facts')return {ok:true,prompt:'6列5行',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'partial',references:[{index:1,role:'combined'}],layoutChanges:[],preserve:['底部按钮不计入网格'],grids:[{description:'符号',columns:6,rows:5}]}};
     const token=payload.prompt.match(/__NOVAFLOW_[A-Z0-9_:-]+__/)[0];
     return {ok:true,prompt:'缩小'+token+'人物。',uiPlan:{version:1,layoutMode:'partial',layoutReference:1,visualMode:'partial',references:[{index:1,role:'layout'}],layoutChanges:['缩小'+token+'人物'],preserve:['其他区域不变'],grids:[{description:'符号',columns:6,rows:5}]}};
   }}});
@@ -38,27 +37,20 @@ test('assistant restores image tokens in the partial-layout plan as well as its 
   assert.equal(result.uiPlan.grids[0].rows,5);
 });
 
-test('layout counting sees the canvas alone and requires an independent matching grid reading',async()=>{
+test('native UI planning uses all references once without an implicit grid-count gate',async()=>{
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
   const calls=[];
   const result=await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'太空科幻主题',references:[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}],electronAPI:{smartAiImageReverse:async payload=>{
     calls.push(payload);
-    const first=payload.purpose==='ui-design-layout-facts';
-    return {ok:true,prompt:first?'逐行数清六列五行':'机器人、空间站和能量晶体。',uiPlan:{version:1,layoutMode:'preserve',layoutReference:first?1:2,visualMode:first?'partial':'theme-redesign',references:first?[{index:1,role:'combined'}]:[{index:1,role:'style'},{index:2,role:'layout'}],layoutChanges:[],preserve:['底部五按钮'],grids:[{description:'符号阵列',columns:6,rows:5}]}};
+    return {ok:true,prompt:'机器人、空间站和能量晶体。',uiPlan:{version:1,layoutMode:'preserve',layoutReference:2,visualMode:'theme-redesign',references:[{index:1,role:'style'},{index:2,role:'layout'}],layoutChanges:[],preserve:['底部操作保持原位'],grids:[]}};
   }}});
-  assert.equal(calls.length,2);assert.equal(calls[0].images.length,1);assert.equal(calls[0].images[0].imageUrl,'data:image/png;base64,layout');
-  assert.equal(calls[1].images.length,2);assert.doesNotMatch(calls[1].requirements,/逐行数清六列五行|columns|已单独清点/);
-  assert.equal(result.uiPlan.grids[0].rows,5);
+  assert.equal(calls.length,1);assert.equal(calls[0].images.length,2);
+  assert.notEqual(calls[0].purpose,'ui-design-layout-facts');
+  assert.equal(result.uiPlan.layoutReference,2);
   const controller=new AbortController(),abortedCalls=[];
   await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',signal:controller.signal,prompt:'新主题',references:[{dataUrl:'data:image/png;base64,layout-cancel',role:'layout'}],electronAPI:{smartAiImageReverse:async payload=>{
-    abortedCalls.push(payload);controller.abort();return {ok:true,prompt:'数清',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'partial',references:[{index:1,role:'combined'}],layoutChanges:[],preserve:[],grids:[]}};
+    abortedCalls.push(payload);controller.abort();return {ok:true,prompt:'编辑',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'combined'}],layoutChanges:[],preserve:[],grids:[]}};
   }}}),/任务已中止/);
   assert.equal(abortedCalls.length,1);
-  let mismatchCalls=0;
-  await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'新主题',references:[{dataUrl:'data:image/png;base64,mismatch',role:'layout'}],electronAPI:{smartAiImageReverse:async payload=>{
-    mismatchCalls++;const first=payload.purpose==='ui-design-layout-facts';
-    return {ok:true,prompt:'编辑',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:first?'partial':'theme-redesign',references:[{index:1,role:'combined'}],layoutChanges:[],preserve:[],grids:[{description:'网格',columns:6,rows:first?5:7}]}};
-  }}}),/行列识别不一致/);
-  assert.equal(mismatchCalls,2);
 });

@@ -68,6 +68,20 @@ const nativeGraph = await host21.buildGraph({module:'novaflow-brand-runtime',met
 ]}});
 assert.equal(nativeGraph['5'].inputs.prompt,nativePrompt,'native UI directive is not decorated with drawing rules or duplicate preservation clauses');
 assert.ok(nativeGraph['5'].inputs['images.image_2']);
+// Changing UI output aspect must not silently discard the image's spatial edit input.
+// Drawing's existing aspect-dependent behavior stays intact; explicit UI reflow is still fresh.
+for (const [extraState, latent] of [[{uiNativeEditPrompt:true,uiPreserveLayout:true},'5'],[{uiNativeEditPrompt:true,uiPreserveLayout:false},'6'],[{},'6']]) {
+ const resized = await host21.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:[
+  'local','img2img',['screen.png'],'UI_resized',nativePrompt,'','test',[{width:758,height:1640}],
+  {provider:'local',mode:'img2img',width:1024,height:1024,seed:7,localDrawEngine:'qwen-2.1',...extraState}
+ ]}});
+ assert.equal(resized['7'].inputs.latent_image[0],latent);
+ if(latent==='5') {
+  const scale=resized[resized['5'].inputs['images.image_1'][0]];
+  assert.equal(scale.class_type,'ImageScale');assert.equal(scale.inputs.crop,'disabled');
+  assert.equal(scale.inputs.width,1024);assert.equal(scale.inputs.height,1024);
+ }
+}
 const uiRoles = (roles) => roles.map((role, index) => ({ index, role }));
 const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse(JSON.stringify(await host.buildGraph({
   module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [

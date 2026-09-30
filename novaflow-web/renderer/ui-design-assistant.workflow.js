@@ -64,7 +64,6 @@
   const DEFAULT_TIMEOUT_MS = 120000
   const LOCAL_TIMEOUT_MS = 300000
   let protectionSequence = 0
-  const layoutFactsCache = new Map()
 
   function text(value) {
     return String(value == null ? '' : value).trim()
@@ -409,35 +408,9 @@
     if (typeof call !== 'function') throw new Error(engine === 'local' ? '本地模型未就绪' : '云端模型未就绪')
 
     let result
-    let countedLayout
     if (engine === 'grok') {
       const sessionToken = text(await resolveValue(options.getSessionToken, options.sessionToken))
       if (!sessionToken) throw new Error('请先登录 NovaFlow 账号')
-      // Count only the layout image before the creative pass. Style images can otherwise
-      // influence both the grid count and the interpretation of the original composition.
-      const layoutIndex = references.findIndex(ref => ref.role === 'layout')
-      const candidate = layoutIndex >= 0 ? layoutIndex : references.findIndex(ref => ['reference','content'].includes(ref.role))
-      if (options.targetEngine === 'qwen-2.1' && candidate >= 0 && purpose !== 'ui-design-layout-facts' && !structure.regions.length) {
-        const ref = requestReferences[candidate]
-        let counted = layoutFactsCache.get(ref.dataUrl)
-        if (!counted) {
-          counted = unwrapResult(await withTimeout(() => call({token:sessionToken,prompt:'清点原图布局',currentPrompt:'清点原图布局',supportsNegativePrompt:false,
-            surface:'ui-design',purpose:'ui-design-layout-facts',targetEngine:'qwen-2.1',scenario:'role_reference',sourceCount:1,targetIndex:0,
-            images:[{imageUrl:ref.dataUrl,label:'布局原图',role:'reference',slotType:'reference'}]}),options.timeoutMs,engine))
-          counted = {...counted,uiPlan:root.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(counted.uiPlan,{references:[{role:'reference'}]})}
-          checkActive()
-          layoutFactsCache.set(ref.dataUrl,counted)
-          if (layoutFactsCache.size > 4) layoutFactsCache.delete(layoutFactsCache.keys().next().value)
-        }
-        const plan = counted.uiPlan
-        checkActive()
-        if (plan.layoutReference) {
-          countedLayout = {index:candidate+1,grids:plan.grids || []}
-          // Keep the second reading independent; copying the first result into the
-          // creative request would make an agreement circular instead of corroboration.
-          countedLayout.cacheKey = ref.dataUrl
-        }
-      }
       checkActive()
       result = await withTimeout(() => call({
         token: sessionToken,
@@ -503,14 +476,6 @@
 
     checkActive()
     const parsed = unwrapResult(result)
-    if (parsed.uiPlan && countedLayout && parsed.uiPlan.layoutReference === countedLayout.index) {
-      const signature = grids => JSON.stringify((grids || []).map(g=>[g.columns,g.rows]).sort((a,b)=>a[0]-b[0]||a[1]-b[1]))
-      if (signature(parsed.uiPlan.grids) !== signature(countedLayout.grids)) {
-        layoutFactsCache.delete(countedLayout.cacheKey)
-        throw new Error('布局参考的行列识别不一致，本次未提交生成；请重试或用布局编辑明确结构')
-      }
-      parsed.uiPlan = {...parsed.uiPlan,grids:countedLayout.grids}
-    }
     if (options.targetEngine !== 'qwen-2.1' && options.preserveLayout) parsed.prompt = parsed.prompt.replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, '[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n')
     const restoredPrompt = restoreText(parsed.prompt, promptProtection)
     if (!restoredPrompt.ok) throw new Error('参考图引用保护失败，已保留原设计要求')
