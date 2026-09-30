@@ -42,7 +42,8 @@
     const value = { ...defaults, ...settings[profile.id] }
     value.acceleration = defaults.acceleration
     try {
-      core.calculateResolution(value)
+      if (value.resolutionMode === 'custom') Object.assign(value, core.normalizeCustomResolution(value))
+      else core.calculateResolution(value)
       core.normalizeDuration(value.durationSeconds)
       core.normalizeFps(value.fps)
       core.normalizeSteps(value.steps, 't2v')
@@ -523,6 +524,19 @@
       }
     }
     return Object.freeze({ ...best, exact: best.width === width && best.height === height })
+  }
+
+  function normalizeCustomResolution(options = {}) {
+    const width = Number(options.width)
+    const height = Number(options.height)
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 32 || height < 32 || width > 16384 || height > 16384) {
+      throw new RangeError('自定义宽高须为 32–16384 的整数')
+    }
+    const dimensions = { width: alignDimension(width), height: alignDimension(height) }
+    if (dimensions.width * dimensions.height > MAX_CANVAS_PIXELS) {
+      throw new RangeError('自定义分辨率超出 H3 2 MP 上限，请降低宽高')
+    }
+    return Object.freeze(dimensions)
   }
 
   function normalizeDimensions(options) {
@@ -1506,6 +1520,7 @@
     DURATION_STEP,
     calculateResolution,
     matchResolution,
+    normalizeCustomResolution,
     normalizeSteps,
     normalizeFps,
     normalizeLoras,
