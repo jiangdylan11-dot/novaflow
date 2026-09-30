@@ -70,6 +70,28 @@ test('model switches retain and display overflow so it can be removed',()=>{
   assert.equal(context.artGenerateVisibleReferenceCount(),14);
 });
 
+test('image-to-image keeps every visible reference when the assistant plan has no compiled images',()=>{
+  const brand=source('novaflow-brand-runtime.js');
+  const context={};
+  vm.runInNewContext(brand.slice(brand.indexOf('  function resolveArtGenerateReferenceInputs('),brand.indexOf('  async function runArtGenerate(')),context);
+  const original=refs(2);
+  const empty=context.resolveArtGenerateReferenceInputs(original,{roles:['subject','style'],conditioning:[],capabilities:{}});
+  assert.deepEqual(Array.from(empty.refs,item=>item.dataUrl),original.map(item=>item.dataUrl));
+  assert.deepEqual(Array.from(empty.rolePlan.conditioning,item=>item.sourceIndex),[0,1]);
+  const partial=context.resolveArtGenerateReferenceInputs(original,{roles:['subject','style'],conditioning:[
+    {sourceIndex:0,role:'subject',dataUrl:'data:image/png;base64,Y29tcGlsZWQ=',processor:'source'}
+  ],capabilities:{}});
+  assert.equal(partial.refs[0].dataUrl,'data:image/png;base64,Y29tcGlsZWQ=');
+  assert.equal(partial.refs[1].dataUrl,original[1].dataUrl);
+  assert.equal(partial.refs[1].role,'style');
+  assert.equal(context.resolveArtGenerateReferenceInputs(original,null).refs,original);
+  const mentions={window:{}};mentions.window=mentions;
+  vm.runInNewContext(source('resource-mention.tool.js'),mentions);
+  const compiled=mentions.NovaFlowResourceMentionTool.compileText({surface:'art-generate',text:'@参考图2 的风格用于 @参考图1',
+    resources:partial.refs.map((item,index)=>({key:`art_reference_${index+1}`,label:`参考图${index+1}`,kind:'image',occupied:true,previewUrl:item.dataUrl}))});
+  assert.deepEqual(Array.from(compiled.invalidTokens),[]);
+});
+
 test('drawing assistant collects every populated reference tile',async()=>{
   const smart=source('novaflow-smart-ai.js');
   class Element {querySelector(){return this.img;}}

@@ -84176,6 +84176,7 @@
     let negative = sampler.inputs?.negative;
     let applied = 0;
     rolePlan.conditioning.forEach((item, index) => {
+      if (item?.processor === "source") return;
       const type = item?.role === "pose" ? "openpose" : (item?.role === "composition" || item?.role === "ui_layout") ? "canny/lineart/anime_lineart/mlsd" : "";
       if (!type || !uploadedNames[index]) return;
       const base = `nf_ref_control_${index + 1}`;
@@ -84259,6 +84260,22 @@
     }
   }
 
+  function resolveArtGenerateReferenceInputs(allRefs, plan) {
+    if (!plan || !Array.isArray(plan.conditioning)) return { refs: allRefs, rolePlan: null };
+    const compiled = new Map(plan.conditioning
+      .filter((item) => Number.isInteger(item?.sourceIndex) && item.dataUrl)
+      .map((item) => [item.sourceIndex, item]));
+    // Style and color references can be text-only in the assistant plan. They
+    // still occupy real image slots when the user starts image-to-image.
+    const refs = allRefs.map((source, index) => {
+      const prepared = compiled.get(index);
+      return prepared
+        ? { ...source, ...prepared, dataUrl: prepared.dataUrl }
+        : { ...source, sourceIndex: index, role: plan.roles?.[index] || source.role || "reference", processor: "source" };
+    });
+    return { refs, rolePlan: { ...plan, conditioning: refs } };
+  }
+
   async function runArtGenerate(options = {}) {
     if (ART_GENERATE_STATE.running) return;
     const ui = window.NovaFlowUiDesignDrawing;
@@ -84310,12 +84327,10 @@
       setArtGenerateStatus(`${providerLabel} 最多支持 ${referenceLimit} 张参考图，当前 ${allRefs.length} 张。请移除多余图片或切换模型；本次未截断提交。`, true);
       return;
     }
-    const rolePlan = !options.uiPrepared && runMode === "img2img"
+    const assistantRolePlan = !options.uiPrepared && runMode === "img2img"
       ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs)
       : null;
-    const refs = rolePlan
-      ? (Array.isArray(rolePlan.conditioning) ? rolePlan.conditioning.filter((item) => item && item.dataUrl) : [])
-      : allRefs;
+    const { refs, rolePlan } = resolveArtGenerateReferenceInputs(allRefs, assistantRolePlan);
     if (runMode === "img2img" && !refs.length) {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
       setArtGenerateStatus("\u56fe\u751f\u56fe\u9700\u8981\u5148\u4e0a\u4f20\u53c2\u8003\u56fe", true);
@@ -84329,6 +84344,9 @@
           if (item.role === "background") return `图${number}是经过隔离的背景约束图，只使用环境与空间，不复制前景主体。`;
           if (item.role === "composition") return `图${number}是经过隔离的构图/深度定位图，只使用位置、尺度和空间层次。`;
           if (item.role === "ui_layout") return `图${number}是经过隔离的UI布局线框图，只使用区域与层级，不复制文字、图标和具体美术。`;
+          if (item.role === "style") return `图${number}只提供画风、笔触和渲染语言，不复制其中的主体或布局。`;
+          if (item.role === "color") return `图${number}只提供配色关系，不复制其中的主体或布局。`;
+          if (item.role === "material") return `图${number}只提供材质与表面质感，不复制其中的主体或布局。`;
           return `图${number}只作为${item.role || "指定"}约束。`;
         }).join("\n")
       : "";
