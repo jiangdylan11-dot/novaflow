@@ -1,5 +1,12 @@
 # UI 设计实施记录（2026-09-30 修正）
 
+## 云端分析后台发布（2026-09-30）
+
+- 修复根目录 supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs 遗留的 4 张截断，与唯一维护的 admin-server 图片规范化逻辑一致；无效图片拒绝整次提交，不静默丢图。
+- Supabase 项目 cjakoblszlmbmotchzva 的 novaflow-backend 从 v85 更新到 v86，状态 ACTIVE。发布前下载线上源码核对，只有上述图片规范化函数不同；任务控制面 novaflow-web 保持 v18。
+- 云端后端回归 144 项通过、17 项跳过、0 失败。发布后下载的 4 个源码模块均与本地一致，回读源码的 UI／绘图请求构建均保留 16 张图片和原顺序，并拒绝无效成员；/health 与 /ready 均为 HTTP 200。未实际调用付费模型分析图片，不把源码回读验证作为模型效果验收。
+- 此次仅更新云端后端，不改变刚生成的 0.4.83 助手安装包与网页 ZIP。部署验证记录位于 novaflow-web/.artifacts/backend-capacity-20260930/verification.json。
+
 ## UI 输入区域简化（2026-09-30）
 
 - UI 正向提示词标题改为「设计需求」，本地负向标题改为「避免内容」，并显示可选填写的占位说明。两个标题均为静态文字，移除提示词历史入口。保留编辑按钮，编辑弹窗使用相同标题。

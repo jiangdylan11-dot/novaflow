@@ -1384,7 +1384,8 @@ function normalizeGrokSmartAiImage(item, index) {
 
 function normalizeGrokSmartAiImages(payload) {
   const source = Array.isArray(payload?.images) ? payload.images : [];
-  const images = source.map((item, index) => normalizeGrokSmartAiImage(item, index)).filter(Boolean).slice(0, 4);
+  const images = source.map((item, index) => normalizeGrokSmartAiImage(item, index)).filter(Boolean);
+  if (images.length !== source.length) throw new Error('参考图数据无效，本次未截断提交');
   if (!images.length) throw new Error("image reverse requires at least one image");
   return images;
 }
