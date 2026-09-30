@@ -66,6 +66,20 @@ test('Qwen 2.1 planning carries independent layout and visual scopes through the
   assert.deepEqual(grokResponsesPublicResult({output_text:JSON.stringify({prompt:'原创界面',ui_plan:create})},textRequest.resultOptions).uiPlan,create);
 });
 
+test('explicit unchanged layout with one ordinary UI image survives a wrong planner role',()=>{
+  const request=buildGrokImageReverseRequest({surface:'ui-design',purpose:'ui-design-reference',targetEngine:'qwen-2.1',
+    prompt:'参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。',scenario:'role_reference',
+    images:[{imageUrl:'data:image/png;base64,AA==',role:'reference'}]});
+  const wrong={version:1,layoutMode:'create',layoutReference:0,visualMode:'create',
+    references:[{index:1,role:'style'}],layoutChanges:['重新排版'],preserve:[],grids:[]};
+  const result=grokResponsesPublicResult({output_text:JSON.stringify({prompt:'将旧主题替换为中国风生肖牛老虎机。',ui_plan:wrong})},request.resultOptions);
+  assert.equal(result.uiPlan.layoutMode,'preserve');
+  assert.equal(result.uiPlan.layoutReference,1);
+  assert.equal(result.uiPlan.visualMode,'theme-redesign');
+  assert.deepEqual(result.uiPlan.references,[{index:1,role:'layout'}]);
+  assert.deepEqual(result.uiPlan.layoutChanges,[]);
+});
+
 test('admin and Edge response adapters do not discard the Qwen plan',()=>{
   const admin=readFileSync(new URL('../../../novaflow-web/admin/admin-server/server.js',import.meta.url),'utf8');
   const edge=readFileSync(new URL('./index.ts',import.meta.url),'utf8');

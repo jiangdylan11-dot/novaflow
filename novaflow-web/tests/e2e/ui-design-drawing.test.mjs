@@ -62,6 +62,22 @@ function planFor(refs, patch={}) {
     visualMode:'theme-redesign',references:refs.map((r,i)=>({index:i+1,role:r.role === 'style' ? 'style' : r.role === 'layout' ? 'layout' : 'combined'})),layoutChanges:[],preserve:[],...patch};
 }
 
+test('single UI reference obeys explicit unchanged layout for a new zodiac theme',async()=>{
+  const refs=[{dataUrl:'data:image/png;base64,ref',role:'reference'}];
+  const request='参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。';
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将旧主题全部换成生肖牛主题。',uiPlan:{...planFor(refs),layoutMode:'create',layoutReference:0,references:[{index:1,role:'style'}],layoutChanges:['重新排版']}})});
+  e.state.prompt=request;
+  const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
+  assert.equal(prepared.uiPlan.layoutMode,'preserve');
+  assert.equal(prepared.uiPlan.layoutReference,1);
+  assert.equal(prepared.uiPlan.visualMode,'theme-redesign');
+  assert.equal(prepared.uiPlan.references[0].role,'layout');
+  assert.deepEqual(Array.from(prepared.uiPlan.layoutChanges),[]);
+  assert.equal(prepared.references.length,1);
+  assert.match(prepared.promptSnapshot.prompt,/沿用布局参考的区域位置/);
+  assert.throws(()=>e.sandbox.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(null,{references:refs,prompt:'参考图1，人物缩小20%，其余布局一样。'}),/规划不完整/);
+});
+
 test('Qwen partial layout changes retain protected areas without a global position lock',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,ref',role:'layout'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'人物缩小20%，符号区上移，奖池和底部操作栏保持原位。',uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['人物缩小20%','符号区上移'],preserve:['奖池和底部操作栏保持原位']})})});

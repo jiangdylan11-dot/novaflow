@@ -8200,7 +8200,7 @@ function grokResponsesPublicResult(data, options = {}) {
         options.supportsNegativePrompt !== false
       )
     : parseSmartAiPromptResult(rawText, options);
-  const uiPlan = options.uiQwen21Plan === true ? validateUiQwen21Plan(parseSmartAiPromptJson(rawText)?.ui_plan, options.referenceCount || 0) : null;
+  const uiPlan = options.uiQwen21Plan === true ? validateUiQwen21Plan(parseSmartAiPromptJson(rawText)?.ui_plan, options.referenceCount || 0, options) : null;
   if (options.uiQwen21Plan === true) {
     if (!String(parsed.prompt || '').trim()) throw new Error('Qwen 2.1 UI 设计指令为空');
     const tokens = [...new Set(String(options.originalPrompt || '').match(/__NOVAFLOW_[A-Z0-9_:-]+__/g) || [])];
@@ -8771,7 +8771,7 @@ function buildUiQwen21PromptRequest(payload, model, context) {
     `布局、尺寸和参考职责：${requirements}`,
     supportsNegativePrompt ? `用户避免内容：${negative || "无"}；negative_prompt只写具体不希望出现的内容，不强加写实或卡通等画风。` : "不输出负面提示字段。",
   ].join("\n")));
-  return {body:{model:String(model || "grok-4.3"),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,originalPrompt:prompt,supportsNegativePrompt}};
+  return {body:{model:String(model || "grok-4.3"),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,referenceRoles:scenario.images.map(image=>image.role || image.slotType || "reference"),originalPrompt:prompt,purpose:payload?.purpose,supportsNegativePrompt}};
 }
 
 function buildUiQwen21LayoutRequest(model, context) {
@@ -8784,8 +8784,16 @@ function buildUiQwen21LayoutRequest(model, context) {
   return request;
 }
 
-function validateUiQwen21Plan(plan, count) {
+function validateUiQwen21Plan(plan, count, options = {}) {
   const invalid = () => {throw new Error("Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成");};
+  const role = options.referenceRoles?.[0];
+  if (count===1 && options.purpose!=="ui-design-layout-facts" && ["reference","layout","content"].includes(role)
+      && /(?:布局|排版|结构).{0,10}(?:一样|不变|保持|沿用)|(?:保持|保留|沿用|按照|按).{0,10}(?:布局|排版|结构)/u.test(String(options.originalPrompt || ""))
+      && !/(?:缩小|放大|上移|下移|左移|右移|移动|重排|重新排版|增减|增加一[行列]|减少一[行列])/u.test(String(options.originalPrompt || ""))) {
+    const visualMode=/(?:做一个|设计一个).{0,60}(?:主题|界面|页面|老虎机|游戏)|(?:重新设计|重做|新主题)/u.test(String(options.originalPrompt || "")) ? "theme-redesign" : (["style-transfer","theme-redesign","partial","create"].includes(plan?.visualMode) ? plan.visualMode : "style-transfer");
+    plan = {version:1,layoutMode:"preserve",layoutReference:1,
+      visualMode,references:[{index:1,role:role==="reference" ? visualMode==="theme-redesign" ? "layout" : "combined" : role}],layoutChanges:[],preserve:[],grids:[]};
+  }
   if(!plan || plan.version!==1 || !["preserve","partial","reflow","create"].includes(plan.layoutMode) || !["style-transfer","theme-redesign","partial","create"].includes(plan.visualMode))invalid();
   if(!Number.isInteger(plan.layoutReference) || plan.layoutReference<0 || plan.layoutReference>count || (plan.layoutMode==="create")!==(plan.layoutReference===0))invalid();
   if(!Array.isArray(plan.references) || plan.references.length!==count)invalid();

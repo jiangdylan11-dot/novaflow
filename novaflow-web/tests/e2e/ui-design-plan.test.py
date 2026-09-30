@@ -10,7 +10,7 @@ class UiDesignPlanTest(unittest.TestCase):
         path = Path(__file__).resolve().parents[3] / 'particle-editor-desktop/prompt-assistant-service.py'
         tree = ast.parse(path.read_text(encoding='utf-8-sig'))
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'validate_ui_qwen21_plan')
-        scope = {}
+        scope = {'re': re}
         exec(compile(ast.Module(body=[fn], type_ignores=[]), str(path), 'exec'), scope)
         validate = scope['validate_ui_qwen21_plan']
         good = dict(version=1, layoutMode='partial', layoutReference=1, visualMode='theme-redesign',
@@ -20,6 +20,12 @@ class UiDesignPlanTest(unittest.TestCase):
         for patch in [dict(preserve=[]), dict(layoutMode='preserve'), dict(layoutReference=True), dict(references=[]), dict(visualMode='unknown'), dict(grids=[dict(description='符号',columns=6,rows=True)]), dict(grids=[dict(description='符号',columns=0,rows=5)])]:
             with self.assertRaisesRegex(ValueError, '规划不完整'):
                 validate(dict(good, **patch), 1)
+        prompt = '参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。'
+        recovered = validate(dict(good, layoutMode='create', layoutReference=0,
+                                  references=[dict(index=1, role='style')]), 1, prompt, ['reference'])
+        self.assertEqual((recovered['layoutMode'], recovered['layoutReference'], recovered['visualMode']),
+                         ('preserve', 1, 'theme-redesign'))
+        self.assertEqual(recovered['references'], [dict(index=1, role='layout')])
 
     def test_local_qwen_planner_returns_json_contract_without_loading_weights(self):
         path = Path(__file__).resolve().parents[3] / 'particle-editor-desktop/prompt-assistant-service.py'

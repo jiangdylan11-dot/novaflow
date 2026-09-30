@@ -499,7 +499,7 @@
 
     return Object.freeze({
       prompt: finalPrompt,
-      uiPlan: options.targetEngine === 'qwen-2.1' ? root.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(parsed.uiPlan, { references }) : null,
+      uiPlan: options.targetEngine === 'qwen-2.1' ? root.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(parsed.uiPlan, { references, prompt: currentPrompt }) : null,
       negativePrompt: supportsNegativePrompt ? restoredNegative.text : '',
       hasNegativePrompt: supportsNegativePrompt && Boolean(restoredNegative.text),
       provider,

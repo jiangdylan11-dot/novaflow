@@ -37,6 +37,18 @@ test('assistant restores image tokens in the partial-layout plan as well as its 
   assert.equal(result.uiPlan.grids[0].rows,5);
 });
 
+test('assistant keeps a single UI screenshot as layout when the request explicitly says unchanged',async()=>{
+  const context={setTimeout,clearTimeout,console};vm.createContext(context);
+  for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
+  const result=await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',
+    prompt:'参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。',references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}],
+    electronAPI:{smartAiImageReverse:async payload=>({ok:true,prompt:'将'+payload.prompt.match(/__NOVAFLOW_[A-Z0-9_:-]+__/)[0]+'改成生肖牛老虎机。',uiPlan:null})}});
+  assert.equal(result.uiPlan.layoutReference,1);
+  assert.equal(result.uiPlan.layoutMode,'preserve');
+  assert.equal(result.uiPlan.visualMode,'theme-redesign');
+  assert.equal(result.uiPlan.references[0].role,'layout');
+});
+
 test('native UI planning uses all references once without an implicit grid-count gate',async()=>{
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);

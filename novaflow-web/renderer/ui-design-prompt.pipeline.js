@@ -12,6 +12,21 @@
   function normalizeQwenPlan(value, input) {
     const count = input.references?.length || 0
     const fail = () => { throw new Error('Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成') }
+    // A single ordinary UI screenshot plus an explicit layout lock is an
+    // unambiguous user instruction. Do not let a vision planner's role guess
+    // turn it into a style-only reference or an invented layout change.
+    const sourceRole = input.references?.[0]?.role
+    const explicitLayout = count === 1 && ['reference', 'layout', 'content'].includes(sourceRole)
+      && /(?:布局|排版|结构).{0,10}(?:一样|不变|保持|沿用)|(?:保持|保留|沿用|按照|按).{0,10}(?:布局|排版|结构)/u.test(String(input.prompt || ''))
+      && !/(?:缩小|放大|上移|下移|左移|右移|移动|重排|重新排版|增减|增加一[行列]|减少一[行列])/u.test(String(input.prompt || ''))
+    if (explicitLayout) {
+      const visualMode = /(?:做一个|设计一个).{0,60}(?:主题|界面|页面|老虎机|游戏)|(?:重新设计|重做|新主题)/u.test(String(input.prompt || ''))
+        ? 'theme-redesign' : (QWEN_VISUAL_MODES.includes(value?.visualMode) ? value.visualMode : 'style-transfer')
+      value = { version: 1, layoutMode: 'preserve', layoutReference: 1,
+        visualMode,
+        references: [{ index: 1, role: sourceRole === 'reference' ? visualMode === 'theme-redesign' ? 'layout' : 'combined' : sourceRole }],
+        layoutChanges: [], preserve: [], grids: [] }
+    }
     if (!value || value.version !== 1 || !QWEN_LAYOUT_MODES.includes(value.layoutMode) || !QWEN_VISUAL_MODES.includes(value.visualMode)) fail()
     const layoutReference = value.layoutReference
     if (!Number.isInteger(layoutReference) || layoutReference < 0 || layoutReference > count) fail()
