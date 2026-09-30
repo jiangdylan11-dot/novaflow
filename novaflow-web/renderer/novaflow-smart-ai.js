@@ -5046,7 +5046,7 @@
         event.stopPropagation();
         if (surface === "art") {
           const textareas = getPromptTextareasFromContext({ surface: "art", button: actions });
-          openSmartAiPromptEditor(textareas.positive, "提示词");
+          openSmartAiPromptEditor(textareas.positive, window.NovaFlowUiDesignDrawing?.isActive?.() ? "设计需求" : "提示词");
           return;
         }
         const promptEditor = window.__NovaFlowPromptEditor;
@@ -5061,6 +5061,13 @@
 
   function mountButton(actions, surface) {
     if (!(actions instanceof HTMLElement)) return;
+    if (surface === "art" && window.NovaFlowUiDesignDrawing?.isActive?.()) {
+      actions.querySelectorAll(`[${SMART_BUTTON_ATTR}="1"]`).forEach((button) => {
+        if (button.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") button.remove();
+      });
+      mountPromptEditButton(actions, surface);
+      return;
+    }
     let button = actions.querySelector(`[${SMART_BUTTON_ATTR}="1"]`);
     let created = false;
     if (!(button instanceof HTMLButtonElement)) {

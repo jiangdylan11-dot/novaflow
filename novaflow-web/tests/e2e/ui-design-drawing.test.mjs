@@ -88,6 +88,16 @@ test('ordinary drawing refuses overflow before uploads instead of generating fro
   assert.equal(e.calls.includes('upload'),false);
   assert.equal(e.builds.length,0);
 });
+
+test('UI generation disables inherited NSFW without changing the drawing setting',async()=>{
+  const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}]});
+  e.state.nsfw=true;
+  await e.run();
+  assert.deepEqual(e.failures,[]);
+  assert.equal(e.builds[0][8].nsfw,false);
+  assert.equal(e.state.nsfw,true);
+  assert.equal(e.calls.filter(x=>x==='optimize').length,1);
+});
 test('cancel during UI preparation stops before uploads and repeat click does not start a second run',async()=>{
   let resolve;
   const e = environment({optimize:()=>new Promise(r=>{resolve=r;})});

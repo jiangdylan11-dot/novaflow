@@ -195,6 +195,7 @@
       if (!input.prompt.trim() && !input.references.length) throw new Error('请输入设计需求或添加参考图')
       const keys = ['mode', 'provider', 'width', 'height', 'count', 'nsfw', 'randomSeed', 'seed', 'loras', 'samplingOverrides', 'localTextQuality', 'localEditStrength', 'negativePrompt', 'gptQualityImg2img', 'gptQualityTxt2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight', 'googleAspectRatioImg2img', 'googleAspectRatioTxt2img', 'googleResolution']
       const state = copy(Object.fromEntries(keys.filter(key => context.state[key] !== undefined).map(key => [key, context.state[key]])))
+      state.nsfw = false
       state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider, state.mode, state)?.engine || ''
       // With no references the same img2img controls still own the text-only run's cloud settings.
       if (!input.references.length) {

@@ -56,6 +56,39 @@ function functionsBetween(text, start, end, sandbox) {
   return sandbox;
 }
 
+test('UI prompt headers become static design titles while drawing retains its history actions',()=>{
+  let ui=true;
+  const e=functionsBetween(brand,'renderArtGeneratePromptHistory','renderArtGeneratePromptHistoryPopoverRow',{
+    window:{NovaFlowUiDesignDrawing:{isActive:()=>ui}},ART_GENERATE_STATE:{},NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR:'action',
+    createArtEl:(tag,attrs,children)=>({tag,attrs,children}),renderArtGeneratePromptAssistantActions:()=>({}),
+  });
+  for(const [key,title] of [['prompt','设计需求'],['negativePrompt','避免内容']]) {
+    const label=e.renderArtGeneratePromptHistory(key).children[0].children[0];
+    assert.equal(label.tag,'span');assert.equal(label.children,title);
+    assert.equal(label.attrs['data-novaflow-art-history-action'],undefined);
+  }
+  ui=false;
+  const label=e.renderArtGeneratePromptHistory('prompt').children[0].children[0];
+  assert.equal(label.tag,'button');assert.equal(label.children,'历史记录');
+  assert.equal(typeof label.attrs.onclick,'function');
+});
+
+test('UI uses the ordinary model capacity and sampling while preserving drawing NSFW state',()=>{
+  const state={provider:'local',mode:'img2img',nsfw:true};let ui=true;
+  const e=functionsBetween(brand,'artGenerateModelState','shouldKeepArtGenerateBottomContent',{
+    ART_GENERATE_STATE:state,window:{NovaFlowUiDesignDrawing:{isActive:()=>ui}},
+  });
+  const models={};vm.runInNewContext(source('art-generate-model.resource.js'),models);
+  const api=models.NovaFlowArtGenerateModels;
+  assert.equal(api.capabilityFor('local','img2img',e.artGenerateModelState()).referenceLimit,10);
+  assert.equal(api.localSamplingFor(e.artGenerateModelState(),'img2img').route,'qwen-2.1');
+  assert.equal(state.nsfw,true);
+  ui=false;
+  assert.equal(e.artGenerateModelState(),state);
+  assert.equal(api.capabilityFor('local','img2img',e.artGenerateModelState()).referenceLimit,3);
+  assert.equal(api.localSamplingFor(e.artGenerateModelState(),'img2img').route,'rapid');
+});
+
 test('UI remains mounted with only its generation category, open or collapsed', () => {
   const e = functionsBetween(split, 'splitEditorContentMounted', 'findAiCard', {
     ART_UI_HOST_SELECTOR: '[data-novaflow-art-ui-host="1"]',

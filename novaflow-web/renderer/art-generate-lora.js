@@ -113,6 +113,7 @@
 
   function mount(options) {
     const { host, state } = options
+    const modelState = options.modelState || state
     if (!host) return
     let record = mounts.get(host)
     if (!record) {
@@ -125,14 +126,14 @@
       mounts.set(host, record)
     }
     record.options = options
-    const context = `${state.provider}:${state.mode}:${!!state.nsfw}:${qwen21Route(state)}`
+    const context = `${modelState.provider}:${modelState.mode}:${!!modelState.nsfw}:${qwen21Route(modelState)}`
     if (record.context !== context) {
       record.context = context; record.loaded = false; record.signature = ''
       const cached = catalogCache.get(context)
       record.names = cached ? cached.names.slice() : []
       record.quiet = Boolean(cached)
     }
-    const supported = supports(state)
+    const supported = supports(modelState)
     if (record.slot.hidden !== !supported) record.slot.hidden = !supported
     const display = supported ? 'grid' : 'none'
     if (record.slot.style.display !== display) record.slot.style.display = display
@@ -152,7 +153,8 @@
   async function refresh(record) {
     if (record.loading) return
     const context = record.context
-    const request = qwen21Route(record.options.state) ? { nsfw: false, engine: 'qwen-2.1' } : { nsfw: !!record.options.state.nsfw }
+    const modelState = record.options.modelState || record.options.state
+    const request = qwen21Route(modelState) ? { nsfw: false, engine: 'qwen-2.1' } : { nsfw: !!modelState.nsfw }
     let dropped = false
     // A quiet refresh keeps the cached names on screen instead of the loading placeholder.
     record.loading = !record.quiet

@@ -62368,6 +62368,7 @@
 
   function aiAnimationPromptEditorTitle(frame) {
     const kind = frame instanceof HTMLElement ? (frame.getAttribute("data-novaflow-ai-prompt-kind") || frame.getAttribute("data-novaflow-art-generate-prompt-kind")) : "";
+    if (frame instanceof HTMLElement && frame.getAttribute("data-novaflow-art-generate-prompt-surface") === "ui") return kind === "negative" ? "避免内容" : "设计需求";
     return kind === "negative" ? "反向提示词" : "正向提示词";
   }
 
@@ -79844,7 +79845,7 @@
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); syncArtGenerateRuntime(); scheduleArtGeneratePreviewRefresh([0, 16, 64]); }
     }));
     if (mounted) window.NovaFlowArtGenerateLora?.mount?.({
-      host, state: ART_GENERATE_STATE,
+      host, state: ART_GENERATE_STATE, modelState: artGenerateModelState(),
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); },
       async loadCatalog(context) {
         await detectArtGenerateBaseUrl();
@@ -81012,10 +81013,18 @@
     )) || null;
   }
 
+  function artGenerateModelState() {
+    return window.NovaFlowUiDesignDrawing?.isActive?.() ? { ...ART_GENERATE_STATE, nsfw: false } : ART_GENERATE_STATE;
+  }
+
+  function artGenerateSurfaceRenderKey() {
+    return `${window.NovaFlowUiDesignDrawing?.isActive?.() ? "ui" : "drawing"}:${window.NovaFlowArtGenerateModels?.renderKey?.(artGenerateModelState()) || ""}`;
+  }
+
   function shouldKeepArtGenerateBottomContent(bottom, forceBottomRender = false) {
     if (forceBottomRender || ART_GENERATE_STATE.running) return false;
     if (!(bottom instanceof HTMLElement)) return false;
-    return bottom.getAttribute("data-novaflow-art-generate-render-key") === window.NovaFlowArtGenerateModels?.renderKey?.(ART_GENERATE_STATE);
+    return bottom.getAttribute("data-novaflow-art-generate-render-key") === artGenerateSurfaceRenderKey();
   }
 
   function syncArtGenerateElementFromRender(target, source) {
@@ -81046,7 +81055,7 @@
     }
     bindArtGeneratePromptHistorySurfaceEvents(root);
     root.className = "novaflow-app novaflow-art-generate-shell";
-    root.setAttribute("data-novaflow-art-generate-nsfw", ART_GENERATE_STATE.nsfw ? "1" : "0");
+    root.setAttribute("data-novaflow-art-generate-nsfw", artGenerateModelState().nsfw ? "1" : "0");
     Object.assign(root.style, {
       left: `${rect.left}px`,
       top: `${rect.top}px`,
@@ -81101,6 +81110,7 @@
       const from = currentBottom?.querySelector?.(selector);
       const to = nextBottom?.querySelector?.(selector);
       if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return;
+      if (from.getAttribute("data-novaflow-art-generate-prompt-surface") !== to.getAttribute("data-novaflow-art-generate-prompt-surface")) return;
       to.replaceWith(from);
       const textarea = from.querySelector("textarea");
       if (!(textarea instanceof HTMLTextAreaElement)) return;
@@ -81128,6 +81138,7 @@
     if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return;
     Array.from(from.children).forEach((child) => {
       if (!(child instanceof HTMLElement) || child.getAttribute("data-novaflow-smart-ai-button") !== "1") return;
+      if (window.NovaFlowUiDesignDrawing?.isActive?.() && child.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") return;
       if (child.getAttribute("data-novaflow-ai-prompt-expand-button") === "1") to.appendChild(child);
       else to.insertBefore(child, to.firstChild);
     });
@@ -81170,7 +81181,7 @@
       "data-novaflow-art-generate-bottom": "1",
       "data-novaflow-art-generate-panel": "1",
       "data-novaflow-art-generate-render-mode": ART_GENERATE_STATE.mode,
-      "data-novaflow-art-generate-render-key": window.NovaFlowArtGenerateModels?.renderKey?.(ART_GENERATE_STATE)
+      "data-novaflow-art-generate-render-key": artGenerateSurfaceRenderKey()
     }, [
       renderArtGenerateParamRow(),
       renderArtGenerateProgressRow(),
@@ -81314,7 +81325,7 @@
   // Keeps the 步数 / CFG fields on what the next run will use: a route default can change with the
   // negative prompt (2.1's CFG, the 2511 route) or with the steps (Lightning on or off).
   function syncArtGenerateSamplingFields() {
-    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(ART_GENERATE_STATE, ART_GENERATE_STATE.mode);
+    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(artGenerateModelState(), ART_GENERATE_STATE.mode);
     if (!sampling) return;
     document.querySelectorAll(`#${ART_GENERATE_WORKSPACE_ID} input[data-novaflow-art-generate-sampling]`).forEach((input) => {
       if (!(input instanceof HTMLInputElement) || document.activeElement === input) return;
@@ -81330,12 +81341,14 @@
   function renderArtGenerateSamplingField(kind, mode) {
     const models = window.NovaFlowArtGenerateModels;
     const runMode = mode || ART_GENERATE_STATE.mode;
-    const sampling = models?.localSamplingFor?.(ART_GENERATE_STATE, runMode);
+    const sampling = models?.localSamplingFor?.(artGenerateModelState(), runMode);
     if (!sampling || (kind !== "steps" && kind !== "cfg")) return null;
     const label = kind === "steps" ? "\u6b65\u6570" : "CFG";
     const commit = (input) => {
       if (!(input instanceof HTMLInputElement)) return;
-      const next = models.setLocalSamplingValue?.(ART_GENERATE_STATE, runMode, kind, input.value);
+      const state = artGenerateModelState();
+      const next = models.setLocalSamplingValue?.(state, runMode, kind, input.value);
+      if (next) ART_GENERATE_STATE.samplingOverrides = state.samplingOverrides;
       if (next) input.value = formatArtGenerateSamplingValue(kind, next);
       syncArtGenerateSamplingFields();
     };
@@ -81462,7 +81475,7 @@
   }
 
   function renderArtGenerateParamRow() {
-    const nsfwSwitch = createArtEl("div", { className: "novaflow-art-generate-param" }, [
+    const nsfwSwitch = window.NovaFlowUiDesignDrawing?.isActive?.() ? null : createArtEl("div", { className: "novaflow-art-generate-param" }, [
       createArtEl("span", { text: "NSFW" }),
       renderArtGenerateToggleButton(ART_GENERATE_STATE.nsfw, "NSFW", () => {
         setArtGenerateNsfwEnabled(!ART_GENERATE_STATE.nsfw);
@@ -81583,7 +81596,7 @@
 
   function renderArtGenerateEditGrid() {
     const provider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(ART_GENERATE_STATE.provider) || "local";
-    const capability = window.NovaFlowArtGenerateModels?.capabilityFor?.(provider, ART_GENERATE_STATE.mode, ART_GENERATE_STATE) || { referenceLimit: 0, negativePrompt: true };
+    const capability = window.NovaFlowArtGenerateModels?.capabilityFor?.(provider, ART_GENERATE_STATE.mode, artGenerateModelState()) || { referenceLimit: 0, negativePrompt: true };
     const children = [];
     if (ART_GENERATE_STATE.mode === "img2img" && Number(capability.referenceLimit || 0) > 0) {
       children.push(renderArtGenerateReferenceGrid());
@@ -81608,7 +81621,7 @@
 
   function artGenerateImg2imgCapability() {
     const provider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(ART_GENERATE_STATE.provider) || "local";
-    return window.NovaFlowArtGenerateModels?.capabilityFor?.(provider, "img2img", ART_GENERATE_STATE) || null;
+    return window.NovaFlowArtGenerateModels?.capabilityFor?.(provider, "img2img", artGenerateModelState()) || null;
   }
 
   function artGenerateReferenceLimit() {
@@ -81870,7 +81883,7 @@
   function artGenerateActiveCapability() {
     const models = window.NovaFlowArtGenerateModels;
     const provider = models?.normalizeProvider?.(ART_GENERATE_STATE.provider) || "local";
-    return models?.capabilityFor?.(provider, ART_GENERATE_STATE.mode, ART_GENERATE_STATE)
+    return models?.capabilityFor?.(provider, ART_GENERATE_STATE.mode, artGenerateModelState())
       || models?.getCapability?.(provider, ART_GENERATE_STATE.mode)
       || { fields: [] };
   }
@@ -82476,8 +82489,12 @@
   }
 
   function renderArtGeneratePromptHistory(key) {
+    const ui = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
     const open = ART_GENERATE_STATE.promptHistoryOpenKey === key;
-    const label = createArtEl("button", {
+    const label = ui ? createArtEl("span", {
+      "data-novaflow-ui-design-prompt-title": key,
+      style: { display: "inline-flex", alignItems: "center", height: "24px", padding: "3px 7px", fontSize: "11px", fontWeight: "500", lineHeight: "1", boxSizing: "border-box" }
+    }, key === "prompt" ? "设计需求" : "避免内容") : createArtEl("button", {
       type: "button",
       className: "novaflow-art-generate-history-label",
       "aria-expanded": open ? "true" : "false",
@@ -82604,6 +82621,10 @@
   }
 
   function renderArtGeneratePromptHistoryPopover() {
+    if (window.NovaFlowUiDesignDrawing?.isActive?.()) {
+      closeArtGeneratePromptHistoryPopover(false);
+      return;
+    }
     const key = ART_GENERATE_STATE.promptHistoryOpenKey;
     if (key !== "prompt" && key !== "negativePrompt") {
       document.getElementById(ART_GENERATE_PROMPT_HISTORY_POPOVER_ID)?.remove();
@@ -82677,6 +82698,8 @@
   }
 
   function renderArtGeneratePromptBox(key, label, placeholder) {
+    const ui = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
+    if (ui) placeholder = key === "prompt" ? "描述要生成的界面、参考图用途和目标风格" : "描述不希望出现的元素、风格或效果（可选）";
     const textarea = createArtEl("textarea", {
       placeholder,
       tabIndex: "0",
@@ -82706,7 +82729,8 @@
     return createArtEl("div", {
       className: "novaflow-art-generate-prompt",
       "data-novaflow-art-generate-prompt-frame": "1",
-      "data-novaflow-art-generate-prompt-kind": key === "negativePrompt" ? "negative" : "positive"
+      "data-novaflow-art-generate-prompt-kind": key === "negativePrompt" ? "negative" : "positive",
+      "data-novaflow-art-generate-prompt-surface": ui ? "ui" : "drawing"
     }, [
       renderArtGeneratePromptHistory(key),
       textarea
@@ -83180,6 +83204,7 @@
   }
 
   function renderArtGeneratePromptAssistantActions() {
+    if (window.NovaFlowUiDesignDrawing?.isActive?.()) return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" });
     const running = String(ART_GENERATE_STATE.promptAssistantRunning || "");
     const disabled = running || ART_GENERATE_STATE.running ? "disabled" : null;
     return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" }, [

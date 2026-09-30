@@ -57,7 +57,7 @@ test('cloud admin normalization keeps sixteen role references without truncation
 test('model switches retain and display overflow so it can be removed',()=>{
   const brand=source('novaflow-brand-runtime.js');
   const state={provider:'gpt',references:refs(16)};
-  const context={ART_GENERATE_STATE:state,window:{NovaFlowArtGenerateModels:models}};
+  const context={ART_GENERATE_STATE:state,artGenerateModelState:()=>state,window:{NovaFlowArtGenerateModels:models}};
   vm.runInNewContext(brand.slice(brand.indexOf('  const ART_GENERATE_MAX_REFERENCES ='),brand.indexOf('  function artGenerateResourceMentionSnapshot()')),context);
   assert.equal(context.artGenerateReferenceLimit(),16);
   state.provider='google';
