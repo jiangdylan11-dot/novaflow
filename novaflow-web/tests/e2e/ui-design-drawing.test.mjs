@@ -77,7 +77,9 @@ test('Qwen sends the second layout image first and remaps image identifiers cons
   e.state.prompt='用@参考图1的卡通风格，沿用@参考图2的布局';
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
   assert.equal(prepared.references[0].role,'layout');assert.equal(prepared.references[1].role,'style');
-  assert.match(prepared.promptSnapshot.prompt,/用@参考图2的卡通风格，沿用@参考图1的布局/);
+  assert.match(prepared.promptSnapshot.prompt,/用<image2>的卡通风格，沿用<image1>的结构/);
+  assert.doesNotMatch(prepared.promptSnapshot.prompt,/@参考图|用户设计需求|[\r\n]/);
+  assert.equal(prepared.state.uiNativeEditPrompt,true);
   assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
 });
 
@@ -98,6 +100,32 @@ test('Qwen planning cache separates generation engines and rejects missing refer
   const input={references:[{role:'layout'}],prompt:'参考@参考图2'};
   assert.notEqual(p.key({...input,targetEngine:'qwen-2.1'}),p.key({...input,targetEngine:''}));
   assert.throws(()=>p.compileQwenPlan({prompt:'设计',uiPlan:planFor(input.references)},input),/不存在的参考图/);
+});
+
+test('Qwen native editing carries counted layout facts and maps all image identifier forms once',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+  const references=[{role:'style'},{role:'layout'}];
+  const input={references,prompt:'参考图2是画布，用<image1>的风格'};
+  const result={prompt:'将参考图2改成海盗主题，图1只提供材质。',uiPlan:planFor(references,{layoutReference:2,preserve:['符号区6列5行','四个奖池','五个底部按钮']})};
+  const compiled=p.compileQwenPlan(result,input);
+  assert.match(compiled.prompt,/将<image1>改成海盗主题，<image2>只提供材质/);
+  assert.match(compiled.prompt,/符号区6列5行；四个奖池；五个底部按钮/);
+  assert.doesNotMatch(compiled.prompt,/@参考图|参考图2|[\r\n]/);
+  assert.equal((compiled.prompt.match(/符号区6列5行/g)||[]).length,1);
+  assert.throws(()=>p.compileQwenPlan({...result,prompt:'参考图3'},input),/不存在的参考图/);
+  const single=p.compileQwenPlan({prompt:'编辑<image1>的按钮颜色',uiPlan:planFor([{role:'layout'}])},{references:[{role:'layout'}],prompt:'图1按钮变蓝'});
+  assert.match(single.prompt,/编辑图片的按钮颜色/);
+  assert.doesNotMatch(single.prompt,/<image/);
+});
+
+test('style-only Qwen edits analyze the style image but generate from content instead of its identities',async()=>{
+  const refs=[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}];
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将图1的水彩纸纹与柔和光影用于图2，保留图2每个角色物品。',uiPlan:planFor(refs,{layoutReference:2,visualMode:'style-transfer',grids:[{description:'物品格',columns:6,rows:5}]})})});
+  const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
+  assert.equal(prepared.references.length,1);assert.equal(prepared.references[0].role,'layout');
+  assert.match(prepared.promptSnapshot.prompt,/水彩纸纹与柔和光影/);
+  assert.doesNotMatch(prepared.promptSnapshot.prompt,/<image2>|@参考图|布局来源，美术按需求重做/);
+  assert.equal(prepared.uiPlan.references.length,1);assert.equal(prepared.analysisUiPlan.references.length,2);
 });
 test('module names stay in the editor and never enter assistant or generation payloads',async()=>{
   const region = {name:'仅用户识别的内部标签',title:'旧标题',label:'旧标签',purpose:'辅助导航',requirements:'使用小号灰字',x:10,y:20,width:600,height:100,participates:false,locked:true};

@@ -219,10 +219,11 @@
       if (input.targetEngine === 'qwen-2.1') {
         const compiled = root.NovaFlowUiDesignPromptPipeline.compileQwenPlan(result, input)
         state.uiLayoutMode = compiled.plan.layoutMode
+        state.uiNativeEditPrompt = true
         state.uiPreserveLayout = ['preserve', 'partial'].includes(compiled.plan.layoutMode)
         state.uiRunIntent = compiled.plan.visualMode === 'theme-redesign' ? 'redesign' : compiled.plan.visualMode === 'partial' ? 'iteration' : compiled.plan.visualMode === 'create' ? 'redesign' : 'style-transfer'
         return { promptSnapshot: { prompt: compiled.prompt, negativePrompt: input.negativePrompt || result.negativePrompt || '' },
-          references: compiled.references, originalPrompt, optimizedPrompt: result.prompt, uiPlan: compiled.plan, state, store: session?.store }
+          references: compiled.references, originalPrompt, optimizedPrompt: result.prompt, uiPlan: compiled.plan, analysisUiPlan:compiled.analysisPlan, state, store: session?.store }
       }
       const layoutText = input.structure.regions?.length ? `\n布局参考中的模块约束（只约束布局与功能，不把线框画入成品）：\n${JSON.stringify(input.structure)}` : ''
       const intentText = input.generationIntent === 'style-transfer'
@@ -276,7 +277,7 @@
     })
   }
   function recordResult(result, prepared) {
-    prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt, uiPlan: prepared.uiPlan || null })
+    prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt, uiPlan: prepared.uiPlan || null, analysisUiPlan:prepared.analysisUiPlan || null })
   }
   root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, inputFor, prepare, openAssistant, recordResult,
     syncOutputSize() { mounted?.syncSize() },

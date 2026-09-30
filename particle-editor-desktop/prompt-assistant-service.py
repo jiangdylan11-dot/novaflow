@@ -5759,6 +5759,15 @@ def validate_ui_qwen21_plan(plan, count):
         fail()
     if mode == 'preserve' and plan['layoutChanges']:
         fail()
+    grids = plan.get('grids', [])
+    if not isinstance(grids, list) or len(grids) > 16:
+        fail()
+    for grid in grids:
+        if (not isinstance(grid, dict) or not isinstance(grid.get('description'), str)
+                or not grid['description'].strip() or len(grid['description']) > 200
+                or type(grid.get('columns')) is not int or not 1 <= grid['columns'] <= 100
+                or type(grid.get('rows')) is not int or not 1 <= grid['rows'] <= 100):
+            fail()
     return plan
 
 
@@ -16777,14 +16786,15 @@ class PromptAssistant:
             "\"ui_plan\":{\"version\":1,\"layoutMode\":\"preserve|partial|reflow|create\","
             "\"layoutReference\":0,\"visualMode\":\"style-transfer|theme-redesign|partial|create\","
             "\"references\":[{\"index\":1,\"role\":\"layout|style|content|asset|combined\"}],"
-            "\"layoutChanges\":[],\"preserve\":[]}}。枚举字段只选一个值，不输出竖线。"
+            "\"layoutChanges\":[],\"preserve\":[],\"grids\":[{\"description\":\"阵列用途\",\"columns\":1,\"rows\":1}]}}。枚举字段只选一个值，不输出竖线。"
             "每张图按1开始编号，references覆盖全部图片且不得重复。layoutReference是布局图编号；无布局来源为0且layoutMode=create。"
             "布局与画风独立判断：未要求改变布局默认preserve；只改部分区域为partial并写明layoutChanges和其余preserve；明确重排为reflow。"
             "风格图只供美术语言，人物/物品图只供素材，不能误作布局。用户只换画风时保留内容身份，换主题时所有主题美术连贯重设计。"
             "新主题布局图只保留区域几何与功能，不沿用原人物、装备和图标轮廓。风格参考具体提取主色、强调色、明暗层级、材质反光和体积塑造。"
             "要求有质感时拉开背景与主体明暗，区分哑光、金属、宝石及柔软材料，色彩丰富协调；用户指定淡彩、简约或扁平时尊重原风格，不一律高饱和。"
-            "prompt用350至900字具体描述各区域美术、材质、配色、图标和按钮；适应用户题材和画风，不套固定游戏风格。"
-            "不猜网格数量，以布局图实际行列、数量和位置为准；局部修改不允许全局重排。"
+            "prompt用200至450字单段编辑指令，以修改动作开头，只描述所改外观；未改部分简短整体保留，尺寸不写入prompt。每个改动区域明确新人物外形、服饰、手持物、新背景地点光照、新符号造型或控件材质，不用全部按主题重做等概括句代替具体设计；适应用户题材和画风，不套固定游戏风格。"
+            "grids只记录布局图中实际数清的网格行列，未画边框的对齐符号阵列也算网格。不把横幅、金额或底部按钮算作符号的一行，无网格则为空。"
+            "preserve记录布局图实际数清的区域顺序、相对占比、准确网格行列、控件数量和特殊符号功能；不猜数、不写旧题材造型。局部修改不允许全局重排。有风格图时按其色彩层次、明暗跨度、边缘清晰度和材质完成度迁移，不能因题材擅自降饱和或加入磨砂、羽化。"
             "原样保留当前需求中的所有__NOVAFLOW_...__引用标识一次。用户需求最高优先级。"
         )
         template = "<|im_start|>system\n你是UI美术设计与编辑规划师，只输出规定JSON。<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"

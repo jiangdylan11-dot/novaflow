@@ -61,6 +61,13 @@ const partialGraph = await host21.buildGraph({module:'novaflow-brand-runtime',me
 assert.equal(partialGraph['7'].inputs.latent_image[0],'5');
 assert.match(partialGraph['5'].inputs.prompt,/只调整设计指令中明确指定的区域位置、大小或数量/);
 assert.doesNotMatch(partialGraph['5'].inputs.prompt,/保持布局参考图的全部区域|保持图1中主体的位置/);
+const nativePrompt='编辑<image1>，人物缩小20%；<image2>只提供画风。其他区域不变。';
+const nativeGraph = await host21.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:[
+  'local','img2img',['screen.png','style.png'],'UI_native',nativePrompt,'','test',
+  [{width:758,height:1640},{width:1024,height:1024}],{provider:'local',mode:'img2img',width:758,height:1640,seed:7,localDrawEngine:'qwen-2.1',uiPreserveLayout:true,uiLayoutMode:'partial',uiNativeEditPrompt:true}
+]}});
+assert.equal(nativeGraph['5'].inputs.prompt,nativePrompt,'native UI directive is not decorated with drawing rules or duplicate preservation clauses');
+assert.ok(nativeGraph['5'].inputs['images.image_2']);
 const uiRoles = (roles) => roles.map((role, index) => ({ index, role }));
 const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse(JSON.stringify(await host.buildGraph({
   module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [

@@ -83814,7 +83814,8 @@
     const editInPlace = (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
-    if (state?.uiLayoutMode === "partial") encode.prompt += "\n\nUI局部布局编辑：只调整设计指令中明确指定的区域位置、大小或数量，其他区域的位置、占比和功能保持参考图。不把局部调整扩展成全页重新排版。";
+    if (state?.uiNativeEditPrompt === true) { /* UI compiler already supplies one native edit directive. */ }
+    else if (state?.uiLayoutMode === "partial") encode.prompt += "\n\nUI局部布局编辑：只调整设计指令中明确指定的区域位置、大小或数量，其他区域的位置、占比和功能保持参考图。不把局部调整扩展成全页重新排版。";
     else if (state?.uiPreserveLayout === true) encode.prompt += "\n\nUI布局约束：保持布局参考图的全部区域、相对位置、占比、前后叠放关系、网格行列及控件数量。按用户要求逐区处理视觉，风格迁移保留内容身份，新主题才替换指定美术。";
     else if (editInPlace) encode.prompt += "\n\n未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变。";
     const scaleTo =(index, image, width, height) => {
@@ -84033,7 +84034,7 @@
     if (window.NovaFlowWebRuntime) {
       const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
         'samplingOverrides', 'negativePrompt',
-        'uiRunIntent', 'uiPreserveLayout', 'uiLayoutMode', 'iterationReferenceCount', 'localUiEngine',
+        'uiRunIntent', 'uiPreserveLayout', 'uiLayoutMode', 'uiNativeEditPrompt', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
         'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
       const runState = Object.fromEntries(stateKeys.filter((key) => state[key] !== undefined).map((key) => [key, state[key]]));
@@ -84585,6 +84586,7 @@
         uiRunIntent: ["iteration", "style-transfer"].includes(source.uiRunIntent) ? source.uiRunIntent : "redesign",
         uiPreserveLayout: source.uiPreserveLayout === true,
         uiLayoutMode: ["preserve", "partial", "reflow", "create"].includes(source.uiLayoutMode) ? source.uiLayoutMode : "",
+        uiNativeEditPrompt: source.uiNativeEditPrompt === true,
         localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",

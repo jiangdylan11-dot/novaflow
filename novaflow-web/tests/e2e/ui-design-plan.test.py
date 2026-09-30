@@ -16,7 +16,8 @@ class UiDesignPlanTest(unittest.TestCase):
         good = dict(version=1, layoutMode='partial', layoutReference=1, visualMode='theme-redesign',
                     references=[dict(index=1, role='layout')], layoutChanges=['人物缩小20%'], preserve=['其他区域保持原位'])
         self.assertEqual(validate(good, 1), good)
-        for patch in [dict(preserve=[]), dict(layoutMode='preserve'), dict(layoutReference=True), dict(references=[]), dict(visualMode='unknown')]:
+        self.assertEqual(validate(dict(good, grids=[dict(description='符号',columns=6,rows=5)]),1)['grids'][0]['rows'],5)
+        for patch in [dict(preserve=[]), dict(layoutMode='preserve'), dict(layoutReference=True), dict(references=[]), dict(visualMode='unknown'), dict(grids=[dict(description='符号',columns=6,rows=True)]), dict(grids=[dict(description='符号',columns=0,rows=5)])]:
             with self.assertRaisesRegex(ValueError, '规划不完整'):
                 validate(dict(good, **patch), 1)
 

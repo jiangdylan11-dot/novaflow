@@ -8755,21 +8755,33 @@ function isUiDesignPromptPayload(payload) {
 function buildUiQwen21PromptRequest(payload, model, context) {
   const {prompt, requirements, negative, supportsNegativePrompt, scenario} = context;
   const referenceSchema = {type:"object",additionalProperties:false,properties:{index:{type:"integer"},role:{type:"string",enum:["layout","style","content","asset","combined"]}},required:["index","role"]};
-  const planSchema = {type:"object",additionalProperties:false,properties:{version:{type:"integer",enum:[1]},layoutMode:{type:"string",enum:["preserve","partial","reflow","create"]},layoutReference:{type:"integer"},visualMode:{type:"string",enum:["style-transfer","theme-redesign","partial","create"]},references:{type:"array",items:referenceSchema},layoutChanges:{type:"array",items:{type:"string"}},preserve:{type:"array",items:{type:"string"}}},required:["version","layoutMode","layoutReference","visualMode","references","layoutChanges","preserve"]};
+  const gridSchema = {type:"object",additionalProperties:false,properties:{description:{type:"string"},columns:{type:"integer"},rows:{type:"integer"}},required:["description","columns","rows"]};
+  const planSchema = {type:"object",additionalProperties:false,properties:{grids:{type:"array",items:gridSchema},version:{type:"integer",enum:[1]},layoutMode:{type:"string",enum:["preserve","partial","reflow","create"]},layoutReference:{type:"integer"},visualMode:{type:"string",enum:["style-transfer","theme-redesign","partial","create"]},references:{type:"array",items:referenceSchema},layoutChanges:{type:"array",items:{type:"string"}},preserve:{type:"array",items:{type:"string"}}},required:["version","layoutMode","layoutReference","visualMode","references","layoutChanges","preserve","grids"]};
   const content = scenario.images.flatMap((image,index)=>[smartAiInputText(`图${index+1}，指定用途：${image.role || image.slotType || "reference"}`),smartAiImageInput(image)]);
   content.push(smartAiInputText([
     "为 Qwen 2.1 原生图像编辑输出一个 UI 设计执行合同，按用户原文决定修改范围，不能机械使用前端旧的整体保留提示。",
     "ui_plan.layoutMode：preserve=未要求调整布局；partial=只调整指定区域；reflow=明确要求重新排版；create=没有有效布局来源。layoutReference是布局或内容来源的输入图编号，从1开始，没有则为0；只有style/asset图时必须create且为0。references必须覆盖每张输入图一次且保留原编号。明确指定layout/style/人物物品素材职责不得改写；普通reference依据原文和图片判断，可combined。",
-    "layoutChanges逐项记录用户提出的位置、比例、数量和排列改动；人物缩小、按钮上移、增加一行也是partial，不必出现布局二字。preserve记录必须保持的区域、功能、内容或布局；partial必须同时有改动项和保留项，preserve模式layoutChanges必须为空。不猜测图中看不清的数字或位置，不按常见模板重排。",
+    "layoutChanges逐项记录用户提出的位置、比例、数量和排列改动；人物缩小、按钮上移、增加一行也是partial，不必出现布局二字。preserve只记录从布局图实际数清的布局与功能事实：区域顺序、各区域相对位置与占比、网格准确行列数、控件数量、特殊符号名称和重复符号关系；包括人物展示区。theme-redesign时不得将旧人物、武器、服饰、场景或符号造型列为保留项。看不清的事实省略，不猜数。partial必须同时有改动项和保留项，preserve模式layoutChanges必须为空。不猜测图中看不清的数字或位置，不按常见模板重排。",
+    "先从layoutReference对应的原图清点网格：grids逐项写description、columns列数、rows行数，逐行逐列数可见符号中心，不能把上下文字栏、边框或装饰算成一行；只看布局图，不看风格图。有清晰网格必须填写，无网格或无布局来源才留空。这些是原布局事实；partial时用户明确要求的改动覆盖原事实。",
     "visualMode与layoutMode独立：style-transfer只改变指定画风并保留内容身份；theme-redesign按新主题设计人物、背景、符号和全部组件；partial只改变指定外观；create从需求建立新美术。有风格参考时用它的线条、造型比例、材质、配色和渲染完成度，不带入无关布局或物品。",
-    "prompt是约350到900字的连贯中文最终执行指令，不用五段标题、不输出分析。落实各区域新设计，明确具体轮廓、配色层级、材质区分、光影、图标家族、重复符号一致性和文字可读性。题材不决定固定画风：埃及可以卡通，科幻可以手绘；风格来自需求和指定参考。禁止把所有控件统一做成石板或金色方框。不能只写高质量精美等空泛词。",
-    "新主题且参考用途为layout时，只继承区域几何与功能，不沿用原角色脸型、服装、武器或原图标轮廓；新造型和姿势可在原区域范围内重新设计。风格参考要具体提取主色、强调色、明暗层级、边缘处理、材质反光和体积塑造，不能简化成题材词或套默认金色风格。若用户要求鲜明和有质感，拉开背景与主体明暗，建立丰富且协调的强调色，区分哑光、金属、宝石与柔软材料；尊重用户指定的简约、淡彩或扁平风格，不强制所有设计高饱和。",
+    "prompt是约200到450字的单段中文编辑指令，以修改动作开头，不用五段标题、不输出分析。不在prompt内写输出尺寸，尺寸由外部配置传递。只具体描述需要修改的外观、配色与材质，未改内容用简短的整体保留句，不重复逐项描述旧外观。明确编辑画布和素材职责，每个改变的区域写出具体的新设计：新人物的外形、服饰、姿态和手持物，新背景的地点和光照，新符号的造型及特殊符号功能，控件的表面和边缘。不以全部按主题重做等概括句代替这些设计；只描述变更，不复述旧外观。落实重复符号一致性和文字可读性。题材不决定固定画风：埃及可以卡通，科幻可以手绘；风格来自需求和指定参考。禁止把所有控件统一做成石板或金色方框。不能只写高质量精美等空泛词。",
+    "新主题且参考用途为layout时，只继承区域几何与功能，不沿用原角色脸型、服装、武器或原图标轮廓；新造型和姿势可在原区域范围内重新设计。有明确风格图时，美术表现以风格图为准：保留其多色层次、明暗跨度、边缘清晰度、反光、通透感、体积与完成度；不能因为换题材而擅自改成单色、低饱和、磨砂、柔焦或羽化。题材只决定新内容，不替用户重选画风和配色。只描述风格图看得到的表现，不臆造材质和色调。若用户要求鲜明和有质感，拉开背景与主体明暗，建立丰富且协调的强调色，区分哑光、金属、宝石与柔软材料；尊重用户指定的简约、淡彩或扁平风格，不强制所有设计高饱和。",
     "槽位编号以输入顺序为准，所有 __NOVAFLOW_ 开头并以双下划线结尾的资源标识在prompt中原样保留一次。自建模块名称只是内部识别，作用说明与坐标才是设计内容。用户原文优先，未请求增加的功能不新增。",
     `用户原始需求：${prompt || "根据参考与补充要求设计"}`,
     `布局、尺寸和参考职责：${requirements}`,
     supportsNegativePrompt ? `用户避免内容：${negative || "无"}；negative_prompt只写具体不希望出现的内容，不强加写实或卡通等画风。` : "不输出负面提示字段。",
   ].join("\n")));
   return {body:{model:String(model || "grok-4.3"),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,originalPrompt:prompt,supportsNegativePrompt}};
+}
+
+function buildUiQwen21LayoutRequest(model, context) {
+  const request = buildUiQwen21PromptRequest({}, model, context);
+  request.body.temperature = 0;
+  request.body.input = [{role:"user",content:[
+    ...context.scenario.images.map(smartAiImageInput),
+    smartAiInputText("只分析这张图的布局，不做美术设计，不用任何题材或风格信息。数每一行图标中心的个数以及总行数，没有画网格边线的对齐符号、背包格或卡片阵列也算网格；不把人物、文字横幅、金额栏或底部按钮算作符号的一行。一个连续对齐阵列作为一个grid，不将每一行作为独立grid；columns是该阵列每行的列数，rows是总行数。ui_plan.grids逐项给出实际columns和rows，description说明阵列用途。prompt逐行列出可见内容作为计数依据，不评价美术。没有阵列则grids为空。若是完整界面，layoutReference=1、layoutMode=preserve、visualMode=partial、references=[{index:1,role:combined}]，preserve记录界面区域顺序及按钮数量。若只是人物、物品或材质照片，layoutReference=0、layoutMode=create、visualMode=create、references=[{index:1,role:asset}]，preserve为空。version=1，layoutChanges为空。只输出schema规定的JSON。")
+  ]}];
+  return request;
 }
 
 function validateUiQwen21Plan(plan, count) {
@@ -8782,6 +8794,7 @@ function validateUiQwen21Plan(plan, count) {
   for(const key of ["layoutChanges","preserve"])if(!Array.isArray(plan[key]) || plan[key].length>30 || plan[key].some(s=>typeof s!=="string" || !s.trim() || s.length>800))invalid();
   if(plan.layoutMode==="partial" && (!plan.layoutChanges.length || !plan.preserve.length))invalid();
   if(plan.layoutMode==="preserve" && plan.layoutChanges.length)invalid();
+  if (plan.grids !== undefined && (!Array.isArray(plan.grids) || plan.grids.length>16 || plan.grids.some(g=>!g || typeof g.description!=="string" || !g.description.trim() || g.description.length>200 || !Number.isInteger(g.columns) || g.columns<1 || g.columns>100 || !Number.isInteger(g.rows) || g.rows<1 || g.rows>100))) invalid();
   return plan;
 }
 
@@ -8795,6 +8808,7 @@ function buildUiDesignPromptRequest(payload, model) {
   if (miniMaxH3ChildSensitiveRequest(`${prompt}\n${requirements}`)) {
     throw miniMaxH3ContractError("provider_content_policy", "UI request blocked explicit minor sensitive content", 422, "provider_content_policy");
   }
+  if (payload?.targetEngine === "qwen-2.1" && payload?.purpose === "ui-design-layout-facts") return buildUiQwen21LayoutRequest(model,{prompt,requirements,negative,supportsNegativePrompt,scenario});
   if (payload?.targetEngine === "qwen-2.1") return buildUiQwen21PromptRequest(payload,model,{prompt,requirements,negative,supportsNegativePrompt,scenario});
   const content = scenario.images.flatMap((image, index) => [smartAiInputText(artReferenceImageLabel(image, index)), smartAiImageInput(image)]);
   content.push(smartAiInputText([

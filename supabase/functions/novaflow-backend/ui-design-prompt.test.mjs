@@ -74,3 +74,12 @@ test('admin and Edge response adapters do not discard the Qwen plan',()=>{
   const ordinary=admin.slice(admin.indexOf('if (options.ordinaryArtStructuredPrompt === true)'),admin.indexOf('if (options.ordinaryArtPromptPatch === true)'));
   assert.doesNotMatch(ordinary,/uiPlan/,'ordinary Drawing must not reference UI-only variables');
 });
+
+test('Qwen layout counting uses a separate deterministic request and validates actual counts',()=>{
+  const request=buildGrokImageReverseRequest({...payload,targetEngine:'qwen-2.1',purpose:'ui-design-layout-facts',images:[{imageUrl:'data:image/png;base64,AA==',role:'reference'}]});
+  assert.equal(request.body.temperature,0);
+  assert.match(JSON.stringify(request.body.input),/没有画网格边线的对齐符号/);
+  const ui_plan={version:1,layoutMode:'preserve',layoutReference:1,visualMode:'partial',references:[{index:1,role:'combined'}],layoutChanges:[],preserve:[],grids:[{description:'符号阵列',columns:6,rows:5}]};
+  assert.equal(grokResponsesPublicResult({output_text:JSON.stringify({prompt:'每行六个，共五行',ui_plan})},request.resultOptions).uiPlan.grids[0].rows,5);
+  for(const grids of [[{description:'符号',columns:6,rows:0}],[{description:'符号',columns:6,rows:1.5}],null])assert.throws(()=>grokResponsesPublicResult({output_text:JSON.stringify({prompt:'数清',ui_plan:{...ui_plan,grids}})},request.resultOptions),/规划不完整/);
+});

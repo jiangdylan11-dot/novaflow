@@ -33,33 +33,50 @@
       return value[key].map(s => s.trim())
     }
     const layoutChanges = list('layoutChanges'), preserve = list('preserve')
+    const grids = value.grids === undefined ? [] : value.grids
+    if (!Array.isArray(grids) || grids.length > 16 || grids.some(g => !g || typeof g.description !== 'string' || !g.description.trim() || g.description.length > 200 || !Number.isInteger(g.columns) || g.columns < 1 || g.columns > 100 || !Number.isInteger(g.rows) || g.rows < 1 || g.rows > 100)) fail()
     if (value.layoutMode === 'partial' && (!layoutChanges.length || !preserve.length)) fail()
     if (value.layoutMode === 'preserve' && layoutChanges.length) fail()
     return { version: 1, layoutMode: value.layoutMode, layoutReference, visualMode: value.visualMode,
-      references: [...references].sort((a,b) => a.index-b.index).map(r => ({index:r.index,role:r.role})), layoutChanges, preserve }
+      references: [...references].sort((a,b) => a.index-b.index).map(r => ({index:r.index,role:r.role})), layoutChanges, preserve,
+      ...(value.grids !== undefined ? {grids:grids.map(g=>({description:g.description.trim(),columns:g.columns,rows:g.rows}))} : {}) }
   }
   function compileQwenPlan(result, input) {
     const plan = normalizeQwenPlan(result.uiPlan, input)
     // Order the actual model inputs with layout/content first, without changing the user's slots.
-    const order = input.references.map((_,i) => i + 1)
+    // A style-only edit must not import the style picture's character or icon identities.
+    // Vision planning has already described its rendering; feed content/assets to Qwen.
+    const parsedStyleOnly = plan.visualMode === 'style-transfer' && plan.layoutReference > 0
+    const styleSources = parsedStyleOnly ? plan.references.filter(r=>r.role==='style').map(r=>r.index) : []
+    const order = input.references.map((_,i) => i + 1).filter(i=>!styleSources.includes(i))
     if (plan.layoutReference) order.unshift(...order.splice(order.indexOf(plan.layoutReference),1))
-    const remap = value => String(value || '').replace(/@参考图([1-9][0-9]*)/g, (_,n) => { const at = order.indexOf(Number(n)); if (at < 0) throw new Error('设计规划引用了不存在的参考图'); return '@参考图' + (at + 1) })
-    const roles = plan.references.map(r => `@参考图${order.indexOf(r.index)+1}：${({layout:'只提供区域分布与功能，不复制原美术',style:'只提供视觉语言，不继承布局和内容',content:'提供需要保留的内容身份和功能',asset:'只提供用户指定的人物或物品素材',combined:'按用户要求分别借鉴布局和内容'})[r.role]}`).join('；')
+    const remap = value => String(value || '').replace(/(?:@?参考图|图)([1-9][0-9]*)|<image([1-9][0-9]*)>/g, (_,n,tag) => { const source = Number(n || tag); if (styleSources.includes(source)) return '指定风格'; const at = order.indexOf(source); if (at < 0) throw new Error('设计规划引用了不存在的参考图'); return '@参考图' + (at + 1) })
+    remap(input.prompt) // Validate the source's identifiers without sending a second full request.
+    const native = value => remap(value).replace(/@参考图([1-9][0-9]*)/g, (_,n) => order.length === 1 ? '图片' : `<image${n}>`)
+    const modelReferences = plan.references.filter(r=>order.includes(r.index))
+    const roles = [...modelReferences].sort((a,b) => order.indexOf(a.index)-order.indexOf(b.index)).map(r => `${order.length === 1 ? '图片' : `<image${order.indexOf(r.index)+1}>`}是${r.index === plan.layoutReference ? '编辑画布，构图和功能布局以它为准；' : ''}${({layout:parsedStyleOnly?'保留原内容，只按要求改变美术表现':'布局来源，美术按需求重做',style:'风格来源，只迁移美术表现及其强度，不复制人物物品和布局',content:'内容来源，保留未要求改变的身份与功能',asset:'人物或物品素材来源',combined:'用户指定的布局与内容来源'})[r.role]}`).join('；')
     const layout = plan.layoutMode === 'preserve' ? '沿用布局参考的区域位置、面积比例、网格行列及功能数量；逐区更换视觉，组件轮廓可自由设计，不画占位线框。'
       : plan.layoutMode === 'partial' ? `只调整这些布局项目：${plan.layoutChanges.map(remap).join('；')}。其余区域的位置、占比、数量和功能关系保持参考图，不扩展为整张重新排版。`
       : plan.layoutMode === 'reflow' ? '按用户要求重新组织布局，保留用户指定的功能，不继承参考图未被要求保留的位置。'
       : '没有布局来源，根据用户要求设计完整布局；风格图、人物和物品图不提供布局。'
-    const prompt = [`用户设计需求（最高优先级）：${remap(input.prompt)}`, roles ? `参考用途：${roles}` : '',
-      `布局要求：${layout}`, plan.preserve.length ? `必须保留：${plan.preserve.map(remap).join('；')}` : '',
-      remap(result.prompt), input.structure?.regions?.length ? `自建布局坐标和模块说明：${JSON.stringify(input.structure)}` : '',
-      '只生成完整 UI 成品。保留目标界面的有效文字和功能，不画外部软件界面、编辑手柄或辅助线。'].filter(Boolean).join('\n\n')
+    // Keep one editing directive. Repeating the source request and every preserved object's
+    // appearance invites regeneration instead of preservation (Qwen's official edit guidance).
+    const directive = String(result.prompt || '').replace(/(?:^|\n)参考标识[^\n]*/g, '').trim()
+    if (!directive) throw new Error('UI 编辑指令为空，本次未提交生成')
+    const scope = native(layout)
+    const geometry = input.structure?.regions?.length ? `模块位置与用途：${input.structure.regions.map(r =>
+      `${r.purpose || '界面模块'}，左${Math.round(r.x/input.structure.width*100)}%、上${Math.round(r.y/input.structure.height*100)}%、宽${Math.round(r.width/input.structure.width*100)}%、高${Math.round(r.height/input.structure.height*100)}%`).join('；')}` : ''
+    const prompt = [native(directive), roles, scope,
+      ['preserve','partial'].includes(plan.layoutMode) && plan.grids?.length ? `${plan.layoutMode === 'partial' ? '除上述明确改动外，' : ''}网格保持${plan.grids.map(g=>`${native(g.description)}${g.columns}列${g.rows}行，共${g.columns*g.rows}个位置`).join('；')}` : '',
+      plan.preserve.length ? `保留这些布局与功能事实：${plan.preserve.map(native).join('；')}` : '', geometry,
+      '输出完整UI成品，保留未要求修改的文字与功能。'].filter(Boolean).join('。').replace(/[\r\n]+/g, ' ').replace(/。{2,}/g, '。')
     const modelPlan = { ...plan, layoutReference: plan.layoutReference ? 1 : 0,
-      references: plan.references.map(r => ({ ...r, index: order.indexOf(r.index) + 1 })).sort((a,b) => a.index-b.index),
+      references: modelReferences.map(r => ({ ...r, index: order.indexOf(r.index) + 1 })).sort((a,b) => a.index-b.index),
       layoutChanges: plan.layoutChanges.map(remap), preserve: plan.preserve.map(remap) }
-    return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, order }
+    return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, analysisPlan:plan, order }
   }
   function key(input) {
-    return JSON.stringify({ provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ contract: 'ui-native-edit-2', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     cache.set(id, { keys: [key(input), ...(appliedInput ? [key(appliedInput)] : [])], result: { ...result } })
@@ -74,7 +91,7 @@
     let cancel
     const stopped = new Promise((_, reject) => { cancel = () => reject(aborted()); signal?.addEventListener('abort', cancel, { once: true }) })
     try {
-      const result = await Promise.race([stopped, Promise.resolve().then(() => assistant.run(input))])
+      const result = await Promise.race([stopped, Promise.resolve().then(() => assistant.run({...input,signal}))])
       if (signal?.aborted) throw aborted()
       if (!result?.prompt?.trim()) throw new Error('AI 助手未返回可用设计要求')
       remember(id, input, result)
