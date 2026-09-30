@@ -12,21 +12,6 @@
   function normalizeQwenPlan(value, input) {
     const count = input.references?.length || 0
     const fail = () => { throw new Error('Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成') }
-    // A single ordinary UI screenshot plus an explicit layout lock is an
-    // unambiguous user instruction. Do not let a vision planner's role guess
-    // turn it into a style-only reference or an invented layout change.
-    const sourceRole = input.references?.[0]?.role
-    const explicitLayout = count === 1 && ['reference', 'layout', 'content'].includes(sourceRole)
-      && /(?:布局|排版|结构).{0,10}(?:一样|不变|保持|沿用)|(?:保持|保留|沿用|按照|按).{0,10}(?:布局|排版|结构)/u.test(String(input.prompt || ''))
-      && !/(?:缩小|放大|上移|下移|左移|右移|移动|重排|重新排版|增减|增加一[行列]|减少一[行列])/u.test(String(input.prompt || ''))
-    if (explicitLayout) {
-      const visualMode = /(?:做一个|设计一个).{0,60}(?:主题|界面|页面|老虎机|游戏)|(?:重新设计|重做|新主题)/u.test(String(input.prompt || ''))
-        ? 'theme-redesign' : (QWEN_VISUAL_MODES.includes(value?.visualMode) ? value.visualMode : 'style-transfer')
-      value = { version: 1, layoutMode: 'preserve', layoutReference: 1,
-        visualMode,
-        references: [{ index: 1, role: sourceRole === 'reference' ? visualMode === 'theme-redesign' ? 'layout' : 'combined' : sourceRole }],
-        layoutChanges: [], preserve: [], grids: [] }
-    }
     if (!value || value.version !== 1 || !QWEN_LAYOUT_MODES.includes(value.layoutMode) || !QWEN_VISUAL_MODES.includes(value.visualMode)) fail()
     const layoutReference = value.layoutReference
     if (!Number.isInteger(layoutReference) || layoutReference < 0 || layoutReference > count) fail()
@@ -58,8 +43,35 @@
       references: [...references].sort((a,b) => a.index-b.index).map(r => ({index:r.index,role:r.role})), layoutChanges, preserve,
       ...(value.grids !== undefined ? {grids:grids.map(g=>({description:g.description.trim(),columns:g.columns,rows:g.rows}))} : {}) }
   }
+  function fallbackQwenPlan(input) {
+    const sources = input.references || []
+    const layoutIndex = sources.findIndex(ref => ref.uiLayoutId && ref.uiStructure?.regions?.length)
+    const explicitIndex = sources.findIndex(ref => ref.role === 'layout')
+    const ordinaryIndex = sources.findIndex(ref => ['reference', 'content'].includes(ref.role))
+    const anchor = layoutIndex >= 0 ? layoutIndex : explicitIndex >= 0 ? explicitIndex : input.preserveLayout !== false ? ordinaryIndex : -1
+    const visualMode = input.generationIntent === 'style-transfer' ? 'style-transfer'
+      : input.generationIntent === 'iteration' ? 'partial' : 'theme-redesign'
+    const references = sources.map((ref, index) => ({ index: index + 1, role: index === anchor ? 'layout'
+      : ['style', 'color', 'material'].includes(ref.role) ? 'style'
+        : ['character', 'subject', 'asset'].includes(ref.role) ? 'asset'
+          : ref.role === 'layout' ? 'layout' : 'content' }))
+    return { version: 1, layoutMode: anchor >= 0 ? 'preserve' : 'create', layoutReference: anchor + 1,
+      visualMode, references, layoutChanges: [], preserve: [], grids: [] }
+  }
+  function resolveQwenPlan(value, input) {
+    let plan
+    try { plan = normalizeQwenPlan(value, input) } catch (error) {
+      if (!/规划不完整|未采用当前自建布局/u.test(String(error?.message || error))) throw error
+    }
+    const fallback = fallbackQwenPlan(input)
+    // The selected image or the user's live layout is the editing canvas.
+    // A malformed AI contract cannot turn it into a style-only source.
+    if (!plan || (fallback.layoutReference
+      && (plan.layoutReference !== fallback.layoutReference || plan.layoutMode === 'create'))) return fallback
+    return plan
+  }
   function compileQwenPlan(result, input) {
-    const plan = normalizeQwenPlan(result.uiPlan, input)
+    const plan = resolveQwenPlan(result.uiPlan, input)
     // Order the actual model inputs with layout/content first, without changing the user's slots.
     // Competing full-screen references can overwrite the layout. The style image is read by
     // the vision planner; the native edit gets its visual description and the layout image.
@@ -73,7 +85,7 @@
     const native = value => remap(value).replace(/@参考图([1-9][0-9]*)/g, (_,n) => order.length === 1 ? '图片' : `<image${n}>`)
     const modelReferences = plan.references.filter(r=>order.includes(r.index))
     const roles = [...modelReferences].sort((a,b) => order.indexOf(a.index)-order.indexOf(b.index)).map(r => `${order.length === 1 ? '图片' : `<image${order.indexOf(r.index)+1}>`}是${r.index === plan.layoutReference ? wireframe?'自建布局定位图，功能区域的位置与占比以它为准；':'编辑画布，构图和功能布局以它为准；' : ''}${r.index===plan.layoutReference&&wireframe?'只提供空间关系，不是成品外观或人物物品身份，不保留灰块和占位框':({layout:plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':'布局来源，美术按需求重做',style:'风格来源，只迁移美术表现及其强度，不复制人物物品和布局',content:'内容来源，保留未要求改变的身份与功能',asset:'人物或物品素材来源',combined:'用户指定的布局与内容来源'})[r.role]}`).join('；')
-    const layout = plan.layoutMode === 'preserve' ? '沿用布局参考的区域位置、面积比例、网格行列及功能数量；逐区更换视觉，组件轮廓可自由设计，不画占位线框。'
+    const layout = plan.layoutMode === 'preserve' ? '除用户明确要求改变的部分外，沿用布局参考的区域位置、面积比例、网格行列及功能数量；逐区更换视觉，组件轮廓可自由设计，不画占位线框。'
       : plan.layoutMode === 'partial' ? `只调整这些布局项目：${plan.layoutChanges.map(remap).join('；')}。其余区域的位置、占比、数量和功能关系保持参考图，不扩展为整张重新排版。`
       : plan.layoutMode === 'reflow' ? '按用户要求重新组织布局，保留用户指定的功能，不继承参考图未被要求保留的位置。'
       : '没有布局来源，根据用户要求设计完整布局；风格图、人物和物品图不提供布局。'
@@ -117,5 +129,5 @@
       return { ...result, reused: false }
     } finally { signal?.removeEventListener('abort', cancel) }
   }
-  return Object.freeze({ run, remember, key, normalizeQwenPlan, compileQwenPlan })
+  return Object.freeze({ run, remember, key, normalizeQwenPlan, resolveQwenPlan, compileQwenPlan })
 })

@@ -394,12 +394,17 @@
     const requirements = buildRequirements(options, structure, references)
     const currentPrompt = stripTargetStyleContract(options.prompt)
     if (currentPrompt.length > 18000 || String(options.negativePrompt || '').length > 10000) throw new Error('提示词过长，请精简后再试；本次未截断提交。')
-    const singleLayoutRequest = options.targetEngine === 'qwen-2.1' && references.length === 1
-      && ['reference', 'layout', 'content'].includes(references[0].role)
-      && /(?:布局|排版|结构).{0,10}(?:一样|不变|保持|沿用)|(?:保持|保留|沿用|按照|按).{0,10}(?:布局|排版|结构)/u.test(currentPrompt)
-      && !/(?:缩小|放大|上移|下移|左移|右移|移动|重排|重新排版|增减|增加一[行列]|减少一[行列])/u.test(currentPrompt)
     const currentNegative = String(options.negativePrompt == null ? '' : options.negativePrompt)
     const promptProtection = protectText(currentPrompt.replace(/(?<!@参考)(?:参考图|图)\s*([1-9][0-9]*)/g, (token, index, offset, full) => full.slice(Math.max(0, offset - 1), offset) === '@' ? token : `@参考图${index}`))
+    const recoverPlanningFailure = error => {
+      checkActive()
+      if (options.targetEngine !== 'qwen-2.1' || !/2\.1 UI 设计规划(?:不完整|JSON无效)/u.test(String(error?.message || error))) throw error
+      const scope = !references.length ? '根据需求设计完整的 UI 界面。'
+        : options.generationIntent === 'style-transfer' ? '只改变要求的视觉风格，保留参考图中的功能、内容身份和布局。'
+          : options.generationIntent === 'iteration' ? '只修改明确指定的部分，其余区域保持原样。'
+            : '以参考图为编辑画布，除用户明确要求改变的部分外沿用区域位置与功能关系；按新主题逐区设计人物、背景、图标符号、面板与按钮。'
+      return { ok: true, uiPlan: null, prompt: `${promptProtection.text}。${scope}` }
+    }
     const negativeProtection = protectText(currentNegative)
     const revision = typeof options.getRevision === 'function' ? options.getRevision() : options.revision
     const supportsNegativePrompt = provider === 'local'
@@ -431,23 +436,20 @@
         scenario: references.length ? 'role_reference' : undefined,
         sourceCount: references.length,
         targetIndex: 0,
-        images: requestReferences.map((reference, index) => ({
+        images: requestReferences.map((reference) => ({
           imageUrl: reference.dataUrl,
           label: reference.label,
-          role: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
-          slotType: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
+          role: reference.role,
+          slotType: reference.role,
         })),
       }
       try {
         result = await withTimeout(() => call(request), options.timeoutMs, engine)
       } catch (error) {
-        checkActive()
-        if (!singleLayoutRequest || !/Qwen 2\.1 UI 设计规划不完整/u.test(String(error?.message || error))) throw error
-        result = { ok: true, uiPlan: null,
-          prompt: `${promptProtection.text}。以这张参考图为编辑画布，保持原有区域位置、比例、层级与功能关系；围绕用户指定的新主题，逐区重新设计人物、背景、图标符号、面板与按钮的造型、配色、材质和光影，形成完整统一的游戏界面。` }
+        result = recoverPlanningFailure(error)
       }
     } else if (references.length) {
-      result = await withTimeout(() => call({
+      try { result = await withTimeout(() => call({
         prompt: promptProtection.text,
         currentPrompt: promptProtection.text,
         negativePrompt: supportsNegativePrompt ? negativeProtection.text : '',
@@ -458,15 +460,15 @@
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         provider,
-        images: references.map((reference, index) => ({
+        images: references.map((reference) => ({
           dataUrl: reference.dataUrl,
           label: reference.label,
-          role: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
-          slotType: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
+          role: reference.role,
+          slotType: reference.role,
         })),
-      }), options.timeoutMs, engine)
+      }), options.timeoutMs, engine) } catch (error) { result = recoverPlanningFailure(error) }
     } else {
-      result = await withTimeout(() => call({
+      try { result = await withTimeout(() => call({
         prompt: promptProtection.text,
         currentPrompt: promptProtection.text,
         negativePrompt: supportsNegativePrompt ? negativeProtection.text : '',
@@ -477,7 +479,7 @@
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         provider,
-      }), options.timeoutMs, engine)
+      }), options.timeoutMs, engine) } catch (error) { result = recoverPlanningFailure(error) }
     }
 
     if (typeof options.getRevision === 'function' && options.getRevision() !== revision) {
@@ -487,6 +489,7 @@
     }
 
     checkActive()
+    if (result?.ok === false) result = recoverPlanningFailure(new Error(text(result.error) || 'AI 助手执行失败'))
     const parsed = unwrapResult(result)
     if (options.targetEngine !== 'qwen-2.1' && options.preserveLayout) parsed.prompt = parsed.prompt.replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, '[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n')
     const restoredPrompt = restoreText(parsed.prompt, promptProtection)
@@ -511,7 +514,7 @@
 
     return Object.freeze({
       prompt: finalPrompt,
-      uiPlan: options.targetEngine === 'qwen-2.1' ? root.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(parsed.uiPlan, { references, prompt: currentPrompt }) : null,
+      uiPlan: options.targetEngine === 'qwen-2.1' ? root.NovaFlowUiDesignPromptPipeline.resolveQwenPlan(parsed.uiPlan, { references, prompt: currentPrompt, preserveLayout: options.preserveLayout, generationIntent: options.generationIntent }) : null,
       negativePrompt: supportsNegativePrompt ? restoredNegative.text : '',
       hasNegativePrompt: supportsNegativePrompt && Boolean(restoredNegative.text),
       provider,

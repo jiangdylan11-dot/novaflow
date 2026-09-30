@@ -62,9 +62,9 @@ function planFor(refs, patch={}) {
     visualMode:'theme-redesign',references:refs.map((r,i)=>({index:i+1,role:r.role === 'style' ? 'style' : r.role === 'layout' ? 'layout' : 'combined'})),layoutChanges:[],preserve:[],...patch};
 }
 
-test('single UI reference obeys explicit unchanged layout for a new zodiac theme',async()=>{
+test('single UI reference follows its layout role despite a wrong AI plan',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,ref',role:'reference'}];
-  const request='参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。';
+  const request='参考图1的布局，生成一个高质量的2次元风格，生肖牛主题的老虎机。';
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将旧主题全部换成生肖牛主题。',uiPlan:{...planFor(refs),layoutMode:'create',layoutReference:0,references:[{index:1,role:'style'}],layoutChanges:['重新排版']}})});
   e.state.prompt=request;
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
@@ -99,15 +99,15 @@ test('Qwen sends the second layout image as native source and keeps style refere
   assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
 });
 
-test('Qwen style-only references generate their own layout and invalid plans never submit',async()=>{
+test('Qwen style-only references generate their own layout even when AI planning fields are invalid',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'按卡通视觉设计新页面。',uiPlan:planFor(refs,{layoutMode:'create',layoutReference:0})})});
   await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiPreserveLayout,false);
   assert.match(e.builds[0][4],/风格图、人物和物品图不提供布局/);
   for(const patch of [{uiPlan:null},{uiPlan:planFor(refs)}, {uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['按钮上移'],preserve:[]})}]) {
-    const failed=environment({qwen:true,references:refs,optimize:async()=>({prompt:'设计',...patch})});
-    await failed.run();assert.equal(failed.calls.includes('upload'),false);assert.equal(failed.builds.length,0);
-    assert.match(failed.failures[0],/规划不完整/);
+    const recovered=environment({qwen:true,references:refs,optimize:async()=>({prompt:'设计',...patch})});
+    await recovered.run();assert.deepEqual(recovered.failures,[]);assert.ok(recovered.builds.length>0);
+    assert.equal(recovered.builds[0][8].uiPreserveLayout,false);
   }
 });
 
@@ -305,5 +305,7 @@ test('native Qwen treats a user layout as spatial guidance instead of preserving
  assert.equal(output.references.length,1);assert.equal(output.references[0].uiLayoutId,'L');
  assert.match(output.prompt,/自建布局定位图/);assert.match(output.prompt,/不保留灰块和占位框/);
  assert.doesNotMatch(output.prompt,/拆.{0,3}素材|逐个生成/);
- assert.throws(()=>p.compileQwenPlan({prompt:'设计',uiPlan:planFor(refs,{layoutReference:1})},input),/规划不完整|当前自建布局/);
+ const recovered=p.compileQwenPlan({prompt:'设计',uiPlan:planFor(refs,{layoutReference:1})},input);
+ assert.equal(recovered.analysisPlan.layoutReference,2);
+ assert.equal(recovered.references[0].uiLayoutId,'L');
 });

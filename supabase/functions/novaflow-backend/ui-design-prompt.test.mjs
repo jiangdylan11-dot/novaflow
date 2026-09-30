@@ -59,16 +59,17 @@ test('Qwen 2.1 planning carries independent layout and visual scopes through the
   const result=grokResponsesPublicResult({output_text:JSON.stringify({prompt:'全新科幻界面，人物缩小20%。',ui_plan})},request.resultOptions);
   assert.deepEqual(result.uiPlan,ui_plan);assert.doesNotMatch(result.output_text,/沿用布局参考图的全部区域/);
   for(const patch of [{references:[]},{layoutReference:2},{layoutMode:'preserve'},{preserve:[]},{visualMode:'unknown'}]) {
-    assert.throws(()=>grokResponsesPublicResult({output_text:JSON.stringify({prompt:'设计',ui_plan:{...ui_plan,...patch}})},request.resultOptions),/规划不完整/);
+    const recovered=grokResponsesPublicResult({output_text:JSON.stringify({prompt:'设计',ui_plan:{...ui_plan,...patch}})},request.resultOptions).uiPlan;
+    assert.equal(recovered.layoutMode,'preserve');assert.equal(recovered.layoutReference,1);
   }
   const textRequest=buildGrokPromptOptimizeRequest({...payload,targetEngine:'qwen-2.1'});
   const create={version:1,layoutMode:'create',layoutReference:0,visualMode:'create',references:[],layoutChanges:[],preserve:[]};
   assert.deepEqual(grokResponsesPublicResult({output_text:JSON.stringify({prompt:'原创界面',ui_plan:create})},textRequest.resultOptions).uiPlan,create);
 });
 
-test('explicit unchanged layout with one ordinary UI image survives a wrong planner role',()=>{
+test('ordinary UI screenshot stays the layout source when planner fields are wrong',()=>{
   const request=buildGrokImageReverseRequest({surface:'ui-design',purpose:'ui-design-reference',targetEngine:'qwen-2.1',
-    prompt:'参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。',scenario:'role_reference',
+    prompt:'参考图1的布局，生成一个高质量的2次元风格，生肖牛主题的老虎机。',uiPreserveLayout:true,scenario:'role_reference',
     images:[{imageUrl:'data:image/png;base64,AA==',role:'reference'}]});
   const wrong={version:1,layoutMode:'create',layoutReference:0,visualMode:'create',
     references:[{index:1,role:'style'}],layoutChanges:['重新排版'],preserve:[],grids:[]};

@@ -20,12 +20,6 @@ class UiDesignPlanTest(unittest.TestCase):
         for patch in [dict(preserve=[]), dict(layoutMode='preserve'), dict(layoutReference=True), dict(references=[]), dict(visualMode='unknown'), dict(grids=[dict(description='符号',columns=6,rows=True)]), dict(grids=[dict(description='符号',columns=0,rows=5)])]:
             with self.assertRaisesRegex(ValueError, '规划不完整'):
                 validate(dict(good, **patch), 1)
-        prompt = '参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。'
-        recovered = validate(dict(good, layoutMode='create', layoutReference=0,
-                                  references=[dict(index=1, role='style')]), 1, prompt, ['reference'])
-        self.assertEqual((recovered['layoutMode'], recovered['layoutReference'], recovered['visualMode']),
-                         ('preserve', 1, 'theme-redesign'))
-        self.assertEqual(recovered['references'], [dict(index=1, role='layout')])
 
     def test_local_qwen_planner_returns_json_contract_without_loading_weights(self):
         path = Path(__file__).resolve().parents[3] / 'particle-editor-desktop/prompt-assistant-service.py'
@@ -46,6 +40,13 @@ class UiDesignPlanTest(unittest.TestCase):
         self.assertEqual(result['uiPlan'],plan)
         self.assertEqual(result['negativePrompt'],'不要模糊')
         self.assertIn('糖果乐园',model.input)
+        model.generate = lambda prompt, **kwargs: json.dumps(dict(prompt='生肖牛老虎机UI', ui_plan=dict(
+            version=1, layoutMode='create', layoutReference=0, visualMode='create',
+            references=[dict(index=1, role='style')], layoutChanges=[], preserve=[])))
+        recovered = scope['plan_ui_qwen21'](model, dict(prompt='参考图1的布局，生成生肖牛老虎机', uiPreserveLayout=True,
+            uiDesignIntent='redesign'), [dict(role='reference', tensor='image')])
+        self.assertEqual(recovered['uiPlan']['layoutMode'], 'preserve')
+        self.assertEqual(recovered['uiPlan']['references'], [dict(index=1, role='layout')])
 
     def test_ui_contract_rejects_drawing_and_empty_regions(self):
         path = Path(__file__).resolve().parents[3] / 'particle-editor-desktop/prompt-assistant-service.py'

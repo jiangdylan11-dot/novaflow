@@ -5730,20 +5730,9 @@ UI_DESIGN_PLAN_RULES = (
 )
 
 
-def validate_ui_qwen21_plan(plan, count, original_prompt="", reference_roles=()):
+def validate_ui_qwen21_plan(plan, count):
     def fail():
         raise ValueError("Qwen 2.1 UI 设计规划不完整，本次未提交生成")
-    role = reference_roles[0] if reference_roles else None
-    explicit_layout = (count == 1 and role in {"reference", "layout", "content"}
-                       and re.search(r"(?:布局|排版|结构).{0,10}(?:一样|不变|保持|沿用)|(?:保持|保留|沿用|按照|按).{0,10}(?:布局|排版|结构)", original_prompt)
-                       and not re.search(r"缩小|放大|上移|下移|左移|右移|移动|重排|重新排版|增减|增加一[行列]|减少一[行列]", original_prompt))
-    if explicit_layout:
-        visual_mode = ("theme-redesign" if re.search(r"(?:做一个|设计一个).{0,60}(?:主题|界面|页面|老虎机|游戏)|重新设计|重做|新主题", original_prompt)
-                       else plan.get("visualMode") if isinstance(plan, dict) and plan.get("visualMode") in {"style-transfer", "theme-redesign", "partial", "create"}
-                       else "style-transfer")
-        plan = dict(version=1, layoutMode="preserve", layoutReference=1, visualMode=visual_mode,
-                    references=[dict(index=1, role=("layout" if visual_mode == "theme-redesign" else "combined") if role == "reference" else role)],
-                    layoutChanges=[], preserve=[], grids=[])
     if not isinstance(plan, dict) or plan.get('version') != 1:
         fail()
     mode = plan.get('layoutMode')
@@ -16820,8 +16809,22 @@ class PromptAssistant:
             raise ValueError("Qwen 2.1 UI 设计规划JSON无效，本次未提交生成") from error
         if not isinstance(parsed, dict):
             raise ValueError("Qwen 2.1 UI 设计规划JSON无效，本次未提交生成")
-        plan = validate_ui_qwen21_plan(parsed.get('ui_plan'), len(image_items), current,
-                                      [item.get('role') or item.get('slotType') or 'reference' for item in image_items])
+        roles = [item.get('role') or item.get('slotType') or 'reference' for item in image_items]
+        explicit = next((i for i, role in enumerate(roles) if role == 'layout'), -1)
+        ordinary = next((i for i, role in enumerate(roles) if role in {'reference', 'content'}), -1)
+        anchor = explicit if explicit >= 0 else ordinary if payload.get('uiPreserveLayout') is True else -1
+        try:
+            plan = validate_ui_qwen21_plan(parsed.get('ui_plan'), len(image_items))
+            if anchor >= 0 and payload.get('uiPreserveLayout') is True and (plan['layoutReference'] != anchor + 1 or plan['layoutMode'] == 'create'):
+                raise ValueError('设计规划未采用参考布局')
+        except ValueError:
+            intent = payload.get('uiDesignIntent')
+            visual = 'style-transfer' if intent == 'style-transfer' else 'partial' if intent == 'iteration' else 'theme-redesign'
+            refs = [dict(index=i + 1, role=('layout' if i == anchor else 'style' if role in {'style', 'color', 'material'}
+                    else 'asset' if role in {'asset', 'character', 'subject'} else 'layout' if role == 'layout' else 'content'))
+                    for i, role in enumerate(roles)]
+            plan = validate_ui_qwen21_plan(dict(version=1, layoutMode='preserve' if anchor >= 0 else 'create',
+                    layoutReference=anchor + 1, visualMode=visual, references=refs, layoutChanges=[], preserve=[], grids=[]), len(image_items))
         prompt = str(parsed.get('prompt') or '').strip()
         if not prompt:
             raise ValueError("Qwen 2.1 UI 设计指令为空")
