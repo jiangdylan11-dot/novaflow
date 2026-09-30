@@ -102,6 +102,7 @@ test('module description preserves both legacy fields and clears retired require
   const descendants = node => [node, ...node.children.flatMap(descendants)];
   const fields = () => descendants(host).filter(node => node.tagName === 'textarea');
   assert.equal(fields().length, 1);
+  assert.equal(descendants(host).filter(node => node.attributes.type === 'checkbox').length, 0);
   assert.equal(fields()[0].attributes['aria-label'], '模块说明');
   assert.equal(fields()[0].value, '辅助导航和版权信息\n版权居中，使用小号灰字');
   fields()[0].value = '只保留导航';
@@ -147,4 +148,27 @@ test('optional layout draft, module edits, one reference, removal and undo prese
   assert.equal(restored.project().graph.edges.length,2);
   assert.equal(restored.project().graph.nodes.find(n=>n.type==='layout').data.blocks[0].name,'角色区');
   restored.handle.destroy();
+});
+
+test('legacy excluded and locked modules remain included, editable and removable after reopen', () => {
+  const initial = workbench({width:1024,height:1024,blocks:[],graph:{nodes:[],edges:[]}});
+  initial.handle.addBlock();
+  const saved = initial.project();
+  const layout = saved.graph.nodes.find(n => n.type === 'layout');
+  layout.data.blocks[0].participates = false;
+  layout.data.blocks[0].locked = true;
+  initial.handle.destroy();
+  const {handle,project} = workbench(saved);
+  handle.showLayout(); handle.useLayout();
+  assert.equal(project().graph.edges.filter(e => e.kind === 'layout').length, 1);
+  const block = handle.getLayout().data.blocks[0];
+  assert.equal(block.participates, true);
+  assert.equal(block.locked, false);
+  const selection = {nodeId:layout.id,blockId:block.id};
+  handle.patchSelection(selection,{x:150,width:420});
+  assert.equal(handle.getSelection().block.x,150);
+  assert.equal(handle.getSelection().block.width,420);
+  assert.equal(handle.removeSelection(),true);
+  assert.equal(handle.getLayout().data.blocks.length,0);
+  handle.destroy();
 });

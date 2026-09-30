@@ -168,27 +168,6 @@
       ])
     }
 
-    function toggle(labelText, checked, selection, key) {
-      const input = createElement(documentRef, 'input', {
-        type: 'checkbox',
-        'data-novaflow-ui-design-inspector-field': key,
-        'aria-label': labelText,
-      })
-      input.checked = checked !== false
-      input.addEventListener('change', function () { emitPatch(selection, { [key]: !!input.checked }) })
-      return createElement(documentRef, 'label', {
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          minHeight: '28px',
-          fontSize: '11px',
-          color: 'rgba(248,250,252,0.86)',
-          cursor: 'pointer',
-        },
-      }, [input, createElement(documentRef, 'span', { text: labelText })])
-    }
-
     function action(label, attribute, callback, tone) {
       const compactDanger = options.compact && tone === 'danger'
       const button = createElement(documentRef, 'button', {
@@ -248,8 +227,6 @@
         selection: selection, key: 'purpose', multiline: true,
         toPatch: value => ({ purpose: value, requirements: '' }),
       }))
-      shell.appendChild(toggle('参与生成', block.participates !== false, selection, 'participates'))
-      shell.appendChild(toggle('锁定布局块', block.locked !== true ? false : true, selection, 'locked'))
       shell.appendChild(action('删除布局块', 'data-novaflow-ui-design-inspector-remove', function () {
         if (typeof options.onRemoveSelection === 'function') options.onRemoveSelection(selection)
         else if (typeof options.onRemove === 'function') options.onRemove(block.id)

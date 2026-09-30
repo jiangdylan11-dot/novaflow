@@ -7,7 +7,15 @@
     const host = options.host, doc = host.ownerDocument
     const layoutOnly = options.layoutOnly === true
     const structure = root.NovaFlowUiDesignStructureTool
-    let project = structure.normalize(options.getProject()), graph = project.graph
+    function editableProject(value) {
+      const normalized = structure.normalize(value)
+      // Retired controls must not leave imported or saved modules excluded or uneditable.
+      const enable = blocks => (blocks || []).map(block => ({ ...block, participates: true, locked: false }))
+      normalized.blocks = enable(normalized.blocks)
+      for (const node of normalized.graph.nodes) if (node.type === 'layout') node.data.blocks = enable(node.data.blocks)
+      return normalized
+    }
+    let project = editableProject(options.getProject()), graph = project.graph
     let activeId = graph.nodes.find(n => n.type === 'generator')?.id
     let selected = null, view = 'result', shown = options.getResults().at(-1) || null
     let active = true, controls = null, controlKey = '', drag = null, syncingControls = false
@@ -72,10 +80,10 @@
     function save(history = true) {
       if (history) { undoStack.push(copy(project)); if (undoStack.length > 40) undoStack.shift(); redoStack.length = 0 }
       const activeLayout = layout()
-      if (layoutEnabled() && !activeLayout?.data.blocks.some(block => block.participates !== false)) {
+      if (layoutEnabled() && !activeLayout?.data.blocks.length) {
         graph = { ...graph, edges: graph.edges.filter(edge => !(edge.toNodeId === activeId && edge.kind === 'layout')) }
       }
-      project = structure.normalize({ ...project, graph })
+      project = editableProject({ ...project, graph })
       graph = project.graph
       options.onProjectChange(copy(project))
       if (layoutOnly) options.onLayoutChange?.()
@@ -144,13 +152,13 @@
     }
     function removeSelection() {
       const selection = getSelection()
-      if (!selection || selection.block.locked) return false
+      if (!selection) return false
       mutate('updateGraphNode', selection.nodeId, { data: { blocks: selection.node.data.blocks.filter(b => b.id !== selection.blockId) } })
       selected = null; save(); selectBlock(null); return true
     }
     function useLayout() {
       const node = ensureLayout()
-      if (!node?.data.blocks.some(b => b.participates !== false)) { status('请先添加一个布局模块', true); return }
+      if (!node?.data.blocks.length) { status('请先添加一个布局模块', true); return }
       if (!layoutEnabled()) {
         const result = mutate('connectGraph', { fromNodeId: node.id, fromPort: 'layout', toNodeId: activeId, toPort: 'layout', kind: 'layout' })
         if (!result.ok) return
@@ -265,14 +273,13 @@
           if (event.button !== 0) return
           event.preventDefault(); event.stopPropagation(); selectBlock(block.id)
           board.querySelectorAll('[data-ui-workbench-block]').forEach(n => n.setAttribute('aria-selected', String(n === part)))
-          if (block.locked) return
           const bounds = board.getBoundingClientRect()
           drag = { pointer: event.pointerId, startX: event.clientX, startY: event.clientY, block: copy(block), selection: getSelection(), size, bounds, part, resizing, patch: null }
           stage.setPointerCapture(event.pointerId)
         }
         part.addEventListener('pointerdown', event => start(event, false))
         part.addEventListener('keydown', e => { if (e.key === 'Enter') { selectBlock(block.id); renderStage() } })
-        if (!block.locked) { const resize = button('', () => {}, { 'data-ui-resize': '', 'aria-label': '调整模块大小' }); resize.addEventListener('pointerdown', e => start(e, true)); part.append(resize) }
+        const resize = button('', () => {}, { 'data-ui-resize': '', 'aria-label': '调整模块大小' }); resize.addEventListener('pointerdown', e => start(e, true)); part.append(resize)
         board.append(part)
       }
       board.addEventListener('pointerdown', e => { if (e.target === board) { selectBlock(null); renderStage() } })
@@ -345,8 +352,8 @@
       // Preserve an existing unconnected layout as an editable draft, without making it required.
       const existingLayout = graph.nodes.find(n => n.type === 'layout')
       if (existingLayout) mutate('updateGraphNode', activeId, { data: { workbenchLayoutId: existingLayout.id } })
-      save(false)
     }
+    save(false)
     let lastStageSize = ''
     const observer = typeof root.ResizeObserver === 'function' ? new root.ResizeObserver(entries => {
       const rect = entries[0].contentRect
@@ -358,7 +365,7 @@
     observer?.observe(stage)
     render()
     return {
-      update(value) { if (value) { project = structure.normalize(value); graph = project.graph }; if (!syncingControls) render() },
+      update(value) { if (value) { project = editableProject(value); graph = project.graph }; if (!syncingControls) render() },
       destroy() { active = false; observer?.disconnect(); controls?.destroy(); shell.remove() },
       getProject: () => copy(project), getGraph: () => copy(graph), getSelection,
       getActiveGeneratorId: () => activeId, getGeneratorSettings: profile, patchGeneratorSettings, patchGeneratorOutput,

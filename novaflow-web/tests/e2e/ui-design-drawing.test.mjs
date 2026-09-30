@@ -57,7 +57,7 @@ test('UI uses the real drawing batch path and preserves sampling, LoRA, size, ne
   assert.equal(e.state.results.length,2);assert.equal(e.state.prompt,'设计一个角色装备界面');
 });
 test('module names stay in the editor and never enter assistant or generation payloads',async()=>{
-  const region = {name:'仅用户识别的内部标签',title:'旧标题',label:'旧标签',purpose:'辅助导航',requirements:'使用小号灰字',x:10,y:20,width:600,height:100};
+  const region = {name:'仅用户识别的内部标签',title:'旧标题',label:'旧标签',purpose:'辅助导航',requirements:'使用小号灰字',x:10,y:20,width:600,height:100,participates:false,locked:true};
   const refs = [{uiLayoutId:'L',dataUrl:'data:image/png;base64,layout',uiStructure:{width:1280,height:720,regions:[region]}}];
   let analysis;
   const e = environment({references:refs,optimize:async input=>{analysis=input;return {prompt:'生成 UI'};}});

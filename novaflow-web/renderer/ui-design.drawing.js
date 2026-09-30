@@ -8,7 +8,7 @@
   function modelStructure(value = {}) {
     return {
       width: value.width, height: value.height,
-      regions: (value.regions || []).filter(block => block.participates !== false).map(block => ({
+      regions: (value.regions || []).map(block => ({
         x: block.x, y: block.y, width: block.width, height: block.height,
         purpose: [...new Set([block.purpose || block.description, block.requirements].map(text => String(text || '').trim()).filter(Boolean))].join('\n'),
       })),
