@@ -322,13 +322,12 @@
         <div class="nf-prb-panel"><div class="nf-prb-panel-head"><span>原图</span><small>${selected ? `${selected.width} × ${selected.height}` : ''}</small></div><div class="nf-prb-preview">${selected ? `<img src="${selected.dataUrl}">` : '<div class="nf-prb-empty">还没有图片</div>'}</div></div>
         <div class="nf-prb-panel"><div class="nf-prb-panel-head"><span>结果图</span><small></small></div><div class="nf-prb-preview">${selected?.result ? `<img src="${selected.result.dataUrl}">` : '<div class="nf-prb-empty">等待处理结果<br>结果区使用棋盘格显示透明区域</div>'}</div></div>
       </div>
-      <div class="nf-prb-top-actions"><button data-prb-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button><button data-prb-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>导出覆盖</button></div>`
+      <div class="nf-prb-top-actions"><button data-prb-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button></div>`
     root.querySelector('[data-prb-pick]')?.addEventListener('click', () => root.querySelector('[data-prb-file]')?.click())
     root.querySelector('[data-prb-file]')?.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = '' })
     root.querySelector('[data-prb-run]')?.addEventListener('click', processAll)
     root.querySelector('[data-prb-clear]')?.addEventListener('click', clearAll)
     root.querySelector('[data-prb-export]')?.addEventListener('click', exportAll)
-    root.querySelector('[data-prb-overwrite]')?.addEventListener('click', overwriteAll)
     root.querySelectorAll('[data-prb-item]').forEach((item) => {
       item.addEventListener('click', () => { state.selectedId = item.getAttribute('data-prb-item') || ''; render() })
       item.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); state.selectedId = item.getAttribute('data-prb-item') || ''; render() } })

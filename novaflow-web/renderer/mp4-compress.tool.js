@@ -484,7 +484,7 @@
         <div class="nf-mp4-panel"><div class="nf-mp4-panel-head"><span>原片</span><small>${selected ? `${selected.width} × ${selected.height}｜${formatDuration(selected.durationSec)}｜${formatBytes(selected.bytes)}` : ''}</small></div><div class="nf-mp4-preview">${selected ? `<video src="${escapeHtml(selected.url)}" controls preload="metadata"></video>` : '<div class="nf-mp4-empty">还没有视频</div>'}</div></div>
         <div class="nf-mp4-panel"><div class="nf-mp4-panel-head"><span>结果片</span><small data-mp4-result-head>${resultHeadHtml(selected)}</small></div><div class="nf-mp4-preview" data-mp4-result-preview>${resultPanelHtml(selected)}</div></div>
       </div>
-      <div class="nf-mp4-top-actions"><button data-mp4-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button><button data-mp4-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>导出覆盖</button></div>`
+      <div class="nf-mp4-top-actions"><button data-mp4-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button></div>`
     root.querySelector('[data-mp4-pick]')?.addEventListener('click', () => root.querySelector('[data-mp4-file]')?.click())
     root.querySelector('[data-mp4-file]')?.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = '' })
     syncRangeFill(root.querySelector('[data-mp4-strength]'))
@@ -503,7 +503,6 @@
     root.querySelector('[data-mp4-run]')?.addEventListener('click', processAll)
     root.querySelector('[data-mp4-clear]')?.addEventListener('click', clearAll)
     root.querySelector('[data-mp4-export]')?.addEventListener('click', exportAll)
-    root.querySelector('[data-mp4-overwrite]')?.addEventListener('click', overwriteAll)
     root.querySelectorAll('[data-mp4-item]').forEach((item) => {
       item.addEventListener('click', () => { state.selectedId = item.getAttribute('data-mp4-item') || ''; render() })
       item.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); state.selectedId = item.getAttribute('data-mp4-item') || ''; render() } })
