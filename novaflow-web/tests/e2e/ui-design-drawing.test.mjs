@@ -4,14 +4,14 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = name => readFileSync(new URL('../../renderer/' + name, import.meta.url), 'utf8');
-function environment({ ui = true, references = [], optimize } = {}) {
+function environment({ ui = true, references = [], optimize, qwen = false } = {}) {
   const calls = [], failures = [], builds = [];
   const state = { provider:'local',mode:'img2img',prompt:'设计一个角色装备界面',negativePrompt:'不要模糊',width:1280,height:720,count:2,randomSeed:false,seed:17,nsfw:false,loras:[{name:'example',strength:0.7}],samplingOverrides:{'qwen-2.1:img2img':{steps:32,cfg:3}},results:[] };
   const noop = () => {};
   const sandbox = { AbortController, console, URLSearchParams, setTimeout, clearTimeout, ART_GENERATE_STATE:state,
     document:{ body:{classList:{contains:()=>ui}},querySelector:()=>ui ? {} : null },
-    NovaFlowArtGenerateModels:{normalizeProvider:p=>p,capabilityFor:()=>({engine:'qwen-2.1'})},
-    NovaFlowUiDesignAssistantWorkflow:{run:async input=>{ calls.push('optimize'); return optimize ? optimize(input) : {prompt:'按参考图设计完整 UI',negativePrompt:'自动负面'}; }},
+    NovaFlowArtGenerateModels:{normalizeProvider:p=>p,capabilityFor:()=>({engine:qwen ? 'qwen-2.1' : ''})},
+    NovaFlowUiDesignAssistantWorkflow:{run:async input=>{ calls.push('optimize'); return optimize ? optimize(input) : {prompt:'按参考图设计完整 UI',negativePrompt:'自动负面', ...(qwen ? {uiPlan:planFor(input.references)} : {})}; }},
     NovaFlowArtQualityProfile:{compileFinal:input=>{calls.push('drawing-quality');return input;}},
     captureArtGeneratePromptSnapshot:()=>({prompt:state.prompt,negativePrompt:state.negativePrompt}),
     artGenerateReferences:()=>references,artGenerateReferenceLimit:()=>10,artGenerateProviderTitle:p=>p,
@@ -55,6 +55,49 @@ test('UI uses the real drawing batch path and preserves sampling, LoRA, size, ne
     assert.equal(args[8].samplingOverrides['qwen-2.1:img2img'].steps,32);assert.equal(args[8].loras[0].strength,0.7);
   }
   assert.equal(e.state.results.length,2);assert.equal(e.state.prompt,'设计一个角色装备界面');
+});
+
+function planFor(refs, patch={}) {
+  return {version:1,layoutMode:refs.length ? 'preserve' : 'create',layoutReference:refs.length ? 1 : 0,
+    visualMode:'theme-redesign',references:refs.map((r,i)=>({index:i+1,role:r.role === 'style' ? 'style' : r.role === 'layout' ? 'layout' : 'combined'})),layoutChanges:[],preserve:[],...patch};
+}
+
+test('Qwen partial layout changes retain protected areas without a global position lock',async()=>{
+  const refs=[{dataUrl:'data:image/png;base64,ref',role:'layout'}];
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'人物缩小20%，符号区上移，奖池和底部操作栏保持原位。',uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['人物缩小20%','符号区上移'],preserve:['奖池和底部操作栏保持原位']})})});
+  e.state.prompt='人物缩小20%，符号区上移，其他不变';await e.run();
+  assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiLayoutMode,'partial');
+  assert.match(e.builds[0][4],/只调整这些布局项目：人物缩小20%；符号区上移/);
+  assert.doesNotMatch(e.builds[0][4],/沿用布局参考图的全部区域|本次是局部修改，沿用全部/);
+});
+
+test('Qwen sends the second layout image first and remaps image identifiers consistently',async()=>{
+  const refs=[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}];
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'用@参考图1的卡通风格，沿用@参考图2的结构。',uiPlan:planFor(refs,{layoutReference:2})})});
+  e.state.prompt='用@参考图1的卡通风格，沿用@参考图2的布局';
+  const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
+  assert.equal(prepared.references[0].role,'layout');assert.equal(prepared.references[1].role,'style');
+  assert.match(prepared.promptSnapshot.prompt,/用@参考图2的卡通风格，沿用@参考图1的布局/);
+  assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
+});
+
+test('Qwen style-only references generate their own layout and invalid plans never submit',async()=>{
+  const refs=[{dataUrl:'data:image/png;base64,style',role:'style'}];
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'按卡通视觉设计新页面。',uiPlan:planFor(refs,{layoutMode:'create',layoutReference:0})})});
+  await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiPreserveLayout,false);
+  assert.match(e.builds[0][4],/风格图、人物和物品图不提供布局/);
+  for(const patch of [{uiPlan:null},{uiPlan:planFor(refs)}, {uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['按钮上移'],preserve:[]})}]) {
+    const failed=environment({qwen:true,references:refs,optimize:async()=>({prompt:'设计',...patch})});
+    await failed.run();assert.equal(failed.calls.includes('upload'),false);assert.equal(failed.builds.length,0);
+    assert.match(failed.failures[0],/规划不完整/);
+  }
+});
+
+test('Qwen planning cache separates generation engines and rejects missing references',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+  const input={references:[{role:'layout'}],prompt:'参考@参考图2'};
+  assert.notEqual(p.key({...input,targetEngine:'qwen-2.1'}),p.key({...input,targetEngine:''}));
+  assert.throws(()=>p.compileQwenPlan({prompt:'设计',uiPlan:planFor(input.references)},input),/不存在的参考图/);
 });
 test('module names stay in the editor and never enter assistant or generation payloads',async()=>{
   const region = {name:'仅用户识别的内部标签',title:'旧标题',label:'旧标签',purpose:'辅助导航',requirements:'使用小号灰字',x:10,y:20,width:600,height:100,participates:false,locked:true};

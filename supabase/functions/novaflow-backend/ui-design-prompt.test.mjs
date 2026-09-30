@@ -50,3 +50,27 @@ test('maintained admin and Edge share the UI planning implementation',()=>{
   const helper=s=>s.slice(s.indexOf('function isUiDesignPromptPayload('),s.indexOf('function buildGrokPromptOptimizeRequest('));
   assert.equal(helper(sources[0]),helper(sources[1]));
 });
+
+test('Qwen 2.1 planning carries independent layout and visual scopes through the public response',()=>{
+  const request=buildGrokImageReverseRequest({...payload,targetEngine:'qwen-2.1',scenario:'role_reference',images:[{imageUrl:'data:image/png;base64,AA==',role:'layout'}]});
+  assert.equal(request.body.text.format.name,'novaflow_ui_qwen21_v1');
+  assert.equal(request.resultOptions.uiQwen21Plan,true);assert.equal(request.resultOptions.uiDesignPrompt,undefined);
+  const ui_plan={version:1,layoutMode:'partial',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:['人物缩小20%'],preserve:['其他区域保持原位']};
+  const result=grokResponsesPublicResult({output_text:JSON.stringify({prompt:'全新科幻界面，人物缩小20%。',ui_plan})},request.resultOptions);
+  assert.deepEqual(result.uiPlan,ui_plan);assert.doesNotMatch(result.output_text,/沿用布局参考图的全部区域/);
+  for(const patch of [{references:[]},{layoutReference:2},{layoutMode:'preserve'},{preserve:[]},{visualMode:'unknown'}]) {
+    assert.throws(()=>grokResponsesPublicResult({output_text:JSON.stringify({prompt:'设计',ui_plan:{...ui_plan,...patch}})},request.resultOptions),/规划不完整/);
+  }
+  const textRequest=buildGrokPromptOptimizeRequest({...payload,targetEngine:'qwen-2.1'});
+  const create={version:1,layoutMode:'create',layoutReference:0,visualMode:'create',references:[],layoutChanges:[],preserve:[]};
+  assert.deepEqual(grokResponsesPublicResult({output_text:JSON.stringify({prompt:'原创界面',ui_plan:create})},textRequest.resultOptions).uiPlan,create);
+});
+
+test('admin and Edge response adapters do not discard the Qwen plan',()=>{
+  const admin=readFileSync(new URL('../../../novaflow-web/admin/admin-server/server.js',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('./index.ts',import.meta.url),'utf8');
+  assert.equal((edge.match(/data\.uiPlan \? \{ uiPlan: data\.uiPlan \}/g)||[]).length,2);
+  assert.equal((admin.match(/grok\.data\.uiPlan \? \{uiPlan:grok\.data\.uiPlan\}/g)||[]).length,2);
+  const ordinary=admin.slice(admin.indexOf('if (options.ordinaryArtStructuredPrompt === true)'),admin.indexOf('if (options.ordinaryArtPromptPatch === true)'));
+  assert.doesNotMatch(ordinary,/uiPlan/,'ordinary Drawing must not reference UI-only variables');
+});

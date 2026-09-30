@@ -50,10 +50,17 @@ for (const [intent, preserveLayout] of [[undefined,undefined], ['redesign',false
   assert.equal(graph['7'].inputs.latent_image[0], preserveLayout ? '5' : intent === 'redesign' ? '6' : '5');
   assert.equal(graph['7'].inputs.denoise, 1);
   assert.equal(graph['7'].inputs.steps, 40);
-  if (preserveLayout) assert.match(graph['5'].inputs.prompt, /人物展示区必须保留/);
+  if (preserveLayout) assert.match(graph['5'].inputs.prompt, /保持布局参考图的全部区域.*网格行列及控件数量/);
   if (intent === 'redesign' || intent === 'style-transfer') assert.doesNotMatch(graph['5'].inputs.prompt, /保持图1中主体的位置/);
   else assert.match(graph['5'].inputs.prompt, /保持图1中主体的位置/);
 }
+const partialGraph = await host21.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:[
+  'local','img2img',['screen.png'],'UI_partial','人物缩小20%，符号区上移；其余区域不变。','','test',
+  [{width:758,height:1640}],{provider:'local',mode:'img2img',width:758,height:1640,seed:7,localDrawEngine:'qwen-2.1',uiPreserveLayout:true,uiLayoutMode:'partial',uiRunIntent:'redesign'}
+]}});
+assert.equal(partialGraph['7'].inputs.latent_image[0],'5');
+assert.match(partialGraph['5'].inputs.prompt,/只调整设计指令中明确指定的区域位置、大小或数量/);
+assert.doesNotMatch(partialGraph['5'].inputs.prompt,/保持布局参考图的全部区域|保持图1中主体的位置/);
 const uiRoles = (roles) => roles.map((role, index) => ({ index, role }));
 const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse(JSON.stringify(await host.buildGraph({
   module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [

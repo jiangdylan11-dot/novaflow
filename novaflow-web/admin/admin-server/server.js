@@ -9172,6 +9172,15 @@ function grokResponsesPublicResult(data, options = {}) {
         options.supportsNegativePrompt !== false
       )
       : parseSmartAiPromptResult(rawText, options);
+  const uiPlan = options.uiQwen21Plan === true ? validateUiQwen21Plan(parseSmartAiPromptJson(rawText)?.ui_plan, options.referenceCount || 0) : null;
+  if (options.uiQwen21Plan === true) {
+    if (!String(parsed.prompt || '').trim()) throw new Error('Qwen 2.1 UI 设计指令为空');
+    const tokens = [...new Set(String(options.originalPrompt || '').match(/__NOVAFLOW_[A-Z0-9_:-]+__/g) || [])];
+    for (const token of tokens) {
+      let count = 0; parsed.prompt = String(parsed.prompt).replaceAll(token, () => ++count === 1 ? token : '');
+      if (!count) parsed.prompt += `\n参考标识：${token}。`;
+    }
+  }
   if (options.uiDesignPrompt === true) {
     // The source reference tokens are transport identifiers, not visual decisions. Keep each
     // exactly once as on the local UI assistant, without guessing a different image number.
@@ -9252,6 +9261,7 @@ function grokResponsesPublicResult(data, options = {}) {
     created: data?.created || null,
     model: data?.model || "",
     output_text: parsed.prompt,
+    ...(uiPlan ? {uiPlan} : {}),
     negative_prompt: parsed.negative_prompt,
     has_negative_prompt: parsed.has_negative_prompt,
     visualSchema: expectedVisualSchema,
@@ -9496,6 +9506,39 @@ function isUiDesignPromptPayload(payload) {
   return payload?.surface === "ui-design" || String(payload?.purpose || "").startsWith("ui-design-");
 }
 
+function buildUiQwen21PromptRequest(payload, model, context) {
+  const {prompt, requirements, negative, supportsNegativePrompt, scenario} = context;
+  const referenceSchema = {type:"object",additionalProperties:false,properties:{index:{type:"integer"},role:{type:"string",enum:["layout","style","content","asset","combined"]}},required:["index","role"]};
+  const planSchema = {type:"object",additionalProperties:false,properties:{version:{type:"integer",enum:[1]},layoutMode:{type:"string",enum:["preserve","partial","reflow","create"]},layoutReference:{type:"integer"},visualMode:{type:"string",enum:["style-transfer","theme-redesign","partial","create"]},references:{type:"array",items:referenceSchema},layoutChanges:{type:"array",items:{type:"string"}},preserve:{type:"array",items:{type:"string"}}},required:["version","layoutMode","layoutReference","visualMode","references","layoutChanges","preserve"]};
+  const content = scenario.images.flatMap((image,index)=>[smartAiInputText(`图${index+1}，指定用途：${image.role || image.slotType || "reference"}`),smartAiImageInput(image)]);
+  content.push(smartAiInputText([
+    "为 Qwen 2.1 原生图像编辑输出一个 UI 设计执行合同，按用户原文决定修改范围，不能机械使用前端旧的整体保留提示。",
+    "ui_plan.layoutMode：preserve=未要求调整布局；partial=只调整指定区域；reflow=明确要求重新排版；create=没有有效布局来源。layoutReference是布局或内容来源的输入图编号，从1开始，没有则为0；只有style/asset图时必须create且为0。references必须覆盖每张输入图一次且保留原编号。明确指定layout/style/人物物品素材职责不得改写；普通reference依据原文和图片判断，可combined。",
+    "layoutChanges逐项记录用户提出的位置、比例、数量和排列改动；人物缩小、按钮上移、增加一行也是partial，不必出现布局二字。preserve记录必须保持的区域、功能、内容或布局；partial必须同时有改动项和保留项，preserve模式layoutChanges必须为空。不猜测图中看不清的数字或位置，不按常见模板重排。",
+    "visualMode与layoutMode独立：style-transfer只改变指定画风并保留内容身份；theme-redesign按新主题设计人物、背景、符号和全部组件；partial只改变指定外观；create从需求建立新美术。有风格参考时用它的线条、造型比例、材质、配色和渲染完成度，不带入无关布局或物品。",
+    "prompt是约350到900字的连贯中文最终执行指令，不用五段标题、不输出分析。落实各区域新设计，明确具体轮廓、配色层级、材质区分、光影、图标家族、重复符号一致性和文字可读性。题材不决定固定画风：埃及可以卡通，科幻可以手绘；风格来自需求和指定参考。禁止把所有控件统一做成石板或金色方框。不能只写高质量精美等空泛词。",
+    "新主题且参考用途为layout时，只继承区域几何与功能，不沿用原角色脸型、服装、武器或原图标轮廓；新造型和姿势可在原区域范围内重新设计。风格参考要具体提取主色、强调色、明暗层级、边缘处理、材质反光和体积塑造，不能简化成题材词或套默认金色风格。若用户要求鲜明和有质感，拉开背景与主体明暗，建立丰富且协调的强调色，区分哑光、金属、宝石与柔软材料；尊重用户指定的简约、淡彩或扁平风格，不强制所有设计高饱和。",
+    "槽位编号以输入顺序为准，所有 __NOVAFLOW_ 开头并以双下划线结尾的资源标识在prompt中原样保留一次。自建模块名称只是内部识别，作用说明与坐标才是设计内容。用户原文优先，未请求增加的功能不新增。",
+    `用户原始需求：${prompt || "根据参考与补充要求设计"}`,
+    `布局、尺寸和参考职责：${requirements}`,
+    supportsNegativePrompt ? `用户避免内容：${negative || "无"}；negative_prompt只写具体不希望出现的内容，不强加写实或卡通等画风。` : "不输出负面提示字段。",
+  ].join("\n")));
+  return {body:{model:String(model || "grok-4.3"),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,originalPrompt:prompt,supportsNegativePrompt}};
+}
+
+function validateUiQwen21Plan(plan, count) {
+  const invalid = () => {throw new Error("Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成");};
+  if(!plan || plan.version!==1 || !["preserve","partial","reflow","create"].includes(plan.layoutMode) || !["style-transfer","theme-redesign","partial","create"].includes(plan.visualMode))invalid();
+  if(!Number.isInteger(plan.layoutReference) || plan.layoutReference<0 || plan.layoutReference>count || (plan.layoutMode==="create")!==(plan.layoutReference===0))invalid();
+  if(!Array.isArray(plan.references) || plan.references.length!==count)invalid();
+  const seen=new Set();for(const ref of plan.references){if(!ref || !Number.isInteger(ref.index) || ref.index<1 || ref.index>count || seen.has(ref.index) || !["layout","style","content","asset","combined"].includes(ref.role))invalid();seen.add(ref.index);}
+  if(plan.layoutReference && !["layout","combined","content"].includes(plan.references.find(r=>r.index===plan.layoutReference)?.role))invalid();
+  for(const key of ["layoutChanges","preserve"])if(!Array.isArray(plan[key]) || plan[key].length>30 || plan[key].some(s=>typeof s!=="string" || !s.trim() || s.length>800))invalid();
+  if(plan.layoutMode==="partial" && (!plan.layoutChanges.length || !plan.preserve.length))invalid();
+  if(plan.layoutMode==="preserve" && plan.layoutChanges.length)invalid();
+  return plan;
+}
+
 function buildUiDesignPromptRequest(payload, model) {
   const prompt = smartAiCurrentPrompt(payload, 20000);
   const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || payload?.instructions || "", 4000);
@@ -9506,6 +9549,7 @@ function buildUiDesignPromptRequest(payload, model) {
   if (miniMaxH3ChildSensitiveRequest(`${prompt}\n${requirements}`)) {
     throw miniMaxH3ContractError("provider_content_policy", "UI request blocked explicit minor sensitive content", 422, "provider_content_policy");
   }
+  if (payload?.targetEngine === "qwen-2.1") return buildUiQwen21PromptRequest(payload,model,{prompt,requirements,negative,supportsNegativePrompt,scenario});
   const content = scenario.images.flatMap((image, index) => [smartAiInputText(artReferenceImageLabel(image, index)), smartAiImageInput(image)]);
   content.push(smartAiInputText([
     "用户原始设计需求（最高优先级）：", prompt || "见补充要求",
@@ -10885,6 +10929,7 @@ async function handleGrokPromptOptimizeRequest(req, res) {
     provider: "grok",
     mode: "prompt_optimize",
     prompt: grok.data.output_text,
+    ...(grok.data.uiPlan ? {uiPlan:grok.data.uiPlan} : {}),
     negative_prompt: grok.data.negative_prompt,
     has_negative_prompt: Boolean(grok.data.has_negative_prompt),
     ...(grok.data.editContract === ORDINARY_ART_STRUCTURED_EDIT_CONTRACT
@@ -11024,6 +11069,7 @@ async function handleGrokImageReverseRequest(req, res) {
     provider: "grok",
     mode,
     prompt: grok.data.output_text,
+    ...(grok.data.uiPlan ? {uiPlan:grok.data.uiPlan} : {}),
     negative_prompt: grok.data.negative_prompt,
     has_negative_prompt: Boolean(grok.data.has_negative_prompt),
     visualSchema: String(grok.data.visualSchema || ""),

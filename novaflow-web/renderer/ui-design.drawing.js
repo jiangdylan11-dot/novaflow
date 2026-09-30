@@ -182,6 +182,7 @@
     })
     return {
       provider: state.provider || 'local', engine: mounted?.store.getState().settings?.assistantEngine || 'grok',
+      targetEngine: (state.provider || 'local') === 'local' ? root.NovaFlowArtGenerateModels?.capabilityFor?.('local', state.mode, state)?.engine || '' : '',
       prompt, negativePrompt: String(state.negativePrompt || ''),
       preserveLayout: refs.length > 0 && !explicitlyChangesLayout(prompt),
       generationIntent: /(?:不(?:需要|用|必)?保留任何(?:元素|内容|东西)|无需保留任何|(?:全部|整体)重做|整(?:个|张)\s*(?:UI|界面).{0,8}重新设计|start over)/i.test(prompt)
@@ -215,6 +216,14 @@
       }
       const result = await root.NovaFlowUiDesignPromptPipeline.run({ id: 'ui-drawing', input, signal: controller.signal, assistant: root.NovaFlowUiDesignAssistantWorkflow })
       if (controller.signal.aborted) throw new Error('任务已中止')
+      if (input.targetEngine === 'qwen-2.1') {
+        const compiled = root.NovaFlowUiDesignPromptPipeline.compileQwenPlan(result, input)
+        state.uiLayoutMode = compiled.plan.layoutMode
+        state.uiPreserveLayout = ['preserve', 'partial'].includes(compiled.plan.layoutMode)
+        state.uiRunIntent = compiled.plan.visualMode === 'theme-redesign' ? 'redesign' : compiled.plan.visualMode === 'partial' ? 'iteration' : compiled.plan.visualMode === 'create' ? 'redesign' : 'style-transfer'
+        return { promptSnapshot: { prompt: compiled.prompt, negativePrompt: input.negativePrompt || result.negativePrompt || '' },
+          references: compiled.references, originalPrompt, optimizedPrompt: result.prompt, uiPlan: compiled.plan, state, store: session?.store }
+      }
       const layoutText = input.structure.regions?.length ? `\n布局参考中的模块约束（只约束布局与功能，不把线框画入成品）：\n${JSON.stringify(input.structure)}` : ''
       const intentText = input.generationIntent === 'style-transfer'
         ? '本次是风格迁移：保留内容参考图的功能、文字、人物身份、姿势和物品；未要求改变的区域布局、网格行列及数量不变，只改变用户要求的画风、配色、材质和组件视觉。风格图只提供视觉语言，不带入它的内容或布局。'
@@ -267,7 +276,7 @@
     })
   }
   function recordResult(result, prepared) {
-    prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt })
+    prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt, uiPlan: prepared.uiPlan || null })
   }
   root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, inputFor, prepare, openAssistant, recordResult,
     syncOutputSize() { mounted?.syncSize() },

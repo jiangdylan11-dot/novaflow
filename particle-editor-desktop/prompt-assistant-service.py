@@ -5730,6 +5730,38 @@ UI_DESIGN_PLAN_RULES = (
 )
 
 
+def validate_ui_qwen21_plan(plan, count):
+    def fail():
+        raise ValueError("Qwen 2.1 UI 设计规划不完整，本次未提交生成")
+    if not isinstance(plan, dict) or plan.get('version') != 1:
+        fail()
+    mode = plan.get('layoutMode')
+    if mode not in {'preserve', 'partial', 'reflow', 'create'} or plan.get('visualMode') not in {'style-transfer', 'theme-redesign', 'partial', 'create'}:
+        fail()
+    reference = plan.get('layoutReference')
+    if type(reference) is not int or not 0 <= reference <= count or (mode == 'create') != (reference == 0):
+        fail()
+    refs = plan.get('references')
+    if not isinstance(refs, list) or len(refs) != count:
+        fail()
+    seen = set()
+    for item in refs:
+        if not isinstance(item, dict) or type(item.get('index')) is not int or not 1 <= item['index'] <= count or item['index'] in seen or item.get('role') not in {'layout', 'style', 'content', 'asset', 'combined'}:
+            fail()
+        seen.add(item['index'])
+    if reference and next(item['role'] for item in refs if item['index'] == reference) not in {'layout', 'content', 'combined'}:
+        fail()
+    for key in ('layoutChanges', 'preserve'):
+        values = plan.get(key)
+        if not isinstance(values, list) or len(values) > 30 or any(not isinstance(v, str) or not v.strip() or len(v) > 800 for v in values):
+            fail()
+    if mode == 'partial' and (not plan['layoutChanges'] or not plan['preserve']):
+        fail()
+    if mode == 'preserve' and plan['layoutChanges']:
+        fail()
+    return plan
+
+
 def validate_ui_design_plan(text: str) -> str:
     sections = ("界面目标", "参考用途", "布局与功能", "区域设计", "视觉规范")
     value = str(text or "").strip()
@@ -16732,6 +16764,50 @@ class PromptAssistant:
             "contentCheck": {"person": person, "minor": minor, "sensitive": sensitive},
         }
 
+    def plan_ui_qwen21(self, payload, image_items=None):
+        image_items = image_items or []
+        current = current_prompt_from_payload(payload)
+        requirements = str(payload.get("requirements") or "")[:4000]
+        tokens = "".join(
+            f"图{i+1}（职责：{item.get('role') or item.get('slotType') or 'reference'}）：<|vision_start|><|image_pad|><|vision_end|>\n"
+            for i, item in enumerate(image_items)
+        )
+        rules = (
+            "只输出严格JSON：{\"prompt\":\"完整UI美术设计指令\",\"negative_prompt\":\"避免内容\","
+            "\"ui_plan\":{\"version\":1,\"layoutMode\":\"preserve|partial|reflow|create\","
+            "\"layoutReference\":0,\"visualMode\":\"style-transfer|theme-redesign|partial|create\","
+            "\"references\":[{\"index\":1,\"role\":\"layout|style|content|asset|combined\"}],"
+            "\"layoutChanges\":[],\"preserve\":[]}}。枚举字段只选一个值，不输出竖线。"
+            "每张图按1开始编号，references覆盖全部图片且不得重复。layoutReference是布局图编号；无布局来源为0且layoutMode=create。"
+            "布局与画风独立判断：未要求改变布局默认preserve；只改部分区域为partial并写明layoutChanges和其余preserve；明确重排为reflow。"
+            "风格图只供美术语言，人物/物品图只供素材，不能误作布局。用户只换画风时保留内容身份，换主题时所有主题美术连贯重设计。"
+            "新主题布局图只保留区域几何与功能，不沿用原人物、装备和图标轮廓。风格参考具体提取主色、强调色、明暗层级、材质反光和体积塑造。"
+            "要求有质感时拉开背景与主体明暗，区分哑光、金属、宝石及柔软材料，色彩丰富协调；用户指定淡彩、简约或扁平时尊重原风格，不一律高饱和。"
+            "prompt用350至900字具体描述各区域美术、材质、配色、图标和按钮；适应用户题材和画风，不套固定游戏风格。"
+            "不猜网格数量，以布局图实际行列、数量和位置为准；局部修改不允许全局重排。"
+            "原样保留当前需求中的所有__NOVAFLOW_...__引用标识一次。用户需求最高优先级。"
+        )
+        template = "<|im_start|>system\n你是UI美术设计与编辑规划师，只输出规定JSON。<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        self.status = "推理中"
+        output = self.generate(tokens + rules + "\n用户需求：" + current + "\n约束：" + requirements,
+                               images=[item['tensor'] for item in image_items], llama_template=template,
+                               max_length=2048, trace_label="uiQwen21Plan")
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", output.strip())
+        try:
+            parsed = json.loads(cleaned)
+        except (ValueError, TypeError) as error:
+            raise ValueError("Qwen 2.1 UI 设计规划JSON无效，本次未提交生成") from error
+        if not isinstance(parsed, dict):
+            raise ValueError("Qwen 2.1 UI 设计规划JSON无效，本次未提交生成")
+        plan = validate_ui_qwen21_plan(parsed.get('ui_plan'), len(image_items))
+        prompt = str(parsed.get('prompt') or '').strip()
+        if not prompt:
+            raise ValueError("Qwen 2.1 UI 设计指令为空")
+        prompt = keep_resource_placeholders_once(prompt, current)
+        self.status = "模型可用"
+        return {"prompt": prompt, "negativePrompt": str(parsed.get('negative_prompt') or '') if ui_design_uses_negative_prompt(payload) else '', "uiPlan": plan}
+
+
     def optimize_prompt(self, payload: dict) -> dict:
         is_minimax_h3 = is_minimax_h3_prompt_payload(payload)
         raw_prompt = (
@@ -16745,7 +16821,7 @@ class PromptAssistant:
             ).strip()
         )
         # H3 requirements include the full source (up to 20k), protocol and appended user edits.
-        requirements_limit = 48000 if is_minimax_h3 else 2000
+        requirements_limit = 48000 if is_minimax_h3 else 4000 if payload.get("targetEngine") == "qwen-2.1" and is_ui_design_prompt_payload(payload) else 2000
         requirements = clean_text(payload.get("requirements") or "")[:requirements_limit]
         minimax_h3_mode = minimax_h3_mode_from_payload(payload, requirements) if is_minimax_h3 else ""
         minimax_h3_duration = (
@@ -16766,6 +16842,8 @@ class PromptAssistant:
             return self.optimize_h3_base(raw_prompt, requirements, minimax_h3_mode, minimax_h3_duration, payload.get('h3ReferenceFrames'), check)
         is_animation = is_minimax_h3 or is_animation_prompt_payload(payload)
         is_ui_design = is_ui_design_prompt_payload(payload)
+        if is_ui_design and payload.get("targetEngine") == "qwen-2.1":
+            return self.plan_ui_qwen21(payload)
         is_create = not raw_prompt and not is_animation
         is_ordinary_art = (
             not is_minimax_h3
@@ -19694,7 +19772,7 @@ class PromptAssistant:
         is_animation = is_animation_prompt_payload(payload)
         is_ui_design = is_ui_design_prompt_payload(payload)
         current_prompt = current_prompt_from_payload(payload)
-        requirements_limit = 12000 if minimax_h3_reverse_mode else 2000
+        requirements_limit = 12000 if minimax_h3_reverse_mode else 4000 if payload.get("targetEngine") == "qwen-2.1" and is_ui_design else 2000
         requirements = clean_text(payload.get("requirements") or "")[:requirements_limit]
         current_prompt_instruction = (
             "\n当前已有视频提示（必须与图片可见信息合并）：\n"
@@ -19729,6 +19807,9 @@ class PromptAssistant:
         image_tensors = [item["tensor"] for item in image_items]
         if not image_tensors:
             raise ValueError("没有可分析的图片数据")
+
+        if is_ui_design and payload.get("targetEngine") == "qwen-2.1":
+            return self.plan_ui_qwen21(payload, image_items)
 
         if minimax_h3_reverse_mode:
             visual_policy = normalize_minimax_h3_visual_policy(payload)

@@ -251,6 +251,21 @@
 
   function buildRequirements(options, structure, references) {
     const size = options.size || structure
+    if (options.targetEngine === 'qwen-2.1') {
+      const requirements = [
+        '这是 Qwen 2.1 UI 原生参考编辑规划。依据用户原文理解每张图的职责，独立判断视觉修改范围与布局修改范围，不使用固定主题或五段式绘图模板。',
+        '用户未提出改变布局时沿用有效布局来源；人物缩小、按钮上移、增加一行等属于局部布局调整，不能被整体保留规则否定，也不代表全部重排。只有风格或素材图时不继承它的布局。',
+        '风格迁移保留未要求改变的内容身份，新主题则贯穿人物、背景、符号和组件；局部修改保留其他区域。自建布局矩形仅约束位置与用途，组件轮廓可以重新设计。',
+        '给出完整且具体的美术设计：形状语言、色彩层级、材质和光影，区分常见与稀有符号，重复符号造型统一、有效文字准确。不按题材固定配色和渲染方式，也不擅自添加功能。',
+        '风格参考的主色、强调色、明暗对比、材质反光和体积塑造需要落实到设计，不泛化成题材词。用户要求有质感时避免全部区域同色同亮度；淡彩、扁平或简约需求仍以用户原风格为准。',
+        `输出尺寸：${size.width || structure.width}×${size.height || structure.height}。`,
+        references.length ? `输入顺序和指定用途：${references.map((r,i)=>`图${i+1}：${r.role}`).join('；')}` : '',
+        structure.regions.length ? `自建布局（坐标和用途有效，名称不作为画面文字）：${JSON.stringify(structure)}` : '',
+        options.requirements || '',
+      ].filter(Boolean).join('\n')
+      if (requirements.length > REQUIREMENTS_TRANSPORT_LIMIT) throw new Error('布局说明和补充要求过长，请精简后再试；本次未截断提交。')
+      return requirements
+    }
     const content = [
       '你是 UI 视觉设计助手。只输出可直接生成设计图的最终中文提示词。根据用户要求理解布局、风格和人物物品参考的分工，不强加预设风格、内容类型或商业化倾向。',
       '有完整UI布局参考时，先逐区清点原界面：人物展示区、图标区、提示栏和操作栏全部保留。记录相对位置、占比、顺序、叠放关系、网格准确行列数和控件数量，必须逐行逐列数清，不按常见模板猜测。主题重做只替换视觉，禁止重排、合并、删除区域或改变格数。用户说不保留任何元素，指美术内容，不代表取消布局；只有明确要求重新布局或重新排版时才改变结构。风格图和人物物品图不提供布局。',
@@ -326,7 +341,7 @@
       result?.negativePrompt || result?.negative_prompt || data?.negativePrompt || data?.negative_prompt,
     )
     if (!prompt) throw new Error('AI 助手未返回可用的设计要求')
-    return { prompt, negativePrompt }
+    return { prompt, negativePrompt, uiPlan: result.uiPlan || data.uiPlan || result.ui_plan || data.ui_plan }
   }
 
   function timeoutForEngine(engine, timeoutMs) {
@@ -401,6 +416,7 @@
         requirements,
         purpose,
         surface: 'ui-design',
+        targetEngine: options.targetEngine || '',
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         scenario: references.length ? 'role_reference' : undefined,
@@ -421,6 +437,7 @@
         requirements,
         purpose,
         surface: 'ui-design',
+        targetEngine: options.targetEngine || '',
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         provider,
@@ -439,6 +456,7 @@
         requirements,
         purpose,
         surface: 'ui-design',
+        targetEngine: options.targetEngine || '',
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         provider,
@@ -452,7 +470,7 @@
     }
 
     const parsed = unwrapResult(result)
-    if (options.preserveLayout) parsed.prompt = parsed.prompt.replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, '[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n')
+    if (options.targetEngine !== 'qwen-2.1' && options.preserveLayout) parsed.prompt = parsed.prompt.replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, '[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n')
     const restoredPrompt = restoreText(parsed.prompt, promptProtection)
     if (!restoredPrompt.ok) throw new Error('参考图引用保护失败，已保留原设计要求')
     let restoredNegative = { ok: true, text: '' }
@@ -462,9 +480,20 @@
     }
 
     const finalPrompt = restoredPrompt.text
+    if (parsed.uiPlan && options.targetEngine === 'qwen-2.1') {
+      const restoreList = list => Array.isArray(list) ? list.map(value => {
+        let restored = value
+        if (typeof restored !== 'string') return restored
+        for (const item of promptProtection.tokens || []) restored = restored.replaceAll(item.placeholder, item.token)
+        if (/__NOVAFLOW_[A-Z0-9_:-]+__/.test(restored)) throw new Error('设计规划包含无效的参考图标识')
+        return restored
+      }) : list
+      parsed.uiPlan = { ...parsed.uiPlan, layoutChanges: restoreList(parsed.uiPlan.layoutChanges), preserve: restoreList(parsed.uiPlan.preserve) }
+    }
 
     return Object.freeze({
       prompt: finalPrompt,
+      uiPlan: options.targetEngine === 'qwen-2.1' ? root.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(parsed.uiPlan, { references }) : null,
       negativePrompt: supportsNegativePrompt ? restoredNegative.text : '',
       hasNegativePrompt: supportsNegativePrompt && Boolean(restoredNegative.text),
       provider,

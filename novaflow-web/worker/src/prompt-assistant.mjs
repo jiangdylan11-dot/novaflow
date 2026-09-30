@@ -213,11 +213,12 @@ export function normalizeOptimizeRequest(payload = {}) {
   const negativePrompt = String(payload.negativePrompt || '');
   const surface = String(payload.surface || '').trim().slice(0, 80);
   const purpose = String(payload.purpose || '').trim().slice(0, 80);
+  const usesUiQwen = surface === 'ui-design' && payload.targetEngine === 'qwen-2.1';
   const usesH3 = purpose.toLowerCase().replace(/_/g, '-') === 'minimax-h3-prompt-enhance';
   // H3 requirements carry the whole source prompt, the labels and then the
   // user's own request last; the script takes up to 48000, so a shorter cut
   // here would drop exactly that request.
-  const requirements = String(payload.requirements || '').trim().slice(0, usesH3 ? 48000 : 2000);
+  const requirements = String(payload.requirements || '').trim().slice(0, usesH3 ? 48000 : usesUiQwen ? 4000 : 2000);
   const currentPrompt = String(payload.currentPrompt ?? payload.current_prompt ?? prompt).trim().slice(0, 20000);
   const h3Mode = String(payload.h3Mode ?? payload.h3_mode ?? '').trim().slice(0, 80);
   const h3Duration = payload.durationSeconds ?? payload.duration_seconds ?? payload.duration;
@@ -240,6 +241,7 @@ export function normalizeOptimizeRequest(payload = {}) {
       supportsNegativePrompt: payload.supportsNegativePrompt !== false,
       nsfw: payload.nsfw === true,
       requirements, surface, purpose, provider: 'local', currentPrompt,
+      ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { h3ReferenceFrames: h3ReferenceFrames(payload.h3ReferenceFrames, requirements) } : {}),
       ...(usesH3 && payload.h3Reverse === true ? { h3Reverse: true } : {}),
       ...(usesH3 && h3Mode ? { h3Mode } : {}),
@@ -266,8 +268,9 @@ export function normalizeReverseRequest(payload = {}) {
   const surface = String(payload.surface || '').trim().slice(0, 80);
   const purpose = String(payload.purpose || '').trim().slice(0, 80);
   const normalizedPurpose = purpose.toLowerCase().replace(/_/g, '-');
+  const usesUiQwen = surface === 'ui-design' && payload.targetEngine === 'qwen-2.1';
   const usesH3 = H3_REVERSE_PURPOSES.includes(normalizedPurpose);
-  const requirements = usesH3 ? String(payload.requirements || '').trim().slice(0, 12000) : keepSupplement(String(payload.requirements || '').trim(), 2000);
+  const requirements = usesH3 ? String(payload.requirements || '').trim().slice(0, 12000) : keepSupplement(String(payload.requirements || '').trim(), usesUiQwen ? 4000 : 2000);
   const currentPrompt = String(payload.currentPrompt ?? payload.current_prompt ?? payload.prompt ?? '').trim().slice(0, 20000);
   const language = String(payload.preferredOutputLanguage || '').trim().toLowerCase();
   const preferredOutputLanguage = usesH3 ? (language === 'en' ? 'en' : language === 'zh-cn' ? 'zh-CN' : '') : '';
@@ -290,6 +293,7 @@ export function normalizeReverseRequest(payload = {}) {
     timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : 300000,
     request: {
       images, requirements, surface, purpose, provider: 'local', currentPrompt,
+      ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { userPrompt: payload.userPrompt.trim().slice(0, 20000), userRequirements: payload.userRequirements.trim().slice(0, 12000), h3Mode: payload.h3Mode, durationSeconds: payload.durationSeconds } : {}),
       ...(preferredOutputLanguage ? { preferredOutputLanguage } : {}),
       mandatoryChecklist: checklist,

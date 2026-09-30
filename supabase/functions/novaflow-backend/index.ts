@@ -1415,6 +1415,7 @@ async function handleGrokPromptOptimize(
     provider: "grok",
     mode: "prompt_optimize",
     prompt: data.output_text,
+    ...(data.uiPlan ? { uiPlan: data.uiPlan } : {}),
     negative_prompt: data.negative_prompt,
     has_negative_prompt: Boolean(data.has_negative_prompt),
     ...(data.editContract === "structured-recompile-v1"
@@ -1547,6 +1548,7 @@ async function handleGrokImageReverse(
     provider: "grok",
     mode,
     prompt: data.output_text,
+    ...(data.uiPlan ? { uiPlan: data.uiPlan } : {}),
     negative_prompt: data.negative_prompt,
     has_negative_prompt: Boolean(data.has_negative_prompt),
     visualSchema: String(data.visualSchema || ""),
