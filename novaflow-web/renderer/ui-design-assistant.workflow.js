@@ -394,6 +394,10 @@
     const requirements = buildRequirements(options, structure, references)
     const currentPrompt = stripTargetStyleContract(options.prompt)
     if (currentPrompt.length > 18000 || String(options.negativePrompt || '').length > 10000) throw new Error('提示词过长，请精简后再试；本次未截断提交。')
+    const singleLayoutRequest = options.targetEngine === 'qwen-2.1' && references.length === 1
+      && ['reference', 'layout', 'content'].includes(references[0].role)
+      && /(?:布局|排版|结构).{0,10}(?:一样|不变|保持|沿用)|(?:保持|保留|沿用|按照|按).{0,10}(?:布局|排版|结构)/u.test(currentPrompt)
+      && !/(?:缩小|放大|上移|下移|左移|右移|移动|重排|重新排版|增减|增加一[行列]|减少一[行列])/u.test(currentPrompt)
     const currentNegative = String(options.negativePrompt == null ? '' : options.negativePrompt)
     const promptProtection = protectText(currentPrompt.replace(/(?<!@参考)(?:参考图|图)\s*([1-9][0-9]*)/g, (token, index, offset, full) => full.slice(Math.max(0, offset - 1), offset) === '@' ? token : `@参考图${index}`))
     const negativeProtection = protectText(currentNegative)
@@ -412,7 +416,7 @@
       const sessionToken = text(await resolveValue(options.getSessionToken, options.sessionToken))
       if (!sessionToken) throw new Error('请先登录 NovaFlow 账号')
       checkActive()
-      result = await withTimeout(() => call({
+      const request = {
         token: sessionToken,
         prompt: promptProtection.text,
         currentPrompt: promptProtection.text,
@@ -427,13 +431,21 @@
         scenario: references.length ? 'role_reference' : undefined,
         sourceCount: references.length,
         targetIndex: 0,
-        images: requestReferences.map((reference) => ({
+        images: requestReferences.map((reference, index) => ({
           imageUrl: reference.dataUrl,
           label: reference.label,
-          role: reference.role,
-          slotType: reference.role,
+          role: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
+          slotType: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
         })),
-      }), options.timeoutMs, engine)
+      }
+      try {
+        result = await withTimeout(() => call(request), options.timeoutMs, engine)
+      } catch (error) {
+        checkActive()
+        if (!singleLayoutRequest || !/Qwen 2\.1 UI 设计规划不完整/u.test(String(error?.message || error))) throw error
+        result = { ok: true, uiPlan: null,
+          prompt: `${promptProtection.text}。以这张参考图为编辑画布，保持原有区域位置、比例、层级与功能关系；围绕用户指定的新主题，逐区重新设计人物、背景、图标符号、面板与按钮的造型、配色、材质和光影，形成完整统一的游戏界面。` }
+      }
     } else if (references.length) {
       result = await withTimeout(() => call({
         prompt: promptProtection.text,
@@ -446,11 +458,11 @@
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         provider,
-        images: references.map((reference) => ({
+        images: references.map((reference, index) => ({
           dataUrl: reference.dataUrl,
           label: reference.label,
-          role: reference.role,
-          slotType: reference.role,
+          role: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
+          slotType: singleLayoutRequest && index === 0 ? 'layout' : reference.role,
         })),
       }), options.timeoutMs, engine)
     } else {
