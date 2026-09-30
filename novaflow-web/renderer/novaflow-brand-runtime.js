@@ -84070,7 +84070,7 @@
         : null;
     // Asked for 2.1 on a node that cannot build it: an error, never a 2511 graph that keeps three of
     // the references and other steps than the panel showed.
-    if (drawQwen21 && !qwen21Build) {
+    if ((drawQwen21 || uiQwen21) && !qwen21Build) {
       throw new Error("当前算力节点无法生成（缺少模型或节点），请在本地助手里重新启动 NovaFlow 后再试");
     }
     if (qwen21Build) {
@@ -84587,6 +84587,8 @@
         uiPreserveLayout: source.uiPreserveLayout === true,
         uiLayoutMode: ["preserve", "partial", "reflow", "create"].includes(source.uiLayoutMode) ? source.uiLayoutMode : "",
         uiNativeEditPrompt: source.uiNativeEditPrompt === true,
+        samplingOverrides: source.samplingOverrides,
+        loras: source.loras,
         localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",

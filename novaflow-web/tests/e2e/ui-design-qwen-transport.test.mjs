@@ -14,6 +14,18 @@ test('local Qwen UI keeps its planner scope and long requirements across the wor
   }
 });
 
+test('automatic editor guide takes priority over an earlier UI reference in the analysis request',async()=>{
+ const context={setTimeout,clearTimeout,console};vm.createContext(context);
+ for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
+ let request;
+ await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'设计机器人界面',size:{width:1200,height:800},structure:{width:1200,height:800,regions:[{x:100,y:50,width:400,height:600,purpose:'人物'}]},references:[{role:'layout',dataUrl:'data:image/png;base64,old-screen'},{role:'layout',uiLayoutId:'new-layout',dataUrl:'data:image/png;base64,guide'}],electronAPI:{smartAiImageReverse:async payload=>{
+  request=payload;
+  return {ok:true,prompt:'将自建定位图设计成完整机器人界面',uiPlan:{version:1,layoutMode:'preserve',layoutReference:2,visualMode:'create',references:[{index:1,role:'layout'},{index:2,role:'layout'}],layoutChanges:[],preserve:[],grids:[]}};
+ }}});
+ assert.match(request.requirements,/图2是当前自建布局定位图，layoutReference必须使用它/);
+ assert.equal(request.images.length,2);assert.notEqual(request.purpose,'ui-design-layout-facts');
+});
+
 test('assistant restores image tokens in the partial-layout plan as well as its prompt',async()=>{
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);

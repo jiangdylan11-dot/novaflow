@@ -171,11 +171,12 @@
     return /重新布局|重新排版|(?:改变|修改|重做|更改|调整)布局|布局.{0,8}(?:改成|改为|换成|重新|重做|调整)|不(?:需要|用)?保留布局|不要沿用.{0,6}布局|自由(?:布局|排版)/i.test(affirmative)
   }
   function inputFor({ state, references, referenceLimit }) {
-    const refs = references.filter(ref => ref?.dataUrl)
-    if (refs.length > referenceLimit) throw new Error(`当前模型最多支持 ${referenceLimit} 张参考图，请先移除多余图片`)
+    const live = mounted?.layoutContext?.(), liveStructure = modelStructure(live?.structure)
+    const refs = snapshotLayoutReferences(references, live?.node?.id, liveStructure, referenceLimit)
     const layout = refs.find(ref => ref.uiLayoutId)
     const numbered = new Map()
-    references.forEach((ref, slot) => { if (ref?.dataUrl) numbered.set(slot + 1, refs.indexOf(ref) + 1) })
+    let occupied = 0
+    references.forEach((ref, slot) => { if (ref?.dataUrl) numbered.set(slot + 1, ++occupied) })
     const prompt = String(state.prompt || '').replace(/(?:@参考图|图)([1-9][0-9]*)/g, (token, number) => {
       if (!numbered.has(Number(number))) throw new Error(`参考图 ${number} 已移除，请更新提示词中的引用`)
       return '@参考图' + numbered.get(Number(number))
@@ -184,16 +185,31 @@
       provider: state.provider || 'local', engine: mounted?.store.getState().settings?.assistantEngine || 'grok',
       targetEngine: (state.provider || 'local') === 'local' ? root.NovaFlowArtGenerateModels?.capabilityFor?.('local', state.mode, state)?.engine || '' : '',
       prompt, negativePrompt: String(state.negativePrompt || ''),
-      preserveLayout: refs.length > 0 && !explicitlyChangesLayout(prompt),
+      preserveLayout: (liveStructure.regions.length > 0 || refs.length > 0) && !explicitlyChangesLayout(prompt),
       generationIntent: /(?:不(?:需要|用|必)?保留任何(?:元素|内容|东西)|无需保留任何|(?:全部|整体)重做|整(?:个|张)\s*(?:UI|界面).{0,8}重新设计|start over)/i.test(prompt)
         ? 'redesign'
         : /(?:风格迁移|只.{0,8}(?:风格|画风)|(?:换|更换|改变|转换|切换).{0,8}(?:画风|风格)|(?:画风|风格).{0,8}(?:改成|换成|改为)|style.?transfer)/i.test(prompt) ? 'style-transfer'
         : /(?:其他|其它|其余|剩余|其[他它]部分).{0,12}(?:不变|保持|保留)|(?:只|仅)(?:修改|调整|替换|更改)|\b(?:only (?:change|edit|replace)|keep .{0,24}unchanged)\b/i.test(prompt) ? 'iteration' : 'redesign',
       size: outputSize(state),
-      structure: modelStructure(layout?.uiStructure),
+      structure: liveStructure.regions.length ? liveStructure : modelStructure(layout?.uiStructure),
       references: refs.map((ref, index) => ({ ...ref, ...(ref.uiStructure ? { uiStructure: modelStructure(ref.uiStructure) } : {}), id: ref.id || `drawing-ref-${index}`, role: ref.uiLayoutId ? 'layout' : (ref.role || 'reference') })),
       electronAPI: root.electronAPI, getSessionToken: mounted?.getSessionToken,
     }
+  }
+  function snapshotLayoutReferences(references, layoutId, structure, limit) {
+    const refs=references.filter(ref=>ref?.dataUrl).map(ref=>({...ref}))
+    if(structure?.regions?.length) {
+      const create=root.NovaFlowUiDesignLayoutGuide?.createCleanLayoutGuide
+      if(typeof create!=='function')throw new Error('布局图生成组件未就绪，本次未提交生成')
+      const guide=create({width:structure.width,height:structure.height,blocks:structure.regions})
+      if(!guide?.dataUrl)throw new Error('布局图未生成，本次未提交生成')
+      const current=refs.findIndex(ref=>ref.uiLayoutId)
+      const reference={id:'ui-layout-'+(layoutId || 'current'),uiLayoutId:layoutId || 'current',name:'布局参考.png',dataUrl:guide.dataUrl,width:structure.width,height:structure.height,role:'layout',uiStructure:copy(structure)}
+      if(current>=0)refs[current]=reference
+      else refs.push(reference)
+    }
+    if(refs.length>limit)throw new Error(`当前模型最多支持 ${limit} 张参考图${structure?.regions?.length?'（包含自建布局图）':''}，请先移除多余图片`)
+    return refs
   }
   async function prepare(context) {
     if (preparation) throw new Error('正在理解 UI 设计需求')
@@ -279,7 +295,7 @@
   function recordResult(result, prepared) {
     prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt, uiPlan: prepared.uiPlan || null, analysisUiPlan:prepared.analysisUiPlan || null })
   }
-  root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, inputFor, prepare, openAssistant, recordResult,
+  root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, inputFor, snapshotLayoutReferences, prepare, openAssistant, recordResult,
     syncOutputSize() { mounted?.syncSize() },
     cancelPreparation() { if (!preparation) return false; preparation.abort(); return true },
   })

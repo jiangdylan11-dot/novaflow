@@ -255,3 +255,30 @@ test('edits made while optimization is pending cannot change its parameter or or
   assert.equal(prepared.state.width,1280);assert.equal(prepared.state.samplingOverrides['qwen-2.1:img2img'].steps,32);
   assert.equal(prepared.originalPrompt,'设计一个角色装备界面');
 });
+
+test('live layout becomes an image reference automatically, refreshes stale exports and preserves user image numbers',()=>{
+ const e=environment({qwen:true}),structures=[];
+ e.sandbox.NovaFlowUiDesignLayoutGuide={createCleanLayoutGuide:s=>{structures.push(s);return {dataUrl:'data:image/png;base64,current-layout'}}};
+ const structure={width:1200,height:800,regions:[{x:70,y:90,width:400,height:600,purpose:'人物'}]};
+ const refs=[{id:'style',role:'style',dataUrl:'data:image/png;base64,style'}];
+ const created=e.adapter.snapshotLayoutReferences(refs,'L',structure,2);
+ assert.equal(created.length,2);assert.equal(created[0].id,'style');assert.equal(created[1].role,'layout');
+ assert.equal(created[1].uiStructure.regions[0].x,70);assert.equal(refs.length,1);
+ const refreshed=e.adapter.snapshotLayoutReferences([{...created[1],dataUrl:'stale'},created[0]],'L',structure,2);
+ assert.equal(refreshed.length,2);assert.equal(refreshed[0].dataUrl,'data:image/png;base64,current-layout');
+ assert.throws(()=>e.adapter.snapshotLayoutReferences(refs,'L',structure,1),/包含自建布局图/);
+ const input=e.adapter.inputFor({state:{...e.state,prompt:'图3是风格'},references:[null,null,refs[0]],referenceLimit:2});
+ assert.equal(input.prompt,'@参考图1是风格');assert.equal(input.references.length,1);
+ assert.equal(structures[0].blocks[0].purpose,'人物');
+});
+
+test('native Qwen treats a user layout as spatial guidance instead of preserving placeholder artwork',()=>{
+ const e=environment({qwen:true}),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+ const refs=[{role:'style'},{role:'layout',uiLayoutId:'L',uiStructure:{regions:[{}]}}];
+ const input={references:refs,prompt:'按图2布局，用图1风格',structure:{width:1000,height:1000,regions:[{x:50,y:50,width:400,height:800,purpose:'人物展示'}]}};
+ const output=p.compileQwenPlan({prompt:'设计完整角色界面',uiPlan:planFor(refs,{layoutReference:2,visualMode:'style-transfer'})},input);
+ assert.equal(output.references.length,1);assert.equal(output.references[0].uiLayoutId,'L');
+ assert.match(output.prompt,/自建布局定位图/);assert.match(output.prompt,/不保留灰块和占位框/);
+ assert.doesNotMatch(output.prompt,/拆.{0,3}素材|逐个生成/);
+ assert.throws(()=>p.compileQwenPlan({prompt:'设计',uiPlan:planFor(refs,{layoutReference:1})},input),/规划不完整|当前自建布局/);
+});

@@ -172,6 +172,7 @@
       name: text(value.name || value.fileName || value.filename) || `ui_reference_${index + 1}.png`,
       label: text(value.label || value.displayLabel) || `参考图${index + 1}`,
       role: normalizeReferenceRole(value.role || value.referenceRole || value.kind),
+      ...(value.uiLayoutId ? {uiLayoutId:text(value.uiLayoutId)} : {}),
       dataUrl,
     })
   }
@@ -261,6 +262,7 @@
         '风格参考的主色、强调色、明暗对比、材质反光和体积塑造需要落实到设计，不泛化成题材词。用户要求有质感时避免全部区域同色同亮度；淡彩、扁平或简约需求仍以用户原风格为准。',
         `输出尺寸：${size.width || structure.width}×${size.height || structure.height}。`,
         references.length ? `输入顺序和指定用途：${references.map((r,i)=>`图${i+1}：${r.role}`).join('；')}` : '',
+        structure.regions.length && references.some(r=>r.uiLayoutId) ? `图${references.findIndex(r=>r.uiLayoutId)+1}是当前自建布局定位图，layoutReference必须使用它；灰块仅代表空间占位，不是成品造型、原有内容或文案。` : '',
         structure.regions.length ? `自建布局（坐标和用途有效，名称不作为画面文字）：${JSON.stringify(structure)}` : '',
         options.requirements || '',
       ].filter(Boolean).join('\n')
