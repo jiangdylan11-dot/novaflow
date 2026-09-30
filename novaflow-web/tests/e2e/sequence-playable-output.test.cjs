@@ -1,0 +1,4 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');
+const s=fs.readFileSync('novaflow-web/renderer/assets/index-BbIa-2NM.js','utf8');const a=s.indexOf('let C;if(typeof x.base64'),b=s.indexOf('a(e=>[C,...e]',a);assert.ok(a>0&&b>a);
+const run=x=>{const context={x,Uint8Array,atob,File,n:'web-temp://1/seq',v:'web-temp://1/seq/sequence.webm',_: 'sequence.webm',u:123,c:[1,2,3],i:files=>[{id:'asset',objectUrl:'blob:owned',file:files[0]}]};vm.runInNewContext(s.slice(a,b)+';result=C',context);return context.result;};
+const output=run({base64:btoa('video-data'),mimeType:'video/webm'});assert.equal(output.objectUrl,'blob:owned');assert.equal(output.file.size,10);assert.equal(output.sourceFrames,3);assert.equal(output.sourceFps,30);assert.throws(()=>run({}),/未返回可播放/);console.log('PASS: encoded sequence bytes become owned playable Blob; timing preserved; missing bytes rejected');

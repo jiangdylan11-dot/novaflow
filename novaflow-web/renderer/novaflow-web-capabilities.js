@@ -835,7 +835,7 @@
     const options = payload || {};
     const files = webTempDirs.get(String(options.dir || ''));
     if (!files) return fail('导出临时目录不存在', { code: 'web_temp_dir_missing' });
-    const names = [...files.keys()].filter((name) => /\.png$/i.test(name)).sort();
+    const names = [...files.keys()].filter((name) => /\.(?:png|jpe?g|webp)$/i.test(name)).sort();
     if (!names.length) return fail('没有可编码的帧', { code: 'web_no_frames' });
     const fps = clampNumber(Number(options.fps) || 24, 1, 120);
     const keepAlpha = options.keepAlpha !== false;
