@@ -361,14 +361,27 @@
       try {
         const dir = await root.showDirectoryPicker({ mode: 'read' });
         const files = [];
-        for await (const [name, handle] of dir.entries()) {
-          if (handle.kind !== 'file') continue;
-          const file = await handle.getFile();
-          files.push({ name, size: file.size, type: file.type, file });
-        }
+        let totalSize = 0;
+        const walk = async (folder, prefix, depth) => {
+          if (depth > 8) throw new Error('文件夹层级过深');
+          for await (const [name, handle] of folder.entries()) {
+            const relativePath = prefix + name;
+            if (handle.kind === 'directory') {
+              await walk(handle, relativePath + '/', depth + 1);
+              continue;
+            }
+            if (handle.kind !== 'file' || !/\.(json|png|jpe?g)$/i.test(name)) continue;
+            const file = await handle.getFile();
+            totalSize += file.size;
+            if (totalSize > 512 * 1024 * 1024) throw new Error('文件太大（超过 512MB）');
+            files.push({ name, relativePath, size: file.size, type: file.type, file });
+          }
+        };
+        await walk(dir, '', 0);
         return ok({ directory: dir.name, files, via: 'file-system-access' });
       } catch (error) {
         if (error && error.name === 'AbortError') return ok({ canceled: true });
+        if (error && /文件夹层级过深|文件太大/.test(String(error.message || ''))) return fail(String(error.message));
       }
     }
 

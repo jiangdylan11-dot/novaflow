@@ -2644,14 +2644,22 @@
             openPicker(say)
             return
           }
-          if (!res || res.canceled) { say('已取消'); return }
-          if (res.error) throw new Error(res.error)
-          const files = (res.files || []).map((f) => {
+          const selected = res?.result || res
+          if (!selected || selected.canceled) { say('已取消'); return }
+          if (res?.error || selected.error) throw new Error(res?.error || selected.error)
+          const files = (selected.files || []).map((f) => {
+            // Browser directory pickers return File objects; Electron IPC returns base64.
+            if (f.file && typeof f.file.arrayBuffer === 'function') {
+              const file = f.file
+              try { Object.defineProperty(file, 'webkitRelativePath', { value: f.relativePath || f.name }) } catch { /* read-only in some engines */ }
+              return file
+            }
+            if (typeof f.base64 !== 'string') return null
             const bytes = Uint8Array.from(atob(f.base64), (ch) => ch.charCodeAt(0))
             const file = new File([bytes], f.name, { type: f.mime })
             try { Object.defineProperty(file, 'webkitRelativePath', { value: f.relativePath || f.name }) } catch { /* read-only in some engines */ }
             return file
-          })
+          }).filter(Boolean)
           if (!files.length) throw new Error('这个文件夹里没有 JSON 和贴图')
           const n = await importPhotoshopProject(files, (t) => say(t))
           say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
