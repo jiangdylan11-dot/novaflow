@@ -837,6 +837,64 @@
   let webTempSeq = 0;
   api.__webTempDirs = webTempDirs;
 
+  // Some cutout frames arrive with a flat, barely visible alpha value across
+  // large rectangular background regions. Once encoded, that residue is
+  // preserved by both WebM playback and PNG export. Clear it only when one
+  // near-black, low-alpha value dominates the background and reaches a corner;
+  // normally matted frames pass through byte-for-byte.
+  async function clearFlatCutoutBackground(pngBytes) {
+    if (typeof root.createImageBitmap !== 'function' || !root.document?.createElement) return pngBytes;
+    const bitmap = await root.createImageBitmap(new Blob([pngBytes], { type: 'image/png' }));
+    try {
+      const canvas = root.document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx || !canvas.width || !canvas.height) return pngBytes;
+      ctx.drawImage(bitmap, 0, 0);
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = frame.data;
+      const frequencies = new Uint32Array(25);
+      const width = canvas.width;
+      const height = canvas.height;
+      for (let y = 0; y < height; y += 4) {
+        for (let x = 0; x < width; x += 4) {
+          const offset = (y * width + x) * 4;
+          const alpha = pixels[offset + 3];
+          if (alpha > 0 && alpha <= 24 &&
+              Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) <= Math.max(24, alpha + 8)) {
+            frequencies[alpha] += 1;
+          }
+        }
+      }
+      let dominantAlpha = 0;
+      for (let alpha = 1; alpha <= 24; alpha += 1) {
+        if (frequencies[alpha] > frequencies[dominantAlpha]) dominantAlpha = alpha;
+      }
+      if (!dominantAlpha || frequencies[dominantAlpha] * 16 < width * height * 0.08) return pngBytes;
+      const corners = [0, width - 1, (height - 1) * width, height * width - 1];
+      if (!corners.some((pixel) => pixels[pixel * 4 + 3] === dominantAlpha)) return pngBytes;
+      let changed = false;
+      for (let offset = 0; offset < pixels.length; offset += 4) {
+        const alpha = pixels[offset + 3];
+        if (alpha > 0 && alpha <= 24 &&
+            Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) <= Math.max(24, alpha + 8)) {
+          pixels[offset] = pixels[offset + 1] = pixels[offset + 2] = pixels[offset + 3] = 0;
+          changed = true;
+        }
+      }
+      if (!changed) return pngBytes;
+      ctx.putImageData(frame, 0, 0);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      return blob ? new Uint8Array(await blob.arrayBuffer()) : pngBytes;
+    } catch (_) {
+      // An unusual input frame must not abort saving the whole cutout video.
+      return pngBytes;
+    } finally {
+      bitmap.close?.();
+    }
+  }
+
   api.exportCreateTempDir = async (payload) => {
     const prefix = String((payload && payload.prefix) || 'novaflow_tmp_').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 60);
     const dir = 'web-temp://' + (++webTempSeq) + '/' + prefix;
@@ -864,7 +922,8 @@
       // The frames go in under the requested pattern, numbered from 0 in name order.
       for (let index = 0; index < names.length; index += 1) {
         const name = tag + pattern.replace(/%0?(\d*)d/, (m, width) => String(index).padStart(Number(width) || 1, '0'));
-        await ffmpeg.writeFile(name, files.get(names[index]).slice());
+        const frameBytes = files.get(names[index]).slice();
+        await ffmpeg.writeFile(name, keepAlpha ? await clearFlatCutoutBackground(frameBytes) : frameBytes);
         written.push(name);
       }
       busy.update(jobId, label, 0);
@@ -936,7 +995,8 @@
       const frames = [];
       for (const name of names) {
         const data = await ffmpeg.readFile(name);
-        frames.push(data instanceof Uint8Array ? data.slice() : new Uint8Array(data));
+        const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data);
+        frames.push(await clearFlatCutoutBackground(bytes));
       }
       return { ok: true, frames };
     } catch (error) {
