@@ -10,6 +10,75 @@
   let folderLabel, connectionLabel, errorLabel, summary, breadcrumbs, search, sort, viewer;
   let folderTrail = [], entries = [], filter = 'all', listingVersion = 0, thumbnailObserver;
   const thumbnailUrls = new Set();
+  const thumbnailCache = new Map(), thumbnailFolders = new WeakMap(), thumbnailCancels = new Set();
+  let thumbnailBytes = 0, thumbnailFolderId = 0, thumbnailRunning = 0;
+  const thumbnailQueue = [];
+
+  function thumbnailKey(item) {
+    if (!directory) return null;
+    if (!thumbnailFolders.has(directory)) thumbnailFolders.set(directory, ++thumbnailFolderId);
+    return JSON.stringify([thumbnailFolders.get(directory), folderTrail.map(folder => folder.name), item.name,
+      item.size || item.blob?.size, item.modified || item.createdAt]);
+  }
+  function cacheThumbnail(key, value) {
+    if (!key) return;
+    const old = thumbnailCache.get(key);
+    if (old) thumbnailBytes -= old.blob.size;
+    thumbnailCache.delete(key); thumbnailCache.set(key, value); thumbnailBytes += value.blob.size;
+    while (thumbnailCache.size > 160 || thumbnailBytes > 24 * 1024 * 1024) {
+      const oldest = thumbnailCache.keys().next().value;
+      thumbnailBytes -= thumbnailCache.get(oldest).blob.size; thumbnailCache.delete(oldest);
+    }
+  }
+  function pumpThumbnails() {
+    while (thumbnailRunning < 2 && thumbnailQueue.length) {
+      const job = thumbnailQueue.shift(); job.queued = false;
+      if (!job.visible || job.version !== listingVersion || panel.hidden) continue;
+      job.started = true; thumbnailRunning++;
+      Promise.resolve().then(job.load).catch(() => {}).finally(() => { thumbnailRunning--; pumpThumbnails(); });
+    }
+  }
+  function decodeThumbnail(file, video) {
+    return new Promise((resolve, reject) => {
+      const media = root.document.createElement(video ? 'video' : 'img');
+      const url = URL.createObjectURL(file);
+      let finished = false, capturing = false, timer;
+      const finish = (error, value) => {
+        if (finished) return; finished = true;
+        root.clearTimeout(timer); thumbnailCancels.delete(cancel);
+        media.onload = media.onerror = media.onloadedmetadata = media.onloadeddata = media.onseeked = null;
+        if (video) media.pause();
+        media.removeAttribute('src'); if (video) media.load();
+        URL.revokeObjectURL(url);
+        error ? reject(error) : resolve(value);
+      };
+      const cancel = () => finish(new Error('thumbnail_cancelled'));
+      thumbnailCancels.add(cancel);
+      timer = root.setTimeout(() => finish(new Error('thumbnail_timeout')), 12000);
+      const capture = () => {
+        if (finished || capturing) return;
+        capturing = true;
+        try {
+          const width = media.videoWidth || media.naturalWidth, height = media.videoHeight || media.naturalHeight;
+          if (!width || !height) throw new Error('thumbnail_dimensions');
+          const scale = Math.min(1, 320 / Math.max(width, height));
+          const canvas = root.document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(width * scale)); canvas.height = Math.max(1, Math.round(height * scale));
+          canvas.getContext('2d').drawImage(media, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(blob => blob ? finish(null, { blob, dimensions: width + '×' + height }) : finish(new Error('thumbnail_encode')), 'image/png');
+        } catch (error) { finish(error); }
+      };
+      media.onerror = () => finish(new Error('thumbnail_decode'));
+      media.muted = true; media.preload = 'auto';
+      if (video) {
+        media.onloadeddata = () => {
+          const target = Number.isFinite(media.duration) && media.duration > 0 ? Math.min(0.1, media.duration / 2) : 0;
+          if (target > 0) { media.onseeked = capture; media.currentTime = target; } else capture();
+        };
+      } else media.onload = capture;
+      media.src = url;
+    });
+  }
 
   async function database() {
     if (!root.indexedDB) throw new Error('浏览器未提供本地保存空间');
@@ -232,6 +301,8 @@
         if (!await current.isSameEntry(item.handle)) throw new Error('文件已被替换，请刷新后重试');
         await parent.removeEntry(item.name);
       }
+      const key = thumbnailKey(item), cached = thumbnailCache.get(key);
+      if (cached) { thumbnailBytes -= cached.blob.size; thumbnailCache.delete(key); }
       clearPreview();
       lastError = ''; feedback = item.pending ? '已删除未保存结果' : '已从本地文件夹删除素材';
       await refreshList(); tell(); notice();
@@ -307,6 +378,8 @@
   }
   function clearThumbnails() {
     if (thumbnailObserver) thumbnailObserver.disconnect();
+    thumbnailQueue.length = 0;
+    [...thumbnailCancels].forEach(cancel => cancel());
     thumbnailUrls.forEach(url => URL.revokeObjectURL(url)); thumbnailUrls.clear();
   }
   function renderList() {
@@ -344,7 +417,12 @@
     }
     const jobs = new WeakMap();
     if (root.IntersectionObserver) thumbnailObserver = new root.IntersectionObserver(observations => {
-      observations.forEach(observation => { if (observation.isIntersecting) { thumbnailObserver.unobserve(observation.target); jobs.get(observation.target)(); } });
+      observations.forEach(observation => {
+        const job = jobs.get(observation.target); if (!job) return;
+        job.visible = observation.isIntersecting;
+        if (job.visible && !job.started && !job.queued) { job.queued = true; thumbnailQueue.push(job); }
+      });
+      pumpThumbnails();
     }, { root: listing, rootMargin: '100px' });
     for (const item of items.slice(0, 200)) {
       const folder = item.kind === 'directory', video = /\.(mp4|webm|mov)$/i.test(item.name);
@@ -364,35 +442,30 @@
       const actions = node('div', null, wrapper); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions);
       const load = async () => {
         try {
-          const file = item.blob || await item.handle.getFile();
           if (version !== listingVersion || panel.hidden) return;
-          const url = URL.createObjectURL(file); thumbnailUrls.add(url);
-          const media = node(video ? 'video' : 'img', null, thumb); media.className = 'nf-wh-thumbnail'; media.src = url; media.alt = ''; media.muted = true; media.preload = 'metadata';
-          const stamp = () => { const dims = dimensionsOf(media); if (dims) { item.dimensions = dims; type.textContent = typeLabel + ' · ' + dims; } };
-          if (video) media.onloadedmetadata = () => { stamp(); if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2); };
-          // A video card keeps a still of that frame, not a live <video>: dozens of
-          // decoders alive at once made scrolling the list stutter.
-          if (video) media.onseeked = () => {
-            media.onseeked = null;
-            try {
-              const scale = Math.min(1, 360 / Math.max(1, media.videoWidth));
-              const canvas = root.document.createElement('canvas');
-              canvas.width = Math.max(1, Math.round(media.videoWidth * scale)); canvas.height = Math.max(1, Math.round(media.videoHeight * scale));
-              canvas.getContext('2d').drawImage(media, 0, 0, canvas.width, canvas.height);
-              canvas.toBlob(blob => {
-                if (!blob || !media.isConnected) return;
-                const still = root.document.createElement('img'); still.className = 'nf-wh-thumbnail'; still.alt = '';
-                const stillUrl = URL.createObjectURL(blob); thumbnailUrls.add(stillUrl); still.src = stillUrl;
-                media.replaceWith(still); media.removeAttribute('src'); media.load();
-                URL.revokeObjectURL(url); thumbnailUrls.delete(url);
-              }, 'image/jpeg', 0.82);
-            } catch { /* Keeps the live frame. */ }
-          };
-          else media.onload = stamp;
-        } catch { /* A moved file keeps its placeholder; opening reports the error. */ }
+          const key = thumbnailKey(item);
+          let cached = thumbnailCache.get(key);
+          if (cached) { thumbnailCache.delete(key); thumbnailCache.set(key, cached); }
+          else {
+            const file = item.blob || await item.handle.getFile();
+            if (version !== listingVersion || panel.hidden) return;
+            cached = await decodeThumbnail(file, video);
+            if (version !== listingVersion || panel.hidden) return;
+            cacheThumbnail(key, cached);
+          }
+          if (!thumb.isConnected) return;
+          const url = URL.createObjectURL(cached.blob); thumbnailUrls.add(url);
+          const media = node('img', null, thumb); media.className = 'nf-wh-thumbnail'; media.alt = ''; media.src = url;
+          item.dimensions = cached.dimensions; type.textContent = typeLabel + ' · ' + cached.dimensions;
+        } catch { /* A moved or undecodable file keeps its placeholder. */ }
       };
-      jobs.set(card, load); if (thumbnailObserver) thumbnailObserver.observe(card); else void load();
+      const job = { load, version, visible: !thumbnailObserver, queued: false, started: false };
+      jobs.set(card, job);
+      if (thumbnailObserver) thumbnailObserver.observe(card);
+      else { job.queued = true; thumbnailQueue.push(job); }
+
     }
+    pumpThumbnails();
     if (items.length > 200) { const limit = node('p', '已显示前 200 项，可搜索文件名或进入子文件夹继续查找。', listing); limit.className = 'nf-wh-limit'; }
   }
   async function refreshList() {
@@ -469,7 +542,7 @@
 #novaflow-local-warehouse .nf-wh-list{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));grid-auto-rows:max-content;align-content:start;gap:10px;padding:14px;scrollbar-width:thin;scrollbar-color:#3d4b44 transparent}
 #novaflow-local-warehouse .nf-wh-asset{min-width:0;overflow:hidden;background:#292929;border:1px solid #ffffff0b;padding:0;border-radius:10px;text-align:left}
 #novaflow-local-warehouse .nf-wh-asset:hover{background:#333;border-color:#46bc9266}
-#novaflow-local-warehouse .nf-wh-asset-wrap{min-width:0;border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:#262626}
+#novaflow-local-warehouse .nf-wh-asset-wrap{content-visibility:auto;contain-intrinsic-size:auto 164px;min-width:0;border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:#262626}
 #novaflow-local-warehouse .nf-wh-asset-wrap .nf-wh-asset{width:100%;border:0;border-radius:0}
 #novaflow-local-warehouse .nf-wh-asset-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px;padding:1px 5px;font-size:11px}
 #novaflow-local-warehouse .nf-wh-asset-actions button{padding:2px 6px;font-size:11px}
