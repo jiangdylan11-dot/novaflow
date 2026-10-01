@@ -6008,6 +6008,13 @@
     return Date.now() <= Number(window.__NovaFlowExportModalOpenIntentUntil || 0);
   }
 
+  // Cutout progress owns its backdrop across jobs. The generic dialog scanner
+  // must not strip its stacking/background styles while it is hidden.
+  function isNovaflowCutoutProgressSurface(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    return Boolean(element.closest?.('#novaflow-ai-rembg-overlay-root, #novaflow-cutout-preview-render-overlay, [data-novaflow-ai-rembg-overlay="1"], [data-novaflow-cutout-preview-render-overlay="1"]'));
+  }
+
   function isNovaflowNumberInputOverlayRoot(element) {
     return element instanceof HTMLElement && (
       element.id === "novaflow-number-input-overlay-root" ||
@@ -6043,6 +6050,7 @@
 
   function isNovaflowExportOpeningBackdropShell(element) {
     if (!(element instanceof HTMLElement)) return false;
+    if (isNovaflowCutoutProgressSurface(element)) return false;
     if (clearNovaflowNumberInputOverlayExportModalState(element)) return false;
     if (!hasNovaflowExportModalOpenIntent()) return false;
     if (element === document.body || element === document.documentElement) return false;
@@ -6279,6 +6287,7 @@
     removeAttributeIfPresent(root, "data-novaflow-modal-backdrop");
     removeAttributeIfPresent(root, "data-novaflow-runtime-ignore");
     removeAttributeIfPresent(root, "data-novaflow-export-context-kind");
+    if (isNovaflowCutoutProgressSurface(root)) return;
     root.style.removeProperty("background");
     root.style.removeProperty("background-color");
     root.style.removeProperty("background-image");
@@ -64788,6 +64797,7 @@
 
   function isFullscreenModalBackdrop(element) {
     if (!(element instanceof HTMLElement)) return false;
+    if (isNovaflowCutoutProgressSurface(element)) return false;
     if (element.getAttribute("data-novaflow-export-blocking") === "1") return false;
     if (isDropdownControllerNode(element)) return false;
     if (isSourceOwnedLayout(element) || isInsideSourceOwnedLayout(element)) return false;
@@ -64830,6 +64840,7 @@
 
   function getNovaflowProtectedModalDialogCard(element) {
     if (!(element instanceof HTMLElement)) return null;
+    if (isNovaflowCutoutProgressSurface(element)) return null;
     if (element === document.body || element === document.documentElement) return null;
     const signature = `${element.childElementCount}|${element.getAttribute("style") || ""}|${element.className}`;
     const memo = NOVAFLOW_MODAL_CARD_MEMO.get(element);
@@ -64896,6 +64907,7 @@
     removeAttributeIfPresent(root, "data-novaflow-modal-backdrop");
     removeAttributeIfPresent(root, "data-novaflow-runtime-ignore");
     removeAttributeIfPresent(root, "data-novaflow-protected-modal-backdrop");
+    if (isNovaflowCutoutProgressSurface(root)) return;
     root.style.removeProperty("background");
     root.style.removeProperty("background-color");
     root.style.removeProperty("background-image");
