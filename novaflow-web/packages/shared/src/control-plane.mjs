@@ -461,7 +461,40 @@ export function createControlPlane({ store, secrets, logger }) {
 
   async function handleClaim(headers) {
     const worker = await requireWorker(headers);
-    const task = await store.claimTask(worker.id, HEARTBEAT_TIMEOUT_SECONDS);
+    let task = await store.claimTask(worker.id, HEARTBEAT_TIMEOUT_SECONDS);
+    // A restarted worker reports idle, but the old task may still be assigned
+    // to its identity. The scheduler then refuses every new task indefinitely.
+    // Only recover when the worker has no current task, and re-read that state
+    // after the failed claim so a concurrent heartbeat cannot be mistaken for
+    // a restart.
+    if (!task && worker.status === 'idle' && !worker.current_task_id) {
+      const current = await store.getWorkerById(worker.id);
+      if (current?.status === 'idle' && !current.current_task_id) {
+        const abandoned = await store.listActiveAssignedTasks(worker.id);
+        for (const oldTask of abandoned) {
+          try {
+            await store.updateTaskStatus({
+              taskId: oldTask.id,
+              workerId: worker.id,
+              toStatus: TASK_STATE.FAILED,
+              progress: null,
+              note: '算力节点已重启，请重新提交任务',
+              detail: {
+                actor: 'scheduler',
+                error_code: 'worker_restarted',
+                error_message: '算力节点已重启，原任务无法继续，请重新提交'
+              }
+            });
+            log('abandoned task failed after worker restart', { taskId: oldTask.id, workerId: worker.id });
+          } catch (error) {
+            // A concurrent terminal transition is harmless. Keep the claim
+            // endpoint available and retry on the next normal poll.
+            log('abandoned task recovery deferred', { taskId: oldTask.id, workerId: worker.id, error: String(error?.message || error) });
+          }
+        }
+        if (abandoned.length) task = await store.claimTask(worker.id, HEARTBEAT_TIMEOUT_SECONDS);
+      }
+    }
     if (!task) return { ok: true, task: null };
     const grantKey = await deriveWorkerGrantKey(worker.id, controlSecret);
     log('task claimed', { taskId: task.id, workerId: worker.id });

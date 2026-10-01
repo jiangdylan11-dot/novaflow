@@ -78,6 +78,25 @@ runtime.setComputeNode(null);
 check(runtime.computeMode, 'local');
 await runtime.control('POST', '/api/web/tasks', {});
 check(requests.at(-1).url, 'http://127.0.0.1:4784/api/web/tasks');
+// A prompt-assistant request that cannot reach its assigned worker must be
+// cancelled so it cannot be claimed later without its request.json upload.
+const promptRequests = [];
+const promptPage = createDomSandbox({ Response, Request, Blob, FormData, AbortSignal, Event, TextEncoder, TextDecoder,
+  NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
+  fetch: async (url, init) => {
+    const path = String(url);
+    promptRequests.push({ path, method: init?.method || 'GET' });
+    if (path.endsWith('/api/web/capabilities')) return new Response(JSON.stringify({ taskTypes: [{ task_type: 'prompt_assistant', available_workers: 1 }] }));
+    if (path.endsWith('/api/web/tasks')) return new Response(JSON.stringify({ task: { id: 'prompt-task', status: 'queued' } }));
+    if (path.endsWith('/api/web/tasks/prompt-task') && (init?.method || 'GET') === 'GET') throw new Error('network interrupted');
+    return new Response('{}');
+  }
+});
+promptPage.localStorage.setItem('novaflow_web_session_v1', JSON.stringify({ token: 'cloud-session' }));
+runInContext(source, createContext(promptPage));
+const failedPrompt = await promptPage.electronAPI.promptAssistantOptimizePrompt({ prompt: 'test' });
+check(failedPrompt.ok, false);
+check(promptRequests.some((request) => request.path.endsWith('/api/web/tasks/prompt-task/cancel') && request.method === 'POST'), true);
 // Only an explicit server shutdown closes the local browser editor.
 let onLoad, closeCalls = 0;
 const closing = createDomSandbox({ Response, Request, Blob, FormData, AbortSignal, Event, TextDecoder,

@@ -185,7 +185,14 @@
     });
     if (!created || !created.task) throw new Error((created && created.error) || '提示词任务创建失败');
     tasks.set(created.task.id, created.task);
-    await putTaskInput(created.task.id, 'request.json', bytes);
+    try {
+      await putTaskInput(created.task.id, 'request.json', bytes);
+    } catch (error) {
+      // The browser has stopped waiting or could not upload; leave no queued
+      // request for the worker to claim after the user has gone away.
+      await control('POST', '/api/web/tasks/' + created.task.id + '/cancel').catch(() => {});
+      throw error;
+    }
     const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS);
     const reply = await fetchTaskOutput(finished, 'result.json');
     return JSON.parse(new TextDecoder().decode(reply));

@@ -229,6 +229,16 @@ const supabaseStore = {
     return row && row.id ? row : null;
   },
 
+  async listActiveAssignedTasks(workerId: string) {
+    const { data, error } = await admin()
+      .from('web_ai_tasks').select('id,status')
+      .eq('assigned_worker_id', workerId)
+      .in('status', ['assigned', 'uploading', 'processing'])
+      .limit(10);
+    if (error) throw error;
+    return data || [];
+  },
+
   async updateTaskStatus({ taskId, workerId, toStatus, progress, note, detail }: any) {
     const { data, error } = await admin().rpc('novaflow_web_update_task_status', {
       p_task_id: taskId,

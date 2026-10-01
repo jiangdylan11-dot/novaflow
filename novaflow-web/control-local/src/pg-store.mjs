@@ -137,6 +137,13 @@ export function createPgStore(db) {
       return row && row.id ? row : null;
     },
 
+    async listActiveAssignedTasks(workerId) {
+      return await many(
+        "select id, status from public.web_ai_tasks where assigned_worker_id = $1 and status in ('assigned', 'uploading', 'processing') limit 10",
+        [workerId]
+      );
+    },
+
     async updateTaskStatus({ taskId, workerId, toStatus, progress, note, detail }) {
       return await one(
         'select * from public.novaflow_web_update_task_status($1, $2, $3, $4, $5, $6::jsonb)',

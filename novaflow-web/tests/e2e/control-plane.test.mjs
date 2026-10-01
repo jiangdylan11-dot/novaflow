@@ -276,6 +276,45 @@ section('failure never charges');
 }
 
 // ---------------------------------------------------------------------------
+section('restarted idle worker releases its abandoned task before claiming');
+{
+  const old = await call(BASE, 'POST', '/api/web/tasks', {
+    token: alice.token,
+    body: { task_type: 'qwen_t2i', parameters: { prompt: 'before restart' } }
+  });
+  const firstClaim = await call(BASE, 'POST', '/api/worker/claim', { token: w1.workerToken });
+  check('worker claimed task before restart', firstClaim.body.task?.id === old.body.task.id, firstClaim.body);
+  await call(BASE, 'POST', '/api/worker/tasks/' + old.body.task.id + '/progress', {
+    token: w1.workerToken,
+    body: { status: 'processing', progress: 15, note: 'started' }
+  });
+
+  // A process restart loses the in-memory currentTaskId while the database
+  // still has the earlier processing row assigned to this worker.
+  const restarted = await call(BASE, 'POST', '/api/worker/heartbeat', {
+    token: w1.workerToken,
+    body: { status: 'idle', current_task_id: null }
+  });
+  check('restart heartbeat is idle with no task',
+    restarted.body.worker?.status === 'idle' && !restarted.body.worker?.current_task_id, restarted.body);
+
+  const next = await call(BASE, 'POST', '/api/web/tasks', {
+    token: alice.token,
+    body: { task_type: 'qwen_t2i', parameters: { prompt: 'after restart' } }
+  });
+  const claim = await call(BASE, 'POST', '/api/worker/claim', { token: w1.workerToken });
+  check('new task is claimed in the same poll', claim.body.task?.id === next.body.task.id, claim.body);
+  const oldStatus = await call(BASE, 'GET', '/api/web/tasks/' + old.body.task.id, { token: alice.token });
+  check('abandoned task fails with a restart explanation',
+    oldStatus.body.task?.status === TASK_STATE.FAILED && oldStatus.body.task?.error_code === 'worker_restarted', oldStatus.body);
+  checkEqual('abandoned task was not charged', oldStatus.body.task?.charged_credit_cost, 0);
+  await call(BASE, 'POST', '/api/worker/tasks/' + next.body.task.id + '/fail', {
+    token: w1.workerToken,
+    body: { error_code: 'test_cleanup', error_message: 'test cleanup' }
+  });
+}
+
+// ---------------------------------------------------------------------------
 section('state machine refuses illegal transitions');
 {
   const created = await call(BASE, 'POST', '/api/web/tasks', {
