@@ -1,3 +1,4 @@
+import { computeUniformPathU } from '../utils/customPath';
 import type { ParticleSystemConfig, Key1D, ParticleSprite } from '../types';
 
 type Curve = 'stepped' | number[];
@@ -182,21 +183,21 @@ function makeSequenceFrameAttachmentName(sprite: ParticleSprite, frameIndex: num
   const idRaw = (sprite.id || '').trim();
   const id = idRaw ? idRaw.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6) : 'sp';
   const idx = String(Math.max(0, frameIndex)).padStart(4, '0');
-  return `${base}_${id}_${idx}`;
+  return idRaw ? `${base}_${id}_${idx}` : `${base}_${idx}`;
 }
 
 function makeSequenceAttachmentName(sprite: ParticleSprite) {
   const base = (sprite.name || 'particle').trim() || 'particle';
   const idRaw = (sprite.id || '').trim();
   const id = idRaw ? idRaw.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6) : 'sp';
-  return `${base}_${id}_seq`;
+  return idRaw ? `${base}_${id}_seq` : `${base}_seq`;
 }
 
 function makeSequenceBasePath(sprite: ParticleSprite) {
   const base = (sprite.name || 'particle').trim() || 'particle';
   const idRaw = (sprite.id || '').trim();
   const id = idRaw ? idRaw.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6) : 'sp';
-  return `${base}_${id}_`;
+  return idRaw ? `${base}_${id}_` : `${base}_`;
 }
 
 function mulberry32(seed: number) {
@@ -1850,7 +1851,7 @@ function simulateParticle(
   sprite: ParticleSprite | null,
   seed: number,
   attachmentBase: number,
-  opts: { startDelay: number; maxDuration: number; loop?: boolean; loopDuration?: number; trimLifeToLoop?: boolean }
+  opts: { startDelay: number; maxDuration: number; loop?: boolean; loopDuration?: number; trimLifeToLoop?: boolean; particleIndex?: number }
 ): ParticleSample {
   const rng = mulberry32(seed);
   const rngShape = mulberry32(seed ^ 0x9e3779b9);
@@ -2012,8 +2013,10 @@ function simulateParticle(
     initialAgeOffset = rng() * life;
     simLife = Math.max(1e-6, life - initialAgeOffset);
   }
-  const customPoints = pathType === 'custom' ? normalizePathPoints((system as any).pathPoints) : [];
-  const customBezier = pathType === 'custom' ? buildBezierSamples(customPoints, pathClosed, 24) : null;
+  const customEmitter = !pathEnabled && system.shape?.type === 'custom_path';
+  const customPoints = pathType === 'custom' || customEmitter ? normalizePathPoints(system.pathPoints) : [];
+  const customClosed = customEmitter ? pathClosed && customPoints.length > 2 : pathClosed;
+  const customBezier = pathType === 'custom' || customEmitter ? buildBezierSamples(customPoints, customClosed, 24) : null;
   const customDuMag = customBezier ? (pathSpeedPx / Math.max(1e-6, customBezier.total)) : 0;
   const customRevSign = (system as any).pathReverse ? -1 : 1;
 
@@ -2071,6 +2074,25 @@ function simulateParticle(
       const vxWorld = tvxLocal * sysRotCos - tvyLocal * sysRotSin;
       const vyWorld = tvxLocal * sysRotSin + tvyLocal * sysRotCos;
       emitAngle = Math.atan2(vyWorld, vxWorld);
+    }
+  } else if (customEmitter) {
+    const sampleCount = Math.max(1, Math.round(system.pathEmitSampleCount ?? 50));
+    const u = computeUniformPathU((opts.particleIndex ?? 0) % sampleCount, sampleCount, customClosed);
+    const ev = evalBezierSamples(customBezier!.samples, customBezier!.total, customClosed, u, system.pathReverse ? -1 : 1);
+    localPx = ev.x;
+    localPy = ev.y;
+    let nx = -ev.ty;
+    let ny = ev.tx;
+    const sideMode = system.pathEmitSideMode || 'left';
+    const ratio = clamp01(Number(system.pathEmitBothSideRatioLeft ?? 0.5));
+    if (sideMode === 'right' || (sideMode === 'both' && rng() >= ratio)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const facing = system.pathEmitFacingEnabled ? Math.max(0, Math.min(360, Number(system.pathEmitFacingDeg ?? 0))) * DEG2RAD : 0;
+    emitAngle = sysAngle + Math.atan2(ny, nx) + facing;
+    if (system.emissionAngleEnabled) {
+      emitAngle += (system.emissionOffsetDeg || 0) * DEG2RAD + (rng() - 0.5) * (system.emissionAngleDeg || 0) * DEG2RAD;
     }
   } else if (linearForceMode) {
     if (!system.emissionAngleEnabled) {
@@ -3203,7 +3225,8 @@ export function exportToSpine(
         maxDuration: loopDuration + loopWarmup,
         loop: isLoop,
         loopDuration: isLoop ? loopDuration : undefined,
-        trimLifeToLoop: false
+        trimLifeToLoop: false,
+        particleIndex: i
       });
       if (sample.translate.length === 0 && sample.scale.length === 0 && sample.rotate.length === 0 && sample.color.length === 0) {
         continue;

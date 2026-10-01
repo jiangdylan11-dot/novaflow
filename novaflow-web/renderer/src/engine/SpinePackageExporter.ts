@@ -45,14 +45,14 @@ function makeSequenceFrameRegionName(sprite: ParticleSprite, frameIndex: number)
   const idRaw = (sprite.id || '').trim()
   const id = idRaw ? idRaw.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6) : 'sp'
   const idx = String(Math.max(0, frameIndex)).padStart(4, '0')
-  return `${base}_${id}_${idx}`
+  return idRaw ? `${base}_${id}_${idx}` : `${base}_${idx}`
 }
 
 function makeSequenceAttachmentName(sprite: ParticleSprite) {
   const base = (sprite.name || 'particle').trim() || 'particle'
   const idRaw = (sprite.id || '').trim()
   const id = idRaw ? idRaw.replace(/[^a-zA-Z0-9]/g, '').slice(0, 6) : 'sp'
-  return `${base}_${id}_seq`
+  return idRaw ? `${base}_${id}_seq` : `${base}_seq`
 }
 
 function sanitizeFileName(name: string) {
@@ -190,8 +190,22 @@ async function createFallbackParticleDataUrl(size: number = 128) {
 export async function exportSpinePackage(
   systems: ParticleSystemConfig[],
   version: string,
-  opts?: { forceFullRate?: boolean; disablePooling?: boolean; explicitNativeSequenceAttachmentTimeline?: boolean }
+  opts?: { forceFullRate?: boolean; disablePooling?: boolean; explicitNativeSequenceAttachmentTimeline?: boolean; exportName?: string }
 ) {
+  // Rename a snapshot, keeping PNG, atlas regions and JSON attachment paths identical.
+  if (opts?.exportName) {
+    const baseName = sanitizeFileName(opts.exportName).replace(/[. ]+$/g, '') || 'particle';
+    const names = new Map<ParticleSprite, ParticleSprite>();
+    const uniqueSprites = [...new Set(systems.flatMap((system) => system.sprites || []))];
+    for (const [index, sprite] of uniqueSprites.entries()) {
+      names.set(sprite, { ...sprite, id: '', name: uniqueSprites.length === 1 ? baseName : `${baseName}_${index + 1}` });
+    }
+    systems = systems.map((system) => ({ ...system, sprites: (system.sprites || []).map((sprite) => names.get(sprite)!) }));
+    if (!uniqueSprites.length) {
+      const dataUrl = await createFallbackParticleDataUrl();
+      systems = systems.map((system) => ({ ...system, sprites: [{ id: '', name: baseName, dataUrl, path: '', weight: 1, mode: 'single' } as ParticleSprite] }));
+    }
+  }
   const usedSprites: ParticleSprite[] = []
   for (const s of systems) {
     for (const sp of s.sprites || []) {
@@ -243,12 +257,19 @@ export async function exportSpinePackage(
     }
   }
 
-  const json = exportToSpine(systems, version, {
+  const exportedJson = exportToSpine(systems, version, {
     attachmentBases,
     forceFullRate: opts?.forceFullRate,
     disablePooling: opts?.disablePooling,
     explicitNativeSequenceAttachmentTimeline: opts?.explicitNativeSequenceAttachmentTimeline
   })
+  // Spine 3.8 uses the skin array schema; the raw exporter still supports
+  // legacy internal consumers, so normalize only the downloadable package.
+  const skeleton = JSON.parse(exportedJson)
+  if (String(skeleton.skeleton?.spine || '').startsWith('3.8') && !Array.isArray(skeleton.skins)) {
+    skeleton.skins = Object.entries(skeleton.skins || {}).map(([name, attachments]) => ({ name, attachments }))
+  }
+  const json = JSON.stringify(skeleton)
   const atlas = makeAtlas(images)
   return { json, atlas, images }
 }

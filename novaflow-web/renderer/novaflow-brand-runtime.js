@@ -7706,6 +7706,7 @@
     const state = getNovaflowManualExportStateForPayload(payload, "spine");
     if (!state || !payload || typeof payload !== "object") return payload;
     const next = { ...payload, baseName: state.name };
+    if (payload.particleNamedExport === true) return next;
     if (Array.isArray(payload.images)) {
       const replacements = [];
       const forceSingle = payload.images.length <= 1;
