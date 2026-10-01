@@ -4,7 +4,7 @@
   if(!api?.registerPreparedFrame)return;
   const same=(a,b)=>{if(!a||!b||a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;return true;};
   const canvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
-  root.NovaFlowCutoutPipeline={create({frames,width,height,preserveShadow,active,onPreview}){
+  root.NovaFlowCutoutPipeline={create({frames,width,height,preserveShadow,active,onPreview,preferredIndex=0}){
     const masks=new Map(),references=api.referenceFrameIndices(frames),cache=api.createFrameCache(),jobs=new Map(),remove=[];
     // Keep the provisional reference separate from normal rendering's cache;
     // a rejected partial mask must never leave a stale final reference behind.
@@ -35,7 +35,8 @@
         if(!references.every(index=>masks.has(index)))return;
         profile=api.prepareSequenceReference(sequence);referenceReady=true;
       }
-      for(const [index,entry] of frames){
+      const ordered=[...frames.entries()].sort((a,b)=>(a[0]===preferredIndex?-1:b[0]===preferredIndex?1:0));
+      for(const [index,entry] of ordered){
         if(running>=limit)break;
         if(!masks.has(index)||jobs.has(index))continue;
         running++;
@@ -73,6 +74,13 @@
         for(const [index,mask] of masks)if(!same(mask,finalMasks.get(index))){stop();return false;}
         for(const [index,mask] of finalMasks)masks.set(index,mask);
         completedBeforeCommit=completed;committed=true;report();drain();return true;
+      },
+      async waitForPreview(index=preferredIndex){
+        drain();
+        const job=jobs.get(index);
+        if(!job||!valid())return false;
+        await job.promise;
+        return valid()&&!!(await cache?.get(String(index)));
       },
       stop,
       stats(){return {received:masks.size,completed,running,firstReadyMs,committed,cache:cache?.stats()};}
