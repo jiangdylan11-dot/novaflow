@@ -144,6 +144,57 @@ ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToo
   }
 }
 
+// The shared video export modal reserves an output, then supplies either
+// captured PNG frames or source video bytes. Both Web and the local assistant
+// serve this adapter, so no Electron path or native save picker is involved.
+{
+  const saved = [];
+  sandbox.NovaFlowWebWarehouse = { save: async record => { saved.push(record); return { ok: false, pending: true }; } };
+  for (const format of ['mp4', 'webm', 'gif']) {
+    ok(typeof api.exportEncodeVideoToVideo === 'function', 'export modal has its required source-video encoder');
+    const pick = await api.exportPickSaveFile({ baseName: 'export-check', format });
+    ok(pick.ok && pick.filePath.endsWith('/export-check.' + format), format + ': reserve warehouse output before bytes exist');
+    const { dir } = await api.exportCreateTempDir({ prefix: 'video-export' });
+    for (let i = 0; i < 3; i++) await api.writeBinaryFile({ dir, fileName: 'NF_000' + i + '.png', bytes: new Uint8Array([i]) });
+    execs.length = 0;
+    const result = await api.exportEncodeFramesToVideo({ dir, pattern: 'NF_%04d.png', fps: 16, width: 448, height: 448,
+      format, outPath: pick.filePath, keepAlpha: true, returnBase64: false });
+    equal([result.ok, result.format, result.frames, result.fps], [true, format, 3, 16], format + ': frame count and original FPS survive export');
+    equal([saved.at(-1).name, saved.at(-1).blob.type], ['export-check.' + format, format === 'gif' ? 'image/gif' : 'video/' + format], format + ': filename and actual encoder format agree');
+    ok(execs[0].at(-1).endsWith('.' + format), format + ': output container agrees with the chosen format');
+    equal(execs[0][execs[0].indexOf('-framerate') + 1], '16', format + ': encoder receives the original frame rate');
+    if (format === 'mp4') equal(execs[0][execs[0].indexOf('-c:v') + 1], 'libx264', 'MP4 uses H.264');
+    if (format === 'gif') ok(execs[0].includes('-filter_complex') && execs[0].some(arg => arg.includes('palettegen')), 'GIF uses a generated palette');
+    if (format === 'webm') equal(execs[0][execs[0].indexOf('-pix_fmt') + 1], 'yuva420p', 'WebM frames retain alpha');
+    await api.exportCleanupDir({ dir });
+
+    const input = await api.exportCreateTempDir({ prefix: 'source-export' });
+    await api.writeBinaryFile({ dir: input.dir, fileName: 'source.mp4', bytes: new Uint8Array([1, 2, 3]) });
+    execs.length = 0;
+    const converted = await api.exportEncodeVideoToVideo({ inPath: input.dir + '\\source.mp4', outPath: pick.filePath,
+      format, fps: 30, scalePct: 50, sourceConvert: true, keepAlpha: false });
+    equal([converted.ok, converted.format], [true, format], format + ': source-video export accepts a Web temp path');
+    equal(saved.at(-1).blob.type, format === 'gif' ? 'image/gif' : 'video/' + format, format + ': converted source enters the warehouse');
+    equal(execs[1].includes('-r'), false, format + ': source conversion does not force the UI FPS onto the source');
+    if (format === 'webm') {
+      equal(execs[1][execs[1].indexOf('-auto-alt-ref') + 1], '0', 'source WebM uses the sequence encoder alternate-reference setting');
+      equal(execs[1][execs[1].indexOf('-threads') + 1], '1', 'source WebM uses the single-thread browser core');
+      equal(execs[1][execs[1].indexOf('-c:a') + 1], 'libvorbis', 'source WebM retains audio without the trapping Opus path');
+    }
+    equal(sandbox.NovaFlowWebRuntime.videoOutputs.size, 0, 'export releases its temporary conversion result');
+    await api.exportCleanupDir({ dir: input.dir });
+  }
+  sandbox.NovaFlowWebWarehouse.save = async () => ({ ok: false, pending: false, error: 'storage failed' });
+  const { dir } = await api.exportCreateTempDir({ prefix: 'failed-export' });
+  await api.writeBinaryFile({ dir, fileName: 'NF_0000.png', bytes: new Uint8Array([1]) });
+  const pick = await api.exportPickSaveFile({ baseName: 'failed', format: 'mp4' });
+  const failed = await api.exportEncodeFramesToVideo({ dir, format: 'mp4', outPath: pick.filePath, returnBase64: false });
+  equal(failed.ok, false, 'warehouse write failure cannot report successful export');
+  ok(failed.error.includes('storage failed'), 'warehouse failure reaches the export UI');
+  await api.exportCleanupDir({ dir });
+  delete sandbox.NovaFlowWebWarehouse;
+}
+
 // Saved cutout WebM must be decoded with libvpx so every frame keeps alpha.
 {
   const originalExec = fakeFfmpeg.exec;

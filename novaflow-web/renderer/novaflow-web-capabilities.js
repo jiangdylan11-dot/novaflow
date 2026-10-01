@@ -308,8 +308,13 @@
     const mime = String(options.mimeType || 'application/octet-stream');
 
     if (!data) {
-      // Some callers ask for a path first and write later. A browser cannot
-      // hand out a path, so it must be told now rather than later.
+      // Video callers reserve an output before encoding. This is a warehouse
+      // destination, not an OS path; the encoder supplies the bytes later.
+      const format = String(options.format || '').toLowerCase();
+      if (['mp4', 'webm', 'gif'].includes(format)) {
+        const name = videoStem(options.baseName || options.fileName || 'video', 'video') + '.' + format;
+        return { ok: true, canceled: false, filePath: 'web-export://video/' + Date.now() + '/' + name, fileName: name, destination: 'warehouse' };
+      }
       return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
     }
 
@@ -503,11 +508,20 @@
   // what the tools pass back for previewing, saving and clearing.
   const videoOutputs = new Map();
   // A finished clip also belongs in the 仓库, like a generated one.
-  async function saveToWarehouse(blob, name) {
+  async function saveToWarehouse(blob, name, strict = false) {
     const warehouse = root.NovaFlowWebWarehouse;
-    if (!warehouse || typeof warehouse.save !== 'function' || !blob) return;
-    try { await warehouse.save({ blob, name: String(name || 'video.mp4') }); }
-    catch (error) { console.warn('[NovaFlow web] 仓库保存失败', error); }
+    if (!warehouse || typeof warehouse.save !== 'function' || !blob) {
+      if (strict) throw new Error('仓库组件未加载，请刷新网页后重试');
+      return;
+    }
+    try {
+      const result = await warehouse.save({ blob, name: String(name || 'video.mp4') });
+      if (strict && (!result || (result.ok === false && !result.pending))) throw new Error(result?.error || '结果入库失败');
+      return result;
+    } catch (error) {
+      if (strict) throw error;
+      console.warn('[NovaFlow web] 仓库保存失败', error);
+    }
   }
   // The preview registration in the next block reads results from here.
   runtime.videoOutputs = videoOutputs;
@@ -909,12 +923,13 @@
     const names = [...files.keys()].filter((name) => /\.(?:png|jpe?g|webp)$/i.test(name)).sort();
     if (!names.length) return fail('没有可编码的帧', { code: 'web_no_frames' });
     const fps = clampNumber(Number(options.fps) || 24, 1, 120);
-    const keepAlpha = options.keepAlpha !== false;
+    const target = options.format ? normalizeVideoFormat(options.format) : 'webm';
+    const keepAlpha = target === 'webm' && options.keepAlpha !== false;
     const ffmpeg = await loadFfmpeg();
     const jobId = 'frames-encode-' + (++videoOutputSeq);
     const tag = 'seq' + videoOutputSeq + '_';
     const pattern = /%0?\d*d/.test(String(options.pattern || '')) ? String(options.pattern) : 'NF_%04d.png';
-    const label = '正在编码抠图视频（' + names.length + ' 帧）…';
+    const label = '正在编码 ' + target.toUpperCase() + '（' + names.length + ' 帧）…';
     ffmpegJob = { jobId, last: -1, log: '', label };
     busy.begin(jobId, label);
     const written = [];
@@ -927,15 +942,24 @@
         written.push(name);
       }
       busy.update(jobId, label, 0);
-      const outFile = tag + 'out.webm';
+      const outFile = tag + 'out.' + target;
       const width = Math.max(0, Math.round(Number(options.width) || 0));
       const height = Math.max(0, Math.round(Number(options.height) || 0));
       const kbps = clampNumber(Math.round((width && height ? width * height : 1920 * 1080) * fps * 0.12 / 1000), 1500, 24000);
-      const format = keepAlpha ? 'yuva420p' : 'yuv420p';
-      const args = ['-framerate', String(fps), '-start_number', '0', '-i', tag + pattern,
-        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=' + format,
-        '-c:v', 'libvpx', '-pix_fmt', format, '-auto-alt-ref', '0', '-deadline', 'good', '-cpu-used', '4',
-        '-crf', '10', '-b:v', kbps + 'k'];
+      const pixelFormat = keepAlpha ? 'yuva420p' : 'yuv420p';
+      const scale = width > 0 && height > 0
+        ? 'scale=' + Math.max(2, Math.trunc(width / 2) * 2) + ':' + Math.max(2, Math.trunc(height / 2) * 2) + ':flags=lanczos'
+        : 'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos';
+      const args = ['-framerate', String(fps), '-start_number', '0', '-i', tag + pattern];
+      if (target === 'gif') {
+        args.push('-filter_complex', scale + ',split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=new=1', '-loop', '0');
+      } else if (target === 'mp4') {
+        args.push('-vf', scale + ',format=yuv420p', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-movflags', '+faststart');
+      } else {
+        args.push('-vf', scale + ',format=' + pixelFormat,
+          '-c:v', 'libvpx', '-pix_fmt', pixelFormat, '-auto-alt-ref', '0', '-deadline', 'good', '-cpu-used', '4',
+          '-crf', '10', '-b:v', kbps + 'k');
+      }
       // Chromium seeks the colour and auxiliary VP8 alpha streams separately.
       // Inter-frame alpha references can then be missing even though linear
       // playback is clean. Make every transparent frame independently decodable
@@ -950,10 +974,12 @@
       const data = await ffmpeg.readFile(outFile);
       await ffmpeg.deleteFile(outFile).catch(() => {});
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-      const out = { ok: true, format: 'webm', mimeType: 'video/webm', fps, width, height, frames: names.length, bytes: bytes.length };
+      const mimeType = target === 'gif' ? 'image/gif' : 'video/' + target;
+      const out = { ok: true, format: target, mimeType, fps, width, height, frames: names.length, bytes: bytes.length };
       if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
       const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
-      await saveToWarehouse(new Blob([bytes.slice()], { type: 'video/webm' }), /\.webm$/i.test(outPathName) ? outPathName : 'cutout_' + Date.now() + '.webm');
+      const fileName = sanitizeVideoName(outPathName) || 'cutout_' + Date.now() + '.' + target;
+      out.warehouse = await saveToWarehouse(new Blob([bytes.slice()], { type: mimeType }), videoStem(fileName, 'video') + '.' + target, String(options.outPath || '').startsWith('web-export://'));
       videoToolProgress.emit({ jobId, progress01: 1 });
       return out;
     } catch (error) {
@@ -961,11 +987,82 @@
         ffmpegPromise = null;
         try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
       }
-      return fail('抠图视频编码失败：' + String((error && error.message) || error));
+      return fail('视频编码失败：' + String((error && error.message) || error));
     } finally {
       busy.end(jobId);
       if (ffmpegPromise) for (const name of written) await ffmpeg.deleteFile(name).catch(() => {});
       ffmpegJob = null;
+    }
+  };
+
+  // The export modal uses the same conversion engine as 工具 → 视频格式转换.
+  // Sources written by the modal are held in web-temp:// directories; clips
+  // already registered with the renderer retain their original bytes.
+  api.exportEncodeVideoToVideo = async (payload) => {
+    const options = payload || {};
+    let token = '';
+    try {
+      const path = String(options.inPath || '');
+      let blob;
+      for (const [dir, entries] of webTempDirs) {
+        if (path.startsWith(dir + '/') || path.startsWith(dir + '\\')) {
+          const bytes = entries.get(path.slice(dir.length + 1));
+          if (bytes) blob = new Blob([bytes.slice()]);
+          break;
+        }
+      }
+      if (!blob) blob = runtime.fileForToken?.(path) || videoOutputs.get(path)?.blob;
+      if (!blob) blob = [...cache.values()].find(entry => entry.path === path)?.blob;
+      if (!blob && /^(?:blob:|https?:)/i.test(path)) {
+        const response = await root.fetch(path);
+        if (!response.ok) throw new Error('读取源视频失败：' + response.status);
+        blob = await response.blob();
+      }
+      if (!blob) throw new Error('找不到源视频，请重新加载视频后导出');
+      const target = normalizeVideoFormat(options.format);
+      const fileName = videoStem(String(options.outPath || '').split(/[\\/]/).pop(), 'video') + '.' + target;
+      const inputName = path.split(/[\\/]/).pop() || 'input.webm';
+      const result = await runVideoJob({
+        tool: 'video-convert', jobId: 'video-export-' + (++videoOutputSeq),
+        file: { name: inputName, arrayBuffer: () => blob.arrayBuffer() }, outName: fileName,
+        mimeType: target === 'gif' ? 'image/gif' : 'video/' + target,
+        buildArgs: (input, output, log) => {
+          const source = sourceFromLog(log);
+          const args = videoConvertArgs(input, output, target, options.scalePct, source);
+          if (target === 'webm') {
+            // Bound both the decoder buffers and VP8 lookahead in the
+            // single-thread WebAssembly core, including clips with audio.
+            args.unshift('-threads', '1');
+            args[args.indexOf('-cpu-used') + 1] = '4';
+            // This core's Opus path traps on the 32 kHz AAC track of an H3
+            // output. Vorbis is also supported by WebM and keeps the audio.
+            args[args.indexOf('-c:a') + 1] = 'libvorbis';
+            args.splice(args.length - 1, 0, '-threads', '1', '-lag-in-frames', '0', '-auto-alt-ref', '0', '-ar', '48000');
+          }
+          if (!options.sourceConvert) {
+            if (Number(options.width) > 0 && Number(options.height) > 0) {
+              const scale = 'scale=' + Math.max(2, Math.trunc(Number(options.width) / 2) * 2) + ':' + Math.max(2, Math.trunc(Number(options.height) / 2) * 2) + ':flags=lanczos';
+              const index = args.indexOf(target === 'gif' ? '-filter_complex' : '-vf') + 1;
+              args[index] = target === 'gif' ? scale + ',split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=new=1' : scale;
+            }
+            if (Number(options.fps) > 0) args.splice(args.length - 1, 0, '-r', String(clampNumber(Number(options.fps), 1, 120)));
+          }
+          if (target === 'webm' && options.keepAlpha) {
+            const codec = /Video:\s*vp9/i.test(log) ? 'libvpx-vp9' : /Video:\s*vp8/i.test(log) ? 'libvpx' : '';
+            if (codec) args.unshift('-c:v', codec);
+            args[args.indexOf('-pix_fmt') + 1] = 'yuva420p';
+            args.splice(args.length - 1, 0, '-g', '1', '-metadata:s:v:0', 'alpha_mode=1');
+          }
+          return args;
+        }
+      });
+      token = result.token;
+      const warehouse = await saveToWarehouse(result.blob, fileName, true);
+      return { ok: true, format: target, fileName, bytes: result.blob.size, warehouse };
+    } catch (error) {
+      return fail('视频导出失败：' + String(error?.message || error));
+    } finally {
+      if (token) releaseVideoOutputs(null, token);
     }
   };
 
