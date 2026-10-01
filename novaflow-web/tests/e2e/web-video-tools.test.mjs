@@ -123,6 +123,27 @@ ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToo
   api.exportPickSaveFile = originalSave;
 }
 
+// Transparent save output must support random access, not only linear playback.
+// Exercise the real temp-frame -> encoder API rather than matching source text.
+{
+  for (const keepAlpha of [true, false]) {
+    const { dir } = await api.exportCreateTempDir({ prefix: 'seek-regression' });
+    await api.writeBinaryFile({ dir, fileName: 'NF_0000.png', bytes: new Uint8Array([1, 2, 3]) });
+    execs.length = 0;
+    const result = await api.exportEncodeFramesToVideo({ dir, pattern: 'NF_%04d.png', fps: 16, width: 448, height: 448, keepAlpha, returnBase64: false });
+    equal(result.ok, true, 'save API encodes collected cutout frames');
+    const args = execs[0];
+    if (keepAlpha) {
+      equal(args[args.indexOf('-g') + 1], '1', 'every alpha frame can be decoded independently after a seek');
+      equal(args[args.indexOf('-pix_fmt') + 1], 'yuva420p', 'random access retains the alpha plane');
+      equal(args[args.indexOf('-auto-alt-ref') + 1], '0', 'alpha encoding disables alternate reference frames');
+    } else {
+      equal(args.includes('-g'), false, 'opaque sequence encoding keeps its existing compression');
+    }
+    await api.exportCleanupDir({ dir });
+  }
+}
+
 // Saved cutout WebM must be decoded with libvpx so every frame keeps alpha.
 {
   const originalExec = fakeFfmpeg.exec;

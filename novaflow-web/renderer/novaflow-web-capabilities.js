@@ -936,7 +936,11 @@
         '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=' + format,
         '-c:v', 'libvpx', '-pix_fmt', format, '-auto-alt-ref', '0', '-deadline', 'good', '-cpu-used', '4',
         '-crf', '10', '-b:v', kbps + 'k'];
-      if (keepAlpha) args.push('-metadata:s:v:0', 'alpha_mode=1');
+      // Chromium seeks the colour and auxiliary VP8 alpha streams separately.
+      // Inter-frame alpha references can then be missing even though linear
+      // playback is clean. Make every transparent frame independently decodable
+      // so pause/step/canvas export sees the same pixels as playback.
+      if (keepAlpha) args.push('-g', '1', '-metadata:s:v:0', 'alpha_mode=1');
       args.push('-y', outFile);
       const code = await ffmpeg.exec(args);
       if (code !== 0) {
