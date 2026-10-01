@@ -15877,6 +15877,12 @@
   function beginAiSequenceCutoutSavingLock(message) {
     AI_SEQUENCE_CUTOUT_SAVE_LOCK_COUNT += 1;
     bindAiSequenceCutoutSavingLockEvents();
+    // Saving owns the progress surface; retire the preview's top-layer dialog.
+    const previewOverlay = document.getElementById("novaflow-cutout-preview-render-overlay");
+    if (previewOverlay) {
+      try { if (previewOverlay.open && typeof previewOverlay.close === "function") previewOverlay.close(); } catch {}
+      previewOverlay.remove();
+    }
     const lockMessage = message || AI_SEQUENCE_CUTOUT_SAVE_MESSAGE;
     clearAiSequenceCutoutSaveStatusTimer();
     renderAiSequenceCutoutSavingOverlay(lockMessage, { status: "saving" });
