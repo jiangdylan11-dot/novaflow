@@ -7778,6 +7778,7 @@
   }
 
   async function prepareNovaflowWriteBinaryPayloadForManualExport(payload) {
+    if (payload?.spineSequenceNamed === true) return payload;
     const state = getNovaflowManualExportStateForPayload(payload);
     if (!state || state.context === "aifx" || !payload || typeof payload !== "object") return payload;
     const next = { ...payload };
