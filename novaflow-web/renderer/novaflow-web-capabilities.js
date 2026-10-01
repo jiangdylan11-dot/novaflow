@@ -1421,14 +1421,14 @@
     if (!frames.length) return { ok: false, jobId, error: '没有可抠图的帧' };
     if (!width || !height) return { ok: false, jobId, error: '读不到画面尺寸，无法抠图' };
 
-    let taskId = '';
+    let taskId = '', stage = '准备视频帧';
     try {
       reportMatting(jobId, 'running', '正在准备素材…', 0.02);
 
       const packs = packCapturedFrames(frames);
       const references = packs.map((pack, index) => ({ name: 'frames-' + index + '.bin', kind: 'frames', bytes: pack.size }));
       reportMatting(jobId, 'running', '正在排队等待算力…', 0.05);
-
+      stage = '提交抠图任务';
       const created = await runtime.control('POST', '/api/web/tasks', {
         task_type: MATTING_TASK_TYPE,
         parameters: {
@@ -1447,19 +1447,24 @@
       });
 
       taskId = created.task.id;
+      stage = '上传视频帧';
       for (let index = 0; index < packs.length; index++) {
         await runtime.putTaskInput(taskId, references[index].name, packs[index], (seconds) => {
           reportMatting(jobId, 'running', '正在等待算力接收视频帧…（' + seconds + 's）', 0.06);
-        });
+        }, { retryConnection: true, onRetry: attempt => {
+          reportMatting(jobId, 'running', '上传连接中断，正在重连算力节点…（' + attempt + '/2）', 0.06);
+        } });
       }
       reportMatting(jobId, 'running', '已送达算力节点，开始 AI 分割…', 0.12);
 
+      stage = '等待 AI 抠图结果';
       const done = await waitForMatting(runtime, taskId, jobId);
       const manifest = (done.output_manifest && done.output_manifest.files) || [];
       const maskFile = manifest.find((f) => /^mask[-.]/.test(String(f.name || '')));
       if (!maskFile) throw new Error('算力节点没有返回遮罩文件');
 
       reportMatting(jobId, 'running', '正在取回遮罩…', 0.9);
+      stage = '下载抠图遮罩';
       const packed = await runtime.fetchTaskOutput(done, maskFile.name);
 
       // One allocation for the whole job. Every streamed chunk below is a view
@@ -1518,13 +1523,25 @@
       reportMatting(jobId, 'done', '抠图完成', 1);
       return result;
     } catch (error) {
+      let cancelConfirmed = !taskId;
       if (taskId) {
-        try { await runtime.control('POST', '/api/web/tasks/' + taskId + '/cancel', {}); } catch (_) { /* already terminal */ }
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await runtime.control('POST', '/api/web/tasks/' + taskId + '/cancel', {});
+            cancelConfirmed = true;
+            break;
+          } catch (cancelError) {
+            const transient = [502, 503, 504].includes(cancelError?.status)
+              || (!cancelError?.status && /failed to fetch|fetch failed|network|load failed/i.test(String(cancelError?.message || cancelError)));
+            if (!transient || attempt === 2) break;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
       }
       const rawMessage = String((error && error.message) || error);
       const message = error?.status === 401 || /missing session token|invalid session|session expired/i.test(rawMessage)
         ? '登录已失效，请点顶栏右上角的账号按钮重新登录后重试抠图'
-        : rawMessage;
+        : stage + '失败：' + rawMessage + (!cancelConfirmed ? '；任务取消尚未确认，请检查算力连接' : '');
       reportMatting(jobId, 'error', message, undefined);
       return { ok: false, jobId, error: message };
     }

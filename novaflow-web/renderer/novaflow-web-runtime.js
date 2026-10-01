@@ -469,22 +469,31 @@
   // shim holds one blob it made itself and has nowhere to stage it, so it
   // needs wait-for-worker / mint-grant / PUT without the staging. Same wire
   // format, same tunnel, same grant - only the source of the bytes differs.
-  async function putTaskInput(taskId, name, bytes, onWait) {
+  async function putTaskInput(taskId, name, bytes, onWait, options = {}) {
     const task = await waitForAssignment(taskId, { onWait: onWait });
-    const grant = await grantFor(task, 'upload');
-    const base = String(grant.endpoint || '').replace(/\/+$/, '');
-    if (!base) throw new Error('算力节点没有可用地址');
-
-    const res = await fetch(
-      base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(name),
-      {
-        method: 'PUT',
-        headers: { 'content-type': mimeFor(name), 'x-novaflow-grant': grant.token },
-        body: bytes
+    const attempts = options.retryConnection ? 3 : 1;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        // The same task/file PUT is safe to repeat. Refresh the grant on each
+        // attempt because restarting a node can change its tunnel address.
+        const grant = await grantFor(task, 'upload');
+        const base = String(grant.endpoint || '').replace(/\/+$/, '');
+        if (!base) throw new Error('算力节点没有可用地址');
+        const res = await fetch(base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(name), {
+          method: 'PUT',
+          headers: { 'content-type': mimeFor(name), 'x-novaflow-grant': grant.token },
+          body: bytes
+        });
+        if (!res.ok) throw Object.assign(new Error(name + ' 上传返回 ' + res.status), { status: res.status });
+        return task;
+      } catch (error) {
+        const transient = [502, 503, 504].includes(error?.status)
+          || (!error?.status && /failed to fetch|fetch failed|network|load failed/i.test(String(error?.message || error)));
+        if (!transient || attempt + 1 >= attempts) throw error;
+        options.onRetry?.(attempt + 1);
+        await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 2000));
       }
-    );
-    if (!res.ok) throw new Error(name + ' 上传返回 ' + res.status);
-    return task;
+    }
   }
 
   /** One finished output file, as raw bytes. The warehouse is the caller's business. */

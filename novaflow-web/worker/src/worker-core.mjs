@@ -570,6 +570,7 @@ export function createWorker(options) {
     if (!expected.length) return [];
     const dir = join(dataDir, 'tasks', taskId, 'input');
     const started = Date.now();
+    let lastCancelProbe = started;
     for (;;) {
       checkCancelled(taskId);
       let present = [];
@@ -577,6 +578,13 @@ export function createWorker(options) {
         present = (await readdir(dir)).filter((n) => expected.some((e) => e.name === n));
       } catch { present = []; }
       if (present.length >= expected.length) return present;
+      // The browser can cancel after a failed upload. During this wait there
+      // is no GPU progress callback to deliver that cancellation to the node.
+      if (Date.now() - lastCancelProbe >= 2000) {
+        lastCancelProbe = Date.now();
+        await reportProgress(taskId, TASK_STATE.UPLOADING, 2, '等待浏览器上传素材');
+        checkCancelled(taskId);
+      }
       if (Date.now() - started > timeoutMs) {
         throw new Error('timed out waiting for the browser to upload ' + expected.length + ' input file(s)');
       }
