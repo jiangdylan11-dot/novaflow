@@ -1225,7 +1225,27 @@
 
     recordArtReferenceControl(workflow, uploadedNames, rolePlan) {
       if (!isIntent(workflow)) throw new Error('missing Web art workflow intent');
-      workflow.options.__controlNet = rolePlan;
+      // The graph builder only needs the reference roles and ControlNet model
+      // names. The original plan also carries each image's dataUrl, which is
+      // uploaded separately and must never be embedded in the task JSON.
+      if (!Array.isArray(rolePlan?.conditioning) || !rolePlan.conditioning.length) {
+        if (workflow.options) delete workflow.options.__controlNet;
+        return { applied: 0 };
+      }
+      const shortText = (value, limit) => typeof value === 'string' && !/^data:/i.test(value)
+        ? value.slice(0, limit) : '';
+      workflow.options.__controlNet = {
+        capabilities: {
+          controlNetNames: Array.isArray(rolePlan.capabilities?.controlNetNames)
+            ? rolePlan.capabilities.controlNetNames.map((name) => shortText(name, 256)).filter(Boolean).slice(0, 32)
+            : []
+        },
+        conditioning: rolePlan.conditioning.map((item) => ({
+          sourceIndex: Number.isInteger(item?.sourceIndex) ? item.sourceIndex : null,
+          role: shortText(item?.role, 64),
+          processor: shortText(item?.processor, 64)
+        }))
+      };
       return { applied: 0 };
     },
 
