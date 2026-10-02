@@ -152,7 +152,7 @@
       const d2 = dx * dx + dy * dy
       if (d2 > r2) continue
       const u = 1 - d2 / r2
-      hits.push({ i, f: Math.min(1, strength * u * u) })
+      hits.push({ i, f: Math.min(1, strength * (window.NovaFlowSoftBrush ? window.NovaFlowSoftBrush.strength(Math.sqrt(d2), 0, r) : u * u)) })
     }
     return hits
   }

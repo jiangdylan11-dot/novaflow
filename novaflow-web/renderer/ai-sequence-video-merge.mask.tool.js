@@ -34,7 +34,7 @@
 
   function smoothstep(value) {
     const t = Math.max(0, Math.min(1, value))
-    return t * t * (3 - 2 * t)
+    return t * t * t * (t * (t * 6 - 15) + 10)
   }
 
   function createFalloffTable(radiusPx, featherPx, mode) {
@@ -302,8 +302,10 @@
       const x = finiteNumber(input.x, 'x')
       const y = finiteNumber(input.y, 'y')
       const maximumRadius = Math.hypot(width, height)
-      const effectiveRadius = Math.min(radiusPx, maximumRadius)
-      const effectiveFeather = Math.min(featherPx, Math.max(0, maximumRadius - effectiveRadius))
+      const brushRadius = Math.min(radiusPx, maximumRadius)
+      const softWidth = Math.min(featherPx, Math.max(0, maximumRadius - brushRadius))
+      const effectiveRadius = Math.max(0, brushRadius - softWidth)
+      const effectiveFeather = brushRadius + softWidth - effectiveRadius
       activeStroke = {
         mode,
         radiusPx: effectiveRadius,

@@ -27397,9 +27397,10 @@
   }
 
   function maskBrushMetrics() {
-    const coreRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2)
+    const brushRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2)
     const feather = normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18)
-    const radius = coreRadius + feather
+    const coreRadius = Math.max(0, brushRadius - feather)
+    const radius = brushRadius + feather
     return { coreRadius, feather, radius }
   }
 
@@ -27596,7 +27597,6 @@
     const image = ctx.getImageData(bounds.left, bounds.top, width, height)
     const data = image.data
     const radiusSquared = radius * radius, coreRadiusSquared = coreRadius * coreRadius
-    const softWidth = Math.max(0.0001, radius - coreRadius)
     stamps.forEach((point) => {
       const left = Math.max(bounds.left, Math.floor(point.x - radius - 1))
       const top = Math.max(bounds.top, Math.floor(point.y - radius - 1))
@@ -27609,7 +27609,7 @@
           const distanceSquared = dx * dx + dy * dy
           if (distanceSquared > radiusSquared) continue
           const soft = feather > 0 && distanceSquared > coreRadiusSquared
-            ? clampNumber(1 - ((Math.sqrt(distanceSquared) - coreRadius) / softWidth), 0, 1)
+            ? window.NovaFlowSoftBrush.strength(Math.sqrt(distanceSquared), coreRadius, radius)
             : 1
           const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
           const offset = ((y - bounds.top) * width + (x - bounds.left)) * 4
@@ -27695,7 +27695,6 @@
     if (width <= 0 || height <= 0) return null
     const image = ctx.getImageData(left, top, width, height)
     const data = image.data
-    const softWidth = Math.max(0.0001, radius - coreRadius)
     for (let y = 0; y < height; y += 1) {
       const py = top + y + 0.5
       for (let x = 0; x < width; x += 1) {
@@ -27703,7 +27702,7 @@
         const distance = Math.hypot(px - point.x, py - point.y)
         if (distance > radius) continue
         const soft = feather > 0 && distance > coreRadius
-          ? clampNumber(1 - ((distance - coreRadius) / softWidth), 0, 1)
+          ? window.NovaFlowSoftBrush.strength(distance, coreRadius, radius)
           : 1
         const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
         const i = (y * width + x) * 4

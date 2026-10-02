@@ -361,7 +361,7 @@
         maskSurfaces.set(layer.id, surface)
         maskEntryCoverage = null
       } else maskEntryCoverage = surface.copyCoverage()
-      maskEditing = { layerId: layer.id, surface, mode: 'erase', brushSize: 22, feather: 0 }
+      maskEditing = { layerId: layer.id, surface, mode: 'erase', brushSize: 22, feather: 8 }
       updateMaskPreview()
       queueRender()
       const previewCanvas = preview.getCanvas?.()
