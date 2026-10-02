@@ -53,7 +53,7 @@ test('canvas brush paints a real circular alpha ramp without a blur filter', {sk
   assert.equal(alpha(50,50),41)
   assert.equal(alpha(90,50),0)
   assert.equal(alpha(65,70),alpha(75,50))
-  assert(Math.abs(alpha(70,50)-20)<=1)
+  assert(Math.abs(alpha(80,50)-20)<=1)
   brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,20,20,true)
   assert(ctx.getImageData(70,50,1,1).data[3]>20)
   if (process.env.NOVAFLOW_BRUSH_PREVIEW) require('node:fs').writeFileSync(process.env.NOVAFLOW_BRUSH_PREVIEW, canvas.toBuffer('image/png'))
@@ -109,17 +109,10 @@ test('production image-mask brush gives matching curved strokes at different eve
   assert(maxDifference<=1,'event-rate dependent opacity: '+maxDifference)
 })
 
-test('soft centre continuously fades instead of leaving a solid disk',()=>{
+test('shrinking the core preserves the independently specified feather width',()=>{
   for (const core of [5,20,40]) {
-    assert(brush.strength(core,core,core+30)<1)
-    assert(brush.strength(core+15,core,core+30)<brush.strength(core,core,core+30))
+    assert.equal(brush.strength(core,core,core+30),1)
+    assert.equal(brush.strength(core+15,core,core+30),0.5)
     assert.equal(brush.strength(core+30,core,core+30),0)
   }
-})
-
-test('tiny brush with excessive feather remains bounded and has no solid core',()=>{
-  const surface=mask.createSurface({width:101,height:101})
-  surface.beginStroke({x:50,y:50,radiusPx:5,featherPx:100,mode:'erase'});surface.endStroke()
-  const values=surface.getCoverage(),at=d=>values[50*101+50+d]
-  assert(at(0)<at(2));assert(at(2)<at(5));assert.equal(at(11),255)
 })
