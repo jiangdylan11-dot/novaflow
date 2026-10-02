@@ -480,7 +480,22 @@
     return { ...ok(value), ...value };
   };
 
-  api.aiSeqCacheCopyFromPath = async () => fail('Web 版没有本地文件路径可复制');
+  api.aiSeqCacheCopyFromPath = async (payload) => {
+    const options = payload || {};
+    const inputPath = String(options.inputPath || options.path || '');
+    try {
+      const blob = await compositorSourceBlob({ path: inputPath });
+      if (!blob) return fail('视频资源已失效，请重新加载或上传视频');
+      return await api.aiSeqCacheTempFile({
+        bytes: blob,
+        mimeType: blob.type || 'video/mp4',
+        fileName: options.fileName || 'video.mp4',
+        cacheKey: 'video-copy-' + crypto.randomUUID()
+      });
+    } catch (error) {
+      return fail('读取视频资源失败：' + String(error?.message || error));
+    }
+  };
 
   api.clearVideoToolOutput = async (payload) => {
     releaseCache();
