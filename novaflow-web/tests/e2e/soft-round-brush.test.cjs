@@ -25,19 +25,19 @@ test('soft round falloff is monotonic with smooth centre and edge', () => {
 
 test('merge mask is circular, agrees with the shared falloff, and supports undo/restore', () => {
   const surface = mask.createSurface({width: 101, height: 101})
-  surface.beginStroke({x:50, y:50, radiusPx:40, featherPx:40, mode:'erase'})
+  surface.beginStroke({x:50, y:50, radiusPx:20, featherPx:20, mode:'erase'})
   surface.endStroke()
   const coverage = surface.getCoverage()
   const at = (x,y) => coverage[y * 101 + x]
   for (let d = 0; d <= 40; d++) {
     assert.equal(at(50+d,50), at(50,50+d))
-    assert(Math.abs(at(50+d,50) - Math.round(255*(1-0.16*brush.strength(d,0,40)))) <= 1)
+    assert(Math.abs(at(50+d,50) - Math.round(255*(1-0.16*brush.strength(d,20,40)))) <= 1)
   }
   assert.equal(at(65,70), at(75,50)) // identical Euclidean radius, diagonal versus axis
   surface.undo()
   assert(surface.getCoverage().every(value => value === 255))
   surface.redo()
-  surface.beginStroke({x:50,y:50,radiusPx:40,featherPx:40,mode:'restore'})
+  surface.beginStroke({x:50,y:50,radiusPx:20,featherPx:20,mode:'restore'})
   surface.endStroke()
   assert(surface.getCoverage()[50*101+50]>coverage[50*101+50])
 })
@@ -47,29 +47,30 @@ test('canvas brush paints a real circular alpha ramp without a blur filter', {sk
   const document = {createElement() { const canvas = createCanvas(1,1); canvas.ownerDocument = document; return canvas }}
   const canvas = document.createElement('canvas'); canvas.width=101; canvas.height=101
   const ctx = canvas.getContext('2d')
-  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,40,40,true)
+  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,20,20,true)
   const pixels=ctx.getImageData(0,0,101,101).data
   const alpha=(x,y)=>pixels[(y*101+x)*4+3]
   assert.equal(alpha(50,50),41)
   assert.equal(alpha(90,50),0)
   assert.equal(alpha(65,70),alpha(75,50))
-  assert(Math.abs(alpha(70,50)-20)<=1)
-  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,40,40,true)
+  assert(Math.abs(alpha(80,50)-20)<=1)
+  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,20,20,true)
   assert(ctx.getImageData(70,50,1,1).data[3]>20)
   if (process.env.NOVAFLOW_BRUSH_PREVIEW) require('node:fs').writeFileSync(process.env.NOVAFLOW_BRUSH_PREVIEW, canvas.toBuffer('image/png'))
 })
 
-test('feather stays inside the brush diameter and continuous paths do not depend on event density', () => {
+test('feather extends outside the core and continuous paths do not depend on event density', () => {
   function draw(step) {
     const surface = mask.createSurface({width:151,height:101})
-    surface.beginStroke({x:30,y:50,radiusPx:20,featherPx:60,mode:'erase'})
+    surface.beginStroke({x:30,y:50,radiusPx:20,featherPx:20,mode:'erase'})
     for(let x=30+step;x<=120;x+=step) surface.extendStroke({x,y:50})
     surface.extendStroke({x:120,y:50}); surface.endStroke()
     return surface.getCoverage()
   }
   const sparse=draw(90), dense=draw(1)
   assert.deepEqual(sparse,dense)
-  assert.equal(sparse[71*151+60],255)
+  assert.equal(sparse[91*151+60],255)
+  assert(sparse[75*151+60]<255)
   assert(sparse[50*151+60]<200)
 })
 
@@ -106,4 +107,12 @@ test('production image-mask brush gives matching curved strokes at different eve
   let maxDifference=0
   for(let i=0;i<slow.length;i++)maxDifference=Math.max(maxDifference,Math.abs(slow[i]-fast[i]))
   assert(maxDifference<=1,'event-rate dependent opacity: '+maxDifference)
+})
+
+test('shrinking the core preserves the independently specified feather width',()=>{
+  for (const core of [5,20,40]) {
+    assert.equal(brush.strength(core,core,core+30),1)
+    assert.equal(brush.strength(core+15,core,core+30),0.5)
+    assert.equal(brush.strength(core+30,core,core+30),0)
+  }
 })

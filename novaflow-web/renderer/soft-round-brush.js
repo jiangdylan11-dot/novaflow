@@ -26,7 +26,7 @@
     return points
   }
   function paintStamp(ctx, x0, y0, x1, y1, radius, feather, white) {
-    const inner = Math.max(0, radius - feather), outer = radius
+    const inner = radius, outer = radius + feather
     const left = Math.max(0, Math.floor(Math.min(x0, x1) - outer - 1))
     const top = Math.max(0, Math.floor(Math.min(y0, y1) - outer - 1))
     const width = Math.min(ctx.canvas.width, Math.ceil(Math.max(x0, x1) + outer + 1)) - left
@@ -57,7 +57,7 @@
     if (!state || state.key!==key || Math.hypot(x0-state.x,y0-state.y)>0.01 || (x0===x1&&y0===y1)) {
       state={key}; canvasStrokes.set(ctx,state)
     }
-    for (const point of sampleStroke(state,x0,y0,x1,y1,radius)) paintStamp(ctx,point.x,point.y,point.x,point.y,radius,feather,white)
+    for (const point of sampleStroke(state,x0,y0,x1,y1,radius+feather)) paintStamp(ctx,point.x,point.y,point.x,point.y,radius,feather,white)
     state.x=x1; state.y=y1
   }
   const api = { falloff, strength, paintCanvas, sampleStroke }

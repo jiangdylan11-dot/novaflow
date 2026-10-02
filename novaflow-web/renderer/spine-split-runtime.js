@@ -27399,8 +27399,8 @@
   function maskBrushMetrics() {
     const brushRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2)
     const feather = normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18)
-    const coreRadius = Math.max(0, brushRadius - feather)
-    const radius = brushRadius
+    const coreRadius = brushRadius
+    const radius = brushRadius + feather
     return { coreRadius, feather, radius }
   }
 
