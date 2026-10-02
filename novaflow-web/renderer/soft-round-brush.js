@@ -1,6 +1,7 @@
 (function (root) {
   'use strict'
   const scratchCanvases = new WeakMap()
+  const canvasStrokes = new WeakMap()
   // Quintic falloff has no slope discontinuity at either end of the feather.
   function falloff(t) {
     t = Math.max(0, Math.min(1, t))
@@ -11,7 +12,20 @@
     if (distance >= outer) return 0
     return falloff((outer - distance) / (outer - inner))
   }
-  function paintCanvas(ctx, x0, y0, x1, y1, radius, feather, white) {
+  function sampleStroke(state, x0, y0, x1, y1, radius) {
+    const spacing = Math.max(0.5, radius * 0.08)
+    const points = []
+    if (!state.started) { points.push({x:x0,y:y0}); state.started=true; state.remaining=spacing }
+    const dx=x1-x0, dy=y1-y0, distance=Math.hypot(dx,dy)
+    let travel=state.remaining
+    while (travel <= distance + 1e-9) {
+      const t=distance ? travel/distance : 0
+      points.push({x:x0+dx*t,y:y0+dy*t}); travel+=spacing
+    }
+    state.remaining=travel-distance
+    return points
+  }
+  function paintStamp(ctx, x0, y0, x1, y1, radius, feather, white) {
     const inner = Math.max(0, radius - feather), outer = radius
     const left = Math.max(0, Math.floor(Math.min(x0, x1) - outer - 1))
     const top = Math.max(0, Math.floor(Math.min(y0, y1) - outer - 1))
@@ -32,12 +46,21 @@
       const alpha = strength(Math.hypot(px - projection * dx, py - projection * dy), inner, outer)
       const offset = (y * width + x) * 4
       pixels.data[offset] = pixels.data[offset + 1] = pixels.data[offset + 2] = white ? 255 : 0
-      pixels.data[offset + 3] = Math.round(alpha * 255)
+      pixels.data[offset + 3] = Math.round(alpha * 255 * (feather > 0 ? 0.16 : 1))
     }
     stamp.putImageData(pixels, 0, 0)
     ctx.save(); ctx.filter = 'none'; ctx.drawImage(canvas, left, top); ctx.restore()
   }
-  const api = { falloff, strength, paintCanvas }
+  function paintCanvas(ctx,x0,y0,x1,y1,radius,feather,white) {
+    let state=canvasStrokes.get(ctx)
+    const key=[ctx.canvas.width,ctx.canvas.height,radius,feather,white,ctx.globalCompositeOperation].join('|')
+    if (!state || state.key!==key || Math.hypot(x0-state.x,y0-state.y)>0.01 || (x0===x1&&y0===y1)) {
+      state={key}; canvasStrokes.set(ctx,state)
+    }
+    for (const point of sampleStroke(state,x0,y0,x1,y1,radius)) paintStamp(ctx,point.x,point.y,point.x,point.y,radius,feather,white)
+    state.x=x1; state.y=y1
+  }
+  const api = { falloff, strength, paintCanvas, sampleStroke }
   root.NovaFlowSoftBrush = api
   if (typeof module === 'object' && module.exports) module.exports = api
 })(typeof globalThis !== 'undefined' ? globalThis : this)

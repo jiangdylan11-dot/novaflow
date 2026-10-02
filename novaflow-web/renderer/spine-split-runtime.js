@@ -27557,24 +27557,13 @@
   }
 
   function maskEditorStrokeStampPoints(session, points) {
-    const stamps = []
-    const { radius } = maskBrushMetrics()
-    const step = Math.max(1, radius / 5)
-    let last = session.lastPoint
-    points.forEach((point) => {
-      if (!last) {
-        stamps.push(point)
-      } else {
-        const distance = Math.hypot(point.x - last.x, point.y - last.y)
-        const steps = Math.max(1, Math.ceil(distance / step))
-        for (let index = 1; index <= steps; index += 1) {
-          const ratio = index / steps
-          stamps.push({ x: last.x + (point.x - last.x) * ratio, y: last.y + (point.y - last.y) * ratio })
-        }
-      }
-      last = point
-    })
-    if (last) session.lastPoint = last
+    const stamps=[]; const {radius}=maskBrushMetrics()
+    if (!session.lastPoint) session.softBrushStroke={}
+    for (const point of points) {
+      const last=session.lastPoint || point
+      stamps.push(...window.NovaFlowSoftBrush.sampleStroke(session.softBrushStroke || (session.softBrushStroke={}),last.x,last.y,point.x,point.y,radius))
+      session.lastPoint=point
+    }
     return stamps
   }
   function paintMaskEditorStampBatch(session, stamps) {
@@ -27614,7 +27603,8 @@
           const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
           const offset = ((y - bounds.top) * width + (x - bounds.left)) * 4
           const current = Math.round((data[offset] + data[offset + 1] + data[offset + 2]) / 3)
-          const next = restore ? Math.max(current, target) : Math.min(current, target)
+          const opacity = soft * (feather > 0 ? 0.16 : 1)
+          const next = Math.round(restore ? current + (255 - current) * opacity : current * (1 - opacity))
           data[offset] = next
           data[offset + 1] = next
           data[offset + 2] = next
@@ -27707,7 +27697,8 @@
         const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
         const i = (y * width + x) * 4
         const current = Math.round((data[i] + data[i + 1] + data[i + 2]) / 3)
-        const next = restore ? Math.max(current, target) : Math.min(current, target)
+        const opacity = soft * (feather > 0 ? 0.16 : 1)
+          const next = Math.round(restore ? current + (255 - current) * opacity : current * (1 - opacity))
         data[i] = next
         data[i + 1] = next
         data[i + 2] = next
@@ -27817,18 +27808,7 @@
   }
 
   function paintMaskEditorStroke(session, point) {
-    const last = session.lastPoint || point
-    const distance = Math.hypot(point.x - last.x, point.y - last.y)
-    const { radius } = maskBrushMetrics()
-    const step = Math.max(1, radius / 5)
-    const steps = Math.max(1, Math.ceil(distance / step))
-    let bounds = null
-    for (let i = 0; i <= steps; i += 1) {
-      const t = i / steps
-      bounds = unionPaintBounds(bounds, paintMaskEditorPoint(session, { x: last.x + (point.x - last.x) * t, y: last.y + (point.y - last.y) * t }))
-    }
-    session.lastPoint = point
-    return bounds
+    return paintMaskEditorStampBatch(session, maskEditorStrokeStampPoints(session, [point]))
   }
 
   function drawMaskEditorPreview(canvas, session) {

@@ -173,8 +173,10 @@
           }
           const target = distanceSquared <= radiusSquared ? coreTarget : falloffTable[falloffIndex]
           const previous = coverage[index]
-          if (isErase ? target >= previous : target <= previous) continue
-          coverage[index] = target
+          const opacity=(isErase ? 255-target : target)/255 * (stroke.featherPx>0 ? 0.16 : 1)
+          const next=Math.round(isErase ? previous*(1-opacity) : previous+(255-previous)*opacity)
+          if (next===previous) continue
+          coverage[index] = next
           changed = true
         }
       }
@@ -184,72 +186,10 @@
     }
 
     function paintSegment(stroke, startX, startY, endX, endY) {
-      const segmentX = endX - startX
-      const segmentY = endY - startY
-      const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY
-      if (segmentLengthSquared <= 1e-9) return paintPoint(stroke, startX, startY)
-
-      const outerRadius = stroke.radiusPx + stroke.featherPx
-      const x0 = Math.max(0, Math.floor(Math.min(startX, endX) - outerRadius))
-      const y0 = Math.max(0, Math.floor(Math.min(startY, endY) - outerRadius))
-      const x1 = Math.min(width, Math.ceil(Math.max(startX, endX) + outerRadius + 1))
-      const y1 = Math.min(height, Math.ceil(Math.max(startY, endY) + outerRadius + 1))
-      captureTilesForBounds(stroke, x0, y0, x1, y1)
-
-      const radiusSquared = stroke.radiusPx * stroke.radiusPx
-      const outerSquared = outerRadius * outerRadius
-      const inverseSegmentLengthSquared = 1 / segmentLengthSquared
-      const falloffTable = stroke.falloffTable
-      const lastFalloffIndex = falloffTable ? falloffTable.length - 1 : 0
-      const falloffScale = falloffTable
-        ? lastFalloffIndex / Math.max(1e-9, outerSquared - radiusSquared)
-        : 0
-      const isErase = stroke.mode === 'erase'
-      const coreTarget = isErase ? 0 : 255
-      let changed = false
-      for (let y = y0; y < y1; y += 1) {
-        const relativeY = y - startY
-        let rowStart = x0
-        let rowEnd = x1
-        if (segmentX > 1e-9) {
-          rowStart = Math.max(rowStart, Math.floor(startX - relativeY * segmentY / segmentX) + 1)
-        } else if (segmentX < -1e-9) {
-          rowEnd = Math.min(rowEnd, Math.ceil(startX - relativeY * segmentY / segmentX))
-        } else if (relativeY * segmentY <= 0) {
-          continue
-        }
-        if (rowEnd <= rowStart) continue
-
-        const relativeX = rowStart - startX
-        let projectionDot = relativeX * segmentX + relativeY * segmentY
-        let cross = relativeX * segmentY - relativeY * segmentX
-        let endDeltaX = rowStart - endX
-        const endDeltaY = y - endY
-        let index = y * width + rowStart
-        for (let x = rowStart; x < rowEnd; x += 1, index += 1) {
-          const distanceSquared = projectionDot >= segmentLengthSquared
-            ? endDeltaX * endDeltaX + endDeltaY * endDeltaY
-            : cross * cross * inverseSegmentLengthSquared
-          if (distanceSquared <= outerSquared) {
-            let falloffIndex = 0
-            if (distanceSquared > radiusSquared) {
-              falloffIndex = ((distanceSquared - radiusSquared) * falloffScale) | 0
-              if (falloffIndex > lastFalloffIndex) falloffIndex = lastFalloffIndex
-            }
-            const target = distanceSquared <= radiusSquared ? coreTarget : falloffTable[falloffIndex]
-            const previous = coverage[index]
-            if (isErase ? target < previous : target > previous) {
-              coverage[index] = target
-              changed = true
-            }
-          }
-          projectionDot += segmentX
-          cross += segmentY
-          endDeltaX += 1
-        }
-      }
-      stroke.modified = stroke.modified || changed
-      if (changed) markDirtyBounds(x0, y0, x1, y1)
+      const radius=stroke.radiusPx+stroke.featherPx
+      const points=root.NovaFlowSoftBrush.sampleStroke(stroke.samples || (stroke.samples={}),startX,startY,endX,endY,radius)
+      let changed=false
+      for (const point of points) changed=paintPoint(stroke,point.x,point.y)||changed
       return changed
     }
 
