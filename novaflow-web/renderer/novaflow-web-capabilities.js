@@ -1349,7 +1349,9 @@
           layer.maskInput = inputs++;
         }
       }
-      const filters = ['color=c=black:s=' + width + 'x' + height + ':r=' + fps + ':d=' + duration.toFixed(3) + '[base]'];
+      const keepAlpha = format === 'webm';
+      const pixelFormat = keepAlpha ? 'yuva420p' : 'yuv420p';
+      const filters = ['color=c=' + (keepAlpha ? 'black@0' : 'black') + ':s=' + width + 'x' + height + ':r=' + fps + ':d=' + duration.toFixed(3) + ',format=rgba[base]'];
       let last = 'base';
       stack.forEach((layer, i) => {
         const probe = layer.source.probe;
@@ -1372,7 +1374,7 @@
           // here the PNG is white with alpha = coverage, so the coverage is its alpha.
           filters.push('[' + layer.maskInput + ':v]scale=' + dw + ':' + dh + ':flags=lanczos,format=rgba,alphaextract[cov' + i + ']');
           filters.push('[sa' + i + '][cov' + i + ']blend=all_mode=multiply:shortest=1[ma' + i + ']');
-          filters.push('[lr' + i + '][ma' + i + ']alphamerge=shortest=1,format=rgba[lm' + i + ']');
+          filters.push('[lr' + i + '][ma' + i + ']alphamerge,format=rgba[lm' + i + ']');
           src = 'lm' + i;
         }
         filters.push('[' + src + ']scale=' + lw + ':' + lh + ':flags=lanczos,format=rgba[ls' + i + ']');
@@ -1380,12 +1382,12 @@
         filters.push('[' + last + '][' + src + ']overlay=x=' + x + ':y=' + y + ':format=auto:eof_action=pass[o' + i + ']');
         last = 'o' + i;
       });
-      filters.push('[' + last + ']format=yuv420p[vout]');
+      filters.push('[' + last + ']format=' + pixelFormat + '[vout]');
       const audioLayer = manifest.audio && manifest.audio.mode === 'single'
         ? stack.find((layer) => String(layer.layerId) === String(manifest.audio.sourceLayerId) && layer.source.probe.hasAudio)
         : null;
       const encode = format === 'webm'
-        ? ['-c:v', 'libvpx', '-crf', '10', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', 'yuv420p']
+        ? ['-c:v', 'libvpx', '-crf', '10', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', pixelFormat, '-auto-alt-ref', '0', '-g', '1', '-metadata:s:v:0', 'alpha_mode=1']
         : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
       const run = async (withAudio) => {
         const full = args.slice();

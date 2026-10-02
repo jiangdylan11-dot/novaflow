@@ -235,7 +235,7 @@
       selectedLayerId: 'video-layer-top',
       timeSec: 0,
       playing: false,
-      format: config.format === 'webm' ? 'webm' : 'mp4',
+      format: config.format === 'mp4' ? 'mp4' : 'webm',
       audioSourceLayerId: null,
       importingLayerId: null,
       importingLayerIds: [],
