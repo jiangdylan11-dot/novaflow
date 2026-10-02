@@ -12,7 +12,7 @@
     return falloff((outer - distance) / (outer - inner))
   }
   function paintCanvas(ctx, x0, y0, x1, y1, radius, feather, white) {
-    const inner = Math.max(0, radius - feather), outer = radius + feather
+    const inner = Math.max(0, radius - feather), outer = radius
     const left = Math.max(0, Math.floor(Math.min(x0, x1) - outer - 1))
     const top = Math.max(0, Math.floor(Math.min(y0, y1) - outer - 1))
     const width = Math.min(ctx.canvas.width, Math.ceil(Math.max(x0, x1) + outer + 1)) - left

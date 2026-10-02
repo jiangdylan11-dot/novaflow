@@ -16950,7 +16950,7 @@
     const last = session.lastPoint || point
     const distance = Math.hypot(point.x - last.x, point.y - last.y)
     const { radius } = selectionBrushMetrics()
-    const step = Math.max(1, radius / 5)
+    const step = Math.max(0.5, radius / 20)
     const steps = Math.max(1, Math.ceil(distance / step))
     let bounds = null
     session.hasMaskPaint = true
@@ -27400,7 +27400,7 @@
     const brushRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2)
     const feather = normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18)
     const coreRadius = Math.max(0, brushRadius - feather)
-    const radius = brushRadius + feather
+    const radius = brushRadius
     return { coreRadius, feather, radius }
   }
 

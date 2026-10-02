@@ -24,7 +24,7 @@ test('soft round falloff is monotonic with smooth centre and edge', () => {
 
 test('merge mask is circular, agrees with the shared falloff, and supports undo/restore', () => {
   const surface = mask.createSurface({width: 101, height: 101})
-  surface.beginStroke({x:50, y:50, radiusPx:20, featherPx:20, mode:'erase'})
+  surface.beginStroke({x:50, y:50, radiusPx:40, featherPx:40, mode:'erase'})
   surface.endStroke()
   const coverage = surface.getCoverage()
   const at = (x,y) => coverage[y * 101 + x]
@@ -36,7 +36,7 @@ test('merge mask is circular, agrees with the shared falloff, and supports undo/
   surface.undo()
   assert(surface.getCoverage().every(value => value === 255))
   surface.redo()
-  surface.beginStroke({x:50,y:50,radiusPx:20,featherPx:20,mode:'restore'})
+  surface.beginStroke({x:50,y:50,radiusPx:40,featherPx:40,mode:'restore'})
   surface.endStroke()
   assert.equal(surface.getCoverage()[50*101+50],255)
 })
@@ -46,14 +46,28 @@ test('canvas brush paints a real circular alpha ramp without a blur filter', {sk
   const document = {createElement() { const canvas = createCanvas(1,1); canvas.ownerDocument = document; return canvas }}
   const canvas = document.createElement('canvas'); canvas.width=101; canvas.height=101
   const ctx = canvas.getContext('2d')
-  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,20,20,true)
+  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,40,40,true)
   const pixels=ctx.getImageData(0,0,101,101).data
   const alpha=(x,y)=>pixels[(y*101+x)*4+3]
   assert.equal(alpha(50,50),255)
   assert.equal(alpha(90,50),0)
   assert.equal(alpha(65,70),alpha(75,50))
   assert(Math.abs(alpha(70,50)-128)<=1)
-  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,20,20,true)
+  brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,40,40,true)
   assert(ctx.getImageData(70,50,1,1).data[3]>128)
   if (process.env.NOVAFLOW_BRUSH_PREVIEW) require('node:fs').writeFileSync(process.env.NOVAFLOW_BRUSH_PREVIEW, canvas.toBuffer('image/png'))
+})
+
+test('feather stays inside the brush diameter and continuous paths do not depend on event density', () => {
+  function draw(step) {
+    const surface = mask.createSurface({width:151,height:101})
+    surface.beginStroke({x:30,y:50,radiusPx:20,featherPx:60,mode:'erase'})
+    for(let x=30+step;x<=120;x+=step) surface.extendStroke({x,y:50})
+    surface.extendStroke({x:120,y:50}); surface.endStroke()
+    return surface.getCoverage()
+  }
+  const sparse=draw(90), dense=draw(1)
+  assert.deepEqual(sparse,dense)
+  assert.equal(sparse[71*151+60],255)
+  assert.equal(sparse[50*151+60],0)
 })

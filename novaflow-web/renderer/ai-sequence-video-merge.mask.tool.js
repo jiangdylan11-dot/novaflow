@@ -305,7 +305,7 @@
       const brushRadius = Math.min(radiusPx, maximumRadius)
       const softWidth = Math.min(featherPx, Math.max(0, maximumRadius - brushRadius))
       const effectiveRadius = Math.max(0, brushRadius - softWidth)
-      const effectiveFeather = brushRadius + softWidth - effectiveRadius
+      const effectiveFeather = brushRadius - effectiveRadius
       activeStroke = {
         mode,
         radiusPx: effectiveRadius,
