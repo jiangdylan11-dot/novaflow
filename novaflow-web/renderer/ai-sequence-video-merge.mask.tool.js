@@ -41,12 +41,12 @@
     if (featherPx <= 0) return null
     const size = 4096
     const table = new Uint8Array(size)
-    const innerSquared = radiusPx * radiusPx
+    const innerSquared = 0
     const outerRadius = radiusPx + featherPx
     const squaredRange = Math.max(1e-9, outerRadius * outerRadius - innerSquared)
     for (let index = 0; index < size; index += 1) {
       const squaredDistance = innerSquared + squaredRange * index / (size - 1)
-      const strength = smoothstep((outerRadius - Math.sqrt(squaredDistance)) / featherPx)
+      const strength = smoothstep((outerRadius - Math.sqrt(squaredDistance)) / outerRadius)
       const strengthByte = Math.round(255 * strength)
       table[index] = mode === 'erase' ? 255 - strengthByte : strengthByte
     }
@@ -243,9 +243,9 @@
       const y = finiteNumber(input.y, 'y')
       const maximumRadius = Math.hypot(width, height)
       const brushRadius = Math.min(radiusPx, maximumRadius)
-      const softWidth = Math.min(featherPx, Math.max(0, maximumRadius - brushRadius))
-      const effectiveRadius = brushRadius
-      const effectiveFeather = softWidth
+      const softWidth = Math.min(featherPx, brushRadius, Math.max(0, maximumRadius - brushRadius))
+      const effectiveRadius = softWidth > 0 ? 0 : brushRadius
+      const effectiveFeather = softWidth > 0 ? brushRadius + softWidth : 0
       activeStroke = {
         mode,
         radiusPx: effectiveRadius,

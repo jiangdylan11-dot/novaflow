@@ -27398,7 +27398,7 @@
 
   function maskBrushMetrics() {
     const brushRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2)
-    const feather = normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18)
+    const feather = Math.min(brushRadius, normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18))
     const coreRadius = brushRadius
     const radius = brushRadius + feather
     return { coreRadius, feather, radius }
@@ -27597,7 +27597,7 @@
           const dx = x + 0.5 - point.x
           const distanceSquared = dx * dx + dy * dy
           if (distanceSquared > radiusSquared) continue
-          const soft = feather > 0 && distanceSquared > coreRadiusSquared
+          const soft = feather > 0
             ? window.NovaFlowSoftBrush.strength(Math.sqrt(distanceSquared), coreRadius, radius)
             : 1
           const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
@@ -27691,7 +27691,7 @@
         const px = left + x + 0.5
         const distance = Math.hypot(px - point.x, py - point.y)
         if (distance > radius) continue
-        const soft = feather > 0 && distance > coreRadius
+        const soft = feather > 0
           ? window.NovaFlowSoftBrush.strength(distance, coreRadius, radius)
           : 1
         const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))

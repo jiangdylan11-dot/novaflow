@@ -414,7 +414,7 @@
         brushFeather.style.borderColor = brushColor
         brushFeather.style.boxShadow = contrast
         brushFeather.style.opacity = '0.92'
-        positionBrushRing(brushFeather, brushSize + feather * 2)
+        positionBrushRing(brushFeather, brushSize + Math.min(feather, brushSize / 2) * 2)
       } else brushFeather.style.display = 'none'
     }
 
