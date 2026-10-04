@@ -174,6 +174,48 @@ test('single-image whole-screen style transfer preserves the source pixels and h
   assert.equal(e.builds[0][8].uiRunIntent,'style-transfer');
 });
 
+test('explicit new theme locks geometry but replaces content despite the style selector and a wrong assistant plan',async()=>{
+  const refs=[{id:'old-western-ui',dataUrl:'data:image/png;base64,old-western-original-pixels',role:'layout'}];
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将图1的人物改为深海美人鱼，15格替换为9类海底物件，标题改为ABYSS GARDEN，做精致3D；保持金额与控制。',
+    uiPlan:planFor(refs,{layoutMode:'reflow',visualMode:'style-transfer',layoutChanges:['新主题使用通用竖屏模板'],preserve:['符号区5列3行，共15格','原人物身份保持不变','原物品身份与顺序保持不变','原标题SUNSET OUTLAWS不变','人物展示区位置保持不变','金额和五个控制功能不变','新主题物品身份按用户指定的9类海底序列保持一致']})})});
+  e.state.prompt='保留图1布局，换主题为深海美人鱼，人物、物品和标题全部替换，并把风格换成3D，金额与控制保持。';
+  assert.equal(e.adapter.inputFor({state:e.state,references:refs,referenceLimit:10}).generationIntent,'style-transfer','the generic selector can still label this as a style edit');
+  const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
+  assert.equal(prepared.uiPlan.layoutMode,'preserve');assert.equal(prepared.uiPlan.visualMode,'theme-redesign');
+  assert.deepEqual(Array.from(prepared.uiPlan.layoutChanges),[]);
+  assert.match(prepared.promptSnapshot.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
+  assert.match(prepared.promptSnapshot.prompt,/深海美人鱼.*15格.*9类海底物件.*ABYSS GARDEN/);
+  assert.match(prepared.promptSnapshot.prompt,/符号区5列3行，共15格；人物展示区位置保持不变；金额和五个控制功能不变/);
+  assert.match(prepared.promptSnapshot.prompt,/新主题物品身份按用户指定的9类海底序列保持一致/);
+  assert.doesNotMatch(prepared.promptSnapshot.prompt,/原人物身份保持不变|原物品身份与顺序保持不变|原标题SUNSET OUTLAWS|保留画布内的原人物与物品身份|通用竖屏模板/);
+  await e.run();assert.deepEqual(e.failures,[]);
+  assert.equal(e.builds[0][8].uiPreserveLayout,true);assert.equal(e.builds[0][8].uiLayoutMode,'preserve');
+  assert.equal(e.builds[0][8].uiRunIntent,'redesign');
+  assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);assert.match(e.builds[0][4],/本次是主题重设/);
+});
+
+test('theme reset survives malformed planning and keeps style assets separate from the source geometry',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+  const refs=[{role:'style',id:'paper-material'},{role:'layout',id:'old-layout'}];
+  for (const prompt of ['图2布局不变，主题重设为月宫灯会，图1只提供剪纸风格','保留图2布局，换成全新赛博主题，图1提供霓虹风格','图2布局不变，换个深海美人鱼主题','图2布局不变，换真正主题并替换人物和物品','不要旧主题，图2布局不变，换成深海主题','图2布局不变，将主题换成星际女驾驶员','Keep image2 layout; re-theme it with lunar characters, objects and title','Change the theme to an underwater world, replace characters and objects but keep layout']) {
+    const output=p.compileQwenPlan({prompt,uiPlan:null},{references:refs,prompt,preserveLayout:true,generationIntent:'style-transfer'});
+    assert.equal(output.plan.visualMode,'theme-redesign');assert.equal(output.plan.layoutMode,'preserve');
+    assert.equal(output.references[0].id,'old-layout');assert.equal(output.references[1].id,'paper-material');
+    assert.match(output.prompt,/<image2>是风格来源，只迁移美术表现/);
+    assert.match(output.prompt,/本次是主题重设/);assert.doesNotMatch(output.prompt,/保留画布内的原人物与物品身份/);
+  }
+});
+
+test('negated theme replacement remains a content-preserving style transfer',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+  const refs=[{role:'layout'}];
+  for (const prompt of ['不换主题，只把风格换成羊毛毡','不要更换主题，人物物品与标题保持，只换画风','主题不变，换风格为明亮扁平','只换风格但保留原主题','只换画风，不改主题','不要换成深海主题，只把画风换成羊毛毡','不需要换新主题','无需更换主题','并非换主题','保留原主题，不要换一个新的主题','不要把主题换成深海，只换羊毛毡画风','Do not change the theme; only restyle the materials','No theme redesign, only a felt style transfer']) {
+    const output=p.compileQwenPlan({prompt,uiPlan:planFor(refs,{visualMode:'theme-redesign'})},{references:refs,prompt,preserveLayout:true,generationIntent:'style-transfer'});
+    assert.equal(output.plan.visualMode,'style-transfer');assert.match(output.prompt,/保留画布内的原人物与物品身份、文案和功能/);
+    assert.doesNotMatch(output.prompt,/本次是主题重设/);
+  }
+});
+
 test('layout plus style, color, material and scoped assets all reach the actual drawing upload path in native order',async()=>{
   const refs=['style','material','character','layout','color','content'].map(role=>({id:role,role,dataUrl:'data:image/png;base64,'+role+'-original-pixels'}));
   const uiPlan={version:1,layoutMode:'preserve',layoutReference:4,visualMode:'theme-redesign',

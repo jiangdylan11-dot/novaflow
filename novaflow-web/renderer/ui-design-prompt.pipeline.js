@@ -9,6 +9,31 @@
   const QWEN_LAYOUT_MODES = ['preserve', 'partial', 'reflow', 'create']
   const QWEN_VISUAL_MODES = ['style-transfer', 'theme-redesign', 'partial', 'create']
   const QWEN_REFERENCE_ROLES = ['layout', 'style', 'content', 'asset', 'combined']
+  function requestsThemeRedesign(input) {
+    // The human's theme replacement takes precedence over a style label from
+    // the selector or assistant. Negation applies to its nearby action, not an
+    // entire request such as "不要旧主题，换成深海主题".
+    const actions = /(?:更换|切换|改变|重设|重做|重新设计|改成|改为|换)(?:成|为|一个|个)?[^，。；;,\r\n]{0,16}主题|主题(?:更换|切换|改成|改为|换成|换为|重设|重做|重设计|重新设计)|\b(?:(?:change|replace|switch|reset|redesign)\s+(?:(?:the|this|current|old)\s+)?theme|theme[- ]?redesign|re[- ]?theme)\b/giu
+    return String(input.prompt || '').split(/[，。；;,\r\n]/u).some(clause => {
+      for (const match of clause.matchAll(actions)) {
+        const prefix = clause.slice(Math.max(0, match.index - 24), match.index)
+        if (/(?:不要|不需要|不必|不用|无需|无须|并非|不是|不想|不希望|未要求|勿|不)(?:再|去|把|将|要|进行|直接)?\s*$/u.test(prefix)
+          || /\b(?:no|not|without|don't|do not|never|avoid)\s+(?:(?:a|any|the)\s+)?$/iu.test(prefix)) continue
+        // "只换画风并保留原主题" is about the style, not a theme action.
+        if (/保留|保持|沿用/u.test(match[0])) continue
+        return true
+      }
+      return false
+    })
+  }
+  function themePreserveFacts(facts) {
+    return facts.filter(fact => {
+      if (/新主题|新人物|新物品|新符号|新标题|用户指定|替换后|目标主题/u.test(fact)) return true
+      const geometry = /位置|区域|面积|占比|尺寸|布局|数量|行列|层级/u.test(fact)
+      if (geometry && !/身份|人设|标题文字|文案|原主题|旧主题/u.test(fact)) return true
+      return !/(?:原|旧)(?:人物|角色|物品|符号|图案|标题|主题)|(?:人物|角色|物品|符号|图案|标题|主题).{0,12}(?:身份|保持原样|保持不变|不变)/u.test(fact)
+    })
+  }
   function normalizeQwenPlan(value, input) {
     const count = input.references?.length || 0
     const fail = () => { throw new Error('Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成') }
@@ -49,7 +74,8 @@
     const explicitIndex = sources.findIndex(ref => ref.role === 'layout')
     const ordinaryIndex = sources.findIndex(ref => ['reference', 'content'].includes(ref.role))
     const anchor = layoutIndex >= 0 ? layoutIndex : explicitIndex >= 0 ? explicitIndex : input.preserveLayout !== false ? ordinaryIndex : -1
-    const visualMode = input.generationIntent === 'style-transfer' ? 'style-transfer'
+    const visualMode = requestsThemeRedesign(input) ? 'theme-redesign'
+      : input.generationIntent === 'style-transfer' ? 'style-transfer'
       : input.generationIntent === 'iteration' ? 'partial' : 'theme-redesign'
     const references = sources.map((ref, index) => ({ index: index + 1, role: index === anchor ? 'layout'
       : ['style', 'color', 'material'].includes(ref.role) ? 'style'
@@ -68,6 +94,9 @@
     // A malformed AI contract cannot turn it into a style-only source.
     if (!plan || (fallback.layoutReference
       && (plan.layoutReference !== fallback.layoutReference || plan.layoutMode === 'create'))) return fallback
+    if (input.preserveLayout === true && requestsThemeRedesign(input)) {
+      return { ...plan, layoutMode: 'preserve', visualMode: 'theme-redesign', layoutChanges: [], preserve: themePreserveFacts(plan.preserve) }
+    }
     if (input.preserveLayout === true && input.generationIntent === 'style-transfer') {
       return { ...plan, layoutMode: 'preserve', visualMode: 'style-transfer', layoutChanges: [] }
     }
@@ -90,7 +119,7 @@
       const description = r.index === plan.layoutReference && wireframe
         ? '自建布局定位图，是唯一几何布局依据；只提供区域位置、占比、分组和数量，不是成品外观或人物物品身份，不保留灰块和占位框'
         : r.index === plan.layoutReference
-        ? `编辑画布，是唯一几何布局依据，构图和功能布局以它为准；${plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':'布局来源，美术按需求重做'}`
+        ? `编辑画布，是唯一几何布局依据，构图和功能布局以它为准；${plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':plan.visualMode==='theme-redesign'?'仅提供区域位置、占比、网格和功能关系；人物、背景、玩法物品和标题按用户的新主题要求重做，不默认保留旧内容身份':'布局来源，美术按需求重做'}`
         : r.role === 'style'
         ? sourceRole === 'color' ? '配色来源，只参考色彩关系，不复制人物物品、布局或文案'
           : sourceRole === 'material' ? '质感来源，只参考材质纹理与表面细节，不复制人物物品、布局或文案'
@@ -114,6 +143,7 @@
     const prompt = [native(directive), roles, scope,
       plan.layoutReference ? '用户明确指定的布局调整优先；其余区域位置、面积比例、网格数量与功能关系只由编辑画布决定，风格、配色、质感和人物元素图不得重新定义布局。' : '',
       plan.visualMode === 'style-transfer' && !wireframe ? '本次仅改变指定的画风、配色与质感，保留画布内的原人物与物品身份、文案和功能；用户明确指定素材替换的区域按其要求处理。' : '',
+      plan.visualMode === 'theme-redesign' && !wireframe ? '本次是主题重设：保留几何布局和功能；人物、背景、玩法物品与标题按用户明确的新主题和替换要求重新设计，不沿用未被要求保留的旧人设、旧物品或旧标题。未要求改变的金额、规则、控制功能及其状态保持正确；用户明确替换的内容优先于规划中的旧内容保留描述。' : '',
       '直接设计完整界面，保留参考的整体构图、区域衔接与叠放关系，不将画面改成整齐的通用格子模板。',
       // The native reference carries its arrangement; do not hard-code a vision model's guessed cell counts.
       plan.preserve.length ? `保留这些布局与功能事实：${plan.preserve.map(native).join('；')}` : '', geometry,
