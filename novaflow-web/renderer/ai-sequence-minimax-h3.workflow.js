@@ -1,6 +1,8 @@
 (function (root, factory) {
   const profiles = Object.freeze([
     Object.freeze({ id: 'beta5_int8', label: 'H3 beta5 TURBO · INT8', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
+    Object.freeze({ id: 'pdmd_4step', label: 'H3 PDMD · 4 步测试', steps: 4, checkpoint: 'Minimax_H3\\minimax_h3_fl2va_int8_convrot.safetensors', adapter: 'minimax_h3_pdmd\\minimax_h3_pdmd_4step_lora_avg_rank_57_bf16.safetensors' }),
+    Object.freeze({ id: 'pdmd_2step', label: 'H3 PDMD · 2 步测试', steps: 2, checkpoint: 'Minimax_H3\\minimax_h3_fl2va_int8_convrot.safetensors', adapter: 'minimax_h3_pdmd\\minimax_h3_pdmd_2step_lora_avg_rank_38_bf16.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'
@@ -8,6 +10,7 @@
   const settings = {}
   try {
     const saved = JSON.parse(root.localStorage.getItem(storageKey) || '{}')
+    if (profiles.some(p => p.id === saved.selected)) selected = saved.selected
     if (saved.settings && typeof saved.settings === 'object') {
       for (const profile of profiles) {
         if (saved.settings[profile.id]) settings[profile.id] = saved.settings[profile.id]
@@ -20,7 +23,7 @@
     // Repair the previously shipped 20-step default once; keep other custom
     // values, and allow users to explicitly save 20 again after this revision.
     if (saved.defaultsVersion !== 2) {
-      for (const { id } of profiles) {
+      for (const { id } of profiles.filter(p => !p.adapter)) {
         if (Number(settings[id]?.steps) === 20) settings[id] = { ...settings[id], steps: 4 }
       }
     }
@@ -40,6 +43,7 @@
     const core = instances.get(profile.id)
     const defaults = { aspectRatio: '9:16', megapixels: 0.4, durationSeconds: 5, fps: 24, steps: profile.steps, acceleration: 'sage' }
     const value = { ...defaults, ...settings[profile.id] }
+    if (profile.adapter) value.steps = profile.steps
     value.acceleration = defaults.acceleration
     try {
       if (value.resolutionMode === 'custom') Object.assign(value, core.normalizeCustomResolution(value))
@@ -75,7 +79,7 @@
     },
     supportsMode: (id, mode) => {
       const core = instances.get(profileFor(id).id)
-      try { core.normalizeSteps(4, mode); return true } catch (_) { return false }
+      try { core.normalizeSteps(profileFor(id).steps, mode); return true } catch (_) { return false }
     },
     getWorkflowJson: options => pick(options).getWorkflowJson(options),
     buildWorkflow: options => pick(options).buildWorkflow(options),
@@ -94,6 +98,7 @@
   const OUTPUT_FPS = 24
   const FPS_OPTIONS = Object.freeze([16, 24])
   const DEFAULT_STEPS = profile.steps
+  const PDMD = Boolean(profile.adapter)
   const SAGE_ATTENTION = acceleration === 'sage'
   const OUTPUT_STEPS = DEFAULT_STEPS
   const STEP_OPTIONS = Object.freeze([4, 20])
@@ -173,6 +178,7 @@
 
   const CORE_NODE_TYPES = new Set([
     'NovaFlowH3SageAttention',
+    'MiniMaxH3SigmaShift',
     'UNETLoader',
     'CLIPLoader',
     'VAELoader',
@@ -347,8 +353,10 @@
   }
 
   function normalizeSteps(value, modeValue) {
-    normalizeMode(modeValue)
+    const mode = normalizeMode(modeValue)
+    if (PDMD && mode === 'r2v') throw new TypeError('PDMD 测试链暂不支持多参考模式')
     const parsed = value == null || value === '' ? DEFAULT_STEPS : Number(value)
+    if (PDMD && parsed !== DEFAULT_STEPS) throw new RangeError('PDMD 必须使用对应的 ' + DEFAULT_STEPS + ' 步')
     if (!Number.isInteger(parsed) || parsed < MIN_STEPS || parsed > MAX_STEPS) {
       throw new RangeError(
         'MiniMax H3 steps must be an integer between ' + MIN_STEPS + ' and ' + MAX_STEPS,
@@ -401,6 +409,7 @@
     const steps = normalizeSteps(stepsValue, mode)
     if (value == null) return []
     if (!Array.isArray(value)) throw new TypeError('MiniMax H3 loras must be an array')
+    if (PDMD && value.some(item => item?.enabled !== false)) throw new TypeError('PDMD 测试链仅加载内置加速 LoRA，请切回 TURBO 使用其他 LoRA')
 
     const expectedFamily = mode === 'r2v' ? 'ref2va' : 'fl2va'
     const internalTurboIdentity = loraIdentity('minimax_h3\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors')
@@ -709,9 +718,17 @@
       }, 'Save MiniMax H3 video'),
     }
 
-
+    let modelId = '1'
+    if (PDMD) {
+      workflow['15'] = node('LoraLoaderModelOnly', { model: ['1', 0], lora_name: profile.adapter, strength_model: 1 }, 'H3 PDMD ' + DEFAULT_STEPS + ' 步加速')
+      workflow['17'] = node('MiniMaxH3SigmaShift', { model: ['15', 0], shift_video: 12, shift_audio: 3 }, 'H3 PDMD 采样调度')
+      modelId = '17'
+      workflow['6'].inputs.model = [modelId, 0]
+      workflow['9'].inputs.model = [modelId, 0]
+      workflow['7'].inputs.sampler_name = 'euler'
+    }
     if (SAGE_ATTENTION) {
-      workflow['16'] = node('NovaFlowH3SageAttention', { model: ['1', 0] }, 'H3 SageAttention 加速')
+      workflow['16'] = node('NovaFlowH3SageAttention', { model: [modelId, 0] }, 'H3 SageAttention 加速')
       workflow['9'].inputs.model = ['16', 0]
     }
     return workflow
@@ -1020,7 +1037,7 @@
   function applyUserLoras(workflow, loras, steps) {
     const [unetId] = oneByClass(workflow, 'UNETLoader')
     const guider = oneByClass(workflow, 'BasicGuider')[1]
-    let upstreamId = unetId
+    let upstreamId = PDMD ? '17' : unetId
 
     for (const descriptor of loras) {
       const id = nextNodeId(workflow, 30)
@@ -1229,6 +1246,7 @@
 
     const expectedCounts = {
       NovaFlowH3SageAttention: SAGE_ATTENTION ? 1 : 0,
+      MiniMaxH3SigmaShift: PDMD ? 1 : 0,
       UNETLoader: 1,
       CLIPLoader: 1,
       VAELoader: 2,
@@ -1289,7 +1307,7 @@
     if (steps !== requestedSteps || scheduler.inputs.steps !== steps) {
       throw new TypeError('MiniMax H3 workflow step count does not match the requested topology')
     }
-    requireLink(scheduler.inputs.model, unetId, 0, 'MiniMax H3 scheduler model')
+    requireLink(scheduler.inputs.model, PDMD ? '17' : unetId, 0, 'MiniMax H3 scheduler model')
     if (
       scheduler.inputs.scheduler !== 'simple' ||
       scheduler.inputs.denoise !== 1
@@ -1297,7 +1315,7 @@
       throw new TypeError('MiniMax H3 workflow must use the simple scheduler at full denoise')
     }
     const sampler = oneByClass(workflow, 'KSamplerSelect')[1]
-    if (sampler.inputs.sampler_name !== 'res_multistep') {
+    if (sampler.inputs.sampler_name !== (PDMD ? 'euler' : 'res_multistep')) {
       throw new TypeError('MiniMax H3 workflow uses the wrong sampler')
     }
     const guider = oneByClass(workflow, 'BasicGuider')[1]
@@ -1306,7 +1324,7 @@
       ? normalizeLoras(options.loras, mode, steps)
       : []
     const loraLoaders = entriesByClass(workflow, 'LoraLoaderModelOnly')
-    const expectedLoaderCount = expectedUserLoras.length
+    const expectedLoaderCount = expectedUserLoras.length + (PDMD ? 1 : 0)
     if (loraLoaders.length !== expectedLoaderCount) {
       if (!hasDeclaredLoras && loraLoaders.length > 0) {
         throw new TypeError('MiniMax H3 workflow contains an undeclared user LoRA')
@@ -1345,6 +1363,14 @@
     }
 
     let guiderModelId = unetId
+    if (PDMD) {
+      const [adapterId, adapter] = takeNextLoader(unetId, 'H3 PDMD LoRA')
+      requireLoraInputs(adapter, profile.adapter, 1, 'H3 PDMD LoRA')
+      const [shiftId, shift] = oneByClass(workflow, 'MiniMaxH3SigmaShift')
+      if (shiftId !== '17' || Object.keys(shift.inputs).length !== 3 || shift.inputs.shift_video !== 12 || shift.inputs.shift_audio !== 3) throw new TypeError('Invalid PDMD shift settings')
+      requireLink(shift.inputs.model, adapterId, 0, 'H3 PDMD shift model')
+      guiderModelId = shiftId
+    }
     for (let index = 0; index < expectedUserLoras.length; index += 1) {
       const descriptor = expectedUserLoras[index]
       const [loraId, loraNode] = takeNextLoader(
