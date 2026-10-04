@@ -35,6 +35,7 @@ function environment({ ui = true, references = [], optimize, qwen = false } = {}
   vm.runInContext(source('ui-design-prompt.pipeline.js'),sandbox);
   vm.runInContext(source('ui-design.drawing.js'),sandbox);
   const brand = source('novaflow-brand-runtime.js');
+  vm.runInContext(brand.slice(brand.indexOf('  function resolveArtGenerateReferenceInputs('), brand.indexOf('  async function runArtGenerate(')),sandbox);
   vm.runInContext(brand.slice(brand.indexOf('  async function runArtGenerate('), brand.indexOf('  function createArtGenerateExecutionBridge()')),sandbox);
   return { sandbox,state,calls,failures,builds,run:()=>sandbox.runArtGenerate(),adapter:sandbox.NovaFlowUiDesignDrawing };
 }
