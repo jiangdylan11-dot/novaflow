@@ -166,7 +166,7 @@
       'model.size': size,
       'model.custom_width': customWidth,
       'model.custom_height': customHeight,
-      'model.background': 'auto',
+      'model.background': normalizeChoice(settings.background, ['auto', 'opaque', 'transparent'], 'auto'),
       'model.quality': normalizeChoice(settings.quality, ['low', 'medium', 'high'], 'low'),
       n: 1,
       seed: normalizeInteger(settings.seed, 0, 0, 2147483647),
