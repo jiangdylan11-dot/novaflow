@@ -68,23 +68,38 @@
     // A malformed AI contract cannot turn it into a style-only source.
     if (!plan || (fallback.layoutReference
       && (plan.layoutReference !== fallback.layoutReference || plan.layoutMode === 'create'))) return fallback
+    if (input.preserveLayout === true && input.generationIntent === 'style-transfer') {
+      return { ...plan, layoutMode: 'preserve', visualMode: 'style-transfer', layoutChanges: [] }
+    }
     return plan
   }
   function compileQwenPlan(result, input) {
     const plan = resolveQwenPlan(result.uiPlan, input)
-    // Order the actual model inputs with layout/content first, without changing the user's slots.
-    // Competing full-screen references can overwrite the layout. The style image is read by
-    // the vision planner; the native edit gets its visual description and the layout image.
-    const anchoredStyle = plan.layoutReference > 0
+    // The layout/content anchor is native image 1. Keep every supplied image in
+    // the native edit as well as the planner; role instructions isolate geometry.
     const wireframe=Boolean(input.references[plan.layoutReference-1]?.uiLayoutId)
-    const styleSources = anchoredStyle ? plan.references.filter(r=>r.role==='style').map(r=>r.index) : []
-    const order = input.references.map((_,i) => i + 1).filter(i=>!styleSources.includes(i))
+    const order = input.references.map((_,i) => i + 1)
     if (plan.layoutReference) order.unshift(...order.splice(order.indexOf(plan.layoutReference),1))
-    const remap = value => String(value || '').replace(/(?:@?参考图|图)([1-9][0-9]*)|<image([1-9][0-9]*)>/g, (_,n,tag) => { const source = Number(n || tag); if (styleSources.includes(source)) return '指定风格'; const at = order.indexOf(source); if (at < 0) throw new Error('设计规划引用了不存在的参考图'); return '@参考图' + (at + 1) })
+    const remap = value => String(value || '').replace(/(?:@?参考图|图)([1-9][0-9]*)|<image([1-9][0-9]*)>/g, (_,n,tag) => { const source = Number(n || tag); const at = order.indexOf(source); if (at < 0) throw new Error('设计规划引用了不存在的参考图'); return '@参考图' + (at + 1) })
     remap(input.prompt) // Validate the source's identifiers without sending a second full request.
     const native = value => remap(value).replace(/@参考图([1-9][0-9]*)/g, (_,n) => order.length === 1 ? '图片' : `<image${n}>`)
     const modelReferences = plan.references.filter(r=>order.includes(r.index))
-    const roles = [...modelReferences].sort((a,b) => order.indexOf(a.index)-order.indexOf(b.index)).map(r => `${order.length === 1 ? '图片' : `<image${order.indexOf(r.index)+1}>`}是${r.index === plan.layoutReference ? wireframe?'自建布局定位图，功能区域的位置与占比以它为准；':'编辑画布，构图和功能布局以它为准；' : ''}${r.index===plan.layoutReference&&wireframe?'只提供空间关系，不是成品外观或人物物品身份，不保留灰块和占位框':({layout:plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':'布局来源，美术按需求重做',style:'风格来源，只迁移美术表现及其强度，不复制人物物品和布局',content:'内容来源，保留未要求改变的身份与功能',asset:'人物或物品素材来源',combined:'用户指定的布局与内容来源'})[r.role]}`).join('；')
+    const roles = [...modelReferences].sort((a,b) => order.indexOf(a.index)-order.indexOf(b.index)).map(r => {
+      const image = order.length === 1 ? '图片' : `<image${order.indexOf(r.index)+1}>`
+      const sourceRole = input.references[r.index-1]?.role
+      const description = r.index === plan.layoutReference && wireframe
+        ? '自建布局定位图，是唯一几何布局依据；只提供区域位置、占比、分组和数量，不是成品外观或人物物品身份，不保留灰块和占位框'
+        : r.index === plan.layoutReference
+        ? `编辑画布，是唯一几何布局依据，构图和功能布局以它为准；${plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':'布局来源，美术按需求重做'}`
+        : r.role === 'style'
+        ? sourceRole === 'color' ? '配色来源，只参考色彩关系，不复制人物物品、布局或文案'
+          : sourceRole === 'material' ? '质感来源，只参考材质纹理与表面细节，不复制人物物品、布局或文案'
+            : '风格来源，只迁移美术表现及其强度，不复制人物物品、布局或文案'
+        : r.role === 'asset' || r.role === 'content' || r.role === 'combined'
+        ? '人物或元素素材来源，只融合用户指定区域所需的身份与内容，不带入素材的背景、布局、文案或额外控件'
+        : '辅助布局参考，只参考用户指定的局部关系，不改变编辑画布的整体几何布局，不带入无关内容或文案'
+      return `${image}是${description}`
+    }).join('；')
     const layout = plan.layoutMode === 'preserve' ? '除用户明确要求改变的部分外，沿用布局参考的区域位置、面积比例、网格行列及功能数量；逐区更换视觉，组件轮廓可自由设计，不画占位线框。'
       : plan.layoutMode === 'partial' ? `只调整这些布局项目：${plan.layoutChanges.map(remap).join('；')}。其余区域的位置、占比、数量和功能关系保持参考图，不扩展为整张重新排版。`
       : plan.layoutMode === 'reflow' ? '按用户要求重新组织布局，保留用户指定的功能，不继承参考图未被要求保留的位置。'
@@ -97,17 +112,20 @@
     const geometry = input.structure?.regions?.length ? `模块位置与用途：${input.structure.regions.map(r =>
       `${r.purpose || '界面模块'}，左${Math.round(r.x/input.structure.width*100)}%、上${Math.round(r.y/input.structure.height*100)}%、宽${Math.round(r.width/input.structure.width*100)}%、高${Math.round(r.height/input.structure.height*100)}%`).join('；')}` : ''
     const prompt = [native(directive), roles, scope,
+      plan.layoutReference ? '用户明确指定的布局调整优先；其余区域位置、面积比例、网格数量与功能关系只由编辑画布决定，风格、配色、质感和人物元素图不得重新定义布局。' : '',
+      plan.visualMode === 'style-transfer' && !wireframe ? '本次仅改变指定的画风、配色与质感，保留画布内的原人物与物品身份、文案和功能；用户明确指定素材替换的区域按其要求处理。' : '',
       '直接设计完整界面，保留参考的整体构图、区域衔接与叠放关系，不将画面改成整齐的通用格子模板。',
       // The native reference carries its arrangement; do not hard-code a vision model's guessed cell counts.
       plan.preserve.length ? `保留这些布局与功能事实：${plan.preserve.map(native).join('；')}` : '', geometry,
-      '输出完整UI成品，保留未要求修改的文字与功能。'].filter(Boolean).join('。').replace(/[\r\n]+/g, ' ').replace(/。{2,}/g, '。')
+      wireframe ? '输出完整UI成品，只呈现用户需求指定的最终文案、物品图案与功能控件。布局定位图中的区域名、诊断编号、示例文字、灰块与空白占位仅用于定位，必须删除并替换为对应真实成品元素与功能图标；不得继承定位图中未被用户指定的文字，不得以编号替代物品，不得输出缺少功能图标的空白按钮。'
+        : '输出完整UI成品，保留未要求修改的文字与功能。'].filter(Boolean).join('。').replace(/[\r\n]+/g, ' ').replace(/。{2,}/g, '。')
     const modelPlan = { ...plan, layoutReference: plan.layoutReference ? 1 : 0,
       references: modelReferences.map(r => ({ ...r, index: order.indexOf(r.index) + 1 })).sort((a,b) => a.index-b.index),
       layoutChanges: plan.layoutChanges.map(remap), preserve: plan.preserve.map(remap) }
     return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, analysisPlan:plan, order }
   }
   function key(input) {
-    return JSON.stringify({ contract: 'ui-native-edit-4', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ contract: 'ui-native-edit-6', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     cache.set(id, { keys: [key(input), ...(appliedInput ? [key(appliedInput)] : [])], result: { ...result } })

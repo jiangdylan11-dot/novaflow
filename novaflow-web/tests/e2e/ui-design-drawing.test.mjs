@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = name => readFileSync(new URL('../../renderer/' + name, import.meta.url), 'utf8');
 function environment({ ui = true, references = [], optimize, qwen = false } = {}) {
-  const calls = [], failures = [], builds = [];
+  const calls = [], failures = [], builds = [], uploads = [];
   const state = { provider:'local',mode:'img2img',prompt:'设计一个角色装备界面',negativePrompt:'不要模糊',width:1280,height:720,count:2,randomSeed:false,seed:17,nsfw:false,loras:[{name:'example',strength:0.7}],samplingOverrides:{'qwen-2.1:img2img':{steps:32,cfg:3}},results:[] };
   const noop = () => {};
   const sandbox = { AbortController, console, URLSearchParams, setTimeout, clearTimeout, ART_GENERATE_STATE:state,
@@ -18,7 +18,7 @@ function environment({ ui = true, references = [], optimize, qwen = false } = {}
     resetArtGenerateProgress:noop,setArtGenerateProgress:noop,setArtGenerateStatus:(text,error)=>{if(error)failures.push(text);},
     compileArtGeneratePromptMentions:(_refs,text,snapshot)=>({text,invalidTokens:[],snapshot}),addArtGeneratePromptHistory:noop,
     beginArtGenerateRun:()=>1,isArtGenerateRunCurrent:()=>true,detectArtGenerateBaseUrl:async()=> 'http://test',
-    artDataUrlMime:()=> 'image/png',artUploadDataUrl:async(_base,name)=>{calls.push('upload');return name;},
+    artDataUrlMime:()=> 'image/png',artUploadDataUrl:async(_base,name,dataUrl)=>{calls.push('upload');uploads.push({name,dataUrl});return name;},
     loadNovaflowArtExportImage:async()=>({naturalWidth:1024,naturalHeight:1024}),
     normalizeArtGenerateCount:n=>n,buildArtGenerateWorkflowWithSeed:(_seed,build)=>build(),
     buildArtGenerateRunWorkflow:(...args)=>{builds.push(args);return {workflow:{},modelKey:'drawing'};},
@@ -37,7 +37,7 @@ function environment({ ui = true, references = [], optimize, qwen = false } = {}
   const brand = source('novaflow-brand-runtime.js');
   vm.runInContext(brand.slice(brand.indexOf('  function resolveArtGenerateReferenceInputs('), brand.indexOf('  async function runArtGenerate(')),sandbox);
   vm.runInContext(brand.slice(brand.indexOf('  async function runArtGenerate('), brand.indexOf('  function createArtGenerateExecutionBridge()')),sandbox);
-  return { sandbox,state,calls,failures,builds,run:()=>sandbox.runArtGenerate(),adapter:sandbox.NovaFlowUiDesignDrawing };
+  return { sandbox,state,calls,failures,builds,uploads,run:()=>sandbox.runArtGenerate(),adapter:sandbox.NovaFlowUiDesignDrawing };
 }
 
 test('UI uses the real drawing batch path and preserves sampling, LoRA, size, negative prompt and seeds',async()=>{
@@ -88,13 +88,14 @@ test('Qwen partial layout changes retain protected areas without a global positi
   assert.doesNotMatch(e.builds[0][4],/沿用布局参考图的全部区域|本次是局部修改，沿用全部/);
 });
 
-test('Qwen sends the second layout image as native source and keeps style reference in the planner',async()=>{
+test('Qwen sends the second layout image first and retains the style image in native inputs',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'用@参考图1的卡通风格，沿用@参考图2的结构。',uiPlan:planFor(refs,{layoutReference:2})})});
   e.state.prompt='用@参考图1的卡通风格，沿用@参考图2的布局';
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
-  assert.equal(prepared.references.length,1);assert.equal(prepared.references[0].role,'layout');
-  assert.match(prepared.promptSnapshot.prompt,/用指定风格的卡通风格，沿用图片的结构/);
+  assert.equal(prepared.references.length,2);assert.equal(prepared.references[0].role,'layout');
+  assert.equal(prepared.references[1].dataUrl,refs[0].dataUrl);
+  assert.match(prepared.promptSnapshot.prompt,/用<image2>的卡通风格，沿用<image1>的结构/);
   assert.doesNotMatch(prepared.promptSnapshot.prompt,/@参考图|用户设计需求|[\r\n]/);
   assert.equal(prepared.state.uiNativeEditPrompt,true);
   assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
@@ -125,7 +126,7 @@ test('Qwen native editing carries supplied layout facts and maps all image ident
   const input={references,prompt:'参考图2是画布，用<image1>的风格'};
   const result={prompt:'将参考图2改成海盗主题，图1只提供材质。',uiPlan:planFor(references,{layoutReference:2,preserve:['符号区6列5行','四个奖池','五个底部按钮']})};
   const compiled=p.compileQwenPlan(result,input);
-  assert.match(compiled.prompt,/将图片改成海盗主题，指定风格只提供材质/);
+  assert.match(compiled.prompt,/将<image1>改成海盗主题，<image2>只提供材质/);
   assert.match(compiled.prompt,/符号区6列5行；四个奖池；五个底部按钮/);
   assert.doesNotMatch(compiled.prompt,/@参考图|参考图2|[\r\n]/);
   assert.equal((compiled.prompt.match(/符号区6列5行/g)||[]).length,1);
@@ -144,14 +145,57 @@ test('vision grid estimates never become a template while explicit user changes 
   assert.doesNotMatch(compiled.prompt,/6列7行|42个位置|网格保持/);
 });
 
-test('anchored Qwen edits analyze style separately and use the content image as the native layout source',async()=>{
+test('anchored Qwen edits preserve style pixels and isolate layout authority in native editing',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'},{dataUrl:'data:image/png;base64,layout',role:'layout'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将图1的水彩纸纹与柔和光影用于图2，保留图2每个角色物品。',uiPlan:planFor(refs,{layoutReference:2,visualMode:'style-transfer',grids:[{description:'物品格',columns:6,rows:5}]})})});
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
-  assert.equal(prepared.references.length,1);assert.equal(prepared.references[0].role,'layout');
+  assert.equal(prepared.references.length,2);assert.equal(prepared.references[0].role,'layout');
+  assert.equal(prepared.references[1].role,'style');
   assert.match(prepared.promptSnapshot.prompt,/水彩纸纹与柔和光影/);
-  assert.doesNotMatch(prepared.promptSnapshot.prompt,/<image2>|@参考图|布局来源，美术按需求重做/);
-  assert.equal(prepared.uiPlan.references.length,1);assert.equal(prepared.analysisUiPlan.references.length,2);
+  assert.match(prepared.promptSnapshot.prompt,/<image2>是风格来源/);
+  assert.match(prepared.promptSnapshot.prompt,/唯一几何布局依据/);
+  assert.doesNotMatch(prepared.promptSnapshot.prompt,/@参考图|布局来源，美术按需求重做/);
+  assert.equal(prepared.uiPlan.references.length,2);assert.equal(prepared.analysisUiPlan.references.length,2);
+});
+
+test('single-image whole-screen style transfer preserves the source pixels and human scope despite a valid wrong plan',async()=>{
+  const refs=[{id:'original-ui',dataUrl:'data:image/png;base64,original-ui-pixels',role:'reference'}];
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'把整个界面统一换成手绘水彩纸纹。',
+    uiPlan:planFor(refs,{layoutMode:'reflow',visualMode:'theme-redesign',layoutChanges:['改成通用格子模板']})})});
+  e.state.prompt='参考图1，布局不变，只把整个界面风格换成手绘水彩';
+  const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
+  assert.equal(prepared.uiPlan.layoutMode,'preserve');assert.equal(prepared.uiPlan.visualMode,'style-transfer');
+  assert.deepEqual(Array.from(prepared.uiPlan.layoutChanges),[]);
+  assert.match(prepared.promptSnapshot.prompt,/保留画布内的原人物与物品身份、文案和功能/);
+  assert.doesNotMatch(prepared.promptSnapshot.prompt,/改成通用格子模板/);
+  await e.run();assert.deepEqual(e.failures,[]);
+  assert.equal(e.uploads.length,1);assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);
+  assert.equal(e.builds[0][2].length,1);assert.equal(e.builds[0][8].uiPreserveLayout,true);
+  assert.equal(e.builds[0][8].uiRunIntent,'style-transfer');
+});
+
+test('layout plus style, color, material and scoped assets all reach the actual drawing upload path in native order',async()=>{
+  const refs=['style','material','character','layout','color','content'].map(role=>({id:role,role,dataUrl:'data:image/png;base64,'+role+'-original-pixels'}));
+  const uiPlan={version:1,layoutMode:'preserve',layoutReference:4,visualMode:'theme-redesign',
+    references:['style','style','asset','layout','style','content'].map((role,i)=>({index:i+1,role})),layoutChanges:[],preserve:[]};
+  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'以图4布局完成全界面；图1提供美术，图2提供纸纹，图3的人物只融合左侧指定区域，图5提供配色，图6提供指定元素。',uiPlan})});
+  e.state.prompt='沿用图4布局，用图1风格、图2纸纹、图5配色，人物图3和元素图6只用于左侧展示区';
+  const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
+  e.state.count=1;await e.run();assert.deepEqual(e.failures,[]);
+  assert.deepEqual(e.uploads.map(u=>u.dataUrl),[refs[3],refs[0],refs[1],refs[2],refs[4],refs[5]].map(r=>r.dataUrl));
+  assert.equal(e.builds[0][2].length,6);
+  const native=e.builds[0][4];
+  assert.match(native,/<image1>是编辑画布，是唯一几何布局依据/);
+  assert.match(native,/<image2>是风格来源/);assert.match(native,/<image3>是质感来源/);
+  assert.match(native,/<image5>是配色来源/);
+  assert.match(native,/<image4>是人物或元素素材来源，只融合用户指定区域/);
+  assert.match(native,/<image6>是人物或元素素材来源，只融合用户指定区域/);
+  assert.match(native,/不带入素材的背景、布局、文案或额外控件/);
+  assert.equal((native.match(/唯一几何布局依据/g)||[]).length,1);
+  assert.equal(prepared.uiPlan.references.length,6);
+  assert.equal(prepared.analysisUiPlan.layoutReference,4);
+  assert.equal(e.state.results.length,1);
+  assert.equal(e.state.prompt,'沿用图4布局，用图1风格、图2纸纹、图5配色，人物图3和元素图6只用于左侧展示区');
 });
 test('module names stay in the editor and never enter assistant or generation payloads',async()=>{
   const region = {name:'仅用户识别的内部标签',title:'旧标题',label:'旧标签',purpose:'辅助导航',requirements:'使用小号灰字',x:10,y:20,width:600,height:100,participates:false,locked:true};
@@ -303,10 +347,29 @@ test('native Qwen treats a user layout as spatial guidance instead of preserving
  const refs=[{role:'style'},{role:'layout',uiLayoutId:'L',uiStructure:{regions:[{}]}}];
  const input={references:refs,prompt:'按图2布局，用图1风格',structure:{width:1000,height:1000,regions:[{x:50,y:50,width:400,height:800,purpose:'人物展示'}]}};
  const output=p.compileQwenPlan({prompt:'设计完整角色界面',uiPlan:planFor(refs,{layoutReference:2,visualMode:'style-transfer'})},input);
- assert.equal(output.references.length,1);assert.equal(output.references[0].uiLayoutId,'L');
+ assert.equal(output.references.length,2);assert.equal(output.references[0].uiLayoutId,'L');
  assert.match(output.prompt,/自建布局定位图/);assert.match(output.prompt,/不保留灰块和占位框/);
+ assert.match(output.prompt,/只呈现用户需求指定的最终文案、物品图案与功能控件/);
+ assert.match(output.prompt,/区域名、诊断编号、示例文字、灰块与空白占位仅用于定位/);
+ assert.match(output.prompt,/不得输出缺少功能图标的空白按钮/);
+ assert.doesNotMatch(output.prompt,/保留画布内的原人物与物品身份、文案和功能|保留未要求修改的文字与功能/);
  assert.doesNotMatch(output.prompt,/拆.{0,3}素材|逐个生成/);
  const recovered=p.compileQwenPlan({prompt:'设计',uiPlan:planFor(refs,{layoutReference:1})},input);
  assert.equal(recovered.analysisPlan.layoutReference,2);
  assert.equal(recovered.references[0].uiLayoutId,'L');
+});
+
+test('native Qwen preserves finished screenshot copy but never diagnostic guide copy',()=>{
+ const e=environment({qwen:true}),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
+ const refs=[{role:'layout',uiLayoutId:'guide-20',dataUrl:'data:image/png;base64,guide'},{role:'style',dataUrl:'data:image/png;base64,style'}];
+ const input={references:refs,prompt:'图1提供20格位置，图2提供质感；成品标题JADE FORTUNE，不显示COMPACT SCENERY、R1C1；5按钮要有图标',preserveLayout:true,generationIntent:'style-transfer'};
+ const result={prompt:input.prompt,uiPlan:planFor(refs,{visualMode:'style-transfer'})};
+ const guide=p.compileQwenPlan(result,input);
+ assert.equal(guide.references.length,2);assert.equal(guide.plan.layoutMode,'preserve');
+ assert.match(guide.prompt,/最终文案、物品图案与功能控件/);
+ assert.doesNotMatch(guide.prompt,/保留画布内的原人物与物品身份、文案和功能|保留未要求修改的文字与功能/);
+ assert.ok(guide.prompt.endsWith('不得输出缺少功能图标的空白按钮。'));
+ const screenshot=p.compileQwenPlan(result,{...input,references:refs.map(r=>({...r,uiLayoutId:undefined}))});
+ assert.match(screenshot.prompt,/保留画布内的原人物与物品身份、文案和功能/);
+ assert.ok(screenshot.prompt.endsWith('保留未要求修改的文字与功能。'));
 });
