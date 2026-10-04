@@ -26,8 +26,11 @@
       return false
     })
   }
-  function themePreserveFacts(facts) {
+  function themePreserveFacts(facts, redesignForms = false) {
     return facts.filter(fact => {
+      // A planner's source-frame measurements must not turn a new theme into
+      // a recolour of the same boxes. Human-specified measurements still win.
+      if (redesignForms && !/用户指定|用户明确/u.test(fact) && /轮廓|外形|框形|矩形|圆角|边框|外框|长宽|宽高|大小|尺寸|面积|占比|比例|精确坐标/u.test(fact)) return false
       if (/新主题|新人物|新物品|新符号|新标题|用户指定|替换后|目标主题/u.test(fact)) return true
       const geometry = /位置|区域|面积|占比|尺寸|布局|数量|行列|层级/u.test(fact)
       if (geometry && !/身份|人设|标题文字|文案|原主题|旧主题/u.test(fact)) return true
@@ -95,7 +98,7 @@
     if (!plan || (fallback.layoutReference
       && (plan.layoutReference !== fallback.layoutReference || plan.layoutMode === 'create'))) return fallback
     if (input.preserveLayout === true && requestsThemeRedesign(input)) {
-      return { ...plan, layoutMode: 'preserve', visualMode: 'theme-redesign', layoutChanges: [], preserve: themePreserveFacts(plan.preserve) }
+      return { ...plan, layoutMode: 'preserve', visualMode: 'theme-redesign', layoutChanges: [], preserve: themePreserveFacts(plan.preserve, input.generationIntent !== 'iteration') }
     }
     if (input.preserveLayout === true && input.generationIntent === 'style-transfer') {
       return { ...plan, layoutMode: 'preserve', visualMode: 'style-transfer', layoutChanges: [] }
@@ -103,7 +106,9 @@
     return plan
   }
   function compileQwenPlan(result, input) {
-    const plan = resolveQwenPlan(result.uiPlan, input)
+    const resolved = resolveQwenPlan(result.uiPlan, input)
+    const themeFormRedesign = resolved.visualMode === 'theme-redesign' && resolved.layoutMode === 'preserve' && input.generationIntent !== 'iteration'
+    const plan = themeFormRedesign ? { ...resolved, preserve: themePreserveFacts(resolved.preserve, true) } : resolved
     // The layout/content anchor is native image 1. Keep every supplied image in
     // the native edit as well as the planner; role instructions isolate geometry.
     const wireframe=Boolean(input.references[plan.layoutReference-1]?.uiLayoutId)
@@ -117,19 +122,26 @@
       const image = order.length === 1 ? '图片' : `<image${order.indexOf(r.index)+1}>`
       const sourceRole = input.references[r.index-1]?.role
       const description = r.index === plan.layoutReference && wireframe
-        ? '自建布局定位图，是唯一几何布局依据；只提供区域位置、占比、分组和数量，不是成品外观或人物物品身份，不保留灰块和占位框'
+        ? themeFormRedesign
+          ? '自建布局定位图，是唯一玩法结构与主要区域锚点依据；只提供锚定区域、分组和数量，不是成品外观或人物物品身份，组件外轮廓与尺寸比例可在定位区域内设计，不保留灰块和占位框'
+          : '自建布局定位图，是唯一几何布局依据；只提供区域位置、占比、分组和数量，不是成品外观或人物物品身份，不保留灰块和占位框'
         : r.index === plan.layoutReference
-        ? `编辑画布，是唯一几何布局依据，构图和功能布局以它为准；${plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':plan.visualMode==='theme-redesign'?'仅提供区域位置、占比、网格和功能关系；人物、背景、玩法物品和标题按用户的新主题要求重做，不默认保留旧内容身份':'布局来源，美术按需求重做'}`
+        ? themeFormRedesign
+          ? '编辑画布，是唯一玩法结构与主要区域锚点依据；仅保留玩法拓扑、网格行列数量、控件功能、信息层级及主要区域锚点；人物、背景、玩法物品和标题按用户的新主题要求重做，不默认保留旧内容身份'
+          : `编辑画布，是唯一几何布局依据，构图和功能布局以它为准；${plan.visualMode==='style-transfer'?'保留原内容，只按要求改变美术表现':plan.visualMode==='theme-redesign'?'仅提供区域位置、占比、网格和功能关系；人物、背景、玩法物品和标题按用户的新主题要求重做，不默认保留旧内容身份':'布局来源，美术按需求重做'}`
         : r.role === 'style'
         ? sourceRole === 'color' ? '配色来源，只参考色彩关系，不复制人物物品、布局或文案'
           : sourceRole === 'material' ? '质感来源，只参考材质纹理与表面细节，不复制人物物品、布局或文案'
             : '风格来源，只迁移美术表现及其强度，不复制人物物品、布局或文案'
         : r.role === 'asset' || r.role === 'content' || r.role === 'combined'
         ? '人物或元素素材来源，只融合用户指定区域所需的身份与内容，不带入素材的背景、布局、文案或额外控件'
-        : '辅助布局参考，只参考用户指定的局部关系，不改变编辑画布的整体几何布局，不带入无关内容或文案'
+        : themeFormRedesign ? '辅助布局参考，只参考用户指定的局部结构与锚点，不改变编辑画布的玩法拓扑与主要区域锚点，不带入无关内容或文案'
+          : '辅助布局参考，只参考用户指定的局部关系，不改变编辑画布的整体几何布局，不带入无关内容或文案'
       return `${image}是${description}`
     }).join('；')
-    const layout = plan.layoutMode === 'preserve' ? '除用户明确要求改变的部分外，沿用布局参考的区域位置、面积比例、网格行列及功能数量；逐区更换视觉，组件轮廓可自由设计，不画占位线框。'
+    const layout = plan.layoutMode === 'preserve' ? themeFormRedesign
+      ? '除用户明确要求改变的部分外，保留玩法拓扑、网格行列数量、控件数量与功能、信息层级及主要区域锚点；锚定区域内可创意重设计标题、主框、奖励栏和按钮的轮廓、尺寸比例与装饰负形，使造型回应新主题。区域锚点不是旧矩形框的固定外轮廓，不要求逐像素复刻原框体；保持文字清晰、点击目标可辨识，装饰不得遮挡玩法内容或控件，不画占位线框。'
+      : '除用户明确要求改变的部分外，沿用布局参考的区域位置、面积比例、网格行列及功能数量；在原位置逐区处理视觉，不画占位线框。'
       : plan.layoutMode === 'partial' ? `只调整这些布局项目：${plan.layoutChanges.map(remap).join('；')}。其余区域的位置、占比、数量和功能关系保持参考图，不扩展为整张重新排版。`
       : plan.layoutMode === 'reflow' ? '按用户要求重新组织布局，保留用户指定的功能，不继承参考图未被要求保留的位置。'
       : '没有布局来源，根据用户要求设计完整布局；风格图、人物和物品图不提供布局。'
@@ -138,15 +150,18 @@
     const directive = String(result.prompt || '').replace(/(?:^|\n)参考标识[^\n]*/g, '').trim()
     if (!directive) throw new Error('UI 编辑指令为空，本次未提交生成')
     const scope = native(layout)
-    const geometry = input.structure?.regions?.length ? `模块位置与用途：${input.structure.regions.map(r =>
+    const geometry = input.structure?.regions?.length ? `${themeFormRedesign ? '主要区域锚点与用途（定位范围，不锁定组件外轮廓或尺寸比例）' : '模块位置与用途'}：${input.structure.regions.map(r =>
       `${r.purpose || '界面模块'}，左${Math.round(r.x/input.structure.width*100)}%、上${Math.round(r.y/input.structure.height*100)}%、宽${Math.round(r.width/input.structure.width*100)}%、高${Math.round(r.height/input.structure.height*100)}%`).join('；')}` : ''
     const prompt = [native(directive), roles, scope,
-      plan.layoutReference ? '用户明确指定的布局调整优先；其余区域位置、面积比例、网格数量与功能关系只由编辑画布决定，风格、配色、质感和人物元素图不得重新定义布局。' : '',
+      plan.layoutReference ? themeFormRedesign
+        ? '用户明确指定的布局调整优先；玩法拓扑、网格行列数量、控件功能、信息层级与主要区域锚点只由编辑画布决定，风格、配色、质感和人物元素图不得重新定义这些结构关系；原有框体形状与装饰只作可替换的视觉参考。'
+        : '用户明确指定的布局调整优先；其余区域位置、面积比例、网格数量与功能关系只由编辑画布决定，风格、配色、质感和人物元素图不得重新定义布局。' : '',
       plan.visualMode === 'style-transfer' && !wireframe ? '本次仅改变指定的画风、配色与质感，保留画布内的原人物与物品身份、文案和功能；用户明确指定素材替换的区域按其要求处理。' : '',
-      plan.visualMode === 'theme-redesign' && !wireframe ? '本次是主题重设：保留几何布局和功能；人物、背景、玩法物品与标题按用户明确的新主题和替换要求重新设计，不沿用未被要求保留的旧人设、旧物品或旧标题。未要求改变的金额、规则、控制功能及其状态保持正确；用户明确替换的内容优先于规划中的旧内容保留描述。' : '',
-      '直接设计完整界面，保留参考的整体构图、区域衔接与叠放关系，不将画面改成整齐的通用格子模板。',
+      plan.visualMode === 'theme-redesign' && !wireframe ? '本次是主题重设：玩法与布局按上述约束处理；人物、背景、玩法物品与标题按用户明确的新主题和替换要求重新设计，不沿用未被要求保留的旧人设、旧物品或旧标题。未要求改变的金额、规则、控制功能及其状态保持正确；用户明确替换的内容优先于规划中的旧内容保留描述。' : '',
+      themeFormRedesign ? '直接设计完整界面，以主要区域锚点保持整体构图与玩法流程；区域内部的框体衔接、视觉轮廓和装饰叠放可按新主题重新设计，不将画面改成整齐的通用格子模板。'
+        : '直接设计完整界面，保留参考的整体构图、区域衔接与叠放关系，不将画面改成整齐的通用格子模板。',
       // The native reference carries its arrangement; do not hard-code a vision model's guessed cell counts.
-      plan.preserve.length ? `保留这些布局与功能事实：${plan.preserve.map(native).join('；')}` : '', geometry,
+      plan.preserve.length ? `保留这些${themeFormRedesign ? '玩法、功能与区域锚点' : '布局与功能'}事实：${plan.preserve.map(native).join('；')}` : '', geometry,
       wireframe ? '输出完整UI成品，只呈现用户需求指定的最终文案、物品图案与功能控件。布局定位图中的区域名、诊断编号、示例文字、灰块与空白占位仅用于定位，必须删除并替换为对应真实成品元素与功能图标；不得继承定位图中未被用户指定的文字，不得以编号替代物品，不得输出缺少功能图标的空白按钮。'
         : '输出完整UI成品，保留未要求修改的文字与功能。'].filter(Boolean).join('。').replace(/[\r\n]+/g, ' ').replace(/。{2,}/g, '。')
     const modelPlan = { ...plan, layoutReference: plan.layoutReference ? 1 : 0,
@@ -155,7 +170,7 @@
     return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, analysisPlan:plan, order }
   }
   function key(input) {
-    return JSON.stringify({ contract: 'ui-native-edit-6', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ contract: 'ui-native-edit-7', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     cache.set(id, { keys: [key(input), ...(appliedInput ? [key(appliedInput)] : [])], result: { ...result } })
