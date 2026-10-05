@@ -193,9 +193,9 @@
     const wireframe=Boolean(input.references[plan.layoutReference-1]?.uiLayoutId)
     const order = input.references.map((_,i) => i + 1)
     if (plan.layoutReference) order.unshift(...order.splice(order.indexOf(plan.layoutReference),1))
-    const remap = value => String(value || '').replace(/(?:@?参考图|图)([1-9][0-9]*)|<image([1-9][0-9]*)>/g, (_,n,tag) => { const source = Number(n || tag); const at = order.indexOf(source); if (at < 0) throw new Error('设计规划引用了不存在的参考图'); return '@参考图' + (at + 1) })
+    const remap = value => String(value || '').replace(/(?:@?参考图|图)([1-9][0-9]*)(?![0-9]|\s*[×xX*]\s*[0-9])|<image([1-9][0-9]*)>/g, (_,n,tag) => { const source = Number(n || tag); const at = order.indexOf(source); if (at < 0) throw new Error('设计规划引用了不存在的参考图'); return '@参考图' + (at + 1) })
     remap(input.prompt) // Validate the source's identifiers without sending a second full request.
-    const native = value => remap(value).replace(/@参考图([1-9][0-9]*)/g, (_,n) => order.length === 1 ? '图片' : `<image${n}>`)
+    const native = value => remap(value).replace(/@参考图([1-9][0-9]*)(?![0-9]|\s*[×xX*]\s*[0-9])/g, (_,n) => order.length === 1 ? '图片' : `<image${n}>`)
     const modelReferences = plan.references.filter(r=>order.includes(r.index))
     const roles = [...modelReferences].sort((a,b) => order.indexOf(a.index)-order.indexOf(b.index)).map(r => {
       const image = order.length === 1 ? '图片' : `<image${order.indexOf(r.index)+1}>`

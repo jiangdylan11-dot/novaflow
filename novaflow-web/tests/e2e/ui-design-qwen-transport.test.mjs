@@ -119,3 +119,20 @@ test('assistant requires layout before transport and promotes the sole style ima
   assert.match(requests[0].requirements,/只有一张图片时这张就是布局图/);
   assert.equal(result.uiPlan.layoutReference,1);assert.equal(result.uiPlan.layoutMode,'preserve');
 });
+
+test('UI dimensions stay literal while genuine reference identifiers are validated and reordered',()=>{
+  const context={};vm.createContext(context);
+  vm.runInContext(readFileSync(new URL('../../renderer/ui-design-prompt.pipeline.js',import.meta.url),'utf8'),context);
+  const references=[{role:'style',dataUrl:'data:image/png;base64,style'},{role:'layout',dataUrl:'data:image/png;base64,layout'}];
+  const uiPlan={version:1,layoutMode:'preserve',layoutReference:2,visualMode:'partial',references:[{index:1,role:'style'},{index:2,role:'layout'}],layoutChanges:[],preserve:[],grids:[]};
+  for(const dimension of ['1280×720','1280 x 720','1280X720','1280*720'])for(const prefix of ['完整布局图','参考图','@参考图']){
+    const prompt=`${prefix}${dimension}，使用参考图2布局，参考图1配色，保留<image2>功能。`;
+    const result=context.NovaFlowUiDesignPromptPipeline.compileQwenPlan({prompt,uiPlan},{prompt,references,generationIntent:'iteration',preserveLayout:true});
+    assert.ok(result.prompt.includes(prefix+dimension));
+    assert.match(result.prompt,/使用<image1>布局，<image2>配色，保留<image1>功能/);
+    assert.equal(result.references[0].dataUrl,references[1].dataUrl);
+  }
+  for(const invalid of ['参考图3','图12','@参考图12','<image3>']){
+    assert.throws(()=>context.NovaFlowUiDesignPromptPipeline.compileQwenPlan({prompt:invalid,uiPlan},{prompt:invalid,references,generationIntent:'iteration'}),/不存在的参考图/);
+  }
+});
