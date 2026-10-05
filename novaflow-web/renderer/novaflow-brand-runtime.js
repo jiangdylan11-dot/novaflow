@@ -78168,6 +78168,8 @@
     googleAspectRatioImg2img: "1:1",
     googleResolution: "1K",
     nsfw: false,
+    // 模型 list on the 2.1 route: "" standard, "realistic" / "anime" the fine-tunes (ART_QWEN21_VARIANTS).
+    qwen21Variant: "",
     prompt: "",
     negativePrompt: "",
     width: 1024,
@@ -81523,6 +81525,7 @@
       renderSampling: renderArtGenerateSamplingField,
       renderSeedToggle: renderArtGenerateSeedToggle,
       nsfwSwitch,
+      variantSelect: !!nsfwSwitch,
       rerender: () => renderArtGenerateSurfaces({ forceBottom: true })
     }) || [];
     // 生成数量 applies to every provider, so it sits after the provider-specific fields (after NSFW for 本地模型).
@@ -83726,6 +83729,10 @@
   const ART_QWEN21_UNETS = ["qwen-image-2.1-UC-Q8_0.gguf", "qwen-image-2.1-UC-Q5_K_M.gguf", "qwen-image-2.1-UC-Q4_K_M.gguf"];
   const ART_QWEN21_CLIPS = ["qwen3vl_8b_w4a8_heretic.safetensors", "qwen3vl_8b_int8_convrot.safetensors", "qwen3vl_8b_bf16.safetensors"];
   const ART_QWEN21_VAE = "qwen_image_2.1_vae_bf16.safetensors";
+  // The drawing panel's 模型 list: Qwen-Image-2.1 fine-tunes in the node's diffusion_models, loaded by
+  // ComfyUI's own UNETLoader (the int8 convrot weights carry their comfy_quant per layer). Encoder, VAE,
+  // steps and graph stay 2.1's; a node without the file is an error, never a silent standard run.
+  const ART_QWEN21_VARIANTS = Object.freeze({ realistic: "NoctQ_V4_int8_convrot.safetensors", anime: "NoctQA_V1_int8_convrot.safetensors" });
 
   function artQwen21Choice(nodeInfo, key, candidates) {
     const spec = nodeInfo?.input?.required?.[key];
@@ -83792,11 +83799,17 @@
     const runtime = artQwen21Runtime();
     if (!runtime) return null;
     const info = runtime.info || {};
+    const variant = ART_QWEN21_VARIANTS[state?.qwen21Variant] || "";
+    if (variant && !artQwen21Choice(info.UNETLoader, "unet_name", [variant])) {
+      throw new Error("当前算力节点缺少所选模型，请换回标准模型，或把模型文件放进节点后重新启动 NovaFlow 再试");
+    }
     const seed = state?.randomSeed || Number(state?.seed) < 0
       ? Math.floor(Math.random() * 1000000000)
       : Math.round(Number(state?.seed) || 0);
     const workflow = {
-      "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: runtime.unet } },
+      "1": variant
+        ? { class_type: "UNETLoader", inputs: { unet_name: variant, weight_dtype: "default" } }
+        : { class_type: "UnetLoaderGGUF", inputs: { unet_name: runtime.unet } },
       "2": { class_type: "CLIPLoader", inputs: { clip_name: runtime.clip, type: "qwen_image", device: "default" } },
       "3": { class_type: "VAELoader", inputs: { vae_name: runtime.vae } }
     };
@@ -84053,7 +84066,7 @@
       ? arguments[10]
       : {};
     if (window.NovaFlowWebRuntime) {
-      const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
+      const stateKeys = ['mode', 'provider', 'nsfw', 'qwen21Variant', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
         'samplingOverrides', 'negativePrompt',
         'uiRunIntent', 'uiPreserveLayout', 'uiLayoutMode', 'uiNativeEditPrompt', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
