@@ -155,7 +155,6 @@
         background:#070707!important;color:#fff!important;font-size:12px!important;line-height:18px!important;
         box-sizing:border-box!important;outline:0!important;cursor:pointer!important;
       }
-      #${workspaceId}.novaflow-app .novaflow-art-generate-param select:disabled {opacity:.45!important;cursor:default!important;}
       #${workspaceId}.novaflow-app .novaflow-art-generate-edit-grid[data-negative-prompt="0"][data-mode="img2img"] {grid-template-columns:416px minmax(0,1fr)!important;}
       #${workspaceId}.novaflow-app .novaflow-art-generate-edit-grid[data-negative-prompt="0"][data-mode="txt2img"] {grid-template-columns:minmax(0,1fr)!important;}
       [data-novaflow-art-generate-account-slot="1"][data-novaflow-client-auth-panel="1"] {
@@ -173,7 +172,6 @@
     const select = createElement('select', {
       'aria-label': options.label,
       'data-novaflow-art-generate-select-field': '1',
-      disabled: options.disabled ? 'disabled' : null,
       onchange: (event) => {
         options.onChange(String(event.currentTarget?.value || ''))
         options.rerender?.()
@@ -208,10 +206,6 @@
       if (fields.has('cfg') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('cfg', mode))
       if (fields.has('seed')) nodes.push(options.renderSeedToggle())
       if (fields.has('nsfw') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
-      // 模型: the 2.1 fine-tunes; NSFW runs on its own model, so the list rests while it is on.
-      if (options.variantSelect) nodes.push(renderSelect({ createElement, label: '模型', value: state.qwen21Variant || '', values: [
-        { value: '', label: '标准' }, { value: 'realistic', label: '写实' }, { value: 'anime', label: '动漫' },
-      ], disabled: state.nsfw === true, onChange: (value) => { state.qwen21Variant = value }, rerender }))
       return nodes
     }
     if (provider === 'gpt') {

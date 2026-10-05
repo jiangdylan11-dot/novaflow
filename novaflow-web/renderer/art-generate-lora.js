@@ -66,7 +66,7 @@
   // itself says so.
   function isQwen21Graph(workflow) {
     return Object.values(workflow || {}).some(node => ['UnetLoaderGGUF', 'UNETLoader'].includes(node?.class_type) &&
-      /qwen[-_ ]?image[-_ ]?2\.1|^Noct/i.test(String(node.inputs?.unet_name || '')))
+      /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(node.inputs?.unet_name || '')))
   }
 
   // Insert after the Qwen model loader so existing sampling/Lightning patches remain downstream (on
@@ -77,7 +77,7 @@
     if (!selected.length) return workflow
     const bases = Object.entries(workflow).filter(([, node]) =>
       ['UNETLoader', 'UnetLoaderGGUF', 'CheckpointLoaderSimple'].includes(node?.class_type) &&
-      /qwen|^Noct/i.test(String(node.inputs?.unet_name || node.inputs?.ckpt_name || '')))
+      /qwen/i.test(String(node.inputs?.unet_name || node.inputs?.ckpt_name || '')))
     if (bases.length !== 1) throw new Error('当前生成流程无法添加 LoRA')
     const [baseId] = bases[0]
     const targets = []

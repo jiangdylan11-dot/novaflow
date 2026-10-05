@@ -43,7 +43,7 @@ export function createWorkerLoraCatalog({ modelsRoot, image, video }) {
     if (userQwen.length) {
       const nsfw = nodes.some(([, n]) => /Qwen-Rapid/i.test(String(n.inputs?.ckpt_name || '')));
       // A Qwen-Image-2.1 graph (its GGUF / safetensors loader) takes only LoRAs made for 2.1.
-      const qwen21 = nodes.some(([, n]) => /^(?:UnetLoaderGGUF|UNETLoader)$/.test(String(n.class_type || '')) && /qwen[-_ ]?image[-_ ]?2\.1|^Noct/i.test(String(n.inputs?.unet_name || '')));
+      const qwen21 = nodes.some(([, n]) => /^(?:UnetLoaderGGUF|UNETLoader)$/.test(String(n.class_type || '')) && /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(n.inputs?.unet_name || '')));
       const { items } = await read('qwen', qwen21 ? { engine: 'qwen-2.1' } : { nsfw });
       const names = new Set(items.map(item => item.name));
       for (const [, node] of userQwen) if (!names.has(node.inputs?.lora_name)) throw new Error('Qwen LoRA 已变化或不兼容，请刷新列表重新选择');
