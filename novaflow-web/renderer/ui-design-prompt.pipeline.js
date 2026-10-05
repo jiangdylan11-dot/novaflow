@@ -25,10 +25,10 @@
   const FORM_KEEP = /保留|保持|沿用|沿袭|维持|复刻|不变|不改变|不改动|不得改变|锁定|\b(?:preserve|keep|retain|unchanged|fixed|replicate|do not change|don't change)\b/iu
   const FORM_DONT_KEEP = /(?:不要|不得|不能|不必|不用|无需|勿|不)(?:再)?(?:保留|保持|沿用|沿袭|复刻|锁定)|\b(?:do not|don't|never|avoid|without)\s+(?:(?:the|any|a)\s+)?(?:preserv\w*|keep\w*|retain\w*|replicat\w*)\b/iu
   const FORM_CLAUSE = /[，。；;,\r\n]|\.(?:\s|$)/u
-  const FORM_ACTION = /(?:重新设计|重设计|重做|重设|重构|改变|改动|优化)[^，。；;,\r\n]{0,24}(?:造型|构造|轮廓|外形|形状|边框|角饰|连接方式|承托|支撑|负空间)|(?:造型|构造|轮廓|外形|形状|边框|角饰|连接方式|承托|支撑|负空间)[^，。；;,\r\n]{0,16}(?:重新设计|重设计|重做|重设|重构|改变|改动|优化|创新)|\b(?:redesign|reshape|rebuild)\s+(?:(?:the|this|current|old|ui|button|reward)\s+){0,3}(?:forms?|shapes?|silhouettes?|components?|borders?)\b/giu
+  const FORM_ACTION = /(?:重新设计|重设计|重做|重设|重构|改变|改动|优化)[^，。；;,\r\n]{0,24}(?:造型|构造|轮廓|外形|形状|外壳|边框|角饰|连接方式|承托|支撑|负空间)|(?:造型|构造|轮廓|外形|形状|外壳|边框|角饰|连接方式|承托|支撑|负空间)[^，。；;,\r\n]{0,16}(?:重新设计|重设计|重做|重设|重构|改变|改动|优化|创新)|\b(?:redesign|reshape|rebuild)\s+(?:(?:the|this|current|old|ui|button|reward)\s+){0,3}(?:forms?|shapes?|silhouettes?|components?|housings?|borders?)\b/giu
   function isNegatedAction(clause, match) {
     const prefix = clause.slice(Math.max(0, match.index - 24), match.index)
-    return /(?:不要|不需要|不必|不用|无需|无须|并非|不是|不想|不希望|未要求|勿|不)(?:再|去|把|将|要|进行|直接)?\s*$/u.test(prefix)
+    return /(?:不要|不得|不能|不可|别|不需要|不必|不用|无需|无须|并非|不是|不想|不希望|未要求|勿|不)(?:再|去|把|将|要|进行|直接)?\s*$/u.test(prefix)
       || /\b(?:no|not|without|don't|do not|never|avoid)\s+(?:(?:a|any|the)\s+)?$/iu.test(prefix)
   }
   function requestsFormRedesign(input) {
@@ -38,6 +38,44 @@
     return String(input.prompt || '').split(/[，。；;,\r\n]/u).some(clause =>
       [...clause.matchAll(FORM_ACTION)].some(match => !isNegatedAction(clause, match)
         && !/(?:造型|构造|轮廓|外形|形状|边框|角饰|连接方式|承托|支撑|负空间).{0,8}(?:不要|不得|不能|不需要|不必|不用|无需|勿|不)(?:再)?(?:改变|改动|重新设计|重设计|重做|优化)/u.test(match[0])))
+  }
+  function requestsFormPreservation(input) {
+    // Theme content and component construction are independent. Explicit whole
+    // UI reskinning overrides a default redesign intent, but a local round Spin
+    // or unchanged gameplay layout cannot freeze every other component.
+    const localTarget = /主按钮|按钮|Spin|BUY|标题|主框|主盘|奖励栏|奖励牌|图标|人物|角色|符号|物品|局部|\b(?:button|title|reward|character|icon)\b/iu
+    const globalTarget = /整体|全局|全图|整(?:个|张)(?:UI|界面)|(?:所有|全部|各)(?:UI)?(?:组件|部件)|\b(?:all|every)\s+(?:ui\s+)?components?\b|\b(?:whole|entire)\s+(?:ui|interface)\b/iu
+    const construction = /保形|造型|构造|轮廓|外形|形状|外壳|边框|框体|承托|支撑|连接(?:方式|结构|件)|\b(?:forms?|shapes?|silhouettes?|construction|housings?|frames?|supports?|connectors?|connections?)\b/iu
+    const pure = /(?:纯(?:粹)?|仅(?:仅)?|只)(?:做|进行|是)?\s*(?:换皮|风格迁移)|(?:仅(?:仅)?|只)(?:改|换|改变|更换|调整)(?:画风|风格|配色|材质|纹理)|\b(?:reskin\s+only|only\s+(?:reskin|restyle|restyling)|pure(?:ly)?\s+(?:reskin|restyling|style[- ]transfer))\b/giu
+    return String(input.prompt || '').split(FORM_CLAUSE).some(clause => {
+      for (const match of clause.matchAll(pure)) {
+        if (!isNegatedAction(clause, match) && !localTarget.test(clause.slice(0, match.index))) return true
+      }
+      if (!construction.test(clause) || /(?:功能|玩法)(?:连接|构造|结构)/u.test(clause) && !/轮廓|外形|形状|外壳|边框|承托/u.test(clause)) return false
+      const global = globalTarget.test(clause) || !localTarget.test(clause)
+      if (!global) return false
+      const actions = [...clause.matchAll(FORM_ACTION)]
+      const negated = match => isNegatedAction(clause, match)
+        || /(?:造型|构造|轮廓|外形|形状|外壳|边框|承托|支撑|连接方式).{0,8}(?:不要|不得|不能|不需要|不必|不用|无需|勿|不)(?:再)?(?:改变|改动|重新设计|重设计|重做|优化)/u.test(match[0])
+      if (actions.some(match => !negated(match))) return false
+      if ((FORM_KEEP.test(clause) || /保形|不(?:再)?改变|不(?:再)?改动/u.test(clause)) && !FORM_DONT_KEEP.test(clause)
+        && !/(?:不必|不用|无需|无须|不要|不能|不得|勿)\s*(?:保留|保持|沿用|保形)|\b(?:need not|no need to|not required to|not)\s+(?:preserve|keep|retain)\b/iu.test(clause)) return true
+      return actions.some(negated)
+    })
+  }
+  function preservingFormDirective(value, prompt) {
+    const clauses = value.split(/[，。；;\r\n]|(?<![0-9]),|,(?![0-9])|\.(?:\s|$)/u).map(s => s.trim()).filter(Boolean)
+    const kept = clauses.flatMap(clause => {
+      const parts = clause.split(/(?:并且|同时|以及|并|\band\b)\s*(?=(?:重新设计|重设计|重做|重构|改变|改动|redesign|reshape|rebuild))/iu)
+      return parts.filter(part => {
+        const component = /组件|部件|按钮|控件|标题|主框|主盘|奖励栏|奖励牌|边框|外壳|框体|承托|支撑|连接|负空间|\b(?:components?|buttons?|frames?|housings?|supports?|connectors?)\b/iu.test(part)
+        const contentOnly = /人物|角色|符号|物品|\b(?:characters?|objects?|symbols?)\b/iu.test(part) && !component
+        const conflict = !contentOnly && (requestsFormRedesign({ prompt: part }) || FORM_FACT.test(part) && FORM_DONT_KEEP.test(part)
+          || /(?:不能|不得|不要|不应|避免|do not|never).{0,10}(?:仅|只|only).{0,16}(?:材质|换皮|换角饰|restyle|material)/iu.test(part))
+        return !conflict || String(prompt || '').includes(part)
+      })
+    })
+    return kept.length === clauses.length && kept.every((clause, index) => clause === clauses[index]) ? value : kept.join('；')
   }
   function humanFormClauses(prompt) {
     return String(prompt || '').split(FORM_CLAUSE).map(s => s.trim()).filter(s => s && FORM_FACT.test(s))
@@ -100,12 +138,21 @@
     })
   }
   function themePreserveFacts(facts, redesignForms = false, prompt = '') {
-    return (redesignForms ? formPreserveFacts(facts, prompt) : facts).filter(fact => {
+    const candidates = redesignForms ? formPreserveFacts(facts, prompt) : facts
+    const keep = fact => {
       if (/新主题|新人物|新物品|新符号|新标题|用户指定|替换后|目标主题/u.test(fact)) return true
       if (/(?:\d+|[零一二三四五六七八九十百两]+)(?:个|种|类|格)\s*(?:玩法)?(?:物品|符号|图案)/u.test(fact) && !/(?:原|旧)(?:人物|角色|物品|符号|图案)/u.test(fact)) return true
       const geometry = /位置|区域|面积|占比|尺寸|布局|数量|行列|层级/u.test(fact)
       if (geometry && !/身份|人设|标题文字|文案|原主题|旧主题/u.test(fact)) return true
       return !/(?:原|旧)(?:人物|角色|物品|符号|图案|标题|主题)|(?:人物|角色|物品|符号|图案|标题|主题).{0,12}(?:身份|保持原样|保持不变|不变)/u.test(fact)
+    }
+    if (!requestsFormPreservation({ prompt })) return candidates.filter(keep)
+    // An old identity and an explicitly preserved frame may share one fact.
+    // Remove only the old content clause, retaining amounts and construction.
+    return candidates.flatMap(fact => {
+      const clauses = fact.split(/[，。；;\r\n]|(?<![0-9]),|,(?![0-9])|\.(?:\s|$)/u).map(s => s.trim()).filter(Boolean)
+      const kept = clauses.filter(keep)
+      return kept.length === clauses.length ? [fact] : kept.length ? [kept.join('，')] : []
     })
   }
   function normalizeQwenPlan(value, input) {
@@ -148,6 +195,7 @@
     const explicitIndex = sources.findIndex(ref => ref.role === 'layout')
     const anchor = layoutIndex >= 0 ? layoutIndex : explicitIndex
     const visualMode = requestsThemeRedesign(input) ? 'theme-redesign'
+      : requestsFormPreservation(input) ? 'style-transfer'
       : requestsFormRedesign(input) ? 'style-transfer'
       : input.generationIntent === 'style-transfer' ? 'style-transfer'
       : input.generationIntent === 'iteration' ? 'partial' : 'theme-redesign'
@@ -168,7 +216,10 @@
     // A malformed AI contract cannot turn it into a style-only source.
     if (!plan || plan.layoutReference !== fallback.layoutReference) return fallback
     if (input.preserveLayout === true && requestsThemeRedesign(input)) {
-      return { ...plan, layoutMode: 'preserve', visualMode: 'theme-redesign', layoutChanges: [], preserve: themePreserveFacts(plan.preserve, input.generationIntent !== 'iteration', input.prompt) }
+      return { ...plan, layoutMode: 'preserve', visualMode: 'theme-redesign', layoutChanges: [], preserve: themePreserveFacts(plan.preserve, input.generationIntent !== 'iteration' && !requestsFormPreservation(input), input.prompt) }
+    }
+    if (input.preserveLayout === true && requestsFormPreservation(input)) {
+      return { ...plan, layoutMode: 'preserve', visualMode: 'style-transfer', layoutChanges: [] }
     }
     if (input.preserveLayout === true && requestsFormRedesign(input)) {
       // Reuse the content-preserving visual contract for form-only work;
@@ -183,8 +234,9 @@
   function compileQwenPlan(result, input) {
     input = { ...input, references: requireLayoutReferences(input.references) }
     const resolved = resolveQwenPlan(result.uiPlan, input)
-    const formOnlyRedesign = resolved.layoutMode === 'preserve' && !requestsThemeRedesign(input) && requestsFormRedesign(input)
-    const themeFormRedesign = !formOnlyRedesign && resolved.visualMode === 'theme-redesign' && resolved.layoutMode === 'preserve' && input.generationIntent !== 'iteration'
+    const preserveForms = requestsFormPreservation(input)
+    const formOnlyRedesign = !preserveForms && resolved.layoutMode === 'preserve' && !requestsThemeRedesign(input) && requestsFormRedesign(input)
+    const themeFormRedesign = !preserveForms && !formOnlyRedesign && resolved.visualMode === 'theme-redesign' && resolved.layoutMode === 'preserve' && input.generationIntent !== 'iteration'
     const redesignForms = themeFormRedesign || formOnlyRedesign
     const plan = themeFormRedesign ? { ...resolved, preserve: themePreserveFacts(resolved.preserve, true, input.prompt) }
       : formOnlyRedesign ? { ...resolved, preserve: formPreserveFacts(resolved.preserve, input.prompt) } : resolved
@@ -220,13 +272,14 @@
     }).join('；')
     const layout = plan.layoutMode === 'preserve' ? redesignForms
       ? `除用户明确要求改变的部分外，保留玩法拓扑、网格行列数量、控件数量与功能、信息层级及主要区域锚点；锚定区域内可创意重设计标题、主框、奖励栏和按钮的轮廓、尺寸比例与装饰负形，使造型回应${formOnlyRedesign ? '当前主题与用户的造型要求' : '新主题'}。同时重新设计组件构造、边框组织、连接方式、装饰承托与支撑结构、层间叠放和负空间；保持目标完整画风与配色，并完成材质和光影，通过轮廓、承托与连接关系的具体变化辨认新构造，不能只给相同骨架换材质、换角饰或把铆钉改成同位置的主题装饰。区域锚点不是旧矩形框的固定外轮廓，不要求逐像素复刻原框体；同类功能保持清楚一致的识别方式，用户明确指定的形状与结构优先；保持文字清晰、点击目标可辨识，装饰不得遮挡玩法内容或控件，不画占位线框。`
-      : '除用户明确要求改变的部分外，沿用布局参考的区域位置、面积比例、网格行列及功能数量；在原位置逐区处理视觉，不画占位线框。'
+      : `除用户明确要求改变的部分外，沿用布局参考的区域位置、面积比例、网格行列及功能数量；在原位置逐区处理视觉，不画占位线框。${preserveForms ? '保留组件外轮廓、尺寸比例、主体承托、边框组织与连接结构，仅重绘用户要求的主题外观、画风、配色、材质和表面装饰；新主题内容替换不授权改变组件构造。' : ''}`
       : plan.layoutMode === 'partial' ? `只调整这些布局项目：${plan.layoutChanges.map(remap).join('；')}。其余区域的位置、占比、数量和功能关系保持参考图，不扩展为整张重新排版。`
       : '按用户要求重新组织布局，保留用户指定的功能，不继承参考图未被要求保留的位置。'
     // Keep one editing directive. Repeating the source request and every preserved object's
     // appearance invites regeneration instead of preservation (Qwen's official edit guidance).
     const sourceDirective = String(result.prompt || '').replace(/(?:^|\n)参考标识[^\n]*/g, '').trim()
-    const directive = redesignForms ? formEditingDirective(sourceDirective, input.prompt) || String(input.prompt || '').trim() : sourceDirective
+    const directive = preserveForms ? preservingFormDirective(sourceDirective, input.prompt) || String(input.prompt || '').trim()
+      : redesignForms ? formEditingDirective(sourceDirective, input.prompt) || String(input.prompt || '').trim() : sourceDirective
     if (!directive) throw new Error('UI 编辑指令为空，本次未提交生成')
     const scope = native(layout)
     const geometry = input.structure?.regions?.length ? `${redesignForms ? '主要区域锚点与用途（定位范围，不锁定组件外轮廓或尺寸比例）' : '模块位置与用途'}：${input.structure.regions.map(r =>
@@ -242,7 +295,7 @@
         : '直接设计完整界面，保留参考的整体构图、区域衔接与叠放关系，不将画面改成整齐的通用格子模板。',
       // The native reference carries its arrangement; do not hard-code a vision model's guessed cell counts.
       plan.preserve.length ? `保留这些${redesignForms ? '玩法、功能与区域锚点' : '布局与功能'}事实：${plan.preserve.map(native).join('；')}` : '', geometry,
-      redesignForms && humanFormClauses(input.prompt).length ? `用户原文中的造型要求优先：${humanFormClauses(input.prompt).map(native).join('；')}` : '',
+      (redesignForms || preserveForms) && humanFormClauses(input.prompt).length ? `用户原文中的造型要求优先：${humanFormClauses(input.prompt).map(native).join('；')}` : '',
       wireframe ? '输出完整UI成品，只呈现用户需求指定的最终文案、物品图案与功能控件。布局定位图中的区域名、诊断编号、示例文字、灰块与空白占位仅用于定位，必须删除并替换为对应真实成品元素与功能图标；不得继承定位图中未被用户指定的文字，不得以编号替代物品，不得输出缺少功能图标的空白按钮。'
         : '输出完整UI成品，保留未要求修改的文字与功能。'].filter(Boolean).join('。').replace(/[\r\n]+/g, ' ').replace(/。{2,}/g, '。')
     const modelPlan = { ...plan, layoutReference: plan.layoutReference ? 1 : 0,
@@ -251,7 +304,7 @@
     return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, analysisPlan:plan, order }
   }
   function key(input) {
-    return JSON.stringify({ contract: 'ui-native-edit-10', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ contract: 'ui-native-edit-11', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     const normalized = value => ({ ...value, references: requireLayoutReferences(value.references) })
@@ -275,5 +328,5 @@
       return { ...result, reused: false }
     } finally { signal?.removeEventListener('abort', cancel) }
   }
-  return Object.freeze({ run, remember, key, requireLayoutReferences, normalizeQwenPlan, resolveQwenPlan, compileQwenPlan })
+  return Object.freeze({ run, remember, key, requireLayoutReferences, requestsFormPreservation, normalizeQwenPlan, resolveQwenPlan, compileQwenPlan })
 })
