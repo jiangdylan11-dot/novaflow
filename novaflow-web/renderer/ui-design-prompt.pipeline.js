@@ -290,7 +290,8 @@
         : '用户明确指定的布局调整优先；其余区域位置、面积比例、网格数量与功能关系只由编辑画布决定，风格、配色、质感和人物元素图不得重新定义布局。' : '',
       formOnlyRedesign ? '本次仅按用户要求重设计组件造型与构造，原主题、人物与物品身份、有效文案、金额、规则、控制功能及其状态保持正确；造型重做不授权更换主题或新增功能。'
         : plan.visualMode === 'style-transfer' && !wireframe ? '本次仅改变指定的画风、配色与质感，保留画布内的原人物与物品身份、文案和功能；用户明确指定素材替换的区域按其要求处理。' : '',
-      plan.visualMode === 'theme-redesign' && !wireframe ? '本次是主题重设：玩法与布局按上述约束处理；人物、背景、玩法物品与标题按用户明确的新主题和替换要求重新设计，不沿用未被要求保留的旧人设、旧物品或旧标题。未要求改变的金额、规则、控制功能及其状态保持正确；用户明确替换的内容优先于规划中的旧内容保留描述。' : '',
+      plan.visualMode === 'theme-redesign' ? '本次是主题重设：玩法与布局按上述约束处理；人物、背景、玩法物品与标题按用户明确的新主题和替换要求重新设计，不沿用未被要求保留的旧人设、旧物品或旧标题。未要求改变的金额、规则、控制功能及其状态保持正确；用户明确替换的内容优先于规划中的旧内容保留描述。' : '',
+      '除用户明确要求改变的项目外，完整布局图中已有的玩法盘数量、每个盘的行列和逐格实例、重复符号关系、玩法特殊标记、奖励档位、金额数值、余额、下注、赢取信息、有效规则文案、全部操作图标及功能状态逐项保留，主题或构造变化不得省略或重复这些内容。功能数量由用户布局图和原文决定，不因题材猜测增加登录、邀请、任务或其他新功能；没有给出的数值不得编造。自建定位图中的诊断文字与示例值不属于业务数据，只采用用户明确提供的业务要求。',
       redesignForms ? '直接设计完整界面，以主要区域锚点保持整体构图与玩法流程；区域内部的框体衔接、视觉轮廓和装饰叠放按本次设计要求处理，不将画面改成整齐的通用格子模板。'
         : '直接设计完整界面，保留参考的整体构图、区域衔接与叠放关系，不将画面改成整齐的通用格子模板。',
       // The native reference carries its arrangement; do not hard-code a vision model's guessed cell counts.
@@ -304,7 +305,7 @@
     return { prompt, references: order.map(i => input.references[i-1]), plan: modelPlan, analysisPlan:plan, order }
   }
   function key(input) {
-    return JSON.stringify({ contract: 'ui-native-edit-11', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
+    return JSON.stringify({ contract: 'ui-native-edit-12', provider: input.provider, engine: input.engine || 'grok', targetEngine: input.targetEngine || '', prompt: input.prompt || '', negativePrompt: input.negativePrompt || '', generationIntent: input.generationIntent || '', preserveLayout: input.preserveLayout === true, size: input.size, structure: input.structure, references: (input.references || []).map(r => ({ id: r.id, dataUrl: r.dataUrl || r.imageUrl, role: r.role })) })
   }
   function remember(id, input, result, appliedInput) {
     const normalized = value => ({ ...value, references: requireLayoutReferences(value.references) })

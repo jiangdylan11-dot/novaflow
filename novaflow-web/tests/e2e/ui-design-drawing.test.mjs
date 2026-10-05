@@ -495,17 +495,19 @@ test('edits made while optimization is pending cannot change its parameter or or
   assert.equal(prepared.originalPrompt,'设计一个角色装备界面');
 });
 
-test('live layout becomes an image reference automatically, refreshes stale exports and preserves user image numbers',()=>{
+test('only an already published matching layout is refreshed without appending a hidden guide',()=>{
  const e=environment({qwen:true}),structures=[];
  e.sandbox.NovaFlowUiDesignLayoutGuide={createCleanLayoutGuide:s=>{structures.push(s);return {dataUrl:'data:image/png;base64,current-layout'}}};
  const structure={width:1200,height:800,regions:[{x:70,y:90,width:400,height:600,purpose:'人物'}]};
  const refs=[{id:'style',role:'style',dataUrl:'data:image/png;base64,style'}];
- const created=e.adapter.snapshotLayoutReferences(refs,'L',structure,2);
- assert.equal(created.length,2);assert.equal(created[0].id,'style');assert.equal(created[1].role,'layout');
- assert.equal(created[1].uiStructure.regions[0].x,70);assert.equal(refs.length,1);
- const refreshed=e.adapter.snapshotLayoutReferences([{...created[1],dataUrl:'stale'},created[0]],'L',structure,2);
+ const unchanged=e.adapter.snapshotLayoutReferences(refs,'L',structure,1);
+ assert.equal(unchanged.length,1);assert.equal(unchanged[0].id,'style');assert.equal(structures.length,0);
+ const published={id:'published-layout',uiLayoutId:'L',role:'layout',dataUrl:'data:image/png;base64,stale'};
+ const refreshed=e.adapter.snapshotLayoutReferences([published,refs[0]],'L',structure,2);
  assert.equal(refreshed.length,2);assert.equal(refreshed[0].dataUrl,'data:image/png;base64,current-layout');
- assert.throws(()=>e.adapter.snapshotLayoutReferences(refs,'L',structure,1),/包含自建布局图/);
+ assert.equal(refreshed[0].id,'published-layout');assert.equal(refreshed[0].uiStructure.regions[0].x,70);
+ assert.equal(published.dataUrl,'data:image/png;base64,stale');assert.equal(refs.length,1);
+ assert.throws(()=>e.adapter.snapshotLayoutReferences([published,refs[0]],'L',structure,1),/包含自建布局图/);
  const input=e.adapter.inputFor({state:{...e.state,prompt:'图3是风格'},references:[null,null,refs[0]],referenceLimit:2});
  assert.equal(input.prompt,'@参考图1是风格');assert.equal(input.references.length,1);
  assert.equal(structures[0].blocks[0].purpose,'人物');
