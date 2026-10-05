@@ -6,7 +6,7 @@ import { normalizeReverseRequest } from '../../worker/src/prompt-assistant.mjs';
 
 const source = name => readFileSync(new URL('../../renderer/' + name, import.meta.url), 'utf8');
 const e = {setTimeout, clearTimeout};
-for (const file of ['art-generate-model.resource.js','art-generate-provider.workflow.js','ui-design-assistant.workflow.js']) vm.runInNewContext(source(file),e);
+for (const file of ['art-generate-model.resource.js','art-generate-provider.workflow.js','ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js']) vm.runInNewContext(source(file),e);
 const models=e.NovaFlowArtGenerateModels, workflow=e.NovaFlowArtGenerateProviderWorkflow;
 const refs=count=>Array.from({length:count},(_,i)=>({name:`ref${i+1}.png`,label:`图${i+1}`,dataUrl:`data:image/png;base64,${Buffer.from(String(i+1)).toString('base64')}`}));
 

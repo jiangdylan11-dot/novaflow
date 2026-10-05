@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = name => readFileSync(new URL('../../renderer/' + name, import.meta.url), 'utf8');
-function environment({ ui = true, references = [], optimize, qwen = false } = {}) {
+function environment({ ui = true, references = [{id:'default-layout',role:'layout',dataUrl:'data:image/png;base64,default-layout'}], optimize, qwen = false } = {}) {
   const calls = [], failures = [], builds = [], uploads = [];
   const state = { provider:'local',mode:'img2img',prompt:'设计一个角色装备界面',negativePrompt:'不要模糊',width:1280,height:720,count:2,randomSeed:false,seed:17,nsfw:false,loras:[{name:'example',strength:0.7}],samplingOverrides:{'qwen-2.1:img2img':{steps:32,cfg:3}},results:[] };
   const noop = () => {};
@@ -101,15 +101,16 @@ test('Qwen sends the second layout image first and retains the style image in na
   assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
 });
 
-test('Qwen style-only references generate their own layout even when AI planning fields are invalid',async()=>{
+test('Qwen treats its sole image as mandatory layout even when marked style or a planner requests creation',async()=>{
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'按卡通视觉设计新页面。',uiPlan:planFor(refs,{layoutMode:'create',layoutReference:0})})});
-  await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiPreserveLayout,false);
-  assert.match(e.builds[0][4],/风格图、人物和物品图不提供布局/);
+  await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiPreserveLayout,true);
+  assert.match(e.builds[0][4],/编辑画布，是唯一玩法结构与主要区域锚点依据/);
+  assert.equal(e.builds[0][2].length,1);assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);
   for(const patch of [{uiPlan:null},{uiPlan:planFor(refs)}, {uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['按钮上移'],preserve:[]})}]) {
     const recovered=environment({qwen:true,references:refs,optimize:async()=>({prompt:'设计',...patch})});
     await recovered.run();assert.deepEqual(recovered.failures,[]);assert.ok(recovered.builds.length>0);
-    assert.equal(recovered.builds[0][8].uiPreserveLayout,false);
+    assert.equal(recovered.builds[0][8].uiPreserveLayout,true);
   }
 });
 
@@ -228,6 +229,94 @@ test('form freedom is scoped to theme redesign and never loosens style transfer 
   assert.doesNotMatch(partial.prompt,/锚定区域内可创意重设计|不要求逐像素复刻原框体/);
 });
 
+test('component redesign removes unrequested source construction from both planner facts and its editing directive',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'layout'}];
+  const preserve=['符号区5列3行，共15格','金额1000和四档奖励不变，四角铆钉保持原样','奖励牌原连接方式与底座保持不变','用户明确指定四角圆点保持不变','五个控制功能及选中状态不变'];
+  const compiled=p.compileQwenPlan({prompt:'将图1换成深海主题，保留四角铆钉，原奖励牌的连接方式不变，金额1000保持正确，主框承托结构重新设计。',uiPlan:planFor(refs,{preserve})},
+    {references:refs,prompt:'保留玩法和金额，将图1换成深海主题，组件构造重新设计',preserveLayout:true,generationIntent:'redesign'});
+  assert.deepEqual(Array.from(compiled.plan.preserve),['符号区5列3行，共15格','金额1000和四档奖励不变','五个控制功能及选中状态不变']);
+  assert.match(compiled.prompt,/主框承托结构重新设计/);assert.match(compiled.prompt,/金额1000保持正确/);
+  assert.match(compiled.prompt,/组件构造、边框组织、连接方式、装饰承托与支撑结构、层间叠放和负空间/);
+  assert.match(compiled.prompt,/保持目标完整画风与配色，并完成材质和光影/);
+  assert.match(compiled.prompt,/通过轮廓、承托与连接关系的具体变化辨认新构造/);
+  assert.doesNotMatch(compiled.prompt,/去掉颜色|去色|灰度输出|grayscale/);
+  assert.doesNotMatch(compiled.prompt,/保留四角铆钉|四角铆钉保持原样|原奖励牌的连接方式不变|奖励牌原连接方式与底座|用户明确指定四角圆点保持不变/);
+});
+
+test('releasing a button diameter preserves balance and bet values from the same fact and directive',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'layout'}];
+  const compiled=p.compileQwenPlan({prompt:'换成深海主题，按钮直径120、余额1000和下注100保持不变。',uiPlan:planFor(refs,{preserve:['按钮直径120、余额1000和下注100保持不变']})},
+    {references:refs,prompt:'保留玩法和金额，换成深海主题，组件构造重新设计',preserveLayout:true,generationIntent:'redesign'});
+  assert.match(compiled.plan.preserve.join('；'),/余额1000保持不变.*下注100保持不变/);
+  assert.match(compiled.prompt,/余额1000保持不变.*下注100保持不变/);
+  assert.doesNotMatch(compiled.prompt,/按钮直径120/);
+});
+
+test('releasing symbol size preserves the repeated symbol count and identity from their shared clause',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'layout'}];
+  const compiled=p.compileQwenPlan({prompt:'换成深海主题，15个符号的大小与身份保持不变。',uiPlan:planFor(refs,{preserve:['15个符号的大小与身份保持不变']})},
+    {references:refs,prompt:'保留玩法布局，换成深海主题，组件构造重新设计',preserveLayout:true,generationIntent:'redesign'});
+  assert.deepEqual(Array.from(compiled.plan.preserve),['15个符号的身份保持不变']);
+  assert.match(compiled.prompt,/15个符号的身份保持不变/);
+  assert.doesNotMatch(compiled.prompt,/15个符号的大小/);
+});
+
+test('form-only redesign keeps theme identities and actual human shape restrictions despite planner paraphrasing',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'layout'}];
+  const prompt='主题不变，人物物品和金额保持，重新设计奖励栏与按钮的构造和连接方式，主按钮必须保持圆形，奖励牌保留四角圆点';
+  for(const uiPlan of [planFor(refs,{preserve:['原人物身份保持不变','金额1000和功能保持不变','用户明确要求主按钮为圆形','用户明确指定四角铆钉保持不变']}),null]) {
+    const compiled=p.compileQwenPlan({prompt:'重新设计图1组件，保持原主题和人物，奖励栏旧连接结构保持不变。',uiPlan},
+      {references:refs,prompt,preserveLayout:true,generationIntent:'style-transfer'});
+    assert.equal(compiled.plan.visualMode,'style-transfer');assert.equal(compiled.plan.layoutMode,'preserve');
+    assert.match(compiled.prompt,/本次仅按用户要求重设计组件造型与构造/);
+    assert.match(compiled.prompt,/原主题、人物与物品身份、有效文案、金额、规则、控制功能及其状态保持正确/);
+    assert.match(compiled.prompt,/主按钮必须保持圆形；奖励牌保留四角圆点/);
+    assert.doesNotMatch(compiled.prompt,/奖励栏旧连接结构保持不变|用户明确指定四角铆钉保持不变|本次是主题重设|人物、背景、玩法物品和标题按用户的新主题要求重做/);
+  }
+});
+
+test('negated form requests and local edits cannot turn style migration into whole-screen construction redesign',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'layout'}];
+  const preserve=['四角铆钉与原连接方式保持不变','金额1000和控制功能不变'];
+  for(const prompt of ['只换画风，不要重新设计按钮造型','按钮造型不需要改变，只换材质','奖励栏构造不要重做，只换风格','Do not redesign button shapes; only restyle the materials']) {
+    const compiled=p.compileQwenPlan({prompt:'只改材质',uiPlan:planFor(refs,{preserve})},{references:refs,prompt,preserveLayout:true,generationIntent:'style-transfer'});
+    assert.deepEqual(Array.from(compiled.plan.preserve),preserve);
+    assert.doesNotMatch(compiled.prompt,/本次仅按用户要求重设计组件造型|通过轮廓、承托与连接关系的具体变化辨认新构造/);
+  }
+  const local=p.compileQwenPlan({prompt:'只重做按钮造型，其余不变',uiPlan:planFor(refs,{layoutMode:'partial',visualMode:'partial',layoutChanges:['仅重做主按钮轮廓'],preserve})},
+    {references:refs,prompt:'只重做按钮造型，其余不变',generationIntent:'iteration'});
+  assert.match(local.prompt,/只调整这些布局项目：仅重做主按钮轮廓/);
+  assert.doesNotMatch(local.prompt,/组件构造、边框组织、连接方式、装饰承托与支撑结构/);
+});
+
+test('English source construction is filtered without losing functional facts or the human keep request',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'layout'}];
+  const preserve=['Keep 5 columns and 3 rows with 15 symbols','Keep the four reward values and functional connections unchanged; preserve the original rectangular plaques and corner studs','Preserve original frame construction and connectors','Keep the main button circular'];
+  const compiled=p.compileQwenPlan({prompt:'Change the theme to underwater. Preserve the original four-corner studs and rectangular plaques. Keep the main button circular. Rebuild the reward supports.',uiPlan:planFor(refs,{preserve})},
+    {references:refs,prompt:'Change the theme to underwater; keep the gameplay and values; keep the main button circular',preserveLayout:true,generationIntent:'redesign'});
+  assert.match(compiled.prompt,/Keep 5 columns and 3 rows with 15 symbols/);
+  assert.match(compiled.prompt,/Keep the four reward values and functional connections unchanged/);
+  assert.match(compiled.prompt,/Keep the main button circular/);
+  assert.match(compiled.prompt,/Rebuild the reward supports/);
+  assert.doesNotMatch(compiled.prompt,/Preserve the original four-corner studs|rectangular plaques|original frame construction and connectors/);
+});
+
+test('every native UI plan requires a layout image and rejects create or missing-layout bypasses',()=>{
+  const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline,refs=[{role:'style'}];
+  const compiled=p.compileQwenPlan({prompt:'依据图1纸纹设计新界面，五列三行和四档奖励按用户需求安排。',uiPlan:planFor(refs,{layoutMode:'create',layoutReference:0})},
+    {references:refs,prompt:'图1只提供剪纸材质，设计全新界面',preserveLayout:false,generationIntent:'redesign'});
+  assert.equal(compiled.plan.layoutMode,'preserve');assert.equal(compiled.plan.layoutReference,1);
+  assert.equal(compiled.plan.references[0].role,'layout');
+  assert.match(compiled.prompt,/编辑画布，是唯一玩法结构与主要区域锚点依据/);
+  assert.match(compiled.prompt,/组件构造、边框组织、连接方式、装饰承托与支撑结构/);
+  assert.throws(()=>p.normalizeQwenPlan(planFor(refs,{layoutMode:'create',layoutReference:0}),{references:refs}),/规划不完整/);
+  assert.throws(()=>p.compileQwenPlan({prompt:'纯文字创建UI',uiPlan:null},{references:[],prompt:'纯文字创建UI'}),/必须有布局图/);
+  assert.throws(()=>p.compileQwenPlan({prompt:'素材创建UI',uiPlan:null},{references:[{role:'style'},{role:'asset'}],prompt:'素材创建UI'}),/缺少布局图/);
+  const ordinary=[{id:'style',role:'style'},{id:'main',role:'reference'},{id:'other',role:'reference'}];
+  const anchored=p.compileQwenPlan({prompt:'按主图布局重设计',uiPlan:null},{references:ordinary,prompt:'按主图布局重设计'});
+  assert.equal(anchored.references[0].id,'main');assert.equal(anchored.analysisPlan.layoutReference,2);
+});
+
 test('theme reset survives malformed planning and keeps style assets separate from the source geometry',()=>{
   const e=environment(),p=e.sandbox.NovaFlowUiDesignPromptPipeline;
   const refs=[{role:'style',id:'paper-material'},{role:'layout',id:'old-layout'}];
@@ -288,8 +377,12 @@ test('module names stay in the editor and never enter assistant or generation pa
   assert.equal(region.name,'仅用户识别的内部标签','editor storage is untouched');
 });
 
-test('UI accepts no layout and no image; failed optimization never submits a generation',async()=>{
-  const e = environment();await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][1],'txt2img');
+test('UI rejects missing layout before assistant calls or uploads and failures never submit generation',async()=>{
+  const e = environment({references:[]});await e.run();assert.match(e.failures[0],/必须有布局图/);
+  assert.equal(e.calls.filter(x=>x==='optimize').length,0);assert.equal(e.uploads.length,0);assert.equal(e.builds.length,0);
+  const missing=environment({references:[{role:'style',dataUrl:'data:image/png;base64,style'},{role:'character',dataUrl:'data:image/png;base64,character'}]});
+  await missing.run();assert.match(missing.failures[0],/缺少布局图/);
+  assert.equal(missing.calls.filter(x=>x==='optimize').length,0);assert.equal(missing.uploads.length,0);assert.equal(missing.builds.length,0);
   const failed = environment({optimize:async()=>{throw Error('service unavailable');}});await failed.run();
   assert.deepEqual(failed.failures,['service unavailable']);assert.equal(failed.builds.length,0);assert.equal(failed.state.running,false);
 });
@@ -381,9 +474,9 @@ test('reference gaps map to uploaded image order; overflow and missing mentions 
   assert.equal(input.prompt,'@参考图2是风格图');
   assert.throws(()=>e.adapter.inputFor({state:{prompt:'图2是风格'},references:[ref,null],referenceLimit:10}),/已移除/);
   assert.throws(()=>e.adapter.inputFor({state:{},references:[ref,ref],referenceLimit:1}),/最多支持/);
-  const cloud=e.adapter.inputFor({state:{provider:'gpt',gptSize:'1536x1024'},references:[],referenceLimit:10});
+  const cloud=e.adapter.inputFor({state:{provider:'gpt',gptSize:'1536x1024'},references:[ref],referenceLimit:10});
   assert.equal(cloud.size.width,1536);assert.equal(cloud.size.height,1024);
-  const partial=e.adapter.inputFor({state:{prompt:'只修改背景，不保留旧背景，其他部分保持不变'},references:[],referenceLimit:10});
+  const partial=e.adapter.inputFor({state:{prompt:'只修改背景，不保留旧背景，其他部分保持不变'},references:[ref],referenceLimit:10});
   assert.equal(partial.generationIntent,'iteration');
   const reflow=e.adapter.inputFor({state:{prompt:'参考图1换新主题，并重新排版'},references:[ref],referenceLimit:10});
   assert.equal(reflow.preserveLayout,false);
@@ -393,7 +486,7 @@ test('reference gaps map to uploaded image order; overflow and missing mentions 
 test('edits made while optimization is pending cannot change its parameter or original-text snapshot',async()=>{
   let finish;
   const e=environment({optimize:()=>new Promise(resolve=>{finish=resolve;})});
-  const pending=e.adapter.prepare({state:e.state,references:[],referenceLimit:10});
+  const pending=e.adapter.prepare({state:e.state,references:[{role:'layout',dataUrl:'data:image/png;base64,ref'}],referenceLimit:10});
   await Promise.resolve();await Promise.resolve();
   e.state.width=2048;e.state.prompt='下一张的需求';e.state.samplingOverrides['qwen-2.1:img2img'].steps=50;
   finish({prompt:'优化指令'});

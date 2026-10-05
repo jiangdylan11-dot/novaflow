@@ -56,7 +56,7 @@ test('packaged client continues when old cloud planning rejects a valid layout r
   const result=await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',
     prompt:'参考图1的布局，生成一个高质量的2次元风格，生肖牛主题的老虎机。',preserveLayout:true,generationIntent:'redesign',references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}],
     electronAPI:{smartAiImageReverse:async payload=>{sent=payload;throw new Error('Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成')}}});
-  assert.equal(sent.images[0].role,'reference');
+  assert.equal(sent.images[0].role,'layout');
   assert.equal(result.uiPlan.layoutMode,'preserve');
   assert.equal(result.uiPlan.visualMode,'theme-redesign');
   assert.equal(result.uiPlan.references[0].role,'layout');
@@ -105,4 +105,17 @@ test('native UI planning uses all references once without an implicit grid-count
     abortedCalls.push(payload);controller.abort();return {ok:true,prompt:'编辑',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'combined'}],layoutChanges:[],preserve:[],grids:[]}};
   }}}),/任务已中止/);
   assert.equal(abortedCalls.length,1);
+});
+
+test('assistant requires layout before transport and promotes the sole style image to layout',async()=>{
+  const context={setTimeout,clearTimeout,console};vm.createContext(context);
+  for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
+  const requests=[],base={provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'新主题组件构造设计',electronAPI:{smartAiImageReverse:async payload=>{requests.push(payload);return {ok:true,prompt:'重设计布局图组件',uiPlan:null};}}};
+  await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...base,references:[]}),/必须有布局图/);
+  await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...base,references:[{role:'style',dataUrl:'data:image/png;base64,style'},{role:'character',dataUrl:'data:image/png;base64,character'}]}),/缺少布局图/);
+  assert.equal(requests.length,0);
+  const result=await context.NovaFlowUiDesignAssistantWorkflow.run({...base,references:[{role:'style',dataUrl:'data:image/png;base64,only-image'}]});
+  assert.equal(requests.length,1);assert.equal(requests[0].images[0].role,'layout');
+  assert.match(requests[0].requirements,/只有一张图片时这张就是布局图/);
+  assert.equal(result.uiPlan.layoutReference,1);assert.equal(result.uiPlan.layoutMode,'preserve');
 });

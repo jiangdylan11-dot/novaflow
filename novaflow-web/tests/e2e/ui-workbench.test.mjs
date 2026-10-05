@@ -12,7 +12,7 @@ const pipeline = globalThis.NovaFlowUiDesignPromptPipeline;
 const assistant = globalThis.NovaFlowUiDesignAssistantWorkflow;
 const structure = globalThis.NovaFlowUiDesignStructureTool;
 renderer('ui-design.workbench.js');
-const input = () => ({provider:'local',engine:'local',prompt:'保持布局，更换木质风格',negativePrompt:'不要模糊',size:{width:1024,height:1024},structure:{regions:[]},references:[]});
+const input = () => ({provider:'local',engine:'local',prompt:'保持布局，更换木质风格',negativePrompt:'不要模糊',size:{width:1024,height:1024},structure:{regions:[]},references:[{id:'layout',role:'layout',dataUrl:'data:image/png;base64,AA=='}]});
 
 test('optimization reuse invalidates with prompt, image contents, layout or model changes', async () => {
   let calls = 0;

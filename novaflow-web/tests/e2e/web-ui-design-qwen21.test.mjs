@@ -294,6 +294,7 @@ renderer('ui-design-local.workflow.js');
 renderer('ui-design-local-reference.helper.js');
 renderer('ui-design-local-director.workflow.js');
 renderer('ui-design-layout-guide.helper.js');
+renderer('ui-design-prompt.pipeline.js');
 renderer('ui-design-generate.workflow.js');
 // The renderer folder is ESM-typed, so the UMD modules register on globalThis only.
 const generate = globalThis.NovaFlowUiDesignGenerateWorkflow;
@@ -313,7 +314,7 @@ assert.equal(mentions.text, '把<image2>放在转轴里');
 const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const runRefs = [
   { name: '风格.png', dataUrl: pixel, role: 'style', sourceId: 's', width: 1920, height: 1080 },
-  ...Array.from({ length: 9 }, (_, i) => ({ name: `符号${i}.png`, dataUrl: pixel, role: 'asset', sourceId: `a${i}`, width: 148, height: 125 }))
+  ...Array.from({ length: 8 }, (_, i) => ({ name: `符号${i}.png`, dataUrl: pixel, role: 'asset', sourceId: `a${i}`, width: 148, height: 125 }))
 ];
 const project = {
   width: 756, height: 1638, canvas: { width: 756, height: 1638 },
@@ -324,6 +325,7 @@ const project = {
   ]
 };
 const uploads = [];
+const uploadedPixels = [];
 let built = null;
 const bridge = {
   detectBaseUrl: async () => 'http://runtime',
@@ -331,7 +333,7 @@ const bridge = {
     ? { ok: true, data: { prompt_id: 'p1' } }
     : { ok: true, data: { p1: { outputs: { 11: { images: [{ filename: 'ui.png' }] } } } } },
   fetchBlob: async () => ({ blob: true }),
-  uploadDataUrl: async (_base, name) => { uploads.push(name); return { name }; },
+  uploadDataUrl: async (_base, name, dataUrl) => { uploads.push(name); uploadedPixels.push(dataUrl); return { name }; },
   buildRunWorkflow: async (options) => { built = options; return { workflow: { 1: { class_type: 'SaveImage', inputs: {} } }, modelKey: 'qwen-image-2.1-ui' }; },
   validateWorkflowNodes: async () => true,
   extractFiles: (item) => (item?.outputs ? [{ filename: 'ui.png' }] : []),
@@ -349,21 +351,21 @@ const result = await generate.run({
 });
 assert.equal(result.localEngine, 'qwen-2.1');
 assert.equal(state.localUiEngine, 'qwen-2.1');
-// No guide image: the ten connected images are the references, the structure is text.
+// The actual layout image is uploaded once, then the nine external style/assets.
 assert.equal(uploads.length, 10);
 assert.deepEqual(uploads, Array.from({ length: 10 }, (_, i) => `ui_q21_${String(i + 1).padStart(2, '0')}.png`));
 assert.equal(built.maxReferences, 10);
 // Only what the user wrote: the automatic 2511 canvas negatives would force cfg 2.5 on every run.
 assert.equal(built.negativePrompt, '模糊，水印');
 assert.equal(built.referenceRoles.length, 10);
-assert.ok(built.referenceRoles.every((item) => item.role !== 'ui_layout'));
-assert.equal(built.referenceRoles[0].role, 'style');
-assert.equal(built.referenceRoles[1].role, 'content');
-assert.ok(built.prompt.includes('<image2>') && built.prompt.includes('<image10> 符号8: finished asset'));
-assert.ok(!built.prompt.includes('occupancy map') && built.prompt.includes('Screen structure, top to bottom:'));
+assert.equal(built.referenceRoles[0].role, 'ui_layout');
+assert.equal(built.referenceRoles[1].role, 'style');
+assert.equal(built.referenceRoles[2].role, 'content');
+assert.ok(built.prompt.includes('<image3>') && built.prompt.includes('<image10> 符号7: finished asset'));
+assert.ok(built.prompt.includes('binding layout guide') && built.prompt.includes('Screen structure, top to bottom:'));
 assert.ok(built.prompt.includes('wild') && !built.prompt.includes('Also avoid'));
 assert.ok(!/图\d/.test(built.prompt) && built.prompt.length <= 4000);
-assert.ok(built.prompt.includes('<image1> 风格: style reference') && built.prompt.includes('<image2> 符号0: finished asset'));
+assert.ok(built.prompt.includes('<image2> 风格: style reference') && built.prompt.includes('<image3> 符号0: finished asset'));
 // Region lines carry their position; the 2511 content-lock paragraphs stay out.
 assert.ok(built.prompt.includes('- 0-11% from the top: 顶部信息栏：余额与标题') && !built.prompt.includes('Content lock') && !built.prompt.includes('@参考图'));
 
@@ -398,7 +400,8 @@ assert.ok(!longPrompt.includes('Also avoid') && longPrompt.includes('Do not show
 assert.ok(longPrompt.includes('- 88-100% from the top: 区7：说明'));
 
 // Eleven connected images is one too many even on 2.1 (the model card's limit is 10).
-await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRefs.slice(0, 1)], state: { ...state }, prompt: 'x' }), /最多支持 10 张外部参考图，当前已连接 11 张/);
+await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRefs.slice(0, 2)], state: { ...state }, prompt: 'x' }), /最多支持 10 张外部参考图，当前已连接 11 张/);
+await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRefs.slice(0, 1)], state: { ...state }, prompt: 'x' }), /最多支持 10 张参考图（包含布局图），当前共有 11 张/);
 
 // Drawing controls on a 2.1 node: no Instant quality or edit strength; steps and CFG on every local
 // route that samples; img2img with W / H and up to ten references; the negative prompt kept.
@@ -495,15 +498,23 @@ const artCompiled = globalThis.NovaFlowResourceMentionTool.compileText({ surface
 assert.deepEqual(artCompiled.invalidTokens, []);
 assert.ok(artCompiled.text.includes('5') && !artCompiled.text.includes('@参考图5'));
 
-// Optional structure: each provider receives only the actual references, or a text-only run.
+// Every provider requires a real layout image. Its only image is the layout,
+// including an old style label; multiple explicit assets need a layout source.
 globalThis.electronAPI = {runtimeFeaturesSync:()=>({qwenImage21:true}),runtimeFeatures:async()=>({qwenImage21:true}),runtimeProviderUsageSettlement:'preload-price-v1'};
 globalThis.NovaFlowClientAuth = {createAuthorizationContext:()=>({release(){}})};
 for (const provider of ['local','gpt','google']) {
   for (const count of [0,2]) {
     uploads.length=0;
-    const output=await generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:runRefs.slice(0,count),state:{provider,width:1024,height:1024,gptQualityImg2img:'high',googleAspectRatioImg2img:'1:1',promptMentionBindings:{'@参考图1':'s'}},prompt:count?'按@参考图1设计背包界面':'简洁背包界面',pollIntervalMs:0});
+    await assert.rejects(generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:runRefs.slice(0,count),state:{provider,width:1024,height:1024},prompt:'简洁背包界面',pollIntervalMs:0}),count?/缺少布局图/:/必须有布局图/);
+    assert.equal(uploads.length,0,provider+' missing layout must stop before uploads');
+  }
+  for (const count of [1,2]) {
+    uploads.length=0;
+    const sourceRefs=runRefs.slice(0,count).map((ref,index)=>index===0&&count>1?{...ref,role:'layout'}:ref);
+    const output=await generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:sourceRefs,state:{provider,width:1024,height:1024,gptQualityImg2img:'high',googleAspectRatioImg2img:'1:1',promptMentionBindings:{'@参考图1':'s'}},prompt:'按@参考图1设计背包界面',pollIntervalMs:0});
     assert.equal(uploads.length,count,provider+' must not upload a phantom layout');
-    assert.equal(built.mode,count?'img2img':'txt2img');
+    assert.equal(built.mode,'img2img');
+    assert.equal(built.referenceRoles[0].role,'layout');
     assert.equal(output.layoutGuideSource,'none');
     assert.ok(built.referenceRoles.every(role=>role.role!=='ui_layout'));
     assert.ok(!built.systemPrompt?.includes('image 1 is a non-visual'));
@@ -511,6 +522,43 @@ for (const provider of ['local','gpt','google']) {
     if(provider==='google') assert.equal(built.settings.aspectRatio,'1:1');
     if(count) assert.ok(built.prompt.includes(provider==='local'?'<image1>':'图1'));
   }
+  uploads.length=0;uploadedPixels.length=0;
+  const output=await generate.run({bridge,project,refs:[],state:{provider,width:756,height:1638},prompt:'按自建布局设计新主题组件',pollIntervalMs:0});
+  assert.equal(uploads.length,1,provider+' must upload the materialized layout guide');
+  assert.ok(uploadedPixels[0].startsWith('data:image/png;base64,')&&uploadedPixels[0].length>100);
+  assert.equal(built.mode,'img2img');assert.equal(built.referenceRoles[0].role,'ui_layout');
+  assert.equal(output.layoutGuideSource,'semantic-layout-compiler');
+  const currentGuide=globalThis.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide(project,{width:756,height:1638,visualEncoding:provider==='local'?'soft-ui-semantic-scaffold-v2':provider==='google'?'soft-occupancy-heatmap-v1':''});
+  uploads.length=0;
+  await generate.run({bridge,project,refs:[{...currentGuide,role:'layout',uiLayoutId:'connected-guide',sourceId:'g0'},runRefs[0]],layoutGuide:currentGuide,state:{provider,width:756,height:1638,promptMentionBindings:{'@参考图2':'s'}},prompt:'按布局重设组件，@参考图2只提供风格',pollIntervalMs:0});
+  assert.equal(uploads.length,2,provider+' must upload an already connected guide only once');
+  assert.equal(built.referenceRoles[0].role,'ui_layout');
+  assert.ok(built.prompt.includes(provider==='local'?'<image2>':'图2'),provider+' must retain source numbering after guide deduplication');
+}
+
+const nativeCompilerPrompt='按<image1>的主要布局位置重设计组件构造。\n<image2>只提供材质，人物身份和金额保持。';
+uploads.length=0;
+await generate.run({bridge,project,refs:[{role:'layout',uiLayoutId:'native-guide',dataUrl:pixel,sourceId:'native-layout'},runRefs[0]],layoutGuide:{kind:'ui-layout-guide',role:'ui_layout',clean:true,editorSnapshot:false,dataUrl:pixel,width:756,height:1638,visualEncoding:'soft-ui-semantic-scaffold-v2',source:'native'},state:{provider:'local',width:756,height:1638,uiNativeEditPrompt:true},prompt:nativeCompilerPrompt,pollIntervalMs:0});
+assert.equal(uploads.length,2);assert.equal(built.prompt,nativeCompilerPrompt,'native UI compiler output must reach generation unchanged');
+
+// An already connected cloud guide fills the reserved layout slot. It must
+// leave the complete external asset capacity available, without renumbering
+// or silently discarding the last image.
+for (const [provider,total] of [['gpt',16],['google',14]]) {
+  const guide=globalThis.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide(project,{width:756,height:1638,visualEncoding:provider==='google'?'soft-occupancy-heatmap-v1':''});
+  const fullReferences=[{...guide,role:'layout',uiLayoutId:'capacity-guide',sourceId:'capacity-layout',name:'capacity-layout.png'},
+    ...Array.from({length:total-1},(_,index)=>({...runRefs[0],name:`capacity-asset-${index+1}.png`,sourceId:`capacity-asset-${index+1}`}))];
+  uploads.length=0;
+  await generate.run({bridge,project,refs:fullReferences,layoutGuide:guide,state:{provider,width:756,height:1638,promptMentionBindings:{[`@参考图${total}`]:`capacity-asset-${total-1}`}},prompt:`按布局设计完整界面，@参考图${total}只提供风格`,pollIntervalMs:0});
+  assert.equal(uploads.length,total,provider+' must accept one connected guide plus its full external capacity');
+  assert.deepEqual(uploads,fullReferences.map(ref=>ref.name));
+  assert.equal(built.referenceRoles.length,total);
+  assert.equal(built.referenceRoles.filter(ref=>ref.role==='ui_layout').length,1);
+  assert.equal(built.referenceRoles[total-1].sourceId,`capacity-asset-${total-1}`);
+  assert.ok(built.prompt.includes(`图${total}`),provider+' must retain the last source image number');
+  uploads.length=0;
+  await assert.rejects(generate.run({bridge,project,refs:[...fullReferences,{...runRefs[0],sourceId:'overflow',name:'overflow.png'}],layoutGuide:guide,state:{provider,width:756,height:1638},prompt:'按布局设计完整界面',pollIntervalMs:0}),new RegExp(`最多支持 ${total-1} 张外部参考图`));
+  assert.equal(uploads.length,0,provider+' must reject an extra external asset before upload');
 }
 
 console.log(checks + ' passed, 0 failed: UI design on Qwen-Image-2.1 (page plan, worker graph, node probe)');

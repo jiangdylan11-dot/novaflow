@@ -458,7 +458,7 @@
       style: accordion.headerStyle(false),
     }, [title, chevron])
     const help = createElement(documentRef, 'div', {
-      text: '在中央画板规划布局，点击模块编辑属性。布局可选。',
+      text: '在中央画板规划布局，点击模块编辑属性；也可使用已有界面图片作为布局图。',
       style: { color: 'rgba(255,255,255,0.46)', fontSize: '10px', lineHeight: '1.55' },
     })
 
@@ -795,15 +795,57 @@
     })
   }
 
-  function assistantInput(state, context, profile) {
+  function requiredGenerationReferences(context, references, layoutGuide, structure) {
+    const pipeline = root?.NovaFlowUiDesignPromptPipeline
+    if (typeof pipeline?.requireLayoutReferences !== 'function') throw new Error('UI 布局图校验组件未就绪，本次未提交生成')
+    const refs = references.filter(reference => reference?.dataUrl || reference?.imageUrl).map(reference => ({
+      ...reference,
+      dataUrl: String(reference.dataUrl || reference.imageUrl),
+    }))
+    if (context.layout) {
+      if (!layoutGuide?.dataUrl || layoutGuide.clean !== true || layoutGuide.editorSnapshot !== false) {
+        throw new Error('无法编译当前页面结构的干净布局控制图')
+      }
+      const reference = {
+        id: `ui-layout-${context.layout.id}`,
+        sourceId: `ui-layout-${context.layout.id}`,
+        uiLayoutId: context.layout.id,
+        name: '布局参考.png',
+        role: 'layout',
+        dataUrl: layoutGuide.dataUrl,
+        width: structure.width,
+        height: structure.height,
+        uiStructure: structure,
+      }
+      const existing = refs.findIndex(item => item.uiLayoutId === context.layout.id)
+      if (existing >= 0) refs[existing] = reference
+      else refs.push(reference)
+    }
+    const limit = positiveInteger(context.capability?.totalReferenceLimit, context.referenceLimit)
+    if (refs.length > limit) throw new Error(`当前模型最多支持 ${limit} 张参考图（包含自建布局图），请先移除多余图片`)
+    return pipeline.requireLayoutReferences(refs)
+  }
+
+  function assistantInput(state, context, profile, preparedReferences) {
+    const structure = generatorStructureContext(state, context.generator.id)
+    const guide = context.layout && !preparedReferences ? dependencies().layoutGuide?.createCleanLayoutGuide?.({
+      width: structure.width,
+      height: structure.height,
+      canvas: { width: structure.width, height: structure.height },
+      blocks: structure.blocks,
+    }, { visualEncoding: 'filled-regions-only' }) : null
+    const references = preparedReferences || requiredGenerationReferences(context, generatorReferenceDescriptors(state, context.generator.id), guide, structure)
     return {
       provider: context.provider,
       engine: profile.settings.assistantEngine || 'grok',
+      targetEngine: context.provider === 'local' ? 'qwen-2.1' : '',
+      generationIntent: context.iterationReferenceCount > 0 ? 'iteration' : 'redesign',
+      preserveLayout: true,
       prompt: String(profile.settings.prompt || ''),
       negativePrompt: String(profile.settings.negativePrompt || ''),
       size: { ...profile.output },
-      references: generatorReferenceDescriptors(state, context.generator.id),
-      structure: generatorStructureContext(state, context.generator.id),
+      references,
+      structure,
       electronAPI: root?.electronAPI,
       getSessionToken: readClientSessionToken,
     }
@@ -817,12 +859,16 @@
     if (!state || !context?.generator) throw new Error('请先选择一个 UI 生成器节点')
     if (typeof modules.assistantDialog?.open !== 'function') throw new Error('AI 助手尚未就绪')
     const profile = generatorProfile(state, context.generator, false)
+    const input = assistantInput(state, context, profile)
     return modules.assistantDialog.open({
       documentRef: payload.promptTextarea?.ownerDocument || root?.document,
       workflow: modules.assistantWorkflow,
       electronAPI: root?.electronAPI,
       provider: context.provider,
       engine: profile.settings.assistantEngine || 'grok',
+      targetEngine: input.targetEngine,
+      generationIntent: input.generationIntent,
+      preserveLayout: input.preserveLayout,
       getInputRevision: () => {
         const latest = ensureStore().getState()
         const ctx = generationContext(latest, context.generator.id)
@@ -836,7 +882,11 @@
         : '',
       promptTextarea: payload.promptTextarea,
       getPrompt: () => String(payload.promptTextarea?.value ?? payload.prompt ?? ''),
-      getReferences: () => generatorReferenceDescriptors(ensureStore()?.getState?.() || state, context.generator.id),
+      getReferences: () => {
+        const latest = ensureStore()?.getState?.() || state
+        const ctx = generationContext(latest, context.generator.id)
+        return assistantInput(latest, ctx, generatorProfile(latest, ctx.generator, false)).references
+      },
       getStructureContext: () => generatorStructureContext(ensureStore()?.getState?.() || state, context.generator.id),
       getSessionToken: readClientSessionToken,
       apply(result) {
@@ -974,8 +1024,6 @@
       uiRunIntent: context.iterationReferenceCount > 0 ? 'iteration' : 'redesign',
       iterationReferenceCount: context.iterationReferenceCount,
     }
-    generationState = runState
-    setGenerationStatus('准备生成 UI', { generatorNodeId, running: true })
     const sourceSize = layoutCoordinateSize(state, context.layout, output)
     const scaledBlocks = scaleLayoutBlocks(context.blocks, sourceSize, output)
     const scopedLayout = {
@@ -1010,7 +1058,13 @@
       throw error
     }
     project.layoutGuide = layoutGuide
-    const references = context.references
+    const references = requiredGenerationReferences(context, context.references, layoutGuide, {
+      width: output.width,
+      height: output.height,
+      regions: scaledBlocks,
+    })
+    generationState = runState
+    setGenerationStatus('准备生成 UI', { generatorNodeId, running: true })
     const progressHandler = (progress) => {
       setGenerationStatus(progress?.label || 'UI 生成中', {
         generatorNodeId,
@@ -1033,7 +1087,7 @@
     }
     const task = (async () => {
       setGenerationStatus('理解需求…', { generatorNodeId, running: true })
-      const input = assistantInput(state, context, profile)
+      const input = assistantInput(state, context, profile, references)
       const optimized = await root.NovaFlowUiDesignPromptPipeline.run({ id: generatorNodeId, input, signal: abort.signal, assistant: modules.assistantWorkflow })
       if (abort.signal.aborted) { const error = new Error('任务已中止'); error.name = 'AbortError'; throw error }
       generationOptions.prompt = optimized.prompt
@@ -1044,6 +1098,17 @@
         const sourceId = String(ref?.sourceId || ref?.id || '')
         if (input.prompt.includes(match[0]) && promptMentionBindings[match[0]] && promptMentionBindings[match[0]] !== sourceId) throw new Error('参考图引用已变化，请重新选择该引用')
         if (sourceId) promptMentionBindings[match[0]] = sourceId
+      }
+      if (input.targetEngine === 'qwen-2.1') {
+        const compiled = root.NovaFlowUiDesignPromptPipeline.compileQwenPlan(optimized, input)
+        generationOptions.prompt = compiled.prompt
+        generationOptions.refs = compiled.references
+        runState.uiLayoutMode = compiled.plan.layoutMode
+        runState.uiNativeEditPrompt = true
+        runState.uiPreserveLayout = ['preserve', 'partial'].includes(compiled.plan.layoutMode)
+        runState.uiRunIntent = compiled.plan.visualMode === 'partial' ? 'iteration' : compiled.plan.visualMode === 'theme-redesign' ? 'redesign' : 'style-transfer'
+        // The compiler remaps image numbers together with the ordered references.
+        Object.keys(promptMentionBindings).forEach(key => delete promptMentionBindings[key])
       }
       generationOptions.state = { ...runState, prompt: generationOptions.prompt, negativePrompt: generationOptions.negativePrompt, promptMentionBindings }
       mounted?.workspaceHandle?.recordOptimization?.(generatorNodeId, input, optimized)

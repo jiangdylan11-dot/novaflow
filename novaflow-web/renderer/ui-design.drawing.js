@@ -172,7 +172,7 @@
   }
   function inputFor({ state, references, referenceLimit }) {
     const live = mounted?.layoutContext?.(), liveStructure = modelStructure(live?.structure)
-    const refs = snapshotLayoutReferences(references, live?.node?.id, liveStructure, referenceLimit)
+    const refs = root.NovaFlowUiDesignPromptPipeline.requireLayoutReferences(snapshotLayoutReferences(references, live?.node?.id, liveStructure, referenceLimit))
     const layout = refs.find(ref => ref.uiLayoutId)
     const numbered = new Map()
     let occupied = 0
@@ -225,11 +225,6 @@
       state.uiRunIntent = input.generationIntent
       state.uiPreserveLayout = input.preserveLayout
       state.localDrawEngine = root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider, state.mode, state)?.engine || ''
-      // With no references the same img2img controls still own the text-only run's cloud settings.
-      if (!input.references.length) {
-        state.gptQualityTxt2img = state.gptQualityImg2img
-        state.googleAspectRatioTxt2img = state.googleAspectRatioImg2img
-      }
       const result = await root.NovaFlowUiDesignPromptPipeline.run({ id: 'ui-drawing', input, signal: controller.signal, assistant: root.NovaFlowUiDesignAssistantWorkflow })
       if (controller.signal.aborted) throw new Error('任务已中止')
       if (input.targetEngine === 'qwen-2.1') {

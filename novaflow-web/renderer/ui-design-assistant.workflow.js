@@ -255,8 +255,10 @@
     if (options.targetEngine === 'qwen-2.1') {
       const requirements = [
         '这是 Qwen 2.1 UI 原生参考编辑规划。依据用户原文理解每张图的职责，独立判断视觉修改范围与布局修改范围，不使用固定主题或五段式绘图模板。',
-        '用户未提出改变布局时沿用有效布局来源；人物缩小、按钮上移、增加一行等属于局部布局调整，不能被整体保留规则否定，也不代表全部重排。只有风格或素材图时不继承它的布局。',
-        '风格迁移保留未要求改变的内容身份，新主题则贯穿人物、背景、符号和组件；局部修改保留其他区域。自建布局矩形仅约束位置与用途，组件轮廓可以重新设计。',
+        'UI设计必须有布局图片，layoutReference必须指向有效布局图，不能为0，layoutMode不能是create。只有一张图片时这张就是布局图，包括原来标为风格或默认参考的图片；多图使用指定布局图或首张普通主图，自建布局图优先。保留布局图主要区域位置与功能关系，人物缩小、按钮上移、增加一行等仅处理用户明确要求的局部调整；其他风格或素材图不提供布局。',
+        '风格迁移保留未要求改变的内容身份与组件构造，新主题则贯穿人物、背景、符号和组件；局部修改只改指定部分。主题重设默认重新设计组件构造，自建布局矩形只约束区域锚点、用途与玩法关系，不锁定成品轮廓。仅重设计造型且主题不变时保留原主题、人物物品身份、有效文案和状态；用户明确要求固定形状或只迁移风格时按其范围处理。',
+        '主题或造型重设计必须落实到具体组件：说明标题、主框、奖励栏和按钮怎样组成，如何承托文字、组织边框、连接相邻部件、安排装饰支撑和负空间。结合用户主题决定构造，不套固定题材模板；保持目标完整画风与配色，并完成材质和光影，通过轮廓、承托与连接关系的具体变化辨认新构造，不能只换材质或把原角饰换成相同位置的主题饰件。同类功能的视觉识别保持一致，装饰不遮挡玩法、文字和点击目标，不新增功能。',
+        'preserve只记录玩法拓扑、网格数量、功能、金额状态、主要区域锚点及用户实际指定的限制。主题或造型重设计时，不把源图的四角铆钉、角饰数量与位置、原边框组织、连接件、支撑底座、固定轮廓和尺寸比例写成保留事实；用户原文确实要求保留的具体构造优先。',
         '给出完整且具体的美术设计：形状语言、色彩层级、材质和光影，区分常见与稀有符号，重复符号造型统一、有效文字准确。不按题材固定配色和渲染方式，也不擅自添加功能。',
         '风格参考的主色、强调色、明暗对比、材质反光和体积塑造需要落实到设计，不泛化成题材词。用户要求有质感时避免全部区域同色同亮度；淡彩、扁平或简约需求仍以用户原风格为准。',
         `输出尺寸：${size.width || structure.width}×${size.height || structure.height}。`,
@@ -270,13 +272,14 @@
     }
     const content = [
       '你是 UI 视觉设计助手。只输出可直接生成设计图的最终中文提示词。根据用户要求理解布局、风格和人物物品参考的分工，不强加预设风格、内容类型或商业化倾向。',
-      '有完整UI布局参考时，先逐区清点原界面：人物展示区、图标区、提示栏和操作栏全部保留。记录相对位置、占比、顺序、叠放关系、网格准确行列数和控件数量，必须逐行逐列数清，不按常见模板猜测。主题重做只替换视觉，禁止重排、合并、删除区域或改变格数。用户说不保留任何元素，指美术内容，不代表取消布局；只有明确要求重新布局或重新排版时才改变结构。风格图和人物物品图不提供布局。',
+      '有完整UI布局参考时，先逐区清点原界面：人物展示区、图标区、提示栏和操作栏全部保留。记录主要区域锚点、用途、功能顺序、网格准确行列数和控件数量，必须逐行逐列数清，不按常见模板猜测。主题重做保持玩法拓扑与主要功能区域，默认重新设计区域内的组件造型和构造，不把旧框体轮廓、边框组织、四角装饰、连接件或支撑结构当成玩法约束；不能仅换材质或换成同位置的主题角饰。用户说不保留任何元素，指美术内容，不代表取消布局；只有明确要求重新布局或重新排版时才改变功能结构。仅风格迁移和局部编辑保留未要求改变的原构造；用户明确固定形状时优先。风格图和人物物品图不提供布局。',
       options.generationIntent === 'style-transfer'
         ? '本次为风格迁移，保持参考界面的功能、文案和内容身份；用户未要求改变的布局、网格行列及物品数量不变，只改变指定视觉风格，不能重做内容。'
         : options.generationIntent === 'iteration'
         ? '本次为局部编辑，用户指定要保留的部分不变。'
         : '本次为完整 UI 设计。参考图只按用户指定用途借鉴，不默认锁定原图的人物、背景、图标、文案或旧主题。用户要求重新设计或不保留任何元素时，全部视觉区域一起改成目标主题，不能只替换人物服装；最终提示词必须明确这些改动，不能描述成原图局部编辑。',
-      '用户明确要求优先；有自建布局时遵守各区域位置、用途和数量。没有布局时按用户需求和布局参考合理排布。风格图只借鉴配色、材质、按钮、边框、图标和排版，不移植无关人物、商品或文字。按要求融合指定元素。',
+      '用户明确要求优先；UI设计必须使用布局图片，自建布局图优先，只有一张图片时它就是布局图，多图中指定布局图或首张普通主图提供主要区域位置、用途和功能关系。其他风格图只借鉴配色、材质、按钮、边框和图标，不移植整体排布或无关人物、商品、文字。按要求融合指定元素。',
+      '主题或造型重设计须说明主要组件的具体构成、边框组织、连接方式、装饰承托、叠放和负空间；保持目标完整画风与配色，并完成材质和光影，通过轮廓、承托与连接关系辨认具体构造差异；仅要求造型重做而主题不变时，原主题、人物物品身份、有效文案、金额和状态保持正确。不用固定题材模板，同类功能识别一致，文字与点击目标清楚。',
       '区分软件编辑器外框和目标 UI 内容：不生成编辑器手柄与辅助线；目标 UI 的按钮、菜单和用户指定文案必须保留。局部修改时保留未要求改变的内容。不要擅自增加金币、角标等功能。',
       '所有 __NOVAFLOW_ 开头并以双下划线结尾的引用占位符原样原次数保留；图片编号按输入顺序，不重新编号。不要输出分析过程或多套方案。',
       `输出尺寸：${size.width || structure.width}×${size.height || structure.height}。`,
@@ -382,7 +385,9 @@
     const provider = normalizeProvider(options.provider)
     const engine = normalizeEngine(options.engine)
     const rawReferences = await resolveValue(options.getReferences, options.references || [])
-    const references = referenceSnapshot(rawReferences, engine)
+    const layoutValidator = root?.NovaFlowUiDesignPromptPipeline?.requireLayoutReferences
+    if (typeof layoutValidator !== 'function') throw new Error('UI 布局校验组件未就绪，本次未提交生成')
+    const references = layoutValidator(referenceSnapshot(rawReferences, engine))
     const targetStyle = 'auto'
     if (targetStyle === 'reference' && !references.some((reference) => reference.role === 'style')) {
       throw new Error('“跟随参考图”需要至少选择一张职责为“风格”的参考图。')
@@ -399,8 +404,7 @@
     const recoverPlanningFailure = error => {
       checkActive()
       if (options.targetEngine !== 'qwen-2.1' || !/2\.1 UI 设计规划(?:不完整|JSON无效)/u.test(String(error?.message || error))) throw error
-      const scope = !references.length ? '根据需求设计完整的 UI 界面。'
-        : options.generationIntent === 'style-transfer' ? '只改变要求的视觉风格，保留参考图中的功能、内容身份和布局。'
+      const scope = options.generationIntent === 'style-transfer' ? '只改变要求的视觉风格，保留参考图中的功能、内容身份和布局。'
           : options.generationIntent === 'iteration' ? '只修改明确指定的部分，其余区域保持原样。'
             : '以参考图为编辑画布，除用户明确要求改变的部分外沿用区域位置与功能关系；按新主题逐区设计人物、背景、图标符号、面板与按钮。'
       return { ok: true, uiPlan: null, prompt: `${promptProtection.text}。${scope}` }
@@ -411,7 +415,7 @@
     const requestedPurpose = text(options.purpose).toLowerCase().replace(/[\s_]+/g, '-')
     const purpose = requestedPurpose.startsWith('ui-design-')
       ? requestedPurpose
-      : (references.length ? 'ui-design-reference' : (currentPrompt.trim() ? 'ui-design-optimize' : 'ui-design-create'))
+      : 'ui-design-reference'
 
     const call = engine === 'local' ? localApi(options, references) : grokApi(options, references)
     if (typeof call !== 'function') throw new Error(engine === 'local' ? '本地模型未就绪' : '云端模型未就绪')

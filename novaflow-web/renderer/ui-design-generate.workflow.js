@@ -111,9 +111,6 @@
   const DOWNLOAD_TIMEOUT_MS = 30000
   const DEFAULT_MAX_WAIT_MS = 45 * 60 * 1000
   const DEFAULT_POLL_INTERVAL_MS = 1200
-  // Safe semantic-only fallback used when the layout guide helper has not been
-  // loaded yet. Legacy skeleton pixels are deliberately never used here.
-  const SAFE_FALLBACK_GUIDE_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 
   function cleanText(value) {
     return String(value == null ? '' : value).replace(/\s+/g, ' ').trim()
@@ -271,6 +268,8 @@
       role: normalizeReferenceRole(value.role || value.referenceRole || value.kind || value.type),
       treatment: cleanText(value.treatment),
       sourceId: cleanText(value.sourceId || value.resourceId || value.id),
+      ...(value.uiLayoutId ? { uiLayoutId: cleanText(value.uiLayoutId) } : {}),
+      ...(value.uiStructure ? { uiStructure: value.uiStructure } : {}),
       targetNodeId: cleanText(value.targetNodeId || value.targetId),
       connectionKind: cleanText(value.connectionKind || value.edgeKind),
       width: positiveInteger(value.width ?? value.w, 0),
@@ -712,20 +711,7 @@
     if (expectedEncoding) {
       throw new Error(`UI layout guide helper is required to produce ${expectedEncoding}`)
     }
-    return {
-      schemaVersion: 1,
-      kind: 'ui-layout-guide',
-      role: 'ui_layout',
-      source: 'semantic-only-safe-fallback',
-      clean: true,
-      editorSnapshot: false,
-      name: legacyGuideName(project, options),
-      dataUrl: SAFE_FALLBACK_GUIDE_DATA_URL,
-      width: semanticLayout.canvas.width,
-      height: semanticLayout.canvas.height,
-      visualEncoding: FILLED_REGIONS_VISUAL_ENCODING,
-      semantic: semanticLayout,
-    }
+    throw new Error('UI 布局图生成组件未就绪，请先生成有效布局参考图片；本次未提交生成')
   }
 
   function projectCanvas(project) {
@@ -1579,7 +1565,7 @@
   // (no anti-copy proxies), so the role wording is what separates "take the look" from
   // "put this asset in the screen".
   const QWEN21_UI_REFERENCE_RULES = Object.freeze({
-    layout: 'layout reference: follow its section positions, proportions, grouping and control placement; replace its theme, characters, logo and text with the requested ones.',
+    layout: 'binding layout reference: preserve its major region anchors, gameplay grouping, counts and control functions; redesign theme artwork and component construction as requested, without treating its old borders, corner decorations, supports or silhouettes as fixed unless the user explicitly keeps them.',
     style: 'style reference: take its palette, materials, lighting, ornament and frame language and typography feel; do not copy its layout, characters, logo or text.',
     character: 'character reference: show this character with the same identity, face, hair, outfit and colors.',
     subject: 'content reference: include this subject with the same identity and key details.',
@@ -1651,13 +1637,15 @@
       || cleanText(project.description || semantic.description)
     const references = Array.isArray(options.references) ? options.references : []
     const imageNumbers = Array.isArray(options.referenceImageNumbers) ? options.referenceImageNumbers : []
-    const referenceLines = references.map((reference, index) => {
-      const label = qwen21UiReferenceLabel(reference)
-      return `<image${positiveInteger(imageNumbers[index], index + 1)}>${label ? ` ${label}` : ''}: ${qwen21UiReferenceRule(reference)}`
-    })
     const guideNumber = positiveInteger(options.layoutGuideImageNumber, 0)
+    const referenceLines = references.flatMap((reference, index) => {
+      const imageNumber = positiveInteger(imageNumbers[index], index + 1)
+      if (imageNumber === guideNumber) return []
+      const label = qwen21UiReferenceLabel(reference)
+      return [`<image${imageNumber}>${label ? ` ${label}` : ''}: ${qwen21UiReferenceRule(reference)}`]
+    })
     if (guideNumber) {
-      referenceLines.push(`<image${guideNumber}>: blurred grayscale occupancy map, not artwork. Use it only for where each functional group sits, its relative size, order and repeat counts. Never draw gray blobs, boxes, outlines or guide marks.`)
+      referenceLines.push(`<image${guideNumber}>: binding layout guide, not artwork. Use it for major functional region anchors, grouping, order and repeat counts. Its boxes do not lock finished component contours, construction, supports or decorations. Never draw gray blobs, boxes, outlines or guide marks.`)
     }
     const regions = (Array.isArray(semantic.regions) ? semantic.regions : projectBlocks(project))
       .map((region, index) => ({ region, index, box: qwen21RegionBox(region, canvas) }))
@@ -1898,13 +1886,41 @@
     const project = options.project && typeof options.project === 'object' ? options.project : {}
     // The exact same ordered snapshot drives @ mentions, prompt numbering,
     // upload order and workflow reference metadata.
-    const refs = externalReferenceSnapshot(options.refs || options.references)
+    const externalRefs = externalReferenceSnapshot(options.refs || options.references)
+    const semanticLayout = resolveSemanticLayout(project, options, state)
+    const requestedLayoutGuideEncoding = provider === 'local'
+      ? SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING
+      : provider === 'google'
+        ? SOFT_LAYOUT_GUIDE_ENCODING
+        : ''
+    const hasRegions = Array.isArray(semanticLayout.regions) && semanticLayout.regions.length > 0
+    const layoutGuide = hasRegions
+      ? resolveCleanLayoutGuide(project, options, state, semanticLayout, requestedLayoutGuideEncoding)
+      : cleanGuideCandidate(options.layoutGuide) || cleanGuideCandidate(project.layoutGuide) || { source: 'none', visualEncoding: '' }
+    const hasLayout = Boolean(cleanGuideCandidate(layoutGuide))
+    if (hasRegions && !hasLayout) throw new Error('自建布局必须先生成有效布局参考图片，本次未提交生成')
+    const layoutValidator = root?.NovaFlowUiDesignPromptPipeline?.requireLayoutReferences
+    if (typeof layoutValidator !== 'function') throw new Error('UI 布局校验组件未就绪，本次未提交生成')
+    const guideReference = hasLayout ? { ...layoutGuide, role: 'layout', uiLayoutId: 'ui-generation-guide' } : null
+    // Keep already connected guides in their original slot so @ references
+    // retain their meaning. Refresh that slot with the actual current guide.
+    const connectedGuideIndex = hasLayout ? externalRefs.findIndex(ref => ref.uiLayoutId || (ref.role === 'layout' && ref.dataUrl === layoutGuide.dataUrl)) : -1
+    const candidates = connectedGuideIndex >= 0 ? externalRefs.map((ref, index) => index === connectedGuideIndex
+      ? { ...ref, ...guideReference, sourceId: ref.sourceId, name: ref.name } : ref) : externalRefs
+    const validatedRefs = layoutValidator([...candidates, ...(guideReference && connectedGuideIndex < 0 ? [guideReference] : [])])
+    const refs = Object.freeze(guideReference && connectedGuideIndex < 0 ? validatedRefs.filter(ref => ref !== guideReference) : validatedRefs)
     // Asked on every run: the assistant may point at another ComfyUI than when the page loaded.
     const qwen21 = provider === 'local' && await refreshLocalQwen21Available()
-    const capability = validateExternalReferenceCount(provider, refs, providerCapability(provider, { qwen21 }))
+    const runCapability = providerCapability(provider, { qwen21 })
+    // A connected cloud guide occupies the already reserved layout slot, not
+    // an external asset slot. Keep the full ordered refs for mentions/upload;
+    // the final synthesis reference count still enforces the total capacity.
+    const externalCapacityRefs = runCapability.reservedLayoutReferences > 0 && connectedGuideIndex >= 0
+      ? refs.filter((_, index) => index !== connectedGuideIndex)
+      : refs
+    const capability = validateExternalReferenceCount(provider, externalCapacityRefs, runCapability)
     if (qwen21) state.localUiEngine = LOCAL_UI_ENGINE_QWEN21
     else delete state.localUiEngine
-    const semanticLayout = resolveSemanticLayout(project, options, state)
     const originalUserPrompt = cleanText(options.prompt)
     const carrierIntent = resolveUiOutputCarrier(
       originalUserPrompt,
@@ -1928,13 +1944,6 @@
         : []),
     )
     const modelUserPrompt = normalizeScreenNativeUiText(originalUserPrompt, carrierIntent)
-    const requestedLayoutGuideEncoding = provider === 'local'
-      ? SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING
-      : provider === 'google'
-        ? SOFT_LAYOUT_GUIDE_ENCODING
-        : ''
-    const hasLayout = Array.isArray(semanticLayout.regions) && semanticLayout.regions.length > 0
-    const layoutGuide = hasLayout ? resolveCleanLayoutGuide(project, options, state, semanticLayout, requestedLayoutGuideEncoding) : { source: 'none', visualEncoding: '' }
     const layoutGuideEncoding = cleanText(layoutGuide.visualEncoding)
       || requestedLayoutGuideEncoding
       || FILLED_REGIONS_VISUAL_ENCODING
@@ -2070,22 +2079,18 @@
     const referenceGuidedRedesign = provider === 'local'
       && localIntent === 'redesign'
       && !qwen21
-    const executionMode = !hasLayout && !modelRefs.length ? 'txt2img' : MODE
+    const executionMode = MODE
     state.mode = executionMode
-    // The workbench has one set of controls; keep their values when the transport is text-only.
-    if (executionMode === 'txt2img') {
-      state.gptQualityTxt2img = state.gptQualityImg2img || state.gptQualityTxt2img
-      state.googleAspectRatioTxt2img = state.googleAspectRatioImg2img || state.googleAspectRatioTxt2img
-    }
-    // 2.1 gets the page structure as text only. A guide image leaked grey haze and blobs into the
-    // screen wherever it sat in the list (first it also pulled the layout off), so its references
-    // are the connected images alone.
-    const synthesisPlan = qwen21 || !hasLayout
+    const connectedModelGuideIndex = connectedGuideIndex >= 0 ? modelRefs.findIndex(ref => ref.uiLayoutId
+      || ref.index === connectedGuideIndex
+      || (refs[connectedGuideIndex]?.sourceId && ref.sourceId === refs[connectedGuideIndex].sourceId)
+      || (ref.role === 'layout' && ref.dataUrl === layoutGuide.dataUrl)) : -1
+    const synthesisPlan = !hasLayout || connectedModelGuideIndex >= 0
       ? Object.freeze({
           references: Object.freeze([...modelRefs]),
           externalModelImageNumbers: Object.freeze(modelRefs.map((_, index) => index + 1)),
-          layoutGuideIndex: -1,
-          layoutGuideImageNumber: 0,
+          layoutGuideIndex: connectedModelGuideIndex,
+          layoutGuideImageNumber: connectedModelGuideIndex + 1,
           primaryModelReferenceIndex: -1,
           primaryModelImageNumber: 0,
           guideLast: false,
@@ -2103,6 +2108,7 @@
       synthesisPlan.externalModelImageNumbers,
     )
     const references = synthesisPlan.references
+    if (references.length > capability.totalReferenceLimit) throw new Error(`当前模型最多支持 ${capability.totalReferenceLimit} 张参考图（包含布局图），当前共有 ${references.length} 张，请先移除多余图片；本次未提交生成`)
     const referenceRoles = references.map((reference, index) => ({
       index,
       role: index === synthesisPlan.layoutGuideIndex
@@ -2177,7 +2183,8 @@
     }))
     assertStableUiMentionBindings(options.prompt, refs, state.promptMentionBindings)
     const supplementalPrompt = cleanText(compiledMentions.text)
-    const basePrompt = qwen21
+    const nativeEditPrompt = qwen21 && state.uiNativeEditPrompt === true
+    const basePrompt = nativeEditPrompt ? String(options.prompt || '').trim() : qwen21
       ? compileQwen21UiPrompt({
           strictRequirements: true,
           project,
