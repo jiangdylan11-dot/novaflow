@@ -98,6 +98,9 @@
 
   // ---- 画板 clips with an audio track ----------------------------------------
   function currentSource(video) { return String(video.currentSrc || video.src || ''); }
+  // currentSrc follows a src change only once resource selection ran; the
+  // attribute is what the page (or this overlay) just set.
+  function sourceNow(video) { return String(video.getAttribute('src') || video.currentSrc || ''); }
   function isStageVideo(video) {
     if (!video.isConnected || !video.closest('[data-novaflow-ai-preview-viewport="1"]')) return false;
     return !video.closest('[data-novaflow-ai-resource-card="1"], [data-novaflow-ai-resource-sidebar-host="1"], [data-novaflow-ai-bottom-workspace="1"]');
@@ -144,6 +147,28 @@
     if (media.audio) { try { media.audio.pause(); } catch (_) {} }
   }
 
+  // One clip plays on the 画板 at a time: when another stage video starts, or the
+  // element leaves the page (React mounts a new one per resource), its music stops.
+  let ACTIVE_VIDEO = null;
+  function makeActive(video) {
+    if (ACTIVE_VIDEO && ACTIVE_VIDEO !== video) {
+      const previous = MEDIA.get(ACTIVE_VIDEO);
+      if (previous) cleanupMedia(ACTIVE_VIDEO, previous);
+    }
+    ACTIVE_VIDEO = video;
+  }
+  if (typeof root.setInterval === 'function') root.setInterval(() => {
+    if (ACTIVE_VIDEO && !ACTIVE_VIDEO.isConnected) {
+      const media = MEDIA.get(ACTIVE_VIDEO);
+      if (media) cleanupMedia(ACTIVE_VIDEO, media);
+      ACTIVE_VIDEO = null;
+    }
+    doc.querySelectorAll('audio[data-novaflow-loop-audio]').forEach((audio) => {
+      const owner = audio.__novaflowLoopVideo;
+      if (!owner || !owner.isConnected || MEDIA.get(owner)?.audio !== audio) { try { audio.pause(); audio.remove(); } catch (_) {} }
+    });
+  }, 500);
+
   function requestCopy(video) {
     const media = mediaFor(video);
     const api = bridge();
@@ -164,6 +189,7 @@
       media.container = result.container || 'mp4';
       COPY_SOURCES.set(result.url, original);
       const audio = doc.createElement('audio');
+      audio.__novaflowLoopVideo = video;
       audio.setAttribute('data-novaflow-runtime-ignore', '1');
       audio.setAttribute('data-novaflow-loop-audio', '1');
       audio.style.display = 'none';
@@ -181,15 +207,17 @@
   function swapTo(video, media, src, time, play) {
     if (media.swapping) return false;
     media.swapping = true;
+    media.pendingSrc = src;
     coverWithSnapshot(video, media.container);
     const finish = () => {
-      video.removeEventListener('loadeddata', onLoaded);
-      if (media.swapTimer) { root.clearTimeout(media.swapTimer); media.swapTimer = 0; }
-      media.swapping = false;
+      abortSwap(video, media);
+      // The page may have put another source in meanwhile: then this media is stale.
+      if (sourceNow(video) !== src) { cleanupMedia(video, media); return; }
       media.swapped = src === media.copy && Boolean(media.copy);
       if (media.swapped) audioFollow(video, media); else audioStop(media);
     };
     const onLoaded = () => {
+      if (sourceNow(video) !== src) { finish(); return; }
       try { if (time > 0) video.currentTime = time; } catch (_) {}
       if (play) {
         const p = video.play();
@@ -198,13 +226,21 @@
         finish();
       }
     };
+    media.onLoaded = onLoaded;
     video.addEventListener('loadeddata', onLoaded);
     media.swapTimer = root.setTimeout(finish, SWAP_TIMEOUT_MS);
     try { video.src = src; } catch (_) { finish(); return false; }
     return true;
   }
+  function abortSwap(video, media) {
+    if (media.onLoaded) { video.removeEventListener('loadeddata', media.onLoaded); media.onLoaded = null; }
+    if (media.swapTimer) { root.clearTimeout(media.swapTimer); media.swapTimer = 0; }
+    media.swapping = false;
+    media.pendingSrc = '';
+  }
 
   function cleanupMedia(video, media) {
+    abortSwap(video, media);
     if (media.probeTimer) { root.clearTimeout(media.probeTimer); media.probeTimer = 0; }
     if (media.restoreTimer) { root.clearTimeout(media.restoreTimer); media.restoreTimer = 0; }
     audioStop(media);
@@ -249,14 +285,18 @@
       start();
       const media = mediaFor(video);
       if (media.restoreTimer) { root.clearTimeout(media.restoreTimer); media.restoreTimer = 0; }
+      // Playing something that is neither the clip nor its copy: the page moved on.
+      if (!media.swapping && media.original && sourceNow(video) !== media.original && sourceNow(video) !== media.copy) cleanupMedia(video, media);
       if (media.swapped) audioFollow(video, media);
       // The snapshot poster has done its job once the new source paints.
       if (video.hasAttribute('poster')) root.setTimeout(() => { if (!media.swapping) video.removeAttribute('poster'); }, 1000);
       if (media.probeTimer) root.clearTimeout(media.probeTimer);
       media.probeTimer = root.setTimeout(() => {
         media.probeTimer = 0;
-        if (!video.loop || video.paused || video.ended || media.copy || media.requesting) return;
-        if (!isStageVideo(video) || !hasAudioTrack(video)) return;
+        if (!video.loop || video.paused || video.ended) return;
+        if (!isStageVideo(video)) return;
+        makeActive(video);
+        if (media.copy || media.requesting || !hasAudioTrack(video)) return;
         requestCopy(video);
       }, PROBE_DELAY_MS);
     };
@@ -276,8 +316,9 @@
     const onEmptied = () => {
       stop();
       const media = MEDIA.get(video);
-      if (!media || media.swapping) return;
-      const src = currentSource(video);
+      if (!media) return;
+      const src = sourceNow(video);
+      if (media.swapping && src === media.pendingSrc) return;
       if (src !== media.original && src !== media.copy) cleanupMedia(video, media);
     };
     video.addEventListener('playing', onPlaying);
