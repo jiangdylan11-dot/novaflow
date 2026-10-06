@@ -32,10 +32,13 @@
     const clearTimer = timers.clearTimeout || root.clearTimeout.bind(root);
     const state = { deltas: [], last: -1, lastPresented: 0, armed: 0, seekMs: DEFAULT_SEEK_MS, wrapIssuedAt: 0, wraps: 0 };
 
+    // Frame duration in media time (what mediaTime advances per frame) and
+    // on the wall clock (shorter when the 画板 plays the clip faster).
+    function mediaFrameDuration() {
+      return state.deltas.length >= 3 ? median(state.deltas.slice(-8)) : (1 / 30);
+    }
     function frameDuration() {
-      const rate = Number(video.playbackRate) || 1;
-      const fd = state.deltas.length >= 3 ? median(state.deltas.slice(-8)) : (1 / 30);
-      return fd / rate;
+      return mediaFrameDuration() / (Number(video.playbackRate) || 1);
     }
 
     // Called with every presented frame (requestVideoFrameCallback metadata).
@@ -55,9 +58,10 @@
       if (!video.loop || video.paused || video.ended || !(duration > 0)) return null;
       // Only act once the frame duration has actually been measured.
       if (state.deltas.length < 3) return null;
-      const fd = frameDuration();
-      if (!(fd > 0) || duration < fd * 3) return null;
-      if (state.armed || mediaTime < duration - 1.5 * fd - 0.001) return null;
+      const mediaFd = mediaFrameDuration(), fd = frameDuration();
+      if (!(mediaFd > 0) || duration < mediaFd * 3) return null;
+      // The last frame is the one whose mediaTime sits within 1.5 media frames of the end.
+      if (state.armed || mediaTime < duration - 1.5 * mediaFd - 0.001) return null;
       const delay = Math.max(0, Math.round(fd * 1000 - state.seekMs));
       state.armed = setTimer(() => {
         state.armed = 0;

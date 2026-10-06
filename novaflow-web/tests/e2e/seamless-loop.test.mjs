@@ -48,6 +48,17 @@ test('a looping video gets an early seek armed on its last frame, one frame minu
   assert.equal(video.currentTime, 0, 'the timer seeks to 0');
 });
 
+test('a clip played faster still triggers on its last frame, with the delay on the wall clock', () => {
+  const api = load();
+  const video = { loop: true, paused: false, ended: false, duration: DURATION, playbackRate: 1.875, currentTime: 2 };
+  const { loop, timers } = drive(api, video);
+  // Presented every 33 ms on the wall clock while mediaTime steps by a full source frame.
+  let delay = null;
+  for (let n = 0; n < 39; n++) { const got = loop.onFrame(n * FD * 1000 / 1.875, n * FD); if (got != null) delay = got; }
+  assert.equal(timers.length, 1, 'one seek timer armed');
+  assert.ok(Math.abs(delay - (FD * 1000 / 1.875 - 17)) <= 1, 'delay = wall-clock frame duration - 17 ms, got ' + delay);
+});
+
 test('no seek without loop, while paused, or on a clip shorter than three frames', () => {
   const api = load();
   for (const video of [
