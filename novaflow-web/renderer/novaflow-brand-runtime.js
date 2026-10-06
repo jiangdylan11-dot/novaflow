@@ -16529,7 +16529,7 @@
   function hasAiSequenceCutoutNativeDetailReady(postSection, actionButton) {
     if (!(postSection instanceof HTMLElement)) return false;
     const existingDetails = postSection.querySelectorAll(
-      '[data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-ai-cutout-detail="1"]:not([data-novaflow-ai-sequence-hidden="1"]), [data-novaflow-ai-sequence-edit-panel="1"]:not([data-novaflow-ai-sequence-hidden="1"])'
+      '[data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-edge-clean="1"], [data-novaflow-ai-cutout-detail="1"]:not([data-novaflow-ai-sequence-hidden="1"]), [data-novaflow-ai-sequence-edit-panel="1"]:not([data-novaflow-ai-sequence-hidden="1"])'
     );
     if (Array.from(existingDetails).some((node) => node instanceof HTMLElement && isVisible(node))) return true;
     const actionRow = actionButton instanceof HTMLElement ? actionButton.parentElement : null;
@@ -18916,7 +18916,7 @@
 
   function hasVisibleAiSequenceCutoutEditingSurface() {
     const cutoutNodes = Array.from(document.querySelectorAll(
-      '[data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-chroma-close="1"], [data-novaflow-ai-cutout-detail="1"], [data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"]'
+      '[data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-chroma-close="1"], [data-novaflow-ai-cutout-detail="1"], [data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-edge-clean="1"]'
     ));
     if (cutoutNodes.some((node) => node instanceof HTMLElement && isVisible(node))) return true;
     return Array.from(document.querySelectorAll('button, [role="button"]')).some((node) => {

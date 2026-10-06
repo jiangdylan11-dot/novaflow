@@ -4,7 +4,7 @@
   if(!api?.registerPreparedFrame)return;
   const same=(a,b)=>{if(!a||!b||a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;return true;};
   const canvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
-  root.NovaFlowCutoutPipeline={create({frames,width,height,preserveShadow,active,onPreview,preferredIndex=0}){
+  root.NovaFlowCutoutPipeline={create({frames,width,height,preserveShadow,cleanEdges=false,active,onPreview,preferredIndex=0}){
     const masks=new Map(),references=api.referenceFrameIndices(frames),cache=api.createFrameCache(),jobs=new Map(),remove=[];
     // Keep the provisional reference separate from normal rendering's cache;
     // a rejected partial mask must never leave a stale final reference behind.
@@ -15,7 +15,7 @@
     const report=()=>{root.__NOVAFLOW_CUTOUT_PIPELINE_METRICS__={received:masks.size,completed,running,firstReadyMs,committed,completedBeforeCommit};};
     const stop=()=>{stopped=true;cache?.clear();for(const dispose of remove)dispose();};
     async function read(index,options){
-      if(!valid()||!committed||options.prewarm||options.globalEdit||options.frameEdit||options.preserveShadow!==preserveShadow)return null;
+      if(!valid()||!committed||options.prewarm||options.globalEdit||options.frameEdit||options.preserveShadow!==preserveShadow||!!options.cleanEdges!==!!cleanEdges)return null;
       if(!jobs.has(index)){jobs.set(index,{promise:Promise.resolve()});return null;}
       await jobs.get(index)?.promise;
       if(!valid())return null;
@@ -43,7 +43,7 @@
         const job={promise:null};jobs.set(index,job);
         job.promise=(async()=>{
           try {
-            const result=await api.renderAsync(entry.frame,{enabled:true,prewarm:true,preserveShadow,subjectMask:{data:masks.get(index),width,height},requireSubjectMask:true,sequenceProfile:profile,sequence,maskCanvas:canvas(width,height),rgbaCanvas:canvas(width,height)});
+            const result=await api.renderAsync(entry.frame,{enabled:true,prewarm:true,preserveShadow,cleanEdges,subjectMask:{data:masks.get(index),width,height},requireSubjectMask:true,sequenceProfile:profile,sequence,maskCanvas:canvas(width,height),rgbaCanvas:canvas(width,height)});
             if(!valid()||!result)return;
             // Store the algorithm's bytes before Canvas premultiplication. A
             // second put/get round trip can change faint colored edge pixels.

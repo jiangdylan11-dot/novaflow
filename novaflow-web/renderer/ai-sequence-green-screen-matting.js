@@ -136,9 +136,11 @@
     const kind = detected.kind || screenKind(detected.rgb);
     if (!kind) return null;
     const screen = { ...detected, kind };
+    // 边缘净化 is a post-pass on the chroma result; off, every byte is unchanged.
+    const polish = r => options.cleanEdges ? cleanEdges(frame, r, options) : r;
     if ((kind === "black" || kind === "white") && options.requireSubjectMask && !options.subjectMask?.data) return null;
     if (kind === "black" || kind === "white") return finishShadow(frame, matteNeutral(frame, screen, options), options);
-    if (kind === "green") return finishShadow(frame, refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options), options);
+    if (kind === "green") return finishShadow(frame, polish(refineChromaMaterial(frame, matteGreen(frame, { ...options, screen }), options)), options);
     // Reuse the validated chroma/glow solution with blue and green exchanged.
     const swapped = new Uint8ClampedArray(frame.data);
     for (let i = 0; i < swapped.length; i += 4) [swapped[i + 1], swapped[i + 2]] = [swapped[i + 2], swapped[i + 1]];
@@ -147,7 +149,7 @@
     const result = matteGreen({ width: frame.width, height: frame.height, data: swapped }, { ...options, screen: { ...screen, rgb: [screen.rgb[0], screen.rgb[2], screen.rgb[1]] } });
     for (let i = 0; i < result.data.length; i += 4) [result.data[i + 1], result.data[i + 2]] = [result.data[i + 2], result.data[i + 1]];
     result.screen = screen;
-    return finishShadow(frame, refineChromaMaterial(frame, result, options), options);
+    return finishShadow(frame, polish(refineChromaMaterial(frame, result, options)), options);
   }
 
   function nearestSeeds(seeds, w, h) {
@@ -749,6 +751,165 @@
       }
     }
     return out;
+  }
+
+  // 边缘净化. Runs after the chroma matte, before shadow removal, only when
+  // options.cleanEdges is set; off, the result is byte-identical.
+  //
+  // What it fixes (measured on an upscaled green-screen clip): contour pixels
+  // whose source mixes screen and foreground get a reduced alpha but keep a
+  // premultiplied colour that was not reduced in step, so colour/alpha
+  // overshoots into a bright screen complement (yellow on green). Around the
+  // subject, codec ringing and foreground bleed leave faint pale pixels that
+  // the glow path turns into cyan/pink haze. Interior pixels, the real shadow,
+  // emission with spatial support and the subject mask are never touched.
+  function cleanEdges(frame, result, options) {
+    const { width: w, height: h, data: src } = frame, out = result.data, alpha = result.alpha, n = w * h;
+    const mask = options.subjectMask?.data;
+    if (!mask || mask.length !== n || !result?.screen) return result;
+    const screen = result.screen, key = screen.kind === "blue" ? 2 : screen.kind === "green" ? 1 : -1;
+    if (key < 0) return result;
+    const c0 = 0, c1 = key === 1 ? 2 : 1;
+    const B = [screen.rgb[0] / 255, screen.rgb[1] / 255, screen.rgb[2] / 255];
+    const band = Math.max(3, Math.round(Math.min(w, h) / 300));
+    const srcCast = p => { const i = p * 4; return (src[i + key] - Math.max(src[i + c0], src[i + c1])) / 255; };
+    // Interior seeds: opaque, inside the mask, not screen-cast, eroded twice so
+    // the contour ring never contributes to the reference colour.
+    const seeds = new Uint8Array(n), inner = new Uint8Array(n);
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+      if (alpha[p] < 250 || mask[p] < 240) continue;
+      if (alpha[p - 1] < 250 || alpha[p + 1] < 250 || alpha[p - w] < 250 || alpha[p + w] < 250) continue;
+      if (srcCast(p) > -.02) continue;
+      seeds[p] = 1;
+    }
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x;
+      if (seeds[p] && seeds[p - 1] && seeds[p + 1] && seeds[p - w] && seeds[p + w]) inner[p] = 1;
+    }
+    const near = nearestSeeds(inner, w, h);
+    // Distance to the outside of the subject mask: the band hugs the contour,
+    // so interior detail (glowing eyes, patterns) is never in it.
+    const outside = new Uint8Array(n);
+    for (let p = 0; p < n; p++) if (mask[p] < 128) outside[p] = 1;
+    const toOutside = nearestSeeds(outside, w, h).distance;
+    // Integral images of interior colour, for a small local reference window.
+    const stride = w + 1, sum = [new Float64Array(stride * (h + 1)), new Float64Array(stride * (h + 1)), new Float64Array(stride * (h + 1))], cnt = new Float64Array(stride * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let r = 0, g = 0, b = 0, c = 0;
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x;
+        if (inner[p]) { r += src[p * 4]; g += src[p * 4 + 1]; b += src[p * 4 + 2]; c++; }
+        const k = (y + 1) * stride + x + 1, u = y * stride + x + 1;
+        sum[0][k] = r + sum[0][u]; sum[1][k] = g + sum[1][u]; sum[2][k] = b + sum[2][u]; cnt[k] = c + cnt[u];
+      }
+    }
+    const localColor = (x, y, F, r) => {
+      const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1), y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      const box = a => a[y1 * stride + x1] - a[y0 * stride + x1] - a[y1 * stride + x0] + a[y0 * stride + x0];
+      const c = box(cnt); if (c < 1) return false;
+      F[0] = box(sum[0]) / c / 255; F[1] = box(sum[1]) / c / 255; F[2] = box(sum[2]) / c / 255; return true;
+    };
+    // Emission support: real light extends well past the contour and adds to
+    // the screen; an upscaler halo, codec ringing or a half-masked foreground
+    // part does not. The emission exemption needs enough such pixels nearby.
+    const outerLight = new Uint8Array(n);
+    for (let p = 0; p < n; p++) {
+      if (mask[p] >= 8 || near.distance[p] <= band * 3) continue;
+      const i = p * 4;
+      if (src[i + key] / 255 >= B[key] * .9 && Math.max(src[i + c0] / 255 - B[c0], src[i + c1] / 255 - B[c1]) > .14) outerLight[p] = 1;
+    }
+    const lightIntegral = new Float64Array(stride * (h + 1));
+    for (let y = 0; y < h; y++) { let acc = 0; for (let x = 0; x < w; x++) { acc += outerLight[y * w + x]; lightIntegral[(y + 1) * stride + x + 1] = acc + lightIntegral[y * stride + x + 1]; } }
+    const lightSupport = (x, y) => {
+      const R = band * 4, x0 = Math.max(0, x - R), x1 = Math.min(w, x + R + 1), y0 = Math.max(0, y - R), y1 = Math.min(h, y + R + 1);
+      const c = lightIntegral[y1 * stride + x1] - lightIntegral[y0 * stride + x1] - lightIntegral[y1 * stride + x0] + lightIntegral[y0 * stride + x0];
+      return smooth(6, 30, c);
+    };
+    const F = [0, 0, 0], O = [0, 0, 0], C = [0, 0, 0], D = [0, 0, 0], T = [0, 0, 0];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x, d = near.distance[p];
+      if (d <= 0 || d > band * 8) continue;
+      const a = alpha[p]; if (!a) continue;
+      const i = p * 4;
+      // Faint pixels outside the mask whose source is the screen with a little
+      // non-key lift (ringing), or with foreground colour bled into it: neither
+      // is content, and a shadow never lifts the non-key channels.
+      const bleed = Math.max(src[i + c0] / 255 - B[c0], src[i + c1] / 255 - B[c1]) >= .12;
+      if (mask[p] < 24 && ((a < 110 && src[i + key] >= B[key] * 255 * .88) || (a < 160 && bleed)) && lightSupport(x, y) < .5) {
+        alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
+      }
+      if (d > band + 3 || toOutside[p] > band + 2) continue;
+      // Opaque, mask-confirmed pixels whose source is clearly not screen-cast are content.
+      if (a === 255 && mask[p] >= 250 && srcCast(p) <= -.02) continue;
+      // Screen noise: faint pixel outside the mask whose source is the screen itself.
+      const srcDist = Math.max(Math.abs(src[i] / 255 - B[0]), Math.abs(src[i + 1] / 255 - B[1]), Math.abs(src[i + 2] / 255 - B[2]));
+      if (mask[p] < 8 && a < 20 && srcDist < .07) {
+        alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
+      }
+      // Reference colour: the interior right behind this edge pixel (3x3 around
+      // the nearest interior pixel), never brighter than that pixel itself, so a
+      // dark outline stays dark instead of borrowing a wider, lighter average.
+      const q = near.owner[p]; if (q < 0) continue;
+      const qr = src[q * 4] / 255, qg = src[q * 4 + 1] / 255, qb = src[q * 4 + 2] / 255;
+      if (!localColor(q % w, (q / w) | 0, F, 1) || F[0] + F[1] + F[2] > qr + qg + qb) { F[0] = qr; F[1] = qg; F[2] = qb; }
+      O[0] = out[i] / 255; O[1] = out[i + 1] / 255; O[2] = out[i + 2] / 255;
+      // Overshoot: output brighter than the interior reference, or tinted toward
+      // the screen (key channel high relative to the stronger other channel).
+      const lumaO = (O[0] + O[1] + O[2]) / 3, lumaF = (F[0] + F[1] + F[2]) / 3;
+      const bright = smooth(.06, .22, lumaO - lumaF);
+      const tint = smooth(.08, .25, O[key] / Math.max(O[c0], O[c1], .01) - F[key] / Math.max(F[c0], F[c1], .01));
+      // The source must show the screen mixed in, or sit on the mask boundary.
+      const evidence = Math.max(smooth(-.06, .02, srcCast(p)), 1 - smooth(60, 240, mask[p]));
+      // Non-key energy beyond a plain screen/interior mix is emission; it is
+      // kept only where real light has spatial support.
+      C[0] = src[i] / 255; C[1] = src[i + 1] / 255; C[2] = src[i + 2] / 255;
+      D[0] = F[0] - B[0]; D[1] = F[1] - B[1]; D[2] = F[2] - B[2];
+      const dd = D[0] * D[0] + D[1] * D[1] + D[2] * D[2];
+      const t = dd > .01 ? clamp(((C[0] - B[0]) * D[0] + (C[1] - B[1]) * D[1] + (C[2] - B[2]) * D[2]) / dd) : 0;
+      const emission = Math.max(C[c0] - B[c0] - t * D[c0], C[c1] - B[c1] - t * D[c1]);
+      // A semi-transparent contour pixel's own colour is the foreground at the
+      // edge; its unassociated colour is noise amplified by the small alpha.
+      const mixed = Math.max(smooth(-.08, 0, srcCast(p)), 1 - smooth(120, 250, mask[p]));
+      const semi = 1 - smooth(230, 250, a);
+      const score0 = Math.max(Math.max(bright, tint) * evidence, semi * mixed) * (1 - smooth(.12, .25, emission) * lightSupport(x, y));
+      // Decide per pixel: a half-recoloured pixel leaves a faint tinted line.
+      const score = smooth(.12, .4, score0);
+      if (score < .05) continue;
+      // Opaque pixels keep a real rim light: when the next pixel inward is also
+      // brighter than the reference, add that brightness equally to the
+      // reference colour (pale, not saturated). A single pale edge pixel is an
+      // upscaler halo and takes the reference colour.
+      T[0] = F[0]; T[1] = F[1]; T[2] = F[2];
+      if (a >= 230) {
+        const qx = q % w, qy = (q / w) | 0, np = (y + Math.sign(qy - y)) * w + x + Math.sign(qx - x), ni = np * 4;
+        if (np !== p && mask[np] >= 250 && alpha[np] >= 250) {
+          const rim = smooth(.03, .08, (src[ni] + src[ni + 1] + src[ni + 2]) / 765 - lumaF);
+          const lift = clamp(lumaO - lumaF, 0, .45) * rim;
+          T[0] = clamp(F[0] + lift); T[1] = clamp(F[1] + lift); T[2] = clamp(F[2] + lift);
+        }
+      }
+      out[i] = Math.round((O[0] * (1 - score) + T[0] * score) * 255);
+      out[i + 1] = Math.round((O[1] * (1 - score) + T[1] * score) * 255);
+      out[i + 2] = Math.round((O[2] * (1 - score) + T[2] * score) * 255);
+    }
+    // Tighten: smooth alpha along the contour band (3x3), then steepen the
+    // ramp, so a blurred transition becomes a smooth anti-aliased edge instead
+    // of exposing the mask's pixel stair-steps. Pixels outside the band keep
+    // their bytes.
+    const copy = new Uint8ClampedArray(alpha);
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x, d = near.distance[p];
+      if (d <= 0 || d > band + 3 || toOutside[p] > band + 2) continue;
+      let total = 0;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) total += copy[p + oy * w + ox];
+      const a2 = Math.round(smooth(.34, .66, total / 9 / 255) * 255), a = alpha[p], i = p * 4;
+      if (a2 === a) continue;
+      if (a2 === 0) { alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue; }
+      if (a === 0) { const q = near.owner[p]; if (q >= 0) { out[i] = src[q * 4]; out[i + 1] = src[q * 4 + 1]; out[i + 2] = src[q * 4 + 2]; } }
+      alpha[p] = out[i + 3] = a2;
+    }
+    return result;
   }
 
   function finishShadow(frame, result, options) {
