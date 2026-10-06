@@ -1349,7 +1349,12 @@
       codec: (meta && meta.codec) || '', pixelFormat: ''
     };
     session.sources.set(sourceId, { id: sourceId, blob, fileName: String(options.fileName || 'source.mp4'), probe });
-    return { ok: true, sourceId, id: sourceId, meta: probe, probe, source: { sourceId, probe } };
+    // An earlier output arrives as its web-video:// token, which the preview
+    // cannot play; hand back the URL the resource list already plays it from.
+    const held = videoOutputs.get(String(options.path || options.filePath || options.localPath || ''));
+    if (held && held.blob && !held.url) held.url = URL.createObjectURL(held.blob);
+    const previewUrl = held && held.url ? held.url : '';
+    return { ok: true, sourceId, id: sourceId, meta: probe, probe, previewUrl, source: { sourceId, probe } };
   };
 
   api.videoCompositorReleaseSource = async (payload) => {

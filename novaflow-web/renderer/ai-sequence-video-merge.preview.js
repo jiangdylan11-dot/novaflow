@@ -330,9 +330,16 @@
       const video = record?.video
       const duration = finite(layer.source.probe?.durationSec, 0)
       const time = finite(state.timeSec, 0)
-      if (!video || video.readyState < 2 || time > duration + 0.001) return
-      const geometry = layerGeometry(layer, state, stage)
+      if (!video || time > duration + 0.001) return
       const offscreen = offscreenForLayer(layer.id)
+      if (video.readyState < 2) {
+        // Chrome drops readyState to HAVE_METADATA for the whole seek, so a
+        // timeline scrub re-renders many times with no frame to draw. Keep the
+        // last composed frame of this layer instead of blanking it.
+        if (record.hasFrame) context.drawImage(offscreen, 0, 0)
+        return
+      }
+      const geometry = layerGeometry(layer, state, stage)
       const layerContext = offscreen.getContext('2d', { alpha: true })
       layerContext.clearRect(0, 0, offscreen.width, offscreen.height)
       layerContext.save()
@@ -344,6 +351,7 @@
         layerContext.restore()
         return
       }
+      record.hasFrame = true
       const surface = maskSurfaceFor(layer.id)
       const maskCanvas = surface && typeof surface.getCanvas === 'function' ? surface.getCanvas() : null
       if (maskCanvas) {

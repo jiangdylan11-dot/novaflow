@@ -365,7 +365,7 @@
           objectUrl = normalizeText(createObjectUrl(fileLike), '')
           ownedObjectUrl = Boolean(objectUrl)
         }
-        const previewObjectUrl = objectUrl || pathToFileUrl(filePath)
+        let previewObjectUrl = objectUrl || pathToFileUrl(filePath)
         const usesRegisteredSource = Boolean(hasRegisterSource && filePath)
         if (!usesRegisteredSource && !previewObjectUrl) {
           throw new Error('video_merge_preview_source_required')
@@ -388,6 +388,9 @@
             ? registration.source
             : registration
           registeredSourceId = normalizeText(sourceRecord.sourceId || registration.sourceId, '')
+          // The Web runtime keeps an earlier output under a web-video:// token,
+          // which is no file URL; it hands back a playable URL with the probe.
+          if (!objectUrl) previewObjectUrl = normalizeText(registration.previewUrl, '') || previewObjectUrl
         } else {
           sourceRecord = {
             sourceId: '',

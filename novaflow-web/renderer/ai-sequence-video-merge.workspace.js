@@ -452,7 +452,11 @@
         if (!alive) return false
         const descriptors = Array.from(resolved?.descriptors || [])
         const current = store.getState()
-        const assignments = modules.resourceBridge.planLayerAssignments(current.layers, descriptors, explicitLayerId)
+        // Both layers filled and no card targeted (a resource-list click): the
+        // clip replaces the selected layer instead of being refused.
+        const layersFull = current.layers.every(function (layer) { return Boolean(layer.source) })
+        const targetLayerId = explicitLayerId || (layersFull ? text(current.selectedLayerId, '') : '')
+        const assignments = modules.resourceBridge.planLayerAssignments(current.layers, descriptors, targetLayerId)
         if (!assignments.length) {
           const prefix = resolved?.kind === 'files' ? `${descriptors.length} 个视频已加入右侧资源列表；` : ''
           store.setMessage(`${prefix}两个图层都已有视频，请拖到需要替换的图层卡片`, true)
@@ -1052,8 +1056,32 @@
     documentRef.addEventListener('drop', handleDocumentDrop, true)
     documentRef.addEventListener('dragend', handleDocumentDragEnd, true)
     windowRef.addEventListener(RESOURCE_IMPORT_EVENT, handleSharedResourceImport)
-    playButton.addEventListener('click', function () { store.getState().playing ? preview.pause() : void preview.play() })
+    function togglePlayback() { store.getState().playing ? preview.pause() : void preview.play() }
+    playButton.addEventListener('click', togglePlayback)
     timelineRange.addEventListener('input', function () { preview.seek(finite(timelineRange.value, 0)) })
+    // Space plays / pauses while the workspace is open. Captured on the window
+    // so neither the stage video nor a focused button (space would press it
+    // on keyup) answers the key; text fields keep it.
+    function isSpaceKey(event) {
+      return event?.key === ' ' || event?.key === 'Spacebar' || event?.code === 'Space'
+    }
+    function isTextTarget(target) {
+      const tag = String(target?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return true
+      const editable = target?.closest?.('[contenteditable]')
+      return Boolean(target?.isContentEditable || (editable && String(editable.getAttribute?.('contenteditable') || 'true').toLowerCase() !== 'false'))
+    }
+    function handlePlaybackShortcut(event) {
+      if (!alive || !isSpaceKey(event) || event.ctrlKey || event.metaKey || event.altKey) return
+      if (isTextTarget(event.target)) return
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation?.()
+      if (event.type !== 'keydown' || event.repeat || playButton.disabled) return
+      togglePlayback()
+    }
+    windowRef.addEventListener('keydown', handlePlaybackShortcut, true)
+    windowRef.addEventListener('keyup', handlePlaybackShortcut, true)
     function handleMaskShortcut(event) {
       if (!maskEditing) return
       const tag = String(event.target?.tagName || '').toLowerCase()
@@ -1125,6 +1153,8 @@
         documentRef.removeEventListener('drop', handleDocumentDrop, true)
         documentRef.removeEventListener('dragend', handleDocumentDragEnd, true)
         windowRef.removeEventListener(RESOURCE_IMPORT_EVENT, handleSharedResourceImport)
+        windowRef.removeEventListener('keydown', handlePlaybackShortcut, true)
+        windowRef.removeEventListener('keyup', handlePlaybackShortcut, true)
         preview.destroy()
         maskSurfaces.forEach(function (surface) { surface?.destroy?.() })
         maskSurfaces.clear()
