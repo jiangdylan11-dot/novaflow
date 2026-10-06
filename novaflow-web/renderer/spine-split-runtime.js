@@ -2815,7 +2815,7 @@
   }
 
   function isSplitEditToolActive() {
-    return !!activeSplitEditToolKind()
+    return !!(uiLayerMutation || uiLayerGeneration || activeSplitEditToolKind())
   }
 
   function inpaintModeForControlAction(action) {
@@ -4092,7 +4092,7 @@
     }
     splitLayerRedoStack.push(splitLayerHistorySnapshot('redo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerRedoStack)
-    const message = snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销快速补缺'
+    const message = snapshot.label.startsWith('ui layer') ? '已撤销图层操作' : snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销快速补缺'
     const fallbackMessage = '快速补缺撤销失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
@@ -4116,7 +4116,7 @@
     }
     splitLayerUndoStack.push(splitLayerHistorySnapshot('undo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerUndoStack)
-    const message = '已重做快速补缺'
+    const message = snapshot.label.includes('layer edit') ? '已重做图层操作' : '已重做快速补缺'
     const fallbackMessage = '快速补缺重做失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
@@ -4995,6 +4995,12 @@
   }
 
   async function importSourceFile(file) {
+    if (isUiLayerProjectImportFile(file)) {
+      try {
+        if (file.size > 32 * 1024 * 1024) throw new Error('旧图层项目超过32MB')
+        return await importUiLayerProject(JSON.parse(await fileToText(file)), { name: String(file.name || '旧图层项目').replace(/\.json$/i, ''), activate: true })
+      } catch (error) { setMessage(String(error?.message || error), true); render(); syncSplitWorkspace(); return false }
+    }
     if (!file || !isSourceImageFile(file)) {
       setMessage('\u8bf7\u5bfc\u5165 PNG / JPG / WEBP \u539f\u56fe', true)
       render()
@@ -5037,7 +5043,7 @@
         if (file) files.push(file)
       })
     }
-    return files.find(isSourceImageFile) || files[0] || null
+    return files.find(file => isSourceImageFile(file) || isUiLayerProjectImportFile(file)) || files[0] || null
   }
 
   function firstImageUrlFromDrop(event) {
@@ -5071,7 +5077,7 @@
 
   async function sourceImageFileFromDrop(event) {
     const file = firstSourceFileFromDrop(event)
-    if (file && isSourceImageFile(file)) return file
+    if (file && (isSourceImageFile(file) || isUiLayerProjectImportFile(file))) return file
     const url = firstImageUrlFromDrop(event)
     if (!url) return file || null
     try {
@@ -12186,6 +12192,217 @@
       || null
   }
 
+  const uiLayerProjectListeners = new Set()
+  const uiLayerProjectImports = new Map()
+  function subscribeUiLayerProjects(listener) {
+    if (typeof listener !== 'function') return () => {}
+    uiLayerProjectListeners.add(listener)
+    return () => uiLayerProjectListeners.delete(listener)
+  }
+  function notifyUiLayerProjectChange(set) {
+    if (!set || !set.uiLayerProject || !window.NovaFlowUiDesignLayers?.projectFromParts) return
+    const project = window.NovaFlowUiDesignLayers.projectFromParts(set.uiLayerProject, normalizeSpineLayerOrder(set.parts || []))
+    const serialized = JSON.stringify(project)
+    if (set.uiLayerProjectSnapshot === serialized) return
+    set.uiLayerProject = project
+    set.uiLayerProjectSnapshot = serialized
+    const event = { setId: set.id, sourceResourceId: set.sourceResourceId, project }
+    uiLayerProjectListeners.forEach(listener => { try { listener(event) } catch {} })
+  }
+  async function importUiLayerProject(value, options = {}) {
+    const project = value?.uiLayerProject || value
+    const key = JSON.stringify(project)
+    let pending = uiLayerProjectImports.get(key)
+    if (!pending) {
+      pending = createUiLayerProject(project, options)
+      uiLayerProjectImports.set(key, pending)
+    }
+    try {
+      const result = await pending
+      if (options.activate === true && state.activeSplitSetId !== result.setId) activateSplitSet(result.setId)
+      return result
+    } finally {
+      if (uiLayerProjectImports.get(key) === pending) uiLayerProjectImports.delete(key)
+    }
+  }
+  async function createUiLayerProject(value, options = {}) {
+    if (state.busy || isSplitEditToolActive()) throw new Error('请先结束当前图层操作，旧项目数据已保留')
+    const adapter = window.NovaFlowUiDesignLayers
+    if (!adapter || typeof adapter.prepareProject !== 'function') throw new Error('图层兼容接口未就绪，请刷新页面')
+    const serialized = JSON.stringify(value)
+    const existing = state.splitSets.find(set => set.uiLayerProjectSnapshot === serialized || set.uiLayerProjectImportSnapshot === serialized)
+    if (existing) {
+      if (options.activate === true || (options.activateIfEmpty && !state.source)) activateSplitSet(existing.id)
+      return { sourceResourceId: existing.sourceResourceId, setId: existing.id, layerCount: existing.parts.length }
+    }
+    const prepared = await adapter.prepareProject(value, document)
+    if (state.busy || isSplitEditToolActive()) throw new Error('当前图层操作已开始，请稍后恢复旧项目；原数据未修改')
+    const wasEmpty = !state.source
+    const resource = await addSourceDataUrlResource(String(options.name || '旧图层项目') + '.png', prepared.previewDataUrl, { activate: false, returnResource: true, origin: 'legacy-ui-project' })
+    if (!resource || resource === true) throw new Error('旧项目原图注册失败，原数据未修改')
+    const set = { id: 'ui_layers_' + resource.id, name: String(options.name || '旧图层项目'), originKind: 'legacy-ui-project', sourceName: resource.fileName, sourceResourceId: resource.id, createdAt: new Date().toISOString(), parts: prepared.parts.map(normalizeLayerRecord), previewDataUrl: prepared.previewDataUrl, expanded: false, uiLayerProject: prepared.originalProject, originalUiLayerProject: prepared.originalProject.originalProject || prepared.originalProject, uiLayerProjectSnapshot: serialized, uiLayerProjectImportSnapshot: serialized }
+    state.splitSets.push(set)
+    if (options.activate === true || (options.activateIfEmpty && wasEmpty)) activateSplitSet(set.id)
+    else { render(); updateRightPanel(); syncSplitWorkspace() }
+    notifyUiLayerProjectChange(set)
+    setMessage('旧项目已加入右侧图层；文字显示为兼容位图层，原始文字属性已保留')
+    return { sourceResourceId: resource.id, setId: set.id, layerCount: set.parts.length }
+  }
+  function isUiLayerProjectImportFile(file) {
+    return !!(file && /\.json$/i.test(file.name || '') && window.NovaFlowUiDesignLayers && document.body?.classList.contains('novaflow-primary-target-art') && document.querySelector('[data-novaflow-art-ui-host="1"]'))
+  }
+
+  const uiLayerStateListeners = new Set()
+  let uiLayerMutation = null, uiLayerGeneration = null
+  function isUiLayerMode() {
+    return !!(document.body?.classList.contains('novaflow-primary-target-art') && document.querySelector('[data-novaflow-art-ui-host="1"]'))
+  }
+  function uiLayerProjectForSet(set, parts) {
+    const size = sourceCanvasSizeSync(null)
+    const base = set?.uiLayerProject || { version: 1, width: size.width, height: size.height, layers: [] }
+    return window.NovaFlowUiDesignLayers.projectFromParts(base, normalizeSpineLayerOrder(parts || set?.parts || []))
+  }
+  function getUiLayerEditingSnapshot() {
+    const set = activeSplitSet(), part = (set?.parts || state.parts).find(item => item.id === state.activePartId)
+    return { setId: set?.id || '', name: set?.name || 'UI图层', layerCount: (set?.parts || state.parts).length, selected: part ? uiLayerProjectForSet(set, [part]).layers[0] : null, busy: !!(uiLayerMutation || uiLayerGeneration || state.busy), generating: !!uiLayerGeneration, canUndo: !!splitLayerUndoStack.length, canRedo: !!splitLayerRedoStack.length }
+  }
+  function emitUiLayerState() {
+    if (!uiLayerStateListeners.size) return
+    const snapshot = getUiLayerEditingSnapshot()
+    uiLayerStateListeners.forEach(listener => { try { listener(snapshot) } catch {} })
+  }
+  function subscribeUiLayerState(listener) {
+    if (typeof listener !== 'function') return () => {}
+    uiLayerStateListeners.add(listener)
+    return () => uiLayerStateListeners.delete(listener)
+  }
+  function getUiLayerToolbarHost() {
+    const overlay = document.getElementById(WORKSPACE_OVERLAY_ID)
+    if (!isUiLayerMode() || !overlay) { overlay?.querySelector('[data-ui-layer-toolbar-host="1"]')?.remove(); return null }
+    let host = overlay.querySelector('[data-ui-layer-toolbar-host="1"]')
+    if (!host) { host = document.createElement('div'); host.setAttribute('data-ui-layer-toolbar-host', '1'); overlay.appendChild(host) }
+    const controls = document.getElementById(WORKSPACE_VIEW_CONTROLS_ID), frame = overlay.getBoundingClientRect()
+    const fit = Array.from(overlay.querySelectorAll('button')).find(node => node.textContent.trim() === '自动适配')
+    const fitBox = fit?.parentElement?.getBoundingClientRect(), leftBox = controls?.getBoundingClientRect()
+    const left = leftBox ? leftBox.right - frame.left + 18 : 180
+    const right = fitBox && fitBox.width < frame.width / 2 ? frame.right - fitBox.left + 18 : 180
+    Object.assign(host.style, { position: 'absolute', left: left + 'px', right: right + 'px', top: SPLIT_PREVIEW_UI_GAP, height: '34px', zIndex: '7', pointerEvents: 'auto', minWidth: '0', display: frame.width - left - right > 120 ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' })
+    return host
+  }
+  function assertUiLayerMutation(part, allowUnlock) {
+    if (uiLayerMutation || uiLayerGeneration || state.busy || isSplitEditToolActive()) throw new Error('请先完成或取消当前操作，原图层保留')
+    if (part?.locked && !allowUnlock) throw new Error('图层已锁定，请先解锁')
+  }
+  async function runUiLayerMutation(operation) {
+    assertUiLayerMutation()
+    const token = {}; uiLayerMutation = token; emitUiLayerState()
+    try { return await operation() }
+    finally { if (uiLayerMutation === token) uiLayerMutation = null; syncSplitWorkspace(); emitUiLayerState() }
+  }
+  async function ensureUiLayerSet() {
+    let set = activeSplitSet()
+    if (set && set.sourceResourceId === state.activeSourceResourceId) {
+      if (state.activeSplitSetId !== set.id) activateSplitSet(set.id)
+    } else {
+      if (!state.source) {
+        const draw = window.__NovaFlowArtGenerate?.state || {}, canvas = document.createElement('canvas')
+        canvas.width = Math.max(64, Math.min(8192, Number(draw.width) || 1024)); canvas.height = Math.max(64, Math.min(8192, Number(draw.height) || 1024))
+        await addSourceDataUrlResource('UI画板.png', canvas.toDataURL('image/png'), { activate: true, origin: 'ui-layer-project' })
+      }
+      set = { id: 'ui_layers_' + state.activeSourceResourceId, name: 'UI图层', sourceName: state.source.fileName || 'UI画板.png', sourceResourceId: state.activeSourceResourceId, parts: [], expanded: true, previewDataUrl: '' }
+      state.splitSets.push(set); state.activeSplitSetId = set.id; state.parts = []; state.activePartId = ''; state.selectedPartIds = []; state.viewMode = 'parts'
+    }
+    if (!set.uiLayerProject) { set.uiLayerProject = uiLayerProjectForSet(set, state.parts); set.originalUiLayerProject = cloneSplitLayerHistoryValue(set.uiLayerProject) }
+    return set
+  }
+  async function commitUiLayerParts(set, parts, selectedId) {
+    set.parts = normalizeSpineLayerOrder(parts).map(normalizeLayerRecord)
+    state.activeSplitSetId = set.id; state.parts = set.parts; state.activePartId = selectedId || ''; state.selectedPartIds = selectedId ? [selectedId] : []; state.viewMode = 'parts'; set.expanded = true
+    normalizeSelection(); await refreshSplitPreview(); syncActiveSplitSet(); render(); updatePreviewOverlay(); syncSplitWorkspace(); emitUiLayerState()
+  }
+  async function addUiLayer(value) {
+    return runUiLayerMutation(async () => {
+      const set = await ensureUiLayerSet(), project = uiLayerProjectForSet(set, state.parts)
+      if (state.parts.length >= 500) throw new Error('图层数量超过500，原项目保留')
+      const id = uniquePartIdForSet(value.id || 'ui_' + Date.now().toString(36), state.parts)
+      const layer = { x: 0, y: 0, width: value.kind === 'background' ? project.width : Math.min(512, project.width), height: value.kind === 'background' ? project.height : Math.min(512, project.height), visible: true, opacity: 1, ...value, id }
+      const prepared = await window.NovaFlowUiDesignLayers.prepareProject({ version: 1, width: project.width, height: project.height, layers: [layer] }, document)
+      const part = prepared.parts[0], parts = normalizeSpineLayerOrder(state.parts)
+      part.layer = value.kind === 'background' ? (parts[0]?.layer || 0) - 1 : (parts.at(-1)?.layer || 0) + 1
+      pushSplitLayerUndoSnapshot('ui layer add', '')
+      await commitUiLayerParts(set, [...parts, part], id); return id
+    })
+  }
+  async function patchUiLayer(id, patch) {
+    const part = state.parts.find(item => item.id === id)
+    if (!part) throw new Error('请选择右侧图层')
+    assertUiLayerMutation(part, Object.keys(patch).every(key => key === 'locked'))
+    return runUiLayerMutation(async () => {
+      const set = await ensureUiLayerSet(), layer = uiLayerProjectForSet(set, [part]).layers[0]
+      const next = { ...layer, ...patch, id }
+      for (const key of ['x', 'y', 'width', 'height', 'opacity', ...(next.type === 'text' ? ['fontSize'] : [])]) if (!Number.isFinite(Number(next[key]))) throw new Error('图层数值无效，原图层保留')
+      if (next.width < 1 || next.height < 1 || next.width > 8192 || next.height > 8192 || next.opacity < 0 || next.opacity > 1) throw new Error('图层尺寸或透明度无效，原图层保留')
+      const project = uiLayerProjectForSet(set, state.parts), prepared = await window.NovaFlowUiDesignLayers.prepareProject({ ...project, layers: [next] }, document)
+      const replacement = { ...part, ...prepared.parts[0], layer: part.layer, manualLayer: true, metadata: { ...part.metadata, ...prepared.parts[0].metadata } }
+      pushSplitLayerUndoSnapshot('ui layer properties', '')
+      await commitUiLayerParts(set, state.parts.map(item => item.id === id ? replacement : item), id)
+    })
+  }
+  async function removeUiLayer(id) {
+    const part = state.parts.find(item => item.id === id); if (!part) return
+    assertUiLayerMutation(part)
+    return runUiLayerMutation(async () => { const set = await ensureUiLayerSet(); pushSplitLayerUndoSnapshot('ui layer delete', ''); await commitUiLayerParts(set, state.parts.filter(item => item.id !== id), state.parts.find(item => item.id !== id)?.id) })
+  }
+  async function moveUiLayer(id, direction) {
+    const part = state.parts.find(item => item.id === id); if (!part) return
+    assertUiLayerMutation(part)
+    return runUiLayerMutation(async () => { const set = await ensureUiLayerSet(); pushSplitLayerUndoSnapshot('ui layer order', ''); movePartLayer(id, direction); await commitUiLayerParts(set, state.parts, id) })
+  }
+  function exportUiLayerProject() {
+    const set = activeSplitSet(); if (!set) throw new Error('尚无图层项目')
+    const project = uiLayerProjectForSet(set, state.parts)
+    if (set.originalUiLayerProject) project.originalProject = cloneSplitLayerHistoryValue(set.originalUiLayerProject)
+    return project
+  }
+  async function getUiLayerExport(format) {
+    if (uiLayerMutation || uiLayerGeneration || state.busy) throw new Error('请先完成或取消当前操作')
+    if (format === 'json') return { name: 'ui-layers.json', dataUrl: 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportUiLayerProject(), null, 2)) }
+    if (!state.parts.length) throw new Error('尚无可导出的图层')
+    if (format === 'psd') return { name: 'ui-layers.psd', dataUrl: await psdDataUrl() }
+    if (format === 'layer') { const part = state.parts.find(item => item.id === state.activePartId); if (!part) throw new Error('请先选择一个图层'); return { name: safeDownloadFileName(part.name || part.id, 'ui-layer') + '.png', dataUrl: part.dataUrl } }
+    return { name: 'ui-composite.png', dataUrl: await previewDataUrl() }
+  }
+  function cancelUiLayerGeneration() {
+    const token = uiLayerGeneration; if (!token) return false
+    token.abort.abort(); uiLayerGeneration = null
+    if (token.draw) { token.draw.state.running = false; token.draw.render?.() }
+    setMessage('已取消图层生成，原图层保留'); syncSplitWorkspace(); emitUiLayerState(); return true
+  }
+  async function regenerateUiLayer(id) {
+    const part = state.parts.find(item => item.id === id); assertUiLayerMutation(part)
+    if (!part) throw new Error('请选择一个图片图层')
+    const set = await ensureUiLayerSet(), project = uiLayerProjectForSet(set, state.parts), layer = project.layers.find(item => item.id === id), draw = window.__NovaFlowArtGenerate
+    if (layer.type !== 'image' || !layer.prompt.trim()) throw new Error('请为选中的图片图层填写局部设计需求')
+    if (draw?.state.running) throw new Error('已有生成任务，请等待完成')
+    const token = { abort: new AbortController(), draw, setId: set.id, snapshot: JSON.stringify(state.parts) }; uiLayerGeneration = token
+    if (draw) { draw.state.running = true; draw.render?.() }
+    emitUiLayerState()
+    try {
+      const result = await window.NovaFlowUiDesignLayers.localGenerate(layer, project, token.abort.signal, { document, references: draw?.references?.() || [], seed: draw?.state.randomSeed === false ? draw.state.seed : undefined })
+      if (token.abort.signal.aborted || uiLayerGeneration !== token || state.activeSplitSetId !== token.setId || JSON.stringify(state.parts) !== token.snapshot) throw new Error('生成已取消或图层已变化，迟到结果未替换原图层')
+      const next = { ...layer, dataUrl: result.dataUrl, alpha: result.alpha, provenance: result.provenance }
+      const prepared = await window.NovaFlowUiDesignLayers.prepareProject({ ...project, layers: [next] }, document)
+      if (token.abort.signal.aborted || uiLayerGeneration !== token || JSON.stringify(state.parts) !== token.snapshot) throw new Error('生成已取消，原图层保留')
+      pushSplitLayerUndoSnapshot('ui layer regeneration', '')
+      await commitUiLayerParts(set, state.parts.map(item => item.id === id ? { ...item, ...prepared.parts[0], layer: item.layer } : item), id)
+      setMessage('已更新选中图层，其他图层保留')
+    } finally {
+      if (uiLayerGeneration === token) { uiLayerGeneration = null; if (draw) { draw.state.running = false; draw.render?.() } }
+      syncSplitWorkspace(); emitUiLayerState()
+    }
+  }
+
+
   function syncActiveSplitSet() {
     const active = activeSplitSet()
     if (!active) return
@@ -12193,6 +12410,7 @@
     active.previewDataUrlStale = !!state.splitPreviewStale
     if (!state.splitPreviewStale) active.previewDataUrl = state.splitPreviewDataUrl
     active.updatedAt = new Date().toISOString()
+    notifyUiLayerProjectChange(active)
   }
 
   function pruneEmptySplitSets(preferredActiveSetId) {
@@ -12200,8 +12418,9 @@
     const previousActiveId = String(state.activeSplitSetId || '')
     const preferredId = String(preferredActiveSetId || previousActiveId || '')
     const before = state.splitSets
-    const next = before.filter((set) => normalizeSpineLayerOrder(set && set.parts || []).length > 0)
+    const next = before.filter((set) => !!set.uiLayerProject || normalizeSpineLayerOrder(set && set.parts || []).length > 0)
     if (next.length === before.length) return false
+    before.filter(set => !next.includes(set)).forEach(set => { set.parts = []; notifyUiLayerProjectChange(set) })
     state.splitSets = next
     const retainedIds = new Set(next.map((set) => String(set && set.id || '')))
     const activeRemoved = !!previousActiveId && !next.some((set) => String(set && set.id || '') === previousActiveId)
@@ -12338,6 +12557,7 @@
     else state.viewMode = previousViewMode
     if (state.viewMode === 'single' || state.viewMode === 'mask' || state.viewMode === 'maskEdit') resetSplitCanvasViewport()
     normalizeSelection()
+    emitUiLayerState()
     if (canPatchSelection && state.viewMode === previousViewMode && patchRightWorkspaceSelectionSignature()) return
     render()
     updatePreviewOverlay()
@@ -12544,7 +12764,7 @@
   }
 
   function startRenamePart(id) {
-    if (isSplitEditToolActive()) return
+    if (isSplitEditToolActive() || state.parts.find(part => part.id === id)?.locked) return
     const partId = String(id || '')
     const part = state.parts.find((item) => item.id === partId)
     if (!part) return
@@ -12583,8 +12803,10 @@
     const partId = String(id || state.renamingPartId || '')
     if (!partId) return cancelRenamePart()
     const part = state.parts.find((item) => item.id === partId)
+    if (part?.locked) return cancelRenamePart()
     const fallback = part && (part.name || part.id) || partId
     const nextName = String(value == null ? state.renameDraft : value).replace(/\s+/g, ' ').trim() || fallback
+    if (part?.name !== nextName && isUiLayerMode() && activeSplitSet()?.uiLayerProject) pushSplitLayerUndoSnapshot('ui layer rename', '')
     state.parts = state.parts.map((item) => item.id === partId ? { ...item, name: nextName } : item)
     state.renamingPartId = ''
     state.renameDraft = ''
@@ -12843,6 +13065,11 @@
         metadata: part.metadata || null
       }))
     }
+    const legacyProject = activeSplitSet()?.originalUiLayerProject
+    if (legacyProject) {
+      data.legacyUiProject = cloneSplitLayerHistoryValue(legacyProject)
+      data.uiLayerProject = window.NovaFlowUiDesignLayers.projectFromParts(activeSplitSet().uiLayerProject, normalizeSpineLayerOrder(state.parts))
+    }
     const reviewIssues = data.parts.flatMap((part) => part.reviewIssues || [])
     data.status = reviewIssues.some((issue) => issue.severity === 'reject') ? 'review_required' : 'ready'
     if (reviewIssues.length) data.reviewIssues = reviewIssues
@@ -12904,6 +13131,7 @@
     set.previewDataUrl = (set.parts || []).length ? await previewDataUrlForParts(set.parts) : ''
     set.previewDataUrlStale = false
     set.updatedAt = new Date().toISOString()
+    notifyUiLayerProjectChange(set)
     if (set.id === state.activeSplitSetId) {
       state.splitPreviewDataUrl = set.previewDataUrl
       state.splitPreviewStale = false
@@ -29324,6 +29552,9 @@
     if (isSplitEditToolActive()) return
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const partId = String(id || '')
+    const target = state.parts.find(part => part.id === partId)
+    if (target?.locked) return setMessage('图层已锁定，请先解锁', true)
+    if (isUiLayerMode() && activeSplitSet()?.uiLayerProject) pushSplitLayerUndoSnapshot('ui layer visibility', '')
     state.parts = state.parts.map((part) => part.id === partId ? { ...part, visible: part.visible === false } : part)
     markSplitPreviewStale(activeSplitSet())
     syncActiveSplitSet()
@@ -29858,6 +30089,7 @@
   }
 
   async function mergeSelectedParts() {
+    if (selectedParts().some(part => part.locked)) return setMessage('所选图层中有锁定层，请先解锁', true)
     if (state.busy) return
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const selected = selectedParts()
@@ -29932,6 +30164,8 @@
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const selected = selectedParts()
     if (!selected.length) return
+    if (selected.some(part => part.locked)) return setMessage('所选图层中有锁定层，请先解锁', true)
+    if (isUiLayerMode() && activeSplitSet()?.uiLayerProject) return runUiLayerMutation(async () => { const set = await ensureUiLayerSet(); pushSplitLayerUndoSnapshot('ui layer delete', ''); const ids = new Set(selected.map(part => part.id)); const parts = state.parts.filter(part => !ids.has(part.id)); await commitUiLayerParts(set, parts, parts[0]?.id) })
     const removeIds = new Set(selected.map((part) => part.id))
     if (state.maskEditor && state.maskEditor.active && removeIds.has(state.maskEditor.partId)) resetMaskEditor()
     if (state.penTool && state.penTool.active && state.penTool.partId && removeIds.has(state.penTool.partId)) resetPenTool()
@@ -29959,6 +30193,8 @@
     const hasSplitSets = Array.isArray(state.splitSets) && state.splitSets.length > 0
     const targetParts = hasSplitSets && targetSet ? (targetSet.parts || []) : state.parts
     if (!targetParts.some((part) => part && part.id === id)) return
+    if (targetParts.find(part => part.id === id)?.locked) return setMessage('图层已锁定，请先解锁', true)
+    if (isUiLayerMode() && targetSet?.uiLayerProject && targetSet.id === state.activeSplitSetId) return removeUiLayer(id)
     if (state.maskEditor && state.maskEditor.active && state.maskEditor.partId === id) resetMaskEditor()
     if (state.penTool && state.penTool.active && state.penTool.partId === id) resetPenTool()
     if (state.selectionTool && state.selectionTool.active) resetSelectionTool()
@@ -30135,7 +30371,7 @@
   }
 
   function moveSelectedLayersByKeyboard(visualDelta) {
-    if (isSplitEditToolActive() || state.busy) return false
+    if (isSplitEditToolActive() || state.busy || selectedParts().some(part => part.locked)) return false
     normalizeSelection()
     const layerSet = activeLayerSetForKeyboardMove()
     const selectedIds = new Set((state.selectedPartIds || []).map((id) => String(id || '')).filter(Boolean))
@@ -30146,6 +30382,7 @@
     if (!movableSelectedIds.size) return false
     const nextTopDown = moveTopDownSelectedLayerBlocks(topDown, movableSelectedIds, visualDelta)
     if (nextTopDown.join('|') === topDown.join('|')) return false
+    if (isUiLayerMode() && layerSet.uiLayerProject) pushSplitLayerUndoSnapshot('ui layer order', '')
     const nextParts = applyTopDownOrder(sourceParts, nextTopDown)
     const realSet = state.splitSets.length ? layerSet : null
     state.dragLayerId = ''
@@ -30220,7 +30457,9 @@
     const sourceSet = splitSetForPart(source, sourceSetId)
     const targetSet = splitSetById(targetSetId) || activeSplitSet()
     if (!sourceSet || !targetSet) return
+    if (sourceSet.parts.find(part => part.id === source)?.locked) return setMessage('图层已锁定，请先解锁', true)
     if (sourceSet.id === targetSet.id && source === target) return
+    if (isUiLayerMode() && sourceSet.uiLayerProject && sourceSet.id === state.activeSplitSetId && sourceSet.id === targetSet.id) pushSplitLayerUndoSnapshot('ui layer order', '')
     if (!state.splitSets.length) return
 
     if (sourceSet.id !== targetSet.id) {
@@ -30323,6 +30562,8 @@
     const targetParts = targetSet ? (targetSet.parts || []) : state.parts
     const targetPart = targetParts.find((part) => part && part.id === target)
     if (!targetPart) return false
+    if (targetPart.locked) throw new Error('图层已锁定，请先解锁')
+    if (isUiLayerMode() && targetSet?.uiLayerProject) { if (targetPart.metadata?.legacyUiLayer?.type === 'text') throw new Error('Text layers use text properties; select an image layer to replace an image'); const dataUrl = await fileToDataUrl(file); await patchUiLayer(target, { dataUrl, provenance: { kind: 'import-replacement', fileName: file.name } }); return true }
     const dataUrl = await fileToDataUrl(file)
     const cropped = await cropEditorLayer(dataUrl, {
       ...targetPart,
@@ -30988,6 +31229,8 @@
     renderSplitCanvasOverlay()
     renderRightWorkspacePanel()
     syncMaskStencilOverlay()
+    getUiLayerToolbarHost()
+    emitUiLayerState()
   }
 
   function updateRightPanel() {
@@ -31485,6 +31728,7 @@
   }
 
   function startLayerPointerDrag(partId, setId, event) {
+    if (splitPartForRightWorkspaceId(partId, setId)?.locked) return
     if (!event || event.button !== 0 || state.busy || isSplitEditToolActive()) return
     const target = event.target instanceof Element ? event.target : null
     if (target && target.closest(`[${LAYER_COMMAND_ATTR}], input, textarea, select`)) return
@@ -35552,6 +35796,11 @@
 
   window.NovaFlowSpineSplitBridge = {
     supportsSilentSourceResourceRegistration: true,
+    getUiLayerEditingSnapshot, subscribeUiLayerState, getUiLayerToolbarHost, addUiLayer, patchUiLayer, removeUiLayer, moveUiLayer, exportUiLayerProject, getUiLayerExport, regenerateUiLayer, cancelUiLayerGeneration,
+    undoUiLayerEdit: undoSplitLayerEdit, redoUiLayerEdit: redoSplitLayerEdit,
+    importUiLayerProject,
+    subscribeUiLayerProjects,
+    reportUiLayerProjectError(message) { setMessage(String(message || '旧图层项目恢复失败，原数据已保留'), true); syncSplitWorkspace() },
     importSourceDataUrl,
     addSourceDataUrlResource,
     registerSourceDataUrlResource,
