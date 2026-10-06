@@ -78,6 +78,23 @@ test('边缘净化 on removes screen tint on the contour and bleed specks, keeps
   assert.ok(checked >= 2);
 });
 
+test('renderAsync forwards 边缘净化 to the matting worker', async () => {
+  // The worker receives a whitelist of options, not the caller's object; a
+  // flag missing from that list silently never reaches the matte.
+  const posted = [];
+  class Worker { constructor(url) { this.url = url; } postMessage(message) { posted.push(message); } terminate() {} }
+  const module = { exports: {} };
+  const context = createContext({ module, exports: module.exports, document: { currentScript: { src: 'http://localhost/renderer/ai-sequence-green-screen-matting.js?v=test' } }, URL, Worker, navigator: { hardwareConcurrency: 8 }, setTimeout: () => 0, clearTimeout() {}, Uint8ClampedArray, Uint8Array, Int32Array, Float32Array, Float64Array, Uint32Array, Map, WeakMap, Math, console, performance, Promise });
+  runInContext('(function(module,exports){' + read('renderer/ai-sequence-green-screen-matting.js') + '\n})(module,module.exports)', context);
+  const clip = syntheticClip();
+  module.exports.renderAsync(clip.frame, { enabled: true, cleanEdges: true, preserveShadow: true, subjectMask: { data: clip.mask, width: W, height: H }, requireSubjectMask: true });
+  await new Promise(resolve => setImmediate(resolve));
+  const task = posted.find(message => message.type === 'matte');
+  assert.ok(task, 'a matte task was posted to the worker');
+  assert.equal(task.options.cleanEdges, true);
+  assert.equal(task.options.preserveShadow, true);
+});
+
 test('cutout pipeline treats 边缘净化 like 保留投影 for cached frames', async () => {
   let reader;
   const root = { NovaFlowGreenScreenMatting: { referenceFrameIndices: () => [0], parallelism: () => 1, registerPreparedFrame: (f, r) => { reader = r; return () => {}; }, createFrameCache: () => ({ put: async () => {}, get: async () => null, delete() {}, clear() {}, stats: () => ({}) }), prepareSequenceReference: () => ({}), renderAsync: async () => null } };

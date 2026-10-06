@@ -1112,7 +1112,7 @@
     const result = await new Promise((resolve,reject) => {
       workerQueue.push({id:++taskSerial, profile, profileId:profile ? profileIds.get(profile) : 0,
         frame:{data:pixels,width:frame.width,height:frame.height},
-        options:{preserveShadow:options.preserveShadow,normalizeGlow:options.normalizeGlow,screen:options.screen,
+        options:{preserveShadow:options.preserveShadow,cleanEdges:!!options.cleanEdges,normalizeGlow:options.normalizeGlow,screen:options.screen,
           requireSubjectMask:options.requireSubjectMask,subjectMask:maskData ? {data:maskData,width:mask.width,height:mask.height} : null},
         buffers:maskData ? [pixels.buffer,maskData.buffer] : [pixels.buffer],resolve,reject});
       pumpWorkers();
