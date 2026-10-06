@@ -1015,9 +1015,10 @@
       // alpha it adds. A pixel the matte left semi-transparent (a glow on a
       // matching screen) carries the matte's unassociated colour, which is
       // not what the user sees under the brush; mix the source colour in by
-      // the share of alpha the stroke added, fully when it was transparent.
+      // how much of the remaining transparency the stroke fills: a full
+      // restore is the source colour, a light touch barely tints.
       if (next > old && original) {
-        const share = (next - old) / Math.max(1, next);
+        const share = clamp((next - old) / Math.max(1, 255 - old));
         for (let c = 0; c < 3; c++) result.data[i + c] = Math.round(result.data[i + c] * (1 - share) + original[i + c] * share);
       }
     }
