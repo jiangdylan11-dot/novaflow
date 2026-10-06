@@ -16,10 +16,33 @@ function load() {
   const root = { document: null, HTMLVideoElement, setTimeout: () => 1, clearTimeout() {}, MutationObserver: class { observe() {} } };
   // No document: the module must still export its scheduler for tests.
   root.document = { readyState: 'complete', documentElement: { nodeType: 1, tagName: 'HTML', querySelectorAll: () => [] }, addEventListener() {} };
-  const context = createContext({ window: root, globalThis: root, Number, Math, WeakMap, Array });
+  const context = createContext({ window: root, globalThis: root, Number, Math, WeakMap, Map, Array, String, Boolean, Promise });
   runInContext(source, context);
   return root.NovaFlowSeamlessLoop;
 }
+
+test('a wrap hook that takes the wrap replaces the seek; otherwise the seek goes ahead', () => {
+  const api = load();
+  const video = { loop: true, paused: false, ended: false, duration: DURATION, playbackRate: 1, currentTime: 2 };
+  const timers = [];
+  let taken = true, calls = 0;
+  const loop = api.createSeamlessLoop(video, { setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {}, wrap: () => { calls += 1; return taken; } });
+  playFrames(loop, 39);
+  timers[0].fn();
+  assert.equal(calls, 1, 'the hook ran at the wrap');
+  assert.equal(video.currentTime, 2, 'no seek while the hook took the wrap');
+  assert.equal(loop.state.wrapIssuedAt, 0, 'a taken wrap is not measured as a seek');
+  taken = false;
+  playFrames(loop, 39, 39 * FD * 1000);
+  timers[1].fn();
+  assert.equal(video.currentTime, 0, 'the seek runs when the hook declines');
+});
+
+test('originalSrc maps nothing until a copy exists and passes other urls through', () => {
+  const api = load();
+  assert.equal(api.originalSrc('blob:x/1'), 'blob:x/1');
+  assert.equal(api.originalSrc(''), '');
+});
 
 function drive(api, video, hooks) {
   const timers = [];

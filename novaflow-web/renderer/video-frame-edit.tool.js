@@ -663,7 +663,9 @@
     const viewport = findViewport()
     const video = findStageVideo(viewport)
     if (!video) { notify('请先把视频加载到画板，再进入帧编辑。'); return false }
-    const src = video.currentSrc || video.src
+    // The loop overlay may have the stage on a video-only copy: decode and name the clip the page put there.
+    const stageSrc = video.currentSrc || video.src
+    const src = window.NovaFlowSeamlessLoop?.originalSrc?.(stageSrc) || stageSrc
     state.busy = true
     emitState()
     try {

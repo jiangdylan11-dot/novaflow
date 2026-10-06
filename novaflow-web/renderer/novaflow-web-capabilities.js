@@ -1140,6 +1140,84 @@
   // encoded back through exportEncodeFramesToVideo. A .webm goes through the
   // VP8 alpha decoder first so a matted clip keeps its transparency; when that
   // decoder refuses (a VP9 clip) the plain decode runs instead.
+  // The 画板 loops a clip by seeking back to 0. With an audio track that seek
+  // waits for the audio pipeline to restart, so frame 1 comes a frame late on
+  // every wrap; the seamless-loop overlay therefore plays a video-only copy of
+  // the clip: the same packets remuxed without the audio track, nothing decoded
+  // or encoded (a 2-5 s clip takes well under a second). Copies are kept per
+  // source URL, a few at a time; the overlay revokes one it stops using.
+  const videoOnlyCopies = new Map();
+  const VIDEO_ONLY_COPY_LIMIT = 4;
+  function videoContainerFromBytes(bytes) {
+    if (bytes.length > 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return 'mp4';
+    if (bytes.length > 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return 'webm';
+    return '';
+  }
+  api.exportVideoOnlyCopy = async (payload) => {
+    const sourceUrl = String((payload && payload.sourceUrl) || '');
+    if (!sourceUrl) return fail('缺少视频地址');
+    const cached = videoOnlyCopies.get(sourceUrl);
+    if (cached) {
+      videoOnlyCopies.delete(sourceUrl);
+      videoOnlyCopies.set(sourceUrl, cached);
+      return { ok: true, cached: true, ...cached };
+    }
+    let bytes;
+    try {
+      const response = await root.fetch(sourceUrl);
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      bytes = new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      return fail('读取视频失败：' + String((error && error.message) || error));
+    }
+    const container = videoContainerFromBytes(bytes);
+    if (!container) return fail('无法识别的视频格式');
+    let ffmpeg;
+    try { ffmpeg = await loadFfmpeg(); } catch (error) { return fail(String((error && error.message) || error)); }
+    const seq = ++videoOutputSeq;
+    const inName = 'loop_in_' + seq + '.' + container;
+    const outName = 'loop_out_' + seq + '.' + container;
+    try {
+      await ffmpeg.writeFile(inName, bytes);
+      const args = ['-i', inName, '-an', '-c:v', 'copy'];
+      if (container === 'mp4') args.push('-movflags', '+faststart');
+      args.push('-y', outName);
+      const code = await ffmpeg.exec(args);
+      if (code !== 0) throw new Error('ffmpeg 退出码 ' + code);
+      const data = await ffmpeg.readFile(outName);
+      await ffmpeg.deleteFile(outName).catch(() => {});
+      const out = data instanceof Uint8Array ? data : new Uint8Array(data);
+      if (!out.length) throw new Error('副本为空');
+      const mimeType = 'video/' + container;
+      const entry = { url: URL.createObjectURL(new Blob([out], { type: mimeType })), mimeType, container, bytes: out.length };
+      videoOnlyCopies.set(sourceUrl, entry);
+      while (videoOnlyCopies.size > VIDEO_ONLY_COPY_LIMIT) {
+        const oldest = videoOnlyCopies.keys().next().value;
+        const gone = videoOnlyCopies.get(oldest);
+        videoOnlyCopies.delete(oldest);
+        try { URL.revokeObjectURL(gone.url); } catch (_) { /* already gone */ }
+      }
+      return { ok: true, cached: false, ...entry };
+    } catch (error) {
+      if (/RuntimeError|memory access|unreachable|abort/i.test(String((error && error.message) || error))) {
+        ffmpegPromise = null;
+        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+      }
+      return fail('生成无声副本失败：' + String((error && error.message) || error));
+    } finally {
+      if (ffmpegPromise) await ffmpeg.deleteFile(inName).catch(() => {});
+    }
+  };
+  api.exportRevokeVideoOnlyCopy = async (payload) => {
+    const sourceUrl = String((payload && payload.sourceUrl) || '');
+    const entry = videoOnlyCopies.get(sourceUrl);
+    if (entry) {
+      videoOnlyCopies.delete(sourceUrl);
+      try { URL.revokeObjectURL(entry.url); } catch (_) { /* already gone */ }
+    }
+    return { ok: true, revoked: Boolean(entry) };
+  };
+
   api.exportDecodeVideoFrames = async (payload) => {
     const options = payload || {};
     const sourceUrl = String(options.sourceUrl || '');

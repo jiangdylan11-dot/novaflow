@@ -179,7 +179,7 @@ test('the output keeps the source stem with an ASCII _edit suffix', () => {
 });
 
 // ----------------------------------------------------------- the Web decode step
-function bootCapabilities(fakeFfmpeg) {
+function bootCapabilities(fakeFfmpeg, { fetchBytes = new Uint8Array([9, 9, 9]) } = {}) {
   const noop = () => {};
   const fakeElement = () => ({ style: { setProperty: noop, removeProperty: noop }, setAttribute: noop, getAttribute: () => null, addEventListener: noop, removeEventListener: noop, appendChild: noop, remove: noop, click: noop, classList: { add: noop, remove: noop, contains: () => false }, querySelector: () => null, querySelectorAll: () => [] });
   const document = Object.assign(fakeElement(), { getElementById: () => null, createElement: fakeElement, body: fakeElement(), documentElement: fakeElement(), baseURI: 'http://test.local/', readyState: 'complete' });
@@ -187,7 +187,7 @@ function bootCapabilities(fakeFfmpeg) {
     console, atob, Blob, Response, URL, setTimeout, clearTimeout, setInterval, clearInterval,
     document, location: { href: 'http://test.local/', hash: '', pathname: '/', search: '' }, navigator: { userAgent: 'node' },
     localStorage: { getItem: () => null, setItem: noop, removeItem: noop }, sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
-    fetch: async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([9, 9, 9]).buffer }),
+    fetch: async () => ({ ok: true, arrayBuffer: async () => fetchBytes.buffer }),
     electronAPI: {}, NovaFlowWebRuntime: {}, NovaFlowWebFfmpeg: fakeFfmpeg
   };
   sandbox.window = sandbox; sandbox.self = sandbox; sandbox.globalThis = sandbox;
@@ -276,3 +276,43 @@ test('保存选中帧 names each PNG by its position with the source stem', () =
   assert.equal(core.frameFileName('C:\\clips\\walk_edit.webm', 58), 'walk_frame_059.png')
   assert.equal(core.frameFileName('', -3), 'video_frame_001.png')
 })
+
+function fakeFfmpegRemux() {
+  const files = new Map();
+  const execs = [];
+  return {
+    events: {}, execs,
+    on(event, cb) { this.events[event] = cb; },
+    async load() { return true; },
+    async writeFile(name, data) { files.set(name, data); return true; },
+    async readFile(name) { const data = files.get(name); if (!data) throw new Error('no ' + name); return data; },
+    async deleteFile(name) { files.delete(name); return true; },
+    async exec(args) { execs.push(args); files.set(args[args.length - 1], new Uint8Array([1, 2, 3, 4])); return 0; }
+  };
+}
+
+test('exportVideoOnlyCopy remuxes the clip without its audio track and caches the copy per source', async () => {
+  const ffmpeg = fakeFfmpegRemux();
+  const mp4 = new Uint8Array(32); mp4.set([0x66, 0x74, 0x79, 0x70], 4);
+  const api = bootCapabilities(ffmpeg, { fetchBytes: mp4 });
+  const first = await api.exportVideoOnlyCopy({ sourceUrl: 'blob:test/clip' });
+  assert.equal(first.ok, true);
+  assert.equal(first.container, 'mp4');
+  assert.ok(first.url.startsWith('blob:'), 'a blob url for the copy');
+  const args = ffmpeg.execs[0];
+  assert.ok(args.includes('-an') && args.includes('copy') && args.includes('+faststart'), 'audio dropped, video copied: ' + args.join(' '));
+  const again = await api.exportVideoOnlyCopy({ sourceUrl: 'blob:test/clip' });
+  assert.equal(again.cached, true);
+  assert.equal(again.url, first.url);
+  assert.equal(ffmpeg.execs.length, 1, 'no second remux for the same source');
+  const revoked = await api.exportRevokeVideoOnlyCopy({ sourceUrl: 'blob:test/clip' });
+  assert.equal(revoked.revoked, true);
+  const unknown = await api.exportVideoOnlyCopy({ sourceUrl: 'blob:test/other' });
+  assert.equal(unknown.ok, true, 'the same bytes again: a fresh copy');
+});
+
+test('exportVideoOnlyCopy refuses bytes that are neither MP4 nor WebM', async () => {
+  const api = bootCapabilities(fakeFfmpegRemux(), { fetchBytes: new Uint8Array([9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9]) });
+  const result = await api.exportVideoOnlyCopy({ sourceUrl: 'blob:test/junk' });
+  assert.equal(result.ok, false);
+});
