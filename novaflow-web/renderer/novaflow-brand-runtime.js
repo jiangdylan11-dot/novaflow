@@ -1859,6 +1859,15 @@
   function resetAiAnimationCollapseStateForEntry() {
     AI_ANIMATION_COLLAPSE_STATE.mode = true;
     AI_ANIMATION_COLLAPSE_STATE.post = true;
+    if (document.body) document.body.removeAttribute("data-novaflow-ai-mode-expanded");
+  }
+  // The generation dock is hidden by a stylesheet rule keyed on this body
+  // flag (see the 动画生成 dock rule in the brand CSS), so it never paints
+  // before the runtime's first pass on entry nor after React remounts it.
+  function syncAiAnimationModeExpandedBodyFlag() {
+    if (!document.body) return;
+    if (AI_ANIMATION_COLLAPSE_STATE.mode) document.body.removeAttribute("data-novaflow-ai-mode-expanded");
+    else if (document.body.getAttribute("data-novaflow-ai-mode-expanded") !== "1") document.body.setAttribute("data-novaflow-ai-mode-expanded", "1");
   }
   const AI_ANIMATION_MODE_COLLAPSE_INLINE_HIDDEN_ATTR = "data-novaflow-ai-mode-collapse-inline-hidden";
   const AI_ANIMATION_MODE_COLLAPSE_PREV_STYLE_ATTR = "data-novaflow-ai-mode-collapse-prev-style";
@@ -2192,6 +2201,7 @@
   const AI_ANIMATION_STABLE_RUNTIME_ATTRIBUTES = new Set([
     "data-novaflow-ai-mode-section",
     "data-novaflow-ai-mode-collapsed",
+    "data-novaflow-ai-mode-expanded",
     "data-novaflow-ai-mode-switch",
     "data-novaflow-ai-mode-switch-button",
     "data-novaflow-ai-mode-body-item",
@@ -13649,6 +13659,7 @@
     restoreAiSequenceSecondaryPostReturnLayout(postSection);
     setAttributeIfChanged(root, "data-novaflow-ai-mode-section", "1");
     setAttributeIfChanged(root, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
+    syncAiAnimationModeExpandedBodyFlag();
     const modeHeading = ensureAiAnimationCollapseHeading(root, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
     if (postSection instanceof HTMLElement) {
       setAttributeIfChanged(postSection, "data-novaflow-ai-post-section", "1");
@@ -14184,10 +14195,14 @@
     toggleClassIfChanged(document.body, "novaflow-ai-animation-cutout-editing", cutoutEditing);
     toggleClassIfChanged(document.body, "novaflow-ai-animation-cutout-saved", cutoutSaved);
     if (!toolsExpanded) clearAiAnimationCutoutSavedMarkers(document);
+    // The generation panel also stays hidden while the 动画生成 group is collapsed; this pass
+    // used to force it visible on every refresh and fought the bottom-workspace state.
+    const generationCollapsed = Boolean(AI_ANIMATION_COLLAPSE_STATE.mode);
     Array.from(document.querySelectorAll('[data-novaflow-ai-generation-panel="1"], [data-novaflow-ai-prompt-frame="1"], [data-novaflow-ai-prompt-title="1"]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
-      if (cutoutEditing) {
-        setAttributeIfChanged(node, "data-novaflow-ai-processing-hidden", "1");
+      if (cutoutEditing || generationCollapsed) {
+        if (cutoutEditing) setAttributeIfChanged(node, "data-novaflow-ai-processing-hidden", "1");
+        else removeAttributeIfPresent(node, "data-novaflow-ai-processing-hidden");
         setAiSequenceHidden(node, true);
       } else {
         removeAttributeIfPresent(node, "data-novaflow-ai-processing-hidden");
@@ -25043,6 +25058,14 @@
         line-height: var(--novaflow-top-control-height, 34px) !important;
         box-sizing: border-box !important;
       }
+      /* The generation dock (the bottom-workspace child that holds the settings row / prompt grid;
+         the timeline mounts separately and later, so last-child cannot be relied on) exists only
+         while 动画生成 is expanded. Keyed on React's own attributes and a body flag the runtime
+         keeps in step with AI_ANIMATION_COLLAPSE_STATE.mode, so the dock never paints on
+         entry before the runtime's first pass, nor after React remounts it (置入资源). */
+      body:not([data-novaflow-ai-mode-expanded="1"]) [data-preview-ui="1"]:has([data-novaflow-ai-prompt-grid="1"]) > :has([data-novaflow-ai-prompt-grid="1"], [data-novaflow-ai-settings-row="1"], [data-novaflow-ai-bottom-main-row="1"]) {
+        display: none !important;
+      }
       /* 帧编辑 (video-frame-edit.tool.js) marks the body while it is open: the generation
          dock and timeline go, and the 动画生成 group heading is disabled until it closes. */
       body.novaflow-ai-animation-section-layers[data-novaflow-video-frame-edit-open="1"] [data-novaflow-ai-bottom-workspace="1"] {
@@ -35879,6 +35902,7 @@
     "aria-expanded",
     "aria-selected",
     "data-novaflow-ai-mode-collapsed",
+    "data-novaflow-ai-mode-expanded",
     "data-novaflow-ai-post-collapsed",
     "title",
     "disabled",
@@ -58319,6 +58343,7 @@
   function collapseAiAnimationModeForTools() {
     if (AI_ANIMATION_COLLAPSE_STATE.mode) return;
     AI_ANIMATION_COLLAPSE_STATE.mode = true;
+    syncAiAnimationModeExpandedBodyFlag();
     const modeSection = document.querySelector('[data-novaflow-ai-mode-section="1"]');
     if (modeSection instanceof HTMLElement) {
       setAttributeIfChanged(modeSection, "data-novaflow-ai-mode-collapsed", "1");
@@ -58418,6 +58443,7 @@
         if (kind === "mode") {
           // 动画生成 expanding closes the tool group; the generation dock follows the group.
           if (!AI_ANIMATION_COLLAPSE_STATE.mode && !AI_ANIMATION_COLLAPSE_STATE.post) collapseAiAnimationProcessingToolsForMode();
+          syncAiAnimationModeExpandedBodyFlag();
           syncAiAnimationBottomWorkspaceForModeCollapse();
           const bottomWorkspace = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
           scheduleAiSequenceBottomUploadClickProxyRefresh(bottomWorkspace instanceof HTMLElement ? bottomWorkspace : document);
