@@ -80,6 +80,10 @@
       .nf-vfe-cell canvas{display:block;height:var(--nf-vfe-thumb, ${THUMB_HEIGHT}px);border-radius:3px;background:#000;pointer-events:none}
       .nf-vfe-cell:hover{background:rgba(255,255,255,.06)}
       .nf-vfe-cell::after{content:"";position:absolute;inset:0;border-radius:6px;border:2px solid transparent;pointer-events:none}
+      .nf-vfe-cell span{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap}
+      .nf-vfe-cell span i{font-style:normal;font-size:9px;color:#7d7d7d}
+      .nf-vfe-cell span i::before{content:"·";margin-right:3px}
+      .nf-vfe-cell[data-selected="1"] span i{color:#9fd9bf}
       .nf-vfe-cell[data-selected="1"]{background:rgba(30,166,114,.16);color:#effcf5}
       .nf-vfe-cell[data-selected="1"]::after{border-color:${ACCENT}}
       .nf-vfe-cell[data-current="1"]{background:rgba(30,166,114,.34)}
@@ -284,9 +288,11 @@
           canvas.getContext('2d').drawImage(thumb, 0, 0)
         }
       }
-      // The label is the source frame's number: a mirrored or moved frame keeps the
-      // number it had in the clip; the position is in the title and the readout.
-      cell.lastElementChild.textContent = String(source + 1)
+      // The label is the position; a frame that no longer sits where it came from
+      // (mirrored, moved, copied) adds its original number in smaller grey type.
+      const label = cell.lastElementChild
+      if (source === position) label.textContent = String(position + 1)
+      else label.innerHTML = `${position + 1}<i>${source + 1}</i>`
       cell.setAttribute('data-selected', model.isSelected(position) ? '1' : '0')
       cell.setAttribute('data-current', position === state.current ? '1' : '0')
       cell.setAttribute('data-dup', seen.get(source) > 1 ? '1' : '0')
