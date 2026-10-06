@@ -65,7 +65,7 @@
       #${OVERLAY_ID} *{box-sizing:border-box}
       #${OVERLAY_ID} button{font:inherit;font-size:12px;font-weight:400;line-height:1;cursor:pointer;border:0;outline:none;transition:none}
       #${OVERLAY_ID} button:focus,#${OVERLAY_ID} button:focus-visible{outline:none;box-shadow:none}
-      .nf-vfe-stage{flex:1 1 auto;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+      .nf-vfe-stage{flex:1 1 0;min-height:160px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
       .nf-vfe-stage canvas{display:block;max-width:100%;max-height:100%;background:transparent}
       .nf-vfe-bar{flex:0 0 36px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#161616;border-top:1px solid #242424;color:#bdbdbd;font-size:11px;white-space:nowrap}
       .nf-vfe-bar button{width:28px;height:26px;border-radius:6px;background:rgba(255,255,255,.05);color:#e6e6e6;display:inline-flex;align-items:center;justify-content:center;padding:0}
@@ -73,9 +73,11 @@
       .nf-vfe-bar button svg{width:12px;height:12px;display:block}
       .nf-vfe-bar .nf-vfe-readout{color:#f0f0f0;font-size:12px;font-weight:500;margin-left:4px}
       .nf-vfe-bar .nf-vfe-meta{color:#8d8d8d}
-      .nf-vfe-strip{flex:0 0 ${THUMB_HEIGHT + 50}px;display:flex;align-items:flex-start;gap:4px;padding:6px 10px 2px;overflow-x:auto;overflow-y:hidden;background:#161616;border-top:1px solid #242424;scrollbar-width:thin;scroll-behavior:auto}
+      /* Every frame in view: the strip wraps into rows and only scrolls (vertically, by
+         hand) when the rows outgrow its share of the overlay. Playback never scrolls it. */
+      .nf-vfe-strip{flex:0 0 auto;max-height:58%;display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;padding:6px 10px;overflow-x:hidden;overflow-y:auto;background:#161616;border-top:1px solid #242424;scrollbar-width:thin;scroll-behavior:auto}
       .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:10px;line-height:1;cursor:pointer}
-      .nf-vfe-cell canvas{display:block;height:${THUMB_HEIGHT}px;border-radius:3px;background:#000;pointer-events:none}
+      .nf-vfe-cell canvas{display:block;height:var(--nf-vfe-thumb, ${THUMB_HEIGHT}px);border-radius:3px;background:#000;pointer-events:none}
       .nf-vfe-cell:hover{background:rgba(255,255,255,.06)}
       .nf-vfe-cell::after{content:"";position:absolute;inset:0;border-radius:6px;border:2px solid transparent;pointer-events:none}
       .nf-vfe-cell[data-selected="1"]{background:rgba(30,166,114,.16);color:#effcf5}
@@ -231,17 +233,16 @@
     els.readout.textContent = `第 ${position + 1} 帧 / ${model.length}`
     prefetch(position, state.playing ? 6 : 2)
   }
-  // The strip turns a page when the current cell leaves the view: the cell becomes the
-  // first visible one, so the frames that follow need no scrolling until the page is
-  // used up (scrolling on every frame was what stalled playback past the first screen).
+  // Stepping by hand brings the current row into view; playback never scrolls (any
+  // scroll of the strip stalls the frame it lands on).
   function revealCurrentCell() {
     const strip = state.els?.strip
     const cell = strip?.children?.[state.current]
     if (!(cell instanceof HTMLElement)) return
     const stripRect = strip.getBoundingClientRect()
     const rect = cell.getBoundingClientRect()
-    if (rect.left >= stripRect.left && rect.right <= stripRect.right) return
-    strip.scrollLeft += rect.left - stripRect.left - 10
+    if (rect.top < stripRect.top) strip.scrollTop += rect.top - stripRect.top - 6
+    else if (rect.bottom > stripRect.bottom) strip.scrollTop += rect.bottom - stripRect.bottom + 6
   }
   // Playback moves only the current mark between two cells; the strip is not rebuilt.
   function markCurrentCell(previous) {
@@ -251,7 +252,6 @@
     if (before instanceof HTMLElement) before.setAttribute('data-current', '0')
     const now = strip.children[state.current]
     if (now instanceof HTMLElement) now.setAttribute('data-current', '1')
-    revealCurrentCell()
   }
   function renderStrip() {
     const els = state.els
@@ -293,6 +293,28 @@
       cell.title = `第 ${position + 1} 帧 · 原帧 ${source + 1}`
     }
   }
+  // Thumbnails shrink in steps until every frame fits the strip's share of the overlay
+  // without scrolling; a clip too long for the smallest step scrolls by hand.
+  function fitStrip() {
+    const els = state.els
+    const model = state.model
+    if (!els || !model || !state.width || !state.height) return
+    const overlayHeight = state.overlay.getBoundingClientRect().height
+    const width = els.strip.clientWidth - 20
+    const available = overlayHeight * 0.58 - 12
+    if (!(width > 0) || !(available > 0)) return
+    const aspect = state.width / state.height
+    let chosen = 40
+    for (const size of [THUMB_HEIGHT, 52, 40]) {
+      const cellWidth = Math.round(size * aspect) + 8
+      const cellHeight = size + 25
+      const perRow = Math.max(1, Math.floor((width + 4) / (cellWidth + 4)))
+      const rows = Math.ceil(model.length / perRow)
+      if (rows * (cellHeight + 4) <= available) { chosen = size; break }
+    }
+    const value = `${chosen}px`
+    if (state.overlay.style.getPropertyValue('--nf-vfe-thumb') !== value) state.overlay.style.setProperty('--nf-vfe-thumb', value)
+  }
   function renderPanel() {
     const els = state.els
     const model = state.model
@@ -312,6 +334,7 @@
   }
   function renderAll() {
     renderStrip()
+    fitStrip()
     renderPanel()
     void drawCurrent()
   }
@@ -411,10 +434,6 @@
       const position = Number(cell.getAttribute('data-pos'))
       if (position !== state.current) setCurrent(position, 'range')
     })
-    strip.addEventListener('wheel', (event) => {
-      // The strip scrolls sideways with a plain wheel.
-      if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) { strip.scrollLeft += event.deltaY; event.preventDefault() }
-    }, { passive: false })
     window.addEventListener('pointerup', onPointerUp)
     return {
       overlay,
@@ -552,6 +571,7 @@
       style.top = `${Math.round(box.top)}px`
       style.width = `${Math.round(box.width)}px`
       style.height = `${Math.round(box.height)}px`
+      fitStrip()
     }
   }
 
