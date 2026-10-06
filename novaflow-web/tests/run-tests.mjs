@@ -38,6 +38,7 @@ const SUITES = [
   { name: 'web-ui-design-qwen21', file: 'e2e/web-ui-design-qwen21.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'warehouse-folder', file: 'e2e/warehouse-folder.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-warehouse', file: 'e2e/web-warehouse.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'video-frame-edit', file: 'e2e/video-frame-edit.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-lora', file: 'e2e/web-lora.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-lora-qwen21', file: 'e2e/web-lora-qwen21.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-shared-qwen21', file: 'e2e/web-shared-qwen21.test.mjs', needs: [], timeoutMs: 60000 },

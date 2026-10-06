@@ -23133,6 +23133,15 @@
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"] {
         order: 10 !important;
       }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="frame-edit"] {
+        order: 20 !important;
+      }
+      /* The bundle's body item (its hidden entries plus 视频抠图's content shell) goes
+         under the 视频抠图 row while that tool is open, so its brush block is not
+         pushed under 帧编辑; idle it is 0 tall and stays after the last row. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"][data-novaflow-ai-active-tool="ai-cutout"] > [data-novaflow-ai-post-body-item="1"]:has([data-nf-cutout-post-shell="1"]) {
+        order: 15 !important;
+      }
       /* Only 视频合并's own panel moves up under its row; the cutout shell (0 tall while
          idle) stays after the last row, so marking the tool never shifts the rows by a gap. */
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] > [data-novaflow-ai-video-merge-layer-panel="1"] {
@@ -23200,6 +23209,9 @@
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"]::before {
         background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2016%2016'%20fill%3D'none'%20stroke%3D'%23bdbdbd'%20stroke-width%3D'1.3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Crect%20x%3D'2'%20y%3D'2'%20width%3D'12'%20height%3D'12'%20rx%3D'2'%20stroke-dasharray%3D'2.6%201.9'%2F%3E%3Ccircle%20cx%3D'8'%20cy%3D'6.5'%20r%3D'1.9'%2F%3E%3Cpath%20d%3D'M4.9%2012.4c.5-1.9%201.7-2.9%203.1-2.9s2.6%201%203.1%202.9'%2F%3E%3C%2Fsvg%3E") !important;
       }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="frame-edit"]::before {
+        background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2016%2016'%20fill%3D'none'%20stroke%3D'%23bdbdbd'%20stroke-width%3D'1.3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Crect%20x%3D'2'%20y%3D'3'%20width%3D'12'%20height%3D'10'%20rx%3D'1.6'%2F%3E%3Cpath%20d%3D'M5.5%203v10M10.5%203v10M2%206.3h3.5M2%209.7h3.5M10.5%206.3H14M10.5%209.7H14'%2F%3E%3C%2Fsvg%3E") !important;
+      }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading]::after {
         content: none !important;
         display: none !important;
@@ -23209,7 +23221,7 @@
       /* The section's 5px gap and the rows' zero margins are written inline by
          the spacing pass, so 视频抠图 carries the missing 2px above and the 3px
          under it as clear borders; its fill stays the 46px row. */
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"] {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="frame-edit"] {
         height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
         min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
         max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
@@ -23219,7 +23231,7 @@
       }
       /* Those borders stay clear on hover too: the generic button hover tinted
          them 20% white, a rim above and below the row. */
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"]:is(:hover, :focus, :active) {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="frame-edit"]:is(:hover, :focus, :active) {
         border-top-color: transparent !important;
         border-bottom-color: transparent !important;
         background-clip: padding-box !important;
@@ -23233,6 +23245,13 @@
         background-repeat: no-repeat !important;
         background-size: 100% 1px !important;
         background-position: 0 ${AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y}px !important;
+      }
+      /* A second rule under 视频抠图 (a plain 46px row now that 帧编辑 is the last row),
+         while its own content is not sitting there. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"]:has(> [data-novaflow-ai-tool-heading="video-merge"][aria-expanded="false"]):has(> [data-novaflow-ai-tool-heading="ai-cutout"][aria-expanded="false"]) {
+        background-image: linear-gradient(#272727, #272727), linear-gradient(#272727, #272727) !important;
+        background-size: 100% 1px, 100% 1px !important;
+        background-position: 0 ${AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y}px, 0 ${AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y + 5 + AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading] > [data-novaflow-ai-tool-heading-chevron] {
         display: block !important;
@@ -59433,7 +59452,10 @@
   // or an overlay puts into the section is ordered under the active row.
   const AI_ANIMATION_TOOL_HEADINGS = Object.freeze([
     { key: "video-merge", label: "视频合并", entry: '[data-novaflow-ai-video-merge-entry="1"]', tools: ["video-merge"] },
-    { key: "ai-cutout", label: "视频抠图", entry: '[data-novaflow-video-cutout="1"]', tools: ["ai-cutout", "chroma-key"] }
+    { key: "ai-cutout", label: "视频抠图", entry: '[data-novaflow-video-cutout="1"]', tools: ["ai-cutout", "chroma-key"] },
+    // 帧编辑 is a runtime overlay (video-frame-edit.tool.js) on whatever video the
+    // stage shows, not a bundle tool: its row toggles the tool, no entry to proxy.
+    { key: "frame-edit", label: "帧编辑", entry: "", tools: ["frame-edit"], overlay: "NovaFlowVideoFrameEditTool" }
   ]);
   let AI_ANIMATION_TOOL_OPENING = null;
   function aiAnimationActiveToolKey(includeOpening = false) {
@@ -59445,6 +59467,7 @@
     if (tool === "video-merge") return mergePanel ? "video-merge" : "";
     if (tool) return tool;
     if (mergePanel) return "video-merge";
+    if (window.NovaFlowVideoFrameEditTool?.isOpen?.()) return "frame-edit";
     // A tool a row is opening only orders its panel; the rows themselves follow the session.
     if (includeOpening && AI_ANIMATION_TOOL_OPENING && Date.now() < AI_ANIMATION_TOOL_OPENING.until) return AI_ANIMATION_TOOL_OPENING.tool;
     return "";
@@ -59462,6 +59485,15 @@
       if (section instanceof HTMLElement) ensureAiAnimationToolHeadings(section, section.querySelector('[data-novaflow-ai-collapse-heading="post"]'));
       primeAiSequencePreviewEffectiveRectVars(document);
     }, delay));
+    if (spec.overlay) {
+      // The overlay tool opens and closes itself; its state event re-reads the rows.
+      const tool = window[spec.overlay];
+      if (!tool || typeof tool.toggle !== "function") return;
+      if (!expanded) postHeading.click();
+      AI_ANIMATION_TOOL_OPENING = null;
+      void tool.toggle({ postSection });
+      return;
+    }
     const clickEntry = (attempt = 0) => {
       // The tool's panel is mounted under this row before the rows re-read the session.
       if (attempt === 0) AI_ANIMATION_TOOL_OPENING = { tool: spec.tools[0], until: Date.now() + 1500 };
@@ -59491,6 +59523,12 @@
     }
     clickEntry();
   }
+  window.addEventListener("novaflow:video-frame-edit-state", () => {
+    const section = document.querySelector('[data-novaflow-ai-post-section="1"]');
+    if (!(section instanceof HTMLElement)) return;
+    ensureAiAnimationToolHeadings(section, section.querySelector('[data-novaflow-ai-collapse-heading="post"]'));
+    primeAiSequencePreviewEffectiveRectVars(document);
+  });
   function ensureAiAnimationToolHeadings(postSection, postHeading) {
     if (!(postSection instanceof HTMLElement)) return;
     const expanded = !AI_ANIMATION_COLLAPSE_STATE.post;

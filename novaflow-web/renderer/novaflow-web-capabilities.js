@@ -1125,6 +1125,88 @@
     }
   };
 
+  // ---- 帧编辑 → the stage video as frames ----------------------------------
+  //
+  // 帧编辑 (video-frame-edit.tool.js) edits whatever video the 动画 stage shows:
+  // the clip is decoded here into one PNG per frame at the dock's frame rate
+  // (the timeline's 第 N 帧 / 总 count), edited as an order of those frames and
+  // encoded back through exportEncodeFramesToVideo. A .webm goes through the
+  // VP8 alpha decoder first so a matted clip keeps its transparency; when that
+  // decoder refuses (a VP9 clip) the plain decode runs instead.
+  api.exportDecodeVideoFrames = async (payload) => {
+    const options = payload || {};
+    const sourceUrl = String(options.sourceUrl || '');
+    const source = options.bytes || options.data || null;
+    if (!sourceUrl && !source) return fail('缺少画板视频');
+    const ext = (String(options.fileName || '').split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '') || (sourceUrl.split('?')[0].split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+    const fps = Number(options.fps) > 0 ? clampNumber(Number(options.fps), 1, 120) : 0;
+    const maxFrames = Number.isInteger(Number(options.maxFrames)) && Number(options.maxFrames) > 0 ? Number(options.maxFrames) : 0;
+    const tryAlpha = options.alpha === true || (ext === 'webm' && options.alpha !== false);
+    let ffmpeg;
+    const tag = 'frames' + (++videoOutputSeq) + '_';
+    const input = tag + 'input.' + ext;
+    const outputPrefix = tag + 'frame_';
+    const outputPattern = outputPrefix + '%06d.png';
+    const jobId = 'frames-decode-' + videoOutputSeq;
+    const label = '正在读取画板视频的帧…';
+    const previous = ffmpegJob;
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    busy.begin(jobId, label);
+    let names = [];
+    const cleanup = async () => {
+      if (!ffmpeg) return;
+      for (const name of names) await ffmpeg.deleteFile(name).catch(() => {});
+      names = [];
+    };
+    try {
+      ffmpeg = await loadFfmpeg();
+      if (typeof ffmpeg.listDir !== 'function') throw new Error('当前解码器不支持读取序列帧');
+      let bytes;
+      if (source) bytes = await bytesOf(source);
+      else {
+        const response = await root.fetch(sourceUrl);
+        if (!response.ok) throw new Error('读取画板视频失败');
+        bytes = new Uint8Array(await response.arrayBuffer());
+      }
+      if (!bytes.length) throw new Error('画板视频是空的');
+      await ffmpeg.writeFile(input, bytes);
+      const run = async (alpha) => {
+        const filters = [];
+        if (fps) filters.push('fps=' + fps);
+        if (alpha) filters.push('format=rgba');
+        const args = alpha ? ['-c:v', 'libvpx', '-i', input] : ['-i', input];
+        args.push('-an', '-vsync', '0');
+        if (filters.length) args.push('-vf', filters.join(','));
+        if (maxFrames) args.push('-frames:v', String(maxFrames));
+        args.push('-compression_level', '1', '-start_number', '0', '-y', outputPattern);
+        const code = await ffmpeg.exec(args);
+        names = (await ffmpeg.listDir('/')).map((entry) => entry.name)
+          .filter((name) => name.startsWith(outputPrefix) && name.endsWith('.png')).sort();
+        if (code !== 0 || !names.length) { await cleanup(); return false; }
+        return true;
+      };
+      let alpha = false;
+      if (tryAlpha && await run(true)) alpha = true;
+      else if (!(await run(false))) throw new Error('画板视频没有可读取的帧');
+      const info = sourceFromLog(ffmpegJob.log);
+      const frames = [];
+      for (let index = 0; index < names.length; index += 1) {
+        const data = await ffmpeg.readFile(names[index]);
+        frames.push(data instanceof Uint8Array ? data.slice() : new Uint8Array(data));
+        if (index % 8 === 0) busy.update(jobId, label, names.length ? index / names.length : null);
+      }
+      busy.update(jobId, label, 1);
+      return { ok: true, frames, alpha, fps: fps || info.fps || 0, sourceFps: info.fps || 0, width: info.width || 0, height: info.height || 0 };
+    } catch (error) {
+      return fail(String(error?.message || error));
+    } finally {
+      await cleanup();
+      if (ffmpeg) await ffmpeg.deleteFile(input).catch(() => {});
+      busy.end(jobId);
+      ffmpegJob = previous;
+    }
+  };
+
   // 颜色校正 is not offered on the Web line (removed 2026-09-25 at the user's request;
   // the brand runtime hides its 视频处理 entry). The helpers below are shared by
   // the video tools that remain.
