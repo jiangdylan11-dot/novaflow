@@ -1011,8 +1011,14 @@
       const old = result.alpha[p];
       const next = value < .5 ? old * (1 - (1 - 2 * value) * coverage) : Math.max(old, (2 * value - 1) * coverage * 255);
       result.alpha[p] = result.data[i + 3] = Math.round(clamp(next, 0, 255));
-      if (old === 0 && next > 0 && original) {
-        result.data[i] = original[i]; result.data[i + 1] = original[i + 1]; result.data[i + 2] = original[i + 2];
+      // A restore stroke brings the source back: the colour follows the
+      // alpha it adds. A pixel the matte left semi-transparent (a glow on a
+      // matching screen) carries the matte's unassociated colour, which is
+      // not what the user sees under the brush; mix the source colour in by
+      // the share of alpha the stroke added, fully when it was transparent.
+      if (next > old && original) {
+        const share = (next - old) / Math.max(1, next);
+        for (let c = 0; c < 3; c++) result.data[i + c] = Math.round(result.data[i + c] * (1 - share) + original[i + c] * share);
       }
     }
     return result;

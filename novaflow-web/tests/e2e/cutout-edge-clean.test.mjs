@@ -95,6 +95,23 @@ test('renderAsync forwards 边缘净化 to the matting worker', async () => {
   assert.equal(task.options.preserveShadow, true);
 });
 
+test('restore brush brings back the source colour on a semi-transparent pixel', () => {
+  // A glowing eye on a matching screen leaves the matte with a half-alpha,
+  // despilled yellow; the preview under the brush shows the source, so the
+  // committed stroke must too.
+  const api = loadMatting();
+  const result = { data: new Uint8ClampedArray([255, 240, 20, 120, 255, 240, 20, 0, 10, 10, 10, 255]), alpha: new Uint8ClampedArray([120, 0, 255]) };
+  const original = new Uint8ClampedArray([200, 230, 60, 255, 200, 230, 60, 255, 90, 90, 90, 255]);
+  const overlay = new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0]); // restore px 0 and 1, leave px 2
+  api.applyBrush(result, overlay, original);
+  assert.deepEqual([...result.data.slice(0, 4)], [200, 230, 60, 255], 'semi-transparent pixel restored to the source colour');
+  assert.deepEqual([...result.data.slice(4, 8)], [200, 230, 60, 255], 'transparent pixel restored as before');
+  assert.deepEqual([...result.data.slice(8, 12)], [10, 10, 10, 255], 'untouched pixel keeps its bytes');
+  const half = { data: new Uint8ClampedArray([255, 240, 20, 120]), alpha: new Uint8ClampedArray([120]) };
+  api.applyBrush(half, new Uint8ClampedArray([255, 255, 255, 128]), new Uint8ClampedArray([200, 230, 60, 255]));
+  assert.ok(half.alpha[0] > 120 && half.data[0] < 255 && half.data[0] > 200, 'a partial stroke mixes the source colour in by the alpha it adds');
+});
+
 test('cutout pipeline treats 边缘净化 like 保留投影 for cached frames', async () => {
   let reader;
   const root = { NovaFlowGreenScreenMatting: { referenceFrameIndices: () => [0], parallelism: () => 1, registerPreparedFrame: (f, r) => { reader = r; return () => {}; }, createFrameCache: () => ({ put: async () => {}, get: async () => null, delete() {}, clear() {}, stats: () => ({}) }), prepareSequenceReference: () => ({}), renderAsync: async () => null } };
