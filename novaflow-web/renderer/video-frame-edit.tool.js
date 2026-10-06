@@ -31,6 +31,7 @@
     thumbs: null,
     full: new Map(),
     fullBytes: 0,
+    viewEdge: 0,
     prefetching: new Set(),
     fps: 0,
     width: 0,
@@ -72,7 +73,7 @@
       .nf-vfe-bar button svg{width:12px;height:12px;display:block}
       .nf-vfe-bar .nf-vfe-readout{color:#f0f0f0;font-size:12px;font-weight:500;margin-left:4px}
       .nf-vfe-bar .nf-vfe-meta{color:#8d8d8d}
-      .nf-vfe-strip{flex:0 0 ${THUMB_HEIGHT + 30}px;display:flex;align-items:flex-start;gap:4px;padding:6px 10px;overflow-x:auto;overflow-y:hidden;background:#161616;border-top:1px solid #242424;scrollbar-width:thin}
+      .nf-vfe-strip{flex:0 0 ${THUMB_HEIGHT + 50}px;display:flex;align-items:flex-start;gap:4px;padding:6px 10px 2px;overflow-x:auto;overflow-y:hidden;background:#161616;border-top:1px solid #242424;scrollbar-width:thin;scroll-behavior:auto}
       .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:10px;line-height:1;cursor:pointer}
       .nf-vfe-cell canvas{display:block;height:${THUMB_HEIGHT}px;border-radius:3px;background:#000;pointer-events:none}
       .nf-vfe-cell:hover{background:rgba(255,255,255,.06)}
@@ -141,10 +142,22 @@
   function pngBlob(index) {
     return new Blob([state.frames[index]], { type: 'image/png' })
   }
+  // The viewer bitmaps' long edge: the cap, lowered until every frame of the clip fits
+  // the cache budget together (a looping preview must never re-decode).
+  function viewLongEdge() {
+    const long = Math.max(state.width, state.height)
+    const frames = state.frames ? state.frames.length : 1
+    if (!long) return VIEW_LONG_EDGE
+    let edge = Math.min(long, VIEW_LONG_EDGE)
+    const bytesAt = (value) => { const scale = value / long; return Math.round(state.width * scale) * Math.round(state.height * scale) * 4 }
+    while (edge > 480 && bytesAt(edge) * frames > VIEW_CACHE_BYTES) edge = Math.round(edge * 0.85)
+    return edge
+  }
   function viewOptions() {
     const long = Math.max(state.width, state.height)
-    if (!long || long <= VIEW_LONG_EDGE) return {}
-    const scale = VIEW_LONG_EDGE / long
+    const edge = state.viewEdge || VIEW_LONG_EDGE
+    if (!long || long <= edge) return {}
+    const scale = edge / long
     return { resizeWidth: Math.max(1, Math.round(state.width * scale)), resizeHeight: Math.max(1, Math.round(state.height * scale)), resizeQuality: 'medium' }
   }
   function rememberBitmap(index, bitmap) {
@@ -219,6 +232,18 @@
     els.readout.textContent = `第 ${position + 1} 帧 / ${model.length}`
     prefetch(position, state.playing ? 6 : 2)
   }
+  // The strip turns a page when the current cell leaves the view: the cell becomes the
+  // first visible one, so the frames that follow need no scrolling until the page is
+  // used up (scrolling on every frame was what stalled playback past the first screen).
+  function revealCurrentCell() {
+    const strip = state.els?.strip
+    const cell = strip?.children?.[state.current]
+    if (!(cell instanceof HTMLElement)) return
+    const stripRect = strip.getBoundingClientRect()
+    const rect = cell.getBoundingClientRect()
+    if (rect.left >= stripRect.left && rect.right <= stripRect.right) return
+    strip.scrollLeft += rect.left - stripRect.left - 10
+  }
   // Playback moves only the current mark between two cells; the strip is not rebuilt.
   function markCurrentCell(previous) {
     const strip = state.els?.strip
@@ -226,12 +251,8 @@
     const before = strip.children[previous]
     if (before instanceof HTMLElement) before.setAttribute('data-current', '0')
     const now = strip.children[state.current]
-    if (now instanceof HTMLElement) {
-      now.setAttribute('data-current', '1')
-      const stripRect = strip.getBoundingClientRect()
-      const rect = now.getBoundingClientRect()
-      if (rect.left < stripRect.left || rect.right > stripRect.right) now.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    }
+    if (now instanceof HTMLElement) now.setAttribute('data-current', '1')
+    revealCurrentCell()
   }
   function renderStrip() {
     const els = state.els
@@ -294,8 +315,7 @@
     void drawCurrent()
   }
   function scrollCurrentIntoView() {
-    const cell = state.els?.strip?.children?.[state.current]
-    if (cell instanceof HTMLElement) cell.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    revealCurrentCell()
   }
 
   // ---- operations --------------------------------------------------------
@@ -563,6 +583,7 @@
       state.width = first.width
       state.height = first.height
       state.alpha = Boolean(result.alpha)
+      state.viewEdge = viewLongEdge()
       state.sourceName = sourceName
       state.model = coreApi.createModel(frames.length)
       state.current = 0
