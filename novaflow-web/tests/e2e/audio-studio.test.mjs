@@ -111,19 +111,38 @@ test('an audio output entry is collected with its caption', () => {
   assert.deepEqual(outputs, [{ filename: 'novaflow_music_00001_.wav', subfolder: 'audio', type: 'output', nodeId: '9', caption: 'Chiptune loop. Length: 33 seconds' }]);
 });
 
-test('the overlay is registered, ships without ComfyUI topology and composes English captions', async () => {
+test('the overlay and the timeline editor are registered, ship without ComfyUI topology and compose English captions', async () => {
   const html = await readFile(ROOT + 'renderer/index.html', 'utf8');
-  assert.match(html, /audio-studio\.tool\.js/);
+  assert.ok(html.indexOf('audio-timeline.editor.js') < html.indexOf('audio-studio.tool.js'), 'the editor loads before the section');
+  const editorSource = await readFile(ROOT + 'renderer/audio-timeline.editor.js', 'utf8');
   const source = await readFile(ROOT + 'renderer/audio-studio.tool.js', 'utf8');
   for (const marker of ['class_type', 'CheckpointLoaderSimple', 'KSampler', 'safetensors', 'stable_audio', 'Stable Audio']) {
-    assert.ok(!source.includes(marker), 'overlay must not mention ' + marker);
+    assert.ok(!source.includes(marker) && !editorSource.includes(marker), 'overlay must not mention ' + marker);
   }
   const sandbox = createDomSandbox({});
   const context = createContext(sandbox);
+  runInContext(editorSource, context, { filename: 'audio-timeline.editor.js' });
   runInContext(source, context, { filename: 'audio-studio.tool.js' });
+  assert.ok(sandbox.NovaFlowAudioTimeline && typeof sandbox.NovaFlowAudioTimeline.create === 'function');
   const api = sandbox.NovaFlowAudioStudio;
   assert.ok(api && typeof api.open === 'function');
   assert.equal(api.captions.translate('森林 雨 金币'), 'forest rain coin');
   assert.match(api.captions.music(), /Game background music.*seamless loop\. BPM: \d+$/);
   assert.match(api.captions.sfx(), /game sound effect, clean, no music$/);
 });
+
+test('the mixdown writer produces a 16-bit PCM WAV of the right length', () => {
+  // The shim's Blob is a stub; the writer needs the real one to measure.
+  const source = createDomSandbox({ Blob: globalThis.Blob });
+  const context = createContext(source);
+  runInContext(readFileSyncSafe(ROOT + 'renderer/audio-timeline.editor.js'), context, { filename: 'audio-timeline.editor.js' });
+  const sr = 8000, n = 400;
+  const left = new Float32Array(n).fill(0.5), right = new Float32Array(n).fill(-0.5);
+  const fake = { numberOfChannels: 2, length: n, sampleRate: sr, getChannelData: (c) => (c === 0 ? left : right) };
+  const blob = source.NovaFlowAudioTimeline.encodeWav(fake);
+  assert.equal(blob.size, 44 + n * 2 * 2);
+  assert.equal(blob.type, 'audio/wav');
+});
+
+import { readFileSync } from 'node:fs';
+function readFileSyncSafe(path) { return readFileSync(path, 'utf8'); }

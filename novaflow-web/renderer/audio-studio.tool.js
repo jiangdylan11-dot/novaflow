@@ -1,11 +1,12 @@
-// 音频 - a fifth rail entry: game background music loops and sound effects,
-// rendered on the local compute node from a text description.
+// 音频 - a rail entry of its own under 动画: game background music loops and
+// sound effects, generated on the local compute node, arranged on a timeline.
 //
 // The React bundle knows four sections and cannot be rebuilt, so this is an
-// overlay: a rail cell of its own below 工具 (the same shape as 仓库/导出) and
-// a fixed workspace that covers the section panels while it is open. The
-// page only ever sends a task type and business parameters; the graph lives
-// on the worker.
+// overlay that takes the 动画 section's skeleton: the left card (mode toggle +
+// accordion rows), the stage with a top bar, a generation dock and a
+// transport bar at its foot, and the resource list on the right. The page
+// only ever sends a task type and business parameters; the graph lives on
+// the worker.
 (function () {
   'use strict';
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -13,14 +14,17 @@
 
   const LABEL = '音频';
   const CELL_ID = 'novaflow-primary-audio-cell';
+  const MASK_ID = 'novaflow-primary-audio-mask';
   const ROOT_ID = 'novaflow-audio-studio';
   const STYLE_ID = 'novaflow-audio-studio-style';
   const BODY_CLASS = 'novaflow-primary-target-audio';
-  const RAIL_PITCH = 70;              // PRIMARY_RAIL_ITEM_PITCH in the brand runtime
-  const PANEL_WIDTH = 200;            // fallback; measured from the left column when it exists
-  const PANEL_SEAM = 10;              // gap between the panel card and the stage
-  const PANEL_TOP = 62;               // TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP
-  const PANEL_BOTTOM_GAP = 10;
+  const RAIL_AFTER = '动画';            // the entry the audio cell sits under
+  const RAIL_PITCH = 70;               // PRIMARY_RAIL_ITEM_PITCH in the brand runtime
+  const STAGE_TOP = 62;                // TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP
+  const EDGE_GAP = 10;
+  const SIDEBAR_W = 206;
+  const TRANSPORT_H = 97;
+  const DOCK_H = 213;
   const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E\")";
 
   // ---- vocabulary: the page speaks Chinese, the model reads English --------
@@ -38,12 +42,11 @@
     ['horror', '恐怖氛围', 'Dark horror ambience music with dissonant strings, eerie piano stabs, low drones, distant whispers and sparse percussion', 70]
   ];
   const MOODS = [
-    ['happy', '欢快', 'upbeat and cheerful'], ['heroic', '热血', 'heroic and energetic'], ['warm', '温暖', 'warm and cozy'],
+    ['auto', '按描述', ''], ['happy', '欢快', 'upbeat and cheerful'], ['heroic', '热血', 'heroic and energetic'], ['warm', '温暖', 'warm and cozy'],
     ['mystery', '神秘', 'mysterious and curious'], ['tense', '紧张', 'tense and suspenseful'], ['sad', '悲伤', 'melancholic and sad'],
     ['dreamy', '梦幻', 'dreamy and ethereal'], ['quirky', '搞怪', 'quirky and comedic'], ['grand', '恢弘', 'grand and epic'],
     ['calm', '平静', 'calm and peaceful']
   ];
-  const MUSIC_DURATIONS = [15, 30, 45, 60, 90];
   const SFX_CATEGORIES = [
     ['auto', '按描述', '', 2],
     ['ui', '界面点击', 'Soft UI button click, a short clean tap with a subtle bright tick, dry and close', 1],
@@ -64,9 +67,6 @@
     ['cartoon', '卡通', 'cartoon style, exaggerated and playful'], ['scifi', '科幻', 'sci-fi, synthetic and futuristic'],
     ['fantasy', '奇幻', 'fantasy, magical']
   ];
-  const SFX_DURATIONS = [1, 2, 3, 5, 10];
-  // Words a game maker types in Chinese; the rest of a sentence passes through
-  // and the rewrite on the node turns it into the model's own phrasing.
   const ZH = [
     ['背景音乐', 'background music'], ['无缝循环', 'seamless loop'], ['循环', 'loop'], ['中国风', 'Chinese traditional style'], ['国风', 'Chinese traditional style'],
     ['日式', 'Japanese style'], ['中世纪', 'medieval'], ['蒸汽朋克', 'steampunk'], ['赛博朋克', 'cyberpunk'], ['像素', 'pixel 8-bit'], ['复古', 'retro'],
@@ -96,36 +96,40 @@
   // ---- state -----------------------------------------------------------------
   const state = {
     active: false,
-    demoted: null,            // the React rail button whose pressed look was taken away
-    results: [],              // {id, kind, name, caption, prompt, seconds, blob, buffer, url, task}
-    running: new Map(),       // task id -> {card, cancelled}
-    music: { style: 'auto', moods: new Set(), bpm: 100, seconds: 30, loop: true, text: '' },
-    sfx: { category: 'auto', style: 'any', seconds: 2, count: 1, text: '' },
+    mode: 'music',                      // 'music' | 'sfx'
+    open: 'generate',                   // which left row is expanded
+    music: { style: 'auto', mood: 'auto', bpm: 100, seconds: 30, loop: true, text: '', rewrite: true },
+    sfx: { category: 'auto', style: 'any', seconds: 2, count: 1, text: '', rewrite: true },
+    resources: [],                      // {id, kind, name, buffer, blob, url, seconds, caption, label, task, loopable}
+    running: new Map(),                 // task id -> {cancelled}
+    counter: { music: 0, sfx: 0, import: 0 },
+    projectName: 'audio_1',
     maskTarget: null,
-    open: 'music',
-    counter: { music: 0, sfx: 0 },
-    player: null
+    preview: null
   };
+  let ui = null;
+  let editor = null;
 
-  // ---- rail cell -------------------------------------------------------------
-  function findToolsCell() {
-    const entry = document.querySelector('[data-novaflow-primary-entry="1"][data-novaflow-primary-label="工具"]');
+  // ---- rail cell ---------------------------------------------------------------
+  function railEntry(label) {
+    const entry = document.querySelector('[data-novaflow-primary-entry="1"][data-novaflow-primary-label="' + label + '"]');
     if (!(entry instanceof HTMLElement)) return null;
     const cell = entry.closest('[data-novaflow-primary-cell="1"]');
     return cell instanceof HTMLElement ? cell : entry;
   }
 
   function ensureCell() {
-    const tools = findToolsCell();
-    if (!tools) return;
-    const rect = tools.getBoundingClientRect();
+    const anchor = railEntry(RAIL_AFTER);
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
     let cell = document.getElementById(CELL_ID);
     if (!cell) {
       cell = document.createElement('div');
       cell.id = CELL_ID;
       // Not data-novaflow-primary-cell: that attribute invites the brand
-      // runtime's own cell rules (padding, widths) on top of these.
+      // runtime's own cell rules (padding, widths) on top of these. The extra
+      // marker is what moves the entries after 动画 down one slot.
       cell.setAttribute('data-novaflow-primary-extra-cell', '1');
       cell.setAttribute('data-novaflow-runtime-ignore', '1');
       const button = document.createElement('button');
@@ -143,16 +147,13 @@
       cell.appendChild(button);
       document.body.appendChild(cell);
     }
-    const top = Math.round(rect.top + RAIL_PITCH);
+    const want = { left: Math.round(rect.left) + 'px', top: Math.round(rect.top + RAIL_PITCH) + 'px', width: Math.round(rect.width) + 'px', height: Math.round(rect.height) + 'px' };
     const style = cell.style;
-    const want = { left: Math.round(rect.left) + 'px', top: top + 'px', width: Math.round(rect.width) + 'px', height: Math.round(rect.height) + 'px' };
     for (const key of Object.keys(want)) if (style.getPropertyValue(key) !== want[key]) style.setProperty(key, want[key], 'important');
-    // The entries live inside the rail's stacking context; a body-level cell
-    // needs the rail's own z-index to sit at the same depth.
-    const rail = tools.closest('[data-novaflow-primary-rail]');
-    const zIndex = (rail && getComputedStyle(rail).zIndex !== 'auto' ? getComputedStyle(rail).zIndex : '') || getComputedStyle(tools).zIndex;
+    const rail = anchor.closest('[data-novaflow-primary-rail]');
+    const zIndex = (rail && getComputedStyle(rail).zIndex !== 'auto' ? getComputedStyle(rail).zIndex : '') || getComputedStyle(anchor).zIndex;
     if (zIndex && zIndex !== 'auto' && style.zIndex !== zIndex) style.setProperty('z-index', zIndex, 'important');
-    const radius = getComputedStyle(tools).borderRadius;
+    const radius = getComputedStyle(anchor).borderRadius;
     if (radius && style.borderRadius !== radius) style.setProperty('border-radius', radius, 'important');
   }
 
@@ -161,24 +162,19 @@
       .find((node) => node instanceof HTMLElement && node.getAttribute('aria-pressed') === 'true') || null;
   }
 
-  // ---- activation --------------------------------------------------------------
-  // The React tab stays where it was (there is no fifth tab to switch to), so
-  // the brand runtime keeps painting that entry as pressed. A cosmetic mask the
-  // size of the cell covers it with the idle look while 音频 is open; a click
-  // on the mask hands the full pointer sequence to the entry underneath, which
-  // is what switches a section (a bare click() does nothing there).
-  const MASK_ID = 'novaflow-primary-audio-mask';
+  // The React tab stays where it was (there is no fifth tab), so the brand
+  // runtime keeps painting that entry as pressed. A cosmetic mask the size of
+  // the cell covers it with the idle look while 音频 is open; a click on the
+  // mask hands the full pointer sequence to the entry underneath.
   function railBackground(reference) {
     const rect = reference.getBoundingClientRect();
-    const x = rect.left + rect.width / 2, y = rect.bottom + 2;
-    for (const node of document.elementsFromPoint(x, y)) {
+    for (const node of document.elementsFromPoint(rect.left + rect.width / 2, rect.bottom + 2)) {
       if (node === reference || node.id === MASK_ID) continue;
       const color = getComputedStyle(node).backgroundColor;
       if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') return color;
     }
     return '#161616';
   }
-
   function syncMask() {
     const pressed = state.active ? pressedRailEntry() : null;
     let mask = document.getElementById(MASK_ID);
@@ -191,10 +187,8 @@
       mask.type = 'button';
       mask.setAttribute('data-novaflow-runtime-ignore', '1');
       mask.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
+        event.preventDefault(); event.stopPropagation();
         const target = state.maskTarget;
-        state.demoted = null;
         deactivate();
         if (!(target instanceof HTMLElement) || !target.isConnected) return;
         const r = target.getBoundingClientRect();
@@ -210,8 +204,6 @@
     mask.setAttribute('aria-label', pressed.getAttribute('aria-label') || '');
     const icon = getComputedStyle(pressed).getPropertyValue('--nf-rail-icon');
     if (icon) mask.style.setProperty('--nf-rail-icon', icon);
-    // The entries sit inside the rail's own stacking context: the mask has to
-    // clear the rail, not the entry.
     const rail = pressed.closest('[data-novaflow-primary-rail]');
     const railZ = rail ? Number(getComputedStyle(rail).zIndex) : NaN;
     const hostZ = Number(getComputedStyle(host).zIndex);
@@ -223,6 +215,7 @@
     for (const key of Object.keys(want)) if (mask.style.getPropertyValue(key) !== want[key]) mask.style.setProperty(key, want[key], 'important');
   }
 
+  // ---- activation ----------------------------------------------------------------
   function activate() {
     if (state.active) return;
     state.active = true;
@@ -233,8 +226,8 @@
     layout();
     syncMask();
     refreshCapabilities();
+    editor.layout();
   }
-
   function deactivate() {
     if (!state.active) return;
     state.active = false;
@@ -243,19 +236,18 @@
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '0'); cell.querySelector('button')?.setAttribute('aria-pressed', 'false'); }
     const root = document.getElementById(ROOT_ID);
     if (root) root.hidden = true;
-    stopPlayback();
+    if (editor) editor.pause();
+    stopPreview();
     syncMask();
     state.maskTarget = null;
   }
-
   document.addEventListener('click', (event) => {
     if (!state.active) return;
     const target = event.target instanceof Element ? event.target : null;
-    const entry = target ? target.closest('[data-novaflow-primary-entry="1"]') : null;
-    if (entry instanceof HTMLElement) deactivate();
+    if (target && target.closest('[data-novaflow-primary-entry="1"]')) deactivate();
   }, true);
 
-  // ---- workspace --------------------------------------------------------------
+  // ---- styles --------------------------------------------------------------------
   function installStyle() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
@@ -272,87 +264,177 @@
       #${MASK_ID}::before{content:"";display:block;width:19px;height:19px;background-color:currentColor;-webkit-mask:var(--nf-rail-icon) center / contain no-repeat;mask:var(--nf-rail-icon) center / contain no-repeat}
       #${MASK_ID}::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
       #${MASK_ID}:hover{background:#373737!important;color:#ffffff}
-      #${ROOT_ID}{position:fixed;z-index:130;display:grid;grid-template-columns:${PANEL_WIDTH}px minmax(0,1fr);column-gap:var(--nf-audio-gap,10px);color:#e8eaed;font-size:12px;font-weight:400;box-sizing:border-box}
+
+      #${ROOT_ID}{position:fixed;inset:0;z-index:130;pointer-events:none;color:#e8eaed;font-size:12px;font-weight:400;font-family:inherit}
       #${ROOT_ID}[hidden]{display:none!important}
       #${ROOT_ID} *{box-sizing:border-box;font-family:inherit}
-      #${ROOT_ID} button{font:inherit;cursor:pointer;outline:0}
-      #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus{outline:0;box-shadow:none}
-      .nf-audio-panel{min-height:0;display:flex;flex-direction:column;background:#161616;border:1px solid #2e2e2e;border-radius:11px;overflow:hidden auto;padding:6px 0 10px}
-      .nf-audio-card{border-bottom:1px solid #272727}
-      .nf-audio-head{display:flex;align-items:center;gap:8px;width:100%;height:46px;padding:0 7px;border:0;background:transparent;color:#e8eaed;font-size:12px;font-weight:500;text-align:left}
-      .nf-audio-head:hover{background:#222222}
-      .nf-audio-head .nf-audio-plate{width:24px;height:24px;display:grid;place-items:center;border-radius:5px;background:#292929;color:#cfcfcf;font-size:12px}
-      .nf-audio-head .nf-audio-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .nf-audio-head .nf-audio-chev{width:12px;opacity:.7;font-size:12px;transition:none}
-      .nf-audio-card[data-open="1"] .nf-audio-chev{transform:rotate(90deg)}
-      .nf-audio-body{display:none;padding:5px 7px 17px;gap:9px;flex-direction:column}
-      .nf-audio-card[data-open="1"] .nf-audio-body{display:flex}
-      .nf-audio-label{font-size:11px;color:#9aa0a6;margin:2px 0 -3px}
-      .nf-audio-text{width:100%;min-height:54px;resize:vertical;border:1px solid #303338;border-radius:6px;background:#1f1f1f;color:#e8eaed;font-size:12px;line-height:1.5;padding:7px 8px}
-      .nf-audio-text::placeholder{color:#6e6e6e}
-      .nf-audio-chips{display:flex;flex-wrap:wrap;gap:5px}
-      .nf-audio-chip{height:24px;padding:0 9px;border:1px solid #303338;border-radius:6px;background:#1f1f1f;color:#c9c9c9;font-size:11px;line-height:22px;white-space:nowrap}
-      .nf-audio-chip:hover{background:#2a2a2a;color:#fff}
-      .nf-audio-chip[aria-pressed="true"]{background:#1C4136;border-color:#29594A;color:#6FD9B8}
-      .nf-audio-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#c9c9c9}
-      .nf-audio-row input[type=number]{width:64px;height:26px;border:1px solid #303338;border-radius:6px;background:#1f1f1f;color:#e8eaed;font-size:12px;padding:0 6px;text-align:center}
-      .nf-audio-row input[type=number]::-webkit-inner-spin-button{opacity:.5}
-      .nf-audio-switch{margin-left:auto;width:34px;height:18px;border-radius:9px;border:0;background:#3a3a3a;position:relative;padding:0}
-      .nf-audio-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#ddd;transition:none}
-      .nf-audio-switch[aria-checked="true"]{background:#1EA672}.nf-audio-switch[aria-checked="true"]::after{left:18px;background:#fff}
-      .nf-audio-go{width:100%;height:36px;border:0;border-radius:8px;background:#1EA672;color:#effcf5;font-size:13px;font-weight:500}
-      .nf-audio-go:hover{background:#22B87F}.nf-audio-go:disabled{opacity:.45;cursor:default}
-      .nf-audio-note{font-size:11px;line-height:1.6;color:#8b8b8b}
-      .nf-audio-stage{min-width:0;min-height:0;display:grid;grid-template-rows:44px minmax(0,1fr);background:#111111;border-radius:11px;overflow:hidden}
-      .nf-audio-stage-head{display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid #222}
-      .nf-audio-stage-head h2{margin:0;font-size:13px;font-weight:500;color:#e8eaed}
-      .nf-audio-stage-head span{font-size:11px;color:#9aa0a6}
-      .nf-audio-list{min-height:0;overflow:auto;padding:12px 16px 20px;display:grid;align-content:start;gap:10px}
-      .nf-audio-empty{height:100%;min-height:240px;display:grid;place-items:center;text-align:center;color:#777;font-size:12px;line-height:1.9}
-      .nf-audio-item{display:grid;grid-template-columns:40px minmax(0,1fr);column-gap:12px;align-items:center;padding:10px 12px;border-radius:9px;background:#181818;border:1px solid #242424}
-      .nf-audio-item[data-kind="music"]{border-left:3px solid #1EA672}.nf-audio-item[data-kind="sfx"]{border-left:3px solid #5b8def}
-      .nf-audio-play{width:40px;height:40px;border-radius:50%;border:0;background:#262626;color:#fff;font-size:14px;display:grid;place-items:center}
-      .nf-audio-play:hover{background:#333}.nf-audio-play[data-playing="1"]{background:#1EA672}
-      .nf-audio-meta{min-width:0;display:grid;gap:4px}
-      .nf-audio-name{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#f3f3f3}
-      .nf-audio-name small{font-size:11px;font-weight:400;color:#9aa0a6}
-      .nf-audio-caption{font-size:11px;color:#9aa0a6;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .nf-audio-wave{display:block;width:100%;height:44px;border-radius:4px;background:#101010}
-      .nf-audio-progress{height:4px;border-radius:2px;background:#262626;overflow:hidden}.nf-audio-progress i{display:block;height:100%;width:0;background:#1EA672}
-      .nf-audio-actions{display:flex;gap:6px;margin-top:2px}
-      .nf-audio-actions button{height:26px;padding:0 10px;border:0;border-radius:6px;background:rgba(255,255,255,.06);color:#d9d9d9;font-size:11px}
-      .nf-audio-actions button:hover{background:rgba(255,255,255,.11);color:#fff}
-      .nf-audio-actions button.danger:hover{background:#4a2323;color:#ffb4b4}
-      .nf-audio-error{font-size:11px;color:#f09595;line-height:1.5;white-space:pre-wrap}
+      #${ROOT_ID} button{font:inherit;cursor:pointer;outline:0;transition:none}
+      #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus,#${ROOT_ID} select:focus{outline:0;box-shadow:none}
+      #${ROOT_ID} > *{pointer-events:auto}
+      .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport{position:fixed}
+      /* left card: the section panel */
+      .nf-as-left{background:#161616;border:1px solid #2e2e2e;border-radius:12px;padding:10px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
+      .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:1px 0 12px}
+      .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;padding:0 6px}
+      .nf-as-mode button:hover{background:#2a2a2a}
+      .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+      .nf-as-row{border-bottom:1px solid #272727}
+      .nf-as-row-head{display:flex;align-items:center;gap:8px;width:100%;height:46px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:#d4d4d4;font-size:12px;font-weight:400;text-align:left}
+      .nf-as-row-head:hover{background:#222222}
+      .nf-as-plate{width:24px;height:24px;display:grid;place-items:center;border-radius:5px;background:#292929;color:#cfcfcf;font-size:12px;flex:none}
+      .nf-as-row-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .nf-as-chev{width:10px;font-size:11px;opacity:.7}
+      .nf-as-row[data-open="1"] .nf-as-chev{transform:rotate(90deg)}
+      .nf-as-row-body{display:none;flex-direction:column;gap:9px;padding:4px 7px 16px}
+      .nf-as-row[data-open="1"] .nf-as-row-body{display:flex}
+      .nf-as-label{font-size:11px;color:#9f9f9f}
+      .nf-as-field{display:flex;flex-direction:column;gap:5px}
+      #${ROOT_ID} select,.nf-as-input{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px;width:100%}
+      #${ROOT_ID} select{appearance:none;-webkit-appearance:none;padding-right:26px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239f9f9f' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:12px}
+      .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
+      .nf-as-tools button:hover,.nf-as-btn:hover{background:#303030;color:#fff}
+      .nf-as-tools button:disabled,.nf-as-btn:disabled{opacity:.45;cursor:default}
+      .nf-as-tools button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
+      .nf-as-note{font-size:11px;line-height:1.6;color:#8b8b8b}
+      /* stage */
+      .nf-as-stage{background:#242424;border-radius:7px;overflow:hidden}
+      .nf-as-topbar{position:absolute;left:0;top:7px;right:0;height:38px;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
+      .nf-as-topbar > *{pointer-events:auto}
+      .nf-as-project{display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:#161616;border:1px solid #333;border-radius:9px}
+      .nf-as-project .nf-as-tab{width:28px;height:28px;border:0;border-radius:6px;background:#1ea672;color:#fff;font-size:12px;font-weight:600}
+      .nf-as-project .nf-as-tab-add{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#bdbdbd;font-size:16px}
+      .nf-as-project input{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
+      .nf-as-zoom{display:flex;align-items:center;gap:6px;margin-right:8px}
+      .nf-as-zoom span{min-width:40px;height:28px;display:grid;place-items:center;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px}
+      .nf-as-zoom button{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#bdbdbd;font-size:11px;padding:0 10px}
+      .nf-as-zoom button:hover{color:#fff;background:#303030}
+      .nf-as-timeline{position:absolute;left:8px;right:8px;top:53px;bottom:8px;border-radius:7px;overflow:hidden;background:#1d1d1d;border:1px solid #2c2c2c}
+      .nf-as-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none}
+      /* timeline editor */
+      .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
+      .nf-tl-headers{position:relative;background:#181818;border-right:1px solid #2c2c2c;overflow:hidden}
+      .nf-tl-headers-top{height:24px;line-height:24px;padding:0 10px;font-size:10px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a}
+      .nf-tl-header-list{will-change:transform}
+      .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222}
+      .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
+      .nf-tl-track-name:hover,.nf-tl-track-name:focus{background:#262626;border-color:#343434}
+      .nf-tl-track-btns{display:flex;gap:4px}
+      .nf-tl-track-btns button{width:24px;height:20px;border:1px solid #343434;border-radius:5px;background:#262626;color:#bdbdbd;font-size:10px;font-weight:600;padding:0}
+      .nf-tl-track-btns button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
+      .nf-tl-track-btns .nf-tl-track-del{margin-left:auto;font-size:13px;font-weight:400}
+      .nf-tl-track-btns .nf-tl-track-del:hover{background:#4a2323;color:#ffb4b4}
+      .nf-tl-track-gain{-webkit-appearance:none;appearance:none;width:100%;height:10px;background:transparent;margin:0}
+      .nf-tl-track-gain::-webkit-slider-runnable-track{height:2px;background:#3a3a3a;border-radius:1px}
+      .nf-tl-track-gain::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;margin-top:-4px;border-radius:50%;background:#dfe7ee;border:0}
+      .nf-tl-scroller{position:relative;overflow:auto;background:#1d1d1d}
+      .nf-tl-scroller::-webkit-scrollbar{width:8px;height:8px}.nf-tl-scroller::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:4px}
+      .nf-tl-canvas{display:block}
+      .nf-tl-playhead{position:absolute;top:0;width:2px;background:#ef4444;pointer-events:none}
+      .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
+      /* generation dock */
+      .nf-as-dock{background:#161616;border-radius:12px;padding:14px 15px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:10px}
+      .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
+      .nf-as-dock-row .nf-as-label{white-space:nowrap}
+      .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid #343434;border-radius:6px;background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
+      .nf-as-dock-row select{width:auto;min-width:72px}
+      .nf-as-switch{width:27px;height:15px;border-radius:15px;border:0;background:#3a3a3a;position:relative;padding:0;flex:none}
+      .nf-as-switch::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#ddd}
+      .nf-as-switch[aria-checked="true"]{background:#1ea672}.nf-as-switch[aria-checked="true"]::after{left:15px;background:#fff}
+      .nf-as-go{margin-left:auto;width:104px;height:32px;border:1px solid #24b693;border-radius:7px;background:#1ea672;color:#fff;font-size:12px;font-weight:600;padding:5px 10px}
+      .nf-as-go:hover{background:#22b87f}.nf-as-go:disabled{opacity:.45;cursor:default}
+      .nf-as-status{display:flex;align-items:center;gap:8px;height:18px;font-size:11px;color:#9f9f9f}
+      .nf-as-status .nf-as-pct{color:#cfcfcf}
+      .nf-as-status .nf-as-err{color:#f09595;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+      .nf-as-cancel{margin-left:auto;height:18px;border:0;border-radius:7px;background:rgba(239,68,68,.18);color:#ffb4b4;font-size:11px;padding:0 8px}
+      .nf-as-cancel[hidden]{display:none}
+      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0}
+      .nf-as-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:4px 7px}
+      .nf-as-prompt-head .nf-as-chip{height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;padding:3px 7px;display:flex;align-items:center;gap:7px}
+      .nf-as-prompt-head button.nf-as-chip:hover{color:#fff;background:#2a2a2a}
+      .nf-as-prompt-head button.nf-as-chip[aria-pressed="true"]{color:#9be4cd}
+      .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#e8eaed;font-size:12px;line-height:1.5;padding:4px 8px 8px}
+      .nf-as-prompt textarea::placeholder{color:#6e6e6e}
+      /* transport */
+      .nf-as-transport{background:#161616;border:1px solid #343434;border-radius:10px;padding:11px 13px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
+      .nf-as-tr-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;min-width:0}
+      .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:0;border-radius:7px;background:#282828;color:#e3e3e3;display:grid;place-items:center;padding:0}
+      .nf-as-tr-row .nf-as-tbtn:hover{background:#343434}
+      .nf-as-tr-row .nf-as-tbtn[aria-pressed="true"]{background:#193d33;color:#9be4cd}
+      .nf-as-tr-row .nf-as-tbtn svg{width:14px;height:14px;fill:currentColor}
+      .nf-as-time{font-size:11px;color:#cfcfcf;min-width:110px;font-variant-numeric:tabular-nums;margin-left:6px}
+      .nf-as-tr-row .nf-as-label{margin-left:10px}
+      .nf-as-tr-row input[type=number]{width:49px;height:28px;border:1px solid #343434;border-radius:6px;background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
+      .nf-as-tr-row label.nf-as-check{display:flex;align-items:center;gap:5px;font-size:11px;color:#bdbdbd}
+      .nf-as-tr-row input[type=checkbox]{width:13px;height:13px;accent-color:#1ea672}
+      .nf-as-tr-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+      .nf-as-tr-right input[type=range]{-webkit-appearance:none;appearance:none;width:124px;height:12px;background:linear-gradient(90deg,#20c997 0%,#20c997 var(--nf-range-pct,0%),#303030 var(--nf-range-pct,0%),#303030 100%) center / 100% 2px no-repeat;margin:0}
+      .nf-as-tr-right input[type=range]::-webkit-slider-runnable-track{height:2px;background:transparent}
+      .nf-as-tr-right input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-5px;border-radius:50%;background:#dfe7ee;border:0}
+      .nf-as-overview{position:relative;height:34px;border-radius:6px;background:#1d1d1d;overflow:hidden;cursor:col-resize}
+      .nf-as-overview canvas{display:block;width:100%;height:100%}
+      /* resource sidebar */
+      .nf-as-sidebar{background:#161616;border:1px solid #2e2e2e;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+      .nf-as-side-head{display:flex;align-items:center;gap:8px;padding:14px 12px;font-size:13px}
+      .nf-as-side-head .nf-as-count{color:#9aa0a6;font-size:12px;flex:1}
+      .nf-as-side-head button{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:11px;padding:0 10px}
+      .nf-as-side-head button:hover{background:#303030;color:#fff}
+      .nf-as-side-list{flex:1;min-height:0;overflow:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:6px}
+      .nf-as-side-list::-webkit-scrollbar{width:6px}.nf-as-side-list::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:3px}
+      .nf-as-side-empty{flex:1;display:grid;place-items:center;color:#777;font-size:11px}
+      .nf-as-res{position:relative;border:1px solid #262626;border-radius:8px;background:#1b1b1b;padding:6px 7px 7px;cursor:grab}
+      .nf-as-res:hover{border-color:#3a3a3a;background:#1f1f1f}
+      .nf-as-res[data-selected="1"]{border-color:#29594a;background:#172a23}
+      .nf-as-res[data-pending="1"]{cursor:default;opacity:.85}
+      .nf-as-res canvas{display:block;width:100%;height:34px;border-radius:4px;background:#121212}
+      .nf-as-res-name{display:flex;align-items:center;gap:6px;margin-top:5px;font-size:11px;color:#f1f1f1}
+      .nf-as-res-name span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .nf-as-res-name small{color:#9aa0a6;font-size:10px}
+      .nf-as-res-tag{font-size:9px;padding:1px 5px;border-radius:4px;background:#1c4136;color:#9be4cd}
+      .nf-as-res-tag[data-kind="sfx"]{background:#1d3660;color:#a9c8ff}.nf-as-res-tag[data-kind="import"]{background:#3f3612;color:#e9cf7a}
+      .nf-as-res-actions{display:none;position:absolute;right:5px;top:5px;gap:3px}
+      .nf-as-res:hover .nf-as-res-actions{display:flex}
+      .nf-as-res-actions button{width:22px;height:22px;border:0;border-radius:5px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:0}
+      .nf-as-res-actions button:hover{background:#1ea672}
+      .nf-as-res-actions button.danger:hover{background:#b03a3a}
+      .nf-as-res-progress{height:3px;border-radius:2px;background:#262626;overflow:hidden;margin-top:6px}
+      .nf-as-res-progress i{display:block;height:100%;width:0;background:#1ea672}
     `;
     document.head.appendChild(style);
   }
 
+  // ---- DOM helpers ---------------------------------------------------------------
   function el(tag, cls, text) {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
     if (text !== undefined) node.textContent = text;
     return node;
   }
-
-  function chips(parent, items, isOn, onPick) {
-    const wrap = el('div', 'nf-audio-chips');
-    for (const item of items) {
-      const chip = el('button', 'nf-audio-chip', item.label);
-      chip.type = 'button';
-      chip.setAttribute('aria-pressed', isOn(item) ? 'true' : 'false');
-      chip.addEventListener('click', () => { onPick(item); refreshChips(wrap, items, isOn); });
-      chip._item = item;
-      wrap.appendChild(chip);
-    }
-    parent.appendChild(wrap);
-    return wrap;
+  function selectField(parent, label, options, value, onChange) {
+    const field = el('div', 'nf-as-field');
+    field.appendChild(el('div', 'nf-as-label', label));
+    const select = el('select');
+    for (const [key, text] of options) { const o = el('option', null, text); o.value = key; select.appendChild(o); }
+    select.value = value;
+    select.addEventListener('change', () => onChange(select.value));
+    field.appendChild(select);
+    parent.appendChild(field);
+    return select;
   }
-  function refreshChips(wrap, items, isOn) {
-    for (const chip of wrap.children) chip.setAttribute('aria-pressed', isOn(chip._item) ? 'true' : 'false');
+  function svgIcon(path) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + path + '</svg>';
   }
+  const ICONS = {
+    start: '<path d="M6 5h2v14H6zM18 5 9 12l9 7z"/>',
+    back: '<path d="M16 5 7 12l9 7z"/>',
+    play: '<path d="M8 5l11 7-11 7z"/>',
+    pause: '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>',
+    fwd: '<path d="M8 5l9 7-9 7z"/>',
+    end: '<path d="M16 5h2v14h-2zM6 5l9 7-9 7z"/>',
+    loop: '<path d="M7 7h9l-2-2 1.4-1.4L19.8 8l-4.4 4.4L14 11l2-2H7a2 2 0 0 0-2 2v2H3v-2a4 4 0 0 1 4-4zm10 10H8l2 2-1.4 1.4L4.2 16l4.4-4.4L10 13l-2 2h9a2 2 0 0 0 2-2v-2h2v2a4 4 0 0 1-4 4z"/>'
+  };
 
-  let ui = null;
+  // ---- mount --------------------------------------------------------------------------
   function mount() {
     installStyle();
     let root = document.getElementById(ROOT_ID);
@@ -361,135 +443,360 @@
     root.id = ROOT_ID;
     root.setAttribute('data-novaflow-runtime-ignore', '1');
     root.setAttribute('aria-label', LABEL);
+    ui = { root };
 
-    const panel = el('div', 'nf-audio-panel');
-    root.appendChild(panel);
-    ui = { root, panel, cards: {} };
+    // left card ---------------------------------------------------------------
+    const left = el('div', 'nf-as-left');
+    const mode = el('div', 'nf-as-mode');
+    const modeMusic = el('button', null, '背景音乐'); modeMusic.type = 'button';
+    const modeSfx = el('button', null, '音效'); modeSfx.type = 'button';
+    modeMusic.addEventListener('click', () => setMode('music'));
+    modeSfx.addEventListener('click', () => setMode('sfx'));
+    mode.appendChild(modeMusic); mode.appendChild(modeSfx);
+    left.appendChild(mode);
+    ui.modeMusic = modeMusic; ui.modeSfx = modeSfx;
 
-    // 背景音乐
-    const music = card(panel, 'music', '背景音乐', '♪');
-    const musicText = el('textarea', 'nf-audio-text');
-    musicText.placeholder = '描述这段音乐的用途和感觉，例如：森林关卡，轻松又带点神秘，竖琴和长笛';
-    musicText.rows = 3;
-    musicText.addEventListener('input', () => { state.music.text = musicText.value; });
-    music.body.appendChild(el('div', 'nf-audio-label', '描述'));
-    music.body.appendChild(musicText);
-    music.body.appendChild(el('div', 'nf-audio-label', '风格'));
-    const bpmInput = el('input');
-    bpmInput.type = 'number'; bpmInput.min = '40'; bpmInput.max = '220'; bpmInput.value = String(state.music.bpm);
-    bpmInput.addEventListener('change', () => { state.music.bpm = Math.min(220, Math.max(40, Number(bpmInput.value) || 120)); bpmInput.value = String(state.music.bpm); });
-    chips(music.body, MUSIC_STYLES.map(([key, label, phrase, bpm]) => ({ key, label, phrase, bpm })),
-      (item) => item.key === state.music.style,
-      (item) => { state.music.style = item.key; state.music.bpm = item.bpm; bpmInput.value = String(item.bpm); });
-    music.body.appendChild(el('div', 'nf-audio-label', '情绪（可多选）'));
-    chips(music.body, MOODS.map(([key, label, phrase]) => ({ key, label, phrase })),
-      (item) => state.music.moods.has(item.key),
-      (item) => { if (state.music.moods.has(item.key)) state.music.moods.delete(item.key); else state.music.moods.add(item.key); });
-    const bpmRow = el('div', 'nf-audio-row');
-    bpmRow.appendChild(el('span', null, '速度 BPM'));
-    bpmRow.appendChild(bpmInput);
-    music.body.appendChild(bpmRow);
-    music.body.appendChild(el('div', 'nf-audio-label', '时长'));
-    chips(music.body, MUSIC_DURATIONS.map((s) => ({ key: s, label: s + ' 秒' })),
-      (item) => item.key === state.music.seconds, (item) => { state.music.seconds = item.key; });
-    const loopRow = el('div', 'nf-audio-row');
-    loopRow.appendChild(el('span', null, '无缝循环'));
-    const loopSwitch = el('button', 'nf-audio-switch');
-    loopSwitch.type = 'button'; loopSwitch.setAttribute('role', 'switch'); loopSwitch.setAttribute('aria-checked', 'true'); loopSwitch.setAttribute('aria-label', '无缝循环');
-    loopSwitch.addEventListener('click', () => { state.music.loop = !state.music.loop; loopSwitch.setAttribute('aria-checked', String(state.music.loop)); });
-    loopRow.appendChild(loopSwitch);
-    music.body.appendChild(loopRow);
-    const musicGo = el('button', 'nf-audio-go', '生成音乐');
-    musicGo.type = 'button';
-    musicGo.addEventListener('click', () => submitMusic());
-    music.body.appendChild(musicGo);
-    music.body.appendChild(el('div', 'nf-audio-note', '循环版会按小节裁齐并做无缝接缝，直接可用于关卡背景。'));
-    ui.musicGo = musicGo;
+    const gen = row(left, 'generate', '音频生成', '♪');
+    ui.genBody = gen.body;
+    const tools = row(left, 'edit', '音轨编辑', '✂');
+    const grid = el('div', 'nf-as-tools');
+    const tool = (label, title, fn) => { const b = el('button', null, label); b.type = 'button'; b.title = title; b.addEventListener('click', fn); grid.appendChild(b); return b; };
+    tool('分割', '在播放头处分割选中片段 (S)', () => editor.splitAtPlayhead());
+    tool('删除', '删除选中片段 (Delete)', () => editor.deleteSelected());
+    tool('复制', '在后面复制一份选中片段', () => editor.duplicateSelected());
+    tool('循环 ×2', '把选中片段延长为两遍循环', () => { const c = editor.selectedClip(); if (c) editor.extendLoop(c.id, Math.max(2, Math.round(c.length / c.buffer.duration) + 1)); });
+    tool('淡入 0.5s', '选中片段淡入', () => { const c = editor.selectedClip(); if (c) editor.setFade(c.id, c.fadeIn > 0 ? 0 : 0.5, undefined); });
+    tool('淡出 1s', '选中片段淡出', () => { const c = editor.selectedClip(); if (c) editor.setFade(c.id, undefined, c.fadeOut > 0 ? 0 : 1); });
+    tool('新增音轨', '添加一条空音轨', () => editor.addTrack());
+    tool('适应窗口', '缩放到整段可见', () => { editor.fitToWindow(); syncZoom(); });
+    tools.body.appendChild(grid);
+    tools.body.appendChild(el('div', 'nf-as-note', '拖右侧资源到音轨；拖片段边缘裁剪，拖过末尾即循环；上角小方块是淡入淡出。'));
 
-    // 音效
-    const sfx = card(panel, 'sfx', '音效', '◆');
-    const sfxText = el('textarea', 'nf-audio-text');
-    sfxText.placeholder = '描述这个音效，例如：打开木门，吱呀一声，有点回音';
-    sfxText.rows = 3;
-    sfxText.addEventListener('input', () => { state.sfx.text = sfxText.value; });
-    sfx.body.appendChild(el('div', 'nf-audio-label', '描述'));
-    sfx.body.appendChild(sfxText);
-    sfx.body.appendChild(el('div', 'nf-audio-label', '类别'));
-    chips(sfx.body, SFX_CATEGORIES.map(([key, label, phrase, seconds]) => ({ key, label, phrase, seconds })),
-      (item) => item.key === state.sfx.category,
-      (item) => { state.sfx.category = item.key; state.sfx.seconds = item.seconds; refreshChips(sfxDur, sfxDurItems, (d) => d.key === state.sfx.seconds); });
-    sfx.body.appendChild(el('div', 'nf-audio-label', '风格'));
-    chips(sfx.body, SFX_STYLES.map(([key, label, phrase]) => ({ key, label, phrase })),
-      (item) => item.key === state.sfx.style, (item) => { state.sfx.style = item.key; });
-    sfx.body.appendChild(el('div', 'nf-audio-label', '时长'));
-    const sfxDurItems = SFX_DURATIONS.map((s) => ({ key: s, label: s + ' 秒' }));
-    const sfxDur = chips(sfx.body, sfxDurItems, (item) => item.key === state.sfx.seconds, (item) => { state.sfx.seconds = item.key; });
-    sfx.body.appendChild(el('div', 'nf-audio-label', '数量'));
-    chips(sfx.body, [1, 2, 3, 4].map((n) => ({ key: n, label: n + ' 个' })), (item) => item.key === state.sfx.count, (item) => { state.sfx.count = item.key; });
-    const sfxGo = el('button', 'nf-audio-go', '生成音效');
-    sfxGo.type = 'button';
-    sfxGo.addEventListener('click', () => submitSfx());
-    sfx.body.appendChild(sfxGo);
-    sfx.body.appendChild(el('div', 'nf-audio-note', '多个会生成不同变体，挑一个最合适的。'));
-    ui.sfxGo = sfxGo;
+    const out = row(left, 'export', '导出', '⇩');
+    const outGrid = el('div', 'nf-as-tools');
+    const mix = el('button', null, '导出混音 WAV'); mix.type = 'button'; mix.addEventListener('click', exportMix);
+    const one = el('button', null, '导出选中片段'); one.type = 'button'; one.addEventListener('click', exportSelected);
+    outGrid.appendChild(mix); outGrid.appendChild(one);
+    out.body.appendChild(outGrid);
+    out.body.appendChild(el('div', 'nf-as-note', '混音会按音轨音量、淡入淡出与循环展开渲染，并存入仓库。'));
+    root.appendChild(left);
+    ui.left = left;
 
-    // stage
-    const stage = el('div', 'nf-audio-stage');
-    const head = el('div', 'nf-audio-stage-head');
-    head.appendChild(el('h2', null, '音频'));
-    ui.status = el('span', null, '');
-    head.appendChild(ui.status);
-    stage.appendChild(head);
-    ui.list = el('div', 'nf-audio-list');
-    stage.appendChild(ui.list);
+    // stage -----------------------------------------------------------------------
+    const stage = el('div', 'nf-as-stage');
+    const topbar = el('div', 'nf-as-topbar');
+    const project = el('div', 'nf-as-project');
+    const tab = el('button', 'nf-as-tab', '1'); tab.type = 'button'; tab.title = '当前工程';
+    const add = el('button', 'nf-as-tab-add', '+'); add.type = 'button'; add.title = '新建工程（清空时间轴）';
+    add.addEventListener('click', () => { if (editor.clipCount() && !window.confirm('清空当前时间轴，开始新的工程？')) return; resetProject(); });
+    const name = el('input'); name.value = state.projectName; name.title = '工程名称';
+    name.addEventListener('change', () => { state.projectName = name.value.trim() || 'audio_1'; name.value = state.projectName; });
+    project.appendChild(tab); project.appendChild(add); project.appendChild(name);
+    const zoom = el('div', 'nf-as-zoom');
+    ui.zoomLabel = el('span', null, '100%');
+    const fit = el('button', null, '适应窗口'); fit.type = 'button'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
+    zoom.appendChild(ui.zoomLabel); zoom.appendChild(fit);
+    topbar.appendChild(project); topbar.appendChild(zoom);
+    stage.appendChild(topbar);
+    const timelineHost = el('div', 'nf-as-timeline');
+    stage.appendChild(timelineHost);
+    ui.empty = el('div', 'nf-as-empty');
+    ui.empty.innerHTML = '<div>时间轴还是空的<br><span style="color:#5a5a5a">展开左侧「音频生成」描述后生成，或从右侧资源列表拖入</span></div>';
+    timelineHost.appendChild(ui.empty);
     root.appendChild(stage);
-    document.body.appendChild(root);
-    renderList();
-  }
+    ui.stage = stage;
 
-  function card(panel, key, title, glyph) {
-    const node = el('div', 'nf-audio-card');
-    node.setAttribute('data-open', state.open === key ? '1' : '0');
-    const head = el('button', 'nf-audio-head');
-    head.type = 'button';
-    head.appendChild(el('span', 'nf-audio-plate', glyph));
-    head.appendChild(el('span', 'nf-audio-title', title));
-    head.appendChild(el('span', 'nf-audio-chev', '›'));
-    head.addEventListener('click', () => {
-      state.open = state.open === key ? '' : key;
-      for (const [k, c] of Object.entries(ui.cards)) c.node.setAttribute('data-open', state.open === k ? '1' : '0');
+    editor = window.NovaFlowAudioTimeline.create({
+      host: timelineHost,
+      context: audioContext,
+      onChange: (what) => { if (what === 'model') { syncEmpty(); drawOverview(); } if (what === 'zoom') syncZoom(); },
+      onTime: () => { syncTime(); drawOverview(); },
+      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); ui.play.title = playing ? '暂停 (空格)' : '播放 (空格)'; },
+      resolveDrop: (id) => { const r = state.resources.find((x) => x.id === id); return r && r.buffer ? { buffer: r.buffer, name: r.name, kind: r.kind, loopable: r.loopable } : null; }
     });
-    const body = el('div', 'nf-audio-body');
-    node.appendChild(head); node.appendChild(body);
-    panel.appendChild(node);
-    ui.cards[key] = { node, body };
-    return ui.cards[key];
+    ui.empty.style.zIndex = '2';
+    timelineHost.appendChild(ui.empty);
+
+    // generation dock -----------------------------------------------------------
+    const dock = el('div', 'nf-as-dock');
+    ui.dockRow = el('div', 'nf-as-dock-row');
+    dock.appendChild(ui.dockRow);
+    const status = el('div', 'nf-as-status');
+    ui.statusText = el('span', null, '等待生成');
+    ui.statusPct = el('span', 'nf-as-pct', '');
+    ui.statusErr = el('span', 'nf-as-err', '');
+    ui.cancel = el('button', 'nf-as-cancel', '任务中止'); ui.cancel.type = 'button'; ui.cancel.hidden = true;
+    ui.cancel.addEventListener('click', cancelRunning);
+    status.appendChild(ui.statusText); status.appendChild(ui.statusPct); status.appendChild(ui.statusErr); status.appendChild(ui.cancel);
+    dock.appendChild(status);
+    const prompt = el('div', 'nf-as-prompt');
+    const head = el('div', 'nf-as-prompt-head');
+    ui.promptLabel = el('span', 'nf-as-chip', '音乐描述');
+    const rewrite = el('button', 'nf-as-chip', 'AI 润色'); rewrite.type = 'button'; rewrite.title = '生成前由本机模型把描述改写成更完整的英文提示';
+    rewrite.setAttribute('aria-pressed', 'true');
+    rewrite.addEventListener('click', () => { const m = state[state.mode]; m.rewrite = !m.rewrite; rewrite.setAttribute('aria-pressed', String(m.rewrite)); });
+    ui.rewrite = rewrite;
+    head.appendChild(ui.promptLabel); head.appendChild(rewrite);
+    ui.textarea = el('textarea');
+    ui.textarea.addEventListener('input', () => { state[state.mode].text = ui.textarea.value; });
+    prompt.appendChild(head); prompt.appendChild(ui.textarea);
+    dock.appendChild(prompt);
+    root.appendChild(dock);
+    ui.dock = dock;
+
+    // transport ---------------------------------------------------------------------
+    const transport = el('div', 'nf-as-transport');
+    const row1 = el('div', 'nf-as-tr-row');
+    const tbtn = (icon, title, fn) => { const b = el('button', 'nf-as-tbtn'); b.type = 'button'; b.title = title; b.innerHTML = svgIcon(icon); b.addEventListener('click', fn); row1.appendChild(b); return b; };
+    tbtn(ICONS.start, '回到开头', () => editor.seek(0));
+    tbtn(ICONS.back, '后退 1 秒', () => editor.seek(editor.playhead() - 1));
+    ui.play = tbtn(ICONS.play, '播放 (空格)', () => editor.toggle());
+    tbtn(ICONS.fwd, '前进 1 秒', () => editor.seek(editor.playhead() + 1));
+    tbtn(ICONS.end, '到结尾', () => editor.seek(editor.projectEnd()));
+    ui.loop = tbtn(ICONS.loop, '循环播放整段', () => { editor.setLoop(!editor.state.loop); ui.loop.setAttribute('aria-pressed', String(editor.state.loop)); });
+    ui.loop.setAttribute('aria-pressed', 'false');
+    ui.time = el('span', 'nf-as-time', '0.0 / 0.0');
+    row1.appendChild(ui.time);
+    row1.appendChild(el('span', 'nf-as-label', '速度 BPM'));
+    ui.bpm = el('input'); ui.bpm.type = 'number'; ui.bpm.min = '0'; ui.bpm.max = '300'; ui.bpm.value = '0'; ui.bpm.title = '时间轴网格的拍速；0 = 按秒';
+    ui.bpm.addEventListener('change', () => { editor.setBpm(ui.bpm.value); ui.bpm.value = String(editor.state.bpm); });
+    row1.appendChild(ui.bpm);
+    const snap = el('label', 'nf-as-check');
+    const snapBox = el('input'); snapBox.type = 'checkbox'; snapBox.checked = true;
+    snapBox.addEventListener('change', () => editor.setSnap(snapBox.checked));
+    snap.appendChild(snapBox); snap.appendChild(el('span', null, '吸附'));
+    row1.appendChild(snap);
+    const right = el('div', 'nf-as-tr-right');
+    right.appendChild(el('span', 'nf-as-label', '缩放'));
+    ui.zoomRange = el('input'); ui.zoomRange.type = 'range'; ui.zoomRange.min = '0'; ui.zoomRange.max = '100'; ui.zoomRange.value = '40';
+    ui.zoomRange.addEventListener('input', () => { const v = Number(ui.zoomRange.value) / 100; editor.setZoom(6 * Math.pow(400 / 6, v)); });
+    right.appendChild(ui.zoomRange);
+    const exportBtn = el('button', 'nf-as-btn', '导出混音'); exportBtn.type = 'button'; exportBtn.addEventListener('click', exportMix);
+    right.appendChild(exportBtn);
+    row1.appendChild(right);
+    transport.appendChild(row1);
+    const overview = el('div', 'nf-as-overview');
+    ui.overview = el('canvas'); overview.appendChild(ui.overview);
+    overview.addEventListener('pointerdown', (event) => { overviewSeek(event); overview.setPointerCapture(event.pointerId); overview.onpointermove = overviewSeek; });
+    overview.addEventListener('pointerup', () => { overview.onpointermove = null; });
+    transport.appendChild(overview);
+    root.appendChild(transport);
+    ui.transport = transport;
+
+    // resource sidebar --------------------------------------------------------------
+    const sidebar = el('div', 'nf-as-sidebar');
+    const sideHead = el('div', 'nf-as-side-head');
+    sideHead.appendChild(el('span', null, '资源列表'));
+    ui.count = el('span', 'nf-as-count', '0');
+    sideHead.appendChild(ui.count);
+    const upload = el('button', null, '上传资源'); upload.type = 'button';
+    const file = el('input'); file.type = 'file'; file.accept = 'audio/*,.wav,.mp3,.ogg,.flac,.m4a'; file.multiple = true; file.hidden = true;
+    file.addEventListener('change', () => { for (const f of Array.from(file.files || [])) importFile(f); file.value = ''; });
+    upload.addEventListener('click', () => file.click());
+    sideHead.appendChild(upload); sideHead.appendChild(file);
+    sidebar.appendChild(sideHead);
+    ui.list = el('div', 'nf-as-side-list');
+    sidebar.appendChild(ui.list);
+    root.appendChild(sidebar);
+    ui.sidebar = sidebar;
+
+    document.body.appendChild(root);
+    setMode(state.mode);
+    renderRows();
+    renderList();
+    syncEmpty();
+    syncTime();
+    syncZoom();
   }
 
+  function row(parent, key, title, glyph) {
+    const node = el('div', 'nf-as-row');
+    node.dataset.key = key;
+    const head = el('button', 'nf-as-row-head'); head.type = 'button';
+    head.appendChild(el('span', 'nf-as-plate', glyph));
+    head.appendChild(el('span', 'nf-as-row-title', title));
+    head.appendChild(el('span', 'nf-as-chev', '›'));
+    head.addEventListener('click', () => { state.open = state.open === key ? '' : key; renderRows(); layout(); });
+    const body = el('div', 'nf-as-row-body');
+    node.appendChild(head); node.appendChild(body);
+    parent.appendChild(node);
+    return { node, body };
+  }
+  function renderRows() {
+    for (const node of ui.left.querySelectorAll('.nf-as-row')) node.setAttribute('data-open', state.open === node.dataset.key ? '1' : '0');
+    // The dock belongs to 音频生成, as the animation dock belongs to 动画生成.
+    ui.dock.hidden = state.open !== 'generate';
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    ui.modeMusic.setAttribute('aria-pressed', String(mode === 'music'));
+    ui.modeSfx.setAttribute('aria-pressed', String(mode === 'sfx'));
+    const m = state[mode];
+    // left row body
+    ui.genBody.replaceChildren();
+    if (mode === 'music') {
+      selectField(ui.genBody, '风格', MUSIC_STYLES.map((s) => [s[0], s[1]]), m.style, (v) => { m.style = v; const s = MUSIC_STYLES.find((x) => x[0] === v); if (s && v !== 'auto') { m.bpm = s[3]; syncDockValues(); } });
+      selectField(ui.genBody, '情绪', MOODS.map((s) => [s[0], s[1]]), m.mood, (v) => { m.mood = v; });
+      ui.genBody.appendChild(el('div', 'nf-as-note', '循环版会按小节裁齐并做无缝接缝，生成后自动放到「音乐」音轨。'));
+    } else {
+      selectField(ui.genBody, '类别', SFX_CATEGORIES.map((s) => [s[0], s[1]]), m.category, (v) => { m.category = v; const c = SFX_CATEGORIES.find((x) => x[0] === v); if (c && v !== 'auto') { m.seconds = c[3]; syncDockValues(); } });
+      selectField(ui.genBody, '风格', SFX_STYLES.map((s) => [s[0], s[1]]), m.style, (v) => { m.style = v; });
+      ui.genBody.appendChild(el('div', 'nf-as-note', '多个会生成不同变体，都进资源列表，挑一个拖到音轨。'));
+    }
+    // dock row
+    ui.dockRow.replaceChildren();
+    const num = (label, value, min, max, onChange) => {
+      ui.dockRow.appendChild(el('span', 'nf-as-label', label));
+      const input = el('input'); input.type = 'number'; input.min = String(min); input.max = String(max); input.value = String(value);
+      input.addEventListener('change', () => { const v = Math.min(max, Math.max(min, Number(input.value) || min)); input.value = String(v); onChange(v); });
+      ui.dockRow.appendChild(input);
+      return input;
+    };
+    const sw = (label, value, onChange) => {
+      ui.dockRow.appendChild(el('span', 'nf-as-label', label));
+      const b = el('button', 'nf-as-switch'); b.type = 'button'; b.setAttribute('role', 'switch'); b.setAttribute('aria-checked', String(value)); b.setAttribute('aria-label', label);
+      b.addEventListener('click', () => { const next = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(next)); onChange(next); });
+      ui.dockRow.appendChild(b);
+      return b;
+    };
+    if (mode === 'music') {
+      ui.secondsInput = num('时长(秒)', m.seconds, 8, 300, (v) => { m.seconds = v; });
+      ui.bpmInput = num('BPM', m.bpm, 40, 220, (v) => { m.bpm = v; });
+      sw('无缝循环', m.loop, (v) => { m.loop = v; });
+    } else {
+      ui.secondsInput = num('时长(秒)', m.seconds, 1, 30, (v) => { m.seconds = v; });
+      ui.dockRow.appendChild(el('span', 'nf-as-label', '数量'));
+      const count = el('select');
+      for (const n of [1, 2, 3, 4]) { const o = el('option', null, n + ' 个'); o.value = String(n); count.appendChild(o); }
+      count.value = String(m.count);
+      count.addEventListener('change', () => { m.count = Number(count.value); });
+      ui.dockRow.appendChild(count);
+    }
+    const go = el('button', 'nf-as-go', '开始生成'); go.type = 'button';
+    go.addEventListener('click', () => (mode === 'music' ? submitMusic() : submitSfx()));
+    ui.dockRow.appendChild(go);
+    ui.go = go;
+    ui.promptLabel.textContent = mode === 'music' ? '音乐描述' : '音效描述';
+    ui.textarea.placeholder = mode === 'music' ? '输入音乐描述，例如：森林关卡，轻松又带点神秘，竖琴和长笛' : '输入音效描述，例如：打开木门，吱呀一声，有点回音';
+    ui.textarea.value = m.text;
+    ui.rewrite.setAttribute('aria-pressed', String(m.rewrite));
+    refreshCapabilities();
+  }
+  function syncDockValues() {
+    const m = state[state.mode];
+    if (ui.secondsInput) ui.secondsInput.value = String(m.seconds);
+    if (ui.bpmInput && state.mode === 'music') ui.bpmInput.value = String(m.bpm);
+  }
+
+  // ---- layout --------------------------------------------------------------------------
   function layout() {
     const root = document.getElementById(ROOT_ID);
     if (!root || !state.active) return;
     const column = document.querySelector('[data-novaflow-left-column]');
-    let left = 68, stageLeft = 268, panelWidth = PANEL_WIDTH;
-    if (column instanceof HTMLElement) {
-      const rect = column.getBoundingClientRect();
-      const pad = parseFloat(getComputedStyle(column).paddingLeft) || 0;
-      left = Math.round(rect.left + pad);
-      stageLeft = Math.round(rect.right);
-      // The column holds the panel plus the seam to the stage.
-      panelWidth = Math.max(160, Math.round(rect.width - pad - PANEL_SEAM));
+    const surface = document.querySelector('[data-novaflow-primary-surface="1"]');
+    let cardLeft = 75, cardWidth = 218, stageLeft = 302;
+    if (surface instanceof HTMLElement && surface.getBoundingClientRect().width > 100) {
+      const r = surface.getBoundingClientRect(); cardLeft = Math.round(r.left); cardWidth = Math.round(r.width);
+    } else if (column instanceof HTMLElement) {
+      const r = column.getBoundingClientRect();
+      const pad = parseFloat(getComputedStyle(column).paddingLeft) || 68;
+      cardLeft = Math.round(r.left + pad); cardWidth = Math.round(r.width - pad - 9);
     }
-    const top = PANEL_TOP;
-    root.style.left = left + 'px';
-    root.style.top = top + 'px';
-    root.style.width = Math.max(300, window.innerWidth - left - PANEL_BOTTOM_GAP) + 'px';
-    root.style.height = Math.max(200, window.innerHeight - top - PANEL_BOTTOM_GAP) + 'px';
-    root.style.gridTemplateColumns = panelWidth + 'px minmax(0,1fr)';
-    root.style.setProperty('--nf-audio-gap', Math.max(4, stageLeft - left - panelWidth) + 'px');
+    if (column instanceof HTMLElement) stageLeft = Math.round(column.getBoundingClientRect().right);
+    const top = STAGE_TOP, bottom = window.innerHeight - EDGE_GAP, right = window.innerWidth - EDGE_GAP;
+    const place = (node, x, y, w, h) => { node.style.left = x + 'px'; node.style.top = y + 'px'; node.style.width = w + 'px'; node.style.height = h + 'px'; };
+    place(ui.left, cardLeft, top, cardWidth, bottom - top);
+    place(ui.stage, stageLeft, top, right - stageLeft, bottom - top);
+    place(ui.sidebar, right - SIDEBAR_W, top, SIDEBAR_W, bottom - top);
+    const innerRight = right - SIDEBAR_W - EDGE_GAP;
+    const transportTop = bottom - TRANSPORT_H;
+    place(ui.transport, stageLeft, transportTop, innerRight - stageLeft, TRANSPORT_H);
+    const dockVisible = !ui.dock.hidden;
+    const dockTop = transportTop - 9 - DOCK_H;
+    place(ui.dock, stageLeft, dockTop, innerRight - stageLeft, DOCK_H);
+    // the timeline stops above whichever card comes first
+    const timelineBottom = (dockVisible ? dockTop : transportTop) - 9;
+    const tl = ui.stage.querySelector('.nf-as-timeline');
+    tl.style.right = (right - innerRight + 8) + 'px';
+    tl.style.bottom = (bottom - timelineBottom + 0) + 'px';
+    ui.stage.querySelector('.nf-as-topbar').style.right = (right - innerRight + 8) + 'px';
     syncMask();
+    if (editor) { editor.layout(); drawOverview(); }
   }
 
-  // ---- capabilities ------------------------------------------------------------
+  // ---- transport helpers -------------------------------------------------------------
+  function syncTime() {
+    if (!ui || !editor) return;
+    ui.time.textContent = editor.formatTime(editor.playhead()) + ' / ' + editor.formatTime(editor.projectEnd());
+  }
+  function syncZoom() {
+    if (!ui || !editor) return;
+    const z = editor.zoom();
+    ui.zoomLabel.textContent = Math.round(z / 40 * 100) + '%';
+    const v = Math.log(z / 6) / Math.log(400 / 6) * 100;
+    ui.zoomRange.value = String(Math.round(v));
+    ui.zoomRange.style.setProperty('--nf-range-pct', Math.round(v) + '%');
+  }
+  function syncEmpty() {
+    if (!ui || !editor) return;
+    ui.empty.style.display = editor.clipCount() ? 'none' : 'grid';
+    syncTime();
+  }
+  function drawOverview() {
+    if (!ui || !editor) return;
+    const canvas = ui.overview;
+    const w = canvas.clientWidth || 300, h = canvas.clientHeight || 34;
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    const g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = '#1d1d1d'; g.fillRect(0, 0, w, h);
+    const end = Math.max(1, editor.projectEnd());
+    const tracks = editor.state.tracks;
+    const laneH = Math.max(3, (h - 12) / Math.max(1, tracks.length));
+    tracks.forEach((track, i) => {
+      for (const clip of track.clips) {
+        g.fillStyle = clip.kind === 'sfx' ? '#3b6fc4' : clip.kind === 'music' ? '#1ea672' : '#c9a63a';
+        g.fillRect(clip.start / end * w, 2 + i * laneH, Math.max(2, clip.length / end * w), laneH - 1);
+      }
+    });
+    g.fillStyle = '#8d8d8d'; g.font = '10px system-ui, sans-serif'; g.textBaseline = 'bottom';
+    const step = end > 120 ? 30 : end > 40 ? 10 : 5;
+    for (let t = 0; t <= end; t += step) { const x = t / end * w; g.fillRect(x, h - 8, 1, 8); g.fillText(String(Math.round(t)), x + 3, h - 1); }
+    const px = editor.playhead() / end * w;
+    g.fillStyle = '#ef4444'; g.fillRect(px - 1, 0, 2, h);
+  }
+  function overviewSeek(event) {
+    const r = ui.overview.getBoundingClientRect();
+    editor.seek((event.clientX - r.left) / r.width * Math.max(1, editor.projectEnd()));
+  }
+  function resetProject() {
+    editor.destroy();
+    const host = ui.stage.querySelector('.nf-as-timeline');
+    editor = window.NovaFlowAudioTimeline.create({
+      host, context: audioContext,
+      onChange: (what) => { if (what === 'model') { syncEmpty(); drawOverview(); } if (what === 'zoom') syncZoom(); },
+      onTime: () => { syncTime(); drawOverview(); },
+      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); },
+      resolveDrop: (id) => { const r = state.resources.find((x) => x.id === id); return r && r.buffer ? { buffer: r.buffer, name: r.name, kind: r.kind, loopable: r.loopable } : null; }
+    });
+    host.appendChild(ui.empty);
+    syncEmpty(); drawOverview(); syncZoom();
+  }
+
+  // ---- keyboard ------------------------------------------------------------------------
+  document.addEventListener('keydown', (event) => {
+    if (!state.active || !editor) return;
+    const t = event.target;
+    if (t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (event.key === ' ') { event.preventDefault(); editor.toggle(); }
+    else if (event.key === 'Delete' || event.key === 'Backspace') { if (editor.deleteSelected()) event.preventDefault(); }
+    else if (event.key === 's' || event.key === 'S') { editor.splitAtPlayhead(); }
+    else if (event.key === 'Home') { editor.seek(0); }
+  });
+
+  // ---- capabilities ----------------------------------------------------------------------
   let capabilityNote = '';
   async function refreshCapabilities() {
     const runtime = window.NovaFlowWebRuntime;
@@ -497,42 +804,48 @@
     try {
       const caps = await runtime.control('GET', '/api/web/capabilities');
       const types = Array.isArray(caps?.taskTypes) ? caps.taskTypes : [];
-      const music = types.find((t) => t.task_type === 'audio_music');
-      const sfx = types.find((t) => t.task_type === 'audio_sfx');
-      const ok = (t) => t && Number(t.available_workers) > 0;
-      if (ui) { ui.musicGo.disabled = !ok(music); ui.sfxGo.disabled = !ok(sfx); }
-      capabilityNote = ok(music) && ok(sfx) ? '' : '本机算力节点还没有音频模型';
+      const ok = (name) => { const t = types.find((x) => x.task_type === name); return t && Number(t.available_workers) > 0; };
+      const ready = state.mode === 'music' ? ok('audio_music') : ok('audio_sfx');
+      if (ui && ui.go) ui.go.disabled = !ready;
+      capabilityNote = ready ? '' : '本机算力节点还没有音频模型就绪，稍后再试';
     } catch (error) {
       capabilityNote = '无法读取算力状态：' + String(error?.message || error);
     }
     tell();
+    // The node reports its models on a timer; a runtime that was still
+    // starting answers "not ready" once and "ready" a little later.
+    clearTimeout(refreshCapabilities.timer);
+    if (capabilityNote && state.active) refreshCapabilities.timer = setTimeout(refreshCapabilities, 15000);
   }
-
   function tell() {
     if (!ui) return;
     const running = state.running.size;
-    ui.status.textContent = capabilityNote || (running ? running + ' 个任务生成中' : state.results.length ? state.results.length + ' 个结果' : '本机生成，结果自动存入仓库');
+    ui.statusText.textContent = capabilityNote || (running ? running + ' 个任务生成中' : '等待生成');
+    ui.statusErr.textContent = '';
+    if (!running) ui.statusPct.textContent = '';
+    ui.cancel.hidden = running === 0;
   }
 
-  // ---- captions ------------------------------------------------------------------
+  // ---- captions ----------------------------------------------------------------------
   function musicCaption() {
-    const style = MUSIC_STYLES.find((s) => s[0] === state.music.style) || MUSIC_STYLES[0];
-    const moods = MOODS.filter((m) => state.music.moods.has(m[0])).map((m) => m[2]);
-    const text = translate(state.music.text);
+    const m = state.music;
+    const style = MUSIC_STYLES.find((s) => s[0] === m.style) || MUSIC_STYLES[0];
+    const mood = MOODS.find((s) => s[0] === m.mood) || MOODS[0];
+    const text = translate(m.text);
     const parts = [];
     if (text) parts.push(text + (style[2] ? '' : ' game background music'));
     if (style[2]) parts.push(style[2]);
     if (!parts.length) parts.push('Game background music');
-    if (moods.length) parts.push('creating a ' + moods.join(', ') + ' feel');
+    if (mood[2]) parts.push('creating a ' + mood[2] + ' feel');
     parts.push('instrumental, steady tempo, consistent groove throughout');
-    if (state.music.loop) parts.push('no intro, no outro, seamless loop');
-    return parts.join(', ') + '. BPM: ' + state.music.bpm;
+    if (m.loop) parts.push('no intro, no outro, seamless loop');
+    return parts.join(', ') + '. BPM: ' + m.bpm;
   }
-
   function sfxCaption() {
-    const cat = SFX_CATEGORIES.find((c) => c[0] === state.sfx.category) || SFX_CATEGORIES[0];
-    const style = SFX_STYLES.find((s) => s[0] === state.sfx.style) || SFX_STYLES[0];
-    const text = translate(state.sfx.text);
+    const m = state.sfx;
+    const cat = SFX_CATEGORIES.find((c) => c[0] === m.category) || SFX_CATEGORIES[0];
+    const style = SFX_STYLES.find((s) => s[0] === m.style) || SFX_STYLES[0];
+    const text = translate(m.text);
     const parts = [];
     if (text) parts.push(text);
     if (cat[2]) parts.push(cat[2]);
@@ -541,79 +854,66 @@
     parts.push('game sound effect, clean, no music');
     return parts.join(', ');
   }
-
-  // ---- tasks ----------------------------------------------------------------------
   function describeMusic() {
-    const style = MUSIC_STYLES.find((s) => s[0] === state.music.style);
-    const moods = MOODS.filter((m) => state.music.moods.has(m[0])).map((m) => m[1]);
-    return [style ? style[1] : '', moods.join('·'), state.music.bpm + ' BPM', state.music.seconds + ' 秒', state.music.loop ? '循环' : '', state.music.text.trim()].filter(Boolean).join(' · ');
+    const m = state.music;
+    const style = MUSIC_STYLES.find((s) => s[0] === m.style);
+    const mood = MOODS.find((x) => x[0] === m.mood);
+    return [m.text.trim(), style && style[2] ? style[1] : '', mood && mood[2] ? mood[1] : '', m.bpm + ' BPM', m.seconds + ' 秒', m.loop ? '循环' : ''].filter(Boolean).join(' · ');
   }
   function describeSfx() {
-    const cat = SFX_CATEGORIES.find((c) => c[0] === state.sfx.category);
-    const style = SFX_STYLES.find((s) => s[0] === state.sfx.style);
-    return [cat ? cat[1] : '', style && style[2] ? style[1] : '', state.sfx.seconds + ' 秒', state.sfx.text.trim()].filter(Boolean).join(' · ');
+    const m = state.sfx;
+    const cat = SFX_CATEGORIES.find((c) => c[0] === m.category);
+    const style = SFX_STYLES.find((s) => s[0] === m.style);
+    return [m.text.trim(), cat && cat[2] ? cat[1] : '', style && style[2] ? style[1] : '', m.seconds + ' 秒'].filter(Boolean).join(' · ');
   }
 
+  // ---- tasks -----------------------------------------------------------------------------
   async function submitMusic() {
+    const m = state.music;
     await submit('audio_music', 'music', describeMusic(), {
-      prompt: musicCaption(),
-      duration_seconds: state.music.seconds,
-      bpm: state.music.bpm,
-      loop: state.music.loop,
-      crossfade_ms: 800
+      prompt: musicCaption(), duration_seconds: m.seconds, bpm: m.bpm, loop: m.loop, crossfade_ms: 800, reprompt: m.rewrite
     });
   }
-
   async function submitSfx() {
-    const count = state.sfx.count;
-    const label = describeSfx();
-    const parameters = { prompt: sfxCaption(), duration_seconds: state.sfx.seconds };
-    for (let i = 0; i < count; i += 1) await submit('audio_sfx', 'sfx', label, parameters, { silentQueue: i > 0 });
+    const m = state.sfx;
+    const parameters = { prompt: sfxCaption(), duration_seconds: m.seconds, reprompt: m.rewrite };
+    for (let i = 0; i < m.count; i += 1) submit('audio_sfx', 'sfx', describeSfx(), parameters);
   }
-
   async function submit(taskType, kind, label, parameters) {
     const runtime = window.NovaFlowWebRuntime;
     if (!runtime) return;
-    const card = pendingCard(kind, label);
-    ui.list.prepend(card.node);
-    removeEmpty();
+    const pending = { id: 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), kind, name: kind === 'music' ? '音乐 生成中' : '音效 生成中', label, pending: true, progress: 0 };
+    state.resources.unshift(pending);
+    renderList();
     let task;
     try {
       const created = await runtime.control('POST', '/api/web/tasks', { task_type: taskType, parameters });
       task = created?.task;
       if (!task?.id) throw new Error('任务未创建');
     } catch (error) {
-      card.fail(String(error?.message || error));
+      failPending(pending, String(error?.message || error));
       return;
     }
-    const entry = { card, cancelled: false };
+    const entry = { cancelled: false, pending };
     state.running.set(task.id, entry);
-    card.onCancel(async () => {
-      entry.cancelled = true;
-      try { await runtime.control('POST', '/api/web/tasks/' + task.id + '/cancel'); } catch { /* already finished */ }
-      card.node.remove();
-      state.running.delete(task.id);
-      tell();
-      if (!ui.list.children.length) renderList();
-    });
+    pending.taskId = task.id;
     tell();
     try {
-      const finished = await waitForTask(runtime, task.id, (t) => card.progress(t));
+      const finished = await waitForTask(runtime, task.id, (t) => { pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; renderProgress(pending); });
       if (entry.cancelled) return;
       if (finished.status !== 'completed') throw new Error(finished.error_message || ('任务' + finished.status));
       const files = (finished.output_manifest?.files || []).filter((f) => /\.(wav|flac|mp3|ogg)$/i.test(f.name));
       if (!files.length) throw new Error('没有产出音频文件');
       const bytes = await runtime.fetchTaskOutput(finished, files[0].name);
       const blob = new Blob([bytes], { type: 'audio/wav' });
-      await completed(card, kind, label, parameters.prompt, files[0], blob, finished);
+      await completed(pending, kind, label, parameters, files[0], blob, finished);
     } catch (error) {
-      if (!entry.cancelled) card.fail(String(error?.message || error));
+      if (!entry.cancelled) failPending(pending, String(error?.message || error));
     } finally {
       state.running.delete(task.id);
       tell();
     }
   }
-
   async function waitForTask(runtime, id, onTick) {
     const started = Date.now();
     for (;;) {
@@ -625,181 +925,202 @@
       if (Date.now() - started > 15 * 60 * 1000) throw new Error('任务超时');
     }
   }
-
-  function pendingCard(kind, label) {
-    const node = el('div', 'nf-audio-item');
-    node.setAttribute('data-kind', kind);
-    const play = el('button', 'nf-audio-play', '…');
-    play.type = 'button'; play.disabled = true;
-    node.appendChild(play);
-    const meta = el('div', 'nf-audio-meta');
-    const name = el('div', 'nf-audio-name', kind === 'music' ? '音乐 生成中' : '音效 生成中');
-    const caption = el('div', 'nf-audio-caption', label);
-    const progress = el('div', 'nf-audio-progress');
-    const bar = el('i');
-    progress.appendChild(bar);
-    const actions = el('div', 'nf-audio-actions');
-    const cancel = el('button', null, '任务中止');
-    cancel.type = 'button'; cancel.className = 'danger';
-    actions.appendChild(cancel);
-    meta.appendChild(name); meta.appendChild(caption); meta.appendChild(progress); meta.appendChild(actions);
-    node.appendChild(meta);
-    return {
-      node,
-      progress(task) {
-        const pct = Math.max(2, Math.min(99, Number(task.progress) || 0));
-        bar.style.width = pct + '%';
-        name.textContent = (kind === 'music' ? '音乐' : '音效') + ' 生成中 ' + Math.round(pct) + '%';
-      },
-      fail(message) {
-        name.textContent = (kind === 'music' ? '音乐' : '音效') + ' 失败';
-        progress.remove();
-        const error = el('div', 'nf-audio-error', message);
-        meta.insertBefore(error, actions);
-        cancel.textContent = '移除';
-        cancel.onclick = () => { node.remove(); if (!ui.list.children.length) renderList(); };
-      },
-      onCancel(fn) { cancel.onclick = fn; }
-    };
+  function cancelRunning() {
+    const runtime = window.NovaFlowWebRuntime;
+    for (const [id, entry] of state.running) {
+      entry.cancelled = true;
+      runtime?.control('POST', '/api/web/tasks/' + id + '/cancel').catch(() => {});
+      state.resources = state.resources.filter((r) => r !== entry.pending);
+    }
+    state.running.clear();
+    renderList(); tell();
   }
-
-  async function completed(card, kind, label, prompt, file, blob, task) {
+  function failPending(pending, message) {
+    state.resources = state.resources.filter((r) => r !== pending);
+    renderList();
+    ui.statusErr.textContent = message;
+    ui.statusErr.title = message;
+  }
+  async function completed(pending, kind, label, parameters, file, blob, task) {
     state.counter[kind] += 1;
     const serial = String(state.counter[kind]).padStart(3, '0');
-    const name = (kind === 'music' ? 'Music_' : 'Sfx_') + serial + '.wav';
+    const name = (kind === 'music' ? 'Music_' : 'Sfx_') + serial;
     const buffer = await decode(blob);
-    const result = {
-      id: task.id, kind, name, label, caption: String(file.caption || ''), prompt,
+    const resource = {
+      id: 'res-' + task.id, kind, name, label, caption: String(file.caption || ''), parameters,
       seconds: buffer ? buffer.duration : Number(file.duration_seconds) || 0,
-      blob, buffer, url: URL.createObjectURL(blob), task
+      blob, buffer, url: URL.createObjectURL(blob), task, loopable: kind === 'music' && parameters.loop !== false
     };
-    state.results.unshift(result);
-    const node = resultCard(result);
-    card.node.replaceWith(node);
-    try { await window.NovaFlowWebWarehouse?.save?.({ blob, name }); } catch { /* the warehouse reports its own state */ }
+    const index = state.resources.indexOf(pending);
+    if (index >= 0) state.resources.splice(index, 1, resource); else state.resources.unshift(resource);
+    renderList();
+    if (buffer) editor.addClip({ buffer, name, kind, loopable: resource.loopable });
+    try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* the warehouse reports its own state */ }
   }
 
-  function resultCard(result) {
-    const node = el('div', 'nf-audio-item');
-    node.setAttribute('data-kind', result.kind);
-    node.setAttribute('data-result-id', result.id);
-    const play = el('button', 'nf-audio-play', '▶');
-    play.type = 'button'; play.setAttribute('aria-label', '播放');
-    play.addEventListener('click', () => togglePlay(result, play));
-    node.appendChild(play);
-    const meta = el('div', 'nf-audio-meta');
-    const name = el('div', 'nf-audio-name');
-    name.appendChild(el('span', null, (result.kind === 'music' ? '音乐 ' : '音效 ') + result.name.replace(/^\w+_/, '').replace(/\.wav$/, '')));
-    name.appendChild(el('small', null, formatSeconds(result.seconds) + (result.kind === 'music' && result.task?.parameters?.loop !== false ? ' · 无缝循环' : '')));
-    meta.appendChild(name);
-    const caption = el('div', 'nf-audio-caption', result.label);
-    caption.title = result.caption || result.prompt || '';
-    meta.appendChild(caption);
-    const wave = el('canvas', 'nf-audio-wave');
-    meta.appendChild(wave);
-    const actions = el('div', 'nf-audio-actions');
-    const download = el('button', null, '下载 WAV');
-    download.type = 'button';
-    download.addEventListener('click', () => {
-      const link = document.createElement('a');
-      link.href = result.url; link.download = result.name; document.body.appendChild(link); link.click(); link.remove();
-    });
-    const again = el('button', null, '再来一个');
-    again.type = 'button';
-    again.addEventListener('click', () => {
-      if (result.kind === 'music') submit('audio_music', 'music', result.label, { ...result.task.parameters, seed: -1 });
-      else submit('audio_sfx', 'sfx', result.label, { ...result.task.parameters, seed: -1 });
-    });
-    const remove = el('button', 'danger', '删除');
-    remove.type = 'button';
-    remove.addEventListener('click', () => {
-      if (state.player?.result === result) stopPlayback();
-      state.results = state.results.filter((r) => r !== result);
-      URL.revokeObjectURL(result.url);
-      node.remove();
-      if (!ui.list.children.length) renderList();
-      tell();
-    });
-    actions.appendChild(download); actions.appendChild(again); actions.appendChild(remove);
-    meta.appendChild(actions);
-    node.appendChild(meta);
-    requestAnimationFrame(() => drawWave(wave, result.buffer));
-    return node;
+  // ---- resources ---------------------------------------------------------------------------
+  async function importFile(file) {
+    try {
+      const buffer = await decode(file);
+      if (!buffer) throw new Error('无法解码 ' + file.name);
+      state.counter.import += 1;
+      const name = file.name.replace(/\.[^.]+$/, '').slice(0, 40) || ('导入_' + state.counter.import);
+      const blob = file;
+      state.resources.unshift({ id: 'res-import-' + Date.now() + '-' + state.counter.import, kind: 'import', name, label: file.name, seconds: buffer.duration, blob, buffer, url: URL.createObjectURL(blob), loopable: true });
+      renderList();
+    } catch (error) {
+      ui.statusErr.textContent = String(error?.message || error);
+    }
   }
-
   function renderList() {
     if (!ui) return;
     ui.list.replaceChildren();
-    if (!state.results.length && !state.running.size) {
-      const empty = el('div', 'nf-audio-empty');
-      empty.innerHTML = '<div>还没有音频<br><span style="color:#5f5f5f">左侧选择「背景音乐」或「音效」，描述后点生成</span></div>';
-      ui.list.appendChild(empty);
-      return;
+    ui.count.textContent = String(state.resources.filter((r) => !r.pending).length);
+    if (!state.resources.length) { ui.list.appendChild(el('div', 'nf-as-side-empty', '暂无内容')); return; }
+    for (const res of state.resources) ui.list.appendChild(resourceCard(res));
+  }
+  function renderProgress(pending) {
+    const bar = ui.list.querySelector('[data-res-id="' + pending.id + '"] .nf-as-res-progress i');
+    if (bar) bar.style.width = Math.max(2, Math.min(99, pending.progress)) + '%';
+  }
+  function resourceCard(res) {
+    const node = el('div', 'nf-as-res');
+    node.dataset.resId = res.id;
+    node.title = res.caption || res.label || res.name;
+    if (res.pending) {
+      node.setAttribute('data-pending', '1');
+      node.appendChild(el('div', 'nf-as-res-name')).appendChild(el('span', null, res.name));
+      node.appendChild(el('div', 'nf-as-note', res.label));
+      const progress = el('div', 'nf-as-res-progress'); progress.appendChild(el('i'));
+      node.appendChild(progress);
+      return node;
     }
-    for (const result of state.results) ui.list.appendChild(resultCard(result));
+    const canvas = el('canvas');
+    node.appendChild(canvas);
+    const nameRow = el('div', 'nf-as-res-name');
+    nameRow.appendChild(el('span', null, res.name));
+    const tag = el('span', 'nf-as-res-tag', res.kind === 'music' ? '音乐' : res.kind === 'sfx' ? '音效' : '导入');
+    tag.dataset.kind = res.kind;
+    nameRow.appendChild(tag);
+    nameRow.appendChild(el('small', null, editor.formatTime(res.seconds)));
+    node.appendChild(nameRow);
+    const actions = el('div', 'nf-as-res-actions');
+    const act = (text, title, fn, cls) => { const b = el('button', cls || null, text); b.type = 'button'; b.title = title; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); };
+    act('▶', '试听', () => previewResource(res, node));
+    act('+', '加到音轨播放头处', () => editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable, start: editor.playhead() }));
+    act('⇩', '下载 WAV', () => download(res));
+    act('×', '删除', () => removeResource(res), 'danger');
+    node.appendChild(actions);
+    node.draggable = true;
+    node.addEventListener('dragstart', (event) => {
+      event.dataTransfer.setData('application/x-novaflow-audio', res.id);
+      event.dataTransfer.effectAllowed = 'copy';
+    });
+    node.addEventListener('dblclick', () => editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable }));
+    node.addEventListener('click', () => { for (const n of ui.list.children) n.removeAttribute('data-selected'); node.setAttribute('data-selected', '1'); });
+    requestAnimationFrame(() => drawThumb(canvas, res.buffer));
+    return node;
   }
-  function removeEmpty() { ui.list.querySelector('.nf-audio-empty')?.remove(); }
-
-  function formatSeconds(seconds) {
-    const s = Number(seconds) || 0;
-    return s >= 10 ? Math.round(s) + ' 秒' : (Math.round(s * 10) / 10) + ' 秒';
+  function removeResource(res) {
+    stopPreview();
+    state.resources = state.resources.filter((r) => r !== res);
+    if (res.url) URL.revokeObjectURL(res.url);
+    renderList();
+  }
+  function download(res) {
+    const link = document.createElement('a');
+    link.href = res.url; link.download = res.name + '.wav'; document.body.appendChild(link); link.click(); link.remove();
+  }
+  function drawThumb(canvas, buffer) {
+    const w = canvas.clientWidth || 180, h = canvas.clientHeight || 34;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    const g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = '#121212'; g.fillRect(0, 0, w, h);
+    if (!buffer) return;
+    const data = buffer.getChannelData(0);
+    const step = Math.max(1, Math.floor(data.length / w));
+    g.fillStyle = '#1ea672';
+    for (let x = 0; x < w; x += 1) {
+      let peak = 0; const s = x * step;
+      for (let i = 0; i < step && s + i < data.length; i += 4) { const v = Math.abs(data[s + i]); if (v > peak) peak = v; }
+      const hh = Math.max(1, peak * (h - 4));
+      g.fillRect(x, (h - hh) / 2, 1, hh);
+    }
   }
 
-  // ---- playback: Web Audio, so a loop plays gapless and the seam is audible ----
+  // ---- preview playback (resource list) ---------------------------------------------------
   let context = null;
   function audioContext() {
     if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
     return context;
   }
   async function decode(blob) {
-    try { return await audioContext().decodeAudioData(await blob.arrayBuffer()); } catch { return null; }
+    try { return await audioContext().decodeAudioData(await blob.arrayBuffer()); } catch (_) { return null; }
   }
-  function togglePlay(result, button) {
-    if (state.player?.result === result) { stopPlayback(); return; }
-    stopPlayback();
-    if (!result.buffer) return;
+  function previewResource(res, node) {
+    if (state.preview && state.preview.res === res) { stopPreview(); return; }
+    stopPreview();
+    if (!res.buffer) return;
+    editor.pause();
     const ctx = audioContext();
     if (ctx.state === 'suspended') ctx.resume();
     const source = ctx.createBufferSource();
-    source.buffer = result.buffer;
-    source.loop = result.kind === 'music' && result.task?.parameters?.loop !== false;
+    source.buffer = res.buffer;
+    source.loop = Boolean(res.loopable) && res.kind === 'music';
     source.connect(ctx.destination);
-    source.onended = () => { if (state.player?.source === source) { state.player = null; button.textContent = '▶'; button.removeAttribute('data-playing'); } };
+    source.onended = () => { if (state.preview && state.preview.source === source) { state.preview = null; node.removeAttribute('data-selected'); } };
     source.start();
-    state.player = { result, source, button };
-    button.textContent = '❚❚';
-    button.setAttribute('data-playing', '1');
+    state.preview = { res, source, node };
+    node.setAttribute('data-selected', '1');
   }
-  function stopPlayback() {
-    const player = state.player;
-    if (!player) return;
-    state.player = null;
-    try { player.source.stop(); } catch { /* already stopped */ }
-    player.button.textContent = '▶';
-    player.button.removeAttribute('data-playing');
+  function stopPreview() {
+    const p = state.preview;
+    if (!p) return;
+    state.preview = null;
+    try { p.source.stop(); } catch (_) { /* already stopped */ }
+    p.node?.removeAttribute('data-selected');
   }
 
-  function drawWave(canvas, buffer) {
-    const width = canvas.clientWidth || 400, height = canvas.clientHeight || 44;
-    canvas.width = width * (window.devicePixelRatio || 1);
-    canvas.height = height * (window.devicePixelRatio || 1);
-    const ctx = canvas.getContext('2d');
-    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-    ctx.fillStyle = '#101010'; ctx.fillRect(0, 0, width, height);
-    if (!buffer) return;
-    const data = buffer.getChannelData(0);
-    const step = Math.max(1, Math.floor(data.length / width));
-    ctx.fillStyle = '#1EA672';
-    for (let x = 0; x < width; x += 1) {
-      let peak = 0;
-      const start = x * step;
-      for (let i = 0; i < step && start + i < data.length; i += 4) { const v = Math.abs(data[start + i]); if (v > peak) peak = v; }
-      const h = Math.max(1, peak * (height - 4));
-      ctx.fillRect(x, (height - h) / 2, 1, h);
+  // ---- export -------------------------------------------------------------------------------
+  async function exportMix() {
+    try {
+      ui.statusErr.textContent = '';
+      const blob = await editor.exportMix();
+      const name = (state.projectName || 'audio_1') + '_mix';
+      state.counter.import += 1;
+      const buffer = await decode(blob);
+      state.resources.unshift({ id: 'res-mix-' + Date.now(), kind: 'import', name, label: '混音导出', seconds: buffer ? buffer.duration : 0, blob, buffer, url: URL.createObjectURL(blob), loopable: true });
+      renderList();
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name + '.wav'; document.body.appendChild(link); link.click(); link.remove();
+      try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* reported by the warehouse */ }
+    } catch (error) {
+      ui.statusErr.textContent = String(error?.message || error);
     }
   }
+  async function exportSelected() {
+    const clip = editor.selectedClip();
+    if (!clip) { ui.statusErr.textContent = '先在时间轴上选中一个片段'; return; }
+    const sr = clip.buffer.sampleRate;
+    const off = new OfflineAudioContext(clip.buffer.numberOfChannels, Math.ceil(clip.length * sr), sr);
+    const env = off.createGain(); env.connect(off.destination);
+    env.gain.setValueAtTime(clip.fadeIn > 0 ? 0.0001 : clip.gain, 0);
+    if (clip.fadeIn > 0) env.gain.linearRampToValueAtTime(clip.gain, clip.fadeIn);
+    if (clip.fadeOut > 0) { env.gain.setValueAtTime(clip.gain, Math.max(0, clip.length - clip.fadeOut)); env.gain.linearRampToValueAtTime(0.0001, clip.length); }
+    let rel = 0, pos = clip.offset;
+    while (rel < clip.length - 1e-4) {
+      const seg = Math.min(clip.buffer.duration - pos, clip.length - rel);
+      const src = off.createBufferSource(); src.buffer = clip.buffer; src.connect(env); src.start(rel, pos, seg);
+      rel += seg; pos = 0;
+    }
+    const rendered = await off.startRendering();
+    const blob = window.NovaFlowAudioTimeline.encodeWav(rendered);
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = clip.name + '_clip.wav'; document.body.appendChild(link); link.click(); link.remove();
+    try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: clip.name + '_clip.wav' }); } catch (_) { /* reported by the warehouse */ }
+  }
 
-  // ---- keep the cell and the workspace in place ----------------------------------
+  // ---- keep the cell and the workspace in place ---------------------------------------------
   let railTimer = 0;
   function tick() {
     ensureCell();
@@ -818,7 +1139,9 @@
   window.NovaFlowAudioStudio = {
     open: activate, close: deactivate,
     isOpen: () => state.active,
-    results: () => state.results.slice(),
+    setMode,
+    resources: () => state.resources.slice(),
+    editor: () => editor,
     captions: { music: musicCaption, sfx: sfxCaption, translate }
   };
 })();

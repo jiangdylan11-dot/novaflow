@@ -30087,6 +30087,23 @@
     };
   }
 
+  // The audio section (audio-studio.tool.js) owns a rail cell of its own and
+  // asks for the slot right under the second entry: the entries after it move
+  // down one slot while that cell exists.
+  const PRIMARY_EXTRA_RAIL_SLOT = 2;
+  function primaryExtraRailCells() {
+    return document.querySelectorAll('[data-novaflow-primary-extra-cell="1"]').length ? 1 : 0;
+  }
+  function primaryRailSlotForIndex(index) {
+    return index + (index >= PRIMARY_EXTRA_RAIL_SLOT ? primaryExtraRailCells() : 0);
+  }
+  function primaryIndexForRailSlot(slot) {
+    const extra = primaryExtraRailCells();
+    if (!extra) return slot;
+    if (slot === PRIMARY_EXTRA_RAIL_SLOT) return -1;
+    return slot > PRIMARY_EXTRA_RAIL_SLOT ? slot - extra : slot;
+  }
+
   function updatePrimarySidebarLayout(buttons, rail) {
     ensurePrimarySidebarBackdrop();
     removeRuntimeNode(LEFT_SEAM_BACKDROP_ID);
@@ -30129,7 +30146,7 @@
       nfSetAttrIfChanged(cell, "data-novaflow-primary-cell", "1");
       nfSetStyleIfChanged(cell, "position", "fixed", "important");
       nfSetStyleIfChanged(cell, "left", `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`, "important");
-      nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_RAIL_ITEM_PITCH}px`, "important");
+      nfSetStyleIfChanged(cell, "top", `${top + primaryRailSlotForIndex(index) * PRIMARY_RAIL_ITEM_PITCH}px`, "important");
       nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
       nfSetStyleIfChanged(cell, "height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
       nfSetStyleIfChanged(cell, "min-width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
@@ -30855,8 +30872,7 @@
     // above them; never over the page entries on a short window, and on the
     // stacked tier (which scrolls) they stay under the entries.
     // The audio section (audio-studio.tool.js) adds a rail cell of its own below the four entries; the foot entries sit under it.
-    const extraRailCells = document.querySelectorAll('[data-novaflow-primary-extra-cell="1"]').length;
-    const stackedDividerTop = top + (PRIMARY_ENTRY_LABELS.length + extraRailCells) * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
+    const stackedDividerTop = top + (PRIMARY_ENTRY_LABELS.length + primaryExtraRailCells()) * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
     const stackedCellTop = stackedDividerTop + 1 + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN + (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT);
     const railFootCellTop = Math.round((window.innerHeight || 0) - PRIMARY_PANEL_BOTTOM_GAP - PRIMARY_RAIL_INNER_PAD - PRIMARY_SIDEBAR_ITEM_HEIGHT - PRIMARY_RAIL_ITEM_PITCH);
     const stackedTier = document.documentElement.getAttribute("data-novaflow-layout-tier") === "stack";
@@ -37791,11 +37807,12 @@
     const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
     const localY = y - top;
     if (localY < 0) return null;
-    const index = Math.floor(localY / PRIMARY_RAIL_ITEM_PITCH);
+    const slot = Math.floor(localY / PRIMARY_RAIL_ITEM_PITCH);
+    const index = primaryIndexForRailSlot(slot);
     if (index < 0 || index >= PRIMARY_ENTRY_LABELS.length) return null;
     // The gap between entries is dead space, so a hit past the entry box is
     // not that entry.
-    const offset = localY - index * PRIMARY_RAIL_ITEM_PITCH;
+    const offset = localY - slot * PRIMARY_RAIL_ITEM_PITCH;
     if (offset < 0 || offset > PRIMARY_SIDEBAR_ITEM_HEIGHT) return null;
     return PRIMARY_ENTRY_LABELS[index] || null;
   }

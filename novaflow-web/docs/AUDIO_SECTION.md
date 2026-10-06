@@ -31,12 +31,12 @@ ComfyUI 0.37 原生支持该模型（`comfy/text_encoders/sa3.py`），采样 8 
 - 输出：`comfy-client.collectOutputs` 收 `audio` 条目；`worker-core` 标 kind `audio` 并带 caption；网关返回 `audio/wav`。
 - 模型清单：`audio-music`、`audio-sfx`（`model-manifest.mjs`），节点就绪才在 capabilities 里可用。
 
-## 网页
+## 网页（2026-10-07 第二版：按动画版块骨架）
 
-- `renderer/audio-studio.tool.js`：侧栏第五格「音频」（React 包只有四格，不能重建，所以是 body 级覆盖单元 + 覆盖工作区）。打开时用一个遮罩盖住仍被 React 选中的原入口，点遮罩会把完整的 pointerdown→click 事件转给原入口。
-- 左栏两张卡：背景音乐（描述、风格、情绪、BPM、时长、无缝循环）、音效（描述、类别、风格、时长、数量）。默认「按描述」，用户中文描述由节点上的改写模型译成模型习惯的英文句式。
-- 右侧列表：波形、Web Audio 无缝循环试听、下载 WAV、再来一个、删除；结果自动进仓库（`Audio_日期_NNN.wav`）。
-- 仓库 `novaflow-web-warehouse.js` 新增音频类型（过滤、预览 `<audio>`）。
+- 侧栏入口「音频」在「动画」正下方：`audio-studio.tool.js` 创建 body 级单元，brand runtime 的 `primaryRailSlotForIndex / primaryIndexForRailSlot` 把后面的「美工」「工具」下移一格（定位与点击命中都按槽位换算）。React 包只有四格，不能重建；打开时用遮罩盖住仍被 React 选中的原入口，点遮罩会把完整的 pointerdown→click 事件转给原入口。
+- 布局与「动画」一致（1920 下实测坐标）：左卡片 x75 w218（模式切换「背景音乐 | 音效」+ 折叠行「音频生成」「音轨编辑」「导出」）；舞台 x302 起（左上工程标签 `audio_1`，右上缩放 % + 适应窗口）；舞台内是时间轴编辑器；展开「音频生成」时舞台底部出现生成坞（时长/BPM/无缝循环 或 时长/数量，开始生成，状态行 + 任务中止，描述框 + AI 润色）；最底是走带栏（⏮ ◀ ▶ ▶ ⏭ 循环，时间，BPM，吸附，缩放，导出混音，总览条）；右侧 206px 资源列表（上传资源，生成结果带波形缩略图，拖到音轨 / 双击加入 / 试听 / 下载 / 删除）。
+- 时间轴编辑器 `audio-timeline.editor.js`（纯浏览器）：多音轨（名称、M/S、音量、增删），片段拖动换轨、边缘裁剪、拖过末尾即循环重复（虚线标接缝）、左上角小方块拖淡入淡出、播放头处分割（S）、删除（Delete）、复制、吸附到拍/小节，Web Audio 调度播放（整段循环），OfflineAudioContext 混音导出 16-bit WAV（进资源列表和仓库），单片段导出。
+- 生成结果自动放到对应音轨（音乐轨 / 音效轨），资源列表和仓库各存一份（`Audio_日期_NNN.wav`）。仓库 `novaflow-web-warehouse.js` 新增音频类型（过滤、预览 `<audio>`）。
 
 ## 验证记录（2026-10-07）
 
