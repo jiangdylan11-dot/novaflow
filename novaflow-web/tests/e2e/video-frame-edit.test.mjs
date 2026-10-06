@@ -270,3 +270,9 @@ test('exportDecodeVideoFrames refuses an empty clip and caps the frame count', a
   const decode = capped.execs.find((args) => args.includes('-vsync'));
   assert.equal(decode[decode.indexOf('-frames:v') + 1], '50');
 });
+
+test('保存选中帧 names each PNG by its position with the source stem', () => {
+  assert.equal(core.frameFileName('Video_20261007_003.mp4', 0), 'Video_20261007_003_frame_001.png')
+  assert.equal(core.frameFileName('C:\\clips\\walk_edit.webm', 58), 'walk_frame_059.png')
+  assert.equal(core.frameFileName('', -3), 'video_frame_001.png')
+})

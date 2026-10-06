@@ -25066,6 +25066,12 @@
       body:not([data-novaflow-ai-mode-expanded="1"]) [data-preview-ui="1"]:has([data-novaflow-ai-prompt-grid="1"]) > :has([data-novaflow-ai-prompt-grid="1"], [data-novaflow-ai-settings-row="1"], [data-novaflow-ai-bottom-main-row="1"]) {
         display: none !important;
       }
+      /* The canvas bar's mode tabs (文生视频 / 图生视频 / 首尾帧视频 / 多参视频) pick the
+         generation mode, so they belong to the 动画生成 group as the dock does: collapsed,
+         they go too; the zoom pill and 自动适配 keep the bar's row. */
+      body.novaflow-ai-animation-section-layers:not([data-novaflow-ai-mode-expanded="1"]) [data-novaflow-ai-top-mode-tabs="1"] {
+        display: none !important;
+      }
       /* 帧编辑 (video-frame-edit.tool.js) marks the body while it is open: the generation
          dock and timeline go, and the 动画生成 group heading is disabled until it closes. */
       body.novaflow-ai-animation-section-layers[data-novaflow-video-frame-edit-open="1"] [data-novaflow-ai-bottom-workspace="1"] {
@@ -58350,6 +58356,7 @@
       scheduleAiAnimationCollapseLocalRefresh(modeSection, "mode");
     }
     syncAiAnimationBottomWorkspaceForModeCollapse();
+    positionAiAnimationTopModeTabs();
   }
 
   function collapseAiAnimationProcessingToolsForMode() {
@@ -58445,6 +58452,7 @@
           if (!AI_ANIMATION_COLLAPSE_STATE.mode && !AI_ANIMATION_COLLAPSE_STATE.post) collapseAiAnimationProcessingToolsForMode();
           syncAiAnimationModeExpandedBodyFlag();
           syncAiAnimationBottomWorkspaceForModeCollapse();
+          positionAiAnimationTopModeTabs();
           const bottomWorkspace = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
           scheduleAiSequenceBottomUploadClickProxyRefresh(bottomWorkspace instanceof HTMLElement ? bottomWorkspace : document);
         }
@@ -59964,6 +59972,13 @@
     setStylePropertyIfChanged(topGroup, "align-items", "center", "important");
     setStylePropertyIfChanged(topGroup, "justify-content", "center", "important");
     setStylePropertyIfChanged(topGroup, "-webkit-app-region", "no-drag", "important");
+    // The mode tabs pick the generation mode, so they belong to the 动画生成 group
+    // as the dock does: while the group is collapsed they go (the stylesheet rule
+    // on data-novaflow-ai-mode-expanded covers the moment before this pass).
+    if (AI_ANIMATION_COLLAPSE_STATE.mode) {
+      setAiSequenceHidden(topGroup, true);
+      return;
+    }
     if (shouldForceHideAiAnimationGenerationActions()) {
       setAiSequenceHidden(topGroup, true);
       syncAiAnimationGenerationActionControlsHidden(true, false);

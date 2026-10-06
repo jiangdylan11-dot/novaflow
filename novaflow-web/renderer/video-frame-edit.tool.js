@@ -345,6 +345,7 @@
     els.buttons.right.disabled = !count || model.selection[count - 1] === model.length - 1
     els.buttons.mirror.disabled = count < 2
     els.apply.disabled = state.busy || !model.dirty
+    els.buttons.savePng.disabled = state.busy || !count
     els.meta.textContent = `${state.fps || '?'} fps`
   }
   function renderAll() {
@@ -539,6 +540,7 @@
         ${button('reset', '还原')}
       </div>
       <button type="button" class="nf-vfe-apply" data-act="apply">生成新资源</button>
+      <button type="button" data-act="save-png">保存选中帧</button>
       <button type="button" data-act="close">关闭</button>
       <div class="nf-vfe-status"></div>`
     section.appendChild(panel)
@@ -555,7 +557,7 @@
       info: panel.querySelector('.nf-vfe-info'),
       status: panel.querySelector('.nf-vfe-status'),
       apply: pick('apply'),
-      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), loop: pick('loop'), keep: pick('keep'), reset: pick('reset') }
+      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), loop: pick('loop'), keep: pick('keep'), reset: pick('reset'), savePng: pick('save-png') }
     }
   }
   function setStatus(message, tone) {
@@ -583,6 +585,7 @@
       case 'loop': findLoop(); break
       case 'all': model.selectAll(); renderAll(); break
       case 'apply': void apply(); break
+      case 'save-png': void saveSelectedFrames(); break
       case 'close': close(); break
       default: break
     }
@@ -691,7 +694,7 @@
       state.overlay = overlayEls.overlay
       state.panel = panelEls?.panel || null
       state.els = Object.assign({}, overlayEls, panelEls || { info: document.createElement('div'), status: document.createElement('div'), apply: document.createElement('button'), buttons: {} })
-      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, loop: {}, keep: {}, reset: {} }
+      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, loop: {}, keep: {}, reset: {}, savePng: {} }
       state.open = true
       state.lastRect = ''
       document.body.setAttribute(BODY_ATTR, '1')
@@ -784,6 +787,59 @@
       if (state.open) renderPanel()
       emitState()
     }
+  }
+  // 保存选中帧: every selected frame leaves as its own PNG, into the 仓库 and
+  // the 资源列表. One upload per frame: several images in one change are
+  // composed into a sequence clip by the page, a lone image joins the list as a
+  // picture. The page also makes each new picture the stage's resource, so the
+  // card that was active (the clip being edited) is selected again afterwards.
+  async function saveSelectedFrames() {
+    const model = state.model
+    if (!model || state.busy || !state.frames) return false
+    const positions = model.selection
+    if (!positions.length) return false
+    state.busy = true
+    renderPanel()
+    emitState()
+    setStatus('正在保存选中帧…')
+    const activeCard = document.querySelector('[data-novaflow-ai-resource-card-active="1"]')
+    try {
+      const files = positions.map((position) => new File([state.frames[model.sourceAt(position)]], core().frameFileName(state.sourceName, position), { type: 'image/png' }))
+      const warehouse = window.NovaFlowWebWarehouse
+      let stored = 0
+      for (const file of files) {
+        if (!warehouse || typeof warehouse.save !== 'function') break
+        const result = await warehouse.save({ blob: file, name: file.name })
+        if (result?.ok || result?.pending) stored += 1
+      }
+      let listed = 0
+      for (const file of files) {
+        if (!addToResourceList(file)) break
+        listed += 1
+        await new Promise((resolve) => window.setTimeout(resolve, 60))
+      }
+      if (listed) reselectResourceCard(activeCard)
+      if (!listed && !stored) throw new Error('资源列表和仓库都不可用')
+      setStatus(`已保存 ${files.length} 帧 PNG：资源列表 ${listed}，仓库 ${stored}`)
+      return true
+    } catch (error) {
+      setStatus(String(error?.message || error || '保存失败'), 'error')
+      return false
+    } finally {
+      state.busy = false
+      if (state.open) renderPanel()
+      emitState()
+    }
+  }
+  function reselectResourceCard(card) {
+    if (!(card instanceof HTMLElement) || !card.isConnected) return
+    window.setTimeout(() => {
+      if (!card.isConnected || card.getAttribute('data-novaflow-ai-resource-card-active') === '1') return
+      try {
+        card.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }))
+        card.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+      } catch (_) {}
+    }, 120)
   }
   function addToResourceList(file) {
     const input = document.getElementById('novaflow-ai-sequence-upload-input')

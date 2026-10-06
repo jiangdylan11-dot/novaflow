@@ -165,9 +165,16 @@
   // The output name: the source stem plus _edit (ASCII, as the shared pool
   // refuses upload names that do not start with a letter or digit), the
   // extension by alpha.
-  function outputFileName(sourceName, alpha) {
+  function sourceStem(sourceName) {
     const stem = String(sourceName || '').replace(/\\/g, '/').split('/').pop().replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'video'
-    return `${stem.replace(/_edit(?:_\d+)?$/, '')}_edit.${alpha ? 'webm' : 'mp4'}`
+    return stem.replace(/_edit(?:_\d+)?$/, '')
+  }
+  function outputFileName(sourceName, alpha) {
+    return `${sourceStem(sourceName)}_edit.${alpha ? 'webm' : 'mp4'}`
+  }
+  // 保存选中帧: one PNG per selected position, named by its place in the clip.
+  function frameFileName(sourceName, position) {
+    return `${sourceStem(sourceName)}_frame_${String(Math.max(0, Math.trunc(Number(position) || 0)) + 1).padStart(3, '0')}.png`
   }
 
   // 找循环: the segments of the clip that play back as a seamless loop.
@@ -223,5 +230,5 @@
     return kept
   }
 
-  return Object.freeze({ createModel, outputFileName, findLoops })
+  return Object.freeze({ createModel, outputFileName, frameFileName, findLoops })
 })
