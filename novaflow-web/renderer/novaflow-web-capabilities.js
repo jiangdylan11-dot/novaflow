@@ -1084,6 +1084,11 @@
   // Chromium's canvas video seek can lose VP8 alpha after the first frame.
   // Decode saved cutout WebM with libvpx, whose yuva420p output retains the
   // alpha plane, before exporting PNG frames or a Spine sequence.
+  // A WebM alpha plane is lossy: frames after a keyframe can come back with a
+  // flat 1-2 across the whole transparent background, which PNG export keeps
+  // and Spine's whitespace stripping then counts as content. No real pixel
+  // sits below 4/255, so clamp that floor whenever alpha is decoded.
+  const ALPHA_FLOOR = "lutrgb=a='if(lt(val,4),0,val)'";
   api.exportDecodeAlphaVideoFrames = async (payload) => {
     const sourceUrl = String(payload?.sourceUrl || '');
     if (!sourceUrl) return fail('缺少透明视频源');
@@ -1099,7 +1104,7 @@
       const response = await fetch(sourceUrl);
       if (!response.ok) throw new Error('读取透明视频失败');
       await ffmpeg.writeFile(input, new Uint8Array(await response.arrayBuffer()));
-      const args = ['-c:v', 'libvpx', '-i', input, '-an', '-vsync', '0', '-vf', 'format=rgba'];
+      const args = ['-c:v', 'libvpx', '-i', input, '-an', '-vsync', '0', '-vf', 'format=rgba,' + ALPHA_FLOOR];
       const maxFrames = Number(payload?.maxFrames);
       if (Number.isInteger(maxFrames) && maxFrames > 0) args.push('-frames:v', String(maxFrames));
       args.push('-start_number', '0', '-y', outputPattern);
@@ -1173,7 +1178,7 @@
       const run = async (alpha) => {
         const filters = [];
         if (fps) filters.push('fps=' + fps);
-        if (alpha) filters.push('format=rgba');
+        if (alpha) filters.push('format=rgba', ALPHA_FLOOR);
         const args = alpha ? ['-c:v', 'libvpx', '-i', input] : ['-i', input];
         args.push('-an', '-vsync', '0');
         if (filters.length) args.push('-vf', filters.join(','));
@@ -1421,6 +1426,10 @@
         const name = tag + 'src' + i + '.' + ext;
         await ffmpeg.writeFile(name, await bytesOf(layer.source.blob));
         scratch.push(name);
+        // ffmpeg's own VP8/VP9 decoders ignore the WebM alpha side-data, so a
+        // cutout layer would arrive on an opaque black background. Decode alpha
+        // sources with libvpx, as the other alpha readers in this file do.
+        if (ext === 'webm' || layer.source.probe.hasAlpha) args.push('-c:v', /vp9/i.test(String(layer.source.probe.codec || '')) ? 'libvpx-vp9' : 'libvpx');
         args.push('-i', name);
         layer.videoInput = inputs++;
         if (layer.mask) {
@@ -1445,7 +1454,8 @@
         const x = Math.round((Number.isFinite(cx) ? cx : width / 2) - lw / 2);
         const y = Math.round((Number.isFinite(cy) ? cy : height / 2) - lh / 2);
         const dw = Math.max(2, Math.round(probe.displayWidth)), dh = Math.max(2, Math.round(probe.displayHeight));
-        filters.push('[' + layer.videoInput + ':v]setpts=PTS-STARTPTS,scale=' + dw + ':' + dh + ':flags=lanczos,setsar=1,fps=' + fps + ',format=rgba[l' + i + ']');
+        // Alpha layers also get the lossy-alpha floor (see ALPHA_FLOOR above).
+        filters.push('[' + layer.videoInput + ':v]setpts=PTS-STARTPTS,scale=' + dw + ':' + dh + ':flags=lanczos,setsar=1,fps=' + fps + ',format=rgba' + (probe.hasAlpha ? ",lutrgb=a='if(lt(val,4),0,val)'" : '') + '[l' + i + ']');
         let src = 'l' + i;
         if (layer.mask) {
           // The desktop's graph: the mask is gray coverage in the layer's display space, multiplied
