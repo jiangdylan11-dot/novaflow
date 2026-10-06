@@ -142,6 +142,14 @@
         clampSelection()
         return true
       },
+      // 只保留选中: everything outside the selection leaves the clip.
+      keepSelection() {
+        return commit(() => {
+          if (selection.length >= order.length) return false
+          order = selection.map((position) => order[position])
+          selection = order.map((_, index) => index)
+        })
+      },
       reset() {
         if (!model.dirty) return false
         undo.push(snapshot())
@@ -162,5 +170,58 @@
     return `${stem.replace(/_edit(?:_\d+)?$/, '')}_edit.${alpha ? 'webm' : 'mp4'}`
   }
 
-  return Object.freeze({ createModel, outputFileName })
+  // 找循环: the segments of the clip that play back as a seamless loop.
+  //
+  // `signatures[source]` is a small grayscale picture of each source frame (the
+  // tool draws its thumbnails at 32×32); `order` is the clip's current frame order.
+  // A segment start..end loops well when the frame after `end` looks like `start`
+  // (the seam) and the one after that like `start + 1` (so the motion carries on at
+  // the same pace). Candidates are scored by that seam difference in percent of
+  // full scale, a still segment (no motion inside) is skipped, and near-duplicates
+  // of a better candidate are dropped.
+  function findLoops(signatures, order, options = {}) {
+    const minLength = Math.max(2, Math.trunc(Number(options.minLength) || 8))
+    const maxCandidates = Math.max(1, Math.trunc(Number(options.maxCandidates) || 6))
+    const frames = Array.isArray(order) ? order.map((value) => signatures[value]) : signatures.slice()
+    const n = frames.length
+    if (n < minLength + 2 || !frames.every((frame) => frame && frame.length === frames[0].length)) return []
+    const size = frames[0].length
+    const diff = (a, b) => {
+      let total = 0
+      for (let index = 0; index < size; index += 1) total += Math.abs(a[index] - b[index])
+      return total / size / 255 * 100
+    }
+    // Every pair once: the seam scores read from here.
+    const table = new Float32Array(n * n)
+    for (let a = 0; a < n; a += 1) {
+      for (let b = a + 1; b < n; b += 1) { const value = diff(frames[a], frames[b]); table[a * n + b] = value; table[b * n + a] = value }
+    }
+    const adjacent = Array.from({ length: n - 1 }, (_, index) => table[index * n + index + 1])
+    // A segment must move: at least a fifth of the clip's average frame-to-frame change,
+    // and never nothing at all (a still clip offers no loop).
+    const motionFloor = Math.max(0.05, (adjacent.reduce((sum, value) => sum + value, 0) / Math.max(1, adjacent.length)) * 0.2)
+    const candidates = []
+    for (let start = 0; start + minLength - 1 <= n - 3; start += 1) {
+      let motion = 0
+      for (let end = start + 1; end <= n - 3; end += 1) {
+        motion += adjacent[end - 1]
+        const length = end - start + 1
+        if (length < minLength) continue
+        if (motion / (length - 1) < motionFloor) continue
+        const seam = table[(end + 1) * n + start]
+        const pace = table[(end + 2) * n + start + 1]
+        candidates.push({ start, end, length, score: Math.round((seam * 0.7 + pace * 0.3) * 100) / 100 })
+      }
+    }
+    candidates.sort((a, b) => a.score - b.score || b.length - a.length)
+    const kept = []
+    for (const candidate of candidates) {
+      if (kept.some((other) => Math.abs(other.start - candidate.start) <= 2 && Math.abs(other.end - candidate.end) <= 2)) continue
+      kept.push(candidate)
+      if (kept.length >= maxCandidates) break
+    }
+    return kept
+  }
+
+  return Object.freeze({ createModel, outputFileName, findLoops })
 })

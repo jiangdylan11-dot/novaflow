@@ -123,6 +123,54 @@ test('selection helpers clamp to the clip and ignore junk', () => {
   assert.equal(model.selectionContiguous, false);
 });
 
+test('只保留选中 keeps the selected frames in order and drops the rest', () => {
+  const model = core.createModel(8);
+  model.selectRange(2, 5);
+  assert.equal(model.keepSelection(), true);
+  assert.deepEqual(model.order, [2, 3, 4, 5]);
+  assert.deepEqual(model.selection, [0, 1, 2, 3]);
+  model.selectAll();
+  assert.equal(model.keepSelection(), false, 'keeping everything changes nothing');
+  model.undo();
+  assert.deepEqual(model.order, [0, 1, 2, 3, 4, 5, 6, 7]);
+});
+
+// A clip that walks through a 10-frame cycle twice and then drifts off: the
+// loop finder must pick a segment that ends right before the cycle repeats.
+function cycleSignatures() {
+  const frames = [];
+  for (let index = 0; index < 32; index += 1) {
+    const phase = index < 24 ? index % 10 : 10 + (index - 24) * 3;
+    const signature = new Uint8Array(64);
+    for (let pixel = 0; pixel < 64; pixel += 1) signature[pixel] = (phase * 23 + pixel * 7 + (index % 3)) % 256;
+    frames.push(signature);
+  }
+  return frames;
+}
+
+test('找循环 ranks the segment whose next frame matches its first frame highest', () => {
+  const signatures = cycleSignatures();
+  const order = signatures.map((_, index) => index);
+  const loops = core.findLoops(signatures, order, { minLength: 8 });
+  assert.ok(loops.length > 0);
+  const best = loops[0];
+  assert.equal(best.length % 10, 0, 'the best loop spans whole cycles, got ' + JSON.stringify(best));
+  assert.ok(best.start < 24 && best.end < 24, 'inside the cycling part');
+  assert.ok(best.score < 1.5, 'the seam is near-identical: ' + best.score);
+  assert.ok(loops.every((loop, index) => index === 0 || loop.score >= loops[index - 1].score), 'sorted by seam difference');
+  assert.ok(loops.every((loop) => loop.length >= 8));
+});
+
+test('找循环 follows the edited order and skips still segments', () => {
+  const signatures = cycleSignatures();
+  const order = signatures.map((_, index) => index).reverse();
+  const loops = core.findLoops(signatures, order, { minLength: 8 });
+  assert.ok(loops.length > 0 && loops[0].score < 1.5, 'a reversed cycle still loops');
+  const still = Array.from({ length: 30 }, () => new Uint8Array(64).fill(90));
+  assert.deepEqual(core.findLoops(still, still.map((_, index) => index)), [], 'a still clip has no loop worth offering');
+  assert.deepEqual(core.findLoops(signatures.slice(0, 5), [0, 1, 2, 3, 4]), [], 'too short');
+});
+
 test('the output keeps the source stem with an ASCII _edit suffix', () => {
   assert.equal(core.outputFileName('kling_20261006_190745.mp4', false), 'kling_20261006_190745_edit.mp4');
   assert.equal(core.outputFileName('kling_a_edit.mp4', false), 'kling_a_edit.mp4', 'editing an edit does not stack suffixes');

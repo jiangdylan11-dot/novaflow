@@ -29,6 +29,8 @@
     model: null,
     frames: null,
     thumbs: null,
+    signatures: null,
+    loops: null,
     full: new Map(),
     fullBytes: 0,
     viewEdge: 0,
@@ -215,6 +217,8 @@
     for (const bitmap of state.thumbs || []) { try { bitmap?.close?.() } catch (_) {} }
     for (const bitmap of state.full.values()) { try { bitmap?.close?.() } catch (_) {} }
     state.thumbs = null
+    state.signatures = null
+    state.loops = null
     state.full = new Map()
     state.fullBytes = 0
     state.prefetching = new Set()
@@ -333,6 +337,8 @@
     els.info.textContent = `${model.length} 帧 · ${state.fps || '?'} fps · ${state.width}×${state.height}${state.alpha ? ' · 透明' : ''}${count ? ` · 选中 ${count} 帧` : ''}`
     els.buttons.undo.disabled = !model.canUndo
     els.buttons.reset.disabled = !model.dirty
+    els.buttons.keep.disabled = !count || count >= model.length
+    els.buttons.loop.disabled = model.length < 10
     els.buttons.remove.disabled = !count || count >= model.length
     els.buttons.duplicate.disabled = !count
     els.buttons.left.disabled = !count || model.selection[0] === 0
@@ -354,6 +360,7 @@
   // ---- operations --------------------------------------------------------
   function afterEdit(changed) {
     if (!changed) return
+    state.loops = null
     const model = state.model
     const selection = model.selection
     state.current = clamp(selection.length ? selection[0] : state.current, 0, model.length - 1)
@@ -383,6 +390,10 @@
     state.playing = true
     state.els.play.innerHTML = ICON_PAUSE
     const interval = 1000 / (state.fps || 16)
+    // Two or more frames selected in a row: playback loops that segment alone.
+    const selection = model.selection
+    const range = selection.length >= 2 && model.selectionContiguous ? [selection[0], selection[selection.length - 1]] : [0, model.length - 1]
+    if (state.current < range[0] || state.current > range[1]) state.current = range[0]
     let last = performance.now()
     const tick = () => {
       if (!state.playing || !state.model) return
@@ -390,12 +401,57 @@
       const steps = Math.max(1, Math.floor((now - last) / interval))
       last += steps * interval
       const previous = state.current
-      state.current = (state.current + steps) % state.model.length
+      const span = Math.min(range[1], state.model.length - 1) - range[0] + 1
+      state.current = range[0] + ((state.current - range[0] + steps) % Math.max(1, span))
       void drawCurrent()
       markCurrentCell(previous)
       state.playTimer = window.setTimeout(tick, Math.max(0, last + interval - performance.now()))
     }
     state.playTimer = window.setTimeout(tick, interval)
+  }
+
+  // 找循环: 32×32 grayscale signatures of the thumbnails, scored by the core; each
+  // press selects the next candidate so the strip shows the segment and 播放 loops it.
+  function frameSignatures() {
+    if (state.signatures) return state.signatures
+    const canvas = document.createElement('canvas')
+    canvas.width = 32
+    canvas.height = 32
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    state.signatures = (state.thumbs || []).map((thumb) => {
+      const signature = new Uint8Array(32 * 32)
+      if (!thumb) return signature
+      ctx.clearRect(0, 0, 32, 32)
+      ctx.drawImage(thumb, 0, 0, 32, 32)
+      const data = ctx.getImageData(0, 0, 32, 32).data
+      for (let index = 0; index < signature.length; index += 1) {
+        const offset = index * 4
+        const alpha = data[offset + 3] / 255
+        signature[index] = Math.round((data[offset] * 0.299 + data[offset + 1] * 0.587 + data[offset + 2] * 0.114) * alpha)
+      }
+      return signature
+    })
+    return state.signatures
+  }
+  function findLoop() {
+    const model = state.model
+    if (!model) return
+    stopPlayback()
+    if (!state.loops) {
+      const list = core().findLoops(frameSignatures(), model.order, { minLength: 8, maxCandidates: 6 })
+      if (!list.length) { setStatus('没有找到能循环的段落', 'error'); return }
+      state.loops = { list, index: 0 }
+    } else {
+      state.loops.index = (state.loops.index + 1) % state.loops.list.length
+    }
+    const { list, index } = state.loops
+    const pick = list[index]
+    model.selectRange(pick.start, pick.end)
+    state.current = pick.start
+    state.anchor = pick.start
+    renderAll()
+    scrollCurrentIntoView()
+    setStatus(`循环段 ${pick.start + 1}–${pick.end + 1}（${pick.length} 帧）· 接缝差异 ${pick.score}% · 候选 ${index + 1} / ${list.length}，再按一次换下一个`)
   }
 
   // 上一帧 / 下一帧 (the bar's side buttons, A / D): the current frame moves by one and
@@ -479,6 +535,7 @@
         ${button('remove', '删除')}${button('duplicate', '复制插帧')}
         ${button('left', '左移')}${button('right', '右移')}
         ${button('mirror', '镜像')}${button('undo', '撤销')}
+        ${button('loop', '找循环')}${button('keep', '只保留选中')}
         ${button('reset', '还原')}
       </div>
       <button type="button" class="nf-vfe-apply" data-act="apply">生成新资源</button>
@@ -498,7 +555,7 @@
       info: panel.querySelector('.nf-vfe-info'),
       status: panel.querySelector('.nf-vfe-status'),
       apply: pick('apply'),
-      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), reset: pick('reset') }
+      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), loop: pick('loop'), keep: pick('keep'), reset: pick('reset') }
     }
   }
   function setStatus(message, tone) {
@@ -522,6 +579,8 @@
       case 'undo': afterEdit(model.undo()); break
       case 'redo': afterEdit(model.redo()); break
       case 'reset': afterEdit(model.reset()); break
+      case 'keep': afterEdit(model.keepSelection()); break
+      case 'loop': findLoop(); break
       case 'all': model.selectAll(); renderAll(); break
       case 'apply': void apply(); break
       case 'close': close(); break
@@ -632,7 +691,7 @@
       state.overlay = overlayEls.overlay
       state.panel = panelEls?.panel || null
       state.els = Object.assign({}, overlayEls, panelEls || { info: document.createElement('div'), status: document.createElement('div'), apply: document.createElement('button'), buttons: {} })
-      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, reset: {} }
+      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, loop: {}, keep: {}, reset: {} }
       state.open = true
       state.lastRect = ''
       document.body.setAttribute(BODY_ATTR, '1')
