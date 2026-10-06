@@ -180,14 +180,14 @@
     function build() {
       if (section || !bridge()?.getUiLayerEditingSnapshot || !doc.createElement) return
       section = make('section', '', { class: 'nf-ui-layer-properties', 'data-novaflow-ui-layer-properties': '1' })
-      Object.assign(section.style, { borderTop: '1px solid #2d2d2d', padding: '10px 8px', minWidth: '0', boxSizing: 'border-box' })
-      fieldBody = make('div'); Object.assign(fieldBody.style, { display: 'grid', gap: '8px', minWidth: '0' })
-      status = make('div', '', { 'aria-live': 'polite', 'data-ui-layer-status': '1' }); Object.assign(status.style, { fontSize: '10px', color: '#aaa', overflowWrap: 'anywhere', lineHeight: '1.4' })
+      Object.assign(section.style, { padding: '0', border: '0', minWidth: '0', width: 'max-content', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', pointerEvents: 'auto' })
+      fieldBody = make('div'); Object.assign(fieldBody.style, { display: 'flex', alignItems: 'center', gap: '12px', minWidth: 'max-content', height: '28px' })
+      status = make('div', '', { 'aria-live': 'polite', 'data-ui-layer-status': '1' }); Object.assign(status.style, { position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' })
       section.append(fieldBody, status)
     }
     function numberField(key, value, apply) {
       const node = make('input', '', { type: 'number', 'data-ui-layer-field': key, 'data-novaflow-number-fill': '1', 'aria-label': key === 'scale' ? '\u7b49\u6bd4\u7f29\u653e' : key })
-      Object.assign(node.style, inputStyle); node.value = value; node.step = key === 'scale' ? '1' : 'any'; node.disabled = snapshot.busy || snapshot.selected.locked
+      Object.assign(node.style, inputStyle, { width: '52px', minWidth: '52px', maxWidth: '52px' }); node.value = value; node.step = key === 'scale' ? '1' : 'any'; node.disabled = snapshot.busy || snapshot.selected.locked
       node.addEventListener('change', async () => { const id = snapshot?.selected?.id; if (!id) return; try { await apply(id, Number(node.value)); error = ''; status.textContent = ''; refresh() } catch (reason) { report(reason); signature = ''; refresh() } })
       return node
     }
@@ -197,17 +197,17 @@
       const selected = snapshot.selected, key = snapshot.setId + ':' + selected.id
       if (!scales.has(key)) scales.set(key, { width: selected.width, height: selected.height })
       const base = scales.get(key)
-      const position = make('div'); Object.assign(position.style, { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8px' })
+      const position = make('div'); Object.assign(position.style, { display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' })
       for (const axis of ['x', 'y']) {
-        const label = make('label', axis.toUpperCase()); Object.assign(label.style, { display: 'grid', gridTemplateColumns: '14px minmax(0,1fr)', alignItems: 'center', gap: '4px', color: '#999', fontSize: '11px', minWidth: '0', textAlign: 'left' })
+        const label = make('label', axis.toUpperCase()); Object.assign(label.style, { display: 'flex', alignItems: 'center', gap: '4px', color: '#999', fontSize: '11px', flex: '0 0 auto', textAlign: 'left', whiteSpace: 'nowrap' })
         label.append(numberField(axis, selected[axis], (id, value) => bridge().patchUiLayer(id, { [axis]: value }))); position.append(label)
       }
       fieldBody.append(position)
-      const scale = make('label', '\u7f29\u653e'); Object.assign(scale.style, { display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) 14px', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#999', textAlign: 'left' })
+      const scale = make('label', '\u7f29\u653e'); Object.assign(scale.style, { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#999', textAlign: 'left', flex: '0 0 auto', whiteSpace: 'nowrap' })
       const scaleInput = numberField('scale', Math.round(selected.width / base.width * 1000) / 10, (id, value) => bridge().patchUiLayer(id, { width: base.width * value / 100, height: base.height * value / 100 })); scaleInput.min = '0.1'; scale.append(scaleInput, make('span', '%')); fieldBody.append(scale)
-      const opacity = make('label', '\u900f\u660e\u5ea6'); Object.assign(opacity.style, { display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) 28px', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#999', textAlign: 'left' })
+      const opacity = make('label', '\u900f\u660e\u5ea6'); Object.assign(opacity.style, { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#999', textAlign: 'left', flex: '0 0 auto', whiteSpace: 'nowrap' })
       const slider = make('input', '', { type: 'range', min: '0', max: '1', step: '0.01', 'data-ui-layer-field': 'opacity', 'aria-label': '\u900f\u660e\u5ea6' }), value = make('span', Math.round(selected.opacity * 100) + '%')
-      Object.assign(slider.style, { width: '100%', minWidth: '0', margin: '0', accentColor: '#23a47b' }); slider.value = selected.opacity; slider.disabled = snapshot.busy || selected.locked
+      Object.assign(slider.style, { width: '78px', minWidth: '78px', margin: '0', accentColor: '#23a47b' }); slider.value = selected.opacity; slider.disabled = snapshot.busy || selected.locked
       slider.addEventListener('input', () => { value.textContent = Math.round(Number(slider.value) * 100) + '%' })
       slider.addEventListener('change', async () => { const id = snapshot?.selected?.id; if (!id) return; try { await bridge().patchUiLayer(id, { opacity: Number(slider.value) }); error = ''; status.textContent = ''; refresh() } catch (reason) { report(reason); signature = ''; refresh() } })
       opacity.append(slider, value); fieldBody.append(opacity)
@@ -215,7 +215,7 @@
     function refresh(next) {
       if (!alive) return
       build(); if (!section) return
-      const layout = leftHost.querySelector('[data-novaflow-ui-layout-section="1"]'); if (layout && section.previousElementSibling !== layout) layout.after(section)
+      const host = bridge().getUiLayerToolbarHost?.(); if (host && section.parentElement !== host) host.appendChild(section)
       snapshot = next?.selected !== undefined ? next : bridge().getUiLayerEditingSnapshot()
       section.style.display = snapshot.selected ? 'block' : 'none'
       status.style.display = error ? 'block' : 'none'; status.textContent = error

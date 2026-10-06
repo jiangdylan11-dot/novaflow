@@ -465,7 +465,7 @@ export function rewriteIndexHtml(html) {
   const shimTags =
     '    <script src="./' + WAREHOUSE_SHIM + '?v=warehouse-1"></script>\n' +
     '    <script src="./' + RUNTIME_SHIM + '?v=web-3"></script>\n' +
-    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./' + CAPABILITY_SHIM + '?v=web-board-fps-20261006-1"></script>\n' +
     '    <script src="./' + TEMPLATE_SHIM + '?v=templates-1"></script>\n' +
     '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + COMPUTE_NODE_SHIM + '?v=web-1"></script>\n';

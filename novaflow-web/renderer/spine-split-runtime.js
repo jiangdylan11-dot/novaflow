@@ -12277,8 +12277,16 @@
     return () => uiLayerStateListeners.delete(listener)
   }
   function getUiLayerToolbarHost() {
-    document.querySelector('[data-ui-layer-toolbar-host="1"]')?.remove()
-    return null
+    const overlay = document.getElementById(WORKSPACE_OVERLAY_ID)
+    if (!isUiLayerMode() || !overlay) { document.querySelector('[data-ui-layer-toolbar-host="1"]')?.remove(); return null }
+    let host = overlay.querySelector('[data-ui-layer-toolbar-host="1"]')
+    if (!host) { host = document.createElement('div'); host.setAttribute('data-ui-layer-toolbar-host', '1'); overlay.appendChild(host) }
+    const frame = overlay.getBoundingClientRect(), tabs = document.getElementById(WORKSPACE_VIEW_CONTROLS_ID)?.getBoundingClientRect()
+    const fit = Array.from(overlay.querySelectorAll('button')).find(node => node.textContent.trim() === '自动适配'), fitBox = fit?.parentElement?.getBoundingClientRect()
+    const left = tabs ? tabs.right - frame.left + 12 : 112, right = fitBox && fitBox.width < frame.width / 2 ? fitBox.left - frame.left - 12 : frame.width - 136
+    const center = frame.width / 2, available = Math.max(0, 2 * Math.min(center - left, right - center))
+    Object.assign(host.style, { position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: SPLIT_PREVIEW_UI_GAP, width: available + 'px', height: '34px', zIndex: '7', pointerEvents: 'none', minWidth: '0', display: state.activePartId && available > 48 ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' })
+    return host
   }
   function assertUiLayerMutation(part, allowUnlock) {
     if (uiLayerMutation || uiLayerGeneration || state.busy || isSplitEditToolActive()) throw new Error('请先完成或取消当前操作，原图层保留')
@@ -31475,6 +31483,7 @@
   }
 
   function finishLayerPointerDragVisual(row, pointerId) {
+    window.NovaFlowArtGenerateReferenceDropTool?.clearLayerDrag?.()
     stopLayerPointerAutoScroll()
     resetLayerPointerDragSourceRow(row, pointerId)
     clearLayerPointerDropPreview()
@@ -31686,7 +31695,9 @@
   function updateLayerPointerDragPreview(event) {
     const drag = state.layerPointerDrag
     if (!drag || !drag.active) return
-    const target = layerPointerTargetAt(event.clientX, event.clientY, drag.partId, drag.setId)
+    const referenceTarget = !!drag.referenceImage && window.NovaFlowArtGenerateReferenceDropTool?.previewLayerDrag?.(event) === true
+    drag.referenceTarget = referenceTarget
+    const target = referenceTarget ? null : layerPointerTargetAt(event.clientX, event.clientY, drag.partId, drag.setId)
     clearLayerPointerDropPreview()
     drag.targetId = target && !target.moveToSet && target.targetId || ''
     drag.targetSetId = target && target.targetSetId || ''
@@ -31726,6 +31737,8 @@
     if (target && target.closest(`[${LAYER_COMMAND_ATTR}], input, textarea, select`)) return
     const row = event.currentTarget instanceof Element ? event.currentTarget : (target && target.closest(`[${LAYER_ROW_ATTR}]`))
     if (!row) return
+    const referencePart = splitPartForRightWorkspaceId(partId, setId)
+    const referenceImage = referencePart?.dataUrl ? { dataUrl: referencePart.dataUrl, name: String(referencePart.label || referencePart.name || referencePart.id || 'layer').replace(/\.(png|jpe?g|webp)$/i, '') + '.png' } : null
     const existing = state.layerPointerDrag
     const inputKind = layerPointerInputKind(event)
     if (existing) {
@@ -31746,6 +31759,8 @@
       lastX: Number(event.clientX) || 0,
       lastY: Number(event.clientY) || 0,
       active: false,
+      referenceImage,
+      referenceTarget: false,
       targetId: '',
       targetSetId: '',
       moveToSetId: '',
@@ -31786,7 +31801,7 @@
     const drag = state.layerPointerDrag
     if (!layerPointerEventMatchesDrag(event, drag)) return
     const wasActive = !!drag.active
-    if (wasActive && !cancelled && event && !drag.targetId && !drag.moveToSetId) {
+    if (wasActive && !cancelled && event) {
       const clientX = Number(event.clientX)
       const clientY = Number(event.clientY)
       drag.lastX = Number.isFinite(clientX) ? clientX : drag.lastX
@@ -31801,7 +31816,8 @@
     const insertAfterTarget = !!drag.insertAfterTarget
     const sourceRow = drag.sourceRow
     const pointerId = drag.pointerId
-    const shouldCommit = wasActive && !cancelled && (!!targetId || !!moveToSetId)
+    const referenceDrop = wasActive && !cancelled && !!drag.referenceTarget && !!drag.referenceImage
+    const shouldCommit = wasActive && !cancelled && !referenceDrop && (!!targetId || !!moveToSetId)
     if (sourceRow && pointerId != null) {
       try { sourceRow.releasePointerCapture(pointerId) } catch {}
     }
@@ -31816,6 +31832,13 @@
     }
     state.layerPointerSuppressUntil = Date.now() + 500
     if (event) blockLayerPointerEvent(event)
+    if (referenceDrop) {
+      finishLayerPointerDragVisual(sourceRow, pointerId)
+      if (state.busy || isSplitEditToolActive()) return
+      const point = { clientX: drag.lastX, clientY: drag.lastY }
+      Promise.resolve().then(() => window.NovaFlowArtGenerateReferenceDropTool?.finishLayerDrag?.(point, drag.referenceImage)).catch(error => { setMessage(String(error?.message || error || 'Reference image import failed'), true); render(); syncSplitWorkspace() })
+      return
+    }
     if (shouldCommit) {
       state.layerPointerCommitId = sourceId
       if (document.body) document.body.setAttribute('data-novaflow-layer-pointer-drag', `committing:${sourceId}`)

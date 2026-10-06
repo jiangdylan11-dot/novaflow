@@ -247,6 +247,29 @@
     Promise.resolve(result).catch(reportError);
   }
 
+  function previewLayerDrag(event) {
+    clearDragState();
+    if (!isEnabled() || typeof controller?.onFile !== 'function') return false;
+    const slot = referenceSlotFromEvent(event);
+    if (!slot || referenceIndex(slot) < 0) return false;
+    setDragState(slot, true);
+    return true;
+  }
+
+  function finishLayerDrag(event, image) {
+    clearDragState();
+    if (!isEnabled() || typeof controller?.onFile !== 'function') return false;
+    const slot = referenceSlotFromEvent(event), index = referenceIndex(slot);
+    if (!slot || index < 0) return false;
+    const dataUrl = stringValue(image?.dataUrl);
+    const match = dataUrl.match(/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/i);
+    if (!match || typeof root.File !== 'function' || typeof root.atob !== 'function') throw new Error('Selected layer image is unavailable');
+    const raw = root.atob(match[2]), bytes = Uint8Array.from(raw, character => character.charCodeAt(0));
+    const name = stringValue(image?.name || 'layer.png').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
+    const file = new root.File([bytes], name, { type: match[1] });
+    return Promise.resolve(controller?.onFile?.(index, file)).then(() => true);
+  }
+
   // The browser's default drag ghost is the whole card (or the picture itself, up to 200px) anchored
   // at the grab point, so it looks big and off the cursor. Every drag of a picture, or of a card that
   // holds one, gets the same small thumbnail centred under the cursor instead.
@@ -378,6 +401,9 @@
     RESOURCE_MIME,
     DRAG_GHOST_SIZE,
     configure,
+    previewLayerDrag,
+    finishLayerDrag,
+    clearLayerDrag: clearDragState,
     beginResourceDrag,
     endResourceDrag,
     decorateDragGhost,
