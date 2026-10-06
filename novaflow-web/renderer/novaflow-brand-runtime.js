@@ -18505,10 +18505,14 @@
       });
     }
     const editingLayout = isAiAnimationStatefulCutoutEditModeActive(session);
+    // The generation dock (every child but the timeline) belongs to the 动画生成
+    // group: it shows only while that group is expanded. Collapsed, the
+    // timeline is all that stays, exactly as in the cutout edit layout.
+    const generationHidden = editingLayout || AI_ANIMATION_COLLAPSE_STATE.mode;
     const children = Array.from(bottomWorkspace.children).filter((child) => child instanceof HTMLElement);
     const timelineChild = children.length ? children[children.length - 1] : null;
     children.forEach((child) => {
-      const keepVisible = !editingLayout || child === timelineChild;
+      const keepVisible = !generationHidden || child === timelineChild;
       setAiSequenceHidden(child, !keepVisible);
       if (!editingLayout && keepVisible) {
         setImportantStyles(child, {
@@ -18706,6 +18710,7 @@
     }
     const postCollapsed = stateMode === "resource";
     AI_ANIMATION_COLLAPSE_STATE.post = postCollapsed;
+    if (!postCollapsed) collapseAiAnimationModeForTools();
     setAttributeIfChanged(document.body, "data-novaflow-ai-sequence-mode", stateMode);
     setAttributeIfChanged(document.body, "data-novaflow-ai-sequence-active-board", session.id);
     setAttributeIfChanged(document.body, "data-novaflow-ai-sequence-active-tool", session.activeTool || "");
@@ -58301,6 +58306,53 @@
     });
   }
 
+  // 动画生成 and the processing tools (视频合并 / 视频抠图 / 帧编辑) never stay open
+  // together: opening one collapses the other, and the generation dock under
+  // the stage exists only while 动画生成 is open.
+  function syncAiAnimationBottomWorkspaceForModeCollapse() {
+    const session = getAiSequenceCurrentSession() || { mode: "resource" };
+    Array.from(document.querySelectorAll('[data-novaflow-ai-bottom-workspace="1"]')).forEach((node) => {
+      if (node instanceof HTMLElement) applyAiSequenceBottomWorkspaceState(node, session);
+    });
+  }
+
+  function collapseAiAnimationModeForTools() {
+    if (AI_ANIMATION_COLLAPSE_STATE.mode) return;
+    AI_ANIMATION_COLLAPSE_STATE.mode = true;
+    const modeSection = document.querySelector('[data-novaflow-ai-mode-section="1"]');
+    if (modeSection instanceof HTMLElement) {
+      setAttributeIfChanged(modeSection, "data-novaflow-ai-mode-collapsed", "1");
+      scheduleAiAnimationCollapseLocalRefresh(modeSection, "mode");
+    }
+    syncAiAnimationBottomWorkspaceForModeCollapse();
+  }
+
+  function collapseAiAnimationProcessingToolsForMode() {
+    const controller = getAiSequenceStateController();
+    const session = controller && controller.getActiveSession ? controller.getActiveSession() : null;
+    clearAiSequenceRouteEditStateSnapshot("mode-expand-collapse-tools");
+    cancelAiAnimationProcessingToolModeSync("mode-expand-collapse-tools");
+    if (controller && hasAiSequenceStatefulCutoutResidue(document, session)) {
+      cancelAiSequenceCutoutEditingSession(controller);
+    } else {
+      AI_ANIMATION_COLLAPSE_STATE.post = true;
+      if (session) {
+        session.mode = "resource";
+        session.activeTool = null;
+        session.editingDraft = null;
+      }
+      if (controller && typeof controller.collapseTools === "function") controller.collapseTools();
+      resetAiSequenceCutoutEditingDom(document);
+      restoreAiSequenceResourceModeDom({ force: true });
+    }
+    const postSection = document.querySelector('[data-novaflow-ai-post-section="1"]');
+    if (postSection instanceof HTMLElement) {
+      setAttributeIfChanged(postSection, "data-novaflow-ai-post-collapsed", "1");
+      scheduleAiAnimationCollapseLocalRefresh(postSection, "post");
+    }
+    scheduleAiSequenceResourceModeChromeRestore([0, 32, 120, 260]);
+  }
+
   function ensureAiAnimationCollapseHeading(section, kind, label, fallbackLabels = []) {
     const heading = [label, ...fallbackLabels]
       .map((candidate) => findAiAnimationTextElement(section, candidate))
@@ -58364,9 +58416,13 @@
         }
         scheduleAiAnimationCollapseLocalRefresh(section, kind);
         if (kind === "mode") {
+          // 动画生成 expanding closes the tool group; the generation dock follows the group.
+          if (!AI_ANIMATION_COLLAPSE_STATE.mode && !AI_ANIMATION_COLLAPSE_STATE.post) collapseAiAnimationProcessingToolsForMode();
+          syncAiAnimationBottomWorkspaceForModeCollapse();
           const bottomWorkspace = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
           scheduleAiSequenceBottomUploadClickProxyRefresh(bottomWorkspace instanceof HTMLElement ? bottomWorkspace : document);
         }
+        if (kind === "post" && !AI_ANIMATION_COLLAPSE_STATE.post) collapseAiAnimationModeForTools();
         if (kind === "post" && AI_ANIMATION_COLLAPSE_STATE.post && !postCollapseHandled) {
           scheduleAiAnimationProcessingToolModeSync(false);
         }
