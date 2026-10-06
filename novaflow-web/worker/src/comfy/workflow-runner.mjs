@@ -11,6 +11,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { TASK_TYPE_WORKFLOW } from '../../../packages/shared/src/protocol.mjs';
+import { audioRepromptPrompt } from './audio-reprompt.mjs';
 
 export async function loadWorkflow(workflowDir, taskType) {
   const file = TASK_TYPE_WORKFLOW[String(taskType)];
@@ -81,4 +82,33 @@ export function videoFrameLength(durationSeconds, fps) {
   // 124 for ~5s at 24fps. Snap to the same 4k+4 grid so the latent shape is
   // one the model accepts.
   return Math.max(4, Math.round(frames / 4) * 4 + 4);
+}
+
+/**
+ * 音频: the caption the model reads and the length it renders.
+ *
+ * The model takes its target length from the text as well as from the latent,
+ * so the two are written together here rather than trusted to the panel. A
+ * loop renders longer than the loop itself: the seam node needs audio past
+ * the cut point to blend the head into, and the model's own ending (a final
+ * chord, a fade) must fall outside the loop.
+ */
+export function audioGraphExtras(taskType, parameters) {
+  const p = parameters || {};
+  const duration = Math.max(1, Number(p.duration_seconds) || 1);
+  const music = String(taskType) === 'audio_music';
+  const loop = music && p.loop !== false;
+  const generateSeconds = loop
+    ? Math.min(300, duration + Math.max(2, Math.round((Number(p.crossfade_ms) || 800) / 1000 + 2)))
+    : duration;
+  const body = String(p.prompt || '').trim().replace(/\s*Length:\s*\d+\s*seconds?\.?\s*$/i, '').replace(/[\s.,;]+$/, '');
+  const caption = body + '. Length: ' + Math.round(generateSeconds) + ' seconds';
+  return {
+    caption_fallback: caption,
+    generate_seconds: Math.round(generateSeconds * 10) / 10,
+    caption_seconds: Math.round(generateSeconds * 10) / 10,
+    caption_bpm: music ? Math.max(0, Math.floor(Number(p.bpm) || 0)) : 0,
+    reprompt: p.reprompt !== false,
+    reprompt_prompt: audioRepromptPrompt(music ? 'music' : 'sfx', body, generateSeconds)
+  };
 }

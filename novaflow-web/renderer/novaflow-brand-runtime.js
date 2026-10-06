@@ -30854,7 +30854,9 @@
     // 仓库 and 导出 sit at the foot of the rail, as asked, with their line
     // above them; never over the page entries on a short window, and on the
     // stacked tier (which scrolls) they stay under the entries.
-    const stackedDividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
+    // The audio section (audio-studio.tool.js) adds a rail cell of its own below the four entries; the foot entries sit under it.
+    const extraRailCells = document.querySelectorAll('[data-novaflow-primary-extra-cell="1"]').length;
+    const stackedDividerTop = top + (PRIMARY_ENTRY_LABELS.length + extraRailCells) * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
     const stackedCellTop = stackedDividerTop + 1 + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN + (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT);
     const railFootCellTop = Math.round((window.innerHeight || 0) - PRIMARY_PANEL_BOTTOM_GAP - PRIMARY_RAIL_INNER_PAD - PRIMARY_SIDEBAR_ITEM_HEIGHT - PRIMARY_RAIL_ITEM_PITCH);
     const stackedTier = document.documentElement.getAttribute("data-novaflow-layout-tier") === "stack";

@@ -242,14 +242,15 @@ export function collectOutputs(historyEntry) {
   const nodes = historyEntry?.outputs || {};
   for (const nodeId of Object.keys(nodes)) {
     const node = nodes[nodeId] || {};
-    for (const key of ['images', 'gifs', 'videos']) {
+    for (const key of ['images', 'gifs', 'videos', 'audio']) {
       for (const item of node[key] || []) {
         if (!item?.filename) continue;
         outputs.push({
           filename: String(item.filename),
           subfolder: String(item.subfolder || ''),
           type: String(item.type || 'output'),
-          nodeId
+          nodeId,
+          ...(typeof item.caption === 'string' && item.caption ? { caption: item.caption.slice(0, 2000) } : {})
         });
       }
     }

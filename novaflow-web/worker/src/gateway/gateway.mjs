@@ -29,6 +29,10 @@ const CONTENT_TYPES = {
   '.gif': 'image/gif',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
   '.json': 'application/json'
 };
 

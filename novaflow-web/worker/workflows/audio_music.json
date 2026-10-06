@@ -1,0 +1,275 @@
+{
+  "id": "audio_music",
+  "comfy": "image",
+  "note": "Text to music (game background music) on the medium audio checkpoint, cut into a seamless loop by the NovaFlow audio node. Verified against ComfyUI 0.37.0 on 127.0.0.1:8188.",
+  "bindings": {
+    "negative_prompt": {
+      "node": "3",
+      "input": "text"
+    },
+    "generate_seconds": {
+      "node": "4",
+      "input": "seconds"
+    },
+    "seed": {
+      "node": "5",
+      "input": "seed"
+    },
+    "loop": {
+      "node": "7",
+      "input": "enabled"
+    },
+    "duration_seconds": {
+      "node": "7",
+      "input": "loop_seconds"
+    },
+    "crossfade_ms": {
+      "node": "7",
+      "input": "crossfade_ms"
+    },
+    "bpm": {
+      "node": "7",
+      "input": "bpm"
+    },
+    "reprompt_prompt": {
+      "node": "11",
+      "input": "prompt"
+    },
+    "reprompt": {
+      "node": "12",
+      "input": "switch"
+    },
+    "prompt": {
+      "node": "13",
+      "input": "value"
+    },
+    "caption_fallback": {
+      "node": "20",
+      "input": "fallback"
+    },
+    "caption_seconds": {
+      "node": "20",
+      "input": "seconds"
+    },
+    "caption_bpm": {
+      "node": "20",
+      "input": "bpm"
+    }
+  },
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "stable_audio_3_medium.safetensors"
+      },
+      "_meta": {
+        "title": "music checkpoint"
+      }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": [
+          "20",
+          0
+        ],
+        "clip": [
+          "8",
+          0
+        ]
+      },
+      "_meta": {
+        "title": "positive"
+      }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "",
+        "clip": [
+          "8",
+          0
+        ]
+      },
+      "_meta": {
+        "title": "negative"
+      }
+    },
+    "4": {
+      "class_type": "EmptyLatentAudio",
+      "inputs": {
+        "seconds": 40,
+        "batch_size": 1
+      },
+      "_meta": {
+        "title": "canvas"
+      }
+    },
+    "5": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 0,
+        "steps": 8,
+        "cfg": 1,
+        "sampler_name": "lcm",
+        "scheduler": "simple",
+        "denoise": 1,
+        "model": [
+          "1",
+          0
+        ],
+        "positive": [
+          "2",
+          0
+        ],
+        "negative": [
+          "3",
+          0
+        ],
+        "latent_image": [
+          "4",
+          0
+        ]
+      },
+      "_meta": {
+        "title": "sampler"
+      }
+    },
+    "6": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "5",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      },
+      "_meta": {
+        "title": "decode"
+      }
+    },
+    "7": {
+      "class_type": "NovaFlowAudioSeamlessLoop",
+      "inputs": {
+        "audio": [
+          "6",
+          0
+        ],
+        "enabled": true,
+        "loop_seconds": 30,
+        "crossfade_ms": 800,
+        "bpm": 0,
+        "skip_head_ms": 0,
+        "peak_db": -1
+      },
+      "_meta": {
+        "title": "seamless loop"
+      }
+    },
+    "8": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "t5gemma_b_b_ul2.safetensors",
+        "type": "stable_audio",
+        "device": "default"
+      },
+      "_meta": {
+        "title": "text encoder"
+      }
+    },
+    "9": {
+      "class_type": "NovaFlowSaveAudioWav",
+      "inputs": {
+        "filename_prefix": "audio/novaflow_music",
+        "audio": [
+          "7",
+          0
+        ],
+        "caption": [
+          "20",
+          0
+        ]
+      },
+      "_meta": {
+        "title": "save"
+      }
+    },
+    "10": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen3.5_2b_bf16.safetensors",
+        "type": "stable_diffusion",
+        "device": "default"
+      },
+      "_meta": {
+        "title": "rewrite model"
+      }
+    },
+    "11": {
+      "class_type": "TextGenerate",
+      "inputs": {
+        "clip": [
+          "10",
+          0
+        ],
+        "prompt": "",
+        "max_length": 200,
+        "sampling_mode": "on",
+        "sampling_mode.temperature": 0.7,
+        "sampling_mode.top_k": 64,
+        "sampling_mode.top_p": 0.95,
+        "sampling_mode.min_p": 0.05,
+        "sampling_mode.repetition_penalty": 1.05,
+        "sampling_mode.seed": 0,
+        "sampling_mode.presence_penalty": 0
+      },
+      "_meta": {
+        "title": "rewrite"
+      }
+    },
+    "12": {
+      "class_type": "ComfySwitchNode",
+      "inputs": {
+        "switch": true,
+        "on_true": [
+          "11",
+          0
+        ],
+        "on_false": [
+          "13",
+          0
+        ]
+      },
+      "_meta": {
+        "title": "rewrite?"
+      }
+    },
+    "13": {
+      "class_type": "PrimitiveStringMultiline",
+      "inputs": {
+        "value": ""
+      },
+      "_meta": {
+        "title": "caption as written"
+      }
+    },
+    "20": {
+      "class_type": "NovaFlowAudioCaption",
+      "inputs": {
+        "text": [
+          "12",
+          0
+        ],
+        "seconds": 30,
+        "bpm": 0,
+        "fallback": ""
+      },
+      "_meta": {
+        "title": "caption"
+      }
+    }
+  }
+}

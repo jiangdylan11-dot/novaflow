@@ -109,14 +109,28 @@ export const GRANT_DOWNLOAD_TTL_SECONDS = 3600; // 1 h result playback window
 export const TASK_TYPE = Object.freeze({
   QWEN_T2I: 'qwen_t2i',
   QWEN_EDIT: 'qwen2511_edit',
-  H3_I2V: 'h3_i2v'
+  H3_I2V: 'h3_i2v',
+  // 音频: game background music (looped) and sound effects, text to audio.
+  AUDIO_MUSIC: 'audio_music',
+  AUDIO_SFX: 'audio_sfx'
 });
 
 export const TASK_TYPE_WORKFLOW = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: 'qwen_t2i.json',
   [TASK_TYPE.QWEN_EDIT]: 'qwen2511_edit.json',
-  [TASK_TYPE.H3_I2V]: 'h3_i2v.json'
+  [TASK_TYPE.H3_I2V]: 'h3_i2v.json',
+  [TASK_TYPE.AUDIO_MUSIC]: 'audio_music.json',
+  [TASK_TYPE.AUDIO_SFX]: 'audio_sfx.json'
 });
+
+// 音频 limits, shared by the validator, the worker and the panel.
+export const AUDIO_LIMITS = Object.freeze({
+  music: { minSeconds: 8, maxSeconds: 300, defaultSeconds: 30 },
+  sfx: { minSeconds: 1, maxSeconds: 30, defaultSeconds: 2 },
+  minCrossfadeMs: 100, maxCrossfadeMs: 4000, defaultCrossfadeMs: 800
+});
+export const AUDIO_MUSIC_MODEL_ID = 'audio-music';
+export const AUDIO_SFX_MODEL_ID = 'audio-sfx';
 
 // Which model each task type needs, and the VRAM floor the scheduler enforces
 // before it hands the task to a worker.
@@ -156,6 +170,9 @@ export const TASK_TYPE_REQUIREMENTS = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
+  // 音频 is light: the music model peaks under 7 GB, the effects model under 3 GB.
+  [TASK_TYPE.AUDIO_MUSIC]: { modelId: AUDIO_MUSIC_MODEL_ID, minVramMb: 8000, kind: 'audio', label: '音乐', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.AUDIO_SFX]: { modelId: AUDIO_SFX_MODEL_ID, minVramMb: 4000, kind: 'audio', label: '音效', billing: BILLING.SELF_HOSTED },
   // Matting is segmentation, not generation: BiRefNet runs at a fixed
   // 1024x1024 whatever the clip is, so the VRAM floor is far below the
   // generation types and a machine that cannot draw can still cut out.
@@ -185,7 +202,8 @@ export function isKnownTaskType(taskType) {
 export const TTL_SECONDS = Object.freeze({
   input: 24 * 3600,
   image: 72 * 3600,
-  video: 48 * 3600
+  video: 48 * 3600,
+  audio: 72 * 3600
 });
 
 // ---------------------------------------------------------------------------

@@ -514,7 +514,7 @@
     const ext = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
     const map = {
       png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
-      gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', webm: 'video/webm'
+      gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', wav: 'audio/wav', flac: 'audio/flac', mp3: 'audio/mpeg', ogg: 'audio/ogg', webm: 'video/webm'
     };
     return (ext && map[ext[1]]) || 'application/octet-stream';
   }

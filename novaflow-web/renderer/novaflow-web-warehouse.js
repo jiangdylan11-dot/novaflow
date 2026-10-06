@@ -2,8 +2,9 @@
 // selecting a folder never uploads its files to the control plane or Worker.
 (function (root) {
   'use strict';
-  const MEDIA = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov)$/i;
-  const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
+  const MEDIA = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov|wav|mp3|flac|ogg)$/i;
+  const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', wav: 'audio/wav', mp3: 'audio/mpeg', flac: 'audio/flac', ogg: 'audio/ogg' };
+  const AUDIO = /\.(wav|mp3|flac|ogg)$/i;
   const records = new Map();
   let db, directory = null, permission = 'prompt', lastError = '', panel, status, listing, preview, previousFocus;
   let serial = Promise.resolve(), previewUrl = '', busy = false, feedback = '';
@@ -124,7 +125,7 @@
     folderLabel.textContent = directory ? directory.name : '连接本地文件夹';
     connectionLabel.textContent = directory ? (permission === 'granted' ? '已连接本机' : '需要恢复授权') : '尚未连接';
     connectionLabel.dataset.connected = String(!!directory && permission === 'granted');
-    status.textContent = feedback || (pendingCount() ? pendingCount() + ' 个结果等待保存' : directory && permission === 'granted' ? '新生成的图片和视频将自动保存到此文件夹' : '选择作品文件夹，即可浏览并自动保存生成结果');
+    status.textContent = feedback || (pendingCount() ? pendingCount() + ' 个结果等待保存' : directory && permission === 'granted' ? '新生成的图片、视频和音频将自动保存到此文件夹' : '选择作品文件夹，即可浏览并自动保存生成结果');
     errorLabel.textContent = lastError; errorLabel.hidden = !lastError;
     panel.querySelector('[data-warehouse-action="authorize"]').hidden = !directory || permission === 'granted';
     panel.querySelector('[data-warehouse-action="disconnect"]').hidden = !directory;
@@ -161,7 +162,7 @@
   // Video_20260928_001.mp4, numbered per day after the highest number already in the folder.
   async function write(record) {
     const ext = record.name.slice(record.name.lastIndexOf('.')).toLowerCase();
-    const kind = /^video\//.test(record.blob.type || '') || /^\.(mp4|webm|mov)$/.test(ext) ? 'Video' : 'Image';
+    const kind = /^video\//.test(record.blob.type || '') || /^\.(mp4|webm|mov)$/.test(ext) ? 'Video' : /^audio\//.test(record.blob.type || '') || AUDIO.test(ext) ? 'Audio' : 'Image';
     const day = new Date(record.createdAt || Date.now());
     const stem = kind + '_' + day.getFullYear() + String(day.getMonth() + 1).padStart(2, '0') + String(day.getDate()).padStart(2, '0') + '_';
     let last = 0;
@@ -339,13 +340,14 @@
   function showPreview(blob, name, item) {
     clearPreview(); previewUrl = URL.createObjectURL(blob);
     viewer.hidden = false;
-    const media = node(/\.(mp4|webm|mov)$/i.test(name) ? 'video' : 'img', null, preview);
+    const media = node(/\.(mp4|webm|mov)$/i.test(name) ? 'video' : AUDIO.test(name) ? 'audio' : 'img', null, preview);
     media.src = previewUrl; media.alt = name; media.controls = true;
     media.className = 'nf-wh-full-media';
     const details = node('div', null, preview); details.className = 'nf-wh-preview-details';
     const label = node('div', null, details); node('strong', name, label);
     const facts = node('p', (item?.dimensions ? item.dimensions + ' · ' : '') + formatBytes(blob.size), label);
-    media[media.tagName === 'VIDEO' ? 'onloadedmetadata' : 'onload'] = () => { const dims = dimensionsOf(media); if (dims) { if (item) item.dimensions = dims; facts.textContent = dims + ' · ' + formatBytes(blob.size); } };
+    if (media.tagName === 'AUDIO') { media.style.width = 'min(560px, 90%)'; media.onloadedmetadata = () => { facts.textContent = Math.round(media.duration * 10) / 10 + ' 秒 · ' + formatBytes(blob.size); }; }
+    else media[media.tagName === 'VIDEO' ? 'onloadedmetadata' : 'onload'] = () => { const dims = dimensionsOf(media); if (dims) { if (item) item.dimensions = dims; facts.textContent = dims + ' · ' + formatBytes(blob.size); } };
     action(details, '下载原文件', () => download(blob, name));
     if (item) { const actions = node('div', null, details); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions); }
     viewer.querySelector('button').focus();
@@ -366,6 +368,7 @@
     folder: '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 6-6 4 4 3-3 5 5"/>',
     video: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m10 8 6 4-6 4Z"/>',
+    audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
     grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     search: '<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
@@ -393,8 +396,8 @@
       action(breadcrumbs, folder.name, () => { folderTrail = folderTrail.slice(0, index + 1); return refreshList(); }).className = 'nf-wh-crumb';
     });
     const visibleEntries = [...entries, ...pending];
-    const counts = { all: visibleEntries.filter(item => item.kind === 'file').length, image: 0, video: 0 };
-    visibleEntries.forEach(item => { if (item.kind === 'file') counts[/\.(mp4|webm|mov)$/i.test(item.name) ? 'video' : 'image']++; });
+    const counts = { all: visibleEntries.filter(item => item.kind === 'file').length, image: 0, video: 0, audio: 0 };
+    visibleEntries.forEach(item => { if (item.kind === 'file') counts[/\.(mp4|webm|mov)$/i.test(item.name) ? 'video' : AUDIO.test(item.name) ? 'audio' : 'image']++; });
     panel.querySelectorAll('[data-warehouse-filter]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.warehouseFilter === filter));
       button.querySelector('.nf-wh-count').textContent = counts[button.dataset.warehouseFilter];
@@ -403,12 +406,13 @@
     const items = visibleEntries.filter(item => {
       if (needle && !item.name.toLowerCase().includes(needle)) return false;
       if (item.kind === 'directory' || filter === 'all') return true;
-      return (filter === 'video') === /\.(mp4|webm|mov)$/i.test(item.name);
+      const type = /\.(mp4|webm|mov)$/i.test(item.name) ? 'video' : AUDIO.test(item.name) ? 'audio' : 'image';
+      return filter === type;
     }).sort((a, b) => (a.kind === 'directory' ? 0 : 1) - (b.kind === 'directory' ? 0 : 1) || (sort.value === 'newest' ? (b.modified || b.createdAt || 0) - (a.modified || a.createdAt || 0) : 0) || a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
     summary.textContent = items.length + ' 项' + (entries.length >= 1000 ? ' · 当前目录最多读取 1,000 项' : '');
     if (!items.length) {
       const empty = node('div', null, listing); empty.className = 'nf-wh-empty'; icon(directory ? 'image' : 'folder', empty);
-      const title = needle ? '没有找到匹配的文件' : filter === 'pending' ? '所有生成结果已保存' : !directory ? '把作品留在自己的电脑上' : permission !== 'granted' ? '恢复授权后继续浏览' : filter === 'all' ? '这个文件夹还没有作品' : '当前文件夹暂无' + (filter === 'video' ? '视频' : '图片');
+      const title = needle ? '没有找到匹配的文件' : filter === 'pending' ? '所有生成结果已保存' : !directory ? '把作品留在自己的电脑上' : permission !== 'granted' ? '恢复授权后继续浏览' : filter === 'all' ? '这个文件夹还没有作品' : '当前文件夹暂无' + (filter === 'video' ? '视频' : filter === 'audio' ? '音频' : '图片');
       node('h3', title, empty);
       node('p', needle ? '试试其他文件名，或清空搜索。' : filter === 'pending' ? '之后生成的新作品也会自动保存。' : !directory ? '连接一个本地文件夹，集中浏览生成的图片和视频。' : permission !== 'granted' ? '点击上方“恢复授权”，保留的生成结果会继续保存。' : '新生成的作品会自动出现在这里。旧作品需要选择原来的存储文件夹。', empty);
       if (!directory) action(empty, '选择本地文件夹', connect).className = 'nf-wh-primary';
@@ -425,20 +429,21 @@
       pumpThumbnails();
     }, { root: listing, rootMargin: '100px' });
     for (const item of items.slice(0, 200)) {
-      const folder = item.kind === 'directory', video = /\.(mp4|webm|mov)$/i.test(item.name);
+      const folder = item.kind === 'directory', video = /\.(mp4|webm|mov)$/i.test(item.name), audio = AUDIO.test(item.name);
       const wrapper = node('div', null, listing); wrapper.className = 'nf-wh-asset-wrap';
       const card = action(wrapper, '', async () => {
         if (folder) { folderTrail.push(item.handle); await refreshList(); }
         else showPreview(item.blob || await item.handle.getFile(), item.name, item);
       });
       card.className = 'nf-wh-asset'; card.title = item.name; card.setAttribute('aria-label', (folder ? '打开文件夹 ' : '预览 ') + item.name);
-      const thumb = node('div', null, card); thumb.className = 'nf-wh-thumb' + (folder ? ' nf-wh-folder' : ''); icon(folder ? 'folder' : video ? 'video' : 'image', thumb);
+      const thumb = node('div', null, card); thumb.className = 'nf-wh-thumb' + (folder ? ' nf-wh-folder' : ''); icon(folder ? 'folder' : video ? 'video' : audio ? 'audio' : 'image', thumb);
       const typeLabel = item.pending ? '待保存' : item.name.split('.').pop().toUpperCase();
       const type = folder ? null : node('span', item.dimensions ? typeLabel + ' · ' + item.dimensions : typeLabel, thumb); if (type) type.className = 'nf-wh-type';
       const info = node('div', null, card); info.className = 'nf-wh-asset-info'; node('strong', item.name, info);
       const metaText = folder ? '文件夹' : item.pending ? formatBytes(item.blob.size) + ' · 等待保存' : formatBytes(item.size) + ' · ' + new Date(item.modified).toLocaleDateString('zh-CN');
       node('span', metaText, info);
       if (folder) continue;
+      if (audio) { const actions = node('div', null, wrapper); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions); continue; }
       const actions = node('div', null, wrapper); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions);
       const load = async () => {
         try {
@@ -591,7 +596,7 @@
       const body = node('div', null, card); body.className = 'nf-wh-body';
       const sidebar = node('nav', null, body); sidebar.className = 'nf-wh-sidebar'; sidebar.setAttribute('aria-label', '仓库分类');
       node('p', '作品库', sidebar).className = 'nf-wh-eyebrow';
-      for (const [key, label, symbol] of [['all', '全部作品', 'grid'], ['image', '图片', 'image'], ['video', '视频', 'video']]) {
+      for (const [key, label, symbol] of [['all', '全部作品', 'grid'], ['image', '图片', 'image'], ['video', '视频', 'video'], ['audio', '音频', 'audio']]) {
         const button = action(sidebar, '', () => { filter = key; renderList(); }); button.className = 'nf-wh-nav'; button.dataset.warehouseFilter = key; icon(symbol, button); node('span', label, button); node('span', '0', button).className = 'nf-wh-count';
       }
       const folderInfo = node('div', null, sidebar); folderInfo.className = 'nf-wh-folder-info';

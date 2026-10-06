@@ -17,7 +17,7 @@ import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
 import { createTunnel } from './tunnel.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { videoRuntimeUrl } from './runtime-services.mjs';
-import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comfy/workflow-runner.mjs';
+import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength, audioGraphExtras } from './comfy/workflow-runner.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy, detectQwenImage21 } from './models/model-manager.mjs';
@@ -690,6 +690,7 @@ export function createWorker(options) {
       if (req?.kind === 'video') {
         extra.length = videoFrameLength(parameters.duration_seconds, parameters.fps);
       }
+      if (req?.kind === 'audio') Object.assign(extra, audioGraphExtras(task.task_type, parameters));
       graph = buildGraph(template, parameters, extra);
       seed = resolvedSeed(template, graph);
     }
@@ -745,11 +746,12 @@ export function createWorker(options) {
       const info = await stat(join(outDir, safeName));
       outputs.push({
         name: safeName,
-        kind: /\.(mp4|webm)$/i.test(ext) ? 'video' : 'image',
+        kind: /\.(mp4|webm)$/i.test(ext) ? 'video' : /\.(wav|flac|mp3|ogg)$/i.test(ext) ? 'audio' : 'image',
         bytes: info.size,
         width: Number(parameters.width) || 0,
         height: Number(parameters.height) || 0,
-        duration_seconds: req?.kind === 'video' ? Number(parameters.duration_seconds) || 0 : 0
+        duration_seconds: req?.kind === 'video' || req?.kind === 'audio' ? Number(parameters.duration_seconds) || 0 : 0,
+        ...(item.caption ? { caption: item.caption } : {})
       });
     }
 

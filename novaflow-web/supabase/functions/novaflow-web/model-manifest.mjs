@@ -128,6 +128,43 @@ export const MODEL_MANIFEST = Object.freeze([
       mode: 'import_or_configured_url',
       hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
     }
+  },
+  {
+    // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.
+    // Open weights, community licence; the panel never names it.
+    model_id: 'audio-music',
+    display_name: '音频生成 (音乐)',
+    version: '3.0',
+    runtime: 'image',
+    min_vram_mb: 8000,
+    compatible_workflows: ['audio_music.json'],
+    required_files: [
+      { path: 'checkpoints/stable_audio_3_medium.safetensors', min_bytes: 9_000_000_000, sha256: null },
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
+      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+    }
+  },
+  {
+    // 音频 · 音效. The small effects checkpoint shares the text encoder above.
+    model_id: 'audio-sfx',
+    display_name: '音频生成 (音效)',
+    version: '3.0',
+    runtime: 'image',
+    min_vram_mb: 4000,
+    compatible_workflows: ['audio_sfx.json'],
+    required_files: [
+      { path: 'checkpoints/stable_audio_3_small_sfx.safetensors', min_bytes: 1_300_000_000, sha256: null },
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
+      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+    }
   }
 ]);
 

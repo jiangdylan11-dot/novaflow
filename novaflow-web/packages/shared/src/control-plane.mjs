@@ -28,6 +28,8 @@ import {
   HEARTBEAT_TIMEOUT_SECONDS,
   ASSIGN_TIMEOUT_SECONDS,
   PROCESSING_TIMEOUT_SECONDS,
+  AUDIO_LIMITS,
+  TASK_TYPE,
   MATTING_TASK_TYPE,
   PROMPT_ASSISTANT_ACTIONS,
   PROMPT_ASSISTANT_REQUEST_FILE,
@@ -182,6 +184,26 @@ export function validateTaskParameters(taskType, raw) {
       throw bad('a prompt assistant task carries its request as ' + PROMPT_ASSISTANT_REQUEST_FILE);
     }
     return { action, references: cleanRefs };
+  }
+
+  // 音频: an English caption the panel composed, a length, and for music the
+  // loop settings. No reference files, no size.
+  if (req.kind === 'audio') {
+    if (!prompt) throw bad('an audio task needs a description');
+    const music = taskType === TASK_TYPE.AUDIO_MUSIC;
+    const limits = music ? AUDIO_LIMITS.music : AUDIO_LIMITS.sfx;
+    const duration = Math.min(limits.maxSeconds, Math.max(limits.minSeconds, Number(input.duration_seconds) || limits.defaultSeconds));
+    return {
+      prompt,
+      negative_prompt: negative,
+      seed,
+      duration_seconds: Math.round(duration * 10) / 10,
+      loop: music && input.loop !== false,
+      reprompt: input.reprompt !== false,
+      bpm: music ? clampInt(input.bpm, 0, 300, 0) : 0,
+      crossfade_ms: music ? clampInt(input.crossfade_ms, AUDIO_LIMITS.minCrossfadeMs, AUDIO_LIMITS.maxCrossfadeMs, AUDIO_LIMITS.defaultCrossfadeMs) : 0,
+      references: []
+    };
   }
 
   if (req.kind === 'video') {

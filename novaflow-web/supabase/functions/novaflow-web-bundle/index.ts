@@ -151,14 +151,28 @@ const GRANT_DOWNLOAD_TTL_SECONDS = 3600; // 1 h result playback window
 const TASK_TYPE = Object.freeze({
   QWEN_T2I: 'qwen_t2i',
   QWEN_EDIT: 'qwen2511_edit',
-  H3_I2V: 'h3_i2v'
+  H3_I2V: 'h3_i2v',
+  // 音频: game background music (looped) and sound effects, text to audio.
+  AUDIO_MUSIC: 'audio_music',
+  AUDIO_SFX: 'audio_sfx'
 });
 
 const TASK_TYPE_WORKFLOW = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: 'qwen_t2i.json',
   [TASK_TYPE.QWEN_EDIT]: 'qwen2511_edit.json',
-  [TASK_TYPE.H3_I2V]: 'h3_i2v.json'
+  [TASK_TYPE.H3_I2V]: 'h3_i2v.json',
+  [TASK_TYPE.AUDIO_MUSIC]: 'audio_music.json',
+  [TASK_TYPE.AUDIO_SFX]: 'audio_sfx.json'
 });
+
+// 音频 limits, shared by the validator, the worker and the panel.
+const AUDIO_LIMITS = Object.freeze({
+  music: { minSeconds: 8, maxSeconds: 300, defaultSeconds: 30 },
+  sfx: { minSeconds: 1, maxSeconds: 30, defaultSeconds: 2 },
+  minCrossfadeMs: 100, maxCrossfadeMs: 4000, defaultCrossfadeMs: 800
+});
+const AUDIO_MUSIC_MODEL_ID = 'audio-music';
+const AUDIO_SFX_MODEL_ID = 'audio-sfx';
 
 // Which model each task type needs, and the VRAM floor the scheduler enforces
 // before it hands the task to a worker.
@@ -198,6 +212,9 @@ const TASK_TYPE_REQUIREMENTS = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
+  // 音频 is light: the music model peaks under 7 GB, the effects model under 3 GB.
+  [TASK_TYPE.AUDIO_MUSIC]: { modelId: AUDIO_MUSIC_MODEL_ID, minVramMb: 8000, kind: 'audio', label: '音乐', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.AUDIO_SFX]: { modelId: AUDIO_SFX_MODEL_ID, minVramMb: 4000, kind: 'audio', label: '音效', billing: BILLING.SELF_HOSTED },
   // Matting is segmentation, not generation: BiRefNet runs at a fixed
   // 1024x1024 whatever the clip is, so the VRAM floor is far below the
   // generation types and a machine that cannot draw can still cut out.
@@ -227,7 +244,8 @@ function isKnownTaskType(taskType) {
 const TTL_SECONDS = Object.freeze({
   input: 24 * 3600,
   image: 72 * 3600,
-  video: 48 * 3600
+  video: 48 * 3600,
+  audio: 72 * 3600
 });
 
 // ---------------------------------------------------------------------------
@@ -990,6 +1008,43 @@ const MODEL_MANIFEST = Object.freeze([
       mode: 'import_or_configured_url',
       hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
     }
+  },
+  {
+    // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.
+    // Open weights, community licence; the panel never names it.
+    model_id: 'audio-music',
+    display_name: '音频生成 (音乐)',
+    version: '3.0',
+    runtime: 'image',
+    min_vram_mb: 8000,
+    compatible_workflows: ['audio_music.json'],
+    required_files: [
+      { path: 'checkpoints/stable_audio_3_medium.safetensors', min_bytes: 9_000_000_000, sha256: null },
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
+      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+    }
+  },
+  {
+    // 音频 · 音效. The small effects checkpoint shares the text encoder above.
+    model_id: 'audio-sfx',
+    display_name: '音频生成 (音效)',
+    version: '3.0',
+    runtime: 'image',
+    min_vram_mb: 4000,
+    compatible_workflows: ['audio_sfx.json'],
+    required_files: [
+      { path: 'checkpoints/stable_audio_3_small_sfx.safetensors', min_bytes: 1_300_000_000, sha256: null },
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
+      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+    }
   }
 ]);
 
@@ -1034,14 +1089,6 @@ function runtimeFor(modelId) {
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
 
-
-
-
-
-
-
-
-
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1070,8 +1117,6 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1079,8 +1124,6 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
-
-
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1160,6 +1203,26 @@ function validateTaskParameters(taskType, raw) {
     return { action, references: cleanRefs };
   }
 
+  // 音频: an English caption the panel composed, a length, and for music the
+  // loop settings. No reference files, no size.
+  if (req.kind === 'audio') {
+    if (!prompt) throw bad('an audio task needs a description');
+    const music = taskType === TASK_TYPE.AUDIO_MUSIC;
+    const limits = music ? AUDIO_LIMITS.music : AUDIO_LIMITS.sfx;
+    const duration = Math.min(limits.maxSeconds, Math.max(limits.minSeconds, Number(input.duration_seconds) || limits.defaultSeconds));
+    return {
+      prompt,
+      negative_prompt: negative,
+      seed,
+      duration_seconds: Math.round(duration * 10) / 10,
+      loop: music && input.loop !== false,
+      reprompt: input.reprompt !== false,
+      bpm: music ? clampInt(input.bpm, 0, 300, 0) : 0,
+      crossfade_ms: music ? clampInt(input.crossfade_ms, AUDIO_LIMITS.minCrossfadeMs, AUDIO_LIMITS.maxCrossfadeMs, AUDIO_LIMITS.defaultCrossfadeMs) : 0,
+      references: []
+    };
+  }
+
   if (req.kind === 'video') {
     const parameters = {
       prompt,
@@ -1187,7 +1250,6 @@ function validateTaskParameters(taskType, raw) {
     references: cleanRefs
   };
 }
-
 
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
