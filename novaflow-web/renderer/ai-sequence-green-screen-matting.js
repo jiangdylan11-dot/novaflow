@@ -905,7 +905,7 @@
       if (d <= 0 || d > band + 3 || toOutside[p] > band + 2) continue;
       let total = 0;
       for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) total += copy[p + oy * w + ox];
-      const a2 = Math.round(smooth(.22, .78, total / 9 / 255) * 255), a = alpha[p], i = p * 4;
+      const a2 = Math.round(smooth(.34, .66, total / 9 / 255) * 255), a = alpha[p], i = p * 4;
       if (a2 === a) continue;
       if (a2 === 0) { alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue; }
       if (a === 0) { const q = near.owner[p]; if (q >= 0) { out[i] = src[q * 4]; out[i + 1] = src[q * 4 + 1]; out[i + 2] = src[q * 4 + 2]; } }
