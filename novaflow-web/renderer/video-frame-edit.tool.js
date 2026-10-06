@@ -82,7 +82,6 @@
       .nf-vfe-cell[data-selected="1"]::after{border-color:${ACCENT}}
       .nf-vfe-cell[data-current="1"]{background:rgba(30,166,114,.34)}
       .nf-vfe-cell[data-current="1"]::after{border-color:#5fe0ad}
-      .nf-vfe-cell[data-dup="1"] span::after{content:" ·";color:${ACCENT}}
       [${PANEL_ATTR}="1"]{display:grid;gap:6px;padding:4px 10px 10px 10px;color:#d4d4d4;font-size:12px;font-weight:400}
       [${PANEL_ATTR}="1"] .nf-vfe-info{font-size:11px;color:#8d8d8d;line-height:1.5;padding:0 2px}
       [${PANEL_ATTR}="1"] .nf-vfe-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
@@ -285,11 +284,13 @@
           canvas.getContext('2d').drawImage(thumb, 0, 0)
         }
       }
-      cell.lastElementChild.textContent = String(position + 1)
+      // The label is the source frame's number: a mirrored or moved frame keeps the
+      // number it had in the clip; the position is in the title and the readout.
+      cell.lastElementChild.textContent = String(source + 1)
       cell.setAttribute('data-selected', model.isSelected(position) ? '1' : '0')
       cell.setAttribute('data-current', position === state.current ? '1' : '0')
       cell.setAttribute('data-dup', seen.get(source) > 1 ? '1' : '0')
-      cell.title = `第 ${position + 1} 帧（源帧 ${source + 1}）`
+      cell.title = `第 ${position + 1} 帧 · 原帧 ${source + 1}`
     }
   }
   function renderPanel() {
