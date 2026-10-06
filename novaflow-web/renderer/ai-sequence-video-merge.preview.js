@@ -351,7 +351,31 @@
         layerContext.drawImage(maskCanvas, -geometry.sourceWidth / 2, -geometry.sourceHeight / 2, geometry.sourceWidth, geometry.sourceHeight)
       }
       layerContext.restore()
+      if (layer.source.probe?.hasAlpha) clampAlphaFloor(layerContext, offscreen, geometry, stage)
       context.drawImage(offscreen, 0, 0)
+    }
+
+    // A WebM alpha plane is lossy: files saved before the encoder cap carry a
+    // flat alpha of 1-3 across the transparent background on the frames after
+    // a keyframe. Export already floors that; do the same here so the preview
+    // shows what exports.
+    function clampAlphaFloor(layerContext, offscreen, geometry, stage) {
+      const scale = stage.scale * geometry.layerScale
+      const w = Math.ceil(geometry.sourceWidth * scale) + 2
+      const h = Math.ceil(geometry.sourceHeight * scale) + 2
+      const x = Math.max(0, Math.floor(stage.originX + geometry.centerX * stage.scale - w / 2))
+      const y = Math.max(0, Math.floor(stage.originY + geometry.centerY * stage.scale - h / 2))
+      const cw = Math.min(w, offscreen.width - x)
+      const ch = Math.min(h, offscreen.height - y)
+      if (cw <= 0 || ch <= 0) return
+      let image
+      try { image = layerContext.getImageData(x, y, cw, ch) } catch (_) { return }
+      const data = image.data
+      let touched = false
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0 && data[i] < 4) { data[i] = data[i - 1] = data[i - 2] = data[i - 3] = 0; touched = true }
+      }
+      if (touched) layerContext.putImageData(image, x, y)
     }
 
     function drawSelection(state, stage) {
