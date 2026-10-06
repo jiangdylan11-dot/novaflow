@@ -47,10 +47,10 @@ const codec = {
 };
 const decodeWebp = (bytes) => codec.decode(bytes);
 
-function boot() {
+function boot(webpCodec = codec) {
   const sandbox = {
     console, atob, Blob, Response, CompressionStream, DecompressionStream, URL,
-    electronAPI: {}, NovaFlowWebWebpCodec: codec
+    electronAPI: {}, NovaFlowWebWebpCodec: webpCodec
   };
   sandbox.window = sandbox;
   runInContext(source, createContext(sandbox));
@@ -194,7 +194,7 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
     if (pmaRaw[i + 3] === 0) spill = Math.max(spill, back.data[i], back.data[i + 1], back.data[i + 2]);
   }
   equal(alphaMismatch, 0, 'every alpha sample of the PMA page survives');
-  ok(spill <= 32, 'no transparent pixel rises more than 32 above black (got ' + spill + ')');
+  ok(spill <= 48, 'no transparent pixel rises more than 48 above black (got ' + spill + ')');
   ok(result.atlases[0].text.includes('pma: true'), 'the atlas keeps pma: true');
   ok(!result.warnings.some((w) => /无损/.test(w)), 'and nothing warns about lossless: ' + JSON.stringify(result.warnings));
 
@@ -203,11 +203,42 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
   equal(Buffer.compare(Buffer.from((await decodeWebp(lossless.images[0].bytes)).data), Buffer.from(pmaRaw)), 0, 'every RGBA byte survives the lossless page');
   ok(page.size < lossless.images[0].size, 'the lossy PMA page is smaller than the lossless one');
 
-  // A page declared PMA but carrying colour above its alpha is kept, with a warning.
+  // A page declared PMA but carrying colour above its alpha still goes lossy, with a warning.
   const over = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(straightPng)], options: { preset: 'compact' } });
   equal(over.ok, true, 'a mis-declared page still converts');
   ok(over.warnings.some((w) => /超出 Alpha/.test(w)), 'with a warning about colour above alpha: ' + JSON.stringify(over.warnings));
-  equal(over.images[0].encoding, 'pma-lossless', 'and goes lossless');
+  equal([over.images[0].encoding, over.images[0].quality], ['pma-compatible', 80], 'and is never written lossless');
+}
+
+// ------------------------------------------------ the PMA ladder
+{
+  // A codec whose lossy output lifts one transparent pixel by (135 - quality):
+  // Q80 (55) and Q85 (50) are over the limit, Q90 (45) is the first under it.
+  const spilling = {
+    ...codec,
+    encode: async (rgba, width, height, options) => {
+      if (options.lossless) return codec.encode(rgba, width, height, options);
+      const out = await codec.encode(rgba, width, height, options);
+      return Uint8Array.from([...out, 0xee, options.quality]); // tag, read back by decode below
+    },
+    decode: async (bytes) => {
+      const tagged = bytes[bytes.length - 2] === 0xee;
+      const image = await codec.decode(tagged ? bytes.subarray(0, bytes.length - 2) : bytes);
+      if (tagged) for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] === 0) { image.data[i] = 135 - bytes[bytes.length - 1]; break; }
+      return image;
+    }
+  };
+  const api = boot(spilling);
+  const climbed = await api.convertSpineAtlasWebp({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng)], options: { preset: 'compact' } });
+  equal(climbed.ok, true, 'the ladder converts: ' + climbed.error);
+  equal([climbed.images[0].encoding, climbed.images[0].quality, climbed.images[0].transparentRgbVerified], ['pma-compatible', 90, true], 'Q80 and Q85 spill past 48, Q90 (spill 45) ships');
+  ok(climbed.warnings.some((w) => /Q80.*Q90/.test(w)), 'and the warning names both: ' + JSON.stringify(climbed.warnings));
+
+  // Nothing passes: the cleanest attempt ships, never lossless.
+  const hopeless = { ...spilling, decode: async (bytes) => { const image = await spilling.decode(bytes); if (bytes[bytes.length - 2] === 0xee) for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] === 0) { image.data[i] = 200 - bytes[bytes.length - 1]; break; } return image; } };
+  const kept = await boot(hopeless).convertSpineAtlasWebp({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng)], options: { preset: 'compact' } });
+  equal([kept.images[0].encoding, kept.images[0].quality, kept.images[0].transparentRgbVerified], ['pma-compatible', 95, false], 'all four spill; Q95 (the lowest) ships and says the margin is unverified');
+  ok(kept.warnings.some((w) => /残留最低的 Q95/.test(w)), 'with a warning: ' + JSON.stringify(kept.warnings));
 }
 
 // ------------------------------------------------ legacy atlas, unmarked pages, auto
@@ -269,7 +300,7 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
   const indices = new Uint8Array(SIZE * SIZE);
   for (let i = 0; i < indices.length; i += 1) indices[i] = i % 3;
   const palettePng = makePng({ width: SIZE, height: SIZE, colorType: 3, raw: indices, extra: [['PLTE', palette], ['tRNS', trns]] });
-  const result = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(palettePng, { alphaMode: 'auto' })], options: { preset: 'compact' } });
+  const result = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(palettePng, { alphaMode: 'auto' })], options: { lossless: true } }); // lossless: this checks the PNG decoder, byte for byte
   equal(result.ok, true, 'a palette PNG converts: ' + result.error);
   const back = await decodeWebp(result.images[0].bytes);
   const expected = new Uint8Array(SIZE * SIZE * 4);
@@ -283,7 +314,7 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
   const ga16 = new Uint8Array(SIZE * SIZE * 4);
   for (let i = 0; i < SIZE * SIZE; i += 1) { ga16[i * 4] = i % 256; ga16[i * 4 + 1] = 0x7f; ga16[i * 4 + 2] = 255 - (i % 256); ga16[i * 4 + 3] = 0x01; }
   const gaPng = makePng({ width: SIZE, height: SIZE, colorType: 4, bitDepth: 16, raw: ga16 });
-  const grey = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(gaPng, { alphaMode: 'auto' })], options: { preset: 'compact' } });
+  const grey = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(gaPng, { alphaMode: 'auto' })], options: { lossless: true } });
   equal(grey.ok, true, 'a 16-bit grey+alpha PNG converts: ' + grey.error);
   const greyBack = await decodeWebp(grey.images[0].bytes);
   let greyOk = true;
@@ -338,11 +369,12 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
 // ------------------------------------------------ a shipped atlas page, end to end
 {
   const png = await readFile(new URL('../../renderer/templates/vfx/slash_basic_builtin/source/frame_001.png', import.meta.url));
-  const atlas = '\nframe_001.png\nsize: 8,8\nfilter: Linear,Linear\npma: true\nslash\n  bounds: 0,0,8,8\n';
-  const result = await convert({ atlases: [{ fileName: 'slash.atlas', text: atlas }], images: [{ fileName: 'frame_001.png', bytes: Array.from(png), outputFormat: 'webp', alphaMode: 'pma' }], options: { preset: 'compact' } });
+  // The frame is a straight-alpha PNG (colour under its margin), so it is declared so.
+  const atlas = '\nframe_001.png\nsize: 8,8\nfilter: Linear,Linear\npma: false\nslash\n  bounds: 0,0,8,8\n';
+  const result = await convert({ atlases: [{ fileName: 'slash.atlas', text: atlas }], images: [{ fileName: 'frame_001.png', bytes: Array.from(png), outputFormat: 'webp', alphaMode: 'straight' }], options: { preset: 'compact' } });
   equal(result.ok, true, 'a shipped template frame converts: ' + result.error);
-  equal(result.images[0].rgbaVerified, true, 'and was read back byte for byte');
-  ok(result.images[0].size < png.length, 'the lossless WebP is smaller than the PNG (' + result.images[0].size + ' < ' + png.length + ')');
+  equal([result.images[0].encoding, result.images[0].quality, result.images[0].alphaVerified], ['spine', 80, true], 'lossy at Q80, alpha read back and checked');
+  ok(result.images[0].size < png.length, 'the WebP is smaller than the PNG (' + result.images[0].size + ' < ' + png.length + ')');
 }
 
 console.log(checks + ' passed, 0 failed: SPINE 图集转换 converts atlas pages to WebP/JPG in the browser');

@@ -2466,10 +2466,11 @@
   //
   // A PMA page is lossy too, encoded with libwebp's `exact` flag so the
   // transparent margin stays black (pmaLossyOptions). The page is read back:
-  // alpha must match byte for byte and no transparent pixel may rise more
-  // than PMA_TRANSPARENT_LIMIT above black; otherwise, or when the page is
-  // not really premultiplied, it falls back to lossless. docs/LIMITATIONS.md
-  // records the numbers.
+  // alpha must match byte for byte, and while a transparent pixel rises more
+  // than PMA_TRANSPARENT_LIMIT above black the quality climbs
+  // PMA_QUALITY_LADDER; the cleanest attempt ships if none passes. A PMA page
+  // never goes lossless (only options.lossless asks for that).
+  // docs/LIMITATIONS.md records the numbers.
   // ---------------------------------------------------------------------------
   // vendor/ sits next to this script; index.html loads it as ./novaflow-web-capabilities.js.
   const scriptBase = (() => {
@@ -2912,9 +2913,14 @@
     // margin black and only VP8 ringing remains - a few levels, on isolated
     // edge pixels, read back and bounded by PMA_TRANSPARENT_LIMIT.
     const pmaLossyOptions = (quality) => Object.assign({}, lossyOptions(quality), { exact: 1 });
-    // Measured on the 木乃伊 atlas: Q80 peaks at 24, Q90 at 15, mean ~2; the
-    // fringe this guards against was 190+. Above the limit the page goes lossless.
-    const PMA_TRANSPARENT_LIMIT = 32;
+    // The fringe this guards against measured 190+ levels over whole blocks.
+    // What exact lossy leaves is single pixels and one-pixel seams next to a
+    // bright edge: 木乃伊 peaks at 24 (Q80), 金鏟鏟 at 37 (and still 29 at
+    // Q100 - the peak barely follows quality), both invisible even at 6x.
+    // Above the limit the page climbs the ladder; it never goes lossless, the
+    // user's rule: 永远不能触发无损，自动到最合理的档，必须没有白色杂边.
+    const PMA_TRANSPARENT_LIMIT = 48;
+    const PMA_QUALITY_LADDER = [80, 85, 90, 95];
     // Exact: every RGBA byte kept, transparent pixels included. Method 4 came
     // out within a kilobyte of method 6 on real atlases at a fifth of the time.
     const LOSSLESS_OPTIONS = Object.assign({}, WEBP_DEFAULT_OPTIONS, { lossless: 1, exact: 1, quality: 100, method: 4 });
@@ -3324,14 +3330,18 @@
             alphaQuality = 100;
             alphaVerified = true;
           } else {
-            let pmaLossy = false;
+            let pmaLossy = null;
             if (image.pma === true && encodeOptions.mode !== 'lossless') {
               const over = countOverAlpha(rgba);
-              if (over) {
-                warnings.push(image.sourceName + '：原图含超出 Alpha 的颜色（' + over + ' 像素），按无损保留');
-              } else {
-                // PMA, lossy: exact keeps the margin black; read back and bound the ringing.
-                const candidate = await codec.encode(rgba, width, height, pmaLossyOptions(encodeOptions.quality));
+              if (over) warnings.push(image.sourceName + '：原图含超出 Alpha 的颜色（' + over + ' 像素），不是预乘图，预乘项目里可能有杂边');
+              // PMA, lossy: exact keeps the margin black; read back and bound the
+              // ringing. Climb the ladder while the margin is over the limit, and
+              // keep the cleanest attempt if none passes - never lossless. A page
+              // with colour under its margin carries that colour whatever the
+              // quality, so it does not climb.
+              const ladder = [encodeOptions.quality].concat(over ? [] : PMA_QUALITY_LADDER.filter((q) => q > encodeOptions.quality));
+              for (const q of ladder) {
+                const candidate = await codec.encode(rgba, width, height, pmaLossyOptions(q));
                 if (!hasWebpSignature(candidate)) throw new Error(image.sourceName + '：WebP 输出无效');
                 const back = await codec.decode(candidate);
                 assertSameShape(image, back, width, height);
@@ -3340,20 +3350,24 @@
                   if (rgba[i + 3] !== back.data[i + 3]) throw new Error(image.sourceName + '：WebP Alpha 校验失败');
                   if (rgba[i + 3] === 0) spill = Math.max(spill, back.data[i], back.data[i + 1], back.data[i + 2]);
                 }
-                if (spill <= PMA_TRANSPARENT_LIMIT) {
-                  data = candidate;
-                  pmaLossy = true;
-                } else {
-                  warnings.push(image.sourceName + '：有损压缩后透明区残留 ' + spill + ' 级，超过 ' + PMA_TRANSPARENT_LIMIT + '，已回退无损；体积可能较大');
-                }
+                if (!pmaLossy || spill < pmaLossy.spill) pmaLossy = { data: candidate, quality: q, spill };
+                if (spill <= PMA_TRANSPARENT_LIMIT) break;
+              }
+              if (pmaLossy.quality !== ladder[0]) {
+                warnings.push(image.sourceName + (pmaLossy.spill <= PMA_TRANSPARENT_LIMIT
+                  ? '：Q' + ladder[0] + ' 透明区残留超过 ' + PMA_TRANSPARENT_LIMIT + '，已改用 Q' + pmaLossy.quality + ' 并通过校验'
+                  : '：各档位透明区残留均超过 ' + PMA_TRANSPARENT_LIMIT + '，已取残留最低的 Q' + pmaLossy.quality + '（' + pmaLossy.spill + ' 级）'));
+              } else if (pmaLossy.spill > PMA_TRANSPARENT_LIMIT) {
+                warnings.push(image.sourceName + '：各档位透明区残留均超过 ' + PMA_TRANSPARENT_LIMIT + '，已取残留最低的 Q' + pmaLossy.quality + '（' + pmaLossy.spill + ' 级）');
               }
             }
             if (pmaLossy) {
+              data = pmaLossy.data;
               encoding = 'pma-compatible';
-              quality = encodeOptions.quality;
+              quality = pmaLossy.quality;
               alphaQuality = 100;
               alphaVerified = true;
-              transparentRgbVerified = true;
+              transparentRgbVerified = pmaLossy.spill <= PMA_TRANSPARENT_LIMIT;
             } else {
               // Unmarked, asked for lossless, or PMA that failed its check: every byte kept and read back.
               data = await codec.encode(rgba, width, height, LOSSLESS_OPTIONS);
