@@ -790,9 +790,9 @@
     const near = nearestSeeds(inner, w, h);
     // Distance to the outside of the subject mask: the band hugs the contour,
     // so interior detail (glowing eyes, patterns) is never in it.
-    const outside = new Uint8Array(n), inside = new Uint8Array(n);
-    for (let p = 0; p < n; p++) { if (mask[p] < 128) outside[p] = 1; else inside[p] = 1; }
-    const toOutside = nearestSeeds(outside, w, h).distance, toInside = nearestSeeds(inside, w, h).distance;
+    const outside = new Uint8Array(n);
+    for (let p = 0; p < n; p++) if (mask[p] < 128) outside[p] = 1;
+    const toOutside = nearestSeeds(outside, w, h).distance;
     // Integral images of interior colour, for a small local reference window.
     const stride = w + 1, sum = [new Float64Array(stride * (h + 1)), new Float64Array(stride * (h + 1)), new Float64Array(stride * (h + 1))], cnt = new Float64Array(stride * (h + 1));
     for (let y = 0; y < h; y++) {
@@ -835,10 +835,8 @@
       // Faint pixels outside the mask whose source is the screen with a little
       // non-key lift (ringing), or with foreground colour bled into it: neither
       // is content, and a shadow never lifts the non-key channels.
-      // Pixels hugging the mask are the contour's own anti-aliasing: they are
-      // recoloured below, never dropped. Only faint pixels further out go.
       const bleed = Math.max(src[i + c0] / 255 - B[c0], src[i + c1] / 255 - B[c1]) >= .12;
-      if (mask[p] < 24 && a < 110 && toInside[p] >= (bleed ? 3 : 2) && (bleed || src[i + key] >= B[key] * 255 * .88) && lightSupport(x, y) < .5) {
+      if (mask[p] < 24 && ((a < 110 && src[i + key] >= B[key] * 255 * .88) || (a < 160 && bleed)) && lightSupport(x, y) < .5) {
         alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
       }
       if (d > band + 3 || toOutside[p] > band + 2) continue;
@@ -846,7 +844,7 @@
       if (a === 255 && mask[p] >= 250 && srcCast(p) <= -.02) continue;
       // Screen noise: faint pixel outside the mask whose source is the screen itself.
       const srcDist = Math.max(Math.abs(src[i] / 255 - B[0]), Math.abs(src[i + 1] / 255 - B[1]), Math.abs(src[i + 2] / 255 - B[2]));
-      if (mask[p] < 8 && toInside[p] >= 2 && a < 20 && srcDist < .07) {
+      if (mask[p] < 8 && a < 20 && srcDist < .07) {
         alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
       }
       // Reference colour: the interior right behind this edge pixel (3x3 around
