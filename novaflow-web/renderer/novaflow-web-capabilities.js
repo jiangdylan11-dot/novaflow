@@ -973,7 +973,9 @@
       } else {
         args.push('-vf', scale + ',format=' + pixelFormat,
           '-c:v', 'libvpx', '-pix_fmt', pixelFormat, '-auto-alt-ref', '0', '-deadline', 'good', '-cpu-used', '4',
-          '-crf', '10', '-b:v', kbps + 'k');
+          // qmax 8: with crf 10 alone the VP8 alpha plane came back as a flat 1-2
+          // across the transparent background on the frames after a keyframe.
+          '-crf', '8', '-qmin', '0', '-qmax', '8', '-b:v', kbps + 'k');
       }
       // Chromium seeks the colour and auxiliary VP8 alpha streams separately.
       // Inter-frame alpha references can then be missing even though linear
@@ -1479,7 +1481,7 @@
         ? stack.find((layer) => String(layer.layerId) === String(manifest.audio.sourceLayerId) && layer.source.probe.hasAudio)
         : null;
       const encode = format === 'webm'
-        ? ['-c:v', 'libvpx', '-crf', '10', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', pixelFormat, '-auto-alt-ref', '0', '-g', '1', '-metadata:s:v:0', 'alpha_mode=1']
+        ? ['-c:v', 'libvpx', '-crf', '8', '-qmin', '0', '-qmax', '8', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', pixelFormat, '-auto-alt-ref', '0', '-g', '1', '-metadata:s:v:0', 'alpha_mode=1']
         : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
       const run = async (withAudio) => {
         const full = args.slice();
