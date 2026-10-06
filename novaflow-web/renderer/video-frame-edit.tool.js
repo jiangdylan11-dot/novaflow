@@ -328,7 +328,6 @@
     const count = model.selection.length
     els.info.textContent = `${model.length} 帧 · ${state.fps || '?'} fps · ${state.width}×${state.height}${state.alpha ? ' · 透明' : ''}${count ? ` · 选中 ${count} 帧` : ''}`
     els.buttons.undo.disabled = !model.canUndo
-    els.buttons.redo.disabled = !model.canRedo
     els.buttons.reset.disabled = !model.dirty
     els.buttons.remove.disabled = !count || count >= model.length
     els.buttons.duplicate.disabled = !count
@@ -395,6 +394,15 @@
     state.playTimer = window.setTimeout(tick, interval)
   }
 
+  // 上一帧 / 下一帧 (the bar's side buttons, A / D): the current frame moves by one and
+  // becomes the single selection.
+  function stepFrame(offset) {
+    if (!state.model) return
+    stopPlayback()
+    setCurrent(state.current + offset, 'single')
+    scrollCurrentIntoView()
+  }
+
   const ICON_PLAY = '<svg viewBox="0 0 12 12" fill="currentColor"><path d="M2.5 1.5v9l8-4.5z"/></svg>'
   const ICON_PAUSE = '<svg viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="1.5" width="3" height="9"/><rect x="7" y="1.5" width="3" height="9"/></svg>'
   const ICON_PREV = '<svg viewBox="0 0 12 12" fill="currentColor"><path d="M8.5 1.5v9l-6-4.5z"/></svg>'
@@ -411,18 +419,18 @@
     overlay.innerHTML = `
       <div class="nf-vfe-stage"><canvas></canvas></div>
       <div class="nf-vfe-bar">
-        <button type="button" data-act="first" title="第一帧">${ICON_PREV}</button>
+        <button type="button" data-act="prev" title="上一帧（A）">${ICON_PREV}</button>
         <button type="button" data-act="play" title="播放 / 暂停">${ICON_PLAY}</button>
-        <button type="button" data-act="last" title="最后一帧">${ICON_NEXT}</button>
+        <button type="button" data-act="next" title="下一帧（D）">${ICON_NEXT}</button>
         <span class="nf-vfe-readout"></span>
         <span class="nf-vfe-meta"></span>
-        <span class="nf-vfe-meta">点选一帧，Shift 连选一段，Ctrl 加选</span>
+        <span class="nf-vfe-meta">点选一帧，Shift 连选一段，Ctrl 加选 · A / D 上一帧 下一帧 · ← / → 左移 右移</span>
       </div>
       <div class="nf-vfe-strip"></div>`
     document.body.appendChild(overlay)
     const strip = overlay.querySelector('.nf-vfe-strip')
-    overlay.querySelector('[data-act="first"]').addEventListener('click', () => { stopPlayback(); setCurrent(0); scrollCurrentIntoView() })
-    overlay.querySelector('[data-act="last"]').addEventListener('click', () => { stopPlayback(); setCurrent(state.model.length - 1); scrollCurrentIntoView() })
+    overlay.querySelector('[data-act="prev"]').addEventListener('click', () => stepFrame(-1))
+    overlay.querySelector('[data-act="next"]').addEventListener('click', () => stepFrame(1))
     overlay.querySelector('[data-act="play"]').addEventListener('click', togglePlayback)
     strip.addEventListener('pointerdown', (event) => {
       const cell = event.target instanceof Element ? event.target.closest('.nf-vfe-cell') : null
@@ -466,8 +474,7 @@
       <div class="nf-vfe-grid">
         ${button('remove', '删除')}${button('duplicate', '复制插帧')}
         ${button('left', '左移')}${button('right', '右移')}
-        ${button('mirror', '镜像')}${button('all', '全选')}
-        ${button('undo', '撤销')}${button('redo', '重做')}
+        ${button('mirror', '镜像')}${button('undo', '撤销')}
         ${button('reset', '还原')}
       </div>
       <button type="button" class="nf-vfe-apply" data-act="apply">生成新资源</button>
@@ -487,7 +494,7 @@
       info: panel.querySelector('.nf-vfe-info'),
       status: panel.querySelector('.nf-vfe-status'),
       apply: pick('apply'),
-      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), redo: pick('redo'), reset: pick('reset'), all: pick('all') }
+      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), reset: pick('reset') }
     }
   }
   function setStatus(message, tone) {
@@ -535,12 +542,10 @@
     if (ctrl && key.toLowerCase() === 'a') { handled(); runAction('all'); return }
     if (key === 'Delete' || key === 'Backspace') { handled(); runAction('remove'); return }
     if (key === ' ') { handled(); togglePlayback(); return }
-    if (key === 'ArrowLeft' || key === 'ArrowRight') {
-      handled()
-      stopPlayback()
-      setCurrent(state.current + (key === 'ArrowLeft' ? -1 : 1), event.shiftKey ? 'range' : 'single')
-      scrollCurrentIntoView()
-    }
+    if (!ctrl && (key === 'a' || key === 'A')) { handled(); stepFrame(-1); return }
+    if (!ctrl && (key === 'd' || key === 'D')) { handled(); stepFrame(1); return }
+    // The arrows move the selected frames, as the 左移 / 右移 buttons do.
+    if (key === 'ArrowLeft' || key === 'ArrowRight') { handled(); runAction(key === 'ArrowLeft' ? 'left' : 'right') }
   }
   window.addEventListener('keydown', onKeyDown, true)
 
@@ -623,7 +628,7 @@
       state.overlay = overlayEls.overlay
       state.panel = panelEls?.panel || null
       state.els = Object.assign({}, overlayEls, panelEls || { info: document.createElement('div'), status: document.createElement('div'), apply: document.createElement('button'), buttons: {} })
-      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, redo: {}, reset: {}, all: {} }
+      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, reset: {} }
       state.open = true
       state.lastRect = ''
       document.body.setAttribute(BODY_ATTR, '1')
