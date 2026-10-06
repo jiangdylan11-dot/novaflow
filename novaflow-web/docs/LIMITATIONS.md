@@ -156,7 +156,7 @@ Web 版顶栏隐藏了两处只有 Electron 才讲得通的东西：
 
 ---
 
-## SPINE 图集转换：WebP 在浏览器里编码，PMA 页面走无损
+## SPINE 图集转换：WebP 在浏览器里编码，PMA 页面有损 + exact
 
 工具 → SPINE 图集转换 在 Web 上由 `novaflow-web-capabilities.js` 回答
 `convertSpineAtlasWebp`：PNG 用上面那条自己的解码器读（不过 canvas），
@@ -166,14 +166,16 @@ WebP 用 `renderer/vendor/webp/` 里编译成 WebAssembly 的 libwebp
 Spine 3.x 页面不写 `pma:` 这些规则和桌面版 `main/spine-atlas-webp-converter.js`
 逐行一致，`tests/e2e/web-spine-atlas-webp.test.mjs` 用真实的 wasm 编码器验收。
 
-**和桌面版不同的一处：PMA 页面在 Web 上只做无损 WebP。** 桌面版的 PMA 兼容
-有损压缩是把 YUV 帧直接喂给 libwebp，并把全透明像素的亮度压到黑以下，让 VP8
-的振铃抬不回黑色以上；libwebp 的 RGBA 入口没有这个余量。用同一台机器上的图集实测，
-有损编码在任何档位都会让几万个全透明像素高出黑色 1～14 级——预乘混合下这是一圈
-亮边，桌面版正是为了把它压到零才做了那条 YUV 路径。所以 Web 上 PMA 页面按
-`exact` 无损写出、逐字节校验（状态显示「RGBA 已校验」，警告里说明），体积约为
-PNG 的一半；压缩档位对 PMA 页面不起作用。未预乘（Straight）页面按档位有损压缩，
-alpha 无损并核对；需要 PMA 有损压缩仍请用桌面版。
+**PMA 页面按 Q80 有损、开 `exact` 写出。** 预乘混合下全透明像素的 RGB 会直接
+加到画面上，而 libwebp 有损编码默认会把邻近颜色涂进透明区（木乃伊图集实测最高
+194 级）——这就是预乘项目里那圈白色杂边，Spine 自己直出的有损 WebP 也带着它。
+`exact` 让透明区保持纯黑，剩下的只有 VP8 振铃：Q80 最高 24 级、Q90 最高 15 级、
+平均约 2 级，只落在贴着边缘的零星像素上，叠在深色底上放大 16 倍才看得出。
+编码后解回来核对：alpha 必须逐字节相同，透明区残留超过 32 级就回退无损并在
+警告里说明；atlas 标了 PMA 但 RGB 高于 alpha（其实没预乘）的页面也走无损。
+同一张 2048×1883 的图：Spine 直出 924 KB（白边）、本工具 Q80 0.91 MB（无白边）、
+之前的无损 3.26 MB。面板不再提供压缩档位，网页版和启动助手都固定 Q80
+（`spine-atlas-webp.tool.js` 发 `preset: 'compact'`）。
 
 导出另存走 `showDirectoryPicker`：`pickDirectory` 现在按桌面版的形状回答
 （顶层 `{ canceled, dir }`），`writeBinaryFile` 收到那个 `dir` 就直接写进

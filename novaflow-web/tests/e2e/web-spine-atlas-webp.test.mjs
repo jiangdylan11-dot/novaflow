@@ -156,7 +156,7 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
   equal(result.images.length, 1, 'one page out');
   const page = result.images[0];
   equal([page.sourceName, page.fileName, page.format], ['fx.png', 'fx.webp', 'webp'], 'named like the desktop would');
-  equal([page.encoding, page.quality, page.alphaQuality], ['spine', 90, 100], '均衡 is Q90 with lossless alpha');
+  equal([page.encoding, page.quality, page.alphaQuality], ['spine', 80, 100], 'the panel\'s fixed setting is Q80 with lossless alpha');
   equal([page.alphaVerified, page.rgbaVerified, page.sourceAlphaMode, page.pma], [true, false, 'straight', false], 'alpha was read back and checked');
   ok(isWebp(page.bytes), 'the bytes are a WebP container');
   equal(page.size, page.bytes.length, 'size is the byte count');
@@ -180,27 +180,34 @@ const isWebp = (bytes) => bytes.length > 12 && Buffer.from(bytes.subarray(0, 4))
   ok(small.images[0].size <= clarity.images[0].size, '更小体积 is not larger than 画质优先');
 }
 
-// ------------------------------------------------ a PMA page, lossless
-let losslessSize = 0;
+// ------------------------------------------------ a PMA page, lossy with exact
 {
   const result = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng)], options: { preset: 'compact' } });
   equal(result.ok, true, 'a PMA page converts: ' + result.error);
   const page = result.images[0];
-  equal([page.encoding, page.quality, page.rgbaVerified, page.alphaVerified, page.transparentRgbVerified, page.pma, page.sourceAlphaMode], ['pma-lossless', null, true, true, true, true, 'pma'], 'a PMA page is written lossless and verified');
+  equal([page.encoding, page.quality, page.alphaQuality, page.rgbaVerified, page.alphaVerified, page.transparentRgbVerified, page.pma, page.sourceAlphaMode], ['pma-compatible', 80, 100, false, true, true, true, 'pma'], 'a PMA page is written lossy at Q80 and its margin verified');
   const back = await decodeWebp(page.bytes);
-  equal(Buffer.compare(Buffer.from(back.data), Buffer.from(pmaRaw)), 0, 'every RGBA byte of the PMA page survives');
+  let alphaMismatch = 0;
+  let spill = 0;
+  for (let i = 0; i < pmaRaw.length; i += 4) {
+    if (back.data[i + 3] !== pmaRaw[i + 3]) alphaMismatch += 1;
+    if (pmaRaw[i + 3] === 0) spill = Math.max(spill, back.data[i], back.data[i + 1], back.data[i + 2]);
+  }
+  equal(alphaMismatch, 0, 'every alpha sample of the PMA page survives');
+  ok(spill <= 32, 'no transparent pixel rises more than 32 above black (got ' + spill + ')');
   ok(result.atlases[0].text.includes('pma: true'), 'the atlas keeps pma: true');
-  ok(result.warnings.some((w) => /PMA/.test(w) && /无损/.test(w)), 'and the warnings say the page went lossless: ' + JSON.stringify(result.warnings));
-  losslessSize = page.size;
+  ok(!result.warnings.some((w) => /无损/.test(w)), 'and nothing warns about lossless: ' + JSON.stringify(result.warnings));
 
-  const lossyStraight = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng, { alphaMode: 'straight' })], options: { preset: 'small' } });
-  ok(lossyStraight.images[0].size < losslessSize, 'the lossy straight path is smaller than the lossless PMA path');
+  const lossless = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng)], options: { lossless: true } });
+  equal(lossless.images[0].encoding, 'pma-lossless', 'options.lossless still keeps a PMA page exact');
+  equal(Buffer.compare(Buffer.from((await decodeWebp(lossless.images[0].bytes)).data), Buffer.from(pmaRaw)), 0, 'every RGBA byte survives the lossless page');
+  ok(page.size < lossless.images[0].size, 'the lossy PMA page is smaller than the lossless one');
 
   // A page declared PMA but carrying colour above its alpha is kept, with a warning.
   const over = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(straightPng)], options: { preset: 'compact' } });
   equal(over.ok, true, 'a mis-declared page still converts');
   ok(over.warnings.some((w) => /超出 Alpha/.test(w)), 'with a warning about colour above alpha: ' + JSON.stringify(over.warnings));
-  equal(over.images[0].encoding, 'pma-lossless', 'and still lossless');
+  equal(over.images[0].encoding, 'pma-lossless', 'and goes lossless');
 }
 
 // ------------------------------------------------ legacy atlas, unmarked pages, auto
@@ -220,7 +227,7 @@ let losslessSize = 0;
   ok(!auto.atlases[0].text.includes('pma:'), 'auto never invents a flag');
 
   const autoMarked = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng, { alphaMode: 'auto' })], options: { preset: 'compact' } });
-  equal(autoMarked.images[0].encoding, 'pma-lossless', 'auto follows the atlas flag');
+  equal(autoMarked.images[0].encoding, 'pma-compatible', 'auto follows the atlas flag');
 
   const lossless = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(straightPng, { alphaMode: 'straight' })], options: { lossless: true } });
   equal(lossless.images[0].encoding, 'lossless', 'options.lossless asks for exact output of a straight page too');
@@ -231,9 +238,9 @@ let losslessSize = 0;
   jpegCalls.length = 0;
   const pma = await convert({ atlases: [{ fileName: 'fx.atlas', text: MODERN_ATLAS }], images: [image(pmaPng, { outputFormat: 'jpg' })], options: { preset: 'compact' } });
   equal(pma.ok, true, 'a PMA page becomes JPG: ' + pma.error);
-  equal([pma.images[0].fileName, pma.images[0].format, pma.images[0].encoding, pma.images[0].quality], ['fx.jpg', 'jpg', 'jpg', 90], 'named .jpg, at the preset quality');
+  equal([pma.images[0].fileName, pma.images[0].format, pma.images[0].encoding, pma.images[0].quality], ['fx.jpg', 'jpg', 'jpg', 80], 'named .jpg, at the preset quality');
   equal(jpegCalls.length, 1, 'the JPG encoder ran once');
-  equal([jpegCalls[0].width, jpegCalls[0].height, jpegCalls[0].quality], [SIZE, SIZE, 90], 'with the page size and quality');
+  equal([jpegCalls[0].width, jpegCalls[0].height, jpegCalls[0].quality], [SIZE, SIZE, 80], 'with the page size and quality');
   let rgbKept = true;
   for (let i = 0; i < pmaRaw.length; i += 4) {
     if (jpegCalls[0].rgb[i] !== pmaRaw[i] || jpegCalls[0].rgb[i + 1] !== pmaRaw[i + 1] || jpegCalls[0].rgb[i + 2] !== pmaRaw[i + 2] || jpegCalls[0].rgb[i + 3] !== 255) rgbKept = false;

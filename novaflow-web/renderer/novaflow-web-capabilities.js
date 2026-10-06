@@ -2464,14 +2464,12 @@
   //     exact path runs), inside a worker so the page keeps painting;
   //   - JPG has no transparency to protect, so it goes through a canvas.
   //
-  // What the browser does differently: a PMA page is written LOSSLESS. The
-  // desktop's PMA-compatible lossy encoder hands libwebp a YUV frame whose
-  // fully transparent pixels sit below black, so VP8 ringing cannot lift them
-  // above it; libwebp's RGBA entry has no such headroom, and every lossy
-  // encode measured here left thousands of transparent pixels a few levels
-  // above black - a fringe under premultiplied blending. Lossless keeps every
-  // byte, is checked byte for byte, and still lands at about half the PNG.
-  // The status and warnings say so, and docs/LIMITATIONS.md records it.
+  // A PMA page is lossy too, encoded with libwebp's `exact` flag so the
+  // transparent margin stays black (pmaLossyOptions). The page is read back:
+  // alpha must match byte for byte and no transparent pixel may rise more
+  // than PMA_TRANSPARENT_LIMIT above black; otherwise, or when the page is
+  // not really premultiplied, it falls back to lossless. docs/LIMITATIONS.md
+  // records the numbers.
   // ---------------------------------------------------------------------------
   // vendor/ sits next to this script; index.html loads it as ./novaflow-web-capabilities.js.
   const scriptBase = (() => {
@@ -2885,7 +2883,11 @@
 
   function installSpineAtlasWebp() {
     const WEBP_VENDOR_VERSION = '1.5.0';
-    const WEBP_PRESETS = { clarity: 95, compact: 90, small: 70 };
+    // The panel sends `compact`. Q80 puts a PMA page within a few percent of
+    // the lossy WebP Spine writes itself (924 KB vs 0.91 MB on the 2048x1883
+    // 木乃伊 atlas) - Spine's own file fringes under premultiplied blending,
+    // this one does not (see pmaLossyOptions).
+    const WEBP_PRESETS = { clarity: 95, compact: 80, small: 70 };
     const WEBP_MAX_DIMENSION = 16383;
     // struct WebPConfig, as @jsquash/webp/meta.js lists it. The encoder wants
     // every field present.
@@ -2903,6 +2905,16 @@
     const lossyOptions = (quality) => Object.assign({}, WEBP_DEFAULT_OPTIONS, {
       quality, method: 6, exact: 0, use_sharp_yuv: 1, alpha_quality: 100, alpha_compression: 1
     });
+    // Premultiplied alpha, lossy: the same encode with `exact` on. Under PMA
+    // blending a transparent pixel's RGB is ADDED to the frame, so the cleanup
+    // above (which paints neighbouring colours into the margin, up to ~190
+    // levels on a real atlas) is exactly the white fringe; `exact` keeps the
+    // margin black and only VP8 ringing remains - a few levels, on isolated
+    // edge pixels, read back and bounded by PMA_TRANSPARENT_LIMIT.
+    const pmaLossyOptions = (quality) => Object.assign({}, lossyOptions(quality), { exact: 1 });
+    // Measured on the 木乃伊 atlas: Q80 peaks at 24, Q90 at 15, mean ~2; the
+    // fringe this guards against was 190+. Above the limit the page goes lossless.
+    const PMA_TRANSPARENT_LIMIT = 32;
     // Exact: every RGBA byte kept, transparent pixels included. Method 4 came
     // out within a kilobyte of method 6 on real atlases at a fifth of the time.
     const LOSSLESS_OPTIONS = Object.assign({}, WEBP_DEFAULT_OPTIONS, { lossless: 1, exact: 1, quality: 100, method: 4 });
@@ -3312,24 +3324,51 @@
             alphaQuality = 100;
             alphaVerified = true;
           } else {
-            // PMA, unmarked, or asked for lossless: every byte kept and read back.
-            if (image.pma === true) {
+            let pmaLossy = false;
+            if (image.pma === true && encodeOptions.mode !== 'lossless') {
               const over = countOverAlpha(rgba);
-              if (over) warnings.push(image.sourceName + '：原图含超出 Alpha 的颜色（' + over + ' 像素），按无损保留');
+              if (over) {
+                warnings.push(image.sourceName + '：原图含超出 Alpha 的颜色（' + over + ' 像素），按无损保留');
+              } else {
+                // PMA, lossy: exact keeps the margin black; read back and bound the ringing.
+                const candidate = await codec.encode(rgba, width, height, pmaLossyOptions(encodeOptions.quality));
+                if (!hasWebpSignature(candidate)) throw new Error(image.sourceName + '：WebP 输出无效');
+                const back = await codec.decode(candidate);
+                assertSameShape(image, back, width, height);
+                let spill = 0;
+                for (let i = 0; i < rgba.length; i += 4) {
+                  if (rgba[i + 3] !== back.data[i + 3]) throw new Error(image.sourceName + '：WebP Alpha 校验失败');
+                  if (rgba[i + 3] === 0) spill = Math.max(spill, back.data[i], back.data[i + 1], back.data[i + 2]);
+                }
+                if (spill <= PMA_TRANSPARENT_LIMIT) {
+                  data = candidate;
+                  pmaLossy = true;
+                } else {
+                  warnings.push(image.sourceName + '：有损压缩后透明区残留 ' + spill + ' 级，超过 ' + PMA_TRANSPARENT_LIMIT + '，已回退无损；体积可能较大');
+                }
+              }
             }
-            data = await codec.encode(rgba, width, height, LOSSLESS_OPTIONS);
-            if (!hasWebpSignature(data)) throw new Error(image.sourceName + '：WebP 输出无效');
-            const back = await codec.decode(data);
-            assertSameShape(image, back, width, height);
-            for (let i = 0; i < rgba.length; i += 1) {
-              if (rgba[i] !== back.data[i]) throw new Error(image.sourceName + '：WebP RGBA 像素校验失败，未生成可导出结果');
+            if (pmaLossy) {
+              encoding = 'pma-compatible';
+              quality = encodeOptions.quality;
+              alphaQuality = 100;
+              alphaVerified = true;
+              transparentRgbVerified = true;
+            } else {
+              // Unmarked, asked for lossless, or PMA that failed its check: every byte kept and read back.
+              data = await codec.encode(rgba, width, height, LOSSLESS_OPTIONS);
+              if (!hasWebpSignature(data)) throw new Error(image.sourceName + '：WebP 输出无效');
+              const back = await codec.decode(data);
+              assertSameShape(image, back, width, height);
+              for (let i = 0; i < rgba.length; i += 1) {
+                if (rgba[i] !== back.data[i]) throw new Error(image.sourceName + '：WebP RGBA 像素校验失败，未生成可导出结果');
+              }
+              encoding = image.pma === true ? 'pma-lossless' : encodeOptions.mode === 'lossless' ? 'lossless' : 'rgba-lossless';
+              rgbaVerified = true;
+              alphaVerified = true;
+              transparentRgbVerified = true;
+              if (image.pma === null) warnings.push(image.sourceName + '：atlas 未标记原图 Alpha，已无损保留 RGBA；不改变预乘状态，体积可能较大');
             }
-            encoding = image.pma === true ? 'pma-lossless' : encodeOptions.mode === 'lossless' ? 'lossless' : 'rgba-lossless';
-            rgbaVerified = true;
-            alphaVerified = true;
-            transparentRgbVerified = true;
-            if (image.pma === true) warnings.push(image.sourceName + '：网页版对 PMA 图集只做无损 WebP，已逐字节校验 RGBA；压缩档位不影响这张图，体积可能较大（PMA 兼容有损压缩请用桌面版）');
-            if (image.pma === null) warnings.push(image.sourceName + '：atlas 未标记原图 Alpha，已无损保留 RGBA；不改变预乘状态，体积可能较大');
           }
         }
 
