@@ -16,8 +16,12 @@
   const STATE_EVENT = 'novaflow:video-frame-edit-state'
   const MAX_FRAMES = 600
   const THUMB_HEIGHT = 64
-  const FULL_CACHE = 24
+  // Frames are shown from bitmaps no larger than the viewer needs (long edge capped),
+  // kept up to this many bytes so a whole clip plays from memory after one pass.
+  const VIEW_LONG_EDGE = 1024
+  const VIEW_CACHE_BYTES = 320 * 1024 * 1024
   const ACCENT = '#1ea672'
+  const BODY_ATTR = 'data-novaflow-video-frame-edit-open'
 
   const state = {
     open: false,
@@ -26,6 +30,8 @@
     frames: null,
     thumbs: null,
     full: new Map(),
+    fullBytes: 0,
+    prefetching: new Set(),
     fps: 0,
     width: 0,
     height: 0,
@@ -67,15 +73,19 @@
       .nf-vfe-bar .nf-vfe-readout{color:#f0f0f0;font-size:12px;font-weight:500;margin-left:4px}
       .nf-vfe-bar .nf-vfe-meta{color:#8d8d8d}
       .nf-vfe-strip{flex:0 0 ${THUMB_HEIGHT + 30}px;display:flex;align-items:flex-start;gap:4px;padding:6px 10px;overflow-x:auto;overflow-y:hidden;background:#161616;border-top:1px solid #242424;scrollbar-width:thin}
-      .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:2px;border-radius:6px;border:2px solid transparent;background:transparent;color:#9a9a9a;font-size:10px;line-height:1;cursor:pointer}
+      .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:10px;line-height:1;cursor:pointer}
       .nf-vfe-cell canvas{display:block;height:${THUMB_HEIGHT}px;border-radius:3px;background:#000;pointer-events:none}
       .nf-vfe-cell:hover{background:rgba(255,255,255,.06)}
-      .nf-vfe-cell[data-selected="1"]{border-color:${ACCENT};color:#e6e6e6}
-      .nf-vfe-cell[data-current="1"]{background:rgba(30,166,114,.18)}
+      .nf-vfe-cell::after{content:"";position:absolute;inset:0;border-radius:6px;border:2px solid transparent;pointer-events:none}
+      .nf-vfe-cell[data-selected="1"]{background:rgba(30,166,114,.16);color:#effcf5}
+      .nf-vfe-cell[data-selected="1"]::after{border-color:${ACCENT}}
+      .nf-vfe-cell[data-current="1"]{background:rgba(30,166,114,.34)}
+      .nf-vfe-cell[data-current="1"]::after{border-color:#5fe0ad}
       .nf-vfe-cell[data-dup="1"] span::after{content:" ·";color:${ACCENT}}
       [${PANEL_ATTR}="1"]{display:grid;gap:6px;padding:4px 10px 10px 10px;color:#d4d4d4;font-size:12px;font-weight:400}
       [${PANEL_ATTR}="1"] .nf-vfe-info{font-size:11px;color:#8d8d8d;line-height:1.5;padding:0 2px}
       [${PANEL_ATTR}="1"] .nf-vfe-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      [${PANEL_ATTR}="1"] .nf-vfe-grid button[data-act="reset"]{grid-column:1 / -1}
       [${PANEL_ATTR}="1"] button{height:30px;padding:0 8px;border:0;border-radius:6px;background:#2a2a2a;color:#e6e6e6;font:inherit;font-size:12px;font-weight:400;line-height:1;cursor:pointer;outline:none;white-space:nowrap;transition:none}
       [${PANEL_ATTR}="1"] button:hover{background:#333333}
       [${PANEL_ATTR}="1"] button:disabled{opacity:.4;cursor:default;background:#2a2a2a}
@@ -131,17 +141,44 @@
   function pngBlob(index) {
     return new Blob([state.frames[index]], { type: 'image/png' })
   }
+  function viewOptions() {
+    const long = Math.max(state.width, state.height)
+    if (!long || long <= VIEW_LONG_EDGE) return {}
+    const scale = VIEW_LONG_EDGE / long
+    return { resizeWidth: Math.max(1, Math.round(state.width * scale)), resizeHeight: Math.max(1, Math.round(state.height * scale)), resizeQuality: 'medium' }
+  }
+  function rememberBitmap(index, bitmap) {
+    if (!state.frames || state.full.has(index)) { try { if (!state.frames) bitmap.close?.() } catch (_) {} return state.full.get(index) || bitmap }
+    state.full.set(index, bitmap)
+    state.fullBytes += bitmap.width * bitmap.height * 4
+    while (state.fullBytes > VIEW_CACHE_BYTES && state.full.size > 2) {
+      const oldest = state.full.keys().next().value
+      const gone = state.full.get(oldest)
+      state.full.delete(oldest)
+      state.fullBytes -= gone.width * gone.height * 4
+      try { gone.close?.() } catch (_) {}
+    }
+    return bitmap
+  }
   async function fullBitmap(index) {
     const cached = state.full.get(index)
     if (cached) { state.full.delete(index); state.full.set(index, cached); return cached }
-    const bitmap = await createImageBitmap(pngBlob(index))
-    state.full.set(index, bitmap)
-    while (state.full.size > FULL_CACHE) {
-      const oldest = state.full.keys().next().value
-      try { state.full.get(oldest)?.close?.() } catch (_) {}
-      state.full.delete(oldest)
+    const bitmap = await createImageBitmap(pngBlob(index), viewOptions())
+    return rememberBitmap(index, bitmap)
+  }
+  // The frames after the current one decode ahead of the playhead.
+  function prefetch(position, count) {
+    const model = state.model
+    if (!model || !state.frames) return
+    for (let step = 1; step <= count; step += 1) {
+      const source = model.sourceAt((position + step) % model.length)
+      if (state.full.has(source) || state.prefetching.has(source)) continue
+      state.prefetching.add(source)
+      createImageBitmap(pngBlob(source), viewOptions())
+        .then((bitmap) => { if (state.frames) rememberBitmap(source, bitmap); else bitmap.close?.() })
+        .catch(() => {})
+        .finally(() => state.prefetching.delete(source))
     }
-    return bitmap
   }
   async function buildThumbs(frames) {
     const thumbs = new Array(frames.length)
@@ -159,6 +196,8 @@
     for (const bitmap of state.full.values()) { try { bitmap?.close?.() } catch (_) {} }
     state.thumbs = null
     state.full = new Map()
+    state.fullBytes = 0
+    state.prefetching = new Set()
     state.frames = null
   }
 
@@ -178,6 +217,21 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(bitmap, 0, 0)
     els.readout.textContent = `第 ${position + 1} 帧 / ${model.length}`
+    prefetch(position, state.playing ? 6 : 2)
+  }
+  // Playback moves only the current mark between two cells; the strip is not rebuilt.
+  function markCurrentCell(previous) {
+    const strip = state.els?.strip
+    if (!strip) return
+    const before = strip.children[previous]
+    if (before instanceof HTMLElement) before.setAttribute('data-current', '0')
+    const now = strip.children[state.current]
+    if (now instanceof HTMLElement) {
+      now.setAttribute('data-current', '1')
+      const stripRect = strip.getBoundingClientRect()
+      const rect = now.getBoundingClientRect()
+      if (rect.left < stripRect.left || rect.right > stripRect.right) now.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
   }
   function renderStrip() {
     const els = state.els
@@ -230,7 +284,6 @@
     els.buttons.duplicate.disabled = !count
     els.buttons.left.disabled = !count || model.selection[0] === 0
     els.buttons.right.disabled = !count || model.selection[count - 1] === model.length - 1
-    els.buttons.reverse.disabled = count < 2
     els.buttons.mirror.disabled = count < 2
     els.apply.disabled = state.busy || !model.dirty
     els.meta.textContent = `${state.fps || '?'} fps`
@@ -283,11 +336,10 @@
       const now = performance.now()
       const steps = Math.max(1, Math.floor((now - last) / interval))
       last += steps * interval
+      const previous = state.current
       state.current = (state.current + steps) % state.model.length
-      state.els.readout.textContent = `第 ${state.current + 1} 帧 / ${state.model.length}`
       void drawCurrent()
-      renderStrip()
-      scrollCurrentIntoView()
+      markCurrentCell(previous)
       state.playTimer = window.setTimeout(tick, Math.max(0, last + interval - performance.now()))
     }
     state.playTimer = window.setTimeout(tick, interval)
@@ -368,9 +420,9 @@
       <div class="nf-vfe-grid">
         ${button('remove', '删除')}${button('duplicate', '复制插帧')}
         ${button('left', '左移')}${button('right', '右移')}
-        ${button('reverse', '倒放')}${button('mirror', '镜像')}
+        ${button('mirror', '镜像')}${button('all', '全选')}
         ${button('undo', '撤销')}${button('redo', '重做')}
-        ${button('reset', '还原')}${button('all', '全选')}
+        ${button('reset', '还原')}
       </div>
       <button type="button" class="nf-vfe-apply" data-act="apply">生成新资源</button>
       <button type="button" data-act="close">关闭</button>
@@ -389,7 +441,7 @@
       info: panel.querySelector('.nf-vfe-info'),
       status: panel.querySelector('.nf-vfe-status'),
       apply: pick('apply'),
-      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), reverse: pick('reverse'), mirror: pick('mirror'), undo: pick('undo'), redo: pick('redo'), reset: pick('reset'), all: pick('all') }
+      buttons: { remove: pick('remove'), duplicate: pick('duplicate'), left: pick('left'), right: pick('right'), mirror: pick('mirror'), undo: pick('undo'), redo: pick('redo'), reset: pick('reset'), all: pick('all') }
     }
   }
   function setStatus(message, tone) {
@@ -409,7 +461,6 @@
       case 'duplicate': afterEdit(model.duplicate()); break
       case 'left': afterEdit(model.move(-1)); break
       case 'right': afterEdit(model.move(1)); break
-      case 'reverse': afterEdit(model.reverse()); break
       case 'mirror': afterEdit(model.mirror()); break
       case 'undo': afterEdit(model.undo()); break
       case 'redo': afterEdit(model.redo()); break
@@ -464,8 +515,13 @@
     const effTop = read('--novaflow-ai-sequence-effective-top')
     const effWidth = read('--novaflow-ai-sequence-effective-width')
     const effHeight = read('--novaflow-ai-sequence-effective-height')
+    // The dock is hidden while the tool is open (BODY_ATTR), so the box runs from the
+    // effective top to the viewport's bottom, above the dock only if one is still shown.
+    const dock = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]')
+    const dockRect = dock instanceof HTMLElement ? dock.getBoundingClientRect() : null
+    const bottom = dockRect && dockRect.height > 0 && dockRect.top > rect.top ? Math.min(rect.bottom, dockRect.top) : rect.bottom
     const box = effWidth > 120 && effHeight > 120
-      ? { left: rect.left + (effLeft || 0), top: rect.top + (effTop || 0), width: effWidth, height: effHeight }
+      ? { left: rect.left + (effLeft || 0), top: rect.top + (effTop || 0), width: effWidth, height: Math.max(120, bottom - (rect.top + (effTop || 0))) }
       : { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
     const key = [box.left, box.top, box.width, box.height].map((value) => Math.round(value)).join(',')
     if (key !== state.lastRect) {
@@ -519,9 +575,10 @@
       state.overlay = overlayEls.overlay
       state.panel = panelEls?.panel || null
       state.els = Object.assign({}, overlayEls, panelEls || { info: document.createElement('div'), status: document.createElement('div'), apply: document.createElement('button'), buttons: {} })
-      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, reverse: {}, mirror: {}, undo: {}, redo: {}, reset: {}, all: {} }
+      if (!panelEls) state.els.buttons = { remove: {}, duplicate: {}, left: {}, right: {}, mirror: {}, undo: {}, redo: {}, reset: {}, all: {} }
       state.open = true
       state.lastRect = ''
+      document.body.setAttribute(BODY_ATTR, '1')
       track()
       state.timer = window.setInterval(track, 120)
       window.addEventListener('resize', track)
@@ -543,6 +600,7 @@
     if (!state.open) return false
     stopPlayback()
     state.open = false
+    document.body.removeAttribute(BODY_ATTR)
     if (state.timer) { window.clearInterval(state.timer); state.timer = 0 }
     window.removeEventListener('resize', track)
     window.removeEventListener('pointerup', onPointerUp)

@@ -10708,6 +10708,10 @@
     });
   }
 
+  // 帧编辑 (video-frame-edit.tool.js) marks the body while it is open; the dock is gone then.
+  function aiAnimationDockHiddenByFrameEdit() {
+    return document.body?.getAttribute("data-novaflow-video-frame-edit-open") === "1";
+  }
   function applyAiAnimationBottomWorkspaceStyles(bottomWorkspace) {
     setImportantStyles(bottomWorkspace, {
       position: "fixed",
@@ -10721,7 +10725,7 @@
       height: "auto",
       "max-height": "calc(100vh - 24px)",
       "box-sizing": "border-box",
-      display: "flex",
+      display: aiAnimationDockHiddenByFrameEdit() ? "none" : "flex",
       "flex-direction": "column",
       gap: `${AI_ANIMATION_PANEL_TIMELINE_GAP}px`,
       "z-index": "60",
@@ -25033,6 +25037,16 @@
         font-size: 13px !important;
         line-height: var(--novaflow-top-control-height, 34px) !important;
         box-sizing: border-box !important;
+      }
+      /* 帧编辑 (video-frame-edit.tool.js) marks the body while it is open: the generation
+         dock and timeline go, and the 动画生成 group heading is disabled until it closes. */
+      body.novaflow-ai-animation-section-layers[data-novaflow-video-frame-edit-open="1"] [data-novaflow-ai-bottom-workspace="1"] {
+        display: none !important;
+      }
+      body.novaflow-ai-animation-section-layers[data-novaflow-video-frame-edit-open="1"] [data-novaflow-ai-collapse-heading="mode"] {
+        opacity: 0.48 !important;
+        cursor: not-allowed !important;
+        pointer-events: none !important;
       }
       /* The generation dock goes the moment the session enters 视频合并 (the same frame the
          merge shell mounts), not on React's later commit: on layouts where the dock is a
@@ -59524,6 +59538,9 @@
     clickEntry();
   }
   window.addEventListener("novaflow:video-frame-edit-state", () => {
+    // The dock's display is written inline by the layout pass; flip it here at once.
+    const dock = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
+    if (dock instanceof HTMLElement) dock.style.setProperty("display", aiAnimationDockHiddenByFrameEdit() ? "none" : "flex", "important");
     const section = document.querySelector('[data-novaflow-ai-post-section="1"]');
     if (!(section instanceof HTMLElement)) return;
     ensureAiAnimationToolHeadings(section, section.querySelector('[data-novaflow-ai-collapse-heading="post"]'));
