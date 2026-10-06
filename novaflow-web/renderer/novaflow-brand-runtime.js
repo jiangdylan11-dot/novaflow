@@ -14759,8 +14759,15 @@
     if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return;
     const session = options.session || null;
     const forceHidden = shouldForceHideAiAnimationGenerationActions({ ...options, session });
-    const allowVisible = canShowAiAnimationGenerationActions({ ...options, session });
+    // The mode tabs follow the 动画生成 group (positionAiAnimationTopModeTabs): while it
+    // is collapsed this sync must not show them again on entry or after a resource load.
+    const groupCollapsed = Boolean(AI_ANIMATION_COLLAPSE_STATE.mode);
+    const allowVisible = !groupCollapsed && canShowAiAnimationGenerationActions({ ...options, session });
     getAiAnimationGenerationActionNodes({ includeHidden: true }).forEach((node) => {
+      if (groupCollapsed && !forceHidden) {
+        setAiSequenceHidden(node, true);
+        return;
+      }
       if (forceHidden) {
         setAttributeIfChanged(node, "data-novaflow-ai-generation-action-locked", "1");
         setAiSequenceHidden(node, true);
