@@ -728,9 +728,20 @@
       let target = master && !master.video.ended
         ? finite(master.video.currentTime, state.timeSec)
         : clockStartedTime + (finite(now, Date.now()) - clockStartedAt) / 1000
-      if (target >= duration) {
-        seek(duration)
-        pause()
+      if (target >= duration - 0.0005) {
+        // 循环播放: wrap to the start without stopping. Layers that ended are
+        // restarted; the clock fallback restarts with them so the timeline
+        // keeps moving while the master video seeks.
+        seek(0)
+        state.layers.forEach(function (layer) {
+          const record = videos.get(layer.id)
+          if (!record) return
+          Promise.resolve(record.video.play()).catch(function () {})
+        })
+        clockStartedAt = finite(now, Date.now())
+        clockStartedTime = 0
+        render()
+        animationFrame = requestFrame(animationTick)
         return
       }
       state.layers.forEach(function (layer) {
