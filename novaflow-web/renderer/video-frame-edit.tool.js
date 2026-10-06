@@ -77,7 +77,9 @@
          hand) when the rows outgrow its share of the overlay. Playback never scrolls it. */
       .nf-vfe-strip{flex:0 0 auto;max-height:58%;display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;padding:6px 10px;overflow-x:hidden;overflow-y:auto;background:#161616;border-top:1px solid #242424;scrollbar-width:thin;scroll-behavior:auto}
       .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:10px;line-height:1;cursor:pointer}
-      .nf-vfe-cell canvas{display:block;height:var(--nf-vfe-thumb, ${THUMB_HEIGHT}px);border-radius:3px;background:#000;pointer-events:none}
+      .nf-vfe-cell canvas{display:block;height:var(--nf-vfe-thumb, ${THUMB_HEIGHT}px);border-radius:3px;background:#000;pointer-events:none;outline:1px solid transparent;outline-offset:-1px}
+      .nf-vfe-cell[data-dup="1"] canvas{outline:1px dashed rgba(30,166,114,.85)}
+      .nf-vfe-cell[data-dup="1"]::before{content:"复";position:absolute;top:2px;right:2px;z-index:1;padding:1px 3px;border-radius:3px;background:${ACCENT};color:#effcf5;font-size:9px;line-height:1;font-weight:500;pointer-events:none}
       .nf-vfe-cell:hover{background:rgba(255,255,255,.06)}
       .nf-vfe-cell::after{content:"";position:absolute;inset:0;border-radius:6px;border:2px solid transparent;pointer-events:none}
       .nf-vfe-cell span{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap}
@@ -263,8 +265,10 @@
     if (!els || !model) return
     const strip = els.strip
     const order = model.order
-    const seen = new Map()
-    for (const source of order) seen.set(source, (seen.get(source) || 0) + 1)
+    // A source frame's first cell is the original; every later cell of it is a copy
+    // (复制插帧 and 镜像 both make those) and gets the 复 mark.
+    const firstAt = new Map()
+    order.forEach((source, position) => { if (!firstAt.has(source)) firstAt.set(source, position) })
     while (strip.children.length > order.length) strip.lastElementChild.remove()
     for (let position = 0; position < order.length; position += 1) {
       let cell = strip.children[position]
@@ -295,7 +299,7 @@
       else label.innerHTML = `${position + 1}<i>${source + 1}</i>`
       cell.setAttribute('data-selected', model.isSelected(position) ? '1' : '0')
       cell.setAttribute('data-current', position === state.current ? '1' : '0')
-      cell.setAttribute('data-dup', seen.get(source) > 1 ? '1' : '0')
+      cell.setAttribute('data-dup', firstAt.get(source) !== position ? '1' : '0')
       cell.title = `第 ${position + 1} 帧 · 原帧 ${source + 1}`
     }
   }
