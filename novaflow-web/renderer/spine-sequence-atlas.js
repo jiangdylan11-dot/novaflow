@@ -1,14 +1,16 @@
 /* Streaming atlas packing shared by sequence exporters. No editor state is changed. */
 (function (root) {
   'use strict';
-  const defaults = Object.freeze({ maxWidth: 2048, maxHeight: 2048, trim: true, alphaThreshold: 0,
-    paddingX: 2, paddingY: 2, duplicatePadding: true, bleed: true, premultiplyAlpha: false });
+  // Alpha threshold 2 like Spine's packer: cutout exports carry alpha 1-2 noise over the whole background, which
+  // would otherwise stretch a 350px sprite's trim box to the full frame.
+  const defaults = Object.freeze({ maxWidth: 2048, maxHeight: 2048, trim: true, alphaThreshold: 2,
+    paddingX: 2, paddingY: 2, duplicatePadding: true, bleed: true, premultiplyAlpha: false, dedupe: true, scale: 100 });
   const integer = (value, fallback, min, max) => Math.max(min, Math.min(max, Math.round(Number.isFinite(Number(value)) ? Number(value) : fallback)));
   function normalizeSettings(input = {}) {
     return { maxWidth: integer(input.maxWidth, 2048, 64, 4096), maxHeight: integer(input.maxHeight, 2048, 64, 4096),
-      trim: input.trim !== false, alphaThreshold: integer(input.alphaThreshold, 0, 0, 254),
+      trim: input.trim !== false, alphaThreshold: integer(input.alphaThreshold, 2, 0, 254),
       paddingX: integer(input.paddingX, 2, 0, 32), paddingY: integer(input.paddingY, 2, 0, 32),
-      duplicatePadding: input.duplicatePadding !== false, bleed: input.bleed !== false, premultiplyAlpha: input.premultiplyAlpha === true };
+      duplicatePadding: input.duplicatePadding !== false, bleed: input.bleed !== false, premultiplyAlpha: input.premultiplyAlpha === true, dedupe: input.dedupe !== false, scale: integer(input.scale, 100, 10, 100) };
   }
   function safeName(value) {
     let name = String(value || '').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/\.[a-z0-9]{1,8}$/i, '').replace(/[. ]+$/g, '').trim().slice(0, 80) || 'sequence';
@@ -16,6 +18,69 @@
     return name;
   }
   const frameName = (base, index) => `${base}_${String(index).padStart(4, '0')}`;
+  // Identical frames (a pause held for a few frames) share one atlas region; the timeline holds it instead.
+  function pixelKey(rgba, width, height) {
+    let crc = 0xffffffff, fnv = 0x811c9dc5;
+    for (let i = 0; i < rgba.length; i++) { crc = crcTable[(crc ^ rgba[i]) & 255] ^ (crc >>> 8); fnv = Math.imul(fnv ^ rgba[i], 16777619); }
+    return `${width}x${height}:${(crc ^ 0xffffffff) >>> 0}:${fnv >>> 0}`;
+  }
+  // Frames that went through a lossy clip (帧编辑 → mp4/webm → export) come back with codec noise: a held copy differs
+  // from the frame before it by a few levels everywhere and nowhere by much, while real motion moves thousands of
+  // pixels by more than 24 levels. Measured on x264 crf 18 and VP9 alpha crf 30: copies max 13, mean < 0.6, no pixel > 24.
+  // Canvas getImageData hands back straight alpha, so a fringe pixel with alpha 1 or 2 carries unpremultiplied RGB that
+  // jumps anywhere between 0 and 255 from one copy to the next: differences are weighed by alpha, i.e. as rendered.
+  // Any weighed byte further than 24 apart is a real change; the mean (2 levels per channel over covered pixels) guards
+  // against noise that is everywhere. Real copies of real footage measure about 0.1; a slight move measures well above 2.
+  function nearlyIdentical(a, b) {
+    if (a.length !== b.length) return false;
+    let sum = 0, covered = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      const alpha = Math.max(a[i + 3], b[i + 3]);
+      if (!alpha) continue;
+      const da = Math.abs(a[i + 3] - b[i + 3]);
+      if (da > 24) return false;
+      const dr = Math.abs(a[i] - b[i]) * alpha, dg = Math.abs(a[i + 1] - b[i + 1]) * alpha, db = Math.abs(a[i + 2] - b[i + 2]) * alpha;
+      if (dr > 6120 || dg > 6120 || db > 6120) return false;
+      sum += da + (dr + dg + db) / 255; covered++;
+    }
+    // The mean is taken over the pixels the sprite covers, so a slight move of a small sprite cannot hide in a large blank frame.
+    return sum <= covered * 8;
+  }
+  // A key is dropped when it shows the same region as the key before it; the last key always stays so the duration is unchanged.
+  const collapseKeys = (keys, same) => keys.filter((key, i) => i === 0 || i === keys.length - 1 || !same(key, keys[i - 1]));
+  // Rewrite a native Sequence timeline over the logical frames into hold keys on the unique regions.
+  function holdSequence(keys, members) {
+    const start = members[0].index, out = [];
+    keys.forEach((key, k) => {
+      const delay = Number(key.delay) || 0, next = keys[k + 1]?.time ?? Infinity, from = Math.max(0, Math.round(Number(key.index) || 0));
+      if (!(key.mode === 'loop' || key.mode === 'once') || !(delay > 0) || members.length < 2) { out.push({ ...key, mode: 'hold', index: members[Math.min(from, members.length - 1)].index - start }); return; }
+      for (let j = 0; key.mode === 'loop' && next !== Infinity ? key.time + j * delay < next : j < members.length - from; j++) {
+        const time = Math.round((key.time + j * delay) * 1e6) / 1e6; if (time >= next) break;
+        out.push({ time, mode: 'hold', index: members[(from + j) % members.length].index - start, delay });
+      }
+    });
+    return collapseKeys(out, (a, b) => a.index === b.index);
+  }
+  // Atlas scale (Spine packer 缩放): box-filter downscale in premultiplied space so edges keep their colour.
+  // Only the atlas pixels shrink; the skeleton attachments keep the source size and stretch the smaller region.
+  function resample(rgba, width, height, percent) {
+    const w = Math.max(1, Math.round(width * percent / 100)), h = Math.max(1, Math.round(height * percent / 100)), out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.floor(y * height / h), y1 = Math.max(y0 + 1, Math.floor((y + 1) * height / h));
+      for (let x = 0; x < w; x++) {
+        const x0 = Math.floor(x * width / w), x1 = Math.max(x0 + 1, Math.floor((x + 1) * width / w));
+        let r = 0, g = 0, b = 0, a = 0, n = 0;
+        for (let sy = y0; sy < y1; sy++) for (let sx = x0; sx < x1; sx++) {
+          const i = (sy * width + sx) * 4, alpha = rgba[i + 3];
+          r += rgba[i] * alpha; g += rgba[i + 1] * alpha; b += rgba[i + 2] * alpha; a += alpha; n++;
+        }
+        if (!a) continue;
+        const o = (y * w + x) * 4;
+        out[o] = Math.round(r / a); out[o + 1] = Math.round(g / a); out[o + 2] = Math.round(b / a); out[o + 3] = Math.round(a / n);
+      }
+    }
+    return { rgba: out, width: w, height: h };
+  }
   function trimBounds(rgba, width, height, settings) {
     if (!settings.trim) return { x: 0, y: 0, width, height, blank: false };
     let left = width, top = height, right = -1, bottom = -1;
@@ -102,27 +167,46 @@
     const versions = { '3.8': '3.8.99', '4.0': '4.0.64', '4.1': '4.1.24', '4.2': '4.2.19' };
     const key = String(version).slice(0, 3);
     if (!versions[key]) throw new Error('不支持的 Spine 导出版本');
-    const first = frames[0], native = key === '4.1' || key === '4.2', attachment = native ? `${baseName}_seq` : first.name;
-    const attachments = native ? { [attachment]: { width: first.originalWidth, height: first.originalHeight, path: `${baseName}_`, sequence: { count: frames.length, start: 0, digits: 4, setup: 0 } } }
-      : Object.fromEntries(frames.map(frame => [frame.name, { width: frame.originalWidth, height: frame.originalHeight }]));
+    const first = frames[0], last = frames[frames.length - 1], unique = frames.filter(frame => frame.unique !== false), native = key === '4.1' || key === '4.2', attachment = native ? `${baseName}_seq` : first.region;
+    const attachments = native ? { [attachment]: { width: first.originalWidth, height: first.originalHeight, path: `${baseName}_`, sequence: { count: unique.length, start: 0, digits: 4, setup: 0 } } }
+      : Object.fromEntries(unique.map(frame => [frame.region, { width: frame.originalWidth, height: frame.originalHeight }]));
     const seconds = Math.max(0.001, Number(duration) || frames.length / fps);
-    const timeline = frames.map((frame, index) => ({ time: index / fps, name: frame.name }));
-    if (loop) timeline.push({ time: seconds, name: first.name });
+    const timeline = collapseKeys(frames.map((frame, index) => ({ time: index / fps, name: frame.region })), (a, b) => a.name === b.name);
+    if (loop) timeline.push({ time: seconds, name: first.region });
+    const sequence = [{ time: 0, mode: loop ? 'loop' : 'once', index: 0, delay: 1 / fps }, { time: seconds, mode: 'hold', index: loop ? 0 : frames.length - 1, delay: 1 / fps }];
     return { skeleton: { spine: versions[key], fps, x: 0, y: 0, width: first.originalWidth, height: first.originalHeight, images: packed ? './' : 'images/', audio: '' },
       bones: [{ name: 'root' }, { name: 'bone', parent: 'root' }], slots: [{ name: 'slot', bone: 'bone', attachment, color: 'ffffffff' }],
       skins: [{ name: 'default', attachments: { slot: attachments } }], animations: { animation: native
-        ? { attachments: { default: { slot: { [attachment]: { sequence: [{ time: 0, mode: loop ? 'loop' : 'once', index: 0, delay: 1 / fps }, { time: seconds, mode: 'hold', index: loop ? 0 : frames.length - 1, delay: 1 / fps }] } } } } }
+        ? { attachments: { default: { slot: { [attachment]: { sequence: unique.length === frames.length ? sequence : holdSequence(sequence, frames) } } } } }
         : { slots: { slot: { attachment: timeline } } } } };
   }
   function normalizeSkeleton(json, frames, packed) {
     const skeleton = typeof json === 'string' ? JSON.parse(json) : JSON.parse(JSON.stringify(json));
     skeleton.skeleton = { ...skeleton.skeleton, images: packed ? './' : 'images/' };
     if (!Array.isArray(skeleton.skins)) skeleton.skins = Object.entries(skeleton.skins || {}).map(([name, attachments]) => ({ name, attachments }));
-    const byName = new Map(frames.map(frame => [frame.name, frame]));
-    for (const skin of skeleton.skins) for (const slot of Object.values(skin.attachments || {})) for (const [name, attachment] of Object.entries(slot)) {
+    const byName = new Map(frames.map(frame => [frame.name, frame])), sequences = new Map(), regionOf = new Map();
+    for (const skin of skeleton.skins) for (const [slotName, slot] of Object.entries(skin.attachments || {})) for (const [name, attachment] of Object.entries(slot)) {
       const path = attachment.path || name;
-      const frame = byName.get(attachment.sequence ? `${path}${String(attachment.sequence.start || 0).padStart(attachment.sequence.digits || 0, '0')}` : path);
-      if (frame) { attachment.width = frame.originalWidth; attachment.height = frame.originalHeight; }
+      if (attachment.sequence) {
+        const members = frames.filter(frame => frame.prefix === path), unique = members.filter(frame => frame.unique !== false);
+        if (!members.length) continue;
+        attachment.width = members[0].originalWidth; attachment.height = members[0].originalHeight;
+        if (unique.length !== members.length) { attachment.sequence.count = unique.length; sequences.set(`${skin.name}/${slotName}/${name}`, members); }
+      } else {
+        const frame = byName.get(path);
+        if (!frame) continue;
+        attachment.width = frame.originalWidth; attachment.height = frame.originalHeight;
+        if (frame.region !== path) attachment.path = frame.region;
+        regionOf.set(`${slotName}/${name}`, frame.region);
+      }
+    }
+    for (const animation of Object.values(skeleton.animations || {})) {
+      for (const [slotName, slot] of Object.entries(animation.slots || {})) if (Array.isArray(slot.attachment))
+        slot.attachment = collapseKeys(slot.attachment, (a, b) => (regionOf.get(`${slotName}/${a.name}`) ?? a.name) === (regionOf.get(`${slotName}/${b.name}`) ?? b.name));
+      for (const [skinName, skin] of Object.entries(animation.attachments || {})) for (const [slotName, slot] of Object.entries(skin || {})) for (const [name, timeline] of Object.entries(slot || {})) {
+        const members = sequences.get(`${skinName}/${slotName}/${name}`);
+        if (members && Array.isArray(timeline.sequence)) timeline.sequence = holdSequence(timeline.sequence, members);
+      }
     }
     return skeleton;
   }
@@ -148,8 +232,20 @@
   }
   function createWriter(options) {
     const settings = normalizeSettings(options.settings), baseName = safeName(options.baseName), packed = options.packed === true;
-    const frames = [], pages = [], names = new Set();
-    let pixels = null, free = [], regions = [], usedWidth = 0, usedHeight = 0, finished = false;
+    const frames = [], pages = [], names = new Set(), seen = new Map(), counters = new Map();
+    let pixels = null, free = [], regions = [], usedWidth = 0, usedHeight = 0, finished = false, previous = null;
+    // Unique frames are numbered consecutively per name prefix so native Sequences stay contiguous after duplicates drop out.
+    function describe(name, rgba, width, height, sourceWidth, sourceHeight) {
+      const match = /^(.*?)(\d+)$/.exec(name), prefix = match ? match[1] : name;
+      const key = settings.dedupe ? `${prefix}|${pixelKey(rgba, width, height)}` : null;
+      const twin = key && (seen.get(key) || (previous && previous.frame.prefix === prefix && previous.width === width && previous.height === height && nearlyIdentical(rgba, previous.rgba) ? previous.frame : null));
+      if (twin) return { name, originalWidth: sourceWidth, originalHeight: sourceHeight, prefix, index: twin.index, region: twin.region, unique: false };
+      const index = counters.has(prefix) ? counters.get(prefix) : match ? Number(match[2]) : 0;
+      counters.set(prefix, index + 1);
+      const frame = { name, originalWidth: sourceWidth, originalHeight: sourceHeight, prefix, index, region: match && key ? prefix + String(index).padStart(match[2].length, '0') : name, unique: true };
+      if (key) { seen.set(key, frame); previous = { frame, rgba: Uint8Array.from(rgba), width, height }; }
+      return frame;
+    }
     const px = Math.ceil(settings.paddingX / 2), py = Math.ceil(settings.paddingY / 2);
     async function flush() {
       if (!regions.length) return;
@@ -168,10 +264,14 @@
       if (finished) throw new Error('导出已结束');
       if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || rgba.length !== width * height * 4) throw new Error('序列帧像素尺寸无效');
       if (names.has(name)) throw new Error('序列帧名称重复：' + name);
+      const sourceWidth = width, sourceHeight = height;
+      if (packed && settings.scale < 100) ({ rgba, width, height } = resample(rgba, width, height, settings.scale));
+      const frame = describe(name, rgba, width, height, sourceWidth, sourceHeight);
       const bounds = packed ? trimBounds(rgba, width, height, settings) : { x: 0, y: 0, width, height };
-      const frame = { name, originalWidth: width, originalHeight: height };
-      if (!packed) {
-        await options.write(`images/${name}.png`, await encodePng(rgba, width, height));
+      if (!frame.unique) {
+        // Same pixels as an earlier frame of this sequence: no region, no file; the skeleton holds the earlier one.
+      } else if (!packed) {
+        await options.write(`images/${frame.region}.png`, await encodePng(rgba, width, height));
       } else {
         const paddedWidth = bounds.width + px * 2, paddedHeight = bounds.height + py * 2;
         if (paddedWidth > settings.maxWidth || paddedHeight > settings.maxHeight) throw new Error(`第 ${frames.length + 1} 帧超出图集尺寸 ${settings.maxWidth}×${settings.maxHeight}，请增大图集或减小导出缩放`);
@@ -195,7 +295,7 @@
           pixels.set(pixels.subarray(first, first + length), first - edge * settings.maxWidth * 4);
           pixels.set(pixels.subarray(last, last + length), last + edge * settings.maxWidth * 4);
         }
-        regions.push({ ...frame, x, y, width: bounds.width, height: bounds.height, offsetX: bounds.x, offsetY: height - bounds.y - bounds.height });
+        regions.push({ name: frame.region, originalWidth: width, originalHeight: height, x, y, width: bounds.width, height: bounds.height, offsetX: bounds.x, offsetY: height - bounds.y - bounds.height });
         usedWidth = Math.max(usedWidth, placement.x + paddedWidth); usedHeight = Math.max(usedHeight, placement.y + paddedHeight);
       }
       names.add(name); frames.push(frame);
@@ -219,9 +319,9 @@
       const skeleton = json ? normalizeSkeleton(json, frames, packed) : makeSkeleton({ ...options, baseName, frames, packed });
       await options.write(`${baseName}.json`, JSON.stringify(skeleton));
       finished = true;
-      return { frames: frames.length, pages: pages.length, packed, baseName };
+      return { frames: frames.length, regions: frames.filter(frame => frame.unique).length, pages: pages.length, packed, baseName };
     }
-    return { addRgba, addCanvas, addPng, finish, dispose() { pixels = null; free = []; regions = []; finished = true; } };
+    return { addRgba, addCanvas, addPng, finish, dispose() { pixels = null; free = []; regions = []; previous = null; finished = true; } };
   }
-  root.NovaFlowSequenceAtlas = Object.freeze({ defaults, normalizeSettings, safeName, trimBounds, encodePng, makeAtlas, makeSkeleton, createFileWriter, createWriter });
+  root.NovaFlowSequenceAtlas = Object.freeze({ defaults, normalizeSettings, safeName, resample, trimBounds, encodePng, makeAtlas, makeSkeleton, createFileWriter, createWriter });
 })(globalThis);

@@ -49,7 +49,7 @@ test('default exports only named JSON and original rectangular images, including
 });
 
 test('trim offsets reconstruct every pixel and the official 3.8 runtime keeps world positions', async () => {
-  const sources = [[frame(17, 9, 3, 5), 17, 9], [frame(17, 9, 12, 2, [50, 80, 100, 1]), 17, 9], [frame(17, 9, -1), 17, 9]];
+  const sources = [[frame(17, 9, 3, 5), 17, 9], [frame(17, 9, 12, 2, [50, 80, 100, 200]), 17, 9], [frame(17, 9, -1), 17, 9]];
   const { files, json } = await output({ baseName: 'smoke', version: '3.8', fps: 10, packed: true, settings: { maxWidth: 64, maxHeight: 64 } }, sources);
   assert.equal([...files.keys()].some(name => name.startsWith('images/')), false);
   const { spine, atlas } = await runtime('3.8', files.get('smoke.atlas'), files);
@@ -207,3 +207,103 @@ for (const version of ['4.1', '4.2']) {
     assert.equal(atlas.pages[0].pma, false);
   });
 }
+
+// Frames A A A B B C at 10 fps: a pause held for several frames packs once and the timeline holds it.
+const held = () => { const a = frame(17, 9, 3, 5), b = frame(17, 9, 12, 2, [50, 80, 100, 200]), c = frame(17, 9, -1); return [a, a, a, b, b, c].map(rgba => [rgba, 17, 9]); };
+const expectedAt = [[0.05, 0], [0.25, 0], [0.35, 1], [0.52, 2]];
+
+test('held frames pack once and the 3.8 slot timeline keeps the earlier attachment', async () => {
+  const { files, result, json } = await output({ baseName: 'hold', version: '3.8', fps: 10, packed: true, settings: { maxWidth: 64, maxHeight: 64 } }, held());
+  assert.equal(result.frames, 6); assert.equal(result.regions, 3);
+  assert.deepEqual(Object.keys(json.skins[0].attachments.slot), ['hold_0000', 'hold_0001', 'hold_0002']);
+  assert.deepEqual(json.animations.animation.slots.slot.attachment, [{ time: 0, name: 'hold_0000' }, { time: 0.3, name: 'hold_0001' }, { time: 0.5, name: 'hold_0002' }, { time: 0.6, name: 'hold_0000' }]);
+  const { spine, atlas } = await runtime('3.8', files.get('hold.atlas'), files);
+  assert.equal(atlas.regions.length, 3);
+  const data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(json);
+  assert(Math.abs(data.animations[0].duration - 0.6) < 1e-6);
+  for (const [time, index] of expectedAt) {
+    const skeleton = new spine.Skeleton(data), state = new spine.AnimationState(new spine.AnimationStateData(data));
+    state.setAnimation(0, 'animation', false); state.update(time); state.apply(skeleton);
+    assert.equal(skeleton.slots[0].getAttachment().name, `hold_000${index}`, `t=${time}`);
+  }
+  const loose = await output({ baseName: 'hold', version: '3.8', fps: 10 }, held());
+  assert.deepEqual([...loose.files.keys()], ['images/hold_0000.png', 'images/hold_0001.png', 'images/hold_0002.png', 'hold.json']);
+  const off = await output({ baseName: 'hold', version: '3.8', fps: 10, packed: true, settings: { dedupe: false } }, held());
+  assert.equal(off.result.regions, 6); assert.equal(off.json.animations.animation.slots.slot.attachment.length, 7);
+});
+
+test('AI multi-board JSON: aliased 3.8 attachments and a shortened 4.1 Sequence still play every logical frame', async () => {
+  const names = i => `board_1_${String(i).padStart(4, '0')}`;
+  const frames38 = held().map((f, i) => [...f, names(i)]);
+  const original = { skeleton: { spine: '3.8.99' }, bones: [{ name: 'root' }], slots: [{ name: 'slot_1', bone: 'root', attachment: names(0) }], skins: { default: { slot_1: Object.fromEntries(frames38.map(f => [f[3], { width: 1, height: 1 }])) } },
+    animations: { animation_1: { slots: { slot_1: { attachment: frames38.map((f, i) => ({ time: i / 10, name: f[3] })) } } } } };
+  const { files, json } = await output({ baseName: 'boards', version: '3.8', packed: true, json: original }, frames38);
+  assert.equal(json.skins[0].attachments.slot_1[names(2)].path, names(0)); assert.equal(json.skins[0].attachments.slot_1[names(0)].path, undefined);
+  assert.deepEqual(json.animations.animation_1.slots.slot_1.attachment.map(key => key.time), [0, 0.3, 0.5]);
+  const { spine, atlas } = await runtime('3.8', files.get('boards.atlas'), files);
+  assert.equal(atlas.regions.length, 3);
+  const data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(json);
+  for (const [time, index] of expectedAt) {
+    const skeleton = new spine.Skeleton(data), state = new spine.AnimationState(new spine.AnimationStateData(data));
+    state.setAnimation(0, 'animation_1', false); state.update(time); state.apply(skeleton);
+    assert.equal(skeleton.slots[0].getAttachment().region.name, names(index), `t=${time}`);
+  }
+  const native = { skeleton: { spine: '4.1.24' }, bones: [{ name: 'root' }], slots: [{ name: 'slot_1', bone: 'root', attachment: 'board_1_seq' }],
+    skins: [{ name: 'default', attachments: { slot_1: { board_1_seq: { width: 1, height: 1, path: 'board_1_', sequence: { count: 6, start: 0, digits: 4, setup: 0 } } } } }],
+    animations: { animation_1: { attachments: { default: { slot_1: { board_1_seq: { sequence: [{ time: 0, mode: 'loop', index: 0, delay: 0.1 }, { time: 0.5, mode: 'hold', index: 0, delay: 0.1 }] } } } } } } };
+  const packed41 = await output({ baseName: 'boards', version: '4.1', packed: true, json: native }, frames38);
+  assert.equal(packed41.json.skins[0].attachments.slot_1.board_1_seq.sequence.count, 3);
+  assert.deepEqual(packed41.json.animations.animation_1.attachments.default.slot_1.board_1_seq.sequence, [{ time: 0, mode: 'hold', index: 0, delay: 0.1 }, { time: 0.3, mode: 'hold', index: 1, delay: 0.1 }, { time: 0.5, mode: 'hold', index: 0, delay: 0.1 }]);
+  assert.equal(packed41.result.regions, 3); assert.match(packed41.files.get('boards.atlas'), /board_1_0002/); assert.doesNotMatch(packed41.files.get('boards.atlas'), /board_1_0003/);
+});
+
+for (const version of ['4.1', '4.2']) {
+  const fixture = new URL(`../../../.artifacts/spine-runtimes/${version}/runtime.cjs`, import.meta.url);
+  test(`official ${version} runtime holds deduplicated Sequence frames at the right times`, { skip: !existsSync(fixture) && 'official runtime fixture not installed' }, async () => {
+    const spine = createRequire(import.meta.url)(fixture.pathname.replace(/^\/(.:)/, '$1'));
+    const { files, json, result } = await output({ baseName: 'hold', version, packed: true, fps: 10, loop: false }, held());
+    assert.equal(result.regions, 3); assert.equal(json.skins[0].attachments.slot.hold_seq.sequence.count, 3);
+    assert.deepEqual(json.animations.animation.attachments.default.slot.hold_seq.sequence.map(key => [key.time, key.mode, key.index]), [[0, 'hold', 0], [0.3, 'hold', 1], [0.5, 'hold', 2], [0.6, 'hold', 2]]);
+    const atlas = new spine.TextureAtlas(files.get('hold.atlas'));
+    for (const page of atlas.pages) page.setTexture(new spine.FakeTexture(png(files.get(page.name))));
+    assert.equal(atlas.regions.length, 3);
+    const data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(json);
+    assert(Math.abs(data.animations[0].duration - 0.6) < 1e-6);
+    for (const [time, index] of expectedAt) {
+      const skeleton = new spine.Skeleton(data), state = new spine.AnimationState(new spine.AnimationStateData(data));
+      state.setAnimation(0, 'animation', false); state.update(time); state.apply(skeleton); skeleton.updateWorldTransform(spine.Physics?.update);
+      assert.equal(skeleton.slots[0].sequenceIndex, index, `t=${time}`);
+      const vertices = new Float32Array(8); skeleton.slots[0].getAttachment().computeWorldVertices(skeleton.slots[0], vertices, 0, 2);
+      assert([...vertices].every(Number.isFinite));
+    }
+  });
+}
+
+test('held copies that came back through a lossy clip still merge; a small real change never does', async () => {
+  const base = new Uint8Array(64 * 64 * 4); for (let i = 0; i < base.length; i++) base[i] = (i * 7919) % 251;
+  // Codec noise: a few levels on a minority of bytes, as measured after x264 / VP9 decoding.
+  let seed = 1; const noise = (amount) => base.map(v => { seed = (seed * 48271) % 2147483647; if (seed % 4) return v; const d = (seed % (2 * amount + 1)) - amount; return Math.max(0, Math.min(255, v + d)); });
+  const blink = base.slice(); for (let y = 20; y < 32; y++) for (let x = 20; x < 32; x++) { const i = (y * 64 + x) * 4; blink[i] = Math.min(255, blink[i] + 60); blink[i + 1] = Math.max(0, blink[i + 1] - 60); }
+  // A fringe pixel (alpha 2) whose unpremultiplied RGB flips between 0 and 255 is invisible and never a change.
+  const fringe = noise(13); for (let x = 0; x < 64; x++) { const i = x * 4; fringe[i] = 255 - base[i]; fringe[i + 1] = 255 - base[i + 1]; fringe[i + 2] = 255 - base[i + 2]; fringe[i + 3] = 2; base[i + 3] = 1; }
+  const { result, json } = await output({ baseName: 'clip', version: '3.8', fps: 10, packed: true }, [[base, 64, 64], [noise(13), 64, 64], [fringe, 64, 64], [blink, 64, 64], [noise(13), 64, 64]]);
+  assert.equal(result.regions, 3);
+  assert.deepEqual(json.animations.animation.slots.slot.attachment.map(key => key.name), ['clip_0000', 'clip_0001', 'clip_0002', 'clip_0000']);
+});
+
+test('atlas scale shrinks the packed pixels only; attachments keep the source size and the 3.8 runtime maps the region', async () => {
+  const rgba = new Uint8Array(40 * 20 * 4);
+  for (let y = 4; y < 12; y++) for (let x = 8; x < 24; x++) rgba.set([200, 100, 50, 255], (y * 40 + x) * 4);
+  const { files, json } = await output({ baseName: 'half', version: '3.8', fps: 10, packed: true, settings: { scale: 50 } }, [[rgba, 40, 20]]);
+  const { spine, atlas } = await runtime('3.8', files.get('half.atlas'), files);
+  const region = atlas.findRegion('half_0000'), page = png(files.get('half.png'));
+  assert.deepEqual([region.originalWidth, region.originalHeight, region.width, region.height, region.offsetX, region.offsetY], [20, 10, 8, 4, 4, 4]);
+  assert.deepEqual([...page.rgba.subarray(((region.y + 1) * page.width + region.x + 1) * 4, ((region.y + 1) * page.width + region.x + 1) * 4 + 4)], [200, 100, 50, 255]);
+  assert.deepEqual([json.skins[0].attachments.slot.half_0000.width, json.skins[0].attachments.slot.half_0000.height, json.skeleton.width], [40, 20, 40]);
+  const data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(atlas)).readSkeletonData(json), attachment = data.defaultSkin.getAttachment(0, 'half_0000');
+  assert.equal(attachment.width, 40); assert.equal(attachment.region.originalWidth, 20);
+  // Hidden-but-on packer options stay on.
+  assert.equal(pack.normalizeSettings({}).duplicatePadding, true); assert.equal(pack.normalizeSettings({}).bleed, true);
+  const ui = await readFile(new URL('../../renderer/spine-sequence-atlas-ui.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(ui, /toggle\('(duplicatePadding|bleed)'/); assert.match(ui, /number\('scale'/);
+});

@@ -37,9 +37,9 @@
         open && packed && h('div', { className: 'nf-atlas-overlay', onClick: e => { if (e.target === e.currentTarget) setOpen(false); } },
           h('div', { className: 'nf-atlas-dialog', role: 'dialog', 'aria-modal': true, 'aria-label': '图集打包设置', tabIndex: -1, ref: dialog },
             h('h3', null, '图集打包设置'),
-            h('div', { className: 'nf-atlas-grid' }, dimension('maxWidth', '最大宽度'), dimension('maxHeight', '最大高度'), number('paddingX', '横向间距（px）', 0, 32), number('paddingY', '纵向间距（px）', 0, 32), number('alphaThreshold', 'Alpha 阈值', 0, 254)),
-            toggle('trim', '去除透明空白'), toggle('duplicatePadding', '边缘复制填充'), toggle('bleed', '透明像素颜色填充'), toggle('premultiplyAlpha', '预乘 Alpha（PMA）'),
-            h('p', { className: 'nf-atlas-hint' }, '保留原尺寸、偏移和空白帧。默认阈值 0 保留烟雾柔边。PNG / Linear / ClampToEdge，不旋转；超出容量自动分为多张图集。'),
+            h('div', { className: 'nf-atlas-grid' }, dimension('maxWidth', '最大宽度'), dimension('maxHeight', '最大高度'), number('paddingX', '横向间距（px）', 0, 32), number('paddingY', '纵向间距（px）', 0, 32), number('alphaThreshold', 'Alpha 阈值', 0, 254), number('scale', '缩放（%）', 10, 100)),
+            toggle('trim', '去除透明空白'), toggle('premultiplyAlpha', '预乘 Alpha（PMA）'), toggle('dedupe', '合并重复帧'),
+            h('p', { className: 'nf-atlas-hint' }, '保留原尺寸、偏移和空白帧；连续相同的帧只打包一次，时间线上保持上一帧。缩放只缩小图集像素，骨架里的尺寸不变。Alpha 阈值以下的像素不计入裁切范围，默认 2 可忽略抠图背景的噪点；烟雾柔边想全部保留时填 0。PNG / Linear / ClampToEdge，不旋转，边缘复制填充和透明像素补色始终开启；超出容量自动分为多张图集。'),
             h('p', { className: 'nf-atlas-hint' }, 'PMA 需与目标运行时的混合设置一致。'),
             h('div', { className: 'nf-atlas-actions' }, button('恢复默认', () => setDraft({ ...root.NovaFlowSequenceAtlas.defaults })), button('取消', () => setOpen(false)), button('保存', () => {
               const settings = root.NovaFlowSequenceAtlas.normalizeSettings(draft);
