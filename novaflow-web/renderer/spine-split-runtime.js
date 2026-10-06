@@ -12245,7 +12245,7 @@
     if (options.activate === true || (options.activateIfEmpty && wasEmpty)) activateSplitSet(set.id)
     else { render(); updateRightPanel(); syncSplitWorkspace() }
     notifyUiLayerProjectChange(set)
-    setMessage('旧项目已加入右侧图层；文字显示为兼容位图层，原始文字属性已保留')
+    setMessage('')
     return { sourceResourceId: resource.id, setId: set.id, layerCount: set.parts.length }
   }
   function isUiLayerProjectImportFile(file) {
@@ -12277,17 +12277,8 @@
     return () => uiLayerStateListeners.delete(listener)
   }
   function getUiLayerToolbarHost() {
-    const overlay = document.getElementById(WORKSPACE_OVERLAY_ID)
-    if (!isUiLayerMode() || !overlay) { overlay?.querySelector('[data-ui-layer-toolbar-host="1"]')?.remove(); return null }
-    let host = overlay.querySelector('[data-ui-layer-toolbar-host="1"]')
-    if (!host) { host = document.createElement('div'); host.setAttribute('data-ui-layer-toolbar-host', '1'); overlay.appendChild(host) }
-    const controls = document.getElementById(WORKSPACE_VIEW_CONTROLS_ID), frame = overlay.getBoundingClientRect()
-    const fit = Array.from(overlay.querySelectorAll('button')).find(node => node.textContent.trim() === '自动适配')
-    const fitBox = fit?.parentElement?.getBoundingClientRect(), leftBox = controls?.getBoundingClientRect()
-    const left = leftBox ? leftBox.right - frame.left + 18 : 180
-    const right = fitBox && fitBox.width < frame.width / 2 ? frame.right - fitBox.left + 18 : 180
-    Object.assign(host.style, { position: 'absolute', left: left + 'px', right: right + 'px', top: SPLIT_PREVIEW_UI_GAP, height: '34px', zIndex: '7', pointerEvents: 'auto', minWidth: '0', display: frame.width - left - right > 120 ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' })
-    return host
+    document.querySelector('[data-ui-layer-toolbar-host="1"]')?.remove()
+    return null
   }
   function assertUiLayerMutation(part, allowUnlock) {
     if (uiLayerMutation || uiLayerGeneration || state.busy || isSplitEditToolActive()) throw new Error('请先完成或取消当前操作，原图层保留')
@@ -28921,6 +28912,7 @@
       selected: splitPartPanelRenderSignature(selected),
       renamingPartId: String(state.renamingPartId || ''),
       renameDraft: String(state.renameDraft || ''),
+      editToolLocked: isSplitEditToolActive(),
       maskStencil: maskStencilRenderSignature(),
       mergeControl: {
         busy: !!state.busy,

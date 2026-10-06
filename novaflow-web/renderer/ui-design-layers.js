@@ -172,118 +172,74 @@
     return next
   }
   function mount({ leftHost, store }) {
-    const doc = leftHost.ownerDocument, bridge = () => root.NovaFlowSpineSplitBridge
-    let alive = true, pending = null, last = '', error = '', unsubscribeLayers = null, unsubscribeState = null, section = null, toolbar = null, toolbarHost = null, fieldBody = null, status = null, fieldSignature = '', snapshot = null
-    const report = reason => { error = reason?.message || String(reason); if (status) status.textContent = error; bridge()?.reportUiLayerProjectError?.(error) }
+    const doc = leftHost.ownerDocument, bridge = () => root.NovaFlowSpineSplitBridge, scales = new Map()
+    let alive = true, pending = null, last = '', error = '', unsubscribeLayers = null, unsubscribeState = null, section = null, fieldBody = null, status = null, signature = '', snapshot = null
     const make = (tag, text, attrs = {}) => { const node = doc.createElement(tag); if (text) node.textContent = text; for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value); return node }
-    const inputStyle = { width: '100%', minWidth: '0', boxSizing: 'border-box', padding: '5px 6px', border: '1px solid #3b3b3b', borderRadius: '5px', background: '#242424', color: '#ddd', fontSize: '11px' }
-    const button = (text, action, attrs = {}) => {
-      const node = make('button', text, { type: 'button', ...attrs }); Object.assign(node.style, inputStyle, { cursor: 'pointer', minHeight: '28px', whiteSpace: 'nowrap' })
-      node.addEventListener('click', async () => { try { await action(); refreshControls() } catch (reason) { report(reason) } }); return node
-    }
-    const readDataUrl = file => new Promise((resolve, reject) => { const reader = new (doc.defaultView || root).FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('图片读取失败')); reader.readAsDataURL(file) })
-    const pickFile = (accept, action) => {
-      const picker = make('input', '', { type: 'file', accept }); picker.style.display = 'none'; doc.body.appendChild(picker)
-      picker.addEventListener('change', async () => { try { if (picker.files[0]) { await action(picker.files[0]); refreshControls() } } catch (reason) { report(reason) } finally { picker.remove() } }, { once: true }); picker.addEventListener('cancel', () => picker.remove(), { once: true }); picker.click()
-    }
-    const importImage = async file => { const dataUrl = await readDataUrl(file), size = await alphaStats(dataUrl, doc); await bridge().addUiLayer({ type: 'image', name: file.name, dataUrl, width: size.width, height: size.height, provenance: { kind: 'import', fileName: file.name } }) }
-    const openProject = async file => { if (file.size > 32 * 1024 * 1024) throw new Error('图层项目超过32MB'); await bridge().importUiLayerProject(JSON.parse(await file.text()), { name: file.name.replace(/\.json$/i, ''), activate: true }) }
-    const download = async format => { const result = await bridge().getUiLayerExport(format), link = make('a', '', { href: result.dataUrl, download: result.name }); doc.body.appendChild(link); link.click(); link.remove(); if (status) status.textContent = '已导出 ' + result.name }
-    const latestResult = async () => { const result = store.getState().results.at(-1); if (!result) throw new Error('尚无生成结果'); const dataUrl = result.imageUrl || result.dataUrl, size = await alphaStats(dataUrl, doc); await bridge().addUiLayer({ type: 'image', kind: 'background', name: '整图（未拆层）', dataUrl, provenance: { kind: 'flat-result', resultId: result.id } }) }
-    function menu(label, entries, name) {
-      const select = make('select', '', { 'aria-label': label, 'data-ui-layer-menu': name }); Object.assign(select.style, inputStyle, { width: 'auto', minWidth: '66px', height: '30px', cursor: 'pointer' })
-      select.appendChild(make('option', label, { value: '' }))
-      for (const [value, text] of entries) select.appendChild(make('option', text, { value }))
-      select.addEventListener('change', async () => { const action = select.value; select.value = ''; try {
-        if (name === 'add') {
-          if (action === 'image') return pickFile('image/png,image/jpeg,image/webp', importImage)
-          if (action === 'latest') return await latestResult()
-          if (action === 'text') await bridge().addUiLayer({ type: 'text', name: '文字', text: '文字', x: 24, y: 24, width: 240, height: 64, fontSize: 36, fontFamily: 'Arial', fontWeight: 'normal', textAlign: 'left', color: '#ffffff' })
-          else if (action) await bridge().addUiLayer({ type: 'image', kind: action === 'background' ? 'background' : 'asset', name: action === 'background' ? '背景' : '透明资产', prompt: '' })
-        } else if (name === 'project') {
-          if (action === 'open') return pickFile('application/json,.json', openProject)
-          if (action === 'save') await download('json')
-        } else if (action) await download(action)
-        refreshControls()
-      } catch (reason) { report(reason) } }); return select
-    }
-    function buildControls() {
+    const inputStyle = { width: '100%', minWidth: '0', boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #343434', borderRadius: '6px', background: '#262626', color: '#ddd', fontSize: '11px', height: '28px' }
+    const report = reason => { error = reason?.message || String(reason); if (status) status.textContent = error; bridge()?.reportUiLayerProjectError?.(error) }
+    function build() {
       if (section || !bridge()?.getUiLayerEditingSnapshot || !doc.createElement) return
-      const accordion = root.NovaFlowLeftPanelAccordion
-      section = make('section', '', { class: 'nf-ui-layer-properties', 'data-novaflow-ui-layer-properties': '1', 'data-open': '1' }); Object.assign(section.style, accordion?.panelStyle?.() || { padding: '8px 0', borderTop: '1px solid #333' })
-      const header = make('div', '图层属性'); Object.assign(header.style, { padding: '8px', color: '#ccc', fontSize: '11px', fontWeight: '500' })
-      fieldBody = make('div'); Object.assign(fieldBody.style, { display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: '8px', padding: '0 8px 10px', minWidth: '0' })
-      status = make('div', '', { 'aria-live': 'polite', 'data-ui-layer-status': '1' }); Object.assign(status.style, { fontSize: '10px', color: '#a8a8a8', lineHeight: '1.5', overflowWrap: 'anywhere', padding: '0 8px 8px' }); section.append(header, fieldBody, status)
-      toolbar = make('div', '', { 'data-ui-layer-toolbar': '1', 'aria-label': '图层操作' }); Object.assign(toolbar.style, { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'nowrap', maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden', pointerEvents: 'auto' })
-      toolbar.append(menu('添加', [['asset', '透明资产层'], ['background', '背景层'], ['text', '文字层'], ['image', '导入独立图片'], ['latest', '使用最新整图']], 'add'), menu('项目', [['open', '打开图层项目'], ['save', '保存图层项目 JSON']], 'project'))
-      const undo = button('↶', () => bridge().undoUiLayerEdit(), { title: '撤销图层操作（Ctrl+Z）', 'aria-label': '撤销图层操作', 'data-ui-layer-action': 'undo' }), redo = button('↷', () => bridge().redoUiLayerEdit(), { title: '重做图层操作（Ctrl+Y）', 'aria-label': '重做图层操作', 'data-ui-layer-action': 'redo' })
-      for (const node of [undo, redo]) Object.assign(node.style, { width: '30px', minWidth: '30px', fontSize: '16px', padding: '0' })
-      toolbar.append(undo, redo, menu('导出', [['png', '整图 PNG'], ['layer', '选层 PNG'], ['psd', '图层 PSD'], ['json', '图层 JSON']], 'export'))
+      section = make('section', '', { class: 'nf-ui-layer-properties', 'data-novaflow-ui-layer-properties': '1' })
+      Object.assign(section.style, { borderTop: '1px solid #2d2d2d', padding: '10px 8px', minWidth: '0', boxSizing: 'border-box' })
+      fieldBody = make('div'); Object.assign(fieldBody.style, { display: 'grid', gap: '8px', minWidth: '0' })
+      status = make('div', '', { 'aria-live': 'polite', 'data-ui-layer-status': '1' }); Object.assign(status.style, { fontSize: '10px', color: '#aaa', overflowWrap: 'anywhere', lineHeight: '1.4' })
+      section.append(fieldBody, status)
     }
-    function field(label, key, type = 'text', options) {
-      const wrap = make('label', label), node = make(options ? 'select' : type === 'textarea' ? 'textarea' : 'input', '', { 'data-ui-layer-field': key, 'aria-label': label, ...(options || type === 'textarea' ? {} : { type }) })
-      Object.assign(wrap.style, { display: 'grid', gap: '4px', color: '#999', fontSize: '10px', minWidth: '0', textAlign: 'left' }); Object.assign(node.style, inputStyle)
-      if (options) for (const value of options) node.appendChild(make('option', value, { value }))
-      node.value = snapshot.selected[key] ?? ''; node.disabled = snapshot.busy || snapshot.selected.locked
-      if (type === 'textarea') { node.rows = key === 'text' ? 3 : 4; Object.assign(node.style, { resize: 'vertical', minHeight: '52px' }) }
-      if (type === 'number') { node.setAttribute('data-novaflow-number-fill', '1'); node.step = key === 'opacity' ? '0.05' : 'any'; if (['width', 'height', 'fontSize'].includes(key)) node.min = '1'; if (key === 'opacity') { node.min = '0'; node.max = '1' } }
-      const selectedId = snapshot.selected.id
-      node.addEventListener('change', async () => { const id = selectedId; if (!id) return; try { await bridge().patchUiLayer(id, { [key]: type === 'number' ? Number(node.value) : node.value }); refreshControls() } catch (reason) { report(reason); fieldSignature = ''; refreshControls() } }); wrap.append(node); return wrap
+    function numberField(key, value, apply) {
+      const node = make('input', '', { type: 'number', 'data-ui-layer-field': key, 'data-novaflow-number-fill': '1', 'aria-label': key === 'scale' ? '\u7b49\u6bd4\u7f29\u653e' : key })
+      Object.assign(node.style, inputStyle); node.value = value; node.step = key === 'scale' ? '1' : 'any'; node.disabled = snapshot.busy || snapshot.selected.locked
+      node.addEventListener('change', async () => { const id = snapshot?.selected?.id; if (!id) return; try { await apply(id, Number(node.value)); error = ''; status.textContent = ''; refresh() } catch (reason) { report(reason); signature = ''; refresh() } })
+      return node
     }
-    function renderFields() {
-      if (!fieldBody) return
+    function fields() {
       fieldBody.replaceChildren()
-      if (!snapshot.selected) { fieldBody.append(make('div', '在右侧选择图层后编辑；顶部“添加”可创建图层。')); return }
-      const selected = snapshot.selected, locked = selected.locked, id = selected.id
-      fieldBody.append(field('名称', 'name'))
-      const geometry = make('div'); Object.assign(geometry.style, { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '6px' }); geometry.append(field('X', 'x', 'number'), field('Y', 'y', 'number'), field('宽', 'width', 'number'), field('高', 'height', 'number')); fieldBody.append(geometry, field('透明度', 'opacity', 'number'))
-      if (selected.type === 'text') {
-        fieldBody.append(field('文字内容', 'text', 'textarea'), field('字体', 'fontFamily'), field('字号', 'fontSize', 'number'), field('字重', 'fontWeight', 'text', ['normal', 'bold', '100', '200', '300', '400', '500', '600', '700', '800', '900']), field('对齐', 'textAlign', 'text', ['left', 'center', 'right']), field('颜色', 'color', 'color'))
-      } else {
-        fieldBody.append(field('仅此图层的设计需求', 'prompt', 'textarea'))
-        const regenerate = button(snapshot.generating ? '正在生成选中层…' : '本地重生选中层', () => bridge().regenerateUiLayer(id), { 'data-ui-layer-action': 'regenerate' }); regenerate.disabled = snapshot.busy || locked; fieldBody.append(regenerate)
-        if (snapshot.generating) fieldBody.append(button('取消图层生成', () => bridge().cancelUiLayerGeneration(), { 'data-ui-layer-action': 'cancel' }))
-        const replace = button('替换选层图片', () => pickFile('image/png,image/jpeg,image/webp', async file => { const dataUrl = await readDataUrl(file); await bridge().patchUiLayer(id, { dataUrl, provenance: { kind: 'import-replacement', fileName: file.name, previous: selected.provenance || null } }) }), { 'data-ui-layer-action': 'replace' }); replace.disabled = snapshot.busy || locked; fieldBody.append(replace)
+      if (!snapshot.selected) return
+      const selected = snapshot.selected, key = snapshot.setId + ':' + selected.id
+      if (!scales.has(key)) scales.set(key, { width: selected.width, height: selected.height })
+      const base = scales.get(key)
+      const position = make('div'); Object.assign(position.style, { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '8px' })
+      for (const axis of ['x', 'y']) {
+        const label = make('label', axis.toUpperCase()); Object.assign(label.style, { display: 'grid', gridTemplateColumns: '14px minmax(0,1fr)', alignItems: 'center', gap: '4px', color: '#999', fontSize: '11px', minWidth: '0', textAlign: 'left' })
+        label.append(numberField(axis, selected[axis], (id, value) => bridge().patchUiLayer(id, { [axis]: value }))); position.append(label)
       }
-      const actions = make('div'); Object.assign(actions.style, { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '5px' })
-      for (const [text, action, disabled] of [[selected.visible === false ? '显示' : '隐藏', () => bridge().patchUiLayer(id, { visible: selected.visible === false }), snapshot.busy || locked], [locked ? '解锁' : '锁定', () => bridge().patchUiLayer(id, { locked: !locked }), snapshot.busy], ['上移', () => bridge().moveUiLayer(id, 1), snapshot.busy || locked], ['下移', () => bridge().moveUiLayer(id, -1), snapshot.busy || locked]]) { const node = button(text, action); node.disabled = disabled; actions.append(node) }
-      fieldBody.append(actions); const remove = button('删除图层', () => bridge().removeUiLayer(id), { 'data-ui-layer-action': 'delete' }); remove.disabled = snapshot.busy || locked; fieldBody.append(remove)
+      fieldBody.append(position)
+      const scale = make('label', '\u7f29\u653e'); Object.assign(scale.style, { display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) 14px', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#999', textAlign: 'left' })
+      const scaleInput = numberField('scale', Math.round(selected.width / base.width * 1000) / 10, (id, value) => bridge().patchUiLayer(id, { width: base.width * value / 100, height: base.height * value / 100 })); scaleInput.min = '0.1'; scale.append(scaleInput, make('span', '%')); fieldBody.append(scale)
+      const opacity = make('label', '\u900f\u660e\u5ea6'); Object.assign(opacity.style, { display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) 28px', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#999', textAlign: 'left' })
+      const slider = make('input', '', { type: 'range', min: '0', max: '1', step: '0.01', 'data-ui-layer-field': 'opacity', 'aria-label': '\u900f\u660e\u5ea6' }), value = make('span', Math.round(selected.opacity * 100) + '%')
+      Object.assign(slider.style, { width: '100%', minWidth: '0', margin: '0', accentColor: '#23a47b' }); slider.value = selected.opacity; slider.disabled = snapshot.busy || selected.locked
+      slider.addEventListener('input', () => { value.textContent = Math.round(Number(slider.value) * 100) + '%' })
+      slider.addEventListener('change', async () => { const id = snapshot?.selected?.id; if (!id) return; try { await bridge().patchUiLayer(id, { opacity: Number(slider.value) }); error = ''; status.textContent = ''; refresh() } catch (reason) { report(reason); signature = ''; refresh() } })
+      opacity.append(slider, value); fieldBody.append(opacity)
     }
-    function refreshControls(next) {
+    function refresh(next) {
       if (!alive) return
-      buildControls(); if (!section) return
+      build(); if (!section) return
       const layout = leftHost.querySelector('[data-novaflow-ui-layout-section="1"]'); if (layout && section.previousElementSibling !== layout) layout.after(section)
-      const host = bridge().getUiLayerToolbarHost?.(); if (host && toolbarHost !== host) { host.appendChild(toolbar); toolbarHost = host }
       snapshot = next?.selected !== undefined ? next : bridge().getUiLayerEditingSnapshot()
-      const { dataUrl, provenance, ...selectedFields } = snapshot.selected || {}, signature = JSON.stringify({ ...snapshot, selected: selectedFields })
-      if (signature !== fieldSignature) { fieldSignature = signature; renderFields() }
-      toolbar.querySelectorAll('select').forEach(node => { node.disabled = snapshot.busy })
-      toolbar.querySelector('[data-ui-layer-action="undo"]').disabled = snapshot.busy || !snapshot.canUndo
-      toolbar.querySelector('[data-ui-layer-action="redo"]').disabled = snapshot.busy || !snapshot.canRedo
+      section.style.display = snapshot.selected ? 'block' : 'none'
+      status.style.display = error ? 'block' : 'none'; status.textContent = error
+      const selected = snapshot.selected, nextSignature = JSON.stringify({ setId: snapshot.setId, busy: snapshot.busy, selected: selected ? { id: selected.id, x: selected.x, y: selected.y, width: selected.width, height: selected.height, opacity: selected.opacity, locked: selected.locked } : null })
+      if (signature !== nextSignature) { signature = nextSignature; fields() }
     }
     function bind() {
-      if (!unsubscribeLayers && bridge()?.subscribeUiLayerProjects) unsubscribeLayers = bridge().subscribeUiLayerProjects(event => {
-        if (!alive || !event?.project) return
-        last = JSON.stringify(event.project); store.patchProject({ uiLayers: clone(event.project) }); refreshControls()
-      })
-      if (!unsubscribeState && bridge()?.subscribeUiLayerState) unsubscribeState = bridge().subscribeUiLayerState(refreshControls)
+      if (!unsubscribeLayers && bridge()?.subscribeUiLayerProjects) unsubscribeLayers = bridge().subscribeUiLayerProjects(event => { if (!alive || !event?.project) return; last = JSON.stringify(event.project); store.patchProject({ uiLayers: clone(event.project) }); refresh() })
+      if (!unsubscribeState && bridge()?.subscribeUiLayerState) unsubscribeState = bridge().subscribeUiLayerState(refresh)
     }
     function sync() {
       if (!alive) return pending
-      bind(); refreshControls()
-      if (pending) return pending
+      bind(); refresh(); if (pending) return pending
       const project = store.getState().project, legacy = project.uiLayers
       if (!legacy?.layers?.length || !bridge()?.importUiLayerProject) return
-      const serialized = JSON.stringify(legacy); if (serialized === last) return
-      last = serialized
+      const serialized = JSON.stringify(legacy); if (serialized === last) return; last = serialized
       if (!project.uiLayersOriginal) store.patchProject({ uiLayersOriginal: clone(legacy) })
-      pending = Promise.resolve().then(() => bridge().importUiLayerProject(legacy, { name: project.title || project.name || '图层项目', activateIfEmpty: true })).catch(report).finally(() => { pending = null; refreshControls() })
-      return pending
+      pending = Promise.resolve().then(() => bridge().importUiLayerProject(legacy, { name: project.title || project.name || '\u56fe\u5c42\u9879\u76ee', activateIfEmpty: true })).catch(report).finally(() => { pending = null; refresh() }); return pending
     }
-    const unsubscribeStore = store.subscribe(sync), onResize = () => refreshControls()
+    const unsubscribeStore = store.subscribe(sync), onResize = () => refresh()
     root.addEventListener?.('resize', onResize); sync()
-    return { sync, get pending() { return pending }, get error() { return error }, destroy() { alive = false; unsubscribeStore?.(); unsubscribeLayers?.(); unsubscribeState?.(); root.removeEventListener?.('resize', onResize); section?.remove(); toolbar?.remove() } }
+    return { sync, get pending() { return pending }, get error() { return error }, destroy() { alive = false; unsubscribeStore?.(); unsubscribeLayers?.(); unsubscribeState?.(); root.removeEventListener?.('resize', onResize); section?.remove() } }
   }
+
 
   return Object.freeze({ normalize, controller, graph, composite, alphaStats, localGenerate, validateProject, prepareProject, projectFromParts, mount })
 })
