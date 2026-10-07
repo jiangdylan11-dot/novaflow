@@ -3580,6 +3580,14 @@
     const html = document.documentElement;
     if (!html) return;
     const artTarget = normalizeText(entry.getAttribute("data-novaflow-primary-label") || "") === ART_PRIMARY_ENTRY_LABEL;
+    // the page being left stays as it is until React replaces it (a task later for
+    // some switches): only what arrives after this click is veiled
+    const OLD_MARK = "data-novaflow-veil-old";
+    document.querySelectorAll('[data-novaflow-left-content-root="1"], .novaflow-app .nf-app-body > div:not(:first-child):not([data-preview-ui][style*="inset: 0"]) > *').forEach((node) => node.setAttribute(OLD_MARK, "1"));
+    const clearOldMarks = () => document.querySelectorAll(`[${OLD_MARK}]`).forEach((node) => node.removeAttribute(OLD_MARK));
+    // the column pass (mark, pin, clamp) in the same task as the lift: the settle
+    // rAF / flush timer that used to do it could land a frame after the first paint
+    const layoutBeforeLift = () => { try { runPrimarySwitchSettleCommonLayout(); } catch (_) { void 0; } };
     html.setAttribute("data-novaflow-switch-veil", "1");
     // Only the new page's groups count: the old page's are still in the
     // column when the first mutations arrive.
@@ -3651,8 +3659,10 @@
       const ready = (groupsIn || (runs > runsAtClick && frames >= 2)) && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady();
       if (ready || performance.now() - startedAt > (artTarget ? 1200 : 260)) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
+        layoutBeforeLift();
         holdPreviewFrameUntilSettled();
         html.removeAttribute("data-novaflow-switch-veil");
+        clearOldMarks();
         return;
       }
       NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
@@ -3668,8 +3678,10 @@
           node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
         )));
         if (addedGroup && newGroupsIn() && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady()) {
+          layoutBeforeLift();
           holdPreviewFrameUntilSettled();
           html.removeAttribute("data-novaflow-switch-veil");
+          clearOldMarks();
           watcher.disconnect();
         }
       });
@@ -43883,11 +43895,11 @@
     const cacheKey = Array.from(targets).join("|");
     const signature = getPrimaryEntryLayoutCacheSignature();
     const cached = PRIMARY_ENTRY_BUTTON_CACHE.get(cacheKey);
-    if (
-      cached &&
-      cached.signature === signature &&
-      isPrimaryEntryButtonCandidate(cached.button, targets)
-    ) {
+    // a cached button that still passes the candidate check is the answer whatever
+    // the switch token: the rail's buttons are stable nodes, and a rescan of every
+    // button on the page (style + rect each) cost ~90 ms per switch
+    if (cached && isPrimaryEntryButtonCandidate(cached.button, targets)) {
+      if (cached.signature !== signature) cached.signature = signature;
       return cached.button;
     }
     const button = Array.from(document.querySelectorAll('button, [role="button"]')).find((candidate) => (
@@ -80465,7 +80477,7 @@
 
   function findArtGeneratePanel() {
     const semanticPanel = document.querySelector(
-      '[data-novaflow-left-content-root="1"] [data-novaflow-spine-split-control-category="generate"]',
+      '[data-novaflow-left-content-root="1"] [data-novaflow-spine-split-control-category="generate"], [data-novaflow-art-drawing-host="1"] [data-novaflow-spine-split-control-category="generate"]',
     );
     if (semanticPanel instanceof HTMLElement) return semanticPanel;
     const button = findArtGenerateEntryButtons(document)[0];
@@ -80503,10 +80515,9 @@
   }
 
   function closeArtGenerateSiblingPanels(panel) {
-    const root = panel instanceof HTMLElement ? panel.closest('[data-novaflow-left-content-root="1"]') : null;
+    const root = panel instanceof HTMLElement ? panel.closest('[data-novaflow-left-content-root="1"], [data-novaflow-art-drawing-host="1"]') : null;
     if (!(root instanceof HTMLElement)) return;
     Array.from(root.querySelectorAll(".nf-panel")).forEach((candidate) => {
-      if (!(candidate instanceof HTMLElement) || candidate === panel || candidate.hasAttribute('data-novaflow-ui-layout-section')) return;
       if (!isArtGeneratePanelExpanded(candidate)) return;
       clickArtGeneratePanelHeader(candidate);
     });
@@ -85534,6 +85545,9 @@
   }
 
   function startupLayoutReady() {
+    // answered for good once the app-ready event went out: the snapshot measures
+    // the whole shell and searched every rail button on each switch (~60 ms)
+    if (STARTUP_APP_READY_DISPATCHED) return true;
     return getStartupAppReadySnapshot().ready;
   }
 

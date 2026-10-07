@@ -11,6 +11,15 @@
   // once and only refreshes quietly.
   const catalogCache = new Map()
   const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
+  // ...and across page loads: the answer (names, or the error line) is what sets the
+  // block's height, and on a fresh page it arrived after the panel's first frame
+  const STORAGE_KEY = 'nf_art_lora_catalog_v1'
+  function readStore() {
+    try { return JSON.parse(globalThis.localStorage?.getItem(STORAGE_KEY) || '{}') || {} } catch { return {} }
+  }
+  function remember(context, entry) {
+    try { const store = readStore(); store[context] = entry; globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(store)) } catch { /* no storage */ }
+  }
   const MAX_LORAS = 8
   const managed = /lightning|turbo|(?:^|[\\/_-])(?:4|8)steps?/i
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
@@ -129,8 +138,9 @@
     const context = `${modelState.provider}:${modelState.mode}:${!!modelState.nsfw}:${qwen21Route(modelState)}`
     if (record.context !== context) {
       record.context = context; record.loaded = false; record.signature = ''
-      const cached = catalogCache.get(context)
-      record.names = cached ? cached.names.slice() : []
+      const cached = catalogCache.get(context) || readStore()[context]
+      record.names = cached && Array.isArray(cached.names) ? cached.names.slice() : []
+      record.error = cached && cached.error ? String(cached.error) : ''
       record.quiet = Boolean(cached)
     }
     const supported = supports(modelState)
@@ -159,11 +169,13 @@
     // A quiet refresh keeps the cached names on screen instead of the loading placeholder.
     record.loading = !record.quiet
     record.loaded = true
-    record.error = ''
+    if (!record.quiet) record.error = ''
     mount(record.options)
     try {
       const names = catalogFromInfo(await record.options.loadCatalog(request))
       catalogCache.set(context, { names: names.slice(), at: Date.now() })
+      remember(context, { names: names.slice(), at: Date.now() })
+      if (context === record.context) record.error = ''
       if (context === record.context) {
         record.names = names
         const before = (record.options.state.loras || []).length
@@ -172,6 +184,7 @@
       }
     } catch (error) {
       if (context === record.context) record.error = String(error?.message || error)
+      remember(context, { error: String(error?.message || error), at: Date.now() })
     } finally {
       record.loading = false
       record.quiet = false

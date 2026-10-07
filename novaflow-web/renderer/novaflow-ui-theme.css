@@ -1324,7 +1324,7 @@ html body :is([data-novaflow-zoom-controls="1"], #novaflow-spine-split-zoom-hud)
 
 /* 3.0l While a page switch is being laid out (a frame or two), its
    content is veiled rather than shown half-built. */
-html[data-novaflow-switch-veil="1"] :is([data-novaflow-left-content-root="1"], .novaflow-app .nf-app-body > div:not(:first-child):not([data-preview-ui][style*="inset: 0"]) > *) {
+html[data-novaflow-switch-veil="1"] :is([data-novaflow-left-content-root="1"], .novaflow-app .nf-app-body > div:not(:first-child):not([data-preview-ui][style*="inset: 0"]) > *):not([data-novaflow-veil-old]) {
   opacity: 0 !important;
 }
 

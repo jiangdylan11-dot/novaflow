@@ -2742,7 +2742,8 @@
     })
     document.body.appendChild(picker)
     // What to pick, under the button (the name alone is short now).
-    const psNote = el('div', { marginTop: '6px', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
+    // no top margin: the brand runtime's rhythm pass sets the panel's spacing and zeroed it a frame later
+    const psNote = el('div', { marginTop: '0', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
       '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到按钮上')
     psNote.setAttribute('data-novaflow-ps-import-note', '1')
     state.psImport = { button, picker, status: psStatus, note: psNote }
@@ -2783,7 +2784,7 @@
     btn.dataset.nfStyleSig = sig
     for (const k of props) { const v = c[k]; if (v && v !== 'auto' && v !== 'none' && v !== '0px') btn.style[k] = v }
     btn.style.width = '100%'
-    btn.style.marginTop = '8px'
+    btn.style.marginTop = '0'
     btn.style.display = 'block'
     btn.style.boxSizing = 'border-box'
   }

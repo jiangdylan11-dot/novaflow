@@ -1020,6 +1020,18 @@
       startSplitMountRetry()
       syncSplitWorkspace()
     }
+    // React commits the 美工 page in this click or a task later; the column goes in
+    // the microtask of that commit, so the page's first painted frame has it
+    // (a frame later, the veil showed a bare page once)
+    try {
+      const observer = new MutationObserver(() => {
+        if (!isSplitCanvasRouteActive()) return
+        observer.disconnect()
+        remount()
+      })
+      observer.observe(document.body, { childList: true, subtree: true })
+      window.setTimeout(() => observer.disconnect(), 1500)
+    } catch (_) { /* the frame fallback below */ }
     window.requestAnimationFrame(remount)
     ;[80, 220, 420].forEach((delay) => window.setTimeout(remount, delay))
     return true
