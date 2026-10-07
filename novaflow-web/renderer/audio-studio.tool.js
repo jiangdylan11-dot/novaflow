@@ -265,11 +265,19 @@
   }
 
   // ---- activation ----------------------------------------------------------------
+  function setAnimationSecondaryFlag() {
+    const want = state.active ? 'ai' : 'skeleton';
+    if (document.body.getAttribute('data-nf-animation-secondary') === want) return;
+    document.body.setAttribute('data-nf-animation-secondary', want);
+    // the runtime switches the mode in its own cycle; nudge it when 动画 is already on
+    if (animationEntry()?.getAttribute('aria-pressed') === 'true') window.NovaFlowBrandRuntimeAnimation?.syncSecondary();
+  }
   function activate(sub) {
     sub = sub === 'audio' || sub === 'video' ? sub : state.sub;
     if (state.active && state.sub === sub) return;
     state.active = true;
     state.sub = sub;
+    setAnimationSecondaryFlag();
     const cell = document.getElementById(CELL_ID);
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '1'); cell.querySelector('button')?.setAttribute('aria-pressed', 'true'); }
     if (sub === 'audio') {
@@ -300,6 +308,7 @@
   function deactivate(silent) {
     if (!state.active) return;
     state.active = false;
+    setAnimationSecondaryFlag();
     document.body.classList.remove(BODY_CLASS);
     document.body.classList.remove(SUB_VIDEO_CLASS);
     syncSubToggle();
@@ -414,20 +423,15 @@
     document.body.classList.add(SWITCH_CLASS);
     showCover();
     const wantLabel = mode === 'skeleton' ? '骨骼动画' : 'AI序列动画';
-    let clicked = false;
     const settle = () => {
       if (!switching) return;
-      // only once the section itself is on; the mode click goes in its own frame,
-      // never inside React's primary switch (that left the switch half done)
       if (animationEntry()?.getAttribute('aria-pressed') !== 'true') return;
       const button = secondaryButton(wantLabel);
       if (!button) return;
       markAnimationGroup();
-      if (!secondaryActive(button)) {
-        if (!clicked) { clicked = true; window.requestAnimationFrame(() => { if (switching) replayClick(button); }); }
-        return;
-      }
-      // the mode is on: give React and the runtime one frame to paint it, then reveal
+      // the brand runtime switches the mode itself (data-nf-animation-secondary);
+      // once it shows, one frame for the paint, then the cover goes
+      if (!secondaryActive(button)) return;
       window.requestAnimationFrame(() => window.requestAnimationFrame(endSwitch));
     };
     const observer = new MutationObserver(settle);
@@ -1863,6 +1867,7 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
+  setAnimationSecondaryFlag();
 
   window.NovaFlowAudioStudio = {
     open: activate, close: deactivate,

@@ -1879,6 +1879,7 @@
   const ART_DRAWING_SECONDARY_GROUP_KEY = "\u7ed8\u56fe|UI";
   const ART_DRAWING_SECONDARY_LABEL = "\u7ed8\u56fe";
   let ART_DRAWING_DEFAULT_ACTIVATION_RAF = 0;
+  let ANIMATION_SECONDARY_ACTIVATION_RAF = 0;
   let ART_DRAWING_DEFAULT_ACTIVATION_TIMER = null;
   let NOVAFLOW_NUMBER_INPUT_OVERLAY_SCROLL_TIMER = null;
   let NOVAFLOW_NUMBER_INPUT_OVERLAY_SCROLL_RAF = null;
@@ -44483,7 +44484,52 @@
   }
 
   function defaultSecondaryActiveLabel(labels) {
-    return isArtDrawingSecondaryGroup(labels) ? ART_DRAWING_SECONDARY_LABEL : "";
+    if (isArtDrawingSecondaryGroup(labels)) return ART_DRAWING_SECONDARY_LABEL;
+    if (isAiSequenceSecondaryGroup(labels)) return animationWantedSecondaryLabel();
+    return "";
+  }
+
+  // 动画 has no visible secondary entries: entered from its rail entry it is
+  // 骨骼动画, under 音视 / 视频 it is AI序列动画 (audio-studio.tool.js writes the
+  // flag on <body>). The group is switched here, in the runtime's own layout
+  // cycle, the way 美工 picks 绘图 - never by a replayed click from outside.
+  function animationWantedSecondaryLabel() {
+    return document.body?.getAttribute("data-nf-animation-secondary") === "ai" ? "AI\u5e8f\u5217\u52a8\u753b" : "\u9aa8\u9abc\u52a8\u753b";
+  }
+  // audio-studio.tool.js calls this right after it changes the wanted mode while 动画 is already on
+  window.NovaFlowBrandRuntimeAnimation = Object.freeze({
+    syncSecondary() {
+      const labels = ["AI序列动画", "骨骼动画"];
+      const buttons = labels.map(findEntryButton);
+      if (buttons.some((button) => !button)) return false;
+      scheduleAnimationSecondaryActivation(labels.map(normalizeText).join("|"), buttons);
+      return true;
+    }
+  });
+  function scheduleAnimationSecondaryActivation(groupKey, buttons) {
+    if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return;
+    if (ANIMATION_SECONDARY_ACTIVATION_RAF) return;
+    ANIMATION_SECONDARY_ACTIVATION_RAF = window.requestAnimationFrame(() => {
+      ANIMATION_SECONDARY_ACTIVATION_RAF = 0;
+      if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return;
+      const wanted = normalizeText(animationWantedSecondaryLabel());
+      const live = buttons.map((button) => findLiveOriginalEntryButton(normalizeText(button.textContent || ""), button)).filter((button) => button instanceof HTMLElement);
+      const target = live.find((button) => normalizeText(button.textContent || "") === wanted);
+      if (!(target instanceof HTMLElement) || !isVisible(target)) return;
+      // what React shows now: the mounted layout when it tells, else the pressed pill
+      const shownLabel = inferSecondaryActiveLabel(buttons.map((button) => normalizeText(button.textContent || "")))
+        || normalizeText(live.find((button) => hasActiveAttribute(button) || hasActiveClass(button) || hasActiveVisual(button))?.textContent || "");
+      if (shownLabel === wanted) return;
+      // the click handler records the new label itself; writing it first would make
+      // the switch look like a no-op to its pre-layout
+      SECONDARY_USER_SELECTED_BY_GROUP.delete(groupKey);
+      SECONDARY_PROGRAMMATIC_ACTIVATION_BY_GROUP.add(groupKey);
+      try {
+        activateEntryButton(target, { focus: false });
+      } finally {
+        window.setTimeout(() => SECONDARY_PROGRAMMATIC_ACTIVATION_BY_GROUP.delete(groupKey), 160);
+      }
+    });
   }
 
   function inferSecondaryActiveLabel(labels) {
@@ -57913,6 +57959,7 @@
         scheduleArtDrawingDefaultActivation(groupKey, button);
       }
     });
+    if (isAiSequenceSecondaryGroup(labels)) scheduleAnimationSecondaryActivation(groupKey, buttons);
     pinSecondaryGroup(group, buttons);
   }
 
