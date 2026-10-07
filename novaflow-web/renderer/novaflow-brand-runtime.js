@@ -57972,6 +57972,7 @@
             if (skeletonSecondarySwitch) scheduleSkeletonAnimationLayout({ immediate: true });
             if (aiSequenceSecondarySwitch) applyAiSequenceSecondarySwitchPreLayout();
             const token = PRIMARY_SWITCH_TOKEN;
+            if (aiSequenceSecondarySwitch) armAiSequenceSecondaryMountSync(token);
             window.requestAnimationFrame(() => {
               if (token !== PRIMARY_SWITCH_TOKEN) return;
               if (runAiAnimationSecondarySwitchLocalRefresh({ skeletonSecondarySwitch, aiSequenceSecondarySwitch })) return;
@@ -57988,6 +57989,36 @@
     });
     if (isAiSequenceSecondaryGroup(labels)) scheduleAnimationSecondaryActivation(groupKey, buttons);
     pinSecondaryGroup(group, buttons);
+  }
+
+  // 骨骼动画 → AI序列动画: React mounts the AI section after the click handler
+  // returns, and the pass that collapses 动画生成 and lays the column out
+  // otherwise lands one paint later - that paint showed React's own expanded
+  // panel (recorded on a screencast). A MutationObserver runs as a microtask,
+  // before the paint: the moment the section's nodes are in, the entry's
+  // synchronous layout runs, so the first painted frame is the finished one.
+  let AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = null;
+  function armAiSequenceSecondaryMountSync(token) {
+    if (AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER) {
+      AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER.disconnect();
+      AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = null;
+    }
+    if (typeof MutationObserver !== "function" || !document.body) return;
+    let timer = 0;
+    const observer = new MutationObserver(() => {
+      if (token !== PRIMARY_SWITCH_TOKEN) { stop(); return; }
+      if (!isAiSequenceSecondaryContentMounted()) return;
+      stop();
+      try { runAiAnimationEntryFirstFrameLayoutSync(); } catch (_) { void 0; }
+    });
+    const stop = () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+      if (AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER === observer) AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = null;
+    };
+    observer.observe(document.body, { childList: true, subtree: true });
+    timer = window.setTimeout(stop, 1500);
+    AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = observer;
   }
 
   function applySecondaryEntryLayout() {

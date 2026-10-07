@@ -15,8 +15,6 @@
   const LABEL = '音视';                // the rail entry; its two sub-entries are 视频 (the AI sequence section) and 音频 (this overlay)
   const SUB_VIDEO_CLASS = 'novaflow-primary-target-av-video';
   const SUB_TOGGLE_ID = 'novaflow-av-sub-toggle';
-  const SWITCH_CLASS = 'novaflow-av-switching';  // content covered until the 动画 section shows the right mode
-  const COVER_ID = 'novaflow-av-cover';
   const SECONDARY_SHELL_H = 37;        // SECONDARY_GROUP_HEIGHT in the brand runtime
   const CELL_ID = 'novaflow-primary-audio-cell';
   const MASK_ID = 'novaflow-primary-audio-mask';
@@ -357,31 +355,17 @@
   function secondaryActive(button) {
     return button.getAttribute('data-novaflow-secondary-active') === '1' || button.getAttribute('aria-pressed') === 'true';
   }
-  // Entering 动画 (骨骼) or 音视 / 视频 (AI序列): the section's content stays
-  // hidden from the click until React shows the wanted mode, then it is
-  // revealed in one step. A MutationObserver settles it the moment the
-  // secondary buttons change; nothing is polled.
+  // Entering 动画 (骨骼) or 音视 / 视频 (AI序列): nothing is covered or hidden
+  // (a board over the content was itself a blank frame - recorded on the
+  // screencast; without it the first painted frame is the finished page).
+  // A MutationObserver only waits for React to show the wanted mode, then
+  // our toggle / mask follow and the runtime gets one pass.
   let switching = null;
-  function showCover() {
-    let cover = document.getElementById(COVER_ID);
-    if (!cover) { cover = el('div'); cover.id = COVER_ID; cover.setAttribute('data-novaflow-runtime-ignore', '1'); document.body.appendChild(cover); }
-    const column = document.querySelector('[data-novaflow-left-column]');
-    const rail = document.querySelector('[data-novaflow-primary-rail]');
-    const left = rail ? Math.round(rail.getBoundingClientRect().right) : 75;
-    const top = column ? Math.round(column.getBoundingClientRect().top) : 54;
-    const solid = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c || ''); if (!m) return false; const parts = m[1].split(',').map((x) => parseFloat(x)); return parts.length < 4 || parts[3] >= 0.99; };
-    const bg = (() => { for (const node of [document.querySelector('.nf-app-body'), document.body]) { const c = node && getComputedStyle(node).backgroundColor; if (solid(c)) return c; } return '#1a1a1a'; })();
-    Object.assign(cover.style, { left: left + 'px', top: top + 'px', right: '0', bottom: '0', background: bg });
-    cover.hidden = false;
-  }
-  function hideCover() { const cover = document.getElementById(COVER_ID); if (cover) cover.hidden = true; }
   function endSwitch() {
     if (!switching) return;
     switching.observer.disconnect();
     window.clearTimeout(switching.deadline);
     switching = null;
-    document.body.classList.remove(SWITCH_CLASS);
-    hideCover();
     syncSubToggle();
     syncMask();
     // one runtime pass after the mode landed (a switch interrupted mid-way skips its own)
@@ -416,18 +400,15 @@
   }
   function beginSwitch(mode) {
     endSwitch();
-    document.body.classList.add(SWITCH_CLASS);
-    showCover();
     const wantLabel = mode === 'skeleton' ? '骨骼动画' : 'AI序列动画';
     const settle = () => {
       if (!switching) return;
       if (animationEntry()?.getAttribute('aria-pressed') !== 'true') return;
       const button = secondaryButton(wantLabel);
       if (!button) return;
-      // the brand runtime switches the mode itself (data-nf-animation-secondary);
-      // once it shows, one frame for the paint, then the cover goes
+      // the brand runtime switches the mode itself (data-nf-animation-secondary)
       if (!secondaryActive(button)) return;
-      window.requestAnimationFrame(() => window.requestAnimationFrame(endSwitch));
+      endSwitch();
     };
     const observer = new MutationObserver(settle);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-novaflow-secondary-active', 'aria-pressed'] });
@@ -563,10 +544,6 @@
       .nf-as-mode.nf-as-mode-kind{margin:0 0 4px}
       /* the React AI序列动画 / 骨骼动画 toggle never shows: 动画 is 骨骼 only, 音视 / 视频 floats its own */
       #${SUB_TOGGLE_ID}{position:fixed;z-index:2147483000;margin:0;box-sizing:border-box}
-      /* while a 动画 / 音视 switch settles, a page-coloured board covers the content area
-         (hiding the elements themselves stalls React's section switch) */
-      #${COVER_ID}{position:fixed;z-index:2147482990;pointer-events:none}
-      body.${SWITCH_CLASS} #${SUB_TOGGLE_ID}{visibility:hidden!important}
       /* rows: the animation section's collapse headings - icon plate and chevron are pseudo elements */
       .nf-as-rows{display:flex;flex-direction:column;gap:0}
       .nf-as-rows-tools{margin-top:3px;padding:3px 0;border-top:1px solid #272727;border-bottom:1px solid #272727;display:flex;flex-direction:column;gap:5px}
