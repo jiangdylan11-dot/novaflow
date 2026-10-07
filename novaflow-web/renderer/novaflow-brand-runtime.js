@@ -44529,9 +44529,10 @@
       const live = buttons.map((button) => findLiveOriginalEntryButton(normalizeText(button.textContent || ""), button)).filter((button) => button instanceof HTMLElement);
       const target = live.find((button) => normalizeText(button.textContent || "") === wanted);
       if (!(target instanceof HTMLElement) || !isVisible(target)) return;
-      // what React shows now: the mounted layout when it tells, else the pressed pill
-      const shownLabel = inferSecondaryActiveLabel(buttons.map((button) => normalizeText(button.textContent || "")))
-        || normalizeText(live.find((button) => hasActiveAttribute(button) || hasActiveClass(button) || hasActiveVisual(button))?.textContent || "");
+      // what React shows now: its own pressed pill first (the mount evidence can lag a
+      // re-render by a frame), the inferred layout when the pills say nothing
+      const shownLabel = normalizeText(live.find((button) => hasActiveAttribute(button) || hasActiveClass(button) || hasActiveVisual(button))?.textContent || "")
+        || inferSecondaryActiveLabel(buttons.map((button) => normalizeText(button.textContent || "")));
       if (shownLabel === wanted) return;
       // the click handler records the new label itself; writing it first would make
       // the switch look like a no-op to its pre-layout

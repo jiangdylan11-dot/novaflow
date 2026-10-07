@@ -418,6 +418,36 @@
     document.body.classList.remove(SWITCH_CLASS);
     hideCover();
     syncSubToggle();
+    syncMask();
+    // one runtime pass after the mode landed (a switch interrupted mid-way skips its own)
+    window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  }
+  // The AI sequence section without the runtime's layout (a switch interrupted
+  // by the next click): the body lacks the class the runtime adds with it.
+  let healAt = 0;
+  function rawAnimationPanelShowing() {
+    const root = document.querySelector('[data-novaflow-left-content-root="1"]');
+    if (!root) return false;
+    for (const node of root.querySelectorAll('div, span, label')) {
+      if (node.childElementCount) continue;
+      const t = (node.textContent || '').trim();
+      if ((t === '模式选择' || t === '模型方式') && node.getBoundingClientRect().height > 10) return true;
+    }
+    return false;
+  }
+  function healAnimationLayout() {
+    const entry = animationEntry();
+    if (!entry || entry.getAttribute('aria-pressed') !== 'true' || switching) return;
+    const now = performance.now();
+    if (now - healAt < 900) return;
+    // the mode the section should be in (a burst of clicks can leave the other one)
+    const want = state.active ? 'AI序列动画' : '骨骼动画';
+    const wanted = secondaryButton(want);
+    if (wanted && !secondaryActive(wanted)) { healAt = now; window.NovaFlowBrandRuntimeAnimation?.syncSecondary(); return; }
+    const ai = secondaryButton('AI序列动画');
+    if (!ai || !secondaryActive(ai)) return;
+    // the AI sequence section without the runtime's layout
+    if (!document.body.classList.contains('novaflow-ai-animation-section-layers') || rawAnimationPanelShowing()) { healAt = now; window.dispatchEvent(new Event('resize')); }
   }
   function beginSwitch(mode) {
     endSwitch();
@@ -437,7 +467,7 @@
     };
     const observer = new MutationObserver(settle);
     observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-novaflow-secondary-active', 'aria-pressed'] });
-    switching = { observer, deadline: window.setTimeout(endSwitch, 1500) };
+    switching = { observer, deadline: window.setTimeout(endSwitch, 1000) };
     settle();
   }
   function ensureAnimationSection() {
@@ -2075,8 +2105,9 @@
   function tick() {
     ensureCell();
     if (state.active && state.sub === 'audio') layout();
-    if (state.active && state.sub === 'video') syncSubToggle();
+    if (state.active && state.sub === 'video') { syncSubToggle(); syncMask(); }
     markAnimationGroup();
+    healAnimationLayout();
   }
   function start() {
     if (railTimer) return;
