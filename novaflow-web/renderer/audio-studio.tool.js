@@ -103,7 +103,7 @@
     resources: [],                      // {id, kind, name, buffer, blob, url, seconds, caption, label, task, loopable}
     running: new Map(),                 // task id -> {cancelled}
     counter: { music: 0, sfx: 0, import: 0 },
-    projectName: 'audio_1',
+    boards: [], board: 0,
     maskTarget: null,
     preview: null
   };
@@ -246,6 +246,17 @@
     const target = event.target instanceof Element ? event.target : null;
     if (target && target.closest('[data-novaflow-primary-entry="1"]')) deactivate();
   }, true);
+  // The rail's 导出 is the one export entry for every section. While 音频 is
+  // open it renders the timeline mix; an unlicensed install keeps the
+  // runtime's own licence prompt.
+  document.addEventListener('click', (event) => {
+    if (!state.active || !editor) return;
+    const target = event.target instanceof Element ? event.target.closest('[data-novaflow-primary-export-entry="1"]') : null;
+    if (!(target instanceof HTMLElement) || target.getAttribute('data-novaflow-primary-shortcut-locked') === '1') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    exportMix();
+  }, true);
 
   // ---- styles --------------------------------------------------------------------
   function installStyle() {
@@ -268,22 +279,23 @@
       #${ROOT_ID}{position:fixed;inset:0;z-index:130;pointer-events:none;color:#e8eaed;font-size:12px;font-weight:400;font-family:inherit}
       #${ROOT_ID}[hidden]{display:none!important}
       #${ROOT_ID} *{box-sizing:border-box;font-family:inherit}
-      #${ROOT_ID} button{font:inherit;cursor:pointer;outline:0;transition:none}
+      #${ROOT_ID} button{font-family:inherit;cursor:pointer;outline:0;transition:none}
+      #${ROOT_ID} input,#${ROOT_ID} select,#${ROOT_ID} textarea{font-family:inherit}
       #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus,#${ROOT_ID} select:focus{outline:0;box-shadow:none}
       #${ROOT_ID} > *{pointer-events:auto}
       .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport{position:fixed}
       /* left card: the section panel */
       .nf-as-left{background:#161616;border:1px solid #2e2e2e;border-radius:12px;padding:10px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
       .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:1px 0 12px}
-      .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;padding:0 6px}
+      .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px}
       .nf-as-mode button:hover{background:#2a2a2a}
       .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
       /* rows: the animation section's collapse headings - icon plate and chevron are pseudo elements */
-      .nf-as-rows{display:flex;flex-direction:column;gap:5px}
+      .nf-as-rows{display:flex;flex-direction:column;gap:0}
       .nf-as-rows-tools{margin-top:3px;padding:3px 0;border-top:1px solid #272727;border-bottom:1px solid #272727;display:flex;flex-direction:column;gap:5px}
       .nf-as-row-head{position:relative;display:flex;align-items:center;width:100%;height:46px;padding:0 30px 0 40px;border:0;border-radius:7px;background:transparent;color:#d4d4d4;font-size:12px;font-weight:400;line-height:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .nf-as-row[data-key="generate"] .nf-as-row-head{font-weight:500;border-radius:6px}
-      .nf-as-row-head::before{content:"";position:absolute;left:7px;top:11px;width:24px;height:24px;border-radius:5px;background:#292929 var(--nf-as-row-icon) center / 16px 16px no-repeat}
+      .nf-as-row[data-key="generate"] .nf-as-row-head{font-weight:500;letter-spacing:.18px;border-radius:6px}
+      .nf-as-row-head::before{content:"";position:absolute;left:7px;top:11px;width:24px;height:24px;border-radius:5px;background:#292929 var(--nf-as-row-icon) center / 14px 14px no-repeat}
       .nf-as-row-head::after{content:"";position:absolute;right:12px;top:50%;width:7px;height:7px;border-right:1px solid rgba(238,244,252,.7);border-bottom:1px solid rgba(238,244,252,.7);transform:translateY(-50%) rotate(-45deg)}
       .nf-as-row[data-open="1"] .nf-as-row-head::after{transform:translateY(-70%) rotate(45deg)}
       .nf-as-row-head:hover{background:rgba(255,255,255,.043)}
@@ -299,18 +311,31 @@
       .nf-as-tools button:disabled,.nf-as-btn:disabled{opacity:.45;cursor:default}
       .nf-as-tools button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
       .nf-as-note{font-size:11px;line-height:1.6;color:#8b8b8b}
+      .nf-as-inspector{display:flex;flex-direction:column;gap:7px;padding-top:4px;border-top:1px solid #272727;margin-top:2px}
+      .nf-as-slider{display:grid;grid-template-columns:30px minmax(0,1fr) 42px;align-items:center;gap:6px;font-size:11px;color:#a9a9a9;height:24px}
+      .nf-as-slider-value{text-align:right;color:#cfcfcf;font-variant-numeric:tabular-nums}
+      .nf-as-slider input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:12px;margin:0;padding:0;border:0;background:linear-gradient(90deg,#20c997 0%,#20c997 var(--nf-range-pct,0%),#303030 var(--nf-range-pct,0%),#303030 100%) center / 100% 2px no-repeat}
+      .nf-as-slider input[type=range]::-webkit-slider-runnable-track{height:2px;background:transparent}
+      .nf-as-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-5px;border-radius:50%;background:#dfe7ee;border:0}
+      .nf-as-slider input[type=range]:disabled{opacity:.4}
+      .nf-as-slider .nf-as-loop-count{width:100%;text-align:center;padding:0 4px}
+      .nf-as-slider .nf-as-loop-count:disabled{opacity:.4}
       /* stage */
-      .nf-as-stage{background:transparent;border-radius:7px;overflow:visible}
-      .nf-as-topbar{position:absolute;left:0;top:7px;right:0;height:38px;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
-      .nf-as-topbar > *{pointer-events:auto}
-      .nf-as-project{display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133)}
+      /* opaque: nothing of the section underneath (the particle canvas and its dot grid) may show through */
+      .nf-as-stage{background:#242424;border-radius:0;overflow:visible}
+      .nf-as-topbar{position:absolute;left:0;top:7px;right:0;height:38px;pointer-events:none}
+      .nf-as-topbar > *{pointer-events:auto;position:absolute;top:0}
+      .nf-as-project{left:0;display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
+      .nf-as-tabs{display:flex;gap:3px}
+      .nf-as-project .nf-as-name{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
+      .nf-as-project .nf-as-tab[aria-pressed="false"]{background:#252629;color:#969aa2;border-color:transparent}
       .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add,.nf-as-project .nf-as-tab-del{width:38px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#a0a0a0;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add:hover{background:#2a2a2a;color:#fff}
       .nf-as-project .nf-as-tab-del{background:#252629;color:#969aa2}
       .nf-as-project .nf-as-tab-del:hover{background:#4a2323;color:#ffb4b4}
       .nf-as-project input{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
-      .nf-as-zoom{display:flex;align-items:center;height:38px;padding:4px;gap:3px;margin-right:0;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133)}
+      .nf-as-zoom{right:0;display:flex;align-items:center;height:38px;padding:4px;gap:3px;margin-right:0;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
       .nf-as-zoom span{min-width:44px;height:28px;display:grid;place-items:center;border-radius:5px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px}
       .nf-as-zoom button{height:28px;border:1px solid transparent;border-radius:5px;background:transparent;color:#8a8a8a;font-size:11px;padding:0 10px}
       .nf-as-zoom button:hover{color:#fff;background:#2a2a2a}
@@ -364,10 +389,10 @@
       /* transport */
       .nf-as-transport{background:#161616;border:1px solid #343434;border-radius:10px;padding:10px 12px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
       .nf-as-tr-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;min-width:0}
-      .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:0;border-radius:7px;background:#282828;color:#e3e3e3;display:grid;place-items:center;padding:0}
+      .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:1px solid transparent;border-radius:7px;background:#282828;color:#eaeaea;display:grid;place-items:center;padding:0}
       .nf-as-tr-row .nf-as-tbtn:hover{background:#343434}
-      .nf-as-tr-row .nf-as-tbtn[aria-pressed="true"]{background:#193d33;color:#9be4cd}
-      .nf-as-tr-row .nf-as-tbtn svg{width:14px;height:14px;fill:currentColor}
+      .nf-as-tr-row .nf-as-tbtn[aria-pressed="true"]{background:#193d33;color:#8ee0c5;border-color:#306553}
+      .nf-as-tr-row .nf-as-tbtn svg{display:block;width:18px;height:18px}
       .nf-as-time{font-size:11px;color:#cfcfcf;min-width:110px;font-variant-numeric:tabular-nums;margin-left:6px}
       .nf-as-tr-row .nf-as-label{margin-left:10px}
       .nf-as-tr-row input[type=number]{width:49px;height:28px;border:1px solid #343434;border-radius:6px;background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
@@ -427,18 +452,20 @@
     parent.appendChild(field);
     return select;
   }
-  function svgIcon(path) {
-    return '<svg viewBox="0 0 24 24" aria-hidden="true">' + path + '</svg>';
-  }
+  // The transport glyphs are the animation section's own (18px, 78% white).
+  const GLYPH = 'rgba(255,255,255,0.78)';
+  const svgWrap = (inner) => '<svg width="18" height="18" viewBox="0 0 18 18" style="display:block" aria-hidden="true">' + inner + '</svg>';
+  const bar = (x) => '<rect x="' + x + '" y="4" width="2" height="10" rx="0.5" fill="' + GLYPH + '"></rect>';
   const ICONS = {
-    start: '<path d="M6 5h2v14H6zM18 5 9 12l9 7z"/>',
-    back: '<path d="M16 5 7 12l9 7z"/>',
-    play: '<path d="M8 5l11 7-11 7z"/>',
-    pause: '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>',
-    fwd: '<path d="M8 5l9 7-9 7z"/>',
-    end: '<path d="M16 5h2v14h-2zM6 5l9 7-9 7z"/>',
-    loop: '<path d="M7 7h9l-2-2 1.4-1.4L19.8 8l-4.4 4.4L14 11l2-2H7a2 2 0 0 0-2 2v2H3v-2a4 4 0 0 1 4-4zm10 10H8l2 2-1.4 1.4L4.2 16l4.4-4.4L10 13l-2 2h9a2 2 0 0 0 2-2v-2h2v2a4 4 0 0 1-4 4z"/>'
+    start: svgWrap(bar(3) + bar(6) + '<polygon points="15,4 15,14 9,9" fill="' + GLYPH + '"></polygon>'),
+    back: svgWrap(bar(4) + '<polygon points="14,4 14,14 7,9" fill="' + GLYPH + '"></polygon>'),
+    play: svgWrap('<polygon points="5.5,4 5.5,14 13.5,9" fill="' + GLYPH + '"></polygon>'),
+    pause: svgWrap('<rect x="5" y="4" width="3" height="10" rx="0.5" fill="' + GLYPH + '"></rect><rect x="10" y="4" width="3" height="10" rx="0.5" fill="' + GLYPH + '"></rect>'),
+    fwd: svgWrap(bar(12) + '<polygon points="4,4 4,14 11,9" fill="' + GLYPH + '"></polygon>'),
+    end: svgWrap(bar(13) + bar(10) + '<polygon points="3,4 3,14 9,9" fill="' + GLYPH + '"></polygon>'),
+    loop: svgWrap('<path d="M6.5 5.3c2.7-2 6.8-.4 7.3 2.8.5 3.2-3.1 5.8-6 4.4" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"></path><path d="M7.2 4.2l-2.6 1.2 2.1 2.0" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>')
   };
+  function svgIcon(icon) { return icon; }
 
   // ---- mount --------------------------------------------------------------------------
   function mount() {
@@ -474,21 +501,35 @@
     tool('分割', '在播放头处分割选中片段 (S)', () => editor.splitAtPlayhead());
     tool('删除', '删除选中片段 (Delete)', () => editor.deleteSelected());
     tool('复制', '在后面复制一份选中片段', () => editor.duplicateSelected());
-    tool('循环 ×2', '把选中片段延长为两遍循环', () => { const c = editor.selectedClip(); if (c) editor.extendLoop(c.id, Math.max(2, Math.round(c.length / c.buffer.duration) + 1)); });
-    tool('淡入 0.5s', '选中片段淡入', () => { const c = editor.selectedClip(); if (c) editor.setFade(c.id, c.fadeIn > 0 ? 0 : 0.5, undefined); });
-    tool('淡出 1s', '选中片段淡出', () => { const c = editor.selectedClip(); if (c) editor.setFade(c.id, undefined, c.fadeOut > 0 ? 0 : 1); });
     tool('新增音轨', '添加一条空音轨', () => editor.addTrack());
-    tool('适应窗口', '缩放到整段可见', () => { editor.fitToWindow(); syncZoom(); });
     tools.body.appendChild(grid);
-    tools.body.appendChild(el('div', 'nf-as-note', '拖右侧资源到音轨；拖片段边缘裁剪，拖过末尾即循环；上角小方块是淡入淡出。'));
-
-    const out = row(toolRows, 'export', '导出', ROW_ICONS.export);
-    const outGrid = el('div', 'nf-as-tools');
-    const mix = el('button', null, '导出混音 WAV'); mix.type = 'button'; mix.addEventListener('click', exportMix);
-    const one = el('button', null, '导出选中片段'); one.type = 'button'; one.addEventListener('click', exportSelected);
-    outGrid.appendChild(mix); outGrid.appendChild(one);
-    out.body.appendChild(outGrid);
-    out.body.appendChild(el('div', 'nf-as-note', '混音会按音轨音量、淡入淡出与循环展开渲染，并存入仓库。'));
+    // selected clip: volume, fades, loop count
+    const insp = el('div', 'nf-as-inspector');
+    ui.inspTitle = el('div', 'nf-as-label', '未选中片段');
+    insp.appendChild(ui.inspTitle);
+    const slider = (label, min, max, step, format, apply) => {
+      const rowEl = el('label', 'nf-as-slider');
+      rowEl.appendChild(el('span', null, label));
+      const input = el('input'); input.type = 'range'; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(min);
+      const value = el('span', 'nf-as-slider-value', format(min));
+      const paint = () => { const pct = (Number(input.value) - min) / (max - min) * 100; input.style.setProperty('--nf-range-pct', pct + '%'); value.textContent = format(Number(input.value)); };
+      input.addEventListener('input', () => { paint(); const clip = editor.selectedClip(); if (clip) apply(clip, Number(input.value)); });
+      rowEl.appendChild(input); rowEl.appendChild(value);
+      insp.appendChild(rowEl);
+      return { input, paint, set(v) { input.value = String(v); paint(); } };
+    };
+    ui.inspGain = slider('音量', 0, 200, 1, (v) => Math.round(v) + '%', (clip, v) => editor.setGain(clip.id, v / 100));
+    ui.inspFadeIn = slider('淡入', 0, 5, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, v, undefined));
+    ui.inspFadeOut = slider('淡出', 0, 5, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, undefined, v));
+    const loopRow = el('label', 'nf-as-slider');
+    loopRow.appendChild(el('span', null, '循环'));
+    ui.inspLoop = el('input'); ui.inspLoop.type = 'number'; ui.inspLoop.min = '1'; ui.inspLoop.max = '50'; ui.inspLoop.value = '1'; ui.inspLoop.className = 'nf-as-input nf-as-loop-count'; ui.inspLoop.title = '片段在时间轴上重复的遍数';
+    ui.inspLoop.addEventListener('change', () => { const clip = editor.selectedClip(); const n = Math.max(1, Math.min(50, Math.round(Number(ui.inspLoop.value) || 1))); ui.inspLoop.value = String(n); if (clip) editor.extendLoop(clip.id, n); });
+    loopRow.appendChild(ui.inspLoop); loopRow.appendChild(el('span', 'nf-as-slider-value', '遍'));
+    insp.appendChild(loopRow);
+    tools.body.appendChild(insp);
+    tools.body.appendChild(el('div', 'nf-as-note', '拖资源到音轨；拖片段边缘裁剪，拖过末尾即循环。'));
+    syncInspector(null);
     root.appendChild(left);
     ui.left = left;
 
@@ -496,14 +537,15 @@
     const stage = el('div', 'nf-as-stage');
     const topbar = el('div', 'nf-as-topbar');
     const project = el('div', 'nf-as-project');
-    const tab = el('button', 'nf-as-tab', '1'); tab.type = 'button'; tab.title = '当前工程';
-    const add = el('button', 'nf-as-tab-add', '+'); add.type = 'button'; add.title = '新建工程（清空时间轴）';
-    add.addEventListener('click', () => { if (editor.clipCount() && !window.confirm('清空当前时间轴，开始新的工程？')) return; resetProject(); });
-    const del = el('button', 'nf-as-tab-del', '-'); del.type = 'button'; del.title = '清空当前工程';
-    del.addEventListener('click', () => { if (editor.clipCount() && !window.confirm('清空当前工程的时间轴？')) return; resetProject(); });
-    const name = el('input'); name.value = state.projectName; name.title = '工程名称';
-    name.addEventListener('change', () => { state.projectName = name.value.trim() || 'audio_1'; name.value = state.projectName; });
-    project.appendChild(tab); project.appendChild(add); project.appendChild(del); project.appendChild(name);
+    ui.tabs = el('div', 'nf-as-tabs');
+    const add = el('button', 'nf-as-tab-add', '+'); add.type = 'button'; add.title = '新建画板';
+    add.addEventListener('click', () => createBoard());
+    const del = el('button', 'nf-as-tab-del', '-'); del.type = 'button'; del.title = '删除当前画板';
+    del.addEventListener('click', () => removeBoard(state.board));
+    const name = el('input', 'nf-as-name'); name.value = 'audio_1'; name.title = '画板名称'; name.setAttribute('data-novaflow-runtime-ignore', '1');
+    name.addEventListener('change', () => { const b = state.boards[state.board]; const v = name.value.trim().slice(0, 40) || ('audio_' + (state.board + 1)); name.value = v; if (b) b.name = v; });
+    ui.boardName = name;
+    project.appendChild(ui.tabs); project.appendChild(add); project.appendChild(del); project.appendChild(name);
     const zoom = el('div', 'nf-as-zoom');
     ui.zoomLabel = el('span', null, '100%');
     const fit = el('button', null, '自动适配'); fit.type = 'button'; fit.title = '缩放到整段可见'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
@@ -518,15 +560,9 @@
     root.appendChild(stage);
     ui.stage = stage;
 
-    editor = window.NovaFlowAudioTimeline.create({
-      host: timelineHost,
-      context: audioContext,
-      onChange: (what) => { if (what === 'model') { syncEmpty(); drawOverview(); } if (what === 'zoom') syncZoom(); },
-      onTime: () => { syncTime(); drawOverview(); },
-      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); ui.play.title = playing ? '暂停 (空格)' : '播放 (空格)'; },
-      resolveDrop: (id) => { const r = state.resources.find((x) => x.id === id); return r && r.buffer ? { buffer: r.buffer, name: r.name, kind: r.kind, loopable: r.loopable } : null; }
-    });
+    ui.timelineHost = timelineHost;
     ui.empty.style.zIndex = '2';
+    createBoard();
     timelineHost.appendChild(ui.empty);
 
     // generation dock -----------------------------------------------------------
@@ -583,8 +619,6 @@
     ui.zoomRange = el('input'); ui.zoomRange.type = 'range'; ui.zoomRange.min = '0'; ui.zoomRange.max = '100'; ui.zoomRange.value = '40';
     ui.zoomRange.addEventListener('input', () => { const v = Number(ui.zoomRange.value) / 100; editor.setZoom(6 * Math.pow(400 / 6, v)); });
     right.appendChild(ui.zoomRange);
-    const exportBtn = el('button', 'nf-as-btn', '导出混音'); exportBtn.type = 'button'; exportBtn.addEventListener('click', exportMix);
-    right.appendChild(exportBtn);
     row1.appendChild(right);
     transport.appendChild(row1);
     const overview = el('div', 'nf-as-overview');
@@ -613,6 +647,7 @@
     ui.sidebar = sidebar;
 
     document.body.appendChild(root);
+    switchBoard(0);
     setMode(state.mode);
     renderRows();
     renderList();
@@ -623,9 +658,9 @@
 
   // 16px outline icons on the row plate, the animation section's own look.
   const ROW_ICONS = {
-    generate: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5V3.5l7-1.5v9'/%3E%3Ccircle cx='4' cy='12.5' r='2'/%3E%3Ccircle cx='11' cy='11' r='2'/%3E%3C/svg%3E\")",
-    edit: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='4.5' cy='4.5' r='2'/%3E%3Ccircle cx='4.5' cy='11.5' r='2'/%3E%3Cpath d='M13.5 3 6 9.5M13.5 13 6 6.5'/%3E%3C/svg%3E\")",
-    export: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2.5v8M4.5 7 8 10.5 11.5 7'/%3E%3Cpath d='M3 13.5h10'/%3E%3C/svg%3E\")"
+    generate: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5V3.5l7-1.5v9'/%3E%3Ccircle cx='4' cy='12.5' r='2'/%3E%3Ccircle cx='11' cy='11' r='2'/%3E%3C/svg%3E\")",
+    edit: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='4.5' cy='4.5' r='2'/%3E%3Ccircle cx='4.5' cy='11.5' r='2'/%3E%3Cpath d='M13.5 3 6 9.5M13.5 13 6 6.5'/%3E%3C/svg%3E\")",
+    export: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2.5v8M4.5 7 8 10.5 11.5 7'/%3E%3Cpath d='M3 13.5h10'/%3E%3C/svg%3E\")"
   };
   function row(parent, key, title, icon) {
     const node = el('div', 'nf-as-row');
@@ -742,12 +777,24 @@
   }
 
   // ---- transport helpers -------------------------------------------------------------
+  function syncInspector(clip) {
+    if (!ui || !ui.inspGain) return;
+    const has = Boolean(clip);
+    ui.inspTitle.textContent = has ? clip.name + ' · ' + (editor ? editor.formatTime(clip.length) : '') : '未选中片段';
+    for (const s of [ui.inspGain, ui.inspFadeIn, ui.inspFadeOut]) s.input.disabled = !has;
+    ui.inspLoop.disabled = !has || !clip.loopable;
+    if (!has) { ui.inspGain.set(100); ui.inspFadeIn.set(0); ui.inspFadeOut.set(0); ui.inspLoop.value = '1'; return; }
+    ui.inspGain.set(Math.round(clip.gain * 100));
+    ui.inspFadeIn.set(Math.round(clip.fadeIn * 10) / 10);
+    ui.inspFadeOut.set(Math.round(clip.fadeOut * 10) / 10);
+    ui.inspLoop.value = String(Math.max(1, Math.round(clip.length / clip.buffer.duration)));
+  }
   function syncTime() {
-    if (!ui || !editor) return;
+    if (!ui || !editor || !ui.time) return;
     ui.time.textContent = editor.formatTime(editor.playhead()) + ' / ' + editor.formatTime(editor.projectEnd());
   }
   function syncZoom() {
-    if (!ui || !editor) return;
+    if (!ui || !editor || !ui.zoomRange) return;
     const z = editor.zoom();
     ui.zoomLabel.textContent = Math.round(z / 40 * 100) + '%';
     const v = Math.log(z / 6) / Math.log(400 / 6) * 100;
@@ -760,7 +807,7 @@
     syncTime();
   }
   function drawOverview() {
-    if (!ui || !editor) return;
+    if (!ui || !editor || !ui.overview) return;
     const canvas = ui.overview;
     const w = canvas.clientWidth || 300, h = canvas.clientHeight || 34;
     const dpr = window.devicePixelRatio || 1;
@@ -787,18 +834,58 @@
     const r = ui.overview.getBoundingClientRect();
     editor.seek((event.clientX - r.left) / r.width * Math.max(1, editor.projectEnd()));
   }
-  function resetProject() {
-    editor.destroy();
-    const host = ui.stage.querySelector('.nf-as-timeline');
-    editor = window.NovaFlowAudioTimeline.create({
+  // ---- boards: the animation section's 1 / + / -, each with a timeline of its own
+  let boardSerial = 0;
+  function editorOptions(host) {
+    return {
       host, context: audioContext,
       onChange: (what) => { if (what === 'model') { syncEmpty(); drawOverview(); } if (what === 'zoom') syncZoom(); },
       onTime: () => { syncTime(); drawOverview(); },
-      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); },
+      onSelect: (clip) => syncInspector(clip),
+      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); ui.play.title = playing ? '暂停 (空格)' : '播放 (空格)'; },
       resolveDrop: (id) => { const r = state.resources.find((x) => x.id === id); return r && r.buffer ? { buffer: r.buffer, name: r.name, kind: r.kind, loopable: r.loopable } : null; }
+    };
+  }
+  function createBoard() {
+    const host = el('div', 'nf-as-board');
+    host.style.cssText = 'position:absolute;inset:0;display:none';
+    ui.timelineHost.appendChild(host);
+    const board = { id: 'board-' + (++boardSerial), name: 'audio_' + boardSerial, host, editor: window.NovaFlowAudioTimeline.create(editorOptions(host)) };
+    state.boards.push(board);
+    // During mount the transport does not exist yet; mount switches to the first board itself.
+    if (ui.time && ui.play) switchBoard(state.boards.length - 1); else renderTabs();
+    return board;
+  }
+  function switchBoard(index) {
+    if (editor) editor.pause();
+    state.board = Math.max(0, Math.min(state.boards.length - 1, index));
+    state.boards.forEach((b, i) => { b.host.style.display = i === state.board ? 'block' : 'none'; });
+    editor = state.boards[state.board].editor;
+    if (ui.loop) ui.loop.setAttribute('aria-pressed', String(editor.state.loop));
+    if (ui.bpm) ui.bpm.value = String(editor.state.bpm);
+    syncInspector(editor.selectedClip());
+    if (ui.boardName) ui.boardName.value = state.boards[state.board].name;
+    renderTabs(); syncEmpty(); syncTime(); syncZoom(); drawOverview();
+    editor.layout();
+  }
+  function removeBoard(index) {
+    const board = state.boards[index];
+    if (!board) return;
+    if (board.editor.clipCount() && !window.confirm('删除这个画板和它的时间轴？')) return;
+    board.editor.destroy(); board.host.remove();
+    state.boards.splice(index, 1);
+    if (!state.boards.length) { createBoard(); return; }
+    switchBoard(Math.min(index, state.boards.length - 1));
+  }
+  function renderTabs() {
+    if (!ui.tabs) return;
+    ui.tabs.replaceChildren();
+    state.boards.forEach((b, i) => {
+      const t = el('button', 'nf-as-tab', String(i + 1)); t.type = 'button'; t.title = '画板 ' + (i + 1);
+      t.setAttribute('aria-pressed', String(i === state.board));
+      t.addEventListener('click', () => switchBoard(i));
+      ui.tabs.appendChild(t);
     });
-    host.appendChild(ui.empty);
-    syncEmpty(); drawOverview(); syncZoom();
   }
 
   // ---- keyboard ------------------------------------------------------------------------
@@ -1104,7 +1191,7 @@
     try {
       ui.statusErr.textContent = '';
       const blob = await editor.exportMix();
-      const name = (state.projectName || 'audio_1') + '_mix';
+      const name = (state.boards[state.board]?.name || ('audio_' + (state.board + 1))).replace(/[\/:*?"<>|]/g, '_') + '_mix';
       state.counter.import += 1;
       const buffer = await decode(blob);
       state.resources.unshift({ id: 'res-mix-' + Date.now(), kind: 'import', name, label: '混音导出', seconds: buffer ? buffer.duration : 0, blob, buffer, url: URL.createObjectURL(blob), loopable: true });

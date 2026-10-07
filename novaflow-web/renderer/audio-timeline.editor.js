@@ -217,6 +217,11 @@
       if (fadeOut !== undefined) clip.fadeOut = clamp(Number(fadeOut) || 0, 0, clip.length / 2);
       draw(); changed(); restartIfPlaying();
     }
+    function setGain(clipId, gain) {
+      const clip = clipOf(clipId); if (!clip) return;
+      clip.gain = clamp(Number(gain) || 0, 0, 2);
+      draw(); changed(); restartIfPlaying();
+    }
     function extendLoop(clipId, times) {
       const clip = clipOf(clipId); if (!clip) return;
       clip.length = clip.buffer.duration * Math.max(1, times);
@@ -597,7 +602,7 @@
     // ---- public ----------------------------------------------------------------------
     const api = {
       state, host, canvas, scroller,
-      addTrack, removeTrack, addClip, removeClip, select, selectedClip, splitAtPlayhead, duplicateSelected, setFade, extendLoop,
+      addTrack, removeTrack, addClip, removeClip, select, selectedClip, splitAtPlayhead, duplicateSelected, setFade, setGain, extendLoop,
       deleteSelected() { return state.selected ? removeClip(state.selected) : false; },
       play, pause, stop, toggle, seek, isPlaying: () => state.playing,
       setLoop(v) { state.loop = Boolean(v); onChange('loop'); },
