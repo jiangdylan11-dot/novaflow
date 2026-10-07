@@ -284,6 +284,7 @@
       #${ROOT_ID} input,#${ROOT_ID} select,#${ROOT_ID} textarea{font-family:inherit}
       #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus,#${ROOT_ID} select:focus{outline:0;box-shadow:none}
       #${ROOT_ID} > *{pointer-events:auto}
+      #${ROOT_ID} [data-nf-label]::after{content:attr(data-nf-label)}
       .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport{position:fixed}
       /* left card: the section panel */
       .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
@@ -366,6 +367,7 @@
       .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
       /* generation dock */
       .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:11px}
+      .nf-as-dock[hidden]{display:none!important}
       .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
       .nf-as-dock-row .nf-as-label{white-space:nowrap;color:#a9a9a9}
       .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
@@ -441,6 +443,16 @@
   // by the brand runtime, so these are written inline too.
   function imp(node, styles) {
     for (const [key, value] of Object.entries(styles)) node.style.setProperty(key, value, 'important');
+  }
+  // The brand runtime restyles controls it recognises by their text
+  // (自动适配, a percent next to it, 开始生成, 任务中止, 上传资源) and would take
+  // this panel's over as the animation page's own. Those labels are drawn by
+  // CSS from an attribute, so the text never sits in the DOM.
+  function label(node, text) {
+    node.textContent = '';
+    node.setAttribute('data-nf-label', text);
+    node.setAttribute('aria-label', text);
+    return node;
   }
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -554,8 +566,8 @@
     ui.boardName = name;
     project.appendChild(ui.tabs); project.appendChild(add); project.appendChild(del); project.appendChild(name);
     const zoom = el('div', 'nf-as-zoom');
-    ui.zoomLabel = el('span', null, '100%');
-    const fit = el('button', null, '自动适配'); fit.type = 'button'; fit.title = '缩放到整段可见'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
+    ui.zoomLabel = label(el('span'), '100%');
+    const fit = label(el('button'), '自动适配'); fit.type = 'button'; fit.title = '缩放到整段可见'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
     zoom.appendChild(ui.zoomLabel); zoom.appendChild(fit);
     topbar.appendChild(project); topbar.appendChild(zoom);
     stage.appendChild(topbar);
@@ -587,7 +599,7 @@
     ui.statusText = el('span', null, '等待生成');
     ui.statusPct = el('span', 'nf-as-pct', '');
     ui.statusErr = el('span', 'nf-as-err', '');
-    ui.cancel = el('button', 'nf-as-cancel', '任务中止'); ui.cancel.type = 'button'; ui.cancel.hidden = true;
+    ui.cancel = label(el('button', 'nf-as-cancel'), '任务中止'); ui.cancel.type = 'button'; ui.cancel.hidden = true;
     ui.cancel.addEventListener('click', cancelRunning);
     status.appendChild(ui.statusText); status.appendChild(ui.statusPct); status.appendChild(ui.statusErr); status.appendChild(ui.cancel);
     dock.appendChild(status);
@@ -646,10 +658,10 @@
     // resource sidebar --------------------------------------------------------------
     const sidebar = el('div', 'nf-as-sidebar');
     const sideHead = el('div', 'nf-as-side-head');
-    sideHead.appendChild(el('span', null, '资源列表'));
+    sideHead.appendChild(label(el('span'), '资源列表'));
     ui.count = el('span', 'nf-as-count', '0');
     sideHead.appendChild(ui.count);
-    const upload = el('button', null, '上传资源'); upload.type = 'button'; upload.title = '音频文件直接导入；视频文件只保留音轨';
+    const upload = label(el('button'), '上传资源'); upload.type = 'button'; upload.title = '音频文件直接导入；视频文件只保留音轨';
     const file = el('input'); file.type = 'file'; file.accept = 'audio/*,video/*,.wav,.mp3,.ogg,.flac,.m4a,.mp4,.mov,.webm,.mkv'; file.multiple = true; file.hidden = true;
     file.addEventListener('change', () => { for (const f of Array.from(file.files || [])) importFile(f); file.value = ''; });
     upload.addEventListener('click', () => file.click());
@@ -745,7 +757,7 @@
       count.addEventListener('change', () => { m.count = Number(count.value); });
       ui.dockRow.appendChild(count);
     }
-    const go = el('button', 'nf-as-go', '开始生成'); go.type = 'button';
+    const go = label(el('button', 'nf-as-go'), '开始生成'); go.type = 'button';
     go.addEventListener('click', () => (mode === 'music' ? submitMusic() : submitSfx()));
     ui.dockRow.appendChild(go);
     ui.go = go;
@@ -819,7 +831,7 @@
   function syncZoom() {
     if (!ui || !editor || !ui.zoomRange) return;
     const z = editor.zoom();
-    ui.zoomLabel.textContent = Math.round(z / 40 * 100) + '%';
+    ui.zoomLabel.setAttribute('data-nf-label', Math.round(z / 40 * 100) + '%');
     const v = Math.log(z / 6) / Math.log(400 / 6) * 100;
     ui.zoomRange.value = String(Math.round(v));
     ui.zoomRange.style.setProperty('--nf-range-pct', Math.round(v) + '%');
