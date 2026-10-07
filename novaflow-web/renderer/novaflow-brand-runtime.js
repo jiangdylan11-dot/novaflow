@@ -3597,6 +3597,9 @@
     const aiTarget = normalizeText(entry.getAttribute("data-novaflow-primary-label") || "") === "\u52a8\u753b" && document.body?.getAttribute("data-nf-animation-secondary") === "ai";
     // the AI entry lays its rows out synchronously in the click (atomic entry commit); the veil lifts with that, not a frame later
     const aiReady = () => !aiTarget || AI_ANIMATION_ENTRY_FIRST_FRAME_SYNC_USED;
+    const skeletonTarget = normalizeText(entry.getAttribute("data-novaflow-primary-label") || "") === "\u52a8\u753b" && !aiTarget;
+    // the 动画 page mounts its AI rows first; the 骨骼 entry is ready with a skeleton row
+    const skeletonReady = () => !skeletonTarget || Array.from(document.querySelectorAll(".nf-panel-header")).some((node) => !oldGroups.has(node) && node.getClientRects().length);
     // Visible ones only: 美工's groups stay in the document while hidden, and
     // counting them as old kept its veil down a blank frame after they showed.
     const oldGroups = new Set(Array.from(document.querySelectorAll(GROUP_SELECTOR)).filter((node) => node.getClientRects().length));
@@ -3656,7 +3659,7 @@
       const groupsIn = newGroupsIn();
       // 美工: React mounts its panel list a commit after the page, and 生图 opens
       // with it; the veil waits for that so the page never shows closed first
-      const ready = (groupsIn || (runs > runsAtClick && frames >= 2)) && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady();
+      const ready = (groupsIn || (runs > runsAtClick && frames >= 2)) && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady() && skeletonReady();
       if (ready || performance.now() - startedAt > (artTarget ? 1200 : 260)) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
         layoutBeforeLift();
@@ -3677,7 +3680,7 @@
         const addedGroup = records.some((record) => Array.from(record.addedNodes).some((node) => (
           node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
         )));
-        if (addedGroup && newGroupsIn() && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady()) {
+        if (addedGroup && newGroupsIn() && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady() && skeletonReady()) {
           layoutBeforeLift();
           holdPreviewFrameUntilSettled();
           html.removeAttribute("data-novaflow-switch-veil");
@@ -39312,6 +39315,9 @@
     const lockPrimary = options.lockPrimary === true;
     const wasAnimationTarget = body.classList.contains("novaflow-primary-target-animation");
     const shouldResetCollapse = options.resetCollapse === true || !wasAnimationTarget;
+    // the 动画 entry itself is 骨骼 (AI runs only under 音视): the AI-sequence passes
+    // below are for the AI mode and the skeleton layout cleared them right after
+    const skeletonEntry = animationWantedSecondaryLabel() !== "AI序列动画";
     if (shouldResetCollapse) {
       resetAiAnimationCollapseStateForEntry();
       requestAiAnimationPreviewRealGeometrySync();
@@ -39326,11 +39332,8 @@
       "novaflow-ai-animation-entering",
       "novaflow-ai-animation-autofit-pending"
     );
-    body.classList.add(
-      "novaflow-primary-target-animation",
-      "novaflow-ai-animation-section-layers",
-      "novaflow-ai-bottom-workspace-active"
-    );
+    body.classList.add("novaflow-primary-target-animation");
+    if (!skeletonEntry) body.classList.add("novaflow-ai-animation-section-layers", "novaflow-ai-bottom-workspace-active");
     PRIMARY_ACTIVE_LABEL = "\u52a8\u753b";
     if (lockPrimary) {
       setPrimaryActivationLock("\u52a8\u753b");
@@ -39340,8 +39343,10 @@
       applyPrimaryEntryVisualStateOnly("\u52a8\u753b");
     }
     setAiAnimationFallbackPreviewVars();
-    applyAiAnimationEntryMainModelBranchHeight();
-    scheduleAiAnimationEntryLeftPanelMark();
+    if (!skeletonEntry) {
+      applyAiAnimationEntryMainModelBranchHeight();
+      scheduleAiAnimationEntryLeftPanelMark();
+    }
     syncAiAnimationPreviewRealGeometryVars({ allowCached: true });
     syncAiAnimationModeSwitchGuard();
     syncAiSequenceTimelineEditControlsLock();
@@ -39351,14 +39356,14 @@
       const releaseRefreshContext = beginAiAnimationRefreshContext();
       try {
         applySecondaryEntryLayout();
-        runAiAnimationEarlyStructureLayoutOnce();
+        if (!skeletonEntry) runAiAnimationEarlyStructureLayoutOnce();
         hideAiAnimationComfyEnvironmentHint(document);
         applyPreviewRuntimeLayout();
-        if (body.classList.contains("novaflow-ai-animation-section-layers")) {
+        if (!skeletonEntry && body.classList.contains("novaflow-ai-animation-section-layers")) {
           runAiAnimationSectionLayersOnce();
           ensureAiAnimationBottomWorkspaceFromPreviewRoot();
         }
-        syncAiSequenceBoardStateMachineOnce();
+        if (!skeletonEntry) syncAiSequenceBoardStateMachineOnce();
         normalizeNovaflowVisualRhythm(body);
       } finally {
         AI_ANIMATION_FORCE_FULL_SYNC_ACTIVE = false;
@@ -76912,7 +76917,12 @@
           nfAnimationPerfCount("aiLayerBranchGuardSignature.skeleton");
           nfAnimationPerfCountCallsite("aiLayerBranchGuardSignature", "skeleton");
           clearAiAnimationRuntimeStateForSkeletonLayout();
-        } else if (shouldRunAiLayerBranchForSignature(getAiLayerBranchGuardSignature(__nfPerfPreviewState))) {
+        } else if (
+          // the 动画 page wanted as 骨骼 while React still mounts it: the AI section pass
+          // (~135 ms) would only be cleared by the skeleton layout a moment later
+          !(document.body.classList.contains("novaflow-primary-target-animation") && animationWantedSecondaryLabel() !== "AI序列动画" && !isAiSequenceSecondaryContentMounted()) &&
+          shouldRunAiLayerBranchForSignature(getAiLayerBranchGuardSignature(__nfPerfPreviewState))
+        ) {
           runAiAnimationSectionLayersOnce();
         }
       });
