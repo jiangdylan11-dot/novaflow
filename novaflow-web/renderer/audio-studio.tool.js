@@ -173,11 +173,17 @@
   // the cell covers it with the idle look while 音频 is open; a click on the
   // mask hands the full pointer sequence to the entry underneath.
   function railBackground(reference) {
-    const rect = reference.getBoundingClientRect();
-    for (const node of document.elementsFromPoint(rect.left + rect.width / 2, rect.bottom + 2)) {
-      if (node === reference || node.id === MASK_ID) continue;
+    const opaque = (color) => color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent';
+    // The idle look is what an unpressed entry (or its cell) paints; sampling
+    // the page under the cell picked up a section's own stage colour instead.
+    for (const entry of document.querySelectorAll('[data-novaflow-primary-entry="1"]')) {
+      if (!(entry instanceof HTMLElement) || entry === reference || entry.getAttribute('aria-pressed') === 'true') continue;
+      const host = entry.closest('[data-novaflow-primary-cell="1"]') || entry;
+      for (const node of [entry, host]) { const color = getComputedStyle(node).backgroundColor; if (opaque(color)) return color; }
+    }
+    for (let node = reference.parentElement; node; node = node.parentElement) {
       const color = getComputedStyle(node).backgroundColor;
-      if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') return color;
+      if (opaque(color)) return color;
     }
     return '#161616';
   }
@@ -1198,8 +1204,12 @@
   document.addEventListener('keydown', (event) => {
     if (!state.active || !editor) return;
     const t = event.target;
-    if (t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
-    if (event.key === ' ') { event.preventDefault(); editor.toggle(); }
+    // Only typing fields keep their keys; a slider, a checkbox or a button that
+    // still has focus after a click must not swallow Space (play / pause).
+    const typing = t instanceof HTMLElement && (t.tagName === 'TEXTAREA' || t.isContentEditable
+      || (t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(String(t.type).toLowerCase())));
+    if (event.key === ' ' && !typing) { event.preventDefault(); editor.toggle(); return; }
+    if (typing || (t instanceof HTMLElement && t.tagName === 'INPUT')) return;
     else if (event.key === 'Delete' || event.key === 'Backspace') { if (editor.deleteSelected()) event.preventDefault(); }
     else if (event.key === 's' || event.key === 'S') { editor.splitAtPlayhead(); }
     else if (event.key === 'Home') { editor.seek(0); }

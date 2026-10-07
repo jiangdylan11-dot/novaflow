@@ -156,7 +156,7 @@
         btns.appendChild(mute); btns.appendChild(solo); btns.appendChild(del);
         const gain = document.createElement('input'); gain.type = 'range'; gain.min = '0'; gain.max = '1.5'; gain.step = '0.01'; gain.value = String(track.gain); gain.title = '音量';
         gain.className = 'nf-tl-track-gain';
-        gain.addEventListener('input', () => { track.gain = Number(gain.value); liveGain(track); changed(); });
+        gain.addEventListener('input', () => { track.gain = Number(gain.value); liveGain(track); draw(); changed(); });
         row.appendChild(name); row.appendChild(btns); row.appendChild(gain);
         headerList.appendChild(row);
       }
@@ -331,13 +331,15 @@
       return 60;
     }
     function paintClip(g, clip, top) {
+      const track = state.tracks.find((t) => t.id === clip.trackId) || { gain: 1 };
       const x = timeToX(clip.start), wpx = Math.max(2, timeToX(clip.start + clip.length) - x);
       const pal = COLORS[clip.kind] || COLORS.import;
       const selected = clip.id === state.selected;
       g.fillStyle = pal[2]; g.fillRect(x, top + 2, wpx, LANE_H - 4);
       // waveform, repeated when the clip is longer than its buffer
       const peaks = peaksOf(clip.buffer);
-      const mid = top + 2 + (LANE_H - 4) / 2, amp = (LANE_H - 4) / 2 - 3;
+      // the waveform follows the track's volume (and the clip's own gain), so a quieter track looks quieter
+      const mid = top + 2 + (LANE_H - 4) / 2, amp = ((LANE_H - 4) / 2 - 3) * Math.min(1.5, Math.max(0, track.gain)) * Math.min(1.5, clip.gain);
       g.fillStyle = pal[1];
       const bufDur = clip.buffer.duration, segment = segmentOf(clip), loopSpan = segment / clip.rate;
       for (let px = 0; px < wpx; px += 1) {
