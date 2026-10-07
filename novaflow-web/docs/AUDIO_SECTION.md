@@ -54,7 +54,7 @@ ComfyUI 0.37 原生支持该模型（`comfy/text_encoders/sa3.py`），采样 8 
   - 本地：启动助手新增 `POST /local/audio/optimize-prompt`（`worker-core.rewriteAudioPrompt`），在 ComfyUI 上只跑文本改写图（qwen3.5_2b → TextGenerate → NovaFlowAudioCaption → PreviewAny），输入带补充要求、页面 BPM 和循环提示，返回一句英文描述（去掉尾部的 Length 标注，生成时再补）。2B 模型偶有发挥（加乐器 / 换场景），温度 0.7 与生成链一致。
   - 云端：`electronAPI.smartAiPromptOptimize({surface:'audio', purpose:'audio-music'|'audio-sfx', prompt, requirements, durationSeconds, bpm, loop})`，边缘函数 `smart-ai-grok.workflow.mjs` 新增 `isAudioPromptPayload / buildAudioPromptRequest`（同一套框架的副本，纯文本回答，无负面提示词）。需要重新部署 novaflow-backend 才生效，否则会落到美工分支。
 - 优化结果写回输入框并记为 `optimized`：与输入框文本一致时直接作为描述提交（`reprompt:false`），用户再改动后恢复为普通文本（走生成链自己的改写）。
-- 布局层级跟随 brand runtime 的 `data-novaflow-layout-tier`：wide（资源栏 206 / 间距 10）、narrow（172 / 8，生成坞与走带栏的控件换行，卡片随之增高）、stack（<720：面板、舞台、生成坞、走带栏、资源列表按面板宽度上下堆叠，资源列表 140 高）。覆盖层下加一块不透明底（取面板后面的页面底色），窄窗口下动画版块的内容不再透出。
+- 布局层级跟随 brand runtime 的 `data-novaflow-layout-tier`：wide（资源栏 206 / 间距 10）、narrow（172 / 8，生成坞与走带栏的控件换行，卡片随之增高）、stack（<720：顶栏以下是一个可滚动的列，面板、舞台、生成坞、走带栏、资源列表按面板宽度上下堆叠，资源列表 140 高；舞台最少 320 高（时间轴约 270），窗口更矮时整列滚动，不再互相叠压）。覆盖层下加一块不透明底（取面板后面的页面底色），窄窗口下动画版块的内容不再透出。
 - 验证：窗格 516×980（stack）、790×1015（narrow）、1600×900（wide）三档坐标；本地引擎在 4786 实跑（音乐 / 音效各一次）；劫持探针无运行时属性。
 
 ## 待办

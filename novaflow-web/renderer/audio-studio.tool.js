@@ -30,6 +30,7 @@
   function layoutTier() { const t = document.documentElement.getAttribute('data-novaflow-layout-tier'); return TIERS[t] ? t : 'wide'; }
   const TRANSPORT_H = 50;
   const DOCK_H = 213;
+  const STACK_STAGE_MIN = 320;         // stack tier: the stage (top bar + timeline) never shrinks below this
   const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E\")";
 
   // ---- vocabulary: the page speaks Chinese, the model reads English --------
@@ -294,6 +295,15 @@
       #${ROOT_ID} [data-nf-label]::after{content:attr(data-nf-label)}
       .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport,.nf-as-backdrop{position:fixed}
       .nf-as-backdrop{pointer-events:auto}
+      /* the cards' container: see-through in the wide and narrow tiers; in the
+         stack tier a scrolling column under the top bar, so the timeline keeps
+         a working height and the rest scrolls instead of piling up */
+      #${ROOT_ID} > .nf-as-scroller{position:fixed;inset:0;pointer-events:none;overflow:visible}
+      .nf-as-scroller > *{pointer-events:auto}
+      #${ROOT_ID} > .nf-as-scroller.nf-as-stacked{inset:auto;pointer-events:auto;overflow:hidden auto;overscroll-behavior:contain}
+      .nf-as-stacked > .nf-as-left,.nf-as-stacked > .nf-as-stage,.nf-as-stacked > .nf-as-sidebar,.nf-as-stacked > .nf-as-dock,.nf-as-stacked > .nf-as-transport,.nf-as-stacked > .nf-as-backdrop{position:absolute}
+      .nf-as-spacer{position:absolute;left:0;top:0;width:1px;height:0;pointer-events:none}
+      .nf-as-scroller::-webkit-scrollbar{width:6px}.nf-as-scroller::-webkit-scrollbar-thumb{background:#3a3a3a}
       /* left card: the section panel */
       .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
       .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:0 0 17px}
@@ -701,8 +711,12 @@
     root.setAttribute('data-novaflow-runtime-ignore', '1');
     root.setAttribute('aria-label', LABEL);
     ui = { root };
+    ui.scroller = el('div', 'nf-as-scroller');
+    root.appendChild(ui.scroller);
     ui.backdrop = el('div', 'nf-as-backdrop');
-    root.appendChild(ui.backdrop);
+    ui.scroller.appendChild(ui.backdrop);
+    ui.spacer = el('div', 'nf-as-spacer');
+    ui.scroller.appendChild(ui.spacer);
 
     // left card ---------------------------------------------------------------
     const left = el('div', 'nf-as-left');
@@ -756,7 +770,7 @@
     tools.body.appendChild(insp);
     tools.body.appendChild(el('div', 'nf-as-note', '拖资源到音轨；拖片段边缘裁剪，拖过原长即减速拉伸；循环遍数在这里设。'));
     syncInspector(null);
-    root.appendChild(left);
+    ui.scroller.appendChild(left);
     ui.left = left;
 
     // stage -----------------------------------------------------------------------
@@ -791,7 +805,7 @@
     ui.empty = el('div', 'nf-as-empty');
     ui.empty.innerHTML = '<div>时间轴还是空的<br><span style="color:#5a5a5a">展开左侧「音频生成」描述后生成，或从右侧资源列表拖入</span></div>';
     timelineHost.appendChild(ui.empty);
-    root.appendChild(stage);
+    ui.scroller.appendChild(stage);
     ui.stage = stage;
 
     ui.timelineHost = timelineHost;
@@ -826,7 +840,7 @@
     ui.textarea.addEventListener('input', () => { state[state.mode].text = ui.textarea.value; });
     prompt.appendChild(head); prompt.appendChild(ui.textarea);
     dock.appendChild(prompt);
-    root.appendChild(dock);
+    ui.scroller.appendChild(dock);
     ui.dock = dock;
 
     // transport ---------------------------------------------------------------------
@@ -859,7 +873,7 @@
     right.appendChild(ui.zoomRange);
     row1.appendChild(right);
     transport.appendChild(row1);
-    root.appendChild(transport);
+    ui.scroller.appendChild(transport);
     ui.transport = transport;
 
     // resource sidebar --------------------------------------------------------------
@@ -878,7 +892,7 @@
     sidebar.appendChild(ui.list);
     sidebar.addEventListener('dragover', (event) => { if (droppedMediaFiles(event).length || Array.from(event.dataTransfer?.types || []).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } });
     sidebar.addEventListener('drop', (event) => { const files = droppedMediaFiles(event); if (!files.length) return; event.preventDefault(); for (const f of files) importFile(f); });
-    root.appendChild(sidebar);
+    ui.scroller.appendChild(sidebar);
     ui.sidebar = sidebar;
 
     document.body.appendChild(root);
@@ -1009,29 +1023,39 @@
       const color = getComputedStyle(node).backgroundColor;
       if (color && color !== 'transparent' && !/rgba\(0, 0, 0, 0\)/.test(color)) { backdropColor = color; break; }
     }
-    ui.backdrop.style.background = backdropColor;
-    place(ui.backdrop, cardLeft - 2, Math.max(0, top - 8), window.innerWidth - cardLeft + 2, window.innerHeight - Math.max(0, top - 8));
     const tl = ui.stage.querySelector('.nf-as-timeline');
     const topbar = ui.stage.querySelector('.nf-as-topbar');
+    const scroller = ui.scroller;
     if (tier.resourcesHeight) {
-      // stack tier: the section panel keeps its own box; stage, dock, transport
-      // and the resource list follow under it at the panel's width.
-      const x = cardLeft, w = cardWidth;
-      const floor = window.innerHeight - gap;
-      place(ui.left, x, top, w, bottom - top);
-      const sidebarTop = floor - tier.resourcesHeight;
+      // stack tier: a scrolling column from under the top bar; the section
+      // panel keeps its own box, then stage, dock, transport and the resource
+      // list follow at the panel's width. The stage never goes below
+      // STACK_STAGE_MIN; a short window scrolls instead.
+      const scLeft = cardLeft - 2, scTop = Math.max(0, top - 8);
+      scroller.classList.add('nf-as-stacked');
+      scroller.style.left = scLeft + 'px'; scroller.style.top = scTop + 'px';
+      scroller.style.width = (window.innerWidth - scLeft) + 'px'; scroller.style.height = (window.innerHeight - scTop) + 'px';
+      scroller.style.background = backdropColor;
+      const x = cardLeft - scLeft, w = cardWidth;
+      let y = top - scTop;
+      place(ui.left, x, y, w, bottom - top); y += bottom - top + 8;
       const transportH = transportHeightFor(w);
-      const transportTop = sidebarTop - 8 - transportH;
       const dockH = dockHeightFor(w);
-      const dockTop = dockVisible ? transportTop - 8 - dockH : transportTop;
-      const stageTop = bottom + 8;
-      const stageBottom = Math.max(stageTop + 140, (dockVisible ? dockTop : transportTop) - 8);
-      place(ui.stage, x, stageTop, w, stageBottom - stageTop);
-      place(ui.dock, x, dockTop, w, dockH);
-      place(ui.transport, x, transportTop, w, transportH);
-      place(ui.sidebar, x, sidebarTop, w, tier.resourcesHeight);
+      const rest = (dockVisible ? dockH + 8 : 0) + transportH + 8 + tier.resourcesHeight + gap;
+      const stageH = Math.max(STACK_STAGE_MIN, window.innerHeight - scTop - y - 8 - rest);
+      place(ui.stage, x, y, w, stageH); y += stageH + 8;
+      if (dockVisible) { place(ui.dock, x, y, w, dockH); y += dockH + 8; } else place(ui.dock, x, y, w, dockH);
+      place(ui.transport, x, y, w, transportH); y += transportH + 8;
+      place(ui.sidebar, x, y, w, tier.resourcesHeight); y += tier.resourcesHeight + gap;
+      ui.spacer.style.height = y + 'px';
+      place(ui.backdrop, 0, 0, window.innerWidth - scLeft, y);
       tl.style.right = '0px'; tl.style.bottom = '0px'; topbar.style.right = '0px';
     } else {
+      scroller.classList.remove('nf-as-stacked');
+      scroller.style.cssText = '';
+      ui.spacer.style.height = '0px';
+      ui.backdrop.style.background = backdropColor;
+      place(ui.backdrop, cardLeft - 2, Math.max(0, top - 8), window.innerWidth - cardLeft + 2, window.innerHeight - Math.max(0, top - 8));
       place(ui.left, cardLeft, top, cardWidth, bottom - top);
       place(ui.stage, stageLeft, top, right - stageLeft, bottom - top);
       place(ui.sidebar, right - tier.resources, top, tier.resources, bottom - top);
