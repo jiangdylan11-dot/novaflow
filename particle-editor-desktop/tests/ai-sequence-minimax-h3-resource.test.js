@@ -213,7 +213,7 @@ test('validates the current 4+1+1 reference-media safety policy', () => {
   assert.equal(resource.REFERENCE_MEDIA_POLICY.maxImages, 4)
   assert.equal(resource.REFERENCE_MEDIA_POLICY.maxVideos, 1)
   assert.equal(resource.REFERENCE_MEDIA_POLICY.maxAudios, 1)
-  assert.equal(resource.REFERENCE_MEDIA_POLICY.requiredVideoFps, 24)
+  assert.equal(resource.REFERENCE_MEDIA_POLICY.requiredVideoFps, undefined)
   assert.equal(resource.REFERENCE_MEDIA_POLICY.minimumDurationSec, 2)
   assert.equal(resource.REFERENCE_MEDIA_POLICY.maximumDurationSec, 15)
 
@@ -229,26 +229,38 @@ test('validates the current 4+1+1 reference-media safety policy', () => {
   assert.equal(valid.audioDurationSec, 2)
 
   assert.equal(resource.validateReferenceMediaPolicy({ audios: [{ durationSec: 4 }] }).audioCount, 1)
-  assert.throws(
-    () => resource.validateReferenceMediaPolicy({ images: [{}], videos: [{ fps: 30, durationSec: 4 }] }),
-    /24 FPS/i,
-  )
+  // Non-24 fps clips are resampled by the workflow, never refused here.
+  assert.equal(resource.validateReferenceMediaPolicy({ images: [{}], videos: [{ fps: 30, durationSec: 4 }] }).videoCount, 1)
+  assert.equal(resource.validateReferenceMediaPolicy({ videos: [{ fps: 60, durationSec: 4 }] }).videoCount, 1)
+  assert.equal(resource.validateReferenceMediaPolicy({ videos: [{ fps: 0, durationSec: 4 }] }).videoCount, 1)
   assert.throws(
     () => resource.validateReferenceMediaPolicy({ images: [{}], videos: [{ fps: 24, frames: 4, durationSec: 4 }] }),
-    /at least five frames/i,
+    /至少需要 5 帧/,
   )
   assert.throws(
     () => resource.validateReferenceMediaPolicy({ images: [{}], videos: [{ fps: 24, durationSec: 1.99 }] }),
-    /2-15 seconds/i,
+    /2-15 秒/,
   )
   assert.throws(
     () => resource.validateReferenceMediaPolicy({ images: [{}], audios: [{ durationSec: 15.01 }] }),
-    /2-15 seconds/i,
+    /2-15 秒/,
   )
   assert.throws(
     () => resource.validateReferenceMediaPolicy({ images: [{}, {}, {}, {}, {}] }),
-    /at most 4/i,
+    /最多 4 个/,
   )
+  // No English and no model name may reach the user through these errors.
+  for (const bad of [
+    { images: [{}, {}, {}, {}, {}] },
+    { videos: [{ frames: 1, durationSec: 4 }] },
+    { videos: [{ durationSec: 30 }] },
+    { audios: [{ durationSec: 1 }] },
+  ]) {
+    let message = ''
+    try { resource.validateReferenceMediaPolicy(bad) } catch (error) { message = String(error.message) }
+    assert.ok(message, 'expected a refusal')
+    assert.doesNotMatch(message, /[A-Za-z]/, message)
+  }
 })
 
 test('has no dependency on existing mention, input compatibility, or Art Generate modules', () => {

@@ -360,8 +360,6 @@
     maxImages: 4,
     maxVideos: 1,
     maxAudios: 1,
-    requiredVideoFps: 24,
-    videoFpsTolerance: 0.05,
     minimumDurationSec: 2,
     maximumDurationSec: 15,
     maximumTypeDurationSec: 15,
@@ -371,10 +369,10 @@
 
   function policyList(value, label, maximum) {
     if (value == null) return []
-    if (!Array.isArray(value)) throw new TypeError(label + ' must be an array')
+    if (!Array.isArray(value)) throw new TypeError(label + '列表格式无效')
     const entries = value.filter((entry) => entry != null)
     if (entries.length > maximum) {
-      throw new RangeError(`MiniMax H3 ${label} supports at most ${maximum} item(s)`)
+      throw new RangeError(`${label}最多 ${maximum} 个`)
     }
     return entries
   }
@@ -387,7 +385,7 @@
       duration > REFERENCE_MEDIA_POLICY.maximumDurationSec
     ) {
       throw new RangeError(
-        `MiniMax H3 ${label} duration must be ${REFERENCE_MEDIA_POLICY.minimumDurationSec}-${REFERENCE_MEDIA_POLICY.maximumDurationSec} seconds`,
+        `${label}时长需在 ${REFERENCE_MEDIA_POLICY.minimumDurationSec}-${REFERENCE_MEDIA_POLICY.maximumDurationSec} 秒之间`,
       )
     }
     return duration
@@ -395,42 +393,38 @@
 
   function validateReferenceMediaPolicy(options = {}) {
     if (!options || typeof options !== 'object' || Array.isArray(options)) {
-      throw new TypeError('MiniMax H3 reference media policy options must be an object')
+      throw new TypeError('参考素材校验参数无效')
     }
-    const images = policyList(options.images, 'reference images', REFERENCE_MEDIA_POLICY.maxImages)
-    const videos = policyList(options.videos, 'reference videos', REFERENCE_MEDIA_POLICY.maxVideos)
-    const audios = policyList(options.audios, 'reference audios', REFERENCE_MEDIA_POLICY.maxAudios)
+    const images = policyList(options.images, '参考图', REFERENCE_MEDIA_POLICY.maxImages)
+    const videos = policyList(options.videos, '参考视频', REFERENCE_MEDIA_POLICY.maxVideos)
+    const audios = policyList(options.audios, '参考音频', REFERENCE_MEDIA_POLICY.maxAudios)
 
+    // Any source frame rate is accepted: the server resamples the reference
+    // clip to the model timeline from the rate it reads off the file, so a
+    // 25/30/60 fps phone clip no longer stops at 0%.
     let videoDurationSec = 0
     for (const video of videos) {
-      const fps = Number(video?.fps)
-      if (
-        !Number.isFinite(fps) ||
-        Math.abs(fps - REFERENCE_MEDIA_POLICY.requiredVideoFps) > REFERENCE_MEDIA_POLICY.videoFpsTolerance
-      ) {
-        throw new RangeError('MiniMax H3 reference video must be 24 FPS')
-      }
       const framesValue = video?.frames
       if (framesValue != null && framesValue !== '') {
         const frames = Number(framesValue)
         if (!Number.isFinite(frames) || frames < REFERENCE_MEDIA_POLICY.minimumVideoFrames) {
-          throw new RangeError('MiniMax H3 reference video must contain at least five frames')
+          throw new RangeError(`参考视频至少需要 ${REFERENCE_MEDIA_POLICY.minimumVideoFrames} 帧`)
         }
       }
-      videoDurationSec += policyDuration(video, 'reference video')
+      videoDurationSec += policyDuration(video, '参考视频')
     }
 
     let audioDurationSec = 0
-    for (const audio of audios) audioDurationSec += policyDuration(audio, 'reference audio')
+    for (const audio of audios) audioDurationSec += policyDuration(audio, '参考音频')
     if (
       videoDurationSec > REFERENCE_MEDIA_POLICY.maximumTypeDurationSec + REFERENCE_MEDIA_POLICY.durationToleranceSec
     ) {
-      throw new RangeError('MiniMax H3 total reference video duration exceeds 15 seconds')
+      throw new RangeError(`参考视频总时长超过 ${REFERENCE_MEDIA_POLICY.maximumTypeDurationSec} 秒`)
     }
     if (
       audioDurationSec > REFERENCE_MEDIA_POLICY.maximumTypeDurationSec + REFERENCE_MEDIA_POLICY.durationToleranceSec
     ) {
-      throw new RangeError('MiniMax H3 total reference audio duration exceeds 15 seconds')
+      throw new RangeError(`参考音频总时长超过 ${REFERENCE_MEDIA_POLICY.maximumTypeDurationSec} 秒`)
     }
 
     return Object.freeze({
