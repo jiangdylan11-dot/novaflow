@@ -1448,8 +1448,6 @@
     const actions = el('div', 'nf-as-res-actions');
     const act = (text, title, fn, cls) => { const b = el('button', cls || null, text); b.type = 'button'; b.title = title; b.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); actions.appendChild(b); };
     act('▶', '试听', () => previewResource(res, node));
-    act('+', '加到音轨播放头处', () => editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable, start: editor.playhead() }));
-    act('⇩', '下载 WAV', () => download(res));
     act('×', '删除', () => removeResource(res), 'danger');
     node.appendChild(actions);
     node.draggable = true;
@@ -1467,10 +1465,6 @@
     state.resources = state.resources.filter((r) => r !== res);
     if (res.url) URL.revokeObjectURL(res.url);
     renderList();
-  }
-  function download(res) {
-    const link = document.createElement('a');
-    link.href = res.url; link.download = res.name + '.wav'; document.body.appendChild(link); link.click(); link.remove();
   }
   function drawThumb(canvas, buffer) {
     const w = canvas.clientWidth || 180, h = canvas.clientHeight || 34;
