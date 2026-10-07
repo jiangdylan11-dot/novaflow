@@ -21731,9 +21731,10 @@
         display: none !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] .nf-brand-version {
+        display: inline-block !important;
         margin-left: 4px !important;
         color: rgba(230, 239, 255, 0.74) !important;
-        font-size: 0 !important;
+        font-size: 10px !important;
         font-weight: 400 !important;
       }
       #${PRIMARY_SIDEBAR_ID} {
@@ -30031,6 +30032,16 @@
     const brand = document.querySelector(".nf-brand");
     if (!brand) return;
     brand.setAttribute("data-novaflow-brand", "20260516-chain-unified");
+    const releaseVersion = String(window.NOVAFLOW_RELEASE_VERSION || "");
+    if (releaseVersion) {
+      let versionBadge = brand.querySelector(".nf-brand-version");
+      if (!versionBadge) {
+        versionBadge = document.createElement("span");
+        versionBadge.className = "nf-brand-version";
+        brand.appendChild(versionBadge);
+      }
+      versionBadge.textContent = "v" + releaseVersion;
+    }
 
     const img = brand.querySelector('img[alt="logo"]');
     if (img && img.getAttribute("src") !== LOGO_SRC) {

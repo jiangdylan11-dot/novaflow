@@ -1,4 +1,5 @@
 import { commonLoraCatalog } from './lora-catalog.mjs';
+import { RELEASE_VERSION } from './release.mjs';
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1091,7 +1092,7 @@ export function createControlPlane({ store, secrets, logger }) {
     try {
       if (method === 'OPTIONS') return { status: 204, body: null };
       if (method === 'GET' && path === '/health') {
-        return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running' });
+        return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }
       if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities(query));
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));

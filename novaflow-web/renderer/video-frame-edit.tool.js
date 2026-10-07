@@ -138,7 +138,7 @@
   function readDockFps() {
     const input = document.querySelector('[data-novaflow-ai-bottom-workspace="1"] [data-novaflow-ai-timeline-edit-group-locked] input:not([type="range"]):not([type="checkbox"])')
     const value = Number(input instanceof HTMLInputElement ? input.value : 0)
-    return Number.isFinite(value) && value > 0 ? clamp(Math.round(value), 1, 120) : 0
+    return Number.isFinite(value) && value > 0 ? clamp(value, 1, 120) : 0
   }
   function notify(message) {
     try { window.alert(String(message)) } catch (_) {}
@@ -671,7 +671,11 @@
     try {
       const sourceName = findSourceName(src)
       const fps = readDockFps()
-      const result = await bridge.exportDecodeVideoFrames({ sourceUrl: src, fileName: sourceName, fps, maxFrames: MAX_FRAMES })
+      const boardPlan = window.NovaFlowAiSequenceBoardFps?.currentPlan?.(video.duration)
+      // Unlocked playback keeps source frames and changes their playback rate;
+      // locked playback resamples at the board rate to keep the source duration.
+      const decodeFps = boardPlan?.sourceUrl === src ? boardPlan.sampleFps : fps
+      const result = await bridge.exportDecodeVideoFrames({ sourceUrl: src, fileName: sourceName, fps: decodeFps, maxFrames: MAX_FRAMES })
       if (!result?.ok || !Array.isArray(result.frames) || !result.frames.length) throw new Error(result?.error || '读取画板视频的帧失败')
       const frames = result.frames
       const thumbs = await buildThumbs(frames)
@@ -679,7 +683,7 @@
       state.frames = frames
       state.thumbs = thumbs
       state.full = new Map([[0, first]])
-      state.fps = Number(result.fps) || fps || 16
+      state.fps = fps || Number(result.fps) || 16
       state.width = first.width
       state.height = first.height
       state.alpha = Boolean(result.alpha)

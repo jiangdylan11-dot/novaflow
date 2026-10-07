@@ -1,5 +1,5 @@
 // GENERATED - do not edit. Built by tools/bundle-edge-function.mjs.
-// Source: supabase/functions/novaflow-web/ (7 modules + index.ts)
+// Source: supabase/functions/novaflow-web/ (8 modules + index.ts)
 // Rebuild with: npm run bundle:edge
 //
 // One file on purpose: a multi-file deploy can lose a module, and a lost
@@ -38,6 +38,13 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
   return lists[0].filter(item => lists.slice(1).every(list => list.some(other =>
     other.name === item.name && (kind !== 'h3' || other.fingerprint === item.fingerprint))));
 }
+
+// ===== release.mjs ===================================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/release.mjs
+// Regenerate with: npm run sync:edge
+// Application release identifier; protocol and model versions remain independent.
+const RELEASE_VERSION = "1.1.0";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -2107,7 +2114,7 @@ function createControlPlane({ store, secrets, logger }) {
     try {
       if (method === 'OPTIONS') return { status: 204, body: null };
       if (method === 'GET' && path === '/health') {
-        return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running' });
+        return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }
       if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities(query));
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));

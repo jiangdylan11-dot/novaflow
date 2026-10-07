@@ -20,6 +20,7 @@ import { dirname, join, resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
@@ -296,6 +297,9 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
   await writeFile(join(WEB_OUT, 'templates/particle-bundled.json'), JSON.stringify(particleTemplates));
 
   // ------------------------------------------------------------- index.html
+  const appPackage = JSON.parse(await readFile(join(ROOT, 'worker/package.json'), 'utf8'));
+  if (appPackage.version !== RELEASE_VERSION) throw new Error('Application release version mismatch');
+  await writeFile(join(WEB_OUT, 'release.json'), JSON.stringify({ version: RELEASE_VERSION, product: 'NovaFlow' }, null, 2) + '\n');
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
   await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
 
@@ -438,6 +442,7 @@ export function rewriteIndexHtml(html) {
   const configTag =
     '    <script>\n' +
     '      // Filled in at deploy time. See docs/DEPLOY.md.\n' +
+    '      window.NOVAFLOW_RELEASE_VERSION = ' + JSON.stringify(RELEASE_VERSION) + ';\n' +
     '      window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
     '        controlUrl: "http://127.0.0.1:4890",\n' +
     '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend"\n' +
