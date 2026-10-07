@@ -1462,6 +1462,225 @@
     return { ok: true, sourceId, id: sourceId, meta: probe, probe, previewUrl, source: { sourceId, probe } };
   };
 
+  // ---- 视频编辑 ----------------------------------------------------------------
+  //
+  // One graph from the editor's manifest: each video / image layer trimmed to
+  // its source window, scaled, masked (PNG alpha = coverage), shifted to its
+  // timeline start, faded, and overlaid in track order; sound from the
+  // audible layers trimmed, faded, delayed and mixed. Images loop as stills.
+  // The output lands under the reserved resource-list token and in the
+  // warehouse, like 视频合并's did.
+  const fmt3 = (n) => Number(n).toFixed(3);
+  api.videoEditorExport = async (manifest) => {
+    const output = (manifest && manifest.output) || {};
+    const width = evenSize(Number(output.width) || 1280);
+    const height = evenSize(Number(output.height) || 720);
+    const fps = clampNumber(Math.round(Number(output.fps) || 30), 1, 120);
+    const format = String(output.format || 'mp4').toLowerCase() === 'webm' ? 'webm' : 'mp4';
+    const filePath = String(output.filePath || '');
+    const layers = (Array.isArray(manifest && manifest.layers) ? manifest.layers : []).filter((layer) => layer && layer.source);
+    const duration = Math.max(0.1, Number(manifest && manifest.duration) || Math.max(...layers.map((l) => Number(l.start) + Number(l.length)), 0));
+    if (!layers.some((layer) => layer.video)) return fail('时间轴上没有可见的视频片段');
+    jobSeq += 1;
+    const jobId = 'web-ve-job-' + jobSeq;
+    const report = (stage, progress01, message) => compositorProgress.emit({ jobId, stage, progress01, message });
+    report('prepare', 0, '准备片段');
+    const ffmpeg = await loadFfmpeg();
+    compositorJobs.set(jobId, ffmpeg);
+    const seq = ++videoOutputSeq;
+    const tag = 'edit' + seq + '_';
+    const outFile = tag + 'out.' + format;
+    const scratch = [outFile];
+    const label = '正在合成视频…';
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    const relay = videoToolProgress.subscribe((event) => { if (event && event.jobId === jobId) report('render', event.progress01, '合成中 ' + Math.round(event.progress01 * 100) + '%'); });
+    busy.begin(jobId, label);
+    try {
+      const args = [];
+      const written = new Map();
+      let inputs = 0;
+      for (const layer of layers) {
+        const src = layer.source;
+        const key = String(src.url || src.fileName || '') + ':' + (src.blob ? src.blob.size : 0);
+        let name = written.get(key);
+        if (!name) {
+          const ext = (String(src.fileName || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+          name = tag + 'src' + written.size + '.' + ext;
+          let bytes = null;
+          if (src.blob) bytes = await bytesOf(src.blob);
+          else if (src.url) { const res = await root.fetch(src.url); if (!res.ok) throw new Error('读取片段失败：' + src.fileName); bytes = new Uint8Array(await res.arrayBuffer()); }
+          if (!bytes) throw new Error('片段没有可读取的文件：' + src.fileName);
+          await ffmpeg.writeFile(name, bytes);
+          written.set(key, name);
+          scratch.push(name);
+        }
+        if (layer.image) args.push('-loop', '1', '-framerate', String(fps), '-t', fmt3(Number(layer.offset) + Number(layer.length) + 0.5));
+        else if (/\.webm$/.test(name) && layer.video) args.push('-c:v', 'libvpx');
+        args.push('-i', name);
+        layer.input = inputs++;
+      }
+      for (const layer of layers) {
+        if (!layer.maskPng || !layer.video) continue;
+        const maskName = tag + 'mask' + layer.input + '.png';
+        await ffmpeg.writeFile(maskName, await bytesOf(layer.maskPng));
+        scratch.push(maskName);
+        args.push('-loop', '1', '-framerate', String(fps), '-t', fmt3(Number(layer.length) + 0.5), '-i', maskName);
+        layer.maskInput = inputs++;
+      }
+      const keepAlpha = format === 'webm';
+      const filters = ['color=c=' + (keepAlpha ? 'black@0' : 'black') + ':s=' + width + 'x' + height + ':r=' + fps + ':d=' + fmt3(duration) + ',format=rgba[base]'];
+      let last = 'base';
+      const audioLabels = [];
+      const videoFade = (layer) => (layer.fadeIn > 0 ? ',fade=t=in:st=' + fmt3(layer.start) + ':d=' + fmt3(layer.fadeIn) + ':alpha=1' : '')
+        + (layer.fadeOut > 0 ? ',fade=t=out:st=' + fmt3(layer.start + layer.length - layer.fadeOut) + ':d=' + fmt3(layer.fadeOut) + ':alpha=1' : '');
+      const audioFade = (layer) => (layer.fadeIn > 0 ? ',afade=t=in:st=0:d=' + fmt3(layer.fadeIn) : '')
+        + (layer.fadeOut > 0 ? ',afade=t=out:st=' + fmt3(layer.length - layer.fadeOut) + ':d=' + fmt3(layer.fadeOut) : '');
+      const audioChain = (layer, i) => '[' + layer.input + ':a]atrim=start=' + fmt3(layer.offset) + ':end=' + fmt3(layer.offset + layer.length) + ',asetpts=PTS-STARTPTS' + audioFade(layer) + ',adelay=' + Math.round(layer.start * 1000) + ':all=1[a' + i + ']';
+      layers.forEach((layer, i) => {
+        const src = layer.source, tr = layer.transform || { centerX: width / 2, centerY: height / 2, scale: 1 };
+        const inPoint = Number(layer.offset) || 0, outPoint = inPoint + Number(layer.length);
+        if (!layer.video) { if (layer.audio) { filters.push(audioChain(layer, i)); audioLabels.push('[a' + i + ']'); } return; }
+        const lw = evenSize(src.width * tr.scale), lh = evenSize(src.height * tr.scale);
+        const x = Math.round(tr.centerX - lw / 2), y = Math.round(tr.centerY - lh / 2);
+        filters.push('[' + layer.input + ':v]trim=start=' + fmt3(inPoint) + ':end=' + fmt3(outPoint) + ',setpts=PTS-STARTPTS,fps=' + fps + ',scale=' + lw + ':' + lh + ':flags=lanczos,setsar=1,format=rgba' + (layer.alpha ? ',' + ALPHA_FLOOR : '') + '[r' + i + ']');
+        let srcLabel = 'r' + i;
+        if (layer.maskInput != null) {
+          filters.push('[r' + i + ']split=2[rr' + i + '][ra' + i + ']');
+          filters.push('[ra' + i + ']alphaextract[sa' + i + ']');
+          filters.push('[' + layer.maskInput + ':v]scale=' + lw + ':' + lh + ':flags=lanczos,format=rgba,alphaextract[cov' + i + ']');
+          filters.push('[sa' + i + '][cov' + i + ']blend=all_mode=multiply:shortest=1[ma' + i + ']');
+          filters.push('[rr' + i + '][ma' + i + ']alphamerge,format=rgba[rm' + i + ']');
+          srcLabel = 'rm' + i;
+        }
+        filters.push('[' + srcLabel + ']setpts=PTS+' + fmt3(layer.start) + '/TB' + videoFade(layer) + '[l' + i + ']');
+        filters.push('[' + last + '][l' + i + ']overlay=x=' + x + ':y=' + y + ':format=auto:eof_action=pass:enable=\'between(t,' + fmt3(layer.start) + ',' + fmt3(layer.start + layer.length) + ')\'[o' + i + ']');
+        last = 'o' + i;
+        if (layer.audio) { filters.push(audioChain(layer, i)); audioLabels.push('[a' + i + ']'); }
+      });
+      filters.push('[' + last + ']format=' + (keepAlpha ? 'yuva420p' : 'yuv420p') + '[vout]');
+      const withAudio = audioLabels.length > 0;
+      if (withAudio) filters.push(audioLabels.join('') + 'amix=inputs=' + audioLabels.length + ':duration=longest:normalize=0,apad[aout]');
+      const encode = format === 'webm'
+        ? ['-c:v', 'libvpx', '-crf', '8', '-qmin', '0', '-qmax', '8', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-g', '1', '-metadata:s:v:0', 'alpha_mode=1']
+        : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+      const run = async (audio) => {
+        const full = args.slice();
+        const graph = audio ? filters : filters.filter((f) => !/\[aout\]$|\[a\d+\]$/.test(f));
+        full.push('-filter_complex', graph.join(';'), '-map', '[vout]');
+        if (audio) full.push('-map', '[aout]', '-c:a', format === 'webm' ? 'libopus' : 'aac', '-b:a', '160k');
+        else full.push('-an');
+        full.push(...encode, '-r', String(fps), '-t', fmt3(duration), '-y', outFile);
+        ffmpegJob.log = '';
+        return ffmpeg.exec(full);
+      };
+      busy.update(jobId, label, 0);
+      let code = await run(withAudio);
+      if (code !== 0 && withAudio && !cancelled.has(jobId)) code = await run(false);
+      if (cancelled.has(jobId)) { cancelled.delete(jobId); return { ok: false, canceled: true, code: 'export_canceled', jobId }; }
+      if (code !== 0) {
+        const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found|no such/i.test(line)).slice(-3).join('；');
+        throw new Error('ffmpeg 退出码 ' + code + (tail ? '：' + tail.slice(0, 240) : ''));
+      }
+      const data = await ffmpeg.readFile(outFile);
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+      const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
+      const blob = new Blob([bytes], { type: mimeType });
+      const fileName = (filePath.split('/').pop() || ('novaflow_video_edit.' + format));
+      const token = filePath || ('web-video://' + seq + '/' + fileName);
+      const url = URL.createObjectURL(blob);
+      videoOutputs.set(token, { tool: 'video-edit', token, blob, fileName, url });
+      for (const entry of cache.values()) if (entry && entry.path === token) { entry.blob = blob; entry.bytes = blob.size; }
+      await saveToWarehouse(blob, fileName);
+      report('done', 1, '视频合成完成');
+      return { ok: true, jobId, filePath: token, path: token, blob, url, bytes: blob.size, fileName, format, mimeType, width, height, fps, duration };
+    } catch (error) {
+      const message = String((error && error.message) || error);
+      if (/RuntimeError|memory access|unreachable|abort/i.test(message)) {
+        ffmpegPromise = null;
+        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+      }
+      report('error', 0, message);
+      return fail(cancelled.has(jobId) ? 'export_canceled' : ('视频合成失败：' + message), { jobId });
+    } finally {
+      relay();
+      busy.end(jobId);
+      compositorJobs.delete(jobId);
+      cancelled.delete(jobId);
+      if (ffmpegPromise) for (const name of scratch) await ffmpeg.deleteFile(name).catch(() => {});
+      ffmpegJob = null;
+    }
+  };
+
+  // 音频编辑's 保存混合视频: the reference video's picture (stream copy when the
+  // container matches) with the mixed-down audio in its place; the video's length.
+  api.videoEditorMux = async (payload) => {
+    const options = payload || {};
+    const source = options.video || {};
+    const audio = options.audio;
+    if (!audio) return fail('没有混音数据');
+    const format = String(options.format || 'mp4').toLowerCase() === 'webm' ? 'webm' : 'mp4';
+    const filePath = String(options.filePath || '');
+    const durationSec = Number(source.durationSec) || 0;
+    jobSeq += 1;
+    const jobId = 'web-vm-job-' + jobSeq;
+    const report = (stage, progress01, message) => compositorProgress.emit({ jobId, stage, progress01, message });
+    report('prepare', 0, '准备视频与混音');
+    const ffmpeg = await loadFfmpeg();
+    compositorJobs.set(jobId, ffmpeg);
+    const seq = ++videoOutputSeq;
+    const tag = 'mux' + seq + '_';
+    const ext = (String(source.fileName || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+    const vName = tag + 'v.' + ext, aName = tag + 'a.wav', outFile = tag + 'out.' + format;
+    const label = '正在封装混合视频…';
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    const relay = videoToolProgress.subscribe((event) => { if (event && event.jobId === jobId) report('render', event.progress01, '封装中 ' + Math.round(event.progress01 * 100) + '%'); });
+    busy.begin(jobId, label);
+    try {
+      let bytes = null;
+      if (source.blob) bytes = await bytesOf(source.blob);
+      else if (source.url) { const res = await root.fetch(source.url); if (!res.ok) throw new Error('读取视频失败'); bytes = new Uint8Array(await res.arrayBuffer()); }
+      if (!bytes) throw new Error('参照视频没有可读取的文件');
+      await ffmpeg.writeFile(vName, bytes);
+      await ffmpeg.writeFile(aName, await bytesOf(audio));
+      const copyOk = (format === 'mp4' && ext === 'mp4') || (format === 'webm' && ext === 'webm');
+      const videoCodec = copyOk ? ['-c:v', 'copy'] : (format === 'webm' ? ['-c:v', 'libvpx', '-crf', '8', '-b:v', '6000k'] : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p']);
+      const args = ['-i', vName, '-i', aName, '-map', '0:v:0', '-map', '1:a:0', ...videoCodec, '-c:a', format === 'webm' ? 'libopus' : 'aac', '-b:a', '160k', '-af', 'apad'];
+      if (durationSec > 0) args.push('-t', fmt3(durationSec)); else args.push('-shortest');
+      if (format === 'mp4') args.push('-movflags', '+faststart');
+      args.push('-y', outFile);
+      ffmpegJob.log = '';
+      const code = await ffmpeg.exec(args);
+      if (cancelled.has(jobId)) { cancelled.delete(jobId); return { ok: false, canceled: true, code: 'export_canceled', jobId }; }
+      if (code !== 0) {
+        const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found|no such/i.test(line)).slice(-3).join('；');
+        throw new Error('ffmpeg 退出码 ' + code + (tail ? '：' + tail.slice(0, 240) : ''));
+      }
+      const data = await ffmpeg.readFile(outFile);
+      const out = data instanceof Uint8Array ? data : new Uint8Array(data);
+      const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
+      const blob = new Blob([out], { type: mimeType });
+      const fileName = (filePath.split('/').pop() || ('novaflow_video_mix.' + format));
+      const token = filePath || ('web-video://' + seq + '/' + fileName);
+      const url = URL.createObjectURL(blob);
+      videoOutputs.set(token, { tool: 'video-mix', token, blob, fileName, url });
+      for (const entry of cache.values()) if (entry && entry.path === token) { entry.blob = blob; entry.bytes = blob.size; }
+      await saveToWarehouse(blob, fileName);
+      report('done', 1, '混合视频完成');
+      return { ok: true, jobId, filePath: token, path: token, blob, url, bytes: blob.size, fileName, format, mimeType };
+    } catch (error) {
+      const message = String((error && error.message) || error);
+      report('error', 0, message);
+      return fail('混合视频失败：' + message, { jobId });
+    } finally {
+      relay();
+      busy.end(jobId);
+      compositorJobs.delete(jobId);
+      cancelled.delete(jobId);
+      if (ffmpegPromise) for (const name of [vName, aName, outFile]) await ffmpeg.deleteFile(name).catch(() => {});
+      ffmpegJob = null;
+    }
+  };
+
   api.videoCompositorReleaseSource = async (payload) => {
     const session = sessions.get(String(payload && payload.sessionId));
     if (session) session.sources.delete(String(payload.sourceId || payload.id));

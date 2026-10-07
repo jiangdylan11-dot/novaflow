@@ -3,7 +3,7 @@
 
   const TOOL_ID = "video-merge";
   const ENTRY_ATTR = "data-novaflow-ai-video-merge-entry";
-  const IDLE_LABEL = "\u89c6\u9891\u5408\u5e76";
+  const IDLE_LABEL = "\u89c6\u9891\u7f16\u8f91";   // 视频编辑
   const ACTIVE_LABEL = "\u4fdd\u5b58\u5e76\u5173\u95ed";
   const entryActivationHandlers = new WeakMap();
   const state = {

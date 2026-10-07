@@ -14951,7 +14951,7 @@
       const tool = aiSequenceToolFromNode(node);
       const disabled = shouldDisableAiSequenceToolForActiveTool(tool, session, postSection) || node.getAttribute('data-nf-color-correction-busy') === '1';
       // Keep React's child elements: only replace the leaf label, never its tree.
-      const label = tool === 'color-correct' ? '颜色校正' : tool === 'video-merge' ? '视频合并' : '视频抠图';
+      const label = tool === 'color-correct' ? '颜色校正' : tool === 'video-merge' ? '视频编辑' : '视频抠图';
       const leaf = node.firstElementChild || node;
       if (leaf.textContent !== label) leaf.textContent = label;
       nfSetAttrIfChanged(node, 'aria-disabled', String(disabled));
@@ -59644,7 +59644,7 @@
   // collapses the group the way the old heading did, and the content the bundle
   // or an overlay puts into the section is ordered under the active row.
   const AI_ANIMATION_TOOL_HEADINGS = Object.freeze([
-    { key: "video-merge", label: "视频合并", entry: '[data-novaflow-ai-video-merge-entry="1"]', tools: ["video-merge"] },
+    { key: "video-merge", label: "视频编辑", entry: '[data-novaflow-ai-video-merge-entry="1"]', tools: ["video-merge"] },
     { key: "ai-cutout", label: "视频抠图", entry: '[data-novaflow-video-cutout="1"]', tools: ["ai-cutout", "chroma-key"] },
     // 帧编辑 is a runtime overlay (video-frame-edit.tool.js) on whatever video the
     // stage shows, not a bundle tool: its row toggles the tool, no entry to proxy.
