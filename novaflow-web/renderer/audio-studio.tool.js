@@ -234,6 +234,7 @@
       mask.id = MASK_ID;
       mask.type = 'button';
       mask.setAttribute('data-novaflow-runtime-ignore', '1');
+      mask.appendChild(document.createElement('i'));
       mask.addEventListener('click', (event) => {
         event.preventDefault(); event.stopPropagation();
         const target = state.maskTarget;
@@ -256,9 +257,11 @@
     const railZ = rail ? Number(getComputedStyle(rail).zIndex) : NaN;
     const hostZ = Number(getComputedStyle(host).zIndex);
     const zIndex = Math.min(2147483646, Math.max(Number.isFinite(railZ) ? railZ : 0, Number.isFinite(hostZ) ? hostZ : 0, 90000) + 1);
+    // one pixel past the entry on every side: the pressed entry under it is a
+    // rounded box whose antialiased edge showed through a same-radius mask
     const want = {
-      left: Math.round(rect.left) + 'px', top: Math.round(rect.top) + 'px', width: Math.round(rect.width) + 'px', height: Math.round(rect.height) + 'px',
-      'border-radius': getComputedStyle(host).borderRadius, 'z-index': String(zIndex), background: railBackground(host)
+      left: Math.round(rect.left) - 1 + 'px', top: Math.round(rect.top) - 1 + 'px', width: Math.round(rect.width) + 2 + 'px', height: Math.round(rect.height) + 2 + 'px',
+      'z-index': String(zIndex), '--nf-mask-bg': railBackground(host), '--nf-mask-radius': getComputedStyle(host).borderRadius
     };
     for (const key of Object.keys(want)) if (mask.style.getPropertyValue(key) !== want[key]) mask.style.setProperty(key, want[key], 'important');
   }
@@ -285,7 +288,6 @@
       document.body.classList.remove(SUB_VIDEO_CLASS);
       mount();
       layout();
-      if (ui && ui.subToggle) { copyToggleLook(ui.subToggle); ui.subToggle.style.setProperty('height', (SECONDARY_SHELL_H) + 'px', 'important'); }
       syncMask();
       refreshCapabilities();
       editor.layout();
@@ -430,32 +432,6 @@
     if (state.active) deactivateSilently();
     beginSwitch('skeleton');
   }, true);
-  // The React secondary toggle's exact look (group box + active / idle pills),
-  // copied from computed style onto our own 视频 | 音频 toggles.
-  const GROUP_PROPS = ['background-color', 'border', 'border-radius', 'padding', 'gap', 'column-gap', 'box-shadow', 'box-sizing'];
-  const PILL_PROPS = ['background-color', 'color', 'font-size', 'font-weight', 'font-family', 'letter-spacing', 'border-radius', 'height', 'min-height', 'line-height', 'box-shadow', 'border', 'text-shadow'];
-  function copyToggleLook(toggle) {
-    const group = animationGroup();
-    if (!group) return;
-    const buttons = Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]'));
-    const on = buttons.find(secondaryActive) || buttons[0];
-    const off = buttons.find((b) => b !== on) || buttons[1] || on;
-    if (!on) return;
-    const gs = getComputedStyle(group);
-    for (const prop of GROUP_PROPS) toggle.style.setProperty(prop, gs.getPropertyValue(prop), 'important');
-    toggle.style.setProperty('display', 'grid', 'important');
-    toggle.style.setProperty('grid-template-columns', '1fr 1fr', 'important');
-    toggle.style.setProperty('align-items', 'center', 'important');
-    const mine = Array.from(toggle.querySelectorAll('button'));
-    for (const b of mine) {
-      const ref = b.getAttribute('aria-pressed') === 'true' ? on : off;
-      const cs = getComputedStyle(ref);
-      for (const prop of PILL_PROPS) b.style.setProperty(prop, cs.getPropertyValue(prop), 'important');
-      b.style.setProperty('padding', '0 6px', 'important');
-      b.style.setProperty('margin', '0', 'important');
-      b.style.setProperty('width', 'auto', 'important');
-    }
-  }
   // 视频 | 音频 over the React toggle's spot while 音视 / 视频 is active
   function syncSubToggle() {
     let toggle = document.getElementById(SUB_TOGGLE_ID);
@@ -478,7 +454,6 @@
     if (r.width < 10) { toggle.hidden = true; return; }
     const want = { left: Math.round(r.left) + 'px', top: Math.round(r.top) + 'px', width: Math.round(r.width) + 'px', height: Math.round(r.height) + 'px' };
     for (const key of Object.keys(want)) if (toggle.style.getPropertyValue(key) !== want[key]) toggle.style.setProperty(key, want[key], 'important');
-    copyToggleLook(toggle);
   }
   document.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -510,10 +485,13 @@
       #${CELL_ID} button::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
       #${CELL_ID}[data-novaflow-primary-cell-active="0"] button:hover{background:#373737;color:#ffffff}
       /* the pressed / idle look is copied from the React entries at runtime (copyCellLook) */
-      #${MASK_ID}{position:fixed;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin:0;padding:0 6px;border:0;outline:0;box-shadow:none;color:#9c9c9c;font-size:11px;font-weight:500;line-height:1.2;cursor:pointer;font-family:inherit;box-sizing:border-box}
+      #${MASK_ID}{position:fixed;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin:0;padding:0 6px;border:0;outline:0;box-shadow:none;background:var(--nf-mask-bg,#161616);background-clip:padding-box;color:#9c9c9c;font-size:11px;font-weight:500;line-height:1.2;cursor:pointer;font-family:inherit;box-sizing:border-box;isolation:isolate}
+      /* the hover fill is a rounded face one pixel inside the square mask */
+      #${MASK_ID} > i{position:absolute;inset:1px;border-radius:var(--nf-mask-radius,7px);background:transparent;z-index:-1}
       #${MASK_ID}::before{content:"";display:block;width:19px;height:19px;background-color:currentColor;-webkit-mask:var(--nf-rail-icon) center / contain no-repeat;mask:var(--nf-rail-icon) center / contain no-repeat}
       #${MASK_ID}::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
-      #${MASK_ID}:hover{background:#373737!important;color:#ffffff}
+      #${MASK_ID}:hover{color:#ffffff}
+      #${MASK_ID}:hover > i{background:#373737}
 
       /* above every section's own layers (美工 lifts its panel to 2147483621), below the rail shortcuts, the warehouse and the modal layer */
       #${ROOT_ID}{position:fixed;inset:0;z-index:2147483625;pointer-events:none;color:#e8eaed;font-size:12px;font-weight:400;font-family:inherit}
@@ -537,8 +515,9 @@
       .nf-as-scroller::-webkit-scrollbar{width:6px}.nf-as-scroller::-webkit-scrollbar-thumb{background:#3a3a3a}
       /* left card: the section panel */
       .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
-      .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:0 0 17px}
-      .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px}
+      /* the runtime's secondary group: #101010 / #262626 / 8px, 3px pad and gap, 29px pills (5px), active #1c4136 + #9be4cd with a #2c604f ring */
+      .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:0 0 17px;box-sizing:border-box;height:37px;align-items:center}
+      .nf-as-mode button{height:29px;min-height:29px;max-height:29px;min-width:0;margin:0;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px;box-shadow:none;letter-spacing:normal}
       .nf-as-mode button:hover{background:#2a2a2a}
       .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
       .nf-as-mode.nf-as-mode-kind{margin:0 0 4px}
@@ -684,8 +663,8 @@
       .nf-tl-playhead{position:absolute;top:0;width:2px;background:#ef4444;pointer-events:none}
       .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
       /* generation dock */
-      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:auto 18px 4px minmax(0,1fr);row-gap:9px}
-      .nf-as-dock-progress{height:4px;border-radius:2px;background:#262626;overflow:hidden}
+      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:auto 18px 1px minmax(0,1fr);row-gap:9px}
+      .nf-as-dock-progress{height:1px;border-radius:0;background:#2d2d2d;overflow:hidden}
       .nf-as-dock-progress i{display:block;height:100%;width:0;background:#1ea672;transition:width .3s linear}
       .nf-as-dock[hidden]{display:none!important}
       .nf-as-dock-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;min-height:32px}
@@ -696,12 +675,12 @@
       .nf-as-switch[aria-checked="true"]{background:#1ea672}.nf-as-switch[aria-checked="true"]::after{left:15px;background:#fff}
       .nf-as-go{margin-left:auto;width:104px;height:32px;border:1px solid #24b693;border-radius:var(--nf-ref-radius-control,7px);background:#1ea672;color:#fff;font-size:12px;font-weight:600;padding:5px 10px}
       .nf-as-go:hover{background:#22b87f}.nf-as-go:disabled{opacity:.45;cursor:default}
-      .nf-as-status{display:flex;align-items:center;gap:8px;height:18px;font-size:11px;color:#9f9f9f}
+      .nf-as-status{display:flex;align-items:center;gap:8px;height:18px;font-size:11px;color:#7a7a7a}
       .nf-as-status .nf-as-pct{color:#cfcfcf}
       .nf-as-status .nf-as-err{color:#f09595;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
       .nf-as-cancel{margin-left:auto;height:18px;border:0;border-radius:7px;background:rgba(239,68,68,.18);color:#ffb4b4;font-size:11px;padding:0 8px}
       .nf-as-cancel[hidden]{display:none}
-      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0}
+      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0;margin-top:-3px}
       .nf-as-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:4px 7px;border-bottom:1px solid rgba(255,255,255,.22)}
       .nf-as-prompt:focus-within .nf-as-prompt-head{border-bottom-color:#1ea672}
       .nf-as-prompt-ai{height:24px;min-height:24px;max-height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;line-height:1;padding:3px 7px;display:inline-flex;align-items:center;justify-content:center;gap:7px}

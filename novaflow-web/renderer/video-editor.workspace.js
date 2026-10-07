@@ -78,7 +78,8 @@
     .nf-ve-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
     /* dropdown: the product's masked menu */
     .nf-ve-dd-trigger{width:100%;height:30px;padding:0 28px 0 8px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:#282828;color:#eee;font-size:11px;text-align:left;position:relative;cursor:pointer}
-    .nf-ve-dd-trigger::after{content:"";position:absolute;right:10px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:1.5px solid #9a9a9a;border-bottom:1.5px solid #9a9a9a;transform:rotate(45deg)}
+    .nf-ve-dd-trigger::after,.nf-ve-dd-trigger::before{content:none!important}
+    .nf-ve-dd-trigger > i{position:absolute;right:10px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:1.5px solid #9a9a9a;border-bottom:1.5px solid #9a9a9a;transform:rotate(45deg);pointer-events:none}
     .nf-ve-dd-trigger[data-open="1"]{position:relative;z-index:2147483002;border-color:#1EA672}
     .nf-ve-dd-overlay{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.58)}
     .nf-ve-dd-panel{position:fixed;z-index:2147483001;background:#1b1b1b;border:1px solid rgba(255,255,255,.18);box-shadow:0 18px 48px rgba(0,0,0,.55);color:rgba(255,255,255,.88);font-size:12px;line-height:26px;overflow:hidden auto;max-height:60vh}
@@ -436,8 +437,9 @@
     function enhanceSelect(select) {
       select.style.display = 'none'
       const trigger = el(documentRef, 'button', 'nf-ve-dd-trigger'); trigger.type = 'button'
+      const text = el(documentRef, 'span'); trigger.appendChild(text); trigger.appendChild(el(documentRef, 'i'))
       select.insertAdjacentElement('afterend', trigger)
-      const sync = () => { const o = select.options[select.selectedIndex]; trigger.textContent = o ? o.textContent : '' }
+      const sync = () => { const o = select.options[select.selectedIndex]; text.textContent = o ? o.textContent : '' }
       const close = () => { documentRef.querySelectorAll('.nf-ve-dd-overlay,.nf-ve-dd-panel').forEach((n) => n.remove()); trigger.dataset.open = ''; documentRef.removeEventListener('keydown', onKey) }
       const onKey = (e) => { if (e.key === 'Escape') close() }
       trigger.addEventListener('click', () => {

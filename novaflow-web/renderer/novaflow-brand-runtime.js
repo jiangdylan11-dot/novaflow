@@ -13661,7 +13661,7 @@
     setAttributeIfChanged(root, "data-novaflow-ai-mode-section", "1");
     setAttributeIfChanged(root, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
     syncAiAnimationModeExpandedBodyFlag();
-    const modeHeading = ensureAiAnimationCollapseHeading(root, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
+    const modeHeading = ensureAiAnimationCollapseHeading(root, "mode", "\u89c6\u9891\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
     if (postSection instanceof HTMLElement) {
       setAttributeIfChanged(postSection, "data-novaflow-ai-post-section", "1");
       setAttributeIfChanged(postSection, "data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
@@ -38164,6 +38164,9 @@
       resetAiAnimationCollapseStateForEntry();
       requestAiAnimationPreviewRealGeometrySync();
       armAiAnimationPrepaint();
+      // 骨骼 only (the AI entry has its own atomic commit): lay the rows out in
+      // the mount's own microtask instead of the 16/48/120 ms timers
+      if (animationWantedSecondaryLabel() !== "AI序列动画") armAnimationMountSync("skeleton");
     }
     document.body.classList.toggle("novaflow-primary-target-particle", targetIndex === 0);
     document.body.classList.toggle("novaflow-primary-target-animation", targetIndex === 1);
@@ -57972,7 +57975,7 @@
             if (skeletonSecondarySwitch) scheduleSkeletonAnimationLayout({ immediate: true });
             if (aiSequenceSecondarySwitch) applyAiSequenceSecondarySwitchPreLayout();
             const token = PRIMARY_SWITCH_TOKEN;
-            if (aiSequenceSecondarySwitch) armAiSequenceSecondaryMountSync(token);
+            if (skeletonSecondarySwitch || aiSequenceSecondarySwitch) armAnimationMountSync(skeletonSecondarySwitch ? "skeleton" : "ai");
             window.requestAnimationFrame(() => {
               if (token !== PRIMARY_SWITCH_TOKEN) return;
               if (runAiAnimationSecondarySwitchLocalRefresh({ skeletonSecondarySwitch, aiSequenceSecondarySwitch })) return;
@@ -57991,34 +57994,73 @@
     pinSecondaryGroup(group, buttons);
   }
 
-  // 骨骼动画 → AI序列动画: React mounts the AI section after the click handler
-  // returns, and the pass that collapses 动画生成 and lays the column out
-  // otherwise lands one paint later - that paint showed React's own expanded
-  // panel (recorded on a screencast). A MutationObserver runs as a microtask,
-  // before the paint: the moment the section's nodes are in, the entry's
-  // synchronous layout runs, so the first painted frame is the finished one.
-  let AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = null;
-  function armAiSequenceSecondaryMountSync(token) {
-    if (AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER) {
-      AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER.disconnect();
-      AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = null;
+  // Entering a 动画 mode: React mounts its section after the click handler
+  // returns, and the runtime pass that lays it out (collapsing 视频生成, the
+  // skeleton rows' rhythm and ribbon, which the 动画计算 module hangs off)
+  // otherwise lands a paint later - from timers, so that paint showed React's
+  // own raw panel / five rows at a tighter pitch (recorded on a screencast).
+  // A MutationObserver runs as a microtask, before the paint: the moment the
+  // section's nodes are in, the synchronous layout runs, so the first painted
+  // frame is the finished one.
+  let ANIMATION_MOUNT_SYNC_OBSERVER = null;
+  function armAnimationMountSync(mode) {
+    if (ANIMATION_MOUNT_SYNC_OBSERVER) {
+      ANIMATION_MOUNT_SYNC_OBSERVER.disconnect();
+      ANIMATION_MOUNT_SYNC_OBSERVER = null;
     }
     if (typeof MutationObserver !== "function" || !document.body) return;
+    const wantSkeleton = mode === "skeleton";
     let timer = 0;
+    let busy = false;
+    let passes = 0;
+    let lastSignature = "";
+    // what a pass is for: React's commits (panels, rows) - not the pass's own
+    // attribute and style writes, which also reach this observer
+    const signature = () => document.querySelectorAll('[data-panel-id], [data-novaflow-left-content-root="1"] button').length
+      + ":" + document.querySelectorAll('[data-novaflow-ai-post-section="1"], [data-novaflow-ai-mode-section="1"]').length;
     const observer = new MutationObserver(() => {
-      if (token !== PRIMARY_SWITCH_TOKEN) { stop(); return; }
-      if (!isAiSequenceSecondaryContentMounted()) return;
-      stop();
-      try { runAiAnimationEntryFirstFrameLayoutSync(); } catch (_) { void 0; }
+      if (busy) return;
+      if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) { stop(); return; }
+      if (wantSkeleton ? !hasSkeletonAnimationMountEvidence() : !isAiSequenceSecondaryContentMounted()) return;
+      const nextSignature = signature();
+      if (nextSignature === lastSignature) return;
+      lastSignature = nextSignature;
+      busy = true;
+      try {
+        if (wantSkeleton) {
+          // React commits the sidebar tree first and the bone panels (骨骼架设 …
+          // 自动权重) in a later commit; each batch gets a synchronous pass until
+          // the ribbon is marked and the 动画计算 module (which hangs off that
+          // mark) has put its row in - then one more pass gives it the rhythm
+          passes += 1;
+          if (!activateSkeletonAnimationLayoutFromMountedSurface("mount-observer")) scheduleSkeletonAnimationLayout({ immediate: true });
+          normalizeRibbonPanelRuntimeOwner(document.body);
+          // the column pass pins the entry group, which is what gives the bone
+          // panels their 3px pads and rule (46 -> 53 px rows)
+          applySecondaryEntryLayout();
+          try { normalizeNovaflowVisualRhythm(document.body); } catch (_) { void 0; }
+          // settled once React's last bone panel (自动权重) and the module's
+          // 动画计算 row are both in and have had this pass
+          const settled = document.body.classList.contains("novaflow-skeleton-animation-layout")
+            && document.querySelector('[data-novaflow-ribbon-panel="1"]')
+            && document.querySelector('[data-panel-id="bone-motion"]')
+            && document.querySelector('[data-panel-id="bone-auto-weights"]');
+          if (settled || passes >= 20) stop();
+        } else {
+          runAiAnimationEntryFirstFrameLayoutSync();
+          stop();
+        }
+      } catch (_) { stop(); } finally { busy = false; }
     });
     const stop = () => {
       observer.disconnect();
       window.clearTimeout(timer);
-      if (AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER === observer) AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = null;
+      if (ANIMATION_MOUNT_SYNC_OBSERVER === observer) ANIMATION_MOUNT_SYNC_OBSERVER = null;
     };
     observer.observe(document.body, { childList: true, subtree: true });
-    timer = window.setTimeout(stop, 1500);
-    AI_SEQUENCE_SECONDARY_MOUNT_OBSERVER = observer;
+    // React's lazy bone panels can follow the rows by a few hundred ms
+    timer = window.setTimeout(stop, 2500);
+    ANIMATION_MOUNT_SYNC_OBSERVER = observer;
   }
 
   function applySecondaryEntryLayout() {
@@ -61280,7 +61322,7 @@
     restoreAiSequenceSecondaryPostReturnLayout(earlyPostSection);
     setAttributeIfChanged(earlyRoot, "data-novaflow-ai-mode-section", "1");
     setAttributeIfChanged(earlyRoot, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
-    const modeHeading = ensureAiAnimationCollapseHeading(earlyRoot, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
+    const modeHeading = ensureAiAnimationCollapseHeading(earlyRoot, "mode", "\u89c6\u9891\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
     if (earlyPostSection instanceof HTMLElement) {
       setAttributeIfChanged(earlyPostSection, "data-novaflow-ai-post-section", "1");
       setAttributeIfChanged(earlyPostSection, "data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
@@ -63811,7 +63853,7 @@
         setAttributeIfChanged(root, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
       });
       nfAnimationPerfRunLayoutStep("applyAiAnimationSectionLayers", "modeSectionMarkers", () => {
-        const heading = ensureAiAnimationCollapseHeading(root, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
+        const heading = ensureAiAnimationCollapseHeading(root, "mode", "\u89c6\u9891\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
         markAiAnimationModeBodyItems(root, postSection, heading);
         markAiAnimationModeSwitch(root);
         syncAiAnimationModeSwitchGuard(root);
