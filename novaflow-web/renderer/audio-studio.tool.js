@@ -277,6 +277,7 @@
   function activate(sub) {
     sub = sub === 'audio' || sub === 'video' ? sub : state.sub;
     if (state.active && state.sub === sub) return;
+    cancelPendingTeardown();
     state.active = true;
     state.sub = sub;
     setAnimationSecondaryFlag();
@@ -309,19 +310,47 @@
     ensureCell(); // the cell's pressed look now, not at the next tick
   }
   function deactivateSilently() { deactivate(true); }
+  // React renders the 骨骼 page asynchronously after the mode flips: the 音视 page
+  // (its classes, the 视频|音频 toggle, the 音频 root) stays as it is until the 骨骼
+  // rows are in the column, then goes in the same frame they first paint
+  let pendingTeardown = null;
+  function cancelPendingTeardown() {
+    if (!pendingTeardown) return;
+    pendingTeardown.observer.disconnect();
+    window.clearTimeout(pendingTeardown.timer);
+    pendingTeardown = null;
+  }
+  function teardownPage() {
+    cancelPendingTeardown();
+    document.body.classList.remove(BODY_CLASS);
+    document.body.classList.remove(SUB_VIDEO_CLASS);
+    syncSubToggle();
+    const root = document.getElementById(ROOT_ID);
+    if (root) root.hidden = true;
+    window.NovaFlowBrandRuntimeAnimation?.relayout();
+  }
+  // React has swapped the column: its AI rows are gone (the hidden 导入工程 panel is
+  // runtime-made and sits in the column in both modes, so it cannot be the sign)
+  function skeletonRowsMounted() {
+    const rows = document.querySelector('[data-novaflow-ai-mode-section="1"], [data-novaflow-ai-post-section="1"]');
+    return !(rows && rows.getClientRects().length);
+  }
+  function teardownWhenSkeletonMounted() {
+    cancelPendingTeardown();
+    if (skeletonRowsMounted()) { teardownPage(); return; }
+    const observer = new MutationObserver(() => { if (skeletonRowsMounted()) teardownPage(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    pendingTeardown = { observer, timer: window.setTimeout(teardownPage, 1200) };
+  }
   function deactivate(silent) {
     if (!state.active) return;
     state.active = false;
     setAnimationSecondaryFlag();
-    document.body.classList.remove(BODY_CLASS);
-    document.body.classList.remove(SUB_VIDEO_CLASS);
-    syncSubToggle();
     // leaving 音视 for 动画 itself: the pointerdown above already covers and switches
-    if (silent !== true && animationEntry()?.getAttribute('aria-pressed') === 'true') beginSwitch('skeleton');
+    const toSkeleton = silent !== true && animationEntry()?.getAttribute('aria-pressed') === 'true';
+    if (toSkeleton) { beginSwitch('skeleton'); teardownWhenSkeletonMounted(); } else teardownPage();
     const cell = document.getElementById(CELL_ID);
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '0'); cell.querySelector('button')?.setAttribute('aria-pressed', 'false'); }
-    const root = document.getElementById(ROOT_ID);
-    if (root) root.hidden = true;
     closeDropdown();
     closeAssistant();
     if (editor) editor.pause();

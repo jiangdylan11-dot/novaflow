@@ -5185,8 +5185,14 @@
     document.addEventListener("change", trackMiniMaxH3ResourceFileChange, true);
     document.addEventListener("drop", trackMiniMaxH3ResourceDrop, true);
     mountSmartAiButtons();
+    const ACTIONS_SELECTOR = `${ANIMATION_ACTIONS_SELECTOR}, ${ART_ACTIONS_SELECTOR}`;
+    const addsActionsRow = (mutation) => mutation.type === "childList" && Array.from(mutation.addedNodes).some((node) => (
+      node instanceof Element && (node.matches(ACTIONS_SELECTOR) || node.querySelector(ACTIONS_SELECTOR))
+    ));
     const observer = new MutationObserver((mutations) => {
       if (mutations.length && mutations.every(isSmartAiSelfMutation)) return;
+      // a new actions row: its buttons now, in this microtask, so the row never paints without them
+      if (mutations.some(addsActionsRow)) { mountSmartAiButtons(); return; }
       scheduleSmartAiButtonMount();
     });
     observer.observe(document.documentElement || document.body, { childList: true, subtree: true });

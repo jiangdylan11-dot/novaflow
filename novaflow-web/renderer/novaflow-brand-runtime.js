@@ -3584,7 +3584,11 @@
     // Only the new page's groups count: the old page's are still in the
     // column when the first mutations arrive.
     // 工具 has no group headers: its tool list stands in for them, or the veil sat out its timeout there.
-    const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle], [data-novaflow-tools-entry]";
+    // 音视 is the 动画 page in AI mode: its rows are the AI headings (no .nf-panel-header)
+    const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle], [data-novaflow-tools-entry], [data-novaflow-ai-collapse-heading], [data-novaflow-ai-tool-heading]";
+    const aiTarget = normalizeText(entry.getAttribute("data-novaflow-primary-label") || "") === "\u52a8\u753b" && document.body?.getAttribute("data-nf-animation-secondary") === "ai";
+    // the AI entry lays its rows out synchronously in the click (atomic entry commit); the veil lifts with that, not a frame later
+    const aiReady = () => !aiTarget || AI_ANIMATION_ENTRY_FIRST_FRAME_SYNC_USED;
     // Visible ones only: 美工's groups stay in the document while hidden, and
     // counting them as old kept its veil down a blank frame after they showed.
     const oldGroups = new Set(Array.from(document.querySelectorAll(GROUP_SELECTOR)).filter((node) => node.getClientRects().length));
@@ -3644,8 +3648,8 @@
       const groupsIn = newGroupsIn();
       // 美工: React mounts its panel list a commit after the page, and 生图 opens
       // with it; the veil waits for that so the page never shows closed first
-      const ready = (groupsIn || (runs > runsAtClick && frames >= 2)) && (!artTarget || isArtGenerateEntryReadyForVeil());
-      if (ready || performance.now() - startedAt > (artTarget ? 700 : 260)) {
+      const ready = (groupsIn || (runs > runsAtClick && frames >= 2)) && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady();
+      if (ready || performance.now() - startedAt > (artTarget ? 1200 : 260)) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
         holdPreviewFrameUntilSettled();
         html.removeAttribute("data-novaflow-switch-veil");
@@ -3663,7 +3667,7 @@
         const addedGroup = records.some((record) => Array.from(record.addedNodes).some((node) => (
           node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
         )));
-        if (addedGroup && newGroupsIn() && (!artTarget || isArtGenerateEntryReadyForVeil())) {
+        if (addedGroup && newGroupsIn() && (!artTarget || isArtGenerateEntryReadyForVeil()) && aiReady()) {
           holdPreviewFrameUntilSettled();
           html.removeAttribute("data-novaflow-switch-veil");
           watcher.disconnect();
@@ -35987,12 +35991,15 @@
   let NOVAFLOW_SPEC_REASSERTS = new WeakMap();
   let NOVAFLOW_SPEC_SYNC_BUDGET = 4;
   let NOVAFLOW_SPEC_BUDGET_FRAME = 0;
+  let NOVAFLOW_SPEC_MICRO_BUDGET = 3;
+  let NOVAFLOW_SPEC_MICRO_PENDING = false;
 
   function resetNovaflowSpecBudgetNextFrame() {
     if (NOVAFLOW_SPEC_BUDGET_FRAME) return;
     NOVAFLOW_SPEC_BUDGET_FRAME = window.requestAnimationFrame(() => {
       NOVAFLOW_SPEC_BUDGET_FRAME = 0;
       NOVAFLOW_SPEC_SYNC_BUDGET = 4;
+      NOVAFLOW_SPEC_MICRO_BUDGET = 3;
       NOVAFLOW_SPEC_REASSERTS = new WeakMap();
     });
   }
@@ -36000,6 +36007,20 @@
   function runNovaflowReferenceSpecNow() {
     resetNovaflowSpecBudgetNextFrame();
     if (NOVAFLOW_SPEC_SYNC_BUDGET <= 0) {
+      // past the budget: one coalesced pass at the end of this task, still before
+      // the frame paints (a page switch mounts in more batches than the budget, and
+      // the nodes of the late ones painted raw once); a few of those, then next frame
+      if (NOVAFLOW_SPEC_MICRO_BUDGET > 0 && typeof window.queueMicrotask === "function") {
+        if (!NOVAFLOW_SPEC_MICRO_PENDING) {
+          NOVAFLOW_SPEC_MICRO_PENDING = true;
+          window.queueMicrotask(() => {
+            NOVAFLOW_SPEC_MICRO_PENDING = false;
+            NOVAFLOW_SPEC_MICRO_BUDGET -= 1;
+            applyNovaflowReferenceSpec();
+          });
+        }
+        return;
+      }
       scheduleNovaflowReferenceSpec();
       return;
     }
@@ -44122,6 +44143,13 @@
     );
   }
 
+  // React still shows the AI rows (the runtime's own marks and body classes say
+  // nothing about that: they flip before React renders the other mode)
+  function areAiAnimationRowsShown() {
+    const rows = document.querySelector('[data-novaflow-ai-mode-section="1"], [data-novaflow-ai-post-section="1"]');
+    return rows instanceof HTMLElement && rows.getClientRects().length > 0;
+  }
+
   function isAiSequenceSecondaryContentMounted() {
     const body = document.body;
     if (!body || !body.classList.contains("novaflow-primary-target-animation")) return false;
@@ -44546,7 +44574,7 @@
       const labels = ["AI序列动画", "骨骼动画"];
       const buttons = labels.map(findEntryButton);
       if (buttons.some((button) => !button)) return false;
-      scheduleAnimationSecondaryActivation(labels.map(normalizeText).join("|"), buttons);
+      scheduleAnimationSecondaryActivation(labels.map(normalizeText).join("|"), buttons, { immediate: true });
       return true;
     },
     // the column pass (the flag above moves the content's top): synchronous and
@@ -44555,10 +44583,17 @@
       try { applySecondaryEntryLayout(); } catch (_) { void 0; }
     }
   });
-  function scheduleAnimationSecondaryActivation(groupKey, buttons) {
+  function scheduleAnimationSecondaryActivation(groupKey, buttons, options = {}) {
     if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return;
-    if (ANIMATION_SECONDARY_ACTIVATION_RAF) return;
-    ANIMATION_SECONDARY_ACTIVATION_RAF = window.requestAnimationFrame(() => {
+    if (ANIMATION_SECONDARY_ACTIVATION_RAF) {
+      if (!options.immediate) return;
+      window.cancelAnimationFrame(ANIMATION_SECONDARY_ACTIVATION_RAF);
+      ANIMATION_SECONDARY_ACTIVATION_RAF = 0;
+    }
+    // immediate: inside the click that changed the wanted mode, so React renders
+    // the other mode in the same task and its first frame is the finished page
+    const runSoon = (fn) => { window.queueMicrotask(fn); return 0; };
+    ANIMATION_SECONDARY_ACTIVATION_RAF = (options.immediate ? runSoon : window.requestAnimationFrame)(() => {
       ANIMATION_SECONDARY_ACTIVATION_RAF = 0;
       if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return;
       const wanted = normalizeText(animationWantedSecondaryLabel());
@@ -57531,7 +57566,9 @@
     nfSetStyleIfChanged(group, "opacity", animationPair ? "0" : "", animationPair ? "important" : "");
     nfSetStyleIfChanged(group, "pointer-events", animationPair ? "none" : "", animationPair ? "important" : "");
     nfSetStyleIfChanged(group, "clip-path", animationPair ? "inset(100%)" : "", animationPair ? "important" : "");
-    const secondaryCollapsed = animationPair && animationWantedSecondaryLabel() !== "AI序列动画";
+    // the AI rows keep their place while React still shows them (音视 -> 动画 renders the
+    // 骨骼 page asynchronously); the mount observer re-runs this pass when the 骨骼 rows land
+    const secondaryCollapsed = animationPair && animationWantedSecondaryLabel() !== "AI序列动画" && !areAiAnimationRowsShown();
     const desiredContentTop = Math.round(secondaryCollapsed ? top : top + shellHeight + SECONDARY_TO_CONTENT_GAP);
     // Inline, because the group's padding and the pills' radius are each set
     // by more than one stylesheet rule and the last one kept winning. This is
@@ -58049,6 +58086,7 @@
     let timer = 0;
     let busy = false;
     let passes = 0;
+    let importOpened = false;
     let lastSignature = "";
     // what a pass is for: React's commits (panels, rows) - not the pass's own
     // attribute and style writes, which also reach this observer
@@ -58103,6 +58141,9 @@
           runAiAnimationEntryFirstFrameLayoutSync();
           ANIMATION_MOUNT_SYNC_DONE_TOKEN = PRIMARY_SWITCH_TOKEN;
           ANIMATION_MOUNT_SYNC_DONE_AT = performance.now();
+          // the mutations queued so far (React's commit) are what this layout just
+          // handled; the flush would otherwise run a second full pass for them
+          BRAND_RUNTIME_MUTATION_QUEUE.length = 0;
           stop();
         }
       } catch (_) { stop(); } finally { busy = false; }
@@ -61666,6 +61707,13 @@
     Array.from(scope.querySelectorAll('[data-novaflow-ai-comfy-env-hint="1"]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       hideAiAnimationComfyHintNode(node);
+    });
+    // the body item that holds the 检测 row / hint / status: hidden as a whole, so a
+    // status text React writes later never takes space (the rows below jumped twice)
+    Array.from(scope.querySelectorAll('[data-novaflow-ai-mode-body-item="1"]')).forEach((item) => {
+      if (!(item instanceof HTMLElement) || item.getAttribute("data-novaflow-ai-comfy-env-hint") === "1") return;
+      if (!item.querySelector('[data-novaflow-ai-comfy-row="1"], [data-novaflow-ai-comfy-env-hint="1"]')) return;
+      hideAiAnimationComfyHintNode(item);
     });
     Array.from(scope.querySelectorAll("div, span, p")).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
@@ -79706,6 +79754,9 @@
         pointer-events: none !important;
         z-index: 1 !important;
       }
+      html[data-novaflow-transitions="off"] #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-switch-knob {
+        transition: none !important;
+      }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-switch-knob::after {
         content: none !important;
         display: none !important;
@@ -82978,7 +83029,8 @@
     const open = ART_GENERATE_STATE.promptHistoryOpenKey === key;
     const label = ui ? createArtEl("span", {
       "data-novaflow-ui-design-prompt-title": key,
-      style: { display: "inline-flex", alignItems: "center", height: "24px", padding: "3px 7px", fontSize: "11px", fontWeight: "500", lineHeight: "1", boxSizing: "border-box" }
+      // the same grey as 绘图's 历史记录 label and 音频's 音乐描述 (it inherited the frame's white)
+      style: { display: "inline-flex", alignItems: "center", height: "24px", padding: "3px 7px", fontSize: "11px", fontWeight: "500", lineHeight: "1", boxSizing: "border-box", color: "#9f9f9f" }
     }, key === "prompt" ? "设计需求" : "避免内容") : createArtEl("button", {
       type: "button",
       className: "novaflow-art-generate-history-label",
