@@ -30098,10 +30098,10 @@
     };
   }
 
-  // The audio section (audio-studio.tool.js) owns a rail cell of its own and
-  // asks for the slot right under the second entry: the entries after it move
-  // down one slot while that cell exists.
-  const PRIMARY_EXTRA_RAIL_SLOT = 2;
+  // The 音视 section (audio-studio.tool.js) owns a rail cell of its own and
+  // asks for the slot right under 特效: the entries after it (动画 / 美工 / 工具)
+  // move down one slot while that cell exists.
+  const PRIMARY_EXTRA_RAIL_SLOT = 1;
   function primaryExtraRailCells() {
     return document.querySelectorAll('[data-novaflow-primary-extra-cell="1"]').length ? 1 : 0;
   }
@@ -30882,7 +30882,7 @@
     // 仓库 and 导出 sit at the foot of the rail, as asked, with their line
     // above them; never over the page entries on a short window, and on the
     // stacked tier (which scrolls) they stay under the entries.
-    // The audio section (audio-studio.tool.js) adds a rail cell of its own below the four entries; the foot entries sit under it.
+    // 音视 adds a rail cell of its own under 特效 (audio-studio.tool.js); the foot entries sit under the last entry.
     const stackedDividerTop = top + (PRIMARY_ENTRY_LABELS.length + primaryExtraRailCells()) * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
     const stackedCellTop = stackedDividerTop + 1 + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN + (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT);
     const railFootCellTop = Math.round((window.innerHeight || 0) - PRIMARY_PANEL_BOTTOM_GAP - PRIMARY_RAIL_INNER_PAD - PRIMARY_SIDEBAR_ITEM_HEIGHT - PRIMARY_RAIL_ITEM_PITCH);
@@ -57423,7 +57423,12 @@
       ? panelTop + SECONDARY_GROUP_TOP_INSET
       : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
-    const desiredContentTop = Math.round(top + shellHeight + SECONDARY_TO_CONTENT_GAP);
+    // 动画 has no secondary entries any more (audio-studio.tool.js collapses its
+    // AI序列动画 / 骨骼动画 group): the content then starts where the group would be.
+    // React reuses the group node across sections, so the mark only counts while the node holds the 动画 pair.
+    const secondaryCollapsed = group.getAttribute("data-nf-av-collapsed") === "1"
+      && isAiSequenceSecondaryGroup(buttons.map((button) => normalizeText(button?.textContent || "")));
+    const desiredContentTop = Math.round(secondaryCollapsed ? top : top + shellHeight + SECONDARY_TO_CONTENT_GAP);
     // Inline, because the group's padding and the pills' radius are each set
     // by more than one stylesheet rule and the last one kept winning. This is
     // the capsule spec from the reference: 4px inset, 3px gap, 5px pills.

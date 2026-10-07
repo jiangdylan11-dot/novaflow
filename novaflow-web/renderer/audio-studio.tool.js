@@ -12,13 +12,18 @@
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (window.NovaFlowAudioStudio) return;
 
-  const LABEL = '音频';
+  const LABEL = '音视';                // the rail entry; its two sub-entries are 视频 (the AI sequence section) and 音频 (this overlay)
+  const SUB_VIDEO_CLASS = 'novaflow-primary-target-av-video';
+  const SUB_TOGGLE_ID = 'novaflow-av-sub-toggle';
+  const SWITCH_CLASS = 'novaflow-av-switching';  // content covered until the 动画 section shows the right mode
+  const COVER_ID = 'novaflow-av-cover';
+  const SECONDARY_SHELL_H = 37;        // SECONDARY_GROUP_HEIGHT in the brand runtime
   const CELL_ID = 'novaflow-primary-audio-cell';
   const MASK_ID = 'novaflow-primary-audio-mask';
   const ROOT_ID = 'novaflow-audio-studio';
   const STYLE_ID = 'novaflow-audio-studio-style';
   const BODY_CLASS = 'novaflow-primary-target-audio';
-  const RAIL_AFTER = '动画';            // the entry the audio cell sits under
+  const RAIL_AFTER = '特效';            // the entry the 音视 cell sits under
   const RAIL_PITCH = 70;               // PRIMARY_RAIL_ITEM_PITCH in the brand runtime
   const STAGE_TOP = 62;                // TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP
   const EDGE_GAP = 10;
@@ -31,7 +36,8 @@
   const TRANSPORT_H = 50;
   const DOCK_H = 213;
   const STACK_STAGE_MIN = 320;         // stack tier: the stage (top bar + timeline) never shrinks below this
-  const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E\")";
+  // 音视: a clapper board with a note
+  const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='8' width='18' height='12' rx='2'/%3E%3Cpath d='M3 8l3-4h12l3 4'/%3E%3Cpath d='M8 4l2 4M13 4l2 4'/%3E%3Cpath d='M10 17v-4l4-1v4'/%3E%3Ccircle cx='9' cy='17' r='1.2'/%3E%3Ccircle cx='13' cy='16' r='1.2'/%3E%3C/svg%3E\")";
 
   // ---- vocabulary: the page speaks Chinese, the model reads English --------
   const MUSIC_STYLES = [
@@ -102,6 +108,7 @@
   // ---- state -----------------------------------------------------------------
   const state = {
     active: false,
+    sub: 'video',                       // 'video' (the AI sequence section under 音视) | 'audio' (this overlay)
     mode: 'music',                      // 'music' | 'sfx'
     open: 'generate',                   // which left row is expanded
     music: { style: 'auto', mood: 'auto', bpm: 100, seconds: 30, loop: true, text: '', rewrite: true },
@@ -161,6 +168,29 @@
     if (zIndex && zIndex !== 'auto' && style.zIndex !== zIndex) style.setProperty('z-index', zIndex, 'important');
     const radius = getComputedStyle(anchor).borderRadius;
     if (radius && style.borderRadius !== radius) style.setProperty('border-radius', radius, 'important');
+    copyCellLook(cell);
+  }
+  // The rail's own pressed / idle look (fill, stroke, shadow, label colour) off
+  // a React entry in the same state, so 音视 never drifts from its neighbours.
+  const CELL_PROPS = ['background-color', 'background-image', 'border', 'box-shadow', 'outline', 'border-radius'];
+  const CELL_BUTTON_PROPS = ['color', 'font-size', 'font-weight', 'letter-spacing', 'font-family', 'gap', 'padding'];
+  function copyCellLook(cell) {
+    const entries = Array.from(document.querySelectorAll('[data-novaflow-primary-entry="1"]'));
+    const pressed = entries.find((e) => e.getAttribute('aria-pressed') === 'true');
+    const idle = entries.find((e) => e.getAttribute('aria-pressed') !== 'true');
+    const ref = state.active ? (pressed || idle) : (idle || pressed);
+    if (!ref) return;
+    const host = ref.closest('[data-novaflow-primary-cell="1"]') || ref;
+    const button = cell.querySelector('button');
+    const hs = getComputedStyle(host), bs = getComputedStyle(ref);
+    for (const prop of CELL_PROPS) { const v = hs.getPropertyValue(prop); if (cell.style.getPropertyValue(prop) !== v) cell.style.setProperty(prop, v, 'important'); }
+    if (host !== ref) {
+      // the stroke may sit on the entry button itself
+      for (const prop of ['border', 'box-shadow', 'outline']) { const v = bs.getPropertyValue(prop); if (v && !/none|0px/.test(v.split(' ')[0]) && button.style.getPropertyValue(prop) !== v) button.style.setProperty(prop, v, 'important'); else if (button.style.getPropertyValue(prop) && (!v || /none|0px/.test(v.split(' ')[0]))) button.style.removeProperty(prop); }
+      const bg = bs.getPropertyValue('background-color');
+      if (bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bg)) button.style.setProperty('background-color', bg, 'important'); else button.style.removeProperty('background-color');
+    }
+    for (const prop of CELL_BUTTON_PROPS) { const v = bs.getPropertyValue(prop); if (button.style.getPropertyValue(prop) !== v) button.style.setProperty(prop, v, 'important'); }
   }
 
   function pressedRailEntry() {
@@ -235,22 +265,46 @@
   }
 
   // ---- activation ----------------------------------------------------------------
-  function activate() {
-    if (state.active) return;
+  function activate(sub) {
+    sub = sub === 'audio' || sub === 'video' ? sub : state.sub;
+    if (state.active && state.sub === sub) return;
     state.active = true;
-    document.body.classList.add(BODY_CLASS);
+    state.sub = sub;
     const cell = document.getElementById(CELL_ID);
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '1'); cell.querySelector('button')?.setAttribute('aria-pressed', 'true'); }
-    mount();
-    layout();
-    syncMask();
-    refreshCapabilities();
-    editor.layout();
+    if (sub === 'audio') {
+      document.body.classList.add(BODY_CLASS);
+      document.body.classList.remove(SUB_VIDEO_CLASS);
+      mount();
+      layout();
+      if (ui && ui.subToggle) { copyToggleLook(ui.subToggle); ui.subToggle.style.setProperty('height', (SECONDARY_SHELL_H) + 'px', 'important'); }
+      syncMask();
+      refreshCapabilities();
+      editor.layout();
+    } else {
+      // 视频: the React AI sequence section shows through; only the rail cell and the sub toggle are ours
+      document.body.classList.remove(BODY_CLASS);
+      document.body.classList.add(SUB_VIDEO_CLASS);
+      const root = document.getElementById(ROOT_ID);
+      if (root) root.hidden = true;
+      closeDropdown();
+      closeAssistant();
+      if (editor) editor.pause();
+      stopPreview();
+      ensureAnimationSection();
+      syncMask();
+    }
+    syncSubToggle();
   }
-  function deactivate() {
+  function deactivateSilently() { deactivate(true); }
+  function deactivate(silent) {
     if (!state.active) return;
     state.active = false;
     document.body.classList.remove(BODY_CLASS);
+    document.body.classList.remove(SUB_VIDEO_CLASS);
+    syncSubToggle();
+    // leaving 音视 for 动画 itself: the pointerdown above already covers and switches
+    if (silent !== true && animationEntry()?.getAttribute('aria-pressed') === 'true') beginSwitch('skeleton');
     const cell = document.getElementById(CELL_ID);
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '0'); cell.querySelector('button')?.setAttribute('aria-pressed', 'false'); }
     const root = document.getElementById(ROOT_ID);
@@ -262,9 +316,194 @@
     syncMask();
     state.maskTarget = null;
   }
-  document.addEventListener('click', (event) => {
-    if (!state.active) return;
+  // ---- the React 动画 section ---------------------------------------------------------------
+  // Under 音视 / 视频 it runs as AI序列动画; entered from its own rail entry it is
+  // 骨骼动画 only. Its AI序列动画 / 骨骼动画 toggle stays hidden either way.
+  function animationEntry() { return document.querySelector('[data-novaflow-primary-entry="1"][data-novaflow-primary-label="动画"]'); }
+  function secondaryButton(label) {
+    return Array.from(document.querySelectorAll('[data-novaflow-secondary-entry="1"]')).find((b) => (b.textContent || '').trim() === label) || null;
+  }
+  let replaying = false;
+  function replayClick(target) {
+    if (!(target instanceof HTMLElement)) return;
+    replaying = true;
+    try { replayClickNow(target); } finally { replaying = false; }
+  }
+  function replayClickNow(target) {
+    const r = target.getBoundingClientRect();
+    const init = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      target.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, init) : new MouseEvent(type, init));
+    }
+  }
+  function isAnimationGroup(group) {
+    const labels = Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]')).map((b) => (b.textContent || '').trim());
+    return labels.includes('AI序列动画') || labels.includes('骨骼动画');
+  }
+  // React reuses the group node across sections (特效's 粒子特效 | AI特效 is the
+  // same element), so the mark is checked on every pass and dropped when the
+  // group no longer holds the 动画 pair.
+  // The runtime writes the group's display inline with !important, so the
+  // hiding is written inline too and re-applied whenever its style changes.
+  let groupObserver = null;
+  function applyGroupHiding(group) {
+    const marked = group.getAttribute('data-nf-av-group') === '1';
+    const videoSub = state.active && state.sub === 'video';
+    // Hidden without display:none / visibility:hidden: the runtime only keeps
+    // laying the group out (and reads data-nf-av-collapsed) while its buttons
+    // still count as visible to it.
+    const want = marked ? { opacity: '0', 'pointer-events': 'none', 'clip-path': 'inset(100%)' } : { opacity: '', 'pointer-events': '', 'clip-path': '' };
+    for (const key of Object.keys(want)) {
+      const value = want[key];
+      if (value === '') { if (group.style.getPropertyValue(key)) group.style.removeProperty(key); continue; }
+      if (group.style.getPropertyValue(key) !== value || group.style.getPropertyPriority(key) !== 'important') group.style.setProperty(key, value, 'important');
+    }
+    // the brand runtime reads this to start the left content where the group would be (like 工具)
+    const collapsed = marked && !videoSub;
+    let changed = false;
+    if (collapsed && group.getAttribute('data-nf-av-collapsed') !== '1') { group.setAttribute('data-nf-av-collapsed', '1'); changed = true; }
+    else if (!collapsed && group.hasAttribute('data-nf-av-collapsed')) { group.removeAttribute('data-nf-av-collapsed'); changed = true; }
+    if (changed) window.setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+  }
+  function markAnimationGroup() {
+    for (const node of document.querySelectorAll('[data-nf-av-group="1"]')) if (!isAnimationGroup(node)) { node.removeAttribute('data-nf-av-group'); applyGroupHiding(node); }
+    const ai = secondaryButton('AI序列动画') || secondaryButton('骨骼动画');
+    const group = ai && ai.closest('[data-novaflow-secondary-group="1"]');
+    if (group) {
+      if (group.getAttribute('data-nf-av-group') !== '1') group.setAttribute('data-nf-av-group', '1');
+      applyGroupHiding(group);
+      if (!groupObserver) {
+        groupObserver = new MutationObserver(() => { for (const node of document.querySelectorAll('[data-novaflow-secondary-group="1"]')) { if (node.getAttribute('data-nf-av-group') === '1' && isAnimationGroup(node)) applyGroupHiding(node); } });
+      }
+      groupObserver.observe(group, { attributes: true, attributeFilter: ['style'] });
+    }
+    return group;
+  }
+  function secondaryActive(button) {
+    return button.getAttribute('data-novaflow-secondary-active') === '1' || button.getAttribute('aria-pressed') === 'true';
+  }
+  // Entering 动画 (骨骼) or 音视 / 视频 (AI序列): the section's content stays
+  // hidden from the click until React shows the wanted mode, then it is
+  // revealed in one step. A MutationObserver settles it the moment the
+  // secondary buttons change; nothing is polled.
+  let switching = null;
+  function showCover() {
+    let cover = document.getElementById(COVER_ID);
+    if (!cover) { cover = el('div'); cover.id = COVER_ID; cover.setAttribute('data-novaflow-runtime-ignore', '1'); document.body.appendChild(cover); }
+    const column = document.querySelector('[data-novaflow-left-column]');
+    const rail = document.querySelector('[data-novaflow-primary-rail]');
+    const left = rail ? Math.round(rail.getBoundingClientRect().right) : 75;
+    const top = column ? Math.round(column.getBoundingClientRect().top) : 54;
+    const solid = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c || ''); if (!m) return false; const parts = m[1].split(',').map((x) => parseFloat(x)); return parts.length < 4 || parts[3] >= 0.99; };
+    const bg = (() => { for (const node of [document.querySelector('.nf-app-body'), document.body]) { const c = node && getComputedStyle(node).backgroundColor; if (solid(c)) return c; } return '#1a1a1a'; })();
+    Object.assign(cover.style, { left: left + 'px', top: top + 'px', right: '0', bottom: '0', background: bg });
+    cover.hidden = false;
+  }
+  function hideCover() { const cover = document.getElementById(COVER_ID); if (cover) cover.hidden = true; }
+  function endSwitch() {
+    if (!switching) return;
+    switching.observer.disconnect();
+    window.clearTimeout(switching.deadline);
+    switching = null;
+    document.body.classList.remove(SWITCH_CLASS);
+    hideCover();
+    syncSubToggle();
+  }
+  function beginSwitch(mode) {
+    endSwitch();
+    document.body.classList.add(SWITCH_CLASS);
+    showCover();
+    const wantLabel = mode === 'skeleton' ? '骨骼动画' : 'AI序列动画';
+    let clicked = false;
+    const settle = () => {
+      if (!switching) return;
+      // only once the section itself is on; the mode click goes in its own frame,
+      // never inside React's primary switch (that left the switch half done)
+      if (animationEntry()?.getAttribute('aria-pressed') !== 'true') return;
+      const button = secondaryButton(wantLabel);
+      if (!button) return;
+      markAnimationGroup();
+      if (!secondaryActive(button)) {
+        if (!clicked) { clicked = true; window.requestAnimationFrame(() => { if (switching) replayClick(button); }); }
+        return;
+      }
+      // the mode is on: give React and the runtime one frame to paint it, then reveal
+      window.requestAnimationFrame(() => window.requestAnimationFrame(endSwitch));
+    };
+    const observer = new MutationObserver(settle);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-novaflow-secondary-active', 'aria-pressed'] });
+    switching = { observer, deadline: window.setTimeout(endSwitch, 1500) };
+    settle();
+  }
+  function ensureAnimationSection() {
+    const entry = animationEntry();
+    if (!entry) return;
+    beginSwitch('ai');
+    if (entry.getAttribute('aria-pressed') !== 'true') replayClick(entry);
+  }
+  // a user's click on 动画 enters it as 骨骼 under the cover
+  document.addEventListener('pointerdown', (event) => {
+    if (replaying) return;
     const target = event.target instanceof Element ? event.target : null;
+    const entry = target && target.closest('[data-novaflow-primary-entry="1"][data-novaflow-primary-label="动画"]');
+    if (!entry) return;
+    if (state.active) deactivateSilently();
+    beginSwitch('skeleton');
+  }, true);
+  // The React secondary toggle's exact look (group box + active / idle pills),
+  // copied from computed style onto our own 视频 | 音频 toggles.
+  const GROUP_PROPS = ['background-color', 'border', 'border-radius', 'padding', 'gap', 'column-gap', 'box-shadow', 'box-sizing'];
+  const PILL_PROPS = ['background-color', 'color', 'font-size', 'font-weight', 'font-family', 'letter-spacing', 'border-radius', 'height', 'min-height', 'line-height', 'box-shadow', 'border', 'text-shadow'];
+  function copyToggleLook(toggle) {
+    const group = markAnimationGroup();
+    if (!group) return;
+    const buttons = Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]'));
+    const on = buttons.find(secondaryActive) || buttons[0];
+    const off = buttons.find((b) => b !== on) || buttons[1] || on;
+    if (!on) return;
+    const gs = getComputedStyle(group);
+    for (const prop of GROUP_PROPS) toggle.style.setProperty(prop, gs.getPropertyValue(prop), 'important');
+    toggle.style.setProperty('display', 'grid', 'important');
+    toggle.style.setProperty('grid-template-columns', '1fr 1fr', 'important');
+    toggle.style.setProperty('align-items', 'center', 'important');
+    const mine = Array.from(toggle.querySelectorAll('button'));
+    for (const b of mine) {
+      const ref = b.getAttribute('aria-pressed') === 'true' ? on : off;
+      const cs = getComputedStyle(ref);
+      for (const prop of PILL_PROPS) b.style.setProperty(prop, cs.getPropertyValue(prop), 'important');
+      b.style.setProperty('padding', '0 6px', 'important');
+      b.style.setProperty('margin', '0', 'important');
+      b.style.setProperty('width', 'auto', 'important');
+    }
+  }
+  // 视频 | 音频 over the React toggle's spot while 音视 / 视频 is active
+  function syncSubToggle() {
+    let toggle = document.getElementById(SUB_TOGGLE_ID);
+    if (!(state.active && state.sub === 'video')) { if (toggle) toggle.remove(); return; }
+    const group = markAnimationGroup();
+    if (!group) { if (toggle) toggle.hidden = true; return; }
+    if (!toggle) {
+      toggle = el('div', 'nf-as-mode');
+      toggle.id = SUB_TOGGLE_ID;
+      toggle.setAttribute('data-novaflow-runtime-ignore', '1');
+      const video = el('button', null, '视频'); video.type = 'button'; video.setAttribute('aria-pressed', 'true');
+      const audio = el('button', null, '音频'); audio.type = 'button'; audio.setAttribute('aria-pressed', 'false');
+      audio.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate('audio'); });
+      for (const b of [video, audio]) for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) b.addEventListener(type, (e) => e.stopPropagation(), true);
+      toggle.appendChild(video); toggle.appendChild(audio);
+      document.body.appendChild(toggle);
+    }
+    toggle.hidden = false;
+    const r = group.getBoundingClientRect();
+    if (r.width < 10) { toggle.hidden = true; return; }
+    const want = { left: Math.round(r.left) + 'px', top: Math.round(r.top) + 'px', width: Math.round(r.width) + 'px', height: Math.round(r.height) + 'px' };
+    for (const key of Object.keys(want)) if (toggle.style.getPropertyValue(key) !== want[key]) toggle.style.setProperty(key, want[key], 'important');
+    copyToggleLook(toggle);
+  }
+  document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    // any rail or secondary click: settle the 动画 mode once React has switched
+    if (!state.active || replaying) return;
     if (target && target.closest('[data-novaflow-primary-entry="1"]')) deactivate();
   }, true);
   // The rail's 导出 is the one export entry for every section. While 音频 is
@@ -290,8 +529,7 @@
       #${CELL_ID} button::before{content:"";display:block;flex:0 0 auto;width:19px;height:19px;background-color:currentColor;-webkit-mask:var(--nf-rail-icon) center / contain no-repeat;mask:var(--nf-rail-icon) center / contain no-repeat}
       #${CELL_ID} button::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
       #${CELL_ID}[data-novaflow-primary-cell-active="0"] button:hover{background:#373737;color:#ffffff}
-      #${CELL_ID}[data-novaflow-primary-cell-active="1"]{background:#1b4035;box-shadow:inset 0 0 0 1px #306553}
-      #${CELL_ID}[data-novaflow-primary-cell-active="1"] button{color:#8cdec3}
+      /* the pressed / idle look is copied from the React entries at runtime (copyCellLook) */
       #${MASK_ID}{position:fixed;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin:0;padding:0 6px;border:0;outline:0;box-shadow:none;color:#9c9c9c;font-size:11px;font-weight:500;line-height:1.2;cursor:pointer;font-family:inherit;box-sizing:border-box}
       #${MASK_ID}::before{content:"";display:block;width:19px;height:19px;background-color:currentColor;-webkit-mask:var(--nf-rail-icon) center / contain no-repeat;mask:var(--nf-rail-icon) center / contain no-repeat}
       #${MASK_ID}::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
@@ -323,6 +561,14 @@
       .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px}
       .nf-as-mode button:hover{background:#2a2a2a}
       .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
+      .nf-as-mode.nf-as-mode-kind{margin:0 0 4px}
+      /* the React AI序列动画 / 骨骼动画 toggle never shows: 动画 is 骨骼 only, 音视 / 视频 floats its own */
+      /* [data-nf-av-group="1"] is hidden inline (see applyGroupHiding): collapsed under 动画, an invisible placeholder under 音视 / 视频 */
+      #${SUB_TOGGLE_ID}{position:fixed;z-index:2147483000;margin:0;box-sizing:border-box}
+      /* while a 动画 / 音视 switch settles, a page-coloured board covers the content area
+         (hiding the elements themselves stalls React's section switch) */
+      #${COVER_ID}{position:fixed;z-index:2147482990;pointer-events:none}
+      body.${SWITCH_CLASS} #${SUB_TOGGLE_ID}{visibility:hidden!important}
       /* rows: the animation section's collapse headings - icon plate and chevron are pseudo elements */
       .nf-as-rows{display:flex;flex-direction:column;gap:0}
       .nf-as-rows-tools{margin-top:3px;padding:3px 0;border-top:1px solid #272727;border-bottom:1px solid #272727;display:flex;flex-direction:column;gap:5px}
@@ -734,22 +980,31 @@
 
     // left card ---------------------------------------------------------------
     const left = el('div', 'nf-as-left');
-    const mode = el('div', 'nf-as-mode');
-    const modeMusic = el('button', null, '背景音乐'); modeMusic.type = 'button';
-    const modeSfx = el('button', null, '音效'); modeSfx.type = 'button';
-    modeMusic.addEventListener('click', () => setMode('music'));
-    modeSfx.addEventListener('click', () => setMode('sfx'));
-    mode.appendChild(modeMusic); mode.appendChild(modeSfx);
-    left.appendChild(mode);
-    ui.modeMusic = modeMusic; ui.modeSfx = modeSfx;
+    // 音视's sub-entries: 视频 hands over to the AI sequence section, 音频 is this overlay
+    const sub = el('div', 'nf-as-mode');
+    const subVideo = el('button', null, '视频'); subVideo.type = 'button'; subVideo.setAttribute('aria-pressed', 'false');
+    const subAudio = el('button', null, '音频'); subAudio.type = 'button'; subAudio.setAttribute('aria-pressed', 'true');
+    subVideo.addEventListener('click', () => activate('video'));
+    sub.appendChild(subVideo); sub.appendChild(subAudio);
+    left.appendChild(sub);
+    ui.subToggle = sub;
 
     const rows = el('div', 'nf-as-rows');
     left.appendChild(rows);
     const gen = row(rows, 'generate', '音频生成', ROW_ICONS.generate);
     ui.genBody = gen.body;
+    // 背景音乐 | 音效 lives inside 音频生成
+    const mode = el('div', 'nf-as-mode nf-as-mode-kind');
+    const modeMusic = el('button', null, '背景音乐'); modeMusic.type = 'button';
+    const modeSfx = el('button', null, '音效'); modeSfx.type = 'button';
+    modeMusic.addEventListener('click', () => setMode('music'));
+    modeSfx.addEventListener('click', () => setMode('sfx'));
+    mode.appendChild(modeMusic); mode.appendChild(modeSfx);
+    gen.body.appendChild(mode);
+    ui.modeMusic = modeMusic; ui.modeSfx = modeSfx; ui.modeKind = mode;
     const toolRows = el('div', 'nf-as-rows-tools');
     rows.appendChild(toolRows);
-    const tools = row(toolRows, 'edit', '音轨编辑', ROW_ICONS.edit);
+    const tools = row(toolRows, 'edit', '音频编辑', ROW_ICONS.edit);
     const grid = el('div', 'nf-as-tools');
     const tool = (label, title, fn) => { const b = el('button', null, label); b.type = 'button'; b.title = title; b.addEventListener('click', fn); grid.appendChild(b); return b; };
     tool('分割', '在播放头处分割选中片段 (S)', () => editor.splitAtPlayhead());
@@ -957,7 +1212,7 @@
     }
     const m = state[mode];
     // left row body
-    ui.genBody.replaceChildren();
+    ui.genBody.replaceChildren(ui.modeKind);   // the 背景音乐 | 音效 toggle stays on top of the row
     if (mode === 'music') {
       selectField(ui.genBody, '风格', MUSIC_STYLES.map((s) => [s[0], s[1]]), m.style, (v) => { m.style = v; const s = MUSIC_STYLES.find((x) => x[0] === v); if (s && v !== 'auto') { m.bpm = s[3]; syncDockValues(); } });
       selectField(ui.genBody, '情绪', MOODS.map((s) => [s[0], s[1]]), m.mood, (v) => { m.mood = v; });
@@ -1595,7 +1850,9 @@
   let railTimer = 0;
   function tick() {
     ensureCell();
-    if (state.active) layout();
+    if (state.active && state.sub === 'audio') layout();
+    if (state.active && state.sub === 'video') syncSubToggle();
+    markAnimationGroup();
   }
   function start() {
     if (railTimer) return;
@@ -1610,6 +1867,7 @@
   window.NovaFlowAudioStudio = {
     open: activate, close: deactivate,
     isOpen: () => state.active,
+    sub: () => (state.active ? state.sub : ''),
     setMode,
     resources: () => state.resources.slice(),
     importFile,
