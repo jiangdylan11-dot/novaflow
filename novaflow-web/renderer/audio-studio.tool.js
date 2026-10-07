@@ -144,6 +144,7 @@
       // marker is what moves the entries after 动画 down one slot.
       cell.setAttribute('data-novaflow-primary-extra-cell', '1');
       cell.setAttribute('data-novaflow-runtime-ignore', '1');
+      cell.setAttribute('data-novaflow-primary-cell-active', '0');
       const button = document.createElement('button');
       button.type = 'button';
       button.setAttribute('data-novaflow-audio-entry', '1');
@@ -442,8 +443,8 @@
       toggle = el('div', 'nf-as-mode');
       toggle.id = SUB_TOGGLE_ID;
       toggle.setAttribute('data-novaflow-runtime-ignore', '1');
-      const video = el('button', null, '视频'); video.type = 'button'; video.setAttribute('aria-pressed', 'true');
-      const audio = el('button', null, '音频'); audio.type = 'button'; audio.setAttribute('aria-pressed', 'false');
+      const video = el('button', null, '视频'); video.type = 'button'; video.setAttribute('aria-pressed', 'true'); video.setAttribute('data-novaflow-source-layout', '1'); video.style.setProperty('border-radius', '5px', 'important');
+      const audio = el('button', null, '音频'); audio.type = 'button'; audio.setAttribute('aria-pressed', 'false'); audio.setAttribute('data-novaflow-source-layout', '1'); audio.style.setProperty('border-radius', '5px', 'important');
       audio.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate('audio'); });
       for (const b of [video, audio]) for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) b.addEventListener(type, (e) => e.stopPropagation(), true);
       toggle.appendChild(video); toggle.appendChild(audio);
@@ -483,7 +484,7 @@
       #${CELL_ID} button{-webkit-appearance:none;appearance:none;width:100%;height:100%;min-width:0;border:0;border-radius:inherit;box-shadow:none;outline:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:0 6px;margin:0;font-size:11px;font-weight:500;line-height:1.2;color:#9c9c9c;background:transparent;cursor:pointer;font-family:inherit}
       #${CELL_ID} button::before{content:"";display:block;flex:0 0 auto;width:19px;height:19px;background-color:currentColor;-webkit-mask:var(--nf-rail-icon) center / contain no-repeat;mask:var(--nf-rail-icon) center / contain no-repeat}
       #${CELL_ID} button::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
-      #${CELL_ID}[data-novaflow-primary-cell-active="0"] button:hover{background:#373737;color:#ffffff}
+      #${CELL_ID}[data-novaflow-primary-cell-active="0"] button:hover{background:#373737!important;background-color:#373737!important;color:#ffffff!important}
       /* the pressed / idle look is copied from the React entries at runtime (copyCellLook) */
       #${MASK_ID}{position:fixed;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin:0;padding:0 6px;border:0;outline:0;box-shadow:none;background:var(--nf-mask-bg,#161616);background-clip:padding-box;color:#9c9c9c;font-size:11px;font-weight:500;line-height:1.2;cursor:pointer;font-family:inherit;box-sizing:border-box;isolation:isolate}
       /* the hover fill is a rounded face one pixel inside the square mask */
@@ -516,10 +517,11 @@
       /* left card: the section panel */
       .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
       /* the runtime's secondary group: #101010 / #262626 / 8px, 3px pad and gap, 29px pills (5px), active #1c4136 + #9be4cd with a #2c604f ring */
-      .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:0 0 17px;box-sizing:border-box;height:37px;align-items:center}
-      .nf-as-mode button{height:29px;min-height:29px;max-height:29px;min-width:0;margin:0;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px;box-shadow:none;letter-spacing:normal}
-      .nf-as-mode button:hover{background:#2a2a2a}
-      .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
+      #${ROOT_ID} .nf-as-mode,#${SUB_TOGGLE_ID}{display:grid!important;grid-template-columns:1fr 1fr!important;gap:3px!important;padding:3px!important;background:#101010!important;border:1px solid #262626!important;border-radius:8px!important;box-sizing:border-box!important;height:37px!important;align-items:center!important;box-shadow:none!important}
+      #${ROOT_ID} .nf-as-mode{margin:0 0 17px}
+      #${ROOT_ID} .nf-as-mode button,#${SUB_TOGGLE_ID} button{height:29px!important;min-height:29px!important;max-height:29px!important;min-width:0!important;width:auto!important;margin:0!important;border:0!important;border-radius:5px!important;background:transparent!important;color:#eaeaea!important;font-size:12px!important;font-weight:500!important;line-height:normal!important;padding:0 6px!important;box-shadow:none!important;letter-spacing:normal!important;outline:0!important}
+      #${ROOT_ID} .nf-as-mode button:hover,#${SUB_TOGGLE_ID} button:hover{background:#2a2a2a!important}
+      #${ROOT_ID} .nf-as-mode button[aria-pressed="true"],#${SUB_TOGGLE_ID} button[aria-pressed="true"]{background:#1c4136!important;color:#9be4cd!important;box-shadow:inset 0 0 0 1px #2c604f!important}
       .nf-as-mode.nf-as-mode-kind{margin:0 0 4px}
       /* the React AI序列动画 / 骨骼动画 toggle never shows: 动画 is 骨骼 only, 音视 / 视频 floats its own */
       #${SUB_TOGGLE_ID}{position:fixed;z-index:2147483000;margin:0;box-sizing:border-box}
@@ -638,6 +640,8 @@
       .nf-as-zoom span{min-width:44px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;background:transparent;color:#9a9a9a;font-size:11px;font-weight:500;padding:0}
       .nf-as-zoom button{height:28px;border:1px solid transparent;border-radius:5px;background:#252629;color:#969aa2;font-size:11px;font-weight:500;padding:4px 10px}
       .nf-as-zoom button:hover{color:#fff;background:#303136}
+      .nf-as-zoom button[disabled]{opacity:.38!important;cursor:default}
+      .nf-as-zoom button[disabled]:hover{color:#969aa2;background:#252629}
       /* the timeline is a card in the same column as the dock and the transport: same edges, same surface */
       .nf-as-timeline{position:absolute;left:0;right:0;top:53px;bottom:8px;border-radius:var(--nf-ref-radius-panel,12px);overflow:hidden;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e)}
       .nf-as-empty{position:absolute;left:132px;top:24px;right:0;bottom:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none;padding:0 12px}
@@ -673,7 +677,8 @@
       .nf-as-switch{width:27px;height:15px;border-radius:15px;border:0;background:#3a3a3a;position:relative;padding:0;flex:none}
       .nf-as-switch::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#ddd}
       .nf-as-switch[aria-checked="true"]{background:#1ea672}.nf-as-switch[aria-checked="true"]::after{left:15px;background:#fff}
-      .nf-as-go{margin-left:auto;width:104px;height:32px;border:1px solid #24b693;border-radius:var(--nf-ref-radius-control,7px);background:#1ea672;color:#fff;font-size:12px;font-weight:600;padding:5px 10px}
+      .nf-as-go{margin-left:auto;width:104px;height:32px;border:1px solid #24b693;border-radius:var(--nf-ref-radius-control,7px);background:#1ea672;color:#fff;font-size:12px;font-weight:600;padding:5px 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+      .nf-as-go::before{content:"";display:block;flex:0 0 auto;width:14px;height:14px;background-color:currentColor;-webkit-mask:var(--nf-as-go-icon) center/contain no-repeat;mask:var(--nf-as-go-icon) center/contain no-repeat}
       .nf-as-go:hover{background:#22b87f}.nf-as-go:disabled{opacity:.45;cursor:default}
       .nf-as-status{display:flex;align-items:center;gap:8px;height:18px;font-size:11px;color:#7a7a7a}
       .nf-as-status .nf-as-pct{color:#cfcfcf}
@@ -836,6 +841,8 @@
     loop: svgWrap('<path d="M6.5 5.3c2.7-2 6.8-.4 7.3 2.8.5 3.2-3.1 5.8-6 4.4" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"></path><path d="M7.2 4.2l-2.6 1.2 2.1 2.0" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>')
   };
   function svgIcon(icon) { return icon; }
+  // the sparkle on the React 开始生成 button (its ::before mask)
+  const GO_ICON = "url(\"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22black%22%3E%3Cpath d=%22M11 2.5l1.8 5.2 5.2 1.8-5.2 1.8L11 16.5l-1.8-5.2L4 9.5l5.2-1.8z%22/%3E%3Cpath d=%22M18.5 14l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z%22/%3E%3C/svg%3E\")";
   const SPARKLES_ICON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/%3E%3Cpath d='M20 3v4'/%3E%3Cpath d='M22 5h-4'/%3E%3Cpath d='M4 17v2'/%3E%3Cpath d='M5 18H3'/%3E%3C/svg%3E")`;
 
   // ---- AI 助手 ------------------------------------------------------------------------
@@ -963,9 +970,11 @@
     // left card ---------------------------------------------------------------
     const left = el('div', 'nf-as-left');
     // 音视's sub-entries: 视频 hands over to the AI sequence section, 音频 is this overlay
+    // (data-novaflow-source-layout: the runtime's page-wide rules - font-weight 400 on
+    // everything not source-owned, disabled opacity - skip elements that carry it)
     const sub = el('div', 'nf-as-mode');
-    const subVideo = el('button', null, '视频'); subVideo.type = 'button'; subVideo.setAttribute('aria-pressed', 'false');
-    const subAudio = el('button', null, '音频'); subAudio.type = 'button'; subAudio.setAttribute('aria-pressed', 'true');
+    const subVideo = el('button', null, '视频'); subVideo.type = 'button'; subVideo.setAttribute('data-novaflow-source-layout', '1'); subVideo.style.setProperty('border-radius', '5px', 'important'); subVideo.setAttribute('aria-pressed', 'false');
+    const subAudio = el('button', null, '音频'); subAudio.type = 'button'; subAudio.setAttribute('data-novaflow-source-layout', '1'); subAudio.style.setProperty('border-radius', '5px', 'important'); subAudio.setAttribute('aria-pressed', 'true');
     subVideo.addEventListener('click', () => activate('video'));
     sub.appendChild(subVideo); sub.appendChild(subAudio);
     left.appendChild(sub);
@@ -977,8 +986,8 @@
     ui.genBody = gen.body;
     // 背景音乐 | 音效 lives inside 音频生成
     const mode = el('div', 'nf-as-mode nf-as-mode-kind');
-    const modeMusic = el('button', null, '背景音乐'); modeMusic.type = 'button';
-    const modeSfx = el('button', null, '音效'); modeSfx.type = 'button';
+    const modeMusic = el('button', null, '背景音乐'); modeMusic.type = 'button'; modeMusic.setAttribute('data-novaflow-source-layout', '1'); modeMusic.style.setProperty('border-radius', '5px', 'important');
+    const modeSfx = el('button', null, '音效'); modeSfx.type = 'button'; modeSfx.setAttribute('data-novaflow-source-layout', '1'); modeSfx.style.setProperty('border-radius', '5px', 'important');
     modeMusic.addEventListener('click', () => setMode('music'));
     modeSfx.addEventListener('click', () => setMode('sfx'));
     mode.appendChild(modeMusic); mode.appendChild(modeSfx);
@@ -1058,8 +1067,8 @@
     project.appendChild(ui.tabs); project.appendChild(add); project.appendChild(del); project.appendChild(name);
     const zoom = el('div', 'nf-as-zoom');
     ui.zoomLabel = label(el('span'), '100%');
-    const fit = label(el('button'), '自动适配'); fit.type = 'button'; fit.title = '缩放到整段可见'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
-    zoom.appendChild(ui.zoomLabel); zoom.appendChild(fit);
+    const fit = label(el('button'), '自动适配'); fit.type = 'button'; fit.setAttribute('data-novaflow-source-layout', '1'); fit.title = '缩放到整段可见'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
+    zoom.appendChild(ui.zoomLabel); zoom.appendChild(fit); ui.fitButton = fit;
     topbar.appendChild(project); topbar.appendChild(zoom);
     stage.appendChild(topbar);
     const refStage = el('div', 'nf-as-ref'); refStage.hidden = true;
@@ -1266,7 +1275,7 @@
       const count = dropdown([1, 2, 3, 4].map((n) => [String(n), n + ' 个']), String(m.count), (v) => { m.count = Number(v); }, 'nf-as-select-inline');
       ui.dockRow.appendChild(count.trigger);
     }
-    const go = label(el('button', 'nf-as-go'), '开始生成'); go.type = 'button';
+    const go = label(el('button', 'nf-as-go'), '开始生成'); go.type = 'button'; go.setAttribute('data-novaflow-source-layout', '1'); go.style.setProperty('border', '1px solid #24b693', 'important'); go.style.setProperty('--nf-as-go-icon', GO_ICON);
     go.addEventListener('click', () => (mode === 'music' ? submitMusic() : submitSfx()));
     ui.dockRow.appendChild(go);
     ui.go = go;
@@ -1395,6 +1404,7 @@
   }
   function syncZoom() {
     if (!ui || !editor || !ui.zoomRange) return;
+    if (ui.fitButton) { const empty = !(editor.state && editor.state.tracks || []).some((track) => track.clips && track.clips.length); ui.fitButton.disabled = empty; ui.fitButton.style.setProperty('opacity', empty ? '0.38' : '1', 'important'); }
     const z = editor.zoom();
     ui.zoomLabel.setAttribute('data-nf-label', Math.round(z / 40 * 100) + '%');
     const v = Math.log(z / 6) / Math.log(400 / 6) * 100;

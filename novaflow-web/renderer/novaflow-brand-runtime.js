@@ -23266,7 +23266,8 @@
       }
       /* Those borders stay clear on hover too: the generic button hover tinted
          them 20% white, a rim above and below the row. */
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="frame-edit"]:is(:hover, :focus, :active) {
+      html body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="frame-edit"]:is(:hover, :focus, :focus-visible, :active) {
+        border-color: transparent !important;
         border-top-color: transparent !important;
         border-bottom-color: transparent !important;
         background-clip: padding-box !important;
@@ -44521,10 +44522,10 @@
       scheduleAnimationSecondaryActivation(labels.map(normalizeText).join("|"), buttons);
       return true;
     },
-    // a full runtime pass (the flag above moved the content's top, or a switch
-    // landed without its own pass); a window resize event does not run one
+    // the column pass (the flag above moves the content's top): synchronous and
+    // cheap - two full refreshes here cost ~500 ms per switch on the real page
     relayout() {
-      scheduleFullLayoutRefresh([0, 120]);
+      try { applySecondaryEntryLayout(); } catch (_) { void 0; }
     }
   });
   function scheduleAnimationSecondaryActivation(groupKey, buttons) {
