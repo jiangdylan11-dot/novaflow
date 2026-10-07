@@ -12164,6 +12164,8 @@
     node.textContent = message
     node.style.setProperty('color', state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(160,160,160,0.95)', 'important')
     node.style.setProperty('visibility', message ? 'visible' : 'hidden', 'important')
+    // an empty message takes no room (its 17px min-height read as a gap under 布局编辑)
+    node.style.setProperty('display', message ? 'block' : 'none', 'important')
     return true
   }
 
@@ -14145,7 +14147,7 @@
       renderSplitDrawingActionGrid([
         renderSplitDrawingControlButton({ action: 'export', label: 'PSD导出', style: { gridColumn: '1 / -1' } })
       ], { gridTemplateColumns: 'minmax(0, 1fr)' }),
-      h('div', { [CONTROL_MESSAGE_ATTR]: '1', style: { minWidth: 0, maxWidth: '100%', minHeight: '17px', overflow: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-all', boxSizing: 'border-box', fontSize: '11px', color: state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(160,160,160,0.95)', lineHeight: '17px', textAlign: 'center', visibility: state.message ? 'visible' : 'hidden' } }, state.message || ''),
+      h('div', { [CONTROL_MESSAGE_ATTR]: '1', style: { display: 'none', minWidth: 0, maxWidth: '100%', minHeight: '17px', overflow: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-all', boxSizing: 'border-box', fontSize: '11px', color: state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(160,160,160,0.95)', lineHeight: '17px', textAlign: 'center', visibility: state.message ? 'visible' : 'hidden' } }, state.message || ''),
       null
     ])
     mountedCard.appendChild(dropZone)

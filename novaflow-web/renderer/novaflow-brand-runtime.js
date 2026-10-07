@@ -66684,7 +66684,12 @@
     const header = panel.querySelector(":scope > .nf-panel-header");
     if (header instanceof HTMLElement) setAttributeIfChanged(header, "aria-expanded", "false");
     const body = panel.querySelector(`:scope > [${SPINE_INLINE_IMPORT_BODY_ATTR}="1"]`);
-    if (body instanceof HTMLElement) body.hidden = true;
+    if (body instanceof HTMLElement) {
+      body.hidden = true;
+      // the column pass writes display:flex !important on the body while it is
+      // open, which beat [hidden]: the panel could not be closed
+      setRawStylePropertyIfChanged(body, "display", "none", "important");
+    }
     const chevron = panel.querySelector(`[${SPINE_INLINE_IMPORT_CHEVRON_ATTR}="1"]`);
     if (chevron instanceof HTMLElement) {
       chevron.className = "fas fa-chevron-right";
@@ -66833,7 +66838,10 @@
     const header = panel.querySelector(":scope > .nf-panel-header");
     if (header instanceof HTMLElement) setAttributeIfChanged(header, "aria-expanded", nextOpen ? "true" : "false");
     const body = panel.querySelector(`:scope > [${SPINE_INLINE_IMPORT_BODY_ATTR}="1"]`);
-    if (body instanceof HTMLElement) body.hidden = !nextOpen;
+    if (body instanceof HTMLElement) {
+      body.hidden = !nextOpen;
+      if (nextOpen && body.style.getPropertyValue("display") === "none") body.style.removeProperty("display");
+    }
     const chevron = panel.querySelector(`[${SPINE_INLINE_IMPORT_CHEVRON_ATTR}="1"]`);
     if (chevron instanceof HTMLElement) {
       chevron.className = nextOpen ? "fas fa-chevron-down" : "fas fa-chevron-right";
