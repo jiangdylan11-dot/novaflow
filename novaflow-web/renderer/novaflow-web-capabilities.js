@@ -801,6 +801,28 @@
     }
   };
 
+  // 音频: a video dropped into the audio section keeps only its sound track,
+  // as 44.1 kHz stereo 16-bit WAV. `payload.file` is the File itself; the
+  // page then decodes the WAV like any other resource.
+  api.extractAudioTrack = async (payload) => {
+    try {
+      const file = payload && payload.file instanceof Blob ? payload.file : null;
+      if (!file) throw new Error('没有收到文件');
+      const fileName = videoStem(file.name, 'audio') + '.wav';
+      const { blob } = await runVideoJob({
+        tool: 'audio-extract', jobId: String((payload && payload.jobId) || 'audio_extract_' + Date.now()), file,
+        buildArgs: (inName, outFile, probeLog) => {
+          if (!sourceFromLog(probeLog).hasAudio) throw new Error('这个视频没有音轨');
+          return ['-i', inName, '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', outFile];
+        },
+        outName: fileName, mimeType: 'audio/wav'
+      });
+      return { ok: true, blob, fileName, bytesIn: file.size, bytesOut: blob.size };
+    } catch (error) {
+      return { ok: false, error: '提取音轨失败：' + String((error && error.message) || error).slice(0, 240) };
+    }
+  };
+
   api.saveVideoToolOutput = async (payload) => {
     const items = Array.isArray(payload && payload.items) ? payload.items : [];
     if (!items.length) return { ok: false, error: '没有可导出的视频' };
@@ -1332,7 +1354,12 @@
       const width = video ? Number(video[2]) : 0;
       const height = video ? Number(video[3]) : 0;
       const hasAudio = /Stream #\d+:\d+.*?Audio:/.test(log);
-      return { ok: true, fps, frames: fps && durationSec ? Math.round(fps * durationSec) : 0, durationSec, width, height, hasAudio, codec: video ? String(video[1]).trim() : '' };
+      // The stream log supplies a decimal average, not ffprobe's exact rational
+      // or packet timestamps. Do not manufacture a source frame count or claim
+      // that this identifies a constant frame rate for variable-rate clips.
+      return { ok: true, fps, frames: 0, durationSec, width, height, hasAudio,
+        fpsOrigin: fps > 0 ? 'ffmpeg-stream-log' : 'unavailable', rateMode: 'unknown',
+        codec: video ? String(video[1]).trim() : '' };
     } catch (error) {
       return fail('视频探测失败：' + String((error && error.message) || error));
     } finally {

@@ -561,6 +561,13 @@
     stage.appendChild(topbar);
     const timelineHost = el('div', 'nf-as-timeline');
     stage.appendChild(timelineHost);
+    timelineHost.addEventListener('dragover', (event) => { if (Array.from(event.dataTransfer?.types || []).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } });
+    timelineHost.addEventListener('drop', async (event) => {
+      const files = droppedMediaFiles(event);
+      if (!files.length) return;
+      event.preventDefault(); event.stopPropagation();
+      for (const f of files) { const res = await importFile(f); if (res) editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable, start: editor.playhead() }); }
+    });
     ui.empty = el('div', 'nf-as-empty');
     ui.empty.innerHTML = '<div>时间轴还是空的<br><span style="color:#5a5a5a">展开左侧「音频生成」描述后生成，或从右侧资源列表拖入</span></div>';
     timelineHost.appendChild(ui.empty);
@@ -642,14 +649,16 @@
     sideHead.appendChild(el('span', null, '资源列表'));
     ui.count = el('span', 'nf-as-count', '0');
     sideHead.appendChild(ui.count);
-    const upload = el('button', null, '上传资源'); upload.type = 'button';
-    const file = el('input'); file.type = 'file'; file.accept = 'audio/*,.wav,.mp3,.ogg,.flac,.m4a'; file.multiple = true; file.hidden = true;
+    const upload = el('button', null, '上传资源'); upload.type = 'button'; upload.title = '音频文件直接导入；视频文件只保留音轨';
+    const file = el('input'); file.type = 'file'; file.accept = 'audio/*,video/*,.wav,.mp3,.ogg,.flac,.m4a,.mp4,.mov,.webm,.mkv'; file.multiple = true; file.hidden = true;
     file.addEventListener('change', () => { for (const f of Array.from(file.files || [])) importFile(f); file.value = ''; });
     upload.addEventListener('click', () => file.click());
     sideHead.appendChild(upload); sideHead.appendChild(file);
     sidebar.appendChild(sideHead);
     ui.list = el('div', 'nf-as-side-list');
     sidebar.appendChild(ui.list);
+    sidebar.addEventListener('dragover', (event) => { if (droppedMediaFiles(event).length || Array.from(event.dataTransfer?.types || []).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } });
+    sidebar.addEventListener('drop', (event) => { const files = droppedMediaFiles(event); if (!files.length) return; event.preventDefault(); for (const f of files) importFile(f); });
     root.appendChild(sidebar);
     ui.sidebar = sidebar;
 
@@ -1076,18 +1085,43 @@
   }
 
   // ---- resources ---------------------------------------------------------------------------
+  const VIDEO_FILE = /\.(mp4|m4v|mov|webm|mkv|avi|ogv)$/i;
   async function importFile(file) {
+    const isVideo = /^video\//.test(file.type || '') || VIDEO_FILE.test(file.name || '');
+    const pending = { id: 'pending-import-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), kind: 'import', name: isVideo ? '提取音轨中' : '导入中', label: file.name, pending: true, progress: 30 };
+    state.resources.unshift(pending);
+    renderList();
     try {
-      const buffer = await decode(file);
-      if (!buffer) throw new Error('无法解码 ' + file.name);
+      // The browser decodes most containers itself (an MP4's AAC track included);
+      // anything it refuses goes through the site's ffmpeg, video first.
+      let blob = file;
+      let buffer = isVideo ? null : await decode(file);
+      if (!buffer) {
+        const extract = window.electronAPI && typeof window.electronAPI.extractAudioTrack === 'function' ? window.electronAPI.extractAudioTrack : null;
+        if (!extract) throw new Error('无法解码 ' + file.name);
+        const result = await extract({ file });
+        if (!result || !result.ok) throw new Error((result && result.error) || ('无法提取 ' + file.name + ' 的音轨'));
+        blob = result.blob;
+        buffer = await decode(blob);
+        if (!buffer) throw new Error('提取出的音轨无法解码');
+      }
       state.counter.import += 1;
       const name = file.name.replace(/\.[^.]+$/, '').slice(0, 40) || ('导入_' + state.counter.import);
-      const blob = file;
-      state.resources.unshift({ id: 'res-import-' + Date.now() + '-' + state.counter.import, kind: 'import', name, label: file.name, seconds: buffer.duration, blob, buffer, url: URL.createObjectURL(blob), loopable: true });
+      const resource = { id: 'res-import-' + Date.now() + '-' + state.counter.import, kind: 'import', source: isVideo ? 'video' : 'audio', name, label: file.name + (isVideo ? '（视频音轨）' : ''), seconds: buffer.duration, blob, buffer, url: URL.createObjectURL(blob), loopable: true };
+      const index = state.resources.indexOf(pending);
+      if (index >= 0) state.resources.splice(index, 1, resource); else state.resources.unshift(resource);
       renderList();
+      return resource;
     } catch (error) {
+      state.resources = state.resources.filter((r) => r !== pending);
+      renderList();
       ui.statusErr.textContent = String(error?.message || error);
+      return null;
     }
+  }
+  function droppedMediaFiles(event) {
+    const files = Array.from(event.dataTransfer?.files || []);
+    return files.filter((f) => /^(audio|video)\//.test(f.type || '') || VIDEO_FILE.test(f.name || '') || /\.(wav|mp3|ogg|flac|m4a|aac|opus)$/i.test(f.name || ''));
   }
   function renderList() {
     if (!ui) return;
@@ -1116,7 +1150,7 @@
     node.appendChild(canvas);
     const nameRow = el('div', 'nf-as-res-name');
     nameRow.appendChild(el('span', null, res.name));
-    const tag = el('span', 'nf-as-res-tag', res.kind === 'music' ? '音乐' : res.kind === 'sfx' ? '音效' : '导入');
+    const tag = el('span', 'nf-as-res-tag', res.kind === 'music' ? '音乐' : res.kind === 'sfx' ? '音效' : res.source === 'video' ? '视频音轨' : '导入');
     tag.dataset.kind = res.kind;
     nameRow.appendChild(tag);
     nameRow.appendChild(el('small', null, editor.formatTime(res.seconds)));
@@ -1258,6 +1292,7 @@
     isOpen: () => state.active,
     setMode,
     resources: () => state.resources.slice(),
+    importFile,
     editor: () => editor,
     captions: { music: musicCaption, sfx: sfxCaption, translate }
   };
