@@ -236,6 +236,7 @@
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '0'); cell.querySelector('button')?.setAttribute('aria-pressed', 'false'); }
     const root = document.getElementById(ROOT_ID);
     if (root) root.hidden = true;
+    closeDropdown();
     if (editor) editor.pause();
     stopPreview();
     syncMask();
@@ -281,14 +282,14 @@
       #${ROOT_ID}[hidden]{display:none!important}
       #${ROOT_ID} *{box-sizing:border-box;font-family:inherit}
       #${ROOT_ID} button{font-family:inherit;cursor:pointer;outline:0;transition:none}
-      #${ROOT_ID} input,#${ROOT_ID} select,#${ROOT_ID} textarea{font-family:inherit}
-      #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus,#${ROOT_ID} select:focus{outline:0;box-shadow:none}
+      #${ROOT_ID} input,#${ROOT_ID} textarea{font-family:inherit}
+      #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus{outline:0;box-shadow:none}
       #${ROOT_ID} > *{pointer-events:auto}
       #${ROOT_ID} [data-nf-label]::after{content:attr(data-nf-label)}
       .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport{position:fixed}
       /* left card: the section panel */
       .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
-      .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:1px 0 12px}
+      .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:0 0 17px}
       .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px}
       .nf-as-mode button:hover{background:#2a2a2a}
       .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
@@ -305,8 +306,18 @@
       .nf-as-row[data-open="1"] .nf-as-row-body{display:flex}
       .nf-as-label{font-size:11px;color:#9f9f9f}
       .nf-as-field{display:flex;flex-direction:column;gap:5px}
-      #${ROOT_ID} select,.nf-as-input{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px;width:100%}
-      #${ROOT_ID} select{appearance:none;-webkit-appearance:none;padding-right:26px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239f9f9f' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:12px}
+      .nf-as-input{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px;width:100%}
+      .nf-as-select{display:flex;align-items:center;width:100%;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239f9f9f' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 12px;color:#e9e9e9;font-size:11px;font-weight:400;line-height:normal;padding:0 26px 0 8px;text-align:left}
+      .nf-as-select:hover{background-color:#2c2c2c}
+      .nf-as-select[aria-expanded="true"]{border-color:#3d3d3d}
+      .nf-as-select-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .nf-as-select-inline{width:auto;min-width:72px}
+      .nf-as-dd-dim{position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:5}
+      .nf-as-dd-panel{position:fixed;z-index:6;overflow:auto;background:#1b1b1b;border:1px solid rgba(255,255,255,.18);border-radius:0;box-shadow:0 18px 48px rgba(0,0,0,.55);color:rgba(255,255,255,.88);font-size:12px;line-height:26px}
+      .nf-as-dd-panel::-webkit-scrollbar{width:6px}.nf-as-dd-panel::-webkit-scrollbar-thumb{background:#3a3a3a}
+      .nf-as-dd-item{height:26px;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+      .nf-as-dd-item:hover{background:rgba(255,255,255,.08)}
+      .nf-as-dd-item[aria-selected="true"]{background:#1ea672;color:#fff}
       .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
       .nf-as-tools button:hover,.nf-as-btn:hover{background:#303030;color:#fff}
@@ -334,13 +345,13 @@
       .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add,.nf-as-project .nf-as-tab-del{width:38px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#a0a0a0;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add:hover{background:#2a2a2a;color:#fff}
-      .nf-as-project .nf-as-tab-del{background:#252629;color:#969aa2}
       .nf-as-project .nf-as-tab-del:hover{background:#4a2323;color:#ffb4b4}
+      .nf-as-project .nf-as-tab-del:disabled{background:#252629;color:#969aa2;opacity:.38!important;cursor:not-allowed}
       .nf-as-project input{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
       .nf-as-zoom{right:0;display:flex;align-items:center;height:38px;padding:4px;gap:3px;margin-right:0;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-bar-line,#333333);border-radius:var(--nf-ref-radius-bar,9px);box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
-      .nf-as-zoom span{min-width:44px;height:28px;display:grid;place-items:center;border-radius:5px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px}
-      .nf-as-zoom button{height:28px;border:1px solid transparent;border-radius:5px;background:transparent;color:#8a8a8a;font-size:11px;padding:0 10px}
-      .nf-as-zoom button:hover{color:#fff;background:#2a2a2a}
+      .nf-as-zoom span{min-width:44px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;background:transparent;color:#9a9a9a;font-size:11px;font-weight:500;padding:0}
+      .nf-as-zoom button{height:28px;border:1px solid transparent;border-radius:5px;background:#252629;color:#969aa2;font-size:11px;font-weight:500;padding:4px 10px}
+      .nf-as-zoom button:hover{color:#fff;background:#303136}
       /* the timeline is a card in the same column as the dock and the transport: same edges, same surface */
       .nf-as-timeline{position:absolute;left:0;right:0;top:53px;bottom:8px;border-radius:var(--nf-ref-radius-panel,12px);overflow:hidden;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e)}
       .nf-as-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none}
@@ -371,7 +382,6 @@
       .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
       .nf-as-dock-row .nf-as-label{white-space:nowrap;color:#a9a9a9}
       .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
-      .nf-as-dock-row select{width:auto;min-width:72px}
       .nf-as-switch{width:27px;height:15px;border-radius:15px;border:0;background:#3a3a3a;position:relative;padding:0;flex:none}
       .nf-as-switch::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#ddd}
       .nf-as-switch[aria-checked="true"]{background:#1ea672}.nf-as-switch[aria-checked="true"]::after{left:15px;background:#fff}
@@ -460,16 +470,63 @@
     if (text !== undefined) node.textContent = text;
     return node;
   }
+  // A native <select> is portalled by the brand runtime into its global
+  // dropdown layer, which also lifts the section underneath over this panel.
+  // This dropdown draws the same field and the same panel (#1b1b1b, 26px
+  // rows, the selected row in green) inside the overlay instead.
+  function dropdown(options, value, onChange, cls) {
+    const trigger = el('button', 'nf-as-select' + (cls ? ' ' + cls : '')); trigger.type = 'button';
+    const text = el('span', 'nf-as-select-text');
+    trigger.appendChild(text);
+    const api = {
+      trigger, options, value,
+      set(next) { api.value = next; const item = options.find((o) => String(o[0]) === String(next)) || options[0]; text.textContent = item ? item[1] : ''; },
+      get() { return api.value; }
+    };
+    api.set(value);
+    trigger.addEventListener('click', (event) => { event.stopPropagation(); if (openDropdown && openDropdown.api === api) closeDropdown(); else showDropdown(api, (next) => { api.set(next); onChange(next); }); });
+    return api;
+  }
+  let openDropdown = null;
+  function showDropdown(api, pick) {
+    closeDropdown();
+    const rect = api.trigger.getBoundingClientRect();
+    const dim = el('div', 'nf-as-dd-dim');
+    const panel = el('div', 'nf-as-dd-panel');
+    panel.setAttribute('role', 'listbox');
+    for (const [key, label] of api.options) {
+      const item = el('div', 'nf-as-dd-item', label);
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(String(key) === String(api.value)));
+      item.addEventListener('click', (event) => { event.stopPropagation(); closeDropdown(); pick(key); });
+      panel.appendChild(item);
+    }
+    const width = Math.max(160, Math.round(rect.width));
+    const height = Math.min(api.options.length * 26 + 2, Math.max(120, window.innerHeight - rect.bottom - 16));
+    const top = rect.bottom + 4 + height <= window.innerHeight ? rect.bottom + 4 : Math.max(8, rect.top - 4 - height);
+    panel.style.left = Math.round(Math.min(rect.left, window.innerWidth - width - 8)) + 'px';
+    panel.style.top = Math.round(top) + 'px';
+    panel.style.width = width + 'px';
+    panel.style.maxHeight = height + 'px';
+    dim.addEventListener('click', closeDropdown);
+    ui.root.appendChild(dim); ui.root.appendChild(panel);
+    api.trigger.setAttribute('aria-expanded', 'true');
+    openDropdown = { api, dim, panel };
+  }
+  function closeDropdown() {
+    if (!openDropdown) return;
+    openDropdown.dim.remove(); openDropdown.panel.remove();
+    openDropdown.api.trigger.setAttribute('aria-expanded', 'false');
+    openDropdown = null;
+  }
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && openDropdown) { closeDropdown(); event.stopPropagation(); } }, true);
   function selectField(parent, label, options, value, onChange) {
     const field = el('div', 'nf-as-field');
     field.appendChild(el('div', 'nf-as-label', label));
-    const select = el('select');
-    for (const [key, text] of options) { const o = el('option', null, text); o.value = key; select.appendChild(o); }
-    select.value = value;
-    select.addEventListener('change', () => onChange(select.value));
-    field.appendChild(select);
+    const api = dropdown(options, value, onChange);
+    field.appendChild(api.trigger);
     parent.appendChild(field);
-    return select;
+    return api;
   }
   // The transport glyphs are the animation section's own (18px, 78% white).
   const GLYPH = 'rgba(255,255,255,0.78)';
@@ -561,6 +618,7 @@
     add.addEventListener('click', () => createBoard());
     const del = el('button', 'nf-as-tab-del', '-'); del.type = 'button'; del.title = '删除当前画板';
     del.addEventListener('click', () => removeBoard(state.board));
+    ui.boardDel = del;
     const name = el('input', 'nf-as-name'); name.value = 'audio_1'; name.title = '画板名称'; name.setAttribute('data-novaflow-runtime-ignore', '1');
     name.addEventListener('change', () => { const b = state.boards[state.board]; const v = name.value.trim().slice(0, 40) || ('audio_' + (state.board + 1)); name.value = v; if (b) b.name = v; });
     ui.boardName = name;
@@ -709,6 +767,7 @@
   }
 
   function setMode(mode) {
+    closeDropdown();
     state.mode = mode;
     ui.modeMusic.setAttribute('aria-pressed', String(mode === 'music'));
     ui.modeSfx.setAttribute('aria-pressed', String(mode === 'sfx'));
@@ -751,11 +810,8 @@
     } else {
       ui.secondsInput = num('时长(秒)', m.seconds, 1, 30, (v) => { m.seconds = v; });
       ui.dockRow.appendChild(el('span', 'nf-as-label', '数量'));
-      const count = el('select');
-      for (const n of [1, 2, 3, 4]) { const o = el('option', null, n + ' 个'); o.value = String(n); count.appendChild(o); }
-      count.value = String(m.count);
-      count.addEventListener('change', () => { m.count = Number(count.value); });
-      ui.dockRow.appendChild(count);
+      const count = dropdown([1, 2, 3, 4].map((n) => [String(n), n + ' 个']), String(m.count), (v) => { m.count = Number(v); }, 'nf-as-select-inline');
+      ui.dockRow.appendChild(count.trigger);
     }
     const go = label(el('button', 'nf-as-go'), '开始生成'); go.type = 'button';
     go.addEventListener('click', () => (mode === 'music' ? submitMusic() : submitSfx()));
@@ -914,6 +970,7 @@
   }
   function renderTabs() {
     if (!ui.tabs) return;
+    if (ui.boardDel) { ui.boardDel.disabled = state.boards.length <= 1; ui.boardDel.setAttribute('aria-disabled', String(state.boards.length <= 1)); }
     ui.tabs.replaceChildren();
     state.boards.forEach((b, i) => {
       const t = el('button', 'nf-as-tab', String(i + 1)); t.type = 'button'; t.title = '画板 ' + (i + 1);
