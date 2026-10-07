@@ -538,15 +538,15 @@
       .nf-as-row-head{position:relative;display:flex;align-items:center;width:100%;height:46px;padding:0 30px 0 40px;border:0;border-radius:7px;background:transparent;color:#d4d4d4;font-size:12px;font-weight:400;line-height:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .nf-as-row[data-key="generate"] .nf-as-row-head{font-weight:500;letter-spacing:.18px;border-radius:6px}
       .nf-as-row-head::before{content:"";position:absolute;left:7px;top:11px;width:24px;height:24px;border-radius:5px;background:#292929 var(--nf-as-row-icon) center / 14px 14px no-repeat}
-      .nf-as-row-head::after{content:"";position:absolute;right:12px;top:50%;width:7px;height:7px;border-right:1px solid rgba(238,244,252,.7);border-bottom:1px solid rgba(238,244,252,.7);transform:translateY(-50%) rotate(-45deg)}
-      .nf-as-row[data-open="1"] .nf-as-row-head::after{transform:translateY(-70%) rotate(45deg)}
+      .nf-as-row-head::after{content:"";position:absolute;right:12px;top:50%;width:7px;height:7px;border-right:1px solid #797979;border-bottom:1px solid #797979;transform:translateY(-3.5px) rotate(-45deg)}
+      .nf-as-row[data-open="1"] .nf-as-row-head::after{transform:translateY(-3.5px) rotate(45deg)}
       .nf-as-row-head:hover{background:rgba(255,255,255,.043)}
       .nf-as-row-body{display:none;flex-direction:column;gap:9px;padding:4px 7px 16px}
       .nf-as-row[data-open="1"] .nf-as-row-body{display:flex}
       .nf-as-label{font-size:11px;color:#9f9f9f}
       .nf-as-field{display:flex;flex-direction:column;gap:5px}
       .nf-as-input{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px;width:100%}
-      .nf-as-select{display:flex;align-items:center;width:100%;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239f9f9f' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 12px;color:#e9e9e9;font-size:11px;font-weight:400;line-height:normal;padding:0 26px 0 8px;text-align:left}
+      .nf-as-select{display:flex;align-items:center;width:100%;height:32px;min-height:32px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='rgba(238,244,252,0.68)' stroke-width='1.35' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") calc(100% - 10px) 50% / 10px 6px no-repeat;color:#e9e9e9;font-size:12px;font-weight:400;line-height:normal;padding:0 26px 0 10px;text-align:left}
       .nf-as-select:hover{background-color:#2c2c2c}
       .nf-as-select[aria-expanded="true"]{border-color:#3d3d3d}
       .nf-as-select-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -11046,7 +11046,7 @@
       const providedMainWidth = Number(options?.mainWidth);
       const mainWidth = Number.isFinite(providedMainWidth)
         ? Math.round(Math.max(0, providedMainWidth))
-        : Math.round(mainRow.getBoundingClientRect().width || 0);
+        : Math.round(getRafCachedClientRect(mainRow).width || 0);
       const maxReferenceWidth = Math.max(
         0,
         mainWidth - NOVAFLOW_UNIFORM_GAP - AI_ANIMATION_SOURCE_OWNED_SETTINGS_MIN_WIDTH
@@ -16903,14 +16903,14 @@
       })
       .filter((node, index, list) => node instanceof HTMLElement && list.indexOf(node) === index);
     if (titledCards.length) {
-      return titledCards.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+      return titledCards.sort((a, b) => getRafCachedClientRect(a).top - getRafCachedClientRect(b).top);
     }
-    const panelRect = resourcePanel.getBoundingClientRect();
+    const panelRect = getRafCachedClientRect(resourcePanel);
     return Array.from(resourcePanel.querySelectorAll("div, button"))
       .filter((node) => {
         if (!(node instanceof HTMLElement) || node === resourcePanel || !isVisible(node)) return false;
         if (node.querySelector('[data-novaflow-ai-resource-action-kind="upload"]')) return false;
-        const rect = node.getBoundingClientRect();
+        const rect = getRafCachedClientRect(node);
         if (rect.width < 48 || rect.height < 42 || rect.width > panelRect.width + 12) return false;
         if (rect.left < panelRect.left - 4 || rect.right > panelRect.right + 4) return false;
         const text = normalizeText(node.textContent || "");
@@ -16918,7 +16918,7 @@
         return Boolean(node.querySelector("img, video, canvas")) || text.includes("\u753b\u677f") || text.includes("\u53c2\u8003") || text.includes("\u89c6\u9891") || text.includes("\u56fe\u7247");
       })
       .filter((node, index, list) => !list.some((other, otherIndex) => otherIndex !== index && other instanceof HTMLElement && other.contains(node)))
-      .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+      .sort((a, b) => getRafCachedClientRect(a).top - getRafCachedClientRect(b).top);
   }
 
   function styleAiSequenceResourceCardOverlayControls(card) {
@@ -30056,12 +30056,9 @@
     stylePrimaryEntries();
   }
 
+  // Both branches returned the constant; the rect read only forced a layout
+  // (60+ ms per section switch across its callers).
   function getTopbarBottom() {
-    const topbar = document.querySelector(".nf-topbar");
-    if (topbar instanceof HTMLElement) {
-      const rect = topbar.getBoundingClientRect();
-      if (rect.height > 20) return TOPBAR_HEIGHT;
-    }
     return TOPBAR_HEIGHT;
   }
 
@@ -30075,15 +30072,23 @@
     }) || null;
   }
 
+  // Called from ~25 places in every pass, each read between style writes
+  // forced a layout (150-260 ms per section switch). The rects come from
+  // the per-frame cache, and the column marked by the previous pass is
+  // checked first.
+  function isLeftWorkspaceColumnRect(rect) {
+    // The column is PRIMARY_COLUMN_WIDTH wide, which the narrow tier takes
+    // below the old fixed floor of 300.
+    return rect.left <= 4 && rect.width >= Math.min(300, PRIMARY_COLUMN_WIDTH - 8) && rect.width <= PRIMARY_COLUMN_WIDTH + 48 && rect.height > 300;
+  }
   function findLeftWorkspaceColumn() {
     const body = findAppBody();
     if (!(body instanceof HTMLElement)) return null;
+    const marked = body.querySelector(':scope > [data-novaflow-left-column="1"]');
+    if (marked instanceof HTMLElement && isLeftWorkspaceColumnRect(getRafCachedClientRect(marked))) return marked;
     return Array.from(body.children).find((child) => {
       if (!(child instanceof HTMLElement)) return false;
-      const rect = child.getBoundingClientRect();
-      // The column is PRIMARY_COLUMN_WIDTH wide, which the narrow tier takes
-      // below the old fixed floor of 300.
-      return rect.left <= 4 && rect.width >= Math.min(300, PRIMARY_COLUMN_WIDTH - 8) && rect.width <= PRIMARY_COLUMN_WIDTH + 48 && rect.height > 300;
+      return isLeftWorkspaceColumnRect(getRafCachedClientRect(child));
     }) || null;
   }
 
@@ -37425,7 +37430,8 @@
       if (!(element instanceof Element)) return element.getBoundingClientRect();
       const cached = cache.get(element);
       if (cached) return cached;
-      const rect = element.getBoundingClientRect();
+      // through the per-frame cache: the scans of one pass share their reads
+      const rect = getRafCachedClientRect(element);
       cache.set(element, rect);
       return rect;
     };
@@ -39398,8 +39404,12 @@
       .some((node) => node instanceof HTMLElement && isVisible(node) && normalizeText(node.textContent || "") === "\u6682\u65e0LORA");
   }
 
+  const AI_ANIMATION_MAIN_MODEL_BRANCH_HEIGHT_MEMO = new WeakMap();
   function measureAiAnimationEntryMainModelBranchNaturalHeight(branch) {
     if (!(branch instanceof HTMLElement) || !branch.isConnected) return 0;
+    // the probe writes min-height, reads, restores: two forced layouts; once per frame
+    const memo = AI_ANIMATION_MAIN_MODEL_BRANCH_HEIGHT_MEMO.get(branch);
+    if (memo && memo.frame === NOVAFLOW_RAF_LAYOUT_READ_CACHE_FRAME) return memo.height;
     const previousMinHeight = branch.style.getPropertyValue("min-height");
     const previousMinHeightPriority = branch.style.getPropertyPriority("min-height");
     branch.style.setProperty("min-height", "auto", "important");
@@ -39409,7 +39419,9 @@
     } else {
       branch.style.removeProperty("min-height");
     }
-    return Math.ceil(rect.height || 0);
+    const height = Math.ceil(rect.height || 0);
+    AI_ANIMATION_MAIN_MODEL_BRANCH_HEIGHT_MEMO.set(branch, { frame: NOVAFLOW_RAF_LAYOUT_READ_CACHE_FRAME, height });
+    return height;
   }
 
   function rememberAiAnimationEntryMainModelBranchHeight(root = document) {
@@ -58058,7 +58070,15 @@
           // body is in the first painted frame (opening it later popped)
           if (!importOpened) {
             const importPanel = document.getElementById("novaflow-spine-inline-import-panel");
-            if (importPanel instanceof HTMLElement) { importOpened = true; setSpineInlineImportPanelOpen(importPanel, true); }
+            if (importPanel instanceof HTMLElement) {
+              importOpened = true;
+              setSpineInlineImportPanelOpen(importPanel, true);
+              // the open keeps the body visibility:hidden until a "positioning"
+              // frame; the panel sits inline in the column, so finish it here and
+              // the fields are in the first painted frame (they popped in a frame late)
+              syncSpineInlineImportPanelPosition();
+              setSpineInlineImportPanelPositioning(importPanel, false);
+            }
           }
           if (settled || passes >= 20) stop();
         } else {
@@ -67289,7 +67309,7 @@
     if (panel.parentElement !== anchor.parentElement || panel.nextElementSibling !== anchor) {
       anchor.parentElement?.insertBefore(panel, anchor);
     }
-    const anchorRect = anchor.getBoundingClientRect();
+    const anchorRect = getRafCachedClientRect(anchor);
     const width = `${Math.round(anchorRect.width || PRIMARY_LEFT_PANEL_WIDTH)}px`;
     panel.style.removeProperty("left");
     panel.style.removeProperty("top");
