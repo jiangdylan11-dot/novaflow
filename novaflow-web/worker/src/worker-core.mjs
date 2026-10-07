@@ -18,6 +18,7 @@ import { createTunnel } from './tunnel.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { videoRuntimeUrl } from './runtime-services.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength, audioGraphExtras } from './comfy/workflow-runner.mjs';
+import { audioRepromptPrompt } from './comfy/audio-reprompt.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy, detectQwenImage21 } from './models/model-manager.mjs';
@@ -320,6 +321,44 @@ export function createWorker(options) {
 
   function comfyFor(runtime) {
     return runtime === 'video' ? comfyVideo : comfyImage;
+  }
+
+  // 音频 AI 助手 (本地): the same text model and the same frame the audio
+  // pipeline rewrites with, run on their own so the page can show the caption
+  // before anything is generated. One small graph: text model -> rewrite ->
+  // caption cleanup -> preview, read back from the history.
+  async function rewriteAudioPrompt({ kind, text, requirements, seconds, bpm, loop } = {}) {
+    const which = kind === 'sfx' ? 'sfx' : 'music';
+    const tempo = which === 'music' ? Math.round(Number(bpm) || 0) : 0;
+    const input = [
+      String(text || '').trim(),
+      String(requirements || '').trim() ? 'Additional request: ' + String(requirements || '').trim() : '',
+      which === 'music' && loop ? 'This track loops seamlessly.' : '',
+      tempo ? 'BPM: ' + tempo : ''
+    ].filter(Boolean).join('\n');
+    if (!input) return { ok: false, error: '请先输入描述或补充要求' };
+    if (!(await comfyImage.isUp())) return { ok: false, error: '图像服务未就绪，请稍后再试' };
+    const length = Math.max(1, Math.round(Number(seconds) || (which === 'music' ? 30 : 2)));
+    const graph = {
+      10: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3.5_2b_bf16.safetensors', type: 'stable_diffusion', device: 'default' } },
+      11: { class_type: 'TextGenerate', inputs: { clip: ['10', 0], prompt: audioRepromptPrompt(which, input, length), max_length: 200, sampling_mode: 'on',
+        'sampling_mode.temperature': 0.7, 'sampling_mode.top_k': 64, 'sampling_mode.top_p': 0.95, 'sampling_mode.min_p': 0.05,
+        'sampling_mode.repetition_penalty': 1.05, 'sampling_mode.seed': Math.floor(Math.random() * 2 ** 31), 'sampling_mode.presence_penalty': 0 } },
+      20: { class_type: 'NovaFlowAudioCaption', inputs: { text: ['11', 0], seconds: length, bpm: 0, fallback: '' } },
+      30: { class_type: 'PreviewAny', inputs: { source: ['20', 0] } }
+    };
+    try {
+      const promptId = await comfyImage.queuePrompt(graph);
+      const history = await comfyImage.waitForPrompt(promptId, { pollMs: 500, timeoutMs: 5 * 60 * 1000 });
+      const preview = history?.outputs?.['30']?.text;
+      // The page shows the sentence only; the length is written in again when it generates.
+      const caption = String(Array.isArray(preview) ? preview.join('') : preview || '').replace(/\s*\.?\s*Length:\s*\d+(?:\.\d+)?\s*seconds?\.?\s*$/i, '').trim();
+      if (!caption) return { ok: false, error: '本地模型没有返回结果' };
+      return { ok: true, prompt: caption };
+    } catch (error) {
+      log('audio rewrite failed', { error: String(error?.message || error) });
+      return { ok: false, error: '本地优化失败：' + String(error?.message || error).slice(0, 200) };
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1246,6 +1285,7 @@ export function createWorker(options) {
     startSharing: start,
     stopSharing,
     readLoraCatalog: (kind, input) => loraCatalog.read(kind, input),
+    rewriteAudioPrompt,
     stop,
     heartbeat,
     reportModels,

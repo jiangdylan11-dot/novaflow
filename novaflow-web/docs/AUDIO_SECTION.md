@@ -45,7 +45,17 @@ ComfyUI 0.37 原生支持该模型（`comfy/text_encoders/sa3.py`），采样 8 
 
 - 后端：源码助手（4786，临时控制面 4895）创建任务 → ComfyUI → WAV 经网关取回；中文描述「森林关卡的背景音乐，轻松又有点神秘，竖琴和长笛」改写为英文 caption，30 秒循环版 12 小节/88 BPM。
 - 网页：浏览器窗格内点击「音频」→ 生成音乐/音效（2 个变体）→ 结果卡片、波形、仓库待保存提示。
-- 测试：`tests/e2e/audio-studio.test.mjs`（7 项）。
+- 测试：`tests/e2e/audio-studio.test.mjs`（10 项，含云端音频分支与弹框 / 层级源码断言）。
+
+## AI 助手与窗口层级（2026-10-07 第三版）
+
+- 提示词框与其他版块一致：标题行下一条分割线（rgba(255,255,255,.22)），输入时变绿（#1ea672）。「AI 润色」开关改为「AI 助手」按钮（与动画版块同款 24px / 11px / 500 / 星芒图标），打开与其他版块同样式的弹框（处理方式 云端模型 | 本地模型，补充要求）。
+- 优化规则按音乐 / 音效自己的框架（`worker/src/comfy/audio-reprompt.mjs` 的 MUSIC_FRAME / SFX_FRAME）：
+  - 本地：启动助手新增 `POST /local/audio/optimize-prompt`（`worker-core.rewriteAudioPrompt`），在 ComfyUI 上只跑文本改写图（qwen3.5_2b → TextGenerate → NovaFlowAudioCaption → PreviewAny），输入带补充要求、页面 BPM 和循环提示，返回一句英文描述（去掉尾部的 Length 标注，生成时再补）。2B 模型偶有发挥（加乐器 / 换场景），温度 0.7 与生成链一致。
+  - 云端：`electronAPI.smartAiPromptOptimize({surface:'audio', purpose:'audio-music'|'audio-sfx', prompt, requirements, durationSeconds, bpm, loop})`，边缘函数 `smart-ai-grok.workflow.mjs` 新增 `isAudioPromptPayload / buildAudioPromptRequest`（同一套框架的副本，纯文本回答，无负面提示词）。需要重新部署 novaflow-backend 才生效，否则会落到美工分支。
+- 优化结果写回输入框并记为 `optimized`：与输入框文本一致时直接作为描述提交（`reprompt:false`），用户再改动后恢复为普通文本（走生成链自己的改写）。
+- 布局层级跟随 brand runtime 的 `data-novaflow-layout-tier`：wide（资源栏 206 / 间距 10）、narrow（172 / 8，生成坞与走带栏的控件换行，卡片随之增高）、stack（<720：面板、舞台、生成坞、走带栏、资源列表按面板宽度上下堆叠，资源列表 140 高）。覆盖层下加一块不透明底（取面板后面的页面底色），窄窗口下动画版块的内容不再透出。
+- 验证：窗格 516×980（stack）、790×1015（narrow）、1600×900（wide）三档坐标；本地引擎在 4786 实跑（音乐 / 音效各一次）；劫持探针无运行时属性。
 
 ## 待办
 

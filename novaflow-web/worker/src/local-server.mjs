@@ -66,6 +66,8 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
           if (req.method === 'POST' && action === 'describe-art-style') return json(200, await promptAssistant.describeArtStyle(body));
           throw fail('未找到本机接口', 404);
         }
+        // 音频 AI 助手 (本地): the audio pipeline's own rewrite, answered as {ok, prompt}.
+        if (req.method === 'POST' && url.pathname === '/local/audio/optimize-prompt') return json(200, await worker.rewriteAudioPrompt(body));
         if (req.method === 'GET' && url.pathname === '/api/web/capabilities') {
           return json(200, { available_workers: s.comfy.image || s.comfy.video ? 1 : 0, models: s.models, features: s.features || {},
             taskTypes: Object.entries(TASK_TYPE_REQUIREMENTS).map(([task_type, spec]) => ({ task_type, ...spec,

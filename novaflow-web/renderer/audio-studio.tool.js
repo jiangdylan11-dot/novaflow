@@ -23,6 +23,11 @@
   const STAGE_TOP = 62;                // TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP
   const EDGE_GAP = 10;
   const SIDEBAR_W = 206;
+  // The brand runtime's layout tiers: wide (>1400), narrow (720..1400) and
+  // stack (<720, every card full width under the section panel). The side
+  // gap and the resource column follow the tier; the stack tier stacks.
+  const TIERS = { wide: { resources: 206, gap: 10 }, narrow: { resources: 172, gap: 8 }, stack: { resources: 172, gap: 8, resourcesHeight: 140 } };
+  function layoutTier() { const t = document.documentElement.getAttribute('data-novaflow-layout-tier'); return TIERS[t] ? t : 'wide'; }
   const TRANSPORT_H = 50;
   const DOCK_H = 213;
   const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E\")";
@@ -237,6 +242,7 @@
     const root = document.getElementById(ROOT_ID);
     if (root) root.hidden = true;
     closeDropdown();
+    closeAssistant();
     if (editor) editor.pause();
     stopPreview();
     syncMask();
@@ -286,7 +292,8 @@
       #${ROOT_ID} button:focus,#${ROOT_ID} textarea:focus,#${ROOT_ID} input:focus{outline:0;box-shadow:none}
       #${ROOT_ID} > *{pointer-events:auto}
       #${ROOT_ID} [data-nf-label]::after{content:attr(data-nf-label)}
-      .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport{position:fixed}
+      .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport,.nf-as-backdrop{position:fixed}
+      .nf-as-backdrop{pointer-events:auto}
       /* left card: the section panel */
       .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
       .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:0 0 17px}
@@ -312,6 +319,33 @@
       .nf-as-select[aria-expanded="true"]{border-color:#3d3d3d}
       .nf-as-select-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .nf-as-select-inline{width:auto;min-width:72px}
+      .nf-as-ai-root{position:fixed;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58)}
+      .nf-as-ai-dialog{position:relative;width:min(422px,calc(100vw - 36px));max-height:calc(100vh - 36px);display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.10);border-radius:6px;background:#202020;box-shadow:0 22px 60px rgba(0,0,0,.48);overflow:hidden;color:#e8eaed}
+      .nf-as-ai-header{height:50px;min-height:50px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 8px 0 16px;border-bottom:1px solid rgba(255,255,255,.09)}
+      .nf-as-ai-title{font-size:14px;font-weight:400;line-height:1}
+      .nf-as-ai-close{width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center;padding:0;border:0;border-radius:6px;background:transparent;color:rgba(255,255,255,.62);font-size:18px;line-height:1}
+      .nf-as-ai-close:hover{background:rgba(255,255,255,.08);color:#fff}
+      .nf-as-ai-body{display:grid;gap:12px;padding:18px 14px 12px;overflow-y:auto}
+      .nf-as-ai-section{display:flex;flex-direction:column;gap:10px}
+      .nf-as-ai-label{color:rgba(229,231,235,.72);font-size:12px;font-weight:400;line-height:1}
+      .nf-as-ai-engine-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .nf-as-ai-engine-option{display:flex;align-items:center;gap:8px;min-height:42px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.035);color:rgba(232,237,242,.88);font-size:12px;cursor:pointer}
+      .nf-as-ai-engine-option input{accent-color:#23c489;margin:0}
+      .nf-as-ai-engine-meta{display:block;margin-top:2px;color:rgba(232,237,242,.46);font-size:10px}
+      .nf-as-ai-textarea{width:100%;height:118px;min-height:92px;max-height:160px;resize:vertical;padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:#050505;color:#edf2f7;font-size:12px;line-height:1.45}
+      .nf-as-ai-textarea::placeholder{color:#6e6e6e}
+      .nf-as-ai-note{color:rgba(232,237,242,.56);font-size:12px;line-height:18px}
+      .nf-as-ai-message{display:none;margin:0 14px 8px;min-height:17px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.035);color:rgba(160,160,160,.96);font-size:11px;line-height:17px;white-space:pre-line;overflow-wrap:anywhere}
+      .nf-as-ai-message[data-visible="1"]{display:block}
+      .nf-as-ai-message[data-tone="error"]{border-color:rgba(248,113,113,.42);background:rgba(127,29,29,.18);color:rgba(254,202,202,.98)}
+      .nf-as-ai-footer{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:0 14px 14px}
+      .nf-as-ai-footer[data-busy="1"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .nf-as-ai-submit{width:100%;min-width:0;height:44px;padding:0 16px;border:0;border-radius:6px;background:#1f7a58;color:#fff;font-size:13px;font-weight:400;line-height:1}
+      .nf-as-ai-submit:hover{background:#20b886}
+      .nf-as-ai-submit:disabled{cursor:not-allowed;opacity:.62}
+      .nf-as-ai-stop{width:100%;min-width:0;height:44px;padding:0 16px;border:1px solid rgba(239,68,68,.55);border-radius:6px;background:rgba(239,68,68,.18);color:#fff;font-size:13px;font-weight:500;line-height:1}
+      .nf-as-ai-stop:hover{background:rgba(239,68,68,.28)}
+      .nf-as-ai-stop[hidden]{display:none!important}
       .nf-as-dd-dim{position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:5}
       .nf-as-dd-panel{position:fixed;z-index:6;overflow:auto;background:#1b1b1b;border:1px solid rgba(255,255,255,.18);border-radius:0;box-shadow:0 18px 48px rgba(0,0,0,.55);color:rgba(255,255,255,.88);font-size:12px;line-height:26px}
       .nf-as-dd-panel::-webkit-scrollbar{width:6px}.nf-as-dd-panel::-webkit-scrollbar-thumb{background:#3a3a3a}
@@ -377,11 +411,11 @@
       .nf-tl-playhead{position:absolute;top:0;width:2px;background:#ef4444;pointer-events:none}
       .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
       /* generation dock */
-      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:32px 18px 4px minmax(0,1fr);row-gap:9px}
+      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:auto 18px 4px minmax(0,1fr);row-gap:9px}
       .nf-as-dock-progress{height:4px;border-radius:2px;background:#262626;overflow:hidden}
       .nf-as-dock-progress i{display:block;height:100%;width:0;background:#1ea672;transition:width .3s linear}
       .nf-as-dock[hidden]{display:none!important}
-      .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
+      .nf-as-dock-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;min-height:32px}
       .nf-as-dock-row .nf-as-label{white-space:nowrap;color:#a9a9a9}
       .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
       .nf-as-switch{width:27px;height:15px;border-radius:15px;border:0;background:#3a3a3a;position:relative;padding:0;flex:none}
@@ -395,15 +429,19 @@
       .nf-as-cancel{margin-left:auto;height:18px;border:0;border-radius:7px;background:rgba(239,68,68,.18);color:#ffb4b4;font-size:11px;padding:0 8px}
       .nf-as-cancel[hidden]{display:none}
       .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0}
-      .nf-as-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:4px 7px}
+      .nf-as-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:4px 7px;border-bottom:1px solid rgba(255,255,255,.22)}
+      .nf-as-prompt:focus-within .nf-as-prompt-head{border-bottom-color:#1ea672}
+      .nf-as-prompt-ai{height:24px;min-height:24px;max-height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;line-height:1;padding:3px 7px;display:inline-flex;align-items:center;justify-content:center;gap:7px}
+      .nf-as-prompt-ai::before{content:"";display:block;flex:0 0 auto;width:16px;height:16px;background-color:currentColor;-webkit-mask:var(--nf-as-sparkles) center/contain no-repeat;mask:var(--nf-as-sparkles) center/contain no-repeat}
+      .nf-as-prompt-ai:hover{color:#fff;background:#2a2a2a}
       .nf-as-prompt-head .nf-as-chip{height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;padding:3px 7px;display:flex;align-items:center;gap:7px}
       .nf-as-prompt-head button.nf-as-chip:hover{color:#fff;background:#2a2a2a}
       .nf-as-prompt-head button.nf-as-chip[aria-pressed="true"]{color:#9be4cd}
       .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#c9c9c9;font-size:12px;line-height:1.5;padding:12px 14px}
       .nf-as-prompt textarea::placeholder{color:#6e6e6e}
       /* transport */
-      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-soft,#343434);border-radius:10px;padding:9px 12px;display:grid;grid-template-rows:30px}
-      .nf-as-tr-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;min-width:0}
+      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-soft,#343434);border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;justify-content:flex-start}
+      .nf-as-tr-row{display:flex;align-items:center;gap:8px 8px;flex-wrap:wrap;white-space:nowrap;min-width:0;min-height:30px;flex:0 0 auto}
       .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:1px solid transparent;border-radius:var(--nf-ref-radius-control,7px);background:#282828;color:#eaeaea;display:grid;place-items:center;padding:0}
       .nf-as-tr-row .nf-as-tbtn:hover{background:#343434}
       .nf-as-tr-row .nf-as-tbtn[aria-pressed="true"]{background:#193d33;color:#8ee0c5;border-color:#306553}
@@ -519,7 +557,11 @@
     openDropdown.api.trigger.setAttribute('aria-expanded', 'false');
     openDropdown = null;
   }
-  document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && openDropdown) { closeDropdown(); event.stopPropagation(); } }, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (assistant) { closeAssistant(); event.stopPropagation(); return; }
+    if (openDropdown) { closeDropdown(); event.stopPropagation(); }
+  }, true);
   function selectField(parent, label, options, value, onChange) {
     const field = el('div', 'nf-as-field');
     field.appendChild(el('div', 'nf-as-label', label));
@@ -542,6 +584,112 @@
     loop: svgWrap('<path d="M6.5 5.3c2.7-2 6.8-.4 7.3 2.8.5 3.2-3.1 5.8-6 4.4" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"></path><path d="M7.2 4.2l-2.6 1.2 2.1 2.0" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>')
   };
   function svgIcon(icon) { return icon; }
+  const SPARKLES_ICON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/%3E%3Cpath d='M20 3v4'/%3E%3Cpath d='M22 5h-4'/%3E%3Cpath d='M4 17v2'/%3E%3Cpath d='M5 18H3'/%3E%3C/svg%3E")`;
+
+  // ---- AI 助手 ------------------------------------------------------------------------
+  // The same dialog as the other sections (engine choice, 补充要求), with the
+  // audio frames behind it: 云端 goes through the account's prompt optimizer
+  // with the audio surface, 本地 through the assistant's own text model.
+  const AI_ENGINE_KEY = 'novaflow_audio_ai_engine';
+  let assistant = null;
+  function readToken() {
+    try { const parsed = JSON.parse(localStorage.getItem('novaflow_web_session_v1') || 'null'); return String(parsed?.session?.token || parsed?.token || '').trim(); } catch (_) { return ''; }
+  }
+  function assistantResultText(result) {
+    const nested = result && typeof result.result === 'object' && result.result ? result.result : {};
+    return String(result?.prompt || nested.prompt || nested.output_text || '').replace(/\s+/g, ' ').trim();
+  }
+  function closeAssistant() {
+    if (!assistant) return;
+    assistant.root.remove();
+    assistant = null;
+  }
+  function openAssistant() {
+    closeAssistant();
+    const mode = state.mode;
+    const m = state[mode];
+    const isMusic = mode === 'music';
+    let engine = 'grok';
+    try { engine = localStorage.getItem(AI_ENGINE_KEY) === 'local' ? 'local' : 'grok'; } catch (_) { /* no storage */ }
+    const root = el('div', 'nf-as-ai-root');
+    const dialog = el('div', 'nf-as-ai-dialog');
+    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-label', 'AI 助手');
+    const header = el('div', 'nf-as-ai-header');
+    header.appendChild(el('div', 'nf-as-ai-title', 'AI 助手'));
+    const close = el('button', 'nf-as-ai-close', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭');
+    close.addEventListener('click', closeAssistant);
+    header.appendChild(close);
+    const body = el('div', 'nf-as-ai-body');
+    const engineSection = el('div', 'nf-as-ai-section');
+    engineSection.appendChild(el('div', 'nf-as-ai-label', '处理方式'));
+    const engineRow = el('div', 'nf-as-ai-engine-row');
+    for (const [key, name, meta] of [['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 耗时取决于模型与显卡']]) {
+      const option = el('label', 'nf-as-ai-engine-option');
+      const radio = el('input'); radio.type = 'radio'; radio.name = 'nf-as-ai-engine'; radio.value = key; radio.checked = engine === key;
+      radio.addEventListener('change', () => { if (!radio.checked) return; engine = key; try { localStorage.setItem(AI_ENGINE_KEY, key); } catch (_) { /* no storage */ } });
+      const text = el('span', null, name); text.appendChild(el('span', 'nf-as-ai-engine-meta', meta));
+      option.appendChild(radio); option.appendChild(text); engineRow.appendChild(option);
+    }
+    engineSection.appendChild(engineRow); body.appendChild(engineSection);
+    const requirementSection = el('div', 'nf-as-ai-section');
+    requirementSection.appendChild(el('div', 'nf-as-ai-label', '补充要求'));
+    const requirements = el('textarea', 'nf-as-ai-textarea');
+    requirements.placeholder = isMusic ? '可选。例如：更紧张一点，加入鼓点；换成管弦乐；节奏再慢些' : '可选。例如：更厚重的低频；加一点回声；更短促';
+    requirementSection.appendChild(requirements);
+    requirementSection.appendChild(el('div', 'nf-as-ai-note', isMusic ? '按背景音乐的写法润色当前描述并写回输入框，不会直接生成音乐' : '按游戏音效的写法润色当前描述并写回输入框，不会直接生成音效'));
+    body.appendChild(requirementSection);
+    const message = el('div', 'nf-as-ai-message'); message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
+    const footer = el('div', 'nf-as-ai-footer');
+    const submit = label(el('button', 'nf-as-ai-submit'), '开始优化'); submit.type = 'button';
+    const stop = label(el('button', 'nf-as-ai-stop'), '任务中止'); stop.type = 'button'; stop.hidden = true;
+    footer.appendChild(submit); footer.appendChild(stop);
+    dialog.appendChild(header); dialog.appendChild(body); dialog.appendChild(message); dialog.appendChild(footer);
+    root.appendChild(dialog);
+    root.addEventListener('click', (event) => { if (event.target === root) closeAssistant(); });
+    ui.root.appendChild(root);
+    assistant = { root, run: null };
+    const setMessage = (text, tone) => { message.textContent = text; message.setAttribute('data-visible', text ? '1' : '0'); message.setAttribute('data-tone', tone || ''); };
+    const refreshSubmit = () => { if (!assistant || assistant.run) return; submit.disabled = !String(m.text || '').trim() && !requirements.value.trim(); };
+    requirements.addEventListener('input', refreshSubmit);
+    refreshSubmit();
+    const idle = () => { if (!assistant) return; assistant.run = null; stop.hidden = true; footer.removeAttribute('data-busy'); refreshSubmit(); };
+    submit.addEventListener('click', async () => {
+      if (!assistant || assistant.run) return;
+      const promptText = String(m.text || '').trim();
+      const extra = requirements.value.trim();
+      if (!promptText && !extra) return;
+      const run = { stopped: false };
+      assistant.run = run;
+      submit.disabled = true; stop.hidden = false; footer.setAttribute('data-busy', '1');
+      setMessage(engine === 'local' ? '本地模型正在润色…' : '云端模型正在润色…', '');
+      let result;
+      try {
+        if (engine === 'local') {
+          const runtime = window.NovaFlowWebRuntime;
+          if (!runtime || runtime.computeMode !== 'local') throw new Error('本地模型需要从启动助手打开的本机模式使用');
+          result = await runtime.localControl('POST', '/local/audio/optimize-prompt', { kind: mode, text: promptText, requirements: extra, seconds: m.seconds, bpm: isMusic ? m.bpm : 0, loop: isMusic && m.loop }, 5 * 60 * 1000);
+        } else {
+          const api = window.electronAPI;
+          if (!api || typeof api.smartAiPromptOptimize !== 'function') throw new Error('云端模型不可用，请刷新网页后重试');
+          result = await api.smartAiPromptOptimize({ token: readToken(), surface: 'audio', purpose: isMusic ? 'audio-music' : 'audio-sfx', prompt: promptText, requirements: extra, durationSeconds: m.seconds, bpm: isMusic ? m.bpm : 0, loop: isMusic && m.loop, supportsNegativePrompt: false });
+        }
+      } catch (error) {
+        result = { ok: false, error: String(error?.message || error) };
+      }
+      if (run.stopped || !assistant || assistant.run !== run) return;
+      const text = assistantResultText(result);
+      if (!result || result.ok === false || !text) {
+        setMessage(String(result?.error || (result?.result && result.result.error) || '优化失败，请重试'), 'error');
+        idle();
+        return;
+      }
+      m.text = text; m.optimized = text;
+      if (state.mode === mode) ui.textarea.value = text;
+      closeAssistant();
+    });
+    stop.addEventListener('click', () => { if (!assistant || !assistant.run) return; assistant.run.stopped = true; setMessage('已中止', ''); idle(); });
+    requirements.focus();
+  }
 
   // ---- mount --------------------------------------------------------------------------
   function mount() {
@@ -553,6 +701,8 @@
     root.setAttribute('data-novaflow-runtime-ignore', '1');
     root.setAttribute('aria-label', LABEL);
     ui = { root };
+    ui.backdrop = el('div', 'nf-as-backdrop');
+    root.appendChild(ui.backdrop);
 
     // left card ---------------------------------------------------------------
     const left = el('div', 'nf-as-left');
@@ -668,11 +818,10 @@
     const prompt = el('div', 'nf-as-prompt');
     const head = el('div', 'nf-as-prompt-head');
     ui.promptLabel = el('span', 'nf-as-chip', '音乐描述');
-    const rewrite = el('button', 'nf-as-chip', 'AI 润色'); rewrite.type = 'button'; rewrite.title = '生成前由本机模型把描述改写成更完整的英文提示';
-    rewrite.setAttribute('aria-pressed', 'true');
-    rewrite.addEventListener('click', () => { const m = state[state.mode]; m.rewrite = !m.rewrite; rewrite.setAttribute('aria-pressed', String(m.rewrite)); });
-    ui.rewrite = rewrite;
-    head.appendChild(ui.promptLabel); head.appendChild(rewrite);
+    const assistantButton = label(el('button', 'nf-as-prompt-ai'), 'AI 助手'); assistantButton.type = 'button';
+    assistantButton.style.setProperty('--nf-as-sparkles', SPARKLES_ICON);
+    assistantButton.addEventListener('click', openAssistant);
+    head.appendChild(ui.promptLabel); head.appendChild(assistantButton);
     ui.textarea = el('textarea');
     ui.textarea.addEventListener('input', () => { state[state.mode].text = ui.textarea.value; });
     prompt.appendChild(head); prompt.appendChild(ui.textarea);
@@ -683,6 +832,7 @@
     // transport ---------------------------------------------------------------------
     const transport = el('div', 'nf-as-transport');
     const row1 = el('div', 'nf-as-tr-row');
+    ui.trRow = row1;
     const tbtn = (icon, title, fn) => { const b = el('button', 'nf-as-tbtn'); b.type = 'button'; b.title = title; b.innerHTML = svgIcon(icon); b.addEventListener('click', fn); row1.appendChild(b); return b; };
     tbtn(ICONS.start, '回到开头', () => editor.seek(0));
     tbtn(ICONS.back, '后退 1 秒', () => editor.seek(editor.playhead() - 1));
@@ -819,7 +969,6 @@
     ui.promptLabel.textContent = mode === 'music' ? '音乐描述' : '音效描述';
     ui.textarea.placeholder = mode === 'music' ? '输入音乐描述，例如：森林关卡，轻松又带点神秘，竖琴和长笛' : '输入音效描述，例如：打开木门，吱呀一声，有点回音';
     ui.textarea.value = m.text;
-    ui.rewrite.setAttribute('aria-pressed', String(m.rewrite));
     refreshCapabilities();
   }
   function syncDockValues() {
@@ -845,23 +994,60 @@
     if (column instanceof HTMLElement) stageLeft = Math.round(column.getBoundingClientRect().right);
     // The native card's own top and bottom (the brand runtime sets them per layout tier).
     const sr = surface instanceof HTMLElement && surface.getBoundingClientRect().width > 100 ? surface.getBoundingClientRect() : null;
-    const top = sr ? Math.round(sr.top) : STAGE_TOP, bottom = sr ? Math.round(sr.bottom) : window.innerHeight - EDGE_GAP, right = window.innerWidth - EDGE_GAP;
+    const tier = TIERS[layoutTier()];
+    const gap = tier.gap;
+    const top = sr ? Math.round(sr.top) : STAGE_TOP, bottom = sr ? Math.round(sr.bottom) : window.innerHeight - gap, right = window.innerWidth - gap;
     const place = (node, x, y, w, h) => { node.style.left = x + 'px'; node.style.top = y + 'px'; node.style.width = w + 'px'; node.style.height = h + 'px'; };
-    place(ui.left, cardLeft, top, cardWidth, bottom - top);
-    place(ui.stage, stageLeft, top, right - stageLeft, bottom - top);
-    place(ui.sidebar, right - SIDEBAR_W, top, SIDEBAR_W, bottom - top);
-    const innerRight = right - SIDEBAR_W - EDGE_GAP;
-    const transportTop = bottom - TRANSPORT_H;
-    place(ui.transport, stageLeft, transportTop, innerRight - stageLeft, TRANSPORT_H);
     const dockVisible = !ui.dock.hidden;
-    const dockTop = transportTop - 9 - DOCK_H;
-    place(ui.dock, stageLeft, dockTop, innerRight - stageLeft, DOCK_H);
-    // the timeline stops above whichever card comes first
-    const timelineBottom = (dockVisible ? dockTop : transportTop) - 9;
+    // The control row wraps when the column is narrow; the dock grows by the
+    // wrapped height (measured at the width it is about to get).
+    const dockHeightFor = (width) => { ui.dock.style.width = width + 'px'; return DOCK_H - 32 + Math.max(32, ui.dockRow.offsetHeight); };
+    const transportHeightFor = (width) => { ui.transport.style.width = width + 'px'; ui.transport.style.height = 'auto'; return TRANSPORT_H - 30 + Math.max(30, ui.trRow.offsetHeight); };
+    // the page's own background, read from behind the section panel
+    let backdropColor = '#1b1b1b';
+    for (let node = surface instanceof HTMLElement ? surface.parentElement : document.body; node; node = node.parentElement) {
+      const color = getComputedStyle(node).backgroundColor;
+      if (color && color !== 'transparent' && !/rgba\(0, 0, 0, 0\)/.test(color)) { backdropColor = color; break; }
+    }
+    ui.backdrop.style.background = backdropColor;
+    place(ui.backdrop, cardLeft - 2, Math.max(0, top - 8), window.innerWidth - cardLeft + 2, window.innerHeight - Math.max(0, top - 8));
     const tl = ui.stage.querySelector('.nf-as-timeline');
-    tl.style.right = (right - innerRight) + 'px';
-    tl.style.bottom = (bottom - timelineBottom) + 'px';
-    ui.stage.querySelector('.nf-as-topbar').style.right = (right - innerRight) + 'px';
+    const topbar = ui.stage.querySelector('.nf-as-topbar');
+    if (tier.resourcesHeight) {
+      // stack tier: the section panel keeps its own box; stage, dock, transport
+      // and the resource list follow under it at the panel's width.
+      const x = cardLeft, w = cardWidth;
+      const floor = window.innerHeight - gap;
+      place(ui.left, x, top, w, bottom - top);
+      const sidebarTop = floor - tier.resourcesHeight;
+      const transportH = transportHeightFor(w);
+      const transportTop = sidebarTop - 8 - transportH;
+      const dockH = dockHeightFor(w);
+      const dockTop = dockVisible ? transportTop - 8 - dockH : transportTop;
+      const stageTop = bottom + 8;
+      const stageBottom = Math.max(stageTop + 140, (dockVisible ? dockTop : transportTop) - 8);
+      place(ui.stage, x, stageTop, w, stageBottom - stageTop);
+      place(ui.dock, x, dockTop, w, dockH);
+      place(ui.transport, x, transportTop, w, transportH);
+      place(ui.sidebar, x, sidebarTop, w, tier.resourcesHeight);
+      tl.style.right = '0px'; tl.style.bottom = '0px'; topbar.style.right = '0px';
+    } else {
+      place(ui.left, cardLeft, top, cardWidth, bottom - top);
+      place(ui.stage, stageLeft, top, right - stageLeft, bottom - top);
+      place(ui.sidebar, right - tier.resources, top, tier.resources, bottom - top);
+      const innerRight = right - tier.resources - gap;
+      const transportH = transportHeightFor(innerRight - stageLeft);
+      const transportTop = bottom - transportH;
+      place(ui.transport, stageLeft, transportTop, innerRight - stageLeft, transportH);
+      const dockH = dockHeightFor(innerRight - stageLeft);
+      const dockTop = transportTop - 9 - dockH;
+      place(ui.dock, stageLeft, dockTop, innerRight - stageLeft, dockH);
+      // the timeline stops above whichever card comes first
+      const timelineBottom = (dockVisible ? dockTop : transportTop) - 9;
+      tl.style.right = (right - innerRight) + 'px';
+      tl.style.bottom = (bottom - timelineBottom) + 'px';
+      topbar.style.right = (right - innerRight) + 'px';
+    }
     syncMask();
     if (editor) { editor.layout(); drawOverview(); }
   }
@@ -1027,8 +1213,13 @@
   }
 
   // ---- captions ----------------------------------------------------------------------
+  // The AI 助手 writes a finished English caption; it goes to the audio model as
+  // written (length and BPM are still appended there), and the pipeline's own
+  // rewrite is skipped for it. Edited afterwards, it is ordinary text again.
+  function optimizedCaption(m) { const text = String(m.text || '').trim(); return text && m.optimized === text ? text : ''; }
   function musicCaption() {
     const m = state.music;
+    if (optimizedCaption(m)) return optimizedCaption(m);
     const style = MUSIC_STYLES.find((s) => s[0] === m.style) || MUSIC_STYLES[0];
     const mood = MOODS.find((s) => s[0] === m.mood) || MOODS[0];
     const text = translate(m.text);
@@ -1043,6 +1234,7 @@
   }
   function sfxCaption() {
     const m = state.sfx;
+    if (optimizedCaption(m)) return optimizedCaption(m);
     const cat = SFX_CATEGORIES.find((c) => c[0] === m.category) || SFX_CATEGORIES[0];
     const style = SFX_STYLES.find((s) => s[0] === m.style) || SFX_STYLES[0];
     const text = translate(m.text);
@@ -1071,12 +1263,12 @@
   async function submitMusic() {
     const m = state.music;
     await submit('audio_music', 'music', describeMusic(), {
-      prompt: musicCaption(), duration_seconds: m.seconds, bpm: m.bpm, loop: m.loop, crossfade_ms: 800, reprompt: m.rewrite
+      prompt: musicCaption(), duration_seconds: m.seconds, bpm: m.bpm, loop: m.loop, crossfade_ms: 800, reprompt: m.rewrite && !optimizedCaption(m)
     });
   }
   async function submitSfx() {
     const m = state.sfx;
-    const parameters = { prompt: sfxCaption(), duration_seconds: m.seconds, reprompt: m.rewrite };
+    const parameters = { prompt: sfxCaption(), duration_seconds: m.seconds, reprompt: m.rewrite && !optimizedCaption(m) };
     for (let i = 0; i < m.count; i += 1) submit('audio_sfx', 'sfx', describeSfx(), parameters);
   }
   async function submit(taskType, kind, label, parameters) {

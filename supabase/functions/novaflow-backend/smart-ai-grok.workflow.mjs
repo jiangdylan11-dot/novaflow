@@ -8862,7 +8862,98 @@ function buildUiDesignPromptRequest(payload, model) {
   };
 }
 
+// 音频 AI 助手: music and sound-effect captions for the audio model. The frames
+// are the audio pipeline's own rewrite frames (worker/src/comfy/audio-reprompt.mjs),
+// kept in step by hand; the output is one English caption line, no JSON.
+const AUDIO_MUSIC_FRAME = `You are an expert musician, musicologist and prompt engineer. Transform the user's input into a detailed, vivid music prompt for a full instrumental game background track. Write in English whatever language the input is in.
+
+1. Start with the genre or style and optional adjectives (e.g., upbeat, dreamy, aggressive).
+2. List the main instruments that define the track.
+3. Add supporting elements or layers such as pads, harmonics, effects, or field recordings.
+4. Include rhythm or percussion elements like drums, hi-hats, congas, brushes, or polyrhythms.
+5. Integrate mood and energy naturally in the sentence (e.g., "creating suspenseful tension" or "bright and uplifting").
+6. Keep every instrument, style, place and mood the input names, and do not invent places, instruments or styles the input does not imply; never add singing or vocals.
+7. If the input says loop, keep "steady tempo, consistent groove, no intro, no outro, seamless loop".
+8. Specify the BPM given in the input, or a fitting one.
+9. The additional request, when there is one, changes or extends the description; apply it faithfully.
+10. Combine all elements into one natural, fluid sentence. Avoid semicolons. Output ONLY that sentence, no explanations, no quotes, no Markdown.
+
+Template:
+Genre/Style with main instruments, supporting instruments/layers, and rhythm/percussion creating mood/energy. BPM: X
+
+Examples:
+- Chiptune adventure game loop with bright square-wave lead melody, arpeggiated pulse chords, triangle bass and crisp 8-bit drums, steady tempo, consistent groove, no intro, no outro, seamless loop, upbeat and heroic. BPM: 140
+- Mysterious forest exploration track with soft harp arpeggios, warm flute melody, gentle string pads, soft marimba and light hand percussion creating a calm, magical atmosphere. BPM: 88
+- Epic orchestral battle score with soaring strings, bold brass, french horns, taiko drums and timpani creating intense heroic energy. BPM: 110
+- Chinese traditional style track with guzheng, dizi bamboo flute, erhu, pipa and soft hand drums creating a serene, elegant mood. BPM: 84`;
+
+const AUDIO_SFX_FRAME = `You are a professional sound design expert. Convert the user's input into a precise, vivid sound effects description suitable for generative audio models. Write in English whatever language the input is in.
+
+Describe clearly:
+- Sound source
+- Physical character (texture, timbre, material: metal, wood, glass, concrete, etc.)
+- Spatial qualities (indoor/outdoor, dry/reverberant, close-up/distant)
+- Temporal evolution (attack, decay, movement, transitions over time)
+
+Output constraints:
+- 1-2 dense sentences maximum, one line
+- Output ONLY the final rewritten prompt, no explanations, no formatting, no quotes, no Markdown
+- Keep every detail the input names and do not invent materials, places or sounds the input does not imply; it is a game sound effect, so no music unless the input asks for a jingle or chime
+- The additional request, when there is one, changes or extends the description; apply it faithfully
+- Never add speech or singing
+
+Examples:
+- Wooden door creaking open slowly in an old house, echoing interior, eerie tone.
+- Glass bottle shattering on concrete, sharp impact, scattered fragments.
+- Sword swing whooshing through air, fast motion, clean metallic tone.
+- Level up chime, bright, rewarding, fantasy RPG style.
+- Menu navigation clicks, soft futuristic interface sounds.`;
+
+function isAudioPromptPayload(payload) {
+  const surface = normalizeSmartAiText(payload?.surface || "", 80).toLowerCase();
+  const purpose = smartAiPayloadPurpose(payload);
+  return surface === "audio" || purpose === "audio-music" || purpose === "audio-sfx";
+}
+
+function buildAudioPromptRequest(payload, model = "grok-4.3") {
+  const isSfx = smartAiPayloadPurpose(payload) === "audio-sfx";
+  const prompt = smartAiCurrentPrompt(payload, 1500).replace(/\s+/g, " ").trim();
+  const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || "", 1000).replace(/\s+/g, " ").trim();
+  if (!prompt && !requirements) throw new Error("请输入描述或补充要求");
+  const seconds = Math.max(1, Math.round(Number(payload?.durationSeconds ?? payload?.duration_seconds) || (isSfx ? 2 : 30)));
+  const bpm = isSfx ? 0 : Math.round(Number(payload?.bpm) || 0);
+  const userText = [
+    "Input: " + (prompt || "(none)"),
+    ...(requirements ? ["Additional request: " + requirements] : []),
+    "Target audio length: " + seconds + " seconds.",
+    ...(bpm ? ["BPM: " + bpm] : []),
+    "Output:"
+  ].join("\n");
+  return {
+    body: {
+      model: String(model || "grok-4.3"),
+      store: false,
+      input: [
+        { role: "system", content: [smartAiInputText(isSfx ? AUDIO_SFX_FRAME : AUDIO_MUSIC_FRAME)] },
+        { role: "user", content: [smartAiInputText(userText)] }
+      ],
+      temperature: 0.5,
+      max_output_tokens: 400
+    },
+    inputMeta: {
+      mode: "prompt_optimize",
+      charCount: prompt.length + requirements.length,
+      imageCount: 0,
+      scenario: isSfx ? "audio_sfx" : "audio_music",
+      hasNegativePrompt: false,
+      supportsNegativePrompt: false
+    },
+    resultOptions: { supportsNegativePrompt: false }
+  };
+}
+
 function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
+  if (isAudioPromptPayload(payload)) return buildAudioPromptRequest(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
   if (isMiniMaxH3PromptEnhancePayload(payload)) return buildMiniMaxH3GrokOptimizeRequest(payload, model);
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
@@ -9179,6 +9270,8 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
 
 export {
   buildGrokPromptOptimizeRequest,
+  buildAudioPromptRequest,
+  isAudioPromptPayload,
   buildGrokImageReverseRequest,
   grokResponsesPublicResult,
   ordinaryArtPromptPatchBlocks,

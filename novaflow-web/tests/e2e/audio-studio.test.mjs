@@ -146,3 +146,35 @@ test('the mixdown writer produces a 16-bit PCM WAV of the right length', () => {
 
 import { readFileSync } from 'node:fs';
 function readFileSyncSafe(path) { return readFileSync(path, 'utf8'); }
+
+test('the cloud prompt optimizer has an audio branch: music and effect frames, one caption, no negative prompt', async () => {
+  const { buildGrokPromptOptimizeRequest, isAudioPromptPayload } = await import('../../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs');
+  assert.equal(isAudioPromptPayload({ surface: 'audio', purpose: 'audio-music' }), true);
+  assert.equal(isAudioPromptPayload({ surface: 'animation', purpose: 'optimize' }), false);
+  const music = buildGrokPromptOptimizeRequest({ surface: 'audio', purpose: 'audio-music', prompt: '森林关卡，竖琴和长笛', requirements: '更神秘一点', durationSeconds: 24, bpm: 96, supportsNegativePrompt: false }, 'grok-test');
+  const system = music.body.input[0].content[0].text;
+  const user = music.body.input[1].content[0].text;
+  assert.match(system, /expert musician/);
+  assert.match(system, /never add singing/);
+  assert.match(user, /Input: 森林关卡，竖琴和长笛/);
+  assert.match(user, /Additional request: 更神秘一点/);
+  assert.match(user, /Target audio length: 24 seconds/);
+  assert.match(user, /BPM: 96/);
+  assert.equal(music.resultOptions.supportsNegativePrompt, false);
+  assert.equal(music.inputMeta.scenario, 'audio_music');
+  assert.equal(music.body.text, undefined, 'plain text answer, no JSON schema');
+  const sfx = buildGrokPromptOptimizeRequest({ surface: 'audio', purpose: 'audio-sfx', prompt: '打开木门', durationSeconds: 2 }, 'grok-test');
+  assert.match(sfx.body.input[0].content[0].text, /sound design expert/);
+  assert.doesNotMatch(sfx.body.input[1].content[0].text, /BPM/);
+  assert.equal(sfx.inputMeta.scenario, 'audio_sfx');
+  assert.throws(() => buildGrokPromptOptimizeRequest({ surface: 'audio', purpose: 'audio-sfx', prompt: '' }, 'grok-test'), /描述或补充要求/);
+});
+
+test('the overlay carries the AI 助手 dialog and the stack-tier layout', async () => {
+  const source = await readFile(new URL('../../renderer/audio-studio.tool.js', import.meta.url), 'utf8');
+  assert.match(source, /nf-as-prompt:focus-within \.nf-as-prompt-head\{border-bottom-color:#1ea672\}/);
+  assert.match(source, /'\/local\/audio\/optimize-prompt'/);
+  assert.match(source, /surface: 'audio', purpose: isMusic \? 'audio-music' : 'audio-sfx'/);
+  assert.match(source, /data-novaflow-layout-tier/);
+  assert.doesNotMatch(source, /AI 润色/);
+});
