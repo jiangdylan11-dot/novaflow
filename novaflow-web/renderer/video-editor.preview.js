@@ -154,7 +154,10 @@
       const dpr = root.devicePixelRatio || 1;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       // the host's own colour, so the board's 深色 / 白色 / 灰色 backdrop toggle still shows through
-      ctx.fillStyle = (host.ownerDocument.defaultView || root).getComputedStyle(host).backgroundColor || '#242424'; ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+      const win = host.ownerDocument.defaultView || root;
+      const viewport = host.closest('[data-novaflow-ai-preview-bg]') || host.ownerDocument.querySelector('[data-novaflow-ai-preview-bg]');
+      const boardColor = viewport ? win.getComputedStyle(viewport).getPropertyValue('--novaflow-ai-preview-color').trim() : '';
+      ctx.fillStyle = boardColor || win.getComputedStyle(host).backgroundColor || '#242424'; ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
       ctx.fillStyle = '#000'; ctx.fillRect(stage.originX, stage.originY, stage.width, stage.height);
       ctx.save(); ctx.beginPath(); ctx.rect(stage.originX, stage.originY, stage.width, stage.height); ctx.clip();
       const active = editor.activeClips(time);

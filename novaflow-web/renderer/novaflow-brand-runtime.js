@@ -1856,10 +1856,11 @@
   const TEMPLATE_PREVIEW_CROP_CACHE = new WeakMap();
   const TEMPLATE_PREVIEW_BLACK_GLOW_CACHE = new WeakMap();
   const AI_ANIMATION_COLLAPSE_STATE = { mode: true, post: true };
+  // Entering the AI section (音视 / 视频): 视频生成 open, the tool rows closed.
   function resetAiAnimationCollapseStateForEntry() {
-    AI_ANIMATION_COLLAPSE_STATE.mode = true;
+    AI_ANIMATION_COLLAPSE_STATE.mode = false;
     AI_ANIMATION_COLLAPSE_STATE.post = true;
-    if (document.body) document.body.removeAttribute("data-novaflow-ai-mode-expanded");
+    syncAiAnimationModeExpandedBodyFlag();
   }
   // The generation dock is hidden by a stylesheet rule keyed on this body
   // flag (see the 动画生成 dock rule in the brand CSS), so it never paints
@@ -38156,6 +38157,7 @@
     }
     if (targetIndex < 0) return;
     const wasAnimationTarget = document.body.classList.contains("novaflow-primary-target-animation");
+    const wasArtTarget = document.body.classList.contains("novaflow-primary-target-art");
     const leavingAnimationTarget = targetIndex !== 1 && wasAnimationTarget;
     if (leavingAnimationTarget) {
       rememberAiAnimationEntryMainModelBranchHeight();
@@ -38182,6 +38184,7 @@
     if (targetIndex !== 2) {
       deactivateArtGenerateForRouteChange({ schedulePreviewRefresh: false });
     } else {
+      if (!wasArtTarget) ART_GENERATE_ENTRY_PENDING = true;
       scheduleArtGenerateSync([80, 180, 360]);
     }
     if (targetIndex !== 2) {
@@ -44248,6 +44251,8 @@
     clearSkeletonSecondarySwitchQuietWindow();
     armAiSequenceSkeletonSurfaceSuppressWindow();
     releaseAiAnimationEntryLightMode();
+    // \u9aa8\u9abc \u2192 AI\u5e8f\u5217 is an entry too: \u89c6\u9891\u751f\u6210 open, tool rows closed
+    resetAiAnimationCollapseStateForEntry();
     setRememberedSecondaryActive(["AI\u5e8f\u5217\u52a8\u753b", "\u9aa8\u9abc\u52a8\u753b"], "AI\u5e8f\u5217\u52a8\u753b");
     document.body.classList.add(
       "novaflow-ai-animation-intent",
@@ -57968,6 +57973,8 @@
             if (activePrimaryIndex === 2 && isArtDrawingSecondaryGroup(labels)) {
               // Drawing and UI share this surface; the sidebar handoff decides
               // whether generation stays open before the next paint.
+              // 绘图 <-> UI counts as an entry: 生图 opens
+              ART_GENERATE_ENTRY_PENDING = true;
               armArtGenerateRouteHold(ART_GENERATE_ROUTE_HOLD_MS);
               scheduleArtGenerateSync([80, 180, 360]);
             }
@@ -58046,6 +58053,11 @@
             && document.querySelector('[data-novaflow-ribbon-panel="1"]')
             && document.querySelector('[data-panel-id="bone-motion"]')
             && document.querySelector('[data-panel-id="bone-auto-weights"]');
+          if (settled) {
+            // entering 骨骼: 导入工程 open
+            const importPanel = document.getElementById("novaflow-spine-inline-import-panel");
+            if (importPanel instanceof HTMLElement) setSpineInlineImportPanelOpen(importPanel, true);
+          }
           if (settled || passes >= 20) stop();
         } else {
           runAiAnimationEntryFirstFrameLayoutSync();
@@ -78553,6 +78565,8 @@
     promptAssistantToken: 0
   };
   let ART_GENERATE_SUPPRESS_AUTO_ACTIVATE = false;
+  // set on entering 美工 and on its 绘图 / UI switch: the next sync opens 生图
+  let ART_GENERATE_ENTRY_PENDING = false;
   let ART_GENERATE_FORWARDING_PANEL_CLICK = false;
   let ART_GENERATE_FORCE_BOTTOM_RENDER = false;
   let ART_GENERATE_PREVIEW_REFRESH_TOKEN = 0;
@@ -80952,6 +80966,12 @@
     }
     if (!ART_GENERATE_STATE.active) {
       const panel = findArtGeneratePanel();
+      // entering 绘图 / UI: 生图 open (the flag is set by the route and the secondary switch)
+      if (ART_GENERATE_ENTRY_PENDING && panel instanceof HTMLElement) {
+        ART_GENERATE_ENTRY_PENDING = false;
+        activateArtGenerate();
+        return;
+      }
       if (!(panel instanceof HTMLElement) || !isArtGeneratePanelExpanded(panel)) ART_GENERATE_SUPPRESS_AUTO_ACTIVATE = false;
       if (panel instanceof HTMLElement && isArtGeneratePanelExpanded(panel)) {
         if (ART_GENERATE_SUPPRESS_AUTO_ACTIVATE) {

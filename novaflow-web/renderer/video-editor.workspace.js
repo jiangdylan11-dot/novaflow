@@ -50,8 +50,8 @@
     .nf-ve-transport .check input{accent-color:#1EA672}
     .nf-ve-transport .zoom{margin-left:auto;display:flex;align-items:center;gap:8px;color:#9a9a9a;font-size:11px}
     .nf-ve-transport .zoom input{width:120px}
-    .nf-ve-btn{min-height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.11);border-radius:7px;background:#303030;color:rgba(255,255,255,.84);font-size:11px;cursor:pointer}
-    .nf-ve-btn:hover:not(:disabled){filter:brightness(1.13)}.nf-ve-btn:disabled{opacity:.5;cursor:not-allowed}
+    .nf-ve-btn{min-height:32px;height:32px;padding:0 10px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:12px;cursor:pointer;white-space:nowrap}
+    .nf-ve-btn:hover:not(:disabled){background:#303030;color:#fff}.nf-ve-btn:disabled{opacity:.5;cursor:not-allowed}
     .nf-ve-btn.primary{background:linear-gradient(135deg,#1ea672,#188f64);border-color:rgba(84,234,178,.3);color:#effcf6;font-weight:600}
     /* the left panel under the 视频编辑 row */
     .nf-ve-panel{width:calc(100% - 22px);min-width:0;margin:0 11px;padding:6px 0 8px;background:transparent;color:#f5f5f5;font-family:Inter,"Microsoft YaHei",sans-serif;font-size:12px}
@@ -60,24 +60,24 @@
     .nf-ve-line{display:grid;gap:5px;align-items:center;margin:4px 0;min-width:0}
     .nf-ve-line label,.nf-ve-line .readout{color:rgba(255,255,255,.7);font-size:10px;white-space:nowrap}
     .nf-ve-line .readout{color:#9a9a9a;text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
-    .nf-ve-line input[type=number]{width:100%;min-width:0;height:24px;padding:0 4px;border:0;border-radius:5px;background:#272727;color:#fff;font-size:10px;text-align:center;-moz-appearance:textfield;appearance:textfield}
+    .nf-ve-line input[type=number]{width:100%;min-width:0;height:32px;padding:0 6px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:12px;text-align:center;-moz-appearance:textfield;appearance:textfield}
     .nf-ve-line input[type=number]::-webkit-inner-spin-button,.nf-ve-line input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
-    .nf-ve-btn.sm{min-height:24px;height:24px;padding:0 6px;font-size:10px;white-space:nowrap}
+    .nf-ve-btn.sm{padding:0 8px;font-size:11px}
     .nf-ve-range{-webkit-appearance:none;appearance:none;width:100%;min-width:0;height:16px;margin:0;padding:0;border:0;background:linear-gradient(to right,#1fc896 0%,#1fc896 var(--fill,0%),#333 var(--fill,0%),#333 100%) center/100% 2px no-repeat;cursor:pointer}
     .nf-ve-range::-webkit-slider-runnable-track{height:2px;background:transparent}
     .nf-ve-range::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-5px;border-radius:50%;background:#d9e2e8;border:0}
     .nf-ve-name{width:100%;height:24px;padding:0 6px;border:1px solid transparent;border-radius:5px;background:#272727;color:#fff;font-size:11px}
     .nf-ve-btns{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px}.nf-ve-btns .wide{grid-column:1/-1}
-    .nf-ve-btns .nf-ve-btn{min-height:26px;padding:0 6px;font-size:10px;white-space:nowrap}
-    .nf-ve-status{min-height:0;margin-top:6px;padding:6px 7px;border-radius:6px;background:rgba(255,255,255,.045);color:rgba(255,255,255,.62);font-size:10px;line-height:1.4;word-break:break-word}
-    .nf-ve-status[data-error="1"]{background:rgba(239,68,68,.12);color:#fca5a5}.nf-ve-status[data-success="1"]{background:rgba(39,200,137,.11);color:#8ff0c7}
+    .nf-ve-btns .nf-ve-btn{padding:0 8px;font-size:12px}
+    .nf-ve-status{min-height:0;margin-top:6px;padding:0;border-radius:0;background:transparent;color:#8b8b8b;font-size:11px;line-height:1.6;word-break:break-word}
+    .nf-ve-status[data-error="1"]{color:#f09595}.nf-ve-status[data-success="1"]{color:#8ff0c7}
     .nf-ve-hint{margin-top:4px;color:rgba(255,255,255,.43);font-size:9px;line-height:1.5}
     .nf-ve-mask{margin-top:6px;padding:6px;border-radius:7px;background:#1a1a1a}
     .nf-ve-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border:1px solid #262626;border-radius:7px;background:#101010;margin:0 0 4px}
     .nf-ve-mode button{height:24px;border:0;border-radius:6px;background:transparent;color:#eaeaea;font-size:12px;cursor:pointer}
     .nf-ve-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
     /* dropdown: the product's masked menu */
-    .nf-ve-dd-trigger{width:100%;height:30px;padding:0 28px 0 8px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:#282828;color:#eee;font-size:11px;text-align:left;position:relative;cursor:pointer}
+    .nf-ve-dd-trigger{width:100%;height:32px;padding:0 28px 0 10px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:12px;text-align:left;position:relative;cursor:pointer}
     .nf-ve-dd-trigger::after,.nf-ve-dd-trigger::before{content:none!important}
     .nf-ve-dd-trigger > i{position:absolute;right:10px;top:50%;width:6px;height:6px;margin-top:-5px;border-right:1.5px solid #9a9a9a;border-bottom:1.5px solid #9a9a9a;transform:rotate(45deg);pointer-events:none}
     .nf-ve-dd-trigger[data-open="1"]{position:relative;z-index:2147483002;border-color:#1EA672}
@@ -267,7 +267,8 @@
       <div class="nf-ve-sec"><h4>保存</h4>
         <div class="nf-ve-btns"><button class="nf-ve-btn primary wide" id="ve-save">保存到资源列表</button></div>
         <div class="nf-ve-status" id="ve-status">合成后存入资源列表和仓库。</div>
-      </div>`
+      </div>
+      <div class="nf-ve-sec"><div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-close-row">关闭</button></div></div>`
 
     try {
       const computed = windowRef.getComputedStyle?.(previewHost)
@@ -681,6 +682,17 @@
       }
     }
     $('ve-save').addEventListener('click', () => { void runExport(true) })
+    // 关闭 = the 视频编辑 row heading clicked again (the row owns open / close)
+    $('ve-close-row').addEventListener('click', () => {
+      const heading = documentRef.querySelector('[data-novaflow-ai-tool-heading="video-merge"]')
+      if (!heading) { handle.close(); return }
+      const r = heading.getBoundingClientRect()
+      const init = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) heading.dispatchEvent(type.startsWith('pointer') && windowRef.PointerEvent ? new windowRef.PointerEvent(type, init) : new windowRef.MouseEvent(type, init))
+    })
+    // the board's 深色 / 白色 / 灰色 dots: repaint once the runtime has applied the colour
+    const onBoardColor = (event) => { if (event.target instanceof Element && event.target.closest('[data-novaflow-ai-preview-bg-option]')) { windowRef.requestAnimationFrame(() => preview.draw()); windowRef.setTimeout(() => preview.draw(), 120) } }
+    documentRef.addEventListener('click', onBoardColor, true)
 
     const handle = Object.freeze({
       editor, preview,
@@ -693,6 +705,7 @@
         alive = false
         windowRef.removeEventListener(RESOURCE_IMPORT_EVENT, handleSharedResourceImport)
         windowRef.removeEventListener('keydown', handleKey, true)
+        documentRef.removeEventListener('click', onBoardColor, true)
         try { progressUnsubscribe?.() } catch (_) {}
         dropdowns.forEach((d) => d.close())
         closeBusy(); busyMask.remove(); busyBox.remove()

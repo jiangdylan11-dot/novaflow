@@ -156,7 +156,8 @@
       for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
         button.addEventListener(type, (event) => { event.stopPropagation(); }, true);
       }
-      button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate(); }, true);
+      // entering 音视 from the rail always lands on 视频
+      button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate('video'); }, true);
       cell.appendChild(button);
       document.body.appendChild(cell);
     }
@@ -288,6 +289,8 @@
       document.body.classList.add(BODY_CLASS);
       document.body.classList.remove(SUB_VIDEO_CLASS);
       mount();
+      // entering 音频 always opens 音频生成
+      if (state.open !== 'generate') { state.open = 'generate'; renderRows(); }
       layout();
       syncMask();
       refreshCapabilities();
@@ -306,6 +309,7 @@
       syncMask();
     }
     syncSubToggle();
+    ensureCell(); // the cell's pressed look now, not at the next tick
   }
   function deactivateSilently() { deactivate(true); }
   function deactivate(silent) {
@@ -327,6 +331,7 @@
     stopPreview();
     syncMask();
     state.maskTarget = null;
+    ensureCell(); // the idle look now - it lagged a tick behind the rail
   }
   // ---- the React 动画 section ---------------------------------------------------------------
   // Under 音视 / 视频 it runs as AI序列动画; entered from its own rail entry it is
@@ -527,7 +532,9 @@
       #${SUB_TOGGLE_ID}{position:fixed;z-index:2147483000;margin:0;box-sizing:border-box}
       /* rows: the animation section's collapse headings - icon plate and chevron are pseudo elements */
       .nf-as-rows{display:flex;flex-direction:column;gap:0}
-      .nf-as-rows-tools{margin-top:3px;padding:3px 0;border-top:1px solid #272727;border-bottom:1px solid #272727;display:flex;flex-direction:column;gap:5px}
+      .nf-as-row{padding:3px 0;border-bottom:1px solid #272727}
+      .nf-as-rows > .nf-as-row:last-child,.nf-as-rows-tools > .nf-as-row:last-child{border-bottom:0}
+      .nf-as-rows-tools{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:0}
       .nf-as-row-head{position:relative;display:flex;align-items:center;width:100%;height:46px;padding:0 30px 0 40px;border:0;border-radius:7px;background:transparent;color:#d4d4d4;font-size:12px;font-weight:400;line-height:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .nf-as-row[data-key="generate"] .nf-as-row-head{font-weight:500;letter-spacing:.18px;border-radius:6px}
       .nf-as-row-head::before{content:"";position:absolute;left:7px;top:11px;width:24px;height:24px;border-radius:5px;background:#292929 var(--nf-as-row-icon) center / 14px 14px no-repeat}
@@ -607,7 +614,8 @@
       .nf-as-busy .close{position:absolute;top:8px;right:8px;width:22px;height:22px;padding:0;border:1px solid #454545;border-radius:50%;background:#333;color:#ddd;font-size:13px;line-height:20px;text-align:center;cursor:pointer}
       .nf-as-busy .close:hover{background:#4a2323;border-color:#6a3030;color:#ffb4b4}
       .nf-as-tools .nf-as-tool-wide{grid-column:1 / -1}
-      .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
+      .nf-as-tools button,.nf-as-btn{height:32px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:12px;padding:0 8px;white-space:nowrap}
+      .nf-as-row[data-key="edit"] input[type=number]{height:32px;min-height:32px}
       .nf-as-tools button:hover,.nf-as-btn:hover{background:#303030;color:#fff}
       .nf-as-tools button:disabled,.nf-as-btn:disabled{opacity:.45;cursor:default}
       .nf-as-tools button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
@@ -1047,6 +1055,11 @@
     ui.saveNote = el('div', 'nf-as-note', '混音存入资源列表和仓库；置入视频后同时再存一份带混音的视频。');
     saveSec.appendChild(ui.saveNote);
     tools.body.appendChild(saveSec);
+    const closeSec = el('div', 'nf-as-edit-sec');
+    const closeGrid = el('div', 'nf-as-tools');
+    const closeRow = el('button', null, '关闭'); closeRow.type = 'button'; closeRow.classList.add('nf-as-tool-wide');
+    closeRow.addEventListener('click', () => { state.open = ''; renderRows(); layout(); });
+    closeGrid.appendChild(closeRow); closeSec.appendChild(closeGrid); tools.body.appendChild(closeSec);
     syncInspector(null);
     ui.scroller.appendChild(left);
     ui.left = left;
