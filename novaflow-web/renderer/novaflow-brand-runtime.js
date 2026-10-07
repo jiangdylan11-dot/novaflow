@@ -30040,7 +30040,7 @@
         versionBadge.className = "nf-brand-version";
         brand.appendChild(versionBadge);
       }
-      versionBadge.textContent = "v" + releaseVersion;
+      if (versionBadge.textContent !== "v" + releaseVersion) versionBadge.textContent = "v" + releaseVersion;
     }
 
     const img = brand.querySelector('img[alt="logo"]');
