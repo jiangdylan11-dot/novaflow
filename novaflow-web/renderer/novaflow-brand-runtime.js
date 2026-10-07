@@ -38184,7 +38184,7 @@
     if (targetIndex !== 2) {
       deactivateArtGenerateForRouteChange({ schedulePreviewRefresh: false });
     } else {
-      if (!wasArtTarget) ART_GENERATE_ENTRY_PENDING = true;
+      if (!wasArtTarget) { ART_GENERATE_ENTRY_PENDING = true; armArtGenerateEntrySync(); }
       scheduleArtGenerateSync([80, 180, 360]);
     }
     if (targetIndex !== 2) {
@@ -57975,6 +57975,7 @@
               // whether generation stays open before the next paint.
               // 绘图 <-> UI counts as an entry: 生图 opens
               ART_GENERATE_ENTRY_PENDING = true;
+              armArtGenerateEntrySync();
               armArtGenerateRouteHold(ART_GENERATE_ROUTE_HOLD_MS);
               scheduleArtGenerateSync([80, 180, 360]);
             }
@@ -58053,10 +58054,11 @@
             && document.querySelector('[data-novaflow-ribbon-panel="1"]')
             && document.querySelector('[data-panel-id="bone-motion"]')
             && document.querySelector('[data-panel-id="bone-auto-weights"]');
-          if (settled) {
-            // entering 骨骼: 导入工程 open
+          // entering 骨骼: 导入工程 open - in the pass that creates it, so its
+          // body is in the first painted frame (opening it later popped)
+          if (!importOpened) {
             const importPanel = document.getElementById("novaflow-spine-inline-import-panel");
-            if (importPanel instanceof HTMLElement) setSpineInlineImportPanelOpen(importPanel, true);
+            if (importPanel instanceof HTMLElement) { importOpened = true; setSpineInlineImportPanelOpen(importPanel, true); }
           }
           if (settled || passes >= 20) stop();
         } else {
@@ -78567,6 +78569,33 @@
   let ART_GENERATE_SUPPRESS_AUTO_ACTIVATE = false;
   // set on entering 美工 and on its 绘图 / UI switch: the next sync opens 生图
   let ART_GENERATE_ENTRY_PENDING = false;
+  // 生图 opens in the microtask of the React commit that mounts its panel (the
+  // 80 ms sync timer opened it a few frames after the page showed)
+  let ART_GENERATE_ENTRY_OBSERVER = null;
+  function armArtGenerateEntrySync() {
+    if (ART_GENERATE_ENTRY_OBSERVER) { ART_GENERATE_ENTRY_OBSERVER.disconnect(); ART_GENERATE_ENTRY_OBSERVER = null; }
+    if (typeof MutationObserver !== "function" || !document.body) return;
+    let timer = 0;
+    const observer = new MutationObserver(() => {
+      if (!ART_GENERATE_ENTRY_PENDING) { stop(); return; }
+      if (!isArtGenerateRouteReady()) return;
+      const panel = findArtGeneratePanel();
+      if (!(panel instanceof HTMLElement)) return;
+      stop();
+      ART_GENERATE_ENTRY_PENDING = false;
+      try { activateArtGenerate(); } catch (_) { void 0; }
+    });
+    const stop = () => {
+      observer.disconnect();
+      window.clearTimeout(timer);
+      if (ART_GENERATE_ENTRY_OBSERVER === observer) ART_GENERATE_ENTRY_OBSERVER = null;
+    };
+    observer.observe(document.body, { childList: true, subtree: true });
+    timer = window.setTimeout(stop, 2500);
+    ART_GENERATE_ENTRY_OBSERVER = observer;
+    // the panel may already be there (绘图 <-> UI keeps the column)
+    window.queueMicrotask(() => { if (ART_GENERATE_ENTRY_PENDING && isArtGenerateRouteReady() && findArtGeneratePanel()) { stop(); ART_GENERATE_ENTRY_PENDING = false; try { activateArtGenerate(); } catch (_) { void 0; } } });
+  }
   let ART_GENERATE_FORWARDING_PANEL_CLICK = false;
   let ART_GENERATE_FORCE_BOTTOM_RENDER = false;
   let ART_GENERATE_PREVIEW_REFRESH_TOKEN = 0;

@@ -1024,7 +1024,7 @@
     ui.inspGain = el('input'); ui.inspGain.type = 'number'; ui.inspGain.min = '0'; ui.inspGain.max = '200'; ui.inspGain.step = '1'; ui.inspGain.value = '100'; ui.inspGain.className = 'nf-as-input nf-as-loop-count';
     ui.inspGain.addEventListener('input', () => { const clip = editor.selectedClip(); if (clip) editor.setGain(clip.id, Math.max(0, Math.min(200, Number(ui.inspGain.value) || 0)) / 100); });
     gainRow.appendChild(ui.inspGain); gainRow.appendChild(el('span', 'nf-as-slider-value', '%'));
-    insp.appendChild(gainRow);
+    // the clip 音量 row stays out of the panel (the track slider is the volume); the input lives on for the state sync
     const slider = (label, min, max, step, format, apply) => {
       const rowEl = el('label', 'nf-as-slider');
       rowEl.appendChild(el('span', null, label));

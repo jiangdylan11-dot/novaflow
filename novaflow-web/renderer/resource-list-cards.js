@@ -10,6 +10,7 @@
   const CARD = '[data-novaflow-ai-resource-card="1"]';
   const STYLE_ID = 'novaflow-resource-list-cards-style';
   const META_ATTR = 'data-nf-card-meta';
+  const AUDIO_ATTR = 'data-nf-card-audio';
   const CSS = `
     ${CARD} [data-novaflow-ai-resource-action-kind="close"]{opacity:0;transition:opacity .12s}
     ${CARD}:hover [data-novaflow-ai-resource-action-kind="close"]{opacity:1}
@@ -29,8 +30,14 @@
   const textOf = (node) => (node && node.textContent || '').trim();
   const isTimeText = (t) => /^\d{1,2}:\d{2}(:\d{2})?$/.test(t);
 
+  // an audio result from 音频 is published as a "video" resource (a web-audio token):
+  // its card <video> has a duration but no picture
+  function isAudioOnly(media) {
+    return media instanceof HTMLAudioElement || (media instanceof HTMLVideoElement && media.readyState >= 1 && !media.videoWidth && Number.isFinite(media.duration) && media.duration > 0);
+  }
   function mediaFacts(media) {
     if (media instanceof HTMLVideoElement) {
+      if (isAudioOnly(media)) return '音频 ' + media.duration.toFixed(1) + 's';
       if (!media.videoWidth) return '';
       const d = Number.isFinite(media.duration) ? media.duration.toFixed(1) + 's' : '';
       return media.videoWidth + '×' + media.videoHeight + (d ? ' ' + d : '');
@@ -64,6 +71,10 @@
     if (!meta) { meta = document.createElement('div'); meta.setAttribute(META_ATTR, '1'); meta.setAttribute('data-novaflow-runtime-ignore', '1'); textBlock.appendChild(meta); }
     const facts = mediaFacts(media);
     if (facts && meta.textContent !== facts) meta.textContent = facts;
+    // an audio card is for dragging onto a track; the board (视频) has nothing to show for it
+    const audio = isAudioOnly(media);
+    if (audio && card.getAttribute(AUDIO_ATTR) !== '1') card.setAttribute(AUDIO_ATTR, '1');
+    else if (!audio && card.hasAttribute(AUDIO_ATTR)) card.removeAttribute(AUDIO_ATTR);
     if (!facts && media instanceof HTMLElement && !media.hasAttribute('data-nf-card-meta-bound')) {
       media.setAttribute('data-nf-card-meta-bound', '1');
       media.addEventListener(media instanceof HTMLImageElement ? 'load' : 'loadedmetadata', () => annotate(card), { once: true });
@@ -77,9 +88,19 @@
     queued = true;
     window.requestAnimationFrame(() => { queued = false; annotateAll(); });
   }
+  // a click on an audio card must not load it onto the board (React would play its
+  // sound behind an empty picture); its × and dragging still work
+  function blockAudioCardLoad(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const card = target && target.closest('[' + AUDIO_ATTR + '="1"]');
+    if (!card || target.closest('[data-novaflow-ai-resource-action-kind]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
   function start() {
     installStyle();
     annotateAll();
+    for (const type of ['pointerdown', 'mousedown', 'click', 'dblclick']) document.addEventListener(type, blockAudioCardLoad, true);
     // new cards and relabelled lines; our own writes are attributes on nodes already marked, so the pass converges
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-novaflow-ai-resource-card'] });
   }

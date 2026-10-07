@@ -42,7 +42,8 @@
     .nf-ve-brush-feather{position:absolute;z-index:4;border:1px dashed rgba(255,255,255,.45);border-radius:50%;pointer-events:none}
     .nf-vm-timeline{position:relative;overflow:hidden;min-height:0;border-radius:10px;background:#161616;border:1px solid #2e2e2e}
     .nf-ve-transport{display:flex;align-items:center;gap:8px;min-height:50px;padding:9px 12px;border:1px solid #343434;border-radius:10px;background:#161616}
-    .nf-ve-transport .tb{width:32px;height:30px;padding:0;border:1px solid #343434;border-radius:7px;background:#262626;color:#ddd;font-size:12px;cursor:pointer}
+    .nf-ve-transport .tb{width:30px;height:30px;padding:0;border:1px solid transparent;border-radius:7px;background:#282828;color:#eaeaea;display:grid;place-items:center;cursor:pointer}
+    .nf-ve-transport .tb:hover{background:#333}
     .nf-ve-transport .tb[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
     .nf-ve-transport .time{min-width:84px;font-variant-numeric:tabular-nums;color:#ccc;font-size:11px}
     .nf-ve-transport .sep{width:1px;height:20px;background:#333}
@@ -167,6 +168,18 @@
   const isImageName = (name) => /\.(png|jpe?g|webp|gif|bmp)$/i.test(name || '')
   const isAudioName = (name) => /\.(wav|mp3|ogg|flac|m4a|aac)$/i.test(name || '')
 
+  const TRANSPORT_GLYPH = 'rgba(255,255,255,0.78)'
+  const transportSvg = (inner) => '<svg width="18" height="18" viewBox="0 0 18 18" style="display:block" aria-hidden="true">' + inner + '</svg>'
+  const transportBar = (x) => '<rect x="' + x + '" y="4" width="2" height="10" rx="0.5" fill="' + TRANSPORT_GLYPH + '"></rect>'
+  const TRANSPORT_ICONS = {
+    start: transportSvg(transportBar(3) + transportBar(6) + '<polygon points="15,4 15,14 9,9" fill="' + TRANSPORT_GLYPH + '"></polygon>'),
+    back: transportSvg(transportBar(4) + '<polygon points="14,4 14,14 7,9" fill="' + TRANSPORT_GLYPH + '"></polygon>'),
+    play: transportSvg('<polygon points="5.5,4 5.5,14 13.5,9" fill="' + TRANSPORT_GLYPH + '"></polygon>'),
+    pause: transportSvg('<rect x="5" y="4" width="3" height="10" rx="0.5" fill="' + TRANSPORT_GLYPH + '"></rect><rect x="10" y="4" width="3" height="10" rx="0.5" fill="' + TRANSPORT_GLYPH + '"></rect>'),
+    fwd: transportSvg(transportBar(12) + '<polygon points="4,4 4,14 11,9" fill="' + TRANSPORT_GLYPH + '"></polygon>'),
+    end: transportSvg(transportBar(13) + transportBar(10) + '<polygon points="3,4 3,14 9,9" fill="' + TRANSPORT_GLYPH + '"></polygon>'),
+    loop: transportSvg('<path d="M6.5 5.3c2.7-2 6.8-.4 7.3 2.8.5 3.2-3.1 5.8-6 4.4" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"></path><path d="M7.2 4.2l-2.6 1.2 2.1 2.0" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>')
+  }
   function open(options) {
     const config = options && typeof options === 'object' ? options : {}
     const previewHost = config.previewHost
@@ -211,12 +224,12 @@
     const timelineCard = el(documentRef, 'div', 'nf-vm-timeline')
     const transport = el(documentRef, 'div', 'nf-ve-transport')
     transport.innerHTML = `
-      <button class="tb" data-act="start" title="回到开头">⏮</button>
-      <button class="tb" data-act="prev" title="上一片段边缘">◀</button>
-      <button class="tb" data-act="play" title="播放 / 暂停">▶</button>
-      <button class="tb" data-act="next" title="下一片段边缘">▶|</button>
-      <button class="tb" data-act="end" title="到结尾">⏭</button>
-      <button class="tb" data-act="loop" title="循环" aria-pressed="false">↻</button>
+      <button class="tb" data-act="start" title="回到开头">${TRANSPORT_ICONS.start}</button>
+      <button class="tb" data-act="prev" title="上一片段边缘">${TRANSPORT_ICONS.back}</button>
+      <button class="tb" data-act="play" title="播放 / 暂停">${TRANSPORT_ICONS.play}</button>
+      <button class="tb" data-act="next" title="下一片段边缘">${TRANSPORT_ICONS.fwd}</button>
+      <button class="tb" data-act="end" title="到结尾">${TRANSPORT_ICONS.end}</button>
+      <button class="tb" data-act="loop" title="循环" aria-pressed="false">${TRANSPORT_ICONS.loop}</button>
       <span class="time">0.0 / 0.0</span>
       <span class="sep"></span>
       <button class="nf-ve-btn" data-act="split">分割</button>
@@ -293,7 +306,7 @@
       onChange: (reason) => { if (!preview) return; if (reason === 'model' || reason === 'drag' || reason === 'transform') { preview.refresh(); syncClipBox() } if (reason === 'zoom') transport.querySelector('[data-act="zoom"]').value = String(editor.zoom()); syncTime() },
       onSelect: (clip) => { if (!preview) return; if (maskEdit && (!clip || clip.id !== maskEdit.clipId)) endMask(true); syncClipBox(); preview.draw() },
       onTime: (t) => { if (!preview) return; preview.tick(t); syncTime() },
-      onTransport: (playing) => { if (!preview) return; preview.setPlaying(playing); transport.querySelector('[data-act="play"]').textContent = playing ? '❚❚' : '▶' },
+      onTransport: (playing) => { if (!preview) return; preview.setPlaying(playing); transport.querySelector('[data-act="play"]').innerHTML = playing ? TRANSPORT_ICONS.pause : TRANSPORT_ICONS.play },
       resolveDrop: (payload, event) => resolvePayload(payload, event),
     })
     preview = modules.preview.mount({
