@@ -99,6 +99,9 @@
     const wrap = document.createElement('div'); wrap.className = 'nf-tl';
     const headers = document.createElement('div'); headers.className = 'nf-tl-headers';
     const headersTop = document.createElement('div'); headersTop.className = 'nf-tl-headers-top'; headersTop.textContent = '音轨';
+    const addTrackButton = document.createElement('button'); addTrackButton.type = 'button'; addTrackButton.className = 'nf-tl-add-track'; addTrackButton.textContent = '+音轨'; addTrackButton.title = '新增音轨';
+    addTrackButton.addEventListener('click', () => addTrack());
+    headersTop.appendChild(addTrackButton);
     headers.appendChild(headersTop);
     const headerList = document.createElement('div'); headerList.className = 'nf-tl-header-list'; headers.appendChild(headerList);
     const scroller = document.createElement('div'); scroller.className = 'nf-tl-scroller';
@@ -499,19 +502,23 @@
 
     // drop a resource onto a lane
     scroller.addEventListener('dragover', (event) => { if (dropPayload(event)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } });
-    scroller.addEventListener('drop', (event) => {
+    scroller.addEventListener('drop', async (event) => {
       const payload = dropPayload(event);
       if (!payload || !options.resolveDrop) return;
       event.preventDefault();
       const p = pointer(event);
       const laneIndex = state.tracks.findIndex((t, i) => p.y >= laneTop(i) && p.y <= laneTop(i) + LANE_H);
-      const resolved = options.resolveDrop(payload);
+      // the page may need to read / decode the resource first
+      const resolved = await options.resolveDrop(payload, event);
       if (!resolved) return;
       addClip({ ...resolved, trackId: laneIndex >= 0 ? state.tracks[laneIndex].id : undefined, start: snapTime(xToTime(Math.max(0, p.x))) });
     });
     function dropPayload(event) {
       const types = Array.from(event.dataTransfer?.types || []);
-      return types.includes('application/x-novaflow-audio') ? event.dataTransfer.getData('application/x-novaflow-audio') || 'pending' : null;
+      if (types.includes('application/x-novaflow-audio')) return event.dataTransfer.getData('application/x-novaflow-audio') || 'pending';
+      // the shared resource list's own drag (video / audio cards)
+      if (typeof options.dropPayload === 'function') return options.dropPayload(event) || null;
+      return null;
     }
 
     // ---- playback --------------------------------------------------------------------

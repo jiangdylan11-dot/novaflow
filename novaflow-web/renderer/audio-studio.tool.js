@@ -118,7 +118,8 @@
     counter: { music: 0, sfx: 0, import: 0 },
     boards: [], board: 0,
     maskTarget: null,
-    preview: null
+    preview: null,
+    refPreview: { enabled: false, item: null, durationSec: 0 }   // 音频编辑's reference video
   };
   let ui = null;
   let editor = null;
@@ -626,6 +627,34 @@
       .nf-as-dd-item:hover{background:rgba(255,255,255,.08)}
       .nf-as-dd-item[aria-selected="true"]{background:#1ea672;color:#fff}
       .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .nf-as-tools .nf-as-tool-primary{background:linear-gradient(135deg,#1ea672,#188f64)!important;border-color:rgba(84,234,178,.3)!important;color:#effcf6!important;font-weight:600}
+      .nf-as-edit-sec{display:flex;flex-direction:column;gap:6px}
+      .nf-as-sidebar[hidden]{display:none!important}
+      .nf-as-refswitch{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:rgba(255,255,255,.8);cursor:pointer}
+      .nf-as-refswitch .nf-as-switch-text{flex:1 1 auto;min-width:0;white-space:nowrap}
+      .nf-as-refswitch i{position:relative;flex:0 0 34px;width:34px;height:18px;border-radius:9px;background:#3a3a3a;transition:background .15s}
+      .nf-as-refswitch i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#ddd;transition:left .15s}
+      .nf-as-refswitch[aria-checked="true"] i{background:#1EA672}.nf-as-refswitch[aria-checked="true"] i::after{left:18px}
+      .nf-as-ref{position:absolute;left:0;display:grid;place-items:center;overflow:hidden;border-radius:var(--nf-ref-radius-panel,12px);background:#000;border:1px solid var(--nf-ref-line,#2e2e2e)}
+      .nf-as-ref[hidden]{display:none}
+      .nf-as-ref video{max-width:100%;max-height:100%}
+      .nf-as-ref-empty{color:#6a6a6a;font-size:12px}
+      .nf-as-ref-empty[hidden]{display:none}
+      .nf-as-ref[data-drop="1"]::after{content:"释放以置入参照视频";position:absolute;inset:12px;display:flex;align-items:center;justify-content:center;border:2px dashed rgba(91,224,173,.85);border-radius:12px;background:rgba(10,61,44,.48);color:#d9fff0;font-size:13px;font-weight:600;pointer-events:none}
+      .nf-as-tr-row .nf-as-tbtn.nf-as-tbtn-text{width:auto;padding:0 10px;font-size:11px}
+      .nf-tl-add-track{margin-left:auto;height:18px;padding:0 4px;border:1px solid #343434;border-radius:4px;background:#262626;color:#bdbdbd;font-size:10px;line-height:16px;white-space:nowrap;flex:none;cursor:pointer}
+      .nf-tl-add-track:hover{border-color:#1EA672;color:#9be4cd}
+      .nf-as-busy-mask{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55)}
+      .nf-as-busy{position:fixed;left:50%;top:50%;z-index:2147483001;transform:translate(-50%,-50%);min-width:300px;max-width:440px;padding:14px 16px;border:1px solid #3c3c3c;border-radius:12px;background:rgba(29,29,29,.96);color:#eaeaea;font-size:13px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:grid;gap:8px}
+      .nf-as-busy[hidden],.nf-as-busy-mask[hidden]{display:none!important}
+      .nf-as-busy .row{display:flex;align-items:center;gap:8px;padding-right:26px}
+      .nf-as-busy .spin{width:14px;height:14px;flex:0 0 14px;border-radius:50%;border:2px solid rgba(255,255,255,.18);border-top-color:#25bc84;animation:nf-as-spin .8s linear infinite}
+      .nf-as-busy[data-kind="done"] .spin,.nf-as-busy[data-kind="error"] .spin{display:none}
+      @keyframes nf-as-spin{to{transform:rotate(360deg)}}
+      .nf-as-busy .title{font-size:13px;font-weight:600}.nf-as-busy[data-kind="done"] .title{color:#8ff0c7}.nf-as-busy[data-kind="error"] .title{color:#fca5a5}
+      .nf-as-busy .msg{color:#bdbdbd;line-height:1.5;word-break:break-word}
+      .nf-as-busy .close{position:absolute;top:8px;right:8px;width:22px;height:22px;padding:0;border:1px solid #454545;border-radius:50%;background:#333;color:#ddd;font-size:13px;line-height:20px;text-align:center;cursor:pointer}
+      .nf-as-busy .close:hover{background:#4a2323;border-color:#6a3030;color:#ffb4b4}
       .nf-as-tools .nf-as-tool-wide{grid-column:1 / -1}
       .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
       .nf-as-tools button:hover,.nf-as-btn:hover{background:#303030;color:#fff}
@@ -666,7 +695,7 @@
       /* timeline editor */
       .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
       .nf-tl-headers{position:relative;background:#161616;border-right:1px solid #2a2a2a;overflow:hidden}
-      .nf-tl-headers-top{height:24px;line-height:24px;padding:0 10px;font-size:10px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a}
+      .nf-tl-headers-top{height:24px;line-height:24px;padding:0 6px 0 10px;font-size:10px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:4px}
       .nf-tl-header-list{will-change:transform}
       .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222}
       .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
@@ -1009,20 +1038,27 @@
     const toolRows = el('div', 'nf-as-rows-tools');
     rows.appendChild(toolRows);
     const tools = row(toolRows, 'edit', '音频编辑', ROW_ICONS.edit);
-    const grid = el('div', 'nf-as-tools');
-    const tool = (label, title, fn) => { const b = el('button', null, label); b.type = 'button'; b.title = title; b.addEventListener('click', fn); grid.appendChild(b); return b; };
-    tool('分割', '在播放头处分割选中片段 (S)', () => editor.splitAtPlayhead());
-    tool('删除', '删除选中片段 (Delete)', () => editor.deleteSelected());
-    tool('复制', '在后面复制一份选中片段', () => editor.duplicateSelected());
-    tool('新增音轨', '添加一条空音轨', () => editor.addTrack());
-    // 保存 puts the mixdown into the resource list; the rail's 导出 only exports.
-    const save = tool('保存到资源列表', '把当前画板整条时间轴混音后放进右侧资源列表', () => saveMix());
-    save.classList.add('nf-as-tool-wide');
-    tools.body.appendChild(grid);
-    // selected clip: volume, fades, loop count
+    // 视频预览: a reference video over the timeline, dragged in from the resource list
+    const previewSec = el('div', 'nf-as-edit-sec');
+    previewSec.appendChild(el('div', 'nf-as-label', '视频预览'));
+    const previewRow = el('div', 'nf-as-refswitch'); previewRow.setAttribute('role', 'switch'); previewRow.setAttribute('aria-checked', 'false');
+    previewRow.appendChild(el('div', 'nf-as-switch-text', '置入视频预览')); previewRow.appendChild(el('i'));
+    previewRow.addEventListener('click', () => setReferencePreview(!state.refPreview.enabled));
+    previewSec.appendChild(previewRow);
+    ui.previewSwitch = previewRow;
+    ui.previewName = el('div', 'nf-as-note', '打开后把资源列表里的视频拖到舞台上方置入');
+    previewSec.appendChild(ui.previewName);
+    tools.body.appendChild(previewSec);
+    // selected clip: volume and fades
     const insp = el('div', 'nf-as-inspector');
     ui.inspTitle = el('div', 'nf-as-label', '未选中片段');
     insp.appendChild(ui.inspTitle);
+    const gainRow = el('label', 'nf-as-slider');
+    gainRow.appendChild(el('span', null, '音量'));
+    ui.inspGain = el('input'); ui.inspGain.type = 'number'; ui.inspGain.min = '0'; ui.inspGain.max = '200'; ui.inspGain.step = '1'; ui.inspGain.value = '100'; ui.inspGain.className = 'nf-as-input nf-as-loop-count';
+    ui.inspGain.addEventListener('input', () => { const clip = editor.selectedClip(); if (clip) editor.setGain(clip.id, Math.max(0, Math.min(200, Number(ui.inspGain.value) || 0)) / 100); });
+    gainRow.appendChild(ui.inspGain); gainRow.appendChild(el('span', 'nf-as-slider-value', '%'));
+    insp.appendChild(gainRow);
     const slider = (label, min, max, step, format, apply) => {
       const rowEl = el('label', 'nf-as-slider');
       rowEl.appendChild(el('span', null, label));
@@ -1036,15 +1072,23 @@
     };
     ui.inspFadeIn = slider('淡入', 0, 30, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, v, undefined));
     ui.inspFadeOut = slider('淡出', 0, 30, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, undefined, v));
-    ui.inspRate = slider('速度', 50, 200, 1, (v) => Math.round(v) + '%', (clip, v) => editor.setRate(clip.id, v / 100));
-    const loopRow = el('label', 'nf-as-slider');
-    loopRow.appendChild(el('span', null, '循环'));
-    ui.inspLoop = el('input'); ui.inspLoop.type = 'number'; ui.inspLoop.min = '1'; ui.inspLoop.max = '50'; ui.inspLoop.value = '1'; ui.inspLoop.className = 'nf-as-input nf-as-loop-count'; ui.inspLoop.title = '片段在时间轴上重复的遍数';
-    ui.inspLoop.addEventListener('change', () => { const clip = editor.selectedClip(); const n = Math.max(1, Math.min(50, Math.round(Number(ui.inspLoop.value) || 1))); ui.inspLoop.value = String(n); if (clip) editor.setLoops(clip.id, n); });
-    loopRow.appendChild(ui.inspLoop); loopRow.appendChild(el('span', 'nf-as-slider-value', '遍'));
-    insp.appendChild(loopRow);
+    const delRow = el('div', 'nf-as-tools');
+    const delClip = el('button', null, '删除'); delClip.type = 'button'; delClip.title = '删除选中片段 (Delete)'; delClip.classList.add('nf-as-tool-wide');
+    delClip.addEventListener('click', () => editor.deleteSelected());
+    delRow.appendChild(delClip);
+    insp.appendChild(delRow);
     tools.body.appendChild(insp);
-    tools.body.appendChild(el('div', 'nf-as-note', '拖资源到音轨；拖片段边缘裁剪，拖过原长即减速拉伸；循环遍数在这里设。'));
+    // 保存: the mixdown into the resource list and the warehouse; with a reference video also the video carrying it
+    const saveSec = el('div', 'nf-as-edit-sec');
+    saveSec.appendChild(el('div', 'nf-as-label', '保存'));
+    const saveGrid = el('div', 'nf-as-tools');
+    const save = el('button', null, '保存到资源列表'); save.type = 'button'; save.classList.add('nf-as-tool-wide', 'nf-as-tool-primary');
+    save.addEventListener('click', () => saveMix());
+    saveGrid.appendChild(save);
+    saveSec.appendChild(saveGrid);
+    ui.saveNote = el('div', 'nf-as-note', '混音存入资源列表和仓库；置入视频后同时再存一份带混音的视频。');
+    saveSec.appendChild(ui.saveNote);
+    tools.body.appendChild(saveSec);
     syncInspector(null);
     ui.scroller.appendChild(left);
     ui.left = left;
@@ -1069,6 +1113,23 @@
     zoom.appendChild(ui.zoomLabel); zoom.appendChild(fit);
     topbar.appendChild(project); topbar.appendChild(zoom);
     stage.appendChild(topbar);
+    const refStage = el('div', 'nf-as-ref'); refStage.hidden = true;
+    ui.refEmpty = el('div', 'nf-as-ref-empty', '把资源列表里的视频拖到这里置入参照视频');
+    ui.refVideo = el('video'); ui.refVideo.muted = true; ui.refVideo.playsInline = true; ui.refVideo.hidden = true;
+    refStage.appendChild(ui.refEmpty); refStage.appendChild(ui.refVideo);
+    refStage.addEventListener('dragover', (event) => { if (readResourceDragId(event) || Array.from(event.dataTransfer?.types || []).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; refStage.setAttribute('data-drop', '1'); } });
+    refStage.addEventListener('dragleave', () => refStage.removeAttribute('data-drop'));
+    refStage.addEventListener('drop', async (event) => {
+      refStage.removeAttribute('data-drop');
+      const id = readResourceDragId(event);
+      const file = Array.from(event.dataTransfer?.files || []).find((f) => /^video\//.test(f.type || '') || VIDEO_FILE.test(f.name || ''));
+      if (!id && !file) return;
+      event.preventDefault(); event.stopPropagation();
+      try { await setReferenceVideo(id ? await resolveResourceMedia(id) : { blob: file, fileName: file.name, url: URL.createObjectURL(file) }); }
+      catch (error) { ui.statusErr.textContent = String(error?.message || error); }
+    });
+    stage.appendChild(refStage);
+    ui.refStage = refStage;
     const timelineHost = el('div', 'nf-as-timeline');
     stage.appendChild(timelineHost);
     timelineHost.addEventListener('dragover', (event) => { if (Array.from(event.dataTransfer?.types || []).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } });
@@ -1133,6 +1194,9 @@
     ui.loop.setAttribute('aria-pressed', 'false');
     ui.time = el('span', 'nf-as-time', '0.0 / 0.0');
     row1.appendChild(ui.time);
+    const textButton = (text, title, fn) => { const b = el('button', 'nf-as-tbtn nf-as-tbtn-text', text); b.type = 'button'; b.title = title; b.addEventListener('click', fn); row1.appendChild(b); return b; };
+    textButton('分割', '在播放头处分割选中片段 (S)', () => editor.splitAtPlayhead());
+    textButton('复制', '复制选中片段到播放头 (Ctrl+C / Ctrl+V)', () => { if (copySelectedClip()) pasteClipAtPlayhead(); });
     row1.appendChild(el('span', 'nf-as-label', '速度 BPM'));
     ui.bpm = el('input'); ui.bpm.type = 'number'; ui.bpm.min = '0'; ui.bpm.max = '300'; ui.bpm.value = '0'; ui.bpm.title = '时间轴网格的拍速；0 = 按秒';
     ui.bpm.addEventListener('change', () => { editor.setBpm(ui.bpm.value); ui.bpm.value = String(editor.state.bpm); });
@@ -1152,8 +1216,9 @@
     ui.scroller.appendChild(transport);
     ui.transport = transport;
 
-    // resource sidebar --------------------------------------------------------------
-    const sidebar = el('div', 'nf-as-sidebar');
+    // resource list: the 动画 section's own list shows through on the right (shared
+    // with 视频编辑); this sidebar is kept only as the file-input host for uploads
+    const sidebar = el('div', 'nf-as-sidebar'); sidebar.hidden = true;
     const sideHead = el('div', 'nf-as-side-head');
     sideHead.appendChild(label(el('span'), '资源列表'));
     ui.count = el('span', 'nf-as-count', '0');
@@ -1322,7 +1387,6 @@
       place(ui.stage, x, y, w, stageH); y += stageH + 8;
       if (dockVisible) { place(ui.dock, x, y, w, dockH); y += dockH + 8; } else place(ui.dock, x, y, w, dockH);
       place(ui.transport, x, y, w, transportH); y += transportH + 8;
-      place(ui.sidebar, x, y, w, tier.resourcesHeight); y += tier.resourcesHeight + gap;
       ui.spacer.style.height = y + 'px';
       place(ui.backdrop, 0, 0, window.innerWidth - scLeft, y);
       tl.style.right = '0px'; tl.style.bottom = '0px'; topbar.style.right = '0px';
@@ -1331,11 +1395,13 @@
       scroller.style.cssText = '';
       ui.spacer.style.height = '0px';
       ui.backdrop.style.background = backdropColor;
-      place(ui.backdrop, cardLeft - 2, Math.max(0, top - 8), window.innerWidth - cardLeft + 2, window.innerHeight - Math.max(0, top - 8));
+      // the shared resource list sits to the right; everything of ours stops before it
+      const sidebarPanel = document.querySelector('[data-novaflow-ai-resource-sidebar-panel="1"]');
+      const sidebarLeft = sidebarPanel instanceof HTMLElement && sidebarPanel.getBoundingClientRect().width > 40 ? Math.round(sidebarPanel.getBoundingClientRect().left) : right - tier.resources;
+      const innerRight = sidebarLeft - gap;
+      place(ui.backdrop, cardLeft - 2, Math.max(0, top - 8), innerRight + gap - (cardLeft - 2), window.innerHeight - Math.max(0, top - 8));
       place(ui.left, cardLeft, top, cardWidth, bottom - top);
-      place(ui.stage, stageLeft, top, right - stageLeft, bottom - top);
-      place(ui.sidebar, right - tier.resources, top, tier.resources, bottom - top);
-      const innerRight = right - tier.resources - gap;
+      place(ui.stage, stageLeft, top, innerRight - stageLeft, bottom - top);
       const transportH = transportHeightFor(innerRight - stageLeft);
       const transportTop = bottom - transportH;
       place(ui.transport, stageLeft, transportTop, innerRight - stageLeft, transportH);
@@ -1344,9 +1410,16 @@
       place(ui.dock, stageLeft, dockTop, innerRight - stageLeft, dockH);
       // the timeline stops above whichever card comes first
       const timelineBottom = (dockVisible ? dockTop : transportTop) - 9;
-      tl.style.right = (right - innerRight) + 'px';
+      tl.style.right = '0px';
       tl.style.bottom = (bottom - timelineBottom) + 'px';
-      topbar.style.right = (right - innerRight) + 'px';
+      topbar.style.right = '0px';
+      // 视频预览: the reference video takes the upper part of the stage, the timeline the rest
+      if (state.refPreview.enabled) {
+        const refTop = 53, refH = Math.max(140, Math.round((timelineBottom - top - refTop) * 0.5));
+        ui.refStage.hidden = false;
+        ui.refStage.style.right = '0px'; ui.refStage.style.top = refTop + 'px'; ui.refStage.style.height = refH + 'px';
+        tl.style.top = (refTop + refH + 8) + 'px';
+      } else { ui.refStage.hidden = true; tl.style.top = '53px'; }
     }
     syncMask();
     if (editor) { editor.layout(); drawOverview(); }
@@ -1357,16 +1430,15 @@
     if (!ui || !ui.inspFadeIn) return;
     const has = Boolean(clip);
     ui.inspTitle.textContent = has ? clip.name + ' · ' + (editor ? editor.formatTime(clip.length) : '') : '未选中片段';
-    for (const s of [ui.inspFadeIn, ui.inspFadeOut, ui.inspRate]) s.input.disabled = !has;
-    ui.inspLoop.disabled = !has || !clip.loopable;
-    if (!has) { ui.inspFadeIn.range(0, 1); ui.inspFadeOut.range(0, 1); ui.inspFadeIn.set(0); ui.inspFadeOut.set(0); ui.inspRate.set(100); ui.inspLoop.value = '1'; return; }
+    for (const s of [ui.inspFadeIn, ui.inspFadeOut]) s.input.disabled = !has;
+    ui.inspGain.disabled = !has;
+    if (!has) { ui.inspFadeIn.range(0, 1); ui.inspFadeOut.range(0, 1); ui.inspFadeIn.set(0); ui.inspFadeOut.set(0); ui.inspGain.value = '100'; return; }
     // A fade can cover the whole clip, so each slider runs to the clip's length.
     const whole = Math.max(0.1, Math.round(clip.length * 10) / 10);
     ui.inspFadeIn.range(0, whole); ui.inspFadeOut.range(0, whole);
     ui.inspFadeIn.set(Math.round(clip.fadeIn * 10) / 10);
     ui.inspFadeOut.set(Math.round(clip.fadeOut * 10) / 10);
-    ui.inspRate.set(Math.round(clip.rate * 100));
-    ui.inspLoop.value = String(clip.loops || 1);
+    if (document.activeElement !== ui.inspGain) ui.inspGain.value = String(Math.round(clip.gain * 100));
   }
   function syncTime() {
     if (!ui || !editor || !ui.time) return;
@@ -1417,10 +1489,18 @@
     return {
       host, context: audioContext,
       onChange: (what) => { if (what === 'model') { syncEmpty(); syncInspector(editor && editor.selectedClip()); } if (what === 'zoom') syncZoom(); },
-      onTime: () => { syncTime(); },
+      onTime: (t) => { syncTime(); syncReferenceVideo(t); },
       onSelect: (clip) => syncInspector(clip),
-      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); ui.play.title = playing ? '暂停 (空格)' : '播放 (空格)'; },
-      resolveDrop: (id) => { const r = state.resources.find((x) => x.id === id); return r && r.buffer ? { buffer: r.buffer, name: r.name, kind: r.kind, loopable: r.loopable } : null; }
+      onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); ui.play.title = playing ? '暂停 (空格)' : '播放 (空格)'; if (!playing) ui.refVideo?.pause(); else syncReferenceVideo(editor.playhead()); },
+      dropPayload: (event) => readResourceDragId(event),
+      resolveDrop: async (id) => {
+        const local = state.resources.find((x) => x.id === id);
+        if (local && local.buffer) return { buffer: local.buffer, name: local.name, kind: local.kind, loopable: local.loopable };
+        try {
+          const res = await resourceAudio(id);
+          return res ? { buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable } : null;
+        } catch (error) { ui.statusErr.textContent = String(error?.message || error); return null; }
+      }
     };
   }
   function createBoard() {
@@ -1476,6 +1556,8 @@
       || (t.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button'].includes(String(t.type).toLowerCase())));
     if (event.key === ' ' && !typing) { event.preventDefault(); editor.toggle(); return; }
     if (typing || (t instanceof HTMLElement && t.tagName === 'INPUT')) return;
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'C')) { if (copySelectedClip()) event.preventDefault(); return; }
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'v' || event.key === 'V')) { if (pasteClipAtPlayhead()) event.preventDefault(); return; }
     else if (event.key === 'Delete' || event.key === 'Backspace') { if (editor.deleteSelected()) event.preventDefault(); }
     else if (event.key === 's' || event.key === 'S') { editor.splitAtPlayhead(); }
     else if (event.key === 'Home') { editor.seek(0); }
@@ -1651,7 +1733,96 @@
     if (index >= 0) state.resources.splice(index, 1, resource); else state.resources.unshift(resource);
     renderList();
     if (buffer) editor.addClip({ buffer, name, kind, loopable: resource.loopable });
+    await publishAudio(resource, name + '.wav');
     try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* the warehouse reports its own state */ }
+  }
+
+  // ---- the shared resource list -----------------------------------------------------------
+  // Audio from here (generated, imported, mixed) is published to the 动画 section's
+  // list through the same bridge 视频编辑 uses; a card dragged back is decoded on
+  // demand (a video card gives its sound track).
+  function readResourceDragId(event) {
+    const bridge = window.NovaFlowAiSequenceVideoMergeResourceBridge;
+    return bridge && typeof bridge.readResourceId === 'function' ? bridge.readResourceId(event?.dataTransfer) : '';
+  }
+  let publishSeq = 0;
+  async function publishAudio(resource, fileName) {
+    const bridge = window.NovaFlowAiSequenceAssetBridge;
+    const outputs = window.NovaFlowWebRuntime && window.NovaFlowWebRuntime.videoOutputs;
+    if (!bridge || typeof bridge.publishVideoResource !== 'function' || !outputs || !resource.blob) return null;
+    const token = 'web-audio://' + (++publishSeq) + '/' + fileName;
+    outputs.set(token, { tool: 'audio', token, blob: resource.blob, fileName, url: resource.url || URL.createObjectURL(resource.blob) });
+    try {
+      const published = await bridge.publishVideoResource({ filePath: token, fileName, mimeType: resource.blob.type || 'audio/wav' }, { sourceKind: 'audio_output' });
+      const id = String(published?.resourceId || '');
+      if (id) { resource.publishedId = id; }
+      return id;
+    } catch (error) { ui.statusErr.textContent = String(error?.message || error); return null; }
+  }
+  async function resolveResourceMedia(resourceId) {
+    const local = state.resources.find((x) => x.publishedId === resourceId || x.id === resourceId);
+    if (local && local.blob) return { blob: local.blob, fileName: local.name + '.wav', url: local.url, buffer: local.buffer, name: local.name };
+    const bridge = window.NovaFlowAiSequenceVideoMergeResourceBridge;
+    const adapter = bridge && bridge.createAdapter ? bridge.createAdapter({}) : null;
+    if (!adapter) throw new Error('资源桥未加载');
+    const d = await adapter.resolveResource(resourceId);
+    let blob = d.file || d.blob || null;
+    if (!blob && d.localPath) { const runtime = window.NovaFlowWebRuntime; blob = runtime?.fileForToken?.(d.localPath) || runtime?.videoOutputs?.get?.(d.localPath)?.blob || null; }
+    if (!blob && d.objectUrl) blob = await (await fetch(d.objectUrl)).blob();
+    if (!blob) throw new Error('资源没有可读取的文件');
+    return { blob, fileName: d.fileName || 'clip.mp4', url: d.objectUrl || URL.createObjectURL(blob), name: String(d.fileName || 'clip').replace(/\.[^.]+$/, '') };
+  }
+  async function resourceAudio(resourceId) {
+    const media = await resolveResourceMedia(resourceId);
+    if (media.buffer) return { buffer: media.buffer, name: media.name, kind: 'import', loopable: true };
+    let buffer = await decode(media.blob);
+    if (!buffer) {
+      const extract = window.electronAPI && typeof window.electronAPI.extractAudioTrack === 'function' ? window.electronAPI.extractAudioTrack : null;
+      if (!extract) throw new Error('这个资源没有可用的音轨');
+      const result = await extract({ file: media.blob });
+      if (!result || !result.ok) throw new Error((result && result.error) || '无法提取音轨');
+      buffer = await decode(result.blob);
+      if (!buffer) throw new Error('提取出的音轨无法解码');
+    }
+    return { buffer, name: media.name, kind: /\.(mp4|webm|mov|m4v)$/i.test(media.fileName) ? 'sfx' : 'import', loopable: true };
+  }
+
+  // ---- 视频预览: the reference video follows the playhead ----------------------------------
+  async function setReferenceVideo(media) {
+    state.refPreview.item = media;
+    ui.refVideo.src = media.url; ui.refVideo.hidden = false; ui.refEmpty.hidden = true;
+    ui.previewName.textContent = '参照视频：' + (media.fileName || media.name || '');
+    await new Promise((resolve) => { ui.refVideo.onloadedmetadata = resolve; ui.refVideo.onerror = resolve; });
+    state.refPreview.durationSec = Number(ui.refVideo.duration) || 0;
+    syncReferenceVideo(editor ? editor.playhead() : 0);
+  }
+  function setReferencePreview(enabled) {
+    state.refPreview.enabled = Boolean(enabled);
+    ui.previewSwitch.setAttribute('aria-checked', String(state.refPreview.enabled));
+    if (!state.refPreview.enabled) ui.refVideo.pause();
+    layout();
+    if (state.refPreview.enabled) syncReferenceVideo(editor ? editor.playhead() : 0);
+  }
+  function syncReferenceVideo(t) {
+    if (!state.refPreview.enabled || !state.refPreview.item || !ui.refVideo.src) return;
+    const v = ui.refVideo;
+    if (t > (state.refPreview.durationSec || 0)) { v.pause(); return; }
+    if (editor && editor.isPlaying()) {
+      if (v.paused) { v.currentTime = t; v.play().catch(() => {}); }
+      else if (Math.abs(v.currentTime - t) > 0.08) v.currentTime = t;
+    } else if (Math.abs(v.currentTime - t) > 0.02) v.currentTime = t;
+  }
+
+  // ---- copy / paste on the audio timeline ------------------------------------------------------
+  let clipboardClip = null;
+  function copySelectedClip() { const clip = editor && editor.selectedClip(); if (!clip) return false; clipboardClip = clip; return true; }
+  function pasteClipAtPlayhead() {
+    if (!editor || !clipboardClip) return false;
+    const src = clipboardClip;
+    const pasted = editor.addClip({ buffer: src.buffer, name: src.name, kind: src.kind, trackId: src.trackId, start: editor.playhead(), fadeIn: src.fadeIn, fadeOut: src.fadeOut, loopable: src.loopable });
+    pasted.offset = src.offset; pasted.end = src.end; pasted.loops = src.loops; pasted.rate = src.rate; pasted.gain = src.gain;
+    editor.syncLength(pasted); editor.select(pasted.id); editor.layout();
+    return true;
   }
 
   // ---- resources ---------------------------------------------------------------------------
@@ -1681,6 +1852,7 @@
       const index = state.resources.indexOf(pending);
       if (index >= 0) state.resources.splice(index, 1, resource); else state.resources.unshift(resource);
       renderList();
+      await publishAudio(resource, name + '.wav');
       return resource;
     } catch (error) {
       state.resources = state.resources.filter((r) => r !== pending);
@@ -1694,7 +1866,7 @@
     return files.filter((f) => /^(audio|video)\//.test(f.type || '') || VIDEO_FILE.test(f.name || '') || /\.(wav|mp3|ogg|flac|m4a|aac|opus)$/i.test(f.name || ''));
   }
   function renderList() {
-    if (!ui) return;
+    if (!ui || !ui.list || ui.sidebar?.hidden) return;
     ui.list.replaceChildren();
     ui.count.textContent = String(state.resources.filter((r) => !r.pending).length);
     if (!state.resources.length) { ui.list.appendChild(el('div', 'nf-as-side-empty', '暂无内容')); return; }
@@ -1816,18 +1988,66 @@
       ui.statusErr.textContent = String(error?.message || error);
     }
   }
-  // 保存到资源列表 (音轨编辑): the mixdown as a new resource, nothing leaves the page.
+  // 保存到资源列表 (音频编辑): the mixdown into the shared resource list and the
+  // warehouse; with a reference video placed, that video with the mix as its sound too.
   async function saveMix() {
+    if (saving) return;
+    saving = true;
     try {
       ui.statusErr.textContent = '';
+      busy('working', '正在混音', '', null);
       const { blob, name } = await mixdown();
       state.counter.import += 1;
       const buffer = await decode(blob);
-      state.resources.unshift({ id: 'res-mix-' + Date.now(), kind: 'import', name, label: '混音', seconds: buffer ? buffer.duration : 0, blob, buffer, url: URL.createObjectURL(blob), loopable: true });
+      const resource = { id: 'res-mix-' + Date.now(), kind: 'import', name, label: '混音', seconds: buffer ? buffer.duration : 0, blob, buffer, url: URL.createObjectURL(blob), loopable: true };
+      state.resources.unshift(resource);
       renderList();
+      await publishAudio(resource, name + '.wav');
+      try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* reported by the warehouse */ }
+      let note = '已存入资源列表和仓库：' + name + '.wav（' + (blob.size / 1024 / 1024).toFixed(2) + ' MB）';
+      const ref = state.refPreview.enabled ? state.refPreview.item : null;
+      const mux = window.electronAPI && typeof window.electronAPI.videoEditorMux === 'function' ? window.electronAPI.videoEditorMux : null;
+      if (ref && mux) {
+        busy('working', '正在封装混合视频', '', null);
+        let token = '';
+        if (typeof window.electronAPI.aiSeqCacheReserveOutput === 'function') { const r = await window.electronAPI.aiSeqCacheReserveOutput({ format: 'mp4', baseName: name + '_video' }); token = String(r?.path || r?.filePath || ''); }
+        const result = await mux({ video: { blob: ref.blob, url: ref.url, fileName: ref.fileName, durationSec: state.refPreview.durationSec }, audio: blob, format: 'mp4', filePath: token });
+        if (!result || result.ok === false) throw new Error(result?.error || '混合视频失败');
+        const bridge = window.NovaFlowAiSequenceAssetBridge;
+        if (bridge && typeof bridge.publishVideoResource === 'function') await bridge.publishVideoResource({ filePath: String(result.filePath || result.path || token), fileName: result.fileName, mimeType: 'video/mp4' }, { sourceKind: 'audio_mix_output' });
+        note += '；带混音的视频：' + String(result.fileName || '') + '（' + ((Number(result.bytes) || 0) / 1024 / 1024).toFixed(2) + ' MB）';
+      }
+      ui.saveNote.textContent = note;
+      busy('done', '已保存', note, null);
     } catch (error) {
-      ui.statusErr.textContent = String(error?.message || error);
+      const message = String(error?.message || error);
+      ui.statusErr.textContent = message;
+      busy('error', '保存失败', message, null);
+    } finally { saving = false; }
+  }
+  let saving = false;
+  // the busy dialog with its mask and the top-right ×, the same as 视频编辑's
+  let busyTimer = 0;
+  function busyNodes() {
+    let mask = document.getElementById('novaflow-audio-busy-mask'), box = document.getElementById('novaflow-audio-busy');
+    if (!box) {
+      mask = el('div', 'nf-as-busy-mask'); mask.id = 'novaflow-audio-busy-mask'; mask.hidden = true;
+      box = el('div', 'nf-as-busy'); box.id = 'novaflow-audio-busy'; box.hidden = true;
+      box.innerHTML = '<div class="row"><i class="spin"></i><div class="title"></div></div><div class="msg"></div><button type="button" class="close" title="关闭" hidden>×</button>';
+      box.querySelector('.close').addEventListener('click', closeBusy);
+      mask.addEventListener('click', () => { if (box.dataset.kind !== 'working') closeBusy(); });
+      document.body.appendChild(mask); document.body.appendChild(box);
     }
+    return { mask, box };
+  }
+  function closeBusy() { const { mask, box } = busyNodes(); mask.hidden = true; box.hidden = true; }
+  function busy(kind, title, message) {
+    const { mask, box } = busyNodes();
+    window.clearTimeout(busyTimer);
+    mask.hidden = false; box.hidden = false; box.dataset.kind = kind;
+    box.querySelector('.title').textContent = title; box.querySelector('.msg').textContent = message || '';
+    box.querySelector('.close').hidden = kind === 'working';
+    if (kind === 'done') busyTimer = window.setTimeout(closeBusy, 3000);
   }
   async function exportSelected() {
     const clip = editor.selectedClip();
