@@ -23,7 +23,7 @@
   const STAGE_TOP = 62;                // TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP
   const EDGE_GAP = 10;
   const SIDEBAR_W = 206;
-  const TRANSPORT_H = 97;
+  const TRANSPORT_H = 50;
   const DOCK_H = 213;
   const ICON = "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18V5l12-2v13'/%3E%3Ccircle cx='6' cy='18' r='3'/%3E%3Ccircle cx='18' cy='16' r='3'/%3E%3C/svg%3E\")";
 
@@ -377,7 +377,9 @@
       .nf-tl-playhead{position:absolute;top:0;width:2px;background:#ef4444;pointer-events:none}
       .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
       /* generation dock */
-      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:11px}
+      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:32px 18px 4px minmax(0,1fr);row-gap:9px}
+      .nf-as-dock-progress{height:4px;border-radius:2px;background:#262626;overflow:hidden}
+      .nf-as-dock-progress i{display:block;height:100%;width:0;background:#1ea672;transition:width .3s linear}
       .nf-as-dock[hidden]{display:none!important}
       .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
       .nf-as-dock-row .nf-as-label{white-space:nowrap;color:#a9a9a9}
@@ -400,7 +402,7 @@
       .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#c9c9c9;font-size:12px;line-height:1.5;padding:12px 14px}
       .nf-as-prompt textarea::placeholder{color:#6e6e6e}
       /* transport */
-      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-soft,#343434);border-radius:10px;padding:10px 12px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
+      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-soft,#343434);border-radius:10px;padding:9px 12px;display:grid;grid-template-rows:30px}
       .nf-as-tr-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;min-width:0}
       .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:1px solid transparent;border-radius:var(--nf-ref-radius-control,7px);background:#282828;color:#eaeaea;display:grid;place-items:center;padding:0}
       .nf-as-tr-row .nf-as-tbtn:hover{background:#343434}
@@ -415,8 +417,6 @@
       .nf-as-tr-right input[type=range]{-webkit-appearance:none;appearance:none;width:124px;height:12px;background:linear-gradient(90deg,#20c997 0%,#20c997 var(--nf-range-pct,0%),#303030 var(--nf-range-pct,0%),#303030 100%) center / 100% 2px no-repeat;margin:0}
       .nf-as-tr-right input[type=range]::-webkit-slider-runnable-track{height:2px;background:transparent}
       .nf-as-tr-right input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-5px;border-radius:50%;background:#dfe7ee;border:0}
-      .nf-as-overview{position:relative;height:34px;border-radius:6px;background:#1d1d1d;overflow:hidden;cursor:col-resize}
-      .nf-as-overview canvas{display:block;width:100%;height:100%}
       /* resource sidebar */
       .nf-as-sidebar{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);display:flex;flex-direction:column;overflow:hidden}
       .nf-as-side-head{display:flex;align-items:center;gap:8px;padding:14px 12px;font-size:13px}
@@ -588,23 +588,23 @@
       rowEl.appendChild(el('span', null, label));
       const input = el('input'); input.type = 'range'; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(min);
       const value = el('span', 'nf-as-slider-value', format(min));
-      const paint = () => { const pct = (Number(input.value) - min) / (max - min) * 100; input.style.setProperty('--nf-range-pct', pct + '%'); value.textContent = format(Number(input.value)); };
+      const paint = () => { const lo = Number(input.min), hi = Number(input.max); const pct = hi > lo ? (Number(input.value) - lo) / (hi - lo) * 100 : 0; input.style.setProperty('--nf-range-pct', pct + '%'); value.textContent = format(Number(input.value)); };
       input.addEventListener('input', () => { paint(); const clip = editor.selectedClip(); if (clip) apply(clip, Number(input.value)); });
       rowEl.appendChild(input); rowEl.appendChild(value);
       insp.appendChild(rowEl);
-      return { input, paint, set(v) { input.value = String(v); paint(); } };
+      return { input, paint, set(v) { input.value = String(v); paint(); }, range(lo, hi) { input.min = String(lo); input.max = String(hi); paint(); } };
     };
-    ui.inspGain = slider('音量', 0, 200, 1, (v) => Math.round(v) + '%', (clip, v) => editor.setGain(clip.id, v / 100));
-    ui.inspFadeIn = slider('淡入', 0, 5, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, v, undefined));
-    ui.inspFadeOut = slider('淡出', 0, 5, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, undefined, v));
+    ui.inspFadeIn = slider('淡入', 0, 30, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, v, undefined));
+    ui.inspFadeOut = slider('淡出', 0, 30, 0.1, (v) => v.toFixed(1) + ' s', (clip, v) => editor.setFade(clip.id, undefined, v));
+    ui.inspRate = slider('速度', 50, 200, 1, (v) => Math.round(v) + '%', (clip, v) => editor.setRate(clip.id, v / 100));
     const loopRow = el('label', 'nf-as-slider');
     loopRow.appendChild(el('span', null, '循环'));
     ui.inspLoop = el('input'); ui.inspLoop.type = 'number'; ui.inspLoop.min = '1'; ui.inspLoop.max = '50'; ui.inspLoop.value = '1'; ui.inspLoop.className = 'nf-as-input nf-as-loop-count'; ui.inspLoop.title = '片段在时间轴上重复的遍数';
-    ui.inspLoop.addEventListener('change', () => { const clip = editor.selectedClip(); const n = Math.max(1, Math.min(50, Math.round(Number(ui.inspLoop.value) || 1))); ui.inspLoop.value = String(n); if (clip) editor.extendLoop(clip.id, n); });
+    ui.inspLoop.addEventListener('change', () => { const clip = editor.selectedClip(); const n = Math.max(1, Math.min(50, Math.round(Number(ui.inspLoop.value) || 1))); ui.inspLoop.value = String(n); if (clip) editor.setLoops(clip.id, n); });
     loopRow.appendChild(ui.inspLoop); loopRow.appendChild(el('span', 'nf-as-slider-value', '遍'));
     insp.appendChild(loopRow);
     tools.body.appendChild(insp);
-    tools.body.appendChild(el('div', 'nf-as-note', '拖资源到音轨；拖片段边缘裁剪，拖过末尾即循环。'));
+    tools.body.appendChild(el('div', 'nf-as-note', '拖资源到音轨；拖片段边缘裁剪，拖过原长即减速拉伸；循环遍数在这里设。'));
     syncInspector(null);
     root.appendChild(left);
     ui.left = left;
@@ -661,6 +661,10 @@
     ui.cancel.addEventListener('click', cancelRunning);
     status.appendChild(ui.statusText); status.appendChild(ui.statusPct); status.appendChild(ui.statusErr); status.appendChild(ui.cancel);
     dock.appendChild(status);
+    ui.progress = el('div', 'nf-as-dock-progress');
+    ui.progressBar = el('i');
+    ui.progress.appendChild(ui.progressBar);
+    dock.appendChild(ui.progress);
     const prompt = el('div', 'nf-as-prompt');
     const head = el('div', 'nf-as-prompt-head');
     ui.promptLabel = el('span', 'nf-as-chip', '音乐描述');
@@ -705,11 +709,6 @@
     right.appendChild(ui.zoomRange);
     row1.appendChild(right);
     transport.appendChild(row1);
-    const overview = el('div', 'nf-as-overview');
-    ui.overview = el('canvas'); overview.appendChild(ui.overview);
-    overview.addEventListener('pointerdown', (event) => { overviewSeek(event); overview.setPointerCapture(event.pointerId); overview.onpointermove = overviewSeek; });
-    overview.addEventListener('pointerup', () => { overview.onpointermove = null; });
-    transport.appendChild(overview);
     root.appendChild(transport);
     ui.transport = transport;
 
@@ -869,16 +868,19 @@
 
   // ---- transport helpers -------------------------------------------------------------
   function syncInspector(clip) {
-    if (!ui || !ui.inspGain) return;
+    if (!ui || !ui.inspFadeIn) return;
     const has = Boolean(clip);
     ui.inspTitle.textContent = has ? clip.name + ' · ' + (editor ? editor.formatTime(clip.length) : '') : '未选中片段';
-    for (const s of [ui.inspGain, ui.inspFadeIn, ui.inspFadeOut]) s.input.disabled = !has;
+    for (const s of [ui.inspFadeIn, ui.inspFadeOut, ui.inspRate]) s.input.disabled = !has;
     ui.inspLoop.disabled = !has || !clip.loopable;
-    if (!has) { ui.inspGain.set(100); ui.inspFadeIn.set(0); ui.inspFadeOut.set(0); ui.inspLoop.value = '1'; return; }
-    ui.inspGain.set(Math.round(clip.gain * 100));
+    if (!has) { ui.inspFadeIn.range(0, 1); ui.inspFadeOut.range(0, 1); ui.inspFadeIn.set(0); ui.inspFadeOut.set(0); ui.inspRate.set(100); ui.inspLoop.value = '1'; return; }
+    // A fade can cover the whole clip, so each slider runs to the clip's length.
+    const whole = Math.max(0.1, Math.round(clip.length * 10) / 10);
+    ui.inspFadeIn.range(0, whole); ui.inspFadeOut.range(0, whole);
     ui.inspFadeIn.set(Math.round(clip.fadeIn * 10) / 10);
     ui.inspFadeOut.set(Math.round(clip.fadeOut * 10) / 10);
-    ui.inspLoop.value = String(Math.max(1, Math.round(clip.length / clip.buffer.duration)));
+    ui.inspRate.set(Math.round(clip.rate * 100));
+    ui.inspLoop.value = String(clip.loops || 1);
   }
   function syncTime() {
     if (!ui || !editor || !ui.time) return;
@@ -898,6 +900,8 @@
     syncTime();
   }
   function drawOverview() {
+    return; // the timeline's ruler and playhead are the only transport readout
+    // eslint-disable-next-line no-unreachable
     if (!ui || !editor || !ui.overview) return;
     const canvas = ui.overview;
     const w = canvas.clientWidth || 300, h = canvas.clientHeight || 34;
@@ -921,17 +925,13 @@
     const px = editor.playhead() / end * w;
     g.fillStyle = '#ef4444'; g.fillRect(px - 1, 0, 2, h);
   }
-  function overviewSeek(event) {
-    const r = ui.overview.getBoundingClientRect();
-    editor.seek((event.clientX - r.left) / r.width * Math.max(1, editor.projectEnd()));
-  }
   // ---- boards: the animation section's 1 / + / -, each with a timeline of its own
   let boardSerial = 0;
   function editorOptions(host) {
     return {
       host, context: audioContext,
-      onChange: (what) => { if (what === 'model') { syncEmpty(); drawOverview(); } if (what === 'zoom') syncZoom(); },
-      onTime: () => { syncTime(); drawOverview(); },
+      onChange: (what) => { if (what === 'model') { syncEmpty(); syncInspector(editor && editor.selectedClip()); } if (what === 'zoom') syncZoom(); },
+      onTime: () => { syncTime(); },
       onSelect: (clip) => syncInspector(clip),
       onTransport: (playing) => { ui.play.innerHTML = svgIcon(playing ? ICONS.pause : ICONS.play); ui.play.title = playing ? '暂停 (空格)' : '播放 (空格)'; },
       resolveDrop: (id) => { const r = state.resources.find((x) => x.id === id); return r && r.buffer ? { buffer: r.buffer, name: r.name, kind: r.kind, loopable: r.loopable } : null; }
@@ -1012,9 +1012,14 @@
     clearTimeout(refreshCapabilities.timer);
     if (capabilityNote && state.active) refreshCapabilities.timer = setTimeout(refreshCapabilities, 15000);
   }
+  function setProgress(pct) {
+    if (!ui || !ui.progressBar) return;
+    ui.progressBar.style.width = pct === null ? '0' : Math.max(2, Math.min(100, pct)) + '%';
+  }
   function tell() {
     if (!ui) return;
     const running = state.running.size;
+    if (!running) setProgress(null);
     ui.statusText.textContent = capabilityNote || (running ? running + ' 个任务生成中' : '等待生成');
     ui.statusErr.textContent = '';
     if (!running) ui.statusPct.textContent = '';
@@ -1094,7 +1099,7 @@
     pending.taskId = task.id;
     tell();
     try {
-      const finished = await waitForTask(runtime, task.id, (t) => { pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; renderProgress(pending); });
+      const finished = await waitForTask(runtime, task.id, (t) => { pending.progress = Number(t.progress) || 0; ui.statusPct.textContent = Math.round(pending.progress) + '%'; setProgress(pending.progress); renderProgress(pending); });
       if (entry.cancelled) return;
       if (finished.status !== 'completed') throw new Error(finished.error_message || ('任务' + finished.status));
       const files = (finished.output_manifest?.files || []).filter((f) => /\.(wav|flac|mp3|ogg)$/i.test(f.name));

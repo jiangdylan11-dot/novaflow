@@ -5,10 +5,14 @@
 //   editor.addClip({ buffer, name, kind, start })
 //   editor.play() / pause() / seek(t) / exportMix()
 //
-// Clip = { id, trackId, name, kind, buffer, start, offset, length, fadeIn, fadeOut, gain }
-//   start   where it sits on the timeline (s)
-//   offset  where it starts inside its buffer (s)
-//   length  how long it plays (s); longer than the buffer repeats it (a loop)
+// Clip = { id, trackId, name, kind, buffer, start, offset, end, loops, rate, fadeIn, fadeOut, gain }
+//   start      where it sits on the timeline (s)
+//   offset/end the part of the buffer it plays (buffer seconds)
+//   loops      how many times that part repeats
+//   rate       playback speed; dragging the end past the natural length slows
+//              the clip down (stretch), the inspector's speed slider does both
+//   length     derived: (end - offset) * loops / rate, timeline seconds
+//   fadeIn/Out timeline seconds, anywhere from 0 to the whole clip
 (function (root) {
   'use strict';
   if (root.NovaFlowAudioTimeline) return;
@@ -165,9 +169,10 @@
       const buffer = spec.buffer;
       const clip = {
         id: uid('clip'), trackId: track.id, name: spec.name || '片段', kind: spec.kind || 'import', buffer,
-        start: Math.max(0, Number(spec.start) || 0), offset: 0, length: buffer.duration,
+        start: Math.max(0, Number(spec.start) || 0), offset: 0, end: buffer.duration, loops: 1, rate: 1, length: buffer.duration,
         fadeIn: Number(spec.fadeIn) || 0, fadeOut: Number(spec.fadeOut) || 0, gain: 1, loopable: spec.loopable !== false
       };
+      syncLength(clip);
       // Put it after the last clip on that track when the asked position is taken.
       if (spec.start === undefined) {
         let end = 0; for (const c of track.clips) end = Math.max(end, c.start + c.length);
@@ -177,6 +182,19 @@
       select(clip.id);
       layout(); changed();
       return clip;
+    }
+    const MIN_RATE = 0.5, MAX_RATE = 2;
+    function segmentOf(clip) { return Math.max(0.05, clip.end - clip.offset); }
+    function syncLength(clip) {
+      clip.loops = Math.max(1, Math.round(clip.loops || 1));
+      clip.rate = clamp(Number(clip.rate) || 1, MIN_RATE, MAX_RATE);
+      clip.length = segmentOf(clip) * clip.loops / clip.rate;
+      clampFades(clip);
+      return clip.length;
+    }
+    function clampFades(clip) {
+      clip.fadeIn = clamp(Number(clip.fadeIn) || 0, 0, clip.length);
+      clip.fadeOut = clamp(Number(clip.fadeOut) || 0, 0, Math.max(0, clip.length - clip.fadeIn));
     }
     function removeClip(id) {
       for (const t of state.tracks) {
@@ -195,11 +213,12 @@
       const t = state.playhead;
       const clip = selectedClip() || state.tracks.flatMap((tr) => tr.clips).find((c) => t > c.start && t < c.start + c.length);
       if (!clip || t <= clip.start + 0.02 || t >= clip.start + clip.length - 0.02) return null;
+      if (clip.loops > 1) return null;
       const cut = t - clip.start;
-      const right = { ...clip, id: uid('clip'), start: t, length: clip.length - cut, fadeIn: 0 };
-      // The second half starts where the first half stopped inside the (possibly repeated) buffer.
-      right.offset = (clip.offset + cut) % clip.buffer.duration;
-      clip.length = cut; clip.fadeOut = 0;
+      const bufferCut = clip.offset + cut * clip.rate;
+      const right = { ...clip, id: uid('clip'), start: t, offset: bufferCut, fadeIn: 0 };
+      clip.end = bufferCut; clip.fadeOut = 0;
+      syncLength(clip); syncLength(right);
       clipTrack(clip).clips.push(right);
       select(right.id); layout(); changed(); restartIfPlaying();
       return right;
@@ -213,8 +232,11 @@
     }
     function setFade(clipId, fadeIn, fadeOut) {
       const clip = clipOf(clipId); if (!clip) return;
-      if (fadeIn !== undefined) clip.fadeIn = clamp(Number(fadeIn) || 0, 0, clip.length / 2);
-      if (fadeOut !== undefined) clip.fadeOut = clamp(Number(fadeOut) || 0, 0, clip.length / 2);
+      if (fadeIn !== undefined) clip.fadeIn = clamp(Number(fadeIn) || 0, 0, clip.length);
+      if (fadeOut !== undefined) clip.fadeOut = clamp(Number(fadeOut) || 0, 0, clip.length);
+      // Both fades share the clip: the one being set wins the overlap.
+      if (fadeIn !== undefined) clip.fadeOut = Math.min(clip.fadeOut, Math.max(0, clip.length - clip.fadeIn));
+      else clip.fadeIn = Math.min(clip.fadeIn, Math.max(0, clip.length - clip.fadeOut));
       draw(); changed(); restartIfPlaying();
     }
     function setGain(clipId, gain) {
@@ -222,11 +244,19 @@
       clip.gain = clamp(Number(gain) || 0, 0, 2);
       draw(); changed(); restartIfPlaying();
     }
-    function extendLoop(clipId, times) {
+    function setLoops(clipId, times) {
       const clip = clipOf(clipId); if (!clip) return;
-      clip.length = clip.buffer.duration * Math.max(1, times);
+      clip.loops = Math.max(1, Math.min(50, Math.round(Number(times) || 1)));
+      syncLength(clip);
       layout(); changed(); restartIfPlaying();
     }
+    function setRate(clipId, rate) {
+      const clip = clipOf(clipId); if (!clip) return;
+      clip.rate = clamp(Number(rate) || 1, MIN_RATE, MAX_RATE);
+      syncLength(clip);
+      layout(); changed(); restartIfPlaying();
+    }
+    const extendLoop = setLoops;
 
     // ---- geometry ----------------------------------------------------------------
     function timeToX(t) { return Math.round(t * state.zoom); }
@@ -309,18 +339,18 @@
       const peaks = peaksOf(clip.buffer);
       const mid = top + 2 + (LANE_H - 4) / 2, amp = (LANE_H - 4) / 2 - 3;
       g.fillStyle = pal[1];
-      const bufDur = clip.buffer.duration;
+      const bufDur = clip.buffer.duration, segment = segmentOf(clip), loopSpan = segment / clip.rate;
       for (let px = 0; px < wpx; px += 1) {
-        const t = (clip.offset + xToTime(px)) % bufDur;
-        const bin = Math.min(peaks.bins.length - 1, Math.floor(t / bufDur * peaks.bins.length));
+        const bufT = clip.offset + ((xToTime(px) * clip.rate) % segment);
+        const bin = Math.min(peaks.bins.length - 1, Math.max(0, Math.floor(bufT / bufDur * peaks.bins.length)));
         const v = peaks.bins[bin] * amp;
         g.fillRect(x + px, mid - v, 1, Math.max(1, v * 2));
       }
-      // repeat seams
-      if (clip.length > bufDur + 0.01) {
+      // loop seams
+      if (clip.loops > 1) {
         g.strokeStyle = 'rgba(255,255,255,0.35)'; g.setLineDash([3, 3]);
-        for (let t = bufDur - clip.offset; t < clip.length; t += bufDur) {
-          const sx = x + timeToX(t) + 0.5;
+        for (let i = 1; i < clip.loops; i += 1) {
+          const sx = x + timeToX(i * loopSpan) + 0.5;
           g.beginPath(); g.moveTo(sx, top + 2); g.lineTo(sx, top + LANE_H - 2); g.stroke();
         }
         g.setLineDash([]);
@@ -342,7 +372,7 @@
       g.strokeRect(x + 0.5, top + 2.5, wpx - 1, LANE_H - 5);
       g.fillStyle = COLORS.text; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'bottom';
       g.save(); g.beginPath(); g.rect(x, top, wpx, LANE_H); g.clip();
-      g.fillText(clip.name + '  ' + formatTime(clip.length), x + 6, top + LANE_H - 5);
+      g.fillText(clip.name + '  ' + formatTime(clip.length) + (Math.abs(clip.rate - 1) > 0.005 ? '  ×' + clip.rate.toFixed(2) : ''), x + 6, top + LANE_H - 5);
       g.restore();
     }
     function positionPlayhead() {
@@ -401,7 +431,7 @@
       }
       select(h.clip.id);
       drag = { kind: h.kind, clip: h.clip, track: h.track, startX: p.x, startY: p.y,
-        origin: { start: h.clip.start, offset: h.clip.offset, length: h.clip.length, fadeIn: h.clip.fadeIn, fadeOut: h.clip.fadeOut, trackId: h.clip.trackId } };
+        origin: { start: h.clip.start, offset: h.clip.offset, end: h.clip.end, loops: h.clip.loops, rate: h.clip.rate, length: h.clip.length, fadeIn: h.clip.fadeIn, fadeOut: h.clip.fadeOut, trackId: h.clip.trackId } };
       canvas.style.cursor = h.kind === 'move' ? 'grabbing' : cursorFor(h);
     });
     canvas.addEventListener('pointermove', (event) => {
@@ -419,21 +449,28 @@
           clip.trackId = state.tracks[laneIndex].id; state.tracks[laneIndex].clips.push(clip);
         }
       } else if (drag.kind === 'trimStart') {
-        const newStart = clamp(snapTime(o.start + dt), Math.max(0, o.start - o.offset), o.start + o.length - 0.1);
-        const delta = newStart - o.start;
-        clip.start = newStart; clip.offset = (o.offset + delta) % bufDur; clip.length = o.length - delta;
+        // The left edge trims the buffer window; the earliest start is the buffer's own beginning.
+        const earliest = o.start - o.offset / o.rate;
+        const newStart = clamp(snapTime(o.start + dt), Math.max(0, earliest), o.start + o.length - 0.1);
+        const delta = (newStart - o.start) * o.rate;
+        clip.start = newStart; clip.offset = clamp(o.offset + delta, 0, o.end - 0.05);
+        syncLength(clip);
       } else if (drag.kind === 'trimEnd') {
-        // Dragging past the natural end repeats the clip: that is how a loop is laid out.
-        const natural = bufDur - o.offset;
-        let len = Math.max(0.1, snapTime(o.start + o.length + dt) - o.start);
-        if (!clip.loopable) len = Math.min(len, natural);
-        clip.length = len;
+        // Inside the natural length the right edge trims; past it the clip is
+        // stretched (slowed down) instead of repeated.
+        const target = Math.max(0.1, snapTime(o.start + o.length + dt) - o.start);
+        const natural = (o.end - o.offset) * o.loops; // at normal speed
+        if (target >= natural) {
+          clip.end = o.end; clip.rate = clamp(natural / target, MIN_RATE, MAX_RATE);
+        } else {
+          clip.rate = 1; clip.end = clamp(o.offset + target / o.loops, o.offset + 0.05, bufDur);
+        }
+        syncLength(clip);
       } else if (drag.kind === 'fadeIn') {
-        clip.fadeIn = clamp(o.fadeIn + dt, 0, clip.length / 2);
+        clip.fadeIn = clamp(o.fadeIn + dt, 0, clip.length); clampFades(clip);
       } else if (drag.kind === 'fadeOut') {
-        clip.fadeOut = clamp(o.fadeOut - dt, 0, clip.length / 2);
+        clip.fadeOut = clamp(o.fadeOut - dt, 0, clip.length); clip.fadeIn = Math.min(clip.fadeIn, Math.max(0, clip.length - clip.fadeOut));
       }
-      clip.fadeIn = Math.min(clip.fadeIn, clip.length / 2); clip.fadeOut = Math.min(clip.fadeOut, clip.length / 2);
       layout();
     });
     const endDrag = (event) => {
@@ -488,7 +525,6 @@
         for (const clip of track.clips) {
           const clipEnd = clip.start + clip.length;
           if (clipEnd <= from) continue;
-          const bufDur = clip.buffer.duration;
           // Each repetition is one source; the gain envelope spans the whole clip.
           const env = target.createGain();
           env.connect(tg);
@@ -498,20 +534,17 @@
           env.gain.setValueAtTime(clip.fadeIn > 0 && clip.start >= from ? 0.0001 : g, t0);
           if (clip.fadeIn > 0 && clip.start >= from) env.gain.linearRampToValueAtTime(g, t0 + clip.fadeIn);
           if (clip.fadeOut > 0) { env.gain.setValueAtTime(g, Math.max(t0, t1 - clip.fadeOut)); env.gain.linearRampToValueAtTime(0.0001, t1); }
-          let rel = 0; // position inside the clip
-          let bufPos = clip.offset;
-          while (rel < clip.length - 1e-4) {
-            const segLen = Math.min(bufDur - bufPos, clip.length - rel);
-            const segStart = clip.start + rel, segEnd = segStart + segLen;
-            if (segEnd > from) {
-              const src = target.createBufferSource();
-              src.buffer = clip.buffer;
-              src.connect(env);
-              const skip = Math.max(0, from - segStart);
-              src.start(when + Math.max(0, segStart - from), bufPos + skip, segLen - skip);
-              nodes.push(src);
-            }
-            rel += segLen; bufPos = 0;
+          const segment = segmentOf(clip), span = segment / clip.rate; // buffer seconds, timeline seconds
+          for (let i = 0; i < clip.loops; i += 1) {
+            const segStart = clip.start + i * span, segEnd = segStart + span;
+            if (segEnd <= from) continue;
+            const src = target.createBufferSource();
+            src.buffer = clip.buffer;
+            src.playbackRate.value = clip.rate;
+            src.connect(env);
+            const skip = Math.max(0, from - segStart) * clip.rate; // buffer seconds already passed
+            src.start(when + Math.max(0, segStart - from), clip.offset + skip, Math.max(0.01, segment - skip));
+            nodes.push(src);
           }
           nodes.push(env);
         }
@@ -602,7 +635,7 @@
     // ---- public ----------------------------------------------------------------------
     const api = {
       state, host, canvas, scroller,
-      addTrack, removeTrack, addClip, removeClip, select, selectedClip, splitAtPlayhead, duplicateSelected, setFade, setGain, extendLoop,
+      addTrack, removeTrack, addClip, removeClip, select, selectedClip, splitAtPlayhead, duplicateSelected, setFade, setGain, setLoops, setRate, extendLoop, syncLength,
       deleteSelected() { return state.selected ? removeClip(state.selected) : false; },
       play, pause, stop, toggle, seek, isPlaying: () => state.playing,
       setLoop(v) { state.loop = Boolean(v); onChange('loop'); },
