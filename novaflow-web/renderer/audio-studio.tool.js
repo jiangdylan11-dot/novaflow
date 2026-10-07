@@ -174,8 +174,15 @@
   // mask hands the full pointer sequence to the entry underneath.
   function railBackground(reference) {
     const opaque = (color) => color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent';
-    // The idle look is what an unpressed entry (or its cell) paints; sampling
-    // the page under the cell picked up a section's own stage colour instead.
+    // The rail panel behind the entries is the runtime's own surface element,
+    // pointer-events:none, so elementsFromPoint never lists it and sampling the
+    // page gave the body colour: a lighter box where the pressed entry was.
+    const surface = document.getElementById('novaflow-primary-rail-surface');
+    if (surface instanceof HTMLElement && surface.getBoundingClientRect().width > 0) {
+      const color = getComputedStyle(surface).backgroundColor;
+      if (opaque(color)) return color;
+    }
+    // Otherwise the idle look is what an unpressed entry (or its cell) paints.
     for (const entry of document.querySelectorAll('[data-novaflow-primary-entry="1"]')) {
       if (!(entry instanceof HTMLElement) || entry === reference || entry.getAttribute('aria-pressed') === 'true') continue;
       const host = entry.closest('[data-novaflow-primary-cell="1"]') || entry;
