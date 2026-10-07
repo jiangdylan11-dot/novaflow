@@ -398,7 +398,7 @@
       .nf-as-zoom button:hover{color:#fff;background:#303136}
       /* the timeline is a card in the same column as the dock and the transport: same edges, same surface */
       .nf-as-timeline{position:absolute;left:0;right:0;top:53px;bottom:8px;border-radius:var(--nf-ref-radius-panel,12px);overflow:hidden;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e)}
-      .nf-as-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none}
+      .nf-as-empty{position:absolute;left:132px;top:24px;right:0;bottom:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none;padding:0 12px}
       /* timeline editor */
       .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
       .nf-tl-headers{position:relative;background:#161616;border-right:1px solid #2a2a2a;overflow:hidden}
@@ -803,7 +803,7 @@
       for (const f of files) { const res = await importFile(f); if (res) editor.addClip({ buffer: res.buffer, name: res.name, kind: res.kind, loopable: res.loopable, start: editor.playhead() }); }
     });
     ui.empty = el('div', 'nf-as-empty');
-    ui.empty.innerHTML = '<div>时间轴还是空的<br><span style="color:#5a5a5a">展开左侧「音频生成」描述后生成，或从右侧资源列表拖入</span></div>';
+    ui.empty.innerHTML = '<div>时间轴还是空的<br><span style="color:#5a5a5a">生成后自动放入，或从资源列表拖入</span></div>';
     timelineHost.appendChild(ui.empty);
     ui.scroller.appendChild(stage);
     ui.stage = stage;
