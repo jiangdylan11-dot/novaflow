@@ -16925,6 +16925,8 @@
     const cardRect = card.getBoundingClientRect();
     Array.from(card.querySelectorAll("button, [role='button'], div")).forEach((control) => {
       if (!(control instanceof HTMLElement) || control === card || !isVisible(control)) return;
+      // the × has its own rule (the card's right edge)
+      if (control.getAttribute("data-novaflow-ai-resource-action-kind") === "close") return;
       const rect = control.getBoundingClientRect();
       const isSmallOverlay = rect.width >= 22 && rect.width <= 38 && rect.height >= 22 && rect.height <= 38;
       if (!isSmallOverlay) return;
@@ -34648,26 +34650,32 @@
         })
       },
       {
-        // 资源列表: its cards in two columns inside the panel's 10 inset. The
-        // grid had been centred like the empty note and was two 115 columns
-        // in a 204 panel.
+        // 资源列表: a list of row cards inside the panel's 10 inset - thumbnail
+        // on the left, name and facts on the right (resource-list-cards.js
+        // writes the text), the × at the card's right edge.
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div',
         style: (node) => (node.querySelector('[data-novaflow-ai-resource-card="1"]') ? {
           position: "static", top: "auto", left: "auto", right: "auto", bottom: "auto", transform: "none",
           width: "100%", "max-width": "100%", "box-sizing": "border-box", padding: "8px", display: "grid",
-          "grid-template-columns": "repeat(2, minmax(0, 1fr))", gap: "6px", "align-content": "start", height: "auto"
+          "grid-template-columns": "minmax(0, 1fr)", "grid-auto-rows": "auto", gap: "6px", "align-content": "start", height: "auto"
         } : null)
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"]',
-        style: { width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "0", "box-sizing": "border-box", "border-radius": "8px", overflow: "hidden" }
+        style: { position: "relative", display: "flex", "align-items": "center", gap: "7px", padding: "6px 4px 6px 6px", width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "52px", "box-sizing": "border-box", "border-radius": "8px", overflow: "hidden", background: "#222222", "background-color": "#222222" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"] > div:first-child',
-        style: { width: "100%", height: "58px", "min-height": "58px", "max-height": "58px" }
+        style: { position: "static", width: "52px", "min-width": "52px", "max-width": "52px", height: "40px", "min-height": "40px", "max-height": "40px", flex: "0 0 52px", "border-radius": "5px", overflow: "hidden", background: "#111111", "background-color": "#111111" }
+      },
+      {
+        // the × : the card's right edge, vertically centred, on its own round plate
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] [data-novaflow-ai-resource-action-kind="close"]',
+        style: { position: "absolute", right: "4px", left: "auto", top: "50%", bottom: "auto", transform: "translateY(-50%)", width: "20px", "min-width": "20px", "max-width": "20px", height: "20px", "min-height": "20px", "max-height": "20px", padding: "0", display: "inline-flex", "align-items": "center", "justify-content": "center", border: "1px solid #454545", "border-radius": "50%", background: "#333333", "background-color": "#333333", color: "#dddddd", "font-size": "13px", "line-height": "18px", "box-shadow": "0 1px 3px rgba(0, 0, 0, 0.45)", "z-index": "3" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -34676,18 +34684,23 @@
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-resource-card="1"] [data-novaflow-ai-resource-overlay-control]',
-        style: { width: "18px", height: "18px", "min-width": "18px", "min-height": "18px", top: "4px", right: "4px", left: "auto", "font-size": "11px", "line-height": "18px", padding: "0", "border-radius": "5px" }
+        selector: '[data-novaflow-ai-resource-card="1"] [data-novaflow-ai-resource-overlay-control]:not([data-novaflow-ai-resource-action-kind="close"])',
+        style: { width: "16px", height: "16px", "min-width": "16px", "min-height": "16px", top: "8px", left: "8px", right: "auto", "font-size": "10px", "line-height": "16px", padding: "0", "border-radius": "4px" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"] > div:nth-child(2)',
-        style: { width: "100%", height: "auto", "min-height": "0", padding: "0", "box-sizing": "border-box" }
+        style: { flex: "1 1 auto", width: "auto", "min-width": "0", height: "auto", "min-height": "0", padding: "0 14px 0 0", "box-sizing": "border-box" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"] > div:nth-child(2) > div',
-        style: { width: "100%", height: "auto", "min-height": "0", padding: "4px 6px", gap: "3px", "box-sizing": "border-box" }
+        style: { width: "100%", height: "auto", "min-height": "0", padding: "0", gap: "5px", "align-items": "center", "box-sizing": "border-box" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] > div:nth-child(2) > div > div:last-child',
+        style: { height: "auto", "min-height": "0", "min-width": "0" }
       },
       {
         // A loaded reference tile: the picture fills it, × sits small in its
