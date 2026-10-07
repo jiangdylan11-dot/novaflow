@@ -237,16 +237,12 @@
       mask.type = 'button';
       mask.setAttribute('data-novaflow-runtime-ignore', '1');
       mask.appendChild(document.createElement('i'));
+      // 动画 is React's pressed entry already: deactivating flips the mode to
+      // 骨骼 through the runtime; replaying the click on the entry only made the
+      // runtime run its 200 ms primary-entry commit again
       mask.addEventListener('click', (event) => {
         event.preventDefault(); event.stopPropagation();
-        const target = state.maskTarget;
         deactivate();
-        if (!(target instanceof HTMLElement) || !target.isConnected) return;
-        const r = target.getBoundingClientRect();
-        const init = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1, pointerId: 1, pointerType: 'mouse', isPrimary: true };
-        for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-          target.dispatchEvent(type.startsWith('pointer') && window.PointerEvent ? new PointerEvent(type, init) : new MouseEvent(type, init));
-        }
       });
       document.body.appendChild(mask);
     }

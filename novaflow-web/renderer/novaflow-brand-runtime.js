@@ -3579,6 +3579,7 @@
     if (!(entry instanceof HTMLElement) || entry.getAttribute("data-novaflow-primary-active") === "1") return;
     const html = document.documentElement;
     if (!html) return;
+    const artTarget = normalizeText(entry.getAttribute("data-novaflow-primary-label") || "") === ART_PRIMARY_ENTRY_LABEL;
     html.setAttribute("data-novaflow-switch-veil", "1");
     // Only the new page's groups count: the old page's are still in the
     // column when the first mutations arrive.
@@ -3641,8 +3642,10 @@
       // (a slow page such as 美工 has them only after its mount; waiting a
       // further frame there kept the column blank ~200ms longer).
       const groupsIn = newGroupsIn();
-      const ready = groupsIn || (runs > runsAtClick && frames >= 2);
-      if (ready || performance.now() - startedAt > 260) {
+      // 美工: React mounts its panel list a commit after the page, and 生图 opens
+      // with it; the veil waits for that so the page never shows closed first
+      const ready = (groupsIn || (runs > runsAtClick && frames >= 2)) && (!artTarget || isArtGenerateEntryReadyForVeil());
+      if (ready || performance.now() - startedAt > (artTarget ? 700 : 260)) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
         holdPreviewFrameUntilSettled();
         html.removeAttribute("data-novaflow-switch-veil");
@@ -3660,7 +3663,7 @@
         const addedGroup = records.some((record) => Array.from(record.addedNodes).some((node) => (
           node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
         )));
-        if (addedGroup && newGroupsIn()) {
+        if (addedGroup && newGroupsIn() && (!artTarget || isArtGenerateEntryReadyForVeil())) {
           holdPreviewFrameUntilSettled();
           html.removeAttribute("data-novaflow-switch-veil");
           watcher.disconnect();
@@ -57999,6 +58002,8 @@
             if (skeletonSecondarySwitch || aiSequenceSecondarySwitch) armAnimationMountSync(skeletonSecondarySwitch ? "skeleton" : "ai");
             window.requestAnimationFrame(() => {
               if (token !== PRIMARY_SWITCH_TOKEN) return;
+              // the mount observer already ran the first-frame layout for this switch
+              if (ANIMATION_MOUNT_SYNC_DONE_TOKEN === token) return;
               if (runAiAnimationSecondarySwitchLocalRefresh({ skeletonSecondarySwitch, aiSequenceSecondarySwitch })) return;
               applySecondaryEntryLayout();
               runFullLayoutRefresh();
@@ -58024,6 +58029,7 @@
   // section's nodes are in, the synchronous layout runs, so the first painted
   // frame is the finished one.
   let ANIMATION_MOUNT_SYNC_OBSERVER = null;
+  let ANIMATION_MOUNT_SYNC_DONE_TOKEN = -1;
   function armAnimationMountSync(mode) {
     if (ANIMATION_MOUNT_SYNC_OBSERVER) {
       ANIMATION_MOUNT_SYNC_OBSERVER.disconnect();
@@ -58057,9 +58063,12 @@
           if (!activateSkeletonAnimationLayoutFromMountedSurface("mount-observer")) scheduleSkeletonAnimationLayout({ immediate: true });
           normalizeRibbonPanelRuntimeOwner(document.body);
           // the column pass pins the entry group, which is what gives the bone
-          // panels their 3px pads and rule (46 -> 53 px rows)
-          applySecondaryEntryLayout();
-          try { normalizeNovaflowVisualRhythm(document.body); } catch (_) { void 0; }
+          // panels their 3px pads and rule (46 -> 53 px rows): on the first
+          // commit and on the one that brings the bone panels, not in between
+          if (passes === 1 || document.querySelector('[data-panel-id="bone-auto-weights"]')) {
+            applySecondaryEntryLayout();
+            try { normalizeNovaflowVisualRhythm(document.body); } catch (_) { void 0; }
+          }
           // settled once React's last bone panel (自动权重) and the module's
           // 动画计算 row are both in and have had this pass
           const settled = document.body.classList.contains("novaflow-skeleton-animation-layout")
@@ -58083,6 +58092,7 @@
           if (settled || passes >= 20) stop();
         } else {
           runAiAnimationEntryFirstFrameLayoutSync();
+          ANIMATION_MOUNT_SYNC_DONE_TOKEN = PRIMARY_SWITCH_TOKEN;
           stop();
         }
       } catch (_) { stop(); } finally { busy = false; }
@@ -78592,29 +78602,55 @@
   // 生图 opens in the microtask of the React commit that mounts its panel (the
   // 80 ms sync timer opened it a few frames after the page showed)
   let ART_GENERATE_ENTRY_OBSERVER = null;
+  // the switch veil on 美工 lifts only once 生图 is open and its surfaces are in
+  function isArtGenerateEntryReadyForVeil() {
+    if (!ART_GENERATE_STATE.active) return false;
+    const panel = findArtGeneratePanel();
+    return panel instanceof HTMLElement && isArtGeneratePanelExpanded(panel) && !!document.getElementById(ART_GENERATE_WORKSPACE_ID);
+  }
+  // 绘图 <-> UI hands the panel over and can close 生图 again after the entry
+  // opened it; a late check puts it back
+  function scheduleArtGenerateEntryReassert() {
+    [160, 420].forEach((delay) => window.setTimeout(() => {
+      if (ART_GENERATE_STATE.active || !isArtGenerateRouteReady()) return;
+      const panel = findArtGeneratePanel();
+      if (panel instanceof HTMLElement) { try { activateArtGenerate(); } catch (_) { void 0; } }
+    }, delay));
+  }
   function armArtGenerateEntrySync() {
+    scheduleArtGenerateEntryReassert();
     if (ART_GENERATE_ENTRY_OBSERVER) { ART_GENERATE_ENTRY_OBSERVER.disconnect(); ART_GENERATE_ENTRY_OBSERVER = null; }
     if (typeof MutationObserver !== "function" || !document.body) return;
     let timer = 0;
-    const observer = new MutationObserver(() => {
-      if (!ART_GENERATE_ENTRY_PENDING) { stop(); return; }
-      if (!isArtGenerateRouteReady()) return;
+    let lastActivation = 0;
+    const startedAt = performance.now();
+    // true once 生图 is open with its surfaces; activates when it is not (the
+    // 绘图 <-> UI handoff re-renders the panel closed after the entry opened it,
+    // so this keeps watching for a while instead of stopping at the first open)
+    const ensureOpen = () => {
+      if (!isArtGenerateRouteReady()) return false;
       const panel = findArtGeneratePanel();
-      if (!(panel instanceof HTMLElement)) return;
-      stop();
-      ART_GENERATE_ENTRY_PENDING = false;
+      if (!(panel instanceof HTMLElement)) return false;
+      if (ART_GENERATE_STATE.active && isArtGeneratePanelExpanded(panel) && document.getElementById(ART_GENERATE_WORKSPACE_ID)) return true;
+      if (performance.now() - lastActivation < 60) return false;
+      lastActivation = performance.now();
       try { activateArtGenerate(); } catch (_) { void 0; }
+      return ART_GENERATE_STATE.active && isArtGeneratePanelExpanded(panel);
+    };
+    const observer = new MutationObserver(() => {
+      if (performance.now() - startedAt > 900) { stop(); return; }
+      if (ensureOpen()) ART_GENERATE_ENTRY_PENDING = false;
     });
     const stop = () => {
       observer.disconnect();
       window.clearTimeout(timer);
       if (ART_GENERATE_ENTRY_OBSERVER === observer) ART_GENERATE_ENTRY_OBSERVER = null;
     };
-    observer.observe(document.body, { childList: true, subtree: true });
-    timer = window.setTimeout(stop, 2500);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-expanded", "data-open", "class"] });
+    timer = window.setTimeout(stop, 900);
     ART_GENERATE_ENTRY_OBSERVER = observer;
     // the panel may already be there (绘图 <-> UI keeps the column)
-    window.queueMicrotask(() => { if (ART_GENERATE_ENTRY_PENDING && isArtGenerateRouteReady() && findArtGeneratePanel()) { stop(); ART_GENERATE_ENTRY_PENDING = false; try { activateArtGenerate(); } catch (_) { void 0; } } });
+    window.queueMicrotask(() => { if (ensureOpen()) ART_GENERATE_ENTRY_PENDING = false; });
   }
   let ART_GENERATE_FORWARDING_PANEL_CLICK = false;
   let ART_GENERATE_FORCE_BOTTOM_RENDER = false;
