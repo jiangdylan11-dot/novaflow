@@ -247,8 +247,9 @@
       document.body.appendChild(mask);
     }
     state.maskTarget = pressed;
-    mask.setAttribute('data-novaflow-primary-label', pressed.getAttribute('data-novaflow-primary-label') || '');
-    mask.setAttribute('aria-label', pressed.getAttribute('aria-label') || '');
+    // not data-novaflow-primary-label / aria-label: the runtime's primary-intent
+    // listeners resolved the mask as the 动画 entry and ran its entry commit again
+    mask.setAttribute('data-nf-mask-label', pressed.getAttribute('data-novaflow-primary-label') || '');
     const icon = getComputedStyle(pressed).getPropertyValue('--nf-rail-icon');
     if (icon) mask.style.setProperty('--nf-rail-icon', icon);
     const rail = pressed.closest('[data-novaflow-primary-rail]');
@@ -491,7 +492,7 @@
       /* the hover fill is a rounded face one pixel inside the square mask */
       #${MASK_ID} > i{position:absolute;inset:1px;border-radius:var(--nf-mask-radius,7px);background:transparent;z-index:-1}
       #${MASK_ID}::before{content:"";display:block;width:19px;height:19px;background-color:currentColor;-webkit-mask:var(--nf-rail-icon) center / contain no-repeat;mask:var(--nf-rail-icon) center / contain no-repeat}
-      #${MASK_ID}::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
+      #${MASK_ID}::after{content:attr(data-nf-mask-label);display:block;white-space:nowrap}
       #${MASK_ID}:hover{color:#ffffff}
       #${MASK_ID}:hover > i{background:#373737}
 

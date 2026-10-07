@@ -43287,6 +43287,7 @@
     const primaryEntrySerial = PRIMARY_ANIMATION_ENTRY_TRANSACTION_SERIAL;
     AI_ANIMATION_RUNTIME_REFRESH_NEEDS_FULL = AI_ANIMATION_RUNTIME_REFRESH_NEEDS_FULL || Boolean(full);
     AI_ANIMATION_RUNTIME_REFRESH_FORCE_FULL = AI_ANIMATION_RUNTIME_REFRESH_FORCE_FULL || options.forceFull === true;
+    AI_ANIMATION_RUNTIME_REFRESH_LAST_QUEUED_AT = performance.now();
     if (AI_ANIMATION_RUNTIME_REFRESH_FRAME) {
       if (
         !primaryEntryPending ||
@@ -43314,6 +43315,12 @@
       AI_ANIMATION_RUNTIME_REFRESH_MUST_RUN_AFTER_ATOMIC = false;
       AI_ANIMATION_RUNTIME_REFRESH_FORCE_FULL = false;
       if (switchToken !== PRIMARY_SWITCH_TOKEN) return;
+      // every request for this batch came before the mount observer's synchronous
+      // first-frame layout of the same switch: that layout is this batch's work
+      if (!forceFull && ANIMATION_MOUNT_SYNC_DONE_TOKEN === switchToken && AI_ANIMATION_RUNTIME_REFRESH_LAST_QUEUED_AT <= ANIMATION_MOUNT_SYNC_DONE_AT) {
+        nfAnimationPerfCountCallsite("aiAnimationRuntimeRefreshSkippedAfterMountSync", "batch");
+        return;
+      }
       if (shouldSkipSupersededPrimaryAnimationRuntimeRefresh({
         full: shouldRunFull,
         queuedDuringPrimaryEntry,
@@ -58030,6 +58037,8 @@
   // frame is the finished one.
   let ANIMATION_MOUNT_SYNC_OBSERVER = null;
   let ANIMATION_MOUNT_SYNC_DONE_TOKEN = -1;
+  let ANIMATION_MOUNT_SYNC_DONE_AT = 0;
+  let AI_ANIMATION_RUNTIME_REFRESH_LAST_QUEUED_AT = 0;
   function armAnimationMountSync(mode) {
     if (ANIMATION_MOUNT_SYNC_OBSERVER) {
       ANIMATION_MOUNT_SYNC_OBSERVER.disconnect();
@@ -58093,6 +58102,7 @@
         } else {
           runAiAnimationEntryFirstFrameLayoutSync();
           ANIMATION_MOUNT_SYNC_DONE_TOKEN = PRIMARY_SWITCH_TOKEN;
+          ANIMATION_MOUNT_SYNC_DONE_AT = performance.now();
           stop();
         }
       } catch (_) { stop(); } finally { busy = false; }
