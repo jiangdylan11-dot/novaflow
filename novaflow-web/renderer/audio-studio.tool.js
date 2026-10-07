@@ -277,14 +277,16 @@
       .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:1px 0 12px}
       .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;padding:0 6px}
       .nf-as-mode button:hover{background:#2a2a2a}
-      .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
-      .nf-as-row{border-bottom:1px solid #272727}
-      .nf-as-row-head{display:flex;align-items:center;gap:8px;width:100%;height:46px;padding:0 7px;border:0;border-radius:7px;background:transparent;color:#d4d4d4;font-size:12px;font-weight:400;text-align:left}
-      .nf-as-row-head:hover{background:#222222}
-      .nf-as-plate{width:24px;height:24px;display:grid;place-items:center;border-radius:5px;background:#292929;color:#cfcfcf;font-size:12px;flex:none}
-      .nf-as-row-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-      .nf-as-chev{width:10px;font-size:11px;opacity:.7}
-      .nf-as-row[data-open="1"] .nf-as-chev{transform:rotate(90deg)}
+      .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
+      /* rows: the animation section's collapse headings - icon plate and chevron are pseudo elements */
+      .nf-as-rows{display:flex;flex-direction:column;gap:5px}
+      .nf-as-rows-tools{margin-top:3px;padding:3px 0;border-top:1px solid #272727;border-bottom:1px solid #272727;display:flex;flex-direction:column;gap:5px}
+      .nf-as-row-head{position:relative;display:flex;align-items:center;width:100%;height:46px;padding:0 30px 0 40px;border:0;border-radius:7px;background:transparent;color:#d4d4d4;font-size:12px;font-weight:400;line-height:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .nf-as-row[data-key="generate"] .nf-as-row-head{font-weight:500;border-radius:6px}
+      .nf-as-row-head::before{content:"";position:absolute;left:7px;top:11px;width:24px;height:24px;border-radius:5px;background:#292929 var(--nf-as-row-icon) center / 16px 16px no-repeat}
+      .nf-as-row-head::after{content:"";position:absolute;right:12px;top:50%;width:7px;height:7px;border-right:1px solid rgba(238,244,252,.7);border-bottom:1px solid rgba(238,244,252,.7);transform:translateY(-50%) rotate(-45deg)}
+      .nf-as-row[data-open="1"] .nf-as-row-head::after{transform:translateY(-70%) rotate(45deg)}
+      .nf-as-row-head:hover{background:rgba(255,255,255,.043)}
       .nf-as-row-body{display:none;flex-direction:column;gap:9px;padding:4px 7px 16px}
       .nf-as-row[data-open="1"] .nf-as-row-body{display:flex}
       .nf-as-label{font-size:11px;color:#9f9f9f}
@@ -298,22 +300,26 @@
       .nf-as-tools button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
       .nf-as-note{font-size:11px;line-height:1.6;color:#8b8b8b}
       /* stage */
-      .nf-as-stage{background:#242424;border-radius:7px;overflow:hidden}
+      .nf-as-stage{background:transparent;border-radius:7px;overflow:visible}
       .nf-as-topbar{position:absolute;left:0;top:7px;right:0;height:38px;display:flex;align-items:center;justify-content:space-between;pointer-events:none}
       .nf-as-topbar > *{pointer-events:auto}
-      .nf-as-project{display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:#161616;border:1px solid #333;border-radius:9px}
-      .nf-as-project .nf-as-tab{width:28px;height:28px;border:0;border-radius:6px;background:#1ea672;color:#fff;font-size:12px;font-weight:600}
-      .nf-as-project .nf-as-tab-add{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#bdbdbd;font-size:16px}
+      .nf-as-project{display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133)}
+      .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
+      .nf-as-project .nf-as-tab-add,.nf-as-project .nf-as-tab-del{width:38px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#a0a0a0;font-size:11px;font-weight:500}
+      .nf-as-project .nf-as-tab-add:hover{background:#2a2a2a;color:#fff}
+      .nf-as-project .nf-as-tab-del{background:#252629;color:#969aa2}
+      .nf-as-project .nf-as-tab-del:hover{background:#4a2323;color:#ffb4b4}
       .nf-as-project input{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
-      .nf-as-zoom{display:flex;align-items:center;gap:6px;margin-right:8px}
-      .nf-as-zoom span{min-width:40px;height:28px;display:grid;place-items:center;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px}
-      .nf-as-zoom button{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#bdbdbd;font-size:11px;padding:0 10px}
-      .nf-as-zoom button:hover{color:#fff;background:#303030}
-      .nf-as-timeline{position:absolute;left:8px;right:8px;top:53px;bottom:8px;border-radius:7px;overflow:hidden;background:#1d1d1d;border:1px solid #2c2c2c}
+      .nf-as-zoom{display:flex;align-items:center;height:38px;padding:4px;gap:3px;margin-right:0;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133)}
+      .nf-as-zoom span{min-width:44px;height:28px;display:grid;place-items:center;border-radius:5px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px}
+      .nf-as-zoom button{height:28px;border:1px solid transparent;border-radius:5px;background:transparent;color:#8a8a8a;font-size:11px;padding:0 10px}
+      .nf-as-zoom button:hover{color:#fff;background:#2a2a2a}
+      /* the timeline is a card in the same column as the dock and the transport: same edges, same surface */
+      .nf-as-timeline{position:absolute;left:0;right:0;top:53px;bottom:8px;border-radius:10px;overflow:hidden;background:#161616;border:1px solid #343434}
       .nf-as-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none}
       /* timeline editor */
       .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
-      .nf-tl-headers{position:relative;background:#181818;border-right:1px solid #2c2c2c;overflow:hidden}
+      .nf-tl-headers{position:relative;background:#161616;border-right:1px solid #2a2a2a;overflow:hidden}
       .nf-tl-headers-top{height:24px;line-height:24px;padding:0 10px;font-size:10px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a}
       .nf-tl-header-list{will-change:transform}
       .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222}
@@ -333,9 +339,9 @@
       .nf-tl-playhead{position:absolute;top:0;width:2px;background:#ef4444;pointer-events:none}
       .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
       /* generation dock */
-      .nf-as-dock{background:#161616;border-radius:12px;padding:14px 15px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:10px}
+      .nf-as-dock{background:#161616;border:1px solid #363636;border-radius:12px;padding:13px 14px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:11px}
       .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
-      .nf-as-dock-row .nf-as-label{white-space:nowrap}
+      .nf-as-dock-row .nf-as-label{white-space:nowrap;color:#a9a9a9}
       .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid #343434;border-radius:6px;background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
       .nf-as-dock-row select{width:auto;min-width:72px}
       .nf-as-switch{width:27px;height:15px;border-radius:15px;border:0;background:#3a3a3a;position:relative;padding:0;flex:none}
@@ -353,10 +359,10 @@
       .nf-as-prompt-head .nf-as-chip{height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;padding:3px 7px;display:flex;align-items:center;gap:7px}
       .nf-as-prompt-head button.nf-as-chip:hover{color:#fff;background:#2a2a2a}
       .nf-as-prompt-head button.nf-as-chip[aria-pressed="true"]{color:#9be4cd}
-      .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#e8eaed;font-size:12px;line-height:1.5;padding:4px 8px 8px}
+      .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#c9c9c9;font-size:12px;line-height:1.5;padding:12px 14px}
       .nf-as-prompt textarea::placeholder{color:#6e6e6e}
       /* transport */
-      .nf-as-transport{background:#161616;border:1px solid #343434;border-radius:10px;padding:11px 13px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
+      .nf-as-transport{background:#161616;border:1px solid #343434;border-radius:10px;padding:10px 12px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
       .nf-as-tr-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;min-width:0}
       .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:0;border-radius:7px;background:#282828;color:#e3e3e3;display:grid;place-items:center;padding:0}
       .nf-as-tr-row .nf-as-tbtn:hover{background:#343434}
@@ -456,9 +462,13 @@
     left.appendChild(mode);
     ui.modeMusic = modeMusic; ui.modeSfx = modeSfx;
 
-    const gen = row(left, 'generate', '音频生成', '♪');
+    const rows = el('div', 'nf-as-rows');
+    left.appendChild(rows);
+    const gen = row(rows, 'generate', '音频生成', ROW_ICONS.generate);
     ui.genBody = gen.body;
-    const tools = row(left, 'edit', '音轨编辑', '✂');
+    const toolRows = el('div', 'nf-as-rows-tools');
+    rows.appendChild(toolRows);
+    const tools = row(toolRows, 'edit', '音轨编辑', ROW_ICONS.edit);
     const grid = el('div', 'nf-as-tools');
     const tool = (label, title, fn) => { const b = el('button', null, label); b.type = 'button'; b.title = title; b.addEventListener('click', fn); grid.appendChild(b); return b; };
     tool('分割', '在播放头处分割选中片段 (S)', () => editor.splitAtPlayhead());
@@ -472,7 +482,7 @@
     tools.body.appendChild(grid);
     tools.body.appendChild(el('div', 'nf-as-note', '拖右侧资源到音轨；拖片段边缘裁剪，拖过末尾即循环；上角小方块是淡入淡出。'));
 
-    const out = row(left, 'export', '导出', '⇩');
+    const out = row(toolRows, 'export', '导出', ROW_ICONS.export);
     const outGrid = el('div', 'nf-as-tools');
     const mix = el('button', null, '导出混音 WAV'); mix.type = 'button'; mix.addEventListener('click', exportMix);
     const one = el('button', null, '导出选中片段'); one.type = 'button'; one.addEventListener('click', exportSelected);
@@ -489,12 +499,14 @@
     const tab = el('button', 'nf-as-tab', '1'); tab.type = 'button'; tab.title = '当前工程';
     const add = el('button', 'nf-as-tab-add', '+'); add.type = 'button'; add.title = '新建工程（清空时间轴）';
     add.addEventListener('click', () => { if (editor.clipCount() && !window.confirm('清空当前时间轴，开始新的工程？')) return; resetProject(); });
+    const del = el('button', 'nf-as-tab-del', '-'); del.type = 'button'; del.title = '清空当前工程';
+    del.addEventListener('click', () => { if (editor.clipCount() && !window.confirm('清空当前工程的时间轴？')) return; resetProject(); });
     const name = el('input'); name.value = state.projectName; name.title = '工程名称';
     name.addEventListener('change', () => { state.projectName = name.value.trim() || 'audio_1'; name.value = state.projectName; });
-    project.appendChild(tab); project.appendChild(add); project.appendChild(name);
+    project.appendChild(tab); project.appendChild(add); project.appendChild(del); project.appendChild(name);
     const zoom = el('div', 'nf-as-zoom');
     ui.zoomLabel = el('span', null, '100%');
-    const fit = el('button', null, '适应窗口'); fit.type = 'button'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
+    const fit = el('button', null, '自动适配'); fit.type = 'button'; fit.title = '缩放到整段可见'; fit.addEventListener('click', () => { editor.fitToWindow(); syncZoom(); });
     zoom.appendChild(ui.zoomLabel); zoom.appendChild(fit);
     topbar.appendChild(project); topbar.appendChild(zoom);
     stage.appendChild(topbar);
@@ -609,13 +621,17 @@
     syncZoom();
   }
 
-  function row(parent, key, title, glyph) {
+  // 16px outline icons on the row plate, the animation section's own look.
+  const ROW_ICONS = {
+    generate: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5V3.5l7-1.5v9'/%3E%3Ccircle cx='4' cy='12.5' r='2'/%3E%3Ccircle cx='11' cy='11' r='2'/%3E%3C/svg%3E\")",
+    edit: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='4.5' cy='4.5' r='2'/%3E%3Ccircle cx='4.5' cy='11.5' r='2'/%3E%3Cpath d='M13.5 3 6 9.5M13.5 13 6 6.5'/%3E%3C/svg%3E\")",
+    export: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23bdbdbd' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2.5v8M4.5 7 8 10.5 11.5 7'/%3E%3Cpath d='M3 13.5h10'/%3E%3C/svg%3E\")"
+  };
+  function row(parent, key, title, icon) {
     const node = el('div', 'nf-as-row');
     node.dataset.key = key;
-    const head = el('button', 'nf-as-row-head'); head.type = 'button';
-    head.appendChild(el('span', 'nf-as-plate', glyph));
-    head.appendChild(el('span', 'nf-as-row-title', title));
-    head.appendChild(el('span', 'nf-as-chev', '›'));
+    const head = el('button', 'nf-as-row-head', title); head.type = 'button';
+    head.style.setProperty('--nf-as-row-icon', icon);
     head.addEventListener('click', () => { state.open = state.open === key ? '' : key; renderRows(); layout(); });
     const body = el('div', 'nf-as-row-body');
     node.appendChild(head); node.appendChild(body);
@@ -718,9 +734,9 @@
     // the timeline stops above whichever card comes first
     const timelineBottom = (dockVisible ? dockTop : transportTop) - 9;
     const tl = ui.stage.querySelector('.nf-as-timeline');
-    tl.style.right = (right - innerRight + 8) + 'px';
-    tl.style.bottom = (bottom - timelineBottom + 0) + 'px';
-    ui.stage.querySelector('.nf-as-topbar').style.right = (right - innerRight + 8) + 'px';
+    tl.style.right = (right - innerRight) + 'px';
+    tl.style.bottom = (bottom - timelineBottom) + 'px';
+    ui.stage.querySelector('.nf-as-topbar').style.right = (right - innerRight) + 'px';
     syncMask();
     if (editor) { editor.layout(); drawOverview(); }
   }
