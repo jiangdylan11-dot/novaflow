@@ -363,6 +363,7 @@
       .nf-as-dd-item:hover{background:rgba(255,255,255,.08)}
       .nf-as-dd-item[aria-selected="true"]{background:#1ea672;color:#fff}
       .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .nf-as-tools .nf-as-tool-wide{grid-column:1 / -1}
       .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
       .nf-as-tools button:hover,.nf-as-btn:hover{background:#303030;color:#fff}
       .nf-as-tools button:disabled,.nf-as-btn:disabled{opacity:.45;cursor:default}
@@ -742,6 +743,9 @@
     tool('删除', '删除选中片段 (Delete)', () => editor.deleteSelected());
     tool('复制', '在后面复制一份选中片段', () => editor.duplicateSelected());
     tool('新增音轨', '添加一条空音轨', () => editor.addTrack());
+    // 保存 puts the mixdown into the resource list; the rail's 导出 only exports.
+    const save = tool('保存到资源列表', '把当前画板整条时间轴混音后放进右侧资源列表', () => saveMix());
+    save.classList.add('nf-as-tool-wide');
     tools.body.appendChild(grid);
     // selected clip: volume, fades, loop count
     const insp = el('div', 'nf-as-inspector');
@@ -1519,17 +1523,32 @@
   }
 
   // ---- export -------------------------------------------------------------------------------
+  async function mixdown() {
+    if (!editor.clipCount()) throw new Error('时间轴还是空的');
+    const blob = await editor.exportMix();
+    const name = (state.boards[state.board]?.name || ('audio_' + (state.board + 1))).replace(/[\/:*?"<>|]/g, '_') + '_mix';
+    return { blob, name };
+  }
+  // 导出 (the rail entry): the mixdown as a download and into the warehouse.
   async function exportMix() {
     try {
       ui.statusErr.textContent = '';
-      const blob = await editor.exportMix();
-      const name = (state.boards[state.board]?.name || ('audio_' + (state.board + 1))).replace(/[\/:*?"<>|]/g, '_') + '_mix';
-      state.counter.import += 1;
-      const buffer = await decode(blob);
-      state.resources.unshift({ id: 'res-mix-' + Date.now(), kind: 'import', name, label: '混音导出', seconds: buffer ? buffer.duration : 0, blob, buffer, url: URL.createObjectURL(blob), loopable: true });
-      renderList();
+      const { blob, name } = await mixdown();
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name + '.wav'; document.body.appendChild(link); link.click(); link.remove();
       try { await window.NovaFlowWebWarehouse?.save?.({ blob, name: name + '.wav' }); } catch (_) { /* reported by the warehouse */ }
+    } catch (error) {
+      ui.statusErr.textContent = String(error?.message || error);
+    }
+  }
+  // 保存到资源列表 (音轨编辑): the mixdown as a new resource, nothing leaves the page.
+  async function saveMix() {
+    try {
+      ui.statusErr.textContent = '';
+      const { blob, name } = await mixdown();
+      state.counter.import += 1;
+      const buffer = await decode(blob);
+      state.resources.unshift({ id: 'res-mix-' + Date.now(), kind: 'import', name, label: '混音', seconds: buffer ? buffer.duration : 0, blob, buffer, url: URL.createObjectURL(blob), loopable: true });
+      renderList();
     } catch (error) {
       ui.statusErr.textContent = String(error?.message || error);
     }
