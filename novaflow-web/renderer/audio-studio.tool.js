@@ -270,8 +270,9 @@
     const want = state.active ? 'ai' : 'skeleton';
     if (document.body.getAttribute('data-nf-animation-secondary') === want) return;
     document.body.setAttribute('data-nf-animation-secondary', want);
-    // the runtime switches the mode in its own cycle; nudge it when 动画 is already on
-    if (animationEntry()?.getAttribute('aria-pressed') === 'true') window.NovaFlowBrandRuntimeAnimation?.syncSecondary();
+    // the runtime switches the mode and re-lays the column in its own cycle; nudge it when 动画 is already on
+    const runtime = window.NovaFlowBrandRuntimeAnimation;
+    if (runtime && animationEntry()?.getAttribute('aria-pressed') === 'true') { runtime.syncSecondary(); runtime.relayout(); }
   }
   function activate(sub) {
     sub = sub === 'audio' || sub === 'video' ? sub : state.sub;
@@ -346,48 +347,12 @@
       target.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, init) : new MouseEvent(type, init));
     }
   }
-  function isAnimationGroup(group) {
-    const labels = Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]')).map((b) => (b.textContent || '').trim());
-    return labels.includes('AI序列动画') || labels.includes('骨骼动画');
-  }
-  // React reuses the group node across sections (特效's 粒子特效 | AI特效 is the
-  // same element), so the mark is checked on every pass and dropped when the
-  // group no longer holds the 动画 pair.
-  // The runtime writes the group's display inline with !important, so the
-  // hiding is written inline too and re-applied whenever its style changes.
-  let groupObserver = null;
-  function applyGroupHiding(group) {
-    const marked = group.getAttribute('data-nf-av-group') === '1';
-    const videoSub = state.active && state.sub === 'video';
-    // Hidden without display:none / visibility:hidden: the runtime only keeps
-    // laying the group out (and reads data-nf-av-collapsed) while its buttons
-    // still count as visible to it.
-    const want = marked ? { opacity: '0', 'pointer-events': 'none', 'clip-path': 'inset(100%)' } : { opacity: '', 'pointer-events': '', 'clip-path': '' };
-    for (const key of Object.keys(want)) {
-      const value = want[key];
-      if (value === '') { if (group.style.getPropertyValue(key)) group.style.removeProperty(key); continue; }
-      if (group.style.getPropertyValue(key) !== value || group.style.getPropertyPriority(key) !== 'important') group.style.setProperty(key, value, 'important');
-    }
-    // the brand runtime reads this to start the left content where the group would be (like 工具)
-    const collapsed = marked && !videoSub;
-    let changed = false;
-    if (collapsed && group.getAttribute('data-nf-av-collapsed') !== '1') { group.setAttribute('data-nf-av-collapsed', '1'); changed = true; }
-    else if (!collapsed && group.hasAttribute('data-nf-av-collapsed')) { group.removeAttribute('data-nf-av-collapsed'); changed = true; }
-    if (changed) window.setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
-  }
-  function markAnimationGroup() {
-    for (const node of document.querySelectorAll('[data-nf-av-group="1"]')) if (!isAnimationGroup(node)) { node.removeAttribute('data-nf-av-group'); applyGroupHiding(node); }
+  // The React AI序列动画 / 骨骼动画 group: the brand runtime paints it invisible
+  // and decides from body[data-nf-animation-secondary] whether the content
+  // starts at its spot (动画 alone) or below it (音视 / 视频, our toggle on top).
+  function animationGroup() {
     const ai = secondaryButton('AI序列动画') || secondaryButton('骨骼动画');
-    const group = ai && ai.closest('[data-novaflow-secondary-group="1"]');
-    if (group) {
-      if (group.getAttribute('data-nf-av-group') !== '1') group.setAttribute('data-nf-av-group', '1');
-      applyGroupHiding(group);
-      if (!groupObserver) {
-        groupObserver = new MutationObserver(() => { for (const node of document.querySelectorAll('[data-novaflow-secondary-group="1"]')) { if (node.getAttribute('data-nf-av-group') === '1' && isAnimationGroup(node)) applyGroupHiding(node); } });
-      }
-      groupObserver.observe(group, { attributes: true, attributeFilter: ['style'] });
-    }
-    return group;
+    return (ai && ai.closest('[data-novaflow-secondary-group="1"]')) || null;
   }
   function secondaryActive(button) {
     return button.getAttribute('data-novaflow-secondary-active') === '1' || button.getAttribute('aria-pressed') === 'true';
@@ -420,7 +385,7 @@
     syncSubToggle();
     syncMask();
     // one runtime pass after the mode landed (a switch interrupted mid-way skips its own)
-    window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    window.NovaFlowBrandRuntimeAnimation?.relayout();
   }
   // The AI sequence section without the runtime's layout (a switch interrupted
   // by the next click): the body lacks the class the runtime adds with it.
@@ -447,7 +412,7 @@
     const ai = secondaryButton('AI序列动画');
     if (!ai || !secondaryActive(ai)) return;
     // the AI sequence section without the runtime's layout
-    if (!document.body.classList.contains('novaflow-ai-animation-section-layers') || rawAnimationPanelShowing()) { healAt = now; window.dispatchEvent(new Event('resize')); }
+    if (!document.body.classList.contains('novaflow-ai-animation-section-layers') || rawAnimationPanelShowing()) { healAt = now; window.NovaFlowBrandRuntimeAnimation?.relayout(); }
   }
   function beginSwitch(mode) {
     endSwitch();
@@ -459,7 +424,6 @@
       if (animationEntry()?.getAttribute('aria-pressed') !== 'true') return;
       const button = secondaryButton(wantLabel);
       if (!button) return;
-      markAnimationGroup();
       // the brand runtime switches the mode itself (data-nf-animation-secondary);
       // once it shows, one frame for the paint, then the cover goes
       if (!secondaryActive(button)) return;
@@ -490,7 +454,7 @@
   const GROUP_PROPS = ['background-color', 'border', 'border-radius', 'padding', 'gap', 'column-gap', 'box-shadow', 'box-sizing'];
   const PILL_PROPS = ['background-color', 'color', 'font-size', 'font-weight', 'font-family', 'letter-spacing', 'border-radius', 'height', 'min-height', 'line-height', 'box-shadow', 'border', 'text-shadow'];
   function copyToggleLook(toggle) {
-    const group = markAnimationGroup();
+    const group = animationGroup();
     if (!group) return;
     const buttons = Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]'));
     const on = buttons.find(secondaryActive) || buttons[0];
@@ -515,7 +479,7 @@
   function syncSubToggle() {
     let toggle = document.getElementById(SUB_TOGGLE_ID);
     if (!(state.active && state.sub === 'video')) { if (toggle) toggle.remove(); return; }
-    const group = markAnimationGroup();
+    const group = animationGroup();
     if (!group) { if (toggle) toggle.hidden = true; return; }
     if (!toggle) {
       toggle = el('div', 'nf-as-mode');
@@ -598,7 +562,6 @@
       .nf-as-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
       .nf-as-mode.nf-as-mode-kind{margin:0 0 4px}
       /* the React AI序列动画 / 骨骼动画 toggle never shows: 动画 is 骨骼 only, 音视 / 视频 floats its own */
-      /* [data-nf-av-group="1"] is hidden inline (see applyGroupHiding): collapsed under 动画, an invisible placeholder under 音视 / 视频 */
       #${SUB_TOGGLE_ID}{position:fixed;z-index:2147483000;margin:0;box-sizing:border-box}
       /* while a 动画 / 音视 switch settles, a page-coloured board covers the content area
          (hiding the elements themselves stalls React's section switch) */
@@ -2106,7 +2069,6 @@
     ensureCell();
     if (state.active && state.sub === 'audio') layout();
     if (state.active && state.sub === 'video') { syncSubToggle(); syncMask(); }
-    markAnimationGroup();
     healAnimationLayout();
   }
   function start() {

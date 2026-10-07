@@ -44517,6 +44517,11 @@
       if (buttons.some((button) => !button)) return false;
       scheduleAnimationSecondaryActivation(labels.map(normalizeText).join("|"), buttons);
       return true;
+    },
+    // a full runtime pass (the flag above moved the content's top, or a switch
+    // landed without its own pass); a window resize event does not run one
+    relayout() {
+      scheduleFullLayoutRefresh([0, 120]);
     }
   });
   function scheduleAnimationSecondaryActivation(groupKey, buttons) {
@@ -44529,9 +44534,11 @@
       const live = buttons.map((button) => findLiveOriginalEntryButton(normalizeText(button.textContent || ""), button)).filter((button) => button instanceof HTMLElement);
       const target = live.find((button) => normalizeText(button.textContent || "") === wanted);
       if (!(target instanceof HTMLElement) || !isVisible(target)) return;
-      // what React shows now: its own pressed pill first (the mount evidence can lag a
-      // re-render by a frame), the inferred layout when the pills say nothing
-      const shownLabel = normalizeText(live.find((button) => hasActiveAttribute(button) || hasActiveClass(button) || hasActiveVisual(button))?.textContent || "")
+      // what React shows now: the mounted content first (a pill can stay pressed
+      // while the other mode's content is still up after an interrupted switch),
+      // then its own pressed pill, then the inferred layout
+      const shownLabel = (hasSkeletonAnimationMountEvidence() ? "骨骼动画" : (isAiSequenceSecondaryContentMounted() ? "AI序列动画" : ""))
+        || normalizeText(live.find((button) => hasActiveAttribute(button) || hasActiveClass(button) || hasActiveVisual(button))?.textContent || "")
         || inferSecondaryActiveLabel(buttons.map((button) => normalizeText(button.textContent || "")));
       if (shownLabel === wanted) return;
       // the click handler records the new label itself; writing it first would make
@@ -57483,11 +57490,17 @@
       ? panelTop + SECONDARY_GROUP_TOP_INSET
       : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
-    // 动画 has no secondary entries any more (audio-studio.tool.js collapses its
-    // AI序列动画 / 骨骼动画 group): the content then starts where the group would be.
-    // React reuses the group node across sections, so the mark only counts while the node holds the 动画 pair.
-    const secondaryCollapsed = group.getAttribute("data-nf-av-collapsed") === "1"
-      && isAiSequenceSecondaryGroup(buttons.map((button) => normalizeText(button?.textContent || "")));
+    // 动画 shows no AI序列动画 / 骨骼动画 toggle: the group stays in the document
+    // (React and this layout still need it) but is painted invisible. Entered from
+    // its own rail entry the content starts where the group would be (like 工具);
+    // under 音视 / 视频 (body flag "ai") the 视频 | 音频 toggle of audio-studio.tool.js
+    // floats over the group's spot, so the content keeps its place below it.
+    // React reuses the group node across sections, so this is decided per pass.
+    const animationPair = isAiSequenceSecondaryGroup(buttons.map((button) => normalizeText(button?.textContent || "")));
+    nfSetStyleIfChanged(group, "opacity", animationPair ? "0" : "", animationPair ? "important" : "");
+    nfSetStyleIfChanged(group, "pointer-events", animationPair ? "none" : "", animationPair ? "important" : "");
+    nfSetStyleIfChanged(group, "clip-path", animationPair ? "inset(100%)" : "", animationPair ? "important" : "");
+    const secondaryCollapsed = animationPair && animationWantedSecondaryLabel() !== "AI序列动画";
     const desiredContentTop = Math.round(secondaryCollapsed ? top : top + shellHeight + SECONDARY_TO_CONTENT_GAP);
     // Inline, because the group's padding and the pills' radius are each set
     // by more than one stylesheet rule and the last one kept winning. This is
