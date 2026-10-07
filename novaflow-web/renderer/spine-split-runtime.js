@@ -14033,14 +14033,10 @@
   }
 
   function splitDrawingSectionsForHost(host) {
-    if (!host?.matches?.(ART_UI_HOST_SELECTOR)) return splitDrawingControlSections
-    // Finished UI images use the existing native cutout tools. The skeletal
-    // character splitter remains in Drawing, where its body-part workflow fits.
-    return splitDrawingControlSections
-      .filter((section) => section.id === 'generate' || section.id === 'split')
-      .map((section) => section.id === 'split'
-        ? { ...section, items: section.items.filter((item) => item.action === 'penCutout' || item.action === 'cutout') }
-        : section)
+    // UI design shares the generation controls, not Drawing's editing tools.
+    return host?.matches?.(ART_UI_HOST_SELECTOR)
+      ? splitDrawingControlSections.filter((section) => section.id === 'generate')
+      : splitDrawingControlSections
   }
 
   function splitDrawingCategoryDomMatchesState(root) {

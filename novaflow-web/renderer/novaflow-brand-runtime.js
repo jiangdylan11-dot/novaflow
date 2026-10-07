@@ -36267,7 +36267,7 @@
 
   function exitArtEditWhenGenerating() {
     const body = document.body;
-    if (!body || body.getAttribute(ART_GENERATE_ACTIVE_ATTR) !== "1" || shouldPreserveUiSplitReferenceDock()) return;
+    if (!body || body.getAttribute(ART_GENERATE_ACTIVE_ATTR) !== "1") return;
     document.querySelectorAll('[data-novaflow-edit-tool-bar="1"]').forEach((bar) => {
       if (!(bar instanceof HTMLElement) || bar.__novaflowExitedForGenerate) return;
       const exit = Array.from(bar.querySelectorAll(":scope > [data-novaflow-spine-split-tool-action]"))
@@ -80260,28 +80260,12 @@
     ));
   }
 
-  function isArtGenerateUiSplitPanel(panel) {
-    return isArtGenerateRouteReady()
-      && normalizeText(SECONDARY_ACTIVE_BY_GROUP.get(ART_DRAWING_SECONDARY_GROUP_KEY)) === "UI"
-      && window.NovaFlowUiDesignDrawing?.isActive?.() === true
-      && panel instanceof HTMLElement
-      && panel.getAttribute("data-novaflow-spine-split-control-category") === "split";
-  }
-
-  function shouldPreserveUiSplitReferenceDock() {
-    const panel = document.querySelector('[data-novaflow-art-ui-host="1"] [data-novaflow-spine-split-control-category="split"]');
-    return isArtGenerateUiSplitPanel(panel) && isArtGeneratePanelExpanded(panel);
-  }
-
   function shouldArtGenerateDeactivationProceed(reason) {
     if (reason === "route") {
       if (shouldPreserveArtGenerateRoute(getPrimaryTargetBodyClassIndex())) return false;
       return !isArtGenerateRouteReady();
     }
     if (!isArtGenerateRouteReady()) return true;
-    // UI shares its reference dock with native split tools; folding generation
-    // must not remove the destination while those tools are in use.
-    if (shouldPreserveUiSplitReferenceDock()) return false;
     const panel = findArtGeneratePanel();
     if (!(panel instanceof HTMLElement) || !isArtGeneratePanelExpanded(panel)) {
       if (isArtGeneratePromptAssistantBusy() && hasArtGenerateMountedSurface()) return false;
@@ -80345,7 +80329,7 @@
     ART_GENERATE_STATE.error = "";
     syncArtGenerateEntryButtons();
     const panel = findArtGeneratePanel();
-    if (panel instanceof HTMLElement && !shouldPreserveUiSplitReferenceDock()) {
+    if (panel instanceof HTMLElement) {
       if (!isArtGeneratePanelExpanded(panel)) clickArtGeneratePanelHeader(panel);
       closeArtGenerateSiblingPanels(panel);
     }
@@ -80828,7 +80812,7 @@
       return;
     }
     const panel = findArtGeneratePanel();
-    if ((!(panel instanceof HTMLElement) || !isArtGeneratePanelExpanded(panel)) && !shouldPreserveUiSplitReferenceDock()) {
+    if (!(panel instanceof HTMLElement) || !isArtGeneratePanelExpanded(panel)) {
       scheduleArtGenerateDeactivationRecheck("panel");
       return;
     }
@@ -84963,7 +84947,6 @@
       if (header instanceof HTMLElement) {
         if (header.closest('[data-novaflow-ui-layout-section="1"]')) return;
         const panel = header.parentElement;
-        if (isArtGenerateUiSplitPanel(panel)) return;
         if (panel instanceof HTMLElement && isArtGeneratePanel(panel)) {
           if (ART_GENERATE_STATE.active && isArtGeneratePanelExpanded(panel)) {
             event.preventDefault();
@@ -84983,7 +84966,7 @@
         return;
       }
       const splitAction = target.closest("[data-novaflow-spine-split-control-action]");
-      if (splitAction instanceof HTMLElement && ART_GENERATE_STATE.active && !shouldPreserveUiSplitReferenceDock()) {
+      if (splitAction instanceof HTMLElement && ART_GENERATE_STATE.active) {
         window.setTimeout(() => deactivateArtGenerate({ closePanel: true, suppressAutoActivate: true }), 0);
       }
     };
