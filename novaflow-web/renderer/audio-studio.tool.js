@@ -276,7 +276,8 @@
       #${MASK_ID}::after{content:attr(data-novaflow-primary-label);display:block;white-space:nowrap}
       #${MASK_ID}:hover{background:#373737!important;color:#ffffff}
 
-      #${ROOT_ID}{position:fixed;inset:0;z-index:130;pointer-events:none;color:#e8eaed;font-size:12px;font-weight:400;font-family:inherit}
+      /* above every section's own layers (美工 lifts its panel to 2147483621), below the rail shortcuts, the warehouse and the modal layer */
+      #${ROOT_ID}{position:fixed;inset:0;z-index:2147483625;pointer-events:none;color:#e8eaed;font-size:12px;font-weight:400;font-family:inherit}
       #${ROOT_ID}[hidden]{display:none!important}
       #${ROOT_ID} *{box-sizing:border-box;font-family:inherit}
       #${ROOT_ID} button{font-family:inherit;cursor:pointer;outline:0;transition:none}
@@ -285,7 +286,7 @@
       #${ROOT_ID} > *{pointer-events:auto}
       .nf-as-left,.nf-as-stage,.nf-as-sidebar,.nf-as-dock,.nf-as-transport{position:fixed}
       /* left card: the section panel */
-      .nf-as-left{background:#161616;border:1px solid #2e2e2e;border-radius:12px;padding:10px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
+      .nf-as-left{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:10px 9px 9px;overflow:hidden auto;display:flex;flex-direction:column;gap:0}
       .nf-as-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:#101010;border:1px solid #262626;border-radius:8px;margin:1px 0 12px}
       .nf-as-mode button{height:29px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;padding:0 6px}
       .nf-as-mode button:hover{background:#2a2a2a}
@@ -303,10 +304,10 @@
       .nf-as-row[data-open="1"] .nf-as-row-body{display:flex}
       .nf-as-label{font-size:11px;color:#9f9f9f}
       .nf-as-field{display:flex;flex-direction:column;gap:5px}
-      #${ROOT_ID} select,.nf-as-input{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px;width:100%}
+      #${ROOT_ID} select,.nf-as-input{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px;width:100%}
       #${ROOT_ID} select{appearance:none;-webkit-appearance:none;padding-right:26px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239f9f9f' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;background-size:12px}
       .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-      .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
+      .nf-as-tools button,.nf-as-btn{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:11px;padding:0 8px;white-space:nowrap}
       .nf-as-tools button:hover,.nf-as-btn:hover{background:#303030;color:#fff}
       .nf-as-tools button:disabled,.nf-as-btn:disabled{opacity:.45;cursor:default}
       .nf-as-tools button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
@@ -325,9 +326,9 @@
       .nf-as-stage{background:#242424;border-radius:0;overflow:visible}
       .nf-as-topbar{position:absolute;left:0;top:7px;right:0;height:38px;pointer-events:none}
       .nf-as-topbar > *{pointer-events:auto;position:absolute;top:0}
-      .nf-as-project{left:0;display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
+      .nf-as-project{left:0;display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-bar-line,#333333);border-radius:var(--nf-ref-radius-bar,9px);box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
       .nf-as-tabs{display:flex;gap:3px}
-      .nf-as-project .nf-as-name{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
+      .nf-as-project .nf-as-name{width:116px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
       .nf-as-project .nf-as-tab[aria-pressed="false"]{background:#252629;color:#969aa2;border-color:transparent}
       .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add,.nf-as-project .nf-as-tab-del{width:38px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#a0a0a0;font-size:11px;font-weight:500}
@@ -335,12 +336,12 @@
       .nf-as-project .nf-as-tab-del{background:#252629;color:#969aa2}
       .nf-as-project .nf-as-tab-del:hover{background:#4a2323;color:#ffb4b4}
       .nf-as-project input{width:116px;height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
-      .nf-as-zoom{right:0;display:flex;align-items:center;height:38px;padding:4px;gap:3px;margin-right:0;background:#161616;border:1px solid #333;border-radius:9px;box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
+      .nf-as-zoom{right:0;display:flex;align-items:center;height:38px;padding:4px;gap:3px;margin-right:0;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-bar-line,#333333);border-radius:var(--nf-ref-radius-bar,9px);box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
       .nf-as-zoom span{min-width:44px;height:28px;display:grid;place-items:center;border-radius:5px;background:#262626;color:#e9e9e9;font-size:11px;padding:0 8px}
       .nf-as-zoom button{height:28px;border:1px solid transparent;border-radius:5px;background:transparent;color:#8a8a8a;font-size:11px;padding:0 10px}
       .nf-as-zoom button:hover{color:#fff;background:#2a2a2a}
       /* the timeline is a card in the same column as the dock and the transport: same edges, same surface */
-      .nf-as-timeline{position:absolute;left:0;right:0;top:53px;bottom:8px;border-radius:10px;overflow:hidden;background:#161616;border:1px solid #343434}
+      .nf-as-timeline{position:absolute;left:0;right:0;top:53px;bottom:8px;border-radius:var(--nf-ref-radius-panel,12px);overflow:hidden;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e)}
       .nf-as-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#6f6f6f;font-size:12px;line-height:1.9;pointer-events:none}
       /* timeline editor */
       .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
@@ -364,15 +365,15 @@
       .nf-tl-playhead{position:absolute;top:0;width:2px;background:#ef4444;pointer-events:none}
       .nf-tl-playhead::before{content:"";position:absolute;left:-4px;top:0;border:5px solid transparent;border-top:8px solid #ef4444}
       /* generation dock */
-      .nf-as-dock{background:#161616;border:1px solid #363636;border-radius:12px;padding:13px 14px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:11px}
+      .nf-as-dock{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-dock-line,#363636);border-radius:var(--nf-ref-radius-panel,12px);padding:13px 14px;display:grid;grid-template-rows:32px 18px minmax(0,1fr);row-gap:11px}
       .nf-as-dock-row{display:flex;align-items:center;gap:10px;height:32px}
       .nf-as-dock-row .nf-as-label{white-space:nowrap;color:#a9a9a9}
-      .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid #343434;border-radius:6px;background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
+      .nf-as-dock-row input[type=number]{width:49px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
       .nf-as-dock-row select{width:auto;min-width:72px}
       .nf-as-switch{width:27px;height:15px;border-radius:15px;border:0;background:#3a3a3a;position:relative;padding:0;flex:none}
       .nf-as-switch::after{content:"";position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:#ddd}
       .nf-as-switch[aria-checked="true"]{background:#1ea672}.nf-as-switch[aria-checked="true"]::after{left:15px;background:#fff}
-      .nf-as-go{margin-left:auto;width:104px;height:32px;border:1px solid #24b693;border-radius:7px;background:#1ea672;color:#fff;font-size:12px;font-weight:600;padding:5px 10px}
+      .nf-as-go{margin-left:auto;width:104px;height:32px;border:1px solid #24b693;border-radius:var(--nf-ref-radius-control,7px);background:#1ea672;color:#fff;font-size:12px;font-weight:600;padding:5px 10px}
       .nf-as-go:hover{background:#22b87f}.nf-as-go:disabled{opacity:.45;cursor:default}
       .nf-as-status{display:flex;align-items:center;gap:8px;height:18px;font-size:11px;color:#9f9f9f}
       .nf-as-status .nf-as-pct{color:#cfcfcf}
@@ -387,15 +388,15 @@
       .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#c9c9c9;font-size:12px;line-height:1.5;padding:12px 14px}
       .nf-as-prompt textarea::placeholder{color:#6e6e6e}
       /* transport */
-      .nf-as-transport{background:#161616;border:1px solid #343434;border-radius:10px;padding:10px 12px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
+      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-soft,#343434);border-radius:10px;padding:10px 12px;display:grid;grid-template-rows:30px 34px;row-gap:11px}
       .nf-as-tr-row{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;min-width:0}
-      .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:1px solid transparent;border-radius:7px;background:#282828;color:#eaeaea;display:grid;place-items:center;padding:0}
+      .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:1px solid transparent;border-radius:var(--nf-ref-radius-control,7px);background:#282828;color:#eaeaea;display:grid;place-items:center;padding:0}
       .nf-as-tr-row .nf-as-tbtn:hover{background:#343434}
       .nf-as-tr-row .nf-as-tbtn[aria-pressed="true"]{background:#193d33;color:#8ee0c5;border-color:#306553}
       .nf-as-tr-row .nf-as-tbtn svg{display:block;width:18px;height:18px}
       .nf-as-time{font-size:11px;color:#cfcfcf;min-width:110px;font-variant-numeric:tabular-nums;margin-left:6px}
       .nf-as-tr-row .nf-as-label{margin-left:10px}
-      .nf-as-tr-row input[type=number]{width:49px;height:28px;border:1px solid #343434;border-radius:6px;background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
+      .nf-as-tr-row input[type=number]{width:49px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#272727;color:#e9e9e9;font-size:11px;padding:0 6px;text-align:center}
       .nf-as-tr-row label.nf-as-check{display:flex;align-items:center;gap:5px;font-size:11px;color:#bdbdbd}
       .nf-as-tr-row input[type=checkbox]{width:13px;height:13px;accent-color:#1ea672}
       .nf-as-tr-right{margin-left:auto;display:flex;align-items:center;gap:8px}
@@ -405,10 +406,10 @@
       .nf-as-overview{position:relative;height:34px;border-radius:6px;background:#1d1d1d;overflow:hidden;cursor:col-resize}
       .nf-as-overview canvas{display:block;width:100%;height:100%}
       /* resource sidebar */
-      .nf-as-sidebar{background:#161616;border:1px solid #2e2e2e;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+      .nf-as-sidebar{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);display:flex;flex-direction:column;overflow:hidden}
       .nf-as-side-head{display:flex;align-items:center;gap:8px;padding:14px 12px;font-size:13px}
       .nf-as-side-head .nf-as-count{color:#9aa0a6;font-size:12px;flex:1}
-      .nf-as-side-head button{height:28px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:11px;padding:0 10px}
+      .nf-as-side-head button{height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e3e3e3;font-size:11px;padding:0 10px}
       .nf-as-side-head button:hover{background:#303030;color:#fff}
       .nf-as-side-list{flex:1;min-height:0;overflow:auto;padding:0 8px 12px;display:flex;flex-direction:column;gap:6px}
       .nf-as-side-list::-webkit-scrollbar{width:6px}.nf-as-side-list::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:3px}
@@ -435,6 +436,12 @@
   }
 
   // ---- DOM helpers ---------------------------------------------------------------
+  // The global sheet flattens every button to 400/no shadow with !important;
+  // the native panel gets its 500 and the selected inset line written inline
+  // by the brand runtime, so these are written inline too.
+  function imp(node, styles) {
+    for (const [key, value] of Object.entries(styles)) node.style.setProperty(key, value, 'important');
+  }
   function el(tag, cls, text) {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -667,6 +674,7 @@
     node.dataset.key = key;
     const head = el('button', 'nf-as-row-head', title); head.type = 'button';
     head.style.setProperty('--nf-as-row-icon', icon);
+    imp(head, { 'font-size': '12px', 'font-weight': key === 'generate' ? '500' : '400', 'line-height': '12px', 'box-shadow': 'none' });
     head.addEventListener('click', () => { state.open = state.open === key ? '' : key; renderRows(); layout(); });
     const body = el('div', 'nf-as-row-body');
     node.appendChild(head); node.appendChild(body);
@@ -683,6 +691,10 @@
     state.mode = mode;
     ui.modeMusic.setAttribute('aria-pressed', String(mode === 'music'));
     ui.modeSfx.setAttribute('aria-pressed', String(mode === 'sfx'));
+    for (const b of [ui.modeMusic, ui.modeSfx]) {
+      const on = b.getAttribute('aria-pressed') === 'true';
+      imp(b, { 'font-weight': '500', 'font-size': '12px', 'box-shadow': on ? 'inset 0 0 0 1px #2c604f' : 'none', background: on ? '#1c4136' : 'transparent', color: on ? '#9be4cd' : '#eaeaea' });
+    }
     const m = state[mode];
     // left row body
     ui.genBody.replaceChildren();
@@ -745,7 +757,7 @@
     const root = document.getElementById(ROOT_ID);
     if (!root || !state.active) return;
     const column = document.querySelector('[data-novaflow-left-column]');
-    const surface = document.querySelector('[data-novaflow-primary-surface="1"]');
+    const surface = document.getElementById('novaflow-primary-left-surface');
     let cardLeft = 75, cardWidth = 218, stageLeft = 302;
     if (surface instanceof HTMLElement && surface.getBoundingClientRect().width > 100) {
       const r = surface.getBoundingClientRect(); cardLeft = Math.round(r.left); cardWidth = Math.round(r.width);
@@ -755,7 +767,9 @@
       cardLeft = Math.round(r.left + pad); cardWidth = Math.round(r.width - pad - 9);
     }
     if (column instanceof HTMLElement) stageLeft = Math.round(column.getBoundingClientRect().right);
-    const top = STAGE_TOP, bottom = window.innerHeight - EDGE_GAP, right = window.innerWidth - EDGE_GAP;
+    // The native card's own top and bottom (the brand runtime sets them per layout tier).
+    const sr = surface instanceof HTMLElement && surface.getBoundingClientRect().width > 100 ? surface.getBoundingClientRect() : null;
+    const top = sr ? Math.round(sr.top) : STAGE_TOP, bottom = sr ? Math.round(sr.bottom) : window.innerHeight - EDGE_GAP, right = window.innerWidth - EDGE_GAP;
     const place = (node, x, y, w, h) => { node.style.left = x + 'px'; node.style.top = y + 'px'; node.style.width = w + 'px'; node.style.height = h + 'px'; };
     place(ui.left, cardLeft, top, cardWidth, bottom - top);
     place(ui.stage, stageLeft, top, right - stageLeft, bottom - top);
