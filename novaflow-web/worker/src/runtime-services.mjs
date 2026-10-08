@@ -1,5 +1,7 @@
-import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, access, mkdir, copyFile, symlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { assertLocalOnly } from './comfy/comfy-client.mjs';
 // The batch file starts a long-lived Python process. execFile waits for its
@@ -49,26 +51,91 @@ export function videoRuntimeUrl(configured, imageUrl = 'http://127.0.0.1:8188') 
   return url;
 }
 
+// Where the runtime goes when its own port is held by somebody else's ComfyUI.
+export const ALTERNATE_RUNTIME_PORTS = Array.from({ length: 20 }, (_, i) => 8190 + i);
+
+const mainOf = root => join(root, 'engine', 'ComfyUI', 'main.py').replace(/\//g, '\\').toLowerCase();
+
+function portFree(port) {
+  return new Promise(resolve => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => probe.close(() => resolve(true)));
+    probe.listen(port, '127.0.0.1');
+  });
+}
+
 // A runtime this assistant starts is its own: it is stopped when the assistant stops. One that was
 // already running is borrowed: the assistant never ends it, but hands its GPU memory back (models
 // unloaded) when it stops. stateFile remembers which process the assistant started, so a runtime a
 // previous run left behind (the assistant was killed, or crashed) is still recognised as its own.
+//
+// Only a NovaFlow runtime is borrowed. A user's own ComfyUI on the port (a portable install left
+// running) has none of NovaFlow's nodes, and every task failed on it at /prompt. The runtime then
+// starts on the first free port of alternatePorts; start() reports the address it ended up on.
 export function createRuntimeServices({
   imageUrl = 'http://127.0.0.1:8188', videoUrl = '', logger = () => {}, stateFile = '',
-  probeListener = probeRuntimeListener, runScript = null
+  probeListener = probeRuntimeListener, runScript = null,
+  roots = {}, alternatePorts = ALTERNATE_RUNTIME_PORTS
 } = {}) {
   const video = videoRuntimeUrl(videoUrl, imageUrl);
-  const entries = [
-    { kind: 'image', url: assertLocalOnly(imageUrl), root: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime') }
-  ];
+  const programData = process.env.ProgramData || 'C:/ProgramData';
+  const home = (kind, url, root) => ({ kind, url, root, home: { url, root } });
+  const entries = [home('image', assertLocalOnly(imageUrl), roots.image || join(programData, 'NovaFlow', 'AI-Runtime'))];
   // Only a node that points video at a runtime of its own still has a second one to start.
-  if (video !== imageUrl) entries.push({ kind: 'video', url: assertLocalOnly(video), root: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime-H3') });
+  if (video !== imageUrl) entries.push(home('video', assertLocalOnly(video), roots.video || join(programData, 'NovaFlow', 'AI-Runtime-H3')));
+  const shadowBase = join(stateFile ? dirname(stateFile) : join(tmpdir(), 'NovaFlow'), 'runtime-alt');
   const owned = new Set();
   const borrowed = new Set();
   const portOf = entry => new URL(entry.url).port;
   const keyOf = entry => entry.kind + ':' + portOf(entry);
   async function up(url) {
     try { return (await fetch(url + '/system_stats', { signal: AbortSignal.timeout(2500) })).ok; } catch { return false; }
+  }
+  // ComfyUI reports its command line; NovaFlow's runtimes run main.py from their engine folder. One
+  // too old to report it counts as NovaFlow's, as before this check.
+  async function novaflowAt(url, entry) {
+    try {
+      const main = (await (await fetch(url + '/system_stats', { signal: AbortSignal.timeout(2500) })).json())?.system?.argv?.[0];
+      if (typeof main !== 'string') return true;
+      const path = main.replace(/\//g, '\\').toLowerCase();
+      return [entry.home.root, shadowRoot(entry, new URL(url).port)].some(root => path === mainOf(root));
+    } catch { return true; }
+  }
+  // The installed scripts read the port from the runtime.json beside them. A second runtime folder
+  // that shares the engine (a junction) and differs only in that port runs the same runtime, with
+  // the scripts as installed, on another port. Its logs stay its own: a runtime process that lives
+  // on holds its log files open, and a second one could not open them.
+  const shadowRoot = (entry, port) => join(shadowBase, entry.kind + '-' + port);
+  async function moveAside(entry, port) {
+    const root = shadowRoot(entry, port);
+    await mkdir(join(root, 'scripts'), { recursive: true });
+    for (const name of ['start', 'stop']) {
+      await copyFile(join(entry.home.root, 'scripts', name + '-runtime.bat'), join(root, 'scripts', name + '-runtime.bat'));
+    }
+    const config = JSON.parse((await readFile(join(entry.home.root, 'runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
+    await writeFile(join(root, 'runtime.json'), JSON.stringify({ ...config, port: Number(port) }, null, 2));
+    const engine = join(root, 'engine');
+    if (!await access(engine).then(() => true, () => false)) await symlink(join(entry.home.root, 'engine'), engine, 'junction');
+    entry.root = root;
+    entry.url = 'http://127.0.0.1:' + port;
+  }
+  // The configured port, unless somebody else's ComfyUI holds it: then a NovaFlow runtime already on
+  // an alternate port (a previous run's), else the first free one.
+  async function placeEntry(entry) {
+    entry.url = entry.home.url;
+    entry.root = entry.home.root;
+    if (!await up(entry.url) || await novaflowAt(entry.url, entry)) return;
+    logger(entry.kind + ' port ' + portOf(entry) + ' is held by another ComfyUI (not NovaFlow\'s); using another port');
+    for (const port of alternatePorts) {
+      const url = 'http://127.0.0.1:' + port;
+      if (await up(url) ? await novaflowAt(url, entry) : await portFree(port)) {
+        await moveAside(entry, port);
+        logger(entry.kind + ' runtime placed on ' + entry.url);
+        return;
+      }
+    }
+    throw new Error('端口 ' + portOf(entry) + ' 被其他 ComfyUI 占用，且没有可用的备用端口');
   }
   // The record of started runtimes: read and written one change at a time (image and video start
   // side by side).
@@ -148,14 +215,20 @@ export function createRuntimeServices({
   return {
     async start(onProgress = () => {}) {
       const results = await Promise.all(entries.map(async entry => {
+        try { await placeEntry(entry); } catch (error) {
+          const message = entry.kind + '：' + String(error.message || error);
+          logger(message);
+          return { kind: entry.kind, running: false, error: message };
+        }
+        const url = entry.url;
         if (await up(entry.url)) {
           if (await leftByUs(entry)) {
             owned.add(entry);
             logger(entry.kind + ' runtime left running by the last assistant run: taken back as its own');
-            return { kind: entry.kind, running: true, reused: false, adopted: true };
+            return { kind: entry.kind, url, running: true, reused: false, adopted: true };
           }
           borrowed.add(entry);
-          return { kind: entry.kind, running: true, reused: true };
+          return { kind: entry.kind, url, running: true, reused: true };
         }
         onProgress('正在启动' + (entry.kind === 'image' ? '图像' : '视频') + '运行环境，首次加载可能需要几分钟');
         try {
@@ -167,7 +240,7 @@ export function createRuntimeServices({
           owned.add(entry);
           const deadline = Date.now() + 120000;
           while (Date.now() < deadline) {
-            if (await up(entry.url)) { await remember(entry); return { kind: entry.kind, running: true, reused: false }; }
+            if (await up(entry.url)) { await remember(entry); return { kind: entry.kind, url, running: true, reused: false }; }
             await new Promise(r => setTimeout(r, 1000));
           }
           throw new Error('运行环境启动超时');

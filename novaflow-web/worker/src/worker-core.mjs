@@ -309,6 +309,13 @@ export function createWorker(options) {
     }
     return workflowHosts.get(runtime);
   }
+  // The runtime may have started on another port (runtime-services: its own was held by somebody
+  // else's ComfyUI). The clients follow it, and the graph builders read the node catalogue anew.
+  function retargetComfy({ image, video } = {}) {
+    const moved = [[comfyImage, image], [comfyVideo, video]].filter(([client, url]) => url && client.baseUrl !== url);
+    for (const [client, url] of moved) client.retarget(url);
+    if (moved.length) { workflowHosts.clear(); log('ComfyUI address', { image: comfyImage.baseUrl, video: comfyVideo.baseUrl }); }
+  }
 
   const comfyImage = createComfyClient({ baseUrl: comfyImageUrl, logger: log });
   const comfyVideo = createComfyClient({ baseUrl: comfyVideoUrl, logger: log });
@@ -1292,6 +1299,7 @@ export function createWorker(options) {
     claimAndRun,
     sweepFiles,
     register,
+    retargetComfy,
     getState: snapshotState,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     get identity() { return { workerId: state.workerId, workerName }; },

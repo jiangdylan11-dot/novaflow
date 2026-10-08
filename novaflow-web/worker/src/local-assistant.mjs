@@ -23,11 +23,21 @@ export async function createLocalAssistant(options) {
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
   // 提示词助手 shares the GPU with these runtimes, so it needs their addresses
   // to ask for the memory back before it loads its own model.
+  const comfyUrls = [...new Set([options.comfyImageUrl || 'http://127.0.0.1:8188', videoRuntimeUrl(options.comfyVideoUrl, options.comfyImageUrl || 'http://127.0.0.1:8188')].map(url => String(url).replace(/\/+$/, '')))];
   promptAssistant = createPromptAssistant({
-    worker, logger: options.logger,
-    comfyUrls: [...new Set([options.comfyImageUrl || 'http://127.0.0.1:8188', videoRuntimeUrl(options.comfyVideoUrl, options.comfyImageUrl || 'http://127.0.0.1:8188')].map(url => String(url).replace(/\/+$/, '')))],
+    worker, logger: options.logger, comfyUrls,
     ...(options.promptAssistant || {})
   });
+  // A runtime started on another port (its own was held by somebody else's ComfyUI): the worker
+  // and 提示词助手 follow it. Video shares the image runtime unless it has one of its own.
+  const followRuntimes = () => {
+    const image = runtimes.find(r => r.kind === 'image')?.url;
+    const ownVideo = runtimes.find(r => r.kind === 'video');
+    const video = ownVideo ? ownVideo.url : image;
+    if (!image && !video) return;
+    worker.retargetComfy?.({ image, video });
+    comfyUrls.splice(0, comfyUrls.length, ...new Set([image || comfyUrls[0], video || comfyUrls[comfyUrls.length - 1]]));
+  };
   let server = null;
   let runtimes = [];
   let servicesRunning = false;
@@ -43,7 +53,7 @@ export async function createLocalAssistant(options) {
   const emit = () => { for (const fn of listeners) fn(snapshot()); };
   const ensureServices = async () => {
     progress(20, '正在检查图像和视频运行环境');
-    if (!servicesRunning) { runtimes = await services.start(message => progress(25, message)); servicesRunning = true; }
+    if (!servicesRunning) { runtimes = await services.start(message => progress(25, message)); servicesRunning = true; followRuntimes(); }
     progress(40, '运行环境已就绪');
   };
   const releaseUnused = async () => {

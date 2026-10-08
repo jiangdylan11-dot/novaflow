@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runRuntimeLauncher, createRuntimeServices, probeRuntimeListener } from '../../worker/src/runtime-services.mjs';
@@ -64,4 +64,71 @@ try {
   server.close();
   await rm(dir, { recursive: true, force: true });
 }
-console.log(checks + ' passed, 0 failed: launcher exit, failure and timeout; own, left-behind and borrowed runtimes');
+
+// Somebody's own ComfyUI on the port (a portable install: main.py relative, no NovaFlow nodes) is
+// not borrowed: the runtime starts on an alternate port, through a second runtime folder whose
+// runtime.json names that port and whose engine is the installed one.
+const comfyAt = (argv) => http.createServer((req, res) => {
+  if (req.url === '/system_stats') { res.end(JSON.stringify({ system: { argv } })); return; }
+  res.statusCode = 404; res.end();
+});
+const listen = (srv, p = 0) => new Promise(resolve => srv.listen(p, '127.0.0.1', () => resolve(srv.address().port)));
+const freePort = async () => { const s = http.createServer(); const p = await listen(s); await new Promise(r => s.close(r)); return p; };
+const home = await mkdtemp(join(tmpdir(), 'nf-runtime-home-'));
+const data = await mkdtemp(join(tmpdir(), 'nf-runtime-data-'));
+const foreign = comfyAt(['ComfyUI\\main.py', '--windows-standalone-build', '--listen', '0.0.0.0']);
+const foreignPort = await listen(foreign);
+const servers = [foreign];
+try {
+  await mkdir(join(home, 'scripts'), { recursive: true });
+  await mkdir(join(home, 'engine', 'ComfyUI'), { recursive: true });
+  await mkdir(join(home, 'logs'), { recursive: true });
+  await writeFile(join(home, 'engine', 'ComfyUI', 'main.py'), '# engine');
+  for (const name of ['start', 'stop']) await writeFile(join(home, 'scripts', name + '-runtime.bat'), '@echo ' + name);
+  await writeFile(join(home, 'runtime.json'), '\uFEFF' + JSON.stringify({ name: 'NovaFlow AI Runtime', port: foreignPort, modelsPath: 'C:\\NOVAFLOW\\models' }));
+  const alternate = await freePort();
+  const ran = [];
+  const moved = () => createRuntimeServices({
+    imageUrl: 'http://127.0.0.1:' + foreignPort, stateFile: join(data, 'owned-runtimes.json'), roots: { image: home }, alternatePorts: [alternate],
+    runScript: async (entry, name) => {
+      ran.push([name, entry.root]);
+      if (name !== 'start') return;
+      const config = JSON.parse(await readFile(join(entry.root, 'runtime.json'), 'utf8'));
+      check(config.port, alternate, 'the second folder\'s runtime.json names the alternate port');
+      check(config.modelsPath, 'C:\\NOVAFLOW\\models', 'and keeps everything else');
+      check(await readFile(join(entry.root, 'engine', 'ComfyUI', 'main.py'), 'utf8'), '# engine', 'its engine is the installed one');
+      check(await readFile(join(entry.root, 'scripts', 'stop-runtime.bat'), 'utf8'), '@echo stop', 'and so are its scripts');
+      servers.push(comfyAt([join(entry.root, 'engine', 'ComfyUI', 'main.py'), '--port', String(alternate)]));
+      await listen(servers.at(-1), alternate);
+    }
+  });
+  let services = moved();
+  let [image] = await services.start();
+  check([image.url, image.running, image.reused], ['http://127.0.0.1:' + alternate, true, false], 'the runtime starts on the alternate port');
+  const shadow = join(data, 'runtime-alt', 'image-' + alternate);
+  check(ran, [['start', shadow]], 'from the second runtime folder');
+
+  // The same assistant run starts again later: still on the alternate port, its own runtime there is
+  // taken back rather than started twice.
+  services = moved();
+  [image] = await services.start();
+  check([image.url, image.adopted], ['http://127.0.0.1:' + alternate, true], 'a runtime left on the alternate port is taken back');
+  await services.stop();
+  check(ran.at(-1), ['stop', shadow], 'and stopped through the same folder');
+
+  // A NovaFlow runtime on the configured port (the desktop client's) is still borrowed.
+  servers.at(-1).close();
+  const desktop = comfyAt([join(home, 'engine', 'ComfyUI', 'main.py'), '--port', String(foreignPort)]);
+  foreign.close();
+  await listen(desktop, foreignPort);
+  servers.push(desktop);
+  services = moved();
+  [image] = await services.start();
+  check([image.url, image.reused], ['http://127.0.0.1:' + foreignPort, true], 'NovaFlow\'s own runtime on the port is borrowed as before');
+  await services.stop();
+} finally {
+  for (const s of servers) s.close();
+  await rm(home, { recursive: true, force: true });
+  await rm(data, { recursive: true, force: true });
+}
+console.log(checks + ' passed, 0 failed: launcher exit, failure and timeout; own, left-behind and borrowed runtimes; a foreign ComfyUI moves the runtime to another port');

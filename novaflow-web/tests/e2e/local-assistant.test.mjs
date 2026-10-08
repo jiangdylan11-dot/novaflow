@@ -195,6 +195,29 @@ try {
     check(cold.getState().sharing && !cold.getState().localRunning, 'fresh unlicensed assistant starts directly in sharing mode');
     check(!cold.getState().workbenchUrl, 'sharing-only startup creates no local editor endpoint');
   } finally { await cold.stop(); }
+  // The configured port is held by somebody else's ComfyUI (no NovaFlow nodes: every /prompt is
+  // refused) and the runtime started elsewhere: tasks go where the runtime reports it ended up.
+  licensed = true;
+  let foreignPrompts = 0;
+  const foreign = createServer((req, res) => {
+    if (req.url === '/system_stats') return res.end('{"system":{"argv":["ComfyUI\\\\main.py"]}}');
+    if (req.url === '/prompt') foreignPrompts++;
+    res.statusCode = 400; res.end('{"error":{"type":"missing_node_type"}}');
+  });
+  const foreignUrl = await listen(foreign);
+  const movedDir = await mkdtemp(join(tmpdir(), 'novaflow-moved-runtime-test-'));
+  const moved = await createLocalAssistant({ controlUrl, dataDir: movedDir, configPath: join(movedDir, 'identity.json'), workflowDir, webRoot,
+    localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, comfyImageUrl: foreignUrl, comfyVideoUrl: '',
+    license, services: { start: async () => [{ kind: 'image', url: comfyUrl, running: true, reused: false }], stop: async () => {} }, pollIntervalMs: 30 });
+  try {
+    await moved.start();
+    const movedPairing = new URL(moved.openUrl).hash.split('=')[1];
+    const posted = await (await fetch(moved.getState().workbenchUrl + '/api/web/tasks', { method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-novaflow-local': movedPairing }, body: JSON.stringify({ task_type: 'qwen_t2i', parameters: {} }) })).json();
+    await wait(() => ['completed', 'failed'].includes(moved.tasks.get(posted.task.id).status));
+    check(moved.tasks.get(posted.task.id).status === 'completed' && foreignPrompts === 0, 'a runtime moved to another port takes the tasks, not the ComfyUI on the configured one');
+  } finally { await moved.stop(); foreign.closeAllConnections(); foreign.close(); }
+  licensed = false;
   holdNextClaim = true;
   await assistant.startSharing();
   await wait(() => releaseClaim);

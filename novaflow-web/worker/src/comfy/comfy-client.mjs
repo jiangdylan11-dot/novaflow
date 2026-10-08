@@ -60,7 +60,7 @@ export function assertLocalOnly(baseUrl) {
 }
 
 export function createComfyClient({ baseUrl, fetchImpl, logger }) {
-  const base = assertLocalOnly(baseUrl);
+  let base = assertLocalOnly(baseUrl);
   const doFetch = fetchImpl || globalThis.fetch;
   const log = logger || (() => {});
   const clientId = 'novaflow-worker-' + Math.random().toString(36).slice(2, 10);
@@ -83,7 +83,9 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
 
   return {
     clientId,
-    baseUrl: base,
+    get baseUrl() { return base; },
+    // The runtime moved to another port (its own was held by a ComfyUI that is not NovaFlow's).
+    retarget(url) { base = assertLocalOnly(url); },
 
     // The workflow host may inspect only this worker's configured runtime.
     async requestJson(_baseUrl, path) {
