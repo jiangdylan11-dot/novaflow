@@ -509,7 +509,8 @@
    * Bone transforms must match what the preview binds against. The official player
    * keeps its runtime namespace private, so remember the last player the app
    * created and pose a throwaway Skeleton from its own data (constraints and all).
-   * Without a player, fall back to the plain bone tree.
+   * Without a player, fall back to the plain bone tree -- which ignores IK, transform
+   * constraints and inherit modes, so an auto-rigged skeleton binds scrambled.
    */
   let livePlayer = null
   function hookPlayerFactory() {
@@ -529,8 +530,11 @@
   function boneMatrices(skeletonJson) {
     const AW = window.NovaFlowAutoWeights
     if (!AW) throw new Error('自动权重模块未加载')
-    const p = livePlayer
-    if (p && !p.disposed && p.spine && p.spine.SkeletonJson) {
+    // the factory hands out a proxy; the runtime namespace sits on its inner player
+    const usable = (pl) => (pl && !pl.disposed && pl.spine && pl.spine.SkeletonJson ? pl : null)
+    const proxy = window.__NovaFlowSkeletonTimelineOfficialProxy
+    const p = usable(proxy && proxy.player) || usable(livePlayer && livePlayer.player) || usable(livePlayer)
+    if (p) {
       try { return AW.matricesFromRuntime(p.spine, skeletonJson) } catch { /* plain tree below */ }
     }
     return AW.setupPoseMatrices(skeletonJson)
@@ -597,18 +601,25 @@
     const W = layer.imageData.width, H = layer.imageData.height
     const rw = Number(att.width) || W, rh = Number(att.height) || H
     const rx = Number(att.x) || 0, ry = Number(att.y) || 0
+    // same placement as the mesh write-back: the region's rotation and scale count
+    const rot = (Number(att.rotation) || 0) * Math.PI / 180
+    const cos = Math.cos(rot), sin = Math.sin(rot)
+    const sx = att.scaleX !== undefined ? Number(att.scaleX) || 1 : 1
+    const sy = att.scaleY !== undefined ? Number(att.scaleY) || 1 : 1
     const m = (slotBone !== undefined && mats[slotBone]) || { a: 1, b: 0, c: 0, d: 1, worldX: 0, worldY: 0 }
     const inv = AW.invertBone(m)
     const world = new Float64Array(2 * n)
     for (let i = 0; i < n; i++) {
-      const lx = rx + V[2 * i] - rw / 2, ly = ry + rh / 2 - V[2 * i + 1]
+      const qx = (V[2 * i] - rw / 2) * sx, qy = (rh / 2 - V[2 * i + 1]) * sy
+      const lx = rx + qx * cos - qy * sin, ly = ry + qx * sin + qy * cos
       world[2 * i] = m.a * lx + m.b * ly + m.worldX
       world[2 * i + 1] = m.c * lx + m.d * ly + m.worldY
     }
     const toImage = (wx, wy) => {
       const dx = wx - inv.wx, dy = wy - inv.wy
-      const lx = inv.ia * dx + inv.ib * dy, ly = inv.ic * dx + inv.id * dy
-      return [lx - rx + rw / 2, rh / 2 - (ly - ry)]
+      const lx = inv.ia * dx + inv.ib * dy - rx, ly = inv.ic * dx + inv.id * dy - ry
+      const qx = lx * cos + ly * sin, qy = -lx * sin + ly * cos
+      return [qx / sx + rw / 2, rh / 2 - qy / sy]
     }
     return { world, tris: layer.mesh.triangles, toImage, slot: found.slot }
   }

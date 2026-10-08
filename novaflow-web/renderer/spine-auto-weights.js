@@ -967,7 +967,17 @@
       newPointAttachment: (skin, name) => new spine.PointAttachment(name),
       newClippingAttachment: (skin, name) => new spine.ClippingAttachment(name)
     }
-    const data = new spine.SkeletonJson(loader).readSkeletonData(skeletonJson)
+    let data
+    try {
+      data = new spine.SkeletonJson(loader).readSkeletonData(skeletonJson)
+    } catch (error) {
+      // a Photoshop export is stamped 3.8.75, which the reader refuses; the preview
+      // retries it as 3.8.99 (spine-official-runtime), so bind against the same thing
+      const version = String((skeletonJson && skeletonJson.skeleton && skeletonJson.skeleton.spine) || '').trim()
+      if (version !== '3.8.75' || !String((error && error.message) || error).includes('Unsupported skeleton data')) throw error
+      const compat = Object.assign({}, skeletonJson, { skeleton: Object.assign({}, skeletonJson.skeleton, { spine: '3.8.99' }) })
+      data = new spine.SkeletonJson(loader).readSkeletonData(compat)
+    }
     const skeleton = new spine.Skeleton(data)
     skeleton.setToSetupPose()
     skeleton.updateWorldTransform()

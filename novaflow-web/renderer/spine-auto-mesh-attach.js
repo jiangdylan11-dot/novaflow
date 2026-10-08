@@ -86,6 +86,12 @@
     const ry = Number(region && region.y) || 0
     // the attachment box need not be the image's size; Spine stretches the image to it
     const kx = rw / imageWidth, ky = rh / imageHeight
+    // a region hung on a rotated bone carries the counter-rotation (and any scale);
+    // a mesh has neither, so bake them in the way Spine's RegionAttachment applies them
+    const rot = (Number(region && region.rotation) || 0) * Math.PI / 180
+    const cos = Math.cos(rot), sin = Math.sin(rot)
+    const sx = region && region.scaleX !== undefined ? Number(region.scaleX) : 1
+    const sy = region && region.scaleY !== undefined ? Number(region.scaleY) : 1
     const V = mesh.vertices
     const n = V.length / 2
     const uvs = new Array(n * 2)
@@ -94,8 +100,9 @@
       const px = V[2 * i], py = V[2 * i + 1]
       uvs[2 * i] = px / imageWidth
       uvs[2 * i + 1] = py / imageHeight          // v from the top
-      vertices[2 * i] = rx + px * kx - rw / 2
-      vertices[2 * i + 1] = ry + rh / 2 - py * ky
+      const qx = (px * kx - rw / 2) * sx, qy = (rh / 2 - py * ky) * sy
+      vertices[2 * i] = rx + qx * cos - qy * sin
+      vertices[2 * i + 1] = ry + qx * sin + qy * cos
     }
     const round = (v) => Math.round(v * 1e5) / 1e5
     const out = {
