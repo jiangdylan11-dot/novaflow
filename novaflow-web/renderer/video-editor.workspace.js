@@ -74,8 +74,10 @@
     .nf-ve-status[data-error="1"]{color:#f09595}.nf-ve-status[data-success="1"]{color:#8ff0c7}
     .nf-ve-hint{margin-top:4px;color:rgba(255,255,255,.43);font-size:9px;line-height:1.5}
     .nf-ve-mask{margin-top:6px;padding:6px;border-radius:7px;background:#1a1a1a}
-    .nf-ve-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;border:1px solid #262626;border-radius:7px;background:#101010;margin:0 0 4px}
-    .nf-ve-mode button{height:24px;border:0;border-radius:6px;background:transparent;color:#eaeaea;font-size:12px;cursor:pointer}
+    /* the same pill toggle as 音频's 音乐/音效 and the 视频|音频 switch: 37 box, 3 pad, 29 pills, radius 8/5 */
+    .nf-ve-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;box-sizing:border-box;height:37px;align-items:center;border:1px solid #262626;border-radius:7px;background:#101010;margin:0 0 4px}
+    .nf-ve-mode button{height:29px;min-height:29px;max-height:29px;min-width:0;margin:0;padding:0 6px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;cursor:pointer;box-shadow:none}/* weight 500 is inline !important on the buttons: the runtime's page-wide 400 rule carries an id in its :not() list */
+    .nf-ve-mode button:hover{background:#2a2a2a}
     .nf-ve-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
     /* dropdown: the product's masked menu */
     .nf-ve-dd-trigger{width:100%;height:32px;padding:0 28px 0 10px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:12px;text-align:left;position:relative;cursor:pointer}
@@ -296,7 +298,7 @@
           <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadeout-value">0.0</span></div>
           <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-mask-edit">蒙版编辑</button></div>
           <div class="nf-ve-mask" id="ve-mask-box" hidden>
-            <div class="nf-ve-mode"><button type="button" id="ve-mask-erase" aria-pressed="true">擦除</button><button type="button" id="ve-mask-restore" aria-pressed="false">修复</button></div>
+            <div class="nf-ve-mode" data-novaflow-source-layout="1"><button type="button" id="ve-mask-erase" aria-pressed="true" data-novaflow-source-layout="1" style="font-weight:500!important">擦除</button><button type="button" id="ve-mask-restore" aria-pressed="false" data-novaflow-source-layout="1" style="font-weight:500!important">修复</button></div>
             <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>笔刷</label><input type="range" class="nf-ve-range" id="ve-mask-brush-range" min="1" max="300" step="1" value="22"><input type="number" id="ve-mask-brush" min="1" max="300" step="1" value="22"></div>
             <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>羽化</label><input type="range" class="nf-ve-range" id="ve-mask-feather-range" min="0" max="300" step="1" value="0"><input type="number" id="ve-mask-feather" min="0" max="300" step="1" value="0"></div>
             <div class="nf-ve-btns"><button class="nf-ve-btn" id="ve-mask-undo">撤销</button><button class="nf-ve-btn" id="ve-mask-clear">清除</button></div>
