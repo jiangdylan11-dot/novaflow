@@ -88,7 +88,7 @@
     .nf-ve-dd-item:hover{background:rgba(255,255,255,.08)}.nf-ve-dd-item[data-selected="1"]{background:#1EA672;color:#fff}
     /* busy dialog with its mask */
     .nf-ve-busy-mask{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55)}
-    .nf-ve-busy[hidden],.nf-ve-busy-mask[hidden],.nf-ve-panel [hidden]{display:none!important}
+    .nf-ve-busy[hidden],.nf-ve-busy-mask[hidden],.nf-ve-panel [hidden],.nf-ve-transport [hidden]{display:none!important}
     .nf-ve-busy{position:fixed;left:50%;top:50%;z-index:2147483001;transform:translate(-50%,-50%);min-width:300px;max-width:440px;padding:14px 16px;border:1px solid #3c3c3c;border-radius:12px;background:rgba(29,29,29,.96);color:#eaeaea;font-size:13px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:grid;gap:8px;font-family:Inter,"Microsoft YaHei",sans-serif}
     .nf-ve-busy .row{display:flex;align-items:center;gap:8px}
     .nf-ve-busy .spin{width:14px;height:14px;flex:0 0 14px;border-radius:50%;border:2px solid rgba(255,255,255,.18);border-top-color:#25bc84;animation:nf-ve-spin .8s linear infinite}
@@ -149,10 +149,25 @@
   // ---- sources: a dropped / clicked resource or file -> { kind, url, durationSec, width, height, hasAudio, blob, fileName }
   function probeVideo(url) {
     return new Promise((resolve, reject) => {
-      const v = document.createElement('video'); v.preload = 'metadata'; v.muted = true; v.src = url
+      const v = document.createElement('video'); v.preload = 'auto'; v.muted = true; v.playsInline = true; v.src = url
       const timer = setTimeout(() => reject(new Error('视频读取超时')), 15000)
-      v.addEventListener('loadedmetadata', () => { clearTimeout(timer); resolve({ width: v.videoWidth, height: v.videoHeight, durationSec: v.duration }) }, { once: true })
+      v.addEventListener('loadedmetadata', async () => { clearTimeout(timer); const meta = { width: v.videoWidth, height: v.videoHeight, durationSec: v.duration }; let fps = 0; try { fps = await measureFps(v) } catch { fps = 0 } try { v.pause(); v.removeAttribute('src'); v.load() } catch {} resolve({ ...meta, fps }) }, { once: true })
       v.addEventListener('error', () => { clearTimeout(timer); reject(new Error('无法读取视频')) }, { once: true })
+    })
+  }
+  // The file's own frame rate, from the media times of its first frames during a short
+  // muted play (a <video> does not state it). Snapped to the usual rates; 0 if unknown.
+  function measureFps(v) {
+    return new Promise((resolve) => {
+      if (typeof v.requestVideoFrameCallback !== 'function') { resolve(0); return }
+      const times = []; let done = false
+      const finish = () => { if (done) return; done = true; try { v.pause() } catch {} let fps = 0; if (times.length >= 4) { const span = times[times.length - 1] - times[0]; if (span > 0) fps = (times.length - 1) / span } const usual = [24, 25, 30, 48, 50, 60, 120]; const near = usual.find((r) => Math.abs(r - fps) <= 0.6); resolve(fps > 0 ? (near || Math.round(fps)) : 0) }
+      const tick = (_now, m) => { if (done) return; if (!times.length || m.mediaTime > times[times.length - 1]) times.push(m.mediaTime); if (times.length >= 12 || (times.length >= 4 && times[times.length - 1] - times[0] >= 0.5)) finish(); else v.requestVideoFrameCallback(tick) }
+      setTimeout(finish, 1500)
+      v.currentTime = 0
+      const started = v.play()
+      if (started && typeof started.then === 'function') started.then(() => v.requestVideoFrameCallback(tick)).catch(() => finish())
+      else v.requestVideoFrameCallback(tick)
     })
   }
   function probeImage(url) {
@@ -234,6 +249,7 @@
       <span class="sep"></span>
       <button class="nf-ve-btn" data-act="split">分割</button>
       <button class="nf-ve-btn" data-act="copy" title="复制选中片段到播放头（Ctrl+C / Ctrl+V）">复制</button>
+      <button class="nf-ve-btn" data-act="del" title="删除选中片段（Delete）">删除</button>
       <label class="check"><input type="checkbox" data-act="snap" checked> 吸附</label>
       <div class="zoom">缩放 <input type="range" class="nf-ve-range" data-act="zoom" min="6" max="400" step="1" value="40"></div>`
     center.append(stageHost, timelineCard, transport)
@@ -258,7 +274,6 @@
           <input type="number" id="ve-canvas-h" min="2" max="8192" step="2" value="720" title="高">
           <button class="nf-ve-btn sm" id="ve-canvas-from-clip" title="按选中片段的原始尺寸">取片段尺寸</button>
         </div>
-        <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>帧率</label><input type="range" class="nf-ve-range" id="ve-fps" min="1" max="120" step="1" value="30"><span class="readout" id="ve-fps-value">30</span></div>
       </div>
       <div class="nf-ve-sec"><h4>片段</h4>
         <div id="ve-clip-empty" class="nf-ve-hint">点资源或拖到画板 / 轨道；选中片段后在这里调整。</div>
@@ -267,13 +282,15 @@
           <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>缩放</label><input type="range" class="nf-ve-range" id="ve-clip-scale-range" min="5" max="300" step="1" value="100"><input type="number" id="ve-clip-scale" min="5" max="1000" step="1" title="缩放 %"></div>
           <div class="nf-ve-line" style="grid-template-columns:auto 1fr 1fr auto"><label>中心</label><input type="number" id="ve-clip-x" step="1" title="中心 X"><input type="number" id="ve-clip-y" step="1" title="中心 Y"><button class="nf-ve-btn sm" id="ve-clip-fit" title="按画布大小缩放并居中">适配</button></div>
           <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) auto"><label>起点 / 长度</label><span class="readout" id="ve-clip-timing"></span><span id="ve-clip-length-row" hidden><input type="number" id="ve-clip-length" min="0.1" step="0.5" title="图片长度 s"></span></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 36px auto minmax(0,1fr) 36px"><label>淡入</label><input type="range" class="nf-ve-range" id="ve-fadein" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadein-value">0.0</span><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadeout-value">0.0</span></div>
-          <div class="nf-ve-btns"><button class="nf-ve-btn" id="ve-mask-edit">蒙版编辑</button><button class="nf-ve-btn" id="ve-clip-del">删除</button></div>
+          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡入</label><input type="range" class="nf-ve-range" id="ve-fadein" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadein-value">0.0</span></div>
+          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadeout-value">0.0</span></div>
+          <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-mask-edit">蒙版编辑</button></div>
           <div class="nf-ve-mask" id="ve-mask-box" hidden>
             <div class="nf-ve-mode"><button type="button" id="ve-mask-erase" aria-pressed="true">擦除</button><button type="button" id="ve-mask-restore" aria-pressed="false">修复</button></div>
             <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>笔刷</label><input type="range" class="nf-ve-range" id="ve-mask-brush-range" min="1" max="300" step="1" value="22"><input type="number" id="ve-mask-brush" min="1" max="300" step="1" value="22"></div>
             <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>羽化</label><input type="range" class="nf-ve-range" id="ve-mask-feather-range" min="0" max="300" step="1" value="0"><input type="number" id="ve-mask-feather" min="0" max="300" step="1" value="0"></div>
-            <div class="nf-ve-btns" style="grid-template-columns:1fr 1fr 1fr 1fr"><button class="nf-ve-btn primary" id="ve-mask-ok">确定</button><button class="nf-ve-btn" id="ve-mask-cancel">取消</button><button class="nf-ve-btn" id="ve-mask-undo">撤销</button><button class="nf-ve-btn" id="ve-mask-clear">清除</button></div>
+            <div class="nf-ve-btns"><button class="nf-ve-btn" id="ve-mask-undo">撤销</button><button class="nf-ve-btn" id="ve-mask-clear">清除</button></div>
+            <div class="nf-ve-btns"><button class="nf-ve-btn primary" id="ve-mask-ok">确定</button><button class="nf-ve-btn" id="ve-mask-cancel">取消</button></div>
           </div>
         </div>
       </div>
@@ -322,7 +339,7 @@
           const W = editor.state.canvas.width, H = editor.state.canvas.height
           spec.transform = { scale: fit.scale, centerX: clamp(point.x, 0, W), centerY: clamp(point.y, 0, H) }
         }
-        editor.addClip(spec); preview.refresh()
+        adoptFps(spec.source); editor.addClip(spec); preview.refresh()
       },
     })
     fitButton.addEventListener('click', () => preview.fitToViewport())
@@ -360,7 +377,7 @@
         return { kind: 'audio', url, durationSec: buffer.duration, width: 0, height: 0, hasAudio: true, peaks: peaksOf(buffer), blob: data, fileName }
       }
       const meta = await probeVideo(url)
-      const source = { kind: 'video', url, durationSec: meta.durationSec, width: meta.width, height: meta.height, hasAudio: true, peaks: null, blob, fileName }
+      const source = { kind: 'video', url, durationSec: meta.durationSec, width: meta.width, height: meta.height, fps: meta.fps || 0, hasAudio: true, peaks: null, blob, fileName }
       // the sound is checked off the file itself; until then the clip counts as sounding
       ;(async () => {
         try {
@@ -414,7 +431,7 @@
     async function importResource(resourceId) {
       const resolved = await resolvePayload(resourceId, null)
       if (!resolved || !alive) return
-      editor.addClip({ ...resolved, start: editor.playhead() }); preview.refresh()
+      adoptFps(resolved.source); editor.addClip({ ...resolved, start: editor.playhead() }); preview.refresh()
     }
     function handleSharedResourceImport(event) {
       const resourceId = text(event?.detail?.resourceId, '')
@@ -492,8 +509,9 @@
     $('ve-canvas-w').addEventListener('change', () => applyCanvas($('ve-canvas-w').value, $('ve-canvas-h').value))
     $('ve-canvas-h').addEventListener('change', () => applyCanvas($('ve-canvas-w').value, $('ve-canvas-h').value))
     $('ve-canvas-from-clip').addEventListener('click', () => { const c = editor.selectedClip() || editor.allClips().find((x) => x.transform); if (!c || !c.transform) { setStatus('先选中一个视频或图片片段', true); return } applyCanvas(c.source.width, c.source.height); editor.setTransform(c.id, editor.fitTransform(c.source)); preview.draw() })
-    $('ve-fps').addEventListener('input', () => { const fps = clamp(Math.round(finite($('ve-fps').value, 30)), 1, 120); editor.setCanvas(editor.state.canvas.width, editor.state.canvas.height, fps); $('ve-fps-value').textContent = String(fps); setSlider('ve-fps', fps) })
-    setSlider('ve-fps', 30)
+    // the output frame rate is the first video clip's own (measured on import); no control for it
+    let fpsAdopted = false
+    const adoptFps = (source) => { if (fpsAdopted || !source || source.kind !== 'video' || !(source.fps > 0)) return; fpsAdopted = true; editor.setCanvas(editor.state.canvas.width, editor.state.canvas.height, source.fps); shell.setAttribute('data-nf-ve-fps', String(editor.state.canvas.fps)) }
 
     // ---- clip panel
     function syncTime() { transport.querySelector('.time').textContent = editor.formatTime(editor.playhead()) + ' / ' + editor.formatTime(editor.projectEnd()) }
@@ -529,7 +547,6 @@
     $('ve-clip-length').addEventListener('change', () => { const c = editor.selectedClip(); if (c) { editor.setLength(c.id, finite($('ve-clip-length').value, 3)); preview.refresh() } })
     $('ve-fadein').addEventListener('input', () => { const c = editor.selectedClip(); if (c) { editor.setFade(c.id, finite($('ve-fadein').value, 0), undefined); preview.draw(); syncClipBox() } })
     $('ve-fadeout').addEventListener('input', () => { const c = editor.selectedClip(); if (c) { editor.setFade(c.id, undefined, finite($('ve-fadeout').value, 0)); preview.draw(); syncClipBox() } })
-    $('ve-clip-del').addEventListener('click', () => { editor.deleteSelected(); preview.refresh() })
 
     // ---- 分离音轨 (track header icon)
     function audioSourceFor(clip) { return { kind: 'audio', url: clip.source.url, durationSec: clip.source.durationSec, width: 0, height: 0, hasAudio: true, peaks: clip.source.peaks || null, blob: clip.source.blob, fileName: clip.source.fileName } }
@@ -599,6 +616,7 @@
       else if (act === 'loop') { editor.setLoop(!editor.state.loop); e.target.closest('[data-act]').setAttribute('aria-pressed', String(editor.state.loop)) }
       else if (act === 'split') { editor.splitAtPlayhead(); preview.refresh() }
       else if (act === 'copy') { if (copySelected()) pasteAtPlayhead() }
+      else if (act === 'del') { if (editor.deleteSelected()) preview.refresh() }
     })
     transport.querySelector('[data-act="snap"]').addEventListener('change', (e) => editor.setSnap(e.target.checked))
     transport.querySelector('[data-act="zoom"]').addEventListener('input', (e) => editor.setZoom(finite(e.target.value, 40)))
