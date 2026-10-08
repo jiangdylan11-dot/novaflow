@@ -89,6 +89,16 @@
     /* busy dialog with its mask */
     .nf-ve-busy-mask{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55)}
     .nf-ve-busy[hidden],.nf-ve-busy-mask[hidden],.nf-ve-panel [hidden],.nf-ve-transport [hidden]{display:none!important}
+    body[data-nf-ve-masking="1"] .nf-ve-panel .nf-ve-sec:not(:has(#ve-mask-box)),
+    body[data-nf-ve-masking="1"] .nf-ve-panel .nf-ve-sec:has(#ve-mask-box) > :not(#ve-clip-box),
+    body[data-nf-ve-masking="1"] .nf-ve-panel #ve-clip-box > :not(#ve-mask-box),
+    body[data-nf-ve-masking="1"] .nf-ve-transport > *,
+    body[data-nf-ve-masking="1"] .nf-vm-timeline,
+    body[data-nf-ve-masking="1"] [data-novaflow-ai-resource-card="1"],
+    body[data-nf-ve-masking="1"] [data-novaflow-ai-collapse-heading],
+    body[data-nf-ve-masking="1"] [data-novaflow-ai-tool-heading],
+    body[data-nf-ve-masking="1"] #novaflow-av-sub-toggle,
+    body[data-nf-ve-masking="1"] .nf-vm-zoom-hud{pointer-events:none!important;opacity:.4!important}
     .nf-ve-busy{position:fixed;left:50%;top:50%;z-index:2147483001;transform:translate(-50%,-50%);min-width:300px;max-width:440px;padding:14px 16px;border:1px solid #3c3c3c;border-radius:12px;background:rgba(29,29,29,.96);color:#eaeaea;font-size:13px;box-shadow:0 12px 32px rgba(0,0,0,.45);display:grid;gap:8px;font-family:Inter,"Microsoft YaHei",sans-serif}
     .nf-ve-busy .row{display:flex;align-items:center;gap:8px}
     .nf-ve-busy .spin{width:14px;height:14px;flex:0 0 14px;border-radius:50%;border:2px solid rgba(255,255,255,.18);border-top-color:#25bc84;animation:nf-ve-spin .8s linear infinite}
@@ -568,7 +578,17 @@
       else entryCoverage = surface.copyCoverage()
       maskEdit = { clipId: clip.id, surface, entryCoverage }
       $('ve-mask-edit').hidden = true; $('ve-mask-box').hidden = false
+      documentRef.body.setAttribute('data-nf-ve-masking', '1')
+      MASK_BLOCK_EVENTS.forEach((type) => documentRef.addEventListener(type, blockWhileMasking, true))
       preview.setMaskEditing(maskState())
+    }
+    const MASK_BLOCK_EVENTS = ['pointerdown', 'mousedown', 'click', 'dblclick', 'wheel', 'contextmenu']
+    function blockWhileMasking(event) {
+      if (!maskEdit) return
+      const target = event.target instanceof Element ? event.target : null
+      if (!target) return
+      if (target.closest('#ve-mask-box, .nf-vm-stage, [data-novaflow-primary-entry="1"], #novaflow-primary-audio-cell, [data-nf-mask-label]')) return
+      event.preventDefault(); event.stopImmediatePropagation()
     }
     function endMask(apply) {
       if (!maskEdit) return
@@ -577,6 +597,8 @@
       else if (clip) { if (maskEdit.entryCoverage) maskEdit.surface.reset(maskEdit.entryCoverage); else { editor.setMask(clip.id, null, 0); maskEdit.surface.destroy() } }
       maskEdit = null
       $('ve-mask-edit').hidden = false; $('ve-mask-box').hidden = true
+      documentRef.body.removeAttribute('data-nf-ve-masking')
+      MASK_BLOCK_EVENTS.forEach((type) => documentRef.removeEventListener(type, blockWhileMasking, true))
       preview.setMaskEditing({ enabled: false }); editor.draw(); syncClipBox()
     }
     $('ve-mask-edit').addEventListener('click', beginMask)
@@ -624,6 +646,7 @@
     function handleKey(event) {
       if (!alive || isTextTarget(event.target)) return
       const key = event.key
+      if (maskEdit) { if (key === 'Escape') { event.preventDefault(); endMask(false) } else if (key === 'Enter') { event.preventDefault(); endMask(true) } return }
       if ((event.ctrlKey || event.metaKey) && (key === 'c' || key === 'C')) { if (copySelected()) event.preventDefault(); return }
       if ((event.ctrlKey || event.metaKey) && (key === 'v' || key === 'V')) { if (pasteAtPlayhead()) event.preventDefault(); return }
       if (event.ctrlKey || event.metaKey || event.altKey) return
@@ -738,6 +761,8 @@
         windowRef.removeEventListener('keydown', handleKey, true)
         documentRef.removeEventListener('click', onBoardColor, true)
         try { progressUnsubscribe?.() } catch (_) {}
+        try { if (maskEdit) endMask(false) } catch (_) {}
+        documentRef.body?.removeAttribute?.('data-nf-ve-masking')
         dropdowns.forEach((d) => d.close())
         closeBusy(); busyMask.remove(); busyBox.remove()
         try { preview.destroy() } catch (_) {}
