@@ -2612,8 +2612,10 @@
   // columns do not narrow again at 1100.) The values above are `let` so every
   // writer that already reads them follows the tier without being touched.
   const NOVAFLOW_LAYOUT_TIERS = {
-    wide: { sidebarLeft: 10, railWidth: 56, railItem: 44, railGap: 9, panel: 218, sideGap: 10, bottomGap: 10, resources: 206 },
-    narrow: { sidebarLeft: 8, railWidth: 52, railItem: 40, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 172 },
+    // resources: a row card's facts line ("640×1376 5.6s 29S") fits on one line at 236; at 210
+    // only the length gives way.
+    wide: { sidebarLeft: 10, railWidth: 56, railItem: 44, railGap: 9, panel: 218, sideGap: 10, bottomGap: 10, resources: 236 },
+    narrow: { sidebarLeft: 8, railWidth: 52, railItem: 40, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 210 },
     stack: { sidebarLeft: 8, railWidth: 48, railItem: 36, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 172 }
   };
   const NOVAFLOW_LAYOUT_NARROW_MAX = 1400;
