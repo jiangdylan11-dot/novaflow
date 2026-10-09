@@ -139,7 +139,11 @@
     view?.destroy();view=null;session=null;
   }
   function open(){
-    close();context=getContext();
+    // a pick in progress can read "no bone" for a moment: 飘带计算 keeps its editor then
+    // (closing it here made the whole editor vanish and rebuild on every bone pick)
+    const next=getContext();
+    if(view&&activeMode==='ribbon'&&!(next?.project.animations[next.activeAnimationName]&&next.selectedBoneName))return;
+    close();context=next;
     const body=panel.querySelector('.nf-motion-body');body.replaceChildren();
     if(!context?.project.animations[context.activeAnimationName]||!context.selectedBoneName){body.textContent='请先选择动画和一个骨骼。';return;}
     session=createSession(context);const s=session;
@@ -368,11 +372,18 @@
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.motionMode===mode)));
     if(view&&(mode==='ribbon'||sameScope(getContext(),session)))view.selectMode(activeMode);else open();
   }
+  let ribbonMissingSince=0;
   function refresh(){
     const ribbon=document.querySelector(ribbonSelector);
     // Keep the entry discoverable before importing a skeleton. open() explains
     // the required selection until the real editor context becomes available.
-    if(!ribbon){if(panel){close();panel.remove();panel=null;}return;}
+    // React may take the 飘带 panel out and put it back while it re-renders (a bone pick):
+    // the editor is torn down only once the section is really gone
+    if(!ribbon){
+      if(panel){if(!ribbonMissingSince)ribbonMissingSince=performance.now();if(performance.now()-ribbonMissingSince<600)return;close();panel.remove();panel=null;}
+      return;
+    }
+    ribbonMissingSince=0;
     hostRibbon(ribbon);
     if(!panel?.isConnected){
       close();panel=document.createElement('div');panel.className='nf-panel';panel.dataset.panelId='bone-motion';panel.dataset.open='0';

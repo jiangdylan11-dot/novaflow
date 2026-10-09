@@ -36045,7 +36045,7 @@
         style: {
           display: "grid", visibility: "visible", opacity: "1", "pointer-events": "auto",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0",
-          "grid-template-columns": "repeat(auto-fill, minmax(170px, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
+          "grid-template-columns": "repeat(auto-fit, minmax(max(150px, calc((100% - 28px) / 3)), 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
         }
       },
       {
@@ -36170,7 +36170,7 @@
         // the picked event's four sliders, two a row under the tabs
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider]',
         style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']")
-          ? { order: "2", flex: "0 0 100%", "min-width": "0", "max-width": "100%", margin: "0", display: "block", "box-sizing": "border-box", "padding-right": "0" }
+          ? { order: "2", flex: "1 1 calc(50% - 4px)", "min-width": "150px", "max-width": "100%", margin: "0", display: "block", "box-sizing": "border-box", "padding-right": "8px" }
           : { display: "none" })
       }
     ];
