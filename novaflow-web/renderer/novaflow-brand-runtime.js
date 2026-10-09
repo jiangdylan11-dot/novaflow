@@ -36060,7 +36060,7 @@
         style: {
           "grid-column": "2", "grid-row": "1 / -1", "align-self": "stretch",
           display: "grid", "grid-template-columns": "minmax(0, 1fr) auto", "grid-template-rows": "auto auto 1fr",
-          "column-gap": "8px", "row-gap": "10px", "align-items": "center", "align-content": "start",
+          "column-gap": "8px", "row-gap": "14px", "align-items": "center", "align-content": "start",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0", border: "0", "border-left": "1px solid #303030",
           "padding-left": "14px", "border-radius": "0", background: "transparent", "background-color": "transparent", overflow: "visible"
         }
