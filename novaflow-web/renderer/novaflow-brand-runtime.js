@@ -35942,6 +35942,66 @@
           padding: "0",
           color: UI_FIELD_LABEL_TEXT
         }
+      },
+      // 飘带计算 lives in 动画编辑 (motion-calculation.tool.js marks it hosted): out of
+      // the left column, and while that tool is open it is laid over the editor's
+      // content box (--nf-ribbon-dock-*, written by motion-calculation.panel.js each
+      // frame). Owned here, so the column passes that size it 172 wide cannot fight
+      // the docked geometry - a fight is a flicker.
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-hosted="1"]',
+        style: (node) => (node.getAttribute("data-novaflow-ribbon-docked") === "1" ? {
+          position: "fixed", left: "var(--nf-ribbon-dock-left)", top: "var(--nf-ribbon-dock-top)",
+          // min/max only: `width` stays the column's 172, which the column passes and the
+          // sibling panels read off this one as the column width
+          "min-width": "var(--nf-ribbon-dock-width)", "max-width": "var(--nf-ribbon-dock-width)",
+          height: "var(--nf-ribbon-dock-height)", "min-height": "0", "max-height": "var(--nf-ribbon-dock-height)",
+          // the editor's header (above, clickable) sits over the top inset
+          margin: "0", "padding-top": "var(--nf-ribbon-dock-inset)", "padding-right": "0", "padding-bottom": "0", "padding-left": "0",
+          border: "0", "border-radius": "6px", "box-shadow": "none",
+          background: "#1c1c1c", "background-color": "#1c1c1c", overflow: "hidden", opacity: "1", "pointer-events": "auto"
+        } : {
+          position: "fixed", left: "-10000px", top: "0", opacity: "0", "pointer-events": "none"
+        })
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-header',
+        style: { display: "none" }
+      },
+      {
+        // the editor's own two columns: the preset, 事件, 自动链条 and the two actions
+        // on the left, the parameters across the rest
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body',
+        style: {
+          display: "grid", "grid-template-columns": "minmax(0, 232px) minmax(0, 1fr)", "grid-auto-rows": "max-content", "column-gap": "24px", "row-gap": "6px",
+          "align-content": "start", "align-items": "start", width: "100%", "min-width": "0", "max-width": "100%",
+          height: "100%", "min-height": "0", "max-height": "100%", padding: "10px 12px", margin: "0",
+          "overflow-x": "hidden", "overflow-y": "auto", background: "transparent", "background-color": "transparent", "box-sizing": "border-box"
+        }
+      },
+      {
+        // min-height max-content: 事件 carries overflow:hidden, and a grid row sizes such
+        // a box from 0 - its row came out 79 for a 92 card, over 自动链条 by 7
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > :not([data-novaflow-ribbon-advanced-card])',
+        style: { "grid-column": "1", margin: "0", "min-height": "max-content" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-advanced-card]',
+        style: (node) => {
+          const rows = Array.from(node.parentElement ? node.parentElement.children : [])
+            .filter((child) => child !== node && getComputedStyle(child).display !== "none").length;
+          return {
+            "grid-column": "2", "grid-row": `1 / span ${Math.max(1, rows)}`,
+            height: "auto", "min-height": "0", "max-height": "none", "grid-template-rows": "auto"
+          };
+        }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-advanced-body]',
+        style: {
+          height: "auto", "min-height": "0", "max-height": "none", padding: "0",
+          "grid-template-columns": "repeat(auto-fill, minmax(180px, 1fr))", "column-gap": "24px", "row-gap": "8px", "align-content": "start"
+        }
       }
     ];
   }
@@ -35978,6 +36038,8 @@
   // writers that disagree cannot spin; those are counted for fixing at source.
   const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
     "class",
+    "data-novaflow-ribbon-hosted",
+    "data-novaflow-ribbon-docked",
     "data-nf-hier-state",
     "data-novaflow-tools-entry-active",
     "data-novaflow-art-generate-active",
@@ -67406,7 +67468,11 @@
       anchor.parentElement?.insertBefore(panel, anchor);
     }
     const anchorRect = getRafCachedClientRect(anchor);
-    const width = `${Math.round(anchorRect.width || PRIMARY_LEFT_PANEL_WIDTH)}px`;
+    // 飘带计算 hosted by 动画编辑 is off the column (or laid over the editor, 900
+    // wide): the column's own card width then, not the anchor's box
+    const width = anchor.getAttribute("data-novaflow-ribbon-hosted") === "1"
+      ? `${PRIMARY_LEFT_CARD_WIDTH}px`
+      : `${Math.round(anchorRect.width || PRIMARY_LEFT_PANEL_WIDTH)}px`;
     panel.style.removeProperty("left");
     panel.style.removeProperty("top");
     setRawStylePropertyIfChanged(panel, "position", "relative", "important");
@@ -73289,6 +73355,8 @@
       '[data-novaflow-skeleton-template-control="1"]',
       // 动画计算's floating panel (a shadow host: events reach here retargeted to it)
       '[data-novaflow-motion-curve="1"]',
+      // 飘带计算 docked over the same editor: its wheel steps its own values
+      '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]',
       'button',
       'input',
       'select',

@@ -3,7 +3,7 @@
   'use strict';
   window.NovaFlowMotionPanel={mount(host,bridge){
   const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
-  floating.style.cssText='position:fixed;z-index:60;visibility:hidden';document.body.append(floating);
+  floating.style.cssText='position:fixed;z-index:60;visibility:hidden;pointer-events:none';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
   // The wheel over a value steps that value (number boxes and sliders alike); the
   // stage's zoom must not see it. The runtime's stage zoom skips this panel.
@@ -26,8 +26,8 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260926-direction-1',document.baseURI).href;
-  style.onload=()=>{stylesReady=true;positionCurve();floating.style.visibility='visible';};
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-1',document.baseURI).href;
+  style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||ribbonShown)floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
@@ -53,10 +53,11 @@
           <div class="curvefooter"><span>点击曲线加点 · 双击节点删点 · 拖动手柄调弧度</span><div class="row"><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
         </section>
       </div>
+      <div id="ribbonDock"></div>
       <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button></div></footer>
     </div>`;
   curveRoot.append(style,body);
-  let collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
+  let ribbon=false,ribbonShown=false,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
@@ -86,10 +87,11 @@
   function positionCurve(){
     if(!stylesReady)return;
     const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
-    if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';return;}
+    if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';bridge.dock?.(null);return;}
     const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]');
     if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
-    bridge.playbackRange?.(bonePlayback?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);
+    playbackMode.style.display=ribbon?'none':'';
+    bridge.playbackRange?.(bonePlayback&&!ribbon?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);
     // Use the real central timeline bounds, never the window or the right sidebar.
     const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
     body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
@@ -109,6 +111,19 @@
       floating.style.setProperty('--editor-height',height+'px');
     }
     reservePreviewSpace();
+    // 飘带计算 is the left column's own panel laid over this box (the runtime's
+    // spec reads these): the whole inner box, the header's height kept clear
+    if(ribbon&&!collapsed){
+      const e=body.getBoundingClientRect(),h=body.querySelector('.editor-header').getBoundingClientRect();
+      const rect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:h.bottom-e.top-1};
+      // the editor turns into 飘带计算 only once the panel is really in place (the
+      // runtime's pass runs in the mutation callback, before this microtask): until
+      // then the previous tool stays on screen, so no frame shows an empty box
+      if(bridge.dock?.(rect))showRibbon();
+      else if(!ribbonShown)queueMicrotask(()=>{if(ribbon&&!ribbonShown&&bridge.dock?.(rect))showRibbon();});
+    }
+    else bridge.dock?.(null);
+    if(ribbon){interval.style.display='none';lastInterval='';return;}
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
     if(tr&&timing&&[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',');const total=timing.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*timing.animationDelay/total)+'px';interval.style.width=(span*timing.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
   }
@@ -529,8 +544,19 @@
   $('pointValue').oninput = () => { if ($('pointValue').value === '') return; setPointValue(Number($('pointValue').value) / (channel === 'alpha' ? 100 : 1)); curveBounds = null; drawCurve(); };
   $('pointValue').onblur = syncPoint;
   $('resetCurve').onclick = () => { pointSelected=false;p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];if(mode==='expand'&&p.link){const other=channel==='sx'?'sy':'sx';p.corrections[other].fill(0);if(p.curves)delete p.curves[other];}point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
-  function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();}
-  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
+  function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();
+    // the docked 飘带 leaves / returns in the same task as the box it fills
+    if(ribbon&&stylesReady){if(value)bridge.dock?.(null);else positionCurve();}}
+  function showRibbon(){
+    if(ribbonShown||!ribbon)return;
+    ribbonShown=true;body.classList.add('ribbon-mode');$('editorTitle').textContent='飘带计算';status('');
+    if(stylesReady)floating.style.visibility='visible';
+  }
+  function selectMode(next){
+    ribbon=next==='ribbon';
+    if(ribbon){if(!ribbonShown){setCollapsed(false);positionCurve();}return;}
+    ribbonShown=false;body.classList.remove('ribbon-mode');
+    setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
@@ -544,7 +570,10 @@
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));
   let frameId;
   function frame(){if(host.host.isConnected){positionCurve();if(!collapsed){const currentTime=bridge.time();time=E.clamp(currentTime-timing.animationDelay,0,p.duration);lastSeek=currentTime;drawCurve();}frameId=requestAnimationFrame(frame);}else {floating.style.display='none';interval.style.display='none';}}
-  syncPlaybackMode();positionCurve();selectMode(bridge.mode||'bounce');frameId=requestAnimationFrame(frame);
-  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
+  syncPlaybackMode();positionCurve();
+  // the calculation tools are always set up underneath 飘带计算 (the frame loop draws them)
+  selectMode(bridge.mode&&bridge.mode!=='ribbon'?bridge.mode:'bounce');if(bridge.mode==='ribbon')selectMode('ribbon');
+  frameId=requestAnimationFrame(frame);
+  return {destroy(){bridge.dock?.(null);observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
 }};
 })();

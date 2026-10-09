@@ -53,3 +53,12 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 .timing-row .param{align-content:start;grid-template-rows:auto 28px auto}.timing-hint{grid-row:3}
 .expand-mode .effect-scroll{overflow:visible;flex:0 0 auto}
 .expand-mode .effect-parameters #scaleOptions{border-top:0;padding-top:0}
+#editor{pointer-events:auto}
+#ribbonDock{display:none}
+/* 飘带计算: the left column's panel is laid over this box from below; the editor keeps its frame and header */
+#editor.ribbon-mode{background:transparent;pointer-events:none}
+#editor.ribbon-mode .editor-header{pointer-events:auto}
+#editor.ribbon-mode .editor-presets{visibility:hidden}
+#editor.ribbon-mode #editorContent{grid-template-rows:minmax(0,1fr)}
+#editor.ribbon-mode .timing-row,#editor.ribbon-mode .editor-workspace,#editor.ribbon-mode .editor-footer{display:none}
+#editor.ribbon-mode #ribbonDock{display:block;min-height:0}

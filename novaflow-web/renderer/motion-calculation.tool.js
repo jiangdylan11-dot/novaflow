@@ -4,7 +4,7 @@
   const A=window.NovaFlowMotionAnimation,E=window.NovaFlowMotionEngine;
   const records=new WeakMap();
   const ribbonSelector='[data-panel-id="bone-ribbon"], [data-novaflow-ribbon-panel="1"]';
-  let panel=null,view=null,session=null,context=null,activeMode='bounce';
+  let panel=null,view=null,session=null,context=null,activeMode='ribbon';
   const copy=x=>JSON.parse(JSON.stringify(x));
   // Registered before React mounts its global editing shortcuts. A shadow-root
   // input must not look like an empty canvas target to the rig editor's undo.
@@ -161,6 +161,7 @@
     };
     view=window.NovaFlowMotionPanel.mount(shadow,{
       mode:activeMode,
+      dock:dockRibbon,
       timing,initial:()=>s.config&&copy(s.config),label:()=>`当前骨骼：${s.bone} · 动画：${s.animation}`,
       time:playbackTime,
       playbackRange,
@@ -175,11 +176,60 @@
       restore(){write(s,s.base);s.committed=s.expected;s.config=null;s.pending=null;s.dirty=false;panel.dataset.motionState='restored';}
     });
   }
+  // 飘带计算 is the native left-column panel, kept out of the column (hosted) and laid
+  // over the editor's box while its tool is open (docked); the runtime's spec owns
+  // that geometry. It stays open off screen, so docking never mounts it in view.
+  const ribbonOpened=new WeakSet();
+  function pressNative(el){
+    const r=el.getBoundingClientRect(),o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,button:0,pointerId:1,isPrimary:true};
+    el.dispatchEvent(new PointerEvent('pointerdown',o));el.dispatchEvent(new MouseEvent('mousedown',o));
+    el.dispatchEvent(new PointerEvent('pointerup',o));el.dispatchEvent(new MouseEvent('mouseup',o));el.dispatchEvent(new MouseEvent('click',o));
+  }
+  function hostRibbon(ribbon){
+    if(ribbon.getAttribute('data-novaflow-ribbon-hosted')!=='1')ribbon.setAttribute('data-novaflow-ribbon-hosted','1');
+    if(ribbon.getAttribute('data-open')!=='1'&&!ribbonOpened.has(ribbon)){
+      const header=ribbon.querySelector(':scope > .nf-panel-header');
+      if(header){ribbonOpened.add(ribbon);pressNative(header);}
+    }
+    if(!ribbon.__nfWheelStep){
+      // the wheel over a docked value steps it, as in the calculation tools
+      ribbon.__nfWheelStep=true;
+      ribbon.addEventListener('wheel',event=>{
+        if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'||!(event.target instanceof Element))return;
+        let row=event.target;
+        while(row&&row!==ribbon&&!row.querySelector?.('input[type=range]'))row=row.parentElement;
+        const range=row&&row!==ribbon?row.querySelector('input[type=range]'):null;
+        if(!range||range.disabled||row.querySelectorAll('input[type=range]').length!==1)return;
+        event.preventDefault();event.stopPropagation();
+        const before=range.value;
+        try{if(event.deltaY<0)range.stepUp();else range.stepDown();}catch{return;}
+        if(range.value!==before){range.dispatchEvent(new Event('input',{bubbles:true}));range.dispatchEvent(new Event('change',{bubbles:true}));}
+      },{passive:false});
+    }
+  }
+  const dockVars=['left','top','width','height','inset'];
+  function dockRibbon(rect){
+    const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');
+    if(!rect){if(ribbon?.hasAttribute('data-novaflow-ribbon-docked'))ribbon.removeAttribute('data-novaflow-ribbon-docked');return;}
+    const rootStyle=document.documentElement.style;
+    for(const key of dockVars){const value=Math.round(rect[key])+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+key)!==value)rootStyle.setProperty('--nf-ribbon-dock-'+key,value);}
+    if(!ribbon)return false;
+    if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1')ribbon.setAttribute('data-novaflow-ribbon-docked','1');
+    // whether it already sits there (the panel then shows it in place of its own box)
+    const r=ribbon.getBoundingClientRect();
+    return Math.abs(r.left-Math.round(rect.left))<=1&&Math.abs(r.top-Math.round(rect.top))<=1&&Math.abs(r.width-Math.round(rect.width))<=1;
+  }
+  function selectTool(mode){
+    activeMode=mode;panel.dataset.editorOpen='1';
+    panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.motionMode===mode)));
+    if(view&&(mode==='ribbon'||sameScope(getContext(),session)))view.selectMode(activeMode);else open();
+  }
   function refresh(){
     const ribbon=document.querySelector(ribbonSelector);
     // Keep the entry discoverable before importing a skeleton. open() explains
     // the required selection until the real editor context becomes available.
     if(!ribbon){if(panel){close();panel.remove();panel=null;}return;}
+    hostRibbon(ribbon);
     if(!panel?.isConnected){
       close();panel=document.createElement('div');panel.className='nf-panel';panel.dataset.panelId='bone-motion';panel.dataset.open='0';
       panel.style.cssText='width:100%;font-size:12px';
@@ -193,24 +243,23 @@
         [data-panel-id="bone-motion"] [data-motion-mode]{width:100%;min-width:0;height:32px;padding:0 10px;text-align:left;line-height:1.2;background:transparent;border:0;border-radius:7px;color:#b4b4b4;font:inherit;font-size:12px;font-weight:500;cursor:pointer;box-shadow:none}
         [data-panel-id="bone-motion"] [data-motion-mode]:hover,[data-panel-id="bone-motion"] [data-motion-mode][aria-pressed="true"]{background:#262626;color:#dedede}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
-      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画编辑</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画编辑工具" hidden>${Object.entries({bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}</div><div class="nf-motion-body"></div>`;
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画编辑</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画编辑工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}</div><div class="nf-motion-body"></div>`;
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{
         const expanded=panel.dataset.open!=='1';panel.dataset.open=expanded?'1':'0';
         panel.querySelector('.nf-motion-tools').hidden=!expanded;panel.querySelector('.nf-panel-header').setAttribute('aria-expanded',String(expanded));panel.querySelector('.nf-motion-chevron').className=`fas fa-chevron-${expanded?'down':'right'} nf-motion-chevron`;
         if(!expanded){close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));}
+        // opening the group opens the editor at the tool used last (飘带计算 at first)
+        else selectTool(activeMode);
       };
-      panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>{
-        activeMode=button.dataset.motionMode;panel.dataset.editorOpen='1';
-        panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
-        if(view&&sameScope(getContext(),session))view.selectMode(activeMode);else open();
-      });
+      panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>selectTool(button.dataset.motionMode));
     }
     // The fiber walk is the costly part of this poll; only an open editor needs it.
     if(panel.dataset.open!=='1'||panel.dataset.editorOpen!=='1'||document.hidden)return;
     context=getContext();
-    if(context&&(!session||!sameScope(context,session)))open();
+    // 飘带计算 works on whatever bones are picked: a new pick must not rebuild the editor
+    if(context&&(!session||(activeMode!=='ribbon'&&!sameScope(context,session))))open();
   }
   // Mount in the same DOM-update cycle as the native bone panels, rather than
   // waiting for the selection polling interval and appearing a frame later.

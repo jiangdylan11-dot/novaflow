@@ -3317,7 +3317,7 @@
         setStatus('准备图层…')
         const r = await autoRig((t) => setStatus(t))
         setStatus(`自动架设完成 · ${r.bones} 根骨 · ${r.ik} 个 IK · ${r.layers} 层`, 'ok')
-      })()
+      })
     })
     resetBtn.addEventListener('click', () => { loadBonesFromSource(true); renderHierarchy(true); setStatus('已还原为工程里的骨架') })
     applyBtn.addEventListener('click', () => guard(async () => {
