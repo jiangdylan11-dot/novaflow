@@ -195,7 +195,16 @@
     for(const row of adv?adv.children:[])if((row.textContent||'').trim().startsWith(offsetLabel))return {row,range:row.querySelector('input[type=range]')};
     return null;
   }
+  // docked there is no event switch: the events section is kept open, and adding an
+  // event is what makes events count (the runtime's own toggle, clicked once)
+  function keepEventsOpen(ribbon){
+    if(!ribbon||ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1')return;
+    const section=ribbon.querySelector('[data-novaflow-ribbon-event-section]');
+    if(!section||section.getAttribute('data-novaflow-ribbon-event-expanded')==='1')return;
+    section.querySelector('[data-novaflow-ribbon-event-head]')?.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+  }
   function markRibbonParts(ribbon){
+    keepEventsOpen(ribbon);
     const offset=offsetRange(ribbon);
     if(offset&&offset.row.getAttribute('data-nf-ribbon-offset-row')!=='1')offset.row.setAttribute('data-nf-ribbon-offset-row','1');
     const cards=Array.from(ribbon.querySelectorAll('[data-novaflow-ribbon-event-list] > [data-novaflow-ribbon-event-card]'));
@@ -309,7 +318,7 @@
     const rootStyle=document.documentElement.style;
     for(const [key,name] of dockVars){const value=Math.round(rect[key]||0)+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+name)!==value)rootStyle.setProperty('--nf-ribbon-dock-'+name,value);}
     if(!ribbon)return false;
-    if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1')ribbon.setAttribute('data-novaflow-ribbon-docked','1');
+    if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'){ribbon.setAttribute('data-novaflow-ribbon-docked','1');keepEventsOpen(ribbon);}
     // whether it already sits there (the panel then shows it in place of its own box)
     const r=ribbon.getBoundingClientRect();
     return Math.abs(r.left-Math.round(rect.left))<=1&&Math.abs(r.top-Math.round(rect.top))<=1&&Math.abs(r.width-Math.round(rect.width))<=1;

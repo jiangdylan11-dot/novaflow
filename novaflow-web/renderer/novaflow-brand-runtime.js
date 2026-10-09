@@ -36091,6 +36091,8 @@
         style: (node) => {
           const on = node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1";
           return {
+            // no switch here: adding an event is what turns events on (动画编辑 keeps them open)
+            display: "none",
             "grid-column": "4", "grid-row": "1", "pointer-events": "auto", cursor: "pointer",
             background: on ? UI_TOGGLE_ON_BACKGROUND : "#3e3e3e", "background-color": on ? UI_TOGGLE_ON_BACKGROUND : "#3e3e3e",
             "box-shadow": on ? UI_TOGGLE_ON_FRAME : "none"
