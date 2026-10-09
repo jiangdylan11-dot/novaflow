@@ -179,10 +179,17 @@
   }
   // 飘带计算 is the native left-column panel, kept out of the column (hosted) and laid
   // over the editor's box while its tool is open (docked); the runtime's spec owns
-  // that geometry. It stays open off screen, so docking never mounts it in view.
-  // React can come back with the panel closed (its body is then not rendered at all and
-  // the docked box is empty): open it again whenever it is found closed, at most every 800 ms
-  let ribbonOpenedAt=0;
+  // that geometry. It is open exactly while docked: an open 飘带 panel runs its own
+  // behaviour on every bone pick (camera on the chain, a guard on project writes), which
+  // broke the rest of the page while it sat open off screen. React can also close it on
+  // its own, so the state is checked and pressed back, at most every 300 ms.
+  let ribbonToggledAt=0,ribbonPreparing=false;
+  function syncRibbonOpen(ribbon){
+    const want=ribbon.getAttribute('data-novaflow-ribbon-docked')==='1'||ribbonPreparing;
+    if((ribbon.getAttribute('data-open')==='1')===want||performance.now()-ribbonToggledAt<300)return;
+    const header=ribbon.querySelector(':scope > .nf-panel-header');
+    if(header){ribbonToggledAt=performance.now();pressNative(header);}
+  }
   function pressNative(el){
     const r=el.getBoundingClientRect(),o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,button:0,pointerId:1,isPrimary:true};
     el.dispatchEvent(new PointerEvent('pointerdown',o));el.dispatchEvent(new MouseEvent('mousedown',o));
@@ -242,9 +249,17 @@
   function ribbonAnimation(){const p=getContext();return p?{p,name:p.activeAnimationName,animation:p.project.animations[p.activeAnimationName]}:null;}
   function ribbonTimingFor(){
     const a=ribbonAnimation();if(!a)return null;
-    const duration=Math.max(.05,Number(a.animation?.duration)||A.duration(a.animation||{})||Number(document.querySelector('[data-novaflow-skeleton-timeline-range="1"]')?.max)||2);
+    let duration=Math.max(.05,Number(a.animation?.duration)||A.duration(a.animation||{})||Number(document.querySelector('[data-novaflow-skeleton-timeline-range="1"]')?.max)||2);
     let t=ribbonTimings.get(a.name);
+    // an animation with no keys yet (a PS export's empty "animation" is 0.01-0.05 s long)
+    // starts at 2 s, as the calculation tools do; a ribbon solved over 0.05 s does not move
+    const keyed=A.duration({...(a.animation||{}),duration:0});
+    if(!t&&!(keyed>0)&&duration<.5){
+      duration=2;
+      a.p.setProject(previous=>{const animation=previous.animations[a.name];if(!animation)return previous;return {...previous,animations:{...previous.animations,[a.name]:{...animation,duration:2}}};});
+    }
     if(!t){t={animationDuration:duration,animationDelay:0,boneDuration:duration,boneDelay:0};ribbonTimings.set(a.name,t);}
+    else if(t.animationDuration>duration+.0005&&Math.abs((Number(a.animation?.duration)||0)-duration)<.0005&&!(keyed>0)&&duration<.5)duration=t.animationDuration;
     t.animationDuration=duration;
     const offset=offsetRange(document.querySelector('[data-novaflow-ribbon-panel="1"]'));
     if(offset?.range)t.boneDelay=Math.max(0,Math.min(t.boneDuration,Number(offset.range.value)*t.boneDuration*RIBBON_OFFSET_CYCLES_PER_UNIT));
@@ -271,7 +286,17 @@
     return Array.from(document.querySelectorAll('[data-novaflow-ribbon-panel="1"] [data-novaflow-ribbon-action-button]'))
       .find(button=>(button.textContent||'').trim()===(kind==='write'?'写入动画':'还原动画'))||null;
   }
+  // opened off screen first: the editor keeps the tool it shows until the panel's rows are
+  // mounted, then turns into 飘带计算 in one task (no empty box while React mounts it)
+  const ribbonMounted=ribbon=>!!(ribbon.querySelector('[data-novaflow-ribbon-preset-controls]')&&ribbon.querySelector('[data-novaflow-ribbon-advanced-card]')&&ribbon.querySelector('[data-novaflow-ribbon-event-section]'));
+  function prepareRibbon(){
+    const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');if(!ribbon)return false;
+    ribbonPreparing=true;
+    if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);return false;}
+    return ribbonMounted(ribbon);
+  }
   const ribbonBridge={
+    prepareRibbon,
     ribbonPresets:()=>window.NovaFlowRibbonPresets?.list()||[],
     applyRibbonPreset:id=>window.NovaFlowRibbonPresets?.apply(id),
     ribbonPreview:(root,host,id)=>window.NovaFlowRibbonPresets?.preview(root,host,id),
@@ -297,10 +322,7 @@
     }
     markRibbonParts(ribbon);
     if(ribbon.getAttribute('data-novaflow-ribbon-hosted')!=='1')ribbon.setAttribute('data-novaflow-ribbon-hosted','1');
-    if(ribbon.getAttribute('data-open')!=='1'&&performance.now()-ribbonOpenedAt>800){
-      const header=ribbon.querySelector(':scope > .nf-panel-header');
-      if(header){ribbonOpenedAt=performance.now();pressNative(header);}
-    }
+    syncRibbonOpen(ribbon);
     if(!ribbon.__nfWheelStep){
       // the wheel over a docked value steps it, as in the calculation tools
       ribbon.__nfWheelStep=true;
@@ -318,17 +340,28 @@
     }
   }
   const dockVars=[['left','left'],['top','top'],['width','width'],['height','height'],['inset','inset'],['insetBottom','inset-bottom']];
+  let dockPlaced='';
   function dockRibbon(rect){
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');
-    if(!rect){if(ribbon?.hasAttribute('data-novaflow-ribbon-docked'))ribbon.removeAttribute('data-novaflow-ribbon-docked');return;}
-    const rootStyle=document.documentElement.style;
-    for(const [key,name] of dockVars){const value=Math.round(rect[key]||0)+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+name)!==value)rootStyle.setProperty('--nf-ribbon-dock-'+name,value);}
+    if(!rect){dockPlaced='';ribbonPreparing=false;if(!ribbon)return;if(ribbon.hasAttribute('data-novaflow-ribbon-docked')){ribbon.removeAttribute('data-novaflow-ribbon-docked');window.NovaFlowRibbonPresets?.settle?.();}if(ribbon.getAttribute('data-open')==='1')syncRibbonOpen(ribbon);return;}
+    const rootStyle=document.documentElement.style;let changed=false;
+    for(const [key,name] of dockVars){const value=Math.round(rect[key]||0)+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+name)!==value){rootStyle.setProperty('--nf-ribbon-dock-'+name,value);changed=true;}}
+    // already placed in this very box: no measuring (a rect read each frame forced a layout
+    // after every slider write - the drag stuttered)
+    const signature=dockVars.map(([key])=>Math.round(rect[key]||0)).join(',');
+    if(!changed&&ribbon&&dockPlaced===signature&&ribbon.getAttribute('data-novaflow-ribbon-docked')==='1'&&ribbon.getAttribute('data-open')==='1')return true;
     if(!ribbon)return false;
-    if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'){ribbon.setAttribute('data-novaflow-ribbon-docked','1');keepEventsOpen(ribbon);}
-    if(ribbon.getAttribute('data-open')!=='1')hostRibbon(ribbon);
-    // whether it already sits there (the panel then shows it in place of its own box)
+    ribbonPreparing=false;
+    if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'){ribbon.setAttribute('data-novaflow-ribbon-docked','1');keepEventsOpen(ribbon);changed=true;}
+    if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);if(ribbon.getAttribute('data-open')!=='1')return false;}
+    // in place, and mounted: the box shows it only once its rows are there (it mounts on open)
+    if(!ribbonMounted(ribbon))return false;
+    // docking (or a new box) is laid out in this task, then measured
+    if(changed)window.NovaFlowRibbonPresets?.settle?.();
     const r=ribbon.getBoundingClientRect();
-    return Math.abs(r.left-Math.round(rect.left))<=1&&Math.abs(r.top-Math.round(rect.top))<=1&&Math.abs(r.width-Math.round(rect.width))<=1;
+    const placed=Math.abs(r.left-Math.round(rect.left))<=1&&Math.abs(r.top-Math.round(rect.top))<=1&&Math.abs(r.width-Math.round(rect.width))<=1;
+    dockPlaced=placed?signature:'';
+    return placed;
   }
   function selectTool(mode){
     activeMode=mode;panel.dataset.editorOpen='1';

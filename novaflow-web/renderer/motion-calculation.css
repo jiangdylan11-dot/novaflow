@@ -80,3 +80,4 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 #ribbonEffectTiming>.help{display:block;color:#777;font-size:10px;margin:1px 0 0}
 #ribbonPresets button.active{background:#1c4136;border-color:#2c604f;color:#9be4cd}
 .motion-preview{display:block;width:128px;height:96px}
+#editor.ribbon-mode.collapsed{background:#1c1c1c;pointer-events:auto}

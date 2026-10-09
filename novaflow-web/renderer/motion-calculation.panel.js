@@ -26,7 +26,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-6',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-7',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||ribbonShown)floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
   body.innerHTML=`
@@ -61,7 +61,7 @@
   curveRoot.append(style,body);
   // outside the editor box, which clips: the preset preview opens above the header
   curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
-  let ribbon=false,ribbonShown=false,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
+  let ribbon=false,ribbonShown=false,ribbonFooterAt=0,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
@@ -94,8 +94,9 @@
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';bridge.dock?.(null);return;}
     const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]');
     if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
-    playbackMode.style.display=ribbon?'none':'';
-    bridge.playbackRange?.(bonePlayback&&!ribbon?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);
+    // 飘带计算 shows the same 完整动画 / 骨骼片段 switch and bone span, from its own timing row
+    const ts=ribbon&&ribbonTiming?ribbonTiming:timing;
+    bridge.playbackRange?.(bonePlayback?[ts.animationDelay,ts.animationDelay+ts.boneDuration]:null);
     // Use the real central timeline bounds, never the window or the right sidebar.
     const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
     body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
@@ -118,7 +119,10 @@
     reservePreviewSpace();
     // 飘带计算 is the left column's own panel laid over this box (the runtime's
     // spec reads these): the whole inner box, the header's height kept clear
-    if(ribbon&&!collapsed){
+    // the 飘带 layout only once its panel is open and mounted (prepared off screen): until
+    // then the previous tool stays on screen
+    if(ribbon&&!collapsed&&!ribbonShown&&!body.classList.contains('ribbon-layout')&&bridge.prepareRibbon?.())body.classList.add('ribbon-layout');
+    if(ribbon&&!collapsed&&body.classList.contains('ribbon-layout')){
       const e=body.getBoundingClientRect(),d=$('ribbonDock').getBoundingClientRect();
       const rect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:d.top-e.top-1,insetBottom:e.bottom-1-d.bottom};
       // the editor turns into 飘带计算 only once the panel is really in place (the
@@ -127,15 +131,15 @@
       if(bridge.dock?.(rect))showRibbon();
       else if(!ribbonShown)queueMicrotask(()=>{if(ribbon&&!ribbonShown&&bridge.dock?.(rect))showRibbon();});
     }
-    else bridge.dock?.(null);
+    else if(!ribbon||collapsed)bridge.dock?.(null);
     if(ribbon){
-      interval.style.display='none';lastInterval='';
-      if(ribbonShown){const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+      // the footer's label walks React's tree: a few times a second, not every frame (a
+      // slider drag paid that walk on each frame)
+      if(ribbonShown&&performance.now()-ribbonFooterAt>300){ribbonFooterAt=performance.now();const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
-      return;
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
-    if(tr&&timing&&[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',');const total=timing.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*timing.animationDelay/total)+'px';interval.style.width=(span*timing.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
+    if(tr&&ts&&[tr.left,tr.top,tr.width,ts.animationDuration,ts.boneDuration,ts.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,ts.animationDuration,ts.boneDuration,ts.animationDelay].join(',');const total=ts.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*ts.animationDelay/total)+'px';interval.style.width=(span*ts.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(ts.animationDelay)}–${fmt(ts.animationDelay+ts.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
   }
   const names = { bounce: '弹跳计算', expand: '缩放计算', shuttle: '移动计算', rotate: '旋转计算', opacity: '透明度计算' };
   function renderPresetButtons(target,items,apply){
@@ -666,7 +670,7 @@
     ribbon=next==='ribbon';
     // the 飘带 layout is set at once (the dock box is measured off it); the box turns
     // see-through only once the panel sits in it (showRibbon)
-    if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();body.classList.add('ribbon-layout');setCollapsed(false);positionCurve();}return;}
+    if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();setCollapsed(false);positionCurve();}return;}
     ribbonShown=false;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
     setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {

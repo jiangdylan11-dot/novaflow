@@ -44861,6 +44861,12 @@
       scheduleRibbonDefaultRealtimePreviewApply("parameter-preview", [0, 80]);
       return true;
     },
+    // the panel was just docked or undocked: lay it out now, in this task, so the editor
+    // and the panel change in the same frame (a pass deferred past the per-frame budget
+    // showed one without the other)
+    settle() {
+      try { applyNovaflowReferenceSpec(); } catch (_) { void 0; }
+    },
     // root: the box the preview lives in (it stops when root leaves the page)
     preview(root, host, id) {
       const entry = getRibbonParameterPresetEntries().find((item) => item.id === id);
