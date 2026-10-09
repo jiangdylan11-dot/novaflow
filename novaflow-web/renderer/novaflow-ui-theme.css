@@ -177,7 +177,7 @@
   align-items: center;
   gap: 13px;
   margin-top: 35px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.7px;
   color: #59636C;
 }
@@ -945,6 +945,79 @@ html body :is([data-novaflow-template-popup-layer="1"], #nf-lift) [data-novaflow
   color: #ff6b6b !important;
 }
 
+/* 3.1a One close / delete button everywhere (user 2026-10-10: "叉叉按钮就有N种样式大小。
+   颜色"): a 20px square, no plate and the quiet text colour until hovered, then a faint
+   plate and white. 24px in a dialog's own header. The cross itself is 2.0z's mark; a
+   wrapped glyph (a span holding the ×) is hidden behind it. */
+html body :is([data-novaflow-x-glyph="1"], #nf-lift) {
+  width: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  flex: 0 0 20px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: rgba(238, 244, 252, 0.6) !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0 !important;
+  line-height: 0 !important;
+  transition: background-color 90ms linear, color 90ms linear !important;
+}
+html body :is([data-novaflow-x-glyph="1"], #nf-lift):hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+html body :is([data-novaflow-x-glyph="1"], #nf-lift):is(:disabled, [aria-disabled="true"]) {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: rgba(238, 244, 252, 0.25) !important;
+  cursor: default !important;
+}
+/* the same button sitting on a thumbnail keeps a dark plate so it reads on any picture */
+html body :is([data-novaflow-x-glyph="1"][data-novaflow-x-overlay="1"], #nf-lift) {
+  background: rgba(17, 17, 17, 0.78) !important;
+  background-color: rgba(17, 17, 17, 0.78) !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+html body :is([data-novaflow-x-glyph="1"][data-novaflow-x-overlay="1"], #nf-lift):hover {
+  background: rgba(0, 0, 0, 0.92) !important;
+  background-color: rgba(0, 0, 0, 0.92) !important;
+  color: #ffffff !important;
+}
+html body :is([data-novaflow-x-glyph="1"][hidden], #nf-lift) {
+  display: none !important;
+}
+html body :is([data-novaflow-x-glyph="1"], #nf-lift) > * {
+  display: none !important;
+}
+html body :is([role="dialog"], [data-novaflow-protected-modal-dialog="1"], [data-novaflow-export-modal-root="1"], #nf-lift) [data-novaflow-x-glyph="1"] {
+  width: 24px !important;
+  min-width: 24px !important;
+  max-width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  flex-basis: 24px !important;
+}
+
+/* 3.1b 导入PS工程 sits under 清空 with the same rest look (copied inline), so it takes
+   清空's hover too. */
+html body [data-nf-ps-import="1"]:hover {
+  background: #3b3b3b !important;
+  background-color: #3b3b3b !important;
+}
+
 /* 3.0a One chevron everywhere: every fa-chevron (the AI 特效 panel, dialogs,
    anything outside .novaflow-app too) is the same thin 7px / 1.35px stroke. */
 html body :is(i.fa-chevron-right, i.fa-chevron-down, i.fa-chevron-left, i.fa-chevron-up) {
@@ -1108,7 +1181,7 @@ html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-r
   height: 16px !important;
   min-height: 16px !important;
   max-height: 16px !important;
-  font-size: 10px !important;
+  font-size: 11px !important;
   line-height: 16px !important;
   z-index: 2 !important;
 }

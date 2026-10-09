@@ -94,7 +94,7 @@
       })
       label.appendChild(createElement(documentRef, 'span', {
         text: labelText,
-        style: { fontSize: '10px', color: 'rgba(230,230,230,0.66)', fontWeight: '750' },
+        style: { fontSize: '11px', color: 'rgba(230,230,230,0.66)', fontWeight: '750' },
       }))
       const input = createElement(documentRef, config.multiline ? 'textarea' : 'input', {
         'data-novaflow-ui-design-inspector-field': config.key,
@@ -162,7 +162,7 @@
       }, [
         createElement(documentRef, 'span', {
           text: labelText,
-          style: { fontSize: '10px', color: 'rgba(230,230,230,0.66)', fontWeight: '750' },
+          style: { fontSize: '11px', color: 'rgba(230,230,230,0.66)', fontWeight: '750' },
         }),
         select,
       ])
@@ -207,7 +207,7 @@
       if (subtitle) {
         shell.appendChild(createElement(documentRef, 'div', {
           text: subtitle,
-          style: { marginTop: '-6px', color: 'rgba(208,208,208,0.52)', fontSize: '10px', lineHeight: '1.45' },
+          style: { marginTop: '-6px', color: 'rgba(208,208,208,0.52)', fontSize: '11px', lineHeight: '1.45' },
         }))
       }
     }
@@ -290,7 +290,7 @@
             border: '1px dashed rgba(255,255,255,0.14)',
             borderRadius: '8px',
             color: 'rgba(208,208,208,0.62)',
-            fontSize: '10px',
+            fontSize: '11px',
             lineHeight: '1.65',
           },
         }))
@@ -305,7 +305,7 @@
         heading('连接')
         shell.appendChild(createElement(documentRef, 'div', {
           text: '选择节点端口可重新建立工作流连接。',
-          style: { color: 'rgba(208,208,208,0.62)', fontSize: '10px', lineHeight: '1.6' },
+          style: { color: 'rgba(208,208,208,0.62)', fontSize: '11px', lineHeight: '1.6' },
         }))
       }
       return true

@@ -17789,7 +17789,7 @@
       "max-height": `${AI_SEQUENCE_RUNTIME_DURATION_TIMESTAMP_HEIGHT_PX}px`,
       "margin-top": "2px",
       "margin-bottom": "0",
-      "font-size": "10px",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       color: "rgba(255, 255, 255, 0.55)",
@@ -17804,7 +17804,7 @@
       overflow: "hidden",
       "text-overflow": "ellipsis",
       "white-space": "nowrap",
-      "font-size": "10px",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       transition: "none"
@@ -17818,7 +17818,7 @@
       gap: "4px",
       overflow: "hidden",
       "white-space": "nowrap",
-      "font-size": "10px",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       "font-variant-numeric": "tabular-nums",
@@ -17829,7 +17829,7 @@
       display: "inline-flex",
       "align-items": "center",
       "white-space": "nowrap",
-      "font-size": "10px",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       "font-variant-numeric": "tabular-nums",
@@ -17871,7 +17871,7 @@
         "margin-top": `${AI_SEQUENCE_RUNTIME_DURATION_LABEL_GAP_PX}px`,
         "margin-bottom": "0",
         color: "transparent",
-        "font-size": "10px",
+        "font-size": "11px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
         "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
         "white-space": "nowrap",
@@ -17902,7 +17902,7 @@
       "margin-bottom": "0",
       "flex-shrink": "0",
       color: "rgba(30, 166, 114, 0.96)",
-      "font-size": "10px",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       "letter-spacing": "normal",
@@ -21775,7 +21775,7 @@
         display: inline-block !important;
         margin-left: 4px !important;
         color: rgba(230, 239, 255, 0.74) !important;
-        font-size: 10px !important;
+        font-size: 11px !important;
         font-weight: 400 !important;
       }
       #${PRIMARY_SIDEBAR_ID} {
@@ -34730,7 +34730,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"] [data-novaflow-ai-resource-overlay-control]:not([data-novaflow-ai-resource-action-kind="close"])',
-        style: { width: "16px", height: "16px", "min-width": "16px", "min-height": "16px", top: "8px", left: "8px", right: "auto", "font-size": "10px", "line-height": "16px", padding: "0", "border-radius": "4px" }
+        style: { width: "16px", height: "16px", "min-width": "16px", "min-height": "16px", top: "8px", left: "8px", right: "auto", "font-size": "11px", "line-height": "16px", padding: "0", "border-radius": "4px" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -34778,7 +34778,7 @@
         selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]:has(img) > div',
         style: {
           position: "absolute", left: "0", right: "0", bottom: "0", top: "auto", width: "auto", "max-width": "none", height: "16px",
-          "font-size": "10px", "line-height": "16px", "text-align": "center", color: "#d6d6d6", background: "rgba(0, 0, 0, 0.55)",
+          "font-size": "11px", "line-height": "16px", "text-align": "center", color: "#d6d6d6", background: "rgba(0, 0, 0, 0.55)",
           overflow: "hidden", "white-space": "nowrap", "text-overflow": "ellipsis", padding: "0 3px", margin: "0", "z-index": "1"
         }
       },
@@ -35102,11 +35102,18 @@
         // the same thin 12px cross, whatever font or weight it came in.
         selector: 'button, [role="button"]',
         style: (node) => {
-          if (node.childElementCount !== 0) return null;
+          // the cross as the button's own text, or as its one bare child (粒子系统列表's
+          // delete wraps it in a span, in Arial 18px at a quarter opacity)
+          const only = node.childElementCount === 1 ? node.firstElementChild : null;
+          if (node.childElementCount > 1 || (only && only.childElementCount !== 0)) return null;
           const text = normalizeText(node.textContent || "");
           if (text !== "\u00d7" && text !== "\u2715" && text !== "\u2716" && text !== "\u2717") return null;
           nfSetAttrIfChanged(node, "data-novaflow-x-glyph", "1");
-          return { "font-size": "0", "line-height": "0", display: "inline-flex", "align-items": "center", "justify-content": "center" };
+          // on a thumbnail (an image beside it) it keeps a dark plate to stay readable
+          const parent = node.parentElement;
+          if (parent && parent.querySelector(":scope > img, :scope > video, :scope > canvas")) nfSetAttrIfChanged(node, "data-novaflow-x-overlay", "1");
+          // display stays with the theme (3.1a) so a [hidden] close stays hidden
+          return { "font-size": "0", "line-height": "0", "align-items": "center", "justify-content": "center" };
         }
       },
       {
@@ -35698,7 +35705,7 @@
         selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="visibility"]',
         style: {
           "grid-column": "1", "grid-row": "1", width: "18px", "min-width": "18px", "max-width": "18px", height: "18px",
-          "min-height": "18px", "max-height": "18px", padding: "0", "font-size": "10px", "border-radius": "5px"
+          "min-height": "18px", "max-height": "18px", padding: "0", "font-size": "11px", "border-radius": "5px"
         }
       },
       {
@@ -35824,7 +35831,7 @@
           if (node.childElementCount !== 4) return null;
           const text = normalizeText(node.textContent || "");
           if (!text.includes("普通") || !text.includes("选中") || text.length > 20) return null;
-          return { display: "flex", "flex-wrap": "nowrap", "justify-content": "space-between", gap: "4px", width: "100%", "max-width": "100%", "font-size": "10px", overflow: "hidden" };
+          return { display: "flex", "flex-wrap": "nowrap", "justify-content": "space-between", gap: "4px", width: "100%", "max-width": "100%", "font-size": "11px", overflow: "hidden" };
         }
       },
       {

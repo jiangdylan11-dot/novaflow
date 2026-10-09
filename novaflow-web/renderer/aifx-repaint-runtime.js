@@ -358,7 +358,7 @@
         grid-template-rows: 1fr;
         background: transparent;
         color: #e5edf8;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
         pointer-events: none;
       }
       body.novaflow-aifx-open {
@@ -827,10 +827,11 @@
       .aifx-primary, .aifx-button {
         height: 36px;
         border: 0;
-        border-radius: 8px;
+        border-radius: 7px;
         background: ${AIFX_ACCENT};
         color: white;
         cursor: pointer;
+        font-size: 12px;
         font-weight: 600;
       }
       .aifx-button {
@@ -919,7 +920,7 @@
         background: rgba(0, 0, 0, 0.58);
         pointer-events: auto;
         color: #e5edf8;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
       }
       /* It lives on the body, so the shell's own reset does not reach it. */
       .aifx-library, .aifx-library * { box-sizing: border-box; }
@@ -1263,7 +1264,7 @@
         position: absolute;
         left: 3px;
         top: 2px;
-        font-size: 10px;
+        font-size: 11px;
         color: rgba(255,255,255,0.7);
         text-shadow: 0 1px 2px #000;
       }

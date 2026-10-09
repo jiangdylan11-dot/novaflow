@@ -4161,7 +4161,7 @@
 
   function field(label, control) {
     return h('label', { style: { display: 'grid', gap: '4px', minWidth: '0' } }, [
-      h('span', { style: { fontSize: '10px', color: 'rgba(160,160,160,0.85)' } }, label),
+      h('span', { style: { fontSize: '11px', color: 'rgba(160,160,160,0.85)' } }, label),
       control
     ])
   }
@@ -13580,7 +13580,7 @@
     }, [
       h('div', { style: checkerStyle({ height: '148px', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
         h('img', { src: previewSource.src, alt: previewSource.label, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' } })),
-      h('div', { style: { marginTop: '6px', fontSize: '10px', color: 'rgba(111,217,184,0.95)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' } }, previewSource.label)
+      h('div', { style: { marginTop: '6px', fontSize: '11px', color: 'rgba(111,217,184,0.95)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' } }, previewSource.label)
     ]) : null
     const previewTile = state.splitPreviewDataUrl ? h('button', {
       type: 'button',
@@ -13589,7 +13589,7 @@
     }, [
       h('div', { style: checkerStyle({ width: '100%', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden' }) },
         h('img', { src: state.splitPreviewDataUrl, alt: 'split preview', style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' } })),
-      h('div', { style: { marginTop: '6px', fontSize: '10px', color: state.viewMode === 'parts' ? 'rgba(111,217,184,0.98)' : 'rgba(160,160,160,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `拆分预览图 · ${state.parts.length} 层`)
+      h('div', { style: { marginTop: '6px', fontSize: '11px', color: state.viewMode === 'parts' ? 'rgba(111,217,184,0.98)' : 'rgba(160,160,160,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `拆分预览图 · ${state.parts.length} 层`)
     ]) : null
     return h('div', { style: { display: 'grid', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px' } }, [
       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
@@ -13613,7 +13613,7 @@
           style: { borderRadius: '10px', border: blocked ? '1px solid rgba(239,68,68,0.58)' : issueCount ? '1px solid rgba(245,158,11,0.50)' : selected ? '1px solid rgba(96,165,250,0.92)' : '1px solid rgba(255,255,255,0.10)', background: selected ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.02)', boxShadow: selected ? '0 0 0 1px rgba(59,130,246,0.22) inset' : 'none', padding: '6px', cursor: 'pointer' }
         }, [
           h('div', { style: { width: '100%', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', background: 'rgba(255,255,255,0.04)' } }, h('img', { src, alt: part.name, style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' } })),
-          h('div', { style: { marginTop: '6px', fontSize: '10px', color: blocked ? 'rgba(252,165,165,0.95)' : issueCount ? 'rgba(251,191,36,0.95)' : selected ? 'rgba(111,217,184,0.98)' : 'rgba(160,160,160,0.85)', fontWeight: selected ? '600' : '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, issueCount ? `${part.name} · QA ${issueCount}` : part.name)
+          h('div', { style: { marginTop: '6px', fontSize: '11px', color: blocked ? 'rgba(252,165,165,0.95)' : issueCount ? 'rgba(251,191,36,0.95)' : selected ? 'rgba(111,217,184,0.98)' : 'rgba(160,160,160,0.85)', fontWeight: selected ? '600' : '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, issueCount ? `${part.name} · QA ${issueCount}` : part.name)
         ])
       })
       ].filter(Boolean))
@@ -29848,7 +29848,7 @@
       alignItems: 'center',
       justifyContent: 'center',
       lineHeight: '1',
-      fontSize: '10px'
+      fontSize: '11px'
     }
   }
 
@@ -31065,7 +31065,7 @@
         h('div', { style: { minWidth: 0, height: '30px', display: 'grid', gridTemplateRows: '14px 12px', alignContent: 'center', alignSelf: 'center', gap: '2px' } }, [
           h('div', { style: { fontSize: '12px', lineHeight: '14px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, source.fileName || resource.name || 'source.png'),
           // The 生成用时 never shrinks: at 94px the size gives way first (only a 4096 size with 100S+ gets there).
-          h('div', { style: { display: 'flex', gap: '3px', minWidth: 0, fontSize: '10px', lineHeight: '12px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', whiteSpace: 'nowrap' } }, [
+          h('div', { style: { display: 'flex', gap: '3px', minWidth: 0, fontSize: '11px', lineHeight: '12px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', whiteSpace: 'nowrap' } }, [
             h('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } }, `${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`),
             Number(resource.generationElapsedSec) > 0
               ? h('span', { 'data-novaflow-source-resource-elapsed': '1', style: { flexShrink: '0', color: '#1EA672' } }, `生成${Math.round(Number(resource.generationElapsedSec))}S`)
@@ -31202,7 +31202,7 @@
               splitSetPreviewImageNode(set.previewDataUrl, set.name)),
             h('div', { style: { minWidth: 0, display: 'grid', gap: '3px' } }, [
               h('div', { [SPLIT_SET_TITLE_ATTR]: '1', style: { fontSize: '12px', fontWeight: '400', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${set.name}  ·  ${setParts.length} 层`),
-              h('div', { [SPLIT_SET_SOURCE_ATTR]: '1', style: { fontSize: '10px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, set.sourceName || 'source.png')
+              h('div', { [SPLIT_SET_SOURCE_ATTR]: '1', style: { fontSize: '11px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, set.sourceName || 'source.png')
             ]),
             splitSetChevronNode(expanded)
           ]),

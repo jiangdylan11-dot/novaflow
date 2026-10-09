@@ -459,7 +459,7 @@
     }, [title, chevron])
     const help = createElement(documentRef, 'div', {
       text: '在中央画板规划布局，点击模块编辑属性；也可使用已有界面图片作为布局图。',
-      style: { color: 'rgba(255,255,255,0.46)', fontSize: '10px', lineHeight: '1.55' },
+      style: { color: 'rgba(255,255,255,0.46)', fontSize: '11px', lineHeight: '1.55' },
     })
 
     const body = createElement(documentRef, 'div', {

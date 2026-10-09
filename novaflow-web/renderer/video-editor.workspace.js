@@ -43,7 +43,7 @@
     .nf-vm-timeline{position:relative;overflow:hidden;min-height:0;border-radius:10px;background:#161616;border:1px solid #2e2e2e}
     .nf-ve-transport{display:flex;align-items:center;gap:8px;min-height:50px;padding:9px 12px;border:1px solid #343434;border-radius:10px;background:#161616}
     .nf-ve-transport .tb{width:30px;height:30px;padding:0;border:1px solid transparent;border-radius:7px;background:#282828;color:#eaeaea;display:grid;place-items:center;cursor:pointer}
-    .nf-ve-transport .tb:hover{background:#333}
+    .nf-ve-transport .tb:hover{background:#373737;color:#fff}
     .nf-ve-transport .tb[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
     .nf-ve-transport .time{min-width:84px;font-variant-numeric:tabular-nums;color:#ccc;font-size:11px}
     .nf-ve-transport .sep{width:1px;height:20px;background:#333}
@@ -52,14 +52,14 @@
     .nf-ve-transport .zoom{margin-left:auto;display:flex;align-items:center;gap:8px;color:#9a9a9a;font-size:11px}
     .nf-ve-transport .zoom input{width:120px}
     .nf-ve-btn{min-height:32px;height:32px;padding:0 10px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:12px;cursor:pointer;white-space:nowrap}
-    .nf-ve-btn:hover:not(:disabled){background:#303030;color:#fff}.nf-ve-btn:disabled{opacity:.5;cursor:not-allowed}
+    .nf-ve-btn:hover:not(:disabled){background:#373737;color:#fff}.nf-ve-btn:disabled{opacity:.5;cursor:not-allowed}
     .nf-ve-btn.primary{background:linear-gradient(135deg,#1ea672,#188f64);border-color:rgba(84,234,178,.3);color:#effcf6;font-weight:600}
     /* the left panel under the 视频编辑 row */
     .nf-ve-panel{width:calc(100% - 22px);min-width:0;margin:0 11px;padding:6px 0 8px;background:transparent;color:#f5f5f5;font-family:Inter,"Microsoft YaHei",sans-serif;font-size:12px}
     .nf-ve-sec{margin:0 0 8px}.nf-ve-sec:last-child{margin-bottom:0}
     .nf-ve-sec h4{margin:0 0 5px;color:rgba(255,255,255,.72);font-size:11px;font-weight:600;letter-spacing:.04em}
     .nf-ve-line{display:grid;gap:5px;align-items:center;margin:4px 0;min-width:0}
-    .nf-ve-line label,.nf-ve-line .readout{color:rgba(255,255,255,.7);font-size:10px;white-space:nowrap}
+    .nf-ve-line label,.nf-ve-line .readout{color:rgba(255,255,255,.7);font-size:11px;white-space:nowrap}
     .nf-ve-line .readout{color:#9a9a9a;text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
     .nf-ve-line input[type=number]{width:100%;min-width:0;height:32px;padding:0 6px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:12px;text-align:center;-moz-appearance:textfield;appearance:textfield}
     .nf-ve-line input[type=number]::-webkit-inner-spin-button,.nf-ve-line input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
@@ -77,7 +77,7 @@
     /* the same pill toggle as 音频's 音乐/音效 and the 视频|音频 switch: 37 box, 3 pad, 29 pills, radius 8/5 */
     .nf-ve-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;box-sizing:border-box;height:37px;align-items:center;border:1px solid #262626;border-radius:7px;background:#101010;margin:0 0 4px}
     .nf-ve-mode button{height:29px;min-height:29px;max-height:29px;min-width:0;margin:0;padding:0 6px;border:0;border-radius:5px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500;line-height:normal;cursor:pointer;box-shadow:none}/* weight 500 is inline !important on the buttons: the runtime's page-wide 400 rule carries an id in its :not() list */
-    .nf-ve-mode button:hover{background:#2a2a2a}
+    .nf-ve-mode button:hover{background:#373737;color:#fff}
     .nf-ve-mode button[aria-pressed="true"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
     /* dropdown: the product's masked menu */
     .nf-ve-dd-trigger{width:100%;height:32px;padding:0 28px 0 10px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:12px;text-align:left;position:relative;cursor:pointer}
@@ -115,8 +115,8 @@
     /* timeline editor (the 音频 section sheet) */
     .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
     .nf-tl-headers{position:relative;background:#161616;border-right:1px solid #2a2a2a;overflow:hidden}
-    .nf-tl-headers-top{height:24px;line-height:24px;padding:0 6px 0 8px;font-size:10px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:4px;white-space:nowrap}
-    .nf-tl-add-track{margin-left:auto;height:18px;padding:0 4px;border:1px solid #343434;border-radius:4px;background:#262626;color:#bdbdbd;font-size:10px;line-height:16px;white-space:nowrap;flex:none;cursor:pointer}
+    .nf-tl-headers-top{height:24px;line-height:24px;padding:0 6px 0 8px;font-size:11px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:4px;white-space:nowrap}
+    .nf-tl-add-track{margin-left:auto;height:18px;padding:0 4px;border:1px solid #343434;border-radius:4px;background:#262626;color:#bdbdbd;font-size:11px;line-height:16px;white-space:nowrap;flex:none;cursor:pointer}
     .nf-tl-add-track + .nf-tl-add-track{margin-left:0}.nf-tl-add-track:hover{border-color:#1EA672;color:#9be4cd}
     .nf-tl-header-list{will-change:transform}
     .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222;cursor:grab}
@@ -124,9 +124,10 @@
     .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
     .nf-tl-track-name:hover,.nf-tl-track-name:focus{background:#262626;border-color:#343434}
     .nf-tl-track-btns{display:flex;gap:4px}
-    .nf-tl-track-btns button{width:24px;height:20px;border:1px solid #343434;border-radius:5px;background:#262626;color:#bdbdbd;font-size:10px;font-weight:600;padding:0;cursor:pointer}
+    .nf-tl-track-btns button{width:24px;height:20px;border:1px solid #343434;border-radius:5px;background:#262626;color:#bdbdbd;font-size:11px;font-weight:600;padding:0;cursor:pointer}
     .nf-tl-track-btns button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
     .nf-tl-track-btns button[hidden]{display:none}
+    .nf-tl-track-btns button:hover{background:#373737;color:#fff}
     .nf-tl-track-btns .nf-tl-track-del{margin-left:auto;font-size:13px;font-weight:400}.nf-tl-track-btns .nf-tl-track-del:hover{background:#4a2323;color:#ffb4b4}
     .nf-tl-track-btns .nf-tl-track-detach{color:#9be4cd;font-weight:400}.nf-tl-track-btns .nf-tl-track-detach:hover{border-color:#1EA672}
     .nf-tl-scroller{position:relative;overflow:auto;background:#1d1d1d}

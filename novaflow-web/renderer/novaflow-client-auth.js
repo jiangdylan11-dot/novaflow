@@ -308,7 +308,7 @@
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        font-size: 10px !important;
+        font-size: 11px !important;
         font-weight: 600 !important;
         white-space: nowrap !important;
         background: rgba(255, 255, 255, 0.07) !important;
@@ -425,7 +425,7 @@
         border: 1px solid rgba(255, 255, 255, 0.06) !important;
       }
       [${HOST_ATTR}="1"] .nf-client-auth-metric-label {
-        font-size: 10px !important;
+        font-size: 11px !important;
         color: rgba(238, 244, 252, 0.54) !important;
         margin-bottom: 3px !important;
       }

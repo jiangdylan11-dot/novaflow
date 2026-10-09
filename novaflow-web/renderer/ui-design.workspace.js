@@ -1808,7 +1808,7 @@
           right: port.direction === 'out' ? '11px' : 'auto',
           top: (port.y - 6) + 'px',
           color: 'rgba(230,230,230,0.58)',
-          fontSize: '10px',
+          fontSize: '11px',
           lineHeight: '12px',
           pointerEvents: 'none',
         },
@@ -1955,7 +1955,7 @@
       })
       actionRow.appendChild(createElement(documentRef, 'div', {
         text: REFERENCE_ROLES[role] || REFERENCE_ROLES.reference,
-        style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#7dd3fc', fontSize: '10px', fontWeight: '600' },
+        style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#7dd3fc', fontSize: '11px', fontWeight: '600' },
       }))
       body.appendChild(actionRow)
       return body

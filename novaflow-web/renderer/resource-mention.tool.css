@@ -253,7 +253,7 @@ textarea.nf-resource-mention-backing::placeholder {
 .nf-resource-mention-menu-meta {
   margin-top: 3px;
   color: #A0A0A0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* A message, not a control: clicks pass through to whatever it overlaps (it

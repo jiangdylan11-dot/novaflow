@@ -78,7 +78,7 @@
       /* Every frame in view: the strip wraps into rows and only scrolls (vertically, by
          hand) when the rows outgrow its share of the overlay. Playback never scrolls it. */
       .nf-vfe-strip{flex:0 0 auto;max-height:58%;display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;padding:6px 10px;overflow-x:hidden;overflow-y:auto;background:#161616;border-top:1px solid #242424;scrollbar-width:thin;scroll-behavior:auto}
-      .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:10px;line-height:1;cursor:pointer}
+      .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:11px;line-height:1;cursor:pointer}
       .nf-vfe-cell canvas{display:block;height:var(--nf-vfe-thumb, ${THUMB_HEIGHT}px);border-radius:3px;background:#000;pointer-events:none;outline:1px solid transparent;outline-offset:-1px}
       .nf-vfe-cell[data-dup="1"] canvas{outline:1px dashed rgba(30,166,114,.85)}
       .nf-vfe-cell[data-dup="1"]::before{content:"复";position:absolute;top:2px;right:2px;z-index:1;padding:1px 3px;border-radius:3px;background:${ACCENT};color:#effcf5;font-size:9px;line-height:1;font-weight:500;pointer-events:none}

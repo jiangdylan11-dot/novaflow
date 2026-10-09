@@ -267,7 +267,7 @@
       'data-novaflow-ui-design-switch-field': key,
       style: {
         display: 'grid', gridTemplateColumns: '48px 34px minmax(0, 1fr)', alignItems: 'center', gap: '5px',
-        minWidth: '0', minHeight: '26px', color: 'rgba(255,255,255,0.78)', fontSize: '10px', fontWeight: '750',
+        minWidth: '0', minHeight: '26px', color: 'rgba(255,255,255,0.78)', fontSize: '11px', fontWeight: '750',
       },
     }, children)
   }
@@ -523,7 +523,7 @@
       }),
       createElement(record.documentRef, 'span', {
         text: value,
-        style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.88)', fontSize: '10px', fontWeight: '850' },
+        style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.88)', fontSize: '11px', fontWeight: '850' },
       }),
     ])
   }
@@ -559,7 +559,7 @@
       title: statusText,
       style: {
         flex: '1 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        color: statusError ? '#fecaca' : 'rgba(255,255,255,0.5)', fontSize: '10px', lineHeight: '20px',
+        color: statusError ? '#fecaca' : 'rgba(255,255,255,0.5)', fontSize: '11px', lineHeight: '20px',
       },
     })
     const account = compactAccountStatus(record)
@@ -722,7 +722,7 @@
       else applyOutputSize(record, otherValue, next, 'custom-height')
     })
     return createElement(record.documentRef, 'label', {
-      style: { minWidth: '0', display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', gap: '5px', alignItems: 'center', color: 'rgba(255,255,255,0.52)', fontSize: '10px', fontWeight: '600' },
+      style: { minWidth: '0', display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', gap: '5px', alignItems: 'center', color: 'rgba(255,255,255,0.52)', fontSize: '11px', fontWeight: '600' },
     }, [createElement(record.documentRef, 'span', { text: axis === 'width' ? 'W' : 'H' }), input])
   }
 
@@ -824,7 +824,7 @@
         width: '100%', minWidth: '0', minHeight: '88px', resize: record.variant === 'node' ? 'none' : 'vertical',
         padding: '8px 9px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.12)',
         background: '#1A1A1A', color: '#fff', boxSizing: 'border-box', outline: 'none',
-        fontSize: '10px', lineHeight: '1.45', fontFamily: 'inherit',
+        fontSize: '11px', lineHeight: '1.45', fontFamily: 'inherit',
       },
     })
     textarea.value = String(record.state[key] || '')
@@ -1063,7 +1063,7 @@
       createElement(record.documentRef, 'div', {
         style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minWidth: '0' },
       }, [
-        createElement(record.documentRef, 'span', { text: '设计要求', style: { color: 'rgba(255,255,255,0.78)', fontSize: '10px', fontWeight: '850' } }),
+        createElement(record.documentRef, 'span', { text: '设计要求', style: { color: 'rgba(255,255,255,0.78)', fontSize: '11px', fontWeight: '850' } }),
         createElement(record.documentRef, 'div', {
           style: { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: '0 0 auto' },
         }, [assistant, edit]),
@@ -1082,7 +1082,7 @@
         createElement(record.documentRef, 'div', {
           style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minWidth: '0' },
         }, [
-          createElement(record.documentRef, 'span', { text: '负面要求（可不填写）', style: { color: 'rgba(255,255,255,0.72)', fontSize: '10px', fontWeight: '600' } }),
+          createElement(record.documentRef, 'span', { text: '负面要求（可不填写）', style: { color: 'rgba(255,255,255,0.72)', fontSize: '11px', fontWeight: '600' } }),
           createElement(record.documentRef, 'span', {
             'data-novaflow-ui-design-negative-source': record.state.negativePromptSource,
             text: negativePromptSourceLabel(record.state.negativePromptSource),

@@ -38,7 +38,7 @@
       min-width:0;overflow:hidden;color:#fff;font-size:12px;line-height:14px;font-weight:500;white-space:nowrap;text-overflow:ellipsis;
     }
     [data-novaflow-ui-design-card-name="1"] {
-      min-width:0;overflow:hidden;color:rgba(160,160,160,.9);font-size:10px;line-height:12px;white-space:nowrap;text-overflow:ellipsis;
+      min-width:0;overflow:hidden;color:rgba(160,160,160,.9);font-size:11px;line-height:12px;white-space:nowrap;text-overflow:ellipsis;
     }
     [data-novaflow-ui-design-remove] {
       width:24px;height:24px;min-width:24px;padding:0;border:0;border-radius:6px;background:transparent;color:rgba(255,255,255,.7);
@@ -48,7 +48,7 @@
     [data-novaflow-ui-design-empty="1"] {
       min-height:0;padding:0;text-align:center;color:rgba(230,230,230,.78);font-size:12px;line-height:1.7;
     }
-    [data-novaflow-ui-design-message="1"] { margin:0 10px 8px;padding:7px 9px;border-radius:7px;background:#292929;color:#cfcfcf;font-size:10px; }
+    [data-novaflow-ui-design-message="1"] { margin:0 10px 8px;padding:7px 9px;border-radius:7px;background:#292929;color:#cfcfcf;font-size:11px; }
     [data-novaflow-ui-design-message="1"][data-error="1"] { background:rgba(239,68,68,.12);color:#fca5a5; }
   `
 

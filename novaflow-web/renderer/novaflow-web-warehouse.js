@@ -523,7 +523,7 @@
 #novaflow-local-warehouse .nf-wh-close{display:grid;place-items:center;padding:1px 6px;color:#9a9a9a;margin-left:0}
 #novaflow-local-warehouse .nf-wh-body{display:flex;flex:1;min-height:0}
 #novaflow-local-warehouse .nf-wh-sidebar{width:168px;flex-shrink:0;padding:18px 10px;background:#1d1d1d;border-right:1px solid #ffffff09;display:flex;flex-direction:column;gap:6px}
-#novaflow-local-warehouse .nf-wh-eyebrow{font-size:10px;font-weight:600;letter-spacing:1.5px;color:#777;padding:0 12px;margin-bottom:7px}
+#novaflow-local-warehouse .nf-wh-eyebrow{font-size:11px;font-weight:600;letter-spacing:1.5px;color:#777;padding:0 12px;margin-bottom:7px}
 #novaflow-local-warehouse .nf-wh-nav{display:flex;gap:11px;align-items:center;text-align:left;padding:11px 13px;color:#aaa;border-radius:8px}
 #novaflow-local-warehouse .nf-wh-nav[aria-pressed="true"]{background:#1ba879;border-color:transparent;color:#fff}
 #novaflow-local-warehouse .nf-wh-count{margin-left:auto;font-size:11px;color:#aaa;font-variant-numeric:tabular-nums}

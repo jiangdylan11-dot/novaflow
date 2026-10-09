@@ -16,7 +16,7 @@
   const CSS = `
     ${CARD} [data-novaflow-ai-resource-action-kind="close"]{opacity:0;transition:opacity .12s}
     ${CARD}:hover [data-novaflow-ai-resource-action-kind="close"]{opacity:1}
-    ${CARD} [${META_ATTR}]{display:flex;gap:4px;min-width:0;color:#8d8d8d;font-size:10px;line-height:1.3;white-space:nowrap;overflow:hidden}
+    ${CARD} [${META_ATTR}]{display:flex;gap:4px;min-width:0;color:#8d8d8d;font-size:11px;line-height:1.3;white-space:nowrap;overflow:hidden}
     ${CARD} [${META_ATTR}] > span{flex:none}
     ${CARD} [${META_ATTR}] > [data-nf-card-dims]{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
     ${CARD} [${META_ATTR}] > [data-nf-card-elapsed]{color:#1EA672}

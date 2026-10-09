@@ -1128,7 +1128,7 @@
         display: block;
         margin-top: 2px;
         color: rgba(232,237,242,0.46);
-        font-size: 10px;
+        font-size: 11px;
       }
       .novaflow-smart-ai-textarea {
         width: 100%;

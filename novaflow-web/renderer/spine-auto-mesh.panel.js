@@ -2472,8 +2472,8 @@
       const label = el('span', { fontSize: '11px', color: r.active ? '#7ce8b5' : 'rgba(255,255,255,0.88)', fontWeight: r.group && r.depth <= 1 ? '600' : '400', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.label)
       label.dataset.nfHierLabel = '1'
       row.appendChild(label)
-      if (r.count !== undefined) { const c = el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto' }, String(r.count)); c.dataset.nfHierTrail = '1'; row.appendChild(c) }
-      if (r.note) { const nt = el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.note); nt.dataset.nfHierTrail = '1'; row.appendChild(nt) }
+      if (r.count !== undefined) { const c = el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto' }, String(r.count)); c.dataset.nfHierTrail = '1'; row.appendChild(c) }
+      if (r.note) { const nt = el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.note); nt.dataset.nfHierTrail = '1'; row.appendChild(nt) }
       row.addEventListener('click', (ev) => {
         ev.preventDefault(); ev.stopPropagation()
         hier.treeClickAt = performance.now()
@@ -2999,6 +2999,7 @@
     const button = el('button', null, '导入PS工程')
     button.type = 'button'
     styleButton(button, false)
+    button.setAttribute('data-nf-ps-import', '1') // hover like its neighbour 清空 (theme 3.1b)
     button.title = 'PhotoshopToSpine 导出的文件夹可以直接用,不需要先过一遍 Spine;也可以直接把那个文件夹拖到这个按钮上'
     // the panel this button lives in is the app's 导入工程; the status line it used to write to
     // sits inside 自动蒙皮, which is collapsed on entry — so a click looked like nothing happened
@@ -3464,8 +3465,8 @@
       create: { a: { label: '角度', step: '0.1', min: '' }, b: { label: '长度', step: '1', min: '0' }, title: '世界角度与骨骼长度' }
     }
     const poseSpec = () => POSE_FIELDS[(bones.ctl ? bones.ctl.getState().tool : 'move')] || POSE_FIELDS.move
-    const mechNote = el('div', { fontSize: '10px', color: 'rgba(255,170,90,0.85)', marginTop: '4px', display: 'none' }, '控制骨(IK/约束目标、零长度骨、枢轴):拖动或旋转=摆姿势,约束联动、图片跟着走;辅助链跟着关节走,不单独编辑')
-    const legend = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%', minWidth: '0' })
+    const mechNote = el('div', { fontSize: '11px', color: 'rgba(255,170,90,0.85)', marginTop: '4px', display: 'none' }, '控制骨(IK/约束目标、零长度骨、枢轴):拖动或旋转=摆姿势,约束联动、图片跟着走;辅助链跟着关节走,不单独编辑')
+    const legend = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', marginTop: '2px', fontSize: '11px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%', minWidth: '0' })
     legend.title = '蓝=普通变形骨 · 紫=被约束驱动 · 琥珀=控制骨(IK/约束目标、零长度枢轴) · 绿=选中'
     for (const [color, text] of [['#8fd3ff', '普通'], ['#c79bff', '受约束'], ['#ffb454', '控制骨'], ['#22c98a', '选中']]) {
       const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '2px', flex: '0 1 auto', minWidth: '0' })

@@ -242,6 +242,8 @@
     cards.forEach((card,index)=>{
       if(index===eventShown){if(card.getAttribute('data-nf-ribbon-event-shown')!=='1')card.setAttribute('data-nf-ribbon-event-shown','1');}
       else if(card.hasAttribute('data-nf-ribbon-event-shown'))card.removeAttribute('data-nf-ribbon-event-shown');
+      const del=card.querySelector(':scope [data-novaflow-ribbon-event-card-title] > button');
+      if(del&&del.getAttribute('data-novaflow-x-glyph')!=='1')del.setAttribute('data-novaflow-x-glyph','1');
     });
   }
   function installRibbonDockStyle(){
@@ -252,8 +254,8 @@
     style.textContent=D+' [data-novaflow-ribbon-event-list]::after{content:"";flex:0 0 100%;order:1;height:0}'
       // the column's open-card outline (a pseudo frame) - the editor has its own frame
       +'body '+D+' [data-novaflow-ribbon-event-section="1"][data-novaflow-ribbon-event-expanded]::after{display:none!important}'
-      // the tab's delete is a × (its 删除 text is sized to 0 by the runtime's spec)
-      +D+' [data-novaflow-ribbon-event-card-title] > button::before{content:"×";font-size:14px;line-height:1}';
+      // the tab's delete is the shared close button (theme 2.0z / 3.1a, tagged in markRibbonParts)
+      ;
     document.head.append(style);
   }
   function setNativeValue(input,value){

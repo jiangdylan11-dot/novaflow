@@ -519,9 +519,11 @@
           row.appendChild(el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.85)', flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, b ? b.name : '#' + id))
           let total = 0
           for (let i = 0; i < n; i++) total += W[i * nb + j]
-          row.appendChild(el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.4)', flex: '0 0 auto' }, total.toFixed(0)))
+          row.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', flex: '0 0 auto' }, total.toFixed(0)))
           const rm = el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.4)', flex: '0 0 auto', padding: '0 2px' }, '×')
           rm.title = '把这根骨从这一层去掉'
+          // the app's one close / delete mark (theme 3.1a)
+          rm.setAttribute('data-novaflow-x-glyph', '1'); rm.setAttribute('role', 'button')
           rm.addEventListener('click', (ev) => {
             ev.stopPropagation()
             if (nb <= 1) return

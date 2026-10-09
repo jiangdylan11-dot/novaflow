@@ -328,7 +328,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       // would take the theme's backdrop layers with it.
       'background-color:#0b0b0c', 'display:flex', 'align-items:center',
       'justify-content:center', 'overflow:hidden',
-      'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
+      'font:13px "Segoe UI","Microsoft YaHei",sans-serif'
     ].join(';'));
     gate.id = GATE_ID;
     // The runtime clamps every rounded box under body to the control radius.
