@@ -104,7 +104,9 @@
     // at most 2/3 of the stage above the playbar: the preview keeps the rest (on a narrow,
     // stacked page the stage does not start at 80 and the editor ate the whole preview)
     const stageTop=document.querySelector('[data-novaflow-skeleton-preview-stage="1"]')?.getBoundingClientRect().top;
-    const available=Math.max(160,Number.isFinite(stageTop)?Math.floor((r.top-stageTop)*.66):r.top-80);
+    // a stacked (small) page keeps half of it for the preview: the main view was left tiny
+    const share=document.body.getAttribute('data-novaflow-layout-tier')==='stack'?.5:.66;
+    const available=Math.max(160,Number.isFinite(stageTop)?Math.floor((r.top-stageTop)*share):r.top-80);
     let desired=Math.min(400,Math.max(360,innerHeight*.4));
     // 飘带计算: as tall as its content (header, timing row, footer and the docked panel)
     if(ribbon&&!collapsed&&ribbonShown&&ribbonFitHeight)desired=ribbonFitHeight;

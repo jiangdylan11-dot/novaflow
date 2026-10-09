@@ -323,6 +323,8 @@
     const left=h(':scope > [data-novaflow-ribbon-preset-controls]')+h(':scope > [data-novaflow-ribbon-advanced-card]')+h(':scope > [data-novaflow-ribbon-chain-toggle-card]')+gap*3;
     const section=body.querySelector(':scope > [data-novaflow-ribbon-event-section]');
     const right=section?h('[data-novaflow-ribbon-event-add]')+(parseFloat(getComputedStyle(section).rowGap)||0)+h('[data-novaflow-ribbon-event-list]'):0;
+    // stacked in a narrow editor: the events come under the parameters
+    if(ribbon.getAttribute('data-nf-ribbon-narrow')==='1')return Math.ceil(left+gap+(section?parseFloat(getComputedStyle(section).paddingTop)||0:0)+right+pad);
     return Math.ceil(Math.max(left,right)+pad);
   }
   const ribbonBridge={
@@ -378,6 +380,8 @@
   function dockRibbon(rect){
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');
     if(!rect){dockPlaced='';ribbonPreparing=false;if(!ribbon)return;if(ribbon.hasAttribute('data-novaflow-ribbon-docked')){ribbon.removeAttribute('data-novaflow-ribbon-docked');window.NovaFlowRibbonPresets?.settle?.();}if(ribbon.getAttribute('data-open')==='1')syncRibbonOpen(ribbon);return;}
+    // narrow (a small window): the docked panel stacks its events under the parameters
+    if(ribbon){const narrow=rect.width<640;if((ribbon.getAttribute('data-nf-ribbon-narrow')==='1')!==narrow){if(narrow)ribbon.setAttribute('data-nf-ribbon-narrow','1');else ribbon.removeAttribute('data-nf-ribbon-narrow');}}
     const rootStyle=document.documentElement.style;let changed=false;
     for(const [key,name] of dockVars){const value=Math.round(rect[key]||0)+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+name)!==value){rootStyle.setProperty('--nf-ribbon-dock-'+name,value);changed=true;}}
     // already placed in this very box: no measuring (a rect read each frame forced a layout

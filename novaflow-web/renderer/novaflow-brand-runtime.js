@@ -36069,6 +36069,21 @@
         }
       },
       {
+        // a narrow editor (a small window): one column, the events under the parameters and
+        // the whole body scrolling - side by side the event column's 280px squeezed the
+        // parameters until the preset row ran under the events
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"][data-nf-ribbon-narrow="1"] > .nf-panel-body',
+        style: { "grid-template-columns": "minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "max-content" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"][data-nf-ribbon-narrow="1"] > .nf-panel-body > [data-novaflow-ribbon-chain-toggle-card]',
+        style: { "grid-row": "3" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"][data-nf-ribbon-narrow="1"] > .nf-panel-body > [data-novaflow-ribbon-event-section]',
+        style: { "grid-column": "1", "grid-row": "4", "border-left": "0", "padding-left": "0", "border-top": "1px solid #303030", "padding-top": "10px" }
+      },
+      {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-head]',
         style: { display: "contents" }
       },
@@ -36216,6 +36231,7 @@
     "data-nf-ribbon-offset-row",
     "data-nf-ribbon-event-shown",
     "data-nf-ribbon-event-count",
+    "data-nf-ribbon-narrow",
     "data-novaflow-ribbon-event-expanded",
     "data-nf-hier-state",
     "data-novaflow-tools-entry-active",
@@ -73670,6 +73686,11 @@
       '[data-novaflow-motion-curve="1"]',
       // 飘带计算 docked over the same editor: its wheel steps its own values
       '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]',
+      // the bone tool bar over the stage and an open dropdown list (父骨 opens over the
+      // stage): the wheel scrolls the list, it never zooms the preview under it
+      '[data-novaflow-bone-toolbar="1"]',
+      `#${DROPDOWN_PORTAL_ID}`,
+      '[data-novaflow-dropdown-item="1"]',
       'button',
       'input',
       'select',

@@ -1420,6 +1420,100 @@
   // 自动蒙皮 body lost 11px and everything below it jumped up. So author exactly that.
   const STACK_GAP = '5px'
 
+  /**
+   * 自动蒙皮 / 自动权重 list their layers over the stage, just above the timeline, in as many
+   * columns and rows as fit - the narrow left column showed them one under another
+   * (user 2026-10-10: "把图层放到右边来 ... 可以很多列很多行"). Each panel's list sits in
+   * the dock; the open panel's is the one shown.
+   */
+  function layerDock() {
+    let d = document.querySelector('[data-novaflow-layer-dock="1"]')
+    if (!d) {
+      // above the bone / mesh overlay (2147483100), below the mesh and weight editors
+      d = el('div', { position: 'fixed', left: '0', top: '0', zIndex: '2147483150', display: 'none', padding: '8px 10px', background: 'rgba(31,31,31,0.95)', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', overflow: 'hidden', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
+      d.setAttribute('data-novaflow-layer-dock', '1')
+      // outside the left column nothing gives these buttons the panel look (a white frame showed)
+      const css = document.createElement('style')
+      css.textContent = '[data-novaflow-layer-dock="1"] button{border:0!important;outline:0!important;box-shadow:none!important;border-radius:6px!important;background:#333333;color:rgba(255,255,255,0.92);font-size:12px;font-weight:500;cursor:pointer}' +
+        '[data-novaflow-layer-dock="1"] button:hover{background:rgba(30,166,114,0.18)!important;color:#7ce8b5!important}'
+      d.appendChild(css)
+      document.body.appendChild(d)
+    }
+    return d
+  }
+  function dockLayerList(wrap, owner) {
+    const d = layerDock()
+    const old = d.querySelector(`:scope > [data-layer-dock-owner="${owner}"]`)
+    if (old && old !== wrap) old.remove()
+    wrap.setAttribute('data-layer-dock-owner', owner)
+    Object.assign(wrap.style, { marginTop: '0', height: '100%', display: 'flex', flexDirection: 'column', minHeight: '0' })
+    if (wrap.parentElement !== d) d.appendChild(wrap)
+    placeLayerDock()
+  }
+  // the list's rows as a grid that fills the dock (rows scroll inside it)
+  function dockButtons(head) {
+    for (const b of head.querySelectorAll('button')) Object.assign(b.style, { border: '0', borderRadius: '6px', height: '26px', lineHeight: '26px', padding: '0 12px', fontSize: '12px' })
+  }
+  function gridLayerRows(scroll) {
+    Object.assign(scroll.style, { flex: '1 1 auto', minHeight: '0', maxHeight: '', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '6px', alignContent: 'start' })
+  }
+  function placeLayerDock() {
+    const d = document.querySelector('[data-novaflow-layer-dock="1"]')
+    if (!d) return
+    const owner = state.open ? 'mesh' : (state.openWeights ? 'weights' : '')
+    const wrap = owner && d.querySelector(`:scope > [data-layer-dock-owner="${owner}"]`)
+    const panel = owner && document.querySelector(`[${owner === 'mesh' ? MARK : WMARK}="1"]`)
+    const stage = document.querySelector('[data-novaflow-skeleton-preview-stage="1"]')
+    const sr = stage && stage.getBoundingClientRect()
+    const show = !!(wrap && panel && panel.isConnected && sr && sr.width > 0 && sr.height > 0)
+    for (const child of Array.from(d.children)) { if (child.tagName === 'STYLE') continue; const v = child === wrap ? 'flex' : 'none'; if (child.style.display !== v) child.style.display = v }
+    if (d.style.display !== (show ? 'block' : 'none')) d.style.display = show ? 'block' : 'none'
+    if (!show) { reserveDockSpace(null); return }
+    let anchor = sr.bottom
+    const bar = document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]')
+    const br = bar && bar.getBoundingClientRect()
+    if (br && br.height > 0) anchor = Math.min(anchor, br.top)
+    const motion = document.querySelector('[data-novaflow-motion-curve="1"]')
+    const editor = motion && motion.style.visibility !== 'hidden' && motion.style.display !== 'none' && motion.shadowRoot && motion.shadowRoot.getElementById('editor')
+    const er = editor && editor.getBoundingClientRect()
+    if (er && er.height > 0 && er.bottom > sr.top) anchor = Math.min(anchor, er.top)
+    const room = anchor - sr.top
+    const height = Math.round(Math.max(120, Math.min(room - 60, room * 0.45)))
+    const box = { left: Math.round(sr.left + 12) + 'px', top: Math.round(anchor - 8 - height) + 'px', width: Math.round(sr.width - 24) + 'px', height: height + 'px' }
+    for (const [k, v] of Object.entries(box)) if (d.style[k] !== v) d.style[k] = v
+    // the preview fits above the list (as above 动画编辑), unless 动画编辑 already holds it
+    reserveDockSpace(er && er.height > 0 ? null : { stage, pixels: Math.max(80, Math.round(anchor - 8 - height - sr.top - 8)) })
+  }
+  let dockLayer = null
+  function reserveDockSpace(want) {
+    const resize = (layer) => {
+      const proxy = window.__NovaFlowSkeletonTimelineOfficialProxy, canvas = layer && layer.querySelector('canvas')
+      if (!canvas || !proxy || proxy.canvas !== canvas) return
+      const r = canvas.getBoundingClientRect(), dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1))
+      const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr))
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; try { proxy.player && proxy.player.renderCurrentPose && proxy.player.renderCurrentPose() } catch { /* no pose yet */ } }
+    }
+    let layer = want && want.stage.querySelector('canvas')
+    while (layer && layer.parentElement !== want.stage) layer = layer.parentElement
+    if (dockLayer && dockLayer !== layer) {
+      const [v, pr] = JSON.parse(dockLayer.dataset.nfLayerDockBase || '["",""]')
+      if (v) dockLayer.style.setProperty('block-size', v, pr); else dockLayer.style.removeProperty('block-size')
+      delete dockLayer.dataset.nfLayerDockBase
+      resize(dockLayer)
+      dockLayer = null
+    }
+    if (!layer) return
+    if (layer.dataset.nfLayerDockBase === undefined) layer.dataset.nfLayerDockBase = JSON.stringify([layer.style.getPropertyValue('block-size'), layer.style.getPropertyPriority('block-size')])
+    dockLayer = layer
+    const height = want.pixels + 'px'
+    if (layer.style.getPropertyValue('block-size') !== height) { layer.style.setProperty('block-size', height, 'important'); resize(layer) }
+  }
+  if (!window.__nfLayerDockTimer) {
+    window.__nfLayerDockTimer = true
+    window.addEventListener('resize', () => { try { placeLayerDock() } catch { /* not up */ } })
+    window.setInterval(() => { try { placeLayerDock() } catch { /* not up */ } }, 250)
+  }
+
   function buildMeshBody() {
     const body = el('div')
     body.className = 'nf-panel-body'
@@ -1451,7 +1545,7 @@
 
     const genBtn = el('button', null, '生成网格'); genBtn.type = 'button'; styleButton(genBtn, true)
     genBtn.style.marginTop = STACK_GAP
-    const restoreBtn = el('button', null, '还原为导入时的图层'); restoreBtn.type = 'button'
+    const restoreBtn = el('button', null, '还原初始图层'); restoreBtn.type = 'button'
     styleButton(restoreBtn, false); restoreBtn.style.marginTop = STACK_GAP
     restoreBtn.title = '去掉这里生成的网格和加上的权重,预览回到刚导入时的样子'
 
@@ -1518,6 +1612,7 @@
       }))
       headBtns.appendChild(allBtn); headBtns.appendChild(noneBtn)
       head.appendChild(headBtns)
+      dockButtons(head)
       listWrap.appendChild(head)
 
       // Every layer stays listed: the tick means "participates in meshing", not
@@ -1528,8 +1623,10 @@
       const scroll = el('div', { overflowY: 'auto', overflowX: 'hidden' })
       // The list used to be pinned at 260px, so a taller window just left empty
       // space below it. Measure instead, and re-measure whenever the window moves.
+      gridLayerRows(scroll)
       state.fitList = () => {
         if (!scroll.isConnected) return
+        if (scroll.closest('[data-novaflow-layer-dock="1"]')) { if (typeof state.fitWeightList === 'function') state.fitWeightList(); return }
         const top = scroll.getBoundingClientRect().top
         const room = window.innerHeight - top - 16
         // the weights panel sits below and needs room of its own while it is open
@@ -1541,7 +1638,7 @@
       for (const [name, layer] of visible) {
         const item = el('div', {
           border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px',
-          padding: '6px 8px', marginBottom: '4px',
+          padding: '6px 8px',
           background: 'rgba(255,255,255,0.03)',
           opacity: layer.hasImage ? '1' : '0.45',
           transition: 'background 90ms linear, border-color 90ms linear'
@@ -1598,7 +1695,7 @@
     body.appendChild(genBtn)
     body.appendChild(restoreBtn)
     body.appendChild(status)
-    body.appendChild(listWrap)
+    dockLayerList(listWrap, 'mesh')
     renderList()
     return body
   }
@@ -1675,17 +1772,20 @@
       }))
       headBtns.appendChild(allBtn); headBtns.appendChild(noneBtn)
       head.appendChild(headBtns)
+      dockButtons(head)
       listWrap.appendChild(head)
       const scroll = el('div', { overflowY: 'auto', overflowX: 'hidden' })
+      gridLayerRows(scroll)
       state.fitWeightList = () => {
         if (!scroll.isConnected) return
+        if (scroll.closest('[data-novaflow-layer-dock="1"]')) return
         const top = scroll.getBoundingClientRect().top
         scroll.style.maxHeight = Math.max(120, Math.round(window.innerHeight - top - 16)) + 'px'
       }
       for (const [name, layer] of state.layers) {
         const item = el('div', {
           border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px',
-          padding: '6px 8px', marginBottom: '4px', background: 'rgba(255,255,255,0.03)',
+          padding: '6px 8px', background: 'rgba(255,255,255,0.03)',
           opacity: layer.hasImage ? '1' : '0.45',
           transition: 'border-color 90ms linear'
         })
@@ -1732,7 +1832,7 @@
     body.appendChild(weightsBtn)
     body.appendChild(restoreWBtn)
     body.appendChild(status)
-    body.appendChild(listWrap)
+    dockLayerList(listWrap, 'weights')
     renderWeightList()
     return body
   }
@@ -3018,7 +3118,7 @@
     const ctl = ensureController()
     const skel = ctl.getSkeleton()
     if (!skel) throw new Error('没有骨架可写回')
-    if (ourMeshes()) throw new Error('这里生成的网格会跟着旧骨骼:先在 自动蒙皮 里「还原为导入时的图层」,改完骨骼再蒙皮')
+    if (ourMeshes()) throw new Error('这里生成的网格会跟着旧骨骼:先在 自动蒙皮 里「还原初始图层」,改完骨骼再蒙皮')
     captureSource()
     const text = JSON.stringify(skel)
     for (const l of state.layers.values()) { l.weights = null; l.weightsEdited = false }
@@ -3044,7 +3144,7 @@
     const skel = JSON.parse(src.skeleton.text)
     const hasMesh = (attachments) => Object.keys(attachments || {}).some((slot) => Object.values(attachments[slot] || {}).some((a) => a && a.type === 'mesh'))
     const meshed = Array.isArray(skel.skins) ? skel.skins.some((k) => hasMesh(k && k.attachments)) : Object.keys(skel.skins || {}).some((k) => hasMesh(skel.skins[k]))
-    if (meshed || ourMeshes()) throw new Error('工程里已有网格:先在 自动蒙皮 里「还原为导入时的图层」,再自动架设')
+    if (meshed || ourMeshes()) throw new Error('工程里已有网格:先在 自动蒙皮 里「还原初始图层」,再自动架设')
     const AW = window.NovaFlowAutoWeights
     const mats = AW ? AW.setupPoseMatrices(skel) : null
     const boneIndex = new Map((skel.bones || []).map((b, i) => [b.name, i]))
@@ -3122,7 +3222,7 @@
     // tools: a bar over the stage, centred just above the timeline (as Spine's tool bar),
     // shown while this panel is open (= editing)
     document.querySelectorAll('[data-novaflow-bone-toolbar="1"]').forEach((n) => n.remove())
-    const toolsRow = el('div', { position: 'fixed', left: '0', top: '0', zIndex: '2147483200', display: 'none', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px', background: '#1F1F1F', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', transform: 'translateX(-50%)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
+    const toolsRow = el('div', { position: 'fixed', left: '0', top: '0', width: 'max-content', zIndex: '2147483200', display: 'none', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px', background: '#1F1F1F', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', transform: 'translateX(-50%)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
     toolsRow.setAttribute('data-novaflow-bone-toolbar', '1')
     toolsRow.setAttribute('role', 'toolbar')
     toolsRow.setAttribute('aria-label', '骨骼工具')
@@ -3133,7 +3233,7 @@
       b.title = `${t.hint}(快捷键 ${t.key.toUpperCase()})`
       b.style.height = '28px'
       b.style.lineHeight = '28px'
-      b.style.padding = '0 14px'
+      b.style.padding = '0 10px'
       b.style.fontSize = '12px'
       b.style.borderRadius = '6px'
       b.style.border = '0'
@@ -3162,22 +3262,22 @@
     applyBtn.title = '把编辑好的骨架写回工程并重建预览;之后再做 自动蒙皮 / 自动权重'
 
     // the selected bone: its fields ride in the tool bar, after the tools
-    const selBox = el('div', { display: 'none', flexWrap: 'wrap', alignItems: 'center', gap: '6px 10px', marginLeft: '4px', paddingLeft: '10px', paddingRight: '4px', borderLeft: '1px solid #2E2E2E' })
+    const selBox = el('div', { display: 'none', flexWrap: 'wrap', alignItems: 'center', gap: '6px 8px', marginLeft: '2px', paddingLeft: '8px', paddingRight: '4px', borderLeft: '1px solid #2E2E2E' })
     const field = (label) => {
       const row = el('div', { display: 'flex', alignItems: 'center', gap: '6px' })
       row.appendChild(el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' }, label))
       return row
     }
     const inputStyle = { flex: '0 0 auto', minWidth: '0', height: '28px', background: '#2a2a2a', color: 'rgba(255,255,255,0.9)', border: '0', borderRadius: '6px', fontSize: '12px', padding: '0 8px', boxSizing: 'border-box' }
-    const nameRow = field('名称'); const nameIn = el('input', Object.assign({}, inputStyle, { width: '120px' })); nameIn.type = 'text'; nameIn.spellcheck = false; nameRow.appendChild(nameIn)
-    const parentRow = field('父骨'); const parentSel = el('select', Object.assign({}, inputStyle, { width: '130px' })); parentRow.appendChild(parentSel)
+    const nameRow = field('名称'); const nameIn = el('input', Object.assign({}, inputStyle, { width: '104px' })); nameIn.type = 'text'; nameIn.spellcheck = false; nameRow.appendChild(nameIn)
+    const parentRow = field('父骨'); const parentSel = el('select', Object.assign({}, inputStyle, { width: '116px' })); parentRow.appendChild(parentSel)
     // the pair of numbers belongs to the ACTIVE TOOL (user 2026-09-22): 移动 → X/Y,
     // 旋转 → 角度/长度, 缩放 → 缩放X/缩放Y, and typing one applies that tool's edit
     const poseRow = field('角度'); const poseLabelA = poseRow.firstChild
-    const rotIn = el('input', Object.assign({}, inputStyle, { width: '72px' })); rotIn.type = 'number'; rotIn.step = '0.1'; rotIn.setAttribute('data-novaflow-number-fill', '1')
+    const rotIn = el('input', Object.assign({}, inputStyle, { width: '64px' })); rotIn.type = 'number'; rotIn.step = '0.1'; rotIn.setAttribute('data-novaflow-number-fill', '1')
     const poseLabelB = el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto', marginLeft: '4px' }, '长度')
     poseRow.appendChild(rotIn); poseRow.appendChild(poseLabelB)
-    const lenIn = el('input', Object.assign({}, inputStyle, { width: '72px' })); lenIn.type = 'number'; lenIn.step = '1'; lenIn.setAttribute('data-novaflow-number-fill', '1'); lenIn.min = '0'; poseRow.appendChild(lenIn)
+    const lenIn = el('input', Object.assign({}, inputStyle, { width: '64px' })); lenIn.type = 'number'; lenIn.step = '1'; lenIn.setAttribute('data-novaflow-number-fill', '1'); lenIn.min = '0'; poseRow.appendChild(lenIn)
     /** What the two fields mean under each tool: label, step, and where the value comes from. */
     const POSE_FIELDS = {
       move: { a: { label: 'X', step: '1', min: '' }, b: { label: 'Y', step: '1', min: '' }, title: '骨骼原点的世界坐标' },
@@ -3271,7 +3371,7 @@
       const editor = motion && motion.style.visibility !== 'hidden' && motion.style.display !== 'none' && motion.shadowRoot && motion.shadowRoot.getElementById('editor')
       const er = editor && editor.getBoundingClientRect()
       if (er && er.height > 0 && er.bottom > sr.top) anchor = Math.min(anchor, er.top)
-      setStyle(toolsRow, 'maxWidth', Math.max(240, Math.round(sr.width - 16)) + 'px')
+      setStyle(toolsRow, 'maxWidth', Math.max(240, Math.round(sr.width - 8)) + 'px')
       setStyle(toolsRow, 'left', Math.round(sr.left + sr.width / 2) + 'px')
       // wrapped to its own line under the tools (a narrow stage): no divider in front of it
       const wrapped = selBox.style.display !== 'none' && toolsRow.firstChild && selBox.offsetTop > toolsRow.firstChild.offsetTop + 4
@@ -3417,14 +3517,14 @@
     return {
       id: PANEL_ID, mark: MARK, title: TITLE, icon: 'fas fa-vector-square', body: buildMeshBody,
       isOpen: () => state.open,
-      setOpen: (v) => { state.open = v }
+      setOpen: (v) => { state.open = v; placeLayerDock() }
     }
   }
   function weightsSpec() {
     return {
       id: WEIGHTS_PANEL_ID, mark: WMARK, title: WTITLE, icon: 'fas fa-project-diagram', body: buildWeightsBody,
       isOpen: () => state.openWeights,
-      setOpen: (v) => { state.openWeights = v; if (state.fitList) state.fitList() }
+      setOpen: (v) => { state.openWeights = v; if (state.fitList) state.fitList(); placeLayerDock() }
     }
   }
 
