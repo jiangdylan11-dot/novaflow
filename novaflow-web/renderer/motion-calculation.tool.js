@@ -133,20 +133,30 @@
     });
     s.expected=s.committed;s.pendingSignatures?.clear();
   }
+  let rebind=null;
   function close(){
+    rebind=null;
     if(session?.dirty){try{revert(session);}catch(error){view?.status(error.message);}}
     if(session)session.dirty=false;
     view?.destroy();view=null;session=null;
   }
   function open(){
-    // a pick in progress can read "no bone" for a moment: 飘带计算 keeps its editor then
-    // (closing it here made the whole editor vanish and rebuild on every bone pick)
+    // One editor: a pick in progress can read "no bone" for a moment and the editor stays;
+    // another bone keeps the same editor and only swaps in that bone's values (closing and
+    // building it again made the whole editor vanish for a moment on every bone pick)
     const next=getContext();
-    if(view&&activeMode==='ribbon'&&!(next?.project.animations[next.activeAnimationName]&&next.selectedBoneName))return;
+    const ready=!!(next?.project.animations[next.activeAnimationName]&&next.selectedBoneName);
+    if(view&&!ready)return;
+    if(view&&rebind){rebind(next);return;}
     close();context=next;
     const body=panel.querySelector('.nf-motion-body');body.replaceChildren();
-    if(!context?.project.animations[context.activeAnimationName]||!context.selectedBoneName){body.textContent='请先选择动画和一个骨骼。';return;}
-    session=createSession(context);const s=session;
+    if(!ready){body.textContent='请先选择动画和一个骨骼。';return;}
+    session=createSession(context);let s=session;
+    rebind=ctx=>{
+      if(s.dirty){try{revert(s);}catch(error){view?.status(error.message);}}
+      s.dirty=false;context=ctx;session=s=createSession(ctx);
+      view.rebind(activeMode);
+    };
     const host=document.createElement('div');body.append(host);const shadow=host.attachShadow({mode:'open'});
     const timing=()=>{const minimumDuration=Math.max(.05,A.duration({...clearedAnimation(s.base,s),duration:0})),d=Math.max(minimumDuration,A.duration(s.base)||2);return {animationDuration:d,boneDuration:Math.min(d,2.8),animationDelay:0,minimumDuration};};
     const preview=(stack,t)=>{

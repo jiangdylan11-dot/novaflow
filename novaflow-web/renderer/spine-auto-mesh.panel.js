@@ -2165,7 +2165,7 @@
       box.setAttribute(HIER_MARK, '1')
       const title = el('div', { fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.86)' }, '工程')
       // a deep chain outgrows the sidebar: the rows keep their indent and the box scrolls sideways
-      const scroll = el('div', { overflowY: 'auto', overflowX: 'auto', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
+      const scroll = el('div', { overflowY: 'auto', overflowX: 'auto', overflowAnchor: 'none', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
       scroll.setAttribute('data-nf-hier-scroll', '1')
       box.appendChild(title); box.appendChild(scroll)
       body.insertBefore(box, body.firstChild)
@@ -2188,7 +2188,9 @@
     for (const r of rows) {
       const picked = !!(r.picked || (r.bone !== undefined && hier.bones.has(r.label)))
       const row = el('div', {
-        display: 'flex', alignItems: 'center', gap: '6px', height: '22px', flex: '0 0 auto',
+        // built at the height the brand runtime gives a tree row (39): a shorter row made the
+        // rebuilt list shorter for a moment and the browser cut its scroll back (the list jumped)
+        display: 'flex', alignItems: 'center', gap: '6px', height: '39px', flex: '0 0 auto',
         // as wide as its deepest row, never narrower than the box: the sidebar keeps its
         // size and a long chain scrolls sideways instead of losing its indent
         width: 'max-content', minWidth: '100%', boxSizing: 'border-box',
@@ -2224,13 +2226,14 @@
       if (r.note) { const nt = el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.note); nt.dataset.nfHierTrail = '1'; row.appendChild(nt) }
       row.addEventListener('click', (ev) => {
         ev.preventDefault(); ev.stopPropagation()
+        hier.treeClickAt = performance.now()
         if (r.pick) {
           const btn = appButton(r.pick[0], r.pick[1])
           if (btn) { try { btn.click() } catch { /* the app re-rendered it away */ } } else bones.setStatus(`${r.pick[1]} 切换按钮不在了`, 'error')
           window.setTimeout(() => renderHierarchy(true), 200)
           return
         }
-        if (r.layer) { pickLayerRow(r.layer, ev); return }
+        if (r.layer) { if (hier.downPicked === r.layer) { hier.downPicked = null; return } hier.downPicked = null; pickLayerRow(r.layer, ev); return }
         const name = r.bone !== undefined ? r.label : r.target || r.boneName
         if (name && ctl) {
           const i = ctl.peekBones().findIndex((b) => b.name === name)
@@ -2242,8 +2245,13 @@
       hier.rows.set(r.key, row)
       frag.appendChild(row)
     }
+    // rebuilt in place: emptying the box lost its scroll and every click on a row (a layer,
+    // a constraint) threw the list somewhere else, under the pointer of the next click or drag
+    const keepTop = hier.scroll.scrollTop, keepLeft = hier.scroll.scrollLeft
     hier.scroll.textContent = ''
     hier.scroll.appendChild(frag)
+    hier.scroll.scrollTop = keepTop
+    hier.scroll.scrollLeft = keepLeft
     paintHierSelection()
     // the rows were rebuilt: put the focused layer's outline back on the new ones
     if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep, keep === focusName) }
@@ -2420,7 +2428,11 @@
     const row = ev.target instanceof Element ? ev.target.closest('[data-nf-hier-layer]') : null
     if (!row || ev.button !== 0) return
     const name = row.dataset.nfHierLayer
-    if (!hier.pick.has(name)) pickLayerRow(name, ev)
+    hier.treeClickAt = performance.now()
+    hier.downPicked = null
+    // picked on the press already: the click that follows must not count as a second click
+    // (it ticked the layer on the first click, and a Ctrl click added then removed it)
+    if (!hier.pick.has(name)) { pickLayerRow(name, ev); hier.downPicked = name }
     orderDrag.on = true; orderDrag.id = ev.pointerId; orderDrag.moved = false; orderDrag.before = null
   }
   function onOrderPointerMove(ev) {
@@ -2471,12 +2483,18 @@
     if (name === hier.selected && (!name || (row && row.dataset.nfHierState === 'selected'))) return
     const prev = hier.selected && hier.rows.get('b:' + hier.selected)
     if (prev && prev !== row) setHierRowState(prev, hier.bones.has(hier.selected) ? 'picked' : '')
+    // scrolled to only when the pick changed elsewhere (the art): a click in the tree keeps
+    // the tree where it is - re-marking after a rebuild jumped the list to the bone row
+    // above, under the pointer of a 绘制顺序 / 约束 click or drag
+    const scroll = name !== hier.selected && performance.now() - (hier.treeClickAt || 0) > 600
     hier.selected = name
     if (row) {
       setHierRowState(row, 'selected')
-      scrollIntoBox(row, hier.scroll)
-      // once more after the brand runtime's pass has sized the rebuilt rows
-      window.setTimeout(() => { if (hier.selected === name && row.isConnected) scrollIntoBox(row, hier.scroll) }, 80)
+      if (scroll) {
+        scrollIntoBox(row, hier.scroll)
+        // once more after the brand runtime's pass has sized the rebuilt rows
+        window.setTimeout(() => { if (hier.selected === name && row.isConnected) scrollIntoBox(row, hier.scroll) }, 80)
+      }
     }
   }
   /**

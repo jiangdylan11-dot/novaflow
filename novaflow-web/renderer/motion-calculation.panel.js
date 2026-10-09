@@ -678,10 +678,21 @@
   function discardUnsaved(){
     if(!bridge.dirty?.())return;
     bridge.discard();
+    reloadValues();
+  }
+  // the bone's saved values (or the initial ones) into the tools
+  function reloadValues(){
     const saved=bridge.initial();Object.assign(sessions,saved?.stack||E.freshStack());
     sessions.rotate??=E.freshStack().rotate;for(const state of Object.values(sessions))state.axes.r??={on:false,amp:0},state.corrections.r??=Array(17).fill(0);
     Object.assign(timing,E.fitTiming({...bridge.timing(),...saved?.timing}));shareOpacity(sessions.opacity);shareDuration(timing.boneDuration);
     history.length=0;redo.length=0;lastSnapshot=JSON.stringify({stack:sessions,timing});previewError='';time=0;
+  }
+  // another bone in the same editor: its values in, the tool kept as it is
+  function rebind(next){
+    reloadValues();
+    if(next&&next!==(ribbon?'ribbon':mode)){selectMode(next);return;}
+    if(!ribbon){p=sessions[mode];drag=null;pointSelected=false;renderPanel();}
+    status('');
   }
   function selectMode(next){
     if(next!==(ribbon?'ribbon':mode))discardUnsaved();
@@ -708,6 +719,6 @@
   // the calculation tools are always set up underneath 飘带计算 (the frame loop draws them)
   selectMode(bridge.mode&&bridge.mode!=='ribbon'?bridge.mode:'bounce');if(bridge.mode==='ribbon')selectMode('ribbon');
   frameId=requestAnimationFrame(frame);
-  return {destroy(){bridge.dock?.(null);observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
+  return {destroy(){bridge.dock?.(null);observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,rebind,status:message=>status(message,true),undo};
 }};
 })();

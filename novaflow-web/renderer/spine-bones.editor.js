@@ -409,6 +409,16 @@
     if (m.length > 0) for (const e of endpointsAt(W, t0[0], t0[1], tol)) addTarget(targets, e.index, e.end, [t0[0] + dx, t0[1] + dy])
     addTarget(targets, index, 'origin', [o0[0] + dx, o0[1] + dy])
     if (m.length > 0) addTarget(targets, index, 'tip', [t0[0] + dx, t0[1] + dy])
+    // the whole branch goes with it, as Spine's translate: a child kept in place had its
+    // origin dragged along (when it sat on this tip) and its tip left behind, so the chain
+    // stretched and broke - or stayed behind entirely when its origin was a little off
+    const inBranch = (i) => { for (let p = W[i].parent, n = 0; p >= 0 && n <= W.length; p = W[p].parent, n++) if (p === index) return true; return false }
+    for (let i = 0; i < W.length; i++) {
+      if (i === index || !inBranch(i)) continue
+      const d = W[i]
+      addTarget(targets, i, 'origin', [d.worldX + dx, d.worldY + dy])
+      if (d.length > 0) { const t = tipOf(d); addTarget(targets, i, 'tip', [t[0] + dx, t[1] + dy]) }
+    }
     if (o.frozen) for (const k of o.frozen) if (k !== index) targets.delete(k)
     return setEndpoints(skel, targets)
   }
