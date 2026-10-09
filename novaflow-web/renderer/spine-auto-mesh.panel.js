@@ -1384,7 +1384,9 @@
     const hadMesh = !!layer.mesh
     if (!selected) { layer.mesh = null; layer.edited = false; layer.weights = null; layer.weightsEdited = false; layer.fromMesh = false }
     renderList()
-    try { renderHierarchy(true) } catch { /* the tree is not up yet */ }
+    // the tree only marks the layer's rows: patched in place, not rebuilt (all its rows over
+    // again on every tick)
+    try { markHierLayerActive(name, selected) } catch { /* the tree is not up yet */ }
     if (!selected && hadMesh && state.baseSkeleton && state.source) await applyAll()
   }
 
@@ -1479,6 +1481,9 @@
       // above the bone / mesh overlay (2147483100), below the mesh and weight editors
       d = el('div', { position: 'fixed', left: '0', top: '0', zIndex: '2147483150', display: 'none', padding: '8px 10px', background: 'rgba(31,31,31,0.95)', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', overflow: 'hidden', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
       d.setAttribute('data-novaflow-layer-dock', '1')
+      // ours entirely (styled here): the runtime's layout passes have nothing in it to do,
+      // and a tick in it cost a full skeleton layout
+      d.setAttribute('data-novaflow-runtime-ignore', '1')
       // outside the left column nothing gives these buttons the panel look (a white frame showed)
       const css = document.createElement('style')
       css.textContent = '[data-novaflow-layer-dock="1"] button{border:0!important;outline:0!important;box-shadow:none!important;border-radius:6px!important;background:#333333;color:rgba(255,255,255,0.92);font-size:12px;font-weight:500;cursor:pointer}' +
@@ -2412,6 +2417,20 @@
     paintHierSelection()
     // the rows were rebuilt: put the focused layer's outline back on the new ones
     if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep, keep === focusName) }
+  }
+  function markHierLayerActive(name, on) {
+    let found = false
+    for (const prefix of ['l:', 'bs:']) {
+      const row = hier.rows.get(prefix + name)
+      if (!row) continue
+      found = true
+      // the brand spec paints the label from this (a state attribute it watches)
+      if (on) row.dataset.nfHierActive = '1'; else delete row.dataset.nfHierActive
+    }
+    // the signature now matches what is shown (rows of a folded group are not built at all),
+    // so the next pass does not rebuild the tree for it
+    hier.sig = hierSignature(hierModel())
+    void found
   }
   function toggleHierKey(key) {
     if (hier.open.has(key)) hier.open.delete(key); else hier.open.add(key)

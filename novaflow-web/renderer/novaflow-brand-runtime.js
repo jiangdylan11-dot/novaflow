@@ -36239,6 +36239,7 @@
     "data-nf-ribbon-narrow",
     "data-novaflow-ribbon-event-expanded",
     "data-nf-hier-state",
+    "data-nf-hier-active",
     "data-novaflow-tools-entry-active",
     "data-novaflow-art-generate-active",
     "data-novaflow-skeleton-top-button-active",
@@ -36352,6 +36353,9 @@
   function isNovaflowSpecRelevantAddition(node) {
     if (!(node instanceof HTMLElement)) return false;
     if (node.closest("#novaflow-number-input-overlay-root, [data-novaflow-number-input-visual-for]")) return false;
+    // a surface that styles itself (the layer list, the mesh / weight editors): rows rebuilt
+    // there are nothing the spec lays out, and each one cost a full pass
+    if (node.closest('[data-novaflow-runtime-ignore="1"]')) return false;
     const tag = node.tagName;
     return tag !== "CANVAS" && tag !== "STYLE" && tag !== "SCRIPT" && tag !== "svg";
   }
@@ -78945,6 +78949,7 @@
   // mutation batch made every slider stutter. The drag only keeps the fills in step; one
   // layout pass follows the release.
   let RIBBON_DOCKED_RANGE_DRAG = false;
+  let RIBBON_HOLD_DIRTY = false;
   function bindRibbonDockedRangeDrag() {
     if (window.__NovaFlowRibbonDockedRangeDragBound) return;
     window.__NovaFlowRibbonDockedRangeDragBound = true;
@@ -78976,6 +78981,10 @@
         NOVAFLOW_SPEC_PASS_DEFERRED = false;
         try { runNovaflowReferenceSpecNow(); } catch (_) { void 0; }
       }
+      // nothing the runtime lays out changed under the press: no pass (a click in the layer
+      // list cost a full skeleton layout each)
+      if (!RIBBON_HOLD_DIRTY) return;
+      RIBBON_HOLD_DIRTY = false;
       window.setTimeout(() => {
         if (RIBBON_DOCKED_RANGE_DRAG || !isSkeletonAnimationRuntimeSurfaceActive()) return;
         clearAiAnimationRuntimeStateForSkeletonLayout();
@@ -79000,6 +79009,8 @@
       if (RIBBON_DOCKED_RANGE_DRAG && isSkeletonAnimationRuntimeSurfaceActive()) {
         mutations.forEach((mutation) => {
           if (mutation.target instanceof HTMLInputElement && mutation.target.type === "range") syncRangeFillVisual(mutation.target);
+          // only what the runtime lays out needs the pass on release (the layer list, say, does not)
+          if (!RIBBON_HOLD_DIRTY && !isInsideNovaflowRuntimeIgnore(mutation.target)) RIBBON_HOLD_DIRTY = true;
         });
         return;
       }
