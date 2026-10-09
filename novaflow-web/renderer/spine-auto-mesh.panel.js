@@ -1478,8 +1478,13 @@
     const er = editor && editor.getBoundingClientRect()
     if (er && er.height > 0 && er.bottom > sr.top) anchor = Math.min(anchor, er.top)
     const room = anchor - sr.top
-    const height = Math.round(Math.max(120, Math.min(room - 60, room * 0.45)))
-    const box = { left: Math.round(sr.left + 12) + 'px', top: Math.round(anchor - 8 - height) + 'px', width: Math.round(sr.width - 24) + 'px', height: height + 'px' }
+    let natural = 0
+    for (const child of [wrap.firstElementChild, ...wrap.querySelectorAll('[data-auto-mesh-row], [data-auto-weight-row]')].filter(Boolean)) natural = Math.max(natural, child.offsetTop + child.offsetHeight)
+    natural += 10
+    const height = Math.round(Math.max(96, Math.min(natural || room, room - 60, room * 0.45)))
+    // the same left and right edges as the timeline (and 动画编辑, which follows it)
+    const edgeL = br && br.width > 0 ? br.left : sr.left + 12, edgeR = br && br.width > 0 ? br.right : sr.right - 12
+    const box = { left: Math.round(edgeL) + 'px', top: Math.round(anchor - 8 - height) + 'px', width: Math.round(edgeR - edgeL) + 'px', height: height + 'px' }
     for (const [k, v] of Object.entries(box)) if (d.style[k] !== v) d.style[k] = v
     // the preview fits above the list (as above 动画编辑), unless 动画编辑 already holds it
     reserveDockSpace(er && er.height > 0 ? null : { stage, pixels: Math.max(80, Math.round(anchor - 8 - height - sr.top - 8)) })
@@ -1499,6 +1504,8 @@
       const [v, pr] = JSON.parse(dockLayer.dataset.nfLayerDockBase || '["",""]')
       if (v) dockLayer.style.setProperty('block-size', v, pr); else dockLayer.style.removeProperty('block-size')
       delete dockLayer.dataset.nfLayerDockBase
+      const stageEl = dockLayer.parentElement
+      if (stageEl && stageEl.getAttribute('data-nf-layer-dock-height')) { stageEl.removeAttribute('data-nf-layer-dock-height'); stageEl.removeAttribute('data-novaflow-motion-preview-height') }
       resize(dockLayer)
       dockLayer = null
     }
@@ -1506,6 +1513,8 @@
     if (layer.dataset.nfLayerDockBase === undefined) layer.dataset.nfLayerDockBase = JSON.stringify([layer.style.getPropertyValue('block-size'), layer.style.getPropertyPriority('block-size')])
     dockLayer = layer
     const height = want.pixels + 'px'
+    const marker = String(want.pixels)
+    if (want.stage.getAttribute('data-novaflow-motion-preview-height') !== marker) { want.stage.setAttribute('data-novaflow-motion-preview-height', marker); want.stage.setAttribute('data-nf-layer-dock-height', marker) }
     if (layer.style.getPropertyValue('block-size') !== height) { layer.style.setProperty('block-size', height, 'important'); resize(layer) }
   }
   if (!window.__nfLayerDockTimer) {
@@ -1820,6 +1829,7 @@
           top.appendChild(weightBtn)
         }
         item.appendChild(top)
+        item.dataset.autoWeightRow = name
         weightRowEls.set(name, item)
         scroll.appendChild(item)
       }
