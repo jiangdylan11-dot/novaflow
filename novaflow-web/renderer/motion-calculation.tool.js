@@ -119,11 +119,22 @@
     if(existing&&matchesExpected(current,existing)){
       existing.dirty=false;return existing;
     }
-    const s={identity,animation,bone,slots:slotNames(p.project,bone),base:current,committed:current,expected:current,channels:new Set(),alpha:false,dirty:false,config:null,group,key};
+    const s={identity,animation,bone,slots:slotNames(p.project,bone),base:current,committed:current,expected:current,channels:new Set(),alpha:false,dirty:false,config:null,group,key,setProject:p.setProject};
     group.set(key,s);return s;
   }
+  // An unsaved preview lives in the real project; leaving without 保存动画 must put
+  // the bone back. Leaving the section unmounts the bone editor first, so the
+  // revert goes through the project setter captured when the session opened.
+  function revert(s){
+    const setProject=getContext()?.setProject||s.setProject;
+    setProject?.(previous=>{
+      if(previous.bones!==s.identity||!previous.animations[s.animation])return previous;
+      return {...previous,animations:{...previous.animations,[s.animation]:patch(previous.animations[s.animation],s.committed,s)}};
+    });
+    s.expected=s.committed;s.pendingSignatures?.clear();
+  }
   function close(){
-    if(session?.dirty){try{write(session,session.committed);}catch(error){view?.status(error.message);}}
+    if(session?.dirty){try{revert(session);}catch(error){view?.status(error.message);}}
     if(session)session.dirty=false;
     view?.destroy();view=null;session=null;
   }

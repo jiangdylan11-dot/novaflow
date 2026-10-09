@@ -73287,6 +73287,8 @@
       '[data-novaflow-skeleton-zoom-controls="1"]',
       '[data-novaflow-skeleton-top-button-group="1"]',
       '[data-novaflow-skeleton-template-control="1"]',
+      // 动画计算's floating panel (a shadow host: events reach here retargeted to it)
+      '[data-novaflow-motion-curve="1"]',
       'button',
       'input',
       'select',

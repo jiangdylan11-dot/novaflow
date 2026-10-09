@@ -5,6 +5,17 @@
   const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
   floating.style.cssText='position:fixed;z-index:60;visibility:hidden';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
+  // The wheel over a value steps that value (number boxes and sliders alike); the
+  // stage's zoom must not see it. The runtime's stage zoom skips this panel.
+  const wheelStep=event=>{
+    const input=event.composedPath()[0];
+    if(!(input instanceof HTMLInputElement)||!['number','range'].includes(input.type)||input.disabled)return;
+    event.preventDefault();event.stopPropagation();
+    const before=input.value;
+    try{if(event.deltaY<0)input.stepUp();else input.stepDown();}catch{return;}
+    if(input.value!==before)input.dispatchEvent(new Event('input',{bubbles:true}));
+  };
+  curveRoot.addEventListener('wheel',wheelStep,{passive:false});
   const interval=document.createElement('div');interval.dataset.novaflowMotionInterval='1';interval.setAttribute('role','img');
   interval.style.cssText='position:fixed;z-index:61;height:3px;border-radius:2px;background:#59a8ed;pointer-events:none;display:none';document.body.append(interval);
   let bonePlayback=false;
@@ -118,7 +129,6 @@
   const initial=bridge.initial(); const sessions = initial?.stack || E.freshStack();
   // Configs saved before the rotation mode existed have no rotate session.
   sessions.rotate ??= E.freshStack().rotate; for (const state of Object.values(sessions)) state.axes.r ??= { on: false, amp: 0 }, state.corrections.r ??= Array(17).fill(0);
-  const visitedModes=new Set(Object.keys(sessions).filter(key=>sessions[key].initialized||sessions[key].enabled||(key==='opacity'&&(sessions[key].opacity.from!==1||sessions[key].opacity.to!==1||sessions[key].curves?.alpha))));
   const timing=E.fitTiming({...bridge.timing(),...initial?.timing}); let restoring=false,historyAt=0;const history=[],redo=[];let lastSeek=0;
   function shareOpacity(source) { for (const session of Object.values(sessions)) { session.opacity = source.opacity; session.corrections.alpha = source.corrections.alpha; } }
   for(const state of Object.values(sessions))state.loop??=state.mode==='shuttle'||(state.mode==='opacity'&&state.opacity.behavior==='pulse');shareOpacity(sessions.opacity);
@@ -520,7 +530,7 @@
   $('pointValue').onblur = syncPoint;
   $('resetCurve').onclick = () => { pointSelected=false;p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];if(mode==='expand'&&p.link){const other=channel==='sx'?'sy':'sx';p.corrections[other].fill(0);if(p.curves)delete p.curves[other];}point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
   function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();}
-  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();if(!visitedModes.has(mode)){visitedModes.add(mode);$(mode==='opacity'?'opacityPresets':'presets').querySelector('button')?.click();}status('切换功能保留调整 · 仅操作当前骨骼');}
+  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
