@@ -1572,33 +1572,19 @@
           top.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' },
             String(layer.mesh.vertices.length / 2)))
         }
-        item.appendChild(top)
-
-        // density + edit only matter once the layer is in play
+        // a ticked layer gets 编辑 on its own line (no per-layer density slider: the
+        // panel's 默认密度 is the one density, user decision 2026-10-09)
         if (layer.selected && layer.hasImage) {
-          const ctrl = el('div', { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '5px' })
-          const dens = el('input')
-          dens.type = 'range'; dens.min = '8'; dens.max = '40'; dens.step = '1'
-          dens.value = String(layer.density)
-          Object.assign(dens.style, { flex: '1 1 auto', accentColor: '#22c98a', minWidth: '0' })
-          dens.title = '该层密度'
-          const densVal = el('span', { fontSize: '11px', color: '#22c98a', width: '18px', textAlign: 'right' },
-            String(layer.density))
-          dens.addEventListener('input', () => { densVal.textContent = dens.value })
-          dens.addEventListener('change', () => guard(async () => {
-            if (!layer.mesh) { layer.density = Number(dens.value); renderList(); return }
-            await regenerateLayer(name, Number(dens.value), (t) => setStatus(t))
-            setStatus(`${name} 已重算`, 'ok')
-          }))
           const editBtn = smallButton('编辑')
-          editBtn.title = layer.mesh ? '手动调整这一层的网格' : '按当前密度生成这一层的网格,然后打开编辑'
+          editBtn.style.flex = '0 0 auto'
+          editBtn.title = layer.mesh ? '手动调整这一层的网格' : '按默认密度生成这一层的网格,然后打开编辑'
           editBtn.addEventListener('click', () => guard(async () => {
             const ok = await editLayer(name, (t) => setStatus(t))
             setStatus(ok ? `${name} 已更新` : '已取消', ok ? 'ok' : undefined)
           }))
-          ctrl.appendChild(dens); ctrl.appendChild(densVal); ctrl.appendChild(editBtn)
-          item.appendChild(ctrl)
+          top.appendChild(editBtn)
         }
+        item.appendChild(top)
         scroll.appendChild(item)
       }
       listWrap.appendChild(scroll)
