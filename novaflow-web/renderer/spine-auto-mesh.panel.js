@@ -179,12 +179,11 @@
     if (name === hoverName) return
     if (hoverName && hoverName !== focusName) paintRow(hoverName, false)
     hoverName = name || null
-    if (hoverName) {
-      paintRow(hoverName, true)
-      scrollRowIntoView(rowEls.get(hoverName))
-      scrollRowIntoView(weightRowEls.get(hoverName))
-    } else if (focusName) paintRow(focusName, true)
-    try { paintHierLayer(hoverName) } catch { /* the tree is not up yet */ }
+    // pointing only marks the rows; the lists jump on a click (focusLayer), never on a
+    // hover - sweeping the mouse over the art sent every list scrolling after it
+    if (hoverName) paintRow(hoverName, true)
+    else if (focusName) paintRow(focusName, true)
+    try { paintHierLayer(hoverName, false) } catch { /* the tree is not up yet */ }
   }
 
   // ------------------------------------------------------------- bridging ---
@@ -1830,6 +1829,45 @@
     const p = previewPlayer()
     if (p) hideAppBones(p)
     ctl.setPreview(!bones.editing && !!bones.appBonesWant && !!p)
+    // editing draws the rig too, but 显示骨骼 still decides whether it is seen
+    if (typeof ctl.setHidden === 'function') ctl.setHidden(bones.editing && !bones.appBonesWant)
+  }
+  /** React's buttons only answer the full pointer sequence; a bare .click() is ignored. */
+  function pressAppButton(btn) {
+    if (!(btn instanceof HTMLElement) || !btn.isConnected) return false
+    const r = btn.getBoundingClientRect()
+    const o = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, pointerId: 1, isPrimary: true }
+    btn.dispatchEvent(new PointerEvent('pointerdown', o)); btn.dispatchEvent(new MouseEvent('mousedown', o))
+    btn.dispatchEvent(new PointerEvent('pointerup', o)); btn.dispatchEvent(new MouseEvent('mouseup', o))
+    btn.dispatchEvent(new MouseEvent('click', o))
+    return true
+  }
+  function showBonesButton() {
+    const stage = document.querySelector('[data-novaflow-skeleton-workspace="1"]') || document
+    return Array.from(stage.querySelectorAll('button')).find((b) => (b.textContent || '').trim() === '显示骨骼') || null
+  }
+  /** Turn the app's own 显示骨骼 on / off; false when it is not there or already so. */
+  function setShowBones(on) {
+    const btn = showBonesButton()
+    if (!btn || (btn.getAttribute('data-novaflow-canvas-bar-button') === 'active') === !!on) return false
+    if (!pressAppButton(btn)) return false
+    bones.appBonesWant = !!on
+    return true
+  }
+  /**
+   * A PS export carries an empty "animation" (no keys, length 0) and the app loops it
+   * forever: the playbar runs over a still picture. Pause it once per load; pressing
+   * play again is the user's call.
+   */
+  function pauseEmptyAnimation() {
+    const proxy = window.__NovaFlowSkeletonTimelineOfficialProxy
+    const p = proxy && proxy.player
+    if (!p || !proxy.playing || !(Number(p.durationSec) <= 0)) return
+    // on the proxy itself: a reload (自动架设) makes a new one whose loadVersion starts at 1 again
+    const key = `${proxy.loadVersion}|${proxy.animationName}`
+    if (proxy.__nfEmptyPaused === key) return
+    const btn = document.querySelector('[data-novaflow-skeleton-playback-button="1"]')
+    if (btn && btn.getAttribute('data-novaflow-playback-icon') === 'pause' && pressAppButton(btn)) proxy.__nfEmptyPaused = key
   }
   function hideAppBones(p) {
     if (!p || typeof p.setDebugOverlays !== 'function' || p.__nfBonesHidden) return
@@ -1844,11 +1882,15 @@
     p.setDebugOverlays = function (overlays) {
       hidden.want = !!(overlays && overlays.bones)
       bones.appBonesWant = hidden.want
+      // switched off by hand while editing: it stays off, a reload does not bring it back
+      if (bones.editing && !hidden.want) bones.autoShownBones = false
       const res = original.call(this, Object.assign({}, overlays || {}, { bones: false }))
       window.setTimeout(syncBonePreview, 0)
       return res
     }
     if (hidden.want) { try { original.call(p, Object.assign({}, p.debugOverlays, { bones: false })) } catch { /* mid-rebuild */ } }
+    // a reload (自动架设, 应用到工程) brings the app's toolbar back with 显示骨骼 off
+    else if (bones.editing && bones.autoShownBones) window.setTimeout(() => { if (bones.editing && bones.autoShownBones) setShowBones(true) }, 0)
   }
   function showAppBones(p, force) {
     const hidden = p && p.__nfBonesHidden
@@ -2218,7 +2260,7 @@
     hier.scroll.appendChild(frag)
     paintHierSelection()
     // the rows were rebuilt: put the focused layer's outline back on the new ones
-    if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep) }
+    if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep, keep === focusName) }
   }
   function toggleHierKey(key) {
     if (hier.open.has(key)) hier.open.delete(key); else hier.open.add(key)
@@ -2238,9 +2280,9 @@
     // both lists jump to it, whether it was picked in the tree, on the art or in a list
     try { scrollRowIntoView(rowEls.get(name)); scrollRowIntoView(weightRowEls.get(name)) } catch { /* the list may be collapsed */ }
     focusPaint(name)
-    paintHierLayer(name)
+    paintHierLayer(name, true)
   }
-  function paintHierLayer(name) {
+  function paintHierLayer(name, scroll) {
     for (const prefix of ['l:', 'bs:']) {
       const prev = hier.layer && hier.rows.get(prefix + hier.layer)
       if (prev) prev.style.outline = ''
@@ -2256,7 +2298,7 @@
       row.style.outline = selected ? '' : '1px dashed rgba(34,201,138,0.8)'
       if (!first) first = row
     }
-    if (first) scrollIntoBox(first, hier.scroll)
+    if (first && scroll) scrollIntoBox(first, hier.scroll)
   }
   /**
    * Bones select like a file list: a plain click picks one, Ctrl adds or removes, Shift
@@ -2939,13 +2981,19 @@
     if (bones.editing) {
       loadBonesFromSource(false)
       freezePreview()
+      // the rig is what this panel edits, so 显示骨骼 comes on with it - as the app's own
+      // toggle, so the user can switch it off again (and it goes back off on collapse)
+      if (setShowBones(true)) bones.autoShownBones = true
       ctl.setEnabled(true)
       // the layer picker claims the same clicks
       try { const pk = window.NovaFlowAutoMeshPicker; if (pk && pk.isEnabled && pk.isEnabled()) pk.setEnabled(false) } catch { /* optional */ }
     } else {
       ctl.setEnabled(false)
+      if (bones.autoShownBones) setShowBones(false)
+      bones.autoShownBones = false
       thawPreview()
     }
+    syncBonePreview()
     bones.syncUi()
   }
   function bonesTick() {
@@ -3319,6 +3367,14 @@
     }
   }
 
+  function closeOtherPanels(keep) {
+    for (const mark of [BMARK, MARK, WMARK]) {
+      const other = document.querySelector(`[${mark}="1"]`)
+      if (!other || other === keep || !other.__nfSpec || !other.__nfSpec.isOpen()) continue
+      other.__nfSpec.setOpen(false)
+      other.__nfApplyOpen()
+    }
+  }
   function buildPanel(spec) {
     const panel = el('div')
     panel.className = 'nf-panel'
@@ -3360,15 +3416,22 @@
     header.appendChild(icon); header.appendChild(label); header.appendChild(chevron)
 
     const body = spec.body()
+    const applyOpen = () => {
+      const open = spec.isOpen()
+      panel.setAttribute('data-open', open ? '1' : '0')
+      body.style.display = open ? 'block' : 'none'
+      chevron.className = `fas fa-chevron-${open ? 'down' : 'right'}`
+    }
+    panel.__nfSpec = spec
+    panel.__nfApplyOpen = applyOpen
     header.addEventListener('click', (ev) => {
       // something in the app clicks a freshly inserted panel header for us (an
       // untrusted event, seen on 自动权重 right after mount); only a person may fold it
       if (ev && ev.isTrusted === false) return
       spec.setOpen(!spec.isOpen())
-      const open = spec.isOpen()
-      panel.setAttribute('data-open', open ? '1' : '0')
-      body.style.display = open ? 'block' : 'none'
-      chevron.className = `fas fa-chevron-${open ? 'down' : 'right'}`
+      // 骨骼架设 / 自动蒙皮 / 自动权重 edit the same layers: one open at a time (user rule)
+      if (spec.isOpen()) closeOtherPanels(panel)
+      applyOpen()
     })
 
     panel.appendChild(header)
@@ -3500,6 +3563,7 @@
       bindHover()
     }, 1000)
     try { syncLayersFromSource() } catch { /* nothing imported yet */ }
+    window.setInterval(() => { if (!document.hidden) { try { pauseEmptyAnimation() } catch { /* the preview is mid-rebuild */ } } }, 300)
   }
 
   if (document.readyState === 'loading') {

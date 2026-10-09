@@ -1078,7 +1078,7 @@
       }
       st.overlay = ov
       const r = canvasRect()
-      const shown = !!((st.enabled || st.preview) && r && r.width >= 4 && r.height >= 4)
+      const shown = !!((st.enabled || st.preview) && !st.hidden && r && r.width >= 4 && r.height >= 4)
       if (shown && (ov.width !== canvas.width || ov.height !== canvas.height)) { ov.width = canvas.width; ov.height = canvas.height }
       if (shown !== st.box.shown) { ov.style.display = shown ? 'block' : 'none'; st.box.shown = shown }
       if (!shown) return ov
@@ -1426,6 +1426,12 @@
       else if (!st.enabled && st.raf) { window.cancelAnimationFrame(st.raf); st.raf = 0 }
       recompute(); ensureOverlay(); draw()
     }
+    /** 显示骨骼 off while editing: the rig stays editable, it is just not drawn. */
+    function setHidden(on) {
+      if (!!on === !!st.hidden) return
+      st.hidden = !!on
+      ensureOverlay(); draw()
+    }
     function setEnabled(on) {
       st.enabled = !!on
       if (st.enabled) {
@@ -1551,7 +1557,7 @@
     function dispose() { setEnabled(false); if (st.overlay && st.overlay.parentElement) st.overlay.parentElement.removeChild(st.overlay); st.overlay = null }
 
     return {
-      load, setEnabled, setPreview, setTool, select, undo, redo, deleteSelected, renameSelected, reparentSelected, reparentNamed, setSelectedPose, draw, dispose,
+      load, setEnabled, setPreview, setHidden, setTool, select, undo, redo, deleteSelected, renameSelected, reparentSelected, reparentNamed, setSelectedPose, draw, dispose,
       setSlotOrder: setSlotOrderNamed,
       setPickParent, isPickingParent: () => st.pickParent,
       /** Bones highlighted alongside the selected one (a multi-selection). */
