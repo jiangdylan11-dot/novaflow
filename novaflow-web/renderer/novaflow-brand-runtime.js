@@ -8571,6 +8571,9 @@
 
   function shouldScanProtectedModalForMutationElement(element) {
     if (!(element instanceof HTMLElement)) return false;
+    // the docked 飘带 panel is fixed-positioned but never a modal (each of its many slider
+    // mutations ran the modal text scan)
+    if (element.closest('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]')) return false;
     const quickSelector = [
       '[data-novaflow-modal-backdrop="1"]',
       '[data-novaflow-protected-modal-backdrop="1"]',
@@ -36142,8 +36145,8 @@
         style: (node) => {
           const shown = node.parentElement && node.parentElement.getAttribute("data-nf-ribbon-event-shown") === "1";
           return {
-            order: "0", flex: "0 0 auto", width: "auto", height: "28px", "min-height": "28px", "max-height": "28px", margin: "0",
-            display: "inline-flex", "align-items": "center", gap: "8px", padding: "0 12px", "box-sizing": "border-box", cursor: "pointer",
+            order: "0", flex: "0 0 auto", "font-size": "12px", width: "auto", height: "26px", "min-height": "26px", "max-height": "26px", margin: "0",
+            display: "inline-flex", "align-items": "center", gap: "4px", padding: "0 6px", "box-sizing": "border-box", cursor: "pointer", "white-space": "nowrap",
             "border-radius": "5px", border: shown ? "1px solid #2c604f" : "1px solid transparent",
             background: shown ? "#1c4136" : "transparent", "background-color": shown ? "#1c4136" : "transparent",
             color: shown ? "#9be4cd" : "#b4b4b4"
@@ -40671,6 +40674,10 @@
 
   function refreshSkeletonLayoutAfterRangeInput(range, options = {}) {
     if (!(range instanceof HTMLInputElement) || !isSkeletonAnimationRangeInput(range)) return false;
+    if (document.querySelector('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]')) {
+      syncRangeFillVisual(range);
+      return true;
+    }
     const immediate = Boolean(options.immediate);
     cancelAiAnimationRangeDragGuardForSkeletonLayout();
     syncRangeFillVisual(range);
@@ -54142,6 +54149,18 @@
 
   function scheduleRibbonEventPreviewFocus(section, card, target, options = {}) {
     if (!(section instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
+    if (section.closest('[data-novaflow-ribbon-docked="1"]') && typeof window.requestAnimationFrame === "function") {
+      card.__nfRibbonFocusArgs = [target, options];
+      if (card.__nfRibbonFocusFrame) return;
+      card.__nfRibbonFocusFrame = window.requestAnimationFrame(() => {
+        card.__nfRibbonFocusFrame = 0;
+        if (!card.isConnected) return;
+        const [latestTarget, latestOptions] = card.__nfRibbonFocusArgs;
+        focusRibbonEventPreviewAtCard(section, card, latestTarget, latestOptions);
+        scheduleRibbonEventVisualStateSync(section);
+      });
+      return;
+    }
     const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     card.dataset.novaflowRibbonEventPreviewFocusToken = token;
     const run = () => {
@@ -54199,6 +54218,10 @@
       overlay.replaceChildren();
       return;
     }
+    // the same markers: nothing to rebuild (the visual sync runs several times per slider input)
+    const signature = `${duration}|${selectedIndex}|${entries.map((entry) => `${entry.index}:${entry.time}`).join(",")}`;
+    if (overlay.__nfMarkerSignature === signature && overlay.childElementCount === entries.length) return;
+    overlay.__nfMarkerSignature = signature;
     if (window.getComputedStyle(timelineHost).position === "static") {
       timelineHost.style.setProperty("position", "relative", "important");
     }
@@ -65677,10 +65700,14 @@
   }
 
   function readNovaflowProtectedModalDialogCard(element) {
+    // the full-screen check first: the export-text check read the text of every big
+    // ancestor (the whole app) for each mutation - a docked 飘带 slider drag stuttered on it
+    const card = getNovaflowFullscreenDialogCard(element);
+    if (!card) return null;
     if (isNovaflowExportModalRoot(element) || hasNovaflowExportDialogText(element)) return null;
     if (isNovaflowPersistentRuntimeSurface(element) || isInsideNovaflowPersistentRuntimeSurface(element)) return null;
     if (isNovaflowRuntimeSurfaceExcludedFromModalScanner(element) || isInsideNovaflowRuntimeSurfaceExcludedFromModalScanner(element)) return null;
-    return getNovaflowFullscreenDialogCard(element);
+    return card;
   }
 
   function styleNovaflowModalDialogFrame(dialogCard) {
@@ -78835,8 +78862,42 @@
     return target.closest?.(`#${SPINE_INLINE_IMPORT_PANEL_ID}`) instanceof HTMLElement;
   }
 
+  // A slider drag in the docked 飘带 panel or the 动画编辑 editor re-renders the panel, the
+  // stage and the playbar on every input; a modal scan and a full skeleton layout pass per
+  // mutation batch made every slider stutter. The drag only keeps the fills in step; one
+  // layout pass follows the release.
+  let RIBBON_DOCKED_RANGE_DRAG = false;
+  function bindRibbonDockedRangeDrag() {
+    if (window.__NovaFlowRibbonDockedRangeDragBound) return;
+    window.__NovaFlowRibbonDockedRangeDragBound = true;
+    window.addEventListener("pointerdown", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || event.button !== 0) return;
+      const inner = event.composedPath?.()[0];
+      if (
+        target.closest('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] input[type="range"]') ||
+        (target.closest('[data-novaflow-motion-curve="1"]') && inner instanceof HTMLInputElement && inner.type === "range")
+      ) {
+        RIBBON_DOCKED_RANGE_DRAG = true;
+      }
+    }, { capture: true, passive: true });
+    const end = () => {
+      if (!RIBBON_DOCKED_RANGE_DRAG) return;
+      RIBBON_DOCKED_RANGE_DRAG = false;
+      window.setTimeout(() => {
+        if (RIBBON_DOCKED_RANGE_DRAG || !isSkeletonAnimationRuntimeSurfaceActive()) return;
+        clearAiAnimationRuntimeStateForSkeletonLayout();
+        scheduleSkeletonAnimationLayout({ immediate: true });
+      }, 60);
+    };
+    window.addEventListener("pointerup", end, { capture: true, passive: true });
+    window.addEventListener("pointercancel", end, { capture: true, passive: true });
+    window.addEventListener("blur", end);
+  }
+
   function startBrandMutationObserver() {
     if (BRAND_RUNTIME_OBSERVER || typeof MutationObserver !== "function") return;
+    bindRibbonDockedRangeDrag();
     ensureAiSequenceTimelineEditControlsLockObserver();
     BRAND_RUNTIME_OBSERVER = new MutationObserver((mutations) => {
       tryReleasePrimaryAnimationEntryRollbackPreview("brand-mutation");
@@ -78844,6 +78905,12 @@
       if (document.hidden) return;
       // React syncs a controlled textarea's text child on every keystroke; that never needs a layout pass.
       if (areNovaflowTextControlInternalMutations(mutations)) return;
+      if (RIBBON_DOCKED_RANGE_DRAG && isSkeletonAnimationRuntimeSurfaceActive()) {
+        mutations.forEach((mutation) => {
+          if (mutation.target instanceof HTMLInputElement && mutation.target.type === "range") syncRangeFillVisual(mutation.target);
+        });
+        return;
+      }
       const debugEnabled = nfTopbarHelpDebugEnabled();
       if (debugEnabled) nfTopbarHelpDebug("brandMutationObserver:raw", { mutations: nfTopbarHelpDebugMutationSummary(mutations) });
       if (isAiAnimationRangeDragGuardActive()) {

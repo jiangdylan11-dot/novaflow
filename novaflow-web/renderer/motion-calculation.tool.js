@@ -178,7 +178,10 @@
         s.config=copy({stack,timing:t});s.committed=s.expected;s.dirty=false;
         panel.dataset.motionState='saved';
       },
-      restore(){write(s,s.base);s.committed=s.expected;s.config=null;s.pending=null;s.dirty=false;panel.dataset.motionState='restored';}
+      restore(){write(s,s.base);s.committed=s.expected;s.config=null;s.pending=null;s.dirty=false;panel.dataset.motionState='restored';},
+      // switching tools drops what was not written (保存动画/写入动画)
+      dirty:()=>s.dirty,
+      discard(){if(s.dirty)revert(s);s.pending=null;s.dirty=false;panel.dataset.motionState='discarded';}
     });
   }
   // 飘带计算 is the native left-column panel, kept out of the column (hosted) and laid
@@ -299,8 +302,22 @@
     if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);return false;}
     return ribbonMounted(ribbon);
   }
+  // the docked panel's own height (its body is stretched to the box, so add up its parts):
+  // the editor is sized to it, with no empty band under the parameters
+  function ribbonContentHeight(){
+    const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]');
+    const body=ribbon?.querySelector(':scope > .nf-panel-body');if(!body)return 0;
+    const h=sel=>{const n=body.querySelector(sel);return n?n.getBoundingClientRect().height:0;};
+    const cs=getComputedStyle(body),pad=parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom),gap=parseFloat(cs.rowGap)||0;
+    // three row gaps: the free 1fr row sits between the parameters and 自动链条
+    const left=h(':scope > [data-novaflow-ribbon-preset-controls]')+h(':scope > [data-novaflow-ribbon-advanced-card]')+h(':scope > [data-novaflow-ribbon-chain-toggle-card]')+gap*3;
+    const section=body.querySelector(':scope > [data-novaflow-ribbon-event-section]');
+    const right=section?h('[data-novaflow-ribbon-event-add]')+(parseFloat(getComputedStyle(section).rowGap)||0)+h('[data-novaflow-ribbon-event-list]'):0;
+    return Math.ceil(Math.max(left,right)+pad);
+  }
   const ribbonBridge={
     prepareRibbon,
+    ribbonContentHeight,
     ribbonPresets:()=>window.NovaFlowRibbonPresets?.list()||[],
     applyRibbonPreset:id=>window.NovaFlowRibbonPresets?.apply(id),
     ribbonPreview:(root,host,id)=>window.NovaFlowRibbonPresets?.preview(root,host,id),
@@ -328,7 +345,8 @@
     if(ribbon.getAttribute('data-novaflow-ribbon-hosted')!=='1')ribbon.setAttribute('data-novaflow-ribbon-hosted','1');
     syncRibbonOpen(ribbon);
     if(!ribbon.__nfWheelStep){
-      // the wheel over a docked value steps it, as in the calculation tools
+      // the wheel steps a docked value only once its box is selected (focused) and the cursor
+      // is on that row; anywhere else it scrolls the block, as in the calculation tools
       ribbon.__nfWheelStep=true;
       ribbon.addEventListener('wheel',event=>{
         if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'||!(event.target instanceof Element))return;
@@ -336,6 +354,8 @@
         while(row&&row!==ribbon&&!row.querySelector?.('input[type=range]'))row=row.parentElement;
         const range=row&&row!==ribbon?row.querySelector('input[type=range]'):null;
         if(!range||range.disabled||row.querySelectorAll('input[type=range]').length!==1)return;
+        const focused=document.activeElement;
+        if(!(focused instanceof HTMLInputElement)||!row.contains(focused)||!['number','range','text'].includes(focused.type))return;
         event.preventDefault();event.stopPropagation();
         const before=range.value;
         try{if(event.deltaY<0)range.stepUp();else range.stepDown();}catch{return;}

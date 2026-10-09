@@ -3101,17 +3101,26 @@
     const swHint = el('div', { fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, whiteSpace: 'normal', wordBreak: 'break-word' }, '展开=编辑(预览停在设置姿势),收起=恢复播放')
     swHint.title = '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放'
 
-    // tools
-    // one row that shares the column evenly and can narrow with it (a scrollbar
-    // took a few px and 新建 wrapped, or the row ran past the edge)
-    const toolsRow = el('div', { display: 'flex', flexWrap: 'nowrap', gap: '4px', marginTop: STACK_GAP, width: '100%', minWidth: '0', boxSizing: 'border-box' })
+    // tools: a bar over the stage, centred just above the timeline (as Spine's tool bar),
+    // shown while this panel is open (= editing)
+    document.querySelectorAll('[data-novaflow-bone-toolbar="1"]').forEach((n) => n.remove())
+    const toolsRow = el('div', { position: 'fixed', left: '0', top: '0', zIndex: '55', display: 'none', flexWrap: 'nowrap', gap: '4px', padding: '4px', background: '#1F1F1F', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', transform: 'translateX(-50%)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
+    toolsRow.setAttribute('data-novaflow-bone-toolbar', '1')
+    toolsRow.setAttribute('role', 'toolbar')
+    toolsRow.setAttribute('aria-label', '骨骼工具')
+    document.body.appendChild(toolsRow)
     const toolBtns = {}
     for (const t of (E ? E.TOOLS : [])) {
       const b = smallButton(t.label)
       b.title = `${t.hint}(快捷键 ${t.key.toUpperCase()})`
-      b.style.flex = '1 1 0'
-      b.style.minWidth = '0'
-      b.style.padding = '0 4px'
+      b.style.height = '28px'
+      b.style.lineHeight = '28px'
+      b.style.padding = '0 14px'
+      b.style.fontSize = '12px'
+      b.style.borderRadius = '6px'
+      b.style.border = '0'
+      // the shared hover-out paints the plain grey; the picked tool keeps its green
+      b.addEventListener('mouseleave', () => { if (bones.syncUi) bones.syncUi() })
       b.addEventListener('click', () => { ensureController().setTool(t.id); bones.syncUi() })
       toolBtns[t.id] = b
       toolsRow.appendChild(b)
@@ -3214,6 +3223,31 @@
     const setDisabled = (node, v) => { if (node.disabled !== !!v) node.disabled = !!v }
     const setDisplay = (node, v) => { if (node.style.display !== v) node.style.display = v }
     const setStyle = (node, prop, v) => { if (node.style[prop] !== v) node.style[prop] = v }
+    // centred on the stage, 8px above the timeline (or above 动画编辑 when it sits there)
+    const placeToolbar = () => {
+      const stage = document.querySelector('[data-novaflow-skeleton-preview-stage="1"]')
+      const sr = stage && stage.getBoundingClientRect()
+      const show = !!(bones.editing && body.isConnected && sr && sr.width > 0 && sr.height > 0)
+      setDisplay(toolsRow, show ? 'flex' : 'none')
+      if (!show) return
+      let anchor = sr.bottom
+      const bar = document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]')
+      const br = bar && bar.getBoundingClientRect()
+      if (br && br.height > 0) anchor = Math.min(anchor, br.top)
+      const motion = document.querySelector('[data-novaflow-motion-curve="1"]')
+      const editor = motion && motion.style.visibility !== 'hidden' && motion.style.display !== 'none' && motion.shadowRoot && motion.shadowRoot.getElementById('editor')
+      const er = editor && editor.getBoundingClientRect()
+      if (er && er.height > 0 && er.bottom > sr.top) anchor = Math.min(anchor, er.top)
+      setStyle(toolsRow, 'left', Math.round(sr.left + sr.width / 2) + 'px')
+      setStyle(toolsRow, 'top', Math.round(anchor - 8 - (toolsRow.offsetHeight || 38)) + 'px')
+    }
+    if (!window.__nfBoneToolbarTimer) {
+      window.__nfBoneToolbarTimer = true
+      const tick = () => { try { if (bones.placeToolbar) bones.placeToolbar() } catch { /* not up */ } }
+      window.addEventListener('resize', tick)
+      window.setInterval(tick, 250)
+    }
+    bones.placeToolbar = placeToolbar
     bones.syncUi = () => {
       const ctl = bones.ctl
       const st = ctl ? ctl.getState() : { enabled: false, tool: 'move', selected: -1, dirty: false, canUndo: false, canRedo: false, bones: 0 }
@@ -3228,6 +3262,7 @@
         setDisabled(b, !bones.editing)
         setStyle(b, 'opacity', bones.editing ? '1' : '0.5')
       }
+      placeToolbar()
       setDisabled(resetBtn, !st.dirty)
       setStyle(resetBtn, 'opacity', resetBtn.disabled ? '0.5' : '1')
       setDisabled(applyBtn, !st.dirty)
@@ -3315,7 +3350,6 @@
 
     body.appendChild(autoBtn)
     body.appendChild(swHint)
-    body.appendChild(toolsRow)
     body.appendChild(applyBtn)
     body.appendChild(resetBtn)
     body.appendChild(status)
@@ -3536,8 +3570,11 @@
       const body = document.querySelector('[data-novaflow-skeleton-sidebar-body="1"]')
       if (body && !body.querySelector(`[${HIER_MARK}="1"]`)) { try { tuneSkeletonSidebar() } catch { /* not ready */ } }
       // the app rebuilds its 导入工程 panel; put our button back in the same frame, or it
-      // blinks out and returns on the next tick
-      try { homePsImport() } catch { /* the panel is not up */ }
+      // blinks out and returns on the next tick. Only when it fell out: re-dressing it on
+      // every batch (a computed-style read) stalled each step of a slider drag
+      if (!state.psImport || !state.psImport.button || !state.psImport.button.isConnected) {
+        try { homePsImport() } catch { /* the panel is not up */ }
+      }
     })
     observer.observe(document.documentElement, { childList: true, subtree: true })
     window.setInterval(() => {

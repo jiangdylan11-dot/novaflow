@@ -5,11 +5,11 @@
   const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
   floating.style.cssText='position:fixed;z-index:60;visibility:hidden;pointer-events:none';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
-  // The wheel over a value steps that value (number boxes and sliders alike); the
-  // stage's zoom must not see it. The runtime's stage zoom skips this panel.
+  // The wheel steps a value only once its box is selected (focused) and the cursor is on
+  // it; anywhere else it scrolls the block. The runtime's stage zoom skips this panel.
   const wheelStep=event=>{
     const input=event.composedPath()[0];
-    if(!(input instanceof HTMLInputElement)||!['number','range'].includes(input.type)||input.disabled)return;
+    if(!(input instanceof HTMLInputElement)||!['number','range'].includes(input.type)||input.disabled||curveRoot.activeElement!==input)return;
     event.preventDefault();event.stopPropagation();
     const before=input.value;
     try{if(event.deltaY<0)input.stepUp();else input.stepDown();}catch{return;}
@@ -61,7 +61,7 @@
   curveRoot.append(style,body);
   // outside the editor box, which clips: the preset preview opens above the header
   curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
-  let ribbon=false,ribbonShown=false,ribbonFooterAt=0,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
+  let ribbon=false,ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
@@ -101,9 +101,14 @@
     const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
     body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
     floating.style.width=width+'px';floating.style.display='block';
-    const available=Math.max(160,r.top-80);
+    // at most 2/3 of the stage above the playbar: the preview keeps the rest (on a narrow,
+    // stacked page the stage does not start at 80 and the editor ate the whole preview)
+    const stageTop=document.querySelector('[data-novaflow-skeleton-preview-stage="1"]')?.getBoundingClientRect().top;
+    const available=Math.max(160,Number.isFinite(stageTop)?Math.floor((r.top-stageTop)*.66):r.top-80);
     let desired=Math.min(400,Math.max(360,innerHeight*.4));
-    if(ribbon&&!collapsed)desired=Math.max(desired,500);
+    // 飘带计算: as tall as its content (header, timing row, footer and the docked panel)
+    if(ribbon&&!collapsed&&ribbonShown&&ribbonFitHeight)desired=ribbonFitHeight;
+    else if(ribbon&&!collapsed)desired=Math.max(desired,400);
     else if(mode==='expand'&&!collapsed){
       const chrome=['.editor-header','.timing-row','.editor-footer','#scaleOptions'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
       desired=Math.max(desired,chrome+body.querySelector('.effect-scroll').scrollHeight+20);
@@ -135,7 +140,9 @@
     if(ribbon){
       // the footer's label walks React's tree: a few times a second, not every frame (a
       // slider drag paid that walk on each frame)
-      if(ribbonShown&&performance.now()-ribbonFooterAt>300){ribbonFooterAt=performance.now();const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+      if(ribbonShown&&performance.now()-ribbonFooterAt>300){ribbonFooterAt=performance.now();
+        const content=bridge.ribbonContentHeight?.()||0;
+        if(content){const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);ribbonFitHeight=Math.round(chrome+content+2);}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
@@ -666,13 +673,24 @@
     ribbonShown=true;body.classList.add('ribbon-mode');$('editorTitle').textContent='飘带计算';status('');
     if(stylesReady)floating.style.visibility='visible';
   }
+  // a tool switch drops the adjustment that was never saved: the bone goes back to its saved
+  // animation and the tools to their saved (or initial) values
+  function discardUnsaved(){
+    if(!bridge.dirty?.())return;
+    bridge.discard();
+    const saved=bridge.initial();Object.assign(sessions,saved?.stack||E.freshStack());
+    sessions.rotate??=E.freshStack().rotate;for(const state of Object.values(sessions))state.axes.r??={on:false,amp:0},state.corrections.r??=Array(17).fill(0);
+    Object.assign(timing,E.fitTiming({...bridge.timing(),...saved?.timing}));shareOpacity(sessions.opacity);shareDuration(timing.boneDuration);
+    history.length=0;redo.length=0;lastSnapshot=JSON.stringify({stack:sessions,timing});previewError='';time=0;
+  }
   function selectMode(next){
+    if(next!==(ribbon?'ribbon':mode))discardUnsaved();
     ribbon=next==='ribbon';
     // the 飘带 layout is set at once (the dock box is measured off it); the box turns
     // see-through only once the panel sits in it (showRibbon)
     if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();setCollapsed(false);positionCurve();}return;}
-    ribbonShown=false;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
-    setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
+    ribbonShown=false;ribbonFitHeight=0;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
+    setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('未保存的调整在切换功能时丢弃 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
