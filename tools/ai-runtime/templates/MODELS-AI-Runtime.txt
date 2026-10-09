@@ -34,7 +34,6 @@ NovaFlow AI Runtime 模型清单
                    美工 / UI 的抠图、去背、万物迁移、智能拆图                      0.9 GB
   RMBG\BiRefNet_lite\   （model.safetensors、birefnet.py、BiRefNet_config.py、config.json 整个文件夹，
                    来自 ZhengPeng7/BiRefNet_lite）视频 AI 抠图                     0.17 GB
-  sam\sam_vit_h_4b8939.pth                                           2.6 GB
   vitmatte\   （整个文件夹）                                         0.2 GB
 
 七、放大（SeedVR2）
@@ -51,6 +50,7 @@ NovaFlow AI Runtime 模型清单
 
 不需要（没有功能在用，可以删掉）：
   RMBG\RMBG-2.0\   （已换成 BiRefNet；RMBG-2.0 只许非商用，不要再放进模型包）
+  sam\sam_vit_h_4b8939.pth、sam2\、grounding-dino\   （没有功能在用；抠图、选区都走 BiRefNet）
   unet\qwen_image_layered_control_bf16.safetensors 和 vae\qwen_image_layered_vae.safetensors
   （拆图已经改走 See-through）
   Qwen Image Edit 2511 / 2509 一代（已经升级到 Qwen-Image-2.1）：
