@@ -162,6 +162,7 @@
     view=window.NovaFlowMotionPanel.mount(shadow,{
       mode:activeMode,
       dock:dockRibbon,
+      ...ribbonBridge,
       timing,initial:()=>s.config&&copy(s.config),label:()=>`当前骨骼：${s.bone} · 动画：${s.animation}`,
       time:playbackTime,
       playbackRange,
@@ -185,7 +186,101 @@
     el.dispatchEvent(new PointerEvent('pointerdown',o));el.dispatchEvent(new MouseEvent('mousedown',o));
     el.dispatchEvent(new PointerEvent('pointerup',o));el.dispatchEvent(new MouseEvent('mouseup',o));el.dispatchEvent(new MouseEvent('click',o));
   }
+  // ---- docked 飘带: the parts the runtime's spec lays out by marker ------------------
+  // 整体偏移's row (the editor's 骨骼延迟 drives it) and the event shown under the tabs
+  let eventShown=0,eventCount=0;
+  const offsetLabel='整体偏移';
+  function offsetRange(ribbon){
+    const adv=ribbon?.querySelector('[data-novaflow-ribbon-advanced-body]');
+    for(const row of adv?adv.children:[])if((row.textContent||'').trim().startsWith(offsetLabel))return {row,range:row.querySelector('input[type=range]')};
+    return null;
+  }
+  function markRibbonParts(ribbon){
+    const offset=offsetRange(ribbon);
+    if(offset&&offset.row.getAttribute('data-nf-ribbon-offset-row')!=='1')offset.row.setAttribute('data-nf-ribbon-offset-row','1');
+    const cards=Array.from(ribbon.querySelectorAll('[data-novaflow-ribbon-event-list] > [data-novaflow-ribbon-event-card]'));
+    // a new event is the one shown (the tab added last)
+    if(cards.length>eventCount)eventShown=cards.length-1;
+    eventCount=cards.length;eventShown=Math.max(0,Math.min(cards.length-1,eventShown));
+    cards.forEach((card,index)=>{
+      if(index===eventShown){if(card.getAttribute('data-nf-ribbon-event-shown')!=='1')card.setAttribute('data-nf-ribbon-event-shown','1');}
+      else if(card.hasAttribute('data-nf-ribbon-event-shown'))card.removeAttribute('data-nf-ribbon-event-shown');
+    });
+  }
+  function installRibbonDockStyle(){
+    if(document.getElementById('nf-ribbon-dock-style'))return;
+    const style=document.createElement('style');style.id='nf-ribbon-dock-style';
+    // the event tabs on one line, the picked event's sliders from the next one
+    const D='[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]';
+    style.textContent=D+' [data-novaflow-ribbon-event-list]::after{content:"";flex:0 0 100%;order:1;height:0}'
+      // the column's open-card outline (a pseudo frame) - the editor has its own frame
+      +'body '+D+' [data-novaflow-ribbon-event-section="1"][data-novaflow-ribbon-event-expanded]::after{display:none!important}';
+    document.head.append(style);
+  }
+  function setNativeValue(input,value){
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,String(value));
+    input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  // 飘带 timing per animation; 动画总时长 is the animation's own length
+  const ribbonTimings=new Map();
+  const RIBBON_OFFSET_CYCLES_PER_UNIT=.005;
+  function ribbonAnimation(){const p=getContext();return p?{p,name:p.activeAnimationName,animation:p.project.animations[p.activeAnimationName]}:null;}
+  function ribbonTimingFor(){
+    const a=ribbonAnimation();if(!a)return null;
+    const duration=Math.max(.05,Number(a.animation?.duration)||A.duration(a.animation||{})||Number(document.querySelector('[data-novaflow-skeleton-timeline-range="1"]')?.max)||2);
+    let t=ribbonTimings.get(a.name);
+    if(!t){t={animationDuration:duration,animationDelay:0,boneDuration:duration,boneDelay:0};ribbonTimings.set(a.name,t);}
+    t.animationDuration=duration;
+    const offset=offsetRange(document.querySelector('[data-novaflow-ribbon-panel="1"]'));
+    if(offset?.range)t.boneDelay=Math.max(0,Math.min(t.boneDuration,Number(offset.range.value)*t.boneDuration*RIBBON_OFFSET_CYCLES_PER_UNIT));
+    window.__NovaFlowRibbonTiming={animationDelay:t.animationDelay,boneDuration:Math.min(t.boneDuration,t.animationDuration)};
+    return {...t};
+  }
+  function setRibbonTiming(next){
+    const a=ribbonAnimation();if(!a)return;
+    const t=ribbonTimings.get(a.name)||{};Object.assign(t,next);ribbonTimings.set(a.name,t);
+    window.__NovaFlowRibbonTiming={animationDelay:t.animationDelay,boneDuration:t.boneDuration};
+    if(Math.abs((Number(a.animation?.duration)||0)-t.animationDuration)>.0005){
+      a.p.setProject(previous=>{const animation=previous.animations[a.name];if(!animation)return previous;return {...previous,animations:{...previous.animations,[a.name]:{...animation,duration:Number(t.animationDuration.toFixed(3))}}};});
+    }
+    const offset=offsetRange(document.querySelector('[data-novaflow-ribbon-panel="1"]'));
+    if(offset?.range){
+      const raw=Math.round(t.boneDelay/Math.max(.0001,t.boneDuration*RIBBON_OFFSET_CYCLES_PER_UNIT));
+      const value=Math.max(Number(offset.range.min)||0,Math.min(Number(offset.range.max)||200,raw));
+      if(String(value)!==offset.range.value)setNativeValue(offset.range,value);
+    }
+    // the span or the delay alone changed: the runtime previews again
+    window.NovaFlowRibbonPresets?.refresh?.();
+  }
+  function ribbonActionButton(kind){
+    return Array.from(document.querySelectorAll('[data-novaflow-ribbon-panel="1"] [data-novaflow-ribbon-action-button]'))
+      .find(button=>(button.textContent||'').trim()===(kind==='write'?'写入动画':'还原动画'))||null;
+  }
+  const ribbonBridge={
+    ribbonPresets:()=>window.NovaFlowRibbonPresets?.list()||[],
+    applyRibbonPreset:id=>window.NovaFlowRibbonPresets?.apply(id),
+    ribbonPreview:(root,host,id)=>window.NovaFlowRibbonPresets?.preview(root,host,id),
+    ribbonAction:kind=>{const button=ribbonActionButton(kind);if(button&&!button.disabled)button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));},
+    ribbonWriteDisabled:()=>!!ribbonActionButton('write')?.disabled,
+    ribbonActivePreset:()=>document.querySelector('[data-novaflow-ribbon-preset-select="1"]')?.value||'',
+    ribbonLabel:()=>{const p=getContext();if(!p)return '';const names=(p.selectedBoneNames&&p.selectedBoneNames.length?p.selectedBoneNames:[p.selectedBoneName]).filter(Boolean);return `当前骨骼：${names.join('、')||'未选择'} · 动画：${p.activeAnimationName||''}`;},
+    ribbonTiming:ribbonTimingFor,
+    setRibbonTiming
+  };
   function hostRibbon(ribbon){
+    installRibbonDockStyle();
+    if(!ribbon.__nfPartsObserver){
+      // the same task React adds an event card in, so the tab shows with it
+      ribbon.__nfPartsObserver=new MutationObserver(()=>markRibbonParts(ribbon));
+      ribbon.__nfPartsObserver.observe(ribbon,{childList:true,subtree:true});
+      ribbon.addEventListener('click',event=>{
+        const title=event.target instanceof Element?event.target.closest('[data-novaflow-ribbon-event-card-title]'):null;
+        if(!title||event.target.closest('button'))return;
+        const cards=Array.from(ribbon.querySelectorAll('[data-novaflow-ribbon-event-list] > [data-novaflow-ribbon-event-card]'));
+        const index=cards.indexOf(title.parentElement);if(index>=0){eventShown=index;markRibbonParts(ribbon);}
+      },true);
+    }
+    markRibbonParts(ribbon);
     if(ribbon.getAttribute('data-novaflow-ribbon-hosted')!=='1')ribbon.setAttribute('data-novaflow-ribbon-hosted','1');
     if(ribbon.getAttribute('data-open')!=='1'&&!ribbonOpened.has(ribbon)){
       const header=ribbon.querySelector(':scope > .nf-panel-header');
@@ -207,12 +302,12 @@
       },{passive:false});
     }
   }
-  const dockVars=['left','top','width','height','inset'];
+  const dockVars=[['left','left'],['top','top'],['width','width'],['height','height'],['inset','inset'],['insetBottom','inset-bottom']];
   function dockRibbon(rect){
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');
     if(!rect){if(ribbon?.hasAttribute('data-novaflow-ribbon-docked'))ribbon.removeAttribute('data-novaflow-ribbon-docked');return;}
     const rootStyle=document.documentElement.style;
-    for(const key of dockVars){const value=Math.round(rect[key])+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+key)!==value)rootStyle.setProperty('--nf-ribbon-dock-'+key,value);}
+    for(const [key,name] of dockVars){const value=Math.round(rect[key]||0)+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+name)!==value)rootStyle.setProperty('--nf-ribbon-dock-'+name,value);}
     if(!ribbon)return false;
     if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1')ribbon.setAttribute('data-novaflow-ribbon-docked','1');
     // whether it already sits there (the panel then shows it in place of its own box)

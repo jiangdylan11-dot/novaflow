@@ -26,16 +26,17 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-1',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-4',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||ribbonShown)floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
-      <div class="editor-presets"><div id="presetSection"><div id="presets" class="presets"></div></div><div id="opacityPresets" class="presets" hidden></div></div>
+      <div class="editor-presets"><div id="presetSection"><div id="presets" class="presets"></div></div><div id="opacityPresets" class="presets" hidden></div><div id="ribbonPresets" class="presets"></div></div>
       <button id="editorToggle" aria-expanded="true" aria-controls="editorContent">收起</button>
     </header>
     <div id="editorContent">
       <div class="timing-row"><div id="globalTiming" class="global-timing"></div><div id="effectTiming"></div></div>
+      <div class="timing-row" id="ribbonTimingRow"><div id="ribbonGlobalTiming" class="global-timing"></div><div id="ribbonEffectTiming"></div></div>
       <div class="editor-workspace">
         <div class="effect-parameters" aria-label="当前功能参数">
           <div class="effect-scroll">
@@ -54,8 +55,9 @@
         </section>
       </div>
       <div id="ribbonDock"></div>
-      <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button></div></footer>
-    </div>`;
+      <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button><button id="ribbonRestore">还原动画</button><button id="ribbonWrite" class="primary">写入动画</button></div></footer>
+    </div>
+    <div id="ribbonPreviewCard" hidden><span id="ribbonPreviewHost"></span><span id="ribbonPreviewLabel"></span></div>`;
   curveRoot.append(style,body);
   let ribbon=false,ribbonShown=false,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
@@ -98,7 +100,8 @@
     floating.style.width=width+'px';floating.style.display='block';
     const available=Math.max(160,r.top-80);
     let desired=Math.min(400,Math.max(360,innerHeight*.4));
-    if(mode==='expand'&&!collapsed){
+    if(ribbon&&!collapsed)desired=Math.max(desired,460);
+    else if(mode==='expand'&&!collapsed){
       const chrome=['.editor-header','.timing-row','.editor-footer'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
       desired=Math.max(desired,chrome+body.querySelector('.effect-scroll').scrollHeight+20);
     }
@@ -114,8 +117,8 @@
     // 飘带计算 is the left column's own panel laid over this box (the runtime's
     // spec reads these): the whole inner box, the header's height kept clear
     if(ribbon&&!collapsed){
-      const e=body.getBoundingClientRect(),h=body.querySelector('.editor-header').getBoundingClientRect();
-      const rect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:h.bottom-e.top-1};
+      const e=body.getBoundingClientRect(),d=$('ribbonDock').getBoundingClientRect();
+      const rect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:d.top-e.top-1,insetBottom:e.bottom-1-d.bottom};
       // the editor turns into 飘带计算 only once the panel is really in place (the
       // runtime's pass runs in the mutation callback, before this microtask): until
       // then the previous tool stays on screen, so no frame shows an empty box
@@ -123,7 +126,12 @@
       else if(!ribbonShown)queueMicrotask(()=>{if(ribbon&&!ribbonShown&&bridge.dock?.(rect))showRibbon();});
     }
     else bridge.dock?.(null);
-    if(ribbon){interval.style.display='none';lastInterval='';return;}
+    if(ribbon){
+      interval.style.display='none';lastInterval='';
+      if(ribbonShown){const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
+      return;
+    }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
     if(tr&&timing&&[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',');const total=timing.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*timing.animationDelay/total)+'px';interval.style.width=(span*timing.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
   }
@@ -547,15 +555,78 @@
   function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();
     // the docked 飘带 leaves / returns in the same task as the box it fills
     if(ribbon&&stylesReady){if(value)bridge.dock?.(null);else positionCurve();}}
+  // ---- 飘带计算: the header's built-in presets (hover = the dropdown's preview), its
+  // own timing row (骨骼延迟 is the panel's 整体偏移) and the footer's two actions
+  let stopRibbonPreview=null,ribbonTiming=null;
+  function hideRibbonPreview(){try{stopRibbonPreview?.();}catch{}stopRibbonPreview=null;$('ribbonPreviewCard').hidden=true;$('ribbonPreviewHost').replaceChildren();}
+  function showRibbonPreview(button,item){
+    hideRibbonPreview();
+    const card=$('ribbonPreviewCard');$('ribbonPreviewLabel').textContent=item.label;card.hidden=false;
+    const e=body.getBoundingClientRect(),r=button.getBoundingClientRect();
+    card.style.left=Math.max(6,Math.min(e.width-card.offsetWidth-6,r.left-e.left))+'px';card.style.top=(r.bottom-e.top+6)+'px';
+    stopRibbonPreview=bridge.ribbonPreview?.(card,$('ribbonPreviewHost'),item.id)||null;
+  }
+  function renderRibbonPresets(){
+    const builtins=(bridge.ribbonPresets?.()||[]).filter(item=>!item.custom),wrap=$('ribbonPresets'),key=builtins.map(item=>item.id+item.label).join('|');
+    if(wrap.dataset.key===key)return;wrap.dataset.key=key;
+    wrap.replaceChildren(...builtins.map(item=>{
+      const button=document.createElement('button');button.textContent=item.label;button.dataset.id=item.id;
+      button.onclick=()=>{hideRibbonPreview();bridge.applyRibbonPreset?.(item.id);};
+      button.onmouseenter=()=>showRibbonPreview(button,item);button.onmouseleave=hideRibbonPreview;
+      return button;
+    }));
+  }
+  function ribbonField(key,label,min,max,step,unit,factor,blue){
+    const t=ribbonTiming,div=document.createElement('div');div.className='param'+(blue?'':' animation-timing');if(blue)div.style.setProperty('--accent','#59a8ed');
+    div.innerHTML=`<div class="paramhead"><label>${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" step="${step*factor}" value="${fmt(t[key]*factor)}"><span>${unit}</span></span></div><input aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${t[key]}">`;
+    const range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');div.dataset.key=key;
+    const update=value=>{t[key]=value;settleRibbonTiming(key);bridge.setRibbonTiming?.({...t});syncRibbonTiming();};
+    range.oninput=()=>update(Number(range.value));
+    num.oninput=()=>{if(num.value==='')return;const f=Number(num.dataset.factor||1);update(validInput(num,Number(range.min)*f,Number(range.max)*f,t[key]*f)/f);};
+    num.onblur=()=>syncRibbonTiming();
+    return div;
+  }
+  function settleRibbonTiming(changed){
+    const t=ribbonTiming;
+    t.animationDuration=Math.max(.05,Math.min(120,t.animationDuration));
+    if(changed==='animationDuration'&&t.boneDuration>t.animationDuration)t.boneDuration=t.animationDuration;
+    t.boneDuration=Math.max(.05,Math.min(t.animationDuration,t.boneDuration));
+    t.animationDelay=Math.max(0,Math.min(t.animationDuration-t.boneDuration,t.animationDelay));
+    t.boneDelay=Math.max(0,Math.min(t.boneDuration,t.boneDelay));
+  }
+  function syncRibbonTiming(){
+    const t=ribbonTiming;if(!t)return;
+    const limits={animationDuration:[.05,120,1],animationDelay:[0,Math.max(0,t.animationDuration-t.boneDuration),100/t.animationDuration],boneDuration:[.05,t.animationDuration,1],boneDelay:[0,t.boneDuration,100/Math.max(.0001,t.boneDuration)]};
+    curveRoot.querySelectorAll('#ribbonTimingRow .param').forEach(div=>{
+      const key=div.dataset.key,[min,max,factor]=limits[key],range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');
+      range.min=min;range.max=max;range.value=t[key];range.style.setProperty('--fill',`${max>min?100*(t[key]-min)/(max-min):0}%`);
+      num.dataset.factor=factor;num.min=min*factor;num.max=max*factor;if(curveRoot.activeElement!==num)num.value=fmt(t[key]*factor);
+    });
+    $('ribbonTimingHint').textContent=`偏移 ${fmt(t.animationDelay)} 秒 · ${fmt(t.animationDuration)} 秒时间轴内`;
+    $('ribbonDelayHint').textContent=`偏移 ${fmt(t.boneDelay)} 秒 · ${fmt(t.boneDuration)} 秒周期内`;
+  }
+  function renderRibbonTiming(){
+    ribbonTiming={animationDuration:2,animationDelay:0,boneDuration:2,boneDelay:0,...(bridge.ribbonTiming?.()||{})};settleRibbonTiming('');
+    const a=ribbonField('animationDuration','动画总时长',.05,120,.05,'s',1),b=ribbonField('animationDelay','动画延迟',0,1,.01,'%',1),c=ribbonField('boneDuration','骨骼总时长',.05,2,.05,'s',1,true),d=ribbonField('boneDelay','骨骼延迟',0,2,.01,'%',1,true);
+    const hint=document.createElement('p');hint.className='timing-hint';hint.id='ribbonTimingHint';b.append(hint);
+    const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='ribbonDelayHint';
+    $('ribbonGlobalTiming').replaceChildren(a,b,c);$('ribbonEffectTiming').replaceChildren(d,delayHint);
+    syncRibbonTiming();
+  }
+  $('ribbonRestore').onclick=()=>bridge.ribbonAction?.('restore');
+  $('ribbonWrite').onclick=()=>bridge.ribbonAction?.('write');
   function showRibbon(){
     if(ribbonShown||!ribbon)return;
+    $('selection').textContent=bridge.ribbonLabel?.()||'';
     ribbonShown=true;body.classList.add('ribbon-mode');$('editorTitle').textContent='飘带计算';status('');
     if(stylesReady)floating.style.visibility='visible';
   }
   function selectMode(next){
     ribbon=next==='ribbon';
-    if(ribbon){if(!ribbonShown){setCollapsed(false);positionCurve();}return;}
-    ribbonShown=false;body.classList.remove('ribbon-mode');
+    // the 飘带 layout is set at once (the dock box is measured off it); the box turns
+    // see-through only once the panel sits in it (showRibbon)
+    if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();body.classList.add('ribbon-layout');setCollapsed(false);positionCurve();}return;}
+    ribbonShown=false;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
     setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];

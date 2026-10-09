@@ -4949,7 +4949,10 @@
 
   function renderNativeSelectDropdown(select) {
     const ribbonPresets = isRibbonParameterPresetNativeSelect(select);
-    const options = getSelectDropdownEntries(select).filter(entry => !ribbonPresets || entry.value);
+    // docked in 动画编辑 the built-in presets are the header's buttons: this list is
+    // only what the user saved
+    const savedOnly = ribbonPresets && Boolean(select.closest('[data-novaflow-ribbon-docked="1"]'));
+    const options = getSelectDropdownEntries(select).filter(entry => (!ribbonPresets || entry.value) && (!savedOnly || entry.custom));
     const presetEntries = ribbonPresets ? new Map(getRibbonParameterPresetEntries().map(entry => [entry.id, entry])) : null;
     const previews = [];
     DROPDOWN_CONTROLLER.activeOptionsSignature = getNativeDropdownOptionsSignature(select);
@@ -4959,7 +4962,7 @@
     if (ribbonPresets) {
       const heading = document.createElement("div");
       heading.setAttribute("data-novaflow-ribbon-preset-preview-heading", "1");
-      heading.textContent = "10 根骨骼 · 动态预览";
+      heading.textContent = savedOnly && !options.length ? "还没有保存的预设" : "10 根骨骼 · 动态预览";
       panel.appendChild(heading);
     }
     options.forEach((entry) => {
@@ -35956,8 +35959,9 @@
           // sibling panels read off this one as the column width
           "min-width": "var(--nf-ribbon-dock-width)", "max-width": "var(--nf-ribbon-dock-width)",
           height: "var(--nf-ribbon-dock-height)", "min-height": "0", "max-height": "var(--nf-ribbon-dock-height)",
-          // the editor's header (above, clickable) sits over the top inset
-          margin: "0", "padding-top": "var(--nf-ribbon-dock-inset)", "padding-right": "0", "padding-bottom": "0", "padding-left": "0",
+          // the editor's header + timing row (above) and footer (below) are drawn over the
+          // two insets; the panel paints the whole box so no strip of stage shows through
+          margin: "0", "padding-top": "var(--nf-ribbon-dock-inset)", "padding-right": "0", "padding-bottom": "var(--nf-ribbon-dock-inset-bottom)", "padding-left": "0",
           border: "0", "border-radius": "6px", "box-shadow": "none",
           background: "#1c1c1c", "background-color": "#1c1c1c", overflow: "hidden", opacity: "1", "pointer-events": "auto"
         } : {
@@ -35969,39 +35973,161 @@
         style: { display: "none" }
       },
       {
-        // the editor's own two columns: the preset, 事件, 自动链条 and the two actions
-        // on the left, the parameters across the rest
+        // the editor's own workspace: parameters (then 我的预设, 自动链条) on the left,
+        // events where the other tools draw their curve
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body',
         style: {
-          display: "grid", "grid-template-columns": "minmax(0, 232px) minmax(0, 1fr)", "grid-auto-rows": "max-content", "column-gap": "24px", "row-gap": "6px",
-          "align-content": "start", "align-items": "start", width: "100%", "min-width": "0", "max-width": "100%",
-          height: "100%", "min-height": "0", "max-height": "100%", padding: "10px 12px", margin: "0",
-          "overflow-x": "hidden", "overflow-y": "auto", background: "transparent", "background-color": "transparent", "box-sizing": "border-box"
+          display: "grid", "grid-template-columns": "minmax(260px, 38%) minmax(0, 1fr)", "grid-template-rows": "max-content max-content max-content 1fr",
+          "column-gap": "14px", "row-gap": "10px", "align-content": "stretch", "align-items": "start",
+          width: "100%", "min-width": "0", "max-width": "100%", height: "100%", "min-height": "0", "max-height": "100%",
+          padding: "8px 12px", margin: "0", "overflow-x": "hidden", "overflow-y": "auto",
+          background: "transparent", "background-color": "transparent", "box-sizing": "border-box"
         }
       },
       {
-        // min-height max-content: 事件 carries overflow:hidden, and a grid row sizes such
-        // a box from 0 - its row came out 79 for a 92 card, over 自动链条 by 7
-        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > :not([data-novaflow-ribbon-advanced-card])',
-        style: { "grid-column": "1", margin: "0", "min-height": "max-content" }
+        // the notes, the old preset grid, 实时预览, the feedback line and the two actions
+        // (the editor's footer clicks those) have no place here
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > :not([data-novaflow-ribbon-advanced-card]):not([data-novaflow-ribbon-preset-controls]):not([data-novaflow-ribbon-chain-toggle-card]):not([data-novaflow-ribbon-event-section])',
+        style: { display: "none" }
+      },
+      {
+        // min-height max-content: these carry overflow:hidden, and a grid row sizes such a
+        // box from 0 (事件 once came out 79 for a 92 card)
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > *',
+        style: { margin: "0", "min-height": "max-content", "grid-column": "1" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-advanced-card]',
-        style: (node) => {
-          const rows = Array.from(node.parentElement ? node.parentElement.children : [])
-            .filter((child) => child !== node && getComputedStyle(child).display !== "none").length;
-          return {
-            "grid-column": "2", "grid-row": `1 / span ${Math.max(1, rows)}`,
-            height: "auto", "min-height": "0", "max-height": "none", "grid-template-rows": "auto"
-          };
+        style: { "grid-row": "2", height: "auto", "max-height": "none", "grid-template-rows": "auto" }
+      },
+      {
+        // 我的预设 ▾ | 预设名称 | 保存, above the parameters as in the event column
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-preset-controls]',
+        style: {
+          "grid-row": "1", display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", gap: "8px",
+          "flex-direction": "row", "align-items": "center", width: "100%", height: "auto", "max-height": "none"
         }
+      },
+      {
+        // shown always here (the column hid it until a preset was in play)
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-preset-controls] > [data-novaflow-ribbon-preset-save-row]',
+        style: { display: "grid", height: "34px", "max-height": "34px", "min-height": "34px", margin: "0", overflow: "visible", opacity: "1", "pointer-events": "auto" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-chain-toggle-card]',
+        style: { "grid-row": "3" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-advanced-body]',
         style: {
           height: "auto", "min-height": "0", "max-height": "none", padding: "0",
-          "grid-template-columns": "repeat(auto-fill, minmax(180px, 1fr))", "column-gap": "24px", "row-gap": "8px", "align-content": "start"
+          "grid-template-columns": "repeat(2, minmax(0, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
         }
+      },
+      {
+        // 整体偏移 is the editor's 骨骼延迟 here (the timing row drives it)
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-nf-ribbon-offset-row="1"]',
+        style: { display: "none" }
+      },
+      {
+        // events: the head's label, the event preset, 添加事件 and the switch in one bar,
+        // then the event tabs and the picked event's sliders
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-event-section]',
+        style: {
+          "grid-column": "2", "grid-row": "1 / -1", "align-self": "stretch",
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr) auto auto", "grid-template-rows": "auto auto auto 1fr",
+          "column-gap": "8px", "row-gap": "10px", "align-items": "center", "align-content": "start",
+          height: "auto", "min-height": "0", "max-height": "none", padding: "0", border: "0", "border-left": "1px solid #303030",
+          "padding-left": "14px", "border-radius": "0", background: "transparent", "background-color": "transparent", overflow: "visible"
+        }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-head]',
+        style: { display: "contents" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-controls]',
+        style: (node) => (node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1"
+          ? { display: "contents" } : { display: "none" })
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-label]',
+        style: { "grid-column": "1", "grid-row": "1" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-select-wrap]',
+        style: { "grid-column": "1", "grid-row": "2", width: "100%", "min-width": "0", "max-width": "100%", margin: "0" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-add]',
+        style: { "grid-column": "3", "grid-row": "1", width: "auto", "min-width": "0", "max-width": "none", padding: "0 14px", margin: "0" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-switch]',
+        // the head that takes the click has no box here (display: contents): the switch
+        // itself is the target, and the click bubbles to the head as before
+        // drawn from the section's state: the column's own inline look stayed "off" while
+        // the events were open
+        style: (node) => {
+          const on = node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1";
+          return {
+            "grid-column": "4", "grid-row": "1", "pointer-events": "auto", cursor: "pointer",
+            background: on ? UI_TOGGLE_ON_BACKGROUND : "#3e3e3e", "background-color": on ? UI_TOGGLE_ON_BACKGROUND : "#3e3e3e",
+            "box-shadow": on ? UI_TOGGLE_ON_FRAME : "none"
+          };
+        }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-switch] [data-novaflow-toggle-knob]',
+        style: (node) => {
+          const on = node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1";
+          return {
+            left: `${on ? NOVAFLOW_TOGGLE_KNOB_ON_LEFT : NOVAFLOW_TOGGLE_KNOB_OFF_LEFT}px`,
+            background: on ? UI_ACCENT_KNOB : "#8f98a3", "background-color": on ? UI_ACCENT_KNOB : "#8f98a3",
+            "box-shadow": on ? UI_TOGGLE_KNOB_SHADOW : "none"
+          };
+        }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-save-row]',
+        style: { "grid-column": "2 / -1", "grid-row": "2", "align-self": "center", margin: "0" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
+        style: (node) => (node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1" ? {
+          "grid-column": "1 / -1", "grid-row": "3", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 12px", "align-items": "flex-start",
+          height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
+          border: "0", background: "transparent", "background-color": "transparent"
+        } : { display: "none" })
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-card]',
+        style: { display: "contents" }
+      },
+      {
+        // the tabs (位移 X / 位移 Y in the other tools): one per event
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-card-title]',
+        style: (node) => {
+          const shown = node.parentElement && node.parentElement.getAttribute("data-nf-ribbon-event-shown") === "1";
+          return {
+            order: "0", flex: "0 0 auto", width: "auto", height: "28px", "min-height": "28px", "max-height": "28px", margin: "0",
+            display: "inline-flex", "align-items": "center", gap: "8px", padding: "0 12px", "box-sizing": "border-box", cursor: "pointer",
+            "border-radius": "5px", border: shown ? "1px solid #2c604f" : "1px solid transparent",
+            background: shown ? "#1c4136" : "transparent", "background-color": shown ? "#1c4136" : "transparent",
+            color: shown ? "#9be4cd" : "#b4b4b4"
+          };
+        }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-card-title] > button',
+        style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']") ? { display: "inline-flex" } : { display: "none" })
+      },
+      {
+        // the picked event's four sliders, two a row under the tabs
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider]',
+        style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']")
+          ? { order: "2", flex: "0 0 calc(50% - 6px)", "min-width": "0", "max-width": "calc(50% - 6px)", margin: "0", display: "block" }
+          : { display: "none" })
       }
     ];
   }
@@ -36040,6 +36166,9 @@
     "class",
     "data-novaflow-ribbon-hosted",
     "data-novaflow-ribbon-docked",
+    "data-nf-ribbon-offset-row",
+    "data-nf-ribbon-event-shown",
+    "data-novaflow-ribbon-event-expanded",
     "data-nf-hier-state",
     "data-novaflow-tools-entry-active",
     "data-novaflow-art-generate-active",
@@ -44665,6 +44794,35 @@
       try { applySecondaryEntryLayout(); } catch (_) { void 0; }
     }
   });
+  // 飘带计算's presets for 动画编辑 (motion-calculation.*): its header buttons apply a
+  // preset exactly as the preset dropdown does, and hovering one shows the same
+  // isolated ten-bone preview the dropdown draws.
+  window.NovaFlowRibbonPresets = Object.freeze({
+    list() {
+      return getRibbonParameterPresetEntries().map(({ id, label, custom }) => ({ id, label, custom }));
+    },
+    apply(id) {
+      const select = document.querySelector('[data-novaflow-ribbon-preset-select="1"]');
+      if (!(select instanceof HTMLSelectElement) || !getRibbonParameterPresetEntryById(id)) return false;
+      setNativeControlValue(select, id);
+      scheduleRibbonParameterPresetSelectApply(select);
+      return true;
+    },
+    // 动画编辑's timing row changed: preview again (only while a preset is in play)
+    refresh() {
+      const animationName = getRibbonParameterPresetSessionAnimationName();
+      if (!isRibbonParameterPresetSessionActive(animationName)) return false;
+      setRibbonParameterPresetSessionState("preview", animationName);
+      scheduleRibbonDefaultRealtimePreviewApply("parameter-preview", [0, 80]);
+      return true;
+    },
+    // root: the box the preview lives in (it stops when root leaves the page)
+    preview(root, host, id) {
+      const entry = getRibbonParameterPresetEntries().find((item) => item.id === id);
+      if (!entry || !window.NovaFlowRibbonPresetPreview) return null;
+      return window.NovaFlowRibbonPresetPreview.mount(root, [{ host, label: entry.label, values: entry.values }], buildRibbonParameterPresetPreview);
+    }
+  });
   function scheduleAnimationSecondaryActivation(groupKey, buttons, options = {}) {
     if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return;
     if (ANIMATION_SECONDARY_ACTIVATION_RAF) {
@@ -51401,6 +51559,34 @@
     return boosted;
   }
 
+  // window.__NovaFlowRibbonTiming = { animationDelay, boneDuration } (seconds), written by
+  // 动画编辑 (motion-calculation.tool.js); null when the span is the whole animation
+  function getRibbonTimingWindow(animationLength) {
+    const timing = window.__NovaFlowRibbonTiming;
+    if (!timing || typeof timing !== "object") return null;
+    const span = Number(timing.boneDuration);
+    if (!Number.isFinite(span) || span <= 0.01) return null;
+    const duration = Math.min(span, animationLength);
+    const start = Math.max(0, Math.min(animationLength - duration, Number(timing.animationDelay) || 0));
+    if (duration >= animationLength - 0.0005 && start <= 0.0005) return null;
+    return { duration, start, length: animationLength };
+  }
+
+  // The solved loop placed at the window's start; outside it the bone holds the loop's
+  // first pose (its last key equals the first, so the hold after it does not jump)
+  function placeRibbonRotateInWindow(frames, windowSpan) {
+    const normalized = normalizeRibbonRotateFrames(frames);
+    if (!normalized.length) return normalized;
+    const first = normalized[0].angle;
+    const placed = [];
+    if (windowSpan.start > 0.0005) placed.push({ time: 0, angle: first });
+    normalized.forEach((frame) => placed.push({ ...frame, time: roundRibbonElasticTime(frame.time + windowSpan.start) }));
+    if (windowSpan.start + windowSpan.duration < windowSpan.length - 0.0005) {
+      placed.push({ time: roundRibbonElasticTime(windowSpan.length), angle: first });
+    }
+    return placed;
+  }
+
   function getRibbonOverallOffsetTime(duration, offsetValue) {
     const raw = Number(offsetValue);
     if (!Number.isFinite(raw) || Math.abs(raw) <= 0.0005) return 0;
@@ -51836,10 +52022,14 @@
       }
       return totalRestored > 0;
     }
-    const duration = Math.max(
+    const animationLength = Math.max(
       0.01,
       Number(animation.duration) || getRibbonTimelineDuration() || 0.01
     );
+    // 动画编辑's timing row (骨骼总时长 / 动画延迟): the preset motion is solved over the
+    // bone's own span and placed from its delay; the user's keys stay on the whole length
+    const ribbonWindow = useParameterPresetCalculation ? getRibbonTimingWindow(animationLength) : null;
+    const duration = ribbonWindow ? ribbonWindow.duration : animationLength;
     const fps = clampRibbonElasticNumber(context.project?.skeleton?.fps, 12, 60, 30);
     const stiffness = getRibbonStiffnessValue(document);
     const elasticity = getRibbonElasticityValue(document);
@@ -51859,7 +52049,11 @@
     const whip = useParameterPresetCalculation
       ? syncRibbonWhipStrengthSessionFromControls(document, context.animationName)
       : getRibbonActiveWhipStrengthValue(document, context.animationName);
-    const eventPoints = collectRibbonEventImpulsePoints(document, duration);
+    const eventPoints = ribbonWindow
+      ? collectRibbonEventImpulsePoints(document, animationLength)
+        .map((point) => ({ ...point, time: point.time - ribbonWindow.start }))
+        .filter((point) => point.time >= 0 && point.time <= duration)
+      : collectRibbonEventImpulsePoints(document, duration);
     const eventSignature = getRibbonEventImpulseSignature(eventPoints);
     const hasEventPoints = eventPoints.length > 0;
     let changed = 0;
@@ -51870,13 +52064,13 @@
       let timeline = animation.bones?.[boneName];
       if ((!timeline || typeof timeline !== "object" || !Array.isArray(timeline.rotate)) && entry.canCreatePreview === true) {
         timeline = useParameterPresetCalculation
-          ? ensureRibbonPreviewOnlyTimeline(animation, boneName, entry.sourceName || initialPrimaryName || boneName, duration, context.project)
-          : ensureRibbonEventOnlyTimeline(animation, boneName, duration, context.project);
+          ? ensureRibbonPreviewOnlyTimeline(animation, boneName, entry.sourceName || initialPrimaryName || boneName, animationLength, context.project)
+          : ensureRibbonEventOnlyTimeline(animation, boneName, animationLength, context.project);
       }
       if (!timeline || typeof timeline !== "object" || !Array.isArray(timeline.rotate)) return;
       const restoreSource = useParameterPresetCalculation
-        ? getRibbonElasticBaselineSourceRotate(context.animationName, boneName, timeline, duration, context.project)
-        : getRibbonEventBaselineSourceRotate(context.animationName, boneName, timeline, duration, context.project);
+        ? getRibbonElasticBaselineSourceRotate(context.animationName, boneName, timeline, animationLength, context.project)
+        : getRibbonEventBaselineSourceRotate(context.animationName, boneName, timeline, animationLength, context.project);
       const source = useParameterPresetCalculation
         ? buildRibbonSyntheticSourceRotateFrames(duration)
         : restoreSource;
@@ -51937,9 +52131,10 @@
       const baseRotate = useParameterPresetCalculation
         ? uniformWaveRotateMap.get(boneName)
         : cloneRibbonRotateFrames(source);
-      const nextRotate = hasEventPoints
+      const solvedRotate = hasEventPoints
         ? applyRibbonEventImpulseToRotateFrames(baseRotate, eventPoints, duration, fps, chainIndex)
         : baseRotate;
+      const nextRotate = ribbonWindow ? placeRibbonRotateInWindow(solvedRotate, ribbonWindow) : solvedRotate;
       const outputSignature = getRibbonRotateSignature(nextRotate);
       if (outputSignature === currentOutputSignature) {
         setRibbonHiddenValue(timeline, "__novaflowRibbonElasticSourceRotate", source);
