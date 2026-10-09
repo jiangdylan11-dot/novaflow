@@ -128,7 +128,8 @@ test('cutout pipeline treats 边缘净化 like 保留投影 for cached frames', 
 
 test('the prebuilt bundle and brand runtime carry the 边缘净化 switch', () => {
   const bundle = read('renderer/assets/index-BbIa-2NM.js');
-  assert.equal(bundle.split('nf_cutout_clean_edges').length - 1, 1, 'persisted preference');
+  assert.equal(bundle.split('nf_cutout_clean_edges').length - 1, 0, 'not persisted');
+  assert.equal(bundle.split('[nfCleanEdges,nfSetCleanEdges]=(0,_.useState)(!1)').length - 1, 1, 'starts off every time');
   assert.equal(bundle.split('cleanEdges:nfCleanEdges').length - 1, 2, 'pipeline and renderAsync options');
   assert.equal(bundle.split('nfGreenScreen,nfPreserveShadow,nfCleanEdges').length - 1, 4, 'cache key and effect dependencies');
   assert.ok(bundle.includes('"aria-label":`边缘净化`') && bundle.includes('"data-novaflow-edge-clean":`1`'), 'switch markup');
