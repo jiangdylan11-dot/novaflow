@@ -35977,7 +35977,7 @@
         // events where the other tools draw their curve
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body',
         style: {
-          display: "grid", "grid-template-columns": "minmax(260px, 38%) minmax(0, 1fr)", "grid-template-rows": "max-content max-content max-content 1fr",
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(280px, 32%)", "grid-template-rows": "max-content max-content max-content 1fr",
           "column-gap": "14px", "row-gap": "10px", "align-content": "stretch", "align-items": "start",
           width: "100%", "min-width": "0", "max-width": "100%", height: "100%", "min-height": "0", "max-height": "100%",
           padding: "8px 12px", margin: "0", "overflow-x": "hidden", "overflow-y": "auto",
@@ -36011,17 +36011,30 @@
       {
         // shown always here (the column hid it until a preset was in play)
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-preset-controls] > [data-novaflow-ribbon-preset-save-row]',
-        style: { display: "grid", height: "34px", "max-height": "34px", "min-height": "34px", margin: "0", overflow: "visible", opacity: "1", "pointer-events": "auto" }
+        style: { display: "grid", height: "34px", "max-height": "34px", "min-height": "34px", margin: "0", overflow: "visible", opacity: "1", visibility: "visible", "pointer-events": "auto" }
       },
       {
+        // 自动链条 is a plain check box here, as 缩放联动 / 反向 in the other tools
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-chain-toggle-card]',
-        style: { "grid-row": "3" }
+        style: {
+          "grid-row": "3", display: "inline-flex", "flex-direction": "row-reverse", "justify-content": "flex-end", "align-items": "center",
+          gap: "6px", width: "auto", height: "20px", "min-height": "20px", "max-height": "20px", padding: "0", border: "0",
+          "border-radius": "0", background: "transparent", "background-color": "transparent", "box-shadow": "none", cursor: "pointer"
+        }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-chain-toggle-input]',
+        style: {
+          "-webkit-appearance": "auto", appearance: "auto", width: "13px", "min-width": "13px", "max-width": "13px",
+          height: "13px", "min-height": "13px", "max-height": "13px", margin: "0", padding: "0", border: "0", "border-radius": "2px",
+          background: "none", "box-shadow": "none", flex: "0 0 13px", "accent-color": "#1ea672", cursor: "pointer"
+        }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-advanced-body]',
         style: {
           height: "auto", "min-height": "0", "max-height": "none", padding: "0",
-          "grid-template-columns": "repeat(2, minmax(0, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
+          "grid-template-columns": "repeat(3, minmax(0, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
         }
       },
       {
@@ -36035,7 +36048,7 @@
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-event-section]',
         style: {
           "grid-column": "2", "grid-row": "1 / -1", "align-self": "stretch",
-          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr) auto auto", "grid-template-rows": "auto auto auto 1fr",
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr) auto auto", "grid-template-rows": "auto auto auto auto 1fr",
           "column-gap": "8px", "row-gap": "10px", "align-items": "center", "align-content": "start",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0", border: "0", "border-left": "1px solid #303030",
           "padding-left": "14px", "border-radius": "0", background: "transparent", "background-color": "transparent", overflow: "visible"
@@ -36056,7 +36069,7 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-select-wrap]',
-        style: { "grid-column": "1", "grid-row": "2", width: "100%", "min-width": "0", "max-width": "100%", margin: "0" }
+        style: { "grid-column": "1 / -1", "grid-row": "2", width: "100%", "min-width": "0", "max-width": "100%", margin: "0" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-add]',
@@ -36090,12 +36103,12 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-save-row]',
-        style: { "grid-column": "2 / -1", "grid-row": "2", "align-self": "center", margin: "0" }
+        style: { "grid-column": "1 / -1", "grid-row": "3", "align-self": "center", margin: "0" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
         style: (node) => (node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1" ? {
-          "grid-column": "1 / -1", "grid-row": "3", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 12px", "align-items": "flex-start",
+          "grid-column": "1 / -1", "grid-row": "4", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 12px", "align-items": "flex-start",
           height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
           border: "0", background: "transparent", "background-color": "transparent"
         } : { display: "none" })

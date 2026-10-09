@@ -59,6 +59,8 @@
     </div>
     <div id="ribbonPreviewCard" hidden><span id="ribbonPreviewHost"></span><span id="ribbonPreviewLabel"></span></div>`;
   curveRoot.append(style,body);
+  // outside the editor box, which clips: the preset preview opens above the header
+  curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
   let ribbon=false,ribbonShown=false,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
@@ -562,8 +564,9 @@
   function showRibbonPreview(button,item){
     hideRibbonPreview();
     const card=$('ribbonPreviewCard');$('ribbonPreviewLabel').textContent=item.label;card.hidden=false;
-    const e=body.getBoundingClientRect(),r=button.getBoundingClientRect();
-    card.style.left=Math.max(6,Math.min(e.width-card.offsetWidth-6,r.left-e.left))+'px';card.style.top=(r.bottom-e.top+6)+'px';
+    // above the button, over the stage (the editor box clips anything that leaves it)
+    const f=floating.getBoundingClientRect(),r=button.getBoundingClientRect();
+    card.style.left=Math.max(6,Math.min(f.width-card.offsetWidth-6,r.left-f.left))+'px';card.style.top=(r.top-f.top-card.offsetHeight-6)+'px';
     stopRibbonPreview=bridge.ribbonPreview?.(card,$('ribbonPreviewHost'),item.id)||null;
   }
   function renderRibbonPresets(){
