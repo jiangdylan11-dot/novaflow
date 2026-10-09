@@ -36056,7 +36056,7 @@
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-event-section]',
         style: {
           "grid-column": "2", "grid-row": "1 / -1", "align-self": "stretch",
-          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr) auto auto", "grid-template-rows": "auto auto auto auto 1fr",
+          display: "grid", "grid-template-columns": "auto minmax(0, 1fr) auto auto", "grid-template-rows": "auto auto auto 1fr",
           "column-gap": "8px", "row-gap": "10px", "align-items": "center", "align-content": "start",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0", border: "0", "border-left": "1px solid #303030",
           "padding-left": "14px", "border-radius": "0", background: "transparent", "background-color": "transparent", overflow: "visible"
@@ -36076,7 +36076,7 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-select-wrap]',
-        style: (node) => ({ "grid-column": "1 / -1", "grid-row": "2", display: "block", visibility: "visible", height: "34px", "max-height": "34px", width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
+        style: (node) => ({ "grid-column": "2", "grid-row": "1", display: "block", visibility: "visible", height: "34px", "max-height": "34px", width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-add]',
@@ -36112,12 +36112,15 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-save-row]',
-        style: (node) => ({ "grid-column": "1 / -1", "grid-row": "3", display: "grid", visibility: "visible", height: "34px", "max-height": "34px", "align-self": "center", margin: "0", ...ribbonDockedEventInert(node) })
+        // 事件预设名 + 保存: only when there are events to save
+        style: (node) => (Number(node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-nf-ribbon-event-count") || 0) > 0
+          ? { "grid-column": "1 / -1", "grid-row": "2", display: "grid", visibility: "visible", height: "34px", "max-height": "34px", "align-self": "center", margin: "0", ...ribbonDockedEventInert(node) }
+          : { display: "none" })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
         style: (node) => ({
-          "grid-column": "1 / -1", "grid-row": "4", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 12px", "align-items": "flex-start",
+          "grid-column": "1 / -1", "grid-row": "3", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 4px", "align-items": "flex-start",
           height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
           border: "0", background: "transparent", "background-color": "transparent", ...ribbonDockedEventInert(node)
         })
@@ -36142,7 +36145,11 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-card-title] > button',
-        style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']") ? { display: "inline-flex" } : { display: "none" })
+        style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']") ? {
+          display: "inline-flex", "align-items": "center", "justify-content": "center", width: "14px", height: "14px", "min-width": "14px",
+          "min-height": "14px", padding: "0", margin: "0", border: "0", "border-radius": "3px", background: "transparent", "background-color": "transparent",
+          "font-size": "0", "line-height": "1", color: "#9be4cd", cursor: "pointer", "box-shadow": "none"
+        } : { display: "none" })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider-row]',
@@ -36156,7 +36163,7 @@
         // the picked event's four sliders, two a row under the tabs
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider]',
         style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']")
-          ? { order: "2", flex: "0 0 calc(50% - 6px)", "min-width": "0", "max-width": "calc(50% - 6px)", margin: "0", display: "block" }
+          ? { order: "2", flex: "0 0 calc(50% - 2px)", "min-width": "0", "max-width": "calc(50% - 2px)", margin: "0", display: "block", "box-sizing": "border-box", "padding-right": "8px" }
           : { display: "none" })
       }
     ];
@@ -36198,6 +36205,7 @@
     "data-novaflow-ribbon-docked",
     "data-nf-ribbon-offset-row",
     "data-nf-ribbon-event-shown",
+    "data-nf-ribbon-event-count",
     "data-novaflow-ribbon-event-expanded",
     "data-nf-hier-state",
     "data-novaflow-tools-entry-active",
