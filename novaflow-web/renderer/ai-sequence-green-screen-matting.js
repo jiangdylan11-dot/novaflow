@@ -776,11 +776,12 @@
     // With 保留投影 on, the matte has already turned a cast shadow outside the subject into dark,
     // partly transparent pixels. Rendered shadows carry a cool fill (green 210 -> 152, blue 13 -> 62)
     // that read here as foreground bleed, so the shadow was cut off along the subject. Pixels the
-    // matte made dark where the screen is darkened are marked before anything changes and left alone.
-    // Faint cyan haze stays bright in the matte and is still cleaned.
+    // matte made dark where the screen is darkened are marked before anything changes and left alone:
+    // not deleted, not tightened and not recoloured (recolouring painted the shadow touching the
+    // subject in skin and dress colour, a pale rim). Faint cyan haze stays bright and is still cleaned.
     const shadow = new Uint8Array(n);
     if (options.preserveShadow !== false) for (let p = 0, i = 0; p < n; p++, i += 4) {
-      if (mask[p] >= 24 || !alpha[p] || Math.max(out[i], out[i + 1], out[i + 2]) > 40) continue;
+      if (mask[p] >= 24 || !alpha[p] || Math.max(out[i], out[i + 1], out[i + 2]) > 80) continue;
       if (1 - src[i + key] / 255 / Math.max(.1, B[key]) > .03 && srcCast(p) > .15) shadow[p] = 1;
     }
     const shadowLike = p => shadow[p] === 1;
@@ -850,7 +851,7 @@
       if (mask[p] < 24 && ((a < 110 && src[i + key] >= B[key] * 255 * .88) || (a < 160 && bleed)) && lightSupport(x, y) < .5 && !shadowLike(p)) {
         alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
       }
-      if (d > band + 3 || toOutside[p] > band + 2) continue;
+      if (d > band + 3 || toOutside[p] > band + 2 || shadowLike(p)) continue;
       // Opaque, mask-confirmed pixels whose source is clearly not screen-cast are content.
       if (a === 255 && mask[p] >= 250 && srcCast(p) <= -.02) continue;
       // Screen noise: faint pixel outside the mask whose source is the screen itself.
