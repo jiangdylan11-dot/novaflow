@@ -1035,7 +1035,14 @@
         // Light is bright: a dim green-tinted pixel inside the subject is its own shade, while bright
         // energy the mask happens to cover keeps its glow transparency.
         const solid = subjectCore ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .75, Math.max(r, g, b))) : 0;
-        const blend = Math.max(smooth(0, .08, dominance), cyanGlow) * (1 - solid);
+        // A cast shadow darkens the screen and adds no light of its own. Glow handling sets opacity from
+        // the light a pixel adds, so a shadow's near-black residue became ~3% opacity, unmultiplied to
+        // white: the shadow vanished or turned into a pale ghost wherever the ground-shadow pass does
+        // not look (an ear's shadow on the wall). Shadows keep their plain chroma opacity, as with
+        // 光效透明保留 off; light, which never darkens the screen, is unchanged.
+        const absorb = clamp(1 - g / Math.max(.1, bg)), emit = Math.max(r - br, b - bb);
+        const shadow = smooth(.04, .12, absorb) * (1 - smooth(.5, .9, emit / Math.max(.01, absorb)));
+        const blend = Math.max(smooth(0, .08, dominance), cyanGlow) * (1 - solid) * (1 - shadow);
         a = a * (1 - blend) + Math.min(a, glowAlpha) * blend;
       }
       // Unassociation amplifies tiny codec fluctuations into colored specks.
