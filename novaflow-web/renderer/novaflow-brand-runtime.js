@@ -1949,6 +1949,7 @@
   let AI_SEQUENCE_SKELETON_SUPPRESS_UNTIL = 0;
   let AI_SEQUENCE_SKELETON_SUPPRESS_TIMER = null;
   let SKELETON_BONE_SELECTION_REFRESH_TOKEN = 0;
+  let AI_PREVIEW_MEDIA_DRAG_HELD = false;
   let SKELETON_BONE_SELECTION_REFRESH_FRAME = 0;
   let SKELETON_BONE_SELECTION_REFRESH_TIMER = 0;
   let SKELETON_BONE_SELECTION_REFRESH_LAST_SIGNATURE = "";
@@ -20709,6 +20710,7 @@
         return;
       }
       state.dragging = true;
+      AI_PREVIEW_MEDIA_DRAG_HELD = true;
       state.dragPointerId = pointerId;
       state.dragX = Number(event.clientX) || 0;
       state.dragY = Number(event.clientY) || 0;
@@ -20726,6 +20728,7 @@
     window.addEventListener("mousedown", beginPreviewMediaDrag, true);
 
     const movePreviewMediaDrag = (event) => {
+      if (!AI_PREVIEW_MEDIA_DRAG_HELD) return;
       const viewport = getAiSequencePreviewViewport(document);
       if (!(viewport instanceof HTMLElement)) return;
       const state = getAiSequencePreviewMediaState(viewport);
@@ -20751,6 +20754,8 @@
     window.addEventListener("mousemove", movePreviewMediaDrag, true);
 
     const finishDrag = (event) => {
+      if (!AI_PREVIEW_MEDIA_DRAG_HELD) return;
+      AI_PREVIEW_MEDIA_DRAG_HELD = false;
       const viewport = getAiSequencePreviewViewport(document);
       if (!(viewport instanceof HTMLElement)) return;
       const state = getAiSequencePreviewMediaState(viewport);
@@ -40690,7 +40695,7 @@
 
   function refreshSkeletonLayoutAfterRangeInput(range, options = {}) {
     if (!(range instanceof HTMLInputElement) || !isSkeletonAnimationRangeInput(range)) return false;
-    if (document.querySelector('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]')) {
+    if (RIBBON_DOCKED_RANGE_DRAG || document.querySelector('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]')) {
       syncRangeFillVisual(range);
       return true;
     }
@@ -74139,7 +74144,12 @@
       const player = getSkeletonPreviewOfficialPlayer(previewStage);
       if (!player) return;
       const currentScale = getSkeletonPreviewCameraZoomScale(previewStage);
-      const delta = Number(event.deltaY) > 0 ? 1 / 1.12 : 1.12;
+      // as far as the wheel turned (a touchpad or a fine wheel sends many small steps; a fixed
+      // 1.12 per event made the zoom race off), at most 1.25x per event
+      const unit = event.deltaMode === 1 ? 33 : (event.deltaMode === 2 ? 400 : 1);
+      const turned = Number(event.deltaY) * unit;
+      if (!Number.isFinite(turned) || !turned) return;
+      const delta = clampNumber(Math.pow(1.0015, -turned), 0.8, 1.25);
       const nextScale = clampNumber(
         Math.round(currentScale * delta * 10000) / 10000,
         SKELETON_PREVIEW_CAMERA_ZOOM_MIN_SCALE,
@@ -74148,7 +74158,19 @@
       if (typeof event.preventDefault === "function" && event.cancelable !== false) event.preventDefault();
       if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
       if (typeof event.stopPropagation === "function") event.stopPropagation();
-      applySkeletonPreviewWheelZoom(previewStage, nextScale);
+      // about the pointer: the point under it stays under it (it zoomed about the middle, so
+      // what was pointed at slid away)
+      const before = getSkeletonPreviewWorldPoint(player, event);
+      if (!applySkeletonPreviewWheelZoom(previewStage, nextScale)) return;
+      const camera = getNovaflowOfficialSpineCamera(player);
+      const after = getSkeletonPreviewWorldPoint(player, event);
+      if (before && after && camera?.position) {
+        camera.position.x += before.x - after.x;
+        camera.position.y += before.y - after.y;
+        camera.update();
+        rememberNovaflowSkeletonCameraPanOffset(player, camera);
+        renderSkeletonPreviewOfficialPlayer(player);
+      }
     }, { capture: true, passive: false });
     document.addEventListener("click", (event) => {
       const target = event.target instanceof HTMLElement ? event.target : event.target?.parentElement;
@@ -74229,6 +74251,7 @@
   }
 
   function scheduleSkeletonBoneSelectionRefresh() {
+    if (RIBBON_DOCKED_RANGE_DRAG) return false;
     const signature = getSkeletonBoneSelectionRefreshSignature();
     const now = Date.now();
     if (
@@ -78898,6 +78921,19 @@
       if (
         target.closest('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] input[type="range"]') ||
         (target.closest('[data-novaflow-motion-curve="1"]') && inner instanceof HTMLInputElement && inner.type === "range")
+      ) {
+        RIBBON_DOCKED_RANGE_DRAG = true;
+      }
+    }, { capture: true, passive: true });
+    // any press on the stage (a bone drag, a right-button pan) or the playbar's range (a
+    // scrub): the page layout does not change under a drag, and a full skeleton layout pass
+    // for every mutation batch it made was what made the 动画 section feel heavy
+    window.addEventListener("pointerdown", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !isSkeletonAnimationRuntimeSurfaceActive()) return;
+      if (
+        target.closest('[data-novaflow-skeleton-preview-stage="1"] canvas') ||
+        target.closest('[data-novaflow-skeleton-bottom-playbar="1"] input[type="range"]')
       ) {
         RIBBON_DOCKED_RANGE_DRAG = true;
       }

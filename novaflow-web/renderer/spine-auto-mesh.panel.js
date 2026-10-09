@@ -413,8 +413,55 @@
     return true
   }
 
+  /**
+   * A write-back reloads the project through the import bridge: the 开始导入 button lit up
+   * for a moment and the preview blanked and redrew ("闪屏"). While it runs the stage shows a
+   * still of the current preview and the button stays as it was; both go once the new
+   * preview has drawn.
+   */
+  function holdReloadLook() {
+    const undo = []
+    try {
+      const canvas = previewCanvas()
+      const r = canvas && canvas.getBoundingClientRect()
+      if (canvas && r && r.width > 0 && r.height > 0) {
+        repaintPreview(previewPlayer())
+        const still = document.createElement('canvas')
+        still.width = canvas.width; still.height = canvas.height
+        still.getContext('2d').drawImage(canvas, 0, 0)
+        Object.assign(still.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', zIndex: '45', pointerEvents: 'none' })
+        still.setAttribute('data-novaflow-runtime-ignore', '1')
+        still.setAttribute('data-novaflow-reload-still', '1')
+        document.body.appendChild(still)
+        undo.push(() => still.remove())
+      }
+    } catch { /* no still: the reload shows as before */ }
+    const start = Array.from(document.querySelectorAll('button')).find((b) => String(b.textContent || '').replace(/\s+/g, '') === '开始导入')
+    if (start) {
+      const was = start.disabled
+      const keep = new MutationObserver(() => { if (start.disabled !== was) start.disabled = was })
+      keep.observe(start, { attributes: true, attributeFilter: ['disabled'] })
+      undo.push(() => keep.disconnect())
+    }
+    return () => {
+      let ran = false
+      const run = () => { if (ran) return; ran = true; for (const f of undo) { try { f() } catch { /* gone */ } } }
+      // the new player draws a few frames after the reload settles (a frame of empty stage
+      // showed when the still went two frames after it): held a little longer, then faded
+      window.setTimeout(() => {
+        const still = document.querySelector('canvas[data-novaflow-reload-still="1"]')
+        if (still) { still.style.transition = 'opacity 120ms linear'; still.style.opacity = '0' }
+        window.setTimeout(run, 140)
+      }, 450)
+    }
+  }
+
   /** Push a rebuilt skeleton back through the import bridge and reload the preview. */
   async function reloadWithSkeleton(skeletonText) {
+    const release = holdReloadLook()
+    try { await reloadWithSkeletonNow(skeletonText) } finally { release() }
+  }
+  async function reloadWithSkeletonNow(skeletonText) {
     const bridge = window.__NovaFlowSpineImportInlineBridge
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
     const source = state.source
@@ -3120,20 +3167,13 @@
     homePsImport()
     syncBonePreview()
     if (loadBonesFromSource(false)) { bones.renderTree(); bones.syncUi(); renderHierarchy(true) }
-    autoApplyBones(false)
   }
-  let pointerHeld = false
-  window.addEventListener('pointerdown', () => { pointerHeld = true }, true)
-  window.addEventListener('pointerup', () => { pointerHeld = false }, true)
-  window.addEventListener('pointercancel', () => { pointerHeld = false }, true)
-  function autoApplyBones(now) {
+  function autoApplyBones() {
     const ctl = bones.ctl
     if (!ctl || state.busy || bones.applying) return
     const st = ctl.getState()
     const cur = typeof ctl.peek === 'function' ? ctl.peek() : null
-    if (cur !== bones.autoSeen) { bones.autoSeen = cur; bones.autoAt = Date.now(); if (!now) return }
     if (!st.dirty || cur === bones.autoFailed) return
-    if (!now && (pointerHeld || Date.now() - (bones.autoAt || 0) < 1200)) return
     bones.applying = true
     const say = typeof bones.setStatus === 'function' ? bones.setStatus : () => {}
     applyBones((t) => say(t)).then((n) => { say(`已应用 ${n} 根骨`, 'ok') }).catch((error) => {
@@ -3545,7 +3585,7 @@
       isOpen: () => state.openBones,
       setOpen: (v) => {
         // closing the panel puts any change still waiting into the project
-        if (!v && state.openBones) { try { autoApplyBones(true) } catch { /* nothing to apply */ } }
+        if (!v && state.openBones) { try { autoApplyBones() } catch { /* nothing to apply */ } }
         state.openBones = v
         if (state.fitList) state.fitList()
         try { setBonesEditing(v) } catch { /* the preview may not be up yet */ }
@@ -3785,7 +3825,7 @@
       selected: selectedNames(),
       lastReport: state.lastReport
     }),
-    setDensity: (v) => { state.density = Math.max(8, Math.min(40, Number(v) || 22)) },
+    setDensity: (v) => { state.density = Math.max(2, Math.min(40, Number(v) || 22)) },
     setSelected,
     syncLayersFromSource,
     importPhotoshopProject,
@@ -3806,6 +3846,8 @@
     applyBones,
     setBonesEditing,
     bonesController: () => bones.ctl,
+    _bonesToScreen: () => bonesToScreen(),
+    _previewCanvas: () => previewCanvas(),
     _state: state,
     _bones: bones
   }

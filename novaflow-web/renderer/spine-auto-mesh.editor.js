@@ -481,6 +481,9 @@
         fontFamily: 'inherit', userSelect: 'none'
       })
       overlay.setAttribute('data-novaflow-auto-mesh-editor', '1')
+      // the brand runtime leaves this full-screen editor alone: every redraw's text / slider
+      // change ran its modal scan and a page layout pass (painting got ~8 frames a second)
+      overlay.setAttribute('data-novaflow-runtime-ignore', '1')
 
       // ---- top bar
       const bar = el('div', {

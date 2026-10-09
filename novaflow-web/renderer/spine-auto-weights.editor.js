@@ -322,6 +322,9 @@
         fontFamily: 'inherit', userSelect: 'none'
       })
       overlay.setAttribute('data-novaflow-auto-weights-editor', '1')
+      // the brand runtime leaves this full-screen editor alone: every redraw's text / slider
+      // change ran its modal scan and a page layout pass (painting got ~8 frames a second)
+      overlay.setAttribute('data-novaflow-runtime-ignore', '1')
 
       // ---- top bar
       const bar = el('div', { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: '#1d1d1f', flex: '0 0 auto', flexWrap: 'wrap' })
@@ -605,27 +608,39 @@
         // vertices
         const selId = sel >= 0 ? boneIds[sel] : -1
         const pr = Math.max(3.5, Math.min(9, 0.35 * meanEdge * view.scale))
-        for (let i = 0; i < n; i++) {
-          const [x, y] = toScreen(P[2 * i], P[2 * i + 1])
-          if (showOverlay && sel >= 0) {
-            ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
+        // batched: one fill per bone colour and one outline for all, not one per slice - a
+        // few hundred pies of a dozen bones each was thousands of fills on every redraw
+        const SX = new Float64Array(n), SY = new Float64Array(n)
+        for (let i = 0; i < n; i++) { const q = toScreen(P[2 * i], P[2 * i + 1]); SX[i] = q[0]; SY[i] = q[1] }
+        const TAU = Math.PI * 2
+        if (showOverlay && sel >= 0) {
+          for (let i = 0; i < n; i++) {
+            ctx.beginPath(); ctx.arc(SX[i], SY[i], pr, 0, TAU)
             ctx.fillStyle = colormap(W[i * nb + sel]); ctx.fill()
-            ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1; ctx.stroke()
-          } else if (showPie && nb) {
-            let a0 = -Math.PI / 2
-            for (let j = 0; j < nb; j++) {
+          }
+        } else if (showPie && nb) {
+          const start = new Float64Array(n).fill(-Math.PI / 2)
+          for (let j = 0; j < nb; j++) {
+            ctx.beginPath()
+            let any = false
+            for (let i = 0; i < n; i++) {
               const v = W[i * nb + j]
               if (v <= 0.02) continue
-              const a1 = a0 + v * Math.PI * 2
-              ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, pr, a0, a1); ctx.closePath()
-              ctx.fillStyle = boneColor(boneIds[j]); ctx.fill()
-              a0 = a1
+              const a0 = start[i], a1 = a0 + v * TAU
+              ctx.moveTo(SX[i], SY[i]); ctx.arc(SX[i], SY[i], pr, a0, a1); ctx.closePath()
+              start[i] = a1; any = true
             }
-            ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
-            ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; ctx.stroke()
-          } else {
-            ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fillStyle = '#8ccdff'; ctx.fill()
+            if (any) { ctx.fillStyle = boneColor(boneIds[j]); ctx.fill() }
           }
+        } else {
+          ctx.beginPath()
+          for (let i = 0; i < n; i++) { ctx.moveTo(SX[i] + 2.5, SY[i]); ctx.arc(SX[i], SY[i], 2.5, 0, TAU) }
+          ctx.fillStyle = '#8ccdff'; ctx.fill()
+        }
+        if ((showOverlay && sel >= 0) || (showPie && nb)) {
+          ctx.beginPath()
+          for (let i = 0; i < n; i++) { ctx.moveTo(SX[i] + pr, SY[i]); ctx.arc(SX[i], SY[i], pr, 0, TAU) }
+          ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; ctx.stroke()
         }
         // bones -- drawn so they read as bones, not as more vertices: a white halo
         // under every line and head, a ringed crosshair for a zero-length control
