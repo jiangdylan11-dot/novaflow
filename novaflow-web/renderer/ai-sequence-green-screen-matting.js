@@ -805,7 +805,10 @@
       const p = y * w + x;
       if (alpha[p] < 250 || mask[p] < 240) continue;
       if (alpha[p - 1] < 250 || alpha[p + 1] < 250 || alpha[p - w] < 250 || alpha[p + w] < 250) continue;
-      if (srcCast(p) > -.02) continue;
+      // Not clearly screen-tinted. A dark subject (black fur) sits around G = B, so requiring the key
+      // channel to be 2 % lower left whole stretches without a reference; their contour was then
+      // cleaned in some rows and not in others.
+      if (srcCast(p) > .02) continue;
       seeds[p] = 1;
     }
     for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
@@ -852,6 +855,11 @@
       return smooth(6, 30, c);
     };
     const F = [0, 0, 0], O = [0, 0, 0], C = [0, 0, 0], D = [0, 0, 0], T = [0, 0, 0];
+    // Recolouring is decided from the contour's 5x5 neighbourhood, not per pixel: a rim light the
+    // subject really has and screen contamination can look alike pixel by pixel, and per-pixel
+    // decisions kept some and replaced others, a patchy, pitted outline. A stretch of contour is
+    // now either kept or cleaned as a whole.
+    const scores = new Float32Array(n).fill(-1), targets = new Float32Array(n * 3);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const p = y * w + x, d = near.distance[p];
       if (d <= 0 || d > band * 8) continue;
@@ -865,8 +873,9 @@
         alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
       }
       if (d > band + 3 || toOutside[p] > band + 2 || shadowLike(p)) continue;
-      // Opaque, mask-confirmed pixels whose source is clearly not screen-cast are content.
-      if (a === 255 && mask[p] >= 250 && castMean[p] <= -.02) continue;
+      // Opaque, mask-confirmed pixels whose source is clearly not screen-cast are content: they vote
+      // "keep" and change only with the stretch of contour around them.
+      const content = a === 255 && mask[p] >= 250 && castMean[p] <= -.02;
       // Screen noise: faint pixel outside the mask whose source is the screen itself.
       const srcDist = Math.max(Math.abs(src[i] / 255 - B[0]), Math.abs(src[i + 1] / 255 - B[1]), Math.abs(src[i + 2] / 255 - B[2]));
       if (mask[p] < 8 && a < 20 && srcDist < .07 && !shadowLike(p)) {
@@ -897,10 +906,7 @@
       // edge; its unassociated colour is noise amplified by the small alpha.
       const mixed = Math.max(smooth(-.08, 0, castMean[p]), 1 - smooth(120, 250, mask[p]));
       const semi = 1 - smooth(230, 250, a);
-      const score0 = Math.max(Math.max(bright, tint) * evidence, semi * mixed) * (1 - smooth(.12, .25, emission) * lightSupport(x, y));
-      // Decide per pixel: a half-recoloured pixel leaves a faint tinted line.
-      const score = smooth(.12, .4, score0);
-      if (score < .05) continue;
+      scores[p] = content ? 0 : Math.max(Math.max(bright, tint) * evidence, semi * mixed) * (1 - smooth(.12, .25, emission) * lightSupport(x, y));
       // Opaque pixels keep a real rim light: when the next pixel inward is also
       // brighter than the reference, add that brightness equally to the
       // reference colour (pale, not saturated). A single pale edge pixel is an
@@ -914,9 +920,20 @@
           T[0] = clamp(F[0] + lift); T[1] = clamp(F[1] + lift); T[2] = clamp(F[2] + lift);
         }
       }
-      out[i] = Math.round((O[0] * (1 - score) + T[0] * score) * 255);
-      out[i + 1] = Math.round((O[1] * (1 - score) + T[1] * score) * 255);
-      out[i + 2] = Math.round((O[2] * (1 - score) + T[2] * score) * 255);
+      targets[p * 3] = T[0]; targets[p * 3 + 1] = T[1]; targets[p * 3 + 2] = T[2];
+    }
+    const decided = new Float32Array(n);
+    for (let y = 2; y < h - 2; y++) for (let x = 2; x < w - 2; x++) {
+      const p = y * w + x; if (scores[p] < 0) continue;
+      let total = 0, count = 0;
+      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) { const v = scores[p + oy * w + ox]; if (v >= 0) { total += v; count++; } }
+      // A half-recoloured pixel leaves a faint tinted line, so the ramp stays steep.
+      decided[p] = smooth(.12, .4, total / count);
+    }
+    for (let p = 0; p < n; p++) {
+      const score = decided[p]; if (score < .05) continue;
+      const i = p * 4;
+      for (let c = 0; c < 3; c++) out[i + c] = Math.round((out[i + c] / 255 * (1 - score) + targets[p * 3 + c] * score) * 255);
     }
     // Tighten: smooth alpha along the contour band (3x3), then steepen the
     // ramp, so a blurred transition becomes a smooth anti-aliased edge instead
