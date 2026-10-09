@@ -3609,6 +3609,8 @@
   }
 
   function closeOtherPanels(keep) {
+    // 动画编辑 is one of them too: nothing else stays open beside it
+    if (keep) { try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ } }
     for (const mark of [BMARK, MARK, WMARK]) {
       const other = document.querySelector(`[${mark}="1"]`)
       if (!other || other === keep || !other.__nfSpec || !other.__nfSpec.isOpen()) continue
@@ -3846,6 +3848,8 @@
     applyBones,
     setBonesEditing,
     bonesController: () => bones.ctl,
+    /** close 骨骼架设 / 自动蒙皮 / 自动权重 (动画编辑 opening) */
+    closePanels: () => closeOtherPanels(null),
     _bonesToScreen: () => bonesToScreen(),
     _previewCanvas: () => previewCanvas(),
     _state: state,

@@ -436,7 +436,10 @@
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{
-        const expanded=panel.dataset.open!=='1';panel.dataset.open=expanded?'1':'0';
+        const expanded=panel.dataset.open!=='1';
+        // one panel at a time: 动画编辑 closes 骨骼架设 / 自动蒙皮 / 自动权重 (user 2026-10-10)
+        if(expanded){try{window.NovaFlowAutoMeshPanel?.closePanels?.();}catch{}}
+        panel.dataset.open=expanded?'1':'0';
         panel.querySelector('.nf-motion-tools').hidden=!expanded;panel.querySelector('.nf-panel-header').setAttribute('aria-expanded',String(expanded));panel.querySelector('.nf-motion-chevron').className=`fas fa-chevron-${expanded?'down':'right'} nf-motion-chevron`;
         if(!expanded){close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));}
         // opening the group opens the editor at the tool used last (飘带计算 at first)
@@ -459,5 +462,7 @@
       : [...change.addedNodes,...change.removedNodes].some(containsRibbon)))refresh();
   });
   entryObserver.observe(document.getElementById('root')||document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-panel-id','data-novaflow-ribbon-panel']});
+  // the other panels close 动画编辑 when they open
+  window.NovaFlowMotionEditing={collapse(){if(panel&&panel.dataset.open==='1')panel.querySelector('.nf-panel-header')?.onclick?.();}};
   setInterval(refresh,350);refresh();
 })();
