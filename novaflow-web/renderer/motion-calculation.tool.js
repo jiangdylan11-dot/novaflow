@@ -180,7 +180,9 @@
   // 飘带计算 is the native left-column panel, kept out of the column (hosted) and laid
   // over the editor's box while its tool is open (docked); the runtime's spec owns
   // that geometry. It stays open off screen, so docking never mounts it in view.
-  const ribbonOpened=new WeakSet();
+  // React can come back with the panel closed (its body is then not rendered at all and
+  // the docked box is empty): open it again whenever it is found closed, at most every 800 ms
+  let ribbonOpenedAt=0;
   function pressNative(el){
     const r=el.getBoundingClientRect(),o={bubbles:true,cancelable:true,clientX:r.left+r.width/2,clientY:r.top+r.height/2,button:0,pointerId:1,isPrimary:true};
     el.dispatchEvent(new PointerEvent('pointerdown',o));el.dispatchEvent(new MouseEvent('mousedown',o));
@@ -295,9 +297,9 @@
     }
     markRibbonParts(ribbon);
     if(ribbon.getAttribute('data-novaflow-ribbon-hosted')!=='1')ribbon.setAttribute('data-novaflow-ribbon-hosted','1');
-    if(ribbon.getAttribute('data-open')!=='1'&&!ribbonOpened.has(ribbon)){
+    if(ribbon.getAttribute('data-open')!=='1'&&performance.now()-ribbonOpenedAt>800){
       const header=ribbon.querySelector(':scope > .nf-panel-header');
-      if(header){ribbonOpened.add(ribbon);pressNative(header);}
+      if(header){ribbonOpenedAt=performance.now();pressNative(header);}
     }
     if(!ribbon.__nfWheelStep){
       // the wheel over a docked value steps it, as in the calculation tools
@@ -323,6 +325,7 @@
     for(const [key,name] of dockVars){const value=Math.round(rect[key]||0)+'px';if(rootStyle.getPropertyValue('--nf-ribbon-dock-'+name)!==value)rootStyle.setProperty('--nf-ribbon-dock-'+name,value);}
     if(!ribbon)return false;
     if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'){ribbon.setAttribute('data-novaflow-ribbon-docked','1');keepEventsOpen(ribbon);}
+    if(ribbon.getAttribute('data-open')!=='1')hostRibbon(ribbon);
     // whether it already sits there (the panel then shows it in place of its own box)
     const r=ribbon.getBoundingClientRect();
     return Math.abs(r.left-Math.round(rect.left))<=1&&Math.abs(r.top-Math.round(rect.top))<=1&&Math.abs(r.width-Math.round(rect.width))<=1;
