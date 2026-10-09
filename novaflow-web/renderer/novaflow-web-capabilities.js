@@ -66,6 +66,8 @@
         '#novaflow-web-busy .nf-busy-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
         '#novaflow-web-busy .nf-busy-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}',
         '#novaflow-web-busy .nf-busy-bar>i{display:block;height:100%;width:0;background:#25bc84;transition:width .2s linear}',
+        // The cutout save shows its own progress dialog (正在合成透明视频…); this box sat behind it.
+        'body[data-novaflow-ai-cutout-saving="1"] #novaflow-web-busy{display:none!important}',
         '@keyframes nf-busy-spin{to{transform:rotate(360deg)}}'
       ].join('');
       doc.head.appendChild(style);
