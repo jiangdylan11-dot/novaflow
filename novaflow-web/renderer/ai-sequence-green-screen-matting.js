@@ -773,15 +773,17 @@
     const B = [screen.rgb[0] / 255, screen.rgb[1] / 255, screen.rgb[2] / 255];
     const band = Math.max(3, Math.round(Math.min(w, h) / 300));
     const srcCast = p => { const i = p * 4; return (src[i + key] - Math.max(src[i + c0], src[i + c1])) / 255; };
-    // With 保留投影 on, a cast shadow outside the subject is the screen darkened without any other
-    // colour lifted. Its faint penumbra looked like screen noise here and its edge like a contour
-    // to tighten, so the shadow came out cut into patches; such pixels are left alone.
-    const keepShadow = options.preserveShadow !== false;
-    const shadowLike = p => {
-      if (!keepShadow || mask[p] >= 24) return false;
-      const i = p * 4, shade = 1 - src[i + key] / 255 / Math.max(.1, B[key]);
-      return shade > .02 && Math.max(src[i + c0] / 255 - B[c0], src[i + c1] / 255 - B[c1]) < .05 && srcCast(p) > .02;
-    };
+    // With 保留投影 on, the matte has already turned a cast shadow outside the subject into dark,
+    // partly transparent pixels. Rendered shadows carry a cool fill (green 210 -> 152, blue 13 -> 62)
+    // that read here as foreground bleed, so the shadow was cut off along the subject. Pixels the
+    // matte made dark where the screen is darkened are marked before anything changes and left alone.
+    // Faint cyan haze stays bright in the matte and is still cleaned.
+    const shadow = new Uint8Array(n);
+    if (options.preserveShadow !== false) for (let p = 0, i = 0; p < n; p++, i += 4) {
+      if (mask[p] >= 24 || !alpha[p] || Math.max(out[i], out[i + 1], out[i + 2]) > 40) continue;
+      if (1 - src[i + key] / 255 / Math.max(.1, B[key]) > .03 && srcCast(p) > .15) shadow[p] = 1;
+    }
+    const shadowLike = p => shadow[p] === 1;
     // Interior seeds: opaque, inside the mask, not screen-cast, eroded twice so
     // the contour ring never contributes to the reference colour.
     const seeds = new Uint8Array(n), inner = new Uint8Array(n);
@@ -947,8 +949,9 @@
     const stride = width + 1;
     const cyanRadius = Math.max(2, Math.round(Math.min(width, height) / 147));
     const cyanIntegral = normalizeGlow ? new Float32Array(stride * (height + 1)) : null;
-    // Inside the AI subject a cool blue/teal is the subject's own colour (a collar, armour), not a
-    // cyan glow over the screen: treating it as glow made it semi-transparent and washed out.
+    // Inside the AI subject a cool blue/teal or a dark green-tinted shade is the subject's own colour
+    // (a collar, armour, black fur), not glow over the screen: treating it as glow made it
+    // semi-transparent and washed out.
     const subjectCore = normalizeGlow ? subjectOpacity(options.subjectMask, width, height) : null;
     if (normalizeGlow) for (let y = 0; y < height; y++) {
       let row = 0;
@@ -998,7 +1001,10 @@
       const pr = clamp(r - (1 - a) * br), pg = clamp(g - (1 - a) * bg), pb = clamp(b - (1 - a) * bb);
       if (normalizeGlow) {
         const glowAlpha = Math.max(pr, pg, pb);
-        const blend = Math.max(smooth(0, .08, dominance), cyanGlow);
+        // Light is bright: a dim green-tinted pixel inside the subject is its own shade, while bright
+        // energy the mask happens to cover keeps its glow transparency.
+        const solid = subjectCore ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .75, Math.max(r, g, b))) : 0;
+        const blend = Math.max(smooth(0, .08, dominance), cyanGlow) * (1 - solid);
         a = a * (1 - blend) + Math.min(a, glowAlpha) * blend;
       }
       // Unassociation amplifies tiny codec fluctuations into colored specks.
