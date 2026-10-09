@@ -26,7 +26,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-4',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-5',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||ribbonShown)floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
   body.innerHTML=`
@@ -102,9 +102,9 @@
     floating.style.width=width+'px';floating.style.display='block';
     const available=Math.max(160,r.top-80);
     let desired=Math.min(400,Math.max(360,innerHeight*.4));
-    if(ribbon&&!collapsed)desired=Math.max(desired,460);
+    if(ribbon&&!collapsed)desired=Math.max(desired,500);
     else if(mode==='expand'&&!collapsed){
-      const chrome=['.editor-header','.timing-row','.editor-footer'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
+      const chrome=['.editor-header','.timing-row','.editor-footer','#scaleOptions'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
       desired=Math.max(desired,chrome+body.querySelector('.effect-scroll').scrollHeight+20);
     }
     const height=Math.min(desired,available);
@@ -380,7 +380,8 @@
   }
   function renderPanel() {
     body.classList.toggle('expand-mode',mode==='expand');
-    const optionsParent=body.querySelector(mode==='expand'?'.effect-scroll':'.effect-parameters');
+    // every tool keeps its check boxes in the same row: under the parameters, a rule above
+    const optionsParent=body.querySelector('.effect-parameters');
     if($('scaleOptions').parentElement!==optionsParent)optionsParent.append($('scaleOptions'));
     $('selection').textContent=bridge.label();$('editorTitle').textContent=names[mode];
     renderTiming();

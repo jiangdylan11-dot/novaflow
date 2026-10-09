@@ -35979,7 +35979,7 @@
         // events where the other tools draw their curve
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body',
         style: {
-          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(280px, 32%)", "grid-template-rows": "max-content max-content max-content 1fr",
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(280px, 32%)", "grid-template-rows": "max-content max-content 1fr max-content",
           "column-gap": "14px", "row-gap": "10px", "align-content": "stretch", "align-items": "start",
           width: "100%", "min-width": "0", "max-width": "100%", height: "100%", "min-height": "0", "max-height": "100%",
           padding: "8px 12px", margin: "0", "overflow-x": "hidden", "overflow-y": "auto",
@@ -36025,7 +36025,8 @@
         // 自动链条 is a plain check box here, as 缩放联动 / 反向 in the other tools
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-chain-toggle-card]',
         style: {
-          "grid-row": "3", display: "flex", "flex-direction": "row-reverse", "justify-content": "flex-end", "align-items": "center",
+          // the last row, at the column's foot as the other tools' check boxes
+          "grid-row": "4", "align-self": "end", display: "flex", "flex-direction": "row-reverse", "justify-content": "flex-end", "align-items": "center",
           gap: "5px", width: "100%", height: "auto", "min-height": "0", "max-height": "none", padding: "8px 0 0", border: "0",
           "border-top": "1px solid #303030", "border-radius": "0", background: "transparent", "background-color": "transparent",
           "box-shadow": "none", cursor: "pointer", "font-size": "11px", color: "#d4d4d4"
@@ -36125,7 +36126,8 @@
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
         style: (node) => ({
-          "grid-column": "1 / -1", "grid-row": "2", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 4px", "align-items": "flex-start",
+          "grid-column": "1 / -1", "grid-row": "2", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "12px 4px", "align-items": "flex-start", "align-self": "start",
+          width: "100%", "min-width": "0", "max-width": "100%",
           height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
           border: "0", background: "transparent", "background-color": "transparent", ...ribbonDockedEventInert(node)
         })
