@@ -554,6 +554,10 @@
       // Re-estimate a narrow solid contour from adjacent foreground. This is
       // separate from fabric so a thin skirt is never eroded as an opaque edge.
       const q = body.owner[p], d = body.distance[p];
+      // The two contour refits below re-estimate a solid's outline from the nearest solid colour. Deep
+      // inside the AI subject there is no outline: a teal stripe next to gold read as gold mixed with
+      // screen and came out as scattered 80-90% transparent specks. They only run near the mask edge.
+      const inside = x > 3 && x < w - 4 && y > 3 && y < h - 4 && m > .985 && coverage[p - 3] > .98 && coverage[p + 3] > .98 && coverage[p - w * 3] > .98 && coverage[p + w * 3] > .98;
       // A measured external light that adds non-key energy without absorbing
       // the screen is emission, even beside a warm solid. Decide before any
       // contour fit can erase/recolour that evidence. Dark screen spill keeps
@@ -568,7 +572,7 @@
       const contourLight = localEmission>0 && q >= 0 && d > 0 && d < 24 && m < .025 && a > 0
         ? lightConfidence(P, true) * smooth(.03, .10, Math.max(C[c0]-B[c0],C[c1]-B[c1]))
           * (1-smooth(.005,.035,clamp(1-C[key]/Math.max(.1,B[key])))) * (1-smooth(.005,.025,m))*localEmission : 0;
-      if (q >= 0 && d > 0 && d < 9 && m > .01 && materialWeight < .2) {
+      if (q >= 0 && d > 0 && d < 9 && m > .01 && materialWeight < .2 && !inside) {
         const F = C.map((_, c) => data[q * 4 + c] / 255), delta = F.map((v, c) => v - B[c]);
         const fit = clamp(C.reduce((sum, v, c) => sum + (v - B[c]) * delta[c], 0) / Math.max(.01, delta.reduce((sum, v) => sum + v * v, 0)));
         const residual = Math.hypot(...C.map((v, c) => v - F[c] * fit - B[c] * (1 - fit)));
@@ -580,7 +584,7 @@
       // channel, so an RGB line fit alone rejects it. Use the uncontaminated
       // red channel only in a narrow solid contour. Broad coloured emission
       // has spatial support and must keep its original light solution.
-      if(q>=0&&d>0&&d<18&&a>.005&&materialWeight<.2){
+      if(q>=0&&d>0&&d<18&&a>.005&&materialWeight<.2&&!inside){
         const F=[data[q*4]/255,data[q*4+1]/255,data[q*4+2]/255];
         const cast=C[key]-(C[c0]+C[c1])*F[key]/Math.max(.1,F[c0]+F[c1]);
         const radius=Math.max(4,Math.round(Math.min(w,h)/90)),x0=Math.max(0,x-radius),x1=Math.min(w,x+radius+1),y0=Math.max(0,y-radius),y1=Math.min(h,y+radius+1);
@@ -773,6 +777,15 @@
     const B = [screen.rgb[0] / 255, screen.rgb[1] / 255, screen.rgb[2] / 255];
     const band = Math.max(3, Math.round(Math.min(w, h) / 300));
     const srcCast = p => { const i = p * 4; return (src[i + key] - Math.max(src[i + c0], src[i + c1])) / 255; };
+    // Browsers decode colour at half resolution, so along an edge the source alternates between
+    // screen-tinted and subject-coloured pixels. Deciding per pixel alternated with it (recoloured,
+    // kept pale, recoloured...), a dotted, pitted outline; edge decisions read the 3x3 mean instead.
+    const castMean = new Float32Array(n);
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const p = y * w + x; let t = 0;
+      for (let oy = -w; oy <= w; oy += w) t += srcCast(p + oy - 1) + srcCast(p + oy) + srcCast(p + oy + 1);
+      castMean[p] = t / 9;
+    }
     // With 保留投影 on, the matte has already turned a cast shadow outside the subject into dark,
     // partly transparent pixels. Rendered shadows carry a cool fill (green 210 -> 152, blue 13 -> 62)
     // that read here as foreground bleed, so the shadow was cut off along the subject. Pixels the
@@ -853,7 +866,7 @@
       }
       if (d > band + 3 || toOutside[p] > band + 2 || shadowLike(p)) continue;
       // Opaque, mask-confirmed pixels whose source is clearly not screen-cast are content.
-      if (a === 255 && mask[p] >= 250 && srcCast(p) <= -.02) continue;
+      if (a === 255 && mask[p] >= 250 && castMean[p] <= -.02) continue;
       // Screen noise: faint pixel outside the mask whose source is the screen itself.
       const srcDist = Math.max(Math.abs(src[i] / 255 - B[0]), Math.abs(src[i + 1] / 255 - B[1]), Math.abs(src[i + 2] / 255 - B[2]));
       if (mask[p] < 8 && a < 20 && srcDist < .07 && !shadowLike(p)) {
@@ -872,7 +885,7 @@
       const bright = smooth(.06, .22, lumaO - lumaF);
       const tint = smooth(.08, .25, O[key] / Math.max(O[c0], O[c1], .01) - F[key] / Math.max(F[c0], F[c1], .01));
       // The source must show the screen mixed in, or sit on the mask boundary.
-      const evidence = Math.max(smooth(-.06, .02, srcCast(p)), 1 - smooth(60, 240, mask[p]));
+      const evidence = Math.max(smooth(-.06, .02, castMean[p]), 1 - smooth(60, 240, mask[p]));
       // Non-key energy beyond a plain screen/interior mix is emission; it is
       // kept only where real light has spatial support.
       C[0] = src[i] / 255; C[1] = src[i + 1] / 255; C[2] = src[i + 2] / 255;
@@ -882,7 +895,7 @@
       const emission = Math.max(C[c0] - B[c0] - t * D[c0], C[c1] - B[c1] - t * D[c1]);
       // A semi-transparent contour pixel's own colour is the foreground at the
       // edge; its unassociated colour is noise amplified by the small alpha.
-      const mixed = Math.max(smooth(-.08, 0, srcCast(p)), 1 - smooth(120, 250, mask[p]));
+      const mixed = Math.max(smooth(-.08, 0, castMean[p]), 1 - smooth(120, 250, mask[p]));
       const semi = 1 - smooth(230, 250, a);
       const score0 = Math.max(Math.max(bright, tint) * evidence, semi * mixed) * (1 - smooth(.12, .25, emission) * lightSupport(x, y));
       // Decide per pixel: a half-recoloured pixel leaves a faint tinted line.
@@ -897,7 +910,7 @@
         const qx = q % w, qy = (q / w) | 0, np = (y + Math.sign(qy - y)) * w + x + Math.sign(qx - x), ni = np * 4;
         if (np !== p && mask[np] >= 250 && alpha[np] >= 250) {
           const rim = smooth(.03, .08, (src[ni] + src[ni + 1] + src[ni + 2]) / 765 - lumaF);
-          const lift = clamp(lumaO - lumaF, 0, .45) * rim;
+          const lift = clamp(lumaO - lumaF, 0, .45) * rim * (1 - smooth(-.06, .02, castMean[p]));
           T[0] = clamp(F[0] + lift); T[1] = clamp(F[1] + lift); T[2] = clamp(F[2] + lift);
         }
       }
