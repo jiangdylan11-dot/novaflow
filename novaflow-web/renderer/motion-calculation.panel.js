@@ -26,7 +26,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-5',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-6',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||ribbonShown)floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
   body.innerHTML=`
@@ -142,7 +142,7 @@
     if(!items.length){target.replaceChildren();return;}
     const key=target.id==='opacityPresets'?'opacity':mode;
     target.setAttribute('aria-label',names[key]+'预设');
-    target.replaceChildren(...items.map(item=>{const button=document.createElement('button');button.textContent=item[0];button.onclick=()=>apply(item);return button;}));
+    target.replaceChildren(...items.map(item=>{const button=document.createElement('button');button.textContent=item[0];button.onclick=()=>{hideRibbonPreview();apply(item);};button.onmouseenter=()=>showPresetCard(button,item[0],host=>mountMotionPreview(host,presetPreviewStack(key,item),key));button.onmouseleave=hideRibbonPreview;return button;}));
   }
   const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', r: '旋转角度', alpha: '透明度' };
   const channelEnabled = () => channel === 'alpha' ? p.opacity.on : p.enabled && p.axes[channel].on;
@@ -563,12 +563,47 @@
   let stopRibbonPreview=null,ribbonTiming=null;
   function hideRibbonPreview(){try{stopRibbonPreview?.();}catch{}stopRibbonPreview=null;$('ribbonPreviewCard').hidden=true;$('ribbonPreviewHost').replaceChildren();}
   function showRibbonPreview(button,item){
+    showPresetCard(button,item.label,host=>bridge.ribbonPreview?.($('ribbonPreviewCard'),host,item.id)||null);
+  }
+  // the preset's own motion: a fresh stack with only that preset in it, sampled the way
+  // the calculation samples it
+  function presetPreviewStack(key,item){
+    const stack=E.freshStack();
+    if(key==='opacity'){const values=item[1]||{};Object.assign(stack.opacity.opacity,values,{on:true,begin:0,finish:1});stack.opacity.loop=values.behavior==='pulse';return stack;}
+    const q=stack[key],vals=item[1]||{},axes=item[2]||{};
+    q.enabled=true;q.initialized=true;q.duration=p?.duration||q.duration;Object.assign(q,vals);
+    for(const k of E.ownedChannels[key]||[])if(q.axes[k]&&axes[k]!==undefined)q.axes[k].amp=axes[k];
+    if(key==='bounce'){q.ground=true;q.groundY=0;}
+    return stack;
+  }
+  function mountMotionPreview(host,stack,key){
+    const canvas=document.createElement('canvas');canvas.width=256;canvas.height=192;canvas.className='motion-preview';host.append(canvas);
+    const ctx=canvas.getContext('2d'),duration=Math.max(.2,stack[key]?.duration||2);
+    const samples=Array.from({length:48},(_,i)=>E.sampleStack(stack,i/47));
+    const reach=(k,base)=>Math.max(1e-6,...samples.map(v=>Math.abs(v[k]-base)));
+    const kx=Math.min(1,70/reach('x',0)),ky=Math.min(1,(key==='bounce'?120:60)/reach('y',0));
+    const groundY=key==='bounce'?160:96;
+    let frame=0,origin=performance.now();
+    const draw=now=>{
+      const u=(((now-origin)/1000)%duration)/duration,v=E.sampleStack(stack,u);
+      ctx.clearRect(0,0,256,192);
+      if(key==='bounce'){ctx.strokeStyle='#3a3a3a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(40,groundY+1);ctx.lineTo(216,groundY+1);ctx.stroke();}
+      const size=36,cx=128+v.x*kx,cy=(key==='bounce'?groundY-size/2:96)-v.y*ky;
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(-(v.r||0)*Math.PI/180);ctx.scale(Math.max(.05,v.sx),Math.max(.05,v.sy));
+      ctx.globalAlpha=Math.max(0,Math.min(1,v.alpha));ctx.fillStyle='#5fcdb0';
+      ctx.beginPath();ctx.roundRect?ctx.roundRect(-size/2,-size/2,size,size,6):ctx.rect(-size/2,-size/2,size,size);ctx.fill();ctx.restore();
+      frame=requestAnimationFrame(draw);
+    };
+    frame=requestAnimationFrame(draw);
+    return ()=>cancelAnimationFrame(frame);
+  }
+  function showPresetCard(button,label,mount){
     hideRibbonPreview();
-    const card=$('ribbonPreviewCard');$('ribbonPreviewLabel').textContent=item.label;card.hidden=false;
+    const card=$('ribbonPreviewCard');$('ribbonPreviewLabel').textContent=label;card.hidden=false;
     // above the button, over the stage (the editor box clips anything that leaves it)
     const f=floating.getBoundingClientRect(),r=button.getBoundingClientRect();
     card.style.left=Math.max(6,Math.min(f.width-card.offsetWidth-6,r.left-f.left))+'px';card.style.top=(r.top-f.top-card.offsetHeight-6)+'px';
-    stopRibbonPreview=bridge.ribbonPreview?.(card,$('ribbonPreviewHost'),item.id)||null;
+    stopRibbonPreview=mount($('ribbonPreviewHost'))||null;
   }
   function renderRibbonPresets(){
     const builtins=(bridge.ribbonPresets?.()||[]).filter(item=>!item.custom),wrap=$('ribbonPresets'),key=builtins.map(item=>item.id+item.label).join('|');
