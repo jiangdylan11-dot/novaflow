@@ -3181,8 +3181,8 @@
     /** What the two fields mean under each tool: label, step, and where the value comes from. */
     const POSE_FIELDS = {
       move: { a: { label: 'X', step: '1', min: '' }, b: { label: 'Y', step: '1', min: '' }, title: '骨骼原点的世界坐标' },
-      rotate: { a: { label: '角度', step: '0.1', min: '' }, b: { label: '长度', step: '1', min: '0' }, title: '世界角度与骨骼长度' },
-      scale: { a: { label: '缩放X', step: '0.01', min: '' }, b: { label: '缩放Y', step: '0.01', min: '' }, title: '骨骼自身的缩放,子骨和图片跟着变' },
+      rotate: { a: { label: '角度', step: '0.1', min: '' }, b: null, title: '骨骼的世界角度' },
+      scale: { a: { label: 'X', step: '0.01', min: '' }, b: { label: 'Y', step: '0.01', min: '' }, title: '骨骼自身的缩放,子骨和图片跟着变' },
       create: { a: { label: '角度', step: '0.1', min: '' }, b: { label: '长度', step: '1', min: '0' }, title: '世界角度与骨骼长度' }
     }
     const poseSpec = () => POSE_FIELDS[(bones.ctl ? bones.ctl.getState().tool : 'move')] || POSE_FIELDS.move
@@ -3224,12 +3224,17 @@
       const st = ctl.getState()
       if (st.selected < 0) return
       const tool = st.tool
-      if (tool === 'move') ctl.setSelectedPose({ x: Number(rotIn.value), y: Number(lenIn.value) })
-      else if (tool === 'scale') ctl.setSelectedPose({ scaleX: Number(rotIn.value), scaleY: Number(lenIn.value) })
-      else ctl.setSelectedPose({ rotation: Number(rotIn.value), length: Number(lenIn.value) })
+      // half-typed ('', '-', '1.') waits for a number: the bone never jumps to 0 mid-typing
+      const a = parseFloat(rotIn.value), b = parseFloat(lenIn.value)
+      if (!Number.isFinite(a) || (tool !== 'rotate' && !Number.isFinite(b))) return
+      if (tool === 'move') ctl.setSelectedPose({ x: a, y: b })
+      else if (tool === 'scale') ctl.setSelectedPose({ scaleX: a, scaleY: b })
+      else if (tool === 'rotate') ctl.setSelectedPose({ rotation: a })
+      else ctl.setSelectedPose({ rotation: a, length: b })
       bones.syncUi()
     }
-    for (const inp of [rotIn, lenIn]) { inp.addEventListener('change', commitPose); inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitPose(); inp.blur() } ev.stopPropagation() }) }
+    // applied as it is typed (or stepped with the wheel / arrows), not only on Enter
+    for (const inp of [rotIn, lenIn]) { inp.addEventListener('input', commitPose); inp.addEventListener('change', commitPose); inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitPose(); inp.blur() } ev.stopPropagation() }) }
     bones.focusName = () => { window.setTimeout(() => { try { nameIn.focus(); nameIn.select() } catch { /* hidden */ } }, 0) }
 
     // The project's bone tree lives in the right-hand sidebar (the app's own); a second
@@ -3311,9 +3316,12 @@
         const m = W[st.selected]
         const spec = poseSpec()
         setText(poseLabelA, spec.a.label)
-        setText(poseLabelB, spec.b.label)
+        setText(poseLabelB, spec.b ? spec.b.label : '')
+        setDisplay(poseLabelB, spec.b ? '' : 'none')
+        setDisplay(lenIn, spec.b ? '' : 'none')
         if (poseRow.title !== spec.title) poseRow.title = spec.title
         for (const [inp, cell] of [[rotIn, spec.a], [lenIn, spec.b]]) {
+          if (!cell) continue
           if (inp.step !== cell.step) inp.step = cell.step
           if ((inp.getAttribute('min') || '') !== cell.min) { if (cell.min) inp.setAttribute('min', cell.min); else inp.removeAttribute('min') }
         }
