@@ -1,4 +1,4 @@
-import argparse, os, warnings, json, time
+import argparse, os, sys, types, importlib.util, warnings, json, time
 from concurrent.futures import ThreadPoolExecutor
 warnings.filterwarnings("ignore", category=FutureWarning)
 import torch
@@ -6,8 +6,33 @@ import torchvision.transforms as T
 from PIL import Image
 from transformers import AutoModelForImageSegmentation
 
+def load_local_folder(folder):
+    # transformers 5 (the AI Runtime's) cannot finish from_pretrained on BiRefNet's remote code
+    # ("no attribute all_tied_weights_keys"). The folder carries that code itself: build the model
+    # from it and read the weights directly, as ComfyUI-RMBG does.
+    package = types.ModuleType("nf_birefnet")
+    package.__path__ = [folder]
+    sys.modules["nf_birefnet"] = package
+    def load(name):
+        spec = importlib.util.spec_from_file_location("nf_birefnet." + name, os.path.join(folder, name + ".py"))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+    config = load("BiRefNet_config")
+    model = load("birefnet").BiRefNet(config.BiRefNetConfig())
+    import safetensors.torch
+    model.load_state_dict(safetensors.torch.load_file(os.path.join(folder, "model.safetensors")))
+    return model
+
 def load_model(model_id, device, local_files_only):
-    model = AutoModelForImageSegmentation.from_pretrained(model_id, trust_remote_code=True, local_files_only=local_files_only)
+    try:
+        model = AutoModelForImageSegmentation.from_pretrained(model_id, trust_remote_code=True, local_files_only=local_files_only)
+    except Exception as error:
+        if not all(os.path.isfile(os.path.join(model_id, f)) for f in ("birefnet.py", "BiRefNet_config.py", "model.safetensors")):
+            raise
+        print(json.dumps({"event":"direct-load", "reason":str(error)[:240]}), flush=True)
+        model = load_local_folder(model_id)
     model.eval()
     if device == "cuda" and torch.cuda.is_available():
         model = model.cuda()

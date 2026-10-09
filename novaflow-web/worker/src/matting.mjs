@@ -40,12 +40,10 @@ const PYTHON_CANDIDATES = () => [
 ];
 
 const PROBE_DECODE = 'import PIL; print("ok")';
-// transformers >= 5 dropped what BiRefNet's remote code reaches for, so the
-// version is part of the capability, not a detail.
-const PROBE_INFERENCE =
-  'import torch, PIL, transformers;\n' +
-  'major = int(transformers.__version__.split(".")[0]);\n' +
-  'print("ok" if major < 5 else "too-new:" + transformers.__version__)';
+// Any transformers: on 5.x (the AI Runtime's) from_pretrained cannot finish BiRefNet's remote
+// code, and birefnet-runner.py builds the model from the local RMBG-2.0 folder instead - which
+// is also what makes birefnet-matting ready at all (model-manifest), so it is always there.
+const PROBE_INFERENCE = 'import torch, torchvision, PIL, transformers, safetensors; print("ok")';
 
 async function probeInterpreter(candidate, code) {
   if (!candidate.exe) return false;
@@ -66,7 +64,7 @@ export async function pickDriverPython() {
   return null;
 }
 
-/** An interpreter that can run BiRefNet: torch, Pillow and transformers 4.x. */
+/** An interpreter that can run BiRefNet: torch, torchvision, Pillow, transformers and safetensors. */
 export async function pickInferencePython() {
   for (const candidate of PYTHON_CANDIDATES()) {
     if (await probeInterpreter(candidate, PROBE_INFERENCE)) {
@@ -117,7 +115,7 @@ export async function probeMatting(modelsRoot) {
   if (!inference) {
     return {
       ok: false,
-      error: '算力节点上找不到可运行 BiRefNet 的 Python（需要 transformers 4.x）。' +
+      error: '算力节点上找不到可运行 BiRefNet 的 Python（需要 torch、torchvision、transformers）。' +
         '请在算力节点配置 BiRefNet 推理环境后重启启动助手'
     };
   }
@@ -157,7 +155,7 @@ export async function runMatting({
 
   const inference = await pickInferencePython();
   if (!inference) {
-    throw new Error('算力节点上找不到可运行 BiRefNet 的 Python（需要 transformers 4.x）。' +
+    throw new Error('算力节点上找不到可运行 BiRefNet 的 Python（需要 torch、torchvision、transformers）。' +
       '请在算力节点配置 BiRefNet 推理环境后重启启动助手');
   }
 
