@@ -17,7 +17,7 @@
   ],
   "extraResources": [
     { "from": "src/matting", "to": "matting", "filter": ["*.py"] },
-    { "from": "../web-dist", "to": "web-dist", "filter": ["**/*"] },
+    { "from": "../web-dist", "to": "web-dist", "filter": ["**/*", "!vendor/onnxruntime-web/**", "!vendor/matting/**"] },
     {
       "from": "../../particle-editor-desktop",
       "to": "desktop-license",

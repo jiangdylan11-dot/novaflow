@@ -160,6 +160,31 @@ const signedOut = await sandbox.electronAPI.aiSeqRembgBatch(payload);
 check(signedOut.ok, false, 'unauthorized matting is rejected');
 check(signedOut.error.includes('重新登录'), true, 'session error offers a login action');
 
+// No node that can matte is online: the job stays in this browser (WebGPU) instead of queueing for a
+// node that is not there. This sandbox has no WebGPU, so it must say so rather than submit.
+rejectMissingToken = false;
+const control = sandbox.NovaFlowWebRuntime.control;
+let capsPath = '';
+sandbox.NovaFlowWebRuntime.control = async (method, path, body) => {
+  if (path.startsWith('/api/web/capabilities')) { capsPath = path; return { available_workers: 3, taskTypes: [{ task_type: 'video_matting', available_workers: 0 }] }; }
+  return control(method, path, body);
+};
+submitted = undefined;
+const offline = await sandbox.electronAPI.aiSeqRembgBatch(payload);
+check(capsPath, '/api/web/capabilities', 'asks the pool for matting-capable nodes');
+check(submitted, undefined, 'no task is queued when no node can matte');
+check(offline.ok, false, 'no WebGPU here, so no in-browser matting');
+check(offline.error.includes('WebGPU'), true, 'the user is told what the browser lacks');
+sandbox.NovaFlowWebRuntime.computeNode = { id: '0b8e9a4e-7f43-4d64-9a51-2d2f1f3e7c11' };
+sandbox.NovaFlowWebRuntime.control = async (method, path, body) => {
+  if (path.startsWith('/api/web/capabilities')) { capsPath = path; return { taskTypes: [{ task_type: 'video_matting', available_workers: 1 }] }; }
+  return control(method, path, body);
+};
+packed = Buffer.concat([block(0), block(1)]);
+check((await sandbox.electronAPI.aiSeqRembgBatch(payload)).ok, true, 'a matting node online still gets the job');
+check(capsPath.endsWith('?worker=0b8e9a4e-7f43-4d64-9a51-2d2f1f3e7c11'), true, 'a pinned node is asked about by id');
+check(submitted.task_type, 'video_matting', 'the job went to the pool');
+
 const html = await readFile(new URL('../../renderer/index.html', import.meta.url), 'utf8');
 const asset = html.match(/src="\.\/(assets\/index-[^"?]+\.js)/)[1];
 const bundle = await readFile(new URL('../../renderer/' + asset, import.meta.url), 'utf8');

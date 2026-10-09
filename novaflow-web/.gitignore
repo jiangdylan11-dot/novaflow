@@ -22,3 +22,7 @@ web-dist/
 worker-renderer/
 # ffmpeg.wasm's 32 MB core, GPL. tools/fetch-ffmpeg-core.mjs gets it; the build calls that.
 renderer/vendor/ffmpeg/core/
+# 视频抠图 in the browser: ONNX Runtime Web (tools/fetch-onnxruntime-web.mjs, the build calls it) and the
+# BiRefNet_lite ONNX export (tools/export-browser-matting-model.py, run once on the build machine).
+renderer/vendor/onnxruntime-web/
+renderer/vendor/matting/

@@ -2108,6 +2108,153 @@
     return packs;
   }
 
+  // ---- 视频抠图 with no compute node online --------------------------------
+  //
+  // The nodes run BiRefNet_lite. The same weights, exported to ONNX by
+  // tools/export-browser-matting-model.py (deformable convolution rewritten
+  // as GridSample; 93 MB in fp16), run here with ONNX Runtime Web on WebGPU
+  // when no node that can matte is online. Measured against the nodes'
+  // PyTorch masks: mean difference 0.07/255, the rest along contours (the
+  // browser's resize, not the model). On an RTX 40 laptop GPU a 1024x1024
+  // frame takes 0.2-0.8 s after a 4 s start. Without WebGPU it is refused:
+  // on the CPU one frame took minutes.
+  //
+  // The model is downloaded once (in parts, like ffmpeg's core) and kept in
+  // Cache Storage; the session stays loaded for the next clip.
+  const BROWSER_MATTING_MODEL = 'matting/model.bin';
+  const BROWSER_MATTING_VERSION = '1';
+  const BROWSER_MATTING_SIZE = 1024;
+  const vendorUrl = (file) => new URL('vendor/' + file, capabilitiesBase || root.location.href).href;
+  let browserMattingSession = null;
+  let browserMattingRun = 0;
+
+  /** Online nodes that can take a matting task (busy ones included: they queue); null when unknown. */
+  async function mattingNodesOnline(runtime) {
+    try {
+      const pinned = runtime.computeNode && runtime.computeNode.id;
+      const caps = await runtime.control('GET', '/api/web/capabilities' + (pinned ? '?worker=' + encodeURIComponent(pinned) : ''));
+      const entry = ((caps && caps.taskTypes) || []).find((t) => t.task_type === MATTING_TASK_TYPE);
+      const count = entry ? entry.available_workers : caps && caps.available_workers;
+      return count === undefined || count === null || !Number.isFinite(Number(count)) ? null : Number(count);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function browserMattingModel(onBytes) {
+    const url = vendorUrl(BROWSER_MATTING_MODEL);
+    const key = url + '?v=' + BROWSER_MATTING_VERSION;
+    let cache = null;
+    try {
+      cache = await root.caches.open('novaflow-models');
+      const hit = await cache.match(key);
+      if (hit) return new Uint8Array(await hit.arrayBuffer());
+    } catch (_) { cache = null; }
+    let bytes;
+    const manifestResponse = await root.fetch(url + '.parts.json');
+    if (manifestResponse.ok) {
+      const manifest = await manifestResponse.json();
+      const parts = Array.isArray(manifest && manifest.parts) ? manifest.parts : [];
+      const total = Number(manifest.bytes) || 0;
+      let received = 0;
+      const buffers = await Promise.all(parts.map((name) => fetchCounting(new URL(name, url).href, (n) => { received += n; onBytes(received, total); })));
+      const length = buffers.reduce((sum, part) => sum + part.length, 0);
+      if (!parts.length || (total && length !== total)) throw new Error('抠图模型下载不完整：' + length + ' / ' + total + ' 字节');
+      bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const part of buffers) { bytes.set(part, offset); offset += part.length; }
+    } else {
+      let received = 0;
+      bytes = await fetchCounting(url, (n) => { received += n; onBytes(received, 0); });
+    }
+    try { if (cache) await cache.put(key, new Response(bytes)); } catch (_) { /* the HTTP cache still has it */ }
+    return bytes;
+  }
+
+  function browserMattingSessionFor(jobId) {
+    if (!browserMattingSession) {
+      browserMattingSession = (async () => {
+        const ort = await import(vendorUrl('onnxruntime-web/ort.webgpu.min.mjs'));
+        ort.env.wasm.wasmPaths = vendorUrl('onnxruntime-web/');
+        ort.env.wasm.numThreads = 1;
+        ort.env.logLevel = 'error';
+        const model = await browserMattingModel((received, total) => reportMatting(jobId, 'running',
+          '正在下载抠图模型（首次）' + formatMb(received) + (total ? ' / ' + formatMb(total) : ''), 0.03 + (total ? 0.07 * received / total : 0)));
+        reportMatting(jobId, 'running', '正在启动本机 AI 抠图…', 0.1);
+        const session = await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' });
+        return { ort, session };
+      })().catch((error) => { browserMattingSession = null; throw error; });
+    }
+    return browserMattingSession;
+  }
+
+  /** Bilinear resize of the model's square float mask into one 8-bit alpha plane. */
+  function resizeMaskInto(mask, size, plane, width, height) {
+    const sx = size / width, sy = size / height, last = size - 1;
+    for (let y = 0; y < height; y++) {
+      const fy = Math.min(last, Math.max(0, (y + 0.5) * sy - 0.5)), y0 = Math.floor(fy), y1 = Math.min(last, y0 + 1), wy = fy - y0;
+      for (let x = 0; x < width; x++) {
+        const fx = Math.min(last, Math.max(0, (x + 0.5) * sx - 0.5)), x0 = Math.floor(fx), x1 = Math.min(last, x0 + 1), wx = fx - x0;
+        const top = mask[y0 * size + x0] * (1 - wx) + mask[y0 * size + x1] * wx;
+        const bottom = mask[y1 * size + x0] * (1 - wx) + mask[y1 * size + x1] * wx;
+        plane[y * width + x] = Math.round(Math.max(0, Math.min(1, top * (1 - wy) + bottom * wy)) * 255);
+      }
+    }
+  }
+
+  async function mattingInBrowser(jobId, frames, width, height, totalFrames) {
+    const run = ++browserMattingRun;
+    let adapter = null;
+    try { adapter = root.navigator && root.navigator.gpu ? await root.navigator.gpu.requestAdapter() : null; } catch (_) { adapter = null; }
+    if (!adapter) {
+      const message = '现在没有在线算力，这个浏览器也不支持 WebGPU，无法在本机抠图。请用新版 Chrome 或 Edge 打开，或等算力上线后重试';
+      reportMatting(jobId, 'error', message, undefined);
+      return { ok: false, jobId, error: message };
+    }
+    try {
+      reportMatting(jobId, 'running', '现在没有在线算力，改在本机浏览器里抠图…', 0.02);
+      const { ort, session } = await browserMattingSessionFor(jobId);
+      const size = BROWSER_MATTING_SIZE, area = size * size;
+      const canvas = typeof root.OffscreenCanvas === 'function' ? new root.OffscreenCanvas(size, size) : Object.assign(root.document.createElement('canvas'), { width: size, height: size });
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const input = new Float32Array(3 * area);
+      const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+      const stride = width * height;
+      // One buffer for the whole job; the streamed chunks are views into it (see the node path).
+      const alphaBytes = new Uint8Array(stride * frames.length);
+      const decodedFrameIndices = [];
+      const started = Date.now();
+      for (let index = 0; index < frames.length; index++) {
+        if (run !== browserMattingRun) throw new Error('已开始新的抠图，这一次已停止');
+        const bitmap = await root.createImageBitmap(new Blob([frames[index].bytes], { type: 'image/png' }), { resizeWidth: size, resizeHeight: size, resizeQuality: 'high' });
+        ctx.drawImage(bitmap, 0, 0);
+        if (typeof bitmap.close === 'function') bitmap.close();
+        const pixels = ctx.getImageData(0, 0, size, size).data;
+        for (let p = 0, i = 0; p < area; p++, i += 4) {
+          input[p] = (pixels[i] / 255 - mean[0]) / std[0];
+          input[area + p] = (pixels[i + 1] / 255 - mean[1]) / std[1];
+          input[2 * area + p] = (pixels[i + 2] / 255 - mean[2]) / std[2];
+        }
+        const output = await session.run({ input: new ort.Tensor('float32', input, [1, 3, size, size]) });
+        const mask = await output.mask.getData();
+        if (typeof output.mask.dispose === 'function') output.mask.dispose();
+        const plane = alphaBytes.subarray(index * stride, (index + 1) * stride);
+        resizeMaskInto(mask, size, plane, width, height);
+        decodedFrameIndices.push(Number(frames[index].decodedFrameIndex));
+        rembgMaskChunk.emit({ jobId: jobId, width: width, height: height, decodedFrameIndices: [Number(frames[index].decodedFrameIndex)], alphaBytes: plane });
+        const done = index + 1, left = Math.round((Date.now() - started) / done * (frames.length - done) / 1000);
+        reportMatting(jobId, 'running', '本机 AI 分割 ' + done + '/' + frames.length + ' 帧' + (done < frames.length ? '，约剩 ' + left + ' 秒' : ''), 0.12 + 0.85 * done / frames.length);
+      }
+      if (totalFrames && frames.length !== totalFrames) throw new Error('遮罩帧数与画面帧数不一致：' + frames.length + ' ≠ ' + totalFrames);
+      reportMatting(jobId, 'done', '抠图完成', 1);
+      return { ok: true, jobId: jobId, width: width, height: height, frames: frames.length, decodedFrameIndices: decodedFrameIndices, alphaBytes: alphaBytes, alphaEncoding: 'u8-mask-v1', alphaByteLength: alphaBytes.byteLength };
+    } catch (error) {
+      const message = '本机抠图失败：' + String((error && error.message) || error);
+      reportMatting(jobId, 'error', message, undefined);
+      return { ok: false, jobId, error: message };
+    }
+  }
+
   api.aiSeqRembgBatch = async (payload) => {
     const jobId = String((payload && payload.jobId) || '');
     const runtime = root.NovaFlowWebRuntime;
@@ -2121,6 +2268,9 @@
 
     if (!frames.length) return { ok: false, jobId, error: '没有可抠图的帧' };
     if (!width || !height) return { ok: false, jobId, error: '读不到画面尺寸，无法抠图' };
+
+    // No node that can matte is online: run the same model in this browser (WebGPU).
+    if (await mattingNodesOnline(runtime) === 0) return mattingInBrowser(jobId, frames, width, height, totalFrames);
 
     let taskId = '', stage = '准备视频帧';
     try {

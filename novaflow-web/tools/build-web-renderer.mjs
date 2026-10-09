@@ -26,6 +26,7 @@ import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
 import { rewordBundle } from './reword-desktop-strings.mjs';
 import { fetchFfmpegCore } from './fetch-ffmpeg-core.mjs';
+import { fetchOnnxRuntimeWeb } from './fetch-onnxruntime-web.mjs';
 import { allWorkflowEntryMethods, WORKFLOW_SOURCE_MODULES } from '../packages/shared/src/workflow-modules.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -165,6 +166,21 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
   } catch (error) {
     log('ffmpeg core missing', String((error && error.message) || error));
     console.warn('  ffmpeg core not available: ' + String((error && error.message) || error));
+  }
+  // 视频抠图 with no compute node online runs BiRefNet_lite in the browser: ONNX Runtime Web is fetched
+  // like ffmpeg's core, the model is exported once by tools/export-browser-matting-model.py. Without
+  // either the site still builds; matting then needs a compute node, as before.
+  try {
+    const ort = await fetchOnnxRuntimeWeb();
+    log('onnxruntime-web', { bytes: ort.bytes, downloaded: ort.downloaded });
+  } catch (error) {
+    console.warn('  onnxruntime-web not available: ' + String((error && error.message) || error));
+  }
+  try {
+    const model = await stat(join(SRC, 'vendor/matting/model.bin'));
+    log('browser matting model', { bytes: model.size });
+  } catch {
+    console.warn('  browser matting model missing: run tools/export-browser-matting-model.py (视频抠图 then needs a compute node)');
   }
 
   const entries = await readdir(SRC, { withFileTypes: true });
