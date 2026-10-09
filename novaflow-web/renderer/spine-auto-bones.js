@@ -643,17 +643,22 @@
     // an eye shows an iris / white next to its dark outline; an eyebrow does not
     for (const b of eyeCands) b.inner = eyeCore(b).length
     if (eyeCands.filter((b) => b.inner >= 8).length >= 2) eyeCands = eyeCands.filter((b) => b.inner >= 8)
+    if (opts && opts.debugFace) opts.debugFace({ fx0, fx1, fy0, fy1, cands: eyeCands.map((b) => ({ cx: Math.round(b.cx), cy: Math.round(b.cy), area: b.area, inner: b.inner, box: [b.bx0, b.by0, b.bx1, b.by1] })) })
     const faceCx = (fx0 + fx1) / 2
+    const fm = opts && opts.featureMask
+    const featFrac = (b) => { if (!fm || !b.px) return 0; let k = 0; for (const i of b.px) if (fm[i]) k++; return k / b.px.length }
     let pair = null, bestScore = 0
     for (let i = 0; i < eyeCands.length; i++) for (let j = i + 1; j < eyeCands.length; j++) {
       const A = eyeCands[i], B = eyeCands[j]
       const ddx = Math.abs(A.cx - B.cx), ddy = Math.abs(A.cy - B.cy)
       if (ddx < 0.2 * fw || ddx > 0.8 * fw || ddy > 0.28 * fh) continue
       const ratio = Math.min(A.area, B.area) / Math.max(A.area, B.area)
-      if (ratio < 0.2) continue
+      // eyes drawn on their own layers: a half-hidden far eye may be a sliver of the near one
+      const fA = featFrac(A), fB = featFrac(B), onFeatures = fA > 0.5 && fB > 0.5
+      if (ratio < (onFeatures ? 0.03 : 0.2)) continue
       // two eyes sit either side of the face's middle
       const sym = Math.max(0, 1 - Math.abs((A.cx + B.cx) / 2 - faceCx) / (0.35 * fw))
-      const score = Math.min(A.area, B.area) * (0.5 + ratio) * (0.3 + sym)
+      const score = (fm ? Math.sqrt(A.area * B.area) * (0.2 + 0.8 * Math.min(fA, fB)) : Math.min(A.area, B.area) * (0.5 + ratio)) * (0.3 + sym)
       if (score > bestScore) { bestScore = score; pair = [A, B] }
     }
     const eyes = pair ? pair.slice().sort((p, q) => p.cx - q.cx) : (eyeCands.length ? [eyeCands[0]] : [])
@@ -736,6 +741,44 @@
   function worldOf(layer, px, py) {
     const p = layer.place
     return [p.x + px - layer.width / 2, p.y + layer.height / 2 - py]
+  }
+  /**
+   * The face as the eye sees it: the head layer with the small layers lying inside it
+   * (eyes, brows, lashes, mouth drawn as their own layers) composited on in draw order,
+   * in the head layer pixel frame. Hair, body and anything reaching outside the head are
+   * left out, so bangs do not cover the eyes. Layers are axis-aligned at 1:1 (flat export).
+   */
+  function faceComposite(head, layers) {
+    const W = head.width, Hh = head.height
+    const hb = head.analysis.bbox
+    const [hx0, hy1] = worldOf(head, hb[0], hb[1]), [hx1, hy0] = worldOf(head, hb[2], hb[3])
+    const parts = layers.filter((l) => {
+      if (l === head) return true
+      if (!l.rgba || !l.analysis || l.analysis.area > 0.15 * head.analysis.area) return false
+      const b = l.analysis.bbox
+      const [x0, y1] = worldOf(l, b[0], b[1]), [x1, y0] = worldOf(l, b[2], b[3])
+      return x0 >= hx0 - 2 && x1 <= hx1 + 2 && y0 >= hy0 - 2 && y1 <= hy1 + 2
+    }).sort((a, b) => a.drawIndex - b.drawIndex)
+    if (parts.length === 1) return { rgba: head.rgba, w: W, h: Hh, parts: [head.name] }
+    const out = new Float32Array(W * Hh * 4)
+    const feat = new Uint8Array(W * Hh)
+    for (const l of parts) {
+      const ox = l.place.x - l.width / 2 - (head.place.x - W / 2), oy = (head.place.y + Hh / 2) - (l.place.y + l.height / 2)
+      for (let y = 0; y < Hh; y++) {
+        const ly = Math.round(y - oy); if (ly < 0 || ly >= l.height) continue
+        for (let x = 0; x < W; x++) {
+          const lx = Math.round(x - ox); if (lx < 0 || lx >= l.width) continue
+          const si = 4 * (ly * l.width + lx), a = l.rgba[si + 3] / 255; if (a <= 0) continue
+          const di = 4 * (y * W + x)
+          for (let c = 0; c < 3; c++) out[di + c] = l.rgba[si + c] * a + out[di + c] * (1 - a)
+          out[di + 3] = a + out[di + 3] * (1 - a)
+          if (l !== head) { if (a > 0.5) feat[y * W + x] = 1 } else if (a > 0.5) feat[y * W + x] = 0
+        }
+      }
+    }
+    const rgba = new Uint8ClampedArray(W * Hh * 4)
+    for (let i = 0; i < W * Hh; i++) { const a = out[4 * i + 3]; rgba[4 * i + 3] = Math.round(255 * a); if (a > 0) for (let c = 0; c < 3; c++) rgba[4 * i + c] = Math.round(out[4 * i + c] / a) }
+    return { rgba, w: W, h: Hh, parts: parts.map((l) => l.name), feat }
   }
   /** EDT of the layer silhouette at a world point, 0 outside. */
   function depthAt(layer, wx, wy) {
@@ -1450,10 +1493,48 @@
       l.hint = o.names ? nameHint(l.name) : { part: null, side: null }
       if (l.hintOverride) l.hint = Object.assign({}, l.hint, l.hintOverride)
     }
+    // No layer is named as a face or a head (exports with numbered layers: ls1..ls40): find
+    // the face by looking. Candidates sit in the upper part of the figure and are neither the
+    // big body pieces nor specks; the one where the detector finds a pair of eyes in a skin
+    // blob wins, the higher one on a tie (a chest with two dark points is lower than the face).
+    if (o.faceDetect && !L.some((l) => l.hint.part === 'head' || l.hint.part === 'face')) {
+      const box = L.filter((l) => l.analysis).map((l) => { const b = l.analysis.bbox; return { l, top: l.place.y + l.height / 2 - b[1], bottom: l.place.y + l.height / 2 - b[3], area: l.analysis.area } })
+      if (box.length) {
+        const yTop = Math.max(...box.map((t) => t.top)), yBot = Math.min(...box.map((t) => t.bottom)), H = Math.max(1, yTop - yBot)
+        const maxArea = Math.max(...box.map((t) => t.area))
+        let best = null
+        for (const t of box) {
+          if (!t.l.rgba) continue
+          const cy = (t.top + t.bottom) / 2
+          if (cy < yTop - 0.45 * H || t.area > 0.4 * maxArea || t.area < 0.002 * maxArea) continue
+          const img = faceComposite(t.l, L)
+          const det = detectFace(img.rgba, img.w, img.h, Object.assign({}, o, { featureMask: img.feat || null }))
+          if (!det || !det.eyes || !det.eyes.length) continue
+          const score = 10 * det.eyes.length + (det.mouth ? 3 : 0) + 5 * (cy - yBot) / H
+          if (!best || score > best.score) best = { l: t.l, det, score, img }
+        }
+        if (best) { best.l.hint = Object.assign({}, best.l.hint, { part: 'face', found: 'detected' }); best.l.faceDet = best.det; best.l.faceImg = best.img }
+      }
+    }
+    // backdrops: nearly opaque over their whole box and covering half the picture or more
+    let backdrops = []
+    {
+      const boxes = L.filter((l) => l.analysis).map((l) => { const b = l.analysis.bbox; const [x0, y1] = worldOf(l, b[0], b[1]), [x1, y0] = worldOf(l, b[2], b[3]); return { l, x0, x1, y0, y1, area: l.analysis.area, boxArea: Math.max(1, (x1 - x0) * (y1 - y0)) } })
+      if (boxes.length > 2) {
+        const X0 = Math.min(...boxes.map((b) => b.x0)), X1 = Math.max(...boxes.map((b) => b.x1)), Y0 = Math.min(...boxes.map((b) => b.y0)), Y1 = Math.max(...boxes.map((b) => b.y1))
+        const all = Math.max(1, (X1 - X0) * (Y1 - Y0))
+        const back = boxes.filter((b) => b.area / b.boxArea > 0.95 && b.boxArea > 0.5 * all).map((b) => b.l)
+        if (back.length && back.length < L.length) {
+          backdrops = back.map((l) => l.name)
+          for (const l of back) L.splice(L.indexOf(l), 1)
+        }
+      }
+    }
     const partOfLayer = new Map(L.map((l) => [l.name, l.hint.part]))
     // the face, found first: the head bone, the crown and the scalp cap all depend on it
     const headEarly = L.filter((l) => l.analysis && (l.hint.part === 'head' || l.hint.part === 'face')).sort((a, b) => (a.hint.part === 'head') === (b.hint.part === 'head') ? b.analysis.area - a.analysis.area : (a.hint.part === 'head' ? -1 : 1))[0] || null
-    const faceDetEarly = o.faceDetect && headEarly && headEarly.rgba ? detectFace(headEarly.rgba, headEarly.width, headEarly.height, o) : null
+    if (headEarly && headEarly.rgba && !headEarly.faceImg) headEarly.faceImg = faceComposite(headEarly, L)
+    const faceDetEarly = headEarly && headEarly.faceDet !== undefined ? headEarly.faceDet : (o.faceDetect && headEarly && headEarly.faceImg ? detectFace(headEarly.faceImg.rgba, headEarly.faceImg.w, headEarly.faceImg.h, Object.assign({}, o, { featureMask: headEarly.faceImg.feat || null })) : null)
     if (headEarly) headEarly.faceDet = faceDetEarly
     const faceBoxEarly = faceDetEarly && faceDetEarly.faceBox && faceDetEarly.faceBox[3] - faceDetEarly.faceBox[1] >= 0.3 * (headEarly.analysis.bbox[3] - headEarly.analysis.bbox[1]) ? faceDetEarly.faceBox : (headEarly ? headEarly.analysis.bbox.slice() : null)
     // hair drawn BEHIND the face or the body is invisible where they cover it, and hair
@@ -1492,7 +1573,7 @@
       }
     }
     const layersOk = L.filter((l) => l.analysis && l.analysis.graph.edges.length)
-    const plan = { layers: {}, scale, notes: [] }
+    const plan = { layers: {}, scale, notes: [], backdrops }
     const sk = new Skeleton()
     const rootId = sk.add('root', -1, 0, 0, 0, 0, { kind: 'root', layer: null, role: 'root' })
     if (!layersOk.length) return finish(sk, L, plan)
@@ -1524,8 +1605,49 @@
     // ---- root layer: hinted body, else the layer with the most "support"
     let rootLayer = null
     const bodies = layersOk.filter((l) => l.hint.part === 'body')
-    if (bodies.length) rootLayer = bodies.reduce((a, b) => (b.analysis.area > a.analysis.area ? b : a))
-    else {
+    if (bodies.length && !(headEarly && faceBoxEarly)) rootLayer = bodies.reduce((a, b) => (b.analysis.area > a.analysis.area ? b : a))
+    if (!rootLayer && headEarly && faceBoxEarly) {
+      const fb = faceBoxEarly, fH = fb[3] - fb[1]
+      const cx = (fb[0] + fb[2]) / 2
+      // the body may run up behind the face to the jaw, never past the forehead; and it is not a
+      // backdrop several faces wide
+      const [, faceMidY] = worldOf(headEarly, cx, fb[1])
+      const faceW = fb[2] - fb[0]
+      const [chinX, chinY] = worldOf(headEarly, cx, fb[3])
+      const probes = [[chinX, chinY - 0.35 * fH], [chinX, chinY - 0.8 * fH], [chinX, chinY - 1.4 * fH]]
+      const minHits = 1
+      let best = null, bestScore = 0
+      // hinted bodies first; everything else only when none of them sits below the face
+      const passes = (pool) => {
+        let pick = null, sc = 0
+        for (const l of pool) {
+          if (l === headEarly || l.hint.part === 'hair' || l.hint.part === 'face' || l.hint.part === 'head') continue
+          const top = worldOf(l, 0, l.analysis.bbox[1])[1]
+          if (top > faceMidY) continue
+          if (l.analysis.bbox[2] - l.analysis.bbox[0] > 4.5 * faceW) continue
+          const hits = probes.filter(([x, y]) => depthAt(l, x, y) > 0).length
+          if (hits < minHits) continue
+          const score = l.analysis.area * (1 + hits)
+          if (score > sc) { sc = score; pick = l }
+        }
+        return pick
+      }
+      best = bodies.length ? passes(bodies) : null
+      if (best) { rootLayer = best; plan.rootWhy = 'hinted-below-face' }
+      for (const l of (best ? [] : layersOk)) {
+        if (l === headEarly || l.hint.part === 'hair' || l.hint.part === 'face' || l.hint.part === 'head') continue
+        const top = worldOf(l, 0, l.analysis.bbox[1])[1]
+        if (top > faceMidY) continue
+        if (l.analysis.bbox[2] - l.analysis.bbox[0] > 4.5 * faceW) continue
+        const hits = probes.filter(([x, y]) => depthAt(l, x, y) > 0).length
+        if (hits < minHits) continue
+        const score = l.analysis.area * (1 + hits)
+        if (score > bestScore) { bestScore = score; best = l }
+      }
+      if (best && !rootLayer) { rootLayer = best; plan.rootWhy = 'below-face' }
+      if (!rootLayer && bodies.length) rootLayer = bodies.reduce((a, b) => (b.analysis.area > a.analysis.area ? b : a))
+    }
+    if (!rootLayer) {
       let best = -Infinity
       for (const l of layersOk) {
         let touch = 0
@@ -1955,8 +2077,20 @@
       let ux = neckDir[0], uy = neckDir[1]
       if (dF > 0.25 * faceH && toFace[1] > 0) { ux = 0.5 * neckDir[0] + 0.5 * toFace[0] / dF; uy = 0.5 * neckDir[1] + 0.5 * toFace[1] / dF; const n = Math.hypot(ux, uy); ux /= n; uy /= n }
       if (uy <= 0.2) { ux = 0; uy = 1 }
-      const len = Math.min(1.3 * faceH, Math.max(0.6 * faceH, (crownY - neckTop[1]) / uy))
-      headId = sk.add('head', trunkIds[2], neckTop[0], neckTop[1], neckTop[0] + ux * len, neckTop[1] + uy * len, { kind: 'bone', layer: head.name, role: 'trunk' })
+      // the trunk top far from the chin: start the head at the chin, along the face's up axis
+      let hx = neckTop[0], hy = neckTop[1]
+      const chin = worldOf(head, (faceBox[0] + faceBox[2]) / 2, faceBox[3])
+      const faceW = faceBox[2] - faceBox[0]
+      if (chin[1] - neckTop[1] > 0.6 * faceH || Math.abs(chin[0] - neckTop[0]) > 0.5 * faceW) {
+        const up = faceDet && faceDet.up ? [faceDet.up[0], -faceDet.up[1]] : [0, 1]
+        const n = Math.hypot(up[0], up[1]) || 1
+        ux = up[0] / n; uy = up[1] / n
+        if (uy <= 0.2) { ux = 0; uy = 1 }
+        hx = chin[0] - ux * 0.15 * faceH; hy = chin[1] - uy * 0.15 * faceH
+        plan.notes.push('head starts at the chin: trunk top ' + Math.round(chin[1] - neckTop[1]) + ' px below it')
+      }
+      const len = Math.min(1.3 * faceH, Math.max(0.6 * faceH, (crownY - hy) / uy))
+      headId = sk.add('head', trunkIds[2], hx, hy, hx + ux * len, hy + uy * len, { kind: 'bone', layer: head.name, role: 'trunk' })
       head.rootBone = headId; head.done = true
       plan.layers[head.name] = { role: 'head', part: head.hint.part, parent: rootLayer.name, parentBone: 'neck', bones: ['head'] }
     } else if (neckT < 1) {
@@ -2151,7 +2285,10 @@
       const width = 2 * l.rMean
       const thick = width > 0.55 * trunkRadius * 2
       const bottom = worldOf(l, 0, l.analysis.bbox[3])[1]
-      if (l.elong >= 2.5 && bottom <= groundAll + 0.06 * heightAll) return 'limb'   // it stands on the ground: a leg
+      // it stands on the ground and is about as thick as a leg: a leg. A splash or a ribbon end
+      // lying by the feet is thin (洛神 shui-13/14 were rigged as legs with IK and tore when the
+      // ankles moved)
+      if (l.elong >= 2.5 && bottom <= groundAll + 0.06 * heightAll && width > 0.3 * trunkRadius * 2) return 'limb'
       return thick && l.elong < 9 && l.leaves <= 3 ? 'limb' : 'strand'
     }
 
@@ -2300,7 +2437,9 @@
       // an earring, a tiara, a hair pin: on the head, whatever hair it sits in
       if (par.index < 0 && part === 'accessory' && headId >= 0) {
         const c0 = worldOf(l, (l.analysis.bbox[0] + l.analysis.bbox[2]) / 2, (l.analysis.bbox[1] + l.analysis.bbox[3]) / 2)
-        const onHead = Array.from(l.overlap.keys()).some((k) => k.done && (k.hint.part === 'face' || k.hint.part === 'head')) || (cap && Math.abs(c0[0] - cap.cx) < cap.halfW && c0[1] > cap.yMin - 0.6 * (faceBox[3] - faceBox[1]))
+        const faceHt = faceBox[3] - faceBox[1]
+        const nearFace = headCentre && Math.hypot(c0[0] - headCentre[0], c0[1] - headCentre[1]) < 1.6 * faceHt
+        const onHead = nearFace || Array.from(l.overlap.keys()).some((k) => k.done && (k.hint.part === 'face' || k.hint.part === 'head')) || (cap && Math.abs(c0[0] - cap.cx) < cap.halfW && c0[1] > cap.yMin - 0.6 * faceHt)
         if (onHead) { par = { index: headId, dist: 0 }; why = 'head' }
       }
       if (par.index < 0 && rootC.smallest) { par = sk.nearest(rx, ry, (b) => notMine(b) && b.layer === rootC.smallest.name); why = 'smallest-containing' }
@@ -2313,6 +2452,18 @@
       if (par.index < 0) { par = sk.nearest(rx, ry, (b) => notMine(b) && (allowed.has(b.layer) || b.role === 'trunk')); why = 'nearest-overlapping' }
       if (par.index < 0) { par = sk.nearest(rx, ry, notMine); why = 'nearest' }
       if (par.index < 0) par = { index: rootId, dist: 0 }
+      if (role === 'plate' && par.index >= 0 && sk.bones[par.index] && sk.bones[par.index].role === 'strand') {
+        // held pieces belong to the hand: hand bones first, then the arm, then any rigid bone
+        const lb = l.analysis.bbox
+        const reach = Math.max(2 * R, 120, 0.5 * Math.hypot(lb[2] - lb[0], lb[3] - lb[1]))
+        const ok = (b) => notMine(b) && b.kind === 'bone' && b.role !== 'strand' && b.role !== 'connector' && allowed.has(b.layer)
+        // a hand need not overlap what it holds (drawn side by side): hands and arms by distance
+        const rigid = (b) => notMine(b) && b.kind === 'bone' && b.role !== 'strand' && b.role !== 'connector'
+        for (const pick of [(b) => rigid(b) && b.role === 'extremity' && partOfLayer.get(b.layer) !== 'foot', (b) => rigid(b) && b.role === 'limb' && partOfLayer.get(b.layer) === 'arm', ok]) {
+          const alt = sk.nearest(rx, ry, pick)
+          if (alt.index >= 0 && alt.dist <= reach) { par = alt; why = 'rigid-off-strand'; break }
+        }
+      }
       if (part === 'cloth' && role === 'strand' && continues < 0) {
         // a ribbon that starts where another ribbon's chain ends continues it
         let bestB = -1, bd = Infinity
@@ -2972,7 +3123,19 @@
       }
     }
     if (o.templateNames !== false) { templateNames(sk, limbs, hipsId, rootId, plan, partOfLayer); templateConstraints(sk, partOfLayer) }
-    return finish(sk, L, plan)
+    for (const l of L) {
+      if (l.done || l.rootBone !== undefined || (plan.backdrops || []).includes(l.name)) continue
+      const bb = l.analysis ? l.analysis.bbox : [0, 0, l.width, l.height]
+      const [cx, cy] = worldOf(l, (bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2)
+      const par = sk.nearest(cx, cy, (b) => b.kind === 'bone')
+      const nm = String(l.name).replace(/[^A-Za-z0-9_]/g, '_') + '_free'
+      const id = sk.add(nm, par.index >= 0 ? par.index : rootId, cx, cy, cx, cy, { kind: 'bone', layer: l.name, role: 'plate' })
+      l.rootBone = id; l.done = true
+      plan.layers[l.name] = { role: 'plate', part: l.hint ? l.hint.part : null, parentBone: par.index >= 0 ? sk.bones[par.index].name : 'root', parentWhy: 'free-piece', bones: [nm] }
+    }
+    const done = finish(sk, L, plan)
+    done.face = head ? { layer: head.name, det: faceDet, img: head.faceImg || null, place: head.place, width: head.width, height: head.height } : null
+    return done
   }
 
   /**
@@ -2988,6 +3151,8 @@
    */
   function templateNames(sk, limbs, hipsId, rootId, plan, partOfLayer) {
     const ren = new Map()
+    // names before any renaming (unique), so references resolve to the FINAL name in one step
+    const origNames = sk.bones.map((b) => b.name)
     const taken = new Set(sk.bones.map((b) => b.name))
     const setName = (i, nm) => {
       if (!(i >= 0) || !sk.bones[i]) return
@@ -3051,7 +3216,8 @@
     else if (bras.length === 1) setName(bras[0], 'bra')
     // constraints, the plan and the name index follow the renaming
     if (ren.size) {
-      const map = (n) => (ren.has(n) ? ren.get(n) : n)
+      const finalOf = new Map(origNames.map((o, i) => [o, sk.bones[i].name]))
+      const map = (n) => (finalOf.has(n) ? finalOf.get(n) : n)
       for (const c of sk.ik) { c.bones = c.bones.map(map); c.target = map(c.target) }
       for (const c of sk.tc) { c.bones = c.bones.map(map); c.target = map(c.target) }
       for (const k of Object.keys(plan.layers)) { const pl = plan.layers[k]; if (pl.bones) pl.bones = pl.bones.map(map); if (pl.parentBone) pl.parentBone = map(pl.parentBone) }

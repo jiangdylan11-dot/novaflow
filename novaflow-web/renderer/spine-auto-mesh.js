@@ -728,7 +728,47 @@
 
   // ----------------------------------------------------------------- main ---
 
+  /** Drawn pixels (alpha over the threshold) no triangle covers, and how many are drawn. */
+  function lostPixels(mesh, rgba, w, h, thr) {
+    const cov = new Uint8Array(w * h)
+    const V = mesh.vertices, T = mesh.triangles
+    for (let t = 0; t < T.length; t += 3) {
+      const ax = V[2 * T[t]], ay = V[2 * T[t] + 1], bx = V[2 * T[t + 1]], by = V[2 * T[t + 1] + 1], cx = V[2 * T[t + 2]], cy = V[2 * T[t + 2] + 1]
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), x1 = Math.min(w - 1, Math.ceil(Math.max(ax, bx, cx)))
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy))), y1 = Math.min(h - 1, Math.ceil(Math.max(ay, by, cy)))
+      const d = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax); if (Math.abs(d) < 1e-9) continue
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const px = x + 0.5, py = y + 0.5
+        const u = ((bx - px) * (cy - py) - (by - py) * (cx - px)) / d, v = ((cx - px) * (ay - py) - (cy - py) * (ax - px)) / d
+        if (u >= -0.02 && v >= -0.02 && 1 - u - v >= -0.02) cov[y * w + x] = 1
+      }
+    }
+    let drawn = 0, lost = 0
+    for (let i = 0; i < w * h; i++) if (rgba[4 * i + 3] > thr) { drawn++; if (!cov[i]) lost++ }
+    return { drawn, lost }
+  }
+
   function buildMesh(rgba, w, h, options) {
+    const first = buildMeshOnce(rgba, w, h, options)
+    const opt0 = Object.assign({}, DEFAULTS, options || {})
+    if (opt0.coverage === false) return first
+    const thr = Math.max(opt0.alphaThreshold, 24)
+    let best = first, bestLost = first ? lostPixels(first, rgba, w, h, thr) : { drawn: 1, lost: 1 }
+    if (!bestLost.drawn || bestLost.lost <= Math.max(8, 0.01 * bestLost.drawn)) return first
+    let density = opt0.density
+    for (let k = 0; k < 4; k++) {
+      density *= 2
+      const m = buildMeshOnce(rgba, w, h, Object.assign({}, options || {}, { density, keepFrac: 0, ringAreaRatio: 0, growPx: 2 }))
+      if (!m) continue
+      const l = lostPixels(m, rgba, w, h, thr)
+      if (l.lost < bestLost.lost) { best = m; bestLost = l }
+      if (l.lost <= Math.max(8, 0.01 * l.drawn)) break
+    }
+    if (best) best.coverage = { drawn: bestLost.drawn, lost: bestLost.lost }
+    return best
+  }
+
+  function buildMeshOnce(rgba, w, h, options) {
     const opt = Object.assign({}, DEFAULTS, options || {})
     let mask = C.alphaMask(rgba, w, h, opt.alphaThreshold)
     mask = C.fillHoles(mask, w, h)
@@ -765,7 +805,7 @@
     const polyOpen = []
     const kinds = []
 
-    const outer = maskRings(mask, w, h, edge, { sagitta: sag, minRatio: opt.minSpaceRatio })
+    const outer = maskRings(mask, w, h, edge, { sagitta: sag, minRatio: opt.minSpaceRatio, areaRatio: typeof opt.ringAreaRatio === 'number' ? opt.ringAreaRatio : 0.02 })
     for (let i = 0; i < outer.rings.length; i++) {
       groups.push(outer.rings[i]); polys.push(outer.polys[i]); polyOpen.push(false); kinds.push('b')
     }

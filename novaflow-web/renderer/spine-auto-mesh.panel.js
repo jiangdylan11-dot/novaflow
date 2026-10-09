@@ -67,6 +67,8 @@
     sentText: null,
     source: null,
     lastReport: null,
+    /** what 自动架设 knows about the bones it built: name -> {layer, role, kind}, slot bones, the face */
+    autoRig: null,
     /** skeleton text the list was built from, so we can notice a new import */
     listedFrom: null
   }
@@ -351,6 +353,7 @@
     if (!ok) throw new Error('载入工程失败')
     // a fresh project invalidates anything we had meshed
     state.baseSkeleton = null
+    state.autoRig = null
     state.source = null
     state.listedFrom = null
     state.layers.clear()
@@ -647,7 +650,84 @@
     })
     const parents = Array.from(AW.logicalParents(skeleton))
     const drawIndex = new Map((skeleton.slots || []).map((s, i) => [s.name, i]))
-    return { skeleton, mats, skip, segs, parents, drawIndex }
+    // a skeleton 自动架设 built knows which layer every bone came from; the controllers it
+    // placed are painted by the controller pass, not diffused
+    const rig = rigOwnership(mats)
+    if (rig) segs.forEach((s, i) => { if (AW.isController(mats[i].name)) s.skip = true })
+    return { skeleton, mats, skip, segs, parents, drawIndex, rig }
+  }
+
+  /**
+   * What 自动架设 recorded about the bones it built (layer, role), looked up by name on the
+   * current skeleton. Null for a skeleton it did not build (or one rebuilt by hand since).
+   */
+  function rigOwnership(mats) {
+    const rec = state.autoRig
+    if (!rec || !rec.roles) return null
+    const roles = mats.map((m) => rec.roles.get(m.name) || null)
+    const known = roles.filter(Boolean).length
+    if (known < 2 || known < 0.8 * mats.length) return null
+    return { roles, slotBone: rec.slotBone || {}, face: rec.face || null }
+  }
+
+  /**
+   * Bones of one layer by ownership: the bones built for it plus the bone each of its
+   * chains hangs from (the head for hair, the pelvis for a skirt strip); a layer with no
+   * bone of its own sits on its slot bone.
+   */
+  function ownedBones(ctx, slot) {
+    const { rig, skip, parents, mats } = ctx
+    const isBone = (i) => rig.roles[i] && rig.roles[i].kind === 'bone' && !skip.has(i)
+    const mine = new Set()
+    rig.roles.forEach((r, i) => { if (r && r.layer === slot && isBone(i)) mine.add(i) })
+    const out = new Set(mine)
+    for (const i of mine) { const p = parents[i]; if (p > 0 && !mine.has(p) && isBone(p)) out.add(p) }
+    if (!out.size) {
+      const sb = mats.findIndex((m) => m.name === rig.slotBone[slot])
+      if (sb >= 0 && !skip.has(sb)) out.add(sb)
+    }
+    return Array.from(out)
+  }
+
+  /** The controller pass's shared state: face position, eyes, breasts, regions. */
+  async function controllerContext(ctx, geoms) {
+    const AW = window.NovaFlowAutoWeights
+    const face = ctx.rig.face
+    let faceWorld = null
+    if (face) {
+      for (const g of geoms.values()) if (g.slot === face.layer) faceWorld = g.world
+      const slotDef = faceWorld ? null : (ctx.skeleton.slots || []).find((s) => s.name === face.layer)
+      const layer = slotDef && slotDef.attachment ? state.layers.get(slotDef.attachment) : null
+      if (layer && layer.hasImage) {
+        // the face is not being bound this time: a throwaway mesh gives its extent
+        const imageData = await ensurePixels(slotDef.attachment)
+        const mesh = layer.mesh || (imageData && window.NovaFlowAutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, { density: layer.density }))
+        const g = mesh ? layerGeometry(ctx.skeleton, ctx.mats, slotDef.attachment, Object.assign({}, layer, { mesh, imageData })) : null
+        if (g) faceWorld = g.world
+      }
+    }
+    return AW.controllerContext({ names: ctx.mats.map((m) => m.name), parents: ctx.parents, mats: ctx.mats, roles: ctx.rig.roles, face, draw: ctx.drawIndex, faceWorld })
+  }
+
+  /**
+   * After the heat solve on an auto-built skeleton: a neighbour's bone only smooths the
+   * joint, small loose pieces move rigidly, and the controller points get their
+   * conventional weights (eyelids, breasts, turn sliders).
+   */
+  function finishLayer(ctx, ctl, g, solved) {
+    const AW = window.NovaFlowAutoWeights
+    let ids = solved.boneIds, W = solved.weights
+    if (!ids.length) return solved
+    const isOwn = (id) => !!(ctx.rig.roles[id] && ctx.rig.roles[id].layer === g.slot)
+    const own = ids.filter((id) => isOwn(id) && ctx.rig.roles[id].kind === 'bone')
+    if (own.length && own.length < ids.length) {
+      const first = ctx.mats[own[0]]
+      let ownLength = 0; for (const id of own) ownLength += Number(ctx.mats[id].length) || 0
+      W = AW.confineToOwn(g.world, g.tris, W, ids, isOwn, [first.worldX, first.worldY], ownLength)
+    }
+    W = AW.rigidIslands(g.world, g.tris, W, ids.length).W
+    if (ctl) { const r = AW.applyControllers(ctl, g.slot, ids, W, g.world); ids = r.ids; W = r.W }
+    return { boneIds: ids, weights: W }
   }
 
   /** Solve one layer for a bone list; drops bones nothing binds to. */
@@ -698,13 +778,15 @@
   }
 
   /** Re-solve a layer on its current mesh with the bone set it already had (after a mesh edit). */
-  function rebindLayer(name, boneIds) {
+  async function rebindLayer(name, boneIds) {
     const layer = state.layers.get(name)
     if (!layer || !layer.mesh || !boneIds || !boneIds.length) { if (layer) layer.weights = null; return }
     try {
       const ctx = bindContext()
       const g = layerGeometry(ctx.skeleton, ctx.mats, name, layer)
-      layer.weights = g ? solveLayer(ctx, g, boneIds) : null
+      if (!g) { layer.weights = null; return }
+      const solved = solveLayer(ctx, g, boneIds)
+      layer.weights = ctx.rig ? finishLayer(ctx, await controllerContext(ctx, new Map([[name, g]])), g, solved) : solved
     } catch { layer.weights = null }
   }
 
@@ -732,16 +814,20 @@
     const layersGeom = Array.from(geoms.entries()).map(([n, g]) => ({ name: n, vertices: g.world, triangles: g.tris, drawIndex: ctx.drawIndex.get(g.slot) }))
     setStatus('分配骨骼…')
     await nextFrame()
-    const assigned = AW.assignBones(layersGeom, ctx.segs, ctx.parents)
+    // an auto-built skeleton: every layer takes the bones built for it (geometry guesses
+    // arms wrong half the time); any other skeleton: assign by geometry
+    const assigned = ctx.rig ? null : AW.assignBones(layersGeom, ctx.segs, ctx.parents)
+    const ctl = ctx.rig ? await controllerContext(ctx, geoms) : null
     let done = 0
     for (const [n, g] of geoms) {
       done++
       setStatus(`计算权重 ${done}/${geoms.size} · ${n}`)
       await nextFrame()
-      const ids = assigned.layers.get(n) || []
+      const ids = ctx.rig ? ownedBones(ctx, g.slot) : (assigned.layers.get(n) || [])
       const layer = state.layers.get(n)
       if (!ids.length) { layer.weights = null; continue }
-      layer.weights = solveLayer(ctx, g, ids)
+      const solved = solveLayer(ctx, g, ids)
+      layer.weights = ctx.rig ? finishLayer(ctx, ctl, g, solved) : solved
       layer.weightsEdited = false
     }
     setStatus('写回骨架…')
@@ -1069,6 +1155,7 @@
     if (!ok) throw new Error('重新载入工程失败')
     // a fresh project invalidates anything we had meshed
     state.baseSkeleton = null
+    state.autoRig = null
     state.source = null
     state.listedFrom = null
     state.layers.clear()
@@ -1184,7 +1271,7 @@
     layer.density = density
     layer.edited = false
     // a new mesh needs new weights; keep the bone set the layer already had
-    if (prevIds) rebindLayer(name, prevIds)
+    if (prevIds) await rebindLayer(name, prevIds)
     await applyAll()
     renderList()
   }
@@ -1231,7 +1318,7 @@
     const prevIds = layer.weights ? layer.weights.boneIds.slice() : null
     layer.mesh = edited
     layer.edited = true
-    if (prevIds) rebindLayer(name, prevIds)
+    if (prevIds) await rebindLayer(name, prevIds)
     setStatus(`写回 ${name}…`)
     await nextFrame()
     await applyAll()
@@ -2938,6 +3025,11 @@
     const built = AB.buildSkeleton(layers)
     const next = AB.applyToSkeleton(skel, built)
     const text = JSON.stringify(next)
+    // bones by name (they survive later edits in the bone editor); built.bones runs in
+    // the same order as the written skeleton's bones
+    const roles = new Map()
+    next.bones.forEach((b, i) => { const r = built.bones[i]; if (r) roles.set(b.name, { layer: r.layer || null, role: r.role || null, kind: r.kind || null }) })
+    state.autoRig = { roles, slotBone: built.slotBone || {}, face: built.face && built.face.det ? built.face : null }
     for (const l of state.layers.values()) { l.weights = null; l.weightsEdited = false }
     setStatus(`写回 ${built.bones.length} 根骨…`)
     await nextFrame()

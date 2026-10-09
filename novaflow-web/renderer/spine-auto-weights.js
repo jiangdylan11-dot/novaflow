@@ -1069,8 +1069,343 @@
     return out
   }
 
+  // ------------------------------------------------- after the heat solve ---
+
+  function smooth01(x) { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t) }
+
+  /** Connected pieces of a triangulation: arrays of vertex indices. */
+  function meshIslands(n, tris) {
+    const parent = Int32Array.from({ length: n }, (_, i) => i)
+    const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a] } return a }
+    for (let t = 0; t < tris.length; t += 3) { const a = find(tris[t]), b = find(tris[t + 1]), c = find(tris[t + 2]); parent[b] = a; parent[find(c)] = a }
+    const groups = new Map()
+    for (let i = 0; i < n; i++) { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(i) }
+    return Array.from(groups.values())
+  }
+
+  function islandAreas(world, tris, groups) {
+    const of = new Int32Array(world.length / 2)
+    groups.forEach((g, k) => { for (const v of g) of[v] = k })
+    const area = new Float64Array(groups.length)
+    for (let t = 0; t < tris.length; t += 3) {
+      const a = tris[t], b = tris[t + 1], c = tris[t + 2]
+      area[of[a]] += 0.5 * Math.abs((world[2 * b] - world[2 * a]) * (world[2 * c + 1] - world[2 * a + 1]) - (world[2 * b + 1] - world[2 * a + 1]) * (world[2 * c] - world[2 * a]))
+    }
+    return area
+  }
+
+  /**
+   * A layer follows its own bones; a bone of ANOTHER layer (the one a chain hangs from)
+   * only smooths the joint. Its weight fades out within `reach` of the chain root and the
+   * layer's own bones take the rest (钟馗 11_04 took 47 % from a neighbour's bone and bent
+   * 151 px when the two moved apart). W: row-major n x ids.length, changed in place.
+   */
+  function confineAnchors(world, W, ids, isOwn, root, reach) {
+    const n = world.length / 2, nb = ids.length
+    const own = ids.map((id) => isOwn(id))
+    if (!own.some(Boolean) || own.every(Boolean)) return W
+    for (let i = 0; i < n; i++) {
+      const d = Math.hypot(world[2 * i] - root[0], world[2 * i + 1] - root[1])
+      const keep = 1 - smooth01((d - 0.35 * reach) / (0.65 * reach))
+      let moved = 0, ownSum = 0
+      for (let j = 0; j < nb; j++) {
+        if (own[j]) { ownSum += W[i * nb + j]; continue }
+        const w = W[i * nb + j], nw = w * keep
+        moved += w - nw; W[i * nb + j] = nw
+      }
+      if (moved <= 0) continue
+      if (ownSum > 1e-9) { for (let j = 0; j < nb; j++) if (own[j]) W[i * nb + j] += moved * W[i * nb + j] / ownSum }
+      else W[i * nb + own.indexOf(true)] += moved
+    }
+    return W
+  }
+
+  /**
+   * confineAnchors with the reach the test line settled on: 15 % of the layer (its own
+   * chain or its diagonal, at least 20 px), and none at all for a layer of scattered
+   * pieces (sparks, petals, drops), which has no joint to smooth.
+   */
+  function confineToOwn(world, tris, W, ids, isOwn, root, ownLength) {
+    const n = world.length / 2
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+    for (let i = 0; i < n; i++) { x0 = Math.min(x0, world[2 * i]); x1 = Math.max(x1, world[2 * i]); y0 = Math.min(y0, world[2 * i + 1]); y1 = Math.max(y1, world[2 * i + 1]) }
+    const groups = meshIslands(n, tris)
+    let scattered = false
+    if (groups.length > 1) {
+      const area = islandAreas(world, tris, groups)
+      let total = 0, big = 0
+      for (const a of area) { total += a; big = Math.max(big, a) }
+      scattered = big < 0.6 * total
+    }
+    const reach = scattered ? 1e-3 : Math.max(20, 0.15 * Math.max(ownLength || 0, Math.hypot(x1 - x0, y1 - y0)))
+    return confineAnchors(world, W, ids, isOwn, root, reach)
+  }
+
+  /**
+   * Small disconnected pieces of a layer (water drops, sparks, a floating petal) move as
+   * one: every island under `maxFrac` of the layer's area takes the mean weight row of its
+   * vertices, so it travels and turns with its bones but never stretches between them.
+   */
+  function rigidIslands(world, tris, W, nb, opts) {
+    const maxFrac = (opts && opts.maxFrac) || 0.15
+    const groups = meshIslands(world.length / 2, tris)
+    if (groups.length < 2) return { W, rigid: 0 }
+    const area = islandAreas(world, tris, groups)
+    let total = 0; for (const a of area) total += a
+    let rigid = 0
+    groups.forEach((g, k) => {
+      if (area[k] >= maxFrac * total) return
+      const mean = new Float64Array(nb)
+      for (const v of g) for (let j = 0; j < nb; j++) mean[j] += W[v * nb + j] / g.length
+      for (const v of g) for (let j = 0; j < nb; j++) W[v * nb + j] = mean[j]
+      rigid++
+    })
+    return { W, rigid }
+  }
+
+  /*
+   * Controller weights. The studio's controller points are painted by convention, and the
+   * conventions can be read off the rig and the artwork (骨骼蒙版模板 is the standard):
+   *  - turn sliders: face_turn / face_turn_back / body_up_turn / body_down_turn carry a faint
+   *    weight over the layers of their region (head / torso / lower body by the skeleton,
+   *    not by names). Strands take none, except front hair, which turns with the face.
+   *  - breasts: a Gaussian patch (0.8 peak, sigma half their distance) on the soft layers
+   *    over the chest, never a limb.
+   *  - eyelids: the upper lid owns the band from the lash line to the brow, the lower one
+   *    the band down to the cheek, and they blend across the opening so the lid squeezes
+   *    the eye shut instead of dragging it.
+   */
+  const CONTROLLER = /^(eyes_|breast_|bra_|face_turn|body_up_turn|body_down_turn)/
+  const CONTROLLER_DEFAULTS = Object.freeze({
+    faceTurn: 0.16, faceTurnBack: 0.2, bodyUp: 0.06, bodyDown: 0.07,
+    faceTurnPeak: 0.26, faceTurnReach: 1.15, hairTurnReach: 1.6,
+    breastPeak: 0.8, breastSigma: 0.5, breastCut: 1.0, strandBreastScale: 0.45,
+    lidUp: 0.78, lidDown: 0.9, browReach: 0.5, cheekReach: 0.3, lidCore: 0.85, lidEdge: 1.35
+  })
+
+  /** True for a controller bone the controller pass paints (the heat solve skips it). */
+  function isController(name) { return CONTROLLER.test(name) }
+
+  /** 'head' under the head bone, else 'torso' above the hips / 'lower' below them. */
+  function boneRegions(names, parents, mats) {
+    const head = names.indexOf('head')
+    const hipIds = ['x', 'hip_l', 'hip_r'].map((n) => names.indexOf(n)).filter((i) => i >= 0)
+    const hipY = hipIds.length ? hipIds.reduce((s, i) => s + mats[i].worldY, 0) / hipIds.length : null
+    return names.map((n, i) => {
+      let k = i, guard = 0
+      while (k >= 0 && guard++ < 512) { if (k === head) return 'head'; k = parents[k] }
+      if (hipY === null || !mats[i]) return null
+      const len = Number(mats[i].length) || 0
+      return mats[i].worldY + 0.5 * len * mats[i].c < hipY ? 'lower' : 'torso'
+    })
+  }
+
+  /** Eyelid weights for one eye (world coords); up: unit axis toward the top of the face. */
+  function lidWeights(pts, eye, up, o) {
+    const n = pts.length / 2
+    const T = eye.top, B = eye.bottom
+    const h = Math.max(1, (T[0] - B[0]) * up[0] + (T[1] - B[1]) * up[1])
+    const ew = eye.blob ? Math.max(4, eye.blob[4] - eye.blob[2]) : 3 * h
+    const C = [(T[0] + B[0]) / 2, (T[1] + B[1]) / 2]
+    const perp = [-up[1], up[0]]
+    const ku = (o.browReach * ew) / h, kd = (o.cheekReach * ew) / h
+    const wu = new Float64Array(n), wd = new Float64Array(n)
+    for (let i = 0; i < n; i++) {
+      const x = pts[2 * i], y = pts[2 * i + 1]
+      const s = ((x - B[0]) * up[0] + (y - B[1]) * up[1]) / h
+      const a = Math.abs(((x - C[0]) * perp[0] + (y - C[1]) * perp[1]) / (0.5 * ew))
+      const fh = 1 - smooth01((a - o.lidCore) / (o.lidEdge - o.lidCore))
+      if (fh <= 0) continue
+      let u = 0, d = 0
+      if (s >= 0 && s <= 1) { u = s; d = 1 - s }
+      else if (s > 1 && s <= 1 + ku) u = 1 - (s - 1) / ku
+      else if (s < 0 && s >= -kd) d = 1 + s / kd
+      wu[i] = o.lidUp * u * fh
+      wd[i] = o.lidDown * d * fh
+    }
+    return { up: wu, down: wd }
+  }
+
+  /**
+   * The lash line of one eye: the darkest band across the middle of the eye between the
+   * lower lid and a little past the detected top (the detector's top lands on the crease
+   * for one eye and on the iris for the other; the lashes are what closes).
+   */
+  function refineLash(eye, up, img) {
+    if (!img || !img.rgba) return Object.assign({}, eye, { opening: Math.hypot(eye.top[0] - eye.bottom[0], eye.top[1] - eye.bottom[1]) })
+    const { rgba, w, h: H } = img
+    const B = eye.bottom
+    const h0 = Math.max(2, (eye.top[0] - B[0]) * up[0] + (eye.top[1] - B[1]) * up[1])
+    const ew = eye.blob ? Math.max(4, eye.blob[4] - eye.blob[2]) : 3 * h0
+    const perp = [-up[1], up[0]]
+    const C = [(eye.top[0] + B[0]) / 2, (eye.top[1] + B[1]) / 2]
+    const across = (C[0] - B[0]) * perp[0] + (C[1] - B[1]) * perp[1]
+    const lum = (x, y) => {
+      const xi = Math.round(x), yi = Math.round(y)
+      if (xi < 0 || yi < 0 || xi >= w || yi >= H) return null
+      const i = 4 * (yi * w + xi); if (rgba[i + 3] < 128) return null
+      return 0.3 * rgba[i] + 0.59 * rgba[i + 1] + 0.11 * rgba[i + 2]
+    }
+    let best = null, bestT = h0
+    for (let t = 0.25 * h0; t <= 1.3 * h0; t += 0.5) {
+      let s = 0, c = 0
+      for (let a = -0.3 * ew; a <= 0.3 * ew; a += 1) {
+        const L = lum(B[0] + t * up[0] + (across + a) * perp[0], B[1] + t * up[1] + (across + a) * perp[1])
+        if (L === null) continue
+        s += L; c++
+      }
+      if (c && (best === null || s / c < best)) { best = s / c; bestT = t }
+    }
+    const top = [B[0] + bestT * up[0] + across * perp[0], B[1] + bestT * up[1] + across * perp[1]]
+    return Object.assign({}, eye, { top, opening: bestT, detectedTop: eye.top })
+  }
+
+  /**
+   * Shared state of the controller pass, built once per rig.
+   * names/parents: bone names and logical parents; mats: setup-pose world matrices;
+   * roles: per bone {layer, role} from the skeleton generator; face: {layer, det, img,
+   * place, width, height} as the generator found it; draw: Map slot -> draw index;
+   * faceWorld: the face layer's mesh vertices in world space.
+   */
+  function controllerContext({ names, parents, mats, roles, face, draw, opts, faceWorld }) {
+    const o = Object.assign({}, CONTROLLER_DEFAULTS, opts || {})
+    const index = new Map(names.map((n, i) => [n, i]))
+    const region = boneRegions(names, parents, mats)
+    const roleOf = (i) => (roles && roles[i] ? roles[i].role : null)
+    const strand = names.map((n, i) => roleOf(i) === 'strand')
+    const limb = names.map((n, i) => /^(limb|extremity|sleeve)$/.test(roleOf(i) || ''))
+    const breasts = ['breast_l', 'breast_r'].map((n) => index.get(n)).filter((i) => i !== undefined).map((i) => ({ id: i, x: mats[i].worldX, y: mats[i].worldY }))
+    const span = breasts.length === 2 ? Math.hypot(breasts[0].x - breasts[1].x, breasts[0].y - breasts[1].y) : 0
+    const chest = index.get('chest')
+    const bodyLayer = chest !== undefined && roles && roles[chest] ? roles[chest].layer : null
+    const braLayers = new Set(['bra_l', 'bra_r'].map((n) => index.get(n)).filter((i) => i !== undefined && roles && roles[i])
+      .map((i) => roles[i].layer).filter((l) => l && l !== bodyLayer))
+    // face_turn falloff: a little past the 75th percentile of the face vertices' distance
+    // from the nose point, so the outline keeps a trace
+    let faceTurnR = 0, faceTurnAt = null
+    const ftId = index.get('face_turn')
+    if (ftId !== undefined && faceWorld && faceWorld.length) {
+      faceTurnAt = [mats[ftId].worldX, mats[ftId].worldY]
+      const ds = []
+      for (let i = 0; i < faceWorld.length; i += 2) ds.push(Math.hypot(faceWorld[i] - faceTurnAt[0], faceWorld[i + 1] - faceTurnAt[1]))
+      ds.sort((a, b) => a - b)
+      faceTurnR = o.faceTurnReach * ds[Math.floor(0.75 * (ds.length - 1))]
+    }
+    const det = face && face.det && Array.isArray(face.det.eyes) ? face.det : null
+    const eyes = det ? det.eyes.map((e) => refineLash(e, det.up, face.img)) : []
+    // the face image frame -> world (imported layers sit axis-aligned at 1:1, y up)
+    const toW = (q) => [face.place.x + q[0] - face.width / 2, face.place.y + face.height / 2 - q[1]]
+    const upW = det ? [det.up[0], -det.up[1]] : null
+    const eyesW = det && face.place ? eyes.map((e) => ({ top: toW(e.top), bottom: toW(e.bottom), blob: e.blob, opening: e.opening })) : []
+    return { o, index, region, strand, limb, breasts, span, face: det ? face : null, draw: draw || new Map(), bodyLayer, braLayers, faceTurnR, faceTurnAt, eyes, eyesW, upW }
+  }
+
+  /**
+   * Add controller weights to one layer. ids/W: the heat result (row-major n x ids.length);
+   * world: the layer's vertices in world space. Returns {ids, W, report}.
+   */
+  function applyControllers(ctx, slot, ids, W, world) {
+    const { o, index, region, strand, limb } = ctx
+    const n = world.length / 2, nb = ids.length
+    const mass = { head: 0, torso: 0, lower: 0 }
+    let mStrand = 0, mLimb = 0, mAll = 0
+    for (let i = 0; i < n; i++) for (let j = 0; j < nb; j++) {
+      const w = W[i * nb + j]; if (!w) continue
+      const r = region[ids[j]]; if (r) mass[r] += w
+      if (strand[ids[j]]) mStrand += w
+      if (limb[ids[j]]) mLimb += w
+      mAll += w
+    }
+    const reg = (mass.head + mass.torso + mass.lower) > 0 ? Object.keys(mass).reduce((a, b) => (mass[b] > mass[a] ? b : a)) : null
+    const isStrand = mAll > 0 && mStrand / mAll > 0.5
+    const isLimb = mAll > 0 && mLimb / mAll > 0.5
+    const isFace = !!(ctx.face && ctx.face.layer === slot)
+    const faceDraw = ctx.face ? ctx.draw.get(ctx.face.layer) : undefined
+    const myDraw = ctx.draw.get(slot)
+    const local = []
+    // eyelids: rigid head layers near the eyes (the face, or eye pieces as their own
+    // layers); hair over the eyes never blinks. One stroke closes both eyes: the upper
+    // lid's peak scales with each eye's opening.
+    if (ctx.eyesW.length && reg === 'head' && !isStrand) {
+      const eyeNames = ctx.face.det.eyes.length === 2 ? ['eyes_l', 'eyes_r'] : ['eyes']
+      const maxOpen = Math.max(...ctx.eyes.map((e) => e.opening))
+      ctx.eyesW.forEach((e, k) => {
+        const iu = index.get(`${eyeNames[k]}_up`), id = index.get(`${eyeNames[k]}_down`)
+        if (iu === undefined || id === undefined) return
+        const lw = lidWeights(world, e, ctx.upW, Object.assign({}, o, { lidUp: o.lidUp * e.opening / maxOpen }))
+        local.push([iu, lw.up], [id, lw.down])
+      })
+    }
+    // breasts: the body layer, the bra cups' layers, and hair strands drawn over the body
+    const bodyDraw = ctx.bodyLayer ? ctx.draw.get(ctx.bodyLayer) : undefined
+    const overChest = slot === ctx.bodyLayer || ctx.braLayers.has(slot) ||
+      (reg === 'head' && isStrand && bodyDraw !== undefined && myDraw !== undefined && myDraw > bodyDraw)
+    if (ctx.breasts.length === 2 && !isFace && !isLimb && overChest) {
+      const k = slot === ctx.bodyLayer || ctx.braLayers.has(slot) ? 1 : o.strandBreastScale
+      const sigma = o.breastSigma * ctx.span * k, cut = o.breastCut * ctx.span * k
+      for (const b of ctx.breasts) {
+        const w = new Float64Array(n); let any = false
+        for (let i = 0; i < n; i++) {
+          const d = Math.hypot(world[2 * i] - b.x, world[2 * i + 1] - b.y)
+          if (d > cut) continue
+          w[i] = o.breastPeak * Math.exp(-(d / sigma) * (d / sigma)); any = true
+        }
+        if (any) local.push([b.id, w])
+      }
+    }
+    // turn slider for the whole layer; face sliders only on pieces that really sit on this
+    // face (a second figure hung under the head bone is "head" by ancestry only)
+    let slider = null, nearFace = false
+    if (ctx.faceTurnAt && ctx.faceTurnR > 0 && !isLimb) {
+      let k = 0
+      for (let i = 0; i < n; i++) if (Math.hypot(world[2 * i] - ctx.faceTurnAt[0], world[2 * i + 1] - ctx.faceTurnAt[1]) < 1.5 * ctx.faceTurnR * o.hairTurnReach) k++
+      nearFace = k > 0.5 * n
+    }
+    if (reg === 'head' && nearFace) {
+      const front = isFace || (faceDraw !== undefined && myDraw !== undefined && myDraw > faceDraw)
+      if (front && index.has('face_turn')) slider = [index.get('face_turn'), o.faceTurn]
+      else if (!front && !isStrand && index.has('face_turn_back')) slider = [index.get('face_turn_back'), o.faceTurnBack]
+    // the upper-body turn moves the trunk and what lies on it, never an arm
+    } else if (!isStrand && !isLimb && reg === 'torso' && index.has('body_up_turn')) slider = [index.get('body_up_turn'), o.bodyUp]
+    else if (!isStrand && reg === 'lower' && index.has('body_down_turn')) slider = [index.get('body_down_turn'), o.bodyDown]
+    // face_turn peaks at the nose point and fades toward the outline, so the features
+    // slide against the outline -- that difference IS the turn
+    let sliderW = null
+    if (slider && slider[0] === index.get('face_turn') && ctx.faceTurnR > 0) {
+      const ft = ctx.faceTurnAt, R = ctx.faceTurnR * (isFace ? 1 : o.hairTurnReach)
+      sliderW = new Float64Array(n)
+      for (let i = 0; i < n; i++) sliderW[i] = o.faceTurnPeak * Math.max(0, 1 - Math.hypot(world[2 * i] - ft[0], world[2 * i + 1] - ft[1]) / R)
+    }
+    // merge: local controllers take their share first, the slider scales everything
+    const outIds = ids.slice()
+    for (const e of local.map((l) => l[0]).concat(slider ? [slider[0]] : [])) if (!outIds.includes(e)) outIds.push(e)
+    const m = outIds.length
+    const out = new Float64Array(n * m)
+    const col = new Map(outIds.map((id, j) => [id, j]))
+    for (let i = 0; i < n; i++) {
+      let E = 0
+      for (const [, w] of local) E += w[i]
+      const scale = E > 1 ? 1 / E : 1
+      const keep = Math.max(0, 1 - E * scale)
+      for (let j = 0; j < nb; j++) out[i * m + col.get(ids[j])] += W[i * nb + j] * keep
+      for (const [id, w] of local) out[i * m + col.get(id)] += w[i] * scale
+      if (slider) {
+        const s = sliderW ? sliderW[i] : slider[1]
+        for (let j = 0; j < m; j++) out[i * m + j] *= (1 - s)
+        out[i * m + col.get(slider[0])] += s
+      }
+    }
+    const used = outIds.map((id, j) => { for (let i = 0; i < n; i++) if (out[i * m + j] > 1e-4) return true; return false })
+    const fIds = outIds.filter((_, j) => used[j])
+    const fW = new Float64Array(n * fIds.length)
+    for (let i = 0; i < n; i++) { let k = 0; for (let j = 0; j < m; j++) if (used[j]) fW[i * fIds.length + k++] = out[i * m + j] }
+    return { ids: fIds, W: fW, report: { region: reg, strand: isStrand, limb: isLimb, slider: slider ? slider[1] : 0, local: local.length } }
+  }
+
   return {
-    DEFAULTS, SELECT_DEFAULTS, ASSIGN_DEFAULTS,
+    DEFAULTS, SELECT_DEFAULTS, ASSIGN_DEFAULTS, CONTROLLER_DEFAULTS,
+    meshIslands, confineAnchors, confineToOwn, rigidIslands,
+    isController, boneRegions, lidWeights, refineLash, controllerContext, applyControllers,
     cotLaplacian, boundaryEdges, segPoint, crosses, occluded, insideBoundary, distToBoundary, pcg,
     heatWeights, normalizePrune, selectBones, assignBones, mechanismBones, logicalParents,
     featureGate, sampleField,
