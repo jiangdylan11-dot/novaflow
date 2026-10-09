@@ -30806,8 +30806,9 @@
    */
   function stylePrimaryLeftCardControls(card) {
     // 飘带's 预设名称 (and the event preset's) is a text field that fills its row; sized
-    // like a number field it was 49 wide next to a 34-tall 保存.
-    Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"]):not([data-novaflow-ribbon-preset-name]):not([data-novaflow-ribbon-event-preset-name])')).forEach((field) => {
+    // like a number field it was 49 wide next to a 34-tall 保存. Check boxes keep
+    // their own size: 自动蒙皮's layer ticks came out as 49x28 grey boxes.
+    Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([data-novaflow-ribbon-preset-name]):not([data-novaflow-ribbon-event-preset-name])')).forEach((field) => {
       if (!(field instanceof HTMLInputElement)) return;
       if (field.closest('[data-novaflow-ui-layout-section]')) return;
       nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");

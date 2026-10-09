@@ -177,8 +177,10 @@
   const CELL_BUTTON_PROPS = ['color', 'font-size', 'font-weight', 'letter-spacing', 'font-family', 'gap', 'padding'];
   function copyCellLook(cell) {
     const entries = Array.from(document.querySelectorAll('[data-novaflow-primary-entry="1"]'));
-    const pressed = entries.find((e) => e.getAttribute('aria-pressed') === 'true');
-    const idle = entries.find((e) => e.getAttribute('aria-pressed') !== 'true');
+    // never off a hovered entry: its hover fill was copied and 音视 lit up with it
+    const calm = entries.filter((e) => !(e.closest('[data-novaflow-primary-cell="1"]') || e).matches(':hover'));
+    const pressed = calm.find((e) => e.getAttribute('aria-pressed') === 'true');
+    const idle = calm.find((e) => e.getAttribute('aria-pressed') !== 'true');
     const ref = state.active ? (pressed || idle) : (idle || pressed);
     if (!ref) return;
     const host = ref.closest('[data-novaflow-primary-cell="1"]') || ref;
