@@ -513,6 +513,16 @@
     $('curve').dataset.knotCount=String(knots.length);
     ctx.restore();
   }
+  // the preview writes the animation into the project and the whole app renders it: once per
+  // frame with the latest values (every slider input did it, a drag ran at ~16 fps)
+  let previewFrame=0;
+  function runPreview(){
+    previewFrame=0;
+    try { bridge.preview(sessions,timing); previewError='';if($('save').disabled)$('save').disabled=false; status(''); }
+    catch(error){previewError=error.message;if(!$('save').disabled)$('save').disabled=true;status(error.message);}
+  }
+  function schedulePreview(){if(!previewFrame)previewFrame=requestAnimationFrame(runPreview);}
+  function flushPreview(){if(previewFrame){cancelAnimationFrame(previewFrame);runPreview();}}
   function draw() {
     E.fitTiming(timing);shareDuration(timing.boneDuration);syncTimingControls();
     if($('timingHint'))$('timingHint').textContent=`偏移 ${fmt(timing.animationDelay)} 秒 · ${fmt(timing.animationDuration)} 秒时间轴内`;
@@ -523,8 +533,7 @@
     if(snapshot!==lastSnapshot){
       if(!restoring){if(Date.now()-historyAt>400){history.push(lastSnapshot);if(history.length>40)history.shift();}historyAt=Date.now();redo.length=0;}
       lastSnapshot=snapshot;
-      try { bridge.preview(sessions,timing); previewError='';if($('save').disabled)$('save').disabled=false; status(''); }
-      catch(error){previewError=error.message;if(!$('save').disabled)$('save').disabled=true;status(error.message);}
+      schedulePreview();
     }
     const seekTime=timing.animationDelay+time;
     if(seekTime!==lastSeek){lastSeek=seekTime;bridge.seek(seekTime);}
@@ -678,12 +687,14 @@
   // a tool switch drops the adjustment that was never saved: the bone goes back to its saved
   // animation and the tools to their saved (or initial) values
   function discardUnsaved(){
+    if(previewFrame){cancelAnimationFrame(previewFrame);previewFrame=0;}
     if(!bridge.dirty?.())return;
     bridge.discard();
     reloadValues();
   }
   // the bone's saved values (or the initial ones) into the tools
   function reloadValues(){
+    if(previewFrame){cancelAnimationFrame(previewFrame);previewFrame=0;}
     const saved=bridge.initial();Object.assign(sessions,saved?.stack||E.freshStack());
     sessions.rotate??=E.freshStack().rotate;for(const state of Object.values(sessions))state.axes.r??={on:false,amp:0},state.corrections.r??=Array(17).fill(0);
     Object.assign(timing,E.fitTiming({...bridge.timing(),...saved?.timing}));shareOpacity(sessions.opacity);shareDuration(timing.boneDuration);
@@ -711,7 +722,7 @@
   $('loop').onchange=()=>{pointSelected=false;if(mode==='opacity'){p.loop=$('loop').checked;p.opacity.behavior=p.loop?'pulse':'once';p.corrections.alpha.fill(0);if(p.curves)delete p.curves.alpha;}else p.reverse=$('loop').checked;parameterChanged();renderPanel();};
   $('link').onchange = () => { p.link = $('link').checked; parameterChanged(false); };
   $('editorToggle').onclick=()=>setCollapsed(!collapsed);
-  $('save').onclick = () => { try{bridge.save(sessions,timing);status('');}catch(error){status(error.message,true);} };
+  $('save').onclick = () => { flushPreview(); try{bridge.save(sessions,timing);status('');}catch(error){status(error.message,true);} };
   function restoreSnapshot(value){restoring=true;const v=JSON.parse(value);Object.assign(sessions,v.stack);Object.assign(timing,v.timing);p=sessions[mode];renderPanel();restoring=false;}
   function undo(forward){const from=forward?redo:history,to=forward?history:redo;if(from.length){to.push(lastSnapshot);restoreSnapshot(from.pop());status(forward?'已重做本骨骼参数。':'已撤销本骨骼参数。');}}
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));
@@ -721,6 +732,6 @@
   // the calculation tools are always set up underneath 飘带计算 (the frame loop draws them)
   selectMode(bridge.mode&&bridge.mode!=='ribbon'?bridge.mode:'bounce');if(bridge.mode==='ribbon')selectMode('ribbon');
   frameId=requestAnimationFrame(frame);
-  return {destroy(){bridge.dock?.(null);observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,rebind,status:message=>status(message,true),undo};
+  return {destroy(){if(previewFrame)cancelAnimationFrame(previewFrame);bridge.dock?.(null);observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,rebind,status:message=>status(message,true),undo};
 }};
 })();

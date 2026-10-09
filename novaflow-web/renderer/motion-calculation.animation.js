@@ -105,10 +105,15 @@
     // Preserve the exact seam when a non-periodic channel is shifted around its cycle.
     for(const p of Object.values(params))if(p.delay>0&&p.delay<span){times.add(start+p.delay);times.add(start+p.delay-1/6000);}
     for(const event of engine.events(params.bounce))if(params.bounce.enabled)times.add(start+engine.timelineTime(params.bounce,event.u));
-    const entries=targets.map(name=>({name,i:project.bones.findIndex(b=>b.name===name),translate:[],scale:[],rotate:[]}));
+    // only the targets and their ancestors are posed per sample: their parents' world frames
+    // are all the keys need (posing all ~200 bones per sample made a slider drag stutter)
+    const byName=new Map(project.bones.map(b=>[b.name,b])),chain=new Set(targets);
+    for(const name of targets){let p=byName.get(name)?.parent;while(p&&!chain.has(p)&&byName.has(p)){chain.add(p);p=byName.get(p).parent;}}
+    const posed={...project,bones:project.bones.filter(b=>chain.has(b.name))};
+    const entries=targets.map(name=>({name,i:posed.bones.findIndex(b=>b.name===name),translate:[],scale:[],rotate:[]}));
     const slotFrames=new Map(slots.map(s=>[s.name,[]]));
     for(const time of [...times].sort((a,b)=>a-b)){
-      const t=time-start, value=engine.sampleStack(params,t/span), evaluated=pose(project,original,time,math);
+      const t=time-start, value=engine.sampleStack(params,t/span), evaluated=pose(posed,original,time,math);
       for(const item of entries){const b=evaluated.bones[item.i],w=evaluated.world[item.i],parent=w.parent>=0?evaluated.world[w.parent]:null,old=original.bones?.[item.name]||{};
         let dx=translate?value.x:0,dy=translate?value.y:0;
         const [lx,ly]=invVector(parent,dx,dy);

@@ -36356,6 +36356,7 @@
     return tag !== "CANVAS" && tag !== "STYLE" && tag !== "SCRIPT" && tag !== "svg";
   }
 
+  let NOVAFLOW_SPEC_PASS_DEFERRED = false;
   function handleNovaflowSpecMutations(records) {
     let fullPass = false;
     const touched = new Set();
@@ -36371,6 +36372,13 @@
       } else if (NOVAFLOW_SPEC_STATE_ATTRIBUTES.has(record.attributeName)) {
         fullPass = true;
       }
+    }
+    // under a held press (a slider or stage drag) the drifted nodes are put back at once,
+    // the full pass waits for the release: one per mutation batch made every drag stutter
+    if (fullPass && RIBBON_DOCKED_RANGE_DRAG) {
+      NOVAFLOW_SPEC_PASS_DEFERRED = true;
+      touched.forEach((node) => reassertNovaflowSpecNode(node));
+      return;
     }
     if (fullPass) {
       runNovaflowReferenceSpecNow();
@@ -45756,6 +45764,7 @@
     return !wasChecked || !wasTrackedChecked;
   }
 
+  let RIBBON_SUPPRESS_TRAIL = 0, RIBBON_SUPPRESS_FRAME = 0;
   function suppressRibbonNativeRealtimePreview(reason = "native-live-suppressed", animationName = "", delays = [0, 16, 48, 96, 160, 260, 420]) {
     const normalizedReason = normalizeRibbonElasticityApplyReason(reason) || "native-live-suppressed";
     const normalizedAnimationName = String(animationName || "").trim();
@@ -45778,6 +45787,18 @@
       if (disabled) scheduleFullLayoutRefresh([0, 16, 48, 96]);
       return disabled;
     };
+    // a burst of calls (every input of a slider drag) runs this once per frame and once more
+    // after the last call; each call used to queue ten runs of its own
+    if (RIBBON_SUPPRESS_TRAIL) {
+      if (!RIBBON_SUPPRESS_FRAME && typeof window.requestAnimationFrame === "function") {
+        RIBBON_SUPPRESS_FRAME = window.requestAnimationFrame(() => { RIBBON_SUPPRESS_FRAME = 0; run(); });
+      }
+      window.clearTimeout(RIBBON_SUPPRESS_TRAIL);
+      RIBBON_SUPPRESS_TRAIL = window.setTimeout(() => { RIBBON_SUPPRESS_TRAIL = 0; run(); }, 420);
+      scheduleRibbonProjectIdentityRepair(normalizedReason, [16, 48, 120, 240, 420]);
+      return false;
+    }
+    RIBBON_SUPPRESS_TRAIL = window.setTimeout(() => { RIBBON_SUPPRESS_TRAIL = 0; }, 420);
     let changed = run();
     const stableDelays = Array.isArray(delays) ? delays : [];
     stableDelays.forEach((delay) => {
@@ -48595,17 +48616,18 @@
     return true;
   }
 
+  let RIBBON_IDENTITY_REPAIR_TIMERS = [];
   function scheduleRibbonProjectIdentityRepair(reason = "project-identity-repair", delays = [0, 16, 48, 120, 240]) {
     const stableDelays = Array.isArray(delays) ? delays : [0];
-    stableDelays.forEach((delay) => {
-      window.setTimeout(() => {
-        try {
-          repairRibbonProjectIdentityFromSnapshot(reason);
-        } catch (_) {
-          void 0;
-        }
-      }, Math.max(0, Math.round(Number(delay) || 0)));
-    });
+    // a newer call replaces the passes still waiting (a drag queued five per input)
+    RIBBON_IDENTITY_REPAIR_TIMERS.forEach((id) => window.clearTimeout(id));
+    RIBBON_IDENTITY_REPAIR_TIMERS = stableDelays.map((delay) => window.setTimeout(() => {
+      try {
+        repairRibbonProjectIdentityFromSnapshot(reason);
+      } catch (_) {
+        void 0;
+      }
+    }, Math.max(0, Math.round(Number(delay) || 0))));
   }
 
   function getRibbonReactProjectFiberScore(props) {
@@ -54173,13 +54195,17 @@
     if (section.closest('[data-novaflow-ribbon-docked="1"]') && typeof window.requestAnimationFrame === "function") {
       card.__nfRibbonFocusArgs = [target, options];
       if (card.__nfRibbonFocusFrame) return;
-      card.__nfRibbonFocusFrame = window.requestAnimationFrame(() => {
+      // every focus seeks the timeline and the whole app renders that time: at most one per
+      // 100 ms while a slider is dragged (the latest value), so the slider itself stays fluid
+      const wait = Math.max(0, 100 - (performance.now() - (card.__nfRibbonFocusAt || 0)));
+      card.__nfRibbonFocusFrame = window.setTimeout(() => window.requestAnimationFrame(() => {
         card.__nfRibbonFocusFrame = 0;
+        card.__nfRibbonFocusAt = performance.now();
         if (!card.isConnected) return;
         const [latestTarget, latestOptions] = card.__nfRibbonFocusArgs;
         focusRibbonEventPreviewAtCard(section, card, latestTarget, latestOptions);
         scheduleRibbonEventVisualStateSync(section);
-      });
+      }), wait);
       return;
     }
     const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -56095,6 +56121,12 @@
     const body = panel.querySelector(":scope > .nf-panel-body");
     if (!(body instanceof HTMLElement) || !isVisible(body)) return;
     if (body.closest("[data-novaflow-ai-bottom-workspace='1']")) return;
+    // the same body at the same size was laid out already: this pass reads and writes the
+    // layout of every container in it, and opening 飘带计算 ran it several times in a row
+    // (over a second of frozen page)
+    const overflowSignature = `${body.clientWidth}|${body.scrollHeight}|${body.getElementsByTagName("*").length}`;
+    if (body.__novaflowOverflowSignature === overflowSignature) return;
+    body.__novaflowOverflowSignature = overflowSignature;
     body.setAttribute("data-novaflow-expanded-body-overflow", "1");
     setImportantStyles(body, {
       width: "100%",
@@ -56535,7 +56567,9 @@
       refreshRibbonParameterPresetSessionVisibility(panel);
       normalizeRibbonCollapsedPresetControlsLayout(panel);
       normalizeRibbonPanelFeedback(panel);
-      if (!options.fromMutation && options.suppressLayout !== true) {
+      // hosted (docked into 动画编辑, out of the column): the column's containment pass has
+      // nothing of it to lay out, and it was a large part of opening 动画编辑
+      if (!options.fromMutation && options.suppressLayout !== true && panel.getAttribute("data-novaflow-ribbon-hosted") !== "1") {
         const leftColumn = findLeftWorkspaceColumn();
         normalizeLeftAccordionPanelContainment(leftColumn instanceof HTMLElement ? leftColumn : document.body);
         scheduleSkeletonAnimationLayout();
@@ -78931,16 +78965,17 @@
     window.addEventListener("pointerdown", (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target || !isSkeletonAnimationRuntimeSurfaceActive()) return;
-      if (
-        target.closest('[data-novaflow-skeleton-preview-stage="1"] canvas') ||
-        target.closest('[data-novaflow-skeleton-bottom-playbar="1"] input[type="range"]')
-      ) {
-        RIBBON_DOCKED_RANGE_DRAG = true;
-      }
+      // every press in the section (sliders, panels, the layer list, the stage): what a press
+      // changes is laid out once on release (a slider drag ran a full pass per input)
+      RIBBON_DOCKED_RANGE_DRAG = true;
     }, { capture: true, passive: true });
     const end = () => {
       if (!RIBBON_DOCKED_RANGE_DRAG) return;
       RIBBON_DOCKED_RANGE_DRAG = false;
+      if (NOVAFLOW_SPEC_PASS_DEFERRED) {
+        NOVAFLOW_SPEC_PASS_DEFERRED = false;
+        try { runNovaflowReferenceSpecNow(); } catch (_) { void 0; }
+      }
       window.setTimeout(() => {
         if (RIBBON_DOCKED_RANGE_DRAG || !isSkeletonAnimationRuntimeSurfaceActive()) return;
         clearAiAnimationRuntimeStateForSkeletonLayout();
