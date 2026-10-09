@@ -28,7 +28,7 @@
   let stylesReady=false;
   const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260926-direction-1',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();floating.style.visibility='visible';};
-  const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
+  const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
       <div class="editor-presets"><div id="presetSection"><div id="presets" class="presets"></div></div><div id="opacityPresets" class="presets" hidden></div></div>
