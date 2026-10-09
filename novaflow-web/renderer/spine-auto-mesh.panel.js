@@ -3334,6 +3334,18 @@
       bones.syncUi()
     }
     // applied as it is typed (or stepped with the wheel / arrows), not only on Enter
+    // the wheel on a selected box steps by whole units (1), never the decimals - the native
+    // step (0.01 for a scale) crept along the fraction
+    for (const inp of [rotIn, lenIn]) inp.addEventListener('wheel', (ev) => {
+      if (document.activeElement !== inp || inp.disabled) return
+      ev.preventDefault(); ev.stopPropagation()
+      const v = parseFloat(inp.value)
+      if (!Number.isFinite(v)) return
+      const next = Math.round((v + (ev.deltaY < 0 ? 1 : -1)) * 1000) / 1000
+      const min = inp.getAttribute('min')
+      inp.value = String(min !== null && min !== '' ? Math.max(Number(min), next) : next)
+      commitPose()
+    }, { passive: false })
     for (const inp of [rotIn, lenIn]) { inp.addEventListener('input', commitPose); inp.addEventListener('change', commitPose); inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitPose(); inp.blur() } ev.stopPropagation() }) }
     bones.focusName = () => { window.setTimeout(() => { try { nameIn.focus(); nameIn.select() } catch { /* hidden */ } }, 0) }
 
