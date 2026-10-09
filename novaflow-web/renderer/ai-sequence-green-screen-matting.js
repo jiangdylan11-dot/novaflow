@@ -773,6 +773,15 @@
     const B = [screen.rgb[0] / 255, screen.rgb[1] / 255, screen.rgb[2] / 255];
     const band = Math.max(3, Math.round(Math.min(w, h) / 300));
     const srcCast = p => { const i = p * 4; return (src[i + key] - Math.max(src[i + c0], src[i + c1])) / 255; };
+    // With 保留投影 on, a cast shadow outside the subject is the screen darkened without any other
+    // colour lifted. Its faint penumbra looked like screen noise here and its edge like a contour
+    // to tighten, so the shadow came out cut into patches; such pixels are left alone.
+    const keepShadow = options.preserveShadow !== false;
+    const shadowLike = p => {
+      if (!keepShadow || mask[p] >= 24) return false;
+      const i = p * 4, shade = 1 - src[i + key] / 255 / Math.max(.1, B[key]);
+      return shade > .02 && Math.max(src[i + c0] / 255 - B[c0], src[i + c1] / 255 - B[c1]) < .05 && srcCast(p) > .02;
+    };
     // Interior seeds: opaque, inside the mask, not screen-cast, eroded twice so
     // the contour ring never contributes to the reference colour.
     const seeds = new Uint8Array(n), inner = new Uint8Array(n);
@@ -836,7 +845,7 @@
       // non-key lift (ringing), or with foreground colour bled into it: neither
       // is content, and a shadow never lifts the non-key channels.
       const bleed = Math.max(src[i + c0] / 255 - B[c0], src[i + c1] / 255 - B[c1]) >= .12;
-      if (mask[p] < 24 && ((a < 110 && src[i + key] >= B[key] * 255 * .88) || (a < 160 && bleed)) && lightSupport(x, y) < .5) {
+      if (mask[p] < 24 && ((a < 110 && src[i + key] >= B[key] * 255 * .88) || (a < 160 && bleed)) && lightSupport(x, y) < .5 && !shadowLike(p)) {
         alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
       }
       if (d > band + 3 || toOutside[p] > band + 2) continue;
@@ -844,7 +853,7 @@
       if (a === 255 && mask[p] >= 250 && srcCast(p) <= -.02) continue;
       // Screen noise: faint pixel outside the mask whose source is the screen itself.
       const srcDist = Math.max(Math.abs(src[i] / 255 - B[0]), Math.abs(src[i + 1] / 255 - B[1]), Math.abs(src[i + 2] / 255 - B[2]));
-      if (mask[p] < 8 && a < 20 && srcDist < .07) {
+      if (mask[p] < 8 && a < 20 && srcDist < .07 && !shadowLike(p)) {
         alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue;
       }
       // Reference colour: the interior right behind this edge pixel (3x3 around
@@ -900,11 +909,13 @@
     const copy = new Uint8ClampedArray(alpha);
     for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
       const p = y * w + x, d = near.distance[p];
-      if (d <= 0 || d > band + 3 || toOutside[p] > band + 2) continue;
+      if (d <= 0 || d > band + 3 || toOutside[p] > band + 2 || shadowLike(p)) continue;
       let total = 0;
       for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) total += copy[p + oy * w + ox];
       const a2 = Math.round(smooth(.34, .66, total / 9 / 255) * 255), a = alpha[p], i = p * 4;
-      if (a2 === a) continue;
+      // Never thin what the AI mask calls subject: on thin or soft parts (a staff ring, hair tips,
+      // fur) the 3x3 average falls under the ramp and the edge came out notched.
+      if (a2 === a || (a2 < a && mask[p] >= 128)) continue;
       if (a2 === 0) { alpha[p] = out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; continue; }
       if (a === 0) { const q = near.owner[p]; if (q >= 0) { out[i] = src[q * 4]; out[i + 1] = src[q * 4 + 1]; out[i + 2] = src[q * 4 + 2]; } }
       alpha[p] = out[i + 3] = a2;
@@ -936,6 +947,9 @@
     const stride = width + 1;
     const cyanRadius = Math.max(2, Math.round(Math.min(width, height) / 147));
     const cyanIntegral = normalizeGlow ? new Float32Array(stride * (height + 1)) : null;
+    // Inside the AI subject a cool blue/teal is the subject's own colour (a collar, armour), not a
+    // cyan glow over the screen: treating it as glow made it semi-transparent and washed out.
+    const subjectCore = normalizeGlow ? subjectOpacity(options.subjectMask, width, height) : null;
     if (normalizeGlow) for (let y = 0; y < height; y++) {
       let row = 0;
       for (let x = 0; x < width; x++) {
@@ -970,6 +984,7 @@
         const sum = cyanIntegral[y1 * stride + x1] - cyanIntegral[y0 * stride + x1]
           - cyanIntegral[y1 * stride + x0] + cyanIntegral[y0 * stride + x0];
         cyanGlow *= smooth(.08, .4, sum / ((x1 - x0) * (y1 - y0)));
+        if (subjectCore) cyanGlow *= 1 - smooth(.6, .95, subjectCore[p]);
       }
       if (dominance <= 0 && (cyanGlow <= 0 || !normalizeGlow)) {
         out[i] = data[i]; out[i + 1] = data[i + 1]; out[i + 2] = data[i + 2];
