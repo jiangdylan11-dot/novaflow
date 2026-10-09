@@ -36012,7 +36012,7 @@
         // 我的预设 ▾ | 预设名称 | 保存, above the parameters as in the event column
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-preset-controls]',
         style: {
-          "grid-row": "1", display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", gap: "8px",
+          "grid-row": "1", display: "grid", "grid-template-columns": "repeat(auto-fit, minmax(160px, 1fr))", gap: "8px",
           "flex-direction": "row", "align-items": "center", width: "100%", height: "auto", "max-height": "none"
         }
       },
@@ -36045,7 +36045,7 @@
         style: {
           display: "grid", visibility: "visible", opacity: "1", "pointer-events": "auto",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0",
-          "grid-template-columns": "repeat(3, minmax(0, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
+          "grid-template-columns": "repeat(auto-fill, minmax(170px, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
         }
       },
       {
