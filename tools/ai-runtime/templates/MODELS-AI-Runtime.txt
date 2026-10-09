@@ -30,8 +30,10 @@ NovaFlow AI Runtime 模型清单
   SeeThrough\seethroughv0.0.1_marigold\      （整个文件夹）          约 3.3 GB
 
 六、抠图、选区
-  RMBG\RMBG-2.0\   （model.safetensors、config.json 等整个文件夹）   0.9 GB
-  RMBG\BiRefNet\BiRefNet-general.safetensors                         0.9 GB
+  RMBG\BiRefNet\   （BiRefNet-general.safetensors、birefnet.py、BiRefNet_config.py、config.json 整个文件夹）
+                   美工 / UI 的抠图、去背、万物迁移、智能拆图                      0.9 GB
+  RMBG\BiRefNet_lite\   （model.safetensors、birefnet.py、BiRefNet_config.py、config.json 整个文件夹，
+                   来自 ZhengPeng7/BiRefNet_lite）视频 AI 抠图                     0.17 GB
   sam\sam_vit_h_4b8939.pth                                           2.6 GB
   vitmatte\   （整个文件夹）                                         0.2 GB
 
@@ -48,6 +50,7 @@ NovaFlow AI Runtime 模型清单
     torch / transformers / bitsandbytes，需要重建缓存。只放原始模型时，第一次使用会自动生成缓存，会慢一些。
 
 不需要（没有功能在用，可以删掉）：
+  RMBG\RMBG-2.0\   （已换成 BiRefNet；RMBG-2.0 只许非商用，不要再放进模型包）
   unet\qwen_image_layered_control_bf16.safetensors 和 vae\qwen_image_layered_vae.safetensors
   （拆图已经改走 See-through）
   Qwen Image Edit 2511 / 2509 一代（已经升级到 Qwen-Image-2.1）：

@@ -79,12 +79,15 @@ export const MODEL_MANIFEST = Object.freeze([
     min_vram_mb: 4000,
     compatible_workflows: ['video_matting'],
     required_files: [
-      { path: 'RMBG/RMBG-2.0/model.safetensors', min_bytes: 400_000_000, sha256: null },
-      { path: 'RMBG/RMBG-2.0/config.json', min_bytes: 100, sha256: null }
+      // BiRefNet_lite (MIT), the ZhengPeng7/BiRefNet_lite folder as published; RMBG-2.0 is CC BY-NC.
+      { path: 'RMBG/BiRefNet_lite/model.safetensors', min_bytes: 150_000_000, sha256: null },
+      { path: 'RMBG/BiRefNet_lite/config.json', min_bytes: 100, sha256: null },
+      { path: 'RMBG/BiRefNet_lite/birefnet.py', min_bytes: 10_000, sha256: null },
+      { path: 'RMBG/BiRefNet_lite/BiRefNet_config.py', min_bytes: 100, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/RMBG），或让 BiRefNet 首次运行时自行下载。'
+      hint: '从模型包导入 models/RMBG/BiRefNet_lite（整个文件夹）。'
     }
   },
   {

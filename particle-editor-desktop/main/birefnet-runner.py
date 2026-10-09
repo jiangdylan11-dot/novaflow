@@ -33,6 +33,8 @@ def load_model(model_id, device, local_files_only):
             raise
         print(json.dumps({"event":"direct-load", "reason":str(error)[:240]}), flush=True)
         model = load_local_folder(model_id)
+    # transformers 5 keeps a checkpoint's own dtype (BiRefNet ships fp16); the frames are fp32.
+    model = model.float()
     model.eval()
     if device == "cuda" and torch.cuda.is_available():
         model = model.cuda()

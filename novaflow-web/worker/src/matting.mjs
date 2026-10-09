@@ -40,8 +40,8 @@ const PYTHON_CANDIDATES = () => [
 ];
 
 const PROBE_DECODE = 'import PIL; print("ok")';
-// Any transformers: on 5.x (the AI Runtime's) from_pretrained cannot finish BiRefNet's remote
-// code, and birefnet-runner.py builds the model from the local RMBG-2.0 folder instead - which
+// Any transformers: on 5.x (the AI Runtime's) from_pretrained may not finish BiRefNet's remote
+// code, and birefnet-runner.py then builds the model from the local BiRefNet_lite folder - which
 // is also what makes birefnet-matting ready at all (model-manifest), so it is always there.
 const PROBE_INFERENCE = 'import torch, torchvision, PIL, transformers, safetensors; print("ok")';
 
@@ -86,19 +86,23 @@ function runCapture(cmd, args) {
   });
 }
 
-/** Where the BiRefNet weights are, mirroring what the desktop looks for. */
+/**
+ * Where the BiRefNet weights are. Video matting runs BiRefNet_lite (MIT): behind the page's chroma
+ * matte it matched RMBG-2.0 on green-screen clips (0.03% alpha difference) at a third of the time,
+ * and RMBG-2.0 (CC BY-NC) is no longer used. The folder is ZhengPeng7/BiRefNet_lite as published.
+ */
 export function resolveModel(modelsRoot) {
   const roots = [modelsRoot, process.env.NOVAFLOW_BIREFNET_MODEL_DIR || ''].filter(Boolean);
   for (const root of roots) {
     if (existsSync(join(root, 'config.json'))) return { modelId: root, localFilesOnly: true };
-    for (const rel of [join('RMBG', 'RMBG-2.0'), join('RMBG', 'BiRefNet'), 'BiRefNet']) {
+    for (const rel of [join('RMBG', 'BiRefNet_lite'), 'BiRefNet_lite']) {
       const dir = join(root, rel);
       if (existsSync(join(dir, 'config.json'))) return { modelId: dir, localFilesOnly: true };
     }
   }
   // Nothing local: BiRefNet fetches its own weights on first use, exactly as
   // it does on the desktop. Slow once, then cached.
-  return { modelId: 'ZhengPeng7/BiRefNet', localFilesOnly: false };
+  return { modelId: 'ZhengPeng7/BiRefNet_lite', localFilesOnly: false };
 }
 
 /**

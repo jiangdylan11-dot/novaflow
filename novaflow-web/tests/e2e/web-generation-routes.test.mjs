@@ -143,12 +143,20 @@ editOptions.__args[5].inpaintMode = 'edit';
 assert.equal(withReferences(editOptions, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow').__args[5].latentInputName, 'task-latent.png');
 assert.equal(withReferences(editOptions, ['task-image.png', 'task-mask.png'], latentRefs.slice(0, 2), 'defaultQwenInpaintWorkflow').__args[5].latentInputName, undefined);
 
+// Cutouts run BiRefNet-general (MIT); the RMBG node (RMBG-2.0, non-commercial) is never chosen.
 const host = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: {
-  RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']], sensitivity: ['FLOAT', { default: 1 }] } } }
+  RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']], sensitivity: ['FLOAT', { default: 1 }] } } },
+  BiRefNetRMBG: { input: { required: { image: ['IMAGE'], model: [['BiRefNet-general', 'BiRefNet_lite']] }, optional: { mask_blur: ['INT', { default: 0 }], background: [['Alpha', 'Color'], { default: 'Alpha' }] } } }
 } });
 const cutout = await host.buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'NovaFlow_Cutout', null] } });
 assert.equal(cutout['1'].inputs.image, 'task-image.png');
-assert.equal(cutout['2'].class_type, 'RMBG');
+assert.equal(cutout['2'].class_type, 'BiRefNetRMBG');
+assert.equal(cutout['2'].inputs.model, 'BiRefNet-general');
+assert.equal(cutout['2'].inputs.background, 'Alpha');
+assert.equal(JSON.stringify(cutout['3'].inputs.images), '["2",0]');
+await assert.rejects((await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: {
+  RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']] } } }
+} })).buildGraph({ module: 'spine-split-runtime', method: 'defaultRmbgWorkflow', options: { __args: ['', 'task-image.png', 'NovaFlow_Cutout', null] } }), /抠图组件/);
 await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'patchWorkflow', options: {} }), /not available/);
 // The split graph names the task's copy of the source, carries the page's seed and prefix, and adds
 // the whole-head node only where the catalogue has it; without See-through it refuses.

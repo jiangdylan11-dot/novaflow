@@ -6850,15 +6850,20 @@
     return undefined
   }
 
+  // BiRefNet-general (MIT) through ComfyUI-RMBG's BiRefNetRMBG node, which has the RMBG node's
+  // inputs and outputs. RMBG-2.0 is CC BY-NC (no commercial use) and is no longer a candidate.
+  const RMBG_NODE = 'BiRefNetRMBG'
+  const RMBG_MODEL = 'BiRefNet-general'
+
   async function rmbgInputs(baseUrl, imageRef) {
-    const node = await comfyObjectInfo(baseUrl, 'RMBG').catch(() => null)
+    const node = await comfyObjectInfo(baseUrl, RMBG_NODE).catch(() => null)
     const required = node && node.input && node.input.required || {}
     const optional = node && node.input && node.input.optional || {}
     const all = Object.assign({}, required, optional)
     const preferred = {
       image: imageRef,
-      model: 'RMBG-2.0',
-      model_name: 'RMBG-2.0',
+      model: RMBG_MODEL,
+      model_name: RMBG_MODEL,
       sensitivity: 1,
       process_res: 1024,
       processing_resolution: 1024,
@@ -6877,7 +6882,7 @@
       const value = comfyDefaultValue(all[key], Object.prototype.hasOwnProperty.call(preferred, key) ? preferred[key] : undefined)
       if (value !== undefined) inputs[key] = value
     })
-    if (!Object.keys(inputs).length) return { image: imageRef, model: 'RMBG-2.0', sensitivity: 1, process_res: 1024, mask_blur: 0, mask_offset: 0, invert_output: false, refine_foreground: false, output_format: 'Alpha', background_color: '#222222' }
+    if (!Object.keys(inputs).length) return { image: imageRef, model: RMBG_MODEL, sensitivity: 1, process_res: 1024, mask_blur: 0, mask_offset: 0, invert_output: false, refine_foreground: false, output_format: 'Alpha', background_color: '#222222' }
     if (!inputs.image) inputs.image = imageRef
     return inputs
   }
@@ -6933,8 +6938,7 @@
   async function defaultRmbgNodes(baseUrl) {
     const info = await comfyAllObjectInfo(baseUrl)
     const candidates = [
-      'RMBG',
-      'LayerMask: RmBgUltra V2',
+      RMBG_NODE,
       'LayerMask: BiRefNetUltraV2',
       'LayerMask: BiRefNetUltra',
     ]
@@ -6942,7 +6946,7 @@
   }
 
   async function defaultRmbgNodeInputs(baseUrl, nodeName, nodeInfo, imageRef) {
-    if (nodeName === 'RMBG') return await rmbgInputs(baseUrl, imageRef)
+    if (nodeName === RMBG_NODE) return await rmbgInputs(baseUrl, imageRef)
     if (nodeName === 'Image Rembg (Remove Background)') {
       return buildComfyNodeInputs(nodeInfo, {
         images: imageRef,
@@ -8321,7 +8325,7 @@
   async function defaultRmbgWorkflow(baseUrl, imageName, prefix, node) {
     node = node || await defaultRmbgNode(baseUrl)
     const inputs = await defaultRmbgNodeInputs(baseUrl, node.name, node.info, ['1', 0])
-    if (/^(LayerMask: RmBgUltra V2|LayerMask: BiRefNetUltraV2|LayerMask: BiRefNetUltra)$/.test(node.name)) {
+    if (/^(LayerMask: BiRefNetUltraV2|LayerMask: BiRefNetUltra)$/.test(node.name)) {
       return {
         '1': { class_type: 'LoadImage', inputs: { image: imageName } },
         '2': { class_type: node.name, inputs },
