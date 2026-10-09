@@ -747,7 +747,7 @@
       if (layer && layer.hasImage) {
         // the face is not being bound this time: a throwaway mesh gives its extent
         const imageData = await ensurePixels(slotDef.attachment)
-        const mesh = layer.mesh || (imageData && window.NovaFlowAutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, { density: layer.density }))
+        const mesh = layer.mesh || (imageData ? await buildMeshOffThread(imageData, { density: layer.density }).catch(() => null) : null)
         const g = mesh ? layerGeometry(ctx.skeleton, ctx.mats, slotDef.attachment, Object.assign({}, layer, { mesh, imageData })) : null
         if (g) faceWorld = g.world
       }
@@ -816,7 +816,7 @@
       return layer
     }
     const AutoMesh = window.NovaFlowAutoMesh
-    const built = AutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, { density: layer.density })
+    const built = await buildMeshOffThread(imageData, { density: layer.density }).catch(() => null)
     if (!built) throw new Error(`${name} 生成失败`)
     layer.mesh = built
     layer.selected = true
@@ -1266,6 +1266,90 @@
     return true
   }
 
+  /**
+   * Mesh builds run in a small worker pool (spine-auto-mesh.worker.js), several layers at
+   * once and off the main thread: 生成网格 used to freeze the whole page for seconds. The
+   * worker loads the very scripts the page loaded (same URLs, same cache tokens), so the
+   * meshes are the same; if a worker cannot start, the build runs here as before.
+   */
+  const meshPool = { workers: [], idle: [], waiting: [], jobs: new Map(), nextId: 1, broken: false }
+  function meshScriptUrl(name) {
+    const tag = Array.from(document.scripts).find((sc) => (sc.getAttribute('src') || '').split('?')[0].replace(/^\.\//, '') === name)
+    return tag ? new URL(tag.getAttribute('src'), document.baseURI).href : new URL(name, document.baseURI).href
+  }
+  function startMeshWorker() {
+    const meshUrl = meshScriptUrl('spine-auto-mesh.js')
+    const token = (meshUrl.split('?')[1] || '')
+    const worker = new Worker(new URL('spine-auto-mesh.worker.js' + (token ? '?' + token + '-w2' : '?w2'), document.baseURI).href)
+    worker.onmessage = (event) => {
+      const m = event.data || {}
+      if (m.type === 'init') { if (!m.ok) failMeshPool(m.error); return }
+      const job = meshPool.jobs.get(m.id)
+      if (!job) return
+      meshPool.jobs.delete(m.id)
+      if (m.error) job.reject(new Error(m.error)); else job.resolve(m.type === 'skeleton' ? m.built : (m.mesh || null))
+      meshPool.idle.push(worker)
+      pumpMeshPool()
+    }
+    worker.onerror = (event) => { failMeshPool(event && event.message) }
+    worker.postMessage({ type: 'init', scripts: [meshScriptUrl('spine-auto-mesh-core.js'), meshUrl, meshScriptUrl('spine-auto-bones.js')] })
+    meshPool.workers.push(worker)
+    return worker
+  }
+  function failMeshPool(reason) {
+    if (meshPool.broken) return
+    meshPool.broken = true
+    try { console.warn('[auto-mesh] worker pool off, building on the page:', reason) } catch { /* no console */ }
+    for (const w of meshPool.workers) { try { w.terminate() } catch { /* gone */ } }
+    meshPool.workers = []; meshPool.idle = []
+    // everything queued or in flight is built here instead
+    const pending = [...meshPool.jobs.values(), ...meshPool.waiting]
+    meshPool.jobs.clear(); meshPool.waiting = []
+    for (const job of pending) { try { job.resolve(runJobHere(job)) } catch (error) { job.reject(error) } }
+  }
+  function pumpMeshPool() {
+    while (meshPool.waiting.length && !meshPool.broken) {
+      let worker = meshPool.idle.pop()
+      if (!worker) {
+        const limit = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1))
+        if (meshPool.workers.length >= limit) return
+        try { worker = startMeshWorker() } catch (error) { failMeshPool(error && error.message); return }
+      }
+      const job = meshPool.waiting.shift()
+      const id = meshPool.nextId++
+      meshPool.jobs.set(id, job)
+      if (job.kind === 'skeleton') {
+        // copies go over (the layers keep their pixels), and are handed over without a second copy
+        const layers = job.layers.map((l) => Object.assign({}, l, { rgba: l.rgba.slice() }))
+        worker.postMessage({ type: 'skeleton', id, layers }, layers.map((l) => l.rgba.buffer))
+        continue
+      }
+      // a copy goes over: the layer keeps its own pixels for the editors
+      const copy = job.imageData.data.slice()
+      worker.postMessage({ type: 'build', id, buffer: copy.buffer, width: job.imageData.width, height: job.imageData.height, options: job.options }, [copy.buffer])
+    }
+  }
+  function runJobHere(job) {
+    if (job.kind === 'skeleton') return window.NovaFlowAutoBones.buildSkeleton(job.layers)
+    return window.NovaFlowAutoMesh.buildMesh(job.imageData.data, job.imageData.width, job.imageData.height, job.options)
+  }
+  function buildSkeletonOffThread(layers) {
+    if (meshPool.broken || typeof Worker !== 'function') return Promise.resolve(window.NovaFlowAutoBones.buildSkeleton(layers))
+    return new Promise((resolve, reject) => {
+      meshPool.waiting.push({ kind: 'skeleton', layers, resolve, reject })
+      pumpMeshPool()
+    })
+  }
+  function buildMeshOffThread(imageData, options) {
+    if (meshPool.broken || typeof Worker !== 'function') {
+      return Promise.resolve(window.NovaFlowAutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, options))
+    }
+    return new Promise((resolve, reject) => {
+      meshPool.waiting.push({ imageData, options, resolve, reject })
+      pumpMeshPool()
+    })
+  }
+
   async function generate(setStatus) {
     // a public entry point: a caller without a status line must not blow up half way
     if (typeof setStatus !== 'function') setStatus = () => {}
@@ -1277,18 +1361,23 @@
     const names = selectedNames()
     if (!names.length) throw new Error('请先勾选要蒙皮的图层')
 
+    // pixels are read here, the builds run in the worker pool side by side
     let done = 0
+    const builds = []
     for (const name of names) {
       const layer = state.layers.get(name)
-      done++
-      setStatus(`计算网格 ${done}/${names.length} · ${name}`)
-      await nextFrame()
       let imageData
-      try { imageData = await ensurePixels(name) } catch { continue }
-      if (adoptExistingMesh(name, layer, imageData)) continue
-      const mesh = AutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, { density: layer.density })
-      if (mesh) { layer.mesh = mesh; layer.edited = false }
+      try { imageData = await ensurePixels(name) } catch { done++; continue }
+      if (adoptExistingMesh(name, layer, imageData)) { done++; continue }
+      builds.push(buildMeshOffThread(imageData, { density: layer.density }).then((mesh) => {
+        if (mesh) { layer.mesh = mesh; layer.edited = false }
+      }, () => { /* this layer stays without a mesh */ }).finally(() => {
+        done++
+        setStatus(`计算网格 ${done}/${names.length} · ${name}`)
+      }))
     }
+    setStatus(`计算网格 ${done}/${names.length}`)
+    await Promise.all(builds)
     const built = names.filter((n) => state.layers.get(n).mesh)
     if (!built.length) throw new Error('勾选的图层都没能生成网格')
 
@@ -1310,7 +1399,7 @@
     const imageData = await ensurePixels(name)
     // the artist's mesh is never rebuilt; density only means something for a region
     if (adoptExistingMesh(name, layer, imageData)) { layer.density = density; await applyAll(); renderList(); return }
-    const mesh = AutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, { density })
+    const mesh = await buildMeshOffThread(imageData, { density }).catch(() => null)
     if (!mesh) throw new Error(`${name} 生成失败`)
     const prevIds = layer.weights ? layer.weights.boneIds.slice() : null
     layer.mesh = mesh
@@ -1339,7 +1428,7 @@
       await nextFrame()
       const imageData = await ensurePixels(name)
       if (!adoptExistingMesh(name, layer, imageData)) {
-        const built = AutoMesh.buildMesh(imageData.data, imageData.width, imageData.height, { density: layer.density })
+        const built = await buildMeshOffThread(imageData, { density: layer.density }).catch(() => null)
         if (!built) throw new Error(`${name} 生成失败`)
         layer.mesh = built
       }
@@ -1350,11 +1439,10 @@
       density: layer.density,
       minDensity: 2,
       maxDensity: 40,
-      rebuild: (density) => {
-        const m = AutoMesh.buildMesh(layer.imageData.data, layer.imageData.width, layer.imageData.height, { density })
+      rebuild: (density) => buildMeshOffThread(layer.imageData, { density }).then((m) => {
         if (m) layer.density = density
         return m
-      }
+      })
     })
     if (!edited) {
       // nothing was written back, so a mesh built only for this edit must not linger
@@ -3263,7 +3351,8 @@
     if (!layers.length) throw new Error('没有可分析的图层(需要有贴图的 region 附件)')
     setStatus(`分析 ${layers.length} 层的中轴并搭建骨架…`)
     await nextFrame(); await nextFrame()
-    const built = AB.buildSkeleton(layers)
+    // the medial-axis analysis runs in the worker pool (it froze the page for most of a second)
+    const built = await buildSkeletonOffThread(layers).catch(() => AB.buildSkeleton(layers))
     const next = AB.applyToSkeleton(skel, built)
     const text = JSON.stringify(next)
     // bones by name (they survive later edits in the bone editor); built.bones runs in
@@ -3870,6 +3959,7 @@
     /** close 骨骼架设 / 自动蒙皮 / 自动权重 (动画编辑 opening) */
     closePanels: () => closeOtherPanels(null),
     _bonesToScreen: () => bonesToScreen(),
+    _buildSkeletonOffThread: (layers) => buildSkeletonOffThread(layers),
     _previewCanvas: () => previewCanvas(),
     _state: state,
     _bones: bones

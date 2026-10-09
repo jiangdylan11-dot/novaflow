@@ -521,12 +521,14 @@
           String(opts.density || 22))
         dIn.addEventListener('input', () => { dVal.textContent = dIn.value })
         dIn.addEventListener('change', () => {
-          const rebuilt = opts.rebuild(Number(dIn.value))
-          if (!rebuilt) return
-          undoStack.push(pts.slice())
-          pts = Array.from(rebuilt.vertices)
-          current = { vertices: Float64Array.from(pts), triangles: rebuilt.triangles, hull: rebuilt.hull }
-          draw()
+          // the rebuild may come back later (it runs off the main thread now)
+          Promise.resolve(opts.rebuild(Number(dIn.value))).then((rebuilt) => {
+            if (!rebuilt) return
+            undoStack.push(pts.slice())
+            pts = Array.from(rebuilt.vertices)
+            current = { vertices: Float64Array.from(pts), triangles: rebuilt.triangles, hull: rebuilt.hull }
+            draw()
+          }, () => { /* the mesh stays as it is */ })
         })
         dWrap.appendChild(dIn); dWrap.appendChild(dVal)
         bar.appendChild(dWrap)

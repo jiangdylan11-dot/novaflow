@@ -37285,7 +37285,31 @@
     NOVAFLOW_SPEC_OWNED = ownedStyles;
   }
 
+  // A whole-page visual rhythm pass right after another one, with nothing in the page changed
+  // in between, does the same work again: opening one panel ran it two or three times in a
+  // row (60-75 ms each). A mutation watcher tells whether anything changed since the last
+  // whole-page pass; the pass's own writes are taken out of it when the pass ends.
+  let VISUAL_RHYTHM_WATCH = null, VISUAL_RHYTHM_DIRTY = true, VISUAL_RHYTHM_LAST_SIZE = "";
+  function visualRhythmUnchanged(scope) {
+    if (!document.body || (scope !== document && scope !== document.body)) return false;
+    if (!VISUAL_RHYTHM_WATCH) {
+      VISUAL_RHYTHM_WATCH = new MutationObserver(() => { VISUAL_RHYTHM_DIRTY = true; });
+      VISUAL_RHYTHM_WATCH.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      window.addEventListener("resize", () => { VISUAL_RHYTHM_DIRTY = true; }, { passive: true });
+      return false;
+    }
+    if (VISUAL_RHYTHM_WATCH.takeRecords().length) VISUAL_RHYTHM_DIRTY = true;
+    return !VISUAL_RHYTHM_DIRTY && VISUAL_RHYTHM_LAST_SIZE === `${window.innerWidth}x${window.innerHeight}`;
+  }
+  function markVisualRhythmClean(scope) {
+    if (!VISUAL_RHYTHM_WATCH || (scope !== document && scope !== document.body)) return;
+    VISUAL_RHYTHM_WATCH.takeRecords();
+    VISUAL_RHYTHM_DIRTY = false;
+    VISUAL_RHYTHM_LAST_SIZE = `${window.innerWidth}x${window.innerHeight}`;
+  }
+
   function normalizeNovaflowVisualRhythm(scope = document) {
+    if (visualRhythmUnchanged(scope)) return;
     const __nfJankStartedAt = nfJankProbeFunctionBegin("normalizeNovaflowVisualRhythm");
     const __nfPerfStartedAt = nfAnimationPerfMark();
     nfAnimationPerfCountCallsite("normalizeNovaflowVisualRhythm", "normalizeNovaflowVisualRhythm");
@@ -37307,6 +37331,7 @@
         applyParticleDensityPanelInlineTokens(scope);
         // Last, so the reference spec is what survives.
         applyNovaflowReferenceSpec();
+        markVisualRhythmClean(scope);
       });
     } finally {
       nfJankProbeFunctionEnd("normalizeNovaflowVisualRhythm", __nfJankStartedAt);
