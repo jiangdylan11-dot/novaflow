@@ -46,7 +46,7 @@
     helper: { line: '#ff9a3c', hover: '#ffc58a', fill: '#ff9a3c', fillAlpha: 0.3, label: '#ffc58a' }
   }
   const TOOLS = [
-    { id: 'move', label: '移动', key: 'v', hint: '拖动移动骨骼。普通骨:拖关节点=改关节位置(骨骼重算,画面不动),拖骨身=平移整根骨。控制骨(IK/约束目标、零长度骨、枢轴):拖=摆姿势,子骨和图片跟着走、约束联动,拖骨尖=转动。按住 Alt 拖普通骨也是摆姿势;按住 Shift 拖控制骨则改它所在的关节。P=指定父骨(再点一根骨),Shift+P=挂到 root,也可以在右侧骨骼树里拖一根骨到另一根上。任何工具下点一下骨骼都能选中它' },
+    { id: 'move', label: '移动', key: 'v', hint: '拖动骨骼(骨身或起点)=移动这根骨和它的子骨,父骨不动;多选时一起移动。按住 Shift 拖关节点=改关节位置(画面不动)。控制骨(IK/约束目标、零长度骨、枢轴):拖=摆姿势。P=指定父骨,Shift+P=挂到 root' },
     { id: 'rotate', label: '旋转', key: 'r', hint: '拖动旋转选中的骨骼(绕它的起点)。控制骨或按住 Alt:摆姿势,子骨/图片跟着转、约束联动(零长度的枢轴也能转);普通骨:改骨架,骨尖上的关节跟着转、画面不动' },
     { id: 'scale', label: '缩放', key: 's', hint: '拖动缩放选中的骨骼(沿它自己的两个轴;按住 Shift 等比)。子骨和这根骨上的图片跟着缩放,和 Spine 的缩放一样' },
     { id: 'create', label: '新建', key: 'n', hint: '按下确定起点、拖到终点松开;新骨挂在选中骨骼下(没有就挂 root);单击得到一根零长度的控制骨' }
@@ -397,29 +397,26 @@
     return setEndpoints(skel, targets)
   }
 
-  /** Translate one bone (both endpoints) and whatever coincides with them. */
+  /**
+   * Translate a bone and its whole branch, as Spine's translate. Nothing else moves: a parent
+   * whose tip it sat on stays where it is (user 2026-10-10) - unless that parent is picked too
+   * (`opts.also`, the rest of a multi-selection), then it moves with its own branch.
+   */
   function translateBone(skel, index, dx, dy, opts) {
     const o = opts || {}
     const W = o.W || worldTransforms(skel)
-    const tol = o.tol === undefined ? 1.5 : o.tol
-    const m = W[index]
     const targets = new Map()
-    const o0 = [m.worldX, m.worldY], t0 = tipOf(m)
-    for (const e of endpointsAt(W, o0[0], o0[1], tol)) addTarget(targets, e.index, e.end, [o0[0] + dx, o0[1] + dy])
-    if (m.length > 0) for (const e of endpointsAt(W, t0[0], t0[1], tol)) addTarget(targets, e.index, e.end, [t0[0] + dx, t0[1] + dy])
-    addTarget(targets, index, 'origin', [o0[0] + dx, o0[1] + dy])
-    if (m.length > 0) addTarget(targets, index, 'tip', [t0[0] + dx, t0[1] + dy])
-    // the whole branch goes with it, as Spine's translate: a child kept in place had its
-    // origin dragged along (when it sat on this tip) and its tip left behind, so the chain
-    // stretched and broke - or stayed behind entirely when its origin was a little off
-    const inBranch = (i) => { for (let p = W[i].parent, n = 0; p >= 0 && n <= W.length; p = W[p].parent, n++) if (p === index) return true; return false }
+    const roots = new Set([index, ...(o.also || [])].filter((i) => i >= 0 && i < W.length))
+    const under = (i, root) => { for (let p = W[i].parent, n = 0; p >= 0 && n <= W.length; p = W[p].parent, n++) if (p === root) return true; return false }
     for (let i = 0; i < W.length; i++) {
-      if (i === index || !inBranch(i)) continue
+      let moves = roots.has(i)
+      if (!moves) for (const r of roots) if (under(i, r)) { moves = true; break }
+      if (!moves) continue
       const d = W[i]
       addTarget(targets, i, 'origin', [d.worldX + dx, d.worldY + dy])
       if (d.length > 0) { const t = tipOf(d); addTarget(targets, i, 'tip', [t[0] + dx, t[1] + dy]) }
     }
-    if (o.frozen) for (const k of o.frozen) if (k !== index) targets.delete(k)
+    if (o.frozen) for (const k of o.frozen) if (!roots.has(k)) targets.delete(k)
     return setEndpoints(skel, targets)
   }
 
@@ -1263,7 +1260,9 @@
         return
       }
       const m = st.WF[hit.index]
-      if (hit.end === 'shaft') st.drag = { kind: 'translate', base: cloneRig(st.skel), index: hit.index, w0: w, start: s, moved: false }
+      // the origin moves the bone (and its branch), as the shaft does: as a joint it dragged the
+      // parent's tip along with it. Shift still edits the joint itself
+      if (hit.end === 'shaft' || (hit.end === 'origin' && !rigEdit)) st.drag = { kind: 'translate', base: cloneRig(st.skel), index: hit.index, w0: w, start: s, moved: false }
       else st.drag = { kind: 'joint', base: cloneRig(st.skel), from: hit.end === 'tip' ? tipOf(m) : [m.worldX, m.worldY], w0: w, start: s, moved: false, tol }
     }
     function onPointerMove(ev) {
@@ -1291,7 +1290,7 @@
         }
         if (d.kind === 'poseRotate') { const a1 = Math.atan2(w[1] - d.o[1], w[0] - d.o[0]); res = poseRotate(d.base, d.index, wrap180((a1 - d.a0) * DEG)); if (res) { st.skel = res.skeleton; recompute(); draw() } return }
         if (d.kind === 'joint') res = moveJoint(d.base, d.from, [d.from[0] + w[0] - d.w0[0], d.from[1] + w[1] - d.w0[1]], { tol: d.tol, frozen: st.derived })
-        else if (d.kind === 'translate') res = translateBone(d.base, d.index, w[0] - d.w0[0], w[1] - d.w0[1], { frozen: st.derived })
+        else if (d.kind === 'translate') res = translateBone(d.base, d.index, w[0] - d.w0[0], w[1] - d.w0[1], { frozen: st.derived, also: st.picked.has(d.index) ? [...st.picked] : [] })
         else if (d.kind === 'rotate') { const m = worldTransforms(d.base)[d.index]; const a1 = Math.atan2(w[1] - m.worldY, w[0] - m.worldX); res = rotateBone(d.base, d.index, wrap180((a1 - d.a0) * DEG), { frozen: st.derived }) }
         if (res) { st.skel = rebuildMechanisms(res.skeleton); recompute(); draw() }
         return
@@ -1527,7 +1526,7 @@
           commit(res.skeleton)
           return true
         }
-        finishEdit(translateBone(st.skel, st.selected, dx, dy, { W: st.WF, frozen: st.derived }).skeleton)
+        finishEdit(translateBone(st.skel, st.selected, dx, dy, { W: st.WF, frozen: st.derived, also: st.picked.has(st.selected) ? [...st.picked] : [] }).skeleton)
         return true
       }
       // 缩放: the number is the bone's own scale, so reach it with the factor poseScale wants

@@ -755,10 +755,20 @@
     const thr = Math.max(opt0.alphaThreshold, 24)
     let best = first, bestLost = first ? lostPixels(first, rgba, w, h, thr) : { drawn: 1, lost: 1 }
     if (!bestLost.drawn || bestLost.lost <= Math.max(8, 0.01 * bestLost.drawn)) return first
-    let density = opt0.density
-    for (let k = 0; k < 4; k++) {
-      density *= 2
-      const m = buildMeshOnce(rgba, w, h, Object.assign({}, options || {}, { density, keepFrac: 0, ringAreaRatio: 0, growPx: 2 }))
+    // a coarse mesh that misses thin edge pixels is first grown outward at the SAME density
+    // (doubling the density for coverage turned 密度 8 into ~600 vertices); only if that is
+    // not enough does it get denser
+    const diag0 = Math.hypot(w, h)
+    const attempts = [
+      { density: opt0.density, growPx: Math.max(6, diag0 / opt0.density * 0.15) },
+      { density: opt0.density, growPx: Math.max(12, diag0 / opt0.density * 0.3) },
+      { density: opt0.density * 1.5, growPx: 12 },
+      { density: opt0.density * 2, growPx: 12 },
+      { density: opt0.density * 4, growPx: 2 }
+    ]
+    for (const attempt of attempts) {
+      const density = attempt.density
+      const m = buildMeshOnce(rgba, w, h, Object.assign({}, options || {}, { density, keepFrac: 0, ringAreaRatio: 0, growPx: attempt.growPx }))
       if (!m) continue
       const l = lostPixels(m, rgba, w, h, thr)
       if (l.lost < bestLost.lost) { best = m; bestLost = l }
@@ -777,7 +787,10 @@
     const bb = bbox(mask, w, h)
     if (bb.empty) return null
     const diag = Math.hypot(bb.maxX - bb.minX, bb.maxY - bb.minY)
-    const edge = Math.min(Math.max(diag / opt.density, opt.minEdge), opt.maxEdge)
+    // a low density means big triangles: the usual cap on the edge length would put a floor
+    // under the vertex count (8 and 2 came out the same)
+    const maxEdge = opt.density < 15 ? Math.max(opt.maxEdge, diag / opt.density) : opt.maxEdge
+    const edge = Math.min(Math.max(diag / opt.density, opt.minEdge), maxEdge)
 
     // the detail field must read the real artwork, so grow only the mesh domain
     const artMask = mask
@@ -1127,5 +1140,5 @@
     return { vertices: V, triangles: T, hull, edge, width: w, height: h, curves: curves.map((c) => c.pts) }
   }
 
-  return { buildMesh, DEFAULTS, _internals: { rhoField, detailField, maskRings, globalDedup, projectPolyline, triMinAngle, structureField, featureCurves, linkChains, resampleOpen } }
+  return { buildMesh, DEFAULTS, _internals: { lostPixels, rhoField, detailField, maskRings, globalDedup, projectPolyline, triMinAngle, structureField, featureCurves, linkChains, resampleOpen } }
 })

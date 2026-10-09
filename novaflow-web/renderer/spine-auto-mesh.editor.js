@@ -509,7 +509,7 @@
         dWrap.appendChild(el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.55)' }, '密度'))
         const dIn = el('input')
         dIn.type = 'range'
-        dIn.min = String(opts.minDensity || 8)
+        dIn.min = String(opts.minDensity || 2)
         dIn.max = String(opts.maxDensity || 40)
         dIn.step = '1'
         dIn.value = String(opts.density || 22)

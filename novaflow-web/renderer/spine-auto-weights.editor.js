@@ -28,9 +28,9 @@
 
   const CLAIMED_INPUT = ['wheel', 'contextmenu', 'pointerdown', 'mousedown']
   const MODES = [
-    { id: 'set', label: '直接', hint: '把选中骨骼在笔刷下的权重设为滑条值' },
-    { id: 'add', label: '叠加', hint: '按住逐渐增加选中骨骼的权重' },
-    { id: 'smooth', label: '平滑', hint: '让笔刷下的顶点向相邻顶点的权重靠拢' }
+    { id: 'set', label: '直接', hint: '点选一个顶点,上下拖动调它在选中骨骼上的权重(权重滑条也作用于它)' },
+    { id: 'add', label: '增加', hint: '笔刷:按住涂抹,逐渐增加选中骨骼的权重' },
+    { id: 'sub', label: '减少', hint: '笔刷:按住涂抹,逐渐减少选中骨骼的权重' }
   ]
   const PALETTE = [
     '#4cc9f0', '#f72585', '#7b5cff', '#ff7f11', '#7ae582', '#ffd166', '#ef476f', '#06d6a0',
@@ -91,6 +91,15 @@
     for (const { i, f } of hits) {
       const base = i * nb
       W[base + sel] = Math.min(1, W[base + sel] + amount * f)
+      rebalance(W, nb, i, sel)
+    }
+  }
+
+  /** 减少: take `amount·f` off the bone's weight (the others share what it gives up). */
+  function paintSub(W, nb, sel, hits, amount) {
+    for (const { i, f } of hits) {
+      const base = i * nb
+      W[base + sel] = Math.max(0, W[base + sel] - amount * f)
       rebalance(W, nb, i, sel)
     }
   }
@@ -280,6 +289,13 @@
       let lastStamp = null
       let hover = null
       let panning = false, panStart = null
+      let pickV = -1, pickDrag = null      // 直接: the vertex being set and its drag start
+      let drawFrame = 0
+      // one redraw per frame: drawing every pie on every pointer move made painting stutter
+      const requestDraw = () => {
+        if (drawFrame) return
+        drawFrame = window.requestAnimationFrame(() => { drawFrame = 0; if (!done) draw() })
+      }
       // ---- animation preview: the layer posed by the running preview through the
       // weights being edited (linear blend skinning in the bind-pose bone frames),
       // so a stroke is seen deforming the picture at once instead of after 完成
@@ -290,6 +306,7 @@
       const localByBone = new Map()     // bone index -> every vertex in that bone's bind frame
       let tick = 0
 
+      let meanEdge = 10
       function estimateEdge() {
         let s = 0, c = 0
         for (let t = 0; t < T.length; t += 3) for (let e = 0; e < 3; e++) {
@@ -328,7 +345,11 @@
         wrap.appendChild(input); wrap.appendChild(val)
         return { wrap, input, val }
       }
-      const strengthUi = sliderWrap('权重', 0, 1, 0.05, strength, (v) => { strength = v })
+      const strengthUi = sliderWrap('权重', 0, 1, 0.05, strength, (v) => {
+        strength = v
+        // 直接: the slider sets the picked vertex
+        if (mode === 'set' && pickV >= 0 && sel >= 0) { pushUndo(); W[pickV * nb + sel] = v; rebalance(W, nb, pickV, sel); requestDraw() }
+      })
       const radiusUi = sliderWrap('半径', 2, Math.max(20, Math.round(Math.min(w, h) / 3)), 1, Math.round(radius), (v) => { radius = v; draw() })
       bar.appendChild(strengthUi.wrap); bar.appendChild(radiusUi.wrap)
 
@@ -344,9 +365,8 @@
 
       const autoBtn = button('自动'); autoBtn.title = '按当前骨骼列表重新自动求解这一层的权重'
       const smoothBtn = button('平滑'); smoothBtn.title = '整层做一次平滑'
-      const pruneBtn = button('修剪'); pruneBtn.title = '去掉小于 1% 的影响,每个顶点最多保留 4 根骨'
       autoBtn.style.marginLeft = '8px'
-      bar.appendChild(autoBtn); bar.appendChild(smoothBtn); bar.appendChild(pruneBtn)
+      bar.appendChild(autoBtn); bar.appendChild(smoothBtn)
 
       // ---- animation preview controls, only when a running preview is there to pose it
       let playBtn = null, timeUi = null
@@ -458,7 +478,7 @@
       body.appendChild(stage)
       overlay.appendChild(body)
       overlay.appendChild(el('div', { padding: '8px 14px', background: '#161618', fontSize: '11px', color: 'rgba(255,255,255,0.45)', flex: '0 0 auto' },
-        '左键涂抹 · 滚轮缩放 · 右键/中键拖动平移 · 1/2/3 切换模式 · [ ] 调半径 · Ctrl+Z 撤销 · 每个顶点的权重之和始终为 1'))
+        '直接:点选顶点上下拖动 · 增加/减少:左键涂抹 · 拖动左侧骨骼调整顺序 · 滚轮缩放 · 右键/中键平移 · 1/2/3 切换 · [ ] 调半径 · Ctrl+Z 撤销'))
       document.body.appendChild(overlay)
 
       const src = document.createElement('canvas')
@@ -510,6 +530,12 @@
           })
           row.appendChild(rm)
           row.addEventListener('click', () => { sel = j; renderBones(); draw() })
+          row.draggable = true
+          row.addEventListener('dragstart', (ev) => { dragRow = j; try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', String(j)) } catch { /* no data */ } })
+          row.addEventListener('dragover', (ev) => { if (dragRow < 0) return; ev.preventDefault(); row.style.boxShadow = 'inset 0 2px 0 0 #22c98a' })
+          row.addEventListener('dragleave', () => { row.style.boxShadow = '' })
+          row.addEventListener('drop', (ev) => { ev.preventDefault(); row.style.boxShadow = ''; const from = dragRow; dragRow = -1; if (from >= 0 && from !== j) moveBone(from, j) })
+          row.addEventListener('dragend', () => { dragRow = -1 })
           row.addEventListener('mouseenter', () => { hover = id; draw() })
           row.addEventListener('mouseleave', () => { hover = null; draw() })
           boneList.appendChild(row)
@@ -534,6 +560,20 @@
         renderBones(); draw()
       })
 
+      let dragRow = -1
+      /** Put bone column `from` at position `to`; the weights move with their bone. */
+      function moveBone(from, to) {
+        pushUndo()
+        const order = boneIds.map((_, k) => k)
+        order.splice(to, 0, order.splice(from, 1)[0])
+        const next = new Float64Array(n * nb)
+        for (let i = 0; i < n; i++) for (let k = 0; k < nb; k++) next[i * nb + k] = W[i * nb + order[k]]
+        W = next
+        const selId = sel >= 0 ? boneIds[sel] : null
+        boneIds = order.map((k) => boneIds[k])
+        sel = selId === null ? sel : boneIds.indexOf(selId)
+        renderBones(); draw()
+      }
       function pushUndo() {
         undoStack.push({ boneIds: boneIds.slice(), W: Float64Array.from(W) })
         if (undoStack.length > 80) undoStack.shift()
@@ -564,7 +604,7 @@
         ctx.stroke()
         // vertices
         const selId = sel >= 0 ? boneIds[sel] : -1
-        const pr = Math.max(3.5, Math.min(9, 0.35 * estimateEdge() * view.scale))
+        const pr = Math.max(3.5, Math.min(9, 0.35 * meanEdge * view.scale))
         for (let i = 0; i < n; i++) {
           const [x, y] = toScreen(P[2 * i], P[2 * i + 1])
           if (showOverlay && sel >= 0) {
@@ -599,14 +639,20 @@
           const [ax, ay] = toScreen(at.ax, at.ay); const [bx, by] = toScreen(at.bx, at.by)
           drawBoneGlyph(ctx, ax, ay, bx, by, boneColor(b.index), b.name, isSel, inSet)
         }
+        if (mode === 'set' && pickV >= 0 && pickV < n) {
+          const [x, y] = toScreen(P[2 * pickV], P[2 * pickV + 1])
+          ctx.beginPath(); ctx.arc(x, y, pr + 4, 0, Math.PI * 2)
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke()
+        }
         // brush
-        if (lastPointer) {
+        if (lastPointer && mode !== 'set') {
           const [x, y] = toScreen(lastPointer[0], lastPointer[1])
           ctx.beginPath(); ctx.arc(x, y, radius * view.scale, 0, Math.PI * 2)
           ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1; ctx.stroke()
         }
         const selName = sel >= 0 && boneByIndex.get(boneIds[sel]) ? boneByIndex.get(boneIds[sel]).name : '—'
-        info.textContent = `${n} 顶点 · ${nb} 骨 · 选中 ${selName}`
+        const picked = mode === 'set' && pickV >= 0 && sel >= 0 ? ` · 顶点 ${pickV} = ${W[pickV * nb + sel].toFixed(2)}` : ''
+        info.textContent = `${n} 顶点 · ${nb} 骨 · 选中 ${selName}${picked}`
       }
       let lastPointer = null
 
@@ -616,9 +662,8 @@
         lastStamp = [ix, iy]
         const hits = brushHits(animOn && posed ? posed : V, n, ix, iy, radius, 1)
         if (!hits.length) return
-        if (mode === 'set') paintSet(W, nb, sel, hits, strength)
-        else if (mode === 'add') paintAdd(W, nb, sel, hits, strength * 0.15)
-        else paintSmooth(W, nb, adj, hits, Math.max(0.05, strength))
+        if (mode === 'add') paintAdd(W, nb, sel, hits, strength * 0.15)
+        else if (mode === 'sub') paintSub(W, nb, sel, hits, strength * 0.15)
       }
 
       function zoomAt(clientX, clientY, deltaY) {
@@ -642,8 +687,22 @@
         if (ev.button === 1 || ev.button === 2 || ev.shiftKey) { beginPan(ev); return }
         if (ev.button !== 0) return
         const rect = canvas.getBoundingClientRect()
-        const [ix, iy] = toImage(ev.clientX - rect.left, ev.clientY - rect.top)
+        const mx = ev.clientX - rect.left, my = ev.clientY - rect.top
+        const [ix, iy] = toImage(mx, my)
         capture(ev.pointerId)
+        if (mode === 'set') {
+          const P = animOn && posed ? posed : V
+          let best = -1, bestD = 14
+          for (let i = 0; i < n; i++) { const [x, y] = toScreen(P[2 * i], P[2 * i + 1]); const d = Math.hypot(x - mx, y - my); if (d < bestD) { bestD = d; best = i } }
+          pickV = best
+          if (best >= 0 && sel >= 0) {
+            pushUndo()
+            pickDrag = { y: my, v: W[best * nb + sel] }
+            strengthUi.input.value = String(Math.round(pickDrag.v * 100) / 100); strengthUi.val.textContent = strengthUi.input.value
+          }
+          draw()
+          return
+        }
         pushUndo()
         painting = true; lastStamp = null
         stamp(ix, iy, true); draw()
@@ -653,14 +712,24 @@
         const mx = ev.clientX - rect.left, my = ev.clientY - rect.top
         if (panning && panStart) { view.ox = mx - panStart[0]; view.oy = my - panStart[1]; draw(); return }
         const [ix, iy] = toImage(mx, my)
-        lastPointer = [ix, iy]
+        if (pickDrag && pickV >= 0 && sel >= 0) {
+          // up raises, down lowers: 150px from 0 to 1
+          const v = Math.max(0, Math.min(1, pickDrag.v + (pickDrag.y - my) / 150))
+          W[pickV * nb + sel] = v
+          rebalance(W, nb, pickV, sel)
+          strengthUi.input.value = String(Math.round(v * 100) / 100); strengthUi.val.textContent = strengthUi.input.value
+          requestDraw()
+          return
+        }
+        lastPointer = mode === 'set' ? null : [ix, iy]
         if (painting) stamp(ix, iy, false)
-        draw()
+        requestDraw()
       })
       canvas.addEventListener('pointerleave', () => { lastPointer = null; draw() })
       canvas.addEventListener('pointerup', (ev) => {
         try { canvas.releasePointerCapture(ev.pointerId) } catch { /* not captured */ }
         if (panning) { panning = false; panStart = null; return }
+        if (pickDrag) { pickDrag = null; renderBones(); draw(); return }
         if (painting) { painting = false; lastStamp = null; renderBones(); draw() }
       })
 
@@ -673,7 +742,6 @@
         } finally { autoBtn.disabled = false }
       })
       smoothBtn.addEventListener('click', () => { pushUndo(); smoothAll(W, n, nb, adj, 0.5); renderBones(); draw() })
-      pruneBtn.addEventListener('click', () => { pushUndo(); prune(W, n, nb, 0.01, 4); renderBones(); draw() })
       undoBtn.addEventListener('click', undo)
       resetBtn.addEventListener('click', () => { pushUndo(); boneIds = initial.boneIds.slice(); nb = boneIds.length; W = Float64Array.from(initial.W); sel = nb ? 0 : -1; renderBones(); draw() })
       cancelBtn.addEventListener('click', () => finish(null))
@@ -685,7 +753,7 @@
         else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') undo()
         else if (ev.key === '1') { mode = 'set'; syncBar() }
         else if (ev.key === '2') { mode = 'add'; syncBar() }
-        else if (ev.key === '3') { mode = 'smooth'; syncBar() }
+        else if (ev.key === '3') { mode = 'sub'; syncBar() }
         else if (ev.key === '[') { radius = Math.max(2, radius - 2); radiusUi.input.value = String(Math.round(radius)); radiusUi.val.textContent = radiusUi.input.value; draw() }
         else if (ev.key === ']') { radius += 2; radiusUi.input.value = String(Math.round(radius)); radiusUi.val.textContent = radiusUi.input.value; draw() }
       }
@@ -713,12 +781,13 @@
       window.addEventListener('keydown', onKey, true)
       window.addEventListener('resize', onResize)
 
+      meanEdge = estimateEdge()
       fit(); syncBar(); renderBones(); draw()
     })
   }
 
   return {
     open, MODES, PALETTE, boneColor,
-    _internals: { adjacency, rebalance, normalizeRow, paintSet, paintAdd, paintSmooth, smoothAll, prune, brushHits, addBoneColumn, removeBoneColumn }
+    _internals: { adjacency, rebalance, normalizeRow, paintSet, paintAdd, paintSub, paintSmooth, smoothAll, prune, brushHits, addBoneColumn, removeBoneColumn }
   }
 })

@@ -1301,7 +1301,7 @@
     const edited = await Editor.open(layer.imageData, layer.mesh, {
       name,
       density: layer.density,
-      minDensity: 8,
+      minDensity: 2,
       maxDensity: 40,
       rebuild: (density) => {
         const m = AutoMesh.buildMesh(layer.imageData.data, layer.imageData.width, layer.imageData.height, { density })
@@ -1537,7 +1537,7 @@
     row.appendChild(value)
 
     const slider = el('input')
-    slider.type = 'range'; slider.min = '8'; slider.max = '40'; slider.step = '1'
+    slider.type = 'range'; slider.min = '2'; slider.max = '40'; slider.step = '1'
     slider.value = String(state.density)
     Object.assign(slider.style, { width: '100%', marginTop: STACK_GAP, marginBottom: '0', accentColor: '#22c98a' })
     slider.addEventListener('input', () => {
@@ -1668,7 +1668,7 @@
         const nameEl = el('span', {
           fontSize: '11px', color: 'rgba(255,255,255,0.82)', overflow: 'hidden',
           textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto'
-        }, name + (layer.edited ? ' ·改' : '') + (layer.weights ? (layer.weightsEdited ? ' ·权改' : ' ·权') : ''))
+        }, name)
         nameEl.title = layer.hasImage
           ? name + (layer.edited ? '（已手动编辑）' : '') + (layer.weights ? `（${layer.weights.boneIds.length} 根骨${layer.weightsEdited ? ',权重已手工调整' : ',自动权重'}）` : '')
           : name + '（没有同名贴图,无法蒙皮）'
@@ -1815,7 +1815,7 @@
           textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto'
         }, name)
         // what it is bound to right now
-        const bound = layer.weights ? `${layer.weights.boneIds.length} 骨${layer.weightsEdited ? ' ·改' : ''}` : (layer.mesh ? '未加权重' : '')
+        const bound = layer.weights ? String(layer.weights.boneIds.length) : ''
         const boundEl = el('span', { fontSize: '11px', color: layer.weights ? '#22c98a' : 'rgba(255,255,255,0.4)', flex: '0 0 auto' }, bound)
         top.appendChild(cb); top.appendChild(nameEl); top.appendChild(boundEl)
         if (layer.selected && layer.hasImage) {
@@ -2197,7 +2197,7 @@
     const layerNote = (name) => {
       const layer = state.layers.get(name)
       if (!layer) return ''
-      return layer.mesh ? (layer.weights ? '网格 · 权重' : '网格') : (layer.selected ? '已勾选' : '')
+      return ''
     }
     const group = (key, label, count, depth) => {
       const open = hier.open.has(key)
@@ -2246,7 +2246,7 @@
       for (let i = slots.length - 1; i >= 0; i--) {
         const sl = slots[i]
         const layer = state.layers.get(sl.name)
-        const note = layer ? (layer.mesh ? (layer.weights ? '网格 · 权重' : '网格') : (layer.selected ? '已勾选' : '')) : ''
+        const note = ''
         rows.push({ key: 'l:' + sl.name, depth: 2, label: sl.name, note: note || sl.bone, layer: sl.name, boneName: sl.bone, active: !!(layer && layer.selected), picked: hier.pick.has(sl.name) })
       }
     }
@@ -3120,6 +3120,26 @@
     homePsImport()
     syncBonePreview()
     if (loadBonesFromSource(false)) { bones.renderTree(); bones.syncUi(); renderHierarchy(true) }
+    autoApplyBones(false)
+  }
+  let pointerHeld = false
+  window.addEventListener('pointerdown', () => { pointerHeld = true }, true)
+  window.addEventListener('pointerup', () => { pointerHeld = false }, true)
+  window.addEventListener('pointercancel', () => { pointerHeld = false }, true)
+  function autoApplyBones(now) {
+    const ctl = bones.ctl
+    if (!ctl || state.busy || bones.applying) return
+    const st = ctl.getState()
+    const cur = typeof ctl.peek === 'function' ? ctl.peek() : null
+    if (cur !== bones.autoSeen) { bones.autoSeen = cur; bones.autoAt = Date.now(); if (!now) return }
+    if (!st.dirty || cur === bones.autoFailed) return
+    if (!now && (pointerHeld || Date.now() - (bones.autoAt || 0) < 1200)) return
+    bones.applying = true
+    const say = typeof bones.setStatus === 'function' ? bones.setStatus : () => {}
+    applyBones((t) => say(t)).then((n) => { say(`已应用 ${n} 根骨`, 'ok') }).catch((error) => {
+      bones.autoFailed = cur
+      say(error && error.message ? error.message : String(error), 'error')
+    }).finally(() => { bones.applying = false; try { bones.syncUi() } catch { /* panel gone */ } })
   }
   const ourMeshes = () => Array.from(state.layers.values()).some((l) => l.mesh && !l.fromMesh)
   /** Write the edited rig into the project and reload the preview. */
@@ -3366,9 +3386,7 @@
       const ctl = bones.ctl
       const n = ctl ? ctl.peekBones().length : 0
       listWrap.title = '换父骨:选中后按 P 再点新父骨(Shift+P 挂到 root),或在右侧树里把一根骨拖到另一根上'
-      listWrap.textContent = n
-        ? `骨骼树在右侧(${n} 根) · 换父骨 P / Shift+P`
-        : (importedSource() ? '还没有骨骼:点 自动架设,或用 新建 画' : '导入工程后右侧列出骨骼树')
+      listWrap.textContent = n ? '' : (importedSource() ? '还没有骨骼:点 自动架设,或用 新建 画' : '导入工程后右侧列出骨骼树')
     }
 
     // writes that would invalidate layout are skipped when nothing changes: the next
@@ -3512,8 +3530,6 @@
     busyLists.push(listWrap)
 
     body.appendChild(autoBtn)
-    body.appendChild(swHint)
-    body.appendChild(applyBtn)
     body.appendChild(resetBtn)
     body.appendChild(status)
     body.appendChild(legend)
@@ -3528,6 +3544,8 @@
       id: BONES_PANEL_ID, mark: BMARK, title: BTITLE, icon: 'fas fa-bone', body: buildBonesBody,
       isOpen: () => state.openBones,
       setOpen: (v) => {
+        // closing the panel puts any change still waiting into the project
+        if (!v && state.openBones) { try { autoApplyBones(true) } catch { /* nothing to apply */ } }
         state.openBones = v
         if (state.fitList) state.fitList()
         try { setBonesEditing(v) } catch { /* the preview may not be up yet */ }
