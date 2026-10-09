@@ -3104,7 +3104,7 @@
     // tools: a bar over the stage, centred just above the timeline (as Spine's tool bar),
     // shown while this panel is open (= editing)
     document.querySelectorAll('[data-novaflow-bone-toolbar="1"]').forEach((n) => n.remove())
-    const toolsRow = el('div', { position: 'fixed', left: '0', top: '0', zIndex: '55', display: 'none', flexWrap: 'nowrap', gap: '4px', padding: '4px', background: '#1F1F1F', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', transform: 'translateX(-50%)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
+    const toolsRow = el('div', { position: 'fixed', left: '0', top: '0', zIndex: '2147483200', display: 'none', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: '4px', background: '#1F1F1F', border: '1px solid #2E2E2E', borderRadius: '8px', boxSizing: 'border-box', transform: 'translateX(-50%)', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' })
     toolsRow.setAttribute('data-novaflow-bone-toolbar', '1')
     toolsRow.setAttribute('role', 'toolbar')
     toolsRow.setAttribute('aria-label', '骨骼工具')
@@ -3119,6 +3119,15 @@
       b.style.fontSize = '12px'
       b.style.borderRadius = '6px'
       b.style.border = '0'
+      b.style.display = 'inline-flex'
+      b.style.alignItems = 'center'
+      b.style.gap = '6px'
+      const icon = el('i', { fontSize: '12px', width: '12px', textAlign: 'center' })
+      icon.className = 'fas ' + ({ move: 'fa-up-down-left-right', rotate: 'fa-rotate', scale: 'fa-maximize', create: 'fa-plus' }[t.id] || 'fa-bone')
+      icon.setAttribute('aria-hidden', 'true')
+      b.textContent = ''
+      b.appendChild(icon)
+      b.appendChild(el('span', null, t.label))
       // the shared hover-out paints the plain grey; the picked tool keeps its green
       b.addEventListener('mouseleave', () => { if (bones.syncUi) bones.syncUi() })
       b.addEventListener('click', () => { ensureController().setTool(t.id); bones.syncUi() })
@@ -3134,23 +3143,23 @@
     const applyBtn = el('button', null, '应用到工程'); applyBtn.type = 'button'; styleButton(applyBtn, true); applyBtn.style.marginTop = STACK_GAP
     applyBtn.title = '把编辑好的骨架写回工程并重建预览;之后再做 自动蒙皮 / 自动权重'
 
-    // the selected bone
-    const selBox = el('div', { marginTop: STACK_GAP, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 8px', background: 'rgba(255,255,255,0.03)', display: 'none' })
+    // the selected bone: its fields ride in the tool bar, after the tools
+    const selBox = el('div', { display: 'none', flexWrap: 'wrap', alignItems: 'center', gap: '6px 10px', marginLeft: '4px', paddingLeft: '10px', paddingRight: '4px', borderLeft: '1px solid #2E2E2E' })
     const field = (label) => {
-      const row = el('div', { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' })
-      row.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 32px' }, label))
+      const row = el('div', { display: 'flex', alignItems: 'center', gap: '6px' })
+      row.appendChild(el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' }, label))
       return row
     }
-    const inputStyle = { flex: '1 1 auto', minWidth: '0', height: '22px', background: '#2a2a2a', color: 'rgba(255,255,255,0.9)', border: '0', borderRadius: '4px', fontSize: '11px', padding: '0 6px', boxSizing: 'border-box' }
-    const nameRow = field('名称'); const nameIn = el('input', inputStyle); nameIn.type = 'text'; nameIn.spellcheck = false; nameRow.appendChild(nameIn)
-    const parentRow = field('父骨'); const parentSel = el('select', inputStyle); parentRow.appendChild(parentSel)
+    const inputStyle = { flex: '0 0 auto', minWidth: '0', height: '28px', background: '#2a2a2a', color: 'rgba(255,255,255,0.9)', border: '0', borderRadius: '6px', fontSize: '12px', padding: '0 8px', boxSizing: 'border-box' }
+    const nameRow = field('名称'); const nameIn = el('input', Object.assign({}, inputStyle, { width: '120px' })); nameIn.type = 'text'; nameIn.spellcheck = false; nameRow.appendChild(nameIn)
+    const parentRow = field('父骨'); const parentSel = el('select', Object.assign({}, inputStyle, { width: '130px' })); parentRow.appendChild(parentSel)
     // the pair of numbers belongs to the ACTIVE TOOL (user 2026-09-22): 移动 → X/Y,
     // 旋转 → 角度/长度, 缩放 → 缩放X/缩放Y, and typing one applies that tool's edit
     const poseRow = field('角度'); const poseLabelA = poseRow.firstChild
-    const rotIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); rotIn.type = 'number'; rotIn.step = '0.1'
-    const poseLabelB = el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' }, '长度')
+    const rotIn = el('input', Object.assign({}, inputStyle, { width: '72px' })); rotIn.type = 'number'; rotIn.step = '0.1'; rotIn.setAttribute('data-novaflow-number-fill', '1')
+    const poseLabelB = el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto', marginLeft: '4px' }, '长度')
     poseRow.appendChild(rotIn); poseRow.appendChild(poseLabelB)
-    const lenIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); lenIn.type = 'number'; lenIn.step = '1'; lenIn.min = '0'; poseRow.appendChild(lenIn)
+    const lenIn = el('input', Object.assign({}, inputStyle, { width: '72px' })); lenIn.type = 'number'; lenIn.step = '1'; lenIn.setAttribute('data-novaflow-number-fill', '1'); lenIn.min = '0'; poseRow.appendChild(lenIn)
     /** What the two fields mean under each tool: label, step, and where the value comes from. */
     const POSE_FIELDS = {
       move: { a: { label: 'X', step: '1', min: '' }, b: { label: 'Y', step: '1', min: '' }, title: '骨骼原点的世界坐标' },
@@ -3168,7 +3177,8 @@
       chip.appendChild(el('span', null, text))
       legend.appendChild(chip)
     }
-    selBox.appendChild(nameRow); selBox.appendChild(parentRow); selBox.appendChild(poseRow); selBox.appendChild(mechNote)
+    selBox.appendChild(nameRow); selBox.appendChild(parentRow); selBox.appendChild(poseRow)
+    toolsRow.appendChild(selBox)
     const commitName = () => { const ctl = ensureController(); const st = ctl.getState(); if (st.selected < 0) return; const cur = ctl.getSkeleton().bones[st.selected].name; if (nameIn.value.trim() === cur) return; if (!ctl.renameSelected(nameIn.value)) { setStatus('名字为空或已被占用', 'error'); nameIn.value = cur } else setStatus(`已改名为 ${nameIn.value.trim()}`, 'ok') }
     nameIn.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitName(); nameIn.blur() } else if (ev.key === 'Escape') { ev.preventDefault(); bones.syncUi(); nameIn.blur() } ev.stopPropagation() })
     nameIn.addEventListener('blur', commitName)
@@ -3238,7 +3248,12 @@
       const editor = motion && motion.style.visibility !== 'hidden' && motion.style.display !== 'none' && motion.shadowRoot && motion.shadowRoot.getElementById('editor')
       const er = editor && editor.getBoundingClientRect()
       if (er && er.height > 0 && er.bottom > sr.top) anchor = Math.min(anchor, er.top)
+      setStyle(toolsRow, 'maxWidth', Math.max(240, Math.round(sr.width - 16)) + 'px')
       setStyle(toolsRow, 'left', Math.round(sr.left + sr.width / 2) + 'px')
+      // wrapped to its own line under the tools (a narrow stage): no divider in front of it
+      const wrapped = selBox.style.display !== 'none' && toolsRow.firstChild && selBox.offsetTop > toolsRow.firstChild.offsetTop + 4
+      // (only its colour changes: a width change could flip the wrap back and forth)
+      setStyle(selBox, 'borderLeftColor', wrapped ? 'transparent' : '#2E2E2E')
       setStyle(toolsRow, 'top', Math.round(anchor - 8 - (toolsRow.offsetHeight || 38)) + 'px')
     }
     if (!window.__nfBoneToolbarTimer) {
@@ -3267,12 +3282,12 @@
       setStyle(resetBtn, 'opacity', resetBtn.disabled ? '0.5' : '1')
       setDisabled(applyBtn, !st.dirty)
       setStyle(applyBtn, 'opacity', st.dirty ? '1' : '0.6')
-      setText(applyBtn, st.dirty ? '应用到工程(有未保存的修改)' : '应用到工程')
+      setText(applyBtn, '应用到工程')
       // selected bone fields
       const skel = ctl && st.selected >= 0 ? { bones: ctl.peekBones() } : null
       if (skel && skel.bones[st.selected]) {
         const b = skel.bones[st.selected]
-        setDisplay(selBox, 'block')
+        setDisplay(selBox, 'flex')
         if (document.activeElement !== nameIn) nameIn.value = b.name
         const W = ctl.getWorld()
         const m = W[st.selected]
@@ -3308,7 +3323,7 @@
         const owned = ctl.isOwned(st.selected)
         setDisplay(mechNote, owned ? 'block' : 'none')
         for (const inp of [nameIn, rotIn, lenIn, parentSel]) setDisabled(inp, owned || !bones.editing)
-      } else setDisplay(selBox, 'none')
+      } else { setDisplay(selBox, 'none'); setDisplay(mechNote, 'none') }
     }
 
     // a project that already has a rig and animation keys: replacing the rig makes every
@@ -3354,7 +3369,7 @@
     body.appendChild(resetBtn)
     body.appendChild(status)
     body.appendChild(legend)
-    body.appendChild(selBox)
+    body.appendChild(mechNote)
     body.appendChild(listWrap)
     try { ensureController(); loadBonesFromSource(false) } catch { /* the editor script may be missing */ }
     bones.renderTree(); bones.syncUi()
