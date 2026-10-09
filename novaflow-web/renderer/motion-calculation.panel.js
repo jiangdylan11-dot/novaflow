@@ -561,7 +561,7 @@
   // ---- 飘带计算: the header's built-in presets (hover = the dropdown's preview), its
   // own timing row (骨骼延迟 is the panel's 整体偏移) and the footer's two actions
   let stopRibbonPreview=null,ribbonTiming=null;
-  function hideRibbonPreview(){try{stopRibbonPreview?.();}catch{}stopRibbonPreview=null;$('ribbonPreviewCard').hidden=true;$('ribbonPreviewHost').replaceChildren();}
+  function hideRibbonPreview(){try{stopRibbonPreview?.();}catch{}stopRibbonPreview=null;$('ribbonPreviewCard').hidden=true;$('ribbonPreviewHost').replaceChildren();floating.style.zIndex='60';}
   function showRibbonPreview(button,item){
     showPresetCard(button,item.label,host=>bridge.ribbonPreview?.($('ribbonPreviewCard'),host,item.id)||null);
   }
@@ -600,6 +600,8 @@
   function showPresetCard(button,label,mount){
     hideRibbonPreview();
     const card=$('ribbonPreviewCard');$('ribbonPreviewLabel').textContent=label;card.hidden=false;
+    // over everything while it shows, the rig overlay included (2147483100); back to 60 on hide
+    floating.style.zIndex='2147483300';
     // above the button, over the stage (the editor box clips anything that leaves it)
     const f=floating.getBoundingClientRect(),r=button.getBoundingClientRect();
     card.style.left=Math.max(6,Math.min(f.width-card.offsetWidth-6,r.left-f.left))+'px';card.style.top=(r.top-f.top-card.offsetHeight-6)+'px';
