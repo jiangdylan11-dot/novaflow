@@ -35997,8 +35997,14 @@
         style: { margin: "0", "min-height": "max-content", "grid-column": "1" }
       },
       {
+        // always shown here: the parameters work without a preset (the column only
+        // opened them once a preset was picked)
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-advanced-card]',
-        style: { "grid-row": "2", height: "auto", "max-height": "none", "grid-template-rows": "auto" }
+        style: { "grid-row": "2", display: "grid", visibility: "visible", opacity: "1", "pointer-events": "auto", height: "auto", "max-height": "none", "grid-template-rows": "auto" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-advanced-button]',
+        style: { display: "none" }
       },
       {
         // 我的预设 ▾ | 预设名称 | 保存, above the parameters as in the event column
@@ -36017,9 +36023,10 @@
         // 自动链条 is a plain check box here, as 缩放联动 / 反向 in the other tools
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-chain-toggle-card]',
         style: {
-          "grid-row": "3", display: "inline-flex", "flex-direction": "row-reverse", "justify-content": "flex-end", "align-items": "center",
-          gap: "6px", width: "auto", height: "20px", "min-height": "20px", "max-height": "20px", padding: "0", border: "0",
-          "border-radius": "0", background: "transparent", "background-color": "transparent", "box-shadow": "none", cursor: "pointer"
+          "grid-row": "3", display: "flex", "flex-direction": "row-reverse", "justify-content": "flex-end", "align-items": "center",
+          gap: "5px", width: "100%", height: "auto", "min-height": "0", "max-height": "none", padding: "8px 0 0", border: "0",
+          "border-top": "1px solid #303030", "border-radius": "0", background: "transparent", "background-color": "transparent",
+          "box-shadow": "none", cursor: "pointer", "font-size": "11px", color: "#d4d4d4"
         }
       },
       {
@@ -36033,6 +36040,7 @@
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-advanced-body]',
         style: {
+          display: "grid", visibility: "visible", opacity: "1", "pointer-events": "auto",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0",
           "grid-template-columns": "repeat(3, minmax(0, 1fr))", "column-gap": "14px", "row-gap": "8px", "align-content": "start"
         }
@@ -36060,8 +36068,7 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-controls]',
-        style: (node) => (node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1"
-          ? { display: "contents" } : { display: "none" })
+        style: { display: "contents" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-label]',
@@ -36069,11 +36076,11 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-select-wrap]',
-        style: { "grid-column": "1 / -1", "grid-row": "2", width: "100%", "min-width": "0", "max-width": "100%", margin: "0" }
+        style: (node) => ({ "grid-column": "1 / -1", "grid-row": "2", display: "block", visibility: "visible", height: "34px", "max-height": "34px", width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-add]',
-        style: { "grid-column": "3", "grid-row": "1", width: "auto", "min-width": "0", "max-width": "none", padding: "0 14px", margin: "0" }
+        style: (node) => ({ ...ribbonDockedEventInert(node), "grid-column": "3", "grid-row": "1", display: "inline-flex", width: "auto", "min-width": "0", "max-width": "none", padding: "0 14px", margin: "0" })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-switch]',
@@ -36103,15 +36110,15 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-save-row]',
-        style: { "grid-column": "1 / -1", "grid-row": "3", "align-self": "center", margin: "0" }
+        style: (node) => ({ "grid-column": "1 / -1", "grid-row": "3", display: "grid", visibility: "visible", height: "34px", "max-height": "34px", "align-self": "center", margin: "0", ...ribbonDockedEventInert(node) })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
-        style: (node) => (node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") === "1" ? {
+        style: (node) => ({
           "grid-column": "1 / -1", "grid-row": "4", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 12px", "align-items": "flex-start",
           height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
-          border: "0", background: "transparent", "background-color": "transparent"
-        } : { display: "none" })
+          border: "0", background: "transparent", "background-color": "transparent", ...ribbonDockedEventInert(node)
+        })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-card]',
@@ -36134,6 +36141,14 @@
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-card-title] > button',
         style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']") ? { display: "inline-flex" } : { display: "none" })
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider-row]',
+        style: { display: "grid", "grid-template-columns": "minmax(0, 1fr) 49px", "column-gap": "8px", "align-items": "center", width: "100%", "min-width": "0", "max-width": "100%" }
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider-row] > input[type="range"]',
+        style: { width: "100%", "min-width": "0", "max-width": "100%" }
       },
       {
         // the picked event's four sliders, two a row under the tabs
@@ -51574,6 +51589,12 @@
 
   // window.__NovaFlowRibbonTiming = { animationDelay, boneDuration } (seconds), written by
   // 动画编辑 (motion-calculation.tool.js); null when the span is the whole animation
+  // docked in 动画编辑, events that are switched off stay on screen, greyed and inert
+  function ribbonDockedEventInert(node) {
+    const off = node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-novaflow-ribbon-event-expanded") !== "1";
+    return off ? { opacity: "0.4", "pointer-events": "none" } : { opacity: "1", "pointer-events": "auto" };
+  }
+
   function getRibbonTimingWindow(animationLength) {
     const timing = window.__NovaFlowRibbonTiming;
     if (!timing || typeof timing !== "object") return null;
@@ -52715,6 +52736,27 @@
     return getRibbonParameterPresetEntries().find((entry) => entry.id === value) || null;
   }
 
+  // what picking a preset prepares (session, snapshots, target scope), with the sliders
+  // left as they are
+  function startRibbonParameterSessionFromControls(panel) {
+    const sessionName = getRibbonParameterPresetSessionAnimationName();
+    const context = getRibbonReactProjectContext();
+    const animationName = context?.animationName || sessionName;
+    const animation = animationName ? context?.project?.animations?.[animationName] : null;
+    if (!animation || typeof animation !== "object") return false;
+    setRibbonParameterPresetSessionState("preview", sessionName);
+    withRibbonRuntimeMutationGuard(panel, () => {
+      refreshRibbonParameterPresetSessionVisibility(panel);
+    });
+    ensureRibbonInitialAnimationSnapshot(context.project, animationName);
+    ensureRibbonElasticBaselineSnapshot(context.project, animationName);
+    protectRibbonCurrentAnimationDuration();
+    captureRibbonParameterPresetTargetScope(context, animation, isRibbonAutoChainEnabled(document), "preset-select");
+    armRibbonElasticityPreview(animationName);
+    preserveRibbonNativeRealtimePreviewIfAllowed(animationName);
+    return true;
+  }
+
   function scheduleRibbonParameterPresetSelectApply(select) {
     if (!(select instanceof HTMLSelectElement)) return;
     const panel = select.closest('[data-novaflow-ribbon-panel="1"], .nf-panel');
@@ -53556,6 +53598,9 @@
 
   function collectRibbonEventImpulsePoints(root = document, durationSec = getRibbonTimelineDuration()) {
     const scope = root instanceof Document || root instanceof HTMLElement ? root : document;
+    // docked events switched off are kept but count for nothing
+    const dockedSection = scope.querySelector('[data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-section="1"]');
+    if (dockedSection instanceof HTMLElement && dockedSection.getAttribute("data-novaflow-ribbon-event-expanded") !== "1") return [];
     const sections = Array.from(scope.querySelectorAll('[data-novaflow-ribbon-event-section="1"]'))
       .filter((section) => section instanceof HTMLElement && isRibbonEventPointSection(section));
     const cardSet = new Set();
@@ -54957,7 +55002,11 @@
         const nextExpanded = !isRibbonEventExpanded(section);
         ribbonEventPointsExpanded = nextExpanded;
         section?.setAttribute("data-novaflow-ribbon-event-expanded", nextExpanded ? "1" : "0");
-        if (!nextExpanded) clearRibbonEventPoints(section);
+        // docked in 动画编辑 the switch only (de)activates the events: they stay, greyed,
+        // and the motion is previewed again with or without them
+        const docked = !!section?.closest('[data-novaflow-ribbon-docked="1"]');
+        if (docked) scheduleRibbonEventRealtimePreviewApply(nextExpanded ? "event-input" : "event-clear", [0, 80, 180]);
+        else if (!nextExpanded) clearRibbonEventPoints(section);
         const panel = header.closest('[data-novaflow-ribbon-panel="1"], .nf-panel');
         refreshRibbonPanelFirstFrame(panel);
         if (!nextExpanded) window.setTimeout(() => refreshRibbonPanelFirstFrame(panel), 80);
@@ -56884,7 +56933,13 @@
       if (!slider.querySelector('input[type="range"]')) return;
       const panel = slider.closest('[data-novaflow-ribbon-panel="1"], .nf-panel');
       const animationName = getRibbonParameterPresetSessionAnimationName();
-      if (!isRibbonParameterPresetSessionActive(animationName)) return;
+      if (!isRibbonParameterPresetSessionActive(animationName)) {
+        // docked in 动画编辑 the parameters work without a preset: letting go of a slider
+        // starts a session from the values as they stand
+        if (!(panel instanceof HTMLElement) || !panel.matches('[data-novaflow-ribbon-docked="1"]')) return;
+        if (event?.type === "input") return;
+        if (!startRibbonParameterSessionFromControls(panel)) return;
+      }
       clearRibbonParameterPresetSelectionUi(panel, { cancelPending: true });
       suppressRibbonNativeRealtimePreview("parameter-input", animationName, [0, 16, 48, 96, 160, 260, 420]);
       if (event?.type === "input") return;
