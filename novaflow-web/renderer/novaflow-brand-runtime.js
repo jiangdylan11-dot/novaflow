@@ -4952,7 +4952,9 @@
     // docked in 动画编辑 the built-in presets are the header's buttons: this list is
     // only what the user saved
     const savedOnly = ribbonPresets && Boolean(select.closest('[data-novaflow-ribbon-docked="1"]'));
-    const options = getSelectDropdownEntries(select).filter(entry => (!ribbonPresets || entry.value) && (!savedOnly || entry.custom));
+    // and the event presets are only the built-in ones there (no saving of event presets)
+    const builtinEventsOnly = isRibbonEventPresetNativeSelect(select) && Boolean(select.closest('[data-novaflow-ribbon-docked="1"]'));
+    const options = getSelectDropdownEntries(select).filter(entry => (!ribbonPresets || entry.value) && (!savedOnly || entry.custom) && (!builtinEventsOnly || !entry.custom));
     const presetEntries = ribbonPresets ? new Map(getRibbonParameterPresetEntries().map(entry => [entry.id, entry])) : null;
     const previews = [];
     DROPDOWN_CONTROLLER.activeOptionsSignature = getNativeDropdownOptionsSignature(select);
@@ -36056,7 +36058,7 @@
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] > .nf-panel-body > [data-novaflow-ribbon-event-section]',
         style: {
           "grid-column": "2", "grid-row": "1 / -1", "align-self": "stretch",
-          display: "grid", "grid-template-columns": "auto minmax(0, 1fr) auto auto", "grid-template-rows": "auto auto auto 1fr",
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) auto", "grid-template-rows": "auto auto 1fr",
           "column-gap": "8px", "row-gap": "10px", "align-items": "center", "align-content": "start",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0", border: "0", "border-left": "1px solid #303030",
           "padding-left": "14px", "border-radius": "0", background: "transparent", "background-color": "transparent", overflow: "visible"
@@ -36072,15 +36074,20 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-label]',
-        style: { "grid-column": "1", "grid-row": "1" }
+        style: { display: "none" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-select-wrap]',
-        style: (node) => ({ "grid-column": "2", "grid-row": "1", display: "block", visibility: "visible", height: "34px", "max-height": "34px", width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
+        style: (node) => ({ "grid-column": "1", "grid-row": "1", display: "block", visibility: "visible", height: "34px", "max-height": "34px", width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-add]',
-        style: (node) => ({ ...ribbonDockedEventInert(node), "grid-column": "3", "grid-row": "1", display: "inline-flex", width: "auto", "min-width": "0", "max-width": "none", padding: "0 14px", margin: "0" })
+        // the main action of the bar: green, as 保存 / 写入动画
+        style: (node) => ({
+          ...ribbonDockedEventInert(node), "grid-column": "2", "grid-row": "1", display: "inline-flex", "align-items": "center", "justify-content": "center",
+          width: "auto", "min-width": "0", "max-width": "none", height: "34px", "min-height": "34px", "max-height": "34px", padding: "0 14px", margin: "0",
+          border: "0", "border-radius": "6px", background: "#1ea672", "background-color": "#1ea672", color: "#ffffff", "font-weight": "500", "box-shadow": "none"
+        })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-switch]',
@@ -36112,15 +36119,13 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-save-row]',
-        // 事件预设名 + 保存: only when there are events to save
-        style: (node) => (Number(node.closest("[data-novaflow-ribbon-event-section]")?.getAttribute("data-nf-ribbon-event-count") || 0) > 0
-          ? { "grid-column": "1 / -1", "grid-row": "2", display: "grid", visibility: "visible", height: "34px", "max-height": "34px", "align-self": "center", margin: "0", ...ribbonDockedEventInert(node) }
-          : { display: "none" })
+        // event presets are the built-in ones only here: nothing to save
+        style: { display: "none" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
         style: (node) => ({
-          "grid-column": "1 / -1", "grid-row": "3", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 4px", "align-items": "flex-start",
+          "grid-column": "1 / -1", "grid-row": "2", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "8px 4px", "align-items": "flex-start",
           height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
           border: "0", background: "transparent", "background-color": "transparent", ...ribbonDockedEventInert(node)
         })
@@ -36163,7 +36168,7 @@
         // the picked event's four sliders, two a row under the tabs
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider]',
         style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']")
-          ? { order: "2", flex: "0 0 calc(50% - 2px)", "min-width": "0", "max-width": "calc(50% - 2px)", margin: "0", display: "block", "box-sizing": "border-box", "padding-right": "8px" }
+          ? { order: "2", flex: "0 0 100%", "min-width": "0", "max-width": "100%", margin: "0", display: "block", "box-sizing": "border-box", "padding-right": "0" }
           : { display: "none" })
       }
     ];
