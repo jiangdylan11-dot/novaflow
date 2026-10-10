@@ -140,18 +140,17 @@
   const SPLIT_RIGHT_CHILD_LAYER_INSET = '10px'
   const SPLIT_RIGHT_CHILD_LAYER_GAP = '4px'
   const SPLIT_RIGHT_SET_CARD_HEIGHT = '46px'
-  // The reference floats a 206 panel inset 10 from the window edge and 10
-  // clear of the stage, so the column this occupies in the flex row is 226
-  // and the panel itself is what the padding leaves.
-  // Above 1400 the panel is 206 with 10 gutters; at or below it the reference
-  // narrows it to 172 with 8 gutters. The brand runtime owns the tier and
-  // publishes it on <html>.
+  // The panel is the brand runtime's resource column (its tier metrics: 236 with 10 gutters
+  // above 1400, 210 with 8 at or below it, 172 stacked), inset from the window edge and clear
+  // of the stage by the gutter. It was 206 / 172 after an older reference while the runtime's
+  // column grew to 236 / 210, and the stage it publishes left that much empty beside the panel.
+  // The brand runtime owns the tier and publishes it on <html>.
   const SPLIT_RIGHT_WORKSPACE_TOP_GAP = 8
   function splitLayoutTier() {
     return (document.documentElement && document.documentElement.getAttribute('data-novaflow-layout-tier')) || 'wide'
   }
   function splitRightWorkspaceInset() { return splitLayoutTier() === 'wide' ? 10 : 8 }
-  function splitRightPanelWidth() { return splitLayoutTier() === 'wide' ? 206 : 172 }
+  function splitRightPanelWidth() { const tier = splitLayoutTier(); return tier === 'wide' ? 236 : tier === 'narrow' ? 210 : 172 }
   function splitRightWorkspaceWidth() { return splitRightPanelWidth() + splitRightWorkspaceInset() * 2 }
   const SPLIT_PANEL_SURFACE = '#161616'
   const SPLIT_PANEL_BORDER_COLOR = '#2e2e2e'
