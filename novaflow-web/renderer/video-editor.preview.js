@@ -296,23 +296,28 @@
       const types = Array.from(event.dataTransfer?.types || []);
       if (types.includes('application/x-novaflow-video')) return event.dataTransfer.getData('application/x-novaflow-video') || 'pending';
       if (types.includes('Files')) return 'files';
+      if (typeof options.dropPayload === 'function') return options.dropPayload(event) || null;
       return null;
     }
     canvas.addEventListener('dragover', (event) => { if (dropPayload(event) && options.onDrop) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; host.dataset.dropActive = '1'; } });
     canvas.addEventListener('dragleave', () => { host.dataset.dropActive = ''; });
-    canvas.addEventListener('drop', async (event) => {
+    // document capture: the page's board drop would take it first (see the timeline)
+    const onStageDrop = async (event) => {
+      if (event.target !== canvas) return;
       host.dataset.dropActive = '';
       const payload = dropPayload(event);
       if (!payload || !options.onDrop) return;
       event.preventDefault();
+      event.stopPropagation();
       await options.onDrop(payload, projectPoint(point(event)), event);
-    });
+    };
+    document.addEventListener('drop', onStageDrop, true);
 
     resize();
     return {
       canvas, tick, setPlaying, draw, resize, fitToViewport, setViewZoom, viewZoom: () => view.zoom, stageMetrics: () => ({ ...stage }), setMaskEditing, updateMaskBrush, isMaskEditing: () => Boolean(maskEditing),
       refresh() { dropStale(); tick(editor.playhead()); },
-      destroy() { if (ro) ro.disconnect(); for (const r of videos.values()) { try { if (!r.isImage) r.video.pause(); } catch (_) { /* fine */ } } videos.clear(); canvas.remove(); }
+      destroy() { document.removeEventListener('drop', onStageDrop, true); if (ro) ro.disconnect(); for (const r of videos.values()) { try { if (!r.isImage) r.video.pause(); } catch (_) { /* fine */ } } videos.clear(); canvas.remove(); }
     };
   }
 

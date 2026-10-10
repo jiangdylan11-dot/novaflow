@@ -606,6 +606,8 @@
     if (ctrl && key.toLowerCase() === 'z') { handled(); runAction(event.shiftKey ? 'redo' : 'undo'); return }
     if (ctrl && key.toLowerCase() === 'y') { handled(); runAction('redo'); return }
     if (ctrl && key.toLowerCase() === 'a') { handled(); runAction('all'); return }
+    if (ctrl && key.toLowerCase() === 'c') { handled(); state.clipboard = model.copySelection(); return }
+    if (ctrl && key.toLowerCase() === 'v') { handled(); if (state.clipboard && state.clipboard.length) { stopPlayback(); afterEdit(model.paste(state.clipboard)) } return }
     if (key === 'Delete' || key === 'Backspace') { handled(); runAction('remove'); return }
     if (key === ' ') { handled(); togglePlayback(); return }
     if (!ctrl && (key === 'a' || key === 'A')) { handled(); stepFrame(-1); return }
@@ -690,6 +692,7 @@
       state.viewEdge = viewLongEdge()
       state.sourceName = sourceName
       state.model = coreApi.createModel(frames.length)
+      state.clipboard = null
       state.current = 0
       state.anchor = 0
       state.viewport = viewport

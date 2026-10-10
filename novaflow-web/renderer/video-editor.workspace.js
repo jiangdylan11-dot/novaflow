@@ -120,7 +120,8 @@
     .nf-tl-add-track + .nf-tl-add-track{margin-left:0}.nf-tl-add-track:hover{border-color:#1EA672;color:#9be4cd}
     .nf-tl-header-list{will-change:transform}
     .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222;cursor:grab}
-    .nf-tl-header[data-kind="audio"]{background:#1a1915}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
+    .nf-tl-header[data-active="1"]{box-shadow:inset 2px 0 0 #1EA672;background:#1d2a25}
+    .nf-tl-header[data-kind="audio"]{background:#1a1915}.nf-tl-header[data-kind="audio"][data-active="1"]{background:#1d2a25}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
     .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
     .nf-tl-track-name:hover,.nf-tl-track-name:focus{background:#262626;border-color:#343434}
     .nf-tl-track-btns{display:flex;gap:4px}
@@ -324,6 +325,18 @@
       if (host) { shell.setAttribute('data-novaflow-ai-video-merge-controls-external', '1'); host.appendChild(leftPanel) }
       else body.insertBefore(leftPanel, center)
     } catch (error) { restoreHost(); throw error }
+    // The editor reaches the resource list: the runtime's preview inset sometimes also keeps
+    // room for the generation column, which left a blank strip where a click opened the
+    // board's upload picker.
+    function fitShellRight() {
+      if (!alive) return
+      const panel = documentRef.querySelector('[data-novaflow-ai-resource-sidebar-panel="1"]')
+      const pr = panel && panel.getBoundingClientRect ? panel.getBoundingClientRect() : null
+      const hr = previewHost.getBoundingClientRect ? previewHost.getBoundingClientRect() : null
+      const want = pr && hr && pr.width > 40 && pr.left > hr.left ? Math.max(0, Math.round(hr.right - pr.left + 8)) + 'px' : ''
+      if (shell.style.getPropertyValue('right') !== want) { if (want) shell.style.setProperty('right', want, 'important'); else shell.style.removeProperty('right') }
+    }
+    const shellRightTimer = windowRef.setInterval(fitShellRight, 250)
 
     // ---- editor + preview
     const MaskTool = modules.mask
@@ -338,15 +351,19 @@
       onTime: (t) => { if (!preview) return; preview.tick(t); syncTime() },
       onTransport: (playing) => { if (!preview) return; preview.setPlaying(playing); transport.querySelector('[data-act="play"]').innerHTML = playing ? TRANSPORT_ICONS.pause : TRANSPORT_ICONS.play },
       resolveDrop: (payload, event) => resolvePayload(payload, event),
+      dropPayload: (event) => resourceDragPayload(event),
     })
     preview = modules.preview.mount({
       host: stageHost, editor,
       onZoomPercent: (p) => { zoomReadout.textContent = Math.round(p) + '%' },
+      dropPayload: (event) => resourceDragPayload(event),
       onMaskStroke: (clipId, revision) => { const c = editor.clipOf(clipId); if (c) { c.maskRevision = revision; editor.draw() } },
       onDrop: async (payload, point, event) => {
         const resolved = await resolvePayload(payload, event)
         if (!resolved) return
         const spec = { ...resolved, start: editor.playhead() }
+        // dropped on the stage: into the track picked in the track list
+        if (editor.activeTrackId()) spec.trackId = editor.activeTrackId()
         if (resolved.source.kind !== 'audio') {
           const fit = editor.fitTransform(resolved.source)
           const W = editor.state.canvas.width, H = editor.state.canvas.height
@@ -447,14 +464,16 @@
       adoptFps(resolved.source); editor.addClip({ ...resolved, start: editor.playhead() }); preview.refresh()
     }
     function handleSharedResourceImport(event) {
-      const resourceId = text(event?.detail?.resourceId, '')
-      if (!resourceId) return
+      // a click only picks the card; resources come in by dragging them onto a track or the stage
       event.preventDefault?.()
-      void importResource(resourceId)
     }
     windowRef.addEventListener(RESOURCE_IMPORT_EVENT, handleSharedResourceImport)
     // the 'application/x-novaflow-video' type the lab used maps onto the resource MIME here
     const timelineDropTypes = (dt) => Array.from(dt?.types || [])
+    function resourceDragPayload(event) {
+      const dt = event?.dataTransfer
+      return modules.bridge.readResourceId(dt) || (timelineDropTypes(dt).includes('application/x-novaflow-ai-generated') ? 'pending' : '')
+    }
     timelineCard.addEventListener('dragover', (e) => { if (modules.bridge.readResourceId(e.dataTransfer) || timelineDropTypes(e.dataTransfer).includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' } }, true)
 
     // ---- busy dialog (with its mask), dropdown, status
@@ -652,6 +671,7 @@
       if (maskEdit) { if (key === 'Escape') { event.preventDefault(); endMask(false) } else if (key === 'Enter') { event.preventDefault(); endMask(true) } return }
       if ((event.ctrlKey || event.metaKey) && (key === 'c' || key === 'C')) { if (copySelected()) event.preventDefault(); return }
       if ((event.ctrlKey || event.metaKey) && (key === 'v' || key === 'V')) { if (pasteAtPlayhead()) event.preventDefault(); return }
+      if ((event.ctrlKey || event.metaKey) && (key === 'a' || key === 'A')) { event.preventDefault(); editor.selectAll(); return }
       if (event.ctrlKey || event.metaKey || event.altKey) return
       if (event.code === 'Space') { event.preventDefault(); event.stopPropagation(); editor.toggle() }
       else if (key === 'Delete' || key === 'Backspace') { if (editor.deleteSelected()) { event.preventDefault(); preview.refresh() } }
@@ -756,12 +776,13 @@
       importResource,
       saveAndClose: () => runExport(true),
       export: () => runExport(false),
-      debugSnapshot: () => ({ open: alive, exporting, clipCount: editor.clipCount(), tracks: editor.state.tracks.length }),
+      debugSnapshot: () => ({ open: alive, exporting, clipCount: editor.clipCount(), tracks: editor.state.tracks.length, picked: editor.state.picked.size, activeTrack: editor.state.tracks.findIndex((t) => t.id === editor.activeTrackId()), clips: editor.allClips().map((c) => ({ track: editor.state.tracks.findIndex((t) => t.id === c.trackId), start: +c.start.toFixed(2), len: +c.length.toFixed(2) })) }),
       close() {
         if (!alive) return false
         alive = false
         windowRef.removeEventListener(RESOURCE_IMPORT_EVENT, handleSharedResourceImport)
         windowRef.removeEventListener('keydown', handleKey, true)
+        windowRef.clearInterval(shellRightTimer)
         documentRef.removeEventListener('click', onBoardColor, true)
         try { progressUnsubscribe?.() } catch (_) {}
         try { if (maskEdit) endMask(false) } catch (_) {}
@@ -789,5 +810,5 @@
   function exportToFile() { return activeHandle?.export?.() || Promise.resolve({ ok: false, inactive: true }) }
   function isOpen() { return Boolean(activeHandle?.debugSnapshot?.().open) }
 
-  return Object.freeze({ version: 4, RESOURCE_IMPORT_EVENT, open, close, saveAndClose, exportToFile, isOpen })
+  return Object.freeze({ version: 4, RESOURCE_IMPORT_EVENT, open, close, saveAndClose, exportToFile, isOpen, snapshot: () => activeHandle?.debugSnapshot?.() || null })
 })

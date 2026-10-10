@@ -89,6 +89,18 @@
           selection = copy.map((_, index) => at + index)
         })
       },
+      // Ctrl+C / Ctrl+V: the copied frames (their source frames) go in right after the
+      // last selected one and become the selection.
+      copySelection() { return selection.map((position) => order[position]) },
+      paste(sources) {
+        const frames = [].concat(sources || []).map(Number).filter((value) => Number.isInteger(value) && value >= 0 && value < total)
+        if (!frames.length) return false
+        return commit(() => {
+          const at = selection[selection.length - 1] + 1
+          order.splice(at, 0, ...frames)
+          selection = frames.map((_, index) => at + index)
+        })
+      },
       // 左移 / 右移: each selected frame swaps with its neighbour, the block keeps its shape.
       move(offset) {
         const step = Math.sign(Math.trunc(Number(offset) || 0))

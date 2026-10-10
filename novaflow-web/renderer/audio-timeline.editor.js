@@ -84,7 +84,9 @@
     const onTransport = options.onTransport || (() => {});
     const state = {
       tracks: [], playhead: 0, zoom: 40, scrollX: 0, scrollY: 0, snap: true, bpm: 0, loop: false,
-      selected: null, playing: false
+      selected: null, playing: false,
+      // every picked clip (Ctrl+A, box select, Ctrl/Shift-click); `selected` is the one the dock shows
+      picked: new Set()
     };
     let ctx = null;
     const audioContext = () => {
@@ -202,14 +204,37 @@
     function removeClip(id) {
       for (const t of state.tracks) {
         const i = t.clips.findIndex((c) => c.id === id);
-        if (i >= 0) { t.clips.splice(i, 1); if (state.selected === id) select(null); layout(); changed(); restartIfPlaying(); return true; }
+        if (i >= 0) { t.clips.splice(i, 1); state.picked.delete(id); if (state.selected === id) select(null); layout(); changed(); restartIfPlaying(); return true; }
       }
       return false;
     }
-    function select(id) {
-      state.selected = id;
-      onSelect(id ? clipOf(id) : null);
+    // mode: undefined = only this clip, 'toggle' = add / remove it, 'keep' = keep the group, make it the shown one
+    function select(id, mode) {
+      if (mode === 'toggle' && id) {
+        if (state.picked.has(id)) state.picked.delete(id); else state.picked.add(id);
+        state.selected = state.picked.has(id) ? id : (state.picked.size ? Array.from(state.picked).pop() : null);
+      } else if (mode === 'keep' && id && state.picked.has(id)) {
+        state.selected = id;
+      } else {
+        state.picked = new Set(id ? [id] : []);
+        state.selected = id;
+      }
+      onSelect(state.selected ? clipOf(state.selected) : null);
       draw();
+    }
+    function allClips() { return state.tracks.flatMap((t) => t.clips); }
+    function selectAll() {
+      const ids = allClips().map((c) => c.id);
+      state.picked = new Set(ids); state.selected = ids.length ? ids[ids.length - 1] : null;
+      onSelect(state.selected ? clipOf(state.selected) : null); draw();
+    }
+    function deletePicked() {
+      const ids = new Set(state.picked.size ? state.picked : (state.selected ? [state.selected] : []));
+      if (!ids.size) return false;
+      for (const t of state.tracks) t.clips = t.clips.filter((c) => !ids.has(c.id));
+      state.picked = new Set(); state.selected = null; onSelect(null);
+      layout(); changed(); restartIfPlaying();
+      return true;
     }
     function selectedClip() { return state.selected ? clipOf(state.selected) : null; }
     function splitAtPlayhead() {
@@ -272,9 +297,13 @@
     function layout() {
       const dpr = root.devicePixelRatio || 1;
       const w = contentWidth(), h = contentHeight();
-      canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
-      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
-      playheadEl.style.height = h + 'px';
+      const W = Math.round(w * dpr), H = Math.round(h * dpr);
+      // setting the size clears the canvas even when it does not change: only on a real change
+      if (canvas.width !== W || canvas.height !== H) {
+        canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+        canvas.width = W; canvas.height = H;
+        playheadEl.style.height = h + 'px';
+      }
       draw();
     }
     function draw() {
@@ -312,6 +341,11 @@
       state.tracks.forEach((track, i) => {
         for (const clip of track.clips) paintClip(g, clip, laneTop(i));
       });
+      if (drag && drag.kind === 'marquee' && drag.moved) {
+        const bx = Math.min(drag.x0, drag.x1), by = Math.max(RULER_H, Math.min(drag.y0, drag.y1));
+        g.fillStyle = 'rgba(30,166,114,0.12)'; g.fillRect(bx, by, Math.abs(drag.x1 - drag.x0), Math.max(drag.y0, drag.y1) - by);
+        g.strokeStyle = '#1EA672'; g.lineWidth = 1; g.strokeRect(bx + 0.5, by + 0.5, Math.abs(drag.x1 - drag.x0), Math.max(drag.y0, drag.y1) - by);
+      }
       // ruler
       g.fillStyle = COLORS.ruler; g.fillRect(0, 0, w, RULER_H);
       g.fillStyle = COLORS.rulerText; g.font = '10px system-ui, sans-serif'; g.textBaseline = 'top';
@@ -337,7 +371,7 @@
       const track = state.tracks.find((t) => t.id === clip.trackId) || { gain: 1 };
       const x = timeToX(clip.start), wpx = Math.max(2, timeToX(clip.start + clip.length) - x);
       const pal = COLORS[clip.kind] || COLORS.import;
-      const selected = clip.id === state.selected;
+      const selected = state.picked.has(clip.id) || clip.id === state.selected;
       g.fillStyle = pal[2]; g.fillRect(x, top + 2, wpx, LANE_H - 4);
       // waveform, repeated when the clip is longer than its buffer
       const peaks = peaksOf(clip.buffer);
@@ -428,14 +462,22 @@
       const p = pointer(event);
       const h = hit(p.x, p.y);
       try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* synthetic pointer */ }
-      if (h.kind === 'ruler' || h.kind === 'lane' || h.kind === 'empty') {
-        if (h.kind !== 'ruler') select(null);
+      if (h.kind === 'ruler') {
         seek(snapTime(xToTime(p.x)));
         drag = { kind: 'scrub' };
         return;
       }
-      select(h.clip.id);
-      drag = { kind: h.kind, clip: h.clip, track: h.track, startX: p.x, startY: p.y,
+      const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+      if (h.kind === 'lane' || h.kind === 'empty') {
+        // a click moves the playhead; a drag draws a box that picks the clips it touches
+        drag = { kind: 'marquee', x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false, additive, base: new Set(state.picked) };
+        return;
+      }
+      if (additive) { select(h.clip.id, 'toggle'); if (!state.picked.has(h.clip.id)) return; }
+      else if (state.picked.has(h.clip.id) && state.picked.size > 1 && h.kind === 'move') select(h.clip.id, 'keep');
+      else select(h.clip.id);
+      const group = h.kind === 'move' && state.picked.size > 1 ? allClips().filter((c) => state.picked.has(c.id)).map((c) => ({ clip: c, start: c.start })) : null;
+      drag = { kind: h.kind, clip: h.clip, track: h.track, startX: p.x, startY: p.y, group,
         origin: { start: h.clip.start, offset: h.clip.offset, end: h.clip.end, loops: h.clip.loops, rate: h.clip.rate, length: h.clip.length, fadeIn: h.clip.fadeIn, fadeOut: h.clip.fadeOut, trackId: h.clip.trackId } };
       canvas.style.cursor = h.kind === 'move' ? 'grabbing' : cursorFor(h);
     });
@@ -443,9 +485,31 @@
       if (!drag) return;
       const p = pointer(event);
       if (drag.kind === 'scrub') { seek(snapTime(xToTime(Math.max(0, p.x)))); return; }
+      if (drag.kind === 'marquee') {
+        drag.x1 = p.x; drag.y1 = p.y;
+        if (!drag.moved && Math.hypot(p.x - drag.x0, p.y - drag.y0) < 4) return;
+        drag.moved = true;
+        const x0 = Math.min(drag.x0, drag.x1), x1 = Math.max(drag.x0, drag.x1), y0 = Math.min(drag.y0, drag.y1), y1 = Math.max(drag.y0, drag.y1);
+        const ids = new Set(drag.additive ? drag.base : []);
+        state.tracks.forEach((t, i) => {
+          const top = laneTop(i);
+          if (top + LANE_H < y0 || top > y1) return;
+          for (const c of t.clips) if (timeToX(c.start + c.length) >= x0 && timeToX(c.start) <= x1) ids.add(c.id);
+        });
+        state.picked = ids;
+        state.selected = ids.size ? Array.from(ids).pop() : null;
+        draw();
+        return;
+      }
       const clip = drag.clip, o = drag.origin, dt = xToTime(p.x - drag.startX);
       const bufDur = clip.buffer.duration;
-      if (drag.kind === 'move') {
+      if (drag.kind === 'move' && drag.group) {
+        // the picked clips move together, each on its own track
+        let d = snapTime(o.start + dt) - o.start;
+        const first = Math.min(...drag.group.map((m) => m.start));
+        if (first + d < 0) d = -first;
+        for (const m of drag.group) m.clip.start = m.start + d;
+      } else if (drag.kind === 'move') {
         clip.start = snapTime(o.start + dt);
         // Drop onto another lane.
         const laneIndex = state.tracks.findIndex((t, i) => p.y >= laneTop(i) && p.y <= laneTop(i) + LANE_H);
@@ -483,6 +547,11 @@
       const was = drag; drag = null;
       try { canvas.releasePointerCapture(event.pointerId); } catch (_) { /* already released */ }
       canvas.style.cursor = 'default';
+      if (was.kind === 'marquee') {
+        if (!was.moved) { if (!was.additive) select(null); seek(snapTime(xToTime(Math.max(0, was.x0)))); }
+        else { onSelect(state.selected ? clipOf(state.selected) : null); draw(); }
+        return;
+      }
       if (was.kind !== 'scrub') { changed(); restartIfPlaying(); }
     };
     canvas.addEventListener('pointerup', endDrag);
@@ -645,7 +714,8 @@
     const api = {
       state, host, canvas, scroller,
       addTrack, removeTrack, addClip, removeClip, select, selectedClip, splitAtPlayhead, duplicateSelected, setFade, setGain, setLoops, setRate, extendLoop, syncLength,
-      deleteSelected() { return state.selected ? removeClip(state.selected) : false; },
+      deleteSelected() { return deletePicked(); },
+      selectAll,
       play, pause, stop, toggle, seek, isPlaying: () => state.playing,
       setLoop(v) { state.loop = Boolean(v); onChange('loop'); },
       setSnap(v) { state.snap = Boolean(v); onChange('snap'); },

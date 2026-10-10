@@ -503,7 +503,8 @@
   // open it renders the timeline mix; an unlicensed install keeps the
   // runtime's own licence prompt.
   document.addEventListener('click', (event) => {
-    if (!state.active || !editor) return;
+    // only while 音频 is showing: under 视频 the export is the board's own video
+    if (!state.active || state.sub !== 'audio' || !editor) return;
     const target = event.target instanceof Element ? event.target.closest('[data-novaflow-primary-export-entry="1"]') : null;
     if (!(target instanceof HTMLElement) || target.getAttribute('data-novaflow-primary-shortcut-locked') === '1') return;
     event.preventDefault();
@@ -671,8 +672,8 @@
       .nf-as-project{left:0;display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-bar-line,#333333);border-radius:var(--nf-ref-radius-bar,9px);box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
       .nf-as-tabs{display:flex;gap:3px}
       .nf-as-project .nf-as-name{width:116px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
-      .nf-as-project .nf-as-tab[aria-pressed="false"]{background:#252629;color:#969aa2;border-color:transparent}
-      .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
+      .nf-as-project .nf-as-tab[aria-pressed="false"]{background:#252629;color:#969aa2;border-color:transparent!important}
+      .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f!important;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add,.nf-as-project .nf-as-tab-del{width:38px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#a0a0a0;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add:hover{background:#373737;color:#fff}
       .nf-as-project .nf-as-tab-del:hover{background:#4a2323;color:#ffb4b4}
@@ -1555,7 +1556,7 @@
 
   // ---- keyboard ------------------------------------------------------------------------
   document.addEventListener('keydown', (event) => {
-    if (!state.active || !editor) return;
+    if (!state.active || state.sub !== 'audio' || !editor) return;
     const t = event.target;
     // Only typing fields keep their keys; a slider, a checkbox or a button that
     // still has focus after a click must not swallow Space (play / pause).
@@ -1565,6 +1566,7 @@
     if (typing || (t instanceof HTMLElement && t.tagName === 'INPUT')) return;
     if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'C')) { if (copySelectedClip()) event.preventDefault(); return; }
     if ((event.ctrlKey || event.metaKey) && (event.key === 'v' || event.key === 'V')) { if (pasteClipAtPlayhead()) event.preventDefault(); return; }
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'a' || event.key === 'A')) { event.preventDefault(); editor.selectAll(); return; }
     else if (event.key === 'Delete' || event.key === 'Backspace') { if (editor.deleteSelected()) event.preventDefault(); }
     else if (event.key === 's' || event.key === 'S') { editor.splitAtPlayhead(); }
     else if (event.key === 'Home') { editor.seek(0); }

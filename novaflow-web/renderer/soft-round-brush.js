@@ -1,6 +1,5 @@
 (function (root) {
   'use strict'
-  const scratchCanvases = new WeakMap()
   const canvasStrokes = new WeakMap()
   // Quintic falloff has no slope discontinuity at either end of the feather.
   function falloff(t) {
@@ -25,31 +24,37 @@
     state.remaining=travel-distance
     return points
   }
-  function paintStamp(ctx, x0, y0, x1, y1, radius, feather, white) {
-    const inner = radius, outer = radius + feather
-    const left = Math.max(0, Math.floor(Math.min(x0, x1) - outer - 1))
-    const top = Math.max(0, Math.floor(Math.min(y0, y1) - outer - 1))
-    const width = Math.min(ctx.canvas.width, Math.ceil(Math.max(x0, x1) + outer + 1)) - left
-    const height = Math.min(ctx.canvas.height, Math.ceil(Math.max(y0, y1) + outer + 1)) - top
-    if (width <= 0 || height <= 0) return
-    let canvas = scratchCanvases.get(ctx)
-    if (!canvas) {
-      canvas = ctx.canvas.ownerDocument.createElement('canvas')
-      scratchCanvases.set(ctx, canvas)
-    }
-    canvas.width = width; canvas.height = height
-    const stamp = canvas.getContext('2d'), pixels = stamp.createImageData(width, height)
-    const dx = x1 - x0, dy = y1 - y0, lengthSquared = dx * dx + dy * dy
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      const px = left + x + 0.5 - x0, py = top + y + 0.5 - y0
-      const projection = lengthSquared ? Math.max(0, Math.min(1, (px * dx + py * dy) / lengthSquared)) : 0
-      const alpha = strength(Math.hypot(px - projection * dx, py - projection * dy), inner, outer)
-      const offset = (y * width + x) * 4
+  // One stamp per brush size, built once: rebuilding the soft circle pixel by pixel for every
+  // dab (a few dozen per mouse move) made painting lag.
+  const stampCache = new Map()
+  function stampFor(doc, radius, feather, white) {
+    const key = radius.toFixed(2) + '|' + feather.toFixed(2) + '|' + (white ? 1 : 0)
+    let stamp = stampCache.get(key)
+    if (stamp) return stamp
+    if (stampCache.size > 32) stampCache.clear()
+    const outer = radius + feather
+    const size = Math.ceil(outer * 2) + 2, half = size / 2
+    const canvas = doc.createElement('canvas')
+    canvas.width = size; canvas.height = size
+    const g = canvas.getContext('2d'), pixels = g.createImageData(size, size)
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const s = strength(Math.hypot(x + 0.5 - half, y + 0.5 - half), radius, outer)
+      // The feather builds up at 16% a dab, as before. The core takes full strength: at 16%
+      // a dab, 8-bit canvas maths stalls a few levels short of fully erased, so going over it
+      // again never cleared the faint shadow.
+      const alpha = feather > 0 ? (s >= 0.999 ? 1 : s * 0.16) : s
+      const offset = (y * size + x) * 4
       pixels.data[offset] = pixels.data[offset + 1] = pixels.data[offset + 2] = white ? 255 : 0
-      pixels.data[offset + 3] = Math.round(alpha * 255 * (feather > 0 ? 0.16 : 1))
+      pixels.data[offset + 3] = Math.round(alpha * 255)
     }
-    stamp.putImageData(pixels, 0, 0)
-    ctx.save(); ctx.filter = 'none'; ctx.drawImage(canvas, left, top); ctx.restore()
+    g.putImageData(pixels, 0, 0)
+    stamp = { canvas, half }
+    stampCache.set(key, stamp)
+    return stamp
+  }
+  function paintStamp(ctx, x, y, radius, feather, white) {
+    const stamp = stampFor(ctx.canvas.ownerDocument || document, radius, feather, white)
+    ctx.save(); ctx.filter = 'none'; ctx.drawImage(stamp.canvas, x - stamp.half, y - stamp.half); ctx.restore()
   }
   function paintCanvas(ctx,x0,y0,x1,y1,radius,feather,white) {
     let state=canvasStrokes.get(ctx)
@@ -57,7 +62,7 @@
     if (!state || state.key!==key || Math.hypot(x0-state.x,y0-state.y)>0.01 || (x0===x1&&y0===y1)) {
       state={key}; canvasStrokes.set(ctx,state)
     }
-    for (const point of sampleStroke(state,x0,y0,x1,y1,radius+feather)) paintStamp(ctx,point.x,point.y,point.x,point.y,radius,feather,white)
+    for (const point of sampleStroke(state,x0,y0,x1,y1,radius+feather)) paintStamp(ctx,point.x,point.y,radius,feather,white)
     state.x=x1; state.y=y1
   }
   const api = { falloff, strength, paintCanvas, sampleStroke }

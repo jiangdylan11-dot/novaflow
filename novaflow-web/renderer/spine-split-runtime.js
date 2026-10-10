@@ -27849,7 +27849,9 @@
           const offset = ((y - bounds.top) * width + (x - bounds.left)) * 4
           const current = Math.round((data[offset] + data[offset + 1] + data[offset + 2]) / 3)
           const opacity = soft * (feather > 0 ? 0.16 : 1)
-          const next = Math.round(restore ? current + (255 - current) * opacity : current * (1 - opacity))
+          // random rounding: nearest-level rounding stalled soft dabs short of 0 / 255, so a
+          // feathered erase left a shadow that more strokes could not clear
+          const next = Math.min(255, Math.max(0, Math.floor((restore ? current + (255 - current) * opacity : current * (1 - opacity)) + Math.random())))
           data[offset] = next
           data[offset + 1] = next
           data[offset + 2] = next
@@ -27943,7 +27945,9 @@
         const i = (y * width + x) * 4
         const current = Math.round((data[i] + data[i + 1] + data[i + 2]) / 3)
         const opacity = soft * (feather > 0 ? 0.16 : 1)
-          const next = Math.round(restore ? current + (255 - current) * opacity : current * (1 - opacity))
+          // random rounding: nearest-level rounding stalled soft dabs short of 0 / 255, so a
+          // feathered erase left a shadow that more strokes could not clear
+          const next = Math.min(255, Math.max(0, Math.floor((restore ? current + (255 - current) * opacity : current * (1 - opacity)) + Math.random())))
         data[i] = next
         data[i + 1] = next
         data[i + 2] = next

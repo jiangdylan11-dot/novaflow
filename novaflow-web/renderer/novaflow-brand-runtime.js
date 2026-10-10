@@ -32607,6 +32607,8 @@
       "[data-novaflow-ai-post-section='1']",
       "[data-novaflow-canvas-bar-button]",
       "#novaflow-particle-project-top-actions",
+      // 音视's 视频 | 音频 toggle keeps the 8px of every section's top toggle
+      "#novaflow-av-sub-toggle",
       "select"
     ].join(","))) {
       return true;

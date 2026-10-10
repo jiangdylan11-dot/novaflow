@@ -174,7 +174,11 @@
           const target = distanceSquared <= radiusSquared ? coreTarget : falloffTable[falloffIndex]
           const previous = coverage[index]
           const opacity=(isErase ? 255-target : target)/255 * (stroke.featherPx>0 ? 0.16 : 1)
-          const next=Math.round(isErase ? previous*(1-opacity) : previous+(255-previous)*opacity)
+          // Rounded to the nearest level, a soft dab stalled a few levels short of 0 / 255 (and
+          // far short at the feather's edge), so going over it again never cleared the shadow.
+          // Rounded up or down at random instead: the same strength on average, and it gets there.
+          const exact=isErase ? previous*(1-opacity) : previous+(255-previous)*opacity
+          const next=Math.min(255, Math.max(0, Math.floor(exact+Math.random())))
           if (next===previous) continue
           coverage[index] = next
           changed = true
