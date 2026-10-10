@@ -2506,7 +2506,9 @@
     hier.scroll.scrollLeft = keepLeft
     paintHierSelection()
     // the rows were rebuilt: put the focused layer's outline back on the new ones
-    if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep, keep === focusName) }
+    // (outline only: scrolling to it here pulled the list back to that row inside 骨架 every time
+    // a group was opened or closed - 约束, 皮肤, 动画, 绘制顺序)
+    if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep, false) }
   }
   function markHierLayerActive(name, on) {
     let found = false

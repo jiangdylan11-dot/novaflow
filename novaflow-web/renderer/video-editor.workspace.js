@@ -668,7 +668,21 @@
     function handleKey(event) {
       if (!alive || isTextTarget(event.target)) return
       const key = event.key
-      if (maskEdit) { if (key === 'Escape') { event.preventDefault(); endMask(false) } else if (key === 'Enter') { event.preventDefault(); endMask(true) } return }
+      if (maskEdit) {
+        if (key === 'Escape') { event.preventDefault(); endMask(false) } else if (key === 'Enter') { event.preventDefault(); endMask(true) }
+        // 美工's brush keys: [ ] size by 4, ; - / ' = feather by 1, E 擦除, R 修复
+        else if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+          const code = event.code || ''
+          const step = (id, sync, by) => { event.preventDefault(); $(id).value = String(finite($(id).value, 0) + by); sync('number') }
+          if (key === '[' || key === '【') step('ve-mask-brush', syncBrush, -4)
+          else if (key === ']' || key === '】') step('ve-mask-brush', syncBrush, 4)
+          else if (code === 'Semicolon' || key === ';' || key === '；' || key === '-' || key === '_') step('ve-mask-feather', syncFeather, -1)
+          else if (code === 'Quote' || key === "'" || key === '"' || key === '=' || key === '+') step('ve-mask-feather', syncFeather, 1)
+          else if (key === 'e' || key === 'E') { event.preventDefault(); setMaskMode('erase') }
+          else if (key === 'r' || key === 'R') { event.preventDefault(); setMaskMode('restore') }
+        }
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && (key === 'c' || key === 'C')) { if (copySelected()) event.preventDefault(); return }
       if ((event.ctrlKey || event.metaKey) && (key === 'v' || key === 'V')) { if (pasteAtPlayhead()) event.preventDefault(); return }
       if ((event.ctrlKey || event.metaKey) && (key === 'a' || key === 'A')) { event.preventDefault(); editor.selectAll(); return }

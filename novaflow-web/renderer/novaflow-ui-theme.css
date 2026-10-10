@@ -1018,6 +1018,17 @@ html body [data-nf-ps-import="1"]:hover {
   background-color: #3b3b3b !important;
 }
 
+/* 3.1d 视频抠图's brush cursor shows 视频编辑's two circles: the brush (its own border) and the
+   feather ring outside it, dashed, as far out as the feather reaches (scripts/patch-cutout-brush-like-editor.mjs). */
+html body [data-novaflow-ai-cutout-brush-cursor="1"][data-nf-feather="1"]::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1.5px - var(--nf-cutout-feather, 0px));
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 /* 3.0a One chevron everywhere: every fa-chevron (the AI 特效 panel, dialogs,
    anything outside .novaflow-app too) is the same thin 7px / 1.35px stroke. */
 html body :is(i.fa-chevron-right, i.fa-chevron-down, i.fa-chevron-left, i.fa-chevron-up) {
