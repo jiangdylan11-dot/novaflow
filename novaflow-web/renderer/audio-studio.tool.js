@@ -630,7 +630,8 @@
       .nf-as-refswitch[aria-checked="true"] i{background:#1EA672}.nf-as-refswitch[aria-checked="true"] i::after{left:18px}
       .nf-as-ref{position:absolute;left:0;display:grid;place-items:center;overflow:hidden;border-radius:var(--nf-ref-radius-panel,12px);background:#000;border:1px solid var(--nf-ref-line,#2e2e2e)}
       .nf-as-ref[hidden]{display:none}
-      .nf-as-ref video{max-width:100%;max-height:100%}
+      /* always fitted whole inside the preview box (a grid row grew to the video's own height) */
+      .nf-as-ref video{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;object-fit:contain!important;transform:none!important}
       .nf-as-ref-empty{color:#6a6a6a;font-size:12px}
       .nf-as-ref-empty[hidden]{display:none}
       .nf-as-ref[data-drop="1"]::after{content:"释放以置入参照视频";position:absolute;inset:12px;display:flex;align-items:center;justify-content:center;border:2px dashed rgba(91,224,173,.85);border-radius:12px;background:rgba(10,61,44,.48);color:#d9fff0;font-size:13px;font-weight:600;pointer-events:none}
@@ -672,8 +673,9 @@
       .nf-as-project{left:0;display:flex;align-items:center;gap:3px;height:38px;padding:4px;background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-bar-line,#333333);border-radius:var(--nf-ref-radius-bar,9px);box-shadow:0 3px 7px rgba(0,0,0,.133);white-space:nowrap}
       .nf-as-tabs{display:flex;gap:3px}
       .nf-as-project .nf-as-name{width:116px;height:28px;border:1px solid var(--nf-ref-soft,#343434);border-radius:var(--nf-r-control,6px);background:#262626;color:#e9e9e9;font-size:11px;padding:0 6px}
-      .nf-as-project .nf-as-tab[aria-pressed="false"]{background:#252629;color:#969aa2;border-color:transparent!important}
-      .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f!important;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
+      #${ROOT_ID} .nf-as-project .nf-as-tab[aria-pressed="false"]{background:#252629;color:#969aa2;border-color:transparent!important}
+      /* under the root id: the runtime clears every button's border while the AI workspace layers are up */
+      #${ROOT_ID} .nf-as-project .nf-as-tab{width:26px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid #2c604f!important;border-radius:5px;background:#1c4136;color:#9be4cd;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add,.nf-as-project .nf-as-tab-del{width:38px;height:28px;padding:4px 10px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:5px;background:transparent;color:#a0a0a0;font-size:11px;font-weight:500}
       .nf-as-project .nf-as-tab-add:hover{background:#373737;color:#fff}
       .nf-as-project .nf-as-tab-del:hover{background:#4a2323;color:#ffb4b4}
@@ -741,7 +743,7 @@
       .nf-as-prompt textarea{display:block;width:100%;height:100%;resize:none;border:0;background:#202020;color:#c9c9c9;font-size:12px;line-height:1.5;padding:12px 14px}
       .nf-as-prompt textarea::placeholder{color:#6e6e6e}
       /* transport */
-      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-soft,#343434);border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;justify-content:flex-start}
+      .nf-as-transport{background:var(--nf-ref-panel,#161616);border:1px solid var(--nf-ref-line,#2e2e2e);border-radius:var(--nf-ref-radius-panel,12px);padding:9px 12px;display:flex;flex-direction:column;justify-content:flex-start}
       .nf-as-tr-row{display:flex;align-items:center;gap:8px 8px;flex-wrap:wrap;white-space:nowrap;min-width:0;min-height:30px;flex:0 0 auto}
       .nf-as-tr-row .nf-as-tbtn{width:30px;height:30px;border:1px solid transparent;border-radius:var(--nf-ref-radius-control,7px);background:#282828;color:#eaeaea;display:grid;place-items:center;padding:0}
       .nf-as-tr-row .nf-as-tbtn:hover{background:#373737;color:#fff}

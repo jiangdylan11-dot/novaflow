@@ -18955,8 +18955,68 @@
     return ["white", "gray"].includes(AI_SEQUENCE_PREVIEW_BG_MODE) ? AI_SEQUENCE_PREVIEW_BG_MODE : "dark";
   }
 
+  // The board's media stays inside the board's coloured area (under the canvas bar, above the
+  // dock): a right-drag pan or a zoom carried it over both. Its own transform (the page's, or
+  // the pan / zoom variables) moves it, so the clip is redone whenever its style changes; the
+  // box is mapped into the media's untransformed size.
+  const AI_BOARD_MEDIA_CLIP_WATCHED = new WeakSet();
+  function isAiSequenceBoardClipMedia(node) {
+    return node instanceof HTMLElement && (
+      node instanceof HTMLVideoElement || node instanceof HTMLImageElement ||
+      node.getAttribute("data-novaflow-ai-media-panzoom") === "1" ||
+      node.getAttribute("data-novaflow-ai-preview-media-backplate") === "1"
+    );
+  }
+  function clipAiSequenceBoardMedia(viewport) {
+    const style = window.getComputedStyle(viewport);
+    const read = (name) => parseFloat(style.getPropertyValue(`--novaflow-ai-sequence-effective-${name}`));
+    const top = read("top"), left = read("left"), width = read("width"), height = read("height");
+    const ready = [top, left, width, height].every(Number.isFinite) && width > 2 && height > 2;
+    const vr = viewport.getBoundingClientRect();
+    Array.from(viewport.children).forEach((media) => {
+      if (!isAiSequenceBoardClipMedia(media)) return;
+      let value = "";
+      const w = media.offsetWidth, h = media.offsetHeight;
+      if (ready && w > 0 && h > 0) {
+        const r = media.getBoundingClientRect();
+        const sx = r.width / w, sy = r.height / h;
+        if (sx > 0 && sy > 0) {
+          const it = Math.max(0, (vr.top + top - r.top) / sy);
+          const il = Math.max(0, (vr.left + left - r.left) / sx);
+          const ir = Math.max(0, (r.right - (vr.left + left + width)) / sx);
+          const ib = Math.max(0, (r.bottom - (vr.top + top + height)) / sy);
+          if (it > 0.5 || il > 0.5 || ir > 0.5 || ib > 0.5) value = `inset(${it.toFixed(1)}px ${ir.toFixed(1)}px ${ib.toFixed(1)}px ${il.toFixed(1)}px)`;
+        }
+      }
+      if (media.style.getPropertyValue("clip-path") === value) return;
+      if (value) media.style.setProperty("clip-path", value, "important");
+      else media.style.removeProperty("clip-path");
+    });
+  }
+  function watchAiSequenceBoardMediaClip(viewport) {
+    if (!(viewport instanceof HTMLElement) || AI_BOARD_MEDIA_CLIP_WATCHED.has(viewport)) return;
+    AI_BOARD_MEDIA_CLIP_WATCHED.add(viewport);
+    let queued = false;
+    const run = () => { queued = false; if (viewport.isConnected) clipAiSequenceBoardMedia(viewport); };
+    const queue = () => { if (queued) return; queued = true; window.requestAnimationFrame(run); };
+    const watched = new WeakSet();
+    const mediaObserver = new MutationObserver(queue);
+    const attach = () => {
+      Array.from(viewport.children).forEach((node) => {
+        if (!isAiSequenceBoardClipMedia(node) || watched.has(node)) return;
+        watched.add(node);
+        mediaObserver.observe(node, { attributes: true, attributeFilter: ["style", "src", "width", "height"] });
+      });
+    };
+    new MutationObserver(() => { attach(); queue(); }).observe(viewport, { childList: true, attributes: true, attributeFilter: ["style"] });
+    window.addEventListener("resize", queue, { passive: true });
+    attach();
+    queue();
+  }
+
   function applyAiSequencePreviewBgMode(viewport) {
     if (!(viewport instanceof HTMLElement)) return;
+    watchAiSequenceBoardMediaClip(viewport);
     const mode = getAiSequencePreviewBgMode();
     const color = getAiSequencePreviewMediaBackplateColor();
     const background = color;
@@ -32614,6 +32674,8 @@
       return true;
     }
     if (element.closest("[data-novaflow-keep-radius='1']")) return true;
+    // 音频's own panels (left, bar, timeline, dock) carry the section radii in their own sheet
+    if (element.closest("#novaflow-audio-studio")) return true;
     if (element.closest("[data-novaflow-toggle-switch='1'], [data-novaflow-toggle-knob='1']")) return true;
     if (profile.max >= 80) return true;
     const minSize = Math.min(rect.width || 0, rect.height || 0);

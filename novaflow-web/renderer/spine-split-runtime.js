@@ -15493,8 +15493,12 @@
   function applySplitCanvasPanTransform(el) {
     const root = document.getElementById(WORKSPACE_OVERLAY_ID) || el
     if (!root || !root.querySelectorAll) return
+    const transform = splitCanvasPanTransform()
     root.querySelectorAll('[data-novaflow-split-canvas-art="1"]').forEach((target) => {
-      target.style.transform = splitCanvasPanTransform()
+      target.style.transform = transform
+      // 生图's fitted picture draws from this copy of the pan (with its fit scale): keep it
+      // live, or the picture only caught up when the right button came up
+      if (target.style.getPropertyValue('--novaflow-art-generate-native-transform')) target.style.setProperty('--novaflow-art-generate-native-transform', transform)
     })
     scheduleSplitCanvasFloatingSurfaceSync()
   }

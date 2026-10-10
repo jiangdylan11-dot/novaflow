@@ -2444,8 +2444,10 @@
         // as wide as its deepest row, never narrower than the box: the sidebar keeps its
         // size and a long chain scrolls sideways instead of losing its indent
         width: 'max-content', minWidth: '100%', boxSizing: 'border-box',
-        paddingLeft: (r.depth * 16) + 'px', paddingRight: '6px', borderRadius: '5px',
-        cursor: r.fixed ? 'default' : 'pointer', border: '1px solid transparent',
+        // the brand spec's row look (flat, a rule under it): whichever of the two is painting
+        // for a moment, the row looks the same
+        paddingLeft: (r.depth * 16) + 'px', paddingRight: '6px', borderRadius: '0',
+        cursor: r.fixed ? 'default' : 'pointer', border: '0', borderBottom: '1px solid #313131',
         color: r.hint ? 'rgba(255,255,255,0.45)' : 'inherit'
       })
       row.dataset.nfHierKey = r.key
@@ -2469,7 +2471,7 @@
         const color = (roles[r.role] && roles[r.role].line) || '#8fd3ff'
         row.appendChild(el('span', { width: '8px', height: '8px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
       }
-      const label = el('span', { fontSize: '11px', color: r.active ? '#7ce8b5' : 'rgba(255,255,255,0.88)', fontWeight: r.group && r.depth <= 1 ? '600' : '400', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.label)
+      const label = el('span', { fontSize: '12px', color: picked ? '#ffffff' : r.active ? '#7ce8b5' : '#ababab', fontWeight: r.group && r.depth <= 1 ? '600' : '400', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.label)
       label.dataset.nfHierLabel = '1'
       row.appendChild(label)
       if (r.count !== undefined) { const c = el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto' }, String(r.count)); c.dataset.nfHierTrail = '1'; row.appendChild(c) }
@@ -2733,9 +2735,12 @@
   function setHierRowState(row, state) {
     if (!row) return
     row.dataset.nfHierState = state
-    // the look when the brand runtime is not there to paint it; its spec overrides this
-    row.style.background = state ? 'rgba(34,201,138,' + (state === 'selected' ? '0.16' : '0.12') + ')' : ''
-    row.style.borderColor = state === 'selected' ? 'rgba(34,201,138,0.9)' : state ? 'rgba(34,201,138,0.5)' : 'transparent'
+    // The brand runtime's spec paints the row from that state (a state attribute it watches).
+    // Writing the look here as well replaced its !important paint until its next pass, so a
+    // clicked row flashed between the two looks; this look is only for when it is not there.
+    if (document.body && document.body.classList.contains('novaflow-skeleton-animation-layout')) return
+    row.style.backgroundColor = state ? 'rgba(30, 166, 114, 0.14)' : ''
+    row.style.boxShadow = state === 'selected' ? 'inset 3px 0 0 rgba(30, 166, 114, 0.92)' : ''
   }
   /** The edited bone's row: marked, and scrolled into view (the last one clicked is what the tree shows). */
   function paintHierSelection() {
