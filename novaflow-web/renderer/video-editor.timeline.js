@@ -30,6 +30,8 @@
   const MIN_ZOOM = 6;
   const MAX_ZOOM = 400;
   const MIN_LEN = 0.1;
+  // a clip's speed range when its edges are dragged (as 音频编辑's stretch)
+  const MIN_RATE = 0.25, MAX_RATE = 4;
   const IMAGE_DEFAULT_LEN = 3;
   const IMAGE_MAX_LEN = Infinity;   // an image clip stretches as long as the track has room
   const COLORS = {
@@ -277,7 +279,9 @@
         start: Math.max(0, Number(spec.start) || 0), offset: 0, end: naturalLen, length: naturalLen, isImage,
         transform: kind === 'video' ? (spec.transform || fitTransform(source)) : null, visible: true,
         fadeIn: Math.max(0, Number(spec.fadeIn) || 0), fadeOut: Math.max(0, Number(spec.fadeOut) || 0),
-        mask: null, maskRevision: 0, audioDetached: false
+        mask: null, maskRevision: 0, audioDetached: false,
+        // playback speed: source seconds per timeline second (dragging an edge sets it)
+        rate: 1
       };
       clampFades(clip);
       if (spec.start === undefined) {
@@ -298,7 +302,8 @@
       const scale = Math.min(state.canvas.width / source.width, state.canvas.height / source.height);
       return { centerX: state.canvas.width / 2, centerY: state.canvas.height / 2, scale };
     }
-    function syncLength(clip) { clip.length = Math.max(MIN_LEN, clip.end - clip.offset); clampFades(clip); return clip.length; }
+    function rateOf(clip) { return clip && !clip.isImage ? (Number(clip.rate) || 1) : 1; }
+    function syncLength(clip) { clip.length = Math.max(MIN_LEN, (clip.end - clip.offset) / rateOf(clip)); clampFades(clip); return clip.length; }
     function clampFades(clip) {
       clip.fadeIn = clamp(Number(clip.fadeIn) || 0, 0, clip.length);
       clip.fadeOut = clamp(Number(clip.fadeOut) || 0, 0, Math.max(0, clip.length - clip.fadeIn));
@@ -372,8 +377,8 @@
       const clip = sel && inside(sel) ? sel : allClips().find(inside);
       if (!clip || t <= clip.start + 0.02 || t >= clip.start + clip.length - 0.02) return null;
       const cut = t - clip.start;
-      const right = { ...clip, id: uid('clip'), start: t, offset: clip.offset + cut, transform: clip.transform ? { ...clip.transform } : null, fadeIn: 0, mask: clip.mask && options.cloneMask ? options.cloneMask(clip.mask) : null };
-      clip.end = clip.offset + cut; clip.fadeOut = 0;
+      const right = { ...clip, id: uid('clip'), start: t, offset: clip.offset + cut * rateOf(clip), transform: clip.transform ? { ...clip.transform } : null, fadeIn: 0, mask: clip.mask && options.cloneMask ? options.cloneMask(clip.mask) : null };
+      clip.end = clip.offset + cut * rateOf(clip); clip.fadeOut = 0;
       syncLength(clip); syncLength(right);
       clipTrack(clip).clips.push(right);
       select(right.id); layout(); changed(); restartIfPlaying();
@@ -411,7 +416,7 @@
       if (!clip || clip.kind !== 'video' || clip.audioDetached || !clip.source.hasAudio) return null;
       const audioTrack = state.tracks.find((t) => t.kind === 'audio' && !collides(t, null, clip.start, clip.length)) || addTrack(null, 'audio');
       const audio = addClip({ source: audioSource, name: clip.name + ' 音轨', trackId: audioTrack.id, start: clip.start, fadeIn: clip.fadeIn, fadeOut: clip.fadeOut });
-      audio.offset = clip.offset; audio.end = clip.end; syncLength(audio);
+      audio.offset = clip.offset; audio.end = clip.end; audio.rate = rateOf(clip); syncLength(audio);
       if (audio.start !== clip.start) { audio.start = clip.start; }
       clip.audioDetached = true;
       select(clip.id); layout(); changed(); restartIfPlaying();
@@ -506,7 +511,7 @@
         const mid = top + 2 + (LANE_H - 4) / 2, amp = (LANE_H - 4) / 2 - 3;
         g.fillStyle = pal[1];
         for (let px = 0; px < wpx; px += 1) {
-          const srcT = clip.offset + xToTime(px);
+          const srcT = clip.offset + xToTime(px) * rateOf(clip);
           const bin = Math.min(peaks.length - 1, Math.max(0, Math.floor(srcT / clip.source.durationSec * peaks.length)));
           const v = peaks[bin] * amp;
           g.fillRect(x + px, mid - v, 1, Math.max(1, v * 2));
@@ -518,7 +523,7 @@
         const fh = LANE_H - 4, fw = Math.max(8, Math.round(fh * strip.aspect));
         g.save(); g.beginPath(); g.rect(x, top + 2, wpx, fh); g.clip();
         for (let px = 0; px < wpx; px += fw) {
-          const srcT = clip.isImage ? 0 : clip.offset + xToTime(px + fw / 2);
+          const srcT = clip.isImage ? 0 : clip.offset + xToTime(px + fw / 2) * rateOf(clip);
           let best = strip.frames[0];
           for (const f of strip.frames) if (Math.abs(f.t - srcT) < Math.abs(best.t - srcT)) best = f;
           g.drawImage(best.canvas, x + px, top + 2, fw, fh);
@@ -547,7 +552,7 @@
       g.save(); g.beginPath(); g.rect(x, top, wpx, LANE_H); g.clip();
       g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(x, top + LANE_H - 18, wpx, 16);
       g.fillStyle = COLORS.text; g.font = '11px system-ui, sans-serif'; g.textBaseline = 'bottom';
-      g.fillText(clip.name + '  ' + formatTime(clip.length) + (clip.source.hasAudio && !track.mute && !isAudio && !clip.audioDetached ? '  ♪' : '') + (clip.mask && clip.maskRevision > 0 ? '  蒙版' : ''), x + 6, top + LANE_H - 4);
+      g.fillText(clip.name + '  ' + formatTime(clip.length) + (Math.abs(rateOf(clip) - 1) > 0.005 ? '  ×' + rateOf(clip).toFixed(2) : '') + (clip.source.hasAudio && !track.mute && !isAudio && !clip.audioDetached ? '  ♪' : '') + (clip.mask && clip.maskRevision > 0 ? '  蒙版' : ''), x + 6, top + LANE_H - 4);
       g.restore();
     }
     function positionPlayhead() { playheadEl.style.left = (timeToX(state.playhead) - 1) + 'px'; }
@@ -611,7 +616,7 @@
       else select(h.clip.id);
       const group = h.kind === 'move' && state.picked.size > 1 ? pickedClips().map((c) => ({ clip: c, start: c.start })) : null;
       drag = { kind: h.kind, clip: h.clip, track: h.track, startX: p.x, startY: p.y, group,
-        origin: { start: h.clip.start, offset: h.clip.offset, end: h.clip.end, length: h.clip.length, trackId: h.clip.trackId, fadeIn: h.clip.fadeIn, fadeOut: h.clip.fadeOut } };
+        origin: { start: h.clip.start, offset: h.clip.offset, end: h.clip.end, length: h.clip.length, rate: rateOf(h.clip), trackId: h.clip.trackId, fadeIn: h.clip.fadeIn, fadeOut: h.clip.fadeOut } };
       canvas.style.cursor = h.kind === 'move' ? 'grabbing' : cursorFor(h);
     });
     canvas.addEventListener('pointermove', (event) => {
@@ -663,6 +668,27 @@
           clip.start = free;
           if (free !== wanted) snapHint = null;
         }
+      } else if ((drag.kind === 'trimStart' || drag.kind === 'trimEnd') && !clip.isImage) {
+        // A video / sound clip's edges change its speed, as 音频编辑's do: longer plays slower,
+        // shorter faster; the source window stays whole (cutting is 分割's job). The other
+        // edge stays where it is.
+        const track = clipTrack(clip);
+        const window = Math.max(1e-6, o.end - o.offset);
+        const fixedEnd = o.start + o.length;
+        const fit = (len) => window / clamp(window / Math.max(MIN_LEN, len), MIN_RATE, MAX_RATE);
+        if (drag.kind === 'trimEnd') {
+          let nextStart = Infinity;
+          for (const other of track.clips) if (other !== clip && other.start >= fixedEnd - 1e-6) nextStart = Math.min(nextStart, other.start);
+          const len = fit(Math.min(snapTime(fixedEnd + dt, clip), nextStart) - o.start);
+          clip.rate = window / len;
+        } else {
+          let prevEnd = 0;
+          for (const other of track.clips) if (other !== clip && other.start + other.length <= o.start + 1e-6) prevEnd = Math.max(prevEnd, other.start + other.length);
+          const len = fit(fixedEnd - Math.max(prevEnd, snapTime(o.start + dt, clip)));
+          clip.rate = window / len;
+          clip.start = fixedEnd - len;
+        }
+        syncLength(clip);
       } else if (drag.kind === 'trimStart') {
         const track = clipTrack(clip);
         const earliest = Math.max(0, o.start - o.offset);
@@ -794,7 +820,7 @@
         if (track.kind !== 'audio' && !track.visible) continue;
         for (const clip of track.clips) {
           if (track.kind !== 'audio' && !clip.visible) continue;
-          if (t >= clip.start - 1e-6 && t < clip.start + clip.length) out.push({ clip, track, kind: clip.kind, sourceTime: clip.offset + (t - clip.start), gain: fadeGain(clip, t) });
+          if (t >= clip.start - 1e-6 && t < clip.start + clip.length) out.push({ clip, track, kind: clip.kind, sourceTime: clip.offset + (t - clip.start) * rateOf(clip), gain: fadeGain(clip, t) });
         }
       }
       return out;

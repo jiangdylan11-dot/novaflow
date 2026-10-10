@@ -126,8 +126,9 @@
     .nf-tl-add-track + .nf-tl-add-track{margin-left:0}.nf-tl-add-track:hover{border-color:#1EA672;color:#9be4cd}
     .nf-tl-header-list{will-change:transform}
     .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222;cursor:grab}
-    .nf-tl-header[data-active="1"]{box-shadow:inset 2px 0 0 #1EA672;background:#1d2a25}
-    .nf-tl-header[data-kind="audio"]{background:#1a1915}.nf-tl-header[data-kind="audio"][data-active="1"]{background:#1d2a25}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
+    /* the picked track: the app's selected look (the green tab / toggle plate and its outline) */
+    .nf-tl-header[data-kind="audio"]{background:#1a1915}
+    .nf-tl-header[data-active="1"],.nf-tl-header[data-kind="audio"][data-active="1"]{background:#1c4136;box-shadow:inset 0 0 0 1px #2c604f;border-radius:6px}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
     .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
     .nf-tl-track-name:hover,.nf-tl-track-name:focus{background:#262626;border-color:#343434}
     .nf-tl-track-btns{display:flex;gap:4px}
@@ -660,7 +661,7 @@
       if (!clipboard) return false
       const src = clipboard
       const pasted = editor.addClip({ source: src.source, name: src.name, trackId: src.trackId, start: editor.playhead(), transform: src.transform ? { ...src.transform } : undefined, fadeIn: src.fadeIn, fadeOut: src.fadeOut })
-      pasted.offset = src.offset; pasted.end = src.end; editor.syncLength(pasted); pasted.audioDetached = src.audioDetached
+      pasted.offset = src.offset; pasted.end = src.end; pasted.rate = src.rate || 1; editor.syncLength(pasted); pasted.audioDetached = src.audioDetached
       if (src.mask && src.maskRevision > 0) editor.setMask(pasted.id, cloneMask(src.mask), src.maskRevision)
       editor.select(pasted.id); editor.layout(); preview.refresh()
       return true
@@ -728,7 +729,7 @@
           layers.push({
             clipId: clip.id, kind: isAudio ? 'audio' : 'video', image: Boolean(clip.isImage), video: !isAudio,
             source: { blob: clip.source.blob, url: clip.source.url, fileName: clip.source.fileName, width: clip.source.width, height: clip.source.height },
-            start: clip.start, offset: clip.offset, length: clip.length,
+            start: clip.start, offset: clip.offset, length: clip.length, rate: clip.isImage ? 1 : (Number(clip.rate) || 1),
             transform: clip.transform ? { ...clip.transform } : null,
             fadeIn: clip.fadeIn, fadeOut: clip.fadeOut,
             audio: Boolean(clip.source.hasAudio && !track.mute && !clip.isImage && !clip.audioDetached),
@@ -806,7 +807,7 @@
       importResource,
       saveAndClose: () => runExport(true),
       export: () => runExport(false),
-      debugSnapshot: () => ({ open: alive, exporting, clipCount: editor.clipCount(), tracks: editor.state.tracks.length, picked: editor.state.picked.size, activeTrack: editor.state.tracks.findIndex((t) => t.id === editor.activeTrackId()), clips: editor.allClips().map((c) => ({ track: editor.state.tracks.findIndex((t) => t.id === c.trackId), start: +c.start.toFixed(2), len: +c.length.toFixed(2) })) }),
+      debugSnapshot: () => ({ open: alive, exporting, clipCount: editor.clipCount(), tracks: editor.state.tracks.length, picked: editor.state.picked.size, activeTrack: editor.state.tracks.findIndex((t) => t.id === editor.activeTrackId()), clips: editor.allClips().map((c) => ({ track: editor.state.tracks.findIndex((t) => t.id === c.trackId), start: +c.start.toFixed(2), len: +c.length.toFixed(2), rate: +(Number(c.rate) || 1).toFixed(3) })) }),
       close() {
         if (!alive) return false
         alive = false

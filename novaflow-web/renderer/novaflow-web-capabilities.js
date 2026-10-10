@@ -1879,14 +1879,18 @@
         + (layer.fadeOut > 0 ? ',fade=t=out:st=' + fmt3(layer.start + layer.length - layer.fadeOut) + ':d=' + fmt3(layer.fadeOut) + ':alpha=1' : '');
       const audioFade = (layer) => (layer.fadeIn > 0 ? ',afade=t=in:st=0:d=' + fmt3(layer.fadeIn) : '')
         + (layer.fadeOut > 0 ? ',afade=t=out:st=' + fmt3(layer.length - layer.fadeOut) + ':d=' + fmt3(layer.fadeOut) : '');
-      const audioChain = (layer, i) => '[' + layer.input + ':a]atrim=start=' + fmt3(layer.offset) + ':end=' + fmt3(layer.offset + layer.length) + ',asetpts=PTS-STARTPTS' + audioFade(layer) + ',adelay=' + Math.round(layer.start * 1000) + ':all=1[a' + i + ']';
+      // a clip's speed (视频编辑: its edges were dragged): the source window is length x speed,
+      // the picture's timestamps are divided by it and the sound is tempo-changed (pitch kept)
+      const rateOf = (layer) => (layer.image ? 1 : (Number(layer.rate) > 0 ? Number(layer.rate) : 1));
+      const atempo = (rate) => { const parts = []; let r = rate; while (r < 0.5) { parts.push(0.5); r /= 0.5; } while (r > 2) { parts.push(2); r /= 2; } if (Math.abs(r - 1) > 1e-4) parts.push(r); return parts.map((p) => ',atempo=' + fmt3(p)).join(''); };
+      const audioChain = (layer, i) => '[' + layer.input + ':a]atrim=start=' + fmt3(layer.offset) + ':end=' + fmt3(layer.offset + layer.length * rateOf(layer)) + ',asetpts=PTS-STARTPTS' + atempo(rateOf(layer)) + audioFade(layer) + ',adelay=' + Math.round(layer.start * 1000) + ':all=1[a' + i + ']';
       layers.forEach((layer, i) => {
         const src = layer.source, tr = layer.transform || { centerX: width / 2, centerY: height / 2, scale: 1 };
-        const inPoint = Number(layer.offset) || 0, outPoint = inPoint + Number(layer.length);
+        const inPoint = Number(layer.offset) || 0, outPoint = inPoint + Number(layer.length) * rateOf(layer);
         if (!layer.video) { if (layer.audio) { filters.push(audioChain(layer, i)); audioLabels.push('[a' + i + ']'); } return; }
         const lw = evenSize(src.width * tr.scale), lh = evenSize(src.height * tr.scale);
         const x = Math.round(tr.centerX - lw / 2), y = Math.round(tr.centerY - lh / 2);
-        filters.push('[' + layer.input + ':v]trim=start=' + fmt3(inPoint) + ':end=' + fmt3(outPoint) + ',setpts=PTS-STARTPTS,fps=' + fps + ',scale=' + lw + ':' + lh + ':flags=lanczos,setsar=1,format=rgba' + (layer.alpha ? ',' + ALPHA_FLOOR : '') + '[r' + i + ']');
+        filters.push('[' + layer.input + ':v]trim=start=' + fmt3(inPoint) + ':end=' + fmt3(outPoint) + ',setpts=(PTS-STARTPTS)/' + fmt3(rateOf(layer)) + ',fps=' + fps + ',scale=' + lw + ':' + lh + ':flags=lanczos,setsar=1,format=rgba' + (layer.alpha ? ',' + ALPHA_FLOOR : '') + '[r' + i + ']');
         let srcLabel = 'r' + i;
         if (layer.maskInput != null) {
           filters.push('[r' + i + ']split=2[rr' + i + '][ra' + i + ']');

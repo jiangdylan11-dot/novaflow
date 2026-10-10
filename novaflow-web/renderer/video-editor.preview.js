@@ -95,6 +95,9 @@
         videos.set(entry.clip.id, record);
       }
       record.video.muted = entry.kind === 'audio' ? Boolean(entry.track.mute) : !(entry.clip.source.hasAudio && !entry.track.mute && !entry.clip.audioDetached);
+      // the clip's speed (its edges were dragged); the browser keeps the pitch, as the export's atempo does
+      const rate = entry.clip.isImage ? 1 : (Number(entry.clip.rate) || 1);
+      if (!record.isImage && Math.abs((record.video.playbackRate || 1) - rate) > 0.001) record.video.playbackRate = rate;
       const gain = entry.gain == null ? 1 : entry.gain;
       if (Math.abs(record.video.volume - gain) > 0.01) record.video.volume = gain;
       return record;
