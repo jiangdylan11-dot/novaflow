@@ -126,9 +126,9 @@
     .nf-tl-add-track + .nf-tl-add-track{margin-left:0}.nf-tl-add-track:hover{border-color:#1EA672;color:#9be4cd}
     .nf-tl-header-list{will-change:transform}
     .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222;cursor:grab}
-    /* the picked track: the app's selected look (the green tab / toggle plate and its outline) */
     .nf-tl-header[data-kind="audio"]{background:#1a1915}
-    .nf-tl-header[data-active="1"],.nf-tl-header[data-kind="audio"][data-active="1"]{background:#1c4136;box-shadow:inset 0 0 0 1px #2c604f;border-radius:6px}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
+    /* the picked track: a thin green line on its left edge, nothing else */
+    .nf-tl-header[data-active="1"]{box-shadow:inset 2px 0 0 #1EA672}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
     .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
     .nf-tl-track-name:hover,.nf-tl-track-name:focus{background:#262626;border-color:#343434}
     .nf-tl-track-btns{display:flex;gap:4px}
