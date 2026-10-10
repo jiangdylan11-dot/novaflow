@@ -396,7 +396,7 @@
     // every tool keeps its check boxes in the same row: under the parameters, a rule above
     const optionsParent=body.querySelector('.effect-parameters');
     if($('scaleOptions').parentElement!==optionsParent)optionsParent.append($('scaleOptions'));
-    $('selection').textContent=bridge.label();$('editorTitle').textContent=names[mode];
+    $('selection').textContent=bridge.label()+' · Ctrl+Z 撤销 · Ctrl+Y 重做';$('editorTitle').textContent=names[mode];
     renderTiming();
     $('mainControls').hidden = mode === 'opacity';
     const singleExpansion=mode==='expand'&&p.oneWay;
@@ -680,7 +680,7 @@
   $('ribbonWrite').onclick=()=>bridge.ribbonAction?.('write');
   function showRibbon(){
     if(ribbonShown||!ribbon)return;
-    $('selection').textContent=bridge.ribbonLabel?.()||'';
+    $('selection').textContent=(bridge.ribbonLabel?.()||'')+' · Ctrl+Z 撤销 · Ctrl+Y 重做';
     ribbonShown=true;body.classList.add('ribbon-mode');$('editorTitle').textContent='飘带计算';status('');
     if(stylesReady)floating.style.visibility='visible';
   }

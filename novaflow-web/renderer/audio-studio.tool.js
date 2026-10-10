@@ -1092,6 +1092,7 @@
     saveSec.appendChild(saveGrid);
     ui.saveNote = el('div', 'nf-as-note', '混音存入资源列表和仓库；置入视频后同时再存一份带混音的视频。');
     saveSec.appendChild(ui.saveNote);
+    saveSec.appendChild(el('div', 'nf-as-note', '快捷键：空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放 · Home 回到开头'));
     tools.body.appendChild(saveSec);
     const closeSec = el('div', 'nf-as-edit-sec');
     const closeGrid = el('div', 'nf-as-tools');
@@ -1194,7 +1195,7 @@
     const row1 = el('div', 'nf-as-tr-row');
     ui.trRow = row1;
     const tbtn = (icon, title, fn) => { const b = el('button', 'nf-as-tbtn'); b.type = 'button'; b.title = title; b.innerHTML = svgIcon(icon); b.addEventListener('click', fn); row1.appendChild(b); return b; };
-    tbtn(ICONS.start, '回到开头', () => editor.seek(0));
+    tbtn(ICONS.start, '回到开头 (Home)', () => editor.seek(0));
     tbtn(ICONS.back, '后退 1 秒', () => editor.seek(editor.playhead() - 1));
     ui.play = tbtn(ICONS.play, '播放 (空格)', () => editor.toggle());
     tbtn(ICONS.fwd, '前进 1 秒', () => editor.seek(editor.playhead() + 1));

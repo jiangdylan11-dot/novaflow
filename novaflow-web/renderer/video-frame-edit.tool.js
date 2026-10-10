@@ -69,12 +69,12 @@
       #${OVERLAY_ID} button:focus,#${OVERLAY_ID} button:focus-visible{outline:none;box-shadow:none}
       .nf-vfe-stage{flex:1 1 0;min-height:160px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
       .nf-vfe-stage canvas{display:block;max-width:100%;max-height:100%;background:transparent}
-      .nf-vfe-bar{flex:0 0 36px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#161616;border-top:1px solid #242424;color:#bdbdbd;font-size:11px;white-space:nowrap}
+      .nf-vfe-bar{flex:0 0 auto;min-height:36px;display:flex;align-items:center;gap:10px;padding:4px 12px;box-sizing:border-box;background:#161616;border-top:1px solid #242424;color:#bdbdbd;font-size:11px;white-space:nowrap}
       .nf-vfe-bar button{width:28px;height:26px;border-radius:6px;background:rgba(255,255,255,.05);color:#e6e6e6;display:inline-flex;align-items:center;justify-content:center;padding:0}
       .nf-vfe-bar button:hover{background:rgba(255,255,255,.1)}
       .nf-vfe-bar button svg{width:12px;height:12px;display:block}
       .nf-vfe-bar .nf-vfe-readout{color:#f0f0f0;font-size:12px;font-weight:500;margin-left:4px}
-      .nf-vfe-bar .nf-vfe-meta{color:#8d8d8d}
+      .nf-vfe-bar .nf-vfe-meta{color:#8d8d8d;white-space:normal;line-height:1.4;min-width:0;flex:0 1 auto}
       /* Every frame in view: the strip wraps into rows and only scrolls (vertically, by
          hand) when the rows outgrow its share of the overlay. Playback never scrolls it. */
       .nf-vfe-strip{flex:0 0 auto;max-height:58%;display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;padding:6px 10px;overflow-x:hidden;overflow-y:auto;background:#161616;border-top:1px solid #242424;scrollbar-width:thin;scroll-behavior:auto}
@@ -485,7 +485,7 @@
         <button type="button" data-act="next" title="下一帧（D）">${ICON_NEXT}</button>
         <span class="nf-vfe-readout"></span>
         <span class="nf-vfe-meta"></span>
-        <span class="nf-vfe-meta">点选一帧，Shift 连选一段，Ctrl 加选 · A / D 上一帧 下一帧 · ← / → 左移 右移</span>
+        <span class="nf-vfe-meta">点选一帧，Shift 连选一段，Ctrl 加选 · A / D 上一帧 下一帧 · ← / → 左移 右移 · 空格 播放 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl+Z / Ctrl+Y 撤销 重做</span>
       </div>
       <div class="nf-vfe-strip"></div>`
     document.body.appendChild(overlay)

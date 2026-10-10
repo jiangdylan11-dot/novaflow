@@ -568,7 +568,7 @@
       const tip = el('div', {
         padding: '8px 14px', background: '#161618', fontSize: '11px',
         color: 'rgba(255,255,255,0.45)', flex: '0 0 auto'
-      }, '滚轮缩放 · 右键/中键拖动平移 · 顶点不能拖出图层范围')
+      }, '滚轮缩放 · 右键/中键拖动平移 · 顶点不能拖出图层范围 · 快捷键：1 移动 · 2 添加 · 3 删除 · 4 环 · Ctrl+Z 撤销 · Enter 完成 · Esc 取消')
       overlay.appendChild(tip)
 
       document.body.appendChild(overlay)

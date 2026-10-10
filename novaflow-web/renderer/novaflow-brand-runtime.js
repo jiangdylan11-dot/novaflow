@@ -34215,6 +34215,7 @@
         style: (node) => {
           const playing = Boolean(node.querySelector(".fa-pause"));
           nfSetAttrIfChanged(node, "data-novaflow-playback-icon", playing ? "pause" : "play");
+          nfSetAttrIfChanged(node, "title", playing ? "暂停（空格）" : "播放（空格）");
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
           return {
             width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
@@ -59552,6 +59553,28 @@
     });
   }
 
+  // The pinned height follows its content: a panel inside it (视频编辑 once a clip is picked)
+  // grows after the section was measured. Its own height is not watched, only its children's.
+  const AI_POST_SECTION_CONTENT_WATCH = new WeakMap();
+  function watchAiAnimationPostSectionContent(postSection) {
+    if (typeof ResizeObserver !== "function" || AI_POST_SECTION_CONTENT_WATCH.has(postSection)) return;
+    let queued = false;
+    const resync = () => {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(() => { queued = false; if (postSection.isConnected) syncAiAnimationPostSectionStableHeight(postSection); });
+    };
+    const sizes = new ResizeObserver(resync);
+    const watched = new WeakSet();
+    const observeChildren = () => Array.from(postSection.children).forEach((child) => {
+      if (child instanceof HTMLElement && !watched.has(child)) { watched.add(child); sizes.observe(child); }
+    });
+    const children = new MutationObserver(() => { observeChildren(); resync(); });
+    children.observe(postSection, { childList: true });
+    AI_POST_SECTION_CONTENT_WATCH.set(postSection, { sizes, children });
+    observeChildren();
+  }
+
   function syncAiAnimationPostSectionStableHeight(postSection) {
     if (!(postSection instanceof HTMLElement)) return;
     const collapsed = postSection.getAttribute("data-novaflow-ai-post-collapsed") === "1";
@@ -59579,7 +59602,17 @@
     const bottom = leftRect && Number.isFinite(leftRect.bottom) && leftRect.bottom > postRect.top + 120
       ? leftRect.bottom
       : viewportBottom;
-    const stableHeight = Math.max(SECONDARY_ENTRY_HEIGHT, Math.round(bottom - postRect.top));
+    watchAiAnimationPostSectionContent(postSection);
+    // never shorter than what it holds: 视频编辑's controls ran past the pinned height and the
+    // section's bottom rule cut across them (measured off the children, not scrollHeight,
+    // which would stay at the pinned height once the content shrinks)
+    let contentBottom = 0;
+    Array.from(postSection.children).forEach((child) => {
+      if (!(child instanceof HTMLElement)) return;
+      const r = child.getBoundingClientRect();
+      if (r.height > 0) contentBottom = Math.max(contentBottom, r.bottom - postRect.top);
+    });
+    const stableHeight = Math.max(SECONDARY_ENTRY_HEIGHT, Math.round(bottom - postRect.top), Math.ceil(contentBottom));
     if (!Number.isFinite(stableHeight) || stableHeight <= SECONDARY_ENTRY_HEIGHT) return;
 
     postSection.setAttribute("data-novaflow-ai-post-height-stable", "1");

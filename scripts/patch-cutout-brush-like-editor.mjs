@@ -36,6 +36,9 @@ const EDITS = [
   ['a=i===`Semicolon`||r===`:`||r===`：`||r===`;`||r===`；`;if(!a&&!(i===`Quote`||r===`"`||r===`“`||r===`”`||r===`\'`||r===`‘`||r===`’`))return;',
     'a=i===`Semicolon`||r===`:`||r===`：`||r===`;`||r===`；`||r===`-`||r===`_`;if(!a&&!(i===`Quote`||r===`"`||r===`“`||r===`”`||r===`\'`||r===`‘`||r===`’`||r===`=`||r===`+`))return;'],
   ['Qe(e=>Z(e+o,0,24))', 'Qe(e=>Z(e+o,0,300))'],
+  // the hint names every key (E / R were missing), written as 美工 and 视频编辑 write theirs
+  ['Ctrl+Z 撤销 CapsLock 显示笔刷圈 [ 缩小 ] 放大 ： 羽化减小 ’ 羽化增大',
+    "快捷键：[ ] 笔刷大小 · ; ' 羽化 · E 擦除 · R 修复 · Ctrl+Z 撤销 · CapsLock 显示笔刷圈", 2],
   // one tap is one step (as 美工's key repeat): the hold loop starts repeating after 250 ms, not at once
   ['!c&&!l||(r.preventDefault(),c&&(t.left||e(-1),t.left=!0)', '!c&&!l||(r.preventDefault(),t.last||=performance.now()+250,c&&(t.left||e(-1),t.left=!0)'],
 ];

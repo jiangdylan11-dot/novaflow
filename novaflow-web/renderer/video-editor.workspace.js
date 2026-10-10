@@ -72,7 +72,7 @@
     .nf-ve-btns .nf-ve-btn{padding:0 8px;font-size:12px}
     .nf-ve-status{min-height:0;margin-top:6px;padding:0;border-radius:0;background:transparent;color:#8b8b8b;font-size:11px;line-height:1.6;word-break:break-word}
     .nf-ve-status[data-error="1"]{color:#f09595}.nf-ve-status[data-success="1"]{color:#8ff0c7}
-    .nf-ve-hint{margin-top:4px;color:rgba(255,255,255,.43);font-size:9px;line-height:1.5}
+    .nf-ve-hint{margin-top:4px;color:rgba(255,255,255,.43);font-size:11px;line-height:1.5}
     .nf-ve-mask{margin-top:6px;padding:6px;border-radius:7px;background:#1a1a1a}
     /* the same pill toggle as 音频's 音乐/音效 and the 视频|音频 switch: 37 box, 3 pad, 29 pills, radius 8/5 */
     .nf-ve-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;box-sizing:border-box;height:37px;align-items:center;border:1px solid #262626;border-radius:7px;background:#101010;margin:0 0 4px}
@@ -255,13 +255,13 @@
     transport.innerHTML = `
       <button class="tb" data-act="start" title="回到开头">${TRANSPORT_ICONS.start}</button>
       <button class="tb" data-act="prev" title="上一片段边缘">${TRANSPORT_ICONS.back}</button>
-      <button class="tb" data-act="play" title="播放 / 暂停">${TRANSPORT_ICONS.play}</button>
+      <button class="tb" data-act="play" title="播放 / 暂停（空格）">${TRANSPORT_ICONS.play}</button>
       <button class="tb" data-act="next" title="下一片段边缘">${TRANSPORT_ICONS.fwd}</button>
       <button class="tb" data-act="end" title="到结尾">${TRANSPORT_ICONS.end}</button>
       <button class="tb" data-act="loop" title="循环" aria-pressed="false">${TRANSPORT_ICONS.loop}</button>
       <span class="time">0.0 / 0.0</span>
       <span class="sep"></span>
-      <button class="nf-ve-btn" data-act="split">分割</button>
+      <button class="nf-ve-btn" data-act="split" title="在播放头处分割片段（S）">分割</button>
       <button class="nf-ve-btn" data-act="copy" title="复制选中片段到播放头（Ctrl+C / Ctrl+V）">复制</button>
       <button class="nf-ve-btn" data-act="del" title="删除选中片段（Delete）">删除</button>
       <label class="check"><input type="checkbox" data-act="snap" checked> 吸附</label>
@@ -283,34 +283,37 @@
     leftPanel.innerHTML = `
       <div class="nf-ve-sec"><h4>画布</h4>
         <select class="nf-ve-select" id="ve-canvas-size">${CANVAS_PRESETS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
-        <div class="nf-ve-line" style="grid-template-columns:1fr 1fr auto">
+        <div class="nf-ve-line" style="grid-template-columns:auto auto;justify-content:space-between">
           <input type="number" id="ve-canvas-w" min="2" max="8192" step="2" value="1280" title="宽">
           <input type="number" id="ve-canvas-h" min="2" max="8192" step="2" value="720" title="高">
-          <button class="nf-ve-btn sm" id="ve-canvas-from-clip" title="按选中片段的原始尺寸">取片段尺寸</button>
         </div>
+        <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-canvas-from-clip" title="按选中片段的原始尺寸">取片段尺寸</button></div>
       </div>
       <div class="nf-ve-sec"><h4>片段</h4>
-        <div id="ve-clip-empty" class="nf-ve-hint">点资源或拖到画板 / 轨道；选中片段后在这里调整。</div>
+        <div id="ve-clip-empty" class="nf-ve-hint">把资源拖到轨道或画板；选中片段后在这里调整。</div>
         <div id="ve-clip-box" hidden>
           <input class="nf-ve-name" id="ve-clip-name" title="片段名称">
           <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>缩放</label><input type="range" class="nf-ve-range" id="ve-clip-scale-range" min="5" max="300" step="1" value="100"><input type="number" id="ve-clip-scale" min="5" max="1000" step="1" title="缩放 %"></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto 1fr 1fr auto"><label>中心</label><input type="number" id="ve-clip-x" step="1" title="中心 X"><input type="number" id="ve-clip-y" step="1" title="中心 Y"><button class="nf-ve-btn sm" id="ve-clip-fit" title="按画布大小缩放并居中">适配</button></div>
+          <div class="nf-ve-line" style="grid-template-columns:auto auto auto;justify-content:space-between"><label>中心</label><input type="number" id="ve-clip-x" step="1" title="中心 X"><input type="number" id="ve-clip-y" step="1" title="中心 Y"></div>
+          <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-clip-fit" title="按画布大小缩放并居中">适配画布</button></div>
           <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) auto"><label>起点 / 长度</label><span class="readout" id="ve-clip-timing"></span><span id="ve-clip-length-row" hidden><input type="number" id="ve-clip-length" min="0.1" step="0.5" title="图片长度 s"></span></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡入</label><input type="range" class="nf-ve-range" id="ve-fadein" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadein-value">0.0</span></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><span class="readout" id="ve-fadeout-value">0.0</span></div>
+          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡入</label><input type="range" class="nf-ve-range" id="ve-fadein" min="0" max="30" step="0.1" value="0"><input type="number" id="ve-fadein-value" min="0" max="30" step="0.1" title="淡入 秒"></div>
+          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><input type="number" id="ve-fadeout-value" min="0" max="30" step="0.1" title="淡出 秒"></div>
           <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-mask-edit">蒙版编辑</button></div>
           <div class="nf-ve-mask" id="ve-mask-box" hidden>
             <div class="nf-ve-mode" data-novaflow-source-layout="1"><button type="button" id="ve-mask-erase" aria-pressed="true" data-novaflow-source-layout="1" style="font-weight:500!important">擦除</button><button type="button" id="ve-mask-restore" aria-pressed="false" data-novaflow-source-layout="1" style="font-weight:500!important">修复</button></div>
             <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>笔刷</label><input type="range" class="nf-ve-range" id="ve-mask-brush-range" min="1" max="300" step="1" value="22"><input type="number" id="ve-mask-brush" min="1" max="300" step="1" value="22"></div>
             <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>羽化</label><input type="range" class="nf-ve-range" id="ve-mask-feather-range" min="0" max="300" step="1" value="0"><input type="number" id="ve-mask-feather" min="0" max="300" step="1" value="0"></div>
             <div class="nf-ve-btns"><button class="nf-ve-btn" id="ve-mask-undo">撤销</button><button class="nf-ve-btn" id="ve-mask-clear">清除</button></div>
-            <div class="nf-ve-btns"><button class="nf-ve-btn primary" id="ve-mask-ok">确定</button><button class="nf-ve-btn" id="ve-mask-cancel">取消</button></div>
+            <div class="nf-ve-btns"><button class="nf-ve-btn primary" id="ve-mask-ok" title="确定（Enter）">确定</button><button class="nf-ve-btn" id="ve-mask-cancel" title="取消（Esc）">取消</button></div>
+            <div class="nf-ve-hint">快捷键：[ ] 笔刷大小 · ; ' 羽化 · E 擦除 · R 修复 · Enter 确定 · Esc 取消</div>
           </div>
         </div>
       </div>
       <div class="nf-ve-sec"><h4>保存</h4>
         <div class="nf-ve-btns"><button class="nf-ve-btn primary wide" id="ve-save">保存到资源列表</button></div>
         <div class="nf-ve-status" id="ve-status">合成后存入资源列表和仓库。</div>
+        <div class="nf-ve-hint">快捷键：空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放时间轴</div>
       </div>
       <div class="nf-ve-sec"><div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-close-row">关闭</button></div></div>`
 
@@ -564,8 +567,8 @@
       $('ve-clip-timing').textContent = editor.formatTime(clip.start) + ' / ' + editor.formatTime(clip.length)
       $('ve-clip-length-row').hidden = !clip.isImage
       if (documentRef.activeElement !== $('ve-clip-length')) $('ve-clip-length').value = clip.length.toFixed(1)
-      setSlider('ve-fadein', clip.fadeIn, Math.min(30, clip.length)); $('ve-fadein-value').textContent = clip.fadeIn.toFixed(1)
-      setSlider('ve-fadeout', clip.fadeOut, Math.min(30, clip.length)); $('ve-fadeout-value').textContent = clip.fadeOut.toFixed(1)
+      setSlider('ve-fadein', clip.fadeIn, Math.min(30, clip.length)); if (documentRef.activeElement !== $('ve-fadein-value')) $('ve-fadein-value').value = clip.fadeIn.toFixed(1)
+      setSlider('ve-fadeout', clip.fadeOut, Math.min(30, clip.length)); if (documentRef.activeElement !== $('ve-fadeout-value')) $('ve-fadeout-value').value = clip.fadeOut.toFixed(1)
       $('ve-mask-edit').hidden = Boolean(maskEdit) || !clip.transform
       $('ve-mask-edit').textContent = clip.mask && clip.maskRevision > 0 ? '蒙版（已有）' : '蒙版编辑'
     }
@@ -579,6 +582,9 @@
     $('ve-clip-length').addEventListener('change', () => { const c = editor.selectedClip(); if (c) { editor.setLength(c.id, finite($('ve-clip-length').value, 3)); preview.refresh() } })
     $('ve-fadein').addEventListener('input', () => { const c = editor.selectedClip(); if (c) { editor.setFade(c.id, finite($('ve-fadein').value, 0), undefined); preview.draw(); syncClipBox() } })
     $('ve-fadeout').addEventListener('input', () => { const c = editor.selectedClip(); if (c) { editor.setFade(c.id, undefined, finite($('ve-fadeout').value, 0)); preview.draw(); syncClipBox() } })
+    // the seconds can be typed too, as 缩放's percent
+    $('ve-fadein-value').addEventListener('input', () => { const c = editor.selectedClip(); if (c) { editor.setFade(c.id, finite($('ve-fadein-value').value, 0), undefined); preview.draw(); syncClipBox() } })
+    $('ve-fadeout-value').addEventListener('input', () => { const c = editor.selectedClip(); if (c) { editor.setFade(c.id, undefined, finite($('ve-fadeout-value').value, 0)); preview.draw(); syncClipBox() } })
 
     // ---- 分离音轨 (track header icon)
     function audioSourceFor(clip) { return { kind: 'audio', url: clip.source.url, durationSec: clip.source.durationSec, width: 0, height: 0, hasAudio: true, peaks: clip.source.peaks || null, blob: clip.source.blob, fileName: clip.source.fileName } }

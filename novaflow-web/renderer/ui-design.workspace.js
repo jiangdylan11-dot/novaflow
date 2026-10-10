@@ -1427,8 +1427,8 @@
           }
           setTool(activeTool === 'region' ? 'select' : 'region')
         } }),
-        toolbarButton('undo', '↶', { title: '撤销', disabled: !history.length, onClick: undo }),
-        toolbarButton('redo', '↷', { title: '重做', disabled: !future.length, onClick: redo }),
+        toolbarButton('undo', '↶', { title: '撤销（Ctrl+Z）· Delete 删除选中 · Esc 取消', disabled: !history.length, onClick: undo }),
+        toolbarButton('redo', '↷', { title: '重做（Ctrl+Y）', disabled: !future.length, onClick: redo }),
       )
     }
 

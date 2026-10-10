@@ -481,7 +481,7 @@
       body.appendChild(stage)
       overlay.appendChild(body)
       overlay.appendChild(el('div', { padding: '8px 14px', background: '#161618', fontSize: '11px', color: 'rgba(255,255,255,0.45)', flex: '0 0 auto' },
-        '直接:点选顶点上下拖动 · 增加/减少:左键涂抹 · 拖动左侧骨骼调整顺序 · 滚轮缩放 · 右键/中键平移 · 1/2/3 切换 · [ ] 调半径 · Ctrl+Z 撤销'))
+        '直接:点选顶点上下拖动 · 增加/减少:左键涂抹 · 拖动左侧骨骼调整顺序 · 滚轮缩放 · 右键/中键平移 · 1/2/3 切换 · [ ] 调半径 · Ctrl+Z 撤销 · Enter 完成 · Esc 取消'))
       document.body.appendChild(overlay)
 
       const src = document.createElement('canvas')

@@ -13650,7 +13650,7 @@
         { action: 'inpaintRepair', label: '去除物体', title: '删除遮罩区域内内容并自动补全背景' },
         { action: 'inpaintCompletion', label: '智能补图', title: '补全缺失结构，保留提示词输入' },
         { action: 'penFill', label: '快速补缺', title: '使用可调曲线的钢笔闭合路径标记缺失区域，并根据当前图层已有内容快速补缺；仅支持当前图层' },
-        { action: 'mask', label: '蒙版编辑', title: '[ ] 调整画笔，；缩小羽化，“放大羽化，E/R 切换，Esc 退出' },
+        { action: 'mask', label: '蒙版编辑', title: '快捷键：[ ] 画笔大小 · ; \' 羽化 · E 擦除 · R 恢复 · Esc 退出' },
         { action: 'canvasResize', label: '画布扩展', title: '扩展画布：设置新宽高和定位锚点' }
       ]
     },
@@ -13815,7 +13815,7 @@
     return h('button', Object.assign({
       type: 'button',
       [RIGHT_WORKSPACE_MERGE_ATTR]: '1',
-      title: 'Ctrl+E',
+      title: '合并选中图层（Ctrl+E）· Ctrl/Shift 点选多个图层',
       onclick: (event) => runDirectSplitControlAction(action, event)
     }, splitControlActionProps(action, state.busy, splitDrawingControlButtonStyle(action, {
       width: '100%',
@@ -16530,7 +16530,7 @@
     selectionToolRedoStack = []
     state.viewMode = 'selectionTool'
     resetSplitCanvasViewport()
-    setMessage(`${mode === 'inpaint' ? selectionInpaintModeStartLabel(nextInpaintMode) : selectionToolName(mode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c`)
+    setMessage(`${mode === 'inpaint' ? selectionInpaintModeStartLabel(nextInpaintMode) : selectionToolName(mode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c · 快捷键：[ ] 画笔大小 · ; \' 羽化 · Esc 退出`)
     syncSplitEditToolWorkspace()
   }
 
@@ -23392,7 +23392,7 @@
     const currentMode = normalizeSelectionInpaintMode(state.selectionTool.inpaintMode)
     if (targetMode && currentMode !== requestedMode) {
       setSelectionInpaintMode(requestedMode)
-      setMessage(`${selectionInpaintModeStartLabel(requestedMode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c`)
+      setMessage(`${selectionInpaintModeStartLabel(requestedMode)}\uff1a\u5728\u753b\u677f\u4e0a\u7ed8\u5236\u906e\u7f69\u540e\u518d\u6b21\u70b9\u51fb\u6309\u94ae\u6267\u884c · 快捷键：[ ] 画笔大小 · ; \' 羽化 · Esc 退出`)
       return
     }
     if (selectionEffectRemovalActive()) return executeEffectRemoveTool() // 特效 on: key the effect out instead of repainting the hole
@@ -23825,7 +23825,7 @@
     penToolUndoStack = []
     state.viewMode = 'penTool'
     resetSplitCanvasViewport()
-    setMessage(`${penToolName(nextMode)}：绘制闭合钢笔路径后再次点击按钮执行`)
+    setMessage(`${penToolName(nextMode)}：绘制闭合钢笔路径后再次点击按钮执行 · 快捷键：Enter 闭合 · Backspace 删除上一个点 · Shift+点击 删除点 · Alt+点击 转角点 · Alt+拖手柄 断开对称 · Esc 退出`)
     render()
     syncSplitEditToolWorkspace()
   }
@@ -27453,7 +27453,7 @@
     maskEditorUndoStack = []
     maskEditorEntrySnapshot = entrySnapshot
     resetSplitCanvasViewport()
-    setMessage('蒙版编辑中：当前只修改图层蒙版')
+    setMessage('蒙版编辑中：当前只修改图层蒙版 · 快捷键：[ ] 画笔大小 · ; \' 羽化 · E 擦除 · R 恢复 · Esc 退出')
     syncSplitEditToolWorkspace()
   }
 
@@ -30983,7 +30983,7 @@
         splitLayerThumbNode(part),
         splitLayerStencilButtonNode(part, setId, editToolLocked, commandButtonStyle),
         splitLayerNameSlotNode(part, isRenaming),
-        h('button', { type: 'button', disabled: editToolLocked, 'aria-disabled': editToolLocked ? 'true' : 'false', draggable: 'false', [LAYER_COMMAND_ATTR]: 'delete', [LAYER_COMMAND_TARGET_ATTR]: part.id, title: '删除当前图层', ondragstart: (event) => { event.preventDefault(); event.stopPropagation() }, onclick: (event) => { event.preventDefault(); event.stopPropagation(); if (editToolLocked || wasLayerCommandHandledRecently('delete', part.id)) return; deleteSinglePart(part.id, setId) }, style: commandButtonStyle({ width: '20px', height: '20px', minWidth: '20px', borderRadius: '5px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.50)', cursor: 'pointer', fontWeight: '600', lineHeight: '1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', padding: '0', boxSizing: 'border-box' }) }, '×')
+        h('button', { type: 'button', disabled: editToolLocked, 'aria-disabled': editToolLocked ? 'true' : 'false', draggable: 'false', [LAYER_COMMAND_ATTR]: 'delete', [LAYER_COMMAND_TARGET_ATTR]: part.id, title: '删除选中图层（Delete）· + / - 上移 下移 · Ctrl+Z / Ctrl+Y 撤销 重做', ondragstart: (event) => { event.preventDefault(); event.stopPropagation() }, onclick: (event) => { event.preventDefault(); event.stopPropagation(); if (editToolLocked || wasLayerCommandHandledRecently('delete', part.id)) return; deleteSinglePart(part.id, setId) }, style: commandButtonStyle({ width: '20px', height: '20px', minWidth: '20px', borderRadius: '5px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.50)', cursor: 'pointer', fontWeight: '600', lineHeight: '1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', padding: '0', boxSizing: 'border-box' }) }, '×')
       ])
     }
     const renderSourceResourceCard = (resource) => {
