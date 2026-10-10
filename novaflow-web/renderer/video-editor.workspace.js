@@ -58,7 +58,13 @@
     .nf-ve-panel{width:calc(100% - 22px);min-width:0;margin:0 11px;padding:6px 0 8px;background:transparent;color:#f5f5f5;font-family:Inter,"Microsoft YaHei",sans-serif;font-size:12px}
     .nf-ve-sec{margin:0 0 8px}.nf-ve-sec:last-child{margin-bottom:0}
     .nf-ve-sec h4{margin:0 0 5px;color:rgba(255,255,255,.72);font-size:11px;font-weight:600;letter-spacing:.04em}
-    .nf-ve-line{display:grid;gap:5px;align-items:center;margin:4px 0;min-width:0}
+    /* every row on one grid: a label column, the middle (a slider, or a box against its right edge),
+       and the number column the runtime sizes to 49px - so the boxes stand in two straight columns */
+    .nf-ve-line{--nf-ve-cols:40px minmax(0,1fr) 49px;display:grid;gap:5px;align-items:center;margin:4px 0;min-width:0;min-height:32px}
+    .nf-ve-line .nf-ve-mid{justify-self:end}
+    .nf-ve-line .nf-ve-num{grid-column:3;justify-self:center;text-align:center}
+    .nf-ve-line .nf-ve-num[hidden]{display:none}
+    .nf-ve-line #ve-clip-length-row{grid-column:3}
     .nf-ve-line label,.nf-ve-line .readout{color:rgba(255,255,255,.7);font-size:11px;white-space:nowrap}
     .nf-ve-line .readout{color:#9a9a9a;text-align:right;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
     .nf-ve-line input[type=number]{width:100%;min-width:0;height:32px;padding:0 6px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;font-size:12px;text-align:center;-moz-appearance:textfield;appearance:textfield}
@@ -283,8 +289,8 @@
     leftPanel.innerHTML = `
       <div class="nf-ve-sec"><h4>画布</h4>
         <select class="nf-ve-select" id="ve-canvas-size">${CANVAS_PRESETS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
-        <div class="nf-ve-line" style="grid-template-columns:auto auto;justify-content:space-between">
-          <input type="number" id="ve-canvas-w" min="2" max="8192" step="2" value="1280" title="宽">
+        <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>分辨率</label>
+          <input type="number" class="nf-ve-mid" id="ve-canvas-w" min="2" max="8192" step="2" value="1280" title="宽">
           <input type="number" id="ve-canvas-h" min="2" max="8192" step="2" value="720" title="高">
         </div>
         <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-canvas-from-clip" title="按选中片段的原始尺寸">取片段尺寸</button></div>
@@ -293,17 +299,18 @@
         <div id="ve-clip-empty" class="nf-ve-hint">把资源拖到轨道或画板；选中片段后在这里调整。</div>
         <div id="ve-clip-box" hidden>
           <input class="nf-ve-name" id="ve-clip-name" title="片段名称">
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>缩放</label><input type="range" class="nf-ve-range" id="ve-clip-scale-range" min="5" max="300" step="1" value="100"><input type="number" id="ve-clip-scale" min="5" max="1000" step="1" title="缩放 %"></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto auto auto;justify-content:space-between"><label>中心</label><input type="number" id="ve-clip-x" step="1" title="中心 X"><input type="number" id="ve-clip-y" step="1" title="中心 Y"></div>
+          <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>缩放</label><input type="range" class="nf-ve-range" id="ve-clip-scale-range" min="5" max="300" step="1" value="100"><input type="number" id="ve-clip-scale" min="5" max="1000" step="1" title="缩放 %"></div>
+          <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>中心</label><input type="number" class="nf-ve-mid" id="ve-clip-x" step="1" title="中心 X"><input type="number" id="ve-clip-y" step="1" title="中心 Y"></div>
           <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-clip-fit" title="按画布大小缩放并居中">适配画布</button></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) auto"><label>起点 / 长度</label><span class="readout" id="ve-clip-timing"></span><span id="ve-clip-length-row" hidden><input type="number" id="ve-clip-length" min="0.1" step="0.5" title="图片长度 s"></span></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡入</label><input type="range" class="nf-ve-range" id="ve-fadein" min="0" max="30" step="0.1" value="0"><input type="number" id="ve-fadein-value" min="0" max="30" step="0.1" title="淡入 秒"></div>
-          <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><input type="number" id="ve-fadeout-value" min="0" max="30" step="0.1" title="淡出 秒"></div>
+          <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>起点</label><span></span><span class="readout nf-ve-num" id="ve-clip-start" title="片段在时间轴上的起点（秒）"></span></div>
+          <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>长度</label><span></span><span class="readout nf-ve-num" id="ve-clip-timing" title="片段长度（秒）"></span><span id="ve-clip-length-row" hidden><input type="number" id="ve-clip-length" min="0.1" step="0.5" title="图片长度（秒）"></span></div>
+          <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>淡入</label><input type="range" class="nf-ve-range" id="ve-fadein" min="0" max="30" step="0.1" value="0"><input type="number" id="ve-fadein-value" min="0" max="30" step="0.1" title="淡入 秒"></div>
+          <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>淡出</label><input type="range" class="nf-ve-range" id="ve-fadeout" min="0" max="30" step="0.1" value="0"><input type="number" id="ve-fadeout-value" min="0" max="30" step="0.1" title="淡出 秒"></div>
           <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-mask-edit">蒙版编辑</button></div>
           <div class="nf-ve-mask" id="ve-mask-box" hidden>
             <div class="nf-ve-mode" data-novaflow-source-layout="1"><button type="button" id="ve-mask-erase" aria-pressed="true" data-novaflow-source-layout="1" style="font-weight:500!important">擦除</button><button type="button" id="ve-mask-restore" aria-pressed="false" data-novaflow-source-layout="1" style="font-weight:500!important">修复</button></div>
-            <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>笔刷</label><input type="range" class="nf-ve-range" id="ve-mask-brush-range" min="1" max="300" step="1" value="22"><input type="number" id="ve-mask-brush" min="1" max="300" step="1" value="22"></div>
-            <div class="nf-ve-line" style="grid-template-columns:auto minmax(0,1fr) 44px"><label>羽化</label><input type="range" class="nf-ve-range" id="ve-mask-feather-range" min="0" max="300" step="1" value="0"><input type="number" id="ve-mask-feather" min="0" max="300" step="1" value="0"></div>
+            <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>笔刷</label><input type="range" class="nf-ve-range" id="ve-mask-brush-range" min="1" max="300" step="1" value="22"><input type="number" id="ve-mask-brush" min="1" max="300" step="1" value="22"></div>
+            <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>羽化</label><input type="range" class="nf-ve-range" id="ve-mask-feather-range" min="0" max="300" step="1" value="0"><input type="number" id="ve-mask-feather" min="0" max="300" step="1" value="0"></div>
             <div class="nf-ve-btns"><button class="nf-ve-btn" id="ve-mask-undo">撤销</button><button class="nf-ve-btn" id="ve-mask-clear">清除</button></div>
             <div class="nf-ve-btns"><button class="nf-ve-btn primary" id="ve-mask-ok" title="确定（Enter）">确定</button><button class="nf-ve-btn" id="ve-mask-cancel" title="取消（Esc）">取消</button></div>
             <div class="nf-ve-hint">快捷键：[ ] 笔刷大小 · ; ' 羽化 · E 擦除 · R 修复 · Enter 确定 · Esc 取消</div>
@@ -564,7 +571,10 @@
         if (documentRef.activeElement !== $('ve-clip-x')) $('ve-clip-x').value = String(Math.round(tr.centerX))
         if (documentRef.activeElement !== $('ve-clip-y')) $('ve-clip-y').value = String(Math.round(tr.centerY))
       }
-      $('ve-clip-timing').textContent = editor.formatTime(clip.start) + ' / ' + editor.formatTime(clip.length)
+      $('ve-clip-start').textContent = editor.formatTime(clip.start)
+      $('ve-clip-timing').textContent = editor.formatTime(clip.length)
+      // a picture's length is typed in the same column; a video's is read off the file
+      $('ve-clip-timing').hidden = clip.isImage
       $('ve-clip-length-row').hidden = !clip.isImage
       if (documentRef.activeElement !== $('ve-clip-length')) $('ve-clip-length').value = clip.length.toFixed(1)
       setSlider('ve-fadein', clip.fadeIn, Math.min(30, clip.length)); if (documentRef.activeElement !== $('ve-fadein-value')) $('ve-fadein-value').value = clip.fadeIn.toFixed(1)
