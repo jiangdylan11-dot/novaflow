@@ -269,17 +269,30 @@
   /** The bone the tools work on: the picked bone, or the picked slot's bone (透明度计算). */
   const pickedBone = () => api.selectedBone() || ((api.selectedSlot && api.selectedSlot()) || {}).bone || null
 
+  /** The bones the user picked in the editor (Ctrl+click adds); the picked slot's bone for 透明度计算. */
+  const pickedBones = () => {
+    const list = api.selectedBones ? api.selectedBones() : []
+    const bone = pickedBone()
+    if (bone && !list.includes(bone)) list.push(bone)
+    return list
+  }
+  const sameNames = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((n, i) => b[i] === n)
+
   function pushSelection() {
     if (!api) return false
     const ws = workspaceProps()
     if (!ws) return false
     let changed = false
     const bone = pickedBone()
+    const bones = pickedBones()
     const ctx = projectProps()
-    if (ctx && ctx.selectedBoneName !== bone && bone) {
+    if (ctx && bone && (ctx.selectedBoneName !== bone || !sameNames(ctx.selectedBoneNames || [], bones))) {
       changed = true
       try { ws.onSelectedBoneNameChange(bone) } catch { /* the app moved on */ }
-      try { if (typeof ws.onSelectedBoneNamesChange === 'function') ws.onSelectedBoneNamesChange([bone]) } catch { /* optional */ }
+      try { if (typeof ws.onSelectedBoneNamesChange === 'function') ws.onSelectedBoneNamesChange(bones) } catch { /* optional */ }
+      // 飘带 with a preset in play moves to the picked chain(s) now, not when its own guards
+      // happen to notice (that took up to 15 s, and only sometimes)
+      try { if (window.NovaFlowRibbonPresets && typeof window.NovaFlowRibbonPresets.retarget === 'function') window.NovaFlowRibbonPresets.retarget(bones, bone) } catch { /* not loaded */ }
     }
     const anim = api.anim()
     if (ctx && anim && ctx.activeAnimationName !== anim) { changed = true; try { ws.onActiveAnimationNameChange(anim) } catch { /* the app moved on */ } }
@@ -332,7 +345,7 @@
     // the app sometimes puts its selection back (root) right after the open-time push: while
     // the tools are open the editor's picked bone / animation is the one they work on
     const ctx = api && api.loaded() ? projectProps() : null
-    if (ctx && ((pickedBone() && ctx.selectedBoneName !== pickedBone()) || (api.anim() && ctx.activeAnimationName !== api.anim()))) pushSelection()
+    if (ctx && ((pickedBone() && (ctx.selectedBoneName !== pickedBone() || !sameNames(ctx.selectedBoneNames || [], pickedBones()))) || (api.anim() && ctx.activeAnimationName !== api.anim()))) pushSelection()
     syncRibbonChain()
   }
 
@@ -342,8 +355,13 @@
     const ribbonOn = document.querySelector('[data-panel-id="bone-motion"] [data-motion-mode="ribbon"][aria-pressed="true"]')
     const toggle = document.querySelector('[data-novaflow-ribbon-chain-toggle-card] input[type=checkbox]')
     const bone = api.selectedBone(), ctx = ribbonOn && toggle && toggle.checked && bone ? projectProps() : null
-    let names = []
-    try { if (ctx && typeof window.NovaFlowRibbonChain === 'function') names = window.NovaFlowRibbonChain(ctx.project, bone) } catch { /* the runtime moved on */ }
+    // one chain per picked root (Ctrl+click picks several), merged
+    const names = []
+    try {
+      if (ctx && typeof window.NovaFlowRibbonChain === 'function') {
+        for (const root of pickedBones()) for (const n of window.NovaFlowRibbonChain(ctx.project, root) || []) if (!names.includes(n)) names.push(n)
+      }
+    } catch { /* the runtime moved on */ }
     api.selectChain(names)
   }
 

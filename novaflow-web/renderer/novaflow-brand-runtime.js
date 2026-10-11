@@ -44989,6 +44989,19 @@
       scheduleRibbonParameterPresetSelectApply(select);
       return true;
     },
+    // The picked bones changed (the 骨骼动画 editor's pick, several with Ctrl+click): while a
+    // preset preview is in play, drop the scope locked on the earlier chain and solve the
+    // picked chains as soon as React holds the new selection (next frame, and once settled).
+    retarget(names = [], primary = "") {
+      const list = (Array.isArray(names) ? names : [names]).map((name) => String(name || "").trim()).filter((name) => name && name !== "root");
+      const first = String(primary || "").trim() || list[0] || "";
+      if (first) window.__NovaFlowRibbonPrimarySelectedBoneName = first;
+      const animationName = getRibbonParameterPresetSessionAnimationName();
+      if (!animationName || !isRibbonParameterPresetSessionState("preview", animationName)) return false;
+      cancelPendingRibbonParameterPresetApply();
+      scheduleRibbonPresetPreviewForSelectionSettled("bone-selection");
+      return true;
+    },
     // 动画编辑's timing row changed: preview again (only while a preset is in play)
     refresh() {
       const animationName = getRibbonParameterPresetSessionAnimationName();

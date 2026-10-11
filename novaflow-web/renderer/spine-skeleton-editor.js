@@ -783,8 +783,13 @@
     if (ce && !(sel && sel.kind === 'att' && sel.slot === ce.slot && sel.name === ce.name)) { state.clipEdit = null; state.clipDrag = null }
     const we = state.weightEdit
     if (we && !(sel && ((sel.kind === 'att' && sel.slot === we.slot && sel.name === we.name) || sel.kind === 'bone')) && !state.pick) { state.weightEdit = null; state.weightStroke = null; weCache = null }
+    // 飘带's 自动链条 overlays the picked chain on the selection (selectChain); a new pick starts
+    // from the bones the user chose, never from that overlay
+    const chainRoots = state.chainPick ? (state.chainRoots || []).slice() : null
+    state.chainPick = null
+    state.chainRoots = null
     if (additive && sel && sel.kind === 'bone') {
-      const set = new Set(state.multi.length ? state.multi : (state.sel && state.sel.kind === 'bone' ? [state.sel.name] : []))
+      const set = new Set(chainRoots ? chainRoots : (state.multi.length ? state.multi : (state.sel && state.sel.kind === 'bone' ? [state.sel.name] : [])))
       if (set.has(sel.name)) set.delete(sel.name)
       else set.add(sel.name)
       state.multi = [...set]
@@ -6902,16 +6907,24 @@
       const slot = name ? state.json.slots.find((s) => s.name === name) : null
       return slot ? { name, bone: slot.bone } : null
     },
-    selectBone: (name) => { if (state.json && state.json.bones.some((b) => b.name === name)) select({ kind: 'bone', name }) },
+    selectBone: (name, additive) => { if (state.json && state.json.bones.some((b) => b.name === name)) select({ kind: 'bone', name }, !!additive) },
+    /** The bones the user picked (Ctrl+click adds), without 自动链条's overlay: 飘带 solves one chain per root. */
+    selectedBones: () => (state.chainPick && state.chainRoots ? state.chainRoots.slice() : selectedBones()),
     toast: (msg, kind) => status(msg, kind),
     /** 飘带's 自动链条: the picked bone's chain shows as picked with it (the pick itself stays the parent). */
     selectChain: (names) => {
       if (!state.json || !state.sel || state.sel.kind !== 'bone') return
       const same = (a, b) => a && b && a.length === b.length && a.every((n, i) => b[i] === n)
-      if (!(names || []).length) { if (state.chainPick && same(state.multi, state.chainPick)) { state.multi = [state.sel.name]; refresh() } state.chainPick = null; return }
-      const ok = [state.sel.name, ...names.filter((n) => n !== state.sel.name && bone(n))]
+      if (!(names || []).length) {
+        if (state.chainPick && same(state.multi, state.chainPick)) { state.multi = state.chainRoots && state.chainRoots.length ? state.chainRoots.slice() : [state.sel.name]; refresh() }
+        state.chainPick = null; state.chainRoots = null
+        return
+      }
+      // every picked root keeps its place; the chains come after them
+      const roots = state.chainPick && state.chainRoots ? state.chainRoots.slice() : selectedBones()
+      const ok = [...roots, ...names.filter((n) => !roots.includes(n) && bone(n))]
       if (same(ok, state.multi)) return
-      state.multi = ok; state.chainPick = ok
+      state.chainRoots = roots; state.multi = ok; state.chainPick = ok
       refresh()
     },
     anim: () => state.anim,
