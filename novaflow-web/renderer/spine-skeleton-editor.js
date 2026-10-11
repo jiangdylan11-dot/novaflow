@@ -5963,8 +5963,10 @@
     const mv = d.drag && d.drag.kind === 'move' && !d.drag.dup ? d.drag : null
     const mvOffset = mv && (d.offset || mv.offset)
     const mvShift = mv && !mvOffset && (d.shift || mv.shift)
+    // 移位: the last picked key per track (later keys follow); 偏移: every track with a picked key
+    // (Spine offsets the whole timeline round the loop, like 动画延迟)
     const lastSel = new Map()
-    if (mvShift) for (const x of d.keySel) lastSel.set(pathId(x.path), Math.max(lastSel.get(pathId(x.path)) ?? -1, x.time))
+    if (mvShift || mvOffset) for (const x of d.keySel) lastSel.set(pathId(x.path), Math.max(lastSel.get(pathId(x.path)) ?? -1, x.time))
     const loopF = Math.round(duration() * FPS)
     d.rows.forEach((r, i) => {
       const y = DOPE.rulerH + i * DOPE.rowH - d.scrollY
@@ -5989,7 +5991,8 @@
         let f = k.frame
         if (mv) {
           const after = mvShift && k.keys.some((kk) => lastSel.has(pathId(kk.path)) && kk.time > lastSel.get(pathId(kk.path)) + 1e-4)
-          if (on || after) {
+          const whole = mvOffset && k.keys.some((kk) => lastSel.has(pathId(kk.path)))
+          if (on || after || whole) {
             f += mv.df
             if (mvOffset && loopF > 0) f = ((f % loopF) + loopF) % loopF
           }
@@ -6181,7 +6184,9 @@
           }
           const shift = d.shift || g.shift, offset = d.offset || g.offset
           const how = offset ? '（偏移）' : shift ? '（移位）' : ''
-          edit(`已移动 ${keys.length} 个关键帧 ${g.df > 0 ? '+' : ''}${g.df} 帧${how}`, (j) => Ops.moveKeys(j, state.anim, keys, g.df / FPS, { shift, offset }), (r) => { state.dope.keySel = r.keys })
+          // 偏移 turns the whole timeline of every picked key round the loop (Spine), not the picked keys alone
+          const moving = offset ? [...new Set(keys.map((k) => pathId(k.path)))].flatMap((id) => { const path = JSON.parse(id); return (keyList(path) || []).map((k) => ({ path, time: k.time || 0 })) }) : keys
+          edit(`已移动 ${moving.length} 个关键帧 ${g.df > 0 ? '+' : ''}${g.df} 帧${how}`, (j) => Ops.moveKeys(j, state.anim, moving, g.df / FPS, { shift, offset }), (r) => { state.dope.keySel = r.keys })
         }
         return
       }
