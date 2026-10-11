@@ -328,6 +328,18 @@
     // the tools are open the editor's picked bone / animation is the one they work on
     const ctx = api && api.loaded() ? projectProps() : null
     if (ctx && ((pickedBone() && ctx.selectedBoneName !== pickedBone()) || (api.anim() && ctx.activeAnimationName !== api.anim()))) pushSelection()
+    syncRibbonChain()
+  }
+
+  /** 飘带计算 with 自动链条 on: the chain the runtime solves (its last pass's targets) shows as picked. */
+  function syncRibbonChain() {
+    if (!api || !api.loaded() || !api.selectChain) return
+    const ribbonOn = document.querySelector('[data-panel-id="bone-motion"] [data-motion-mode="ribbon"][aria-pressed="true"]')
+    const toggle = document.querySelector('[data-novaflow-ribbon-chain-toggle-card] input[type=checkbox]')
+    const bone = api.selectedBone(), ctx = ribbonOn && toggle && toggle.checked && bone ? projectProps() : null
+    let names = []
+    try { if (ctx && typeof window.NovaFlowRibbonChain === 'function') names = window.NovaFlowRibbonChain(ctx.project, bone) } catch { /* the runtime moved on */ }
+    api.selectChain(names)
   }
 
   /**

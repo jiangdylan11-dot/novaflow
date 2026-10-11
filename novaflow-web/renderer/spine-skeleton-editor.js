@@ -6794,6 +6794,14 @@
     },
     selectBone: (name) => { if (state.json && state.json.bones.some((b) => b.name === name)) select({ kind: 'bone', name }) },
     toast: (msg, kind) => status(msg, kind),
+    /** 飘带's 自动链条: the picked bone's chain shows as picked with it (the pick itself stays the parent). */
+    selectChain: (names) => {
+      if (!state.json || !state.sel || state.sel.kind !== 'bone') return
+      const ok = [state.sel.name, ...(names || []).filter((n) => n !== state.sel.name && bone(n))]
+      if (ok.length === state.multi.length && ok.every((n, i) => state.multi[i] === n)) return
+      state.multi = ok
+      refresh()
+    },
     anim: () => state.anim,
     setAnim: (name) => { if (state.json && state.json.animations[name]) { state.anim = name; if (state.mode !== 'animate') setMode('animate'); else { state.frame = Math.min(state.frame, Math.round(duration() * FPS)); refresh() } } },
     mode: () => state.mode,

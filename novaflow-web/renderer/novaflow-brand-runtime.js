@@ -47970,6 +47970,9 @@
     return entries;
   }
 
+  // the 骨骼动画 editor shows the chain 自动链条 will solve from a picked bone
+  window.NovaFlowRibbonChain = (project, rootBoneName) => buildRibbonElasticChainEntries(project, rootBoneName, RIBBON_PRESET_AUTO_CHAIN_MAX_BONES).map((entry) => entry.name);
+
   function buildRibbonElasticPreviewChainEntries(project, rootBoneName, maxDepth = 8, maxTargets = 16) {
     const root = String(rootBoneName || "").trim();
     if (!root || root === "root") return [];
