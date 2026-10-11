@@ -38,13 +38,13 @@
   const IMPORT_PANEL_SELECTOR = '[data-novaflow-spine-inline-import-panel="1"]'
   const RIBBON_PANEL_SELECTOR = '[data-novaflow-ribbon-panel="1"]'
   const MARK = 'data-novaflow-auto-mesh-panel'
-  const TITLE = '自动蒙皮'
+  const TITLE = '蒙皮'
   const STORAGE_DENSITY = 'novaflow.autoMesh.density'
   // 自动权重 is a panel of its own (user decision 2026-09-21): meshing and binding
   // are different jobs with different things to restore
   const WEIGHTS_PANEL_ID = 'bone-auto-weights'
   const WMARK = 'data-novaflow-auto-weights-panel'
-  const WTITLE = '自动权重'
+  const WTITLE = '权重'
   // 骨骼架设 is a panel of its own as well (user decision 2026-09-21): rigging comes
   // before meshing and binding, and its switch turns the preview into a bone editor
   const BONES_PANEL_ID = 'bone-rigging'
@@ -1211,6 +1211,9 @@
 
   /** run the unpack once per loaded skeleton, off the sync timer */
   function unpackIfNeeded(source) {
+    // the 骨骼动画 editor reads atlas regions as they are; re-importing the project here would
+    // reset it (and throw away what it holds)
+    if (editorOn()) return
     const key = source.skeleton.text
     if (state.unpacking || state.unpackTried === key) return
     state.unpacking = true
@@ -1600,6 +1603,8 @@
   function placeLayerDock() {
     const d = document.querySelector('[data-novaflow-layer-dock="1"]')
     if (!d) return
+    // the editor shows its own layer cards
+    if (editorOn()) { if (d.style.display !== 'none') d.style.display = 'none'; return }
     const owner = state.open ? 'mesh' : (state.openWeights ? 'weights' : '')
     const wrap = owner && d.querySelector(`:scope > [data-layer-dock-owner="${owner}"]`)
     const panel = owner && document.querySelector(`[${owner === 'mesh' ? MARK : WMARK}="1"]`)
@@ -1663,7 +1668,88 @@
     window.setInterval(() => { try { placeLayerDock() } catch { /* not up */ } }, 250)
   }
 
+  // ------------------------------------------------- with the 骨骼动画 editor ---
+  //
+  // spine-skeleton-editor.host.js lays the Spine-style editor over the stage, the right column
+  // and the playbar. These panels keep their look; their buttons work on the editor's project
+  // (its layer cards sit over its own stage), and nothing here touches the app's preview.
+
+  const editorOn = () => { const H = window.NovaFlowSkeletonEditor; return !!(H && H.enabled && H.enabled()) }
+
+  function editorBody(kind) {
+    const H = window.NovaFlowSkeletonEditor
+    const body = el('div')
+    body.className = 'nf-panel-body'
+    body.style.padding = '14px'
+    body.style.marginTop = STACK_GAP
+    body.style.display = (kind === 'mesh' ? state.open : kind === 'weights' ? state.openWeights : state.openBones) ? 'block' : 'none'
+    const status = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.55)', margin: STACK_GAP + ' 0 0', minHeight: '15px', lineHeight: '1.5' })
+    const setStatus = (text, tone) => {
+      status.textContent = text || ''
+      status.style.color = tone === 'error' ? '#ff8a7a' : (tone === 'ok' ? '#22c98a' : 'rgba(255,255,255,0.55)')
+    }
+    const buttons = []
+    const button = (label, primary, title, run) => {
+      const b = el('button', null, label); b.type = 'button'; styleButton(b, primary)
+      if (buttons.length || kind === 'mesh') b.style.marginTop = STACK_GAP
+      b.title = title
+      b.addEventListener('click', async () => {
+        if (b.disabled) return
+        buttons.forEach((x) => { x.disabled = true })
+        try { const r = await run(); if (r) setStatus(r, 'ok') } catch (error) { setStatus(error && error.message ? error.message : String(error), 'error') } finally { buttons.forEach((x) => { x.disabled = false }) }
+      })
+      buttons.push(b)
+      return b
+    }
+    if (kind === 'mesh') {
+      const row = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between' })
+      row.appendChild(el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.72)' }, '默认密度'))
+      const value = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '600' }, String(state.density))
+      row.appendChild(value)
+      const slider = el('input')
+      slider.type = 'range'; slider.min = '2'; slider.max = '40'; slider.step = '1'
+      slider.value = String(state.density)
+      Object.assign(slider.style, { width: '100%', marginTop: STACK_GAP, marginBottom: '0', accentColor: '#22c98a' })
+      const tell = () => { H.ready().then((a) => a.setDensity(state.density)) }
+      slider.addEventListener('input', () => { state.density = Number(slider.value); value.textContent = slider.value; writeStore(STORAGE_DENSITY, state.density); tell() })
+      tell()
+      const hint = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, lineHeight: '1.5' }, '越高越密。20~24 通常够用,再高收益很小。')
+      body.append(row, slider, hint,
+        button('自动蒙皮', true, '给勾选的图层（画面下方的图层卡片）按默认密度生成网格', async () => (await H.call('autoMesh')).text),
+        button('还原初始图层', false, '勾选的图层回到刚导入时的样子（去掉这里生成的网格和权重）', async () => (await H.call('restoreMesh')).text),
+        status)
+    } else if (kind === 'weights') {
+      body.append(
+        button('自动权重', true, '给勾选的图层自动分配骨骼并求解权重；图层卡片上的「权重」按钮可以手工细调', async () => (await H.call('autoWeights')).text),
+        button('还原原始权重', false, '回到导入时的权重:Spine 里绑好的保留,这里自动或手动加的去掉;网格不动', async () => (await H.call('restoreWeights')).text),
+        status)
+    } else {
+      // 自动架设 replaces the rig: on a project whose animations use it, it takes a second click
+      let armedUntil = 0
+      const auto = button('自动架设', true, '按每层的中轴自动搭一套骨架(躯干、四肢带 IK、头发、飘带);搭完直接在画面里修', async () => {
+        const a = await H.ready()
+        if (a.loaded() && a.rigUsed() && Date.now() > armedUntil) {
+          armedUntil = Date.now() + 8000
+          auto.textContent = '再点一次：替换现有骨架（动画会失效）'
+          window.setTimeout(() => { if (Date.now() >= armedUntil) auto.textContent = '自动架设' }, 8200)
+          throw new Error('这个工程已经有骨架和动画。自动架设会整套换掉骨骼，原动画曲线会失效;只是修骨骼请直接在画面里改。')
+        }
+        armedUntil = 0
+        auto.textContent = '自动架设'
+        setStatus('准备图层…')
+        const r = await H.call('autoRig', (t) => setStatus(t))
+        return `自动架设完成 · ${r.bones} 根骨 · ${r.ik} 个 IK · ${r.layers} 层`
+      })
+      body.append(auto,
+        button('还原初始骨架', false, '整个工程回到导入时的样子（撤销 Ctrl+Z 可以找回）', async () => { await H.call('restoreProject'); return '已还原为导入时的工程' }),
+        status,
+        el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, lineHeight: '1.5', whiteSpace: 'normal' }, '骨骼直接在画面里编辑：左下角选工具（新建 / 移动 / 旋转 / 缩放），右侧工程树和属性里改数值。'))
+    }
+    return body
+  }
+
   function buildMeshBody() {
+    if (editorOn()) return editorBody('mesh')
     const body = el('div')
     body.className = 'nf-panel-body'
     body.style.padding = '14px'
@@ -1692,7 +1778,7 @@
       fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, lineHeight: '1.5'
     }, '越高越密。20~24 通常够用,再高收益很小。')
 
-    const genBtn = el('button', null, '生成网格'); genBtn.type = 'button'; styleButton(genBtn, true)
+    const genBtn = el('button', null, '自动蒙皮'); genBtn.type = 'button'; styleButton(genBtn, true)
     genBtn.style.marginTop = STACK_GAP
     const restoreBtn = el('button', null, '还原初始图层'); restoreBtn.type = 'button'
     styleButton(restoreBtn, false); restoreBtn.style.marginTop = STACK_GAP
@@ -1854,6 +1940,7 @@
    * list of the same layers showing what each one is bound to, with its 权重 editor.
    */
   function buildWeightsBody() {
+    if (editorOn()) return editorBody('weights')
     const body = el('div')
     body.className = 'nf-panel-body'
     body.style.padding = '14px'
@@ -3273,6 +3360,7 @@
     bones.syncUi()
   }
   function bonesTick() {
+    if (editorOn()) return
     if (!bones.ctl) return
     if (bones.editing) {
       const p = previewPlayer()
@@ -3303,7 +3391,7 @@
     const ctl = ensureController()
     const skel = ctl.getSkeleton()
     if (!skel) throw new Error('没有骨架可写回')
-    if (ourMeshes()) throw new Error('这里生成的网格会跟着旧骨骼:先在 自动蒙皮 里「还原初始图层」,改完骨骼再蒙皮')
+    if (ourMeshes()) throw new Error('这里生成的网格会跟着旧骨骼:先在 蒙皮 里「还原初始图层」,改完骨骼再蒙皮')
     captureSource()
     const text = JSON.stringify(skel)
     for (const l of state.layers.values()) { l.weights = null; l.weightsEdited = false }
@@ -3329,7 +3417,7 @@
     const skel = JSON.parse(src.skeleton.text)
     const hasMesh = (attachments) => Object.keys(attachments || {}).some((slot) => Object.values(attachments[slot] || {}).some((a) => a && a.type === 'mesh'))
     const meshed = Array.isArray(skel.skins) ? skel.skins.some((k) => hasMesh(k && k.attachments)) : Object.keys(skel.skins || {}).some((k) => hasMesh(skel.skins[k]))
-    if (meshed || ourMeshes()) throw new Error('工程里已有网格:先在 自动蒙皮 里「还原初始图层」,再自动架设')
+    if (meshed || ourMeshes()) throw new Error('工程里已有网格:先在 蒙皮 里「还原初始图层」,再自动架设')
     const AW = window.NovaFlowAutoWeights
     const mats = AW ? AW.setupPoseMatrices(skel) : null
     const boneIndex = new Map((skel.bones || []).map((b, i) => [b.name, i]))
@@ -3383,6 +3471,7 @@
   }
 
   function buildBonesBody() {
+    if (editorOn()) return editorBody('bones')
     const E = window.NovaFlowBonesEditor
     const body = el('div')
     body.className = 'nf-panel-body'
@@ -3700,6 +3789,7 @@
       id: BONES_PANEL_ID, mark: BMARK, title: BTITLE, icon: 'fas fa-bone', body: buildBonesBody,
       isOpen: () => state.openBones,
       setOpen: (v) => {
+        if (editorOn()) { state.openBones = v; window.NovaFlowSkeletonEditor.setPanel('bones', v); return }
         // closing the panel puts any change still waiting into the project
         if (!v && state.openBones) { try { autoApplyBones() } catch { /* nothing to apply */ } }
         state.openBones = v
@@ -3713,14 +3803,14 @@
     return {
       id: PANEL_ID, mark: MARK, title: TITLE, icon: 'fas fa-vector-square', body: buildMeshBody,
       isOpen: () => state.open,
-      setOpen: (v) => { state.open = v; placeLayerDock() }
+      setOpen: (v) => { state.open = v; if (editorOn()) { window.NovaFlowSkeletonEditor.setPanel('mesh', v); return } placeLayerDock() }
     }
   }
   function weightsSpec() {
     return {
       id: WEIGHTS_PANEL_ID, mark: WMARK, title: WTITLE, icon: 'fas fa-project-diagram', body: buildWeightsBody,
       isOpen: () => state.openWeights,
-      setOpen: (v) => { state.openWeights = v; if (state.fitList) state.fitList(); placeLayerDock() }
+      setOpen: (v) => { state.openWeights = v; if (editorOn()) { window.NovaFlowSkeletonEditor.setPanel('weights', v); return } if (state.fitList) state.fitList(); placeLayerDock() }
     }
   }
 

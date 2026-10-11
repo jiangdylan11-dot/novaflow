@@ -28,7 +28,7 @@
   let stylesReady=false;
   const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-7',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||ribbonShown)floating.style.visibility='visible';};
-  const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画编辑编辑器');
+  const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画工具编辑器');
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
       <div class="editor-presets"><div id="presetSection"><div id="presets" class="presets"></div></div><div id="opacityPresets" class="presets" hidden></div><div id="ribbonPresets" class="presets"></div></div>
@@ -70,11 +70,18 @@
     if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;proxy.player?.renderCurrentPose?.();}
   }
   function releasePreviewSpace(){
+    window.NovaFlowSkeletonEditor?.reserveForMotion?.(0);
     previewStage?.removeAttribute('data-novaflow-motion-preview-height');previewStage=null;
     if(previewLayer){if(previousBlockSize)previewLayer.style.setProperty('block-size',previousBlockSize,previousBlockPriority);else previewLayer.style.removeProperty('block-size');resizePreviewCanvas(previewLayer);}
     previewLayer=null;
   }
   function reservePreviewSpace(){
+    const editorTimeline=window.NovaFlowSkeletonEditor?.timeline?.();
+    if(editorTimeline){
+      const pixels=Math.max(0,Math.round(editorTimeline.getBoundingClientRect().top-floating.getBoundingClientRect().top-2));
+      window.NovaFlowSkeletonEditor.reserveForMotion(floating.style.display==='none'?0:pixels);
+      return;
+    }
     const stage=document.querySelector('[data-novaflow-skeleton-preview-stage="1"]');
     let layer=stage?.querySelector('canvas');
     while(layer&&layer.parentElement!==stage)layer=layer.parentElement;
@@ -90,10 +97,12 @@
   }
   function positionCurve(){
     if(!stylesReady)return;
-    const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
+    const bar=window.NovaFlowSkeletonEditor?.timeline?.()||document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';bridge.dock?.(null);return;}
     const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]');
     if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
+    // no app playbar on screen: the 完整动画 / 骨骼片段 switch rides in the editor's header
+    else if(!playButton&&playbackMode.parentNode!==body.querySelector('.editor-header'))body.querySelector('.editor-header')?.insertBefore(playbackMode,body.querySelector('#editorToggle'));
     // 飘带计算 shows the same 完整动画 / 骨骼片段 switch and bone span, from its own timing row
     const ts=ribbon&&ribbonTiming?ribbonTiming:timing;
     bridge.playbackRange?.(bonePlayback?[ts.animationDelay,ts.animationDelay+ts.boneDuration]:null);

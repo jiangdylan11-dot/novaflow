@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="zh-CN" data-embed>
+<head>
+<meta charset="utf-8">
+<title>骨骼动画编辑</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{--green:#1EA672;--bg:#121212;--panel:#181818;--card:#1F1F1F;--line:#262626;--line2:#2e2e2e;--field:#262626;--text:#e9e9e9;--dim:#9a9a9a;
+        --c-normal:#4fb3e8;--c-cons:#a78bfa;--c-ctrl:#f0a63a;color-scheme:dark}
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:12px/1.4 Inter,"Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  button:disabled{cursor:not-allowed;opacity:.45}
+  button:focus,input:focus,select:focus{outline:0}
+  .lab{position:absolute;inset:0;display:grid;grid-template-columns:62px 230px minmax(0,1fr) 300px;gap:8px;padding:8px}
+  /* inside the 骨骼动画 section: the app keeps its own rail and left panels; this page is the
+     stage + timeline + the right column, with the app's 10px gaps and its page showing between */
+  html[data-embed],html[data-embed] body{background:transparent}
+  [data-embed] .lab{grid-template-columns:minmax(0,1fr) 300px;gap:10px;padding:0}
+  [data-embed] .rail,[data-embed] #left{display:none!important}
+  [data-embed] .center{gap:10px}
+  .rail{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 0}
+  .rail .ri{width:46px;height:56px;border:0;border-radius:8px;background:transparent;color:#a8a8a8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px}
+  .rail .ri svg{width:18px;height:18px}
+  .rail .ri[data-on="1"]{background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}
+  .rail .ri:disabled{opacity:1;cursor:default}
+  .rail .ri:hover:not(:disabled){background:#373737;color:#fff}
+  .rail .sp{flex:1}
+  .pn[data-dim="1"] .pn-hd{cursor:default;opacity:.55}
+  .imp{margin:0 0 8px}
+  .imp-l{color:rgba(255,255,255,.8);font-size:12px;margin:0 0 4px}
+  .imp-r{display:flex;gap:6px;align-items:center}
+  .imp-f{flex:1;min-width:0;height:28px;line-height:28px;padding:0 8px;border-radius:6px;background:#262626;color:#777;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .imp-f.on{color:#e6e6e6}
+  .imp-r .btn{height:28px;padding:0 12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:0}
+
+  /* ---------- left: tool panels (one open at a time) ---------- */
+  .left{overflow:auto;padding:4px 8px}
+  .pn{border-bottom:1px solid var(--line)}
+  .pn:last-child{border-bottom:0}
+  .pn-hd{display:flex;align-items:center;gap:10px;height:46px;padding:0 4px;cursor:pointer;user-select:none}
+  .pn-hd .ic{width:24px;height:24px;border-radius:6px;background:#262626;display:inline-flex;align-items:center;justify-content:center;color:#d6d6d6}
+  .pn-hd .ic svg{width:14px;height:14px}
+  .pn-hd b{flex:1;font-size:13px;font-weight:500;color:#eee}
+  .pn-hd .sub{color:var(--dim);font-size:11px;max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pn-hd .chev{width:14px;height:14px;color:#8a8a8a;transition:transform .12s}
+  .pn[data-open="1"] .pn-hd .chev{transform:rotate(180deg)}
+  .pn-hd:hover b{color:#fff}
+  .pn-bd{padding:2px 4px 14px}
+  .hint{color:#7d7d7d;font-size:11px;line-height:1.55;padding:2px 0 4px}
+  .grp{margin:12px 0 0}
+  .grp>.t{display:flex;align-items:center;gap:6px;margin:0 0 6px;color:rgba(255,255,255,.62);font-size:11px;font-weight:600}
+  .grp>.t .r{margin-left:auto;font-weight:400;color:var(--dim)}
+  .name-row{display:flex;align-items:center;gap:6px;margin:2px 0 6px}
+  .name-row input{flex:1;min-width:0;height:28px;padding:0 8px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:13px;font-weight:500}
+  .name-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500;padding:0 2px}
+  .tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;background:#262626;color:#bdbdbd;font-size:11px;white-space:nowrap}
+  .tag.ctrl{color:var(--c-ctrl)} .tag.cons{color:var(--c-cons)} .tag.normal{color:var(--c-normal)}
+  .f{display:grid;grid-template-columns:58px minmax(0,1fr);gap:8px;align-items:center;margin:5px 0}
+  .f>label{color:rgba(255,255,255,.66);font-size:11px}
+  .f input[type=text],.f input[type=number]{width:100%;height:26px;padding:0 7px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:12px}
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+  .f input:disabled{color:#777}
+  .f .inline{display:flex;gap:6px;align-items:center;min-width:0}
+  .f .inline>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .f .inline>.key{margin-left:auto}
+  .f input[type=range]{width:100%;accent-color:var(--green)}
+  input[type=color]{width:34px;height:26px;padding:0;border:0;background:none}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+  .grid2 .f{grid-template-columns:38px minmax(0,1fr)}
+  .select{height:26px;padding:0 6px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:#262626;color:#eee;font-size:12px;width:100%}
+  .checks{display:flex;flex-wrap:wrap;gap:5px 12px;margin:6px 0}
+  .checks label{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,.82);font-size:11px}
+  .checks input{accent-color:var(--green);margin:0}
+  .checks.ik{margin:0;gap:5px 14px}
+  .f .dim{color:#6a6a6a}
+  .cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;align-items:center;min-width:0}
+  .cols3 label{display:inline-flex;align-items:center;gap:5px;min-width:0;color:rgba(255,255,255,.82);font-size:11px;white-space:nowrap}
+  .cols3 input[type=checkbox]{accent-color:var(--green);margin:0}
+  .btn{height:28px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:#2a2a2a;color:rgba(255,255,255,.86);font-size:12px;white-space:nowrap}
+  .btn:hover:not(:disabled){background:#373737;color:#fff}
+  .btn.primary{background:var(--green);border-color:transparent;color:#fff;font-weight:600}
+  .btn.primary:hover:not(:disabled){background:#22b57c}
+  .btn.small{height:24px;padding:0 8px;font-size:11px}
+  .btn.full{width:100%}
+  .btns{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+  .btns.g2{display:grid;grid-template-columns:1fr 1fr}
+  .btns.g3{display:grid;grid-template-columns:1fr 1fr 1fr}
+  .list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .li{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 6px 0 8px;border-bottom:1px solid var(--line);color:rgba(255,255,255,.84);font-size:12px;cursor:pointer}
+  .li:last-child{border-bottom:0}
+  .li:hover{background:rgba(255,255,255,.03)}
+  .li[data-on="1"]{box-shadow:inset 2px 0 0 var(--green);background:#16352b;color:#fff}
+  .li .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .li .m{color:var(--dim);font-size:11px;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+  .li .m.empty{color:#666}
+  .li .ix{width:16px;color:#777;font-size:11px;text-align:right}
+  .li .x{width:20px;height:20px;border:0;border-radius:5px;background:transparent;color:rgba(238,244,252,.6);font-size:13px;line-height:1}
+  .li .x:hover{background:#373737;color:#fff}
+  .li .ico{width:14px;height:14px;display:inline-flex;color:#a8a8a8}
+  .li .ico svg{width:13px;height:13px}
+  .dot{width:16px;height:16px;flex:0 0 16px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .dot::before{content:"";width:7px;height:7px;border-radius:50%;border:1.5px solid #6d6d6d}
+  .dot[data-on="1"]::before{background:var(--green);border-color:var(--green)}
+  .dot:hover::before{border-color:#fff}
+  .ibtn{width:28px;height:28px;flex:0 0 28px;border:0;border-radius:6px;background:#262626;color:#cfcfcf;display:inline-flex;align-items:center;justify-content:center}
+  .ibtn svg{width:14px;height:14px}
+  .ibtn:hover:not(:disabled){background:#373737;color:#fff}
+  .sub-card>.t .ibtn{width:24px;height:24px;flex:0 0 24px}
+  .sub-card .seg button{height:22px;min-width:34px;padding:0 10px}
+  .sub-card{margin:12px 0 0;padding:10px;border:1px solid var(--line2);border-radius:8px;background:#1c1c1c}
+  .sub-card>.t{display:flex;align-items:center;gap:6px;margin:0 0 8px;font-size:12px;font-weight:500;min-width:0}
+  .sub-card>.t .tn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sub-card>.t .k{flex:0 0 auto;margin-left:auto;color:var(--dim);font-size:11px;font-weight:400}
+
+  /* ---------- centre: stage ---------- */
+  .center{display:grid;grid-template-rows:minmax(0,1fr) 52px;gap:8px;min-width:0;min-height:0}
+  .center[data-dope="1"]{grid-template-rows:minmax(0,1fr) 250px}
+  /* 设置 mode: no timeline, the stage takes the whole height */
+  .center:not([data-dope="1"]){grid-template-rows:minmax(0,1fr)}
+  .center:not([data-dope="1"]) .timeline-wrap{display:none}
+  /* 预览 (Spine's Preview view): its own canvas, the animations, speed / mix / loop / tracks */
+  .float.preview{right:10px;top:52px;width:560px;height:380px;max-width:calc(100% - 20px);max-height:calc(100% - 20px);flex-direction:column;align-items:stretch;padding:0;gap:0;z-index:5;resize:both;overflow:hidden;min-width:380px;min-height:260px}
+  .pv-hd{display:flex;align-items:center;gap:8px;height:30px;flex:0 0 30px;padding:0 6px 0 12px;border-bottom:1px solid #2a2a2a;cursor:move;font-size:12px}
+  .pv-hd b{flex:1;font-weight:600}
+  .pv-hd .xx{width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:rgba(238,244,252,.6);font-size:15px}
+  .pv-hd .xx:hover{background:#373737;color:#fff}
+  .pv-body{flex:1;min-height:0;display:flex}
+  .pv-view{position:relative;flex:1;min-width:0;background:repeating-conic-gradient(#202020 0 25%,#1a1a1a 0 50%) 0 0/24px 24px}
+  .pv-view canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab}
+  .pv-fit{position:absolute;left:6px;bottom:6px;height:22px!important;padding:0 8px!important;background:rgba(24,24,24,.9)!important}
+  .pv-side{width:170px;flex:0 0 170px;display:flex;flex-direction:column;border-left:1px solid #2a2a2a}
+  .pv-list{flex:1;min-height:0;overflow:auto;padding:6px;display:flex;flex-direction:column;gap:2px}
+  .pv-a{display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#d6d6d6;font-size:12px;text-align:left}
+  .pv-a .ico{display:inline-flex;color:#8a8a8a}
+  .pv-a .ico svg{width:10px;height:10px}
+  .pv-a:hover{background:#373737;color:#fff}
+  .pv-a[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .pv-ctl{border-top:1px solid #2a2a2a;padding:8px;display:flex;flex-direction:column;gap:6px;font-size:11px;color:#bdbdbd}
+  .pv-row{display:flex;align-items:center;gap:6px}
+  .pv-row > span{width:26px;flex:0 0 26px}
+  .pv-row input[type=range]{flex:1;min-width:0;accent-color:var(--green)}
+  .pv-row b{width:30px;text-align:right;font-weight:500;color:#e6e6e6}
+  .pv-row .tg{flex:1;height:24px}
+  .pv-tracks button{flex:1;height:22px;padding:0;border:0;border-radius:5px;background:#262626;color:#d6d6d6;font-size:11px}
+  .pv-tracks button[data-busy="1"]{color:#9be4cd}
+  .pv-tracks button[aria-pressed="true"]{background:#1ea672;color:#fff}
+  .timeline-wrap{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .dmodes{display:inline-flex;gap:4px}
+  .dmodes button{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;font-size:12px}
+  .dmodes button svg{width:13px;height:13px}
+  .dmodes button:hover{background:#373737;color:#fff}
+  .dmodes button[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .menu .mh{padding:6px 10px 2px;color:#7d7d7d;font-size:11px}
+  .menu .msep{height:1px;margin:4px 6px;background:#2a2a2a}
+  .tl-body{position:relative;flex:1;min-height:0;display:flex;border-top:1px solid var(--line)}
+  /* Spine: the transport sits over the names, on the ruler row */
+  .transport.dock{position:absolute;left:6px;top:4px;z-index:2;gap:4px}
+  .transport.dock .tp{width:28px;height:26px;border-radius:6px}
+  .transport.dock .tp svg{width:13px;height:13px}
+  .dmodes .dsep{width:1px;height:18px;margin:0 4px;background:#333;align-self:center}
+  .dmodes button.ic{width:28px;padding:0;justify-content:center}
+  .dmodes button:disabled{opacity:.35;cursor:default}
+  .dmodes button:disabled:hover{background:#262626;color:#d6d6d6}
+  .tl-body #dope{flex:1;min-width:0;height:100%;display:block;cursor:default}
+  /* Spine's graph: a narrow panel beside the dopesheet, 「曲线：」 + three icon buttons on top */
+  .curve-panel{width:196px;flex:0 0 196px;display:flex;flex-direction:column;border-left:1px solid var(--line);min-height:0}
+  .cp-hd{height:22px;flex:0 0 22px;padding:0 8px;display:flex;align-items:center;color:#8a8a8a;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .curve-panel #curve{flex:1;min-height:0;width:100%;display:block;cursor:crosshair}
+  .cp-presets{display:flex;align-items:center;gap:4px;height:32px;flex:0 0 32px;padding:0 8px}
+  .cp-presets .cl{color:#bdbdbd;font-size:12px;margin-right:2px}
+  .cp-presets .cb{width:26px;height:22px;border:0;border-radius:5px;background:#262626;color:#bdbdbd;display:inline-flex;align-items:center;justify-content:center}
+  .cp-presets .cb svg{width:14px;height:14px}
+  .cp-presets .cb:hover:not(:disabled){background:#373737;color:#fff}
+  .cp-presets .cb[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .cp-presets .cb:disabled{opacity:.4}
+  .stage{position:relative;overflow:hidden;background:#1c1c1c url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect width='12' height='12' fill='%23202020'/%3E%3Crect x='12' y='12' width='12' height='12' fill='%23202020'/%3E%3C/svg%3E")}
+  .stage > canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .stage[data-pick="1"] #overlay,.stage[data-tool="create"] #overlay{cursor:crosshair}
+  .float{position:absolute;display:flex;gap:4px;align-items:center;padding:4px;border:1px solid var(--line2);border-radius:8px;background:rgba(24,24,24,.94)}
+  .float .tg{height:26px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#d6d6d6;font-size:12px}
+  .float .tg:hover:not(:disabled){background:#373737;color:#fff}
+  .float .tg[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .float .zoom{min-width:44px;text-align:center;color:#bdbdbd;font-size:11px}
+  .tl{left:10px;top:10px}
+  .tr{right:10px;top:10px}
+  .pickbar{left:50%;top:52px;transform:translateX(-50%);padding:6px 6px 6px 12px;gap:8px;white-space:nowrap;max-width:calc(100% - 20px);font-size:12px;border-color:#2c604f;color:#9be4cd}
+  .toast{position:absolute;z-index:20;left:50%;top:56px;transform:translateX(-50%);max-width:calc(100% - 40px);padding:7px 12px;border-radius:8px;background:rgba(28,28,28,.96);border:1px solid var(--line2);color:#cfcfcf;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;opacity:0;transition:opacity .15s}
+  .toast[data-show="1"]{opacity:1}
+  .toast[data-kind="ok"]{color:#8ff0c7}
+  .toast[data-kind="error"]{color:#fca5a5;border-color:#5a2a2a}
+  .drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7d7d7d;font-size:13px;pointer-events:none}
+  /* Spine: transform panel + options at the bottom left, mode label at the top left */
+  /* Spine: the mode is a plain mark in the viewport's top left (figure + 设置 / 动画), click to switch */
+  .modebar{left:10px;top:8px;padding:0;border:0;background:transparent}
+  .mode{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 6px 0 2px;border:0;background:transparent;color:#a9a9a9;font-size:16px;font-weight:500;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+  .mode svg{width:24px;height:24px;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.7))}
+  .mode:hover{color:#fff}
+  .xform{left:10px;bottom:calc(10px + var(--dockh, 0px));align-items:stretch;gap:8px;padding:8px}
+  .xg{display:flex;flex-direction:column;gap:4px}
+  .xg .cap{color:#7d7d7d;font-size:10px;line-height:12px;margin:0 0 1px 2px}
+  .xr{display:flex;align-items:center;gap:4px;height:26px}
+  .xt{width:26px;height:26px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px}
+  .xt svg{width:13px;height:13px}
+  .xt:hover:not(:disabled){background:#373737;color:#fff}
+  .xt[aria-pressed="true"]{background:var(--green);color:#fff}
+  .xr input{width:66px;height:26px;border:0;border-radius:6px;background:#262626;color:#fff;font-size:12px;padding:0 6px;font-variant-numeric:tabular-nums}
+  .xr input:disabled{color:#666}
+  .xr .wide{width:136px}
+  .xs{height:26px;min-width:44px;padding:0 8px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;font-size:11px}
+  .xs:hover{background:#373737;color:#fff}
+  /* the header row sits where the other columns have their caption, so 骨骼 / 图片 / 网格 line up with 旋转 / 平移 / 缩放 */
+  .og{display:grid;grid-template-columns:auto repeat(3,22px);grid-template-rows:13px repeat(3,26px);row-gap:4px;align-items:center;justify-items:center;column-gap:2px}
+  .og .oc{justify-self:start;align-self:start;margin-left:2px;color:#7d7d7d;font-size:10px;line-height:12px}
+  .og .oh{display:inline-flex;align-self:start;color:#8a8a8a}
+  .og .oh svg{width:12px;height:12px}
+  .og .ol{justify-self:start;padding-right:6px;color:#bdbdbd;font-size:11px}
+  .od{width:22px;height:22px;border:0;border-radius:5px;background:transparent;display:inline-flex;align-items:center;justify-content:center}
+  .od::before{content:"";width:7px;height:7px;border-radius:50%;border:1.5px solid #6d6d6d}
+  .od[data-on="1"]::before{background:var(--green);border-color:var(--green)}
+  .od:hover{background:#373737}
+  .xs[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .key{width:22px;height:22px;border:0;border-radius:5px;background:transparent;display:inline-flex;align-items:center;justify-content:center;flex:0 0 22px}
+  .key svg{width:13px;height:13px}
+  .key[data-k="none"]{color:#1EA672}
+  .key[data-k="pending"]{color:#f0a63a}
+  .key[data-k="keyed"]{color:#e5534b}
+  .key:hover:not(:disabled){background:#373737}
+  .keyrow{display:flex;flex-wrap:wrap;gap:2px 10px}
+  .keyrow .kr{display:inline-flex;align-items:center;gap:2px;color:#bdbdbd;font-size:11px}
+  .row .end .key{width:20px;height:20px;flex:0 0 20px}
+  .row .lkey{position:absolute;left:23px;top:50%;margin-top:-10px;display:inline-flex;z-index:1}
+  .row .lkey .key{width:20px;height:20px;flex:0 0 20px}
+  .grp>.t .r .key{width:20px;height:20px}
+  .opts{display:grid;grid-template-columns:auto 22px 22px 22px;align-items:center;gap:2px 2px;font-size:11px;color:#bdbdbd}
+  .opts .h{color:#7d7d7d;font-size:10px;text-align:center}
+  .opts .o{width:22px;height:22px;border:0;border-radius:5px;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .opts .o::before{content:"";width:7px;height:7px;border-radius:50%;border:1.5px solid #6d6d6d}
+  .opts .o[aria-pressed="true"]::before{background:var(--green);border-color:var(--green)}
+  .opts .o:hover{background:#373737}
+  .selname{position:absolute;left:12px;bottom:142px;padding:2px 7px;border:1px solid #2c604f;border-radius:4px;background:rgba(14,40,31,.92);color:#c8f5e2;font-size:11px;pointer-events:none}
+  .menu{position:fixed;z-index:60;min-width:150px;padding:4px;border:1px solid #2e2e2e;border-radius:8px;background:#1F1F1F;box-shadow:0 12px 32px rgba(0,0,0,.5)}
+  .menu button{display:flex;align-items:center;gap:8px;width:100%;height:28px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:#e6e6e6;font-size:12px;text-align:left}
+  .menu button svg{width:13px;height:13px;color:#a8a8a8}
+  .menu button:hover:not(:disabled){background:#373737;color:#fff}
+  .menu button .kb{margin-left:auto;color:#777;font-size:11px}
+  .ticks{position:relative;flex:1;height:30px;display:flex;align-items:center}
+  .ticks input[type=range]{width:100%;margin:0}
+  .ticks i{position:absolute;top:2px;width:2px;height:7px;margin-left:-1px;border-radius:1px;background:#e5534b;pointer-events:none}
+  .timeline{display:flex;align-items:center;gap:8px;padding:0 10px}
+  .timeline input[type=range]{accent-color:var(--green)}
+  .timeline .t{min-width:92px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums;font-size:11px}
+  /* the 动画 section's transport: 34×32, #333, loop green when on */
+  .transport{display:inline-flex;gap:8px;align-items:center}
+  .tp{width:34px;height:32px;border-radius:8px;background:#333;border:1px solid rgba(255,255,255,.12);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .tp svg{width:14px;height:14px}
+  .tp:hover:not(:disabled){background:#3d3d3d}
+  .tp:disabled{opacity:.45}
+  .tp#tLoop[aria-pressed="true"]{background:#1ea672;border-color:transparent}
+  .seg{display:inline-flex;padding:2px;border:1px solid #262626;border-radius:8px;background:#101010}
+  .seg button{height:26px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#d8d8d8;font-size:12px;font-weight:500}
+  .seg button:hover{background:#373737;color:#fff}
+  .seg button[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .timeline .select{width:auto;max-width:140px;height:30px}
+
+  /* ---------- right: 工程 tree ---------- */
+  .right{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:46px minmax(120px,1fr) 7px var(--props-h,46%);overflow:hidden}
+  .right>*{min-width:0}
+  .props .list,.props .li,.props .f,.props .name-row{min-width:0}
+  .props .li .m{flex:0 1 auto;min-width:0}
+  .split{cursor:row-resize;background:var(--line);position:relative}
+  .split::after{content:"";position:absolute;left:50%;top:2px;width:34px;height:3px;margin-left:-17px;border-radius:2px;background:#3a3a3a}
+  .split:hover::after{background:#1EA672}
+  .props-wrap{display:flex;flex-direction:column;min-height:0}
+  .props-hd{display:flex;align-items:center;height:34px;flex:0 0 34px;padding:0 12px;border-bottom:1px solid var(--line);color:rgba(255,255,255,.7);font-size:12px;font-weight:600}
+  .props{flex:1;overflow:auto;padding:8px 12px 16px}
+  .modebar .btn{height:30px;font-size:13px;background:transparent;border-color:transparent}
+  .modebar .btn:hover{background:#373737}
+  .right-hd{display:flex;align-items:center;gap:8px;height:46px;flex:0 0 46px;padding:0 12px;border-bottom:1px solid var(--line);font-size:13px;font-weight:500}
+  .right-hd .legend{margin-left:auto;display:flex;gap:8px;color:var(--dim);font-size:10px;font-weight:400}
+  .right-hd .legend i{display:inline-block;width:6px;height:6px;border-radius:2px;margin-right:3px;vertical-align:1px}
+  .tree{position:relative;flex:1;overflow:auto;padding:0 0 12px}
+  .tree-in{min-width:100%;width:max-content}
+  .row{position:relative;display:flex;align-items:center;height:34px;padding-right:10px;border-bottom:1px solid #202020;white-space:nowrap;cursor:default;user-select:none;color:rgba(255,255,255,.84)}
+  .row:hover{background:rgba(255,255,255,.03)}
+  .row[data-selected="1"]{box-shadow:inset 2px 0 0 var(--green);background:#16352b;color:#fff}
+  .row[data-multi="1"]{box-shadow:inset 2px 0 0 var(--green);background:#14291f;color:#fff}
+  .row[data-pickable="1"]{color:#9be4cd}
+  .row[data-drop="in"]{background:#1c4136}
+  .row[data-drop="above"]{box-shadow:inset 0 2px 0 var(--green)}
+  .row[data-drop="below"]{box-shadow:inset 0 -2px 0 var(--green)}
+  .row .vis{position:absolute;left:4px;top:50%;width:18px;height:18px;margin-top:-9px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;z-index:1}
+  .row .vis::before{content:"";width:6px;height:6px;border-radius:50%;background:#6d6d6d}
+  .row .vis[data-on="1"]::before{background:var(--green)}
+  .row .vis[data-off="1"]::before{background:transparent;border:1.5px solid #555;width:5px;height:5px}
+  .row .vis:hover::before{box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+  .row[data-hidden="1"] .label{opacity:.45}
+  .row[data-match="1"] .label{color:#f0c36a}
+  .tbtn{height:26px;padding:0 6px;border:0;border-radius:5px;background:transparent;color:#bdbdbd;font-size:11px;flex:0 0 auto}
+  .tbtn:hover{background:#373737;color:#fff}
+  .search{flex:1;min-width:0;height:28px;padding:0 8px;border:0;border-radius:6px;background:#262626;color:#fff;font-size:12px}
+  .row .caret{width:16px;flex:0 0 16px;height:16px;display:inline-flex;align-items:center;justify-content:center;color:#8a8a8a}
+  .row .caret svg{width:10px;height:10px}
+  .row .mk{width:8px;height:8px;flex:0 0 8px;border-radius:2px;margin:0 7px 0 2px}
+  .row .ico{width:16px;flex:0 0 16px;height:16px;margin:0 5px 0 0;display:inline-flex;align-items:center;justify-content:center;color:#a8a8a8}
+  .row .ico svg{width:13px;height:13px}
+  .row .bico svg{width:15px;height:15px}
+  .row .label{overflow:hidden;text-overflow:ellipsis}
+  .row .meta{margin-left:6px;color:#777;font-size:11px;overflow:hidden;text-overflow:ellipsis}
+  .row{--rowbg:var(--panel)}
+  .row[data-selected="1"]{--rowbg:#16352b}
+  .row[data-multi="1"]{--rowbg:#14291f}
+  .row[data-clip="1"]:not([data-selected="1"]):not([data-multi="1"]){background:var(--clip)}
+  .row .end{position:sticky;right:-10px;margin-left:auto;display:flex;align-items:center;gap:4px;padding:0 10px 0 14px;height:100%;background:linear-gradient(to right,rgba(24,24,24,0),var(--rowbg) 12px)}
+  .row .cnt{color:#8a8a8a;font-size:11px}
+  .row .act{height:22px;padding:0 7px;border:0;border-radius:5px;background:transparent;color:#bdbdbd;font-size:11px}
+  .row .act:hover{background:#373737;color:#fff}
+  .row.node{color:#e6e6e6;font-weight:500}
+
+  /* image picker */
+  .mask{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+  .dialog{width:min(720px,92vw);max-height:80vh;display:flex;flex-direction:column;background:#1F1F1F;border:1px solid #2E2E2E;border-radius:8px;box-shadow:0 18px 48px rgba(0,0,0,.5)}
+  .dialog .hd{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #2a2a2a}
+  .dialog .hd b{font-size:14px;font-weight:600;flex:1}
+  .dialog .xx{width:24px;height:24px;border:0;border-radius:7px;background:transparent;color:rgba(238,244,252,.6);font-size:16px}
+  .dialog .xx:hover{background:#373737;color:#fff}
+  /* Spine's 编辑网格 panel: bottom centre, the image's name above it */
+  .meshpanel{left:50%;bottom:12px;transform:translateX(-50%);flex-direction:column;align-items:stretch;gap:6px;padding:8px 10px 10px}
+  .meshpanel .mname{position:absolute;left:50%;top:-30px;transform:translateX(-50%);padding:3px 8px;border-radius:5px;background:rgba(14,40,31,.92);border:1px solid #1EA672;color:#9be4cd;font-size:12px;white-space:nowrap}
+  .meshpanel .mhd{display:flex;align-items:center;gap:8px;font-size:12px}
+  .meshpanel .mhd b{flex:1;font-weight:600}
+  .meshpanel .xx{width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:rgba(238,244,252,.6);font-size:15px}
+  .meshpanel .xx:hover{background:#373737;color:#fff}
+  .meshpanel .mrow{display:flex;gap:4px;justify-content:center}
+  .meshpanel .mt{height:26px;padding:0 12px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;font-size:12px}
+  .meshpanel .mt:hover{background:#373737;color:#fff}
+  .meshpanel .mt[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  .meshpanel .mopts{align-items:center;gap:14px;font-size:12px;color:#cfcfcf;padding-top:2px}
+  .meshpanel .mc{display:inline-flex;align-items:center;gap:5px}
+  .meshpanel .mc input{accent-color:var(--green);margin:0}
+  .meshpanel .mcount{color:#9a9a9a}
+  .row[data-noexport="1"] .label{opacity:.45}
+  /* Spine's 权重 view: a column at the stage's left */
+  .float.meshpanel.weightside{left:10px;top:52px;bottom:auto;max-height:calc(100% - 62px - var(--xfh, 0px) - var(--dockh, 0px));width:236px;transform:none;gap:7px;padding:8px 10px 10px}
+  .weightside .mhd .wn{flex:0 1 auto;min-width:0;color:#9be4cd;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .weightside .wsl{flex:0 0 auto}
+  .weightside .wsl > span{width:30px}
+  .weightside .wsl .select{flex:1;height:26px}
+  .weightside .mrow{justify-content:flex-start}
+  .weightside .mrow .mt{flex:1;padding:0 6px}
+  .weightside .mopts{flex-wrap:wrap;gap:6px 12px}
+  .weightside .wcap{display:flex;align-items:center;font-size:11px;color:#bdbdbd;margin-top:2px}
+  .weightside .wcap .wv{margin-left:auto;color:#7d7d7d}
+  .weightside .wl{flex:0 1 auto;min-height:40px;overflow:auto;border:1px solid #2a2a2a;border-radius:6px;padding:4px;display:flex;flex-direction:column;gap:2px}
+  .weightside .wrow{display:flex;align-items:center;gap:7px;flex:0 0 24px;height:24px;padding:0 6px;cursor:pointer;font-size:12px;color:#d6d6d6;user-select:none;touch-action:none}
+  .weightside .wrow:hover{background:#2c2c2c}
+  .weightside .wrow[aria-pressed="true"]{color:#fff;box-shadow:inset 2px 0 0 #1EA672}
+  .weightside .wrow.dragging{opacity:.45}
+  .weightside .wrow.drop-a{box-shadow:inset 0 2px 0 #1EA672}
+  .weightside .wrow.drop-b{box-shadow:inset 0 -2px 0 #1EA672}
+  .weightside .wrow .pct{min-width:46px;text-align:right;font-size:11px;color:#e6e6e6;cursor:ew-resize;touch-action:none}
+  .weightside .wrow .pct.none{color:#5c5c5c}
+  .weightside .wrow input.pin{width:56px;height:20px;padding:0 4px;border:1px solid #3a3a3a;border-radius:4px;background:#1b1b1b;color:#fff;font-size:11px;outline:none}
+  .weightside .off{opacity:.4;pointer-events:none}
+  .tracepanel .wsl > span{width:58px}
+  .tracepanel .tcount{align-items:center}
+  .tracepanel .tcount .mt{flex:0 0 auto;padding:0 14px}
+  .tracepanel .tcount .wv{margin-left:auto;font-size:11px;color:#bdbdbd}
+  .meshpanel .mt.primary{background:#1EA672;color:#fff}
+  .meshpanel .mt.primary:hover{background:#22b97f}
+  .weightside .wrow i{width:12px;height:12px;flex:0 0 12px;border-radius:3px}
+  .weightside .wrow .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .weightside .wrow .c{color:#8a8a8a;font-size:11px}
+  .wsl{display:flex;align-items:center;gap:6px;flex:1;font-size:11px;color:#bdbdbd}
+  .wsl > span{flex:0 0 auto}
+  .wsl input[type=range]{flex:1;min-width:60px;accent-color:var(--green)}
+  .wsl b{width:30px;text-align:right;font-weight:500;color:#e6e6e6}
+  /* 自动蒙皮 / 自动权重: 默认密度 in the panel, the layers as cards over the bottom of the stage (production) */
+  .dens{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.72)}
+  .dens .dv{color:#22c98a;font-weight:600}
+  .dens-r{width:100%;margin:6px 0 0;accent-color:#22c98a}
+  .float.layerdock{left:10px;right:10px;bottom:10px;max-height:42%;flex-direction:column;align-items:stretch;padding:8px 10px 10px;gap:6px;z-index:4}
+  .ld-hd{display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,.5)}
+  .ld-hd .sp{flex:1}
+  .ld-hd .tg{height:24px}
+  .ld-hd .xx{width:22px;height:22px;border:0;border-radius:6px;background:transparent;color:rgba(238,244,252,.6);font-size:15px;line-height:1}
+  .ld-hd .xx:hover{background:#373737;color:#fff}
+  .ld-grid{overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
+  .ld-card{display:flex;align-items:center;gap:6px;height:42px;padding:0 8px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:rgba(255,255,255,.03);cursor:pointer;min-width:0}
+  .ld-card:hover{border-color:rgba(34,201,138,.65)}
+  .ld-card[data-on="1"]{border-color:#1EA672;background:rgba(30,166,114,.1)}
+  .ld-card input{accent-color:#22c98a;margin:0;flex:0 0 auto}
+  .ld-card canvas{width:32px;height:32px;flex:0 0 32px;border-radius:4px;background:repeating-conic-gradient(#262626 0 25%,#1d1d1d 0 50%) 0 0/8px 8px}
+  .ld-n{flex:1;min-width:0;font-size:11px;color:rgba(255,255,255,.82);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ld-c{flex:0 0 auto;font-size:11px;color:rgba(255,255,255,.4)}
+  .ld-btn{flex:0 0 auto;height:22px;padding:0 8px;border:0;border-radius:5px;background:#333;color:#d6d6d6;font-size:11px}
+  .ld-btn:hover{background:#3d3d3d;color:#fff}
+  .dialog.ask{width:min(340px,92vw)}
+  .dialog.ask .msg{padding:14px 16px 16px;font-size:13px;line-height:1.7;color:rgba(255,255,255,.86)}
+  .dialog.ask .ft{display:flex;justify-content:flex-end;gap:8px;padding:0 16px 14px}
+  .dialog.ask .ft .btn{min-width:64px}
+  .dialog .bd{overflow:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+  .tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px;border:1px solid #2a2a2a;border-radius:7px;background:#181818;cursor:pointer}
+  .tile:hover{border-color:var(--green)}
+  .tile canvas{width:88px;height:88px;background:repeating-conic-gradient(#262626 0 25%,#1d1d1d 0 50%) 0 0/12px 12px}
+  .tile span{max-width:96px;font-size:11px;color:rgba(255,255,255,.8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tile.folder .fold{width:88px;height:88px;display:flex;align-items:center;justify-content:center;color:#d9b45a;background:#1d1d1d;border-radius:4px}
+  .tile.folder .fold svg{width:40px;height:40px}
+  .dialog .crumbs{display:flex;align-items:center;gap:2px;padding:8px 14px 0;font-size:12px;color:var(--dim)}
+  .dialog .crumb{border:0;background:transparent;color:rgba(255,255,255,.8);font-size:12px;padding:3px 6px;border-radius:5px}
+  .dialog .crumb:hover{background:#373737;color:#fff}
+  .dialog .crumbs .sep{color:#555}
+  .dialog.export{width:min(440px,92vw)}
+  .dialog .fm{padding:14px 16px 16px;display:flex;flex-direction:column;gap:8px}
+  .dialog .fm .fl{color:rgba(255,255,255,.66);font-size:12px}
+  .dialog .fm input[type=text]{height:32px;padding:0 10px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:13px}
+  .dialog .fm .pk{display:flex;align-items:center;gap:8px}
+  .dialog .fm .pk .seg{flex:1}
+  .dialog .fm .big{height:40px;font-size:13px;margin-top:6px}
+  .dialog .fm .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+  .dialog .fm .nf{display:flex;flex-direction:column;gap:4px;font-size:12px;color:rgba(255,255,255,.66)}
+  .dialog .fm .nf input,.dialog .fm .nf select{height:30px;padding:0 8px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:12px}
+</style>
+</head>
+<body>
+<div class="lab">
+  <nav class="rail card">
+    <button class="ri" disabled><svg viewBox="0 0 16 16"><path d="M8 1.5l1.4 3.6L13 6.5 9.4 7.9 8 11.5 6.6 7.9 3 6.5l3.6-1.4z M12.5 10.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>特效</button>
+    <button class="ri" disabled><svg viewBox="0 0 16 16"><rect x="2" y="3.5" width="12" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M5 3.5v3M11 3.5v3" stroke="currentColor" stroke-width="1.2"/></svg>音视</button>
+    <button class="ri" data-on="1" disabled><svg viewBox="0 0 16 16"><path d="M5 3v10l8-5z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>动画</button>
+    <button class="ri" disabled><svg viewBox="0 0 16 16"><path d="M3 13l1-3.5 7-7 2.5 2.5-7 7z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>美工</button>
+    <button class="ri" disabled><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 6.5h11M6.5 6.5v7" stroke="currentColor" stroke-width="1.2"/></svg>工具</button>
+    <span class="sp"></span>
+    <button class="ri" disabled><svg viewBox="0 0 16 16"><path d="M2 4.5h4.5l1.5 1.5h6v7.5H2z" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>仓库</button>
+    <button class="ri" id="railExport" title="导出 JSON"><svg viewBox="0 0 16 16"><path d="M8 11V3M4.5 6.5 8 3l3.5 3.5M2.5 10v3.5h11V10" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>导出</button>
+  </nav>
+  <div class="left card" id="left"></div>
+
+  <div class="center">
+    <div class="stage card" id="stage">
+      <canvas id="gl"></canvas>
+      <canvas id="overlay"></canvas>
+      <div class="drop" id="dropHint">在左侧「导入工程」里导入 Spine 工程（JSON + ATLAS + PNG），或「导入PS工程」</div>
+      <div class="float modebar" id="modebar"></div>
+      <div class="float tr">
+        <span class="zoom" id="zoomText">100%</span>
+        <button class="tg" id="fit">自动适配</button>
+        <button class="tg" id="pvOpen" title="预览：单独播放动画（可多轨道混合）">预览</button>
+      </div>
+      <div class="float preview" id="preview" hidden>
+        <div class="pv-hd"><b>预览</b><button class="xx" id="pvClose" title="关闭">×</button></div>
+        <div class="pv-body">
+          <div class="pv-view"><canvas id="pvGl"></canvas><button class="tg pv-fit" id="pvFit" title="适配">适配</button></div>
+          <div class="pv-side">
+            <div class="pv-list" id="pvList"></div>
+            <div class="pv-ctl">
+              <label class="pv-row"><span>速度</span><input type="range" id="pvSpeed" min="0" max="300" step="5"><b id="pvSpeedV"></b></label>
+              <label class="pv-row"><span>混合</span><input type="range" id="pvMix" min="0" max="1" step="0.05"><b id="pvMixV"></b></label>
+              <div class="pv-row"><button class="tg" id="pvLoop" title="循环播放">循环</button><button class="tg" id="pvReset" title="停下，回到设置姿势">重置</button></div>
+              <div class="pv-row pv-tracks" id="pvTracks"><span>轨道</span><button data-t="0">0</button><button data-t="1">1</button><button data-t="2">2</button><button data-t="3">3</button><button data-t="4">4</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="float pickbar" id="pickbar" hidden>
+        <span id="pickText"></span>
+        <button class="btn small" id="pickExtra" hidden></button>
+        <button class="btn small" id="pickCancel">取消</button>
+      </div>
+      <div class="toast" id="toast"></div>
+      <div class="float xform" id="xform"></div>
+      <div class="float meshpanel" id="meshPanel" hidden></div>
+      <div class="float meshpanel" id="clipPanel" hidden></div>
+      <div class="float meshpanel weightside" id="weightPanel" hidden></div>
+      <div class="float meshpanel weightside tracepanel" id="tracePanel" hidden></div>
+      <div class="float layerdock" id="layerDock" hidden></div>
+      <div class="selname" id="selname" hidden></div>
+    </div>
+    <div class="timeline-wrap card">
+      <div class="timeline" style="height:50px;flex:0 0 50px">
+        <div class="dmodes" id="dopeModes" hidden>
+          <button id="dopeFilter" title="筛选：摄影表显示哪些行" hidden><svg viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.3 5v4l-2.4 1.2V8.5Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>筛选</button>
+          <span class="dsep"></span>
+          <button class="ic" id="kCopy" title="复制选中的关键帧（Ctrl+C，Ctrl+V 粘贴到当前帧）" disabled><svg viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 3.5v-.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.5" fill="none" stroke="currentColor" stroke-width="1.3"/></svg></button>
+          <button class="ic" id="kCut" title="剪切选中的关键帧（Ctrl+X，Ctrl+V 粘贴到当前帧）" disabled><svg viewBox="0 0 16 16"><circle cx="4.5" cy="11.5" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="11.5" r="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 10 12 2.5M10 10 4 2.5" stroke="currentColor" stroke-width="1.3"/></svg></button>
+          <button class="ic" id="kDel" title="删除选中的关键帧（Delete）" disabled><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="currentColor" stroke-width="1.3"/></svg></button>
+          <span class="dsep"></span>
+          <button data-m="shift" title="移位：移动关键帧时，它后面的关键帧一起移动（也可以按住 Alt 拖）"><svg viewBox="0 0 16 16"><path d="M2 8h9M8 5l3 3-3 3M13.5 3v10" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>移位</button>
+          <button data-m="offset" title="偏移：循环动画用，拖出头尾的关键帧绕回另一头，首尾自动补关键帧（也可以按住 Ctrl+Alt 拖）"><svg viewBox="0 0 16 16"><path d="M2.5 3v10M13.5 3v10M5 8h6M8.5 5.5 11 8l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>偏移</button>
+          <button data-m="adjust" title="调整：在画面里旋转 / 移动 / 缩放骨骼时，选中的关键帧都加上同样的改动"><svg viewBox="0 0 16 16"><path d="M3 13l1-3.5 7-7 2.5 2.5-7 7z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>调整</button>
+        </div>
+        <span class="t" id="timeText" style="margin-left:auto"></span>
+      </div>
+      <div class="tl-body" id="tlBody" hidden>
+          <div class="transport dock">
+          <button class="tp" id="tStart" title="起始帧（连按两下 A）"></button>
+          <button class="tp" id="tBack" title="后退 1 帧（A）"></button>
+          <button class="tp" id="play" title="播放（空格）"></button>
+          <button class="tp" id="tFwd" title="快进 1 帧（D）"></button>
+          <button class="tp" id="tEnd" title="最后帧（连按两下 D）"></button>
+          <button class="tp" id="tLoop" title="循环"></button>
+        </div>
+        <canvas id="dope"></canvas>
+        <div class="curve-panel" id="curvePanel" hidden>
+          <div class="cp-presets" id="cpPresets"></div>
+          <canvas id="curve"></canvas>
+          <div class="cp-hd" id="cpTitle"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right card">
+    <div class="right-hd">工程
+      <input class="search" id="search" placeholder="搜索（Enter 下一个）">
+      <button class="tbtn" id="treeOpen" title="展开（选中的或全部）">展开</button>
+      <button class="tbtn" id="treeClose" title="收起（选中的或全部）">收起</button>
+      <button class="tbtn" id="treeFilter" title="筛选节点类型">筛选</button>
+    </div>
+    <div class="tree" id="tree"></div>
+    <div class="split" id="split" title="拖动调整高度"></div>
+    <div class="props-wrap">
+      <div class="props-hd" id="propsTitle">属性</div>
+      <div class="props" id="props"></div>
+    </div>
+  </div>
+</div>
+<input type="file" id="fileDir" webkitdirectory multiple hidden>
+<input type="file" id="fileMany" multiple accept=".json,.atlas,.txt,.png,.jpg,.jpeg,.webp" hidden>
+<input type="file" id="fileImage" multiple accept=".png,.jpg,.jpeg,.webp" hidden>
+<input type="file" id="pickJson" accept=".json" hidden>
+<input type="file" id="pickAtlas" accept=".atlas,.txt" hidden>
+<input type="file" id="pickPng" multiple accept=".png,.jpg,.jpeg,.webp" hidden>
+
+<script>
+// Load the editor's scripts in order. Inside the app the URLs come from the app page, where the
+// build stamps every local file with a content hash (?v=...): a changed file always loads fresh.
+(function () {
+  var need = ['vendor/spine/spine-webgl-3.8.js', 'spine-auto-mesh-attach.js', 'spine-bones.editor.js', 'spine-auto-mesh-core.js',
+    'spine-auto-mesh.js', 'spine-auto-weights.js', 'spine-mesh-edit.js', 'spine-sequence-atlas.js', 'spine-structure.ops.js', 'spine-skeleton-editor.js']
+  var host = null
+  try { host = window.parent && window.parent !== window ? window.parent.document : null } catch (e) { host = null }
+  function bare(u) { return String(u || '').split('#')[0].split('?')[0].replace(/^\.\//, '') }
+  function url(name) {
+    if (host) {
+      var nodes = host.querySelectorAll('script[src]')
+      for (var i = 0; i < nodes.length; i++) {
+        var u = nodes[i].getAttribute('src')
+        if (bare(u) === name) return u
+      }
+    }
+    return './' + name
+  }
+  var i = 0
+  ;(function next() {
+    if (i >= need.length) return
+    var s = document.createElement('script')
+    s.src = url(need[i++])
+    s.onload = next
+    s.onerror = function () { console.error('[skeleton editor] failed to load', s.src); next() }
+    document.head.appendChild(s)
+  })()
+})()
+</script>
+</body>
+</html>
