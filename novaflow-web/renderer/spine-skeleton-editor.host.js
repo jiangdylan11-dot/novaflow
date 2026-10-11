@@ -109,8 +109,13 @@
    * the parent of the section's own right column (the bundle renders it with data-preview-ui).
    */
   function findWorkspace() {
+    // the one found last time, while it is still on the page (no scan at all on the usual tick)
+    if (workspace && workspace.isConnected) return workspace
     const marked = document.querySelector(WORKSPACE)
     if (marked) return marked
+    // any other section: nothing to find (the text scan below read whole sections' text on
+    // every tick and mutation - every section switch crawled)
+    if (!document.body.classList.contains('novaflow-primary-target-animation')) return null
     for (const side of document.querySelectorAll('[data-preview-ui="1"]')) {
       const text = side.textContent || ''
       if (text.includes('骨骼') && text.includes('动画') && side.parentElement && side.parentElement.querySelector('canvas')) return side.parentElement
@@ -669,6 +674,8 @@
   setInterval(() => { tick(); try { packRow(); presync() } catch { /* the dialog is changing */ } }, 150)
   // the section mounting or leaving: cover / uncover in the same task, before the page paints
   const root = document.getElementById('root') || document.body
-  new MutationObserver(() => { try { tick() } catch { /* mid-change */ } }).observe(root, { childList: true, subtree: true })
+  // DOM changes queue one tick per frame (a tick per mutation batch ran many times a frame)
+  let tickQueued = false
+  new MutationObserver(() => { if (tickQueued) return; tickQueued = true; requestAnimationFrame(() => { tickQueued = false; try { tick() } catch { /* mid-change */ } }) }).observe(root, { childList: true, subtree: true })
   tick()
 })()

@@ -77921,6 +77921,11 @@
     if (document.hidden) return;
     try {
       document.querySelectorAll(RANGE_FILL_SELECTOR).forEach((range) => {
+        // sliders not yet watched join the per-element observer (style / max / min writes)
+        if (!range.__nfFillObserved && window.__NovaFlowRangeFillObserver) {
+          range.__nfFillObserved = true;
+          try { window.__NovaFlowRangeFillObserver.observe(range, { attributes: true, attributeFilter: ["style", "max", "min"] }); } catch {}
+        }
         syncRangeFillVisual(range);
       });
     } catch {}
@@ -77942,14 +77947,16 @@
 
     // the bundle's own render writes `--nf-range-pct: <value>%` into the slider's style on
     // every commit, as if max were 100 (摆动幅度 is 0-200: the fill ran past the thumb while
-    // dragging until the next 800 ms pass); the attribute mutation is resynced before paint
+    // dragging until the next 800 ms pass); the attribute mutation is resynced before paint.
+    // Each slider is observed on its own: a document-wide attribute observer made every
+    // section switch crawl (the runtime writes hundreds of inline styles per pass).
     try {
-      new MutationObserver((mutations) => {
+      window.__NovaFlowRangeFillObserver = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           const target = mutation.target;
-          if (target instanceof HTMLInputElement && target.type === "range" && target.matches(RANGE_FILL_SELECTOR)) syncRangeFillVisual(target);
+          if (target instanceof HTMLInputElement && target.type === "range") syncRangeFillVisual(target);
         }
-      }).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "max", "min"], subtree: true });
+      });
     } catch {}
 
     syncAllRangeFills();
