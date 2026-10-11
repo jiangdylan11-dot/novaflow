@@ -4152,6 +4152,9 @@
 
     rows.push(h('div', { class: 'row node', style: pad(0) }, caret(true), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, state.name)))
 
+    // the attachment each slot shows right now (the dot on its row)
+    const posed = new Map()
+    if (rt.skeleton) for (const s of rt.skeleton.slots) posed.set(s.data.name, s.getAttachment() ? s.getAttachment().name : null)
     // which attachment kinds the filter shows (Spine's viewport filter)
     const attKind = (t) => (t === 'mesh' || t === 'linkedmesh' ? 'mesh' : t === 'boundingbox' ? 'bbox' : t === 'clipping' ? 'clipping' : t === 'path' ? 'path' : t === 'point' ? 'point' : 'region')
     const shownContents = (name) => { const c = slotContents(name); return { atts: c.atts.filter((a) => F[attKind(a.type)] !== false), phs: F.placeholder ? c.phs : [] } }
@@ -4231,8 +4234,6 @@
         if (!slotsBy.has(s.bone)) slotsBy.set(s.bone, [])
         slotsBy.get(s.bone).push(s)
       }
-      const posed = new Map()
-      if (rt.skeleton) for (const s of rt.skeleton.slots) posed.set(s.data.name, s.getAttachment() ? s.getAttachment().name : null)
       const toggleBranch = (name, on) => { for (const n of Ops.branch(j, name)) on ? state.hiddenBones.delete(n) : state.hiddenBones.add(n); refresh() }
       const walk = (b, depth) => {
         if (m && !m.bones.has(b.name)) return
