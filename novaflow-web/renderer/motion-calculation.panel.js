@@ -106,7 +106,8 @@
     // the 骨骼动画 editor's one-row timeline: the 完整动画 / 骨骼片段 switch sits at its right end
     else if(editorBar){
       if(playbackMode.parentNode!==document.body)document.body.append(playbackMode);
-      const place=[Math.round(r.right-playbackMode.offsetWidth-10),Math.round(r.top+(r.height-28)/2)].join(',');
+      // right after the row's play button (28 px at left 6)
+      const place=[Math.round(r.left+6+28+8),Math.round(r.top+(r.height-28)/2)].join(',');
       if(playbackMode.dataset.place!==place){playbackMode.dataset.place=place;const [l,t]=place.split(',');playbackMode.style.position='fixed';playbackMode.style.zIndex='40';playbackMode.style.left=l+'px';playbackMode.style.top=t+'px';}
     }
     // no app playbar on screen: the 完整动画 / 骨骼片段 switch rides in the editor's header

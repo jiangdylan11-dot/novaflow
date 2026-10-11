@@ -1430,6 +1430,9 @@
     const dpr = window.devicePixelRatio || 1
     const w = Math.max(1, stage.clientWidth)
     const hh = Math.max(1, stage.clientHeight)
+    // the stage's bottom edge moves (动画工具's box, the one-row timeline): the picture stays put
+    // under its top edge instead of re-centring - a jump at every step of the layout otherwise
+    if (rt.h && hh !== rt.h && rt.cam && !rt.fitLater) rt.cam.y -= (hh - rt.h) * rt.cam.zoom / 2
     rt.w = w; rt.h = hh; rt.dpr = dpr
     if (rt.fitLater && w >= 20 && hh >= 20) { rt.fitLater = false; setTimeout(fit, 0) }
     for (const c of [$('#gl'), $('#overlay')]) {
