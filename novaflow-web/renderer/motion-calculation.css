@@ -61,7 +61,9 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 #editor.ribbon-layout #ribbonPresets{display:flex}
 #editor.ribbon-layout .timing-row{display:none}
 #editor.ribbon-layout .editor-workspace{display:none}
-#editor.ribbon-layout #ribbonDock{display:block;min-height:0}
+/* the dock fills the content row (the first grid row is auto: with no timing row above it the dock would sit there, 0 tall) */
+#editor.ribbon-layout #ribbonDock{display:block;min-height:0;grid-row:2}
+#editor.ribbon-layout .editor-footer{grid-row:3}
 #editor.ribbon-layout #resetAll,#editor.ribbon-layout #save{display:none}
 #editor.ribbon-layout #ribbonRestore,#editor.ribbon-layout #ribbonWrite{display:inline-flex;align-items:center;justify-content:center}
 #editor.ribbon-mode{background:transparent;pointer-events:none}
