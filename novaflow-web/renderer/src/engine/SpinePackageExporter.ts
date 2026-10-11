@@ -10,6 +10,106 @@ type ExportedImage = {
   height: number
 }
 
+/**
+ * 图集打包: the particle package goes out the way 骨骼动画's does - every picture the
+ * attachments use packed into atlas pages by the shared packer (renderer/spine-sequence-atlas.js,
+ * the saved 图集打包设置: size, padding, alpha threshold, scale, trim, PMA), the skeleton as JSON or
+ * as Spine binary (.skel, renderer/spine-binary-write.js). The export dialog's row
+ * (renderer/particle-spine-export.ui.js) publishes the choice on
+ * `globalThis.__NovaFlowParticleSpineExport`; without the packer (node, old pages) the package is
+ * the plain one: one page per picture.
+ */
+type ParticleSpineExportControl = {
+  skel?: boolean
+  pack?: boolean
+  settings?: Record<string, unknown>
+  decodeRgba?: (dataUrl: string) => Promise<{ rgba: Uint8Array | Uint8ClampedArray; width: number; height: number }>
+}
+
+function exportControl(): ParticleSpineExportControl {
+  const control = (globalThis as any).__NovaFlowParticleSpineExport
+  return control && typeof control === 'object' ? control : {}
+}
+
+async function decodeRgba(dataUrl: string) {
+  const hook = exportControl().decodeRgba
+  if (typeof hook === 'function') return hook(dataUrl)
+  if (typeof (globalThis as any).document === 'undefined' || typeof (globalThis as any).Image !== 'function') throw new Error('当前环境无法读取贴图像素')
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('贴图读取失败'))
+    image.src = dataUrl
+  })
+  const width = Math.max(1, img.naturalWidth || img.width || 1)
+  const height = Math.max(1, img.naturalHeight || img.height || 1)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('无法读取贴图画布')
+  ctx.drawImage(img, 0, 0)
+  const rgba = ctx.getImageData(0, 0, width, height).data
+  canvas.width = canvas.height = 1
+  return { rgba, width, height }
+}
+
+function bytesToDataUrl(bytes: Uint8Array, mime: string) {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 0x8000)))
+  return `data:${mime};base64,${btoa(binary)}`
+}
+
+function packSettings(packer: any) {
+  const control = exportControl()
+  let raw: any = control.settings
+  if (!raw) {
+    const ui = (globalThis as any).NovaFlowSequenceAtlasUI
+    if (ui && typeof ui.readSettings === 'function') raw = ui.readSettings()
+    else {
+      try { raw = JSON.parse((globalThis as any).localStorage?.getItem('novaflow.sequenceAtlas.settings.v1') || '{}') } catch { raw = {} }
+    }
+  }
+  // every picture keeps its own region: 合并重复帧 is for frame sequences
+  return { ...packer.normalizeSettings(raw || {}), dedupe: false }
+}
+
+type PackedPackage = { json: string; atlas: string; images: ExportedImage[]; skel?: Uint8Array }
+
+async function packWithSharedAtlas(images: ExportedImage[], json: string, version: string, baseName: string): Promise<PackedPackage | null> {
+  const packer = (globalThis as any).NovaFlowSequenceAtlas
+  if (!packer || typeof packer.createWriter !== 'function') return null
+  const control = exportControl()
+  if (control.pack === false) return null
+  const skel = control.skel === true
+  const files = new Map<string, any>()
+  const short = String(version || '3.8').slice(0, 3)
+  const writer = packer.createWriter({
+    baseName, packed: true, skel, settings: packSettings(packer), version: short,
+    write: async (relativeName: string, data: any) => { files.set(relativeName, data) }
+  })
+  for (const image of images) {
+    const { rgba, width, height } = await decodeRgba(image.dataUrl)
+    await writer.addRgba(rgba instanceof Uint8Array ? rgba : new Uint8Array(rgba.buffer, rgba.byteOffset, rgba.byteLength), width, height, image.regionName)
+  }
+  const result = await writer.finish(json)
+  const safe = String(result?.baseName || baseName)
+  const atlas = files.get(`${safe}.atlas`)
+  if (typeof atlas !== 'string') throw new Error('图集没有写出')
+  const pages: ExportedImage[] = []
+  for (const [fileName, data] of files) {
+    if (!fileName.endsWith('.png')) continue
+    pages.push({ fileName, regionName: fileName.replace(/\.png$/, ''), dataUrl: bytesToDataUrl(data, 'image/png'), width: 0, height: 0 })
+  }
+  const packed: PackedPackage = { json: skel ? json : String(files.get(`${safe}.json`) ?? json), atlas, images: pages }
+  if (skel) {
+    const bytes = files.get(`${safe}.skel`)
+    if (!(bytes instanceof Uint8Array)) throw new Error('二进制骨架没有写出')
+    packed.skel = bytes
+  }
+  return packed
+}
+
 function isSvgDataUrl(dataUrl: string) {
   const s = String(dataUrl || '')
   return s.startsWith('data:image/svg+xml')
@@ -270,6 +370,9 @@ export async function exportSpinePackage(
     skeleton.skins = Object.entries(skeleton.skins || {}).map(([name, attachments]) => ({ name, attachments }))
   }
   const json = JSON.stringify(skeleton)
+  const baseName = sanitizeFileName(opts?.exportName || '').replace(/[. ]+$/g, '') || 'particle'
+  const packed = await packWithSharedAtlas(images, json, version, baseName)
+  if (packed) return packed
   const atlas = makeAtlas(images)
   return { json, atlas, images }
 }
