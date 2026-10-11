@@ -64,7 +64,7 @@
     tool: 'rotate',
     lastTool: 'move',
     autoKey: true, // 自动关键帧 is always on
-    opt: { boneSel: true, boneVis: true, boneName: false, imgSel: false, imgVis: true, imgName: false, otherSel: true, otherVis: true, otherName: false },
+    opt: { boneSel: true, boneVis: true, boneName: false, imgSel: true, imgVis: true, imgName: false, otherSel: true, otherVis: true, otherName: false },
     importFiles: { json: null, atlas: null, images: [] },
     vsel: { slot: null, indices: new Set() }, // picked mesh vertices (animate mode)
     jointEdit: false, // 改关节: drag a bone's start / end, the bones on that joint follow (also Shift)
@@ -5914,7 +5914,12 @@
     return [...byF.entries()].map(([frame, keys]) => ({ frame, keys }))
   }
 
-  const isKeySel = (k) => state.dope.keySel.some((x) => pathId(x.path) === pathId(k.path) && Math.abs(x.time - k.time) < 1e-4)
+  // a set of the picked keys, rebuilt when the pick changes (a scan per key per frame made a
+  // drag with thousands of keys crawl)
+  const keySelMemo = { list: null, size: -1, set: null }
+  const keyId = (k) => pathId(k.path) + '@' + Math.round(k.time * 10000)
+  function keySelSet() { const l = state.dope.keySel; if (keySelMemo.list !== l || keySelMemo.size !== l.length) { keySelMemo.list = l; keySelMemo.size = l.length; keySelMemo.set = new Set(l.map(keyId)) } return keySelMemo.set }
+  const isKeySel = (k) => keySelSet().has(keyId(k))
 
   /** The keys of a track as written in the animation (events: that event's keys). */
   function keyList(path) {
@@ -6060,6 +6065,19 @@
     // name column edge
     ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(DOPE.nameW + 0.5, 0); ctx.lineTo(DOPE.nameW + 0.5, Hh); ctx.stroke()
     if (!d.rows.length && !state.compactTimeline) { ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧：选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 18) }
+    // a key drag: where the picked keys were (dashed) and where they are now (solid) - Spine's
+    // guide lines, so an 偏移 / 移位 drag shows where it lands
+    if (mv && d.keySel.length) {
+      let f1 = Infinity, f2 = -Infinity
+      for (const k of d.keySel) { const f = Math.round(k.time * FPS); if (f < f1) f1 = f; if (f > f2) f2 = f }
+      const wrap = (f) => (mvOffset && loopF > 0 ? ((f % loopF) + loopF) % loopF : f)
+      ctx.save(); ctx.beginPath(); ctx.rect(DOPE.nameW, DOPE.rulerH, W - DOPE.nameW, Hh - DOPE.rulerH); ctx.clip(); ctx.lineWidth = 1
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(255,255,255,.35)'
+      for (const f of [f1, f2]) { const x = Math.round(dopeX(f)) + 0.5; ctx.beginPath(); ctx.moveTo(x, DOPE.rulerH); ctx.lineTo(x, Hh); ctx.stroke() }
+      ctx.setLineDash([]); ctx.strokeStyle = '#e5534b'
+      for (const f of [wrap(f1 + mv.df), wrap(f2 + mv.df)]) { const x = Math.round(dopeX(f)) + 0.5; ctx.beginPath(); ctx.moveTo(x, DOPE.rulerH); ctx.lineTo(x, Hh); ctx.stroke() }
+      ctx.restore()
+    }
     // the selection's span (two or more picked keys over a span): Spine's shaded range with a
     // handle at each end - drag one to stretch or squeeze the picked keys in time
     const span = state.compactTimeline ? null : selectionSpan()

@@ -330,7 +330,7 @@
   // mounted = its rows are there, the 自动链条 row included (React adds it a moment after the
   // others; the box measured without it grew when it came - a flash); a 600 ms grace in case a
   // build has no such row
-  const ribbonMounted=ribbon=>!!(ribbon.querySelector('[data-novaflow-ribbon-preset-controls]')&&ribbon.querySelector('[data-novaflow-ribbon-advanced-card]')&&ribbon.querySelector('[data-novaflow-ribbon-event-section]')&&(ribbon.querySelector('[data-novaflow-ribbon-chain-toggle-card]')||(ribbonPrepareAt&&performance.now()-ribbonPrepareAt>600)));
+  const ribbonMounted=ribbon=>!!(ribbon.querySelector('[data-novaflow-ribbon-preset-controls]')&&ribbon.querySelector('[data-novaflow-ribbon-advanced-card]')&&ribbon.querySelector('[data-novaflow-ribbon-event-section]')&&(ribbon.querySelector('[data-novaflow-ribbon-chain-toggle-card] input')||(ribbonPrepareAt&&performance.now()-ribbonPrepareAt>600)));
   function prepareRibbon(){
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');if(!ribbon)return false;
     ribbonPreparing=true;if(!ribbonPrepareAt)ribbonPrepareAt=performance.now();
