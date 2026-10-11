@@ -632,7 +632,9 @@
     if (t instanceof Element && t.closest(TYPING)) return
     if (t === frame) return
     const handled = api.key(e.type, { key: e.key, code: e.code, keyCode: e.keyCode, which: e.which, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat })
-    if (handled) { e.preventDefault(); e.stopImmediatePropagation() }
+    // Ctrl+A is the editor's (the branch pick); the page's select-all never runs here
+    const selectAll = (e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'a'
+    if (handled || selectAll) { e.preventDefault(); e.stopImmediatePropagation() }
   }
 
   // ---------------------------------------------------------------- lifecycle

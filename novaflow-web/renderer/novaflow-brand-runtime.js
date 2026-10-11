@@ -46944,8 +46944,9 @@
     return Math.max(min, Math.min(max, numeric));
   }
 
+  // 4 decimals: a frame at 30 fps is 0.0333 / 0.0667 (3 decimals put the keys a hair off the frame)
   function roundRibbonElasticTime(time) {
-    return Number(Math.max(0, Number(time) || 0).toFixed(3));
+    return Number(Math.max(0, Number(time) || 0).toFixed(4));
   }
 
   function roundRibbonElasticAngle(angle) {
@@ -49154,11 +49155,23 @@
 
   function serializeRibbonRotateFramesForTimeline(frames, referenceFrames = null, project = null, explicitOutputKey = "") {
     const key = resolveRibbonRotateFrameOutputKey(referenceFrames, project, explicitOutputKey);
-    return normalizeRibbonRotateFrames(frames).map((frame) => (
-      key === "value"
-        ? { time: frame.time, value: frame.angle }
-        : { time: frame.time, angle: frame.angle }
-    ));
+    // the eases the sparse fit put on the keys (3.8 curve/c2/c3/c4) go into the project with
+    // them: without them the keys played as straight lines (the ribbon looked stiff)
+    const curveOf = (frame) => (frame && typeof frame.curve === "number"
+      ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 }
+      : frame && frame.curve === "stepped" ? { curve: "stepped" } : {});
+    return (Array.isArray(frames) ? frames : [])
+      .map((frame) => ({
+        time: roundRibbonElasticTime(frame?.time),
+        angle: roundRibbonElasticAngle(getRibbonRotateFrameAngle(frame, 0)),
+        ...curveOf(frame)
+      }))
+      .filter((frame) => Number.isFinite(frame.time) && Number.isFinite(frame.angle))
+      .sort((a, b) => a.time - b.time)
+      .map((frame) => {
+        const { angle, ...rest } = frame;
+        return key === "value" ? { ...rest, value: angle } : { ...rest, angle };
+      });
   }
 
   function cloneRibbonRotateFramesPreserveShape(frames) {

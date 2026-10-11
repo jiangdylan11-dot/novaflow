@@ -786,16 +786,14 @@
       if (set.has(sel.name)) set.delete(sel.name)
       else set.add(sel.name)
       state.multi = [...set]
-      state.multiSlots = []
-      state.sel = state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : null
+      state.sel = state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : (state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : null)
     } else if (additive && sel && sel.kind === 'slot') {
       // Spine: Ctrl+click adds layers too; they are edited together
       const set = new Set(state.multiSlots.length ? state.multiSlots : (state.sel && state.sel.kind === 'slot' ? [state.sel.name] : []))
       if (set.has(sel.name)) set.delete(sel.name)
       else set.add(sel.name)
       state.multiSlots = [...set]
-      state.multi = []
-      state.sel = state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : null
+      state.sel = state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : (state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : null)
     } else {
       state.sel = sel
       state.multi = sel && sel.kind === 'bone' ? [sel.name] : []
@@ -1654,6 +1652,19 @@
   // 平滑 / 修剪 clean the whole mesh, 隔离 shows only this picture. One undo step per stroke.
 
   let weCache = null
+  // 动画 mode shows the posed mesh: a setup-space model point is skinned by the current pose
+  // (setup inverse of each bone, then its posed matrix) so the brush lands on what is seen
+  let weSetupInv = null
+  function weScreen(ctx, p) {
+    if (state.mode === 'setup' || !rt.skeleton || !rt.data) return toScreen(p.x, p.y)
+    if (!weSetupInv) { const sk = new spine.Skeleton(rt.data); sk.setToSetupPose(); sk.updateWorldTransform(); weSetupInv = sk.bones.map((b) => { const det = b.a * b.d - b.b * b.c || 1e-9; return { a: b.d / det, b: -b.b / det, c: -b.c / det, d: b.a / det, x: b.worldX, y: b.worldY } }) }
+    const bones = rt.skeleton.bones
+    const index = (v) => (typeof v === 'number' ? v : (rt.skeleton.findBone(v) || { data: { index: -1 } }).data.index)
+    const w = p.w && p.w.length ? p.w : [[index(ctx && ctx.slotBone), 1]]
+    let x = 0, y = 0, sum = 0
+    for (const [bi, wt] of w) { const m = weSetupInv[bi], b = bones[bi]; if (!m || !b) continue; const lx = m.a * (p.x - m.x) + m.b * (p.y - m.y), ly = m.c * (p.x - m.x) + m.d * (p.y - m.y); x += (b.a * lx + b.b * ly + b.worldX) * wt; y += (b.c * lx + b.d * ly + b.worldY) * wt; sum += wt }
+    return sum > 1e-6 ? toScreen(x / sum, y / sum) : toScreen(p.x, p.y)
+  }
   function weightContext() {
     const we = state.weightEdit
     if (!we || !rt.data || !state.json) return null
@@ -1684,7 +1695,7 @@
   }
 
   function enterWeightEdit(L) {
-    if (state.mode !== 'setup') { status('编辑权重在「设置」模式下用'); return }
+    weSetupInv = null
     const a = attJson(L)
     if (!a) return
     if ((a.type || 'region') === 'region') {
@@ -1720,7 +1731,7 @@
   /** The vertex under the pointer (within its pie), or -1. */
   function weightVertexAt(ctx, sx, sy) {
     let best = -1, bd = 9
-    ctx.model.points.forEach((p, i) => { const q = toScreen(p.x, p.y); const d = Math.hypot(q[0] - sx, q[1] - sy); if (d < bd) { bd = d; best = i } })
+    ctx.model.points.forEach((p, i) => { const q = weScreen(ctx, p); const d = Math.hypot(q[0] - sx, q[1] - sy); if (d < bd) { bd = d; best = i } })
     return best
   }
 
@@ -1732,7 +1743,7 @@
     const x0 = Math.min(b.x0, b.x1), x1 = Math.max(b.x0, b.x1), y0 = Math.min(b.y0, b.y1), y1 = Math.max(b.y0, b.y1)
     if (x1 - x0 < 3 && y1 - y0 < 3) { if (!b.add) we.vsel = new Set(); renderWeightPanel(); return }
     const hits = []
-    ctx.model.points.forEach((p, i) => { const q = toScreen(p.x, p.y); if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1) hits.push(i) })
+    ctx.model.points.forEach((p, i) => { const q = weScreen(ctx, p); if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1) hits.push(i) })
     we.vsel = new Set(b.add ? [...we.vsel, ...hits] : hits)
     renderWeightPanel()
   }
@@ -1896,9 +1907,9 @@
   /** Vertices under the brush with their falloff: full inside, fading over the 羽化 part of the edge. */
   function weightHits(model, sx, sy, size, feather) {
     const out = []
-    const inner = size * (1 - feather / 100)
+    const inner = size * (1 - feather / 100), wctx = weightContext()
     model.points.forEach((p, i) => {
-      const q = toScreen(p.x, p.y)
+      const q = weScreen(wctx, p)
       const d = Math.hypot(q[0] - sx, q[1] - sy)
       if (d <= size) out.push([i, d <= inner ? 1 : 1 - (d - inner) / Math.max(1e-6, size - inner)])
     })
@@ -1962,7 +1973,7 @@
     const rank = new Map(order.map((b, i) => [b, i]))
     const rk = (b) => (rank.has(b) ? rank.get(b) : 1e6 + b)
     const wOf = (p) => { const e = p.w.find(([b]) => b === we.bone); return e ? e[1] : 0 }
-    const pts = model.points.map((p) => toScreen(p.x, p.y))
+    const pts = model.points.map((p) => weScreen(ctx, p))
     const T = model.tris
     const sel = we.bone != null ? boneColor(we.bone) : '#1EA672'
     // Spine: the bones bound to this mesh solid in their colours, every other bone faint
@@ -2308,7 +2319,7 @@
 
   function meshVertexAt(ctx, sx, sy) {
     let best = -1, bd = 8
-    ctx.model.points.forEach((p, i) => { const q = toScreen(p.x, p.y); const d = Math.hypot(q[0] - sx, q[1] - sy); if (d < bd) { bd = d; best = i } })
+    ctx.model.points.forEach((p, i) => { const q = weScreen(ctx, p); const d = Math.hypot(q[0] - sx, q[1] - sy); if (d < bd) { bd = d; best = i } })
     return best
   }
 
@@ -2857,7 +2868,7 @@
         loop.acc -= step
         const frames = Math.max(1, Math.round(dur * FPS))
         if (!state.loop && state.frame + step >= frames) { state.frame = frames; state.playing = false; loop.acc = 0 }
-        else state.frame = (state.frame + step) % (frames + 1)
+        else state.frame = (state.frame + step) % frames
         // 动画工具's 骨骼片段: the app clamps playback to the picked bone's span
         const span = hostPlaybackTime(state.frame / FPS, dur)
         if (span != null) state.frame = Math.round(span * FPS)
@@ -3501,7 +3512,7 @@
           if (!me || !ctx) return
           if (x1 - x0 < 3 && y1 - y0 < 3) { if (!b.add) me.sel = new Set(); renderMeshPanel(); return }
           const inside = []
-          ctx.model.points.forEach((p, i) => { const q = toScreen(p.x, p.y); if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1) inside.push(i) })
+          ctx.model.points.forEach((p, i) => { const q = weScreen(ctx, p); if (q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1) inside.push(i) })
           me.sel = new Set(b.add ? [...me.sel, ...inside] : inside)
           status(`已选 ${me.sel.size} 个顶点`)
           return
@@ -3971,7 +3982,7 @@
       return { mode: 'in', run: (e) => transferAtt(payload, !(e && (e.ctrlKey || e.altKey)), target.name) }
     }
     if (payload.type === 'order' && target.type === 'order' && target.name !== payload.name) {
-      const block = state.multiSlots.length > 1 && state.multiSlots.includes(payload.name) ? state.multiSlots : [payload.name]
+      const block = state.multiSlots.includes(payload.name) ? state.multiSlots : [payload.name]
       if (block.includes(target.name)) return null
       return { mode: 'line', run: (e, below) => {
         const cur = drawOrderNow()
@@ -4211,7 +4222,7 @@
           const sVisible = !state.hiddenSlots.has(s.name)
           const srow = h('div', {
             class: 'row', 'data-selected': isSel('slot', s.name) ? '1' : null, 'data-key': 'slot:' + s.name,
-            'data-multi': state.multiSlots.length > 1 && state.multiSlots.includes(s.name) && !isSel('slot', s.name) ? '1' : null,
+            'data-multi': state.multiSlots.includes(s.name) && !isSel('slot', s.name) ? '1' : null,
             'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-hidden': sVisible ? null : '1',
             'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth + 1),
             onclick: (e) => {
@@ -4270,7 +4281,7 @@
       if (F.cons && node('cons', '约束', 'cons', allCons.length, 1)) {
         allCons.forEach(({ kind, c }) => {
           const row = h('div', {
-            class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, style: pad(2),
+            class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name) ? '1' : null, style: pad(2),
             onclick: () => select({ kind, name: c.name }),
             ondblclick: () => focusRename(),
           }, caret(null), h('span', { class: 'ico', html: ICON[kind] }), h('span', { class: 'label' }, c.name),
@@ -4291,7 +4302,7 @@
           const cl = clipped.get(name)
           const row = h('div', {
             class: 'row', 'data-selected': isSel('slot', name) ? '1' : null, 'data-key': 'order:' + name,
-            'data-multi': state.multiSlots.length > 1 && state.multiSlots.includes(name) && !isSel('slot', name) ? '1' : null,
+            'data-multi': state.multiSlots.includes(name) && !isSel('slot', name) ? '1' : null,
             'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-clip': cl ? '1' : null,
             title: cl ? `在剪裁「${cl.name}」里` : null, style: pad(2) + (cl ? `;--clip:${cl.tint}` : ''),
             onclick: (e) => {
@@ -4325,7 +4336,7 @@
       if (F.events && node('events', '事件', 'event', evNames.length, 1, newEvent)) {
         for (const n of evNames) {
           rows.push(h('div', {
-            class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-key': 'event:' + n,
+            class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
             onclick: () => select({ kind: 'event', name: n }),
             ondblclick: () => focusRename(),
           }, animOn() ? h('span', { class: 'lkey' }, keyBtn([['events', n]], () => keyEventNow(n), `在第 ${state.frame} 帧放事件 ${n}`)) : null,
@@ -4839,7 +4850,7 @@
   function renderLayerDock() {
     const dock = $('#layerDock')
     const kind = state.leftOpen === 'mesh' || state.leftOpen === 'weights' ? state.leftOpen : null
-    const show = !!(kind && state.json && state.mode === 'setup' && !state.meshEdit && !state.weightEdit)
+    const show = !!(kind && state.json && (state.mode === 'setup' || kind === 'weights') && !state.meshEdit && !state.weightEdit)
     dock.hidden = !show
     if (!show) return
     const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
@@ -5091,7 +5102,7 @@
     // the picture's name only when it differs from the attachment's (the title shows that one)
     if (img && att.path && att.path !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, att.path))))
     out.push(h('div', { class: 'btns g2' },
-      img && state.mode === 'setup' ? btn('编辑权重', () => enterWeightEdit(sel), { primary: !!(state.weightEdit && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '在画面里刷这张网格的骨骼权重' }) : null,
+      img && (state.mode === 'setup' || state.leftOpen === 'weights') ? btn('编辑权重', () => enterWeightEdit(sel), { primary: !!(state.weightEdit && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '在画面里刷这张网格的骨骼权重' }) : null,
       img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), title: type === 'region' ? '先转成网格（图片的矩形），再编辑顶点' : '在画面里编辑这张网格的顶点' }) : null,
       img ? btn('换图', () => openImagePicker(`给「${sel.name}」换图`, (r) => swapImage(sel, r))) : null,
       !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤占位符，每个皮肤先用原图`,
@@ -5833,7 +5844,7 @@
     const slot = currentSlot(), extra = state.dopeExtra
     const cons = state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform') ? state.sel : null
     const ev = state.sel && state.sel.kind === 'event' ? state.sel.name : null
-    const slotList = [...new Set([...(slot ? [slot] : []), ...(extra ? extra.slots : [])])]
+    const slotList = [...new Set([...(slot ? [slot] : []), ...state.multiSlots, ...(extra ? extra.slots : [])])]
     const consList = [...(cons ? [cons] : []), ...(extra ? extra.cons.filter((c) => !cons || c.kind !== cons.kind || c.name !== cons.name) : [])]
     const evList = [...new Set([...(ev ? [ev] : []), ...(extra ? extra.events : [])])]
     if (bones.length || slotList.length || consList.length || evList.length) {
@@ -6580,8 +6591,9 @@
       const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName)
       // Ctrl+A: the picked bone and its whole branch; with a search on, only the branch rows the
       // tree shows (the matches and their ancestors)
+      // (Ctrl+A never selects the page's text - with no bone picked it does nothing)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a') e.preventDefault()
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && state.json && state.sel && state.sel.kind === 'bone') {
-        e.preventDefault()
         const m = searchMatches(), names = [state.sel.name], j = state.json
         const walk = (p) => { for (const b of j.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
         walk(state.sel.name)
@@ -6754,7 +6766,8 @@
   function setPanel(kind, open) {
     if (!state.json) return
     if (kind === 'mesh' || kind === 'weights') {
-      if (open) { if (state.mode !== 'setup') setMode('setup'); state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind }
+      // 权重 works in 动画 mode too (the posed mesh is painted); 蒙皮 edits the mesh itself, in 设置
+      if (open) { if (kind === 'mesh' && state.mode !== 'setup') setMode('setup'); state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind }
       else if (state.leftOpen === kind) state.leftOpen = null
     } else if (kind === 'bones') {
       if (open) { state.leftOpen = null; if (state.mode !== 'setup') setMode('setup'); state.opt.boneVis = true }
@@ -6797,9 +6810,11 @@
     /** 飘带's 自动链条: the picked bone's chain shows as picked with it (the pick itself stays the parent). */
     selectChain: (names) => {
       if (!state.json || !state.sel || state.sel.kind !== 'bone') return
-      const ok = [state.sel.name, ...(names || []).filter((n) => n !== state.sel.name && bone(n))]
-      if (ok.length === state.multi.length && ok.every((n, i) => state.multi[i] === n)) return
-      state.multi = ok
+      const same = (a, b) => a && b && a.length === b.length && a.every((n, i) => b[i] === n)
+      if (!(names || []).length) { if (state.chainPick && same(state.multi, state.chainPick)) { state.multi = [state.sel.name]; refresh() } state.chainPick = null; return }
+      const ok = [state.sel.name, ...names.filter((n) => n !== state.sel.name && bone(n))]
+      if (same(ok, state.multi)) return
+      state.multi = ok; state.chainPick = ok
       refresh()
     },
     anim: () => state.anim,
