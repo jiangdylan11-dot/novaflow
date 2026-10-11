@@ -50,7 +50,7 @@
     frame.setAttribute('data-novaflow-runtime-ignore', '1')
     frame.setAttribute('allow', 'clipboard-read; clipboard-write')
     // above the section's own floats (the zoom bar sits at 46), under the 动画工具 editor (60) and dialogs
-    frame.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;border:0;margin:0;padding:0;background:transparent;z-index:50;display:none;color-scheme:dark'
+    frame.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;border:0;margin:0;padding:0;background:transparent;z-index:15;display:none;color-scheme:dark'
     // the page goes in as srcdoc: a server that answers every file with X-Frame-Options (the
     // 启动助手's local server, some hosts) would refuse to frame it by URL; a srcdoc document is
     // ours, same origin, relative URLs resolve against this page (the scripts sit beside it)
@@ -97,6 +97,10 @@
     const style = document.createElement('style')
     style.id = 'nf-skeleton-editor-style'
     style.textContent = 'body[data-novaflow-skeleton-editor="1"] [data-novaflow-zoom-controls="1"]{opacity:0!important;pointer-events:none!important}'
+      // the 飘带 panel docked into 动画工具's box lives in the left column's stacking context
+      // (z 20), so this frame stays below that (z 15) and the box (z 60, pointer-events none in
+      // ribbon mode) above both; with no z-index the panel was under the frame
+      + 'body[data-novaflow-skeleton-editor="1"] [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]{z-index:55!important}'
     document.head.appendChild(style)
   }
 
@@ -313,7 +317,12 @@
 
   function motionTick() {
     setMotionOpen(motionPanelOpen())
-    if (motionOpen) pullFromReact()
+    if (!motionOpen) return
+    pullFromReact()
+    // the app sometimes puts its selection back (root) right after the open-time push: while
+    // the tools are open the editor's picked bone / animation is the one they work on
+    const ctx = api && api.loaded() ? projectProps() : null
+    if (ctx && ((api.selectedBone() && ctx.selectedBoneName !== api.selectedBone()) || (api.anim() && ctx.activeAnimationName !== api.anim()))) pushSelection()
   }
 
   /**
@@ -625,7 +634,8 @@
     time: () => (api ? api.time() : 0),
     seek: (sec) => { if (api) api.setTime(sec) },
     openExport: () => { if (api && api.loaded()) { api.openExport(); return true } return false },
-    _debug: () => ({ syncing, appVersion, appMode, wantVersion, chosenVersion, inSync: inSync(), own: api && api.loaded() ? api.ownVersion() : null }),
+    _debug: () => ({ syncing, appVersion, appMode, wantVersion, chosenVersion, inSync: inSync(), own: api && api.loaded() ? api.ownVersion() : null, motionOpen, bone: api && api.selectedBone(), ws: !!workspaceProps(), ctxBone: (projectProps() || {}).selectedBoneName }),
+    _pushSelection: () => pushSelection(),
   }
 
   // registered before the app's own export handlers (this file loads ahead of the brand runtime)

@@ -67,14 +67,81 @@
     if(!points.length){const length=n(project.bones[index.get(name)].length,60);points.push([0,-10],[Math.max(length,1),10]);}
     return {minX:Math.min(...points.map(p=>p[0])),maxX:Math.max(...points.map(p=>p[0])),minY:Math.min(...points.map(p=>p[1])),maxY:Math.max(...points.map(p=>p[1]))};
   }
+  // ---- keys on integer frames (30 fps, the app's frame rate) and the fewest of them: a tool's
+  // motion is sampled on every frame, then every extreme of every channel is a key and the
+  // runs between them become one Spine Bezier ease (or a line) while that replays the samples
+  // within the tolerance - an animator's keys, not a key per frame
+  const FPS=30, frameTime=f=>Number((f/FPS).toFixed(4));
+  // a key's curve as [cx1,cy1,cx2,cy2] (Spine 3.8 curve/c2/c3/c4, or the 3.7 array), else null
+  const curveOf=f=>Array.isArray(f?.curve)&&f.curve.length===4?f.curve.map(Number):typeof f?.curve==='number'?[f.curve,n(f.c2,0),n(f.c3,1),n(f.c4,1)]:null;
+  // the key with that curve written the 3.8 way (null = linear, 'stepped' kept)
+  function withCurve(f,c){const {curve,c2,c3,c4,...rest}=f;if(c==='stepped')return {...rest,curve:'stepped'};return c?{...rest,curve:c[0],c2:c[1],c3:c[2],c4:c[3]}:rest;}
+  // the Bezier parameter at time fraction u for time handles x1 / x2
+  function bezierT(x1,x2,u){let lo=0,hi=1,t=u;for(let i=0;i<24;i++){t=(lo+hi)/2;const x=3*(1-t)*(1-t)*t*x1+3*(1-t)*t*t*x2+t*t*t;if(x<u)lo=t;else hi=t;}return t;}
+  function bezierAt(c,u){const t=bezierT(c[0],c[2],u);return 3*(1-t)*(1-t)*t*c[1]+3*(1-t)*t*t*c[3]+t*t*t;}
+  function sparse(samples,keys,tol){
+    const s=samples;if(s.length<=2)return s.map(f=>withCurve(f,null));
+    const val=(f,k)=>n(f[k]),time=f=>n(f.time);
+    // does a curve (null = a line) from sample i to j replay the samples between within tol
+    const fits=(i,j,curve)=>{
+      const span=time(s[j])-time(s[i]);
+      for(let m=i+1;m<j;m++){
+        const u=(time(s[m])-time(s[i]))/span,w=curve?bezierAt(curve,u):u;
+        for(const k of keys){const a=val(s[i],k),b=val(s[j],k);if(Math.abs(a+(b-a)*w-val(s[m],k))>tol)return false;}
+      }
+      return true;
+    };
+    // the ease that replays every channel best: the time handles from a few fixed pairs, the
+    // value handles solved by least squares on all channels at once (the curve's value is
+    // linear in them once the time handles fix the parameter); handles may overshoot, as in Spine
+    const ease=(i,j)=>{
+      const span=time(s[j])-time(s[i]),deltas=keys.map(k=>val(s[j],k)-val(s[i],k));
+      if(!deltas.some(d=>Math.abs(d)>tol))return null;
+      let best=null,bestErr=Infinity;
+      for(const [x1,x2] of [[1/3,2/3],[.2,.8],[.5,.5],[.1,.9],[.42,.58],[.25,.75]]){
+        let pp=0,pq=0,qq=0,pa=0,qa=0;
+        for(let m=i+1;m<j;m++){
+          const t=bezierT(x1,x2,(time(s[m])-time(s[i]))/span),p=3*(1-t)*(1-t)*t,q=3*(1-t)*t*t,c=t*t*t;
+          keys.forEach((k,idx)=>{const d=deltas[idx];if(Math.abs(d)<=tol*.01)return;const a=val(s[m],k)-val(s[i],k)-d*c;pp+=d*d*p*p;pq+=d*d*p*q;qq+=d*d*q*q;pa+=d*p*a;qa+=d*q*a;});
+        }
+        // a whisper of ridge toward the line: one sample between the keys leaves the two
+        // handles underdetermined, and the ease closest to a line that still passes it wins
+        const ridge=1e-9*Math.max(1,pp+qq);pp+=ridge;qq+=ridge;pa+=ridge*x1;qa+=ridge*x2;
+        const det=pp*qq-pq*pq;if(!(Math.abs(det)>0))continue;
+        const y1=(pa*qq-qa*pq)/det,y2=(pp*qa-pq*pa)/det;
+        const c=[x1,y1,x2,y2].map(v=>Number(v.toFixed(3)));if(!c.every(Number.isFinite))continue;
+        let err=0;
+        for(let m=i+1;m<j&&err<=tol;m++){const w=bezierAt(c,(time(s[m])-time(s[i]))/span);keys.forEach((k,idx)=>{err=Math.max(err,Math.abs(val(s[i],k)+deltas[idx]*w-val(s[m],k)));});}
+        if(err<bestErr){bestErr=err;best=c;}
+      }
+      return bestErr<=tol?best:null;
+    };
+    // every direction change of every channel is a key
+    const must=new Set([0,s.length-1]),turn=tol*.1;
+    for(const k of keys)for(let m=1;m<s.length-1;m++){const a=val(s[m],k)-val(s[m-1],k),b=val(s[m+1],k)-val(s[m],k);if((a>turn&&b<-turn)||(a<-turn&&b>turn))must.add(m);}
+    const out=[];let i=0;
+    while(i<s.length-1){
+      // the farthest sample (not past the next extreme) a line or an ease reaches within tol
+      let j=i+1,curve=null;
+      for(let m=i+1;m<s.length;m++){
+        if(fits(i,m,null)){j=m;curve=null;}
+        else{const c=ease(i,m);if(c){j=m;curve=c;}else break;}
+        if(must.has(m))break;
+      }
+      out.push(withCurve(s[i],curve));
+      i=j;
+    }
+    out.push(withCurve(s[s.length-1],null));
+    return out;
+  }
   function merge(frames, generated, start, end, sampleBoundary) {
-    const eps=1/6000, before=(frames||[]).filter(f=>n(f.time)<start), after=(frames||[]).filter(f=>n(f.time)>end);
+    const before=(frames||[]).filter(f=>n(f.time)<start-1e-6), after=(frames||[]).filter(f=>n(f.time)>end+1e-6);
     const split=time=>{
       const index=(frames||[]).findIndex((f,i)=>n(f.time)<=time&&frames[i+1]&&n(frames[i+1].time)>time);
       if(index<0)return null;
       const f=frames[index];if(f.curve==='stepped')return {index,left:'stepped',right:'stepped'};
-      if(!Array.isArray(f.curve)||f.curve.length!==4)return null;
-      const [x1,y1,x2,y2]=f.curve,u=(time-n(f.time))/(n(frames[index+1].time)-n(f.time));
+      const cv=curveOf(f);if(!cv)return null;
+      const [x1,y1,x2,y2]=cv,u=(time-n(f.time))/(n(frames[index+1].time)-n(f.time));
       const bez=t=>3*(1-t)**2*t*x1+3*(1-t)*t*t*x2+t*t*t;
       let lo=0,hi=1;for(let i=0;i<30;i++){const t=(lo+hi)/2;if(bez(t)<u)lo=t;else hi=t;}
       const t=(lo+hi)/2,mix=(a,b)=>a+(b-a)*t;
@@ -82,8 +149,10 @@
       if(Math.abs(v[1])<1e-9||Math.abs(1-v[1])<1e-9)return null;
       return {index,left:[a[0]/v[0],a[1]/v[1],d[0]/v[0],d[1]/v[1]],right:[(e[0]-v[0])/(1-v[0]),(e[1]-v[1])/(1-v[1]),(c[0]-v[0])/(1-v[0]),(c[1]-v[1])/(1-v[1])]};
     };
-    if(start>eps){const cut=split(start-eps);if(cut&&before[cut.index])before[cut.index]={...before[cut.index],curve:cut.left};before.push({...sampleBoundary(start-eps),time:start-eps});}
-    if(after.length){const cut=split(end+eps);after.unshift({...sampleBoundary(end+eps),time:end+eps,...(cut?{curve:cut.right}:{})});}
+    // the untouched keys around the interval end / resume on the frame before / after it
+    const has=(list,t)=>list.some(f=>Math.abs(n(f.time)-t)<1e-6);
+    if(start>1/FPS-1e-6){const t=frameTime(Math.round(start*FPS)-1);if(!has(before,t)){const cut=split(t);if(cut&&before[cut.index])before[cut.index]=withCurve(before[cut.index],cut.left);before.push({...sampleBoundary(t),time:t});}}
+    if(after.length){const t=frameTime(Math.round(end*FPS)+1);if(!has(after,t)&&t<n(after[0].time)){const cut=split(t);after.unshift(withCurve({...sampleBoundary(t),time:t},cut?cut.right:null));}}
     return [...before,...generated,...after].sort((a,b)=>n(a.time)-n(b.time));
   }
   function calculate(project, animationName, names, stack, timing, engine, math) {
@@ -91,7 +160,8 @@
     const targets=selection(project,names);if(!targets.length)throw Error('请先在骨骼树或画板中选择骨骼。');
     const driven=new Set([...(project.ik||[]).flatMap(c=>c.bones||[]),...(project.transform||[]).flatMap(c=>c.bones||[]),...(project.path||[]).flatMap(c=>c.bones||[])]);
     if(targets.some(x=>driven.has(x)))throw Error('所选骨骼由约束驱动，请选择它的控制骨骼后计算。');
-    const start=Math.max(0,n(timing.animationDelay)), span=Math.max(.05,n(timing.boneDuration,2.8)), end=start+span;
+    const startFrame=Math.round(Math.max(0,n(timing.animationDelay))*FPS), spanFrames=Math.max(1,Math.round(Math.max(.05,n(timing.boneDuration,2.8))*FPS));
+    const start=frameTime(startFrame), span=frameTime(spanFrames), end=frameTime(startFrame+spanFrames);
     if(end>n(timing.animationDuration)+1e-6)throw Error('动画延迟加骨骼总时长不能超过动画总时长。');
     const params=clone(stack);for(const p of Object.values(params))p.duration=span;
     const keyDuration=duration({...original,duration:0});
@@ -100,11 +170,8 @@
     const translate=!!(params.bounce.enabled||params.shuttle.enabled),scale=!!params.expand.enabled,rotate=!!params.rotate?.enabled;
     const opacity=params.opacity.opacity,alpha=opacity.on&&(opacity.from!==1||opacity.to!==1||params.opacity.corrections.alpha.some(v=>v!==0)||params.opacity.curves?.alpha);
     const affected=new Set(targets), slots=(project.slots||[]).filter(s=>affected.has(s.bone));
-    const fps=Math.max(15,Math.min(120,n(project.skeleton?.fps,60))), times=new Set([start,end]);
-    for(let i=1;i<span*fps;i++)times.add(start+i/fps);
-    // Preserve the exact seam when a non-periodic channel is shifted around its cycle.
-    for(const p of Object.values(params))if(p.delay>0&&p.delay<span){times.add(start+p.delay);times.add(start+p.delay-1/6000);}
-    for(const event of engine.events(params.bounce))if(params.bounce.enabled)times.add(start+engine.timelineTime(params.bounce,event.u));
+    // one sample per frame of the interval (a seam or an impact lands on its nearest frame)
+    const times=new Set();for(let f=startFrame;f<=startFrame+spanFrames;f++)times.add(frameTime(f));
     // only the targets and their ancestors are posed per sample: their parents' world frames
     // are all the keys need (posing all ~200 bones per sample made a slider drag stutter)
     const byName=new Map(project.bones.map(b=>[b.name,b])),chain=new Set(targets);
@@ -122,10 +189,12 @@
         // Local rotation adds to the existing key directly; no parent transform involved.
         if(rotate)item.rotate.push({time,angle:scalar(old.rotate,time,'angle',0)+value.r});
       }
-      if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}
+      if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,a:rgba[3],color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}
     }
-    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],item[channel],start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
-    if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],slotFrames.get(slot.name),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
+    // what a key may stray from the sampled motion: a pixel, half a percent of scale, a quarter degree
+    const tolerance={translate:1,scale:.005,rotate:.25};
+    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],channel==='rotate'?['angle']:['x','y'],tolerance[channel]),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
+    if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],sparse(slotFrames.get(slot.name),['a'],2).map(({a,...f})=>f),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
     // Spine derives duration from keys, not the editor's duration metadata.
     // Extend only a selected-bone channel so exported playback has the same length.
     if(duration({...animation,duration:0})<animation.duration){
@@ -135,6 +204,6 @@
     }
     return {animation,targets,slots:alpha?slots.map(s=>s.name):[],start,end};
   }
-  const api={calculate,selection,descendants,duration,scalar,color,bounds,pose};root.NovaFlowMotionAnimation=api;
+  const api={calculate,selection,descendants,duration,scalar,color,bounds,pose,sparse,bezierAt,curveOf,FPS};root.NovaFlowMotionAnimation=api;
   if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

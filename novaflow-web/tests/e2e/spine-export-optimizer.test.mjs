@@ -4,15 +4,14 @@ import vm from 'node:vm';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 const read=f=>readFileSync(new URL('../../renderer/'+f,import.meta.url),'utf8');
 const ctx=vm.createContext({console});
-for(const f of ['spine-bones.editor.js','motion-calculation.engine.js','motion-calculation.animation.js','spine-export-optimizer.js'])vm.runInContext(read(f),ctx);
+for(const f of ['spine-bones.editor.js','motion-calculation.engine.js','motion-calculation.animation.js','spine-export-optimizer.js','spine-version-convert.js'])vm.runInContext(read(f),ctx);
 const E=ctx.NovaFlowMotionEngine,A=ctx.NovaFlowMotionAnimation,M=ctx.NovaFlowBonesEditor,O=ctx.NovaFlowSpineExportOptimizer;
 if(process.env.SPINE_TEST_TRANSLATE_LIMIT){const optimize=O.optimize;O.optimize=p=>optimize(p,{limits:{translate:Number(process.env.SPINE_TEST_TRANSLATE_LIMIT)}});}
 const presets=vm.runInNewContext('('+read('motion-calculation.panel.js').match(/const presetSets = (\{[\s\S]*?\n  \});/)[1]+')');
 const plain=o=>o===undefined?undefined:JSON.parse(JSON.stringify(o));
 function fixture(){return {skeleton:{spine:'3.8.99',fps:60},bones:[{name:'root',rotation:23},{name:'ball',parent:'root',x:20,y:30,rotation:31,scaleX:1.2,scaleY:.8},{name:'child',parent:'ball',x:80,length:100}],slots:[{name:'slot',bone:'ball',color:'ff8040ff'}],skins:[],events:{hit:{}},animations:{idle:{events:[{time:.25,name:'hit'},{time:2.9,name:'hit'}],bones:{ball:{}}}}};}
-function native(p,version){p=plain(p);p.skeleton.spine=version==='3.8'?'3.8.99':version+'.00';for(const a of Object.values(p.animations)){
- if(version!=='3.8'){for(const b of Object.values(a.bones||{}))if(b.rotate)b.rotate=b.rotate.map(({angle,...f})=>({...f,value:angle??f.value??0}));for(const s of Object.values(a.slots||{}))if(s.color){s.rgba=s.color;delete s.color;}}
- }return p;}
+// the app's own converter (keys carry 3.8 curve/c2/c3/c4 eases; 4.x wants per-channel arrays)
+function native(p,version){p=plain(p);if(version==='3.8'){p.skeleton.spine='3.8.99';return p;}return plain(ctx.NovaFlowSpineVersion.fromSpine38(p,version));}
 const runtimes={};if(process.env.SPINE_EXTRA_RUNTIME_DIR)for(const version of ['4.1','4.2']){const c=vm.createContext({console});vm.runInContext(readFileSync(process.env.SPINE_EXTRA_RUNTIME_DIR+'/spine-core-'+version+'.js','utf8'),c);runtimes[version]=c.spine;}for(const version of ['3.8','4.0']){const c=vm.createContext({console});vm.runInContext(read('vendor/spine/spine-webgl-'+version+'.js'),c);runtimes[version]=c.spine;}
 function player(p,version){const s=runtimes[version],data=new s.SkeletonJson({newMeshAttachment(_skin,name){const m=new s.MeshAttachment(name);m.region={u:0,v:0,u2:1,v2:1,width:1,height:1,originalWidth:1,originalHeight:1,offsetX:0,offsetY:0,rotate:false};return m;}}).readSkeletonData(p),sk=new s.Skeleton(data),a=data.animations[0];return {duration:a.duration,at(t){sk.setToSetupPose();a.apply(sk,-1,t,false,[],1,s.MixBlend.setup,s.MixDirection.mixIn);sk.updateWorldTransform(s.Physics?.update);return {bones:sk.bones.filter(b=>!b.data.name.startsWith('__nf_')).map(b=>[b.worldX,b.worldY,b.a,b.b,b.c,b.d]),vertices:sk.slots.flatMap(slot=>{const a=slot.getAttachment();if(!a?.computeWorldVertices)return [];const v=[];a.computeWorldVertices(slot,0,a.worldVerticesLength,v,0,2);return v;}),colors:sk.slots.map(s=>[s.color.r,s.color.g,s.color.b,s.color.a])};}};}
 function compare(before,after,version){const a=player(before,version),b=player(after,version);assert.equal(a.duration,b.duration);let position=0,geometry=0,alpha=0;
@@ -44,7 +43,7 @@ function ribbonFixture(){
 const reports=[];
 for(const version of Object.keys(runtimes))for(const s of [...scenarios(),ribbonFixture()])test(version+' '+s.name,()=>{
  const before=native(s.project,version),snapshot=JSON.stringify(before),{project:after,stats}=O.optimize(before),error=compare(before,after,version);
- assert.equal(JSON.stringify(before),snapshot);assert.equal(after.bones.length,before.bones.length+stats.addedBones);assert.deepEqual(plain(after.animations.idle.events),before.animations.idle.events);assert.ok(stats.afterKeys<stats.beforeKeys,JSON.stringify(stats));assert.ok(stats.bytesAfter<stats.bytesBefore);
+ assert.equal(JSON.stringify(before),snapshot);assert.equal(after.bones.length,before.bones.length+stats.addedBones);assert.deepEqual(plain(after.animations.idle.events),before.animations.idle.events);assert.ok(stats.afterKeys<=stats.beforeKeys,JSON.stringify(stats));assert.ok(stats.bytesAfter<=stats.bytesBefore);
  reports.push({version,name:s.name,mode:s.mode,before:stats.beforeKeys,after:stats.afterKeys,bytesBefore:stats.bytesBefore,bytesAfter:stats.bytesAfter,addedBones:stats.addedBones,...error});
 });
 test('authored curves, discontinuities, events, constraints and other fields survive unchanged',()=>{

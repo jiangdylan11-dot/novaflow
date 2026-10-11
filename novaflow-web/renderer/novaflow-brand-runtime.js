@@ -51294,8 +51294,26 @@
     return !!signature && signature === getRibbonRotateSignature(timeline.rotate);
   }
 
+  // 写入动画 writes keys on integer frames (30 fps) and the fewest of them (extremes + eases):
+  // the solver's 60 fps samples were a key per frame. Same reducer as the calculation tools.
+  function sparseRibbonRotateFrames(frames) {
+    const api = window.NovaFlowMotionAnimation;
+    if (!api || typeof api.sparse !== "function" || !Array.isArray(frames) || frames.length < 4) return null;
+    if (frames.some((frame) => !frame || frame.curve !== undefined)) return null;
+    const key = frames.some((frame) => frame.value !== undefined && frame.angle === undefined) ? "value" : "angle";
+    const dense = frames.map((frame) => ({ time: Number(frame.time) || 0, angle: Number(frame[key]) || 0 })).sort((a, b) => a.time - b.time);
+    const last = dense[dense.length - 1].time, count = Math.round(last * 30);
+    if (!(count > 1)) return null;
+    const at = (t) => { let i = 0; while (i < dense.length - 2 && dense[i + 1].time <= t) i += 1; const a = dense[i], b = dense[i + 1] || a; const u = b.time > a.time ? Math.max(0, Math.min(1, (t - a.time) / (b.time - a.time))) : 0; return a.angle + (b.angle - a.angle) * u; };
+    const samples = [];
+    for (let f = 0; f <= count; f += 1) { const t = Number((f / 30).toFixed(4)); samples.push({ time: t, angle: Number(at(Math.min(t, last)).toFixed(3)) }); }
+    return api.sparse(samples, ["angle"], 0.25).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
+  }
+
   function commitRibbonElasticWrittenTimeline(timeline, animationName = "", boneName = "", project = null) {
     if (!timeline || typeof timeline !== "object" || !Array.isArray(timeline.rotate)) return false;
+    const sparse = sparseRibbonRotateFrames(timeline.rotate);
+    if (sparse) timeline.rotate = sparse;
     const solidified = solidifyRibbonPreviewOnlyTimeline(timeline);
     const promoted = promoteRibbonElasticTimelineToBaseline(animationName, boneName, timeline, project);
     const cleared = clearRibbonElasticPreviewDirtyMarkers(timeline);
@@ -81186,6 +81204,7 @@
     const root = panel instanceof HTMLElement ? panel.closest('[data-novaflow-left-content-root="1"], [data-novaflow-art-drawing-host="1"]') : null;
     if (!(root instanceof HTMLElement)) return;
     Array.from(root.querySelectorAll(".nf-panel")).forEach((candidate) => {
+      if (!(candidate instanceof HTMLElement) || candidate === panel || (candidate.hasAttribute('data-novaflow-ui-layout-section') || candidate.hasAttribute('data-novaflow-ui-smart-split'))) return;
       if (!isArtGeneratePanelExpanded(candidate)) return;
       clickArtGeneratePanelHeader(candidate);
     });
@@ -81256,7 +81275,7 @@
       : document.querySelector('[data-novaflow-left-content-root="1"]');
     if (!(root instanceof HTMLElement)) return false;
     return Array.from(root.querySelectorAll(".nf-panel")).some((candidate) => (
-      candidate instanceof HTMLElement && candidate !== panel && !candidate.hasAttribute('data-novaflow-ui-layout-section') && isArtGeneratePanelExpanded(candidate)
+      candidate instanceof HTMLElement && candidate !== panel && !candidate.hasAttribute('data-novaflow-ui-layout-section') && !candidate.hasAttribute('data-novaflow-ui-smart-split') && isArtGeneratePanelExpanded(candidate)
     ));
   }
 
@@ -82073,18 +82092,20 @@
     clearArtGenerateBatch();
     setArtGenerateProgress("\u5df2\u4e2d\u6b62", pct, { promptId });
     setArtGenerateStatus("\u5df2\u4e2d\u6b62", false);
-    if (!baseUrl) {
+    if (!baseUrl || !promptId) {
       clearArtGenerateRunIfCurrent(cancelToken);
       return;
     }
     try {
       // Name the prompt: on the Web the stop must end this panel's task, not an 动画 run still going.
       const interrupted = await artRequestJson(baseUrl, "/interrupt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(promptId ? { prompt_id: promptId } : {}) });
+      if (ART_GENERATE_STATE.runToken !== cancelToken) return;
       if (!interrupted || !interrupted.ok) {
         setArtGenerateProgress("\u5df2\u8bf7\u6c42\u4e2d\u6b62", pct, { promptId });
         setArtGenerateStatus("\u5df2\u8bf7\u6c42\u4e2d\u6b62", false);
       }
     } catch (error) {
+      if (ART_GENERATE_STATE.runToken !== cancelToken) return;
       setArtGenerateProgress(`\u53d6\u6d88\u8bf7\u6c42\u5931\u8d25: ${String(error && error.message || error || "")}`, pct, { promptId });
       setArtGenerateStatus(`\u53d6\u6d88\u8bf7\u6c42\u5931\u8d25: ${String(error && error.message || error || "")}`, true);
     } finally {
@@ -82963,7 +82984,8 @@
     setArtGenerateReference(targetIndex, {
       name: file?.name || `reference_${targetIndex + 1}.png`,
       dataUrl,
-      mimeType: file?.type || artDataUrlMime(dataUrl)
+      mimeType: file?.type || artDataUrlMime(dataUrl),
+      ...(file?.novaflowUiSplitContext ? { uiSplitContext: file.novaflowUiSplitContext } : {})
     });
     ART_GENERATE_STATE.status = `\u53c2\u8003\u56fe${targetIndex + 1}\u5df2\u8f7d\u5165`;
     ART_GENERATE_STATE.error = "";
@@ -85118,6 +85140,9 @@
   function uiQwen21WorkingSize(width, height, maxPixels = QWEN21_UI_MAX_WORKING_PIXELS) {
     const w = Math.max(256, Number(width) || 1024);
     const h = Math.max(256, Number(height) || 1024);
+    // Qwen VAE/patches accept16-aligned dimensions. Keep a valid request
+    // exact under the existing cap, rather than rounding it up to32.
+    if (w % 16 === 0 && h % 16 === 0 && w * h <= maxPixels) return { width: w, height: h };
     const scale = Math.min(1, Math.sqrt(maxPixels / (w * h)));
     const aspect = w / h;
     // Among sizes that keep at least three quarters of the allowed area, take the largest one within
@@ -85140,9 +85165,17 @@
 
   function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
     const guidance = qwen21Guidance(negativePrompt);
+    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, negativePrompt, "qwen-2.1");
+    const preserveNativeLayout = state?.uiPreserveLayout === true && state?.uiLayoutMode !== "reflow" && state?.uiLayoutMode !== "create";
+    const nativeEdit = providerOptions?.uiNativeEdit || null;
+    const editRegions = nativeEdit?.regions;
+    if (!nativeEdit && String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design' && state?.uiLayoutMode === 'partial') throw new Error('局部UI任务缺少原生选区，禁止退为全图编辑');
+    if (nativeEdit && [state?.width,state?.height].some(n => !Number.isInteger(Number(n)) || Number(n) < 64 || Number(n) > QWEN21_UI_MAX_OUTPUT_EDGE || Number(n) % 8)) throw new Error('局部输出尺寸无效；禁止自动取整或改尺寸');
+    if (nativeEdit && (mode !== "img2img" || !preserveNativeLayout || state?.uiRunIntent !== "iteration" || !Array.isArray(editRegions) || !editRegions.length || editRegions.length > 8 || editRegions.some(r => !r || [r.x,r.y,r.width,r.height].some(n => !Number.isFinite(n)) || r.x < 0 || r.y < 0 || r.x >= 1 || r.y >= 1 || r.width <= 0 || r.height <= 0 || r.x + r.width > 1.000001 || r.y + r.height > 1.000001 || r.width * r.height >= .999))) throw new Error("局部修改范围无效，任务未提交");
     const runtime = artQwen21Runtime();
     const info = runtime?.info || {};
-    const missing = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha"].filter((type) => !info[type]);
+    const required = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha", ...(nativeEdit ? ["VAEEncode", "SetLatentNoiseMask", "SolidMask", "MaskComposite", ...(nativeEdit.neutralizeConditioning ? ["EmptyImage", "ImageCompositeMasked"] : [])] : [])];
+    const missing = required.filter((type) => !info[type]);
     if (!runtime || missing.length) {
       throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 NovaFlow 后再试");
     }
@@ -85151,14 +85184,16 @@
       throw new Error(`最多接收 ${QWEN21_UI_MAX_REFERENCES} 张参考图，当前 ${names.length} 张`);
     }
     const roles = Array.isArray(providerOptions?.referenceRoles) ? providerOptions.referenceRoles : [];
+    if (providerOptions?.taskProfile === 'ui-design' && roles.length && (roles.length !== names.length || new Set(roles.map(r => r?.index)).size !== roles.length || roles.some(r => !Number.isInteger(r?.index) || r.index < 0 || r.index >= names.length || typeof r.role !== 'string' || !r.role.trim()) || new Set(roles.map(r => r.sourceId).filter(Boolean)).size !== roles.map(r => r.sourceId).filter(Boolean).length)) throw new Error('UI参考图角色、顺序或标识重复/缺失，任务未提交');
     const roleEntry = (index) => roles.find((item) => Number(item?.index) === index) || roles[index] || {};
     const roleAt = (index) => String(roleEntry(index).role || "reference").toLowerCase();
     // The current design in an iteration: sampled at the working size, never shrunk to a role budget.
-    const isBase = (index) => String(roleEntry(index).treatment || "").toLowerCase() === "base";
+    const isBase = (index) => (preserveNativeLayout && index === 0 && roleAt(index) === "layout") || String(roleEntry(index).treatment || "").toLowerCase() === "base";
     const sizes = names.map((_, index) => {
       const size = Array.isArray(referenceSizes) ? referenceSizes[index] : null;
       return { width: Math.max(0, Number(size?.width) || 0), height: Math.max(0, Number(size?.height) || 0) };
     });
+    if (nativeEdit && sizes.some(s => !Number.isFinite(s.width) || !Number.isFinite(s.height) || s.width <= 0 || s.height <= 0)) throw new Error('局部参考图尺寸无效，任务未提交');
     // Per-role budget first, then one shared cap so a long reference list cannot blow up the prefix.
     // A size the page could not measure counts as the full budget, and the graph scales it by pixel
     // count instead of trusting a declared size.
@@ -85188,7 +85223,25 @@
     const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: 0 };
     const clampEdge = (value) => Math.max(64, Math.min(QWEN21_UI_MAX_OUTPUT_EDGE, Math.round(Number(value) || 1024)));
     const requested = { width: clampEdge(state?.width), height: clampEdge(state?.height) };
-    const working = uiQwen21WorkingSize(requested.width, requested.height);
+    const highNativeRequested = requested.width === 864 && requested.height === 1536;
+    // The only >1MP exception is the measured three-reference, 40/1 model
+    // combination. Count encoded auxiliary pixels, including rounding small assets.
+    const auxiliaryEncodedPixels = sizes.reduce((sum, size, index) => {
+      if (isBase(index)) return sum;
+      if (!(size.width && size.height)) return Infinity;
+      const pixels = size.width * size.height, target = budgets[index] * share;
+      const factor = target < pixels ? Math.sqrt(target / pixels) : 1;
+      const edge = value => target < pixels ? Math.max(32, Math.floor(value * factor / 32) * 32) : Math.max(32, Math.round(value / 32) * 32);
+      return sum + edge(size.width) * edge(size.height);
+    }, 0);
+    const safeNative = preserveNativeLayout && isBase(0) && names.length <= 3 && names.length > 0 && !String(negativePrompt || '').trim()
+      && auxiliaryEncodedPixels <= 527360 && (sampling?.steps || 40) === 40 && (sampling?.cfg || guidance.cfg) === 1
+      && runtime.unet === 'qwen-image-2.1-UC-Q8_0.gguf' && runtime.clip === 'qwen3vl_8b_w4a8_heretic.safetensors'
+      && runtime.vae === 'qwen_image_2.1_vae_bf16.safetensors' && sizes[0].width > 0 && sizes[0].height > 0;
+    if (highNativeRequested && !safeNative) throw new Error('864×1536 原生采样当前仅支持已测模型、40步/CFG1、最多三图及受限参考像素；请使用较小尺寸或减少参考图。');
+    if (nativeEdit && requested.width * requested.height > 1048576 && !highNativeRequested) throw new Error("局部原生采样超过已验证尺寸；请使用不超过1MP的尺寸或已验证的864×1536");
+    if (nativeEdit && (!isBase(0) || !nativeEdit.baseSourceId || nativeEdit.baseSourceId !== roleEntry(0).sourceId || !sizes[0]?.width || !sizes[0]?.height || Math.abs(sizes[0].width / sizes[0].height - requested.width / requested.height) > .001 || requested.width % 8 || requested.height % 8)) throw new Error("局部修改底图、区域或尺寸不匹配；请使用同一底图比例和8的倍数尺寸");
+    const working = nativeEdit || highNativeRequested ? requested : uiQwen21WorkingSize(requested.width, requested.height);
     names.forEach((name, index) => {
       const loadId = String(100 + index);
       workflow[loadId] = { class_type: "LoadImage", inputs: { image: name } };
@@ -85198,8 +85251,21 @@
       const target = budgets[index] * share;
       if (isBase(index)) {
         const scaleId = String(200 + index);
-        workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width: working.width, height: working.height, crop: "center" } };
-        image = [scaleId, 0];
+        // Fit and pad preserves the complete source when the user changes aspect.
+        // It also keeps the first encoded image at the actual sampling dimensions.
+        if (width > 0 && height > 0 && Math.abs(width / height - working.width / working.height) > 0.00001) {
+          if (!info.ImagePadForOutpaint) throw new Error('节点缺少等比扩展画布组件，无法保留完整布局。');
+          const heightLimited = width / height < working.width / working.height;
+          const fitWidth = heightLimited ? Math.round(width * working.height / height) : working.width;
+          const fitHeight = heightLimited ? working.height : Math.round(height * working.width / width);
+          workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width: heightLimited ? 0 : working.width, height: heightLimited ? working.height : 0, crop: "disabled" } };
+          const left = Math.floor((working.width - fitWidth) / 2), top = Math.floor((working.height - fitHeight) / 2), padId = String(300 + index);
+          workflow[padId] = { class_type: "ImagePadForOutpaint", inputs: { image: [scaleId, 0], left, right: working.width - fitWidth - left, top, bottom: working.height - fitHeight - top, feathering: 0 } };
+          image = [padId, 0];
+        } else {
+          workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width: working.width, height: working.height, crop: "disabled" } };
+          image = [scaleId, 0];
+        }
       } else if (pixels <= 0 && info.ImageScaleToTotalPixels) {
         const scaleId = String(200 + index);
         workflow[scaleId] = { class_type: "ImageScaleToTotalPixels", inputs: { image, upscale_method: "lanczos", megapixels: Math.max(0.05, Math.round(target / 10000) / 100), resolution_steps: 32 } };
@@ -85221,14 +85287,40 @@
       }
       encode[`images.image_${index + 1}`] = image;
     });
+    let nativeLatent = null;
+    if (nativeEdit) {
+      const baseImage = encode["images.image_1"];
+      workflow["400"] = { class_type: "VAEEncode", inputs: { pixels: baseImage, vae: ["3",0] } };
+      workflow["401"] = { class_type: "SolidMask", inputs: { value: 0, width: working.width, height: working.height } };
+      let mask = ["401",0];
+      editRegions.forEach((r,i) => {
+        const x = Math.floor(r.x * working.width), y = Math.floor(r.y * working.height);
+        const width = Math.min(working.width - x, Math.ceil((r.x + r.width) * working.width) - x);
+        const height = Math.min(working.height - y, Math.ceil((r.y + r.height) * working.height) - y);
+        const solid = String(450 + i * 2), composite = String(451 + i * 2);
+        workflow[solid] = { class_type: "SolidMask", inputs: { value: 1, width, height } };
+        workflow[composite] = { class_type: "MaskComposite", inputs: { destination: mask, source: [solid,0], x, y, operation: "add" } };
+        mask = [composite,0];
+      });
+      workflow["402"] = { class_type: "SetLatentNoiseMask", inputs: { samples: ["400",0], mask } };
+      nativeLatent = ["402",0];
+      if (nativeEdit.neutralizeConditioning) {
+        const color = Number(nativeEdit.fillColor);
+        if (!Number.isInteger(color) || color < 0 || color > 0xffffff) throw new Error("局部修改参考背景无效");
+        workflow["410"] = { class_type: "EmptyImage", inputs: { width: working.width, height: working.height, batch_size: 1, color } };
+        workflow["411"] = { class_type: "ImageCompositeMasked", inputs: { destination: baseImage, source: ["410",0], mask, x: 0, y: 0, resize_source: false } };
+        encode["images.image_1"] = ["411",0];
+      }
+    }
     workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
     workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: working.width, height: working.height, batch_size: 1 } };
-    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: nativeLatent || (preserveNativeLayout && isBase(0) ? ["5", 2] : ["6", 0]), seed, steps: sampling?.steps || 40, cfg: sampling?.cfg || guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
     workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
     // 2.1 always decodes RGBA; a UI screen is opaque, so keep the colour and drop the alpha.
     workflow["9"] = { class_type: "SplitImageWithAlpha", inputs: { image: ["8", 0] } };
     workflow["10"] = { class_type: "ImageScale", inputs: { image: ["9", 0], upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
     workflow["11"] = { class_type: "SaveImage", inputs: { images: ["10", 0], filename_prefix: String(outputPrefix || "NovaFlow_UI") } };
+    if (nativeEdit) { workflow["11"].inputs.images = ["9",0]; delete workflow["10"]; }
     return { workflow, modelKey: "qwen-image-2.1-ui" };
   }
 
@@ -85248,6 +85340,7 @@
     const providerOptions = arguments.length > 10 && arguments[10] && typeof arguments[10] === "object"
       ? arguments[10]
       : {};
+    if (String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design' && state?.uiLayoutMode === 'partial' && !providerOptions.uiNativeEdit) throw new Error('局部UI任务缺少原生选区，禁止退为全图编辑');
     if (window.NovaFlowWebRuntime) {
       const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
         'samplingOverrides', 'negativePrompt',
@@ -85277,6 +85370,7 @@
     const uiQwen21 = provider === "local"
       && String(providerOptions?.taskProfile || "").toLowerCase() === "ui-design"
       && state?.localUiEngine === "qwen-2.1";
+    if (providerOptions?.uiNativeEdit && !uiQwen21) throw new Error('局部UI请求必须使用Qwen2.1原生选区，禁止退为其他工作流');
     const drawQwen21 = drawingRun && (state === ART_GENERATE_STATE
       ? artGenerateDrawEngine(provider, mode, state, providerOptions)
       : String(state?.localDrawEngine || "")) === "qwen-2.1";
@@ -85495,13 +85589,15 @@
   async function runArtGenerate(options = {}) {
     if (ART_GENERATE_STATE.running) return;
     const ui = window.NovaFlowUiDesignDrawing;
-    if (!options.uiPrepared && ui?.isActive?.()) {
+    const getCurrentContext = () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
+      generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? ui?.isActive?.() ? 'ui' : 'drawing' : 'other' });
+    if (!options.uiPrepared && (ui?.shouldPrepare?.(getCurrentContext()) ?? ui?.isActive?.())) {
       captureArtGeneratePromptSnapshot();
       ART_GENERATE_STATE.running = true;
       setArtGenerateProgress("理解 UI 设计需求…", 0);
       setArtGenerateStatus("理解 UI 设计需求…");
       try {
-        const prepared = await ui.prepare({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit() });
+        const prepared = await ui.prepare({ ...getCurrentContext(), getCurrentContext });
         ART_GENERATE_STATE.running = false;
         return await runArtGenerate({ uiPrepared: prepared });
       } catch (error) {
@@ -85510,6 +85606,7 @@
         return;
       }
     }
+    try { options.uiPrepared?.assertCurrent?.(); } catch (error) { setArtGenerateStatus(String(error?.message || error), true); return; }
     const promptSnapshot = options.uiPrepared?.promptSnapshot || captureArtGeneratePromptSnapshot();
     const settingsSnapshot = options.uiPrepared?.state || ART_GENERATE_STATE;
     const runProvider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(settingsSnapshot.provider) || "local";
@@ -85596,6 +85693,7 @@
     try {
       const baseUrl = await detectArtGenerateBaseUrl();
       if (!isArtGenerateRunCurrent(runToken)) return;
+      options.uiPrepared?.assertCurrent?.();
       ART_GENERATE_STATE.activeBaseUrl = baseUrl;
       setArtGenerateProgress(`${providerLabel}\u5df2\u5c31\u7eea`, 0.08);
       setArtGenerateStatus(`${providerLabel}\u5df2\u5c31\u7eea`);
@@ -85610,6 +85708,8 @@
       const uploadReferences = async (pass) => {
         const names = [];
         for (let i = 0; i < refs.length; i += 1) {
+          if (!isArtGenerateRunCurrent(runToken)) return null;
+          options.uiPrepared?.assertCurrent?.();
           const item = refs[i];
           const mime = String(item.mimeType || artDataUrlMime(item.dataUrl) || "");
           const ext = /jpe?g/i.test(mime) ? "jpg" : /webp/i.test(mime) ? "webp" : "png";
@@ -85624,7 +85724,14 @@
         setArtGenerateProgress("\u6b63\u5728\u4e0a\u4f20\u53c2\u8003\u56fe...", 0.12);
         setArtGenerateStatus("\u6b63\u5728\u4e0a\u4f20\u53c2\u8003\u56fe...");
         for (let i = 0; i < refs.length; i += 1) {
+          if (!isArtGenerateRunCurrent(runToken)) return;
+          options.uiPrepared?.assertCurrent?.();
           const image = await loadNovaflowArtExportImage(refs[i].dataUrl);
+          if (!isArtGenerateRunCurrent(runToken)) return;
+          options.uiPrepared?.assertCurrent?.();
+          const width = Number(image.naturalWidth || image.width), height = Number(image.naturalHeight || image.height);
+          if (options.uiPrepared && (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)) throw new Error('UI参考图尺寸无法读取，任务未提交');
+          if (options.uiPrepared?.nativeEdit && i === 0 && Math.abs(width / height - Number(settingsSnapshot.width) / Number(settingsSnapshot.height)) > .001) throw new Error('修改底图与选区尺寸比例不匹配，任务未提交');
           referenceSizes.push({
             width: Math.max(1, Math.round(Number(image.naturalWidth || image.width) || 1)),
             height: Math.max(1, Math.round(Number(image.naturalHeight || image.height) || 1))
@@ -85647,11 +85754,15 @@
           uploadedNames = await uploadReferences(batchIndex);
           if (!uploadedNames) return;
         }
+        if (!isArtGenerateRunCurrent(runToken)) return;
+        options.uiPrepared?.assertCurrent?.();
         const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
         const workflowRun = buildArtGenerateWorkflowWithSeed(
           fixedSeed ? baseSeed + batchIndex : null,
           () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
-            options.uiPrepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE)
+            options.uiPrepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE,
+            options.uiPrepared ? referenceLimit : undefined,
+            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : {})
         );
         const workflow = workflowRun.workflow;
         const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
@@ -85667,6 +85778,7 @@
           );
           if (!isArtGenerateRunCurrent(runToken)) return;
         }
+        options.uiPrepared?.assertCurrent?.();
         setArtGenerateProgress("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...", 0.28);
         setArtGenerateStatus("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...");
         const onNodeWait = (event) => {
@@ -85690,7 +85802,16 @@
         } finally {
           window.removeEventListener("novaflow:web-task-wait", onNodeWait);
         }
-        if (!isArtGenerateRunCurrent(runToken)) return;
+        if (!isArtGenerateRunCurrent(runToken)) {
+          const stalePromptId = String(sent?.data?.prompt_id || '');
+          if (sent?.ok && stalePromptId) await artRequestJson(baseUrl, '/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: stalePromptId }) }).catch(() => {});
+          return;
+        }
+        try { options.uiPrepared?.assertCurrent?.(); } catch (error) {
+          const stalePromptId = String(sent?.data?.prompt_id || '');
+          if (sent?.ok && stalePromptId) await artRequestJson(baseUrl, '/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: stalePromptId }) }).catch(() => {});
+          throw error;
+        }
         const promptId = String(sent && sent.data && sent.data.prompt_id || "");
         if (!sent || !sent.ok || !promptId) {
           const detail = sent && (sent.error || sent.raw || JSON.stringify(sent.data || {}));
@@ -85749,6 +85870,7 @@
         }
         const imageUrl = await artBlobToDataUrl(blob);
         if (!isArtGenerateRunCurrent(runToken)) return;
+        options.uiPrepared?.assertCurrent?.();
         const result = {
           id: `artgen_${Date.now().toString(36)}`,
           kind: "original",
@@ -85825,6 +85947,7 @@
         samplingOverrides: source.samplingOverrides,
         loras: source.loras,
         localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
+        localDrawEngine: options.taskProfile === "ui-layer" && source.localDrawEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",
         gptSize: String(source.gptSize || "auto"),
@@ -85952,7 +86075,7 @@
       if (event.type !== "click") return;
       const header = target.closest(".nf-panel-header");
       if (header instanceof HTMLElement) {
-        if (header.closest('[data-novaflow-ui-layout-section="1"]')) return;
+        if (header.closest('[data-novaflow-ui-layout-section="1"], [data-novaflow-ui-smart-split="1"]')) return;
         const panel = header.parentElement;
         if (panel instanceof HTMLElement && isArtGeneratePanel(panel)) {
           if (ART_GENERATE_STATE.active && isArtGeneratePanelExpanded(panel)) {
@@ -85998,7 +86121,7 @@
           if (mutation.type !== "attributes" || mutation.attributeName !== "data-open") return;
           const panel = mutation.target instanceof HTMLElement ? mutation.target : null;
           if (!(panel instanceof HTMLElement) || !panel.classList.contains("nf-panel")) return;
-          if (panel.hasAttribute('data-novaflow-ui-layout-section')) return;
+          if (panel.hasAttribute('data-novaflow-ui-layout-section') || panel.hasAttribute('data-novaflow-ui-smart-split')) return;
           if (isArtGeneratePanel(panel)) {
             shouldSync = true;
             if (isArtGeneratePanelExpanded(panel)) activateArtGenerate();

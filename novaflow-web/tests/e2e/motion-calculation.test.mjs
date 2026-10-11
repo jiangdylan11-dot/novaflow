@@ -31,11 +31,13 @@ test('outer delay positions one full bone cycle; inner delay shifts phase withou
  assert.equal(E.sampleStack(stack,0).x,E.sampleStack(stack,1).x);
  const project=fixture(),out=calc(project,stack);
  assert.equal(out.start,.5);assert.equal(out.end,1.5);
+ // keys are sparse (extremes + eases on integer frames): the track is read, not its rows
  for(const time of [.5,.75,1,1.25,1.5]){
-  const row=out.animation.bones.ball.translate.find(f=>Math.abs(f.time-time)<1e-9);
+  const track=out.animation.bones.ball.translate,row={x:A.scalar(track,time,'x',0),y:A.scalar(track,time,'y',0)};
   const baseline=A.scalar(project.animations.idle.bones.ball.translate,time,'x',0);
   const worldX=(row.x-baseline)*Math.cos(Math.PI/6)-(row.y-2)*Math.sin(Math.PI/6);
-  assert.ok(Math.abs(worldX-E.sampleStack(stack,time-.5).x)<1e-7);
+  assert.ok(Math.abs(worldX-E.sampleStack(stack,time-.5).x)<1,'within the translate tolerance at '+time);
+  assert.ok(track.filter(f=>f.time>=.5-1e-6&&f.time<=1.5+1e-6).every(f=>Math.abs(f.time*30-Math.round(f.time*30))<.01),'generated keys on integer frames');
  }
 });
 test('outside the calculation interval existing keyframes remain',()=>{
@@ -82,8 +84,8 @@ test('Spine 3.8 runtime reads saved tracks with matching displacement, scale, al
  state.setAnimation(0,'idle',false);state.update(1);state.apply(skeleton);skeleton.updateWorldTransform();
  const bone=skeleton.findBone('ball'),slot=skeleton.findSlot('ballSlot');
  assert.ok(Math.abs(bone.x-(20+A.scalar(animation.bones.ball.translate,1,'x',0)))<1e-4);
- assert.ok(Math.abs(bone.scaleX-A.scalar(animation.bones.ball.scale,1,'x',1))<1e-4);
- assert.ok(Math.abs(slot.color.a-128/255)<1e-5);
+ assert.ok(Math.abs(bone.scaleX-A.scalar(animation.bones.ball.scale,1,'x',1))<1e-3,'the runtime walks Bezier eases in 10 linear steps');
+ assert.ok(Math.abs(slot.color.a-128/255)<2.5/255,'alpha within the sparse-key tolerance');
  assert.equal(JSON.stringify(animation.bones.other),JSON.stringify(project.animations.idle.bones.other));
 });
 
@@ -173,7 +175,7 @@ test('weighted mesh bounds follow influencing bones instead of slot attachment a
  const box=A.bounds(project,'driver',M);for(const [k,v]of Object.entries({minX:0,maxX:200,minY:-20,maxY:30}))assert.ok(Math.abs(box[k]-v)<1e-8);
  const stack=E.freshStack();stack.expand.enabled=true;stack.expand.anchor='bottom';
  const out=A.calculate(project,'idle',['driver'],stack,timing,E,M).animation;
- assert.ok(out.bones.driver.scale.length>20);assert.equal(out.bones.root,undefined);
+ assert.ok(out.bones.driver.scale.length>=2&&out.bones.driver.scale.every(f=>Math.abs((f.time||0)*30-Math.round((f.time||0)*30))<.01),'sparse keys on integer frames');assert.equal(out.bones.root,undefined);
 });
 
 const panelSource=readFileSync(new URL('../../renderer/motion-calculation.panel.js',import.meta.url),'utf8');
@@ -224,7 +226,7 @@ test('one-way and reversed curves bake to native tracks and hold their target af
   const track=mode==='expand'?'scale':'translate',key=mode==='expand'?'sx':'x',fallback=mode==='expand'?1:0;
   for(const t of [.5,.7,1,1.5,1.8]){
    const expected=E.sampleStack(stack,Math.min(1,(t-.5)))[key];
-   assert.ok(Math.abs(A.scalar(animation.bones.ball[track],t,'x',fallback)-expected)<.01);
+   assert.ok(Math.abs(A.scalar(animation.bones.ball[track],t,'x',fallback)-expected)<(track==='scale'?.005:1));
   }
   assert.equal(animation.bones.other,project.animations.idle.bones.other);
  }

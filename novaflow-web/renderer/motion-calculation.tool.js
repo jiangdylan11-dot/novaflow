@@ -261,19 +261,48 @@
       ;
     document.head.append(style);
   }
-  // 飘带 spans the whole animation (its frames are on the dopesheet); the solver's window is
-  // null, the whole animation
-  window.__NovaFlowRibbonTiming=null;
-  const ribbonDefaulted=new Set();
+  function setNativeValue(input,value){
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,String(value));
+    input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  // 飘带 timing per animation; 动画总时长 is the animation's own length
+  const ribbonTimings=new Map();
+  const RIBBON_OFFSET_CYCLES_PER_UNIT=.005;
   function ribbonAnimation(){const p=getContext();return p?{p,name:p.activeAnimationName,animation:p.project.animations[p.activeAnimationName]}:null;}
-  function ensureRibbonDuration(){
-    const a=ribbonAnimation();if(!a||ribbonDefaulted.has(a.name))return;
-    ribbonDefaulted.add(a.name);
-    const duration=Math.max(.05,Number(a.animation?.duration)||A.duration(a.animation||{})||Number(document.querySelector('[data-novaflow-skeleton-timeline-range="1"]')?.max)||2);
+  function ribbonTimingFor(){
+    const a=ribbonAnimation();if(!a)return null;
+    let duration=Math.max(.05,Number(a.animation?.duration)||A.duration(a.animation||{})||Number(document.querySelector('[data-novaflow-skeleton-timeline-range="1"]')?.max)||2);
+    let t=ribbonTimings.get(a.name);
     // an animation with no keys yet (a PS export's empty "animation" is 0.01-0.05 s long)
     // starts at 2 s, as the calculation tools do; a ribbon solved over 0.05 s does not move
     const keyed=A.duration({...(a.animation||{}),duration:0});
-    if(!(keyed>0)&&duration<.5)a.p.setProject(previous=>{const animation=previous.animations[a.name];if(!animation)return previous;return {...previous,animations:{...previous.animations,[a.name]:{...animation,duration:2}}};});
+    if(!t&&!(keyed>0)&&duration<.5){
+      duration=2;
+      a.p.setProject(previous=>{const animation=previous.animations[a.name];if(!animation)return previous;return {...previous,animations:{...previous.animations,[a.name]:{...animation,duration:2}}};});
+    }
+    if(!t){t={animationDuration:duration,animationDelay:0,boneDuration:duration,boneDelay:0};ribbonTimings.set(a.name,t);}
+    else if(t.animationDuration>duration+.0005&&Math.abs((Number(a.animation?.duration)||0)-duration)<.0005&&!(keyed>0)&&duration<.5)duration=t.animationDuration;
+    t.animationDuration=duration;
+    const offset=offsetRange(document.querySelector('[data-novaflow-ribbon-panel="1"]'));
+    if(offset?.range)t.boneDelay=Math.max(0,Math.min(t.boneDuration,Number(offset.range.value)*t.boneDuration*RIBBON_OFFSET_CYCLES_PER_UNIT));
+    window.__NovaFlowRibbonTiming={animationDelay:t.animationDelay,boneDuration:Math.min(t.boneDuration,t.animationDuration)};
+    return {...t};
+  }
+  function setRibbonTiming(next){
+    const a=ribbonAnimation();if(!a)return;
+    const t=ribbonTimings.get(a.name)||{};Object.assign(t,next);ribbonTimings.set(a.name,t);
+    window.__NovaFlowRibbonTiming={animationDelay:t.animationDelay,boneDuration:t.boneDuration};
+    if(Math.abs((Number(a.animation?.duration)||0)-t.animationDuration)>.0005){
+      a.p.setProject(previous=>{const animation=previous.animations[a.name];if(!animation)return previous;return {...previous,animations:{...previous.animations,[a.name]:{...animation,duration:Number(t.animationDuration.toFixed(3))}}};});
+    }
+    const offset=offsetRange(document.querySelector('[data-novaflow-ribbon-panel="1"]'));
+    if(offset?.range){
+      const raw=Math.round(t.boneDelay/Math.max(.0001,t.boneDuration*RIBBON_OFFSET_CYCLES_PER_UNIT));
+      const value=Math.max(Number(offset.range.min)||0,Math.min(Number(offset.range.max)||200,raw));
+      if(String(value)!==offset.range.value)setNativeValue(offset.range,value);
+    }
+    // the span or the delay alone changed: the runtime previews again
+    window.NovaFlowRibbonPresets?.refresh?.();
   }
   function ribbonActionButton(kind){
     return Array.from(document.querySelectorAll('[data-novaflow-ribbon-panel="1"] [data-novaflow-ribbon-action-button]'))
@@ -313,7 +342,8 @@
     ribbonWriteDisabled:()=>!!ribbonActionButton('write')?.disabled,
     ribbonActivePreset:()=>document.querySelector('[data-novaflow-ribbon-preset-select="1"]')?.value||'',
     ribbonLabel:()=>{const p=getContext();if(!p)return '';const names=(p.selectedBoneNames&&p.selectedBoneNames.length?p.selectedBoneNames:[p.selectedBoneName]).filter(Boolean);return `当前骨骼：${names.join('、')||'未选择'} · 动画：${p.activeAnimationName||''}`;},
-    ribbonDuration:ensureRibbonDuration
+    ribbonTiming:ribbonTimingFor,
+    setRibbonTiming
   };
   function hostRibbon(ribbon){
     installRibbonDockStyle();

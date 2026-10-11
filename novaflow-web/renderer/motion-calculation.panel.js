@@ -36,6 +36,7 @@
     </header>
     <div id="editorContent">
       <div class="timing-row"><div id="globalTiming" class="global-timing"></div><div id="effectTiming"></div></div>
+      <div class="timing-row" id="ribbonTimingRow"><div id="ribbonGlobalTiming" class="global-timing"></div><div id="ribbonEffectTiming"></div></div>
       <div class="editor-workspace">
         <div class="effect-parameters" aria-label="当前功能参数">
           <div class="effect-scroll">
@@ -104,11 +105,9 @@
     if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
     // no app playbar on screen: the 完整动画 / 骨骼片段 switch rides in the editor's header
     else if(!playButton&&playbackMode.parentNode!==body.querySelector('.editor-header'))body.querySelector('.editor-header')?.insertBefore(playbackMode,body.querySelector('#editorToggle'));
-    // 飘带计算 spans the whole animation (the dopesheet shows its frames): no 骨骼片段 switch
-    // and no span marker there
-    const switchDisplay=ribbon?'none':'inline-flex';if(playbackMode.style.display!==switchDisplay)playbackMode.style.display=switchDisplay;
-    const ts=ribbon?null:timing;
-    bridge.playbackRange?.(ts&&bonePlayback?[ts.animationDelay,ts.animationDelay+ts.boneDuration]:null);
+    // 飘带计算 shows the same 完整动画 / 骨骼片段 switch and bone span, from its own timing row
+    const ts=ribbon&&ribbonTiming?ribbonTiming:timing;
+    bridge.playbackRange?.(bonePlayback?[ts.animationDelay,ts.animationDelay+ts.boneDuration]:null);
     // Use the real central timeline bounds, never the window or the right sidebar.
     const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
     body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
@@ -158,7 +157,7 @@
         const content=bridge.ribbonContentHeight?.()||0;
         // the docked panel still laying out (its height keeps changing for a few frames): measure
         // every frame and show the box only once two frames in a row agree, at that height
-        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=1){ribbonSettled=true;if(stylesReady)floating.style.visibility='visible';reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=1){ribbonSettled=true;if(stylesReady)floating.style.visibility='visible';reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
@@ -594,9 +593,9 @@
   function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();
     // the docked 飘带 leaves / returns in the same task as the box it fills
     if(ribbon&&stylesReady){if(value)bridge.dock?.(null);else positionCurve();}}
-  // ---- 飘带计算: the header's built-in presets (hover = the dropdown's preview) and the
-  // footer's two actions; it spans the whole animation, so no timing row of its own
-  let stopRibbonPreview=null;
+  // ---- 飘带计算: the header's built-in presets (hover = the dropdown's preview), its
+  // own timing row (骨骼延迟 is the panel's 整体偏移) and the footer's two actions
+  let stopRibbonPreview=null,ribbonTiming=null;
   function hideRibbonPreview(){try{stopRibbonPreview?.();}catch{}stopRibbonPreview=null;$('ribbonPreviewCard').hidden=true;$('ribbonPreviewHost').replaceChildren();floating.style.zIndex='60';}
   function showRibbonPreview(button,item){
     showPresetCard(button,item.label,host=>bridge.ribbonPreview?.($('ribbonPreviewCard'),host,item.id)||null);
@@ -653,6 +652,43 @@
       return button;
     }));
   }
+  function ribbonField(key,label,min,max,step,unit,factor,blue){
+    const t=ribbonTiming,div=document.createElement('div');div.className='param'+(blue?'':' animation-timing');if(blue)div.style.setProperty('--accent','#59a8ed');
+    div.innerHTML=`<div class="paramhead"><label>${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" step="${step*factor}" value="${fmt(t[key]*factor)}"><span>${unit}</span></span></div><input aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${t[key]}">`;
+    const range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');div.dataset.key=key;
+    const update=value=>{t[key]=value;settleRibbonTiming(key);bridge.setRibbonTiming?.({...t});syncRibbonTiming();};
+    range.oninput=()=>update(Number(range.value));
+    num.oninput=()=>{if(num.value==='')return;const f=Number(num.dataset.factor||1);update(validInput(num,Number(range.min)*f,Number(range.max)*f,t[key]*f)/f);};
+    num.onblur=()=>syncRibbonTiming();
+    return div;
+  }
+  function settleRibbonTiming(changed){
+    const t=ribbonTiming;
+    t.animationDuration=Math.max(.05,Math.min(120,t.animationDuration));
+    if(changed==='animationDuration'&&t.boneDuration>t.animationDuration)t.boneDuration=t.animationDuration;
+    t.boneDuration=Math.max(.05,Math.min(t.animationDuration,t.boneDuration));
+    t.animationDelay=Math.max(0,Math.min(t.animationDuration-t.boneDuration,t.animationDelay));
+    t.boneDelay=Math.max(0,Math.min(t.boneDuration,t.boneDelay));
+  }
+  function syncRibbonTiming(){
+    const t=ribbonTiming;if(!t)return;
+    const limits={animationDuration:[.05,120,1],animationDelay:[0,Math.max(0,t.animationDuration-t.boneDuration),100/t.animationDuration],boneDuration:[.05,t.animationDuration,1],boneDelay:[0,t.boneDuration,100/Math.max(.0001,t.boneDuration)]};
+    curveRoot.querySelectorAll('#ribbonTimingRow .param').forEach(div=>{
+      const key=div.dataset.key,[min,max,factor]=limits[key],range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');
+      range.min=min;range.max=max;range.value=t[key];range.style.setProperty('--fill',`${max>min?100*(t[key]-min)/(max-min):0}%`);
+      num.dataset.factor=factor;num.min=min*factor;num.max=max*factor;if(curveRoot.activeElement!==num)num.value=fmt(t[key]*factor);
+    });
+    $('ribbonTimingHint').textContent=`偏移 ${fmt(t.animationDelay)} 秒 · ${fmt(t.animationDuration)} 秒时间轴内`;
+    $('ribbonDelayHint').textContent=`偏移 ${fmt(t.boneDelay)} 秒 · ${fmt(t.boneDuration)} 秒周期内`;
+  }
+  function renderRibbonTiming(){
+    ribbonTiming={animationDuration:2,animationDelay:0,boneDuration:2,boneDelay:0,...(bridge.ribbonTiming?.()||{})};settleRibbonTiming('');
+    const a=ribbonField('animationDuration','动画总时长',.05,120,.05,'s',1),b=ribbonField('animationDelay','动画延迟',0,1,.01,'%',1),c=ribbonField('boneDuration','骨骼总时长',.05,2,.05,'s',1,true),d=ribbonField('boneDelay','骨骼延迟',0,2,.01,'%',1,true);
+    const hint=document.createElement('p');hint.className='timing-hint';hint.id='ribbonTimingHint';b.append(hint);
+    const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='ribbonDelayHint';
+    $('ribbonGlobalTiming').replaceChildren(a,b,c);$('ribbonEffectTiming').replaceChildren(d,delayHint);
+    syncRibbonTiming();
+  }
   $('ribbonRestore').onclick=()=>bridge.ribbonAction?.('restore');
   $('ribbonWrite').onclick=()=>bridge.ribbonAction?.('write');
   function showRibbon(){
@@ -689,7 +725,7 @@
     ribbon=next==='ribbon';
     // the 飘带 layout is set at once (the dock box is measured off it); the box turns
     // see-through only once the panel sits in it (showRibbon)
-    if(ribbon){if(!ribbonShown){renderRibbonPresets();bridge.ribbonDuration?.();setCollapsed(false);positionCurve();}return;}
+    if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();setCollapsed(false);positionCurve();}return;}
     ribbonShown=false;ribbonFitHeight=0;ribbonSettled=false;ribbonStable=0;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
     setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('未保存的调整在切换功能时丢弃 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {

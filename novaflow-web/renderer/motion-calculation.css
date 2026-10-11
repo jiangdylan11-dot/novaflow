@@ -54,12 +54,13 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 .expand-mode .effect-scroll{overflow:visible;flex:0 0 auto}
 .expand-mode .effect-parameters #scaleOptions{margin-top:auto}
 #editor{pointer-events:auto;position:relative}
-#ribbonDock,#ribbonPresets,#ribbonRestore,#ribbonWrite{display:none}
+#ribbonDock,#ribbonPresets,#ribbonTimingRow,#ribbonRestore,#ribbonWrite{display:none}
 /* 飘带计算: the left column's panel is laid over this box from below; the editor keeps its
    header (built-in presets), its own timing row and the footer (还原动画 / 写入动画) */
 #editor.ribbon-layout #presetSection,#editor.ribbon-layout #opacityPresets{display:none}
 #editor.ribbon-layout #ribbonPresets{display:flex}
 #editor.ribbon-layout .timing-row{display:none}
+#editor.ribbon-layout #ribbonTimingRow{display:grid}
 #editor.ribbon-layout .editor-workspace{display:none}
 /* the dock fills the content row (the first grid row is auto: with no timing row above it the dock would sit there, 0 tall) */
 #editor.ribbon-layout #ribbonDock{display:block;min-height:0;grid-row:2}
@@ -67,7 +68,7 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 #editor.ribbon-layout #resetAll,#editor.ribbon-layout #save{display:none}
 #editor.ribbon-layout #ribbonRestore,#editor.ribbon-layout #ribbonWrite{display:inline-flex;align-items:center;justify-content:center}
 #editor.ribbon-mode{background:transparent;pointer-events:none}
-#editor.ribbon-mode .editor-header,#editor.ribbon-mode .editor-footer{pointer-events:auto}
+#editor.ribbon-mode .editor-header,#editor.ribbon-mode #ribbonTimingRow,#editor.ribbon-mode .editor-footer{pointer-events:auto}
 #ribbonPreviewCard{position:absolute;z-index:5;display:flex;flex-direction:column;align-items:center;gap:4px;width:150px;padding:8px 8px 6px;border:1px solid #343434;border-radius:7px;background:#232323;box-shadow:0 8px 24px rgba(0,0,0,.45);pointer-events:none;box-sizing:border-box}
 #ribbonPreviewCard[hidden]{display:none}
 #ribbonPreviewHost{display:block;width:128px;height:96px}
