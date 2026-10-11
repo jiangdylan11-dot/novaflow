@@ -309,6 +309,8 @@
     if (open === motionOpen) return
     motionOpen = open
     if (!api) return
+    // the dopesheet folds to one row while the tools are open (their box takes the room)
+    if (api.setTimelineCompact) api.setTimelineCompact(open)
     if (open) {
       api.setPanel('motion', true)
       pushToReact(api.json())

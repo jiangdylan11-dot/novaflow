@@ -5776,16 +5776,18 @@
     $('#play').title = state.playing ? '暂停（空格）' : '播放（空格）'
     for (const id of ['#tStart', '#tBack', '#play', '#tFwd', '#tEnd', '#tLoop']) $(id).disabled = !animOn()
     $('#tLoop').setAttribute('aria-pressed', String(!!state.loop))
-    const tall = animOn()
+    const tall = animOn(), compact = tall && !!state.compactTimeline
     $('.center').dataset.dope = tall ? '1' : ''
+    // 动画工具 open: one row only (transport + ruler + playhead); the dopesheet comes back when it closes
+    $('.center').dataset.compact = compact ? '1' : ''
     $('#tlBody').hidden = !tall
-    $('#dopeModes').hidden = !tall
+    $('#dopeModes').hidden = !tall || compact
     for (const b of document.querySelectorAll('#dopeModes button[data-m]')) b.setAttribute('aria-pressed', String(!!state.dope[b.dataset.m]))
     const F = state.dope.filter
     $('#dopeFilter').hidden = !tall
     $('#dopeFilter').setAttribute('aria-pressed', String(F.keyedOnly || Object.entries(F).some(([k, v]) => k !== 'keyedOnly' && !v)))
     // Spine: the graph sits beside the dopesheet, always there in an animation
-    $('#curvePanel').hidden = !tall
+    $('#curvePanel').hidden = !tall || compact
   }
 
   // ------------------------------------------------------------------ dopesheet (Spine)
@@ -5971,7 +5973,8 @@
     // an end of the selection dragged: the picked keys stretch about the other end
     const sc = d.drag && d.drag.kind === 'scale' ? d.drag : null
     const scaled = (f) => Math.round(sc.pivot + (f - sc.pivot) * sc.factor)
-    d.rows.forEach((r, i) => {
+    const rowsShown = state.compactTimeline ? [] : d.rows
+    rowsShown.forEach((r, i) => {
       const y = DOPE.rulerH + i * DOPE.rowH - d.scrollY
       if (y + DOPE.rowH < DOPE.rulerH || y > Hh) return
       const picked = r.sel && sel && sel.kind === r.sel.kind && sel.name === r.sel.name
@@ -6030,10 +6033,10 @@
     ctx.restore()
     // name column edge
     ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(DOPE.nameW + 0.5, 0); ctx.lineTo(DOPE.nameW + 0.5, Hh); ctx.stroke()
-    if (!d.rows.length) { ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧：选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 18) }
+    if (!d.rows.length && !state.compactTimeline) { ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧：选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 18) }
     // the selection's span (two or more picked keys over a span): Spine's shaded range with a
     // handle at each end - drag one to stretch or squeeze the picked keys in time
-    const span = selectionSpan()
+    const span = state.compactTimeline ? null : selectionSpan()
     if (span) {
       const f1 = sc ? scaled(span.f1) : span.f1, f2 = sc ? scaled(span.f2) : span.f2
       const x1 = dopeX(Math.min(f1, f2)), x2 = dopeX(Math.max(f1, f2)), y1 = span.y
@@ -6071,6 +6074,7 @@
   function dopeHit(x, y) {
     const d = state.dope
     if (y < DOPE.rulerH) return { kind: 'ruler' }
+    if (state.compactTimeline) return { kind: 'empty' }
     const i = Math.floor((y - DOPE.rulerH + d.scrollY) / DOPE.rowH)
     const row = d.rows[i]
     if (x < DOPE.nameW - 7) return { kind: 'name', row }
@@ -6804,6 +6808,8 @@
     },
     reserveBottom,
     /** where the timeline starts (the host docks 动画工具 above it), in this page's coordinates */
+    /** 动画工具 open: the timeline is one row (transport + ruler); off: the whole dopesheet. */
+    setTimelineCompact: (on) => { const v = !!on; if (state.compactTimeline === v) return; state.compactTimeline = v; syncTimeline(); layoutFloats(); drawDope() },
     timelineRect: () => {
       const tl = $('.timeline-wrap')
       const r = tl && !tl.closest('[hidden]') && getComputedStyle(tl).display !== 'none' ? tl.getBoundingClientRect() : null
