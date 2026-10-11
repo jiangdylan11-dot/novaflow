@@ -71,7 +71,7 @@
     jointEdit: false, // 改关节: drag a bone's start / end, the bones on that joint follow (also Shift)
     dope: { pxf: 0, f0: 0, scrollY: 0, keySel: [], clip: null, rows: [], tracks: new Map(), focus: false, curveDrag: null,
       // 筛选: which kinds of rows the dopesheet shows; keyedOnly hides rows without keys
-      filter: { rotate: true, translate: true, scale: true, shear: true, attachment: true, color: true, deform: true, cons: true, events: true, drawOrder: true, keyedOnly: false }, shift: false, offset: false, adjust: false },
+      filter: { rotate: true, translate: true, scale: true, shear: true, attachment: true, color: true, deform: true, cons: true, events: true, drawOrder: true, keyedOnly: true }, shift: false, offset: false, adjust: false },
     hiddenBones: new Set(),
     hiddenSlots: new Set(),
     search: '',
@@ -5846,6 +5846,23 @@
   const pathId = (p) => JSON.stringify(p)
 
   /** The 筛选 kind of a track path (rotate / translate / … / events / drawOrder). */
+  /** A 10 px glyph for a track kind at (x, cy): the function's symbol, not a plain square. */
+  function drawTrackGlyph(ctx, kind, x, cy, color) {
+    ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    const c = [x + 5, cy]
+    if (kind === 'rotate') { ctx.beginPath(); ctx.arc(c[0], c[1], 4, -Math.PI * 0.2, Math.PI * 1.35); ctx.stroke(); ctx.beginPath(); ctx.moveTo(c[0] + 5, c[1] - 3.5); ctx.lineTo(c[0] + 3.2, c[1] - 1.2); ctx.lineTo(c[0] + 1, c[1] - 3.2); ctx.stroke() }
+    else if (kind === 'translate') { ctx.beginPath(); ctx.moveTo(c[0] - 4.5, c[1]); ctx.lineTo(c[0] + 4.5, c[1]); ctx.moveTo(c[0], c[1] - 4.5); ctx.lineTo(c[0], c[1] + 4.5); ctx.moveTo(c[0] + 2.5, c[1] - 2); ctx.lineTo(c[0] + 4.5, c[1]); ctx.lineTo(c[0] + 2.5, c[1] + 2); ctx.moveTo(c[0] - 2.5, c[1] - 2); ctx.lineTo(c[0] - 4.5, c[1]); ctx.lineTo(c[0] - 2.5, c[1] + 2); ctx.stroke() }
+    else if (kind === 'scale') { ctx.beginPath(); ctx.rect(c[0] - 4.5, c[1] - 0.5, 5, 5); ctx.stroke(); ctx.beginPath(); ctx.moveTo(c[0] - 1, c[1] - 1); ctx.lineTo(c[0] + 4.5, c[1] - 4.5); ctx.moveTo(c[0] + 1.5, c[1] - 4.5); ctx.lineTo(c[0] + 4.5, c[1] - 4.5); ctx.lineTo(c[0] + 4.5, c[1] - 1.5); ctx.stroke() }
+    else if (kind === 'shear') { ctx.beginPath(); ctx.moveTo(c[0] - 4.5, c[1] + 4); ctx.lineTo(c[0] - 1.5, c[1] - 4); ctx.lineTo(c[0] + 4.5, c[1] - 4); ctx.lineTo(c[0] + 1.5, c[1] + 4); ctx.closePath(); ctx.stroke() }
+    else if (kind === 'attachment') { ctx.beginPath(); ctx.rect(c[0] - 4.5, c[1] - 4, 9, 8); ctx.stroke(); ctx.beginPath(); ctx.arc(c[0] - 1.5, c[1] - 1.5, 1.2, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(c[0] - 4, c[1] + 3.5); ctx.lineTo(c[0] - 1, c[1] + 0.5); ctx.lineTo(c[0] + 1, c[1] + 2); ctx.lineTo(c[0] + 4, c[1] - 1); ctx.stroke() }
+    else if (kind === 'color') { ctx.beginPath(); ctx.arc(c[0], c[1], 4.5, 0, Math.PI * 2); ctx.fill() }
+    else if (kind === 'deform') { ctx.beginPath(); ctx.moveTo(c[0] - 4.5, c[1] + 4); ctx.lineTo(c[0] + 4.5, c[1] + 4); ctx.lineTo(c[0], c[1] - 4.5); ctx.closePath(); ctx.moveTo(c[0] - 4.5, c[1] + 4); ctx.lineTo(c[0] + 2, c[1] - 1); ctx.moveTo(c[0] + 4.5, c[1] + 4); ctx.lineTo(c[0] - 2, c[1] - 1); ctx.stroke() }
+    else if (kind === 'events') { ctx.beginPath(); ctx.moveTo(c[0] - 3.5, c[1] + 5); ctx.lineTo(c[0] - 3.5, c[1] - 5); ctx.lineTo(c[0] + 4.5, c[1] - 2.5); ctx.lineTo(c[0] - 3.5, c[1]); ctx.stroke() }
+    else if (kind === 'drawOrder') { ctx.beginPath(); for (const dy of [-3.5, 0, 3.5]) { ctx.moveTo(c[0] - 4.5, c[1] + dy); ctx.lineTo(c[0] + 4.5, c[1] + dy) } ctx.stroke() }
+    else { ctx.beginPath(); ctx.arc(c[0] - 1.5, c[1], 3, 0, Math.PI * 2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(c[0] + 1.5, c[1]); ctx.lineTo(c[0] + 5, c[1]); ctx.moveTo(c[0] + 3.5, c[1]); ctx.lineTo(c[0] + 3.5, c[1] + 2.5); ctx.stroke() }
+    ctx.restore()
+  }
+
   function trackKind(path) {
     if (path[0] === 'bones') return path[2]
     if (path[0] === 'slots') return path[2] === 'attachment' ? 'attachment' : 'color'
@@ -6041,7 +6058,8 @@
       ctx.font = r.head ? '600 12px Inter, "Microsoft YaHei", sans-serif' : '12px Inter, "Microsoft YaHei", sans-serif'
       ctx.fillStyle = r.anim ? '#9be4cd' : r.head ? '#e6e6e6' : '#ababab'
       const tx = 10 + (r.indent ? 16 : 0)
-      if (r.color && r.indent) { ctx.fillStyle = r.color; ctx.fillRect(tx - 10, y + 8, 6, 6); ctx.fillStyle = '#ababab' }
+      // a glyph for the row's function (rotate / translate / scale / shear / attachment / colour / mesh ...), in its colour
+      if (r.color && r.indent) { drawTrackGlyph(ctx, trackKind(r.paths[0]), tx - 12, y + DOPE.rowH / 2, r.color); ctx.fillStyle = '#ababab' }
       ctx.save(); ctx.beginPath(); ctx.rect(0, y, DOPE.nameW - 6, DOPE.rowH); ctx.clip()
       ctx.fillText(r.label, tx, y + 15)
       ctx.restore()
