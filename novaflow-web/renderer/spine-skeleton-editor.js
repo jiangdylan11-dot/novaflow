@@ -4056,6 +4056,18 @@
     }
   }
 
+  const CONS_KIND = { ik: 'IK', transform: '变换', path: '路径' }
+  function consRowEnd(list) {
+    if (!list.length) return null
+    const go = (kind, name) => { state.sections.delete('cons'); select({ kind, name }, false, { noReveal: false }) }
+    if (list.length <= 2) return h('span', { class: 'end' }, ...list.map(({ kind, c }) => h('button', { class: 'cjump', title: `${c.name}（${CONS_KIND[kind]}）`, html: ICON[kind], onclick: (e) => { e.stopPropagation(); go(kind, c.name) } })))
+    return h('span', { class: 'end' }, h('button', { class: 'cjump many', title: `${list.length} 个约束`, onclick: (e) => {
+      e.stopPropagation()
+      const r = e.currentTarget.getBoundingClientRect()
+      mountMenu(h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(Math.min(r.left, innerWidth - 170))}px;top:${Math.round(r.bottom + 4)}px` },
+        list.map(({ kind, c }) => h('button', { onclick: () => { closeMenu(); go(kind, c.name) } }, h('span', { html: ICON[kind], style: 'display:inline-flex' }), c.name, h('span', { class: 'kb' }, CONS_KIND[kind])))))
+    } }, h('span', { html: ICON[list[0].kind], style: 'display:inline-flex' }), h('span', { class: 'cnt' }, String(list.length))))
+  }
   /** The constraints a bone takes part in: as one of their bones or as the target. */
   function consOf(name) { return allConstraints().filter(({ c }) => (c.bones || []).includes(name) || c.target === name) }
   function allConstraints() {
@@ -4279,8 +4291,8 @@
         h('span', { class: 'label' }, b.name),
         animOn() ? h('span', { class: 'lkey' }, keyBtn(BONE_TRACKS(b.name), () => keyBoneNow(b.name), `给 ${b.name} 打关键帧（旋转 / 平移 / 缩放）`)) : null,
         // Spine: the constraints this bone is in (as a bone or the target) at the row's end - a click goes to them
-        consOf(b.name).length ? h('span', { class: 'end' }, ...consOf(b.name).map(({ kind, c }) => h('button', { class: 'cjump', title: `${c.name}（${{ ik: 'IK', transform: '变换', path: '路径' }[kind]}）`, html: ICON[kind],
-          onclick: (e) => { e.stopPropagation(); state.sections.delete('cons'); select({ kind, name: c.name }, false, { noReveal: false }) } }))) : null)
+        // (more than two: one button with the count, a menu lists them - a row of icons hid the name)
+        consRowEnd(consOf(b.name)))
         wireDrag(row, b.parent ? { type: 'bone', name: b.name } : null, { type: 'bone', name: b.name })
         rows.push(row)
         if (closed) return
@@ -5819,7 +5831,9 @@
     $('#tLoop').setAttribute('aria-pressed', String(!!state.loop))
     // a promised fold (动画工具 opening from 设置): the timeline stays hidden until the fold is
     // applied, instead of showing the full dopesheet for a moment and then folding
-    const tall = animOn() && !(state.compactPending && !state.compactTimeline), compact = tall && !!state.compactTimeline
+    // (a timeline already on screen stays as it is until that frame - it must not vanish first)
+    const pending = state.compactPending && !state.compactTimeline
+    const tall = animOn() && !(pending && $('.center').dataset.dope !== '1'), compact = tall && !!state.compactTimeline
     $('.center').dataset.dope = tall ? '1' : ''
     // 动画工具 open: one row only (transport + ruler + playhead); the dopesheet comes back when it closes
     $('.center').dataset.compact = compact ? '1' : ''
@@ -5902,8 +5916,8 @@
         rows.push({ label: slot, paths: props.map((x) => x.path), head: true, sel: { kind: 'slot', name: slot } })
         for (const x of props) rows.push({ label: x.label, paths: [x.path], color: x.color, indent: 1 })
       }
-      for (const c of consList) rows.push({ label: c.name, paths: [[c.kind, c.name]], color: KEY_COLOR.cons, head: true, sel: { kind: c.kind, name: c.name } })
-      for (const e of evList) rows.push({ label: e, paths: [['events', e]], color: KEY_COLOR.event, head: true, sel: { kind: 'event', name: e } })
+      for (const c of consList) { rows.push({ label: c.name, paths: [[c.kind, c.name]], head: true, sel: { kind: c.kind, name: c.name } }); rows.push({ label: { ik: 'IK', transform: '变换', path: '路径' }[c.kind], paths: [[c.kind, c.name]], color: KEY_COLOR.cons, indent: 1 }) }
+      for (const e of evList) { rows.push({ label: e, paths: [['events', e]], head: true, sel: { kind: 'event', name: e } }); rows.push({ label: '事件', paths: [['events', e]], color: KEY_COLOR.event, indent: 1 }) }
     } else {
       const items = new Map()
       for (const t of tracks) {
@@ -5911,11 +5925,16 @@
         const id = k0 === 'deform' ? 'slots:' + t.path[2] : k0 === 'drawOrder' ? 'drawOrder' : k0 + ':' + k1
         const label = k0 === 'deform' ? t.path[2] : k0 === 'drawOrder' ? '绘制顺序' : k1
         const sel = k0 === 'bones' ? { kind: 'bone', name: k1 } : k0 === 'slots' ? { kind: 'slot', name: k1 } : k0 === 'deform' ? { kind: 'slot', name: t.path[2] } : (k0 === 'ik' || k0 === 'transform') ? { kind: k0, name: k1 } : k0 === 'events' ? { kind: 'event', name: k1 } : null
-        if (!items.has(id)) items.set(id, { label, paths: [], head: true, sel })
+        if (!items.has(id)) items.set(id, { label, paths: [], head: true, sel, kids: [] })
         items.get(id).paths.push(t.path)
+        const kind = trackKind(t.path)
+        const kidLabel = kind === 'deform' ? `网格 ${t.path[3]}` : { rotate: '旋转', translate: '平移', scale: '缩放', shear: '斜切', attachment: '附件', color: '颜色', events: '事件', drawOrder: '绘制顺序', cons: { ik: 'IK', transform: '变换', path: '路径' }[k0] || '约束' }[kind] || kind
+        const kidColor = kind === 'cons' ? KEY_COLOR.cons : kind === 'events' ? KEY_COLOR.event : KEY_COLOR[kind] || KEY_COLOR.cons
+        items.get(id).kids.push({ label: kidLabel, paths: [t.path], color: kidColor, indent: 1 })
         void k3
       }
-      rows.push(...items.values())
+      // every keyed item as a head row with its keyed tracks under it (the glyph says which)
+      for (const it of items.values()) { const { kids, ...head } = it; rows.push(head, ...kids) }
     }
     // 筛选: property rows of a hidden kind go, and a head row keeps only the paths left
     const kept = []
@@ -6107,7 +6126,8 @@
     ctx.restore()
     // name column edge
     ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(DOPE.nameW + 0.5, 0); ctx.lineTo(DOPE.nameW + 0.5, Hh); ctx.stroke()
-    if (!d.rows.length && !state.compactTimeline) { ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧：选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 18) }
+    // the empty-sheet hint stays in the names column (two lines), never over the ruler's columns
+    if (!d.rows.length && !state.compactTimeline) { ctx.save(); ctx.beginPath(); ctx.rect(0, DOPE.rulerH, DOPE.nameW - 8, Hh - DOPE.rulerH); ctx.clip(); ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧', 12, DOPE.rulerH + 18); ctx.fillText('选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 36); ctx.restore() }
     // a key drag: where the picked keys were (dashed) and where they are now (solid) - Spine's
     // guide lines, so an 偏移 / 移位 drag shows where it lands
     if (mv && d.keySel.length) {
@@ -6295,7 +6315,12 @@
       if (!d.drag) { const cursor = animOn() && dopeHit(x, y).kind === 'scale' ? 'ew-resize' : ''; if (c.style.cursor !== cursor) c.style.cursor = cursor; return }
       if (d.drag.kind === 'pan') { if (Math.abs(x - d.drag.x0) > 3) d.drag.moved = true; d.f0 = Math.max(0, d.drag.f0 - (x - d.drag.x0) / d.pxf); return }
       if (d.drag.kind === 'scrub') { setFrame(dopeF(x)); return }
-      if (d.drag.kind === 'move') { d.drag.df = Math.round((x - d.drag.x0) / d.pxf); if (d.drag.df) d.drag.moved = true; return }
+      if (d.drag.kind === 'move') {
+        let df = Math.round((x - d.drag.x0) / d.pxf)
+        // no key goes before frame 0 (an 偏移 drag wraps round the loop instead)
+        if (!(d.offset || d.drag.offset) && d.keySel.length) { const minF = Math.min(...d.keySel.map((k) => Math.round(k.time * FPS))); df = Math.max(df, -minF) }
+        d.drag.df = df; if (d.drag.df) d.drag.moved = true; return
+      }
       if (d.drag.kind === 'scale') {
         // the dragged end follows the cursor's frame; never shorter than a frame, never flipped
         const g = d.drag, span = g.from - g.pivot
