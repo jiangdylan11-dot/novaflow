@@ -5866,6 +5866,10 @@
       if (!paths.length) { while (rows[i + 1] && rows[i + 1].indent) i++; continue }
       kept.push({ ...r, paths })
     }
+    // Spine's animation row on top: a key wherever any track has one - picking or dragging a
+    // key there takes every key of that column, on every track of the animation
+    const all = tracks.map((t) => t.path).filter(passes)
+    if (all.length) kept.unshift({ label: an, paths: all, head: true, anim: true })
     d.rows = kept
     // keys that no longer exist drop out of the selection
     d.keySel = d.keySel.filter((k) => { const t = d.tracks.get(pathId(k.path)); return t && t.times.some((x) => Math.abs(x - k.time) < 1e-4) })
@@ -5982,12 +5986,12 @@
       const y = DOPE.rulerH + i * DOPE.rowH - d.scrollY
       if (y + DOPE.rowH < DOPE.rulerH || y > Hh) return
       const picked = r.sel && sel && sel.kind === r.sel.kind && sel.name === r.sel.name
-      ctx.fillStyle = picked ? 'rgba(30,166,114,.14)' : r.head ? '#1c1c1c' : '#181818'
+      ctx.fillStyle = picked ? 'rgba(30,166,114,.14)' : r.anim ? '#1f2a26' : r.head ? '#1c1c1c' : '#181818'
       ctx.fillRect(0, y, W, DOPE.rowH)
       if (picked) { ctx.fillStyle = 'rgba(30,166,114,.92)'; ctx.fillRect(0, y, 3, DOPE.rowH) }
       ctx.strokeStyle = '#222'; ctx.beginPath(); ctx.moveTo(0, y + DOPE.rowH - 0.5); ctx.lineTo(W, y + DOPE.rowH - 0.5); ctx.stroke()
       ctx.font = r.head ? '600 12px Inter, "Microsoft YaHei", sans-serif' : '12px Inter, "Microsoft YaHei", sans-serif'
-      ctx.fillStyle = r.head ? '#e6e6e6' : '#ababab'
+      ctx.fillStyle = r.anim ? '#9be4cd' : r.head ? '#e6e6e6' : '#ababab'
       const tx = 10 + (r.indent ? 16 : 0)
       if (r.color && r.indent) { ctx.fillStyle = r.color; ctx.fillRect(tx - 10, y + 8, 6, 6); ctx.fillStyle = '#ababab' }
       ctx.save(); ctx.beginPath(); ctx.rect(0, y, DOPE.nameW - 6, DOPE.rowH); ctx.clip()
