@@ -3372,7 +3372,9 @@
           c.setPointerCapture(e.pointerId)
           return
         }
-        if (!bh) {
+        // another image under the pointer: that one is picked instead (the mesh's box select
+        // only starts on empty space - with a mesh picked, clicks on other layers went nowhere)
+        if (!bh && !(ih && ih.slot !== MT.slotName)) {
           // empty space: box-pick vertices (Ctrl adds); a click clears them
           state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: e.ctrlKey || e.metaKey, verts: MT.slotName }
           drag = { kind: 'box' }
@@ -4890,7 +4892,9 @@
             else batchEdit([L], '自动权重', (j, x) => weighOneLayer(j, x), () => enterWeightEdit(L))
           } }, '权重')
       grid.append(h('div', { class: 'ld-card', 'data-on': L0 && L0.slot === l.slot ? '1' : null, title: l.slot,
-        onclick: () => select({ kind: 'att', skin: l.skin, slot: l.slot, name: l.name }, false, { noReveal: false }) },
+        onclick: () => select({ kind: 'att', skin: l.skin, slot: l.slot, name: l.name }, false, { noReveal: false }),
+        // the card under the pointer lights its layer up on the stage, as hovering the layer does
+        onmouseenter: () => { state.hoverImg = l.slot }, onmouseleave: () => { if (state.hoverImg === l.slot) state.hoverImg = null } },
         h('input', { type: 'checkbox', checked: on, title: '勾选 = 参与自动蒙皮 / 自动权重（两个面板是同一个勾选）',
           onclick: (e) => e.stopPropagation(), onchange: (e) => { e.target.checked ? state.unticked.delete(l.slot) : state.unticked.add(l.slot); renderLayerDock() } }),
         c, h('span', { class: 'ld-n' }, l.slot), h('span', { class: 'ld-c' }, count), editBtn))
