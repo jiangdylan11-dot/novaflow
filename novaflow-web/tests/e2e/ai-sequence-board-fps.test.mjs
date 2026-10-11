@@ -81,18 +81,22 @@ test('fractional rates and source rationals are retained; unavailable and VFR me
   assert.equal(state.boards[0].loadedVideo.sourceFps, null);
 });
 
-test('lock keeps video duration by resampling; unlocked keeps frames and changes speed consistently', () => {
+test('both modes sample the source at the board fps; unlocked plays at the source rate (more frames = slower), locked keeps the duration', () => {
   const original = { ...board('b1', 12, video(24)), keepDuration: false };
+  // 12 frames per source second played at the source's 24: half the frames, twice the speed
   const free = fps.framePlan(original, 2);
-  assert.equal(free.count, 48); assert.equal(free.times[47], 47 / 24);
-  assert.equal(free.durationSec, 4); assert.equal(free.playbackRate, .5);
+  assert.equal(free.count, 24); assert.equal(free.times[23], 23 / 12);
+  assert.equal(free.durationSec, 1); assert.equal(free.playbackRate, 2); assert.equal(free.fps, 24); assert.equal(free.boardFps, 12);
+  // 48 per source second: twice the frames, half the speed
+  const slow = fps.framePlan({ ...original, timelineFps: 48 }, 2);
+  assert.equal(slow.count, 96); assert.equal(slow.durationSec, 4); assert.equal(slow.playbackRate, .5); assert.equal(slow.fps, 24);
   const locked = fps.framePlan({ ...original, keepDuration: true }, 2);
   assert.equal(locked.count, 24); assert.equal(locked.times[23], 23 / 12);
-  assert.equal(locked.durationSec, 2); assert.equal(locked.playbackRate, 1);
+  assert.equal(locked.durationSec, 2); assert.equal(locked.playbackRate, 1); assert.equal(locked.fps, 12);
   const fractional = fps.framePlan(board('b1', 24000 / 1001, video(24000 / 1001, 48)), 2.002);
   close(fractional.durationSec, 2.002); close(fractional.times[47], 47 * 1001 / 24000);
   const reopened = JSON.parse(JSON.stringify(original));
-  assert.equal(fps.framePlan(reopened, 2).fps, 12);
+  assert.equal(fps.framePlan(reopened, 2).boardFps, 12);
 });
 
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
@@ -179,10 +183,11 @@ test('actual Spine/atlas action uses each board fps and keeps names, frame count
   for (const version of ['3.8', '4.0', '4.1', '4.2']) for (const packed of [false, true]) {
     const { json, saved, reads } = await exportBoards(boards, version, packed);
     assert.deepEqual(Object.keys(json.animations), ['动画b1', '动画b2']);
-    for (const [index, expected] of [{ count: 48, fps: 12, sourceFps: 24, duration: 4 }, { count: 120, fps: 60, sourceFps: 60, duration: 2 }].entries()) {
+    // b1: 12 frames per source second, unlocked, played at the source's 24 → 24 frames, 1 s
+    for (const [index, expected] of [{ count: 24, fps: 24, sampleFps: 12, duration: 1 }, { count: 120, fps: 60, sampleFps: 60, duration: 2 }].entries()) {
       const name = `动画b${index + 1}`, slot = `slot_${index + 1}`;
       const sampled = reads.filter(read => read.src === boards[index].loadedVideo.objectUrl);
-      assert.equal(sampled.length, expected.count); close(sampled[1].time, 1 / expected.sourceFps);
+      assert.equal(sampled.length, expected.count); close(sampled[1].time, 1 / expected.sampleFps);
       if (version === '3.8' || version === '4.0') {
         const timeline = json.animations[name].slots[slot].attachment;
         close(timeline[1].time, 1 / expected.fps); close(timeline.at(-1).time, expected.duration);
@@ -228,7 +233,8 @@ test('frame editor reads decimal dock fps and the loaded timeline routes fps cha
       video: { duration: 2 }, src: 'blob:24', MAX_FRAMES: 1000, findSourceName: () => 'source.mp4', readDockFps: () => 12,
       bridge: { exportDecodeVideoFrames: async value => { request = value; return { ok: true, fps: value.fps }; } } });
     await vm.runInContext(`(async()=>{${decode}})()`, context);
-    assert.equal(request.fps, locked ? 12 : 24);
+    // the frame editor decodes at the board fps in both modes (that is the sampling rate)
+    assert.equal(request.fps, 12);
     assert(source.includes('state.fps = fps || Number(result.fps) || 16'));
   }
 });

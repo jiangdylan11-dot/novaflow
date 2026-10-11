@@ -25,16 +25,23 @@
   function effective(board, fallback = 30) {
     return clamp(board?.timelineFps ?? board?.loadedVideo?.sourceFps, fallback);
   }
+  // The board's 帧率 is how many frames a source second is sampled into. 锁定 off plays and
+  // exports them at the source's own rate: more frames make the clip longer and slower, fewer
+  // make it faster (the behaviour the page had before the 2026-10-06 rewrite flipped it - the
+  // user: "加帧是减速"). 锁定 on plays them at the board rate, so the clip keeps its length.
+  // `fps` is the rate the frames play at (what the Spine / video export writes); `boardFps`
+  // is the slider's value.
   function framePlan(board, durationSec, fallback = 30, lockFallback = false) {
     const video = board?.loadedVideo || {};
-    const fps = effective(board, fallback), sourceFps = rate(video.sourceFps) || fps;
+    const boardFps = effective(board, fallback), sourceFps = rate(video.sourceFps) || boardFps;
     const duration = Math.max(.01, Number(video.sourceDurationSec) || Number(durationSec) || Number(video.sourceFrames) / sourceFps || .01);
     const locked = board?.keepDuration ?? lockFallback;
-    const count = Math.max(1, Math.round(locked ? duration * fps : Number(video.sourceFrames) || duration * sourceFps));
-    const sampleFps = locked ? fps : sourceFps;
+    const count = Math.max(1, Math.round(duration * boardFps));
+    const sampleFps = boardFps;
     const times = Array.from({ length: count }, (_, index) => Math.min(duration, index / sampleFps));
-    return { fps, sourceFps, sampleFps, count, times, locked, sourceUrl: video.objectUrl, boardId: board?.id, sourceDurationSec: duration,
-      durationSec: locked ? duration : count / fps, playbackRate: locked ? 1 : fps / sourceFps };
+    const fps = locked ? boardFps : sourceFps;
+    return { fps, boardFps, sourceFps, sampleFps, count, times, locked, sourceUrl: video.objectUrl, boardId: board?.id, sourceDurationSec: duration,
+      durationSec: count / fps, playbackRate: locked ? 1 : sourceFps / boardFps };
   }
   function rateInfo(video) {
     if (!video?.objectUrl) return '此帧率仅作用于当前画板';

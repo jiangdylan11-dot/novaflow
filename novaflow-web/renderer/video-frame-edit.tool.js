@@ -674,8 +674,8 @@
       const sourceName = findSourceName(src)
       const fps = readDockFps()
       const boardPlan = window.NovaFlowAiSequenceBoardFps?.currentPlan?.(video.duration)
-      // Unlocked playback keeps source frames and changes their playback rate;
-      // locked playback resamples at the board rate to keep the source duration.
+      // The board samples the source at its 帧率 in both modes (unlocked then plays
+      // the frames at the source rate, locked at the board rate), so decode at that.
       const decodeFps = boardPlan?.sourceUrl === src ? boardPlan.sampleFps : fps
       const result = await bridge.exportDecodeVideoFrames({ sourceUrl: src, fileName: sourceName, fps: decodeFps, maxFrames: MAX_FRAMES })
       if (!result?.ok || !Array.isArray(result.frames) || !result.frames.length) throw new Error(result?.error || '读取画板视频的帧失败')
