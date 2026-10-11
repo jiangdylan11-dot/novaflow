@@ -34,16 +34,17 @@
   function slotNames(p,bone){return (p.slots||[]).filter(s=>s.bone===bone).map(s=>s.name);}
   const editorApi=()=>{const ed=window.NovaFlowSkeletonEditor;const api=ed&&ed.active&&ed.active()?ed.api():null;return api&&api.loaded()?api:null;};
   const pickedSlot=()=>{const api=editorApi();return api&&api.selectedSlot?api.selectedSlot():null;};
-  // 透明度计算 needs a slot (an image) picked, the other tools a bone; a tool that does not apply
-  // to the pick is greyed (the note under the list says what to pick)
+  // the calculation tools need a bone picked, the frame tools an animation; a tool that does not
+  // apply to the pick is greyed (the note under the list says what to pick). 透明度计算 was removed
+  // 2026-10-12 (user: 鸡肋); the engine's opacity channel stays off underneath.
   function syncToolAvailability(panel){
     const api=editorApi();if(!api)return;
-    const bone=api.selectedBone(),slot=api.selectedSlot?api.selectedSlot():null;
+    const bone=api.selectedBone();
     const anim=!!api.anim();
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>{
-      const mode=item.dataset.motionMode,needSlot=mode==='opacity',frameTool=isFrameTool(mode),ok=frameTool?anim:needSlot?!!slot:!!bone;
+      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode),ok=frameTool?anim:!!bone;
       if(item.disabled!==!ok)item.disabled=!ok;
-      const title=ok?'':(frameTool?'先选一个动画':needSlot?'透明度计算作用于插槽（图片）：先在画板或工程树里选中一个插槽':'先在画板或工程树里选中一个骨骼');
+      const title=ok?'':(frameTool?'先选一个动画':'先在画板或工程树里选中一个骨骼');
       if(item.title!==title)item.title=title;
     });
   }
@@ -475,7 +476,7 @@
         [data-panel-id="bone-motion"] [data-motion-mode][disabled]{color:#5a5a5a;cursor:default}
         [data-panel-id="bone-motion"] .nf-motion-note{margin:4px 10px 0;font-size:11px;line-height:1.6;color:#6a6a6a}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
-      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算',sequence:'序列帧添加',sweep:'序列扫光'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；选中插槽（图片）后可用透明度计算；序列帧添加、序列扫光在画面下方的卡片里勾选图片。</p></div><div class="nf-motion-body"></div>`;
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',sequence:'序列帧添加',sweep:'序列扫光'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；序列帧添加、序列扫光在画面下方的卡片里勾选图片。</p></div><div class="nf-motion-body"></div>`;
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{
