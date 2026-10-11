@@ -71,7 +71,9 @@
   input[type=color]{width:34px;height:26px;padding:0;border:0;background:none}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
   .grid2 .f{grid-template-columns:38px minmax(0,1fr)}
-  .select{height:26px;padding:0 6px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:#262626;color:#eee;font-size:12px;width:100%}
+  /* the app's own look for a dropdown: thin arrow at the right, 7px corners, the buttons' height */
+  .select{height:28px;padding:0 26px 0 8px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:#262626 url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 10 6%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27rgba(238,244,252,0.68)%27 stroke-width=%271.35%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E") no-repeat right 10px center;background-size:10px 6px;color:#eee;font-size:12px;width:100%;appearance:none;-webkit-appearance:none}
+  .chev{display:inline-block;width:10px;height:6px;margin-left:6px;background:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 10 6%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27rgba(238,244,252,0.68)%27 stroke-width=%271.35%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E") no-repeat center/10px 6px;flex:0 0 10px}
   .checks{display:flex;flex-wrap:wrap;gap:5px 12px;margin:6px 0}
   .checks label{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,.82);font-size:11px}
   .checks input{accent-color:var(--green);margin:0}
@@ -80,7 +82,7 @@
   .cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;align-items:center;min-width:0}
   .cols3 label{display:inline-flex;align-items:center;gap:5px;min-width:0;color:rgba(255,255,255,.82);font-size:11px;white-space:nowrap}
   .cols3 input[type=checkbox]{accent-color:var(--green);margin:0}
-  .btn{height:28px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:6px;background:#2a2a2a;color:rgba(255,255,255,.86);font-size:12px;white-space:nowrap}
+  .btn{display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 10px;border:1px solid rgba(255,255,255,.08);border-radius:7px;background:#2a2a2a;color:rgba(255,255,255,.86);font-size:12px;font-weight:500;white-space:nowrap}
   .btn:hover:not(:disabled){background:#373737;color:#fff}
   .btn.primary{background:var(--green);border-color:transparent;color:#fff;font-weight:600}
   .btn.primary:hover:not(:disabled){background:#22b57c}
@@ -229,18 +231,21 @@
   .od[data-on="1"]::before{background:var(--green);border-color:var(--green)}
   .od:hover{background:#373737}
   .xs[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
-  .key{width:22px;height:22px;border:0;border-radius:5px;background:transparent;display:inline-flex;align-items:center;justify-content:center;flex:0 0 22px}
-  .key svg{width:13px;height:13px}
+  .key{width:24px;height:24px;padding:0;border:0;border-radius:5px;background:transparent;display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px}
+  .key svg{width:16px;height:16px}
   .key[data-k="none"]{color:#1EA672}
   .key[data-k="pending"]{color:#f0a63a}
   .key[data-k="keyed"]{color:#e5534b}
   .key:hover:not(:disabled){background:#373737}
   .keyrow{display:flex;flex-wrap:wrap;gap:2px 10px}
   .keyrow .kr{display:inline-flex;align-items:center;gap:2px;color:#bdbdbd;font-size:11px}
-  .row .end .key{width:20px;height:20px;flex:0 0 20px}
-  .row .lkey{position:absolute;left:23px;top:50%;margin-top:-10px;display:inline-flex;z-index:1}
-  .row .lkey .key{width:20px;height:20px;flex:0 0 20px}
-  .grp>.t .r .key{width:20px;height:20px}
+  .row .end .key{width:22px;height:22px;flex:0 0 22px}
+  .row .end .cjump{width:20px;height:20px;padding:0;border:0;border-radius:5px;background:transparent;color:#e5534b;display:inline-flex;align-items:center;justify-content:center}
+  .row .end .cjump svg{width:13px;height:13px}
+  .row .end .cjump:hover{background:#373737}
+  .row .lkey{position:absolute;left:22px;top:50%;margin-top:-11px;display:inline-flex;z-index:1}
+  .row .lkey .key{width:22px;height:22px;flex:0 0 22px}
+  .grp>.t .r .key{width:22px;height:22px}
   .opts{display:grid;grid-template-columns:auto 22px 22px 22px;align-items:center;gap:2px 2px;font-size:11px;color:#bdbdbd}
   .opts .h{color:#7d7d7d;font-size:10px;text-align:center}
   .opts .o{width:22px;height:22px;border:0;border-radius:5px;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
@@ -248,7 +253,8 @@
   .opts .o[aria-pressed="true"]::before{background:var(--green);border-color:var(--green)}
   .opts .o:hover{background:#373737}
   .selname{position:absolute;left:12px;bottom:142px;padding:2px 7px;border:1px solid #2c604f;border-radius:4px;background:rgba(14,40,31,.92);color:#c8f5e2;font-size:11px;pointer-events:none}
-  .menu{position:fixed;z-index:60;min-width:150px;padding:4px;border:1px solid #2e2e2e;border-radius:8px;background:#1F1F1F;box-shadow:0 12px 32px rgba(0,0,0,.5)}
+  .menu-mask{position:fixed;inset:0;z-index:59;background:transparent}
+  .menu{position:fixed;z-index:60;min-width:150px;padding:4px;border:1px solid #2e2e2e;border-radius:7px;background:#1F1F1F;box-shadow:0 12px 32px rgba(0,0,0,.5)}
   .menu button{display:flex;align-items:center;gap:8px;width:100%;height:28px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:#e6e6e6;font-size:12px;text-align:left}
   .menu button svg{width:13px;height:13px;color:#a8a8a8}
   .menu button:hover:not(:disabled){background:#373737;color:#fff}
@@ -308,8 +314,8 @@
   .tbtn{height:26px;padding:0 6px;border:0;border-radius:5px;background:transparent;color:#bdbdbd;font-size:11px;flex:0 0 auto}
   .tbtn:hover{background:#373737;color:#fff}
   .search{flex:1;min-width:0;height:28px;padding:0 8px;border:0;border-radius:6px;background:#262626;color:#fff;font-size:12px}
-  .row .caret{width:16px;flex:0 0 16px;height:16px;display:inline-flex;align-items:center;justify-content:center;color:#8a8a8a}
-  .row .caret svg{width:10px;height:10px}
+  .row .caret{width:16px;flex:0 0 16px;height:16px;display:inline-flex;align-items:center;justify-content:center;color:rgba(238,244,252,.68)}
+  .row .caret svg{width:11px;height:11px}
   .row .mk{width:8px;height:8px;flex:0 0 8px;border-radius:2px;margin:0 7px 0 2px}
   .row .ico{width:16px;flex:0 0 16px;height:16px;margin:0 5px 0 0;display:inline-flex;align-items:center;justify-content:center;color:#a8a8a8}
   .row .ico svg{width:13px;height:13px}

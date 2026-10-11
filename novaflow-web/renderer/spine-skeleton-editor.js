@@ -134,7 +134,7 @@
     cons: '<svg viewBox="0 0 16 16"><circle cx="4" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="4" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 10.5l5-5" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 1.5"/></svg>',
     chev: '<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
     right: '<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
-    down: '<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
+    down: '<svg viewBox="0 0 16 16"><path d="M4.5 6.5l3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     shear: '<svg viewBox="0 0 16 16"><path d="M5.5 3h8l-3 10h-8z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
     pose: '<svg viewBox="0 0 16 16"><circle cx="8" cy="3.2" r="1.8" fill="currentColor"/><path d="M8 5.5v4.5M8 6.8 4 9M8 6.8l4-2.3M8 10l-3 4.3M8 10l3 4.3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>',
     key: '<svg viewBox="0 0 16 16"><circle cx="5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 8h6.5M12.2 8v3M14.5 8v2.2" stroke="currentColor" stroke-width="1.7" fill="none"/></svg>',
@@ -4053,6 +4053,8 @@
     }
   }
 
+  /** The constraints a bone takes part in: as one of their bones or as the target. */
+  function consOf(name) { return allConstraints().filter(({ c }) => (c.bones || []).includes(name) || c.target === name) }
   function allConstraints() {
     const all = []
     for (const k of ['ik', 'transform', 'path']) for (const c of state.json[k] || []) all.push({ kind: k, c })
@@ -4272,7 +4274,10 @@
         caret(own.length + sub.length ? !closed : null, toggleOpen),
         boneIcon(b, role, isSel('bone', b.name) || multi),
         h('span', { class: 'label' }, b.name),
-        animOn() ? h('span', { class: 'lkey' }, keyBtn(BONE_TRACKS(b.name), () => keyBoneNow(b.name), `给 ${b.name} 打关键帧（旋转 / 平移 / 缩放）`)) : null)
+        animOn() ? h('span', { class: 'lkey' }, keyBtn(BONE_TRACKS(b.name), () => keyBoneNow(b.name), `给 ${b.name} 打关键帧（旋转 / 平移 / 缩放）`)) : null,
+        // Spine: the constraints this bone is in (as a bone or the target) at the row's end - a click goes to them
+        consOf(b.name).length ? h('span', { class: 'end' }, ...consOf(b.name).map(({ kind, c }) => h('button', { class: 'cjump', title: `${c.name}（${{ ik: 'IK', transform: '变换', path: '路径' }[kind]}）`, html: ICON[kind],
+          onclick: (e) => { e.stopPropagation(); state.sections.delete('cons'); select({ kind, name: c.name }, false, { noReveal: false }) } }))) : null)
         wireDrag(row, b.parent ? { type: 'bone', name: b.name } : null, { type: 'bone', name: b.name })
         rows.push(row)
         if (closed) return
@@ -4426,7 +4431,7 @@
       items.map(([k, label]) => h('button', { onclick: (e) => { e.stopPropagation(); F[k] = !F[k]; renderTree(); filterMenu(btnEl) } },
         h('span', { class: 'dot', 'data-on': F[k] ? '1' : null }), label)),
       h('button', { onclick: () => { for (const [k] of items) F[k] = true; closeMenu(); renderTree() } }, h('span', { style: 'width:16px' }), '全部显示'))
-    document.body.append(menu)
+    mountMenu(menu)
   }
 
   /**
@@ -4484,7 +4489,7 @@
       h('div', { class: 'msep' }),
       h('button', { onclick: toggle('keyedOnly') }, h('span', { class: 'dot', 'data-on': F.keyedOnly ? '1' : null }), '只显示有关键帧的行'),
       h('button', { onclick: (e) => { e.stopPropagation(); for (const k of Object.keys(F)) F[k] = k !== 'keyedOnly'; buildDope(); syncTimeline(); closeMenu() } }, h('span', { style: 'width:16px' }), '全部显示'))
-    document.body.append(menu)
+    mountMenu(menu)
     const mr = menu.getBoundingClientRect()
     if (mr.bottom > innerHeight - 8) menu.style.top = Math.round(r.top - mr.height - 4) + 'px'
   }
@@ -4560,13 +4565,15 @@
       const menu = h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(r.left)}px;top:${Math.round(r.bottom + 4)}px` },
         items.filter(Boolean).map((it) => h('button', { disabled: it.disabled, title: it.title, onclick: () => { closeMenu(); it.run() } },
           it.icon ? h('span', { html: ICON[it.icon], style: 'display:inline-flex' }) : null, it.label, it.kb ? h('span', { class: 'kb' }, it.kb) : null)))
-      document.body.append(menu)
+      mountMenu(menu)
       const mr = menu.getBoundingClientRect()
       if (mr.bottom > innerHeight - 8) menu.style.top = Math.round(r.top - mr.height - 4) + 'px'
-    } }, label, h('span', { html: ICON.down, style: 'display:inline-flex;width:10px;height:10px;margin-left:5px;vertical-align:-1px' }))
+    } }, label, h('span', { class: 'chev' }))
     return b
   }
-  function closeMenu() { const m = document.getElementById('menu'); if (m) m.remove() }
+  function closeMenu() { const m = document.getElementById('menu'); if (m) m.remove(); const k = document.getElementById('menuMask'); if (k) k.remove() }
+  /** A menu over a transparent mask: a click anywhere else closes it and goes no further (the app's dropdowns). */
+  function mountMenu(menu) { closeMenu(); document.body.append(h('div', { class: 'menu-mask', id: 'menuMask', onpointerdown: (e) => { e.stopPropagation(); closeMenu() } }), menu) }
 
   function grp(title, right, ...kids) {
     return h('div', { class: 'grp' }, title ? h('div', { class: 't' }, title, right ? h('span', { class: 'r' }, right) : null) : null, ...kids)
@@ -5104,10 +5111,13 @@
       !inPlaceholder && mesh ? ibtn('link', '链接网格：创建一个使用相同顶点和变形的链接网格，可以换图', () => duplicateAttachmentSel(sel, true)) : null,
       ibtn('trash', inPlaceholder ? '清空' : '删除', deleteSelection)))
     const img = type === 'region' || mesh
-    // Spine's 导出: unticked = kept here, left out of the export
+    // Spine's 导出: unticked = kept here, left out of the export; 网格: ticked = a mesh, unticked = a plain image again
     out.push(h('div', { class: 'checks' }, check('导出', Ops.isExported(state.json, sel.skin, sel.slot, sel.name),
       (v) => edit(v ? `「${sel.name}」会导出` : `「${sel.name}」不导出（工程里还在）`, (j) => Ops.setAttachmentExport(j, sel.skin, sel.slot, sel.name, v)),
-      { title: '不勾 = 留在工程里，导出时不带它' })))
+      { title: '不勾 = 留在工程里，导出时不带它' }),
+      img && !inPlaceholder ? check('网格', !!mesh,
+        (v) => edit(v ? `「${sel.name}」已转成网格` : `「${sel.name}」已转回图片（网格和变形关键帧去掉）`, (j) => v ? Ops.regionToMesh(j, sel.skin, sel.slot, sel.name) : Ops.meshToRegion(j, sel.skin, sel.slot, sel.name)),
+        { title: '勾 = 转成网格；不勾 = 转回普通图片（网格顶点、权重和变形关键帧都去掉）' }) : null))
     // the picture's name only when it differs from the attachment's (the title shows that one)
     if (img && att.path && att.path !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, att.path))))
     out.push(h('div', { class: 'btns g2' },
@@ -5804,7 +5814,9 @@
     $('#play').title = state.playing ? '暂停（空格）' : '播放（空格）'
     for (const id of ['#tStart', '#tBack', '#play', '#tFwd', '#tEnd', '#tLoop']) $(id).disabled = !animOn()
     $('#tLoop').setAttribute('aria-pressed', String(!!state.loop))
-    const tall = animOn(), compact = tall && !!state.compactTimeline
+    // a promised fold (动画工具 opening from 设置): the timeline stays hidden until the fold is
+    // applied, instead of showing the full dopesheet for a moment and then folding
+    const tall = animOn() && !(state.compactPending && !state.compactTimeline), compact = tall && !!state.compactTimeline
     $('.center').dataset.dope = tall ? '1' : ''
     // 动画工具 open: one row only (transport + ruler + playhead); the dopesheet comes back when it closes
     $('.center').dataset.compact = compact ? '1' : ''
@@ -6215,7 +6227,7 @@
     const menu = h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(x)}px;top:${Math.round(y)}px` },
       ...(keys.every((k) => k.path[0] === 'events') ? [] : [item('线性', 'linear'), item('阶梯', 'stepped'), item('贝塞尔', 'ease')]),
       h('button', { onclick: () => { closeMenu(); deleteSelectedKeys() } }, h('span', { style: 'width:16px' }), `删除（${keys.length}）`))
-    document.body.append(menu)
+    mountMenu(menu)
     const mr = menu.getBoundingClientRect()
     if (mr.bottom > innerHeight - 8) menu.style.top = Math.round(y - mr.height) + 'px'
   }
@@ -6802,6 +6814,9 @@
     } else if (kind === 'motion') {
       if (open) {
         state.leftOpen = null
+        // the tools' timeline is the folded row: promised here, before the mode switch would
+        // show the full dopesheet; the host applies it when the tools' box shows
+        if (!state.compactTimeline) state.compactPending = true
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }
@@ -6906,8 +6921,8 @@
     timelineRect: () => {
       const tl = $('.timeline-wrap')
       const r = tl && !tl.closest('[hidden]') && getComputedStyle(tl).display !== 'none' ? tl.getBoundingClientRect() : null
-      // a promised fold: the row it will become (42 px at the bottom of the timeline's cell)
-      if (r && r.height && state.compactPending && !state.compactTimeline) return { left: r.left, top: r.bottom - 42, width: r.width, height: 42 }
+      // a promised fold: the row it will become (42 px at the bottom of the centre column)
+      if (state.compactPending && !state.compactTimeline) { const c = $('.center').getBoundingClientRect(); return { left: c.left, top: c.bottom - 42, width: c.width, height: 42 } }
       if (r && r.height) return { left: r.left, top: r.top, width: r.width, height: r.height }
       const st = $('#stage').getBoundingClientRect()
       return { left: st.left, top: st.bottom, width: st.width, height: 0 }

@@ -1447,6 +1447,67 @@
     return { json: tidy(json) }
   }
 
+  /** World matrices of every bone in the setup pose (normal inheritance, parents first). */
+  function setupWorlds(json) {
+    const out = new Map(), I = { a: 1, b: 0, c: 0, d: 1, worldX: 0, worldY: 0 }
+    const byName = new Map(json.bones.map((b) => [b.name, b]))
+    const walk = (b) => { if (out.has(b.name)) return out.get(b.name); const P = b.parent && byName.has(b.parent) ? walk(byName.get(b.parent)) : I; const W = worldFromLocal(P, b); out.set(b.name, W); return W }
+    for (const b of json.bones) walk(b)
+    return out
+  }
+
+  /**
+   * Spine's 网格 untick: the mesh becomes a plain image again, placed where its picture sits
+   * (a least-squares affine fit of picture corners to the vertices; weighted vertices are
+   * skinned by the setup pose first). Its deform keys go with it.
+   */
+  function meshToRegion(input, skin, slot, name) {
+    const json = prepare(input)
+    const map = attachmentsOf(json, skin, slot) || fail('这个皮肤里没有该插槽的附件')
+    const att = map[name] || fail(`找不到附件：${name}`)
+    let src = att
+    if (att.type === 'linkedmesh') { const pm = attachmentsOf(json, att.skin || skin, slot); src = (pm && pm[att.parent]) || fail('找不到链接网格的来源') }
+    if (src.type !== 'mesh') fail('只有网格能转回图片')
+    const w = num(src.width, 1), h = num(src.height, 1), uvs = src.uvs || [], n = uvs.length / 2, v = src.vertices || []
+    if (n < 3) fail('网格顶点太少')
+    const slotRec = json.slots.find((s) => s.name === slot) || fail(`找不到插槽：${slot}`)
+    const worlds = setupWorlds(json), SB = worlds.get(slotRec.bone) || fail('找不到插槽的骨骼')
+    const pts = []
+    if (v.length === n * 2) for (let i = 0; i < n; i++) pts.push([num(v[i * 2], 0), num(v[i * 2 + 1], 0)])
+    else {
+      let k = 0
+      for (let i = 0; i < n; i++) {
+        const cnt = v[k++]; let wx = 0, wy = 0
+        for (let j = 0; j < cnt; j++) { const bi = v[k++], x = v[k++], y = v[k++], wt = v[k++]; const B = worlds.get((json.bones[bi] || {}).name) || SB; wx += (B.a * x + B.b * y + B.worldX) * wt; wy += (B.c * x + B.d * y + B.worldY) * wt }
+        pts.push(toLocal(SB, wx, wy))
+      }
+    }
+    // p = A q + t with q the picture point of the vertex ((u-½)w, (½-v)h): normal equations
+    let sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, s1 = 0, px = [0, 0, 0], py = [0, 0, 0]
+    for (let i = 0; i < n; i++) {
+      const qx = (num(uvs[i * 2], 0) - 0.5) * w, qy = (0.5 - num(uvs[i * 2 + 1], 0)) * h
+      sxx += qx * qx; sxy += qx * qy; syy += qy * qy; sx += qx; sy += qy; s1 += 1
+      px[0] += qx * pts[i][0]; px[1] += qy * pts[i][0]; px[2] += pts[i][0]
+      py[0] += qx * pts[i][1]; py[1] += qy * pts[i][1]; py[2] += pts[i][1]
+    }
+    const M = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, s1]]
+    const det3 = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    const D = det3(M)
+    if (Math.abs(D) < 1e-9) fail('网格顶点共线，算不出图片的位置')
+    const solve = (r) => [0, 1, 2].map((col) => { const m = M.map((row) => row.slice()); for (let i = 0; i < 3; i++) m[i][col] = r[i]; return det3(m) / D })
+    const [a, b, tx] = solve(px), [c, d, ty] = solve(py)
+    const deg = 180 / Math.PI, r2 = (x) => Math.round(x * 100) / 100
+    const flip = a * d - b * c < 0
+    const region = { x: r2(tx), y: r2(ty), rotation: r2(Math.atan2(c, a) * deg), scaleX: r2(Math.hypot(a, c)), scaleY: r2(flip ? -Math.hypot(b, d) : Math.hypot(b, d)), width: w, height: h }
+    if (src.path && src.path !== name) region.path = src.path
+    if (att.color) region.color = att.color
+    for (const k of ['x', 'y', 'rotation']) if (!region[k]) delete region[k]
+    for (const k of ['scaleX', 'scaleY']) if (region[k] === 1) delete region[k]
+    map[name] = region
+    for (const an of Object.values(json.animations || {})) { const d1 = an.deform && an.deform[skin]; if (d1 && d1[slot]) { delete d1[slot][name]; if (!Object.keys(d1[slot]).length) delete d1[slot] } }
+    return { json: tidy(json) }
+  }
+
   /** Key which attachment a slot shows at `time` (`name` null = hide). */
   function keyAttachment(input, anim, slot, time, name) {
     const json = prepare(input)
@@ -2408,7 +2469,7 @@
     addSlot, duplicateSlot, renameSlot, compensateImages, deleteSlot, setSlotProps, moveSlot,
     addRegionAttachment, setAttachmentProps, renameAttachment, deleteAttachment, transferAttachment,
     // keys
-    keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, boneKeys, removeKeyAt, slotKeys,
+    keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, meshToRegion, boneKeys, removeKeyAt, slotKeys,
     reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping,
     // dopesheet
     keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,

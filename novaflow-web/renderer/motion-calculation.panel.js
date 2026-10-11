@@ -61,7 +61,7 @@
   curveRoot.append(style,body);
   // outside the editor box, which clips: the preset preview opens above the header
   curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
-  let ribbon=false,ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
+  let ribbon=false,ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,ribbonLiveRect=null,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
@@ -150,11 +150,16 @@
     if(ribbon&&!collapsed&&body.classList.contains('ribbon-layout')){
       const e=body.getBoundingClientRect(),d=$('ribbonDock').getBoundingClientRect();
       const rect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:d.top-e.top-1,insetBottom:e.bottom-1-d.bottom};
+      // until the box has its final height the docked panel sits far below the screen (same
+      // width, so it measures the same): the panel, the box and the timeline then appear in
+      // one frame instead of the panel's rows showing first
+      ribbonLiveRect=rect;
+      const dockRect=ribbonSettled?rect:{...rect,top:rect.top+100000};
       // the editor turns into 飘带计算 only once the panel is really in place (the
       // runtime's pass runs in the mutation callback, before this microtask): until
       // then the previous tool stays on screen, so no frame shows an empty box
-      if(bridge.dock?.(rect))showRibbon();
-      else if(!ribbonShown)queueMicrotask(()=>{if(ribbon&&!ribbonShown&&bridge.dock?.(rect))showRibbon();});
+      if(bridge.dock?.(dockRect))showRibbon();
+      else if(!ribbonShown)queueMicrotask(()=>{if(ribbon&&!ribbonShown&&bridge.dock?.(dockRect))showRibbon();});
     }
     else if(!ribbon||collapsed)bridge.dock?.(null);
     if(ribbon){
@@ -164,7 +169,7 @@
         const content=bridge.ribbonContentHeight?.()||0;
         // the docked panel still laying out (its height keeps changing for a few frames): measure
         // every frame and show the box only once two frames in a row agree, at that height
-        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;if(stylesReady){floating.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;if(ribbonLiveRect)bridge.dock?.(ribbonLiveRect);if(stylesReady){floating.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
