@@ -317,7 +317,12 @@
       if (finished || !frames.length) throw new Error('没有可导出的序列帧');
       if (packed) { await flush(); await options.write(`${baseName}.atlas`, makeAtlas(pages, settings, options.version)); }
       const skeleton = json ? normalizeSkeleton(json, frames, packed) : makeSkeleton({ ...options, baseName, frames, packed });
-      await options.write(`${baseName}.json`, JSON.stringify(skeleton));
+      if (options.skel) {
+        // .skel: the same skeleton as Spine 3.8 binary (renderer/spine-binary-write.js)
+        const B = globalThis.NovaFlowSpineBinary;
+        if (!B || typeof B.write38 !== 'function') throw new Error('二进制写入器没有加载');
+        await options.write(`${baseName}.skel`, B.write38(skeleton));
+      } else await options.write(`${baseName}.json`, JSON.stringify(skeleton));
       finished = true;
       return { frames: frames.length, regions: frames.filter(frame => frame.unique).length, pages: pages.length, packed, baseName };
     }

@@ -71520,6 +71520,16 @@
     }
   }
 
+  async function writeSkeletonSpineExportBytes(directory, fileName, bytes) {
+    const file = await directory.getFileHandle(fileName, { create: true });
+    const writable = await file.createWritable();
+    try {
+      await writable.write(bytes);
+    } finally {
+      await writable.close();
+    }
+  }
+
   async function writeSkeletonSpineExportDataUrl(directory, fileName, dataUrl) {
     const response = await fetch(dataUrl);
     const blob = await response.blob();
@@ -71602,7 +71612,9 @@
     }
     const rootDirectory = await window.showDirectoryPicker({ mode: "readwrite" });
     const directory = await rootDirectory.getDirectoryHandle("NovaFlow", { create: true });
-    await writeSkeletonSpineExportText(directory, `${payload.baseName}.json`, payload.json);
+    // .skel chosen in the 骨骼动画 export row: the binary skeleton replaces the JSON file
+    if (payload.skel) await writeSkeletonSpineExportBytes(directory, `${payload.baseName}.skel`, payload.skel);
+    else await writeSkeletonSpineExportText(directory, `${payload.baseName}.json`, payload.json);
     await writeSkeletonSpineExportText(directory, `${payload.baseName}.atlas`, payload.atlas);
     for (let index = 0; index < payload.images.length; index += 1) {
       const image = payload.images[index];
@@ -71660,8 +71672,10 @@
       if (!(button instanceof HTMLButtonElement)) return;
       if (!isSkeletonSpinePackageExportButton(button)) return;
       setAttributeIfChanged(button, "data-novaflow-skeleton-spine-export", "1");
-      if (normalizeText(button.textContent || "") !== "\u5bfc\u51fa\u5f53\u524d\u9aa8\u9abc\u52a8\u753bSpine\u5de5\u7a0b\uff08JSON+ATLAS+PNG\uff09") {
-        button.textContent = "\u5bfc\u51fa\u5f53\u524d\u9aa8\u9abc\u52a8\u753b Spine \u5de5\u7a0b\uff08JSON+ATLAS+PNG\uff09";
+      const skeletonFormat = window.__NovaFlowSpineExportSkel === true ? "SKEL" : "JSON";
+      const wanted = `导出当前骨骼动画 Spine 工程（${skeletonFormat}+ATLAS+PNG）`;
+      if (normalizeText(button.textContent || "") !== normalizeText(wanted)) {
+        button.textContent = wanted;
       }
     });
   }
@@ -71671,11 +71685,20 @@
     const finalName = sanitizeNovaflowManualExportName(manualName || getNovaflowManualExportState()?.name || "", "");
     if (finalName) payload.baseName = finalName;
     applySkeletonSpineExportAssetNames(payload);
+    if (window.__NovaFlowSpineExportSkel === true) {
+      // the 骨骼动画 editor's 「.skel 二进制」: write the skeleton as Spine 3.8 binary (renderer/spine-binary-write.js)
+      const binary = window.NovaFlowSpineBinary;
+      if (!binary || typeof binary.write38 !== "function") throw new Error("二进制写入器尚未加载，请刷新后重试");
+      const project = JSON.parse(payload.json);
+      if (!/^3\.8/.test(String(project?.skeleton?.spine || "3.8"))) throw new Error(".skel 二进制只能按 Spine 3.8 导出");
+      payload.skel = binary.write38(project, { nonessential: true });
+    }
     window.__NovaFlowSkeletonSpineExportLastPayload = {
       baseName: payload.baseName,
       animationName: payload.animationName,
       imageCount: payload.images.length,
       jsonLength: payload.json.length,
+      skelLength: payload.skel ? payload.skel.length : 0,
       atlasLength: payload.atlas.length,
       optimization: window.__NovaFlowSkeletonSpineExportLastOptimization || null
     };

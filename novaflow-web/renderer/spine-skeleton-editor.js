@@ -1330,7 +1330,9 @@
         }
       }
     }
-    const writer = A.createWriter({ baseName: opts.name, packed: !!opts.packed, settings: { ...opts.settings, dedupe: false }, version, write })
+    // .skel is the 3.8 binary; 4.x goes out as JSON (converted)
+    const skel = !!opts.skel && version === '3.8'
+    const writer = A.createWriter({ baseName: opts.name, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write })
     const missing = []
     for (const it of items) {
       const img = await imageRgba(it.name, it.file)
@@ -1338,7 +1340,7 @@
       await writer.addRgba(img.rgba, img.width, img.height, it.name)
     }
     const out = await writer.finish(json)
-    return { ...out, images: items.length - missing.length, missing }
+    return { ...out, skel, images: items.length - missing.length, missing }
   }
 
   function openExportDialog() {
@@ -1346,7 +1348,7 @@
     const pref = (() => { try { return JSON.parse(localStorage.getItem('nf-skel-export') || '{}') } catch { return {} } })()
     const SV = window.NovaFlowSpineVersion
     const own = ownVersion()
-    const o = { name: pref.name || stem(state.fileName) || 'skeleton', packed: pref.packed !== false, mode: pref.mode === 'folder' ? 'folder' : 'atts', version: own }
+    const o = { name: pref.name || stem(state.fileName) || 'skeleton', packed: pref.packed !== false, mode: pref.mode === 'folder' ? 'folder' : 'atts', version: own, skel: pref.skel === true }
     let folderN = null
     folderImages().then((l) => { folderN = l.length; if (mask.isConnected) fill() }, () => {})
     const close = () => mask.remove()
@@ -1357,19 +1359,23 @@
       const seg = (val, label) => h('button', { 'aria-pressed': String(o.mode === val), onclick: () => { o.mode = val; fill() } }, label)
       const usedN = exportImageNames(Ops.exportable(state.json)).length
       const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, 'Spine ' + v)
+      const skel = o.skel && o.version === '3.8', fmt = skel ? 'SKEL' : 'JSON'
       body.append(
         h('label', { class: 'fl' }, '导出名称'), nameIn,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
         h('div', { class: 'hint' }, o.version === own ? `工程原版本 Spine ${own}，按原版本导出，保留骨架和曲线格式。` : `工程原版本 Spine ${own}，导出时自动转成 Spine ${o.version}（动画、曲线、约束一起转换）。`),
         h('label', { class: 'checks', style: 'margin:4px 0 0' }, h('input', { type: 'checkbox', checked: o.packed, onchange: (e) => { o.packed = e.target.checked; fill() } }), '打包图集'),
+        // .skel: Spine's binary skeleton; only 3.8 has a writer here, 4.x stays JSON
+        h('label', { class: 'checks', style: 'margin:4px 0 0', title: o.version === '3.8' ? '骨架写成 Spine 3.8 二进制 .skel（不写 JSON）' : '.skel 二进制只有 Spine 3.8 能写，4.x 以 JSON 导出' },
+          h('input', { type: 'checkbox', checked: skel, disabled: o.version !== '3.8', onchange: (e) => { o.skel = e.target.checked; fill() } }), '.skel 二进制'),
         o.packed ? h('div', { class: 'pk' },
           h('span', { class: 'fl' }, '打包'),
           h('div', { class: 'seg' }, seg('atts', `附件（${usedN}）`), seg('folder', folderN == null ? '图片文件夹' : `图片文件夹（${folderN}）`)),
           btn('打包设置…', openAtlasSettings)) : null,
         h('div', { class: 'hint' }, o.packed
-          ? (o.mode === 'atts' ? '只打包附件用到的图片。JSON + atlas + 图集 PNG，可交给 Spine 3.8 运行时播放。' : '图片文件夹里的图片全部打包，没用到的也带上。JSON + atlas + 图集 PNG。')
-          : 'JSON + images 文件夹（每张图一个 PNG），可导入 Spine 编辑。'),
-        h('button', { class: 'btn primary big', onclick: run }, o.packed ? '导出 Spine 工程（JSON+ATLAS+PNG，选文件夹）' : '导出 Spine 工程（JSON+images，选文件夹）'))
+          ? (o.mode === 'atts' ? `只打包附件用到的图片。${fmt} + atlas + 图集 PNG，可交给 Spine 3.8 运行时播放。` : `图片文件夹里的图片全部打包，没用到的也带上。${fmt} + atlas + 图集 PNG。`)
+          : `${fmt} + images 文件夹（每张图一个 PNG），可导入 Spine 编辑。`),
+        h('button', { class: 'btn primary big', onclick: run }, o.packed ? `导出 Spine 工程（${fmt}+ATLAS+PNG，选文件夹）` : `导出 Spine 工程（${fmt}+images，选文件夹）`))
     }
     const run = async () => {
       const A = window.NovaFlowSequenceAtlas
