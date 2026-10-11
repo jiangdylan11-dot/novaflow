@@ -32,7 +32,7 @@
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
       <div class="editor-presets"><div id="presetSection"><div id="presets" class="presets"></div></div><div id="opacityPresets" class="presets" hidden></div><div id="ribbonPresets" class="presets"></div></div>
-      <button id="editorToggle" aria-expanded="true" aria-controls="editorContent">收起</button>
+      <button id="editorToggle" class="editor-close" title="关闭动画工具" aria-label="关闭动画工具">×</button>
     </header>
     <div id="editorContent">
       <div class="timing-row"><div id="globalTiming" class="global-timing"></div><div id="effectTiming"></div></div>
@@ -101,8 +101,14 @@
     if(!stylesReady)return;
     const bar=window.NovaFlowSkeletonEditor?.timeline?.()||document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';bridge.dock?.(null);return;}
-    const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]');
+    const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]'),editorBar=window.NovaFlowSkeletonEditor?.timeline?.();
     if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
+    // the 骨骼动画 editor's one-row timeline: the 完整动画 / 骨骼片段 switch sits at its right end
+    else if(editorBar){
+      if(playbackMode.parentNode!==document.body)document.body.append(playbackMode);
+      const place=[Math.round(r.right-playbackMode.offsetWidth-10),Math.round(r.top+(r.height-28)/2)].join(',');
+      if(playbackMode.dataset.place!==place){playbackMode.dataset.place=place;const [l,t]=place.split(',');playbackMode.style.position='fixed';playbackMode.style.zIndex='40';playbackMode.style.left=l+'px';playbackMode.style.top=t+'px';}
+    }
     // no app playbar on screen: the 完整动画 / 骨骼片段 switch rides in the editor's header
     else if(!playButton&&playbackMode.parentNode!==body.querySelector('.editor-header'))body.querySelector('.editor-header')?.insertBefore(playbackMode,body.querySelector('#editorToggle'));
     // 飘带计算 shows the same 完整动画 / 骨骼片段 switch and bone span, from its own timing row
@@ -592,7 +598,7 @@
   $('pointValue').oninput = () => { if ($('pointValue').value === '') return; setPointValue(Number($('pointValue').value) / (channel === 'alpha' ? 100 : 1)); curveBounds = null; drawCurve(); };
   $('pointValue').onblur = syncPoint;
   $('resetCurve').onclick = () => { pointSelected=false;p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];if(mode==='expand'&&p.link){const other=channel==='sx'?'sy':'sx';p.corrections[other].fill(0);if(p.curves)delete p.curves[other];}point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
-  function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();
+  function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();
     // the docked 飘带 leaves / returns in the same task as the box it fills
     if(ribbon&&stylesReady){if(value)bridge.dock?.(null);else positionCurve();}}
   // ---- 飘带计算: the header's built-in presets (hover = the dropdown's preview), its
@@ -736,7 +742,8 @@
   };
   $('loop').onchange=()=>{pointSelected=false;if(mode==='opacity'){p.loop=$('loop').checked;p.opacity.behavior=p.loop?'pulse':'once';p.corrections.alpha.fill(0);if(p.curves)delete p.curves.alpha;}else p.reverse=$('loop').checked;parameterChanged();renderPanel();};
   $('link').onchange = () => { p.link = $('link').checked; parameterChanged(false); };
-  $('editorToggle').onclick=()=>setCollapsed(!collapsed);
+  // × closes 动画工具 itself (the group folds, the editor goes); no collapsed half-state (user)
+  $('editorToggle').onclick=()=>{if(window.NovaFlowMotionEditing?.collapse)window.NovaFlowMotionEditing.collapse();else setCollapsed(!collapsed);};
   $('save').onclick = () => { flushPreview(); try{bridge.save(sessions,timing);status('');window.NovaFlowSkeletonEditor?.toast?.('已写入动画：关键帧已更新到摄影表');}catch(error){status(error.message,true);} };
   function restoreSnapshot(value){restoring=true;const v=JSON.parse(value);Object.assign(sessions,v.stack);Object.assign(timing,v.timing);p=sessions[mode];renderPanel();restoring=false;}
   function undo(forward){const from=forward?redo:history,to=forward?history:redo;if(from.length){to.push(lastSnapshot);restoreSnapshot(from.pop());status(forward?'已重做本骨骼参数。':'已撤销本骨骼参数。');}}

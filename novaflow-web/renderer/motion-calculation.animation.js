@@ -100,9 +100,13 @@
     // extreme), so neighbouring eases meet without a corner - the curve is smooth through
     // every key, not just close to the samples; the handle lengths come from a few fixed
     // pairs and the pair that replays every channel best wins
+    // a loop (first and last samples equal): the tangent at either end is taken across the
+    // seam, so the wrap plays without a hitch
+    const n1=s.length-1,loop=n1>2&&keys.every(k=>Math.abs(val(s[0],k)-val(s[n1],k))<=tol*.5);
     const slopeAt=(m,k)=>{
-      if(must.has(m)&&m>0&&m<s.length-1)return 0;
-      const a=Math.max(0,m-1),b=Math.min(s.length-1,m+1);
+      if(must.has(m)&&m>0&&m<n1)return 0;
+      if(loop&&(m===0||m===n1))return (val(s[1],k)-val(s[n1-1],k))/((time(s[1])-time(s[0]))+(time(s[n1])-time(s[n1-1])));
+      const a=Math.max(0,m-1),b=Math.min(n1,m+1);
       return (val(s[b],k)-val(s[a],k))/(time(s[b])-time(s[a]));
     };
     const ease=(i,j)=>{

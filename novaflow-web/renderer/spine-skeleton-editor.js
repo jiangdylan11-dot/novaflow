@@ -654,7 +654,9 @@
     return a ? a.duration : 0
   }
 
-  const timeSec = () => state.frame / FPS
+  // playing: the pose is taken at the continuous time (frame + the fraction since the last
+  // whole frame), as Spine plays - whole frames alone looked like a stutter on a 60 Hz display
+  const timeSec = () => (state.frame + (state.playing && state.playFrac ? state.playFrac : 0)) / FPS
 
   /** Setup pose, the current animation frame, then any preview drags. */
   function pose() {
@@ -2850,14 +2852,16 @@
       if (step) {
         loop.acc -= step
         const frames = Math.max(1, Math.round(dur * FPS))
-        if (!state.loop && state.frame + step >= frames) { state.frame = frames; state.playing = false }
+        if (!state.loop && state.frame + step >= frames) { state.frame = frames; state.playing = false; loop.acc = 0 }
         else state.frame = (state.frame + step) % (frames + 1)
         // 动画工具's 骨骼片段: the app clamps playback to the picked bone's span
         const span = hostPlaybackTime(state.frame / FPS, dur)
         if (span != null) state.frame = Math.round(span * FPS)
-        pose()
         syncTimeline()
       }
+      // every display frame poses at the continuous time; the last frame of a one-shot holds
+      state.playFrac = state.playing && !(!state.loop && state.frame >= Math.round(dur * FPS)) ? Math.min(0.999, loop.acc) : 0
+      pose()
     }
     if (pv.open) pvDraw(loop.last ? Math.min(0.1, (ts - loop.last) / 1000) : 0)
     loop.last = ts
@@ -6563,6 +6567,17 @@
     let frameKey = null
     window.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName)
+      // Ctrl+A: the picked bone and its whole branch; with a search on, only the branch rows the
+      // tree shows (the matches and their ancestors)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && state.json && state.sel && state.sel.kind === 'bone') {
+        e.preventDefault()
+        const m = searchMatches(), names = [state.sel.name]
+        const walk = (p) => { for (const b of state.json.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
+        walk(state.sel.name)
+        state.multi = names; state.multiSlots = []
+        pushHistory(); refresh()
+        return
+      }
       if (state.clipEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitClipEdit(); return }
       if (state.weightEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) {
         e.preventDefault()
