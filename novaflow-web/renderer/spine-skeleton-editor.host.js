@@ -51,7 +51,12 @@
     frame.setAttribute('allow', 'clipboard-read; clipboard-write')
     // above the section's own floats (the zoom bar sits at 46), under the 动画工具 editor (60) and dialogs
     frame.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;border:0;margin:0;padding:0;background:transparent;z-index:50;display:none;color-scheme:dark'
-    frame.src = pageUrl()
+    // the page goes in as srcdoc: a server that answers every file with X-Frame-Options (the
+    // 启动助手's local server, some hosts) would refuse to frame it by URL; a srcdoc document is
+    // ours, same origin, relative URLs resolve against this page (the scripts sit beside it)
+    fetch(pageUrl(), { cache: 'no-store' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))).then((html) => {
+      if (frame.isConnected) frame.srcdoc = html
+    }).catch((error) => { console.warn('[skeleton editor] page', error); if (frame.isConnected) frame.src = pageUrl() })
     document.body.appendChild(frame)
     return frame
   }

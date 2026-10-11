@@ -123,7 +123,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
         const config = JSON.stringify({ controlUrl, localAssistant: true, localOrigin: origin }).replace(/</g, '\\u003c');
         bytes = Buffer.from(bytes.toString().replace('<head>', '<head><script>window.NOVAFLOW_WEB_CONFIG=' + config + ';</script>'));
       }
-      res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' });
+      res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'SAMEORIGIN' });
       res.end(req.method === 'HEAD' ? undefined : bytes);
     } catch (error) { json(error.status || (error.code === 'ENOENT' ? 404 : 400), { error: String(error.message || error) }); }
   });
