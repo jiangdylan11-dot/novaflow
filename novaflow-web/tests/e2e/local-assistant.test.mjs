@@ -91,6 +91,13 @@ try {
   const local = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
   await wait(() => assistant.tasks.get(local.id).status === 'completed');
   check(upstreamCalls === 0, 'private generation never contacts cloud');
+  {
+    // the page's history shim turns created_at / completed_at into execution_start / execution_success,
+    // which the resource card reads as its 生成用时: a local task carries both once it completes
+    const done = (await call('GET', '/api/web/tasks/' + local.id)).body.task;
+    const submitted = Date.parse(done.created_at), completed = Date.parse(done.completed_at);
+    check(Number.isFinite(submitted) && Number.isFinite(completed) && completed >= submitted, 'a completed local task is stamped completed_at after created_at');
+  }
   const grant = (await call('POST', '/api/web/tasks/' + local.id + '/grant', { op: 'download' })).body.grant;
   const name = assistant.tasks.get(local.id).output_manifest.files[0].name;
   const download = await fetch(grant.endpoint + '/gw/tasks/' + local.id + '/output/' + name, { headers: { 'x-novaflow-grant': grant.token } });
