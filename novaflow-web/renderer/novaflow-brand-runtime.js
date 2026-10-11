@@ -29051,17 +29051,26 @@
         font-size: 16px !important;
         line-height: 24px !important;
       }
+      /* 自定义贴图库: the five-column grid squeezed each tile to 25px in the
+         panel, so the picture was 9px and the 20px × covered the whole tile
+         (user 2026-10-12: "删除按钮特别大而且有重复"). Fixed 40px tiles that
+         wrap, the picture 32px, the name under it, the × a hover-only cross
+         on the picture's corner. */
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-grid="1"] {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fill, 40px) !important;
+        justify-content: start !important;
+        gap: 8px !important;
+      }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"] {
         position: relative !important;
         display: block !important;
-        justify-self: start !important;
-        align-self: start !important;
         width: 40px !important;
         min-width: 40px !important;
         max-width: 40px !important;
-        height: 65px !important;
-        min-height: 65px !important;
-        max-height: 65px !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
         box-sizing: border-box !important;
         border: 0 !important;
         outline: 0 !important;
@@ -29077,27 +29086,37 @@
         outline: 0 !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-button="1"] {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
         width: 40px !important;
         min-width: 40px !important;
         max-width: 40px !important;
-        height: 65px !important;
-        min-height: 65px !important;
-        max-height: 65px !important;
-        padding: 8px !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        padding: 4px 0 2px !important;
         box-sizing: border-box !important;
         border: 0 !important;
+        border-radius: 7px !important;
         outline: 0 !important;
         box-shadow: none !important;
         overflow: hidden !important;
       }
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-button="1"] > div:first-child {
+        width: 32px !important;
+        height: 32px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-button="1"] img {
-        width: 24px !important;
-        min-width: 24px !important;
-        max-width: 24px !important;
-        height: 24px !important;
-        min-height: 24px !important;
-        max-height: 24px !important;
+        width: 32px !important;
+        min-width: 32px !important;
+        max-width: 32px !important;
+        height: 32px !important;
+        min-height: 32px !important;
+        max-height: 32px !important;
         aspect-ratio: 1 / 1 !important;
         object-fit: contain !important;
         border: 0 !important;
@@ -29105,65 +29124,36 @@
         box-shadow: none !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-label="1"] {
-        width: 24px !important;
-        min-width: 24px !important;
-        max-width: 24px !important;
-        margin-top: 6px !important;
+        width: 40px !important;
+        min-width: 40px !important;
+        max-width: 40px !important;
+        margin-top: 3px !important;
         font-size: 11px !important;
+        line-height: 14px !important;
         color: rgba(255, 255, 255, 0.55) !important;
+        text-align: center !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         opacity: 1 !important;
         visibility: visible !important;
       }
+      /* the × is the theme's 20px cross on a dark plate (2.0z / 3.1a); only
+         its place and its hover-only showing are set here */
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-delete="1"] {
         position: absolute !important;
-        left: 8px !important;
-        right: 8px !important;
-        top: auto !important;
-        bottom: 8px !important;
+        top: 0 !important;
+        right: 0 !important;
+        left: auto !important;
+        bottom: auto !important;
         z-index: 4 !important;
-        width: calc(100% - 16px) !important;
-        min-width: 0 !important;
-        max-width: calc(100% - 16px) !important;
-        height: 20px !important;
-        min-height: 20px !important;
-        max-height: 20px !important;
-        padding: 0 !important;
-        border: 1px solid rgba(248, 113, 113, 0.42) !important;
-        border-radius: 6px !important;
-        background: rgba(185, 28, 28, 0.58) !important;
-        background-color: rgba(185, 28, 28, 0.58) !important;
-        color: rgba(255, 245, 245, 0.96) !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        font-size: 0 !important;
-        line-height: 20px !important;
-        cursor: pointer !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-        box-sizing: border-box !important;
-        box-shadow: none !important;
-        outline: 0 !important;
-      }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-delete="1"]::before {
-        content: "×" !important;
-        font-size: 13px !important;
-        line-height: 20px !important;
-      }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"]:hover [data-novaflow-sprite-custom-label="1"],
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"].nf-delete-hover [data-novaflow-sprite-custom-label="1"],
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"]:focus-within [data-novaflow-sprite-custom-label="1"] {
-        opacity: 0 !important;
+        margin: 0 !important;
         visibility: hidden !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"]:hover [data-novaflow-sprite-custom-delete="1"],
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"].nf-delete-hover [data-novaflow-sprite-custom-delete="1"],
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-custom-tile="1"]:focus-within [data-novaflow-sprite-custom-delete="1"] {
-        opacity: 1 !important;
-        pointer-events: auto !important;
+        visibility: visible !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-preset-button="1"] {
         background: transparent !important;
@@ -30906,6 +30896,10 @@
       // The particle-system row's × stays a plain small glyph, not a grey square.
       if (button.hasAttribute("data-novaflow-system-row-delete")) return;
       const label = normalizeText(button.textContent || "");
+      // Every other delete / close × as well (the custom sprite tile's):
+      // the theme draws it as the one 20px cross (3.1a), and a 30px grey
+      // square swallowed the 25px tile it sits on.
+      if (/^[×✕✖✗]$/.test(label)) return;
       const icon = button.querySelector("i, svg") instanceof Element;
       // Only a button that says nothing, or says it in one glyph, is an icon
       // button. A button with a word in it is a chip or a group header and
@@ -34586,6 +34580,11 @@
           if (siblings.length < 2 || !siblings.every((child) => child.tagName === "BUTTON")) return null;
           const label = normalizeText(node.getAttribute("title") || node.textContent || "");
           if (!label || label.length > 6 || /^[+\-]$/.test(label)) return null;
+          // A delete / close cross (the custom sprite tile's ×, beside its
+          // picture button) is never a chip: tagging it turned the tile into
+          // a 37px tray that hid the picture and drew the × as a 41x29 pill.
+          const bare = normalizeText(node.textContent || "");
+          if (/^[×✕✖✗]$/.test(bare) || label === "删除") return null;
           const iconChip = Boolean(node.querySelector("i, img, svg"));
           nfSetAttrIfChanged(node, "data-novaflow-particle-chip", iconChip ? "icon" : "1");
           nfSetAttrIfChanged(parent, "data-novaflow-particle-chip-row", "1");
@@ -65580,10 +65579,11 @@
   }
 
   function styleSpritePresetButtons(active) {
-    Array.from(document.querySelectorAll('[data-novaflow-sprite-preset-button="1"], [data-novaflow-sprite-preset-label="1"], [data-novaflow-sprite-custom-tile="1"], [data-novaflow-sprite-custom-button="1"], [data-novaflow-sprite-custom-label="1"], [data-novaflow-sprite-custom-delete="1"]')).forEach((node) => {
+    Array.from(document.querySelectorAll('[data-novaflow-sprite-preset-button="1"], [data-novaflow-sprite-preset-label="1"], [data-novaflow-sprite-custom-grid="1"], [data-novaflow-sprite-custom-tile="1"], [data-novaflow-sprite-custom-button="1"], [data-novaflow-sprite-custom-label="1"], [data-novaflow-sprite-custom-delete="1"]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       node.removeAttribute("data-novaflow-sprite-preset-button");
       node.removeAttribute("data-novaflow-sprite-preset-label");
+      node.removeAttribute("data-novaflow-sprite-custom-grid");
       node.removeAttribute("data-novaflow-sprite-custom-tile");
       node.removeAttribute("data-novaflow-sprite-custom-button");
       node.removeAttribute("data-novaflow-sprite-custom-label");
@@ -65605,7 +65605,14 @@
       if (!button.querySelector("img")) return;
 
       const rect = button.getBoundingClientRect();
-      if (!inLeftContent(rect) || rect.width < 34 || rect.width > 84 || rect.height < 50 || rect.height > 110) return;
+      if (!inLeftContent(rect)) return;
+      // A custom tile (picture button beside a × button) is known by its
+      // shape, not its size: the grid had squeezed it to 25px, which
+      // failed the preset size gate and left it unstyled.
+      const customTile = button.parentElement instanceof HTMLElement
+        && Array.from(button.parentElement.children).some((child) => child !== button && child instanceof HTMLButtonElement
+          && (normalizeText(child.textContent || "") === "\u00d7" || normalizeText(child.getAttribute("title") || "").includes("\u5220\u9664")));
+      if (!customTile && (rect.width < 34 || rect.width > 84 || rect.height < 50 || rect.height > 110)) return;
 
       const label = Array.from(button.children).find((child) => {
         if (!(child instanceof HTMLElement)) return false;
@@ -65632,9 +65639,12 @@
       label.setAttribute("data-novaflow-sprite-preset-label", "1");
       if (isCustomSpriteTile && tile instanceof HTMLElement) {
         tile.setAttribute("data-novaflow-sprite-custom-tile", "1");
+        if (tile.parentElement instanceof HTMLElement) tile.parentElement.setAttribute("data-novaflow-sprite-custom-grid", "1");
         button.setAttribute("data-novaflow-sprite-custom-button", "1");
         label.setAttribute("data-novaflow-sprite-custom-label", "1");
         siblingDeleteButton.setAttribute("data-novaflow-sprite-custom-delete", "1");
+        // sits on the picture: the theme gives it the dark plate
+        siblingDeleteButton.setAttribute("data-novaflow-x-overlay", "1");
       }
       button.style.setProperty("background", "transparent", "important");
       button.style.setProperty("background-color", "transparent", "important");
