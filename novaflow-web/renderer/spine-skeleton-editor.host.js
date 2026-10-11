@@ -100,8 +100,22 @@
     document.head.appendChild(style)
   }
 
+  /**
+   * The section's workspace: the element the brand runtime marks, or, before its pass runs,
+   * the parent of the section's own right column (the bundle renders it with data-preview-ui).
+   */
+  function findWorkspace() {
+    const marked = document.querySelector(WORKSPACE)
+    if (marked) return marked
+    for (const side of document.querySelectorAll('[data-preview-ui="1"]')) {
+      const text = side.textContent || ''
+      if (text.includes('骨骼') && text.includes('动画') && side.parentElement && side.parentElement.querySelector('canvas')) return side.parentElement
+    }
+    return null
+  }
+
   function tick() {
-    const ws = enabled() ? document.querySelector(WORKSPACE) : null
+    const ws = enabled() ? findWorkspace() : null
     if (!ws || !visible(ws)) {
       if (frame) frame.style.display = 'none'
       releaseWorkspace()
@@ -315,6 +329,10 @@
   }
 
   function onEditorEvent(type, data) {
+    // 设置 has no animation to work on: the 动画工具 group folds when the editor goes there
+    if (type === 'mode' && data.mode === 'setup' && motionPanelOpen()) {
+      try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }
+    }
     if (!motionOpen) {
       if (type === 'panel' && !data.panel) closeLeftPanels()
       return
@@ -576,6 +594,21 @@
     document.body.appendChild(overlay)
   }
 
+  // ---------------------------------------------------------------- keyboard
+  //
+  // The editor's shortcuts (Space, A / D, the tools, Ctrl+Z…) work wherever the focus is: a key
+  // pressed with the focus on the app's own panels is handed to the editor, unless something is
+  // being typed into (a text box, a select, an editable).
+  const TYPING = 'input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=color]),textarea,select,[contenteditable=""],[contenteditable="true"]'
+  function forwardKey(e) {
+    if (!api || !window.NovaFlowSkeletonEditor.active()) return
+    const t = e.composedPath()[0]
+    if (t instanceof Element && t.closest(TYPING)) return
+    if (t === frame) return
+    const handled = api.key(e.type, { key: e.key, code: e.code, keyCode: e.keyCode, which: e.which, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, repeat: e.repeat })
+    if (handled) { e.preventDefault(); e.stopImmediatePropagation() }
+  }
+
   // ---------------------------------------------------------------- lifecycle
 
   window.NovaFlowSkeletonEditor = {
@@ -597,7 +630,12 @@
 
   // registered before the app's own export handlers (this file loads ahead of the brand runtime)
   window.addEventListener('click', onExportClick, true)
+  window.addEventListener('keydown', forwardKey, true)
+  window.addEventListener('keyup', forwardKey, true)
   window.addEventListener('resize', () => { if (frame && frame.style.display === 'block') tick() })
   setInterval(() => { tick(); try { packRow(); presync() } catch { /* the dialog is changing */ } }, 150)
+  // the section mounting or leaving: cover / uncover in the same task, before the page paints
+  const root = document.getElementById('root') || document.body
+  new MutationObserver(() => { try { tick() } catch { /* mid-change */ } }).observe(root, { childList: true, subtree: true })
   tick()
 })()

@@ -2651,6 +2651,10 @@
     ctx.setTransform(rt.dpr, 0, 0, rt.dpr, 0, 0)
     ctx.clearRect(0, 0, rt.w, rt.h)
     if (!rt.skeleton) return
+    // Spine's axes: a thin cross through the world origin (0, 0)
+    const [ox, oy] = toScreen(0, 0)
+    ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, Math.round(oy) + .5); ctx.lineTo(rt.w, Math.round(oy) + .5); ctx.moveTo(Math.round(ox) + .5, 0); ctx.lineTo(Math.round(ox) + .5, rt.h); ctx.stroke()
     const picked = new Set(selectedBones())
     const sel = state.sel
     if (state.opt.imgSel && state.hoverImg && !state.meshEdit) drawLayerHover(ctx)
@@ -5884,6 +5888,39 @@
 
   const isKeySel = (k) => state.dope.keySel.some((x) => pathId(x.path) === pathId(k.path) && Math.abs(x.time - k.time) < 1e-4)
 
+  /** The keys of a track as written in the animation (events: that event's keys). */
+  function keyList(path) {
+    const a = state.json && state.json.animations[state.anim]
+    if (!a) return null
+    if (path[0] === 'events') { const l = (Array.isArray(a.events) ? a.events : []).filter((k) => k.name === path[1]); return l.length ? l : null }
+    let node = a
+    for (const q of path.slice(0, -1)) node = node && node[q]
+    const v = node && node[path[path.length - 1]]
+    return Array.isArray(v) ? v : null
+  }
+
+  /** What a key holds besides its time and curve: the part that decides whether a line is drawn. */
+  const keyValue = (k) => { const o = {}; for (const [n, v] of Object.entries(k)) if (n !== 'time' && n !== 'curve' && n !== 'c2' && n !== 'c3' && n !== 'c4' && n !== 'nf4') o[n] = v; return JSON.stringify(o) }
+
+  /**
+   * Spine's dopesheet lines: between two keys of a track whose values differ, a line (dashed when
+   * the first key is stepped); nothing between keys that hold the same value. [{ f1, f2, dashed }]
+   */
+  function rowSegments(row) {
+    const out = []
+    for (const path of row.paths) {
+      const list = keyList(path)
+      if (!list || list.length < 2 || path[0] === 'events') continue
+      const sorted = list.slice().sort((a, b) => num0(a.time) - num0(b.time))
+      for (let i = 0; i + 1 < sorted.length; i++) {
+        const a = sorted[i], b = sorted[i + 1]
+        if (keyValue(a) === keyValue(b)) continue
+        out.push({ path, t1: num0(a.time), t2: num0(b.time), f1: Math.round(num0(a.time) * FPS * 1000) / 1000, f2: Math.round(num0(b.time) * FPS * 1000) / 1000, dashed: a.curve === 'stepped' })
+      }
+    }
+    return out
+  }
+
   function drawDope() {
     syncKeyButtons()
     const c = $('#dope')
@@ -5946,7 +5983,8 @@
       ctx.restore()
       // keys
       ctx.save(); ctx.beginPath(); ctx.rect(DOPE.nameW - 7, y, W - DOPE.nameW + 7, DOPE.rowH); ctx.clip()
-      for (const k of rowKeys(r)) {
+      const shown = (k) => {
+        // where a key sits while it is dragged (移位 carries the later keys, 偏移 wraps them round)
         const on = k.keys.some(isKeySel)
         let f = k.frame
         if (mv) {
@@ -5956,6 +5994,24 @@
             if (mvOffset && loopF > 0) f = ((f % loopF) + loopF) % loopF
           }
         }
+        return { on, f }
+      }
+      const keys = rowKeys(r)
+      const frameOf = new Map(keys.map((k) => [k.frame, shown(k).f]))
+      // the lines first, the keys over them
+      const cyl = y + DOPE.rowH / 2
+      ctx.lineWidth = 1
+      for (const sg of rowSegments(r)) {
+        const f1 = frameOf.has(sg.f1) ? frameOf.get(sg.f1) : sg.f1, f2 = frameOf.has(sg.f2) ? frameOf.get(sg.f2) : sg.f2
+        if (f2 <= f1) continue
+        ctx.strokeStyle = r.head ? 'rgba(201,201,201,.55)' : (r.color || '#c9c9c9')
+        ctx.globalAlpha = r.head ? 1 : 0.75
+        ctx.setLineDash(sg.dashed ? [3, 3] : [])
+        ctx.beginPath(); ctx.moveTo(dopeX(f1) + 5, cyl + 0.5); ctx.lineTo(dopeX(f2) - 5, cyl + 0.5); ctx.stroke()
+      }
+      ctx.setLineDash([]); ctx.globalAlpha = 1
+      for (const k of keys) {
+        const { on, f } = shown(k)
         const x = dopeX(f), cy = y + DOPE.rowH / 2, s0 = r.head ? 5.5 : 5
         ctx.beginPath(); ctx.moveTo(x, cy - s0); ctx.lineTo(x + s0, cy); ctx.lineTo(x, cy + s0); ctx.lineTo(x - s0, cy); ctx.closePath()
         ctx.fillStyle = on ? '#ffffff' : r.head ? '#c9c9c9' : (r.color || '#c9c9c9')
@@ -6690,6 +6746,15 @@
     stageRect: () => { const r = $('#stage').getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height } },
     undo: () => undo(),
     redo: () => redo(),
+    /** a key pressed outside the editor (the host forwards it): true when the editor used it */
+    key: (type, init) => {
+      if (!state.json) return false
+      const ev = new KeyboardEvent(type, { ...init, bubbles: true, cancelable: true })
+      const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName)
+      if (typing) document.activeElement.blur()
+      document.body.dispatchEvent(ev)
+      return ev.defaultPrevented
+    },
   }
 
   // the host (the 骨骼动画 section) takes over once the page is set up
