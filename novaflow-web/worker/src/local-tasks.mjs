@@ -62,9 +62,13 @@ export async function createLocalTasks(dataDir) {
       const t = tasks.get(id);
       if (!t) throw new Error('本机任务不存在');
       if (t.status === 'cancelled') return { task: t };
-      if (action === 'progress') Object.assign(t, { status: body.status, progress: body.progress, progress_note: body.note, prompt_id: body.prompt_id || t.prompt_id });
-      else if (action === 'complete') Object.assign(t, { status: 'completed', progress: 100, output_manifest: { files: body.outputs }, prompt_id: body.prompt_id });
-      else if (action === 'fail') Object.assign(t, { status: 'failed', error_message: body.error_message, error_code: body.error_code });
+      // started_at / completed_at / failed_at as the control plane stamps them: a resource
+      // card's 生成用时 is completed_at - created_at (novaflow-web-runtime's history shim),
+      // and without completed_at the 本地线 cards showed none
+      const now = () => new Date().toISOString();
+      if (action === 'progress') Object.assign(t, { status: body.status, progress: body.progress, progress_note: body.note, prompt_id: body.prompt_id || t.prompt_id, started_at: t.started_at || now() });
+      else if (action === 'complete') Object.assign(t, { status: 'completed', progress: 100, output_manifest: { files: body.outputs }, prompt_id: body.prompt_id, started_at: t.started_at || now(), completed_at: now() });
+      else if (action === 'fail') Object.assign(t, { status: 'failed', error_message: body.error_message, error_code: body.error_code, failed_at: now() });
       else throw new Error('不支持的本机任务事件');
       await save();
       return { task: t };
