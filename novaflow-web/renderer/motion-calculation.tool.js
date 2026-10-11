@@ -335,6 +335,7 @@
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');if(!ribbon)return false;
     ribbonPreparing=true;if(!ribbonPrepareAt)ribbonPrepareAt=performance.now();
     if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);return false;}
+    window.NovaFlowRibbonPresets?.prepare?.(ribbon);
     return ribbonMounted(ribbon);
   }
   // the docked panel's own height (its body is stretched to the box, so add up its parts):
@@ -418,6 +419,7 @@
     if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'){ribbon.setAttribute('data-novaflow-ribbon-docked','1');keepEventsOpen(ribbon);changed=true;}
     if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);if(ribbon.getAttribute('data-open')!=='1')return false;}
     // in place, and mounted: the box shows it only once its rows are there (it mounts on open)
+    window.NovaFlowRibbonPresets?.prepare?.(ribbon);
     if(!ribbonMounted(ribbon))return false;
     // docking (or a new box) is laid out in this task, then measured
     if(changed)window.NovaFlowRibbonPresets?.settle?.();

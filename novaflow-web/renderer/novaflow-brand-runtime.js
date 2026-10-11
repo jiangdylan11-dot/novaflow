@@ -45004,6 +45004,11 @@
     settle() {
       try { applyNovaflowReferenceSpec(); } catch (_) { void 0; }
     },
+    // the panel just opened for 动画工具: its own rows (自动链条 among them) are built now, in
+    // this task, instead of on the runtime's next pass - the box measured without them grew
+    prepare(panel) {
+      try { refreshRibbonPanelFirstFrame(panel, { suppressLayout: true }); } catch (_) { void 0; }
+    },
     // root: the box the preview lives in (it stops when root leaves the page)
     preview(root, host, id) {
       const entry = getRibbonParameterPresetEntries().find((item) => item.id === id);

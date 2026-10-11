@@ -27,7 +27,7 @@
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
   const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-7',document.baseURI).href;
-  style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||(ribbonShown&&ribbonSettled))floating.style.visibility='visible';};
+  style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||(ribbonShown&&ribbonSettled)){floating.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画工具编辑器');
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
@@ -164,7 +164,7 @@
         const content=bridge.ribbonContentHeight?.()||0;
         // the docked panel still laying out (its height keeps changing for a few frames): measure
         // every frame and show the box only once two frames in a row agree, at that height
-        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;if(stylesReady)floating.style.visibility='visible';reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;if(stylesReady){floating.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();

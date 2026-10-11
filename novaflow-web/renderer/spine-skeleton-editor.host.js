@@ -657,6 +657,8 @@
     _pushSelection: () => pushSelection(),
     /** A message in the editor's toast (the tools say what they wrote). */
     toast: (msg, kind) => { try { if (api && api.toast) api.toast(msg, kind) } catch { /* the editor is gone */ } },
+    /** The tools' box just became visible: the timeline folds to its row in this same frame. */
+    timelineCompactNow: () => { try { if (motionOpen && api && api.applyTimelineCompact) api.applyTimelineCompact() } catch { /* the editor is gone */ } },
   }
 
   // registered before the app's own export handlers (this file loads ahead of the brand runtime)

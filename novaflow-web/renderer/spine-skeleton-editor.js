@@ -59,6 +59,7 @@
     sel: null, // { kind: 'bone'|'slot'|'att'|'ph'|'ik'|'transform'|'path'|'skin', name, slot?, skin? }
     multi: [], // bone names (Ctrl+click)
     multiSlots: [], // slot names (Ctrl / Shift in the tree): edited together
+    multiCons: [], // constraints (Ctrl in the tree): { kind, name }, together in the dopesheet
     panel: 'import',
     pick: null,
     tool: 'rotate',
@@ -84,7 +85,7 @@
     groups: {},
     alwaysName: new Set(),
     unselectable: new Set(),
-    filter: { bones: true, slots: true, atts: true, cons: true, skins: true, events: true, anims: true },
+    filter: { bones: true, slots: true, region: true, mesh: true, bbox: true, clipping: true, path: true, point: true, placeholder: true },
     temp: new Map(), // bone -> { x, y, rotation, scaleX, scaleY } local, preview only
     collapsed: new Set(),
     sections: new Set(['order']),
@@ -304,7 +305,7 @@
     Object.assign(state, {
       imageFolder,
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
-      addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], pick: null,
+      addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiCons: [], pick: null,
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
     })
     state.temp.clear()
@@ -761,6 +762,7 @@
     }
     state.multi = state.multi.filter((n) => has('bone', n))
     state.multiSlots = state.multiSlots.filter((n) => has('slot', n))
+    state.multiCons = (state.multiCons || []).filter((c) => has(c.kind, c.name))
     if (state.multiSlots.length && !(state.sel && state.sel.kind === 'slot')) state.multiSlots = []
     for (const n of [...state.temp.keys()]) if (!has('bone', n)) state.temp.delete(n)
     if (state.anim && !j.animations[state.anim]) state.anim = Object.keys(j.animations)[0] || ''
@@ -794,10 +796,17 @@
       else set.add(sel.name)
       state.multiSlots = [...set]
       state.sel = state.multiSlots.length ? { kind: 'slot', name: state.multiSlots[state.multiSlots.length - 1] } : (state.multi.length ? { kind: 'bone', name: state.multi[state.multi.length - 1] } : null)
+    } else if (additive && sel && (sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path')) {
+      const list = state.multiCons.length ? state.multiCons.slice() : (state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform' || state.sel.kind === 'path') ? [{ kind: state.sel.kind, name: state.sel.name }] : [])
+      const i = list.findIndex((c) => c.kind === sel.kind && c.name === sel.name)
+      if (i >= 0) list.splice(i, 1); else list.push({ kind: sel.kind, name: sel.name })
+      state.multiCons = list
+      state.sel = list.length ? { kind: list[list.length - 1].kind, name: list[list.length - 1].name } : null
     } else {
       state.sel = sel
       state.multi = sel && sel.kind === 'bone' ? [sel.name] : []
       state.multiSlots = sel && sel.kind === 'slot' ? [sel.name] : []
+      state.multiCons = sel && (sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path') ? [{ kind: sel.kind, name: sel.name }] : []
     }
     if (sel && (sel.kind === 'bone' || sel.kind === 'slot' || sel.kind === 'att' || sel.kind === 'ph') && !(opts && opts.noReveal)) revealInTree(sel)
     if (!(opts && opts.fromHistory)) pushHistory()
@@ -4143,22 +4152,71 @@
 
     rows.push(h('div', { class: 'row node', style: pad(0) }, caret(true), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, state.name)))
 
+    // which attachment kinds the filter shows (Spine's viewport filter)
+    const attKind = (t) => (t === 'mesh' || t === 'linkedmesh' ? 'mesh' : t === 'boundingbox' ? 'bbox' : t === 'clipping' ? 'clipping' : t === 'path' ? 'path' : t === 'point' ? 'point' : 'region')
+    const shownContents = (name) => { const c = slotContents(name); return { atts: c.atts.filter((a) => F[attKind(a.type)] !== false), phs: F.placeholder ? c.phs : [] } }
+    // a slot row with its attachments and placeholders; under a bone, or in the flat draw-order
+    // list when bones are filtered out (same keys, same multi-select, drag = draw order there)
+    const pushSlotRows = (s, depth, inOrder) => {
+      const sk = 's:' + s.name
+      const content = shownContents(s.name)
+      const sClosed = !m && state.collapsed.has(sk)
+      const sVisible = !state.hiddenSlots.has(s.name)
+      const srow = h('div', {
+        class: 'row', 'data-selected': isSel('slot', s.name) ? '1' : null, 'data-key': 'slot:' + s.name,
+        'data-multi': state.multiSlots.includes(s.name) && !isSel('slot', s.name) ? '1' : null,
+        'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-hidden': sVisible ? null : '1',
+        'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth),
+        onclick: (e) => {
+          if (pick) { resolvePick('slot', s.name); return }
+          if (e.shiftKey) { selectSlotRange(s.name); return }
+          select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
+        },
+        ondblclick: () => focusRename(),
+        oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
+      },
+      visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
+      caret(content.atts.length + content.phs.length ? !sClosed : null, () => { sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() }),
+      h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, s.name),
+      inOrder ? h('span', { class: 'meta' }, s.bone) : null,
+      animOn() ? h('span', { class: 'lkey' }, keyBtn(SLOT_TRACKS(s.name), () => keySlotNow(s.name), `给 ${s.name} 打关键帧（附件 / 颜色）`)) : null)
+      if (inOrder) wireDrag(srow, { type: 'order', name: s.name }, { type: 'order', name: s.name })
+      else wireDrag(srow, { type: 'slot', name: s.name }, { type: 'slot', name: s.name })
+      rows.push(srow)
+      if (sClosed) return
+      for (const a of content.atts) {
+        if (m && !m.atts.has(s.name + '/' + a.name) && !m.direct.has('s:' + s.name)) continue
+        const shown = posed.get(s.name) === a.name
+        const arow = h('div', {
+          class: 'row', 'data-selected': isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
+          'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(depth + 1),
+          'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
+          onclick: () => { if (pick) return; select({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, false, { noReveal: true }) },
+          ondblclick: () => focusRename(),
+        },
+        visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
+        caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
+        animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
+        wireDrag(arow, { type: 'att', name: a.name, slot: s.name, skin: 'default' }, null)
+        rows.push(arow)
+      }
+      for (const ph of content.phs) {
+        if (m && !m.atts.has(s.name + '/' + ph.name) && !m.direct.has('s:' + s.name)) continue
+        const shown = posed.get(s.name) === ph.name
+        rows.push(h('div', {
+          class: 'row', 'data-selected': isSel('ph', ph.name, { slot: s.name }) ? '1' : null,
+          'data-key': `ph:${s.name}:${ph.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + ph.name) ? '1' : null, style: pad(depth + 1),
+          onclick: () => { if (pick) return; select({ kind: 'ph', name: ph.name, slot: s.name }, false, { noReveal: true }) },
+          ondblclick: () => focusRename(),
+        },
+        visDot(shown, () => showAttachment(s.name, shown ? null : ph.name), null, true),
+        caret(null), h('span', { class: 'ico', html: ICON.placeholder }), h('span', { class: 'label' }, ph.name),
+        h('span', { class: 'meta' }, ph.current ? ph.current.image : '空')))
+      }
+    }
     // Spine: with bones filtered out, the slots are listed in draw order (drag to reorder)
     if (!F.bones && F.slots && !m) {
-      if (node('bones', '插槽（绘制顺序）', 'order', j.slots.length, 1)) {
-        for (const s of j.slots.slice().reverse()) {
-          const sVisible = !state.hiddenSlots.has(s.name)
-          const row = h('div', {
-            class: 'row', 'data-selected': isSel('slot', s.name) ? '1' : null, 'data-key': 'slot:' + s.name, 'data-hidden': sVisible ? null : '1',
-            'data-pickable': pick && pick.want === 'slot' ? '1' : null, style: pad(2),
-            onclick: () => { if (pick) { resolvePick('slot', s.name); return } select({ kind: 'slot', name: s.name }, false, { noReveal: true }) },
-            ondblclick: () => focusRename(),
-          }, visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
-          caret(null), h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, s.name), h('span', { class: 'meta' }, s.bone))
-          wireDrag(row, { type: 'order', name: s.name }, { type: 'order', name: s.name })
-          rows.push(row)
-        }
-      }
+      if (node('bones', '插槽（绘制顺序）', 'order', j.slots.length, 1)) for (const s of j.slots.slice().reverse()) pushSlotRows(s, 2, true)
     }
 
     // the bones: root sits right under the skeleton, beside 约束 / 皮肤 / 动画 (Spine)
@@ -4215,61 +4273,7 @@
         wireDrag(row, b.parent ? { type: 'bone', name: b.name } : null, { type: 'bone', name: b.name })
         rows.push(row)
         if (closed) return
-        for (const s of own) {
-          const sk = 's:' + s.name
-          const content = F.atts ? slotContents(s.name) : { atts: [], phs: [] }
-          const sClosed = !m && state.collapsed.has(sk)
-          const sVisible = !state.hiddenSlots.has(s.name)
-          const srow = h('div', {
-            class: 'row', 'data-selected': isSel('slot', s.name) ? '1' : null, 'data-key': 'slot:' + s.name,
-            'data-multi': state.multiSlots.includes(s.name) && !isSel('slot', s.name) ? '1' : null,
-            'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-hidden': sVisible ? null : '1',
-            'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth + 1),
-            onclick: (e) => {
-              if (pick) { resolvePick('slot', s.name); return }
-              if (e.shiftKey) { selectSlotRange(s.name); return }
-              select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
-            },
-            ondblclick: () => focusRename(),
-            oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
-          },
-          visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
-          caret(content.atts.length + content.phs.length ? !sClosed : null, () => { sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() }),
-          h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, s.name),
-          animOn() ? h('span', { class: 'lkey' }, keyBtn(SLOT_TRACKS(s.name), () => keySlotNow(s.name), `给 ${s.name} 打关键帧（附件 / 颜色）`)) : null)
-          wireDrag(srow, { type: 'slot', name: s.name }, { type: 'slot', name: s.name })
-          rows.push(srow)
-          if (sClosed) continue
-          for (const a of content.atts) {
-            if (m && !m.atts.has(s.name + '/' + a.name) && !m.direct.has('s:' + s.name)) continue
-            const shown = posed.get(s.name) === a.name
-            const arow = h('div', {
-              class: 'row', 'data-selected': isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
-              'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(depth + 2),
-              'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
-              onclick: () => { if (pick) return; select({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, false, { noReveal: true }) },
-              ondblclick: () => focusRename(),
-            },
-            visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
-            caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
-            animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
-            wireDrag(arow, { type: 'att', name: a.name, slot: s.name, skin: 'default' }, null)
-            rows.push(arow)
-          }
-          for (const ph of content.phs) {
-            if (m && !m.atts.has(s.name + '/' + ph.name) && !m.direct.has('s:' + s.name)) continue
-            const shown = posed.get(s.name) === ph.name
-            rows.push(h('div', {
-              class: 'row', 'data-selected': isSel('ph', ph.name, { slot: s.name }) ? '1' : null,
-              'data-key': `ph:${s.name}:${ph.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + ph.name) ? '1' : null, style: pad(depth + 2),
-              onclick: () => { if (pick) return; select({ kind: 'ph', name: ph.name, slot: s.name }, false, { noReveal: true }) },
-              ondblclick: () => focusRename(),
-            },
-            visDot(shown, () => showAttachment(s.name, shown ? null : ph.name), null, true),
-            caret(null), h('span', { class: 'ico', html: ICON.placeholder }), h('span', { class: 'label' }, ph.name),
-            h('span', { class: 'meta' }, ph.current ? ph.current.image : '空')))
-          }
-        }
+        for (const s of own) pushSlotRows(s, depth + 1, false)
         for (const c of sub) walk(c, depth + 1)
       }
       for (const r of kids.get('') || []) walk(r, 1)
@@ -4278,11 +4282,11 @@
     if (!m) {
       // 约束（上下拖动 = 求解顺序）
       const allCons = allConstraints()
-      if (F.cons && node('cons', '约束', 'cons', allCons.length, 1)) {
+      if (node('cons', '约束', 'cons', allCons.length, 1)) {
         allCons.forEach(({ kind, c }) => {
           const row = h('div', {
-            class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name) ? '1' : null, style: pad(2),
-            onclick: () => select({ kind, name: c.name }),
+            class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
+            onclick: (e) => select({ kind, name: c.name }, e.ctrlKey || e.metaKey),
             ondblclick: () => focusRename(),
           }, caret(null), h('span', { class: 'ico', html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
@@ -4319,7 +4323,7 @@
       // 皮肤（双击「皮肤」新建，和 Spine 一样）
       // Spine: the default skin (what shows without a skin) is not listed; the active skin's dot turns it off again
       const named = j.skins.filter((x) => x.name !== 'default')
-      if (F.skins && node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
+      if (node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
         for (const s of named) {
           const active = state.skin === s.name
           rows.push(h('div', {
@@ -4333,7 +4337,7 @@
 
       // 事件 (Spine): double-click creates one; in an animation its key fires it at the current frame
       const evNames = Object.keys(j.events || {})
-      if (F.events && node('events', '事件', 'event', evNames.length, 1, newEvent)) {
+      if (node('events', '事件', 'event', evNames.length, 1, newEvent)) {
         for (const n of evNames) {
           rows.push(h('div', {
             class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
@@ -4347,7 +4351,7 @@
       // 动画
       const names = Object.keys(j.animations)
       // Spine: double-click 「动画」 creates an animation; the dot = the animation being played
-      if (F.anims && node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
+      if (node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
         for (const n of names) {
           const active = state.anim === n
           rows.push(h('div', {
@@ -4412,7 +4416,7 @@
 
   function filterMenu(btnEl) {
     const F = state.filter
-    const items = [['bones', '骨骼'], ['slots', '插槽'], ['atts', '附件'], ['cons', '约束'], ['skins', '皮肤'], ['events', '事件'], ['anims', '动画']]
+    const items = [['bones', '骨骼'], ['slots', '插槽'], ['region', '区域'], ['mesh', '网格'], ['bbox', '边界框'], ['clipping', '剪裁'], ['path', '路径'], ['point', '端点'], ['placeholder', '皮肤占位符']]
     closeMenu()
     const r = btnEl.getBoundingClientRect()
     const menu = h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(r.right - 160)}px;top:${Math.round(r.bottom + 4)}px` },
@@ -5845,7 +5849,8 @@
     const cons = state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform') ? state.sel : null
     const ev = state.sel && state.sel.kind === 'event' ? state.sel.name : null
     const slotList = [...new Set([...(slot ? [slot] : []), ...state.multiSlots, ...(extra ? extra.slots : [])])]
-    const consList = [...(cons ? [cons] : []), ...(extra ? extra.cons.filter((c) => !cons || c.kind !== cons.kind || c.name !== cons.name) : [])]
+    const consAll = [...(cons ? [cons] : []), ...(state.multiCons || []), ...(extra ? extra.cons : [])]
+    const consSeen = new Set(), consList = consAll.filter((c) => { const k = c.kind + ':' + c.name; if (consSeen.has(k)) return false; consSeen.add(k); return true })
     const evList = [...new Set([...(ev ? [ev] : []), ...(extra ? extra.events : [])])]
     if (bones.length || slotList.length || consList.length || evList.length) {
       for (const b of bones) {
@@ -6617,13 +6622,13 @@
         walk(state.sel.name)
         // everything keyable under the branch comes along into the dopesheet: its slots, the
         // constraints on its bones, and (from a root bone) the events
-        const set = new Set(names)
-        const slots = j.slots.filter((x) => set.has(x.bone) && (!m || m.slots.has(x.name) || m.bones.has(x.bone))).map((x) => x.name)
+        const set = new Set(names), F = state.filter
+        const slots = F.slots === false ? [] : j.slots.filter((x) => set.has(x.bone) && (!m || m.slots.has(x.name) || m.bones.has(x.bone))).map((x) => x.name)
         const cons = ['ik', 'transform', 'path'].flatMap((kind) => (j[kind] || []).filter((c) => (c.bones || []).some((b) => set.has(b)) || set.has(c.target)).map((c) => ({ kind, name: c.name })))
         const root = !bone(state.sel.name).parent
         const events = root ? Object.keys(j.events || {}) : []
         // the slots show as picked in the tree too (多选 edits apply to them)
-        state.multi = names; state.multiSlots = slots
+        state.multi = F.bones === false ? [] : names; state.multiSlots = slots
         state.dopeExtra = { slots, cons, events }
         pushHistory(); refresh()
         return
@@ -6805,6 +6810,9 @@
   function reserveBottom(px) {
     // the stage keeps its grid cell and leaves the bottom of it free
     const v = Math.max(0, Math.round(px || 0))
+    // a promised fold (动画工具 opening): the reserve waits for the frame the box shows in
+    if (v && state.compactPending && !state.compactTimeline) { state.reservePending = v; return }
+    state.reservePending = 0
     const st = $('#stage')
     if (st.style.marginBottom !== v + 'px') { st.style.marginBottom = v ? v + 'px' : ''; layoutFloats() }
   }
@@ -6885,10 +6893,16 @@
     reserveBottom,
     /** where the timeline starts (the host docks 动画工具 above it), in this page's coordinates */
     /** 动画工具 open: the timeline is one row (transport + ruler); off: the whole dopesheet. */
-    setTimelineCompact: (on) => { const v = !!on; if (state.compactTimeline === v) return; state.compactTimeline = v; syncTimeline(); layoutFloats(); drawDope() },
+    // on: the fold is only promised (timelineRect already answers with the folded row, so the
+    // tools' box is laid out for it) and applied by applyTimelineCompact when that box shows -
+    // the timeline, the box and the stage then change in one frame
+    setTimelineCompact: (on) => { const v = !!on; if (v) { if (!state.compactTimeline) state.compactPending = true; return } state.compactPending = false; if (!state.compactTimeline) return; state.compactTimeline = false; syncTimeline(); layoutFloats(); drawDope() },
+    applyTimelineCompact: () => { if (!state.compactPending || state.compactTimeline) return; state.compactPending = false; state.compactTimeline = true; const r = state.reservePending; state.reservePending = 0; if (r) reserveBottom(r); syncTimeline(); layoutFloats(); drawDope() },
     timelineRect: () => {
       const tl = $('.timeline-wrap')
       const r = tl && !tl.closest('[hidden]') && getComputedStyle(tl).display !== 'none' ? tl.getBoundingClientRect() : null
+      // a promised fold: the row it will become (42 px at the bottom of the timeline's cell)
+      if (r && r.height && state.compactPending && !state.compactTimeline) return { left: r.left, top: r.bottom - 42, width: r.width, height: 42 }
       if (r && r.height) return { left: r.left, top: r.top, width: r.width, height: r.height }
       const st = $('#stage').getBoundingClientRect()
       return { left: st.left, top: st.bottom, width: st.width, height: 0 }
