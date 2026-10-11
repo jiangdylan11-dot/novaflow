@@ -103,6 +103,11 @@
     leftOpen: 'import', // the left column: one panel open at a time
     initialJson: null, // the project as imported (还原初始图层 / 还原原始权重)
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
+    seqUnticked: new Set(), // 序列帧添加: layers left out (its own tick)
+    sweepUnticked: new Set(), // 序列扫光: layers left out (its own tick)
+    seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
+    sweepDur: 0, // 序列扫光: the whole sweep's length in seconds (0 = the animation's)
+    frameBone: 'root', // 序列帧添加 / 序列扫光: the bone the frames' slots hang on (user: root by default)
     meshDensity: 18, // 自动蒙皮 密度 (the production default)
     meshDrag: null,
     meshPointer: null,
@@ -318,6 +323,8 @@
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
+    state.seqUnticked = new Set(); state.sweepUnticked = new Set(); state.sweepDur = 0
+    state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
     state.anim = Object.keys(state.json.animations || {})[0] || ''
     // big rigs open readable: deep bones and every slot start collapsed (Spine opens at the root)
     for (const b of state.json.bones) if (depthOf(b.name) >= 2) state.collapsed.add('b:' + b.name)
@@ -4707,18 +4714,19 @@
   // picture, its count and its editor button.
 
   /** Every picture layer (slots, top of the draw order first). */
-  function imageLayers() {
+  /** `setup`: the slot's setup-pose attachment (序列帧 keys hide pictures on the current frame). */
+  function imageLayers(setup) {
     const out = []
     if (!rt.skeleton) return out
     for (const slot of rt.skeleton.drawOrder.slice().reverse()) {
-      const att = slot.getAttachment()
+      const att = setup ? (slot.data.attachmentName ? rt.skeleton.getAttachment(slot.data.index, slot.data.attachmentName) : null) : slot.getAttachment()
       const key = att && attachmentKey(slot.data.name, att)
       if (!key) continue
       const mesh = att instanceof spine.MeshAttachment
       if (!mesh && !(att instanceof spine.RegionAttachment)) continue
       let bones = 0
       if (mesh && att.bones) { const set = new Set(); for (let i = 0; i < att.bones.length;) { const c = att.bones[i++]; for (let k = 0; k < c; k++) set.add(att.bones[i++]) } bones = set.size }
-      out.push({ slot: slot.data.name, skin: key.skin, name: key.name, mesh, verts: mesh ? att.worldVerticesLength / 2 : 0, bones, region: att.region })
+      out.push({ slot: slot.data.name, skin: key.skin, name: key.name, mesh, verts: mesh ? att.worldVerticesLength / 2 : 0, bones, region: att.region, bone: slot.data.boneData.name })
     }
     return out
   }
@@ -4888,29 +4896,55 @@
   /** The layer cards over the bottom of the stage while 自动蒙皮 / 自动权重 is open. */
   function renderLayerDock() {
     const dock = $('#layerDock')
-    const kind = state.leftOpen === 'mesh' || state.leftOpen === 'weights' ? state.leftOpen : null
-    const show = !!(kind && state.json && (state.mode === 'setup' || kind === 'weights') && !state.meshEdit && !state.weightEdit)
+    const frameTool = state.leftOpen === 'sequence' || state.leftOpen === 'sweep'
+    const kind = state.leftOpen === 'mesh' || state.leftOpen === 'weights' || frameTool ? state.leftOpen : null
+    const show = !!(kind && state.json && (frameTool ? animOn() : (state.mode === 'setup' || kind === 'weights')) && !state.meshEdit && !state.weightEdit)
     dock.hidden = !show
     if (!show) return
     const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
     dock.textContent = ''
-    const layers = imageLayers()
-    const ticked = layers.filter((l) => !state.unticked.has(l.slot))
+    const layers = imageLayers(frameTool)
+    // 序列帧添加 / 序列扫光 keep their own ticks (蒙皮 / 权重 share one)
+    const U = kind === 'sequence' ? state.seqUnticked : kind === 'sweep' ? state.sweepUnticked : state.unticked
+    const ticked = layers.filter((l) => !U.has(l.slot))
     const L0 = layerSel()
-    dock.append(h('div', { class: 'ld-hd' },
+    const head = [
       h('span', {}, `已选 ${ticked.length} / ${layers.length}`),
-      h('button', { class: 'tg', onclick: () => { state.unticked = new Set(); renderLayerDock() } }, '全选'),
-      h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { state.unticked = new Set(layers.map((l) => l.slot)); renderLayerDock() } }, '清空'),
+      h('button', { class: 'tg', onclick: () => { U.clear(); renderLayerDock() } }, '全选'),
+      h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { U.clear(); for (const l of layers) U.add(l.slot); renderLayerDock() } }, '清空'),
+    ]
+    if (frameTool) {
+      // the frames' slots hang on this bone (root by default); 点选 picks it on the stage / tree
+      const bones = state.json.bones.map((b) => b.name)
+      if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
+      const sel = h('select', { class: 'ld-sel', title: '写入时把勾选的图片挂到这根骨骼（位置不变）', onchange: (e) => { state.frameBone = e.target.value } },
+        bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
+      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '骨骼', sel),
+        h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'))
+    }
+    if (kind === 'sequence') {
+      const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
+        onchange: (e) => { state.seqGap = Math.max(1, Math.min(600, Math.round(Number(e.target.value) || 1))); e.target.value = state.seqGap } })
+      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
+        h('button', { class: 'ld-go', title: '勾选的图片按从上到下的顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
+    } else if (kind === 'sweep') {
+      const dur = h('input', { type: 'number', class: 'ld-num wide', min: 0.1, max: 600, step: 0.1, value: sweepDuration(ticked.length), title: '整段扫光的时长（秒）',
+        onchange: (e) => { state.sweepDur = Math.max(0.1, Math.min(600, Number(e.target.value) || 0.1)); e.target.value = state.sweepDur } })
+      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '时长', dur, '秒'),
+        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在时长内均分', onclick: writeSweep }, '写入动画'))
+    }
+    dock.append(h('div', { class: 'ld-hd' }, ...head,
       h('span', { class: 'sp' }),
       // × closes the cards and folds the 自动蒙皮 / 自动权重 panel on the left
       h('button', { class: 'xx', title: '关闭（左边的面板一起收起）', onclick: () => { state.leftOpen = null; renderLeft(); renderLayerDock(); renderStage(); layoutFloats() } }, '×')))
     const grid = h('div', { class: 'ld-grid' })
+    let order = 0
     for (const l of layers) {
       const c = h('canvas', { width: 32, height: 32 })
       if (l.region) drawRegionThumb(c, l.region)
-      const on = !state.unticked.has(l.slot)
-      const count = kind === 'mesh' ? (l.mesh ? String(l.verts) : '') : (l.bones ? `${l.bones} 骨` : '')
-      const editBtn = kind === 'mesh'
+      const on = !U.has(l.slot)
+      const count = frameTool ? (on ? `第 ${++order} 帧` : '') : kind === 'mesh' ? (l.mesh ? String(l.verts) : '') : (l.bones ? `${l.bones} 骨` : '')
+      const editBtn = frameTool ? null : kind === 'mesh'
         ? h('button', { class: 'ld-btn', title: l.mesh ? '在画面里改这一层的网格' : '按默认密度生成这一层的网格，然后打开编辑', onclick: (e) => {
             e.stopPropagation()
             const L = { skin: l.skin, slot: l.slot, name: l.name }
@@ -4923,12 +4957,12 @@
             if (l.bones) enterWeightEdit(L)
             else batchEdit([L], '自动权重', (j, x) => weighOneLayer(j, x), () => enterWeightEdit(L))
           } }, '权重')
-      grid.append(h('div', { class: 'ld-card', 'data-on': L0 && L0.slot === l.slot ? '1' : null, title: l.slot,
+      grid.append(h('div', { class: 'ld-card', 'data-on': L0 && L0.slot === l.slot ? '1' : null, title: frameTool ? `${l.slot} · 骨骼 ${l.bone}` : l.slot,
         onclick: () => select({ kind: 'att', skin: l.skin, slot: l.slot, name: l.name }, false, { noReveal: false }),
         // the card under the pointer lights its layer up on the stage, as hovering the layer does
         onmouseenter: () => { state.hoverImg = l.slot }, onmouseleave: () => { if (state.hoverImg === l.slot) state.hoverImg = null } },
-        h('input', { type: 'checkbox', checked: on, title: '勾选 = 参与自动蒙皮 / 自动权重（两个面板是同一个勾选）',
-          onclick: (e) => e.stopPropagation(), onchange: (e) => { e.target.checked ? state.unticked.delete(l.slot) : state.unticked.add(l.slot); renderLayerDock() } }),
+        h('input', { type: 'checkbox', checked: on, title: frameTool ? '勾选 = 这张图是序列里的一帧（按从上到下的顺序）' : '勾选 = 参与自动蒙皮 / 自动权重（两个面板是同一个勾选）',
+          onclick: (e) => e.stopPropagation(), onchange: (e) => { e.target.checked ? U.delete(l.slot) : U.add(l.slot); renderLayerDock() } }),
         c, h('span', { class: 'ld-n' }, l.slot), h('span', { class: 'ld-c' }, count), editBtn))
     }
     dock.append(grid)
@@ -4942,6 +4976,81 @@
       else if (r.bottom > g.bottom) grid.scrollTop += r.bottom - g.bottom + 4
     }
     dock.dataset.last = now
+  }
+
+  // ---------- 序列帧添加 / 序列扫光 (动画工具; the layer cards pick the frames, in draw order)
+
+  const frameLayers = (kind) => imageLayers(true).filter((l) => !(kind === 'sequence' ? state.seqUnticked : state.sweepUnticked).has(l.slot))
+
+  /** 序列扫光's length: the field's value, else the animation's, else 5 frames a step (0 / 5 / 10 …). */
+  function sweepDuration(n) {
+    if (state.sweepDur > 0) return state.sweepDur
+    const d = duration()
+    return Math.round((d > 0 ? d : ((n || 1) + 1) * 5 / FPS) * 100) / 100
+  }
+
+  /** The ticked frames' slots move to 骨骼 (setup placement kept) before the keys go in. */
+  function hangFrames(json, frames) {
+    const bone = state.frameBone
+    if (!bone || !json.bones.some((b) => b.name === bone)) return json
+    const m = setupMatrices()
+    let r = { json }
+    for (const f of frames) { const sl = json.slots.find((x) => x.name === f.slot); if (sl && sl.bone !== bone) r = Ops.setSlotProps(r.json, f.slot, { bone }, m) }
+    return r.json
+  }
+
+  /** The slot's own colour (RRGGBB) under the animated alpha keys. */
+  const slotRgb = (json, slot) => { const s = json.slots.find((x) => x.name === slot); return String((s && s.color) || 'ffffffff').padEnd(8, 'f').slice(0, 6).toLowerCase() }
+
+  /** 序列帧添加: picture i shows from frame i·gap; the one before hides there. No loop: the last stays. */
+  function writeSequence() {
+    if (!animOn()) { status('先选一个动画', 'error'); return }
+    const frames = frameLayers('sequence')
+    if (frames.length < 2) { status('先勾选至少 2 张图片（画面下方的卡片）', 'error'); return }
+    const gap = Math.max(1, Math.round(state.seqGap || 1)), anim = state.anim
+    edit(`序列帧添加：${frames.length} 帧，每 ${gap} 帧一张，挂在 ${state.frameBone}（${anim}）`, (j) => {
+      const json = Ops.prepare(hangFrames(j, frames))
+      const a = json.animations[anim]
+      if (!a) throw new Error(`找不到动画：${anim}`)
+      a.slots = a.slots || {}
+      frames.forEach((f, i) => {
+        const row = { ...(a.slots[f.slot] || {}) }
+        const keys = []
+        if (i > 0) keys.push({ name: null })
+        keys.push({ time: Math.round(i * gap / FPS * 10000) / 10000, name: f.name })
+        if (i < frames.length - 1) keys.push({ time: Math.round((i + 1) * gap / FPS * 10000) / 10000, name: null })
+        if (!keys[0].time) delete keys[0].time
+        row.attachment = keys
+        a.slots[f.slot] = row
+      })
+      return { json: Ops.tidy(json) }
+    }, () => gotoFrame(0))
+  }
+
+  /** 序列扫光: picture i goes 0 → 100 → 0 over 2 steps starting at i·step; step = 时长 / (N + 1). */
+  function writeSweep() {
+    if (!animOn()) { status('先选一个动画', 'error'); return }
+    const frames = frameLayers('sweep')
+    if (!frames.length) { status('先勾选图片（画面下方的卡片）', 'error'); return }
+    const total = sweepDuration(frames.length), step = total / (frames.length + 1), anim = state.anim
+    const t4 = (t) => Math.round(t * 10000) / 10000
+    edit(`序列扫光：${frames.length} 帧，时长 ${total} 秒，挂在 ${state.frameBone}（${anim}）`, (j) => {
+      const json = Ops.prepare(hangFrames(j, frames))
+      const a = json.animations[anim]
+      if (!a) throw new Error(`找不到动画：${anim}`)
+      a.slots = a.slots || {}
+      frames.forEach((f, i) => {
+        const rgb = slotRgb(json, f.slot)
+        const row = { ...(a.slots[f.slot] || {}) }
+        const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
+        const keys = [at(0, 0)]
+        if (i > 0) keys.push(at(i * step, 0))
+        keys.push(at((i + 1) * step, 1), at((i + 2) * step, 0))
+        row.color = keys
+        a.slots[f.slot] = row
+      })
+      return { json: Ops.tidy(json) }
+    }, () => gotoFrame(0))
   }
 
   // ---------- 骨骼
@@ -6867,9 +6976,24 @@
       else if (state.leftOpen === kind) state.leftOpen = null
     } else if (kind === 'bones') {
       if (open) { state.leftOpen = null; if (state.mode !== 'setup') setMode('setup'); state.opt.boneVis = true }
-    } else if (kind === 'motion') {
+    } else if (kind === 'sequence' || kind === 'sweep') {
+      // 序列帧添加 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
       if (open) {
-        state.leftOpen = null
+        state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind
+        if (state.mode !== 'animate') {
+          const names = Object.keys(state.json.animations || {})
+          if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }
+        }
+      } else if (state.leftOpen === kind) state.leftOpen = null
+    } else if (kind === 'frames') {
+      // a calculation tool picked: 序列帧添加 / 序列扫光's cards go
+      if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep')) state.leftOpen = null
+    } else if (kind === 'motion') {
+      if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep')) state.leftOpen = null
+      if (open) {
+        // the frame tools are 动画工具 too: the host's open (it polls, so it may land after the
+        // tool's own setPanel) must not take their cards away
+        if (state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep') state.leftOpen = null
         // the tools' timeline is the folded row: promised here, before the mode switch would
         // show the full dopesheet; the host applies it when the tools' box shows
         if (!state.compactTimeline) state.compactPending = true
@@ -6935,6 +7059,8 @@
     playing: () => !!state.playing,
     applyExternal,
     setPanel,
+    /** which left panel / layer-card tool is open (null = none) */
+    panel: () => state.leftOpen,
     density: () => state.meshDensity,
     setDensity: (v) => { state.meshDensity = Math.max(2, Math.min(40, Math.round(Number(v) || 18))) },
     /** the batch tools of 蒙皮 / 权重 on the ticked layer cards (status shows the result) */

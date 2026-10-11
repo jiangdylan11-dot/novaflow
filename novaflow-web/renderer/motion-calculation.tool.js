@@ -39,10 +39,11 @@
   function syncToolAvailability(panel){
     const api=editorApi();if(!api)return;
     const bone=api.selectedBone(),slot=api.selectedSlot?api.selectedSlot():null;
+    const anim=!!api.anim();
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>{
-      const needSlot=item.dataset.motionMode==='opacity',ok=needSlot?!!slot:!!bone;
+      const mode=item.dataset.motionMode,needSlot=mode==='opacity',frameTool=isFrameTool(mode),ok=frameTool?anim:needSlot?!!slot:!!bone;
       if(item.disabled!==!ok)item.disabled=!ok;
-      const title=ok?'':(needSlot?'透明度计算作用于插槽（图片）：先在画板或工程树里选中一个插槽':'先在画板或工程树里选中一个骨骼');
+      const title=ok?'':(frameTool?'先选一个动画':needSlot?'透明度计算作用于插槽（图片）：先在画板或工程树里选中一个插槽':'先在画板或工程树里选中一个骨骼');
       if(item.title!==title)item.title=title;
     });
   }
@@ -428,9 +429,22 @@
     dockPlaced=placed?signature:'';
     return placed;
   }
+  // 序列帧添加 / 序列扫光 have no curve editor: the 骨骼动画 editor shows its layer cards over the
+  // stage (tick the frames, 写入动画); picking them closes the curve editor, picking a calculation
+  // tool closes the cards (setPanel('motion'))
+  const isFrameTool=mode=>mode==='sequence'||mode==='sweep';
+  let frameToolAt=0;
   function selectTool(mode){
-    activeMode=mode;panel.dataset.editorOpen='1';
+    activeMode=mode;
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.motionMode===mode)));
+    const editor=window.NovaFlowSkeletonEditor;
+    if(isFrameTool(mode)){
+      close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();
+      frameToolAt=performance.now();editor?.setPanel?.(mode,true);
+      return;
+    }
+    editor?.setPanel?.('frames',false);
+    panel.dataset.editorOpen='1';
     if(view&&(mode==='ribbon'||sameScope(getContext(),session)))view.selectMode(activeMode);else open();
   }
   let ribbonMissingSince=0;
@@ -461,7 +475,7 @@
         [data-panel-id="bone-motion"] [data-motion-mode][disabled]{color:#5a5a5a;cursor:default}
         [data-panel-id="bone-motion"] .nf-motion-note{margin:4px 10px 0;font-size:11px;line-height:1.6;color:#6a6a6a}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
-      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；选中插槽（图片）后可用透明度计算。</p></div><div class="nf-motion-body"></div>`;
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算',sequence:'序列帧添加',sweep:'序列扫光'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；选中插槽（图片）后可用透明度计算；序列帧添加、序列扫光在画面下方的卡片里勾选图片。</p></div><div class="nf-motion-body"></div>`;
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{
@@ -481,6 +495,11 @@
       panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>selectTool(button.dataset.motionMode));
     }
     syncToolAvailability(panel);
+    if(panel.dataset.open==='1'&&isFrameTool(activeMode)){
+      const api=editorApi();
+      // the cards closed with their × (not the moment after the click: setPanel lands a tick later)
+      if(api&&api.panel&&api.panel()!==activeMode&&performance.now()-frameToolAt>1000)panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));
+    }
     // The fiber walk is the costly part of this poll; only an open editor needs it.
     if(panel.dataset.open!=='1'||panel.dataset.editorOpen!=='1'||document.hidden)return;
     context=getContext();

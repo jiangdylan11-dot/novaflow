@@ -335,6 +335,8 @@
       pushSelection()
     } else {
       api.reserveBottom(0)
+      // the group folded: 序列帧添加 / 序列扫光's layer cards go too
+      api.setPanel('motion', false)
     }
   }
 
