@@ -32,6 +32,20 @@
     return null;
   }
   function slotNames(p,bone){return (p.slots||[]).filter(s=>s.bone===bone).map(s=>s.name);}
+  const editorApi=()=>{const ed=window.NovaFlowSkeletonEditor;const api=ed&&ed.active&&ed.active()?ed.api():null;return api&&api.loaded()?api:null;};
+  const pickedSlot=()=>{const api=editorApi();return api&&api.selectedSlot?api.selectedSlot():null;};
+  // 透明度计算 needs a slot (an image) picked, the other tools a bone; a tool that does not apply
+  // to the pick is greyed (the note under the list says what to pick)
+  function syncToolAvailability(panel){
+    const api=editorApi();if(!api)return;
+    const bone=api.selectedBone(),slot=api.selectedSlot?api.selectedSlot():null;
+    panel.querySelectorAll('[data-motion-mode]').forEach(item=>{
+      const needSlot=item.dataset.motionMode==='opacity',ok=needSlot?!!slot:!!bone;
+      if(item.disabled!==!ok)item.disabled=!ok;
+      const title=ok?'':(needSlot?'透明度计算作用于插槽（图片）：先在画板或工程树里选中一个插槽':'先在画板或工程树里选中一个骨骼');
+      if(item.title!==title)item.title=title;
+    });
+  }
   function clearedAnimation(animation,s){
     const clean={...animation,bones:{...animation.bones},slots:{...animation.slots}};
     delete clean.bones[s.bone];
@@ -93,7 +107,8 @@
     else out.duration=Math.max(source.duration||0,minimum);
     return out;
   }
-  function sameScope(p,s){return p&&p.project.bones===s.identity&&p.activeAnimationName===s.animation&&p.selectedBoneName===s.bone;}
+  // the same scope = same project / animation / bone, and the same picked slot (透明度计算 keys that slot alone)
+  function sameScope(p,s){return p&&p.project.bones===s.identity&&p.activeAnimationName===s.animation&&p.selectedBoneName===s.bone&&((pickedSlot()||{}).name||'')===(s.pickedSlot||'');}
   function signature(animation,s){return JSON.stringify({bone:animation?.bones?.[s.bone],slots:s.slots.map(n=>animation?.slots?.[n])},(_,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.keys(value).sort().map(key=>[key,value[key]])):value);}
   function matchesExpected(animation,s){
     const current=signature(animation,s);
@@ -118,11 +133,13 @@
   function createSession(p){
     const animation=p.activeAnimationName,bone=p.selectedBoneName,identity=p.project.bones;
     let group=records.get(identity);if(!group){group=new Map();records.set(identity,group);}
-    const key=JSON.stringify([animation,bone]),existing=group.get(key),current=p.project.animations[animation];
+    const key=JSON.stringify([animation,bone,(pickedSlot()||{}).name||'']),existing=group.get(key),current=p.project.animations[animation];
     if(existing&&matchesExpected(current,existing)){
       existing.dirty=false;return existing;
     }
-    const s={identity,animation,bone,slots:slotNames(p.project,bone),base:current,committed:current,expected:current,channels:new Set(),alpha:false,dirty:false,config:null,group,key,setProject:p.setProject};
+    // 透明度计算 keys the picked slot alone (the 骨骼动画 editor's pick); without one, every slot of the bone
+    const picked=pickedSlot(),slots=picked&&picked.bone===bone?[picked.name]:slotNames(p.project,bone);
+    const s={identity,animation,bone,slots,pickedSlot:(picked||{}).name||'',base:current,committed:current,expected:current,channels:new Set(),alpha:false,dirty:false,config:null,group,key,setProject:p.setProject};
     group.set(key,s);return s;
   }
   // An unsaved preview lives in the real project; leaving without 保存动画 must put
@@ -171,7 +188,7 @@
       if(stack.opacity.opacity.from!==1||stack.opacity.opacity.to!==1||stack.opacity.corrections.alpha.some(v=>v)||stack.opacity.curves?.alpha)s.alpha=true;
       const baseline=calculationBaseline(p.project.animations[s.animation],s);
       const project={...p.project,animations:{...p.project.animations,[s.animation]:baseline}};
-      const result=A.calculate(project,s.animation,[s.bone],stack,t,E,window.NovaFlowBonesEditor);
+      const result=A.calculate(project,s.animation,[s.bone],stack,t,E,window.NovaFlowBonesEditor,{slots:s.slots});
       for(const key of ['translate','scale','rotate'])if(result.animation.bones[s.bone]?.[key]!==baseline.bones?.[s.bone]?.[key])s.channels.add(key);
       write(s,result.animation);s.dirty=true;s.pending=copy({stack,timing:t});
       panel.dataset.motionState='preview';panel.dataset.motionInterval=`${result.start},${result.end}`;
@@ -435,9 +452,11 @@
         [data-panel-id="bone-motion"] .nf-motion-tools{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;padding:5px 7px 17px;box-sizing:border-box}
         [data-panel-id="bone-motion"] .nf-motion-tools[hidden]{display:none}
         [data-panel-id="bone-motion"] [data-motion-mode]{width:100%;min-width:0;height:32px;padding:0 10px;text-align:left;line-height:1.2;background:transparent;border:0;border-radius:7px;color:#b4b4b4;font:inherit;font-size:12px;font-weight:500;cursor:pointer;box-shadow:none}
-        [data-panel-id="bone-motion"] [data-motion-mode]:hover,[data-panel-id="bone-motion"] [data-motion-mode][aria-pressed="true"]{background:#262626;color:#dedede}
+        [data-panel-id="bone-motion"] [data-motion-mode]:not([disabled]):hover,[data-panel-id="bone-motion"] [data-motion-mode][aria-pressed="true"]{background:#262626;color:#dedede}
+        [data-panel-id="bone-motion"] [data-motion-mode][disabled]{color:#5a5a5a;cursor:default}
+        [data-panel-id="bone-motion"] .nf-motion-note{margin:4px 10px 0;font-size:11px;line-height:1.6;color:#6a6a6a}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
-      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}</div><div class="nf-motion-body"></div>`;
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；选中插槽（图片）后可用透明度计算。</p></div><div class="nf-motion-body"></div>`;
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{
@@ -456,6 +475,7 @@
       };
       panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>selectTool(button.dataset.motionMode));
     }
+    syncToolAvailability(panel);
     // The fiber walk is the costly part of this poll; only an open editor needs it.
     if(panel.dataset.open!=='1'||panel.dataset.editorOpen!=='1'||document.hidden)return;
     context=getContext();

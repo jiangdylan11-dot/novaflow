@@ -5968,6 +5968,9 @@
     const lastSel = new Map()
     if (mvShift || mvOffset) for (const x of d.keySel) lastSel.set(pathId(x.path), Math.max(lastSel.get(pathId(x.path)) ?? -1, x.time))
     const loopF = Math.round(duration() * FPS)
+    // an end of the selection dragged: the picked keys stretch about the other end
+    const sc = d.drag && d.drag.kind === 'scale' ? d.drag : null
+    const scaled = (f) => Math.round(sc.pivot + (f - sc.pivot) * sc.factor)
     d.rows.forEach((r, i) => {
       const y = DOPE.rulerH + i * DOPE.rowH - d.scrollY
       if (y + DOPE.rowH < DOPE.rulerH || y > Hh) return
@@ -5997,6 +6000,7 @@
             if (mvOffset && loopF > 0) f = ((f % loopF) + loopF) % loopF
           }
         }
+        if (sc && on) f = scaled(f)
         return { on, f }
       }
       const keys = rowKeys(r)
@@ -6027,6 +6031,20 @@
     // name column edge
     ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(DOPE.nameW + 0.5, 0); ctx.lineTo(DOPE.nameW + 0.5, Hh); ctx.stroke()
     if (!d.rows.length) { ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧：选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 18) }
+    // the selection's span (two or more picked keys over a span): Spine's shaded range with a
+    // handle at each end - drag one to stretch or squeeze the picked keys in time
+    const span = selectionSpan()
+    if (span) {
+      const f1 = sc ? scaled(span.f1) : span.f1, f2 = sc ? scaled(span.f2) : span.f2
+      const x1 = dopeX(Math.min(f1, f2)), x2 = dopeX(Math.max(f1, f2)), y1 = span.y
+      ctx.save(); ctx.beginPath(); ctx.rect(DOPE.nameW, DOPE.rulerH, W - DOPE.nameW, Hh - DOPE.rulerH); ctx.clip()
+      ctx.fillStyle = 'rgba(30,166,114,.07)'; ctx.fillRect(x1, y1, x2 - x1, Hh - y1)
+      ctx.strokeStyle = 'rgba(30,166,114,.45)'; ctx.lineWidth = 1
+      ctx.strokeRect(Math.round(x1) + 0.5, Math.round(y1) + 0.5, Math.round(x2 - x1), Hh - y1)
+      ctx.fillStyle = '#9be4cd'
+      for (const x of [x1, x2]) ctx.fillRect(Math.round(x) - 2, y1, 4, Hh - y1)
+      ctx.restore()
+    }
     // box selection
     if (d.drag && d.drag.kind === 'box' && d.drag.moved) {
       const b = d.drag
@@ -6063,7 +6081,25 @@
       if (dx <= 6 && (!best || dx < best.dx)) best = { dx, keys: k.keys, frame: k.frame }
     }
     if (best) return { kind: 'key', row, keys: best.keys, frame: best.frame }
+    // an end handle of the selection's span (below the rows too, where no key is in the way)
+    const span = selectionSpan()
+    if (span && y >= span.y) {
+      if (Math.abs(dopeX(span.f1) - x) <= 5) return { kind: 'scale', edge: 'start', span }
+      if (Math.abs(dopeX(span.f2) - x) <= 5) return { kind: 'scale', edge: 'end', span }
+    }
     return x < DOPE.nameW ? { kind: 'name', row } : { kind: 'empty', row }
+  }
+
+  /** The picked keys' span: first / last frame and the top of the first row that holds one; null below two frames. */
+  function selectionSpan() {
+    const d = state.dope
+    if (d.keySel.length < 2) return null
+    let f1 = Infinity, f2 = -Infinity
+    for (const k of d.keySel) { const f = Math.round(k.time * FPS); if (f < f1) f1 = f; if (f > f2) f2 = f }
+    if (f2 <= f1) return null
+    const i = d.rows.findIndex((r) => rowKeys(r).some((k) => k.keys.some(isKeySel)))
+    if (i < 0) return null
+    return { f1, f2, y: DOPE.rulerH + i * DOPE.rowH - d.scrollY }
   }
 
   function setFrame(f) {
@@ -6140,6 +6176,11 @@
       const hit = dopeHit(x, y)
       if (hit.kind === 'ruler') { d.drag = { kind: 'scrub' }; setFrame(dopeF(x)); return }
       if (hit.kind === 'name') { if (hit.row && hit.row.sel) select(hit.row.sel, false, { noReveal: false }); return }
+      if (hit.kind === 'scale') {
+        const { f1, f2 } = hit.span
+        d.drag = { kind: 'scale', edge: hit.edge, pivot: hit.edge === 'end' ? f1 : f2, from: hit.edge === 'end' ? f2 : f1, factor: 1, moved: false }
+        return
+      }
       if (hit.kind === 'key') {
         const mod = e.ctrlKey || e.metaKey
         if (mod && (e.altKey || e.shiftKey)) {
@@ -6159,11 +6200,18 @@
     })
     c.addEventListener('pointermove', (e) => {
       const d = state.dope
-      if (!d.drag) return
       const [x, y] = at(e)
+      if (!d.drag) { const cursor = animOn() && dopeHit(x, y).kind === 'scale' ? 'ew-resize' : ''; if (c.style.cursor !== cursor) c.style.cursor = cursor; return }
       if (d.drag.kind === 'pan') { if (Math.abs(x - d.drag.x0) > 3) d.drag.moved = true; d.f0 = Math.max(0, d.drag.f0 - (x - d.drag.x0) / d.pxf); return }
       if (d.drag.kind === 'scrub') { setFrame(dopeF(x)); return }
       if (d.drag.kind === 'move') { d.drag.df = Math.round((x - d.drag.x0) / d.pxf); if (d.drag.df) d.drag.moved = true; return }
+      if (d.drag.kind === 'scale') {
+        // the dragged end follows the cursor's frame; never shorter than a frame, never flipped
+        const g = d.drag, span = g.from - g.pivot
+        const factor = Math.max(1 / Math.abs(span), (Math.max(0, Math.round(dopeF(x))) - g.pivot) / span)
+        if (factor !== g.factor) { g.factor = factor; g.moved = true }
+        return
+      }
       if (d.drag.kind === 'box') { d.drag.x1 = x; d.drag.y1 = y; if (Math.hypot(x - d.drag.x0, y - d.drag.y0) > 3) d.drag.moved = true }
     })
     const up = (e) => {
@@ -6173,6 +6221,13 @@
       setTimeout(renderCurvePanel, 0)
       if (!g) return
       if (g.kind === 'pan') { if (!g.moved && g.button === 2) { const [x, y] = at(e); const hit = dopeHit(x, y); if (hit.kind === 'key') { if (!hit.keys.every(isKeySel)) d.keySel = hit.keys.slice(); keyCurveMenu(e.clientX, e.clientY) } } return }
+      if (g.kind === 'scale') {
+        if (g.moved && Math.abs(g.factor - 1) > 1e-9) {
+          const keys = d.keySel.slice()
+          edit(`已缩放 ${keys.length} 个关键帧的时长 ×${g.factor.toFixed(2)}`, (j) => Ops.scaleKeys(j, state.anim, keys, g.pivot / FPS, g.factor, { snap: 1 / FPS }), (r) => { state.dope.keySel = r.keys })
+        }
+        return
+      }
       if (g.kind === 'move') {
         if (g.df) {
           const keys = d.keySel.slice()
@@ -6691,6 +6746,13 @@
     json: () => state.json,
     loaded: () => !!state.json,
     selectedBone: () => (state.sel && state.sel.kind === 'bone' ? state.sel.name : null),
+    /** The picked slot (a slot row, or an image's slot) with its bone; 透明度计算 works on it. */
+    selectedSlot: () => {
+      const sel = state.sel
+      const name = sel && state.json ? (sel.kind === 'slot' ? sel.name : sel.kind === 'att' ? sel.slot : null) : null
+      const slot = name ? state.json.slots.find((s) => s.name === name) : null
+      return slot ? { name, bone: slot.bone } : null
+    },
     selectBone: (name) => { if (state.json && state.json.bones.some((b) => b.name === name)) select({ kind: 'bone', name }) },
     toast: (msg, kind) => status(msg, kind),
     anim: () => state.anim,

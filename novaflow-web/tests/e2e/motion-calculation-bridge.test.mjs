@@ -65,7 +65,7 @@ test('calculation replaces selected bone source motion, preserves other tracks a
   assert.equal(result.bones.ball.translate,undefined);
   assert.equal(result.bones.ball.rotate,undefined);
   assert.equal(result.bones.ball.shear,undefined);
-  assert.equal(A.scalar(result.bones.ball.scale,.5,'x',1),1,'old scale must not multiply the calculation');
+  assert.ok(Math.abs(A.scalar(result.bones.ball.scale,.5,'x',1)-1)<1e-6,'old scale must not multiply the calculation');
   assert.equal(result.slots.ballSlot.color,undefined);
   assert.equal(result.slots.ballSlot.attachment[0].name,'mesh');
   assert.equal(JSON.stringify(f.session.base),original,'restore baseline stays untouched');

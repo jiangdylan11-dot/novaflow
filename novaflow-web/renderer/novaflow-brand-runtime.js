@@ -51307,7 +51307,7 @@
     const at = (t) => { let i = 0; while (i < dense.length - 2 && dense[i + 1].time <= t) i += 1; const a = dense[i], b = dense[i + 1] || a; const u = b.time > a.time ? Math.max(0, Math.min(1, (t - a.time) / (b.time - a.time))) : 0; return a.angle + (b.angle - a.angle) * u; };
     const samples = [];
     for (let f = 0; f <= count; f += 1) { const t = Number((f / 30).toFixed(4)); samples.push({ time: t, angle: Number(at(Math.min(t, last)).toFixed(3)) }); }
-    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.5) : 0.5).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
+    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.5, 0.02) : 0.5).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
   }
 
   function commitRibbonElasticWrittenTimeline(timeline, animationName = "", boneName = "", project = null) {

@@ -1674,6 +1674,37 @@
   }
 
   /**
+   * Spine's scale keys: the picked keys stretched about `pivot` (seconds) by `factor`, each
+   * landing on a frame (`opts.snap`, seconds) - the dopesheet's drag on an end of the selection.
+   * Picked keys that land on one frame merge (the later wins); unpicked keys there give way.
+   */
+  function scaleKeys(input, anim, keys, pivot, factor, opts) {
+    const o = opts || {}, snap = o.snap > 0 ? o.snap : 0
+    const json = prepare(input)
+    const a = animationOf(json, anim)
+    const moved = []
+    for (const g of groupKeys(keys)) {
+      const list = trackList(a, g.path)
+      if (!list) continue
+      const going = list.filter((k) => g.times.some((t) => sameTime(k.time, t)))
+      const placed = new Map()
+      for (const k of going) {
+        let t = pivot + (num(k.time, 0) - pivot) * factor
+        if (snap) t = Math.round(t / snap) * snap
+        t = keyTime(t)
+        const nk = { ...k }
+        if (t) nk.time = t; else delete nk.time
+        placed.set(t.toFixed(4), nk)
+      }
+      const out = [...placed.values()]
+      const staying = list.filter((k) => !going.includes(k) && !out.some((m) => sameTime(m.time, k.time)))
+      setTrack(a, g.path, [...staying, ...out].sort((x, y) => num(x.time, 0) - num(y.time, 0)))
+      for (const k of out) moved.push({ path: g.path, time: num(k.time, 0) })
+    }
+    return { json: tidy(json), keys: moved }
+  }
+
+  /**
    * Spine's 调整: change every selected key of a bone by the same amount instead of keying
    * the frame. `deltas` = { boneName: { rotation, x, y, scaleX, scaleY, shearX, shearY } }
    * in local terms (scale as a difference of local scale).
@@ -2380,7 +2411,7 @@
     keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, boneKeys, removeKeyAt, slotKeys,
     reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping,
     // dopesheet
-    keyTracks, moveKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,
+    keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,
     // skins
     createSkin, renameSkin, deleteSkin, copyAttachmentToSkin, duplicateAttachment, hasDeformKeys,
     createEvent, setEventProps, renameEvent, deleteEvent, keyEvent, setSkinMembership,

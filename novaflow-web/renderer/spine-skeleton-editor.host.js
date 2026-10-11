@@ -261,12 +261,15 @@
     return true
   }
 
+  /** The bone the tools work on: the picked bone, or the picked slot's bone (透明度计算). */
+  const pickedBone = () => api.selectedBone() || ((api.selectedSlot && api.selectedSlot()) || {}).bone || null
+
   function pushSelection() {
     if (!api) return false
     const ws = workspaceProps()
     if (!ws) return false
     let changed = false
-    const bone = api.selectedBone()
+    const bone = pickedBone()
     const ctx = projectProps()
     if (ctx && ctx.selectedBoneName !== bone && bone) {
       changed = true
@@ -322,7 +325,7 @@
     // the app sometimes puts its selection back (root) right after the open-time push: while
     // the tools are open the editor's picked bone / animation is the one they work on
     const ctx = api && api.loaded() ? projectProps() : null
-    if (ctx && ((api.selectedBone() && ctx.selectedBoneName !== api.selectedBone()) || (api.anim() && ctx.activeAnimationName !== api.anim()))) pushSelection()
+    if (ctx && ((pickedBone() && ctx.selectedBoneName !== pickedBone()) || (api.anim() && ctx.activeAnimationName !== api.anim()))) pushSelection()
   }
 
   /**

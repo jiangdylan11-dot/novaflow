@@ -96,27 +96,26 @@
       }
       return true;
     };
-    // the ease that replays every channel best: the time handles from a few fixed pairs, the
-    // value handles solved by least squares on all channels at once (the curve's value is
-    // linear in them once the time handles fix the parameter); handles may overshoot, as in Spine
+    // the ease between two keys: the sampled slope at each end is its tangent (zero at an
+    // extreme), so neighbouring eases meet without a corner - the curve is smooth through
+    // every key, not just close to the samples; the handle lengths come from a few fixed
+    // pairs and the pair that replays every channel best wins
+    const slopeAt=(m,k)=>{
+      if(must.has(m)&&m>0&&m<s.length-1)return 0;
+      const a=Math.max(0,m-1),b=Math.min(s.length-1,m+1);
+      return (val(s[b],k)-val(s[a],k))/(time(s[b])-time(s[a]));
+    };
     const ease=(i,j)=>{
       const span=time(s[j])-time(s[i]),deltas=keys.map(k=>val(s[j],k)-val(s[i],k));
       if(!deltas.some(d=>Math.abs(d)>tol))return null;
+      let k=0;for(let q=1;q<keys.length;q++)if(Math.abs(deltas[q])>Math.abs(deltas[k]))k=q;
+      const d=deltas[k],t0=slopeAt(i,keys[k])*span/d,t1=slopeAt(j,keys[k])*span/d;
+      if(!Number.isFinite(t0)||!Number.isFinite(t1))return null;
       let best=null,bestErr=Infinity;
-      for(const [x1,x2] of [[1/3,2/3],[.2,.8],[.5,.5],[.1,.9],[.42,.58],[.25,.75]]){
-        let pp=0,pq=0,qq=0,pa=0,qa=0;
-        for(let m=i+1;m<j;m++){
-          const t=bezierT(x1,x2,(time(s[m])-time(s[i]))/span),p=3*(1-t)*(1-t)*t,q=3*(1-t)*t*t,c=t*t*t;
-          keys.forEach((k,idx)=>{const d=deltas[idx];if(Math.abs(d)<=tol*.01)return;const a=val(s[m],k)-val(s[i],k)-d*c;pp+=d*d*p*p;pq+=d*d*p*q;qq+=d*d*q*q;pa+=d*p*a;qa+=d*q*a;});
-        }
-        // a whisper of ridge toward the line: one sample between the keys leaves the two
-        // handles underdetermined, and the ease closest to a line that still passes it wins
-        const ridge=1e-9*Math.max(1,pp+qq);pp+=ridge;qq+=ridge;pa+=ridge*x1;qa+=ridge*x2;
-        const det=pp*qq-pq*pq;if(!(Math.abs(det)>0))continue;
-        const y1=(pa*qq-qa*pq)/det,y2=(pp*qa-pq*pa)/det;
-        const c=[x1,y1,x2,y2].map(v=>Number(v.toFixed(3)));if(!c.every(Number.isFinite))continue;
+      for(const a of [.2,.3,.4,.5])for(const b of [.2,.3,.4,.5]){
+        const c=[a,a*t0,1-b,1-b*t1].map(v=>Number(v.toFixed(3)));
         let err=0;
-        for(let m=i+1;m<j&&err<=tol;m++){const w=bezierAt(c,(time(s[m])-time(s[i]))/span);keys.forEach((k,idx)=>{err=Math.max(err,Math.abs(val(s[i],k)+deltas[idx]*w-val(s[m],k)));});}
+        for(let m=i+1;m<j&&err<=tol;m++){const w=bezierAt(c,(time(s[m])-time(s[i]))/span);keys.forEach((q,idx)=>{err=Math.max(err,Math.abs(val(s[i],q)+deltas[idx]*w-val(s[m],q)));});}
         if(err<bestErr){bestErr=err;best=c;}
       }
       return bestErr<=tol?best:null;
@@ -133,13 +132,21 @@
     }
     const out=[];let i=0;
     while(i<s.length-1){
-      // the farthest sample (not past the next extreme) a line or an ease reaches within tol
+      // the farthest sample (not past the next extreme) an ease reaches within tol; the ease
+      // comes first because it keeps the slope continuous through the key (a short line next
+      // to an ease is a corner), a line only where no ease fits
       let j=i+1,curve=null;
       for(let m=i+1;m<s.length;m++){
-        if(fits(i,m,null)){j=m;curve=null;}
-        else{const c=ease(i,m);if(c){j=m;curve=c;}else break;}
+        const c=ease(i,m);
+        if(c){j=m;curve=c;}
+        else if(fits(i,m,null)){j=m;curve=null;}
+        else break;
         if(must.has(m))break;
       }
+      // the leftover to the next extreme must start with an ease too (a two-frame line there is
+      // a corner): back the key off until it can
+      const canGo=(a)=>{for(let m=a+1;m<s.length;m++){if(ease(a,m))return true;if(must.has(m))break;}return false;};
+      while(j>i+1&&!must.has(j)&&j<s.length-1&&!canGo(j)){j--;curve=ease(i,j);}
       out.push(withCurve(s[i],curve));
       i=j;
     }
@@ -167,7 +174,8 @@
     if(after.length){const t=frameTime(Math.round(end*FPS)+1);if(!has(after,t)&&t<n(after[0].time)){const cut=split(t);after.unshift(withCurve({...sampleBoundary(t),time:t},cut?cut.right:null));}}
     return [...before,...generated,...after].sort((a,b)=>n(a.time)-n(b.time));
   }
-  function calculate(project, animationName, names, stack, timing, engine, math) {
+  // opts.slots: only these slots take the opacity keys (the picked slot), else every slot of the bones
+  function calculate(project, animationName, names, stack, timing, engine, math, opts) {
     const original=project.animations?.[animationName];if(!original)throw Error('请先选择当前动画。');
     const targets=selection(project,names);if(!targets.length)throw Error('请先在骨骼树或画板中选择骨骼。');
     const driven=new Set([...(project.ik||[]).flatMap(c=>c.bones||[]),...(project.transform||[]).flatMap(c=>c.bones||[]),...(project.path||[]).flatMap(c=>c.bones||[])]);
@@ -181,7 +189,8 @@
     const animation={...original,bones:{...original.bones},slots:{...original.slots},duration:n(timing.animationDuration)};
     const translate=!!(params.bounce.enabled||params.shuttle.enabled),scale=!!params.expand.enabled,rotate=!!params.rotate?.enabled;
     const opacity=params.opacity.opacity,alpha=opacity.on&&(opacity.from!==1||opacity.to!==1||params.opacity.corrections.alpha.some(v=>v!==0)||params.opacity.curves?.alpha);
-    const affected=new Set(targets), slots=(project.slots||[]).filter(s=>affected.has(s.bone));
+    const only=opts&&Array.isArray(opts.slots)?new Set(opts.slots):null;
+    const affected=new Set(targets), slots=(project.slots||[]).filter(s=>affected.has(s.bone)&&(!only||only.has(s.name)));
     // one sample per frame of the interval (a seam or an impact lands on its nearest frame)
     const times=new Set();for(let f=startFrame;f<=startFrame+spanFrames;f++)times.add(frameTime(f));
     // only the targets and their ancestors are posed per sample: their parents' world frames
