@@ -808,7 +808,7 @@
       state.multiSlots = sel && sel.kind === 'slot' ? [sel.name] : []
       state.multiCons = sel && (sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path') ? [{ kind: sel.kind, name: sel.name }] : []
     }
-    if (sel && (sel.kind === 'bone' || sel.kind === 'slot' || sel.kind === 'att' || sel.kind === 'ph') && !(opts && opts.noReveal)) revealInTree(sel)
+    if (sel && (sel.kind === 'bone' || sel.kind === 'slot' || sel.kind === 'att' || sel.kind === 'ph' || sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path' || sel.kind === 'event') && !(opts && opts.noReveal)) revealInTree(sel)
     if (!(opts && opts.fromHistory)) pushHistory()
     refresh()
   }
@@ -3945,6 +3945,9 @@
       if (s) open(s.bone)
       if (sel.kind !== 'slot') state.collapsed.delete('s:' + sel.slot)
     }
+    // a constraint / event: its section opens and the tree scrolls to its row
+    if (sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path') state.sections.delete('cons')
+    if (sel.kind === 'event') state.sections.delete('events')
     state.scrollToSel = true
   }
 
