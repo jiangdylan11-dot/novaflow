@@ -1500,7 +1500,11 @@
   // gives the same numbers.
   api.aiSeqProbeVideoMeta = async (payload) => {
     const options = payload || {};
-    const source = options.bytes || options.data;
+    // A dropped File reaches the probe as the token getPathForFile handed out (the desktop
+    // sends an OS path here): without the bytes behind it the probe failed, the board fell
+    // back to 30 fps and the playbar's 帧率 could not change the speed.
+    const held = options.inputPath ? runtime.fileForToken(options.inputPath) : null;
+    const source = options.bytes || options.data || held;
     if (!source) return fail('探测缺少视频内容');
     const ffmpeg = await loadFfmpeg();
     const seq = ++videoOutputSeq;
