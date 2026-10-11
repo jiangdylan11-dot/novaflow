@@ -1330,8 +1330,8 @@
         }
       }
     }
-    // .skel is the 3.8 binary; 4.x goes out as JSON (converted)
-    const skel = !!opts.skel && version === '3.8'
+    // SKEL: the skeleton as Spine binary of the chosen version (renderer/spine-binary-write.js)
+    const skel = !!opts.skel
     const writer = A.createWriter({ baseName: opts.name, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write })
     const missing = []
     for (const it of items) {
@@ -1358,23 +1358,22 @@
       const nameIn = h('input', { type: 'text', value: o.name, oninput: (e) => { o.name = e.target.value } })
       const seg = (val, label) => h('button', { 'aria-pressed': String(o.mode === val), onclick: () => { o.mode = val; fill() } }, label)
       const usedN = exportImageNames(Ops.exportable(state.json)).length
-      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, 'Spine ' + v)
-      const skel = o.skel && o.version === '3.8', fmt = skel ? 'SKEL' : 'JSON'
+      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, v)
+      const fseg = (val, label) => h('button', { 'aria-pressed': String(!!o.skel === val), onclick: () => { o.skel = val; fill() } }, label)
+      const fmt = o.skel ? 'SKEL' : 'JSON'
       body.append(
         h('label', { class: 'fl' }, '导出名称'), nameIn,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
-        h('div', { class: 'hint' }, o.version === own ? `工程原版本 Spine ${own}，按原版本导出，保留骨架和曲线格式。` : `工程原版本 Spine ${own}，导出时自动转成 Spine ${o.version}（动画、曲线、约束一起转换）。`),
+        // SKEL = Spine's binary skeleton (the version chosen above); JSON = text
+        h('div', { class: 'pk' }, h('span', { class: 'fl' }, '格式'), h('div', { class: 'seg' }, fseg(false, 'JSON'), fseg(true, 'SKEL'))),
         h('label', { class: 'checks', style: 'margin:4px 0 0' }, h('input', { type: 'checkbox', checked: o.packed, onchange: (e) => { o.packed = e.target.checked; fill() } }), '打包图集'),
-        // .skel: Spine's binary skeleton; only 3.8 has a writer here, 4.x stays JSON
-        h('label', { class: 'checks', style: 'margin:4px 0 0', title: o.version === '3.8' ? '骨架写成 Spine 3.8 二进制 .skel（不写 JSON）' : '.skel 二进制只有 Spine 3.8 能写，4.x 以 JSON 导出' },
-          h('input', { type: 'checkbox', checked: skel, disabled: o.version !== '3.8', onchange: (e) => { o.skel = e.target.checked; fill() } }), '.skel 二进制'),
         o.packed ? h('div', { class: 'pk' },
           h('span', { class: 'fl' }, '打包'),
-          h('div', { class: 'seg' }, seg('atts', `附件（${usedN}）`), seg('folder', folderN == null ? '图片文件夹' : `图片文件夹（${folderN}）`)),
+          h('div', { class: 'seg' }, seg('atts', `附件（${usedN}）`), seg('folder', folderN == null ? '文件夹' : `文件夹（${folderN}）`)),
           btn('打包设置…', openAtlasSettings)) : null,
-        h('div', { class: 'hint' }, o.packed
-          ? (o.mode === 'atts' ? `只打包附件用到的图片。${fmt} + atlas + 图集 PNG，可交给 Spine 3.8 运行时播放。` : `图片文件夹里的图片全部打包，没用到的也带上。${fmt} + atlas + 图集 PNG。`)
-          : `${fmt} + images 文件夹（每张图一个 PNG），可导入 Spine 编辑。`),
+        h('div', { class: 'hint' }, (o.version === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${o.version}`) + (o.packed
+          ? `，${fmt}＋atlas＋图集 PNG` + (o.mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
+          : `，${fmt}＋images 文件夹（每张图一个 PNG）。`)),
         h('button', { class: 'btn primary big', onclick: run }, o.packed ? `导出 Spine 工程（${fmt}+ATLAS+PNG，选文件夹）` : `导出 Spine 工程（${fmt}+images，选文件夹）`))
     }
     const run = async () => {

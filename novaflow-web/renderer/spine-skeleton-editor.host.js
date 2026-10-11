@@ -438,10 +438,10 @@
   // what the app renders with (序列帧 / 视频) is the exact 3.8 data; the Spine package goes out as chosen
   let wantVersion = '3.8'
   const setPackMode = (m) => { try { const o = JSON.parse(localStorage.getItem(PACK_KEY) || '{}'); o.mode = m; localStorage.setItem(PACK_KEY, JSON.stringify(o)) } catch { /* storage blocked */ } }
-  // .skel (binary skeleton) is the editor's saved choice too; only a 3.8 export can be binary
+  // SKEL (binary skeleton) is the editor's saved choice too
   const packSkel = () => { try { return JSON.parse(localStorage.getItem(PACK_KEY) || '{}').skel === true } catch { return false } }
   const setPackSkel = (v) => { try { const o = JSON.parse(localStorage.getItem(PACK_KEY) || '{}'); o.skel = !!v; localStorage.setItem(PACK_KEY, JSON.stringify(o)) } catch { /* storage blocked */ } }
-  const exportSkel = () => packSkel() && exportVersion() === '3.8'
+  const exportSkel = () => packSkel()
 
   let appVersion = null
   async function syncApp() {
@@ -548,18 +548,16 @@
     row.setAttribute('data-nf-skeleton-pack', '1')
     row.className = 'nf-atlas-controls'
     row.style.cssText = 'margin:0 0 10px'
-    row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:4px">Spine 版本</span>'
-      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">Spine ${v}</button>`).join('') + '</div>'
-      + '<p class="nf-atlas-hint" data-version-hint style="margin:0 0 10px"></p>'
-      + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:4px">骨架格式</span>'
-      + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">.skel 二进制</button></div>'
-      + '<p class="nf-atlas-hint" data-format-hint style="margin:0 0 10px"></p>'
-      + '<div class="nf-atlas-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:4px">打包图集</span>'
+    const label = (t, extra) => `<span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:2px${extra || ''}">${t}</span>`
+    row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
+      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v}</button>`).join('')
+      + label('格式', ';margin-left:12px') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
+      + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap">' + label('打包')
       + '<button type="button" class="nf-atlas-button" data-mode="atts"></button><button type="button" class="nf-atlas-button" data-mode="folder"></button>'
       + '<button type="button" class="nf-atlas-button" data-settings="1" style="margin-left:auto">打包设置…</button></div><p class="nf-atlas-hint" data-pack-hint style="margin:6px 0 0"></p>'
     row.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setPackMode(b.getAttribute('data-mode')); syncPackRow(row) }))
     row.querySelectorAll('[data-version]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setExportVersion(b.getAttribute('data-version')); syncPackRow(row) }))
-    row.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); if (b.disabled) return; setPackSkel(b.getAttribute('data-format') === 'skel'); syncPackRow(row) }))
+    row.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setPackSkel(b.getAttribute('data-format') === 'skel'); syncPackRow(row) }))
     // the app's own version picker is pinned to the project's version (it never converted); ours does
     const sel = Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.textContent === 'Spine 3.8'))
     if (sel) {
@@ -576,19 +574,9 @@
     const mode = packMode()
     const own = api.ownVersion(), ver = exportVersion()
     row.querySelectorAll('[data-version]').forEach((b) => b.classList.toggle('primary', b.getAttribute('data-version') === ver))
-    const vh = row.querySelector('[data-version-hint]')
-    const vt = ver === own ? `工程原版本 Spine ${own}，按原版本导出，保留骨架和曲线格式。` : `工程原版本 Spine ${own}，导出时自动转成 Spine ${ver}（动画、曲线、约束一起转换）。`
-    if (vh && vh.textContent !== vt) vh.textContent = vt
     const skel = exportSkel()
     window.__NovaFlowSpineExportSkel = skel
-    row.querySelectorAll('[data-format]').forEach((b) => {
-      const isSkel = b.getAttribute('data-format') === 'skel'
-      b.classList.toggle('primary', isSkel === skel)
-      if (b.disabled !== (isSkel && ver !== '3.8')) b.disabled = isSkel && ver !== '3.8'
-    })
-    const fh = row.querySelector('[data-format-hint]')
-    const ft = ver !== '3.8' ? '.skel 二进制只有 Spine 3.8 能写，4.x 以 JSON 导出。' : skel ? '骨架写成 Spine 3.8 二进制 .skel，不写 JSON。' : '骨架写成 JSON 文本。'
-    if (fh && fh.textContent !== ft) fh.textContent = ft
+    row.querySelectorAll('[data-format]').forEach((b) => b.classList.toggle('primary', (b.getAttribute('data-format') === 'skel') === skel))
     const fmt = skel ? 'SKEL' : 'JSON'
     // the run button says what goes out, right away (the runtime relabels it the same way on its next pass)
     const scope = row.closest('[data-novaflow-export-modal-root="1"]')
@@ -601,12 +589,12 @@
     row.querySelectorAll('[data-mode]').forEach((b) => {
       const m = b.getAttribute('data-mode')
       const n = packCounts ? packCounts[m] : null
-      const text = (m === 'atts' ? '附件' : '图片文件夹') + (n == null ? '' : `（${n}）`)
+      const text = (m === 'atts' ? '附件' : '文件夹') + (n == null ? '' : `（${n}）`)
       if (b.textContent !== text) b.textContent = text
       b.classList.toggle('primary', m === mode)
     })
     const hint = row.querySelector('[data-pack-hint]')
-    const t = mode === 'atts' ? `只打包附件用到的图片：${fmt}＋atlas＋图集 PNG。` : `图片文件夹里的图片全部打包，没用到的也带上：${fmt}＋atlas＋图集 PNG。`
+    const t = (ver === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${ver}`) + `，${fmt}＋atlas＋图集 PNG` + (mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
     if (hint.textContent !== t) hint.textContent = t
   }
 
@@ -614,12 +602,15 @@
   function openAtlasSettings() {
     const A = window.NovaFlowSequenceAtlas
     if (!A) return
+    if (document.querySelector('.nf-atlas-overlay[data-nf-skeleton-settings]')) return
     let d
     try { d = A.normalizeSettings(JSON.parse(localStorage.getItem(ATLAS_KEY) || '{}')) } catch { d = { ...A.defaults } }
     const overlay = document.createElement('div')
     overlay.className = 'nf-atlas-overlay'
     overlay.setAttribute('data-novaflow-runtime-ignore', '1')
-    overlay.style.zIndex = '2147483600'
+    overlay.setAttribute('data-nf-skeleton-settings', '1')
+    // above the app's export dialog (its root sits at 2147483640)
+    overlay.style.zIndex = '2147483646'
     const close = () => overlay.remove()
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close() })
     const dialog = document.createElement('div')

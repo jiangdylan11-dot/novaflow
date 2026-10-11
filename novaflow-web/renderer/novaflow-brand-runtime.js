@@ -71688,10 +71688,9 @@
     if (window.__NovaFlowSpineExportSkel === true) {
       // the 骨骼动画 editor's 「.skel 二进制」: write the skeleton as Spine 3.8 binary (renderer/spine-binary-write.js)
       const binary = window.NovaFlowSpineBinary;
-      if (!binary || typeof binary.write38 !== "function") throw new Error("二进制写入器尚未加载，请刷新后重试");
+      if (!binary || typeof binary.write !== "function") throw new Error("二进制写入器尚未加载，请刷新后重试");
       const project = JSON.parse(payload.json);
-      if (!/^3\.8/.test(String(project?.skeleton?.spine || "3.8"))) throw new Error(".skel 二进制只能按 Spine 3.8 导出");
-      payload.skel = binary.write38(project, { nonessential: true });
+      payload.skel = binary.write(project, String(project?.skeleton?.spine || "3.8"), { nonessential: true });
     }
     window.__NovaFlowSkeletonSpineExportLastPayload = {
       baseName: payload.baseName,
