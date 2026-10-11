@@ -82,7 +82,7 @@
   // the tolerance for a channel set: a floor, or a share of how far the motion travels
   function toleranceFor(samples,keys,floor,share){
     let spread=0;for(const k of keys){const v=samples.map(f=>n(f[k]));spread=Math.max(spread,Math.max(...v)-Math.min(...v));}
-    return Math.max(floor,spread*(share||.03));
+    return Math.max(floor,spread*(typeof share==='number'?share:.03));
   }
   function sparse(samples,keys,tol){
     const s=samples;if(s.length<=2)return s.map(f=>withCurve(f,null));
@@ -103,8 +103,9 @@
     // a loop (first and last samples equal): the tangent at either end is taken across the
     // seam, so the wrap plays without a hitch
     const n1=s.length-1,loop=n1>2&&keys.every(k=>Math.abs(val(s[0],k)-val(s[n1],k))<=tol*.5);
+    // (an extreme keeps its sampled slope too: a peak that falls between two frames is then
+    // reached by the ease's overshoot at its true time, instead of being pinned to the frame)
     const slopeAt=(m,k)=>{
-      if(must.has(m)&&m>0&&m<n1)return 0;
       if(loop&&(m===0||m===n1))return (val(s[1],k)-val(s[n1-1],k))/((time(s[1])-time(s[0]))+(time(s[n1])-time(s[n1-1])));
       const a=Math.max(0,m-1),b=Math.min(n1,m+1);
       return (val(s[b],k)-val(s[a],k))/(time(s[b])-time(s[a]));

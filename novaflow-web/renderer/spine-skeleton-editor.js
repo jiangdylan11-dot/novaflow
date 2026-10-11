@@ -770,6 +770,7 @@
 
   /** Pick something; the properties under the tree follow it (Spine). */
   function select(sel, additive, opts) {
+    state.dopeExtra = null
     if (state.weightEdit && state.weightEdit.binding && sel && sel.kind === 'bone' && rt.skeleton && rt.skeleton.findBone(sel.name)) {
       toggleBind(rt.skeleton.findBone(sel.name).data.index)
       return
@@ -5829,24 +5830,27 @@
     const passes = (path) => F[trackKind(path)] !== false && (!F.keyedOnly || d.tracks.has(pathId(path)))
     const rows = []
     const bones = selectedBones()
-    const slot = currentSlot()
+    const slot = currentSlot(), extra = state.dopeExtra
     const cons = state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform') ? state.sel : null
     const ev = state.sel && state.sel.kind === 'event' ? state.sel.name : null
-    if (bones.length || slot || cons || ev) {
+    const slotList = [...new Set([...(slot ? [slot] : []), ...(extra ? extra.slots : [])])]
+    const consList = [...(cons ? [cons] : []), ...(extra ? extra.cons.filter((c) => !cons || c.kind !== cons.kind || c.name !== cons.name) : [])]
+    const evList = [...new Set([...(ev ? [ev] : []), ...(extra ? extra.events : [])])]
+    if (bones.length || slotList.length || consList.length || evList.length) {
       for (const b of bones) {
         const props = [['rotate', '旋转'], ['translate', '平移'], ['scale', '缩放'], ['shear', '斜切']].map(([k, l]) => ({ label: l, path: ['bones', b, k], color: KEY_COLOR[k] }))
         rows.push({ label: b, paths: props.map((x) => x.path), head: true, sel: { kind: 'bone', name: b } })
         for (const x of props) rows.push({ label: x.label, paths: [x.path], color: x.color, indent: 1 })
       }
-      if (slot) {
+      for (const slot of slotList) {
         const deform = tracks.filter((t) => t.path[0] === 'deform' && t.path[2] === slot)
         const props = [{ label: '附件', path: ['slots', slot, 'attachment'], color: KEY_COLOR.attachment }, { label: '颜色', path: ['slots', slot, 'color'], color: KEY_COLOR.color },
           ...deform.map((t) => ({ label: `${deformKind(t.path) } ${t.path[3]}`, path: t.path, color: KEY_COLOR.deform }))]
         rows.push({ label: slot, paths: props.map((x) => x.path), head: true, sel: { kind: 'slot', name: slot } })
         for (const x of props) rows.push({ label: x.label, paths: [x.path], color: x.color, indent: 1 })
       }
-      if (cons) rows.push({ label: cons.name, paths: [[cons.kind, cons.name]], color: KEY_COLOR.cons, head: true, sel: { kind: cons.kind, name: cons.name } })
-      if (ev) rows.push({ label: ev, paths: [['events', ev]], color: KEY_COLOR.event, head: true, sel: { kind: 'event', name: ev } })
+      for (const c of consList) rows.push({ label: c.name, paths: [[c.kind, c.name]], color: KEY_COLOR.cons, head: true, sel: { kind: c.kind, name: c.name } })
+      for (const e of evList) rows.push({ label: e, paths: [['events', e]], color: KEY_COLOR.event, head: true, sel: { kind: 'event', name: e } })
     } else {
       const items = new Map()
       for (const t of tracks) {
@@ -5871,8 +5875,8 @@
     }
     // Spine's animation row on top: a key wherever any track has one - picking or dragging a
     // key there takes every key of that column, on every track of the animation
-    const all = tracks.map((t) => t.path).filter(passes)
-    if (all.length) kept.unshift({ label: an, paths: all, head: true, anim: true })
+    const all = [...new Set(kept.flatMap((r) => r.paths.map(pathId)))].map((id) => JSON.parse(id))
+    if (kept.length) kept.unshift({ label: an, paths: all, head: true, anim: true })
     d.rows = kept
     // keys that no longer exist drop out of the selection
     d.keySel = d.keySel.filter((k) => { const t = d.tracks.get(pathId(k.path)); return t && t.times.some((x) => Math.abs(x - k.time) < 1e-4) })
@@ -6578,10 +6582,18 @@
       // tree shows (the matches and their ancestors)
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && state.json && state.sel && state.sel.kind === 'bone') {
         e.preventDefault()
-        const m = searchMatches(), names = [state.sel.name]
-        const walk = (p) => { for (const b of state.json.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
+        const m = searchMatches(), names = [state.sel.name], j = state.json
+        const walk = (p) => { for (const b of j.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
         walk(state.sel.name)
+        // everything keyable under the branch comes along into the dopesheet: its slots, the
+        // constraints on its bones, and (from a root bone) the events
+        const set = new Set(names)
+        const slots = j.slots.filter((x) => set.has(x.bone) && (!m || m.slots.has(x.name) || m.bones.has(x.bone))).map((x) => x.name)
+        const cons = ['ik', 'transform', 'path'].flatMap((kind) => (j[kind] || []).filter((c) => (c.bones || []).some((b) => set.has(b)) || set.has(c.target)).map((c) => ({ kind, name: c.name })))
+        const root = !bone(state.sel.name).parent
+        const events = root ? Object.keys(j.events || {}) : []
         state.multi = names; state.multiSlots = []
+        state.dopeExtra = { slots, cons, events }
         pushHistory(); refresh()
         return
       }
