@@ -51302,12 +51302,13 @@
     if (frames.some((frame) => !frame || frame.curve !== undefined)) return null;
     const key = frames.some((frame) => frame.value !== undefined && frame.angle === undefined) ? "value" : "angle";
     const dense = frames.map((frame) => ({ time: Number(frame.time) || 0, angle: Number(frame[key]) || 0 })).sort((a, b) => a.time - b.time);
-    const last = dense[dense.length - 1].time, count = Math.round(last * 30);
-    if (!(count > 1)) return null;
+    const last = dense[dense.length - 1].time, count = Math.round(last * 60);
+    if (!(count > 2)) return null;
     const at = (t) => { let i = 0; while (i < dense.length - 2 && dense[i + 1].time <= t) i += 1; const a = dense[i], b = dense[i + 1] || a; const u = b.time > a.time ? Math.max(0, Math.min(1, (t - a.time) / (b.time - a.time))) : 0; return a.angle + (b.angle - a.angle) * u; };
     const samples = [];
-    for (let f = 0; f <= count; f += 1) { const t = Number((f / 30).toFixed(4)); samples.push({ time: t, angle: Number(at(Math.min(t, last)).toFixed(3)) }); }
-    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.2, 0.004) : 0.5).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
+    // sampled at the solver's 60 fps; keys land on every second sample = the 30 fps frames
+    for (let f = 0; f <= count; f += 1) { const t = f % 2 ? Number((f / 60).toFixed(4)) : Number(((f / 2) / 30).toFixed(4)); samples.push({ time: t, angle: Number(at(Math.min(t, last)).toFixed(3)) }); }
+    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.1, 0.0015) : 0.3, { step: 2 }).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
   }
 
   function commitRibbonElasticWrittenTimeline(timeline, animationName = "", boneName = "", project = null) {

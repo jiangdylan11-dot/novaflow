@@ -6592,7 +6592,8 @@
         const cons = ['ik', 'transform', 'path'].flatMap((kind) => (j[kind] || []).filter((c) => (c.bones || []).some((b) => set.has(b)) || set.has(c.target)).map((c) => ({ kind, name: c.name })))
         const root = !bone(state.sel.name).parent
         const events = root ? Object.keys(j.events || {}) : []
-        state.multi = names; state.multiSlots = []
+        // the slots show as picked in the tree too (多选 edits apply to them)
+        state.multi = names; state.multiSlots = slots
         state.dopeExtra = { slots, cons, events }
         pushHistory(); refresh()
         return

@@ -84,8 +84,11 @@
     let spread=0;for(const k of keys){const v=samples.map(f=>n(f[k]));spread=Math.max(spread,Math.max(...v)-Math.min(...v));}
     return Math.max(floor,spread*(typeof share==='number'?share:.03));
   }
-  function sparse(samples,keys,tol){
+  // opts.step: a key may sit on every step-th sample only (samples finer than the frames, as
+  // the ribbon's 60 fps solve: the keys stay on frames while the ease follows every sample)
+  function sparse(samples,keys,tol,opts){
     const s=samples;if(s.length<=2)return s.map(f=>withCurve(f,null));
+    const step=Math.max(1,Math.round((opts&&opts.step)||1)),cand=m=>m%step===0||m===s.length-1;
     const val=(f,k)=>n(f[k]),time=f=>n(f.time);
     // does a curve (null = a line) from sample i to j replay the samples between within tol
     const fits=(i,j,curve)=>{
@@ -133,25 +136,26 @@
       const ext=[0];let dir=0;
       for(let m=0;m<s.length-1;m++){const step=val(s[m+1],k)-val(s[m],k);if(Math.abs(step)<=turn)continue;const sign=step>0?1:-1;if(dir&&sign!==dir)ext.push(m);dir=sign;}
       ext.push(s.length-1);
-      for(let e=1;e<ext.length-1;e++){const v=val(s[ext[e]],k);if(Math.abs(v-val(s[ext[e-1]],k))>tol&&Math.abs(v-val(s[ext[e+1]],k))>tol)must.add(ext[e]);}
+      for(let e=1;e<ext.length-1;e++){const v=val(s[ext[e]],k);if(Math.abs(v-val(s[ext[e-1]],k))>tol&&Math.abs(v-val(s[ext[e+1]],k))>tol)must.add(Math.min(s.length-1,Math.round(ext[e]/step)*step));}
     }
     const out=[];let i=0;
     while(i<s.length-1){
       // the farthest sample (not past the next extreme) an ease reaches within tol; the ease
       // comes first because it keeps the slope continuous through the key (a short line next
       // to an ease is a corner), a line only where no ease fits
-      let j=i+1,curve=null;
+      let j=0,curve=null;
       for(let m=i+1;m<s.length;m++){
         const c=ease(i,m);
-        if(c){j=m;curve=c;}
-        else if(fits(i,m,null)){j=m;curve=null;}
+        if(c){if(cand(m)){j=m;curve=c;}}
+        else if(fits(i,m,null)){if(cand(m)){j=m;curve=null;}}
         else break;
-        if(must.has(m))break;
+        if(must.has(m)&&cand(m))break;
       }
+      if(!j){j=i+1;while(j<s.length-1&&!cand(j))j++;curve=ease(i,j);}
       // the leftover to the next extreme must start with an ease too (a two-frame line there is
       // a corner): back the key off until it can
-      const canGo=(a)=>{for(let m=a+1;m<s.length;m++){if(ease(a,m))return true;if(must.has(m))break;}return false;};
-      while(j>i+1&&!must.has(j)&&j<s.length-1&&!canGo(j)){j--;curve=ease(i,j);}
+      const canGo=(a)=>{for(let m=a+1;m<s.length;m++){if(ease(a,m)){if(cand(m))return true;}else return false;if(must.has(m)&&cand(m))break;}return false;};
+      while(j>i+step&&!must.has(j)&&j<s.length-1&&!canGo(j)){j-=step;curve=ease(i,j);}
       out.push(withCurve(s[i],curve));
       i=j;
     }

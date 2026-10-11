@@ -220,7 +220,7 @@
   // behaviour on every bone pick (camera on the chain, a guard on project writes), which
   // broke the rest of the page while it sat open off screen. React can also close it on
   // its own, so the state is checked and pressed back, at most every 300 ms.
-  let ribbonToggledAt=0,ribbonPreparing=false;
+  let ribbonToggledAt=0,ribbonPreparing=false,ribbonPrepareAt=0;
   function syncRibbonOpen(ribbon){
     const want=ribbon.getAttribute('data-novaflow-ribbon-docked')==='1'||ribbonPreparing;
     if((ribbon.getAttribute('data-open')==='1')===want||performance.now()-ribbonToggledAt<300)return;
@@ -327,10 +327,13 @@
   }
   // opened off screen first: the editor keeps the tool it shows until the panel's rows are
   // mounted, then turns into 飘带计算 in one task (no empty box while React mounts it)
-  const ribbonMounted=ribbon=>!!(ribbon.querySelector('[data-novaflow-ribbon-preset-controls]')&&ribbon.querySelector('[data-novaflow-ribbon-advanced-card]')&&ribbon.querySelector('[data-novaflow-ribbon-event-section]'));
+  // mounted = its rows are there, the 自动链条 row included (React adds it a moment after the
+  // others; the box measured without it grew when it came - a flash); a 600 ms grace in case a
+  // build has no such row
+  const ribbonMounted=ribbon=>!!(ribbon.querySelector('[data-novaflow-ribbon-preset-controls]')&&ribbon.querySelector('[data-novaflow-ribbon-advanced-card]')&&ribbon.querySelector('[data-novaflow-ribbon-event-section]')&&(ribbon.querySelector('[data-novaflow-ribbon-chain-toggle-card]')||(ribbonPrepareAt&&performance.now()-ribbonPrepareAt>600)));
   function prepareRibbon(){
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');if(!ribbon)return false;
-    ribbonPreparing=true;
+    ribbonPreparing=true;if(!ribbonPrepareAt)ribbonPrepareAt=performance.now();
     if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);return false;}
     return ribbonMounted(ribbon);
   }
@@ -401,7 +404,7 @@
   let dockPlaced='';
   function dockRibbon(rect){
     const ribbon=document.querySelector('[data-novaflow-ribbon-panel="1"]');
-    if(!rect){dockPlaced='';ribbonPreparing=false;if(!ribbon)return;if(ribbon.hasAttribute('data-novaflow-ribbon-docked')){ribbon.removeAttribute('data-novaflow-ribbon-docked');window.NovaFlowRibbonPresets?.settle?.();}if(ribbon.getAttribute('data-open')==='1')syncRibbonOpen(ribbon);return;}
+    if(!rect){dockPlaced='';ribbonPreparing=false;ribbonPrepareAt=0;if(!ribbon)return;if(ribbon.hasAttribute('data-novaflow-ribbon-docked')){ribbon.removeAttribute('data-novaflow-ribbon-docked');window.NovaFlowRibbonPresets?.settle?.();}if(ribbon.getAttribute('data-open')==='1')syncRibbonOpen(ribbon);return;}
     // narrow (a small window): the docked panel stacks its events under the parameters
     if(ribbon){const narrow=rect.width<640;if((ribbon.getAttribute('data-nf-ribbon-narrow')==='1')!==narrow){if(narrow)ribbon.setAttribute('data-nf-ribbon-narrow','1');else ribbon.removeAttribute('data-nf-ribbon-narrow');}}
     const rootStyle=document.documentElement.style;let changed=false;
