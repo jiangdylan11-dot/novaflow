@@ -51307,7 +51307,7 @@
     const at = (t) => { let i = 0; while (i < dense.length - 2 && dense[i + 1].time <= t) i += 1; const a = dense[i], b = dense[i + 1] || a; const u = b.time > a.time ? Math.max(0, Math.min(1, (t - a.time) / (b.time - a.time))) : 0; return a.angle + (b.angle - a.angle) * u; };
     const samples = [];
     for (let f = 0; f <= count; f += 1) { const t = Number((f / 30).toFixed(4)); samples.push({ time: t, angle: Number(at(Math.min(t, last)).toFixed(3)) }); }
-    return api.sparse(samples, ["angle"], 0.25).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
+    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.5) : 0.5).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
   }
 
   function commitRibbonElasticWrittenTimeline(timeline, animationName = "", boneName = "", project = null) {
@@ -52360,7 +52360,10 @@
       const solvedRotate = hasEventPoints
         ? applyRibbonEventImpulseToRotateFrames(baseRotate, eventPoints, duration, fps, chainIndex)
         : baseRotate;
-      const nextRotate = ribbonWindow ? placeRibbonRotateInWindow(solvedRotate, ribbonWindow) : solvedRotate;
+      const placedRotate = ribbonWindow ? placeRibbonRotateInWindow(solvedRotate, ribbonWindow) : solvedRotate;
+      // what reaches the project (preview and write alike) is keys on integer frames, the
+      // fewest of them; the signature is of these, so the next pass sees them as current
+      const nextRotate = sparseRibbonRotateFrames(placedRotate) || placedRotate;
       const outputSignature = getRibbonRotateSignature(nextRotate);
       if (outputSignature === currentOutputSignature) {
         setRibbonHiddenValue(timeline, "__novaflowRibbonElasticSourceRotate", source);
@@ -77914,6 +77917,18 @@
 
     document.addEventListener("input", handleEvent, true);
     document.addEventListener("change", handleEvent, true);
+
+    // the bundle's own render writes `--nf-range-pct: <value>%` into the slider's style on
+    // every commit, as if max were 100 (摆动幅度 is 0-200: the fill ran past the thumb while
+    // dragging until the next 800 ms pass); the attribute mutation is resynced before paint
+    try {
+      new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          const target = mutation.target;
+          if (target instanceof HTMLInputElement && target.type === "range" && target.matches(RANGE_FILL_SELECTOR)) syncRangeFillVisual(target);
+        }
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "max", "min"], subtree: true });
+    } catch {}
 
     syncAllRangeFills();
     if (typeof queueMicrotask === "function") {

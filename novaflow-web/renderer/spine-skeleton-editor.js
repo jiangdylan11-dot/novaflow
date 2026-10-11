@@ -6687,6 +6687,7 @@
     loaded: () => !!state.json,
     selectedBone: () => (state.sel && state.sel.kind === 'bone' ? state.sel.name : null),
     selectBone: (name) => { if (state.json && state.json.bones.some((b) => b.name === name)) select({ kind: 'bone', name }) },
+    toast: (msg, kind) => status(msg, kind),
     anim: () => state.anim,
     setAnim: (name) => { if (state.json && state.json.animations[name]) { state.anim = name; if (state.mode !== 'animate') setMode('animate'); else { state.frame = Math.min(state.frame, Math.round(duration() * FPS)); refresh() } } },
     mode: () => state.mode,

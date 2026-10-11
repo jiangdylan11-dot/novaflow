@@ -36,7 +36,7 @@ test('outer delay positions one full bone cycle; inner delay shifts phase withou
   const track=out.animation.bones.ball.translate,row={x:A.scalar(track,time,'x',0),y:A.scalar(track,time,'y',0)};
   const baseline=A.scalar(project.animations.idle.bones.ball.translate,time,'x',0);
   const worldX=(row.x-baseline)*Math.cos(Math.PI/6)-(row.y-2)*Math.sin(Math.PI/6);
-  assert.ok(Math.abs(worldX-E.sampleStack(stack,time-.5).x)<1,'within the translate tolerance at '+time);
+  assert.ok(Math.abs(worldX-E.sampleStack(stack,time-.5).x)<A.toleranceFor(track,['x','y'],1)+.01,'within the translate tolerance at '+time);
   assert.ok(track.filter(f=>f.time>=.5-1e-6&&f.time<=1.5+1e-6).every(f=>Math.abs(f.time*30-Math.round(f.time*30))<.01),'generated keys on integer frames');
  }
 });

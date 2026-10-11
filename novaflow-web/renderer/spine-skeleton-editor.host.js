@@ -636,6 +636,8 @@
     openExport: () => { if (api && api.loaded()) { api.openExport(); return true } return false },
     _debug: () => ({ syncing, appVersion, appMode, wantVersion, chosenVersion, inSync: inSync(), own: api && api.loaded() ? api.ownVersion() : null, motionOpen, bone: api && api.selectedBone(), ws: !!workspaceProps(), ctxBone: (projectProps() || {}).selectedBoneName }),
     _pushSelection: () => pushSelection(),
+    /** A message in the editor's toast (the tools say what they wrote). */
+    toast: (msg, kind) => { try { if (api && api.toast) api.toast(msg, kind) } catch { /* the editor is gone */ } },
   }
 
   // registered before the app's own export handlers (this file loads ahead of the brand runtime)

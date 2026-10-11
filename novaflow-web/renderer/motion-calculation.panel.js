@@ -161,7 +161,7 @@
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
-    if(tr&&ts&&[tr.left,tr.top,tr.width,ts.animationDuration,ts.boneDuration,ts.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,ts.animationDuration,ts.boneDuration,ts.animationDelay].join(',');const total=ts.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*ts.animationDelay/total)+'px';interval.style.width=(span*ts.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(ts.animationDelay)}–${fmt(ts.animationDelay+ts.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
+    if(tr&&ts&&[tr.left,tr.top,tr.width,ts.animationDuration,ts.boneDuration,ts.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,ts.animationDuration,ts.boneDuration,ts.animationDelay].join(',');const total=ts.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*ts.animationDelay/total)+'px';interval.style.width=(span*ts.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${frames(ts.animationDelay)}–${frames(ts.animationDelay+ts.boneDuration)} 帧，动画总时长 ${frames(total)} 帧`);}
   }
   const names = { bounce: '弹跳计算', expand: '缩放计算', shuttle: '移动计算', rotate: '旋转计算', opacity: '透明度计算' };
   function renderPresetButtons(target,items,apply){
@@ -220,8 +220,8 @@
   const schema = {
     loopCount: ['循环次数',1,8,1,'',1],
     cycles: ['次数', 1, 10, 1, '次', 1],
-    duration: ['骨骼总时长', .05, 30, .05, 's', 1],
-    delay: ['骨骼延迟', 0, 1, .01, '%', 1],
+    duration: ['骨骼总时长', 1/30, 30, 1/30, '帧', 30],
+    delay: ['骨骼延迟', 0, 1, 1/30, '帧', 30],
     restitution: ['反弹高度保留', 0, .9, .01, '%', 100],
     count: ['反弹次数', 0, 6, 1, '次', 1],
     contact: ['落地停留', .04, .4, .01, '%', 100],
@@ -237,6 +237,8 @@
   const commonKeys = { bounce: ['restitution', 'count'], expand: ['attack'], shuttle: [], rotate: [], opacity: [] };
   const primaryChannels = { bounce: ['y', 'x'], expand: ['sx', 'sy'], shuttle: ['x', 'y'], rotate: ['r'], opacity: [] };
   const fmt = (n, d = 2) => Number(n.toFixed(d)).toString();
+  // the timing rows show frames (30 a second); the values stay seconds underneath
+  const FPS=30,FRAME=1/FPS,frames=seconds=>Math.round(seconds*FPS),onFrame=seconds=>Math.max(0,Math.round(seconds*FPS))/FPS;
   let previewError='';
   const status = (message,isError=false) => { const text=previewError||(isError?message:''),node=$('status');if(node.textContent!==text)node.textContent=text;if(node.hidden!==!text)node.hidden=!text; };
   function validInput(input, lo, hi, fallback) {
@@ -294,7 +296,7 @@
     syncBounceHeights();
   }
   function makeParam(key) {
-    const [label, min, schemaMax, schemaStep, unit, schemaFactor] = schema[key], factor = key === 'delay' ? 100 / p.duration : schemaFactor, step = key === 'delay' ? p.duration / 100 : schemaStep, max = key === 'delay' ? p.duration : key === 'duration' ? timing.animationDuration : schemaMax, div = document.createElement('div'); div.className = 'param';
+    const [label, min, schemaMax, schemaStep, unit, schemaFactor] = schema[key], factor = schemaFactor, step = schemaStep, max = key === 'delay' ? p.duration : key === 'duration' ? timing.animationDuration : schemaMax, div = document.createElement('div'); div.className = 'param';
     div.innerHTML = `<div class="paramhead"><label for="range-${key}">${label}</label><span class="numberwrap"><input id="num-${key}" type="number" aria-label="${label}数值" min="${min * factor}" max="${max * factor}" step="${step * factor}" value="${fmt(p[key] * factor)}"><span>${unit}</span></span></div><input id="range-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${p[key]}">`;
     const number = div.querySelector('input[type=number]'), range = div.querySelector('input[type=range]');
     range.oninput = () => { if(key==='duration')p.delay=p.delay/p.duration*Number(range.value);p[key] = Number(range.value); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} number.value = fmt(p[key] * factor); parameterChanged(key !== 'duration'); };
@@ -378,15 +380,15 @@
   }
 
   function renderTiming(){
-    const fields=[['animationDuration','动画总时长',timing.minimumDuration||.05,120,.05,'s',1],['animationDelay','动画延迟',0,Math.max(0,timing.animationDuration-timing.boneDuration),.01,'%',100/timing.animationDuration]];
+    const fields=[['animationDuration','动画总时长',Math.max(FRAME,Math.ceil((timing.minimumDuration||FRAME)*FPS)/FPS),120,FRAME,'帧',FPS],['animationDelay','动画延迟',0,Math.max(0,timing.animationDuration-timing.boneDuration),FRAME,'帧',FPS]];
     const nodes=fields.map(([key,label,min,max,step,unit,factor])=>{
       const div=document.createElement('div');div.className='param animation-timing';
       div.innerHTML=`<div class="paramhead"><label for="outer-${key}">${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" min="${min*factor}" max="${max*factor}" step="${step*factor}" value="${fmt(timing[key]*factor)}"><span>${unit}</span></span></div><input id="outer-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${timing[key]}">`;
       const range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');
-      const currentFactor=()=>key==='animationDelay'?100/timing.animationDuration:1;
+      const currentFactor=()=>FPS;
       const update=value=>{timing[key]=value;E.fitTiming(timing);shareDuration(timing.boneDuration);syncTimingControls();draw();};
       range.oninput=()=>{num.value=fmt(Number(range.value)*currentFactor());update(Number(range.value));};
-      num.oninput=()=>{if(num.value==='')return;const f=currentFactor();update(validInput(num,min*f,key==='animationDelay'?100:max,timing[key]*f)/f);range.value=timing[key];};
+      num.oninput=()=>{if(num.value==='')return;const f=currentFactor();update(validInput(num,min*f,Number(range.max)*f,timing[key]*f)/f);range.value=timing[key];};
       num.onblur=()=>{num.value=fmt(timing[key]*currentFactor());};
       return div;
     });
@@ -396,13 +398,13 @@
   }
   function syncTimingControls(){
     const delay=$('outer-animationDelay'),number=delay?.parentElement.querySelector('[type=number]');
-    if(delay){delay.max=Math.max(0,timing.animationDuration-timing.boneDuration);delay.value=timing.animationDelay;number.max=100*Number(delay.max)/timing.animationDuration;if(curveRoot.activeElement!==number)number.value=fmt(100*timing.animationDelay/timing.animationDuration);}
-    if($('range-duration')){$('range-duration').max=timing.animationDuration;$('range-duration').value=timing.boneDuration;$('num-duration').max=timing.animationDuration;if(curveRoot.activeElement!==$('num-duration'))$('num-duration').value=fmt(timing.boneDuration);}
+    if(delay){delay.max=Math.max(0,timing.animationDuration-timing.boneDuration);delay.value=timing.animationDelay;number.max=frames(Number(delay.max));if(curveRoot.activeElement!==number)number.value=fmt(timing.animationDelay*FPS);}
+    if($('range-duration')){$('range-duration').max=timing.animationDuration;$('range-duration').value=timing.boneDuration;$('num-duration').max=frames(timing.animationDuration);if(curveRoot.activeElement!==$('num-duration'))$('num-duration').value=fmt(timing.boneDuration*FPS);}
     if($('range-delay')){$('range-delay').max=p.duration;$('range-delay').value=p.delay;}
   }
   function renderEffectTiming(){
     $('effectTiming').replaceChildren(makeParam('delay'));
-    const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='delayHint';delayHint.title='在本骨骼自然循环内向后偏移，周期不变。0% 与 100% 是相同起点。';delayHint.textContent=`偏移 ${fmt(p.delay)} 秒 · ${fmt(p.duration)} 秒周期内`;$('effectTiming').append(delayHint);
+    const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='delayHint';delayHint.title='在本骨骼自然循环内向后偏移，周期不变。0 帧与整个周期是相同起点。';delayHint.textContent=`偏移 ${frames(p.delay)} 帧 · ${frames(p.duration)} 帧周期内`;$('effectTiming').append(delayHint);
   }
   function renderPanel() {
     body.classList.toggle('expand-mode',mode==='expand');
@@ -538,9 +540,9 @@
   function flushPreview(){if(previewFrame){cancelAnimationFrame(previewFrame);runPreview();}}
   function draw() {
     E.fitTiming(timing);shareDuration(timing.boneDuration);syncTimingControls();
-    if($('timingHint'))$('timingHint').textContent=`偏移 ${fmt(timing.animationDelay)} 秒 · ${fmt(timing.animationDuration)} 秒时间轴内`;
+    if($('timingHint'))$('timingHint').textContent=`偏移 ${frames(timing.animationDelay)} 帧 · ${frames(timing.animationDuration)} 帧时间轴内`;
     curveRoot.querySelectorAll('input[type=range]').forEach(input=>{input.style.setProperty('--fill',`${Number(input.max)>Number(input.min)?100*(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min)):0}%`);});
-    if($('delayHint'))$('delayHint').textContent=`偏移 ${fmt(p.delay)} 秒 · ${fmt(p.duration)} 秒周期内`;
+    if($('delayHint'))$('delayHint').textContent=`偏移 ${frames(p.delay)} 帧 · ${frames(p.duration)} 帧周期内`;
     drawCurve();
     const snapshot = JSON.stringify({stack:sessions,timing});
     if(snapshot!==lastSnapshot){
@@ -656,7 +658,7 @@
     const t=ribbonTiming,div=document.createElement('div');div.className='param'+(blue?'':' animation-timing');if(blue)div.style.setProperty('--accent','#59a8ed');
     div.innerHTML=`<div class="paramhead"><label>${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" step="${step*factor}" value="${fmt(t[key]*factor)}"><span>${unit}</span></span></div><input aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${t[key]}">`;
     const range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');div.dataset.key=key;
-    const update=value=>{t[key]=value;settleRibbonTiming(key);bridge.setRibbonTiming?.({...t});syncRibbonTiming();};
+    const update=value=>{t[key]=onFrame(value);settleRibbonTiming(key);bridge.setRibbonTiming?.({...t});syncRibbonTiming();};
     range.oninput=()=>update(Number(range.value));
     num.oninput=()=>{if(num.value==='')return;const f=Number(num.dataset.factor||1);update(validInput(num,Number(range.min)*f,Number(range.max)*f,t[key]*f)/f);};
     num.onblur=()=>syncRibbonTiming();
@@ -664,33 +666,33 @@
   }
   function settleRibbonTiming(changed){
     const t=ribbonTiming;
-    t.animationDuration=Math.max(.05,Math.min(120,t.animationDuration));
+    t.animationDuration=Math.max(FRAME,Math.min(120,t.animationDuration));
     if(changed==='animationDuration'&&t.boneDuration>t.animationDuration)t.boneDuration=t.animationDuration;
-    t.boneDuration=Math.max(.05,Math.min(t.animationDuration,t.boneDuration));
+    t.boneDuration=Math.max(FRAME,Math.min(t.animationDuration,t.boneDuration));
     t.animationDelay=Math.max(0,Math.min(t.animationDuration-t.boneDuration,t.animationDelay));
     t.boneDelay=Math.max(0,Math.min(t.boneDuration,t.boneDelay));
   }
   function syncRibbonTiming(){
     const t=ribbonTiming;if(!t)return;
-    const limits={animationDuration:[.05,120,1],animationDelay:[0,Math.max(0,t.animationDuration-t.boneDuration),100/t.animationDuration],boneDuration:[.05,t.animationDuration,1],boneDelay:[0,t.boneDuration,100/Math.max(.0001,t.boneDuration)]};
+    const limits={animationDuration:[FRAME,120,FPS],animationDelay:[0,Math.max(0,t.animationDuration-t.boneDuration),FPS],boneDuration:[FRAME,t.animationDuration,FPS],boneDelay:[0,t.boneDuration,FPS]};
     curveRoot.querySelectorAll('#ribbonTimingRow .param').forEach(div=>{
       const key=div.dataset.key,[min,max,factor]=limits[key],range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');
       range.min=min;range.max=max;range.value=t[key];range.style.setProperty('--fill',`${max>min?100*(t[key]-min)/(max-min):0}%`);
       num.dataset.factor=factor;num.min=min*factor;num.max=max*factor;if(curveRoot.activeElement!==num)num.value=fmt(t[key]*factor);
     });
-    $('ribbonTimingHint').textContent=`偏移 ${fmt(t.animationDelay)} 秒 · ${fmt(t.animationDuration)} 秒时间轴内`;
-    $('ribbonDelayHint').textContent=`偏移 ${fmt(t.boneDelay)} 秒 · ${fmt(t.boneDuration)} 秒周期内`;
+    $('ribbonTimingHint').textContent=`偏移 ${frames(t.animationDelay)} 帧 · ${frames(t.animationDuration)} 帧时间轴内`;
+    $('ribbonDelayHint').textContent=`偏移 ${frames(t.boneDelay)} 帧 · ${frames(t.boneDuration)} 帧周期内`;
   }
   function renderRibbonTiming(){
     ribbonTiming={animationDuration:2,animationDelay:0,boneDuration:2,boneDelay:0,...(bridge.ribbonTiming?.()||{})};settleRibbonTiming('');
-    const a=ribbonField('animationDuration','动画总时长',.05,120,.05,'s',1),b=ribbonField('animationDelay','动画延迟',0,1,.01,'%',1),c=ribbonField('boneDuration','骨骼总时长',.05,2,.05,'s',1,true),d=ribbonField('boneDelay','骨骼延迟',0,2,.01,'%',1,true);
+    const a=ribbonField('animationDuration','动画总时长',FRAME,120,FRAME,'帧',FPS),b=ribbonField('animationDelay','动画延迟',0,1,FRAME,'帧',FPS),c=ribbonField('boneDuration','骨骼总时长',FRAME,2,FRAME,'帧',FPS,true),d=ribbonField('boneDelay','骨骼延迟',0,2,FRAME,'帧',FPS,true);
     const hint=document.createElement('p');hint.className='timing-hint';hint.id='ribbonTimingHint';b.append(hint);
     const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='ribbonDelayHint';
     $('ribbonGlobalTiming').replaceChildren(a,b,c);$('ribbonEffectTiming').replaceChildren(d,delayHint);
     syncRibbonTiming();
   }
   $('ribbonRestore').onclick=()=>bridge.ribbonAction?.('restore');
-  $('ribbonWrite').onclick=()=>bridge.ribbonAction?.('write');
+  $('ribbonWrite').onclick=()=>{bridge.ribbonAction?.('write');window.NovaFlowSkeletonEditor?.toast?.('已写入动画：关键帧已更新到摄影表');};
   function showRibbon(){
     if(ribbonShown||!ribbon)return;
     $('selection').textContent=(bridge.ribbonLabel?.()||'')+' · Ctrl+Z 撤销 · Ctrl+Y 重做';
@@ -735,7 +737,7 @@
   $('loop').onchange=()=>{pointSelected=false;if(mode==='opacity'){p.loop=$('loop').checked;p.opacity.behavior=p.loop?'pulse':'once';p.corrections.alpha.fill(0);if(p.curves)delete p.curves.alpha;}else p.reverse=$('loop').checked;parameterChanged();renderPanel();};
   $('link').onchange = () => { p.link = $('link').checked; parameterChanged(false); };
   $('editorToggle').onclick=()=>setCollapsed(!collapsed);
-  $('save').onclick = () => { flushPreview(); try{bridge.save(sessions,timing);status('');}catch(error){status(error.message,true);} };
+  $('save').onclick = () => { flushPreview(); try{bridge.save(sessions,timing);status('');window.NovaFlowSkeletonEditor?.toast?.('已写入动画：关键帧已更新到摄影表');}catch(error){status(error.message,true);} };
   function restoreSnapshot(value){restoring=true;const v=JSON.parse(value);Object.assign(sessions,v.stack);Object.assign(timing,v.timing);p=sessions[mode];renderPanel();restoring=false;}
   function undo(forward){const from=forward?redo:history,to=forward?history:redo;if(from.length){to.push(lastSnapshot);restoreSnapshot(from.pop());status(forward?'已重做本骨骼参数。':'已撤销本骨骼参数。');}}
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));

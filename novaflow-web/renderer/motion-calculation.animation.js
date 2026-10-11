@@ -79,6 +79,11 @@
   // the Bezier parameter at time fraction u for time handles x1 / x2
   function bezierT(x1,x2,u){let lo=0,hi=1,t=u;for(let i=0;i<24;i++){t=(lo+hi)/2;const x=3*(1-t)*(1-t)*t*x1+3*(1-t)*t*t*x2+t*t*t;if(x<u)lo=t;else hi=t;}return t;}
   function bezierAt(c,u){const t=bezierT(c[0],c[2],u);return 3*(1-t)*(1-t)*t*c[1]+3*(1-t)*t*t*c[3]+t*t*t;}
+  // the tolerance for a channel set: a floor, or a share of how far the motion travels
+  function toleranceFor(samples,keys,floor,share){
+    let spread=0;for(const k of keys){const v=samples.map(f=>n(f[k]));spread=Math.max(spread,Math.max(...v)-Math.min(...v));}
+    return Math.max(floor,spread*(share||.03));
+  }
   function sparse(samples,keys,tol){
     const s=samples;if(s.length<=2)return s.map(f=>withCurve(f,null));
     const val=(f,k)=>n(f[k]),time=f=>n(f.time);
@@ -116,9 +121,16 @@
       }
       return bestErr<=tol?best:null;
     };
-    // every direction change of every channel is a key
-    const must=new Set([0,s.length-1]),turn=tol*.1;
-    for(const k of keys)for(let m=1;m<s.length-1;m++){const a=val(s[m],k)-val(s[m-1],k),b=val(s[m+1],k)-val(s[m],k);if((a>turn&&b<-turn)||(a<-turn&&b>turn))must.add(m);}
+    // every direction change of every channel is a key - unless the swing to it and away
+    // from it stays within the tolerance (a wobble the ease absorbs)
+    const must=new Set([0,s.length-1]),turn=tol*.05;
+    for(const k of keys){
+      // a run's last sample before the direction flips (a peak between two equal samples counts)
+      const ext=[0];let dir=0;
+      for(let m=0;m<s.length-1;m++){const step=val(s[m+1],k)-val(s[m],k);if(Math.abs(step)<=turn)continue;const sign=step>0?1:-1;if(dir&&sign!==dir)ext.push(m);dir=sign;}
+      ext.push(s.length-1);
+      for(let e=1;e<ext.length-1;e++){const v=val(s[ext[e]],k);if(Math.abs(v-val(s[ext[e-1]],k))>tol&&Math.abs(v-val(s[ext[e+1]],k))>tol)must.add(ext[e]);}
+    }
     const out=[];let i=0;
     while(i<s.length-1){
       // the farthest sample (not past the next extreme) a line or an ease reaches within tol
@@ -191,10 +203,11 @@
       }
       if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,a:rgba[3],color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}
     }
-    // what a key may stray from the sampled motion: a pixel, half a percent of scale, a quarter degree
-    const tolerance={translate:1,scale:.005,rotate:.25};
-    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],channel==='rotate'?['angle']:['x','y'],tolerance[channel]),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
-    if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],sparse(slotFrames.get(slot.name),['a'],2).map(({a,...f})=>f),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
+    // what a key may stray from the sampled motion: 3% of the travel, at least a pixel / half a
+    // percent of scale / a quarter degree
+    const floor={translate:1,scale:.005,rotate:.25},chans={translate:['x','y'],scale:['x','y'],rotate:['angle']};
+    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel])),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
+    if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],sparse(slotFrames.get(slot.name),['a'],toleranceFor(slotFrames.get(slot.name),['a'],3)).map(({a,...f})=>f),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
     // Spine derives duration from keys, not the editor's duration metadata.
     // Extend only a selected-bone channel so exported playback has the same length.
     if(duration({...animation,duration:0})<animation.duration){
@@ -204,6 +217,6 @@
     }
     return {animation,targets,slots:alpha?slots.map(s=>s.name):[],start,end};
   }
-  const api={calculate,selection,descendants,duration,scalar,color,bounds,pose,sparse,bezierAt,curveOf,FPS};root.NovaFlowMotionAnimation=api;
+  const api={calculate,selection,descendants,duration,scalar,color,bounds,pose,sparse,toleranceFor,bezierAt,curveOf,FPS};root.NovaFlowMotionAnimation=api;
   if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
