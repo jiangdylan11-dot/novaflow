@@ -1025,7 +1025,8 @@
 
   /** Placeholders of a slot with what each skin holds: [{ name, skins: { skinName: attachment } }]. */
   function placeholderList(input, slot) {
-    const json = prepare(input)
+    // read only, and asked once per slot while the tree is drawn: no copy of the project
+    const json = input && Array.isArray(input.skins) ? input : prepare(input)
     const names = new Set(emptyPlaceholders(json, slot))
     for (const s of json.skins) if (s.name !== 'default') for (const k of Object.keys(s.attachments[slot] || {})) names.add(k)
     return [...names].map((name) => {

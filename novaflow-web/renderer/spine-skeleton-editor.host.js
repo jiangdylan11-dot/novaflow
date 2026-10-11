@@ -15,10 +15,8 @@
   const FRAME_ID = 'novaflow-skeleton-editor-frame'
   const WORKSPACE = '[data-novaflow-skeleton-workspace]'
   const MOTION_PANEL = '[data-panel-id="bone-motion"]'
-  const OFF_KEY = 'novaflow.skeletonEditor.off'
   const TIMELINE_ANCHOR = 'data-novaflow-skeleton-editor-timeline'
 
-  const off = (() => { try { return localStorage.getItem(OFF_KEY) === '1' } catch { return false } })()
   let frame = null
   let api = null
   const waiting = []
@@ -32,7 +30,8 @@
   const pushedSig = {}
   const durations = new Map()
 
-  const enabled = () => !off
+  // the section's editor, always (there is no way back to the old stage)
+  const enabled = () => true
   const ready = () => (api ? Promise.resolve(api) : new Promise((resolve) => waiting.push(resolve)))
 
   // ---------------------------------------------------------------- the frame over the workspace
@@ -141,6 +140,7 @@
     forgetReact()
     durations.clear()
     appJson = null
+    chosenVersion = null
     api.loadSource(src).catch((error) => console.warn('[skeleton editor] load', error))
   }
 
@@ -374,26 +374,35 @@
   let appJson = null
   let appMode = null
   let syncing = false
+  let syncPromise = null
   let bypass = false
   const packMode = () => { try { return JSON.parse(localStorage.getItem(PACK_KEY) || '{}').mode === 'folder' ? 'folder' : 'atts' } catch { return 'atts' } }
+  // the Spine version to export as: the project's own until the user picks another (per project)
+  let chosenVersion = null
+  const exportVersion = () => (!api || !api.loaded() ? '3.8' : chosenVersion || api.ownVersion())
+  const setExportVersion = (v) => { chosenVersion = v }
+  // what the app renders with (序列帧 / 视频) is the exact 3.8 data; the Spine package goes out as chosen
+  let wantVersion = '3.8'
   const setPackMode = (m) => { try { const o = JSON.parse(localStorage.getItem(PACK_KEY) || '{}'); o.mode = m; localStorage.setItem(PACK_KEY, JSON.stringify(o)) } catch { /* storage blocked */ } }
 
+  let appVersion = null
   async function syncApp() {
     const a = await ready()
     if (!a.loaded()) throw new Error('先在「导入工程」里导入工程')
     const mode = packMode()
-    if (appJson === a.json() && appMode === mode) return
+    const version = wantVersion === 'spine' ? exportVersion() : '3.8'
+    if (appJson === a.json() && appMode === mode && appVersion === version) return
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
     const bridge = window.__NovaFlowSpineImportInlineBridge
     if (!cache || !bridge || typeof bridge.start !== 'function') throw new Error('导入通道不可用')
     const json = a.json()
-    const { source } = await a.packForApp({ mode })
+    const { source } = await a.packForApp({ mode, version })
     ownText = source.json.text
     // fill the bridge's own object field by field (the bundle holds on to that object)
     cache.json = source.json; cache.atlas = source.atlas; cache.images = source.images
     const ok = await bridge.start()
     if (ok === false) throw new Error('工程没能交给导出')
-    appJson = json; appMode = mode
+    appJson = json; appMode = mode; appVersion = version
   }
 
   const exportRoot = (el) => {
@@ -407,7 +416,7 @@
     if (!(b instanceof HTMLButtonElement) || !exportRoot(b) || b.closest('[data-nf-skeleton-pack]')) return false
     return /^导出/.test((b.textContent || '').trim())
   }
-  const inSync = () => !!(api && appJson === api.json() && appMode === packMode())
+  const inSync = () => !!(api && appJson === api.json() && appMode === packMode() && appVersion === (wantVersion === 'spine' ? exportVersion() : '3.8'))
   const exportName = (root) => { const i = root && root.querySelector('input[type=text], input:not([type])'); return i ? i.value : '' }
   const setExportName = (root, v) => {
     const i = root && root.querySelector('input[type=text], input:not([type])')
@@ -420,15 +429,18 @@
     if (bypass || !window.NovaFlowSkeletonEditor.active()) return
     const b = e.target instanceof Element ? e.target.closest('button') : null
     if (!b || !isExportRun(b)) return
+    wantVersion = /Spine 工程/.test(b.textContent || '') ? 'spine' : '3.8'
     if (inSync() && !syncing) return
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
-    if (syncing) return
     // the app rebuilds its project (and with it this dialog): run the button that is there then
     const label = (b.textContent || '').trim()
     const name = exportName(exportRoot(b))
     b.textContent = '准备工程…'
+    // a click while the dialog's own sync still runs waits for it instead of being lost
+    const pending = syncing && syncPromise ? syncPromise.catch(() => {}) : Promise.resolve()
     syncing = true
-    syncApp().then(() => new Promise((r) => setTimeout(r, 120)), (error) => { throw error }).then(() => {
+    syncPromise = pending.then(() => syncApp())
+    syncPromise.then(() => new Promise((r) => setTimeout(r, 120))).then(() => {
       const root = document.querySelector('[data-novaflow-export-modal-root="1"]')
       const again = root && Array.from(root.querySelectorAll('button')).find((x) => (x.textContent || '').trim() === label || (x.textContent || '').trim() === '准备工程…')
       if (!again) return
@@ -444,12 +456,23 @@
 
   /** The dialog opened: hand the editor's project over right away, while a name is typed. */
   function presync() {
-    if (syncing || inSync() || !window.NovaFlowSkeletonEditor.active() || !api || !api.loaded()) return
+    if (!window.NovaFlowSkeletonEditor.active() || !api || !api.loaded()) return
     const root = document.querySelector('[data-novaflow-export-modal-root="1"]')
     if (!root || !exportRoot(root)) return
+    // on the Spine tab the package version is what counts, elsewhere the exact 3.8 data renders
+    wantVersion = root.querySelector('[data-nf-skeleton-pack]') ? 'spine' : '3.8'
+    // the dialog's run buttons wait until the app holds the project as it will go out
+    const ready = inSync() && !syncing
+    for (const b of root.querySelectorAll('button')) {
+      if (!isExportRun(b)) continue
+      if (ready) { if (b.hasAttribute('data-nf-skeleton-wait')) { b.removeAttribute('data-nf-skeleton-wait'); b.disabled = false; b.textContent = b.getAttribute('data-nf-skeleton-label') || b.textContent } }
+      else if (!b.hasAttribute('data-nf-skeleton-wait')) { b.setAttribute('data-nf-skeleton-wait', '1'); b.setAttribute('data-nf-skeleton-label', b.textContent); b.disabled = true; b.textContent = '准备工程…' }
+    }
+    if (syncing || ready) return
     const name = exportName(root)
     syncing = true
-    syncApp().then(() => setExportName(document.querySelector('[data-novaflow-export-modal-root="1"]'), name), () => {}).finally(() => { syncing = false })
+    syncPromise = syncApp()
+    syncPromise.then(() => setExportName(document.querySelector('[data-novaflow-export-modal-root="1"]'), name), () => {}).finally(() => { syncing = false })
   }
 
   /** The Spine tab gets the editor's 打包 choice and the shared 图集打包设置. */
@@ -467,10 +490,21 @@
     row.setAttribute('data-nf-skeleton-pack', '1')
     row.className = 'nf-atlas-controls'
     row.style.cssText = 'margin:0 0 10px'
-    row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:4px">打包图集</span>'
+    row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:4px">Spine 版本</span>'
+      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">Spine ${v}</button>`).join('') + '</div>'
+      + '<p class="nf-atlas-hint" data-version-hint style="margin:0 0 10px"></p>'
+      + '<div class="nf-atlas-row" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:4px">打包图集</span>'
       + '<button type="button" class="nf-atlas-button" data-mode="atts"></button><button type="button" class="nf-atlas-button" data-mode="folder"></button>'
-      + '<button type="button" class="nf-atlas-button" data-settings="1" style="margin-left:auto">打包设置…</button></div><p class="nf-atlas-hint" style="margin:6px 0 0"></p>'
+      + '<button type="button" class="nf-atlas-button" data-settings="1" style="margin-left:auto">打包设置…</button></div><p class="nf-atlas-hint" data-pack-hint style="margin:6px 0 0"></p>'
     row.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setPackMode(b.getAttribute('data-mode')); syncPackRow(row) }))
+    row.querySelectorAll('[data-version]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setExportVersion(b.getAttribute('data-version')); syncPackRow(row) }))
+    // the app's own version picker is pinned to the project's version (it never converted); ours does
+    const sel = Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.textContent === 'Spine 3.8'))
+    if (sel) {
+      // the select, its label right before it and the app's hint under it (the dialog's other rows stay)
+      const hide = [sel, sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL' ? sel.previousElementSibling : null, sel.parentElement && sel.parentElement.querySelector('p[data-novaflow-native-export-version]')]
+      for (const el of hide) if (el && !el.hasAttribute('data-nf-skeleton-hidden')) { el.setAttribute('data-nf-skeleton-hidden', '1'); el.style.setProperty('display', 'none', 'important') }
+    }
     row.querySelector('[data-settings]').addEventListener('click', (e) => { e.preventDefault(); openAtlasSettings() })
     run.parentNode.insertBefore(row, run)
     syncPackRow(row)
@@ -478,6 +512,11 @@
   }
   function syncPackRow(row) {
     const mode = packMode()
+    const own = api.ownVersion(), ver = exportVersion()
+    row.querySelectorAll('[data-version]').forEach((b) => b.classList.toggle('primary', b.getAttribute('data-version') === ver))
+    const vh = row.querySelector('[data-version-hint]')
+    const vt = ver === own ? `工程原版本 Spine ${own}，按原版本导出，保留骨架和曲线格式。` : `工程原版本 Spine ${own}，导出时自动转成 Spine ${ver}（动画、曲线、约束一起转换）。`
+    if (vh && vh.textContent !== vt) vh.textContent = vt
     row.querySelectorAll('[data-mode]').forEach((b) => {
       const m = b.getAttribute('data-mode')
       const n = packCounts ? packCounts[m] : null
@@ -485,7 +524,7 @@
       if (b.textContent !== text) b.textContent = text
       b.classList.toggle('primary', m === mode)
     })
-    const hint = row.querySelector('.nf-atlas-hint')
+    const hint = row.querySelector('[data-pack-hint]')
     const t = mode === 'atts' ? '只打包附件用到的图片：JSON＋atlas＋图集 PNG。' : '图片文件夹里的图片全部打包，没用到的也带上：JSON＋atlas＋图集 PNG。'
     if (hint.textContent !== t) hint.textContent = t
   }
@@ -548,9 +587,9 @@
     time: () => (api ? api.time() : 0),
     seek: (sec) => { if (api) api.setTime(sec) },
     openExport: () => { if (api && api.loaded()) { api.openExport(); return true } return false },
+    _debug: () => ({ syncing, appVersion, appMode, wantVersion, chosenVersion, inSync: inSync(), own: api && api.loaded() ? api.ownVersion() : null }),
   }
 
-  if (off) return
   // registered before the app's own export handlers (this file loads ahead of the brand runtime)
   window.addEventListener('click', onExportClick, true)
   window.addEventListener('resize', () => { if (frame && frame.style.display === 'block') tick() })

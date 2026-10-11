@@ -110,7 +110,7 @@
     creating: null,
   }
 
-  const rt = { gl: null, renderer: null, atlas: null, atlasKey: null, data: null, skeleton: null, cam: { x: 0, y: 0, zoom: 1 }, w: 1, h: 1, dpr: 1 }
+  const rt = { gl: null, renderer: null, atlas: null, atlasKey: null, data: null, skeleton: null, cam: { x: 0, y: 0, zoom: 1 }, w: 1, h: 1, dpr: 1, missingPages: new Set(), missingRegions: new Set() }
 
   // ------------------------------------------------------------------ icons
 
@@ -276,9 +276,11 @@
 
   /** One project from its parts: the JSON, the atlas text (none = one page per picture), the images. */
   async function loadParts(p) {
-    const json = p.json
-    const version = String(json.skeleton && json.skeleton.spine || '')
-    if (/^[4-9]\./.test(version)) throw new Error(`骨骼动画目前只编辑 3.8 工程（这个是 ${version}）`)
+    let json = p.json
+    // a Spine 4.x project is edited as 3.8 and goes back to its own version on export
+    const SV = window.NovaFlowSpineVersion
+    const fromVersion = SV && SV.is4(json) ? SV.versionOf(json) : ''
+    if (fromVersion) json = SV.toSpine38(json)
     Attach.normalizeToSpine38(json)
     const jsonFile = { name: p.jsonName || 'skeleton.json' }
     const label = p.label
@@ -288,6 +290,12 @@
     let atlasText = p.atlasText || ''
     let atlasName = p.atlasName || stem(jsonFile.name) + '.atlas'
     let atlasChanged = false
+    let atlasPma = null
+    if (atlasText && SV && SV.atlasToSpine38) {
+      // any atlas layout (4.x bounds / offsets / pma lines) as the one the 3.8 runtime reads
+      const a = SV.atlasToSpine38(atlasText)
+      if (a.pages) { atlasText = a.text; atlasPma = a.pma }
+    }
     if (!atlasText) {
       // a PhotoshopToSpine export: every layer PNG is its own atlas page
       atlasText = Attach.synthesizeAtlas([...images.values()].map((i) => ({ fileName: i.fileName, width: i.img.naturalWidth, height: i.img.naturalHeight })))
@@ -302,8 +310,10 @@
     state.temp.clear()
     state.collapsed.clear()
     const first = [...images.values()][0]
-    state.pma = first ? looksPremultiplied(first.img) : false
+    state.pma = atlasPma != null && atlasPma ? true : first ? looksPremultiplied(first.img) : false
     rt.atlasKey = null
+    rt.missingPages = new Set()
+    rt.missingRegions = new Set()
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
@@ -315,7 +325,9 @@
     $('#dropHint').hidden = true
     $('#tree').scrollTop = 0
     refresh()
-    status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽`, 'ok')
+    const lost = [...rt.missingPages, ...rt.missingRegions]
+    if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（这些附件先显示为空）`, 'error')
+    else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（Spine ${fromVersion} 工程，导出时保持 ${fromVersion}）` : ''}`, 'ok')
   }
 
   async function loadSample(key) {
@@ -370,7 +382,7 @@
     const copy = Ops.editorData(state.json)
     const v = String(copy.skeleton && copy.skeleton.spine || '')
     if (!v.startsWith('3.8') || v === '3.8.75') copy.skeleton = { ...(copy.skeleton || {}), spine: '3.8.99' }
-    pv.data = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(pv.atlas)).readSkeletonData(copy)
+    pv.data = new spine.SkeletonJson(tolerantLoader(pv.atlas, pv.gl)).readSkeletonData(copy)
     pv.skeleton = new spine.Skeleton(pv.data)
     if (state.skin !== 'default' && pv.data.findSkin(state.skin)) pv.skeleton.setSkinByName(state.skin)
     pv.skeleton.setToSetupPose()
@@ -533,8 +545,55 @@
     // the full relative path first (images in folders), then the bare file name
     const hit = state.images.get(lower(name)) || state.images.get(lower(baseName(name)))
       || [...state.images.values()].find((i) => lower(stem(i.fileName)) === lower(stem(name)))
-    if (!hit) throw new Error('缺少贴图 ' + name)
-    return hit.img
+    if (hit) return hit.img
+    // a page that did not come with the project: an empty one, so the rest still opens
+    rt.missingPages.add(name)
+    const c = document.createElement('canvas')
+    c.width = 1; c.height = 1
+    return c
+  }
+
+  /**
+   * The atlas loader, except that a picture the atlas lacks does not stop the project from
+   * opening: its attachment loads with an empty picture (and is reported once).
+   */
+  function tolerantLoader(atlas, gl) {
+    const base = new spine.AtlasAttachmentLoader(atlas)
+    let blank = null
+    const blankRegion = () => {
+      if (!blank) {
+        const c = document.createElement('canvas')
+        c.width = 1; c.height = 1
+        const r = new spine.TextureAtlasRegion()
+        r.renderObject = r
+        r.texture = new spine.webgl.GLTexture(gl, c)
+        r.u = 0; r.v = 0; r.u2 = 1; r.v2 = 1
+        r.width = r.height = r.originalWidth = r.originalHeight = 1
+        r.offsetX = r.offsetY = 0; r.rotate = false; r.degrees = 0; r.name = ''
+        blank = r
+      }
+      return blank
+    }
+    return {
+      newRegionAttachment(skin, name, path) {
+        if (atlas.findRegion(path)) return base.newRegionAttachment(skin, name, path)
+        rt.missingRegions.add(path)
+        const a = new spine.RegionAttachment(name)
+        a.setRegion(blankRegion())
+        return a
+      },
+      newMeshAttachment(skin, name, path) {
+        if (atlas.findRegion(path)) return base.newMeshAttachment(skin, name, path)
+        rt.missingRegions.add(path)
+        const a = new spine.MeshAttachment(name)
+        a.region = blankRegion()
+        return a
+      },
+      newBoundingBoxAttachment: (skin, name) => base.newBoundingBoxAttachment(skin, name),
+      newPathAttachment: (skin, name) => base.newPathAttachment(skin, name),
+      newPointAttachment: (skin, name) => base.newPointAttachment(skin, name),
+      newClippingAttachment: (skin, name) => base.newClippingAttachment(skin, name),
+    }
   }
 
   function ensureAtlas() {
@@ -551,7 +610,7 @@
     const v = String(copy.skeleton && copy.skeleton.spine || '')
     // the 3.8 reader refuses its own placeholder version; it only gates the parse
     if (!v.startsWith('3.8') || v === '3.8.75') copy.skeleton = { ...(copy.skeleton || {}), spine: '3.8.99' }
-    const reader = new spine.SkeletonJson(new spine.AtlasAttachmentLoader(rt.atlas))
+    const reader = new spine.SkeletonJson(tolerantLoader(rt.atlas, rt.renderer.context || rt.gl))
     return reader.readSkeletonData(copy)
   }
 
@@ -1241,9 +1300,27 @@
   /** Writes the export through `write(relativeName, data)`; returns what went out. */
   async function exportProject(opts, write) {
     const A = window.NovaFlowSequenceAtlas
-    const json = Ops.exportable(state.json)
+    const SV = window.NovaFlowSpineVersion
+    const edited = Ops.exportable(state.json)
+    const stash = SV && edited[SV.STASH]
+    // out as the version asked for (none = the one the project came in as; 3.8 for a 3.8 file)
+    const version = SV ? SV.short(opts.version || (stash ? stash.version : '3.8')) : '3.8'
+    const json = SV ? SV.fromSpine38(edited, version) : edited
     const items = opts.mode === 'folder' ? await folderImages() : exportImageNames(json).map((name) => ({ name }))
-    const writer = A.createWriter({ baseName: opts.name, packed: !!opts.packed, settings: { ...opts.settings, dedupe: false }, version: '3.8', write })
+    if (stash && opts.mode !== 'folder' && version !== '3.8') {
+      // 4.1 sequences: every frame, not only the one the editor shows
+      const have = new Set(items.map((i) => i.name))
+      for (const seq of Object.values(stash.sequences || {})) {
+        const sq = seq.sequence || {}
+        for (let k = 0; k < Number(sq.count || 0); k++) {
+          const base = String(seq.basePath || '')
+          if (!base) continue
+          const n = base + String(Number(sq.start == null ? 1 : sq.start) + k).padStart(Number(sq.digits || 0), '0')
+          if (!have.has(n)) { have.add(n); items.push({ name: n }) }
+        }
+      }
+    }
+    const writer = A.createWriter({ baseName: opts.name, packed: !!opts.packed, settings: { ...opts.settings, dedupe: false }, version, write })
     const missing = []
     for (const it of items) {
       const img = await imageRgba(it.name, it.file)
@@ -1257,7 +1334,9 @@
   function openExportDialog() {
     if (!state.json) return
     const pref = (() => { try { return JSON.parse(localStorage.getItem('nf-skel-export') || '{}') } catch { return {} } })()
-    const o = { name: pref.name || stem(state.fileName) || 'skeleton', packed: pref.packed !== false, mode: pref.mode === 'folder' ? 'folder' : 'atts' }
+    const SV = window.NovaFlowSpineVersion
+    const own = ownVersion()
+    const o = { name: pref.name || stem(state.fileName) || 'skeleton', packed: pref.packed !== false, mode: pref.mode === 'folder' ? 'folder' : 'atts', version: own }
     let folderN = null
     folderImages().then((l) => { folderN = l.length; if (mask.isConnected) fill() }, () => {})
     const close = () => mask.remove()
@@ -1267,9 +1346,11 @@
       const nameIn = h('input', { type: 'text', value: o.name, oninput: (e) => { o.name = e.target.value } })
       const seg = (val, label) => h('button', { 'aria-pressed': String(o.mode === val), onclick: () => { o.mode = val; fill() } }, label)
       const usedN = exportImageNames(Ops.exportable(state.json)).length
+      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, 'Spine ' + v)
       body.append(
         h('label', { class: 'fl' }, '导出名称'), nameIn,
-        h('div', { class: 'hint' }, 'Spine 3.8：按原版本导出，保留骨架和曲线格式。'),
+        SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
+        h('div', { class: 'hint' }, o.version === own ? `工程原版本 Spine ${own}，按原版本导出，保留骨架和曲线格式。` : `工程原版本 Spine ${own}，导出时自动转成 Spine ${o.version}（动画、曲线、约束一起转换）。`),
         h('label', { class: 'checks', style: 'margin:4px 0 0' }, h('input', { type: 'checkbox', checked: o.packed, onchange: (e) => { o.packed = e.target.checked; fill() } }), '打包图集'),
         o.packed ? h('div', { class: 'pk' },
           h('span', { class: 'fl' }, '打包'),
@@ -1306,6 +1387,13 @@
       h('div', { class: 'dialog export' }, h('div', { class: 'hd' }, h('b', {}, '导出'), h('button', { class: 'xx', onclick: close }, '×')), body))
     document.body.append(mask)
     fill()
+  }
+
+  /** The version the project came in as, as the export dialogs show it ('3.8', '4.0' …). */
+  function ownVersion() {
+    const SV = window.NovaFlowSpineVersion
+    const st = state.json && SV && state.json[SV.STASH]
+    return SV ? SV.short(st ? st.version : '3.8') || '3.8' : '3.8'
   }
 
   /** The production 图集打包设置 (same fields, same saved values). */
@@ -2047,7 +2135,51 @@
   }
 
   /** The image's own pixels at its original size (for 描绘). */
+  /**
+   * The image's own pixels at its original size, cut out of the page's pixels (one read per
+   * page, cached). A canvas per picture, as before, left hundreds of big canvases behind on a
+   * large rig: the export of 抽卡 (197 pictures) stalled the whole page for minutes.
+   */
   function regionPixels(region, W, H) {
+    const img = region && region.texture && region.texture.getImage ? region.texture.getImage() : null
+    if (!img) return null
+    const w = Math.max(1, Math.round(W)), hh = Math.max(1, Math.round(H))
+    const ow = region.originalWidth || w, oh = region.originalHeight || hh
+    const pg = w === ow && hh === oh ? pageOf({ region }) : null
+    if (!pg || !pg.data) return regionPixelsCanvas(region, W, H)
+    const src = pg.data, pw = pg.w, ph = pg.h
+    const out = new Uint8ClampedArray(w * hh * 4)
+    const left = region.offsetX || 0, top = oh - (region.offsetY || 0) - region.height
+    const rw = region.width, rh = region.height, rx = region.x, ry = region.y
+    if (!region.rotate) {
+      for (let y = 0; y < rh; y++) {
+        const dy = top + y, sy = ry + y
+        if (dy < 0 || dy >= hh || sy < 0 || sy >= ph) continue
+        const x0 = Math.max(0, -left, -rx), x1 = Math.min(rw, w - left, pw - rx)
+        if (x1 <= x0) continue
+        out.set(src.subarray((sy * pw + rx + x0) * 4, (sy * pw + rx + x1) * 4), ((dy * w) + left + x0) * 4)
+      }
+    } else {
+      // the page holds the picture turned 90° counter-clockwise (rh wide, rw tall on the page):
+      // picture (u, v) = page (rx + v, ry + rw - 1 - u)... as the canvas path draws it
+      for (let v = 0; v < rh; v++) {
+        const dy = top + v
+        if (dy < 0 || dy >= hh) continue
+        for (let u = 0; u < rw; u++) {
+          const dx = left + u
+          if (dx < 0 || dx >= w) continue
+          const sx = rx + v, sy = ry + rw - 1 - u
+          if (sx < 0 || sx >= pw || sy < 0 || sy >= ph) continue
+          const si = (sy * pw + sx) * 4, di = (dy * w + dx) * 4
+          out[di] = src[si]; out[di + 1] = src[si + 1]; out[di + 2] = src[si + 2]; out[di + 3] = src[si + 3]
+        }
+      }
+    }
+    return out
+  }
+
+  /** The same through a canvas (pictures shown at another size than their original). */
+  function regionPixelsCanvas(region, W, H) {
     const img = region && region.texture && region.texture.getImage ? region.texture.getImage() : null
     if (!img) return null
     const w = Math.max(1, Math.round(W)), hh = Math.max(1, Math.round(H))
@@ -6526,11 +6658,13 @@
      * The project packed for the app (its player renders 序列帧 / 视频, its 导出 writes the Spine
      * package): JSON + a fresh atlas + page PNGs, as `__NovaFlowSpineImportInlineBridgeCache` takes them.
      */
+    ownVersion,
+    versions: () => (window.NovaFlowSpineVersion ? window.NovaFlowSpineVersion.TARGETS.slice() : ['3.8']),
     packForApp: async (opts) => {
       const A = window.NovaFlowSequenceAtlas
       const name = A.safeName(stem(state.fileName) || 'skeleton')
       const files = new Map()
-      const r = await exportProject({ name, packed: true, mode: opts && opts.mode === 'folder' ? 'folder' : 'atts', settings: atlasSettings() }, async (rel, data) => { files.set(rel, data) })
+      const r = await exportProject({ name, packed: true, mode: opts && opts.mode === 'folder' ? 'folder' : 'atts', version: opts && opts.version, settings: atlasSettings() }, async (rel, data) => { files.set(rel, data) })
       const text = async (d) => (typeof d === 'string' ? d : d instanceof Blob ? d.text() : new TextDecoder().decode(d))
       const dataUrl = (d) => new Promise((resolve, reject) => {
         const fr = new FileReader()
@@ -6566,5 +6700,5 @@
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()
