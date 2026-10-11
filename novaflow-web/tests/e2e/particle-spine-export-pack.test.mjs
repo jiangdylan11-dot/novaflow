@@ -95,6 +95,20 @@ test('SKEL writes the chosen version as Spine binary that the official runtime r
   }
 });
 
+test('打包图集 off: the skeleton points at images/ and every picture is its own PNG there', async () => {
+  control({ skel: false, pack: false });
+  const pkg = await exportSpinePackage([system('fire', [sprite('flame'), sprite('spark')])], '3.8', { exportName: '散图' });
+  assert.equal(pkg.atlas, '', 'no atlas');
+  assert.deepEqual(pkg.images.map((image) => image.fileName).sort(), ['images/散图_1.png', 'images/散图_2.png']);
+  const json = JSON.parse(pkg.json);
+  assert.equal(json.skeleton.images, 'images/');
+  const attachments = Object.values(json.skins[0].attachments).flatMap((slot) => Object.values(slot));
+  assert.ok(attachments.every((a) => a.width === 32 && a.height === 32), 'attachments keep the picture size');
+  control({ skel: true, pack: false });
+  const bin = await exportSpinePackage([system('fire', [sprite('flame')])], '4.2', { exportName: '散图' });
+  assert.ok(bin.skel instanceof Uint8Array && bin.atlas === '' && bin.images[0].fileName === 'images/散图.png');
+});
+
 test('the dialog save hands the .skel to the package writer in place of the .json', async () => {
   const html = await readFile(new URL('../../renderer/index.html', import.meta.url), 'utf8');
   const bundlePath = html.match(/src="\.\/(assets\/index-[^"]+\.js)\?/)[1];
@@ -104,6 +118,8 @@ test('the dialog save hands the .skel to the package writer in place of the .jso
   assert(start > 0 && end > start);
   const handler = bundle.slice(start, end);
   assert.match(handler, /e\.skel\?ks\(n,`\$\{a\}\.skel`/, 'the browser folder save writes .skel instead of .json when the package has one');
+  assert.match(handler, /o\.atlas&&await ks\(n,`\$\{a\}\.atlas`/, 'an unpacked package writes no atlas file');
+  assert.match(handler, /getDirectoryHandle\(e,\{create:!0\}\)/, 'images/<name>.png lands in the images folder');
   control({ skel: true });
   let saved;
   const context = vm.createContext({

@@ -1,7 +1,8 @@
 /*
- * 粒子特效 → 导出 → Spine: the same row 骨骼动画's export has (版本 / 格式 JSON·SKEL / 打包设置…),
- * without 附件 / 文件夹 - a particle package always packs the pictures its attachments use
- * (user 2026-10-12: "粒子特效导出 spine 缺少打包。要和动画版块一样", "粒子不需要文件夹和附件，默认附件").
+ * 粒子特效 → 导出 → Spine: the same row 骨骼动画's export has (版本 / 格式 JSON·SKEL / 打包图集 / 打包设置…),
+ * without 附件 / 文件夹 - a packed particle package takes the pictures its attachments use; with
+ * 打包图集 off it is the skeleton plus an images folder, one PNG per picture
+ * (user 2026-10-12: "要和动画版块一样", "粒子不需要文件夹和附件，默认附件", "只有勾选了才是打包").
  *
  * The row drives the dialog's own Spine 版本 select (kept, hidden) and publishes the format on
  * `window.__NovaFlowParticleSpineExport`, which assets/particle-spine-export.js reads when it packs
@@ -16,8 +17,9 @@
   const pref = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {} } catch { return {} } }
   const save = (patch) => { try { localStorage.setItem(KEY, JSON.stringify({ ...pref(), ...patch })) } catch { /* storage blocked */ } }
   const skel = () => pref().skel === true
+  const packed = () => pref().packed !== false
   const version = () => (VERSIONS.includes(pref().version) ? pref().version : '3.8')
-  const publish = () => { window.__NovaFlowParticleSpineExport = Object.assign(window.__NovaFlowParticleSpineExport || {}, { skel: skel() }) }
+  const publish = () => { window.__NovaFlowParticleSpineExport = Object.assign(window.__NovaFlowParticleSpineExport || {}, { skel: skel(), pack: packed() }) }
   publish()
 
   /** The export dialog when it is the particle one (never 骨骼动画's, AI 特效's or AI 序列's). */
@@ -29,7 +31,9 @@
     const skeleton = window.NovaFlowSkeletonEditor
     return skeleton && typeof skeleton.active === 'function' && skeleton.active() ? null : root
   }
-  const runButton = (scope) => Array.from(scope.querySelectorAll('button')).find((b) => /SPINE 工程/i.test(b.textContent || '') && /^导出/.test((b.textContent || '').trim()))
+  // the Spine tab's own run button ("导出 SPINE 工程（JSON+ATLAS+PNG）", or as relabelled below) - never the
+  // 序列帧 tab's "导出粒子序列 PNG + Spine 工程（选文件夹）", which has its own 打包图集 row
+  const runButton = (scope) => Array.from(scope.querySelectorAll('button')).find((b) => /^导出\s*(粒子特效\s*)?SPINE 工程/i.test((b.textContent || '').trim()))
   const versionSelect = (scope) => Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.textContent === 'Spine 3.8'))
 
   /** The dialog's React select takes the value through its own setter plus a change event. */
@@ -43,7 +47,8 @@
   function packRow() {
     const scope = particleScope()
     if (!scope) return
-    const run = runButton(scope)
+    // only while the Spine tab is up: it alone has the plain "Spine 3.8" version picker
+    const run = versionSelect(scope) ? runButton(scope) : null
     const old = scope.querySelector('[data-nf-particle-pack]')
     if (!run) { if (old) old.remove(); return }
     if (old && old.nextElementSibling === run) { sync(old, scope); return }
@@ -56,8 +61,9 @@
     row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
       + VERSIONS.map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v}</button>`).join('')
       + label('格式', ';margin-left:12px') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
-      + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap">' + label('打包')
+      + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap"><label class="nf-atlas-check" style="margin:0"><input type="checkbox" data-packed="1">打包图集</label>'
       + '<button type="button" class="nf-atlas-button" data-settings="1" style="margin-left:auto">打包设置…</button></div><p class="nf-atlas-hint" data-pack-hint style="margin:6px 0 0"></p>'
+    row.querySelector('[data-packed]').addEventListener('change', (e) => { save({ packed: !!e.target.checked }); sync(row, scope) })
     row.querySelectorAll('[data-version]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); save({ version: b.getAttribute('data-version') }); sync(row, scope) }))
     row.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); save({ skel: b.getAttribute('data-format') === 'skel' }); sync(row, scope) }))
     row.querySelector('[data-settings]').addEventListener('click', (e) => { e.preventDefault(); openAtlasSettings() })
@@ -73,18 +79,23 @@
   }
 
   function sync(row, scope) {
-    const ver = version(), fmt = skel() ? 'SKEL' : 'JSON'
+    const ver = version(), fmt = skel() ? 'SKEL' : 'JSON', pack = packed()
     publish()
     setSelect(versionSelect(scope), ver)
+    const box = row.querySelector('[data-packed]')
+    if (box.checked !== pack) box.checked = pack
+    const settings = row.querySelector('[data-settings]')
+    const show = pack ? '' : 'none'
+    if (settings.style.display !== show) settings.style.display = show
     row.querySelectorAll('[data-version]').forEach((b) => b.classList.toggle('primary', b.getAttribute('data-version') === ver))
     row.querySelectorAll('[data-format]').forEach((b) => b.classList.toggle('primary', (b.getAttribute('data-format') === 'skel') === skel()))
     const run = runButton(scope)
     if (run) {
-      const wanted = `导出粒子特效 Spine 工程（${fmt}+ATLAS+PNG）`
+      const wanted = pack ? `导出粒子特效 Spine 工程（${fmt}+ATLAS+PNG）` : `导出粒子特效 Spine 工程（${fmt}+images）`
       if (run.textContent !== wanted) run.textContent = wanted
     }
     const hint = row.querySelector('[data-pack-hint]')
-    const t = `按 Spine ${ver} 导出，${fmt}＋atlas＋图集 PNG，只打包粒子用到的图片。`
+    const t = pack ? `按 Spine ${ver} 导出，${fmt}＋atlas＋图集 PNG，只打包粒子用到的图片。` : `按 Spine ${ver} 导出，${fmt}＋images 文件夹（每张图一个 PNG）。`
     if (hint.textContent !== t) hint.textContent = t
   }
 
@@ -134,5 +145,5 @@
   }
 
   setInterval(() => { try { packRow() } catch { /* the dialog is changing */ } }, 150)
-  window.NovaFlowParticleSpineExportUI = Object.freeze({ version, skel, openAtlasSettings })
+  window.NovaFlowParticleSpineExportUI = Object.freeze({ version, skel, packed, openAtlasSettings })
 })()

@@ -80,12 +80,13 @@ async function packWithSharedAtlas(images: ExportedImage[], json: string, versio
   const packer = (globalThis as any).NovaFlowSequenceAtlas
   if (!packer || typeof packer.createWriter !== 'function') return null
   const control = exportControl()
-  if (control.pack === false) return null
+  // 打包图集 off: the skeleton plus images/<name>.png, one PNG per picture, as the editor's unpacked export
+  const packed = control.pack !== false
   const skel = control.skel === true
   const files = new Map<string, any>()
   const short = String(version || '3.8').slice(0, 3)
   const writer = packer.createWriter({
-    baseName, packed: true, skel, settings: packSettings(packer), version: short,
+    baseName, packed, skel, settings: packSettings(packer), version: short,
     write: async (relativeName: string, data: any) => { files.set(relativeName, data) }
   })
   for (const image of images) {
@@ -94,20 +95,20 @@ async function packWithSharedAtlas(images: ExportedImage[], json: string, versio
   }
   const result = await writer.finish(json)
   const safe = String(result?.baseName || baseName)
-  const atlas = files.get(`${safe}.atlas`)
+  const atlas = packed ? files.get(`${safe}.atlas`) : ''
   if (typeof atlas !== 'string') throw new Error('图集没有写出')
   const pages: ExportedImage[] = []
   for (const [fileName, data] of files) {
     if (!fileName.endsWith('.png')) continue
-    pages.push({ fileName, regionName: fileName.replace(/\.png$/, ''), dataUrl: bytesToDataUrl(data, 'image/png'), width: 0, height: 0 })
+    pages.push({ fileName, regionName: fileName.replace(/^images\//, '').replace(/\.png$/, ''), dataUrl: bytesToDataUrl(data, 'image/png'), width: 0, height: 0 })
   }
-  const packed: PackedPackage = { json: skel ? json : String(files.get(`${safe}.json`) ?? json), atlas, images: pages }
+  const out: PackedPackage = { json: skel ? json : String(files.get(`${safe}.json`) ?? json), atlas, images: pages }
   if (skel) {
     const bytes = files.get(`${safe}.skel`)
     if (!(bytes instanceof Uint8Array)) throw new Error('二进制骨架没有写出')
-    packed.skel = bytes
+    out.skel = bytes
   }
-  return packed
+  return out
 }
 
 function isSvgDataUrl(dataUrl: string) {
