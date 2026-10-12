@@ -7030,7 +7030,7 @@ self.onmessage = (e) => {
     const pending = state.compactPending && !state.compactTimeline
     const tall = animOn() && !(pending && $('.center').dataset.dope !== '1'), compact = tall && !!state.compactTimeline
     $('.center').dataset.dope = tall ? '1' : ''
-    // 动画工具 open: one row only (transport + ruler + playhead); the dopesheet comes back when it closes
+    // 动画工具 open: the dopesheet is short (rows stay); full height when the tools close
     $('.center').dataset.compact = compact ? '1' : ''
     $('#tlBody').hidden = !tall
     $('#dopeModes').hidden = !tall || compact
@@ -7260,7 +7260,7 @@ self.onmessage = (e) => {
     // an end of the selection dragged: the picked keys stretch about the other end
     const sc = d.drag && d.drag.kind === 'scale' ? d.drag : null
     const scaled = (f) => Math.round(sc.pivot + (f - sc.pivot) * sc.factor)
-    const rowsShown = state.compactTimeline ? [] : d.rows
+    const rowsShown = d.rows
     rowsShown.forEach((r, i) => {
       const y = DOPE.rulerH + i * DOPE.rowH - d.scrollY
       if (y + DOPE.rowH < DOPE.rulerH || y > Hh) return
@@ -7322,7 +7322,7 @@ self.onmessage = (e) => {
     // name column edge
     ctx.strokeStyle = '#2a2a2a'; ctx.beginPath(); ctx.moveTo(DOPE.nameW + 0.5, 0); ctx.lineTo(DOPE.nameW + 0.5, Hh); ctx.stroke()
     // the empty-sheet hint stays in the names column (two lines), never over the ruler's columns
-    if (!d.rows.length && !state.compactTimeline) { ctx.save(); ctx.beginPath(); ctx.rect(0, DOPE.rulerH, DOPE.nameW - 8, Hh - DOPE.rulerH); ctx.clip(); ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧', 12, DOPE.rulerH + 18); ctx.fillText('选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 36); ctx.restore() }
+    if (!d.rows.length) { ctx.save(); ctx.beginPath(); ctx.rect(0, DOPE.rulerH, DOPE.nameW - 8, Hh - DOPE.rulerH); ctx.clip(); ctx.fillStyle = '#777'; ctx.font = '12px Inter, "Microsoft YaHei", sans-serif'; ctx.fillText('这个动画还没有关键帧', 12, DOPE.rulerH + 18); ctx.fillText('选骨骼后在画面里改动，或按 K', 12, DOPE.rulerH + 36); ctx.restore() }
     // a key drag: where the picked keys were (dashed) and where they are now (solid) - Spine's
     // guide lines, so an 偏移 / 移位 drag shows where it lands
     if (mv && d.keySel.length) {
@@ -7338,7 +7338,7 @@ self.onmessage = (e) => {
     }
     // the selection's span (two or more picked keys over a span): Spine's shaded range with a
     // handle at each end - drag one to stretch or squeeze the picked keys in time
-    const span = state.compactTimeline ? null : selectionSpan()
+    const span = selectionSpan()
     if (span) {
       const f1 = sc ? scaled(span.f1) : span.f1, f2 = sc ? scaled(span.f2) : span.f2
       const x1 = dopeX(Math.min(f1, f2)), x2 = dopeX(Math.max(f1, f2)), y1 = span.y
@@ -7376,7 +7376,6 @@ self.onmessage = (e) => {
   function dopeHit(x, y) {
     const d = state.dope
     if (y < DOPE.rulerH) return { kind: 'ruler' }
-    if (state.compactTimeline) return { kind: 'empty' }
     const i = Math.floor((y - DOPE.rulerH + d.scrollY) / DOPE.rowH)
     const row = d.rows[i]
     if (x < DOPE.nameW - 7) return { kind: 'name', row }

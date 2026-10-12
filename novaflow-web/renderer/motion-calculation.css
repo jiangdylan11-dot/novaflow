@@ -9,12 +9,13 @@ input[type=range]::-webkit-slider-thumb{appearance:none;width:12px;height:12px;b
 .animation-timing{--accent:#e9c55c}
 #range-duration,#range-delay{--accent:#59a8ed}
 input[type=checkbox]{accent-color:var(--accent);margin:0;width:12px;height:12px}input:disabled{opacity:.35}
-.param,.axiscontrol{display:grid;grid-template-columns:minmax(0,1fr) 49px;grid-template-rows:auto 28px;column-gap:6px;row-gap:2px;margin:0 0 8px;padding:0;border:0}
+/* one row a parameter: label | slider | number (user 2026-10-12: 标题放在滑条前面，上下更紧凑) */
+.param,.axiscontrol{display:grid;grid-template-columns:72px minmax(0,1fr) 49px;grid-template-rows:26px;column-gap:8px;row-gap:0;margin:0 0 3px;padding:0;border:0;align-items:center}
 .paramhead,.numberwrap,.axisrow,.axisrow>.row{display:contents}
-.paramhead>label,.axisrow>.check,.axisrow>.axis-label{grid-area:1/1/2/3;color:#bdbdbd;font-size:11px}
-.paramhead>.numberwrap>input,.axisnumber{grid-area:2/2}
+.paramhead>label,.axisrow>.check,.axisrow>.axis-label{grid-area:1/1;color:#bdbdbd;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.paramhead>.numberwrap>input,.axisnumber{grid-area:1/3}
 .paramhead>.numberwrap>span,.axisunit,#curveUnit{display:none}
-.param>input[type=range],.axiscontrol>input[type=range]{grid-area:2/1}
+.param>input[type=range],.axiscontrol>input[type=range]{grid-area:1/2}
 .axisextra{grid-column:1/3;display:flex;justify-content:flex-end;color:#8b8b8b;margin-top:1px}.axisextra label{display:flex;align-items:center;gap:8px}.axisextra input{height:24px}
 .check{display:flex;align-items:center;gap:5px;cursor:pointer}
 .global-timing{border-bottom:1px solid #2c2c2c;padding:0 0 8px;margin-bottom:10px}
@@ -39,9 +40,9 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 .editor-header>button.editor-close{width:28px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:#9a9a9a;font-size:18px;line-height:1}
 .editor-header>button.editor-close:hover{background:#373737;color:#fff}
 
-#editorContent{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0}.timing-row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr);gap:16px;padding:8px 0;border-bottom:1px solid #303030}
-.global-timing{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:16px;margin:0;padding:0;border:0}.global-timing>.help{grid-column:1/-1;margin:1px 0 0}.timing-row .param{margin:0}#effectTiming{padding:0;margin:0;border:0}#effectTiming>.help{margin:1px 0 0}
-.editor-workspace{display:grid;grid-template-columns:minmax(260px,38%) minmax(0,1fr);gap:14px;min-height:0;padding:8px 0}.effect-parameters{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0;padding-right:10px;border-right:1px solid #303030}.effect-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;align-content:start;gap:8px 14px;flex:1;overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:#3b3b3b transparent}
+#editorContent{display:grid;grid-template-rows:auto minmax(0,1fr) auto;min-height:0}.timing-row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1fr);gap:12px;padding:4px 0;border-bottom:1px solid #303030}
+.global-timing{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:16px;margin:0;padding:0;border:0}.global-timing>.help{grid-column:1/-1;margin:0;font-size:10px}.timing-row .param{margin:0}#effectTiming{padding:0;margin:0;border:0}#effectTiming>.help{margin:1px 0 0}
+.editor-workspace{display:grid;grid-template-columns:minmax(260px,38%) minmax(0,1fr);gap:12px;min-height:0;padding:4px 0}.effect-parameters{display:flex;flex-direction:column;gap:3px;min-height:0;min-width:0;padding-right:10px;border-right:1px solid #303030}.effect-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;align-content:start;gap:8px 14px;flex:1;overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:#3b3b3b transparent}
 .effect-parameters .param,.effect-parameters .axiscontrol{margin:0}.effect-parameters #bounceHeightSection,.effect-parameters #bounceHeightControls,.effect-parameters #impactControl,.effect-parameters #mainControls,.effect-parameters #primaryAxes,.effect-parameters #params,.effect-parameters #advancedParams,.effect-parameters #opacityDetails,.effect-parameters #opacityControls{display:contents}
 .effect-parameters #scaleOptions{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;flex-shrink:0;padding-top:8px;border-top:1px solid #303030}.effect-parameters .line{margin:0;gap:8px;align-self:center;grid-column:1/-1}.axisextra{margin-top:4px}.axisextra input{width:49px}
 .curvepanel{border:0;margin:0;display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0}.curvebar{display:flex;align-items:center;justify-content:space-between;gap:8px}.curvebar>.row{gap:8px;margin:0}.curvebar .segmented{min-width:120px;max-width:230px;flex:1}.curvebar .dim{white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}.curvewrap{height:auto;flex:1;min-height:60px}.curvefooter{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}.curvefooter>.row{margin:0;gap:8px}
@@ -54,7 +55,7 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 #resetCurve{width:48px;min-width:48px}.curvebar>.row{margin-left:auto}.timing-hint{grid-column:1/-1;font-size:11px;color:#777;margin:1px 0 0;white-space:normal}
 
 .effect-switches{display:flex;align-items:center;flex-wrap:wrap;gap:12px;flex-shrink:0}
-.timing-row .param{align-content:start;grid-template-rows:auto 28px auto}.timing-hint{grid-row:3}
+.timing-row .param{align-content:center;grid-template-rows:26px}.timing-hint{display:none}
 .expand-mode .effect-scroll{overflow:visible;flex:0 0 auto}
 .expand-mode .effect-parameters #scaleOptions{margin-top:auto}
 #editor{pointer-events:auto;position:relative}
