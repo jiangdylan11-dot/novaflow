@@ -5583,7 +5583,11 @@
   /** the bone the frames hang on (the select's, else the first bone) */
   const frameBone = () => (state.frameBone && state.json.bones.some((b) => b.name === state.frameBone) ? state.frameBone : (state.json.bones[0] || {}).name)
 
-  /** 序列帧添加: picture i shows from frame i·gap; the one before hides there. No loop: the last stays. */
+  /**
+   * 序列帧添加 (Spine's frame-by-frame sequence): ONE slot holds every picture as an attachment and its
+   * attachment keys switch them — picture i shows from frame i·gap, hiding the one before. No loop: the
+   * last stays. The slot is the one already showing the first picture, else a new one named after it.
+   */
   async function writeSequence() {
     if (!animOn()) { status('先选一个动画', 'error'); return }
     const files = frameFiles('sequence')
@@ -5591,26 +5595,50 @@
     try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
     const images = files.map((f) => f.name), bone = frameBone()
     const gap = Math.max(1, Math.round(state.seqGap || 1)), anim = state.anim
-    edit(`序列帧添加：${images.length} 帧，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
-      const made = frameSlots(j, images, bone)
-      const frames = made.frames
-      const json = Ops.prepare(hangFrames(made.json, frames))
+    const t4 = (t) => Math.round(t * 10000) / 10000
+    // generated sweep slices as a sequence: placed on the base picture, above it, with the blend
+    const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
+    let made = null
+    return edit(`序列帧添加：${images.length} 张进一个插槽，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
+      let json = j
+      const first = images[0]
+      const baseSlotObj = gen && gen.baseSlot ? json.slots.find((x) => x.name === gen.baseSlot) : null
+      const place = baseSlotObj ? baseAttachmentPlacement(json, gen.baseSlot) : null
+      let slot = slotShowing(json, first)
+      if (!slot) {
+        slot = uniqueSlotName(json, first.split('/').pop())
+        json = Ops.addSlot(json, place ? baseSlotObj.bone : bone, slot).json
+      }
+      const skin = () => json.skins.find((x) => x.name === 'default')
+      const names = []
+      for (const image of images) {
+        const atts = (skin() && skin().attachments[slot]) || {}
+        // an attachment already showing this picture (a mesh too) is the frame; else a new region
+        const have = Object.entries(atts).find(([n, a]) => a && (a.path || n) === image && a.type !== 'boundingbox' && a.type !== 'clipping' && a.type !== 'path' && a.type !== 'point')
+        if (have) { names.push(have[0]); continue }
+        const size = regionSize(image) || { width: 1, height: 1 }
+        const r = Ops.addRegionAttachment(json, 'default', slot, { name: image.split('/').pop(), path: image, width: size.width, height: size.height, show: false, ...(place ? { x: place.x, y: place.y, rotation: place.rotation } : {}) })
+        json = r.json
+        const att = skin().attachments[slot][r.attachment]
+        if (place && att) {
+          if (Math.abs(place.scaleX - 1) > 1e-4) att.scaleX = Math.round(place.scaleX * 10000) / 10000
+          if (Math.abs(place.scaleY - 1) > 1e-4) att.scaleY = Math.round(place.scaleY * 10000) / 10000
+        }
+        names.push(r.attachment)
+      }
+      json = Ops.setSlotProps(json, slot, { attachment: names[0] }).json
+      json = Ops.prepare(hangFrames(json, [{ slot }]))
+      if (gen) json = Ops.prepare(placeSweepSlots(json, [{ slot }], gen))
       const a = json.animations[anim]
       if (!a) throw new Error(`找不到动画：${anim}`)
       a.slots = a.slots || {}
-      frames.forEach((f, i) => {
-        const row = { ...(a.slots[f.slot] || {}) }
-        delete row.color   // a 序列扫光 written on these slots before left alpha keys (mostly 0): the frames would stay invisible
-        const keys = []
-        if (i > 0) keys.push({ name: null })
-        keys.push({ time: Math.round(i * gap / FPS * 10000) / 10000, name: f.name })
-        if (i < frames.length - 1) keys.push({ time: Math.round((i + 1) * gap / FPS * 10000) / 10000, name: null })
-        if (!keys[0].time) delete keys[0].time
-        row.attachment = keys
-        a.slots[f.slot] = row
-      })
+      const row = { ...(a.slots[slot] || {}) }
+      delete row.color   // a 序列扫光 written on this slot before left alpha keys (mostly 0)
+      row.attachment = names.map((name, i) => ({ ...(i ? { time: t4((i * gap) / FPS) } : {}), name }))
+      a.slots[slot] = row
+      made = slot
       return { json: Ops.tidy(json) }
-    }, () => gotoFrame(0))
+    }, () => { gotoFrame(0); if (made) { state.sel = { kind: 'slot', name: made }; revealInTree(state.sel) } })
   }
 
   /** 序列扫光: picture i goes 0 → 100 → 0 over 2 steps starting at i·step; step = 时长 / (N + 1). */
