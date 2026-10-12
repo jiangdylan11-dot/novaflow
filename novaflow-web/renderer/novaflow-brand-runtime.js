@@ -25970,6 +25970,18 @@
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-chain-toggle-card="1"][data-novaflow-ribbon-chain-enabled="1"]:hover {
         box-shadow: inset 0 0 0 1px rgba(32, 201, 151, 0.24) !important;
       }
+      /* docked into 动画工具: 自动链条 is a plain row from its first frame (the card colours above
+         lit it for a frame before the docked spec put it back) */
+      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-chain-toggle-card="1"],
+      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-chain-toggle-card="1"][data-novaflow-ribbon-chain-enabled="1"],
+      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-chain-toggle-card="1"]:hover {
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        border: 0 !important;
+        border-top: 1px solid #303030 !important;
+        border-radius: 0 !important;
+      }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-label="1"] {
         flex: 1 1 auto !important;
         min-width: 0 !important;
@@ -28996,6 +29008,16 @@
         margin: 0 !important;
       }
       [data-novaflow-export-modal-root="1"] input[type="range"],
+      /* 导出: the dialog keeps its top while 序列帧 / 视频 / Spine change its height (centred, it
+         moved up and down on every tab switch; user 2026-10-12: 弹框会各种跳闪), and still fits
+         the window */
+      [data-novaflow-export-modal-root="1"] {
+        align-items: flex-start !important;
+      }
+      [data-novaflow-export-modal-root="1"] > [data-novaflow-export-modal-dialog="1"] {
+        margin-top: clamp(12px, calc(50vh - 220px), 30vh) !important;
+        max-height: calc(100vh - clamp(12px, calc(50vh - 220px), 30vh) - 12px) !important;
+      }
       [data-novaflow-export-modal-dialog="1"] input[type="range"] {
         height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
         min-height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
@@ -34906,7 +34928,9 @@
       {
         // 自动链条 / 实时预览: the same card and 27x15 switch as the others.
         selector: "[data-novaflow-ribbon-chain-toggle-card], [data-novaflow-ribbon-preview-toggle-card]",
-        style: (node) => (node.getBoundingClientRect().height > 0 || node.style.display !== "none" ? {
+        // docked into 动画工具 自动链条 is a plain check-box row (its own rule below): painting it as
+        // a card here too showed a lighter band for the first 飘带 frame (user 2026-10-12: 亮一下)
+        style: (node) => (node.closest('[data-novaflow-ribbon-docked="1"], [data-novaflow-ribbon-hosted="1"]') ? null : node.getBoundingClientRect().height > 0 || node.style.display !== "none" ? {
           background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": "7px",
           "box-shadow": "none", "justify-content": "space-between", padding: "0 12px"
         } : null)
@@ -53223,7 +53247,7 @@
         padding: "0 28px 0 12px",
         border: "0",
         "border-radius": `${NOVAFLOW_RECT_RADIUS_PX}px`,
-        "background-color": UI_SELECT_BACKGROUND,
+        "background-color": UI_SELECT_FIELD_BACKGROUND,
         color: "rgba(244, 247, 251, 0.94)",
         "font-size": "12px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
@@ -55041,7 +55065,7 @@
         padding: "0 28px 0 12px",
         border: "0",
         "border-radius": `${NOVAFLOW_RECT_RADIUS_PX}px`,
-        "background-color": UI_SELECT_BACKGROUND,
+        "background-color": UI_SELECT_FIELD_BACKGROUND,
         color: "rgba(244, 247, 251, 0.94)",
         "font-size": "12px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
@@ -56141,6 +56165,9 @@
   }
 
   function ribbonFeedbackBaseBackground(node) {
+    // the preset selects rest at the field colour every select has (the select rule's #262626):
+    // #272727 here and #262626 there flipped them on the first frame
+    if (node instanceof HTMLElement && (node.getAttribute("data-novaflow-ribbon-preset-select") === "1" || node.getAttribute("data-novaflow-ribbon-event-preset-select") === "1")) return UI_SELECT_FIELD_BACKGROUND;
     if (!(node instanceof HTMLElement)) return UI_BUTTON_BACKGROUND;
     if (
       node.getAttribute("data-novaflow-ribbon-preset-save") === "1" ||
@@ -56183,6 +56210,14 @@
 
   function applyRibbonFeedbackBackground(node, hover = false) {
     if (!(node instanceof HTMLElement)) return;
+    // docked into 动画工具 自动链条 is a plain check-box row: no card colour, no hover plate (a card
+    // colour here lit the row for the first 飘带 frame; user 2026-10-12: 亮一下)
+    if (node.getAttribute("data-novaflow-ribbon-chain-toggle-card") === "1" && node.closest('[data-novaflow-ribbon-docked="1"], [data-novaflow-ribbon-hosted="1"]')) {
+      setStylePropertyIfChanged(node, "background", "transparent", "important");
+      setStylePropertyIfChanged(node, "background-color", "transparent", "important");
+      setStylePropertyIfChanged(node, "box-shadow", "none", "important");
+      return;
+    }
     const disabled = (
       (node instanceof HTMLButtonElement || node instanceof HTMLSelectElement) && node.disabled
     ) || node.getAttribute("aria-disabled") === "true";

@@ -484,6 +484,16 @@
   .dialog .fm .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
   .dialog .fm .nf{display:flex;flex-direction:column;gap:4px;font-size:12px;color:rgba(255,255,255,.66)}
   .dialog .fm .nf input,.dialog .fm .nf select{height:30px;padding:0 8px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:12px}
+  /* sliders as on the rest of the site (calc panels, 导出): 3px track, green fill up to the
+     thumb, 12px green thumb; --nf-range-pct is kept in step by the script below (user
+     2026-10-12: 扫光里的滑条和其他版块不一样) */
+  input[type=range]{-webkit-appearance:none;appearance:none;height:12px;padding:0;margin:0;border:0;border-radius:999px;cursor:pointer;accent-color:var(--green);
+    background:linear-gradient(90deg,var(--green) 0,var(--green) var(--nf-range-pct,0%),#3b3b3b var(--nf-range-pct,0%),#3b3b3b 100%) center/100% 3px no-repeat}
+  input[type=range]::-webkit-slider-runnable-track{height:3px;background:transparent;border-radius:999px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;margin-top:-4.5px;border:0;border-radius:50%;background:var(--green);box-shadow:none}
+  input[type=range]::-moz-range-track{height:3px;background:transparent}
+  input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--green)}
+  input[type=range]:disabled{opacity:.4;cursor:default}
 </style>
 </head>
 <body>
@@ -596,6 +606,31 @@
 <input type="file" id="pickAtlas" accept=".atlas,.txt" hidden>
 <input type="file" id="pickPng" multiple accept=".png,.jpg,.jpeg,.webp" hidden>
 
+<script>
+// every slider's green fill follows its value: typed in, dragged, or set from code
+(function () {
+  function fill(r) {
+    var min = Number(r.min || 0), max = Number(r.max || 100), v = Number(r.value || 0)
+    var pct = max > min ? Math.max(0, Math.min(100, (v - min) / (max - min) * 100)) : 0
+    var t = pct + '%'
+    if (r.style.getPropertyValue('--nf-range-pct') !== t) r.style.setProperty('--nf-range-pct', t)
+  }
+  function all(root) { var list = (root || document).querySelectorAll ? (root || document).querySelectorAll('input[type=range]') : []; for (var i = 0; i < list.length; i++) fill(list[i]) }
+  document.addEventListener('input', function (e) { if (e.target && e.target.type === 'range') fill(e.target) }, true)
+  document.addEventListener('change', function (e) { if (e.target && e.target.type === 'range') fill(e.target) }, true)
+  // value set from code (a preset, undo, a number box): the property setter is wrapped once
+  var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+  if (desc && desc.set) Object.defineProperty(HTMLInputElement.prototype, 'value', { configurable: true, enumerable: desc.enumerable, get: desc.get, set: function (v) { desc.set.call(this, v); if (this.type === 'range') fill(this) } })
+  new MutationObserver(function (records) {
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i]
+      if (r.type === 'attributes') { if (r.target.type === 'range') fill(r.target); continue }
+      for (var j = 0; j < r.addedNodes.length; j++) { var n = r.addedNodes[j]; if (n.nodeType !== 1) continue; if (n.type === 'range') fill(n); else all(n) }
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['value', 'min', 'max'] })
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { all(document) }); else all(document)
+})()
+</script>
 <script>
 // Load the editor's scripts in order. Inside the app the URLs come from the app page, where the
 // build stamps every local file with a content hash (?v=...): a changed file always loads fresh.

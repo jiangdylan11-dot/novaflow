@@ -144,6 +144,19 @@
     document.body.appendChild(overlay)
   }
 
+  // The row follows the dialog in the mutation's own microtask, before the page paints: on the
+  // 150 ms timer alone the dialog's plain Spine layout showed first and the row lingered over the
+  // 序列帧 / 视频 tabs for a frame, the dialog jumping in height each time (user 2026-10-12:
+  // 视频和 Spine 切换弹框会各种跳闪). The timer stays as a fallback.
+  let syncing = false
+  const onMutations = () => {
+    if (syncing || !document.body || !document.body.classList.contains('novaflow-export-modal-open')) return
+    syncing = true
+    try { packRow() } catch { /* the dialog is changing */ }
+    syncing = false
+  }
+  const start = () => { if (document.body) new MutationObserver(onMutations).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] }) }
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start)
   setInterval(() => { try { packRow() } catch { /* the dialog is changing */ } }, 150)
   window.NovaFlowParticleSpineExportUI = Object.freeze({ version, skel, packed, openAtlasSettings })
 })()
