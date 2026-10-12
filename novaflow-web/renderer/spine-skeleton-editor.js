@@ -5416,7 +5416,6 @@
       h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
       h('button', { class: 'tg', title: '打开工程的图片文件夹：进子文件夹后「添加所选」或「本文件夹全部」，卡片就换成那些图片；文件夹里没有的图可以用「导入图片 / 导入文件夹」加进来', onclick: () => openImagePicker(title, (names) => { state.frameSet = names.map((n) => ({ name: n })); U.clear(); renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
       state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; U.clear(); renderLayerDock() } }, '根目录') : null,
-      kind === 'sweep' ? h('button', { class: 'tg', title: '勾一张图作底图，自动生成扫光切片（10 种扫光方式）；生成后卡片换成切片', onclick: openSweepGenerator }, '生成扫光…') : null,
       h('span', { class: 'ld-sep' }),
     ]
     if (kind === 'sequence') {
@@ -5430,7 +5429,8 @@
       const to = h('input', { type: 'number', class: 'ld-num wide', min: 1, max: 18000, step: 1, value: sweepEndFrame(ticked.length), title: '扫光到第几帧结束（之后全透明）；留空 = 动画的最后一帧',
         onchange: (e) => { const v = Math.round(Number(e.target.value) || 0); state.sweepEnd = v > 0 ? Math.min(18000, v) : 0; e.target.value = sweepEndFrame(ticked.length) } })
       head.push(h('label', { class: 'ld-f' }, '起', from, '止', to, '帧'),
-        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在时长内均分', onclick: writeSweep }, '写入动画'))
+        h('button', { class: 'ld-go gen', title: '勾一张图作底图，自动生成扫光切片（10 种扫光方式）；生成后卡片换成切片', onclick: openSweepGenerator }, '生成扫光…'),
+        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在起止之间均分', onclick: writeSweep }, '写入动画'))
     }
     dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }),
       h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftOpen = null; renderLeft(); renderLayerDock(); renderStage(); layoutFloats() } }, '×')))
