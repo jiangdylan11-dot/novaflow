@@ -8,6 +8,14 @@
     ? new URL('ai-sequence-matting-worker.js' + new URL(document.currentScript.src).search, document.currentScript.src).href : null;
   const clamp = (x, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, x));
   const smooth = (lo, hi, x) => { const t = clamp((x - lo) / (hi - lo)); return t * t * (3 - 2 * t); };
+  // Light hue bins: 12 bins over the two non-key channels (which is larger, and their ratio), each
+  // learning the key/strongest-non-key ratio of the light where it is opaque and shows its own key.
+  const hueIndex = (f0, f1) => (f0 >= f1 ? 0 : 6) + Math.round(Math.min(f0, f1) / Math.max(f0, f1, .001) * 5);
+  const newHueBins = () => Array.from({ length: 12 }, () => ({ count: 0, own: 0, ownMax: 0, ownRatio: 0 }));
+  const addHueSample = (bins, c0, c1, keyValue, own) => {
+    const hue = bins[hueIndex(c0, c1)];
+    hue.count++; hue.own += own; hue.ownMax = Math.max(hue.ownMax, own); hue.ownRatio += own * keyValue / Math.max(c0, c1, .001);
+  };
 
   function screenKind(rgb) {
     const [r, g, b] = rgb;
@@ -204,6 +212,10 @@
     const entries = [...frames.entries()].sort((a, b) => a[0] - b[0]), candidates = [];
     const mw = sequence.maskWidth, mh = sequence.maskHeight;
     if (!(mw > 0 && mh > 0)) return null;
+    // The light's hue is learned once for the clip (bright emission outside the subject in the
+    // sampled frames): per-frame learning made a glow gold on bright frames and yellow-green or
+    // dark on the frames with too little opaque light to learn from.
+    const lightHue = newHueBins(); let lightSamples = 0;
     for (let j = 0; j < entries.length; j += Math.max(1, Math.floor(entries.length / 16))) {
       const [index, entry] = entries[j], f = entry.frame, mask = masks.get(index), screen = detectScreen(f);
       if (!f?.data || !mask || !screen || !['green', 'blue'].includes(screen.kind)) continue;
@@ -215,7 +227,12 @@
         for (let c = 0; c < 3; c++) rgb[p * 3 + c] = samplePlane(f.data, f.width, f.height, sx, sy, 4, c) / 255;
         const m = coverage[p] = samplePlane(mask, mw, mh, (x + .5) * mw / w - .5, (y + .5) * mh / h - .5, 1, 0) / 255;
         const r = rgb[p * 3], g = rgb[p * 3 + key], b = rgb[p * 3 + other], low = Math.min(r, g, b), high = Math.max(r, g, b);
-        if (m < .05) light += Math.max(0, r - screen.rgb[0] / 255, b - screen.rgb[other] / 255) ** 2;
+        if (m < .05) {
+          light += Math.max(0, r - screen.rgb[0] / 255, b - screen.rgb[other] / 255) ** 2;
+          if (Math.max(r - screen.rgb[0] / 255, b - screen.rgb[other] / 255) > .16 && Math.max(r, b) >= .75) {
+            addHueSample(lightHue, r, b, g, g < .98 ? smooth(.03, .07, g - screen.rgb[key] / 255) : 0); lightSamples++;
+          }
+        }
         if (m > .99 && low > .65 && high > .78 && high - low < .25 && g - (r + b) / 2 < .01) {
           pale++; for (let c = 0; c < 3; c++) hist[c][Math.round(rgb[p * 3 + c] * 255)]++;
         }
@@ -241,6 +258,7 @@
       }
       profile = {...ref, support, distance:nearestSeeds(seeds,ref.w,ref.h).distance, rows:chromaScreenRows(ref.frame,ref.screen)};
     }
+    if (lightSamples) profile = {...(profile || {}), lightHue};
     sequenceMaterials.set(frames, {maskCount:masks.size, profile});
     return profile;
   }
@@ -329,6 +347,9 @@
     const key = result.screen.kind === "blue" ? 2 : 1, c0 = 0, c1 = key === 1 ? 2 : 1;
     const rows = chromaScreenRows(frame, result.screen), coverage = new Float32Array(n);
     const solid = new Uint8Array(n), pale = new Uint8Array(n), lights = new Uint8Array(n), translucent = new Uint8Array(n);
+    // What the chroma pass kept opaque on the mask's word is never refitted as fabric or contour
+    // either (the fabric pass turned a kept veil hem teal).
+    const kept = result.kept && result.kept.length === n ? result.kept : new Uint8Array(n);
     const population = new Uint32Array(h), hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
     let count = 0, paleCount = 0, translucentCount = 0;
     if (mw === w && mh === h) {
@@ -345,7 +366,8 @@
     }
     if (!count) return result;
     const candidateReference = options.sequenceProfile || sequenceMaterial(options.sequence);
-    const reference = candidateReference?.screen.kind === result.screen.kind ? candidateReference : null, motion = materialMotion(frame, coverage, reference);
+    const reference = candidateReference?.frame && candidateReference.screen.kind === result.screen.kind ? candidateReference : null, motion = materialMotion(frame, coverage, reference);
+    const sequenceHue = candidateReference?.lightHue || null;
     let acc = 0, y0 = 0, y1 = h - 1;
     for (let y = 0; y < h; y++) { acc += population[y]; if (acc < count * .02) y0 = y; if (acc >= count * .98) { y1 = y; break; } }
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -353,12 +375,17 @@
       const high = Math.max(r, g, b), low = Math.min(r, g, b), m = coverage[p];
       const eroded = x > 2 && x < w - 3 && y > 2 && y < h - 3 && m > .985
         && coverage[p - 2] > .98 && coverage[p + 2] > .98 && coverage[p - w * 2] > .98 && coverage[p + w * 2] > .98;
-      if (eroded && result.alpha[p] > 250 && g - (r + b) / 2 < .015 && !(low < .2 && g > .5)) solid[p] = 1;
+      // A key-leaning colour the chroma pass kept opaque inside the mask core is the subject's own
+      // material (purple scroll, teal collar); it is body, not something to refit or recolour.
+      const keptByMask = g - Math.max(r, b) < .45 * (rows[y * 3 + key] - Math.max(rows[y * 3 + c0], rows[y * 3 + c1]));
+      if (eroded && result.alpha[p] > 250 && (g - (r + b) / 2 < .015 || keptByMask) && !(low < .2 && g > .5)) solid[p] = 1;
       if (solid[p] && low > .65 && high > .78 && high - low < .25 && g - (r + b) / 2 < .01) {
         pale[p] = 1; paleCount++; for (let c = 0; c < 3; c++) hist[c][data[i + c]]++;
       }
       const radius = Math.max(3, Math.round(Math.min(w, h) / 100));
-      if (x > radius && x < w - radius && y > radius && y < h - radius && m > .9 && g - Math.max(r, b) > .10
+      // Translucent fabric shows the screen through it, so the chroma pass left it partly
+      // transparent; an opaque key-leaning pixel (lilac parchment) is not fabric evidence.
+      if (x > radius && x < w - radius && y > radius && y < h - radius && m > .9 && g - Math.max(r, b) > .10 && result.alpha[p] < 250
         && Math.min(r, b) > .1 && Math.min(r, b) / Math.max(r, b, .01) > .6
         && coverage[p - radius] > .85 && coverage[p + radius] > .85 && coverage[p - w * radius] > .85 && coverage[p + w * radius] > .85) {
         translucent[p] = 1; translucentCount++;
@@ -393,10 +420,24 @@
     }
     const externalEmission=nearestSeeds(emissionSeeds,w,h);
     const lightBins = new Map();
+    // Where a light is opaque outside the subject its key channel is the light's real hue. Faint
+    // parts of the same light (same non-key hue) keep the screen's key channel as their own colour
+    // after unassociation, so a gold glow came out yellow-green over any other backdrop. Learn the
+    // key/non-key ratio per non-key hue from opaque emission; the faint pixels are capped to it.
+    const hueBins = newHueBins(), hueMinimum = Math.max(40, n * .0001);
     for (let p = 0; p < n; p++) if (lights[p] && body.distance[p] > Math.max(5, Math.min(w, h) * .012)) {
       const i = p * 4, maximum = Math.max(out[i], out[i + 1], out[i + 2], 1), rgb = [out[i] / maximum, out[i + 1] / maximum, out[i + 2] / maximum];
       const id = rgb.reduce((v, c) => v * 6 + Math.round(c * 5), 0), bin = lightBins.get(id) || { count: 0, sum: [0, 0, 0] };
       bin.count++; for (let c = 0; c < 3; c++) bin.sum[c] += rgb[c];
+      if (result.alpha[p] >= 230 && Math.max(out[i + c0], out[i + c1]) >= 32) {
+        const hue = hueBins[hueIndex(out[i + c0], out[i + c1])];
+        // A light added on top of the screen (sparkles, particles) leaves the key channel at the
+        // screen's level, so the measured ratio would be the screen's green; only a light whose
+        // key channel clearly exceeds the screen shows its own hue. Otherwise the key channel is
+        // unknowable and the mean of the two non-key channels stands in for it.
+        const row = Math.floor(p / w) * 3, own = data[i + key] < 250 ? smooth(.03, .07, data[i + key] / 255 - rows[row + key]) : 0;
+        addHueSample(hueBins, out[i + c0], out[i + c1], out[i + key], own);
+      }
       // For a calibrated shadow, estimate the separate light directly from
       // the source over its measured screen, before spill normalisation.
       const row=Math.floor(p/w)*3,opacity=Math.max(.005,...[c0,c1].map(c=>clamp((data[i+c]/255-rows[row+c])/Math.max(.1,1-rows[row+c]))));
@@ -491,7 +532,14 @@
         && Math.abs(data[i + c0] - rows[y * 3 + c0] * 255) < 4 && Math.abs(data[i + c1] - rows[y * 3 + c1] * 255) < 4) {
         out[i] = out[i + 1] = out[i + 2] = 0; continue;
       }
-      if (solid[p] && (!fabricSupport || fabricSupport.distance[p] >= Math.min(w, h) * .10)) continue;
+      // Light the mask happens to cover (a glowing ball at the subject's feet): bright, leaning to
+      // the key, and of a hue that is seen as light outside the subject. It is handled as that
+      // light below instead of staying an opaque screen-coloured blob.
+      const peak = Math.max(data[i], data[i + 1], data[i + 2]);
+      const coveredLight = m >= .15 && lightColors.length > 0 && out[i + 3] > 128 && peak > 153
+        && Math.min(data[i], data[i + 1], data[i + 2]) < peak * .5 && data[i + key] > Math.max(data[i + c0], data[i + c1]) + 10
+        && lightConfidence([out[i], out[i + 1], out[i + 2]]) > .5;
+      if (!coveredLight && (kept[p] || (solid[p] && (!fabricSupport || fabricSupport.distance[p] >= Math.min(w, h) * .10)))) continue;
       a = out[i + 3] / 255;
       for (let c = 0; c < 3; c++) { C[c] = data[i + c] / 255; B[c] = rows[y * 3 + c]; P[c] = out[i + c] / 255 * a; }
       let materialWeight = 0;
@@ -649,6 +697,41 @@
           const observedEmission = Math.max(0, C[c0] - B[c0], C[c1] - B[c1]);
           weight *= 1 - (1-calibration)*lightConfidence(P, true) * (1 - smooth(.85, 1.35, shade / Math.max(.005, observedEmission)));
           if (weight > 0) { combine(Math.max(sa, ...ep) * smooth(.003, .015, sa), ep, weight); if (weight > .5) shadowPixels++; }
+        }
+      }
+      // Faint emission of a hue that is opaque elsewhere: cap its key channel to that hue.
+      if ((m < .15 || coveredLight) && a > .004) {
+        const f0 = P[c0] / a, f1 = P[c1] / a, fmax = Math.max(f0, f1);
+        const emitC = Math.max(C[c0] - B[c0], C[c1] - B[c1]), absorbC = clamp(1 - C[key] / Math.max(.1, B[key]));
+        if (fmax > .05 && emitC > absorbC + .035) {
+          // A light outside the subject: over green, an opaque yellow object and a translucent
+          // orange light are the same pixel, and dominance-based opacity picked the object, so a
+          // ray came out nearly opaque and darkened any brighter backdrop into an olive smear.
+          // Take the least opacity that carries the non-key energy (the light at full brightness).
+          const light = clamp(Math.max((C[c0] - B[c0]) / Math.max(.1, 1 - B[c0]), (C[c1] - B[c1]) / Math.max(.1, 1 - B[c1])));
+          if (light < a) { a = light; P[c0] = clamp(C[c0] - (1 - a) * B[c0]); P[c1] = clamp(C[c1] - (1 - a) * B[c1]); P[key] = clamp(C[key] - (1 - a) * B[key]); }
+          // The key channel: the hue of the light where it is opaque, learned for the clip (or,
+          // without a clip profile, for this frame). Only samples showing the light's own key above
+          // the screen count, and a measured hue that is itself nearly the screen's (key >= .9 of
+          // the strongest other channel) is the screen bleeding into the light, not a colour to
+          // reproduce. Where no hue is known and the key sits at the screen's level (sparkles
+          // added on top of the screen, light the mask covers), the mean of the non-key channels
+          // stands in; otherwise the residual key stays.
+          const bins = sequenceHue || hueBins, minimum = sequenceHue ? 40 : hueMinimum;
+          const index = hueIndex(f0, f1), hue = bins[index], level = index % 6, side = index - level;
+          const near = level > 0 && bins[side + level - 1].count > hue.count ? bins[side + level - 1]
+            : level < 5 && bins[side + level + 1].count > hue.count ? bins[side + level + 1] : hue;
+          const chosen = hue.count >= minimum ? hue : near;
+          const additive = C[key] >= B[key] - .03;
+          const measured = chosen.ownMax >= .9 ? chosen.ownRatio / chosen.own : 1;
+          const ratio = chosen.count >= minimum && measured <= .9 ? measured
+            : chosen.count >= minimum || coveredLight || additive ? (f0 + f1) / (2 * fmax) : -1;
+          if (ratio >= 0) P[key] = Math.min(C[key], ratio * Math.max(P[c0], P[c1]));
+        } else if (m < .15 && absorbC > emitC) {
+          // A dark halo or shadow outside the subject: the residual key channel is the screen's
+          // share nobody can measure, and unassociated it painted the halo olive. A shadow is dark
+          // and neutral; the key channel never exceeds the mean of the other two.
+          P[key] = Math.min(P[key], a * (f0 + f1) / 2);
         }
       }
       result.alpha[p] = out[i + 3] = Math.round(clamp(a) * 255);
@@ -983,7 +1066,8 @@
     // Inside the AI subject a cool blue/teal or a dark green-tinted shade is the subject's own colour
     // (a collar, armour, black fur), not glow over the screen: treating it as glow made it
     // semi-transparent and washed out.
-    const subjectCore = normalizeGlow ? subjectOpacity(options.subjectMask, width, height) : null;
+    const subjectCore = subjectOpacity(options.subjectMask, width, height);
+    const kept = subjectCore ? new Uint8Array(width * height) : null;
     if (normalizeGlow) for (let y = 0; y < height; y++) {
       let row = 0;
       for (let x = 0; x < width; x++) {
@@ -1029,7 +1113,7 @@
       // The screen is estimated from opaque border pixels. Suppress only the
       // small compression residual around that screen, retaining faint glow.
       a *= smooth(.004, .025, a);
-      const pr = clamp(r - (1 - a) * br), pg = clamp(g - (1 - a) * bg), pb = clamp(b - (1 - a) * bb);
+      let pr = clamp(r - (1 - a) * br), pg = clamp(g - (1 - a) * bg), pb = clamp(b - (1 - a) * bb);
       if (normalizeGlow) {
         const glowAlpha = Math.max(pr, pg, pb);
         // Light is bright: a dim green-tinted pixel inside the subject is its own shade, while bright
@@ -1045,6 +1129,28 @@
         const blend = Math.max(smooth(0, .08, dominance), cyanGlow) * (1 - solid) * (1 - shadow);
         a = a * (1 - blend) + Math.min(a, glowAlpha) * blend;
       }
+      // The AI mask decides what is subject. Inside its confirmed core a blue-leaning purple, the
+      // cool side of white fur, lilac parchment or a teal collar is the subject's own colour, not
+      // screen mixed in: keying it there turned a purple scroll pink and punched holes into a
+      // panda's face. Only a pixel that is nearly the screen itself (a gap the mask missed) still
+      // keys; a kept pixel keeps its colour, no screen is subtracted from it. With 半透明材质 on,
+      // white/grey material keeps the chroma solution instead, so a sheer veil stays translucent
+      // (it is the same pixel as the shaded side of white fur; only the user can tell them apart).
+      const sheer = options.sheerMaterial ? smooth(.3, .6, Math.min(r, b) / Math.max(r, b, .001)) : 0;
+      const keep = subjectCore ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff)) * (1 - sheer) : 0;
+      if (kept && keep > .5) kept[p] = 1;
+      if (keep > a) {
+        a = keep;
+        pr = clamp(r - (1 - a) * br); pg = clamp(g - (1 - a) * bg); pb = clamp(b - (1 - a) * bb);
+      }
+      // A kept pixel of white/grey material that still leans to the key is screen showing through
+      // or spilling onto it: take that cast out of its colour, the more the stronger the lean.
+      // Coloured material (purple, teal) is not touched, its key channel is its own.
+      if (keep > 0) {
+        const cast = Math.max(0, g - Math.max(r, b));
+        const spill = keep * smooth(.6, .85, Math.min(r, b) / Math.max(r, b, .001)) * smooth(.02, .08, cast / bgDiff);
+        if (spill > 0) pg = clamp(pg - cast * spill);
+      }
       // Unassociation amplifies tiny codec fluctuations into colored specks.
       // Fade only pixels still close to the measured screen in all channels;
       // blue/cyan emission departs from that screen color and stays intact.
@@ -1058,7 +1164,7 @@
       out[i + 1] = Math.round(clamp(pg / a) * 255);
       out[i + 2] = Math.round(clamp(pb / a) * 255);
     }
-    return { width, height, data: out, alpha, screen };
+    return { width, height, data: out, alpha, screen, kept };
   }
 
   function applyBrush(result, overlay, original) {
@@ -1178,7 +1284,7 @@
     const result = await new Promise((resolve,reject) => {
       workerQueue.push({id:++taskSerial, profile, profileId:profile ? profileIds.get(profile) : 0,
         frame:{data:pixels,width:frame.width,height:frame.height},
-        options:{preserveShadow:options.preserveShadow,cleanEdges:!!options.cleanEdges,normalizeGlow:options.normalizeGlow,screen:options.screen,
+        options:{preserveShadow:options.preserveShadow,cleanEdges:!!options.cleanEdges,sheerMaterial:!!options.sheerMaterial,normalizeGlow:options.normalizeGlow,screen:options.screen,
           requireSubjectMask:options.requireSubjectMask,subjectMask:maskData ? {data:maskData,width:mask.width,height:mask.height} : null},
         buffers:maskData ? [pixels.buffer,maskData.buffer] : [pixels.buffer],resolve,reject});
       pumpWorkers();

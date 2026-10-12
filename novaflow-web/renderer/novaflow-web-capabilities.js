@@ -2133,7 +2133,7 @@
   // The model is downloaded once (in parts, like ffmpeg's core) and kept in
   // Cache Storage; the session stays loaded for the next clip.
   const BROWSER_MATTING_MODEL = 'matting/model.bin';
-  const BROWSER_MATTING_VERSION = '1';
+  const BROWSER_MATTING_VERSION = '2';
   const BROWSER_MATTING_SIZE = 1024;
   const vendorUrl = (file) => new URL('vendor/' + file, capabilitiesBase || root.location.href).href;
   let browserMattingSession = null;

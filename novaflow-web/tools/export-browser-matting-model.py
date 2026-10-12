@@ -120,8 +120,15 @@ print(json.dumps({"onnx_vs_torch_max_abs": float(d.max()), "onnx_vs_torch_mean_a
 
 assert d.max() * 255 < 1, "fp32 export differs from PyTorch"
 import onnx
-from onnxruntime.transformers.float16 import convert_float_to_float16
-half = convert_float_to_float16(onnx.load(path), keep_io_types=True)
+from onnxruntime.transformers.float16 import convert_float_to_float16, DEFAULT_OP_BLOCK_LIST
+# ONNX Runtime Web on WebGPU runs fp16 ops in real fp16: reductions over a 1024² map, layer
+# norms, softmax and the divisions around them overflow or hit 1/0 on some frames and the whole
+# mask comes out NaN (2026-10-12: 19 of 39 frames of one clip, deterministic per frame, while the
+# CPU provider was fine). Those ops stay fp32 (casts around them); the convolutions, which hold
+# the weight bytes, stay fp16 so the download size is unchanged.
+WEBGPU_FP32_OPS = ["ReduceMean", "ReduceSum", "GlobalAveragePool", "AveragePool", "Softmax", "InstanceNormalization",
+                   "LayerNormalization", "Pow", "Sqrt", "Div", "Exp", "Reciprocal"]
+half = convert_float_to_float16(onnx.load(path), keep_io_types=True, op_block_list=list(dict.fromkeys(list(DEFAULT_OP_BLOCK_LIST) + WEBGPU_FP32_OPS)))
 half_path = os.path.join(out_dir, "model.bin")
 onnx.save(half, half_path)
 session16 = ort.InferenceSession(half_path, providers=["CPUExecutionProvider"])
