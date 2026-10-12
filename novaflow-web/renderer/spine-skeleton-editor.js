@@ -8116,7 +8116,7 @@ self.onmessage = (e) => {
     // the stage keeps its grid cell and leaves the bottom of it free
     const v = Math.max(0, Math.round(px || 0))
     // a promised fold (动画工具 opening): the reserve waits for the frame the box shows in
-    if (v && state.compactPending && !state.compactTimeline) { state.reservePending = v; return }
+    // (the dopesheet no longer folds under the tools, so a promised fold never delays the reserve)
     state.reservePending = 0
     const st = $('#stage')
     if (st.style.marginBottom !== v + 'px') { st.style.marginBottom = v ? v + 'px' : ''; layoutFloats() }
@@ -8220,7 +8220,9 @@ self.onmessage = (e) => {
       const tl = $('.timeline-wrap')
       const r = tl && !tl.closest('[hidden]') && getComputedStyle(tl).display !== 'none' ? tl.getBoundingClientRect() : null
       // a promised fold: the row it will become (42 px at the bottom of the centre column)
-      if (state.compactPending && !state.compactTimeline) { const c = $('.center').getBoundingClientRect(); return { left: c.left, top: c.bottom - 42, width: c.width, height: 42 } }
+      // always the real timeline: the promised one-row bar made the host's anchor sit at the bottom
+      // until the tool's box showed, so the box was drawn low for a frame and then jumped up
+      // (user 2026-10-12: 展开飘带必闪)
       if (r && r.height) return { left: r.left, top: r.top, width: r.width, height: r.height }
       const st = $('#stage').getBoundingClientRect()
       return { left: st.left, top: st.bottom, width: st.width, height: 0 }

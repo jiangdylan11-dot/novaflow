@@ -65,7 +65,7 @@
   new MutationObserver(()=>{if(!labelFit)labelFit=requestAnimationFrame(fitLabelColumn);}).observe(body,{childList:true,subtree:true});
   // outside the editor box, which clips: the preset preview opens above the header
   curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
-  let ribbon=false,ribbonPrepared=false,ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,ribbonLiveRect=null,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
+  let ribbon=false,ribbonPrepared=false,ribbonBarKey='',ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,ribbonLiveRect=null,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
@@ -173,7 +173,12 @@
         const content=bridge.ribbonContentHeight?.()||0;
         // the docked panel still laying out (its height keeps changing for a few frames): measure
         // every frame and show the box only once two frames in a row agree, at that height
-        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;revealRibbon();if(stylesReady){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);
+        // the bar the box sits on must hold still too: the host's anchor over the editor's timeline
+        // trails the dopesheet unfolding by a frame, and a reveal on that frame drew the box low
+        // and a frame later high (user 2026-10-12: 展开飘带必闪)
+        const barKey=Math.round(r.top)+','+Math.round(r.height)+','+Math.round(r.left)+','+Math.round(r.width);
+        if(fit!==ribbonFitHeight||barKey!==ribbonBarKey){ribbonFitHeight=fit;ribbonBarKey=barKey;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;revealRibbon();if(stylesReady){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
