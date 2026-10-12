@@ -5842,6 +5842,7 @@ self.onmessage = (e) => {
       go.disabled = true; setStatus('')
       const t0 = performance.now()
       try {
+        if (!animOn()) throw new Error('先在工程树里选一个动画（设置模式下不能写入）')
         const Q = { ...P }
         const scheme = schemeOf(Q.scheme)
         const r = await sweepGenerate(px.rgba, px.w, px.h, Q, (i, n) => setStatus(`生成中 ${i}/${n}`))
@@ -5871,11 +5872,14 @@ self.onmessage = (e) => {
         state.frameBone = bone
         state.sweepGen = { base: image, baseSlot: bs ? bs.name : null, bone, blend: Q.blend, wrap: !!scheme.wrap, names: names.slice() }
         state.leftOpen = 'sweep'
+        // straight into the animation (user: one button); the cards keep the slices for a re-write.
+        // A failed write keeps the dialog open with the reason (the toast alone was missed).
+        setStatus('写入动画…')
+        const written = await writeSweep()
+        if (!written) throw new Error(`切片已进「${folder}」并勾在卡片里，但写入动画失败：${$('#toast').textContent || '未知原因'}`)
         close()
         refresh()
-        // straight into the animation (user: one button); the cards keep the slices for a re-write
-        const written = await writeSweep()
-        if (written) status(`已生成 ${names.length} 张扫光切片到「${folder}」并写入动画（${((performance.now() - t0) / 1000).toFixed(1)} s）`, 'ok')
+        status(`已生成 ${names.length} 张扫光切片到「${folder}」并写入动画（${((performance.now() - t0) / 1000).toFixed(1)} s）`, 'ok')
       } catch (e) {
         setStatus(e.message, true)
       } finally { go.disabled = false }
