@@ -3169,7 +3169,7 @@
       if (a instanceof spine.RegionAttachment) {
         if (state.tool === 'shear') return null
         ox = b.a * a.x + b.b * a.y + b.worldX; oy = b.c * a.x + b.d * a.y + b.worldY
-      } else if (a instanceof spine.MeshAttachment) {
+      } else if (a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment) {
         const c = attCentre(slot)
         if (!c) return null
         ox = c[0]; oy = c[1]
@@ -3181,18 +3181,28 @@
     return { o, ow: [ox, oy], ax, x: [o[0] + ax.x[0] * L, o[1] - ax.x[1] * L], y: [o[0] + ax.y[0] * L, o[1] - ax.y[1] * L] }
   }
 
-  /** The picked image's centre in world space: a region's x / y on its bone, a mesh's vertices' centre. */
+  /** The picked vertices of this slot's mesh / clipping (a set of vertex indices), or null for the whole shape. */
+  function pickedVerts(slotName) {
+    const set = state.vsel && state.vsel.slot === slotName ? state.vsel.indices : null
+    return set && set.size ? set : null
+  }
+
+  /** The picked image's centre in world space: a region's x / y on its bone, a mesh's vertices' centre
+   * (with vertices picked, theirs: Spine puts the handles on the selection). */
   function attCentre(slot) {
     const a = slot && slot.getAttachment()
     if (!a) return null
     const b = slot.bone
     if (a instanceof spine.RegionAttachment) return [b.a * a.x + b.b * a.y + b.worldX, b.c * a.x + b.d * a.y + b.worldY]
-    if (a instanceof spine.MeshAttachment) {
-      const w = attachmentWorld(slot)
-      if (!w || !w.v.length) return null
-      let x = 0, y = 0
-      for (let i = 0; i < w.v.length; i += 2) { x += w.v[i]; y += w.v[i + 1] }
-      return [x / (w.v.length / 2), y / (w.v.length / 2)]
+    if (a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment) {
+      const n = a.worldVerticesLength
+      if (!n) return null
+      const v = new Float32Array(n)
+      a.computeWorldVertices(slot, 0, n, v, 0, 2)
+      const only = pickedVerts(slot.data.name)
+      let x = 0, y = 0, c = 0
+      for (let i = 0; i < n; i += 2) { if (only && !only.has(i / 2)) continue; x += v[i]; y += v[i + 1]; c++ }
+      return c ? [x / c, y / c] : null
     }
     return null
   }
@@ -3468,7 +3478,8 @@
   function attDrag(sel, sx, sy) {
     const slot = rt.skeleton.findSlot(sel.slot)
     const att = slot && slot.getAttachment()
-    const region = att instanceof spine.RegionAttachment, mesh = att instanceof spine.MeshAttachment
+    // a clipping is a polygon of vertices: it moves / turns / scales / shears as a whole like a mesh
+    const region = att instanceof spine.RegionAttachment, mesh = att instanceof spine.MeshAttachment || att instanceof spine.ClippingAttachment
     if (!region && !mesh) return null
     // 动画: a mesh moves / turns / scales / shears as a whole too, written as its shape key on this frame
     const animT = mesh && animOn() ? meshRowTarget(sel.slot, sel.name) : null
@@ -3480,15 +3491,9 @@
     if (tool === 'shear' && region) { status('区域图片没有斜切属性（Spine）：转成网格后可以斜切'); return null }
     let centre
     if (region) centre = [B.a * att.x + B.b * att.y + B.worldX, B.c * att.x + B.d * att.y + B.worldY]
-    else {
-      const w = attachmentWorld(slot)
-      let x = 0, y = 0
-      const n = w && w.v.length ? w.v.length / 2 : 0
-      for (let i = 0; i < w.v.length; i += 2) { x += w.v[i]; y += w.v[i + 1] }
-      centre = n ? [x / n, y / n] : [B.worldX, B.worldY]
-    }
+    else centre = attCentre(slot) || [B.worldX, B.worldY]
     return { kind: 'att', sel, att, mesh, B, tool, sx, sy, moved: false, centre,
-      animT, base: animT ? currentOffsets(animT) : null,
+      animT, base: animT ? currentOffsets(animT) : null, only: mesh ? pickedVerts(sel.slot) : null,
       start: region ? { x: att.x, y: att.y, rotation: att.rotation, scaleX: att.scaleX, scaleY: att.scaleY } : { vertices: Array.from(att.vertices) },
       flip: Math.sign(B.a * B.d - B.b * B.c) || 1 }
   }
@@ -3539,7 +3544,7 @@
    * (setup vertices + `base` offsets), entry by entry through each entry's bone. A weighted vertex is
    * an affine mix of its entries, so moving every entry by W moves the vertex by W.
    */
-  function meshOffsetsAfter(T, base, W) {
+  function meshOffsetsAfter(T, base, W, only) {
     const att = T.att, v = att.vertices, bones = rt.skeleton.bones, out = base.slice()
     const through = (bone, x, y) => {
       const wx = bone.a * x + bone.b * y + bone.worldX, wy = bone.c * x + bone.d * y + bone.worldY
@@ -3549,8 +3554,9 @@
     }
     if (att.bones) {
       let e = 0
-      for (let i = 0; i < att.bones.length;) {
+      for (let i = 0, vi = 0; i < att.bones.length; vi++) {
         const n = att.bones[i++]
+        if (only && !only.has(vi)) { i += n; e += n; continue }
         for (let k = 0; k < n; k++, i++, e++) {
           const sx = v[e * 3], sy = v[e * 3 + 1]
           const [x, y] = through(bones[att.bones[i]], sx + base[e * 2], sy + base[e * 2 + 1])
@@ -3559,7 +3565,7 @@
       }
     } else {
       const bone = T.slot.bone
-      for (let i = 0; i < v.length; i += 2) { const [x, y] = through(bone, v[i] + base[i], v[i + 1] + base[i + 1]); out[i] = x - v[i]; out[i + 1] = y - v[i + 1] }
+      for (let i = 0; i < v.length; i += 2) { if (only && !only.has(i / 2)) continue; const [x, y] = through(bone, v[i] + base[i], v[i + 1] + base[i + 1]); out[i] = x - v[i]; out[i + 1] = y - v[i + 1] }
     }
     return out
   }
@@ -3599,16 +3605,21 @@
     if (att.bones) {
       // weighted: vertices = x, y, weight per bone entry; bones = count, index…
       let v = 0
-      for (let i = 0; i < att.bones.length;) {
+      for (let i = 0, vi = 0; i < att.bones.length; vi++) {
         const n = att.bones[i++]
+        const skip = drag.only && !drag.only.has(vi)
         for (let k = 0; k < n; k++, i++, v += 3) {
+          if (skip) { out[v] = src[v]; out[v + 1] = src[v + 1]; continue }
           const [x, y] = through(bones[att.bones[i]], src[v], src[v + 1])
           out[v] = x; out[v + 1] = y
         }
       }
     } else {
       const bone = rt.skeleton.findSlot(drag.sel.slot).bone
-      for (let v = 0; v < src.length; v += 2) { const [x, y] = through(bone, src[v], src[v + 1]); out[v] = x; out[v + 1] = y }
+      for (let v = 0; v < src.length; v += 2) {
+        if (drag.only && !drag.only.has(v / 2)) { out[v] = src[v]; out[v + 1] = src[v + 1]; continue }
+        const [x, y] = through(bone, src[v], src[v + 1]); out[v] = x; out[v + 1] = y
+      }
     }
   }
 
@@ -3616,7 +3627,7 @@
     const [wx, wy] = toWorld(sx, sy)
     const [w0x, w0y] = toWorld(drag.sx, drag.sy)
     const { att, B, start, centre } = drag
-    if (drag.animT) { drag.offsets = meshOffsetsAfter(drag.animT, drag.base, meshDragTransform(drag, wx, wy, w0x, w0y, shift)); applyOffsets(drag.animT, drag.offsets); return }
+    if (drag.animT) { drag.offsets = meshOffsetsAfter(drag.animT, drag.base, meshDragTransform(drag, wx, wy, w0x, w0y, shift), drag.only); applyOffsets(drag.animT, drag.offsets); return }
     if (drag.mesh) { applyMeshTransform(drag, meshDragTransform(drag, wx, wy, w0x, w0y, shift)); syncXformValues(); return }
     if (drag.tool === 'move') {
       const det = B.a * B.d - B.b * B.c || 1
@@ -3649,19 +3660,19 @@
     if (drag.animT) {
       const T = drag.animT, off = drag.offsets
       if (!off || off.every((x, i) => Math.abs(x - drag.base[i]) < 1e-6)) { pose(); return }
-      edit(`第 ${state.frame} 帧：已${verb}网格 ${sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
+      edit(`第 ${state.frame} 帧：已${verb}${shapeWord(att)} ${sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
       return
     }
     if (drag.mesh) {
       const moved = Array.from(att.vertices)
       // the preview changed the runtime mesh only; the JSON (and so undo) starts from the untouched one
-      edit(`已${verb}网格 ${sel.name}`, (j) => {
+      edit(`已${verb}${shapeWord(att)} ${sel.name}`, (j) => {
         const json = Ops.prepare(j)
         let skin = sel.skin, name = sel.name
         let map = (json.skins.find((x) => x.name === skin) || {}).attachments
         let a = map && map[sel.slot] && map[sel.slot][name]
         if (a && a.type === 'linkedmesh') { skin = a.skin || 'default'; name = a.parent; map = (json.skins.find((x) => x.name === skin) || {}).attachments; a = map && map[sel.slot] && map[sel.slot][name] }
-        if (!a || a.type !== 'mesh') throw new Error('找不到网格')
+        if (!a || (a.type !== 'mesh' && a.type !== 'clipping')) throw new Error('找不到网格')
         const r3 = (x) => Math.round(x * 1000) / 1000
         const v = a.vertices
         if (att.bones) {
@@ -3799,10 +3810,13 @@
           if (state.vsel.slot !== MT.slotName) state.vsel = { slot: MT.slotName, indices: new Set() }
           if (e.ctrlKey || e.metaKey) { cur.has(vi) ? state.vsel.indices.delete(vi) : state.vsel.indices.add(vi); return }
           if (!cur.has(vi)) {
+            // 设置: the whole-mesh drag is decided before the press picks the vertex (it moves the whole mesh)
+            state.vsel.indices = new Set()
+            const wholeFirst = state.mode === 'setup' ? attDrag(state.sel, sx, sy) : null
             state.vsel.indices = new Set([vi])
             // 设置: a dense mesh has a vertex under every press - the first drag moves the whole mesh
             // (the vertex gets picked); dragging a picked vertex moves that vertex (user: 图片要能拖动，包括网格)
-            if (state.mode === 'setup') { const whole = attDrag(state.sel, sx, sy); if (whole) { drag = whole; c.setPointerCapture(e.pointerId); return } }
+            if (wholeFirst) { drag = wholeFirst; c.setPointerCapture(e.pointerId); return }
           }
           drag = vertexDrag(MT, sx, sy)
           c.setPointerCapture(e.pointerId)
@@ -3812,7 +3826,14 @@
         // mesh in 设置, as a region does (Spine; the vertices are edited by their handles or 编辑网格)
         if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) {
           const own = hitImage(sx, sy)
-          if (own && own.slot === MT.slotName) {
+          // a clipping has no pixels: inside its polygon is its own area
+          const inClip = MT.att instanceof spine.ClippingAttachment && (() => {
+            const q = clipWorld(MT.slot, MT.att).map(([x, y]) => toScreen(x, y))
+            let inside = false
+            for (let i = 0, j = q.length - 1; i < q.length; j = i++) if ((q[i][1] > sy) !== (q[j][1] > sy) && sx < (q[j][0] - q[i][0]) * (sy - q[i][1]) / (q[j][1] - q[i][1]) + q[i][0]) inside = !inside
+            return inside
+          })()
+          if (inClip || (own && own.slot === MT.slotName)) {
             const whole = attDrag(state.sel, sx, sy)
             if (whole) { drag = whole; c.setPointerCapture(e.pointerId); return }
           }
@@ -4256,7 +4277,7 @@
     applyOffsets(drag.T, off)
   }
 
-  const shapeWord = (att) => (att instanceof spine.ClippingAttachment ? '剪裁' : '网格')
+  const shapeWord = (att) => (att instanceof spine.ClippingAttachment || (att && att.type === 'clipping') ? '剪裁' : '网格')
   const deformKind = (path) => { const a = (((skinOf(path[1]) || {}).attachments || {})[path[2]] || {})[path[3]]; return a && a.type === 'clipping' ? '剪裁' : '网格' }
 
   function finishVertexDrag(drag) {
@@ -6920,13 +6941,13 @@ self.onmessage = (e) => {
       const type = att.type || 'region'
       if (type === 'region') return { kind: 'att', sel: s, att }
       // a mesh moves / turns / scales / shears as a whole, with the same handles at its centre
-      if (type === 'mesh' || type === 'linkedmesh') return { kind: 'att', sel: s, att, mesh: true }
+      if (type === 'mesh' || type === 'linkedmesh' || type === 'clipping') return { kind: 'att', sel: s, att, mesh: true }
     }
     // 动画: the picked mesh (shown in its slot) the same way, written as its shape key
     if (s && s.kind === 'att' && animOn()) {
       const slot = rt.skeleton && rt.skeleton.findSlot(s.slot)
       const shown = slot && slot.getAttachment()
-      const T = shown instanceof spine.MeshAttachment ? meshRowTarget(s.slot, s.name) : null
+      const T = shown instanceof spine.MeshAttachment || shown instanceof spine.ClippingAttachment ? meshRowTarget(s.slot, s.name) : null
       if (T && T.att === shown) return { kind: 'att', sel: s, att: shown, mesh: true, anim: T }
     }
     return null
@@ -7003,14 +7024,14 @@ self.onmessage = (e) => {
       const word = { x: '移动', y: '移动', rotation: '旋转', scaleX: '缩放', scaleY: '缩放', shearX: '斜切', shearY: '斜切' }[k]
       if (t.anim) {
         const T = t.anim
-        const off = meshOffsetsAfter(T, currentOffsets(T), W)
-        edit(`第 ${state.frame} 帧：已${word}网格 ${t.sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
+        const off = meshOffsetsAfter(T, currentOffsets(T), W, pickedVerts(t.sel.slot))
+        edit(`第 ${state.frame} 帧：已${word}${shapeWord(t.att)} ${t.sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
         return
       }
       // 设置: the vertices take it, as a drag of the whole mesh does
       const att = slot.getAttachment()
-      if (!(att instanceof spine.MeshAttachment)) return
-      const drag = { att, sel: t.sel, mesh: true, tool: { x: 'move', y: 'move', rotation: 'rotate', scaleX: 'scale', scaleY: 'scale', shearX: 'shear', shearY: 'shear' }[k], start: { vertices: Array.from(att.vertices) } }
+      if (!(att instanceof spine.MeshAttachment) && !(att instanceof spine.ClippingAttachment)) return
+      const drag = { att, sel: t.sel, mesh: true, tool: { x: 'move', y: 'move', rotation: 'rotate', scaleX: 'scale', scaleY: 'scale', shearX: 'shear', shearY: 'shear' }[k], start: { vertices: Array.from(att.vertices) }, only: pickedVerts(t.sel.slot) }
       applyMeshTransform(drag, W)
       finishAttDrag(drag)
       return
@@ -7110,7 +7131,7 @@ self.onmessage = (e) => {
         h('div', { class: 'xr' }, h('button', { class: 'xt', 'aria-pressed': String(state.jointEdit), html: ICON.joint, disabled: state.mode !== 'setup',
           title: '改关节：用平移 / 姿势拖骨骼的起点或末端，父骨骼跟着转向、子骨骼和图片不动（也可以按住 Shift）',
           onclick: () => { state.jointEdit = !state.jointEdit; renderStage() } }))),
-      h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : t.mesh ? `网格 ${t.sel.name}` : `图片 ${t.sel.name}`) : deformT ? `${shapeWord(deformT.att)} ${state.sel.name}` : '变换'),
+      h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : t.mesh ? `${shapeWord(t.att)} ${t.sel.name}` : `图片 ${t.sel.name}`) : deformT ? `${shapeWord(deformT.att)} ${state.sel.name}` : '变换'),
         h('div', { class: 'xr' }, tool('rotate', 'C', '旋转'), input('rotation', 'wide'), keyBtn('rotate')),
         h('div', { class: 'xr' }, tool('move', 'V', '平移'), input('x'), input('y'), keyBtn('translate')),
         h('div', { class: 'xr' }, tool('scale', 'X', '缩放'), input('scaleX'), input('scaleY'), keyBtn('scale')),
