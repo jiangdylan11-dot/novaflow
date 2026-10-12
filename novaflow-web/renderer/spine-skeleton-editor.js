@@ -108,6 +108,8 @@
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
     seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
     sweepFrames: 0, // 序列扫光: the whole sweep's length in frames (0 = the animation's)
+    sweepParams: null, // 序列扫光 generator: the dialog's last parameters (this session)
+    sweepGen: null, // 序列扫光 generator: the last generated set { base, baseSlot, bone, blend, wrap, names } (写入 places its slots)
     frameBone: 'root', // 序列帧添加 / 序列扫光: the bone the frames' slots hang on (user: root by default)
     meshDensity: 18, // 自动蒙皮 密度 (the production default)
     meshDrag: null,
@@ -324,7 +326,7 @@
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
-    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepFrames = 0
+    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepFrames = 0; state.sweepGen = null
     state.imgOpen = new Set(); imgTree = { key: '', nodes: new Map(), pending: new Set() }
     frameRoot = null; frameRootPending = null; frameThumbs.clear()
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
@@ -1174,6 +1176,8 @@
    */
   function openImagePicker(title, onPick, opts) {
     const multi = !!(opts && opts.multi)
+    const highlight = (opts && opts.highlight) || null   // a picture shown picked on open (the stage's selection)
+    const noFolder = !!(opts && opts.noFolder)             // 序列扫光's 底图: one picture, no folder import
     const close = () => { token++; mask.remove() }
     let stack = [], token = 0
     const crumbs = h('div', { class: 'crumbs' })
@@ -1243,10 +1247,13 @@
       }
       for (const f of list.files) {
         const c = h('canvas', { width: 88, height: 88 })
-        const tile = h('div', { class: 'tile' + (picked.has(f.rel) ? ' picked' : ''), title: f.rel.replace(/\.[^.]+$/, '') }, c, h('span', {}, f.name.replace(/\.[^.]+$/, '')))
+        const name = f.rel.replace(/\.[^.]+$/, '')
+        const hl = !multi && highlight && name === highlight
+        const tile = h('div', { class: 'tile' + (picked.has(f.rel) || hl ? ' picked' : ''), title: name + (hl ? '（画面上选中的）' : '') }, c, h('span', {}, f.name.replace(/\.[^.]+$/, '')))
         tile.onclick = () => pickFile(f, tile)
         body.append(tile)
         thumbOf(f, c)
+        if (hl) setTimeout(() => tile.scrollIntoView({ block: 'nearest' }), 0)
       }
       listed = list.files.slice()
       if (multi) { allBtn.disabled = !list.files.length; allBtn.onclick = () => confirmMulti(list.files.slice()) }
@@ -1286,7 +1293,7 @@
           multi ? addBtn : null,
           multi ? allBtn : null,
           h('button', { class: 'btn small', title: '加新素材：图片导进当前文件夹', onclick: () => importFrom(false) }, '导入图片…'),
-          h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
+          noFolder ? null : h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
           h('button', { class: 'xx', onclick: close }, '×')),
         multi ? h('div', { class: 'hint', style: 'padding:8px 14px 0' }, '点图片勾选（再点取消），或「本文件夹全部」；加进来的图片各成一个插槽，挂在卡片栏选的骨骼上') : null,
         crumbs, body))
@@ -5413,6 +5420,7 @@
       h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
       h('button', { class: 'tg', title: '打开工程的图片文件夹：进子文件夹后「添加所选」或「本文件夹全部」，卡片就换成那些图片；文件夹里没有的图可以用「导入图片 / 导入文件夹」加进来', onclick: () => openImagePicker(title, (names) => { state.frameSet = names.map((n) => ({ name: n })); U.clear(); renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
       state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; U.clear(); renderLayerDock() } }, '根目录') : null,
+      kind === 'sweep' ? h('button', { class: 'tg', title: '选一张底图，自动生成扫光切片（10 种扫光方式）', onclick: openSweepGenerator }, '生成扫光…') : null,
       h('span', { class: 'ld-sep' }),
     ]
     if (kind === 'sequence') {
@@ -5447,7 +5455,8 @@
   function sweepFrames(n) {
     if (state.sweepFrames > 0) return state.sweepFrames
     const f = lastFrame()
-    return f > 0 ? f : ((n || 1) + 1) * 5
+    const wrap = !!(state.sweepGen && state.sweepGen.wrap)
+    return f > 0 ? f : ((n || 1) + (wrap ? 0 : 1)) * 5
   }
 
   /** The slot whose setup attachment shows `image` (the picked skin first, then default). */
@@ -5547,12 +5556,17 @@
     if (!files.length) { status('先在卡片里勾选图片', 'error'); return }
     try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
     const images = files.map((f) => f.name), bone = frameBone()
-    const totalFrames = sweepFrames(images.length), step = totalFrames / FPS / (images.length + 1), anim = state.anim
+    // slices the generator made: above the base slot, blend set, 绕一圈的 first/last joined
+    const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
+    const wrap = !!(gen && gen.wrap)
+    const totalFrames = sweepFrames(images.length), step = totalFrames / FPS / (wrap ? images.length : images.length + 1), anim = state.anim
     const t4 = (t) => Math.round(t * 10000) / 10000
+    const L = SweepLight()
     edit(`序列扫光：${images.length} 张，共 ${totalFrames} 帧，挂在 ${bone}（${anim}）`, (j) => {
       const made = frameSlots(j, images, bone)
       const frames = made.frames
-      const json = Ops.prepare(hangFrames(made.json, frames))
+      let json = Ops.prepare(hangFrames(made.json, frames))
+      if (gen) json = Ops.prepare(placeSweepSlots(json, frames, gen))
       const a = json.animations[anim]
       if (!a) throw new Error(`找不到动画：${anim}`)
       a.slots = a.slots || {}
@@ -5560,14 +5574,328 @@
         const rgb = slotRgb(json, f.slot)
         const row = { ...(a.slots[f.slot] || {}) }
         const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
-        const keys = [at(0, 0)]
-        if (i > 0) keys.push(at(i * step, 0))
-        keys.push(at((i + 1) * step, 1), at((i + 2) * step, 0))
+        let keys
+        if (L && L.sweepAlphaKeys) keys = L.sweepAlphaKeys(i, frames.length, step, wrap).map(([t, alpha]) => at(t, alpha))
+        else { keys = [at(0, 0)]; if (i > 0) keys.push(at(i * step, 0)); keys.push(at((i + 1) * step, 1), at((i + 2) * step, 0)) }
         row.color = keys
         a.slots[f.slot] = row
       })
       return { json: Ops.tidy(json) }
     }, () => gotoFrame(0))
+  }
+
+  // ------------------------------------------------------------------ 序列扫光 生成器（底图 → 扫光切片）
+  //
+  // 点 序列扫光 直接开：第一步是换图的图片格子（选底图），第二步是方案 / 实时小预览 / 参数 /
+  // 挂到骨骼树。生成的切片进图片文件夹 sweep/<底图名>/<方案>/，卡片坞里勾好；写入动画时插槽
+  // 挂到选的骨骼、插到底图插槽的上一层、设叠加模式，绕一圈的方案首尾相接。
+  // 算法在 sweep-light.core.js（页面里加载，Worker 里 importScripts 同一份）。
+
+  const SweepLight = () => window.NovaFlowSweepLight
+  const SWEEP_WORKER_SRC = `
+let current = 0
+self.onmessage = (e) => {
+  const { id, rgba, w, h, params } = e.data || {}
+  if (!rgba) return
+  current = id
+  const L = self.NovaFlowSweepLight
+  const P = { ...L.DEFAULT_PARAMS, ...params }
+  const n = Math.max(2, Math.min(240, Math.round(Number(P.frames) || 12)))
+  let ctx
+  try { ctx = L.analyzeBase(new Uint8ClampedArray(rgba), w, h, P) } catch (err) { self.postMessage({ id, error: String((err && err.message) || err) }); return }
+  const wrap = !!(L.SWEEP_SCHEMES.find((s) => s.id === P.scheme) || {}).wrap
+  const frames = []
+  for (let i = 0; i < n; i++) {
+    if (current !== id) return
+    frames.push(L.renderSweepFrame(ctx, wrap ? i / n : i / (n - 1), P))
+    self.postMessage({ id, progress: i + 1, total: n })
+  }
+  self.postMessage({ id, done: true, w: ctx.W, h: ctx.H, pad: ctx.pad, frames: frames.map((f) => f.data.buffer) }, frames.map((f) => f.data.buffer))
+}`
+  let sweepWorker = null, sweepReq = 0
+  const sweepPending = new Map()
+
+  /** the core's URL as this page loaded it (hash-stamped inside the app) */
+  function sweepCoreUrl() {
+    const tag = [...document.querySelectorAll('script[src]')].find((s) => /(^|\/)sweep-light\.core\.js(\?|$)/.test(s.getAttribute('src') || ''))
+    // the editor runs in a srcdoc iframe (location = about:srcdoc): resolve against the document's base URL
+    return new URL(tag ? tag.getAttribute('src') : './sweep-light.core.js', document.baseURI).href
+  }
+
+  function sweepWorkerInstance() {
+    if (sweepWorker) return sweepWorker
+    const src = `importScripts(${JSON.stringify(sweepCoreUrl())});\n${SWEEP_WORKER_SRC}`
+    sweepWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })))
+    sweepWorker.onmessage = (e) => {
+      const m = e.data, r = sweepPending.get(m.id)
+      if (!r) return
+      if (m.error) { sweepPending.delete(m.id); r.reject(new Error(m.error)); return }
+      if (m.progress) { if (r.onProgress) r.onProgress(m.progress, m.total); return }
+      if (m.done) { sweepPending.delete(m.id); r.resolve({ w: m.w, h: m.h, pad: m.pad, frames: m.frames.map((buf) => new Uint8ClampedArray(buf)) }) }
+    }
+    sweepWorker.onerror = (e) => { for (const [id, r] of sweepPending) { sweepPending.delete(id); r.reject(new Error(e.message || 'Worker 出错')) } }
+    return sweepWorker
+  }
+
+  /** frames out of the worker; a preview request is dropped when a newer one comes */
+  function sweepGenerate(rgba, w, h, params, onProgress, preview) {
+    const id = ++sweepReq
+    for (const [k, v] of sweepPending) if (v.preview) { sweepPending.delete(k); v.reject(new Error('superseded')) }
+    return new Promise((resolve, reject) => {
+      sweepPending.set(id, { resolve, reject, onProgress, preview: !!preview })
+      const copy = new Uint8ClampedArray(rgba)
+      sweepWorkerInstance().postMessage({ id, rgba: copy.buffer, w, h, params }, [copy.buffer])
+    })
+  }
+
+  /** the picture's own pixels at its original size */
+  function basePixels(image) {
+    const region = rt.atlas && rt.atlas.findRegion(image)
+    if (!region) return null
+    const w = region.originalWidth || region.width, h = region.originalHeight || region.height
+    const rgba = regionPixels(region, w, h)
+    return rgba ? { rgba, w, h } : null
+  }
+
+  /** every slot whose setup attachment shows `image` (draw order), with its bone */
+  function slotsShowingAll(json, image) {
+    const skins = [state.skin, 'default'].filter((v, i, a) => v && a.indexOf(v) === i).map((n) => json.skins.find((x) => x.name === n)).filter(Boolean)
+    const out = []
+    json.slots.forEach((sl, index) => {
+      if (!sl.attachment) return
+      for (const sk of skins) {
+        const a = sk.attachments[sl.name] && sk.attachments[sl.name][sl.attachment]
+        if (a && (a.path || sl.attachment) === image) { out.push({ name: sl.name, bone: sl.bone, index }); return }
+      }
+    })
+    return out
+  }
+
+  /** the picture the stage selection shows (插槽 / 图片), to highlight it in the picker */
+  function selectedPicture() {
+    const s = state.sel, j = state.json
+    if (!s || !j) return null
+    const att = (slot, name) => { for (const sk of j.skins) { const a = sk.attachments[slot] && sk.attachments[slot][name]; if (a) return a.path || name } return null }
+    if (s.kind === 'att') return att(s.slot, s.name)
+    if (s.kind === 'slot') { const sl = j.slots.find((x) => x.name === s.name); return sl && sl.attachment ? att(sl.name, sl.attachment) : null }
+    return null
+  }
+
+  function openSweepGenerator() {
+    if (!state.json) return
+    openImagePicker('序列扫光：选底图', (name) => openSweepPanel(name), { highlight: selectedPicture(), noFolder: true })
+  }
+
+  /**
+   * Where the slices go: folder sweep/<底图名>/<方案>, files <底图名>_<方案>_01.png … (the slot names);
+   * a second run of the same scheme gets a number on the scheme.
+   */
+  function sweepFolderFor(image, scheme) {
+    const stem = image.split('/').pop()
+    const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
+    let k = 1
+    while (taken(`sweep/${stem}/${scheme}${k > 1 ? k : ''}/${stem}_${scheme}${k > 1 ? k : ''}_01`)) k++
+    const tag = scheme + (k > 1 ? k : '')
+    return { folder: `sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
+  }
+
+  const SWEEP_PARAM_DEFS = [
+    { key: 'angle', label: '角度', min: -180, max: 180, step: 1 },
+    { key: 'width', label: '宽度', min: 0.4, max: 2.5, step: 0.05 },
+    { key: 'intensity', label: '强度', min: 0.2, max: 2, step: 0.05 },
+    { key: 'glow', label: '光晕', min: 0.3, max: 2.5, step: 0.05 },
+    { key: 'rayLength', label: '放射长度', min: 0.3, max: 2.5, step: 0.05, only: 'rays' },
+  ]
+  const SWEEP_BLEND_OP = { add: 'lighter', screen: 'screen', normal: 'source-over' }
+
+  /** 第二步：方案 / 预览 / 参数 / 挂到骨骼树 → 生成 */
+  function openSweepPanel(image) {
+    const L = SweepLight()
+    if (!L) { status('扫光生成器没有加载（sweep-light.core.js）', 'error'); return }
+    const px = basePixels(image)
+    if (!px) { status(`读不到图片「${image}」的像素`, 'error'); return }
+    const schemeOf = (id) => L.SWEEP_SCHEMES.find((s) => s.id === id) || L.SWEEP_SCHEMES[0]
+    if (!state.sweepParams) { state.sweepParams = { ...L.DEFAULT_PARAMS }; state.sweepParams.frames = schemeOf(state.sweepParams.scheme).frames || state.sweepParams.frames }
+    const P = state.sweepParams
+    const bind = { bone: '', slot: '' }
+    const stem = image.split('/').pop()
+    let preview = null, timer = 0, previewTimer = 0, previewBusy = false, previewAgain = false, clock = 0, last = performance.now()
+
+    const close = () => { clearInterval(timer); clearTimeout(previewTimer); preview = null; mask.remove() }
+    const showing = () => slotsShowingAll(state.json, image)
+    const baseSlot = () => { const list = showing(); if (!list.length) return null; return list.find((s) => s.name === bind.slot) || list.find((s) => state.sel && (state.sel.name === s.name || state.sel.slot === s.name)) || list[list.length - 1] }
+
+    // preview: a small copy of the picture, 10 frames, replayed like 写入动画
+    const pvCanvas = h('canvas', { width: 2, height: 2 }), pvTag = h('span', { class: 'tag' }), pvBar = h('i')
+    const pv = h('div', { class: 'sw-pv' }, pvCanvas, pvTag, h('span', { class: 'note' }, '预览是缩小版，生成按原图尺寸'), h('div', { class: 'bar' }, pvBar))
+    const drawPreview = () => {
+      if (!preview) return
+      const g = pvCanvas.getContext('2d'), n = preview.frames.length, wrap = preview.wrap
+      const total = ((wrap ? n : n + 1) * 5) / FPS, step = total / (wrap ? n : n + 1), t = clock % total
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1
+      g.clearRect(0, 0, pvCanvas.width, pvCanvas.height)
+      if (preview.blend !== 'normal') g.drawImage(preview.base, preview.pad, preview.pad)
+      g.globalCompositeOperation = SWEEP_BLEND_OP[preview.blend] || 'lighter'
+      preview.frames.forEach((f, i) => { const a = L.sweepAlphaAt(i, n, t, step, wrap); if (a > 0.002) { g.globalAlpha = a; g.drawImage(f, 0, 0) } })
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'
+    }
+    timer = setInterval(() => { const now = performance.now(); clock += (now - last) / 1000; last = now; drawPreview() }, 1000 / 60)
+    const toCanvas = (rgba, w, hh) => { const c = h('canvas', { width: w, height: hh }); c.getContext('2d').putImageData(new ImageData(rgba, w, hh), 0, 0); return c }
+    const schedulePreview = () => { clearTimeout(previewTimer); previewTimer = setTimeout(runPreview, 220) }
+    async function runPreview() {
+      if (!document.body.contains(mask)) return
+      if (previewBusy) { previewAgain = true; return }
+      previewBusy = true
+      try {
+        const s = Math.min(1, 300 / Math.max(px.w, px.h))
+        const w = Math.max(2, Math.round(px.w * s)), hh = Math.max(2, Math.round(px.h * s))
+        const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(px.rgba, px.w, px.h), 0, 0)
+        const small = h('canvas', { width: w, height: hh }); small.getContext('2d').drawImage(full, 0, 0, w, hh)
+        const data = small.getContext('2d').getImageData(0, 0, w, hh).data
+        const Q = { ...P, frames: 10, pad: P.pad ? Math.round(P.pad * s) : 0 }
+        pvTag.textContent = `${schemeOf(P.scheme).label} · 预览中…`
+        const r = await sweepGenerate(data, w, hh, Q, (i, n) => { pvBar.style.width = `${(i / n) * 100}%` }, true)
+        if (!document.body.contains(mask)) return
+        pvCanvas.width = r.w; pvCanvas.height = r.h
+        preview = { base: small, pad: r.pad, blend: P.blend, wrap: !!schemeOf(P.scheme).wrap, frames: r.frames.map((d) => toCanvas(d, r.w, r.h)) }
+        pvTag.textContent = `${schemeOf(P.scheme).label} · ${(L.BLEND_MODES.find((b) => b.id === P.blend) || {}).label || ''}`
+        pvBar.style.width = '0'
+      } catch (e) {
+        if (String(e.message) !== 'superseded') setStatus(e.message, true)
+      } finally {
+        previewBusy = false
+        if (previewAgain) { previewAgain = false; runPreview() }
+      }
+    }
+
+    // left: the schemes
+    const types = h('div', { class: 'sw-types' })
+    const buildTypes = () => {
+      types.textContent = ''
+      let g = null
+      for (const s of L.SWEEP_SCHEMES) {
+        if (s.group !== g) { g = s.group; types.append(h('div', { class: 'g' }, g)) }
+        types.append(h('button', { class: 'ty', title: s.hint, 'aria-pressed': String(s.id === P.scheme), onclick: () => {
+          P.scheme = s.id
+          if (s.colorMode) { P.colorMode = s.colorMode; P.color = s.color }
+          P.frames = s.frames || L.DEFAULT_PARAMS.frames
+          buildTypes(); buildParams(); schedulePreview()
+        } }, s.label))
+      }
+    }
+
+    // right: the parameters
+    const params = h('div', { class: 'sw-params' })
+    const seg = (options, value, onPick) => h('div', { class: 'sw-seg' }, options.map((o) => h('button', { 'aria-pressed': String(o.id === value), onclick: () => { onPick(o.id); buildParams(); schedulePreview() } }, o.label)))
+    const row = (label, ...ctl) => { const r = h('div', { class: 'sw-p' }, h('label', {}, label), ...ctl); params.append(r); return r }
+    const buildParams = () => {
+      params.textContent = ''
+      for (const d of SWEEP_PARAM_DEFS) {
+        if (d.only && d.only !== P.scheme) continue
+        const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: P[d.key] })
+        const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: P[d.key] })
+        range.oninput = () => { P[d.key] = Number(range.value); num.value = range.value; if (d.key === 'width') buildParams(); schedulePreview() }
+        num.onchange = () => { P[d.key] = Math.max(d.min, Math.min(d.max, Number(num.value) || d.min)); range.value = P[d.key]; num.value = P[d.key]; buildParams(); schedulePreview() }
+        const r = row(d.label, range, num)
+        if (d.key === 'angle') { r.append(h('div', { class: 'sw-tip' }, schemeOf(P.scheme).radial ? '径向类：起始位置' : '光带的前进方向')) }
+      }
+      const colorRow = h('div', { class: 'sw-seg' })
+      colorRow.append(...seg([{ id: 'base', label: '底图色' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], P.colorMode, (v) => { P.colorMode = v }).children)
+      if (P.colorMode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(P.color) ? P.color : '#ffffff' }); c.oninput = () => { P.color = c.value; schedulePreview() }; colorRow.append(c) }
+      row('光色', colorRow)
+      row('叠加模式', seg(L.BLEND_MODES, P.blend, (v) => { P.blend = v }))
+      const ew = L.effectiveWidth(P)
+      const fn = h('input', { type: 'number', min: 2, max: 120, step: 1, value: P.frames })
+      fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
+      const widened = ew.floor > 1.1 * Math.max(0.2, Number(P.width) || 1)   // a few percent of widening is not worth a warning
+      row('帧数', h('span', { class: 'sw-tip', style: widened ? 'color:#e0b45a' : '' }, widened ? `少于 ${L.minFrames(P)} 帧会一步一闪：光带已自动加宽到 ${ew.floor.toFixed(2)}` : '生成多少张切片；多一些扫得更顺'), fn)
+      const pn = h('input', { type: 'number', min: 0, max: 400, step: 1, value: P.pad })
+      pn.onchange = () => { P.pad = Math.max(0, Math.min(400, Math.round(Number(pn.value) || 0))); pn.value = P.pad; schedulePreview() }
+      row('边距', h('span', { class: 'sw-tip' }, '切片四周留给光晕的像素，0 = 自动'), pn)
+      // 挂到骨骼树
+      params.append(h('div', { class: 'sw-sep' }))
+      const list = showing(), bs = baseSlot()
+      if (list.length > 1) {
+        const sSel = h('select', { onchange: (e) => { bind.slot = e.target.value; buildParams() } },
+          list.map((s) => h('option', { value: s.name, selected: bs && s.name === bs.name, title: `骨骼 ${s.bone} · 第 ${s.index + 1} 层` }, s.name)))
+        row('底图插槽', sSel)
+        params.append(h('div', { class: 'sw-wide' }, `这张图放了 ${list.length} 处，选哪一处当底图`))
+      }
+      const baseBone = bs ? bs.bone : 'root'
+      const bones = state.json.bones.map((b) => b.name)
+      const boneSel = h('select', { onchange: (e) => { bind.bone = e.target.value } },
+        h('option', { value: '', selected: !bind.bone }, bs ? `${baseBone}（底图所在）` : (bones.includes('root') ? 'root' : bones[0] || '')),
+        bones.filter((b) => b !== baseBone && (bs || b !== 'root')).map((b) => h('option', { value: b, selected: bind.bone === b }, b)))
+      row('骨骼', boneSel)
+      if (!bs) params.append(h('div', { class: 'sw-wide warn' }, '这张图还没放进骨骼：切片会挂到 root、画在最上层。'))
+      params.append(h('div', { class: 'sw-wide' }, '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，叠加模式一并设到插槽上。'))
+    }
+
+    const st = h('span', { class: 'st' })
+    const setStatus = (msg, err) => { st.textContent = msg || ''; st.classList.toggle('err', !!err) }
+    const go = h('button', { class: 'btn primary', onclick: () => generate() }, '生成')
+    async function generate() {
+      go.disabled = true; setStatus('')
+      const t0 = performance.now()
+      try {
+        const Q = { ...P }
+        const scheme = schemeOf(Q.scheme)
+        const r = await sweepGenerate(px.rgba, px.w, px.h, Q, (i, n) => setStatus(`生成中 ${i}/${n}`))
+        if (!document.body.contains(mask)) return
+        setStatus('写入图片文件夹…')
+        const { folder, prefix } = sweepFolderFor(image, scheme.id)
+        const files = []
+        for (let i = 0; i < r.frames.length; i++) {
+          const c = toCanvas(r.frames[i], r.w, r.h)
+          const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
+          files.push(new File([blob], `${prefix}_${String(i + 1).padStart(2, '0')}.png`, { type: 'image/png' }))
+        }
+        const bs = baseSlot()
+        const bone = bind.bone || (bs ? bs.bone : (state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name))
+        const before = snapshot()
+        let names
+        try {
+          names = await importIntoFolder(files, folder)
+          ensureAtlas()
+          applyJson(state.json)
+          state.history.push(before)
+          state.future = []
+        } catch (e) { restore(before); throw new Error('切片进图片文件夹失败：' + e.message) }
+        // the cards: the slices, all ticked; 写入动画 then hangs them on the bone above the base
+        state.frameSet = names.map((n) => ({ name: n }))
+        frameUnticked('sweep').clear()
+        state.frameBone = bone
+        state.sweepGen = { base: image, baseSlot: bs ? bs.name : null, bone, blend: Q.blend, wrap: !!scheme.wrap, names: names.slice() }
+        state.leftOpen = 'sweep'
+        close()
+        refresh()
+        status(`已生成 ${names.length} 张扫光切片到「${folder}」（${((performance.now() - t0) / 1000).toFixed(1)} s），卡片里已勾选：点「写入动画」`, 'ok')
+      } catch (e) {
+        setStatus(e.message, true)
+      } finally { go.disabled = false }
+    }
+
+    const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
+      h('div', { class: 'dialog sw' },
+        h('div', { class: 'hd' }, h('b', {}, `序列扫光 · ${stem}`),
+          h('button', { class: 'btn small', title: '回到图片格子换一张底图', onclick: () => { close(); openSweepGenerator() } }, '换底图'),
+          h('button', { class: 'xx', onclick: close }, '×')),
+        h('div', { class: 'sw-body' }, types, h('div', { class: 'sw-right' }, pv, params)),
+        h('div', { class: 'sw-ft' }, st, go)))
+    document.body.append(mask)
+    buildTypes(); buildParams(); schedulePreview()
+  }
+
+  /** the generated slices' slots: drawn right above the base slot (or last), the blend set */
+  function placeSweepSlots(json, frames, gen) {
+    const blend = gen.blend === 'add' ? 'additive' : gen.blend === 'screen' ? 'screen' : 'normal'
+    const mine = new Set(frames.map((f) => f.slot))
+    const rest = json.slots.map((s) => s.name).filter((n) => !mine.has(n))
+    const at = gen.baseSlot ? rest.indexOf(gen.baseSlot) : -1
+    const order = at >= 0 ? [...rest.slice(0, at + 1), ...frames.map((f) => f.slot), ...rest.slice(at + 1)] : [...rest, ...frames.map((f) => f.slot)]
+    let r = Ops.reorderSlots(json, order)
+    for (const f of frames) r = Ops.setSlotProps(r.json, f.slot, { blend })
+    return r.json
   }
 
   // ---------- 骨骼
@@ -7499,7 +7827,10 @@
     } else if (kind === 'sequence' || kind === 'sweep') {
       // 序列帧添加 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
       if (open) {
+        const fresh = state.leftOpen !== kind
         state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind
+        // 序列扫光: straight into the generator (底图 → 切片); its × leaves the cards for hand-made sets
+        if (kind === 'sweep' && fresh && !document.querySelector('.mask .dialog.sw')) setTimeout(openSweepGenerator, 0)
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }
@@ -7581,6 +7912,9 @@
     setPanel,
     /** which left panel / layer-card tool is open (null = none) */
     panel: () => state.leftOpen,
+    /** 序列扫光 generator: the picker (底图), then the scheme / parameter panel */
+    openSweepGenerator,
+    openSweepPanel,
     density: () => state.meshDensity,
     setDensity: (v) => { state.meshDensity = Math.max(2, Math.min(40, Math.round(Number(v) || 18))) },
     /** the batch tools of 蒙皮 / 权重 on the ticked layer cards (status shows the result) */
