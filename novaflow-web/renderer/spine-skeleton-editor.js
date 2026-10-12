@@ -5487,7 +5487,7 @@
    * Each picture → its slot and the attachment to show: the slot already showing it, else a new
    * slot (named after the picture) on 骨骼 with a region of the picture's size, centred on the bone.
    */
-  function frameSlots(json, images, bone) {
+  function frameSlots(json, images, bone, place) {
     const out = []
     for (const image of images) {
       const existing = slotShowing(json, image)
@@ -5495,10 +5495,70 @@
       const slotName = uniqueSlotName(json, image.split('/').pop())
       let r = Ops.addSlot(json, bone, slotName); json = r.json
       const size = regionSize(image) || { width: 1, height: 1 }
-      r = Ops.addRegionAttachment(json, 'default', slotName, { name: slotName, path: image, width: size.width, height: size.height }); json = r.json
+      // `place`: the base picture's placement in this bone (生成的切片 sit exactly on the base)
+      r = Ops.addRegionAttachment(json, 'default', slotName, { name: slotName, path: image, width: size.width, height: size.height, ...(place ? { x: place.x, y: place.y, rotation: place.rotation } : {}) }); json = r.json
+      if (place) {
+        const att = json.skins.find((x) => x.name === 'default').attachments[slotName][r.attachment || slotName]
+        if (att && Math.abs(place.scaleX - 1) > 1e-4) att.scaleX = Math.round(place.scaleX * 10000) / 10000
+        if (att && Math.abs(place.scaleY - 1) > 1e-4) att.scaleY = Math.round(place.scaleY * 10000) / 10000
+      }
       out.push({ slot: slotName, name: slotName })
     }
     return { json, frames: out }
+  }
+
+  /**
+   * Where the base picture sits in its slot's bone (the slices copy it; their centre is the picture's
+   * centre): a region → its x / y / rotation / scale; a mesh → its vertices' bounds (in the bone for an
+   * unweighted mesh, in the world — kept upright — for a weighted one), scale = bounds / picture size.
+   */
+  function baseAttachmentPlacement(json, slotName) {
+    const sl = json.slots.find((x) => x.name === slotName)
+    if (!sl || !sl.attachment) return null
+    const skins = [state.skin, 'default'].filter((v, i, a) => v && a.indexOf(v) === i).map((n) => json.skins.find((x) => x.name === n)).filter(Boolean)
+    let att = null
+    for (const sk of skins) { const a = sk.attachments[sl.name] && sk.attachments[sl.name][sl.attachment]; if (a) { att = a; break } }
+    if (!att) return null
+    const type = att.type || 'region'
+    if (type === 'region') return { x: att.x || 0, y: att.y || 0, rotation: att.rotation || 0, scaleX: att.scaleX == null ? 1 : att.scaleX, scaleY: att.scaleY == null ? 1 : att.scaleY }
+    if (type !== 'mesh' && type !== 'linkedmesh') return null
+    let mesh = att
+    if (type === 'linkedmesh') {
+      mesh = null
+      for (const sk of json.skins) for (const atts of Object.values(sk.attachments)) { const p = atts[att.parent]; if (p && p.type === 'mesh') { mesh = p; break } }
+      if (!mesh) return null
+    }
+    const w = att.width || mesh.width || 1, hh = att.height || mesh.height || 1
+    const m = setupMatrices(), mt = m[sl.bone]
+    const v = mesh.vertices || []
+    if (!mt || !v.length) return null
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+    const take = (x, y) => { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
+    // the hull covers only part of the picture (its UV box): picture size / centre come from that box
+    const uv = mesh.uvs || []
+    let u0 = 1, u1 = 0, v0 = 1, v1 = 0
+    for (let i = 0; i + 1 < uv.length; i += 2) { if (uv[i] < u0) u0 = uv[i]; if (uv[i] > u1) u1 = uv[i]; if (uv[i + 1] < v0) v0 = uv[i + 1]; if (uv[i + 1] > v1) v1 = uv[i + 1] }
+    if (!(u1 > u0) || !(v1 > v0)) { u0 = 0; u1 = 1; v0 = 0; v1 = 1 }
+    const fit = () => {   // scale so the hull's bounds match its UV box; centre of the whole picture (v runs down)
+      const sx = (x1 - x0) / ((u1 - u0) * w), sy = (y1 - y0) / ((v1 - v0) * hh)
+      return { cx: (x0 + x1) / 2 + (0.5 - (u0 + u1) / 2) * w * sx, cy: (y0 + y1) / 2 - (0.5 - (v0 + v1) / 2) * hh * sy, sx, sy }
+    }
+    if (!Ops.isWeighted(mesh)) {
+      for (let i = 0; i + 1 < v.length; i += 2) take(v[i], v[i + 1])
+      const f = fit()
+      return { x: f.cx, y: f.cy, rotation: 0, scaleX: f.sx, scaleY: f.sy }
+    }
+    let i = 0
+    while (i < v.length) {
+      const n = v[i++]
+      let x = 0, y = 0
+      for (let k = 0; k < n; k++) { const b = json.bones[v[i]], bm = b && m[b.name]; if (bm) { const p = Ops.toWorld(bm, v[i + 1], v[i + 2]); x += p[0] * v[i + 3]; y += p[1] * v[i + 3] } i += 4 }
+      take(x, y)
+    }
+    const f = fit()
+    const c = Ops.toLocal(mt, f.cx, f.cy)
+    const bsx = Math.hypot(mt.a, mt.c) || 1, bsy = Math.hypot(mt.b, mt.d) || 1
+    return { x: c[0], y: c[1], rotation: -Math.atan2(mt.c, mt.a) * DEG, scaleX: f.sx / bsx, scaleY: f.sy / bsy }
   }
 
   /** The frames' slots move to 骨骼 (setup placement kept) before the keys go in. */
@@ -5562,7 +5622,11 @@
     const t4 = (t) => Math.round(t * 10000) / 10000
     const L = SweepLight()
     return edit(`序列扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
-      const made = frameSlots(j, images, bone)
+      // generated slices: created on the base slot's bone with the base picture's placement, then
+      // hangFrames moves them to the chosen bone (placement kept)
+      const baseSlotObj = gen && gen.baseSlot ? j.slots.find((x) => x.name === gen.baseSlot) : null
+      const place = baseSlotObj ? baseAttachmentPlacement(j, gen.baseSlot) : null
+      const made = frameSlots(j, images, place ? baseSlotObj.bone : bone, place)
       const frames = made.frames
       let json = Ops.prepare(hangFrames(made.json, frames))
       if (gen) json = Ops.prepare(placeSweepSlots(json, frames, gen))
