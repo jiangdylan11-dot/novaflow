@@ -289,9 +289,9 @@
     if (!Attach || !bridge || !cache) throw new Error('导入桥接不可用')
     const list = Array.from(files || [])
     const jsonFiles = list.filter((f) => /\.json$/i.test(f.name))
-    const imageFiles = list.filter((f) => /\.(png|jpe?g)$/i.test(f.name))
+    const imageFiles = list.filter((f) => /\.(png|jpe?g|webp)$/i.test(f.name))
     if (!jsonFiles.length) throw new Error('这个文件夹里没有 JSON')
-    if (!imageFiles.length) throw new Error('这个文件夹里没有 PNG/JPG 贴图')
+    if (!imageFiles.length) throw new Error('这个文件夹里没有 PNG/JPG/WEBP 贴图')
     // the skeleton sits at the top of the export; prefer the shallowest json
     jsonFiles.sort((a, b) => (a.webkitRelativePath || a.name).split('/').length
                            - (b.webkitRelativePath || b.name).split('/').length)

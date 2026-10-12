@@ -2763,18 +2763,18 @@
     return { canceled: false, fileName: files[0].name, text: await readText(files[0]) };
   };
   api.openSpineImage = async () => {
-    const files = await pickFiles('image/png,.png,image/jpeg,.jpg,.jpeg', true);
+    const files = await pickFiles('image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp', true);
     if (!files) return { canceled: true };
     const images = await Promise.all(files.map(async (file) => ({ fileName: file.name, dataUrl: await readDataUrl(file) })));
     return { canceled: false, fileName: images[0].fileName, dataUrl: images[0].dataUrl, images };
   };
   api.openSpineProject = async () => {
-    const files = await pickFiles('.json,.skel,.atlas,image/png,.png,image/jpeg,.jpg,.jpeg', true);
+    const files = await pickFiles('.json,.skel,.atlas,image/png,.png,image/jpeg,.jpg,.jpeg,image/webp,.webp', true);
     if (!files) return { canceled: true };
     try {
       const skeletons = files.filter((file) => /\.(json|skel)$/i.test(file.name));
       const atlases = files.filter((file) => /\.atlas$/i.test(file.name));
-      const images = files.filter((file) => /\.(png|jpe?g)$/i.test(file.name));
+      const images = files.filter((file) => /\.(png|jpe?g|webp)$/i.test(file.name));
       if (skeletons.length !== 1) throw new Error('请选择 1 个 Skeleton（.json 或 .skel），当前 ' + skeletons.length + ' 个');
       const skeleton = await readSpineSkeleton(skeletons[0]);
       return {

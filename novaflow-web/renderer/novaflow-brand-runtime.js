@@ -45515,7 +45515,7 @@
   const SPINE_INLINE_IMPORT_ROWS = [
     { kind: "json", label: "JSON", nextLabel: "ATLAS" },
     { kind: "atlas", label: "ATLAS", nextLabel: "PNG/JPG", displayLabel: "ATLAS \u56fe\u96c6" },
-    { kind: "image", label: "PNG/JPG", nextLabel: "\u5f00\u59cb\u5bfc\u5165", displayLabel: "PNG/JPG \u8d34\u56fe" }
+    { kind: "image", label: "PNG/JPG", nextLabel: "\u5f00\u59cb\u5bfc\u5165", displayLabel: "PNG/JPG/WEBP \u8d34\u56fe" }
   ];
   const LEGACY_BONE_SPLIT_PANEL_MARKERS = [
     "\u62c6\u56fe\u7f16\u8f91",
@@ -68555,7 +68555,7 @@
         const input = document.createElement("input");
         input.type = "file";
         input.multiple = true;
-        input.accept = ".png,.jpg,.jpeg";
+        input.accept = ".png,.jpg,.jpeg,.webp";
         input.style.position = "fixed";
         input.style.left = "-9999px";
         input.style.top = "-9999px";
@@ -68621,7 +68621,7 @@
           images
         };
       } catch (error) {
-        window.alert?.(`PNG/JPG \u8d34\u56fe\u8bfb\u53d6\u5931\u8d25\uff1a${String(error?.message || error || "\u672a\u77e5\u9519\u8bef")}`);
+        window.alert?.(`PNG/JPG/WEBP \u8d34\u56fe\u8bfb\u53d6\u5931\u8d25\uff1a${String(error?.message || error || "\u672a\u77e5\u9519\u8bef")}`);
         return { canceled: true };
       }
     };

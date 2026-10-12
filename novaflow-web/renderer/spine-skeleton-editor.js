@@ -4694,7 +4694,7 @@
       panel('导入工程', 'import', [
         pickRow('JSON', f.json && f.json.name, '#pickJson'),
         pickRow('ATLAS 图集', f.atlas && f.atlas.name, '#pickAtlas'),
-        pickRow('PNG/JPG 贴图', imgs, '#pickPng'),
+        pickRow('PNG/JPG/WEBP 贴图', imgs, '#pickPng'),
         h('div', { class: 'btns' }, btn('清空', () => { state.importFiles = { json: null, atlas: null, images: [] }; renderLeft() }, { full: true })),
         h('div', { class: 'btns' }, btn('开始导入', () => run(() => loadFiles([f.json, f.atlas, ...f.images].filter(Boolean))), { full: true, disabled: !f.json })),
         h('div', { class: 'btns' }, btn('导入PS工程', () => { $('#fileDir').value = ''; $('#fileDir').click() }, { full: true })),
