@@ -5438,7 +5438,7 @@
         h('button', { class: 'ld-go', title: '勾一张图作底图：弹框选扫光方式，写入动画时生成切片并写入；勾的是自己准备的序列图（多张）：直接写入', onclick: openSweepGenerator }, '生成扫光'))
     }
     dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }),
-      h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftOpen = null; renderLeft(); renderLayerDock(); renderStage(); layoutFloats() } }, '×')))
+      h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = kind; state.leftOpen = null; renderLeft(); refresh() } }, '×')))
     const grid = h('div', { class: 'ld-grid' })
     let order = 0
     for (const f of files) {
@@ -7831,7 +7831,8 @@ self.onmessage = (e) => {
     if (bone !== hostSeen.bone) { hostSeen.bone = bone; send('select', { bone }) }
     if (state.anim !== hostSeen.anim) { hostSeen.anim = state.anim; send('anim', { anim: state.anim }) }
     if (state.mode !== hostSeen.mode) { hostSeen.mode = state.mode; send('mode', { mode: state.mode }) }
-    if (state.leftOpen !== hostSeen.panel) { hostSeen.panel = state.leftOpen; send('panel', { panel: state.leftOpen }) }
+    // `closed`: the cards' × (the host folds 动画工具 for 序列帧添加 / 序列扫光); a tool switch closes them without it
+    if (state.leftOpen !== hostSeen.panel) { hostSeen.panel = state.leftOpen; const closed = state.leftClosedByUser || null; state.leftClosedByUser = null; send('panel', { panel: state.leftOpen, closed }) }
   }
 
   // an outside change (the 动画工具 previews) — consecutive ones with the same label share one undo step
@@ -7912,6 +7913,10 @@ self.onmessage = (e) => {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }
         }
+        // the frame tools are 动画工具 too: their timeline is the folded row right away (the other
+        // tools fold it when their editor box shows; with no box the fold never came, so the sheet
+        // looked different before and after a calculation tool had been used)
+        applyCompactTimeline()
       } else if (state.leftOpen === kind) state.leftOpen = null
     } else if (kind === 'frames') {
       // a calculation tool picked: 序列帧添加 / 序列扫光's cards go
@@ -7932,6 +7937,15 @@ self.onmessage = (e) => {
       }
     }
     refresh()
+  }
+
+  /** The timeline folded to its one row (动画工具): applied now, not promised. */
+  function applyCompactTimeline() {
+    if (state.compactTimeline) { state.compactPending = false; return }
+    state.compactPending = false; state.compactTimeline = true
+    const r = state.reservePending; state.reservePending = 0
+    if (r) reserveBottom(r)
+    syncTimeline(); layoutFloats(); drawDope()
   }
 
   /** Room above the timeline for the host's floating 动画工具 editor (the stage gets shorter). */
@@ -8038,7 +8052,7 @@ self.onmessage = (e) => {
     // tools' box is laid out for it) and applied by applyTimelineCompact when that box shows -
     // the timeline, the box and the stage then change in one frame
     setTimelineCompact: (on) => { const v = !!on; if (v) { if (!state.compactTimeline) state.compactPending = true; return } state.compactPending = false; if (!state.compactTimeline) return; state.compactTimeline = false; syncTimeline(); layoutFloats(); drawDope() },
-    applyTimelineCompact: () => { if (!state.compactPending || state.compactTimeline) return; state.compactPending = false; state.compactTimeline = true; const r = state.reservePending; state.reservePending = 0; if (r) reserveBottom(r); syncTimeline(); layoutFloats(); drawDope() },
+    applyTimelineCompact: () => { if (!state.compactPending || state.compactTimeline) return; applyCompactTimeline() },
     timelineRect: () => {
       const tl = $('.timeline-wrap')
       const r = tl && !tl.closest('[hidden]') && getComputedStyle(tl).display !== 'none' ? tl.getBoundingClientRect() : null

@@ -384,6 +384,10 @@
     if (type === 'mode' && data.mode === 'setup' && motionPanelOpen()) {
       try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }
     }
+    // the 序列帧添加 / 序列扫光 cards closed with their ×: the tool is done, 动画工具 folds (user 2026-10-12)
+    if (type === 'panel' && !data.panel && (data.closed === 'sequence' || data.closed === 'sweep') && motionPanelOpen()) {
+      try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }
+    }
     if (!motionOpen) {
       if (type === 'panel' && !data.panel) closeLeftPanels()
       return
