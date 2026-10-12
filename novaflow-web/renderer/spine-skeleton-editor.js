@@ -1162,6 +1162,41 @@
     return node
   }
 
+  /** The picture names a raw Spine JSON's attachments show (path, else name; regions and meshes). */
+  function attachmentPictureNames(json) {
+    const names = new Set()
+    const skins = Array.isArray(json && json.skins) ? json.skins
+      : Object.entries((json && json.skins) || {}).map(([name, attachments]) => ({ name, attachments }))
+    for (const sk of skins) for (const slot of Object.values((sk && sk.attachments) || {})) for (const [name, a] of Object.entries(slot || {})) {
+      if (a && (a.type === 'boundingbox' || a.type === 'clipping' || a.type === 'path' || a.type === 'point')) continue
+      names.add(String((a && a.path) || name))
+    }
+    return names
+  }
+
+  /**
+   * The folder (a path among `rels`' folders, '' = where they are listed from) whose pictures,
+   * named relative to it, match the most attachments. Pictures one or two folders down (e/arm_l.png
+   * beside skeleton.json, attachments named arm_l) were listed as e/arm_l: the 图片 tree never
+   * marked them in use, and dragging one in made a second attachment e/arm_l. Only ever descends.
+   */
+  function bestPictureRoot(rels, names) {
+    const bare = (p) => p.replace(/\.[^.]+$/, '')
+    const score = (root) => {
+      let n = 0
+      for (const r of rels) {
+        if (root && !r.startsWith(root + '/')) continue
+        if (names.has(bare(root ? r.slice(root.length + 1) : r))) n++
+      }
+      return n
+    }
+    const dirs = new Set()
+    for (const r of rels) { const parts = r.split('/'); for (let i = 1; i < parts.length && i <= 3; i++) dirs.add(parts.slice(0, i).join('/')) }
+    let best = '', bestScore = score('')
+    for (const d of [...dirs].sort((a, b) => a.split('/').length - b.split('/').length)) { const s = score(d); if (s > bestScore) { best = d; bestScore = s } }
+    return best
+  }
+
   /** The project's image folder inside the picked folder: the JSON's folder + skeleton.images. */
   async function folderForProject(dirHandle, json, jsonFileName) {
     const base = String(jsonFileName || '').split('/').pop().toLowerCase()
@@ -1190,6 +1225,17 @@
       for await (const [n, c] of jsonDir.entries()) { if (c.kind === 'directory') subs.push(c); else if (IMG_RX.test(n)) pics++ }
       if (!pics && subs.length === 1) dir = subs[0]
     }
+    // root it where the pictures' names match the attachments (their folder may be further down)
+    const rels = []
+    const collect = async (h, prefix, depth) => {
+      for await (const [n, c] of h.entries()) {
+        const rel = prefix ? prefix + '/' + n : n
+        if (c.kind === 'directory') { if (depth < 3) await collect(c, rel, depth + 1) } else if (IMG_RX.test(n)) rels.push(rel)
+      }
+    }
+    await collect(dir, '', 0)
+    const best = bestPictureRoot(rels, attachmentPictureNames(json))
+    if (best) for (const seg of best.split('/')) dir = await dir.getDirectoryHandle(seg)
     return folderFromHandle(dir, dir.name || '图片')
   }
 
@@ -1210,6 +1256,9 @@
     const firsts = new Set(imgs.map((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0).split('/')[0]))
     if (firsts.size === 1 && imgs.every((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0).includes('/'))) root = (root ? root + '/' : '') + [...firsts][0]
     imgs = under(root)
+    // root it where the pictures' names match the attachments (their folder may be further down)
+    const best = bestPictureRoot(imgs.map((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0)), attachmentPictureNames(json))
+    if (best) { root = (root ? root + '/' : '') + best; imgs = under(root) }
     return folderFromFiles((root || jsonDir).split('/').pop() || '图片', imgs.map((f) => ({ rel: norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0), file: f })))
   }
 
