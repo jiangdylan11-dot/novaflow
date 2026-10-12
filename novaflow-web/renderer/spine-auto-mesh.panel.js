@@ -282,6 +282,16 @@
    * Take a PhotoshopToSpine export folder (skeleton JSON + per-layer PNGs, no
    * atlas) and load it through the import bridge with a synthesised atlas.
    */
+  /**
+   * The 骨骼动画 editor lists the project's whole image folder (unused pictures too, live from disk
+   * when the picker kept a handle): the folder's files go beside the handle capabilities stashed.
+   */
+  function rememberProjectFolder(files) {
+    const prev = window.__NovaFlowLastProjectDirectory
+    const handle = prev && prev.handle && Date.now() - (prev.at || 0) < 120000 ? prev.handle : null
+    window.__NovaFlowLastProjectDirectory = { handle, name: prev && handle ? prev.name : '', files: Array.from(files || []), at: Date.now() }
+  }
+
   async function importPhotoshopProject(files, setStatus) {
     const Attach = window.NovaFlowAutoMeshAttach
     const bridge = window.__NovaFlowSpineImportInlineBridge
@@ -3164,7 +3174,9 @@
             return file
           }).filter(Boolean)
           if (!files.length) throw new Error('这个文件夹里没有 JSON 和贴图')
-          const n = await importPhotoshopProject(files, (t) => say(t))
+          rememberProjectFolder(files)
+          rememberProjectFolder(files)
+        const n = await importPhotoshopProject(files, (t) => say(t))
           say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
         })
         return
@@ -3239,6 +3251,7 @@
       const say = sayHere
       if (!files.length) { say('没有选到文件'); return }
       guardWith(say)(async () => {
+        rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
         say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
       })

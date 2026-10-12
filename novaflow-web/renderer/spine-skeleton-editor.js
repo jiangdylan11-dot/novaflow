@@ -245,11 +245,12 @@
     const name = String(src.skeleton.fileName || 'skeleton.json')
     // a project opened from a folder (the app's 导入PS工程 keeps the folder handle): its image folder,
     // listed live from disk; loose files (JSON + atlas + PNG) have no folder to watch
+    // (the app's PS import synthesizes an atlas and keeps only the pictures attachments use, so the
+    // folder is the only place the unused ones show up)
     let imageFolder = null
-    const dirHandle = opts && opts.directory && opts.directory.handle
-    if (dirHandle && !((src.atlas && src.atlas.text) || '').trim()) {
-      try { imageFolder = await folderForProject(dirHandle, json, name) } catch { imageFolder = null }
-    }
+    const dir = opts && opts.directory
+    if (dir && dir.handle) { try { imageFolder = await folderForProject(dir.handle, json, name) } catch { imageFolder = null } }
+    if (!imageFolder && dir && Array.isArray(dir.files) && dir.files.length) { try { imageFolder = folderFromProjectFiles(dir.files, json, name) } catch { imageFolder = null } }
     await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name) })
   }
 
@@ -1164,13 +1165,45 @@
       for (const c of subs) { const r = await find(c, depth + 1); if (r) return r }
       return null
     }
-    let dir = await find(dirHandle, 0)
-    if (!dir) return null
-    for (const seg of String((json.skeleton && json.skeleton.images) || '').split('/').filter((x) => x && x !== '.')) {
-      if (seg === '..') return null
-      dir = await dir.getDirectoryHandle(seg)
+    const jsonDir = await find(dirHandle, 0)
+    if (!jsonDir) return null
+    // skeleton.images (./images/): that folder; not there (or pointing above the JSON) → the JSON's folder
+    let dir = jsonDir
+    try {
+      for (const seg of String((json.skeleton && json.skeleton.images) || '').split('/').filter((x) => x && x !== '.')) {
+        if (seg === '..') { dir = null; break }
+        dir = await dir.getDirectoryHandle(seg)
+      }
+    } catch { dir = null }
+    if (!dir) {
+      // the JSON's folder — or its one picture subfolder (img/ beside skeleton.json): the PS import
+      // names attachments by file name, so the folder must be rooted where the pictures are
+      dir = jsonDir
+      const subs = []; let pics = 0
+      for await (const [n, c] of jsonDir.entries()) { if (c.kind === 'directory') subs.push(c); else if (IMG_RX.test(n)) pics++ }
+      if (!pics && subs.length === 1) dir = subs[0]
     }
     return folderFromHandle(dir, dir.name || '图片')
+  }
+
+  /** The same from a folder's files (no handle: a snapshot), rooted at skeleton.images, else the JSON's folder. */
+  function folderFromProjectFiles(files, json, jsonFileName) {
+    const list = Array.from(files || [])
+    const norm = (p) => String(p || '').split('/').filter((x) => x && x !== '.').join('/')
+    const base = String(jsonFileName || '').split('/').pop().toLowerCase()
+    const jsonFile = list.find((f) => f.name.toLowerCase() === base) || list.find((f) => /\.json$/i.test(f.name))
+    if (!jsonFile) return null
+    const jsonDir = norm(jsonFile.webkitRelativePath || '').split('/').slice(0, -1).join('/')
+    const imgRoot = norm(jsonDir + '/' + String((json.skeleton && json.skeleton.images) || ''))
+    const under = (root) => list.filter((f) => IMG_RX.test(f.name) && (root ? norm(f.webkitRelativePath || '').startsWith(root + '/') : true))
+    let root = imgRoot, imgs = imgRoot ? under(imgRoot) : []
+    if (!imgs.length) { root = jsonDir; imgs = under(jsonDir) }
+    if (!imgs.length) return null
+    // every picture in one subfolder of the JSON's folder (img/): root there, so names match the attachments
+    const firsts = new Set(imgs.map((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0).split('/')[0]))
+    if (firsts.size === 1 && imgs.every((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0).includes('/'))) root = (root ? root + '/' : '') + [...firsts][0]
+    imgs = under(root)
+    return folderFromFiles((root || jsonDir).split('/').pop() || '图片', imgs.map((f) => ({ rel: norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0), file: f })))
   }
 
   /** `items` = [{ rel: path inside the folder, file }]. */
