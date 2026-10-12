@@ -68577,10 +68577,17 @@
         };
         const onChange = () => settle(Array.from(input.files || []), null);
         const onCancel = () => settle(null, null);
+        // the window gets its focus back when the dialog closes, sometimes well before the
+        // change event with the files arrives (Electron): keep looking for files for 3 s
         const onWindowFocus = () => {
-          window.setTimeout(() => {
-            if (!settled && !input.files?.length) settle(null, null);
-          }, 300);
+          let tries = 0;
+          const look = () => {
+            if (settled) return;
+            if (input.files?.length) { settle(Array.from(input.files), null); return; }
+            if (++tries < 30) window.setTimeout(look, 100);
+            else settle(null, null);
+          };
+          window.setTimeout(look, 300);
         };
         input.addEventListener("change", onChange, true);
         input.addEventListener("cancel", onCancel, true);
@@ -68606,7 +68613,7 @@
         return nativeOpenSpineImage();
       }
       if (files === null) return { canceled: true };
-      const imageFiles = files.filter((file) => file instanceof File && /\.(png|jpe?g)$/i.test(String(file.name || "")));
+      const imageFiles = files.filter((file) => file instanceof File && /\.(png|jpe?g|webp)$/i.test(String(file.name || "")));
       if (!imageFiles.length) return { canceled: true };
       try {
         const images = await Promise.all(imageFiles.map(async (file) => ({

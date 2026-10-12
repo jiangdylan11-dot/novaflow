@@ -377,7 +377,7 @@
               await walk(handle, relativePath + '/', depth + 1);
               continue;
             }
-            if (handle.kind !== 'file' || !/\.(json|png|jpe?g)$/i.test(name)) continue;
+            if (handle.kind !== 'file' || !/\.(json|png|jpe?g|webp)$/i.test(name)) continue;
             const file = await handle.getFile();
             totalSize += file.size;
             if (totalSize > 512 * 1024 * 1024) throw new Error('文件太大（超过 512MB）');
