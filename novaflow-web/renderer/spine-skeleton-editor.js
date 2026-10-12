@@ -351,7 +351,11 @@
     for (const b of state.json.bones) if (depthOf(b.name) >= 2) state.collapsed.add('b:' + b.name)
     for (const s of state.json.slots) state.collapsed.add('s:' + s.name)
     // every import is a project of its own, after the ones already open; it is the one picked
-    if (!(p.replace && projects[activeProject])) { projects.push({ id: ++projectSerial, snap: null, visible: p.visible !== false }); activeProject = projects.length - 1 }
+    if (!(p.replace && projects[activeProject])) {
+      if (projects[activeProject]) projects[activeProject].open = false
+      projects.push({ id: ++projectSerial, snap: null, visible: p.visible !== false, open: true })
+      activeProject = projects.length - 1
+    }
     fit()
     $('#dropHint').hidden = true
     $('#tree').scrollTop = 0
@@ -478,12 +482,45 @@
 
   function switchProject(i) {
     if (i === activeProject || !projects[i] || !projects[i].snap) return
-    if (projects[activeProject]) projects[activeProject].snap = snapProject()
+    if (projects[activeProject]) { projects[activeProject].snap = snapProject(); projects[activeProject].open = false }
     const snap = projects[i].snap
     activeProject = i
     projects[i].snap = null
     restoreProject(snap)
     status(`已切换到工程 ${state.name}`, 'ok')
+  }
+
+  /** A copy of a project's state that edits apart from the original (pictures are shared, they never change in place). */
+  function cloneProjectSnap(src) {
+    const out = {}
+    for (const [k, v] of Object.entries(src)) {
+      if (v instanceof Set) out[k] = new Set(v)
+      else if (v instanceof Map) out[k] = new Map(v)
+      else if (v && typeof v === 'object') { try { out[k] = structuredClone(v) } catch { out[k] = Array.isArray(v) ? v.slice() : { ...v } } }
+      else out[k] = v
+    }
+    return out
+  }
+
+  /** 复制工程 (Spine's Duplicate on a skeleton): the copy comes right below, at the same place, and is picked. */
+  function duplicateProject(i) {
+    if (!projects[i]) return
+    const src = i === activeProject ? snapProject() : projects[i].snap
+    if (!src || !src.json) return
+    const copy = cloneProjectSnap(src)
+    const taken = new Set(projects.map((_, k) => projectName(k)))
+    const base = String(src.name || '').replace(/ 副本( \d+)?$/, '')
+    let name = `${base} 副本`
+    for (let n = 2; taken.has(name); n++) name = `${base} 副本 ${n}`
+    copy.name = name
+    copy.history = []; copy.future = []
+    copy.sel = { kind: 'project', name }
+    projects.splice(i + 1, 0, { id: ++projectSerial, snap: copy, visible: projects[i].visible !== false, open: true })
+    if (activeProject > i) activeProject++
+    switchProject(i + 1)
+    projects[i + 1].open = true
+    renderTree()
+    status(`已复制工程 ${src.name} → ${name}`, 'ok')
   }
 
   function renameProject(i, name) {
@@ -594,21 +631,20 @@
 
   /** 工程 属性: name, its place on the stage (X / Y, view only), shown or not. */
   function projectBody() {
-    const num = (k, label) => {
-      const i = h('input', { type: 'number', step: 'any', 'data-offset': k, value: String(Math.round(state.offset[k] * 100) / 100) })
-      i.addEventListener('change', () => { const v = Number(i.value); if (Number.isFinite(v)) { setProjectOffset(k === 'x' ? v : state.offset.x, k === 'y' ? v : state.offset.y); renderProps() } })
-      i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation() })
-      return h('label', { class: 'nf' }, label, i)
+    const num = (k) => {
+      const i = numInput(Math.round(state.offset[k] * 100) / 100, (v) => { setProjectOffset(k === 'x' ? v : state.offset.x, k === 'y' ? v : state.offset.y); renderProps() })
+      i.dataset.offset = k
+      return field(k.toUpperCase(), i)
     }
-    const nameIn = h('input', { type: 'text', value: state.name, 'data-rename': '1' })
-    nameIn.addEventListener('change', () => renameProject(activeProject, nameIn.value))
-    nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameIn.blur(); e.stopPropagation() })
     const shown = projects[activeProject] ? projects[activeProject].visible !== false : true
     return [
-      h('label', { class: 'fl' }, '名称'), nameIn,
-      h('div', { class: 'pk' }, num('x', 'X'), num('y', 'Y')),
-      h('label', { class: 'checks' }, h('input', { type: 'checkbox', checked: shown, onchange: (e) => setProjectVisible(activeProject, e.target.checked) }), '显示'),
-      h('div', { class: 'hint' }, '工程在画面上的位置（和别的工程错开摆放），只影响编辑器里的显示，不写进导出的骨架。选中工程后在画面空白处拖动也能移动它。'),
+      h('div', { class: 'name-row' },
+        textInput(state.name, (v) => renameProject(activeProject, v), { rename: true }),
+        ibtn('copy', '复制工程（Ctrl+D）', () => duplicateProject(activeProject)),
+        ibtn('trash', '删除工程（Delete）', () => deleteProject(activeProject))),
+      h('div', { class: 'grid2' }, num('x'), num('y')),
+      field('显示', h('div', { class: 'inline' }, h('label', { class: 'checks', style: 'margin:0' }, check('', shown, (v) => setProjectVisible(activeProject, v))))),
+      h('div', { class: 'hint' }, '位置只影响编辑器里的摆放，不写进导出的骨架；选中工程后在画面上拖动也能移动它。'),
     ]
   }
 
@@ -618,8 +654,8 @@
     const name = projectName(i)
     const row = h('div', { class: 'row node project', style: pad(0), 'data-project': String(i), 'data-active': active ? '1' : null,
       'data-selected': active && state.sel && state.sel.kind === 'project' ? '1' : null,
-      title: active ? `${name}（双击改名，拖动排序）` : `${name}：点一下切换到这个工程（双击改名，拖动排序）`,
-      onclick: () => { if (!active) switchProject(i); else select({ kind: 'project', name }) },
+      title: `${name}（双击改名，拖动排序，左边箭头展开 / 收起）`,
+      onclick: () => { if (!active) switchProject(i); select({ kind: 'project', name: projectName(i) }) },
       ondblclick: (e) => {
         e.stopPropagation()
         const label = row.querySelector('.label')
@@ -632,7 +668,12 @@
         input.focus(); input.select()
       } },
       visDot(projects[i].visible !== false, () => setProjectVisible(i, projects[i].visible === false), null, true),
-      caret(active, () => { if (!active) switchProject(i) }), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, name),
+      caret(active && projects[i].open !== false, () => {
+        if (active) { projects[i].open = projects[i].open === false; renderTree(); return }
+        switchProject(i)
+        projects[i].open = true
+        renderTree()
+      }), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, name),
       h('span', { class: 'end' }, h('button', { class: 'act', title: `删除工程 ${name}`, onclick: (e) => { e.stopPropagation(); deleteProject(i) } }, '删除')))
     // drag a project row onto another one to move it there (above / below)
     row.draggable = true
@@ -699,16 +740,54 @@
   // crossfade between animations, 速度 = time scale, 循环, 重置 = back to the setup pose.
   // It follows the project: an edit or a skin switch rebuilds it and keeps what was playing.
 
-  const pv = { open: false, gl: null, renderer: null, atlas: null, atlasKey: null, data: null, json: null, skinName: null,
-    skeleton: null, anim: null, track: 0, speed: 100, mix: 0.25, loop: true, cam: { x: 0, y: 0, zoom: 1 }, fitted: false, drag: null,
-    projectId: null } // 骨架 (Spine's skeleton list): the project the preview plays, null = the picked one
+  // Every shown project plays here at once, each where it stands on the stage, each with its own
+  // skeleton and AnimationState (Spine's preview). 骨架 picks the one the list, tracks and 重置 work on.
+  const pv = { open: false, gl: null, renderer: null, items: new Map(), track: 0, speed: 100, mix: 0.25, loop: true,
+    cam: { x: 0, y: 0, zoom: 1 }, fitted: false, drag: null, projectId: null }
 
-  /** What the preview plays: the chosen project (its saved state), or the picked one (live). */
-  function pvSource() {
-    const p = pv.projectId != null ? projects.find((x) => x.id === pv.projectId) : null
-    if (p && p.snap && p.snap.json) return { key: 'p' + p.id, json: p.snap.json, atlasText: p.snap.atlasText, images: p.snap.images, skin: p.snap.skin || 'default', pma: !!p.snap.pma }
-    const id = projects[activeProject] ? projects[activeProject].id : 0
-    return { key: 'p' + id, json: state.json, atlasText: state.atlasText, images: state.images, skin: state.skin, pma: state.pma }
+  /** The projects the preview knows: the picked one live, the others as they were left. */
+  function pvEntries() {
+    const live = () => ({ json: state.json, atlasText: state.atlasText, images: state.images, skin: state.skin, pma: state.pma, offset: state.offset || { x: 0, y: 0 } })
+    if (!projects.length) return state.json ? [{ id: 0, visible: true, src: live() }] : []
+    return projects.map((p, i) => {
+      const s = i === activeProject ? null : p.snap
+      const src = i === activeProject ? live() : s && { json: s.json, atlasText: s.atlasText, images: s.images, skin: s.skin || 'default', pma: !!s.pma, offset: s.offset || { x: 0, y: 0 } }
+      return { id: p.id, visible: p.visible !== false, src }
+    }).filter((e) => e.src && e.src.json)
+  }
+
+  /** The project 骨架 points at (the picked one until another is chosen). */
+  function pvChosenId(list) {
+    const ids = (list || pvEntries()).map((e) => e.id)
+    if (pv.projectId != null && ids.includes(pv.projectId)) return pv.projectId
+    return projects[activeProject] ? projects[activeProject].id : ids[0]
+  }
+  const pvChosen = () => pv.items.get(pvChosenId())
+
+  function pvItem(e) {
+    const src = e.src
+    let it = pv.items.get(e.id)
+    if (!it) { it = { atlasText: null, atlas: null, data: null, json: null, skinName: null, skeleton: null, anim: null }; pv.items.set(e.id, it) }
+    if (it.atlasText !== src.atlasText) {
+      if (it.atlas) try { it.atlas.dispose() } catch {}
+      it.atlas = new spine.TextureAtlas(src.atlasText, (path) => new spine.webgl.GLTexture(pv.gl, pageImageFrom(src.images, path)))
+      it.atlasText = src.atlasText
+      it.json = null
+    }
+    if (it.json === src.json && it.skinName === src.skin && it.skeleton) return it
+    // what plays now, to play again on the rebuilt skeleton
+    const playing = it.anim ? it.anim.tracks.map((t) => t && { name: t.animation.name, loop: t.loop }) : []
+    it.data = readProjectData(src.json, it.atlas, pv.gl)
+    it.skeleton = new spine.Skeleton(it.data)
+    if (src.skin !== 'default' && it.data.findSkin(src.skin)) it.skeleton.setSkinByName(src.skin)
+    it.skeleton.setToSetupPose()
+    const sd = new spine.AnimationStateData(it.data)
+    sd.defaultMix = pv.mix
+    it.anim = new spine.AnimationState(sd)
+    playing.forEach((t, i) => { if (t && it.data.findAnimation(t.name)) it.anim.setAnimation(i, t.name, t.loop) })
+    it.json = src.json
+    it.skinName = src.skin
+    return it
   }
 
   function pvBuild() {
@@ -718,44 +797,35 @@
       pv.renderer = new spine.webgl.SceneRenderer(c, pv.gl, true)
       keepAlphaUnderAdditive(pv.renderer, pv.gl)
     }
-    const src = pvSource()
-    const atlasKey = src.key + '\u0000' + src.atlasText
-    if (pv.atlasKey !== atlasKey) {
-      if (pv.atlas) try { pv.atlas.dispose() } catch {}
-      pv.atlas = new spine.TextureAtlas(src.atlasText, (path) => new spine.webgl.GLTexture(pv.gl, pageImageFrom(src.images, path)))
-      // another project: nothing it played carries over, and it is framed anew
-      if (pv.atlasKey && pv.atlasKey.split('\u0000')[0] !== src.key) { pv.anim = null; pv.fitted = false }
-      pv.atlasKey = atlasKey
-      pv.json = null
-    }
-    if (pv.json === src.json && pv.skinName === src.skin && pv.skeleton) return
-    // what plays now, to play again on the rebuilt skeleton
-    const playing = pv.anim ? pv.anim.tracks.map((e) => e && { name: e.animation.name, loop: e.loop }) : []
-    pv.data = readProjectData(src.json, pv.atlas, pv.gl)
-    pv.skeleton = new spine.Skeleton(pv.data)
-    if (src.skin !== 'default' && pv.data.findSkin(src.skin)) pv.skeleton.setSkinByName(src.skin)
-    pv.skeleton.setToSetupPose()
-    const sd = new spine.AnimationStateData(pv.data)
-    sd.defaultMix = pv.mix
-    pv.anim = new spine.AnimationState(sd)
-    playing.forEach((e, i) => { if (e && pv.data.findAnimation(e.name)) pv.anim.setAnimation(i, e.name, e.loop) })
-    pv.json = src.json
-    pv.skinName = src.skin
-    if (!pv.fitted) { pvFit(); pv.fitted = true }
+    const list = pvEntries()
+    // projects that went away
+    for (const [id, it] of pv.items) if (!list.some((e) => e.id === id)) { if (it.atlas) try { it.atlas.dispose() } catch {} pv.items.delete(id) }
+    for (const e of list) try { pvItem(e) } catch { /* a project that does not read: the others still play */ }
+    if (!pv.fitted && list.length) { pvFit(); pv.fitted = true }
+    return list
   }
 
+  /** Frames every shown project (setup pose, each at its place). */
   function pvFit() {
     const c = $('#pvGl')
-    if (!pv.skeleton || !c.clientWidth) return
-    const sk = new spine.Skeleton(pv.data)
-    const skin = pvSource().skin
-    if (skin !== 'default' && pv.data.findSkin(skin)) sk.setSkinByName(skin)
-    sk.setToSetupPose(); sk.updateWorldTransform()
-    const off = new spine.Vector2(), size = new spine.Vector2()
-    sk.getBounds(off, size, [])
-    pv.cam.x = off.x + size.x / 2
-    pv.cam.y = off.y + size.y / 2
-    pv.cam.zoom = Math.max(size.x / (c.clientWidth * 0.85), size.y / (c.clientHeight * 0.85), 0.01)
+    if (!c.clientWidth) return
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const e of pvEntries()) {
+      const it = pv.items.get(e.id)
+      if (!e.visible || !it || !it.data) continue
+      const sk = new spine.Skeleton(it.data)
+      if (e.src.skin !== 'default' && it.data.findSkin(e.src.skin)) sk.setSkinByName(e.src.skin)
+      sk.setToSetupPose(); sk.updateWorldTransform()
+      const off = new spine.Vector2(), size = new spine.Vector2()
+      sk.getBounds(off, size, [])
+      if (!Number.isFinite(off.x) || !Number.isFinite(size.x)) continue
+      x0 = Math.min(x0, off.x + e.src.offset.x); y0 = Math.min(y0, off.y + e.src.offset.y)
+      x1 = Math.max(x1, off.x + size.x + e.src.offset.x); y1 = Math.max(y1, off.y + size.y + e.src.offset.y)
+    }
+    if (!Number.isFinite(x0)) return
+    pv.cam.x = (x0 + x1) / 2
+    pv.cam.y = (y0 + y1) / 2
+    pv.cam.zoom = Math.max((x1 - x0) / (c.clientWidth * 0.85), (y1 - y0) / (c.clientHeight * 0.85), 0.01)
   }
 
   /** The stage's inside (the window is placed inside its border). */
@@ -784,36 +854,45 @@
     const dpr = window.devicePixelRatio || 1
     const w = Math.max(1, Math.round(c.clientWidth * dpr)), hh = Math.max(1, Math.round(c.clientHeight * dpr))
     if (c.width !== w || c.height !== hh) { c.width = w; c.height = hh }
-    try { pvBuild() } catch (e) { return }
-    pv.anim.timeScale = pv.speed / 100
-    pv.anim.update(dt)
-    pv.skeleton.setToSetupPose()
-    pv.anim.apply(pv.skeleton)
-    pv.skeleton.updateWorldTransform()
+    let list
+    try { list = pvBuild() } catch (e) { return }
     const gl = pv.gl, r = pv.renderer
     gl.viewport(0, 0, w, hh)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    r.camera.position.x = pv.cam.x
-    r.camera.position.y = pv.cam.y
     r.camera.setViewport(w, hh)
     r.camera.zoom = pv.cam.zoom / dpr
-    r.begin()
-    r.drawSkeleton(pv.skeleton, pvSource().pma)
-    r.end()
+    for (const e of list) {
+      const it = pv.items.get(e.id)
+      if (!it || !it.skeleton) continue
+      it.anim.timeScale = pv.speed / 100
+      it.anim.update(dt)
+      if (!e.visible) continue
+      it.skeleton.setToSetupPose()
+      it.anim.apply(it.skeleton)
+      it.skeleton.updateWorldTransform()
+      r.camera.position.x = pv.cam.x - e.src.offset.x
+      r.camera.position.y = pv.cam.y - e.src.offset.y
+      r.begin()
+      r.drawSkeleton(it.skeleton, !!e.src.pma)
+      r.end()
+    }
   }
 
   function pvPlay(name) {
     pvBuild()
-    pv.anim.data.defaultMix = pv.mix
-    pv.anim.setAnimation(pv.track, name, pv.loop)
+    const it = pvChosen()
+    if (!it || !it.anim) return
+    it.anim.data.defaultMix = pv.mix
+    it.anim.setAnimation(pv.track, name, pv.loop)
     renderPreview()
   }
 
   function pvReset() {
-    if (!pv.anim) return
-    pv.anim.clearTracks()
-    pv.skeleton.setToSetupPose()
+    const it = pvChosen()
+    if (!it || !it.anim) return
+    it.anim.clearTracks()
+    it.skeleton.setToSetupPose()
     renderPreview()
   }
 
@@ -825,19 +904,23 @@
     if (box.hidden) return
     // a project that went away: back to the picked one
     if (pv.projectId != null && !projects.some((x) => x.id === pv.projectId)) pv.projectId = null
-    try { pvBuild() } catch {}
-    const cur = pv.anim && pv.anim.tracks[pv.track]
+    let entries = []
+    try { entries = pvBuild() } catch {}
+    const chosenId = pvChosenId(entries)
+    const it = pv.items.get(chosenId)
+    const anim = it && it.anim
+    const cur = anim && anim.tracks[pv.track]
     const list = $('#pvList')
     list.textContent = ''
     // 骨架: with several projects any of them plays here (Spine's skeleton list)
     if (projects.length > 1) {
-      const chosen = pv.projectId != null ? pv.projectId : (projects[activeProject] || {}).id
-      list.append(h('label', { class: 'pv-sk' }, h('span', {}, '骨架'), selectInput(projects.map((x, i) => [String(x.id), projectName(i)]), String(chosen), (v) => {
+      list.append(h('label', { class: 'pv-sk' }, h('span', {}, '骨架'), selectInput(projects.map((x, i) => [String(x.id), projectName(i)]), String(chosenId), (v) => {
         pv.projectId = Number(v)
         renderPreview()
       })))
     }
-    const anims = (pvSource().json || {}).animations || {}
+    const ce = entries.find((e) => e.id === chosenId)
+    const anims = (ce && ce.src.json || {}).animations || {}
     for (const n of Object.keys(anims)) {
       list.append(h('button', { class: 'pv-a', 'aria-pressed': String(!!(cur && cur.animation.name === n)), title: `在轨道 ${pv.track} 上播放`, onclick: () => pvPlay(n) },
         h('span', { class: 'ico', html: ICON.anim }), n))
@@ -849,8 +932,8 @@
     for (const b of document.querySelectorAll('#pvTracks button')) {
       const i = Number(b.dataset.t)
       b.setAttribute('aria-pressed', String(i === pv.track))
-      b.dataset.busy = pv.anim && pv.anim.tracks[i] ? '1' : ''
-      b.title = pv.anim && pv.anim.tracks[i] ? `轨道 ${i}：${pv.anim.tracks[i].animation.name}` : `轨道 ${i}`
+      b.dataset.busy = anim && anim.tracks[i] ? '1' : ''
+      b.title = anim && anim.tracks[i] ? `轨道 ${i}：${anim.tracks[i].animation.name}` : `轨道 ${i}`
     }
   }
 
@@ -861,12 +944,13 @@
     $('#pvReset').onclick = pvReset
     $('#pvLoop').onclick = () => {
       pv.loop = !pv.loop
-      const e = pv.anim && pv.anim.tracks[pv.track]
+      const it = pvChosen()
+      const e = it && it.anim && it.anim.tracks[pv.track]
       if (e) e.loop = pv.loop
       renderPreview()
     }
     $('#pvSpeed').oninput = (e) => { pv.speed = Number(e.target.value); $('#pvSpeedV').textContent = String(pv.speed) }
-    $('#pvMix').oninput = (e) => { pv.mix = Number(e.target.value); $('#pvMixV').textContent = pv.mix.toFixed(2); if (pv.anim) pv.anim.data.defaultMix = pv.mix }
+    $('#pvMix').oninput = (e) => { pv.mix = Number(e.target.value); $('#pvMixV').textContent = pv.mix.toFixed(2); for (const it of pv.items.values()) if (it.anim) it.anim.data.defaultMix = pv.mix }
     for (const b of document.querySelectorAll('#pvTracks button')) b.onclick = () => { pv.track = Number(b.dataset.t); renderPreview() }
     // the canvas: wheel zooms at the pointer, a drag pans
     const c = $('#pvGl')
@@ -1251,6 +1335,7 @@
   function duplicateSelection() {
     const s = state.sel
     if (!s) return
+    if (s.kind === 'project') { duplicateProject(activeProject); return }
     if (s.kind === 'bone') {
       const run = (animation) => edit((r) => `已复制骨骼 ${s.name} → ${r.bone}（${r.bones.length} 骨骼 / ${r.slots.length} 插槽 / ${r.constraints.length} 约束${animation ? '，带关键帧' : ''}）`,
         (j) => Ops.duplicateBone(j, s.name, { ...state.dup, animation }),
@@ -1310,6 +1395,7 @@
   function deleteSelection() {
     const s = state.sel
     if (!s) return
+    if (s.kind === 'project') { deleteProject(activeProject); return }
     if (s.kind === 'bone') edit(`已删除骨骼 ${s.name}`, (j) => Ops.deleteBone(j, s.name), () => { state.sel = null })
     else if (s.kind === 'slot' && state.multiSlots.length > 1) {
       const names = state.multiSlots.slice()
@@ -4789,6 +4875,7 @@
 
   function revealInTree(sel) {
     if (!state.json) return
+    if (sel.kind !== 'project' && projects[activeProject]) projects[activeProject].open = true
     const open = (name) => { let b = bone(name); while (b) { state.collapsed.delete('b:' + b.name); b = b.parent ? bone(b.parent) : null } }
     state.sections.delete('bones')
     if (sel.kind === 'bone') open(bone(sel.name) && bone(sel.name).parent)
@@ -5027,6 +5114,7 @@
     // the projects (Spine's hierarchy): the ones above the picked one, the picked one (its content follows), the rest at the end
     if (projects[activeProject]) { for (let i = 0; i < activeProject; i++) rows.push(projectRow(i, pad)); rows.push(projectRow(activeProject, pad)) }
     else rows.push(h('div', { class: 'row node', style: pad(0) }, caret(true), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, state.name)))
+    const contentFrom = rows.length
 
     // the attachment each slot shows right now (the dot on its row)
     const posed = new Map()
@@ -5247,6 +5335,7 @@
       if (!m) renderImagesNode(rows, pad)
     }
 
+    if (projects[activeProject] && projects[activeProject].open === false && !m) rows.length = contentFrom
     if (projects[activeProject]) for (let i = activeProject + 1; i < projects.length; i++) rows.push(projectRow(i, pad))
     tree.append(h('div', { class: 'tree-in' }, rows))
     tree.scrollTop = scroll
