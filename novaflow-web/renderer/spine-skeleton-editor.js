@@ -104,6 +104,7 @@
     initialJson: null, // the project as imported (还原初始图层 / 还原原始权重)
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
     frameSet: null, // 序列帧添加 / 序列扫光: the pictures on the cards (null = the image folder's root), [{ name, file?, region? }]
+    imgOpen: new Set(), // 工程树 图片 node: the subfolders unfolded (paths)
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
     seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
     sweepFrames: 0, // 序列扫光: the whole sweep's length in frames (0 = the animation's)
@@ -324,6 +325,7 @@
     state.initialJson = state.json
     state.unticked = new Set()
     state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepFrames = 0
+    state.imgOpen = new Set(); imgTree = { key: '', nodes: new Map(), pending: new Set() }
     frameRoot = null; frameRootPending = null; frameThumbs.clear()
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
     state.anim = Object.keys(state.json.animations || {})[0] || ''
@@ -3670,8 +3672,17 @@
     }, { passive: false })
 
     const stage = $('#stage')
-    stage.addEventListener('dragover', (e) => { if (!state.drag) e.preventDefault() })
+    stage.addEventListener('dragover', (e) => { if (!state.drag || state.drag.type === 'image') e.preventDefault() })
     stage.addEventListener('drop', async (e) => {
+      if (state.drag && state.drag.type === 'image') {
+        // a picture from the 图片 node: a new slot on root, the picture centred where it was dropped
+        const payload = state.drag
+        state.drag = null
+        e.preventDefault()
+        const r = stage.getBoundingClientRect()
+        placeImage(payload, { bone: state.json && state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name, world: toWorld(e.clientX - r.left, e.clientY - r.top) })
+        return
+      }
       if (state.drag) return
       e.preventDefault()
       // in the section a project comes in through the app's 导入工程 (the left panel)
@@ -4078,6 +4089,9 @@
     if (payload.type === 'att' && target.type === 'slot' && target.name !== payload.slot) {
       return { mode: 'in', run: (e) => transferAtt(payload, !(e && (e.ctrlKey || e.altKey)), target.name) }
     }
+    // a picture from the 图片 node: onto a bone = a new slot there, onto a slot = a new attachment in it (Spine)
+    if (payload.type === 'image' && target.type === 'bone') return { mode: 'in', run: () => placeImage(payload, { bone: target.name }) }
+    if (payload.type === 'image' && target.type === 'slot') return { mode: 'in', run: () => placeImage(payload, { slot: target.name }) }
     if (payload.type === 'order' && target.type === 'order' && target.name !== payload.name) {
       const block = state.multiSlots.includes(payload.name) ? state.multiSlots : [payload.name]
       if (block.includes(target.name)) return null
@@ -4468,6 +4482,9 @@
           caret(null), h('span', { class: 'ico', html: ICON.anim }), h('span', { class: 'label' }, n)))
         }
       }
+
+      // 图片 (Spine's Images node): the project's image folder, pictures drag onto a bone / slot / the stage
+      if (!m) renderImagesNode(rows, pad)
     }
 
     tree.append(h('div', { class: 'tree-in' }, rows))
@@ -5019,6 +5036,148 @@
       else if (r.bottom > g.bottom) grid.scrollTop += r.bottom - g.bottom + 4
     }
     dock.dataset.last = now
+  }
+
+  // ---------- 图片 (the tree's Images node)
+  //
+  // The project's image folder in the tree (Spine): a PS export's folder, or the atlas pictures
+  // grouped by the folders in their names. Subfolders unfold, a picture row drags onto a bone (a
+  // new slot there), a slot (a new attachment) or the stage (a slot on root at the drop point).
+  // 导入图片… / 导入文件夹… on the node bring new material into the folder (user: no folder to
+  // set - "不用指定目录").
+
+  let imgTree = { key: '', nodes: new Map(), pending: new Set() } // path → { dirs, files }, per image set
+
+  /** The folder's content, from the cache; a miss loads it and redraws the tree when it is here. */
+  function imagesListing(path) {
+    const key = frameRootKey()
+    if (imgTree.key !== key) imgTree = { key, nodes: new Map(), pending: new Set() }
+    if (imgTree.nodes.has(path)) return imgTree.nodes.get(path)
+    if (!imgTree.pending.has(path)) {
+      imgTree.pending.add(path)
+      ;(async () => {
+        let node = imageFolder()
+        for (const name of path.split('/').filter(Boolean)) {
+          const l = await node.list()
+          node = l.dirs.find((d) => d.name === name)
+          if (!node) return { dirs: [], files: [] }
+        }
+        return node.list()
+      })().then((l) => l, () => ({ dirs: [], files: [] })).then((l) => {
+        if (imgTree.key !== key) return
+        imgTree.nodes.set(path, l)
+        imgTree.pending.delete(path)
+        renderTree()
+      })
+    }
+    return null
+  }
+
+  /** every picture an attachment shows (its path, else its name): the rest show dimmed */
+  function imagesInUse() {
+    const used = new Set()
+    for (const sk of state.json.skins) for (const slot of Object.keys(sk.attachments)) for (const [name, a] of Object.entries(sk.attachments[slot])) {
+      if (!a || a.type === 'boundingbox' || a.type === 'clipping' || a.type === 'path' || a.type === 'point') continue
+      used.add(a.path || name)
+    }
+    return used
+  }
+
+  /** 导入图片… / 导入文件夹… of the 图片 node: into `here` (a folder path, '' = the root). */
+  function importImagesInto(here, dir) {
+    const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', multiple: true })
+    if (dir) input.webkitdirectory = true
+    input.onchange = async () => {
+      const before = snapshot()
+      try {
+        const names = await importIntoFolder(input.files, here)
+        if (!names.length) { status('没有可导入的图片（PNG / JPG / WebP）'); return }
+        ensureAtlas()
+        applyJson(state.json)
+        state.history.push(before)
+        state.future = []
+        if (dir && names[0].includes('/')) state.imgOpen.add(names[0].split('/').slice(0, -1).join('/'))
+        state.sections.delete('images')
+        status(`已导入 ${names.length} 张图片到「${here || imageFolder().name}」`, 'ok')
+        refresh()
+      } catch (e) { restore(before); status('导入图片失败：' + e.message, 'error') }
+    }
+    input.click()
+  }
+
+  function renderImagesNode(rows, pad) {
+    const closed = state.sections.has('images')
+    const toggle = () => { state.sections.has('images') ? state.sections.delete('images') : state.sections.add('images'); renderTree() }
+    const root = imagesListing('')
+    const count = root ? root.files.length + (root.dirs.length ? ` + ${root.dirs.length} 夹` : '') : '…'
+    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: '工程的图片文件夹：把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
+      caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
+      h('span', { class: 'end' },
+        h('button', { class: 'ld-btn tiny', title: '加新素材：图片导进图片文件夹', onclick: (e) => { e.stopPropagation(); importImagesInto('', false) } }, '导入图片'),
+        h('button', { class: 'ld-btn tiny', title: '整个文件夹（带子文件夹）导进图片文件夹', onclick: (e) => { e.stopPropagation(); importImagesInto('', true) } }, '导入文件夹'),
+        h('span', { class: 'cnt' }, String(count)))))
+    if (closed) return
+    const used = imagesInUse()
+    const walk = (path, depth) => {
+      const l = imagesListing(path)
+      if (!l) { rows.push(h('div', { class: 'row', style: pad(depth) }, caret(null), h('span', { class: 'label dim' }, '读取中…'))); return }
+      for (const d of l.dirs) {
+        const open = state.imgOpen.has(d.path)
+        const flip = () => { open ? state.imgOpen.delete(d.path) : state.imgOpen.add(d.path); renderTree() }
+        rows.push(h('div', { class: 'row', style: pad(depth), onclick: flip, title: d.path },
+          caret(open, flip), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, d.name),
+          h('span', { class: 'end' },
+            h('button', { class: 'ld-btn tiny', title: '图片导进这个文件夹', onclick: (e) => { e.stopPropagation(); importImagesInto(d.path, false) } }, '导入'))))
+        if (open) walk(d.path, depth + 1)
+      }
+      for (const f of l.files) {
+        const name = f.rel.replace(/\.[^.]+$/, '')
+        const row = h('div', { class: 'row', style: pad(depth), 'data-unused': used.has(name) ? null : '1', title: used.has(name) ? name : `${name}（工程里还没用到：拖到骨骼 / 插槽 / 画板上）` },
+          caret(null), h('span', { class: 'ico', html: ICON.region }), h('span', { class: 'label' }, f.name.replace(/\.[^.]+$/, '')))
+        wireDrag(row, { type: 'image', name, rel: f.rel, file: f.file, region: f.region }, null)
+        rows.push(row)
+      }
+      if (!l.dirs.length && !l.files.length) rows.push(h('div', { class: 'row', style: pad(depth) }, caret(null), h('span', { class: 'label dim' }, '（空）')))
+    }
+    walk('', 2)
+  }
+
+  /**
+   * A picture into the project (Spine's drag from Images): `where.slot` = a new attachment shown by
+   * that slot; `where.bone` = a new slot (named after the picture) on that bone, centred on it, or at
+   * `where.world` (the stage drop point) in the bone's space.
+   */
+  async function placeImage(payload, where) {
+    if (!state.json) return
+    try { await bringFramesIn([payload]) } catch (e) { status(e.message, 'error'); return }
+    const image = payload.name, short = image.split('/').pop()
+    const size = regionSize(image) || { width: 1, height: 1 }
+    const label = where.slot ? `已把 ${short} 放进插槽 ${where.slot}` : `已新建插槽 ${short}（挂在 ${where.bone}）`
+    let madeSlot = where.slot || null
+    edit(label, (j) => {
+      let json = j, slot = where.slot
+      if (!slot) {
+        slot = uniqueSlotName(json, short)
+        madeSlot = slot
+        const r = Ops.addSlot(json, where.bone, slot); json = r.json
+      }
+      const sk = json.skins.find((x) => x.name === 'default')
+      const have = sk && sk.attachments[slot] ? Object.entries(sk.attachments[slot]).find(([n, a]) => a && (a.path || n) === image && (!a.type || a.type === 'region')) : null
+      if (have) return Ops.setSlotProps(json, slot, { attachment: have[0] })
+      const o = { name: short, path: image, width: size.width, height: size.height }
+      if (where.world) {
+        // the drop point in the slot bone's setup space
+        const bone = json.slots.find((x) => x.name === slot).bone
+        const mt = setupMatrices()[bone]
+        if (mt) {
+          const det = mt.a * mt.d - mt.b * mt.c || 1
+          const dx = where.world[0] - mt.worldX, dy = where.world[1] - mt.worldY
+          o.x = (mt.d * dx - mt.b * dy) / det
+          o.y = (-mt.c * dx + mt.a * dy) / det
+        }
+      }
+      return Ops.addRegionAttachment(json, 'default', slot, o)
+    }, (r) => { const name = r && r.attachment; if (name && madeSlot) { state.sel = { kind: 'att', skin: 'default', slot: madeSlot, name }; revealInTree(state.sel) } })
   }
 
   // ---------- 序列帧添加 / 序列扫光 (动画工具): pictures as cards
