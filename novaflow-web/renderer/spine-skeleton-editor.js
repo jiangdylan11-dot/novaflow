@@ -3466,11 +3466,13 @@
    * a weighted one) takes the same world transform, so the picture keeps its shape (Spine).
    */
   function attDrag(sel, sx, sy) {
-    if (state.mode !== 'setup') return null
     const slot = rt.skeleton.findSlot(sel.slot)
     const att = slot && slot.getAttachment()
     const region = att instanceof spine.RegionAttachment, mesh = att instanceof spine.MeshAttachment
     if (!region && !mesh) return null
+    // 动画: a mesh moves / turns / scales / shears as a whole too, written as its shape key on this frame
+    const animT = mesh && animOn() ? meshRowTarget(sel.slot, sel.name) : null
+    if (state.mode !== 'setup' && !animT) return null
     const B = matrixOf(slot.bone)
     const tool = state.tool === 'pose' ? 'move' : state.tool
     if (!['move', 'rotate', 'scale', 'shear'].includes(tool)) return null
@@ -3486,6 +3488,7 @@
       centre = n ? [x / n, y / n] : [B.worldX, B.worldY]
     }
     return { kind: 'att', sel, att, mesh, B, tool, sx, sy, moved: false, centre,
+      animT, base: animT ? currentOffsets(animT) : null,
       start: region ? { x: att.x, y: att.y, rotation: att.rotation, scaleX: att.scaleX, scaleY: att.scaleY } : { vertices: Array.from(att.vertices) },
       flip: Math.sign(B.a * B.d - B.b * B.c) || 1 }
   }
@@ -3531,6 +3534,57 @@
     return about(mul(M(B.a, B.b, B.c, B.d, 0, 0), mul(M(fx, 0, 0, fy, 0, 0), Binv)))
   }
 
+  /**
+   * 动画: a mesh's deform offsets after the world transform `W` is applied to its posed shape
+   * (setup vertices + `base` offsets), entry by entry through each entry's bone. A weighted vertex is
+   * an affine mix of its entries, so moving every entry by W moves the vertex by W.
+   */
+  function meshOffsetsAfter(T, base, W) {
+    const att = T.att, v = att.vertices, bones = rt.skeleton.bones, out = base.slice()
+    const through = (bone, x, y) => {
+      const wx = bone.a * x + bone.b * y + bone.worldX, wy = bone.c * x + bone.d * y + bone.worldY
+      const tx = W.a * wx + W.b * wy + W.tx, ty = W.c * wx + W.d * wy + W.ty
+      const det = bone.a * bone.d - bone.b * bone.c || 1, dx = tx - bone.worldX, dy = ty - bone.worldY
+      return [(bone.d * dx - bone.b * dy) / det, (bone.a * dy - bone.c * dx) / det]
+    }
+    if (att.bones) {
+      let e = 0
+      for (let i = 0; i < att.bones.length;) {
+        const n = att.bones[i++]
+        for (let k = 0; k < n; k++, i++, e++) {
+          const sx = v[e * 3], sy = v[e * 3 + 1]
+          const [x, y] = through(bones[att.bones[i]], sx + base[e * 2], sy + base[e * 2 + 1])
+          out[e * 2] = x - sx; out[e * 2 + 1] = y - sy
+        }
+      }
+    } else {
+      const bone = T.slot.bone
+      for (let i = 0; i < v.length; i += 2) { const [x, y] = through(bone, v[i] + base[i], v[i + 1] + base[i + 1]); out[i] = x - v[i]; out[i + 1] = y - v[i + 1] }
+    }
+    return out
+  }
+
+  /**
+   * A typed value of the transform panel for a picked mesh, as a world transform about its centre:
+   * the values are changes to its current shape (the panel shows 0 / 1), moves along the panel's axes,
+   * rotation in degrees, scale and shear along its bone's axes (as the stage handles do).
+   */
+  function meshPanelTransform(slot, k, v) {
+    const c = attCentre(slot)
+    if (!c || !Number.isFinite(v)) return null
+    const B = matrixOf(slot.bone)
+    const M = (a, b, cc, d, tx, ty) => ({ a, b, c: cc, d, tx, ty })
+    const mul = (P, Q) => M(P.a * Q.a + P.b * Q.c, P.a * Q.b + P.b * Q.d, P.c * Q.a + P.d * Q.c, P.c * Q.b + P.d * Q.d, P.a * Q.tx + P.b * Q.ty + P.tx, P.c * Q.tx + P.d * Q.ty + P.ty)
+    const about = (T) => mul(M(1, 0, 0, 1, c[0], c[1]), mul(T, M(1, 0, 0, 1, -c[0], -c[1])))
+    const det = B.a * B.d - B.b * B.c || 1
+    const inBone = (T) => about(mul(M(B.a, B.b, B.c, B.d, 0, 0), mul(T, M(B.d / det, -B.b / det, -B.c / det, B.a / det, 0, 0))))
+    if (k === 'x' || k === 'y') { const ax = axesOf(slot.bone)[k]; return M(1, 0, 0, 1, ax[0] * v, ax[1] * v) }
+    if (k === 'rotation') { const r = v / DEG, co = Math.cos(r), si = Math.sin(r); return about(M(co, -si, si, co, 0, 0)) }
+    if (k === 'scaleX' || k === 'scaleY') { if (Math.abs(v) < 1e-4) return null; return inBone(k === 'scaleX' ? M(v, 0, 0, 1, 0, 0) : M(1, 0, 0, v, 0, 0)) }
+    if (k === 'shearX' || k === 'shearY') { const r = v / DEG; return inBone(k === 'shearX' ? M(Math.cos(r), 0, Math.sin(r), 1, 0, 0) : M(1, -Math.sin(r), 0, Math.cos(r), 0, 0)) }
+    return null
+  }
+
   /** The mesh's vertices after `T`, from the drag's start copy: p' = Bone⁻¹ · T · Bone · p, bone by bone. */
   function applyMeshTransform(drag, T) {
     const att = drag.att, src = drag.start.vertices, out = att.vertices
@@ -3562,6 +3616,7 @@
     const [wx, wy] = toWorld(sx, sy)
     const [w0x, w0y] = toWorld(drag.sx, drag.sy)
     const { att, B, start, centre } = drag
+    if (drag.animT) { drag.offsets = meshOffsetsAfter(drag.animT, drag.base, meshDragTransform(drag, wx, wy, w0x, w0y, shift)); applyOffsets(drag.animT, drag.offsets); return }
     if (drag.mesh) { applyMeshTransform(drag, meshDragTransform(drag, wx, wy, w0x, w0y, shift)); syncXformValues(); return }
     if (drag.tool === 'move') {
       const det = B.a * B.d - B.b * B.c || 1
@@ -3591,6 +3646,12 @@
   function finishAttDrag(drag) {
     const { att, sel } = drag
     const verb = { move: '移动', rotate: '旋转', scale: '缩放', shear: '斜切' }[drag.tool]
+    if (drag.animT) {
+      const T = drag.animT, off = drag.offsets
+      if (!off || off.every((x, i) => Math.abs(x - drag.base[i]) < 1e-6)) { pose(); return }
+      edit(`第 ${state.frame} 帧：已${verb}网格 ${sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
+      return
+    }
     if (drag.mesh) {
       const moved = Array.from(att.vertices)
       // the preview changed the runtime mesh only; the JSON (and so undo) starts from the untouched one
@@ -3749,7 +3810,7 @@
         }
         // a press on the picked mesh's own pixels (not on a vertex) moves / turns / scales the whole
         // mesh in 设置, as a region does (Spine; the vertices are edited by their handles or 编辑网格)
-        if (state.mode === 'setup' && !(e.ctrlKey || e.metaKey)) {
+        if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) {
           const own = hitImage(sx, sy)
           if (own && own.slot === MT.slotName) {
             const whole = attDrag(state.sel, sx, sy)
@@ -3761,7 +3822,7 @@
         if (!bh && !(ih && ih.slot !== MT.slotName)) {
           // 设置: empty space drags the whole mesh too (rotate / scale about its centre, as a region does);
           // Ctrl+drag box-picks vertices
-          if (state.mode === 'setup' && !(e.ctrlKey || e.metaKey)) { const whole = attDrag(state.sel, sx, sy); if (whole) { drag = whole; c.setPointerCapture(e.pointerId); return } }
+          if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) { const whole = attDrag(state.sel, sx, sy); if (whole) { drag = whole; c.setPointerCapture(e.pointerId); return } }
           // empty space: box-pick vertices (Ctrl adds); a click clears them
           state.box = { x0: sx, y0: sy, x1: sx, y1: sy, add: e.ctrlKey || e.metaKey, verts: MT.slotName }
           drag = { kind: 'box' }
@@ -6861,6 +6922,13 @@ self.onmessage = (e) => {
       // a mesh moves / turns / scales / shears as a whole, with the same handles at its centre
       if (type === 'mesh' || type === 'linkedmesh') return { kind: 'att', sel: s, att, mesh: true }
     }
+    // 动画: the picked mesh (shown in its slot) the same way, written as its shape key
+    if (s && s.kind === 'att' && animOn()) {
+      const slot = rt.skeleton && rt.skeleton.findSlot(s.slot)
+      const shown = slot && slot.getAttachment()
+      const T = shown instanceof spine.MeshAttachment ? meshRowTarget(s.slot, s.name) : null
+      if (T && T.att === shown) return { kind: 'att', sel: s, att: shown, mesh: true, anim: T }
+    }
     return null
   }
 
@@ -6869,6 +6937,8 @@ self.onmessage = (e) => {
   /** Values shown in the transform panel for the current Spine axes (local / parent / world). */
   function xformValues(t) {
     if (!t) return {}
+    // a mesh has no transform of its own: the boxes are changes to its current shape
+    if (t.mesh) return { rotation: 0, x: 0, y: 0, scaleX: 1, scaleY: 1, shearX: 0, shearY: 0 }
     if (t.kind === 'bone' && t.names && t.names.length > 1) {
       // a value the bones do not share shows empty
       const all = t.names.map((n) => xformValues({ kind: 'bone', name: n }))
@@ -6926,6 +6996,25 @@ self.onmessage = (e) => {
   }
 
   function commitXform(t, k, v) {
+    if (t.mesh) {
+      const slot = rt.skeleton.findSlot(t.sel.slot)
+      const W = slot && meshPanelTransform(slot, k, v)
+      if (!W) { renderStage(); return }
+      const word = { x: '移动', y: '移动', rotation: '旋转', scaleX: '缩放', scaleY: '缩放', shearX: '斜切', shearY: '斜切' }[k]
+      if (t.anim) {
+        const T = t.anim
+        const off = meshOffsetsAfter(T, currentOffsets(T), W)
+        edit(`第 ${state.frame} 帧：已${word}网格 ${t.sel.name}（形状已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
+        return
+      }
+      // 设置: the vertices take it, as a drag of the whole mesh does
+      const att = slot.getAttachment()
+      if (!(att instanceof spine.MeshAttachment)) return
+      const drag = { att, sel: t.sel, mesh: true, tool: { x: 'move', y: 'move', rotation: 'rotate', scaleX: 'scale', scaleY: 'scale', shearX: 'shear', shearY: 'shear' }[k], start: { vertices: Array.from(att.vertices) } }
+      applyMeshTransform(drag, W)
+      finishAttDrag(drag)
+      return
+    }
     if (t.kind === 'att') {
       edit(`已修改图片 ${t.sel.name}`, (j) => Ops.setAttachmentProps(j, t.sel.skin, t.sel.slot, t.sel.name, { [k]: v }))
       return
@@ -6983,8 +7072,9 @@ self.onmessage = (e) => {
     const v = xformValues(t)
     const setupOnly = t && t.kind === 'att'
     const input = (k, cls) => {
-      const disabled = !t || (setupOnly && (k === 'shearX' || k === 'shearY'))
-      const i = h('input', { type: 'number', step: 'any', class: cls || null, 'data-k': k, value: disabled || (t && t.mesh) ? '' : fmt(v[k]), disabled: disabled || !!(t && t.mesh), title: t && t.mesh ? '网格的位置 / 旋转 / 缩放用画面里的手柄拖（整体变形写进顶点）' : null })
+      const disabled = !t || (setupOnly && !t.mesh && (k === 'shearX' || k === 'shearY'))
+      const i = h('input', { type: 'number', step: 'any', class: cls || null, 'data-k': k, value: disabled ? '' : fmt(v[k]), disabled,
+        title: t && t.mesh ? (t.anim ? '相对当前形状：输入数值整体移动 / 旋转 / 缩放 / 斜切网格，写进这一帧的形状关键帧' : '相对当前形状：输入数值整体移动 / 旋转 / 缩放 / 斜切网格（写进顶点）') : null })
       i.addEventListener('change', () => { const n = Number(i.value); if (Number.isFinite(n) && t) commitXform(t, k, n) })
       i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation() })
       return i
@@ -6997,7 +7087,7 @@ self.onmessage = (e) => {
       : h('span'))]
     // animation: a picked mesh / clipping is edited by its vertices; its key (the shape) shows on
     // every row, as a bone's keys do (user 2026-10-12: 能编辑的都应该能显示钥匙)
-    const deformT = !t && animOn() && state.sel && state.sel.kind === 'att' ? meshRowTarget(state.sel.slot, state.sel.name) : null
+    const deformT = t && t.anim ? t.anim : !t && animOn() && state.sel && state.sel.kind === 'att' ? meshRowTarget(state.sel.slot, state.sel.name) : null
     const keyBtn = (row) => {
       if (deformT) {
         const k = keyedNow([['deform', deformT.skin, deformT.slotName, deformT.attName]]) ? 'keyed' : 'none'
@@ -7020,7 +7110,7 @@ self.onmessage = (e) => {
         h('div', { class: 'xr' }, h('button', { class: 'xt', 'aria-pressed': String(state.jointEdit), html: ICON.joint, disabled: state.mode !== 'setup',
           title: '改关节：用平移 / 姿势拖骨骼的起点或末端，父骨骼跟着转向、子骨骼和图片不动（也可以按住 Shift）',
           onclick: () => { state.jointEdit = !state.jointEdit; renderStage() } }))),
-      h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : `图片 ${t.sel.name}`) : deformT ? `${shapeWord(deformT.att)} ${state.sel.name}` : '变换'),
+      h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : t.mesh ? `网格 ${t.sel.name}` : `图片 ${t.sel.name}`) : deformT ? `${shapeWord(deformT.att)} ${state.sel.name}` : '变换'),
         h('div', { class: 'xr' }, tool('rotate', 'C', '旋转'), input('rotation', 'wide'), keyBtn('rotate')),
         h('div', { class: 'xr' }, tool('move', 'V', '平移'), input('x'), input('y'), keyBtn('translate')),
         h('div', { class: 'xr' }, tool('scale', 'X', '缩放'), input('scaleX'), input('scaleY'), keyBtn('scale')),
