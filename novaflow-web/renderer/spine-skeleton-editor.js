@@ -5429,8 +5429,7 @@
       const to = h('input', { type: 'number', class: 'ld-num wide', min: 1, max: 18000, step: 1, value: sweepEndFrame(ticked.length), title: '扫光到第几帧结束（之后全透明）；留空 = 动画的最后一帧',
         onchange: (e) => { const v = Math.round(Number(e.target.value) || 0); state.sweepEnd = v > 0 ? Math.min(18000, v) : 0; e.target.value = sweepEndFrame(ticked.length) } })
       head.push(h('label', { class: 'ld-f' }, '起', from, '止', to, '帧'),
-        h('button', { class: 'ld-go gen', title: '勾一张图作底图，自动生成扫光切片（10 种扫光方式）；生成后卡片换成切片', onclick: openSweepGenerator }, '生成扫光…'),
-        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在起止之间均分', onclick: writeSweep }, '写入动画'))
+        h('button', { class: 'ld-go', title: '勾一张图作底图：弹框选扫光方式，写入动画时生成切片并写入；勾的是自己准备的序列图（多张）：直接写入', onclick: openSweepGenerator }, '生成扫光'))
     }
     dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }),
       h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftOpen = null; renderLeft(); renderLayerDock(); renderStage(); layoutFloats() } }, '×')))
@@ -5562,7 +5561,7 @@
     const step = (end - start) / (wrap ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
     const t4 = (t) => Math.round(t * 10000) / 10000
     const L = SweepLight()
-    edit(`序列扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
+    return edit(`序列扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
       const made = frameSlots(j, images, bone)
       const frames = made.frames
       let json = Ops.prepare(hangFrames(made.json, frames))
@@ -5677,11 +5676,16 @@ self.onmessage = (e) => {
     return out
   }
 
-  /** 生成扫光…: the one ticked card is the base (user 2026-10-12: one place to pick, the cards) */
+  /**
+   * 生成扫光… (the cards' one button): one ticked card = the base → the panel (its 写入动画 generates
+   * the slices and writes them); several ticked = a hand-made sequence → written as it is.
+   */
   async function openSweepGenerator() {
     if (!state.json) return
     const files = frameFiles('sweep')
-    if (files.length !== 1) { status(files.length ? '只勾一张图作底图' : '先在卡片里勾一张图作底图', 'error'); return }
+    if (!files.length) { status('先在卡片里勾一张图作底图（勾多张 = 自己准备的序列图，直接写入）', 'error'); return }
+    if (files.length > 1) { writeSweep(); return }
+    if (!animOn()) { status('先选一个动画', 'error'); return }
     try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
     openSweepPanel(files[0].name)
   }
@@ -5833,7 +5837,7 @@ self.onmessage = (e) => {
 
     const st = h('span', { class: 'st' })
     const setStatus = (msg, err) => { st.textContent = msg || ''; st.classList.toggle('err', !!err) }
-    const go = h('button', { class: 'btn primary', onclick: () => generate() }, '生成')
+    const go = h('button', { class: 'btn primary', title: '生成切片进图片文件夹，并按卡片栏的起止帧写入当前动画', onclick: () => generate() }, '写入动画')
     async function generate() {
       go.disabled = true; setStatus('')
       const t0 = performance.now()
@@ -5869,7 +5873,9 @@ self.onmessage = (e) => {
         state.leftOpen = 'sweep'
         close()
         refresh()
-        status(`已生成 ${names.length} 张扫光切片到「${folder}」（${((performance.now() - t0) / 1000).toFixed(1)} s），卡片里已勾选：点「写入动画」`, 'ok')
+        // straight into the animation (user: one button); the cards keep the slices for a re-write
+        const written = await writeSweep()
+        if (written) status(`已生成 ${names.length} 张扫光切片到「${folder}」并写入动画（${((performance.now() - t0) / 1000).toFixed(1)} s）`, 'ok')
       } catch (e) {
         setStatus(e.message, true)
       } finally { go.disabled = false }
