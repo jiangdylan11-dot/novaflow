@@ -103,8 +103,8 @@
     leftOpen: 'import', // the left column: one panel open at a time
     initialJson: null, // the project as imported (还原初始图层 / 还原原始权重)
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
-    seqUnticked: new Set(), // 序列帧添加: layers left out (its own tick)
-    sweepUnticked: new Set(), // 序列扫光: layers left out (its own tick)
+    frameSet: null, // 序列帧添加 / 序列扫光: the pictures on the cards (null = the image folder's root), [{ name, file?, region? }]
+    frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
     seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
     sweepFrames: 0, // 序列扫光: the whole sweep's length in frames (0 = the animation's)
     frameBone: 'root', // 序列帧添加 / 序列扫光: the bone the frames' slots hang on (user: root by default)
@@ -323,7 +323,8 @@
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
-    state.seqUnticked = new Set(); state.sweepUnticked = new Set(); state.sweepFrames = 0
+    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepFrames = 0
+    frameRoot = null; frameRootPending = null; frameThumbs.clear()
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
     state.anim = Object.keys(state.json.animations || {})[0] || ''
     // big rigs open readable: deep bones and every slot start collapsed (Spine opens at the root)
@@ -4958,7 +4959,7 @@
     ]
   }
 
-  /** The layer cards over the bottom of the stage while 自动蒙皮 / 自动权重 is open. */
+  /** The layer cards over the bottom of the stage while 自动蒙皮 / 自动权重 is open (序列帧添加 / 序列扫光 show pictures there). */
   function renderLayerDock() {
     const dock = $('#layerDock')
     const frameTool = state.leftOpen === 'sequence' || state.leftOpen === 'sweep'
@@ -4966,51 +4967,27 @@
     const show = !!(kind && state.json && (frameTool ? animOn() : (state.mode === 'setup' || kind === 'weights')) && !state.meshEdit && !state.weightEdit)
     dock.hidden = !show
     if (!show) return
+    if (frameTool) { renderFrameDock(dock, kind); return }
     const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
     dock.textContent = ''
-    const layers = imageLayers(frameTool)
-    // 序列帧添加 / 序列扫光 keep their own ticks (蒙皮 / 权重 share one)
-    const U = kind === 'sequence' ? state.seqUnticked : kind === 'sweep' ? state.sweepUnticked : state.unticked
+    const layers = imageLayers()
+    const U = state.unticked
     const ticked = layers.filter((l) => !U.has(l.slot))
     const L0 = layerSel()
-    const head = [
+    dock.append(h('div', { class: 'ld-hd' },
       h('span', {}, `已选 ${ticked.length} / ${layers.length}`),
       h('button', { class: 'tg', onclick: () => { U.clear(); renderLayerDock() } }, '全选'),
       h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { U.clear(); for (const l of layers) U.add(l.slot); renderLayerDock() } }, '清空'),
-    ]
-    if (frameTool) {
-      // the frames' slots hang on this bone (root by default); 点选 picks it on the stage / tree
-      const bones = state.json.bones.map((b) => b.name)
-      if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
-      const sel = h('select', { class: 'ld-sel', title: '写入时把勾选的图片挂到这根骨骼（位置不变）', onchange: (e) => { state.frameBone = e.target.value } },
-        bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
-      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '骨骼', sel),
-        h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
-        h('button', { class: 'tg', title: '从工程的图片文件夹里挑序列帧（可整个文件夹），每张成一个插槽挂到上面的骨骼；文件夹里没有的图可以用「导入图片 / 导入文件夹」先加进根目录', onclick: () => openImagePicker(kind === 'sequence' ? '序列帧添加：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图', (names) => addFramePictures(names, kind), { multi: true }) }, '从文件夹添加…'))
-    }
-    if (kind === 'sequence') {
-      const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
-        onchange: (e) => { state.seqGap = Math.max(1, Math.min(600, Math.round(Number(e.target.value) || 1))); e.target.value = state.seqGap } })
-      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
-        h('button', { class: 'ld-go', title: '勾选的图片按从上到下的顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
-    } else if (kind === 'sweep') {
-      const dur = h('input', { type: 'number', class: 'ld-num wide', min: 2, max: 18000, step: 1, value: sweepFrames(ticked.length), title: '整段扫光的长度（帧）',
-        onchange: (e) => { state.sweepFrames = Math.max(2, Math.min(18000, Math.round(Number(e.target.value) || 2))); e.target.value = state.sweepFrames } })
-      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '时长', dur, '帧'),
-        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在时长内均分', onclick: writeSweep }, '写入动画'))
-    }
-    dock.append(h('div', { class: 'ld-hd' }, ...head,
       h('span', { class: 'sp' }),
       // × closes the cards and folds the 自动蒙皮 / 自动权重 panel on the left
       h('button', { class: 'xx', title: '关闭（左边的面板一起收起）', onclick: () => { state.leftOpen = null; renderLeft(); renderLayerDock(); renderStage(); layoutFloats() } }, '×')))
     const grid = h('div', { class: 'ld-grid' })
-    let order = 0
     for (const l of layers) {
       const c = h('canvas', { width: 32, height: 32 })
       if (l.region) drawRegionThumb(c, l.region)
       const on = !U.has(l.slot)
-      const count = frameTool ? (on ? `第 ${++order} 帧` : '') : kind === 'mesh' ? (l.mesh ? String(l.verts) : '') : (l.bones ? `${l.bones} 骨` : '')
-      const editBtn = frameTool ? null : kind === 'mesh'
+      const count = kind === 'mesh' ? (l.mesh ? String(l.verts) : '') : (l.bones ? `${l.bones} 骨` : '')
+      const editBtn = kind === 'mesh'
         ? h('button', { class: 'ld-btn', title: l.mesh ? '在画面里改这一层的网格' : '按默认密度生成这一层的网格，然后打开编辑', onclick: (e) => {
             e.stopPropagation()
             const L = { skin: l.skin, slot: l.slot, name: l.name }
@@ -5023,11 +5000,11 @@
             if (l.bones) enterWeightEdit(L)
             else batchEdit([L], '自动权重', (j, x) => weighOneLayer(j, x), () => enterWeightEdit(L))
           } }, '权重')
-      grid.append(h('div', { class: 'ld-card', 'data-on': L0 && L0.slot === l.slot ? '1' : null, title: frameTool ? `${l.slot} · 骨骼 ${l.bone}` : l.slot,
+      grid.append(h('div', { class: 'ld-card', 'data-on': L0 && L0.slot === l.slot ? '1' : null, title: l.slot,
         onclick: () => select({ kind: 'att', skin: l.skin, slot: l.slot, name: l.name }, false, { noReveal: false }),
         // the card under the pointer lights its layer up on the stage, as hovering the layer does
         onmouseenter: () => { state.hoverImg = l.slot }, onmouseleave: () => { if (state.hoverImg === l.slot) state.hoverImg = null } },
-        h('input', { type: 'checkbox', checked: on, title: frameTool ? '勾选 = 这张图是序列里的一帧（按从上到下的顺序）' : '勾选 = 参与自动蒙皮 / 自动权重（两个面板是同一个勾选）',
+        h('input', { type: 'checkbox', checked: on, title: '勾选 = 参与自动蒙皮 / 自动权重（两个面板是同一个勾选）',
           onclick: (e) => e.stopPropagation(), onchange: (e) => { e.target.checked ? U.delete(l.slot) : U.add(l.slot); renderLayerDock() } }),
         c, h('span', { class: 'ld-n' }, l.slot), h('span', { class: 'ld-c' }, count), editBtn))
     }
@@ -5044,9 +5021,107 @@
     dock.dataset.last = now
   }
 
-  // ---------- 序列帧添加 / 序列扫光 (动画工具; the layer cards pick the frames, in draw order)
+  // ---------- 序列帧添加 / 序列扫光 (动画工具): pictures as cards
+  //
+  // The cards hold pictures, not slots: the image folder's root by default (its pictures, no
+  // subfolders); 从文件夹添加… opens the folder picker, and 添加所选 / 本文件夹全部 there puts those
+  // pictures on the cards instead (user: 弹框选了子文件夹，点添加所选就是显示子文件夹里的东西).
+  // The ticked cards are the frames, in order. 写入动画 reuses the slot that already shows a
+  // picture, gives the others a new slot (named after the picture) on 骨骼, and keys them.
 
-  const frameLayers = (kind) => imageLayers(true).filter((l) => !(kind === 'sequence' ? state.seqUnticked : state.sweepUnticked).has(l.slot))
+  let frameRoot = null // { key, files: [{ name, rel, file, region }] } the root folder's pictures
+  let frameRootPending = null
+  const frameThumbs = new Map() // name → 32 px canvas (a folder file decodes once)
+  const frameRootKey = () => state.atlasText.length + '|' + (state.imageFolder ? 'folder' : 'atlas')
+  const frameUnticked = (kind) => state.frameUnticked[kind]
+
+  /** the pictures on the cards: the picked set, else the root folder's (while it loads: none) */
+  function framePictures() {
+    if (state.frameSet) return state.frameSet
+    const key = frameRootKey()
+    if (frameRoot && frameRoot.key === key) return frameRoot.files
+    if (!frameRootPending || frameRootPending.key !== key) {
+      const p = { key }
+      frameRootPending = p
+      imageFolder().list().then((l) => l.files, () => []).then((files) => {
+        if (frameRootPending !== p) return
+        frameRootPending = null
+        frameRoot = { key, files: files.map((f) => ({ name: f.rel.replace(/\.[^.]+$/, ''), rel: f.rel, file: f.file, region: f.region })) }
+        renderLayerDock()
+      })
+    }
+    return null
+  }
+  /** the pictures the tool writes: the ticked cards, in their order */
+  const frameFiles = (kind) => (framePictures() || []).filter((f) => !frameUnticked(kind).has(f.name))
+
+  function frameThumb(f) {
+    const c = h('canvas', { width: 32, height: 32 })
+    const region = f.region || (rt.atlas && rt.atlas.findRegion(f.name)) || null
+    if (region) { drawRegionThumb(c, region); return c }
+    const done = frameThumbs.get(f.name)
+    if (done) { c.getContext('2d').drawImage(done, 0, 0); return c }
+    if (typeof f.file !== 'function') return c
+    f.file().then((file) => createImageBitmap(file)).then((bm) => {
+      const k = Math.min(32 / bm.width, 32 / bm.height, 1)
+      const keep = h('canvas', { width: 32, height: 32 })
+      keep.getContext('2d').drawImage(bm, (32 - bm.width * k) / 2, (32 - bm.height * k) / 2, bm.width * k, bm.height * k)
+      bm.close()
+      frameThumbs.set(f.name, keep)
+      c.getContext('2d').drawImage(keep, 0, 0)
+    }).catch(() => {})
+    return c
+  }
+
+  function renderFrameDock(dock, kind) {
+    const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
+    dock.textContent = ''
+    const U = frameUnticked(kind)
+    const pictures = framePictures()
+    const files = pictures || [], ticked = files.filter((f) => !U.has(f.name))
+    const bones = state.json.bones.map((b) => b.name)
+    if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
+    const sel = h('select', { class: 'ld-sel', title: '写入时勾选的图片挂到这根骨骼（已有插槽的位置不变，新图居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
+      bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
+    const title = kind === 'sequence' ? '序列帧添加：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图'
+    const head = [
+      h('span', {}, `已选 ${ticked.length} / ${files.length}`),
+      h('button', { class: 'tg', onclick: () => { for (const f of files) U.delete(f.name); renderLayerDock() } }, '全选'),
+      h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { for (const f of files) U.add(f.name); renderLayerDock() } }, '清空'),
+      h('span', { class: 'ld-sep' }),
+      h('label', { class: 'ld-f' }, '骨骼', sel),
+      h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
+      h('button', { class: 'tg', title: '打开工程的图片文件夹：进子文件夹后「添加所选」或「本文件夹全部」，卡片就换成那些图片；文件夹里没有的图可以用「导入图片 / 导入文件夹」加进来', onclick: () => openImagePicker(title, (names) => { state.frameSet = names.map((n) => ({ name: n })); U.clear(); renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
+      state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; U.clear(); renderLayerDock() } }, '根目录') : null,
+      h('span', { class: 'ld-sep' }),
+    ]
+    if (kind === 'sequence') {
+      const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
+        onchange: (e) => { state.seqGap = Math.max(1, Math.min(600, Math.round(Number(e.target.value) || 1))); e.target.value = state.seqGap } })
+      head.push(h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
+        h('button', { class: 'ld-go', title: '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
+    } else {
+      const dur = h('input', { type: 'number', class: 'ld-num wide', min: 2, max: 18000, step: 1, value: sweepFrames(ticked.length), title: '整段扫光的长度（帧）',
+        onchange: (e) => { state.sweepFrames = Math.max(2, Math.min(18000, Math.round(Number(e.target.value) || 2))); e.target.value = state.sweepFrames } })
+      head.push(h('label', { class: 'ld-f' }, '时长', dur, '帧'),
+        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在时长内均分', onclick: writeSweep }, '写入动画'))
+    }
+    dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }),
+      h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftOpen = null; renderLeft(); renderLayerDock(); renderStage(); layoutFloats() } }, '×')))
+    const grid = h('div', { class: 'ld-grid' })
+    let order = 0
+    for (const f of files) {
+      const on = !U.has(f.name)
+      const toggle = () => { if (U.has(f.name)) U.delete(f.name); else U.add(f.name); renderLayerDock() }
+      grid.append(h('div', { class: 'ld-card', title: f.name, onclick: toggle },
+        h('input', { type: 'checkbox', checked: on, title: '勾选 = 这张图是序列里的一帧（按顺序）', onclick: (e) => { e.stopPropagation(); toggle() } }),
+        frameThumb(f), h('span', { class: 'ld-n' }, f.name.split('/').pop()), h('span', { class: 'ld-c' }, on ? `第 ${++order} 帧` : '')))
+    }
+    if (!pictures) grid.append(h('div', { class: 'hint' }, '读取图片文件夹…'))
+    else if (!files.length) grid.append(h('div', { class: 'hint' }, '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
+    dock.append(grid)
+    grid.scrollTop = keep
+  }
 
   /** 序列扫光's length in frames: the field's value, else the animation's, else 5 frames a step (0 / 5 / 10 …). */
   function sweepFrames(n) {
@@ -5055,29 +5130,52 @@
     return f > 0 ? f : ((n || 1) + 1) * 5
   }
 
-  /** 从文件夹添加: one slot a picture (its name), on 骨骼, centred on it, ticked as the next frames. */
-  function addFramePictures(names, kind) {
-    const list = (names || []).filter(Boolean)
-    if (!list.length) return
-    const bone = state.frameBone && state.json.bones.some((b) => b.name === state.frameBone) ? state.frameBone : (state.json.bones[0] || {}).name
-    const U = kind === 'sequence' ? state.seqUnticked : state.sweepUnticked
-    edit((r) => `已添加 ${r.count} 张序列图片到 ${bone}`, (j) => {
-      let json = j, count = 0
-      // the cards list the draw order top first: the last picture goes in first so the first one
-      // ends on top and reads as 第 1 帧 (frames show one at a time, their order among themselves is moot)
-      for (const name of list.slice().reverse()) {
-        const slotName = uniqueSlotName(json, name.split('/').pop())
-        let r = Ops.addSlot(json, bone, slotName); json = r.json
-        const size = regionSize(name) || { width: 1, height: 1 }
-        r = Ops.addRegionAttachment(json, 'default', slotName, { name: slotName, path: name, width: size.width, height: size.height }); json = r.json
-        U.delete(slotName)
-        count++
+  /** The slot whose setup attachment shows `image` (the picked skin first, then default). */
+  function slotShowing(json, image) {
+    const skins = [state.skin, 'default'].filter((v, i, a) => v && a.indexOf(v) === i).map((n) => json.skins.find((x) => x.name === n)).filter(Boolean)
+    for (const sl of json.slots) {
+      if (!sl.attachment) continue
+      for (const sk of skins) {
+        const a = sk.attachments[sl.name] && sk.attachments[sl.name][sl.attachment]
+        if (a && (a.path || sl.attachment) === image) return sl.name
       }
-      return { json, count }
-    })
+    }
+    return null
   }
 
-  /** The ticked frames' slots move to 骨骼 (setup placement kept) before the keys go in. */
+  /** Pictures not in the project yet (root folder files) come into the atlas first (their own undo step, as the picker does). */
+  async function bringFramesIn(files) {
+    const fresh = files.filter((f) => typeof f.file === 'function' && !(rt.atlas && rt.atlas.findRegion(f.name)))
+    if (!fresh.length) return
+    const before = snapshot()
+    try {
+      for (const f of fresh) await addImageFile(await f.file(), f.name)
+      ensureAtlas()
+      applyJson(state.json)
+      state.history.push(before)
+      state.future = []
+    } catch (e) { restore(before); throw new Error('导入图片失败：' + e.message) }
+  }
+
+  /**
+   * Each picture → its slot and the attachment to show: the slot already showing it, else a new
+   * slot (named after the picture) on 骨骼 with a region of the picture's size, centred on the bone.
+   */
+  function frameSlots(json, images, bone) {
+    const out = []
+    for (const image of images) {
+      const existing = slotShowing(json, image)
+      if (existing) { out.push({ slot: existing, name: json.slots.find((x) => x.name === existing).attachment }); continue }
+      const slotName = uniqueSlotName(json, image.split('/').pop())
+      let r = Ops.addSlot(json, bone, slotName); json = r.json
+      const size = regionSize(image) || { width: 1, height: 1 }
+      r = Ops.addRegionAttachment(json, 'default', slotName, { name: slotName, path: image, width: size.width, height: size.height }); json = r.json
+      out.push({ slot: slotName, name: slotName })
+    }
+    return { json, frames: out }
+  }
+
+  /** The frames' slots move to 骨骼 (setup placement kept) before the keys go in. */
   function hangFrames(json, frames) {
     const bone = state.frameBone
     if (!bone || !json.bones.some((b) => b.name === bone)) return json
@@ -5090,14 +5188,21 @@
   /** The slot's own colour (RRGGBB) under the animated alpha keys. */
   const slotRgb = (json, slot) => { const s = json.slots.find((x) => x.name === slot); return String((s && s.color) || 'ffffffff').padEnd(8, 'f').slice(0, 6).toLowerCase() }
 
+  /** the bone the frames hang on (the select's, else the first bone) */
+  const frameBone = () => (state.frameBone && state.json.bones.some((b) => b.name === state.frameBone) ? state.frameBone : (state.json.bones[0] || {}).name)
+
   /** 序列帧添加: picture i shows from frame i·gap; the one before hides there. No loop: the last stays. */
-  function writeSequence() {
+  async function writeSequence() {
     if (!animOn()) { status('先选一个动画', 'error'); return }
-    const frames = frameLayers('sequence')
-    if (frames.length < 2) { status('先勾选至少 2 张图片（画面下方的卡片）', 'error'); return }
+    const files = frameFiles('sequence')
+    if (files.length < 2) { status('先在卡片里勾选至少 2 张图片', 'error'); return }
+    try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
+    const images = files.map((f) => f.name), bone = frameBone()
     const gap = Math.max(1, Math.round(state.seqGap || 1)), anim = state.anim
-    edit(`序列帧添加：${frames.length} 帧，每 ${gap} 帧一张，挂在 ${state.frameBone}（${anim}）`, (j) => {
-      const json = Ops.prepare(hangFrames(j, frames))
+    edit(`序列帧添加：${images.length} 帧，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
+      const made = frameSlots(j, images, bone)
+      const frames = made.frames
+      const json = Ops.prepare(hangFrames(made.json, frames))
       const a = json.animations[anim]
       if (!a) throw new Error(`找不到动画：${anim}`)
       a.slots = a.slots || {}
@@ -5116,14 +5221,18 @@
   }
 
   /** 序列扫光: picture i goes 0 → 100 → 0 over 2 steps starting at i·step; step = 时长 / (N + 1). */
-  function writeSweep() {
+  async function writeSweep() {
     if (!animOn()) { status('先选一个动画', 'error'); return }
-    const frames = frameLayers('sweep')
-    if (!frames.length) { status('先勾选图片（画面下方的卡片）', 'error'); return }
-    const totalFrames = sweepFrames(frames.length), step = totalFrames / FPS / (frames.length + 1), anim = state.anim
+    const files = frameFiles('sweep')
+    if (!files.length) { status('先在卡片里勾选图片', 'error'); return }
+    try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
+    const images = files.map((f) => f.name), bone = frameBone()
+    const totalFrames = sweepFrames(images.length), step = totalFrames / FPS / (images.length + 1), anim = state.anim
     const t4 = (t) => Math.round(t * 10000) / 10000
-    edit(`序列扫光：${frames.length} 张，共 ${totalFrames} 帧，挂在 ${state.frameBone}（${anim}）`, (j) => {
-      const json = Ops.prepare(hangFrames(j, frames))
+    edit(`序列扫光：${images.length} 张，共 ${totalFrames} 帧，挂在 ${bone}（${anim}）`, (j) => {
+      const made = frameSlots(j, images, bone)
+      const frames = made.frames
+      const json = Ops.prepare(hangFrames(made.json, frames))
       const a = json.animations[anim]
       if (!a) throw new Error(`找不到动画：${anim}`)
       a.slots = a.slots || {}
