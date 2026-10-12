@@ -93,3 +93,5 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 .editor-workspace .curvewrap{height:110px;flex:0 0 110px;min-height:110px}
 /* curve value beside 重置; the hint rides in the footer with the other notes; no 通道关闭 text */
 #curveState{display:none!important}.curvebar .curvevalue{display:flex;align-items:center;gap:4px;font-size:11px;color:#888;white-space:nowrap}.curvebar .curvevalue input{width:40px}#curveHint{margin:0;color:#777;font-size:11px}.ribbon-mode #curveHint{display:none}
+/* 完整动画 / 骨骼片段: the flat-button hover (#373737, white) and a green pressed state for 骨骼片段 (user 2026-10-12: 没有反馈) */
+[data-novaflow-motion-playback-mode]:hover{--nf-pb-bg:#373737;--nf-pb-color:#ffffff}[data-novaflow-motion-playback-mode]:active{--nf-pb-bg:#2f2f2f}[data-novaflow-motion-playback-mode][aria-pressed="true"]{--nf-pb-bg:#1c4136;--nf-pb-border:#2c604f;--nf-pb-color:#9be4cd}[data-novaflow-motion-playback-mode][aria-pressed="true"]:hover{--nf-pb-bg:#22503f;--nf-pb-color:#ffffff}

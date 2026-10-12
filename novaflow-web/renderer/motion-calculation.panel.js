@@ -20,13 +20,13 @@
   interval.style.cssText='position:fixed;z-index:61;height:3px;border-radius:2px;background:#59a8ed;pointer-events:none;display:none';document.body.append(interval);
   let bonePlayback=false;
   const playbackMode=document.createElement('div');playbackMode.dataset.novaflowMotionPlaybackMode='1';playbackMode.setAttribute('role','button');playbackMode.tabIndex=0;
-  playbackMode.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-sizing:border-box;height:26px;padding:0 8px;border:1px solid #343434;border-radius:6px;background:#272727;color:#d4d4d4;font:11px "Microsoft YaHei",sans-serif;cursor:pointer;user-select:none';
-  function syncPlaybackMode(){playbackMode.textContent=bonePlayback?'骨骼片段':'完整动画';playbackMode.setAttribute('aria-label','播放范围：'+playbackMode.textContent);playbackMode.setAttribute('aria-pressed',String(bonePlayback));playbackMode.title=bonePlayback?'仅循环播放当前骨骼时段；点击切换完整动画':'播放完整动画总时长；点击仅播放骨骼时段';playbackMode.style.color=bonePlayback?'#6ed3a7':'#d4d4d4';bridge.playbackRange?.(bonePlayback?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);}
+  playbackMode.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-sizing:border-box;height:26px;padding:0 8px;border:1px solid var(--nf-pb-border,#343434);border-radius:6px;background:var(--nf-pb-bg,#272727);color:var(--nf-pb-color,#d4d4d4);font:11px "Microsoft YaHei",sans-serif;cursor:pointer;user-select:none;transition:none';
+  function syncPlaybackMode(){playbackMode.textContent=bonePlayback?'骨骼片段':'完整动画';playbackMode.setAttribute('aria-label','播放范围：'+playbackMode.textContent);playbackMode.setAttribute('aria-pressed',String(bonePlayback));playbackMode.title=bonePlayback?'仅循环播放当前骨骼时段；点击切换完整动画':'播放完整动画总时长；点击仅播放骨骼时段';bridge.playbackRange?.(bonePlayback?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);}
   playbackMode.onclick=()=>{bonePlayback=!bonePlayback;syncPlaybackMode();};
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-8',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-9',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||(ribbonShown&&ribbonSettled)){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画工具编辑器');
   body.innerHTML=`
