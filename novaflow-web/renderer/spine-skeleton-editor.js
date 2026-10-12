@@ -1177,8 +1177,6 @@
    */
   function openImagePicker(title, onPick, opts) {
     const multi = !!(opts && opts.multi)
-    const highlight = (opts && opts.highlight) || null   // a picture shown picked on open (the stage's selection)
-    const noFolder = !!(opts && opts.noFolder)             // 序列扫光's 底图: one picture, no folder import
     const close = () => { token++; mask.remove() }
     let stack = [], token = 0
     const crumbs = h('div', { class: 'crumbs' })
@@ -1248,13 +1246,10 @@
       }
       for (const f of list.files) {
         const c = h('canvas', { width: 88, height: 88 })
-        const name = f.rel.replace(/\.[^.]+$/, '')
-        const hl = !multi && highlight && name === highlight
-        const tile = h('div', { class: 'tile' + (picked.has(f.rel) || hl ? ' picked' : ''), title: name + (hl ? '（画面上选中的）' : '') }, c, h('span', {}, f.name.replace(/\.[^.]+$/, '')))
+        const tile = h('div', { class: 'tile' + (picked.has(f.rel) ? ' picked' : ''), title: f.rel.replace(/\.[^.]+$/, '') }, c, h('span', {}, f.name.replace(/\.[^.]+$/, '')))
         tile.onclick = () => pickFile(f, tile)
         body.append(tile)
         thumbOf(f, c)
-        if (hl) setTimeout(() => tile.scrollIntoView({ block: 'nearest' }), 0)
       }
       listed = list.files.slice()
       if (multi) { allBtn.disabled = !list.files.length; allBtn.onclick = () => confirmMulti(list.files.slice()) }
@@ -1294,7 +1289,7 @@
           multi ? addBtn : null,
           multi ? allBtn : null,
           h('button', { class: 'btn small', title: '加新素材：图片导进当前文件夹', onclick: () => importFrom(false) }, '导入图片…'),
-          noFolder ? null : h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
+          h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
           h('button', { class: 'xx', onclick: close }, '×')),
         multi ? h('div', { class: 'hint', style: 'padding:8px 14px 0' }, '点图片勾选（再点取消），或「本文件夹全部」；加进来的图片各成一个插槽，挂在卡片栏选的骨骼上') : null,
         crumbs, body))
@@ -5421,7 +5416,7 @@
       h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
       h('button', { class: 'tg', title: '打开工程的图片文件夹：进子文件夹后「添加所选」或「本文件夹全部」，卡片就换成那些图片；文件夹里没有的图可以用「导入图片 / 导入文件夹」加进来', onclick: () => openImagePicker(title, (names) => { state.frameSet = names.map((n) => ({ name: n })); U.clear(); renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
       state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; U.clear(); renderLayerDock() } }, '根目录') : null,
-      kind === 'sweep' ? h('button', { class: 'tg', title: '选一张底图，自动生成扫光切片（10 种扫光方式）', onclick: openSweepGenerator }, '生成扫光…') : null,
+      kind === 'sweep' ? h('button', { class: 'tg', title: '勾一张图作底图，自动生成扫光切片（10 种扫光方式）；生成后卡片换成切片', onclick: openSweepGenerator }, '生成扫光…') : null,
       h('span', { class: 'ld-sep' }),
     ]
     if (kind === 'sequence') {
@@ -5449,7 +5444,7 @@
         frameThumb(f), h('span', { class: 'ld-n' }, f.name.split('/').pop()), h('span', { class: 'ld-c' }, on ? `第 ${++order} 帧` : '')))
     }
     if (!pictures) grid.append(h('div', { class: 'hint' }, '读取图片文件夹…'))
-    else if (!files.length) grid.append(h('div', { class: 'hint' }, '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
+    else if (!files.length) grid.append(h('div', { class: 'hint' }, kind === 'sweep' ? '根目录里没有图片：用「从文件夹添加…」挑图（勾一张作底图后「生成扫光…」，或勾自己准备的序列图直接写入）' : '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
     dock.append(grid)
     grid.scrollTop = keep
   }
@@ -5597,8 +5592,8 @@
 
   // ------------------------------------------------------------------ 序列扫光 生成器（底图 → 扫光切片）
   //
-  // 点 序列扫光 直接开：第一步是换图的图片格子（选底图），第二步是方案 / 实时小预览 / 参数 /
-  // 挂到骨骼树。生成的切片进图片文件夹 sweep/<底图名>/<方案>/，卡片坞里勾好；写入动画时插槽
+  // 序列扫光's cards are the one place to pick: tick one picture, 生成扫光… opens the panel（方案 /
+  // 实时小预览 / 参数 / 挂到骨骼树）。生成的切片进图片文件夹 sweep/<底图名>/<方案>/，卡片换成它们并勾好；写入动画时插槽
   // 挂到选的骨骼、插到底图插槽的上一层、设叠加模式，绕一圈的方案首尾相接。
   // 算法在 sweep-light.core.js（页面里加载，Worker 里 importScripts 同一份）。
 
@@ -5682,19 +5677,13 @@ self.onmessage = (e) => {
     return out
   }
 
-  /** the picture the stage selection shows (插槽 / 图片), to highlight it in the picker */
-  function selectedPicture() {
-    const s = state.sel, j = state.json
-    if (!s || !j) return null
-    const att = (slot, name) => { for (const sk of j.skins) { const a = sk.attachments[slot] && sk.attachments[slot][name]; if (a) return a.path || name } return null }
-    if (s.kind === 'att') return att(s.slot, s.name)
-    if (s.kind === 'slot') { const sl = j.slots.find((x) => x.name === s.name); return sl && sl.attachment ? att(sl.name, sl.attachment) : null }
-    return null
-  }
-
-  function openSweepGenerator() {
+  /** 生成扫光…: the one ticked card is the base (user 2026-10-12: one place to pick, the cards) */
+  async function openSweepGenerator() {
     if (!state.json) return
-    openImagePicker('序列扫光：选底图', (name) => openSweepPanel(name), { highlight: selectedPicture(), noFolder: true })
+    const files = frameFiles('sweep')
+    if (files.length !== 1) { status(files.length ? '只勾一张图作底图' : '先在卡片里勾一张图作底图', 'error'); return }
+    try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
+    openSweepPanel(files[0].name)
   }
 
   /**
@@ -5819,10 +5808,10 @@ self.onmessage = (e) => {
       const fn = h('input', { type: 'number', min: 2, max: 120, step: 1, value: P.frames })
       fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
       const widened = ew.floor > 1.1 * Math.max(0.2, Number(P.width) || 1)   // a few percent of widening is not worth a warning
-      row('帧数', h('span', { class: 'sw-tip', style: widened ? 'color:#e0b45a' : '' }, widened ? `少于 ${L.minFrames(P)} 帧会一步一闪：光带已自动加宽到 ${ew.floor.toFixed(2)}` : '生成多少张切片；多一些扫得更顺'), fn)
+      row('帧数', fn, h('span', { class: 'sw-inl', style: widened ? 'color:#e0b45a' : '' }, widened ? `少于 ${L.minFrames(P)} 帧会一步一闪：光带已自动加宽到 ${ew.floor.toFixed(2)}` : '生成多少张切片；多一些扫得更顺')).classList.add('num')
       const pn = h('input', { type: 'number', min: 0, max: 400, step: 1, value: P.pad })
       pn.onchange = () => { P.pad = Math.max(0, Math.min(400, Math.round(Number(pn.value) || 0))); pn.value = P.pad; schedulePreview() }
-      row('边距', h('span', { class: 'sw-tip' }, '切片四周留给光晕的像素，0 = 自动'), pn)
+      row('边距', pn, h('span', { class: 'sw-inl' }, '切片四周留给光晕的像素，0 = 自动')).classList.add('num')
       // 挂到骨骼树
       params.append(h('div', { class: 'sw-sep' }))
       const list = showing(), bs = baseSlot()
@@ -5888,9 +5877,7 @@ self.onmessage = (e) => {
 
     const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
       h('div', { class: 'dialog sw' },
-        h('div', { class: 'hd' }, h('b', {}, `序列扫光 · ${stem}`),
-          h('button', { class: 'btn small', title: '回到图片格子换一张底图', onclick: () => { close(); openSweepGenerator() } }, '换底图'),
-          h('button', { class: 'xx', onclick: close }, '×')),
+        h('div', { class: 'hd' }, h('b', {}, `序列扫光 · ${stem}`), h('button', { class: 'xx', onclick: close }, '×')),
         h('div', { class: 'sw-body' }, types, h('div', { class: 'sw-right' }, pv, params)),
         h('div', { class: 'sw-ft' }, st, go)))
     document.body.append(mask)
@@ -7838,10 +7825,7 @@ self.onmessage = (e) => {
     } else if (kind === 'sequence' || kind === 'sweep') {
       // 序列帧添加 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
       if (open) {
-        const fresh = state.leftOpen !== kind
         state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind
-        // 序列扫光: straight into the generator (底图 → 切片); its × leaves the cards for hand-made sets
-        if (kind === 'sweep' && fresh && !document.querySelector('.mask .dialog.sw')) setTimeout(openSweepGenerator, 0)
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }

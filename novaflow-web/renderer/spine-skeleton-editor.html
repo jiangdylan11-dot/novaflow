@@ -369,7 +369,8 @@
   .sw-seg button{height:26px;padding:0 9px;border:1px solid rgba(255,255,255,.11);border-radius:6px;background:#2a2a2a;color:rgba(255,255,255,.8);font-size:12px;cursor:pointer}
   .sw-seg button:hover{background:#373737;color:#fff}
   .sw-seg button[aria-pressed="true"]{background:var(--green);border-color:transparent;color:#fff}
-  .sw-p .sw-tip{color:var(--dim);font-size:11px;line-height:1.3}
+  .sw-p.num{grid-template-columns:62px 58px minmax(0,1fr)}   /* 标签 | 数值框 | 说明 */
+  .sw-p .sw-inl{color:var(--dim);font-size:11px;line-height:1.3}
   .sw-tip{grid-column:2/4;color:var(--dim);font-size:11px}
   .sw-wide{grid-column:1/-1;color:var(--dim);font-size:11px}
   .sw-wide.warn{color:#fca5a5}
