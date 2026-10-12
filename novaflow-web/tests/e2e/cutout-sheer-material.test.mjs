@@ -37,14 +37,17 @@ const matte = (api, options) => {
 };
 const at = (result, x, y) => { const i = (y * W + x) * 4; return [result.data[i], result.data[i + 1], result.data[i + 2], result.alpha[y * W + x]]; };
 
-test('mask core keeps key-leaning material opaque; 半透明材质 lets pale material stay translucent', () => {
+test('mask core keeps key-leaning material opaque; 半透明材质 keys the whole subject as before', () => {
   const api = loadMatting();
   const off = matte(api, {}), on = matte(api, { sheerMaterial: true });
   assert.equal(at(off, 36, 48)[3], 255, 'pale material opaque by default');
-  assert.equal(at(off, 60, 48)[3], 255, 'purple material opaque by default');
-  assert.ok(at(on, 36, 48)[3] < 250, 'pale material translucent with 半透明材质 on');
-  assert.equal(at(on, 60, 48)[3], 255, 'coloured material still protected with 半透明材质 on');
+  assert.equal(at(off, 60, 48)[3], 255, 'coloured material opaque by default');
   assert.ok(at(off, 36, 48)[1] < PALE[1], 'the kept pale pixel loses its screen cast');
+  // On: a sheer veil and glass showing the screen through it stay translucent and lose the
+  // screen's colour; protecting coloured material there left a staff orb green.
+  assert.ok(at(on, 36, 48)[3] < 250, 'pale material translucent with 半透明材质 on');
+  assert.ok(at(on, 60, 48)[3] < 250, 'coloured key-leaning material translucent with 半透明材质 on');
+  for (const x of [36, 60]) { const [r, g, b] = at(on, x, 48); assert.ok(g <= Math.max(r, b) + 2, 'no screen green left at x=' + x); }
 });
 
 test('renderAsync forwards 半透明材质 to the matting worker', async () => {

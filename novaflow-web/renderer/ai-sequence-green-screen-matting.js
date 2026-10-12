@@ -1133,11 +1133,12 @@
       // cool side of white fur, lilac parchment or a teal collar is the subject's own colour, not
       // screen mixed in: keying it there turned a purple scroll pink and punched holes into a
       // panda's face. Only a pixel that is nearly the screen itself (a gap the mask missed) still
-      // keys; a kept pixel keeps its colour, no screen is subtracted from it. With 半透明材质 on,
-      // white/grey material keeps the chroma solution instead, so a sheer veil stays translucent
-      // (it is the same pixel as the shaded side of white fur; only the user can tell them apart).
-      const sheer = options.sheerMaterial ? smooth(.3, .6, Math.min(r, b) / Math.max(r, b, .001)) : 0;
-      const keep = subjectCore ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff)) * (1 - sheer) : 0;
+      // keys; a kept pixel keeps its colour, no screen is subtracted from it. With 半透明材质 on
+      // the whole subject keeps the chroma solution, as before this protection existed: a sheer
+      // veil (the same pixel as the shaded side of white fur) and glass showing the screen
+      // through it (a staff's orb) stay translucent and lose the screen's colour. Protecting only
+      // pale material there left the orb's green opaque.
+      const keep = subjectCore && !options.sheerMaterial ? smooth(.6, .95, subjectCore[p]) * (1 - smooth(.45, .7, dominance / bgDiff)) : 0;
       if (kept && keep > .5) kept[p] = 1;
       if (keep > a) {
         a = keep;

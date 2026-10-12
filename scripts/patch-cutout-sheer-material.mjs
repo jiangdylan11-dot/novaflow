@@ -1,7 +1,7 @@
 // 视频抠图 半透明材质 switch (2026-10-12): a sheer veil and the shaded side of white fur are the
 // same pixel over a green/blue screen, so the user chooses per clip. Off (default, reset every
-// time 视频抠图 opens like 边缘净化): the AI mask keeps pale material opaque. On: pale material
-// keeps the chroma solution and stays translucent. The prebuilt React bundle gets the state, the
+// time 视频抠图 opens like 边缘净化): the AI mask keeps the subject opaque. On: the whole subject
+// keeps the chroma solution, so a veil or glass showing the screen stays translucent. The prebuilt React bundle gets the state, the
 // switch next to 边缘净化, and the flag on every matte call and cache key.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +43,7 @@ export function patchCutoutSheerMaterial(source) {
   const sheerSwitch = edgeSwitch
     .replace('"aria-label":`边缘净化`', '"aria-label":`半透明材质`')
     .replace('"data-novaflow-edge-clean":`1`', '"data-novaflow-sheer-material":`1`')
-    .replace(/title:nfCleanEdges\?`[^`]*`:`[^`]*`/, 'title:nfSheer?`半透明材质已开启：白色、浅色料子按透出的幕布算半透明（纱、薄布）`:`半透明材质已关闭：蒙版认定的主体保持不透明`')
+    .replace(/title:nfCleanEdges\?`[^`]*`:`[^`]*`/, 'title:nfSheer?`半透明材质已开启：主体里透出幕布的地方（纱、薄布、玻璃）按半透明处理`:`半透明材质已关闭：蒙版认定的主体保持不透明`')
     .replace('nfSetCleanEdges(!nfCleanEdges)', 'nfSetSheer(!nfSheer)')
     .replace('children:`边缘净化`', 'children:`半透明材质`')
     .split('nfCleanEdges').join('nfSheer');
