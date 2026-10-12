@@ -360,6 +360,18 @@
     const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true })
     rt.gl = gl
     rt.renderer = new spine.webgl.SceneRenderer(canvas, gl, true)
+    keepAlphaUnderAdditive(rt.renderer, gl)
+  }
+
+  /**
+   * The stage canvas is transparent (the page's checkerboard shows through). An additive slot
+   * (叠加) drawn from a JPG has alpha 1 on its black pixels: with the runtime's blendFunc(ONE, ONE)
+   * that alpha lands in the canvas and the browser paints an opaque black box. Spine's viewport is
+   * opaque, so black adds nothing there; here the colour adds and the alpha stays what is underneath.
+   */
+  function keepAlphaUnderAdditive(renderer, gl) {
+    const b = renderer.batcher, orig = b.setBlendMode.bind(b)
+    b.setBlendMode = (src, dst) => { orig(src, dst); if (dst === gl.ONE) gl.blendFuncSeparate(src, gl.ONE, gl.ZERO, gl.ONE) }
   }
 
   // ------------------------------------------------------------------ 预览 (Spine's Preview view)
@@ -377,6 +389,7 @@
     if (!pv.gl) {
       pv.gl = c.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true })
       pv.renderer = new spine.webgl.SceneRenderer(c, pv.gl, true)
+      keepAlphaUnderAdditive(pv.renderer, pv.gl)
     }
     if (pv.atlasKey !== state.atlasText) {
       if (pv.atlas) try { pv.atlas.dispose() } catch {}
@@ -1095,7 +1108,8 @@
   // A folder node lists its subfolders and images.
 
   const IMG_RX = /\.(png|jpe?g|webp)$/i
-  const sortList = (dirs, files) => ({ dirs: dirs.sort((x, y) => x.name.localeCompare(y.name)), files: files.sort((x, y) => x.name.localeCompare(y.name)) })
+  const byName = (x, y) => x.name.localeCompare(y.name, undefined, { numeric: true, sensitivity: 'base' })
+  const sortList = (dirs, files) => ({ dirs: dirs.sort(byName), files: files.sort(byName) })
 
   /** `items` = [{ rel: path inside the folder, file }]. */
   function folderFromFiles(name, items) {
@@ -1155,25 +1169,51 @@
    * its content, the path on top goes back. An image of the folder that is not in the project
    * yet comes in under its path in the folder.
    */
-  function openImagePicker(title, onPick) {
+  function openImagePicker(title, onPick, opts) {
+    const multi = !!(opts && opts.multi)
     const close = () => { token++; mask.remove() }
     let stack = [], token = 0
     const crumbs = h('div', { class: 'crumbs' })
     const body = h('div', { class: 'bd' })
-    const pickFile = async (f) => {
-      const name = f.rel.replace(/\.[^.]+$/, '')
-      if (!(rt.atlas && rt.atlas.findRegion(name))) {
-        const before = snapshot()
-        try {
-          await addImageFile(await f.file(), name)
-          ensureAtlas()
-          applyJson(state.json)
-          state.history.push(before)
-          state.future = []
-        } catch (e) { restore(before); status('导入图片失败：' + e.message, 'error'); return }
-      }
+    const picked = new Map() // multi: rel → file entry, in pick order
+    const count = h('span', { class: 'pk-count' })
+    let listed = [] // the files of the folder on show, in their order
+    // 添加所选: the ticked pictures in the folder's order (name order), not the order they were clicked in
+    const pickedInOrder = () => [...listed.filter((f) => picked.has(f.rel)), ...[...picked.values()].filter((f) => !listed.includes(f))]
+    const addBtn = h('button', { class: 'btn small primary', disabled: true, onclick: () => confirmMulti(pickedInOrder()) }, '添加所选')
+    const syncCount = () => { count.textContent = picked.size ? `已选 ${picked.size} 张` : ''; addBtn.disabled = !picked.size }
+    /** the images into the project (the ones not there yet), then the names out */
+    const bringIn = async (list) => {
+      const names = []
+      const before = snapshot()
+      let added = false
+      try {
+        for (const f of list) {
+          const name = f.rel.replace(/\.[^.]+$/, '')
+          if (!(rt.atlas && rt.atlas.findRegion(name))) { await addImageFile(await f.file(), name); added = true }
+          names.push(name)
+        }
+        if (added) { ensureAtlas(); applyJson(state.json); state.history.push(before); state.future = [] }
+      } catch (e) { restore(before); status('导入图片失败：' + e.message, 'error'); return null }
+      return names
+    }
+    const confirmMulti = async (list) => {
+      if (!list.length) return
+      const names = await bringIn(list)
+      if (!names) return
       close()
-      onPick(name)
+      onPick(names)
+    }
+    const pickFile = async (f, tile) => {
+      if (multi) {
+        if (picked.has(f.rel)) { picked.delete(f.rel); tile.classList.remove('picked') } else { picked.set(f.rel, f); tile.classList.add('picked') }
+        syncCount()
+        return
+      }
+      const names = await bringIn([f])
+      if (!names) return
+      close()
+      onPick(names[0])
     }
     const thumbOf = (f, c) => {
       if (f.region) { drawRegionThumb(c, f.region); return }
@@ -1200,9 +1240,13 @@
       }
       for (const f of list.files) {
         const c = h('canvas', { width: 88, height: 88 })
-        body.append(h('div', { class: 'tile', title: f.rel.replace(/\.[^.]+$/, ''), onclick: () => pickFile(f) }, c, h('span', {}, f.name.replace(/\.[^.]+$/, ''))))
+        const tile = h('div', { class: 'tile' + (picked.has(f.rel) ? ' picked' : ''), title: f.rel.replace(/\.[^.]+$/, '') }, c, h('span', {}, f.name.replace(/\.[^.]+$/, '')))
+        tile.onclick = () => pickFile(f, tile)
+        body.append(tile)
         thumbOf(f, c)
       }
+      listed = list.files.slice()
+      if (multi) { allBtn.disabled = !list.files.length; allBtn.onclick = () => confirmMulti(list.files.slice()) }
       if (!list.dirs.length && !list.files.length) body.append(h('div', { class: 'hint' }, '这个文件夹里没有图片'))
     }
     const importFrom = (dir) => {
@@ -1231,15 +1275,36 @@
       }
       input.click()
     }
+    const allBtn = h('button', { class: 'btn small', title: '当前文件夹里的图片全部加进来（按名字顺序）' }, '本文件夹全部')
     const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
       h('div', { class: 'dialog' },
         h('div', { class: 'hd' }, h('b', {}, title),
+          multi ? count : null,
+          multi ? addBtn : null,
+          multi ? allBtn : null,
           h('button', { class: 'btn small', title: '加新素材：图片导进当前文件夹', onclick: () => importFrom(false) }, '导入图片…'),
           h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
           h('button', { class: 'xx', onclick: close }, '×')),
+        multi ? h('div', { class: 'hint', style: 'padding:8px 14px 0' }, '点图片勾选（再点取消），或「本文件夹全部」；加进来的图片各成一个插槽，挂在卡片栏选的骨骼上') : null,
         crumbs, body))
     document.body.append(mask)
     fill()
+  }
+
+  /** 换图: the attachment shows another picture (a region takes its size; a mesh keeps its vertices). */
+  function swapImage(sel, name) {
+    const size = regionSize(name) || {}
+    edit(`已给「${sel.name}」换图：${name}`, (j) => {
+      const sk = j.skins.find((x) => x.name === sel.skin)
+      const a = sk && sk.attachments[sel.slot] && sk.attachments[sel.slot][sel.name]
+      const mesh = a && (a.type === 'mesh' || a.type === 'linkedmesh')
+      return Ops.setAttachmentProps(j, sel.skin, sel.slot, sel.name, mesh ? { path: name } : { path: name, ...size })
+    })
+  }
+
+  /** 放图: a picture into a skin placeholder. */
+  function fillPlaceholder(skin, slot, name, image) {
+    edit(`已给「${name}」放图：${image}`, (j) => Ops.fillPlaceholder(j, skin, slot, name, { path: image, ...(regionSize(image) || {}) }))
   }
 
   function drawRegionThumb(canvas, r) {
@@ -4920,7 +4985,8 @@
       const sel = h('select', { class: 'ld-sel', title: '写入时把勾选的图片挂到这根骨骼（位置不变）', onchange: (e) => { state.frameBone = e.target.value } },
         bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
       head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '骨骼', sel),
-        h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'))
+        h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
+        h('button', { class: 'tg', title: '从工程的图片文件夹里挑序列帧（可整个文件夹），每张成一个插槽挂到上面的骨骼；文件夹里没有的图可以用「导入图片 / 导入文件夹」先加进根目录', onclick: () => openImagePicker(kind === 'sequence' ? '序列帧添加：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图', (names) => addFramePictures(names, kind), { multi: true }) }, '从文件夹添加…'))
     }
     if (kind === 'sequence') {
       const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
@@ -4987,6 +5053,28 @@
     if (state.sweepFrames > 0) return state.sweepFrames
     const f = lastFrame()
     return f > 0 ? f : ((n || 1) + 1) * 5
+  }
+
+  /** 从文件夹添加: one slot a picture (its name), on 骨骼, centred on it, ticked as the next frames. */
+  function addFramePictures(names, kind) {
+    const list = (names || []).filter(Boolean)
+    if (!list.length) return
+    const bone = state.frameBone && state.json.bones.some((b) => b.name === state.frameBone) ? state.frameBone : (state.json.bones[0] || {}).name
+    const U = kind === 'sequence' ? state.seqUnticked : state.sweepUnticked
+    edit((r) => `已添加 ${r.count} 张序列图片到 ${bone}`, (j) => {
+      let json = j, count = 0
+      // the cards list the draw order top first: the last picture goes in first so the first one
+      // ends on top and reads as 第 1 帧 (frames show one at a time, their order among themselves is moot)
+      for (const name of list.slice().reverse()) {
+        const slotName = uniqueSlotName(json, name.split('/').pop())
+        let r = Ops.addSlot(json, bone, slotName); json = r.json
+        const size = regionSize(name) || { width: 1, height: 1 }
+        r = Ops.addRegionAttachment(json, 'default', slotName, { name: slotName, path: name, width: size.width, height: size.height }); json = r.json
+        U.delete(slotName)
+        count++
+      }
+      return { json, count }
+    })
   }
 
   /** The ticked frames' slots move to 骨骼 (setup placement kept) before the keys go in. */
