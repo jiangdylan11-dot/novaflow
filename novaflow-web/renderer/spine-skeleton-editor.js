@@ -251,7 +251,9 @@
     const dir = opts && opts.directory
     if (dir && dir.handle) { try { imageFolder = await folderForProject(dir.handle, json, name) } catch { imageFolder = null } }
     if (!imageFolder && dir && Array.isArray(dir.files) && dir.files.length) { try { imageFolder = folderFromProjectFiles(dir.files, json, name) } catch { imageFolder = null } }
-    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name) })
+    // the same skeleton file again (a write-back, a re-import of that file) replaces the picked project; another one is added
+    const replace = !!(state.json && projects[activeProject] && lower(state.fileName) === lower(name))
+    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name), replace })
   }
 
   async function loadFiles(files, label) {
@@ -319,6 +321,9 @@
       atlasText = Attach.synthesizeAtlas([...images.values()].map((i) => ({ fileName: i.fileName, width: i.img.naturalWidth, height: i.img.naturalHeight })))
       atlasChanged = true
     }
+    // several projects side by side (Spine's hierarchy): the one open so far keeps its whole state
+    if (state.json && projects[activeProject] && !p.replace) projects[activeProject].snap = snapProject()
+    leaveProjectEdits()
     Object.assign(state, {
       imageFolder,
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
@@ -343,6 +348,8 @@
     // big rigs open readable: deep bones and every slot start collapsed (Spine opens at the root)
     for (const b of state.json.bones) if (depthOf(b.name) >= 2) state.collapsed.add('b:' + b.name)
     for (const s of state.json.slots) state.collapsed.add('s:' + s.name)
+    // every import is a project of its own, after the ones already open; it is the one picked
+    if (!(p.replace && projects[activeProject])) { projects.push({ id: ++projectSerial, snap: null }); activeProject = projects.length - 1 }
     fit()
     $('#dropHint').hidden = true
     $('#tree').scrollTop = 0
@@ -350,6 +357,183 @@
     const lost = [...rt.missingPages, ...rt.missingRegions]
     if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（这些附件先显示为空）`, 'error')
     else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（Spine ${fromVersion} 工程，导出时保持 ${fromVersion}）` : ''}`, 'ok')
+  }
+
+  // ------------------------------------------------------------------ several projects (Spine's hierarchy)
+  // Spine keeps several skeletons in one hierarchy. Here every import adds a project; the picked one
+  // is on the stage and unfolded in the tree, the others are rows that keep their whole editing state
+  // (undo included) until they are picked again. They can be renamed, moved and deleted.
+  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future',
+    'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
+    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'imgOpen', 'imageFolder', 'pma', 'frameBone', 'sweepStart', 'sweepEnd',
+    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
+  const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
+  let activeProject = -1, projectSerial = 0
+
+  function snapProject() {
+    const snap = {}
+    for (const k of PROJECT_KEYS) snap[k] = state[k]
+    snap.cam = { ...rt.cam }
+    snap.temp = new Map(state.temp)
+    return snap
+  }
+
+  /** Out of the edit modes that hold a project's attachment (编辑网格 / 权重 / 剪裁), before it changes. */
+  function leaveProjectEdits() {
+    state.meshEdit = null; state.weightEdit = null; state.clipEdit = null; state.clipDrag = null
+    state.pick = null; state.playing = false; state.drag = null
+  }
+
+  function restoreProject(snap) {
+    leaveProjectEdits()
+    for (const k of PROJECT_KEYS) state[k] = snap[k]
+    state.temp.clear()
+    for (const [k, v] of snap.temp || []) state.temp.set(k, v)
+    rt.atlasKey = null
+    rt.missingPages = new Set()
+    rt.missingRegions = new Set()
+    imgTree = { key: '', nodes: new Map(), pending: new Set() }
+    frameRoot = null; frameRootPending = null; frameThumbs.clear()
+    applyJson(state.json)
+    if (snap.cam) Object.assign(rt.cam, snap.cam)
+    else fit()
+    $('#dropHint').hidden = true
+    refresh()
+  }
+
+  const projectName = (i) => (i === activeProject ? state.name : (projects[i] && projects[i].snap ? projects[i].snap.name : ''))
+
+  function switchProject(i) {
+    if (i === activeProject || !projects[i] || !projects[i].snap) return
+    if (projects[activeProject]) projects[activeProject].snap = snapProject()
+    const snap = projects[i].snap
+    activeProject = i
+    projects[i].snap = null
+    restoreProject(snap)
+    status(`已切换到工程 ${state.name}`, 'ok')
+  }
+
+  function renameProject(i, name) {
+    const v = String(name || '').trim()
+    if (!v || !projects[i]) return
+    if (i === activeProject) state.name = v
+    else projects[i].snap.name = v
+    renderTree()
+    status(`工程已改名为 ${v}`, 'ok')
+  }
+
+  function moveProject(from, to) {
+    if (from === to || !projects[from] || to < 0 || to > projects.length) return
+    const activeId = projects[activeProject] && projects[activeProject].id
+    const [p] = projects.splice(from, 1)
+    projects.splice(to > from ? to - 1 : to, 0, p)
+    activeProject = projects.findIndex((x) => x.id === activeId)
+    renderTree()
+  }
+
+  function deleteProject(i) {
+    if (!projects[i]) return
+    const name = projectName(i)
+    if (!window.confirm(`删除工程「${name}」？没保存的改动会丢失（可以先用 保存工程 存一份）。`)) return
+    const activeId = projects[activeProject] && projects[activeProject].id
+    const wasActive = i === activeProject
+    projects.splice(i, 1)
+    if (!wasActive) { activeProject = projects.findIndex((x) => x.id === activeId); renderTree(); status(`已删除工程 ${name}`, 'ok'); return }
+    if (projects.length) {
+      // the neighbour below (or above, for the last one) becomes the picked project
+      const next = Math.min(i, projects.length - 1)
+      const snap = projects[next].snap
+      activeProject = next
+      projects[next].snap = null
+      restoreProject(snap)
+    } else {
+      leaveProjectEdits()
+      activeProject = -1
+      state.json = null; state.history = []; state.future = []; state.sel = null
+      rt.data = null; rt.skeleton = null
+      $('#dropHint').hidden = false
+      refresh()
+    }
+    status(`已删除工程 ${name}`, 'ok')
+  }
+
+  // NovaFlow's own project file (.nfproj): every open project in one file - skeleton (the editor's
+  // data, the original Spine version kept inside), atlas, pictures, names, order and the picked one.
+  // gzip-compressed JSON; 导入工程 opens it, 保存工程 writes it.
+  const PROJECT_FILE_FORMAT = 'novaflow-spine-projects'
+  const blobToDataUrl = (b) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(r.error); r.readAsDataURL(b) })
+
+  async function projectFileBytes() {
+    const list = []
+    for (let i = 0; i < projects.length; i++) {
+      const s = i === activeProject ? state : projects[i].snap
+      if (!s || !s.json) continue
+      const images = []
+      for (const im of s.images.values()) if (im.blob) images.push({ fileName: im.fileName, dataUrl: await blobToDataUrl(im.blob) })
+      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images })
+    }
+    if (!list.length) throw new Error('没有可保存的工程')
+    const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 1, active: Math.max(0, activeProject), projects: list })
+    const gz = new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')))
+    return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length }
+  }
+
+  /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
+  async function openProjectFile(data) {
+    const blob = data instanceof Blob ? data : new Blob([data])
+    let d
+    try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 NovaFlow 工程文件') }
+    if (!d || d.format !== PROJECT_FILE_FORMAT || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是 NovaFlow 工程文件')
+    const first = projects.length
+    for (const p of d.projects) {
+      const images = await Promise.all((p.images || []).map(async (im) => ({ fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() })))
+      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, label: p.name })
+    }
+    switchProject(first + Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0)))
+    status(`已打开 NovaFlow 工程：${d.projects.length} 个工程`, 'ok')
+    return d.projects.length
+  }
+
+  /** The project rows of the tree: the picked one unfolded (its content follows), the others folded. */
+  function projectRow(i, pad) {
+    const active = i === activeProject
+    const name = projectName(i)
+    const row = h('div', { class: 'row node project', style: pad(0), 'data-project': String(i), 'data-active': active ? '1' : null,
+      title: active ? `${name}（双击改名，拖动排序）` : `${name}：点一下切换到这个工程（双击改名，拖动排序）`,
+      onclick: () => { if (!active) switchProject(i) },
+      ondblclick: (e) => {
+        e.stopPropagation()
+        const label = row.querySelector('.label')
+        const input = h('input', { class: 'rename', value: name })
+        const done = (ok) => { if (ok) renameProject(i, input.value); else renderTree() }
+        input.addEventListener('keydown', (ev) => { ev.stopPropagation(); if (ev.key === 'Enter') done(true); if (ev.key === 'Escape') done(false) })
+        input.addEventListener('blur', () => done(true))
+        input.addEventListener('click', (ev) => ev.stopPropagation())
+        label.replaceWith(input)
+        input.focus(); input.select()
+      } },
+      caret(active, () => { if (!active) switchProject(i) }), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, name),
+      h('span', { class: 'end' }, h('button', { class: 'act', title: `删除工程 ${name}`, onclick: (e) => { e.stopPropagation(); deleteProject(i) } }, '删除')))
+    // drag a project row onto another one to move it there (above / below)
+    row.draggable = true
+    row.addEventListener('dragstart', (e) => { state.drag = { type: 'project', index: i }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', name) })
+    row.addEventListener('dragend', () => { state.drag = null; for (const r of document.querySelectorAll('.row[data-drop]')) r.removeAttribute('data-drop') })
+    row.addEventListener('dragover', (e) => {
+      if (!state.drag || state.drag.type !== 'project' || state.drag.index === i) return
+      e.preventDefault()
+      const r = row.getBoundingClientRect()
+      row.dataset.drop = e.clientY > r.top + r.height / 2 ? 'below' : 'above'
+    })
+    row.addEventListener('dragleave', () => row.removeAttribute('data-drop'))
+    row.addEventListener('drop', (e) => {
+      const d = state.drag, below = row.dataset.drop === 'below'
+      row.removeAttribute('data-drop')
+      state.drag = null
+      if (!d || d.type !== 'project') return
+      e.preventDefault()
+      moveProject(d.index, i + (below ? 1 : 0))
+    })
+    return row
   }
 
   async function loadSample(key) {
@@ -1578,7 +1762,7 @@
     const pref = (() => { try { return JSON.parse(localStorage.getItem('nf-skel-export') || '{}') } catch { return {} } })()
     const SV = window.NovaFlowSpineVersion
     const own = ownVersion()
-    const o = { name: pref.name || stem(state.fileName) || 'skeleton', packed: pref.packed !== false, mode: pref.mode === 'folder' ? 'folder' : 'atts', version: own, skel: pref.skel === true }
+    const o = { name: pref.name || stem(state.fileName) || 'skeleton', packed: pref.packed !== false, mode: pref.mode === 'folder' ? 'folder' : 'atts', version: own, skel: pref.skel === true, kind: saving && pref.kind === 'novaflow' ? 'novaflow' : 'spine' }
     let folderN = null
     folderImages().then((l) => { folderN = l.length; if (mask.isConnected) fill() }, () => {})
     const close = () => mask.remove()
@@ -1591,8 +1775,19 @@
       const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, v)
       const fseg = (val, label) => h('button', { 'aria-pressed': String(!!o.skel === val), onclick: () => { o.skel = val; fill() } }, label)
       const fmt = o.skel ? 'SKEL' : 'JSON'
+      // 保存工程: Spine data (a folder Spine opens with 导入数据) or NovaFlow's own file with every open project
+      const kseg = (val, label) => h('button', { 'aria-pressed': String(o.kind === val), onclick: () => { o.kind = val; fill() } }, label)
+      if (saving && o.kind === 'novaflow') {
+        body.append(
+          h('label', { class: 'fl' }, '工程名称'), nameIn,
+          h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', 'Spine 工程'), kseg('novaflow', 'NovaFlow 工程'))),
+          h('div', { class: 'hint' }, `工程树里的 ${projects.length} 个工程（骨架、图集、图片、名字和顺序）存成一个 .nfproj 文件，下次用 导入工程 打开。`),
+          h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 NovaFlow 工程（${o.name || '工程'}.nfproj）`))
+        return
+      }
       body.append(
         h('label', { class: 'fl' }, saving ? '工程名称' : '导出名称'), nameIn,
+        saving ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', 'Spine 工程'), kseg('novaflow', 'NovaFlow 工程'))) : null,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
         // SKEL = Spine's binary skeleton (the version chosen above); JSON = text
         h('div', { class: 'pk' }, h('span', { class: 'fl' }, '格式'), h('div', { class: 'seg' }, fseg(false, 'JSON'), fseg(true, 'SKEL'))),
@@ -1605,6 +1800,25 @@
           ? `，${fmt}＋atlas＋图集 PNG` + (o.mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
           : `，${fmt}＋images 文件夹（每张图一个 PNG）。`)),
         h('button', { class: 'btn primary big', onclick: run }, (saving ? '保存' : '导出') + (o.packed ? ` Spine 工程（${fmt}+ATLAS+PNG，选文件夹）` : ` Spine 工程（${fmt}+images，选文件夹）`)))
+    }
+    const runNovaflow = async () => {
+      const A = window.NovaFlowSequenceAtlas
+      o.name = A.safeName(o.name) || 'project'
+      try { localStorage.setItem('nf-skel-export', JSON.stringify(o)) } catch {}
+      try {
+        const { bytes, count } = await projectFileBytes()
+        const file = new Blob([bytes], { type: 'application/octet-stream' })
+        if (window.showSaveFilePicker) {
+          let handle
+          try { handle = await window.showSaveFilePicker({ suggestedName: o.name + '.nfproj', types: [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch { return }
+          const w = await handle.createWritable(); await w.write(file); await w.close()
+        } else {
+          const a = h('a', { href: URL.createObjectURL(file), download: o.name + '.nfproj' })
+          document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
+        }
+        close()
+        status(`已保存 NovaFlow 工程 ${o.name}.nfproj：${count} 个工程`, 'ok')
+      } catch (e) { status('保存失败：' + e.message, 'error') }
     }
     const run = async () => {
       const A = window.NovaFlowSequenceAtlas
@@ -4656,7 +4870,9 @@
       return !closed
     }
 
-    rows.push(h('div', { class: 'row node', style: pad(0) }, caret(true), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, state.name)))
+    // the projects (Spine's hierarchy): the ones above the picked one, the picked one (its content follows), the rest at the end
+    if (projects[activeProject]) { for (let i = 0; i < activeProject; i++) rows.push(projectRow(i, pad)); rows.push(projectRow(activeProject, pad)) }
+    else rows.push(h('div', { class: 'row node', style: pad(0) }, caret(true), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, state.name)))
 
     // the attachment each slot shows right now (the dot on its row)
     const posed = new Map()
@@ -4877,6 +5093,7 @@
       if (!m) renderImagesNode(rows, pad)
     }
 
+    if (projects[activeProject]) for (let i = activeProject + 1; i < projects.length; i++) rows.push(projectRow(i, pad))
     tree.append(h('div', { class: 'tree-in' }, rows))
     tree.scrollTop = scroll
     if (state.scrollToSel) {
@@ -8370,6 +8587,9 @@ self.onmessage = (e) => {
     rigUsed: () => !!(state.json && state.json.bones.length > 1 && Object.values(state.json.animations || {}).some((a) => a && a.bones && Object.keys(a.bones).length)),
     restoreProject: () => { if (state.initialJson && state.initialJson !== state.json) edit('已还原为导入时的工程', () => ({ json: state.initialJson })) },
     openExport: (opts) => openExportDialog(opts),
+    /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
+    openProjectFile: (data) => openProjectFile(data),
+    projectCount: () => projects.length,
     openAtlasSettings: () => openAtlasSettings(),
     /** how many pictures each 打包 choice takes: 附件 (used) / 图片文件夹 */
     packCounts: async () => ({ atts: exportImageNames(Ops.exportable(state.json)).length, folder: (await folderImages()).length }),

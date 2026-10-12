@@ -299,6 +299,16 @@
     if (!Attach || !bridge || !cache) throw new Error('导入桥接不可用')
     const list = Array.from(files || [])
     const depth = (f) => (f.webkitRelativePath || f.name).split('/').length
+    // NovaFlow's own project file (保存工程 → NovaFlow 工程): every project in it opens in the editor
+    const nfproj = list.filter((f) => /\.nfproj$/i.test(f.name)).sort((x, y) => depth(x) - depth(y))[0]
+    if (nfproj) {
+      const ed = window.NovaFlowSkeletonEditor
+      if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
+      setStatus('打开 NovaFlow 工程…')
+      const api = await ed.ready()
+      const n = await api.openProjectFile(nfproj)
+      return { projects: n }
+    }
     // 导入工程 takes any Spine project folder: with an .atlas (or a binary .skel) it is an exported
     // Spine project (skeleton + atlas + its pages) and comes in as is; JSON + loose PNGs is the
     // PhotoshopToSpine path below
@@ -3225,7 +3235,7 @@
           rememberProjectFolder(files)
           rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-          say((n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+          say((n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
         })
         return
       }
@@ -3287,7 +3297,7 @@
         const files = roots.length ? await entryFiles(roots) : plain
         if (!files.length) throw new Error('这里面没有 JSON 和贴图')
         const n = await importPhotoshopProject(files, (t) => sayHere(t))
-        sayHere((n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        sayHere((n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     picker.addEventListener('change', () => {
@@ -3301,7 +3311,7 @@
       guardWith(say)(async () => {
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-        say((n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        say((n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     document.body.appendChild(picker)
