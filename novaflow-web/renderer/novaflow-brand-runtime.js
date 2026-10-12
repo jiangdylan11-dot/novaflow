@@ -2366,6 +2366,7 @@
   const PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT = 14;
   const PARTICLE_DENSITY_SLIDER_TITLE_GAP = 2;
   const PARTICLE_DENSITY_SLIDER_ROW_HEIGHT = 26;
+  const NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH = 72; // 动画工具 sliders: the title column before the range
   const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 3;
   const PARTICLE_DENSITY_SLIDER_THUMB_SIZE = 12;
   // The unfilled half of every slider. One value, rather than the literal
@@ -16586,7 +16587,7 @@
   function hasAiSequenceCutoutNativeDetailReady(postSection, actionButton) {
     if (!(postSection instanceof HTMLElement)) return false;
     const existingDetails = postSection.querySelectorAll(
-      '[data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-edge-clean="1"], [data-novaflow-ai-cutout-detail="1"]:not([data-novaflow-ai-sequence-hidden="1"]), [data-novaflow-ai-sequence-edit-panel="1"]:not([data-novaflow-ai-sequence-hidden="1"])'
+      '[data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-edge-clean="1"], [data-novaflow-sheer-material="1"], [data-novaflow-ai-cutout-detail="1"]:not([data-novaflow-ai-sequence-hidden="1"]), [data-novaflow-ai-sequence-edit-panel="1"]:not([data-novaflow-ai-sequence-hidden="1"])'
     );
     if (Array.from(existingDetails).some((node) => node instanceof HTMLElement && isVisible(node))) return true;
     const actionRow = actionButton instanceof HTMLElement ? actionButton.parentElement : null;
@@ -19040,7 +19041,7 @@
 
   function hasVisibleAiSequenceCutoutEditingSurface() {
     const cutoutNodes = Array.from(document.querySelectorAll(
-      '[data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-chroma-close="1"], [data-novaflow-ai-cutout-detail="1"], [data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-edge-clean="1"]'
+      '[data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-chroma-close="1"], [data-novaflow-ai-cutout-detail="1"], [data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-edge-clean="1"], [data-novaflow-sheer-material="1"]'
     ));
     if (cutoutNodes.some((node) => node instanceof HTMLElement && isVisible(node))) return true;
     return Array.from(document.querySelectorAll('button, [role="button"]')).some((node) => {
@@ -26736,15 +26737,22 @@
         margin-bottom: 0 !important;
         padding: 0 !important;
         box-sizing: border-box !important;
+        display: grid !important;
+        grid-template-columns: ${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr) !important;
+        column-gap: 8px !important;
+        align-items: center !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-advanced-slider-title="1"] {
         display: flex !important;
         align-items: center !important;
-        height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        min-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        max-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        line-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        margin: 0 0 ${PARTICLE_DENSITY_SLIDER_TITLE_GAP}px !important;
+        height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        min-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        max-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        line-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
         padding: 0 !important;
         color: rgba(255, 255, 255, 0.55) !important;
         font-size: 12px !important;
@@ -55680,6 +55688,7 @@
       node.removeAttribute("data-novaflow-ribbon-advanced-slider-row");
     });
     const freeNumber = syncRibbonFreeNumberInputLimits(group);
+    // one row a slider: title (72px) | range + number (user 2026-10-12: 标题放在滑条前面，上下更紧凑)
     setImportantStyles(group, {
       margin: "0",
       "margin-bottom": "0",
@@ -55687,7 +55696,11 @@
       width: "100%",
       "min-width": "0",
       "max-width": "100%",
-      "box-sizing": "border-box"
+      "box-sizing": "border-box",
+      display: "grid",
+      "grid-template-columns": `${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr)`,
+      "column-gap": "8px",
+      "align-items": "center"
     });
     const children = Array.from(group.children).filter((child) => child instanceof HTMLElement);
     const titleRow = children.find((child) => child instanceof HTMLElement && !child.querySelector('input[type="range"]'));
@@ -55696,11 +55709,14 @@
       setImportantStyles(titleRow, {
         display: "flex",
         "align-items": "center",
-        height: `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "min-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "max-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "line-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "margin-bottom": `${PARTICLE_DENSITY_SLIDER_TITLE_GAP}px`,
+        height: `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "min-height": `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "max-height": `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "line-height": `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "margin-bottom": "0",
+        "white-space": "nowrap",
+        overflow: "hidden",
+        "text-overflow": "ellipsis",
         padding: "0",
         color: "rgba(255, 255, 255, 0.55)",
         "font-size": "12px",

@@ -26,7 +26,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-2',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-4',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||(ribbonShown&&ribbonSettled)){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画工具编辑器');
   body.innerHTML=`
@@ -49,13 +49,12 @@
           </div>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
-          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置</button></div></div>
+          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim" hidden></span><label class="dim curvevalue">值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span><button id="resetCurve">重置</button></div></div>
           <div class="curvewrap"><canvas id="curve" aria-label="贝塞尔曲线，点击曲线加点，双击节点删点，拖动节点或方向手柄调整"></canvas></div>
-          <div class="curvefooter"><span>点击曲线加点 · 双击节点删点 · 拖动手柄调弧度</span><div class="row"><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
         </section>
       </div>
       <div id="ribbonDock"></div>
-      <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button><button id="ribbonRestore">还原动画</button><button id="ribbonWrite" class="primary">写入动画</button></div></footer>
+      <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="curveHint" class="dim">点击曲线加点 · 双击节点删点 · 拖动手柄调弧度</p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button><button id="ribbonRestore">还原动画</button><button id="ribbonWrite" class="primary">写入动画</button></div></footer>
     </div>
     <div id="ribbonPreviewCard" hidden><span id="ribbonPreviewHost"></span><span id="ribbonPreviewLabel"></span></div>`;
   curveRoot.append(style,body);
@@ -123,9 +122,14 @@
     // 飘带计算: as tall as its content (header, timing row, footer and the docked panel)
     if(ribbon&&!collapsed&&ribbonShown&&ribbonFitHeight)desired=ribbonFitHeight;
     else if(ribbon&&!collapsed)desired=Math.max(desired,400);
-    else if(mode==='expand'&&!collapsed){
-      const chrome=['.editor-header','.timing-row','.editor-footer','#scaleOptions'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
-      desired=Math.max(desired,chrome+body.querySelector('.effect-scroll').scrollHeight+20);
+    else if(!collapsed){
+      // the box is as tall as its content (user 2026-10-12: no empty band under the sliders);
+      // the content's height depends on the width only, so the layout does not oscillate
+      const chrome=['.editor-header','.timing-row','.editor-footer'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
+      // (scrollHeight is at least the box's own height, so it would never let the box shrink:
+      // measure the rows themselves — the sections and groups are display:contents, so walk through them)
+      const content=(el)=>{const top=el.getBoundingClientRect().top;let bottom=top;const walk=(c)=>{if(getComputedStyle(c).display==='contents'){for(const n of c.children)walk(n);return;}const r=c.getBoundingClientRect();if(r.height>0&&r.bottom>bottom)bottom=r.bottom;};for(const c of el.children)walk(c);return bottom-top;};
+      desired=chrome+Math.max(content(body.querySelector('.effect-scroll')),content(body.querySelector('.curvepanel')))+12;
     }
     const height=Math.min(desired,available);
     const signature=[left,width,r.top,height].join(',');
@@ -226,15 +230,15 @@
   const schema = {
     loopCount: ['循环次数',1,8,1,'',1],
     cycles: ['次数', 1, 10, 1, '次', 1],
-    duration: ['骨骼总时长', 1/30, 30, 1/30, '帧', 30],
+    duration: ['骨骼时长', 1/30, 30, 1/30, '帧', 30],
     delay: ['骨骼延迟', 0, 1, 1/30, '帧', 30],
-    restitution: ['反弹高度保留', 0, .9, .01, '%', 100],
+    restitution: ['反弹高度', 0, .9, .01, '%', 100],
     count: ['反弹次数', 0, 6, 1, '次', 1],
     contact: ['落地停留', .04, .4, .01, '%', 100],
     impact: ['冲击力度', 0, 1, .01, '%', 100],
     stretch: ['腾空拉伸', 0, .8, .01, '%', 100],
-    attack: ['扩张到峰值时间', .05, .6, .01, '%', 100],
-    frequency: ['回弹振荡次数', .25, 6, .25, '次', 1],
+    attack: ['到峰时间', .05, .6, .01, '%', 100],
+    frequency: ['振荡次数', .25, 6, .25, '次', 1],
     damping: ['回弹衰减', .5, 12, .1, '', 1],
     easing: ['两端缓动', 0, 1, .01, '%', 100],
     hold: ['两端停留', 0, .35, .01, '%', 100]
@@ -349,10 +353,10 @@
     return div;
   }
   const opacitySchema = {
-    from: ['起始不透明度', 0, 1, .01, '%', 100], to: ['目标不透明度', 0, 1, .01, '%', 100],
+    from: ['起始透明', 0, 1, .01, '%', 100], to: ['目标透明', 0, 1, .01, '%', 100],
     begin: ['开始时间', 0, .99, .01, '%', 100], finish: ['结束时间', .01, 1, .01, '%', 100],
-    cycles: ['透明往返次数', 1, 8, 1, '次', 1], phase: ['透明相位', 0, 360, 5, '°', 1],
-    easing: ['透明缓动', 0, 1, .01, '%', 100], hold: ['透明两端停留', 0, .35, .01, '%', 100]
+    cycles: ['往返次数', 1, 8, 1, '次', 1], phase: ['相位', 0, 360, 5, '°', 1],
+    easing: ['缓动', 0, 1, .01, '%', 100], hold: ['两端停留', 0, .35, .01, '%', 100]
   };
   function renderOpacity() {
     const o = p.opacity;
@@ -386,7 +390,7 @@
   }
 
   function renderTiming(){
-    const fields=[['animationDuration','动画总时长',Math.max(FRAME,Math.ceil((timing.minimumDuration||FRAME)*FPS)/FPS),120,FRAME,'帧',FPS],['animationDelay','动画延迟',0,Math.max(0,timing.animationDuration-timing.boneDuration),FRAME,'帧',FPS]];
+    const fields=[['animationDuration','动画时长',Math.max(FRAME,Math.ceil((timing.minimumDuration||FRAME)*FPS)/FPS),120,FRAME,'帧',FPS],['animationDelay','动画延迟',0,Math.max(0,timing.animationDuration-timing.boneDuration),FRAME,'帧',FPS]];
     const nodes=fields.map(([key,label,min,max,step,unit,factor])=>{
       const div=document.createElement('div');div.className='param animation-timing';
       div.innerHTML=`<div class="paramhead"><label for="outer-${key}">${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" min="${min*factor}" max="${max*factor}" step="${step*factor}" value="${fmt(timing[key]*factor)}"><span>${unit}</span></span></div><input id="outer-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${timing[key]}">`;
@@ -691,7 +695,7 @@
   }
   function renderRibbonTiming(){
     ribbonTiming={animationDuration:2,animationDelay:0,boneDuration:2,boneDelay:0,...(bridge.ribbonTiming?.()||{})};settleRibbonTiming('');
-    const a=ribbonField('animationDuration','动画总时长',FRAME,120,FRAME,'帧',FPS),b=ribbonField('animationDelay','动画延迟',0,1,FRAME,'帧',FPS),c=ribbonField('boneDuration','骨骼总时长',FRAME,2,FRAME,'帧',FPS,true),d=ribbonField('boneDelay','骨骼延迟',0,2,FRAME,'帧',FPS,true);
+    const a=ribbonField('animationDuration','动画时长',FRAME,120,FRAME,'帧',FPS),b=ribbonField('animationDelay','动画延迟',0,1,FRAME,'帧',FPS),c=ribbonField('boneDuration','骨骼时长',FRAME,2,FRAME,'帧',FPS,true),d=ribbonField('boneDelay','骨骼延迟',0,2,FRAME,'帧',FPS,true);
     const hint=document.createElement('p');hint.className='timing-hint';hint.id='ribbonTimingHint';b.append(hint);
     const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='ribbonDelayHint';
     $('ribbonGlobalTiming').replaceChildren(a,b,c);$('ribbonEffectTiming').replaceChildren(d,delayHint);
