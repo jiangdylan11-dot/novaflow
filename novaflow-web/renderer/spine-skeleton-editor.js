@@ -478,6 +478,24 @@
     return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length }
   }
 
+  /** 保存工程: every open project into one .nfproj, straight to a save dialog named after the picked project. */
+  async function saveProjectFileNow() {
+    const A = window.NovaFlowSequenceAtlas
+    const name = (A && A.safeName ? A.safeName(state.name) : String(state.name || '').replace(/[\\/:*?"<>|]+/g, '_')) || 'project'
+    const { bytes, count } = await projectFileBytes()
+    const file = new Blob([bytes], { type: 'application/octet-stream' })
+    if (window.showSaveFilePicker) {
+      let handle
+      try { handle = await window.showSaveFilePicker({ suggestedName: name + '.nfproj', types: [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch { return null }
+      const w = await handle.createWritable(); await w.write(file); await w.close()
+    } else {
+      const a = h('a', { href: URL.createObjectURL(file), download: name + '.nfproj' })
+      document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
+    }
+    status(`已保存 NovaFlow 工程 ${name}.nfproj：${count} 个工程`, 'ok')
+    return { name: name + '.nfproj', count }
+  }
+
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data) {
     const blob = data instanceof Blob ? data : new Blob([data])
@@ -8589,6 +8607,8 @@ self.onmessage = (e) => {
     openExport: (opts) => openExportDialog(opts),
     /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
     openProjectFile: (data) => openProjectFile(data),
+    /** 保存工程: every open project into one .nfproj (a save dialog), no options. */
+    saveProjectFile: () => saveProjectFileNow(),
     projectCount: () => projects.length,
     openAtlasSettings: () => openAtlasSettings(),
     /** how many pictures each 打包 choice takes: 附件 (used) / 图片文件夹 */

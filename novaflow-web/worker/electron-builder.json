@@ -62,6 +62,7 @@
     }
   ],
   "protocols": [{ "name": "NovaFlow 本地仓库", "schemes": ["novaflow"] }],
+  "fileAssociations": [{ "ext": "nfproj", "name": "NovaFlow 工程", "description": "NovaFlow 工程（骨骼动画）" }],
   "asar": false,
   "win": {
     "icon": "electron/assets/favicon.ico",

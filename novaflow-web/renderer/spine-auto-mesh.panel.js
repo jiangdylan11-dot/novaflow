@@ -3158,11 +3158,11 @@
 
   function ensurePsImport() {
     if (state.psImport) return state.psImport
-    const button = el('button', null, '导入工程')
+    const button = el('button', null, '导入PS工程')
     button.type = 'button'
     styleButton(button, false)
     button.setAttribute('data-nf-ps-import', '1') // hover like its neighbour 清空 (theme 3.1b)
-    button.title = '选择工程文件夹：Spine 导出的 JSON / SKEL + 图集，或 PhotoshopToSpine 导出的 JSON + 贴图；也可以直接把文件夹拖到这个按钮上'
+    button.title = 'PhotoshopToSpine 导出的文件夹（JSON + 贴图）可以直接用，不需要先过一遍 Spine；也可以直接把那个文件夹拖到这个按钮上'
     // the panel this button lives in is the app's 导入工程; the status line it used to write to
     // sits inside 自动蒙皮, which is collapsed on entry — so a click looked like nothing happened
     const psStatus = el('div', {
@@ -3201,7 +3201,7 @@
       const api = window.electronAPI
       if (api && typeof api.openPhotoshopProject === 'function') {
         guardWith(say)(async () => {
-          say('选择工程文件夹…')
+          say('选择 PhotoshopToSpine 导出的文件夹…')
           let res = null
           diag('ipcstart', {})
           try {
@@ -3318,24 +3318,51 @@
     // What to pick, under the button (the name alone is short now).
     // no top margin: the brand runtime's rhythm pass sets the panel's spacing and zeroed it a frame later
     const psNote = el('div', { marginTop: '0', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
-      '选择工程文件夹（Spine 的 JSON / SKEL + 图集，或 PhotoshopToSpine 的 JSON + 贴图），也可以直接拖到按钮上')
+      '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到按钮上')
     psNote.setAttribute('data-novaflow-ps-import-note', '1')
     // a line between the file-by-file import above and the project buttons (user 2026-10-13)
     const divider = el('div', { height: '1px', margin: '4px 0', background: '#272727', width: '100%' })
     divider.setAttribute('data-novaflow-import-divider', '1')
-    // 保存工程: the editor's save dialog (version, JSON / SKEL, atlas packing, a folder to write to)
+    // 导入工程 / 保存工程: NovaFlow's own project file (.nfproj, every project of the tree in one file).
+    // 导入工程 picks the file (a folder picker cannot), 保存工程 writes it straight away (user 2026-10-13)
+    const editorApi = () => { const ed = window.NovaFlowSkeletonEditor; return ed && ed.api ? ed.api() : null }
+    const nfPicker = el('input', { position: 'fixed', left: '-10000px', top: '0', width: '1px', height: '1px', opacity: '0' })
+    nfPicker.type = 'file'
+    nfPicker.accept = '.nfproj'
+    nfPicker.setAttribute('data-nf-project-open-input', '1')
+    nfPicker.addEventListener('change', () => {
+      const f = nfPicker.files && nfPicker.files[0]
+      nfPicker.value = ''
+      if (!f) return
+      guardWith(sayHere)(async () => {
+        sayHere('打开 NovaFlow 工程…')
+        const ed = window.NovaFlowSkeletonEditor
+        if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
+        const n = await (await ed.ready()).openProjectFile(f)
+        sayHere(`已打开 NovaFlow 工程（${n} 个工程）`, 'ok')
+      })
+    })
+    document.body.appendChild(nfPicker)
+    const open = el('button', null, '导入工程')
+    open.type = 'button'
+    styleButton(open, false)
+    open.setAttribute('data-nf-project-open', '1')
+    open.title = '打开 NovaFlow 工程文件（.nfproj），里面的工程都加进工程树'
+    open.addEventListener('click', () => { if (!state.busy) nfPicker.click() })
     const save = el('button', null, '保存工程')
     save.type = 'button'
     styleButton(save, false)
     save.setAttribute('data-nf-project-save', '1')
-    save.title = '把当前工程保存成 Spine 格式（选版本、JSON 或 SKEL、图集打包），写进选的文件夹'
+    save.title = '把工程树里的所有工程保存成一个 NovaFlow 工程文件（.nfproj）'
     save.addEventListener('click', () => {
-      const ed = window.NovaFlowSkeletonEditor
-      const a = ed && ed.api && ed.api()
-      if (!a || !a.loaded || !a.loaded()) { setStatusFn('先导入工程', 'warn'); return }
-      a.openExport({ title: '保存工程' })
+      const a = editorApi()
+      if (!a || !a.loaded || !a.loaded()) { sayHere('先导入工程', 'warn'); return }
+      guardWith(sayHere)(async () => {
+        const r = await a.saveProjectFile()
+        if (r) sayHere(`已保存 ${r.name}（${r.count} 个工程）`, 'ok')
+      })
     })
-    state.psImport = { button, picker, status: psStatus, note: psNote, divider, save }
+    state.psImport = { button, picker, status: psStatus, note: psNote, divider, open, save, nfPicker }
     busyButtons.push(button)
     return state.psImport
   }
@@ -3351,10 +3378,13 @@
     if (kit.button.parentElement !== body) body.appendChild(kit.button)
     if (kit.divider && kit.divider.nextElementSibling !== kit.button) kit.button.before(kit.divider)
     if (kit.note && kit.note.previousElementSibling !== kit.button) kit.button.after(kit.note)
-    if (kit.save && kit.save.previousElementSibling !== (kit.note || kit.button)) (kit.note || kit.button).after(kit.save)
+    if (kit.open && kit.open.previousElementSibling !== (kit.note || kit.button)) (kit.note || kit.button).after(kit.open)
+    if (kit.save && kit.save.previousElementSibling !== (kit.open || kit.note || kit.button)) (kit.open || kit.note || kit.button).after(kit.save)
+    if (kit.nfPicker && !kit.nfPicker.isConnected) document.body.appendChild(kit.nfPicker)
     if (kit.status && kit.status.parentElement !== body) body.appendChild(kit.status)
     if (!kit.picker.isConnected) document.body.appendChild(kit.picker)
     dressLikePanel(kit.button, body)
+    if (kit.open) dressLikePanel(kit.open, body)
     if (kit.save) dressLikePanel(kit.save, body)
   }
   /**
