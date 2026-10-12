@@ -121,9 +121,7 @@
   /* ---------- centre: stage ---------- */
   .center{display:grid;grid-template-rows:minmax(0,1fr) 52px;gap:8px;min-width:0;min-height:0}
   .center[data-dope="1"]{grid-template-rows:minmax(0,1fr) 250px}
-  /* 动画工具 open: the dopesheet stays, shorter (ruler + a few rows, scrollable); the modes bar and
-     the curve graph go, so the tool's panel has room above it (user: 全部完整摄影表，压矮) */
-  .center[data-dope="1"][data-compact="1"]{grid-template-rows:minmax(0,1fr) 150px}
+  /* 动画工具 open: the dopesheet keeps its full height (user 2026-10-12: 摄影表高度不要变) */
   /* 设置 mode: no timeline, the stage takes the whole height */
   .center:not([data-dope="1"]){grid-template-rows:minmax(0,1fr)}
   .center:not([data-dope="1"]) .timeline-wrap{display:none}

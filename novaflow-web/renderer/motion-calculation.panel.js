@@ -26,7 +26,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261009-ribbon-7',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-2',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||(ribbonShown&&ribbonSettled)){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画工具编辑器');
   body.innerHTML=`
@@ -103,17 +103,9 @@
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';bridge.dock?.(null);return;}
     const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]'),editorBar=window.NovaFlowSkeletonEditor?.timeline?.();
     if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
-    // the 骨骼动画 editor's one-row timeline: the 完整动画 / 骨骼片段 switch sits at its right end
-    else if(editorBar){
-      if(playbackMode.parentNode!==document.body)document.body.append(playbackMode);
-      // right after the row's play button (28 px at left 6)
-      const place=[Math.round(r.left+6+28+8),Math.round(r.top+5)].join(',');
-      if(playbackMode.dataset.place!==place){playbackMode.dataset.place=place;const [l,t]=place.split(',');playbackMode.style.position='fixed';playbackMode.style.zIndex='40';playbackMode.style.left=l+'px';playbackMode.style.top=t+'px';}
-      // it shows with the box, not before it
-      if(playbackMode.style.visibility!==floating.style.visibility)playbackMode.style.visibility=floating.style.visibility;
-    }
-    // no app playbar on screen: the 完整动画 / 骨骼片段 switch rides in the editor's header
-    else if(!playButton&&playbackMode.parentNode!==body.querySelector('.editor-header'))body.querySelector('.editor-header')?.insertBefore(playbackMode,body.querySelector('#editorToggle'));
+    // the 骨骼动画 editor keeps its full dopesheet: the 完整动画 / 骨骼片段 switch rides in the
+    // editor's header next to its × (user 2026-10-12: 回到早期的位置)
+    else if(!playButton&&playbackMode.parentNode!==body.querySelector('.editor-header')){playbackMode.style.position='';playbackMode.style.left='';playbackMode.style.top='';playbackMode.style.zIndex='';playbackMode.style.visibility='';delete playbackMode.dataset.place;body.querySelector('.editor-header')?.insertBefore(playbackMode,body.querySelector('#editorToggle'));}
     // 飘带计算 shows the same 完整动画 / 骨骼片段 switch and bone span, from its own timing row
     const ts=ribbon&&ribbonTiming?ribbonTiming:timing;
     bridge.playbackRange?.(bonePlayback?[ts.animationDelay,ts.animationDelay+ts.boneDuration]:null);

@@ -7024,22 +7024,18 @@ self.onmessage = (e) => {
     $('#play').title = state.playing ? '暂停（空格）' : '播放（空格）'
     for (const id of ['#tStart', '#tBack', '#play', '#tFwd', '#tEnd', '#tLoop']) $(id).disabled = !animOn()
     $('#tLoop').setAttribute('aria-pressed', String(!!state.loop))
-    // a promised fold (动画工具 opening from 设置): the timeline stays hidden until the fold is
-    // applied, instead of showing the full dopesheet for a moment and then folding
-    // (a timeline already on screen stays as it is until that frame - it must not vanish first)
-    const pending = state.compactPending && !state.compactTimeline
-    const tall = animOn() && !(pending && $('.center').dataset.dope !== '1'), compact = tall && !!state.compactTimeline
+    const tall = animOn(), compact = tall && !!state.compactTimeline
     $('.center').dataset.dope = tall ? '1' : ''
-    // 动画工具 open: the dopesheet is short (rows stay); full height when the tools close
+    // 动画工具 open: the dopesheet stays as it is (the tools' panels got compact instead)
     $('.center').dataset.compact = compact ? '1' : ''
     $('#tlBody').hidden = !tall
-    $('#dopeModes').hidden = !tall || compact
+    $('#dopeModes').hidden = !tall
     for (const b of document.querySelectorAll('#dopeModes button[data-m]')) b.setAttribute('aria-pressed', String(!!state.dope[b.dataset.m]))
     const F = state.dope.filter
     $('#dopeFilter').hidden = !tall
     $('#dopeFilter').setAttribute('aria-pressed', String(F.keyedOnly || Object.entries(F).some(([k, v]) => k !== 'keyedOnly' && !v)))
     // Spine: the graph sits beside the dopesheet, always there in an animation
-    $('#curvePanel').hidden = !tall || compact
+    $('#curvePanel').hidden = !tall
   }
 
   // ------------------------------------------------------------------ dopesheet (Spine)
@@ -8079,10 +8075,8 @@ self.onmessage = (e) => {
         // the frame tools are 动画工具 too: the host's open (it polls, so it may land after the
         // tool's own setPanel) must not take their cards away
         if (state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep') state.leftOpen = null
-        // the tools' timeline is the folded row: promised here, before the mode switch would
-        // show the full dopesheet; the host applies it when the tools' box shows (not for the
-        // frame tools: they keep the full sheet)
-        if (!state.compactTimeline && state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep') state.compactPending = true
+        // (the timeline no longer folds for the tools — user 2026-10-12: 摄影表高度不要变 — so
+        // nothing is promised here; the box positions itself against the full timeline)
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }

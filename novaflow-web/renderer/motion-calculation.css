@@ -88,3 +88,6 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 #ribbonPresets button.active{background:#1c4136;border-color:#2c604f;color:#9be4cd}
 .motion-preview{display:block;width:128px;height:96px}
 #editor.ribbon-mode.collapsed{background:#1c1c1c;pointer-events:auto}
+/* 2026-10-12: no timing notes, the curve graph capped so the docked panel stays low */
+#delayHint,#ribbonDelayHint,#timingHint,#ribbonTimingHint{display:none!important}
+.editor-workspace .curvewrap{height:150px;flex:0 0 150px;min-height:150px}
