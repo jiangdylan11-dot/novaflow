@@ -26533,8 +26533,8 @@
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         padding: 0 !important;
-        color: rgba(255, 255, 255, 0.55) !important;
-        font-size: 12px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+        font-size: 11px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
         letter-spacing: 0 !important;
         box-sizing: border-box !important;
@@ -26551,8 +26551,8 @@
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         padding: 0 !important;
-        color: rgba(255, 255, 255, 0.55) !important;
-        font-size: 12px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+        font-size: 11px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
         letter-spacing: 0 !important;
         box-sizing: border-box !important;
@@ -26560,8 +26560,8 @@
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-slider-title="1"] * {
         margin: 0 !important;
         padding: 0 !important;
-        color: rgba(255, 255, 255, 0.55) !important;
-        font-size: 12px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+        font-size: 11px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
         line-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
         letter-spacing: 0 !important;
@@ -26784,8 +26784,8 @@
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         padding: 0 !important;
-        color: rgba(255, 255, 255, 0.55) !important;
-        font-size: 12px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+        font-size: 11px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
         letter-spacing: 0 !important;
         box-sizing: border-box !important;
@@ -26793,8 +26793,8 @@
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-advanced-slider-title="1"] * {
         margin: 0 !important;
         padding: 0 !important;
-        color: rgba(255, 255, 255, 0.55) !important;
-        font-size: 12px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+        font-size: 11px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
         line-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
         letter-spacing: 0 !important;
@@ -53690,8 +53690,8 @@
         overflow: "hidden",
         "text-overflow": "ellipsis",
         padding: "0",
-        color: "rgba(255, 255, 255, 0.55)",
-        "font-size": "12px",
+        color: UI_CONTROL_LABEL_TEXT,
+        "font-size": "11px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
         "box-sizing": "border-box"
       });
@@ -53704,8 +53704,8 @@
         setImportantStyles(child, {
           margin: "0",
           padding: "0",
-          color: "rgba(255, 255, 255, 0.55)",
-          "font-size": "12px",
+          color: UI_CONTROL_LABEL_TEXT,
+          "font-size": "11px",
           "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
           "line-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`
         });
@@ -54907,11 +54907,13 @@
       padding: `0 ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`,
       border: "0",
       "border-radius": NOVAFLOW_RECT_RADIUS_PX,
-      background: UI_BUTTON_BACKGROUND,
-      "background-color": UI_BUTTON_BACKGROUND,
-      color: "rgba(244, 247, 251, 0.94)",
+      // green like the docked bar's spec (保存 / 写入动画 rank): a grey pass here showed the first
+      // 飘带 frame with a grey 添加事件 until the spec painted it green
+      background: "#1ea672",
+      "background-color": "#1ea672",
+      color: "#ffffff",
       "font-size": "12px",
-      "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
+      "font-weight": "500",
       "line-height": "1",
       "box-shadow": "none",
       cursor: "pointer",
@@ -55411,6 +55413,9 @@
       "box-shadow": expanded ? UI_TOGGLE_KNOB_SHADOW : "none",
       "pointer-events": "none"
     });
+    // docked into 动画工具 the spec owns 添加事件 (green, beside the preset select): styling it here
+    // too painted it grey for the first 飘带 frame until the spec's guard put it back
+    if (addButton.closest('[data-novaflow-ribbon-docked="1"]')) return;
     styleRibbonEventActionButton(addButton);
     setImportantStyles(addButton, {
       display: expanded ? "flex" : "none",
@@ -55782,8 +55787,8 @@
         overflow: "hidden",
         "text-overflow": "ellipsis",
         padding: "0",
-        color: "rgba(255, 255, 255, 0.55)",
-        "font-size": "12px",
+        color: UI_CONTROL_LABEL_TEXT,
+        "font-size": "11px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
         "box-sizing": "border-box"
       });
@@ -55796,8 +55801,8 @@
         setImportantStyles(child, {
           margin: "0",
           padding: "0",
-          color: "rgba(255, 255, 255, 0.55)",
-          "font-size": "12px",
+          color: UI_CONTROL_LABEL_TEXT,
+          "font-size": "11px",
           "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
           "line-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`
         });

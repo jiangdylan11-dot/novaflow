@@ -848,6 +848,13 @@
       state.multiCons = sel && (sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path') ? [{ kind: sel.kind, name: sel.name }] : []
     }
     if (sel && (sel.kind === 'bone' || sel.kind === 'slot' || sel.kind === 'att' || sel.kind === 'ph' || sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path' || sel.kind === 'event') && !(opts && opts.noReveal)) revealInTree(sel)
+    // 序列K帧 / 序列扫光: the cards' 骨骼 follows the bone picked in the tree or on the stage at
+    // once (user 2026-10-12: 骨骼树点击骨骼，下面没有实时变化)
+    if ((state.leftOpen === 'sequence' || state.leftOpen === 'sweep') && state.sel && state.sel.kind === 'bone' && state.frameBone !== state.sel.name && state.json && state.json.bones.some((b) => b.name === state.sel.name)) {
+      state.frameBone = state.sel.name
+      const boneSel = document.querySelector('#layerDock select[data-frame-bone]')
+      if (boneSel) boneSel.value = state.frameBone
+    }
     if (!(opts && opts.fromHistory)) pushHistory()
     refresh()
   }
@@ -5525,7 +5532,7 @@
     const files = pictures || [], ticked = files.filter((f) => !U.has(f.name))
     const bones = state.json.bones.map((b) => b.name)
     if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
-    const sel = h('select', { class: 'ld-sel', title: '写入时勾选的图片挂到这根骨骼（已有插槽的位置不变，新图居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
+    const sel = h('select', { class: 'ld-sel', 'data-frame-bone': '1', title: '写入时勾选的图片挂到这根骨骼（已有插槽的位置不变，新图居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
       bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
     const title = kind === 'sequence' ? '序列K帧：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图'
     const head = [

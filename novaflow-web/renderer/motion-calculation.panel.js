@@ -60,9 +60,10 @@
   curveRoot.append(style,body);
   // the label column hugs the widest label the panel shows (user 2026-10-12: 滑条和标题间距太大):
   // measured as text (a range), since a label's own box is the column
-  let labelFit=0;
-  const fitLabelColumn=()=>{labelFit=0;let w=0;const range=document.createRange();body.querySelectorAll('.paramhead>label,.axis-label,.axisrow>.check').forEach(l=>{if(!l.getClientRects().length)return;range.selectNodeContents(l);w=Math.max(w,range.getBoundingClientRect().width);});body.style.setProperty('--labelw',(w?Math.ceil(w)+2:58)+'px');};
-  new MutationObserver(()=>{if(!labelFit)labelFit=requestAnimationFrame(fitLabelColumn);}).observe(body,{childList:true,subtree:true});
+  // measured in the mutation's own microtask (before paint): a frame later the first 飘带 / tool
+  // frame drew its sliders at the previous tool's label width (user 2026-10-12: 首帧不一致)
+  const fitLabelColumn=()=>{let w=0;const range=document.createRange();body.querySelectorAll('.paramhead>label,.axis-label,.axisrow>.check').forEach(l=>{if(!l.getClientRects().length)return;range.selectNodeContents(l);w=Math.max(w,range.getBoundingClientRect().width);});body.style.setProperty('--labelw',(w?Math.ceil(w)+2:58)+'px');};
+  new MutationObserver(fitLabelColumn).observe(body,{childList:true,subtree:true});
   // outside the editor box, which clips: the preset preview opens above the header
   curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
   let ribbon=false,ribbonPrepared=false,ribbonBarKey='',ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,ribbonLiveRect=null,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
@@ -80,8 +81,9 @@
     previewLayer=null;
   }
   function reservePreviewSpace(){
-    // 飘带计算 still measuring its height: the stage keeps its size until the box is final
-    if(ribbon&&ribbonShown&&!ribbonSettled)return;
+    // 飘带计算 not on screen yet (prepared, measuring): the stage keeps its size until the box shows,
+    // or an empty band stood where the box would be (user 2026-10-12: 展开动画工具闪一下)
+    if(ribbon&&!ribbonSettled)return;
     const editorTimeline=window.NovaFlowSkeletonEditor?.timeline?.();
     if(editorTimeline){
       const pixels=Math.max(0,Math.round(editorTimeline.getBoundingClientRect().top-floating.getBoundingClientRect().top-2));
@@ -174,11 +176,15 @@
         // the docked panel still laying out (its height keeps changing for a few frames): measure
         // every frame and show the box only once two frames in a row agree, at that height
         if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);
+        // shown at the first reading (revealRibbon re-measures with the timing row it unhides): the
+        // panel's height no longer moves after mounting, and waiting for repeated readings left the
+        // previous tool on screen while 飘带's chain selection and preview keys were already in the
+        // dopesheet (user 2026-10-12: 进入飘带还是会闪)
         // the bar the box sits on must hold still too: the host's anchor over the editor's timeline
         // trails the dopesheet unfolding by a frame, and a reveal on that frame drew the box low
         // and a frame later high (user 2026-10-12: 展开飘带必闪)
         const barKey=Math.round(r.top)+','+Math.round(r.height)+','+Math.round(r.left)+','+Math.round(r.width);
-        if(fit!==ribbonFitHeight||barKey!==ribbonBarKey){ribbonFitHeight=fit;ribbonBarKey=barKey;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;revealRibbon();if(stylesReady){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        if(fit!==ribbonFitHeight||barKey!==ribbonBarKey){ribbonFitHeight=fit;ribbonBarKey=barKey;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled){ribbonSettled=true;revealRibbon();if(stylesReady){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
@@ -734,6 +740,9 @@
     const e=body.getBoundingClientRect(),d=$('ribbonDock').getBoundingClientRect();
     ribbonLiveRect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:d.top-e.top-1,insetBottom:e.bottom-1-d.bottom};
     bridge.dock?.(ribbonLiveRect);
+    // the footer in the same frame (its regular update runs a few times a second)
+    const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;
+    const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;ribbonFooterAt=performance.now();
   }
   // a tool switch drops the adjustment that was never saved: the bone goes back to its saved
   // animation and the tools to their saved (or initial) values
@@ -764,7 +773,11 @@
     // the 飘带 layout is set at once (the dock box is measured off it); the box turns
     // see-through only once the panel sits in it (showRibbon)
     if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();setCollapsed(false);positionCurve();}return;}
+    // leaving 飘带: undock (its preview and chain selection go) in this task, with the new tool's
+    // box - on the next pass the new box showed a frame with 飘带's keys still in the dopesheet
+    const leavingRibbon=ribbonShown||ribbonPrepared;
     ribbonShown=false;ribbonPrepared=false;ribbonFitHeight=0;ribbonSettled=false;ribbonStable=0;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
+    if(leavingRibbon)bridge.dock?.(null);
     setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('未保存的调整在切换功能时丢弃 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];

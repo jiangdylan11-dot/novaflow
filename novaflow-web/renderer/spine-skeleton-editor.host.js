@@ -85,7 +85,18 @@
     if (s.height !== px(r.height)) s.height = px(r.height)
   }
 
+  // the brand runtime's 动画 layout lands a pass after React's: the frame follows the workspace's
+  // box in the same frame (a ResizeObserver runs after layout, before paint), never a frame late
+  let wsObserver = null
+  function followWorkspace(ws) {
+    if (typeof ResizeObserver !== 'function') return
+    if (!wsObserver) wsObserver = new ResizeObserver(() => { if (frame && workspace && frame.style.display === 'block') place(workspace.getBoundingClientRect()) })
+    wsObserver.disconnect()
+    if (ws) wsObserver.observe(ws)
+  }
+
   function releaseWorkspace() {
+    if (wsObserver) wsObserver.disconnect()
     if (workspace) { workspace.style.removeProperty('opacity'); workspace.style.removeProperty('pointer-events') }
     workspace = null
     if (document.body.hasAttribute('data-novaflow-skeleton-editor')) document.body.removeAttribute('data-novaflow-skeleton-editor')
@@ -134,7 +145,7 @@
     }
     ensureFrame()
     installStyle()
-    if (workspace !== ws) { releaseWorkspace(); workspace = ws }
+    if (workspace !== ws) { releaseWorkspace(); workspace = ws; followWorkspace(ws) }
     if (document.body.getAttribute('data-novaflow-skeleton-editor') !== '1') document.body.setAttribute('data-novaflow-skeleton-editor', '1')
     // the app's stage, right column and playbar stay mounted (the tools read them), unseen. Not
     // visibility:hidden: the app's layout pass reads its own sidebar's visibility and would drop
@@ -184,6 +195,10 @@
 
   /** The bone editor's props (project, setProject, the selection) — the 动画工具 read the same. */
   function reactProps(test) {
+    const fiber = reactFiber(test)
+    return fiber ? fiber.memoizedProps : null
+  }
+  function reactFiber(test) {
     const root = document.getElementById('root')
     const key = root && Object.keys(root).find((k) => k.startsWith('__reactContainer$'))
     const current = key && root[key] && root[key].stateNode && root[key].stateNode.current
@@ -193,14 +208,41 @@
     while (todo.length && count++ < 20000) {
       const fiber = todo.pop()
       const p = fiber.memoizedProps
-      if (p && test(p)) return p
+      if (p && test(p)) return fiber
       if (fiber.sibling) todo.push(fiber.sibling)
       if (fiber.child) todo.push(fiber.child)
     }
     return null
   }
   const projectProps = () => reactProps((p) => p.spineSubEditor === 'bone' && p.project && p.project.animations && typeof p.setProject === 'function' && 'activeAnimationName' in p && 'selectedBoneName' in p)
-  const workspaceProps = () => reactProps((p) => typeof p.onSelectedBoneNameChange === 'function' && typeof p.onActiveAnimationNameChange === 'function')
+  const isWorkspaceProps = (p) => typeof p.onSelectedBoneNameChange === 'function' && typeof p.onActiveAnimationNameChange === 'function'
+  const workspaceProps = () => reactProps(isWorkspaceProps)
+
+  /**
+   * The app's own bone tree (hidden under the editor) keeps a selection of its own - tree id
+   * 'root' and no names unless it was clicked - and an effect of it reports that selection to the
+   * app whenever its callbacks change. So every re-render of the app put root back over the bone
+   * the editor pushed until the next tick (the 动画工具 footer flashed 当前骨骼：root, the tools
+   * rebuilt for root; user 2026-10-12: 首帧不一致). Its selection is set with the push: the hooks
+   * are [expanded {root:true,…}, tree id, picked names, …] in that order.
+   */
+  function syncAppTreeSelection(bone, bones) {
+    const fiber = reactFiber(isWorkspaceProps)
+    let h = fiber && fiber.memoizedState
+    for (let i = 0; h && i < 300; i += 1, h = h.next) {
+      const b = h.next, c = b && b.next
+      const expanded = h.memoizedState
+      if (!b || !c || !h.queue || !b.queue || !c.queue) continue
+      if (!expanded || typeof expanded !== 'object' || Array.isArray(expanded) || expanded.root !== true) continue
+      if (typeof b.memoizedState !== 'string' || !Array.isArray(c.memoizedState)) continue
+      const id = bone ? 'bone:' + bone : 'root'
+      try {
+        if (b.memoizedState !== id && typeof b.queue.dispatch === 'function') b.queue.dispatch(id)
+        if (!sameNames(c.memoizedState, bones) && typeof c.queue.dispatch === 'function') c.queue.dispatch(bones.slice())
+      } catch { /* the app moved on */ }
+      return
+    }
+  }
 
   const signature = (v) => { try { return JSON.stringify(v === undefined ? null : v) } catch { return '' } }
 
@@ -291,6 +333,7 @@
       changed = true
       try { ws.onSelectedBoneNameChange(bone) } catch { /* the app moved on */ }
       try { if (typeof ws.onSelectedBoneNamesChange === 'function') ws.onSelectedBoneNamesChange(bones) } catch { /* optional */ }
+      syncAppTreeSelection(bone, bones)
       // 飘带 with a preset in play moves to the picked chain(s) now, not when its own guards
       // happen to notice (that took up to 15 s, and only sometimes)
       try { if (window.NovaFlowRibbonPresets && typeof window.NovaFlowRibbonPresets.retarget === 'function') window.NovaFlowRibbonPresets.retarget(bones, bone) } catch { /* not loaded */ }
@@ -737,8 +780,26 @@
   setInterval(() => { tick(); try { packRow(); presync() } catch { /* the dialog is changing */ } }, 150)
   // the section mounting or leaving: cover / uncover in the same task, before the page paints
   const root = document.getElementById('root') || document.body
-  // DOM changes queue one tick per frame (a tick per mutation batch ran many times a frame)
+  // Entering or leaving 动画 is handled in the mutation's own microtask, before the page paints:
+  // the app's own 动画 page (its toolbar, 未导入工程 tree, playbar) showed for a frame while the
+  // tick waited for the next animation frame (user 2026-10-12: 切入动画会先闪一下). Other DOM
+  // changes still queue one tick per frame (a tick per mutation batch ran many times a frame).
   let tickQueued = false
-  new MutationObserver(() => { if (tickQueued) return; tickQueued = true; requestAnimationFrame(() => { tickQueued = false; try { tick() } catch { /* mid-change */ } }) }).observe(root, { childList: true, subtree: true })
+  const onMutations = () => {
+    const inAnimation = document.body.classList.contains('novaflow-primary-target-animation')
+    const shown = !!(frame && frame.style.display === 'block')
+    const wsGone = shown && !!workspace && !workspace.isConnected
+    if (inAnimation !== shown || wsGone) { try { tick() } catch { /* mid-change */ } return }
+    if (tickQueued) return
+    tickQueued = true
+    requestAnimationFrame(() => { tickQueued = false; try { tick() } catch { /* mid-change */ } })
+  }
+  new MutationObserver(onMutations).observe(root, { childList: true, subtree: true })
+  new MutationObserver(onMutations).observe(document.body, { attributes: true, attributeFilter: ['class'] })
+  // the editor page is loaded ahead (hidden) once the app is idle: the first visit to 动画 then
+  // shows a ready editor instead of an empty frame that fills in a moment later
+  const preload = () => { try { ensureFrame() } catch { /* the page is going away */ } }
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(preload, { timeout: 4000 })
+  else setTimeout(preload, 1500)
   tick()
 })()

@@ -422,6 +422,10 @@
     if(ribbon.getAttribute('data-novaflow-ribbon-docked')!=='1'){ribbon.setAttribute('data-novaflow-ribbon-docked','1');keepEventsOpen(ribbon);changed=true;}
     if(ribbon.getAttribute('data-open')!=='1'){syncRibbonOpen(ribbon);if(ribbon.getAttribute('data-open')!=='1')return false;}
     // in place, and mounted: the box shows it only once its rows are there (it mounts on open)
+    // the event section opens as soon as it exists (docking happened off screen before it was
+    // mounted), and before the first-frame refresh so that pass marks the head React renders
+    // for it (添加事件 showed grey in the first 飘带 frame)
+    keepEventsOpen(ribbon);
     window.NovaFlowRibbonPresets?.prepare?.(ribbon);
     if(!ribbonMounted(ribbon))return false;
     // docking (or a new box) is laid out in this task, then measured
