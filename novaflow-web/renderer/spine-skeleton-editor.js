@@ -1571,8 +1571,10 @@
     return { ...out, skel, images: items.length - missing.length, missing }
   }
 
-  function openExportDialog() {
+  function openExportDialog(opts) {
     if (!state.json) return
+    // 保存工程 (the left column) opens the same dialog: Spine data in the chosen version, written to a folder
+    const saving = !!(opts && opts.title)
     const pref = (() => { try { return JSON.parse(localStorage.getItem('nf-skel-export') || '{}') } catch { return {} } })()
     const SV = window.NovaFlowSpineVersion
     const own = ownVersion()
@@ -1590,7 +1592,7 @@
       const fseg = (val, label) => h('button', { 'aria-pressed': String(!!o.skel === val), onclick: () => { o.skel = val; fill() } }, label)
       const fmt = o.skel ? 'SKEL' : 'JSON'
       body.append(
-        h('label', { class: 'fl' }, '导出名称'), nameIn,
+        h('label', { class: 'fl' }, saving ? '工程名称' : '导出名称'), nameIn,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
         // SKEL = Spine's binary skeleton (the version chosen above); JSON = text
         h('div', { class: 'pk' }, h('span', { class: 'fl' }, '格式'), h('div', { class: 'seg' }, fseg(false, 'JSON'), fseg(true, 'SKEL'))),
@@ -1602,7 +1604,7 @@
         h('div', { class: 'hint' }, (o.version === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${o.version}`) + (o.packed
           ? `，${fmt}＋atlas＋图集 PNG` + (o.mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
           : `，${fmt}＋images 文件夹（每张图一个 PNG）。`)),
-        h('button', { class: 'btn primary big', onclick: run }, o.packed ? `导出 Spine 工程（${fmt}+ATLAS+PNG，选文件夹）` : `导出 Spine 工程（${fmt}+images，选文件夹）`))
+        h('button', { class: 'btn primary big', onclick: run }, (saving ? '保存' : '导出') + (o.packed ? ` Spine 工程（${fmt}+ATLAS+PNG，选文件夹）` : ` Spine 工程（${fmt}+images，选文件夹）`)))
     }
     const run = async () => {
       const A = window.NovaFlowSequenceAtlas
@@ -1623,11 +1625,11 @@
       try {
         const r = await exportProject({ ...o, settings: atlasSettings() }, write)
         close()
-        status(`已导出 ${o.name}：${r.images} 张图片${r.packed ? `，${r.pages} 张图集` : ''}${r.missing.length ? `（缺 ${r.missing.length} 张：${r.missing.slice(0, 3).join('、')}）` : ''}`, r.missing.length ? 'error' : 'ok')
-      } catch (e) { status('导出失败：' + e.message, 'error') }
+        status(`已${saving ? '保存' : '导出'} ${o.name}：${r.images} 张图片${r.packed ? `，${r.pages} 张图集` : ''}${r.missing.length ? `（缺 ${r.missing.length} 张：${r.missing.slice(0, 3).join('、')}）` : ''}`, r.missing.length ? 'error' : 'ok')
+      } catch (e) { status((saving ? '保存' : '导出') + '失败：' + e.message, 'error') }
     }
     const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
-      h('div', { class: 'dialog export' }, h('div', { class: 'hd' }, h('b', {}, '导出'), h('button', { class: 'xx', onclick: close }, '×')), body))
+      h('div', { class: 'dialog export' }, h('div', { class: 'hd' }, h('b', {}, saving ? opts.title : '导出'), h('button', { class: 'xx', onclick: close }, '×')), body))
     document.body.append(mask)
     fill()
   }
@@ -8367,7 +8369,7 @@ self.onmessage = (e) => {
     /** whether 自动架设 would replace a rig that animations already use */
     rigUsed: () => !!(state.json && state.json.bones.length > 1 && Object.values(state.json.animations || {}).some((a) => a && a.bones && Object.keys(a.bones).length)),
     restoreProject: () => { if (state.initialJson && state.initialJson !== state.json) edit('已还原为导入时的工程', () => ({ json: state.initialJson })) },
-    openExport: () => openExportDialog(),
+    openExport: (opts) => openExportDialog(opts),
     openAtlasSettings: () => openAtlasSettings(),
     /** how many pictures each 打包 choice takes: 附件 (used) / 图片文件夹 */
     packCounts: async () => ({ atts: exportImageNames(Ops.exportable(state.json)).length, folder: (await folderImages()).length }),

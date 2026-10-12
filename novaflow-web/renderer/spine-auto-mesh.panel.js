@@ -298,6 +298,54 @@
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
     if (!Attach || !bridge || !cache) throw new Error('导入桥接不可用')
     const list = Array.from(files || [])
+    const depth = (f) => (f.webkitRelativePath || f.name).split('/').length
+    // 导入工程 takes any Spine project folder: with an .atlas (or a binary .skel) it is an exported
+    // Spine project (skeleton + atlas + its pages) and comes in as is; JSON + loose PNGs is the
+    // PhotoshopToSpine path below
+    const atlasFiles = list.filter((f) => /\.atlas(\.txt)?$/i.test(f.name)).sort((a, b) => depth(a) - depth(b))
+    const skelFiles = list.filter((f) => /\.skel(\.bytes)?$/i.test(f.name)).sort((a, b) => depth(a) - depth(b))
+    if (atlasFiles.length || (skelFiles.length && !list.some((f) => /\.json$/i.test(f.name)))) {
+      const stemOf = (n) => n.replace(/\.(atlas|atlas\.txt|json|skel|skel\.bytes)$/i, '').toLowerCase()
+      const skeletons = list.filter((f) => /\.json$/i.test(f.name) || /\.skel(\.bytes)?$/i.test(f.name)).sort((a, b) => depth(a) - depth(b))
+      const atlasFile = atlasFiles[0] || null
+      const skeletonFile = (atlasFile && skeletons.find((f) => stemOf(f.name) === stemOf(atlasFile.name))) || skeletons[0]
+      if (!skeletonFile) throw new Error('这个文件夹里没有骨架（JSON 或 SKEL）')
+      setStatus('读取骨架…')
+      let jsonText
+      let jsonName = skeletonFile.name
+      if (/\.json$/i.test(skeletonFile.name)) jsonText = await readFileAsText(skeletonFile)
+      else {
+        if (!window.NovaFlowSpineSkel || !window.NovaFlowSpineSkel.toJson) throw new Error('读取 SKEL 不可用')
+        const read = window.NovaFlowSpineSkel.toJson(new Uint8Array(await skeletonFile.arrayBuffer()))
+        jsonText = typeof read === 'string' ? read : read && read.text
+        jsonName = skeletonFile.name.replace(/\.skel(\.bytes)?$/i, '.json')
+      }
+      const atlasText = atlasFile ? await readFileAsText(atlasFile) : ''
+      if (!atlasText) throw new Error('这个文件夹里没有图集（.atlas）')
+      // the atlas pages, by the names the atlas lists (a page line is a lone file name)
+      const pageNames = atlasText.split(/\r?\n/).map((l) => l.trim()).filter((l) => /\.(png|jpe?g|webp)$/i.test(l) && !l.includes(':'))
+      const imageFiles = list.filter((f) => /\.(png|jpe?g|webp)$/i.test(f.name))
+      const images = []
+      for (const name of pageNames) {
+        const f = imageFiles.find((x) => x.name.toLowerCase() === name.split('/').pop().toLowerCase())
+        if (!f) throw new Error('图集页面找不到：' + name)
+        setStatus(`读取图集页面 ${images.length + 1}/${pageNames.length}…`)
+        images.push({ fileName: name, dataUrl: await readFileAsDataUrl(f) })
+      }
+      cache.json = { fileName: jsonName, text: jsonText }
+      cache.atlas = { fileName: atlasFile.name, text: atlasText }
+      cache.images = images
+      const ok = await bridge.start()
+      if (!ok) throw new Error('载入工程失败')
+      state.baseSkeleton = null
+      state.autoRig = null
+      state.source = null
+      state.listedFrom = null
+      state.layers.clear()
+      state.lastReport = null
+      syncLayersFromSource()
+      return { pages: images.length }
+    }
     const jsonFiles = list.filter((f) => /\.json$/i.test(f.name))
     const imageFiles = list.filter((f) => /\.(png|jpe?g|webp)$/i.test(f.name))
     if (!jsonFiles.length) throw new Error('这个文件夹里没有 JSON')
@@ -3040,7 +3088,7 @@
     try {
       const panels = Array.from(document.querySelectorAll('.nf-panel')).filter((p) => {
         const head = p.querySelector('.nf-panel-header')
-        return head && String(head.textContent || '').replace(/\s+/g, '').startsWith('导入工程')
+        return head && /^(导入工程|工程管理)/.test(String(head.textContent || '').replace(/\s+/g, ''))
       })
       // more than one means the app mounted twice and half the UI on screen is dead
       diag('hit', { panels: panels.length, roots: document.querySelectorAll('.nf-panel').length })
@@ -3100,11 +3148,11 @@
 
   function ensurePsImport() {
     if (state.psImport) return state.psImport
-    const button = el('button', null, '导入PS工程')
+    const button = el('button', null, '导入工程')
     button.type = 'button'
     styleButton(button, false)
     button.setAttribute('data-nf-ps-import', '1') // hover like its neighbour 清空 (theme 3.1b)
-    button.title = 'PhotoshopToSpine 导出的文件夹可以直接用,不需要先过一遍 Spine;也可以直接把那个文件夹拖到这个按钮上'
+    button.title = '选择工程文件夹：Spine 导出的 JSON / SKEL + 图集，或 PhotoshopToSpine 导出的 JSON + 贴图；也可以直接把文件夹拖到这个按钮上'
     // the panel this button lives in is the app's 导入工程; the status line it used to write to
     // sits inside 自动蒙皮, which is collapsed on entry — so a click looked like nothing happened
     const psStatus = el('div', {
@@ -3143,7 +3191,7 @@
       const api = window.electronAPI
       if (api && typeof api.openPhotoshopProject === 'function') {
         guardWith(say)(async () => {
-          say('选择 PhotoshopToSpine 导出的文件夹…')
+          say('选择工程文件夹…')
           let res = null
           diag('ipcstart', {})
           try {
@@ -3177,7 +3225,7 @@
           rememberProjectFolder(files)
           rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-          say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
+          say((n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
         })
         return
       }
@@ -3239,7 +3287,7 @@
         const files = roots.length ? await entryFiles(roots) : plain
         if (!files.length) throw new Error('这里面没有 JSON 和贴图')
         const n = await importPhotoshopProject(files, (t) => sayHere(t))
-        sayHere(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
+        sayHere((n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     picker.addEventListener('change', () => {
@@ -3253,16 +3301,31 @@
       guardWith(say)(async () => {
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-        say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
+        say((n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     document.body.appendChild(picker)
     // What to pick, under the button (the name alone is short now).
     // no top margin: the brand runtime's rhythm pass sets the panel's spacing and zeroed it a frame later
     const psNote = el('div', { marginTop: '0', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
-      '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到按钮上')
+      '选择工程文件夹（Spine 的 JSON / SKEL + 图集，或 PhotoshopToSpine 的 JSON + 贴图），也可以直接拖到按钮上')
     psNote.setAttribute('data-novaflow-ps-import-note', '1')
-    state.psImport = { button, picker, status: psStatus, note: psNote }
+    // a line between the file-by-file import above and the project buttons (user 2026-10-13)
+    const divider = el('div', { height: '1px', margin: '4px 0', background: '#272727', width: '100%' })
+    divider.setAttribute('data-novaflow-import-divider', '1')
+    // 保存工程: the editor's save dialog (version, JSON / SKEL, atlas packing, a folder to write to)
+    const save = el('button', null, '保存工程')
+    save.type = 'button'
+    styleButton(save, false)
+    save.setAttribute('data-nf-project-save', '1')
+    save.title = '把当前工程保存成 Spine 格式（选版本、JSON 或 SKEL、图集打包），写进选的文件夹'
+    save.addEventListener('click', () => {
+      const ed = window.NovaFlowSkeletonEditor
+      const a = ed && ed.api && ed.api()
+      if (!a || !a.loaded || !a.loaded()) { setStatusFn('先导入工程', 'warn'); return }
+      a.openExport({ title: '保存工程' })
+    })
+    state.psImport = { button, picker, status: psStatus, note: psNote, divider, save }
     busyButtons.push(button)
     return state.psImport
   }
@@ -3271,15 +3334,18 @@
     if (!kit || !kit.button) return
     const panel = Array.from(document.querySelectorAll('.nf-panel')).find((pn) => {
       const head = pn.querySelector('.nf-panel-header')
-      return head && String(head.textContent || '').replace(/\s+/g, '').startsWith('导入工程')
+      return head && /^(导入工程|工程管理)/.test(String(head.textContent || '').replace(/\s+/g, ''))
     })
     const body = panel && panel.querySelector('.nf-panel-body')
     if (!body) return
     if (kit.button.parentElement !== body) body.appendChild(kit.button)
+    if (kit.divider && kit.divider.nextElementSibling !== kit.button) kit.button.before(kit.divider)
     if (kit.note && kit.note.previousElementSibling !== kit.button) kit.button.after(kit.note)
+    if (kit.save && kit.save.previousElementSibling !== (kit.note || kit.button)) (kit.note || kit.button).after(kit.save)
     if (kit.status && kit.status.parentElement !== body) body.appendChild(kit.status)
     if (!kit.picker.isConnected) document.body.appendChild(kit.picker)
     dressLikePanel(kit.button, body)
+    if (kit.save) dressLikePanel(kit.save, body)
   }
   /**
    * Wear the panel's own button style: this row sits among the app's buttons, and its

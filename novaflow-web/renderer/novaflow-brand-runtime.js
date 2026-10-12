@@ -25531,6 +25531,10 @@
         margin-top: 0 !important;
         margin-bottom: 0 !important;
       }
+      /* 工程管理 has no 清空 (user 2026-10-13); the button stays in the DOM for the panel's own checks */
+      body.novaflow-skeleton-animation-layout [data-novaflow-spine-inline-import-panel="1"] [data-novaflow-spine-inline-import-clear-all="1"] {
+        display: none !important;
+      }
       body.novaflow-skeleton-animation-layout [data-novaflow-spine-inline-import-start="1"] {
         width: 100% !important;
         margin-top: 0 !important;
@@ -67985,7 +67989,7 @@
     icon.className = "fas fa-file-import";
     icon.setAttribute("aria-hidden", "true");
     const title = document.createElement("span");
-    title.textContent = "\u5bfc\u5165\u5de5\u7a0b";
+    title.textContent = "\u5de5\u7a0b\u7ba1\u7406";
     const chevron = document.createElement("i");
     chevron.className = "fas fa-chevron-right";
     chevron.setAttribute("aria-hidden", "true");
@@ -68080,7 +68084,7 @@
       header.setAttribute("tabindex", "0");
       setAttributeIfChanged(header, "aria-expanded", open ? "true" : "false");
       const title = header.querySelector("span");
-      if (title instanceof HTMLElement) title.textContent = "\u5bfc\u5165\u5de5\u7a0b";
+      if (title instanceof HTMLElement) title.textContent = "\u5de5\u7a0b\u7ba1\u7406";
       let chevron = header.querySelector(`[${SPINE_INLINE_IMPORT_CHEVRON_ATTR}="1"]`);
       if (!(chevron instanceof HTMLElement)) {
         chevron = document.createElement("i");
