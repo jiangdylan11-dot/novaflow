@@ -228,7 +228,7 @@
    * The app's imported project (`__NOVA_SPINE_LAST_SOURCE`): { skeleton: { fileName, text },
    * atlas: { fileName, text }, images: [{ fileName, dataUrl }] }.
    */
-  async function loadSource(src) {
+  async function loadSource(src, opts) {
     if (!src || !src.skeleton || !src.skeleton.text) throw new Error('没有工程')
     const json = JSON.parse(src.skeleton.text)
     const raw = Array.isArray(src.images) ? src.images
@@ -243,7 +243,14 @@
       try { files.push({ fileName, blob: await (await fetch(url)).blob() }) } catch { /* an image that does not decode is left out */ }
     }
     const name = String(src.skeleton.fileName || 'skeleton.json')
-    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, label: stem(name) })
+    // a project opened from a folder (the app's 导入PS工程 keeps the folder handle): its image folder,
+    // listed live from disk; loose files (JSON + atlas + PNG) have no folder to watch
+    let imageFolder = null
+    const dirHandle = opts && opts.directory && opts.directory.handle
+    if (dirHandle && !((src.atlas && src.atlas.text) || '').trim()) {
+      try { imageFolder = await folderForProject(dirHandle, json, name) } catch { imageFolder = null }
+    }
+    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name) })
   }
 
   async function loadFiles(files, label) {
@@ -1116,6 +1123,55 @@
   const IMG_RX = /\.(png|jpe?g|webp)$/i
   const byName = (x, y) => x.name.localeCompare(y.name, undefined, { numeric: true, sensitivity: 'base' })
   const sortList = (dirs, files) => ({ dirs: dirs.sort(byName), files: files.sort(byName) })
+
+  /**
+   * A folder on disk (File System Access handle): listed anew on every list(), so pictures the
+   * user drops into it show up. Files imported in the session (the handle is read-only) are kept
+   * beside them. Same shape as folderFromFiles's nodes, plus `live`.
+   */
+  function folderFromHandle(handle, name, path, extras) {
+    const extra = extras || new Map()   // dir path → files added in-session
+    const here = path || ''
+    const node = {
+      name, path: here, live: true,
+      async list() {
+        const dirs = [], files = []
+        for await (const [n, h] of handle.entries()) {
+          const rel = here ? here + '/' + n : n
+          if (h.kind === 'directory') dirs.push(folderFromHandle(h, n, rel, extra))
+          else if (h.kind === 'file' && IMG_RX.test(n)) files.push({ name: n, rel, region: null, file: async () => h.getFile() })
+        }
+        for (const f of extra.get(here) || []) if (!files.some((x) => x.name === f.name)) files.push(f)
+        return sortList(dirs, files)
+      },
+      add(rel, file) {
+        const parts = String(rel).split('/').filter(Boolean)
+        const dir = parts.slice(0, -1).join('/'), n = parts[parts.length - 1]
+        if (!extra.has(dir)) extra.set(dir, [])
+        extra.get(dir).push({ name: n, rel: parts.join('/'), region: null, file: async () => file })
+      },
+    }
+    return node
+  }
+
+  /** The project's image folder inside the picked folder: the JSON's folder + skeleton.images. */
+  async function folderForProject(dirHandle, json, jsonFileName) {
+    const base = String(jsonFileName || '').split('/').pop().toLowerCase()
+    const find = async (h, depth) => {
+      if (depth > 4) return null
+      const subs = []
+      for await (const [n, c] of h.entries()) { if (c.kind === 'file' && n.toLowerCase() === base) return h; if (c.kind === 'directory') subs.push(c) }
+      for (const c of subs) { const r = await find(c, depth + 1); if (r) return r }
+      return null
+    }
+    let dir = await find(dirHandle, 0)
+    if (!dir) return null
+    for (const seg of String((json.skeleton && json.skeleton.images) || '').split('/').filter((x) => x && x !== '.')) {
+      if (seg === '..') return null
+      dir = await dir.getDirectoryHandle(seg)
+    }
+    return folderFromHandle(dir, dir.name || '图片')
+  }
 
   /** `items` = [{ rel: path inside the folder, file }]. */
   function folderFromFiles(name, items) {
@@ -5266,8 +5322,34 @@
     input.click()
   }
 
+  // a live folder (handle): re-listed every 2.5 s while the 图片 node is open; a change (a picture
+  // dropped into the folder, a folder made) refreshes the tree and the frame cards
+  let imgWatch = 0
+  function watchImageFolder(on) {
+    if (!on || !(state.imageFolder && state.imageFolder.live)) { if (imgWatch) { clearInterval(imgWatch); imgWatch = 0 } return }
+    if (imgWatch) return
+    const names = (l) => l.dirs.map((d) => 'd:' + d.name).concat(l.files.map((f) => 'f:' + f.name)).join('\n')
+    imgWatch = setInterval(async () => {
+      if (!state.json || !(state.imageFolder && state.imageFolder.live) || state.sections.has('images')) { watchImageFolder(false); return }
+      try {
+        for (const [path, cached] of [...imgTree.nodes]) {
+          let node = state.imageFolder
+          for (const seg of path.split('/').filter(Boolean)) { const l = await node.list(); node = l.dirs.find((d) => d.name === seg); if (!node) break }
+          const fresh = node ? await node.list() : { dirs: [], files: [] }
+          if (names(fresh) !== names(cached)) {
+            state.imageFolderGen = (state.imageFolderGen || 0) + 1
+            imgTree = { key: '', nodes: new Map(), pending: new Set() }
+            renderTree(); renderLayerDock()
+            return
+          }
+        }
+      } catch { /* the folder went away: keep what is shown */ }
+    }, 2500)
+  }
+
   function renderImagesNode(rows, pad) {
     const closed = state.sections.has('images')
+    watchImageFolder(!closed)
     const toggle = () => { state.sections.has('images') ? state.sections.delete('images') : state.sections.add('images'); renderTree() }
     const root = imagesListing('')
     const count = root ? root.files.length + (root.dirs.length ? ` + ${root.dirs.length} 夹` : '') : '…'
@@ -5299,7 +5381,7 @@
       }
       for (const f of l.files) {
         const name = f.rel.replace(/\.[^.]+$/, '')
-        const row = h('div', { class: 'row', style: pad(depth), 'data-unused': used.has(name) ? null : '1', title: used.has(name) ? name : `${name}（工程里还没用到：拖到骨骼 / 插槽 / 画板上）` },
+        const row = h('div', { class: 'row', style: pad(depth), 'data-unused': used.has(name) ? null : '1', 'data-used': used.has(name) ? '1' : null, title: used.has(name) ? `${name}（工程里已用）` : `${name}（工程里还没用到：拖到骨骼 / 插槽 / 画板上）` },
           caret(null), h('span', { class: 'ico', html: ICON.region }), h('span', { class: 'label' }, f.name.replace(/\.[^.]+$/, '')))
         wireDrag(row, { type: 'image', name, rel: f.rel, file: f.file, region: f.region }, null)
         rows.push(row)
@@ -5361,7 +5443,7 @@
   let frameRoot = null // { key, files: [{ name, rel, file, region }] } the root folder's pictures
   let frameRootPending = null
   const frameThumbs = new Map() // name → 32 px canvas (a folder file decodes once)
-  const frameRootKey = () => state.atlasText.length + '|' + (state.imageFolder ? 'folder' : 'atlas')
+  const frameRootKey = () => state.atlasText.length + '|' + (state.imageFolder ? 'folder' : 'atlas') + '|' + (state.imageFolderGen || 0)
   const frameUnticked = (kind) => state.frameUnticked[kind]
 
   /** the pictures on the cards: the picked set, else the root folder's (while it loads: none) */
@@ -7992,7 +8074,7 @@ self.onmessage = (e) => {
   const tickedOf = () => tickedLayers()
   window.NovaFlowSkeletonEditorAPI = {
     on(fn) { hostListeners.add(fn); return () => hostListeners.delete(fn) },
-    loadSource: (src) => loadSource(src),
+    loadSource: (src, opts) => loadSource(src, opts),
     json: () => state.json,
     loaded: () => !!state.json,
     selectedBone: () => (state.sel && state.sel.kind === 'bone' ? state.sel.name : null),

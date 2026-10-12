@@ -367,6 +367,9 @@
     if (typeof root.showDirectoryPicker === 'function') {
       try {
         const dir = await root.showDirectoryPicker({ mode: 'read' });
+        // the 骨骼动画 editor lists the project's image folder live from this handle (pictures the user
+        // drops into the folder show up without a re-import)
+        root.__NovaFlowLastProjectDirectory = { handle: dir, name: dir.name, at: Date.now() };
         const files = [];
         let totalSize = 0;
         const walk = async (folder, prefix, depth) => {

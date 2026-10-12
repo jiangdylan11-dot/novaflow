@@ -169,7 +169,7 @@
     durations.clear()
     appJson = null
     chosenVersion = null
-    api.loadSource(src).catch((error) => console.warn('[skeleton editor] load', error))
+    api.loadSource(src, { directory: window.__NovaFlowLastProjectDirectory || null }).catch((error) => console.warn('[skeleton editor] load', error))
   }
 
   /** The app's project was rebuilt: nothing in it is ours any more. */
