@@ -5600,6 +5600,7 @@
       a.slots = a.slots || {}
       frames.forEach((f, i) => {
         const row = { ...(a.slots[f.slot] || {}) }
+        delete row.color   // a 序列扫光 written on these slots before left alpha keys (mostly 0): the frames would stay invisible
         const keys = []
         if (i > 0) keys.push({ name: null })
         keys.push({ time: Math.round(i * gap / FPS * 10000) / 10000, name: f.name })
@@ -5642,6 +5643,7 @@
       frames.forEach((f, i) => {
         const rgb = slotRgb(json, f.slot)
         const row = { ...(a.slots[f.slot] || {}) }
+        delete row.attachment   // a 序列帧添加 written on these slots before switched attachments on and off
         const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
         // the curve inside [起, 止]; transparent before 起 and after 止
         let rel
