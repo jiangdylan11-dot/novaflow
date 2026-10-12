@@ -94,6 +94,7 @@
     hover: null,
     hoverImg: null, // 选择图层: the slot whose image is under the pointer
     imageFolder: null, // Spine's images folder: { name, list() } (指定文件夹 in the image picker)
+    offset: { x: 0, y: 0 }, // where this project sits on the stage, beside the others (view only, not exported)
     loop: true, // 循环 (the 动画 section's transport): off = playback stops on the last frame
     meshEdit: null, // 编辑网格: { skin, slot, name, tool, isolate, deform, sel, draft }
     weightEdit: null, // 编辑权重: { skin, slot, name, bone, mode, strength, size, feather, overlay, onlySel, isolate, direct, vsel, binding, order, extra }
@@ -328,6 +329,7 @@
       imageFolder,
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
       addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiCons: [], pick: null,
+      offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
     })
     state.temp.clear()
@@ -349,7 +351,7 @@
     for (const b of state.json.bones) if (depthOf(b.name) >= 2) state.collapsed.add('b:' + b.name)
     for (const s of state.json.slots) state.collapsed.add('s:' + s.name)
     // every import is a project of its own, after the ones already open; it is the one picked
-    if (!(p.replace && projects[activeProject])) { projects.push({ id: ++projectSerial, snap: null }); activeProject = projects.length - 1 }
+    if (!(p.replace && projects[activeProject])) { projects.push({ id: ++projectSerial, snap: null, visible: p.visible !== false }); activeProject = projects.length - 1 }
     fit()
     $('#dropHint').hidden = true
     $('#tree').scrollTop = 0
@@ -363,7 +365,7 @@
   // Spine keeps several skeletons in one hierarchy. Here every import adds a project; the picked one
   // is on the stage and unfolded in the tree, the others are rows that keep their whole editing state
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
-  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future',
+  const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'imgOpen', 'imageFolder', 'pma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
@@ -394,14 +396,85 @@
     rt.missingRegions = new Set()
     imgTree = { key: '', nodes: new Map(), pending: new Set() }
     frameRoot = null; frameRootPending = null; frameThumbs.clear()
+    if (!state.offset) state.offset = { x: 0, y: 0 }
+    dropProjectRuntime(projects[activeProject] && projects[activeProject].id)
     applyJson(state.json)
-    if (snap.cam) Object.assign(rt.cam, snap.cam)
-    else fit()
     $('#dropHint').hidden = true
     refresh()
   }
 
   const projectName = (i) => (i === activeProject ? state.name : (projects[i] && projects[i].snap ? projects[i].snap.name : ''))
+
+  // the projects that are not picked are drawn too (Spine shows every skeleton of its hierarchy): each has
+  // its own atlas and skeleton, rebuilt when its data changed, posed as it was left (setup, or its frame)
+  const otherRt = new Map() // project id -> { json, atlasText, atlas, data, skeleton }
+  function pageImageFrom(images, name) {
+    const hit = images.get(lower(name)) || images.get(lower(baseName(name))) || [...images.values()].find((i) => lower(stem(i.fileName)) === lower(stem(name)))
+    if (hit) return hit.img
+    const c = document.createElement('canvas')
+    c.width = 1; c.height = 1
+    return c
+  }
+  function readProjectData(json, atlas, gl) {
+    const copy = Ops.editorData(json)
+    const v = String(copy.skeleton && copy.skeleton.spine || '')
+    if (!v.startsWith('3.8') || v === '3.8.75') copy.skeleton = { ...(copy.skeleton || {}), spine: '3.8.99' }
+    return new spine.SkeletonJson(tolerantLoader(atlas, gl)).readSkeletonData(copy)
+  }
+  function projectRuntime(p) {
+    const s = p.snap
+    let r = otherRt.get(p.id)
+    if (r && r.json === s.json && r.atlasText === s.atlasText) return r
+    dropProjectRuntime(p.id)
+    const gl = rt.renderer.context || rt.gl
+    const atlas = new spine.TextureAtlas(s.atlasText, (path) => new spine.webgl.GLTexture(gl, pageImageFrom(s.images, path)))
+    const data = readProjectData(s.json, atlas, gl)
+    r = { json: s.json, atlasText: s.atlasText, atlas, data, skeleton: new spine.Skeleton(data) }
+    otherRt.set(p.id, r)
+    return r
+  }
+  function dropProjectRuntime(id) {
+    const r = otherRt.get(id)
+    if (r && r.atlas) try { r.atlas.dispose() } catch { /* the context went away */ }
+    otherRt.delete(id)
+  }
+  function drawOtherProject(i) {
+    const p = projects[i]
+    if (!p || !p.snap || !p.snap.json || p.visible === false) return
+    let r
+    try { r = projectRuntime(p) } catch { return }
+    const s = p.snap, sk = r.skeleton
+    sk.setSkin(null)
+    if (s.skin && s.skin !== 'default' && r.data.findSkin(s.skin)) sk.setSkinByName(s.skin)
+    sk.setToSetupPose()
+    const an = s.mode === 'animate' && s.anim ? r.data.findAnimation(s.anim) : null
+    if (an) an.apply(sk, 0, (s.frame || 0) / FPS, false, null, 1, spine.MixBlend.setup, spine.MixDirection.mixIn)
+    sk.updateWorldTransform()
+    const saved = []
+    for (const n of s.hiddenSlots || []) { const sl = sk.findSlot(n); if (sl && sl.attachment) { saved.push([sl, sl.attachment]); sl.attachment = null } }
+    for (const sl of sk.slots) if (sl.attachment instanceof spine.ClippingAttachment && sl.attachment.worldVerticesLength < 6) { saved.push([sl, sl.attachment]); sl.attachment = null }
+    const off = s.offset || { x: 0, y: 0 }, rr = rt.renderer
+    rr.camera.position.x = rt.cam.x - off.x
+    rr.camera.position.y = rt.cam.y - off.y
+    rr.camera.setViewport($('#gl').width, $('#gl').height)
+    rr.camera.zoom = rt.cam.zoom / rt.dpr
+    rr.begin()
+    rr.drawSkeleton(sk, !!s.pma)
+    rr.end()
+    for (let k = saved.length - 1; k >= 0; k--) saved[k][0].attachment = saved[k][1]
+  }
+
+  function setProjectVisible(i, on) {
+    if (!projects[i]) return
+    projects[i].visible = !!on
+    renderTree()
+  }
+
+  /** The picked project's place on the stage (属性 X / Y, or a drag with the project picked). */
+  function setProjectOffset(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return
+    state.offset = { x, y }
+  }
 
   function switchProject(i) {
     if (i === activeProject || !projects[i] || !projects[i].snap) return
@@ -437,6 +510,7 @@
     if (!window.confirm(`删除工程「${name}」？没保存的改动会丢失（可以先用 保存工程 存一份）。`)) return
     const activeId = projects[activeProject] && projects[activeProject].id
     const wasActive = i === activeProject
+    dropProjectRuntime(projects[i].id)
     projects.splice(i, 1)
     if (!wasActive) { activeProject = projects.findIndex((x) => x.id === activeId); renderTree(); status(`已删除工程 ${name}`, 'ok'); return }
     if (projects.length) {
@@ -470,7 +544,7 @@
       if (!s || !s.json) continue
       const images = []
       for (const im of s.images.values()) if (im.blob) images.push({ fileName: im.fileName, dataUrl: await blobToDataUrl(im.blob) })
-      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images })
+      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false })
     }
     if (!list.length) throw new Error('没有可保存的工程')
     const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 1, active: Math.max(0, activeProject), projects: list })
@@ -505,11 +579,37 @@
     const first = projects.length
     for (const p of d.projects) {
       const images = await Promise.all((p.images || []).map(async (im) => ({ fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() })))
-      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, label: p.name })
+      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, label: p.name, offset: p.offset, visible: p.visible })
     }
     switchProject(first + Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0)))
     status(`已打开 NovaFlow 工程：${d.projects.length} 个工程`, 'ok')
     return d.projects.length
+  }
+
+  /** The 工程 属性 X / Y boxes follow a drag (the rest of the panel stays). */
+  function syncProjectFields() {
+    const boxes = document.querySelectorAll('#props [data-offset]')
+    for (const i of boxes) if (document.activeElement !== i) i.value = String(Math.round(state.offset[i.dataset.offset] * 100) / 100)
+  }
+
+  /** 工程 属性: name, its place on the stage (X / Y, view only), shown or not. */
+  function projectBody() {
+    const num = (k, label) => {
+      const i = h('input', { type: 'number', step: 'any', 'data-offset': k, value: String(Math.round(state.offset[k] * 100) / 100) })
+      i.addEventListener('change', () => { const v = Number(i.value); if (Number.isFinite(v)) { setProjectOffset(k === 'x' ? v : state.offset.x, k === 'y' ? v : state.offset.y); renderProps() } })
+      i.addEventListener('keydown', (e) => { if (e.key === 'Enter') i.blur(); e.stopPropagation() })
+      return h('label', { class: 'nf' }, label, i)
+    }
+    const nameIn = h('input', { type: 'text', value: state.name, 'data-rename': '1' })
+    nameIn.addEventListener('change', () => renameProject(activeProject, nameIn.value))
+    nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameIn.blur(); e.stopPropagation() })
+    const shown = projects[activeProject] ? projects[activeProject].visible !== false : true
+    return [
+      h('label', { class: 'fl' }, '名称'), nameIn,
+      h('div', { class: 'pk' }, num('x', 'X'), num('y', 'Y')),
+      h('label', { class: 'checks' }, h('input', { type: 'checkbox', checked: shown, onchange: (e) => setProjectVisible(activeProject, e.target.checked) }), '显示'),
+      h('div', { class: 'hint' }, '工程在画面上的位置（和别的工程错开摆放），只影响编辑器里的显示，不写进导出的骨架。选中工程后在画面空白处拖动也能移动它。'),
+    ]
   }
 
   /** The project rows of the tree: the picked one unfolded (its content follows), the others folded. */
@@ -517,8 +617,9 @@
     const active = i === activeProject
     const name = projectName(i)
     const row = h('div', { class: 'row node project', style: pad(0), 'data-project': String(i), 'data-active': active ? '1' : null,
+      'data-selected': active && state.sel && state.sel.kind === 'project' ? '1' : null,
       title: active ? `${name}（双击改名，拖动排序）` : `${name}：点一下切换到这个工程（双击改名，拖动排序）`,
-      onclick: () => { if (!active) switchProject(i) },
+      onclick: () => { if (!active) switchProject(i); else select({ kind: 'project', name }) },
       ondblclick: (e) => {
         e.stopPropagation()
         const label = row.querySelector('.label')
@@ -530,6 +631,7 @@
         label.replaceWith(input)
         input.focus(); input.select()
       } },
+      visDot(projects[i].visible !== false, () => setProjectVisible(i, projects[i].visible === false), null, true),
       caret(active, () => { if (!active) switchProject(i) }), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, name),
       h('span', { class: 'end' }, h('button', { class: 'act', title: `删除工程 ${name}`, onclick: (e) => { e.stopPropagation(); deleteProject(i) } }, '删除')))
     // drag a project row onto another one to move it there (above / below)
@@ -598,7 +700,16 @@
   // It follows the project: an edit or a skin switch rebuilds it and keeps what was playing.
 
   const pv = { open: false, gl: null, renderer: null, atlas: null, atlasKey: null, data: null, json: null, skinName: null,
-    skeleton: null, anim: null, track: 0, speed: 100, mix: 0.25, loop: true, cam: { x: 0, y: 0, zoom: 1 }, fitted: false, drag: null }
+    skeleton: null, anim: null, track: 0, speed: 100, mix: 0.25, loop: true, cam: { x: 0, y: 0, zoom: 1 }, fitted: false, drag: null,
+    projectId: null } // 骨架 (Spine's skeleton list): the project the preview plays, null = the picked one
+
+  /** What the preview plays: the chosen project (its saved state), or the picked one (live). */
+  function pvSource() {
+    const p = pv.projectId != null ? projects.find((x) => x.id === pv.projectId) : null
+    if (p && p.snap && p.snap.json) return { key: 'p' + p.id, json: p.snap.json, atlasText: p.snap.atlasText, images: p.snap.images, skin: p.snap.skin || 'default', pma: !!p.snap.pma }
+    const id = projects[activeProject] ? projects[activeProject].id : 0
+    return { key: 'p' + id, json: state.json, atlasText: state.atlasText, images: state.images, skin: state.skin, pma: state.pma }
+  }
 
   function pvBuild() {
     const c = $('#pvGl')
@@ -607,28 +718,29 @@
       pv.renderer = new spine.webgl.SceneRenderer(c, pv.gl, true)
       keepAlphaUnderAdditive(pv.renderer, pv.gl)
     }
-    if (pv.atlasKey !== state.atlasText) {
+    const src = pvSource()
+    const atlasKey = src.key + '\u0000' + src.atlasText
+    if (pv.atlasKey !== atlasKey) {
       if (pv.atlas) try { pv.atlas.dispose() } catch {}
-      pv.atlas = new spine.TextureAtlas(state.atlasText, (path) => new spine.webgl.GLTexture(pv.gl, imageForPage(path)))
-      pv.atlasKey = state.atlasText
+      pv.atlas = new spine.TextureAtlas(src.atlasText, (path) => new spine.webgl.GLTexture(pv.gl, pageImageFrom(src.images, path)))
+      // another project: nothing it played carries over, and it is framed anew
+      if (pv.atlasKey && pv.atlasKey.split('\u0000')[0] !== src.key) { pv.anim = null; pv.fitted = false }
+      pv.atlasKey = atlasKey
       pv.json = null
     }
-    if (pv.json === state.json && pv.skinName === state.skin && pv.skeleton) return
+    if (pv.json === src.json && pv.skinName === src.skin && pv.skeleton) return
     // what plays now, to play again on the rebuilt skeleton
     const playing = pv.anim ? pv.anim.tracks.map((e) => e && { name: e.animation.name, loop: e.loop }) : []
-    const copy = Ops.editorData(state.json)
-    const v = String(copy.skeleton && copy.skeleton.spine || '')
-    if (!v.startsWith('3.8') || v === '3.8.75') copy.skeleton = { ...(copy.skeleton || {}), spine: '3.8.99' }
-    pv.data = new spine.SkeletonJson(tolerantLoader(pv.atlas, pv.gl)).readSkeletonData(copy)
+    pv.data = readProjectData(src.json, pv.atlas, pv.gl)
     pv.skeleton = new spine.Skeleton(pv.data)
-    if (state.skin !== 'default' && pv.data.findSkin(state.skin)) pv.skeleton.setSkinByName(state.skin)
+    if (src.skin !== 'default' && pv.data.findSkin(src.skin)) pv.skeleton.setSkinByName(src.skin)
     pv.skeleton.setToSetupPose()
     const sd = new spine.AnimationStateData(pv.data)
     sd.defaultMix = pv.mix
     pv.anim = new spine.AnimationState(sd)
     playing.forEach((e, i) => { if (e && pv.data.findAnimation(e.name)) pv.anim.setAnimation(i, e.name, e.loop) })
-    pv.json = state.json
-    pv.skinName = state.skin
+    pv.json = src.json
+    pv.skinName = src.skin
     if (!pv.fitted) { pvFit(); pv.fitted = true }
   }
 
@@ -636,7 +748,8 @@
     const c = $('#pvGl')
     if (!pv.skeleton || !c.clientWidth) return
     const sk = new spine.Skeleton(pv.data)
-    if (state.skin !== 'default' && pv.data.findSkin(state.skin)) sk.setSkinByName(state.skin)
+    const skin = pvSource().skin
+    if (skin !== 'default' && pv.data.findSkin(skin)) sk.setSkinByName(skin)
     sk.setToSetupPose(); sk.updateWorldTransform()
     const off = new spine.Vector2(), size = new spine.Vector2()
     sk.getBounds(off, size, [])
@@ -686,7 +799,7 @@
     r.camera.setViewport(w, hh)
     r.camera.zoom = pv.cam.zoom / dpr
     r.begin()
-    r.drawSkeleton(pv.skeleton, state.pma)
+    r.drawSkeleton(pv.skeleton, pvSource().pma)
     r.end()
   }
 
@@ -710,11 +823,22 @@
     box.hidden = !pv.open || !state.json
     $('#pvOpen').setAttribute('aria-pressed', String(pv.open))
     if (box.hidden) return
+    // a project that went away: back to the picked one
+    if (pv.projectId != null && !projects.some((x) => x.id === pv.projectId)) pv.projectId = null
     try { pvBuild() } catch {}
     const cur = pv.anim && pv.anim.tracks[pv.track]
     const list = $('#pvList')
     list.textContent = ''
-    for (const n of Object.keys(state.json.animations)) {
+    // 骨架: with several projects any of them plays here (Spine's skeleton list)
+    if (projects.length > 1) {
+      const chosen = pv.projectId != null ? pv.projectId : (projects[activeProject] || {}).id
+      list.append(h('label', { class: 'pv-sk' }, h('span', {}, '骨架'), selectInput(projects.map((x, i) => [String(x.id), projectName(i)]), String(chosen), (v) => {
+        pv.projectId = Number(v)
+        renderPreview()
+      })))
+    }
+    const anims = (pvSource().json || {}).animations || {}
+    for (const n of Object.keys(anims)) {
       list.append(h('button', { class: 'pv-a', 'aria-pressed': String(!!(cur && cur.animation.name === n)), title: `在轨道 ${pv.track} 上播放`, onclick: () => pvPlay(n) },
         h('span', { class: 'ico', html: ICON.anim }), n))
     }
@@ -984,7 +1108,7 @@
       : kind === 'slot' ? j.slots.some((x) => x.name === name)
       : kind === 'skin' ? j.skins.some((x) => x.name === name)
       : kind === 'event' ? !!(j.events || {})[name]
-      : kind === 'section' ? true
+      : kind === 'section' || kind === 'project' ? true
       : (j[kind] || []).some((c) => c.name === name))
     if (s) {
       if (s.kind === 'att') {
@@ -1918,8 +2042,9 @@
     }
   }
 
-  const toScreen = (wx, wy) => [(wx - rt.cam.x) / rt.cam.zoom + rt.w / 2, rt.h / 2 - (wy - rt.cam.y) / rt.cam.zoom]
-  const toWorld = (sx, sy) => [(sx - rt.w / 2) * rt.cam.zoom + rt.cam.x, (rt.h / 2 - sy) * rt.cam.zoom + rt.cam.y]
+  // the picked project's own coordinates on screen: its offset places it beside the other projects
+  const toScreen = (wx, wy) => [(wx + state.offset.x - rt.cam.x) / rt.cam.zoom + rt.w / 2, rt.h / 2 - (wy + state.offset.y - rt.cam.y) / rt.cam.zoom]
+  const toWorld = (sx, sy) => [(sx - rt.w / 2) * rt.cam.zoom + rt.cam.x - state.offset.x, (rt.h / 2 - sy) * rt.cam.zoom + rt.cam.y - state.offset.y]
 
   function fit() {
     if (!rt.skeleton) return
@@ -1942,8 +2067,8 @@
       minX -= 100; maxX += 100; minY -= 100; maxY += 100
     }
     // leave room for the transform panel at the bottom left
-    rt.cam.x = (minX + maxX) / 2
-    rt.cam.y = (minY + maxY) / 2
+    rt.cam.x = (minX + maxX) / 2 + state.offset.x
+    rt.cam.y = (minY + maxY) / 2 + state.offset.y
     rt.cam.zoom = Math.max((maxX - minX) / (rt.w * 0.8), (maxY - minY) / (rt.h - 190), 0.01)
     rt.cam.y -= 40 * rt.cam.zoom
   }
@@ -1954,7 +2079,9 @@
     gl.viewport(0, 0, $('#gl').width, $('#gl').height)
     gl.clearColor(0, 0, 0, 0)
     gl.clear(gl.COLOR_BUFFER_BIT)
-    if (rt.skeleton && state.opt.imgVis) {
+    const activeShown = !projects[activeProject] || projects[activeProject].visible !== false
+    if (state.opt.imgVis) for (let i = 0; i < activeProject; i++) drawOtherProject(i)
+    if (rt.skeleton && state.opt.imgVis && activeShown) {
       // slots hidden with the tree's visibility dot are an editor-only hide
       const saved = []
       for (const n of state.hiddenSlots) {
@@ -1974,8 +2101,8 @@
         if (s.attachment instanceof spine.ClippingAttachment && s.attachment.worldVerticesLength < 6) { saved.push([s, s.attachment]); s.attachment = null }
       }
       const r = rt.renderer
-      r.camera.position.x = rt.cam.x
-      r.camera.position.y = rt.cam.y
+      r.camera.position.x = rt.cam.x - state.offset.x
+      r.camera.position.y = rt.cam.y - state.offset.y
       r.camera.setViewport($('#gl').width, $('#gl').height)
       r.camera.zoom = rt.cam.zoom / rt.dpr
       r.begin()
@@ -1983,7 +2110,9 @@
       r.end()
       for (let i = saved.length - 1; i >= 0; i--) saved[i][0].attachment = saved[i][1]
     }
-    drawOverlay()
+    if (state.opt.imgVis) for (let i = activeProject + 1; i < projects.length; i++) drawOtherProject(i)
+    if (activeShown) drawOverlay()
+    else $('#overlay').getContext('2d').clearRect(0, 0, $('#overlay').width, $('#overlay').height)
     $('#zoomText').textContent = rt.skeleton ? Math.round(100 / rt.cam.zoom) + '%' : ''
   }
 
@@ -4029,6 +4158,12 @@
         else if (ih && state.pick.want === 'slot') resolvePick('slot', ih.slot)
         return
       }
+      // the project picked in the tree: a drag anywhere moves it on the stage (its view offset)
+      if (state.sel && state.sel.kind === 'project' && !(e.ctrlKey || e.metaKey) && (state.tool === 'move' || state.tool === 'pose')) {
+        drag = { kind: 'projectMove', sx, sy, ox: state.offset.x, oy: state.offset.y, moved: false }
+        c.setPointerCapture(e.pointerId)
+        return
+      }
       const MT = meshTarget()
       if (MT && !(state.tool === 'create')) {
         const vi = hitVertex(MT, sx, sy)
@@ -4186,6 +4321,7 @@
       drag.moved = true
       if (drag.kind === 'bones') applyBoneDrag(drag, sx, sy, e.shiftKey)
       else if (drag.kind === 'att') applyAttDrag(drag, sx, sy, e.shiftKey)
+      else if (drag.kind === 'projectMove') { setProjectOffset(drag.ox + (sx - drag.sx) * rt.cam.zoom, drag.oy - (sy - drag.sy) * rt.cam.zoom); if (state.sel && state.sel.kind === 'project') syncProjectFields() }
       else if (drag.kind === 'verts') applyVertexDrag(drag, sx, sy, e.shiftKey)
       else if (drag.kind === 'joint') applyJointDrag(drag, sx, sy)
       else if (drag.kind === 'meshMove') applyMeshMove(drag, sx, sy)
@@ -5361,6 +5497,7 @@
     if (s.kind === 'anim') return { title: '动画', body: animBody }
     if (s.kind === 'event') return { title: '事件', body: eventBody }
     if (s.kind === 'section') return { title: { skins: '皮肤', events: '事件', anims: '动画' }[s.name] || '属性', body: sectionBody }
+    if (s.kind === 'project') return { title: '工程', body: projectBody }
     return { title: { ik: 'IK 约束', transform: '变换约束', path: '路径约束' }[s.kind] || '属性', body: consBody }
   }
 
