@@ -106,7 +106,7 @@
     seqUnticked: new Set(), // 序列帧添加: layers left out (its own tick)
     sweepUnticked: new Set(), // 序列扫光: layers left out (its own tick)
     seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
-    sweepDur: 0, // 序列扫光: the whole sweep's length in seconds (0 = the animation's)
+    sweepFrames: 0, // 序列扫光: the whole sweep's length in frames (0 = the animation's)
     frameBone: 'root', // 序列帧添加 / 序列扫光: the bone the frames' slots hang on (user: root by default)
     meshDensity: 18, // 自动蒙皮 密度 (the production default)
     meshDrag: null,
@@ -323,7 +323,7 @@
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
-    state.seqUnticked = new Set(); state.sweepUnticked = new Set(); state.sweepDur = 0
+    state.seqUnticked = new Set(); state.sweepUnticked = new Set(); state.sweepFrames = 0
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
     state.anim = Object.keys(state.json.animations || {})[0] || ''
     // big rigs open readable: deep bones and every slot start collapsed (Spine opens at the root)
@@ -4928,9 +4928,9 @@
       head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
         h('button', { class: 'ld-go', title: '勾选的图片按从上到下的顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
     } else if (kind === 'sweep') {
-      const dur = h('input', { type: 'number', class: 'ld-num wide', min: 0.1, max: 600, step: 0.1, value: sweepDuration(ticked.length), title: '整段扫光的时长（秒）',
-        onchange: (e) => { state.sweepDur = Math.max(0.1, Math.min(600, Number(e.target.value) || 0.1)); e.target.value = state.sweepDur } })
-      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '时长', dur, '秒'),
+      const dur = h('input', { type: 'number', class: 'ld-num wide', min: 2, max: 18000, step: 1, value: sweepFrames(ticked.length), title: '整段扫光的长度（帧）',
+        onchange: (e) => { state.sweepFrames = Math.max(2, Math.min(18000, Math.round(Number(e.target.value) || 2))); e.target.value = state.sweepFrames } })
+      head.push(h('span', { class: 'ld-sep' }), h('label', { class: 'ld-f' }, '时长', dur, '帧'),
         h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在时长内均分', onclick: writeSweep }, '写入动画'))
     }
     dock.append(h('div', { class: 'ld-hd' }, ...head,
@@ -4982,11 +4982,11 @@
 
   const frameLayers = (kind) => imageLayers(true).filter((l) => !(kind === 'sequence' ? state.seqUnticked : state.sweepUnticked).has(l.slot))
 
-  /** 序列扫光's length: the field's value, else the animation's, else 5 frames a step (0 / 5 / 10 …). */
-  function sweepDuration(n) {
-    if (state.sweepDur > 0) return state.sweepDur
-    const d = duration()
-    return Math.round((d > 0 ? d : ((n || 1) + 1) * 5 / FPS) * 100) / 100
+  /** 序列扫光's length in frames: the field's value, else the animation's, else 5 frames a step (0 / 5 / 10 …). */
+  function sweepFrames(n) {
+    if (state.sweepFrames > 0) return state.sweepFrames
+    const f = lastFrame()
+    return f > 0 ? f : ((n || 1) + 1) * 5
   }
 
   /** The ticked frames' slots move to 骨骼 (setup placement kept) before the keys go in. */
@@ -5032,9 +5032,9 @@
     if (!animOn()) { status('先选一个动画', 'error'); return }
     const frames = frameLayers('sweep')
     if (!frames.length) { status('先勾选图片（画面下方的卡片）', 'error'); return }
-    const total = sweepDuration(frames.length), step = total / (frames.length + 1), anim = state.anim
+    const totalFrames = sweepFrames(frames.length), step = totalFrames / FPS / (frames.length + 1), anim = state.anim
     const t4 = (t) => Math.round(t * 10000) / 10000
-    edit(`序列扫光：${frames.length} 帧，时长 ${total} 秒，挂在 ${state.frameBone}（${anim}）`, (j) => {
+    edit(`序列扫光：${frames.length} 张，共 ${totalFrames} 帧，挂在 ${state.frameBone}（${anim}）`, (j) => {
       const json = Ops.prepare(hangFrames(j, frames))
       const a = json.animations[anim]
       if (!a) throw new Error(`找不到动画：${anim}`)
