@@ -5147,6 +5147,9 @@
    * that slot; `where.bone` = a new slot (named after the picture) on that bone, centred on it, or at
    * `where.world` (the stage drop point) in the bone's space.
    */
+  /** 插槽 → 新建… → 图片…: a picture from the folder picker becomes a new attachment shown by the slot. */
+  const addImageToSlot = (slot, image) => placeImage({ name: image }, { slot })
+
   async function placeImage(payload, where) {
     if (!state.json) return
     try { await bringFramesIn([payload]) } catch (e) { status(e.message, 'error'); return }
