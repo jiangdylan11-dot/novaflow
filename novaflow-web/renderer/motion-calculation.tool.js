@@ -48,6 +48,21 @@
       const title=ok?'':(frameTool&&!anim?'先选一个动画':'先在画板或工程树里选中一个骨骼');
       if(item.title!==title)item.title=title;
     });
+    // no bone picked: the open editor (and 飘带计算 docked over it) is greyed and takes no input,
+    // like the list (user 2026-10-12: 没选中骨骼，左侧和编辑面板都应该禁用)
+    const off=!bone;
+    for(const el of [document.querySelector('[data-novaflow-motion-curve="1"]'),document.querySelector('[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"]')]){
+      if(!el)continue;
+      if(el.inert!==off)el.inert=off;
+      if(off&&el.getAttribute('data-nf-motion-no-bone')!=='1')el.setAttribute('data-nf-motion-no-bone','1');
+      else if(!off&&el.hasAttribute('data-nf-motion-no-bone'))el.removeAttribute('data-nf-motion-no-bone');
+    }
+    if(!document.getElementById('nf-motion-no-bone-style')){
+      const style=document.createElement('style');style.id='nf-motion-no-bone-style';
+      // a filter, not opacity: the runtime's spec pins the docked 飘带 panel's opacity
+      style.textContent='[data-nf-motion-no-bone="1"]{filter:grayscale(.7) brightness(.5)!important}';
+      document.head.append(style);
+    }
   }
   function clearedAnimation(animation,s){
     const clean={...animation,bones:{...animation.bones},slots:{...animation.slots}};

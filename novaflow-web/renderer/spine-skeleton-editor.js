@@ -6995,7 +6995,16 @@ self.onmessage = (e) => {
       ? h('button', { class: 'od', 'data-on': o[k] ? '1' : null, title: k === 'imgSel' ? '选择图层：鼠标移到图层上高亮，点一下选中它' : label === '其他' ? `剪裁等非图片附件 · ${COL[i]}` : `${label} · ${COL[i]}`,
         onclick: () => { o[k] = !o[k]; if (k === 'imgSel') state.hoverImg = null; refresh() } })
       : h('span'))]
+    // animation: a picked mesh / clipping is edited by its vertices; its key (the shape) shows on
+    // every row, as a bone's keys do (user 2026-10-12: 能编辑的都应该能显示钥匙)
+    const deformT = !t && animOn() && state.sel && state.sel.kind === 'att' ? meshRowTarget(state.sel.slot, state.sel.name) : null
     const keyBtn = (row) => {
+      if (deformT) {
+        const k = keyedNow([['deform', deformT.skin, deformT.slotName, deformT.attName]]) ? 'keyed' : 'none'
+        return h('button', { class: 'key', 'data-k': k, html: ICON.key,
+          title: (k === 'keyed' ? '这一帧已有关键帧' : '这一帧没有关键帧：点一下打关键帧') + `（${state.sel.name} 的${shapeWord(deformT.att)}形状）`,
+          onclick: () => keyDeformNow(deformT) })
+      }
       if (!t || t.kind !== 'bone' || !animOn()) return null
       // several bones: pending if any is changed, keyed only when every one is keyed
       const states = (t.names || [t.name]).map((n) => keyState(n, row))
@@ -7011,7 +7020,7 @@ self.onmessage = (e) => {
         h('div', { class: 'xr' }, h('button', { class: 'xt', 'aria-pressed': String(state.jointEdit), html: ICON.joint, disabled: state.mode !== 'setup',
           title: '改关节：用平移 / 姿势拖骨骼的起点或末端，父骨骼跟着转向、子骨骼和图片不动（也可以按住 Shift）',
           onclick: () => { state.jointEdit = !state.jointEdit; renderStage() } }))),
-      h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : `图片 ${t.sel.name}`) : '变换'),
+      h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : `图片 ${t.sel.name}`) : deformT ? `${shapeWord(deformT.att)} ${state.sel.name}` : '变换'),
         h('div', { class: 'xr' }, tool('rotate', 'C', '旋转'), input('rotation', 'wide'), keyBtn('rotate')),
         h('div', { class: 'xr' }, tool('move', 'V', '平移'), input('x'), input('y'), keyBtn('translate')),
         h('div', { class: 'xr' }, tool('scale', 'X', '缩放'), input('scaleX'), input('scaleY'), keyBtn('scale')),
@@ -7165,6 +7174,9 @@ self.onmessage = (e) => {
       }
       for (const c of consList) { rows.push({ label: c.name, paths: [[c.kind, c.name]], head: true, sel: { kind: c.kind, name: c.name } }); rows.push({ label: { ik: 'IK', transform: '变换', path: '路径' }[c.kind], paths: [[c.kind, c.name]], color: KEY_COLOR.cons, indent: 1 }) }
       for (const e of evList) { rows.push({ label: e, paths: [['events', e]], head: true, sel: { kind: 'event', name: e } }); rows.push({ label: '事件', paths: [['events', e]], color: KEY_COLOR.event, indent: 1 }) }
+      // the draw order belongs to the whole skeleton: with bones / slots picked it shows under them
+      // (Spine), so a reorder keyed in the 绘制顺序 list is seen (it never showed with a pick)
+      if (bones.length || slotList.length) { rows.push({ label: '绘制顺序', paths: [['drawOrder']], head: true, sel: null }); rows.push({ label: '绘制顺序', paths: [['drawOrder']], color: KEY_COLOR.drawOrder, indent: 1 }) }
     } else {
       const items = new Map()
       for (const t of tracks) {
