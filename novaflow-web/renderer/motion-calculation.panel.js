@@ -26,7 +26,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-4',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20261012-compact-8',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();if(!ribbon||(ribbonShown&&ribbonSettled)){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画工具编辑器');
   body.innerHTML=`
@@ -58,9 +58,14 @@
     </div>
     <div id="ribbonPreviewCard" hidden><span id="ribbonPreviewHost"></span><span id="ribbonPreviewLabel"></span></div>`;
   curveRoot.append(style,body);
+  // the label column hugs the widest label the panel shows (user 2026-10-12: 滑条和标题间距太大):
+  // measured as text (a range), since a label's own box is the column
+  let labelFit=0;
+  const fitLabelColumn=()=>{labelFit=0;let w=0;const range=document.createRange();body.querySelectorAll('.paramhead>label,.axis-label,.axisrow>.check').forEach(l=>{if(!l.getClientRects().length)return;range.selectNodeContents(l);w=Math.max(w,range.getBoundingClientRect().width);});body.style.setProperty('--labelw',(w?Math.ceil(w)+2:58)+'px');};
+  new MutationObserver(()=>{if(!labelFit)labelFit=requestAnimationFrame(fitLabelColumn);}).observe(body,{childList:true,subtree:true});
   // outside the editor box, which clips: the preset preview opens above the header
   curveRoot.append(curveRoot.getElementById('ribbonPreviewCard'));
-  let ribbon=false,ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,ribbonLiveRect=null,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
+  let ribbon=false,ribbonPrepared=false,ribbonShown=false,ribbonFooterAt=0,ribbonFitHeight=0,ribbonSettled=false,ribbonStable=0,ribbonStableAt=0,ribbonLiveRect=null,collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
@@ -119,9 +124,10 @@
     const share=document.body.getAttribute('data-novaflow-layout-tier')==='stack'?.5:.66;
     const available=Math.max(160,Number.isFinite(stageTop)?Math.floor((r.top-stageTop)*share):r.top-80);
     let desired=Math.min(400,Math.max(360,innerHeight*.4));
-    // 飘带计算: as tall as its content (header, timing row, footer and the docked panel)
-    if(ribbon&&!collapsed&&ribbonShown&&ribbonFitHeight)desired=ribbonFitHeight;
-    else if(ribbon&&!collapsed)desired=Math.max(desired,400);
+    // 飘带计算: as tall as its content (header, timing row, footer and the docked panel); until
+    // its panel is ready the previous tool stays on screen at its own height (user 2026-10-12:
+    // 切换飘带会先闪一个空框)
+    if(ribbon&&!collapsed&&ribbonSettled&&ribbonFitHeight)desired=ribbonFitHeight;
     else if(!collapsed){
       // the box is as tall as its content (user 2026-10-12: no empty band under the sliders);
       // the content's height depends on the width only, so the layout does not oscillate
@@ -144,8 +150,8 @@
     // spec reads these): the whole inner box, the header's height kept clear
     // the 飘带 layout only once its panel is open and mounted (prepared off screen): until
     // then the previous tool stays on screen
-    if(ribbon&&!collapsed&&!ribbonShown&&!body.classList.contains('ribbon-layout')&&bridge.prepareRibbon?.())body.classList.add('ribbon-layout');
-    if(ribbon&&!collapsed&&body.classList.contains('ribbon-layout')){
+    if(ribbon&&!collapsed&&!ribbonShown&&!ribbonPrepared&&bridge.prepareRibbon?.())ribbonPrepared=true;
+    if(ribbon&&!collapsed&&ribbonPrepared){
       const e=body.getBoundingClientRect(),d=$('ribbonDock').getBoundingClientRect();
       const rect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:d.top-e.top-1,insetBottom:e.bottom-1-d.bottom};
       // until the box has its final height the docked panel sits far below the screen (same
@@ -167,7 +173,7 @@
         const content=bridge.ribbonContentHeight?.()||0;
         // the docked panel still laying out (its height keeps changing for a few frames): measure
         // every frame and show the box only once two frames in a row agree, at that height
-        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;if(ribbonLiveRect)bridge.dock?.(ribbonLiveRect);if(stylesReady){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
+        if(content){ribbonFooterAt=performance.now();const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);const fit=Math.round(chrome+content+2);if(fit!==ribbonFitHeight){ribbonFitHeight=fit;lastLayout='';ribbonStable=0;ribbonStableAt=performance.now();}else ribbonStable++;if(!ribbonSettled&&ribbonStable>=4&&performance.now()-ribbonStableAt>120){ribbonSettled=true;revealRibbon();if(stylesReady){floating.style.visibility='visible';playbackMode.style.visibility='visible';window.NovaFlowSkeletonEditor?.timelineCompactNow?.();};reservePreviewSpace();}}const label=bridge.ribbonLabel?.()||'';if($('selection').textContent!==label)$('selection').textContent=label;const off=!!bridge.ribbonWriteDisabled?.();if($('ribbonWrite').disabled!==off)$('ribbonWrite').disabled=off;
         const active=bridge.ribbonActivePreset?.()||'';$('ribbonPresets').querySelectorAll('button').forEach(button=>{const on=button.dataset.id===active;if(button.classList.contains('active')!==on)button.classList.toggle('active',on);});}
     }
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
@@ -344,7 +350,7 @@
 
     if (mode === 'shuttle' && !p.oneWay && p.loop) {
       const extra = document.createElement('div'); extra.className = 'axisextra';
-      extra.innerHTML = `<label>次数 <input type="number" min="1" max="6" step="1" value="${a.cycles}" aria-label="${labels[k]}次数"></label>`;
+      extra.innerHTML = `<label><span>次数</span><input type="number" min="1" max="6" step="1" value="${a.cycles}" aria-label="${labels[k]}次数"></label>`;
       const nums = extra.querySelectorAll('input'); nums.forEach(n => n.disabled = !a.on);
       nums[0].oninput = () => { if (!nums[0].value) return; a.cycles = Math.round(validInput(nums[0], 1, 6, a.cycles)); parameterChanged(); };
       nums[0].onblur = () => nums[0].value = a.cycles;
@@ -706,8 +712,23 @@
   function showRibbon(){
     if(ribbonShown||!ribbon)return;
     $('selection').textContent=(bridge.ribbonLabel?.()||'')+' · Ctrl+Z 撤销 · Ctrl+Y 重做';
-    ribbonShown=true;body.classList.add('ribbon-mode');$('editorTitle').textContent='飘带计算';status('');ribbonFooterAt=0;ribbonSettled=false;ribbonStable=0;
-    // shown once its height is measured (positionCurve), never short first and tall a moment later
+    ribbonShown=true;status('');ribbonFooterAt=0;ribbonSettled=false;ribbonStable=0;
+    // the box turns into 飘带计算 once the panel's height is measured (revealRibbon from
+    // positionCurve): until then the previous tool stays on screen, never an empty box
+  }
+  function revealRibbon(){
+    body.classList.add('ribbon-mode','ribbon-layout');$('editorTitle').textContent='飘带计算';
+    // the box's final height, the panel's place in it and the layout switch land in one frame
+    const chrome=['.editor-header','#ribbonTimingRow','.editor-footer'].reduce((sum,selector)=>sum+(body.querySelector(selector)?.getBoundingClientRect().height||0),0);
+    const content=bridge.ribbonContentHeight?.()||0;if(content)ribbonFitHeight=Math.round(chrome+content+2);
+    const r=(window.NovaFlowSkeletonEditor?.timeline?.()||document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'))?.getBoundingClientRect();
+    const stageTop=document.querySelector('[data-novaflow-skeleton-preview-stage="1"]')?.getBoundingClientRect().top;
+    const share=document.body.getAttribute('data-novaflow-layout-tier')==='stack'?.5:.66;
+    const available=r?Math.max(160,Number.isFinite(stageTop)?Math.floor((r.top-stageTop)*share):r.top-80):ribbonFitHeight;
+    floating.style.setProperty('--editor-height',Math.min(ribbonFitHeight,available)+'px');lastLayout='';
+    const e=body.getBoundingClientRect(),d=$('ribbonDock').getBoundingClientRect();
+    ribbonLiveRect={left:e.left+1,top:e.top+1,width:e.width-2,height:e.height-2,inset:d.top-e.top-1,insetBottom:e.bottom-1-d.bottom};
+    bridge.dock?.(ribbonLiveRect);
   }
   // a tool switch drops the adjustment that was never saved: the bone goes back to its saved
   // animation and the tools to their saved (or initial) values
@@ -738,7 +759,7 @@
     // the 飘带 layout is set at once (the dock box is measured off it); the box turns
     // see-through only once the panel sits in it (showRibbon)
     if(ribbon){if(!ribbonShown){renderRibbonPresets();renderRibbonTiming();setCollapsed(false);positionCurve();}return;}
-    ribbonShown=false;ribbonFitHeight=0;ribbonSettled=false;ribbonStable=0;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
+    ribbonShown=false;ribbonPrepared=false;ribbonFitHeight=0;ribbonSettled=false;ribbonStable=0;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
     setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('未保存的调整在切换功能时丢弃 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];

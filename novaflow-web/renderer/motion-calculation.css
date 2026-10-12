@@ -3,20 +3,20 @@
 *{box-sizing:border-box}[hidden]{display:none!important}
 button,select,input{font:inherit;color:#e9e9e9}button,select,input[type=number]{border:1px solid #343434;border-radius:6px;background:#272727;box-shadow:none}
 button{cursor:pointer;padding:5px 7px;min-height:30px}button:hover{background:#333}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:none;outline-offset:2px}
-input[type=number]{width:49px;min-width:49px;height:28px;padding:0 6px;text-align:center;font-size:11px;appearance:textfield}input::-webkit-inner-spin-button{appearance:none}
+input[type=number]{width:40px;min-width:40px;height:24px;padding:0 4px;text-align:center;font-size:11px;appearance:textfield}input::-webkit-inner-spin-button{appearance:none}
 input[type=range]{width:100%;min-width:0;height:3px;padding:0;margin:0;appearance:none;border:0;border-radius:0;background:linear-gradient(to right,var(--accent) var(--fill,0%),#383838 var(--fill,0%));cursor:pointer;align-self:center}
 input[type=range]::-webkit-slider-thumb{appearance:none;width:12px;height:12px;background:var(--accent);border:0;border-radius:50%}
 .animation-timing{--accent:#e9c55c}
 #range-duration,#range-delay{--accent:#59a8ed}
 input[type=checkbox]{accent-color:var(--accent);margin:0;width:12px;height:12px}input:disabled{opacity:.35}
 /* one row a parameter: label | slider | number (user 2026-10-12: 标题放在滑条前面，上下更紧凑) */
-.param,.axiscontrol{display:grid;grid-template-columns:72px minmax(60px,1fr) 49px;grid-template-rows:26px;column-gap:8px;row-gap:0;margin:0 0 3px;padding:0;border:0;align-items:center}
+.param,.axiscontrol{display:grid;grid-template-columns:var(--labelw,58px) minmax(60px,1fr) 40px;grid-template-rows:26px;column-gap:6px;row-gap:0;margin:0 0 3px;padding:0;border:0;align-items:center}
 .paramhead,.numberwrap,.axisrow,.axisrow>.row{display:contents}
 .paramhead>label,.axisrow>.check,.axisrow>.axis-label{grid-area:1/1;color:#bdbdbd;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .paramhead>.numberwrap>input,.axisnumber{grid-area:1/3}
 .paramhead>.numberwrap>span,.axisunit,#curveUnit{display:none}
 .param>input[type=range],.axiscontrol>input[type=range]{grid-area:1/2}
-.axisextra{grid-column:1/3;display:flex;justify-content:flex-end;color:#8b8b8b;margin-top:1px}.axisextra label{display:flex;align-items:center;gap:8px}.axisextra input{height:24px}
+.axisextra,.axisextra label{display:contents}.axisextra span{grid-area:2/2;justify-self:end;color:#bdbdbd;font-size:11px;white-space:nowrap}.axisextra input{grid-area:2/3}.axiscontrol{grid-auto-rows:26px;row-gap:3px}
 .check{display:flex;align-items:center;gap:5px;cursor:pointer}
 .global-timing{border-bottom:1px solid #2c2c2c;padding:0 0 8px;margin-bottom:10px}
 #selection{font-size:11px;color:#999;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -31,7 +31,7 @@ input[type=checkbox]{accent-color:var(--accent);margin:0;width:12px;height:12px}
 .save-action{display:grid;gap:5px;margin-top:10px;padding-top:9px;border-top:1px solid #2c2c2c}.save-action button{width:100%;min-height:32px;border:0;background:#262626;font-size:11px}.save-action button:hover{background:#333}.save-action button:disabled{opacity:.35;cursor:default}
 #status{display:block;font-size:11px;color:#999;margin:8px 0;line-height:1.5;overflow-wrap:anywhere}
 summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}summary::-webkit-details-marker{display:none}summary:before{content:'›';margin-right:6px}details[open]>summary:before{content:'⌄'}summary>span{display:none}
-.curvepanel{border-top:1px solid #2c2c2c;margin-top:10px}.curvebar>.row{display:flex;align-items:center;justify-content:space-between;gap:4px;margin:6px 0}.curvebar button{font-size:11px;min-height:24px;padding:3px}.dim{color:#888;font-size:11px}.curvewrap{height:145px}canvas{width:100%;height:100%;display:block;touch-action:none}.curvefooter{font-size:11px;color:#888}.curvefooter>.row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:4px}.curvefooter select{height:24px;max-width:84px}.curvefooter input{height:24px;width:49px}.curvefooter label{display:flex;align-items:center;gap:3px}
+.curvepanel{border-top:1px solid #2c2c2c;margin-top:10px}.curvebar>.row{display:flex;align-items:center;justify-content:space-between;gap:4px;margin:6px 0}.curvebar button{font-size:11px;min-height:24px;padding:3px}.dim{color:#888;font-size:11px}.curvewrap{height:145px}canvas{width:100%;height:100%;display:block;touch-action:none}.curvefooter{font-size:11px;color:#888}.curvefooter>.row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:4px}.curvefooter select{height:24px;max-width:84px}.curvefooter input{height:24px;width:40px}.curvefooter label{display:flex;align-items:center;gap:3px}
 /* The native timeline defines this editor's bounds; the sidebars stay clear. */
 #editor{height:var(--editor-height,380px);width:100%;min-width:0;border:1px solid #343434;border-radius:7px;background:#1c1c1c;padding:0 12px;display:grid;grid-template-rows:auto minmax(0,1fr);overflow:hidden}
 #editor.collapsed{height:auto}.editor-header{display:flex;align-items:center;gap:12px;min-height:42px;padding:6px 0;border-bottom:1px solid #303030}.collapsed .editor-header{border-bottom:0}
@@ -44,7 +44,7 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 .global-timing{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:16px;margin:0;padding:0;border:0}.global-timing>.help{grid-column:1/-1;margin:0;font-size:10px}.timing-row .param{margin:0}#effectTiming{padding:0;margin:0;border:0}#effectTiming>.help{margin:1px 0 0}
 .editor-workspace{display:grid;grid-template-columns:minmax(300px,52%) minmax(0,1fr);gap:12px;min-height:0;padding:4px 0}.effect-parameters{display:flex;flex-direction:column;gap:3px;min-height:0;min-width:0;padding-right:10px;border-right:1px solid #303030}.effect-scroll{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:max-content;align-content:start;gap:8px 14px;flex:1;overflow:auto;min-height:0;scrollbar-width:thin;scrollbar-color:#3b3b3b transparent}
 .effect-parameters .param,.effect-parameters .axiscontrol{margin:0}.effect-parameters #bounceHeightSection,.effect-parameters #bounceHeightControls,.effect-parameters #impactControl,.effect-parameters #mainControls,.effect-parameters #primaryAxes,.effect-parameters #params,.effect-parameters #advancedParams,.effect-parameters #opacityDetails,.effect-parameters #opacityControls{display:contents}
-.effect-parameters #scaleOptions{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;flex-shrink:0;padding-top:8px;border-top:1px solid #303030}.effect-parameters .line{margin:0;gap:8px;align-self:center;grid-column:1/-1}.axisextra{margin-top:4px}.axisextra input{width:49px}
+.effect-parameters #scaleOptions{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;flex-shrink:0;padding-top:8px;border-top:1px solid #303030}.effect-parameters .line{margin:0;gap:8px;align-self:center;grid-column:1/-1}
 .curvepanel{border:0;margin:0;display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0}.curvebar{display:flex;align-items:center;justify-content:space-between;gap:8px}.curvebar>.row{gap:8px;margin:0}.curvebar .segmented{min-width:120px;max-width:230px;flex:1}.curvebar .dim{white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}.curvewrap{height:auto;flex:1;min-height:60px}.curvefooter{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}.curvefooter>.row{margin:0;gap:8px}
 .editor-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #303030;padding:7px 0;min-width:0}#status{margin:0;color:#888;min-width:0;font-size:11px;line-height:1.4}.save-action{display:flex;gap:8px;padding:0;margin:0;border:0;flex-shrink:0}.save-action button{width:auto;min-width:94px;min-height:30px;border:1px solid #343434;padding:4px 12px}.save-action .primary{background:#1ea672;border-color:#1ea672;color:#fff}.save-action .primary:hover:not(:disabled){background:#20b490;border-color:#20b490}
 .compact .editor-title{display:block}.compact .curvebar .dim{display:none}.compact .curvefooter>span{display:none}.compact .editor-workspace{grid-template-columns:minmax(260px,55%) minmax(0,1fr);gap:10px}.compact .effect-scroll{grid-template-columns:minmax(0,1fr)}.compact .effect-parameters{gap:7px;padding-right:8px}.compact .effect-scroll{gap:7px 10px}.compact .timing-row,.compact .global-timing{column-gap:10px}
@@ -92,4 +92,4 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 #delayHint,#ribbonDelayHint,#timingHint,#ribbonTimingHint{display:none!important}
 .editor-workspace .curvewrap{height:110px;flex:0 0 110px;min-height:110px}
 /* curve value beside 重置; the hint rides in the footer with the other notes; no 通道关闭 text */
-#curveState{display:none!important}.curvebar .curvevalue{display:flex;align-items:center;gap:4px;font-size:11px;color:#888;white-space:nowrap}.curvebar .curvevalue input{width:49px}#curveHint{margin:0;color:#777;font-size:11px}.ribbon-mode #curveHint{display:none}
+#curveState{display:none!important}.curvebar .curvevalue{display:flex;align-items:center;gap:4px;font-size:11px;color:#888;white-space:nowrap}.curvebar .curvevalue input{width:40px}#curveHint{margin:0;color:#777;font-size:11px}.ribbon-mode #curveHint{display:none}

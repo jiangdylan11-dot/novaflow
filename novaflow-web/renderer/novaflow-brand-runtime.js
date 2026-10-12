@@ -2366,7 +2366,9 @@
   const PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT = 14;
   const PARTICLE_DENSITY_SLIDER_TITLE_GAP = 2;
   const PARTICLE_DENSITY_SLIDER_ROW_HEIGHT = 26;
-  const NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH = 72; // 动画工具 sliders: the title column before the range
+  const NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH = 50; // 动画工具 sliders: the title column before the range (widest label 地面高度 Y = 55 px; user 2026-10-12: 滑条前面的间距太大)
+  const NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH = 40; // 动画工具 value boxes: 40 × 24 (user 2026-10-12: 数值框太胖)
+  const NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT = 24; // as tall as its 26 px row: the card body clips at the last row (user 2026-10-12: 数值框被切割)
   const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 3;
   const PARTICLE_DENSITY_SLIDER_THUMB_SIZE = 12;
   // The unfilled half of every slider. One value, rather than the literal
@@ -26479,6 +26481,19 @@
         line-height: 20px !important;
         letter-spacing: 0 !important;
       }
+      /* the event list's own ::after is the line break between the tabs (order -1) and the
+         sliders (order 1): a full-width, zero-height flex item; the spec cannot write a
+         pseudo-element's style, so it lives here (user 2026-10-12: 滑条一行2列, not on the tabs' line) */
+      body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]::after {
+        content: "" !important;
+        display: block !important;
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        order: 0 !important;
+      }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-slider="1"] {
         width: 100% !important;
         min-width: 0 !important;
@@ -26487,6 +26502,10 @@
         margin-bottom: 0 !important;
         padding: 0 !important;
         box-sizing: border-box !important;
+        display: grid !important;
+        grid-template-columns: ${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr) !important;
+        column-gap: 6px !important;
+        align-items: center !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-card="1"] .nf-slider {
         width: 100% !important;
@@ -26496,15 +26515,22 @@
         margin-bottom: 0 !important;
         padding: 0 !important;
         box-sizing: border-box !important;
+        display: grid !important;
+        grid-template-columns: ${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr) !important;
+        column-gap: 6px !important;
+        align-items: center !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-slider-title="1"] {
         display: flex !important;
         align-items: center !important;
-        height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        min-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        max-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        line-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        margin: 0 0 ${PARTICLE_DENSITY_SLIDER_TITLE_GAP}px !important;
+        height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        min-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        max-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        line-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
         padding: 0 !important;
         color: rgba(255, 255, 255, 0.55) !important;
         font-size: 12px !important;
@@ -26515,11 +26541,14 @@
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-card="1"] .nf-slider > div:first-child {
         display: flex !important;
         align-items: center !important;
-        height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        min-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        max-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        line-height: ${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px !important;
-        margin: 0 0 ${PARTICLE_DENSITY_SLIDER_TITLE_GAP}px !important;
+        height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        min-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        max-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        line-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
         padding: 0 !important;
         color: rgba(255, 255, 255, 0.55) !important;
         font-size: 12px !important;
@@ -26538,7 +26567,7 @@
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-slider-row="1"] {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
+        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
         align-items: center !important;
         gap: ${PARTICLE_DENSITY_SECTION_GAP}px !important;
         column-gap: ${PARTICLE_DENSITY_SECTION_GAP}px !important;
@@ -26551,7 +26580,7 @@
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-card="1"] .nf-slider > div:has(input[type="range"]) {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
+        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
         align-items: center !important;
         gap: ${PARTICLE_DENSITY_SECTION_GAP}px !important;
         column-gap: ${PARTICLE_DENSITY_SECTION_GAP}px !important;
@@ -26630,26 +26659,26 @@
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-slider="1"] input[type="number"],
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-slider="1"] .nf-number {
-        width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        min-width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        max-width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        min-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        max-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        line-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
+        width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        min-width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        max-width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        line-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
         padding: 0 8px !important;
         font-size: 12px !important;
         box-sizing: border-box !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-card="1"] .nf-slider input[type="number"],
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-card="1"] .nf-slider .nf-number {
-        width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        min-width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        max-width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        min-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        max-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        line-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
+        width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        min-width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        max-width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        line-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
         padding: 0 8px !important;
         font-size: 12px !important;
         box-sizing: border-box !important;
@@ -26739,7 +26768,7 @@
         box-sizing: border-box !important;
         display: grid !important;
         grid-template-columns: ${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr) !important;
-        column-gap: 8px !important;
+        column-gap: 6px !important;
         align-items: center !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-advanced-slider-title="1"] {
@@ -26773,7 +26802,7 @@
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-advanced-slider-row="1"] {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
+        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
         align-items: center !important;
         gap: ${PARTICLE_DENSITY_SECTION_GAP}px !important;
         column-gap: ${PARTICLE_DENSITY_SECTION_GAP}px !important;
@@ -26815,13 +26844,13 @@
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-advanced-card="1"] input[type="number"],
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-advanced-card="1"] .nf-number {
-        width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        min-width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        max-width: ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
-        height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        min-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        max-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
-        line-height: ${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px !important;
+        width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        min-width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        max-width: ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px !important;
+        height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
+        line-height: ${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px !important;
         padding: 0 8px !important;
         font-size: 12px !important;
         box-sizing: border-box !important;
@@ -31265,7 +31294,8 @@
     if (!(field instanceof HTMLElement)) return;
     // A field that lays itself out to fill a column (the UI 生成器's W / H) keeps its own width.
     if (field.getAttribute("data-novaflow-number-fill") === "1") return;
-    const width = `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
+    const ribbonSlider = !!field.closest('[data-novaflow-ribbon-advanced-slider="1"], [data-novaflow-ribbon-event-slider="1"]');
+    const width = `${ribbonSlider ? NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH : NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
     const particleDensity = isInsideParticleDensityPanel(field);
     setRawStylePropertyIfChanged(field, "width", width, "important");
     setRawStylePropertyIfChanged(field, "min-width", width, "important");
@@ -31275,11 +31305,12 @@
     setRawStylePropertyIfChanged(field, "overflow", "hidden", "important");
     setRawStylePropertyIfChanged(field, "text-overflow", "ellipsis", "important");
     if (particleDensity) {
-      setRawStylePropertyIfChanged(field, "height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
-      setRawStylePropertyIfChanged(field, "min-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
-      setRawStylePropertyIfChanged(field, "max-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
+      const h = ribbonSlider ? NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT : PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT;
+      setRawStylePropertyIfChanged(field, "height", `${h}px`, "important");
+      setRawStylePropertyIfChanged(field, "min-height", `${h}px`, "important");
+      setRawStylePropertyIfChanged(field, "max-height", `${h}px`, "important");
       setRawStylePropertyIfChanged(field, "font-size", "11px", "important");
-      setRawStylePropertyIfChanged(field, "line-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT - 2}px`, "important");
+      setRawStylePropertyIfChanged(field, "line-height", `${h - 2}px`, "important");
       setRawStylePropertyIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
     }
     if (field instanceof HTMLInputElement) {
@@ -31288,8 +31319,8 @@
       setRawStylePropertyIfChanged(field, "appearance", "textfield", "important");
       setRawStylePropertyIfChanged(field, "-webkit-appearance", "textfield", "important");
       setRawStylePropertyIfChanged(field, "-moz-appearance", "textfield", "important");
-      setRawStylePropertyIfChanged(field, "padding-left", particleDensity ? "8px" : "6px", "important");
-      setRawStylePropertyIfChanged(field, "padding-right", particleDensity ? "8px" : "6px", "important");
+      setRawStylePropertyIfChanged(field, "padding-left", ribbonSlider ? "4px" : particleDensity ? "8px" : "6px", "important");
+      setRawStylePropertyIfChanged(field, "padding-right", ribbonSlider ? "4px" : particleDensity ? "8px" : "6px", "important");
     }
   }
 
@@ -31353,7 +31384,10 @@
       return node.textContent || "";
     }).join(""));
     if (visibleText) return;
-    const width = `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
+    // a 动画工具 slider's box (时间点 s / 持续时间 s keep a hidden unit) is the row's 40 px column:
+    // the 49 px wrapper overflowed it and those two boxes sat off the others (user 2026-10-12)
+    const ribbonSlider = !!parent.closest('[data-novaflow-ribbon-advanced-slider="1"], [data-novaflow-ribbon-event-slider="1"]');
+    const width = `${ribbonSlider ? NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH : NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
     parent.setAttribute("data-novaflow-numeric-unit-wrapper", "1");
     parent.style.setProperty("display", "inline-flex", "important");
     parent.style.setProperty("align-items", "center", "important");
@@ -36147,7 +36181,7 @@
         style: {
           "grid-column": "2", "grid-row": "1 / -1", "align-self": "stretch",
           display: "grid", "grid-template-columns": "minmax(0, 1fr) auto", "grid-template-rows": "auto auto 1fr",
-          "column-gap": "8px", "row-gap": "14px", "align-items": "center", "align-content": "start",
+          "column-gap": "8px", "row-gap": "8px", "align-items": "center", "align-content": "start",
           height: "auto", "min-height": "0", "max-height": "none", padding: "0", border: "0", "border-left": "1px solid #303030",
           "padding-left": "14px", "border-radius": "0", background: "transparent", "background-color": "transparent", overflow: "visible"
         }
@@ -36228,7 +36262,7 @@
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-list]',
         style: (node) => ({
-          "grid-column": "1 / -1", "grid-row": "2", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "12px 4px", "align-items": "flex-start", "align-self": "start",
+          "grid-column": "1 / -1", "grid-row": "2", display: "flex", "flex-direction": "row", "flex-wrap": "wrap", gap: "0 8px", "align-items": "flex-start", "align-self": "start",
           width: "100%", "min-width": "0", "max-width": "100%",
           height: "auto", "min-height": "0", "max-height": "none", overflow: "visible", padding: "0", margin: "0",
           border: "0", background: "transparent", "background-color": "transparent", ...ribbonDockedEventInert(node)
@@ -36244,7 +36278,7 @@
         style: (node) => {
           const shown = node.parentElement && node.parentElement.getAttribute("data-nf-ribbon-event-shown") === "1";
           return {
-            order: "0", flex: "0 0 auto", "font-size": "12px", width: "auto", height: "26px", "min-height": "26px", "max-height": "26px", margin: "0",
+            order: "-1", flex: "0 0 auto", "font-size": "12px", width: "auto", height: "26px", "min-height": "26px", "max-height": "26px", margin: "0 4px 8px 0",
             display: "inline-flex", "align-items": "center", gap: "4px", padding: "0 6px", "box-sizing": "border-box", cursor: "pointer", "white-space": "nowrap",
             "border-radius": "5px", border: shown ? "1px solid #2c604f" : "1px solid transparent",
             background: shown ? "#1c4136" : "transparent", "background-color": shown ? "#1c4136" : "transparent",
@@ -36262,7 +36296,7 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider-row]',
-        style: { display: "grid", "grid-template-columns": "minmax(0, 1fr) 49px", "column-gap": "8px", "align-items": "center", width: "100%", "min-width": "0", "max-width": "100%" }
+        style: { display: "grid", "grid-template-columns": `minmax(0, 1fr) ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`, "column-gap": "6px", "align-items": "center", width: "100%", "min-width": "0", "max-width": "100%" }
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider-row] > input[type="range"]',
@@ -36272,8 +36306,23 @@
         // the picked event's four sliders, two a row under the tabs
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider]',
         style: (node) => (node.closest("[data-nf-ribbon-event-shown='1']")
-          ? { order: "2", flex: "1 1 calc(50% - 4px)", "min-width": "150px", "max-width": "100%", margin: "0", display: "block", "box-sizing": "border-box", "padding-right": "8px" }
+          // chips order -1, sliders order 1: the list's own ::after (a full-width, zero-height flex
+          // item, order 0) is the line break between the tabs and the sliders; the row spacing is
+          // the items' bottom margin, not the flex gap, so that break costs no space (user
+          // 2026-10-12: 上面的间距太大 / 怎么把滑条放到上面事件行了 / 滑条一行2列); two sliders a row
+          // where the column allows, one on a narrow one; no right padding, so the boxes line up
+          // with the timing row's (数值没对齐)
+          ? { order: "1", flex: "1 1 calc(50% - 4px)", "min-width": "150px", "max-width": "100%", width: "auto", margin: "0 0 8px", display: "grid", "grid-template-columns": `${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr)`, "column-gap": "6px", "align-items": "center", "box-sizing": "border-box", "padding-right": "0" }
           : { display: "none" })
+      },
+      {
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider-title]',
+        style: { display: "flex", "align-items": "center", height: "26px", "min-height": "26px", "max-height": "26px", "line-height": "26px", margin: "0", "white-space": "nowrap", overflow: "hidden", "text-overflow": "ellipsis" }
+      },
+      {
+        // 动画工具 value boxes: 40 × 24 (user 2026-10-12: 数值框太胖)
+        selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-slider] input[type="number"], [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-advanced-slider] input[type="number"]',
+        style: { width: `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`, "min-width": `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`, "max-width": `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`, height: `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`, "min-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`, "max-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`, "line-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`, "padding-left": "4px", "padding-right": "4px" }
       }
     ];
   }
@@ -47501,6 +47550,7 @@
       const label = getRibbonParameterSliderLabel(group);
       if (!isRibbonRetiredParameterSliderLabel(label)) return;
       group.setAttribute("data-novaflow-ribbon-retired-slider", "1");
+      group.removeAttribute("data-novaflow-ribbon-advanced-slider");
       group.setAttribute("aria-hidden", "true");
       group.style.setProperty("display", "none", "important");
       group.style.setProperty("height", "0", "important");
@@ -53607,6 +53657,7 @@
       node.removeAttribute("data-novaflow-ribbon-event-slider-title");
       node.removeAttribute("data-novaflow-ribbon-event-slider-row");
     });
+    // one row an event slider too: title | range + number (user 2026-10-12: 事件也是，标题应该在滑条前面)
     setImportantStyles(group, {
       margin: "0",
       "margin-bottom": "0",
@@ -53614,7 +53665,11 @@
       width: "100%",
       "min-width": "0",
       "max-width": "100%",
-      "box-sizing": "border-box"
+      "box-sizing": "border-box",
+      display: "grid",
+      "grid-template-columns": `${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr)`,
+      "column-gap": "6px",
+      "align-items": "center"
     });
     const children = Array.from(group.children).filter((child) => child instanceof HTMLElement && isVisible(child));
     const titleRow = children.find((child) => child instanceof HTMLElement && !child.querySelector('input[type="range"]'));
@@ -53623,11 +53678,14 @@
       setImportantStyles(titleRow, {
         display: "flex",
         "align-items": "center",
-        height: `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "min-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "max-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "line-height": `${PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT}px`,
-        "margin-bottom": `${PARTICLE_DENSITY_SLIDER_TITLE_GAP}px`,
+        height: `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "min-height": `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "max-height": `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "line-height": `${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px`,
+        "margin-bottom": "0",
+        "white-space": "nowrap",
+        overflow: "hidden",
+        "text-overflow": "ellipsis",
         padding: "0",
         color: "rgba(255, 255, 255, 0.55)",
         "font-size": "12px",
@@ -53657,7 +53715,7 @@
         row.setAttribute("data-novaflow-ribbon-event-slider-row", "1");
         setImportantStyles(row, {
           display: "grid",
-          "grid-template-columns": `minmax(0, 1fr) ${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
+          "grid-template-columns": `minmax(0, 1fr) ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
           "align-items": "center",
           gap: `${PARTICLE_DENSITY_SECTION_GAP}px`,
           "column-gap": `${PARTICLE_DENSITY_SECTION_GAP}px`,
@@ -53694,13 +53752,13 @@
     group.querySelectorAll('input[type="number"], .nf-number').forEach((input) => {
       if (!(input instanceof HTMLElement)) return;
       setImportantStyles(input, {
-        width: `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
-        "min-width": `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
-        "max-width": `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
-        height: `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
-        "min-height": `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
-        "max-height": `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
-        "line-height": `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
+        width: `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
+        "min-width": `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
+        "max-width": `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
+        height: `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
+        "line-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
         padding: "0 8px",
         "font-size": "12px",
         "box-sizing": "border-box"
@@ -55681,6 +55739,9 @@
 
   function styleRibbonAdvancedRangeGroup(group) {
     if (!(group instanceof HTMLElement)) return;
+    // a retired slider is display:none; the grid below would show it again as an empty cell
+    // (the 风力方向 row sat alone on a fourth row)
+    if (group.getAttribute("data-novaflow-ribbon-retired-slider") === "1") return;
     group.setAttribute("data-novaflow-ribbon-advanced-slider", "1");
     Array.from(group.querySelectorAll('[data-novaflow-ribbon-advanced-slider-title="1"], [data-novaflow-ribbon-advanced-slider-row="1"]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
@@ -55699,7 +55760,7 @@
       "box-sizing": "border-box",
       display: "grid",
       "grid-template-columns": `${NOVAFLOW_RIBBON_SLIDER_TITLE_WIDTH}px minmax(0, 1fr)`,
-      "column-gap": "8px",
+      "column-gap": "6px",
       "align-items": "center"
     });
     const children = Array.from(group.children).filter((child) => child instanceof HTMLElement);
@@ -55746,7 +55807,7 @@
         row.setAttribute("data-novaflow-ribbon-advanced-slider-row", "1");
         setImportantStyles(row, {
           display: "grid",
-          "grid-template-columns": `minmax(0, 1fr) ${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
+          "grid-template-columns": `minmax(0, 1fr) ${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
           "align-items": "center",
           gap: `${PARTICLE_DENSITY_SECTION_GAP}px`,
           "column-gap": `${PARTICLE_DENSITY_SECTION_GAP}px`,
@@ -55780,13 +55841,13 @@
       if (!(input instanceof HTMLElement)) return;
       if (freeNumber && input instanceof HTMLInputElement) input.removeAttribute("max");
       setImportantStyles(input, {
-        width: `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
-        "min-width": `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
-        "max-width": `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`,
-        height: `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
-        "min-height": `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
-        "max-height": `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
-        "line-height": `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`,
+        width: `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
+        "min-width": `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
+        "max-width": `${NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH}px`,
+        height: `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
+        "line-height": `${NOVAFLOW_RIBBON_NUMBER_INPUT_HEIGHT}px`,
         padding: "0 8px",
         "box-sizing": "border-box"
       });
@@ -56433,7 +56494,8 @@
       const rowDensityGap = rowCompactDensity ? PARTICLE_DENSITY_SECTION_GAP : densityGap;
       const rowDensityColumnGap = rowCompactDensity ? PARTICLE_DENSITY_SECTION_GAP : densityColumnGap;
       const rangeHeight = particleDensity ? PARTICLE_DENSITY_SLIDER_ROW_HEIGHT : PARTICLE_DENSITY_SLIDER_THUMB_SIZE;
-      const numberColumnWidth = `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
+      const ribbonSliderRow = !!container.closest('[data-novaflow-ribbon-advanced-slider="1"], [data-novaflow-ribbon-event-slider="1"]');
+      const numberColumnWidth = `${ribbonSliderRow ? NOVAFLOW_RIBBON_NUMBER_INPUT_WIDTH : NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
       const tailChildren = directChildren.filter((child) => child !== range);
       const tailColumns = tailChildren.map((child) => {
         if (isField(child) && (child.getAttribute("type") === "number" || child.classList.contains("nf-number"))) return numberColumnWidth;
@@ -56539,7 +56601,7 @@
         });
         const refreshedChildren = Array.from(container.children).filter((child) => child instanceof HTMLElement && isVisible(child));
         const refreshedButtons = refreshedChildren.filter((child) => child.tagName === "BUTTON");
-        if (isCompactDensityContainer(container) && container.classList.contains("nf-slider")) {
+        if (isCompactDensityContainer(container) && container.classList.contains("nf-slider") && !container.matches('[data-novaflow-ribbon-advanced-slider="1"], [data-novaflow-ribbon-event-slider="1"]')) {
           const sliderTitleRow = refreshedChildren.find((child) => !child.querySelector("input[type='range']"));
           setImportantStyles(container, {
             "margin-bottom": "0"
