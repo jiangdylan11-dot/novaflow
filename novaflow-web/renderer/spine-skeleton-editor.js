@@ -8058,10 +8058,9 @@ self.onmessage = (e) => {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }
         }
-        // the frame tools are 动画工具 too: their timeline is the folded row right away (the other
-        // tools fold it when their editor box shows; with no box the fold never came, so the sheet
-        // looked different before and after a calculation tool had been used)
-        applyCompactTimeline()
+        // the frame tools write keys: the full dopesheet stays up (user 2026-10-12), whether or not a
+        // calculation tool folded it before
+        unfoldTimeline()
       } else if (state.leftOpen === kind) state.leftOpen = null
     } else if (kind === 'frames') {
       // a calculation tool picked: 序列帧添加 / 序列扫光's cards go
@@ -8073,8 +8072,9 @@ self.onmessage = (e) => {
         // tool's own setPanel) must not take their cards away
         if (state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep') state.leftOpen = null
         // the tools' timeline is the folded row: promised here, before the mode switch would
-        // show the full dopesheet; the host applies it when the tools' box shows
-        if (!state.compactTimeline) state.compactPending = true
+        // show the full dopesheet; the host applies it when the tools' box shows (not for the
+        // frame tools: they keep the full sheet)
+        if (!state.compactTimeline && state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep') state.compactPending = true
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }
@@ -8082,6 +8082,14 @@ self.onmessage = (e) => {
       }
     }
     refresh()
+  }
+
+  /** The full dopesheet back (序列帧添加 / 序列扫光 show their keys). */
+  function unfoldTimeline() {
+    state.compactPending = false
+    if (!state.compactTimeline) return
+    state.compactTimeline = false
+    syncTimeline(); layoutFloats(); drawDope()
   }
 
   /** The timeline folded to its one row (动画工具): applied now, not promised. */
