@@ -107,7 +107,8 @@
     imgOpen: new Set(), // 工程树 图片 node: the subfolders unfolded (paths)
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
     seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
-    sweepFrames: 0, // 序列扫光: the whole sweep's length in frames (0 = the animation's)
+    sweepStart: 0, // 序列扫光: the sweep runs from this frame…
+    sweepEnd: 0, // …to this one (0 = the animation's last frame; empty animation: 5 frames a picture)
     sweepParams: null, // 序列扫光 generator: the dialog's last parameters (this session)
     sweepGen: null, // 序列扫光 generator: the last generated set { base, baseSlot, bone, blend, wrap, names } (写入 places its slots)
     frameBone: 'root', // 序列帧添加 / 序列扫光: the bone the frames' slots hang on (user: root by default)
@@ -326,7 +327,7 @@
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
-    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepFrames = 0; state.sweepGen = null
+    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepStart = 0; state.sweepEnd = 0; state.sweepGen = null
     state.imgOpen = new Set(); imgTree = { key: '', nodes: new Map(), pending: new Set() }
     frameRoot = null; frameRootPending = null; frameThumbs.clear()
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
@@ -5429,9 +5430,11 @@
       head.push(h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
         h('button', { class: 'ld-go', title: '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
     } else {
-      const dur = h('input', { type: 'number', class: 'ld-num wide', min: 2, max: 18000, step: 1, value: sweepFrames(ticked.length), title: '整段扫光的长度（帧）',
-        onchange: (e) => { state.sweepFrames = Math.max(2, Math.min(18000, Math.round(Number(e.target.value) || 2))); e.target.value = state.sweepFrames } })
-      head.push(h('label', { class: 'ld-f' }, '时长', dur, '帧'),
+      const from = h('input', { type: 'number', class: 'ld-num wide', min: 0, max: 18000, step: 1, value: state.sweepStart, title: '扫光从第几帧开始（之前全透明）',
+        onchange: (e) => { state.sweepStart = Math.max(0, Math.min(18000, Math.round(Number(e.target.value) || 0))); e.target.value = state.sweepStart; renderLayerDock() } })
+      const to = h('input', { type: 'number', class: 'ld-num wide', min: 1, max: 18000, step: 1, value: sweepEndFrame(ticked.length), title: '扫光到第几帧结束（之后全透明）；留空 = 动画的最后一帧',
+        onchange: (e) => { const v = Math.round(Number(e.target.value) || 0); state.sweepEnd = v > 0 ? Math.min(18000, v) : 0; e.target.value = sweepEndFrame(ticked.length) } })
+      head.push(h('label', { class: 'ld-f' }, '起', from, '止', to, '帧'),
         h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在时长内均分', onclick: writeSweep }, '写入动画'))
     }
     dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }),
@@ -5451,12 +5454,12 @@
     grid.scrollTop = keep
   }
 
-  /** 序列扫光's length in frames: the field's value, else the animation's, else 5 frames a step (0 / 5 / 10 …). */
-  function sweepFrames(n) {
-    if (state.sweepFrames > 0) return state.sweepFrames
+  /** 序列扫光's last frame: the field's value, else the animation's last frame, else 5 frames a picture after 起. */
+  function sweepEndFrame(n) {
+    if (state.sweepEnd > 0) return state.sweepEnd
     const f = lastFrame()
     const wrap = !!(state.sweepGen && state.sweepGen.wrap)
-    return f > 0 ? f : ((n || 1) + (wrap ? 0 : 1)) * 5
+    return f > state.sweepStart + 1 ? f : state.sweepStart + ((n || 1) + (wrap ? 0 : 1)) * 5
   }
 
   /** The slot whose setup attachment shows `image` (the picked skin first, then default). */
@@ -5559,10 +5562,12 @@
     // slices the generator made: above the base slot, blend set, 绕一圈的 first/last joined
     const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
     const wrap = !!(gen && gen.wrap)
-    const totalFrames = sweepFrames(images.length), step = totalFrames / FPS / (wrap ? images.length : images.length + 1), anim = state.anim
+    const startFrame = Math.max(0, Math.round(state.sweepStart || 0)), endFrame = Math.max(startFrame + 2, sweepEndFrame(images.length))
+    const start = startFrame / FPS, end = endFrame / FPS
+    const step = (end - start) / (wrap ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
     const t4 = (t) => Math.round(t * 10000) / 10000
     const L = SweepLight()
-    edit(`序列扫光：${images.length} 张，共 ${totalFrames} 帧，挂在 ${bone}（${anim}）`, (j) => {
+    edit(`序列扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
       const made = frameSlots(j, images, bone)
       const frames = made.frames
       let json = Ops.prepare(hangFrames(made.json, frames))
@@ -5574,9 +5579,15 @@
         const rgb = slotRgb(json, f.slot)
         const row = { ...(a.slots[f.slot] || {}) }
         const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
-        let keys
-        if (L && L.sweepAlphaKeys) keys = L.sweepAlphaKeys(i, frames.length, step, wrap).map(([t, alpha]) => at(t, alpha))
-        else { keys = [at(0, 0)]; if (i > 0) keys.push(at(i * step, 0)); keys.push(at((i + 1) * step, 1), at((i + 2) * step, 0)) }
+        // the curve inside [起, 止]; transparent before 起 and after 止
+        let rel
+        if (L && L.sweepAlphaKeys) rel = L.sweepAlphaKeys(i, frames.length, step, wrap)
+        else { rel = [[0, 0]]; if (i > 0) rel.push([i * step, 0]); rel.push([(i + 1) * step, 1], [(i + 2) * step, 0]) }
+        const keys = []
+        if (start > 0) keys.push(at(0, 0))   // before 起: transparent (no key = the setup colour shows)
+        for (const [t, alpha] of rel) keys.push(at(start + t, alpha))
+        // a wrap set that ends before the animation does: off after 止 (ending with the animation keeps the loop seamless)
+        if (rel[rel.length - 1][1] !== 0 && animEnd > endFrame) keys.push(at(end + 1 / FPS, 0))
         row.color = keys
         a.slots[f.slot] = row
       })
