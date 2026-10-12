@@ -2316,6 +2316,7 @@
   const SECONDARY_ENTRY_RADIUS_PX = "5px";
   const ART_DRAWING_PANEL_HEADER_HEIGHT = 46;
   const NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT = 34;
+  const NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT = 30; // 飘带计算 preset row (select / name / 保存 / 添加事件): as tall as 写入动画 (user 2026-10-12: 预设栏太胖)
   const NOVAFLOW_TOGGLE_SWITCH_WIDTH = 26;
   const NOVAFLOW_TOGGLE_SWITCH_HEIGHT = 14;
   const NOVAFLOW_TOGGLE_KNOB_SIZE = 10;
@@ -25596,15 +25597,15 @@
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-preset-select-wrap="1"] {
         position: relative !important;
         width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         box-sizing: border-box !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-preset-select="1"],
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-preset-name="1"] {
         width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
-        min-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
-        max-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         margin: 0 !important;
         border: 0 !important;
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX}px !important;
@@ -25612,7 +25613,7 @@
         color: rgba(244, 247, 251, 0.94) !important;
         font-size: 12px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
-        line-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        line-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         letter-spacing: 0 !important;
         outline: 0 !important;
         box-shadow: none !important;
@@ -25657,7 +25658,7 @@
         gap: ${SECONDARY_CONTENT_COLUMN_GAP}px !important;
         align-items: center !important;
         width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         box-sizing: border-box !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-preset-session-active="0"] [data-novaflow-ribbon-preset-save-row="1"],
@@ -25674,7 +25675,7 @@
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-preset-save="1"] {
         width: 50px !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         margin: 0 !important;
         padding: 0 !important;
         border: 0 !important;
@@ -26067,9 +26068,9 @@
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
-        min-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
-        max-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -26145,15 +26146,15 @@
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-preset-select-wrap="1"] {
         position: relative !important;
         width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         box-sizing: border-box !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-preset-select="1"],
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-preset-name="1"] {
         width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
-        min-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
-        max-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         margin: 0 !important;
         border: 0 !important;
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX}px !important;
@@ -26161,7 +26162,7 @@
         color: rgba(244, 247, 251, 0.94) !important;
         font-size: 12px !important;
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
-        line-height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        line-height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         letter-spacing: 0 !important;
         outline: 0 !important;
         box-shadow: none !important;
@@ -26208,12 +26209,12 @@
         gap: ${SECONDARY_CONTENT_COLUMN_GAP}px !important;
         align-items: center !important;
         width: 100% !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         box-sizing: border-box !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-ribbon-event-preset-save="1"] {
         width: 50px !important;
-        height: ${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px !important;
+        height: ${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px !important;
         margin: 0 !important;
         padding: 0 !important;
         border: 0 !important;
@@ -33202,7 +33203,9 @@
           };
           if (node.closest(UI_SELECT_MODAL_SCOPE)) return surface;
           const left = Boolean(node.closest(UI_SELECT_LEFT_SCOPE));
-          const height = left ? UI_SELECT_LEFT_HEIGHT : UI_SELECT_DOCK_HEIGHT;
+          // 飘带计算's preset selects sit in a 30 px wrap (1 px borders): 28, as the row's buttons
+          const presetWrap = node.closest('[data-novaflow-ribbon-preset-select-wrap="1"], [data-novaflow-ribbon-event-preset-select-wrap="1"]');
+          const height = presetWrap ? NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT - 2 : left ? UI_SELECT_LEFT_HEIGHT : UI_SELECT_DOCK_HEIGHT;
           // A select drawing its own arrow needs the room on the right.
           const ownArrow = getComputedStyle(node).appearance === "none";
           return {
@@ -36140,7 +36143,7 @@
       {
         // shown always here (the column hid it until a preset was in play)
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-preset-controls] > [data-novaflow-ribbon-preset-save-row]',
-        style: { display: "grid", height: "34px", "max-height": "34px", "min-height": "34px", margin: "0", overflow: "visible", opacity: "1", visibility: "visible", "pointer-events": "auto" }
+        style: { display: "grid", height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, margin: "0", overflow: "visible", opacity: "1", visibility: "visible", "pointer-events": "auto" }
       },
       {
         // 自动链条 is a plain check box here, as 缩放联动 / 反向 in the other tools
@@ -36215,14 +36218,14 @@
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-preset-select-wrap]',
-        style: (node) => ({ "grid-column": "1", "grid-row": "1", display: "block", visibility: "visible", height: "34px", "max-height": "34px", width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
+        style: (node) => ({ "grid-column": "1", "grid-row": "1", display: "block", visibility: "visible", height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, width: "100%", "min-width": "0", "max-width": "100%", margin: "0", ...ribbonDockedEventInert(node) })
       },
       {
         selector: '[data-novaflow-ribbon-panel="1"][data-novaflow-ribbon-docked="1"] [data-novaflow-ribbon-event-add]',
         // the main action of the bar: green, as 保存 / 写入动画
         style: (node) => ({
           ...ribbonDockedEventInert(node), "grid-column": "2", "grid-row": "1", display: "inline-flex", "align-items": "center", "justify-content": "center",
-          width: "auto", "min-width": "0", "max-width": "none", height: "34px", "min-height": "34px", "max-height": "34px", padding: "0 14px", margin: "0",
+          width: "auto", "min-width": "0", "max-width": "none", height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`, padding: "0 12px", margin: "0",
           border: "0", "border-radius": "6px", background: "#1ea672", "background-color": "#1ea672", color: "#ffffff", "font-weight": "500", "box-shadow": "none"
         })
       },
@@ -49835,9 +49838,9 @@
       gap: `${SECONDARY_CONTENT_COLUMN_GAP}px`,
       "align-items": "center",
       width: "100%",
-      height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-      "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-      "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+      height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+      "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+      "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
       "box-sizing": "border-box"
     });
     const advancedCard = panel.querySelector('[data-novaflow-ribbon-advanced-card="1"]');
@@ -53203,9 +53206,9 @@
       setImportantStyles(selectWrap, {
         position: "relative",
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         "box-sizing": "border-box"
       });
     }
@@ -53213,9 +53216,9 @@
     if (select instanceof HTMLElement) {
       setImportantStyles(select, {
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         margin: "0",
         padding: "0 28px 0 12px",
         border: "0",
@@ -53224,7 +53227,7 @@
         color: "rgba(244, 247, 251, 0.94)",
         "font-size": "12px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
-        "line-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        "line-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         "letter-spacing": "0",
         outline: "0",
         "box-shadow": "none",
@@ -53266,9 +53269,9 @@
         gap: `${SECONDARY_CONTENT_COLUMN_GAP}px`,
         "align-items": "center",
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         "box-sizing": "border-box"
       });
     }
@@ -53276,9 +53279,9 @@
     if (input instanceof HTMLElement) {
       setImportantStyles(input, {
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         margin: "0",
         padding: "0 10px",
         border: "0",
@@ -53297,9 +53300,9 @@
     if (button instanceof HTMLElement) {
       setImportantStyles(button, {
         width: "50px",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         margin: "0",
         padding: "0",
         border: "0",
@@ -53610,9 +53613,9 @@
         width: "100%",
         "min-width": "0",
         "max-width": "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         display: "flex",
         "align-items": "center",
         "justify-content": "center",
@@ -54894,9 +54897,9 @@
       width: "100%",
       "min-width": "0",
       "max-width": "100%",
-      height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-      "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-      "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+      height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+      "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+      "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
       display: "flex",
       "align-items": "center",
       "justify-content": "center",
@@ -55019,9 +55022,9 @@
       setImportantStyles(selectWrap, {
         position: "relative",
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         "box-sizing": "border-box"
       });
     }
@@ -55029,9 +55032,9 @@
     if (select instanceof HTMLElement) {
       setImportantStyles(select, {
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         margin: "0",
         padding: "0 28px 0 12px",
         border: "0",
@@ -55040,7 +55043,7 @@
         color: "rgba(244, 247, 251, 0.94)",
         "font-size": "12px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
-        "line-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        "line-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         "letter-spacing": "0",
         outline: "0",
         "box-shadow": "none",
@@ -55082,9 +55085,9 @@
         gap: `${SECONDARY_CONTENT_COLUMN_GAP}px`,
         "align-items": "center",
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         "box-sizing": "border-box"
       });
     }
@@ -55092,9 +55095,9 @@
     if (input instanceof HTMLElement) {
       setImportantStyles(input, {
         width: "100%",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         margin: "0",
         padding: "0 10px",
         border: "0",
@@ -55115,9 +55118,9 @@
     if (button instanceof HTMLElement) {
       setImportantStyles(button, {
         width: "50px",
-        height: `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "min-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
-        "max-height": `${NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT}px`,
+        height: `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
+        "max-height": `${NOVAFLOW_RIBBON_PRESET_CONTROL_HEIGHT}px`,
         margin: "0",
         padding: "0",
         border: "0",
