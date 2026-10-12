@@ -103,15 +103,15 @@
     leftOpen: 'import', // the left column: one panel open at a time
     initialJson: null, // the project as imported (还原初始图层 / 还原原始权重)
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
-    frameSet: null, // 序列帧添加 / 序列扫光: the pictures on the cards (null = the image folder's root), [{ name, file?, region? }]
+    frameSet: null, // 序列K帧 / 序列扫光: the pictures on the cards (null = the image folder's root), [{ name, file?, region? }]
     imgOpen: new Set(), // 工程树 图片 node: the subfolders unfolded (paths)
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
-    seqGap: 1, // 序列帧添加: frames between two pictures (1 = one picture a frame)
+    seqGap: 1, // 序列K帧: frames between two pictures (1 = one picture a frame)
     sweepStart: 0, // 序列扫光: the sweep runs from this frame…
     sweepEnd: 0, // …to this one (0 = the animation's last frame; empty animation: 5 frames a picture)
     sweepParams: null, // 序列扫光 generator: the dialog's last parameters (this session)
     sweepGen: null, // 序列扫光 generator: the last generated set { base, baseSlot, bone, blend, wrap, names } (写入 places its slots)
-    frameBone: 'root', // 序列帧添加 / 序列扫光: the bone the frames' slots hang on (user: root by default)
+    frameBone: 'root', // 序列K帧 / 序列扫光: the bone the frames' slots hang on (user: root by default)
     meshDensity: 18, // 自动蒙皮 密度 (the production default)
     meshDrag: null,
     meshPointer: null,
@@ -5226,7 +5226,7 @@
     ]
   }
 
-  /** The layer cards over the bottom of the stage while 自动蒙皮 / 自动权重 is open (序列帧添加 / 序列扫光 show pictures there). */
+  /** The layer cards over the bottom of the stage while 自动蒙皮 / 自动权重 is open (序列K帧 / 序列扫光 show pictures there). */
   function renderLayerDock() {
     const dock = $('#layerDock')
     const frameTool = state.leftOpen === 'sequence' || state.leftOpen === 'sweep'
@@ -5465,7 +5465,7 @@
     }, (r) => { const name = r && r.attachment; if (name && madeSlot) { state.sel = { kind: 'att', skin: 'default', slot: madeSlot, name }; revealInTree(state.sel) } })
   }
 
-  // ---------- 序列帧添加 / 序列扫光 (动画工具): pictures as cards
+  // ---------- 序列K帧 / 序列扫光 (动画工具): pictures as cards
   //
   // The cards hold pictures, not slots: the image folder's root by default (its pictures, no
   // subfolders); 从文件夹添加… opens the folder picker, and 添加所选 / 本文件夹全部 there puts those
@@ -5527,7 +5527,7 @@
     if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
     const sel = h('select', { class: 'ld-sel', title: '写入时勾选的图片挂到这根骨骼（已有插槽的位置不变，新图居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
       bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
-    const title = kind === 'sequence' ? '序列帧添加：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图'
+    const title = kind === 'sequence' ? '序列K帧：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图'
     const head = [
       h('span', {}, `已选 ${ticked.length} / ${files.length}`),
       h('button', { class: 'tg', onclick: () => { for (const f of files) U.delete(f.name); renderLayerDock() } }, '全选'),
@@ -5699,7 +5699,7 @@
   const frameBone = () => (state.frameBone && state.json.bones.some((b) => b.name === state.frameBone) ? state.frameBone : (state.json.bones[0] || {}).name)
 
   /**
-   * 序列帧添加 (Spine's frame-by-frame sequence): ONE slot holds every picture as an attachment and its
+   * 序列K帧 (Spine's frame-by-frame sequence): ONE slot holds every picture as an attachment and its
    * attachment keys switch them — picture i shows from frame i·gap, hiding the one before. No loop: the
    * last stays. The slot is the one already showing the first picture, else a new one named after it.
    */
@@ -5714,7 +5714,7 @@
     // generated sweep slices as a sequence: placed on the base picture, above it, with the blend
     const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
     let made = null
-    return edit(`序列帧添加：${images.length} 张进一个插槽，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
+    return edit(`序列K帧：${images.length} 张进一个插槽，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
       let json = j
       const first = images[0]
       const baseSlotObj = gen && gen.baseSlot ? json.slots.find((x) => x.name === gen.baseSlot) : null
@@ -5786,7 +5786,7 @@
       frames.forEach((f, i) => {
         const rgb = slotRgb(json, f.slot)
         const row = { ...(a.slots[f.slot] || {}) }
-        delete row.attachment   // a 序列帧添加 written on these slots before switched attachments on and off
+        delete row.attachment   // a 序列K帧 written on these slots before switched attachments on and off
         const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
         // the curve inside [起, 止]; transparent before 起 and after 止
         let rel
@@ -7968,7 +7968,15 @@ self.onmessage = (e) => {
 
   // var: refresh() runs during start-up, before this part of the file
   var hostListeners = new Set()
-  var hostSeen = { json: null, bone: undefined, anim: undefined, mode: undefined, panel: undefined, external: null }
+  var hostSeen = { json: null, bone: undefined, anim: undefined, mode: undefined, panel: undefined, external: null, modal: false }
+  // a dialog's mask only dims this frame (the stage): the host dims the rest of the page while
+  // one is open, as the other sections' dialogs do (user 2026-10-12: 黑色遮罩应该全屏)
+  new MutationObserver(() => {
+    const open = !!document.querySelector('body > .mask')
+    if (open === hostSeen.modal) return
+    hostSeen.modal = open
+    for (const fn of hostListeners) { try { fn('modal', { open }) } catch (e) { console.warn('[skeleton editor] host', e) } }
+  }).observe(document.body, { childList: true })
   function notifyHost() {
     if (!hostListeners || !hostListeners.size) return
     const send = (type, data) => { for (const fn of hostListeners) { try { fn(type, data) } catch (e) { console.warn('[skeleton editor] host', e) } } }
@@ -7977,7 +7985,7 @@ self.onmessage = (e) => {
     if (bone !== hostSeen.bone) { hostSeen.bone = bone; send('select', { bone }) }
     if (state.anim !== hostSeen.anim) { hostSeen.anim = state.anim; send('anim', { anim: state.anim }) }
     if (state.mode !== hostSeen.mode) { hostSeen.mode = state.mode; send('mode', { mode: state.mode }) }
-    // `closed`: the cards' × (the host folds 动画工具 for 序列帧添加 / 序列扫光); a tool switch closes them without it
+    // `closed`: the cards' × (the host folds 动画工具 for 序列K帧 / 序列扫光); a tool switch closes them without it
     if (state.leftOpen !== hostSeen.panel) { hostSeen.panel = state.leftOpen; const closed = state.leftClosedByUser || null; state.leftClosedByUser = null; send('panel', { panel: state.leftOpen, closed }) }
   }
 
@@ -8052,7 +8060,7 @@ self.onmessage = (e) => {
     } else if (kind === 'bones') {
       if (open) { state.leftOpen = null; if (state.mode !== 'setup') setMode('setup'); state.opt.boneVis = true }
     } else if (kind === 'sequence' || kind === 'sweep') {
-      // 序列帧添加 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
+      // 序列K帧 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
       if (open) {
         state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind
         // the picked bone is where the pictures go (user 2026-10-12: 选了哪个就默认放在哪个骨骼里)
@@ -8067,7 +8075,7 @@ self.onmessage = (e) => {
         unfoldTimeline()
       } else if (state.leftOpen === kind) state.leftOpen = null
     } else if (kind === 'frames') {
-      // a calculation tool picked: 序列帧添加 / 序列扫光's cards go
+      // a calculation tool picked: 序列K帧 / 序列扫光's cards go
       if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep')) state.leftOpen = null
     } else if (kind === 'motion') {
       if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep')) state.leftOpen = null
@@ -8086,7 +8094,7 @@ self.onmessage = (e) => {
     refresh()
   }
 
-  /** The full dopesheet back (序列帧添加 / 序列扫光 show their keys). */
+  /** The full dopesheet back (序列K帧 / 序列扫光 show their keys). */
   function unfoldTimeline() {
     state.compactPending = false
     if (!state.compactTimeline) return

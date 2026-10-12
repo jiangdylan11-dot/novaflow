@@ -127,6 +127,7 @@
     const ws = enabled() ? findWorkspace() : null
     if (!ws || !visible(ws)) {
       if (frame) frame.style.display = 'none'
+      setModalBackdrop(false)
       releaseWorkspace()
       setMotionOpen(false)
       return
@@ -335,7 +336,7 @@
       pushSelection()
     } else {
       api.reserveBottom(0)
-      // the group folded: 序列帧添加 / 序列扫光's layer cards go too
+      // the group folded: 序列K帧 / 序列扫光's layer cards go too
       api.setPanel('motion', false)
     }
   }
@@ -379,12 +380,32 @@
     return a || b
   }
 
+  // a dialog open in the editor: the page outside the frame dims too (the frame's own mask dims
+  // the stage), the frame rides above that backdrop so the dialog stays in reach
+  let modalBackdrop = null
+  function setModalBackdrop(open) {
+    if (open) {
+      if (!modalBackdrop) {
+        modalBackdrop = document.createElement('div')
+        modalBackdrop.setAttribute('data-novaflow-runtime-ignore', '1')
+        modalBackdrop.setAttribute('data-novaflow-skeleton-editor-backdrop', '1')
+        modalBackdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483640'
+      }
+      if (!modalBackdrop.isConnected) document.body.appendChild(modalBackdrop)
+      if (frame) frame.style.zIndex = '2147483641'
+    } else {
+      if (modalBackdrop && modalBackdrop.isConnected) modalBackdrop.remove()
+      if (frame) frame.style.zIndex = '15'
+    }
+  }
+
   function onEditorEvent(type, data) {
+    if (type === 'modal') { setModalBackdrop(!!data.open); return }
     // 设置 has no animation to work on: the 动画工具 group folds when the editor goes there
     if (type === 'mode' && data.mode === 'setup' && motionPanelOpen()) {
       try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }
     }
-    // the 序列帧添加 / 序列扫光 cards closed with their ×: the tool is done, 动画工具 folds (user 2026-10-12)
+    // the 序列K帧 / 序列扫光 cards closed with their ×: the tool is done, 动画工具 folds (user 2026-10-12)
     if (type === 'panel' && !data.panel && (data.closed === 'sequence' || data.closed === 'sweep') && motionPanelOpen()) {
       try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }
     }
