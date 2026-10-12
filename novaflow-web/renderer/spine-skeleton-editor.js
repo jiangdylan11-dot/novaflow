@@ -5940,11 +5940,14 @@ self.onmessage = (e) => {
     const P = state.sweepParams
     const bind = { bone: '', slot: '' }
     const stem = image.split('/').pop()
+    // the picked bone is the default (the base slot's bone when none is picked or it is that one)
+    const pickedBone = state.sel && state.sel.kind === 'bone' ? state.sel.name : (state.multi && state.multi[0]) || ''
     let preview = null, timer = 0, previewTimer = 0, previewBusy = false, previewAgain = false, clock = 0, last = performance.now()
 
     const close = () => { clearInterval(timer); clearTimeout(previewTimer); preview = null; mask.remove() }
     const showing = () => slotsShowingAll(state.json, image)
     const baseSlot = () => { const list = showing(); if (!list.length) return null; return list.find((s) => s.name === bind.slot) || list.find((s) => state.sel && (state.sel.name === s.name || state.sel.slot === s.name)) || list[list.length - 1] }
+    { const bs0 = baseSlot(); const baseBone0 = bs0 ? bs0.bone : 'root'; if (pickedBone && pickedBone !== baseBone0 && state.json.bones.some((b) => b.name === pickedBone)) bind.bone = pickedBone }
 
     // preview: a small copy of the picture, 10 frames, replayed like 写入动画
     const pvCanvas = h('canvas', { width: 2, height: 2 }), pvTag = h('span', { class: 'tag' }), pvBar = h('i')
@@ -7816,6 +7819,9 @@ self.onmessage = (e) => {
   }
 
   function bindChrome() {
+    // the layer cards wrap into more rows after the first layout pass (thumbnails, width changes):
+    // the transform panel sat under them until the next refresh — follow their size instead
+    if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(() => layoutFloats()); ro.observe($('#layerDock')); ro.observe($('#xform')) }
     $('#fileDir').onchange = (e) => run(() => loadFiles(e.target.files))
     $('#fileMany').onchange = (e) => run(() => loadFiles(e.target.files))
     for (const [id, field, multi] of [['#pickJson', 'json'], ['#pickAtlas', 'atlas'], ['#pickPng', 'images', true]]) {
@@ -8054,6 +8060,9 @@ self.onmessage = (e) => {
       // 序列帧添加 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
       if (open) {
         state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind
+        // the picked bone is where the pictures go (user 2026-10-12: 选了哪个就默认放在哪个骨骼里)
+        const picked = state.sel && state.sel.kind === 'bone' ? state.sel.name : (state.multi && state.multi[0]) || ''
+        if (picked && state.json.bones.some((b) => b.name === picked)) state.frameBone = picked
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }

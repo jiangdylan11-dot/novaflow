@@ -42,9 +42,10 @@
     const bone=api.selectedBone();
     const anim=!!api.anim();
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>{
-      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode),ok=frameTool?anim:!!bone;
+      // the frame tools need a bone too (the pictures hang on it) and an animation to write into
+      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode),ok=frameTool?(anim&&!!bone):!!bone;
       if(item.disabled!==!ok)item.disabled=!ok;
-      const title=ok?'':(frameTool?'先选一个动画':'先在画板或工程树里选中一个骨骼');
+      const title=ok?'':(frameTool&&!anim?'先选一个动画':'先在画板或工程树里选中一个骨骼');
       if(item.title!==title)item.title=title;
     });
   }
