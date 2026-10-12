@@ -7581,10 +7581,11 @@ self.onmessage = (e) => {
         d.scrollY = Math.max(0, Math.min(max, d.scrollY + e.deltaY))
         return
       }
-      const f = dopeF(x)
+      // the left edge holds still and the sheet stretches to the right (user 2026-10-12: 滚轴拉长
+      //应该是右边越来越长, not around the pointer); frame 0 never scrolls past the first column
       d.pxf = Math.max(2, Math.min(80, d.pxf * Math.pow(1.0015, -e.deltaY)))
-      // Spine: frame 0 always sits at the first column, the sheet never scrolls left of it
-      d.f0 = Math.max(0, f - (x - DOPE.nameW) / d.pxf)
+      d.f0 = Math.max(0, d.f0)
+      drawDope()
     }, { passive: false })
     // a press anywhere else hands the keyboard (Delete / Ctrl+C / Ctrl+V) back to the rest
     document.addEventListener('pointerdown', (e) => { if (!e.target.closest('#dope')) state.dope.focus = false }, true)
@@ -7827,10 +7828,17 @@ self.onmessage = (e) => {
     $('#fit').onclick = fit
     $('#pickCancel').onclick = endPick
     $('#play').onclick = togglePlay
-    $('#tStart').onclick = () => gotoFrame(0)
+    // 首帧 shows frame 0 at the left edge; 尾帧 puts the last frame at the right edge of the
+    // visible sheet (user 2026-10-12), a few px in so its key stays whole
+    $('#tStart').onclick = () => { state.dope.f0 = 0; gotoFrame(0); drawDope() }
     $('#tBack').onclick = () => gotoFrame(state.frame - 1)
     $('#tFwd').onclick = () => gotoFrame(state.frame + 1)
-    $('#tEnd').onclick = () => gotoFrame(lastFrame())
+    $('#tEnd').onclick = () => {
+      const c = $('#dope'), d = state.dope, last = lastFrame()
+      const span = c ? Math.max(1, c.clientWidth - DOPE.nameW - 10) / d.pxf : 0
+      d.f0 = Math.max(0, last - span)
+      gotoFrame(last); drawDope()
+    }
     $('#tLoop').onclick = () => { state.loop = !state.loop; syncTimeline() }
     for (const [id, ic] of [['#tStart', 'toStart'], ['#tBack', 'stepBack'], ['#tFwd', 'stepFwd'], ['#tEnd', 'toEnd'], ['#tLoop', 'loop']]) $(id).innerHTML = ICON[ic]
     // drag bar between the tree and the properties (remembered per browser)
