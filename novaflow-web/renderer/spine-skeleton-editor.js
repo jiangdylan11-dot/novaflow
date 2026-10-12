@@ -5274,8 +5274,14 @@
     rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: '工程的图片文件夹：把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
       h('span', { class: 'end' },
-        h('button', { class: 'ld-btn tiny', title: '加新素材：图片导进图片文件夹', onclick: (e) => { e.stopPropagation(); importImagesInto('', false) } }, '导入图片'),
-        h('button', { class: 'ld-btn tiny', title: '整个文件夹（带子文件夹）导进图片文件夹', onclick: (e) => { e.stopPropagation(); importImagesInto('', true) } }, '导入文件夹'),
+        // one short button (two text buttons covered the row's name in a narrow tree): a menu picks 图片 / 文件夹
+        h('button', { class: 'ld-btn tiny', title: '加新素材：图片或整个文件夹导进图片文件夹', onclick: (e) => {
+          e.stopPropagation()
+          const r = e.currentTarget.getBoundingClientRect()
+          mountMenu(h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(Math.min(r.left, innerWidth - 170))}px;top:${Math.round(r.bottom + 4)}px` },
+            h('button', { onclick: () => { closeMenu(); importImagesInto('', false) } }, '导入图片…'),
+            h('button', { onclick: () => { closeMenu(); importImagesInto('', true) } }, '导入文件夹…（带子文件夹）')))
+        } }, '导入…'),
         h('span', { class: 'cnt' }, String(count)))))
     if (closed) return
     const used = imagesInUse()
@@ -5760,11 +5766,13 @@ self.onmessage = (e) => {
    */
   function sweepFolderFor(image, scheme) {
     const stem = image.split('/').pop()
+    // beside the base picture (a project keeping its pictures in img/ gets img/sweep/…, not a second root)
+    const dir = image.includes('/') ? image.slice(0, image.lastIndexOf('/') + 1) : ''
     const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
     let k = 1
-    while (taken(`sweep/${stem}/${scheme}${k > 1 ? k : ''}/${stem}_${scheme}${k > 1 ? k : ''}_01`)) k++
+    while (taken(`${dir}sweep/${stem}/${scheme}${k > 1 ? k : ''}/${stem}_${scheme}${k > 1 ? k : ''}_01`)) k++
     const tag = scheme + (k > 1 ? k : '')
-    return { folder: `sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
+    return { folder: `${dir}sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
   }
 
   const SWEEP_PARAM_DEFS = [
