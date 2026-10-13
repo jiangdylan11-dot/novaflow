@@ -38,6 +38,20 @@ cookie 只决定"能不能下载代码"。
 
 关闭：删掉该环境变量并重新部署即可恢复开放。
 
+### 只能上传静态资源、设不了环境变量时
+
+有些部署只上传静态文件、后台里加不了环境变量（Cloudflare 提示“只有静态资源的
+Worker 不能加变量”）。这时把密钥在打包时直接注入 zip 里的 `_worker.js`（只落在
+发布的 zip 里，服务器端运行、浏览器看不到；仓库源码不含密钥）：
+
+打包时设环境变量 `NOVAFLOW_EMBED_SESSION_SECRET`（从本地文件读取、别写在命令行里），
+再跑 `package:site`。生成的 zip 直接上传即可，无需在 Cloudflare 后台设变量。
+密钥仍需和 Supabase 的 `NOVAFLOW_SESSION_SECRET` 一致（见下）。
+
+> 前提：无论哪种方式，`_worker.js` 必须真的在你的 Cloudflare 项目上**运行**。若
+> 上传后受保护文件仍能匿名下载，说明该项目把上传当成“纯静态资源”、没有运行 worker，
+> 需改用 wrangler 部署（worker + assets）。
+
 ### 注意
 
 - 过渡期：设密钥前已登录的用户，其 cookie/token 最长 24 小时有效；期间照常。

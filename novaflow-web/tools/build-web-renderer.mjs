@@ -337,8 +337,23 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // The Cloudflare Pages gate rides along in the zip root. Copied after any
   // minify pass and left as-is (it runs on Cloudflare, never in a browser, so
   // there is nothing to hide and everything to keep reviewable). Dormant until
-  // NOVAFLOW_SESSION_SECRET is set on the Pages project.
-  await writeFile(join(WEB_OUT, '_worker.js'), await readFile(join(ROOT, 'deploy/_worker.js'), 'utf8'), 'utf8');
+  // the secret is provided.
+  //
+  // The gate normally reads the secret from the NOVAFLOW_SESSION_SECRET Pages
+  // env var. For deploy methods that only upload static assets (no dashboard
+  // for env vars), set NOVAFLOW_EMBED_SESSION_SECRET when packaging and the
+  // value is baked into THIS zip's _worker.js as a fallback. It lands only in
+  // the shipped zip (server-side only, never served to a browser), never in the
+  // repo. The source stays env-only.
+  let gateSource = await readFile(join(ROOT, 'deploy/_worker.js'), 'utf8');
+  const embedSecret = String(process.env.NOVAFLOW_EMBED_SESSION_SECRET || '').trim();
+  if (embedSecret) {
+    const line = 'const secret = env && env.NOVAFLOW_SESSION_SECRET;';
+    if (!gateSource.includes(line)) throw new Error('gate secret line not found; cannot embed NOVAFLOW_EMBED_SESSION_SECRET');
+    gateSource = gateSource.replace(line, 'const secret = (env && env.NOVAFLOW_SESSION_SECRET) || ' + JSON.stringify(embedSecret) + ';');
+    log('embedded gate secret into _worker.js', { bytes: embedSecret.length });
+  }
+  await writeFile(join(WEB_OUT, '_worker.js'), gateSource, 'utf8');
 
   // Last, once every file is on disk: give each local asset a ?v= derived
   // from its own bytes.
