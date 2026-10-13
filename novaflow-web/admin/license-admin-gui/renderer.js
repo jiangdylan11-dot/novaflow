@@ -2,6 +2,20 @@ function $(id) {
   return document.getElementById(id);
 }
 
+// Every native alert()/confirm() left the page unable to take typing on
+// Windows (the 积分/次数 field after 新建用户 stayed dead until a restart).
+// Ask the main process to hand keyboard focus back as each one closes.
+for (const name of ["alert", "confirm"]) {
+  const nativeDialog = window[name].bind(window);
+  window[name] = (...args) => {
+    try {
+      return nativeDialog(...args);
+    } finally {
+      window.adminAPI?.refocusWindow?.();
+    }
+  };
+}
+
 // Fill an optional summary element. The stat strips, count pills and topbar
 // crumb are layout sugar: a missing id must never break the data render.
 function setText(id, text) {

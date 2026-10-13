@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { ipcMain, dialog, shell, app } = require("electron");
+const { ipcMain, dialog, shell, app, BrowserWindow } = require("electron");
 const licenseAdminCore = require("../license-admin-core");
 const licenseAdminOnline = require("../license-admin-online");
 const adminData = require("./admin-data");
@@ -31,6 +31,17 @@ function getDefaultPaths() {
 function registerLicenseAdminIpc() {
   ipcMain.handle("admin-default-paths", async () => {
     return getDefaultPaths();
+  });
+
+  // On Windows a native alert()/confirm() leaves the page without keyboard
+  // focus once it closes: the window is in front, clicks still work, but
+  // nothing typed reaches an input until the app is restarted. Blurring and
+  // re-focusing the window hands keyboard focus back to the page.
+  ipcMain.on("admin-window-refocus", (evt) => {
+    const win = BrowserWindow.fromWebContents(evt.sender);
+    if (!win || win.isDestroyed()) return;
+    win.blur();
+    win.focus();
   });
 
   const registerAdminDataList = (channel, loader) => {

@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("adminAPI", {
   getDefaultPaths: () => ipcRenderer.invoke("admin-default-paths"),
+  refocusWindow: () => ipcRenderer.send("admin-window-refocus"),
   readPublicKey: (payload) => ipcRenderer.invoke("admin-read-public-key", payload),
   readPrivateKey: (payload) => ipcRenderer.invoke("admin-read-private-key", payload),
   pickPublicPath: (payload) => ipcRenderer.invoke("admin-pick-public-path", payload),
