@@ -1579,6 +1579,28 @@
    * user drops into it show up. Files imported in the session (the handle is read-only) are kept
    * beside them. Same shape as folderFromFiles's nodes, plus `live`.
    */
+  /** The subfolders the in-session imports made under `here` (not on disk): their first names. */
+  function extraDirsUnder(extra, here) {
+    const out = new Set()
+    for (const k of extra.keys()) {
+      if (!k || k === here || !(extra.get(k) || []).length) continue
+      if (here && !k.startsWith(here + '/')) continue
+      out.add((here ? k.slice(here.length + 1) : k).split('/')[0])
+    }
+    return out
+  }
+
+  /** A folder that exists only through in-session imports (导入文件夹 into a live folder). */
+  function folderFromExtras(name, path, extra) {
+    return {
+      name, path, live: true,
+      async list() {
+        const dirs = [...extraDirsUnder(extra, path)].map((n) => folderFromExtras(n, path + '/' + n, extra))
+        return sortList(dirs, (extra.get(path) || []).slice())
+      },
+    }
+  }
+
   function folderFromHandle(handle, name, path, extras) {
     const extra = extras || new Map()   // dir path → files added in-session
     const here = path || ''
@@ -1592,6 +1614,9 @@
           else if (h.kind === 'file' && IMG_RX.test(n)) files.push({ name: n, rel, region: null, file: async () => h.getFile() })
         }
         for (const f of extra.get(here) || []) if (!files.some((x) => x.name === f.name)) files.push(f)
+        // an imported folder is a subfolder here even before it exists on disk (user 2026-10-13:
+        // 显示已经导入，其实没有真正导入 - the folder's pictures were in the project but not listed)
+        for (const n of extraDirsUnder(extra, here)) if (!dirs.some((d) => d.name === n)) dirs.push(folderFromExtras(n, here ? here + '/' + n : n, extra))
         return sortList(dirs, files)
       },
       add(rel, file) {
@@ -1599,6 +1624,18 @@
         const dir = parts.slice(0, -1).join('/'), n = parts[parts.length - 1]
         if (!extra.has(dir)) extra.set(dir, [])
         extra.get(dir).push({ name: n, rel: parts.join('/'), region: null, file: async () => file })
+      },
+      /** An imported picture into the folder on disk (subfolders made as needed); false without write permission. */
+      async write(rel, file) {
+        if (!handle.queryPermission || (await handle.queryPermission({ mode: 'readwrite' })) !== 'granted') return false
+        const parts = String(rel).split('/').filter(Boolean)
+        let dir = handle
+        for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p, { create: true })
+        const fh = await dir.getFileHandle(parts[parts.length - 1], { create: true })
+        const w = await fh.createWritable()
+        await w.write(file)
+        await w.close()
+        return true
       },
     }
     return node
@@ -1734,7 +1771,9 @@
    * New material into the image folder: images (or a folder, which keeps its name and
    * subfolders) under `folder`, into the project right away. Returns the new image names.
    */
+  let lastImportWritten = 0
   async function importIntoFolder(files, folder) {
+    let written = 0
     const clean = (x) => x.replace(/\s+/g, '_').replace(/[<>:"\\|?*\x00-\x1f]/g, '_')
     const added = []
     const taken = (n) => (rt.atlas && rt.atlas.findRegion(n)) || added.includes(n)
@@ -1745,9 +1784,16 @@
       let name = base, k = 2
       while (taken(name)) name = base + k++
       await addImageFile(f, name)
-      if (state.imageFolder && state.imageFolder.add) state.imageFolder.add(name + '.png', f)
+      // a project folder on disk takes the file itself (user 2026-10-13: 原始根目录里并没有增加);
+      // read-only (or no folder on disk): it is listed beside the folder's own files for the session
+      const ext = ((f.name.match(/\.[^.]+$/) || ['.png'])[0]).toLowerCase()
+      let onDisk = false
+      if (state.imageFolder && state.imageFolder.write) { try { onDisk = await state.imageFolder.write(name + ext, f) } catch { onDisk = false } }
+      if (onDisk) written++
+      else if (state.imageFolder && state.imageFolder.add) state.imageFolder.add(name + '.png', f)
       added.push(name)
     }
+    lastImportWritten = written
     return added
   }
 
@@ -6167,7 +6213,7 @@
         state.future = []
         if (dir && names[0].includes('/')) state.imgOpen.add(names[0].split('/').slice(0, -1).join('/'))
         state.sections.delete('images')
-        status(`已导入 ${names.length} 张图片到「${here || imageFolder().name}」`, 'ok')
+        status(`已导入 ${names.length} 张图片到「${here || imageFolder().name}」${lastImportWritten ? `（${lastImportWritten} 张已写进文件夹）` : state.imageFolder && state.imageFolder.live ? '（文件夹只读：图片在工程里，没写进磁盘；重新「导入PS工程」并允许编辑文件夹后会写入）' : ''}`, 'ok')
         refresh()
       } catch (e) { restore(before); status('导入图片失败：' + e.message, 'error') }
     }
@@ -9868,5 +9914,5 @@ self.onmessage = (e) => {
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()
