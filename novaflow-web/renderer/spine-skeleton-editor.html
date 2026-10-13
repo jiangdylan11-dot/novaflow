@@ -95,6 +95,9 @@
   .checks{display:flex;flex-wrap:wrap;gap:5px 12px;margin:6px 0}
   .checks label{display:inline-flex;align-items:center;gap:5px;color:rgba(255,255,255,.82);font-size:11px}
   .checks input{accent-color:var(--green);margin:0}
+  /* a disabled tick reads as disabled: the whole item greys out (Spine), not only the box */
+  label:has(> input[type=checkbox]:disabled){opacity:.4;cursor:default}
+  .f:has(> .inline > select:disabled, > select:disabled) > label{opacity:.4}
   .checks.ik{margin:0;gap:5px 14px}
   .f .dim{color:#6a6a6a}
   .cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;align-items:center;min-width:0}

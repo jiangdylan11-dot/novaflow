@@ -1749,6 +1749,43 @@
     return added
   }
 
+  /**
+   * 新建工程 (user 2026-10-13: the tool makes projects, not only imports them): an empty skeleton -
+   * root only, the default skin, no slots - as a new project in the tree. Its pictures come from
+   * a folder the user picks next (useImageFolder), like Spine's images folder.
+   */
+  async function newProject(name) {
+    const base = String(name || '').trim() || '新工程'
+    const taken = new Set(projects.map((_, i) => projectName(i)))
+    let n = base
+    for (let k = 2; taken.has(n); k++) n = `${base} ${k}`
+    const json = { skeleton: { spine: '3.8.99', images: './images/' }, bones: [{ name: 'root' }], slots: [], skins: [{ name: 'default', attachments: {} }], animations: {} }
+    await loadParts({ json, jsonName: n + '.json', atlasText: '', atlasName: n + '.atlas', images: [], label: n })
+    state.sections.delete('images')
+    status(`已新建工程 ${n}：导入一个图片文件夹，再把图片拖到骨骼或画面上`, 'ok')
+    refresh()
+    return { name: n }
+  }
+
+  /**
+   * A picked folder (files with their relative paths) as the project's image folder: its pictures
+   * list in the 图片 node (subfolders kept); dragged onto a bone / slot / the stage they come in.
+   */
+  function useImageFolder(files) {
+    if (!state.json) throw new Error('先新建或导入工程')
+    const list = [...files].filter((f) => IMG_RX.test(f.name))
+    if (!list.length) { status('文件夹里没有图片（PNG / JPG / WebP）', 'error'); return 0 }
+    const top = String(list[0].webkitRelativePath || '').split('/')[0] || state.name || '图片'
+    const items = list.map((f) => { const parts = String(f.webkitRelativePath || f.name).split('/').filter(Boolean); return { rel: (parts.length > 1 ? parts.slice(1) : parts).join('/'), file: f } })
+    state.imageFolder = folderFromFiles(top, items)
+    state.imageFolderGen = (state.imageFolderGen || 0) + 1
+    imgTree = { key: '', nodes: new Map(), pending: new Set() }
+    state.sections.delete('images')
+    status(`图片文件夹「${top}」：${list.length} 张图片，拖到骨骼或画面上就能用`, 'ok')
+    refresh()
+    return list.length
+  }
+
   /** The project's image folder: the PS export's folder, or the atlas images grouped by their folders. */
   function imageFolder() {
     if (state.imageFolder) return state.imageFolder
@@ -5720,7 +5757,7 @@
   }
 
   // the properties' setup-mode operations (structure, parents, pictures, modes): greyed out in 动画 like in Spine
-  const SETUP_BUTTONS = new Set(['新建…', '设置父级', '换图', '转为皮肤占位符', '加入骨骼', '更换', '设置', '移除', '绑定', '编辑网格', '编辑剪裁'])
+  const SETUP_BUTTONS = new Set(['新建…', '设置父级', '换图', '转为皮肤占位符', '加入骨骼', '更换', '设置', '移除', '绑定', '编辑网格', '编辑剪裁', '编辑路径'])
   const SETUP_FIELDS = new Set(['填入黑色', '结束插槽'])
   function lockSetupOnly(box) {
     const why = '动画模式下不能用：这是设置模式的操作'
@@ -7550,7 +7587,7 @@ self.onmessage = (e) => {
         : `路径点：${points}。选中后直接在画面里拖点 / 手柄（框选 / Ctrl 加选）= 改路径形状；加减点、闭合用「编辑路径」`))
     const weighing = !!(state.weightEdit && state.weightEdit.slot === sel.slot && state.weightEdit.name === sel.name)
     out.push(h('div', { class: 'btns g2' },
-      btn('编辑路径', () => (editing ? exitPathEdit() : enterPathEdit(sel)), { primary: editing, title: setup ? '在画面里点 / 拖 / 删路径点和手柄' : '在画面里拖路径点和手柄 = 在这一帧打路径变形关键帧（加点、删点、闭合在「设置」里）' }),
+      btn('编辑路径', () => (editing ? exitPathEdit() : enterPathEdit(sel)), { primary: editing, disabled: !setup, title: '在画面里点 / 拖 / 删路径点和手柄' }),
       btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' }),
       btn('绑定', () => startBind(sel), { primary: weighing && !!state.weightEdit.binding, disabled: !setup || points < 1, title: '绑定骨骼：点了以后在画面或工程树里点骨骼加入 / 移出，再点一次「绑定」完成（自动算好权重）' }),
       btn('编辑权重', () => (weighing ? exitWeightEdit() : enterWeightEdit(sel)), { primary: weighing && !state.weightEdit.binding, disabled: points < 1, title: '在画面里调路径各点的骨骼权重' })))
@@ -7558,6 +7595,7 @@ self.onmessage = (e) => {
   }
 
   function enterPathEdit(sel) {
+    if (state.mode !== 'setup') { status('编辑路径在「设置」模式下用；动画里直接拖路径的点和手柄'); return }
     state.meshEdit = null; state.weightEdit = null; state.clipEdit = null
     state.pathEdit = { skin: sel.skin, slot: sel.slot, name: sel.name, tool: 'create' }
     refresh()
@@ -9156,7 +9194,8 @@ self.onmessage = (e) => {
     renderLayerDock()
     renderTracePanel()
     if (state.clipEdit && (state.mode !== 'setup' || !clipRuntime())) state.clipEdit = null
-    if (state.pathEdit && !pathRuntime()) state.pathEdit = null
+    // 编辑路径 is a 设置 tool (user 2026-10-13); in 动画 the picked path's points drag as a shape key
+    if (state.pathEdit && (state.mode !== 'setup' || !pathRuntime())) state.pathEdit = null
     renderClipPanel()
     layoutFloats()
     notifyHost()
@@ -9562,6 +9601,8 @@ self.onmessage = (e) => {
     openExport: (opts) => openExportDialog(opts),
     /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
     openProjectFile: (data) => openProjectFile(data),
+    newProject: (name) => newProject(name),
+    useImageFolder: (files) => useImageFolder(files),
     /** 保存工程: every open project into one .nfproj (a save dialog), no options. */
     saveProjectFile: () => saveProjectFileNow(),
     projectCount: () => projects.length,

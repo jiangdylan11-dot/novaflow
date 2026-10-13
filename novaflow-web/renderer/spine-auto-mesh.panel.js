@@ -3343,6 +3343,40 @@
       })
     })
     document.body.appendChild(nfPicker)
+    // 新建工程: an empty project (root only), then its picture folder is picked (user 2026-10-13)
+    const dirPicker = el('input', { position: 'fixed', left: '-10000px', top: '0', width: '1px', height: '1px', opacity: '0' })
+    dirPicker.type = 'file'
+    dirPicker.multiple = true
+    dirPicker.webkitdirectory = true
+    dirPicker.setAttribute('data-nf-project-images-input', '1')
+    let creating = null
+    dirPicker.addEventListener('change', () => {
+      const files = Array.from(dirPicker.files || [])
+      dirPicker.value = ''
+      if (!files.length) return
+      guardWith(sayHere)(async () => {
+        const ed = window.NovaFlowSkeletonEditor
+        const a = await (creating || (ed && ed.ready ? ed.ready() : Promise.reject(new Error('骨骼动画编辑器还没准备好'))))
+        creating = null
+        const n = a.useImageFolder(files)
+        if (n) sayHere(`已导入图片文件夹（${n} 张图片）：把图片拖到骨骼或画面上`, 'ok')
+      })
+    })
+    document.body.appendChild(dirPicker)
+    const create = el('button', null, '新建工程')
+    create.type = 'button'
+    styleButton(create, false)
+    create.setAttribute('data-nf-project-new', '1')
+    create.title = '新建一个空工程（只有 root 骨骼），然后选它的图片文件夹；图片拖到骨骼或画面上就是插槽'
+    create.addEventListener('click', () => {
+      if (state.busy) return
+      const ed = window.NovaFlowSkeletonEditor
+      if (!ed || !ed.ready) { sayHere('骨骼动画编辑器还没准备好', 'warn'); return }
+      creating = ed.ready().then(async (a) => { const r = await a.newProject(); sayHere(`已新建工程 ${r.name}：选它的图片文件夹`, 'ok'); return a })
+      creating.catch((e) => sayHere(e.message || String(e), 'error'))
+      // the folder dialog opens on this click (a later one would need another click)
+      dirPicker.click()
+    })
     const open = el('button', null, '导入工程')
     open.type = 'button'
     styleButton(open, false)
@@ -3362,7 +3396,7 @@
         if (r) sayHere(`已保存 ${r.name}（${r.count} 个工程）`, 'ok')
       })
     })
-    state.psImport = { button, picker, status: psStatus, note: psNote, divider, open, save, nfPicker }
+    state.psImport = { button, picker, status: psStatus, note: psNote, divider, create, open, save, nfPicker, dirPicker }
     busyButtons.push(button)
     return state.psImport
   }
@@ -3378,12 +3412,15 @@
     if (kit.button.parentElement !== body) body.appendChild(kit.button)
     if (kit.divider && kit.divider.nextElementSibling !== kit.button) kit.button.before(kit.divider)
     if (kit.note && kit.note.previousElementSibling !== kit.button) kit.button.after(kit.note)
-    if (kit.open && kit.open.previousElementSibling !== (kit.note || kit.button)) (kit.note || kit.button).after(kit.open)
+    if (kit.create && kit.create.previousElementSibling !== (kit.note || kit.button)) (kit.note || kit.button).after(kit.create)
+    if (kit.open && kit.open.previousElementSibling !== (kit.create || kit.note || kit.button)) (kit.create || kit.note || kit.button).after(kit.open)
     if (kit.save && kit.save.previousElementSibling !== (kit.open || kit.note || kit.button)) (kit.open || kit.note || kit.button).after(kit.save)
     if (kit.nfPicker && !kit.nfPicker.isConnected) document.body.appendChild(kit.nfPicker)
+    if (kit.dirPicker && !kit.dirPicker.isConnected) document.body.appendChild(kit.dirPicker)
     if (kit.status && kit.status.parentElement !== body) body.appendChild(kit.status)
     if (!kit.picker.isConnected) document.body.appendChild(kit.picker)
     dressLikePanel(kit.button, body)
+    if (kit.create) dressLikePanel(kit.create, body)
     if (kit.open) dressLikePanel(kit.open, body)
     if (kit.save) dressLikePanel(kit.save, body)
   }
