@@ -375,10 +375,15 @@
   .dialog .xx{width:24px;height:24px;border:0;border-radius:7px;background:transparent;color:rgba(238,244,252,.6);font-size:16px}
   .dialog .xx:hover{background:#373737;color:#fff}
   /* 序列扫光 generator: schemes left, preview + parameters right */
-  .dialog.sw{width:min(880px,calc(100vw - 24px));max-height:88vh}   /* the editor's own viewport (the iframe) can be narrow */
+  .dialog.sw{width:min(880px,calc(100vw - 24px));height:min(640px,88vh);max-height:88vh}   /* the editor's own viewport (the iframe) can be narrow; fixed height: switching schemes / folding groups must not make the dialog jump */
   .sw-body{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:0;flex:1;overflow:hidden}
   .sw-types{border-right:1px solid #2a2a2a;overflow:auto;padding:6px 0}
-  .sw-types .g{padding:8px 14px 4px;color:var(--dim);font-size:11px;font-weight:500}
+  /* 分类标题：点一下收起 / 展开（2026-10-13 新加 20 种边缘扫光后列表太长） */
+  .sw-types .g{display:flex;align-items:center;gap:8px;width:100%;height:28px;padding:0 14px;border:0;background:transparent;color:var(--dim);font-size:11px;font-weight:500;text-align:left;cursor:pointer;outline:none}
+  .sw-types .g:hover{color:#fff}
+  .sw-types .g::before{content:"";flex:0 0 auto;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 1px 0 -1px}
+  .sw-types .g[aria-expanded="true"]::before{transform:rotate(45deg);margin-top:-3px}
+  .sw-types .g .n{margin-left:auto;opacity:.7}
   .sw-types .ty{display:block;width:100%;text-align:left;height:32px;padding:0 14px;border:0;background:transparent;color:rgba(255,255,255,.84);font-size:12px;position:relative;cursor:pointer}
   .sw-types .ty:hover{background:#373737;color:#fff}
   .sw-types .ty[aria-pressed="true"]{color:#fff}

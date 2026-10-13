@@ -54,7 +54,7 @@ test('the light travels with the angle (0° left→right, 90° top→bottom); ra
     const ctx = analyzeBase(rgba, w, h, { scheme: s.id, angle: 0 })
     const c1 = centroid(renderSweepFrame(ctx, 0.3, { scheme: s.id, angle: 0, blend: 'add', frames: 24 }))
     const c2 = centroid(renderSweepFrame(ctx, 0.7, { scheme: s.id, angle: 0, blend: 'add', frames: 24 }))
-    if (!s.radial && s.id !== 'rays') assert.ok(c1 && c2 && c2[0] > c1[0] + 5, `${s.id} 0°: ${c1 && c1[0].toFixed(1)} → ${c2 && c2[0].toFixed(1)}`)
+    if (!s.radial && !s.edge && s.id !== 'rays') assert.ok(c1 && c2 && c2[0] > c1[0] + 5, `${s.id} 0°: ${c1 && c1[0].toFixed(1)} → ${c2 && c2[0].toFixed(1)}`)
     else assert.ok(c1 && c2 && Math.abs(c2[2] - c1[2]) > 0, `${s.id} 径向：亮度随 p 变化`)
   }
   const ctx = analyzeBase(rgba, w, h, { scheme: 'base', angle: 90 })
@@ -93,7 +93,7 @@ test('flicker floor: few frames widen the band to 1.7 × step; the scheme defaul
   for (const s of SWEEP_SCHEMES) {
     const e = effectiveWidth({ scheme: s.id, frames: s.frames, width: 1 })
     assert.ok(e.floor <= (s.id === 'metal-highlight' ? 3 : 1.5), `${s.id} 默认 ${s.frames} 帧 floor ${e.floor.toFixed(2)}`)
-    assert.ok(effectiveWidth({ scheme: s.id, frames: 4, width: 1 }).wk > e.wk, `${s.id} 4 帧要加宽`)
+    if (!s.edge) assert.ok(effectiveWidth({ scheme: s.id, frames: 4, width: 1 }).wk > e.wk, `${s.id} 4 帧要加宽`)
     assert.ok(minFrames({ scheme: s.id, width: 1 }) >= 2)
   }
   assert.equal(effectiveWidth({ scheme: 'base', frames: 60, width: 1 }).wk, 1)
@@ -103,4 +103,94 @@ test('边距: auto = max(36, 24% for rays); manual wins', () => {
   assert.equal(generateSweepSequence(rgba, w, h, { scheme: 'base', frames: 2 }).pad, 36)
   assert.equal(generateSweepSequence(rgba, w, h, { scheme: 'rays', frames: 2 }).pad, 38)
   assert.equal(generateSweepSequence(rgba, w, h, { scheme: 'rays', frames: 2, pad: 50 }).pad, 50)
+})
+
+// ---------- 边缘扫光（2026-10-13）：光只沿轮廓走
+const edgeIds = SWEEP_SCHEMES.filter((s) => s.edge).map((s) => s.id)
+const lightAt = (f, x, y) => { const i = (y * f.w + x) * 4; return f.data[i + 3] }
+
+test('边缘扫光: 20 种都在，绕一圈（wrap），默认 40 帧，边距自动 48', () => {
+  assert.equal(edgeIds.length, 20)
+  for (const s of SWEEP_SCHEMES.filter((x) => x.edge)) assert.ok(s.wrap && s.frames === 40, s.id)
+  assert.equal(generateSweepSequence(rgba, w, h, { scheme: 'edge-meteor', frames: 2 }).pad, 48)
+  assert.equal(generateSweepSequence(rgba, w, h, { scheme: 'edge-meteor', frames: 2, scale: 0.5 }).pad, 24)
+})
+
+test('边缘扫光: 光集中在轮廓上，椭圆中心（离边 30 px 以上）的光不到总量 3%', () => {
+  for (const id of edgeIds) {
+    const P = { scheme: id, frames: 40, blend: 'add' }
+    const ctx = analyzeBase(rgba, w, h, P)
+    for (const p of [0.1, 0.4, 0.75]) {
+      const f = renderSweepFrame(ctx, p, P)
+      let center = 0, total = 0
+      for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+        const v = lightAt(f, x, y); total += v
+        if (y >= 40 + f.pad && y <= 50 + f.pad && x >= 70 + f.pad && x <= 90 + f.pad) center += v
+      }
+      // 内光流转本来就把光伸进面里（约 18 px + 泛光）
+      assert.ok(total > 0 && center / total < (id === 'edge-innerflow' ? 0.06 : 0.03), `${id} p=${p} 中心占 ${(center / total * 100).toFixed(1)}%`)
+    }
+  }
+})
+
+test('边缘扫光: 流星沿轮廓转圈（亮处的角度随 p 单调走），循环首尾相接（分流汇合 / 充能满圈 每圈重新开始除外）', () => {
+  const P = { scheme: 'edge-meteor', frames: 40, blend: 'add' }
+  const ctx = analyzeBase(rgba, w, h, P)
+  const ang = (p) => { const f = renderSweepFrame(ctx, p, P); let best = -1, bx = 0, by = 0; for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) { const v = lightAt(f, x, y); if (v > best) { best = v; bx = x; by = y } } return Math.atan2(by - f.h / 2, bx - f.w / 2) }
+  const seq = [0.1, 0.2, 0.3, 0.4].map(ang)
+  const steps = seq.slice(1).map((v, i) => { let d = v - seq[i]; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d })
+  assert.ok(steps.every((d) => d < -0.2) || steps.every((d) => d > 0.2), `流星角度一路同向走 ${steps.map((d) => d.toFixed(2))}`)
+  for (const id of edgeIds) {
+    if (id === 'edge-meet' || id === 'edge-charge') continue
+    const Q = { scheme: id, frames: 40, blend: 'add' }
+    const c2 = analyzeBase(rgba, w, h, Q)
+    const a = renderSweepFrame(c2, 0, Q), b = renderSweepFrame(c2, 1, Q)
+    let mx = 0
+    for (let i = 0; i < a.data.length; i += 4) for (let c = 0; c < 3; c++) mx = Math.max(mx, Math.abs((a.data[i + c] * a.data[i + 3] - b.data[i + c] * b.data[i + 3]) / 255))
+    assert.ok(mx <= 5, `${id} p=0 与 p=1 差 ${mx.toFixed(1)}`)
+  }
+})
+
+test('边缘扫光: 自带配色的不跟光色走，其余的 白光 / 自定义 生效', () => {
+  const lit = (id, extra) => { const P = { scheme: id, frames: 40, blend: 'add', ...extra }; return meanLit(renderSweepFrame(analyzeBase(rgba, w, h, P), 0.3, P)) }
+  const base = lit('edge-wideband', {}), pink = lit('edge-wideband', { colorMode: 'custom', color: '#ff3366' })
+  assert.ok(base[2] > base[0] + 10, `底图色偏蓝 ${base.map((v) => v.toFixed(0))}`)
+  assert.ok(pink[0] > pink[2] + 10, `自定义粉 ${pink.map((v) => v.toFixed(0))}`)
+  const fire = lit('edge-fire', {}), fire2 = lit('edge-fire', { colorMode: 'custom', color: '#3366ff' })
+  assert.equal(fire.map((v) => v.toFixed(1)).join(), fire2.map((v) => v.toFixed(1)).join(), '火焰描边自带配色')
+  assert.ok(SWEEP_SCHEMES.find((s) => s.id === 'edge-fire').fixedColor && !SWEEP_SCHEMES.find((s) => s.id === 'edge-wideband').fixedColor)
+})
+
+test('边缘扫光: 镂空（圆环）里外两圈都亮', () => {
+  const W2 = 120, H2 = 120, ring = new Uint8ClampedArray(W2 * H2 * 4)
+  for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) { const r = Math.hypot(x - 60, y - 60), i = (y * W2 + x) * 4; if (r < 50 && r > 25) { ring[i] = 230; ring[i + 1] = 180; ring[i + 2] = 60; ring[i + 3] = 255 } }
+  const P = { scheme: 'edge-neon', frames: 40, blend: 'add' }
+  const f = renderSweepFrame(analyzeBase(ring, W2, H2, P), 0.2, P)
+  let inner = 0, outer = 0
+  for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) { const r = Math.hypot(x - f.pad - 60, y - f.pad - 60), v = lightAt(f, x, y); if (r > 21 && r < 27) inner = Math.max(inner, v); if (r > 48 && r < 54) outer = Math.max(outer, v) }
+  assert.ok(inner > 60 && outer > 60, `内圈 ${inner} 外圈 ${outer}`)
+})
+
+test('边缘扫光: 大片透明边的图只在内容附近算，光和裁好的图一模一样（平移），尺度按可见内容', () => {
+  const BW = 3 * w, BH = 3 * h, big = new Uint8ClampedArray(BW * BH * 4)
+  for (let y = 0; y < h; y++) big.set(rgba.subarray(y * w * 4, (y + 1) * w * 4), ((y + h) * BW + w) * 4)
+  for (const id of ['edge-meteor', 'edge-fire', 'edge-charge']) {
+    const P = { scheme: id, frames: 40, blend: 'add' }
+    const a = renderSweepFrame(analyzeBase(rgba, w, h, P), 0.3, P)
+    const bctx = analyzeBase(big, BW, BH, P)
+    const b = renderSweepFrame(bctx, 0.3, P)
+    assert.equal(a.pad, b.pad, `${id} 边距按内容`)
+    assert.ok(b.w === BW + 2 * b.pad && b.h === BH + 2 * b.pad, `${id} 帧尺寸 = 大图 + 边距`)
+    let diff = 0, lit = 0
+    for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) {
+      const ia = (y * a.w + x) * 4, ib = ((y + h) * b.w + x + w) * 4
+      for (let c = 0; c < 4; c++) diff = Math.max(diff, Math.abs(a.data[ia + c] - b.data[ib + c]))
+      if (a.data[ia + 3] > 8) lit++
+    }
+    let litA = 0, litB = 0
+    for (let i = 3; i < a.data.length; i += 4) if (a.data[i] > 0) litA++
+    for (let i = 3; i < b.data.length; i += 4) if (b.data[i] > 0) litB++
+    assert.ok(lit > 0 && diff <= 1, `${id} 和小图一致（差 ${diff}）`)
+    assert.equal(litB, litA, `${id} 内容范围外没有光`)
+  }
 })

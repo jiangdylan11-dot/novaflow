@@ -7030,6 +7030,7 @@ self.onmessage = (e) => {
     const schemeOf = (id) => L.SWEEP_SCHEMES.find((s) => s.id === id) || L.SWEEP_SCHEMES[0]
     if (!state.sweepParams) { state.sweepParams = { ...L.DEFAULT_PARAMS }; state.sweepParams.frames = schemeOf(state.sweepParams.scheme).frames || state.sweepParams.frames }
     const P = state.sweepParams
+    if (state.sweepOpenGroups) state.sweepOpenGroups.add(schemeOf(P.scheme).group)   // 选中的方案所在分类总是展开
     // a sweep is always 叠加 (user 2026-10-13: 滤色 / 正常 kept flickering; no choice needed)
     P.blend = 'add'
     const bind = { bone: '', slot: '' }
@@ -7070,7 +7071,8 @@ self.onmessage = (e) => {
         const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(px.rgba, px.w, px.h), 0, 0)
         const small = h('canvas', { width: w, height: hh }); small.getContext('2d').drawImage(full, 0, 0, w, hh)
         const data = small.getContext('2d').getImageData(0, 0, w, hh).data
-        const Q = { ...P, frames: 10, pad: P.pad ? Math.round(P.pad * s) : 0 }
+        // 边缘扫光绕一圈：10 张太跳，预览给 24 张；scale 让边缘效果的像素尺寸跟着缩小版走
+        const Q = { ...P, frames: schemeOf(P.scheme).edge ? 24 : 10, pad: P.pad ? Math.round(P.pad * s) : 0, scale: s }
         pvTag.textContent = `${schemeOf(P.scheme).label} · 预览中…`
         const r = await sweepGenerate(data, w, hh, Q, (i, n) => { pvBar.style.width = `${(i / n) * 100}%` }, true)
         if (!document.body.contains(mask)) return
@@ -7090,9 +7092,17 @@ self.onmessage = (e) => {
     const types = h('div', { class: 'sw-types' })
     const buildTypes = () => {
       types.textContent = ''
+      // 分类可收起：默认只展开当前方案所在的那一类，点标题切换（本次打开期间记住）
+      if (!state.sweepOpenGroups) state.sweepOpenGroups = new Set([schemeOf(P.scheme).group])
+      const open = state.sweepOpenGroups
       let g = null
       for (const s of L.SWEEP_SCHEMES) {
-        if (s.group !== g) { g = s.group; types.append(h('div', { class: 'g' }, g)) }
+        if (s.group !== g) {
+          g = s.group
+          const grp = g, count = L.SWEEP_SCHEMES.filter((x) => x.group === grp).length
+          types.append(h('button', { class: 'g', 'aria-expanded': String(open.has(grp)), onclick: () => { if (open.has(grp)) open.delete(grp); else open.add(grp); buildTypes() } }, h('span', {}, grp), h('span', { class: 'n' }, String(count))))
+        }
+        if (!open.has(g)) continue
         types.append(h('button', { class: 'ty', title: s.hint, 'aria-pressed': String(s.id === P.scheme), onclick: () => {
           P.scheme = s.id
           if (s.colorMode) { P.colorMode = s.colorMode; P.color = s.color }
@@ -7108,8 +7118,10 @@ self.onmessage = (e) => {
     const row = (label, ...ctl) => { const r = h('div', { class: 'sw-p' }, h('label', {}, label), ...ctl); params.append(r); return r }
     const buildParams = () => {
       params.textContent = ''
+      const sc = schemeOf(P.scheme)
       for (const d of SWEEP_PARAM_DEFS) {
         if (d.only && d.only !== P.scheme) continue
+        if (sc.edge && (d.key === 'angle' || d.key === 'width')) continue   // 边缘扫光沿轮廓走，没有方向 / 光带宽度
         const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: P[d.key] })
         const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: P[d.key] })
         range.oninput = () => { P[d.key] = Number(range.value); num.value = range.value; if (d.key === 'width') buildParams(); schedulePreview() }
@@ -7120,7 +7132,8 @@ self.onmessage = (e) => {
       const colorRow = h('div', { class: 'sw-seg' })
       colorRow.append(...seg([{ id: 'base', label: '底图色' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], P.colorMode, (v) => { P.colorMode = v }).children)
       if (P.colorMode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(P.color) ? P.color : '#ffffff' }); c.oninput = () => { P.color = c.value; schedulePreview() }; colorRow.append(c) }
-      row('光色', colorRow)
+      if (sc.fixedColor) params.append(h('div', { class: 'sw-wide' }, '这个效果自带配色，光色不可调'))
+      else row('光色', colorRow)
       const ew = L.effectiveWidth(P)
       const fn = h('input', { type: 'number', min: 2, max: 120, step: 1, value: P.frames })
       fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
