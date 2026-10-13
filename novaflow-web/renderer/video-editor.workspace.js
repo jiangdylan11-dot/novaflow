@@ -740,7 +740,11 @@
       if (!layers.some((l) => l.video)) throw new Error('时间轴上没有可见的视频片段')
       return { schema: 'novaflow-video-editor/1', output: { filePath: filePath || '', format, width: state.canvas.width, height: state.canvas.height, fps: state.canvas.fps }, duration, layers }
     }
-    function exportFormat() { return editor.allClips().some((c) => /\.webm$/i.test(c.source.fileName || '')) ? 'webm' : 'mp4' }
+    // WEBM (transparent, video-only) whenever透明 is in play: a source clip that
+    // already carries alpha, or a clip the user painted a mask on. MP4 would
+    // flatten the masked-away area to solid black. Everything else stays MP4
+    // (opaque, keeps audio).
+    function exportFormat() { return editor.allClips().some((c) => /\.webm$/i.test(c.source.fileName || '') || (c.mask && c.maskRevision > 0)) ? 'webm' : 'mp4' }
     let progressUnsubscribe = null
     function listenProgress() {
       if (typeof electronAPI.onVideoCompositorProgress !== 'function') return () => {}
