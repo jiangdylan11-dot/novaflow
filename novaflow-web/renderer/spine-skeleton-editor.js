@@ -7045,12 +7045,17 @@ self.onmessage = (e) => {
     { const bs0 = baseSlot(); const baseBone0 = bs0 ? bs0.bone : 'root'; if (pickedBone && pickedBone !== baseBone0 && state.json.bones.some((b) => b.name === pickedBone)) bind.bone = pickedBone }
 
     // preview: a small copy of the picture, 10 frames, replayed like 写入动画
+    // 时长（帧）= 写入动画时 起 → 止 的长度；预览按同一个时长循环，看到的就是写进去的样子。
+    // 动画还没长度（空动画）时默认 60 帧 = 2 秒，不再按每张 5 帧算（40 张会拖到 7 秒）
+    if (!(state.sweepEnd > 0) && lastFrame() <= Math.round(state.sweepStart || 0) + 1) state.sweepEnd = Math.round(state.sweepStart || 0) + 60
+    const sweepDur = () => Math.max(2, sweepEndFrame(P.frames) - Math.max(0, Math.round(state.sweepStart || 0)))
     const pvCanvas = h('canvas', { width: 2, height: 2 }), pvTag = h('span', { class: 'tag' }), pvBar = h('i')
     const pv = h('div', { class: 'sw-pv' }, pvCanvas, pvTag, h('span', { class: 'note' }, '预览是缩小版，生成按原图尺寸'), h('div', { class: 'bar' }, pvBar))
     const drawPreview = () => {
       if (!preview) return
       const g = pvCanvas.getContext('2d'), n = preview.frames.length, wrap = preview.wrap
-      const total = ((wrap ? n : n + 1) * 5) / FPS, step = total / (wrap ? n : n + 1), t = clock % total
+      // 按「时长」放（用户 2026-10-13：原来每张停 5 帧，24 张要 4 秒，看着又慢又顿）
+      const total = sweepDur() / FPS, step = total / (wrap ? n : n + 1), t = clock % total
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1
       g.clearRect(0, 0, pvCanvas.width, pvCanvas.height)
       if (preview.blend !== 'normal') g.drawImage(preview.base, preview.pad, preview.pad)
@@ -7071,8 +7076,8 @@ self.onmessage = (e) => {
         const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(px.rgba, px.w, px.h), 0, 0)
         const small = h('canvas', { width: w, height: hh }); small.getContext('2d').drawImage(full, 0, 0, w, hh)
         const data = small.getContext('2d').getImageData(0, 0, w, hh).data
-        // 边缘扫光绕一圈：10 张太跳，预览给 24 张；scale 让边缘效果的像素尺寸跟着缩小版走
-        const Q = { ...P, frames: schemeOf(P.scheme).edge ? 24 : 10, pad: P.pad ? Math.round(P.pad * s) : 0, scale: s }
+        // 边缘扫光绕一圈：预览张数和「帧数」一样（最多 40），顺滑度和写入后一致；scale 让边缘效果的像素尺寸跟着缩小版走
+        const Q = { ...P, frames: schemeOf(P.scheme).edge ? Math.max(10, Math.min(40, Math.round(Number(P.frames) || 40))) : 10, pad: P.pad ? Math.round(P.pad * s) : 0, scale: s }
         pvTag.textContent = `${schemeOf(P.scheme).label} · 预览中…`
         const r = await sweepGenerate(data, w, hh, Q, (i, n) => { pvBar.style.width = `${(i / n) * 100}%` }, true)
         if (!document.body.contains(mask)) return
@@ -7139,6 +7144,16 @@ self.onmessage = (e) => {
       fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
       const widened = ew.floor > 1.1 * Math.max(0.2, Number(P.width) || 1)   // a few percent of widening is not worth a warning
       row('帧数', fn, h('span', { class: 'sw-inl', style: widened ? 'color:#e0b45a' : '' }, widened ? `少于 ${L.minFrames(P)} 帧会一步一闪：光带已自动加宽到 ${ew.floor.toFixed(2)}` : '生成多少张切片；多一些扫得更顺')).classList.add('num')
+      // 时长：改它 = 改卡片栏的「止」；每秒少于 15 张切片时交叉淡入淡出看得出一顿一顿
+      const dur = sweepDur(), perSec = (P.frames * FPS) / dur, choppy = perSec < 15
+      const dn = h('input', { type: 'number', min: 2, max: 18000, step: 1, value: dur })
+      dn.onchange = () => {
+        const v = Math.max(2, Math.min(18000, Math.round(Number(dn.value) || dur)))
+        state.sweepEnd = Math.max(0, Math.round(state.sweepStart || 0)) + v
+        clock = 0; buildParams(); renderLayerDock()
+      }
+      row('时长', dn, h('span', { class: 'sw-inl', style: choppy ? 'color:#e0b45a' : '' },
+        choppy ? `一圈 ${(dur / FPS).toFixed(1)} 秒，每秒不到 15 张会一顿一顿，帧数建议 ≥ ${Math.ceil((dur / FPS) * 15)}` : `帧，一圈 ${(dur / FPS).toFixed(1)} 秒`)).classList.add('num')
       const pn = h('input', { type: 'number', min: 0, max: 400, step: 1, value: P.pad })
       pn.onchange = () => { P.pad = Math.max(0, Math.min(400, Math.round(Number(pn.value) || 0))); pn.value = P.pad; schedulePreview() }
       row('边距', pn, h('span', { class: 'sw-inl' }, '切片四周留给光晕的像素，0 = 自动')).classList.add('num')
