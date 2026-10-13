@@ -2008,32 +2008,59 @@
         last = 'o' + i;
         if (layer.audio) { filters.push(audioChain(layer, i)); audioLabels.push('[a' + i + ']'); }
       });
-      filters.push('[' + last + ']format=' + (keepAlpha ? 'yuva420p' : 'yuv420p') + '[vout]');
+      filters.push('[' + last + ']format=' + (keepAlpha ? 'rgba' : 'yuv420p') + '[vout]');
       const withAudio = audioLabels.length > 0;
       if (withAudio) filters.push(audioLabels.join('') + 'amix=inputs=' + audioLabels.length + ':duration=longest:normalize=0,apad[aout]');
-      const encode = format === 'webm'
-        ? ['-c:v', 'libvpx', '-crf', '8', '-qmin', '0', '-qmax', '8', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0', '-g', '1', '-metadata:s:v:0', 'alpha_mode=1']
-        : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
-      const run = async (audio) => {
-        const full = args.slice();
-        const graph = audio ? filters : filters.filter((f) => !/\[aout\]$|\[a\d+\]$/.test(f));
-        full.push('-filter_complex', graph.join(';'), '-map', '[vout]');
-        if (audio) full.push('-map', '[aout]', '-c:a', format === 'webm' ? 'libopus' : 'aac', '-b:a', '160k');
-        else full.push('-an');
-        full.push(...encode, '-r', String(fps), '-t', fmt3(duration), '-y', outFile);
-        ffmpegJob.log = '';
-        return ffmpeg.exec(full);
-      };
-      busy.update(jobId, label, 0);
-      let code = await run(withAudio);
-      if (code !== 0 && withAudio && !cancelled.has(jobId)) code = await run(false);
-      if (cancelled.has(jobId)) { cancelled.delete(jobId); return { ok: false, canceled: true, code: 'export_canceled', jobId }; }
-      if (code !== 0) {
+      const failTail = () => {
         const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found|no such/i.test(line)).slice(-3).join('；');
-        throw new Error('ffmpeg 退出码 ' + code + (tail ? '：' + tail.slice(0, 240) : ''));
+        return (tail ? '：' + tail.slice(0, 240) : '');
+      };
+      let bytes;
+      if (format === 'webm') {
+        // Transparent WEBM: this core's libvpx AND libopus both trap, so ffmpeg
+        // only composites the transparent frames and WebCodecs encodes them
+        // (the same encoder 视频抠图保存 uses). Picture only — a transparent clip
+        // carries no sound; MP4 export is the one that keeps audio.
+        if (!(typeof root.createImageBitmap === 'function' && await alphaWebm.supported(width, height, fps))) {
+          throw new Error('这个浏览器不能生成透明 WEBM，请改存 MP4 或用桌面版');
+        }
+        const framePattern = tag + 'vf%05d.png';
+        const graph = filters.filter((f) => !/\[aout\]$|\[a\d+\]$/.test(f));
+        const frameArgs = args.slice();
+        frameArgs.push('-filter_complex', graph.join(';'), '-map', '[vout]', '-r', String(fps), '-t', fmt3(duration), '-c:v', 'png', '-y', framePattern);
+        ffmpegJob.log = '';
+        busy.update(jobId, label, 0);
+        const code = await ffmpeg.exec(frameArgs);
+        if (cancelled.has(jobId)) { cancelled.delete(jobId); return { ok: false, canceled: true, code: 'export_canceled', jobId }; }
+        if (code !== 0) throw new Error('ffmpeg 退出码 ' + code + failTail());
+        let entries = [];
+        try { entries = await ffmpeg.listDir('/'); } catch (_) { entries = []; }
+        const frameNames = entries.map((e) => (e && typeof e === 'object' ? e.name : e)).filter((n) => typeof n === 'string' && n.startsWith(tag + 'vf') && /\.png$/i.test(n)).sort();
+        if (!frameNames.length) throw new Error('合成没有产生可编码的帧');
+        const frameMap = new Map();
+        for (const name of frameNames) { frameMap.set(name, await ffmpeg.readFile(name)); scratch.push(name); }
+        bytes = await encodeFramesAlphaWebm(frameMap, frameNames, width, height, fps, (done, total) => { const p = total ? done / total : 0; busy.update(jobId, label, p); report('render', p, '编码 WEBM ' + Math.round(p * 100) + '%'); });
+        frameMap.clear();
+      } else {
+        const encode = ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+        const run = async (audio) => {
+          const full = args.slice();
+          const graph = audio ? filters : filters.filter((f) => !/\[aout\]$|\[a\d+\]$/.test(f));
+          full.push('-filter_complex', graph.join(';'), '-map', '[vout]');
+          if (audio) full.push('-map', '[aout]', '-c:a', 'aac', '-b:a', '160k');
+          else full.push('-an');
+          full.push(...encode, '-r', String(fps), '-t', fmt3(duration), '-y', outFile);
+          ffmpegJob.log = '';
+          return ffmpeg.exec(full);
+        };
+        busy.update(jobId, label, 0);
+        let code = await run(withAudio);
+        if (code !== 0 && withAudio && !cancelled.has(jobId)) code = await run(false);
+        if (cancelled.has(jobId)) { cancelled.delete(jobId); return { ok: false, canceled: true, code: 'export_canceled', jobId }; }
+        if (code !== 0) throw new Error('ffmpeg 退出码 ' + code + failTail());
+        const data = await ffmpeg.readFile(outFile);
+        bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       }
-      const data = await ffmpeg.readFile(outFile);
-      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
       const blob = new Blob([bytes], { type: mimeType });
       const fileName = (filePath.split('/').pop() || ('novaflow_video_edit.' + format));
