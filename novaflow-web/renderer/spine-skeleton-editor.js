@@ -6394,6 +6394,8 @@
       bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
     const title = kind === 'sequence' ? '序列K帧：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图'
     const head = [
+      h('strong', { class: 'ld-title' }, kind === 'sequence' ? '序列K帧' : '序列扫光'),
+      h('span', { class: 'ld-sep' }),
       h('span', {}, `已选 ${ticked.length} / ${files.length}`),
       h('button', { class: 'tg', onclick: () => { for (const f of files) U.delete(f.name); renderLayerDock() } }, '全选'),
       h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { for (const f of files) U.add(f.name); renderLayerDock() } }, '清空'),
@@ -6409,10 +6411,10 @@
       const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
         onchange: (e) => { state.seqGap = Math.max(1, Math.min(600, Math.round(Number(e.target.value) || 1))); e.target.value = state.seqGap } })
       head.push(h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
-        blendSelect(state.seqBlend, (v) => { state.seqBlend = v }),
         // 循环 (user 2026-10-13): a sequence that does not loop, made to loop by two crossfading slots
         h('label', { class: 'ld-f', title: '把不循环的序列做成循环：分成两个插槽叠在一起，一个播前一半、透明度 0→100，一个播后一半、透明度 100→0；循环长度 = 序列的一半' },
           h('input', { type: 'checkbox', checked: !!state.seqLoop, onchange: (e) => { state.seqLoop = e.target.checked } }), '循环'),
+        blendSelect(state.seqBlend, (v) => { state.seqBlend = v }),
       )
       go = h('button', { class: 'ld-go', title: state.seqLoop ? '写入循环序列：两个插槽交叉淡入淡出，首尾无缝' : '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画')
     } else {
@@ -6477,6 +6479,8 @@
     const pic = state.loopPic
     dock.append(
       h('div', { class: 'ld-hd loop' },
+        h('strong', { class: 'ld-title' }, '循环运动'),
+        h('span', { class: 'ld-sep' }),
         pic ? h('span', {}, `已选 ${pic.split('/').pop()}`) : null,
         pic ? h('span', { class: 'ld-sep' }) : null,
         h('label', { class: 'ld-f' }, '骨骼', sel),
@@ -6490,9 +6494,9 @@
         num('scale', '缩放', null, { step: 0.05, min: 0 }, '一份从 1 缩放到这个大小；1 = 不缩放'),
         h('label', { class: 'ld-f' }, '时长', framesIn, '帧'),
         h('label', { class: 'ld-f' }, '数量', countIn),
-        blendSelect(o.blend, (v) => { o.blend = v }),
         h('label', { class: 'ld-f', title: '打开：首尾帧一致，变化在尾帧前一帧（阶梯），透明度 0→100→0，各份按数量错开，可以整体偏移拖动' },
           h('input', { type: 'checkbox', checked: o.offset, onchange: (e) => { o.offset = e.target.checked; renderLayerDock() } }), '偏移'),
+        blendSelect(o.blend, (v) => { o.blend = v }),
         h('span', { class: 'sp' }),
         h('button', { class: 'ld-go', title: '建骨骼和插槽，写入循环关键帧', onclick: writeLoop }, '写入动画'),
         h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = 'loop'; state.leftOpen = null; renderLeft(); refresh() } }, '×')))

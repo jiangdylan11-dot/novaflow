@@ -496,6 +496,11 @@
   .ld-hd>*{flex-shrink:0}
   .ld-hd .tg,.ld-hd .ld-go,.ld-hd .ld-f,.ld-hd>span{white-space:nowrap}
   .ld-hd select[data-frame-blend]{width:78px}
+  /* the tool's name first, as the other 动画工具 panels open with theirs */
+  .ld-hd .ld-title{font-size:13px;font-weight:500;color:#fff;white-space:nowrap}
+  /* a field that does not apply (数量 without 偏移): greyed, value and label */
+  .ld-hd .ld-num:disabled{color:rgba(255,255,255,.28);background:rgba(255,255,255,.04)}
+  .ld-hd .ld-f:has(> input.ld-num:disabled){color:rgba(255,255,255,.32)}
   .ld-hd.loop{gap:5px}
   .ld-hd.loop .ld-num{width:38px;padding:0 3px}
   .ld-hd.loop .ld-sel{max-width:92px}
