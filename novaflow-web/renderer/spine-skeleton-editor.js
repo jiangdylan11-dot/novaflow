@@ -1274,7 +1274,7 @@
     if (sel && (sel.kind === 'bone' || sel.kind === 'slot' || sel.kind === 'att' || sel.kind === 'ph' || sel.kind === 'ik' || sel.kind === 'transform' || sel.kind === 'path' || sel.kind === 'event') && !(opts && opts.noReveal)) revealInTree(sel)
     // 序列K帧 / 序列扫光: the cards' 骨骼 follows the bone picked in the tree or on the stage at
     // once (user 2026-10-12: 骨骼树点击骨骼，下面没有实时变化)
-    if ((state.leftOpen === 'sequence' || state.leftOpen === 'sweep') && state.sel && state.sel.kind === 'bone' && state.frameBone !== state.sel.name && state.json && state.json.bones.some((b) => b.name === state.sel.name)) {
+    if ((state.leftOpen === 'sequence' || state.leftOpen === 'sweep' || state.leftOpen === 'loop') && state.sel && state.sel.kind === 'bone' && state.frameBone !== state.sel.name && state.json && state.json.bones.some((b) => b.name === state.sel.name)) {
       state.frameBone = state.sel.name
       const boneSel = document.querySelector('#layerDock select[data-frame-bone]')
       if (boneSel) boneSel.value = state.frameBone
@@ -6040,12 +6040,12 @@
   /** The layer cards over the bottom of the stage while 自动蒙皮 / 自动权重 is open (序列K帧 / 序列扫光 show pictures there). */
   function renderLayerDock() {
     const dock = $('#layerDock')
-    const frameTool = state.leftOpen === 'sequence' || state.leftOpen === 'sweep'
+    const frameTool = state.leftOpen === 'sequence' || state.leftOpen === 'sweep' || state.leftOpen === 'loop'
     const kind = state.leftOpen === 'mesh' || state.leftOpen === 'weights' || frameTool ? state.leftOpen : null
     const show = !!(kind && state.json && (frameTool ? animOn() : (state.mode === 'setup' || kind === 'weights')) && !state.meshEdit && !state.weightEdit)
     dock.hidden = !show
     if (!show) return
-    if (frameTool) { renderFrameDock(dock, kind); return }
+    if (frameTool) { if (kind === 'loop') renderLoopDock(dock); else renderFrameDock(dock, kind); return }
     const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
     dock.textContent = ''
     const layers = imageLayers(false, kind === 'weights')
@@ -6384,6 +6384,169 @@
     else if (!files.length) grid.append(h('div', { class: 'hint' }, kind === 'sweep' ? '根目录里没有图片：用「从文件夹添加…」挑图（勾一张作底图后「生成扫光…」，或勾自己准备的序列图直接写入）' : '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
     dock.append(grid)
     grid.scrollTop = keep
+  }
+
+  // ---------- 循环运动 (动画工具, user 2026-10-13)
+  //
+  // One picture (a light, say) becomes a seamless loop: copies of it, each on its own new bone
+  // under 骨骼, turning / moving / scaling while their alpha fades.
+  // 偏移 off: two copies hand over - A 0 → 角度 fading 100 → 0, B −角度 → 0 fading 0 → 100; at the
+  //   wrap A takes B's place exactly, so the loop has no seam.
+  // 偏移 on: every copy runs the same cycle - the last frame repeats the first, the change lands on
+  //   the frame before it with a stepped curve (the snap back happens while it is invisible), alpha
+  //   0 → 100 → 0 (linear) - and copy k starts k/数量 of the way in (keys shifted with wrap-around).
+
+  const loopOpt = () => state.loopOpt || (state.loopOpt = { rotate: 90, dx: 0, dy: 0, scale: 1, frames: 0, count: 2, offset: false })
+  const loopFrames = () => { const o = loopOpt(); return o.frames > 1 ? o.frames : (lastFrame() > 1 ? lastFrame() : 30) }
+
+  function renderLoopDock(dock) {
+    const o = loopOpt()
+    const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
+    dock.textContent = ''
+    const pictures = framePictures()
+    const files = pictures || []
+    if (pictures && state.loopPic && !files.some((f) => f.name === state.loopPic)) state.loopPic = null
+    const bones = state.json.bones.map((b) => b.name)
+    if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
+    const sel = h('select', { class: 'ld-sel', 'data-frame-bone': '1', title: '循环的骨骼都建在这根骨骼下面（图片居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
+      bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
+    const num = (k, label, unit, attrs, title) => {
+      const i = h('input', { type: 'number', class: 'ld-num', step: 'any', value: o[k], title, ...attrs,
+        onchange: (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) o[k] = v; e.target.value = o[k] } })
+      return h('label', { class: 'ld-f', title }, label, i, unit || null)
+    }
+    const framesIn = h('input', { type: 'number', class: 'ld-num', min: 2, max: 18000, step: 1, value: loopFrames(), title: '一个循环多少帧（默认 = 动画长度）',
+      onchange: (e) => { const v = Math.round(Number(e.target.value) || 0); o.frames = v > 1 ? Math.min(18000, v) : 0; e.target.value = loopFrames() } })
+    const countIn = h('input', { type: 'number', class: 'ld-num', min: 1, max: 24, step: 1, value: o.offset ? o.count : 2, disabled: !o.offset,
+      title: o.offset ? '几份：每份错开 1/数量（2 份 = 0、50%；4 份 = 0、25%、50%、75%）' : '不偏移时固定 2 份（一份淡出，一份淡入）',
+      onchange: (e) => { o.count = Math.max(1, Math.min(24, Math.round(Number(e.target.value) || 2))); e.target.value = o.count } })
+    const pic = state.loopPic
+    dock.append(
+      h('div', { class: 'ld-hd' },
+        h('span', {}, pic ? `已选 ${pic.split('/').pop()}` : '点一张图片'),
+        h('span', { class: 'ld-sep' }),
+        h('label', { class: 'ld-f' }, '骨骼', sel),
+        h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '循环建在哪根骨骼下：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
+        h('button', { class: 'tg', title: '打开工程的图片文件夹挑图（进子文件夹后「添加所选」）', onclick: () => openImagePicker('循环运动：从图片文件夹挑图', (names) => { state.frameSet = names.map((n) => ({ name: n })); state.loopPic = names[0] || null; renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
+        state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; renderLayerDock() } }, '根目录') : null,
+        h('span', { class: 'sp' }),
+        h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = 'loop'; state.leftOpen = null; renderLeft(); refresh() } }, '×')),
+      h('div', { class: 'ld-hd loop' },
+        num('rotate', '旋转', '°', { step: 1 }, '一份从 0 转到这个角度（负数 = 反向）；0 = 不转'),
+        num('dx', '移动 X', null, { step: 1 }, '一份移动的距离（骨骼坐标）；0 = 不动'),
+        num('dy', 'Y', null, { step: 1 }),
+        num('scale', '缩放', null, { step: 0.05, min: 0 }, '一份从 1 缩放到这个大小；1 = 不缩放'),
+        h('label', { class: 'ld-f' }, '时长', framesIn, '帧'),
+        h('label', { class: 'ld-f' }, '数量', countIn),
+        h('label', { class: 'ld-f', title: '打开：首尾帧一致，变化在尾帧前一帧（阶梯），透明度 0→100→0，各份按数量错开，可以整体偏移拖动' },
+          h('input', { type: 'checkbox', checked: o.offset, onchange: (e) => { o.offset = e.target.checked; renderLayerDock() } }), '偏移'),
+        h('span', { class: 'sp' }),
+        h('button', { class: 'ld-go', title: '建骨骼和插槽，写入循环关键帧', onclick: writeLoop }, '写入动画')))
+    const grid = h('div', { class: 'ld-grid' })
+    for (const f of files) {
+      const on = f.name === pic
+      const choose = () => { state.loopPic = on ? null : f.name; renderLayerDock() }
+      grid.append(h('div', { class: 'ld-card', 'data-on': on ? '1' : null, title: f.name, onclick: choose },
+        h('input', { type: 'checkbox', checked: on, title: '用这张图做循环', onclick: (e) => { e.stopPropagation(); choose() } }),
+        frameThumb(f), h('span', { class: 'ld-n' }, f.name.split('/').pop()), h('span', { class: 'ld-c' }, on ? '循环' : '')))
+    }
+    if (!pictures) grid.append(h('div', { class: 'hint' }, '读取图片文件夹…'))
+    else if (!files.length) grid.append(h('div', { class: 'hint' }, '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
+    dock.append(grid)
+    grid.scrollTop = keep
+  }
+
+  /**
+   * A cycle's keys moved `o` frames later with wrap-around (`keys`: [{ f, v: [...], stepped }] from
+   * frame 0 to T, the last repeating the first): a new first / last key carries the value that now
+   * falls on frame 0, and the curve it sits in.
+   */
+  function shiftLoop(keys, o, T) {
+    o = ((Math.round(o) % T) + T) % T
+    if (!o) return keys.map((k) => ({ ...k, v: k.v.slice() }))
+    const u = T - o
+    let i = 0
+    while (i + 1 < keys.length && keys[i + 1].f <= u) i++
+    const A = keys[i], B = keys[Math.min(i + 1, keys.length - 1)]
+    const at = A.f === u || A.stepped || B === A ? A.v.slice() : A.v.map((x, n) => x + (B.v[n] - x) * (u - A.f) / (B.f - A.f))
+    const out = [{ f: 0, v: at, stepped: A.stepped }]
+    for (const k of keys.slice(0, -1)) {
+      let f = k.f + o
+      if (f >= T) f -= T
+      if (f === 0) continue
+      out.push({ f, v: k.v.slice(), stepped: k.stepped })
+    }
+    out.sort((a, b) => a.f - b.f)
+    out.push({ f: T, v: at.slice(), stepped: false })
+    return out
+  }
+
+  /** Copy k's keys: { motion: [{ f, v: [rot, x, y, s], stepped }], alpha: [{ f, v: [a] }] }. */
+  function loopKeys(k, N, T, o) {
+    const R = o.rotate, dx = o.dx, dy = o.dy, S = o.scale
+    if (!o.offset) {
+      // the hand-over pair: A runs out (fading), B runs in (appearing) and ends where A starts
+      return k === 0
+        ? { motion: [{ f: 0, v: [0, 0, 0, 1] }, { f: T, v: [R, dx, dy, S] }], alpha: [{ f: 0, v: [1] }, { f: T, v: [0] }] }
+        : { motion: [{ f: 0, v: [-R, -dx, -dy, Math.max(0, 2 - S)] }, { f: T, v: [0, 0, 0, 1] }], alpha: [{ f: 0, v: [0] }, { f: T, v: [1] }] }
+    }
+    const start = [0, 0, 0, 1], end = [R, dx, dy, S]
+    const motion = [{ f: 0, v: start }, { f: T - 1, v: end, stepped: true }, { f: T, v: start }]
+    const alpha = [{ f: 0, v: [0] }, { f: Math.round(T / 2), v: [1] }, { f: T, v: [0] }]
+    const shift = Math.round((k * T) / N)
+    return { motion: shiftLoop(motion, shift, T), alpha: shiftLoop(alpha, shift, T) }
+  }
+
+  /** 循环运动 → new bones + slots under 骨骼 and their keys in the open animation. */
+  async function writeLoop() {
+    if (!animOn()) { status('先选一个动画', 'error'); return }
+    const o = loopOpt()
+    const pic = (framePictures() || []).find((f) => f.name === state.loopPic)
+    if (!pic) { status('先在卡片里点一张图片', 'error'); return }
+    const moves = { rot: Math.abs(o.rotate) > 1e-6, tr: Math.abs(o.dx) > 1e-6 || Math.abs(o.dy) > 1e-6, sc: Math.abs(o.scale - 1) > 1e-6 }
+    if (!moves.rot && !moves.tr && !moves.sc) { status('旋转、移动、缩放至少设一个', 'error'); return }
+    try { await bringFramesIn([pic]) } catch (e) { status(e.message, 'error'); return }
+    const image = pic.name, short = image.split('/').pop(), parent = frameBone(), anim = state.anim
+    const T = loopFrames(), N = o.offset ? Math.max(1, Math.min(24, Math.round(o.count) || 2)) : 2
+    const t4 = (f) => Math.round((f / FPS) * 10000) / 10000
+    const r3 = (x) => Math.round(x * 1000) / 1000
+    const size = regionSize(image) || { width: 1, height: 1 }
+    let firstBone = null
+    return edit(`循环运动：${short} × ${N}，${T} 帧${o.offset ? '，偏移' : ''}，建在 ${parent} 下（${anim}）`, (j) => {
+      let json = j
+      const made = []
+      const takenBones = new Set(json.bones.map((b) => b.name))
+      for (let k = 0; k < N; k++) {
+        let name = `${short}_loop${k + 1}`, n = 2
+        while (takenBones.has(name)) name = `${short}_loop${k + 1}_${n++}`
+        takenBones.add(name)
+        json = Ops.addBone(json, { name, parent }).json
+        const slot = uniqueSlotName(json, name)
+        json = Ops.addSlot(json, name, slot).json
+        json = Ops.addRegionAttachment(json, 'default', slot, { name: short, path: image, width: size.width, height: size.height }).json
+        json = Ops.setSlotProps(json, slot, { attachment: short }).json
+        made.push({ bone: name, slot })
+      }
+      json = Ops.prepare(json)
+      const a = json.animations[anim]
+      if (!a) throw new Error(`找不到动画：${anim}`)
+      a.bones = a.bones || {}
+      a.slots = a.slots || {}
+      made.forEach((m, k) => {
+        const K = loopKeys(k, N, T, o)
+        const at = (key, extra) => ({ ...(key.f ? { time: t4(key.f) } : {}), ...extra, ...(key.stepped ? { curve: 'stepped' } : {}) })
+        const row = {}
+        if (moves.rot) row.rotate = K.motion.map((key) => at(key, { angle: r3(key.v[0]) }))
+        if (moves.tr) row.translate = K.motion.map((key) => at(key, { x: r3(key.v[1]), y: r3(key.v[2]) }))
+        if (moves.sc) row.scale = K.motion.map((key) => at(key, { x: r3(key.v[3]), y: r3(key.v[3]) }))
+        a.bones[m.bone] = row
+        const alphaHex = (x) => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, '0')
+        // the alpha never steps (user): 0 → 100 → 0 runs smoothly through the snap
+        a.slots[m.slot] = { color: K.alpha.map((key) => ({ ...(key.f ? { time: t4(key.f) } : {}), color: 'ffffff' + alphaHex(key.v[0]) })) }
+      })
+      firstBone = made[0] && made[0].bone
+      return { json: Ops.tidy(json) }
+    }, () => { gotoFrame(0); if (firstBone) { state.sel = { kind: 'bone', name: firstBone }; state.multi = [firstBone]; revealInTree(state.sel) } })
   }
 
   /** 序列扫光's last frame: the field's value, else the animation's last frame, else 5 frames a picture after 起. */
@@ -9470,7 +9633,7 @@ self.onmessage = (e) => {
       if (open && kind === 'weights') { const dock = document.getElementById('layerDock'); if (dock) dock.dataset.last = '' }
     } else if (kind === 'bones') {
       if (open) { state.leftOpen = null; if (state.mode !== 'setup') setMode('setup'); state.opt.boneVis = true }
-    } else if (kind === 'sequence' || kind === 'sweep') {
+    } else if (kind === 'sequence' || kind === 'sweep' || kind === 'loop') {
       // 序列K帧 / 序列扫光 (动画工具): the layer cards over the stage, in 动画
       if (open) {
         state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind
@@ -9487,13 +9650,13 @@ self.onmessage = (e) => {
       } else if (state.leftOpen === kind) state.leftOpen = null
     } else if (kind === 'frames') {
       // a calculation tool picked: 序列K帧 / 序列扫光's cards go
-      if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep')) state.leftOpen = null
+      if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep' || state.leftOpen === 'loop')) state.leftOpen = null
     } else if (kind === 'motion') {
-      if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep')) state.leftOpen = null
+      if (!open && (state.leftOpen === 'sequence' || state.leftOpen === 'sweep' || state.leftOpen === 'loop')) state.leftOpen = null
       if (open) {
         // the frame tools are 动画工具 too: the host's open (it polls, so it may land after the
         // tool's own setPanel) must not take their cards away
-        if (state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep') state.leftOpen = null
+        if (state.leftOpen !== 'sequence' && state.leftOpen !== 'sweep' && state.leftOpen !== 'loop') state.leftOpen = null
         // (the timeline no longer folds for the tools — user 2026-10-12: 摄影表高度不要变 — so
         // nothing is promised here; the box positions itself against the full timeline)
         if (state.mode !== 'animate') {
