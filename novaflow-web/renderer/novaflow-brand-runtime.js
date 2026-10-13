@@ -7641,6 +7641,9 @@
   }
 
   function getNovaflowManualExportStateForPayload(payload, preferredMode = "") {
+    // The export dialog's name belongs to the export it started: once the
+    // dialog is gone, other saves (工具 另存为 …) keep their own file names.
+    if (!document.querySelector('[data-novaflow-export-modal-root="1"]')) return null;
     const expectedMode = String(preferredMode || "");
     const current = getNovaflowManualExportState();
     if (current && (!expectedMode || String(current.mode || "") === expectedMode)) return current;

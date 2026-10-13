@@ -326,13 +326,21 @@
       } else if (api?.pickDirectory && api?.writeBinaryFile) {
         const picked = await api.pickDirectory()
         if (!picked?.dir || picked.canceled) return
-        for (const atlas of state.resultAtlases) {
-          const atlasWrite = await api.writeBinaryFile({ dir: picked.dir, fileName: atlas.fileName || 'spine.atlas', bytes: textBytes(atlas.text) })
-          if (!atlasWrite?.ok) throw new Error(atlasWrite?.error || atlasWrite?.message || `${atlas.fileName || 'atlas'} 导出失败`)
-        }
+        // Pages first: a page saved under a copy name (同名 → 存为副本) is
+        // renamed in the atlas text too, so the atlas points at its own pages.
+        const renamed = new Map()
         for (const item of ready) {
           const imageWrite = await api.writeBinaryFile({ dir: picked.dir, fileName: item.result.fileName, bytes: item.result.bytes })
+          if (imageWrite?.result?.canceled) return
           if (!imageWrite?.ok) throw new Error(imageWrite?.error || imageWrite?.message || `${item.result.fileName} 导出失败`)
+          const savedName = imageWrite.result?.name
+          if (savedName && savedName !== item.result.fileName) renamed.set(item.result.fileName, savedName)
+        }
+        for (const atlas of state.resultAtlases) {
+          const text = String(atlas.text).split('\n').map((line) => renamed.has(line.trim()) ? renamed.get(line.trim()) + (line.endsWith('\r') ? '\r' : '') : line).join('\n')
+          const atlasWrite = await api.writeBinaryFile({ dir: picked.dir, fileName: atlas.fileName || 'spine.atlas', bytes: textBytes(text) })
+          if (atlasWrite?.result?.canceled) return
+          if (!atlasWrite?.ok) throw new Error(atlasWrite?.error || atlasWrite?.message || `${atlas.fileName || 'atlas'} 导出失败`)
         }
         alert(`已导出 ${ready.length} 张图集和 ${state.resultAtlases.length} 个 atlas。`)
       } else {

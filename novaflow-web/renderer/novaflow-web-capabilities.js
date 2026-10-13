@@ -315,11 +315,13 @@
       // folder now, while the click still counts as a user gesture.
       const format = String(options.format || '').toLowerCase();
       if (['mp4', 'webm', 'gif'].includes(format)) {
-        const name = videoStem(options.baseName || options.fileName || 'video', 'video') + '.' + format;
+        let name = videoStem(options.baseName || options.fileName || 'video', 'video') + '.' + format;
         if (typeof root.showDirectoryPicker === 'function') {
           const picked = await api.pickDirectory();
           if (picked && picked.canceled) return { ok: true, canceled: true };
           if (!picked || !picked.dir) return fail((picked && picked.error) || '没有选择导出文件夹', { canceled: false });
+          if (api.__chooseFolderFileName) name = await api.__chooseFolderFileName(picked.handle, name);
+          if (!name) return { ok: true, canceled: true };
           // What the callers show the user: folder name / file name.
           const filePath = picked.name + '/' + name;
           videoExportTargets.set(filePath, { folder: picked.handle, name });
@@ -2831,6 +2833,95 @@
     }
     return null;
   }
+  // ---- same name in the picked folder ------------------------------------
+  const sameNameChoices = new Map();
+  const exportDialogOpen = () => !!root.document?.querySelector('[data-novaflow-export-modal-root="1"]');
+  function pickedDirectoryKey(dir) {
+    const token = String(dir || '');
+    for (const base of directoryHandles.keys()) {
+      if (token === base || token.startsWith(base + '/') || token.startsWith(base + '\\')) return base;
+    }
+    return token;
+  }
+  async function folderHasFile(folder, name) {
+    try { await folder.getFileHandle(name); return true; } catch (_) { return false; }
+  }
+  // "name - 副本.ext", then "name - 副本 (2).ext" …, like Windows Explorer.
+  async function copyFileName(folder, name) {
+    const dot = name.lastIndexOf('.');
+    const stem = dot > 0 ? name.slice(0, dot) : name;
+    const ext = dot > 0 ? name.slice(dot) : '';
+    for (let n = 1; n < 1000; n += 1) {
+      const candidate = stem + ' - 副本' + (n > 1 ? ' (' + n + ')' : '') + ext;
+      if (!await folderHasFile(folder, candidate)) return candidate;
+    }
+    return stem + ' - 副本 ' + Date.now() + ext;
+  }
+  /** Resolves 'overwrite' | 'copy' | 'cancel'. */
+  function askSameName(name) {
+    // Tests answer instead of the dialog.
+    if (typeof root.NovaFlowWebSameNameChoice === 'function') return Promise.resolve(root.NovaFlowWebSameNameChoice(name));
+    const doc = root.document;
+    if (!doc.getElementById('nf-same-name-style')) {
+      const style = doc.createElement('style');
+      style.id = 'nf-same-name-style';
+      style.textContent = [
+        '.nf-same-name-backdrop{position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45)}',
+        '.nf-same-name-box{width:360px;max-width:calc(100vw - 32px);background:#1F1F1F;border:1px solid #2E2E2E;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:14px 16px 16px;color:#EEF4FC;font-size:12px;font-weight:400}',
+        '.nf-same-name-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}',
+        '.nf-same-name-title{font-size:14px;font-weight:600}',
+        '.nf-same-name-text{line-height:1.6;word-break:break-all}',
+        '.nf-same-name-hint{margin-top:4px;font-size:11px;color:#8A8F98}',
+        '.nf-same-name-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}',
+        '.nf-same-name-btn{height:30px;padding:0 14px;border:0;border-radius:6px;background:#2A2A2A;color:#EEF4FC;font-size:12px;cursor:pointer;outline:none}',
+        '.nf-same-name-btn:hover{background:#373737;color:#fff}',
+        '.nf-same-name-btn[data-primary]{background:#1EA672;color:#fff}',
+        '.nf-same-name-btn[data-primary]:hover{background:#22B47C}'
+      ].join('\n');
+      doc.head.appendChild(style);
+    }
+    return new Promise((resolve) => {
+      const backdrop = doc.createElement('div');
+      backdrop.className = 'nf-same-name-backdrop';
+      backdrop.setAttribute('data-novaflow-runtime-ignore', '1');
+      backdrop.setAttribute('data-novaflow-same-name-dialog', '1');
+      const box = doc.createElement('div');
+      box.className = 'nf-same-name-box';
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+      const head = doc.createElement('div'); head.className = 'nf-same-name-head';
+      const title = doc.createElement('div'); title.className = 'nf-same-name-title'; title.textContent = '文件已存在';
+      // The editor's weight flattening leaves dialog titles alone.
+      title.setAttribute('data-nf-dialog', 'title');
+      const close = doc.createElement('button'); close.type = 'button'; close.textContent = '×';
+      close.setAttribute('aria-label', '取消'); close.setAttribute('data-novaflow-x-glyph', '1');
+      head.append(title, close);
+      const text = doc.createElement('div'); text.className = 'nf-same-name-text'; text.textContent = '所选文件夹里已有「' + name + '」。';
+      const hint = doc.createElement('div'); hint.className = 'nf-same-name-hint'; hint.textContent = '这次保存的其他同名文件按同样方式处理。';
+      const actions = doc.createElement('div'); actions.className = 'nf-same-name-actions';
+      const overwrite = doc.createElement('button'); overwrite.type = 'button'; overwrite.className = 'nf-same-name-btn'; overwrite.textContent = '覆盖';
+      const copy = doc.createElement('button'); copy.type = 'button'; copy.className = 'nf-same-name-btn'; copy.textContent = '存为副本';
+      copy.setAttribute('data-primary', '1');
+      actions.append(overwrite, copy);
+      box.append(head, text, hint, actions);
+      backdrop.appendChild(box);
+      const done = (choice) => { root.removeEventListener('keydown', onKey, true); backdrop.remove(); resolve(choice); };
+      const onKey = (event) => { if (event.key === 'Escape') { event.preventDefault(); done('cancel'); } };
+      close.onclick = () => done('cancel');
+      overwrite.onclick = () => done('overwrite');
+      copy.onclick = () => done('copy');
+      root.addEventListener('keydown', onKey, true);
+      doc.body.appendChild(backdrop);
+    });
+  }
+  // The video export reservation (exportPickSaveFile) asks the same question
+  // right after its folder is picked. Resolves the name to write, or null.
+  api.__chooseFolderFileName = async (folder, name) => {
+    if (!await folderHasFile(folder, name)) return name;
+    const choice = await askSameName(name);
+    return choice === 'overwrite' ? name : choice === 'copy' ? copyFileName(folder, name) : null;
+  };
+
   api.pickDirectory = async () => {
     if (typeof root.showDirectoryPicker !== 'function') {
       return fail('这个浏览器不支持选择文件夹，请改用拖拽或逐个选择文件', { canceled: false });
@@ -2966,9 +3057,20 @@
     catch (error) { return fail(error && error.message ? error.message : error); }
     if (folder) {
       try {
-        const fileName = String(options.fileName || options.path || 'novaflow-output.bin').split(/[\\/]/).pop();
+        let fileName = String(options.fileName || options.path || 'novaflow-output.bin').split(/[\\/]/).pop();
         const data = options.data || options.buffer || options.bytes;
         if (!data) return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
+        // A save into a folder that already has this name asks once (覆盖 /
+        // 存为副本 / ×) and treats the rest of that save the same way. The
+        // export dialog's frame sequences write while it is open and keep
+        // their names.
+        if (!options.spineSequenceNamed && !exportDialogOpen() && await folderHasFile(folder, fileName)) {
+          const key = pickedDirectoryKey(options.dir);
+          let choice = sameNameChoices.get(key);
+          if (!choice) { choice = await askSameName(fileName); sameNameChoices.set(key, choice); }
+          if (choice === 'cancel') return ok({ canceled: true });
+          if (choice === 'copy') fileName = await copyFileName(folder, fileName);
+        }
         const fileHandle = await folder.getFileHandle(fileName, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(data instanceof Blob ? data : new Blob([Array.isArray(data) ? Uint8Array.from(data) : data]));

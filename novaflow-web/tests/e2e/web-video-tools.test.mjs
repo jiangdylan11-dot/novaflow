@@ -102,7 +102,9 @@ ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToo
   const makeFolder = (path) => ({
     name: path.split('/').pop(),
     async getDirectoryHandle(name) { return makeFolder(path + '/' + name); },
-    async getFileHandle(name) {
+    async getFileHandle(name, options) {
+      // Like the browser: a missing file is NotFoundError unless created.
+      if (!options?.create && !written.some((item) => item.path === path + '/' + name)) throw Object.assign(new Error('missing'), { name: 'NotFoundError' });
       return { async createWritable() { return {
         async write(data) { written.push({ path: path + '/' + name, size: data.size }); },
         async close() {}
@@ -149,7 +151,8 @@ ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToo
 // folder dialog cancels the export.
 {
   const written = [];
-  const folder = { name: 'picked', async getFileHandle(name) {
+  const folder = { name: 'picked', async getFileHandle(name, options) {
+    if (!options?.create && !written.some((item) => item.name === name)) throw Object.assign(new Error('missing'), { name: 'NotFoundError' });
     return { async createWritable() { return { async write(data) { written.push({ name, type: data.type }); }, async close() {} }; } };
   } };
   let cancel = false;
@@ -180,6 +183,35 @@ ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToo
   equal([canceled.ok, canceled.canceled], [true, true], 'canceling the folder dialog cancels the export');
   delete sandbox.showDirectoryPicker;
   delete sandbox.NovaFlowWebWarehouse;
+}
+
+// Saving a name the picked folder already has asks once per save (覆盖 /
+// 存为副本 / ×); 存为副本 takes the next free "name - 副本" name.
+{
+  const files = new Set(['clip.mp4', 'clip - 副本.mp4']);
+  const folder = { name: 'dup', async getFileHandle(name, options) {
+    if (!files.has(name) && !options?.create) throw Object.assign(new Error('missing'), { name: 'NotFoundError' });
+    return { async createWritable() { return { async write() { files.add(name); }, async close() {} }; } };
+  } };
+  sandbox.showDirectoryPicker = async () => folder;
+  const asked = []; let answer = 'copy';
+  sandbox.NovaFlowWebSameNameChoice = (name) => { asked.push(name); return answer; };
+  const picked = await api.pickDirectory();
+  const write = (dir, fileName) => api.writeBinaryFile({ dir, fileName, bytes: new Uint8Array([1]) });
+  const names = [];
+  for (const fileName of ['clip.mp4', 'clip.mp4', 'new.mp4']) names.push((await write(picked.dir, fileName)).result.name);
+  equal(names, ['clip - 副本 (2).mp4', 'clip - 副本 (3).mp4', 'new.mp4'], '存为副本 takes the next free 副本 name; a new name is written as is');
+  equal(asked, ['clip.mp4'], 'one question per save');
+  answer = 'overwrite';
+  equal((await write((await api.pickDirectory()).dir, 'clip.mp4')).result.name, 'clip.mp4', '覆盖 keeps the name');
+  answer = 'cancel';
+  equal((await write((await api.pickDirectory()).dir, 'clip.mp4')).result.canceled, true, '× cancels the save');
+  answer = 'copy';
+  equal((await api.exportPickSaveFile({ baseName: 'clip', format: 'mp4' })).filePath, 'dup/clip - 副本 (4).mp4', 'the video export reservation asks the same question');
+  answer = 'cancel';
+  equal((await api.exportPickSaveFile({ baseName: 'clip', format: 'mp4' })).canceled, true, 'and × cancels the export');
+  delete sandbox.NovaFlowWebSameNameChoice;
+  delete sandbox.showDirectoryPicker;
 }
 
 // A browser without a folder picker reserves a warehouse output instead; the

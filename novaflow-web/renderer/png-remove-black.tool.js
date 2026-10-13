@@ -249,8 +249,14 @@
       if (api?.pickDirectory && api?.writeBinaryFile) {
         const picked = await api.pickDirectory()
         if (!picked?.dir || picked.canceled) return
-        for (const item of ready) await api.writeBinaryFile({ dir: picked.dir, fileName: item.result.fileName, bytes: await blobBytes(item.result.blob) })
-        alert(`已导出 ${ready.length} 张透明 PNG。`)
+        let saved = 0
+        for (const item of ready) {
+          const written = await api.writeBinaryFile({ dir: picked.dir, fileName: item.result.fileName, bytes: await blobBytes(item.result.blob) })
+          if (written?.result?.canceled) break
+          if (written?.ok === false) { alert(String(written.error || '导出失败')); break }
+          saved += 1
+        }
+        if (saved) alert(`已导出 ${saved} 张透明 PNG。`)
       } else ready.forEach((item, index) => window.setTimeout(() => { const a = document.createElement('a'); a.href = item.result.url; a.download = item.result.fileName; a.click() }, index * 120))
     } finally { state.exporting = false; render() }
   }
