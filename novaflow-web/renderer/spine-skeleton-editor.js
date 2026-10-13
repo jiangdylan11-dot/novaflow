@@ -101,6 +101,9 @@
     traceOpts: null,  // 描绘 settings, kept for the session (Spine keeps them too)
     clipEdit: null,   // 编辑剪裁: { skin, slot, name, tool: 'create' | 'delete' }
     clipDrag: null,
+    pathEdit: null,   // 编辑路径: { skin, slot, name, tool: 'create' | 'delete' }
+    pathDrag: null,   // the points while a 编辑路径 drag is on: { pts, closed }
+    pathMixLink: false, // 路径约束 链接滑块: the two mixes move together
     leftOpen: 'import', // the left column: one panel open at a time
     initialJson: null, // the project as imported (还原初始图层 / 还原原始权重)
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
@@ -386,7 +389,7 @@
 
   /** Out of the edit modes that hold a project's attachment (编辑网格 / 权重 / 剪裁), before it changes. */
   function leaveProjectEdits() {
-    state.meshEdit = null; state.weightEdit = null; state.clipEdit = null; state.clipDrag = null
+    state.meshEdit = null; state.weightEdit = null; state.clipEdit = null; state.clipDrag = null; state.pathEdit = null; state.pathDrag = null
     state.pick = null; state.playing = false; state.drag = null
   }
 
@@ -715,6 +718,15 @@
   // ------------------------------------------------------------------ runtime
 
   function initGl() {
+    if (spine.PathConstraint && !spine.PathConstraint.prototype.nfGuard) {
+      const up = spine.PathConstraint.prototype.update
+      spine.PathConstraint.prototype.update = function () {
+        const a = this.target.getAttachment()
+        if (a instanceof spine.PathAttachment && a.worldVerticesLength < 12) return
+        return up.call(this)
+      }
+      spine.PathConstraint.prototype.nfGuard = true
+    }
     const canvas = $('#gl')
     const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: true })
     rt.gl = gl
@@ -1225,6 +1237,8 @@
     if (me && !(sel && sel.kind === 'att' && sel.slot === me.slot && sel.name === me.name)) { state.meshEdit = null; state.meshDrag = null; meCache = null }
     const ce = state.clipEdit
     if (ce && !(sel && sel.kind === 'att' && sel.slot === ce.slot && sel.name === ce.name)) { state.clipEdit = null; state.clipDrag = null }
+    const pe = state.pathEdit
+    if (pe && !(sel && sel.kind === 'att' && sel.slot === pe.slot && sel.name === pe.name)) { state.pathEdit = null; state.pathDrag = null }
     const we = state.weightEdit
     if (we && !(sel && ((sel.kind === 'att' && sel.slot === we.slot && sel.name === we.name) || sel.kind === 'bone')) && !state.pick) { state.weightEdit = null; state.weightStroke = null; weCache = null }
     // 飘带's 自动链条 overlays the picked chain on the selection (selectChain); a new pick starts
@@ -1297,13 +1311,16 @@
 
   // ------------------------------------------------------------------ pick mode
 
-  function startPick(pick) { state.pick = pick; refresh() }
-  function endPick() { state.pick = null; refresh() }
+  function startPick(pick) { state.pick = pick; state.pickHover = null; refresh() }
+  function endPick() { state.pick = null; state.pickHover = null; refresh() }
 
   function resolvePick(kind, name) {
     const p = state.pick
     if (!p || p.want !== kind) return false
     state.pick = null
+    state.pickHover = null
+    const ov = document.getElementById('overlay')
+    if (ov) ov.style.cursor = ''
     p.done(name)
     return true
   }
@@ -1405,7 +1422,7 @@
       edit(`已清空皮肤 ${s.skin} 的「${s.name}」`, (j) => Ops.clearPlaceholder(j, s.skin, s.slot, s.name), () => { state.sel = { kind: 'ph', name: s.name, slot: s.slot } })
     } else if (s.kind === 'att') edit(`已删除图片 ${s.name}`, (j) => Ops.deleteAttachment(j, s.skin, s.slot, s.name), () => { state.sel = { kind: 'slot', name: s.slot } })
     else if (s.kind === 'ph') edit(`已删除占位符 ${s.name}`, (j) => Ops.deletePlaceholder(j, s.slot, s.name), () => { state.sel = { kind: 'slot', name: s.slot } })
-    else if (s.kind === 'ik' || s.kind === 'transform') edit(`已删除约束 ${s.name}`, (j) => Ops.deleteConstraint(j, s.kind, s.name), () => { state.sel = null })
+    else if (s.kind === 'ik' || s.kind === 'transform' || s.kind === 'path') edit(`已删除约束 ${s.name}`, (j) => Ops.deleteConstraint(j, s.kind, s.name), () => { state.sel = null })
     else if (s.kind === 'event') edit((r) => `已删除事件 ${s.name}${r.keys ? `（含动画里 ${r.keys} 个关键帧）` : ''}`, (j) => Ops.deleteEvent(j, s.name), () => { state.sel = null })
     else if (s.kind === 'skin') edit(`已删除皮肤 ${s.name}`, (j) => Ops.deleteSkin(j, s.name), () => { state.sel = null; if (state.skin === s.name) state.skin = 'default' })
   }
@@ -1460,6 +1477,17 @@
       done: (target) => edit((r) => `已新建 IK ${r.constraint}${orderNote(r)}`,
         (j) => withOrder(Ops.createIk(j, { bones, target })),
         (r) => { state.sel = { kind: 'ik', name: r.constraint } }),
+    })
+  }
+
+  /** 路径约束 (Spine): the bones follow a path; the path is picked on the stage (its curve) or in the tree. */
+  function newPathConstraint(bones) {
+    startPick({
+      want: 'slot',
+      text: `路径约束（${bones.join('、')}）：在画面上点路径，或在工程树里点路径 / 它所在的插槽`,
+      done: (slot) => edit((r) => `已新建路径约束 ${r.constraint}${orderNote(r)}`,
+        (j) => withOrder(Ops.createPathConstraint(j, { bones, target: slot })),
+        (r) => { state.sel = { kind: 'path', name: r.constraint }; state.multi = [] }),
     })
   }
 
@@ -2303,6 +2331,7 @@
     const slot = sk.findSlot(slotName)
     const sko = data.findSkin(skin) || data.defaultSkin
     const att = slot && sko && sko.getAttachment(slot.data.index, name)
+    if (att instanceof spine.PathAttachment) return pathModelOf(json, skin, slotName, name, slot, att, sk)
     if (!(att instanceof spine.MeshAttachment)) throw new Error('不是网格')
     slot.setAttachment(att)
     const n = att.worldVerticesLength
@@ -2315,6 +2344,37 @@
     const size = { width: owner.width || (r && r.originalWidth) || 1, height: owner.height || (r && r.originalHeight) || 1 }
     return {
       model: ME().fromAttachment(owner, world, size), slotBone: slot.bone.data.index, region: r, bones: sk.bones,
+      mats: sk.bones.map((b) => ({ a: b.a, b: b.b, c: b.c, d: b.d, worldX: b.worldX, worldY: b.worldY })),
+    }
+  }
+
+  /**
+   * A path as a weight model (绑定 / 编辑权重 work on it like on a mesh): every vertex (handles
+   * included) a point; the control polygon (in-handle, point, out-handle, next in-handle …) as
+   * line "triangles", so the overlay draws it and 平滑 walks along it.
+   */
+  function pathModelOf(json, skin, slotName, name, slot, att, sk) {
+    slot.setAttachment(att)
+    const n = att.worldVerticesLength
+    const world = new Float32Array(n)
+    att.computeWorldVertices(slot, 0, n, world, 0, 2)
+    const sj = json.skins.find((x) => x.name === skin).attachments[slotName][name]
+    const count = n / 2
+    const v = sj.vertices || []
+    const weighted = v.length > count * 2
+    const ws = []
+    if (weighted) for (let i = 0, k = 0; k < count; k++) { const c = v[i++]; const row = []; for (let q = 0; q < c; q++, i += 4) row.push([v[i], v[i + 3]]); ws.push(row) }
+    const points = []
+    for (let i = 0; i < count; i++) points.push({ u: 0, v: 0, x: world[i * 2], y: world[i * 2 + 1], w: weighted ? ws[i] : null, src: i })
+    const tris = []
+    const P = count / 3
+    for (let k = 0; k < P; k++) {
+      tris.push(3 * k, 3 * k + 1, 3 * k, 3 * k + 1, 3 * k + 2, 3 * k + 1)
+      const nx = k + 1 < P ? k + 1 : sj.closed ? 0 : -1
+      if (nx >= 0 && P > 1) tris.push(3 * k + 2, 3 * nx, 3 * k + 2)
+    }
+    return {
+      model: { width: 1, height: 1, hull: 0, points, tris, weighted, edges: [], path: true }, slotBone: slot.bone.data.index, region: null, bones: sk.bones,
       mats: sk.bones.map((b) => ({ a: b.a, b: b.b, c: b.c, d: b.d, worldX: b.worldX, worldY: b.worldY })),
     }
   }
@@ -2391,8 +2451,8 @@
     if (!a) return
     if ((a.type || 'region') === 'region') {
       if (!edit(`「${L.name}」已转成网格`, (j) => Ops.regionToMesh(j, L.skin, L.slot, L.name))) return
-    } else if (a.type !== 'mesh' && a.type !== 'linkedmesh') { status('只有图片和网格能编辑权重'); return }
-    state.meshEdit = null
+    } else if (a.type !== 'mesh' && a.type !== 'linkedmesh' && a.type !== 'path') { status('只有图片、网格和路径能编辑权重'); return }
+    state.meshEdit = null; state.clipEdit = null; state.pathEdit = null
     // 模式 starts on 直接 (user's pick): pick vertices, drag up / down to set the weight
     state.weightEdit = { skin: L.skin, slot: L.slot, name: L.name, bone: null, mode: 'direct', strength: 50, size: 60, feather: 60, overlay: false, onlySel: false, isolate: false,
       direct: true, vsel: new Set(), binding: null, order: null, extra: [] }
@@ -2401,6 +2461,17 @@
     if (ctx) state.weightEdit.bone = weightBones(ctx)[0]
     if (!(state.sel && state.sel.kind === 'att' && state.sel.slot === L.slot && state.sel.name === L.name)) state.sel = { kind: 'att', skin: L.skin, slot: L.slot, name: L.name }
     refresh()
+  }
+
+  /** 绑定 (mesh / path properties, Spine): weight editing opens with the binding on; click bones, then 绑定 again. */
+  function startBind(L) {
+    if (!(state.weightEdit && state.weightEdit.slot === L.slot && state.weightEdit.name === L.name)) enterWeightEdit(L)
+    const we = state.weightEdit
+    if (!we || we.slot !== L.slot || we.name !== L.name) return
+    if (!we.binding) weightAction('bind')
+    // not bound yet (all on its slot's bone): the binding starts empty, the bones clicked are the binding (Spine)
+    const aj = attJson(L)
+    if (we.binding && aj && !Ops.isWeighted(aj.type === 'linkedmesh' ? (attJson({ skin: aj.skin || 'default', slot: L.slot, name: aj.parent }) || aj) : aj)) { we.binding = []; renderWeightPanel() }
   }
 
   function exitWeightEdit() {
@@ -3369,6 +3440,7 @@
     if (state.meshEdit) drawMeshEdit(ctx)
     if (state.weightEdit) drawWeightEdit(ctx)
     drawClips(ctx)
+    drawPaths(ctx)
     // the picked image's outline (the mesh editors draw their own)
     if (sel && sel.kind === 'att' && !state.meshEdit && !state.weightEdit) {
       const slot = rt.skeleton.findSlot(sel.slot)
@@ -3618,7 +3690,7 @@
       if (a instanceof spine.RegionAttachment) {
         if (state.tool === 'shear') return null
         ox = b.a * a.x + b.b * a.y + b.worldX; oy = b.c * a.x + b.d * a.y + b.worldY
-      } else if (a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment) {
+      } else if (isShapeAtt(a)) {
         const c = attCentre(slot)
         if (!c) return null
         ox = c[0]; oy = c[1]
@@ -3643,7 +3715,7 @@
     if (!a) return null
     const b = slot.bone
     if (a instanceof spine.RegionAttachment) return [b.a * a.x + b.b * a.y + b.worldX, b.c * a.x + b.d * a.y + b.worldY]
-    if (a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment) {
+    if (isShapeAtt(a)) {
       const n = a.worldVerticesLength
       if (!n) return null
       const v = new Float32Array(n)
@@ -3928,7 +4000,7 @@
     const slot = rt.skeleton.findSlot(sel.slot)
     const att = slot && slot.getAttachment()
     // a clipping is a polygon of vertices: it moves / turns / scales / shears as a whole like a mesh
-    const region = att instanceof spine.RegionAttachment, mesh = att instanceof spine.MeshAttachment || att instanceof spine.ClippingAttachment
+    const region = att instanceof spine.RegionAttachment, mesh = isShapeAtt(att)
     if (!region && !mesh) return null
     // 动画: a mesh moves / turns / scales / shears as a whole too, written as its shape key on this frame
     const animT = mesh && animOn() ? meshRowTarget(sel.slot, sel.name) : null
@@ -4121,7 +4193,7 @@
         let map = (json.skins.find((x) => x.name === skin) || {}).attachments
         let a = map && map[sel.slot] && map[sel.slot][name]
         if (a && a.type === 'linkedmesh') { skin = a.skin || 'default'; name = a.parent; map = (json.skins.find((x) => x.name === skin) || {}).attachments; a = map && map[sel.slot] && map[sel.slot][name] }
-        if (!a || (a.type !== 'mesh' && a.type !== 'clipping')) throw new Error('找不到网格')
+        if (!a || (a.type !== 'mesh' && a.type !== 'clipping' && a.type !== 'path')) throw new Error('找不到网格')
         const r3 = (x) => Math.round(x * 1000) / 1000
         const v = a.vertices
         if (att.bones) {
@@ -4129,6 +4201,8 @@
           let t = 0
           for (let i = 0; i < v.length;) { const n = v[i++]; for (let k = 0; k < n; k++, i += 4, t += 3) { v[i + 1] = r3(moved[t]); v[i + 2] = r3(moved[t + 1]) } }
         } else for (let i = 0; i < v.length; i++) v[i] = r3(moved[i])
+        // a path's curve lengths follow its new shape
+        if (a.type === 'path') return Ops.updatePathLengths(json, skin, sel.slot, name, setupMatrices())
         return { json: Ops.tidy(json) }
       })
       return
@@ -4142,6 +4216,13 @@
     let drag = null
     const at = (e) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] }
     c.addEventListener('contextmenu', (e) => e.preventDefault())
+    // 绑定 on: a right click anywhere else (tree, panels) finishes it too
+    document.addEventListener('contextmenu', (e) => {
+      if (e.target === c || !state.weightEdit || !state.weightEdit.binding) return
+      e.preventDefault()
+      e.stopPropagation()
+      weightAction('bind')
+    }, true)
     c.addEventListener('dblclick', (e) => {
       const [sx, sy] = at(e)
       if (!hitBone(sx, sy) && !hitImage(sx, sy)) select(null)
@@ -4169,6 +4250,11 @@
       }
       if (state.clipEdit) {
         drag = clipPointerDown(e, sx, sy)
+        if (drag) c.setPointerCapture(e.pointerId)
+        return
+      }
+      if (state.pathEdit) {
+        drag = pathPointerDown(e, sx, sy)
         if (drag) c.setPointerCapture(e.pointerId)
         return
       }
@@ -4237,11 +4323,16 @@
       }
       const pickSlot = !!(state.pick && state.pick.want === 'slot')
       const bh = state.opt.boneSel && !pickSlot ? hitBone(sx, sy) : null
-      const oh = !bh && !pickSlot && state.opt.otherSel && state.opt.otherVis ? hitClip(sx, sy) : null
+      const oh = !bh && !pickSlot && state.opt.otherSel && state.opt.otherVis ? (hitClip(sx, sy) || hitPathCurve(sx, sy)) : null
       const ih = !bh && !oh && (state.opt.imgSel || pickSlot) ? hitImage(sx, sy) : null
       if (state.pick) {
         if (bh && state.pick.want === 'bone') resolvePick('bone', bh)
-        else if (ih && state.pick.want === 'slot') resolvePick('slot', ih.slot)
+        else if (state.pick.want === 'slot') {
+          // a path is picked by its curve (路径约束's target)
+          const ph = hitPathCurve(sx, sy, true)
+          if (ph) resolvePick('slot', ph.slot)
+          else if (ih) resolvePick('slot', ih.slot)
+        }
         return
       }
       // the project picked in the tree: a drag anywhere moves it on the stage (its view offset)
@@ -4282,7 +4373,7 @@
         if ((state.mode === 'setup' || animOn()) && !(e.ctrlKey || e.metaKey)) {
           const own = hitImage(sx, sy)
           // a clipping has no pixels: inside its polygon is its own area
-          const inClip = MT.att instanceof spine.ClippingAttachment && (() => {
+          const inClip = (MT.att instanceof spine.PathAttachment && pathNear(MT.slot, MT.att, sx, sy, 8)) || MT.att instanceof spine.ClippingAttachment && (() => {
             const q = clipWorld(MT.slot, MT.att).map(([x, y]) => toScreen(x, y))
             let inside = false
             for (let i = 0, j = q.length - 1; i < q.length; j = i++) if ((q[i][1] > sy) !== (q[j][1] > sy) && sx < (q[j][0] - q[i][0]) * (sy - q[i][1]) / (q[j][1] - q[i][1]) + q[i][0]) inside = !inside
@@ -4384,9 +4475,23 @@
       }
       if (drag && drag.kind === 'clipMove') { drag.moved = drag.moved || Math.hypot(sx - drag.sx, sy - drag.sy) > 2; state.clipDrag = { vi: drag.vi, p: toWorld(sx, sy) }; return }
       if (!drag && state.clipEdit) { state.meshPointer = [sx, sy]; return }
+      if (drag && (drag.kind === 'pathMove' || drag.kind === 'pathNew')) {
+        drag.moved = drag.moved || Math.hypot(sx - drag.sx, sy - drag.sy) > 2
+        if (drag.moved) pathDragMove(drag, sx, sy, e.altKey)
+        return
+      }
+      if (!drag && state.pathEdit) { state.meshPointer = [sx, sy]; return }
       if (!drag && state.weightEdit && state.weightEdit.binding) { const hov = rt.skeleton ? hitBone(sx, sy) : null; if (hov !== state.hover) state.hover = hov; return }
       if (!drag && (state.meshEdit || state.weightEdit)) return
       if (drag && drag.kind === 'weights') { weightDab(sx, sy); return }
+      // 路径约束 picking its path: the path under the pointer lights up, with a label at the pointer (Spine's PICK)
+      if (!drag && state.pick && state.pick.want === 'slot') {
+        const ph = rt.skeleton ? hitPathCurve(sx, sy, true) : null
+        state.pickHover = ph ? { slot: ph.slot, name: ph.name, at: [sx, sy] } : null
+        c.style.cursor = ph ? 'pointer' : ''
+        return
+      }
+      if (state.pickHover) { state.pickHover = null; c.style.cursor = '' }
       if (!drag) {
         const hov = rt.skeleton && state.opt.boneSel ? hitBone(sx, sy) : null
         if (hov !== state.hover) state.hover = hov
@@ -4439,6 +4544,8 @@
       const d = drag
       drag = null
       if (d.kind === 'pan') {
+        // 绑定 on: a right click (no drag) finishes it, like the 绑定 button (user 2026-10-13)
+        if (!d.moved && state.weightEdit && state.weightEdit.binding) { weightAction('bind'); return }
         // Spine: a right click (no drag) switches back to the last tool
         if (!d.moved) setTool(state.lastTool)
         return
@@ -4489,6 +4596,7 @@
         return
       }
       if (d.kind === 'clipMove') { finishClipMove(d); return }
+      if (d.kind === 'pathMove' || d.kind === 'pathNew') { finishPathDrag(d); return }
       if (d.kind === 'weights') {
         const st = state.weightStroke
         state.weightStroke = null
@@ -4626,13 +4734,13 @@
   // where it was dragged (Spine does the same).
 
   function meshTarget() {
-    if (!rt.skeleton || state.meshEdit || state.weightEdit || state.clipEdit) return null
+    if (!rt.skeleton || state.meshEdit || state.weightEdit || state.clipEdit || state.pathEdit) return null
     const s = state.sel
     if (!s || (s.kind !== 'att' && s.kind !== 'ph')) return null
     const slot = rt.skeleton.findSlot(s.slot)
     const att = slot && slot.getAttachment()
-    if (!(att instanceof spine.MeshAttachment) && !(att instanceof spine.ClippingAttachment)) return null
-    if (att instanceof spine.ClippingAttachment && s.name !== (attachmentKey(s.slot, att) || {}).name) return null
+    if (!isShapeAtt(att)) return null
+    if ((att instanceof spine.ClippingAttachment || att instanceof spine.PathAttachment) && s.name !== (attachmentKey(s.slot, att) || {}).name) return null
     const deformAtt = att.deformAttachment || att
     const key = attachmentKey(s.slot, deformAtt) || attachmentKey(s.slot, att)
     if (!key) return null
@@ -4733,8 +4841,14 @@
     applyOffsets(drag.T, off)
   }
 
-  const shapeWord = (att) => (att instanceof spine.ClippingAttachment || (att && att.type === 'clipping') ? '剪裁' : '网格')
-  const deformKind = (path) => { const a = (((skinOf(path[1]) || {}).attachments || {})[path[2]] || {})[path[3]]; return a && a.type === 'clipping' ? '剪裁' : '网格' }
+  const shapeWord = (att) => (att instanceof spine.ClippingAttachment || (att && att.type === 'clipping') ? '剪裁'
+    : att instanceof spine.PathAttachment || (att && att.type === 'path') ? '路径' : '网格')
+  const deformKind = (path) => { const a = (((skinOf(path[1]) || {}).attachments || {})[path[2]] || {})[path[3]]; return a && a.type === 'clipping' ? '剪裁' : a && a.type === 'path' ? '路径' : '网格' }
+
+  /** The attachments made of vertices the vertex tools move: meshes, clippings, paths. */
+  function isShapeAtt(a) {
+    return a instanceof spine.MeshAttachment || a instanceof spine.ClippingAttachment || a instanceof spine.PathAttachment
+  }
 
   function finishVertexDrag(drag) {
     if (!drag.offsets || drag.offsets.every((v, i) => Math.abs(v - drag.base[i]) < 1e-6)) { pose(); return }
@@ -4742,7 +4856,7 @@
     if (!animOn()) {
       // 设置姿势: the moved vertices become the mesh's (clipping's) own shape
       const own = attachmentKey(T.slotName, T.att) || { skin: T.skin, name: T.attName }
-      edit(`已修改 ${T.slotName} 的${shapeWord(T.att)}形状（${drag.sel.length} 个顶点）`, (j) => Ops.moveMeshVertices(j, own.skin, T.slotName, own.name, off))
+      edit(`已修改 ${T.slotName} 的${shapeWord(T.att)}形状（${drag.sel.length} 个顶点）`, (j) => Ops.moveMeshVertices(j, own.skin, T.slotName, own.name, off, setupMatrices()))
       return
     }
     edit(`第 ${state.frame} 帧：${T.slotName} ${shapeWord(T.att)}变形已打关键帧（${drag.sel.length} 个顶点）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
@@ -4762,7 +4876,7 @@
     if (!slot) return null
     let att = null
     for (const skin of [rt.skeleton.skin, rt.data.defaultSkin]) if (skin && !att) att = skin.getAttachment(slot.data.index, attName)
-    if (!(att instanceof spine.MeshAttachment) && !(att instanceof spine.ClippingAttachment)) return null
+    if (!isShapeAtt(att)) return null
     const key = attachmentKey(slotName, att.deformAttachment || att) || attachmentKey(slotName, att)
     return key ? { slotName, slot, att, skin: key.skin, attName: key.name } : null
   }
@@ -4848,6 +4962,7 @@
 
   /** Key a constraint's current mixes (IK: mix + bend + softness; transform: the four mixes). */
   function keyConstraintNow(kind, name) {
+    if (kind === 'path') { keyPathNow(name, ['position', 'spacing', 'mix']); return }
     const live = kind === 'ik' ? rt.skeleton.findIkConstraint(name) : rt.skeleton.findTransformConstraint(name)
     if (!live) return
     const v = kind === 'ik'
@@ -4917,7 +5032,7 @@
     return { atts, phs }
   }
 
-  const attIcon = (type) => (type === 'region' ? 'region' : type === 'mesh' || type === 'linkedmesh' ? 'mesh' : type === 'clipping' ? 'clip' : 'other')
+  const attIcon = (type) => (type === 'region' ? 'region' : type === 'mesh' || type === 'linkedmesh' ? 'mesh' : type === 'clipping' ? 'clip' : type === 'path' ? 'path' : 'other')
 
   /** Drag & drop in the tree, Spine-style: onto a new parent node, or up/down in 绘制顺序 and 约束. */
   function dropRules(payload, target) {
@@ -5158,12 +5273,12 @@
           class: 'row', 'data-selected': isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
           'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(depth + 1),
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
-          onclick: () => { if (pick) return; select({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, false, { noReveal: true }) },
+          onclick: () => { if (pick) { resolvePick('slot', s.name); return } select({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, false, { noReveal: true }) },
           ondblclick: () => focusRename(),
         },
         visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
-        caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
-        animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
+        caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
+        animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping' || a.type === 'path') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
         wireDrag(arow, { type: 'att', name: a.name, slot: s.name, skin: 'default' }, null)
         rows.push(arow)
       }
@@ -5258,7 +5373,7 @@
             ondblclick: () => focusRename(),
           }, caret(null), h('span', { class: 'ico', html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
-          animOn() && kind !== 'path' ? h('span', { class: 'lkey' }, keyBtn([[kind, c.name]], () => keyConstraintNow(kind, c.name), `给 ${c.name} 打关键帧`)) : null)
+          animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => keyConstraintNow(kind, c.name), `给 ${c.name} 打关键帧`)) : null)
           wireDrag(row, { type: 'cons', kind, name: c.name }, { type: 'cons', kind, name: c.name })
           rows.push(row)
         })
@@ -5599,8 +5714,27 @@
     box.textContent = ''
     $('#propsTitle').textContent = pk.title
     box.append(...pk.body())
+    if (animOn()) lockSetupOnly(box)
     box.dataset.for = key
     if (keep === key) box.scrollTop = scroll
+  }
+
+  // the properties' setup-mode operations (structure, parents, pictures, modes): greyed out in 动画 like in Spine
+  const SETUP_BUTTONS = new Set(['新建…', '设置父级', '换图', '转为皮肤占位符', '加入骨骼', '更换', '设置', '移除', '绑定', '编辑网格', '编辑剪裁'])
+  const SETUP_FIELDS = new Set(['填入黑色', '结束插槽'])
+  function lockSetupOnly(box) {
+    const why = '动画模式下不能用：这是设置模式的操作'
+    const off = (el) => { el.disabled = true; el.title = why }
+    for (const b of box.querySelectorAll('button')) if (SETUP_BUTTONS.has(b.textContent.trim())) off(b)
+    for (const f of box.querySelectorAll('.f')) {
+      const l = f.querySelector(':scope > label')
+      const t = l ? l.textContent.trim() : ''
+      // 混合 of a slot (a blend mode list) is setup; a constraint's 混合 slider keys
+      if (SETUP_FIELDS.has(t) || (t === '混合' && f.querySelector('select:not(.pmode)'))) for (const x of f.querySelectorAll('input,select,button')) off(x)
+    }
+    for (const l of box.querySelectorAll('.checks label')) if (l.textContent.trim() === '网格') { const i = l.querySelector('input'); if (i) off(i) }
+    // 路径约束's modes (长度 / 固定 / 百分比, 切线 …) are setup values
+    for (const x of box.querySelectorAll('select.pmode')) off(x)
   }
 
   /** The 动画 section's left column: 导入工程 works here; the other panels are the production ones (not in this test line). */
@@ -5649,13 +5783,20 @@
 
   /** Every picture layer (slots, top of the draw order first). */
   /** `setup`: the slot's setup-pose attachment (序列帧 keys hide pictures on the current frame). */
-  function imageLayers(setup) {
+  function imageLayers(setup, withPaths) {
     const out = []
     if (!rt.skeleton) return out
     for (const slot of rt.skeleton.drawOrder.slice().reverse()) {
       const att = setup ? (slot.data.attachmentName ? rt.skeleton.getAttachment(slot.data.index, slot.data.attachmentName) : null) : slot.getAttachment()
       const key = att && attachmentKey(slot.data.name, att)
       if (!key) continue
+      // 权重 lists paths too (they are bound and weighted like meshes); 蒙皮 never meshes them
+      if (withPaths && att instanceof spine.PathAttachment) {
+        const set = new Set()
+        if (att.bones) for (let i = 0; i < att.bones.length;) { const c = att.bones[i++]; for (let k = 0; k < c; k++) set.add(att.bones[i++]) }
+        out.push({ slot: slot.data.name, skin: key.skin, name: key.name, mesh: false, path: true, verts: att.worldVerticesLength / 2, bones: set.size, region: null, bone: slot.data.boneData.name })
+        continue
+      }
       const mesh = att instanceof spine.MeshAttachment
       if (!mesh && !(att instanceof spine.RegionAttachment)) continue
       let bones = 0
@@ -5664,7 +5805,7 @@
     }
     return out
   }
-  const tickedLayers = () => imageLayers().filter((l) => !state.unticked.has(l.slot))
+  const tickedLayers = (withPaths) => imageLayers(false, withPaths).filter((l) => !state.unticked.has(l.slot))
 
   /** Several layers in one undo step; each step works on the project the last one left. */
   function batchEdit(layers, label, each, after) {
@@ -5744,9 +5885,10 @@
     let r = { json }
     const a = json.skins.find((x) => x.name === L.skin).attachments[L.slot][L.name]
     if ((a.type || 'region') === 'region') r = Ops.regionToMesh(json, L.skin, L.slot, L.name)
-    else if (a.type !== 'mesh' && a.type !== 'linkedmesh') throw new Error('不是图片')
+    else if (a.type !== 'mesh' && a.type !== 'linkedmesh' && a.type !== 'path') throw new Error('不是图片')
     const ctx = meshModelOf(r.json, L.skin, L.slot, L.name)
     if (ctx.bones.length <= 1) throw new Error('骨架只有 root，先建好骨骼')
+    if (ctx.model.path) return weighPath(r.json, L, ctx, boneIds)
     const V = ctx.model.points.flatMap((p) => [p.x, p.y]), T = ctx.model.tris
     const segs = ctx.bones.map((b) => ({ ax: b.worldX, ay: b.worldY, bx: b.worldX + b.data.length * b.a, by: b.worldY + b.data.length * b.c, skip: !(b.data.length >= 1) || !b.parent }))
     let pick = boneIds && boneIds.length ? boneIds.slice() : AW.selectBones(V, T, segs.map((g) => (g.skip ? { ...g, ax: 1e9, ay: 1e9, bx: 1e9, by: 1e9 } : g))).filter((i) => !segs[i].skip)
@@ -5769,6 +5911,37 @@
       p.w = tot > 0 ? row.map(([b, w]) => [b, w / tot]) : [[pick[0], 1]]
     })
     return Ops.setMesh(r.json, L.skin, L.slot, L.name, ME().toAttachment(m, ctx.mats, ctx.slotBone), ME().remapOf(m))
+  }
+
+  /**
+   * 自动权重 for a path: each vertex on the bones nearest to it (inverse distance, up to four),
+   * the bound ones when given, else the bones near the path.
+   */
+  function weighPath(json, L, ctx, boneIds) {
+    const segs = ctx.bones.map((b) => ({ ax: b.worldX, ay: b.worldY, bx: b.worldX + b.data.length * b.a, by: b.worldY + b.data.length * b.c }))
+    const dist = (p, g) => {
+      const dx = g.bx - g.ax, dy = g.by - g.ay, l2 = dx * dx + dy * dy
+      const t = l2 ? Math.max(0, Math.min(1, ((p.x - g.ax) * dx + (p.y - g.ay) * dy) / l2)) : 0
+      return Math.hypot(p.x - g.ax - t * dx, p.y - g.ay - t * dy)
+    }
+    const pts = ctx.model.points
+    let pick = boneIds && boneIds.length ? boneIds.slice() : null
+    if (!pick) {
+      // the bones (not the root) that come close to the path: within a quarter of its size
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
+      const reach = Math.max(20, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.25)
+      pick = ctx.bones.map((b, i) => i).filter((i) => ctx.bones[i].parent && pts.some((p) => dist(p, segs[i]) < reach))
+      if (!pick.length) pick = [ctx.slotBone]
+    }
+    const m = ME().toWeighted(ctx.model, ctx.slotBone)
+    m.points.forEach((p) => {
+      const near = pick.map((i) => [i, 1 / Math.pow(Math.max(dist(p, segs[i]), 1), 4)]).sort((a, b) => b[1] - a[1]).slice(0, 4)
+      const tot = near.reduce((x, [, w]) => x + w, 0)
+      const row = near.map(([i, w]) => [i, w / tot]).filter(([, w]) => w > 0.01)
+      const t2 = row.reduce((x, [, w]) => x + w, 0)
+      p.w = row.length ? row.map(([i, w]) => [i, w / t2]) : [[pick[0], 1]]
+    })
+    return Ops.setMesh(json, L.skin, L.slot, L.name, ME().toAttachment(m, ctx.mats, ctx.slotBone), ME().remapOf(m))
   }
 
   /** 还原初始图层: the picture as imported (its attachment and its deform keys). */
@@ -5821,7 +5994,7 @@
   function weightPanelBody() {
     const setup = state.mode === 'setup'
     return [
-      h('div', { class: 'btns' }, btn('自动权重', () => batchEdit(tickedLayers(), '自动权重', (j, L) => weighOneLayer(j, L)), { primary: true, full: true, disabled: !setup, title: '给勾选的图层自动分配骨骼并求解权重（正式版的骨骼热扩散）；每层的「权重」按钮可以手工细调' })),
+      h('div', { class: 'btns' }, btn('自动权重', () => batchEdit(tickedLayers(true), '自动权重', (j, L) => weighOneLayer(j, L)), { primary: true, full: true, disabled: !setup, title: '给勾选的图层自动分配骨骼并求解权重（正式版的骨骼热扩散）；每层的「权重」按钮可以手工细调' })),
       h('div', { class: 'btns' }, btn('还原原始权重', () => batchEdit(tickedLayers().filter((l) => l.mesh), '还原原始权重', unweighOneLayer), { full: true, disabled: !setup, title: '回到导入时的权重：Spine 里绑好的保留，这里自动或手动加的去掉；网格不动' })),
       setup ? null : h('div', { class: 'hint' }, '在「设置」模式下用'),
     ]
@@ -5838,7 +6011,7 @@
     if (frameTool) { renderFrameDock(dock, kind); return }
     const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
     dock.textContent = ''
-    const layers = imageLayers()
+    const layers = imageLayers(false, kind === 'weights')
     const U = state.unticked
     const ticked = layers.filter((l) => !U.has(l.slot))
     const L0 = layerSel()
@@ -5853,6 +6026,12 @@
     for (const l of layers) {
       const c = h('canvas', { width: 32, height: 32 })
       if (l.region) drawRegionThumb(c, l.region)
+      else if (l.path) {
+        // a path has no picture: its curve as the thumbnail
+        const g = c.getContext('2d')
+        g.strokeStyle = '#ff8a1f'; g.lineWidth = 2.2; g.lineCap = 'round'
+        g.beginPath(); g.moveTo(5, 25); g.bezierCurveTo(10, 4, 22, 28, 27, 7); g.stroke()
+      }
       const on = !U.has(l.slot)
       const count = kind === 'mesh' ? (l.mesh ? String(l.verts) : '') : (l.bones ? `${l.bones} 骨` : '')
       const editBtn = kind === 'mesh'
@@ -6740,6 +6919,7 @@ self.onmessage = (e) => {
   function setParentForSelection() {
     const s = state.sel
     if (!s) return
+    if (animOn()) { status('设置父级是设置模式的操作：先切回「设置」'); return }
     if (s.kind === 'bone' && bone(s.name).parent) setParent(s.name)
     else if (s.kind === 'slot' && state.multiSlots.length > 1) {
       const names = state.multiSlots.slice()
@@ -6760,6 +6940,7 @@ self.onmessage = (e) => {
         h('div', { class: 'btns' }, menuButton('新建…', [
           { label: 'IK 约束', icon: 'ik', run: () => newIk(pair), disabled: !pair, title: pair ? '' : '需要一对父子骨骼' },
           { label: '变换约束', icon: 'transform', run: () => newTransform(bones) },
+          { label: '路径约束', icon: 'path', run: () => newPathConstraint(bones), title: '这些骨骼沿路径排开（点路径）' },
         ])),
       ]
     }
@@ -6792,8 +6973,10 @@ self.onmessage = (e) => {
         { label: '骨骼', icon: 'bone', run: () => newChildBone(name) },
         { label: '插槽', icon: 'slot', run: () => newSlot(name) },
         { label: '剪裁', icon: 'clip', run: () => newClipping(null, name), disabled: state.mode !== 'setup', title: '在这根骨骼上新建一个插槽，里面放剪裁（遮罩）' },
+        { label: '路径', icon: 'path', run: () => newPath(null, name), disabled: state.mode !== 'setup', title: '在这根骨骼上新建一个插槽，里面放路径（贝塞尔曲线）' },
         { label: 'IK 约束', icon: 'ik', run: () => newIk([name]), disabled: !parent, title: '这一根骨骼；两根请 Ctrl 选父子两根' },
         { label: '变换约束', icon: 'transform', run: () => newTransform([name]), disabled: !parent },
+        { label: '路径约束', icon: 'path', run: () => newPathConstraint([name]), title: '这根骨骼沿路径走（点路径）；多根请 Ctrl 选' },
       ]),
       btn('设置父级', () => setParent(name), { disabled: !parent, title: 'P' })))
     if (state.skin !== 'default' && parent) {
@@ -6851,6 +7034,7 @@ self.onmessage = (e) => {
         { label: '皮肤占位符', icon: 'placeholder', run: () => edit((r) => `已新建皮肤占位符 ${r.placeholder}`, (j) => Ops.addPlaceholder(j, name),
           (r) => { state.sel = { kind: 'ph', name: r.placeholder, slot: name }; state.collapsed.delete('s:' + name); revealInTree(state.sel) }) },
         { label: '剪裁', icon: 'clip', run: () => newClipping(name), disabled: state.mode !== 'setup', title: '遮罩：画一个多边形，剪掉它后面绘制的插槽（到「结束插槽」为止）' },
+        { label: '路径', icon: 'path', run: () => newPath(name), disabled: state.mode !== 'setup', title: '贝塞尔曲线：骨骼可以用路径约束沿着它走' },
       ]),
       btn('设置父级', () => { state.sel = { kind: 'slot', name }; setParentForSelection() }, { title: 'P' })))
     return out
@@ -6907,6 +7091,7 @@ self.onmessage = (e) => {
     const mesh = type === 'mesh' || type === 'linkedmesh'
     const typeName = { region: '图片', mesh: '网格', linkedmesh: '链接网格', boundingbox: '包围盒', clipping: '裁剪', path: '路径', point: '点' }[type] || type
     if (type === 'clipping') return clipPanel(sel, att)
+    if (type === 'path') return pathPanel(sel, att)
     const inPlaceholder = Ops.isPlaceholder(state.json, sel.slot, sel.name)
     const others = state.json.skins.filter((x) => x.name !== 'default').length
     const out = []
@@ -6930,6 +7115,7 @@ self.onmessage = (e) => {
     if (img && att.path && att.path !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, att.path))))
     out.push(h('div', { class: 'btns g2' },
       img && (state.mode === 'setup' || state.leftOpen === 'weights') ? btn('编辑权重', () => enterWeightEdit(sel), { primary: !!(state.weightEdit && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '在画面里刷这张网格的骨骼权重' }) : null,
+      mesh && state.mode === 'setup' ? btn('绑定', () => startBind(sel), { primary: !!(state.weightEdit && state.weightEdit.binding && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '绑定骨骼：点了以后在画面或工程树里点骨骼加入 / 移出，再点一次「绑定」完成（自动算好权重）' }) : null,
       img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), title: type === 'region' ? '先转成网格（图片的矩形），再编辑顶点' : '在画面里编辑这张网格的顶点' }) : null,
       img ? btn('换图', () => openImagePicker(`给「${sel.name}」换图`, (r) => swapImage(sel, r))) : null,
       !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤占位符，每个皮肤先用原图`,
@@ -6983,7 +7169,7 @@ self.onmessage = (e) => {
     out.push(h('div', { class: 'hint' }, after.length
       ? `剪裁「${sel.slot}」上面的 ${reach} 个插槽${end ? `（到「${end}」为止）` : ''}；列表里只有它上面的插槽，在「绘制顺序」里拖动「${sel.slot}」改它从哪一层开始`
       : `「${sel.slot}」在最上面，上面没有可剪的插槽：在「绘制顺序」里把它往下拖，列表里才有可选的层`))
-    const colIn = h('input', { type: 'color', value: '#' + String(att.color || 'ce3a3aff').slice(0, 6) })
+    const colIn = h('input', { type: 'color', value: '#' + String(att.color || 'ce3a3aff').slice(0, 6), disabled: animOn() })
     colIn.addEventListener('change', () => edit(`已修改 ${sel.name} 颜色`, (j) => Ops.setClipping(j, sel.skin, sel.slot, sel.name, { color: colIn.value.slice(1) + 'ff' })))
     out.push(field('颜色', colIn))
     const editing = !!(state.clipEdit && state.clipEdit.slot === sel.slot && state.clipEdit.name === sel.name)
@@ -7149,6 +7335,7 @@ self.onmessage = (e) => {
 
   /** Spine's 编辑剪裁 panel: 创建 / 删除, 新建, 顶点 count. */
   function renderClipPanel() {
+    if (state.pathEdit) { renderPathEditPanel(); return }
     const p = $('#clipPanel')
     const ce = state.clipEdit
     const R = ce && clipRuntime()
@@ -7168,6 +7355,519 @@ self.onmessage = (e) => {
       h('div', { class: 'mrow mopts' }, h('span', { class: 'mcount' }, n < 3 ? `顶点：${n}（至少 3 个才剪裁）` : `顶点：${n}`)))
     layoutFloats()
   }
+
+  // ---------- 路径 (Spine's path: a chain of Bezier curves; bones follow it with a path constraint)
+  //
+  // Each point has an in-handle and an out-handle (three vertices per point). 编辑路径 (设置) adds
+  // points (a drag pulls the handles out), moves points and handles, deletes points and closes the
+  // path. Outside it a picked path is a vertex shape like a mesh or a clipping: its points and
+  // handles move / turn / scale / shear (whole or picked), in 设置 for good, in 动画 as a shape key.
+
+  const PATH_ORANGE = '255,138,31'
+  function pathRgb(att) {
+    const c = att.color
+    const plain = !c || (c.r > 0.99 && c.g > 0.99 && c.b > 0.99)
+    return plain ? PATH_ORANGE : `${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)}`
+  }
+
+  /** A path's points in the world as it shows now: [{ in, p, out }]. */
+  function pathPoints(slot, att) {
+    const n = att.worldVerticesLength
+    if (!n) return []
+    const v = new Float32Array(n)
+    att.computeWorldVertices(slot, 0, n, v, 0, 2)
+    const out = []
+    for (let i = 0; i + 5 < n; i += 6) out.push({ in: [v[i], v[i + 1]], p: [v[i + 2], v[i + 3]], out: [v[i + 4], v[i + 5]] })
+    return out
+  }
+
+  const bez = (A, B, t) => {
+    const u = 1 - t
+    return [u * u * u * A.p[0] + 3 * u * u * t * A.out[0] + 3 * u * t * t * B.in[0] + t * t * t * B.p[0],
+      u * u * u * A.p[1] + 3 * u * u * t * A.out[1] + 3 * u * t * t * B.in[1] + t * t * t * B.p[1]]
+  }
+
+  /** The curves as a screen polyline (a closed path runs back to its first point). */
+  function pathPolyline(pts, closed) {
+    const q = []
+    if (pts.length === 1) return [toScreen(pts[0].p[0], pts[0].p[1])]
+    const curves = closed ? pts.length : pts.length - 1
+    for (let k = 0; k < curves; k++) {
+      const A = pts[k], B = pts[(k + 1) % pts.length]
+      for (let i = k ? 1 : 0; i <= 24; i++) { const w = bez(A, B, i / 24); q.push(toScreen(w[0], w[1])) }
+    }
+    return q
+  }
+
+  function nearPolyline(q, sx, sy, r) {
+    for (let i = 0; i + 1 < q.length; i++) {
+      const a = q[i], b = q[i + 1]
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy
+      const t = l2 ? Math.max(0, Math.min(1, ((sx - a[0]) * dx + (sy - a[1]) * dy) / l2)) : 0
+      if (Math.hypot(sx - a[0] - t * dx, sy - a[1] - t * dy) < r) return true
+    }
+    return q.length === 1 && Math.hypot(sx - q[0][0], sy - q[0][1]) < r
+  }
+
+  function pathNear(slot, att, sx, sy, r) {
+    const pts = pathPoints(slot, att)
+    return pts.length ? nearPolyline(pathPolyline(pts, att.closed), sx, sy, r) : false
+  }
+
+  /** Inside a closed path (its curves as a polygon). */
+  function insidePath(slot, att, sx, sy) {
+    if (!att.closed) return false
+    const pts = pathPoints(slot, att)
+    if (pts.length < 2) return false
+    const q = pathPolyline(pts, true)
+    let inside = false
+    for (let i = 0, j = q.length - 1; i < q.length; j = i++) if ((q[i][1] > sy) !== (q[j][1] > sy) && sx < (q[j][0] - q[i][0]) * (sy - q[i][1]) / (q[j][1] - q[i][1]) + q[i][0]) inside = !inside
+    return inside
+  }
+
+  /**
+   * The path whose curve is under the pointer (其他 · 选择). `any` = a pick (路径约束's target):
+   * hidden kinds count, the reach is wider and the inside of a closed path counts too.
+   */
+  function hitPathCurve(sx, sy, any) {
+    if (!rt.skeleton || (!any && state.filter.path === false)) return null
+    for (let k = rt.skeleton.drawOrder.length - 1; k >= 0; k--) {
+      const slot = rt.skeleton.drawOrder[k]
+      const a = slot.getAttachment()
+      if (!(a instanceof spine.PathAttachment) || state.hiddenSlots.has(slot.data.name)) continue
+      if (!pathNear(slot, a, sx, sy, any ? 12 : 6) && !(any && insidePath(slot, a, sx, sy))) continue
+      const key = attachmentKey(slot.data.name, a)
+      if (key) return { slot: slot.data.name, ...key }
+    }
+    return null
+  }
+
+  /** Every path its slot shows (filter 路径), the picked / edited one with its points and handles. */
+  function drawPaths(g) {
+    if (!rt.skeleton) return
+    const pe = state.pathEdit, sel = state.sel
+    const consSel = sel && sel.kind === 'path' ? (state.json.path || []).find((c) => c.name === sel.name) : null
+    g.save()
+    for (const slot of rt.skeleton.drawOrder) {
+      const att = slot.getAttachment()
+      if (!(att instanceof spine.PathAttachment)) continue
+      const name = slot.data.name
+      const editing = !!(pe && pe.slot === name)
+      const hover = !!(state.pick && state.pickHover && state.pickHover.slot === name)
+      const picked = editing || hover || !!(sel && sel.kind === 'att' && sel.slot === name) || !!(consSel && consSel.target === name)
+      if (!picked && (!state.opt.otherVis || state.filter.path === false || state.hiddenSlots.has(name))) continue
+      const live = editing && state.pathDrag
+      const pts = live ? state.pathDrag.pts : pathPoints(slot, att)
+      const closed = live ? state.pathDrag.closed : att.closed
+      if (!pts.length) continue
+      const col = `rgba(${pathRgb(att)},`
+      const q = pathPolyline(pts, closed)
+      g.strokeStyle = hover ? '#1EA672' : col + (picked ? '1)' : '.8)'); g.lineWidth = hover ? 3 : picked ? 2 : 1.3
+      g.beginPath(); q.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke()
+      if (hover) {
+        const [hx, hy] = state.pickHover.at
+        g.font = '600 11px Inter, "Microsoft YaHei", sans-serif'
+        const label = `绑定到 ${att.name}`
+        const tw = g.measureText(label).width
+        g.fillStyle = 'rgba(20,20,20,.9)'; g.fillRect(hx + 12, hy + 10, tw + 12, 20)
+        g.fillStyle = '#1EA672'; g.fillText(label, hx + 18, hy + 24)
+      }
+      if (editing && !animOn() && pe.tool === 'create' && !closed && !state.pathDrag && state.meshPointer) {
+        const last = toScreen(pts[pts.length - 1].p[0], pts[pts.length - 1].p[1])
+        g.setLineDash([4, 3]); g.lineWidth = 1; g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(state.meshPointer[0], state.meshPointer[1]); g.stroke(); g.setLineDash([])
+      }
+      if (picked) {
+        pts.forEach((pt, i) => {
+          const P = toScreen(pt.p[0], pt.p[1])
+          // the handles: a line from the point to each, a small dot at the end
+          g.lineWidth = 1; g.strokeStyle = 'rgba(230,230,230,.55)'
+          for (const hd of [pt.in, pt.out]) {
+            const H = toScreen(hd[0], hd[1])
+            if (Math.hypot(H[0] - P[0], H[1] - P[1]) < 1) continue
+            g.beginPath(); g.moveTo(P[0], P[1]); g.lineTo(H[0], H[1]); g.stroke()
+            if (editing) { g.beginPath(); g.arc(H[0], H[1], 3, 0, Math.PI * 2); g.fillStyle = '#e6e6e6'; g.fill() }
+          }
+          if (editing) {
+            const r = i === 0 && !closed ? 5 : 4
+            g.fillStyle = '#fff'; g.fillRect(P[0] - r, P[1] - r, r * 2, r * 2)
+            g.lineWidth = 1.5; g.strokeStyle = col + '1)'; g.strokeRect(P[0] - r, P[1] - r, r * 2, r * 2)
+          }
+        })
+      }
+      if (state.opt.otherName) {
+        const P = q[Math.floor(q.length / 2)]
+        g.font = '11px Inter, "Microsoft YaHei", sans-serif'; g.textAlign = 'center'
+        g.fillStyle = 'rgba(0,0,0,.6)'; g.fillText(att.name, P[0] + 1, P[1] - 7)
+        g.fillStyle = col + '1)'; g.fillText(att.name, P[0], P[1] - 8)
+        g.textAlign = 'start'
+      }
+    }
+    g.restore()
+  }
+
+  /** 新建 → 路径: in this slot, or (from a bone) in a new slot on it; 编辑路径 starts right away. */
+  function newPath(slotName, boneName) {
+    if (state.mode !== 'setup') { status('路径在「设置」模式下新建'); return }
+    edit((r) => `已新建路径 ${r.attachment}：在画面里点出路径点（拖动拉出手柄）`, (j) => {
+      let slot = slotName, json = j
+      if (!slot) { const a = Ops.addSlot(json, boneName, uniqueSlotName(json, 'path')); json = a.json; slot = a.slot }
+      const r = Ops.createPath(json, slot)
+      return { ...r, slot }
+    }, (r) => {
+      state.sel = { kind: 'att', skin: 'default', slot: r.slot, name: r.attachment }
+      state.collapsed.delete('s:' + r.slot)
+      revealInTree(state.sel)
+      state.meshEdit = null; state.weightEdit = null; state.clipEdit = null
+      state.pathEdit = { skin: 'default', slot: r.slot, name: r.attachment, tool: 'create' }
+    })
+  }
+
+  /** A path's properties (Spine): 闭合, 恒定速度, 颜色, 导出, 编辑路径, 设置父级. */
+  function pathPanel(sel, att) {
+    const out = []
+    out.push(h('div', { class: 'name-row' },
+      textInput(sel.name, (v) => edit(`已改名 → ${v}`, (j) => Ops.renameAttachment(j, sel.slot, sel.name, v), (r) => { state.sel = { ...sel, name: r.attachment } }), { rename: true }),
+      h('span', { class: 'tag' }, '路径'),
+      animOn() ? meshKeyEnd(sel.slot, sel.name) : null,
+      ibtn('copy', '复制（Ctrl+D）', () => duplicateAttachmentSel(sel, false)),
+      ibtn('trash', '删除', deleteSelection)))
+    out.push(h('div', { class: 'checks' }, check('导出', Ops.isExported(state.json, sel.skin, sel.slot, sel.name),
+      (v) => edit(v ? `「${sel.name}」会导出` : `「${sel.name}」不导出（工程里还在）`, (j) => Ops.setAttachmentExport(j, sel.skin, sel.slot, sel.name, v)))))
+    const setup = state.mode === 'setup'
+    const points = Math.floor((Number(att.vertexCount) || 0) / 3)
+    const setP = (props, msg) => edit(msg, (j) => Ops.setPath(j, sel.skin, sel.slot, sel.name, props, setupMatrices()))
+    out.push(field('选项', h('div', { class: 'cols3' },
+      check('闭合', !!att.closed, (v) => setP({ closed: v }, v ? `「${sel.name}」已闭合` : `「${sel.name}」已打开`), { disabled: !setup || points < 2, title: '最后一个点连回第一个点' }),
+      check('恒定速度', att.constantSpeed !== false, (v) => setP({ constantSpeed: v }, v ? `「${sel.name}」恒定速度` : `「${sel.name}」按曲线长度分段`), { disabled: !setup, title: '骨骼沿路径均匀分布；关掉后每段曲线按自己的长度分' }))))
+    const colIn = h('input', { type: 'color', value: att.color ? '#' + String(att.color).slice(0, 6) : '#ff8a1f', disabled: !setup })
+    colIn.addEventListener('change', () => setP({ color: colIn.value.slice(1) + 'ff' }, `已修改 ${sel.name} 颜色`))
+    out.push(field('颜色', colIn))
+    const editing = !!(state.pathEdit && state.pathEdit.slot === sel.slot && state.pathEdit.name === sel.name)
+    out.push(h('div', { class: 'hint' }, points < 2
+      ? `路径点：${points}（至少 2 个点才是路径）：点「编辑路径」在画面里点出来`
+      : animOn()
+        ? `路径点：${points}。选中后直接在画面里拖点 / 手柄（框选 / Ctrl 加选，旋转、缩放工具也行）= 在这一帧打路径变形关键帧；钥匙 = 给当前形状打关键帧`
+        : `路径点：${points}。选中后直接在画面里拖点 / 手柄（框选 / Ctrl 加选）= 改路径形状；加减点、闭合用「编辑路径」`))
+    const weighing = !!(state.weightEdit && state.weightEdit.slot === sel.slot && state.weightEdit.name === sel.name)
+    out.push(h('div', { class: 'btns g2' },
+      btn('编辑路径', () => (editing ? exitPathEdit() : enterPathEdit(sel)), { primary: editing, title: setup ? '在画面里点 / 拖 / 删路径点和手柄' : '在画面里拖路径点和手柄 = 在这一帧打路径变形关键帧（加点、删点、闭合在「设置」里）' }),
+      btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' }),
+      btn('绑定', () => startBind(sel), { primary: weighing && !!state.weightEdit.binding, disabled: !setup || points < 1, title: '绑定骨骼：点了以后在画面或工程树里点骨骼加入 / 移出，再点一次「绑定」完成（自动算好权重）' }),
+      btn('编辑权重', () => (weighing ? exitWeightEdit() : enterWeightEdit(sel)), { primary: weighing && !state.weightEdit.binding, disabled: points < 1, title: '在画面里调路径各点的骨骼权重' })))
+    return out
+  }
+
+  function enterPathEdit(sel) {
+    state.meshEdit = null; state.weightEdit = null; state.clipEdit = null
+    state.pathEdit = { skin: sel.skin, slot: sel.slot, name: sel.name, tool: 'create' }
+    refresh()
+  }
+
+  function exitPathEdit() {
+    if (!state.pathEdit) return
+    state.pathEdit = null
+    state.pathDrag = null
+    refresh()
+  }
+
+  function pathRuntime() {
+    const pe = state.pathEdit
+    const slot = pe && rt.skeleton && rt.skeleton.findSlot(pe.slot)
+    const skin = slot && (rt.data.findSkin(pe.skin) || rt.data.defaultSkin)
+    const att = skin && skin.getAttachment(slot.data.index, pe.name)
+    return att instanceof spine.PathAttachment ? { slot, att } : null
+  }
+
+  /** World points → the path's vertices in its slot bone's space (one undo step; curve lengths follow). */
+  function commitPath(pts, closed, label) {
+    const pe = state.pathEdit, R = pathRuntime()
+    if (!pe || !R) return
+    if (animOn()) { keyPathShape(pts, label); return }
+    const b = R.slot.bone
+    const det = b.a * b.d - b.b * b.c || 1
+    const local = []
+    for (const pt of pts) for (const w of [pt.in, pt.p, pt.out]) { const dx = w[0] - b.worldX, dy = w[1] - b.worldY; local.push((b.d * dx - b.b * dy) / det, (b.a * dy - b.c * dx) / det) }
+    edit(R.att.bones && pts.length ? `${label}（路径的权重已去掉）` : label,
+      (j) => Ops.setPath(j, pe.skin, pe.slot, pe.name, { vertices: local, closed: !!closed && pts.length >= 2 }, setupMatrices()))
+  }
+
+  /** 动画: the edited points as the path's shape key on this frame (offsets from its setup vertices, weighted or not). */
+  function keyPathShape(pts, label) {
+    const pe = state.pathEdit, R = pathRuntime()
+    const T = R && meshRowTarget(pe.slot, pe.name)
+    if (!T) return
+    const cur = pathPoints(R.slot, R.att)
+    if (cur.length !== pts.length) { status('动画模式下只能移动路径点和手柄：加点、删点、闭合在「设置」里'); return }
+    const off = currentOffsets(T).slice()
+    const infl = influences(T.att)
+    const inv = (m, x, y) => { const det = m.a * m.d - m.b * m.c || 1; return [(m.d * x - m.b * y) / det, (m.a * y - m.c * x) / det] }
+    pts.forEach((pt, k) => ['in', 'p', 'out'].forEach((part, q) => {
+      const i = k * 3 + q
+      const dx = pt[part][0] - cur[k][part][0], dy = pt[part][1] - cur[k][part][1]
+      if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return
+      if (infl) for (const { f, bone } of infl[i]) { const o = inv(rt.skeleton.bones[bone], dx, dy); off[f * 2] += o[0]; off[f * 2 + 1] += o[1] }
+      else { const o = inv(T.slot.bone, dx, dy); off[i * 2] += o[0]; off[i * 2 + 1] += o[1] }
+    }))
+    edit(`第 ${state.frame} 帧：${label}（路径变形已打关键帧）`, (j) => Ops.keyDeform(j, state.anim, T.skin, T.slotName, T.attName, timeSec(), off))
+  }
+
+  const copyPts = (pts) => pts.map((pt) => ({ in: pt.in.slice(), p: pt.p.slice(), out: pt.out.slice() }))
+
+  /** A point or a handle under the pointer (points first). */
+  function pathHit(pts, sx, sy) {
+    for (let i = 0; i < pts.length; i++) { const P = toScreen(pts[i].p[0], pts[i].p[1]); if (Math.hypot(P[0] - sx, P[1] - sy) < 7) return { i, part: 'p' } }
+    for (let i = 0; i < pts.length; i++) {
+      for (const part of ['in', 'out']) { const H = toScreen(pts[i][part][0], pts[i][part][1]); if (Math.hypot(H[0] - sx, H[1] - sy) < 6) return { i, part } }
+    }
+    return null
+  }
+
+  /** 创建: drag a point / handle, click the first point to close, click elsewhere to add a point; 删除: click a point. */
+  function pathPointerDown(e, sx, sy) {
+    const pe = state.pathEdit, R = pathRuntime()
+    if (!R) return null
+    const pts = pathPoints(R.slot, R.att), closed = !!R.att.closed
+    const hit = pathHit(pts, sx, sy)
+    if (animOn()) return hit ? { kind: 'pathMove', i: hit.i, part: hit.part, pts, closed, sx, sy, moved: false } : null
+    if (pe.tool === 'delete') {
+      if (hit && hit.part === 'p') { const next = pts.filter((_, k) => k !== hit.i); commitPath(next, closed && next.length >= 2, `已删除路径点（${next.length}）`) }
+      return null
+    }
+    if (hit) return { kind: 'pathMove', i: hit.i, part: hit.part, pts, closed, sx, sy, moved: false }
+    // a new point: after the last one of an open path, into the nearest curve of a closed one
+    const w = toWorld(sx, sy)
+    let at = pts.length
+    if (closed && pts.length >= 2) {
+      let best = Infinity
+      for (let k = 0; k < pts.length; k++) {
+        const A = pts[k], B = pts[(k + 1) % pts.length]
+        for (let i = 0; i <= 16; i++) { const q = bez(A, B, i / 16); const d = Math.hypot(q[0] - w[0], q[1] - w[1]); if (d < best) { best = d; at = k + 1 } }
+      }
+    }
+    const next = [...copyPts(pts.slice(0, at)), { in: w.slice(), p: w.slice(), out: w.slice() }, ...copyPts(pts.slice(at))]
+    state.pathDrag = { pts: next, closed }
+    return { kind: 'pathNew', i: at, pts: next, closed, sx, sy, moved: false }
+  }
+
+  function pathDragMove(d, sx, sy, alt) {
+    const w = toWorld(sx, sy)
+    const pts = copyPts(d.pts)
+    const pt = pts[d.i], orig = d.pts[d.i]
+    if (d.kind === 'pathNew') {
+      // dragging out of a new point pulls both handles (Spine)
+      pt.out = w; pt.in = [2 * pt.p[0] - w[0], 2 * pt.p[1] - w[1]]
+    } else if (d.part === 'p') {
+      const w0 = toWorld(d.sx, d.sy), dx = w[0] - w0[0], dy = w[1] - w0[1]
+      for (const k of ['in', 'p', 'out']) pt[k] = [orig[k][0] + dx, orig[k][1] + dy]
+    } else {
+      // a handle: the other one turns with it so the curve stays smooth (Alt = this handle alone)
+      pt[d.part] = w
+      if (!alt) {
+        const other = d.part === 'in' ? 'out' : 'in'
+        const len = Math.hypot(orig[other][0] - orig.p[0], orig[other][1] - orig.p[1])
+        const vx = pt.p[0] - w[0], vy = pt.p[1] - w[1], l = Math.hypot(vx, vy)
+        if (l > 1e-6 && len > 1e-6) pt[other] = [pt.p[0] + vx / l * len, pt.p[1] + vy / l * len]
+      }
+    }
+    state.pathDrag = { pts, closed: d.closed }
+  }
+
+  /** A clicked (not dragged) new point: handles along the way the path goes, a third of the way to its neighbours. */
+  function autoHandles(pts, i, closed) {
+    const out = copyPts(pts)
+    const pt = out[i]
+    const prev = i > 0 ? out[i - 1] : closed && out.length > 1 ? out[out.length - 1] : null
+    const next = i + 1 < out.length ? out[i + 1] : closed && out.length > 1 ? out[0] : null
+    const flat = (q) => q && Math.hypot(q.in[0] - q.p[0], q.in[1] - q.p[1]) < 1e-6 && Math.hypot(q.out[0] - q.p[0], q.out[1] - q.p[1]) < 1e-6
+    const dist = (a, b) => Math.hypot(b.p[0] - a.p[0], b.p[1] - a.p[1])
+    let dir = null, L = 0
+    if (prev && next && prev !== pt && next !== pt) { dir = [next.p[0] - prev.p[0], next.p[1] - prev.p[1]]; L = Math.min(dist(prev, pt), dist(pt, next)) / 3 }
+    else if (prev && prev !== pt) { dir = [pt.p[0] - prev.p[0], pt.p[1] - prev.p[1]]; L = dist(prev, pt) / 3 }
+    if (!dir || L < 1e-6) return out // the first point keeps flat handles until the next one comes
+    const l = Math.hypot(dir[0], dir[1]) || 1
+    const ux = dir[0] / l, uy = dir[1] / l
+    pt.in = [pt.p[0] - ux * L, pt.p[1] - uy * L]; pt.out = [pt.p[0] + ux * L, pt.p[1] + uy * L]
+    alignFlatPrev(out, i, closed)
+    return out
+  }
+
+  /** The point before a new one, still without handles (just clicked): its handles point the way the path goes. */
+  function alignFlatPrev(out, i, closed) {
+    const pt = out[i]
+    const prev = i > 0 ? out[i - 1] : closed && out.length > 1 ? out[out.length - 1] : null
+    const flat = (q) => q && Math.hypot(q.in[0] - q.p[0], q.in[1] - q.p[1]) < 1e-6 && Math.hypot(q.out[0] - q.p[0], q.out[1] - q.p[1]) < 1e-6
+    const dist = (a, b) => Math.hypot(b.p[0] - a.p[0], b.p[1] - a.p[1])
+    if (prev && prev !== pt && flat(prev)) {
+      const L2 = dist(prev, pt) / 3
+      const qx = (pt.p[0] - prev.p[0]) / (dist(prev, pt) || 1), qy = (pt.p[1] - prev.p[1]) / (dist(prev, pt) || 1)
+      prev.in = [prev.p[0] - qx * L2, prev.p[1] - qy * L2]; prev.out = [prev.p[0] + qx * L2, prev.p[1] + qy * L2]
+    }
+    return out
+  }
+
+  function finishPathDrag(d) {
+    const pd = state.pathDrag
+    state.pathDrag = null
+    if (d.kind === 'pathNew') {
+      const pts = d.moved && pd ? copyPts(pd.pts) : autoHandles(d.pts, d.i, d.closed)
+      if (d.moved && pd) alignFlatPrev(pts, d.i, d.closed)
+      commitPath(pts, d.closed, `已添加路径点（${pts.length}）`)
+      return
+    }
+    if (!d.moved || !pd) {
+      // a click on the first point of an open path closes it (Spine; in 设置)
+      if (!animOn() && d.part === 'p' && d.i === 0 && !d.closed && d.pts.length >= 2) commitPath(d.pts, true, '路径已闭合')
+      return
+    }
+    commitPath(pd.pts, d.closed, d.part === 'p' ? '已移动路径点' : '已调整路径手柄')
+  }
+
+  /** Spine's 编辑路径 panel: 创建 / 删除, 闭合, 新建, the point count. */
+  function renderPathEditPanel() {
+    const p = $('#clipPanel')
+    const pe = state.pathEdit
+    const R = pe && pathRuntime()
+    p.hidden = !R
+    p.textContent = ''
+    if (!R) return
+    const n = R.att.worldVerticesLength / 6
+    const closed = !!R.att.closed
+    const tool = (id, label, title) => h('button', { class: 'mt', 'aria-pressed': String(pe.tool === id), title, onclick: () => { pe.tool = id; renderPathEditPanel() } }, label)
+    if (animOn()) {
+      p.append(
+        h('div', { class: 'mname' }, `${pe.slot} · ${pe.name}`),
+        h('div', { class: 'mhd' }, h('b', {}, '编辑路径'), h('button', { class: 'xx', title: '完成（Enter / Esc）', onclick: exitPathEdit }, '×')),
+        h('div', { class: 'mrow mopts' }, h('span', { class: 'mcount' }, `第 ${state.frame} 帧：拖点 / 手柄打变形关键帧（Alt 只动一边手柄）`)))
+      layoutFloats()
+      return
+    }
+    p.append(
+      h('div', { class: 'mname' }, `${pe.slot} · ${pe.name}`),
+      h('div', { class: 'mhd' }, h('b', {}, '编辑路径'), h('button', { class: 'xx', title: '完成（Enter / Esc）', onclick: exitPathEdit }, '×')),
+      h('div', { class: 'mrow' },
+        tool('create', '创建', '点空白处加点（拖动拉出手柄），拖点 / 手柄调整（Alt 只动一边手柄），点第一个点闭合'),
+        tool('delete', '删除', '点路径点删除')),
+      h('div', { class: 'mrow' },
+        h('button', { class: 'mt', 'aria-pressed': String(closed), disabled: n < 2, title: '最后一个点连回第一个点', onclick: () => commitPath(pathPoints(R.slot, R.att), !closed, closed ? '路径已打开' : '路径已闭合') }, '闭合'),
+        h('button', { class: 'mt', title: '清空路径，重新点', onclick: () => { pe.tool = 'create'; commitPath([], false, '已清空路径，重新点') } }, '新建')),
+      h('div', { class: 'mrow mopts' }, h('span', { class: 'mcount' }, n < 2 ? `路径点：${n}（至少 2 个点）` : `路径点：${n}`)))
+    layoutFloats()
+  }
+
+  // ---------- 路径约束 (Spine's path constraint)
+
+  const PATH_DEF = { positionMode: 'percent', spacingMode: 'length', rotateMode: 'tangent', rotation: 0, position: 0, spacing: 0, rotateMix: 1, translateMix: 1 }
+  function pathTracks(name) { return [['path', name, 'position'], ['path', name, 'spacing'], ['path', name, 'mix']] }
+
+  /** Key a path constraint's current values: `which` ⊂ position, spacing, mix (Spine keys them apart). */
+  function keyPathNow(name, which) {
+    const live = rt.skeleton && rt.skeleton.findPathConstraint(name)
+    if (!live) return
+    const v = {}
+    if (which.includes('position')) v.position = live.position
+    if (which.includes('spacing')) v.spacing = live.spacing
+    if (which.includes('mix')) { v.rotateMix = live.rotateMix; v.translateMix = live.translateMix }
+    edit(`第 ${state.frame} 帧：${name} 已打关键帧`, (j) => Ops.keyConstraint(j, state.anim, 'path', name, timeSec(), v))
+  }
+
+  /** A value with a slider and a number box (位置 / 间距 / 偏移 / 混合); `scale` = shown per stored unit. */
+  function pathValue(k, value, cfg, onPreview, onCommit) {
+    const sc = cfg.scale || 1
+    const shown = Math.round(value * sc * 100) / 100
+    const range = h('input', { type: 'range', min: Math.min(cfg.min, shown), max: Math.max(cfg.max, shown), step: cfg.step, value: shown, disabled: !!cfg.disabled, style: 'flex:1;min-width:0' })
+    const box = h('input', { type: 'number', step: 'any', value: String(shown), disabled: !!cfg.disabled })
+    range.addEventListener('input', () => { box.value = String(Math.round(Number(range.value) * 100) / 100); onPreview(k, Number(range.value) / sc) })
+    range.addEventListener('change', () => onCommit(k, Number(range.value) / sc))
+    box.addEventListener('change', () => { const v = Number(box.value); if (Number.isFinite(v)) onCommit(k, v / sc) })
+    box.addEventListener('keydown', (e) => { if (e.key === 'Enter') box.blur() })
+    return h('div', { class: 'inline', style: 'flex:1;min-width:0;gap:6px' }, range, box)
+  }
+
+  /**
+   * Spine's path constraint panel: 骨骼, 目标 (the slot of the path), 间距 + 模式 (长度 / 固定 / 百分比),
+   * 位置 + 模式 (固定 / 百分比), 偏移 旋转, 混合 旋转 + 模式 (切线 / 链 / 链缩放) and 移动, 链接滑块.
+   * 位置, 间距 and 混合 key apart in an animation; the modes and the offset are setup values.
+   */
+  function pathCard(c) {
+    const name = c.name
+    const live = rt.skeleton && rt.skeleton.findPathConstraint(name)
+    const anim = !!(animOn() && live)
+    const def = (k) => (c[k] === undefined ? PATH_DEF[k] : c[k])
+    const keyed = { position: 1, spacing: 1, rotateMix: 1, translateMix: 1 }
+    const cur = (k) => (anim && keyed[k] ? live[k] : def(k))
+    const setProps = (props, msg) => edit((r) => `${msg}${orderNote(r)}`, (j) => withOrder(Ops.setConstraintProps(j, 'path', name, props)))
+    const isMix = (k) => k === 'rotateMix' || k === 'translateMix'
+    const linked = (k, v) => (isMix(k) && state.pathMixLink ? { rotateMix: v, translateMix: v } : { [k]: v })
+    const preview = (k, v) => {
+      if (anim) return
+      const d = rt.data.findPathConstraint(name)
+      if (!d) return
+      const vals = linked(k, v)
+      for (const [kk, vv] of Object.entries(vals)) d[kk === 'rotation' ? 'offsetRotation' : kk] = vv
+      pose()
+    }
+    const commit = (k, v) => {
+      if (anim) {
+        const vals = isMix(k) ? { rotateMix: live.rotateMix, translateMix: live.translateMix, ...linked(k, v) } : { [k]: v }
+        edit(`已在第 ${state.frame} 帧给 ${name} 打关键帧`, (j) => Ops.keyConstraint(j, state.anim, 'path', name, timeSec(), vals))
+      } else setProps(linked(k, v), `已修改 ${name}`)
+    }
+    // the modes as Spine shows them: small grey text with a corner triangle
+    const mode = (options, value, onChange, title) => {
+      const s = h('select', { class: 'pmode', title, onchange: () => onChange(s.value) }, options.map(([v, l]) => h('option', { value: v, selected: v === value }, l)))
+      return s
+    }
+    const out = []
+    out.push(h('div', { class: 'name-row' },
+      textInput(name, (v) => edit(`已改名约束 → ${v}`, (j) => Ops.renameConstraint(j, 'path', name, v), (r) => { state.sel = { kind: 'path', name: r.constraint } }), { rename: true }),
+      ibtn('trash', '删除约束', deleteSelection)))
+    // 骨骼: one line (Spine); the arrow opens the list to take bones out / add one
+    const open = state.pathBonesOpen === name
+    out.push(field('骨骼', h('div', { class: 'pline' },
+      h('span', { title: c.bones.join(', ') }, c.bones.join(', ')),
+      h('button', { class: 'pfold', title: open ? '收起' : '展开：移出 / 加入骨骼', html: open ? ICON.down : ICON.right, onclick: () => { state.pathBonesOpen = open ? null : name; renderProps() } }))))
+    if (open) {
+      out.push(h('div', { class: 'list pbl' }, c.bones.map((b) => h('div', { class: 'li', onclick: () => select({ kind: 'bone', name: b }, false, { keepPanel: true }) },
+        h('span', { class: 'n' }, b),
+        h('button', { class: 'x', title: '移出', disabled: c.bones.length <= 1,
+          onclick: (e) => { e.stopPropagation(); setProps({ bones: c.bones.filter((x) => x !== b) }, `已把 ${b} 移出约束`) } }, '×')))))
+      out.push(h('div', { class: 'btns' }, btn('加入骨骼', () => startPick({ want: 'bone', text: `加入「${name}」：点骨骼`,
+        done: (b) => setProps({ bones: [...c.bones, b] }, `已把 ${b} 加入约束`) }))))
+    }
+    const tslot = (state.json.slots.find((x) => x.name === c.target) || {})
+    out.push(field('目标', h('div', { class: 'pline' },
+      h('span', { title: `插槽 ${c.target}（骨骼 ${tslot.bone || '—'}）` }, c.target),
+      btn('更换', () => startPick({ want: 'slot', text: `「${name}」的路径：在画面上点路径，或在工程树里点路径 / 它所在的插槽`,
+        done: (t) => setProps({ target: t }, `目标改为 ${t}`) })))))
+    const sp = def('spacingMode'), pm = def('positionMode')
+    out.push(field('间距', h('div', { class: 'inline' },
+      pathValue('spacing', cur('spacing'), sp === 'percent' ? { min: 0, max: 100, step: 0.1, scale: 100 } : { min: -200, max: 200, step: 0.5 }, preview, commit),
+      keyBtn([['path', name, 'spacing']], () => keyPathNow(name, ['spacing']), '给间距打关键帧'),
+      mode([['length', '长度'], ['fixed', '固定'], ['percent', '百分比']], sp, (v) => setProps({ spacingMode: v }, `${name} 间距按${{ length: '长度', fixed: '固定', percent: '百分比' }[v]}`),
+        '长度：骨骼长度 + 间距；固定：骨骼之间固定距离；百分比：路径总长的百分比'))))
+    out.push(field('位置', h('div', { class: 'inline' },
+      pathValue('position', cur('position'), pm === 'percent' ? { min: 0, max: 100, step: 0.1, scale: 100 } : { min: -1000, max: 1000, step: 1 }, preview, commit),
+      keyBtn([['path', name, 'position']], () => keyPathNow(name, ['position']), '给位置打关键帧'),
+      mode([['fixed', '固定'], ['percent', '百分比']], pm, (v) => setProps({ positionMode: v }, `${name} 位置按${{ fixed: '固定', percent: '百分比' }[v]}`),
+        '固定：沿路径的距离；百分比：路径总长的百分比'))))
+    out.push(grp('偏移', null, field('旋转', pathValue('rotation', def('rotation'), { min: -180, max: 180, step: 0.5, disabled: anim }, preview, (k, v) => setProps({ rotation: v }, `已修改 ${name} 偏移旋转`)))))
+    out.push(grp('混合', h('span', { class: 'pmixr' },
+      h('label', { class: 'plink', title: '旋转、移动两个混合一起拖' }, h('input', { type: 'checkbox', checked: !!state.pathMixLink, onchange: (e) => { state.pathMixLink = e.target.checked; renderProps() } }), '链接滑块'),
+      keyBtn([['path', name, 'mix']], () => keyPathNow(name, ['mix']), '给两个混合打关键帧')),
+      field('旋转', h('div', { class: 'inline' },
+        pathValue('rotateMix', cur('rotateMix'), { min: 0, max: 100, step: 1, scale: 100 }, preview, commit),
+        mode([['tangent', '切线'], ['chain', '链'], ['chainScale', '链缩放']], def('rotateMode'), (v) => setProps({ rotateMode: v }, `${name} 旋转按${{ tangent: '切线', chain: '链', chainScale: '链缩放' }[v]}`),
+          '切线：骨骼转到路径的切线方向；链：骨骼指向下一根骨骼；链缩放：同时拉伸骨骼'))),
+      field('移动', pathValue('translateMix', cur('translateMix'), { min: 0, max: 100, step: 1, scale: 100 }, preview, commit))))
+    if (state.skin !== 'default') {
+      const sk = skinOf(state.skin)
+      const inSkin = !!(sk && Array.isArray(sk.path) && sk.path.includes(name))
+      out.push(h('div', { class: 'btns' }, btn(inSkin ? `从皮肤「${state.skin}」移除` : `加入皮肤「${state.skin}」`,
+        () => edit(`已${inSkin ? '移出' : '加入'}皮肤 ${state.skin}`, (j) => Ops.setSkinMembership(j, state.skin, 'path', name, !inSkin)), { full: true })))
+    }
+    return [h('div', { class: 'pc' }, out)]
+  }
+
 
   /** Spine's skin placeholder: one row per skin with what it puts here. */
   function placeholderPanel(sel) {
@@ -7278,7 +7978,7 @@ self.onmessage = (e) => {
     // the solve order lives in the tree and sorts itself after every change
     if (sel.kind === 'ik') return ikCard(c)
     if (sel.kind === 'transform') return transformCard(c)
-    return [h('div', { class: 'sub-card' }, h('div', { class: 't' }, c.name, h('span', { class: 'k' }, '路径约束（只显示）')))]
+    return pathCard(c)
   }
 
   function constraintCommon(kind, c) {
@@ -7404,13 +8104,13 @@ self.onmessage = (e) => {
       const type = att.type || 'region'
       if (type === 'region') return { kind: 'att', sel: s, att }
       // a mesh moves / turns / scales / shears as a whole, with the same handles at its centre
-      if (type === 'mesh' || type === 'linkedmesh' || type === 'clipping') return { kind: 'att', sel: s, att, mesh: true }
+      if (type === 'mesh' || type === 'linkedmesh' || type === 'clipping' || type === 'path') return { kind: 'att', sel: s, att, mesh: true }
     }
     // 动画: the picked mesh (shown in its slot) the same way, written as its shape key
     if (s && s.kind === 'att' && animOn()) {
       const slot = rt.skeleton && rt.skeleton.findSlot(s.slot)
       const shown = slot && slot.getAttachment()
-      const T = shown instanceof spine.MeshAttachment || shown instanceof spine.ClippingAttachment ? meshRowTarget(s.slot, s.name) : null
+      const T = isShapeAtt(shown) ? meshRowTarget(s.slot, s.name) : null
       if (T && T.att === shown) return { kind: 'att', sel: s, att: shown, mesh: true, anim: T }
     }
     return null
@@ -7493,7 +8193,7 @@ self.onmessage = (e) => {
       }
       // 设置: the vertices take it, as a drag of the whole mesh does
       const att = slot.getAttachment()
-      if (!(att instanceof spine.MeshAttachment) && !(att instanceof spine.ClippingAttachment)) return
+      if (!isShapeAtt(att)) return
       const drag = { att, sel: t.sel, mesh: true, tool: { x: 'move', y: 'move', rotation: 'rotate', scaleX: 'scale', scaleY: 'scale', shearX: 'shear', shearY: 'shear' }[k], start: { vertices: Array.from(att.vertices) }, only: pickedVerts(t.sel.slot) }
       applyMeshTransform(drag, W)
       finishAttDrag(drag)
@@ -7550,7 +8250,8 @@ self.onmessage = (e) => {
     xf.hidden = !state.json
     $('#selname').hidden = true
     if (!state.json) return
-    const tool = (id, key, title) => h('button', { class: 'xt', 'aria-pressed': String(state.tool === id), title: `${title}（${key}）`, html: ICON[id],
+    // the tools with their names beside the icons, as Spine shows them
+    const tool = (id, key, title, label) => h('button', { class: 'xt xtl', 'data-t': id, 'aria-pressed': String(state.tool === id), title: `${title}（${key}）`, html: ICON[id] + `<span>${label}</span>`,
       disabled: id === 'create' && state.mode !== 'setup', onclick: () => setTool(id) })
     const t = xformTarget()
     const v = xformValues(t)
@@ -7589,16 +8290,26 @@ self.onmessage = (e) => {
     }
     xf.append(
       h('div', { class: 'xg' }, h('div', { class: 'cap' }, '工具'),
-        h('div', { class: 'xr' }, tool('pose', 'B', '姿势：拖骨骼原点 = 移动，拖骨骼身 = 指向鼠标；选了一串父子骨骼时拖末端整串 IK 摆动')),
-        h('div', { class: 'xr' }, tool('create', 'N', '新建骨骼：点骨骼 = 选它当父骨骼，点 / 拖空白处 = 新建')),
-        h('div', { class: 'xr' }, h('button', { class: 'xt', 'aria-pressed': String(state.jointEdit), html: ICON.joint, disabled: state.mode !== 'setup',
+        h('div', { class: 'xr' }, tool('pose', 'B', '姿势：拖骨骼原点 = 移动，拖骨骼身 = 指向鼠标；选了一串父子骨骼时拖末端整串 IK 摆动', '姿势')),
+        // 权重 (Spine's Weights tool): the picked mesh / picture / path into weight editing, again = out
+        h('div', { class: 'xr' }, h('button', { class: 'xt xtl', 'data-t': 'weights', 'aria-pressed': String(!!state.weightEdit), html: ICON.cons + '<span>权重</span>',
+          title: '权重：编辑选中网格 / 图片 / 路径的骨骼权重（绑定在权重面板里）；再点一次退出',
+          onclick: () => {
+            if (state.weightEdit) { exitWeightEdit(); return }
+            const L = layerSel()
+            const a = L && attJson(L)
+            if (!a || !['mesh', 'linkedmesh', 'path', 'region', undefined].includes(a.type)) { status('先选一个网格、图片或路径'); return }
+            enterWeightEdit(L)
+          } })),
+        h('div', { class: 'xr' }, tool('create', 'N', '新建骨骼：点骨骼 = 选它当父骨骼，点 / 拖空白处 = 新建', '创建')),
+        h('div', { class: 'xr' }, h('button', { class: 'xt xtl', 'data-t': 'joint', 'aria-pressed': String(state.jointEdit), html: ICON.joint + '<span>关节</span>', disabled: state.mode !== 'setup',
           title: '改关节：用平移 / 姿势拖骨骼的起点或末端，父骨骼跟着转向、子骨骼和图片不动（也可以按住 Shift）',
           onclick: () => { state.jointEdit = !state.jointEdit; renderStage() } }))),
       h('div', { class: 'xg' }, h('div', { class: 'cap' }, t ? (t.kind === 'bone' ? ((t.names || []).length > 1 ? `已选 ${t.names.length} 根骨骼` : t.name) : t.mesh ? `${shapeWord(t.att)} ${t.sel.name}` : `图片 ${t.sel.name}`) : deformT ? `${shapeWord(deformT.att)} ${state.sel.name}` : '变换'),
-        h('div', { class: 'xr' }, tool('rotate', 'C', '旋转'), input('rotation', 'wide'), keyBtn('rotate')),
-        h('div', { class: 'xr' }, tool('move', 'V', '平移'), input('x'), input('y'), keyBtn('translate')),
-        h('div', { class: 'xr' }, tool('scale', 'X', '缩放'), input('scaleX'), input('scaleY'), keyBtn('scale')),
-        h('div', { class: 'xr' }, tool('shear', 'Z', '斜切'), input('shearX'), input('shearY'), keyBtn('shear'))),
+        h('div', { class: 'xr' }, tool('rotate', 'C', '旋转', '旋转'), input('rotation', 'wide'), keyBtn('rotate')),
+        h('div', { class: 'xr' }, tool('move', 'V', '平移', '移动'), input('x'), input('y'), keyBtn('translate')),
+        h('div', { class: 'xr' }, tool('scale', 'X', '缩放', '缩放'), input('scaleX'), input('scaleY'), keyBtn('scale')),
+        h('div', { class: 'xr' }, tool('shear', 'Z', '斜切', '倾斜'), input('shearX'), input('shearY'), keyBtn('shear'))),
       h('div', { class: 'xg' }, h('div', { class: 'cap' }, '轴向'),
         ...[['local', '局部'], ['parent', '父级'], ['world', '世界']].map(([id, label]) => h('button', { class: 'xs', 'aria-pressed': String(state.axes === id),
           title: { local: '旋转相对父骨骼，平移沿自身方向', parent: '平移沿父骨骼方向', world: '旋转、平移、缩放都按世界坐标' }[id],
@@ -7727,7 +8438,7 @@ self.onmessage = (e) => {
     const rows = []
     const bones = selectedBones()
     const slot = currentSlot(), extra = state.dopeExtra
-    const cons = state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform') ? state.sel : null
+    const cons = state.sel && (state.sel.kind === 'ik' || state.sel.kind === 'transform' || state.sel.kind === 'path') ? state.sel : null
     const ev = state.sel && state.sel.kind === 'event' ? state.sel.name : null
     const slotList = [...new Set([...(slot ? [slot] : []), ...state.multiSlots, ...(extra ? extra.slots : [])])]
     const consAll = [...(cons ? [cons] : []), ...(state.multiCons || []), ...(extra ? extra.cons : [])]
@@ -7746,7 +8457,16 @@ self.onmessage = (e) => {
         rows.push({ label: slot, paths: props.map((x) => x.path), head: true, sel: { kind: 'slot', name: slot } })
         for (const x of props) rows.push({ label: x.label, paths: [x.path], color: x.color, indent: 1 })
       }
-      for (const c of consList) { rows.push({ label: c.name, paths: [[c.kind, c.name]], head: true, sel: { kind: c.kind, name: c.name } }); rows.push({ label: { ik: 'IK', transform: '变换', path: '路径' }[c.kind], paths: [[c.kind, c.name]], color: KEY_COLOR.cons, indent: 1 }) }
+      for (const c of consList) {
+        if (c.kind === 'path') {
+          // a path constraint keys three things apart (Spine): 位置, 间距, 混合
+          const ps = pathTracks(c.name)
+          rows.push({ label: c.name, paths: ps, head: true, sel: { kind: 'path', name: c.name } })
+          ps.forEach((x, i) => rows.push({ label: ['位置', '间距', '混合'][i], paths: [x], color: KEY_COLOR.cons, indent: 1 }))
+          continue
+        }
+        rows.push({ label: c.name, paths: [[c.kind, c.name]], head: true, sel: { kind: c.kind, name: c.name } }); rows.push({ label: { ik: 'IK', transform: '变换', path: '路径' }[c.kind], paths: [[c.kind, c.name]], color: KEY_COLOR.cons, indent: 1 })
+      }
       for (const e of evList) { rows.push({ label: e, paths: [['events', e]], head: true, sel: { kind: 'event', name: e } }); rows.push({ label: '事件', paths: [['events', e]], color: KEY_COLOR.event, indent: 1 }) }
       // the draw order belongs to the whole skeleton: with bones / slots picked it shows under them
       // (Spine), so a reorder keyed in the 绘制顺序 list is seen (it never showed with a pick)
@@ -7757,11 +8477,11 @@ self.onmessage = (e) => {
         const [k0, k1, , k3] = t.path
         const id = k0 === 'deform' ? 'slots:' + t.path[2] : k0 === 'drawOrder' ? 'drawOrder' : k0 + ':' + k1
         const label = k0 === 'deform' ? t.path[2] : k0 === 'drawOrder' ? '绘制顺序' : k1
-        const sel = k0 === 'bones' ? { kind: 'bone', name: k1 } : k0 === 'slots' ? { kind: 'slot', name: k1 } : k0 === 'deform' ? { kind: 'slot', name: t.path[2] } : (k0 === 'ik' || k0 === 'transform') ? { kind: k0, name: k1 } : k0 === 'events' ? { kind: 'event', name: k1 } : null
+        const sel = k0 === 'bones' ? { kind: 'bone', name: k1 } : k0 === 'slots' ? { kind: 'slot', name: k1 } : k0 === 'deform' ? { kind: 'slot', name: t.path[2] } : (k0 === 'ik' || k0 === 'transform' || k0 === 'path') ? { kind: k0, name: k1 } : k0 === 'events' ? { kind: 'event', name: k1 } : null
         if (!items.has(id)) items.set(id, { label, paths: [], head: true, sel, kids: [] })
         items.get(id).paths.push(t.path)
         const kind = trackKind(t.path)
-        const kidLabel = kind === 'deform' ? `网格 ${t.path[3]}` : { rotate: '旋转', translate: '平移', scale: '缩放', shear: '斜切', attachment: '附件', color: '颜色', events: '事件', drawOrder: '绘制顺序', cons: { ik: 'IK', transform: '变换', path: '路径' }[k0] || '约束' }[kind] || kind
+        const kidLabel = kind === 'deform' ? `网格 ${t.path[3]}` : { rotate: '旋转', translate: '平移', scale: '缩放', shear: '斜切', attachment: '附件', color: '颜色', events: '事件', drawOrder: '绘制顺序', cons: k0 === 'path' ? ({ position: '位置', spacing: '间距', mix: '混合' }[t.path[2]] || '路径') : { ik: 'IK', transform: '变换' }[k0] || '约束' }[kind] || kind
         const kidColor = kind === 'cons' ? KEY_COLOR.cons : kind === 'events' ? KEY_COLOR.event : KEY_COLOR[kind] || KEY_COLOR.cons
         items.get(id).kids.push({ label: kidLabel, paths: [t.path], color: kidColor, indent: 1 })
         void k3
@@ -8260,6 +8980,7 @@ self.onmessage = (e) => {
     if (path[0] === 'slots') return `${path[1]} · ${TRACK_LABEL[path[2]] || path[2]}`
     if (path[0] === 'deform') return `${path[2]} · 网格`
     if (path[0] === 'ik' || path[0] === 'transform') return `${path[1]} · 混合`
+    if (path[0] === 'path') return `${path[1]} · ${{ position: '位置', spacing: '间距', mix: '混合' }[path[2]] || '路径'}`
     if (path[0] === 'events') return `${path[1]} · 事件`
     return '绘制顺序'
   }
@@ -8435,6 +9156,7 @@ self.onmessage = (e) => {
     renderLayerDock()
     renderTracePanel()
     if (state.clipEdit && (state.mode !== 'setup' || !clipRuntime())) state.clipEdit = null
+    if (state.pathEdit && !pathRuntime()) state.pathEdit = null
     renderClipPanel()
     layoutFloats()
     notifyHost()
@@ -8540,6 +9262,7 @@ self.onmessage = (e) => {
         return
       }
       if (state.clipEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitClipEdit(); return }
+      if (state.pathEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitPathEdit(); return }
       if (state.weightEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) {
         e.preventDefault()
         const we = state.weightEdit
@@ -8707,6 +9430,12 @@ self.onmessage = (e) => {
       // 权重 works in 动画 mode too (the posed mesh is painted); 蒙皮 edits the mesh itself, in 设置
       if (open) { if (kind === 'mesh' && state.mode !== 'setup') setMode('setup'); state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind }
       else if (state.leftOpen === kind) state.leftOpen = null
+      // 权重 opened with a mesh or a path picked: that one is in weight editing right away (user 2026-10-13)
+      if (open && kind === 'weights') {
+        const L = layerSel()
+        const a = L && attJson(L)
+        if (a && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'path')) enterWeightEdit(L)
+      }
     } else if (kind === 'bones') {
       if (open) { state.leftOpen = null; if (state.mode !== 'setup') setMode('setup'); state.opt.boneVis = true }
     } else if (kind === 'sequence' || kind === 'sweep') {

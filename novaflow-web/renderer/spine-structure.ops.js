@@ -625,6 +625,124 @@
     return { json: tidy(json), attachment: n }
   }
 
+  // ---------------------------------------------------------------- 路径 (Spine's path attachment)
+  //
+  // A path is a chain of cubic Bezier curves. Its vertices come in threes per point: the point's
+  // in-handle, the point, its out-handle (x, y each, in the slot bone's space, or weighted).
+  // An open path ignores the first in-handle and the last out-handle. `lengths` = each curve's
+  // cumulative length (the runtime uses them when 恒定速度 is off), from the setup pose.
+
+  function bezierLength(x1, y1, cx1, cy1, cx2, cy2, x2, y2) {
+    let len = 0, px = x1, py = y1
+    const N = 32
+    for (let i = 1; i <= N; i++) {
+      const t = i / N, u = 1 - t
+      const x = u * u * u * x1 + 3 * u * u * t * cx1 + 3 * u * t * t * cx2 + t * t * t * x2
+      const y = u * u * u * y1 + 3 * u * u * t * cy1 + 3 * u * t * t * cy2 + t * t * t * y2
+      len += Math.hypot(x - px, y - py)
+      px = x; py = y
+    }
+    return len
+  }
+
+  /** Cumulative curve lengths of a path from its points (flat x, y; three vertices per point). */
+  function pathLengths(flat, closed) {
+    const n = Math.floor(flat.length / 6)
+    const P = (i, k) => [flat[(i * 3 + k) * 2], flat[(i * 3 + k) * 2 + 1]]
+    const out = []
+    let total = 0
+    for (let i = 0; i < n; i++) {
+      if (i + 1 >= n && !closed) { out.push(Math.round(total * 1000) / 1000); continue }
+      const j = (i + 1) % n
+      const a = P(i, 1), c1 = P(i, 2), c2 = P(j, 0), b = P(j, 1)
+      total += bezierLength(a[0], a[1], c1[0], c1[1], c2[0], c2[1], b[0], b[1])
+      out.push(Math.round(total * 1000) / 1000)
+    }
+    return out
+  }
+
+  /** A path's vertices in the world at setup (`mats`: bone name → setup world matrix), else in its bone's space. */
+  function pathSetupWorld(json, slotName, att, mats) {
+    const v = att.vertices || []
+    const s = findSlot(json, slotName)
+    if (!isWeighted(att)) {
+      const m = mats && s && mats[s.bone]
+      const out = []
+      for (let i = 0; i + 1 < v.length; i += 2) { const w = m ? toWorld(m, v[i], v[i + 1]) : [v[i], v[i + 1]]; out.push(w[0], w[1]) }
+      return out
+    }
+    const out = []
+    for (let i = 0; i < v.length;) {
+      const n = v[i++]
+      let x = 0, y = 0
+      for (let k = 0; k < n; k++, i += 4) {
+        const b = json.bones[v[i]]
+        const m = mats && b && mats[b.name]
+        const w = m ? toWorld(m, v[i + 1], v[i + 2]) : [v[i + 1], v[i + 2]]
+        x += w[0] * v[i + 3]; y += w[1] * v[i + 3]
+      }
+      out.push(x, y)
+    }
+    return out
+  }
+
+  function refreshPathLengths(json, slotName, att, mats) {
+    att.lengths = pathLengths(pathSetupWorld(json, slotName, att, mats), !!att.closed)
+  }
+
+  /** A new, empty path in `slot` (default skin), shown by the slot; its points are clicked in after. */
+  function createPath(input, slot, opts) {
+    const json = prepare(input)
+    const s = requireSlot(json, slot)
+    const o = opts || {}
+    const skin = requireSkin(json, 'default')
+    const taken = new Set()
+    for (const sk of json.skins) for (const k of Object.keys(sk.attachments[slot] || {})) taken.add(k)
+    const n = uniqueName(taken, String(o.name || 'path').trim() || 'path', true)
+    const att = { type: 'path', vertexCount: 0, vertices: [], lengths: [] }
+    skin.attachments[slot] = skin.attachments[slot] || {}
+    skin.attachments[slot][n] = att
+    s.attachment = n
+    return { json: tidy(json), attachment: n }
+  }
+
+  /**
+   * A path's points (`vertices`: flat x, y in the slot bone's space, three per point; a new count
+   * drops its deform keys and turns a weighted path into an unweighted one), 闭合 (`closed`),
+   * 恒定速度 (`constantSpeed`) and colour. `mats` (setup world matrices) make `lengths` exact.
+   */
+  function setPath(input, skinName, slot, name, props, mats) {
+    const json = prepare(input)
+    const skin = requireSkin(json, skinName)
+    const att = (skin.attachments[slot] || {})[name]
+    if (!att || att.type !== 'path') fail(`不是路径：${name}`)
+    const p = props || {}
+    let reshape = false
+    if (p.vertices !== undefined) {
+      const v = Array.from(p.vertices, (x) => Math.round(Number(x) * 1000) / 1000)
+      if (v.length % 6 || v.some((x) => !Number.isFinite(x))) fail('路径顶点不对')
+      const same = !isWeighted(att) && (Number(att.vertexCount) || 0) * 2 === v.length
+      att.vertexCount = v.length / 2
+      att.vertices = v
+      reshape = true
+      if (!same) {
+        for (const a of Object.values(json.animations)) {
+          const d = a.deform && a.deform[skinName] && a.deform[skinName][slot]
+          if (d && d[name]) delete d[name]
+        }
+      }
+    }
+    if (p.closed !== undefined) { if (p.closed) att.closed = true; else delete att.closed; reshape = true }
+    if (p.constantSpeed !== undefined) { if (p.constantSpeed === false) att.constantSpeed = false; else delete att.constantSpeed }
+    if (p.color !== undefined) {
+      const c = String(p.color || '').toLowerCase()
+      if (c && c !== 'ffffffff') att.color = c
+      else delete att.color
+    }
+    if (reshape) refreshPathLengths(json, slot, att, mats)
+    return { json: tidy(json) }
+  }
+
   /**
    * A clipping's polygon (`vertices`: flat x, y in the slot bone's space; a new count drops its
    * deform keys), its 结束插槽 (`end`, '' = to the top) and its colour.
@@ -1325,7 +1443,7 @@
    * mesh) and are added to the mesh's own vertices; the UVs stay, so the image follows the
    * shape. A linked mesh edits the mesh it links to. Deform keys stay offsets from this shape.
    */
-  function moveMeshVertices(input, skin, slot, name, offsets) {
+  function moveMeshVertices(input, skin, slot, name, offsets, mats) {
     const json = prepare(input)
     let map = attachmentsOf(json, skin, slot) || fail('这个皮肤里没有该插槽的附件')
     let att = map[name] || fail(`找不到附件：${name}`)
@@ -1334,7 +1452,7 @@
       map = attachmentsOf(json, owner, slot) || fail('找不到链接的网格')
       att = map[att.parent] || fail(`找不到链接的网格：${att.parent}`)
     }
-    if (att.type !== 'mesh' && att.type !== 'clipping') fail('只有网格和剪裁能移动顶点')
+    if (att.type !== 'mesh' && att.type !== 'clipping' && att.type !== 'path') fail('只有网格、剪裁和路径能移动顶点')
     const off = Array.from(offsets || [], (x) => num(x, 0))
     const r3 = (v) => Math.round(v * 1000) / 1000
     const v = att.vertices
@@ -1350,6 +1468,15 @@
     } else {
       for (let i = 0; i < v.length; i++) if (off[i]) v[i] = r3(v[i] + off[i])
     }
+    if (att.type === 'path') refreshPathLengths(json, slot, att, mats)
+    return { json: tidy(json) }
+  }
+
+  /** After the editor wrote a path's vertices itself: its curve lengths again (setup pose). */
+  function updatePathLengths(input, skin, slot, name, mats) {
+    const json = prepare(input)
+    const att = (attachmentsOf(json, skin, slot) || {})[name]
+    if (att && att.type === 'path') refreshPathLengths(json, slot, att, mats)
     return { json: tidy(json) }
   }
 
@@ -1368,7 +1495,7 @@
 
   /** Per vertex: how many bone influences it has (1 for an unweighted mesh). */
   function influenceCounts(att) {
-    const n = att.uvs.length / 2
+    const n = vertexCount(att)
     if (!isWeighted(att)) return new Array(n).fill(1)
     const out = []
     let i = 0
@@ -1384,15 +1511,20 @@
   function setMesh(input, skin, slot, name, mesh, remap) {
     const json = prepare(input)
     const o = meshOwner(json, skin, slot, name)
-    if (o.att.type !== 'mesh') fail('只有网格能编辑顶点')
+    if (o.att.type !== 'mesh' && o.att.type !== 'path') fail('只有网格能编辑顶点')
     const oldCounts = influenceCounts(o.att)
-    o.att.uvs = Array.from(mesh.uvs)
-    o.att.vertices = Array.from(mesh.vertices)
-    o.att.triangles = Array.from(mesh.triangles)
-    o.att.hull = mesh.hull
-    // Spine's nonessential edges (hull + the user's), when the editor sends them
-    if (Array.isArray(mesh.edges) && mesh.edges.length) o.att.edges = Array.from(mesh.edges)
-    else delete o.att.edges
+    if (o.att.type === 'path') {
+      // a path's weights (绑定 / 编辑权重): only its vertices change, the points stay where they are
+      o.att.vertices = Array.from(mesh.vertices)
+    } else {
+      o.att.uvs = Array.from(mesh.uvs)
+      o.att.vertices = Array.from(mesh.vertices)
+      o.att.triangles = Array.from(mesh.triangles)
+      o.att.hull = mesh.hull
+      // Spine's nonessential edges (hull + the user's), when the editor sends them
+      if (Array.isArray(mesh.edges) && mesh.edges.length) o.att.edges = Array.from(mesh.edges)
+      else delete o.att.edges
+    }
     const newCounts = influenceCounts(o.att)
     const map = remap || newCounts.map((_, i) => (i < oldCounts.length ? i : -1))
     const oldStart = []
@@ -2234,19 +2366,83 @@
 
   const IK_PROPS = { mix: 1, softness: 0, bendPositive: true, compress: false, stretch: false, uniform: false }
 
+  // Spine 3.8 path constraint: bones follow a path attachment in the target slot
+  const PATH_DEFAULTS = { positionMode: 'percent', spacingMode: 'length', rotateMode: 'tangent', rotation: 0, position: 0, spacing: 0, rotateMix: 1, translateMix: 1 }
+  const PATH_MODES = { positionMode: ['fixed', 'percent'], spacingMode: ['length', 'fixed', 'percent'], rotateMode: ['tangent', 'chain', 'chainScale'] }
+
+  /** The bones that place a slot's path: the slot's bone, or the weight bones of a weighted path. */
+  function pathTargetBones(json, slotName) {
+    const s = findSlot(json, slotName)
+    const out = new Set(s ? [s.bone] : [])
+    for (const skin of json.skins) for (const att of Object.values(skin.attachments[slotName] || {})) {
+      if (att && att.type === 'path') for (const i of weightBones(att)) if (json.bones[i]) out.add(json.bones[i].name)
+    }
+    return out
+  }
+
+  function checkPathCycle(json, bones, slotName) {
+    for (const t of pathTargetBones(json, slotName)) {
+      for (const b of bones) if (t === b || isDescendant(json, t, b)) fail(`路径所在的骨骼「${t}」跟着「${b}」动，会循环`)
+    }
+  }
+
+  /** Path bones in tree order, parent first (Spine): the first one sits at the start of the path. */
+  function treeOrder(json, bones) {
+    const at = new Map(json.bones.map((b, i) => [b.name, i]))
+    return bones.slice().sort((a, b) => at.get(a) - at.get(b))
+  }
+
+  function hasPath(json, slotName) {
+    return json.skins.some((sk) => Object.values(sk.attachments[slotName] || {}).some((a) => a && a.type === 'path'))
+  }
+
+  /** Bones that follow the path in `target` (a slot holding a path attachment), Spine's 新建路径约束. */
+  function createPathConstraint(input, opts) {
+    const json = prepare(input)
+    const o = opts || {}
+    const bones = treeOrder(json, [...new Set((o.bones || []).map((b) => requireBone(json, b).name))])
+    if (!bones.length) fail('至少选一根被约束的骨骼')
+    const target = requireSlot(json, o.target || fail('需要路径所在的插槽')).name
+    if (!hasPath(json, target)) fail(`插槽「${target}」里没有路径`)
+    checkPathCycle(json, bones, target)
+    const takenC = constraintNames(json)
+    const name = o.name ? String(o.name).trim() : uniqueName(takenC, `${bones[0]}_path`, true)
+    if (takenC.has(name)) fail(`约束名已存在：${name}`)
+    const c = { name, order: nextOrder(json), bones, target }
+    for (const [k, d] of Object.entries(PATH_DEFAULTS)) {
+      if (o[k] === undefined) continue
+      const v = typeof d === 'string' ? String(o[k]) : num(o[k], d)
+      if (v !== d) c[k] = v
+    }
+    json.path.push(c)
+    return { json: tidy(json), constraint: name }
+  }
+
   function setConstraintProps(input, kind, name, props) {
     const json = prepare(input)
-    if (kind !== 'ik' && kind !== 'transform') fail('只支持 IK 和变换约束')
+    if (!CONSTRAINT_KINDS.includes(kind)) fail('不认识的约束')
     const c = findConstraint(json, kind, name) || fail(`找不到约束：${name}`)
-    const defs = kind === 'ik' ? IK_PROPS : TRANSFORM_DEFAULTS
+    const defs = kind === 'ik' ? IK_PROPS : kind === 'path' ? PATH_DEFAULTS : TRANSFORM_DEFAULTS
     for (const [k, d] of Object.entries(defs)) {
       if (props[k] === undefined) continue
+      if (typeof d === 'string') {
+        const v = String(props[k])
+        if (!PATH_MODES[k].includes(v)) fail(`${k} 不对：${v}`)
+        if (v === d) delete c[k]
+        else c[k] = v
+        continue
+      }
       const v = typeof d === 'boolean' ? !!props[k] : num(props[k], NaN)
       if (typeof d !== 'boolean' && !Number.isFinite(v)) fail(`${k} 不是数字`)
       if (v === d) delete c[k]
       else c[k] = v
     }
-    if (props.target !== undefined && props.target !== c.target) {
+    if (kind === 'path' && props.target !== undefined && props.target !== c.target) {
+      const t = requireSlot(json, props.target).name
+      if (!hasPath(json, t)) fail(`插槽「${t}」里没有路径`)
+      checkPathCycle(json, c.bones, t)
+      c.target = t
+    } else if (props.target !== undefined && props.target !== c.target) {
       requireBone(json, props.target)
       checkTargetCycle(json, c.bones, props.target)
       c.target = props.target
@@ -2258,8 +2454,9 @@
         if (bones.length > 2) fail('IK 需要 1 或 2 根骨骼')
         if (bones.length === 2 && findBone(json, bones[1]).parent !== bones[0]) fail('第二根骨骼必须是第一根的子骨骼')
       }
-      checkTargetCycle(json, bones, c.target)
-      c.bones = bones
+      if (kind === 'path') checkPathCycle(json, bones, c.target)
+      else checkTargetCycle(json, bones, c.target)
+      c.bones = kind === 'path' ? treeOrder(json, bones) : bones
     }
     if (props.order !== undefined) {
       // move to a position in the shared constraint order, renumbering the rest
@@ -2378,6 +2575,20 @@
     const json = prepare(input)
     const c = findConstraint(json, kind, name) || fail(`找不到约束：${name}`)
     const a = animationOf(json, anim)
+    if (kind === 'path') {
+      // three timelines (Spine 3.8): position, spacing, mix (rotate + translate); only the given ones are keyed
+      const v = values || {}
+      a.path = a.path || {}
+      const tl = (a.path[name] = a.path[name] && !Array.isArray(a.path[name]) ? a.path[name] : {})
+      const r4 = (x) => Math.round(x * 10000) / 10000
+      if (v.position !== undefined) { tl.position = tl.position || []; upsertKey(tl.position, time, { position: r4(num(v.position, 0)) }) }
+      if (v.spacing !== undefined) { tl.spacing = tl.spacing || []; upsertKey(tl.spacing, time, { spacing: r4(num(v.spacing, 0)) }) }
+      if (v.rotateMix !== undefined || v.translateMix !== undefined) {
+        tl.mix = tl.mix || []
+        upsertKey(tl.mix, time, { rotateMix: r4(num(v.rotateMix, num(c.rotateMix, 1))), translateMix: r4(num(v.translateMix, num(c.translateMix, 1))) })
+      }
+      return { json: tidy(json) }
+    }
     a[kind] = a[kind] || {}
     a[kind][name] = a[kind][name] || []
     const v = values || {}
@@ -2471,6 +2682,7 @@
     // keys
     keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, meshToRegion, boneKeys, removeKeyAt, slotKeys,
     reorderSlots, keyDrawOrder, decodeDrawOrder, encodeDrawOrder, createClipping, setClipping,
+    createPath, setPath, updatePathLengths, pathLengths,
     // dopesheet
     keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,
     // skins
@@ -2479,7 +2691,7 @@
     // skin placeholders
     isPlaceholder, placeholderList, addPlaceholder, fillPlaceholder, clearPlaceholder, convertToPlaceholder, deletePlaceholder, exportable,
     // constraints
-    createIk, createTransform, transformOffsets, autoOrderConstraints, setConstraintProps, renameConstraint, deleteConstraint,
+    createIk, createTransform, createPathConstraint, transformOffsets, autoOrderConstraints, setConstraintProps, renameConstraint, deleteConstraint,
     // helpers
     describe, prepare, tidy, isWeighted, weightBones, toLocal, toWorld, rebaseAttachment, setAttachmentExport, isExported, editorData,
   }

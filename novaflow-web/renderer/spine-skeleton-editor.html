@@ -70,6 +70,24 @@
   .f input[type=range]{width:100%;accent-color:var(--green)}
   input[type=color]{width:34px;height:26px;padding:0;border:0;background:none}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}
+  /* 路径约束 (Spine's compact panel): short labels, long sliders, the modes as small grey text */
+  .pc .f{grid-template-columns:28px minmax(0,1fr);gap:6px;margin:4px 0}
+  .pc .f input[type=number]{flex:0 0 46px;width:46px;padding:0 5px}
+  .pc .f .inline{gap:5px}
+  .pc .pline{display:flex;align-items:center;gap:6px;min-width:0}
+  .pc .pline>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e6e6e6;font-size:12px}
+  .pc .pfold{width:22px;height:22px;flex:0 0 22px;border:0;border-radius:5px;background:transparent;color:#9a9a9a;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .pc .pfold svg{width:12px;height:12px}
+  .pc .pfold:hover{background:#373737;color:#fff}
+  .pc .pbl{margin:2px 0 6px 34px}
+  .pc .pmode{flex:0 0 auto;width:auto;height:22px;padding:0 12px 0 4px;border:0;border-radius:4px;color:#9a9a9a;font-size:11px;appearance:none;-webkit-appearance:none;cursor:pointer;
+    background:transparent url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 6 6%27%3E%3Cpath d=%27M6 0V6H0Z%27 fill=%27%238a8a8a%27/%3E%3C/svg%3E") no-repeat right 2px bottom 4px/6px 6px}
+  .pc .pmode:hover{background-color:#373737;color:#fff}
+  .pc .pmode:focus{outline:none}
+  .pc .pmode option{background:#262626;color:#eee}
+  .pc .pmixr{display:inline-flex;align-items:center;gap:8px}
+  .pc .plink{display:inline-flex;align-items:center;gap:4px;color:rgba(255,255,255,.75);font-size:11px;font-weight:400}
+  .pc .plink input{accent-color:var(--green);margin:0}
   .grid2 .f{grid-template-columns:38px minmax(0,1fr)}
   /* the app's own look for a dropdown: thin arrow at the right, 7px corners, the buttons' height */
   .select{height:28px;padding:0 26px 0 8px;border:1px solid rgba(255,255,255,.1);border-radius:7px;background:#262626 url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 10 6%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27rgba(238,244,252,0.68)%27 stroke-width=%271.35%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E") no-repeat right 10px center;background-size:10px 6px;color:#eee;font-size:12px;width:100%;appearance:none;-webkit-appearance:none}
@@ -210,6 +228,14 @@
   .xr{display:flex;align-items:center;gap:4px;height:26px}
   .xt{width:26px;height:26px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px}
   .xt svg{width:13px;height:13px}
+  /* a tool with its name (Spine): icon + label, one width per column */
+  .xt.xtl{width:58px;flex:0 0 58px;justify-content:flex-start;gap:5px;padding:0 0 0 8px;font-size:12px;font-weight:500;white-space:nowrap}
+  .xt.xtl svg{flex:0 0 13px}
+  /* each tool its own icon colour (Spine); the transform ones match their key colours in the dopesheet */
+  .xt.xtl[data-t="pose"] svg{color:#a3e05a} .xt.xtl[data-t="weights"] svg{color:#ff7a59} .xt.xtl[data-t="create"] svg{color:#b38cff} .xt.xtl[data-t="joint"] svg{color:#5fd3e6}
+  .xt.xtl[data-t="rotate"] svg{color:#4fd18b} .xt.xtl[data-t="move"] svg{color:#4fb3e8} .xt.xtl[data-t="scale"] svg{color:#e5534b} .xt.xtl[data-t="shear"] svg{color:#f0c36a}
+  .xt.xtl[aria-pressed="true"] svg{color:#fff}
+  .xt.xtl:disabled svg{opacity:.4}
   .xt:hover:not(:disabled){background:#373737;color:#fff}
   .xt[aria-pressed="true"]{background:var(--green);color:#fff}
   .xr input{width:66px;height:26px;border:0;border-radius:6px;background:#262626;color:#fff;font-size:12px;padding:0 6px;font-variant-numeric:tabular-nums}
