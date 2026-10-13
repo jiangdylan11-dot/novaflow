@@ -144,9 +144,46 @@ ok(typeof api.saveVideoToolOutput === 'function' && typeof api.overwriteVideoToo
   }
 }
 
-// The shared video export modal reserves an output, then supplies either
-// captured PNG frames or source video bytes. Both Web and the local assistant
-// serve this adapter, so no Electron path or native save picker is involved.
+// The shared video export modal asks for a folder when it reserves the
+// output, and the encoder writes the finished file there. Canceling the
+// folder dialog cancels the export.
+{
+  const written = [];
+  const folder = { name: 'picked', async getFileHandle(name) {
+    return { async createWritable() { return { async write(data) { written.push({ name, type: data.type }); }, async close() {} }; } };
+  } };
+  let cancel = false;
+  sandbox.showDirectoryPicker = async () => {
+    if (cancel) { const error = new Error('canceled'); error.name = 'AbortError'; throw error; }
+    return folder;
+  };
+  sandbox.NovaFlowWebWarehouse = { save: async () => { throw new Error('a picked-folder export must not enter the warehouse'); } };
+  for (const format of ['mp4', 'webm', 'gif']) {
+    const pick = await api.exportPickSaveFile({ baseName: 'folder-check', format });
+    equal([pick.ok, pick.canceled, pick.filePath, pick.destination], [true, false, 'picked/folder-check.' + format, 'folder'], format + ': reserve the picked folder');
+    const { dir } = await api.exportCreateTempDir({ prefix: 'folder-export' });
+    for (let i = 0; i < 3; i++) await api.writeBinaryFile({ dir, fileName: 'NF_000' + i + '.png', bytes: new Uint8Array([i]) });
+    const result = await api.exportEncodeFramesToVideo({ dir, pattern: 'NF_%04d.png', fps: 16, width: 448, height: 448,
+      format, outPath: pick.filePath, keepAlpha: true, returnBase64: false });
+    equal([result.ok, result.savedTo], [true, 'picked/folder-check.' + format], format + ': frames export reports the folder file');
+    const input = await api.exportCreateTempDir({ prefix: 'folder-source' });
+    await api.writeBinaryFile({ dir: input.dir, fileName: 'source.mp4', bytes: new Uint8Array([1, 2, 3]) });
+    const converted = await api.exportEncodeVideoToVideo({ inPath: input.dir + '\\source.mp4', outPath: pick.filePath,
+      format, fps: 30, scalePct: 50, sourceConvert: true, keepAlpha: false });
+    equal([converted.ok, converted.savedTo], [true, 'picked/folder-check.' + format], format + ': source-video export reports the folder file');
+    equal(written.slice(-2), [0, 1].map(() => ({ name: 'folder-check.' + format, type: format === 'gif' ? 'image/gif' : 'video/' + format })), format + ': both exports write the named file into the picked folder');
+    await api.exportCleanupDir({ dir });
+    await api.exportCleanupDir({ dir: input.dir });
+  }
+  cancel = true;
+  const canceled = await api.exportPickSaveFile({ baseName: 'folder-check', format: 'mp4' });
+  equal([canceled.ok, canceled.canceled], [true, true], 'canceling the folder dialog cancels the export');
+  delete sandbox.showDirectoryPicker;
+  delete sandbox.NovaFlowWebWarehouse;
+}
+
+// A browser without a folder picker reserves a warehouse output instead; the
+// encoder then supplies either captured PNG frames or source video bytes.
 {
   const saved = [];
   sandbox.NovaFlowWebWarehouse = { save: async record => { saved.push(record); return { ok: false, pending: true }; } };
@@ -262,21 +299,21 @@ ok(/^web-file:\/\//.test(clipToken), 'a dropped file gets a web-file token: ' + 
 
 // ------------------------------------------------------------ 视频格式转换
 {
-  for (const [format, scalePct, mime] of [['mp4', 100, 'video/mp4'], ['webm', 50, 'video/webm'], ['gif', 200, 'image/gif']]) {
+  // WEBM is recorded by the browser (MediaRecorder), not by ffmpeg.wasm, whose
+  // VP8/VP9 encoders trap here; this sandbox has no recorder, so it is refused.
+  {
+    execs.length = 0;
+    const refused = await api.convertVideoFormat({ jobId: 'vfc_webm', inputPath: movToken, fileName: 'clip.mov', format: 'webm', scalePct: 50 });
+    equal(refused.ok, false, 'webm without a browser recorder is refused');
+    ok(/WEBM/.test(refused.error) && execs.length === 0, 'with a readable reason and no ffmpeg run: ' + refused.error);
+  }
+  for (const [format, scalePct, mime] of [['mp4', 100, 'video/mp4'], ['gif', 200, 'image/gif']]) {
     execs.length = 0; outputBytes = 1200;
     const result = await api.convertVideoFormat({ jobId: 'vfc_' + format, inputPath: movToken, fileName: 'clip.mov', format, scalePct });
     equal(result.ok, true, 'converts to ' + format + ': ' + result.error);
     equal([result.fileName, result.format, result.scalePct, result.bytesIn, result.bytesOut], ['clip.' + format, format, scalePct, 7000, 1200], format + ': the desktop result shape');
-    if (format === 'webm') {
-      // The Web writes VP8 + Opus (this core's VP9 traps); the scale filter is the desktop's,
-      // the bitrate cap is 0.12 bits per pixel per frame at the output size: the probe said
-      // 1280x720 at 30 fps, so 50% is 640x360 -> 829 kbps.
-      const desktopScale = desktopConvert.videoConvertScaleFilter(scalePct);
-      equal(execs[1], ['-i', execs[1][1], '-vf', desktopScale, '-c:v', 'libvpx', '-deadline', 'good', '-cpu-used', '2', '-crf', '10', '-b:v', '829k', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-b:a', '128k', execs[1][execs[1].length - 1]], 'webm at 50%: VP8 + Opus with the desktop\'s scale filter and a size-based bitrate cap');
-    } else {
-      const expected = core(desktopConvert.videoConvertArgs({ inPath: execs[1][1], outPath: execs[1][execs[1].length - 1], format, scalePct }));
-      equal(execs[1], expected, format + ' at ' + scalePct + '%: the desktop\'s arguments, less its log and progress flags');
-    }
+    const expected = core(desktopConvert.videoConvertArgs({ inPath: execs[1][1], outPath: execs[1][execs[1].length - 1], format, scalePct }));
+    equal(execs[1], expected, format + ' at ' + scalePct + '%: the desktop\'s arguments, less its log and progress flags');
     const preview = await api.videoResourceMediaRegister({ filePath: result.outPath });
     equal(urls[urls.length - 1].blob.type, mime, format + ' previews as ' + mime);
     ok(preview.ok && preview.url, format + ' has a preview URL');

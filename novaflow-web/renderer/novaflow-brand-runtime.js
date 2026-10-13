@@ -8037,6 +8037,13 @@
     return true;
   }
 
+  // The 音视 board's export shows nothing of its own when it finishes; the
+  // skeleton and AI 特效 exports report their result themselves.
+  function noticeNovaflowBoardVideoExported(payload, result) {
+    if (payload?.novaflowTrace?.source !== "export-local" || result?.ok === false || !result?.savedTo) return;
+    showTopbarExportAvailabilityNotice(`已导出到 ${String(result.savedTo)}`);
+  }
+
   function installNovaflowExportApiGuards() {
     const api = window.electronAPI;
     bindNovaflowExportPickSaveFileCancelRestoreListener(api);
@@ -8086,6 +8093,7 @@
           if (!state) {
             const result = await nativeEncodeFrames(payload);
             handleNovaflowLicenseLockedApiResult(result);
+            noticeNovaflowBoardVideoExported(payload, result);
             return result;
           }
           const format = String(payload?.format || state.format || "").toLowerCase();
@@ -8093,6 +8101,7 @@
           next.keepAlpha = format === "webm" && state.transparent;
           const result = await nativeEncodeFrames(next);
           handleNovaflowLicenseLockedApiResult(result);
+          noticeNovaflowBoardVideoExported(payload, result);
           return result;
         };
       }
@@ -8104,6 +8113,7 @@
           const next = state ? { ...(payload || {}), keepAlpha: format === "webm" && !!state.transparent } : payload;
           const result = await nativeEncodeVideo(next);
           handleNovaflowLicenseLockedApiResult(result);
+          noticeNovaflowBoardVideoExported(payload, result);
           return result;
         };
       }

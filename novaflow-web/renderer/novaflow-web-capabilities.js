@@ -310,11 +310,22 @@
     const mime = String(options.mimeType || 'application/octet-stream');
 
     if (!data) {
-      // Video callers reserve an output before encoding. This is a warehouse
-      // destination, not an OS path; the encoder supplies the bytes later.
+      // Video callers reserve an output before encoding; the encoder supplies
+      // the bytes later. Like the desktop's save dialog, the user picks the
+      // folder now, while the click still counts as a user gesture.
       const format = String(options.format || '').toLowerCase();
       if (['mp4', 'webm', 'gif'].includes(format)) {
         const name = videoStem(options.baseName || options.fileName || 'video', 'video') + '.' + format;
+        if (typeof root.showDirectoryPicker === 'function') {
+          const picked = await api.pickDirectory();
+          if (picked && picked.canceled) return { ok: true, canceled: true };
+          if (!picked || !picked.dir) return fail((picked && picked.error) || '没有选择导出文件夹', { canceled: false });
+          // What the callers show the user: folder name / file name.
+          const filePath = picked.name + '/' + name;
+          videoExportTargets.set(filePath, { folder: picked.handle, name });
+          return { ok: true, canceled: false, filePath, fileName: name, destination: 'folder' };
+        }
+        // No folder picker in this browser: the 仓库 takes the file.
         return { ok: true, canceled: false, filePath: 'web-export://video/' + Date.now() + '/' + name, fileName: name, destination: 'warehouse' };
       }
       return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
@@ -548,6 +559,19 @@
       if (strict) throw error;
       console.warn('[NovaFlow web] 仓库保存失败', error);
     }
+  }
+  // A video export lands in the folder picked when it was reserved
+  // (exportPickSaveFile); without one it goes to the 仓库 as before.
+  const videoExportTargets = new Map();
+  async function deliverVideoExport(blob, fileName, outPath, strict) {
+    const target = videoExportTargets.get(String(outPath || ''));
+    if (!target) return { warehouse: await saveToWarehouse(blob, fileName, strict) };
+    if (!target.folder) throw new Error('导出文件夹已失效，请重新导出');
+    const handle = await target.folder.getFileHandle(target.name, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return { savedTo: String(outPath) };
   }
   // The preview registration in the next block reads results from here.
   runtime.videoOutputs = videoOutputs;
@@ -1215,7 +1239,9 @@
           if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
           const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
           const fileName = sanitizeVideoName(outPathName) || 'cutout_' + Date.now() + '.webm';
-          out.warehouse = await saveToWarehouse(new Blob([bytes], { type: mimeType }), videoStem(fileName, 'video') + '.webm', String(options.outPath || '').startsWith('web-export://'));
+          // A failed write is not an encoder failure: report it instead of re-encoding with ffmpeg.
+          try { Object.assign(out, await deliverVideoExport(new Blob([bytes], { type: mimeType }), videoStem(fileName, 'video') + '.webm', options.outPath, String(options.outPath || '').startsWith('web-export://'))); }
+          catch (error) { return fail('导出失败：' + String((error && error.message) || error)); }
           videoToolProgress.emit({ jobId, progress01: 1 });
           return out;
         } catch (error) {
@@ -1281,7 +1307,7 @@
       if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
       const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
       const fileName = sanitizeVideoName(outPathName) || 'cutout_' + Date.now() + '.' + target;
-      out.warehouse = await saveToWarehouse(new Blob([bytes.slice()], { type: mimeType }), videoStem(fileName, 'video') + '.' + target, String(options.outPath || '').startsWith('web-export://'));
+      Object.assign(out, await deliverVideoExport(new Blob([bytes.slice()], { type: mimeType }), videoStem(fileName, 'video') + '.' + target, options.outPath, String(options.outPath || '').startsWith('web-export://')));
       videoToolProgress.emit({ jobId, progress01: 1 });
       return out;
     } catch (error) {
@@ -1359,8 +1385,8 @@
         }
       });
       token = result.token;
-      const warehouse = await saveToWarehouse(result.blob, fileName, true);
-      return { ok: true, format: target, fileName, bytes: result.blob.size, warehouse };
+      const delivered = await deliverVideoExport(result.blob, fileName, options.outPath, true);
+      return { ok: true, format: target, fileName, bytes: result.blob.size, ...delivered };
     } catch (error) {
       return fail('视频导出失败：' + String(error?.message || error));
     } finally {
