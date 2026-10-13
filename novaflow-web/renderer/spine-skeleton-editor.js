@@ -6415,9 +6415,9 @@
     if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
     const sel = h('select', { class: 'ld-sel', 'data-frame-bone': '1', title: '写入时勾选的图片挂到这根骨骼（已有插槽的位置不变，新图居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
       bones.map((b) => h('option', { value: b, selected: b === state.frameBone }, b)))
-    const title = kind === 'sequence' ? '序列K帧：从图片文件夹挑图' : '序列扫光：从图片文件夹挑图'
+    const title = kind === 'sequence' ? '序列K帧：从图片文件夹挑图' : '特效扫光：从图片文件夹挑图'
     const head = [
-      h('strong', { class: 'ld-title' }, kind === 'sequence' ? '序列K帧' : '序列扫光'),
+      h('strong', { class: 'ld-title' }, kind === 'sequence' ? '序列K帧' : '特效扫光'),
       h('span', { class: 'ld-sep' }),
       h('span', {}, `已选 ${ticked.length} / ${files.length}`),
       h('button', { class: 'tg', onclick: () => { for (const f of files) U.delete(f.name); renderLayerDock() } }, '全选'),
@@ -6863,7 +6863,7 @@
     const step = (end - start) / (wrap ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
     const t4 = (t) => Math.round(t * 10000) / 10000
     const L = SweepLight()
-    return edit(`序列扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
+    return edit(`特效扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
       // generated slices: created on the base slot's bone with the base picture's placement, then
       // hangFrames moves them to the chosen bone (placement kept)
       const baseSlotObj = gen && gen.baseSlot ? j.slots.find((x) => x.name === gen.baseSlot) : null
@@ -7115,11 +7115,12 @@ self.onmessage = (e) => {
         }
         if (!open.has(g)) continue
         types.append(h('button', { class: 'ty', title: s.hint, 'aria-pressed': String(s.id === P.scheme), onclick: () => {
-          P.scheme = s.id
-          if (s.colorMode) { P.colorMode = s.colorMode; P.color = s.color }
-          P.frames = s.frames || L.DEFAULT_PARAMS.frames
-          // 边缘扫光的参数各方案含义不同：换方案回到默认（默认 = 选定时的样子）
-          if (s.edge) { P.start = 0; P.width = 1; P.laps = 1; P.hue = 0; P.extra = s.extra ? s.extra.def : 1; P.intensity = 1; P.glow = 1 }
+          // 换方案 = 这个方案的默认数值（用户 2026-10-13：调过的数值不能带到下一个效果）。
+          // 时长 / 骨骼 是写入动画的设置，不是效果参数，保留。
+          const D = L.DEFAULT_PARAMS
+          Object.assign(P, { scheme: s.id, angle: D.angle, width: D.width, intensity: D.intensity, glow: D.glow, rayLength: D.rayLength, pad: D.pad,
+            colorMode: s.colorMode || D.colorMode, color: s.color || D.color, frames: s.frames || D.frames,
+            start: 0, laps: 1, hue: 0, extra: s.extra ? s.extra.def : undefined })
           buildTypes(); buildParams(); schedulePreview()
         } }, s.label))
       }
@@ -7137,18 +7138,29 @@ self.onmessage = (e) => {
         if (d.only && d.only !== P.scheme) continue
         if (d.plain && sc.edge) continue
         if (d.edge && !sc.edge) continue
-        if (d.key === 'start' && sc.noStart) continue
         if (d.key === 'hue' && !sc.fixedColor) continue
         if (d.key === 'extra') { if (!sc.extra) continue; d = { ...d, ...sc.extra } }
         if (sc.edge && d.key === 'width') d = { ...d, label: '粗细', title: '光带 / 拖尾 / 火苗 / 光环整体放大缩小' }
         if (d.key === 'start' && sc.id === 'edge-diagonal') d = { ...d, label: '方向', title: '扫光方向（度）' }
         if (P[d.key] == null || P[d.key] === '') P[d.key] = d.def != null ? d.def : 1
-        const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: P[d.key] })
-        const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: P[d.key] })
-        range.oninput = () => { P[d.key] = Number(range.value); num.value = range.value; if (d.key === 'width') buildParams(); schedulePreview() }
+        // 不起作用的参数置灰禁用（用户：无效的调整会误导）：方案标了 inert 的；
+        // 宽度被防闪底线托住的部分也没用：滑条从底线起，底线超过最大值就整行禁用
+        let off = sc.inert && sc.inert[d.key]
+        if (!sc.edge && d.key === 'width') {
+          const floor = Math.ceil(L.effectiveWidth({ ...P, width: 0 }).floor * 20) / 20
+          if (floor >= d.max) off = `帧数太少：光带已固定加宽到 ${floor.toFixed(2)}，加帧数（≥ ${L.minFrames({ ...P, width: d.max })}）才能调宽度`
+          else if (floor > d.min) { d = { ...d, min: floor }; if (P.width < floor) P.width = floor }
+        }
+        const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: P[d.key], disabled: !!off })
+        const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: P[d.key], disabled: !!off })
+        // 拖动中只改数值（用户：滑条拖着卡）；松手再算预览 —— 慢慢拖时每停一下都重算 40 张预览，会抢 CPU。
+        // 宽度的「会一闪」提示也松手再刷新（拖动中重建参数区会把正在拖的滑条换掉）
+        range.oninput = () => { P[d.key] = Number(range.value); num.value = range.value }
+        range.onchange = () => { if (d.key === 'width') buildParams(); schedulePreview() }
         num.onchange = () => { P[d.key] = Math.max(d.min, Math.min(d.max, Number(num.value) || d.min)); range.value = P[d.key]; num.value = P[d.key]; buildParams(); schedulePreview() }
         const r = row(d.label, range, num)
         if (d.title) r.querySelector('label').title = d.title
+        if (off) { r.classList.add('off'); r.title = off; r.querySelector('label').title = off }
         if (d.key === 'angle') { r.append(h('div', { class: 'sw-tip' }, schemeOf(P.scheme).radial ? '径向类：起始位置' : '光带的前进方向')) }
       }
       const colorRow = h('div', { class: 'sw-seg' })
@@ -7245,7 +7257,7 @@ self.onmessage = (e) => {
 
     const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
       h('div', { class: 'dialog sw' },
-        h('div', { class: 'hd' }, h('b', {}, `序列扫光 · ${stem}`), h('button', { class: 'xx', onclick: close }, '×')),
+        h('div', { class: 'hd' }, h('b', {}, `特效扫光 · ${stem}`), h('button', { class: 'xx', onclick: close }, '×')),
         h('div', { class: 'sw-body' }, types, h('div', { class: 'sw-right' }, pv, params)),
         h('div', { class: 'sw-ft' }, st, go)))
     document.body.append(mask)

@@ -222,3 +222,45 @@ test('边缘扫光: 次数是整数圈，循环照样首尾相接', () => {
     assert.ok(ab <= 5 && ac <= 5, `${id} 3 圈：p=0 / 1/3 / 1 一样（${ab} ${ac}）`)
   }
 })
+
+test('原有 10 种也一样：没标 inert 的参数都真改画面，标了 inert 的确实没作用；宽度从防闪底线起算', () => {
+  // 时刻取密一些：星芒闪烁的光晕只在光带扫到亮点那几帧有星点
+  const PS = [0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9]
+  const lightOf = (P) => { const ctx = analyzeBase(rgba, w, h, P); return PS.map((p) => { const f = renderSweepFrame(ctx, p, P), M = 90, CW = w + 2 * M, out = new Float32Array(CW * (h + 2 * M) * 3); for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) { const X = x - f.pad + M, Y = y - f.pad + M; if (X < 0 || Y < 0 || X >= CW || Y >= h + 2 * M) continue; const i = (y * f.w + x) * 4, o = (Y * CW + X) * 3, a = f.data[i + 3] / 255; out[o] = f.data[i] * a; out[o + 1] = f.data[i + 1] * a; out[o + 2] = f.data[i + 2] * a } return out }) }
+  const rel = (A, B) => { let d = 0, s = 0; for (let k = 0; k < A.length; k++) for (let i = 0; i < A[k].length; i++) { d += Math.abs(A[k][i] - B[k][i]); s += A[k][i] } return d / Math.max(1, s) }
+  const weak = [], fake = []
+  for (const s of SWEEP_SCHEMES) {
+    const base = { scheme: s.id, frames: s.frames, blend: 'add', ...(s.colorMode ? { colorMode: s.colorMode, color: s.color } : {}) }
+    const A = lightOf(base)
+    const vary = s.edge ? [['start', 90], ['glow', 2.5]] : [['angle', 110], ['intensity', 2], ['glow', 2.5]]
+    if (s.id === 'rays') vary.push(['rayLength', 2.5])
+    if (!s.edge) {
+      const floor = effectiveWidth({ ...base, width: 0 }).floor
+      if (floor < 2.5) vary.push(['width', 2.5])
+    }
+    for (const [k, v] of vary) {
+      const r = rel(A, lightOf({ ...base, [k]: v }))
+      if (s.inert && s.inert[k]) { if (r > 0.005) fake.push(`${s.id}.${k} 标了无效但改了 ${r.toFixed(3)}`) }
+      // 星芒闪烁的光晕只作用在高光点冒出的星点上：测试图只有 1 个高光点（按钮样图上 0.31）
+      else if (!(r > (s.id === 'sparkle' && k === 'glow' ? 0.03 : 0.06))) weak.push(`${s.id}.${k}=${v}: ${r.toFixed(3)}`)
+    }
+  }
+  assert.deepEqual(weak, [], '没标无效却不起作用')
+  assert.deepEqual(fake, [], '标了无效却起作用')
+  assert.ok(effectiveWidth({ scheme: 'metal-highlight', frames: 32, width: 0 }).floor >= 2.5, '金属高光 32 帧：宽度整行禁用（底线超过最大值）')
+})
+
+test('光晕开到最大：切片边上没有矩形切边（边距跟着放大、最外一圈淡到 0）', () => {
+  for (const s of SWEEP_SCHEMES) {
+    const P = { scheme: s.id, frames: s.frames, blend: 'add', glow: 2.5 }
+    const ctx = analyzeBase(rgba, w, h, P), f = renderSweepFrame(ctx, 0.5, P)
+    const P1 = { ...P, glow: 1 }
+    assert.ok(f.pad >= analyzeBase(rgba, w, h, P1).pad, `${s.id} 光晕大边距不变小`)
+    let edge = 0
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      if (Math.min(x, y, f.w - 1 - x, f.h - 1 - y) > 1) continue
+      edge = Math.max(edge, f.data[(y * f.w + x) * 4 + 3])
+    }
+    assert.ok(edge <= 2, `${s.id} 切片最外两圈 alpha ${edge}`)
+  }
+})

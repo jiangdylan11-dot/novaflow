@@ -384,6 +384,9 @@
   .sw-types .g::before{content:"";flex:0 0 auto;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);margin:0 1px 0 -1px}
   .sw-types .g[aria-expanded="true"]::before{transform:rotate(45deg);margin-top:-3px}
   .sw-types .g .n{margin-left:auto;opacity:.7}
+  /* 对当前方案不起作用的参数：置灰禁用，悬停看原因 */
+  .sw-p.off{opacity:.38}
+  .sw-p.off input{cursor:not-allowed}
   .sw-types .ty{display:block;width:100%;text-align:left;height:32px;padding:0 14px 0 29px;border:0;background:transparent;color:rgba(255,255,255,.84);font-size:12px;position:relative;cursor:pointer}
   .sw-types .ty:hover{background:#373737;color:#fff}
   .sw-types .ty[aria-pressed="true"]{color:#fff}

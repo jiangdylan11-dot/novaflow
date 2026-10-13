@@ -27,8 +27,8 @@ const SWEEP_SCHEMES = [
   { id: 'outline', label: '底图色描光', group: '形态驱动', hint: '一段彩光沿外框四周跑一圈（左上起顺时针）', radial: true, wrap: true, sigma: 0.045, span: 1, frames: 36 },
   { id: 'sparkle', label: '星芒闪烁', group: '局部高光', hint: '光带扫过时亮点处冒小闪点，错开闪', sigma: 0.08, span: 1.4, frames: 24 },
   { id: 'hotspot', label: '高光点扫光', group: '局部高光', hint: '只有图上原有的高光区亮起来', sigma: 0.13, span: 1.5, frames: 24 },
-  { id: 'ring', label: '环形扩散', group: '径向', hint: '光环从中心向外扩散', radial: true, sigma: 0.05, span: 1.35, frames: 32 },
-  { id: 'rays', label: '放射光芒', group: '径向', hint: '光带扫到的部分向外放射光线', padRatio: 0.24, sigma: 0.09, span: 1.5, frames: 24 },
+  { id: 'ring', label: '环形扩散', group: '径向', hint: '光环从中心向外扩散', radial: true, sigma: 0.05, span: 1.35, frames: 32, inert: { angle: '光环从中心向外扩，没有方向' } },
+  { id: 'rays', label: '放射光芒', group: '径向', hint: '光带扫到的部分向外放射光线', padRatio: 0.24, sigma: 0.09, span: 1.5, frames: 24, inert: { glow: '放射光线本身就是光晕，用「放射长度」调' } },
 ]
 // 边缘扫光（2026-10-13 用户在 work/sweep-light-lab 五轮里选定）：光只沿轮廓走，绕一圈首尾相接。
 // fixedColor = 效果自带配色（火焰 / 冰蓝 / 彩虹…），光色选项不适用。角度 / 宽度 不用（见 edgeGeo）。
@@ -58,7 +58,8 @@ const EDGE_SCHEMES = [
   { id: 'edge-charge', label: '充能满圈', group: '边缘律动', hint: '光沿边填满一圈，满了整圈一闪', extra: { label: '外扩', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-hop', label: '星光跳跃', group: '边缘律动', hint: '星芒在边上跳着亮，亮处沿边晕开', extra: { label: '星点', min: 2, max: 10, step: 1, def: 6 } },
 ]
-for (const e of EDGE_SCHEMES) SWEEP_SCHEMES.push({ ...e, edge: true, wrap: true, fixedColor: !!e.fixedColor, noStart: !!e.noStart, sigma: 1, span: 1, frames: 40 })
+// inert：这个方案里不起作用的参数（对话框里置灰禁用，悬停说明原因），由测试逐个核对其余参数都真改画面
+for (const e of EDGE_SCHEMES) SWEEP_SCHEMES.push({ ...e, edge: true, wrap: true, fixedColor: !!e.fixedColor, noStart: !!e.noStart, sigma: 1, span: 1, frames: 40, ...(e.noStart ? { inert: { start: '整圈同时在动，没有起点' } } : {}) })
 
 /** 相邻两帧的光带错开多少（进度单位）。 */
 function stepOf(scheme, n) { return (scheme.span || 1) / Math.max(1, scheme.wrap ? n : n - 1) }
@@ -274,9 +275,11 @@ function percentile(values, q) {
 function autoPad(w, h, params) {
   if (params.pad > 0) return Math.round(params.pad)
   const s = SWEEP_SCHEMES.find((x) => x.id === params.scheme)
-  if (s && s.edge) return Math.max(24, Math.round(48 * edgeScale(w, h, params)))   // 外扩的光环 / 火苗 / 烟雾要的空间
+  // 光晕开大，泛光伸得更远：边距跟着放大（不然切片边上被切出矩形）；光晕对它无效的方案不放大
+  const gk = s && s.inert && s.inert.glow ? 1 : Math.max(1, Number(params.glow) || 1)
+  if (s && s.edge) return Math.max(24, Math.round(48 * edgeScale(w, h, params) * gk))   // 外扩的光环 / 火苗 / 烟雾要的空间
   const ratio = s?.padRatio || 0
-  return Math.max(36, Math.round(Math.max(w, h) * ratio))
+  return Math.round(Math.max(36, Math.round(Math.max(w, h) * ratio)) * gk)
 }
 
 // ---------- 分析底图
@@ -443,6 +446,8 @@ function analyzeBase(rgba, w, h, params = DEFAULT_PARAMS) {
 // ---------- 各方案：返回 { inner, outer }（都是预乘 RGB 的光；inner 在字内、要和底图做滤色，outer 直接相加）
 
 function bloom(ctx, layer, r1, r2, k1, k2) {
+  // 光晕参数：半径在各方案的调用里 × gk，强度在这里 × gk（只改半径时 0.3 ↔ 2.5 几乎看不出来）
+  const gk = ctx._gk || 1; k1 *= gk; k2 *= gk
   const { W, H, N } = ctx
   const b1 = blurRGB(layer, W, H, r1), b2 = blurRGB(layer, W, H, r2)
   const o = rgbPlanes(N)
@@ -696,7 +701,7 @@ function analyzeEdgeBase(rgba, w, h, P) {
   if (x1 < 0) return null
   const diag = ox1 >= 0 ? Math.hypot(ox1 - ox0 + 1, oy1 - oy0 + 1) : Math.hypot(x1 - x0 + 1, y1 - y0 + 1)
   const S = edgeScale(diag, 0, P) * Math.max(0.2, Number(P.width) || 1)   // 粗细：整体放大缩小（边距跟着变）
-  const pad = P.pad > 0 ? Math.round(P.pad) : Math.max(24, Math.round(48 * S))
+  const pad = P.pad > 0 ? Math.round(P.pad) : Math.max(24, Math.round(48 * S * Math.max(1, Number(P.glow) || 1)))
   const cw = x1 - x0 + 1, ch = y1 - y0 + 1
   const Q = { ...P, pad, _edgeS: S }
   if (cw * ch > w * h * 0.8) return { Q }                       // 内容占满画布：不裁
@@ -1514,12 +1519,17 @@ function renderSweepFrame(ctx, p, params = ctx.params) {
     k.hue = es.fixedColor ? Number(P.hue) || 0 : 0
     p = (p * k.laps) % 1                                  // 次数：整数圈，p=1 仍回到 p=0，首尾相接
   }
+  ctx._gk = k.gk
   const { inner, outer } = fn(ctx, p, k)
   const { N, W, H, a, pr, pg, pb } = ctx
   const prem = [pr, pg, pb]
   const data = new Uint8ClampedArray(N * 4)
   const L = [0, 0, 0]
+  // 切片最外一圈（边距的六成）里光平滑淡到 0：泛光再大也不会在切片边上切出矩形
+  const FB = Math.max(4, Math.round(ctx.pad * 0.6))
   for (let i = 0; i < N; i++) {
+    const fx = i % W, fy = (i - fx) / W, bd = Math.min(fx, W - 1 - fx, fy, H - 1 - fy)
+    const fade = bd >= FB ? 1 : smooth(0, FB, bd)
     let alpha
     if (P.blend === 'normal') {
       let mo = 0
@@ -1533,6 +1543,7 @@ function renderSweepFrame(ctx, p, params = ctx.params) {
       }
       alpha = mx
     }
+    if (fade < 1) { alpha *= fade; L[0] *= fade; L[1] *= fade; L[2] *= fade }
     const o = i * 4
     if (alpha > 0.002) {
       data[o] = Math.round((L[0] / alpha) * 255); data[o + 1] = Math.round((L[1] / alpha) * 255); data[o + 2] = Math.round((L[2] / alpha) * 255); data[o + 3] = Math.round(alpha * 255)
