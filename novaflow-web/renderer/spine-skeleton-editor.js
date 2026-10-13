@@ -7030,6 +7030,8 @@ self.onmessage = (e) => {
     const schemeOf = (id) => L.SWEEP_SCHEMES.find((s) => s.id === id) || L.SWEEP_SCHEMES[0]
     if (!state.sweepParams) { state.sweepParams = { ...L.DEFAULT_PARAMS }; state.sweepParams.frames = schemeOf(state.sweepParams.scheme).frames || state.sweepParams.frames }
     const P = state.sweepParams
+    // a sweep is always 叠加 (user 2026-10-13: 滤色 / 正常 kept flickering; no choice needed)
+    P.blend = 'add'
     const bind = { bone: '', slot: '' }
     const stem = image.split('/').pop()
     // the picked bone is the default (the base slot's bone when none is picked or it is that one)
@@ -7119,7 +7121,6 @@ self.onmessage = (e) => {
       colorRow.append(...seg([{ id: 'base', label: '底图色' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], P.colorMode, (v) => { P.colorMode = v }).children)
       if (P.colorMode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(P.color) ? P.color : '#ffffff' }); c.oninput = () => { P.color = c.value; schedulePreview() }; colorRow.append(c) }
       row('光色', colorRow)
-      row('叠加模式', seg(L.BLEND_MODES, P.blend, (v) => { P.blend = v }))
       const ew = L.effectiveWidth(P)
       const fn = h('input', { type: 'number', min: 2, max: 120, step: 1, value: P.frames })
       fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
@@ -7144,7 +7145,7 @@ self.onmessage = (e) => {
         bones.filter((b) => b !== baseBone && (bs || b !== 'root')).map((b) => h('option', { value: b, selected: bind.bone === b }, b)))
       row('骨骼', boneSel)
       if (!bs) params.append(h('div', { class: 'sw-wide warn' }, '这张图还没放进骨骼：切片会挂到 root、画在最上层。'))
-      params.append(h('div', { class: 'sw-wide' }, '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，叠加模式一并设到插槽上。'))
+      params.append(h('div', { class: 'sw-wide' }, '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。'))
     }
 
     const st = h('span', { class: 'st' })
