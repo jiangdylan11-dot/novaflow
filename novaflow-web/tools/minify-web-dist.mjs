@@ -70,7 +70,8 @@ export async function minifyTree(dir, { log = () => {} } = {}) {
   const result = { files: relFiles.length, minified: 0, skipped: 0, failures: [], beforeBytes: 0, afterBytes: 0 };
 
   for (const rel of relFiles) {
-    if (isVendor(rel)) { result.skipped += 1; continue; }
+    // Never the Cloudflare Pages gate: it runs server-side, stays reviewable.
+    if (isVendor(rel) || rel === '_worker.js') { result.skipped += 1; continue; }
     const full = join(dir, rel);
     const source = await readFile(full, 'utf8');
     result.beforeBytes += Buffer.byteLength(source);

@@ -334,6 +334,12 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
   await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
 
+  // The Cloudflare Pages gate rides along in the zip root. Copied after any
+  // minify pass and left as-is (it runs on Cloudflare, never in a browser, so
+  // there is nothing to hide and everything to keep reviewable). Dormant until
+  // NOVAFLOW_SESSION_SECRET is set on the Pages project.
+  await writeFile(join(WEB_OUT, '_worker.js'), await readFile(join(ROOT, 'deploy/_worker.js'), 'utf8'), 'utf8');
+
   // Last, once every file is on disk: give each local asset a ?v= derived
   // from its own bytes.
   await stampCacheTokens();

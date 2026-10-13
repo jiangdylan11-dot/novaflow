@@ -113,13 +113,36 @@
   }
   currentSession();
 
+  // The published site can run behind a Cloudflare Pages gate (deploy/_worker.js)
+  // that serves the application code only to a logged-in browser. A <script src>
+  // or an importScripts() worker request cannot carry an Authorization header,
+  // but it does carry same-origin cookies, so the signed session token is
+  // mirrored into a cookie the edge can read. Off the gate this cookie is simply
+  // ignored. Kept in sync with the session at its single choke points.
+  const SESSION_COOKIE = 'nf_sess';
+  function syncAuthCookie(token) {
+    try {
+      const doc = root.document;
+      if (!doc || typeof doc.cookie !== 'string') return;
+      const secure = (root.location && root.location.protocol === 'https:') ? '; Secure' : '';
+      if (token) doc.cookie = SESSION_COOKIE + '=' + encodeURIComponent(token) + '; Path=/; Max-Age=86400; SameSite=Lax' + secure;
+      else doc.cookie = SESSION_COOKIE + '=; Path=/; Max-Age=0; SameSite=Lax' + secure;
+    } catch (_) { /* document/cookies unavailable (worker scope, private mode) */ }
+  }
+
   function saveSession(next) {
     session = next;
     try {
       if (next) root.localStorage.setItem(SESSION_KEY, JSON.stringify(next));
       else root.localStorage.removeItem(SESSION_KEY);
     } catch (_) { /* private mode */ }
+    syncAuthCookie(next && next.token);
   }
+
+  // A returning visitor already carries the cookie (its lifetime matches the
+  // token's), but if it was cleared while the stored session is still valid,
+  // reinstate it now so the next navigation can load the gated code.
+  syncAuthCookie(session && session.token);
 
   function authHeaders(extra) {
     const headers = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
