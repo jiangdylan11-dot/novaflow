@@ -283,6 +283,8 @@ export const ERROR_CODE = Object.freeze({
   UNAUTHORIZED: 'unauthorized',
   FORBIDDEN: 'forbidden',
   EXPIRED: 'token_expired',
+  SESSION_REPLACED: 'session_replaced',
+  ACCOUNT_EXPIRED: 'account_expired',
   NOT_FOUND: 'not_found',
   BAD_REQUEST: 'bad_request',
   CONFLICT: 'conflict',

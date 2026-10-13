@@ -429,6 +429,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     note.style.color = '#a0a0a0';
     note.setAttribute('role', 'status');
     card.appendChild(note);
+    // Why the last session ended, when the server said: 账号已在其他设备登录 / 账号已到期.
+    try {
+      const reason = root.sessionStorage.getItem('novaflow.web.signout-reason');
+      if (reason) {
+        root.sessionStorage.removeItem('novaflow.web.signout-reason');
+        note.style.color = '#fca5a5';
+        note.textContent = reason;
+      }
+    } catch (_) {}
 
     shell.appendChild(card);
 

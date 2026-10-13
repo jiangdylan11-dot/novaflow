@@ -60,6 +60,7 @@ const SUITES = [
   { name: 'sql-contract', file: 'e2e/sql-contract.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'control-plane', file: 'e2e/control-plane.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'security', file: 'e2e/security.test.mjs', needs: [], timeoutMs: 240000 },
+  { name: 'user-session-limits', file: 'e2e/user-session-limits.test.mjs', needs: [], timeoutMs: 180000 },
   { name: 'multi-worker', file: 'e2e/multi-worker.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'worker-onboarding', file: 'e2e/worker-onboarding.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'worker-start-retry', file: 'e2e/worker-start-retry.test.mjs', needs: [], timeoutMs: 60000 },

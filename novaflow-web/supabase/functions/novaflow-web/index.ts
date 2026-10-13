@@ -76,8 +76,19 @@ const supabaseStore = {
     if (!UUID_RE.test(String(userId))) return null;
     const { data, error } = await admin()
       .from('users')
-      .select('id,email,display_name,role,plan,status')
+      .select('id,email,display_name,role,plan,status,expires_at')
       .eq('id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async getUserSession(sessionId: string) {
+    if (!UUID_RE.test(String(sessionId))) return null;
+    const { data, error } = await admin()
+      .from('user_sessions')
+      .select('id,user_id,revoked_at')
+      .eq('id', sessionId)
       .maybeSingle();
     if (error) throw error;
     return data;

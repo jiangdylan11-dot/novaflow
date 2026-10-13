@@ -327,10 +327,25 @@ export function createControlPlane({ store, secrets, logger }) {
       const expired = /expired/i.test(String(error?.message || ''));
       throw new HttpError(401, expired ? ERROR_CODE.EXPIRED : ERROR_CODE.UNAUTHORIZED, String(error?.message || 'invalid session'));
     }
-    const user = await store.getUserById(String(payload.sub));
+    // A token minted before user_sessions existed has no sid and stays valid
+    // until its own exp. A sid whose row is gone or revoked was pushed out by
+    // a newer login on the same account (or a password change).
+    const userId = String(payload.sub);
+    const sessionId = payload.sid ? String(payload.sid) : '';
+    const [user, session] = await Promise.all([
+      store.getUserById(userId),
+      sessionId ? store.getUserSession(sessionId) : null
+    ]);
     if (!user) throw new HttpError(401, ERROR_CODE.UNAUTHORIZED, 'unknown user');
     if (String(user.status || 'active').toLowerCase() !== 'active') {
       throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'user disabled');
+    }
+    const expiresAt = Date.parse(String(user.expires_at || ''));
+    if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+      throw new HttpError(403, ERROR_CODE.ACCOUNT_EXPIRED, '账号已到期，请联系管理员');
+    }
+    if (sessionId && (!session || String(session.user_id) !== userId || session.revoked_at)) {
+      throw new HttpError(401, ERROR_CODE.SESSION_REPLACED, '账号已在其他设备登录');
     }
     return user;
   }

@@ -439,6 +439,24 @@ function createTableSelect(options, value, disabled, fieldName) {
   return select;
 }
 
+function userMaxSessions(user) {
+  const count = Number(user?.max_sessions);
+  return Number.isInteger(count) && count >= 1 ? count : 1;
+}
+
+// expires_at (ISO) -> the YYYY-MM-DD a date input shows, on this computer's clock.
+function localDateInputValue(iso) {
+  const time = Date.parse(String(iso || ""));
+  if (!Number.isFinite(time)) return "";
+  const date = new Date(time);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function isUserExpired(user) {
+  const time = Date.parse(String(user?.expires_at || ""));
+  return Number.isFinite(time) && time <= Date.now();
+}
+
 function userManagementWritable(result) {
   return result?.source === "supabase" && result?.status !== "error";
 }
@@ -588,7 +606,7 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
   }
 
   if (isErrorResult(usersResult)) {
-    replaceRows("usersTableBody", [], 8, resultErrorText(usersResult));
+    replaceRows("usersTableBody", [], 10, resultErrorText(usersResult));
     return;
   }
   const creditMap = new Map((creditsResult?.records || []).map((item) => [String(item.user_id || ""), item]));
@@ -661,6 +679,29 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
     );
     tr.appendChild(nodeCell(statusSelect));
 
+    const sessionsInput = document.createElement("input");
+    sessionsInput.type = "number";
+    sessionsInput.min = "1";
+    sessionsInput.max = "99";
+    sessionsInput.step = "1";
+    sessionsInput.className = "tableInput sessions";
+    sessionsInput.dataset.field = "maxSessions";
+    sessionsInput.value = String(userMaxSessions(user));
+    sessionsInput.title = "同一账号最多同时登录几处，超出时挤掉最早登录的";
+    sessionsInput.disabled = !userManagementState.writable;
+    tr.appendChild(nodeCell(sessionsInput));
+
+    const expiryInput = document.createElement("input");
+    expiryInput.type = "date";
+    expiryInput.className = "tableInput expiry";
+    expiryInput.dataset.field = "expiresAt";
+    expiryInput.value = localDateInputValue(user.expires_at);
+    const expired = isUserExpired(user);
+    expiryInput.classList.toggle("expired", expired);
+    expiryInput.title = expired ? "已到期；留空 = 永久" : "到这一天结束；留空 = 永久";
+    expiryInput.disabled = !userManagementState.writable;
+    tr.appendChild(nodeCell(expiryInput));
+
     const actionWrap = document.createElement("div");
     actionWrap.className = "tableActions";
     const saveButton = document.createElement("button");
@@ -699,7 +740,7 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
     tr.appendChild(nodeCell(actionWrap));
     return tr;
   });
-  replaceRows("usersTableBody", rows, 8, filter ? "没有匹配的用户" : "暂无用户数据");
+  replaceRows("usersTableBody", rows, 10, filter ? "没有匹配的用户" : "暂无用户数据");
 }
 
 function renderCreditStats(creditsResult, quotaResult) {
@@ -1896,7 +1937,7 @@ async function loadAdminData() {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
     ["dashboardDataBadge", "usersDataBadge", "creditsDataBadge", "aiServicesDataBadge", "tasksDataBadge", "consumptionDataBadge", "settingsDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
-    replaceRows("usersTableBody", [], 8, message);
+    replaceRows("usersTableBody", [], 10, message);
     replaceRows("aiProvidersTableBody", [], 7, message);
     replaceRows("aiModelsTableBody", [], 5, message);
     replaceRows("tasksTableBody", [], 6, message);
@@ -1916,6 +1957,8 @@ function createAdminUserPayload() {
     plan: normalizeUserPlanValue($("newUserPlan")?.value),
     status: $("newUserStatus")?.value || "active",
     initialCredits: Number($("newUserInitialCredits")?.value || 0),
+    maxSessions: Number($("newUserMaxSessions")?.value || 1),
+    expiresAt: $("newUserExpiresAt")?.value || "",
     note: $("newUserNote")?.value.trim() || ""
   };
 }
@@ -1927,6 +1970,8 @@ function clearCreateAdminUserForm() {
   if ($("newUserPlan")) $("newUserPlan").value = "trial";
   if ($("newUserStatus")) $("newUserStatus").value = "active";
   if ($("newUserInitialCredits")) $("newUserInitialCredits").value = "0";
+  if ($("newUserMaxSessions")) $("newUserMaxSessions").value = "1";
+  if ($("newUserExpiresAt")) $("newUserExpiresAt").value = "";
   if ($("newUserNote")) $("newUserNote").value = "";
 }
 
@@ -1954,8 +1999,12 @@ async function createAdminUser() {
     alert("初始积分必须是大于等于 0 的整数");
     return;
   }
+  if (!Number.isInteger(payload.maxSessions) || payload.maxSessions < 1 || payload.maxSessions > 99) {
+    alert("同时在线数必须是 1-99 的整数");
+    return;
+  }
 
-  const confirmed = confirm(`确定创建登录账号 ${accountName}？\n初始积分：${formatNumber(payload.initialCredits)}\n用户将使用此账号和初始密码登录 NovaFlow。`);
+  const confirmed = confirm(`确定创建登录账号 ${accountName}？\n初始积分：${formatNumber(payload.initialCredits)}\n同时在线：${payload.maxSessions} 处\n有效期：${payload.expiresAt ? `至 ${payload.expiresAt}` : "永久"}\n用户将使用此账号和初始密码登录 NovaFlow。`);
   if (!confirmed) return;
 
   try {
@@ -1991,24 +2040,48 @@ async function saveUserRow(button) {
   }
   const status = row.querySelector('select[data-field="status"]')?.value || "active";
   const plan = normalizeUserPlanValue(row.querySelector('select[data-field="plan"]')?.value);
+  const maxSessions = Number(row.querySelector('input[data-field="maxSessions"]')?.value || 0);
+  const expiresAt = row.querySelector('input[data-field="expiresAt"]')?.value || "";
   const user = userManagementState.users.find((item) => String(item.id || "") === String(userId));
   const oldStatus = normalizeUserStatusValue(user?.status);
   const oldPlan = normalizeUserPlanValue(user?.plan);
-  if (status === oldStatus && plan === oldPlan) {
+  const oldMaxSessions = userMaxSessions(user);
+  const oldExpiresAt = localDateInputValue(user?.expires_at);
+  if (!Number.isInteger(maxSessions) || maxSessions < 1 || maxSessions > 99) {
+    alert("同时在线数必须是 1-99 的整数");
+    return;
+  }
+  if (status === oldStatus && plan === oldPlan && maxSessions === oldMaxSessions && expiresAt === oldExpiresAt) {
     toast("用户信息没有变化");
     return;
   }
   const planLabel = (value) => (USER_PLAN_OPTIONS.find(([key]) => key === value) || [value, value])[1];
+  const expiryLabel = (value) => value ? `至 ${value}` : "永久";
   const changes = [];
-  if (plan !== oldPlan) changes.push(`账户类型：${planLabel(oldPlan)} -> ${planLabel(plan)}`);
-  if (status !== oldStatus) changes.push(`状态：${oldStatus} -> ${status}`);
+  const patch = { userId };
+  if (plan !== oldPlan) {
+    changes.push(`账户类型：${planLabel(oldPlan)} -> ${planLabel(plan)}`);
+    patch.plan = plan;
+  }
+  if (status !== oldStatus) {
+    changes.push(`状态：${oldStatus} -> ${status}`);
+    patch.status = status;
+  }
+  if (maxSessions !== oldMaxSessions) {
+    changes.push(`同时在线：${oldMaxSessions} -> ${maxSessions}${maxSessions < oldMaxSessions ? "（多出的登录会被挤下线）" : ""}`);
+    patch.maxSessions = maxSessions;
+  }
+  if (expiresAt !== oldExpiresAt) {
+    changes.push(`有效期：${expiryLabel(oldExpiresAt)} -> ${expiryLabel(expiresAt)}`);
+    patch.expiresAt = expiresAt;
+  }
   const confirmed = confirm(`确定更新 ${userAccountLabel(user) || userId}？\n${changes.join("\n")}`);
   if (!confirmed) return;
 
   try {
     button.disabled = true;
     button.textContent = "保存中...";
-    const res = await window.adminAPI.updateAdminUser({ userId, status, plan });
+    const res = await window.adminAPI.updateAdminUser(patch);
     const result = res?.result || {};
     if (!res?.ok || result.status === "error" || result.ok === false) {
       alert(result.error || res?.error || "更新用户失败");

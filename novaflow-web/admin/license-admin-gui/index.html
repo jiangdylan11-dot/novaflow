@@ -201,6 +201,8 @@
                       <th>提示词次数（剩余 / 已分配）</th>
                       <th>账户类型</th>
                       <th>状态</th>
+                      <th title="同一账号最多同时登录几处，超出时挤掉最早登录的">同时在线</th>
+                      <th title="到期后不能登录，已登录的也会被退出；留空 = 永久">有效期</th>
                       <th class="actionsCol">操作</th>
                     </tr>
                   </thead>
@@ -927,6 +929,18 @@
                     <input id="newUserInitialCredits" type="number" min="0" step="1" value="0" />
                   </div>
                 </div>
+                <div class="row">
+                  <div class="label">同时在线数</div>
+                  <div class="field">
+                    <input id="newUserMaxSessions" type="number" min="1" max="99" step="1" value="1" title="同一账号最多同时登录几处，超出时挤掉最早登录的" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">有效期至</div>
+                  <div class="field">
+                    <input id="newUserExpiresAt" type="date" title="到这一天结束；留空 = 永久" />
+                  </div>
+                </div>
                 <div class="row full">
                   <div class="label">备注</div>
                   <div class="field">
@@ -1367,7 +1381,12 @@
       .userTable td:nth-child(2), .userTable td:nth-child(3) { color: var(--muted); white-space: nowrap; }
       .userTable td:nth-child(4) { text-align: right; font-weight: 600; }
       .userTable td:nth-child(5) { color: var(--muted); white-space: nowrap; }
-      .userTable th:last-child, .userTable td:last-child { width: 232px; min-width: 232px; text-align: right; }
+      .userTable th:last-child, .userTable td:last-child { width: 196px; min-width: 196px; text-align: right; }
+      /* 同时在线 / 有效期 made the row two columns longer; tighter cells keep it inside a 1440 window. */
+      .userTable th, .userTable td { padding-left: 10px; padding-right: 10px; }
+      .userTable .tableSelect[data-field="status"] { min-width: 0; width: 88px; }
+      .userTable .tableInput.sessions { width: 56px; }
+      .userTable .tableInput.expiry { width: 118px; }
       .creditTable td:nth-child(2), .quotaTable td:nth-child(2), .quotaTable td:nth-child(3), .quotaTable td:nth-child(4) { text-align: right; font-weight: 600; }
       .creditTable td:nth-child(1), .quotaTable td:nth-child(1) { font-weight: 600; }
       .providerTable td:nth-child(1) { font-weight: 600; }
@@ -1392,6 +1411,10 @@
       .recordActions { display: inline-flex; align-items: center; gap: 6px; }
       .recordCopyButton, .recordDeleteButton { height: 28px; min-width: 0; padding: 0 10px; font-size: 12px; }
       .tableSelect { min-width: 96px; max-width: 150px; height: 30px; font-size: 12px; padding: 0 8px; }
+      .tableInput { flex: 0 0 auto; height: 30px; font-size: 12px; padding: 0 8px; }
+      .tableInput.sessions { width: 64px; }
+      .tableInput.expiry { width: 132px; }
+      .tableInput.expired { color: var(--danger); }
       .tableActions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
       .tableActions .btn { height: 28px; min-width: 0; padding: 0 10px; font-size: 12px; }
       .mockKey { width: 100%; min-width: 200px; height: 30px; font-size: 12px; }

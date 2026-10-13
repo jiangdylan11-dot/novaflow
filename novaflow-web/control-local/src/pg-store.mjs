@@ -18,8 +18,16 @@ export function createPgStore(db) {
   return {
     async getUserById(userId) {
       return await one(
-        'select id, email, display_name, role, plan, status from public.users where id = $1',
+        'select id, email, display_name, role, plan, status, expires_at from public.users where id = $1',
         [userId]
+      );
+    },
+
+    async getUserSession(sessionId) {
+      if (!/^[0-9a-f-]{36}$/i.test(String(sessionId))) return null;
+      return await one(
+        'select id, user_id, revoked_at from public.user_sessions where id = $1',
+        [sessionId]
       );
     },
 

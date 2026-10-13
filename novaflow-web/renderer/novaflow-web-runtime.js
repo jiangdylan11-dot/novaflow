@@ -65,6 +65,7 @@
 
   const SESSION_KEY = 'novaflow_web_session_v1';
   const CLIENT_AUTH_KEY = 'novaflow.client.auth.session.v1';
+  const SIGNOUT_REASON_KEY = 'novaflow.web.signout-reason';
   // The launcher chooses the DEFAULT endpoint: the local assistant's own machine, or the shared pool on
   // the hosted site. Prompt-assistant and licence calls follow this and nothing else.
   const computeMode = CONFIG.localAssistant ? 'local' : 'shared';
@@ -884,6 +885,11 @@
           }
           saveSession(null);
           try { root.localStorage.removeItem(CLIENT_AUTH_KEY); } catch (_) {}
+          // Pushed out by a newer login on the account, or the account ran out:
+          // the login screen that follows says which.
+          if (error.code === 'session_replaced' || error.code === 'account_expired') {
+            try { root.sessionStorage.setItem(SIGNOUT_REASON_KEY, String(error.message || '')); } catch (_) {}
+          }
           return { ok: true, result: { authenticated: false } };
         }
         // A temporary control-plane/network failure is not a logout. The

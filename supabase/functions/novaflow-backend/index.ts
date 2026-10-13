@@ -33,6 +33,9 @@ const PROVIDER_QUOTA_KEYS = ["grok"];
 const LOCAL_WORKFLOW_PROVIDER_KEYS = new Set(["comfyui"]);
 const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
 const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
+const USER_COLUMNS = "id,email,display_name,role,plan,status,max_sessions,expires_at,created_at,updated_at";
+const ACCOUNT_EXPIRED_MESSAGE = "账号已到期，请联系管理员";
+const SESSION_REPLACED_MESSAGE = "账号已在其他设备登录";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -43,6 +46,8 @@ type PublicUser = {
   role?: string | null;
   plan?: string | null;
   status?: string | null;
+  max_sessions?: number | null;
+  expires_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -285,6 +290,15 @@ function isActiveUser(user: PublicUser | null): boolean {
   return String(user?.status || "active").toLowerCase() === "active";
 }
 
+function isAccountExpired(user: PublicUser | null): boolean {
+  const expiresAt = Date.parse(String(user?.expires_at || ""));
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function codedError(statusCode: number, code: string, message: string): Error {
+  return Object.assign(new Error(message), { statusCode, code });
+}
+
 function publicUser(user: PublicUser): AnyRecord {
   const account = accountNameFromEmail(user.email || "");
   return {
@@ -295,6 +309,8 @@ function publicUser(user: PublicUser): AnyRecord {
     role: user.role || "user",
     plan: user.plan || "trial",
     status: user.status || "active",
+    max_sessions: Number(user.max_sessions || 1),
+    expires_at: user.expires_at || null,
     created_at: user.created_at || ""
   };
 }
@@ -386,13 +402,14 @@ async function enforceLicenseVerificationRateLimit(
   }
 }
 
-async function issueSessionToken(user: PublicUser): Promise<AnyRecord> {
+async function issueSessionToken(user: PublicUser, sessionId: string): Promise<AnyRecord> {
   const secret = sessionSecret();
   if (!secret) throw new Error("NOVAFLOW_SESSION_SECRET is not configured");
   const now = Math.floor(Date.now() / 1000);
   const ttl = sessionTtlSeconds();
   const payload = {
     sub: String(user.id || ""),
+    sid: sessionId,
     email: String(user.email || ""),
     plan: String(user.plan || "trial"),
     status: String(user.status || "active"),
@@ -437,7 +454,7 @@ function bearerToken(req: Request): string {
 async function readUserById(userId: string): Promise<PublicUser | null> {
   const { data, error } = await adminClient()
     .from("users")
-    .select("id,email,display_name,role,plan,status,created_at,updated_at")
+    .select(USER_COLUMNS)
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error;
@@ -464,19 +481,50 @@ async function verifySupabaseClientSessionToken(token: string): Promise<AnyRecor
   };
 }
 
+// Tokens minted before user_sessions existed carry no sid; they stay valid
+// until their own exp. A sid whose row is gone or revoked was pushed out by a
+// newer login (or a password change) on the same account.
+async function sessionIsLive(sessionId: string, userId: string): Promise<boolean> {
+  const { data, error } = await adminClient()
+    .from("user_sessions")
+    .select("id,user_id,revoked_at")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data && String((data as AnyRecord).user_id) === userId && !(data as AnyRecord).revoked_at);
+}
+
 async function requireSession(req: Request): Promise<{ user: PublicUser; payload: AnyRecord }> {
   const token = bearerToken(req);
   const payload = String(token || "").trim().startsWith("nfs_")
     ? await verifySessionToken(token)
     : await verifySupabaseClientSessionToken(token);
-  const user = await readUserById(String(payload.sub || ""));
+  const userId = String(payload.sub || "");
+  const sessionId = String(payload.sid || "");
+  const [user, live] = await Promise.all([
+    readUserById(userId),
+    sessionId ? sessionIsLive(sessionId, userId) : Promise.resolve(true)
+  ]);
   if (!user) throw new Error("session user not found");
   if (!isActiveUser(user)) {
     const err = new Error("user disabled");
     (err as Error & { statusCode?: number }).statusCode = 403;
     throw err;
   }
+  if (isAccountExpired(user)) throw codedError(403, "account_expired", ACCOUNT_EXPIRED_MESSAGE);
+  if (!live) throw codedError(401, "session_replaced", SESSION_REPLACED_MESSAGE);
   return { user, payload };
+}
+
+async function openUserSession(req: Request, userId: string): Promise<string> {
+  const { data, error } = await adminClient().rpc("novaflow_open_user_session", {
+    p_user_id: userId,
+    p_user_agent: String(req.headers.get("user-agent") || "").slice(0, 300)
+  });
+  if (error) throw error;
+  const sessionId = String(Array.isArray(data) ? data[0] : data || "");
+  if (!sessionId) throw new Error("could not open a login session");
+  return sessionId;
 }
 
 async function ensureCreditRow(userId: string): Promise<AnyRecord> {
@@ -509,7 +557,7 @@ async function syncAuthUserProfile(input: { authUserId: string; email: string; d
   const displayName = String(input.displayName || "").trim().slice(0, 120);
   const { data: existing, error: readError } = await client
     .from("users")
-    .select("id,email,display_name,role,plan,status,created_at,updated_at")
+    .select(USER_COLUMNS)
     .or(`id.eq.${input.authUserId},email.eq.${email}`)
     .limit(1)
     .maybeSingle();
@@ -526,7 +574,7 @@ async function syncAuthUserProfile(input: { authUserId: string; email: string; d
       .from("users")
       .update(updatePayload)
       .eq("id", (existing as PublicUser).id)
-      .select("id,email,display_name,role,plan,status,created_at,updated_at")
+      .select(USER_COLUMNS)
       .maybeSingle();
     if (error) throw error;
     user = (data || existing) as PublicUser;
@@ -541,7 +589,7 @@ async function syncAuthUserProfile(input: { authUserId: string; email: string; d
         plan: "trial",
         status: "active"
       })
-      .select("id,email,display_name,role,plan,status,created_at,updated_at")
+      .select(USER_COLUMNS)
       .maybeSingle();
     if (error) throw error;
     user = data as PublicUser;
@@ -552,7 +600,8 @@ async function syncAuthUserProfile(input: { authUserId: string; email: string; d
 
 async function authPayload(req: Request, user: PublicUser, provider: string, intent: string): Promise<Response> {
   if (!isActiveUser(user)) return jsonResponse(req, 403, { ok: false, error: "user disabled" });
-  const session = await issueSessionToken(user);
+  if (isAccountExpired(user)) return jsonResponse(req, 403, { ok: false, error: ACCOUNT_EXPIRED_MESSAGE, code: "account_expired" });
+  const session = await issueSessionToken(user, await openUserSession(req, user.id));
   const credits = await creditBalance(user.id);
   logInfo("client auth", { intent, userId: user.id, email: user.email, creditBalance: credits.balance });
   return jsonResponse(req, 200, {
@@ -1776,7 +1825,8 @@ Deno.serve(async (req: Request) => {
         session = await requireSession(req);
       } catch (error) {
         const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 401);
-        return jsonResponse(req, statusCode, { ok: false, error: sanitizeError(error) });
+        const code = (error as Error & { code?: string })?.code;
+        return jsonResponse(req, statusCode, { ok: false, error: sanitizeError(error), ...(code ? { code } : {}) });
       }
       if (req.method === "GET" && (path === "/api/auth/me" || path === "/api/client/credits")) {
         const credits = await creditBalance(session.user.id);

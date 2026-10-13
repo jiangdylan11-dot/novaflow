@@ -25,7 +25,8 @@ const STABLE_MIGRATIONS = resolve(WEB_ROOT, '../supabase/migrations');
 const REUSED_STABLE_MIGRATIONS = [
   '20260710000000_comfyui_usage_settlement.sql',
   '20260710001000_credits_user_id_unique.sql',
-  '20260712000000_decimal_comfy_image_settlement.sql'
+  '20260712000000_decimal_comfy_image_settlement.sql',
+  '20261013010000_user_session_limits.sql'
 ];
 
 export async function createDatabase({ verbose = false } = {}) {

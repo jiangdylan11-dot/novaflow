@@ -42,6 +42,9 @@ let cachedClientEnvKey = "";
 const adminQueries = {
   users: {
     select: "id,email,display_name,role,plan,status,created_at,updated_at",
+    // The user list also shows 同时在线 / 有效期; before
+    // 20261013010000_user_session_limits.sql has run it falls back to `select`.
+    listSelect: "id,email,display_name,role,plan,status,max_sessions,expires_at,created_at,updated_at",
     orderBy: "created_at",
     ascending: false
   },
@@ -539,8 +542,37 @@ function creditAdjustmentSource(mode) {
 
 function normalizeUserPlan(value) {
   const plan = String(value || "trial").trim().toLowerCase();
-  if (!["trial", "pro", "team"].includes(plan)) throw new Error("不支持的用户方案");
+  if (!["trial", "standard", "pro", "team"].includes(plan)) throw new Error("不支持的用户方案");
   return plan;
+}
+
+function normalizeMaxSessions(value) {
+  const count = Number(value ?? 1);
+  if (!Number.isInteger(count) || count < 1 || count > 99) throw new Error("同时在线数必须是 1-99 的整数");
+  return count;
+}
+
+// Empty = permanent. A bare date (from the date picker) lasts to the end of
+// that day on this computer's clock.
+function normalizeExpiresAt(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T23:59:59`).getTime() : Date.parse(raw);
+  if (!Number.isFinite(time)) throw new Error("有效期日期格式不正确");
+  return new Date(time).toISOString();
+}
+
+// Sign out all but the newest `keep` sessions of a user (0 = everywhere).
+// Best effort: the limit is enforced again at the next login anyway.
+async function trimUserSessions(client, userId, keep, reason) {
+  try {
+    const { data, error } = await client.rpc("novaflow_trim_user_sessions", { p_user_id: userId, p_keep: keep, p_reason: reason });
+    if (error) throw error;
+    return Number(data || 0);
+  } catch (err) {
+    logAdminData("error", "trim user sessions failed", { userId, keep, reason, error: sanitizeError(err) });
+    return 0;
+  }
 }
 
 function normalizeUserStatus(value) {
@@ -605,11 +637,13 @@ function parseAdminUserCreatePayload(payload) {
   const plan = normalizeUserPlan(payload?.plan);
   const status = normalizeUserStatus(payload?.status);
   const initialCredits = Number(payload?.initialCredits ?? 0);
+  const maxSessions = normalizeMaxSessions(payload?.maxSessions);
+  const expiresAt = normalizeExpiresAt(payload?.expiresAt);
   const note = String(payload?.note || "").trim().slice(0, 500);
   const passwordError = validatePassword(password);
   if (passwordError) throw new Error(passwordError);
   if (!Number.isInteger(initialCredits) || initialCredits < 0) throw new Error("初始积分必须是大于等于 0 的整数");
-  return { accountName, email, displayName, password, plan, status, initialCredits, note };
+  return { accountName, email, displayName, password, plan, status, initialCredits, maxSessions, expiresAt, note };
 }
 
 function parseAdminUserUpdatePayload(payload) {
@@ -619,11 +653,13 @@ function parseAdminUserUpdatePayload(payload) {
     : String(payload?.displayName || payload?.display_name || "").trim().slice(0, 120);
   const plan = payload?.plan === undefined ? undefined : normalizeUserPlan(payload.plan);
   const status = payload?.status === undefined ? undefined : normalizeUserStatus(payload.status);
+  const maxSessions = payload?.maxSessions === undefined ? undefined : normalizeMaxSessions(payload.maxSessions);
+  const expiresAt = payload?.expiresAt === undefined ? undefined : normalizeExpiresAt(payload.expiresAt);
   if (!userId) throw new Error("用户 ID 不能为空");
-  if (displayName === undefined && plan === undefined && status === undefined) {
+  if (displayName === undefined && plan === undefined && status === undefined && maxSessions === undefined && expiresAt === undefined) {
     throw new Error("没有需要更新的用户字段");
   }
-  return { userId, displayName, plan, status };
+  return { userId, displayName, plan, status, maxSessions, expiresAt };
 }
 
 function parseAdminUserDeletePayload(payload) {
@@ -1124,7 +1160,7 @@ async function readSingleBy(tableName, selectFields, columnName, value, options 
 }
 
 function getAdminUsers() {
-  return readTable("users", adminQueries.users.select, adminQueries.users);
+  return readTable("users", adminQueries.users.listSelect, { ...adminQueries.users, fallbackSelect: adminQueries.users.select });
 }
 
 function getAdminCredits() {
@@ -1797,6 +1833,8 @@ async function createAdminUser(payload) {
           role: "user",
           plan: parsed.plan,
           status: parsed.status,
+          max_sessions: parsed.maxSessions,
+          expires_at: parsed.expiresAt,
           updated_at: now
         })
         .select(adminQueries.users.select)
@@ -1925,6 +1963,8 @@ async function updateAdminUser(payload) {
     if (parsed.displayName !== undefined) patch.display_name = parsed.displayName || null;
     if (parsed.plan !== undefined) patch.plan = parsed.plan;
     if (parsed.status !== undefined) patch.status = parsed.status;
+    if (parsed.maxSessions !== undefined) patch.max_sessions = parsed.maxSessions;
+    if (parsed.expiresAt !== undefined) patch.expires_at = parsed.expiresAt;
 
     const { data: user, error } = await clientState.client
       .from("users")
@@ -1934,6 +1974,8 @@ async function updateAdminUser(payload) {
       .maybeSingle();
     if (error) throw error;
     if (!user) throw new Error("用户不存在，无法更新");
+    // A lowered limit takes effect now, not at the next login.
+    if (parsed.maxSessions !== undefined) await trimUserSessions(clientState.client, user.id, parsed.maxSessions, "limit");
 
     const durationMs = Date.now() - startedAt;
     const result = {
@@ -2214,6 +2256,8 @@ async function resetAdminUserPassword(payload) {
     });
     if (resetError) throw resetError;
     const authReset = verifyAdminUserPasswordReset(resetData, authUser);
+    // Whoever logged in with the old password is signed out.
+    authReset.sessionsSignedOut = await trimUserSessions(clientState.client, user.id, 0, "password");
 
     const durationMs = Date.now() - startedAt;
     const result = {
