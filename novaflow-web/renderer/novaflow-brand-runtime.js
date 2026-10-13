@@ -7823,12 +7823,21 @@
     return new Uint8Array(await outBlob.arrayBuffer());
   }
 
+  const novaflowExportTempDirs = new Set();
+  const normalizeNovaflowExportTempDir = (dir) => String(dir || "").replace(/[\\/]+$/, "");
+  function isNovaflowExportTempDir(dir) {
+    const key = normalizeNovaflowExportTempDir(dir);
+    return !!key && novaflowExportTempDirs.has(key);
+  }
+
   async function prepareNovaflowWriteBinaryPayloadForManualExport(payload) {
     if (payload?.spineSequenceNamed === true) return payload;
     const state = getNovaflowManualExportStateForPayload(payload);
     if (!state || state.context === "aifx" || !payload || typeof payload !== "object") return payload;
     const next = { ...payload };
-    if (next.fileName && !isNovaflowVideoTempFramePayload(next, state)) {
+    // Files in an export temp dir are the encoder's own inputs (the source
+    // clip, frames); the export reads them back by the name it wrote.
+    if (next.fileName && !isNovaflowVideoTempFramePayload(next, state) && !isNovaflowExportTempDir(next.dir)) {
       next.fileName = buildNovaflowStrictManualExportFileName(next.fileName, state);
     }
     if (shouldCompositeNovaflowExportPng(next, state)) {
@@ -8087,10 +8096,20 @@
           return result;
         };
       }
+      if (typeof api.exportEncodeVideoToVideo === "function") {
+        const nativeEncodeVideo = api.exportEncodeVideoToVideo.bind(api);
+        api.exportEncodeVideoToVideo = async (payload) => {
+          const state = getNovaflowManualExportStateForPayload(payload, "video");
+          const format = String(payload?.format || state?.format || "").toLowerCase();
+          const next = state ? { ...(payload || {}), keepAlpha: format === "webm" && !!state.transparent } : payload;
+          const result = await nativeEncodeVideo(next);
+          handleNovaflowLicenseLockedApiResult(result);
+          return result;
+        };
+      }
       [
         "exportCreateTempDir",
         "exportCleanupDir",
-        "exportEncodeVideoToVideo",
         "saveSplitPackage",
         "saveSplitPsd"
       ].forEach((name) => {
@@ -8099,6 +8118,8 @@
         const patched = async (payload) => {
           const result = await nativeFn(payload);
           handleNovaflowLicenseLockedApiResult(result);
+          if (name === "exportCreateTempDir" && result?.dir) novaflowExportTempDirs.add(normalizeNovaflowExportTempDir(result.dir));
+          if (name === "exportCleanupDir" && payload?.dir) novaflowExportTempDirs.delete(normalizeNovaflowExportTempDir(payload.dir));
           return result;
         };
         patched.__novaflowLicenseResultPatched = true;
