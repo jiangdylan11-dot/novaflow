@@ -111,6 +111,8 @@
     imgOpen: new Set(), // 工程树 图片 node: the subfolders unfolded (paths)
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
     seqGap: 1, // 序列K帧: frames between two pictures (1 = one picture a frame)
+    seqLoop: false, // 序列K帧 循环: two crossfading slots make a non-looping sequence loop
+    seqBlend: '', // 序列K帧 混合: the slots' blend on write ('' = leave it as it is)
     sweepStart: 0, // 序列扫光: the sweep runs from this frame…
     sweepEnd: 0, // …to this one (0 = the animation's last frame; empty animation: 5 frames a picture)
     sweepParams: null, // 序列扫光 generator: the dialog's last parameters (this session)
@@ -6360,7 +6362,11 @@
       const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
         onchange: (e) => { state.seqGap = Math.max(1, Math.min(600, Math.round(Number(e.target.value) || 1))); e.target.value = state.seqGap } })
       head.push(h('label', { class: 'ld-f' }, '间隔', gap, '帧'),
-        h('button', { class: 'ld-go', title: '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
+        blendSelect(state.seqBlend, (v) => { state.seqBlend = v }),
+        // 循环 (user 2026-10-13): a sequence that does not loop, made to loop by two crossfading slots
+        h('label', { class: 'ld-f', title: '把不循环的序列做成循环：分成两个插槽叠在一起，一个播前一半、透明度 0→100，一个播后一半、透明度 100→0；循环长度 = 序列的一半' },
+          h('input', { type: 'checkbox', checked: !!state.seqLoop, onchange: (e) => { state.seqLoop = e.target.checked } }), '循环'),
+        h('button', { class: 'ld-go', title: state.seqLoop ? '写入循环序列：两个插槽交叉淡入淡出，首尾无缝' : '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
     } else {
       const from = h('input', { type: 'number', class: 'ld-num wide', min: 0, max: 18000, step: 1, value: state.sweepStart, title: '扫光从第几帧开始（之前全透明）',
         onchange: (e) => { state.sweepStart = Math.max(0, Math.min(18000, Math.round(Number(e.target.value) || 0))); e.target.value = state.sweepStart; renderLayerDock() } })
@@ -6438,6 +6444,7 @@
         num('scale', '缩放', null, { step: 0.05, min: 0 }, '一份从 1 缩放到这个大小；1 = 不缩放'),
         h('label', { class: 'ld-f' }, '时长', framesIn, '帧'),
         h('label', { class: 'ld-f' }, '数量', countIn),
+        blendSelect(o.blend, (v) => { o.blend = v }),
         h('label', { class: 'ld-f', title: '打开：首尾帧一致，变化在尾帧前一帧（阶梯），透明度 0→100→0，各份按数量错开，可以整体偏移拖动' },
           h('input', { type: 'checkbox', checked: o.offset, onchange: (e) => { o.offset = e.target.checked; renderLayerDock() } }), '偏移'),
         h('span', { class: 'sp' }),
@@ -6524,7 +6531,7 @@
         const slot = uniqueSlotName(json, name)
         json = Ops.addSlot(json, name, slot).json
         json = Ops.addRegionAttachment(json, 'default', slot, { name: short, path: image, width: size.width, height: size.height }).json
-        json = Ops.setSlotProps(json, slot, { attachment: short }).json
+        json = Ops.setSlotProps(json, slot, { attachment: short, ...(o.blend ? { blend: o.blend } : {}) }).json
         made.push({ bone: name, slot })
       }
       json = Ops.prepare(json)
@@ -6548,6 +6555,14 @@
       return { json: Ops.tidy(json) }
     }, () => { gotoFrame(0); if (firstBone) { state.sel = { kind: 'bone', name: firstBone }; state.multi = [firstBone]; revealInTree(state.sel) } })
   }
+
+  /** 混合 for the frame tools' slots ('' = leave each slot's own blend; new slots are 正常). */
+  const BLEND_CHOICES = [['', '不改'], ['normal', '正常'], ['additive', '相加'], ['multiply', '正片叠底'], ['screen', '滤色']]
+  function blendSelect(value, onChange) {
+    return h('label', { class: 'ld-f', title: '写入时插槽的混合模式（光效常用「相加」）；「不改」= 插槽原来的模式，新插槽是正常' }, '混合',
+      h('select', { class: 'ld-sel', 'data-frame-blend': '1', onchange: (e) => onChange(e.target.value) }, BLEND_CHOICES.map(([v, l]) => h('option', { value: v, selected: v === (value || '') }, l))))
+  }
+  const withBlend = (json, slots, blend) => (blend ? slots.reduce((j, sl) => Ops.setSlotProps(j, sl, { blend }).json, json) : json)
 
   /** 序列扫光's last frame: the field's value, else the animation's last frame, else 5 frames a picture after 起. */
   function sweepEndFrame(n) {
@@ -6694,7 +6709,11 @@
     // generated sweep slices as a sequence: placed on the base picture, above it, with the blend
     const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
     let made = null
-    return edit(`序列K帧：${images.length} 张进一个插槽，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
+    const loop = !!state.seqLoop
+    const total = images.length * gap, half = Math.max(1, Math.round(total / 2))
+    return edit(loop
+      ? `序列K帧 循环：${images.length} 张，两个插槽交叉淡入淡出，循环 ${half} 帧，挂在 ${bone}（${anim}）`
+      : `序列K帧：${images.length} 张进一个插槽，每 ${gap} 帧一张，挂在 ${bone}（${anim}）`, (j) => {
       let json = j
       const first = images[0]
       const baseSlotObj = gen && gen.baseSlot ? json.slots.find((x) => x.name === gen.baseSlot) : null
@@ -6732,7 +6751,26 @@
       row.attachment = names.map((name, i) => ({ ...(i ? { time: t4((i * gap) / FPS) } : {}), name }))
       a.slots[slot] = row
       made = slot
-      return { json: Ops.tidy(json) }
+      if (!loop) return { json: Ops.tidy(withBlend(json, [slot], state.seqBlend)) }
+      // 循环: B = a copy of the slot (same pictures, same place) right above it. Over one loop of half
+      // the sequence, A plays the first half fading in (0 → 100) and B the second half fading out
+      // (100 → 0): at the wrap both show the middle picture, so the joint does not show.
+      const dup = Ops.duplicateSlot(json, slot, { animation: false })
+      json = Ops.prepare(dup.json)
+      const slotB = dup.slot
+      const an = json.animations[anim]
+      const rgb = slotRgb(json, slot)
+      const picAt = (f) => Math.min(names.length - 1, Math.floor(f / gap))
+      const switches = (from) => {
+        const out = []
+        let last = -1
+        for (let t = 0; t <= half; t++) { const i = picAt(from + t); if (i !== last) { out.push({ ...(t ? { time: t4(t / FPS) } : {}), name: names[i] }); last = i } }
+        return out
+      }
+      const fade = (a0, a1) => [{ color: rgb + a0 }, { time: t4(half / FPS), color: rgb + a1 }]
+      an.slots[slot] = { attachment: switches(0), color: fade('00', 'ff') }
+      an.slots[slotB] = { attachment: switches(half), color: fade('ff', '00') }
+      return { json: Ops.tidy(withBlend(json, [slot, slotB], state.seqBlend)) }
     }, () => { gotoFrame(0); if (made) { state.sel = { kind: 'slot', name: made }; revealInTree(state.sel) } })
   }
 
