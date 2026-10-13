@@ -436,7 +436,7 @@
     if (r && r.json === s.json && r.atlasText === s.atlasText) return r
     dropProjectRuntime(p.id)
     const gl = rt.renderer.context || rt.gl
-    const atlas = new spine.TextureAtlas(s.atlasText, (path) => new spine.webgl.GLTexture(gl, pageImageFrom(s.images, path)))
+    const atlas = new spine.TextureAtlas(s.atlasText, (path) => pageTexture(gl, pageImageFrom(s.images, path), !!s.pma))
     const data = readProjectData(s.json, atlas, gl)
     r = { json: s.json, atlasText: s.atlasText, atlas, data, skeleton: new spine.Skeleton(data) }
     otherRt.set(p.id, r)
@@ -468,7 +468,7 @@
     rr.camera.setViewport($('#gl').width, $('#gl').height)
     rr.camera.zoom = rt.cam.zoom / rt.dpr
     rr.begin()
-    rr.drawSkeleton(sk, !!s.pma)
+    rr.drawSkeleton(sk, true)
     rr.end()
     for (let k = saved.length - 1; k >= 0; k--) saved[k][0].attachment = saved[k][1]
   }
@@ -720,6 +720,14 @@
   // ------------------------------------------------------------------ runtime
 
   function initGl() {
+    // 滤色 as Spine draws it: the 3.8 web runtime maps it to (ONE, ONE_MINUS_SRC_ALPHA) - plain
+    // premultiplied "over" - so a screen-blended light covered what was under it instead of lifting it
+    const BC = spine.webgl && spine.webgl.WebGLBlendModeConverter
+    if (BC && !BC.nfScreen) {
+      const dest = BC.getDestGLBlendMode
+      BC.getDestGLBlendMode = (mode) => (mode === spine.BlendMode.Screen ? 0x0301 /* ONE_MINUS_SRC_COLOR */ : dest(mode))
+      BC.nfScreen = true
+    }
     if (spine.PathConstraint && !spine.PathConstraint.prototype.nfGuard) {
       const up = spine.PathConstraint.prototype.update
       spine.PathConstraint.prototype.update = function () {
@@ -782,10 +790,11 @@
     const src = e.src
     let it = pv.items.get(e.id)
     if (!it) { it = { atlasText: null, atlas: null, data: null, json: null, skinName: null, skeleton: null, anim: null }; pv.items.set(e.id, it) }
-    if (it.atlasText !== src.atlasText) {
+    if (it.atlasText !== src.atlasText || it.pma !== !!src.pma) {
       if (it.atlas) try { it.atlas.dispose() } catch {}
-      it.atlas = new spine.TextureAtlas(src.atlasText, (path) => new spine.webgl.GLTexture(pv.gl, pageImageFrom(src.images, path)))
+      it.atlas = new spine.TextureAtlas(src.atlasText, (path) => pageTexture(pv.gl, pageImageFrom(src.images, path), !!src.pma))
       it.atlasText = src.atlasText
+      it.pma = !!src.pma
       it.json = null
     }
     if (it.json === src.json && it.skinName === src.skin && it.skeleton) return it
@@ -888,7 +897,7 @@
       r.camera.position.x = pv.cam.x - e.src.offset.x
       r.camera.position.y = pv.cam.y - e.src.offset.y
       r.begin()
-      r.drawSkeleton(it.skeleton, !!e.src.pma)
+      r.drawSkeleton(it.skeleton, true)
       r.end()
     }
   }
@@ -1055,11 +1064,25 @@
     }
   }
 
+  /**
+   * A page texture, always drawn premultiplied: a straight-alpha page is premultiplied on upload.
+   * Drawn straight, 正常 crossfades thinned the stage's own alpha (the checkerboard showed through
+   * every step) and 滤色 ignored the slot's alpha (frames popped on and off) - only 相加 was right
+   * (user 2026-10-13: 序列扫光 叠加没问题，滤色和正常会一直闪).
+   */
+  function pageTexture(ctx, img, pagePma) {
+    if (pagePma) return new spine.webgl.GLTexture(ctx, img)
+    const gl = ctx.gl || ctx
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+    try { return new spine.webgl.GLTexture(ctx, img) } finally { gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false) }
+  }
+
   function ensureAtlas() {
-    if (rt.atlasKey === state.atlasText && rt.atlas) return
+    const key = state.atlasText + (state.pma ? '\u0000pma' : '')
+    if (rt.atlasKey === key && rt.atlas) return
     if (rt.atlas) try { rt.atlas.dispose() } catch {}
-    rt.atlas = new spine.TextureAtlas(state.atlasText, (path) => new spine.webgl.GLTexture(rt.renderer.context || rt.gl, imageForPage(path)))
-    rt.atlasKey = state.atlasText
+    rt.atlas = new spine.TextureAtlas(state.atlasText, (path) => pageTexture(rt.renderer.context || rt.gl, imageForPage(path), state.pma))
+    rt.atlasKey = key
   }
 
   function readData(json) {
@@ -2305,7 +2328,7 @@
       r.camera.setViewport($('#gl').width, $('#gl').height)
       r.camera.zoom = rt.cam.zoom / rt.dpr
       r.begin()
-      r.drawSkeleton(rt.skeleton, state.pma)
+      r.drawSkeleton(rt.skeleton, true)
       r.end()
       for (let i = saved.length - 1; i >= 0; i--) saved[i][0].attachment = saved[i][1]
     }
@@ -8606,7 +8629,7 @@ self.onmessage = (e) => {
           ...optRow('骨骼', 'boneSel', 'boneVis', 'boneName'),
           ...optRow('图层', 'imgSel', 'imgVis', 'imgName'),
           ...optRow('其他', 'otherSel', 'otherVis', 'otherName')),
-        disp('预乘', state.pma, () => { state.pma = !state.pma }, '贴图是否预乘透明度')))
+        disp('预乘', state.pma, () => { state.pma = !state.pma; rt.atlasKey = null; try { applyJson(state.json) } catch { /* the project reloads on the next edit */ } }, '贴图是否预乘透明度')))
   }
 
   // ------------------------------------------------------------------ timeline
