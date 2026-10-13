@@ -7012,11 +7012,17 @@ self.onmessage = (e) => {
     return { folder: `${dir}sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
   }
 
+  // 边缘扫光（edge）：角度 → 起点（斜向扫光叫方向），宽度 → 粗细，另有 次数 / 专属参数（方案的 extra）/ 色相（自带配色的）。
+  // 每个显示出来的参数都真改画面（tests/e2e/sweep-light-core.test.mjs 逐个量）。
   const SWEEP_PARAM_DEFS = [
-    { key: 'angle', label: '角度', min: -180, max: 180, step: 1 },
+    { key: 'angle', label: '角度', min: -180, max: 180, step: 1, plain: true },
+    { key: 'start', label: '起点', min: -180, max: 180, step: 1, edge: true, def: 0, title: '光从轮廓哪里出发（度，沿轮廓一圈 360）' },
     { key: 'width', label: '宽度', min: 0.4, max: 2.5, step: 0.05 },
+    { key: 'laps', label: '次数', min: 1, max: 4, step: 1, edge: true, def: 1, title: '时长内转几圈 / 重复几次（整数，首尾相接）' },
+    { key: 'extra', label: '', min: 0, max: 1, step: 0.05, edge: true },
     { key: 'intensity', label: '强度', min: 0.2, max: 2, step: 0.05 },
     { key: 'glow', label: '光晕', min: 0.3, max: 2.5, step: 0.05 },
+    { key: 'hue', label: '色相', min: -180, max: 180, step: 1, edge: true, def: 0, title: '把自带配色整体换个色相（度）' },
     { key: 'rayLength', label: '放射长度', min: 0.3, max: 2.5, step: 0.05, only: 'rays' },
   ]
   const SWEEP_BLEND_OP = { add: 'lighter', screen: 'screen', normal: 'source-over' }
@@ -7112,6 +7118,8 @@ self.onmessage = (e) => {
           P.scheme = s.id
           if (s.colorMode) { P.colorMode = s.colorMode; P.color = s.color }
           P.frames = s.frames || L.DEFAULT_PARAMS.frames
+          // 边缘扫光的参数各方案含义不同：换方案回到默认（默认 = 选定时的样子）
+          if (s.edge) { P.start = 0; P.width = 1; P.laps = 1; P.hue = 0; P.extra = s.extra ? s.extra.def : 1; P.intensity = 1; P.glow = 1 }
           buildTypes(); buildParams(); schedulePreview()
         } }, s.label))
       }
@@ -7124,14 +7132,23 @@ self.onmessage = (e) => {
     const buildParams = () => {
       params.textContent = ''
       const sc = schemeOf(P.scheme)
-      for (const d of SWEEP_PARAM_DEFS) {
+      for (const d0 of SWEEP_PARAM_DEFS) {
+        let d = d0
         if (d.only && d.only !== P.scheme) continue
-        if (sc.edge && (d.key === 'angle' || d.key === 'width')) continue   // 边缘扫光沿轮廓走，没有方向 / 光带宽度
+        if (d.plain && sc.edge) continue
+        if (d.edge && !sc.edge) continue
+        if (d.key === 'start' && sc.noStart) continue
+        if (d.key === 'hue' && !sc.fixedColor) continue
+        if (d.key === 'extra') { if (!sc.extra) continue; d = { ...d, ...sc.extra } }
+        if (sc.edge && d.key === 'width') d = { ...d, label: '粗细', title: '光带 / 拖尾 / 火苗 / 光环整体放大缩小' }
+        if (d.key === 'start' && sc.id === 'edge-diagonal') d = { ...d, label: '方向', title: '扫光方向（度）' }
+        if (P[d.key] == null || P[d.key] === '') P[d.key] = d.def != null ? d.def : 1
         const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: P[d.key] })
         const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: P[d.key] })
         range.oninput = () => { P[d.key] = Number(range.value); num.value = range.value; if (d.key === 'width') buildParams(); schedulePreview() }
         num.onchange = () => { P[d.key] = Math.max(d.min, Math.min(d.max, Number(num.value) || d.min)); range.value = P[d.key]; num.value = P[d.key]; buildParams(); schedulePreview() }
         const r = row(d.label, range, num)
+        if (d.title) r.querySelector('label').title = d.title
         if (d.key === 'angle') { r.append(h('div', { class: 'sw-tip' }, schemeOf(P.scheme).radial ? '径向类：起始位置' : '光带的前进方向')) }
       }
       const colorRow = h('div', { class: 'sw-seg' })

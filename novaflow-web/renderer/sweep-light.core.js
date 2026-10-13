@@ -32,29 +32,33 @@ const SWEEP_SCHEMES = [
 ]
 // 边缘扫光（2026-10-13 用户在 work/sweep-light-lab 五轮里选定）：光只沿轮廓走，绕一圈首尾相接。
 // fixedColor = 效果自带配色（火焰 / 冰蓝 / 彩虹…），光色选项不适用。角度 / 宽度 不用（见 edgeGeo）。
+// 每种的专属参数 extra = { label, min, max, step, def }；noStart = 起点不适用（火焰 / 烟雾 / 光剑整圈同时动）。
+// 通用：起点（光从轮廓哪里出发，斜向扫光是方向）、粗细（整体放大缩小）、次数（时长内重复几次，整数才首尾相接）、
+// 色相（自带配色的才有）；光晕 / 强度 同其他方案。
+const TRAIL = { label: '拖尾', min: 0.3, max: 2.5, step: 0.05, def: 1 }
 const EDGE_SCHEMES = [
-  ['edge-meteor', '流星环绕', '边缘环绕', '一颗拖长尾的流星沿轮廓绕圈'],
-  ['edge-twin', '双星追逐', '边缘环绕', '青、粉两颗流星一前一后沿边追', 1],
-  ['edge-meet', '分流汇合', '边缘环绕', '两道光从起点分头沿边跑，在对面汇合炸开'],
-  ['edge-stardust', '星尘拖尾', '边缘环绕', '流星走过的边缘留下闪烁的星尘'],
-  ['edge-firecomet', '火焰流星', '边缘环绕', '拖着火焰尾巴的流星沿边绕圈', 1],
-  ['edge-bolt', '闪电环绕', '边缘环绕', '一道电弧沿边绕圈，噼啪抖动', 1],
-  ['edge-wideband', '宽光带环绕', '边缘环绕', '一大段柔光沿边转，中间一道亮线'],
-  ['edge-counter', '双色对绕', '边缘环绕', '底图色和补色两颗流星反向绕，交汇处闪光'],
-  ['edge-innerflow', '内光流转', '边缘环绕', '两团光沿边框内侧反向流动'],
-  ['edge-fire', '火焰描边', '边缘描边', '整圈轮廓燃烧，朝上的边火苗更高', 1],
-  ['edge-chrome', '镀铬环光', '边缘描边', '光绕物体转，朝光一侧的边缘亮起金属高光'],
-  ['edge-aurora', '炫彩光晕', '边缘描边', '彩色光晕绕着轮廓旋转', 1],
-  ['edge-saber', '光剑描边', '边缘描边', '光剑般的发光描边，轻微闪烁', 1],
-  ['edge-goldfoil', '金箔闪耀', '边缘描边', '金色描边，高光转动，边上星点闪', 1],
-  ['edge-wisps', '魔法烟雾', '边缘描边', '轮廓上冒出流动的彩色烟雾', 1],
-  ['edge-neon', '霓虹流彩', '边缘描边', '彩虹色沿整圈描边流动', 1],
-  ['edge-diagonal', '斜向扫光', '边缘律动', '一道斜线扫过，只点亮经过的轮廓'],
-  ['edge-ripple', '边缘涟漪', '边缘律动', '轮廓一圈圈向外扩，亮段沿边流动'],
-  ['edge-charge', '充能满圈', '边缘律动', '光沿边填满一圈，满了整圈一闪'],
-  ['edge-hop', '星光跳跃', '边缘律动', '星芒在边上跳着亮，亮处沿边晕开'],
+  { id: 'edge-meteor', label: '流星环绕', group: '边缘环绕', hint: '一颗拖长尾的流星沿轮廓绕圈', extra: TRAIL },
+  { id: 'edge-twin', label: '双星追逐', group: '边缘环绕', hint: '青、粉两颗流星一前一后沿边追', fixedColor: true, extra: TRAIL },
+  { id: 'edge-meet', label: '分流汇合', group: '边缘环绕', hint: '两道光从起点分头沿边跑，在对面汇合炸开', extra: TRAIL },
+  { id: 'edge-stardust', label: '星尘拖尾', group: '边缘环绕', hint: '流星走过的边缘留下闪烁的星尘', extra: { label: '星尘', min: 0.3, max: 3, step: 0.05, def: 1 } },
+  { id: 'edge-firecomet', label: '火焰流星', group: '边缘环绕', hint: '拖着火焰尾巴的流星沿边绕圈', fixedColor: true, extra: { label: '火苗', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-bolt', label: '闪电环绕', group: '边缘环绕', hint: '一道电弧沿边绕圈，噼啪抖动', fixedColor: true, extra: { label: '抖动', min: 0, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-wideband', label: '宽光带环绕', group: '边缘环绕', hint: '一大段柔光沿边转，中间一道亮线', extra: { label: '光带', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-counter', label: '双色对绕', group: '边缘环绕', hint: '底图色和补色两颗流星反向绕，交汇处闪光', extra: TRAIL },
+  { id: 'edge-innerflow', label: '内光流转', group: '边缘环绕', hint: '两团光沿边框内侧反向流动', extra: { label: '光团', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-fire', label: '火焰描边', group: '边缘描边', hint: '整圈轮廓燃烧，朝上的边火苗更高', fixedColor: true, noStart: true, extra: { label: '火苗', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-chrome', label: '镀铬环光', group: '边缘描边', hint: '光绕物体转，朝光一侧的边缘亮起金属高光', extra: { label: '锐度', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-aurora', label: '炫彩光晕', group: '边缘描边', hint: '彩色光晕绕着轮廓旋转', fixedColor: true, extra: { label: '范围', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-saber', label: '光剑描边', group: '边缘描边', hint: '光剑般的发光描边，轻微闪烁', fixedColor: true, noStart: true, extra: { label: '闪烁', min: 0, max: 3, step: 0.05, def: 1 } },
+  { id: 'edge-goldfoil', label: '金箔闪耀', group: '边缘描边', hint: '金色描边，高光转动，边上星点闪', fixedColor: true, extra: { label: '星点', min: 0.3, max: 3, step: 0.05, def: 1 } },
+  { id: 'edge-wisps', label: '魔法烟雾', group: '边缘描边', hint: '轮廓上冒出流动的彩色烟雾', fixedColor: true, noStart: true, extra: { label: '烟雾', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-neon', label: '霓虹流彩', group: '边缘描边', hint: '彩虹色沿整圈描边流动', fixedColor: true, extra: { label: '彩带', min: 1, max: 4, step: 1, def: 1 } },
+  { id: 'edge-diagonal', label: '斜向扫光', group: '边缘律动', hint: '一道斜线扫过，只点亮经过的轮廓', extra: { label: '光带', min: 0.3, max: 3, step: 0.05, def: 1 } },
+  { id: 'edge-ripple', label: '边缘涟漪', group: '边缘律动', hint: '轮廓一圈圈向外扩，亮段沿边流动', extra: { label: '光环', min: 1, max: 5, step: 1, def: 3 } },
+  { id: 'edge-charge', label: '充能满圈', group: '边缘律动', hint: '光沿边填满一圈，满了整圈一闪', extra: { label: '外扩', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-hop', label: '星光跳跃', group: '边缘律动', hint: '星芒在边上跳着亮，亮处沿边晕开', extra: { label: '星点', min: 2, max: 10, step: 1, def: 6 } },
 ]
-for (const [id, label, group, hint, fixedColor] of EDGE_SCHEMES) SWEEP_SCHEMES.push({ id, label, group, hint, edge: true, wrap: true, fixedColor: !!fixedColor, sigma: 1, span: 1, frames: 40 })
+for (const e of EDGE_SCHEMES) SWEEP_SCHEMES.push({ ...e, edge: true, wrap: true, fixedColor: !!e.fixedColor, noStart: !!e.noStart, sigma: 1, span: 1, frames: 40 })
 
 /** 相邻两帧的光带错开多少（进度单位）。 */
 function stepOf(scheme, n) { return (scheme.span || 1) / Math.max(1, scheme.wrap ? n : n - 1) }
@@ -95,6 +99,10 @@ const DEFAULT_PARAMS = {
   frames: 12,
   blend: 'add',
   pad: 0,             // 0 = 自动（36 px，放射光芒按图宽的 20%）
+  start: 0,           // 边缘扫光：起点（度，沿轮廓）/ 斜向扫光的方向
+  laps: 1,            // 边缘扫光：时长内重复几次
+  hue: 0,             // 边缘扫光（自带配色的）：色相偏移（度）
+  // extra 不给默认：各方案自己的默认值（EDGE_SCHEMES[].extra.def）
 }
 
 // ---------- 小工具
@@ -687,7 +695,7 @@ function analyzeEdgeBase(rgba, w, h, P) {
   }
   if (x1 < 0) return null
   const diag = ox1 >= 0 ? Math.hypot(ox1 - ox0 + 1, oy1 - oy0 + 1) : Math.hypot(x1 - x0 + 1, y1 - y0 + 1)
-  const S = edgeScale(diag, 0, P)
+  const S = edgeScale(diag, 0, P) * Math.max(0.2, Number(P.width) || 1)   // 粗细：整体放大缩小（边距跟着变）
   const pad = P.pad > 0 ? Math.round(P.pad) : Math.max(24, Math.round(48 * S))
   const cw = x1 - x0 + 1, ch = y1 - y0 + 1
   const Q = { ...P, pad, _edgeS: S }
@@ -933,6 +941,36 @@ function edgeGeo(ctx) {
   return ctx._edge
 }
 
+/** 起点：沿轮廓位置整体挪 start（0..1）。按 start 缓存一份挪过的 T / 轮廓 t（随机点缓存也各自一份）。 */
+function edgeGeoK(ctx, K) {
+  const E = edgeGeo(ctx)
+  const off = (((K.start || 0) % 1) + 1) % 1
+  if (off < 1e-6) return E
+  const key = Math.round(off * 1e6)
+  E.views = E.views || new Map()
+  if (E.views.has(key)) return E.views.get(key)
+  const T = plane(E.N)
+  for (let i = 0; i < E.N; i++) { let v = E.T[i] - off; if (v < 0) v += 1; T[i] = v }
+  const contours = E.contours.map((c) => { const t = new Float32Array(c.t.length); for (let k = 0; k < t.length; k++) { let v = c.t[k] - off; if (v < 0) v += 1; t[k] = v } return { ...c, t } })
+  const view = { ...E, T, contours, cache: {} }
+  E.views.set(key, view)
+  return view
+}
+function hueRotate(L, deg) {
+  if (!deg) return L
+  const a = Math.cos((deg * Math.PI) / 180), b = Math.sin((deg * Math.PI) / 180)
+  const m = [0.213 + 0.787 * a - 0.213 * b, 0.715 - 0.715 * a - 0.715 * b, 0.072 - 0.072 * a + 0.928 * b,
+    0.213 - 0.213 * a + 0.143 * b, 0.715 + 0.285 * a + 0.140 * b, 0.072 - 0.072 * a - 0.283 * b,
+    0.213 - 0.213 * a - 0.787 * b, 0.715 - 0.715 * a + 0.715 * b, 0.072 + 0.928 * a + 0.072 * b]
+  const [R, G, B] = L
+  for (let i = 0; i < R.length; i++) {
+    const r = R[i], g = G[i], bb = B[i]
+    if (r === 0 && g === 0 && bb === 0) continue
+    R[i] = Math.max(0, m[0] * r + m[1] * g + m[2] * bb); G[i] = Math.max(0, m[3] * r + m[4] * g + m[5] * bb); B[i] = Math.max(0, m[6] * r + m[7] * g + m[8] * bb)
+  }
+  return L
+}
+
 /** 每条够长的轮廓上、沿轮廓位置最接近 t 的点：[x, y, 强度]。 */
 function headPoints(E, t) {
   const out = []
@@ -1030,12 +1068,18 @@ const BAND = [0, 0]
  */
 function edgeFinish(ctx, E, L, bloom, kb, K, replace) {
   const { W, H, N, a } = E
+  hueRotate(L, K.hue)
+  // 光晕：泛光半径 × gk、泛光强度 × gk、轮廓外的光 × gk^0.6（只改半径时 0.3 ↔ 2.5 几乎看不出来）。
+  // 原型没泛光的（火焰 / 光剑 / 金箔）：光晕 > 1 才加一层泛光
+  const noBloom = bloom === 0 && !replace, outerK = Math.pow(K.gk, 0.6)
+  if (noBloom && K.gk > 1.001) { bloom = 4; kb = 0.6 * (K.gk - 1) / K.gk }
+  else if (!replace) kb *= K.gk
   if (bloom > 0) {
     const b = blurRGB(L, W, H, bloom * E.S * K.gk)
     for (let c = 0; c < 3; c++) { const d = L[c], s = b[c]; if (replace) for (let i = 0; i < N; i++) d[i] = s[i] * replace; else for (let i = 0; i < N; i++) d[i] += s[i] * kb }
   }
   const inner = rgbPlanes(N), outer = rgbPlanes(N)
-  for (let c = 0; c < 3; c++) { const s = L[c], di = inner[c], dO = outer[c]; for (let i = 0; i < N; i++) if (a[i] > 0.5) di[i] = s[i]; else dO[i] = s[i] }
+  for (let c = 0; c < 3; c++) { const s = L[c], di = inner[c], dO = outer[c]; for (let i = 0; i < N; i++) if (a[i] > 0.5) di[i] = s[i]; else dO[i] = s[i] * outerK }
   return edgeOut(ctx, inner, outer, K.ik)
 }
 function edgeOut(ctx, inner, outer, ik) {
@@ -1076,24 +1120,24 @@ const WISP_A = [0.55, 0.2, 1], WISP_B = [0.2, 1, 0.75]
 
 const EDGE_FN = {
   'edge-meteor'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N)
-    cometInto(E, L, p, 0.28)
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N)
+    cometInto(E, L, p, 0.28 * K.x)
     return edgeFinish(ctx, E, L, 4, 0.55, K)
   },
 
   'edge-twin'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N)
-    cometInto(E, L, p, 0.2, { cols: TWIN_A, base: 0.08 })
-    cometInto(E, L, (p + 0.5) % 1, 0.2, { cols: TWIN_B, base: 0 })
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N)
+    cometInto(E, L, p, 0.2 * K.x, { cols: TWIN_A, base: 0.08 })
+    cometInto(E, L, (p + 0.5) % 1, 0.2 * K.x, { cols: TWIN_B, base: 0 })
     return edgeFinish(ctx, E, L, 4, 0.55, K)
   },
 
   'edge-meet'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, mid, hot } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, mid, hot } = E
     if (p < 0.8) {
       const q = p / 0.8, pos = 0.5 * q * q * (3 - 2 * q)
-      cometInto(E, L, pos, 0.12, { base: 0.1, gain: 1.1 })
-      cometInto(E, L, ((1 - pos) % 1 + 1) % 1, 0.12, { dir: -1, base: 0, gain: 1.1 })
+      cometInto(E, L, pos, 0.12 * K.x, { base: 0.1, gain: 1.1 })
+      cometInto(E, L, ((1 - pos) % 1 + 1) % 1, 0.12 * K.x, { dir: -1, base: 0, gain: 1.1 })
     } else {
       const b = (p - 0.8) / 0.2, burst = Math.exp(-b * 3.5), col = mid.map((v) => v * 0.5 + 0.5)
       for (let j = 0; j < near.length; j++) {
@@ -1109,10 +1153,10 @@ const EDGE_FN = {
   },
 
   'edge-stardust'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), S = E.S
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), S = E.S
     cometInto(E, L, p, 0.12, { gain: 1.1 })
     const pts = []
-    for (const d of edgeRandomPoints(E, 'dust', 77, 7, 60)) {
+    for (const d of edgeRandomPoints(E, 'dust' + K.x, 77, 7 / K.x, 60)) {
       const age = circ(p - d.t)                  // > 0：流星头经过这一点多久了
       if (age < 0 || age > 0.45) continue
       const tw = Math.sin(2 * Math.PI * (age * 9 + d.r)) ** 2
@@ -1123,7 +1167,7 @@ const EDGE_FN = {
   },
 
   'edge-firecomet'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, a, din, sd, W, S } = E, col = [0, 0, 0]
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, a, din, sd, W, S } = E, col = [0, 0, 0]
     for (let j = 0; j < near.length; j++) {
       const i = near[j], d = circ(T[i] - p), core = Math.exp(-((d / 0.012) ** 2))
       let tail = d <= 0 ? Math.exp(d / 0.22) : 0
@@ -1131,7 +1175,7 @@ const EDGE_FN = {
       if (tail < 1e-4 && core < 1e-4) continue
       const x = i % W, y = (i - x) / W, xs = (x * 0.11) / S, ys = (y * 0.11) / S
       const n = fbm(xs + p * 3, ys + p * 7, 3) * (1 - p) + fbm(xs + (p - 1) * 3, ys + (p - 1) * 7, 3) * p
-      const reach = (3 + 16 * tail) * S, out = Math.max(sd[i], 0)
+      const reach = (3 + 16 * tail) * S * K.x, out = Math.max(sd[i], 0)
       const flame = sd[i] > -2 * S ? clamp01(n * 1.5 - out / Math.max(reach, 0.5) - 0.15) * tail : 0
       const rim = a[i] > 0.02 ? Math.exp(-((din[i] / ((1.5 + 2.5 * tail) * S)) ** 2)) * tail : 0
       const nearRim = Math.exp(-((Math.abs(sd[i]) / (5 * S)) ** 2))
@@ -1145,14 +1189,14 @@ const EDGE_FN = {
   },
 
   'edge-bolt'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, sd, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, sd, S } = E
     const n1 = loopNoiseTable(p, 70, 2.2), n2 = loopNoiseTable((p * 3) % 1, 160, 6.6), n3 = loopNoiseTable((p * 2) % 1, 40, 8.1)
     for (let j = 0; j < near.length; j++) {
       const i = near[j], d = circ(T[i] - p), core = Math.exp(-((d / 0.01) ** 2))
       let tail = d <= 0 ? Math.exp(d / 0.18) : 0
       if (d > 0 && core > tail) tail = core
       if (tail < 1e-4 && core < 1e-4) continue
-      const disp = (n1(T[i]) * 5 * tail + n2(T[i]) * 2 * tail) * S
+      const disp = (n1(T[i]) * 5 * tail + n2(T[i]) * 2 * tail) * S * K.x
       const arc = Math.exp(-(((sd[i] - disp) / (1.2 * S)) ** 2))
       const gate = clamp01(n3(T[i]) * 1.8 + 0.4)
       const lit = arc * tail * (0.6 + 0.9 * gate) * 1.6 + arc * core * 2
@@ -1165,10 +1209,10 @@ const EDGE_FN = {
   },
 
   'edge-wideband'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, a, din, mid, hot, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, a, din, mid, hot, S } = E
     const col = mid.map((v) => v * 0.75 + 0.25)
     for (let j = 0; j < near.length; j++) {
-      const i = near[j], d = circ(T[i] - p), arc = Math.exp(-((d / 0.11) ** 2)), shine = Math.exp(-((d / 0.025) ** 2))
+      const i = near[j], d = circ(T[i] - p), arc = Math.exp(-((d / (0.11 * K.x)) ** 2)), shine = Math.exp(-((d / 0.025) ** 2))
       const [bi, bo] = bandIO(E, i, clamp01(arc), 1.6, 5.5, 3, 16)
       const bi0 = a[i] > 0.02 ? Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.18 : 0
       const v1 = (bi * 1.3 + bo * 0.9) * arc, v2 = (bi * 1.4 + bo * 0.5) * shine
@@ -1178,11 +1222,11 @@ const EDGE_FN = {
   },
 
   'edge-counter'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, mid, hot } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, mid, hot } = E
     const c2 = complementColor(mid)
     const cB = { deep: c2.map((v) => v * 0.45), mid: c2, hot: [0.92, 1, 1] }
-    cometInto(E, L, p, 0.16, { base: 0.1, gain: 1.1, flare: 0.7 })
-    cometInto(E, L, (((0.5 - p) % 1) + 1) % 1, 0.16, { dir: -1, cols: cB, base: 0, gain: 1.1, flare: 0.7 })
+    cometInto(E, L, p, 0.16 * K.x, { base: 0.1, gain: 1.1, flare: 0.7 })
+    cometInto(E, L, (((0.5 - p) % 1) + 1) % 1, 0.16 * K.x, { dir: -1, cols: cB, base: 0, gain: 1.1, flare: 0.7 })
     const mixc = mid.map((v, c) => (v + c2[c]) * 0.35 + 0.3)
     for (const meet of [0.25, 0.75]) {
       const env = Math.exp(-((Math.abs(circ(p - meet)) / 0.035) ** 2))
@@ -1199,13 +1243,13 @@ const EDGE_FN = {
   },
 
   'edge-innerflow'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, a, din, dout, sd, mid, hot, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, a, din, dout, sd, mid, hot, S } = E
     const c2 = complementColor(mid).map((v, c) => v * 0.35 + mid[c] * 0.65)
     const depth = Math.max(6 * S, Math.min(18 * S, E.dinMax * 0.45))   // 光伸进面里多深
     baseRimInto(E, L, mid, 0.12)
     for (const [head, col] of [[p, mid], [(p + 0.5) % 1, c2]]) {
       for (let j = 0; j < near.length; j++) {
-        const i = near[j], d = circ(T[i] - head), body = Math.exp(-((d / 0.12) ** 2)), core = Math.exp(-((d / 0.035) ** 2))
+        const i = near[j], d = circ(T[i] - head), body = Math.exp(-((d / (0.12 * K.x)) ** 2)), core = Math.exp(-((d / 0.035) ** 2))
         if (body < 1e-4) continue
         const inner = a[i] > 0.02 ? Math.exp(-Math.pow(din[i] / (depth * (0.45 + 0.55 * body)), 1.5)) : 0
         const rim = Math.exp(-(((sd[i] + 0.8 * S) / (1.6 * S)) ** 2))
@@ -1219,15 +1263,15 @@ const EDGE_FN = {
   },
 
   'edge-fire'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, ny, sd, W, S } = E, col = [0, 0, 0]
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, ny, sd, W, S } = E, col = [0, 0, 0]
     const P = 48 * S
     for (let j = 0; j < near.length; j++) {
       const i = near[j], s = sd[i]
-      if (s < -8 * S || s > 44 * S) continue
+      if (s < -8 * S || s > 44 * S * K.x) continue
       const x = i % W, y = (i - x) / W, xs = (x * 0.09) / S
       const field = (q) => fbm(xs, ((y + q * P) * 0.09 * 0.55) / S + 3, 4)
       const n = field(p) * (1 - p) + field(p - 1) * p
-      const up = clamp01(-ny[i]), reach = (7 + 20 * Math.pow(up, 1.5)) * S
+      const up = clamp01(-ny[i]), reach = (7 + 20 * Math.pow(up, 1.5)) * S * K.x
       let v
       if (s > 0) v = clamp01(n * 1.55 - (s / reach) * 1.1 - 0.12)
       else v = Math.exp(-((-s / (2.6 * S)) ** 2)) * (0.55 + 0.45 * n) * 0.85
@@ -1240,12 +1284,12 @@ const EDGE_FN = {
   },
 
   'edge-chrome'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, nx, ny, a, din, dout, mid, S } = E
-    const lx = Math.cos(2 * Math.PI * p), ly = Math.sin(2 * Math.PI * p), col = mid.map((v) => v * 0.35 + 0.65)
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, nx, ny, a, din, dout, mid, S } = E
+    const lx = Math.cos(2 * Math.PI * (p + K.start)), ly = Math.sin(2 * Math.PI * (p + K.start)), col = mid.map((v) => v * 0.35 + 0.65), ex = 18 * K.x
     for (let j = 0; j < near.length; j++) {
       const i = near[j], facing = clamp01(nx[i] * lx + ny[i] * ly)
       if (facing <= 0) continue
-      const spec = Math.pow(facing, 18), soft = facing * facing * facing
+      const spec = Math.pow(facing, ex), soft = facing * facing * facing
       const bevel = a[i] > 0.02 ? Math.exp(-((din[i] / (4 * S)) ** 2)) : 0
       const lip = a[i] <= 0.5 ? Math.exp(-((dout[i] / (3 * S)) ** 2)) : 0
       const v = (spec * 2.4 + soft * 0.45) * bevel + spec * 1.6 * lip
@@ -1255,15 +1299,15 @@ const EDGE_FN = {
   },
 
   'edge-aurora'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, a, din, dout, W, cx, cy, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, a, din, dout, W, cx, cy, S } = E
     for (let j = 0; j < near.length; j++) {
       const i = near[j], x = i % W, y = (i - x) / W
-      let th = Math.atan2(y - cy, (x - cx) * 0.6) / (2 * Math.PI) + 1 - p
+      let th = Math.atan2(y - cy, (x - cx) * 0.6) / (2 * Math.PI) + 1 - p - K.start
       th = ((th % 1) + 1) % 1
       const k = th * 4, i0 = Math.floor(k) % 4, i1 = (i0 + 1) % 4
       let f = k - Math.floor(k); f = f * f * (3 - 2 * f)
-      const inner = a[i] > 0.02 ? Math.exp(-din[i] / (9 * S)) * 0.75 : 0
-      const outer = a[i] <= 0.5 ? Math.exp(-dout[i] / (10 * S)) : 0
+      const inner = a[i] > 0.02 ? Math.exp(-din[i] / (9 * S * K.x)) * 0.75 : 0
+      const outer = a[i] <= 0.5 ? Math.exp(-dout[i] / (10 * S * K.x)) : 0
       const sweep = 0.55 + 0.45 * Math.cos(2 * Math.PI * th) ** 2, v = (inner + outer) * sweep
       for (let c = 0; c < 3; c++) L[c][i] += (AURORA_PAL[i0][c] * (1 - f) + AURORA_PAL[i1][c] * f) * v
     }
@@ -1271,13 +1315,13 @@ const EDGE_FN = {
   },
 
   'edge-saber'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, sd, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, sd, S } = E
     const col = hsvToRgb((0.86 + 0.12 * Math.sin(2 * Math.PI * p)) % 1, 0.85, 1)
-    const flick = 0.82 + 0.18 * loopNoise(0.3, p, 3, 4.2) + 0.08 * Math.sin(2 * Math.PI * p * 9)
+    const flick = 0.82 + (0.18 * loopNoise(0.3, p, 3, 4.2) + 0.08 * Math.sin(2 * Math.PI * p * 9)) * K.x
     const cc = col.map((v) => v * 0.25 + 0.75), nw = loopNoiseTable(p, 30, 1.7)
     for (let j = 0; j < near.length; j++) {
       const i = near[j], s = sd[i], as = Math.abs(s)
-      const wob = nw(T[i]) * 0.6 * S
+      const wob = nw(T[i]) * 0.6 * S * K.x
       const core = Math.exp(-(((s + 0.4 * S - wob) / (1.15 * S)) ** 2))
       const g1 = Math.exp(-((as / (5 * S)) ** 2)), g2 = Math.exp(-as / (13 * S)) * 0.55
       const v1 = (g1 * 1.2 + g2) * flick, v2 = core * 1.6 * flick
@@ -1287,8 +1331,8 @@ const EDGE_FN = {
   },
 
   'edge-goldfoil'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, nx, ny, a, din, dout, S } = E
-    const lx = Math.cos(2 * Math.PI * p), ly = Math.sin(2 * Math.PI * p)
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, nx, ny, a, din, dout, S } = E
+    const lx = Math.cos(2 * Math.PI * (p + K.start)), ly = Math.sin(2 * Math.PI * (p + K.start))
     for (let j = 0; j < near.length; j++) {
       const i = near[j], facing = Math.pow(clamp01(nx[i] * lx + ny[i] * ly), 3)
       const band = a[i] > 0.02 ? Math.exp(-((din[i] / (4.5 * S)) ** 2)) : 0
@@ -1297,7 +1341,7 @@ const EDGE_FN = {
       for (let c = 0; c < 3; c++) L[c][i] += GOLD[c] * v + w
     }
     const pts = []
-    for (const d of edgeRandomPoints(E, 'foil', 23, 9, 0)) {
+    for (const d of edgeRandomPoints(E, 'foil' + K.x, 23, 9 / K.x, 0)) {
       const ph = (p * 3 + d.r) % 1
       pts.push([d.x, d.y, (ph < 0.35 ? Math.max(0, Math.sin((Math.PI * ph) / 0.35)) : 0) * 0.9])
     }
@@ -1306,11 +1350,11 @@ const EDGE_FN = {
   },
 
   'edge-wisps'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, ny, sd, a, din, W, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, ny, sd, a, din, W, S } = E
     const P = 60 * S
     for (let j = 0; j < near.length; j++) {
       const i = near[j], s = sd[i]
-      if (s < -8 * S || s > 50 * S) continue
+      if (s < -8 * S || s > 50 * S * K.x) continue
       const x = i % W, y = (i - x) / W
       const field = (q) => {
         const Y = y + q * P
@@ -1318,7 +1362,7 @@ const EDGE_FN = {
         return fbm((x * 0.05) / S + wx * 2.2, (Y * 0.05) / S + wx * 1.5, 4)
       }
       const n = field(p) * (1 - p) + field(p - 1) * p
-      const reach = (10 + 26 * clamp01(-ny[i])) * S
+      const reach = (10 + 26 * clamp01(-ny[i])) * S * K.x
       const smoke = s > -S ? clamp01(n * 1.7 - Math.max(s, 0) / reach - 0.35) : 0
       const rim = a[i] > 0.02 ? Math.exp(-((din[i] / (2.5 * S)) ** 2)) * (0.4 + 0.6 * n) : 0
       const v = smoke * 1.4 + rim * 0.9
@@ -1330,27 +1374,32 @@ const EDGE_FN = {
 
   'edge-neon'(ctx, p, K) {
     // 原型直接给字内 / 字外两层（不按 alpha 0.5 切）
-    const E = edgeGeo(ctx), { N, near, T, a, din, dout, S } = E
+    const E = edgeGeoK(ctx, K), { N, near, T, a, din, dout, S } = E
     const inner = rgbPlanes(N), outer = rgbPlanes(N)
     for (let j = 0; j < near.length; j++) {
       const i = near[j], ai = a[i]
       const win = ai > 0.02 ? Math.exp(-((din[i] / (2.6 * S)) ** 2)) : 0
       const wout = ai < 0.98 ? Math.exp(-((dout[i] / (12 * S)) ** 2)) : 0
       if (win < 1e-4 && wout < 1e-4) continue
-      const col = hsvToRgb(T[i] - p, 0.85, 1), flow = 0.75 + 0.25 * Math.cos(2 * Math.PI * (T[i] * 3 - p * 3))
-      for (let c = 0; c < 3; c++) { inner[c][i] = col[c] * win * flow * 1.35; outer[c][i] = col[c] * wout * flow * 1.05 }
+      const nb = Math.max(1, Math.round(K.x))
+      const col = hsvToRgb(T[i] * nb - p, 0.85, 1), flow = 0.75 + 0.25 * Math.cos(2 * Math.PI * (T[i] * 3 * nb - p * 3))
+      for (let c = 0; c < 3; c++) { inner[c][i] = col[c] * win * flow * 1.35; outer[c][i] = col[c] * wout * flow * 1.05 * K.gk }
     }
+    hueRotate(inner, K.hue); hueRotate(outer, K.hue)
     return edgeOut(ctx, inner, outer, K.ik)
   },
 
   'edge-diagonal'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, a, din, sd, W, mid, hot, S } = E
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, a, din, sd, W, mid, hot, S } = E
     // 斜线走完整张图（末尾已出右下角），扫过留下的余光最后 15% 淡掉：循环回到开头不闪
+    // 方向：0° = 原型的方向（左上 → 右下偏平）；包围盒归一化坐标里的单位方向，投影值缩放到 0..1.35
     const { x0, x1, y0, y1 } = E.bbox, pos = -0.25 + 1.7 * p, col = mid.map((v) => v * 0.55 + 0.45), wakeK = clamp01((1 - p) / 0.15)
+    const th = Math.atan2(0.35, 1) + (K.startDeg * Math.PI) / 180, dx = Math.cos(th), dy = Math.sin(th)
+    const corners = [0, dx, dy, dx + dy], umin = Math.min(...corners), uspan = Math.max(...corners) - umin || 1
     for (let j = 0; j < near.length; j++) {
       const i = near[j], x = i % W, y = (i - x) / W
-      const dd = (x - x0) / Math.max(1, x1 - x0) + ((y - y0) / Math.max(1, y1 - y0)) * 0.35 - pos
-      const front = Math.exp(-((dd / 0.035) ** 2)), wake = dd < 0 ? Math.exp(dd / 0.25) * wakeK : 0
+      const dd = (((x - x0) / Math.max(1, x1 - x0)) * dx + ((y - y0) / Math.max(1, y1 - y0)) * dy - umin) / uspan * 1.35 - pos
+      const front = Math.exp(-((dd / (0.035 * K.x)) ** 2)), wake = dd < 0 ? Math.exp(dd / 0.25) * wakeK : 0
       const edge = Math.exp(-(((sd[i] + S) / (3 * S)) ** 2)), halo = Math.exp(-((Math.abs(sd[i]) / (11 * S)) ** 2))
       const v = edge * (front * 3 + wake * 0.9) + halo * front * 1.1, w = clamp01(edge * front * 1.3 - 0.5)
       const bi0 = a[i] > 0.02 ? Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.15 : 0
@@ -1360,8 +1409,9 @@ const EDGE_FN = {
   },
 
   'edge-ripple'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, sd, deep, mid, hot, S } = E
-    const rings = [0, 1, 2].map((k) => { const ph = (p * 3 + k / 3) % 1; return { r: (1.5 + 24 * Math.pow(ph, 0.85)) * S, w: (1.6 + 3.2 * ph) * S, fade: Math.pow(1 - ph, 1.8), col: ramp3(0.75 - 0.35 * ph, deep, mid, hot, [0, 0, 0]) } })
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, sd, deep, mid, hot, S } = E
+    const nr = Math.max(1, Math.round(K.x))
+    const rings = Array.from({ length: nr }, (_, k) => k).map((k) => { const ph = (p * 3 + k / nr) % 1; return { r: (1.5 + 24 * Math.pow(ph, 0.85)) * S, w: (1.6 + 3.2 * ph) * S, fade: Math.pow(1 - ph, 1.8), col: ramp3(0.75 - 0.35 * ph, deep, mid, hot, [0, 0, 0]) } })
     const col = [0, 0, 0]
     for (let j = 0; j < near.length; j++) {
       const i = near[j], s = sd[i], d = circ(T[i] - p), flow = 0.25 + 1.1 * Math.exp(-((d / 0.22) ** 2))
@@ -1379,7 +1429,7 @@ const EDGE_FN = {
   },
 
   'edge-charge'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, sd, deep, mid, hot, S } = E, col = [0, 0, 0]
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, sd, deep, mid, hot, S } = E, col = [0, 0, 0]
     if (p < 0.7) {
       const q = p / 0.7, F = q * q * (3 - 2 * q)
       for (let j = 0; j < near.length; j++) {
@@ -1399,7 +1449,7 @@ const EDGE_FN = {
     } else {
       const b = (p - 0.7) / 0.3, env = b < 0.12 ? b / 0.12 : Math.exp(-(b - 0.12) * 5.5)
       const cm = mid.map((v) => v * 0.5 + 0.5), lvl = 0.9 * (1 - Math.min(1, b * 4)) + env * 1.2, wh = Math.max(0, env - 0.4)
-      const ringR = (2 + 30 * b) * S, ringW = (1.5 + 3 * b) * S, ringK = (1 - b) ** 2 * 1.2
+      const ringR = (2 + 30 * b * K.x) * S, ringW = (1.5 + 3 * b * K.x) * S, ringK = (1 - b) ** 2 * 1.2
       for (let j = 0; j < near.length; j++) {
         const i = near[j]
         const [bi, bo] = bandIO(E, i, Math.min(1, env), 1.5, 5, 3, 20)
@@ -1414,9 +1464,9 @@ const EDGE_FN = {
   },
 
   'edge-hop'(ctx, p, K) {
-    const E = edgeGeo(ctx), L = rgbPlanes(E.N), { near, T, deep, mid, hot } = E, col = [0, 0, 0]
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, deep, mid, hot } = E, col = [0, 0, 0]
     baseRimInto(E, L, mid, 0.14)
-    const NH = 6
+    const NH = Math.max(1, Math.round(K.x))
     for (let k = 0; k < NH; k++) {
       const spot = (k * 0.385 + 0.07) % 1
       const q = (((p * NH - k) % NH) + NH) % NH           // 这一跳过去了几个跳拍
@@ -1455,6 +1505,15 @@ function renderSweepFrame(ctx, p, params = ctx.params) {
   const P = { ...DEFAULT_PARAMS, ...ctx.params, ...params }
   const fn = SCHEME_FN[P.scheme] || SCHEME_FN.base
   const k = { angle: Number(P.angle) || 0, wk: effectiveWidth(P).wk, ik: Math.max(0, Number(P.intensity) || 1), gk: Math.max(0.2, Number(P.glow) || 1), rayLength: Math.max(0.2, Number(P.rayLength) || 1) }
+  const es = SWEEP_SCHEMES.find((x) => x.id === P.scheme)
+  if (es && es.edge) {
+    k.startDeg = Number(P.start) || 0
+    k.start = es.noStart ? 0 : k.startDeg / 360
+    k.laps = Math.max(1, Math.min(8, Math.round(Number(P.laps) || 1)))
+    k.x = P.extra != null && P.extra !== '' && Number.isFinite(Number(P.extra)) ? Number(P.extra) : (es.extra ? es.extra.def : 1)
+    k.hue = es.fixedColor ? Number(P.hue) || 0 : 0
+    p = (p * k.laps) % 1                                  // 次数：整数圈，p=1 仍回到 p=0，首尾相接
+  }
   const { inner, outer } = fn(ctx, p, k)
   const { N, W, H, a, pr, pg, pb } = ctx
   const prem = [pr, pg, pb]

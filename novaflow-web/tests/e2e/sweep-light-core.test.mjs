@@ -194,3 +194,31 @@ test('边缘扫光: 大片透明边的图只在内容附近算，光和裁好的
     assert.equal(litB, litA, `${id} 内容范围外没有光`)
   }
 })
+
+test('边缘扫光: 对话框里显示的每个参数都真改画面（默认 ↔ 最大 / 起点 90°，三个时刻的光总变化 > 6%）', () => {
+  const PS = [0.13, 0.47, 0.81]
+  const lightOf = (P) => { const ctx = analyzeBase(rgba, w, h, P); return PS.map((p) => { const f = renderSweepFrame(ctx, p, P), M = 70, CW = w + 2 * M, out = new Float32Array(CW * (h + 2 * M) * 3); for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) { const X = x - f.pad + M, Y = y - f.pad + M; if (X < 0 || Y < 0 || X >= CW || Y >= h + 2 * M) continue; const i = (y * f.w + x) * 4, o = (Y * CW + X) * 3, a = f.data[i + 3] / 255; out[o] = f.data[i] * a; out[o + 1] = f.data[i + 1] * a; out[o + 2] = f.data[i + 2] * a } return out }) }
+  const rel = (A, B) => { let d = 0, s = 0; for (let k = 0; k < A.length; k++) for (let i = 0; i < A[k].length; i++) { d += Math.abs(A[k][i] - B[k][i]); s += A[k][i] } return d / Math.max(1, s) }
+  const weak = []
+  for (const s of SWEEP_SCHEMES.filter((x) => x.edge)) {
+    const base = { scheme: s.id, frames: 40, blend: 'add' }
+    const A = lightOf(base)
+    const vary = [['width', 2.5], ['laps', 3], ['intensity', 2], ['glow', 2.5]]
+    if (!s.noStart) vary.push(['start', 90])
+    if (s.extra) vary.push(['extra', s.extra.max])
+    if (s.fixedColor) vary.push(['hue', 120])
+    for (const [k, v] of vary) { const r = rel(A, lightOf({ ...base, [k]: v })); if (!(r > 0.06)) weak.push(`${s.id}.${k}=${v}: ${r.toFixed(3)}`) }
+  }
+  assert.deepEqual(weak, [], '没起作用的参数')
+})
+
+test('边缘扫光: 次数是整数圈，循环照样首尾相接', () => {
+  for (const id of ['edge-meteor', 'edge-ripple', 'edge-hop']) {
+    const P = { scheme: id, frames: 40, blend: 'add', laps: 3 }
+    const ctx = analyzeBase(rgba, w, h, P)
+    const a = renderSweepFrame(ctx, 0, P), b = renderSweepFrame(ctx, 1, P), c = renderSweepFrame(ctx, 1 / 3, P)
+    let ab = 0, ac = 0
+    for (let i = 0; i < a.data.length; i++) { ab = Math.max(ab, Math.abs(a.data[i] - b.data[i])); ac = Math.max(ac, Math.abs(a.data[i] - c.data[i])) }
+    assert.ok(ab <= 5 && ac <= 5, `${id} 3 圈：p=0 / 1/3 / 1 一样（${ab} ${ac}）`)
+  }
+})
