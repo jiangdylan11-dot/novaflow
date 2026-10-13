@@ -795,17 +795,107 @@
     }
   };
 
+  // WEBM is encoded by the browser (MediaRecorder: VP9/VP8 + Opus), not by
+  // ffmpeg: this core's libvpx traps ("memory access out of bounds") on the
+  // first frame at any size, VP8 and VP9 alike, so the ffmpeg path can never
+  // produce a WebM. MediaRecorder uses Chromium's own encoder, which the web
+  // page and the assistant both have, and keeps the sound track.
+  function pickWebmMime() {
+    const rec = root.MediaRecorder;
+    const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    for (const type of candidates) { try { if (rec && typeof rec.isTypeSupported === 'function' && rec.isTypeSupported(type)) return type; } catch (_) {} }
+    return 'video/webm';
+  }
+  async function convertToWebm({ jobId, file, scalePct, outName }) {
+    if (typeof root.MediaRecorder !== 'function' || typeof root.HTMLCanvasElement !== 'function' || typeof root.HTMLCanvasElement.prototype.captureStream !== 'function') {
+      throw new Error('这个浏览器不支持 WEBM 录制，请用桌面版');
+    }
+    const label = '正在转换 ' + String(file.name || outName) + '…';
+    busy.begin(jobId, label);
+    const url = URL.createObjectURL(file);
+    const video = root.document.createElement('video');
+    video.src = url; video.playsInline = true; video.preload = 'auto';
+    let audioCtx = null;
+    try {
+      await new Promise((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error('无法读取这个视频'));
+        setTimeout(() => reject(new Error('读取视频超时')), 30000);
+      });
+      const pct = normalizeScalePct(scalePct);
+      const width = Math.max(2, Math.trunc((video.videoWidth || 2) * pct / 200) * 2);
+      const height = Math.max(2, Math.trunc((video.videoHeight || 2) * pct / 200) * 2);
+      const fps = 30;
+      const canvas = root.document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      const stream = canvas.captureStream(fps);
+      // Pull the sound track off the element silently (routed into the graph,
+      // never to the speakers) so the conversion runs without playing audio.
+      try {
+        const AudioCtx = root.AudioContext || root.webkitAudioContext;
+        if (AudioCtx) {
+          audioCtx = new AudioCtx();
+          const src = audioCtx.createMediaElementSource(video);
+          const dest = audioCtx.createMediaStreamDestination();
+          src.connect(dest);
+          for (const track of dest.stream.getAudioTracks()) stream.addTrack(track);
+        } else {
+          video.muted = true;
+        }
+      } catch (_) { video.muted = true; }
+      const bitrate = Math.max(1000000, Math.round(width * height * fps * 0.12));
+      const recorder = new root.MediaRecorder(stream, { mimeType: pickWebmMime(), videoBitsPerSecond: bitrate });
+      const chunks = [];
+      recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+      const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+      const total = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+      recorder.start();
+      await video.play();
+      await new Promise((resolve, reject) => {
+        let raf = 0;
+        const tick = () => {
+          if (video.ended || video.paused) return;
+          ctx.drawImage(video, 0, 0, width, height);
+          if (total) { const p = Math.min(0.99, video.currentTime / total); busy.update(jobId, label, p); videoToolProgress.emit({ jobId, progress01: p }); }
+          raf = root.requestAnimationFrame(tick);
+        };
+        video.onended = () => { root.cancelAnimationFrame(raf); try { ctx.drawImage(video, 0, 0, width, height); } catch (_) {} setTimeout(() => { try { recorder.stop(); } catch (_) {} resolve(); }, 120); };
+        video.onerror = () => { root.cancelAnimationFrame(raf); reject(new Error('转换中读取视频失败')); };
+        raf = root.requestAnimationFrame(tick);
+      });
+      await stopped;
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      // A browser whose encoder cannot keep up at this size drops every frame
+      // and returns only the container header. Refuse that rather than hand
+      // back a broken file.
+      if (blob.size < 2048) throw new Error('这台电脑的浏览器编码器跟不上这个尺寸，试试把「缩放」调小一些，或改存 MP4');
+      const token = 'web-video://' + (++videoOutputSeq) + '/' + outName;
+      videoOutputs.set(token, { tool: 'video-convert', token, blob, fileName: outName, url: '' });
+      videoToolProgress.emit({ jobId, progress01: 1 });
+      return { token, blob };
+    } finally {
+      try { video.pause(); } catch (_) {}
+      try { if (audioCtx) await audioCtx.close(); } catch (_) {}
+      URL.revokeObjectURL(url);
+      busy.end(jobId);
+    }
+  }
+
   api.convertVideoFormat = async (payload) => {
     try {
       const file = videoInputFile(payload);
       const format = normalizeVideoFormat(payload && payload.format);
       const scalePct = normalizeScalePct(payload && payload.scalePct);
       const fileName = videoStem((payload && payload.fileName) || file.name, 'video') + '.' + format;
-      const { token, blob } = await runVideoJob({
-        tool: 'video-convert', jobId: String((payload && payload.jobId) || 'convert_' + Date.now()), file,
-        buildArgs: (inName, outFile, probeLog) => videoConvertArgs(inName, outFile, format, scalePct, sourceFromLog(probeLog)),
-        outName: fileName, mimeType: format === 'gif' ? 'image/gif' : format === 'webm' ? 'video/webm' : 'video/mp4'
-      });
+      const jobId = String((payload && payload.jobId) || 'convert_' + Date.now());
+      const { token, blob } = format === 'webm'
+        ? await convertToWebm({ jobId, file, scalePct, outName: fileName })
+        : await runVideoJob({
+          tool: 'video-convert', jobId, file,
+          buildArgs: (inName, outFile, probeLog) => videoConvertArgs(inName, outFile, format, scalePct, sourceFromLog(probeLog)),
+          outName: fileName, mimeType: format === 'gif' ? 'image/gif' : 'video/mp4'
+        });
       return { ok: true, outPath: token, fileName, format, scalePct, bytesIn: file.size, bytesOut: blob.size, jobId: payload && payload.jobId };
     } catch (error) {
       return { ok: false, error: '视频转换失败：' + String((error && error.message) || error).slice(0, 240) };
