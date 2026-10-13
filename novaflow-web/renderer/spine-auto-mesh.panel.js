@@ -3970,6 +3970,31 @@
     }
   }
 
+  /**
+   * 动画 mode: 骨骼架设 and 蒙皮 change the setup (bones, meshes) - folded, greyed and taking no
+   * input until 设置 again (user 2026-10-13, like Spine). A filter, not opacity: the runtime's spec
+   * owns the panels' inline styles.
+   */
+  function syncSetupOnlyPanels() {
+    const ed = window.NovaFlowSkeletonEditor
+    const a = ed && ed.api ? ed.api() : null
+    const anim = !!(a && a.loaded && a.loaded() && a.mode && a.mode() === 'animate')
+    for (const mark of [BMARK, MARK]) {
+      const p = document.querySelector(`[${mark}="1"]`)
+      if (!p) continue
+      if (anim && p.__nfSpec && p.__nfSpec.isOpen()) { p.__nfSpec.setOpen(false); p.__nfApplyOpen() }
+      if (p.inert !== anim) p.inert = anim
+      if (anim && p.getAttribute('data-nf-setup-only') !== '1') p.setAttribute('data-nf-setup-only', '1')
+      else if (!anim && p.hasAttribute('data-nf-setup-only')) p.removeAttribute('data-nf-setup-only')
+    }
+    if (!document.getElementById('nf-setup-only-style')) {
+      const style = document.createElement('style')
+      style.id = 'nf-setup-only-style'
+      style.textContent = '[data-nf-setup-only="1"]{filter:grayscale(.7) brightness(.5)!important}'
+      document.head.append(style)
+    }
+  }
+
   function closeOtherPanels(keep) {
     // 动画编辑 is one of them too: nothing else stays open beside it
     if (keep) { try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ } }
@@ -4172,6 +4197,7 @@
     }, 1000)
     try { syncLayersFromSource() } catch { /* nothing imported yet */ }
     window.setInterval(() => { if (!document.hidden) { try { pauseEmptyAnimation() } catch { /* the preview is mid-rebuild */ } } }, 300)
+    window.setInterval(() => { try { syncSetupOnlyPanels() } catch { /* the editor is not up */ } }, 300)
   }
 
   if (document.readyState === 'loading') {

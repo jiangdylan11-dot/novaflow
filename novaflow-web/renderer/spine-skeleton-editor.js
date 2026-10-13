@@ -7152,7 +7152,6 @@ self.onmessage = (e) => {
     if (img && att.path && att.path !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, att.path))))
     out.push(h('div', { class: 'btns g2' },
       img && (state.mode === 'setup' || state.leftOpen === 'weights') ? btn('编辑权重', () => enterWeightEdit(sel), { primary: !!(state.weightEdit && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '在画面里刷这张网格的骨骼权重' }) : null,
-      mesh && state.mode === 'setup' ? btn('绑定', () => startBind(sel), { primary: !!(state.weightEdit && state.weightEdit.binding && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '绑定骨骼：点了以后在画面或工程树里点骨骼加入 / 移出，再点一次「绑定」完成（自动算好权重）' }) : null,
       img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), title: type === 'region' ? '先转成网格（图片的矩形），再编辑顶点' : '在画面里编辑这张网格的顶点' }) : null,
       img ? btn('换图', () => openImagePicker(`给「${sel.name}」换图`, (r) => swapImage(sel, r))) : null,
       !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤占位符，每个皮肤先用原图`,
@@ -7589,7 +7588,6 @@ self.onmessage = (e) => {
     out.push(h('div', { class: 'btns g2' },
       btn('编辑路径', () => (editing ? exitPathEdit() : enterPathEdit(sel)), { primary: editing, disabled: !setup, title: '在画面里点 / 拖 / 删路径点和手柄' }),
       btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' }),
-      btn('绑定', () => startBind(sel), { primary: weighing && !!state.weightEdit.binding, disabled: !setup || points < 1, title: '绑定骨骼：点了以后在画面或工程树里点骨骼加入 / 移出，再点一次「绑定」完成（自动算好权重）' }),
       btn('编辑权重', () => (weighing ? exitWeightEdit() : enterWeightEdit(sel)), { primary: weighing && !state.weightEdit.binding, disabled: points < 1, title: '在画面里调路径各点的骨骼权重' })))
     return out
   }
