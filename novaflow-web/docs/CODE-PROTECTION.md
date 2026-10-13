@@ -27,7 +27,27 @@ logo）。其余所有代码、React 包、worker、wasm、模型和模板数据
 更细的校验（会话是否被挤下线、账号是否停用/到期）仍在控制面每次 API 调用时执行；
 cookie 只决定"能不能下载代码"。
 
-### 开启（一次性）
+### 实际采用：wrangler 部署（本项目线上就是这么跑的）
+
+本项目的 Cloudflare 把“后台上传 zip”当成**纯静态资源**，不会运行 `_worker.js`，
+所以网关用 `wrangler` 部署成“Worker + 静态资源”。配置见 `novaflow-web/wrangler.toml`
+（`run_worker_first = true` 让网关在每个请求上先跑）。
+
+一次性首部署（在 `novaflow-web/`）：
+```
+npm run package:site -- --control-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web
+npx wrangler@4 login          # 浏览器授权，一次性
+npx wrangler@4 deploy         # 上传网关 + web-dist
+npx wrangler@4 secret put NOVAFLOW_SESSION_SECRET   # 粘贴密钥，只需一次
+```
+以后更新站点：重跑 `package:site`，再 `npx wrangler@4 deploy` 即可（密钥已存，无需再设）。
+
+> 重要：一旦用网关部署，以后**不要再用后台“上传静态资源/zip”的方式更新**，否则会把
+> Worker 退回纯静态、网关失效、代码重新公开。统一走 `wrangler deploy`。
+
+线上已验证：未登录下载受保护代码 → 403；有效登录 → 200（混淆代码）；伪造 cookie → 403。
+
+### 开启（经典 Cloudflare Pages 项目时，一次性）
 
 1. 正常 `npm run package:site ...` 打包，照常把 zip 传到 Cloudflare Pages。
    （zip 里已含 `_worker.js`。只传不设密钥 = 网关不生效，站点照常开放，不会打不开。）

@@ -1,0 +1,24 @@
+# 把 NovaFlow 站点 + 登录网关部署到 Cloudflare Workers（静态资源 + Worker）。
+#
+# 用法（在 novaflow-web/ 目录下）：
+#   1. npm run package:site -- --control-url=https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web
+#      （构建混淆后的 web-dist 并指向正式控制面；顺带产出的 zip 可忽略）
+#   2. npx wrangler@4 deploy
+#      （首次还需 npx wrangler@4 login；密钥只需设一次：
+#        npx wrangler@4 secret put NOVAFLOW_SESSION_SECRET）
+#
+# 重要：站点一旦用网关部署，以后更新务必也走 wrangler deploy。若改回后台“上传静态
+# 资源”的方式，会把 Worker 退回成纯静态，网关失效、代码重新公开。
+#
+# run_worker_first = true：网关在每个请求上先运行，受保护的代码文件没登录时被挡
+# （403），而不是被当静态文件直接发出去。main 指向的网关脚本独立于 assets；assets
+# 里那份同名 _worker.js 只是构建顺带产物，同样被网关挡住、且不含密钥。
+name = "novaflow"
+compatibility_date = "2026-10-13"
+main = "deploy/_worker.js"
+preview_urls = false
+
+[assets]
+directory = "web-dist"
+binding = "ASSETS"
+run_worker_first = true
