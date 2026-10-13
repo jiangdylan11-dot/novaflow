@@ -7151,8 +7151,8 @@ self.onmessage = (e) => {
     // the picture's name only when it differs from the attachment's (the title shows that one)
     if (img && att.path && att.path !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, att.path))))
     out.push(h('div', { class: 'btns g2' },
-      img && (state.mode === 'setup' || state.leftOpen === 'weights') ? btn('编辑权重', () => enterWeightEdit(sel), { primary: !!(state.weightEdit && state.weightEdit.name === sel.name && state.weightEdit.slot === sel.slot), title: '在画面里刷这张网格的骨骼权重' }) : null,
-      img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), title: type === 'region' ? '先转成网格（图片的矩形），再编辑顶点' : '在画面里编辑这张网格的顶点' }) : null,
+      // not a mesh (网格 unticked): nothing to edit until it is one (user 2026-10-13)
+      img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), disabled: !mesh, title: mesh ? '在画面里编辑这张网格的顶点' : '先勾「网格」转成网格，再编辑顶点' }) : null,
       img ? btn('换图', () => openImagePicker(`给「${sel.name}」换图`, (r) => swapImage(sel, r))) : null,
       !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤占位符，每个皮肤先用原图`,
         (j) => Ops.convertToPlaceholder(j, sel.slot, sel.name),
@@ -7584,11 +7584,9 @@ self.onmessage = (e) => {
       : animOn()
         ? `路径点：${points}。选中后直接在画面里拖点 / 手柄（框选 / Ctrl 加选，旋转、缩放工具也行）= 在这一帧打路径变形关键帧；钥匙 = 给当前形状打关键帧`
         : `路径点：${points}。选中后直接在画面里拖点 / 手柄（框选 / Ctrl 加选）= 改路径形状；加减点、闭合用「编辑路径」`))
-    const weighing = !!(state.weightEdit && state.weightEdit.slot === sel.slot && state.weightEdit.name === sel.name)
     out.push(h('div', { class: 'btns g2' },
       btn('编辑路径', () => (editing ? exitPathEdit() : enterPathEdit(sel)), { primary: editing, disabled: !setup, title: '在画面里点 / 拖 / 删路径点和手柄' }),
-      btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' }),
-      btn('编辑权重', () => (weighing ? exitWeightEdit() : enterWeightEdit(sel)), { primary: weighing && !state.weightEdit.binding, disabled: points < 1, title: '在画面里调路径各点的骨骼权重' })))
+      btn('设置父级', () => transferAtt(sel, true), { title: 'P：移到别的插槽' })))
     return out
   }
 
@@ -9467,12 +9465,9 @@ self.onmessage = (e) => {
       // 权重 works in 动画 mode too (the posed mesh is painted); 蒙皮 edits the mesh itself, in 设置
       if (open) { if (kind === 'mesh' && state.mode !== 'setup') setMode('setup'); state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind }
       else if (state.leftOpen === kind) state.leftOpen = null
-      // 权重 opened with a mesh or a path picked: that one is in weight editing right away (user 2026-10-13)
-      if (open && kind === 'weights') {
-        const L = layerSel()
-        const a = L && attJson(L)
-        if (a && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'path')) enterWeightEdit(L)
-      }
+      // 权重 opened with a mesh or a path picked: its card is the picked one (scrolled into view);
+      // weight editing opens only from the card's 权重 / 编辑权重 (user 2026-10-13: no popup on open)
+      if (open && kind === 'weights') { const dock = document.getElementById('layerDock'); if (dock) dock.dataset.last = '' }
     } else if (kind === 'bones') {
       if (open) { state.leftOpen = null; if (state.mode !== 'setup') setMode('setup'); state.opt.boneVis = true }
     } else if (kind === 'sequence' || kind === 'sweep') {
