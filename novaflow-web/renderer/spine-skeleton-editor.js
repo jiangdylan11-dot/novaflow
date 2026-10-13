@@ -112,7 +112,7 @@
     frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
     seqGap: 1, // 序列K帧: frames between two pictures (1 = one picture a frame)
     seqLoop: false, // 序列K帧 循环: two crossfading slots make a non-looping sequence loop
-    seqBlend: '', // 序列K帧 混合: the slots' blend on write ('' = leave it as it is)
+    seqBlend: 'normal', // 序列K帧 混合: the slots' blend on write
     sweepStart: 0, // 序列扫光: the sweep runs from this frame…
     sweepEnd: 0, // …to this one (0 = the animation's last frame; empty animation: 5 frames a picture)
     sweepParams: null, // 序列扫光 generator: the dialog's last parameters (this session)
@@ -6404,6 +6404,7 @@
       state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; U.clear(); renderLayerDock() } }, '根目录') : null,
       h('span', { class: 'ld-sep' }),
     ]
+    let go = null
     if (kind === 'sequence') {
       const gap = h('input', { type: 'number', class: 'ld-num', min: 1, max: 600, step: 1, value: state.seqGap, title: '每张图停留几帧（1 = 逐帧）',
         onchange: (e) => { state.seqGap = Math.max(1, Math.min(600, Math.round(Number(e.target.value) || 1))); e.target.value = state.seqGap } })
@@ -6412,16 +6413,17 @@
         // 循环 (user 2026-10-13): a sequence that does not loop, made to loop by two crossfading slots
         h('label', { class: 'ld-f', title: '把不循环的序列做成循环：分成两个插槽叠在一起，一个播前一半、透明度 0→100，一个播后一半、透明度 100→0；循环长度 = 序列的一半' },
           h('input', { type: 'checkbox', checked: !!state.seqLoop, onchange: (e) => { state.seqLoop = e.target.checked } }), '循环'),
-        h('button', { class: 'ld-go', title: state.seqLoop ? '写入循环序列：两个插槽交叉淡入淡出，首尾无缝' : '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画'))
+      )
+      go = h('button', { class: 'ld-go', title: state.seqLoop ? '写入循环序列：两个插槽交叉淡入淡出，首尾无缝' : '勾选的图片按顺序逐张显示：第 1 张在第 0 帧，之后每隔「间隔」帧换下一张；不循环，最后一张一直显示', onclick: writeSequence }, '写入动画')
     } else {
       const from = h('input', { type: 'number', class: 'ld-num wide', min: 0, max: 18000, step: 1, value: state.sweepStart, title: '扫光从第几帧开始（之前全透明）',
         onchange: (e) => { state.sweepStart = Math.max(0, Math.min(18000, Math.round(Number(e.target.value) || 0))); e.target.value = state.sweepStart; renderLayerDock() } })
       const to = h('input', { type: 'number', class: 'ld-num wide', min: 1, max: 18000, step: 1, value: sweepEndFrame(ticked.length), title: '扫光到第几帧结束（之后全透明）；留空 = 动画的最后一帧',
         onchange: (e) => { const v = Math.round(Number(e.target.value) || 0); state.sweepEnd = v > 0 ? Math.min(18000, v) : 0; e.target.value = sweepEndFrame(ticked.length) } })
-      head.push(h('label', { class: 'ld-f' }, '起', from, '止', to, '帧'),
-        h('button', { class: 'ld-go', title: '勾一张图作底图：弹框选扫光方式，写入动画时生成切片并写入；勾的是自己准备的序列图（多张）：直接写入', onclick: openSweepGenerator }, '生成扫光'))
+      head.push(h('label', { class: 'ld-f' }, '起', from, '止', to, '帧'))
+      go = h('button', { class: 'ld-go', title: '勾一张图作底图：弹框选扫光方式，写入动画时生成切片并写入；勾的是自己准备的序列图（多张）：直接写入', onclick: openSweepGenerator }, '生成扫光')
     }
-    dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }),
+    dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }), go,
       h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = kind; state.leftOpen = null; renderLeft(); refresh() } }, '×')))
     const grid = h('div', { class: 'ld-grid' })
     let order = 0
@@ -6448,7 +6450,7 @@
   //   the frame before it with a stepped curve (the snap back happens while it is invisible), alpha
   //   0 → 100 → 0 (linear) - and copy k starts k/数量 of the way in (keys shifted with wrap-around).
 
-  const loopOpt = () => state.loopOpt || (state.loopOpt = { rotate: 90, dx: 0, dy: 0, scale: 1, frames: 0, count: 2, offset: false })
+  const loopOpt = () => state.loopOpt || (state.loopOpt = { rotate: 90, dx: 0, dy: 0, scale: 1, frames: 0, count: 2, offset: false, blend: 'normal' })
   const loopFrames = () => { const o = loopOpt(); return o.frames > 1 ? o.frames : (lastFrame() > 1 ? lastFrame() : 30) }
 
   function renderLoopDock(dock) {
@@ -6474,16 +6476,14 @@
       onchange: (e) => { o.count = Math.max(1, Math.min(24, Math.round(Number(e.target.value) || 2))); e.target.value = o.count } })
     const pic = state.loopPic
     dock.append(
-      h('div', { class: 'ld-hd' },
-        h('span', {}, pic ? `已选 ${pic.split('/').pop()}` : '点一张图片'),
-        h('span', { class: 'ld-sep' }),
+      h('div', { class: 'ld-hd loop' },
+        pic ? h('span', {}, `已选 ${pic.split('/').pop()}`) : null,
+        pic ? h('span', { class: 'ld-sep' }) : null,
         h('label', { class: 'ld-f' }, '骨骼', sel),
         h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '循环建在哪根骨骼下：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
         h('button', { class: 'tg', title: '打开工程的图片文件夹挑图（进子文件夹后「添加所选」）', onclick: () => openImagePicker('循环运动：从图片文件夹挑图', (names) => { state.frameSet = names.map((n) => ({ name: n })); state.loopPic = names[0] || null; renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
         state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; renderLayerDock() } }, '根目录') : null,
-        h('span', { class: 'sp' }),
-        h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = 'loop'; state.leftOpen = null; renderLeft(); refresh() } }, '×')),
-      h('div', { class: 'ld-hd loop' },
+        h('span', { class: 'ld-sep' }),
         num('rotate', '旋转', '°', { step: 1 }, '一份从 0 转到这个角度（负数 = 反向）；0 = 不转'),
         num('dx', '移动 X', null, { step: 1 }, '一份移动的距离（骨骼坐标）；0 = 不动'),
         num('dy', 'Y', null, { step: 1 }),
@@ -6494,7 +6494,8 @@
         h('label', { class: 'ld-f', title: '打开：首尾帧一致，变化在尾帧前一帧（阶梯），透明度 0→100→0，各份按数量错开，可以整体偏移拖动' },
           h('input', { type: 'checkbox', checked: o.offset, onchange: (e) => { o.offset = e.target.checked; renderLayerDock() } }), '偏移'),
         h('span', { class: 'sp' }),
-        h('button', { class: 'ld-go', title: '建骨骼和插槽，写入循环关键帧', onclick: writeLoop }, '写入动画')))
+        h('button', { class: 'ld-go', title: '建骨骼和插槽，写入循环关键帧', onclick: writeLoop }, '写入动画'),
+        h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = 'loop'; state.leftOpen = null; renderLeft(); refresh() } }, '×')))
     const grid = h('div', { class: 'ld-grid' })
     for (const f of files) {
       const on = f.name === pic
@@ -6577,7 +6578,7 @@
         const slot = uniqueSlotName(json, name)
         json = Ops.addSlot(json, name, slot).json
         json = Ops.addRegionAttachment(json, 'default', slot, { name: short, path: image, width: size.width, height: size.height }).json
-        json = Ops.setSlotProps(json, slot, { attachment: short, ...(o.blend ? { blend: o.blend } : {}) }).json
+        json = Ops.setSlotProps(json, slot, { attachment: short, blend: o.blend || 'normal' }).json
         made.push({ bone: name, slot })
       }
       json = Ops.prepare(json)
@@ -6602,13 +6603,13 @@
     }, () => { gotoFrame(0); if (firstBone) { state.sel = { kind: 'bone', name: firstBone }; state.multi = [firstBone]; revealInTree(state.sel) } })
   }
 
-  /** 混合 for the frame tools' slots ('' = leave each slot's own blend; new slots are 正常). */
-  const BLEND_CHOICES = [['', '不改'], ['normal', '正常'], ['additive', '相加'], ['multiply', '正片叠底'], ['screen', '滤色']]
+  /** 混合 for the frame tools' slots: 正常 unless picked otherwise. */
+  const BLEND_CHOICES = [['normal', '正常'], ['additive', '相加'], ['multiply', '正片叠底'], ['screen', '滤色']]
   function blendSelect(value, onChange) {
-    return h('label', { class: 'ld-f', title: '写入时插槽的混合模式（光效常用「相加」）；「不改」= 插槽原来的模式，新插槽是正常' }, '混合',
-      h('select', { class: 'ld-sel', 'data-frame-blend': '1', onchange: (e) => onChange(e.target.value) }, BLEND_CHOICES.map(([v, l]) => h('option', { value: v, selected: v === (value || '') }, l))))
+    return h('label', { class: 'ld-f', title: '写入时插槽的混合模式（光效常用「相加」）' }, '混合',
+      h('select', { class: 'ld-sel', 'data-frame-blend': '1', onchange: (e) => onChange(e.target.value) }, BLEND_CHOICES.map(([v, l]) => h('option', { value: v, selected: v === (value || 'normal') }, l))))
   }
-  const withBlend = (json, slots, blend) => (blend ? slots.reduce((j, sl) => Ops.setSlotProps(j, sl, { blend }).json, json) : json)
+  const withBlend = (json, slots, blend) => slots.reduce((j, sl) => Ops.setSlotProps(j, sl, { blend: blend || 'normal' }).json, json)
 
   /** 序列扫光's last frame: the field's value, else the animation's last frame, else 5 frames a picture after 起. */
   function sweepEndFrame(n) {

@@ -491,8 +491,15 @@
   .ld-hd .ld-f{display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.7)}
   .ld-hd .ld-num{width:44px;height:24px;padding:0 6px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:12px;text-align:center}
   .ld-hd .ld-num.wide{width:56px}
-  /* 循环运动: its parameters on a second header row */
-  .ld-hd.loop{flex-wrap:wrap;row-gap:4px;margin-top:4px}
+  /* the frame tools' header: one row; nothing squeezes (labels never break), it wraps only when the stage is too narrow */
+  .ld-hd{flex-wrap:wrap;row-gap:4px}
+  .ld-hd>*{flex-shrink:0}
+  .ld-hd .tg,.ld-hd .ld-go,.ld-hd .ld-f,.ld-hd>span{white-space:nowrap}
+  .ld-hd select[data-frame-blend]{width:78px}
+  .ld-hd.loop{gap:5px}
+  .ld-hd.loop .ld-num{width:38px;padding:0 3px}
+  .ld-hd.loop .ld-sel{max-width:92px}
+  .ld-hd.loop .ld-sep{margin:0 2px}
   .ld-hd .ld-f input[type=checkbox]{accent-color:var(--green);margin:0}
   .ld-grid .hint{grid-column:1/-1;padding:8px 4px}
   .ld-hd .ld-sel{max-width:120px;height:24px;padding:0 6px;border:0;border-radius:6px;background:var(--field);color:#fff;font-size:12px}
