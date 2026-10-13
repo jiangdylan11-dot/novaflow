@@ -904,16 +904,36 @@ function edgeGeo(ctx) {
     for (let i = 0; i < N; i++) { if (mask[i]) din[i] = Math.sqrt(ei.d2[i]); else dout[i] = Math.sqrt(eo.d2[i]) }
   } else dout.fill(1e6)
   const contours = any ? traceContours(mask, W, H, 20) : []
-  const T = plane(N), Lpx = plane(N, 1)
+  const T = plane(N), Lpx = plane(N, 1), CID = new Int32Array(N).fill(-1)
   if (contours.length) {
-    const seed = new Uint8Array(N), sT = plane(N), sL = plane(N)
-    for (const c of contours) for (let k = 0; k < c.t.length; k++) { const px = c.inside[k]; seed[px] = 1; sT[px] = c.t[k]; sL[px] = c.len }
+    const seed = new Uint8Array(N), sT = plane(N), sL = plane(N), sC = new Int32Array(N)
+    contours.forEach((c, ci) => { for (let k = 0; k < c.t.length; k++) { const px = c.inside[k]; seed[px] = 1; sT[px] = c.t[k]; sL[px] = c.len; sC[px] = ci } })
     const { arg } = edt(seed, W, H, true)
-    for (let i = 0; i < N; i++) { T[i] = sT[arg[i]]; Lpx[i] = sL[arg[i]] }
+    for (let i = 0; i < N; i++) { T[i] = sT[arg[i]]; Lpx[i] = sL[arg[i]]; CID[i] = sC[arg[i]] }
   }
-  const sd = plane(N)
+  // 接缝（用户 2026-10-13：轮廓上一圈杂点、不圆润）：原来按 alpha 0.5 硬切成字内 / 字外，轮廓那圈半透明
+  // （抗锯齿）像素 din = 0、又在两边的遮罩里都算满，比两侧都亮，沿锯齿断断续续成一圈亮点。现在：
+  //  · 距离连续：轮廓上的半透明像素 din = a、dout = 1 − a（a 0.5 正好在边上；纯边像素 a=1 → din 1、a=0 → dout 1 不变），
+  //    sd = dout − din 从 −1 平滑过到 +1
+  //  · 字内光带 × wIn、字外光晕 × wOut，按覆盖率互补（加起来 = 1），不再两边都算满
+  //  · 合成不切：整层光 (1 − 底图预乘)·L（字内防曝、字外相加），纯字内 / 纯字外像素和原来一样
+  for (let i = 0; i < N; i++) {
+    const ai = a[i]
+    if (ai > 0.02 && ai < 0.98 && (mask[i] ? din[i] <= 1 : dout[i] <= 1)) { din[i] = ai; dout[i] = 1 - ai }
+  }
+  //  · 距离场在二值遮罩上算，轮廓是像素阶梯：光带峰值沿阶梯走就是一条锯齿亮线。sd 轻模糊（0.8 px）抹平阶梯，
+  //    再由它统一推出 din / dout（−1..1 之间线性过渡）和 wIn / wOut，处处连续
+  const sd0 = plane(N)
+  for (let i = 0; i < N; i++) sd0[i] = dout[i] - din[i]
+  const sd = blurPlane(sd0, W, H, 0.8)
+  const wIn = plane(N), wOut = plane(N)
   let dinMax = 0
-  for (let i = 0; i < N; i++) { sd[i] = mask[i] ? -din[i] : dout[i]; if (din[i] > dinMax) dinMax = din[i] }
+  for (let i = 0; i < N; i++) {
+    const v = sd[i]
+    if (v <= -1) { din[i] = -v; dout[i] = 0 } else if (v >= 1) { din[i] = 0; dout[i] = v } else { din[i] = (1 - v) / 2; dout[i] = (1 + v) / 2 }
+    const w = clamp01((1 - v) / 2); wIn[i] = w; wOut[i] = 1 - w
+    if (din[i] > dinMax) dinMax = din[i]
+  }
   const sm = blurPlane(sd, W, H, 2 * S)
   const nx = plane(N), ny = plane(N)
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -922,6 +942,23 @@ function edgeGeo(ctx) {
     const gy = y === 0 ? sm[i + W] - sm[i] : y === H - 1 ? sm[i] - sm[i - W] : (sm[i + W] - sm[i - W]) / 2
     const n = Math.sqrt(gx * gx + gy * gy) + 1e-6
     nx[i] = gx / n; ny[i] = gy / n
+  }
+  // 两个字 / 部件之间：每个像素只认最近那条轮廓，分界线上光的位置 / 颜色一下跳到另一条轮廓的（光晕里一道竖直切线）。
+  // 分界线（字外、四邻属于不同轮廓）附近把光和它的模糊版混一下（edgeFinish 用 vmix）
+  let vmix = null
+  if (contours.length > 1) {
+    const B = plane(N)
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x
+      if (sd[i] <= 0.5) continue
+      const c = CID[i]
+      if (CID[i - 1] !== c || CID[i + 1] !== c || CID[i - W] !== c || CID[i + W] !== c) B[i] = 1
+    }
+    const bb = blurPlane(B, W, H, 3 * S)
+    vmix = plane(N)
+    let any = false
+    for (let i = 0; i < N; i++) { const v = clamp01(bb[i] * 5) * clamp01((sd[i] - 1) / (2 * S)); vmix[i] = v; if (v > 0.001) any = true }
+    if (!any) vmix = null
   }
   // 只算离轮廓 64 px（× 尺度）以内的像素
   const lim = 64 * S, nearList = []
@@ -942,7 +979,7 @@ function edgeGeo(ctx) {
   const glow = hsvToRgb((pk + 0.5) / 36, 0.62, 1)
   const mid = ctx.solid ? ctx.solid.slice() : glow
   const { x0, x1, y0, y1 } = ctx.bbox
-  ctx._edge = { S, W, H, N, a, mask, din, dout, sd, nx, ny, T, L: Lpx, contours, near, dinMax, glow, mid, deep: mid.map((v) => v * 0.45), hot: [1, 1, 1], bbox: { x0, x1, y0, y1 }, cx: cn ? cx / cn : W / 2, cy: cn ? cy / cn : H / 2, cache: {} }
+  ctx._edge = { S, W, H, N, a, wIn, wOut, vmix, mask, din, dout, sd, nx, ny, T, L: Lpx, contours, near, dinMax, glow, mid, deep: mid.map((v) => v * 0.45), hot: [1, 1, 1], bbox: { x0, x1, y0, y1 }, cx: cn ? cx / cn : W / 2, cy: cn ? cy / cn : H / 2, cache: {} }
   return ctx._edge
 }
 
@@ -1031,15 +1068,15 @@ function cometInto(E, L, head, length, o = {}) {
   const { near, T, a, din, dout, S } = E, col = [0, 0, 0]
   for (let j = 0; j < near.length; j++) {
     const i = near[j], ai = a[i]
-    const bi0 = base && ai > 0.02 ? Math.exp(-((din[i] / (1.2 * S)) ** 2)) * base : 0
+    const bi0 = base && (Math.exp(-((din[i] / (1.2 * S)) ** 2)) * base) * E.wIn[i]
     const d = circ((T[i] - head) * dir)
     const core = Math.exp(-((d / hw) ** 2))
     let tail = d <= 0 ? Math.exp(d / length) : 0
     if (d > 0 && core > tail) tail = core
     if (tail < 1e-4 && core < 1e-4) { if (bi0) { L[0][i] += mid[0] * bi0; L[1][i] += mid[1] * bi0; L[2][i] += mid[2] * bi0 } continue }
     const f = clamp01(tail + core * 0.6)
-    const bi = ai > 0.02 ? Math.exp(-((din[i] / Math.max((1.4 + 2.8 * f) * S, 0.3)) ** 2)) : 0
-    const bo = ai <= 0.5 ? Math.exp(-((dout[i] / Math.max((2.5 + 9.5 * f) * S, 0.3)) ** 2)) : 0
+    const bi = (Math.exp(-((din[i] / Math.max((1.4 + 2.8 * f) * S, 0.3)) ** 2))) * E.wIn[i]
+    const bo = (Math.exp(-((dout[i] / Math.max((2.5 + 9.5 * f) * S, 0.3)) ** 2))) * E.wOut[i]
     const lit = (bi * 1.5 + bo * 0.9) * Math.pow(tail, 0.9) * gain
     const hv = clamp01(core * bi * 1.8 - 0.3)
     ramp3(f, deep, mid, hot, col)
@@ -1054,15 +1091,15 @@ function baseRimInto(E, L, col, k) {
   const { near, a, din, S } = E
   for (let j = 0; j < near.length; j++) {
     const i = near[j]
-    if (a[i] <= 0.02) continue
-    const v = Math.exp(-((din[i] / (1.2 * S)) ** 2)) * k
+    if (!(E.wIn[i] > 0)) continue
+    const v = Math.exp(-((din[i] / (1.2 * S)) ** 2)) * k * E.wIn[i]
     L[0][i] += col[0] * v; L[1][i] += col[1] * v; L[2][i] += col[2] * v
   }
 }
 function bandIO(E, i, f, i0, i1, o0, o1) {
   const S = E.S, ai = E.a[i]
-  BAND[0] = ai > 0.02 ? Math.exp(-((E.din[i] / Math.max((i0 + (i1 - i0) * f) * S, 0.3)) ** 2)) : 0
-  BAND[1] = ai <= 0.5 ? Math.exp(-((E.dout[i] / Math.max((o0 + (o1 - o0) * f) * S, 0.3)) ** 2)) : 0
+  BAND[0] = (Math.exp(-((E.din[i] / Math.max((i0 + (i1 - i0) * f) * S, 0.3)) ** 2))) * E.wIn[i]
+  BAND[1] = (Math.exp(-((E.dout[i] / Math.max((o0 + (o1 - o0) * f) * S, 0.3)) ** 2))) * E.wOut[i]
   return BAND
 }
 const BAND = [0, 0]
@@ -1083,22 +1120,20 @@ function edgeFinish(ctx, E, L, bloom, kb, K, replace) {
     const b = blurRGB(L, W, H, bloom * E.S * K.gk)
     for (let c = 0; c < 3; c++) { const d = L[c], s = b[c]; if (replace) for (let i = 0; i < N; i++) d[i] = s[i] * replace; else for (let i = 0; i < N; i++) d[i] += s[i] * kb }
   }
-  const inner = rgbPlanes(N), outer = rgbPlanes(N)
-  for (let c = 0; c < 3; c++) { const s = L[c], di = inner[c], dO = outer[c]; for (let i = 0; i < N; i++) if (a[i] > 0.5) di[i] = s[i]; else dO[i] = s[i] * outerK }
-  return edgeOut(ctx, inner, outer, K.ik)
-}
-function edgeOut(ctx, inner, outer, ik) {
-  const { N, a, pr, pg, pb } = ctx, prem = [pr, pg, pb]
-  for (let c = 0; c < 3; c++) {
-    const di = inner[c], dO = outer[c], pm = prem[c]
-    for (let i = 0; i < N; i++) {
-      const li = di[i]
-      if (li > 0) { const den = 1 - pm[i]; di[i] = den > 1e-4 ? Math.min(1, li * ik) * (a[i] - pm[i]) / den : 0 }
-      dO[i] *= ik * (1 - a[i])
-    }
+  if (E.vmix) {   // 两条轮廓之间的分界线：和模糊版混合，光晕不被一刀切开
+    const vb = blurRGB(L, W, H, 3 * E.S), vm = E.vmix
+    for (let c = 0; c < 3; c++) { const d = L[c], b = vb[c]; for (let i = 0; i < N; i++) { const k = vm[i]; if (k > 0) d[i] += (b[i] - d[i]) * k } }
   }
-  return { inner, outer }
+  // 不按 alpha 切：整层光 (1 − 底图预乘)·L —— renderSweepFrame 的 inner 就是这个，outer 为空
+  const wIn = E.wIn, ik = K.ik
+  for (let c = 0; c < 3; c++) {
+    const d = L[c]
+    for (let i = 0; i < N; i++) { let v = d[i]; if (!(v > 0)) continue; if (outerK !== 1) v *= wIn[i] + (1 - wIn[i]) * outerK; v *= ik; d[i] = v > 1 ? 1 : v }
+  }
+  return { inner: L, outer: zeroRGB(N) }
 }
+let ZERO_RGB = null
+function zeroRGB(N) { if (!ZERO_RGB || ZERO_RGB[0].length !== N) ZERO_RGB = rgbPlanes(N); return ZERO_RGB }
 /** 每个效果固定的随机点（星尘 / 金箔星点），按 seed 缓存。 */
 function edgeRandomPoints(E, key, seed, every, minLen) {
   if (E.cache[key]) return E.cache[key]
@@ -1182,7 +1217,7 @@ const EDGE_FN = {
       const n = fbm(xs + p * 3, ys + p * 7, 3) * (1 - p) + fbm(xs + (p - 1) * 3, ys + (p - 1) * 7, 3) * p
       const reach = (3 + 16 * tail) * S * K.x, out = Math.max(sd[i], 0)
       const flame = sd[i] > -2 * S ? clamp01(n * 1.5 - out / Math.max(reach, 0.5) - 0.15) * tail : 0
-      const rim = a[i] > 0.02 ? Math.exp(-((din[i] / ((1.5 + 2.5 * tail) * S)) ** 2)) * tail : 0
+      const rim = (Math.exp(-((din[i] / ((1.5 + 2.5 * tail) * S)) ** 2)) * tail) * E.wIn[i]
       const nearRim = Math.exp(-((Math.abs(sd[i]) / (5 * S)) ** 2))
       const v = clamp01(flame * 1.2 + rim * 0.9 + core * nearRim * 0.9)
       fireRamp(v, col)
@@ -1219,7 +1254,7 @@ const EDGE_FN = {
     for (let j = 0; j < near.length; j++) {
       const i = near[j], d = circ(T[i] - p), arc = Math.exp(-((d / (0.11 * K.x)) ** 2)), shine = Math.exp(-((d / 0.025) ** 2))
       const [bi, bo] = bandIO(E, i, clamp01(arc), 1.6, 5.5, 3, 16)
-      const bi0 = a[i] > 0.02 ? Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.18 : 0
+      const bi0 = (Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.18) * E.wIn[i]
       const v1 = (bi * 1.3 + bo * 0.9) * arc, v2 = (bi * 1.4 + bo * 0.5) * shine
       for (let c = 0; c < 3; c++) L[c][i] += col[c] * v1 + hot[c] * v2 + mid[c] * bi0
     }
@@ -1256,9 +1291,9 @@ const EDGE_FN = {
       for (let j = 0; j < near.length; j++) {
         const i = near[j], d = circ(T[i] - head), body = Math.exp(-((d / (0.12 * K.x)) ** 2)), core = Math.exp(-((d / 0.035) ** 2))
         if (body < 1e-4) continue
-        const inner = a[i] > 0.02 ? Math.exp(-Math.pow(din[i] / (depth * (0.45 + 0.55 * body)), 1.5)) : 0
+        const inner = (Math.exp(-Math.pow(din[i] / (depth * (0.45 + 0.55 * body)), 1.5))) * E.wIn[i]
         const rim = Math.exp(-(((sd[i] + 0.8 * S) / (1.6 * S)) ** 2))
-        const lip = a[i] <= 0.5 ? Math.exp(-((dout[i] / (5 * S)) ** 2)) : 0
+        const lip = (Math.exp(-((dout[i] / (5 * S)) ** 2))) * E.wOut[i]
         const lit = inner * body * 1.15 + rim * (body * 1.4 + core * 1.2) + lip * body * 0.6
         const w = clamp01(rim * core * 1.6 - 0.4) + inner * core * 0.35
         for (let c = 0; c < 3; c++) L[c][i] += col[c] * lit + hot[c] * w
@@ -1295,8 +1330,8 @@ const EDGE_FN = {
       const i = near[j], facing = clamp01(nx[i] * lx + ny[i] * ly)
       if (facing <= 0) continue
       const spec = Math.pow(facing, ex), soft = facing * facing * facing
-      const bevel = a[i] > 0.02 ? Math.exp(-((din[i] / (4 * S)) ** 2)) : 0
-      const lip = a[i] <= 0.5 ? Math.exp(-((dout[i] / (3 * S)) ** 2)) : 0
+      const bevel = (Math.exp(-((din[i] / (4 * S)) ** 2))) * E.wIn[i]
+      const lip = (Math.exp(-((dout[i] / (3 * S)) ** 2))) * E.wOut[i]
       const v = (spec * 2.4 + soft * 0.45) * bevel + spec * 1.6 * lip
       L[0][i] += col[0] * v; L[1][i] += col[1] * v; L[2][i] += col[2] * v
     }
@@ -1311,8 +1346,8 @@ const EDGE_FN = {
       th = ((th % 1) + 1) % 1
       const k = th * 4, i0 = Math.floor(k) % 4, i1 = (i0 + 1) % 4
       let f = k - Math.floor(k); f = f * f * (3 - 2 * f)
-      const inner = a[i] > 0.02 ? Math.exp(-din[i] / (9 * S * K.x)) * 0.75 : 0
-      const outer = a[i] <= 0.5 ? Math.exp(-dout[i] / (10 * S * K.x)) : 0
+      const inner = (Math.exp(-din[i] / (9 * S * K.x)) * 0.75) * E.wIn[i]
+      const outer = (Math.exp(-dout[i] / (10 * S * K.x))) * E.wOut[i]
       const sweep = 0.55 + 0.45 * Math.cos(2 * Math.PI * th) ** 2, v = (inner + outer) * sweep
       for (let c = 0; c < 3; c++) L[c][i] += (AURORA_PAL[i0][c] * (1 - f) + AURORA_PAL[i1][c] * f) * v
     }
@@ -1340,8 +1375,8 @@ const EDGE_FN = {
     const lx = Math.cos(2 * Math.PI * (p + K.start)), ly = Math.sin(2 * Math.PI * (p + K.start))
     for (let j = 0; j < near.length; j++) {
       const i = near[j], facing = Math.pow(clamp01(nx[i] * lx + ny[i] * ly), 3)
-      const band = a[i] > 0.02 ? Math.exp(-((din[i] / (4.5 * S)) ** 2)) : 0
-      const lip = a[i] <= 0.5 ? Math.exp(-((dout[i] / (4 * S)) ** 2)) : 0
+      const band = (Math.exp(-((din[i] / (4.5 * S)) ** 2))) * E.wIn[i]
+      const lip = (Math.exp(-((dout[i] / (4 * S)) ** 2))) * E.wOut[i]
       const v = band * (0.75 + facing * 1.8) + lip * (0.35 + facing * 1.2), w = clamp01(band * facing - 0.55) * 0.9
       for (let c = 0; c < 3; c++) L[c][i] += GOLD[c] * v + w
     }
@@ -1369,7 +1404,7 @@ const EDGE_FN = {
       const n = field(p) * (1 - p) + field(p - 1) * p
       const reach = (10 + 26 * clamp01(-ny[i])) * S * K.x
       const smoke = s > -S ? clamp01(n * 1.7 - Math.max(s, 0) / reach - 0.35) : 0
-      const rim = a[i] > 0.02 ? Math.exp(-((din[i] / (2.5 * S)) ** 2)) * (0.4 + 0.6 * n) : 0
+      const rim = (Math.exp(-((din[i] / (2.5 * S)) ** 2)) * (0.4 + 0.6 * n)) * E.wIn[i]
       const v = smoke * 1.4 + rim * 0.9
       if (v <= 0) continue
       for (let c = 0; c < 3; c++) L[c][i] += (WISP_A[c] * (1 - n) + WISP_B[c] * n) * v
@@ -1378,20 +1413,18 @@ const EDGE_FN = {
   },
 
   'edge-neon'(ctx, p, K) {
-    // 原型直接给字内 / 字外两层（不按 alpha 0.5 切）
-    const E = edgeGeoK(ctx, K), { N, near, T, a, din, dout, S } = E
-    const inner = rgbPlanes(N), outer = rgbPlanes(N)
+    // 原型直接给字内 / 字外两层；这里按覆盖率合成一层（同其他边缘效果，轮廓上没有接缝）
+    const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, din, dout, wIn, wOut, S } = E
+    const nb = Math.max(1, Math.round(K.x))
     for (let j = 0; j < near.length; j++) {
-      const i = near[j], ai = a[i]
-      const win = ai > 0.02 ? Math.exp(-((din[i] / (2.6 * S)) ** 2)) : 0
-      const wout = ai < 0.98 ? Math.exp(-((dout[i] / (12 * S)) ** 2)) : 0
+      const i = near[j]
+      const win = Math.exp(-((din[i] / (2.6 * S)) ** 2)) * wIn[i] * 1.35
+      const wout = Math.exp(-((dout[i] / (12 * S)) ** 2)) * wOut[i] * 1.05
       if (win < 1e-4 && wout < 1e-4) continue
-      const nb = Math.max(1, Math.round(K.x))
-      const col = hsvToRgb(T[i] * nb - p, 0.85, 1), flow = 0.75 + 0.25 * Math.cos(2 * Math.PI * (T[i] * 3 * nb - p * 3))
-      for (let c = 0; c < 3; c++) { inner[c][i] = col[c] * win * flow * 1.35; outer[c][i] = col[c] * wout * flow * 1.05 * K.gk }
+      const col = hsvToRgb(T[i] * nb - p, 0.85, 1), flow = 0.75 + 0.25 * Math.cos(2 * Math.PI * (T[i] * 3 * nb - p * 3)), v = (win + wout) * flow
+      for (let c = 0; c < 3; c++) L[c][i] = col[c] * v
     }
-    hueRotate(inner, K.hue); hueRotate(outer, K.hue)
-    return edgeOut(ctx, inner, outer, K.ik)
+    return edgeFinish(ctx, E, L, 0, 0, K)
   },
 
   'edge-diagonal'(ctx, p, K) {
@@ -1407,7 +1440,7 @@ const EDGE_FN = {
       const front = Math.exp(-((dd / (0.035 * K.x)) ** 2)), wake = dd < 0 ? Math.exp(dd / 0.25) * wakeK : 0
       const edge = Math.exp(-(((sd[i] + S) / (3 * S)) ** 2)), halo = Math.exp(-((Math.abs(sd[i]) / (11 * S)) ** 2))
       const v = edge * (front * 3 + wake * 0.9) + halo * front * 1.1, w = clamp01(edge * front * 1.3 - 0.5)
-      const bi0 = a[i] > 0.02 ? Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.15 : 0
+      const bi0 = (Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.15) * E.wIn[i]
       for (let c = 0; c < 3; c++) L[c][i] += col[c] * v + hot[c] * w + mid[c] * bi0
     }
     return edgeFinish(ctx, E, L, 4, 0.5, K)
