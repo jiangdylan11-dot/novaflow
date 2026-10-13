@@ -19,7 +19,7 @@
     "worker:dev": "npm --prefix worker run dev",
     "worker:headless": "node worker/src/main-headless.mjs",
     "assistant:start": "node worker/src/main-local.mjs",
-    "worker:build": "node tools/build-web-renderer.mjs && node tools/fetch-cloudflared.mjs && npm --prefix worker run build:win",
+    "worker:build": "node tools/build-web-renderer.mjs --minify && node tools/fetch-cloudflared.mjs && npm --prefix worker run build:win",
     "test": "node tests/run-tests.mjs",
     "test:sql": "node tests/e2e/sql-contract.test.mjs",
     "test:protocol": "node tests/e2e/protocol.test.mjs",
@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
-    "deno": "^2.9.6"
+    "deno": "^2.9.6",
+    "terser": "^5.51.2"
   }
 }

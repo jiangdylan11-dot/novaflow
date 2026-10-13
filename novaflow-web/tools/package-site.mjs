@@ -35,9 +35,10 @@ const LOCAL = /^https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0)(?::\d+)?/i;
 export async function packageSite({ controlUrl, authUrl, out, allowLocal = false, logger } = {}) {
   const log = logger || (() => {});
 
-  // 1. build - this writes the local default into index.html
-  const report = await buildWebRenderer({ clean: true });
-  log('built', { modules: report.redactedModules, copied: report.copied });
+  // 1. build - this writes the local default into index.html. The published
+  // site is minified: comments stripped, names mangled (anti-copy).
+  const report = await buildWebRenderer({ clean: true, minify: true });
+  log('built', { modules: report.redactedModules, copied: report.copied, minified: report.minify ? report.minify.minified : 0 });
 
   // 2. repoint
   if (controlUrl || authUrl) {

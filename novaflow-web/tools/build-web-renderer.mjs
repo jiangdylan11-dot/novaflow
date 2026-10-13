@@ -28,6 +28,7 @@ import { rewordBundle } from './reword-desktop-strings.mjs';
 import { fetchFfmpegCore } from './fetch-ffmpeg-core.mjs';
 import { fetchOnnxRuntimeWeb } from './fetch-onnxruntime-web.mjs';
 import { allWorkflowEntryMethods, WORKFLOW_SOURCE_MODULES } from '../packages/shared/src/workflow-modules.mjs';
+import { minifyTree } from './minify-web-dist.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -147,7 +148,7 @@ async function emptyDir(dir) {
   }
 }
 
-export async function buildWebRenderer({ logger, clean = true } = {}) {
+export async function buildWebRenderer({ logger, clean = true, minify = false } = {}) {
   const log = logger || (() => {});
 
   if (clean) {
@@ -297,6 +298,20 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
   // Cloudflare takes static files up to 25 MiB each. ffmpeg's core is 32 MB,
   // so the site carries it in parts (with a manifest beside them) and the page
   // stitches them back together before handing the bytes to WebAssembly.
+  // Anti-copy: strip comments and mangle names before anything is sized,
+  // split or cache-stamped, so the cache tokens and the 25 MiB check all see
+  // the final, minified bytes. Off by default so dev builds (and the browser
+  // checks that read web-dist) stay readable; packaging turns it on.
+  if (minify) {
+    report.minify = await minifyTree(WEB_OUT, { log });
+    log('minified web-dist', {
+      files: report.minify.files, minified: report.minify.minified,
+      failures: report.minify.failures.length,
+      beforeKB: Math.round(report.minify.beforeBytes / 1024),
+      afterKB: Math.round(report.minify.afterBytes / 1024)
+    });
+  }
+
   report.split = await splitLargeFiles(WEB_OUT);
   for (const item of report.split) log('split for the 25 MiB limit', item);
 
@@ -565,7 +580,8 @@ export const PATHS = { SRC, WEB_OUT, WORKER_OUT };
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('build-web-renderer.mjs');
 if (invokedDirectly) {
-  const report = await buildWebRenderer({ logger: (m, x) => console.log(m, JSON.stringify(x)) });
+  const minify = process.argv.includes('--minify');
+  const report = await buildWebRenderer({ minify, logger: (m, x) => console.log(m, JSON.stringify(x)) });
 
   console.log('\n  module                                        redact  register  graphs  ids  strings');
   for (const m of report.modules) {
@@ -594,6 +610,13 @@ if (invokedDirectly) {
     console.log('  syntax check ' + label + ': ' + (bad.length ? bad.length + ' FAILED' : 'all files parse'));
     for (const b of bad.slice(0, 6)) console.log('    ' + b.file + ' -> ' + b.error);
     if (bad.length) process.exitCode = 1;
+  }
+
+  if (report.minify) {
+    console.log('\n  minify: ' + report.minify.minified + ' files, ' +
+      Math.round(report.minify.beforeBytes / 1024) + ' KB -> ' + Math.round(report.minify.afterBytes / 1024) + ' KB' +
+      (report.minify.failures.length ? ', ' + report.minify.failures.length + ' kept as source' : ''));
+    for (const f of report.minify.failures.slice(0, 8)) console.log('    kept ' + f.file + ' -> ' + f.error);
   }
 
   const size = await dirSize(WEB_OUT);
