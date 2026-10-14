@@ -156,6 +156,27 @@ ART_STYLE_COLOUR_WORD = re.compile(
 ART_STYLE_REALISTIC_MEDIUM = re.compile(r"\b(?:photo\w*|hyper-?realistic|realistic\s+(?:3d|cg))", re.I)
 ART_STYLE_FLAT_SURFACE_MARK = re.compile(r"\b(?:flat|uniform)\b", re.I)
 ART_STYLE_REALISTIC_SURFACE_MARK = "true-to-life fine surface detail"
+# AI 特效 reads a 参考图 the same way, as a material entry shaped like its style library (name /
+# "made of ..." / how it breaks up). The video model follows words and barely the picture: measured
+# 2026-10-14 on a border-light loop, a sunflower handed over as a reference came back as thin yellow
+# lines, the same sunflower written out by this model came back as petals running along the light.
+EFFECT_MATERIAL_MAX_NEW_TOKENS = 300
+EFFECT_MATERIAL_SYSTEM_TEXT = (
+    "You write material descriptions for 2D game VFX artists, who build glowing effects on a black background "
+    "out of the material you describe. Reply with one JSON object only: no preamble, no markdown."
+)
+EFFECT_MATERIAL_QUESTION = (
+    "This picture is a material reference. Describe its MATERIAL so a glowing VFX element can be made of it. "
+    "Reply exactly as {\"name\": \"...\", \"material\": \"...\", \"breakup\": \"...\"} where "
+    "name is the material in 1-3 English words in capitals; "
+    "material starts with \"made of\" and says, in at most 50 words, what the effect is built from - its pieces or "
+    "substance, their shape, their colours, their surface finish, how they glow or catch the light and how they "
+    "move - then one short sentence of what it is NOT, written as \"NO ...\" items, naming materials it could be "
+    "confused with; "
+    "breakup is one sentence starting with \"It\" and a verb in capitals, saying how it breaks apart or disperses. "
+    "Describe the material only: never the picture's subject as a whole object, its background, its framing or "
+    "its composition."
+)
 # System turns for the video prompt features (WAN and other non-H3 models); each user turn carries the rules.
 VIDEO_OPTIMIZE_SYSTEM_TEXT = (
     "你是 NovaFlow 的视频生成 Prompt 设计助手。你把用户的视频提示改写成一段可直接用于 WAN 等视频模型的中文 Prompt："
@@ -19735,6 +19756,8 @@ class PromptAssistant:
         one correctly. So the style has to be read out as words first, and this is what reads it.
         """
 
+        if str(payload.get("purpose") or "") == "aifx-material":
+            return self.describe_effect_material(payload)
         images = payload.get("images")
         if not isinstance(images, list) or not images:
             raise ValueError("请先选择可分析的图片")
@@ -19789,6 +19812,57 @@ class PromptAssistant:
         raw_style = " ".join(str(raw or "").split())[:ART_STYLE_MAX_CHARS * 2]
         log_prompt_assistant_event("art_style_described", command="describeArtStyle", style=style, rawStyle=raw_style)
         return {"style": style, "rawStyle": raw_style, "model": self.reverse_model_path().name[:160]}
+
+    def describe_effect_material(self, payload: dict) -> dict:
+        """AI 特效's 参考图 as a style-library entry: {name, material, breakup} in English."""
+
+        images = payload.get("images")
+        if not isinstance(images, list) or not images:
+            raise ValueError("请先选择可分析的图片")
+        first = images[0] if isinstance(images[0], dict) else {}
+        tensor = data_url_to_tensor(str(first.get("dataUrl") or ""))
+        if tensor is None:
+            raise ValueError("请先选择可分析的图片")
+        adapter = Qwen3VLAbliteratedAdapter(
+            self.reverse_model_path(),
+            max_side=768,
+            max_new_tokens=EFFECT_MATERIAL_MAX_NEW_TOKENS,
+            trim_transient_cuda_cache=True,
+        )
+        raw = str(adapter.generate(
+            EFFECT_MATERIAL_QUESTION,
+            tensor,
+            unload_after=True,
+            system_text=EFFECT_MATERIAL_SYSTEM_TEXT,
+            max_new_tokens=EFFECT_MATERIAL_MAX_NEW_TOKENS,
+        ) or "")
+        match = re.search(r"\{.*\}", raw, re.S)
+        try:
+            parsed = json.loads(match.group(0)) if match else None
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, dict):
+            raise ValueError("没有读出参考图的材质")
+        flat = lambda value: " ".join(str(value or "").split())  # noqa: E731
+        name = flat(parsed.get("name")).upper()[:40]
+        material = flat(parsed.get("material"))
+        if not material:
+            raise ValueError("没有读出参考图的材质")
+        if not material.lower().startswith("made of"):
+            material = "made of " + material
+        # Qwen3 now and then files the NO-list under a key of its own ({"NO": "NO METAL, ..."}) instead of
+        # ending the material sentence with it; it belongs in the sentence, where the presets carry theirs.
+        exclusions = [
+            flat(value) for key, value in parsed.items()
+            if key not in {"name", "material", "breakup"} and re.match(r"^\s*NO\b", str(value or ""))
+        ]
+        material = " ".join([material.rstrip(" .") + "."] + [item.rstrip(" .") + "." for item in exclusions])[:600]
+        breakup = flat(parsed.get("breakup"))
+        if not breakup.startswith("It "):
+            breakup = ""
+        result = {"name": name or "REFERENCE", "material": material, "breakup": breakup[:200]}
+        log_prompt_assistant_event("effect_material_described", command="describeArtStyle", **result)
+        return {"material": result, "rawMaterial": " ".join(raw.split())[:1200], "model": self.reverse_model_path().name[:160]}
 
     def reverse_image_prompt(self, payload: dict) -> dict:
         images = payload.get("images")

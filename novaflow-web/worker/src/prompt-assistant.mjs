@@ -594,8 +594,23 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     async describeArtStyle(payload) {
       const dataUrl = String(payload?.dataUrl || '');
       if (!dataUrl.startsWith('data:image/')) return invalid(new Error('请先选择可分析的图片'));
-      const result = await requestWithCache('describeArtStyle', { images: [{ name: sanitizeFileName(payload?.name, 'scene.png'), dataUrl }] }, 240000);
-      return result?.ok ? { ok: true, style: String(result.data?.style || '').slice(0, 400), model: String(result.data?.model || '') } : result;
+      // AI 特效 reads its 参考图 as a material entry through this same call, so the action list, the
+      // protocol and the control plane stay as they are; everything else still gets the style sentence.
+      const material = payload?.purpose === 'aifx-material';
+      const result = await requestWithCache('describeArtStyle', {
+        images: [{ name: sanitizeFileName(payload?.name, 'scene.png'), dataUrl }],
+        ...(material ? { purpose: 'aifx-material' } : {})
+      }, 240000);
+      if (!result?.ok) return result;
+      if (material) {
+        const entry = result.data?.material || {};
+        return {
+          ok: true,
+          material: { name: String(entry.name || '').slice(0, 60), material: String(entry.material || '').slice(0, 800), breakup: String(entry.breakup || '').slice(0, 300) },
+          model: String(result.data?.model || '')
+        };
+      }
+      return { ok: true, style: String(result.data?.style || '').slice(0, 400), model: String(result.data?.model || '') };
     },
     /** The assistant window's 释放显存 button: the same GPU hand-over, with no request behind it. */
     releaseRuntimes,

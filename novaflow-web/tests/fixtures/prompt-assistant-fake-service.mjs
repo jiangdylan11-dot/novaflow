@@ -40,6 +40,9 @@ createInterface({ input: process.stdin }).on('line', line => {
   if (request.command === 'reverseImagePrompt') {
     return answer(request, { prompt: 'a cat on a mat', images: request.images.length, bytes: request.images.reduce((n, image) => n + image.dataUrl.length, 0), purpose: request.purpose });
   }
+  if (request.command === 'describeArtStyle' && request.purpose === 'aifx-material') {
+    return answer(request, { material: { name: 'GLOWING PETAL', material: 'made of petals. NO METAL.', breakup: 'It SHEDS petals.' }, model: 'fake' });
+  }
   if (request.command === 'describeArtStyle') return answer(request, { style: 'flat vector', model: 'fake' });
   emit({ id: request.id, ok: false, error: 'unknown command ' + request.command, errorCode: 'unknown-command' });
 });

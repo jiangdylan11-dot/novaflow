@@ -1910,15 +1910,62 @@
     }
   }
 
+  // The video model follows words and barely the picture. Measured 2026-10-14 on 边框流光 at three
+  // seeds: a sunflower handed over as a reference came back as thin yellow lines, the same sunflower
+  // written out as a style-library entry came back as petals running along the light. So the local
+  // AI 助手 reads a reference as {name, material, breakup} first and the run goes through the style
+  // path; the paid engine is not used for this. Best effort: no assistant, a node that predates
+  // this or a failed read leaves the picture path exactly as it was. One read per picture - a
+  // candidate's recipe brings the same blob back and reuses it.
+  const REFERENCE_MATERIAL_TIMEOUT_MS = 180000
+  const referenceMaterials = new WeakMap()
+  const readReferenceMaterial = (blob, image) => {
+    if (!referenceMaterials.has(blob)) {
+      const job = (async () => {
+        const api = window.electronAPI
+        if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return null
+        // On the black plate the effect will sit on, and no bigger than the model looks at.
+        const scale = Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+        const context = canvas.getContext('2d')
+        context.fillStyle = '#000'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+        let timer = 0
+        const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), REFERENCE_MATERIAL_TIMEOUT_MS) })
+        const result = await Promise.race([
+          api.promptAssistantDescribeArtStyle({ name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }),
+          timeout,
+        ]).finally(() => clearTimeout(timer))
+        const entry = result && result.ok !== false && result.material
+        const material = String(entry && entry.material || '').trim()
+        if (!material) return null
+        return { name: String(entry.name || '').trim() || 'REFERENCE', material, breakup: String(entry.breakup || '').trim() }
+      })().catch(() => null)
+      referenceMaterials.set(blob, job)
+    }
+    return referenceMaterials.get(blob)
+  }
+
   const adoptReference = (blob, fileName) => new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(blob)
     const image = new Image()
     image.onload = () => {
       if (state.reference) revokeSource(state.reference)
-      state.reference = {
+      const entry = {
         blob, fileName: String(fileName || 'reference.png'), objectUrl, image, uploadedName: '',
         accent: referenceAccent(image),
+        material: null,
+        materialState: 'reading',
       }
+      state.reference = entry
+      readReferenceMaterial(blob, image).then((material) => {
+        entry.material = material
+        entry.materialState = material ? 'ready' : 'failed'
+        if (state.reference === entry) refreshUi()
+      })
       refreshUi()
       drawPreview()
       resolve()
@@ -2061,6 +2108,14 @@
       promise.then(resolve, reject)
     })
     try {
+      // Before the runtime: the read runs on the AI 助手's own model and hands the GPU back after.
+      let referenceMaterial = null
+      if (state.reference) {
+        setStatus('识别参考图材质', state.reference.fileName)
+        referenceMaterial = await stoppable(readReferenceMaterial(state.reference.blob, state.reference.image))
+      }
+      // A reference read out as words goes through the style path, so its picture is not sent at all.
+      const referencePicture = Boolean(state.reference) && !referenceMaterial
       setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
@@ -2070,12 +2125,12 @@
       const uploadInputs = async () => {
         setStatus('上传素材', state.source.fileName)
         state.source.uploadedName = await stoppable(client.uploadFile(state.source.blob, state.source.fileName))
-        if (state.reference) {
+        if (referencePicture) {
           setStatus('上传参考图', state.reference.fileName)
           state.reference.uploadedName = await stoppable(client.uploadFile(state.reference.blob, state.reference.fileName))
         }
       }
-      if (web || !state.source.uploadedName || (state.reference && !state.reference.uploadedName)) await uploadInputs()
+      if (web || !state.source.uploadedName || (referencePicture && !state.reference.uploadedName)) await uploadInputs()
 
       const label = restyle.getPreset(state.attribute)?.label || ''
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
@@ -2094,10 +2149,12 @@
           : (state.lockedSeed + index) >>> 0
         const workflow = restyle.buildWorkflow({
           sourceVideo: state.source.uploadedName,
-          referenceImage: state.reference ? state.reference.uploadedName : '',
+          referenceImage: referencePicture ? state.reference.uploadedName : '',
           // The picture's own colour paints the init; see referenceAccent.
           tint: state.reference ? state.reference.accent : undefined,
-          attribute: state.attribute,
+          attribute: referenceMaterial
+            ? { id: 'reference', ...referenceMaterial, accent: state.reference.accent }
+            : state.attribute,
           supplement: state.supplement,
           shape: currentShape(),
           plainShape: currentPlainShape(),
@@ -2860,7 +2917,7 @@
     const restyle = RESTYLE()
     if (!host) return
     const preset = restyle ? restyle.getPreset(state.attribute) : null
-    const key = (preset ? preset.id : '') + '|' + (state.reference ? 'ref' : '')
+    const key = (preset ? preset.id : '') + '|' + (state.reference ? 'ref:' + state.reference.materialState : '')
     if (host.getAttribute('data-rendered') === key) return
     host.setAttribute('data-rendered', key)
     host.innerHTML = ''
@@ -2898,7 +2955,10 @@
     } else {
       const empty = document.createElement('div')
       empty.className = 'aifx-current-empty'
-      empty.textContent = state.reference ? '材质来自参考图' : '未选风格'
+      empty.textContent = !state.reference ? '未选风格'
+        : state.reference.materialState === 'reading' ? '正在识别参考图材质…'
+          : state.reference.materialState === 'failed' ? '材质未识别，按参考图直接生成'
+            : '材质来自参考图'
       card.appendChild(empty)
     }
     host.appendChild(card)

@@ -150,6 +150,9 @@ try {
   check(invalid.ok === false && invalid.errorCode === 'invalid-request' && /nf\.h3\.visual\.v1/.test(invalid.error), 'the desktop request contract is enforced');
   const style = (await call('POST', '/local/prompt-assistant/describe-art-style', { name: 'scene.png', dataUrl: 'data:image/png;base64,QQ==' })).body;
   check(style.ok === true && style.style === 'flat vector', '万物迁移 gets the scene style');
+  const material = (await call('POST', '/local/prompt-assistant/describe-art-style', { name: 'reference.jpg', dataUrl: 'data:image/jpeg;base64,QQ==', purpose: 'aifx-material' })).body;
+  check(material.ok === true && material.material?.material === 'made of petals. NO METAL.' && material.material?.name === 'GLOWING PETAL' && material.style === undefined,
+    'AI 特效 gets its 参考图 back as a material entry through the same call');
   equal((await call('POST', '/local/prompt-assistant/nope', {})).status, 404);
 
   // -- payload shaping matches the desktop handler ---------------------------
