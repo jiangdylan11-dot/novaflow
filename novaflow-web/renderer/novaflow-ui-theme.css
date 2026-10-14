@@ -1953,8 +1953,11 @@ html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format, .nf-saw-preset-opt
   font-size: 12px !important;
   font-weight: 500 !important;
 }
-html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format, .nf-saw-preset-options > button):hover:not(.active) {
+/* .nf-saw-format is each row's JPG / WEBP pair: the button under the pointer
+   lights up, never the pair behind it. */
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format > button, .nf-saw-preset-options > button):hover:not(.active) {
   background: #373737 !important;
+  color: #ffffff !important;
 }
 html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format.active, .nf-saw-preset-options > button.active) {
   background: #1c4136 !important;
