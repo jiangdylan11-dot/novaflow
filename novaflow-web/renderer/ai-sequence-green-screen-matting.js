@@ -115,6 +115,10 @@
     const { width, height, data } = frame, out = new Uint8ClampedArray(data.length);
     const bg = screen.rgb.map(x => x / 255), alpha = new Uint8ClampedArray(width * height);
     const core = subjectOpacity(options.subjectMask, width, height);
+    // 半透明材质 on black: the mask also covers light (a fading ring, a fading coin), whose dark
+    // pixels it would make opaque black. On, only bright mask pixels stay solid; dark ones keep
+    // the light solution below.
+    const lightOnBlack = !!options.sheerMaterial && screen.kind === "black";
     for (let p = 0, i = 0; p < alpha.length; p++, i += 4) {
       let a = 0, distance = 0;
       // C = a F + (1-a) B, with every foreground channel constrained to [0,1].
@@ -128,7 +132,7 @@
         distance = Math.max(distance, Math.abs(delta));
       }
       a = clamp(a);
-      const keep = core?.[p] || 0;
+      const keep = (core?.[p] || 0) * (lightOnBlack ? smooth(.45, .75, a) : 1);
       a = Math.max(a, keep);
       const gate = keep + (1 - keep) * smooth(4 / 255, 10 / 255, distance);
       alpha[p] = out[i + 3] = Math.round(a * gate * data[i + 3]);

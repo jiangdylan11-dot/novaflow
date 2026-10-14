@@ -50,6 +50,35 @@ test('mask core keeps key-leaning material opaque; 半透明材质 keys the whol
   for (const x of [36, 60]) { const [r, g, b] = at(on, x, 48); assert.ok(g <= Math.max(r, b) + 2, 'no screen green left at x=' + x); }
 });
 
+// Black screen (spin.mp4, coins + a fading ring): the mask covers the ring too, so its dim brown
+// pixels came out opaque black. 半透明材质 on keeps only bright mask pixels solid.
+test('半透明材质 on a black screen: bright solids stay opaque, dim light no longer turns black', () => {
+  const api = loadMatting();
+  const GOLD = [235, 190, 70], DIM = [60, 30, 10];
+  const make = background => {
+    const data = new Uint8ClampedArray(W * H * 4), mask = new Uint8ClampedArray(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4, inside = x >= 24 && x < 72 && y >= 24 && y < 72;
+      const rgb = inside ? (x < 48 ? GOLD : DIM) : background;
+      data.set([...rgb, 255], i);
+      if (inside) mask[y * W + x] = 255;
+    }
+    return { frame: { width: W, height: H, data }, mask };
+  };
+  const run = (c, options) => api.matte(c.frame, { preserveShadow: true, subjectMask: { data: c.mask, width: W, height: H }, requireSubjectMask: true, ...options });
+  const black = make([0, 0, 0]);
+  const off = run(black, {}), on = run(black, { sheerMaterial: true });
+  assert.equal(at(off, 36, 48)[3], 255, 'gold opaque by default');
+  assert.equal(at(off, 60, 48)[3], 255, 'dim brown kept opaque by default (unchanged behaviour)');
+  assert.equal(at(on, 36, 48)[3], 255, 'gold still opaque with 半透明材质 on');
+  const [r, g, b, a] = at(on, 60, 48);
+  assert.ok(a <= DIM[0] + 2, 'dim brown keeps the light opacity, alpha ' + a);
+  assert.ok(Math.round((r * a + 255 * (255 - a)) / 255) > 200, 'dim brown over white is pale, not black');
+  assert.ok(g < r && b < g, 'dim brown keeps its warm hue');
+  const white = make([255, 255, 255]);
+  assert.deepEqual(Array.from(run(white, { sheerMaterial: true }).data), Array.from(run(white, {}).data), 'white screens are unaffected');
+});
+
 test('renderAsync forwards 半透明材质 to the matting worker', async () => {
   const posted = [];
   class Worker { constructor(url) { this.url = url; } postMessage(message) { posted.push(message); } terminate() {} }
