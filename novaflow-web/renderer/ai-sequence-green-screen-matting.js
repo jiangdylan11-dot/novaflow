@@ -832,18 +832,19 @@
           // without a clip profile, for this frame). Only samples showing the light's own key above
           // the screen count, and a measured hue that is itself nearly the screen's (key >= .9 of
           // the strongest other channel) is the screen bleeding into the light, not a colour to
-          // reproduce. Where no hue is known and the key sits at the screen's level (sparkles
-          // added on top of the screen, light the mask covers), the mean of the non-key channels
-          // stands in; otherwise the residual key stays.
+          // reproduce. Where no hue is measured the residual key stays, as the chroma pass left it:
+          // the mean of the non-key channels standing in for sparkles added on top of the screen
+          // turned Athena's yellow sparkles orange (user, 2026-10-14; 色键 and the pre-10/12 matte
+          // keep the source's yellow). Only light the mask covers (coveredLight, the gold ball at
+          // her feet that came out a green blob) still takes that mean.
           const bins = sequenceHue || hueBins, minimum = sequenceHue ? 40 : hueMinimum;
           const index = hueIndex(f0, f1), hue = bins[index], level = index % 6, side = index - level;
           const near = level > 0 && bins[side + level - 1].count > hue.count ? bins[side + level - 1]
             : level < 5 && bins[side + level + 1].count > hue.count ? bins[side + level + 1] : hue;
           const chosen = hue.count >= minimum ? hue : near;
-          const additive = C[key] >= B[key] - .03;
           const measured = chosen.ownMax >= .9 ? chosen.ownRatio / chosen.own : 1;
           const ratio = chosen.count >= minimum && measured <= .9 ? measured
-            : chosen.count >= minimum || coveredLight || additive ? (f0 + f1) / (2 * fmax) : -1;
+            : coveredLight ? (f0 + f1) / (2 * fmax) : -1;
           if (ratio >= 0) P[key] = Math.min(C[key], ratio * Math.max(P[c0], P[c1]));
         } else if (m < .15 && absorbC > emitC) {
           // A dark halo or shadow outside the subject: the residual key channel is the screen's
