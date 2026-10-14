@@ -798,8 +798,7 @@ html body :is([data-novaflow-ai-state-toggle], #nf-lift):focus:not(:focus-visibl
 
 /* 2.0r AI 特效's panel: a slider row gives the slider the room (the label
    and value take what they need), and its buttons answer the pointer like
-   the rest of the app. The labels share one four-character column so the
-   重画力度 and 数量 sliders start at the same x. */
+   the rest of the app. */
 html body #novaflow-aifx-mvp .aifx-row:has(> .aifx-slider) {
   display: flex !important;
   align-items: center !important;
@@ -808,7 +807,7 @@ html body #novaflow-aifx-mvp .aifx-row:has(> .aifx-slider) {
 html body #novaflow-aifx-mvp .aifx-row:has(> .aifx-slider) > label {
   flex: 0 0 auto !important;
   width: auto !important;
-  min-width: 4em !important;
+  min-width: 0 !important;
 }
 html body #novaflow-aifx-mvp .aifx-row > .aifx-slider {
   flex: 1 1 auto !important;

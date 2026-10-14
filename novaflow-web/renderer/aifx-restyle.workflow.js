@@ -578,23 +578,6 @@
     return Math.round(MIN_STRENGTH + ratio * (MAX_STRENGTH - MIN_STRENGTH))
   }
 
-  // 重画力度 in the panel is four positions, not 0-100. BasicScheduler turns
-  // denoise into int(steps/denoise) sampling steps, so at 4 steps the whole
-  // range holds five schedules (8/7/6/5/4) and everything between two of
-  // them is the same bytes. The fifth is denoise 1.0's own schedule: the init
-  // starts at full noise and the source never reaches the result, which is
-  // not a restyle any more. Each level sits on its own schedule, and the
-  // defaults above (20 / 30 / 50, with 70 on the same schedule as 50) all
-  // land on one of them.
-  const STRENGTH_LEVELS = Object.freeze([0, 20, 30, 50])
-
-  function strengthLevel(strength) {
-    const value = Number(strength)
-    let level = 1
-    STRENGTH_LEVELS.forEach((step, index) => { if (value >= step) level = index + 1 })
-    return level
-  }
-
   // H3 only samples 17k+5 frames. A clip that is not already on that grid used
   // to be cut down to the grid point BELOW it, which threw away the tail: a
   // 0.7s clip (17 frames at 24fps) collapsed to 5 frames, so two thirds of the
@@ -919,8 +902,6 @@
     SUPPLEMENT_STRENGTH,
     strengthToDenoise,
     denoiseToStrength,
-    STRENGTH_LEVELS,
-    strengthLevel,
     defaultStrengthFor,
     isPromptOnly,
     composePrompt,

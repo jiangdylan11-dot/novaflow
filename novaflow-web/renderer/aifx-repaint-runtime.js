@@ -1336,12 +1336,6 @@
                   <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写。<br>写「多出什么、变成什么」才生效（滴落融水 / 掉冰碴 / 碎片变金币 / 绕一圈星星）；只写「怎么动」（翻滚 / 吸回 / 拖影）不生效，运动跟着素材走。</div>
                 </div>
                 <div class="aifx-row" style="margin-top:12px">
-                  <label>重画力度</label>
-                  <input class="aifx-slider" data-action="strength-level" type="range" min="1" max="4" step="1" value="2">
-                  <div class="aifx-value" data-strength-value>自动</div>
-                </div>
-                <div class="aifx-prompt-hint" style="margin-top:4px">往右更听风格、参考图和提示词，越不像原素材；循环素材往右容易散。换素材回到自动。</div>
-                <div class="aifx-row" style="margin-top:12px">
                   <label>数量</label>
                   <input class="aifx-slider" data-action="candidates" type="range" min="1" max="4" value="2">
                   <div class="aifx-value" data-candidates-value>2</div>
@@ -1861,9 +1855,6 @@
     state.sourceFrames = decoded.frames
     state.builtinId = ''
     state.userTemplateId = ''
-    // A level picked by hand was picked for that clip; the next one starts
-    // from its own default again, which is also the only way back to 自动.
-    state.strength = null
     const detected = detectShape(decoded.frames)
     state.shapeArchetype = detected ? detected.archetype : 'blob'
     state.shapeAuto = detected ? detected.label : ''
@@ -3097,8 +3088,6 @@
     refs.seedLock = root.querySelector('[data-action="lock-seed"]')
     refs.candidateCount = root.querySelector('[data-action="candidates"]')
     refs.candidateCountValue = root.querySelector('[data-candidates-value]')
-    refs.strengthLevel = root.querySelector('[data-action="strength-level"]')
-    refs.strengthValue = root.querySelector('[data-strength-value]')
     renderCurrentStyle()
     syncSectionOpen(root)
 
@@ -3211,13 +3200,6 @@
     refs.seedLock?.addEventListener('click', toggleSeedLock)
     refs.candidateCount?.addEventListener('input', () => {
       state.candidateCount = Number(refs.candidateCount.value) || 1
-      refreshUi()
-    })
-    refs.strengthLevel?.addEventListener('input', () => {
-      const restyle = RESTYLE()
-      if (!restyle) return
-      const level = clamp(Math.round(Number(refs.strengthLevel.value) || 1), 1, restyle.STRENGTH_LEVELS.length)
-      state.strength = restyle.STRENGTH_LEVELS[level - 1]
       refreshUi()
     })
     refs.timeline?.addEventListener('input', () => {
@@ -3385,14 +3367,6 @@
       put(refs.candidateCount, 'value', String(state.candidateCount))
       put(refs.candidateCountValue, 'textContent', String(state.candidateCount))
       put(refs.candidateCount, 'disabled', state.isGenerating)
-    }
-    if (refs.strengthLevel && restyle) {
-      // Untouched, the thumb follows the default the style, the clip and
-      // 提示词补充 pick between them, and says so; dragged, it stays put.
-      put(refs.strengthLevel, 'value', String(restyle.strengthLevel(currentStrength())))
-      put(refs.strengthValue, 'textContent', state.strength == null
-        ? '自动' : String(restyle.strengthLevel(state.strength)))
-      put(refs.strengthLevel, 'disabled', state.isGenerating)
     }
     if (refs.effectType && restyle) {
       // The style card above already says where the material comes from, so
