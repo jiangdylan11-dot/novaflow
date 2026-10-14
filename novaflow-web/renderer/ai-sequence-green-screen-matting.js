@@ -142,8 +142,47 @@
     return { width, height, data: out, alpha, screen, subjectProtected: !!core };
   }
 
+  // 色键抠图 (no AI mask): a frame whose border a burst covers falls back to the clip's screen
+  // (detectSequenceScreen), a clip with no plain screen stays as it is, and the two sliders
+  // remap the automatic alpha: 去底 clears faint leftovers, 实心 makes partly clear material solid.
   function matte(frame, options = {}) {
-    const detected = options.screen || detectScreen(frame);
+    const result = matteScreen(frame, options) || (options.keepUndetected ? untouched(frame) : null);
+    return result && options.keyTune ? tuneAlpha(result, options.keyTune) : result;
+  }
+
+  function untouched(frame) {
+    const data = new Uint8ClampedArray(frame.data), alpha = new Uint8ClampedArray(frame.width * frame.height);
+    for (let p = 0; p < alpha.length; p++) alpha[p] = data[p * 4 + 3];
+    return { width: frame.width, height: frame.height, data, alpha, screen: null };
+  }
+
+  function tuneAlpha(result, tune) {
+    const floor = clamp(Number(tune.floor) / 100 || 0), solid = clamp(Number(tune.solid) / 100 || 0);
+    if (!floor && !solid) return result;
+    const lo = floor * .5, hi = Math.max(lo + .02, 1 - solid * .7), { data, alpha } = result;
+    for (let p = 0, i = 0; p < alpha.length; p++, i += 4) {
+      if (!alpha[p]) continue;
+      alpha[p] = data[i + 3] = Math.round(clamp((alpha[p] / 255 - lo) / (hi - lo)) * 255);
+      if (!alpha[p]) data[i] = data[i + 1] = data[i + 2] = 0;
+    }
+    return result;
+  }
+
+  // The screen most frames agree on (kind by majority, colour by per-channel median).
+  function detectSequenceScreen(frames) {
+    const list = Array.from(frames || []).filter(Boolean), step = Math.max(1, Math.floor(list.length / 24)), byKind = new Map();
+    for (let i = 0; i < list.length; i += step) {
+      const screen = detectScreen(list[i]);
+      if (screen) byKind.set(screen.kind, [...(byKind.get(screen.kind) || []), screen.rgb]);
+    }
+    const [kind, colours] = [...byKind].sort((a, b) => b[1].length - a[1].length)[0] || [];
+    if (!kind) return null;
+    const rgb = [0, 1, 2].map(c => colours.map(v => v[c]).sort((a, b) => a - b)[Math.floor(colours.length / 2)]);
+    return { rgb, kind };
+  }
+
+  function matteScreen(frame, options) {
+    const detected = options.screen || detectScreen(frame) || options.fallbackScreen;
     if (!detected) return null;
     const kind = detected.kind || screenKind(detected.rgb);
     if (!kind) return null;
@@ -1290,6 +1329,7 @@
       workerQueue.push({id:++taskSerial, profile, profileId:profile ? profileIds.get(profile) : 0,
         frame:{data:pixels,width:frame.width,height:frame.height},
         options:{preserveShadow:options.preserveShadow,cleanEdges:!!options.cleanEdges,sheerMaterial:!!options.sheerMaterial,normalizeGlow:options.normalizeGlow,screen:options.screen,
+          fallbackScreen:options.fallbackScreen,keepUndetected:!!options.keepUndetected,keyTune:options.keyTune || null,
           requireSubjectMask:options.requireSubjectMask,subjectMask:maskData ? {data:maskData,width:mask.width,height:mask.height} : null},
         buffers:maskData ? [pixels.buffer,maskData.buffer] : [pixels.buffer],resolve,reject});
       pumpWorkers();
@@ -1356,5 +1396,5 @@
       return new Uint8Array(await blob.arrayBuffer());
     })().catch(error=>{rawCalibration=null;throw error;});
   }
-  return { detectScreen, matte, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
+  return { detectScreen, detectSequenceScreen, matte, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
 });

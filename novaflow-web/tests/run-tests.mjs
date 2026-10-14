@@ -16,6 +16,7 @@ const SUITES = [
   { name: 'video-matting', file: 'e2e/video-matting.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'cutout-edge-clean', file: 'e2e/cutout-edge-clean.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'cutout-sheer-material', file: 'e2e/cutout-sheer-material.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'cutout-key-entry', file: 'e2e/cutout-key-entry.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'video-merge-alpha-decode', file: 'e2e/video-merge-alpha-decode.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'seamless-loop', file: 'e2e/seamless-loop.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'video-matting-queue', file: 'e2e/video-matting-queue.test.mjs', needs: [], timeoutMs: 60000 },

@@ -60640,6 +60640,17 @@
     { key: "frame-edit", label: "帧编辑", entry: "", tools: ["frame-edit"], overlay: "NovaFlowVideoFrameEditTool" }
   ]);
   let AI_ANIMATION_TOOL_OPENING = null;
+  // 视频抠图 offers two ways in (2026-10-09, back 2026-10-14): its row opens a choice under it
+  // and a click on one starts that cutout. 色键 runs the automatic chroma/glow matte alone (no
+  // AI) on the same verified frames as AI, with 去底/实心 sliders to fine-tune; it goes through
+  // the bundle's second hidden entry (scripts/patch-cutout-key-entry.mjs).
+  const AI_CUTOUT_CHOICES = Object.freeze([
+    { mode: "ai", label: "AI抠图", entry: '[data-novaflow-video-cutout="1"]', tool: "ai-cutout",
+      title: "AI 识别主体后抠图，适合画面里有人物、物体" },
+    { mode: "key", label: "色键抠图", entry: '[data-novaflow-video-cutout-key="1"]', tool: "chroma-key",
+      title: "按背景颜色自动抠图，适合纯色背景、纯特效，可用滑条微调" }
+  ]);
+  let AI_CUTOUT_CHOOSING = false;
   function aiAnimationActiveToolKey(includeOpening = false) {
     const session = getAiSequenceCurrentSession();
     const tool = String(session?.activeTool || session?.editingDraft?.tool || "");
@@ -60676,16 +60687,46 @@
       void tool.toggle({ postSection });
       return;
     }
-    const clickEntry = (attempt = 0) => {
+    const clickEntry = (attempt = 0, entrySelector = spec.entry, tool = spec.tools[0]) => {
       // The tool's panel is mounted under this row before the rows re-read the session.
-      if (attempt === 0) AI_ANIMATION_TOOL_OPENING = { tool: spec.tools[0], until: Date.now() + 1500 };
+      if (attempt === 0) AI_ANIMATION_TOOL_OPENING = { tool, until: Date.now() + 1500 };
       nfSetAttrIfChanged(postSection, "data-novaflow-ai-active-tool", spec.key);
-      const entry = document.querySelector(spec.entry);
+      const entry = document.querySelector(entrySelector);
       // The bundle's entry is hidden by design (the row stands in for it): click it as soon
       // as it exists and is enabled, without waiting for it to become visible.
       if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true") { entry.click(); return; }
-      if (attempt < 14) window.setTimeout(() => clickEntry(attempt + 1), 60);
+      if (attempt < 14) window.setTimeout(() => clickEntry(attempt + 1, entrySelector, tool), 60);
     };
+    if (spec.choice) {
+      // A button of 视频抠图's choice: start that cutout from the open (tool-less) group.
+      AI_CUTOUT_CHOOSING = false;
+      clickEntry(0, spec.choice.entry, spec.choice.tool);
+      return;
+    }
+    if (spec.key === "ai-cutout" && !(expanded && spec.tools.includes(activeTool))) {
+      // The 视频抠图 row opens (or closes) its choice; nothing starts until a button is picked.
+      AI_ANIMATION_TOOL_OPENING = null;
+      if (AI_CUTOUT_CHOOSING && expanded && !activeTool) {
+        AI_CUTOUT_CHOOSING = false;
+        ensureAiAnimationToolHeadings(postSection, postHeading);
+        return;
+      }
+      AI_CUTOUT_CHOOSING = true;
+      if (!expanded) { postHeading.click(); ensureAiAnimationToolHeadings(postSection, postHeading); return; }
+      if (activeTool) {
+        // Leave the other tool through the group's own collapse, then reopen the group on the choice.
+        postHeading.click();
+        window.setTimeout(() => {
+          if (AI_ANIMATION_COLLAPSE_STATE.post) postHeading.click();
+          AI_CUTOUT_CHOOSING = true;
+          ensureAiAnimationToolHeadings(postSection, postHeading);
+        }, 140);
+        return;
+      }
+      ensureAiAnimationToolHeadings(postSection, postHeading);
+      return;
+    }
+    AI_CUTOUT_CHOOSING = false;
     if (expanded && spec.tools.includes(activeTool)) {
       AI_ANIMATION_TOOL_OPENING = null;
       postHeading.click();
@@ -60751,14 +60792,63 @@
       removeAttributeIfPresent(heading, "data-novaflow-ai-post-action-button");
       const isActive = expanded && spec.tools.includes(activeTool);
       const otherActive = expanded && Boolean(activeTool) && !isActive;
-      nfSetAttrIfChanged(heading, "aria-expanded", isActive ? "true" : "false");
-      nfSetAttrIfChanged(heading, "data-collapsed", isActive ? "0" : "1");
+      const isOpen = isActive || (spec.key === "ai-cutout" && expanded && !activeTool && AI_CUTOUT_CHOOSING);
+      nfSetAttrIfChanged(heading, "aria-expanded", isOpen ? "true" : "false");
+      nfSetAttrIfChanged(heading, "data-collapsed", isOpen ? "0" : "1");
       nfSetAttrIfChanged(heading, "aria-disabled", otherActive ? "true" : "false");
     });
+    ensureAiCutoutChoice(postSection, expanded, activeTool);
     nfSetAttrIfChanged(postSection, "data-novaflow-ai-tool-headings", "1");
     const orderTool = activeTool || aiAnimationActiveToolKey(true);
     const active = AI_ANIMATION_TOOL_HEADINGS.find((spec) => (expanded || !activeTool) && spec.tools.includes(orderTool));
     nfSetAttrIfChanged(postSection, "data-novaflow-ai-active-tool", active ? active.key : "");
+  }
+
+  // The AI抠图 / 色键抠图 row under 视频抠图. Plain divs, not buttons: the post-section
+  // scanners claim every button / [role=button] there as a bundle action and hide its row.
+  function ensureAiCutoutChoice(postSection, expanded, activeTool) {
+    if (activeTool || !expanded) AI_CUTOUT_CHOOSING = false;
+    let row = postSection.querySelector(":scope > [data-novaflow-ai-cutout-choice-row]");
+    if (!(row instanceof HTMLElement)) {
+      row = document.createElement("div");
+      row.setAttribute("data-novaflow-ai-cutout-choice-row", "1");
+      row.setAttribute("data-novaflow-runtime-ignore", "1");
+      const cutoutSpec = AI_ANIMATION_TOOL_HEADINGS.find((spec) => spec.key === "ai-cutout");
+      AI_CUTOUT_CHOICES.forEach((choice) => {
+        const option = document.createElement("div");
+        option.setAttribute("data-novaflow-ai-cutout-choice", choice.mode);
+        option.setAttribute("tabindex", "0");
+        option.setAttribute("title", choice.title);
+        option.textContent = choice.label;
+        const pick = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          activateAiAnimationToolHeading({ ...cutoutSpec, choice });
+        };
+        option.addEventListener("click", pick, true);
+        option.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") pick(event); }, true);
+        option.addEventListener("mouseenter", () => {
+          option.style.setProperty("background", "#373737", "important");
+          option.style.setProperty("color", "#ffffff", "important");
+        });
+        option.addEventListener("mouseleave", () => {
+          option.style.setProperty("background", "#333333", "important");
+          option.style.setProperty("color", "#eeeeee", "important");
+        });
+        Object.entries({
+          height: "34px", display: "flex", "align-items": "center", "justify-content": "center",
+          "border-radius": "8px", background: "#333333", color: "#eeeeee", "font-size": "12px",
+          "font-weight": "500", cursor: "pointer", "user-select": "none", outline: "none", "white-space": "nowrap"
+        }).forEach(([property, value]) => option.style.setProperty(property, value, "important"));
+        row.appendChild(option);
+      });
+      Object.entries({
+        order: "12", "grid-template-columns": "1fr 1fr", gap: "6px", padding: "4px 0 10px", "box-sizing": "border-box"
+      }).forEach(([property, value]) => row.style.setProperty(property, value, "important"));
+      postSection.appendChild(row);
+    }
+    const show = AI_CUTOUT_CHOOSING && expanded && !activeTool;
+    if (row.style.getPropertyValue("display") !== (show ? "grid" : "none")) row.style.setProperty("display", show ? "grid" : "none", "important");
   }
 
   function syncAiAnimationPostSectionStaticLayout(postSection) {
