@@ -578,6 +578,23 @@
     return Math.round(MIN_STRENGTH + ratio * (MAX_STRENGTH - MIN_STRENGTH))
   }
 
+  // 重画力度 in the panel is four positions, not 0-100. BasicScheduler turns
+  // denoise into int(steps/denoise) sampling steps, so at 4 steps the whole
+  // range holds five schedules (8/7/6/5/4) and everything between two of
+  // them is the same bytes. The fifth is denoise 1.0's own schedule: the init
+  // starts at full noise and the source never reaches the result, which is
+  // not a restyle any more. Each level sits on its own schedule, and the
+  // defaults above (20 / 30 / 50, with 70 on the same schedule as 50) all
+  // land on one of them.
+  const STRENGTH_LEVELS = Object.freeze([0, 20, 30, 50])
+
+  function strengthLevel(strength) {
+    const value = Number(strength)
+    let level = 1
+    STRENGTH_LEVELS.forEach((step, index) => { if (value >= step) level = index + 1 })
+    return level
+  }
+
   // H3 only samples 17k+5 frames. A clip that is not already on that grid used
   // to be cut down to the grid point BELOW it, which threw away the tail: a
   // 0.7s clip (17 frames at 24fps) collapsed to 5 frames, so two thirds of the
@@ -763,11 +780,16 @@
     // The init is painted in the TARGET colour rather than left grey. Colour is
     // the one thing that survives a denoise low enough to follow the source, so
     // handing it over in the init is what buys the two at once; see the block
-    // above strengthToDenoise. With a reference image there is no preset and
-    // therefore no colour to hand over, and in the prompt-only case painting
-    // the init in the CLEARED style's colour is exactly what would fight the
-    // words, so both of those keep the grey init.
-    const tint = options.tint == null ? (preset ? String(preset.accent || '') : '') : String(options.tint)
+    // above strengthToDenoise. A reference image needs it just as much - off a
+    // grey init at a loop's 0.55 a blue lightning ball came back as a white
+    // frame with a few blue sparks - so the panel hands over the picture's own
+    // colour as `tint`; a style still picked under a reference has given way
+    // to it and never paints the init. In the prompt-only case painting the
+    // init in the CLEARED style's colour is exactly what would fight the
+    // words, so that one keeps the grey init.
+    const tint = options.tint == null
+      ? (preset && !referenceImage ? String(preset.accent || '') : '')
+      : String(options.tint)
     const strength = options.strength == null
       ? (promptOnly
         ? SUPPLEMENT_STRENGTH
@@ -897,6 +919,8 @@
     SUPPLEMENT_STRENGTH,
     strengthToDenoise,
     denoiseToStrength,
+    STRENGTH_LEVELS,
+    strengthLevel,
     defaultStrengthFor,
     isPromptOnly,
     composePrompt,
