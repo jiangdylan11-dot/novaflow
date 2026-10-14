@@ -657,6 +657,57 @@
   // The word that wins is the preset's NAME ('a single anime-style ICE
   // crescent slash'), so the only way to hand the words the material is to
   // take the preset out of the sentence altogether.
+  // 提示词补充 as the artist typed it adds almost nothing: measured 2026-10-14 on 边框流光 at two seeds,
+  // 多点彩带飘落 appended in Chinese drew no ribbon at all, and neither did a faithful English
+  // translation ("multicolored ribbons falling"), on a reference material or on 黄金. What drew red,
+  // blue, green and purple ribbons on both was the same words with the colours named one by one, NOT
+  // the effect's own colour, and where on the effect they go - the added element otherwise takes
+  // the colour the init is painted in. Blue sparks and purple smoke came through the same way.
+  // Halving the tint or one schedule step more denoise did nothing for it. The panel has the words
+  // translated (`supplementEnglish`); the rest is added here by rule, because a model asked to write
+  // the whole clause invents (彩带 came back as "four petal shards").
+  const COLOUR_FAMILIES = Object.freeze({
+    red: /\b(?:red|crimson|scarlet)\b/i,
+    orange: /\b(?:orange|amber)\b/i,
+    yellow: /\b(?:yellow|gold|golden)\b/i,
+    green: /\b(?:green|emerald)\b/i,
+    cyan: /\b(?:cyan|teal|turquoise)\b/i,
+    blue: /\bblue\b/i,
+    purple: /\b(?:purple|violet|magenta)\b/i,
+    pink: /\bpink\b/i,
+    white: /\b(?:white|silver)\b/i,
+    grey: /\b(?:grey|gray)\b/i,
+  })
+  const ANY_COLOUR = /\b(?:red|crimson|scarlet|orange|amber|yellow|gold|golden|green|emerald|cyan|teal|turquoise|blue|purple|violet|magenta|pink|white|silver|grey|gray|black|multi-?colou?red|rainbow)\b/i
+
+  // The colour a tint reads as, in the one word a prompt would use for it.
+  function colourName(hex) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim())
+    if (!match) return ''
+    const value = parseInt(match[1], 16)
+    const r = (value >> 16) / 255
+    const g = ((value >> 8) & 255) / 255
+    const b = (value & 255) / 255
+    const max = Math.max(r, g, b)
+    const span = max - Math.min(r, g, b)
+    if (span < 0.15) return max > 0.6 ? 'white' : 'grey'
+    const sector = max === r ? ((g - b) / span + 6) % 6 : max === g ? (b - r) / span + 2 : (r - g) / span + 4
+    const hue = sector * 60
+    return hue < 12 ? 'red' : hue < 40 ? 'orange' : hue < 70 ? 'yellow' : hue < 165 ? 'green'
+      : hue < 200 ? 'cyan' : hue < 255 ? 'blue' : hue < 290 ? 'purple' : hue < 345 ? 'pink' : 'red'
+  }
+
+  function supplementClause(english, shape, tint) {
+    let text = String(english || '').trim().replace(/[\s.。]+$/, '')
+    if (!text) return ''
+    text = text.replace(/\bmulti-?colou?red\b(?!\s*\()/gi, 'multicoloured (red, blue, green and purple)')
+    text = text.charAt(0).toLowerCase() + text.slice(1)
+    const effect = colourName(tint)
+    const own = effect && COLOUR_FAMILIES[effect] && COLOUR_FAMILIES[effect].test(text)
+    const not = effect && ANY_COLOUR.test(text) && !own ? ', NOT ' + effect : ''
+    return `Also, around the ${shapeNoun(shape)}: ${text}${not}. Each added element is clearly visible and keeps its own colours.`
+  }
+
   function isPromptOnly(options) {
     return !options.attribute && !options.hasReferenceImage
       && Boolean(String(options.supplement || '').trim())
@@ -671,7 +722,9 @@
       ? null
       : resolvePreset(options.attribute)
     const supplement = String(options.supplement || '').trim()
-    const extra = supplement ? ' ' + supplement : ''
+    // A translation, when the panel has one, stands in for the artist's own words.
+    const english = String(options.supplementEnglish || '').trim()
+    const extra = english ? ' ' + english : supplement ? ' ' + supplement : ''
     const shape = String(options.shape || '').trim() || DEFAULT_SHAPE
     // With a reference image the shape must not describe the material. Seven of
     // the archetypes say "of light"; the detector hands over a plain wording
@@ -685,14 +738,15 @@
       // Only the silhouette and the shot framing survive; the subject is the
       // artist's sentence. No preset name, no preset material, no preset
       // break-up - there is nothing left for the words to argue with.
-      return `${LEAD} ${shape}, ${supplement} ${shapeSentence(shape, clause)} ${SHOT_TAIL}`
+      return `${LEAD} ${shape}, ${english || supplement} ${shapeSentence(shape, clause)} ${SHOT_TAIL}`
     }
     if (!options.hasReferenceImage) {
-      const dispersal = options.lifecycle === 'loop' ? '' : ' ' + preset.breakup
+      const dispersal = options.lifecycle === 'loop' || !preset.breakup ? '' : ' ' + preset.breakup
       // The shape sits between the material's name and its description, which
       // is exactly where the A/B that fixed this put it.
       const subject = `${preset.name} ${shape}, ${preset.material}${dispersal}`
-      return `${LEAD} ${subject}${extra} ${shapeSentence(shape, clause)} ${SHOT_TAIL}`
+      const added = english ? ' ' + supplementClause(english, shape, options.effectTint) : extra
+      return `${LEAD} ${subject}${added} ${shapeSentence(shape, clause)} ${SHOT_TAIL}`
     }
     // A reference image REPLACES the preset, it does not qualify it. Measured:
     // hand the model a venom still and write ICE in the text and it renders
@@ -784,7 +838,7 @@
       : clamp(options.denoise, 0.05, 1)
     const prefix = String(options.filenamePrefix || DEFAULT_PREFIX)
     const prompt = options.prompt == null
-      ? composePrompt({ ...options, hasReferenceImage: Boolean(referenceImage) })
+      ? composePrompt({ ...options, hasReferenceImage: Boolean(referenceImage), effectTint: tint })
       : String(options.prompt)
 
     const usesReferences = Boolean(referenceImage || motionReference)
@@ -904,6 +958,8 @@
     denoiseToStrength,
     defaultStrengthFor,
     isPromptOnly,
+    colourName,
+    supplementClause,
     composePrompt,
     buildWorkflow,
     validateWorkflow,

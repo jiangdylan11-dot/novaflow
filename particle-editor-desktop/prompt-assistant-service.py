@@ -177,6 +177,19 @@ EFFECT_MATERIAL_QUESTION = (
     "Describe the material only: never the picture's subject as a whole object, its background, its framing or "
     "its composition."
 )
+# ...and its 提示词补充, which the video model barely follows in Chinese: 多点彩带飘落 appended as typed drew no
+# ribbon at all. This is a faithful translation only; asked to write the clause itself the model invents (彩带
+# came back as "four petal shards"), so the colours, the NOT and the placement are added by rule afterwards.
+EFFECT_SUPPLEMENT_MAX_NEW_TOKENS = 120
+EFFECT_SUPPLEMENT_SYSTEM_TEXT = (
+    "You translate short Chinese requests from VFX artists into plain English. Reply with the English only."
+)
+EFFECT_SUPPLEMENT_QUESTION = (
+    "Translate this request about a game VFX element into one plain English phrase. Keep its meaning exactly: "
+    "every object, amount, place and motion it names, and nothing added. Spell colours out: 彩, 彩色 or 五彩 "
+    "becomes \"multicoloured (red, blue, green and purple)\"; a named colour stays that colour; when no colour "
+    "is named, name none. Request: "
+)
 # System turns for the video prompt features (WAN and other non-H3 models); each user turn carries the rules.
 VIDEO_OPTIMIZE_SYSTEM_TEXT = (
     "你是 NovaFlow 的视频生成 Prompt 设计助手。你把用户的视频提示改写成一段可直接用于 WAN 等视频模型的中文 Prompt："
@@ -19758,6 +19771,8 @@ class PromptAssistant:
 
         if str(payload.get("purpose") or "") == "aifx-material":
             return self.describe_effect_material(payload)
+        if str(payload.get("purpose") or "") == "aifx-supplement":
+            return self.translate_effect_supplement(payload)
         images = payload.get("images")
         if not isinstance(images, list) or not images:
             raise ValueError("请先选择可分析的图片")
@@ -19863,6 +19878,31 @@ class PromptAssistant:
         result = {"name": name or "REFERENCE", "material": material, "breakup": breakup[:200]}
         log_prompt_assistant_event("effect_material_described", command="describeArtStyle", **result)
         return {"material": result, "rawMaterial": " ".join(raw.split())[:1200], "model": self.reverse_model_path().name[:160]}
+
+    def translate_effect_supplement(self, payload: dict) -> dict:
+        """AI 特效's 提示词补充 in plain English; text only, no picture."""
+
+        supplement = " ".join(str(payload.get("supplement") or "").split())[:400]
+        if not supplement:
+            raise ValueError("没有要翻译的提示词补充")
+        adapter = Qwen3VLAbliteratedAdapter(
+            self.reverse_model_path(),
+            max_side=768,
+            max_new_tokens=EFFECT_SUPPLEMENT_MAX_NEW_TOKENS,
+            trim_transient_cuda_cache=True,
+        )
+        raw = str(adapter.generate(
+            EFFECT_SUPPLEMENT_QUESTION + "「" + supplement + "」",
+            None,
+            unload_after=True,
+            system_text=EFFECT_SUPPLEMENT_SYSTEM_TEXT,
+            max_new_tokens=EFFECT_SUPPLEMENT_MAX_NEW_TOKENS,
+        ) or "")
+        english = " ".join(raw.split()).strip(" \"'“”")
+        if not english or re.search(r"[㐀-鿿]", english):
+            raise ValueError("提示词补充没有译出来")
+        log_prompt_assistant_event("effect_supplement_translated", command="describeArtStyle", supplement=supplement, english=english)
+        return {"supplement": english[:600], "model": self.reverse_model_path().name[:160]}
 
     def reverse_image_prompt(self, payload: dict) -> dict:
         images = payload.get("images")

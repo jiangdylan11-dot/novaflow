@@ -1949,6 +1949,35 @@
     return referenceMaterials.get(blob)
   }
 
+  // 提示词补充 typed in Chinese is followed far less than the same words in English, so the local AI
+  // 助手 translates it first (the builder then names the colours and the placement, see
+  // supplementClause). Once per wording; no assistant or a failed translation keeps the Chinese,
+  // which is what every run used to get.
+  const SUPPLEMENT_TIMEOUT_MS = 120000
+  const supplementTranslations = new Map()
+  const translateSupplement = (text) => {
+    const supplement = String(text || '').trim()
+    if (!supplement || !/[㐀-鿿]/.test(supplement)) return Promise.resolve(supplement)
+    if (!supplementTranslations.has(supplement)) {
+      const job = (async () => {
+        const api = window.electronAPI
+        if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return ''
+        let timer = 0
+        const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), SUPPLEMENT_TIMEOUT_MS) })
+        const result = await Promise.race([
+          api.promptAssistantDescribeArtStyle({ purpose: 'aifx-supplement', supplement }),
+          timeout,
+        ]).finally(() => clearTimeout(timer))
+        const english = String(result && result.ok !== false && result.supplement || '').trim()
+        return english && !/[㐀-鿿]/.test(english) ? english : ''
+      })().catch(() => '')
+      supplementTranslations.set(supplement, job)
+      // A failure is not remembered: the next run asks again.
+      job.then((english) => { if (!english) supplementTranslations.delete(supplement) })
+    }
+    return supplementTranslations.get(supplement)
+  }
+
   const adoptReference = (blob, fileName) => new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(blob)
     const image = new Image()
@@ -2116,6 +2145,13 @@
       }
       // A reference read out as words goes through the style path, so its picture is not sent at all.
       const referencePicture = Boolean(state.reference) && !referenceMaterial
+      let supplementEnglish = ''
+      if (/[㐀-鿿]/.test(String(state.supplement || ''))) {
+        setStatus('翻译提示词补充', '')
+        supplementEnglish = await stoppable(translateSupplement(state.supplement))
+      } else {
+        supplementEnglish = String(state.supplement || '').trim()
+      }
       setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
@@ -2156,6 +2192,8 @@
             ? { id: 'reference', ...referenceMaterial, accent: state.reference.accent }
             : state.attribute,
           supplement: state.supplement,
+          // Older compute nodes ignore this and keep using the Chinese above.
+          supplementEnglish,
           shape: currentShape(),
           plainShape: currentPlainShape(),
           shapeArchetype: state.shapeArchetype,

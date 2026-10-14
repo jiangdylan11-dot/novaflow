@@ -592,10 +592,17 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       return requestWithCache('reverseImagePrompt', normalized.request, normalized.timeoutMs);
     },
     async describeArtStyle(payload) {
+      // AI 特效 reads its 参考图 as a material entry, and has its 提示词补充 translated, through this same
+      // call, so the action list, the protocol and the control plane stay as they are; everything else
+      // still gets the style sentence.
+      if (payload?.purpose === 'aifx-supplement') {
+        const supplement = String(payload?.supplement || '').trim().slice(0, 400);
+        if (!supplement) return invalid(new Error('没有要翻译的提示词补充'));
+        const result = await requestWithCache('describeArtStyle', { purpose: 'aifx-supplement', supplement }, 120000);
+        return result?.ok ? { ok: true, supplement: String(result.data?.supplement || '').slice(0, 600), model: String(result.data?.model || '') } : result;
+      }
       const dataUrl = String(payload?.dataUrl || '');
       if (!dataUrl.startsWith('data:image/')) return invalid(new Error('请先选择可分析的图片'));
-      // AI 特效 reads its 参考图 as a material entry through this same call, so the action list, the
-      // protocol and the control plane stay as they are; everything else still gets the style sentence.
       const material = payload?.purpose === 'aifx-material';
       const result = await requestWithCache('describeArtStyle', {
         images: [{ name: sanitizeFileName(payload?.name, 'scene.png'), dataUrl }],
