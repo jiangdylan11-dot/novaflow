@@ -143,11 +143,12 @@
   }
 
   // 色键抠图 (no AI mask): a frame whose border a burst covers falls back to the clip's screen
-  // (detectSequenceScreen), a clip with no plain screen stays as it is, and the two sliders
-  // remap the automatic alpha: 去底 clears faint leftovers, 实心 makes partly clear material solid.
+  // (detectSequenceScreen), a clip with no plain screen stays as it is, and three sliders shared
+  // with AI抠图's mask mode adjust the result: 去底 clears faint leftovers (0-100), 修边 shrinks
+  // (-) or grows (+) the edge in pixels like the AI 修边, 羽化 softens it (0-10 px). 0 = unchanged.
   function matte(frame, options = {}) {
     const result = matteScreen(frame, options) || (options.keepUndetected ? untouched(frame) : null);
-    return result && options.keyTune ? tuneAlpha(result, options.keyTune) : result;
+    return result && options.keyTune ? tuneResult(result, options.keyTune) : result;
   }
 
   function untouched(frame) {
@@ -156,16 +157,90 @@
     return { width: frame.width, height: frame.height, data, alpha, screen: null };
   }
 
-  function tuneAlpha(result, tune) {
-    const floor = clamp(Number(tune.floor) / 100 || 0), solid = clamp(Number(tune.solid) / 100 || 0);
-    if (!floor && !solid) return result;
-    const lo = floor * .5, hi = Math.max(lo + .02, 1 - solid * .7), { data, alpha } = result;
-    for (let p = 0, i = 0; p < alpha.length; p++, i += 4) {
-      if (!alpha[p]) continue;
-      alpha[p] = data[i + 3] = Math.round(clamp((alpha[p] / 255 - lo) / (hi - lo)) * 255);
-      if (!alpha[p]) data[i] = data[i + 1] = data[i + 2] = 0;
+  const floorAlpha = (value, floor) => Math.round(clamp((value / 255 - floor * .5) / (1 - floor * .5)) * 255);
+
+  // One 3x3 min (shrink) or max (grow) pass. Growing copies the colour of the neighbour that
+  // gives the alpha, so new edge pixels carry the subject's colour, not the cleared black.
+  function morphPass(alpha, rgb, w, h, grow) {
+    const nextAlpha = new Uint8ClampedArray(alpha.length), nextRgb = rgb && new Uint8ClampedArray(rgb.length);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      let best = alpha[p], from = p;
+      for (let yy = Math.max(0, y - 1); yy <= Math.min(h - 1, y + 1); yy++) for (let xx = Math.max(0, x - 1); xx <= Math.min(w - 1, x + 1); xx++) {
+        const q = yy * w + xx;
+        if (grow ? alpha[q] > best : alpha[q] < best) { best = alpha[q]; from = grow ? q : from; }
+      }
+      nextAlpha[p] = best;
+      if (nextRgb) for (let c = 0; c < 3; c++) nextRgb[p * 3 + c] = rgb[from * 3 + c];
+    }
+    return { alpha: nextAlpha, rgb: nextRgb };
+  }
+
+  // Whole pixels, then the fraction as an eased blend with one more pass (the AI 修边's rule).
+  function trimEdge(alpha, rgb, w, h, amount) {
+    const size = Math.min(10, Math.abs(Number(amount) || 0)), whole = Math.floor(size), grow = amount > 0;
+    let cur = { alpha, rgb };
+    for (let n = 0; n < whole; n++) cur = morphPass(cur.alpha, cur.rgb, w, h, grow);
+    const part = 1 - (1 - (size - whole)) ** 2;
+    if (part < 1e-6) return cur;
+    const next = morphPass(cur.alpha, cur.rgb, w, h, grow), out = new Uint8ClampedArray(alpha.length), outRgb = rgb && new Uint8ClampedArray(rgb.length);
+    for (let p = 0; p < out.length; p++) {
+      const a0 = cur.alpha[p] * (1 - part), a1 = next.alpha[p] * part;
+      out[p] = Math.round(a0 + a1);
+      if (outRgb) for (let c = 0; c < 3; c++) outRgb[p * 3 + c] = Math.round((cur.rgb[p * 3 + c] * a0 + next.rgb[p * 3 + c] * a1) / Math.max(1e-6, a0 + a1));
+    }
+    return { alpha: out, rgb: outRgb };
+  }
+
+  // Softens the outline only: the subject's footprint (alpha > 8) is blurred (two box passes per
+  // axis, close to a gaussian) and the alpha fades over the last few pixels inside it. Inside
+  // detail and colour stay as they are; blurring a glow's alpha would blur the glow itself.
+  function featherEdge(alpha, rgb, w, h, radius) {
+    const r = Math.round(Math.min(10, Math.max(0, Number(radius) || 0)));
+    if (!r) return { alpha, rgb };
+    let buf = new Float32Array(w * h), tmp = new Float32Array(w * h);
+    for (let p = 0; p < buf.length; p++) buf[p] = alpha[p] > 8 ? 1 : 0;
+    const pass = (src, dst, horizontal) => {
+      const outer = horizontal ? h : w, inner = horizontal ? w : h, span = 2 * r + 1;
+      for (let o = 0; o < outer; o++) {
+        const at = i => horizontal ? o * w + i : i * w + o;
+        let sum = 0;
+        for (let i = -r; i <= r; i++) sum += src[at(Math.min(inner - 1, Math.max(0, i)))];
+        for (let i = 0; i < inner; i++) {
+          dst[at(i)] = sum / span;
+          sum += src[at(Math.min(inner - 1, i + r + 1))] - src[at(Math.max(0, i - r))];
+        }
+      }
+    };
+    for (let k = 0; k < 2; k++) { pass(buf, tmp, true); pass(tmp, buf, false); }
+    const out = new Uint8ClampedArray(alpha.length);
+    for (let p = 0; p < out.length; p++) out[p] = Math.round(alpha[p] * clamp(2 * buf[p] - .5));
+    return { alpha: out, rgb };
+  }
+
+  function tuneResult(result, tune) {
+    const floor = clamp(Number(tune.floor) / 100 || 0), trim = Number(tune.trim) || 0, feather = Number(tune.feather) || 0;
+    if (!floor && !trim && !feather) return result;
+    const { width: w, height: h, data } = result, rgb = new Uint8ClampedArray(w * h * 3);
+    let alpha = result.alpha;
+    if (floor) alpha = alpha.map(value => floorAlpha(value, floor));
+    for (let p = 0; p < alpha.length; p++) for (let c = 0; c < 3; c++) rgb[p * 3 + c] = data[p * 4 + c];
+    let cur = trim ? trimEdge(alpha, rgb, w, h, trim) : { alpha, rgb };
+    if (feather) cur = featherEdge(cur.alpha, cur.rgb, w, h, feather);
+    for (let p = 0, i = 0; p < cur.alpha.length; p++, i += 4) {
+      result.alpha[p] = data[i + 3] = cur.alpha[p];
+      for (let c = 0; c < 3; c++) data[i + c] = cur.alpha[p] ? cur.rgb[p * 3 + c] : 0;
     }
     return result;
+  }
+
+  // AI抠图 with 光效透明保留 off works on the AI mask alone (colour is the source): the same
+  // 去底 and 羽化 on the mask; its 修边 stays the bundle's own.
+  function tuneMask(mask, width, height, tune = {}) {
+    const floor = clamp(Number(tune.floor) / 100 || 0);
+    let alpha = floor ? Uint8ClampedArray.from(mask, value => floorAlpha(value, floor)) : new Uint8ClampedArray(mask);
+    if (Number(tune.feather) > 0) alpha = featherEdge(alpha, null, width, height, tune.feather).alpha;
+    return alpha;
   }
 
   // The screen most frames agree on (kind by majority, colour by per-channel median).
@@ -1396,5 +1471,5 @@
       return new Uint8Array(await blob.arrayBuffer());
     })().catch(error=>{rawCalibration=null;throw error;});
   }
-  return { detectScreen, detectSequenceScreen, matte, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
+  return { detectScreen, detectSequenceScreen, matte, tuneMask, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
 });
