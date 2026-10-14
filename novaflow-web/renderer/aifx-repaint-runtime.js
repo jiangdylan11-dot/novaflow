@@ -1942,7 +1942,15 @@
         const entry = result && result.ok !== false && result.material
         const material = String(entry && entry.material || '').trim()
         if (!material) return null
-        return { name: String(entry.name || '').trim() || 'REFERENCE', material, breakup: String(entry.breakup || '').trim() }
+        // `elements` / `colours` let 提示词补充 overrule the arrangement and the colour (see
+        // referenceMaterial); a node that predates them sends the finished sentence alone.
+        return {
+          name: String(entry.name || '').trim() || 'REFERENCE',
+          material,
+          elements: String(entry.elements || '').trim(),
+          colours: String(entry.colours || '').trim(),
+          breakup: String(entry.breakup || '').trim(),
+        }
       })().catch(() => null)
       referenceMaterials.set(blob, job)
     }
@@ -2145,13 +2153,25 @@
       }
       // A reference read out as words goes through the style path, so its picture is not sent at all.
       const referencePicture = Boolean(state.reference) && !referenceMaterial
-      let supplementEnglish = ''
-      if (/[㐀-鿿]/.test(String(state.supplement || ''))) {
+      // 提示词补充 wins where it conflicts: its spread and colour asks replace the defaults (see
+      // splitSupplement), and only what is left is translated and said. With no style and no
+      // picture the words are the material itself and go through whole.
+      const promptOnly = !state.reference && !restyle.getPreset(state.attribute)
+      const controls = promptOnly ? null : restyle.splitSupplement(state.supplement)
+      const toSay = controls ? controls.additions : String(state.supplement || '').trim()
+      let supplementEnglish = toSay
+      if (/[㐀-鿿]/.test(toSay)) {
         setStatus('翻译提示词补充', '')
-        supplementEnglish = await stoppable(translateSupplement(state.supplement))
-      } else {
-        supplementEnglish = String(state.supplement || '').trim()
+        // A failed translation keeps the Chinese rather than dropping the request.
+        supplementEnglish = (await stoppable(translateSupplement(toSay))) || toSay
       }
+      const recolour = controls && controls.colour
+      const overrides = { shape: currentShape(), spread: controls ? controls.spread : '', colour: recolour }
+      const preset = restyle.getPreset(state.attribute)
+      const attribute = referenceMaterial
+        ? { id: 'reference', ...referenceMaterial, material: restyle.referenceMaterial(referenceMaterial, overrides), accent: (recolour && recolour.tint) || state.reference.accent }
+        : preset && (overrides.spread || recolour) ? restyle.presetWithOverrides(preset, overrides) : state.attribute
+      const tint = state.reference ? ((recolour && recolour.tint) || state.reference.accent) : undefined
       setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
@@ -2186,14 +2206,13 @@
         const workflow = restyle.buildWorkflow({
           sourceVideo: state.source.uploadedName,
           referenceImage: referencePicture ? state.reference.uploadedName : '',
-          // The picture's own colour paints the init; see referenceAccent.
-          tint: state.reference ? state.reference.accent : undefined,
-          attribute: referenceMaterial
-            ? { id: 'reference', ...referenceMaterial, accent: state.reference.accent }
-            : state.attribute,
+          // The picture's own colour paints the init (see referenceAccent), unless the words recolour it.
+          tint,
+          attribute,
           supplement: state.supplement,
-          // Older compute nodes ignore this and keep using the Chinese above.
+          // Older compute nodes ignore these and keep using the Chinese above.
           supplementEnglish,
+          supplementControls: controls ? { spread: controls.spread, colour: recolour ? recolour.words : '' } : undefined,
           shape: currentShape(),
           plainShape: currentPlainShape(),
           shapeArchetype: state.shapeArchetype,
@@ -3250,6 +3269,29 @@
       if (refs.librarySave && !refs.librarySave.hidden) closeLibrarySaveDialog()
       else closeLibrary()
     })
+    // Space plays and pauses the timeline whatever has focus. Without this it only "pressed" the
+    // last thing clicked: the play button after a click on it, a candidate card after picking one -
+    // which picked the card again instead. Typing and the library dialog keep their Space.
+    const isSpace = (event) => event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar'
+    const typingIn = (node) => node instanceof Element && Boolean(node.closest(
+      'textarea, select, [contenteditable=""], [contenteditable="true"], input:not([type]), '
+      + 'input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="url"]'))
+    let spaceTaken = false
+    document.addEventListener('keydown', (event) => {
+      if (!isSpace(event) || !isAifxAppOpen() || typingIn(event.target)) return
+      if (refs.library && !refs.library.hidden) return
+      event.preventDefault()
+      event.stopPropagation()
+      spaceTaken = true
+      if (!event.repeat) togglePlayback()
+    }, true)
+    // A focused button fires its click on keyup; the press above already did the job.
+    document.addEventListener('keyup', (event) => {
+      if (!spaceTaken || !isSpace(event)) return
+      spaceTaken = false
+      event.preventDefault()
+      event.stopPropagation()
+    }, true)
     // Everything above is bound; moving the node keeps its listeners and lets
     // the mask escape the shell's stacking context.
     document.body.appendChild(refs.library)

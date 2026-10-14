@@ -708,6 +708,130 @@
     return `Also, around the ${shapeNoun(shape)}: ${text}${not}. Each added element is clearly visible and keeps its own colours.`
   }
 
+  // 提示词补充 overrules the defaults: where the artist's words conflict with what the panel would
+  // do anyway, the words win. Measured 2026-10-15 with a leaf reference: a control sentence merely
+  // added when the material already says the opposite changes nothing (2.4% -> 3.4% of the lit
+  // pixels far from the crescent), replacing the default does (-> 18.3%). Spread and the overall
+  // colour are taken over; size and amount moved by a hair at this denoise and speed not at all,
+  // so those words go on as part of the request. The split is by rule, phrase by phrase: the local
+  // model asked to do it filed 增加少量金币 as "fewer elements overall" and lost half the
+  // translation on the way.
+  const SUPPLEMENT_ADD = /加|增加|添加|出现|冒|飘出|飘落|撒|长出|多出|喷|溅|拖出|拖尾|缠绕|绕|围绕|结冰|滴落|变成(?!.*色)|变(?!成?.*色)|换成(?!.*色)/
+  const SUPPLEMENT_PLACE = /左|右|上|下|顶|底|角|中间|中心|周围|边缘|四周/
+  const SUPPLEMENT_RECOLOUR = /(?:变成|改成|换成|改为|变为|变|换)(.{0,8}?(?:色|渐变))|偏(.{1,4})/
+  const SUPPLEMENT_TIGHT = /集中|紧凑|收拢|聚拢|聚集|靠近|贴近|紧密|紧贴|密集|(?:扩散|范围|散)\S*?(?:小|不要太|别太|不要|收|窄|近|紧)/
+  const SUPPLEMENT_WIDE = /散开|散一点|散一些|更散|再散|散些|铺满|满屏|全屏|四散|分散|飘远|整个画面|(?:扩散|范围)\S*?(?:大|广|开|远|满)/
+  const COLOUR_WORDS = Object.freeze([
+    ['彩虹', 'rainbow', ''], ['红', 'red', '#ff3b30'], ['橙', 'orange', '#ff8a1f'], ['黄', 'yellow', '#ffd21f'],
+    ['金', 'gold', '#ffc247'], ['绿', 'green', '#3ddc5a'], ['青', 'cyan', '#3ee6f0'], ['蓝', 'blue', '#3d7bff'],
+    ['紫', 'purple', '#9b5cff'], ['粉', 'pink', '#ff6fb5'], ['白', 'white', '#f2f2f2'], ['银', 'silver', '#c9d1d9'],
+  ])
+
+  function recolourOf(text) {
+    const source = String(text || '')
+    let rest = source
+    const found = []
+    for (const [zh, en, hex] of COLOUR_WORDS) {
+      const at = rest.indexOf(zh)
+      if (at < 0) continue
+      found.push({ at, en, hex })
+      rest = rest.split(zh).join(' '.repeat(zh.length))
+    }
+    if (!found.length) return null
+    found.sort((a, b) => a.at - b.at)
+    return {
+      words: found.map(item => item.en).join(' and ') + (/渐变/.test(source) ? ' gradient' : ''),
+      // What stands in for every old colour word: 'blue', 'pink-purple'.
+      adjective: found.map(item => item.en).join('-'),
+      tint: (found.find(item => item.hex) || {}).hex || '',
+    }
+  }
+
+  // { additions: the phrases still to be said (Chinese, for translation), spread: '' | 'tight' |
+  // 'wide', colour: null | { words, tint } }.
+  function splitSupplement(text) {
+    const additions = []
+    let spread = ''
+    let colour = null
+    for (const part of String(text || '').split(/[，,。；;、\s]+/).filter(Boolean)) {
+      const recolour = SUPPLEMENT_RECOLOUR.exec(part)
+      const asked = recolour && recolourOf(recolour[1] || recolour[2])
+      if (asked) {
+        colour = asked
+        continue
+      }
+      if (SUPPLEMENT_ADD.test(part)) {
+        additions.push(part)
+        continue
+      }
+      const tight = SUPPLEMENT_TIGHT.test(part)
+      if (tight || SUPPLEMENT_WIDE.test(part)) {
+        spread = tight ? 'tight' : 'wide'
+        // 集中在左下角 says where as well; that half goes on as words.
+        if (SUPPLEMENT_PLACE.test(part)) additions.push(part)
+        continue
+      }
+      additions.push(part)
+    }
+    return { additions: additions.join('，'), spread, colour }
+  }
+
+  // Where the read-out elements sit. It used to be the model's own words, which nothing could
+  // overrule; as a rule it can. Packed close is the default: left to drift, a leaf reference filled
+  // the whole frame with sparse leaves however densely the request asked for them.
+  const SPREADS = Object.freeze({
+    '': 'packed densely close along it in uneven clusters, only a few drifting a short way off',
+    tight: 'packed very tightly along it in dense clusters, none drifting away from it',
+    wide: 'scattered widely around it, many drifting far out from it',
+  })
+
+  function referenceArrangement(shape, spread) {
+    return `A bright main stroke of light runs along the ${shapeNoun(shape)}, and the elements are in mixed `
+      + `sizes (a few large, many medium and tiny), ${SPREADS[spread] || SPREADS['']}, turned at different `
+      + 'angles and overlapping, with fine sparkles and soft glow in between. Varied in size and angle, NOT a '
+      + 'row of identical evenly spaced elements, NOT one big picture behind the effect.'
+  }
+
+  // A recolour swaps the old colour words for the new one rather than arguing with them: off an
+  // init painted blue, "yellow petals" still pulled the sunflower back to a plain line. Swapped, not
+  // deleted - in 黄金 the colour is the noun ("polished yellow gold").
+  const COLOUR_PHRASE = /\b(?:(?:light|dark|deep|bright|pale|soft|vivid|neon|rich|warm|cool|golden)[\s-]+)*(?:red|crimson|scarlet|orange|amber|yellow|gold|golden|green|emerald|cyan|teal|turquoise|blue|purple|violet|magenta|pink|white|silver|grey|gray|brown|black)(?![\w-]*-hot)(?:[\s-]+(?:red|orange|yellow|gold|green|cyan|teal|blue|purple|violet|pink|white|brown|black))*\b/gi
+
+  function recoloured(text, colour) {
+    const swapped = String(text || '').replace(COLOUR_PHRASE, colour.adjective || colour.words)
+    // "orange and yellow flame" comes out as "blue and blue flame".
+    return swapped.replace(/\b([\w-]+)(?:(?:,\s*|\s+and\s+)\1\b)+/g, '$1').replace(/\s{2,}/g, ' ').trim()
+  }
+
+  // A reference read out as { name, elements, colours, breakup } becomes the material sentence the
+  // style path takes; an older node's read (a finished `material` sentence) goes in as it came.
+  function referenceMaterial(entry, { shape = '', spread = '', colour = null } = {}) {
+    const read = entry || {}
+    const elements = String(read.elements || '').trim()
+    if (!elements) return String(read.material || '')
+    const colours = String(read.colours || '').trim()
+    const body = (colour ? recoloured(elements, colour) : elements).replace(/[\s.]+$/, '') + '.'
+    const palette = colour
+      ? `All of it in ${colour.words}${colours ? ', NOT ' + colours : ''}.`
+      : colours ? `Main colours: ${colours}.` : ''
+    return [body, palette, referenceArrangement(shape || DEFAULT_SHAPE, spread)].filter(Boolean).join(' ')
+  }
+
+  // The same overrides on a 风格库 preset, which has no arrangement of its own to replace.
+  function presetWithOverrides(preset, { shape = '', spread = '', colour = null } = {}) {
+    if (!preset || (!spread && !colour)) return preset
+    const noun = shapeNoun(shape || DEFAULT_SHAPE)
+    const placement = spread === 'wide'
+      ? ` Its pieces are thrown widely around the ${noun}, many drifting far out from it.`
+      : spread === 'tight' ? ` Everything stays packed tightly along the ${noun}, nothing drifting away from it.` : ''
+    return {
+      ...preset,
+      name: colour ? recoloured(preset.name, colour) : preset.name,
+      material: (colour ? recoloured(preset.material, colour) + ` All of it in ${colour.words}.` : preset.material) + placement,
+      accent: colour && colour.tint ? colour.tint : preset.accent,
+    }
+  }
+
   function isPromptOnly(options) {
     return !options.attribute && !options.hasReferenceImage
       && Boolean(String(options.supplement || '').trim())
@@ -722,9 +846,12 @@
       ? null
       : resolvePreset(options.attribute)
     const supplement = String(options.supplement || '').trim()
-    // A translation, when the panel has one, stands in for the artist's own words.
+    // A translation, when the panel has one, stands in for the artist's own words. A panel that has
+    // already taken the controls out (`supplementControls`) sends only what is left to be said, so
+    // the Chinese - controls and all - is the fallback of older panels alone.
     const english = String(options.supplementEnglish || '').trim()
-    const extra = english ? ' ' + english : supplement ? ' ' + supplement : ''
+    const handled = options.supplementControls != null
+    const extra = english ? ' ' + english : supplement && !handled ? ' ' + supplement : ''
     const shape = String(options.shape || '').trim() || DEFAULT_SHAPE
     // With a reference image the shape must not describe the material. Seven of
     // the archetypes say "of light"; the detector hands over a plain wording
@@ -960,6 +1087,11 @@
     isPromptOnly,
     colourName,
     supplementClause,
+    splitSupplement,
+    referenceArrangement,
+    referenceMaterial,
+    presetWithOverrides,
+    recoloured,
     composePrompt,
     buildWorkflow,
     validateWorkflow,

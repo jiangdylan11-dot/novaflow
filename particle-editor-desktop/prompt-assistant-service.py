@@ -163,9 +163,14 @@ ART_STYLE_REALISTIC_SURFACE_MARK = "true-to-life fine surface detail"
 # How it is written decides the look, tried on 葵花 / 玫瑰 / 水晶 / 熔岩 / 法阵 (2026-10-15): a plain
 # material ("layered petal shards") drew one big petal crown behind the frame, a sticker; pieces
 # "with centres" drew rows of flat mini flowers; light-only wording kept nothing but the colour; and
-# evenly repeated elements of any kind read as ugly. What held up names the thing and its features
-# and asks for a main light stroke with elements of mixed size, uneven clusters and drift. Never
-# list example shapes in this question: the model copies them into every answer (runes got petals).
+# evenly repeated elements of any kind read as ugly. What held up names the thing and its features,
+# with a main light stroke and elements of mixed size packed close along it. That arrangement is no
+# longer this model's to write: 提示词补充 has to be able to overrule it (散开 must scatter), so the
+# read stops at the elements and their colours and the panel adds the arrangement by rule
+# (aifx-restyle.workflow.js referenceArrangement). Whole copies alone strung a sunflower along the
+# frame like beads; "mostly loose pieces" lost the name and drew generic yellow flowers; whole copies
+# mixed with loose pieces, always under the thing's common name, kept both. Never list example
+# shapes in this question: the model copies them into every answer (runes got petals).
 EFFECT_MATERIAL_MAX_NEW_TOKENS = 300
 EFFECT_MATERIAL_SYSTEM_TEXT = (
     "You write material descriptions for 2D game VFX artists, who build glowing effects on a black background "
@@ -173,24 +178,30 @@ EFFECT_MATERIAL_SYSTEM_TEXT = (
 )
 EFFECT_MATERIAL_QUESTION = (
     "This picture is a reference for a 2D game VFX element: the effect must clearly look like it is made from "
-    "what this picture shows. Look at what the picture is made of and describe the effect the way a good VFX "
-    "artist builds it, with VARIATION: a bright main stroke of light along the effect's own shape, and around "
-    "it elements taken from the picture - its own pieces, and a few small whole copies of its object if that "
-    "suits it - in mixed sizes (a few large, many medium and tiny), in uneven clusters with gaps, turned at "
-    "different angles, overlapping, some peeling off and drifting away, with fine sparkles and soft glow in "
-    "between. Every element keeps the real shape and ALL the main colours it has in the picture, so anyone "
-    "recognises the reference at once. Never a row of identical, evenly spaced elements; never the picture as "
-    "one big image behind or around the effect. "
-    "Reply exactly as {\"name\": \"...\", \"material\": \"...\", \"breakup\": \"...\"} where "
-    "name is 1-3 English words in capitals; "
-    "material starts with \"made of\" and says, in at most 70 words, the main light stroke and the elements - "
-    "call the thing by its common name and give the two or three features that make it recognisable - with "
-    "their shape, every main colour, their mixed sizes and how they cluster, turn and drift, then the sentence "
-    "\"Varied in size, spacing and angle, NOT a row of identical evenly spaced elements, NOT one big picture "
-    "behind the effect,\" followed by NO items for OTHER materials it could be confused with, never what the "
-    "picture shows; "
+    "what this picture shows. Say what it is made of. "
+    "Reply exactly as {\"name\": \"...\", \"elements\": \"...\", \"colours\": \"...\", \"breakup\": \"...\"} where "
+    "name is the thing's common name in capitals, 1-3 English words; "
+    "elements starts with \"made of\" and says, in at most 45 words, which elements the effect is built from - "
+    "small whole copies of the thing mixed with many loose pieces of it - always calling the thing by its "
+    "common name, with the two or three features that make it recognisable at a glance, their real shape "
+    "and colours, and that they glow softly with short light trails; then NO items for OTHER materials it "
+    "could be confused with, never what the picture shows. Never a count, and nothing about where the elements "
+    "are or how they are arranged; "
+    "colours is the two to four main colours of the thing itself, never the background, as plain English colour "
+    "words separated by commas; "
     "breakup is one sentence starting with \"It\" and a verb in capitals, saying how it breaks apart or disperses."
 )
+# The panel's default arrangement, for a panel too old to add its own (it takes `material` as it comes).
+# The same words as referenceArrangement with no spread asked for; keep the two together.
+EFFECT_MATERIAL_DEFAULT_ARRANGEMENT = (
+    "A bright main stroke of light runs along the effect, and the elements are in mixed sizes (a few large, "
+    "many medium and tiny), packed densely close along it in uneven clusters, only a few drifting a short way "
+    "off, turned at different angles and overlapping, with fine sparkles and soft glow in between. Varied in "
+    "size and angle, NOT a row of identical evenly spaced elements, NOT one big picture behind the effect."
+)
+# The model still counts what the picture shows ("two crystal columns") and lists the black plate as a
+# colour, whatever the question says.
+EFFECT_MATERIAL_COUNT = re.compile(r"^(made of\s+)(?:(?:a\s+)?(?:single|pair of|couple of)|one|two|three|four|five|several)\s+", re.I)
 # ...and its 提示词补充, which the video model barely follows in Chinese: 多点彩带飘落 appended as typed drew no
 # ribbon at all. This is a faithful translation only; asked to write the clause itself the model invents (彩带
 # came back as "four petal shards"), so the colours, the NOT and the placement are added by rule afterwards.
@@ -19880,22 +19891,31 @@ class PromptAssistant:
             raise ValueError("没有读出参考图的材质")
         flat = lambda value: " ".join(str(value or "").split())  # noqa: E731
         name = flat(parsed.get("name")).upper()[:40]
-        material = flat(parsed.get("material"))
-        if not material:
+        elements = flat(parsed.get("elements") or parsed.get("material"))
+        if not elements:
             raise ValueError("没有读出参考图的材质")
-        if not material.lower().startswith("made of"):
-            material = "made of " + material
+        if not elements.lower().startswith("made of"):
+            elements = "made of " + elements
+        elements = EFFECT_MATERIAL_COUNT.sub(r"\1", elements)
         # Qwen3 now and then files the NO-list under a key of its own ({"NO": "NO METAL, ..."}) instead of
-        # ending the material sentence with it; it belongs in the sentence, where the presets carry theirs.
+        # ending the sentence with it; it belongs in the sentence, where the presets carry theirs.
         exclusions = [
             flat(value) for key, value in parsed.items()
-            if key not in {"name", "material", "breakup"} and re.match(r"^\s*NO\b", str(value or ""))
+            if key not in {"name", "elements", "material", "colours", "breakup"} and re.match(r"^\s*NO\b", str(value or ""))
         ]
-        material = " ".join([material.rstrip(" .") + "."] + [item.rstrip(" .") + "." for item in exclusions])[:600]
+        elements = " ".join([elements.rstrip(" .") + "."] + [item.rstrip(" .") + "." for item in exclusions])[:500]
+        colours = ", ".join(
+            colour for colour in (flat(item) for item in re.split(r",|;|\band\b", flat(parsed.get("colours") or parsed.get("colors"))))
+            if colour and colour.lower() not in {"black", "dark", "background"}
+        )[:120]
         breakup = flat(parsed.get("breakup"))
         if not breakup.startswith("It "):
             breakup = ""
-        result = {"name": name or "REFERENCE", "material": material, "breakup": breakup[:200]}
+        # `material` is the finished sentence for a panel that cannot add the arrangement itself.
+        material = " ".join(part for part in (
+            elements, f"Main colours: {colours}." if colours else "", EFFECT_MATERIAL_DEFAULT_ARRANGEMENT,
+        ) if part)[:900]
+        result = {"name": name or "REFERENCE", "material": material, "elements": elements, "colours": colours, "breakup": breakup[:200]}
         log_prompt_assistant_event("effect_material_described", command="describeArtStyle", **result)
         return {"material": result, "rawMaterial": " ".join(raw.split())[:1200], "model": self.reverse_model_path().name[:160]}
 

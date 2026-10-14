@@ -153,6 +153,8 @@ try {
   const material = (await call('POST', '/local/prompt-assistant/describe-art-style', { name: 'reference.jpg', dataUrl: 'data:image/jpeg;base64,QQ==', purpose: 'aifx-material' })).body;
   check(material.ok === true && material.material?.material === 'made of petals. NO METAL.' && material.material?.name === 'GLOWING PETAL' && material.style === undefined,
     'AI 特效 gets its 参考图 back as a material entry through the same call');
+  check(material.material?.elements === 'made of petals.' && material.material?.colours === 'yellow, red',
+    'the elements and colours come through apart, so 提示词补充 can overrule the arrangement and the colour');
   const translated = (await call('POST', '/local/prompt-assistant/describe-art-style', { purpose: 'aifx-supplement', supplement: '多点彩带飘落' })).body;
   check(translated.ok === true && translated.supplement === 'Multiple multicolored ribbons falling' && translated.style === undefined,
     'AI 特效 has its 提示词补充 translated through the same call, with no picture');

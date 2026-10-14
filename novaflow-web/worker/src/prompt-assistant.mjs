@@ -613,7 +613,13 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         const entry = result.data?.material || {};
         return {
           ok: true,
-          material: { name: String(entry.name || '').slice(0, 60), material: String(entry.material || '').slice(0, 800), breakup: String(entry.breakup || '').slice(0, 300) },
+          material: {
+            name: String(entry.name || '').slice(0, 60),
+            material: String(entry.material || '').slice(0, 1000),
+            elements: String(entry.elements || '').slice(0, 600),
+            colours: String(entry.colours || '').slice(0, 160),
+            breakup: String(entry.breakup || '').slice(0, 300)
+          },
           model: String(result.data?.model || '')
         };
       }

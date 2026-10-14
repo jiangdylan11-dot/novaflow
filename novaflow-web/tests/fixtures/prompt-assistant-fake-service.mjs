@@ -44,7 +44,7 @@ createInterface({ input: process.stdin }).on('line', line => {
     return answer(request, { supplement: 'Multiple multicolored ribbons falling', heard: request.supplement, model: 'fake' });
   }
   if (request.command === 'describeArtStyle' && request.purpose === 'aifx-material') {
-    return answer(request, { material: { name: 'GLOWING PETAL', material: 'made of petals. NO METAL.', breakup: 'It SHEDS petals.' }, model: 'fake' });
+    return answer(request, { material: { name: 'GLOWING PETAL', material: 'made of petals. NO METAL.', elements: 'made of petals.', colours: 'yellow, red', breakup: 'It SHEDS petals.' }, model: 'fake' });
   }
   if (request.command === 'describeArtStyle') return answer(request, { style: 'flat vector', model: 'fake' });
   emit({ id: request.id, ok: false, error: 'unknown command ' + request.command, errorCode: 'unknown-command' });
