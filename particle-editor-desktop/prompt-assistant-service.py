@@ -160,22 +160,36 @@ ART_STYLE_REALISTIC_SURFACE_MARK = "true-to-life fine surface detail"
 # "made of ..." / how it breaks up). The video model follows words and barely the picture: measured
 # 2026-10-14 on a border-light loop, a sunflower handed over as a reference came back as thin yellow
 # lines, the same sunflower written out by this model came back as petals running along the light.
+# How it is written decides the look, tried on 葵花 / 玫瑰 / 水晶 / 熔岩 / 法阵 (2026-10-15): a plain
+# material ("layered petal shards") drew one big petal crown behind the frame, a sticker; pieces
+# "with centres" drew rows of flat mini flowers; light-only wording kept nothing but the colour; and
+# evenly repeated elements of any kind read as ugly. What held up names the thing and its features
+# and asks for a main light stroke with elements of mixed size, uneven clusters and drift. Never
+# list example shapes in this question: the model copies them into every answer (runes got petals).
 EFFECT_MATERIAL_MAX_NEW_TOKENS = 300
 EFFECT_MATERIAL_SYSTEM_TEXT = (
     "You write material descriptions for 2D game VFX artists, who build glowing effects on a black background "
     "out of the material you describe. Reply with one JSON object only: no preamble, no markdown."
 )
 EFFECT_MATERIAL_QUESTION = (
-    "This picture is a material reference. Describe its MATERIAL so a glowing VFX element can be made of it. "
+    "This picture is a reference for a 2D game VFX element: the effect must clearly look like it is made from "
+    "what this picture shows. Look at what the picture is made of and describe the effect the way a good VFX "
+    "artist builds it, with VARIATION: a bright main stroke of light along the effect's own shape, and around "
+    "it elements taken from the picture - its own pieces, and a few small whole copies of its object if that "
+    "suits it - in mixed sizes (a few large, many medium and tiny), in uneven clusters with gaps, turned at "
+    "different angles, overlapping, some peeling off and drifting away, with fine sparkles and soft glow in "
+    "between. Every element keeps the real shape and ALL the main colours it has in the picture, so anyone "
+    "recognises the reference at once. Never a row of identical, evenly spaced elements; never the picture as "
+    "one big image behind or around the effect. "
     "Reply exactly as {\"name\": \"...\", \"material\": \"...\", \"breakup\": \"...\"} where "
-    "name is the material in 1-3 English words in capitals; "
-    "material starts with \"made of\" and says, in at most 50 words, what the effect is built from - its pieces or "
-    "substance, their shape, their colours, their surface finish, how they glow or catch the light and how they "
-    "move - then one short sentence of what it is NOT, written as \"NO ...\" items, naming materials it could be "
-    "confused with; "
-    "breakup is one sentence starting with \"It\" and a verb in capitals, saying how it breaks apart or disperses. "
-    "Describe the material only: never the picture's subject as a whole object, its background, its framing or "
-    "its composition."
+    "name is 1-3 English words in capitals; "
+    "material starts with \"made of\" and says, in at most 70 words, the main light stroke and the elements - "
+    "call the thing by its common name and give the two or three features that make it recognisable - with "
+    "their shape, every main colour, their mixed sizes and how they cluster, turn and drift, then the sentence "
+    "\"Varied in size, spacing and angle, NOT a row of identical evenly spaced elements, NOT one big picture "
+    "behind the effect,\" followed by NO items for OTHER materials it could be confused with, never what the "
+    "picture shows; "
+    "breakup is one sentence starting with \"It\" and a verb in capitals, saying how it breaks apart or disperses."
 )
 # ...and its 提示词补充, which the video model barely follows in Chinese: 多点彩带飘落 appended as typed drew no
 # ribbon at all. This is a faithful translation only; asked to write the clause itself the model invents (彩带
@@ -184,11 +198,17 @@ EFFECT_SUPPLEMENT_MAX_NEW_TOKENS = 120
 EFFECT_SUPPLEMENT_SYSTEM_TEXT = (
     "You translate short Chinese requests from VFX artists into plain English. Reply with the English only."
 )
+# Unlike the material question, examples are wanted here: without them 绕一圈星星 came back as "orbit
+# once around a star", 火星 was left in Chinese and 彩虹 got the 彩带 colours. The examples are fixed
+# phrases the translation should reproduce, not shapes for the model to reuse.
 EFFECT_SUPPLEMENT_QUESTION = (
-    "Translate this request about a game VFX element into one plain English phrase. Keep its meaning exactly: "
-    "every object, amount, place and motion it names, and nothing added. Spell colours out: 彩, 彩色 or 五彩 "
-    "becomes \"multicoloured (red, blue, green and purple)\"; a named colour stays that colour; when no colour "
-    "is named, name none. Request: "
+    "Translate this request about a game VFX element into one plain English phrase, every word in English. "
+    "Keep its meaning exactly: every object, amount, place and motion it names, and nothing added. Colours: "
+    "彩带, 彩色 or 五彩 means multicoloured (red, blue, green and purple); 彩虹 is a rainbow (red, orange, "
+    "yellow, green, blue and purple); a named colour stays that colour; when no colour is named, name none. "
+    "Examples: 绕一圈星星 -> a ring of stars circling around it; 多点火星飞溅 -> more sparks flying out; "
+    "拖出彩虹光尾 -> trailing a rainbow (red, orange, yellow, green, blue and purple) light tail; "
+    "多点彩带飘落 -> more multicoloured (red, blue, green and purple) ribbons falling. Request: "
 )
 # System turns for the video prompt features (WAN and other non-H3 models); each user turn carries the rules.
 VIDEO_OPTIMIZE_SYSTEM_TEXT = (
