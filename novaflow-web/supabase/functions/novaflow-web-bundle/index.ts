@@ -133,6 +133,34 @@ const PROCESSING_TIMEOUT_SECONDS = 1800;
 const MAX_TASK_ATTEMPTS = 3;
 
 // ---------------------------------------------------------------------------
+// A task's place in line (2026-10-15, user: 节点忙碌时弹框提示排队、已等多久、预计多久，能取消排队).
+// A task still waiting for a node gets `task.queue` from the control plane (or the
+// local queue); a node whose runtime is still drawing other prompts says so in its
+// progress note as "<note> [queue ahead=2 eta=180]". The page reads the marker into
+// task.queue and strips it, so no panel shows it.
+// ---------------------------------------------------------------------------
+const QUEUE_NOTE_RE = /\s*\[queue ahead=(\d+)(?: eta=(\d+))?\]\s*$/;
+
+function withQueueNote(note, { ahead, eta } = {}) {
+  const base = String(note || '').replace(QUEUE_NOTE_RE, '');
+  if (!Number.isFinite(Number(ahead)) || ahead === null) return base;
+  const seconds = eta === null || eta === undefined || !Number.isFinite(Number(eta)) ? '' : ' eta=' + Math.max(0, Math.round(eta));
+  return base + ' [queue ahead=' + Math.max(0, Math.round(ahead)) + seconds + ']';
+}
+
+/**
+ * Rough seconds until a waiting task starts: what the running ones still need plus one
+ * average run per task queued ahead, shared by the nodes that can take them. No recent
+ * run to go by: null (the page says it cannot estimate yet).
+ */
+function estimateQueueWait({ queuedAhead = 0, runningElapsed = [], averageSeconds = 0, workers = 1 } = {}) {
+  const average = Number(averageSeconds) || 0;
+  if (!(average > 0)) return null;
+  const left = runningElapsed.reduce((sum, elapsed) => sum + Math.max(average * 0.1, average - (Number(elapsed) || 0)), 0);
+  return Math.round((left + Math.max(0, Number(queuedAhead) || 0) * average) / Math.max(1, Number(workers) || 1));
+}
+
+// ---------------------------------------------------------------------------
 // Token prefixes. Each token type is a distinct namespace so a token can never
 // be replayed as a different kind of credential.
 // ---------------------------------------------------------------------------
@@ -1835,7 +1863,55 @@ function createControlPlane({ store, secrets, logger }) {
     if (!task || String(task.user_id) !== String(user.id)) {
       throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
     }
-    return { ok: true, task: publicTask(task) };
+    const queue = await queueView(task);
+    return { ok: true, task: queue ? { ...publicTask(task), queue } : publicTask(task) };
+  }
+
+  // A task still waiting for a node gets its place in line: the tasks of the same model
+  // running now and queued ahead of it, the nodes that can take it, and roughly when it
+  // starts (estimateQueueWait over that model's recent runs). The page polls every second,
+  // so the per-model part is kept a few seconds. Counts only, never whose tasks they are.
+  const QUEUE_STATS_TTL_MS = 5000;
+  const queueStatsCache = new Map();
+  async function queueView(task) {
+    if (![TASK_STATE.CREATED, TASK_STATE.QUEUED].includes(task.status)) return null;
+    if (typeof store.queueSnapshot !== 'function' || typeof store.queueStats !== 'function') return null;
+    try {
+      const manifest = task.input_manifest || {};
+      const target = manifest.target_worker_id || null;
+      const key = [task.model_id, target || '', manifest.allow_premium_nodes === false ? 'n' : 'p'].join('|');
+      let stats = queueStatsCache.get(key);
+      if (!stats || Date.now() - stats.at > QUEUE_STATS_TTL_MS) {
+        const [recent, workers] = await Promise.all([
+          store.queueStats({ modelId: task.model_id }),
+          store.countCapableWorkers(task.model_id, Number(manifest.min_vram_mb) || 0, HEARTBEAT_TIMEOUT_SECONDS,
+            target, manifest.allow_premium_nodes !== false)
+        ]);
+        const runs = (recent.recentRuns || [])
+          .map((run) => (Date.parse(run.completed_at) - Date.parse(run.started_at)) / 1000)
+          .filter((seconds) => seconds > 0 && seconds < PROCESSING_TIMEOUT_SECONDS);
+        stats = {
+          at: Date.now(),
+          workers: Number(workers) || 0,
+          runningStartedAt: recent.runningStartedAt || [],
+          averageSeconds: runs.length ? runs.reduce((sum, seconds) => sum + seconds, 0) / runs.length : 0
+        };
+        queueStatsCache.set(key, stats);
+      }
+      const { queuedAhead } = await store.queueSnapshot({ modelId: task.model_id, createdAt: task.created_at });
+      const runningElapsed = (stats.runningStartedAt || [])
+        .map((at) => (Date.now() - Date.parse(at)) / 1000).filter((seconds) => Number.isFinite(seconds));
+      return {
+        ahead: (Number(queuedAhead) || 0) + runningElapsed.length,
+        workers: stats.workers,
+        eta_seconds: stats.workers > 0
+          ? estimateQueueWait({ queuedAhead, runningElapsed, averageSeconds: stats.averageSeconds, workers: stats.workers })
+          : null
+      };
+    } catch (error) {
+      log('queue view failed', { taskId: task.id, error: String(error?.message || error) });
+      return null;
+    }
   }
 
   async function handleListTasks(query, headers) {
@@ -2314,12 +2390,7 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
-
-
-
-
 const FUNCTION_NAME = 'novaflow-web';
-
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -2354,8 +2425,6 @@ function admin() {
   }
   return cachedAdmin;
 }
-
-
 
 function unwrapRpc<T>(data: unknown): T | null {
   // A plpgsql function returning a table type comes back as an array of one.
@@ -2525,6 +2594,32 @@ const supabaseStore = {
       .limit(limit);
     if (error) throw error;
     return data || [];
+  },
+
+  // A waiting task's place in line (control plane queueView): counts and timestamps only.
+  async queueSnapshot({ modelId, createdAt }: any) {
+    const { count, error } = await admin()
+      .from('web_ai_tasks').select('id', { count: 'exact', head: true })
+      .eq('status', 'queued').eq('model_id', modelId).lt('created_at', createdAt);
+    if (error) throw error;
+    return { queuedAhead: count || 0 };
+  },
+
+  async queueStats({ modelId }: any) {
+    const [running, recent] = await Promise.all([
+      admin().from('web_ai_tasks').select('started_at,assigned_at,created_at')
+        .eq('model_id', modelId).in('status', ['assigned', 'uploading', 'processing']).limit(50),
+      admin().from('web_ai_tasks').select('started_at,completed_at')
+        .eq('model_id', modelId).eq('status', 'completed')
+        .not('started_at', 'is', null).not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false }).limit(20)
+    ]);
+    if (running.error) throw running.error;
+    if (recent.error) throw recent.error;
+    return {
+      runningStartedAt: (running.data || []).map((t: any) => t.started_at || t.assigned_at || t.created_at),
+      recentRuns: recent.data || []
+    };
   },
 
   async claimTask(workerId: string, heartbeatTimeoutSeconds: number) {
