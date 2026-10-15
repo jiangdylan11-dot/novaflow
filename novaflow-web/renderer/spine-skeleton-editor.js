@@ -4640,6 +4640,14 @@
         return
       }
       if (e.button !== 0) return
+      // 粒子面板开着：骨架锁住，画布上只能点选骨骼 / 图片（换粒子的骨骼、层级），不拖、不改（2026-10-16 用户：免得误操作）
+      if (pfx) {
+        const bh = state.opt.boneSel ? hitBone(sx, sy) : null
+        const ih = !bh && state.opt.imgSel ? hitImage(sx, sy) : null
+        if (bh) select({ kind: 'bone', name: bh })
+        else if (ih) select({ kind: 'att', name: ih.name, slot: ih.slot, skin: ih.skin }, false, { quiet: true })
+        return
+      }
       if (state.meshEdit) {
         drag = meshPointerDown(e, sx, sy)
         if (drag) c.setPointerCapture(e.pointerId)
@@ -7529,6 +7537,13 @@
   const ParticleFxUI = () => window.NovaFlowParticleFxUI
   const particleStem = (name) => String(name || 'particle').replace(/[·\s]+/g, '_').replace(/[^\w\u4e00-\u9fa5-]+/g, '').replace(/^_+|_+$/g, '') || 'particle'
   let pfx = null   // 打开着的粒子面板：{ ui, place, origin, stage, ver, PS, clock }
+  const PFX_LOCKED = '编辑粒子时骨架锁住，只能点选；关掉粒子面板再改骨架'
+  {
+    const block = (e) => { if (!pfx) return false; e.preventDefault(); e.stopPropagation(); status(PFX_LOCKED); return true }
+    const tree = $('#tree')
+    for (const type of ['dblclick', 'dragstart', 'contextmenu']) tree.addEventListener(type, block, true)
+    tree.addEventListener('click', (e) => { if (e.target.closest('.act')) block(e) }, true)
+  }
 
   /** 图片文件夹里没被占用的 particles/<名字>[n]（跟随图层的图在子文件夹里就放在它旁边） */
   /**
@@ -7735,6 +7750,7 @@
   }
 
   function closeParticleLayer() {
+    $('#tree').removeAttribute('data-pfx-lock')
     for (const el of [$('#pfxLayer'), $('#pfxHandle'), $('#pfxRot'), ...$('#stage').querySelectorAll('.pfx-path-pt')]) if (el) el.remove()
   }
 
@@ -7786,6 +7802,7 @@
     const startFrame = () => Math.max(0, Math.round(PS.start || 0))
     const openSlot = state.sel && (state.sel.kind === 'slot' ? state.sel.name : state.sel.kind === 'att' ? state.sel.slot : null)
     pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, lastSlotSel: openSlot, clock: 0 }
+    $('#tree').setAttribute('data-pfx-lock', '1')
     pfx.ui = UI.openDock({
       host,
       last: state.particleLast,
@@ -7823,6 +7840,18 @@
             h('span', { class: 'fxm-note', style: 'margin:0;align-self:center' }, '画布上拖绿点'))),
         )
       },
+      // 图片轮廓 → 路径：和换图一样从工程的图片文件夹里选（原尺寸、带透明）
+      pickImage: () => new Promise((resolve) => {
+        openImagePicker('粒子路径：选一张图取轮廓', (name) => {
+          const region = rt.atlas && rt.atlas.findRegion(name)
+          const w = region ? region.originalWidth || region.width : 0, hh = region ? region.originalHeight || region.height : 0
+          const px = region && regionPixelsCanvas(region, w, hh)
+          if (!px) { status(`读不到图片「${name}」`, 'error'); resolve(null); return }
+          const c = h('canvas', { width: w, height: hh })
+          c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px), w, hh), 0, 0)
+          resolve({ name, dataUrl: c.toDataURL('image/png') })
+        })
+      }),
       // 生成序列：切片 → 图片文件夹 → 一个插槽逐帧换图写进动画
       onGenerateSequence: async (info) => {
         const t0 = performance.now()
@@ -10313,6 +10342,7 @@
       if (typing) return
       const k = e.key.toLowerCase()
       const mod = e.ctrlKey || e.metaKey
+      if (pfx && ((mod && k === 'd') || (e.key === 'Delete' && !state.dope.focus) || e.key === 'F2' || (!mod && !e.altKey && (k === 'p' || k === 'k')))) { e.preventDefault(); status(PFX_LOCKED); return }
       if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
       else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo() }
       else if (mod && k === 'c' && state.dope.focus && state.dope.keySel.length) { e.preventDefault(); copySelectedKeys() }

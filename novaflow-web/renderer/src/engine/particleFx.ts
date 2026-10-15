@@ -27,12 +27,46 @@ export function builtinSpriteList() {
   return getBuiltinSprites().map((d) => ({ key: d.key, label: d.label, dataUrl: d.dataUrl }))
 }
 
+/** 椭圆（半径 rx / ry）的闭合自定义路径：4 个点 + 贝塞尔控制柄，从右边起、按角度增大的方向走（和引擎的圆形路径同向） */
+export function ellipsePathPoints(rx: number, ry: number) {
+  const k = 0.5522847498, r = (v: number) => Math.round(v * 10) / 10
+  const kx = r(k * rx), ky = r(k * ry)
+  return [
+    { x: r(rx), y: 0, in: { x: 0, y: -ky }, out: { x: 0, y: ky } },
+    { x: 0, y: r(ry), in: { x: kx, y: 0 }, out: { x: -kx, y: 0 } },
+    { x: r(-rx), y: 0, in: { x: 0, y: ky }, out: { x: 0, y: -ky } },
+    { x: 0, y: r(-ry), in: { x: -kx, y: 0 }, out: { x: kx, y: 0 } },
+  ]
+}
+
+/**
+ * 路径只留「自定义」（2026-10-16 用户：圆 / 椭圆没必要）：老模板开着的圆 / 椭圆路径换成同样大小的闭合自定义路径，
+ * 角速度（°/s）换成沿线速度（px/s），起始角换成起点，负速度换成「反向」——看起来和原来一样，还能在画布上拖点
+ */
+function circlePathToCustom(out: any) {
+  if (!out.pathEnabled || out.pathType === 'custom') return
+  const circle = (out.pathType || 'circle') === 'circle', off = Number(out.pathRadiusOffset) || 0
+  const rx0 = Math.max(0, Number(out.pathRadiusX) || 0), ryRaw = Math.max(0, Number(out.pathRadiusY) || 0)
+  const ry0 = circle ? (rx0 || ryRaw) : (ryRaw || rx0)
+  const rx = Math.max(1, (rx0 > 0 ? rx0 : 120) + off), ry = Math.max(1, (ry0 > 0 ? ry0 : (rx0 > 0 ? rx0 : 120)) + off)
+  const omega = (((Number(out.pathSpeedDegPerSec) || 0) * Math.PI) / 180) * (out.pathReverse ? -1 : 1)
+  const perimeter = Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)))
+  const turn = ((Number(out.pathStartAngleDeg) || 0) / 360) % 1
+  Object.assign(out, {
+    pathType: 'custom', pathClosed: true, pathPoints: ellipsePathPoints(rx, ry), pathRadiusOffset: 0,
+    pathSpeedPxPerSec: Math.round(Math.abs(omega) * (perimeter / (Math.PI * 2))), pathReverse: omega < 0, pathStartT: turn < 0 ? turn + 1 : turn,
+  })
+}
+
 /** 模板配置 → 完整配置：补默认值 */
 export function normalizeConfig(cfg: any): ParticleSystemConfig {
   const out: any = { ...clone(defaultConfig), ...clone(cfg || {}) }
   out.shape = { ...clone(defaultConfig.shape), ...(out.shape || {}) }
   out.sprites = (Array.isArray(out.sprites) ? out.sprites : []).filter(Boolean)
   if (!out.id) out.id = '1'
+  // 发射器形状是「路径」时基础属性的路径关掉：两个一起开，引擎让后者盖掉发射器的路径，面板上它也是不可用的
+  if (out.shape.type === 'custom_path') out.pathEnabled = false
+  circlePathToCustom(out)
   return out as ParticleSystemConfig
 }
 /** 模板（config 或整组 systems）→ 系统数组 */
@@ -222,6 +256,6 @@ export async function spineParts(systems: ParticleSystemConfig[], duration: numb
   return { skeleton, images }
 }
 
-const api = { contourToNormalizedPoints, loadCurvePresets, saveCurvePresets, defaultCurvePresets, normalizeColorStops, mergeStopsWithCurve, normalizeKey1DCurve, sampleColorStops, ParticleEngine, createStageEngine, createPreview, exportToSpine, builtinSprite, builtinSpriteList, normalizeConfig, systemsOf, loadTemplates, saveTemplates, resetTemplates, loadSpriteImages, sequenceConfig, anyLoop, renderSequence, spineParts, defaultConfig, getBuiltinSprites }
+const api = { contourToNormalizedPoints, ellipsePathPoints, loadCurvePresets, saveCurvePresets, defaultCurvePresets, normalizeColorStops, mergeStopsWithCurve, normalizeKey1DCurve, sampleColorStops, ParticleEngine, createStageEngine, createPreview, exportToSpine, builtinSprite, builtinSpriteList, normalizeConfig, systemsOf, loadTemplates, saveTemplates, resetTemplates, loadSpriteImages, sequenceConfig, anyLoop, renderSequence, spineParts, defaultConfig, getBuiltinSprites }
 ;(globalThis as any).NovaFlowParticleFx = api
 export default api

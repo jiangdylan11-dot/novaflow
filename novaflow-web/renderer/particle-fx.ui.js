@@ -40,14 +40,13 @@
 .pfx-seg .fxm-btn{flex:1;height:28px;padding:0 4px}
 .pfx-grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0}
 .pfx-grid5 .fxm-btn{height:30px;padding:0 2px;font-size:11px}
-.pfx-tog{margin:6px 0;border-radius:7px;border:1px solid transparent;background:#2B2B2B}
-.pfx-tog[data-on="1"]{background:rgba(30,166,114,.10);border-color:rgba(30,166,114,.25)}
-.pfx-tog.l2{background:rgba(30,166,114,.08)}
-.pfx-tog.l2[data-on="1"]{background:rgba(20,184,166,.30);border-color:rgba(20,184,166,.6)}
+.pfx-tog{margin:6px 0;border-radius:7px;border:1px solid #333333;background:transparent}
 .pfx-tog-hd{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:0;background:transparent;color:#e6e6e6;font:inherit;font-size:12px;cursor:pointer;text-align:left}
 .pfx-tog-hd span:last-child{font-size:11px;color:#7d8186}
-.pfx-tog[data-on="1"] .pfx-tog-hd span:last-child{color:#7fe0b6}
+.pfx-tog[data-on="1"] > .pfx-tog-hd span:last-child{color:${GREEN}}
 .pfx-tog-bd{padding:0 10px 8px}
+.pfx-tog[data-disabled="1"]{opacity:.45}
+.pfx-tog[data-disabled="1"] .pfx-tog-hd{cursor:not-allowed}
 .pfx-help{font-size:11px;color:#7d8186;line-height:1.5;margin:6px 0}
 .pfx-sel{width:100%;height:28px;background:#2B2B2B;color:#ddd;border:0;border-radius:6px;font:inherit;font-size:12px;padding:0 6px}
 .pfx-row{display:flex;align-items:center;gap:6px;margin:6px 0}
@@ -501,40 +500,27 @@
       out.push(toggle('重力 (Gravity)', !!c.gravityEnabled, (on) => update({ gravityEnabled: on }), [fs('重力 X', 'gravityX', -2000, 2000, 1, ''), fs('重力 Y', 'gravityY', -2000, 2000, 1, '')]))
       out.push(toggle('放射角度 (Emission)', !!c.emissionAngleEnabled, (on) => update({ emissionAngleEnabled: on }), [slider('放射角度', c.emissionAngleDeg || 0, 0, 360, 1, '°', (x) => { c.emissionAngleDeg = x; changed() }), slider('角度偏移', c.emissionOffsetDeg || 0, -180, 180, 1, '°', (x) => { c.emissionOffsetDeg = x; changed() })]))
       // 路径 (Path)
-      const pathOn = !!c.pathEnabled, type = c.pathType || 'circle', custom = type === 'custom'
-      const def2 = () => [{ x: -120, y: 0, in: { x: 0, y: 0 }, out: { x: 0, y: 0 } }, { x: 120, y: 0, in: { x: 0, y: 0 }, out: { x: 0, y: 0 } }]
+      // 只有自定义路径（2026-10-16 用户：圆 / 椭圆没必要，默认自定义）；老模板的圆 / 椭圆在 normalizeConfig 里已换成同样的自定义路径
+      const pathOn = !!c.pathEnabled
       const pathKids = []
       if (pathOn) {
         pathKids.push(select('模式', [['lock', '锁定粒子（环绕）'], ['emitter', '路径（拖尾）']], c.pathMode || 'lock', (v) => update({ pathMode: v })))
-        pathKids.push(select('路径类型', [['circle', '圆'], ['ellipse', '椭圆'], ['custom', '自定义']], type, (v) => {
-          if (v === 'circle') update({ pathType: v, pathRadiusX: c.pathRadiusX ?? 120, pathRadiusY: c.pathRadiusX ?? 120 })
-          else if (v === 'ellipse') update({ pathType: v, pathRadiusX: c.pathRadiusX ?? 160, pathRadiusY: c.pathRadiusY ?? c.pathRadiusX ?? 120 })
-          else { S.pathEdit = true; update({ pathType: v, pathClosed: true, pathPoints: def2(), pathSpeedPxPerSec: c.pathSpeedPxPerSec ?? 360, pathThickness: c.pathThickness ?? 0 }) }
-        }))
-        if (custom) {
-          pathKids.push(toggle('闭环（关闭=来回走）', c.pathClosed !== false, (on) => update({ pathClosed: on }), [], 2))
-          pathKids.push(fs('速度', 'pathSpeedPxPerSec', 0, 2000, 1, 'px/s', 360), fs('厚度', 'pathThickness', 0, 500, 1, 'px', 0))
-          pathKids.push(toggle('随机起点', c.pathRandomStartAngle !== false, (on) => update({ pathRandomStartAngle: on }), [], 2))
-          if (c.pathRandomStartAngle === false) pathKids.push(fs('起点', 'pathStartT', 0, 1, 0.001, '', 0))
-          pathKids.push(help('路径编辑：在画布上拖黄色方块（路径点）；双击方块删点；「加点」在路径末尾添一个点。'), h('div', { class: 'pfx-row' }, h('button', { class: 'fxm-btn', type: 'button', style: 'flex:1', onclick: () => addPathPoint() }, '加点')))
-          pathKids.push(buildContour())
-        } else {
-          if (type === 'circle') pathKids.push(slider('半径', c.pathRadiusX ?? 120, 0, 2000, 1, 'px', (x) => { c.pathRadiusX = x; c.pathRadiusY = x; changed() }))
-          else pathKids.push(fs('半径 X', 'pathRadiusX', 0, 2000, 1, 'px', 160), fs('半径 Y', 'pathRadiusY', 0, 2000, 1, 'px', 120))
-          pathKids.push(fs('厚度', 'pathThickness', 0, 500, 1, 'px', 0), fs('速度', 'pathSpeedDegPerSec', -720, 720, 1, '°/s', 180))
-        }
+        pathKids.push(toggle('闭环（关闭=来回走）', c.pathClosed !== false, (on) => update({ pathClosed: on }), [], 2))
+        pathKids.push(fs('速度', 'pathSpeedPxPerSec', 0, 2000, 1, 'px/s', 360), fs('厚度', 'pathThickness', 0, 500, 1, 'px', 0))
+        pathKids.push(toggle('随机起点', c.pathRandomStartAngle !== false, (on) => update({ pathRandomStartAngle: on }), [], 2))
+        if (c.pathRandomStartAngle === false) pathKids.push(fs('起点', 'pathStartT', 0, 1, 0.001, '', 0))
         pathKids.push(toggle('反向', !!c.pathReverse, (on) => update({ pathReverse: on }), [], 2))
-        if (!custom) {
-          pathKids.push(toggle('随机起始角', c.pathRandomStartAngle !== false, (on) => update({ pathRandomStartAngle: on }), [], 2))
-          if (c.pathRandomStartAngle === false) pathKids.push(fs('起始角', 'pathStartAngleDeg', -180, 180, 1, '°', 0))
-        }
+        pathKids.push(help('路径编辑：在画布上拖黄色方块（路径点）；双击方块删点；「加点」在路径末尾添一个点。'), h('div', { class: 'pfx-row' }, h('button', { class: 'fxm-btn', type: 'button', style: 'flex:1', onclick: () => addPathPoint() }, '加点')))
+        pathKids.push(buildContour())
       }
-      out.push(toggle('路径 (Path)', pathOn, (on) => {
+      // 发射器形状是「路径」时这里不能开：开了会盖掉发射器的路径（2026-10-16 用户：会误导）
+      if (c.shape && c.shape.type === 'custom_path') out.push(h('div', { class: 'pfx-tog', 'data-on': '0', 'data-disabled': '1' }, h('button', { class: 'pfx-tog-hd', type: 'button', disabled: true }, h('span', {}, '路径 (Path)'), h('span', {}, '不可用'))), help('发射器形状是「路径」：粒子已经沿那条路径发射，这里的路径会盖掉它，所以不能同时开。'))
+      else out.push(toggle('路径 (Path)', pathOn, (on) => {
         if (!on) { update({ pathEnabled: false }); return }
-        if (type === 'custom') { S.pathEdit = true; update({ pathEnabled: true, pathClosed: true, pathPoints: def2() }); return }
-        const off = Number(c.pathRadiusOffset) || 0
-        if (Math.abs(off) > 1e-6) { const nx = (c.pathRadiusX ?? 120) + off; update({ pathEnabled: true, pathRadiusX: nx, pathRadiusY: (c.pathRadiusY ?? nx) + off, pathRadiusOffset: 0 }); return }
-        update({ pathEnabled: true })
+        // 已经画过的自定义路径（3 个点以上）接着用，否则给一个半径 120 的圆，在画布上拖点改形状
+        S.pathEdit = true
+        const drawn = c.pathType === 'custom' && Array.isArray(c.pathPoints) && c.pathPoints.length >= 3
+        update({ pathEnabled: true, pathType: 'custom', pathClosed: drawn ? c.pathClosed !== false : true, ...(drawn ? {} : { pathPoints: P.ellipsePathPoints(120, 120) }) })
       }, pathKids))
       // 放射力 (Radial)
       const spiral = c.attractorMode === 'spiral', radKids = []
@@ -575,8 +561,8 @@
       out.push(toggle('移动噪声 (Noise)', !!c.noiseEnabled, (on) => update({ noiseEnabled: on }), noiseKids))
       return out
     }
-    // PNG 轮廓 → 路径
-    const contour = { file: null, alpha: 60, size: 360, smooth: 2, simplify: 1.8, busy: false, err: '', timer: 0 }
+    // 图片轮廓 → 路径（图从工程里选，和换图一样）
+    const contour = { file: null, name: '', alpha: 60, size: 360, smooth: 2, simplify: 1.8, busy: false, err: '', timer: 0 }
     function buildContour() {
       const run = async () => {
         if (!contour.file) return
@@ -591,16 +577,16 @@
       }
       const later = () => { clearTimeout(contour.timer); contour.timer = setTimeout(run, 180) }
       const plain = (label, key, min, max, step, show) => slider(label, contour[key], min, max, step, '', (x) => { contour[key] = x; later() })
-      const box = h('div', { style: 'border:1px solid #2A2A2A;border-radius:7px;padding:6px 8px;margin:6px 0' }, h('div', { style: 'color:#ddd;margin:2px 0 4px' }, 'PNG 轮廓 → 路径'),
-        h('button', { class: 'fxm-btn', type: 'button', style: 'width:100%', onclick: async () => {
-          const f = await new Promise((res) => { const i = h('input', { type: 'file', accept: 'image/png' }); i.onchange = () => res(i.files && i.files[0]); i.click() })
-          if (!f) return
-          if (!/png$/i.test(f.type) && !/\.png$/i.test(f.name)) { contour.err = '请上传 PNG（需要透明通道以识别轮廓）'; render(); return }
-          contour.file = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f) })
+      const box = h('div', { style: 'border:1px solid #2A2A2A;border-radius:7px;padding:6px 8px;margin:6px 0' }, h('div', { style: 'color:#ddd;margin:2px 0 4px' }, '图片轮廓 → 路径'),
+        // 和换图一样：弹框从工程的图片文件夹里选一张（2026-10-16 用户：不从电脑传）
+        h('button', { class: 'fxm-btn', type: 'button', style: 'width:100%', disabled: !options.pickImage, onclick: async () => {
+          const r = await options.pickImage()
+          if (!r) return
+          contour.file = r.dataUrl; contour.name = r.name
           render(); run()
-        } }, contour.busy ? '处理中…' : '上传 PNG 并生成'),
+        } }, contour.busy ? '处理中…' : '选工程里的图'),
         plain('Alpha 阈值', 'alpha', 1, 255, 1), plain('目标尺寸', 'size', 80, 1200, 1), plain('平滑', 'smooth', 0, 5, 1), plain('简化', 'simplify', 0, 8, 0.2),
-        contour.file ? h('div', { class: 'pfx-row' }, h('img', { src: contour.file, style: 'width:48px;height:48px;object-fit:contain;background:#000;border-radius:4px' }), h('span', { class: 'pfx-help', style: 'margin:0' }, '已选择 PNG，调整参数将自动更新路径')) : null,
+        contour.file ? h('div', { class: 'pfx-row' }, h('img', { src: contour.file, style: 'width:48px;height:48px;object-fit:contain;background:#000;border-radius:4px' }), h('span', { class: 'pfx-help', style: 'margin:0' }, `已选「${contour.name}」，调参数会自动更新路径`)) : null,
         contour.err ? h('div', { style: 'color:#fca5a5;font-size:11px;margin:4px 0' }, contour.err) : null)
       return box
     }
