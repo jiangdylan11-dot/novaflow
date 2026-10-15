@@ -264,7 +264,8 @@ self.postMessage({ type: 'ready' })`
     }
     for (let i = 0; i < 2; i++) pool.push(makeWorker())
     // 底图：摆放参数随工程走；像素只在底图变了时单独发给 Worker（baseMsg），dataURL 不进 Worker
-    function renderPayload() { const b = S.project.base ? { ...S.project.base, data: undefined, id: S.baseId || 0 } : null; return clone({ ...S.project, base: b }) }
+    // 特效扫光选了「正常」混合：预览帧带透明度（光按亮度），正常叠在底图上——和写进 Spine 一样
+    function renderPayload() { const b = S.project.base ? { ...S.project.base, data: undefined, id: S.baseId || 0 } : null; return clone({ ...S.project, base: b, ...(SW && SW.previewBlend && SW.previewBlend() === 'normal' ? { sliceAlpha: true } : {}) }) }
     function baseMsg() { return S.base ? { type: 'base', id: S.baseId, w: S.base.rgba.w, h: S.base.rgba.h, data: S.base.rgba.data } : { type: 'base', id: 0 } }
     // 预览按画板在屏幕上的实际大小渲染（2026-10-16 用户：锯齿严重——原来按最长边 360 渲染再放大 2～4 倍）；
     // 最长边封顶 800 px，小画板最多按 2 倍渲染
@@ -286,7 +287,8 @@ self.postMessage({ type: 'ready' })`
       const img = !!(S.base && fx().usesImage && S.project.useImage !== false)
       E.baseCanvas.style.visibility = img ? 'hidden' : ''
       // 光按「相加」叠在底图上（和 Spine 的叠加插槽一样；2026-10-16 用户：那肯定是叠加才对），不支持的浏览器退回滤色
-      E.fxCanvas.style.mixBlendMode = img ? 'normal' : ADD_BLEND
+      const blend = SW && SW.previewBlend ? SW.previewBlend() : 'add'
+      E.fxCanvas.style.mixBlendMode = img || blend === 'normal' ? 'normal' : blend === 'screen' ? 'screen' : ADD_BLEND
     }
     function doPrepare() {
       if (S.drawing) return
@@ -1093,7 +1095,7 @@ self.postMessage({ type: 'ready' })`
       layout()
     }).catch((error) => setInfo('底图读取失败：' + error.message))
     layout(); changed()
-    const api = { close, state: S, get project() { return S.project }, renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver, rerender: () => renderParams() }
+    const api = { close, state: S, get project() { return S.project }, renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver, rerender: () => renderParams(), refreshPreview: () => changed(true, false) }
     root.__NovaFlowFxMakerOpen = api
     return api
   }

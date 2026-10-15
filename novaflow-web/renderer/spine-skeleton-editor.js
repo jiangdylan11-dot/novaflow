@@ -7133,7 +7133,10 @@
     }, () => { gotoFrame(0); if (made) { state.sel = { kind: 'slot', name: made }; revealInTree(state.sel) } })
   }
 
-  /** 序列扫光: picture i goes 0 → 100 → 0 over 2 steps starting at i·step; step = 时长 / (N + 1). */
+  /**
+   * 特效扫光写入动画。多插槽淡入淡出（轮廓流光 / 扫光默认）：第 i 张 0 → 100 → 0 跨两步，步 = 时长 / (N + 1)；
+   * 一个插槽逐帧换图（效果库默认，2026-10-16 用户：很多效果放一个插槽更合适）：每张占一步，步 = 时长 / N。
+   */
   async function writeSweep() {
     if (!animOn()) { status('先选一个动画', 'error'); return }
     const files = frameFiles('sweep')
@@ -7142,20 +7145,61 @@
     const images = files.map((f) => f.name), bone = frameBone()
     // slices the generator made: above the base slot, blend set, 绕一圈的 first/last joined
     const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
-    const wrap = !!(gen && gen.wrap), cut = !!(gen && gen.image)   // cut：带底图画面的切片，一张一张切（不交叉淡化）
+    const wrap = !!(gen && gen.wrap), image = !!(gen && gen.image), one = !!(gen && gen.mode === 'slot')
     const startFrame = Math.max(0, Math.round(state.sweepStart || 0)), endFrame = Math.max(startFrame + 2, sweepEndFrame(images.length))
     const start = startFrame / FPS, end = endFrame / FPS
-    const step = (end - start) / (wrap || cut ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
+    const step = (end - start) / (wrap || one ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
     const t4 = (t) => Math.round(t * 10000) / 10000
     const L = SweepLight()
-    return edit(`特效扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
+    return edit(`特效扫光：${images.length} 张${one ? '进一个插槽' : ''}，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
       // generated slices: created on the base slot's bone with the base picture's placement, then
       // hangFrames moves them to the chosen bone (placement kept)
       const baseSlotObj = gen && gen.baseSlot ? j.slots.find((x) => x.name === gen.baseSlot) : null
       const place = baseSlotObj ? baseAttachmentPlacement(j, gen.baseSlot) : null
+      let json
+      if (one) {
+        // 一个插槽：所有切片做它的附件，按时间换；「起」之前不显示，一次性的（或动画在「止」后还有）到「止」后不显示
+        json = j
+        const first = images[0]
+        let slot = slotShowing(json, first)
+        if (!slot) {
+          slot = uniqueSlotName(json, first.split('/').pop().replace(/_\d+$/, ''))
+          json = Ops.addSlot(json, place ? baseSlotObj.bone : bone, slot).json
+        }
+        const skin = () => json.skins.find((x) => x.name === 'default')
+        const names = []
+        for (const im of images) {
+          const atts = (skin() && skin().attachments[slot]) || {}
+          const have = Object.entries(atts).find(([n, at]) => at && (at.path || n) === im && (!at.type || at.type === 'region' || at.type === 'mesh'))
+          if (have) { names.push(have[0]); continue }
+          const size = regionSize(im) || { width: 1, height: 1 }
+          const r = Ops.addRegionAttachment(json, 'default', slot, { name: im.split('/').pop(), path: im, width: size.width, height: size.height, show: false, ...(place ? { x: place.x, y: place.y, rotation: place.rotation } : {}) })
+          json = r.json
+          const att = skin().attachments[slot][r.attachment]
+          if (place && att) {
+            if (Math.abs(place.scaleX - 1) > 1e-4) att.scaleX = Math.round(place.scaleX * 10000) / 10000
+            if (Math.abs(place.scaleY - 1) > 1e-4) att.scaleY = Math.round(place.scaleY * 10000) / 10000
+          }
+          names.push(r.attachment)
+        }
+        json = Ops.setSlotProps(json, slot, { attachment: names[0] }).json
+        json = Ops.prepare(hangFrames(json, [{ slot }]))
+        if (gen) json = Ops.prepare(placeSweepSlots(json, [{ slot }], gen))
+        const a = json.animations[anim]
+        if (!a) throw new Error(`找不到动画：${anim}`)
+        a.slots = a.slots || {}
+        const row = { ...(a.slots[slot] || {}) }
+        delete row.color   // 以前多插槽写过的透明度关键帧
+        const keys = []
+        if (start > 0) keys.push({ name: null })
+        names.forEach((name, i) => { const t = t4(start + i * step); keys.push({ ...(t ? { time: t } : {}), name }) })
+        if (!wrap || animEnd > endFrame) keys.push({ time: t4(end), name: null })
+        row.attachment = keys
+        a.slots[slot] = row
+      } else {
       const made = frameSlots(j, images, place ? baseSlotObj.bone : bone, place)
       const frames = made.frames
-      let json = Ops.prepare(hangFrames(made.json, frames))
+      json = Ops.prepare(hangFrames(made.json, frames))
       if (gen) json = Ops.prepare(placeSweepSlots(json, frames, gen))
       const a = json.animations[anim]
       if (!a) throw new Error(`找不到动画：${anim}`)
@@ -7164,15 +7208,7 @@
         const rgb = slotRgb(json, f.slot)
         const row = { ...(a.slots[f.slot] || {}) }
         delete row.attachment   // a 序列K帧 written on these slots before switched attachments on and off
-        const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00'), ...(cut ? { curve: 'stepped' } : {}) })
-        if (cut) {   // 第 i 张只在 [起 + i·步, 起 + (i+1)·步) 里显示
-          const keys = []
-          if (start + i * step > 0) keys.push(at(0, 0))
-          keys.push(at(start + i * step, 1), at(start + (i + 1) * step, 0))
-          row.color = keys
-          a.slots[f.slot] = row
-          return
-        }
+        const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
         // the curve inside [起, 止]; transparent before 起 and after 止
         let rel
         if (L && L.sweepAlphaKeys) rel = L.sweepAlphaKeys(i, frames.length, step, wrap)
@@ -7185,8 +7221,10 @@
         row.color = keys
         a.slots[f.slot] = row
       })
+      }
       // 带底图画面的切片：从「起」藏起原底图（切片自己画着它）；一次性的播完不再出现，循环的到「止」后动画还有就回来
-      if (cut && gen.baseSlot && json.slots.some((x) => x.name === gen.baseSlot)) {
+      const a = json.animations[anim]
+      if (image && gen.baseSlot && json.slots.some((x) => x.name === gen.baseSlot)) {
         const show = json.slots.find((x) => x.name === gen.baseSlot).attachment || null
         const row = { ...(a.slots[gen.baseSlot] || {}) }
         const back = wrap && animEnd > endFrame
@@ -7287,6 +7325,16 @@
     const showing = () => (cur.image ? slotsShowingAll(state.json, cur.image) : [])
     const baseSlot = () => { const list = showing(); if (!list.length) return null; return list.find((s) => s.name === bind.slot) || list.find((s) => state.sel && (state.sel.name === s.name || state.sel.slot === s.name)) || list[list.length - 1] }
     const resetBind = () => { bind.slot = ''; bind.bone = ''; const bs0 = baseSlot(), baseBone0 = bs0 ? bs0.bone : 'root'; if (pickedBone && pickedBone !== baseBone0 && state.json.bones.some((b) => b.name === pickedBone)) bind.bone = pickedBone }
+    // 混合 / 写入方式（2026-10-16 用户）：默认按效果——打碎 / 化开底图的「正常」、其余「相加」；轮廓流光 / 扫光多插槽淡入淡出、
+    // 效果库一个插槽逐帧换图。换效果（或切「用底图画面」）回到默认
+    const syncBind = () => {
+      const p = api ? api.project : pj, img = sweepImageFx(p, !!cur.px), key = p.effect + '|' + (img ? 1 : 0)
+      if (bind.forKey === key) return
+      const k = FX.effectOf(p.effect).kind
+      bind.blend = img ? 'normal' : 'add'
+      bind.mode = k === 'edge' || k === 'basesweep' ? 'fade' : 'slot'
+      bind.forKey = key
+    }
     resetBind()
     // 时长（帧）= 写入动画时 起 → 止 的长度；动画还没长度时默认 60 帧 = 2 秒
     if (!(state.sweepEnd > 0) && lastFrame() <= Math.round(state.sweepStart || 0) + 1) state.sweepEnd = Math.round(state.sweepStart || 0) + 60
@@ -7342,6 +7390,7 @@
           })
         }),
         onBase: (b) => { if (!b) { cur.image = null; cur.px = null; resetBind() } },
+        previewBlend: () => { syncBind(); return bind.blend },
         canSaveTemplate: (fx) => (fx.kind === 'basesweep' ? '这类扫光是照着底图本身扫的，不做 AI 特效模板（边缘类和效果库的可以存）' : ''),
         // 写入动画：底图插槽（一张图放了几处时）+ 骨骼
         extra: (host) => {
@@ -7358,10 +7407,17 @@
             h('option', { value: '', selected: !bind.bone }, bs ? `${baseBone}（底图所在）` : (bones.includes('root') ? 'root' : bones[0] || '')),
             bones.filter((b) => b !== baseBone && (bs || b !== 'root')).map((b) => h('option', { value: b, selected: bind.bone === b }, b)))
           host.append(line('骨骼', boneSel))
+          syncBind()
+          const blendSel = h('select', { class: 'fxm-select', onchange: (e) => { bind.blend = e.target.value; if (api) api.refreshPreview() } },
+            [['add', '相加'], ['normal', '正常'], ['screen', '滤色']].map(([v, l]) => h('option', { value: v, selected: bind.blend === v }, l)))
+          const modeSel = h('select', { class: 'fxm-select', onchange: (e) => { bind.mode = e.target.value; if (api) api.rerender() } },
+            [['slot', '一个插槽逐帧换图'], ['fade', '多插槽淡入淡出']].map(([v, l]) => h('option', { value: v, selected: bind.mode === v }, l)))
+          host.append(line('混合', blendSel), line('写入方式', modeSel))
           if (cur.image && !bs) host.append(note('这张图还没放进骨骼：切片会挂到 root、画在最上层。', true))
           const imgFx = sweepImageFx(api ? api.project : pj, !!cur.px)
-          host.append(note(imgFx ? '写入动画时：切片带底图画面，挂到这根骨骼、居中对齐底图、画在底图上一层，一张一张切换；从「起」开始藏起原底图（一次性的播完不再出现）。'
-            : cur.image ? '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。' : '没有底图：切片挂到这根骨骼、居中、画在最上层，混合模式是叠加。'))
+          host.append(note((bind.mode === 'slot' ? '一个插槽挂全部切片，按时间换图' : '每张切片一个插槽，前后淡入淡出衔接')
+            + (cur.image ? '；插槽挂到这根骨骼、居中对齐底图、画在底图上一层' : '；插槽挂到这根骨骼、居中、画在最上层')
+            + (imgFx ? '；切片带底图画面，从「起」开始藏起原底图（一次性的播完不再出现）。' : '。')))
         },
         // 确定生成：切片（黑底 → 亮度当透明度的叠加切片）进图片文件夹，卡片换成它们
         onGenerate: async ({ project, base, setInfo: say, busy }) => {
@@ -7393,7 +7449,8 @@
           state.frameSet = names.map((n) => ({ name: n }))
           frameCardsReset('sweep', names)
           state.frameBone = bone
-          state.sweepGen = { base: cur.image, baseSlot: bs ? bs.name : null, bone, blend: imgFx ? 'normal' : 'add', wrap: project.lifecycle === 'loop', image: imgFx, names: names.slice() }
+          syncBind()
+          state.sweepGen = { base: cur.image, baseSlot: bs ? bs.name : null, bone, blend: bind.blend, mode: bind.mode, wrap: project.lifecycle === 'loop', image: imgFx, names: names.slice() }
           state.leftOpen = 'sweep'
           if (busy) busy(null)
           api.close()
