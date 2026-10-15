@@ -7325,7 +7325,7 @@
     const showing = () => (cur.image ? slotsShowingAll(state.json, cur.image) : [])
     const baseSlot = () => { const list = showing(); if (!list.length) return null; return list.find((s) => s.name === bind.slot) || list.find((s) => state.sel && (state.sel.name === s.name || state.sel.slot === s.name)) || list[list.length - 1] }
     const resetBind = () => { bind.slot = ''; bind.bone = ''; const bs0 = baseSlot(), baseBone0 = bs0 ? bs0.bone : 'root'; if (pickedBone && pickedBone !== baseBone0 && state.json.bones.some((b) => b.name === pickedBone)) bind.bone = pickedBone }
-    // 混合 / 写入方式（2026-10-16 用户）：默认按效果——打碎 / 化开底图的「正常」、其余「相加」；轮廓流光 / 扫光多插槽淡入淡出、
+    // 混合（可改）/ 写入方式（不给选）（2026-10-16 用户）：默认按效果——打碎 / 化开底图的「正常」、其余「相加」；轮廓流光 / 扫光多插槽淡入淡出、
     // 效果库一个插槽逐帧换图。换效果（或切「用底图画面」）回到默认
     const syncBind = () => {
       const p = api ? api.project : pj, img = sweepImageFx(p, !!cur.px), key = p.effect + '|' + (img ? 1 : 0)
@@ -7410,9 +7410,7 @@
           syncBind()
           const blendSel = h('select', { class: 'fxm-select', onchange: (e) => { bind.blend = e.target.value; if (api) api.refreshPreview() } },
             [['add', '相加'], ['normal', '正常'], ['screen', '滤色']].map(([v, l]) => h('option', { value: v, selected: bind.blend === v }, l)))
-          const modeSel = h('select', { class: 'fxm-select', onchange: (e) => { bind.mode = e.target.value; if (api) api.rerender() } },
-            [['slot', '一个插槽逐帧换图'], ['fade', '多插槽淡入淡出']].map(([v, l]) => h('option', { value: v, selected: bind.mode === v }, l)))
-          host.append(line('混合', blendSel), line('写入方式', modeSel))
+          host.append(line('混合', blendSel))   // 写入方式不给选（2026-10-16 用户：默认就好），按效果定，说明里写出来
           if (cur.image && !bs) host.append(note('这张图还没放进骨骼：切片会挂到 root、画在最上层。', true))
           const imgFx = sweepImageFx(api ? api.project : pj, !!cur.px)
           host.append(note((bind.mode === 'slot' ? '一个插槽挂全部切片，按时间换图' : '每张切片一个插槽，前后淡入淡出衔接')
