@@ -59,7 +59,7 @@
 .fxm-row input[type=range]::-webkit-slider-runnable-track,.fxm-scrub::-webkit-slider-runnable-track{-webkit-appearance:none;height:3px;background:transparent;border:0;box-shadow:none}
 .fxm-row input[type=range]::-webkit-slider-thumb,.fxm-scrub::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:${GREEN};border:0;box-shadow:none;cursor:pointer}
 .fxm-row input[type=range]:disabled::-webkit-slider-thumb{background:#5a5a5a}
-.fxm-num{width:72px;height:24px;background:#2B2B2B;border:0;border-radius:6px;color:#eee;font:inherit;font-size:12px;padding:0 4px 0 8px;box-sizing:border-box}
+.fxm-num{width:84px;height:24px;background:#2B2B2B;border:0;border-radius:6px;color:#eee;font:inherit;font-size:12px;padding:0 4px 0 8px;box-sizing:border-box}
 .fxm-num::-webkit-inner-spin-button{opacity:.4}
 .fxm-row .fxm-val{font-size:11px;color:#9a9ea3;text-align:right}
 .fxm-row[data-inert="1"]{opacity:.38}
