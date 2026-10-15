@@ -2539,6 +2539,7 @@
     if (state.opt.imgVis) for (let i = activeProject + 1; i < projects.length; i++) drawOtherProject(i)
     if (activeShown) drawOverlay()
     else $('#overlay').getContext('2d').clearRect(0, 0, $('#overlay').width, $('#overlay').height)
+    if (pfx) drawParticles()   // 粒子特效面板开着：粒子画在舞台上
     $('#zoomText').textContent = rt.skeleton ? Math.round(100 / rt.cam.zoom) + '%' : ''
   }
 
@@ -7158,44 +7159,7 @@
       const place = baseSlotObj ? baseAttachmentPlacement(j, gen.baseSlot) : null
       let json
       if (one) {
-        // 一个插槽：所有切片做它的附件，按时间换；「起」之前不显示，一次性的（或动画在「止」后还有）到「止」后不显示
-        json = j
-        const first = images[0]
-        let slot = slotShowing(json, first)
-        if (!slot) {
-          slot = uniqueSlotName(json, first.split('/').pop().replace(/_\d+$/, ''))
-          json = Ops.addSlot(json, place ? baseSlotObj.bone : bone, slot).json
-        }
-        const skin = () => json.skins.find((x) => x.name === 'default')
-        const names = []
-        for (const im of images) {
-          const atts = (skin() && skin().attachments[slot]) || {}
-          const have = Object.entries(atts).find(([n, at]) => at && (at.path || n) === im && (!at.type || at.type === 'region' || at.type === 'mesh'))
-          if (have) { names.push(have[0]); continue }
-          const size = regionSize(im) || { width: 1, height: 1 }
-          const r = Ops.addRegionAttachment(json, 'default', slot, { name: im.split('/').pop(), path: im, width: size.width, height: size.height, show: false, ...(place ? { x: place.x, y: place.y, rotation: place.rotation } : {}) })
-          json = r.json
-          const att = skin().attachments[slot][r.attachment]
-          if (place && att) {
-            if (Math.abs(place.scaleX - 1) > 1e-4) att.scaleX = Math.round(place.scaleX * 10000) / 10000
-            if (Math.abs(place.scaleY - 1) > 1e-4) att.scaleY = Math.round(place.scaleY * 10000) / 10000
-          }
-          names.push(r.attachment)
-        }
-        json = Ops.setSlotProps(json, slot, { attachment: names[0] }).json
-        json = Ops.prepare(hangFrames(json, [{ slot }]))
-        if (gen) json = Ops.prepare(placeSweepSlots(json, [{ slot }], gen))
-        const a = json.animations[anim]
-        if (!a) throw new Error(`找不到动画：${anim}`)
-        a.slots = a.slots || {}
-        const row = { ...(a.slots[slot] || {}) }
-        delete row.color   // 以前多插槽写过的透明度关键帧
-        const keys = []
-        if (start > 0) keys.push({ name: null })
-        names.forEach((name, i) => { const t = t4(start + i * step); keys.push({ ...(t ? { time: t } : {}), name }) })
-        if (!wrap || animEnd > endFrame) keys.push({ time: t4(end), name: null })
-        row.attachment = keys
-        a.slots[slot] = row
+        json = oneSlotSequence(j, { images, bone, place, baseSlotObj, gen, anim, start, step, end, wrap, animEnd })
       } else {
       const made = frameSlots(j, images, place ? baseSlotObj.bone : bone, place)
       const frames = made.frames
@@ -7488,6 +7452,337 @@
         if (p) state.sweepLast = { effect: p.effect, params: { ...p.params }, colour: { ...p.colour }, motion: { ...p.motion }, lifecycle: p.lifecycle, offset: p.offset, traceDetail: p.traceDetail, outerOnly: p.outerOnly, direction: p.direction }
       },
     })
+  }
+
+
+  /**
+   * 一个插槽逐帧换图（特效扫光的效果库默认 / 粒子特效的生成序列）：所有切片做这个插槽的附件，按时间换；
+   * 「起」之前不显示，一次性的（或动画在「止」后还有）到「止」后不显示。o = { images, bone, place, baseSlotObj, gen, anim, start, step, end, wrap, animEnd }
+   */
+  function oneSlotSequence(j, o) {
+    const { images, bone, place, baseSlotObj, gen, anim, start, step, end, wrap, animEnd } = o
+    const t4 = (t) => Math.round(t * 10000) / 10000, endFrame = Math.round(end * FPS)
+    let json = j
+    const first = images[0]
+    let slot = slotShowing(json, first)
+    if (!slot) {
+      slot = uniqueSlotName(json, first.split('/').pop().replace(/_\d+$/, ''))
+      json = Ops.addSlot(json, place ? baseSlotObj.bone : bone, slot).json
+    }
+    const skin = () => json.skins.find((x) => x.name === 'default')
+    const names = []
+    for (const im of images) {
+      const atts = (skin() && skin().attachments[slot]) || {}
+      const have = Object.entries(atts).find(([n, at]) => at && (at.path || n) === im && (!at.type || at.type === 'region' || at.type === 'mesh'))
+      if (have) { names.push(have[0]); continue }
+      const size = regionSize(im) || { width: 1, height: 1 }
+      const r = Ops.addRegionAttachment(json, 'default', slot, { name: im.split('/').pop(), path: im, width: size.width, height: size.height, show: false, ...(place ? { x: place.x, y: place.y, rotation: place.rotation } : {}) })
+      json = r.json
+      const att = skin().attachments[slot][r.attachment]
+      if (place && att) {
+        if (Math.abs(place.scaleX - 1) > 1e-4) att.scaleX = Math.round(place.scaleX * 10000) / 10000
+        if (Math.abs(place.scaleY - 1) > 1e-4) att.scaleY = Math.round(place.scaleY * 10000) / 10000
+      }
+      names.push(r.attachment)
+    }
+    json = Ops.setSlotProps(json, slot, { attachment: names[0] }).json
+    json = Ops.prepare(hangFrames(json, [{ slot }]))
+    if (gen) json = Ops.prepare(placeSweepSlots(json, [{ slot }], gen))
+    const a = json.animations[anim]
+    if (!a) throw new Error(`找不到动画：${anim}`)
+    a.slots = a.slots || {}
+    const row = { ...(a.slots[slot] || {}) }
+    delete row.color   // 以前多插槽写过的透明度关键帧
+    const keys = []
+    if (start > 0) keys.push({ name: null })
+    names.forEach((name, i) => { const t = t4(start + i * step); keys.push({ ...(t ? { time: t } : {}), name }) })
+    if (!wrap || animEnd > endFrame) keys.push({ time: t4(end), name: null })
+    row.attachment = keys
+    a.slots[slot] = row
+    return json
+  }
+
+  // ------------------------------------------------------------------ 粒子特效（右侧面板 + 舞台上实时预览）
+  //
+  // 2026-10-16 用户：粒子特效不必独立一页，它就是给 Spine 动画用的；面板最好像飘带那样，粒子直接作用在画布里、底下是原有动画
+  // （「不重要的可以精简掉」）。面板停在右侧（盖住工程树 / 属性，关了就回来），粒子画在舞台上：跟着骨骼的姿势和播放时间走，
+  // 拖时间轴就看到那一刻的粒子。模板库 / 引擎和粒子页同一份（NovaFlowParticleFx）。
+  // 生成序列：切片进图片文件夹 particles/<模板>/，一个插槽逐帧换图写进当前动画；生成 Spine 动画：粒子页那种每个粒子一个插槽
+  // 打关键帧的骨架，加前缀并进当前工程。两种都从「起」帧开始、原点在跟随图层的中心（不跟图层：骨骼原点），各是一步撤销。
+  const ParticleFx = () => window.NovaFlowParticleFx
+  const ParticleFxUI = () => window.NovaFlowParticleFxUI
+  const particleStem = (name) => String(name || 'particle').replace(/[·\s]+/g, '_').replace(/[^\w\u4e00-\u9fa5-]+/g, '').replace(/^_+|_+$/g, '') || 'particle'
+  let pfx = null   // 打开着的粒子面板：{ ui, place, origin, stage, simT, ver, PS }
+
+  /** 图片文件夹里没被占用的 particles/<名字>[n]（跟随图层的图在子文件夹里就放在它旁边） */
+  function particleFolderFor(image, stem) {
+    const dir = image && image.includes('/') ? image.slice(0, image.lastIndexOf('/') + 1) : ''
+    const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
+    let k = 1
+    while (taken(`${dir}particles/${stem}${k > 1 ? k : ''}/${stem}${k > 1 ? k : ''}_01`) || taken(`${dir}particles/${stem}${k > 1 ? k : ''}/${stem}${k > 1 ? k : ''}_${stem}`)) k++
+    const tag = stem + (k > 1 ? k : '')
+    return { folder: `${dir}particles/${tag}`, prefix: tag }
+  }
+
+  /** 舞台上的粒子画布（骨骼上面、辅助线下面）和发射点手柄 */
+  function pfxLayer() {
+    let c = $('#pfxLayer')
+    if (!c) {
+      c = h('canvas', { id: 'pfxLayer', style: 'pointer-events:none' })
+      $('#overlay').before(c)
+    }
+    let hd = $('#pfxHandle')
+    if (!hd) {
+      hd = h('div', { id: 'pfxHandle', title: '发射位置（拖动）', style: 'position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid #fff;background:#1EA672;box-shadow:0 0 0 1px rgba(0,0,0,.5);cursor:move;z-index:3;display:none' })
+      $('#stage').append(hd)
+      hd.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0 || !pfx || !pfx.J) return
+        ev.preventDefault(); ev.stopPropagation(); hd.setPointerCapture(ev.pointerId)
+        const cfg = pfx.ui.config
+        pfx.drag = { x: ev.clientX, y: ev.clientY, sx: cfg.systemX || 0, sy: cfg.systemY || 0, J: pfx.J }
+      })
+      hd.addEventListener('pointermove', (ev) => {
+        if (!pfx || !pfx.drag) return
+        const d = pfx.drag, J = d.J, det = J[0] * J[3] - J[1] * J[2] || 1, dx = ev.clientX - d.x, dy = ev.clientY - d.y
+        const cfg = pfx.ui.config
+        cfg.systemX = Math.round(d.sx + (J[3] * dx - J[2] * dy) / det)
+        cfg.systemY = Math.round(d.sy + (-J[1] * dx + J[0] * dy) / det)
+        pfxRestart()
+      })
+      const end = () => { if (pfx) pfx.drag = null }
+      hd.addEventListener('pointerup', end)
+      hd.addEventListener('pointercancel', end)
+    }
+    const W = Math.round(rt.w * rt.dpr), H = Math.round(rt.h * rt.dpr)
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H }
+    return { c, hd }
+  }
+
+  /** 粒子原点：跟随图层 = 那张图的中心（换到选的骨骼里），不跟图层 = 骨骼原点；s = 图层的缩放 */
+  function particleOrigin(place) {
+    const bones = state.json.bones.map((b) => b.name)
+    const bone = place.bone && bones.includes(place.bone) ? place.bone : (bones.includes('root') ? 'root' : bones[0])
+    const sl = place.slot ? state.json.slots.find((x) => x.name === place.slot) : null
+    const pl = sl ? baseAttachmentPlacement(state.json, sl.name) : null
+    if (!sl || !pl) return { bone, x: 0, y: 0, s: 1 }
+    if (bone === sl.bone) return { bone, x: pl.x, y: pl.y, s: (Math.abs(pl.scaleX) + Math.abs(pl.scaleY)) / 2 || 1 }
+    const m = setupMatrices(), A = m[sl.bone], C = m[bone]
+    if (!A || !C) return { bone, x: 0, y: 0, s: 1 }
+    const wx = A.a * pl.x + A.b * pl.y + A.worldX, wy = A.c * pl.x + A.d * pl.y + A.worldY
+    const det = C.a * C.d - C.b * C.c || 1, dx = wx - C.worldX, dy = wy - C.worldY
+    return { bone, x: (C.d * dx - C.b * dy) / det, y: (C.a * dy - C.c * dx) / det, s: 1 }
+  }
+  const layerImage = (slot) => { const sl = slot && state.json.slots.find((x) => x.name === slot); if (!sl || !sl.attachment) return null; for (const n of [state.skin, 'default']) { const sk = state.json.skins.find((x) => x.name === n); const a = sk && sk.attachments[slot] && sk.attachments[slot][sl.attachment]; if (a) return a.path || sl.attachment } return null }
+
+  /** 参数 / 位置变了：引擎重建，按当前时间重算 */
+  async function pfxRestart() {
+    if (!pfx) return
+    const P = ParticleFx(), v = ++pfx.ver
+    pfx.origin = particleOrigin(pfx.place)
+    const PS = pfx.PS, D = Math.max(0.1, PS.duration / FPS), loop = pfx.ui.loop
+    const cfg = P.sequenceConfig(pfx.ui.config, D, loop)
+    const st = await P.createStageEngine(cfg, PS.width, PS.height, { loop })
+    if (!pfx || v !== pfx.ver) return
+    pfx.stage = st; pfx.cfg = cfg; pfx.simT = 0; pfx.loop = loop; pfx.D = D
+    const c = $('#pfxLayer')
+    if (c) c.style.mixBlendMode = pfx.ui.blend === 'normal' ? 'normal' : pfx.ui.blend === 'screen' ? 'screen' : (window.CSS && CSS.supports && CSS.supports('mix-blend-mode', 'plus-lighter') ? 'plus-lighter' : 'screen')
+  }
+
+  /** 每帧：按播放时间推进粒子，画到舞台上（变换 = 画板像素 → 跟随骨骼的姿势 → 屏幕） */
+  function drawParticles() {
+    if (!pfx || !rt.skeleton) return
+    const { c, hd } = pfxLayer()
+    const ctx = c.getContext('2d')
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, c.width, c.height)
+    const o = pfx.origin, B = o && rt.skeleton.findBone(o.bone), PS = pfx.PS
+    if (!B) { hd.style.display = 'none'; return }
+    const W = PS.width, H = PS.height
+    const pt = (px, py) => { const lx = o.x + o.s * (px - W / 2), ly = o.y + o.s * (H / 2 - py); return toScreen(B.a * lx + B.b * ly + B.worldX, B.c * lx + B.d * ly + B.worldY) }
+    const S0 = pt(0, 0), S1 = pt(1, 0), S2 = pt(0, 1), d = rt.dpr
+    pfx.J = [S1[0] - S0[0], S1[1] - S0[1], S2[0] - S0[0], S2[1] - S0[1]]
+    // 切片范围（虚线框）
+    const corners = [pt(0, 0), pt(W, 0), pt(W, H), pt(0, H)]
+    ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.globalCompositeOperation = 'source-over'
+    ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.setLineDash([5, 4])
+    ctx.beginPath(); corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke(); ctx.restore()
+    // 发射点手柄
+    const cfg = pfx.ui.config, E = pt(W / 2 + (cfg.systemX || 0), H / 2 + (cfg.systemY || 0))
+    hd.style.display = ''
+    hd.style.left = E[0] + 'px'; hd.style.top = E[1] + 'px'
+    if (!pfx.stage) return
+    // 时间：动画里的「起」之后才有；循环的先空跑一圈（和生成时一样）
+    const T = animOn() ? (state.frame + (state.playFrac || 0)) / FPS : 0, tau = T - Math.max(0, PS.start || 0) / FPS, D = pfx.D
+    if (tau < 0 || (!pfx.loop && tau > D + 4)) return
+    const target = pfx.loop ? D + (((tau % D) + D) % D) : tau
+    const e = pfx.stage
+    const stepTo = (t) => { let left = t - pfx.simT; while (left > 1e-6) { const dt = Math.min(1 / 60, left); e.step(dt); left -= dt } pfx.simT = t }
+    const resim = (t) => { e.engine.reset(pfx.cfg, { draw: false }); pfx.simT = 0; stepTo(t) }
+    if (target >= pfx.simT - 1e-6) { if (target - pfx.simT > 0.5) resim(target); else stepTo(target) }
+    else if (pfx.loop) { const k = Math.ceil((pfx.simT - target) / D - 1e-9), fwd = target + k * D - pfx.simT; if (fwd >= 0 && fwd < 0.5) stepTo(pfx.simT + fwd); else resim(target) }
+    else resim(target)
+    ctx.setTransform(d * pfx.J[0], d * pfx.J[1], d * pfx.J[2], d * pfx.J[3], d * S0[0], d * S0[1])
+    e.drawTo(ctx)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+  }
+
+  function closeParticleLayer() {
+    const c = $('#pfxLayer'), hd = $('#pfxHandle')
+    if (c) c.remove()
+    if (hd) hd.remove()
+  }
+
+  function openParticlePanel() {
+    const P = ParticleFx(), UI = ParticleFxUI()
+    if (!P || !UI) { status('粒子特效没有加载（particle-fx.js）', 'error'); return }
+    if (!state.json) { status('先导入一个工程', 'error'); return }
+    if (pfx) return
+    if (!animOn()) {
+      const names = Object.keys(state.json.animations || {})
+      if (!names.length) { status('工程里还没有动画：先新建一个动画', 'error'); return }
+      if (!names.includes(state.anim)) state.anim = names[0]
+      setMode('animate')
+    }
+    const PS = state.particleSet || (state.particleSet = { frames: 24, start: 0, duration: 0, width: 0, height: 0 })
+    if (!(PS.duration > 0)) PS.duration = lastFrame() > 1 ? lastFrame() : 60
+    // 跟随图层：选中的图层（插槽 / 附件）；骨骼：它所在的骨骼，没选图层就是选中的骨骼
+    const place = { slot: '', bone: '' }
+    const fromSelection = () => {
+      const sel = state.sel
+      const slot = sel && (sel.kind === 'slot' ? sel.name : sel.kind === 'att' ? sel.slot : '')
+      const sl = slot && state.json.slots.find((x) => x.name === slot)
+      if (sl) { place.slot = sl.name; place.bone = sl.bone; return true }
+      if (sel && sel.kind === 'bone') { place.slot = ''; place.bone = sel.name; return true }
+      return false
+    }
+    fromSelection()
+    const sliceSize = () => {
+      const img = layerImage(place.slot), r = img ? regionSize(img) : null
+      if (!r) { PS.width = 512; PS.height = 512; return }
+      const pad = Math.round(Math.min(600, Math.max(96, Math.max(r.width, r.height) * 0.5)))
+      PS.width = Math.round(r.width + 2 * pad); PS.height = Math.round(r.height + 2 * pad)
+    }
+    if (!(PS.width > 0) || !(PS.height > 0) || place.slot) sliceSize()
+    const host = document.querySelector('.right.card') || document.body
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative'
+    const pngFile = (canvas, name) => new Promise((res, rej) => canvas.toBlob((b) => (b ? res(new File([b], name, { type: 'image/png' })) : rej(new Error('PNG 编码失败'))), 'image/png'))
+    const dataUrlFile = async (dataUrl, name) => new File([await (await fetch(dataUrl)).blob()], name, { type: 'image/png' })
+    const importFiles = async (files, folder) => {
+      const before = snapshot()
+      try {
+        const names = await importIntoFolder(files, folder)
+        ensureAtlas(); applyJson(state.json); state.history.push(before); state.future = []
+        return names
+      } catch (e) { restore(before); throw new Error('图片进图片文件夹失败：' + e.message) }
+    }
+    const startFrame = () => Math.max(0, Math.round(PS.start || 0))
+    pfx = { place, PS, ver: 0, simT: 0, stage: null, origin: null, ui: null }
+    pfx.ui = UI.openDock({
+      host,
+      last: state.particleLast,
+      settings: () => ({ frames: PS.frames, duration: PS.duration, fps: FPS, start: PS.start || 0, width: PS.width, height: PS.height }),
+      setSettings: (patch) => { Object.assign(PS, patch); pfxRestart() },
+      onChange: () => pfxRestart(),
+      // 位置：跟随图层 / 骨骼 / 发射点
+      place: (el) => {
+        const line = (label, ctl) => h('div', { class: 'fxm-line' }, h('label', {}, label), ctl)
+        const btn = (text, title, fn) => h('button', { class: 'fxm-btn', type: 'button', title, onclick: fn }, text)
+        const bones = state.json.bones.map((b) => b.name)
+        el.append(
+          line('图层', h('div', { class: 'fxm-seg' }, h('span', { style: 'align-self:center;color:#ddd;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, place.slot || '不跟图层'),
+            btn('用选中的', '在画布上点一个图层或骨骼，再点这里', () => { if (!fromSelection()) { status('先在画布上点一个图层或骨骼', 'error'); return } sliceSize(); pfx.ui.rerender(); pfxRestart() }),
+            place.slot ? btn('不跟', '原点放在骨骼原点', () => { place.slot = ''; sliceSize(); pfx.ui.rerender(); pfxRestart() }) : null)),
+          line('骨骼', h('select', { class: 'fxm-select', onchange: (e) => { place.bone = e.target.value; pfxRestart() } },
+            bones.map((b) => h('option', { value: b, selected: b === (place.bone || (bones.includes('root') ? 'root' : bones[0])) }, b)))),
+          line('发射点', h('div', { class: 'fxm-seg' }, btn('居中', '发射点回到原点（图层中心 / 骨骼原点）', () => { const cfg = pfx.ui.config; cfg.systemX = 0; cfg.systemY = 0; pfxRestart() }),
+            h('span', { class: 'fxm-note', style: 'margin:0;align-self:center' }, '画布上拖绿点'))),
+        )
+      },
+      // 生成序列：切片 → 图片文件夹 → 一个插槽逐帧换图写进动画
+      onGenerateSequence: async (info) => {
+        const t0 = performance.now()
+        const { folder, prefix } = particleFolderFor(layerImage(place.slot), particleStem(info.template))
+        const files = []
+        await P.renderSequence({ config: info.config, width: info.width, height: info.height, frames: info.frames, duration: info.duration, loop: info.loop,
+          onFrame: async (i, canvas) => { info.busy(`渲染 ${i + 1}/${info.frames}`, ((i + 1) / info.frames) * 0.8); files.push(await pngFile(canvas, `${prefix}_${String(i + 1).padStart(2, '0')}.png`)) } })
+        info.busy('写入图片文件夹…', 0.85)
+        const names = await importFiles(files, folder)
+        const o = particleOrigin(place), startF = startFrame(), endF = startF + Math.max(2, Math.round(PS.duration))
+        state.frameBone = o.bone
+        const gen = { base: layerImage(place.slot), baseSlot: place.slot || null, bone: o.bone, blend: info.blend, mode: 'slot', wrap: info.loop, image: false, names: names.slice() }
+        const r = edit(`粒子特效：${names.length} 张进一个插槽，第 ${startF} → ${endF} 帧，挂在 ${o.bone}（${state.anim}）`, (j) => {
+          const start = startF / FPS, end = endF / FPS
+          const place2 = { x: o.x, y: o.y, rotation: 0, scaleX: o.s, scaleY: o.s }
+          return { json: Ops.tidy(oneSlotSequence(j, { images: names, bone: o.bone, place: place2, baseSlotObj: { bone: o.bone }, gen, anim: state.anim, start, step: (end - start) / names.length, end, wrap: info.loop, animEnd: lastFrame() })) }
+        }, () => gotoFrame(startF))
+        info.busy(null)
+        if (!r) throw new Error('写进动画失败')
+        refresh()
+        info.setInfo(`已生成：${names.length} 张切片进「${folder}」，写进动画 ${state.anim} 第 ${startF} → ${endF} 帧（${((performance.now() - t0) / 1000).toFixed(1)} s）。可以接着调、再生成，或关掉面板。`)
+        status(`粒子特效：${names.length} 张切片已写进动画`, 'ok')
+      },
+      // 生成 Spine 动画：粒子页的 Spine 骨架（每个粒子一个插槽）加前缀并进当前工程
+      onGenerateSpine: async (info) => {
+        info.busy('计算粒子…', 0.2)
+        const parts = await P.spineParts(info.config, info.duration, info.loop)
+        const sk = parts.skeleton, A = (sk.animations && sk.animations.animation) || {}
+        const { folder, prefix } = particleFolderFor(layerImage(place.slot), particleStem(info.template))
+        info.busy('写入贴图…', 0.5)
+        const files = []
+        for (const im of parts.images) files.push(await dataUrlFile(im.dataUrl, `${prefix}_${particleStem(im.regionName)}.png`))
+        const imported = await importFiles(files, folder)
+        const pathOf = new Map(parts.images.map((im, k) => [im.regionName, imported[k]]))
+        const o = particleOrigin(place), startF = startFrame(), start = startF / FPS
+        const blend = info.blend === 'add' ? 'additive' : info.blend === 'screen' ? 'screen' : null
+        const r4 = (v) => Math.round(v * 100) / 100
+        const shift = (keys) => (Array.isArray(keys) ? keys.map((k) => { const t = Math.round(((Number(k.time) || 0) + start) * 10000) / 10000; const out = { ...k }; if (t) out.time = t; else delete out.time; return out }) : keys)
+        let made = 0
+        const r = edit(`粒子特效：Spine 动画 ${sk.slots.length} 个粒子插槽，从第 ${startF} 帧，挂在 ${o.bone}（${state.anim}）`, (j) => {
+          const json = Ops.prepare(j)
+          const bonesTaken = new Set(json.bones.map((b) => b.name)), slotsTaken = new Set(json.slots.map((x) => x.name))
+          let P0 = prefix, n = 2
+          while (bonesTaken.has(P0) || sk.slots.some((x) => slotsTaken.has(`${P0}_${x.name}`))) P0 = `${prefix}_${n++}`
+          const bn = (name) => (name === 'root' ? P0 : `${P0}_${name}`)
+          for (const b of sk.bones) {
+            if (b.name === 'root') { json.bones.push({ name: P0, parent: o.bone, x: r4(o.x), y: r4(o.y), ...(Math.abs(o.s - 1) > 1e-4 ? { scaleX: r4(o.s), scaleY: r4(o.s) } : {}) }); continue }
+            json.bones.push({ ...b, name: bn(b.name), parent: bn(b.parent || 'root') })
+          }
+          const skin = json.skins.find((x) => x.name === 'default')
+          const srcSkin = (sk.skins || []).find((x) => x.name === 'default') || { attachments: {} }
+          const mine = []
+          for (const sl of sk.slots) {
+            const name = `${P0}_${sl.name}`
+            const slot = { ...sl, name, bone: bn(sl.bone) }
+            if (blend) slot.blend = blend; else delete slot.blend
+            json.slots.push(slot)
+            mine.push(name)
+            const atts = srcSkin.attachments[sl.name] || {}, out = {}
+            for (const [an, att] of Object.entries(atts)) { const region = att.path || an; out[an] = { ...att, ...(pathOf.has(region) ? { path: pathOf.get(region) } : {}) } }
+            skin.attachments[name] = out
+          }
+          // 插槽次序：跟随图层的上一层（不跟图层：最上层）
+          const rest = json.slots.map((x) => x.name).filter((x) => !mine.includes(x))
+          const at = place.slot ? rest.indexOf(place.slot) : -1
+          const out = Ops.reorderSlots(json, at >= 0 ? [...rest.slice(0, at + 1), ...mine, ...rest.slice(at + 1)] : [...rest, ...mine]).json
+          const a = out.animations[state.anim]
+          if (!a) throw new Error(`找不到动画：${state.anim}`)
+          a.bones = a.bones || {}; a.slots = a.slots || {}
+          for (const [b, tl] of Object.entries(A.bones || {})) { const row = {}; for (const [k, v] of Object.entries(tl)) row[k] = shift(v); a.bones[bn(b)] = row }
+          for (const [sl, tl] of Object.entries(A.slots || {})) { const row = {}; for (const [k, v] of Object.entries(tl)) row[k] = shift(v); a.slots[`${P0}_${sl}`] = row }
+          made = mine.length
+          return { json: Ops.tidy(Ops.prepare(out)) }
+        }, () => gotoFrame(startF))
+        info.busy(null)
+        if (!r) throw new Error('并进工程失败')
+        refresh()
+        info.setInfo(`已生成：${made} 个粒子插槽并进工程（贴图在「${folder}」），动画 ${state.anim} 从第 ${startF} 帧开始。`)
+        status(`粒子特效：${made} 个粒子插槽已并进工程`, 'ok')
+      },
+      onClose: (st) => { state.particleLast = st; pfx = null; closeParticleLayer() },
+    })
+    pfxLayer()
+    if (!state.playing) state.playing = true   // 打开就播放：粒子跟着动画动
+    pfxRestart()
   }
 
   /** the generated slices' slots: drawn right above the base slot (or last), the blend set */
@@ -10141,6 +10436,8 @@
     /** 序列扫光 generator: the picker (底图), then the scheme / parameter panel */
     openSweepGenerator,
     openSweepPanel,
+    /** 动画工具 → 粒子特效：扩展弹框 */
+    openParticlePanel,
     density: () => state.meshDensity,
     setDensity: (v) => { state.meshDensity = Math.max(2, Math.min(40, Math.round(Number(v) || 18))) },
     /** the batch tools of 蒙皮 / 权重 on the ticked layer cards (status shows the result) */
@@ -10230,5 +10527,5 @@
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, openParticlePanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()

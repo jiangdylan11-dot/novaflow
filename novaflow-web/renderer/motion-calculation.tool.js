@@ -43,9 +43,10 @@
     const anim=!!api.anim();
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>{
       // the frame tools need a bone too (the pictures hang on it) and an animation to write into
-      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode),ok=frameTool?(anim&&!!bone):!!bone;
+      // 粒子特效（扩展弹框）只要有动画：骨骼在弹框里选
+      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode),ok=mode==='particle'?anim:frameTool?(anim&&!!bone):!!bone;
       if(item.disabled!==!ok)item.disabled=!ok;
-      const title=ok?'':(frameTool&&!anim?'先选一个动画':'先在画板或工程树里选中一个骨骼');
+      const title=ok?'':(mode==='particle'||(frameTool&&!anim)?'先选一个动画':'先在画板或工程树里选中一个骨骼');
       if(item.title!==title)item.title=title;
     });
     // no bone picked: the open editor (and 飘带计算 docked over it) is greyed and takes no input,
@@ -456,6 +457,8 @@
   const isFrameTool=mode=>mode==='sequence'||mode==='sweep'||mode==='loop';
   let frameToolAt=0;
   function selectTool(mode){
+    // 粒子特效是弹框（2026-10-16）：不换当前工具，直接打开
+    if(mode==='particle'){window.NovaFlowSkeletonEditor?.openParticle?.();return}
     activeMode=mode;
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.motionMode===mode)));
     const editor=window.NovaFlowSkeletonEditor;
@@ -496,7 +499,7 @@
         [data-panel-id="bone-motion"] [data-motion-mode][disabled]{color:#5a5a5a;cursor:default}
         [data-panel-id="bone-motion"] .nf-motion-note{margin:4px 10px 0;font-size:11px;line-height:1.6;color:#6a6a6a}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
-      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',sequence:'序列K帧',sweep:'特效扫光',loop:'循环运动'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；序列K帧、特效扫光、循环运动在画面下方的卡片里选图片。</p></div><div class="nf-motion-body"></div>`;
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画工具</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画工具" hidden>${Object.entries({ribbon:'飘带计算',bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',sequence:'序列K帧',sweep:'特效扫光',loop:'循环运动',particle:'粒子特效'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}<p class="nf-motion-note">选中骨骼后可用飘带、弹跳、缩放、移动、旋转计算；序列K帧、特效扫光、循环运动在画面下方的卡片里选图片。</p></div><div class="nf-motion-body"></div>`;
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{

@@ -1100,5 +1100,7 @@ self.postMessage({ type: 'ready' })`
     return api
   }
 
-  root.NovaFlowFxMakerUI = { open, renderProject, renderFrames, createWorker, scriptUrl }
+  // ensureStyle：骨骼动画「粒子特效」弹框用同一套窗口样式（fxm-*）
+  const ensureStyle = () => { if (!document.getElementById(STYLE_ID)) document.head.appendChild(el('style', { id: STYLE_ID }, CSS)) }
+  root.NovaFlowFxMakerUI = { open, renderProject, renderFrames, createWorker, scriptUrl, ensureStyle }
 })(typeof self !== 'undefined' ? self : globalThis)

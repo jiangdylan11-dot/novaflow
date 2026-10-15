@@ -758,6 +758,8 @@
     call,
     api: () => api,
     setPanel: (kind, open) => { ready().then((a) => a.setPanel(kind, open)) },
+    /** 动画工具 → 粒子特效（扩展弹框） */
+    openParticle: () => { ready().then((a) => { if (a.openParticlePanel) a.openParticlePanel() }) },
     beforeMotion,
     reserveForMotion,
     timeline: () => (anchor && anchor.isConnected ? anchor : null),
