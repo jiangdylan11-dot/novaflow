@@ -101,7 +101,10 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
         if (match) {
           const task = tasks.get(match[1]);
           if (!task) throw fail('本机任务不存在', 404);
-          if (!match[2] && req.method === 'GET') return json(200, { task });
+          if (!match[2] && req.method === 'GET') {
+            const queue = tasks.queueView(task.id);
+            return json(200, { task: queue ? { ...task, queue } : task });
+          }
           if (match[2] === 'cancel' && req.method === 'POST') return json(200, { task: await worker.cancelLocalTask(task.id) });
           if (match[2] === 'grant' && req.method === 'POST') {
             if (!['upload', 'download'].includes(body.op)) throw fail('无效的文件操作');

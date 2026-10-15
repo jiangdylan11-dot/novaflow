@@ -259,6 +259,198 @@
       }
     } catch (_) { /* A temporary transport loss never closes the editor. */ }
   }, { once: true });
+  // ------------------------------------------------------------ queue notice
+  //
+  // 2026-10-15 (user): when the compute node is busy, a dialog says the run is waiting in line,
+  // how long it has waited and roughly how long until it starts, and lets the wait be cancelled.
+  // Every generation polls its task through control(), so this one place sees them all: a task
+  // still waiting for a node (task.queue from the control plane or the local queue), or one a node
+  // holds while its runtime finishes other prompts first (the "[queue ahead=N eta=S]" marker the
+  // node adds to its note - stripped here, no panel ever shows it). Waits that are not tasks (the
+  // AI 助手 waiting for the GPU) come in through NovaFlowQueueNotice.wait / done.
+  const QUEUE_NOTE_RE = /\s*\[queue ahead=(\d+)(?: eta=(\d+))?\]\s*$/;
+  const QUEUE_SHOW_AFTER_MS = 3000;   // a node that picks the task up within a poll or two shows nothing
+  const QUEUE_STALE_MS = 15000;       // a task nobody polls any more is no longer anyone's wait
+  const QUEUE_TERMINAL = ['completed', 'failed', 'cancelled', 'expired'];
+  const waits = new Map();            // key -> { since, seen, label, ahead, workers, eta, etaAt, cancel, background, external }
+  let queueRoot = null;
+  let queueTimer = 0;
+
+  function readQueueNote(task) {
+    if (!task || typeof task !== 'object') return task;
+    const match = QUEUE_NOTE_RE.exec(String(task.progress_note || ''));
+    if (!match) return task;
+    task.progress_note = String(task.progress_note).replace(QUEUE_NOTE_RE, '');
+    if (!task.queue) task.queue = { ahead: Number(match[1]), eta_seconds: match[2] === undefined ? null : Number(match[2]), workers: 1 };
+    return task;
+  }
+
+  function observeTask(task) {
+    if (!task || !task.id) return;
+    readQueueNote(task);
+    const key = 'task:' + task.id;
+    const waiting = !QUEUE_TERMINAL.includes(task.status)
+      && (task.status === 'created' || task.status === 'queued' || Boolean(task.queue));
+    if (!waiting) { endWait(key); return; }
+    const queue = task.queue || {};
+    noteWait(key, {
+      ahead: queue.ahead,
+      workers: queue.workers,
+      eta: queue.eta_seconds,
+      cancel: () => control('POST', '/api/web/tasks/' + task.id + '/cancel')
+    });
+  }
+
+  const finite = (value) => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value));
+
+  function noteWait(key, info) {
+    const now = Date.now();
+    let wait = waits.get(key);
+    if (!wait) { wait = { since: now, background: false, eta: null, etaAt: now }; waits.set(key, wait); }
+    wait.seen = now;
+    wait.external = Boolean(info.external);
+    if (info.label !== undefined) wait.label = String(info.label || '');
+    wait.ahead = finite(info.ahead);
+    wait.workers = finite(info.workers);
+    const eta = finite(info.eta);
+    // The same estimate again (a cached answer, a node's ten-second step) keeps counting down.
+    if (eta !== wait.eta) { wait.eta = eta; wait.etaAt = now; }
+    if (typeof info.cancel === 'function') wait.cancel = info.cancel;
+    renderQueue();
+  }
+
+  function endWait(key) {
+    if (waits.delete(key)) renderQueue();
+  }
+
+  function clock(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = String(total % 60).padStart(2, '0');
+    return h ? h + ':' + String(m).padStart(2, '0') + ':' + s : m + ':' + s;
+  }
+
+  function queueTexts(wait, now) {
+    let line = '算力节点正忙，轮到后自动开始';
+    if (wait.ahead > 0) line = '前面还有 ' + wait.ahead + ' 个任务，轮到后自动开始';
+    else if (wait.ahead === 0 && wait.workers === 0) line = '暂时没有在线的算力节点，有节点上线后自动开始';
+    else if (wait.ahead === 0) line = '马上轮到，正在等算力节点接手';
+    let eta = wait.ahead === 0 ? '马上开始' : '暂时无法估算';
+    if (wait.workers === 0) eta = '等节点上线';
+    else if (wait.eta !== null) {
+      const left = wait.eta - (now - wait.etaAt) / 1000;
+      // Past the estimate with someone still ahead: the run ahead is slower than usual, not over.
+      eta = left > 1 ? '约 ' + clock(left) : wait.ahead > 0 ? '稍等片刻' : '马上开始';
+    }
+    return { line, waited: clock((now - wait.since) / 1000), eta };
+  }
+
+  function ensureQueueRoot() {
+    if (queueRoot && queueRoot.isConnected) return queueRoot;
+    const doc = root.document;
+    if (!doc || !doc.body) return null;
+    if (!doc.getElementById('novaflow-queue-notice-style')) {
+      const style = doc.createElement('style');
+      style.id = 'novaflow-queue-notice-style';
+      // Ids and !important: the host stylesheets flatten every button with selectors stronger than a class.
+      style.textContent = [
+        '#novaflow-queue-notice{position:fixed;inset:0;z-index:2147483630;pointer-events:none;color:#e9e9e9;font-family:inherit;font-size:12px;line-height:1.5}',
+        '#novaflow-queue-notice[hidden],#novaflow-queue-notice[data-view="pill"] .nfq-mask,#novaflow-queue-notice[data-view="pill"] .nfq-dialog,#novaflow-queue-notice[data-view="dialog"] .nfq-pill{display:none !important}',
+        '#novaflow-queue-notice .nfq-mask{position:absolute;inset:0;background:rgba(0,0,0,.45);pointer-events:auto}',
+        '#novaflow-queue-notice .nfq-dialog{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(360px,calc(100vw - 32px));box-sizing:border-box;background:#1F1F1F;border:1px solid #2E2E2E;border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,.45);pointer-events:auto}',
+        '#novaflow-queue-notice .nfq-hd{display:flex;align-items:center;gap:8px;padding:14px 12px 0 16px}',
+        '#novaflow-queue-notice .nfq-hd b{font-size:14px;font-weight:600;color:#fff}',
+        '#novaflow-queue-notice .nfq-label{flex:1;min-width:0;color:#9a9a9a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '#novaflow-queue-notice .nfq-bd{padding:10px 16px 16px}',
+        '#novaflow-queue-notice .nfq-line{margin:0 0 12px;font-size:13px;color:rgba(255,255,255,.86)}',
+        '#novaflow-queue-notice .nfq-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}',
+        '#novaflow-queue-notice .nfq-stats>div{padding:8px 10px;border-radius:6px;background:#262626}',
+        '#novaflow-queue-notice .nfq-stats span{display:block;font-size:11px;color:#9a9a9a}',
+        '#novaflow-queue-notice .nfq-stats strong{display:block;margin-top:2px;font-size:16px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}',
+        '#novaflow-queue-notice .nfq-ft{display:flex;justify-content:flex-end;gap:8px;padding:0 16px 16px}',
+        '#novaflow-queue-notice .nfq-ft button{height:30px !important;min-width:76px;padding:0 14px !important;border:0 !important;border-radius:6px !important;background:#2A2A2A !important;color:#e9e9e9 !important;font-size:12px !important;font-weight:500 !important;box-shadow:none !important;outline:none !important;cursor:pointer}',
+        '#novaflow-queue-notice .nfq-ft button:hover:not(:disabled){background:#373737 !important;color:#fff !important}',
+        '#novaflow-queue-notice .nfq-ft button[data-act="background"]{background:#1EA672 !important;color:#fff !important;font-weight:600 !important}',
+        '#novaflow-queue-notice .nfq-ft button[data-act="background"]:hover{background:#22B980 !important}',
+        '#novaflow-queue-notice .nfq-ft button:disabled{opacity:.6;cursor:default}',
+        '#novaflow-queue-notice .nfq-x{width:24px;height:24px;padding:0;border:0;background:transparent;color:rgba(238,244,252,.6);font-size:16px;line-height:24px;cursor:pointer;outline:none}',
+        '#novaflow-queue-notice .nfq-pill{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);display:flex !important;align-items:center;gap:8px;height:30px !important;padding:0 14px !important;border:1px solid #2E2E2E !important;border-radius:15px !important;background:#1F1F1F !important;color:#e9e9e9 !important;font-size:12px !important;box-shadow:0 6px 18px rgba(0,0,0,.4) !important;outline:none !important;pointer-events:auto;cursor:pointer;white-space:nowrap}',
+        '#novaflow-queue-notice .nfq-pill:hover{background:#373737 !important;color:#fff !important}',
+        '#novaflow-queue-notice .nfq-pill i{width:6px;height:6px;border-radius:50%;background:#1EA672}'
+      ].join('\n');
+      doc.head.appendChild(style);
+    }
+    const box = doc.createElement('div');
+    box.id = 'novaflow-queue-notice';
+    box.hidden = true;
+    box.innerHTML = '<div class="nfq-mask" data-act="background"></div>'
+      + '<div class="nfq-dialog" role="dialog" aria-label="排队中">'
+      + '<div class="nfq-hd"><b>排队中</b><span class="nfq-label"></span><button type="button" class="nfq-x" data-act="background" title="后台等待">×</button></div>'
+      + '<div class="nfq-bd"><p class="nfq-line"></p><div class="nfq-stats">'
+      + '<div><span>已等</span><strong class="nfq-waited"></strong></div>'
+      + '<div><span>预计还要</span><strong class="nfq-eta"></strong></div></div></div>'
+      + '<div class="nfq-ft"><button type="button" data-act="cancel">取消排队</button><button type="button" data-act="background">后台等待</button></div>'
+      + '</div>'
+      + '<button type="button" class="nfq-pill" data-act="front" title="查看排队"><i></i><span class="nfq-pill-text"></span></button>';
+    box.addEventListener('click', (event) => {
+      const act = event.target.closest('[data-act]')?.dataset.act;
+      const key = box.dataset.key;
+      const wait = key && waits.get(key);
+      if (!act || !wait) return;
+      if (act === 'background') wait.background = true;
+      if (act === 'front') wait.background = false;
+      if (act === 'cancel') {
+        const button = event.target.closest('button');
+        button.disabled = true;
+        button.textContent = '正在取消…';
+        Promise.resolve().then(() => wait.cancel && wait.cancel()).catch(() => {}).then(() => {
+          button.disabled = false;
+          button.textContent = '取消排队';
+          endWait(key);
+        });
+        return;
+      }
+      renderQueue();
+    });
+    doc.body.appendChild(box);
+    queueRoot = box;
+    return box;
+  }
+
+  function renderQueue() {
+    const now = Date.now();
+    for (const [key, wait] of waits) if (!wait.external && now - wait.seen > QUEUE_STALE_MS) waits.delete(key);
+    // The longest wait is the one shown; the others take their turn when it ends.
+    let key = '';
+    let wait = null;
+    for (const [k, w] of waits) if (now - w.since >= QUEUE_SHOW_AFTER_MS && (!wait || w.since < wait.since)) { key = k; wait = w; }
+    if (waits.size && !queueTimer) queueTimer = setInterval(renderQueue, 1000);
+    if (!waits.size && queueTimer) { clearInterval(queueTimer); queueTimer = 0; }
+    if (!wait) { if (queueRoot) queueRoot.hidden = true; return; }
+    const box = ensureQueueRoot();
+    if (!box) return;
+    const text = queueTexts(wait, now);
+    box.dataset.key = key;
+    box.dataset.view = wait.background ? 'pill' : 'dialog';
+    box.querySelector('.nfq-label').textContent = wait.label || '';
+    box.querySelector('.nfq-line').textContent = text.line;
+    box.querySelector('.nfq-waited').textContent = text.waited;
+    box.querySelector('.nfq-eta').textContent = text.eta;
+    box.querySelector('[data-act="cancel"]').style.display = typeof wait.cancel === 'function' ? '' : 'none';
+    box.querySelector('.nfq-pill-text').textContent = '排队中 · 已等 ' + text.waited + ' · 预计 ' + text.eta;
+    box.hidden = false;
+  }
+
+  root.NovaFlowQueueNotice = {
+    /** A wait that is not a task: { label, ahead, workers, eta (seconds), onCancel }. Call again to update. */
+    wait(key, info) {
+      noteWait('x:' + key, Object.assign({}, info || {}, { external: true, cancel: info && info.onCancel }));
+    },
+    done(key) { endWait('x:' + key); },
+    state() { return [...waits.entries()].map(([key, w]) => Object.assign({ key }, w)); }
+  };
+
   async function control(method, path, body) {
     const taskId = /^\/api\/web\/tasks\/([^/]+)/.exec(path)?.[1];
     const mode = taskModes.get(taskId) || taskMode();
@@ -269,6 +461,8 @@
     }
     const value = mode === 'local' && isCompute ? await localControl(method, path, body) : await api(CONFIG.controlUrl, method, path, body);
     if (path === '/api/web/tasks' && method === 'POST' && value.task) taskModes.set(value.task.id, mode);
+    if (value && value.task) observeTask(value.task);
+    if (value && Array.isArray(value.tasks)) value.tasks.forEach(readQueueNote);
     return value;
   }
   const auth = (method, path, body, timeoutMs) => api(CONFIG.authUrl, method, path, body, timeoutMs);

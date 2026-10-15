@@ -136,6 +136,31 @@ export function createPgStore(db) {
       );
     },
 
+    // A waiting task's place in line (control plane queueView): counts and timestamps only.
+    async queueSnapshot({ modelId, createdAt }) {
+      const row = await one(
+        "select count(*)::int as n from public.web_ai_tasks where status = 'queued' and model_id = $1 and created_at < $2",
+        [modelId, createdAt]
+      );
+      return { queuedAhead: row ? Number(row.n) || 0 : 0 };
+    },
+
+    async queueStats({ modelId }) {
+      const running = await many(
+        "select coalesce(started_at, assigned_at, created_at) as at from public.web_ai_tasks where model_id = $1 and status in ('assigned', 'uploading', 'processing') limit 50",
+        [modelId]
+      );
+      const recentRuns = await many(
+        "select started_at, completed_at from public.web_ai_tasks where model_id = $1 and status = 'completed' and started_at is not null and completed_at is not null order by completed_at desc limit 20",
+        [modelId]
+      );
+      const iso = (value) => (value instanceof Date ? value.toISOString() : String(value));
+      return {
+        runningStartedAt: running.map((r) => iso(r.at)),
+        recentRuns: recentRuns.map((r) => ({ started_at: iso(r.started_at), completed_at: iso(r.completed_at) }))
+      };
+    },
+
     async claimTask(workerId, heartbeatTimeoutSeconds) {
       const row = await one(
         'select * from public.novaflow_web_claim_task($1, $2)',

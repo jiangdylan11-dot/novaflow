@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { sanitizeWorkflowOptions, sanitizeReferences, validateTaskParameters } from '../../packages/shared/src/control-plane.mjs';
+import { estimateQueueWait } from '../../packages/shared/src/protocol.mjs';
 
 export async function createLocalTasks(dataDir) {
   const file = join(dataDir, 'local-tasks.json');
@@ -32,6 +33,32 @@ export async function createLocalTasks(dataDir) {
     get: id => tasks.get(id),
     list: () => [...tasks.values()].reverse(),
     pendingCount: () => [...tasks.values()].filter(t => t.status === 'queued').length,
+    // A task waiting behind this machine's own work: how many are ahead and roughly when it starts,
+    // from the recent runs of the same kind (any kind when there are none yet), as the control
+    // plane answers for the shared pool.
+    queueView(id) {
+      const t = tasks.get(id);
+      if (!t || t.status !== 'queued') return null;
+      const all = [...tasks.values()];
+      const queuedAhead = all.filter(x => x.status === 'queued' && x.created_at < t.created_at).length;
+      const running = all.filter(x => ['assigned', 'uploading', 'processing'].includes(x.status));
+      const kind = x => (x.workflow ? x.workflow.module + '.' + x.workflow.method : x.task_type);
+      const seconds = list => list.slice(-10).map(x => (Date.parse(x.completed_at) - Date.parse(x.started_at)) / 1000).filter(v => v > 0 && v < 3600);
+      const done = all.filter(x => x.status === 'completed' && x.started_at && x.completed_at);
+      const same = seconds(done.filter(x => kind(x) === kind(t)));
+      const runs = same.length ? same : seconds(done);
+      const now = Date.now();
+      return {
+        ahead: queuedAhead + running.length,
+        workers: 1,
+        eta_seconds: estimateQueueWait({
+          queuedAhead,
+          runningElapsed: running.map(x => (now - Date.parse(x.started_at || x.created_at)) / 1000),
+          averageSeconds: runs.length ? runs.reduce((sum, v) => sum + v, 0) / runs.length : 0,
+          workers: 1
+        })
+      };
+    },
     async create(body, workerId) {
       const spec = body.task_type === 'renderer_workflow' ? workflowModule(body.workflow?.module) : null;
       if (body.task_type === 'renderer_workflow' && !spec?.methods.includes(body.workflow?.method)) throw new Error('不支持的工作流');

@@ -1937,16 +1937,33 @@
   const ASSISTANT_BUSY = new Set(['runtime-generation-busy', 'prompt-assistant-busy'])
   const ASSISTANT_BUSY_RETRY_MS = 3000
   const ASSISTANT_BUSY_WAIT_MS = 600000
+  // While it waits, the page's queue notice says so (how many prompts the runtime still has) and
+  // can stop it - the run too, when one is waiting on it.
+  const ASSISTANT_WAIT_LABEL = { 'aifx-material': '识别参考图材质', 'aifx-supplement': '翻译提示词补充' }
   const askAssistant = async (payload, timeoutMs) => {
     const api = window.electronAPI
     if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return null
     const started = Date.now()
-    for (;;) {
-      let timer = 0
-      const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs) })
-      const result = await Promise.race([api.promptAssistantDescribeArtStyle(payload), timeout]).finally(() => clearTimeout(timer))
-      if (!result || !ASSISTANT_BUSY.has(result.errorCode) || Date.now() - started > ASSISTANT_BUSY_WAIT_MS) return result
-      await new Promise(resolve => setTimeout(resolve, ASSISTANT_BUSY_RETRY_MS))
+    const key = 'aifx-' + payload.purpose
+    let cancelled = false
+    try {
+      for (;;) {
+        let timer = 0
+        const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs) })
+        const result = await Promise.race([api.promptAssistantDescribeArtStyle(payload), timeout]).finally(() => clearTimeout(timer))
+        if (!result || !ASSISTANT_BUSY.has(result.errorCode) || Date.now() - started > ASSISTANT_BUSY_WAIT_MS) return result
+        const handoff = result.resourceHandoff || {}
+        const ahead = Number(handoff.running) + Number(handoff.pending)
+        window.NovaFlowQueueNotice?.wait(key, {
+          label: ASSISTANT_WAIT_LABEL[payload.purpose] || '',
+          ahead: Number.isFinite(ahead) ? ahead : null,
+          onCancel: () => { cancelled = true; cancelGenerate() },
+        })
+        await new Promise(resolve => setTimeout(resolve, ASSISTANT_BUSY_RETRY_MS))
+        if (cancelled) return null
+      }
+    } finally {
+      window.NovaFlowQueueNotice?.done(key)
     }
   }
   const readReferenceMaterial = (blob, image) => {

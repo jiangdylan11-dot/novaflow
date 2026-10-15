@@ -230,6 +230,32 @@ const supabaseStore = {
     return data || [];
   },
 
+  // A waiting task's place in line (control plane queueView): counts and timestamps only.
+  async queueSnapshot({ modelId, createdAt }: any) {
+    const { count, error } = await admin()
+      .from('web_ai_tasks').select('id', { count: 'exact', head: true })
+      .eq('status', 'queued').eq('model_id', modelId).lt('created_at', createdAt);
+    if (error) throw error;
+    return { queuedAhead: count || 0 };
+  },
+
+  async queueStats({ modelId }: any) {
+    const [running, recent] = await Promise.all([
+      admin().from('web_ai_tasks').select('started_at,assigned_at,created_at')
+        .eq('model_id', modelId).in('status', ['assigned', 'uploading', 'processing']).limit(50),
+      admin().from('web_ai_tasks').select('started_at,completed_at')
+        .eq('model_id', modelId).eq('status', 'completed')
+        .not('started_at', 'is', null).not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false }).limit(20)
+    ]);
+    if (running.error) throw running.error;
+    if (recent.error) throw recent.error;
+    return {
+      runningStartedAt: (running.data || []).map((t: any) => t.started_at || t.assigned_at || t.created_at),
+      recentRuns: recent.data || []
+    };
+  },
+
   async claimTask(workerId: string, heartbeatTimeoutSeconds: number) {
     const { data, error } = await admin().rpc('novaflow_web_claim_task', {
       p_worker_id: workerId,

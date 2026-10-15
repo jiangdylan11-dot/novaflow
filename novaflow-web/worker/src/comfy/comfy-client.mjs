@@ -7,6 +7,7 @@
 
 import { request } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { estimateQueueWait, withQueueNote } from '../../../packages/shared/src/protocol.mjs';
 
 const LOCALHOST_RE = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -170,6 +171,25 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
     async waitForPrompt(promptId, { onProgress, pollMs = 1000, timeoutMs = 30 * 60 * 1000, signal } = {}) {
       const started = Date.now();
       let lastProgress = -1;
+      let lastNote = '';
+      // While other prompts run first (another task, another program on the same runtime), the note
+      // carries how many are ahead and roughly how long (withQueueNote), for the page's queue notice.
+      // Runs that came before are timed from the history; a running prompt from when it was first seen.
+      const seenRunning = new Map();
+      let recentAverage = null;
+      let recentAt = 0;
+      const averageRun = async () => {
+        if (recentAverage !== null && Date.now() - recentAt < 30000) return recentAverage;
+        recentAt = Date.now();
+        const recent = await json('/history?max_items=12', { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined }).catch(() => null);
+        const runs = Object.values(recent || {}).map((entry) => {
+          const messages = Array.isArray(entry?.status?.messages) ? entry.status.messages : [];
+          const at = (kind) => Number(messages.find((m) => Array.isArray(m) && m[0] === kind)?.[1]?.timestamp);
+          return (at('execution_success') - at('execution_start')) / 1000;
+        }).filter((seconds) => seconds > 0 && seconds < 3600);
+        recentAverage = runs.length ? runs.reduce((sum, seconds) => sum + seconds, 0) / runs.length : 0;
+        return recentAverage;
+      };
       const sampling = samplers.get(promptId) || [];
       samplers.delete(promptId);
       const steps = new Map();
@@ -218,13 +238,23 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
             } else if (pendingIndex >= 0) {
               // The node has already reported 12 for "queued in ComfyUI"; the page now shows it.
               progress = 12;
-              note = 'waiting in queue (' + (pendingIndex + 1) + ')';
+              const mine = Number(queue.queue_pending[pendingIndex]?.[0]);
+              const queuedAhead = (queue.queue_pending || []).filter((item) => Number(item?.[0]) < mine).length;
+              const now = Date.now();
+              const runningElapsed = (queue.queue_running || []).map((item) => {
+                if (!seenRunning.has(item?.[1])) seenRunning.set(item?.[1], now);
+                return (now - seenRunning.get(item?.[1])) / 1000;
+              });
+              const eta = estimateQueueWait({ queuedAhead, runningElapsed, averageSeconds: await averageRun(), workers: 1 });
+              // whole ten seconds: the page counts down between reports, a new one every second is noise
+              note = withQueueNote('waiting in queue', { ahead: queuedAhead + runningElapsed.length, eta: eta === null ? null : Math.ceil(eta / 10) * 10 });
             } else if (!entry) {
               // Neither queued nor in history: ComfyUI dropped it.
               throw new Error('ComfyUI lost the prompt before it produced a result');
             }
-            if (onProgress && progress !== lastProgress) {
+            if (onProgress && (progress !== lastProgress || note !== lastNote)) {
               lastProgress = progress;
+              lastNote = note;
               await onProgress(progress, note);
             }
           }

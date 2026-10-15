@@ -22,6 +22,7 @@ const SUITES = [
   { name: 'video-merge-alpha-decode', file: 'e2e/video-merge-alpha-decode.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'seamless-loop', file: 'e2e/seamless-loop.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'video-matting-queue', file: 'e2e/video-matting-queue.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'queue-notice', file: 'e2e/queue-notice.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'spine-head-layer', file: 'e2e/spine-head-layer.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'spine-skeleton-editor', file: 'e2e/spine-skeleton-editor.test.cjs', needs: [], timeoutMs: 120000 },
   { name: 'spine-version-convert', file: 'e2e/spine-version-convert.test.cjs', needs: [], timeoutMs: 120000 },

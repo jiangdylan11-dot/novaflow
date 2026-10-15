@@ -84,6 +84,34 @@ export const PROCESSING_TIMEOUT_SECONDS = 1800;
 export const MAX_TASK_ATTEMPTS = 3;
 
 // ---------------------------------------------------------------------------
+// A task's place in line (2026-10-15, user: 节点忙碌时弹框提示排队、已等多久、预计多久，能取消排队).
+// A task still waiting for a node gets `task.queue` from the control plane (or the
+// local queue); a node whose runtime is still drawing other prompts says so in its
+// progress note as "<note> [queue ahead=2 eta=180]". The page reads the marker into
+// task.queue and strips it, so no panel shows it.
+// ---------------------------------------------------------------------------
+export const QUEUE_NOTE_RE = /\s*\[queue ahead=(\d+)(?: eta=(\d+))?\]\s*$/;
+
+export function withQueueNote(note, { ahead, eta } = {}) {
+  const base = String(note || '').replace(QUEUE_NOTE_RE, '');
+  if (!Number.isFinite(Number(ahead)) || ahead === null) return base;
+  const seconds = eta === null || eta === undefined || !Number.isFinite(Number(eta)) ? '' : ' eta=' + Math.max(0, Math.round(eta));
+  return base + ' [queue ahead=' + Math.max(0, Math.round(ahead)) + seconds + ']';
+}
+
+/**
+ * Rough seconds until a waiting task starts: what the running ones still need plus one
+ * average run per task queued ahead, shared by the nodes that can take them. No recent
+ * run to go by: null (the page says it cannot estimate yet).
+ */
+export function estimateQueueWait({ queuedAhead = 0, runningElapsed = [], averageSeconds = 0, workers = 1 } = {}) {
+  const average = Number(averageSeconds) || 0;
+  if (!(average > 0)) return null;
+  const left = runningElapsed.reduce((sum, elapsed) => sum + Math.max(average * 0.1, average - (Number(elapsed) || 0)), 0);
+  return Math.round((left + Math.max(0, Number(queuedAhead) || 0) * average) / Math.max(1, Number(workers) || 1));
+}
+
+// ---------------------------------------------------------------------------
 // Token prefixes. Each token type is a distinct namespace so a token can never
 // be replayed as a different kind of credential.
 // ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ import {
   TTL_SECONDS,
   canUseSharedCompute,
   canUsePremiumNodes,
+  estimateQueueWait,
   isKnownTaskType,
   normalizeNodeTier,
   planAllowsNode,
@@ -811,7 +812,55 @@ export function createControlPlane({ store, secrets, logger }) {
     if (!task || String(task.user_id) !== String(user.id)) {
       throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
     }
-    return { ok: true, task: publicTask(task) };
+    const queue = await queueView(task);
+    return { ok: true, task: queue ? { ...publicTask(task), queue } : publicTask(task) };
+  }
+
+  // A task still waiting for a node gets its place in line: the tasks of the same model
+  // running now and queued ahead of it, the nodes that can take it, and roughly when it
+  // starts (estimateQueueWait over that model's recent runs). The page polls every second,
+  // so the per-model part is kept a few seconds. Counts only, never whose tasks they are.
+  const QUEUE_STATS_TTL_MS = 5000;
+  const queueStatsCache = new Map();
+  async function queueView(task) {
+    if (![TASK_STATE.CREATED, TASK_STATE.QUEUED].includes(task.status)) return null;
+    if (typeof store.queueSnapshot !== 'function' || typeof store.queueStats !== 'function') return null;
+    try {
+      const manifest = task.input_manifest || {};
+      const target = manifest.target_worker_id || null;
+      const key = [task.model_id, target || '', manifest.allow_premium_nodes === false ? 'n' : 'p'].join('|');
+      let stats = queueStatsCache.get(key);
+      if (!stats || Date.now() - stats.at > QUEUE_STATS_TTL_MS) {
+        const [recent, workers] = await Promise.all([
+          store.queueStats({ modelId: task.model_id }),
+          store.countCapableWorkers(task.model_id, Number(manifest.min_vram_mb) || 0, HEARTBEAT_TIMEOUT_SECONDS,
+            target, manifest.allow_premium_nodes !== false)
+        ]);
+        const runs = (recent.recentRuns || [])
+          .map((run) => (Date.parse(run.completed_at) - Date.parse(run.started_at)) / 1000)
+          .filter((seconds) => seconds > 0 && seconds < PROCESSING_TIMEOUT_SECONDS);
+        stats = {
+          at: Date.now(),
+          workers: Number(workers) || 0,
+          runningStartedAt: recent.runningStartedAt || [],
+          averageSeconds: runs.length ? runs.reduce((sum, seconds) => sum + seconds, 0) / runs.length : 0
+        };
+        queueStatsCache.set(key, stats);
+      }
+      const { queuedAhead } = await store.queueSnapshot({ modelId: task.model_id, createdAt: task.created_at });
+      const runningElapsed = (stats.runningStartedAt || [])
+        .map((at) => (Date.now() - Date.parse(at)) / 1000).filter((seconds) => Number.isFinite(seconds));
+      return {
+        ahead: (Number(queuedAhead) || 0) + runningElapsed.length,
+        workers: stats.workers,
+        eta_seconds: stats.workers > 0
+          ? estimateQueueWait({ queuedAhead, runningElapsed, averageSeconds: stats.averageSeconds, workers: stats.workers })
+          : null
+      };
+    } catch (error) {
+      log('queue view failed', { taskId: task.id, error: String(error?.message || error) });
+      return null;
+    }
   }
 
   async function handleListTasks(query, headers) {
