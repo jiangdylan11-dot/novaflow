@@ -18,7 +18,8 @@
 .fxm-x:hover{background:rgba(255,255,255,.08);color:#fff}
 .fxm-body{flex:1;min-height:0;display:grid;grid-template-columns:184px minmax(0,1fr) 284px}
 .fxm-effects{border-right:1px solid #2A2A2A;overflow-y:auto;padding:6px 0 12px}
-.fxm-group{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;font:inherit;font-size:11px;color:#7d8186;padding:10px 14px 4px;cursor:pointer;text-align:left}
+.fxm-gblock{border-bottom:1px solid #2A2A2A;padding-bottom:4px}
+.fxm-group{display:flex;align-items:center;gap:6px;width:100%;border:0;background:transparent;font:inherit;font-size:11px;color:#7d8186;padding:10px 14px 6px;cursor:pointer;text-align:left}
 .fxm-group:hover{color:#d6d6d6}
 .fxm-group i{width:0;height:0;border-left:4px solid currentColor;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;transition:transform .12s}
 .fxm-group[data-open="1"] i{transform:rotate(90deg)}
@@ -82,6 +83,11 @@
   const el = (tag, attrs = {}, html = '') => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (html) e.innerHTML = html; return e }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
   const clone = (v) => JSON.parse(JSON.stringify(v))
+  // 滑条的绿色填充：自己的 --pct + 网页全局滑条样式用的 --nf-range-pct，一起设（只设 --pct 时填充跟不上滑块）
+  function setFill(input, value) {
+    if (input.style.getPropertyValue('--pct') !== value) input.style.setProperty('--pct', value)
+    if (input.style.getPropertyValue('--nf-range-pct') !== value) input.style.setProperty('--nf-range-pct', value)
+  }
   const fmt = (v, step) => (step >= 1 ? String(Math.round(v)) : (Math.round(v * 100) / 100).toFixed(2))
 
   // ---------------------------------------------------------------- 渲染 Worker
@@ -178,7 +184,9 @@ self.postMessage({ type: 'ready' })`
     if (!S.project.motion) S.project.motion = { kind: 'none', amount: 1 }
 
     // ---------------------------------------------------------------- 骨架
-    const overlay = el('div', { class: 'fxm-overlay' })
+    // data-novaflow-runtime-ignore：网页的全局脚本跳过这块。2026-10-16 用户：「时间轴速度跟不上、滑条很卡」——
+    // 播放时每帧改时间轴 / 帧号文字都被全局脚本跟着处理，一秒只刷 14 帧
+    const overlay = el('div', { class: 'fxm-overlay', 'data-novaflow-runtime-ignore': '1' })
     overlay.innerHTML = `
       <div class="fxm-window" role="dialog" aria-label="模板编辑器">
         <div class="fxm-head"><div class="fxm-title">${esc(options.title || '模板制作')}</div><button class="fxm-x" data-act="close" type="button" title="关闭">×</button></div>
@@ -306,10 +314,12 @@ self.postMessage({ type: 'ready' })`
       }
     }
     const fxCtx = E.fxCanvas.getContext('2d')
+    let drawn = null   // 画板上现在这张（同一张不重画）
     function drawFrame() {
       const i = Math.floor(S.playhead) % n()
       const img = preview.frames.get(i) || preview.next && preview.next.get(i)
-      if (!img) return
+      if (!img || img === drawn) return
+      drawn = img
       if (E.fxCanvas.width !== img.width || E.fxCanvas.height !== img.height) { E.fxCanvas.width = img.width; E.fxCanvas.height = img.height }
       fxCtx.putImageData(img, 0, 0)
     }
@@ -327,14 +337,15 @@ self.postMessage({ type: 'ready' })`
       S.lastTick = now
     }
     S.raf = requestAnimationFrame(tick)
+    const setText = (node, text) => { if (node.textContent !== text) node.textContent = text }
     function syncTime(fromTick) {
       const total = n(), i = Math.floor(S.playhead) % total
-      E.scrub.max = String(total - 1)
-      if (!fromTick || document.activeElement !== E.scrub) E.scrub.value = String(i)
-      E.scrub.style.setProperty('--pct', (total > 1 ? (Number(E.scrub.value) / (total - 1)) * 100 : 0) + '%')
+      if (E.scrub.max !== String(total - 1)) E.scrub.max = String(total - 1)
+      if ((!fromTick || document.activeElement !== E.scrub) && E.scrub.value !== String(i)) E.scrub.value = String(i)
+      setFill(E.scrub, (total > 1 ? (Number(E.scrub.value) / (total - 1)) * 100 : 0) + '%')
       const ready = preview.next ? preview.next.size : 0
-      E.time.textContent = `${(total / FX().FPS).toFixed(1)} 秒 · 第 ${i + 1}/${total} 帧${ready < total ? ' · 预览 ' + ready + '/' + total : ''}`
-      E.play.textContent = S.playing ? '❚❚' : '▶'
+      setText(E.time, `${(total / FX().FPS).toFixed(1)} 秒 · 第 ${i + 1}/${total} 帧${ready < total ? ' · 预览 ' + ready + '/' + total : ''}`)
+      setText(E.play, S.playing ? '❚❚' : '▶')
     }
     E.play.onclick = () => { S.playing = !S.playing; S.lastTick = 0; syncTime() }
     E.scrub.oninput = () => { S.playing = false; S.playhead = Number(E.scrub.value); drawFrame(); syncTime(); pump() }
@@ -402,7 +413,7 @@ self.postMessage({ type: 'ready' })`
     function syncStartSlider() {
       const row = E.params.querySelector('[data-key="startAngle"]'), input = row && row.querySelector('input')
       if (!input) return
-      const v = startAngle(); input.value = v; input.style.setProperty('--pct', (v / 359) * 100 + '%'); row.querySelector('.fxm-val').textContent = v + '°'
+      const v = startAngle(); input.value = v; setFill(input, (v / 359) * 100 + '%'); row.querySelector('.fxm-val').textContent = v + '°'
     }
     function usesStart() { const f = fx(); return !(f.inert && f.inert.start) && (f.kind === 'edge' || f.id === 'orbit') }
     function startOnContour() {
@@ -719,7 +730,7 @@ self.postMessage({ type: 'ready' })`
     function slider(key, def, value, onInput, inertReason) {
       const v = value == null ? def.def : value
       return { html: `<div class="fxm-row" data-key="${key}" ${inertReason ? `data-inert="1" title="${esc(inertReason)}"` : ''}><label>${esc(def.label)}</label>`
-        + `<input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${v}" style="--pct:${pct(v, def)}" ${inertReason ? 'disabled' : ''}><span class="fxm-val">${esc(show(v, def))}</span></div>`, key, def, onInput }
+        + `<input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${v}" style="--pct:${pct(v, def)};--nf-range-pct:${pct(v, def)}" ${inertReason ? 'disabled' : ''}><span class="fxm-val">${esc(show(v, def))}</span></div>`, key, def, onInput }
     }
     function seg(key, label, items, value, onPick, inertReason) {
       return { html: `<div class="fxm-line" data-seg="${key}" ${inertReason ? `data-inert="1" title="${esc(inertReason)}"` : ''}><label>${esc(label)}</label><div class="fxm-seg">`
@@ -789,7 +800,7 @@ self.postMessage({ type: 'ready' })`
           const row = E.params.querySelector(`[data-key="${c.key}"]`), input = row && row.querySelector('input'), val = row && row.querySelector('.fxm-val')
           if (!input) continue
           const shapeKey = ['corner', 'offset', 'star.points', 'star.inner', 'traceDetail', 'base.scale'].includes(c.key)
-          input.oninput = () => { const v = Number(input.value); val.textContent = show(v, c.def); input.style.setProperty('--pct', pct(v, c.def)); c.onInput(v); if (c.key !== 'base.opacity' && c.key !== 'base.scale') changed(true, shapeKey) }
+          input.oninput = () => { const v = Number(input.value); val.textContent = show(v, c.def); setFill(input, pct(v, c.def)); c.onInput(v); if (c.key !== 'base.opacity' && c.key !== 'base.scale') changed(true, shapeKey) }
         }
       }
       const cw = E.params.querySelector('[data-cw]'), ch = E.params.querySelector('[data-ch]')
@@ -846,8 +857,10 @@ self.postMessage({ type: 'ready' })`
       if (!S.openGroups) S.openGroups = new Set([FX().effectOf(S.project.effect).group])
       E.effects.innerHTML = [...groups].map(([g, list]) => {
         const open = S.openGroups.has(g)
-        return `<button class="fxm-group" type="button" data-group="${esc(g)}" data-open="${open ? 1 : 0}"><i></i>${esc(g)}<b>${list.length}</b></button>`
+        // 每组一块，底下一条分隔线（2026-10-16 用户：分组要下划线）
+        return `<div class="fxm-gblock"><button class="fxm-group" type="button" data-group="${esc(g)}" data-open="${open ? 1 : 0}"><i></i>${esc(g)}<b>${list.length}</b></button>`
           + (open ? list.map((e) => `<button class="fxm-fx" type="button" data-fx="${e.id}" data-on="${e.id === S.project.effect ? 1 : 0}" ${e.needsBase && !S.base ? 'data-needs-base="1"' : ''} title="${esc(e.needsBase && !S.base ? '按底图本身扫：点一下先上传底图' : e.hint || '')}">${esc(e.label)}</button>`).join('') : '')
+          + '</div>'
       }).join('')
       E.effects.querySelectorAll('[data-group]').forEach((b) => { b.onclick = () => { const g = b.dataset.group; if (S.openGroups.has(g)) S.openGroups.delete(g); else S.openGroups.add(g); renderEffects() } })
       E.effects.querySelectorAll('[data-fx]').forEach((b) => { b.onclick = () => { if (FX().effectOf(b.dataset.fx).needsBase && !S.base) { S.afterBase = 'effect:' + b.dataset.fx; E.file.click(); return } pickEffect(b.dataset.fx) } })
