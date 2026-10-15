@@ -1929,11 +1929,29 @@
   // candidate's recipe brings the same blob back and reuses it.
   const REFERENCE_MATERIAL_TIMEOUT_MS = 180000
   const referenceMaterials = new WeakMap()
+  // The AI 助手 hands the GPU over only when the image runtime's queue is empty, and refuses while
+  // anything is drawing or while it is busy with another request. 2026-10-15: a 2-minute picture job
+  // from elsewhere on the same runtime made the leaf read fail at once and the run fell back to the
+  // picture path - no leaves at all. The run's own generation queues behind that job anyway, so
+  // wait for it (asking again every 3 s, up to 10 minutes) instead of giving up.
+  const ASSISTANT_BUSY = new Set(['runtime-generation-busy', 'prompt-assistant-busy'])
+  const ASSISTANT_BUSY_RETRY_MS = 3000
+  const ASSISTANT_BUSY_WAIT_MS = 600000
+  const askAssistant = async (payload, timeoutMs) => {
+    const api = window.electronAPI
+    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return null
+    const started = Date.now()
+    for (;;) {
+      let timer = 0
+      const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs) })
+      const result = await Promise.race([api.promptAssistantDescribeArtStyle(payload), timeout]).finally(() => clearTimeout(timer))
+      if (!result || !ASSISTANT_BUSY.has(result.errorCode) || Date.now() - started > ASSISTANT_BUSY_WAIT_MS) return result
+      await new Promise(resolve => setTimeout(resolve, ASSISTANT_BUSY_RETRY_MS))
+    }
+  }
   const readReferenceMaterial = (blob, image) => {
     if (!referenceMaterials.has(blob)) {
       const job = (async () => {
-        const api = window.electronAPI
-        if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return null
         // On the black plate the effect will sit on, and no bigger than the model looks at.
         const scale = Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight))
         const canvas = document.createElement('canvas')
@@ -1943,12 +1961,7 @@
         context.fillStyle = '#000'
         context.fillRect(0, 0, canvas.width, canvas.height)
         context.drawImage(image, 0, 0, canvas.width, canvas.height)
-        let timer = 0
-        const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), REFERENCE_MATERIAL_TIMEOUT_MS) })
-        const result = await Promise.race([
-          api.promptAssistantDescribeArtStyle({ name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }),
-          timeout,
-        ]).finally(() => clearTimeout(timer))
+        const result = await askAssistant({ name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }, REFERENCE_MATERIAL_TIMEOUT_MS)
         const entry = result && result.ok !== false && result.material
         const material = String(entry && entry.material || '').trim()
         if (!material) return null
@@ -1966,6 +1979,8 @@
         return restyle && restyle.pictureRead ? restyle.pictureRead(read, referenceColour(image).hues) : read
       })().catch(() => null)
       referenceMaterials.set(blob, job)
+      // A failure is not remembered: the run asks again.
+      job.then((read) => { if (!read && referenceMaterials.get(blob) === job) referenceMaterials.delete(blob) })
     }
     return referenceMaterials.get(blob)
   }
@@ -1981,14 +1996,7 @@
     if (!supplement || !/[㐀-鿿]/.test(supplement)) return Promise.resolve(supplement)
     if (!supplementTranslations.has(supplement)) {
       const job = (async () => {
-        const api = window.electronAPI
-        if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return ''
-        let timer = 0
-        const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(null), SUPPLEMENT_TIMEOUT_MS) })
-        const result = await Promise.race([
-          api.promptAssistantDescribeArtStyle({ purpose: 'aifx-supplement', supplement }),
-          timeout,
-        ]).finally(() => clearTimeout(timer))
+        const result = await askAssistant({ purpose: 'aifx-supplement', supplement }, SUPPLEMENT_TIMEOUT_MS)
         const english = String(result && result.ok !== false && result.supplement || '').trim()
         return english && !/[㐀-鿿]/.test(english) ? english : ''
       })().catch(() => '')
@@ -2161,8 +2169,17 @@
       // Before the runtime: the read runs on the AI 助手's own model and hands the GPU back after.
       let referenceMaterial = null
       if (state.reference) {
-        setStatus('识别参考图材质', state.reference.fileName)
-        referenceMaterial = await stoppable(readReferenceMaterial(state.reference.blob, state.reference.image))
+        const reference = state.reference
+        setStatus('识别参考图材质', reference.fileName)
+        // A read that failed when the picture came in is asked again here; the card follows.
+        if (reference.materialState === 'failed') { reference.materialState = 'reading'; refreshUi() }
+        const read = readReferenceMaterial(reference.blob, reference.image)
+        read.then((material) => {
+          reference.material = material
+          reference.materialState = material ? 'ready' : 'failed'
+          if (state.reference === reference) refreshUi()
+        })
+        referenceMaterial = await stoppable(read)
       }
       // A reference read out as words goes through the style path, so its picture is not sent at all.
       const referencePicture = Boolean(state.reference) && !referenceMaterial
