@@ -66,3 +66,34 @@ test('controls the panel took out never reach the prompt in Chinese; an older pa
   const older = api.buildWorkflow({ sourceVideo: 's.mp4', attribute: 'gold', supplement: '散开一点', strength: 20, lifecycle: 'loop' });
   assert.ok(older[5].inputs.prompt.includes('散开一点'));
 });
+
+// Hue shares measured with the panel's weighting (chroma x value x alpha on a 64 x 64 copy), in percent
+// per ten-degree bin, from the pictures the reads were tested on 2026-10-15.
+const hues = (percent) => { const bins = new Array(36).fill(0); for (const [degree, value] of Object.entries(percent)) bins[degree / 10] = value / 100; return bins; };
+const LEAF = hues({ 100: 1.1, 110: 13.6, 120: 45.3, 130: 31.4, 140: 7.1, 150: 1.5 });
+const SUNFLOWER = hues({ 0: 2.3, 10: 3.9, 20: 7.5, 30: 6.9, 40: 31.2, 50: 47.2, 350: 0.9 });
+const ROSE = hues({ 340: 2.3, 350: 97.6 });
+
+test('a read keeps only the colours its picture has', () => {
+  // The plain green leaf read as "green, yellow" and the frame grew yellow leaves.
+  assert.equal(api.pictureColours('green, yellow', LEAF), 'green');
+  assert.equal(api.pictureColours('yellow, red, gold', SUNFLOWER), 'yellow, red, gold', 'the 7% red centre stays');
+  assert.equal(api.pictureColours('yellow, red, brown', SUNFLOWER), 'yellow, red, brown');
+  assert.equal(api.pictureColours('RED, DARK RED', ROSE), 'RED, DARK RED');
+  assert.equal(api.pictureColours('crimson, deep red', ROSE), 'crimson, deep red');
+  // Greys are no hue and stay; a list with every hue wrong names the picture's own one.
+  assert.equal(api.pictureColours('green, black', LEAF), 'green, black');
+  assert.equal(api.pictureColours('white, silver', LEAF), 'white, silver');
+  assert.equal(api.pictureColours('yellow', LEAF), 'green');
+  assert.equal(api.pictureColours('yellow, white', LEAF), 'green, white');
+  // No colour measured (a grey picture, an old panel): the words go through as they came.
+  assert.equal(api.pictureColours('green, yellow', null), 'green, yellow');
+
+  const read = { name: 'GLOWING LEAF', elements: 'made of small whole glowing leaves with serrated edges.', colours: 'green, yellow',
+    material: 'made of small whole glowing leaves with serrated edges. Main colours: green, yellow. A bright main stroke of light runs along the effect.' };
+  const fixed = api.pictureRead(read, LEAF);
+  assert.equal(fixed.colours, 'green');
+  assert.match(fixed.material, /Main colours: green\. A bright main stroke/, 'an older node\'s finished sentence too');
+  assert.match(api.referenceMaterial(fixed, { shape: 'rectangular frame' }), /Main colours: green\./);
+  assert.doesNotMatch(api.referenceMaterial(fixed, { shape: 'rectangular frame' }), /yellow/);
+});

@@ -803,6 +803,59 @@
     return swapped.replace(/\b([\w-]+)(?:(?:,\s*|\s+and\s+)\1\b)+/g, '$1').replace(/\s{2,}/g, ' ').trim()
   }
 
+  // The local AI 助手 names colours the picture does not have: the plain green leaf (100% green)
+  // read as "green, yellow" and the frame grew yellow leaves (2026-10-15). A named colour stays only
+  // when at least 2% of the picture's colour lies in its hue range (the sunflower's red centre is
+  // 7%); `hues` is the picture's colour in 36 ten-degree bins, summing to 1 (referenceColour in the
+  // panel). When every hue named is wrong, the picture's own main one is named instead. White,
+  // black, grey and silver are not hues and stay as they are.
+  const PICTURE_COLOUR_SHARE = 0.02
+  const COLOUR_HUE_RANGES = [
+    { name: 'red', word: /\b(?:red|crimson|scarlet|ruby|maroon)\b/i, from: 330, to: 25 },
+    { name: 'orange', word: /\b(?:orange|amber|copper|brown|bronze)\b/i, from: 0, to: 50 },
+    { name: 'yellow', word: /\b(?:yellow|gold|golden)\b/i, from: 35, to: 75 },
+    { name: 'green', word: /\b(?:green|emerald|lime|jade|olive)\b/i, from: 65, to: 170 },
+    { name: 'cyan', word: /\b(?:cyan|teal|turquoise|aqua)\b/i, from: 160, to: 210 },
+    { name: 'blue', word: /\b(?:blue|azure|navy|sapphire|cobalt)\b/i, from: 190, to: 260 },
+    { name: 'purple', word: /\b(?:purple|violet|lavender|indigo|lilac)\b/i, from: 240, to: 310 },
+    { name: 'pink', word: /\b(?:pink|magenta|fuchsia)\b/i, from: 285, to: 350 },
+  ]
+
+  function hueShare(hues, { from, to }) {
+    let share = 0
+    hues.forEach((value, index) => {
+      const centre = index * 10 + 5
+      if (from <= to ? centre >= from && centre <= to : centre >= from || centre <= to) share += Number(value) || 0
+    })
+    return share
+  }
+
+  function pictureColours(colours, hues) {
+    const text = String(colours || '').trim()
+    if (!text || !Array.isArray(hues) || hues.length !== 36) return text
+    const items = text.split(/\s*(?:[,;/&]|\band\b)\s*/i).filter(Boolean)
+    const hueWords = (item) => COLOUR_HUE_RANGES.filter((range) => range.word.test(item))
+    const kept = items.filter((item) => {
+      const named = hueWords(item)
+      return !named.length || named.some((range) => hueShare(hues, range) >= PICTURE_COLOUR_SHARE)
+    })
+    if (kept.length === items.length) return text
+    if (kept.some((item) => hueWords(item).length)) return kept.join(', ')
+    const main = COLOUR_HUE_RANGES.reduce((best, range) => (hueShare(hues, range) > hueShare(hues, best) ? range : best))
+    return [main.name, ...kept].join(', ')
+  }
+
+  // The same on a whole read: its colour list, and the "Main colours: …." an older node puts in its
+  // finished sentence.
+  function pictureRead(read, hues) {
+    if (!read) return read
+    const material = String(read.material || '').replace(/\s*Main colours: ([^.]*)\./, (all, list) => {
+      const colours = pictureColours(list, hues)
+      return colours ? ` Main colours: ${colours}.` : ''
+    }).trim()
+    return { ...read, material, colours: pictureColours(read.colours, hues) }
+  }
+
   // A reference read out as { name, elements, colours, breakup } becomes the material sentence the
   // style path takes; an older node's read (a finished `material` sentence) goes in as it came.
   function referenceMaterial(entry, { shape = '', spread = '', colour = null } = {}) {
@@ -1089,6 +1142,8 @@
     supplementClause,
     splitSupplement,
     referenceArrangement,
+    pictureColours,
+    pictureRead,
     referenceMaterial,
     presetWithOverrides,
     recoloured,

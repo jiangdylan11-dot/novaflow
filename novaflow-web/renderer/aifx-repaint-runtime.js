@@ -1876,8 +1876,9 @@
   // plate, grey haze and white highlights do not drag it towards grey; the
   // result is pushed to full brightness because the node multiplies it by
   // the source's own luma. A picture with next to no colour in it has none to
-  // give and keeps the grey init.
-  const referenceAccent = (image) => {
+  // give and keeps the grey init. `hues` is the same colour in 36 ten-degree hue bins (summing to 1),
+  // which tells a read's colour words from colours the picture does not have (pictureRead).
+  const referenceColour = (image) => {
     try {
       const size = 64
       const canvas = document.createElement('canvas')
@@ -1891,22 +1892,31 @@
       let blue = 0
       let coloured = 0
       let lit = 0
+      const hues = new Array(36).fill(0)
       for (let index = 0; index < data.length; index += 4) {
-        const max = Math.max(data[index], data[index + 1], data[index + 2])
-        const min = Math.min(data[index], data[index + 1], data[index + 2])
+        const r = data[index]
+        const g = data[index + 1]
+        const b = data[index + 2]
+        const max = Math.max(r, g, b)
+        const min = Math.min(r, g, b)
         const weight = (max - min) * max * data[index + 3]
-        red += data[index] * weight
-        green += data[index + 1] * weight
-        blue += data[index + 2] * weight
+        red += r * weight
+        green += g * weight
+        blue += b * weight
         coloured += weight
         lit += max * max * data[index + 3]
+        if (!weight) continue
+        const sector = max === r ? ((g - b) / (max - min) + 6) % 6 : max === g ? (b - r) / (max - min) + 2 : (r - g) / (max - min) + 4
+        hues[Math.floor(sector * 6) % 36] += weight
       }
-      if (!coloured || coloured < lit * 0.1) return ''
+      if (!coloured || coloured < lit * 0.1) return { accent: '', hues: null }
       const peak = Math.max(red, green, blue)
-      return '#' + [red, green, blue]
-        .map(value => Math.round(value / peak * 255).toString(16).padStart(2, '0')).join('')
+      return {
+        accent: '#' + [red, green, blue].map(value => Math.round(value / peak * 255).toString(16).padStart(2, '0')).join(''),
+        hues: hues.map(value => value / coloured),
+      }
     } catch {
-      return ''
+      return { accent: '', hues: null }
     }
   }
 
@@ -1944,13 +1954,16 @@
         if (!material) return null
         // `elements` / `colours` let 提示词补充 overrule the arrangement and the colour (see
         // referenceMaterial); a node that predates them sends the finished sentence alone.
-        return {
+        // Colours the picture does not have are dropped (the green leaf read as "green, yellow").
+        const read = {
           name: String(entry.name || '').trim() || 'REFERENCE',
           material,
           elements: String(entry.elements || '').trim(),
           colours: String(entry.colours || '').trim(),
           breakup: String(entry.breakup || '').trim(),
         }
+        const restyle = RESTYLE()
+        return restyle && restyle.pictureRead ? restyle.pictureRead(read, referenceColour(image).hues) : read
       })().catch(() => null)
       referenceMaterials.set(blob, job)
     }
@@ -1993,7 +2006,7 @@
       if (state.reference) revokeSource(state.reference)
       const entry = {
         blob, fileName: String(fileName || 'reference.png'), objectUrl, image, uploadedName: '',
-        accent: referenceAccent(image),
+        accent: referenceColour(image).accent,
         material: null,
         materialState: 'reading',
       }
@@ -2206,7 +2219,7 @@
         const workflow = restyle.buildWorkflow({
           sourceVideo: state.source.uploadedName,
           referenceImage: referencePicture ? state.reference.uploadedName : '',
-          // The picture's own colour paints the init (see referenceAccent), unless the words recolour it.
+          // The picture's own colour paints the init (see referenceColour), unless the words recolour it.
           tint,
           attribute,
           supplement: state.supplement,
