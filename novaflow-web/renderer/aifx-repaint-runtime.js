@@ -2389,9 +2389,20 @@
       console.warn('[AI 特效] 模板库读取失败，按空库处理', error)
     }
     const items = data && Array.isArray(data.items) ? data.items : []
+    // 2026-10-16 用户：「以前存进去的删掉好了」——第 2 版之前存的模板只有视频、没有工程（不能「编辑」），
+    // 读到旧库时一次清掉并按新格式存回；新库里用「点击存储」存的素材照常保留
+    const legacy = !!data && !(Number(data.version) >= 2)
     state.userTemplates = items
       .filter(item => item && typeof item === 'object' && item.id && item.data)
+      .filter(item => !legacy || item.project)
       .map(item => ({ ...item, objectUrl: '' }))
+    if (legacy) {
+      try {
+        await persistTemplateStore()
+      } catch (error) {
+        console.warn('[AI 特效] 旧模板清理后写回失败', error)
+      }
+    }
   }
 
   const persistTemplateStore = () => writeTemplateStore({
