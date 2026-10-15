@@ -3374,8 +3374,25 @@
       if (!ed || !ed.ready) { sayHere('骨骼动画编辑器还没准备好', 'warn'); return }
       creating = ed.ready().then(async (a) => { const r = await a.newProject(); sayHere(`已新建工程 ${r.name}：选它的图片文件夹`, 'ok'); return a })
       creating.catch((e) => sayHere(e.message || String(e), 'error'))
-      // the folder dialog opens on this click (a later one would need another click)
-      dirPicker.click()
+      // the folder dialog opens on this click (a later one would need another click). The folder is
+      // picked, not uploaded (user 2026-10-15: 怎么是上传不是指定文件夹 - the upload was a copy, so the
+      // folder had to be picked again in the 图片 node): the project lists it live, pictures added or
+      // deleted there show. A browser without the picker uploads a copy as before.
+      if (typeof window.showDirectoryPicker !== 'function') { dirPicker.click(); return }
+      const picking = window.showDirectoryPicker({ mode: 'readwrite' })
+      guardWith(sayHere)(async () => {
+        let handle
+        try { handle = await picking } catch (e) {
+          if (e && e.name === 'AbortError') { creating = null; return }   // no folder yet: 图片 → 指定文件夹… later
+          if (e && e.name === 'NotAllowedError') { creating = null; sayHere('没有得到编辑这个文件夹的权限：在「图片」里点「指定文件夹…」再选一次，并允许编辑', 'warn'); return }
+          throw e
+        }
+        const a = await creating
+        creating = null
+        if (!a.useFolderHandle) { sayHere('骨骼动画编辑器版本太旧：在「图片」里点「指定文件夹…」', 'warn'); return }
+        await a.useFolderHandle(handle)
+        sayHere(`图片文件夹「${handle.name}」：图片拖到骨骼或画面上就能用，文件夹里加图、删图会实时显示`, 'ok')
+      })
     })
     const open = el('button', null, '导入工程')
     open.type = 'button'

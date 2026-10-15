@@ -10180,6 +10180,8 @@ self.onmessage = (e) => {
     openProjectFile: (data) => openProjectFile(data),
     newProject: (name) => newProject(name),
     useImageFolder: (files) => useImageFolder(files),
+    /** A folder picked on disk (showDirectoryPicker) as the project's live image folder; the atlas, if any, unpacked into it. */
+    useFolderHandle: (handle) => useFolderHandle(handle),
     /** 保存工程: every open project into one .nfproj (a save dialog), no options. */
     saveProjectFile: () => saveProjectFileNow(),
     projectCount: () => projects.length,
