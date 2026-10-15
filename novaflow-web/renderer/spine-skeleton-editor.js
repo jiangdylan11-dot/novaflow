@@ -6703,7 +6703,7 @@
       // two steps (user 2026-10-15): 生成特效 makes slices from one base picture into the cards;
       // 写入动画 writes whatever is ticked - the generated slices or the user's own sequence
       go = [
-        h('button', { class: 'ld-go alt', title: '勾一张图作底图：弹框选特效，确定生成后卡片换成生成的切片（已勾好），再点「写入动画」', onclick: openSweepGenerator }, '生成特效'),
+        h('button', { class: 'ld-go alt', title: '打开特效编辑：勾一张图就用它当底图（不勾也行，窗口里再选底图或画轮廓）；确定生成后卡片换成生成的切片（已勾好），再点「写入动画」', onclick: openSweepGenerator }, '生成特效'),
         h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在起止之间均分；生成的切片或自己准备的序列图都可以', onclick: writeSweep }, '写入动画'),
       ]
     }
@@ -7155,71 +7155,20 @@
     }, () => gotoFrame(0))
   }
 
-  // ------------------------------------------------------------------ 序列扫光 生成器（底图 → 扫光切片）
+  // ------------------------------------------------------------------ 特效扫光（底图 → 叠加切片）
   //
-  // 序列扫光's cards are the one place to pick: tick one picture, 生成特效 opens the panel（方案 /
-  // 实时小预览 / 参数 / 挂到骨骼树）。确定生成：切片进图片文件夹 sweep/<底图名>/<方案>/，卡片换成它们并勾好；卡片栏写入动画时插槽
-  // 挂到选的骨骼、插到底图插槽的上一层、设叠加模式，绕一圈的方案首尾相接。
-  // 算法在 sweep-light.core.js（页面里加载，Worker 里 importScripts 同一份）。
+  // 2026-10-16 用户：「面板为什么不和模板制作一样，可以一样，显示的也大一点」——特效扫光直接用 AI 特效「模板制作」的
+  // 编辑窗口（aifx-template-maker.*.js 的特效扫光模式）：底图从工程图片文件夹挑，也可以没有底图（画矩形 / 圆 / 自由形状）；
+  // 只列能和图片轮廓一致的效果。确定生成：切片进图片文件夹 sweep/<底图名>/<效果>/，卡片换成它们并勾好；卡片栏写入动画时插槽
+  // 挂到选的骨骼、插到底图插槽的上一层、叠加，循环的首尾相接。存入 AI 特效模板库：同一份工程按模板的画板 / 时长出视频。
 
   const SweepLight = () => window.NovaFlowSweepLight
-  const SWEEP_WORKER_SRC = `
-let current = 0
-self.onmessage = (e) => {
-  const { id, rgba, w, h, params } = e.data || {}
-  if (!rgba) return
-  current = id
-  const L = self.NovaFlowSweepLight
-  const P = { ...L.DEFAULT_PARAMS, ...params }
-  const n = Math.max(2, Math.min(240, Math.round(Number(P.frames) || 12)))
-  let ctx
-  try { ctx = L.analyzeBase(new Uint8ClampedArray(rgba), w, h, P) } catch (err) { self.postMessage({ id, error: String((err && err.message) || err) }); return }
-  const wrap = !!(L.SWEEP_SCHEMES.find((s) => s.id === P.scheme) || {}).wrap
-  const frames = []
-  for (let i = 0; i < n; i++) {
-    if (current !== id) return
-    frames.push(L.renderSweepFrame(ctx, wrap ? i / n : i / (n - 1), P))
-    self.postMessage({ id, progress: i + 1, total: n })
-  }
-  self.postMessage({ id, done: true, w: ctx.W, h: ctx.H, pad: ctx.pad, frames: frames.map((f) => f.data.buffer) }, frames.map((f) => f.data.buffer))
-}`
-  let sweepWorker = null, sweepReq = 0
-  const sweepPending = new Map()
+  const FxMaker = () => window.NovaFlowFxMaker
+  const FxMakerUI = () => window.NovaFlowFxMakerUI
+  // 能和图片轮廓一致的才留（2026-10-16 用户：没办法和图片轮廓一致的效果都去掉）：轮廓流光、效果库里贴着轮廓走的、
+  // 按底图本身扫的；以中心为准的（能量球、法阵、爆炸…）和拿底图本身碎掉 / 化开的不要
+  const sweepEffectOk = (e) => e.kind === 'edge' || e.kind === 'basesweep' || (e.kind === 'lib' && !e.centered && !e.usesImage)
 
-  /** the core's URL as this page loaded it (hash-stamped inside the app) */
-  function sweepCoreUrl() {
-    const tag = [...document.querySelectorAll('script[src]')].find((s) => /(^|\/)sweep-light\.core\.js(\?|$)/.test(s.getAttribute('src') || ''))
-    // the editor runs in a srcdoc iframe (location = about:srcdoc): resolve against the document's base URL
-    return new URL(tag ? tag.getAttribute('src') : './sweep-light.core.js', document.baseURI).href
-  }
-
-  function sweepWorkerInstance() {
-    if (sweepWorker) return sweepWorker
-    const src = `importScripts(${JSON.stringify(sweepCoreUrl())});\n${SWEEP_WORKER_SRC}`
-    sweepWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })))
-    sweepWorker.onmessage = (e) => {
-      const m = e.data, r = sweepPending.get(m.id)
-      if (!r) return
-      if (m.error) { sweepPending.delete(m.id); r.reject(new Error(m.error)); return }
-      if (m.progress) { if (r.onProgress) r.onProgress(m.progress, m.total); return }
-      if (m.done) { sweepPending.delete(m.id); r.resolve({ w: m.w, h: m.h, pad: m.pad, frames: m.frames.map((buf) => new Uint8ClampedArray(buf)) }) }
-    }
-    sweepWorker.onerror = (e) => { for (const [id, r] of sweepPending) { sweepPending.delete(id); r.reject(new Error(e.message || 'Worker 出错')) } }
-    return sweepWorker
-  }
-
-  /** frames out of the worker; a preview request is dropped when a newer one comes */
-  function sweepGenerate(rgba, w, h, params, onProgress, preview) {
-    const id = ++sweepReq
-    for (const [k, v] of sweepPending) if (v.preview) { sweepPending.delete(k); v.reject(new Error('superseded')) }
-    return new Promise((resolve, reject) => {
-      sweepPending.set(id, { resolve, reject, onProgress, preview: !!preview })
-      const copy = new Uint8ClampedArray(rgba)
-      sweepWorkerInstance().postMessage({ id, rgba: copy.buffer, w, h, params }, [copy.buffer])
-    })
-  }
-
-  /** the picture's own pixels at its original size */
   function basePixels(image) {
     const region = rt.atlas && rt.atlas.findRegion(image)
     if (!region) return null
@@ -7243,15 +7192,15 @@ self.onmessage = (e) => {
   }
 
   /**
-   * 生成特效: the one ticked card is the base → the panel; its 确定生成 puts the slices on the cards
-   * (ticked), and the cards' 写入动画 writes them.
+   * 生成特效：勾了一张图就用它当底图，没勾也能开（窗口里再选底图，或画个形状）；确定生成后卡片换成切片（已勾好），
+   * 再点卡片栏的「写入动画」。
    */
   async function openSweepGenerator() {
     if (!state.json) return
     const files = frameFiles('sweep')
-    if (files.length !== 1) { status(files.length ? '生成特效只用一张底图：只勾一张（自己准备的序列图直接点「写入动画」）' : '先在卡片里勾一张图作底图', 'error'); return }
-    try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
-    openSweepPanel(files[0].name)
+    if (files.length > 1) { status('生成特效只用一张底图：只勾一张（不勾也行，在窗口里选底图或画轮廓）', 'error'); return }
+    if (files.length) { try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return } }
+    openSweepPanel(files.length ? files[0].name : null)
   }
 
   /**
@@ -7269,406 +7218,169 @@ self.onmessage = (e) => {
     return { folder: `${dir}sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
   }
 
-  // 边缘扫光（edge）：角度 → 起点（斜向扫光叫方向），宽度 → 粗细，另有 次数 / 专属参数（方案的 extra）/ 色相（自带配色的）。
-  // 每个显示出来的参数都真改画面（tests/e2e/sweep-light-core.test.mjs 逐个量）。
-  const SWEEP_PARAM_DEFS = [
-    { key: 'angle', label: '角度', min: -180, max: 180, step: 1, plain: true },
-    { key: 'start', label: '起点', min: -180, max: 180, step: 1, edge: true, def: 0, title: '光从轮廓哪里出发（度，沿轮廓一圈 360）' },
-    { key: 'width', label: '宽度', min: 0.4, max: 2.5, step: 0.05 },
-    { key: 'laps', label: '次数', min: 1, max: 4, step: 1, edge: true, def: 1, title: '时长内转几圈 / 重复几次（整数，首尾相接）' },
-    { key: 'extra', label: '', min: 0, max: 1, step: 0.05, edge: true },
-    { key: 'intensity', label: '强度', min: 0.2, max: 2, step: 0.05 },
-    { key: 'glow', label: '光晕', min: 0.3, max: 2.5, step: 0.05 },
-    { key: 'hue', label: '色相', min: -180, max: 180, step: 1, edge: true, def: 0, title: '把自带配色整体换个色相（度）' },
-    { key: 'rayLength', label: '放射长度', min: 0.3, max: 2.5, step: 0.05, only: 'rays' },
-  ]
-  const SWEEP_BLEND_OP = { add: 'lighter', screen: 'screen', normal: 'source-over' }
+  const sweepDataUrl = (px) => { const c = h('canvas', { width: px.w, height: px.h }); c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.rgba), px.w, px.h), 0, 0); return c.toDataURL('image/png') }
 
-  // 2026-10-15 用户：特效扫光「继承」AI 特效模板制作的效果（技能 / 法阵 / 闪电 / 烟雾 / 水 / 冰 / 扩散 / 爆炸），
-  // 并且能「存入 AI 特效模板库」（带工程，模板库里点「编辑」接着改）。效果库在 aifx-template-maker.*.js。
-  // 消失 / 破碎 拿底图本身碎掉、化开——叠在原图上方的切片做不出来，不放进来。
-  const FxMaker = () => window.NovaFlowFxMaker
-  const FxMakerUI = () => window.NovaFlowFxMakerUI
-  const SWEEP_FX_SKIP = new Set(['消失', '破碎'])
-  const sweepFxList = () => (FxMaker() ? FxMaker().effects().filter((e) => e.kind === 'lib' && !e.usesImage && !SWEEP_FX_SKIP.has(e.group)) : [])
-
-  /** 第二步：方案 / 预览 / 参数 / 挂到骨骼树 → 生成 */
+  /** 特效扫光的编辑窗口（模板制作的特效扫光模式）；image = 底图（可以是 null） */
   function openSweepPanel(image) {
-    const L = SweepLight()
-    if (!L) { status('扫光生成器没有加载（sweep-light.core.js）', 'error'); return }
-    const px = basePixels(image)
-    if (!px) { status(`读不到图片「${image}」的像素`, 'error'); return }
-    const schemeOf = (id) => L.SWEEP_SCHEMES.find((s) => s.id === id) || L.SWEEP_SCHEMES[0]
-    if (!state.sweepParams) { state.sweepParams = { ...L.DEFAULT_PARAMS }; state.sweepParams.frames = schemeOf(state.sweepParams.scheme).frames || state.sweepParams.frames }
+    const FX = FxMaker(), UI = FxMakerUI()
+    if (!FX || !UI) { status('特效编辑没有加载（aifx-template-maker.*.js）', 'error'); return }
+    if (!state.sweepParams || !(state.sweepParams.frames > 0)) state.sweepParams = { frames: 24, pad: 0 }
     const P = state.sweepParams
-    // 选的是效果库里的效果时：id / 参数 / 颜色（没选 = 用扫光方案）
-    if (!state.sweepFx) state.sweepFx = { id: '', params: {}, colour: { mode: 'default', value: '#ffd173' } }
-    const FXS = state.sweepFx
-    const fxMode = () => !!(FXS.id && FxMaker() && FxMaker().effects().some((e) => e.id === FXS.id))
-    const fxOf = () => FxMaker().effectOf(FXS.id)
-    if (state.sweepOpenGroups) state.sweepOpenGroups.add(fxMode() ? fxOf().group : schemeOf(P.scheme).group)   // 选中的方案所在分类总是展开
-    // a sweep is always 叠加 (user 2026-10-13: 滤色 / 正常 kept flickering; no choice needed)
-    P.blend = 'add'
+    const cur = { image: null, px: null }
+    const setBase = (name) => {
+      const px = name ? basePixels(name) : null
+      if (name && !px) throw new Error(`读不到图片「${name}」的像素`)
+      cur.image = px ? name : null; cur.px = px
+    }
+    try { setBase(image) } catch (e) { status(e.message, 'error'); return }
+    // 挂到骨骼树：默认是选中的骨骼（没选 / 选的就是底图那根 = 底图所在的骨骼）
     const bind = { bone: '', slot: '' }
-    const stem = image.split('/').pop()
-    // the picked bone is the default (the base slot's bone when none is picked or it is that one)
     const pickedBone = state.sel && state.sel.kind === 'bone' ? state.sel.name : (state.multi && state.multi[0]) || ''
-    let preview = null, timer = 0, previewTimer = 0, previewBusy = false, previewAgain = false, clock = 0, last = performance.now()
-
-    const close = () => { clearInterval(timer); clearTimeout(previewTimer); preview = null; mask.remove() }
-    const showing = () => slotsShowingAll(state.json, image)
+    const showing = () => (cur.image ? slotsShowingAll(state.json, cur.image) : [])
     const baseSlot = () => { const list = showing(); if (!list.length) return null; return list.find((s) => s.name === bind.slot) || list.find((s) => state.sel && (state.sel.name === s.name || state.sel.slot === s.name)) || list[list.length - 1] }
-    { const bs0 = baseSlot(); const baseBone0 = bs0 ? bs0.bone : 'root'; if (pickedBone && pickedBone !== baseBone0 && state.json.bones.some((b) => b.name === pickedBone)) bind.bone = pickedBone }
-
-    // preview: a small copy of the picture, 10 frames, replayed like 写入动画
-    // 时长（帧）= 写入动画时 起 → 止 的长度；预览按同一个时长循环，看到的就是写进去的样子。
-    // 动画还没长度（空动画）时默认 60 帧 = 2 秒，不再按每张 5 帧算（40 张会拖到 7 秒）
+    const resetBind = () => { bind.slot = ''; bind.bone = ''; const bs0 = baseSlot(), baseBone0 = bs0 ? bs0.bone : 'root'; if (pickedBone && pickedBone !== baseBone0 && state.json.bones.some((b) => b.name === pickedBone)) bind.bone = pickedBone }
+    resetBind()
+    // 时长（帧）= 写入动画时 起 → 止 的长度；动画还没长度时默认 60 帧 = 2 秒
     if (!(state.sweepEnd > 0) && lastFrame() <= Math.round(state.sweepStart || 0) + 1) state.sweepEnd = Math.round(state.sweepStart || 0) + 60
     const sweepDur = () => Math.max(2, sweepEndFrame(P.frames) - Math.max(0, Math.round(state.sweepStart || 0)))
-    const pvCanvas = h('canvas', { width: 2, height: 2 }), pvTag = h('span', { class: 'tag' }), pvBar = h('i')
-    const pv = h('div', { class: 'sw-pv' }, pvCanvas, pvTag, h('span', { class: 'note' }, '预览是缩小版，生成按原图尺寸'), h('div', { class: 'bar' }, pvBar))
-    const drawPreview = () => {
-      if (!preview) return
-      const g = pvCanvas.getContext('2d'), n = preview.frames.length, wrap = preview.wrap
-      // 按「时长」放（用户 2026-10-13：原来每张停 5 帧，24 张要 4 秒，看着又慢又顿）
-      const total = sweepDur() / FPS, step = total / (wrap ? n : n + 1), t = clock % total
-      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1
-      g.clearRect(0, 0, pvCanvas.width, pvCanvas.height)
-      if (preview.blend !== 'normal') g.drawImage(preview.base, preview.pad, preview.pad)
-      g.globalCompositeOperation = SWEEP_BLEND_OP[preview.blend] || 'lighter'
-      preview.frames.forEach((f, i) => { const a = L.sweepAlphaAt(i, n, t, step, wrap); if (a > 0.002) { g.globalAlpha = a; g.drawImage(f, 0, 0) } })
-      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'
-    }
-    timer = setInterval(() => { const now = performance.now(); clock += (now - last) / 1000; last = now; drawPreview() }, 1000 / 60)
-    const toCanvas = (rgba, w, hh) => { const c = h('canvas', { width: w, height: hh }); c.getContext('2d').putImageData(new ImageData(rgba, w, hh), 0, 0); return c }
-    // 效果库的效果往四周伸得多（光晕、爆开）：边距 0 = 自动（图最长边的 20%，24–240 像素；大图按 35% 切片太大）
-    const fxPad = () => (P.pad > 0 ? P.pad : Math.round(Math.min(240, Math.max(24, 0.2 * Math.max(px.w, px.h)))))
-    // 一份模板制作工程：canvas = 画板 { preset, w, h }，fit = 底图显示倍数；轮廓 = 底图的图片轮廓
-    const makerProject = (canvas, fit, frames, free) => {
-      const FX = FxMaker(), pj = FX.defaultProject()
-      pj.canvas = canvas
-      pj.framesFree = !!free
-      pj.frames = frames
-      const size = FX.canvasSize(pj)
-      pj.base = { w: px.w, h: px.h, scale: fit / Math.min(size.w / px.w, size.h / px.h), opacity: 0.5 }
+    const autoPad = (w, hh) => Math.round(Math.min(240, Math.max(24, 0.2 * Math.max(w, hh))))
+    const basePx = () => (cur.px ? { w: cur.px.w, h: cur.px.h, data: cur.px.rgba } : null)
+    const stemOf = () => (cur.image ? cur.image.split('/').pop() : '特效')
+
+    // 工程：上次的效果 / 参数接着用；有底图 = 底图的图片轮廓，画板 = 底图 + 边距
+    const last = state.sweepLast || {}
+    const pj = FX.defaultProject()
+    let want = last.effect && FX.effects().some((e) => e.id === last.effect && sweepEffectOk(e)) ? last.effect : cur.px ? 'base-base' : 'edge-meteor'
+    if (!cur.px && FX.effectOf(want).needsBase) want = 'edge-meteor'
+    const wfx = FX.effectOf(want), same = last.effect === want
+    Object.assign(pj, { effect: want, params: { ...FX.effectDefaults(want), ...(same ? last.params || {} : {}) }, lifecycle: same && last.lifecycle ? last.lifecycle : wfx.lifecycle, framesFree: true, frames: P.frames })
+    if (same && last.colour) pj.colour = { ...last.colour }
+    else if (wfx.kind === 'basesweep') pj.colour = { mode: wfx.schemeColour.mode === 'custom' ? 'custom' : 'base', value: wfx.schemeColour.value }
+    if (last.motion) pj.motion = { ...last.motion }
+    for (const k of ['offset', 'traceDetail', 'outerOnly', 'direction']) if (last[k] != null) pj[k] = last[k]
+    if (cur.px) {
+      const pad = P.pad > 0 ? P.pad : autoPad(cur.px.w, cur.px.h), W = cur.px.w + 2 * pad, H = cur.px.h + 2 * pad
+      pj.canvas = { preset: 'exact', w: W, h: H }
+      pj.base = { w: cur.px.w, h: cur.px.h, data: sweepDataUrl(cur.px), scale: 1 / Math.min(W / cur.px.w, H / cur.px.h), opacity: 0.5 }
       pj.shape = { ...pj.shape, kind: 'trace' }
       pj.corner = 0
-      pj.useImage = false
-      const outs = FX.traceImage(px.rgba, px.w, px.h, FX.basePlacement(pj), size.w, size.h, 0.5, true)
+      const outs = FX.traceImage(cur.px.rgba, cur.px.w, cur.px.h, FX.basePlacement(pj), W, H, pj.traceDetail ?? 0.5, pj.outerOnly !== false)
       if (outs.length) pj.outlines = outs
-      else { const pl = FX.basePlacement(pj); pj.outlines = [{ points: FX.shapeOutline('roundrect', { x: pl.x, y: pl.y, w: pl.w, h: pl.h }), hole: false }] }
-      if (fxMode()) {
-        const fx = fxOf()
-        pj.effect = fx.id
-        pj.params = { ...FX.effectDefaults(fx.id), ...FXS.params }
-        pj.lifecycle = fx.lifecycle
-        pj.colour = { ...FXS.colour }
-      } else {
-        // 扫光方案 → 模板制作里同一个效果（边缘环绕 = 轮廓流光；其余按底图本身扫）
-        const sc = schemeOf(P.scheme)
-        pj.lifecycle = 'loop'
-        if (sc.edge) {
-          pj.effect = sc.id
-          pj.params = { ...FX.effectDefaults(sc.id), width: P.width, glow: P.glow, intensity: P.intensity, laps: P.laps, ...(sc.extra ? { extra: P.extra } : {}), ...(sc.fixedColor ? { hue: P.hue || 0 } : {}) }
-          pj.colour = P.colorMode === 'custom' ? { mode: 'custom', value: P.color } : { mode: 'white', value: P.color || '#ffffff' }
-          // 起点（度，沿轮廓一圈 360）→ 轮廓上那一点
-          const geo = FX.geometry(pj, 0.5), pt = FX.pointOnOutline(geo, ((((Number(P.start) || 0) / 360) % 1) + 1) % 1)
-          pj.start = { x: pt.x / 0.5, y: pt.y / 0.5 }
-        } else {
-          pj.effect = 'base-' + sc.id
-          pj.params = { ...FX.effectDefaults('base-' + sc.id), angle: P.angle, width: P.width, intensity: P.intensity, glow: P.glow, rayLength: P.rayLength || 1 }
-          pj.colour = { mode: P.colorMode === 'custom' ? 'custom' : P.colorMode === 'white' ? 'white' : 'base', value: P.color || '#ffffff' }
-        }
-      }
-      return pj
-    }
-    // 切片用：画板 = 底图 + 边距，底图原尺寸
-    const sliceProject = (frames) => { const pad = fxPad(); return makerProject({ preset: 'exact', w: px.w + 2 * pad, h: px.h + 2 * pad }, 1, frames, true) }
-    const basePx = () => ({ w: px.w, h: px.h, data: px.rgba })
-    const schedulePreview = () => { clearTimeout(previewTimer); previewTimer = setTimeout(runPreview, 220) }
-    async function runPreview() {
-      if (!document.body.contains(mask)) return
-      if (previewBusy) { previewAgain = true; return }
-      previewBusy = true
-      try {
-        const s = Math.min(1, 300 / Math.max(px.w, px.h))
-        const w = Math.max(2, Math.round(px.w * s)), hh = Math.max(2, Math.round(px.h * s))
-        const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(px.rgba, px.w, px.h), 0, 0)
-        const small = h('canvas', { width: w, height: hh }); small.getContext('2d').drawImage(full, 0, 0, w, hh)
-        const data = small.getContext('2d').getImageData(0, 0, w, hh).data
-        if (fxMode()) {
-          // 效果库的效果：同一份工程缩小画；预览张数 = 帧数（最多 40）
-          const fx = fxOf(), pad = fxPad(), sf = Math.min(1, 300 / Math.max(px.w + 2 * pad, px.h + 2 * pad))
-          pvTag.textContent = `${fx.label} · 预览中…`
-          const r = await FxMakerUI().renderFrames({ project: sliceProject(Math.max(10, Math.min(40, Math.round(Number(P.frames) || 40)))), base: basePx(), scale: sf, workers: 2,
-            onProgress: (stage, i, n) => { pvBar.style.width = `${(i / n) * 100}%` } })
-          if (!document.body.contains(mask) || !fxMode() || fxOf().id !== fx.id) return
-          const sb = h('canvas', { width: Math.max(2, Math.round(px.w * sf)), height: Math.max(2, Math.round(px.h * sf)) }); sb.getContext('2d').drawImage(full, 0, 0, sb.width, sb.height)
-          pvCanvas.width = r.w; pvCanvas.height = r.h
-          preview = { base: sb, pad: Math.round(pad * sf), blend: 'add', wrap: fx.lifecycle === 'loop', frames: r.frames.map((d) => toCanvas(new Uint8ClampedArray(d.buffer), r.w, r.h)) }
-          pvTag.textContent = `${fx.label} · 叠加`
-          pvBar.style.width = '0'
-          return
-        }
-        // 边缘扫光绕一圈：预览张数和「帧数」一样（最多 40），顺滑度和写入后一致；scale 让边缘效果的像素尺寸跟着缩小版走
-        const Q = { ...P, frames: schemeOf(P.scheme).edge ? Math.max(10, Math.min(40, Math.round(Number(P.frames) || 40))) : 10, pad: P.pad ? Math.round(P.pad * s) : 0, scale: s }
-        pvTag.textContent = `${schemeOf(P.scheme).label} · 预览中…`
-        const r = await sweepGenerate(data, w, hh, Q, (i, n) => { pvBar.style.width = `${(i / n) * 100}%` }, true)
-        if (!document.body.contains(mask)) return
-        pvCanvas.width = r.w; pvCanvas.height = r.h
-        preview = { base: small, pad: r.pad, blend: P.blend, wrap: !!schemeOf(P.scheme).wrap, frames: r.frames.map((d) => toCanvas(d, r.w, r.h)) }
-        pvTag.textContent = `${schemeOf(P.scheme).label} · ${(L.BLEND_MODES.find((b) => b.id === P.blend) || {}).label || ''}`
-        pvBar.style.width = '0'
-      } catch (e) {
-        if (String(e.message) !== 'superseded') setStatus(e.message, true)
-      } finally {
-        previewBusy = false
-        if (previewAgain) { previewAgain = false; runPreview() }
-      }
     }
 
-    // left: the schemes
-    const types = h('div', { class: 'sw-types' })
-    const buildTypes = () => {
-      types.textContent = ''
-      // 分类可收起：默认只展开当前方案所在的那一类，点标题切换（本次打开期间记住）
-      if (!state.sweepOpenGroups) state.sweepOpenGroups = new Set([schemeOf(P.scheme).group])
-      const open = state.sweepOpenGroups
-      let g = null
-      for (const s of L.SWEEP_SCHEMES) {
-        if (s.group !== g) {
-          g = s.group
-          const grp = g, count = L.SWEEP_SCHEMES.filter((x) => x.group === grp).length
-          types.append(h('button', { class: 'g', 'aria-expanded': String(open.has(grp)), onclick: () => { if (open.has(grp)) open.delete(grp); else open.add(grp); buildTypes() } }, h('span', {}, grp), h('span', { class: 'n' }, String(count))))
-        }
-        if (!open.has(g)) continue
-        types.append(h('button', { class: 'ty', title: s.hint, 'aria-pressed': String(s.id === P.scheme && !fxMode()), onclick: () => {
-          FXS.id = ''
-          // 换方案 = 这个方案的默认数值（用户 2026-10-13：调过的数值不能带到下一个效果）。
-          // 时长 / 骨骼 是写入动画的设置，不是效果参数，保留。
-          const D = L.DEFAULT_PARAMS
-          Object.assign(P, { scheme: s.id, angle: D.angle, width: D.width, intensity: D.intensity, glow: D.glow, rayLength: D.rayLength, pad: D.pad,
-            colorMode: s.colorMode || D.colorMode, color: s.color || D.color, frames: s.frames || D.frames,
-            start: 0, laps: 1, hue: 0, extra: s.extra ? s.extra.def : undefined })
-          buildTypes(); buildParams(); schedulePreview()
-        } }, s.label))
-      }
-      // 效果库（和 AI 特效「模板制作」同一套）
-      let fg = null
-      for (const e of sweepFxList()) {
-        if (e.group !== fg) {
-          fg = e.group
-          const grp = fg, count = sweepFxList().filter((x) => x.group === grp).length
-          types.append(h('button', { class: 'g', 'aria-expanded': String(open.has(grp)), onclick: () => { if (open.has(grp)) open.delete(grp); else open.add(grp); buildTypes() } }, h('span', {}, grp), h('span', { class: 'n' }, String(count))))
-        }
-        if (!open.has(fg)) continue
-        types.append(h('button', { class: 'ty', title: e.hint, 'aria-pressed': String(fxMode() && e.id === FXS.id), onclick: () => {
-          // 换效果 = 这个效果的默认数值；时长 / 帧数 / 骨骼 是写入动画的设置，保留
-          FXS.id = e.id; FXS.params = {}; FXS.colour = { mode: 'default', value: FXS.colour.value || '#ffd173' }
-          buildTypes(); buildParams(); schedulePreview()
-        } }, e.label))
-      }
-    }
-
-    // right: the parameters
-    const params = h('div', { class: 'sw-params' })
-    const seg = (options, value, onPick) => h('div', { class: 'sw-seg' }, options.map((o) => h('button', { 'aria-pressed': String(o.id === value), onclick: () => { onPick(o.id); buildParams(); schedulePreview() } }, o.label)))
-    const row = (label, ...ctl) => { const r = h('div', { class: 'sw-p' }, h('label', {}, label), ...ctl); params.append(r); return r }
-    const buildParams = () => {
-      params.textContent = ''
-      const sc = schemeOf(P.scheme)
-      if (fxMode()) buildFxParams()
-      else for (const d0 of SWEEP_PARAM_DEFS) {
-        let d = d0
-        if (d.only && d.only !== P.scheme) continue
-        if (d.plain && sc.edge) continue
-        if (d.edge && !sc.edge) continue
-        if (d.key === 'hue' && !sc.fixedColor) continue
-        if (d.key === 'extra') { if (!sc.extra) continue; d = { ...d, ...sc.extra } }
-        if (sc.edge && d.key === 'width') d = { ...d, label: '粗细', title: '光带 / 拖尾 / 火苗 / 光环整体放大缩小' }
-        if (d.key === 'start' && sc.id === 'edge-diagonal') d = { ...d, label: '方向', title: '扫光方向（度）' }
-        if (P[d.key] == null || P[d.key] === '') P[d.key] = d.def != null ? d.def : 1
-        // 不起作用的参数置灰禁用（用户：无效的调整会误导）：方案标了 inert 的；
-        // 宽度被防闪底线托住的部分也没用：滑条从底线起，底线超过最大值就整行禁用
-        let off = sc.inert && sc.inert[d.key]
-        if (!sc.edge && d.key === 'width') {
-          const floor = Math.ceil(L.effectiveWidth({ ...P, width: 0 }).floor * 20) / 20
-          if (floor >= d.max) off = `帧数太少：光带已固定加宽到 ${floor.toFixed(2)}，加帧数（≥ ${L.minFrames({ ...P, width: d.max })}）才能调宽度`
-          else if (floor > d.min) { d = { ...d, min: floor }; if (P.width < floor) P.width = floor }
-        }
-        const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: P[d.key], disabled: !!off })
-        const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: P[d.key], disabled: !!off })
-        // 拖动中只改数值（用户：滑条拖着卡）；松手再算预览 —— 慢慢拖时每停一下都重算 40 张预览，会抢 CPU。
-        // 宽度的「会一闪」提示也松手再刷新（拖动中重建参数区会把正在拖的滑条换掉）
-        range.oninput = () => { P[d.key] = Number(range.value); num.value = range.value }
-        range.onchange = () => { if (d.key === 'width') buildParams(); schedulePreview() }
-        num.onchange = () => { P[d.key] = Math.max(d.min, Math.min(d.max, Number(num.value) || d.min)); range.value = P[d.key]; num.value = P[d.key]; buildParams(); schedulePreview() }
-        const r = row(d.label, range, num)
-        if (d.title) r.querySelector('label').title = d.title
-        if (off) { r.classList.add('off'); r.title = off; r.querySelector('label').title = off }
-        if (d.key === 'angle') { r.append(h('div', { class: 'sw-tip' }, schemeOf(P.scheme).radial ? '径向类：起始位置' : '光带的前进方向')) }
-      }
-      if (!fxMode()) {
-        const colorRow = h('div', { class: 'sw-seg' })
-        colorRow.append(...seg([{ id: 'base', label: '底图色' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], P.colorMode, (v) => { P.colorMode = v }).children)
-        if (P.colorMode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(P.color) ? P.color : '#ffffff' }); c.oninput = () => { P.color = c.value; schedulePreview() }; colorRow.append(c) }
-        if (sc.fixedColor) params.append(h('div', { class: 'sw-wide' }, '这个效果自带配色，光色不可调'))
-        else row('光色', colorRow)
-      }
-      const ew = fxMode() ? { floor: 0 } : L.effectiveWidth(P)
-      const fn = h('input', { type: 'number', min: 2, max: 120, step: 1, value: P.frames })
-      fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
-      const widened = !fxMode() && ew.floor > 1.1 * Math.max(0.2, Number(P.width) || 1)   // a few percent of widening is not worth a warning
-      row('帧数', fn, h('span', { class: 'sw-inl', style: widened ? 'color:#e0b45a' : '' }, widened ? `少于 ${L.minFrames(P)} 帧会一步一闪：光带已自动加宽到 ${ew.floor.toFixed(2)}` : '生成多少张切片；多一些扫得更顺')).classList.add('num')
-      // 时长：改它 = 改卡片栏的「止」；每秒少于 15 张切片时交叉淡入淡出看得出一顿一顿
-      const dur = sweepDur(), perSec = (P.frames * FPS) / dur, choppy = perSec < 15
-      const dn = h('input', { type: 'number', min: 2, max: 18000, step: 1, value: dur })
-      dn.onchange = () => {
-        const v = Math.max(2, Math.min(18000, Math.round(Number(dn.value) || dur)))
-        state.sweepEnd = Math.max(0, Math.round(state.sweepStart || 0)) + v
-        clock = 0; buildParams(); renderLayerDock()
-      }
-      row('时长', dn, h('span', { class: 'sw-inl', style: choppy ? 'color:#e0b45a' : '' },
-        choppy ? `一圈 ${(dur / FPS).toFixed(1)} 秒，每秒不到 15 张会一顿一顿，帧数建议 ≥ ${Math.ceil((dur / FPS) * 15)}` : `帧，一圈 ${(dur / FPS).toFixed(1)} 秒`)).classList.add('num')
-      const pn = h('input', { type: 'number', min: 0, max: 400, step: 1, value: P.pad })
-      pn.onchange = () => { P.pad = Math.max(0, Math.min(400, Math.round(Number(pn.value) || 0))); pn.value = P.pad; schedulePreview() }
-      row('边距', pn, h('span', { class: 'sw-inl' }, fxMode() ? `切片四周留给光晕 / 爆开的像素，0 = 自动（现在 ${fxPad()}）` : '切片四周留给光晕的像素，0 = 自动')).classList.add('num')
-      // 挂到骨骼树
-      params.append(h('div', { class: 'sw-sep' }))
-      const list = showing(), bs = baseSlot()
-      if (list.length > 1) {
-        const sSel = h('select', { onchange: (e) => { bind.slot = e.target.value; buildParams() } },
-          list.map((s) => h('option', { value: s.name, selected: bs && s.name === bs.name, title: `骨骼 ${s.bone} · 第 ${s.index + 1} 层` }, s.name)))
-        row('底图插槽', sSel)
-        params.append(h('div', { class: 'sw-wide' }, `这张图放了 ${list.length} 处，选哪一处当底图`))
-      }
-      const baseBone = bs ? bs.bone : 'root'
-      const bones = state.json.bones.map((b) => b.name)
-      const boneSel = h('select', { onchange: (e) => { bind.bone = e.target.value } },
-        h('option', { value: '', selected: !bind.bone }, bs ? `${baseBone}（底图所在）` : (bones.includes('root') ? 'root' : bones[0] || '')),
-        bones.filter((b) => b !== baseBone && (bs || b !== 'root')).map((b) => h('option', { value: b, selected: bind.bone === b }, b)))
-      row('骨骼', boneSel)
-      if (!bs) params.append(h('div', { class: 'sw-wide warn' }, '这张图还没放进骨骼：切片会挂到 root、画在最上层。'))
-      params.append(h('div', { class: 'sw-wide' }, '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。'))
-      // 照着底图本身扫的方案（线性扫光 / 形态驱动 / 局部高光 / 径向）不做 AI 特效模板（2026-10-16 用户：不适合）；边缘类和效果库照常能存
-      const noTpl = !fxMode() && !sc.edge
-      saveTpl.disabled = noTpl
-      saveTpl.title = noTpl ? '这类扫光是照着底图本身扫的，不做 AI 特效模板（边缘类和效果库的可以存）' : '把这个效果存成 AI 特效的模板（黑底视频 + 可再编辑的工程）'
-    }
-
-    // 效果库效果的参数：滑条 / 分段按钮（有的只在别的设置下起作用，置灰）+ 颜色
-    function buildFxParams() {
-      const FX = FxMaker(), fx = fxOf(), all = () => ({ ...FX.effectDefaults(fx.id), ...FXS.params })
-      params.append(h('div', { class: 'sw-wide' }, fx.hint || ''))
-      for (const d of fx.params) {
-        if (d.options) { row(d.label, seg(d.options, all()[d.key] ?? d.def, (v) => { FXS.params[d.key] = v })); continue }
-        const off = (fx.inert && fx.inert[d.key]) || (d.inertWhen && d.inertWhen(all())) || ''
-        const v0 = all()[d.key]
-        const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: v0, disabled: !!off })
-        const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: v0, disabled: !!off })
-        range.oninput = () => { FXS.params[d.key] = Number(range.value); num.value = range.value }
-        range.onchange = () => { buildParams(); schedulePreview() }
-        num.onchange = () => { FXS.params[d.key] = Math.max(d.min, Math.min(d.max, Number(num.value) || d.min)); buildParams(); schedulePreview() }
-        const r = row(d.label, range, num)
-        if (off) { r.classList.add('off'); r.title = off; r.querySelector('label').title = off }
-      }
-      const colorRow = h('div', { class: 'sw-seg' })
-      colorRow.append(...seg([{ id: 'default', label: '默认' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], FXS.colour.mode, (v) => { FXS.colour.mode = v }).children)
-      if (FXS.colour.mode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(FXS.colour.value) ? FXS.colour.value : '#ffd173' }); c.oninput = () => { FXS.colour.value = c.value; schedulePreview() }; colorRow.append(c) }
-      row('颜色', colorRow)
-    }
-
-    const st = h('span', { class: 'st' })
-    const setStatus = (msg, err) => { st.textContent = msg || ''; st.classList.toggle('err', !!err) }
-    const go = h('button', { class: 'btn primary', title: '生成切片进图片文件夹，卡片换成这些切片并勾好；再在卡片栏点「写入动画」', onclick: () => generate() }, '确定生成')
-    // 存入 AI 特效模板库：同一个效果出一段黑底 MP4（不带底图），连同工程（含这张底图）存进模板库——
-    // AI 特效 → 特效模板 → 模板库 里能直接用，点「编辑」在模板制作里接着改
-    const saveTpl = h('button', { class: 'btn', title: '把这个效果存成 AI 特效的模板（黑底视频 + 可再编辑的工程）', onclick: () => saveToAifx() }, '存入AI特效模板库')
-    async function saveToAifx() {
-      let mvp = null
-      try { mvp = (window.parent && window.parent !== window && window.parent.NovaFlowAifxMvp) || window.NovaFlowAifxMvp } catch (_) { mvp = window.NovaFlowAifxMvp }
-      if (!mvp || typeof mvp.addTemplate !== 'function') { setStatus('AI 特效没有加载，存不了模板库', true); return }
-      if (!FxMaker() || !FxMakerUI()) { setStatus('模板制作没有加载（aifx-template-maker.*.js）', true); return }
-      if (!fxMode() && !schemeOf(P.scheme).edge) return
-      saveTpl.disabled = true; go.disabled = true
-      try {
-        const FX = FxMaker()
-        // 模板：画板 = 底图 + 边距，最长边不超过 1024；时长取最接近的 0.9 / 1.6 / 2.3 / 3.0 秒
-        const pad = fxMode() ? fxPad() : Math.round(Math.max(24, 0.2 * Math.max(px.w, px.h)))
-        const W = px.w + 2 * pad, H = px.h + 2 * pad, c = Math.min(1, 1024 / Math.max(W, H))
-        const secs = sweepDur() / FPS, frames = FX.DURATIONS.reduce((b, d) => (Math.abs(d.frames / FX.FPS - secs) < Math.abs(b / FX.FPS - secs) ? d.frames : b), 39)
-        const project = makerProject({ preset: 'custom', w: Math.max(128, W * c), h: Math.max(128, H * c) }, c, frames, false)
-        const label = `${stem} · ${fxMode() ? fxOf().label : schemeOf(P.scheme).label}`
-        const blob = await FxMakerUI().renderProject({ project, base: basePx(), onProgress: (stage, k, n) => setStatus(stage === 'render' ? `渲染模板 ${k}/${n}` : '编码 MP4…') })
-        const ai = FX.aiDescriptor(project), size = FX.canvasSize(project)
-        const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.rgba), px.w, px.h), 0, 0)
-        project.base.data = full.toDataURL('image/png')
-        await mvp.addTemplate({ blob, label, width: size.w, height: size.h, ai, project })
-        setStatus(`已存入 AI 特效模板库：「${label}」——AI 特效 → 特效模板 → 模板库，点「编辑」可接着改`)
-      } catch (e) {
-        setStatus('存入模板库失败：' + e.message, true)
-      } finally { saveTpl.disabled = !fxMode() && !schemeOf(P.scheme).edge; go.disabled = false }
-    }
-    async function generate() {
-      go.disabled = true; setStatus('')
-      const t0 = performance.now()
-      try {
-        const Q = { ...P }
-        const fxOn = fxMode()
-        const scheme = fxOn ? { id: fxOf().id, wrap: fxOf().lifecycle === 'loop' } : schemeOf(Q.scheme)
-        let r
-        if (fxOn) {
-          const out = await FxMakerUI().renderFrames({ project: sliceProject(Math.max(2, Math.min(120, Math.round(Number(P.frames) || 24)))), base: basePx(), scale: 1,
-            onProgress: (stage, i, n) => setStatus(`生成中 ${i}/${n}`) })
-          // 黑底 → 叠加切片：透明度 = 最亮的通道，颜色除回去（叠加模式下和黑底画面一样）
-          const frames = out.frames.map((d) => {
-            const f = new Uint8ClampedArray(d.buffer)
-            for (let k = 0; k < f.length; k += 4) { const m = Math.max(f[k], f[k + 1], f[k + 2]); if (m > 0) { const s2 = 255 / m; f[k] = Math.min(255, f[k] * s2); f[k + 1] = Math.min(255, f[k + 1] * s2); f[k + 2] = Math.min(255, f[k + 2] * s2) } f[k + 3] = m }
-            return f
+    let api = null
+    api = UI.open({
+      project: pj,
+      name: stemOf(),
+      title: '特效扫光',
+      overlayClass: 'mask',   // 骨骼编辑器看到 body > .mask：整页压暗、停掉自己的快捷键
+      effectFilter: sweepEffectOk,
+      saveLabel: '存入AI特效模板库',
+      saveTemplateRaw: true,
+      sweep: {
+        fps: FPS,
+        settings: () => ({ frames: P.frames, pad: P.pad, duration: sweepDur() }),
+        setSettings: (patch) => {
+          if ('frames' in patch) P.frames = patch.frames
+          if ('pad' in patch) P.pad = patch.pad
+          if ('duration' in patch) state.sweepEnd = Math.max(0, Math.round(state.sweepStart || 0)) + patch.duration
+          renderLayerDock()
+        },
+        autoPad,
+        // 换底图：工程图片文件夹里挑（模板制作是从电脑传）
+        pickBase: () => new Promise((resolve) => {
+          openImagePicker('特效扫光：选底图', (name) => {
+            try { setBase(name); resetBind(); resolve({ name, w: cur.px.w, h: cur.px.h, data: sweepDataUrl(cur.px) }) } catch (e) { status(e.message, 'error'); resolve(null) }
           })
-          r = { w: out.w, h: out.h, pad: fxPad(), frames }
-        } else r = await sweepGenerate(px.rgba, px.w, px.h, Q, (i, n) => setStatus(`生成中 ${i}/${n}`))
-        if (!document.body.contains(mask)) return
-        setStatus('写入图片文件夹…')
-        const { folder, prefix } = sweepFolderFor(image, scheme.id)
-        const files = []
-        for (let i = 0; i < r.frames.length; i++) {
-          const c = toCanvas(r.frames[i], r.w, r.h)
-          const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
-          files.push(new File([blob], `${prefix}_${String(i + 1).padStart(2, '0')}.png`, { type: 'image/png' }))
+        }),
+        onBase: (b) => { if (!b) { cur.image = null; cur.px = null; resetBind() } },
+        canSaveTemplate: (fx) => (fx.kind === 'basesweep' ? '这类扫光是照着底图本身扫的，不做 AI 特效模板（边缘类和效果库的可以存）' : ''),
+        // 写入动画：底图插槽（一张图放了几处时）+ 骨骼
+        extra: (host) => {
+          const line = (label, ctl) => h('div', { class: 'fxm-line' }, h('label', {}, label), ctl)
+          const note = (text, warn) => h('div', { class: 'fxm-note', style: `margin:4px 0 6px 64px;${warn ? 'color:#e0b45a' : ''}` }, text)
+          const list = showing(), bs = baseSlot()
+          if (list.length > 1) {
+            const sSel = h('select', { class: 'fxm-select', onchange: (e) => { bind.slot = e.target.value; if (api) api.rerender() } },
+              list.map((sl) => h('option', { value: sl.name, selected: bs && sl.name === bs.name, title: `骨骼 ${sl.bone} · 第 ${sl.index + 1} 层` }, sl.name)))
+            host.append(line('底图插槽', sSel), note(`这张图放了 ${list.length} 处，选哪一处当底图`))
+          }
+          const baseBone = bs ? bs.bone : 'root', bones = state.json.bones.map((b) => b.name)
+          const boneSel = h('select', { class: 'fxm-select', onchange: (e) => { bind.bone = e.target.value } },
+            h('option', { value: '', selected: !bind.bone }, bs ? `${baseBone}（底图所在）` : (bones.includes('root') ? 'root' : bones[0] || '')),
+            bones.filter((b) => b !== baseBone && (bs || b !== 'root')).map((b) => h('option', { value: b, selected: bind.bone === b }, b)))
+          host.append(line('骨骼', boneSel))
+          if (cur.image && !bs) host.append(note('这张图还没放进骨骼：切片会挂到 root、画在最上层。', true))
+          host.append(note(cur.image ? '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。' : '没有底图：切片挂到这根骨骼、居中、画在最上层，混合模式是叠加。'))
+        },
+        // 确定生成：切片（黑底 → 亮度当透明度的叠加切片）进图片文件夹，卡片换成它们
+        onGenerate: async ({ project, base, setInfo: say, busy }) => {
+          const t0 = performance.now()
+          const out = await UI.renderFrames({ project, base, scale: 1, onProgress: (stage, i, n) => { say(`生成中 ${i}/${n}`); if (busy) busy(`生成中 ${i}/${n}`, i / n) } })
+          const { folder, prefix } = sweepFolderFor(cur.image || 'fx', project.effect)
+          const files = []
+          for (let i = 0; i < out.frames.length; i++) {
+            const f = new Uint8ClampedArray(out.frames[i].buffer)
+            for (let k = 0; k < f.length; k += 4) { const m = Math.max(f[k], f[k + 1], f[k + 2]); if (m > 0) { const s2 = 255 / m; f[k] = Math.min(255, f[k] * s2); f[k + 1] = Math.min(255, f[k + 1] * s2); f[k + 2] = Math.min(255, f[k + 2] * s2) } f[k + 3] = m }
+            const c = h('canvas', { width: out.w, height: out.h }); c.getContext('2d').putImageData(new ImageData(f, out.w, out.h), 0, 0)
+            const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
+            files.push(new File([blob], `${prefix}_${String(i + 1).padStart(2, '0')}.png`, { type: 'image/png' }))
+          }
+          say('写入图片文件夹…')
+          const bs = baseSlot()
+          const bone = bind.bone || (bs ? bs.bone : (state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name))
+          const before = snapshot()
+          let names
+          try {
+            names = await importIntoFolder(files, folder)
+            ensureAtlas()
+            applyJson(state.json)
+            state.history.push(before)
+            state.future = []
+          } catch (e) { restore(before); throw new Error('切片进图片文件夹失败：' + e.message) }
+          state.frameSet = names.map((n) => ({ name: n }))
+          frameUnticked('sweep').clear()
+          state.frameBone = bone
+          state.sweepGen = { base: cur.image, baseSlot: bs ? bs.name : null, bone, blend: 'add', wrap: project.lifecycle === 'loop', names: names.slice() }
+          state.leftOpen = 'sweep'
+          if (busy) busy(null)
+          api.close()
+          refresh()
+          status(`已生成 ${names.length} 张切片到「${folder}」（${((performance.now() - t0) / 1000).toFixed(1)} s），卡片里已勾好：点「写入动画」`, 'ok')
+        },
+      },
+      // 存入 AI 特效模板库：画板缩到最长边 ≤ 1024（底图、轮廓、起点、外扩跟着缩），时长取最接近的 0.9 / 1.6 / 2.3 / 3.0 秒
+      onSaveTemplate: async (_, info) => {
+        let mvp = null
+        try { mvp = (window.parent && window.parent !== window && window.parent.NovaFlowAifxMvp) || window.NovaFlowAifxMvp } catch (_) { mvp = window.NovaFlowAifxMvp }
+        if (!mvp || typeof mvp.addTemplate !== 'function') throw new Error('AI 特效没有加载，存不了模板库')
+        const src0 = info.project, src = FX.canvasSize(src0), c = Math.min(1, 1024 / Math.max(src.w, src.h))
+        const tp = JSON.parse(JSON.stringify(src0))
+        const secs = sweepDur() / FPS
+        tp.framesFree = false
+        tp.frames = FX.DURATIONS.reduce((b, d) => (Math.abs(d.frames / FX.FPS - secs) < Math.abs(b / FX.FPS - secs) ? d.frames : b), 39)
+        tp.canvas = { preset: 'custom', w: Math.max(128, src.w * c), h: Math.max(128, src.h * c) }
+        const dst = FX.canvasSize(tp), kx = dst.w / src.w, ky = dst.h / src.h, k = Math.min(kx, ky)
+        const mapPt = (q) => ({ ...q, x: q.x * kx, y: q.y * ky })
+        if (tp.base && src0.base) {
+          const fitSrc = Math.min(src.w / src0.base.w, src.h / src0.base.h) * src0.base.scale
+          tp.base.scale = (fitSrc * k) / Math.min(dst.w / tp.base.w, dst.h / tp.base.h)
         }
-        const bs = baseSlot()
-        const bone = bind.bone || (bs ? bs.bone : (state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name))
-        const before = snapshot()
-        let names
-        try {
-          names = await importIntoFolder(files, folder)
-          ensureAtlas()
-          applyJson(state.json)
-          state.history.push(before)
-          state.future = []
-        } catch (e) { restore(before); throw new Error('切片进图片文件夹失败：' + e.message) }
-        // the cards: the slices, all ticked; the cards' 写入动画 then hangs them on the bone above the base
-        state.frameSet = names.map((n) => ({ name: n }))
-        frameUnticked('sweep').clear()
-        state.frameBone = bone
-        state.sweepGen = { base: image, baseSlot: bs ? bs.name : null, bone, blend: Q.blend, wrap: !!scheme.wrap, names: names.slice() }
-        state.leftOpen = 'sweep'
-        close()
-        refresh()
-        status(`已生成 ${names.length} 张切片到「${folder}」（${((performance.now() - t0) / 1000).toFixed(1)} s），卡片里已勾好：点「写入动画」`, 'ok')
-      } catch (e) {
-        setStatus(e.message, true)
-      } finally { go.disabled = false }
-    }
-
-    const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
-      h('div', { class: 'dialog sw' },
-        h('div', { class: 'hd' }, h('b', {}, `特效扫光 · ${stem}`), h('button', { class: 'xx', onclick: close }, '×')),
-        h('div', { class: 'sw-body' }, types, h('div', { class: 'sw-right' }, pv, params)),
-        h('div', { class: 'sw-ft' }, st, saveTpl, go)))
-    document.body.append(mask)
-    buildTypes(); buildParams(); schedulePreview()
+        if (tp.shape.kind === 'trace' && cur.px && tp.base) tp.outlines = FX.traceImage(cur.px.rgba, cur.px.w, cur.px.h, FX.basePlacement(tp), dst.w, dst.h, tp.traceDetail ?? 0.5, tp.outerOnly !== false)
+        else tp.outlines = tp.outlines.map((o) => ({ ...o, points: o.points.map(mapPt) }))
+        if (tp.start) tp.start = mapPt(tp.start)
+        tp.offset = (Number(src0.offset) || 0) * k
+        const label = `${stemOf()} · ${FX.effectOf(tp.effect).label}`
+        const blob = await UI.renderProject({ project: tp, base: basePx(), onProgress: (stage, i, n) => { info.setInfo(stage === 'render' ? `渲染模板 ${i}/${n}` : '编码 MP4…'); if (info.busy) info.busy(stage === 'render' ? `渲染模板 ${i}/${n}` : '编码 MP4…', stage === 'render' ? (i / n) * 0.85 : 0.9) } })
+        await mvp.addTemplate({ blob, label, width: dst.w, height: dst.h, ai: FX.aiDescriptor(tp), project: tp })
+        if (info.busy) info.busy(null)
+        info.setInfo(`已存入 AI 特效模板库：「${label}」——AI 特效 → 特效模板 → 模板库，点「编辑」可接着改`)
+      },
+      onClose: () => {
+        const p = api && api.project
+        if (p) state.sweepLast = { effect: p.effect, params: { ...p.params }, colour: { ...p.colour }, motion: { ...p.motion }, lifecycle: p.lifecycle, offset: p.offset, traceDetail: p.traceDetail, outerOnly: p.outerOnly, direction: p.direction }
+      },
+    })
   }
 
   /** the generated slices' slots: drawn right above the base slot (or last), the blend set */

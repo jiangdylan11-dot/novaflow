@@ -60,6 +60,7 @@
 .fxm-row input[type=range]::-webkit-slider-runnable-track,.fxm-scrub::-webkit-slider-runnable-track{-webkit-appearance:none;height:3px;background:transparent;border:0;box-shadow:none}
 .fxm-row input[type=range]::-webkit-slider-thumb,.fxm-scrub::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;margin-top:-5px;border-radius:50%;background:${GREEN};border:0;box-shadow:none;cursor:pointer}
 .fxm-row input[type=range]:disabled::-webkit-slider-thumb{background:#5a5a5a}
+.fxm-note{font-size:11px;color:#7d8186;margin-left:8px;line-height:1.4}
 .fxm-num{width:84px;height:24px;background:#2B2B2B;border:0;border-radius:6px;color:#eee;font:inherit;font-size:12px;padding:0 4px 0 8px;box-sizing:border-box}
 .fxm-num::-webkit-inner-spin-button{opacity:.4}
 .fxm-row .fxm-val{font-size:11px;color:#9a9ea3;text-align:right}
@@ -186,7 +187,10 @@ self.postMessage({ type: 'ready' })`
     // ---------------------------------------------------------------- 骨架
     // data-novaflow-runtime-ignore：网页的全局脚本跳过这块。2026-10-16 用户：「时间轴速度跟不上、滑条很卡」——
     // 播放时每帧改时间轴 / 帧号文字都被全局脚本跟着处理，一秒只刷 14 帧
-    const overlay = el('div', { class: 'fxm-overlay', 'data-novaflow-runtime-ignore': '1' })
+    const SW = options.sweep || null   // 特效扫光模式（骨骼动画）
+    const overlay = el('div', { class: 'fxm-overlay' + (options.overlayClass ? ' ' + options.overlayClass : ''), 'data-novaflow-runtime-ignore': '1' })
+    // 骨骼编辑器里：压在它自己的弹窗（图片选择器等 .mask，z 50）下面，挑底图的窗口才能盖在上面
+    if (SW) overlay.style.zIndex = '40'
     overlay.innerHTML = `
       <div class="fxm-window" role="dialog" aria-label="模板编辑器">
         <div class="fxm-head"><div class="fxm-title">${esc(options.title || '模板制作')}</div><button class="fxm-x" data-act="close" type="button" title="关闭">×</button></div>
@@ -213,8 +217,9 @@ self.postMessage({ type: 'ready' })`
         </div>
         <div class="fxm-foot">
           <div class="fxm-info" data-info></div>
-          ${options.onSaveTemplate ? '<button class="fxm-btn" data-act="save-template" type="button" title="存成模板，以后在模板库里点「编辑」还能接着改">存入模板库</button>' : ''}
-          <button class="fxm-btn fxm-primary" data-act="use" type="button">用作素材</button>
+          ${options.onSaveTemplate ? `<button class="fxm-btn" data-act="save-template" type="button" title="存成模板，以后在模板库里点「编辑」还能接着改">${esc(options.saveLabel || '存入模板库')}</button>` : ''}
+          ${SW ? '<button class="fxm-btn fxm-primary" data-act="generate" type="button" title="生成切片进图片文件夹，卡片换成这些切片并勾好；再在卡片栏点「写入动画」">确定生成</button>'
+            : '<button class="fxm-btn fxm-primary" data-act="use" type="button">用作素材</button>'}
         </div>
       </div>
       <input type="file" accept="image/*" data-basefile hidden>`
@@ -231,6 +236,8 @@ self.postMessage({ type: 'ready' })`
     const size = () => FX().canvasSize(S.project)
     const fx = () => FX().effectOf(S.project.effect)
     const n = () => FX().frameCount(S.project)
+    // 每秒放几帧：特效扫光里 N 张切片铺满「时长」（骨骼动画的帧）；模板制作按 24 帧
+    const playFps = () => (SW ? n() / Math.max(0.1, SW.settings().duration / SW.fps) : FX().FPS)
     const snapshot = () => { S.history.push(clone({ outlines: S.project.outlines, shape: S.project.shape, corner: S.project.corner, offset: S.project.offset, start: S.project.start })); if (S.history.length > 40) S.history.shift() }
     const undo = () => { const h = S.history.pop(); if (!h) return; Object.assign(S.project, h); changed() }
     const allPoints = () => S.project.outlines.flatMap((o) => o.points)
@@ -331,7 +338,7 @@ self.postMessage({ type: 'ready' })`
       if (S.playing) {
         if (!S.lastTick) S.lastTick = now
         const dt = Math.min(0.1, (now - S.lastTick) / 1000)
-        S.playhead = (S.playhead + dt * FX().FPS) % n()
+        S.playhead = (S.playhead + dt * playFps()) % n()
         drawFrame(); syncTime(true); pump()
       }
       S.lastTick = now
@@ -344,7 +351,7 @@ self.postMessage({ type: 'ready' })`
       if ((!fromTick || document.activeElement !== E.scrub) && E.scrub.value !== String(i)) E.scrub.value = String(i)
       setFill(E.scrub, (total > 1 ? (Number(E.scrub.value) / (total - 1)) * 100 : 0) + '%')
       const ready = preview.next ? preview.next.size : 0
-      setText(E.time, `${(total / FX().FPS).toFixed(1)} 秒 · 第 ${i + 1}/${total} 帧${ready < total ? ' · 预览 ' + ready + '/' + total : ''}`)
+      setText(E.time, `${(total / playFps()).toFixed(1)} 秒 · 第 ${i + 1}/${total} ${SW ? '张' : '帧'}${ready < total ? ' · 预览 ' + ready + '/' + total : ''}`)
       setText(E.play, S.playing ? '❚❚' : '▶')
     }
     E.play.onclick = () => { S.playing = !S.playing; S.lastTick = 0; syncTime() }
@@ -677,18 +684,18 @@ self.postMessage({ type: 'ready' })`
       E.shapes.innerHTML = FX().SHAPES.map((s) => `<button class="fxm-btn" type="button" data-shape="${s.id}" data-on="${s.id === kind && !off ? 1 : 0}" ${off}>${s.label}</button>`).join('')
       E.shapes.querySelectorAll('[data-shape]').forEach((b) => { b.onclick = () => setShape(b.dataset.shape) })
       const has = !!S.base
-      E.basetools.innerHTML = `<button class="fxm-btn" type="button" data-base="pick">${has ? '换底图' : '上传底图'}</button>`
+      E.basetools.innerHTML = `<button class="fxm-btn" type="button" data-base="pick" ${SW ? 'title="从工程的图片文件夹里挑"' : ''}>${has ? '换底图' : SW ? '选底图' : '上传底图'}</button>`
         + `<button class="fxm-btn" type="button" data-base="fit" ${has ? '' : 'disabled title="先上传底图"'}>套住底图</button>`
         + (has ? '<button class="fxm-btn" type="button" data-base="clear">移除底图</button>' : '')
 
-      E.basetools.querySelector('[data-base="pick"]').onclick = () => { S.afterBase = ''; E.file.click() }
+      E.basetools.querySelector('[data-base="pick"]').onclick = () => { S.afterBase = ''; if (SW) pickSweepBase(); else E.file.click() }
       E.basetools.querySelector('[data-base="fit"]').onclick = fitToBase
       const clr = E.basetools.querySelector('[data-base="clear"]')
-      if (clr) clr.onclick = () => { S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1; for (const w of pool) if (w.ready) w.postMessage(baseMsg()); if (S.project.canvas.preset === 'base') S.project.canvas.preset = '1:1'; if (fx().needsBase) pickEffect(FX().effects()[0].id); drawBase(); renderShapes(); renderParams(); renderEffects(); layout(); changed() }
+      if (clr) clr.onclick = () => { if (SW) { removeSweepBase(); return } S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1; for (const w of pool) if (w.ready) w.postMessage(baseMsg()); if (S.project.canvas.preset === 'base') S.project.canvas.preset = '1:1'; if (fx().needsBase) pickEffect(FX().effects()[0].id); drawBase(); renderShapes(); renderParams(); renderEffects(); layout(); changed() }
       if (!S.drawing) setHint()
     }
     function setHint(text) {
-      E.hint.textContent = text || (baseOnly() ? '这类效果按底图本身扫：换底图、调「底图大小」就行，成片只有光、不带底图'
+      E.hint.textContent = text || (baseOnly() ? (SW ? '这类效果按底图本身扫：换底图、调「边距」就行，切片只有光、不带底图' : '这类效果按底图本身扫：换底图、调「底图大小」就行，成片只有光、不带底图')
         : centered() ? '这个效果不跟轮廓走：拖框移动位置 · 拖四角改大小（Shift 等比）'
         : '拖点改形状 · 线上双击加点 · 点上双击切换尖角/圆滑 · 选中点按 Delete 删除 · 拖四角缩放（Shift 等比）· 拖上方圆点旋转 · 黄点是光的起点')
     }
@@ -741,8 +748,8 @@ self.postMessage({ type: 'ready' })`
       const p = S.project, f = fx(), inert = f.inert || {}, controls = []
       const sec = (title, items) => `<div class="fxm-sec"><div class="fxm-sec-title">${esc(title)}</div>${items.map((c) => c.html).join('')}</div>`
       const html = []
-      // 画板
-      const canvasItems = [
+      // 画板（特效扫光：帧数 / 时长 / 边距）
+      const canvasItems = SW ? sweepCanvasItems() : [
         seg('canvas', '尺寸', FX().CANVAS_CHOICES.map((id) => { const c = FX().CANVASES.find((x) => x.id === id); return { id, label: c.label, disabled: id === 'base' && !S.base ? '先上传底图' : '' } }), FX().CANVAS_CHOICES.includes(p.canvas.preset) ? p.canvas.preset : '', (v) => setCanvas(v)),
         ...(p.canvas.preset === 'custom' ? [{ html: `<div class="fxm-line" data-custom-size><label>宽 × 高</label><div class="fxm-seg"><input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().w}" data-cw> <input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().h}" data-ch></div></div>` }] : []),
         slider('frames', { label: '时长', min: 0, max: FX().DURATIONS.length - 1, step: 1, def: 1, format: (i) => FX().DURATIONS[Math.round(i)].label }, Math.max(0, FX().DURATIONS.findIndex((d) => d.frames === n())), (v) => { p.frames = FX().DURATIONS[Math.round(v)].frames; S.playhead = 0 }),
@@ -766,7 +773,9 @@ self.postMessage({ type: 'ready' })`
       shapeItems.push(seg('direction', '方向', [{ id: 'ccw', label: '逆时针' }, { id: 'cw', label: '顺时针' }], p.direction, (v) => { p.direction = v; changed() }, inert.direction))
       if (S.base) {
         shapeItems.push(slider('base.opacity', { label: '底图透明', min: 0, max: 1, step: 0.01, def: 0.5 }, p.base.opacity, (v) => { p.base.opacity = v; drawBase() }, ''))
-        shapeItems.push(slider('base.scale', { label: '底图大小', min: 0.2, max: 1.2, step: 0.01, def: 0.7 }, p.base.scale, (v) => { p.base.scale = v; drawBase(); changed(true) }, ''))
+        if (!SW) shapeItems.push(slider('base.scale', { label: '底图大小', min: 0.2, max: 1.2, step: 0.01, def: 0.7 }, p.base.scale, (v) => { p.base.scale = v; drawBase(); changed(true) }, ''))
+      }
+      if (S.base && !SW) {
         // 碎裂 / 消失类用底图本身来碎、来消失（2026-10-15 用户：不是根据上传的图做就没什么用）
         shapeItems.push(seg('useImage', '成片', [{ id: '1', label: '用底图画面' }, { id: '0', label: '只用发光形状' }], p.useImage !== false ? '1' : '0', (v) => { p.useImage = v === '1'; changed() }, f.usesImage ? '' : '这个效果不用底图画面（碎裂 / 消失类才用）'))
       }
@@ -790,7 +799,13 @@ self.postMessage({ type: 'ready' })`
         slider('motion.amount', { label: '幅度', min: 0.2, max: 3, step: 0.05, def: 1 }, mo.amount, (v) => { mo.amount = v }, mo.kind === 'none' ? '先选一种动画' : ''),
       ]
       controls.push(...moItems); html.push(sec('整体动画', moItems))
+      if (SW && SW.extra) html.push('<div class="fxm-sec"><div class="fxm-sec-title">写入动画</div><div data-sweep-extra></div></div>')
       E.params.innerHTML = html.join('')
+      if (SW && SW.extra) SW.extra(E.params.querySelector('[data-sweep-extra]'), { hasBase: !!S.base })
+      for (const c of controls) if (c.bind) c.bind(E.params)
+      // 存模板：有的效果不做模板（按底图本身扫的）
+      const saveB = overlay.querySelector('[data-act="save-template"]')
+      if (saveB && SW && SW.canSaveTemplate) { const why = SW.canSaveTemplate(f); saveB.disabled = !!why; saveB.title = why || '把这个效果存成 AI 特效的模板（黑底视频 + 可再编辑的工程）' }
       // 绑定
       for (const c of controls) {
         if (c.seg) {
@@ -850,7 +865,7 @@ self.postMessage({ type: 'ready' })`
       // 按底图本身扫的（线性扫光 / 形态驱动 / 局部高光 / 径向）2026-10-16 用户：「在 AI 特效中取消，好像不适合」——不列出来；
       // 渲染还在：以前存成模板的打开编辑照常显示（当前选的就是它时才列出它那一组）
       for (const e of FX().effects()) {
-        if (e.kind === 'basesweep' && FX().effectOf(S.project.effect).group !== e.group) continue
+        if (options.effectFilter ? !options.effectFilter(e) : e.kind === 'basesweep' && FX().effectOf(S.project.effect).group !== e.group) continue
         if (!groups.has(e.group)) groups.set(e.group, []); groups.get(e.group).push(e)
       }
       // 分组能展开 / 收拢（2026-10-15 用户）：一打开只展开当前效果所在的那组
@@ -880,6 +895,7 @@ self.postMessage({ type: 'ready' })`
     // ---------------------------------------------------------------- 信息 / 导出
     function setInfo(text) { E.info.textContent = text }
     function updateInfo() {
+      if (SW) { const s = size(); setInfo(`${s.w}×${s.h} · ${n()} 张切片 · 时长 ${SW.settings().duration} 帧（${(SW.settings().duration / SW.fps).toFixed(1)} 秒）`); return }
       const s = size(), ai = FX().aiDescriptor(S.project)
       setInfo(`${s.w}×${s.h} · ${(n() / FX().FPS).toFixed(1)} 秒 · ${S.project.lifecycle === 'loop' ? '循环' : '一次性'} · 交给 AI：${ai.archetype}`)
       E.info.title = ai.shape
@@ -928,6 +944,13 @@ self.postMessage({ type: 'ready' })`
       S.busy = true
       const playing = S.playing; S.playing = false
       try {
+        // 特效扫光：工程交给骨骼编辑器（它按模板的画板 / 时长重新出视频）
+        if (options.saveTemplateRaw) {
+          const info = { name: options.name || defaultName(), project: clone(S.project), base: S.base ? S.base.rgba : null, setInfo: (t) => setInfo(t), busy }
+          await options.onSaveTemplate(null, info)
+          busy(null)
+          return
+        }
         const { blob } = await renderMp4()
         const s = size()
         busy('正在存入模板库', 0.99)
@@ -936,6 +959,81 @@ self.postMessage({ type: 'ready' })`
         busy(null); setInfo('已存入模板库：' + info.name)
       } catch (error) {
         busy(null); setInfo('失败：' + error.message); console.error(error)
+      } finally { S.busy = false; S.playing = playing; S.lastTick = 0 }
+    }
+
+    // ---------------------------------------------------------------- 特效扫光模式（骨骼动画）
+    // 画板跟底图：底图 + 四周边距，底图原尺寸（切片和底图像素对齐）；没底图就是普通画板
+    function applySweepCanvas() {
+      const p = S.project, st = SW.settings()
+      if (S.base && p.base) {
+        const bw = p.base.w, bh = p.base.h, pad = st.pad > 0 ? st.pad : SW.autoPad(bw, bh)
+        p.canvas = { preset: 'exact', w: bw + 2 * pad, h: bh + 2 * pad }
+        p.base.scale = 1 / Math.min((bw + 2 * pad) / bw, (bh + 2 * pad) / bh)
+      } else if (p.canvas.preset === 'exact') p.canvas = { preset: '1:1' }
+      p.framesFree = true
+      p.frames = st.frames
+    }
+    // 画板变了：图片轮廓重新描（保住起点角度），别的形状按比例搬过去
+    function sweepCanvasChanged(before) {
+      if (S.project.shape.kind === 'trace' && S.base) { const a = usesStart() ? startAngle() : null; traceBase(); if (a != null) setStartAngle(a) }
+      else keepOutlineIn(before)
+      drawBase(); layout(); changed(); renderParams()
+    }
+    function sweepCanvasItems() {
+      const p = S.project, st = SW.settings(), dur = st.duration, perSec = (st.frames * SW.fps) / dur
+      const num = (key, label, value, min, max, note, warn) => ({
+        html: `<div class="fxm-line" data-sweep-row="${key}"><label>${esc(label)}</label><div class="fxm-seg"><input class="fxm-num" type="number" min="${min}" max="${max}" step="1" value="${value}" data-sweep="${key}"><span class="fxm-note" ${warn ? 'style="color:#e0b45a"' : ''}>${esc(note)}</span></div></div>`,
+        bind: (root) => { const i = root.querySelector(`[data-sweep="${key}"]`); i.onchange = () => { const v = Math.max(min, Math.min(max, Math.round(Number(i.value) || 0))); i.value = v; setSweep(key, v) } },
+      })
+      const items = []
+      if (!S.base) {
+        items.push(seg('canvas', '尺寸', ['1:1', 'custom'].map((id) => ({ id, label: FX().CANVASES.find((x) => x.id === id).label })), p.canvas.preset, (v) => setCanvas(v)))
+        if (p.canvas.preset === 'custom') items.push({ html: `<div class="fxm-line" data-custom-size><label>宽 × 高</label><div class="fxm-seg"><input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().w}" data-cw> <input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().h}" data-ch></div></div>` })
+      }
+      items.push(num('frames', '帧数', st.frames, 2, 120, '生成多少张切片；多一些扫得更顺'))
+      items.push(num('duration', '时长', dur, 2, 18000, perSec < 15 ? `一圈 ${(dur / SW.fps).toFixed(1)} 秒，每秒不到 15 张会一顿一顿，帧数建议 ≥ ${Math.ceil((dur / SW.fps) * 15)}` : `帧，一圈 ${(dur / SW.fps).toFixed(1)} 秒`, perSec < 15))
+      if (S.base) items.push(num('pad', '边距', st.pad, 0, 600, `切片四周留给光的像素，0 = 自动（现在 ${size().w - p.base.w > 0 ? (size().w - p.base.w) / 2 : 0}）`))
+      items.push(seg('lifecycle', '播放', [{ id: 'loop', label: '循环' }, { id: 'once', label: '一次性' }], p.lifecycle, (v) => { p.lifecycle = v; changed() }))
+      return items
+    }
+    function setSweep(key, v) {
+      const before = size()
+      SW.setSettings({ [key]: v })
+      if (key === 'frames') { applySweepCanvas(); S.playhead = 0; changed(); renderParams(); return }
+      if (key === 'duration') { S.lastTick = 0; renderParams(); syncTime(); return }
+      applySweepCanvas(); sweepCanvasChanged(before)
+    }
+    async function pickSweepBase() {
+      const b = await SW.pickBase()
+      if (!b) return
+      const before = size(), hadBase = !!S.base
+      await loadBase({ name: b.name, w: b.w, h: b.h, data: b.data, scale: 1, opacity: S.project.base ? S.project.base.opacity : 0.5 })
+      applySweepCanvas()
+      // 换上的底图：没底图时的形状 / 原来就是图片轮廓的，都描这张图的轮廓
+      if (!hadBase || S.project.shape.kind === 'trace') { S.project.shape.kind = 'trace'; traceBase() } else keepOutlineIn(before)
+      drawBase(); layout(); changed(); renderShapes(); renderParams(); renderEffects()
+    }
+    function removeSweepBase() {
+      const before = size()
+      S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1
+      for (const w of pool) if (w.ready) w.postMessage(baseMsg())
+      if (SW.onBase) SW.onBase(null)
+      applySweepCanvas()
+      if (S.project.shape.kind === 'trace' || fx().needsBase) { setShape('roundrect') }
+      else keepOutlineIn(before)
+      if (fx().needsBase) pickEffect(FX().effects().find((e) => !options.effectFilter || options.effectFilter(e)).id)
+      drawBase(); renderShapes(); renderParams(); renderEffects(); layout(); changed()
+    }
+    // 确定生成：切片交给骨骼编辑器
+    async function generate() {
+      if (S.busy) return
+      S.busy = true
+      const playing = S.playing; S.playing = false
+      try {
+        await SW.onGenerate({ project: clone(S.project), base: S.base ? S.base.rgba : null, setInfo: (t) => setInfo(t), busy })
+      } catch (error) {
+        busy(null); setInfo('生成失败：' + error.message); console.error(error)
       } finally { S.busy = false; S.playing = playing; S.lastTick = 0 }
     }
 
@@ -965,15 +1063,24 @@ self.postMessage({ type: 'ready' })`
       if (options.onClose) options.onClose()
     }
     overlay.querySelector('[data-act="close"]').onclick = close
-    overlay.querySelector('[data-act="use"]').onclick = () => deliver()
+    if (SW) overlay.querySelector('[data-act="generate"]').onclick = () => generate()
+    else overlay.querySelector('[data-act="use"]').onclick = () => deliver()
     const saveBtn = overlay.querySelector('[data-act="save-template"]')
     if (saveBtn) saveBtn.onclick = () => saveTemplate()
 
     // ---------------------------------------------------------------- 起步
     renderEffects(); renderShapes(); renderParams(); setHint()
-    if (S.project.base && S.project.base.data) loadBase(S.project.base).then(() => { layout() }).catch(() => {})
+    if (SW && !(S.project.base && S.project.base.data)) applySweepCanvas()
+    if (S.project.base && S.project.base.data) loadBase(S.project.base).then(() => {
+      if (SW) {
+        applySweepCanvas()
+        if (S.project.shape.kind === 'trace') { const a = S.project.start && usesStart() ? startAngle() : null; traceBase(); if (a != null) setStartAngle(a) }
+        drawBase(); renderParams(); changed()
+      }
+      layout()
+    }).catch((error) => setInfo('底图读取失败：' + error.message))
     layout(); changed()
-    const api = { close, state: S, get project() { return S.project }, renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver }
+    const api = { close, state: S, get project() { return S.project }, renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver, rerender: () => renderParams() }
     root.__NovaFlowFxMakerOpen = api
     return api
   }
