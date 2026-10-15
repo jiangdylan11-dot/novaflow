@@ -7284,6 +7284,14 @@ self.onmessage = (e) => {
   ]
   const SWEEP_BLEND_OP = { add: 'lighter', screen: 'screen', normal: 'source-over' }
 
+  // 2026-10-15 用户：特效扫光「继承」AI 特效模板制作的效果（技能 / 法阵 / 闪电 / 烟雾 / 水 / 冰 / 扩散 / 爆炸），
+  // 并且能「存入 AI 特效模板库」（带工程，模板库里点「编辑」接着改）。效果库在 aifx-template-maker.*.js。
+  // 消失 / 破碎 拿底图本身碎掉、化开——叠在原图上方的切片做不出来，不放进来。
+  const FxMaker = () => window.NovaFlowFxMaker
+  const FxMakerUI = () => window.NovaFlowFxMakerUI
+  const SWEEP_FX_SKIP = new Set(['消失', '破碎'])
+  const sweepFxList = () => (FxMaker() ? FxMaker().effects().filter((e) => e.kind === 'lib' && !e.usesImage && !SWEEP_FX_SKIP.has(e.group)) : [])
+
   /** 第二步：方案 / 预览 / 参数 / 挂到骨骼树 → 生成 */
   function openSweepPanel(image) {
     const L = SweepLight()
@@ -7293,7 +7301,12 @@ self.onmessage = (e) => {
     const schemeOf = (id) => L.SWEEP_SCHEMES.find((s) => s.id === id) || L.SWEEP_SCHEMES[0]
     if (!state.sweepParams) { state.sweepParams = { ...L.DEFAULT_PARAMS }; state.sweepParams.frames = schemeOf(state.sweepParams.scheme).frames || state.sweepParams.frames }
     const P = state.sweepParams
-    if (state.sweepOpenGroups) state.sweepOpenGroups.add(schemeOf(P.scheme).group)   // 选中的方案所在分类总是展开
+    // 选的是效果库里的效果时：id / 参数 / 颜色（没选 = 用扫光方案）
+    if (!state.sweepFx) state.sweepFx = { id: '', params: {}, colour: { mode: 'default', value: '#ffd173' } }
+    const FXS = state.sweepFx
+    const fxMode = () => !!(FXS.id && FxMaker() && FxMaker().effects().some((e) => e.id === FXS.id))
+    const fxOf = () => FxMaker().effectOf(FXS.id)
+    if (state.sweepOpenGroups) state.sweepOpenGroups.add(fxMode() ? fxOf().group : schemeOf(P.scheme).group)   // 选中的方案所在分类总是展开
     // a sweep is always 叠加 (user 2026-10-13: 滤色 / 正常 kept flickering; no choice needed)
     P.blend = 'add'
     const bind = { bone: '', slot: '' }
@@ -7328,6 +7341,50 @@ self.onmessage = (e) => {
     }
     timer = setInterval(() => { const now = performance.now(); clock += (now - last) / 1000; last = now; drawPreview() }, 1000 / 60)
     const toCanvas = (rgba, w, hh) => { const c = h('canvas', { width: w, height: hh }); c.getContext('2d').putImageData(new ImageData(rgba, w, hh), 0, 0); return c }
+    // 效果库的效果往四周伸得多（光晕、爆开）：边距 0 = 自动（图最长边的 20%，24–240 像素；大图按 35% 切片太大）
+    const fxPad = () => (P.pad > 0 ? P.pad : Math.round(Math.min(240, Math.max(24, 0.2 * Math.max(px.w, px.h)))))
+    // 一份模板制作工程：canvas = 画板 { preset, w, h }，fit = 底图显示倍数；轮廓 = 底图的图片轮廓
+    const makerProject = (canvas, fit, frames, free) => {
+      const FX = FxMaker(), pj = FX.defaultProject()
+      pj.canvas = canvas
+      pj.framesFree = !!free
+      pj.frames = frames
+      const size = FX.canvasSize(pj)
+      pj.base = { w: px.w, h: px.h, scale: fit / Math.min(size.w / px.w, size.h / px.h), opacity: 0.5 }
+      pj.shape = { ...pj.shape, kind: 'trace' }
+      pj.corner = 0
+      pj.useImage = false
+      const outs = FX.traceImage(px.rgba, px.w, px.h, FX.basePlacement(pj), size.w, size.h, 0.5, true)
+      if (outs.length) pj.outlines = outs
+      else { const pl = FX.basePlacement(pj); pj.outlines = [{ points: FX.shapeOutline('roundrect', { x: pl.x, y: pl.y, w: pl.w, h: pl.h }), hole: false }] }
+      if (fxMode()) {
+        const fx = fxOf()
+        pj.effect = fx.id
+        pj.params = { ...FX.effectDefaults(fx.id), ...FXS.params }
+        pj.lifecycle = fx.lifecycle
+        pj.colour = { ...FXS.colour }
+      } else {
+        // 扫光方案 → 模板制作里同一个效果（边缘环绕 = 轮廓流光；其余按底图本身扫）
+        const sc = schemeOf(P.scheme)
+        pj.lifecycle = 'loop'
+        if (sc.edge) {
+          pj.effect = sc.id
+          pj.params = { ...FX.effectDefaults(sc.id), width: P.width, glow: P.glow, intensity: P.intensity, laps: P.laps, ...(sc.extra ? { extra: P.extra } : {}), ...(sc.fixedColor ? { hue: P.hue || 0 } : {}) }
+          pj.colour = P.colorMode === 'custom' ? { mode: 'custom', value: P.color } : { mode: 'white', value: P.color || '#ffffff' }
+          // 起点（度，沿轮廓一圈 360）→ 轮廓上那一点
+          const geo = FX.geometry(pj, 0.5), pt = FX.pointOnOutline(geo, ((((Number(P.start) || 0) / 360) % 1) + 1) % 1)
+          pj.start = { x: pt.x / 0.5, y: pt.y / 0.5 }
+        } else {
+          pj.effect = 'base-' + sc.id
+          pj.params = { ...FX.effectDefaults('base-' + sc.id), angle: P.angle, width: P.width, intensity: P.intensity, glow: P.glow, rayLength: P.rayLength || 1 }
+          pj.colour = { mode: P.colorMode === 'custom' ? 'custom' : P.colorMode === 'white' ? 'white' : 'base', value: P.color || '#ffffff' }
+        }
+      }
+      return pj
+    }
+    // 切片用：画板 = 底图 + 边距，底图原尺寸
+    const sliceProject = (frames) => { const pad = fxPad(); return makerProject({ preset: 'exact', w: px.w + 2 * pad, h: px.h + 2 * pad }, 1, frames, true) }
+    const basePx = () => ({ w: px.w, h: px.h, data: px.rgba })
     const schedulePreview = () => { clearTimeout(previewTimer); previewTimer = setTimeout(runPreview, 220) }
     async function runPreview() {
       if (!document.body.contains(mask)) return
@@ -7339,6 +7396,20 @@ self.onmessage = (e) => {
         const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(px.rgba, px.w, px.h), 0, 0)
         const small = h('canvas', { width: w, height: hh }); small.getContext('2d').drawImage(full, 0, 0, w, hh)
         const data = small.getContext('2d').getImageData(0, 0, w, hh).data
+        if (fxMode()) {
+          // 效果库的效果：同一份工程缩小画；预览张数 = 帧数（最多 40）
+          const fx = fxOf(), pad = fxPad(), sf = Math.min(1, 300 / Math.max(px.w + 2 * pad, px.h + 2 * pad))
+          pvTag.textContent = `${fx.label} · 预览中…`
+          const r = await FxMakerUI().renderFrames({ project: sliceProject(Math.max(10, Math.min(40, Math.round(Number(P.frames) || 40)))), base: basePx(), scale: sf, workers: 2,
+            onProgress: (stage, i, n) => { pvBar.style.width = `${(i / n) * 100}%` } })
+          if (!document.body.contains(mask) || !fxMode() || fxOf().id !== fx.id) return
+          const sb = h('canvas', { width: Math.max(2, Math.round(px.w * sf)), height: Math.max(2, Math.round(px.h * sf)) }); sb.getContext('2d').drawImage(full, 0, 0, sb.width, sb.height)
+          pvCanvas.width = r.w; pvCanvas.height = r.h
+          preview = { base: sb, pad: Math.round(pad * sf), blend: 'add', wrap: fx.lifecycle === 'loop', frames: r.frames.map((d) => toCanvas(new Uint8ClampedArray(d.buffer), r.w, r.h)) }
+          pvTag.textContent = `${fx.label} · 叠加`
+          pvBar.style.width = '0'
+          return
+        }
         // 边缘扫光绕一圈：预览张数和「帧数」一样（最多 40），顺滑度和写入后一致；scale 让边缘效果的像素尺寸跟着缩小版走
         const Q = { ...P, frames: schemeOf(P.scheme).edge ? Math.max(10, Math.min(40, Math.round(Number(P.frames) || 40))) : 10, pad: P.pad ? Math.round(P.pad * s) : 0, scale: s }
         pvTag.textContent = `${schemeOf(P.scheme).label} · 预览中…`
@@ -7371,7 +7442,8 @@ self.onmessage = (e) => {
           types.append(h('button', { class: 'g', 'aria-expanded': String(open.has(grp)), onclick: () => { if (open.has(grp)) open.delete(grp); else open.add(grp); buildTypes() } }, h('span', {}, grp), h('span', { class: 'n' }, String(count))))
         }
         if (!open.has(g)) continue
-        types.append(h('button', { class: 'ty', title: s.hint, 'aria-pressed': String(s.id === P.scheme), onclick: () => {
+        types.append(h('button', { class: 'ty', title: s.hint, 'aria-pressed': String(s.id === P.scheme && !fxMode()), onclick: () => {
+          FXS.id = ''
           // 换方案 = 这个方案的默认数值（用户 2026-10-13：调过的数值不能带到下一个效果）。
           // 时长 / 骨骼 是写入动画的设置，不是效果参数，保留。
           const D = L.DEFAULT_PARAMS
@@ -7380,6 +7452,21 @@ self.onmessage = (e) => {
             start: 0, laps: 1, hue: 0, extra: s.extra ? s.extra.def : undefined })
           buildTypes(); buildParams(); schedulePreview()
         } }, s.label))
+      }
+      // 效果库（和 AI 特效「模板制作」同一套）
+      let fg = null
+      for (const e of sweepFxList()) {
+        if (e.group !== fg) {
+          fg = e.group
+          const grp = fg, count = sweepFxList().filter((x) => x.group === grp).length
+          types.append(h('button', { class: 'g', 'aria-expanded': String(open.has(grp)), onclick: () => { if (open.has(grp)) open.delete(grp); else open.add(grp); buildTypes() } }, h('span', {}, grp), h('span', { class: 'n' }, String(count))))
+        }
+        if (!open.has(fg)) continue
+        types.append(h('button', { class: 'ty', title: e.hint, 'aria-pressed': String(fxMode() && e.id === FXS.id), onclick: () => {
+          // 换效果 = 这个效果的默认数值；时长 / 帧数 / 骨骼 是写入动画的设置，保留
+          FXS.id = e.id; FXS.params = {}; FXS.colour = { mode: 'default', value: FXS.colour.value || '#ffd173' }
+          buildTypes(); buildParams(); schedulePreview()
+        } }, e.label))
       }
     }
 
@@ -7390,7 +7477,8 @@ self.onmessage = (e) => {
     const buildParams = () => {
       params.textContent = ''
       const sc = schemeOf(P.scheme)
-      for (const d0 of SWEEP_PARAM_DEFS) {
+      if (fxMode()) buildFxParams()
+      else for (const d0 of SWEEP_PARAM_DEFS) {
         let d = d0
         if (d.only && d.only !== P.scheme) continue
         if (d.plain && sc.edge) continue
@@ -7420,15 +7508,17 @@ self.onmessage = (e) => {
         if (off) { r.classList.add('off'); r.title = off; r.querySelector('label').title = off }
         if (d.key === 'angle') { r.append(h('div', { class: 'sw-tip' }, schemeOf(P.scheme).radial ? '径向类：起始位置' : '光带的前进方向')) }
       }
-      const colorRow = h('div', { class: 'sw-seg' })
-      colorRow.append(...seg([{ id: 'base', label: '底图色' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], P.colorMode, (v) => { P.colorMode = v }).children)
-      if (P.colorMode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(P.color) ? P.color : '#ffffff' }); c.oninput = () => { P.color = c.value; schedulePreview() }; colorRow.append(c) }
-      if (sc.fixedColor) params.append(h('div', { class: 'sw-wide' }, '这个效果自带配色，光色不可调'))
-      else row('光色', colorRow)
-      const ew = L.effectiveWidth(P)
+      if (!fxMode()) {
+        const colorRow = h('div', { class: 'sw-seg' })
+        colorRow.append(...seg([{ id: 'base', label: '底图色' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], P.colorMode, (v) => { P.colorMode = v }).children)
+        if (P.colorMode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(P.color) ? P.color : '#ffffff' }); c.oninput = () => { P.color = c.value; schedulePreview() }; colorRow.append(c) }
+        if (sc.fixedColor) params.append(h('div', { class: 'sw-wide' }, '这个效果自带配色，光色不可调'))
+        else row('光色', colorRow)
+      }
+      const ew = fxMode() ? { floor: 0 } : L.effectiveWidth(P)
       const fn = h('input', { type: 'number', min: 2, max: 120, step: 1, value: P.frames })
       fn.onchange = () => { P.frames = Math.max(2, Math.min(120, Math.round(Number(fn.value) || 12))); fn.value = P.frames; buildParams(); schedulePreview() }
-      const widened = ew.floor > 1.1 * Math.max(0.2, Number(P.width) || 1)   // a few percent of widening is not worth a warning
+      const widened = !fxMode() && ew.floor > 1.1 * Math.max(0.2, Number(P.width) || 1)   // a few percent of widening is not worth a warning
       row('帧数', fn, h('span', { class: 'sw-inl', style: widened ? 'color:#e0b45a' : '' }, widened ? `少于 ${L.minFrames(P)} 帧会一步一闪：光带已自动加宽到 ${ew.floor.toFixed(2)}` : '生成多少张切片；多一些扫得更顺')).classList.add('num')
       // 时长：改它 = 改卡片栏的「止」；每秒少于 15 张切片时交叉淡入淡出看得出一顿一顿
       const dur = sweepDur(), perSec = (P.frames * FPS) / dur, choppy = perSec < 15
@@ -7442,7 +7532,7 @@ self.onmessage = (e) => {
         choppy ? `一圈 ${(dur / FPS).toFixed(1)} 秒，每秒不到 15 张会一顿一顿，帧数建议 ≥ ${Math.ceil((dur / FPS) * 15)}` : `帧，一圈 ${(dur / FPS).toFixed(1)} 秒`)).classList.add('num')
       const pn = h('input', { type: 'number', min: 0, max: 400, step: 1, value: P.pad })
       pn.onchange = () => { P.pad = Math.max(0, Math.min(400, Math.round(Number(pn.value) || 0))); pn.value = P.pad; schedulePreview() }
-      row('边距', pn, h('span', { class: 'sw-inl' }, '切片四周留给光晕的像素，0 = 自动')).classList.add('num')
+      row('边距', pn, h('span', { class: 'sw-inl' }, fxMode() ? `切片四周留给光晕 / 爆开的像素，0 = 自动（现在 ${fxPad()}）` : '切片四周留给光晕的像素，0 = 自动')).classList.add('num')
       // 挂到骨骼树
       params.append(h('div', { class: 'sw-sep' }))
       const list = showing(), bs = baseSlot()
@@ -7462,16 +7552,77 @@ self.onmessage = (e) => {
       params.append(h('div', { class: 'sw-wide' }, '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。'))
     }
 
+    // 效果库效果的参数：滑条 / 分段按钮（有的只在别的设置下起作用，置灰）+ 颜色
+    function buildFxParams() {
+      const FX = FxMaker(), fx = fxOf(), all = () => ({ ...FX.effectDefaults(fx.id), ...FXS.params })
+      params.append(h('div', { class: 'sw-wide' }, fx.hint || ''))
+      for (const d of fx.params) {
+        if (d.options) { row(d.label, seg(d.options, all()[d.key] ?? d.def, (v) => { FXS.params[d.key] = v })); continue }
+        const off = (fx.inert && fx.inert[d.key]) || (d.inertWhen && d.inertWhen(all())) || ''
+        const v0 = all()[d.key]
+        const range = h('input', { type: 'range', min: d.min, max: d.max, step: d.step, value: v0, disabled: !!off })
+        const num = h('input', { type: 'number', min: d.min, max: d.max, step: d.step, value: v0, disabled: !!off })
+        range.oninput = () => { FXS.params[d.key] = Number(range.value); num.value = range.value }
+        range.onchange = () => { buildParams(); schedulePreview() }
+        num.onchange = () => { FXS.params[d.key] = Math.max(d.min, Math.min(d.max, Number(num.value) || d.min)); buildParams(); schedulePreview() }
+        const r = row(d.label, range, num)
+        if (off) { r.classList.add('off'); r.title = off; r.querySelector('label').title = off }
+      }
+      const colorRow = h('div', { class: 'sw-seg' })
+      colorRow.append(...seg([{ id: 'default', label: '默认' }, { id: 'white', label: '白光' }, { id: 'custom', label: '自定义' }], FXS.colour.mode, (v) => { FXS.colour.mode = v }).children)
+      if (FXS.colour.mode === 'custom') { const c = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(FXS.colour.value) ? FXS.colour.value : '#ffd173' }); c.oninput = () => { FXS.colour.value = c.value; schedulePreview() }; colorRow.append(c) }
+      row('颜色', colorRow)
+    }
+
     const st = h('span', { class: 'st' })
     const setStatus = (msg, err) => { st.textContent = msg || ''; st.classList.toggle('err', !!err) }
     const go = h('button', { class: 'btn primary', title: '生成切片进图片文件夹，卡片换成这些切片并勾好；再在卡片栏点「写入动画」', onclick: () => generate() }, '确定生成')
+    // 存入 AI 特效模板库：同一个效果出一段黑底 MP4（不带底图），连同工程（含这张底图）存进模板库——
+    // AI 特效 → 特效模板 → 模板库 里能直接用，点「编辑」在模板制作里接着改
+    const saveTpl = h('button', { class: 'btn', title: '把这个效果存成 AI 特效的模板（黑底视频 + 可再编辑的工程）', onclick: () => saveToAifx() }, '存入AI特效模板库')
+    async function saveToAifx() {
+      let mvp = null
+      try { mvp = (window.parent && window.parent !== window && window.parent.NovaFlowAifxMvp) || window.NovaFlowAifxMvp } catch (_) { mvp = window.NovaFlowAifxMvp }
+      if (!mvp || typeof mvp.addTemplate !== 'function') { setStatus('AI 特效没有加载，存不了模板库', true); return }
+      if (!FxMaker() || !FxMakerUI()) { setStatus('模板制作没有加载（aifx-template-maker.*.js）', true); return }
+      saveTpl.disabled = true; go.disabled = true
+      try {
+        const FX = FxMaker()
+        // 模板：画板 = 底图 + 边距，最长边不超过 1024；时长取最接近的 0.9 / 1.6 / 2.3 / 3.0 秒
+        const pad = fxMode() ? fxPad() : Math.round(Math.max(24, 0.2 * Math.max(px.w, px.h)))
+        const W = px.w + 2 * pad, H = px.h + 2 * pad, c = Math.min(1, 1024 / Math.max(W, H))
+        const secs = sweepDur() / FPS, frames = FX.DURATIONS.reduce((b, d) => (Math.abs(d.frames / FX.FPS - secs) < Math.abs(b / FX.FPS - secs) ? d.frames : b), 39)
+        const project = makerProject({ preset: 'custom', w: Math.max(128, W * c), h: Math.max(128, H * c) }, c, frames, false)
+        const label = `${stem} · ${fxMode() ? fxOf().label : schemeOf(P.scheme).label}`
+        const blob = await FxMakerUI().renderProject({ project, base: basePx(), onProgress: (stage, k, n) => setStatus(stage === 'render' ? `渲染模板 ${k}/${n}` : '编码 MP4…') })
+        const ai = FX.aiDescriptor(project), size = FX.canvasSize(project)
+        const full = h('canvas', { width: px.w, height: px.h }); full.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.rgba), px.w, px.h), 0, 0)
+        project.base.data = full.toDataURL('image/png')
+        await mvp.addTemplate({ blob, label, width: size.w, height: size.h, ai, project })
+        setStatus(`已存入 AI 特效模板库：「${label}」——AI 特效 → 特效模板 → 模板库，点「编辑」可接着改`)
+      } catch (e) {
+        setStatus('存入模板库失败：' + e.message, true)
+      } finally { saveTpl.disabled = false; go.disabled = false }
+    }
     async function generate() {
       go.disabled = true; setStatus('')
       const t0 = performance.now()
       try {
         const Q = { ...P }
-        const scheme = schemeOf(Q.scheme)
-        const r = await sweepGenerate(px.rgba, px.w, px.h, Q, (i, n) => setStatus(`生成中 ${i}/${n}`))
+        const fxOn = fxMode()
+        const scheme = fxOn ? { id: fxOf().id, wrap: fxOf().lifecycle === 'loop' } : schemeOf(Q.scheme)
+        let r
+        if (fxOn) {
+          const out = await FxMakerUI().renderFrames({ project: sliceProject(Math.max(2, Math.min(120, Math.round(Number(P.frames) || 24)))), base: basePx(), scale: 1,
+            onProgress: (stage, i, n) => setStatus(`生成中 ${i}/${n}`) })
+          // 黑底 → 叠加切片：透明度 = 最亮的通道，颜色除回去（叠加模式下和黑底画面一样）
+          const frames = out.frames.map((d) => {
+            const f = new Uint8ClampedArray(d.buffer)
+            for (let k = 0; k < f.length; k += 4) { const m = Math.max(f[k], f[k + 1], f[k + 2]); if (m > 0) { const s2 = 255 / m; f[k] = Math.min(255, f[k] * s2); f[k + 1] = Math.min(255, f[k + 1] * s2); f[k + 2] = Math.min(255, f[k + 2] * s2) } f[k + 3] = m }
+            return f
+          })
+          r = { w: out.w, h: out.h, pad: fxPad(), frames }
+        } else r = await sweepGenerate(px.rgba, px.w, px.h, Q, (i, n) => setStatus(`生成中 ${i}/${n}`))
         if (!document.body.contains(mask)) return
         setStatus('写入图片文件夹…')
         const { folder, prefix } = sweepFolderFor(image, scheme.id)
@@ -7510,7 +7661,7 @@ self.onmessage = (e) => {
       h('div', { class: 'dialog sw' },
         h('div', { class: 'hd' }, h('b', {}, `特效扫光 · ${stem}`), h('button', { class: 'xx', onclick: close }, '×')),
         h('div', { class: 'sw-body' }, types, h('div', { class: 'sw-right' }, pv, params)),
-        h('div', { class: 'sw-ft' }, st, go)))
+        h('div', { class: 'sw-ft' }, st, saveTpl, go)))
     document.body.append(mask)
     buildTypes(); buildParams(); schedulePreview()
   }
@@ -10253,5 +10404,5 @@ self.onmessage = (e) => {
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, openSweepPanel, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()

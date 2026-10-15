@@ -507,7 +507,7 @@ section('the build is a complete site');
 {
   const files = await readdir(PATHS.WEB_OUT);
   check('index.html is present', files.includes('index.html'));
-  for (const dir of ['assets', 'templates', 'aifx-styles', 'aifx-templates', 'vendor']) {
+  for (const dir of ['assets', 'templates', 'aifx-styles', 'vendor']) {
     check(dir + '/ was carried across', files.includes(dir), files);
   }
   const html = await readFile(join(PATHS.WEB_OUT, 'index.html'), 'utf8');

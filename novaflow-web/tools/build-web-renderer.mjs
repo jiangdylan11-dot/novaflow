@@ -38,7 +38,8 @@ const WORKER_OUT = join(ROOT, 'worker-renderer');
 
 // Directories carried across untouched. `src/` is the TypeScript the bundle in
 // assets/ was already built from, so it is not shipped.
-const ASSET_DIRS = ['assets', 'templates', 'aifx-styles', 'aifx-templates', 'vendor', 'public'];
+// aifx-templates（AI 特效 20 个内置模板）2026-10-15 去掉：用户在「模板制作」里自己做
+const ASSET_DIRS = ['assets', 'templates', 'aifx-styles', 'vendor', 'public'];
 const SKIP_DIRS = ['src', 'node_modules', 'dist', 'debug-assets'];
 
 // Build tooling and internal notes are not part of a website. They were being

@@ -45,7 +45,7 @@
   const AIFX_OVERLAY_SURFACE = 'rgba(12, 12, 12, 0.84)'
 
   const IDLE_STATUS = '等待素材'
-  const IDLE_DETAIL = '上传一段黑底特效动画，或载入内置模板。'
+  const IDLE_DETAIL = '上传一段黑底特效动画，或点「模板制作」做一个。'
   const PREVIEW_FPS = 16
   const RESTYLE = () => window.NovaFlowAifxRestyleWorkflow || null
   const CLIENT = () => window.NovaFlowAifxRestyleClient || null
@@ -99,14 +99,16 @@
     shapeAuto: '',
     lifecycle: '',
     lifecycleAuto: '',
-    builtinId: '',
     // Templates the artist saved (their clip travels as base64 in userData,
-    // the same channel the particle 模板库 uses) and built-ins they deleted.
+    // the same channel the particle 模板库 uses). 2026-10-15: the 20 built-ins
+    // are gone (AI-made, the artist found them ugly); 模板制作 makes new ones,
+    // and a template made there keeps its project so 编辑 reopens it.
     userTemplateId: '',
     userTemplates: [],
-    hiddenBuiltins: [],
-    renamedBuiltins: {},
     templateStoreLoaded: false,
+    // What 模板制作 said about the shape it drew (plain words for the AI);
+    // wins over the archetype's generic wording until the artist picks a shape.
+    customShape: null,
     result: null,
     resultFrames: [],
     // One roll is not representative: the same recipe with a different seed can
@@ -984,6 +986,14 @@
         background: rgba(220,38,38,0.85);
         border-color: rgba(255,255,255,0.65) !important;
       }
+      .aifx-library[data-library] .aifx-library-thumb button.aifx-library-edit[type="button"] {
+        position: absolute; left: 6px; top: 6px; height: 20px; padding: 0 8px; border-radius: 999px;
+        background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25) !important; color: #fff;
+        cursor: pointer; font-size: 11px; line-height: 18px;
+      }
+      .aifx-library[data-library] .aifx-library-thumb button.aifx-library-edit[type="button"]:hover {
+        background: ${AIFX_ACCENT}; border-color: ${AIFX_ACCENT} !important;
+      }
       .aifx-library-name {
         margin-top: 6px; font-size: 11px; color: #cbd0d6;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -1307,6 +1317,9 @@
                 <div class="aifx-help" data-template-help>黑底特效动画 MP4 / WebM / GIF，或一组 PNG 序列帧</div>
                 <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479"></div>
                 <div class="aifx-row" style="margin-top:10px">
+                  <button class="aifx-button" data-action="open-template-maker" type="button" style="flex:1" title="选效果、画轮廓、拉几个滑块，做一段黑底特效当素材或存进模板库">模板制作</button>
+                </div>
+                <div class="aifx-row" style="margin-top:8px">
                   <button class="aifx-button" data-action="open-template-library" type="button" style="flex:1">模板库</button>
                   <button class="aifx-button" data-action="clear-template" type="button" hidden style="display:none">清空</button>
                 </div>
@@ -1379,7 +1392,6 @@
             <div class="aifx-library-head">
               <div class="aifx-library-title" data-library-title>模板库</div>
               <div class="aifx-library-actions">
-                <button class="aifx-library-btn" data-action="reset-library" type="button">重置</button>
                 <button class="aifx-library-btn" data-action="close-library" type="button">关闭</button>
               </div>
             </div>
@@ -1528,168 +1540,6 @@
     refreshUi()
   }
 
-  // The library is grouped the way a slot art list is: what the effect is for,
-  // not what it is made of. Coverage was chosen against the categories PG-style
-  // titles actually ship - symbol pop and cascade, collect, multiplier step-up,
-  // reel-stop impact, coin shower and fountain, payline sweep, frame light,
-  // transition portal, ambient rays and vortex.
-  //
-  // Almost no template carries a shape: the detector runs on every clip,
-  // built-in or uploaded, so the built-ins double as a standing check on it.
-  // The two exceptions are marked below and say why.
-  const BUILTIN_TEMPLATES = Object.freeze([
-    Object.freeze({
-      id: 'crescent-fire',
-      group: '战斗',
-      label: '半月斩 · 火焰',
-      url: './aifx-templates/crescent-fire.mp4',
-      fileName: 'crescent-fire.mp4',
-    }),
-    Object.freeze({
-      id: 'skill-cast',
-      group: '战斗',
-      label: '技能 · 法阵光柱',
-      url: './aifx-templates/skill-cast.mp4',
-      fileName: 'skill-cast.mp4',
-    }),
-    Object.freeze({
-      id: 'explosion-burst',
-      group: '战斗',
-      label: '爆炸 · 冲击波',
-      url: './aifx-templates/explosion-burst.mp4',
-      fileName: 'explosion-burst.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-symbol-pop',
-      group: '符号',
-      label: '符号 · 碎裂爆开',
-      url: './aifx-templates/slot-symbol-pop.mp4',
-      fileName: 'slot-symbol-pop.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-scatter-land',
-      group: '符号',
-      label: '符号 · 落格砸击',
-      url: './aifx-templates/slot-scatter-land.mp4',
-      fileName: 'slot-scatter-land.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-collect',
-      group: '符号',
-      label: '符号 · 金币收集',
-      url: './aifx-templates/slot-collect.mp4',
-      fileName: 'slot-collect.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-coin-burst',
-      group: '中奖',
-      label: '中奖 · 金币喷泉',
-      url: './aifx-templates/slot-coin-burst.mp4',
-      fileName: 'slot-coin-burst.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-coin-rain',
-      group: '中奖',
-      label: '中奖 · 金币雨',
-      url: './aifx-templates/slot-coin-rain.mp4',
-      fileName: 'slot-coin-rain.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-big-win',
-      group: '中奖',
-      label: '中奖 · 大奖爆闪',
-      url: './aifx-templates/slot-big-win.mp4',
-      fileName: 'slot-big-win.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-fireworks',
-      group: '中奖',
-      label: '中奖 · 烟花绽放',
-      url: './aifx-templates/slot-fireworks.mp4',
-      fileName: 'slot-fireworks.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-multiplier',
-      group: '中奖',
-      label: '中奖 · 倍数弹出',
-      url: './aifx-templates/slot-multiplier.mp4',
-      fileName: 'slot-multiplier.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-treasure',
-      group: '中奖',
-      label: '中奖 · 宝箱光爆',
-      url: './aifx-templates/slot-treasure.mp4',
-      fileName: 'slot-treasure.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-frame-light',
-      group: '界面',
-      label: '界面 · 边框流光',
-      url: './aifx-templates/slot-frame-light.mp4',
-      fileName: 'slot-frame-light.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-payline',
-      group: '界面',
-      label: '界面 · 连线扫光',
-      url: './aifx-templates/slot-payline.mp4',
-      fileName: 'slot-payline.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-sparkle-sweep',
-      group: '界面',
-      label: '界面 · 星芒扫光',
-      url: './aifx-templates/slot-sparkle-sweep.mp4',
-      fileName: 'slot-sparkle-sweep.mp4',
-    }),
-    Object.freeze({
-      id: 'ui-levelup',
-      group: '界面',
-      label: '界面 · 升级光环',
-      url: './aifx-templates/ui-levelup.mp4',
-      fileName: 'ui-levelup.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-reel-stop',
-      group: '界面',
-      label: '界面 · 转轮停格',
-      url: './aifx-templates/slot-reel-stop.mp4',
-      fileName: 'slot-reel-stop.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-portal',
-      group: '氛围',
-      label: '氛围 · 转场光门',
-      url: './aifx-templates/slot-portal.mp4',
-      fileName: 'slot-portal.mp4',
-    }),
-    Object.freeze({
-      id: 'slot-god-rays',
-      group: '氛围',
-      label: '氛围 · 放射光线',
-      url: './aifx-templates/slot-god-rays.mp4',
-      fileName: 'slot-god-rays.mp4',
-      lifecycle: 'loop',
-      // Detection reads this as a burst. Four candidate measures were tried
-      // against the library - temporal rotation, inner-vs-outer twist, radial
-      // streak counting and how evenly the lit angles reach out - and none of
-      // them separated a ray fan from an explosion by a margin worth shipping
-      // a rule for. The archetype is real and pickable; the template just
-      // states which one it is instead of pretending the detector knows.
-      archetype: 'rays',
-    }),
-    Object.freeze({
-      id: 'slot-swirl',
-      group: '氛围',
-      label: '氛围 · 能量漩涡',
-      url: './aifx-templates/slot-swirl.mp4',
-      fileName: 'slot-swirl.mp4',
-      lifecycle: 'loop',
-      archetype: 'swirl',   // see slot-god-rays
-    }),
-  ])
-
   // Decode a clip into canvases once, so scrubbing and the compare view never
   // pay for a seek. Capped because a long source would otherwise pin a few
   // hundred full-size bitmaps in memory for a preview nobody scrubs that far.
@@ -1790,6 +1640,7 @@
   }
 
   const currentShape = () => {
+    if (state.customShape && state.customShape.archetype === state.shapeArchetype) return state.customShape.shape
     const shapes = SHAPES()
     const entry = shapes && shapes.ARCHETYPES[state.shapeArchetype]
     return entry ? entry.shape : ''
@@ -1797,6 +1648,7 @@
 
   // The wording used when a reference image is supplying the material.
   const currentPlainShape = () => {
+    if (state.customShape && state.customShape.archetype === state.shapeArchetype) return state.customShape.plainShape
     const shapes = SHAPES()
     const entry = shapes && shapes.ARCHETYPES[state.shapeArchetype]
     return entry ? (entry.plainShape || entry.shape) : ''
@@ -1853,8 +1705,8 @@
       uploadedName: '',
     }
     state.sourceFrames = decoded.frames
-    state.builtinId = ''
     state.userTemplateId = ''
+    state.customShape = null
     const detected = detectShape(decoded.frames)
     state.shapeArchetype = detected ? detected.archetype : 'blob'
     state.shapeAuto = detected ? detected.label : ''
@@ -2072,8 +1924,8 @@
     state.shapeAuto = ''
     state.lifecycle = ''
     state.lifecycleAuto = ''
-    state.builtinId = ''
     state.userTemplateId = ''
+    state.customShape = null
     state.result = null
     state.resultFrames = []
     state.candidates = []
@@ -2084,35 +1936,6 @@
     setStatusFromState()
     refreshUi()
     drawPreview()
-  }
-
-  const loadBuiltinTemplate = async (id) => {
-    const template = BUILTIN_TEMPLATES.find(item => item.id === id) || BUILTIN_TEMPLATES[0]
-    // Picking the template that is already loaded is not a change of
-    // template: the candidates made from it stay on the strip.
-    if (state.source && state.builtinId === template.id) return
-    setStatus('载入中', builtinLabel(template.id))
-    refreshUi()
-    const response = await fetch(template.url)
-    if (!response.ok) throw new Error('AI 特效：内置模板读取失败')
-    await adoptSource(await response.blob(), template.fileName)
-    state.builtinId = template.id
-    // adoptSource has just run detection. A template that knows better
-    // overrides it: the two rotating loops read as a one-shot burst at the
-    // panel's frame budget, and a one-shot prompt tells them to break up at
-    // the end.
-    const shapes = SHAPES()
-    if (template.archetype) {
-      state.shapeArchetype = template.archetype
-      const entry = shapes && shapes.ARCHETYPES[template.archetype]
-      state.shapeAuto = entry ? entry.label : ''
-    }
-    if (template.lifecycle) {
-      state.lifecycle = template.lifecycle
-      const entry = shapes && shapes.LIFECYCLES[template.lifecycle]
-      state.lifecycleAuto = entry ? entry.label : ''
-    }
-    refreshUi()
   }
 
   const currentStrength = () => {
@@ -2381,9 +2204,8 @@
   // template for another pass.
   const candidateFileName = (candidate) => {
     const restyle = RESTYLE()
-    const builtin = BUILTIN_TEMPLATES.find(item => item.id === state.builtinId)
     const saved = state.userTemplates.find(item => item.id === state.userTemplateId)
-    const template = builtin ? builtinLabel(builtin.id) : saved ? saved.label
+    const template = saved ? saved.label
       : String(state.source && state.source.fileName || 'template').replace(/\.[^.]+$/, '')
     const recipe = candidate.recipe || {}
     const preset = restyle && !recipe.reference ? restyle.getPreset(recipe.attribute) : null
@@ -2570,24 +2392,10 @@
     state.userTemplates = items
       .filter(item => item && typeof item === 'object' && item.id && item.data)
       .map(item => ({ ...item, objectUrl: '' }))
-    state.hiddenBuiltins = data && Array.isArray(data.hiddenBuiltins)
-      ? data.hiddenBuiltins.filter(id => BUILTIN_TEMPLATES.some(template => template.id === id))
-      : []
-    const renamed = data && data.renamedBuiltins && typeof data.renamedBuiltins === 'object'
-      ? data.renamedBuiltins
-      : {}
-    state.renamedBuiltins = {}
-    for (const [id, label] of Object.entries(renamed)) {
-      if (typeof label === 'string' && label && BUILTIN_TEMPLATES.some(template => template.id === id)) {
-        state.renamedBuiltins[id] = label
-      }
-    }
   }
 
   const persistTemplateStore = () => writeTemplateStore({
-    version: 1,
-    hiddenBuiltins: state.hiddenBuiltins.slice(),
-    renamedBuiltins: { ...state.renamedBuiltins },
+    version: 2,
     items: state.userTemplates.map(({ objectUrl, ...item }) => item),
   })
 
@@ -2610,18 +2418,7 @@
     return item.objectUrl
   }
 
-  const visibleBuiltinTemplates = () => BUILTIN_TEMPLATES.filter(template => !state.hiddenBuiltins.includes(template.id))
-
-  const builtinLabel = (id) => {
-    const template = BUILTIN_TEMPLATES.find(item => item.id === id)
-    if (!template) return ''
-    const renamed = state.renamedBuiltins[template.id]
-    return typeof renamed === 'string' && renamed ? renamed : template.label
-  }
-
   const defaultTemplateName = () => {
-    const builtin = BUILTIN_TEMPLATES.find(item => item.id === state.builtinId)
-    if (builtin) return builtinLabel(builtin.id)
     const user = state.userTemplates.find(item => item.id === state.userTemplateId)
     if (user) return user.label
     const fileName = state.source ? String(state.source.fileName || '') : ''
@@ -2654,9 +2451,46 @@
     state.userTemplates.push(item)
     await persistTemplateStore()
     state.userTemplateId = item.id
-    state.builtinId = ''
     refreshUi()
     return item.id
+  }
+
+  // A clip from 模板制作 (or 骨骼动画 → 特效扫光 → 存入 AI 特效模板库). It keeps the project
+  // (base picture included) so 编辑 reopens it; `id` updates that template in place.
+  const addTemplate = async ({ blob: given, label, width, height, ai, project, id } = {}) => {
+    // 骨骼动画编辑器在 iframe 里：它的 Blob 不是本页的 Blob（instanceof 不认），按样子判断，复制一份本页的
+    if (!given || typeof given.size !== 'number' || typeof given.arrayBuffer !== 'function') throw new Error('AI 特效：没有模板视频')
+    const blob = new Blob([await given.arrayBuffer()], { type: given.type || 'video/mp4' })
+    if (blob.size > TEMPLATE_CLIP_MAX_BYTES) throw new Error('AI 特效：模板超过 24 MB，存不进模板库')
+    await ensureTemplateStore()
+    const words = ai || {}
+    const fields = {
+      label: String(label || '').trim() || '模板',
+      fileName: (String(label || 'template').trim() || 'template') + '.mp4',
+      mime: blob.type || 'video/mp4',
+      size: blob.size,
+      width: Number(width) || 0,
+      height: Number(height) || 0,
+      archetype: String(words.archetype || ''),
+      lifecycle: String(words.lifecycle || ''),
+      shape: String(words.shape || ''),
+      plainShape: String(words.plainShape || words.shape || ''),
+      project: project || null,
+      data: await blobToBase64(blob),
+    }
+    const existing = id ? state.userTemplates.find(item => item.id === String(id)) : null
+    if (existing) {
+      if (existing.objectUrl) {
+        try { URL.revokeObjectURL(existing.objectUrl) } catch (_) {}
+      }
+      Object.assign(existing, fields, { objectUrl: '', updatedAt: Date.now() })
+    } else {
+      state.userTemplates.push({ id: 'user-' + Date.now().toString(36) + '-' + Math.random().toString(16).slice(2, 8), createdAt: Date.now(), objectUrl: '', ...fields })
+    }
+    await persistTemplateStore()
+    refreshUi()
+    if (state.libraryKind === 'template' && state.refs.library && !state.refs.library.hidden) await openLibrary('template')
+    return existing ? existing.id : state.userTemplates[state.userTemplates.length - 1].id
   }
 
   // Clicking a card's name edits it in place. A built-in keeps its shipped
@@ -2671,9 +2505,6 @@
     if (user) {
       if (user.label === next) return false
       user.label = next
-    } else if (BUILTIN_TEMPLATES.some(template => template.id === key)) {
-      if (builtinLabel(key) === next) return false
-      state.renamedBuiltins[key] = next
     } else {
       return false
     }
@@ -2692,31 +2523,9 @@
       }
       state.userTemplates = state.userTemplates.filter(item => item.id !== key)
       if (state.userTemplateId === key) state.userTemplateId = ''
-    } else if (BUILTIN_TEMPLATES.some(template => template.id === key)) {
-      if (!state.hiddenBuiltins.includes(key)) state.hiddenBuiltins.push(key)
-      if (state.builtinId === key) state.builtinId = ''
     } else {
       return false
     }
-    await persistTemplateStore()
-    refreshUi()
-    return true
-  }
-
-  // 重置 is what the particle library's 重置 is: back to the shipped set,
-  // custom templates gone - so it asks first, as that one does.
-  const resetTemplates = async (options = {}) => {
-    if (!options.force && !window.confirm('将清空自定义模板，并恢复全部内置模板。是否继续？')) return false
-    await ensureTemplateStore()
-    for (const item of state.userTemplates) {
-      if (item.objectUrl) {
-        try { URL.revokeObjectURL(item.objectUrl) } catch (_) {}
-      }
-    }
-    state.userTemplates = []
-    state.hiddenBuiltins = []
-    state.renamedBuiltins = {}
-    state.userTemplateId = ''
     await persistTemplateStore()
     refreshUi()
     return true
@@ -2739,8 +2548,69 @@
       state.lifecycle = item.lifecycle
       state.lifecycleAuto = shapes.LIFECYCLES[item.lifecycle].label
     }
+    if (item.shape) state.customShape = { archetype: state.shapeArchetype, shape: item.shape, plainShape: item.plainShape || item.shape }
     state.userTemplateId = item.id
     refreshUi()
+  }
+
+  // --- 模板制作 -----------------------------------------------------------------
+  // The editor lives in aifx-template-maker.*.js (plus the sweep core it draws
+  // the outline lights with). index.html lists them as text/plain so the build
+  // hash-stamps their URLs; they are only executed the first time it opens.
+  const MAKER_SCRIPTS = ['sweep-light.core.js', 'aifx-template-maker.core.js', 'aifx-template-maker.fx.js', 'aifx-template-maker.mp4.js', 'aifx-template-maker.ui.js']
+  let makerLoading = null
+  const loadTemplateMaker = () => {
+    if (window.NovaFlowFxMakerUI && window.NovaFlowFxMaker && window.NovaFlowSweepLight) return Promise.resolve()
+    if (makerLoading) return makerLoading
+    const bare = (u) => String(u || '').split('#')[0].split('?')[0].replace(/^\.\//, '').split('/').pop()
+    const urlOf = (name) => {
+      for (const tag of document.querySelectorAll('script[src]')) if (bare(tag.getAttribute('src')) === name) return tag.getAttribute('src')
+      return './' + name
+    }
+    const globals = { 'sweep-light.core.js': 'NovaFlowSweepLight', 'aifx-template-maker.core.js': 'NovaFlowFxMaker', 'aifx-template-maker.mp4.js': 'NovaFlowFxMp4', 'aifx-template-maker.ui.js': 'NovaFlowFxMakerUI' }
+    makerLoading = MAKER_SCRIPTS.reduce((chain, name) => chain.then(() => new Promise((resolve, reject) => {
+      if (globals[name] && window[globals[name]]) { resolve(); return }
+      const tag = document.createElement('script')
+      tag.src = urlOf(name)
+      tag.onload = () => resolve()
+      tag.onerror = () => reject(new Error('AI 特效：模板制作没有加载（' + name + '）'))
+      document.head.appendChild(tag)
+    })), Promise.resolve()).catch((error) => { makerLoading = null; throw error })
+    return makerLoading
+  }
+
+  // 用作素材 = this clip becomes the source (with what the editor knows about
+  // its shape) and a copy goes to the warehouse; 存入模板库 keeps the project.
+  const openTemplateMaker = async ({ project = null, name = '', templateId = '' } = {}) => {
+    await loadTemplateMaker()
+    let editingId = templateId
+    window.NovaFlowFxMakerUI.open({
+      project,
+      name,
+      title: templateId ? '模板制作 · ' + name : '模板制作',
+      onSaveWarehouse: async (blob) => {
+        const warehouse = window.NovaFlowWebWarehouse
+        if (warehouse && typeof warehouse.save === 'function') await warehouse.save({ blob, name: 'template.mp4' })
+      },
+      onUse: async (blob, info) => {
+        await adoptSource(blob, (info.name || '模板') + '.mp4')
+        const ai = info.ai || {}
+        const shapes = SHAPES()
+        if (ai.archetype && shapes && shapes.ARCHETYPES[ai.archetype]) {
+          state.shapeArchetype = ai.archetype
+          state.shapeAuto = shapes.ARCHETYPES[ai.archetype].label
+        }
+        if (ai.lifecycle && shapes && shapes.LIFECYCLES[ai.lifecycle]) {
+          state.lifecycle = ai.lifecycle
+          state.lifecycleAuto = shapes.LIFECYCLES[ai.lifecycle].label
+        }
+        if (ai.shape) state.customShape = { archetype: state.shapeArchetype, shape: ai.shape, plainShape: ai.plainShape || ai.shape }
+        refreshUi()
+      },
+      onSaveTemplate: async (blob, info) => {
+        editingId = await addTemplate({ blob, label: info.name, width: info.width, height: info.height, ai: info.ai, project: info.project, id: editingId })
+      },
+    })
   }
 
   // --- the panel ---------------------------------------------------------------
@@ -2786,7 +2656,7 @@
     })
   }
 
-  const libraryCard = ({ id, label, url, active, onPick, onDelete, onRename }) => {
+  const libraryCard = ({ id, label, url, active, onPick, onDelete, onRename, onEdit }) => {
     const card = document.createElement('div')
     card.className = 'aifx-library-card' + (active ? ' is-active' : '')
     card.setAttribute('data-library-card', id)
@@ -2815,6 +2685,21 @@
         onDelete()
       })
       thumb.appendChild(del)
+    }
+    if (onEdit) {
+      const edit = document.createElement('button')
+      edit.type = 'button'
+      edit.className = 'aifx-library-edit'
+      edit.title = '在模板制作里接着改'
+      edit.textContent = '编辑'
+      edit.setAttribute('data-action', 'library-edit')
+      edit.setAttribute('data-library-edit', id)
+      edit.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onEdit()
+      })
+      thumb.appendChild(edit)
     }
     card.appendChild(thumb)
     const name = document.createElement('div')
@@ -2947,6 +2832,7 @@
           closeLibrary()
           state.shapeArchetype = id
           state.shapeAuto = entry.label
+          state.customShape = null
           refreshUi()
         }))
         grid.appendChild(pick)
@@ -2972,21 +2858,6 @@
         + '</div><div class="aifx-library-name">点击存储</div>'
       add.addEventListener('click', guard(() => { openLibrarySaveDialog() }))
       grid.appendChild(add)
-      for (const template of visibleBuiltinTemplates()) {
-        grid.appendChild(libraryCard({
-          id: template.id, label: builtinLabel(template.id), url: template.url,
-          active: template.id === state.builtinId,
-          onPick: guard(() => {
-            closeLibrary()
-            return loadBuiltinTemplate(template.id)
-          }),
-          onDelete: guard(async () => {
-            await deleteTemplate(template.id)
-            await openLibrary('template')
-          }),
-          onRename: (next) => renameTemplate(template.id, next),
-        }))
-      }
       for (const item of state.userTemplates) {
         grid.appendChild(libraryCard({
           id: item.id, label: item.label, url: userTemplateUrl(item),
@@ -3000,7 +2871,18 @@
             await openLibrary('template')
           }),
           onRename: (next) => renameTemplate(item.id, next),
+          onEdit: item.project ? guard(() => {
+            closeLibrary()
+            return openTemplateMaker({ project: item.project, name: item.label, templateId: item.id })
+          }) : null,
         }))
+      }
+      if (!state.userTemplates.length) {
+        const empty = document.createElement('div')
+        empty.className = 'aifx-library-group'
+        empty.style.gridColumn = '1 / -1'
+        empty.textContent = '还没有模板。点「模板制作」做一个，或把上传的素材存进来。'
+        grid.appendChild(empty)
       }
       body.appendChild(grid)
     }
@@ -3008,7 +2890,6 @@
     if (refs.libraryTitle) {
       refs.libraryTitle.textContent = kind === 'style' ? '风格库' : kind === 'shape' ? '形状' : '模板库'
     }
-    if (refs.libraryReset) refs.libraryReset.hidden = kind !== 'template'
     refs.library.hidden = false
     watchLibraryVideos(body)
   }
@@ -3221,7 +3102,6 @@
     refs.library = root.querySelector('[data-library]')
     refs.libraryBody = root.querySelector('[data-library-body]')
     refs.libraryTitle = root.querySelector('[data-library-title]')
-    refs.libraryReset = root.querySelector('[data-action="reset-library"]')
     refs.librarySave = root.querySelector('[data-library-save]')
     refs.librarySaveName = root.querySelector('[data-library-save-name]')
     refs.effectType = root.querySelector('[data-effect-type]')
@@ -3283,6 +3163,7 @@
     }))
 
     refs.openTemplate.addEventListener('click', guard(() => { openLibrary('template') }))
+    root.querySelector('[data-action="open-template-maker"]').addEventListener('click', guard(() => openTemplateMaker()))
     refs.openStyle.addEventListener('click', guard(() => { openLibrary('style') }))
     root.querySelector('[data-action="close-library"]')
       .addEventListener('click', guard(() => { closeLibrary() }))
@@ -3291,9 +3172,6 @@
       if (event.target !== refs.library) return
       if (refs.librarySave && !refs.librarySave.hidden) closeLibrarySaveDialog()
       else closeLibrary()
-    }))
-    refs.libraryReset.addEventListener('click', guard(async () => {
-      if (await resetTemplates()) await openLibrary('template')
     }))
     root.querySelector('[data-action="library-save-cancel"]')
       .addEventListener('click', guard(() => { closeLibrarySaveDialog() }))
@@ -3475,9 +3353,8 @@
       put(refs.generate, 'textContent', state.isGenerating ? '生成中…' : '生成特效')
     }
     if (refs.templateMeta) {
-      const builtin = BUILTIN_TEMPLATES.find(item => item.id === state.builtinId)
       const saved = state.userTemplates.find(item => item.id === state.userTemplateId)
-      const shown = builtin ? builtinLabel(builtin.id) : saved ? saved.label : state.source ? state.source.fileName : ''
+      const shown = saved ? saved.label : state.source ? state.source.fileName : ''
       const restyle = RESTYLE()
       const notes = []
       if (state.source && restyle) {
@@ -4023,7 +3900,6 @@
     setLifecycle: (value) => { state.lifecycle = String(value || ''); refreshUi() },
     setCandidateCount: (value) => { state.candidateCount = Number(value) || 1; refreshUi() },
     selectCandidate,
-    loadBuiltinTemplate,
     loadSourceBlob: (blob, fileName) => adoptSource(blob, fileName),
     loadSourceFiles: (files) => adoptTemplateFiles(files),
     sequenceToBlackClip,
@@ -4035,15 +3911,13 @@
     saveCurrentAsTemplate,
     deleteTemplate,
     renameTemplate,
-    resetTemplates,
     loadUserTemplate,
     listTemplates: () => ({
-      builtin: visibleBuiltinTemplates().map(item => ({ id: item.id, label: builtinLabel(item.id) })),
-      hiddenBuiltins: state.hiddenBuiltins.slice(),
       user: state.userTemplates.map(({ data, objectUrl, ...item }) => ({ ...item })),
     }),
+    addTemplate,
+    openTemplateMaker,
     runProductionPipeline: runGenerate,
-    listBuiltinTemplates: () => BUILTIN_TEMPLATES.map(item => ({ ...item })),
     exportRgbaFrames: async (options) => {
       const client = CLIENT()
       if (!client) throw new Error('AI 特效：导出模块未加载')

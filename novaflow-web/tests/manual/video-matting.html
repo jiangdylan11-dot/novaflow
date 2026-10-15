@@ -11,7 +11,7 @@ const seek=t=>new Promise(resolve=>{if(Math.abs(source.currentTime-t)<.00001){re
 document.querySelector('#run').onclick=async()=>{
   const button=document.querySelector('#run');button.disabled=true;
   try {
-    const bytes=await (await fetch('/aifx-templates/slot-symbol-pop.mp4')).arrayBuffer();
+    const bytes=await (await fetch('/aifx-styles/fire.mp4')).arrayBuffer();
     source.src=URL.createObjectURL(new Blob([bytes],{type:'video/mp4'}));
     await new Promise((resolve,reject)=>{source.onloadeddata=resolve;source.onerror=reject;});
     const width=source.videoWidth,height=source.videoHeight,fps=24,count=39;
