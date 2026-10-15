@@ -144,7 +144,7 @@
     const S = {
       systems: Array.isArray(last.systems) && last.systems.length ? last.systems.map((c) => P.normalizeConfig(c)) : [P.normalizeConfig({})],
       active: Math.max(0, Number(last.active) || 0), tplName: last.tplName || '', blend: last.blend || '',
-      open: new Set(last.open || ['play', 'place', 'write']), closed: false, busy: false, rename: -1,
+      open: new Set([...(last.open || []).filter((x) => x !== 'play' && x !== 'place'), 'write']), closed: false, busy: false, rename: -1,
       pathEdit: last.pathEdit !== false, library: null, presets: P.loadCurvePresets(), sizeOne: {},
     }
     if (S.active >= S.systems.length) S.active = 0
@@ -173,7 +173,7 @@
     const settings = () => (options.settings ? options.settings() : { frames: 24, duration: 60, fps: 30, start: 0, width: 512, height: 512 })
     const setSettings = (patch) => { if (options.setSettings) options.setSettings(patch) }
     let changeTimer = 0
-    const changed = (now) => { clearTimeout(changeTimer); if (now) { if (options.onChange && !S.closed) options.onChange(api) } else changeTimer = setTimeout(() => { if (options.onChange && !S.closed) options.onChange(api) }, 50) }
+    const changed = (now) => { clearTimeout(changeTimer); syncWriteHint(); if (now) { if (options.onChange && !S.closed) options.onChange(api) } else changeTimer = setTimeout(() => { if (options.onChange && !S.closed) options.onChange(api) }, 50) }
     const update = (patch, structural = true) => { Object.assign(cfg(), patch); if (structural) render(); changed(structural) }
     const updateShape = (patch, structural = true) => update({ shape: { ...(cfg().shape || {}), ...patch } }, structural)
 
@@ -831,21 +831,38 @@
     }
 
     // ---------------------------------------------------------------- 骨骼动画这边的三块
-    function buildPlay() {
-      const st = settings()
-      const num = (label, key, value, min, max, note) => h('div', { class: 'pfx-row' }, h('span', { style: 'width:44px;color:#b9bcbf' }, label),
-        h('input', { class: 'pfx-sl-num', type: 'number', min, max, step: 1, value: Math.round(value), onchange: (e) => { const v = clamp(Math.round(Number(e.target.value) || min), min, max); e.target.value = v; setSettings({ [key]: v }); render() } }),
-        h('span', { class: 'pfx-help', style: 'margin:0' }, note))
-      return [num('起', 'start', st.start, 0, 18000, '帧开始写'), num('时长', 'duration', st.duration, 2, 18000, `帧，${(st.duration / (st.fps || 30)).toFixed(2)} 秒`),
-        help('时长 = 写进动画的长度；开了「首尾循环」的系统按这个长度首尾相接。动画够长时粒子跟着时间轴播，动画比它短（比如空动画）时粒子自己循环播。')]
+    // 写入动画（2026-10-16 用户：「播放」的时长和寿命、和帧数分不清）——原来的「播放」并进来：从第几帧开始、写入长度、
+    // 序列图每几帧一张（共几张，只影响生成序列）；一次性的系统写入长度比粒子最长寿命短时提示会被截断，可按寿命补足
+    const maxOnceLife = () => Math.max(0, ...S.systems.filter((c) => c.enabled !== false && !c.loopAnimation).map((c) => Math.max(Number(c.lifetimeMin) || 0, Number(c.lifetimeMax) || 0)))
+    function syncWriteHint() {
+      const el = body.querySelector('[data-write-hint]')
+      if (!el) return
+      const st = settings(), fps = st.fps || 30, life = maxOnceLife(), need = Math.ceil(life * fps)
+      const short = life > 0 && st.duration < need
+      el.style.display = short ? '' : 'none'
+      if (short) el.querySelector('span').textContent = `写入长度 ${(st.duration / fps).toFixed(2)} 秒，比一次性粒子的最长寿命 ${life.toFixed(2)} 秒短：结尾还没消失的粒子会被截断。`
     }
     function buildWrite() {
-      const st = settings()
-      const num = (label, key, value, min, max, note) => h('div', { class: 'pfx-row' }, h('span', { style: 'width:44px;color:#b9bcbf' }, label),
+      const st = settings(), fps = st.fps || 30, step = Math.max(1, Math.round(st.seqStep || 1))
+      const num = (label, key, value, min, max, note) => h('div', { class: 'pfx-row' }, h('span', { style: 'width:72px;color:#b9bcbf;flex:none' }, label),
         h('input', { class: 'pfx-sl-num', type: 'number', min, max, step: 1, value: Math.round(value), onchange: (e) => { const v = clamp(Math.round(Number(e.target.value) || min), min, max); e.target.value = v; setSettings({ [key]: v }); render() } }),
         h('span', { class: 'pfx-help', style: 'margin:0' }, note))
-      return [h('span', { class: 'pfx-lbl' }, '插槽混合'), seg([['add', '相加'], ['normal', '正常'], ['screen', '滤色'], ['multiply', '相乘']], S.blend, (v) => { S.blend = v; render(); changed(true) }),
-        num('帧数', 'frames', st.frames, 2, 240, '生成序列切多少张'), num('宽', 'width', st.width, 64, 4096, '切片宽'), num('高', 'height', st.height, 64, 4096, '切片高（画布上虚线框）')]
+      // 位置也在这（2026-10-16 用户：位置也应该在写入动画里）：骨骼 / 跟随图层 / 发射点
+      const placeEl = h('div', {})
+      if (options.place) options.place(placeEl, api)
+      return [
+        placeEl,
+        num('从第几帧开始', 'start', st.start, 0, 18000, '帧'),
+        num('写入长度', 'duration', st.duration, 2, 18000, `帧（${(st.duration / fps).toFixed(2)} 秒）`),
+        help('写入长度 = 这段粒子在动画时间轴上占多长；和粒子「寿命」不是一回事（寿命是每颗粒子活多久）。开了「首尾循环」的系统按这个长度首尾相接。'),
+        h('div', { 'data-write-hint': '', style: 'display:none;margin:4px 0 6px;padding:6px 8px;border-radius:6px;background:rgba(224,180,90,.12);color:#e0b45a;font-size:11px;line-height:1.5' },
+          h('span', {}), h('button', { class: 'fxm-btn', type: 'button', style: 'display:block;margin-top:6px;height:24px', onclick: () => { setSettings({ duration: Math.max(2, Math.ceil(maxOnceLife() * (settings().fps || 30))) }); render() } }, '按寿命补足')),
+        h('span', { class: 'pfx-lbl' }, '序列图（只影响「生成序列」）'),
+        seg([['1', '每帧一张'], ['2', '每 2 帧一张'], ['3', '每 3 帧一张']], String(step), (v) => { setSettings({ seqStep: Number(v) }); render() }),
+        help(`共 ${st.frames} 张。张数越少图集越小，但看起来没那么顺。「生成 Spine 动画」不切图，不看这项。`),
+        h('span', { class: 'pfx-lbl' }, '插槽混合'), seg([['add', '相加'], ['normal', '正常'], ['screen', '滤色'], ['multiply', '相乘']], S.blend, (v) => { S.blend = v; render(); changed(true) }),
+        num('切片宽', 'width', st.width, 64, 4096, '像素'), num('切片高', 'height', st.height, 64, 4096, '像素（画布上虚线框）'),
+      ]
     }
 
     function render() {
@@ -859,12 +876,11 @@
         section('base', '基础属性', buildBase),
         section('scale', '缩放与旋转', buildScale),
         section('look', '外观与资源', buildLook),
-        section('play', '播放（写进动画的时间）', buildPlay),
-        section('place', '位置', () => { const el = h('div', {}); if (options.place) options.place(el, api); return el }),
         section('write', '写入动画', buildWrite))
       infoEl = h('div', { class: 'pfx-info' }, infoText)
       body.append(infoEl)
       body.scrollTop = top
+      syncWriteHint()
     }
     // 画布上拖发射点：只更新系统 X / Y 的数值框
     function rerenderLight() {

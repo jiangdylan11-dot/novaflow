@@ -7650,6 +7650,12 @@
     // 面板开着时在画布上点了别的骨骼：粒子换到那根骨骼下面
     const sel = state.sel && state.sel.kind === 'bone' ? state.sel.name : null
     if (sel && sel !== pfx.lastSel) { pfx.lastSel = sel; if (sel !== pfx.place.bone) { pfx.place.bone = sel; pfx.place.slot = ''; pfxRestart(); if (pfx.ui.rerender) pfx.ui.rerender() } }
+    // 点了一个图层：层级放到它上面
+    const selSlot = state.sel && (state.sel.kind === 'slot' ? state.sel.name : state.sel.kind === 'att' ? state.sel.slot : null)
+    if (selSlot && selSlot !== pfx.lastSlotSel) {
+      pfx.lastSlotSel = selSlot
+      if (pfx.place.layer && state.json.slots.some((x) => x.name === selSlot)) { pfx.place.layer.mode = 'above'; pfx.place.layer.slot = selSlot; state.particleLayer = { ...pfx.place.layer }; if (pfx.ui.rerender) pfx.ui.rerender() }
+    }
     const o = pfx.origin, B = o && rt.skeleton.findBone(o.bone), PS = pfx.PS
     const pathPts = pfxPathPoints()
     pfxSyncPathHandles(B ? pathPts : null)
@@ -7729,7 +7735,16 @@
     const PS = state.particleSet || (state.particleSet = { frames: 24, start: 0, duration: 60, width: 512, height: 512 })
     if (!(PS.duration > 1)) PS.duration = 60
     if (!(PS.width > 0) || !(PS.height > 0)) { PS.width = 512; PS.height = 512 }
-    const place = { slot: '', bone: selBone }
+    // layer：写进动画时插槽排在哪（2026-10-16 用户：其实就需要控制图层的层级）——top 最上层 / bottom 最下层 / above、below 某个图层
+    const place = { slot: '', bone: selBone, layer: (state.particleLayer && state.particleLayer.mode) ? { ...state.particleLayer } : { mode: 'top', slot: '' } }
+    const placeLayer = (json, mine) => {
+      const rest = json.slots.map((x) => x.name).filter((x) => !mine.includes(x)), L = place.layer
+      const at = L.slot ? rest.indexOf(L.slot) : -1
+      const order = L.mode === 'bottom' ? [...mine, ...rest]
+        : (L.mode === 'above' || L.mode === 'below') && at >= 0 ? (L.mode === 'above' ? [...rest.slice(0, at + 1), ...mine, ...rest.slice(at + 1)] : [...rest.slice(0, at), ...mine, ...rest.slice(at)])
+          : [...rest, ...mine]
+      return Ops.reorderSlots(json, order).json
+    }
     const sliceSize = () => {
       const img = layerImage(place.slot), r = img ? regionSize(img) : null
       if (!r) { PS.width = Math.max(PS.width || 512, 512); PS.height = Math.max(PS.height || 512, 512); return }
@@ -7749,11 +7764,13 @@
       } catch (e) { restore(before); throw new Error('图片进图片文件夹失败：' + e.message) }
     }
     const startFrame = () => Math.max(0, Math.round(PS.start || 0))
-    pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, clock: 0 }
+    const openSlot = state.sel && (state.sel.kind === 'slot' ? state.sel.name : state.sel.kind === 'att' ? state.sel.slot : null)
+    pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, lastSlotSel: openSlot, clock: 0 }
     pfx.ui = UI.openDock({
       host,
       last: state.particleLast,
-      settings: () => ({ frames: PS.frames, duration: PS.duration, fps: FPS, start: PS.start || 0, width: PS.width, height: PS.height }),
+      // 序列图张数 = 写入长度 ÷ 每几帧一张（2026-10-16：不再单独填张数）
+      settings: () => ({ frames: Math.max(2, Math.round(PS.duration / Math.max(1, PS.seqStep || 1))), seqStep: Math.max(1, PS.seqStep || 1), duration: PS.duration, fps: FPS, start: PS.start || 0, width: PS.width, height: PS.height }),
       setSettings: (patch) => { Object.assign(PS, patch); pfxRestart() },
       onChange: () => pfxRestart(),
       // 位置：骨骼 / 跟随图层 / 发射点
@@ -7764,15 +7781,25 @@
         el.append(
           line('骨骼', h('select', { class: 'fxm-select', onchange: (e) => { place.bone = e.target.value; pfx.lastSel = state.sel && state.sel.kind === 'bone' ? state.sel.name : pfx.lastSel; pfxRestart() } },
             bones.map((b) => h('option', { value: b, selected: b === place.bone }, b)))),
-          line('跟随图层', h('div', { class: 'fxm-seg' }, h('span', { style: 'align-self:center;color:#ddd;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, place.slot || '不跟'),
-            btn('用选中的', '在画布上点一个图层，再点这里：粒子以那张图的中心为原点', () => {
-              const s0 = state.sel, slot = s0 && (s0.kind === 'slot' ? s0.name : s0.kind === 'att' ? s0.slot : '')
-              const sl = slot && state.json.slots.find((x) => x.name === slot)
-              if (!sl) { status('先在画布上点一个图层', 'error'); return }
-              place.slot = sl.name; place.bone = sl.bone; sliceSize(); pfx.ui.rerender(); pfxRestart()
-            }),
-            place.slot ? btn('不跟', '原点放在骨骼原点', () => { place.slot = ''; pfx.ui.rerender(); pfxRestart() }) : null)),
-          line('发射点', h('div', { class: 'fxm-seg' }, btn('居中', '当前系统的发射点回到原点', () => { const cfg = pfx.ui.config; cfg.systemX = 0; cfg.systemY = 0; pfx.ui.rerender(); pfxRestart() }),
+          // 「跟随图层」去掉（2026-10-16 用户：好像没什么用）：原点 = 骨骼原点，位置在画布上拖绿点
+          // 层级：最上层 / 最下层 / 某个图层的上面或下面（插槽列表从上到下 = 画在最上面的在前）
+          ...(() => {
+            const L = place.layer, slotsTopFirst = state.json.slots.map((x) => x.name).reverse()
+            const save = () => { state.particleLayer = { ...L }; pfx.ui.rerender() }
+            const sel = h('select', { class: 'fxm-select', title: '生成的插槽画在哪一层；在画布上点一个图层会自动放到它上面（预览里粒子总在最上面，写进动画后按这里排）', onchange: (e) => {
+              const v = e.target.value
+              if (v === 'top' || v === 'bottom') { L.mode = v; L.slot = '' } else { L.slot = v; if (L.mode !== 'below') L.mode = 'above' }
+              save()
+            } },
+            h('option', { value: 'top', selected: L.mode === 'top' }, '最上层'), h('option', { value: 'bottom', selected: L.mode === 'bottom' }, '最下层'),
+            slotsTopFirst.map((n) => h('option', { value: n, selected: (L.mode === 'above' || L.mode === 'below') && L.slot === n }, n)))
+            // 面板开着时在画布上点一个图层：层级自动放到它上面（2026-10-16 用户）
+            const rows = [line('层级', sel)]
+            if ((L.mode === 'above' || L.mode === 'below') && L.slot) rows.push(line('', h('div', { class: 'fxm-seg' },
+              ...[['above', '在它上面'], ['below', '在它下面']].map(([m, label]) => h('button', { class: 'fxm-btn', type: 'button', 'data-on': L.mode === m ? '1' : '0', onclick: () => { L.mode = m; save() } }, label)))))
+            return rows
+          })(),
+          line('发射点', h('div', { class: 'fxm-seg' }, btn('居中', '当前系统的发射点回到骨骼原点', () => { const cfg = pfx.ui.config; cfg.systemX = 0; cfg.systemY = 0; pfx.ui.rerender(); pfxRestart() }),
             h('span', { class: 'fxm-note', style: 'margin:0;align-self:center' }, '画布上拖绿点'))),
         )
       },
@@ -7792,7 +7819,9 @@
         const r = edit(`粒子特效：${names.length} 张进一个插槽，第 ${startF} → ${endF} 帧，挂在 ${o.bone}（${state.anim}）`, (j) => {
           const start = startF / FPS, end = endF / FPS
           const place2 = { x: o.x, y: o.y, rotation: 0, scaleX: o.s, scaleY: o.s }
-          return { json: Ops.tidy(oneSlotSequence(j, { images: names, bone: o.bone, place: place2, baseSlotObj: { bone: o.bone }, gen, anim: state.anim, start, step: (end - start) / names.length, end, wrap: loop, animEnd: lastFrame() })) }
+          const json = oneSlotSequence(j, { images: names, bone: o.bone, place: place2, baseSlotObj: { bone: o.bone }, gen, anim: state.anim, start, step: (end - start) / names.length, end, wrap: loop, animEnd: lastFrame() })
+          const made = json.slots.filter((x) => (json.skins.find((k) => k.name === 'default') || { attachments: {} }).attachments[x.name] && Object.values((json.skins.find((k) => k.name === 'default')).attachments[x.name]).some((a) => names.includes(a.path))).map((x) => x.name)
+          return { json: Ops.tidy(made.length ? placeLayer(json, made) : json) }
         }, () => gotoFrame(startF))
         info.busy(null)
         if (!r) throw new Error('写进动画失败')
@@ -7839,10 +7868,8 @@
             for (const [an, att] of Object.entries(atts)) { const region = att.path || an; out[an] = { ...att, ...(pathOf.has(region) ? { path: pathOf.get(region) } : {}) } }
             skin.attachments[name] = out
           }
-          // 插槽次序：跟随图层的上一层（不跟图层：最上层）
-          const rest = json.slots.map((x) => x.name).filter((x) => !mine.includes(x))
-          const at = place.slot ? rest.indexOf(place.slot) : -1
-          const out = Ops.reorderSlots(json, at >= 0 ? [...rest.slice(0, at + 1), ...mine, ...rest.slice(at + 1)] : [...rest, ...mine]).json
+          // 插槽次序：按「层级」
+          const out = placeLayer(json, mine)
           const a = out.animations[state.anim]
           if (!a) throw new Error(`找不到动画：${state.anim}`)
           a.bones = a.bones || {}; a.slots = a.slots || {}
