@@ -1,7 +1,7 @@
 {
   "name": "novaflow-web-workspace",
   "private": true,
-  "version": "2.0.43",
+  "version": "2.0.44",
   "type": "module",
   "description": "NovaFlow Web independent workspace: browser editor, local assistant, administration and GPU workers.",
   "workspaces": [
