@@ -7550,6 +7550,10 @@ self.onmessage = (e) => {
       row('骨骼', boneSel)
       if (!bs) params.append(h('div', { class: 'sw-wide warn' }, '这张图还没放进骨骼：切片会挂到 root、画在最上层。'))
       params.append(h('div', { class: 'sw-wide' }, '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。'))
+      // 照着底图本身扫的方案（线性扫光 / 形态驱动 / 局部高光 / 径向）不做 AI 特效模板（2026-10-16 用户：不适合）；边缘类和效果库照常能存
+      const noTpl = !fxMode() && !sc.edge
+      saveTpl.disabled = noTpl
+      saveTpl.title = noTpl ? '这类扫光是照着底图本身扫的，不做 AI 特效模板（边缘类和效果库的可以存）' : '把这个效果存成 AI 特效的模板（黑底视频 + 可再编辑的工程）'
     }
 
     // 效果库效果的参数：滑条 / 分段按钮（有的只在别的设置下起作用，置灰）+ 颜色
@@ -7585,6 +7589,7 @@ self.onmessage = (e) => {
       try { mvp = (window.parent && window.parent !== window && window.parent.NovaFlowAifxMvp) || window.NovaFlowAifxMvp } catch (_) { mvp = window.NovaFlowAifxMvp }
       if (!mvp || typeof mvp.addTemplate !== 'function') { setStatus('AI 特效没有加载，存不了模板库', true); return }
       if (!FxMaker() || !FxMakerUI()) { setStatus('模板制作没有加载（aifx-template-maker.*.js）', true); return }
+      if (!fxMode() && !schemeOf(P.scheme).edge) return
       saveTpl.disabled = true; go.disabled = true
       try {
         const FX = FxMaker()
@@ -7602,7 +7607,7 @@ self.onmessage = (e) => {
         setStatus(`已存入 AI 特效模板库：「${label}」——AI 特效 → 特效模板 → 模板库，点「编辑」可接着改`)
       } catch (e) {
         setStatus('存入模板库失败：' + e.message, true)
-      } finally { saveTpl.disabled = false; go.disabled = false }
+      } finally { saveTpl.disabled = !fxMode() && !schemeOf(P.scheme).edge; go.disabled = false }
     }
     async function generate() {
       go.disabled = true; setStatus('')

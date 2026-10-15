@@ -836,7 +836,12 @@ self.postMessage({ type: 'ready' })`
     // ---------------------------------------------------------------- 左侧效果
     function renderEffects() {
       const groups = new Map()
-      for (const e of FX().effects()) { if (!groups.has(e.group)) groups.set(e.group, []); groups.get(e.group).push(e) }
+      // 按底图本身扫的（线性扫光 / 形态驱动 / 局部高光 / 径向）2026-10-16 用户：「在 AI 特效中取消，好像不适合」——不列出来；
+      // 渲染还在：以前存成模板的打开编辑照常显示（当前选的就是它时才列出它那一组）
+      for (const e of FX().effects()) {
+        if (e.kind === 'basesweep' && FX().effectOf(S.project.effect).group !== e.group) continue
+        if (!groups.has(e.group)) groups.set(e.group, []); groups.get(e.group).push(e)
+      }
       // 分组能展开 / 收拢（2026-10-15 用户）：一打开只展开当前效果所在的那组
       if (!S.openGroups) S.openGroups = new Set([FX().effectOf(S.project.effect).group])
       E.effects.innerHTML = [...groups].map(([g, list]) => {
