@@ -1830,7 +1830,8 @@
     const taken = new Set(projects.map((_, i) => projectName(i)))
     let n = base
     for (let k = 2; taken.has(n); k++) n = `${base} ${k}`
-    const json = { skeleton: { spine: '3.8.99', images: './images/' }, bones: [{ name: 'root' }], slots: [], skins: [{ name: 'default', attachments: {} }], animations: {} }
+    // like Spine's new project: a root bone and one empty animation named "animation"
+    const json = { skeleton: { spine: '3.8.99', images: './images/' }, bones: [{ name: 'root' }], slots: [], skins: [{ name: 'default', attachments: {} }], animations: { animation: {} } }
     await loadParts({ json, jsonName: n + '.json', atlasText: '', atlasName: n + '.atlas', images: [], label: n })
     state.sections.delete('images')
     status(`已新建工程 ${n}：导入一个图片文件夹，再把图片拖到骨骼或画面上`, 'ok')
@@ -2390,8 +2391,9 @@
   // The mesh is edited over the real picture; 隔离 shows only its slot. 修改 drags vertices
   // (变形 on: the picture bends with them; off: they slide over it), 创建 adds a vertex where
   // you click (outside the outline the outline grows), 删除 removes one. 新建 starts an outline
-  // from clicks, 重置 goes back to the image rectangle, 生成 fills the inside, 描绘 follows the
-  // picture's opaque edge. Every change is one undo step.
+  // from clicks, 重置 goes back to the image rectangle, 生成 lays an even grid (one more division
+  // per click), 描绘 follows the picture's opaque edge. Vertices never leave the image (Spine's
+  // bounds), so the picture is never stretched here. Every change is one undo step.
 
   const ME = () => window.NovaFlowMeshEdit
   const CORE = () => window.NovaFlowAutoMeshCore
@@ -3099,7 +3101,7 @@
         commitMesh(ME().reset(ctx.model, CORE()), '已重置网格（图片的矩形）', () => { me.sel = new Set() })
       } else if (kind === 'generate') {
         const m = ME().generate(ctx.model, CORE())
-        commitMesh(m, `已生成 ${m.points.length - ctx.model.points.length} 个内部顶点（再点继续加密）`)
+        commitMesh(m, `已生成网格（${m.points.length} 个顶点，再点多分一格）`, () => { me.sel = new Set() })
       } else if (kind === 'trace') {
         openTrace()
       }
@@ -3193,6 +3195,35 @@
     return best
   }
 
+  /**
+   * Where 创建 puts a vertex for the pointer (Spine): within 8 px of the outline onto it, and
+   * never off the image (a point past its edge lands on the edge). `edge` = the outline edge it
+   * sits on, or -1.
+   */
+  function meshCreateTarget(ctx, sx, sy) {
+    const P = ctx.model.points, H = ctx.model.hull
+    let edge = -1, bd = 8, on = null
+    for (let i = 0; i < H; i++) {
+      const p = toScreen(P[i].x, P[i].y), q = toScreen(P[(i + 1) % H].x, P[(i + 1) % H].y)
+      const dx = q[0] - p[0], dy = q[1] - p[1], l2 = dx * dx + dy * dy
+      const t = l2 ? Math.max(0, Math.min(1, ((sx - p[0]) * dx + (sy - p[1]) * dy) / l2)) : 0
+      const d = Math.hypot(sx - p[0] - t * dx, sy - p[1] - t * dy)
+      if (d < bd) { bd = d; edge = i; on = [P[i].x + (P[(i + 1) % H].x - P[i].x) * t, P[i].y + (P[(i + 1) % H].y - P[i].y) * t] }
+    }
+    const [wx, wy] = on || toWorld(sx, sy)
+    const q = ME().placeAt(ctx.model, wx, wy)
+    return { x: q.x, y: q.y, edge }
+  }
+
+  /** The image's own rectangle in the world (where vertices stop), cached with the mesh. */
+  function meshImageBounds(ctx) {
+    if (!ctx.bounds) {
+      const W = ctx.model.width, H = ctx.model.height
+      ctx.bounds = [[0, 0], [W, 0], [W, H], [0, H]].map(([u, v]) => { const s = ME().sampleAt(ctx.model, u, v, 'uv'); return [s.x, s.y] })
+    }
+    return ctx.bounds
+  }
+
   /** A left press while editing the mesh: returns a drag, or null when the press did its job. */
   function meshPointerDown(e, sx, sy) {
     const me = state.meshEdit, ctx = meshEditContext()
@@ -3205,14 +3236,17 @@
         const f = toScreen(me.draft[0][0], me.draft[0][1])
         if (Math.hypot(f[0] - sx, f[1] - sy) < 9) { finishDraft(); return null }
       }
-      me.draft.push([wx, wy])
+      // a point past the image's edge lands on the edge
+      const q = ME().placeAt(ctx.model, wx, wy)
+      me.draft.push([q.x, q.y])
       return null
     }
     if (me.tool === 'create') {
       // Spine: drag from a vertex to another = an edge (to empty space = a new vertex joined to it)
       if (vi >= 0) return { kind: 'meshEdge', from: vi, sx, sy }
       try {
-        const m = ME().addPoint(ctx.model, wx, wy, CORE())
+        const tg = meshCreateTarget(ctx, sx, sy)
+        const m = ME().addPoint(ctx.model, tg.x, tg.y, CORE())
         const ni = m.points.findIndex((p) => p.src === -1)
         commitMesh(m, '已添加顶点', () => { me.sel = new Set([ni]) })
       } catch (err) { status(err.message, 'error') }
@@ -3264,8 +3298,8 @@
         if (vt !== d.from) commitMesh(ME().addEdge(ctx.model, d.from, vt, CORE()), '已连一条边')
         return
       }
-      const [wx, wy] = toWorld(sx, sy)
-      const m1 = ME().addPoint(ctx.model, wx, wy, CORE())
+      const tg = meshCreateTarget(ctx, sx, sy)
+      const m1 = ME().addPoint(ctx.model, tg.x, tg.y, CORE())
       const ni = m1.points.findIndex((p) => p.src === -1)
       if (ni < m1.hull) { commitMesh(m1, '已添加顶点（在外圈上，没连边）'); return }
       commitMesh(ME().addEdge(m1, d.from, ni, CORE()), '已添加顶点并连边')
@@ -3293,10 +3327,35 @@
     const me = state.meshEdit, ctx = meshEditContext()
     if (!ctx) return
     const md = state.meshDrag
-    const pts = ctx.model.points.map((p, i) => toScreen(p.x + (md && me.sel.has(i) ? md.dx : 0), p.y + (md && me.sel.has(i) ? md.dy : 0)))
+    // a dragged vertex shows where it stops (the image's edge)
+    const pts = ctx.model.points.map((p, i) => {
+      if (!(md && me.sel.has(i))) return toScreen(p.x, p.y)
+      const q = ME().placeAt(ctx.model, p.x + md.dx, p.y + md.dy)
+      return toScreen(q.x, q.y)
+    })
     const H = ctx.model.hull, T = ctx.model.tris
     g.save()
     if (me.trace) g.globalAlpha = 0.3
+    // the image's own rectangle (vertices stop there): a faint line with white corners, like Spine
+    const B = meshImageBounds(ctx).map(([x, y]) => toScreen(x, y))
+    g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.28)'
+    g.beginPath(); B.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.stroke()
+    g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,255,255,.85)'
+    g.beginPath()
+    B.forEach((c, i) => {
+      for (const o of [B[(i + 1) % 4], B[(i + 3) % 4]]) {
+        const dx = o[0] - c[0], dy = o[1] - c[1], l = Math.hypot(dx, dy) || 1, k = Math.min(10, l / 3) / l
+        g.moveTo(c[0], c[1]); g.lineTo(c[0] + dx * k, c[1] + dy * k)
+      }
+    })
+    g.stroke()
+    // 创建 / 新建: where a click puts the vertex
+    const mp = state.meshPointer
+    let hover = null
+    if (mp && !me.trace && !md && !state.meshEdgeDraft) {
+      if (me.draft) { const q = ME().placeAt(ctx.model, ...toWorld(mp[0], mp[1])); hover = { p: toScreen(q.x, q.y), edge: -1 } }
+      else if (me.tool === 'create' && meshVertexAt(ctx, mp[0], mp[1]) < 0) { const tg = meshCreateTarget(ctx, mp[0], mp[1]); hover = { p: toScreen(tg.x, tg.y), edge: tg.edge } }
+    }
     g.setLineDash([4, 3]); g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.6)'
     g.beginPath()
     const seen = new Set()
@@ -3322,6 +3381,12 @@
     g.beginPath()
     for (let i = 0; i < H; i++) { if (i) g.lineTo(pts[i][0], pts[i][1]); else g.moveTo(pts[i][0], pts[i][1]) }
     g.closePath(); g.stroke()
+    if (hover && hover.edge >= 0) {
+      // the outline edge the new vertex lands on
+      const a = pts[hover.edge], b = pts[(hover.edge + 1) % H]
+      g.strokeStyle = '#fff'; g.lineWidth = 2
+      g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke()
+    }
     pts.forEach((q, i) => {
       const on = me.sel.has(i)
       g.beginPath(); g.arc(q[0], q[1], on ? 4.5 : 3, 0, Math.PI * 2)
@@ -3332,9 +3397,14 @@
       g.strokeStyle = '#ffb454'; g.fillStyle = '#ffb454'; g.lineWidth = 1.5
       g.beginPath()
       me.draft.forEach(([x, y], i) => { const q = toScreen(x, y); if (i) g.lineTo(q[0], q[1]); else g.moveTo(q[0], q[1]) })
-      if (state.meshPointer && me.draft.length) g.lineTo(state.meshPointer[0], state.meshPointer[1])
+      if (hover && me.draft.length) g.lineTo(hover.p[0], hover.p[1])
       g.stroke()
       me.draft.forEach(([x, y], i) => { const q = toScreen(x, y); g.beginPath(); g.arc(q[0], q[1], i ? 3 : 4.5, 0, Math.PI * 2); g.fill() })
+    }
+    if (hover) {
+      g.beginPath(); g.arc(hover.p[0], hover.p[1], 4, 0, Math.PI * 2)
+      g.fillStyle = '#22c98a'; g.fill()
+      g.lineWidth = 1; g.strokeStyle = 'rgba(0,0,0,.6)'; g.stroke()
     }
     g.globalAlpha = 1
     if (me.trace && me.trace.pts) {
@@ -3365,12 +3435,12 @@
       h('div', { class: 'mhd' }, h('b', {}, '编辑网格'), h('button', { class: 'xx', title: '完成（Enter / Esc）', onclick: exitMeshEdit }, '×')),
       h('div', { class: 'mrow' },
         tool('modify', '修改', '拖顶点；空白处拖 = 框选，Ctrl 加选，Delete 删除选中的'),
-        tool('create', '创建', '点空白处加顶点（点在外圈外 = 外圈多一个点）；从一个顶点拖到另一个顶点 = 连一条边（橙色），拖到空白处 = 新顶点并连上'),
+        tool('create', '创建', '点空白处加顶点（靠近外圈 = 落在外圈上，点在外圈外 = 外圈多一个点；顶点不会超出图片）；从一个顶点拖到另一个顶点 = 连一条边（橙色），拖到空白处 = 新顶点并连上'),
         tool('delete', '删除', '点顶点删顶点；点橙色的边删边')),
       h('div', { class: 'mrow' },
         act('new', '新建', '清空，重新点出外圈'),
         act('reset', '重置', '回到图片的矩形'),
-        act('generate', '生成', '在外圈里均匀加内部顶点；再点一次更密'),
+        act('generate', '生成', '均匀分格：每点一次长边多分一格，长边分到一定程度短边也跟着分（手动加的顶点不动）'),
         act('trace', '描绘', '按图片不透明的边缘描外圈（可调细节 / 凹度 / 精致度 / Alpha 阈值 / 填充）')),
       h('div', { class: 'mrow mopts' },
         tg('isolate', '隔离', '只显示这张图'),
@@ -4561,7 +4631,7 @@
       }
       if (drag) c.setPointerCapture(e.pointerId)
     })
-    c.addEventListener('pointerleave', () => { state.hoverImg = null })
+    c.addEventListener('pointerleave', () => { state.hoverImg = null; if (state.meshEdit) state.meshPointer = null })
     c.addEventListener('pointermove', (e) => {
       const [sx, sy] = at(e)
       if (state.creating) {

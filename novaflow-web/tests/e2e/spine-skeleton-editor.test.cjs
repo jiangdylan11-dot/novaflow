@@ -1076,6 +1076,44 @@ test('编辑网格: edges dragged between vertices stay in the triangles and in 
   assert(grown.hull === 13 && grown.edges[0][0] === 13 && grown.edges[0][1] === 16, JSON.stringify(grown.edges))
 })
 
+test('编辑网格: 生成 = one more even division per click (Spine); vertices stop at the image', () => {
+  // the BIG WIN picture's shape: wide and low
+  const W = 1338, H = 386
+  const rect = () => ({ width: W, height: H, hull: 4, weighted: false, edges: [], tris: [0, 1, 3, 1, 2, 3],
+    points: [[0, 0], [W, 0], [W, H], [0, H]].map(([u, v], i) => ({ u, v, x: u, y: -v, w: null, src: i })) })
+  const cells = (m) => [new Set(m.points.map((p) => p.u.toFixed(3))).size - 1, new Set(m.points.map((p) => p.v.toFixed(3))).size - 1]
+  let m = rect()
+  const seq = []
+  for (let k = 0; k < 14; k++) { m = MeshEdit.generate(m, Core); seq.push(cells(m).join('×')) }
+  // columns first, rows join in (Spine shows 9×2 and 14×3 on this picture)
+  assert.deepStrictEqual(seq, ['2×1', '3×1', '4×1', '5×1', '6×1', '7×1', '8×2', '9×2', '10×2', '11×2', '12×3', '13×3', '14×3', '15×4'])
+  // a full grid: the outline carries the edge points, every cell split along the same "/" diagonal
+  const [cu, cv] = cells(m)
+  assert.strictEqual(m.points.length, (cu + 1) * (cv + 1)); assert.strictEqual(m.hull, 2 * (cu + cv)); assert.strictEqual(m.tris.length, cu * cv * 6)
+  for (let t = 0; t < m.tris.length; t += 3) for (let e = 0; e < 3; e++) {
+    const a = m.points[m.tris[t + e]], b = m.points[m.tris[t + (e + 1) % 3]]
+    if (Math.abs(a.u - b.u) > 1e-6 && Math.abs(a.v - b.v) > 1e-6) assert((b.u - a.u) * (b.v - a.v) < 0, 'diagonal "/"')
+  }
+  // a hand-placed vertex stays through the next click
+  const g = MeshEdit.generate(MeshEdit.addPoint(m, 100.3, -100.7, Core), Core)
+  assert(g.points.some((p) => near(p.x, 100.3, 1e-6) && near(p.y, -100.7, 1e-6)), 'hand vertex kept')
+  assert.strictEqual(g.points.length, 17 * 5, 'the next grid (17 × 5 points; the one next to the hand vertex gives way to it)')
+  // 创建 above the top edge: the vertex lands on the edge, its world place on the picture's edge (no stretch)
+  const up = MeshEdit.addPoint(rect(), 500, 80, Core)
+  const np = up.points.find((p) => p.src === -1)
+  assert(near(np.u, 500, 1e-6) && near(np.v, 0, 1e-6) && near(np.x, 500, 1e-6) && near(np.y, 0, 1e-6), JSON.stringify(np))
+  assert.strictEqual(up.hull, 5, 'on the outline')
+  assert.throws(() => MeshEdit.addPoint(rect(), -300, 300, Core), /已经有顶点/)
+  // 修改 dragged past the right edge: it stops there, still on the same picture pixel row
+  const inner = MeshEdit.addPoint(rect(), 600, -200, Core)
+  const ii = inner.points.findIndex((p) => p.src === -1)
+  const mv = MeshEdit.movePoints(inner, [ii], 2000, 0, false, Core)
+  assert(near(mv.points[ii].u, W, 1e-6) && near(mv.points[ii].x, W, 1e-6) && near(mv.points[ii].y, -200, 1e-6), JSON.stringify(mv.points[ii]))
+  // 新建: clicks off the picture land on its edges, world and image places agree
+  const nh = MeshEdit.newHull(rect(), [[-50, 50], [W + 50, 50], [W / 2, -H - 50]], Core)
+  assert(nh.points.every((p) => p.u >= 0 && p.u <= W && p.v >= 0 && p.v <= H && near(p.x, p.u, 1e-6) && near(p.y, -p.v, 1e-6)))
+})
+
 test('权重: list order lives in the vertices; 直接 nudges the picked vertices', () => {
   const pts = [
     { u: 0, v: 0, x: 0, y: 0, w: [[4, 0.5], [2, 0.5]], src: 0 },

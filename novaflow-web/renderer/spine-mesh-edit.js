@@ -174,7 +174,9 @@
   function triangulate(model, core) {
     const pts = model.points
     if (pts.length < 3) return []
-    const coords = Float64Array.from(pts.flatMap((p) => [p.u, p.v]))
+    // a hair of shear settles the four-on-a-circle ties of a grid the same way in every cell (the
+    // "/" diagonal, as Spine draws it); it is affine, so the triangles stay valid for the real points
+    const coords = Float64Array.from(pts.flatMap((p) => [p.u + p.v * 1e-3, p.v]))
     const H = Math.min(model.hull, pts.length)
     const cons = []
     for (let i = 0; i < H; i++) cons.push([i, (i + 1) % H])
@@ -249,22 +251,39 @@
 
   const clampUV = (m, p) => { p.u = Math.max(0, Math.min(m.width, p.u)); p.v = Math.max(0, Math.min(m.height, p.v)); return p }
   const copy = (m) => ({ ...m, points: m.points.map((p) => ({ ...p, w: p.w && p.w.map((x) => x.slice()) })), tris: m.tris.slice(), edges: (m.edges || []).map((e) => e.slice()) })
+  // "the same place" in image pixels (uvs are stored to 6 decimals)
+  const tolOf = (m) => Math.max(m.width, m.height) * 1e-5 + 1e-9
+
+  /**
+   * Where a vertex lands for a world point (Spine: vertices stop at the image bounds). Off the
+   * image it goes to the nearest image edge and its world place follows that pixel, so the
+   * picture never stretches while the mesh is edited.
+   */
+  function placeAt(model, x, y) {
+    const s = sampleAt(model, x, y, 'world')
+    const u = Math.max(0, Math.min(model.width, s.u)), v = Math.max(0, Math.min(model.height, s.v))
+    if (u === s.u && v === s.v) return { u, v, x, y, w: s.w }
+    const t = sampleAt(model, u, v, 'uv')
+    return { u, v, x: t.x, y: t.y, w: t.w }
+  }
 
   // ------------------------------------------------------------------ edits (all return a new model)
 
-  /** 创建: a vertex where the pointer is; inside the hull an inner vertex, outside it the hull grows. */
+  /** 创建: a vertex where the pointer is (kept on the image); inside the hull an inner vertex, on or outside it the hull takes it. */
   function addPoint(model, x, y, core) {
     const m = copy(model)
-    const s = sampleAt(model, x, y, 'world')
-    const p = clampUV(m, { u: s.u, v: s.v, x, y, w: s.w, src: -1 })
-    if (pointInPoly(x, y, hullXY(model))) m.points.push(p)
+    const q = placeAt(model, x, y)
+    const p = { u: q.u, v: q.v, x: q.x, y: q.y, w: q.w, src: -1 }
+    if (model.points.some((o) => Math.hypot(o.u - p.u, o.v - p.v) < 0.05)) fail('这里已经有顶点了（顶点不能超出图片）')
+    const H = hullXY(model)
+    const tol = tolOf(model)
+    if (pointInPoly(p.x, p.y, H) && !onPoly(p.x, p.y, H, tol)) m.points.push(p)
     else {
       // into the hull, after the nearest hull edge
-      const H = hullXY(model)
       let e = 0, d0 = Infinity
       for (let i = 0; i < H.length; i++) {
         const a = H[i], b = H[(i + 1) % H.length]
-        const d = segDist(x, y, a[0], a[1], b[0], b[1])
+        const d = segDist(p.x, p.y, a[0], a[1], b[0], b[1])
         if (d < d0) { d0 = d; e = i }
       }
       m.points.splice(e + 1, 0, p)
@@ -333,18 +352,15 @@
 
   /**
    * 修改: move vertices by a world delta. With `deform` the image goes with them (Spine's 变形);
-   * without it they slide over the image, which stays where it is.
+   * without it they slide over the image, which stays where it is, and stop at its edges.
    */
   function movePoints(model, idxs, dx, dy, deform, core) {
     const m = copy(model)
     for (const i of idxs) {
       const p = m.points[i]
-      p.x += dx; p.y += dy
-      if (!deform) {
-        const s = sampleAt(model, p.x, p.y, 'world')
-        p.u = s.u; p.v = s.v
-        clampUV(m, p)
-      }
+      if (deform) { p.x += dx; p.y += dy; continue }
+      const q = placeAt(model, p.x + dx, p.y + dy)
+      p.x = q.x; p.y = q.y; p.u = q.u; p.v = q.v
     }
     if (!deform) m.tris = triangulate(m, core)
     return m
@@ -353,7 +369,12 @@
   /** New vertices at image positions (the hull first), placed in the world through the current mesh. */
   function rebuild(model, hullUVs, innerUVs, core) {
     const m = copy(model)
-    const at = ([u, v]) => { const s = sampleAt(model, u, v, 'uv'); return clampUV(m, { u, v, x: s.x, y: s.y, w: s.w, src: -1 }) }
+    // on the image first, then the world place of that pixel (never a stretched picture)
+    const at = ([u0, v0]) => {
+      const u = Math.max(0, Math.min(m.width, u0)), v = Math.max(0, Math.min(m.height, v0))
+      const s = sampleAt(model, u, v, 'uv')
+      return { u, v, x: s.x, y: s.y, w: s.w, src: -1 }
+    }
     m.points = [...hullUVs.map(at), ...(innerUVs || []).map(at)]
     m.hull = hullUVs.length
     m.edges = []
@@ -367,10 +388,15 @@
     return rebuild(model, [[0, 0], [W, 0], [W, H], [0, H]], [], core)
   }
 
-  /** 新建: a hull through world points clicked in order. */
+  /** 新建: a hull through world points clicked in order (kept on the image; points that land together count once). */
   function newHull(model, worldPts, core) {
     if (worldPts.length < 3) fail('外圈至少要 3 个点')
-    const uv = worldPts.map(([x, y]) => { const s = sampleAt(model, x, y, 'world'); return [s.u, s.v] })
+    const uv = []
+    for (const [x, y] of worldPts) {
+      const q = placeAt(model, x, y)
+      if (!uv.some(([u, v]) => Math.hypot(u - q.u, v - q.v) < 0.05)) uv.push([q.u, q.v])
+    }
+    if (uv.length < 3) fail('外圈至少要 3 个点（图片外的点会落到图片边上）')
     return rebuild(model, uv, [], core)
   }
 
@@ -490,42 +516,90 @@
   }
 
   /**
-   * 生成 (Spine's Generate): inner vertices spread evenly inside the hull. Every click goes a
-   * step denser than what is there (about twice the inner vertices), clear of the vertices
-   * already placed, so clicking again keeps adding.
+   * 生成 (Spine's Generate): rows and columns at even spacing over the outline's box. Each click
+   * is one more division of the long side; the short side has round(points along the long side ×
+   * short / long) points, so a wide picture gets columns first and rows join in once the columns
+   * are dense enough. The last click's grid points (outline points on a straight stretch
+   * included) are laid out again at the new spacing; corners and hand-placed vertices stay. Grid
+   * points on the outline join it, the others fill the inside clear of the outline.
    */
-  function generate(model, core, opts) {
+  function generate(model, core) {
+    const P = model.points, N = model.hull
     const poly = hullUV(model)
-    const area = Math.abs(polyArea(poly))
-    if (area < 4) fail('外圈太小')
-    const inner0 = model.points.length - model.hull
-    const want = Math.max(inner0 * 2, inner0 + 8)
+    if (Math.abs(polyArea(poly)) < 4) fail('外圈太小')
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
     for (const [u, v] of poly) { x0 = Math.min(x0, u); y0 = Math.min(y0, v); x1 = Math.max(x1, u); y1 = Math.max(y1, v) }
-    const existing = model.points.map((p) => [p.u, p.v])
-    // a hex cell holds step² · √3 / 2
-    let step = (opts && opts.step) || Math.sqrt(area / (want + model.hull / 2) / 0.866)
-    const near = (u, v, list, d) => list.some((p) => (p[0] - u) ** 2 + (p[1] - v) ** 2 < d * d)
-    let inner = []
-    for (let tries = 0; tries < 8; tries++) {
-      inner = []
-      for (let row = 0, v = y0 + step / 2; v < y1; v += step * 0.866, row++) {
-        for (let u = x0 + (row % 2 ? step / 2 : step / 4); u < x1; u += step) {
-          if (!pointInPoly(u, v, poly)) continue
-          let edge = Infinity
-          for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; edge = Math.min(edge, segDist(u, v, a[0], a[1], b[0], b[1])) }
-          if (edge < step * 0.4 || near(u, v, existing, step * 0.55) || near(u, v, inner, step * 0.55)) continue
-          inner.push([u, v])
-        }
-      }
-      if (inner.length >= Math.max(3, (want - inner0) * 0.4) || step < 2.5) break
-      step *= 0.8
+    const bw = x1 - x0, bh = y1 - y0
+    const wide = bw >= bh, L = Math.max(bw, bh), S = Math.min(bw, bh)
+    const tol = tolOf(model)
+    // grid n: n points along the long side
+    const dims = (n) => { const s = Math.max(2, Math.round(n * S / L)); return wide ? [n, s] : [s, n] }
+    const onGrid = (p, n) => {
+      const [nu, nv] = dims(n)
+      const fu = (p.u - x0) / bw * (nu - 1), fv = (p.v - y0) / bh * (nv - 1)
+      return Math.abs(fu - Math.round(fu)) * bw / (nu - 1) <= tol && Math.abs(fv - Math.round(fv)) * bh / (nv - 1) <= tol
     }
-    if (!inner.length) fail('已经是最密了')
-    const m = copy(model)
-    for (const [u, v] of inner) { const s = sampleAt(model, u, v, 'uv'); m.points.push({ u, v, x: s.x, y: s.y, w: s.w, src: -1 }) }
-    m.tris = triangulate(m, core)
-    return m
+    // what the last click may have laid: inner points and outline points on a straight stretch
+    const straight = (i) => { const a = P[(i - 1 + N) % N], b = P[(i + 1) % N], p = P[i]; return segDist(p.u, p.v, a.u, a.v, b.u, b.v) <= tol }
+    const cand = []
+    P.forEach((p, i) => { if (i >= N || straight(i)) cand.push(i) })
+    const maxN = Math.max(3, Math.floor(L / 2) + 1) // spacing of at least 2 px
+    let cur = 2, best = 0
+    for (let n = 3; n <= maxN && cand.length; n++) {
+      let c = 0
+      for (const i of cand) if (onGrid(P[i], n)) c++
+      if (c > best) { best = c; cur = n }
+    }
+    // a few hand-placed points that happen to sit on some grid are not a grid
+    if (best < Math.max(1, cand.length / 2)) cur = 2
+    const drop = new Set(cur > 2 ? cand.filter((i) => onGrid(P[i], cur)) : [])
+    const hullKeep = [], innerKeep = []
+    P.forEach((_, i) => { if (!drop.has(i)) (i < N ? hullKeep : innerKeep).push(i) })
+    const ring = hullKeep.map((i) => [P[i].u, P[i].v])
+    const kept = [...hullKeep, ...innerKeep].map((i) => P[i])
+    const fresh = (u, v) => { const s = sampleAt(model, u, v, 'uv'); return { u, v, x: s.x, y: s.y, w: s.w, src: -1 } }
+    const old = (i) => ({ ...P[i], w: P[i].w && P[i].w.map((x) => x.slice()) })
+    const build = (n) => {
+      const [nu, nv] = dims(n)
+      const du = bw / (nu - 1), dv = bh / (nv - 1)
+      const gap = Math.min(du, dv) * 0.35
+      const onEdge = ring.map(() => [])
+      const inner = []
+      let slots = 0 // grid places on or inside the outline (kept vertices aside): how dense this level is
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+        const u = i === nu - 1 ? x1 : x0 + i * du, v = j === nv - 1 ? y1 : y0 + j * dv
+        let e = 0, d = Infinity
+        for (let k = 0; k < ring.length; k++) { const a = ring[k], b = ring[(k + 1) % ring.length]; const dk = segDist(u, v, a[0], a[1], b[0], b[1]); if (dk < d) { d = dk; e = k } }
+        const on = d <= tol
+        if (!on && !(d >= gap && pointInPoly(u, v, ring))) continue
+        slots++
+        if (kept.some((p) => Math.hypot(p.u - u, p.v - v) < gap)) continue
+        if (on) {
+          const a = ring[e], b = ring[(e + 1) % ring.length]
+          onEdge[e].push([((u - a[0]) * (b[0] - a[0]) + (v - a[1]) * (b[1] - a[1])) / ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2), u, v])
+        } else inner.push([u, v])
+      }
+      if (!inner.length && !onEdge.some((x) => x.length)) return { slots, fresh: 0 }
+      const points = [], map = new Map()
+      hullKeep.forEach((i, k) => {
+        map.set(i, points.length); points.push(old(i))
+        for (const [, u, v] of onEdge[k].sort((a, b) => a[0] - b[0])) points.push(fresh(u, v))
+      })
+      const hull = points.length
+      for (const i of innerKeep) { map.set(i, points.length); points.push(old(i)) }
+      for (const [u, v] of inner) points.push(fresh(u, v))
+      const edges = (model.edges || []).filter(([a, b]) => map.has(a) && map.has(b)).map(([a, b]) => [map.get(a), map.get(b)])
+      const m = { ...model, points, hull, edges, tris: [] }
+      m.tris = triangulate(m, core)
+      return { slots, fresh: points.length - kept.length, m }
+    }
+    // one division more; a level no denser here than the last (a narrow outline) gives way to the next
+    const before = build(cur).slots
+    for (let n = cur + 1; n <= maxN && n <= cur + 60; n++) {
+      const r = build(n)
+      if (r.fresh && r.slots > before) return r.m
+    }
+    fail('已经是最密了')
   }
 
   /**
@@ -710,7 +784,7 @@
   /** Each new vertex's source vertex (or -1): what keeps the deform keys of kept vertices. */
   const remapOf = (model) => model.points.map((p) => p.src)
 
-  return { fromAttachment, toAttachment, triangulate, sampleAt, addPoint, removePoints, movePoints, reset, newHull, trace, generate, remapOf, pointInPoly,
+  return { fromAttachment, toAttachment, triangulate, sampleAt, placeAt, addPoint, removePoints, movePoints, reset, newHull, trace, generate, remapOf, pointInPoly,
     fromImageMesh, toWeighted, setWeight, paintWeights, smoothWeights, pruneWeights, removeBone, boneCounts,
     traceOutline, TRACE_DEFAULTS, constrainedDelaunay, boneOrder, orderInfluences, nudgeWeights, meanWeight, addEdge, removeEdge }
 })
