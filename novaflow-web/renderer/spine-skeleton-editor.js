@@ -259,10 +259,12 @@
     if (!imageFolder && dir && Array.isArray(dir.files) && dir.files.length) { try { imageFolder = folderFromProjectFiles(dir.files, json, name) } catch { imageFolder = null } }
     // the same skeleton file again (a write-back, a re-import of that file) replaces the picked project; another one is added
     const replace = !!(state.json && projects[activeProject] && lower(state.fileName) === lower(name))
-    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name), replace })
+    // JSON + 图集 + 贴图 with no folder: right after loading, a dialog asks for one (纹理解包, see askImageFolder)
+    await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name), replace,
+      askFolder: !imageFolder && !replace && !!(src.atlas && src.atlas.text) })
   }
 
-  async function loadFiles(files, label) {
+  async function loadFiles(files, label, opts) {
     const list = Array.from(files || [])
     const jsons = list.filter((f) => /\.json$/i.test(f.name))
     const atlases = list.filter((f) => /\.(atlas|atlas\.txt)$/i.test(f.name))
@@ -297,7 +299,8 @@
     const rooted = imgs.filter((f) => f.webkitRelativePath)
     // (only loose images: with an atlas the PNGs next to it are atlas pages, not the pictures)
     const imageFolder = rooted.length && !atlases.length ? folderFromFiles((imgRoot || jsonDir).split('/').pop() || '图片', rooted.map((f) => ({ rel: relName(f), file: f }))) : null
-    await loadParts({ json, jsonName: jsonFile.name, atlasText, atlasName, images: imgs.map((f) => ({ fileName: relName(f), blob: f })), imageFolder, label })
+    await loadParts({ json, jsonName: jsonFile.name, atlasText, atlasName, images: imgs.map((f) => ({ fileName: relName(f), blob: f })), imageFolder, label,
+      askFolder: !!(opts && opts.askFolder) && !imageFolder && !!atlasText })
   }
 
   /** One project from its parts: the JSON, the atlas text (none = one page per picture), the images. */
@@ -310,7 +313,8 @@
     Attach.normalizeToSpine38(json)
     const jsonFile = { name: p.jsonName || 'skeleton.json' }
     const label = p.label
-    const imageFolder = p.imageFolder || null
+    // the same project loaded again (a write-back) keeps the folder it was given
+    const imageFolder = p.imageFolder || (p.replace && state.imageFolder) || null
     const images = new Map()
     for (const f of p.images || []) images.set(lower(f.fileName), { img: await imageFromBlob(f.blob), fileName: f.fileName, blob: f.blob })
     let atlasText = p.atlasText || ''
@@ -341,6 +345,7 @@
     state.collapsed.clear()
     const first = [...images.values()][0]
     state.pma = atlasPma != null && atlasPma ? true : first ? looksPremultiplied(first.img) : false
+    state.atlasPma = atlasPma === true
     rt.atlasKey = null
     rt.missingPages = new Set()
     rt.missingRegions = new Set()
@@ -368,6 +373,7 @@
     const lost = [...rt.missingPages, ...rt.missingRegions]
     if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（这些附件先显示为空）`, 'error')
     else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（Spine ${fromVersion} 工程，导出时保持 ${fromVersion}）` : ''}`, 'ok')
+    if (p.askFolder && !state.imageFolder && regionList().length) setTimeout(askImageFolder, 0)
   }
 
   // ------------------------------------------------------------------ several projects (Spine's hierarchy)
@@ -376,7 +382,7 @@
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
-    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'imgOpen', 'imageFolder', 'pma', 'frameBone', 'sweepStart', 'sweepEnd',
+    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'imgOpen', 'imageFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
@@ -1855,9 +1861,7 @@
    * New material into the image folder: images (or a folder, which keeps its name and
    * subfolders) under `folder`, into the project right away. Returns the new image names.
    */
-  let lastImportWritten = 0
   async function importIntoFolder(files, folder) {
-    let written = 0
     const clean = (x) => x.replace(/\s+/g, '_').replace(/[<>:"\\|?*\x00-\x1f]/g, '_')
     const added = []
     const taken = (n) => (rt.atlas && rt.atlas.findRegion(n)) || added.includes(n)
@@ -1873,11 +1877,9 @@
       const ext = ((f.name.match(/\.[^.]+$/) || ['.png'])[0]).toLowerCase()
       let onDisk = false
       if (state.imageFolder && state.imageFolder.write) { try { onDisk = await state.imageFolder.write(name + ext, f) } catch { onDisk = false } }
-      if (onDisk) written++
-      else if (state.imageFolder && state.imageFolder.add) state.imageFolder.add(name + '.png', f)
+      if (!onDisk && state.imageFolder && state.imageFolder.add) state.imageFolder.add(name + '.png', f)
       added.push(name)
     }
-    lastImportWritten = written
     return added
   }
 
@@ -1923,6 +1925,146 @@
   function imageFolder() {
     if (state.imageFolder) return state.imageFolder
     return folderFromFiles(state.name || '图片', regionList().map((r) => ({ rel: r.name + '.png', region: r.region })))
+  }
+
+  // ------------------------------------------------------------------ 指定文件夹 + 纹理解包
+  //
+  // A JSON + 图集 + 贴图 import had no folder on disk: the 图片 node listed the atlas, and pictures
+  // copied into a folder never showed (user 2026-10-15: 应该和 SPINE 一样，指定下文件夹就好了;
+  // 先自动纹理解包). Right after such an import a dialog asks for a folder, the atlas is unpacked
+  // into it like Spine's 纹理解包器, and the folder becomes the project's live image folder: what is
+  // added or deleted there shows. The 图片 node's 指定文件夹… does the same for any project.
+
+  /** The browser's folder picker (read + write): this frame's, else the app's around it. null = cancelled. */
+  async function pickDirectory() {
+    const pickers = [window, window.parent].filter((w, i, a) => w && a.indexOf(w) === i && typeof w.showDirectoryPicker === 'function')
+    if (!pickers.length) throw new Error('这个浏览器不能选择文件夹，请用 Chrome 或 Edge')
+    for (let i = 0; i < pickers.length; i++) {
+      try { return await pickers[i].showDirectoryPicker({ mode: 'readwrite' }) } catch (e) {
+        if (e && e.name === 'AbortError') return null
+        // a frame that may not show it: the app's window may
+        if (!(e && e.name === 'SecurityError') || i === pickers.length - 1) throw e
+      }
+    }
+    return null
+  }
+
+  /** Premultiplied pixels back to straight ones (rgb / alpha), in place. */
+  function unpremultiply(px) {
+    for (let i = 0; i < px.length; i += 4) {
+      const a = px[i + 3]
+      if (a === 0 || a === 255) continue
+      for (let k = 0; k < 3; k++) px[i + k] = Math.min(255, Math.round((px[i + k] * 255) / a))
+    }
+    return px
+  }
+
+  /** Every picture under `dir` (three folders down), as paths relative to it. */
+  async function pictureRels(dir) {
+    const rels = []
+    const walk = async (h, prefix, depth) => {
+      for await (const [n, c] of h.entries()) {
+        const rel = prefix ? prefix + '/' + n : n
+        if (c.kind === 'directory') { if (depth < 3) await walk(c, rel, depth + 1) } else if (IMG_RX.test(n)) rels.push(rel)
+      }
+    }
+    await walk(dir, '', 0)
+    return rels
+  }
+
+  /**
+   * 纹理解包 (Spine's Texture Unpacker): every atlas region as its own PNG at its original size
+   * (trimmed margins and rotation undone by regionPixels), named by the region, folders kept. The
+   * premultiply is told page by page with no choice to make (user: 最好是自动判断): the atlas says
+   * so, or no soft pixel of the page is brighter than its alpha (looksPremultiplied - a straight page
+   * almost always has some; too few soft pixels to tell = straight). Such pages come out straight.
+   * A file already there is left alone.
+   */
+  async function unpackAtlasInto(dir) {
+    const pagePma = new Map()
+    let written = 0, skipped = 0, unpremultiplied = 0
+    const one = async ({ name, region }) => {
+      const parts = name.split('/').filter(Boolean)
+      if (!parts.length) return
+      let d = dir
+      for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true })
+      const file = parts[parts.length - 1] + '.png'
+      if (await d.getFileHandle(file).then(() => true, () => false)) { skipped++; return }
+      const w = region.originalWidth || region.width, hh = region.originalHeight || region.height
+      const px = regionPixels(region, w, hh)
+      if (!px) return
+      const page = region.page ? region.page.name : ''
+      if (!pagePma.has(page)) pagePma.set(page, state.atlasPma || looksPremultiplied(imageForPage(page)))
+      if (pagePma.get(page)) { unpremultiply(px); unpremultiplied++ }
+      const c = document.createElement('canvas')
+      c.width = w; c.height = hh
+      c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, w * hh * 4), w, hh), 0, 0)
+      const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
+      const out = await (await d.getFileHandle(file, { create: true })).createWritable()
+      await out.write(blob)
+      await out.close()
+      written++
+    }
+    // the PNG encoding (about a second for a big picture) runs off the page's thread: four at a time
+    const queue = regionList()
+    await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => { while (queue.length) await one(queue.shift()) }))
+    return { written, skipped, unpremultiplied }
+  }
+
+  /**
+   * A folder the user picked as the project's image folder: rooted where its pictures' names match
+   * the project's (a parent folder picked by mistake still lines up), the atlas unpacked into it, and
+   * from then on listed live.
+   */
+  async function useFolderHandle(handle) {
+    if (!state.json) return
+    let dir = handle
+    const names = attachmentPictureNames(state.json)
+    for (const r of regionList()) names.add(r.name)
+    const best = bestPictureRoot(await pictureRels(dir), names)
+    if (best) for (const seg of best.split('/')) dir = await dir.getDirectoryHandle(seg)
+    const where = [handle.name, best].filter(Boolean).join('/') || '图片'
+    let r = { written: 0, skipped: 0, unpremultiplied: 0 }
+    if (regionList().length) {
+      status(`正在把图集解包到「${where}」…`)
+      r = await unpackAtlasInto(dir)
+    }
+    state.imageFolder = folderFromHandle(dir, dir.name || '图片')
+    state.imageFolderGen = (state.imageFolderGen || 0) + 1
+    imgTree = { key: '', nodes: new Map(), pending: new Set() }
+    state.sections.delete('images')
+    refresh()
+    const unpacked = r.written ? `解包 ${r.written} 张${r.unpremultiplied ? '（预乘贴图，已还原成普通 PNG）' : ''}` : ''
+    const kept = r.skipped ? `${r.skipped} 张已存在没动` : ''
+    status(`图片文件夹「${where}」${[unpacked, kept].filter(Boolean).length ? '：' + [unpacked, kept].filter(Boolean).join('，') : ''}；文件夹里加图、删图会实时显示`, 'ok')
+  }
+
+  /** 指定文件夹… (the 图片 node, and the dialog after a JSON + 图集 + 贴图 import). */
+  function chooseImageFolder() {
+    pickDirectory().then((handle) => handle && useFolderHandle(handle))
+      .catch((e) => status('指定图片文件夹失败：' + ((e && e.message) || e), 'error'))
+  }
+
+  /** Right after a JSON + 图集 + 贴图 import: where its pictures should live. */
+  function askImageFolder() {
+    if (!state.json || state.imageFolder || document.querySelector('.dialog.ask')) return
+    const done = () => { mask.remove(); window.removeEventListener('keydown', onKey, true) }
+    const onKey = (e) => {
+      if (e.key !== 'Escape' && e.key !== 'Enter') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      done()
+      if (e.key === 'Enter') chooseImageFolder()
+    }
+    const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) done() } },
+      h('div', { class: 'dialog ask' },
+        h('div', { class: 'hd' }, h('b', {}, '图片文件夹'), h('button', { class: 'xx', title: '以后再说', onclick: done }, '×')),
+        h('div', { class: 'msg' },
+          h('div', {}, `「${state.name}」是用 JSON + 图集 + 贴图导入的，还没有图片文件夹。`),
+          h('div', {}, '选一个文件夹：图集会自动解包成一张张图片放进去（已有的同名图片不动），之后在这个文件夹里加图、删图，「图片」里都会实时显示。')),
+        h('div', { class: 'ft' }, btn('以后再说', done), btn('选择文件夹…', () => { done(); chooseImageFolder() }, { primary: true }))))
+    document.body.append(mask)
+    window.addEventListener('keydown', onKey, true)
   }
 
   /**
@@ -6002,7 +6144,7 @@
         pickRow('ATLAS 图集', f.atlas && f.atlas.name, '#pickAtlas'),
         pickRow('PNG/JPG/WEBP 贴图', imgs, '#pickPng'),
         h('div', { class: 'btns' }, btn('清空', () => { state.importFiles = { json: null, atlas: null, images: [] }; renderLeft() }, { full: true })),
-        h('div', { class: 'btns' }, btn('开始导入', () => run(() => loadFiles([f.json, f.atlas, ...f.images].filter(Boolean))), { full: true, disabled: !f.json })),
+        h('div', { class: 'btns' }, btn('开始导入', () => run(() => loadFiles([f.json, f.atlas, ...f.images].filter(Boolean), undefined, { askFolder: true })), { full: true, disabled: !f.json })),
         h('div', { class: 'btns' }, btn('导入PS工程', () => { $('#fileDir').value = ''; $('#fileDir').click() }, { full: true })),
         h('div', { class: 'hint', style: 'margin-top:6px' }, '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到画面上'),
         h('div', { style: 'margin-top:8px' }, sample),
@@ -6351,43 +6493,31 @@
     return used
   }
 
-  /** 导入图片… / 导入文件夹… of the 图片 node: into `here` (a folder path, '' = the root). */
-  function importImagesInto(here, dir) {
-    const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', multiple: true })
-    if (dir) input.webkitdirectory = true
-    input.onchange = async () => {
-      const before = snapshot()
-      try {
-        const names = await importIntoFolder(input.files, here)
-        if (!names.length) { status('没有可导入的图片（PNG / JPG / WebP）'); return }
-        ensureAtlas()
-        applyJson(state.json)
-        state.history.push(before)
-        state.future = []
-        if (dir && names[0].includes('/')) state.imgOpen.add(names[0].split('/').slice(0, -1).join('/'))
-        state.sections.delete('images')
-        status(`已导入 ${names.length} 张图片到「${here || imageFolder().name}」${lastImportWritten ? `（${lastImportWritten} 张已写进文件夹）` : state.imageFolder && state.imageFolder.live ? '（文件夹只读：图片在工程里，没写进磁盘；重新「导入PS工程」并允许编辑文件夹后会写入）' : ''}`, 'ok')
-        refresh()
-      } catch (e) { restore(before); status('导入图片失败：' + e.message, 'error') }
-    }
-    input.click()
-  }
 
-  // a live folder (handle): re-listed every 2.5 s while the 图片 node is open; a change (a picture
-  // dropped into the folder, a folder made) refreshes the tree and the frame cards
+  // a live folder (handle): re-listed every 2.5 s as long as it is the project's folder - the 图片
+  // node folded too, so the frame cards follow it as well; a change (a picture copied in or deleted,
+  // a folder made) refreshes the tree and the cards
   let imgWatch = 0
+  const imgSeen = { folder: null, names: new Map() }   // path → names the watch listed last
   function watchImageFolder(on) {
     if (!on || !(state.imageFolder && state.imageFolder.live)) { if (imgWatch) { clearInterval(imgWatch); imgWatch = 0 } return }
     if (imgWatch) return
     const names = (l) => l.dirs.map((d) => 'd:' + d.name).concat(l.files.map((f) => 'f:' + f.name)).join('\n')
     imgWatch = setInterval(async () => {
-      if (!state.json || !(state.imageFolder && state.imageFolder.live) || state.sections.has('images')) { watchImageFolder(false); return }
+      const folder = state.imageFolder
+      if (!state.json || !(folder && folder.live)) { watchImageFolder(false); return }
+      if (imgSeen.folder !== folder) { imgSeen.folder = folder; imgSeen.names.clear() }
       try {
-        for (const [path, cached] of [...imgTree.nodes]) {
-          let node = state.imageFolder
+        for (const path of new Set(['', ...imgTree.nodes.keys()])) {
+          let node = folder
           for (const seg of path.split('/').filter(Boolean)) { const l = await node.list(); node = l.dirs.find((d) => d.name === seg); if (!node) break }
-          const fresh = node ? await node.list() : { dirs: [], files: [] }
-          if (names(fresh) !== names(cached)) {
+          const now = names(node ? await node.list() : { dirs: [], files: [] })
+          if (state.imageFolder !== folder) return
+          const cached = imgTree.nodes.get(path)
+          const before = imgSeen.names.has(path) ? imgSeen.names.get(path) : cached ? names(cached) : null
+          imgSeen.names.set(path, now)
+          if (before !== null && before !== now) {
+            imgSeen.names.clear()
             state.imageFolderGen = (state.imageFolderGen || 0) + 1
             imgTree = { key: '', nodes: new Map(), pending: new Set() }
             renderTree(); renderLayerDock()
@@ -6400,21 +6530,17 @@
 
   function renderImagesNode(rows, pad) {
     const closed = state.sections.has('images')
-    watchImageFolder(!closed)
+    watchImageFolder(true)
     const toggle = () => { state.sections.has('images') ? state.sections.delete('images') : state.sections.add('images'); renderTree() }
     const root = imagesListing('')
     const count = root ? root.files.length + (root.dirs.length ? ` + ${root.dirs.length} 夹` : '') : '…'
-    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: '工程的图片文件夹：把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
+    const folder = state.imageFolder && state.imageFolder.live ? state.imageFolder.name : ''
+    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: (folder ? `图片文件夹：${folder}（文件夹里加图、删图会实时显示）\n` : '还没指定图片文件夹：现在列的是图集里的图\n') + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
       h('span', { class: 'end' },
-        // one short button (two text buttons covered the row's name in a narrow tree): a menu picks 图片 / 文件夹
-        h('button', { class: 'ld-btn tiny', title: '加新素材：图片或整个文件夹导进图片文件夹', onclick: (e) => {
-          e.stopPropagation()
-          const r = e.currentTarget.getBoundingClientRect()
-          mountMenu(h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(Math.min(r.left, innerWidth - 170))}px;top:${Math.round(r.bottom + 4)}px` },
-            h('button', { onclick: () => { closeMenu(); importImagesInto('', false) } }, '导入图片…'),
-            h('button', { onclick: () => { closeMenu(); importImagesInto('', true) } }, '导入文件夹…（带子文件夹）')))
-        } }, '导入…'),
+        // Spine's images path, no import (user 2026-10-15: 这里不需要有什么导入按钮): pictures are what the folder holds
+        h('button', { class: 'ld-btn tiny', title: folder ? `换一个图片文件夹（现在是「${folder}」）` : '指定工程的图片文件夹：图集会解包进去，之后文件夹里的变化实时显示',
+          onclick: (e) => { e.stopPropagation(); chooseImageFolder() } }, folder ? '换文件夹…' : '指定文件夹…'),
         h('span', { class: 'cnt' }, String(count)))))
     if (closed) return
     const used = imagesInUse()
@@ -6425,9 +6551,7 @@
         const open = state.imgOpen.has(d.path)
         const flip = () => { open ? state.imgOpen.delete(d.path) : state.imgOpen.add(d.path); renderTree() }
         rows.push(h('div', { class: 'row', style: pad(depth), onclick: flip, title: d.path },
-          caret(open, flip), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, d.name),
-          h('span', { class: 'end' },
-            h('button', { class: 'ld-btn tiny', title: '图片导进这个文件夹', onclick: (e) => { e.stopPropagation(); importImagesInto(d.path, false) } }, '导入'))))
+          caret(open, flip), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, d.name)))
         if (open) walk(d.path, depth + 1)
       }
       for (const f of l.files) {
@@ -10127,5 +10251,5 @@ self.onmessage = (e) => {
     } catch (e) { console.warn('[skeleton editor] attach', e) }
   }, 0)
 
-  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
+  window.__SkeletonLab = { regionPixelsCanvas, newClipping, enterClipEdit, exitClipEdit, meshOneLayer, autoMeshModel, meshModelOf, regionPixels, enterMeshEdit, enterWeightEdit, meshAction, closeTrace, weightContext, weightBones, exportProject, exportImageNames, folderImages, importIntoFolder, folderFromHandle, useFolderHandle, unpackAtlasInto, askImageFolder, openExportDialog, openImagePicker, addImageFile, folderFromFiles, ensureAtlas, applyJson, dopeX, DOPE, state, rt, loadSample, loadFiles, edit, select, setMode, setSkin, refresh, Ops, setupMatrices, pose, draw, fit, setTool, keyEdited }
 })()
