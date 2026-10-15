@@ -7539,9 +7539,28 @@
       $('#stage').append(hd)
       pfxDrag(hd, () => { const cfg = pfx.ui.config; return { x: cfg.systemX || 0, y: cfg.systemY || 0 } }, (x, y) => { const cfg = pfx.ui.config; cfg.systemX = Math.round(x); cfg.systemY = Math.round(y) })
     }
+    let rot = $('#pfxRot')
+    if (!rot) {
+      // 旋转手柄：发射点伸出去的小圆点，拖它转当前系统（2026-10-16 用户：旋转偏移滑条精简掉，改在画布上拖）
+      rot = h('div', { id: 'pfxRot', title: '旋转（拖动）', style: pfxHandleStyle('#ffffff', true).replace('background:#ffffff', 'background:#1F1F1F;border-color:#1EA672') })
+      $('#stage').append(rot)
+      rot.addEventListener('pointerdown', (ev) => { if (ev.button !== 0 || !pfx || !pfx.J) return; ev.preventDefault(); ev.stopPropagation(); rot.setPointerCapture(ev.pointerId); pfx.rotDrag = true })
+      rot.addEventListener('pointermove', (ev) => {
+        if (!pfx || !pfx.rotDrag || !pfx.J || !pfx.S0) return
+        const r = $('#stage').getBoundingClientRect(), J = pfx.J, det = J[0] * J[3] - J[1] * J[2] || 1
+        const sx = ev.clientX - r.left - pfx.S0[0], sy = ev.clientY - r.top - pfx.S0[1]
+        const px = (J[3] * sx - J[2] * sy) / det, py = (-J[1] * sx + J[0] * sy) / det   // 屏幕 → 画板像素
+        const cfg = pfx.ui.config, ex = pfx.PS.width / 2 + (cfg.systemX || 0), ey = pfx.PS.height / 2 + (cfg.systemY || 0)
+        cfg.systemRotationDeg = Math.round((((Math.atan2(py - ey, px - ex) * 180) / Math.PI) + 360) % 360)
+        pfxRestart()
+      })
+      const end = () => { if (pfx) pfx.rotDrag = false }
+      rot.addEventListener('pointerup', end)
+      rot.addEventListener('pointercancel', end)
+    }
     const W = Math.round(rt.w * rt.dpr), H = Math.round(rt.h * rt.dpr)
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H }
-    return { c, hd }
+    return { c, hd, rot }
   }
   /** 手柄拖动：屏幕位移 → 画板像素位移（用这一帧画板 → 屏幕的雅可比，可再乘一个局部矩阵 M） */
   function pfxDrag(el, get, set, localMatrix) {
@@ -7624,7 +7643,7 @@
   /** 每帧：推进粒子，画到舞台上（变换 = 画板像素 → 选中骨骼的姿势 → 屏幕） */
   function drawParticles() {
     if (!pfx || !rt.skeleton) return
-    const { c, hd } = pfxLayer()
+    const { c, hd, rot } = pfxLayer()
     const ctx = c.getContext('2d')
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, c.width, c.height)
@@ -7634,11 +7653,11 @@
     const o = pfx.origin, B = o && rt.skeleton.findBone(o.bone), PS = pfx.PS
     const pathPts = pfxPathPoints()
     pfxSyncPathHandles(B ? pathPts : null)
-    if (!B) { hd.style.display = 'none'; return }
+    if (!B) { hd.style.display = 'none'; rot.style.display = 'none'; return }
     const W = PS.width, H = PS.height
     const pt = (px, py) => { const lx = o.x + o.s * (px - W / 2), ly = o.y + o.s * (H / 2 - py); return toScreen(B.a * lx + B.b * ly + B.worldX, B.c * lx + B.d * ly + B.worldY) }
     const S0 = pt(0, 0), S1 = pt(1, 0), S2 = pt(0, 1), d = rt.dpr
-    pfx.J = [S1[0] - S0[0], S1[1] - S0[1], S2[0] - S0[0], S2[1] - S0[1]]
+    pfx.J = [S1[0] - S0[0], S1[1] - S0[1], S2[0] - S0[0], S2[1] - S0[1]]; pfx.S0 = S0
     // 切片范围（虚线框）
     const corners = [pt(0, 0), pt(W, 0), pt(W, H), pt(0, H)]
     ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.globalCompositeOperation = 'source-over'
@@ -7648,6 +7667,14 @@
     const cfg = pfx.ui.config, ex = W / 2 + (cfg.systemX || 0), ey = H / 2 + (cfg.systemY || 0), E = pt(ex, ey)
     hd.style.display = ''
     hd.style.left = E[0] + 'px'; hd.style.top = E[1] + 'px'
+    // 方向手柄：沿当前系统的旋转方向，离发射点 56 屏幕像素
+    {
+      const a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, probe = pt(ex + Math.cos(a), ey + Math.sin(a))
+      const dx = probe[0] - E[0], dy = probe[1] - E[1], len = Math.hypot(dx, dy) || 1, R = [E[0] + (dx / len) * 56, E[1] + (dy / len) * 56]
+      rot.style.display = ''; rot.style.left = R[0] + 'px'; rot.style.top = R[1] + 'px'
+      ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.strokeStyle = 'rgba(30,166,114,.85)'; ctx.lineWidth = 1.5; ctx.setLineDash([])
+      ctx.beginPath(); ctx.moveTo(E[0], E[1]); ctx.lineTo(R[0], R[1]); ctx.stroke(); ctx.restore()
+    }
     if (pathPts) {
       const a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1, ca = Math.cos(a) * k, sa = Math.sin(a) * k
       const els = $('#stage').querySelectorAll('.pfx-path-pt')
@@ -7682,7 +7709,7 @@
   }
 
   function closeParticleLayer() {
-    for (const el of [$('#pfxLayer'), $('#pfxHandle'), ...$('#stage').querySelectorAll('.pfx-path-pt')]) if (el) el.remove()
+    for (const el of [$('#pfxLayer'), $('#pfxHandle'), $('#pfxRot'), ...$('#stage').querySelectorAll('.pfx-path-pt')]) if (el) el.remove()
   }
 
   function openParticlePanel() {

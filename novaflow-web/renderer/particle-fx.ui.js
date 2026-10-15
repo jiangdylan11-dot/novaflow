@@ -305,10 +305,12 @@
 
     // ---------------------------------------------------------------- 1. 模板管理（模板库 / 导入 / 保存）
     function buildTemplateManager() {
-      return h('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:6px 0' },
-        h('button', { class: 'fxm-btn', type: 'button', onclick: () => openLibrary() }, '模板库'),
-        h('button', { class: 'fxm-btn', type: 'button', title: '导入粒子项目 JSON：作为一个新的粒子系统', onclick: () => importProject() }, '导入'),
-        h('button', { class: 'fxm-btn', type: 'button', title: '把当前粒子系统存成 JSON 文件（贴图一起存进去）', onclick: () => saveProject() }, '保存'))
+      return [h('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:6px 0' },
+        h('button', { class: 'fxm-btn', type: 'button', title: '挑一个模板用；或把当前效果存进模板库', onclick: () => openLibrary() }, '模板库'),
+        h('button', { class: 'fxm-btn', type: 'button', title: '读一个粒子项目 JSON 文件，加成列表里的一个新粒子系统', onclick: () => importProject() }, '导入'),
+        h('button', { class: 'fxm-btn', type: 'button', title: '把当前选中的粒子系统存成 JSON 文件下载到电脑（贴图一起存进去）', onclick: () => saveProject() }, '保存')),
+        // 2026-10-16 用户：保存 / 导入要解释一下
+        help('模板库：挑模板，或用「点击存储」把当前效果存进模板库（下次在这里直接选）。导入：读一个粒子项目 JSON 文件（「保存」存的、或粒子页「保存粒子项目」存的），加成一个新粒子系统。保存：把当前选中的粒子系统存成「NovaFlow项目_名字.json」下载到电脑，贴图一起存进去，可以备份或发给别人，用「导入」读回来。')]
     }
     async function importProject() {
       const f = await new Promise((res) => { const i = h('input', { type: 'file', accept: '.json,application/json' }); i.onchange = () => res(i.files && i.files[0]); i.click() })
@@ -436,7 +438,8 @@
           nameEl,
           h('button', { class: 'pfx-ib', type: 'button', title: n <= 1 ? '至少保留 1 个系统' : '删除', disabled: n <= 1, onclick: (e) => { e.stopPropagation(); S.systems.splice(i, 1); if (S.active >= S.systems.length) S.active = S.systems.length - 1; else if (S.active > i) S.active--; render(); changed(true) } }, '×')))
       })
-      box.append(fs('系统 X', 'systemX', -500, 500, 1, ''), fs('系统 Y', 'systemY', -500, 500, 1, ''), fs('旋转偏移', 'systemRotationDeg', 0, 360, 1, '°'))
+      // 系统 X / Y、旋转偏移不放滑条（2026-10-16 用户：可以精简掉）：画布上拖绿点改位置、拖方向手柄改旋转
+      box.append(help('位置：画布上拖绿点；旋转：拖绿点伸出的方向手柄。'))
       return box
     }
 
