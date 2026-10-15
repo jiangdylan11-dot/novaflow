@@ -8,6 +8,7 @@
   const FX = () => root.NovaFlowFxMaker
   const STYLE_ID = 'fxm-style'
   const GREEN = '#1EA672'
+  const ADD_BLEND = root.CSS && root.CSS.supports && root.CSS.supports('mix-blend-mode', 'plus-lighter') ? 'plus-lighter' : 'screen'   // 预览里光叠在底图上的方式
 
   const CSS = `
 .fxm-overlay{position:fixed;inset:0;z-index:2147483630;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-family:"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;font-size:12px;color:#d6d6d6}
@@ -41,7 +42,7 @@
 .fxm-stage{flex:1;min-height:0;position:relative;margin:8px 12px 0;background:#141414;border-radius:6px;overflow:hidden}
 .fxm-board{position:absolute;background:#000;box-shadow:0 0 0 1px #2E2E2E}
 .fxm-board canvas,.fxm-board svg{position:absolute;inset:0;width:100%;height:100%}
-.fxm-board .fxm-fxcanvas{mix-blend-mode:screen}
+.fxm-board .fxm-fxcanvas{mix-blend-mode:screen;mix-blend-mode:plus-lighter}
 .fxm-board svg{overflow:visible;touch-action:none}
 .fxm-board svg *{pointer-events:none}
 .fxm-board svg [data-h]{pointer-events:all;cursor:pointer}
@@ -284,7 +285,8 @@ self.postMessage({ type: 'ready' })`
     function layerMode() {
       const img = !!(S.base && fx().usesImage && S.project.useImage !== false)
       E.baseCanvas.style.visibility = img ? 'hidden' : ''
-      E.fxCanvas.style.mixBlendMode = img ? 'normal' : 'screen'
+      // 光按「相加」叠在底图上（和 Spine 的叠加插槽一样；2026-10-16 用户：那肯定是叠加才对），不支持的浏览器退回滤色
+      E.fxCanvas.style.mixBlendMode = img ? 'normal' : ADD_BLEND
     }
     function doPrepare() {
       if (S.drawing) return

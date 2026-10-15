@@ -107,11 +107,11 @@
         : s.id === 'rays' ? (w) => ['rays', `rays of light shooting outward from a ${w.noun.replace(/ border$/, '')} shape where a band of light passes over it`]
           : s.id === 'outline' ? (w) => ['frame', `a short streak of coloured light running around the outline of a ${w.noun}. It is drawn light, NOT a solid object`]
             : BASE_AI[s.group] || BASE_AI.线性扫光
-      return { id: 'base-' + s.id, label: s.label, group: s.group, kind: 'basesweep', scheme: s.id, hint: s.hint, params, inert, needsBase: true, baseOnly: true, lifecycle: 'loop', ai, schemeColour: { mode: s.colorMode || 'base', value: s.color || '#ffd173' } }
+      return { id: 'base-' + s.id, label: s.label, group: '扫光', subgroup: s.group, kind: 'basesweep', scheme: s.id, hint: s.hint, params, inert, needsBase: true, baseOnly: true, lifecycle: 'loop', ai, schemeColour: { mode: s.colorMode || 'base', value: s.color || '#ffd173' } }
     })
   }
   function effects() {
-    if (!EFFECTS_CACHE || !EFFECTS_CACHE.length) EFFECTS_CACHE = [...sweepEffects(), ...LIB.effects, ...baseSweepEffects()]
+    if (!EFFECTS_CACHE || !EFFECTS_CACHE.length) EFFECTS_CACHE = [...sweepEffects(), ...baseSweepEffects(), ...LIB.effects]   // 扫光类（轮廓流光 + 扫光）放在一起，效果库在后（2026-10-16 用户）
     return EFFECTS_CACHE
   }
   const effectOf = (id) => effects().find((e) => e.id === id) || effects()[0]
