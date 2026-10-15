@@ -775,9 +775,9 @@ self.postMessage({ type: 'ready' })`
         shapeItems.push(slider('base.opacity', { label: '底图透明', min: 0, max: 1, step: 0.01, def: 0.5 }, p.base.opacity, (v) => { p.base.opacity = v; drawBase() }, ''))
         if (!SW) shapeItems.push(slider('base.scale', { label: '底图大小', min: 0.2, max: 1.2, step: 0.01, def: 0.7 }, p.base.scale, (v) => { p.base.scale = v; drawBase(); changed(true) }, ''))
       }
-      if (S.base && !SW) {
-        // 碎裂 / 消失类用底图本身来碎、来消失（2026-10-15 用户：不是根据上传的图做就没什么用）
-        shapeItems.push(seg('useImage', '成片', [{ id: '1', label: '用底图画面' }, { id: '0', label: '只用发光形状' }], p.useImage !== false ? '1' : '0', (v) => { p.useImage = v === '1'; changed() }, f.usesImage ? '' : '这个效果不用底图画面（碎裂 / 消失类才用）'))
+      if (S.base) {
+        // 碎裂 / 消失类用底图本身来碎、来消失（2026-10-15 用户：不是根据上传的图做就没什么用）；特效扫光里也有（2026-10-16 用户：也算编辑底图）
+        shapeItems.push(seg('useImage', SW ? '切片' : '成片', [{ id: '1', label: '用底图画面' }, { id: '0', label: '只用发光形状' }], p.useImage !== false ? '1' : '0', (v) => { p.useImage = v === '1'; changed(); if (SW) renderParams() }, f.usesImage ? '' : '这个效果不用底图画面（碎裂 / 消失类才用）'))
       }
       controls.push(...shapeItems); html.push(sec(f.baseOnly ? '底图' : f.centered ? '位置' : '轮廓', shapeItems))
       // 效果

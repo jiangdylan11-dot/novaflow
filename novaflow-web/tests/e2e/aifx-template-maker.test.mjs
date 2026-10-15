@@ -347,3 +347,25 @@ test('特效扫光出切片：精确画板（不按 32 取整）+ 任意帧数',
   assert.equal(FX.renderFrame(ctx, 3).length, 333 * 217 * 4)
   assert.equal(FX.frameCount(project('aura', { frames: 17 })), 39, 'templates keep the four durations')
 })
+
+test('特效扫光的打碎 / 化开底图切片：直通透明度——底图画面（暗色也）不透明、画面外透明；黑底成片照旧', () => {
+  // 2026-10-16 用户：打碎、化开底图也算编辑底图，特效扫光里要有；切片在 Spine 里正常混合、替掉原底图
+  const w = 120, h = 120, data = new Uint8ClampedArray(w * h * 4)
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 4; if ((x - 60) ** 2 + (y - 60) ** 2 < 50 ** 2) { data[o] = 40; data[o + 1] = 30; data[o + 2] = 50; data[o + 3] = 255 } }
+  const baseImg = { w, h, data }
+  const p = project('crumble', { canvas: { preset: 'exact', w: 200, h: 200 }, framesFree: true, frames: 12 })
+  p.base = { w, h, scale: 1 / Math.min(200 / w, 200 / h), opacity: 0.5 }
+  p.shape.kind = 'trace'
+  p.outlines = FX.traceImage(data, w, h, FX.basePlacement(p), 200, 200, 0.5, true)
+  const plate = FX.renderFrame(FX.prepare(copy(p), 1, baseImg), 0)
+  for (let i = 3; i < plate.length; i += 4) assert.equal(plate[i], 255, 'black-plate frames stay opaque')
+  const slice = FX.renderFrame(FX.prepare(Object.assign(copy(p), { sliceAlpha: true }), 1, baseImg), 0)
+  let solidDark = 0, clearOutside = 0, outside = 0
+  for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) {
+    const o = (y * 200 + x) * 4, r = Math.hypot(x - 100, y - 100)
+    if (r < 40 && slice[o + 3] > 250 && slice[o] < 80) solidDark++
+    if (r > 80) { outside++; if (slice[o + 3] < 5) clearOutside++ }
+  }
+  assert.ok(solidDark > Math.PI * 40 * 40 * 0.9, `the dark picture is solid in the slice (${solidDark})`)
+  assert.ok(clearOutside > outside * 0.95, `outside the picture is see-through (${clearOutside}/${outside})`)
+})

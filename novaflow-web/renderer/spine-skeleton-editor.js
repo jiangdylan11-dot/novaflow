@@ -109,7 +109,8 @@
     unticked: new Set(), // 自动蒙皮 / 自动权重: layers (slot names) left out; one tick for both panels
     frameSet: null, // 序列K帧 / 序列扫光: the pictures on the cards (null = the image folder's root), [{ name, file?, region? }]
     imgOpen: new Set(), // 工程树 图片 node: the subfolders unfolded (paths)
-    frameUnticked: { sequence: new Set(), sweep: new Set() }, // pictures (names) left out, one tick a tool
+    frameUnticked: { sequence: new Set(), sweep: new Set() }, // 序列K帧: pictures (names) left out
+    sweepTicked: new Set(), // 特效扫光: the pictures ticked (starts empty: only the picked layer's picture, else none)
     seqGap: 1, // 序列K帧: frames between two pictures (1 = one picture a frame)
     seqLoop: false, // 序列K帧 循环: two crossfading slots make a non-looping sequence loop
     seqBlend: 'normal', // 序列K帧 混合: the slots' blend on write
@@ -352,7 +353,7 @@
     applyJson(Ops.tidy(Ops.prepare(json)))
     state.initialJson = state.json
     state.unticked = new Set()
-    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepStart = 0; state.sweepEnd = 0; state.sweepGen = null
+    state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepTicked = new Set(); state.sweepStart = 0; state.sweepEnd = 0; state.sweepGen = null
     state.imgOpen = new Set(); imgTree = { key: '', nodes: new Map(), pending: new Set() }
     frameRoot = null; frameRootPending = null; frameThumbs.clear()
     state.frameBone = state.json.bones.some((b) => b.name === 'root') ? 'root' : (state.json.bones[0] || {}).name || ''
@@ -382,7 +383,7 @@
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
-    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'imgOpen', 'imageFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
+    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
@@ -6638,8 +6639,34 @@
     }
     return null
   }
+  // 特效扫光 keeps the TICKED pictures and starts with none (user 2026-10-16: 每次进入不该全选，没选中图层就什么都不勾);
+  // 序列K帧 keeps the unticked ones (a folder of frames is wanted whole)
+  const isTicked = (kind, name) => (kind === 'sweep' ? !!(state.sweepTicked && state.sweepTicked.has(name)) : !frameUnticked(kind).has(name))
+  function setTicked(kind, name, on) {
+    if (kind === 'sweep') { if (!state.sweepTicked) state.sweepTicked = new Set(); if (on) state.sweepTicked.add(name); else state.sweepTicked.delete(name) }
+    else if (on) frameUnticked(kind).delete(name)
+    else frameUnticked(kind).add(name)
+  }
+  /** the cards now show `names` (null = the root folder): 序列K帧 ticks them all, 特效扫光 ticks `tick` (default none) */
+  function frameCardsReset(kind, tick) {
+    if (kind === 'sweep') state.sweepTicked = new Set(tick || [])
+    else frameUnticked(kind).clear()
+  }
+  /** the picked layers' pictures (a slot → its setup picture, an attachment → its picture) */
+  function pickedLayerImages() {
+    const json = state.json, out = []
+    if (!json) return out
+    const skins = [state.skin, 'default'].filter((v, i, a) => v && a.indexOf(v) === i)
+    const imageOf = (slot, name) => { for (const sk of skins) { const a = attOf(json, sk, slot, name); if (a) return a.path || name } return null }
+    const add = (img) => { if (img && !out.includes(img)) out.push(img) }
+    const sel = state.sel
+    if (sel && sel.kind === 'att') add(imageOf(sel.slot, sel.name))
+    const slots = (state.multiSlots && state.multiSlots.length ? state.multiSlots : sel && sel.kind === 'slot' ? [sel.name] : [])
+    for (const n of slots) { const sl = json.slots.find((x) => x.name === n); if (sl && sl.attachment) add(imageOf(n, sl.attachment)) }
+    return out
+  }
   /** the pictures the tool writes: the ticked cards, in their order */
-  const frameFiles = (kind) => (framePictures() || []).filter((f) => !frameUnticked(kind).has(f.name))
+  const frameFiles = (kind) => (framePictures() || []).filter((f) => isTicked(kind, f.name))
 
   function frameThumb(f) {
     const c = h('canvas', { width: 32, height: 32 })
@@ -6662,9 +6689,8 @@
   function renderFrameDock(dock, kind) {
     const keep = dock.querySelector('.ld-grid') ? dock.querySelector('.ld-grid').scrollTop : 0
     dock.textContent = ''
-    const U = frameUnticked(kind)
     const pictures = framePictures()
-    const files = pictures || [], ticked = files.filter((f) => !U.has(f.name))
+    const files = pictures || [], ticked = files.filter((f) => isTicked(kind, f.name))
     const bones = state.json.bones.map((b) => b.name)
     if (!bones.includes(state.frameBone)) state.frameBone = bones.includes('root') ? 'root' : bones[0] || ''
     const sel = h('select', { class: 'ld-sel', 'data-frame-bone': '1', title: '写入时勾选的图片挂到这根骨骼（已有插槽的位置不变，新图居中于骨骼）', onchange: (e) => { state.frameBone = e.target.value } },
@@ -6674,13 +6700,13 @@
       h('strong', { class: 'ld-title' }, kind === 'sequence' ? '序列K帧' : '特效扫光'),
       h('span', { class: 'ld-sep' }),
       h('span', {}, `已选 ${ticked.length} / ${files.length}`),
-      h('button', { class: 'tg', onclick: () => { for (const f of files) U.delete(f.name); renderLayerDock() } }, '全选'),
-      h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { for (const f of files) U.add(f.name); renderLayerDock() } }, '清空'),
+      h('button', { class: 'tg', onclick: () => { for (const f of files) setTicked(kind, f.name, true); renderLayerDock() } }, '全选'),
+      h('button', { class: 'tg', title: '全部取消勾选', onclick: () => { for (const f of files) setTicked(kind, f.name, false); renderLayerDock() } }, '清空'),
       h('span', { class: 'ld-sep' }),
       h('label', { class: 'ld-f' }, '骨骼', sel),
       h('button', { class: 'tg', title: '在画面或工程树里点一根骨骼', onclick: () => startPick({ want: 'bone', text: '序列图片挂到哪根骨骼：点骨骼', done: (b) => { state.frameBone = b; renderLayerDock() } }) }, '点选'),
-      h('button', { class: 'tg', title: '打开工程的图片文件夹：进子文件夹后「添加所选」或「本文件夹全部」，卡片就换成那些图片；文件夹里没有的图可以用「导入图片 / 导入文件夹」加进来', onclick: () => openImagePicker(title, (names) => { state.frameSet = names.map((n) => ({ name: n })); U.clear(); renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
-      state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; U.clear(); renderLayerDock() } }, '根目录') : null,
+      h('button', { class: 'tg', title: '打开工程的图片文件夹：进子文件夹后「添加所选」或「本文件夹全部」，卡片就换成那些图片；文件夹里没有的图可以用「导入图片 / 导入文件夹」加进来', onclick: () => openImagePicker(title, (names) => { state.frameSet = names.map((n) => ({ name: n })); frameCardsReset(kind, names); renderLayerDock() }, { multi: true }) }, '从文件夹添加…'),
+      state.frameSet ? h('button', { class: 'tg', title: '卡片回到根目录的图片', onclick: () => { state.frameSet = null; frameCardsReset(kind); renderLayerDock() } }, '根目录') : null,
       h('span', { class: 'ld-sep' }),
     ]
     let go = null
@@ -6712,8 +6738,8 @@
     const grid = h('div', { class: 'ld-grid' })
     let order = 0
     for (const f of files) {
-      const on = !U.has(f.name)
-      const toggle = () => { if (U.has(f.name)) U.delete(f.name); else U.add(f.name); renderLayerDock() }
+      const on = isTicked(kind, f.name)
+      const toggle = () => { setTicked(kind, f.name, !isTicked(kind, f.name)); renderLayerDock() }
       grid.append(h('div', { class: 'ld-card', title: f.name, onclick: toggle },
         h('input', { type: 'checkbox', checked: on, title: '勾选 = 这张图是序列里的一帧（按顺序）', onclick: (e) => { e.stopPropagation(); toggle() } }),
         frameThumb(f), h('span', { class: 'ld-n' }, f.name.split('/').pop()), h('span', { class: 'ld-c' }, on ? `第 ${++order} 帧` : '')))
@@ -7116,10 +7142,10 @@
     const images = files.map((f) => f.name), bone = frameBone()
     // slices the generator made: above the base slot, blend set, 绕一圈的 first/last joined
     const gen = state.sweepGen && images.every((n) => state.sweepGen.names.includes(n)) ? state.sweepGen : null
-    const wrap = !!(gen && gen.wrap)
+    const wrap = !!(gen && gen.wrap), cut = !!(gen && gen.image)   // cut：带底图画面的切片，一张一张切（不交叉淡化）
     const startFrame = Math.max(0, Math.round(state.sweepStart || 0)), endFrame = Math.max(startFrame + 2, sweepEndFrame(images.length))
     const start = startFrame / FPS, end = endFrame / FPS
-    const step = (end - start) / (wrap ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
+    const step = (end - start) / (wrap || cut ? images.length : images.length + 1), anim = state.anim, animEnd = lastFrame()
     const t4 = (t) => Math.round(t * 10000) / 10000
     const L = SweepLight()
     return edit(`特效扫光：${images.length} 张，第 ${startFrame} → ${endFrame} 帧，挂在 ${bone}（${anim}）`, (j) => {
@@ -7138,7 +7164,15 @@
         const rgb = slotRgb(json, f.slot)
         const row = { ...(a.slots[f.slot] || {}) }
         delete row.attachment   // a 序列K帧 written on these slots before switched attachments on and off
-        const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00') })
+        const at = (t, alpha) => ({ ...(t4(t) ? { time: t4(t) } : {}), color: rgb + (alpha ? 'ff' : '00'), ...(cut ? { curve: 'stepped' } : {}) })
+        if (cut) {   // 第 i 张只在 [起 + i·步, 起 + (i+1)·步) 里显示
+          const keys = []
+          if (start + i * step > 0) keys.push(at(0, 0))
+          keys.push(at(start + i * step, 1), at(start + (i + 1) * step, 0))
+          row.color = keys
+          a.slots[f.slot] = row
+          return
+        }
         // the curve inside [起, 止]; transparent before 起 and after 止
         let rel
         if (L && L.sweepAlphaKeys) rel = L.sweepAlphaKeys(i, frames.length, step, wrap)
@@ -7151,6 +7185,18 @@
         row.color = keys
         a.slots[f.slot] = row
       })
+      // 带底图画面的切片：从「起」藏起原底图（切片自己画着它）；一次性的播完不再出现，循环的到「止」后动画还有就回来
+      if (cut && gen.baseSlot && json.slots.some((x) => x.name === gen.baseSlot)) {
+        const show = json.slots.find((x) => x.name === gen.baseSlot).attachment || null
+        const row = { ...(a.slots[gen.baseSlot] || {}) }
+        const back = wrap && animEnd > endFrame
+        const kept = (row.attachment || []).filter((k) => { const t = k.time || 0; return t < start - 1e-6 || (back && t > end + 1e-6) })
+        const mine = [{ ...(t4(start) ? { time: t4(start) } : {}), name: null }]
+        if (back) mine.push({ time: t4(end), name: show })
+        if (start > 0 && !kept.some((k) => (k.time || 0) < start)) mine.unshift({ name: show })
+        row.attachment = [...kept, ...mine].sort((x, y) => (x.time || 0) - (y.time || 0))
+        a.slots[gen.baseSlot] = row
+      }
       return { json: Ops.tidy(json) }
     }, () => gotoFrame(0))
   }
@@ -7166,8 +7212,10 @@
   const FxMaker = () => window.NovaFlowFxMaker
   const FxMakerUI = () => window.NovaFlowFxMakerUI
   // 能和图片轮廓一致的才留（2026-10-16 用户：没办法和图片轮廓一致的效果都去掉）：轮廓流光、效果库里贴着轮廓走的、
-  // 按底图本身扫的；以中心为准的（能量球、法阵、爆炸…）和拿底图本身碎掉 / 化开的不要
-  const sweepEffectOk = (e) => e.kind === 'edge' || e.kind === 'basesweep' || (e.kind === 'lib' && !e.centered && !e.usesImage)
+  // 按底图本身扫的、把底图打碎 / 化开的（用户：也算编辑底图）；以中心为准的（能量球、法阵、爆炸…）不要
+  const sweepEffectOk = (e) => e.kind === 'edge' || e.kind === 'basesweep' || (e.kind === 'lib' && !e.centered)
+  // 这一份工程出的切片带底图画面（打碎 / 化开底图）：直通透明度、正常混合、一张一张切，播放时藏起原底图
+  const sweepImageFx = (project, hasBase) => !!(hasBase && FxMaker().effectOf(project.effect).usesImage && project.useImage !== false)
 
   function basePixels(image) {
     const region = rt.atlas && rt.atlas.findRegion(image)
@@ -7311,17 +7359,21 @@
             bones.filter((b) => b !== baseBone && (bs || b !== 'root')).map((b) => h('option', { value: b, selected: bind.bone === b }, b)))
           host.append(line('骨骼', boneSel))
           if (cur.image && !bs) host.append(note('这张图还没放进骨骼：切片会挂到 root、画在最上层。', true))
-          host.append(note(cur.image ? '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。' : '没有底图：切片挂到这根骨骼、居中、画在最上层，混合模式是叠加。'))
+          const imgFx = sweepImageFx(api ? api.project : pj, !!cur.px)
+          host.append(note(imgFx ? '写入动画时：切片带底图画面，挂到这根骨骼、居中对齐底图、画在底图上一层，一张一张切换；从「起」开始藏起原底图（一次性的播完不再出现）。'
+            : cur.image ? '写入动画时：切片插槽挂到这根骨骼、居中对齐底图、画在底图上一层，混合模式是叠加。' : '没有底图：切片挂到这根骨骼、居中、画在最上层，混合模式是叠加。'))
         },
         // 确定生成：切片（黑底 → 亮度当透明度的叠加切片）进图片文件夹，卡片换成它们
         onGenerate: async ({ project, base, setInfo: say, busy }) => {
           const t0 = performance.now()
+          const imgFx = sweepImageFx(project, !!base)
+          if (imgFx) project.sliceAlpha = true
           const out = await UI.renderFrames({ project, base, scale: 1, onProgress: (stage, i, n) => { say(`生成中 ${i}/${n}`); if (busy) busy(`生成中 ${i}/${n}`, i / n) } })
           const { folder, prefix } = sweepFolderFor(cur.image || 'fx', project.effect)
           const files = []
           for (let i = 0; i < out.frames.length; i++) {
             const f = new Uint8ClampedArray(out.frames[i].buffer)
-            for (let k = 0; k < f.length; k += 4) { const m = Math.max(f[k], f[k + 1], f[k + 2]); if (m > 0) { const s2 = 255 / m; f[k] = Math.min(255, f[k] * s2); f[k + 1] = Math.min(255, f[k + 1] * s2); f[k + 2] = Math.min(255, f[k + 2] * s2) } f[k + 3] = m }
+            if (!imgFx) for (let k = 0; k < f.length; k += 4) { const m = Math.max(f[k], f[k + 1], f[k + 2]); if (m > 0) { const s2 = 255 / m; f[k] = Math.min(255, f[k] * s2); f[k + 1] = Math.min(255, f[k + 1] * s2); f[k + 2] = Math.min(255, f[k + 2] * s2) } f[k + 3] = m }
             const c = h('canvas', { width: out.w, height: out.h }); c.getContext('2d').putImageData(new ImageData(f, out.w, out.h), 0, 0)
             const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
             files.push(new File([blob], `${prefix}_${String(i + 1).padStart(2, '0')}.png`, { type: 'image/png' }))
@@ -7339,9 +7391,9 @@
             state.future = []
           } catch (e) { restore(before); throw new Error('切片进图片文件夹失败：' + e.message) }
           state.frameSet = names.map((n) => ({ name: n }))
-          frameUnticked('sweep').clear()
+          frameCardsReset('sweep', names)
           state.frameBone = bone
-          state.sweepGen = { base: cur.image, baseSlot: bs ? bs.name : null, bone, blend: 'add', wrap: project.lifecycle === 'loop', names: names.slice() }
+          state.sweepGen = { base: cur.image, baseSlot: bs ? bs.name : null, bone, blend: imgFx ? 'normal' : 'add', wrap: project.lifecycle === 'loop', image: imgFx, names: names.slice() }
           state.leftOpen = 'sweep'
           if (busy) busy(null)
           api.close()
@@ -9929,6 +9981,8 @@
         // the picked bone is where the pictures go (user 2026-10-12: 选了哪个就默认放在哪个骨骼里)
         const picked = state.sel && state.sel.kind === 'bone' ? state.sel.name : (state.multi && state.multi[0]) || ''
         if (picked && state.json.bones.some((b) => b.name === picked)) state.frameBone = picked
+        // 特效扫光 opens with only the picked layer's picture ticked, else nothing (user 2026-10-16)
+        if (kind === 'sweep') state.sweepTicked = new Set(pickedLayerImages())
         if (state.mode !== 'animate') {
           const names = Object.keys(state.json.animations || {})
           if (names.length) { if (!names.includes(state.anim)) state.anim = names[0]; setMode('animate') }

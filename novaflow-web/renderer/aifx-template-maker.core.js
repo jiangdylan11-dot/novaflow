@@ -773,7 +773,7 @@
       if (d >= mg) continue
       const f = smooth(0, mg, d), i = y * W + x
       D.R[i] *= f; D.G[i] *= f; D.B[i] *= f
-      if (D.IR) { D.IR[i] *= f; D.IG[i] *= f; D.IB[i] *= f }
+      if (D.IR) { D.IR[i] *= f; D.IG[i] *= f; D.IB[i] *= f; D.IA[i] *= f }
     }
     const gk = clamp(Number(layer.params.glow) || 1, 0.2, 6)
     const planes = [D.R, D.G, D.B]
@@ -798,6 +798,7 @@
     if (D.IR) {   // 底图画面：不发光、不泛光，按原色垫在光下面
       const planesI = [D.IR, D.IG, D.IB]
       for (let c = 0; c < 3; c++) { const src = planesI[c], out = rgb[c]; for (let i = 0; i < N; i++) { const v = src[i]; if (v > 0) out[i] = 1 - (1 - out[i]) * (1 - Math.min(1, v)) } }
+      rgb.ia = D.IA   // 底图画面的覆盖度：特效扫光出切片（project.sliceAlpha）时当透明度用
     }
   }
 
@@ -808,7 +809,8 @@
     return smooth(0, 0.1, t) * (1 - smooth(0.7, 1, t))
   }
 
-  // 整体动画（绕形状质心缩放）+ 包络 → RGBA
+  // 整体动画（绕形状质心缩放）+ 包络 → RGBA。黑底成片 alpha 恒 255；project.sliceAlpha（特效扫光的底图类切片）出直通透明度：
+  // 底图画面按覆盖度、光按亮度（取大的），颜色反预乘——Spine 里正常混合就和黑底上看到的一样
   function finish(rgb, ctx, t, env) {
     const { W, H, N, cx, cy } = ctx.geo, m = ctx.project.motion || {}, amt = clamp(Number(m.amount) || 1, 0, 3)
     let s = 1, a = env
@@ -816,21 +818,30 @@
     else if (m.kind === 'breathe') s = 1 + 0.05 * amt * Math.sin(2 * Math.PI * t * (ctx.loop ? 1 : 1))
     else if (m.kind === 'grow') { const k = smooth(0.55, 1, t); s = 1 + 0.25 * amt * k; a *= 1 - k }
     const out = new Uint8ClampedArray(N * 4)
+    const straight = !!ctx.project.sliceAlpha, ia = rgb.ia
+    const put = (o, r, g, b, cov) => {
+      if (!straight) { out[o] = r * 255; out[o + 1] = g * 255; out[o + 2] = b * 255; out[o + 3] = 255; return }
+      const A = Math.min(1, Math.max(cov, r, g, b))
+      if (!(A > 0)) return
+      out[o] = (r / A) * 255; out[o + 1] = (g / A) * 255; out[o + 2] = (b / A) * 255; out[o + 3] = A * 255
+    }
     if (Math.abs(s - 1) < 1e-4) {
-      for (let i = 0; i < N; i++) { const o = i * 4; out[o] = rgb[0][i] * a * 255; out[o + 1] = rgb[1][i] * a * 255; out[o + 2] = rgb[2][i] * a * 255; out[o + 3] = 255 }
+      for (let i = 0; i < N; i++) put(i * 4, rgb[0][i] * a, rgb[1][i] * a, rgb[2][i] * a, ia ? ia[i] * a : 0)
       return out
     }
     const inv = 1 / Math.max(0.05, s)
+    const planes = ia ? [rgb[0], rgb[1], rgb[2], ia] : rgb, v = [0, 0, 0, 0]
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const fx = cx + (x - cx) * inv, fy = cy + (y - cy) * inv, o = (y * W + x) * 4
-      out[o + 3] = 255
+      if (!straight) out[o + 3] = 255
       const x0 = Math.floor(fx), y0 = Math.floor(fy)
       if (x0 < 0 || y0 < 0 || x0 >= W - 1 || y0 >= H - 1) continue
       const ax = fx - x0, ay = fy - y0, i0 = y0 * W + x0
-      for (let c = 0; c < 3; c++) {
-        const p = rgb[c], v = (p[i0] * (1 - ax) + p[i0 + 1] * ax) * (1 - ay) + (p[i0 + W] * (1 - ax) + p[i0 + W + 1] * ax) * ay
-        out[o + c] = v * a * 255
+      for (let c = 0; c < planes.length; c++) {
+        const p = planes[c]
+        v[c] = ((p[i0] * (1 - ax) + p[i0 + 1] * ax) * (1 - ay) + (p[i0 + W] * (1 - ax) + p[i0 + W + 1] * ax) * ay) * a
       }
+      put(o, v[0], v[1], v[2], ia ? v[3] : 0)
     }
     return out
   }
