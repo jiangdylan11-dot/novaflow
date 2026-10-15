@@ -861,6 +861,7 @@
         seg([['1', '每帧一张'], ['2', '每 2 帧一张'], ['3', '每 3 帧一张']], String(step), (v) => { setSettings({ seqStep: Number(v) }); render() }),
         help(`共 ${st.frames} 张。张数越少图集越小，但看起来没那么顺。「生成 Spine 动画」不切图，不看这项。`),
         h('span', { class: 'pfx-lbl' }, '插槽混合'), seg([['add', '相加'], ['normal', '正常'], ['screen', '滤色'], ['multiply', '相乘']], S.blend, (v) => { S.blend = v; render(); changed(true) }),
+        S.blend === 'multiply' ? help('相乘：只会把下面的画面压暗，放在深色背景或透明处几乎看不见；发光的粒子用「相加」。') : null,
         num('切片宽', 'width', st.width, 64, 4096, '像素'), num('切片高', 'height', st.height, 64, 4096, '像素（画布上虚线框）'),
       ]
     }

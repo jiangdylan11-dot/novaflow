@@ -7516,14 +7516,19 @@
   let pfx = null   // 打开着的粒子面板：{ ui, place, origin, stage, ver, PS, clock }
 
   /** 图片文件夹里没被占用的 particles/<名字>[n]（跟随图层的图在子文件夹里就放在它旁边） */
-  function particleFolderFor(image, stem) {
-    const dir = image && image.includes('/') ? image.slice(0, image.lastIndexOf('/') + 1) : ''
-    const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
-    let k = 1
-    while (taken(`${dir}particles/${stem}${k > 1 ? k : ''}/${stem}${k > 1 ? k : ''}_01`) || [...(rt.atlas ? rt.atlas.regions : [])].some((r) => r.name.startsWith(`${dir}particles/${stem}${k > 1 ? k : ''}/`))) k++
-    const tag = stem + (k > 1 ? k : '')
-    return { folder: `${dir}particles/${tag}`, prefix: tag }
+  /**
+   * 粒子生成物的名字：短、纯英文数字（2026-10-16 用户：命名不能带中文，也不用那么长）——文件夹 particles/fxN/，
+   * 图片 fxN_01.png…，骨骼 / 插槽 fxN、fxN_s0_p12…；N 取图片和骨骼里都没用过的最小号
+   */
+  function particleFolderFor() {
+    const regions = rt.atlas ? rt.atlas.regions.map((r) => r.name) : []
+    const used = (n) => regions.some((r) => r.startsWith(`particles/fx${n}/`)) || state.json.bones.some((b) => b.name === `fx${n}` || b.name.startsWith(`fx${n}_`)) || state.json.slots.some((x) => x.name === `fx${n}` || x.name.startsWith(`fx${n}_`))
+    let n = 1
+    while (used(n)) n++
+    return { folder: `particles/fx${n}`, prefix: `fx${n}` }
   }
+  /** 粒子页导出的名字（sys_0_GEN / sys_0_p_12）→ 短名（s0 / s0_p12） */
+  const particleShort = (name) => String(name).replace(/^sys_(\d+)_GEN$/, 's$1').replace(/^sys_(\d+)_p_(\d+)$/, 's$1_p$2').replace(/[^\w-]+/g, '_')
 
   const pfxHandleStyle = (color, round) => `position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:${round ? '50%' : '3px'};border:2px solid #fff;background:${color};box-shadow:0 0 0 1px rgba(0,0,0,.5);cursor:move;z-index:3;display:none`
   /** 舞台上的粒子画布（骨骼上面、辅助线下面）、发射点手柄、路径点手柄 */
@@ -7637,7 +7642,7 @@
     pfx.stage = st; pfx.D = D
     for (const e of st.list) e.simT = 0
     const c = $('#pfxLayer')
-    if (c) c.style.mixBlendMode = pfx.ui.blend === 'normal' ? 'normal' : pfx.ui.blend === 'screen' ? 'screen' : (window.CSS && CSS.supports && CSS.supports('mix-blend-mode', 'plus-lighter') ? 'plus-lighter' : 'screen')
+    if (c) c.style.mixBlendMode = pfx.ui.blend === 'normal' ? 'normal' : pfx.ui.blend === 'screen' ? 'screen' : pfx.ui.blend === 'multiply' ? 'multiply' : (window.CSS && CSS.supports && CSS.supports('mix-blend-mode', 'plus-lighter') ? 'plus-lighter' : 'screen')
   }
 
   /** 每帧：推进粒子，画到舞台上（变换 = 画板像素 → 选中骨骼的姿势 → 屏幕） */
@@ -7806,7 +7811,7 @@
       // 生成序列：切片 → 图片文件夹 → 一个插槽逐帧换图写进动画
       onGenerateSequence: async (info) => {
         const t0 = performance.now()
-        const { folder, prefix } = particleFolderFor(layerImage(place.slot), particleStem(info.template))
+        const { folder, prefix } = particleFolderFor()
         const files = []
         await P.renderSequence({ systems: info.systems, width: info.width, height: info.height, frames: info.frames, duration: info.duration,
           onFrame: async (i, canvas) => { info.busy(`渲染 ${i + 1}/${info.frames}`, ((i + 1) / info.frames) * 0.8); files.push(await pngFile(canvas, `${prefix}_${String(i + 1).padStart(2, '0')}.png`)) } })
@@ -7834,12 +7839,15 @@
         info.busy('计算粒子…', 0.2)
         const parts = await P.spineParts(info.systems, info.duration)
         const sk = parts.skeleton, A = (sk.animations && sk.animations.animation) || {}
-        const { folder, prefix } = particleFolderFor(layerImage(place.slot), particleStem(info.template))
+        const { folder, prefix } = particleFolderFor()
         info.busy('写入贴图…', 0.5)
-        const files = []
-        for (const im of parts.images) files.push(await dataUrlFile(im.dataUrl, `${prefix}_${particleStem(im.regionName)}.png`))
+        // 图片按 fxN_01、fxN_02… 命名；附件名也换成同样的短名（附件切换的关键帧跟着换）
+        const files = [], shortOf = new Map()
+        parts.images.forEach((im, k) => shortOf.set(im.regionName, `${prefix}_${String(k + 1).padStart(2, '0')}`))
+        for (const im of parts.images) files.push(await dataUrlFile(im.dataUrl, `${shortOf.get(im.regionName)}.png`))
         const imported = await importFiles(files, folder)
         const pathOf = new Map(parts.images.map((im, k) => [im.regionName, imported[k]]))
+        const attName = (n) => shortOf.get(n) || particleShort(n)
         const o = particleOrigin(place), startF = startFrame(), start = startF / FPS
         const blend = info.blend === 'add' ? 'additive' : info.blend === 'screen' ? 'screen' : info.blend === 'multiply' ? 'multiply' : null
         const r4 = (v) => Math.round(v * 100) / 100
@@ -7848,9 +7856,9 @@
         const r = edit(`粒子特效：Spine 动画 ${sk.slots.length} 个粒子插槽，从第 ${startF} 帧，挂在 ${o.bone}（${state.anim}）`, (j) => {
           const json = Ops.prepare(j)
           const bonesTaken = new Set(json.bones.map((b) => b.name)), slotsTaken = new Set(json.slots.map((x) => x.name))
-          let P0 = prefix, n = 2
-          while (bonesTaken.has(P0) || sk.slots.some((x) => slotsTaken.has(`${P0}_${x.name}`))) P0 = `${prefix}_${n++}`
-          const bn = (name) => (name === 'root' ? P0 : `${P0}_${name}`)
+          const P0 = prefix
+          if (bonesTaken.has(P0) || sk.slots.some((x) => slotsTaken.has(`${P0}_${particleShort(x.name)}`))) throw new Error(`名字 ${P0} 已被占用`)
+          const bn = (name) => (name === 'root' ? P0 : `${P0}_${particleShort(name)}`)
           for (const b of sk.bones) {
             if (b.name === 'root') { json.bones.push({ name: P0, parent: o.bone, x: r4(o.x), y: r4(o.y), ...(Math.abs(o.s - 1) > 1e-4 ? { scaleX: r4(o.s), scaleY: r4(o.s) } : {}) }); continue }
             json.bones.push({ ...b, name: bn(b.name), parent: bn(b.parent || 'root') })
@@ -7859,13 +7867,13 @@
           const srcSkin = (sk.skins || []).find((x) => x.name === 'default') || { attachments: {} }
           const mine = []
           for (const sl of sk.slots) {
-            const name = `${P0}_${sl.name}`
-            const slot = { ...sl, name, bone: bn(sl.bone) }
+            const name = `${P0}_${particleShort(sl.name)}`
+            const slot = { ...sl, name, bone: bn(sl.bone), ...(sl.attachment ? { attachment: attName(sl.attachment) } : {}) }
             if (blend) slot.blend = blend; else if (info.blend === 'normal') delete slot.blend
             json.slots.push(slot)
             mine.push(name)
             const atts = srcSkin.attachments[sl.name] || {}, out = {}
-            for (const [an, att] of Object.entries(atts)) { const region = att.path || an; out[an] = { ...att, ...(pathOf.has(region) ? { path: pathOf.get(region) } : {}) } }
+            for (const [an, att] of Object.entries(atts)) { const region = att.path || an; out[attName(an)] = { ...att, ...(pathOf.has(region) ? { path: pathOf.get(region) } : {}) } }
             skin.attachments[name] = out
           }
           // 插槽次序：按「层级」
@@ -7874,7 +7882,11 @@
           if (!a) throw new Error(`找不到动画：${state.anim}`)
           a.bones = a.bones || {}; a.slots = a.slots || {}
           for (const [b, tl] of Object.entries(A.bones || {})) { const row = {}; for (const [k, v] of Object.entries(tl)) row[k] = shift(v); a.bones[bn(b)] = row }
-          for (const [sl, tl] of Object.entries(A.slots || {})) { const row = {}; for (const [k, v] of Object.entries(tl)) row[k] = shift(v); a.slots[`${P0}_${sl}`] = row }
+          for (const [sl, tl] of Object.entries(A.slots || {})) {
+            const row = {}
+            for (const [k, v] of Object.entries(tl)) row[k] = k === 'attachment' && Array.isArray(v) ? shift(v).map((key) => (key.name ? { ...key, name: attName(key.name) } : key)) : shift(v)
+            a.slots[`${P0}_${particleShort(sl)}`] = row
+          }
           made = mine.length
           return { json: Ops.tidy(Ops.prepare(out)) }
         }, () => gotoFrame(startF))
