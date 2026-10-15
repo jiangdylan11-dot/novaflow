@@ -265,7 +265,12 @@ self.postMessage({ type: 'ready' })`
     // 底图：摆放参数随工程走；像素只在底图变了时单独发给 Worker（baseMsg），dataURL 不进 Worker
     function renderPayload() { const b = S.project.base ? { ...S.project.base, data: undefined, id: S.baseId || 0 } : null; return clone({ ...S.project, base: b }) }
     function baseMsg() { return S.base ? { type: 'base', id: S.baseId, w: S.base.rgba.w, h: S.base.rgba.h, data: S.base.rgba.data } : { type: 'base', id: 0 } }
-    function previewScale() { const s = size(); return Math.min(0.5, 360 / Math.max(s.w, s.h)) }
+    // 预览按画板在屏幕上的实际大小渲染（2026-10-16 用户：锯齿严重——原来按最长边 360 渲染再放大 2～4 倍）；
+    // 最长边封顶 800 px，小画板最多按 2 倍渲染
+    function previewScale() {
+      const s = size(), shown = S.view ? Math.max(S.view.w, S.view.h) * Math.min(2, window.devicePixelRatio || 1) : 360
+      return Math.min(2, Math.min(800, shown) / Math.max(s.w, s.h))
+    }
     function changed(fast, overlay = true) {
       S.version++
       S.exportCache = null
@@ -366,6 +371,8 @@ self.postMessage({ type: 'ready' })`
       E.svg.setAttribute('viewBox', `0 0 ${s.w} ${s.h}`)
       S.view = { k, w, h }
       drawBase(); drawOverlay()
+      // 显示区大小变了：预览按新的大小重渲
+      if (preview.version >= 0 && preview.scale && Math.abs(previewScale() / preview.scale - 1) > 0.15) changed(true, false)
     }
     const ro = new ResizeObserver(layout)
     ro.observe(E.stage)
@@ -377,7 +384,7 @@ self.postMessage({ type: 'ready' })`
       g.clearRect(0, 0, c.width, c.height)
       if (!S.base || !S.project.base) return
       const pl = FX().basePlacement(S.project), k = c.width / s.w
-      g.globalAlpha = Math.max(0, Math.min(1, Number(S.project.base.opacity ?? 0.5)))
+      g.globalAlpha = Math.max(0, Math.min(1, Number(S.project.base.opacity ?? 1)))
       g.imageSmoothingQuality = 'high'
       g.drawImage(S.base.img, pl.x * k, pl.y * k, pl.w * k, pl.h * k)
     }
@@ -447,7 +454,7 @@ self.postMessage({ type: 'ready' })`
         E.svg.innerHTML = parts.join('')
         return
       }
-      if (baseOnly()) { E.svg.innerHTML = ''; return }   // 光跟着底图走：画板上只看底图
+      if (baseOnly() || S.hidePath) { E.svg.innerHTML = ''; return }   // 光跟着底图走 / 隐藏了路径：画板上只看效果
       if (centered()) {
         // 不跟轮廓走的效果：没有轮廓线和控制点，只有一个框——拖框移动、拖四角改大小
         const b = bbox()
@@ -523,7 +530,7 @@ self.postMessage({ type: 'ready' })`
         if (pts.length >= 3 && Math.hypot(pts[0].x - p.x, pts[0].y - p.y) < px(10)) { finishDrawing(); return }
         pts.push({ x: p.x, y: p.y, s: 0 }); drawOverlay(); return
       }
-      if (baseOnly()) return
+      if (baseOnly() || S.hidePath) return
       const handle = ev.target.getAttribute && ev.target.getAttribute('data-h')
       const hp = centered() ? null : hitPoint(p)
       E.svg.setPointerCapture(ev.pointerId)
@@ -568,7 +575,7 @@ self.postMessage({ type: 'ready' })`
     E.svg.addEventListener('pointercancel', endDrag)
     E.svg.addEventListener('dblclick', (ev) => {
       if (S.drawing) { finishDrawing(); return }
-      if (centered() || baseOnly()) return
+      if (centered() || baseOnly() || S.hidePath) return
       const p = toCanvas(ev), hp = hitPoint(p)
       if (hp) { snapshot(); const q = S.project.outlines[hp.o].points[hp.p]; q.s = q.s ? 0 : 1; changed(); return }
       if (!nearCurve(p)) return
@@ -597,6 +604,7 @@ self.postMessage({ type: 'ready' })`
       return true
     }
     function setShape(kind) {
+      S.hidePath = false   // 点形状 = 要改形状：路径显示出来
       if (cancelDrawing() && kind === 'free') { renderShapes(); drawOverlay(); return }
       if (kind === 'free') { startDrawing(); return }
       if (kind === 'trace') { if (!S.base) { E.file.click(); S.afterBase = 'trace'; return } snapshot(); traceBase(); return }
@@ -687,15 +695,18 @@ self.postMessage({ type: 'ready' })`
       E.basetools.innerHTML = `<button class="fxm-btn" type="button" data-base="pick" ${SW ? 'title="从工程的图片文件夹里挑"' : ''}>${has ? '换底图' : SW ? '选底图' : '上传底图'}</button>`
         + `<button class="fxm-btn" type="button" data-base="fit" ${has ? '' : 'disabled title="先上传底图"'}>套住底图</button>`
         + (has ? '<button class="fxm-btn" type="button" data-base="clear">移除底图</button>' : '')
+        + `<span class="fxm-sep"></span><button class="fxm-btn" type="button" data-base="path" data-on="${S.hidePath ? 1 : 0}" ${baseOnly() ? 'disabled title="这类效果按底图本身扫，没有路径"' : 'title="隐藏 / 显示画板上的轮廓线和控制点，只看效果"'}>${S.hidePath ? '显示路径' : '隐藏路径'}</button>`
 
       E.basetools.querySelector('[data-base="pick"]').onclick = () => { S.afterBase = ''; if (SW) pickSweepBase(); else E.file.click() }
       E.basetools.querySelector('[data-base="fit"]').onclick = fitToBase
+      E.basetools.querySelector('[data-base="path"]').onclick = () => { S.hidePath = !S.hidePath; if (S.hidePath) S.selected = null; renderShapes(); drawOverlay() }
       const clr = E.basetools.querySelector('[data-base="clear"]')
       if (clr) clr.onclick = () => { if (SW) { removeSweepBase(); return } S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1; for (const w of pool) if (w.ready) w.postMessage(baseMsg()); if (S.project.canvas.preset === 'base') S.project.canvas.preset = '1:1'; if (fx().needsBase) pickEffect(FX().effects()[0].id); drawBase(); renderShapes(); renderParams(); renderEffects(); layout(); changed() }
       if (!S.drawing) setHint()
     }
     function setHint(text) {
       E.hint.textContent = text || (baseOnly() ? (SW ? '这类效果按底图本身扫：换底图、调「边距」就行，切片只有光、不带底图' : '这类效果按底图本身扫：换底图、调「底图大小」就行，成片只有光、不带底图')
+        : S.hidePath ? '路径已隐藏：点「显示路径」或上面的形状按钮再改形状'
         : centered() ? '这个效果不跟轮廓走：拖框移动位置 · 拖四角改大小（Shift 等比）'
         : '拖点改形状 · 线上双击加点 · 点上双击切换尖角/圆滑 · 选中点按 Delete 删除 · 拖四角缩放（Shift 等比）· 拖上方圆点旋转 · 黄点是光的起点')
     }
@@ -712,7 +723,7 @@ self.postMessage({ type: 'ready' })`
         const c = document.createElement('canvas'); c.width = w; c.height = h
         const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, w, h)
         const data = c.toDataURL('image/png')
-        await loadBase({ name: f.name, w, h, data, scale: S.project.base ? S.project.base.scale : 0.7, opacity: S.project.base ? S.project.base.opacity : 0.5 })
+        await loadBase({ name: f.name, w, h, data, scale: S.project.base ? S.project.base.scale : 0.7, opacity: S.project.base ? S.project.base.opacity : 1 })
         if (S.afterBase === 'trace') { snapshot(); traceBase() }
         if (S.afterBase && S.afterBase.startsWith('effect:')) pickEffect(S.afterBase.slice(7))
         S.afterBase = ''
@@ -772,7 +783,7 @@ self.postMessage({ type: 'ready' })`
       if (usesStart()) shapeItems.push(slider('startAngle', { label: '起点', min: 0, max: 359, step: 1, def: 0, format: (v) => Math.round(v) + '°' }, startAngle(), (v) => { setStartAngle(v); drawOverlay() }))
       shapeItems.push(seg('direction', '方向', [{ id: 'ccw', label: '逆时针' }, { id: 'cw', label: '顺时针' }], p.direction, (v) => { p.direction = v; changed() }, inert.direction))
       if (S.base) {
-        shapeItems.push(slider('base.opacity', { label: '底图透明', min: 0, max: 1, step: 0.01, def: 0.5 }, p.base.opacity, (v) => { p.base.opacity = v; drawBase() }, ''))
+        shapeItems.push(slider('base.opacity', { label: '底图透明', min: 0, max: 1, step: 0.01, def: 1 }, p.base.opacity, (v) => { p.base.opacity = v; drawBase() }, ''))
         if (!SW) shapeItems.push(slider('base.scale', { label: '底图大小', min: 0.2, max: 1.2, step: 0.01, def: 0.7 }, p.base.scale, (v) => { p.base.scale = v; drawBase(); changed(true) }, ''))
       }
       if (S.base) {
@@ -792,7 +803,7 @@ self.postMessage({ type: 'ready' })`
         + `<button class="fxm-btn" type="button" data-v="white" data-on="${p.colour.mode === 'white' || (f.kind !== 'lib' && f.kind !== 'basesweep' && p.colour.mode !== 'custom') ? 1 : 0}" ${colourInert ? 'disabled' : ''}>白光</button>`
         + `<button class="fxm-btn" type="button" data-v="custom" data-on="${p.colour.mode === 'custom' ? 1 : 0}" ${colourInert ? 'disabled' : ''}>自选</button>`
         + `<input class="fxm-colour" type="color" value="${esc(p.colour.value || '#ffd173')}" ${colourInert ? 'disabled' : ''}></div></div>`, colour: true })
-      controls.push(...fxItems); html.push(sec(f.label + '　' + (f.hint || ''), fxItems))
+      controls.push(...fxItems); html.push(sec(f.label, fxItems))   // 只写效果名（2026-10-16 用户：描述没必要显示）
       // 整体动画
       const mo = p.motion, moItems = [
         seg('motion', '动画', FX().MOTIONS, mo.kind, (v) => { mo.kind = v; changed(); renderParams() }),
@@ -981,7 +992,7 @@ self.postMessage({ type: 'ready' })`
       drawBase(); layout(); changed(); renderParams()
     }
     function sweepCanvasItems() {
-      const p = S.project, st = SW.settings(), dur = st.duration, perSec = (st.frames * SW.fps) / dur
+      const p = S.project, st = SW.settings(), dur = st.duration
       const num = (key, label, value, min, max, note, warn) => ({
         html: `<div class="fxm-line" data-sweep-row="${key}"><label>${esc(label)}</label><div class="fxm-seg"><input class="fxm-num" type="number" min="${min}" max="${max}" step="1" value="${value}" data-sweep="${key}"><span class="fxm-note" ${warn ? 'style="color:#e0b45a"' : ''}>${esc(note)}</span></div></div>`,
         bind: (root) => { const i = root.querySelector(`[data-sweep="${key}"]`); i.onchange = () => { const v = Math.max(min, Math.min(max, Math.round(Number(i.value) || 0))); i.value = v; setSweep(key, v) } },
@@ -991,8 +1002,8 @@ self.postMessage({ type: 'ready' })`
         items.push(seg('canvas', '尺寸', ['1:1', 'custom'].map((id) => ({ id, label: FX().CANVASES.find((x) => x.id === id).label })), p.canvas.preset, (v) => setCanvas(v)))
         if (p.canvas.preset === 'custom') items.push({ html: `<div class="fxm-line" data-custom-size><label>宽 × 高</label><div class="fxm-seg"><input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().w}" data-cw> <input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().h}" data-ch></div></div>` })
       }
-      items.push(num('frames', '帧数', st.frames, 2, 120, '生成多少张切片；多一些扫得更顺'))
-      items.push(num('duration', '时长', dur, 2, 18000, perSec < 15 ? `一圈 ${(dur / SW.fps).toFixed(1)} 秒，每秒不到 15 张会一顿一顿，帧数建议 ≥ ${Math.ceil((dur / SW.fps) * 15)}` : `帧，一圈 ${(dur / SW.fps).toFixed(1)} 秒`, perSec < 15))
+      items.push(num('frames', '帧数', st.frames, 2, 120, '生成多少张切片'))
+      items.push(num('duration', '时长', dur, 2, 18000, `帧，一圈 ${(dur / SW.fps).toFixed(1)} 秒`, false))
       if (S.base) items.push(num('pad', '边距', st.pad, 0, 600, `切片四周留给光的像素，0 = 自动（现在 ${size().w - p.base.w > 0 ? (size().w - p.base.w) / 2 : 0}）`))
       items.push(seg('lifecycle', '播放', [{ id: 'loop', label: '循环' }, { id: 'once', label: '一次性' }], p.lifecycle, (v) => { p.lifecycle = v; changed() }))
       return items
@@ -1008,7 +1019,7 @@ self.postMessage({ type: 'ready' })`
       const b = await SW.pickBase()
       if (!b) return
       const before = size(), hadBase = !!S.base
-      await loadBase({ name: b.name, w: b.w, h: b.h, data: b.data, scale: 1, opacity: S.project.base ? S.project.base.opacity : 0.5 })
+      await loadBase({ name: b.name, w: b.w, h: b.h, data: b.data, scale: 1, opacity: S.project.base ? S.project.base.opacity : 1 })
       applySweepCanvas()
       // 换上的底图：没底图时的形状 / 原来就是图片轮廓的，都描这张图的轮廓
       if (!hadBase || S.project.shape.kind === 'trace') { S.project.shape.kind = 'trace'; traceBase() } else keepOutlineIn(before)

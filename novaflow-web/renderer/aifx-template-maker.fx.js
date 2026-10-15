@@ -219,10 +219,17 @@
     return T
   }
   const pointOn = (geo, u) => FXM().pointOnOutline(geo, u)
+  // 形状里随便一点：按外框比例取、落在外面就重取（各自一个小随机源）——和渲染尺寸无关，预览和成片的碎块 / 粒子位置一样
+  // （原来按「第几个里面的像素」取，预览缩小渲染时换一批位置）
   function insidePoint(geo, rnd) {
     if (!geo.inside.length) return { x: geo.cx, y: geo.cy }
-    const i = geo.inside[Math.floor(rnd() * geo.inside.length)], x = i % geo.W
-    return { x: x + rnd(), y: (i - x) / geo.W + rnd() }
+    const r = rng(Math.floor(rnd() * 2147483647) + 1), b = geo.bbox, W = geo.W
+    for (let k = 0; k < 200; k++) {
+      const x = b.x0 + r() * (b.x1 + 1 - b.x0), y = b.y0 + r() * (b.y1 + 1 - b.y0), xi = Math.floor(x), yi = Math.floor(y)
+      if (xi >= 0 && yi >= 0 && xi < W && yi < geo.H && geo.cov[yi * W + xi] >= 0.5) return { x, y }
+    }
+    const i = geo.inside[Math.floor(r() * geo.inside.length)], x = i % W
+    return { x: x + 0.5, y: (i - x) / W + 0.5 }
   }
   function emitAt(ctx, rnd) {
     const where = ctx.params.emit || 'edge'

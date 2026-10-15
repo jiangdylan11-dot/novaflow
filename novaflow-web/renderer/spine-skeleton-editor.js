@@ -7309,7 +7309,7 @@
     if (cur.px) {
       const pad = P.pad > 0 ? P.pad : autoPad(cur.px.w, cur.px.h), W = cur.px.w + 2 * pad, H = cur.px.h + 2 * pad
       pj.canvas = { preset: 'exact', w: W, h: H }
-      pj.base = { w: cur.px.w, h: cur.px.h, data: sweepDataUrl(cur.px), scale: 1 / Math.min(W / cur.px.w, H / cur.px.h), opacity: 0.5 }
+      pj.base = { w: cur.px.w, h: cur.px.h, data: sweepDataUrl(cur.px), scale: 1 / Math.min(W / cur.px.w, H / cur.px.h), opacity: 1 }
       pj.shape = { ...pj.shape, kind: 'trace' }
       pj.corner = 0
       const outs = FX.traceImage(cur.px.rgba, cur.px.w, cur.px.h, FX.basePlacement(pj), W, H, pj.traceDetail ?? 0.5, pj.outerOnly !== false)
