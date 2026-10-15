@@ -6446,9 +6446,14 @@
       const to = h('input', { type: 'number', class: 'ld-num wide', min: 1, max: 18000, step: 1, value: sweepEndFrame(ticked.length), title: '扫光到第几帧结束（之后全透明）；留空 = 动画的最后一帧',
         onchange: (e) => { const v = Math.round(Number(e.target.value) || 0); state.sweepEnd = v > 0 ? Math.min(18000, v) : 0; e.target.value = sweepEndFrame(ticked.length) } })
       head.push(h('label', { class: 'ld-f' }, '起', from, '止', to, '帧'))
-      go = h('button', { class: 'ld-go', title: '勾一张图作底图：弹框选扫光方式，写入动画时生成切片并写入；勾的是自己准备的序列图（多张）：直接写入', onclick: openSweepGenerator }, '生成扫光')
+      // two steps (user 2026-10-15): 生成特效 makes slices from one base picture into the cards;
+      // 写入动画 writes whatever is ticked - the generated slices or the user's own sequence
+      go = [
+        h('button', { class: 'ld-go alt', title: '勾一张图作底图：弹框选特效，确定生成后卡片换成生成的切片（已勾好），再点「写入动画」', onclick: openSweepGenerator }, '生成特效'),
+        h('button', { class: 'ld-go', title: '勾选的图片依次亮起又熄灭（透明度 0 → 100 → 0），后一张在前一张最亮时开始，整段在起止之间均分；生成的切片或自己准备的序列图都可以', onclick: writeSweep }, '写入动画'),
+      ]
     }
-    dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }), go,
+    dock.append(h('div', { class: 'ld-hd' }, ...head, h('span', { class: 'sp' }), ...[].concat(go),
       h('button', { class: 'xx', title: '关闭', onclick: () => { state.leftClosedByUser = kind; state.leftOpen = null; renderLeft(); refresh() } }, '×')))
     const grid = h('div', { class: 'ld-grid' })
     let order = 0
@@ -6460,7 +6465,7 @@
         frameThumb(f), h('span', { class: 'ld-n' }, f.name.split('/').pop()), h('span', { class: 'ld-c' }, on ? `第 ${++order} 帧` : '')))
     }
     if (!pictures) grid.append(h('div', { class: 'hint' }, '读取图片文件夹…'))
-    else if (!files.length) grid.append(h('div', { class: 'hint' }, kind === 'sweep' ? '根目录里没有图片：用「从文件夹添加…」挑图（勾一张作底图后「生成扫光…」，或勾自己准备的序列图直接写入）' : '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
+    else if (!files.length) grid.append(h('div', { class: 'hint' }, kind === 'sweep' ? '根目录里没有图片：用「从文件夹添加…」挑图（勾一张作底图点「生成特效」，或勾自己准备的序列图点「写入动画」）' : '根目录里没有图片：用「从文件夹添加…」挑图，或在弹框里「导入图片 / 导入文件夹」'))
     dock.append(grid)
     grid.scrollTop = keep
   }
@@ -6898,8 +6903,8 @@
 
   // ------------------------------------------------------------------ 序列扫光 生成器（底图 → 扫光切片）
   //
-  // 序列扫光's cards are the one place to pick: tick one picture, 生成扫光… opens the panel（方案 /
-  // 实时小预览 / 参数 / 挂到骨骼树）。生成的切片进图片文件夹 sweep/<底图名>/<方案>/，卡片换成它们并勾好；写入动画时插槽
+  // 序列扫光's cards are the one place to pick: tick one picture, 生成特效 opens the panel（方案 /
+  // 实时小预览 / 参数 / 挂到骨骼树）。确定生成：切片进图片文件夹 sweep/<底图名>/<方案>/，卡片换成它们并勾好；卡片栏写入动画时插槽
   // 挂到选的骨骼、插到底图插槽的上一层、设叠加模式，绕一圈的方案首尾相接。
   // 算法在 sweep-light.core.js（页面里加载，Worker 里 importScripts 同一份）。
 
@@ -6984,15 +6989,13 @@ self.onmessage = (e) => {
   }
 
   /**
-   * 生成扫光… (the cards' one button): one ticked card = the base → the panel (its 写入动画 generates
-   * the slices and writes them); several ticked = a hand-made sequence → written as it is.
+   * 生成特效: the one ticked card is the base → the panel; its 确定生成 puts the slices on the cards
+   * (ticked), and the cards' 写入动画 writes them.
    */
   async function openSweepGenerator() {
     if (!state.json) return
     const files = frameFiles('sweep')
-    if (!files.length) { status('先在卡片里勾一张图作底图（勾多张 = 自己准备的序列图，直接写入）', 'error'); return }
-    if (files.length > 1) { writeSweep(); return }
-    if (!animOn()) { status('先选一个动画', 'error'); return }
+    if (files.length !== 1) { status(files.length ? '生成特效只用一张底图：只勾一张（自己准备的序列图直接点「写入动画」）' : '先在卡片里勾一张图作底图', 'error'); return }
     try { await bringFramesIn(files) } catch (e) { status(e.message, 'error'); return }
     openSweepPanel(files[0].name)
   }
@@ -7207,12 +7210,11 @@ self.onmessage = (e) => {
 
     const st = h('span', { class: 'st' })
     const setStatus = (msg, err) => { st.textContent = msg || ''; st.classList.toggle('err', !!err) }
-    const go = h('button', { class: 'btn primary', title: '生成切片进图片文件夹，并按卡片栏的起止帧写入当前动画', onclick: () => generate() }, '写入动画')
+    const go = h('button', { class: 'btn primary', title: '生成切片进图片文件夹，卡片换成这些切片并勾好；再在卡片栏点「写入动画」', onclick: () => generate() }, '确定生成')
     async function generate() {
       go.disabled = true; setStatus('')
       const t0 = performance.now()
       try {
-        if (!animOn()) throw new Error('先在工程树里选一个动画（设置模式下不能写入）')
         const Q = { ...P }
         const scheme = schemeOf(Q.scheme)
         const r = await sweepGenerate(px.rgba, px.w, px.h, Q, (i, n) => setStatus(`生成中 ${i}/${n}`))
@@ -7236,20 +7238,15 @@ self.onmessage = (e) => {
           state.history.push(before)
           state.future = []
         } catch (e) { restore(before); throw new Error('切片进图片文件夹失败：' + e.message) }
-        // the cards: the slices, all ticked; 写入动画 then hangs them on the bone above the base
+        // the cards: the slices, all ticked; the cards' 写入动画 then hangs them on the bone above the base
         state.frameSet = names.map((n) => ({ name: n }))
         frameUnticked('sweep').clear()
         state.frameBone = bone
         state.sweepGen = { base: image, baseSlot: bs ? bs.name : null, bone, blend: Q.blend, wrap: !!scheme.wrap, names: names.slice() }
         state.leftOpen = 'sweep'
-        // straight into the animation (user: one button); the cards keep the slices for a re-write.
-        // A failed write keeps the dialog open with the reason (the toast alone was missed).
-        setStatus('写入动画…')
-        const written = await writeSweep()
-        if (!written) throw new Error(`切片已进「${folder}」并勾在卡片里，但写入动画失败：${$('#toast').textContent || '未知原因'}`)
         close()
         refresh()
-        status(`已生成 ${names.length} 张扫光切片到「${folder}」并写入动画（${((performance.now() - t0) / 1000).toFixed(1)} s）`, 'ok')
+        status(`已生成 ${names.length} 张切片到「${folder}」（${((performance.now() - t0) / 1000).toFixed(1)} s），卡片里已勾好：点「写入动画」`, 'ok')
       } catch (e) {
         setStatus(e.message, true)
       } finally { go.disabled = false }
