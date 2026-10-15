@@ -43,10 +43,10 @@
     const anim=!!api.anim();
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>{
       // the frame tools need a bone too (the pictures hang on it) and an animation to write into
-      // 粒子特效（扩展弹框）只要有动画：骨骼在弹框里选
-      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode),ok=mode==='particle'?anim:frameTool?(anim&&!!bone):!!bone;
+      // 粒子特效和帧工具一样：要动画，也要骨骼（粒子放在那根骨骼下面，2026-10-16 用户）
+      const mode=item.dataset.motionMode,frameTool=isFrameTool(mode)||mode==='particle',ok=frameTool?(anim&&!!bone):!!bone;
       if(item.disabled!==!ok)item.disabled=!ok;
-      const title=ok?'':(mode==='particle'||(frameTool&&!anim)?'先选一个动画':'先在画板或工程树里选中一个骨骼');
+      const title=ok?'':(frameTool&&!anim?'先选一个动画':'先在画板或工程树里选中一个骨骼');
       if(item.title!==title)item.title=title;
     });
     // no bone picked: the open editor (and 飘带计算 docked over it) is greyed and takes no input,
@@ -457,11 +457,16 @@
   const isFrameTool=mode=>mode==='sequence'||mode==='sweep'||mode==='loop';
   let frameToolAt=0;
   function selectTool(mode){
-    // 粒子特效是弹框（2026-10-16）：不换当前工具，直接打开
-    if(mode==='particle'){window.NovaFlowSkeletonEditor?.openParticle?.();return}
     activeMode=mode;
     panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.motionMode===mode)));
     const editor=window.NovaFlowSkeletonEditor;
+    // 粒子特效（2026-10-16 用户）：飘带等计算面板、帧工具卡片都关掉，右侧开粒子面板；切到别的工具，粒子面板自动关
+    if(mode==='particle'){
+      close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();
+      frameToolAt=performance.now();editor?.setPanel?.('frames',false);editor?.openParticle?.();
+      return;
+    }
+    editor?.closeParticle?.();
     if(isFrameTool(mode)){
       close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();
       frameToolAt=performance.now();editor?.setPanel?.(mode,true);
@@ -511,7 +516,8 @@
         if(expanded){try{window.NovaFlowAutoMeshPanel?.closePanels?.();}catch{}try{editorSynced=!!window.NovaFlowSkeletonEditor?.beforeMotion?.();}catch{}}
         panel.dataset.open=expanded?'1':'0';
         panel.querySelector('.nf-motion-tools').hidden=!expanded;panel.querySelector('.nf-panel-header').setAttribute('aria-expanded',String(expanded));panel.querySelector('.nf-motion-chevron').className=`fas fa-chevron-${expanded?'down':'right'} nf-motion-chevron`;
-        if(!expanded){close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));}
+        if(expanded){try{const api=editorApi();if(api&&!api.selectedBone()&&api.rootBone&&api.rootBone())api.selectBone(api.rootBone());}catch{}}
+        if(!expanded){close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));try{window.NovaFlowSkeletonEditor?.closeParticle?.();}catch{}}
         // opening the group opens the editor at the tool used last (飘带计算 at first)
         else if(editorSynced)setTimeout(()=>{if(panel?.dataset.open==='1')selectTool(activeMode);},0);
         else selectTool(activeMode);
@@ -519,6 +525,10 @@
       panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>selectTool(button.dataset.motionMode));
     }
     syncToolAvailability(panel);
+    if(panel.dataset.open==='1'&&activeMode==='particle'){
+      const api=editorApi();
+      if(api&&api.particleOpen&&!api.particleOpen()&&performance.now()-frameToolAt>1000)panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));
+    }
     if(panel.dataset.open==='1'&&isFrameTool(activeMode)){
       const api=editorApi();
       // the cards closed with their × (not the moment after the click: setPanel lands a tick later)

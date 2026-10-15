@@ -7504,27 +7504,29 @@
 
   // ------------------------------------------------------------------ 粒子特效（右侧面板 + 舞台上实时预览）
   //
-  // 2026-10-16 用户：粒子特效不必独立一页，它就是给 Spine 动画用的；面板最好像飘带那样，粒子直接作用在画布里、底下是原有动画
-  // （「不重要的可以精简掉」）。面板停在右侧（盖住工程树 / 属性，关了就回来），粒子画在舞台上：跟着骨骼的姿势和播放时间走，
-  // 拖时间轴就看到那一刻的粒子。模板库 / 引擎和粒子页同一份（NovaFlowParticleFx）。
+  // 2026-10-16 用户：粒子特效不必独立一页，它就是给 Spine 动画用的；面板像飘带那样，粒子直接作用在画布里、底下是原有动画。
+  // 面板和粒子页的功能一样（模板库、粒子系统列表、发射、形状、基础属性、缩放旋转、外观资源都在），停在右侧（盖住工程树 / 属性，
+  // 关了就回来；切到别的功能自动关）。粒子画在舞台上：放在选中的骨骼下面、跟着它的姿势走；动画够长就跟播放时间（拖时间轴看那一刻），
+  // 动画比粒子短（比如空动画）就按粒子自己的时长循环播。
   // 生成序列：切片进图片文件夹 particles/<模板>/，一个插槽逐帧换图写进当前动画；生成 Spine 动画：粒子页那种每个粒子一个插槽
-  // 打关键帧的骨架，加前缀并进当前工程。两种都从「起」帧开始、原点在跟随图层的中心（不跟图层：骨骼原点），各是一步撤销。
+  // 打关键帧的骨架（整组的每个系统各一组），加前缀并进当前工程。都从「起」帧开始，各是一步撤销。
   const ParticleFx = () => window.NovaFlowParticleFx
   const ParticleFxUI = () => window.NovaFlowParticleFxUI
   const particleStem = (name) => String(name || 'particle').replace(/[·\s]+/g, '_').replace(/[^\w\u4e00-\u9fa5-]+/g, '').replace(/^_+|_+$/g, '') || 'particle'
-  let pfx = null   // 打开着的粒子面板：{ ui, place, origin, stage, simT, ver, PS }
+  let pfx = null   // 打开着的粒子面板：{ ui, place, origin, stage, ver, PS, clock }
 
   /** 图片文件夹里没被占用的 particles/<名字>[n]（跟随图层的图在子文件夹里就放在它旁边） */
   function particleFolderFor(image, stem) {
     const dir = image && image.includes('/') ? image.slice(0, image.lastIndexOf('/') + 1) : ''
     const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
     let k = 1
-    while (taken(`${dir}particles/${stem}${k > 1 ? k : ''}/${stem}${k > 1 ? k : ''}_01`) || taken(`${dir}particles/${stem}${k > 1 ? k : ''}/${stem}${k > 1 ? k : ''}_${stem}`)) k++
+    while (taken(`${dir}particles/${stem}${k > 1 ? k : ''}/${stem}${k > 1 ? k : ''}_01`) || [...(rt.atlas ? rt.atlas.regions : [])].some((r) => r.name.startsWith(`${dir}particles/${stem}${k > 1 ? k : ''}/`))) k++
     const tag = stem + (k > 1 ? k : '')
     return { folder: `${dir}particles/${tag}`, prefix: tag }
   }
 
-  /** 舞台上的粒子画布（骨骼上面、辅助线下面）和发射点手柄 */
+  const pfxHandleStyle = (color, round) => `position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:${round ? '50%' : '3px'};border:2px solid #fff;background:${color};box-shadow:0 0 0 1px rgba(0,0,0,.5);cursor:move;z-index:3;display:none`
+  /** 舞台上的粒子画布（骨骼上面、辅助线下面）、发射点手柄、路径点手柄 */
   function pfxLayer() {
     let c = $('#pfxLayer')
     if (!c) {
@@ -7533,29 +7535,59 @@
     }
     let hd = $('#pfxHandle')
     if (!hd) {
-      hd = h('div', { id: 'pfxHandle', title: '发射位置（拖动）', style: 'position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid #fff;background:#1EA672;box-shadow:0 0 0 1px rgba(0,0,0,.5);cursor:move;z-index:3;display:none' })
+      hd = h('div', { id: 'pfxHandle', title: '发射位置（拖动）', style: pfxHandleStyle('#1EA672', true) })
       $('#stage').append(hd)
-      hd.addEventListener('pointerdown', (ev) => {
-        if (ev.button !== 0 || !pfx || !pfx.J) return
-        ev.preventDefault(); ev.stopPropagation(); hd.setPointerCapture(ev.pointerId)
-        const cfg = pfx.ui.config
-        pfx.drag = { x: ev.clientX, y: ev.clientY, sx: cfg.systemX || 0, sy: cfg.systemY || 0, J: pfx.J }
-      })
-      hd.addEventListener('pointermove', (ev) => {
-        if (!pfx || !pfx.drag) return
-        const d = pfx.drag, J = d.J, det = J[0] * J[3] - J[1] * J[2] || 1, dx = ev.clientX - d.x, dy = ev.clientY - d.y
-        const cfg = pfx.ui.config
-        cfg.systemX = Math.round(d.sx + (J[3] * dx - J[2] * dy) / det)
-        cfg.systemY = Math.round(d.sy + (-J[1] * dx + J[0] * dy) / det)
-        pfxRestart()
-      })
-      const end = () => { if (pfx) pfx.drag = null }
-      hd.addEventListener('pointerup', end)
-      hd.addEventListener('pointercancel', end)
+      pfxDrag(hd, () => { const cfg = pfx.ui.config; return { x: cfg.systemX || 0, y: cfg.systemY || 0 } }, (x, y) => { const cfg = pfx.ui.config; cfg.systemX = Math.round(x); cfg.systemY = Math.round(y) })
     }
     const W = Math.round(rt.w * rt.dpr), H = Math.round(rt.h * rt.dpr)
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H }
     return { c, hd }
+  }
+  /** 手柄拖动：屏幕位移 → 画板像素位移（用这一帧画板 → 屏幕的雅可比，可再乘一个局部矩阵 M） */
+  function pfxDrag(el, get, set, localMatrix) {
+    el.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0 || !pfx || !pfx.J) return
+      ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture(ev.pointerId)
+      const v = get()
+      pfx.drag = { el, x: ev.clientX, y: ev.clientY, sx: v.x, sy: v.y, J: pfx.J, M: localMatrix ? localMatrix() : [1, 0, 0, 1] }
+    })
+    el.addEventListener('pointermove', (ev) => {
+      if (!pfx || !pfx.drag || pfx.drag.el !== el) return
+      const d = pfx.drag, J = d.J, M = d.M
+      // 屏幕 = J · M · 局部
+      const A = [J[0] * M[0] + J[2] * M[1], J[1] * M[0] + J[3] * M[1], J[0] * M[2] + J[2] * M[3], J[1] * M[2] + J[3] * M[3]]
+      const det = A[0] * A[3] - A[1] * A[2] || 1, dx = ev.clientX - d.x, dy = ev.clientY - d.y
+      set(d.sx + (A[3] * dx - A[2] * dy) / det, d.sy + (-A[1] * dx + A[0] * dy) / det)
+      if (pfx.ui.rerenderLight) pfx.ui.rerenderLight()
+      pfxRestart()
+    })
+    const end = () => { if (pfx && pfx.drag && pfx.drag.el === el) { pfx.drag = null; if (pfx.ui.rerender) pfx.ui.rerender() } }
+    el.addEventListener('pointerup', end)
+    el.addEventListener('pointercancel', end)
+  }
+  /** 当前系统的自定义路径点（形状「路径」或「沿路径 · 自定义」时在画布上能拖） */
+  function pfxPathPoints() {
+    const cfg = pfx && pfx.ui && pfx.ui.config
+    if (!cfg) return null
+    // 形状「路径」：面板「画布编辑（锁定坐标）」开着才显示；基础属性「路径 · 自定义」：一直能拖（和粒子页一样）
+    const custom = cfg.shape && cfg.shape.type === 'custom_path' && !cfg.pathEnabled && pfx.ui.pathEdit !== false
+    const motion = cfg.pathEnabled && cfg.pathType === 'custom'
+    return (custom || motion) && Array.isArray(cfg.pathPoints) ? cfg.pathPoints : null
+  }
+  function pfxSyncPathHandles(pts) {
+    const stage = $('#stage'), have = [...stage.querySelectorAll('.pfx-path-pt')]
+    const n = pts ? pts.length : 0
+    for (let i = have.length; i < n; i++) {
+      const el = h('div', { class: 'pfx-path-pt', title: '路径点（拖动）', style: pfxHandleStyle('#e0b45a', false) })
+      el.dataset.i = String(i)
+      stage.append(el)
+      // 路径点是相对发射点的局部坐标（跟着系统旋转 / 缩放）
+      const rot = () => { const cfg = pfx.ui.config, a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1; return [Math.cos(a) * k, Math.sin(a) * k, -Math.sin(a) * k, Math.cos(a) * k] }
+      pfxDrag(el, () => { const p = pfxPathPoints()[Number(el.dataset.i)]; return { x: p.x, y: p.y } }, (x, y) => { const p = pfxPathPoints()[Number(el.dataset.i)]; p.x = Math.round(x * 10) / 10; p.y = Math.round(y * 10) / 10 }, rot)
+      // 双击路径点删掉（至少留两个）
+      el.addEventListener('dblclick', (ev) => { ev.preventDefault(); ev.stopPropagation(); const pts = pfxPathPoints(); if (!pts || pts.length <= 2) return; pts.splice(Number(el.dataset.i), 1); pfxRestart(); if (pfx.ui.rerender) pfx.ui.rerender() })
+    }
+    for (let i = n; i < have.length; i++) have[i].remove()
   }
 
   /** 粒子原点：跟随图层 = 那张图的中心（换到选的骨骼里），不跟图层 = 骨骼原点；s = 图层的缩放 */
@@ -7579,23 +7611,29 @@
     if (!pfx) return
     const P = ParticleFx(), v = ++pfx.ver
     pfx.origin = particleOrigin(pfx.place)
-    const PS = pfx.PS, D = Math.max(0.1, PS.duration / FPS), loop = pfx.ui.loop
-    const cfg = P.sequenceConfig(pfx.ui.config, D, loop)
-    const st = await P.createStageEngine(cfg, PS.width, PS.height, { loop })
+    const PS = pfx.PS, D = Math.max(0.1, PS.duration / FPS)
+    const systems = pfx.ui.systems.map((c) => P.sequenceConfig(c, D))
+    const st = await P.createStageEngine(systems, PS.width, PS.height)
     if (!pfx || v !== pfx.ver) return
-    pfx.stage = st; pfx.cfg = cfg; pfx.simT = 0; pfx.loop = loop; pfx.D = D
+    pfx.stage = st; pfx.D = D
+    for (const e of st.list) e.simT = 0
     const c = $('#pfxLayer')
     if (c) c.style.mixBlendMode = pfx.ui.blend === 'normal' ? 'normal' : pfx.ui.blend === 'screen' ? 'screen' : (window.CSS && CSS.supports && CSS.supports('mix-blend-mode', 'plus-lighter') ? 'plus-lighter' : 'screen')
   }
 
-  /** 每帧：按播放时间推进粒子，画到舞台上（变换 = 画板像素 → 跟随骨骼的姿势 → 屏幕） */
+  /** 每帧：推进粒子，画到舞台上（变换 = 画板像素 → 选中骨骼的姿势 → 屏幕） */
   function drawParticles() {
     if (!pfx || !rt.skeleton) return
     const { c, hd } = pfxLayer()
     const ctx = c.getContext('2d')
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, c.width, c.height)
+    // 面板开着时在画布上点了别的骨骼：粒子换到那根骨骼下面
+    const sel = state.sel && state.sel.kind === 'bone' ? state.sel.name : null
+    if (sel && sel !== pfx.lastSel) { pfx.lastSel = sel; if (sel !== pfx.place.bone) { pfx.place.bone = sel; pfx.place.slot = ''; pfxRestart(); if (pfx.ui.rerender) pfx.ui.rerender() } }
     const o = pfx.origin, B = o && rt.skeleton.findBone(o.bone), PS = pfx.PS
+    const pathPts = pfxPathPoints()
+    pfxSyncPathHandles(B ? pathPts : null)
     if (!B) { hd.style.display = 'none'; return }
     const W = PS.width, H = PS.height
     const pt = (px, py) => { const lx = o.x + o.s * (px - W / 2), ly = o.y + o.s * (H / 2 - py); return toScreen(B.a * lx + B.b * ly + B.worldX, B.c * lx + B.d * ly + B.worldY) }
@@ -7606,30 +7644,45 @@
     ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.globalCompositeOperation = 'source-over'
     ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.setLineDash([5, 4])
     ctx.beginPath(); corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.stroke(); ctx.restore()
-    // 发射点手柄
-    const cfg = pfx.ui.config, E = pt(W / 2 + (cfg.systemX || 0), H / 2 + (cfg.systemY || 0))
+    // 发射点手柄 / 路径点手柄（路径点：相对发射点，跟着系统旋转、缩放）
+    const cfg = pfx.ui.config, ex = W / 2 + (cfg.systemX || 0), ey = H / 2 + (cfg.systemY || 0), E = pt(ex, ey)
     hd.style.display = ''
     hd.style.left = E[0] + 'px'; hd.style.top = E[1] + 'px'
+    if (pathPts) {
+      const a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1, ca = Math.cos(a) * k, sa = Math.sin(a) * k
+      const els = $('#stage').querySelectorAll('.pfx-path-pt')
+      const line = []
+      pathPts.forEach((p, i) => { const q = pt(ex + p.x * ca - p.y * sa, ey + p.x * sa + p.y * ca); line.push(q); const el = els[i]; if (el) { el.style.display = ''; el.style.left = q[0] + 'px'; el.style.top = q[1] + 'px' } })
+      ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.strokeStyle = 'rgba(224,180,90,.7)'; ctx.lineWidth = 1; ctx.setLineDash([])
+      ctx.beginPath(); line.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); if (cfg.pathClosed !== false && line.length > 2) ctx.closePath(); ctx.stroke(); ctx.restore()
+    }
     if (!pfx.stage) return
-    // 时间：动画里的「起」之后才有；循环的先空跑一圈（和生成时一样）
-    const T = animOn() ? (state.frame + (state.playFrac || 0)) / FPS : 0, tau = T - Math.max(0, PS.start || 0) / FPS, D = pfx.D
-    if (tau < 0 || (!pfx.loop && tau > D + 4)) return
-    const target = pfx.loop ? D + (((tau % D) + D) % D) : tau
-    const e = pfx.stage
-    const stepTo = (t) => { let left = t - pfx.simT; while (left > 1e-6) { const dt = Math.min(1 / 60, left); e.step(dt); left -= dt } pfx.simT = t }
-    const resim = (t) => { e.engine.reset(pfx.cfg, { draw: false }); pfx.simT = 0; stepTo(t) }
-    if (target >= pfx.simT - 1e-6) { if (target - pfx.simT > 0.5) resim(target); else stepTo(target) }
-    else if (pfx.loop) { const k = Math.ceil((pfx.simT - target) / D - 1e-9), fwd = target + k * D - pfx.simT; if (fwd >= 0 && fwd < 0.5) stepTo(pfx.simT + fwd); else resim(target) }
-    else resim(target)
+    // 时间：动画够长（到「止」）就跟播放时间；动画比粒子短（比如空动画）就按粒子自己的时长播
+    const now = performance.now(), dt = pfx.lastNow ? Math.min(0.1, (now - pfx.lastNow) / 1000) : 0
+    pfx.lastNow = now
+    const D = pfx.D, startF = Math.max(0, PS.start || 0), endF = startF + Math.round(PS.duration)
+    const own = !animOn() || lastFrame() < endF
+    let tau
+    if (own) { pfx.clock = (pfx.clock || 0) + (state.playing || !animOn() || lastFrame() < 2 ? dt : 0); tau = pfx.clock % (D + (ParticleFx().anyLoop(pfx.ui.systems) ? 0 : 0.6)) }
+    else tau = (state.frame + (state.playFrac || 0) - startF) / FPS
+    if (tau < 0) return
+    for (const e of pfx.stage.list) {
+      const loop = !!e.cfg.loopAnimation
+      if (!loop && tau > D + 4) continue
+      const target = loop ? D + (((tau % D) + D) % D) : tau
+      const stepTo = (t) => { let left = t - e.simT; while (left > 1e-6) { const s1 = Math.min(1 / 60, left); e.engine.step(s1, { draw: false }); left -= s1 } e.simT = t }
+      const resim = (t) => { e.engine.reset(e.cfg, { draw: false }); e.simT = 0; stepTo(t) }
+      if (target >= e.simT - 1e-6) { if (target - e.simT > 0.5) resim(target); else stepTo(target) }
+      else if (loop) { const k = Math.ceil((e.simT - target) / D - 1e-9), fwd = target + k * D - e.simT; if (fwd >= 0 && fwd < 0.5) stepTo(e.simT + fwd); else resim(target) }
+      else resim(target)
+    }
     ctx.setTransform(d * pfx.J[0], d * pfx.J[1], d * pfx.J[2], d * pfx.J[3], d * S0[0], d * S0[1])
-    e.drawTo(ctx)
+    pfx.stage.drawTo(ctx)
     ctx.setTransform(1, 0, 0, 1, 0, 0)
   }
 
   function closeParticleLayer() {
-    const c = $('#pfxLayer'), hd = $('#pfxHandle')
-    if (c) c.remove()
-    if (hd) hd.remove()
+    for (const el of [$('#pfxLayer'), $('#pfxHandle'), ...$('#stage').querySelectorAll('.pfx-path-pt')]) if (el) el.remove()
   }
 
   function openParticlePanel() {
@@ -7637,32 +7690,25 @@
     if (!P || !UI) { status('粒子特效没有加载（particle-fx.js）', 'error'); return }
     if (!state.json) { status('先导入一个工程', 'error'); return }
     if (pfx) return
+    // 粒子放在选中的骨骼下面（2026-10-16 用户：粒子特效也要选了骨骼才能用）
+    const selBone = state.sel && state.sel.kind === 'bone' ? state.sel.name : (state.multi && state.multi[0]) || ''
+    if (!selBone || !state.json.bones.some((b) => b.name === selBone)) { status('先在画布或工程树里选中一个骨骼：粒子放在它下面', 'error'); return }
     if (!animOn()) {
       const names = Object.keys(state.json.animations || {})
       if (!names.length) { status('工程里还没有动画：先新建一个动画', 'error'); return }
       if (!names.includes(state.anim)) state.anim = names[0]
       setMode('animate')
     }
-    const PS = state.particleSet || (state.particleSet = { frames: 24, start: 0, duration: 0, width: 0, height: 0 })
-    if (!(PS.duration > 0)) PS.duration = lastFrame() > 1 ? lastFrame() : 60
-    // 跟随图层：选中的图层（插槽 / 附件）；骨骼：它所在的骨骼，没选图层就是选中的骨骼
-    const place = { slot: '', bone: '' }
-    const fromSelection = () => {
-      const sel = state.sel
-      const slot = sel && (sel.kind === 'slot' ? sel.name : sel.kind === 'att' ? sel.slot : '')
-      const sl = slot && state.json.slots.find((x) => x.name === slot)
-      if (sl) { place.slot = sl.name; place.bone = sl.bone; return true }
-      if (sel && sel.kind === 'bone') { place.slot = ''; place.bone = sel.name; return true }
-      return false
-    }
-    fromSelection()
+    const PS = state.particleSet || (state.particleSet = { frames: 24, start: 0, duration: 60, width: 512, height: 512 })
+    if (!(PS.duration > 1)) PS.duration = 60
+    if (!(PS.width > 0) || !(PS.height > 0)) { PS.width = 512; PS.height = 512 }
+    const place = { slot: '', bone: selBone }
     const sliceSize = () => {
       const img = layerImage(place.slot), r = img ? regionSize(img) : null
-      if (!r) { PS.width = 512; PS.height = 512; return }
+      if (!r) { PS.width = Math.max(PS.width || 512, 512); PS.height = Math.max(PS.height || 512, 512); return }
       const pad = Math.round(Math.min(600, Math.max(96, Math.max(r.width, r.height) * 0.5)))
       PS.width = Math.round(r.width + 2 * pad); PS.height = Math.round(r.height + 2 * pad)
     }
-    if (!(PS.width > 0) || !(PS.height > 0) || place.slot) sliceSize()
     const host = document.querySelector('.right.card') || document.body
     if (getComputedStyle(host).position === 'static') host.style.position = 'relative'
     const pngFile = (canvas, name) => new Promise((res, rej) => canvas.toBlob((b) => (b ? res(new File([b], name, { type: 'image/png' })) : rej(new Error('PNG 编码失败'))), 'image/png'))
@@ -7676,25 +7722,30 @@
       } catch (e) { restore(before); throw new Error('图片进图片文件夹失败：' + e.message) }
     }
     const startFrame = () => Math.max(0, Math.round(PS.start || 0))
-    pfx = { place, PS, ver: 0, simT: 0, stage: null, origin: null, ui: null }
+    pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, clock: 0 }
     pfx.ui = UI.openDock({
       host,
       last: state.particleLast,
       settings: () => ({ frames: PS.frames, duration: PS.duration, fps: FPS, start: PS.start || 0, width: PS.width, height: PS.height }),
       setSettings: (patch) => { Object.assign(PS, patch); pfxRestart() },
       onChange: () => pfxRestart(),
-      // 位置：跟随图层 / 骨骼 / 发射点
+      // 位置：骨骼 / 跟随图层 / 发射点
       place: (el) => {
         const line = (label, ctl) => h('div', { class: 'fxm-line' }, h('label', {}, label), ctl)
         const btn = (text, title, fn) => h('button', { class: 'fxm-btn', type: 'button', title, onclick: fn }, text)
         const bones = state.json.bones.map((b) => b.name)
         el.append(
-          line('图层', h('div', { class: 'fxm-seg' }, h('span', { style: 'align-self:center;color:#ddd;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, place.slot || '不跟图层'),
-            btn('用选中的', '在画布上点一个图层或骨骼，再点这里', () => { if (!fromSelection()) { status('先在画布上点一个图层或骨骼', 'error'); return } sliceSize(); pfx.ui.rerender(); pfxRestart() }),
-            place.slot ? btn('不跟', '原点放在骨骼原点', () => { place.slot = ''; sliceSize(); pfx.ui.rerender(); pfxRestart() }) : null)),
-          line('骨骼', h('select', { class: 'fxm-select', onchange: (e) => { place.bone = e.target.value; pfxRestart() } },
-            bones.map((b) => h('option', { value: b, selected: b === (place.bone || (bones.includes('root') ? 'root' : bones[0])) }, b)))),
-          line('发射点', h('div', { class: 'fxm-seg' }, btn('居中', '发射点回到原点（图层中心 / 骨骼原点）', () => { const cfg = pfx.ui.config; cfg.systemX = 0; cfg.systemY = 0; pfxRestart() }),
+          line('骨骼', h('select', { class: 'fxm-select', onchange: (e) => { place.bone = e.target.value; pfx.lastSel = state.sel && state.sel.kind === 'bone' ? state.sel.name : pfx.lastSel; pfxRestart() } },
+            bones.map((b) => h('option', { value: b, selected: b === place.bone }, b)))),
+          line('跟随图层', h('div', { class: 'fxm-seg' }, h('span', { style: 'align-self:center;color:#ddd;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, place.slot || '不跟'),
+            btn('用选中的', '在画布上点一个图层，再点这里：粒子以那张图的中心为原点', () => {
+              const s0 = state.sel, slot = s0 && (s0.kind === 'slot' ? s0.name : s0.kind === 'att' ? s0.slot : '')
+              const sl = slot && state.json.slots.find((x) => x.name === slot)
+              if (!sl) { status('先在画布上点一个图层', 'error'); return }
+              place.slot = sl.name; place.bone = sl.bone; sliceSize(); pfx.ui.rerender(); pfxRestart()
+            }),
+            place.slot ? btn('不跟', '原点放在骨骼原点', () => { place.slot = ''; pfx.ui.rerender(); pfxRestart() }) : null)),
+          line('发射点', h('div', { class: 'fxm-seg' }, btn('居中', '当前系统的发射点回到原点', () => { const cfg = pfx.ui.config; cfg.systemX = 0; cfg.systemY = 0; pfx.ui.rerender(); pfxRestart() }),
             h('span', { class: 'fxm-note', style: 'margin:0;align-self:center' }, '画布上拖绿点'))),
         )
       },
@@ -7703,17 +7754,18 @@
         const t0 = performance.now()
         const { folder, prefix } = particleFolderFor(layerImage(place.slot), particleStem(info.template))
         const files = []
-        await P.renderSequence({ config: info.config, width: info.width, height: info.height, frames: info.frames, duration: info.duration, loop: info.loop,
+        await P.renderSequence({ systems: info.systems, width: info.width, height: info.height, frames: info.frames, duration: info.duration,
           onFrame: async (i, canvas) => { info.busy(`渲染 ${i + 1}/${info.frames}`, ((i + 1) / info.frames) * 0.8); files.push(await pngFile(canvas, `${prefix}_${String(i + 1).padStart(2, '0')}.png`)) } })
         info.busy('写入图片文件夹…', 0.85)
         const names = await importFiles(files, folder)
         const o = particleOrigin(place), startF = startFrame(), endF = startF + Math.max(2, Math.round(PS.duration))
+        const loop = P.anyLoop(info.systems)
         state.frameBone = o.bone
-        const gen = { base: layerImage(place.slot), baseSlot: place.slot || null, bone: o.bone, blend: info.blend, mode: 'slot', wrap: info.loop, image: false, names: names.slice() }
+        const gen = { base: layerImage(place.slot), baseSlot: place.slot || null, bone: o.bone, blend: info.blend, mode: 'slot', wrap: loop, image: false, names: names.slice() }
         const r = edit(`粒子特效：${names.length} 张进一个插槽，第 ${startF} → ${endF} 帧，挂在 ${o.bone}（${state.anim}）`, (j) => {
           const start = startF / FPS, end = endF / FPS
           const place2 = { x: o.x, y: o.y, rotation: 0, scaleX: o.s, scaleY: o.s }
-          return { json: Ops.tidy(oneSlotSequence(j, { images: names, bone: o.bone, place: place2, baseSlotObj: { bone: o.bone }, gen, anim: state.anim, start, step: (end - start) / names.length, end, wrap: info.loop, animEnd: lastFrame() })) }
+          return { json: Ops.tidy(oneSlotSequence(j, { images: names, bone: o.bone, place: place2, baseSlotObj: { bone: o.bone }, gen, anim: state.anim, start, step: (end - start) / names.length, end, wrap: loop, animEnd: lastFrame() })) }
         }, () => gotoFrame(startF))
         info.busy(null)
         if (!r) throw new Error('写进动画失败')
@@ -7724,7 +7776,7 @@
       // 生成 Spine 动画：粒子页的 Spine 骨架（每个粒子一个插槽）加前缀并进当前工程
       onGenerateSpine: async (info) => {
         info.busy('计算粒子…', 0.2)
-        const parts = await P.spineParts(info.config, info.duration, info.loop)
+        const parts = await P.spineParts(info.systems, info.duration)
         const sk = parts.skeleton, A = (sk.animations && sk.animations.animation) || {}
         const { folder, prefix } = particleFolderFor(layerImage(place.slot), particleStem(info.template))
         info.busy('写入贴图…', 0.5)
@@ -7733,7 +7785,7 @@
         const imported = await importFiles(files, folder)
         const pathOf = new Map(parts.images.map((im, k) => [im.regionName, imported[k]]))
         const o = particleOrigin(place), startF = startFrame(), start = startF / FPS
-        const blend = info.blend === 'add' ? 'additive' : info.blend === 'screen' ? 'screen' : null
+        const blend = info.blend === 'add' ? 'additive' : info.blend === 'screen' ? 'screen' : info.blend === 'multiply' ? 'multiply' : null
         const r4 = (v) => Math.round(v * 100) / 100
         const shift = (keys) => (Array.isArray(keys) ? keys.map((k) => { const t = Math.round(((Number(k.time) || 0) + start) * 10000) / 10000; const out = { ...k }; if (t) out.time = t; else delete out.time; return out }) : keys)
         let made = 0
@@ -7753,7 +7805,7 @@
           for (const sl of sk.slots) {
             const name = `${P0}_${sl.name}`
             const slot = { ...sl, name, bone: bn(sl.bone) }
-            if (blend) slot.blend = blend; else delete slot.blend
+            if (blend) slot.blend = blend; else if (info.blend === 'normal') delete slot.blend
             json.slots.push(slot)
             mine.push(name)
             const atts = srcSkin.attachments[sl.name] || {}, out = {}
@@ -7781,7 +7833,8 @@
       onClose: (st) => { state.particleLast = st; pfx = null; closeParticleLayer() },
     })
     pfxLayer()
-    if (!state.playing) state.playing = true   // 打开就播放：粒子跟着动画动
+    // 动画够长才跟着播（空动画一直停在第 0 帧，粒子自己播）
+    if (!state.playing && lastFrame() >= startFrame() + Math.round(PS.duration)) state.playing = true
     pfxRestart()
   }
 
@@ -10315,6 +10368,7 @@
   /** The left panels open / close (one at a time, the host enforces it). */
   function setPanel(kind, open) {
     if (!state.json) return
+    if (open && pfx && pfx.ui) pfx.ui.close()   // 切到别的功能：粒子面板自动关（2026-10-16 用户）
     if (kind === 'mesh' || kind === 'weights') {
       // 权重 works in 动画 mode too (the posed mesh is painted); 蒙皮 edits the mesh itself, in 设置
       if (open) { if (kind === 'mesh' && state.mode !== 'setup') setMode('setup'); state.meshEdit = null; state.weightEdit = null; state.leftOpen = kind }
@@ -10436,8 +10490,12 @@
     /** 序列扫光 generator: the picker (底图), then the scheme / parameter panel */
     openSweepGenerator,
     openSweepPanel,
-    /** 动画工具 → 粒子特效：扩展弹框 */
+    /** 动画工具 → 粒子特效：右侧面板；切到别的功能时关 */
     openParticlePanel,
+    closeParticlePanel: () => { if (pfx && pfx.ui) pfx.ui.close() },
+    particleOpen: () => !!pfx,
+    /** 根骨骼（动画工具展开时没选骨骼就选它） */
+    rootBone: () => (state.json && ((state.json.bones.find((b) => !b.parent) || state.json.bones[0] || {}).name)) || null,
     density: () => state.meshDensity,
     setDensity: (v) => { state.meshDensity = Math.max(2, Math.min(40, Math.round(Number(v) || 18))) },
     /** the batch tools of 蒙皮 / 权重 on the ticked layer cards (status shows the result) */

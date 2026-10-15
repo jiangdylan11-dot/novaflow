@@ -137,6 +137,7 @@
   function tick() {
     const ws = enabled() ? findWorkspace() : null
     if (!ws || !visible(ws)) {
+      if (frame && frame.style.display !== 'none') { try { if (api && api.closeParticlePanel) api.closeParticlePanel() } catch { /* the editor is gone */ } }
       if (frame) frame.style.display = 'none'
       setModalBackdrop(false)
       releaseWorkspace()
@@ -760,6 +761,8 @@
     setPanel: (kind, open) => { ready().then((a) => a.setPanel(kind, open)) },
     /** 动画工具 → 粒子特效（扩展弹框） */
     openParticle: () => { ready().then((a) => { if (a.openParticlePanel) a.openParticlePanel() }) },
+    /** 切到别的功能：粒子面板自动关 */
+    closeParticle: () => { try { if (api && api.closeParticlePanel) api.closeParticlePanel() } catch { /* the editor is gone */ } },
     beforeMotion,
     reserveForMotion,
     timeline: () => (anchor && anchor.isConnected ? anchor : null),
