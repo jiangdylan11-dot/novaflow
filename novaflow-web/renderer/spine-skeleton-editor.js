@@ -755,6 +755,68 @@
     b.setBlendMode = (src, dst) => { orig(src, dst); if (dst === gl.ONE) gl.blendFuncSeparate(src, gl.ONE, gl.ZERO, gl.ONE) }
   }
 
+  /**
+   * The checkerboard, drawn into the canvas itself (2026-10-15). The stage used to stay transparent
+   * over a CSS checkerboard, and an additive slot (叠加 - every 特效扫光 slice) left lit pixels with
+   * alpha 0 there: invalid premultiplied colour, whose compositing the WebGL spec leaves to the
+   * platform. Windows Chrome added it over the page; Mac Chrome dropped it, so a friend's Mac showed
+   * the hammer's glow cut off at its outline, jagged. Opaque like Spine's viewport, the light lands on
+   * a real background and every platform shows the same picture. `diagonal` 0: the `square` cells sit
+   * top-left / bottom-right of each two-by-two tile (the stage's SVG); 1: top-right / bottom-left (the
+   * preview's conic gradient). Cells count from the canvas's top-left corner, as the CSS ones did.
+   */
+  const checkerPrograms = new WeakMap()
+  function paintChecker(gl, height, cell, base, square, diagonal) {
+    gl.clearColor(base[0], base[1], base[2], 1)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    let p = checkerPrograms.get(gl)
+    if (p === undefined) {
+      p = null
+      try {
+        const shader = (type, src) => { const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh }
+        const program = gl.createProgram()
+        gl.attachShader(program, shader(gl.VERTEX_SHADER, 'attribute vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }'))
+        gl.attachShader(program, shader(gl.FRAGMENT_SHADER, [
+          'precision mediump float;',
+          'uniform float height; uniform float cell; uniform float diagonal; uniform vec3 base; uniform vec3 square;',
+          'void main() {',
+          '  vec2 q = floor(vec2(gl_FragCoord.x, height - gl_FragCoord.y) / cell);',
+          '  float odd = mod(q.x + q.y, 2.0);',
+          '  gl_FragColor = vec4(mix(base, square, diagonal < 0.5 ? 1.0 - odd : odd), 1.0);',
+          '}'].join('\n')))
+        gl.linkProgram(program)
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program))
+        const buffer = gl.createBuffer()
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)   // one triangle over the whole view
+        const at = (n) => gl.getUniformLocation(program, n)
+        p = { program, buffer, pos: gl.getAttribLocation(program, 'p'), height: at('height'), cell: at('cell'), diagonal: at('diagonal'), base: at('base'), square: at('square') }
+      } catch { p = null }   // no shader: the plain base colour, still opaque
+      checkerPrograms.set(gl, p)
+    }
+    if (!p) return
+    const blend = gl.isEnabled(gl.BLEND)
+    gl.disable(gl.BLEND)
+    gl.useProgram(p.program)
+    gl.bindBuffer(gl.ARRAY_BUFFER, p.buffer)
+    gl.enableVertexAttribArray(p.pos)
+    gl.vertexAttribPointer(p.pos, 2, gl.FLOAT, false, 0, 0)
+    gl.uniform1f(p.height, height)
+    gl.uniform1f(p.cell, cell)
+    gl.uniform1f(p.diagonal, diagonal)
+    gl.uniform3fv(p.base, base)
+    gl.uniform3fv(p.square, square)
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+    // leave nothing behind for the skeleton renderer, which binds its own program and buffers
+    gl.disableVertexAttribArray(p.pos)
+    gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    gl.useProgram(null)
+    if (blend) gl.enable(gl.BLEND)
+  }
+  const grey = (v) => [v / 255, v / 255, v / 255]
+  const STAGE_CHECKER = [grey(0x1c), grey(0x20), 0]   // .stage: #1c1c1c, #202020 squares top-left / bottom-right
+  const PREVIEW_CHECKER = [grey(0x1a), grey(0x20), 1]  // .pv-view: #1a1a1a, #202020 top-right / bottom-left
+
   // ------------------------------------------------------------------ 预览 (Spine's Preview view)
   //
   // Its own canvas, skeleton and AnimationState, apart from the editing stage: click an
@@ -881,8 +943,7 @@
     try { list = pvBuild() } catch (e) { return }
     const gl = pv.gl, r = pv.renderer
     gl.viewport(0, 0, w, hh)
-    gl.clearColor(0, 0, 0, 0)
-    gl.clear(gl.COLOR_BUFFER_BIT)
+    paintChecker(gl, hh, 12 * dpr, ...PREVIEW_CHECKER)
     r.camera.setViewport(w, hh)
     r.camera.zoom = pv.cam.zoom / dpr
     for (const e of list) {
@@ -2300,8 +2361,7 @@
     resize()
     const gl = rt.gl
     gl.viewport(0, 0, $('#gl').width, $('#gl').height)
-    gl.clearColor(0, 0, 0, 0)
-    gl.clear(gl.COLOR_BUFFER_BIT)
+    paintChecker(gl, $('#gl').height, 12 * (rt.dpr || 1), ...STAGE_CHECKER)
     const activeShown = !projects[activeProject] || projects[activeProject].visible !== false
     if (state.opt.imgVis) for (let i = 0; i < activeProject; i++) drawOtherProject(i)
     if (rt.skeleton && state.opt.imgVis && activeShown) {
