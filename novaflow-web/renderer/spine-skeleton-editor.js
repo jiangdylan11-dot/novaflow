@@ -1420,8 +1420,23 @@
 
   // ------------------------------------------------------------------ actions
 
-  const bone = (name) => state.json.bones.find((b) => b.name === name)
-  const slotOf = (name) => state.json.slots.find((s) => s.name === name)
+  // 按名字找骨骼 / 插槽：按名字 → 下标的对照表直接取（2026-10-16：粒子并进几百根骨骼后，逐个比拖慢了每帧绘制和工程树）。
+  // 取到的那个名字对不上（就地改名、增删、换位）就回退到逐个比，并让表下次重建——结果和原来的 find 一样
+  function namedLookup(listOf) {
+    let index = null, of = null
+    return (name) => {
+      const list = listOf()
+      if (!list) return undefined
+      if (of !== list || !index) { index = new Map(); list.forEach((x, i) => { if (x && !index.has(x.name)) index.set(x.name, i) }); of = list }
+      const i = index.get(name)
+      if (i != null && list[i] && list[i].name === name) return list[i]
+      const found = list.find((x) => x.name === name)
+      if (found) index = null
+      return found
+    }
+  }
+  const bone = namedLookup(() => state.json && state.json.bones)
+  const slotOf = namedLookup(() => state.json && state.json.slots)
   const skinOf = (name) => state.json.skins.find((s) => s.name === name)
 
   function depthOf(name) {
@@ -7812,9 +7827,16 @@
       onGenerateSequence: async (info) => {
         const t0 = performance.now()
         const { folder, prefix } = particleFolderFor()
-        const files = []
+        // 每帧拷一份画布就交给编码（不等），全部渲染完再一起等编码完——不一张一张让出主线程
+        const pending = []
         await P.renderSequence({ systems: info.systems, width: info.width, height: info.height, frames: info.frames, duration: info.duration,
-          onFrame: async (i, canvas) => { info.busy(`渲染 ${i + 1}/${info.frames}`, ((i + 1) / info.frames) * 0.8); files.push(await pngFile(canvas, `${prefix}_${String(i + 1).padStart(2, '0')}.png`)) } })
+          onFrame: (i, canvas) => {
+            const copy = h('canvas', { width: canvas.width, height: canvas.height }); copy.getContext('2d').drawImage(canvas, 0, 0)
+            pending.push(pngFile(copy, `${prefix}_${String(i + 1).padStart(2, '0')}.png`))
+            if (i % 4 === 3 || i === info.frames - 1) info.busy(`渲染 ${i + 1}/${info.frames}`, ((i + 1) / info.frames) * 0.7)
+          } })
+        info.busy('编码切片…', 0.75)
+        const files = await Promise.all(pending)
         info.busy('写入图片文件夹…', 0.85)
         const names = await importFiles(files, folder)
         const o = particleOrigin(place), startF = startFrame(), endF = startF + Math.max(2, Math.round(PS.duration))
@@ -7827,10 +7849,9 @@
           const json = oneSlotSequence(j, { images: names, bone: o.bone, place: place2, baseSlotObj: { bone: o.bone }, gen, anim: state.anim, start, step: (end - start) / names.length, end, wrap: loop, animEnd: lastFrame() })
           const made = json.slots.filter((x) => (json.skins.find((k) => k.name === 'default') || { attachments: {} }).attachments[x.name] && Object.values((json.skins.find((k) => k.name === 'default')).attachments[x.name]).some((a) => names.includes(a.path))).map((x) => x.name)
           return { json: Ops.tidy(made.length ? placeLayer(json, made) : json) }
-        }, () => gotoFrame(startF))
+        }, () => { if (animOn()) { state.playing = false; state.temp.clear(); state.frame = startF; pose() } })   // edit 自己会刷新一次，这里不再刷新
         info.busy(null)
         if (!r) throw new Error('写进动画失败')
-        refresh()
         info.setInfo(`已生成：${names.length} 张切片进「${folder}」，写进动画 ${state.anim} 第 ${startF} → ${endF} 帧（${((performance.now() - t0) / 1000).toFixed(1)} s）。可以接着调、再生成，或关掉面板。`)
         status(`粒子特效：${names.length} 张切片已写进动画`, 'ok')
       },
@@ -7889,10 +7910,9 @@
           }
           made = mine.length
           return { json: Ops.tidy(Ops.prepare(out)) }
-        }, () => gotoFrame(startF))
+        }, () => { if (animOn()) { state.playing = false; state.temp.clear(); state.frame = startF; pose() } })   // edit 自己会刷新一次
         info.busy(null)
         if (!r) throw new Error('并进工程失败')
-        refresh()
         info.setInfo(`已生成：${made} 个粒子插槽并进工程（贴图在「${folder}」），动画 ${state.anim} 从第 ${startF} 帧开始。`)
         status(`粒子特效：${made} 个粒子插槽已并进工程`, 'ok')
       },
