@@ -55,7 +55,7 @@
 .fxm-sec{padding:10px 0 4px;border-bottom:1px solid #262626}
 .fxm-sec:last-child{border-bottom:0}
 .fxm-sec-title{font-size:13px;font-weight:500;color:#eee;margin:2px 0 8px}
-.fxm-row{display:grid;grid-template-columns:56px minmax(0,1fr) 38px;align-items:center;gap:8px;min-height:26px}
+.fxm-row{display:grid;grid-template-columns:56px minmax(0,1fr) 46px;align-items:center;gap:8px;min-height:26px}
 .fxm-row label{color:#b9bcbf}
 .fxm-row input[type=range],.fxm-scrub{-webkit-appearance:none;appearance:none;width:100%;height:3px;margin:0;padding:0;border:0;border-radius:3px;outline:0;box-shadow:none;background:linear-gradient(90deg,${GREEN} 0,${GREEN} var(--pct,0%),#3b3b3b var(--pct,0%),#3b3b3b 100%)}
 .fxm-row input[type=range]::-webkit-slider-runnable-track,.fxm-scrub::-webkit-slider-runnable-track{-webkit-appearance:none;height:3px;background:transparent;border:0;box-shadow:none}
@@ -65,6 +65,9 @@
 .fxm-num{width:84px;height:24px;background:#2B2B2B;border:0;border-radius:6px;color:#eee;font:inherit;font-size:12px;padding:0 4px 0 8px;box-sizing:border-box}
 .fxm-num::-webkit-inner-spin-button{opacity:.4}
 .fxm-row .fxm-val{font-size:11px;color:#9a9ea3;text-align:right}
+.fxm-row input.fxm-val{width:100%;height:22px;margin:0;padding:0 5px;border:0;border-radius:6px;outline:0;box-shadow:none;background:#2B2B2B;color:#e9e9e9;font:inherit;font-size:11px;box-sizing:border-box;-moz-appearance:textfield}
+.fxm-row input.fxm-val::-webkit-inner-spin-button,.fxm-row input.fxm-val::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.fxm-row input.fxm-val:disabled{background:#242424;color:#6f7378}
 .fxm-row[data-inert="1"]{opacity:.38}
 .fxm-seg{display:flex;gap:4px;flex-wrap:wrap}
 .fxm-seg .fxm-btn{height:24px;padding:0 8px}
@@ -431,7 +434,7 @@ self.postMessage({ type: 'ready' })`
     function syncStartSlider() {
       const row = E.params.querySelector('[data-key="startAngle"]'), input = row && row.querySelector('input')
       if (!input) return
-      const v = startAngle(); input.value = v; setFill(input, (v / 359) * 100 + '%'); row.querySelector('.fxm-val').textContent = v + '°'
+      const v = startAngle(); input.value = v; setFill(input, (v / 359) * 100 + '%'); showValue(row.querySelector('.fxm-val'), v, { step: 1, format: (x) => x + '°' })
     }
     function usesStart() { const f = fx(); return !(f.inert && f.inert.start) && (f.kind === 'edge' || f.id === 'orbit') }
     function startOnContour() {
@@ -749,10 +752,19 @@ self.postMessage({ type: 'ready' })`
     // ---------------------------------------------------------------- 右侧参数
     const pct = (v, d) => ((Math.max(d.min, Math.min(d.max, v)) - d.min) / ((d.max - d.min) || 1)) * 100 + '%'
     const show = (v, d) => (d.format ? d.format(v) : fmt(v, d.step))
+    // the value beside a slider is a box to type into (user 2026-10-16: 滑条很难操作); only 时长, whose
+    // slider steps through named lengths, keeps its label (box: false)
     function slider(key, def, value, onInput, inertReason) {
       const v = value == null ? def.def : value
+      const val = def.box === false ? `<span class="fxm-val">${esc(show(v, def))}</span>`
+        : `<input class="fxm-val" type="number" min="${def.min}" max="${def.max}" step="${def.step}" value="${fmt(v, def.step)}" ${inertReason ? 'disabled' : ''}>`
       return { html: `<div class="fxm-row" data-key="${key}" ${inertReason ? `data-inert="1" title="${esc(inertReason)}"` : ''}><label>${esc(def.label)}</label>`
-        + `<input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${v}" style="--pct:${pct(v, def)};--nf-range-pct:${pct(v, def)}" ${inertReason ? 'disabled' : ''}><span class="fxm-val">${esc(show(v, def))}</span></div>`, key, def, onInput }
+        + `<input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${v}" style="--pct:${pct(v, def)};--nf-range-pct:${pct(v, def)}" ${inertReason ? 'disabled' : ''}>${val}</div>`, key, def, onInput }
+    }
+    /** The value beside a slider: the box takes the bare number, the label the formatted one. */
+    function showValue(el, v, def) {
+      if (!el) return
+      if (el.tagName === 'INPUT') { if (document.activeElement !== el) el.value = fmt(v, def.step) } else el.textContent = show(v, def)
     }
     function seg(key, label, items, value, onPick, inertReason) {
       return { html: `<div class="fxm-line" data-seg="${key}" ${inertReason ? `data-inert="1" title="${esc(inertReason)}"` : ''}><label>${esc(label)}</label><div class="fxm-seg">`
@@ -767,7 +779,7 @@ self.postMessage({ type: 'ready' })`
       const canvasItems = SW ? sweepCanvasItems() : [
         seg('canvas', '尺寸', FX().CANVAS_CHOICES.map((id) => { const c = FX().CANVASES.find((x) => x.id === id); return { id, label: c.label, disabled: id === 'base' && !S.base ? '先上传底图' : '' } }), FX().CANVAS_CHOICES.includes(p.canvas.preset) ? p.canvas.preset : '', (v) => setCanvas(v)),
         ...(p.canvas.preset === 'custom' ? [{ html: `<div class="fxm-line" data-custom-size><label>宽 × 高</label><div class="fxm-seg"><input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().w}" data-cw> <input class="fxm-num" type="number" min="128" max="1024" step="32" value="${size().h}" data-ch></div></div>` }] : []),
-        slider('frames', { label: '时长', min: 0, max: FX().DURATIONS.length - 1, step: 1, def: 1, format: (i) => FX().DURATIONS[Math.round(i)].label }, Math.max(0, FX().DURATIONS.findIndex((d) => d.frames === n())), (v) => { p.frames = FX().DURATIONS[Math.round(v)].frames; S.playhead = 0 }),
+        slider('frames', { label: '时长', min: 0, max: FX().DURATIONS.length - 1, step: 1, def: 1, box: false, format: (i) => FX().DURATIONS[Math.round(i)].label }, Math.max(0, FX().DURATIONS.findIndex((d) => d.frames === n())), (v) => { p.frames = FX().DURATIONS[Math.round(v)].frames; S.playhead = 0 }),
         seg('lifecycle', '播放', [{ id: 'loop', label: '循环' }, { id: 'once', label: '一次性' }], p.lifecycle, (v) => { p.lifecycle = v; changed() }),
       ]
       controls.push(...canvasItems); html.push(sec('画板', canvasItems))
@@ -830,7 +842,14 @@ self.postMessage({ type: 'ready' })`
           const row = E.params.querySelector(`[data-key="${c.key}"]`), input = row && row.querySelector('input'), val = row && row.querySelector('.fxm-val')
           if (!input) continue
           const shapeKey = ['corner', 'offset', 'star.points', 'star.inner', 'traceDetail', 'base.scale'].includes(c.key)
-          input.oninput = () => { const v = Number(input.value); val.textContent = show(v, c.def); setFill(input, pct(v, c.def)); c.onInput(v); if (c.key !== 'base.opacity' && c.key !== 'base.scale') changed(true, shapeKey) }
+          input.oninput = () => { const v = Number(input.value); showValue(val, v, c.def); setFill(input, pct(v, c.def)); c.onInput(v); if (c.key !== 'base.opacity' && c.key !== 'base.scale') changed(true, shapeKey) }
+          // a typed value (Enter or leaving the box): the slider takes it - clamped to its range and
+          // snapped to its step - and the box shows what was taken
+          if (val && val.tagName === 'INPUT') val.onchange = () => {
+            const typed = Number(val.value)
+            if (val.value.trim() !== '' && Number.isFinite(typed)) { input.value = String(typed); input.oninput() }
+            val.value = fmt(Number(input.value), c.def.step)
+          }
         }
       }
       const cw = E.params.querySelector('[data-cw]'), ch = E.params.querySelector('[data-ch]')
