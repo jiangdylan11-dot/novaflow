@@ -25,7 +25,7 @@
 .pfx-sec-hd:hover{background:#262626}
 .pfx-sec-hd i{margin-left:auto;width:0;height:0;border-left:4px solid #8a8e93;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;transition:transform .12s}
 .pfx-sec[data-open="1"] .pfx-sec-hd i{transform:rotate(90deg)}
-.pfx-sec-bd{padding:4px 12px 12px;display:none}
+.pfx-sec-bd{padding:4px 22px 14px 28px;display:none}
 .pfx-sec[data-open="1"] .pfx-sec-bd{display:block}
 .pfx-sl{margin:6px 0 2px}
 .pfx-sl-top{display:flex;align-items:center;gap:6px;min-height:22px}
