@@ -3620,7 +3620,14 @@
     return name || 'novaflow_aifx'
   }
 
-  const exportResultVideo = async (options = {}) => {
+  // 画板上的原素材文件（没有生成结果时导出它）
+  const sourceVideoBytes = async () => {
+    const blob = state.source && state.source.blob
+    if (!(blob instanceof Blob)) throw new Error('AI 特效：这份素材没有视频文件，请用序列帧导出')
+    return new Uint8Array(await blob.arrayBuffer())
+  }
+
+  const exportResultVideo = async (options = {}, fromSource = false) => {
     const api = exportApi()
     for (const method of ['exportPickSaveFile', 'exportCreateTempDir', 'exportEncodeVideoToVideo', 'exportCleanupDir']) {
       if (typeof api[method] !== 'function') throw new Error('AI 特效：导出仅支持桌面版')
@@ -3631,8 +3638,8 @@
     if (!pick || !pick.filePath) throw new Error('AI 特效：没有选择保存位置')
     const scale = Number(options.scalePct)
     const scalePct = Number.isFinite(scale) && scale > 0 ? Math.max(10, Math.min(200, Math.round(scale))) : 100
-    setStatus('导出中', '正在读取结果视频…')
-    const bytes = await resultVideoBytes()
+    setStatus('导出中', fromSource ? '正在读取素材视频…' : '正在读取结果视频…')
+    const bytes = fromSource ? await sourceVideoBytes() : await resultVideoBytes()
     let dir = ''
     try {
       const temp = await api.exportCreateTempDir({ prefix: 'novaflow_aifx_vid_' })
@@ -3665,7 +3672,7 @@
     return { canceled: false, filePath: String(pick.filePath), format }
   }
 
-  const exportResultSequence = async (options = {}) => {
+  const exportResultSequence = async (options = {}, shownFrames = null) => {
     const api = exportApi()
     if (typeof api.pickDirectory !== 'function') throw new Error('AI 特效：导出仅支持桌面版')
     const client = CLIENT()
@@ -3675,7 +3682,7 @@
     if (!pick || !pick.dir) throw new Error('AI 特效：没有选择文件夹')
     const dir = String(pick.dir)
     const baseName = exportBaseName(options)
-    const frames = state.result.frames
+    const frames = shownFrames || state.result.frames
     const total = frames.length
     const digits = Math.max(4, String(total).length)
     // 透明背景 is the point of the panel, so it is the default; the dialog can
@@ -3683,7 +3690,7 @@
     const transparent = options.transparent !== false
     for (let index = 0; index < total; index += 1) {
       setStatus('导出中', '正在写入序列帧 ' + (index + 1) + '/' + total)
-      const image = await client.loadImage(frames[index])
+      const image = typeof frames[index] === 'string' ? await client.loadImage(frames[index]) : frames[index]
       let canvas
       if (transparent) {
         canvas = client.keyFrameToRgba(image, {})
@@ -3701,25 +3708,40 @@
     return { canceled: false, dir, count: total, transparent }
   }
 
+  // 导出画板上显示的东西（2026-10-16 用户：没有生成也能导出）：和 drawPreview 一样——
+  // 模板预览 / 还没生成 = 原素材，有生成结果（对比 / 结果）= 结果
+  const exportTarget = () => {
+    const hasResult = Boolean(state.result && Array.isArray(state.result.frames) && state.result.frames.length)
+    const hasSource = Array.isArray(state.sourceFrames) && state.sourceFrames.length > 0
+    if (hasResult && state.previewMode !== 'template') return { kind: 'result', frames: state.result.frames }
+    if (hasSource) return { kind: 'source', frames: state.sourceFrames }
+    if (hasResult) return { kind: 'result', frames: state.result.frames }
+    return null
+  }
+
   const dispatchExport = async (mode, options = {}) => {
     if (state.isGenerating) throw new Error('AI 特效正在生成，请完成后再导出')
-    if (!state.result) throw new Error('AI 特效：还没有可导出的结果')
+    const target = exportTarget()
+    if (!target) throw new Error('AI 特效：画板上还没有可导出的内容')
     const kind = String(mode || 'final')
-    if (kind === 'video') return exportResultVideo(options)
-    if (kind === 'final' || kind === 'seq') return exportResultSequence(options)
+    if (kind === 'video') return exportResultVideo(options, target.kind === 'source')
+    if (kind === 'final' || kind === 'seq') return exportResultSequence(options, target.frames)
     if (kind === 'spine') throw new Error('AI 特效暂不支持 Spine 导出，请用序列帧或视频')
     throw new Error('AI 特效：未知的导出方式 ' + kind)
   }
 
   // What the brand runtime's availability check reads before it opens the
   // dialog: a result and its frames.
-  const exportState = () => ({
-    ...state,
-    finalProduct: state.result
-      ? { video: resultVideoUrl(), frameCount: state.result.frames.length }
-      : null,
-    generatedFrames: state.resultFrames,
-  })
+  const exportState = () => {
+    const target = exportTarget()
+    return {
+      ...state,
+      finalProduct: target
+        ? { video: target.kind === 'result' ? resultVideoUrl() : String((state.source && state.source.objectUrl) || ''), frameCount: target.frames.length, source: target.kind }
+        : null,
+      generatedFrames: target ? target.frames : [],
+    }
+  }
 
   const openApp = async (trigger) => {
     uiTraceCurrent('CurrentAifxRuntimePanel', { phase: 'openApp' })
