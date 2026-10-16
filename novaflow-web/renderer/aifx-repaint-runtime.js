@@ -1365,7 +1365,6 @@
               <div class="aifx-title">AI 特效</div>
               <div class="aifx-subtitle" data-aifx-subtitle>把一段黑底特效换成另一种属性，形态跟着材质重建。</div>
             </div>
-            <button class="aifx-close" data-action="close" type="button">返回粒子特效</button>
           </header>
           <section class="aifx-preview-wrap">
             <canvas class="aifx-preview-grid" data-preview-grid></canvas>
@@ -3155,7 +3154,8 @@
       })
     }
 
-    root.querySelector('[data-action="close"]').addEventListener('click', closeApp)
+    // 「返回粒子特效」按钮已取消（特效 = AI 特效，2026-10-16）：有就挂，没有跳过
+    root.querySelector('[data-action="close"]')?.addEventListener('click', closeApp)
     const IMAGE_TYPES = /image\//
 
     root.querySelector('[data-action="pick-template"]')
@@ -3726,7 +3726,8 @@
     cancelScheduledHostScrollFreeze()
     const root = mount()
     if (!root.classList.contains('is-open')) {
-      for (const key of Object.keys(state.sectionOpen)) state.sectionOpen[key] = false
+      // 进入时「特效模板」默认打开，其他组收起（2026-10-16 用户）
+      for (const key of Object.keys(state.sectionOpen)) state.sectionOpen[key] = key === 'template'
       syncSectionOpen(root)
     }
     updateShellInset(trigger)

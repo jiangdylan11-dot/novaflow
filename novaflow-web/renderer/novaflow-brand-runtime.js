@@ -6605,8 +6605,19 @@
       preserveNovaflowAifxExportSurface();
       return false;
     }
-    SECONDARY_ACTIVE_BY_GROUP.set(groupKey, "\u7c92\u5b50\u7279\u6548");
+    // 特效 is AI 特效 now (2026-10-16 user: the old particle page is gone, no 粒子特效 / AI特效
+    // switch): every entry opens the AI 特效 surface; React stays on its particle page underneath.
+    SECONDARY_ACTIVE_BY_GROUP.set(groupKey, "AI\u7279\u6548");
     SECONDARY_USER_SELECTED_BY_GROUP.delete(groupKey);
+    const aifxApi = window.NovaFlowAifxMvp;
+    if (aifxApi && typeof aifxApi.open === "function") {
+      try {
+        aifxApi.open();
+      } catch (error) {
+        console.error("[NovaFlow] failed to open AI effects surface", error);
+      }
+      return true;
+    }
     const root = getNovaflowAifxRoot();
     const hasResidualSurface = Boolean(
       body.classList.contains("novaflow-aifx-open") ||
@@ -22649,8 +22660,8 @@
         top: ${TOPBAR_HEIGHT}px !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-side {
-        margin-top: ${PRIMARY_PANEL_TOP_GAP + 65}px !important;
-        height: calc(100% - ${PRIMARY_PANEL_TOP_GAP + 65 + PRIMARY_PANEL_BOTTOM_GAP + 11}px) !important;
+        margin-top: ${PRIMARY_PANEL_TOP_GAP + 11}px !important;
+        height: calc(100% - ${PRIMARY_PANEL_TOP_GAP + 11 + PRIMARY_PANEL_BOTTOM_GAP + 11}px) !important;
         background: transparent !important;
         background-color: transparent !important;
       }
@@ -30293,21 +30304,25 @@
     };
   }
 
-  // The 音视 section (audio-studio.tool.js) owns a rail cell of its own and
-  // asks for the slot right under 特效: the entries after it (动画 / 美工 / 工具)
-  // move down one slot while that cell exists.
-  const PRIMARY_EXTRA_RAIL_SLOT = 1;
+  // Rail order on screen (2026-10-16 user: 动画 at the top): 动画 / 特效 / 音视 / 美工 / 工具.
+  // The entry indices stay React's (0 特效, 1 动画, 2 美工, 3 工具); only the slot each one
+  // is painted in changes. The 音视 section (audio-studio.tool.js) owns a rail cell of
+  // its own right under 特效: the entries after it move down one slot while it exists.
+  const PRIMARY_RAIL_ORDER = [1, 0, 2, 3];
+  const PRIMARY_EXTRA_RAIL_SLOT = PRIMARY_RAIL_ORDER.indexOf(0) + 1;
   function primaryExtraRailCells() {
     return document.querySelectorAll('[data-novaflow-primary-extra-cell="1"]').length ? 1 : 0;
   }
   function primaryRailSlotForIndex(index) {
-    return index + (index >= PRIMARY_EXTRA_RAIL_SLOT ? primaryExtraRailCells() : 0);
+    const at = PRIMARY_RAIL_ORDER.indexOf(index);
+    const pos = at < 0 ? index : at;
+    return pos + (pos >= PRIMARY_EXTRA_RAIL_SLOT ? primaryExtraRailCells() : 0);
   }
   function primaryIndexForRailSlot(slot) {
     const extra = primaryExtraRailCells();
-    if (!extra) return slot;
-    if (slot === PRIMARY_EXTRA_RAIL_SLOT) return -1;
-    return slot > PRIMARY_EXTRA_RAIL_SLOT ? slot - extra : slot;
+    if (extra && slot === PRIMARY_EXTRA_RAIL_SLOT) return -1;
+    const pos = extra && slot > PRIMARY_EXTRA_RAIL_SLOT ? slot - extra : slot;
+    return pos >= 0 && pos < PRIMARY_RAIL_ORDER.length ? PRIMARY_RAIL_ORDER[pos] : pos;
   }
 
   function updatePrimarySidebarLayout(buttons, rail) {
@@ -37214,7 +37229,7 @@
       // pages', and its 600 stage block under it.
       const mvp = document.getElementById("novaflow-aifx-mvp");
       const mvpTop = TOPBAR_HEIGHT;
-      const sideTop = top + 65;
+      const sideTop = top + 11;   // no 粒子特效 / AI特效 switch above it (2026-10-16)
       placeNovaflowStackNode(mvp, {
         position: "fixed", top: `${mvpTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
         width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
@@ -58323,10 +58338,13 @@
     // under 音视 / 视频 (body flag "ai") the 视频 | 音频 toggle of audio-studio.tool.js
     // floats over the group's spot, so the content keeps its place below it.
     // React reuses the group node across sections, so this is decided per pass.
-    const animationPair = isAiSequenceSecondaryGroup(buttons.map((button) => normalizeText(button?.textContent || "")));
-    nfSetStyleIfChanged(group, "opacity", animationPair ? "0" : "", animationPair ? "important" : "");
-    nfSetStyleIfChanged(group, "pointer-events", animationPair ? "none" : "", animationPair ? "important" : "");
-    nfSetStyleIfChanged(group, "clip-path", animationPair ? "inset(100%)" : "", animationPair ? "important" : "");
+    const pairLabels = buttons.map((button) => normalizeText(button?.textContent || ""));
+    const animationPair = isAiSequenceSecondaryGroup(pairLabels);
+    // 特效 has no 粒子特效 / AI特效 switch either (2026-10-16): same invisible group
+    const hiddenPair = animationPair || pairLabels.join("|") === "\u7c92\u5b50\u7279\u6548|AI\u7279\u6548";
+    nfSetStyleIfChanged(group, "opacity", hiddenPair ? "0" : "", hiddenPair ? "important" : "");
+    nfSetStyleIfChanged(group, "pointer-events", hiddenPair ? "none" : "", hiddenPair ? "important" : "");
+    nfSetStyleIfChanged(group, "clip-path", hiddenPair ? "inset(100%)" : "", hiddenPair ? "important" : "");
     // the AI rows keep their place while React still shows them (音视 -> 动画 renders the
     // 骨骼 page asynchronously); the mount observer re-runs this pass when the 骨骼 rows land
     const secondaryCollapsed = animationPair && animationWantedSecondaryLabel() !== "AI序列动画" && !areAiAnimationRowsShown();
@@ -86584,12 +86602,14 @@
       button instanceof HTMLElement &&
       isStartupReadyRect(button, Math.min(40, PRIMARY_SIDEBAR_ITEM_WIDTH - 1), 40)
     ));
+    const defaultReady = primaryReady && ensureStartupDefaultAnimation(primaryTargetClass);
     const ready = Boolean(
       ageMs >= 900 &&
       shellReady &&
       leftReady &&
       brand instanceof HTMLElement &&
       primaryReady &&
+      defaultReady &&
       primaryTargetClass
     );
     const signature = [
@@ -86612,6 +86632,40 @@
       primaryReady,
       primaryTargetClass
     };
+  }
+
+  // The app opens on 动画 (2026-10-16 user): React starts on 特效, so before the start-up
+  // cover lifts the 动画 entry gets one click (the same events a mouse sends, like 音视 does).
+  // The cover waits for the 动画 target, or 8 s at most.
+  // The cover lifts on the finished 动画 page (2026-10-16 user: 注意首帧不一致): the skeleton editor
+  // frame loaded, the account chip answered, then 250 ms for the editor's first layout passes
+  // (its zoom label and hints land a frame or two after load).
+  var STARTUP_DEFAULT_ANIMATION_AT = 0;   // var: the start-up snapshot can run before this line
+  var STARTUP_DEFAULT_SETTLED_AT = 0;
+  function ensureStartupDefaultAnimation(primaryTargetClass) {
+    if (STARTUP_DEFAULT_ANIMATION_AT) {
+      if (nowMs() - STARTUP_DEFAULT_ANIMATION_AT > 8000) return true;
+      if (primaryTargetClass !== "novaflow-primary-target-animation") return false;
+      const frame = document.getElementById("novaflow-skeleton-editor-frame");
+      let editorReady = false;
+      try {
+        editorReady = Boolean(frame && frame.contentWindow && frame.contentWindow.__SkeletonLab && frame.contentDocument && frame.contentDocument.readyState === "complete");
+      } catch {}
+      const accountReady = !document.querySelector("[data-novaflow-account-pending]");
+      if (!editorReady || !accountReady) { STARTUP_DEFAULT_SETTLED_AT = 0; return false; }
+      if (!STARTUP_DEFAULT_SETTLED_AT) STARTUP_DEFAULT_SETTLED_AT = nowMs();
+      return nowMs() - STARTUP_DEFAULT_SETTLED_AT > 250;
+    }
+    if (primaryTargetClass !== "novaflow-primary-target-particle") return true;
+    const button = findPrimaryEntryButton("\u52a8\u753b");
+    if (!(button instanceof HTMLElement)) return false;
+    STARTUP_DEFAULT_ANIMATION_AT = nowMs();
+    const r = button.getBoundingClientRect();
+    const init = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1, pointerId: 1, pointerType: "mouse", isPrimary: true };
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      button.dispatchEvent(type.startsWith("pointer") ? new PointerEvent(type, init) : new MouseEvent(type, init));
+    }
+    return false;
   }
 
   function dispatchStartupAppReady(reason, snapshot = null) {
