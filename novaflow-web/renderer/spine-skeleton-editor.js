@@ -2225,6 +2225,17 @@
     return out
   }
 
+  /**
+   * A name that came from the picture: the picture's own (path or file name), or a copy of it the
+   * editor numbered (uniqueName: A → A2, hammer1 → hammer2; also A_2). A name of one's own does not
+   * match. (User 2026-10-16: slot A2 kept its attachment A2 after 都换 - it was a numbered copy.)
+   */
+  function namedAfterPicture(key, picture) {
+    const base = shortName(picture), stem = base.replace(/\d+$/, '')
+    if (key === picture || key === base) return true
+    return new RegExp('^' + stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '_?\\d+$').test(key)
+  }
+
   // 换图's 工程里用这张图的都换 (user 2026-10-16): off by default, kept for the session once ticked
   let swapAllUses = false
 
@@ -2247,7 +2258,7 @@
       let json = j, picked = sel.name, renamed = 0
       for (const t of targets) {
         json = Ops.setAttachmentProps(json, t.skin, t.slot, t.key, t.mesh ? { path: name } : { path: name, ...size }).json
-        if (t.key === want || (t.key !== old && t.key !== shortName(old))) continue
+        if (t.key === want || !namedAfterPicture(t.key, old)) continue
         if (Ops.isPlaceholder(json, t.slot, t.key)) continue
         const taken = (n) => json.skins.some((s) => s.attachments[t.slot] && s.attachments[t.slot][n]) || Ops.isPlaceholder(json, t.slot, n)
         let to = want
