@@ -54,6 +54,7 @@
     .nf-ve-btn{min-height:32px;height:32px;padding:0 10px;border:1px solid #343434;border-radius:6px;background:#262626;color:#e3e3e3;font-size:12px;cursor:pointer;white-space:nowrap}
     .nf-ve-btn:hover:not(:disabled){background:#373737;color:#fff}.nf-ve-btn:disabled{opacity:.5;cursor:not-allowed}
     .nf-ve-btn.primary{background:linear-gradient(135deg,#1ea672,#188f64);border-color:rgba(84,234,178,.3);color:#effcf6;font-weight:600}
+    .nf-ve-btn.primary:hover:not(:disabled){background:linear-gradient(135deg,#22b980,#1ea672);color:#fff}   /* green stays green (the plain hover above turned it grey) */
     /* the left panel under the 视频编辑 row */
     .nf-ve-panel{width:calc(100% - 22px);min-width:0;margin:0 11px;padding:6px 0 8px;background:transparent;color:#f5f5f5;font-family:Inter,"Microsoft YaHei",sans-serif;font-size:12px}
     .nf-ve-sec{margin:0 0 8px}.nf-ve-sec:last-child{margin-bottom:0}
@@ -136,6 +137,7 @@
     .nf-tl-track-btns button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
     .nf-tl-track-btns button[hidden]{display:none}
     .nf-tl-track-btns button:hover{background:#373737;color:#fff}
+    .nf-tl-track-btns button[aria-pressed="true"]:hover{background:#235242;color:#b8f0dd}
     .nf-tl-track-btns .nf-tl-track-del{margin-left:auto;font-size:13px;font-weight:400}.nf-tl-track-btns .nf-tl-track-del:hover{background:#4a2323;color:#ffb4b4}
     .nf-tl-track-btns .nf-tl-track-detach{color:#9be4cd;font-weight:400}.nf-tl-track-btns .nf-tl-track-detach:hover{border-color:#1EA672}
     .nf-tl-scroller{position:relative;overflow:auto;background:#1d1d1d}

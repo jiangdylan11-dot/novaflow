@@ -621,6 +621,7 @@
       .nf-as-dd-item[aria-selected="true"]{background:#1ea672;color:#fff}
       .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       .nf-as-tools .nf-as-tool-primary{background:linear-gradient(135deg,#1ea672,#188f64)!important;border-color:rgba(84,234,178,.3)!important;color:#effcf6!important;font-weight:600}
+      .nf-as-tools .nf-as-tool-primary:hover:not(:disabled){background:linear-gradient(135deg,#22b980,#1ea672)!important;color:#fff!important}
       .nf-as-edit-sec{display:flex;flex-direction:column;gap:6px}
       .nf-as-sidebar[hidden]{display:none!important}
       .nf-as-refswitch{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:rgba(255,255,255,.8);cursor:pointer}
@@ -703,6 +704,7 @@
       .nf-tl-track-btns button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
       .nf-tl-track-btns .nf-tl-track-del{margin-left:auto;font-size:13px;font-weight:400}
       .nf-tl-track-btns button:hover{background:#373737;color:#fff}
+      .nf-tl-track-btns button[aria-pressed="true"]:hover{background:#235242;color:#b8f0dd}
       .nf-tl-track-btns .nf-tl-track-del:hover{background:#4a2323;color:#ffb4b4}
       .nf-tl-track-gain{-webkit-appearance:none;appearance:none;width:100%;height:10px;background:transparent;margin:0}
       .nf-tl-track-gain::-webkit-slider-runnable-track{height:2px;background:#3a3a3a;border-radius:1px}

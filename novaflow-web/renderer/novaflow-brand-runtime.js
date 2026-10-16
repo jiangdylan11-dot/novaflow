@@ -23907,6 +23907,12 @@
         background: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
       }
+      /* the pills' inline fill reads these (writeAiAnimationBrushPill), so the hover shows in every section */
+      [data-novaflow-ai-brush-scope][data-novaflow-ai-brush-scope-active="0"]:not([aria-disabled="true"]):hover,
+      [data-novaflow-ai-cutout-brush-mode="1"][data-novaflow-ai-cutout-brush-mode-active="0"]:not(:disabled):hover {
+        --nf-brush-pill-bg: ${SECONDARY_ENTRY_HOVER_BACKGROUND};
+        --nf-brush-pill-color: #ffffff;
+      }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][data-novaflow-ai-brush-scope-active="1"],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"][data-novaflow-ai-cutout-brush-mode-active="1"] {
         border-radius: 5px !important;
@@ -59891,11 +59897,14 @@
 
   // The bundle's brush block (单帧 / 全局, 擦除 / 修复, 笔刷, 羽化) takes the 2级入口 pill look.
   // The checkbox behind 全局 keeps its React handler; the pills only click it.
+  // An idle pill's fill and text go through --nf-brush-pill-bg / --nf-brush-pill-color, which the
+  // :hover rule sets: written inline with !important they outranked every hover rule, and an idle
+  // pill (全局 next to the picked 单帧) gave no feedback under the mouse (user 2026-10-16).
   const AI_ANIMATION_BRUSH_PILL_STYLE = Object.freeze({
     appearance: "none", "-webkit-appearance": "none", position: "relative", "z-index": "1", display: "flex", "align-items": "center", "justify-content": "center",
     width: "100%", "min-width": "0", "max-width": "none", height: "29px", "min-height": "29px", "max-height": "29px", margin: "0", padding: "0 6px",
-    border: "0", "border-radius": NOVAFLOW_RECT_RADIUS_PX, background: "transparent", "background-color": "transparent", "background-image": "none",
-    color: UI_SEGMENT_IDLE_TEXT, "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "1", "box-shadow": "none", outline: "0",
+    border: "0", "border-radius": NOVAFLOW_RECT_RADIUS_PX, background: "var(--nf-brush-pill-bg, transparent)", "background-color": "var(--nf-brush-pill-bg, transparent)", "background-image": "none",
+    color: `var(--nf-brush-pill-color, ${UI_SEGMENT_IDLE_TEXT})`, "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "1", "box-shadow": "none", outline: "0",
     opacity: "1", cursor: "pointer", "box-sizing": "border-box", transition: "none"
   });
   const AI_ANIMATION_BRUSH_PILL_ACTIVE_STYLE = Object.freeze({
