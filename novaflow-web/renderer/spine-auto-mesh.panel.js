@@ -3398,21 +3398,40 @@
     open.type = 'button'
     styleButton(open, false)
     open.setAttribute('data-nf-project-open', '1')
-    open.title = '打开 NovaFlow 工程文件（.nfproj），里面的工程都加进工程树'
-    open.addEventListener('click', () => { if (!state.busy) nfPicker.click() })
+    open.title = '打开 NovaFlow 工程文件（.nfproj），里面的工程都加进工程树；打开到空的工程树时，之后 Ctrl+S 直接保存回这个文件'
+    // the file picker (not the upload input) when the browser has it: the file is remembered, so
+    // 保存工程 / Ctrl+S write back to it (user 2026-10-16)
+    open.addEventListener('click', async () => {
+      if (state.busy) return
+      if (typeof window.showOpenFilePicker !== 'function') { nfPicker.click(); return }
+      let handle
+      try { [handle] = await window.showOpenFilePicker({ types: [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch (e) {
+        if (e && e.name === 'AbortError') return
+        nfPicker.click(); return
+      }
+      guardWith(sayHere)(async () => {
+        sayHere('打开 NovaFlow 工程…')
+        const ed = window.NovaFlowSkeletonEditor
+        if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
+        const n = await (await ed.ready()).openProjectFile(await handle.getFile(), handle)
+        sayHere(`已打开 NovaFlow 工程（${n} 个工程）`, 'ok')
+      })
+    })
     const save = el('button', null, '保存工程')
     save.type = 'button'
     styleButton(save, false)
     save.setAttribute('data-nf-project-save', '1')
-    save.title = '把工程树里的所有工程保存成一个 NovaFlow 工程文件（.nfproj）'
-    save.addEventListener('click', () => {
+    save.title = '把工程树里的所有工程保存成一个 NovaFlow 工程文件（.nfproj）；存过一次后直接覆盖同一个文件。快捷键 Ctrl+S，另存为 Ctrl+Shift+S'
+    const saveProject = (as) => {
       const a = editorApi()
       if (!a || !a.loaded || !a.loaded()) { sayHere('先导入工程', 'warn'); return }
       guardWith(sayHere)(async () => {
-        const r = await a.saveProjectFile()
-        if (r) sayHere(`已保存 ${r.name}（${r.count} 个工程）`, 'ok')
+        const r = await a.saveProjectFile({ as })
+        if (r) sayHere(`${r.overwritten ? '已覆盖保存' : '已保存'} ${r.name}（${r.count} 个工程）`, 'ok')
       })
-    })
+    }
+    // Ctrl+S / Ctrl+Shift+S are the editor's own keys (the host forwards page keys into it)
+    save.addEventListener('click', () => saveProject(false))
     state.psImport = { button, picker, status: psStatus, note: psNote, divider, create, open, save, nfPicker, dirPicker }
     busyButtons.push(button)
     return state.psImport

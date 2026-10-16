@@ -341,6 +341,7 @@
       addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiCons: [], pick: null,
       offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
+      folderKey: p.folderKey || (p.replace && state.folderKey) || newFolderKey(), pendingFolder: null,
     })
     state.temp.clear()
     state.collapsed.clear()
@@ -375,6 +376,8 @@
     if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（这些附件先显示为空）`, 'error')
     else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（Spine ${fromVersion} 工程，导出时保持 ${fromVersion}）` : ''}`, 'ok')
     if (p.askFolder && !state.imageFolder && regionList().length) setTimeout(askImageFolder, 0)
+    if (state.imageFolder && state.imageFolder.handle) rememberFolder(state.imageFolder.handle)
+    else if (p.restoreFolder) restoreImageFolder()
   }
 
   // ------------------------------------------------------------------ several projects (Spine's hierarchy)
@@ -383,7 +386,7 @@
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
-    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
+    'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
@@ -612,7 +615,7 @@
       if (!s || !s.json) continue
       const images = []
       for (const im of s.images.values()) if (im.blob) images.push({ fileName: im.fileName, dataUrl: await imageDataUrl(im) })
-      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false })
+      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, folderKey: s.folderKey || '' })
     }
     if (!list.length) throw new Error('没有可保存的工程')
     const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 1, active: Math.max(0, activeProject), projects: list })
@@ -620,37 +623,70 @@
     return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length }
   }
 
-  /** 保存工程: every open project into one .nfproj, straight to a save dialog named after the picked project. */
-  async function saveProjectFileNow() {
+  // The .nfproj this tree was saved to (or opened from, when nothing else was open): 保存工程 and
+  // Ctrl+S write over it without a dialog; Ctrl+Shift+S (另存为) picks a new one (user 2026-10-16:
+  // 保存了工程后 CTRL+S 快捷覆盖保存，否则每次都弹框). Kept for the page's session.
+  let projectFile = null
+  const NFPROJ_TYPES = [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }]
+
+  /**
+   * 保存工程: every open project into one .nfproj. The file is settled first - the remembered one
+   * (write permission asked again only if the browser dropped it), else the save dialog - and the
+   * bytes are made after, so a big tree does not outlast the click or key press the dialog needs.
+   */
+  async function saveProjectFileNow(opts) {
+    const as = !!(opts && opts.as)
     const A = window.NovaFlowSequenceAtlas
     const name = (A && A.safeName ? A.safeName(state.name) : String(state.name || '').replace(/[\\/:*?"<>|]+/g, '_')) || 'project'
-    const { bytes, count } = await projectFileBytes()
-    const file = new Blob([bytes], { type: 'application/octet-stream' })
-    if (window.showSaveFilePicker) {
-      let handle
-      try { handle = await window.showSaveFilePicker({ suggestedName: name + '.nfproj', types: [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch { return null }
-      const w = await handle.createWritable(); await w.write(file); await w.close()
-    } else {
-      const a = h('a', { href: URL.createObjectURL(file), download: name + '.nfproj' })
+    if (!window.showSaveFilePicker) {
+      const { bytes, count } = await projectFileBytes()
+      const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + '.nfproj' })
       document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
+      status(`已保存 NovaFlow 工程 ${name}.nfproj：${count} 个工程`, 'ok')
+      return { name: name + '.nfproj', count }
     }
-    status(`已保存 NovaFlow 工程 ${name}.nfproj：${count} 个工程`, 'ok')
-    return { name: name + '.nfproj', count }
+    let handle = !as && projectFile ? projectFile : null
+    if (handle) {
+      let perm = handle.queryPermission ? await handle.queryPermission({ mode: 'readwrite' }) : 'granted'
+      if (perm !== 'granted' && handle.requestPermission) perm = await handle.requestPermission({ mode: 'readwrite' }).catch(() => 'denied')
+      if (perm !== 'granted') handle = null
+    }
+    const over = !!handle
+    if (!handle) {
+      try { handle = await window.showSaveFilePicker({ suggestedName: (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES }) } catch { return null }
+    }
+    const { bytes, count } = await projectFileBytes()
+    const w = await handle.createWritable()
+    await w.write(new Blob([bytes], { type: 'application/octet-stream' }))
+    await w.close()
+    projectFile = handle
+    status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）`, 'ok')
+    return { name: handle.name, count, overwritten: over }
+  }
+
+  /** Ctrl+S / Ctrl+Shift+S: the same save, its failure said in the status line. */
+  function saveFromKey(as) {
+    if (!state.json) return
+    saveProjectFileNow({ as }).catch((e) => status('保存工程失败：' + ((e && e.message) || e), 'error'))
   }
 
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
-  async function openProjectFile(data) {
+  async function openProjectFile(data, handle) {
     const blob = data instanceof Blob ? data : new Blob([data])
+    const wasEmpty = !projects.length
     let d
     try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 NovaFlow 工程文件') }
     if (!d || d.format !== PROJECT_FILE_FORMAT || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是 NovaFlow 工程文件')
     const first = projects.length
     for (const p of d.projects) {
       const images = await Promise.all((p.images || []).map(async (im) => ({ fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() })))
-      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, label: p.name, offset: p.offset, visible: p.visible })
+      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, label: p.name, offset: p.offset, visible: p.visible, folderKey: p.folderKey || '', restoreFolder: true })
     }
     switchProject(first + Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0)))
-    status(`已打开 NovaFlow 工程：${d.projects.length} 个工程`, 'ok')
+    // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
+    // (added to projects already open, the next save still asks - it would hold them all)
+    if (handle && wasEmpty) projectFile = handle
+    status(`已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`, 'ok')
     return d.projects.length
   }
 
@@ -1730,7 +1766,7 @@
     const extra = extras || new Map()   // dir path → files added in-session
     const here = path || ''
     const node = {
-      name, path: here, live: true,
+      name, path: here, live: true, handle,
       async list() {
         const dirs = [], files = []
         for await (const [n, h] of handle.entries()) {
@@ -2065,6 +2101,8 @@
       r = await unpackAtlasInto(dir)
     }
     state.imageFolder = folderFromHandle(dir, dir.name || '图片')
+    state.pendingFolder = null
+    rememberFolder(dir)
     state.imageFolderGen = (state.imageFolderGen || 0) + 1
     imgTree = { key: '', nodes: new Map(), pending: new Set() }
     state.sections.delete('images')
@@ -2072,6 +2110,96 @@
     const unpacked = r.written ? `解包 ${r.written} 张${r.unpremultiplied ? '（预乘贴图，已还原成普通 PNG）' : ''}` : ''
     const kept = r.skipped ? `${r.skipped} 张已存在没动` : ''
     status(`图片文件夹「${where}」${[unpacked, kept].filter(Boolean).length ? '：' + [unpacked, kept].filter(Boolean).join('，') : ''}；文件夹里加图、删图会实时显示`, 'ok')
+  }
+
+  // The image folder survives the project file (user 2026-10-16: 导入了工程为什么还要重新指定文件夹，
+  // 不是应该默认和上次一样吗): a file cannot hold a folder, so every project carries a key
+  // (folderKey, saved in the .nfproj) and the folder handle is kept in this browser's IndexedDB
+  // under it. Opening the project file gets the folder back - at once when the browser still
+  // allows it (the 启动助手 always does), else after one click (浏览器要求重新确认).
+  const FOLDER_DB = 'novaflow-skeleton-image-folders'
+  const newFolderKey = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2))
+  function folderDb() {
+    return new Promise((resolve, reject) => {
+      const r = indexedDB.open(FOLDER_DB, 1)
+      r.onupgradeneeded = () => r.result.createObjectStore('folders')
+      r.onsuccess = () => resolve(r.result)
+      r.onerror = () => reject(r.error)
+    })
+  }
+  async function folderDbDo(mode, run) {
+    const db = await folderDb()
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction('folders', mode)
+        const req = run(tx.objectStore('folders'))
+        tx.oncomplete = () => resolve(req && req.result)
+        tx.onerror = () => reject(tx.error)
+      })
+    } finally { db.close() }
+  }
+  function rememberFolder(handle) {
+    const key = state.folderKey
+    if (!key || !handle) return
+    folderDbDo('readwrite', (store) => store.put({ handle, name: handle.name, at: Date.now() }, key)).catch(() => {})
+  }
+  /** The project (picked, or one in the tree) that `fill` writes to, wherever it now sits. */
+  function projectState(proj) { return projects[activeProject] === proj ? state : proj && proj.snap }
+  function useRememberedFolder(target, handle) {
+    target.imageFolder = folderFromHandle(handle, handle.name || '图片')
+    target.pendingFolder = null
+    if (target === state) {
+      state.imageFolderGen = (state.imageFolderGen || 0) + 1
+      imgTree = { key: '', nodes: new Map(), pending: new Set() }
+      refresh()
+    }
+  }
+  async function restoreImageFolder() {
+    const proj = projects[activeProject], key = state.folderKey
+    let rec = null
+    try { rec = await folderDbDo('readonly', (store) => store.get(key)) } catch { return }
+    const target = projectState(proj)
+    if (!rec || !rec.handle || !target || target.imageFolder) return
+    let perm = 'prompt'
+    try { perm = await rec.handle.queryPermission({ mode: 'readwrite' }) } catch { perm = 'prompt' }
+    if (perm === 'granted') {
+      useRememberedFolder(target, rec.handle)
+      if (target === state) status(`已接上上次的图片文件夹「${rec.handle.name}」`, 'ok')
+      return
+    }
+    target.pendingFolder = rec.handle
+    if (target === state) { refresh(); setTimeout(askRestoreFolder, 0) }
+  }
+  /** The browser wants a click before it lets the page into the folder again. */
+  function restorePendingFolder() {
+    const handle = state.pendingFolder
+    if (!handle) { chooseImageFolder(); return }
+    handle.requestPermission({ mode: 'readwrite' }).then((perm) => {
+      if (perm !== 'granted') { status('浏览器没有允许访问上次的图片文件夹：可以点「指定文件夹…」重新选', 'error'); return }
+      useRememberedFolder(state, handle)
+      status(`已接上上次的图片文件夹「${handle.name}」`, 'ok')
+    }, () => status('浏览器没有允许访问上次的图片文件夹：可以点「指定文件夹…」重新选', 'error'))
+  }
+  function askRestoreFolder() {
+    const handle = state.pendingFolder
+    if (!state.json || !handle || state.imageFolder || document.querySelector('.dialog.ask')) return
+    const done = () => { mask.remove(); window.removeEventListener('keydown', onKey, true) }
+    const onKey = (e) => {
+      if (e.key !== 'Escape' && e.key !== 'Enter') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      done()
+      if (e.key === 'Enter') restorePendingFolder()
+    }
+    const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) done() } },
+      h('div', { class: 'dialog ask' },
+        h('div', { class: 'hd' }, h('b', {}, '图片文件夹'), h('button', { class: 'xx', title: '以后再说', onclick: done }, '×')),
+        h('div', { class: 'msg' },
+          h('div', {}, `「${state.name}」上次用的图片文件夹是「${handle.name}」。`),
+          h('div', {}, '浏览器要你点一下才能再打开它（Chrome 弹出的提示里选「每次访问时都允许」，以后就不用再点了）。')),
+        h('div', { class: 'ft' }, btn('换一个文件夹…', () => { done(); chooseImageFolder() }), btn('继续使用', () => { done(); restorePendingFolder() }, { primary: true }))))
+    document.body.append(mask)
+    window.addEventListener('keydown', onKey, true)
   }
 
   /** 指定文件夹… (the 图片 node, and the dialog after a JSON + 图集 + 贴图 import). */
@@ -6663,8 +6791,11 @@
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
       h('span', { class: 'end' },
         // Spine's images path, no import (user 2026-10-15: 这里不需要有什么导入按钮): pictures are what the folder holds
-        h('button', { class: 'ld-btn tiny', title: folder ? `换一个图片文件夹（现在是「${folder}」）` : '指定工程的图片文件夹：图集会解包进去，之后文件夹里的变化实时显示',
-          onclick: (e) => { e.stopPropagation(); chooseImageFolder() } }, folder ? '换文件夹…' : '指定文件夹…'),
+        !folder && state.pendingFolder
+          ? h('button', { class: 'ld-btn tiny', title: `接上上次的图片文件夹「${state.pendingFolder.name}」（浏览器要点一下确认）`,
+            onclick: (e) => { e.stopPropagation(); restorePendingFolder() } }, '接上文件夹')
+          : h('button', { class: 'ld-btn tiny', title: folder ? `换一个图片文件夹（现在是「${folder}」）` : '指定工程的图片文件夹：图集会解包进去，之后文件夹里的变化实时显示',
+            onclick: (e) => { e.stopPropagation(); chooseImageFolder() } }, folder ? '换文件夹…' : '指定文件夹…'),
         h('span', { class: 'cnt' }, String(count)))))
     if (closed) return
     const used = imagesInUse()
@@ -10642,6 +10773,8 @@
     let frameKey = null
     window.addEventListener('keydown', (e) => {
       const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement && document.activeElement.tagName)
+      // 保存工程 (also while typing in a field): Ctrl+S over the remembered file, Ctrl+Shift+S 另存为
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); saveFromKey(e.shiftKey); return }
       // Ctrl+A: the picked bone and its whole branch; with a search on, only the branch rows the
       // tree shows (the matches and their ancestors)
       // (Ctrl+A never selects the page's text - with no bone picked it does nothing)
@@ -11041,13 +11174,13 @@
     restoreProject: () => { if (state.initialJson && state.initialJson !== state.json) edit('已还原为导入时的工程', () => ({ json: state.initialJson })) },
     openExport: (opts) => openExportDialog(opts),
     /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
-    openProjectFile: (data) => openProjectFile(data),
+    openProjectFile: (data, handle) => openProjectFile(data, handle),
     newProject: (name) => newProject(name),
     useImageFolder: (files) => useImageFolder(files),
     /** A folder picked on disk (showDirectoryPicker) as the project's live image folder; the atlas, if any, unpacked into it. */
     useFolderHandle: (handle) => useFolderHandle(handle),
     /** 保存工程: every open project into one .nfproj (a save dialog), no options. */
-    saveProjectFile: () => saveProjectFileNow(),
+    saveProjectFile: (opts) => saveProjectFileNow(opts),
     projectCount: () => projects.length,
     openAtlasSettings: () => openAtlasSettings(),
     /** how many pictures each 打包 choice takes: 附件 (used) / 图片文件夹 */
