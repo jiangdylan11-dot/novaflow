@@ -2521,6 +2521,9 @@
     gl.viewport(0, 0, $('#gl').width, $('#gl').height)
     paintChecker(gl, $('#gl').height, 12 * (rt.dpr || 1), ...STAGE_CHECKER)
     const activeShown = !projects[activeProject] || projects[activeProject].visible !== false
+    // 粒子特效面板开着：先把这一帧的粒子算好画进离屏画布（下面画骨骼时按层级贴进去），手柄 / 虚线框画在上层
+    let composited = false
+    if (pfx) drawParticles()
     if (state.opt.imgVis) for (let i = 0; i < activeProject; i++) drawOtherProject(i)
     if (rt.skeleton && state.opt.imgVis && activeShown) {
       // slots hidden with the tree's visibility dot are an editor-only hide
@@ -2546,15 +2549,30 @@
       r.camera.position.y = rt.cam.y - state.offset.y
       r.camera.setViewport($('#gl').width, $('#gl').height)
       r.camera.zoom = rt.cam.zoom / rt.dpr
-      r.begin()
-      r.drawSkeleton(rt.skeleton, true)
-      r.end()
+      if (pfx && pfx.partReady) {
+        // 粒子按「层级」夹在骨骼中间（2026-10-16 用户：调层级要实时显示）：层级以上的插槽第二遍画
+        const above = pfxAboveSlots(), hid = []
+        for (const sl of above) if (sl.attachment) { hid.push([sl, sl.attachment]); sl.attachment = null }
+        r.begin(); r.drawSkeleton(rt.skeleton, true); r.end()
+        for (const [sl, a] of hid) sl.attachment = a
+        pfxComposite(gl); composited = true
+        if (above.size) {
+          const low = []
+          for (const sl of rt.skeleton.slots) if (!above.has(sl) && sl.attachment) { low.push([sl, sl.attachment]); sl.attachment = null }
+          r.begin(); r.drawSkeleton(rt.skeleton, true); r.end()
+          for (const [sl, a] of low) sl.attachment = a
+        }
+      } else {
+        r.begin()
+        r.drawSkeleton(rt.skeleton, true)
+        r.end()
+      }
       for (let i = saved.length - 1; i >= 0; i--) saved[i][0].attachment = saved[i][1]
     }
+    if (pfx && pfx.partReady && !composited) pfxComposite(gl)
     if (state.opt.imgVis) for (let i = activeProject + 1; i < projects.length; i++) drawOtherProject(i)
     if (activeShown) drawOverlay()
     else $('#overlay').getContext('2d').clearRect(0, 0, $('#overlay').width, $('#overlay').height)
-    if (pfx) drawParticles()   // 粒子特效面板开着：粒子画在舞台上
     $('#zoomText').textContent = rt.skeleton ? Math.round(100 / rt.cam.zoom) + '%' : ''
   }
 
@@ -7823,12 +7841,14 @@
     pfx.stage = st; pfx.D = D
     for (const e of st.list) e.simT = 0
     const c = $('#pfxLayer')
-    if (c) c.style.mixBlendMode = pfx.ui.blend === 'normal' ? 'normal' : pfx.ui.blend === 'screen' ? 'screen' : pfx.ui.blend === 'multiply' ? 'multiply' : (window.CSS && CSS.supports && CSS.supports('mix-blend-mode', 'plus-lighter') ? 'plus-lighter' : 'screen')
+    // 粒子在 WebGL 里按插槽混合贴（pfxComposite），这层只剩虚线框 / 路径线：正常叠
+    if (c) c.style.mixBlendMode = 'normal'
   }
 
   /** 每帧：推进粒子，画到舞台上（变换 = 画板像素 → 选中骨骼的姿势 → 屏幕） */
   function drawParticles() {
     if (!pfx || !rt.skeleton) return
+    pfx.partReady = false
     const { c, hd, rot } = pfxLayer()
     const ctx = c.getContext('2d')
     ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -7919,9 +7939,76 @@
       else if (loop) { const k = Math.ceil((e.simT - target) / D - 1e-9), fwd = target + k * D - e.simT; if (fwd >= 0 && fwd < 0.5) stepTo(e.simT + fwd); else resim(target) }
       else resim(target)
     }
-    ctx.setTransform(d * pfx.J[0], d * pfx.J[1], d * pfx.J[2], d * pfx.J[3], d * S0[0], d * S0[1])
-    pfx.stage.drawTo(ctx)
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    // 粒子画进离屏画布（和舞台同大小），draw() 按层级把它贴进 WebGL 画面
+    const pc = pfx.partCanvas || (pfx.partCanvas = document.createElement('canvas'))
+    if (pc.width !== c.width || pc.height !== c.height) { pc.width = c.width; pc.height = c.height }
+    const pctx = pc.getContext('2d')
+    pctx.setTransform(1, 0, 0, 1, 0, 0)
+    pctx.clearRect(0, 0, pc.width, pc.height)
+    pctx.setTransform(d * pfx.J[0], d * pfx.J[1], d * pfx.J[2], d * pfx.J[3], d * S0[0], d * S0[1])
+    pfx.stage.drawTo(pctx)
+    pctx.setTransform(1, 0, 0, 1, 0, 0)
+    pfx.partReady = true
+  }
+
+  /** 层级以上的插槽（按当前的绘制顺序）：最上层 = 无，最下层 = 全部，在某图层上面 / 下面 = 它之后 / 它和它之后 */
+  function pfxAboveSlots() {
+    const L = (pfx && pfx.place && pfx.place.layer) || { mode: 'top' }, order = rt.skeleton ? rt.skeleton.drawOrder : []
+    if (L.mode === 'bottom') return new Set(order)
+    if ((L.mode === 'above' || L.mode === 'below') && L.slot) {
+      const i = order.findIndex((sl) => sl.data.name === L.slot)
+      if (i >= 0) return new Set(order.slice(L.mode === 'above' ? i + 1 : i))
+    }
+    return new Set()
+  }
+
+  /** 离屏的粒子画面当一张贴图画满舞台（预乘 alpha；相加 / 正常 / 滤色 / 相乘对应插槽混合），画完把 WebGL 状态还回去 */
+  let pfxGl = null
+  function pfxComposite(gl) {
+    const src = pfx && pfx.partReady && pfx.partCanvas
+    if (!src || !src.width || !src.height) return
+    if (!pfxGl || pfxGl.gl !== gl) {
+      const shader = (type, code) => { const sh = gl.createShader(type); gl.shaderSource(sh, code); gl.compileShader(sh); return sh }
+      const prog = gl.createProgram()
+      gl.attachShader(prog, shader(gl.VERTEX_SHADER, 'attribute vec2 p;varying vec2 uv;void main(){uv=vec2(p.x*.5+.5,.5-p.y*.5);gl_Position=vec4(p,0.,1.);}'))
+      gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, 'precision mediump float;varying vec2 uv;uniform sampler2D t;void main(){gl_FragColor=texture2D(t,uv);}'))
+      gl.linkProgram(prog)
+      const buf = gl.createBuffer()
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf)
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+      const tex = gl.createTexture()
+      gl.bindTexture(gl.TEXTURE_2D, tex)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+      pfxGl = { gl, prog, buf, tex, loc: gl.getAttribLocation(prog, 'p'), uT: gl.getUniformLocation(prog, 't') }
+    }
+    const G = pfxGl
+    gl.useProgram(G.prog)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, G.tex)
+    const pre = gl.getParameter(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL), flip = gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, pre)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, flip)
+    gl.uniform1i(G.uT, 0)
+    gl.bindBuffer(gl.ARRAY_BUFFER, G.buf)
+    gl.enableVertexAttribArray(G.loc)
+    gl.vertexAttribPointer(G.loc, 2, gl.FLOAT, false, 0, 0)
+    gl.enable(gl.BLEND)
+    const m = pfx.ui && pfx.ui.blend
+    if (m === 'normal') gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+    else if (m === 'screen') gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR)
+    else if (m === 'multiply') gl.blendFunc(gl.DST_COLOR, gl.ONE_MINUS_SRC_ALPHA)
+    else gl.blendFunc(gl.ONE, gl.ONE)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    gl.disableVertexAttribArray(G.loc)
+    gl.bindBuffer(gl.ARRAY_BUFFER, null)
+    gl.bindTexture(gl.TEXTURE_2D, null)
+    gl.useProgram(null)
   }
 
   function closeParticleLayer() {
@@ -8000,7 +8087,7 @@
           ...(() => {
             const L = place.layer, slotsTopFirst = state.json.slots.map((x) => x.name).reverse()
             const save = () => { state.particleLayer = { ...L }; pfx.ui.rerender() }
-            const sel = h('select', { class: 'fxm-select', title: '生成的插槽画在哪一层；在画布上点一个图层会自动放到它上面（预览里粒子总在最上面，写进动画后按这里排）', onchange: (e) => {
+            const sel = h('select', { class: 'fxm-select', title: '粒子画在哪一层（画布上实时就是这个层级，写进动画也按它排）；在画布上点一个图层会自动放到它上面', onchange: (e) => {
               const v = e.target.value
               if (v === 'top' || v === 'bottom') { L.mode = v; L.slot = '' } else { L.slot = v; if (L.mode !== 'below') L.mode = 'above' }
               save()
