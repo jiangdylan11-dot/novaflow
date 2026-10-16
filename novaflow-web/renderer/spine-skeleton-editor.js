@@ -586,13 +586,32 @@
   const PROJECT_FILE_FORMAT = 'novaflow-spine-projects'
   const blobToDataUrl = (b) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(r.error); r.readAsDataURL(b) })
 
+  /**
+   * A picture's bytes for the project file. Its blob is the file it was loaded from; once that file
+   * changed or went away on disk (edited, replaced or deleted in the image folder) the browser will
+   * not read it any more (NotReadableError - user 2026-10-16: 保存工程 showed "The requested file
+   * could not be read…"). Then the picture as the editor holds and shows it is written instead, and
+   * kept for the next save.
+   */
+  async function imageDataUrl(im) {
+    try { return await blobToDataUrl(im.blob) } catch {
+      const img = im.img, w = img && (img.naturalWidth || img.width), hh = img && (img.naturalHeight || img.height)
+      if (!w || !hh) throw new Error(`图片「${im.fileName}」读不到了：它在磁盘上被改动或删除，请重新导入这张图后再保存`)
+      const c = document.createElement('canvas')
+      c.width = w; c.height = hh
+      c.getContext('2d').drawImage(img, 0, 0)
+      im.blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
+      return blobToDataUrl(im.blob)
+    }
+  }
+
   async function projectFileBytes() {
     const list = []
     for (let i = 0; i < projects.length; i++) {
       const s = i === activeProject ? state : projects[i].snap
       if (!s || !s.json) continue
       const images = []
-      for (const im of s.images.values()) if (im.blob) images.push({ fileName: im.fileName, dataUrl: await blobToDataUrl(im.blob) })
+      for (const im of s.images.values()) if (im.blob) images.push({ fileName: im.fileName, dataUrl: await imageDataUrl(im) })
       list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false })
     }
     if (!list.length) throw new Error('没有可保存的工程')
