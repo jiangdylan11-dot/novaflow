@@ -517,10 +517,8 @@
         panel.dataset.open=expanded?'1':'0';
         panel.querySelector('.nf-motion-tools').hidden=!expanded;panel.querySelector('.nf-panel-header').setAttribute('aria-expanded',String(expanded));panel.querySelector('.nf-motion-chevron').className=`fas fa-chevron-${expanded?'down':'right'} nf-motion-chevron`;
         if(expanded){try{const api=editorApi();if(api&&!api.selectedBone()&&api.rootBone&&api.rootBone())api.selectBone(api.rootBone());}catch{}}
+        // 展开时工具一个都不选（2026-10-16 用户：动画工具展开的时候默认什么工具都不选）——不自动打开上次的工具，点哪个开哪个；骨骼照旧默认 root
         if(!expanded){close();panel.dataset.editorOpen='0';panel.querySelector('.nf-motion-body').replaceChildren();panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed','false'));try{window.NovaFlowSkeletonEditor?.closeParticle?.();}catch{}}
-        // opening the group opens the editor at the tool used last (飘带计算 at first)
-        else if(editorSynced)setTimeout(()=>{if(panel?.dataset.open==='1')selectTool(activeMode);},0);
-        else selectTool(activeMode);
       };
       panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>selectTool(button.dataset.motionMode));
     }
