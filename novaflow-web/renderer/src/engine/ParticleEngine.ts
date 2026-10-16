@@ -432,8 +432,9 @@ export class ParticleEngine {
     const playback = this.cfg.spritePlayback || 'single';
     if (playback !== 'sequence') return sprites.length;
     if (!this.cfg.spriteSequenceRandom) {
+      // 「随机」关：只播第一张序列卡片（其他卡片不参与，2026-10-16 用户）
       const hasSeq = sprites.some((s: any) => Array.isArray(s?.frames) && s.frames.length > 0);
-      if (hasSeq && this.spriteImages.length > 1) return this.spriteImages.length;
+      if (hasSeq && this.spriteImages.length > 1) return this.getSequenceFrameCountForSprite(this.getPrimarySequenceSpriteIndex());
     }
     if (sprites.length === 1 && this.spriteImages.length > 1) return this.spriteImages.length;
     return sprites.length;
@@ -1335,8 +1336,9 @@ export class ParticleEngine {
         }
         if (playback === 'sequence' && !this.cfg.spriteSequenceRandom && this.spriteImages.length > 1) {
           const si = this.getPrimarySequenceSpriteIndex();
+          const hasSeq = sprites.some((s: any) => Array.isArray(s?.frames) && s.frames.length > 0);
           sprite = si >= 0 ? sprites[si] : null;
-          img = this.spriteImages[idx] || null;
+          img = this.spriteImages[(hasSeq && si >= 0 ? this.spriteFrameStarts[si] || 0 : 0) + idx] || null;
         } else {
           sprite = spriteCount > 0
             ? (playback === 'sequence' && sprites.length === 1 && this.spriteImages.length > 1 ? sprites[0] : sprites[idx])

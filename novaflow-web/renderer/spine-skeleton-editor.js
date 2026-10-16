@@ -7633,7 +7633,7 @@
     const stage = $('#stage'), have = [...stage.querySelectorAll('.pfx-path-pt')]
     const n = pts ? pts.length : 0
     for (let i = have.length; i < n; i++) {
-      const el = h('div', { class: 'pfx-path-pt', title: '路径点：拖动移动，双击删除；按住 Alt 拖拉出曲线，按住 Alt 点一下切换尖角 / 平滑', style: pfxHandleStyle('#e0b45a', false) })
+      const el = h('div', { class: 'pfx-path-pt', title: '路径点：拖动移动，Ctrl 点多选，双击删除；按住 Alt 拖拉出曲线，按住 Alt 点一下切换尖角 / 平滑', style: pfxHandleStyle('#e0b45a', false) })
       el.dataset.i = String(i)
       stage.append(el)
       // 路径点是相对发射点的局部坐标（跟着系统旋转 / 缩放）
@@ -7642,9 +7642,16 @@
       el.addEventListener('pointerdown', (ev) => {
         if (ev.button !== 0 || !pfx || !pfx.J) return
         ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture(ev.pointerId)
-        const i = Number(el.dataset.i), p = pfxPathPoints()[i]
+        const i = Number(el.dataset.i), pts = pfxPathPoints(), pick = pfxPick()
+        // Ctrl 点：加进 / 移出多选（移出就不拖）；不按 Ctrl 点没选中的点：只选它
+        let collapse = false
+        if (ev.ctrlKey || ev.metaKey) {
+          if (pick.has(i)) { pick.delete(i); pfx.pathSel = pick.size ? [...pick][pick.size - 1] : -1; return }
+          pick.add(i)
+        } else if (!pick.has(i)) { pick.clear(); pick.add(i) } else collapse = pick.size > 1
         pfx.pathSel = i
-        pfx.drag = { el, x: ev.clientX, y: ev.clientY, sx: p.x, sy: p.y, A: pfxLocalJacobian(rot()), alt: ev.altKey, moved: false }
+        const starts = (ev.altKey ? [i] : [...pick]).filter((j) => pts[j]).map((j) => [j, pts[j].x, pts[j].y])
+        pfx.drag = { el, x: ev.clientX, y: ev.clientY, starts, A: pfxLocalJacobian(rot()), alt: ev.altKey, moved: false, collapse }
       })
       el.addEventListener('pointermove', (ev) => {
         const d = pfx && pfx.drag
@@ -7653,11 +7660,11 @@
         if (!d.moved && Math.hypot(dx, dy) < 3) return
         d.moved = true
         const A = d.A, det = A[0] * A[3] - A[1] * A[2] || 1, lx = (A[3] * dx - A[2] * dy) / det, ly = (-A[1] * dx + A[0] * dy) / det
-        const p = (pfxPathPoints() || [])[Number(el.dataset.i)]
+        const pts = pfxPathPoints() || [], p = pts[Number(el.dataset.i)]
         if (!p) return
         const r1 = (v) => Math.round(v * 10) / 10
         if (d.alt) { p.out = { x: r1(lx), y: r1(ly) }; p.in = { x: r1(-lx), y: r1(-ly) } }
-        else { p.x = r1(d.sx + lx); p.y = r1(d.sy + ly) }
+        else for (const [j, x0, y0] of d.starts) if (pts[j]) { pts[j].x = r1(x0 + lx); pts[j].y = r1(y0 + ly) }   // 多选的一起动
         pfxRestart()
       })
       const up = () => {
@@ -7665,6 +7672,7 @@
         if (!d || d.el !== el) return
         pfx.drag = null
         if (d.alt && !d.moved) pfxToggleCorner(Number(el.dataset.i))
+        else if (d.collapse && !d.moved) { const pick = pfxPick(); pick.clear(); pick.add(Number(el.dataset.i)) }   // 多选里点一下（不拖）：只留它
         if (pfx.ui.rerender) pfx.ui.rerender()
       }
       el.addEventListener('pointerup', up)
@@ -7693,6 +7701,8 @@
       }, rot)
     }
   }
+  /** 选中的路径点（Ctrl 多选）；pfx.pathSel = 最后点的那个 */
+  function pfxPick() { if (!pfx.pathPick) pfx.pathPick = new Set(); return pfx.pathPick }
   /** 局部（路径点坐标）→ 屏幕的雅可比：画板 → 屏幕（这一帧的 J）乘系统旋转 / 缩放 */
   function pfxLocalJacobian(M) {
     const J = pfx.J
@@ -7706,6 +7716,7 @@
     if (flat(p.in) && flat(p.out)) Object.assign(p, ParticleFx().autoHandles(pts, i, pfx.ui.config.pathClosed !== false))
     else { p.in = { x: 0, y: 0 }; p.out = { x: 0, y: 0 } }
     pfx.pathSel = i
+    pfxPick().clear(); pfxPick().add(i)
     pfxRestart()
   }
   /** 删一个路径点（至少留两个） */
@@ -7714,6 +7725,20 @@
     if (!pts || !pts[i]) return false
     if (pts.length <= 2) { status('路径至少留两个点'); return true }
     pts.splice(i, 1)
+    pfx.pathSel = -1
+    pfxPick().clear()
+    pfxRestart()
+    if (pfx.ui.rerender) pfx.ui.rerender()
+    return true
+  }
+  /** Delete：选中的路径点一起删（至少留两个） */
+  function pfxDeletePicked() {
+    const pts = pfxPathPoints(), pick = pfxPick()
+    const idx = [...pick].filter((j) => pts && pts[j]).sort((a, b) => b - a)
+    if (!idx.length) return false
+    if (pts.length - idx.length < 2) { status('路径至少留两个点'); return true }
+    for (const j of idx) pts.splice(j, 1)
+    pick.clear()
     pfx.pathSel = -1
     pfxRestart()
     if (pfx.ui.rerender) pfx.ui.rerender()
@@ -7725,7 +7750,7 @@
    */
   function pfxClickAddPoint(ev) {
     const pts = pfxPathPoints()
-    if (!pts || !pfx.J || !pfx.S0) return
+    if (!pts || !pfx.J || !pfx.S0 || ev.ctrlKey || ev.metaKey) return   // Ctrl 是多选，点空白不加点
     const cfg = pfx.ui.config, a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1
     const M = [Math.cos(a) * k, Math.sin(a) * k, -Math.sin(a) * k, Math.cos(a) * k], A = pfxLocalJacobian(M), det = A[0] * A[3] - A[1] * A[2] || 1
     // 点到的位置：屏幕 → 路径点坐标（相对发射点）
@@ -7765,6 +7790,7 @@
     } else if (seg >= 0 && best <= 8) return   // 点在已有的点上：不加
     pts.splice(at, 0, p)
     pfx.pathSel = at
+    pfxPick().clear(); pfxPick().add(at)
     pfxRestart()
     if (pfx.ui.rerender) pfx.ui.rerender()
   }
@@ -7843,8 +7869,10 @@
     }
     if (pathPts) {
       const a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1, ca = Math.cos(a) * k, sa = Math.sin(a) * k
+      const pick = pfxPick()
+      if (pfx.pickOf !== pathPts) { pick.clear(); pfx.pathSel = -1; pfx.pickOf = pathPts }   // 换了系统 / 重新取轮廓：选择清空
       const els = $('#stage').querySelectorAll('.pfx-path-pt'), T = (x, y) => pt(ex + x * ca - y * sa, ey + x * sa + y * ca), hv = (v) => v || { x: 0, y: 0 }
-      pathPts.forEach((p, i) => { const q = T(p.x, p.y), el = els[i]; if (el) { el.style.display = ''; el.style.left = q[0] + 'px'; el.style.top = q[1] + 'px'; el.style.background = i === pfx.pathSel ? '#ffffff' : '#e0b45a' } })
+      pathPts.forEach((p, i) => { const q = T(p.x, p.y), el = els[i]; if (el) { el.style.display = ''; el.style.left = q[0] + 'px'; el.style.top = q[1] + 'px'; el.style.background = pick.has(i) ? '#ffffff' : '#e0b45a' } })
       // 曲线：和引擎一样按每个点的进 / 出控制柄画（闭环两点也来回）
       const n = pathPts.length, closed = cfg.pathClosed !== false && n > 1
       ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.strokeStyle = 'rgba(224,180,90,.7)'; ctx.lineWidth = 1; ctx.setLineDash([])
@@ -7857,7 +7885,7 @@
       }
       ctx.stroke()
       // 选中点的弧线手柄（长度为 0 = 尖角，不显示）
-      const sp = pathPts[pfx.pathSel]
+      const sp = pick.size === 1 ? pathPts[pfx.pathSel] : null
       ctx.strokeStyle = 'rgba(255,255,255,.75)'
       for (const side of ['in', 'out']) {
         const el = $('#stage').querySelector(`.pfx-path-hd[data-side="${side}"]`)
@@ -8091,7 +8119,8 @@
         info.setInfo(`已生成：${made} 个粒子插槽并进工程（贴图在「${folder}」），动画 ${state.anim} 从第 ${startF} 帧开始。`)
         status(`粒子特效：${made} 个粒子插槽已并进工程`, 'ok')
       },
-      onClose: (st) => { state.particleLast = st; pfx = null; closeParticleLayer() },
+      // 关掉就忘：下次打开从模板库第一个模板、默认的写入设置和层级开始（2026-10-16 用户：重新打开不应该还记着上一次编辑的东西）
+      onClose: () => { state.particleLast = null; state.particleSet = null; state.particleLayer = null; pfx = null; closeParticleLayer() },
     })
     pfxLayer()
     // 动画够长才跟着播（空动画一直停在第 0 帧，粒子自己播）
@@ -10488,7 +10517,7 @@
       if (typing) return
       const k = e.key.toLowerCase()
       const mod = e.ctrlKey || e.metaKey
-      if (pfx && e.key === 'Delete' && !state.dope.focus && pfx.pathSel >= 0 && pfxDeletePathPoint(pfx.pathSel)) { e.preventDefault(); return }
+      if (pfx && e.key === 'Delete' && !state.dope.focus && pfxPathPoints() && pfxDeletePicked()) { e.preventDefault(); return }
       if (pfx && ((mod && k === 'd') || (e.key === 'Delete' && !state.dope.focus) || e.key === 'F2' || (!mod && !e.altKey && (k === 'p' || k === 'k')))) { e.preventDefault(); status(PFX_LOCKED); return }
       if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
       else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo() }

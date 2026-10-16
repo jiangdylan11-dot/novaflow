@@ -3130,6 +3130,15 @@ export function exportToSpine(
     const defaultAttachment = playback === 'sequence'
       ? (useNativeSequence ? (nativeSequenceAttachmentName || 'particle') : (sequenceFrames[0] || 'particle'))
       : (sprites[0]?.name || 'particle');
+    // 序列模式有序列卡片时：「随机」关 = 只播第一张序列卡片；开 = 每颗粒子按权重挑一张卡片，播它自己的帧（单图卡片就是那一张）。
+    // 没有序列卡片（几张单图当帧）照旧整串播（2026-10-16 用户：随机只管多张贴图卡片）
+    const isSeqCard = (sp: any) => sp?.mode === 'sequence' && Array.isArray(sp?.frames) && sp.frames.length > 0;
+    const hasSeqCard = playback === 'sequence' && sprites.some(isSeqCard);
+    const firstSeqCard = hasSeqCard ? (sprites.find(isSeqCard) as ParticleSprite) : null;
+    const cardFrames = (sp: any): string[] => isSeqCard(sp)
+      ? (sp.frames as unknown[]).map((_, i) => makeSequenceFrameAttachmentName(sp, i))
+      : [sp?.name || 'particle'];
+    const framesFor = (sp: any): string[] => (hasSeqCard ? cardFrames(sp || firstSeqCard) : sequenceFrames);
 
     const loopAnimEnabled = !!system.loopAnimation;
     const isLoop = loopAnimEnabled;
@@ -3218,8 +3227,12 @@ export function exportToSpine(
     const allSamples: ParticleSampleEntry[] = [];
     for (let i = 0; i < spawnTimes.length; i++) {
       const seed = (sIdx + 1) * 9973 + i * 151;
-      const chosenSprite = playback === 'random' ? pickWeightedSprite(sprites, seed) : (sprites[0] || null);
-      const attachmentName = playback === 'sequence' ? defaultAttachment : (chosenSprite?.name || 'particle');
+      const chosenSprite = playback === 'random' || (hasSeqCard && system.spriteSequenceRandom)
+        ? pickWeightedSprite(sprites, seed)
+        : (hasSeqCard ? firstSeqCard : (sprites[0] || null));
+      const attachmentName = playback === 'sequence'
+        ? (hasSeqCard && !useNativeSequence ? framesFor(chosenSprite)[0] || defaultAttachment : defaultAttachment)
+        : (chosenSprite?.name || 'particle');
       const sample = simulateParticle(system, chosenSprite, seed, attachmentBaseFor(attachmentName), {
         startDelay: spawnTimes[i],
         maxDuration: loopDuration + loopWarmup,
@@ -3297,6 +3310,9 @@ export function exportToSpine(
               addAttachmentDef(makeSequenceFrameAttachmentName(primarySequenceSprite, fi));
             }
           }
+        } else if (hasSeqCard) {
+          // 只挂这颗粒子那张卡片的帧
+          for (const name of framesFor(first.chosenSprite)) addAttachmentDef(name);
         } else {
           for (const s of sprites) {
             if (s?.mode === 'sequence' && Array.isArray((s as any).frames) && (s as any).frames.length > 0) {
@@ -3401,13 +3417,15 @@ export function exportToSpine(
             root.default[slotName][nativeSequenceAttachmentName].sequence = stripInj(seq);
           }
         } else {
-          const seqOffset = (system.spriteSequenceRandom || shouldAutoReduceExportRate) && sequenceFrames.length > 0
-            ? Math.floor(mulberry32(first.seed ^ 0x9e3779b9)() * sequenceFrames.length)
+          // 起始帧每颗粒子随机（和预览一样；2026-10-16 用户：起始帧不要太统一）
+          const myFrames = framesFor(first.chosenSprite)
+          const seqOffset = myFrames.length > 0
+            ? Math.floor(mulberry32(first.seed ^ 0x9e3779b9)() * myFrames.length)
             : 0;
           const attach = buildAttachmentTimeline({
             startDelay: first.sample.startDelay,
             life: first.sample.lifeUsed,
-            frames: sequenceFrames.length ? sequenceFrames : [attachmentName],
+            frames: myFrames.length ? myFrames : [attachmentName],
             fps: system.spriteSequenceFps || 12,
             loop: !!system.spriteSequenceLoop,
             frameOffset: seqOffset

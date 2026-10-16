@@ -44,7 +44,8 @@
 .pfx-tog-hd{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border:0;background:transparent;color:#e6e6e6;font:inherit;font-size:12px;cursor:pointer;text-align:left}
 .pfx-tog-hd span:last-child{font-size:11px;color:#7d8186}
 .pfx-tog[data-on="1"] > .pfx-tog-hd span:last-child{color:${GREEN}}
-.pfx-tog-bd{padding:0 10px 8px}
+.pfx-tog[data-on="1"]{border-color:${GREEN}}
+.pfx-tog-bd{padding:0 10px 8px 22px}
 .pfx-tog[data-disabled="1"]{opacity:.45}
 .pfx-tog[data-disabled="1"] .pfx-tog-hd{cursor:not-allowed}
 .pfx-help{font-size:11px;color:#7d8186;line-height:1.5;margin:6px 0}
@@ -488,7 +489,7 @@
       return out
     }
     // 路径在画布上编辑（2026-10-16 用户：线上点插点、空白处加点、双击删点、Alt 拉曲线 / Alt 点切换尖角平滑）
-    const PATH_HELP = '画布上：在线上点一下插点，空白处点一下在末尾加点；拖黄色方块移动，双击方块（或选中后按 Delete）删点；按住 Alt 拖方块拉出曲线，按住 Alt 点一下方块切换尖角 / 平滑；选中的方块两边有弧线手柄，拖它调弯曲（按住 Alt 两边分开调）。关掉「画布编辑」，点画布就是选图层。'
+    const PATH_HELP = '画布上：在线上点一下插点，空白处点一下在末尾加点；拖黄色方块移动，按住 Ctrl 点方块可多选（一起拖、按 Delete 一起删）；双击方块删点；按住 Alt 拖方块拉出曲线，按住 Alt 点一下方块切换尖角 / 平滑；只选一个方块时两边有弧线手柄，拖它调弯曲（按住 Alt 两边分开调）。关掉「画布编辑」，点画布就是选图层。'
 
     // ---------------------------------------------------------------- 5. 基础属性
     function buildBase() {
