@@ -704,6 +704,9 @@
     overlay.setAttribute('data-nf-skeleton-settings', '1')
     // above the app's export dialog (its root sits at 2147483640)
     overlay.style.zIndex = '2147483646'
+    // the 打包 row's text (12px, #ddd) also when it has to go on <body> (which is 16px)
+    overlay.style.fontSize = '12px'
+    overlay.style.color = '#ddd'
     const close = () => overlay.remove()
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close() })
     const dialog = document.createElement('div')
@@ -733,7 +736,10 @@
     }
     fill()
     overlay.appendChild(dialog)
-    document.body.appendChild(overlay)
+    // inside the export dialog's 打包 row, like the other sections' copy: same text and field look
+    // (user 2026-10-16: 文字怎么那么大，和其他版块的规格完全不一致)
+    const holder = document.querySelector('[data-novaflow-export-modal-root="1"] [data-nf-skeleton-pack]') || document.body
+    holder.appendChild(overlay)
   }
 
   // ---------------------------------------------------------------- keyboard
