@@ -5061,8 +5061,8 @@
       }
       if (state.drag) return
       e.preventDefault()
-      // in the section a project comes in through the app's 导入工程 (the left panel)
-      if (EMBED) { status('在左侧「导入工程」里导入 Spine 工程'); return }
+      // in the section a project comes in through the app's 工程管理 (the left panel)
+      if (EMBED) { status('在左侧「工程管理」里新建或导入工程'); return }
       const files = await filesFromDrop(e.dataTransfer)
       run(() => loadFiles(files))
     })
@@ -6113,7 +6113,7 @@
 
   function propsKind() {
     const s = state.sel
-    if (!state.json) return { title: '属性', body: () => [h('div', { class: 'hint' }, '先在左侧「导入工程」里导入。')] }
+    if (!state.json) return { title: '属性', body: () => [h('div', { class: 'hint' }, '先在左侧「工程管理」里新建或导入工程。')] }
     if (state.multi.length > 1) return { title: `骨骼 · 已选 ${state.multi.length} 根`, body: boneBody }
     if (!s) return { title: '属性', body: () => [] }
     if (s.kind === 'bone') return { title: '骨骼', body: boneBody }

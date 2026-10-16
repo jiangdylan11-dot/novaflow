@@ -29092,6 +29092,13 @@
         margin-top: clamp(12px, calc(50vh - 220px), 30vh) !important;
         max-height: calc(100vh - clamp(12px, calc(50vh - 220px), 30vh) - 12px) !important;
       }
+      /* 导出: the app's tab row is a fixed three-column grid; with a tab taken away here (Spine
+         outside 动画) the others share the whole row (user 2026-10-16: 这2个按钮怎么没自适应对齐) */
+      [data-novaflow-export-modal-root="1"] div:has(> button[data-novaflow-aifx-export-control-hidden="1"]) {
+        grid-template-columns: none !important;
+        grid-auto-flow: column !important;
+        grid-auto-columns: minmax(0, 1fr) !important;
+      }
       [data-novaflow-export-modal-dialog="1"] input[type="range"] {
         height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
         min-height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;

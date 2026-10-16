@@ -504,7 +504,7 @@
 
   async function call(name, ...args) {
     const a = await ready()
-    if (!a.loaded()) throw new Error('先在「导入工程」里导入工程')
+    if (!a.loaded()) throw new Error('先在「工程管理」里新建或导入工程')
     return a[name](...args)
   }
 
@@ -539,7 +539,7 @@
   let appVersion = null
   async function syncApp() {
     const a = await ready()
-    if (!a.loaded()) throw new Error('先在「导入工程」里导入工程')
+    if (!a.loaded()) throw new Error('先在「工程管理」里新建或导入工程')
     const mode = packMode()
     const version = wantVersion === 'spine' ? exportVersion() : '3.8'
     if (appJson === a.json() && appMode === mode && appVersion === version) return
