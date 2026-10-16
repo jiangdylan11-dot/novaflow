@@ -427,14 +427,18 @@
   // a dialog open in the editor: the page outside the frame dims too (the frame's own mask dims
   // the stage), the frame rides above that backdrop so the dialog stays in reach
   let modalBackdrop = null
-  function setModalBackdrop(open) {
+  function setModalBackdrop(open, dim) {
     if (open) {
       if (!modalBackdrop) {
         modalBackdrop = document.createElement('div')
         modalBackdrop.setAttribute('data-novaflow-runtime-ignore', '1')
         modalBackdrop.setAttribute('data-novaflow-skeleton-editor-backdrop', '1')
         modalBackdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2147483640'
+        // 编辑器里的下拉框开着时，点外面的遮罩关掉它（对话框不受影响）
+        modalBackdrop.addEventListener('pointerdown', (e) => { if (api && typeof api.closeDropdown === 'function' && api.closeDropdown()) { e.preventDefault(); e.stopPropagation() } })
       }
+      // 深度跟编辑器里的遮罩一样：对话框 .55，下拉框 .58（主页面全局下拉的深度）
+      modalBackdrop.style.background = `rgba(0,0,0,${Number(dim) > 0 ? dim : 0.55})`
       if (!modalBackdrop.isConnected) document.body.appendChild(modalBackdrop)
       if (frame) frame.style.zIndex = '2147483641'
     } else {
@@ -444,7 +448,7 @@
   }
 
   function onEditorEvent(type, data) {
-    if (type === 'modal') { setModalBackdrop(!!data.open); return }
+    if (type === 'modal') { setModalBackdrop(!!data.open, data.dim); return }
     // 设置 has no animation to work on: the 动画工具 group folds when the editor goes there
     if (type === 'mode' && data.mode === 'setup' && motionPanelOpen()) {
       try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }

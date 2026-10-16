@@ -559,6 +559,14 @@
   input[type=range]::-moz-range-track{height:3px;background:transparent}
   input[type=range]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--green)}
   input[type=range]:disabled{opacity:.4;cursor:default}
+  /* 下拉框（全局规则，和主页面外壳的一样）：细线箭头 10×6 在右 10px；点开铺 .58 全屏遮罩，#1b1b1b 面板、26px 一行、选中绿底 */
+  select:not([multiple]):not([size]){appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 10 6%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27rgba(238,244,252,0.68)%27 stroke-width=%271.35%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 10px center!important;background-size:10px 6px!important;padding-right:26px!important;cursor:pointer}
+  .nf-dd-mask{position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:2147483000}
+  .nf-dd-panel{position:fixed;z-index:2147483001;background:#1b1b1b;border:1px solid rgba(255,255,255,.18);border-radius:0;box-shadow:0 18px 48px rgba(0,0,0,.55);color:rgba(255,255,255,.88);overflow-x:hidden;overflow-y:auto;box-sizing:border-box;font-size:12px;line-height:26px}
+  .nf-dd-item{height:26px;padding:0 10px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;user-select:none;font-weight:400}
+  .nf-dd-item:hover{background:rgba(255,255,255,.08)}
+  .nf-dd-item[data-selected="1"]{background:#1EA672;color:#fff}
+  .nf-dd-item[data-disabled="1"]{opacity:.42;cursor:default}
 </style>
 </head>
 <body>

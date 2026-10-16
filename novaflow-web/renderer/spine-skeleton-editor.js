@@ -10666,14 +10666,81 @@
   // var: refresh() runs during start-up, before this part of the file
   var hostListeners = new Set()
   var hostSeen = { json: null, bone: undefined, anim: undefined, mode: undefined, panel: undefined, external: null, modal: false }
+  // ------------------------------------------------------------------ 下拉框（全局规则）
+  // 主页面的下拉框由外壳统一画（全屏遮罩 .58、#1b1b1b 面板、26px 一行、选中绿底）；编辑器在 iframe 里外壳管不到，
+  // 这里照同一套画，外壳把 iframe 外面同步压暗（2026-10-16 用户：所有下拉框都有全局遮罩，新做的都没有）
+  const dd = { select: null, mask: null, panel: null, at: 0 }
+  function ddClose() {
+    if (!dd.select) return false
+    if (dd.mask) dd.mask.remove()
+    if (dd.panel) dd.panel.remove()
+    dd.select.removeAttribute('data-dd-open')
+    dd.select = dd.mask = dd.panel = null
+    return true
+  }
+  function ddOpen(sel) {
+    ddClose()
+    const opts = [...sel.options].filter((o) => !o.hidden)
+    if (!opts.length) return
+    dd.select = sel; dd.at = performance.now()
+    sel.setAttribute('data-dd-open', '1')
+    const stop = (e) => { e.preventDefault(); e.stopPropagation() }
+    const mask = h('div', { class: 'nf-dd-mask' })
+    for (const type of ['pointerdown', 'mousedown', 'click', 'contextmenu']) mask.addEventListener(type, (e) => { stop(e); if (type === 'pointerdown' && performance.now() - dd.at > 160) ddClose() }, true)
+    mask.addEventListener('wheel', stop, { capture: true, passive: false })
+    // 面板：选择框下面（放不下就上面），和外壳的 getDropdownPanelMetrics 一样
+    const r = sel.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight, margin = 8, gap = 4
+    const width = Math.max(140, Math.min(vw - margin * 2, Math.ceil(r.width)))
+    const est = Math.max(28, Math.min(360, opts.length * 26 + 2))
+    const below = vh - r.bottom - margin - gap, above = r.top - margin - gap
+    const up = below < Math.min(est, 128) && above > below
+    const maxH = Math.max(72, Math.min(360, up ? above : below)), hh = Math.min(est, maxH)
+    const top = up ? Math.max(margin, Math.round(r.top - gap - hh)) : Math.min(vh - margin - hh, Math.round(r.bottom + gap))
+    const left = Math.max(margin, Math.min(vw - margin - width, Math.round(r.left)))
+    const panel = h('div', { class: 'nf-dd-panel', role: 'listbox', style: `left:${left}px;top:${top}px;width:${width}px;max-height:${maxH}px` })
+    for (const o of opts) {
+      const item = h('div', { class: 'nf-dd-item', role: 'option', title: o.textContent, 'data-selected': o.selected ? '1' : '0', 'data-disabled': o.disabled ? '1' : '0' }, o.textContent)
+      item.addEventListener('pointerdown', stop)
+      item.addEventListener('click', (e) => {
+        stop(e)
+        if (o.disabled) return
+        const prev = sel.value
+        sel.value = o.value
+        ddClose()
+        if (sel.value !== prev) { sel.dispatchEvent(new Event('input', { bubbles: true })); sel.dispatchEvent(new Event('change', { bubbles: true })) }
+      })
+      panel.append(item)
+    }
+    panel.addEventListener('wheel', (e) => e.stopPropagation(), true)
+    dd.mask = mask; dd.panel = panel
+    document.body.append(mask, panel)
+    const cur = panel.querySelector('[data-selected="1"]')
+    if (cur) cur.scrollIntoView({ block: 'nearest' })
+  }
+  // 浏览器自带的列表不弹（mousedown 不放行），按下就开自己的
+  document.addEventListener('pointerdown', (e) => {
+    const sel = e.target && e.target.closest ? e.target.closest('select') : null
+    if (!sel || sel.disabled || sel.multiple || Number(sel.size) > 1 || e.button !== 0) return
+    e.preventDefault(); e.stopPropagation()
+    if (dd.select === sel) { ddClose(); return }
+    ddOpen(sel)
+  }, true)
+  document.addEventListener('mousedown', (e) => {
+    const sel = e.target && e.target.closest ? e.target.closest('select') : null
+    if (sel && !sel.disabled && !sel.multiple && !(Number(sel.size) > 1)) e.preventDefault()
+  }, true)
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ddClose()) { e.preventDefault(); e.stopPropagation() } }, true)
+  window.addEventListener('resize', () => ddClose())
+
   // a dialog's mask only dims this frame (the stage): the host dims the rest of the page while
-  // one is open, as the other sections' dialogs do (user 2026-10-12: 黑色遮罩应该全屏)
+  // one is open, as the other sections' dialogs do (user 2026-10-12: 黑色遮罩应该全屏)；下拉框的遮罩一样，深度 .58
   new MutationObserver(() => {
-    // 粒子特效的模板库（.pfx-lib）也算（2026-10-16 用户：遮罩没盖住左边的内容和顶栏）
-    const open = !!document.querySelector('body > .mask, body > .pfx-lib')
-    if (open === hostSeen.modal) return
-    hostSeen.modal = open
-    for (const fn of hostListeners) { try { fn('modal', { open }) } catch (e) { console.warn('[skeleton editor] host', e) } }
+    const ddOpenNow = !!document.querySelector('body > .nf-dd-mask')
+    const open = ddOpenNow || !!document.querySelector('body > .mask, body > .pfx-lib')
+    const dim = ddOpenNow ? 0.58 : 0.55
+    if (open === hostSeen.modal && dim === hostSeen.modalDim) return
+    hostSeen.modal = open; hostSeen.modalDim = dim
+    for (const fn of hostListeners) { try { fn('modal', { open, dim }) } catch (e) { console.warn('[skeleton editor] host', e) } }
   }).observe(document.body, { childList: true })
   function notifyHost() {
     if (!hostListeners || !hostListeners.size) return
@@ -10829,6 +10896,8 @@
   const tickedOf = () => tickedLayers()
   window.NovaFlowSkeletonEditorAPI = {
     on(fn) { hostListeners.add(fn); return () => hostListeners.delete(fn) },
+    /** 外壳点 iframe 外面的遮罩：编辑器里开着的下拉框关掉 */
+    closeDropdown: () => ddClose(),
     loadSource: (src, opts) => loadSource(src, opts),
     json: () => state.json,
     loaded: () => !!state.json,
