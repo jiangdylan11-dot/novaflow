@@ -142,7 +142,7 @@
 
   /* ---------- centre: stage ---------- */
   .center{display:grid;grid-template-rows:minmax(0,1fr) 52px;gap:8px;min-width:0;min-height:0}
-  .center[data-dope="1"]{grid-template-rows:minmax(0,1fr) 250px}
+  .center[data-dope="1"]{grid-template-rows:minmax(0,1fr) min(var(--dope-height,250px),max(100px,calc(100% - 168px)))}
   /* 动画工具 open: the dopesheet keeps its full height (user 2026-10-12: 摄影表高度不要变) */
   /* 设置 mode: no timeline, the stage takes the whole height */
   .center:not([data-dope="1"]){grid-template-rows:minmax(0,1fr)}
@@ -176,6 +176,11 @@
   .pv-tracks button[data-busy="1"]{color:#9be4cd}
   .pv-tracks button[aria-pressed="true"]{background:#1ea672;color:#fff}
   .timeline-wrap{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .dope-split{height:7px;flex:0 0 7px;cursor:ns-resize;touch-action:none;position:relative;outline:none}
+  .dope-split::after{content:"";position:absolute;top:2px;left:calc(50% - 24px);width:48px;height:3px;border-radius:2px;background:#555}
+  .dope-split:hover,.dope-split:focus-visible,.dope-split[data-dragging="1"]{background:#1c4136}
+  .dope-split:hover::after,.dope-split:focus-visible::after,.dope-split[data-dragging="1"]::after{background:var(--green)}
+  html[data-dope-resizing="1"],html[data-dope-resizing="1"] *{cursor:ns-resize!important;user-select:none!important}
   .dmodes{display:inline-flex;gap:4px}
   .dmodes button{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;font-size:12px}
   .dmodes button svg{width:13px;height:13px}
@@ -630,6 +635,7 @@
       <div class="selname" id="selname" hidden></div>
     </div>
     <div class="timeline-wrap card">
+      <div class="dope-split" id="dopeSplit" role="separator" aria-label="调整摄影表高度" aria-orientation="horizontal" aria-controls="tlBody" tabindex="0" title="上下拖动调整摄影表高度；双击恢复默认；方向键微调"></div>
       <div class="timeline" style="height:50px;flex:0 0 50px">
         <div class="dmodes" id="dopeModes" hidden>
           <button id="dopeFilter" title="筛选：摄影表显示哪些行" hidden><svg viewBox="0 0 16 16"><path d="M2.5 3.5h11l-4.3 5v4l-2.4 1.2V8.5Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>筛选</button>

@@ -10711,7 +10711,60 @@
     }
   }
 
+  // Resize the whole sheet (including the curve view), independently of the animation data.
+  function bindDopeResize() {
+    const center = $('.center'), grip = $('#dopeSplit'), key = 'nf-skel-dope-height'
+    let preferred = 250, drag = null
+    try { const saved = Number(localStorage.getItem(key)); if (Number.isFinite(saved) && saved > 0) preferred = saved } catch {}
+    const apply = () => {
+      const max = Math.max(100, center.clientHeight - 168), min = Math.min(130, max)
+      const height = Math.round(Math.max(min, Math.min(max, preferred)))
+      center.style.setProperty('--dope-height', height + 'px')
+      grip.setAttribute('aria-valuemin', String(min))
+      grip.setAttribute('aria-valuemax', String(max))
+      grip.setAttribute('aria-valuenow', String(height))
+      layoutFloats()
+      drawDope()
+    }
+    const save = () => { try { localStorage.setItem(key, String(preferred)) } catch {} }
+    const finish = () => {
+      if (!drag) return
+      const id = drag.id
+      drag = null
+      delete grip.dataset.dragging
+      delete document.documentElement.dataset.dopeResizing
+      if (grip.hasPointerCapture(id)) grip.releasePointerCapture(id)
+      save()
+    }
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || drag) return
+      e.preventDefault()
+      grip.focus({ preventScroll: true })
+      drag = { id: e.pointerId, y: e.clientY, height: $('.timeline-wrap').getBoundingClientRect().height }
+      grip.dataset.dragging = '1'
+      document.documentElement.dataset.dopeResizing = '1'
+      grip.setPointerCapture(e.pointerId)
+    })
+    grip.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return
+      preferred = Math.max(Number(grip.getAttribute('aria-valuemin')), Math.min(Number(grip.getAttribute('aria-valuemax')), drag.height + drag.y - e.clientY))
+      apply()
+    })
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) grip.addEventListener(type, (e) => { if (drag && e.pointerId === drag.id) finish() })
+    window.addEventListener('blur', finish)
+    grip.addEventListener('dblclick', () => { preferred = 250; apply(); save() })
+    grip.addEventListener('keydown', (e) => {
+      if (!['ArrowUp', 'ArrowDown', 'Home'].includes(e.key)) return
+      e.preventDefault(); e.stopPropagation()
+      preferred = e.key === 'Home' ? 250 : Number(grip.getAttribute('aria-valuenow')) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 40 : 10)
+      apply(); preferred = Number(grip.getAttribute('aria-valuenow')); save()
+    })
+    if (typeof ResizeObserver === 'function') new ResizeObserver(apply).observe(center)
+    apply()
+  }
+
   function bindChrome() {
+    bindDopeResize()
     // the layer cards wrap into more rows after the first layout pass (thumbnails, width changes):
     // the transform panel sat under them until the next refresh — follow their size instead
     if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(() => layoutFloats()); ro.observe($('#layerDock')); ro.observe($('#xform')) }
