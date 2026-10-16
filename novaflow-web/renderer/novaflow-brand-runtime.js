@@ -22839,7 +22839,8 @@
       }
       body.novaflow-blackgray-preview-with-bottom-controls .nf-topbar {
         background: ${UI_TOPBAR_BACKGROUND} !important;
-        border-bottom: 1px solid rgba(116, 136, 154, 0.07) !important;
+        /* same stroke as every other section (2026-10-16 user: 特效版块顶栏没描边) */
+        border-bottom: 1px solid ${UI_TOPBAR_BORDER_COLOR} !important;
         box-shadow: none !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-column="1"] {
