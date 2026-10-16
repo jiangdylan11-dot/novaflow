@@ -786,7 +786,23 @@
   window.addEventListener('keydown', forwardKey, true)
   window.addEventListener('keyup', forwardKey, true)
   window.addEventListener('resize', () => { if (frame && frame.style.display === 'block') tick() })
-  setInterval(() => { tick(); try { packRow(); presync() } catch { /* the dialog is changing */ } }, 150)
+  // 导出窗口切标签：Spine 那一行在窗口内容变化的同一个微任务里补 / 撤（2026-10-16 用户：Spine 和另外两个切换时弹框会闪，
+  // 会出现一个特别长的——150ms 定时器晚一帧：切到 Spine 先闪原来的版本下拉，切走时两套叠在一起）。
+  // 自己补行引起的变化用 takeRecords 丢掉，不会自己触发自己
+  let packObserved = null, packing = false
+  const packObserver = new MutationObserver(() => {
+    if (packing) return
+    packing = true
+    try { packRow() } catch { /* the dialog is changing */ } finally { packObserver.takeRecords(); packing = false }
+  })
+  const watchExportDialog = () => {
+    const dialogRoot = document.querySelector('[data-novaflow-export-modal-root="1"]')
+    if (dialogRoot === packObserved) return
+    packObserver.disconnect()
+    packObserved = dialogRoot
+    if (dialogRoot) packObserver.observe(dialogRoot, { childList: true, subtree: true })
+  }
+  setInterval(() => { tick(); try { watchExportDialog(); packRow(); presync() } catch { /* the dialog is changing */ } }, 150)
   // the section mounting or leaving: cover / uncover in the same task, before the page paints
   const root = document.getElementById('root') || document.body
   // Entering or leaving 动画 is handled in the mutation's own microtask, before the page paints:
