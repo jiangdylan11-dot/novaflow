@@ -6666,7 +6666,13 @@
       });
     };
     const aifxButtons = findVisibleButtons("AI\u7279\u6548");
-    if (!aifxButtons.length) return false;
+    // 特效 = AI 特效 (2026-10-16): the 粒子特效 / AI特效 switch is painted invisible, so no visible
+    // button is found — the remembered AI特效 tab with the surface open is the context then
+    // (without this the export dialog took the hidden particle page's context)
+    if (!aifxButtons.length) {
+      const hiddenGroupKey = ["\u7c92\u5b50\u7279\u6548", "AI\u7279\u6548"].map(normalizeText).join("|");
+      return SECONDARY_ACTIVE_BY_GROUP.get(hiddenGroupKey) === "AI\u7279\u6548" && isNovaflowAifxSurfaceActuallyOpen();
+    }
     const particleButtons = findVisibleButtons("\u7c92\u5b50\u7279\u6548");
     const isButtonActive = (button) => (
       button instanceof HTMLElement &&
@@ -7039,11 +7045,29 @@
   function syncNovaflowAifxExportModalControls(root, context) {
     // 2026-09-20: AI 特效 exports video the way the video board does (its
     // result mp4 goes to ffmpeg as-is), so the video tab is no longer taken
-    // away in this context. Anything an older build hid is put back.
+    // away in this context.
+    // 2026-10-16 (user: Spine 按钮直接去掉 — only 动画 needs Spine): AI 特效 and 音视 lose the
+    // Spine tab here (put back in any other context). The 导出 SPINE 序列工程 toggle of the
+    // 序列帧 tab stays in 动画 and 音视 (user: 对于视频版块是个重要的功能); only AI 特效 drops it
+    // (user: 特效版可以去掉 — its export writes PNG frames only).
     const dialog = getNovaflowExportDialog(root);
     if (!(dialog instanceof HTMLElement)) return;
+    const aifx = context === "aifx" || context === "ai-sequence";
     Array.from(dialog.querySelectorAll("button")).forEach((button) => {
       if (!(button instanceof HTMLButtonElement)) return;
+      const text = String(button.textContent || "").trim();
+      const spineTab = /^spine$/i.test(text);
+      if (/SPINE\s*\u5e8f\u5217\u5de5\u7a0b/i.test(text)) {
+        // the row is the box around the toggle button
+        const row = button.parentElement instanceof HTMLElement && button.parentElement !== dialog &&
+          String(button.parentElement.textContent || "").trim() === text ? button.parentElement : button;
+        setNovaflowAifxExportControlUnavailable(row, context === "aifx");
+        return;
+      }
+      if (spineTab) {
+        setNovaflowAifxExportControlUnavailable(button, aifx);
+        return;
+      }
       if (button.getAttribute("data-novaflow-aifx-export-control-hidden") === "1") {
         setNovaflowAifxExportControlUnavailable(button, false);
       }
