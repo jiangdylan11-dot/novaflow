@@ -72183,7 +72183,18 @@
       } catch (error) {
         task = Promise.reject(error);
       }
-      Promise.resolve(task).catch((error) => {
+      Promise.resolve(task).then((result) => {
+        // 导出成功也要说一声（2026-10-16 用户：一点提示都没，都不知道是不是导出成功了）；取消不提示
+        if (!result || result.canceled) return;
+        // the Web's picked folder is web-directory://N/<folder name>: show the name
+        const where = (path) => String(path || "").replace(/^web-directory:\/\/\d+\//, "").replace(/^web-export:\/\/video\/\d+\//, "");
+        const done = result.dir
+          ? `\u5df2\u5bfc\u51fa ${Number(result.count) || 0} \u5f20\u5e8f\u5217\u5e27\u5230 ${where(result.dir)}`
+          : result.filePath
+            ? `\u5df2\u5bfc\u51fa\u89c6\u9891\uff1a${where(result.filePath)}`
+            : "\u5bfc\u51fa\u5b8c\u6210";
+        showTopbarExportAvailabilityNotice(done);
+      }, (error) => {
         const message = String(error?.message || error || "\u0041\u0049\u7279\u6548\u5bfc\u51fa\u5931\u8d25");
         showTopbarExportAvailabilityNotice(message);
       }).finally(() => {
