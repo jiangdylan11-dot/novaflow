@@ -10582,7 +10582,8 @@
   // a dialog's mask only dims this frame (the stage): the host dims the rest of the page while
   // one is open, as the other sections' dialogs do (user 2026-10-12: 黑色遮罩应该全屏)
   new MutationObserver(() => {
-    const open = !!document.querySelector('body > .mask')
+    // 粒子特效的模板库（.pfx-lib）也算（2026-10-16 用户：遮罩没盖住左边的内容和顶栏）
+    const open = !!document.querySelector('body > .mask, body > .pfx-lib')
     if (open === hostSeen.modal) return
     hostSeen.modal = open
     for (const fn of hostListeners) { try { fn('modal', { open }) } catch (e) { console.warn('[skeleton editor] host', e) } }
