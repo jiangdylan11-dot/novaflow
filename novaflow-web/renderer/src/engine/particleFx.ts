@@ -8,6 +8,7 @@ import { getBuiltinSprites } from './BuiltinSprites'
 import { defaultConfig } from '../types'
 import type { ParticleSprite, ParticleSystemConfig } from '../types'
 import { contourToNormalizedPoints } from '../utils/contour'
+import { fitClosedBezier, autoHandles } from '../utils/bezierFit'
 import { loadCurvePresets, saveCurvePresets, defaultCurvePresets } from '../utils/curvePresets'
 import { normalizeColorStops, mergeStopsWithCurve, normalizeKey1DCurve, sampleColorStops } from '../utils/curveMath'
 
@@ -56,6 +57,16 @@ function circlePathToCustom(out: any) {
     pathType: 'custom', pathClosed: true, pathPoints: ellipsePathPoints(rx, ry), pathRadiusOffset: 0,
     pathSpeedPxPerSec: Math.round(Math.abs(omega) * (perimeter / (Math.PI * 2))), pathReverse: omega < 0, pathStartT: turn < 0 ? turn + 1 : turn,
   })
+}
+
+/**
+ * 图片轮廓 → 自定义路径：轮廓先取密集的点（不简化），再拟合成尽量少的贝塞尔点（2026-10-16 用户：要曲线，不要无数的点）。
+ * tolerance = 允许偏离轮廓的像素（目标尺寸里的像素），越大点越少
+ */
+export async function contourToBezierPath(dataUrl: string, options: { alphaThreshold: number; smoothIterations: number; targetSize: number; tolerance: number }) {
+  const dense = await contourToNormalizedPoints(dataUrl, { alphaThreshold: options.alphaThreshold, smoothIterations: options.smoothIterations, simplifyEpsilon: 0, targetSize: options.targetSize })
+  if (!dense || dense.length < 3) return []
+  return fitClosedBezier(dense, Math.max(0.3, Number(options.tolerance) || 3))
 }
 
 /** 模板配置 → 完整配置：补默认值 */
@@ -256,6 +267,6 @@ export async function spineParts(systems: ParticleSystemConfig[], duration: numb
   return { skeleton, images }
 }
 
-const api = { contourToNormalizedPoints, ellipsePathPoints, loadCurvePresets, saveCurvePresets, defaultCurvePresets, normalizeColorStops, mergeStopsWithCurve, normalizeKey1DCurve, sampleColorStops, ParticleEngine, createStageEngine, createPreview, exportToSpine, builtinSprite, builtinSpriteList, normalizeConfig, systemsOf, loadTemplates, saveTemplates, resetTemplates, loadSpriteImages, sequenceConfig, anyLoop, renderSequence, spineParts, defaultConfig, getBuiltinSprites }
+const api = { contourToNormalizedPoints, contourToBezierPath, autoHandles, ellipsePathPoints, loadCurvePresets, saveCurvePresets, defaultCurvePresets, normalizeColorStops, mergeStopsWithCurve, normalizeKey1DCurve, sampleColorStops, ParticleEngine, createStageEngine, createPreview, exportToSpine, builtinSprite, builtinSpriteList, normalizeConfig, systemsOf, loadTemplates, saveTemplates, resetTemplates, loadSpriteImages, sequenceConfig, anyLoop, renderSequence, spineParts, defaultConfig, getBuiltinSprites }
 ;(globalThis as any).NovaFlowParticleFx = api
 export default api

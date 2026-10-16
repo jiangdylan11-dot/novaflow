@@ -4642,6 +4642,7 @@
       if (e.button !== 0) return
       // 粒子面板开着：骨架锁住，画布上只能点选骨骼 / 图片（换粒子的骨骼、层级），不拖、不改（2026-10-16 用户：免得误操作）
       if (pfx) {
+        if (pfxPathPoints()) { pfxClickAddPoint(e); return }
         const bh = state.opt.boneSel ? hitBone(sx, sy) : null
         const ih = !bh && state.opt.imgSel ? hitImage(sx, sy) : null
         if (bh) select({ kind: 'bone', name: bh })
@@ -7611,7 +7612,7 @@
       // 屏幕 = J · M · 局部
       const A = [J[0] * M[0] + J[2] * M[1], J[1] * M[0] + J[3] * M[1], J[0] * M[2] + J[2] * M[3], J[1] * M[2] + J[3] * M[3]]
       const det = A[0] * A[3] - A[1] * A[2] || 1, dx = ev.clientX - d.x, dy = ev.clientY - d.y
-      set(d.sx + (A[3] * dx - A[2] * dy) / det, d.sy + (-A[1] * dx + A[0] * dy) / det)
+      set(d.sx + (A[3] * dx - A[2] * dy) / det, d.sy + (-A[1] * dx + A[0] * dy) / det, ev)
       if (pfx.ui.rerenderLight) pfx.ui.rerenderLight()
       pfxRestart()
     })
@@ -7623,25 +7624,149 @@
   function pfxPathPoints() {
     const cfg = pfx && pfx.ui && pfx.ui.config
     if (!cfg) return null
-    // 形状「路径」：面板「画布编辑（锁定坐标）」开着才显示；基础属性「路径 · 自定义」：一直能拖（和粒子页一样）
-    const custom = cfg.shape && cfg.shape.type === 'custom_path' && !cfg.pathEnabled && pfx.ui.pathEdit !== false
+    // 发射器形状「路径」或基础属性「路径」：面板「画布编辑」开着才显示、才能在画布上加点
+    const custom = cfg.shape && cfg.shape.type === 'custom_path' && !cfg.pathEnabled
     const motion = cfg.pathEnabled && cfg.pathType === 'custom'
-    return (custom || motion) && Array.isArray(cfg.pathPoints) ? cfg.pathPoints : null
+    return (custom || motion) && pfx.ui.pathEdit !== false && Array.isArray(cfg.pathPoints) ? cfg.pathPoints : null
   }
   function pfxSyncPathHandles(pts) {
     const stage = $('#stage'), have = [...stage.querySelectorAll('.pfx-path-pt')]
     const n = pts ? pts.length : 0
     for (let i = have.length; i < n; i++) {
-      const el = h('div', { class: 'pfx-path-pt', title: '路径点（拖动）', style: pfxHandleStyle('#e0b45a', false) })
+      const el = h('div', { class: 'pfx-path-pt', title: '路径点：拖动移动，双击删除；按住 Alt 拖拉出曲线，按住 Alt 点一下切换尖角 / 平滑', style: pfxHandleStyle('#e0b45a', false) })
       el.dataset.i = String(i)
       stage.append(el)
       // 路径点是相对发射点的局部坐标（跟着系统旋转 / 缩放）
       const rot = () => { const cfg = pfx.ui.config, a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1; return [Math.cos(a) * k, Math.sin(a) * k, -Math.sin(a) * k, Math.cos(a) * k] }
-      pfxDrag(el, () => { const p = pfxPathPoints()[Number(el.dataset.i)]; return { x: p.x, y: p.y } }, (x, y) => { const p = pfxPathPoints()[Number(el.dataset.i)]; p.x = Math.round(x * 10) / 10; p.y = Math.round(y * 10) / 10 }, rot)
-      // 双击路径点删掉（至少留两个）
-      el.addEventListener('dblclick', (ev) => { ev.preventDefault(); ev.stopPropagation(); const pts = pfxPathPoints(); if (!pts || pts.length <= 2) return; pts.splice(Number(el.dataset.i), 1); pfxRestart(); if (pfx.ui.rerender) pfx.ui.rerender() })
+      // 按下：选中（出弧线手柄）；拖 = 移动；按住 Alt 拖 = 拉出曲线（两边对称）；按住 Alt 点一下 = 尖角 / 平滑
+      el.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== 0 || !pfx || !pfx.J) return
+        ev.preventDefault(); ev.stopPropagation(); el.setPointerCapture(ev.pointerId)
+        const i = Number(el.dataset.i), p = pfxPathPoints()[i]
+        pfx.pathSel = i
+        pfx.drag = { el, x: ev.clientX, y: ev.clientY, sx: p.x, sy: p.y, A: pfxLocalJacobian(rot()), alt: ev.altKey, moved: false }
+      })
+      el.addEventListener('pointermove', (ev) => {
+        const d = pfx && pfx.drag
+        if (!d || d.el !== el) return
+        const dx = ev.clientX - d.x, dy = ev.clientY - d.y
+        if (!d.moved && Math.hypot(dx, dy) < 3) return
+        d.moved = true
+        const A = d.A, det = A[0] * A[3] - A[1] * A[2] || 1, lx = (A[3] * dx - A[2] * dy) / det, ly = (-A[1] * dx + A[0] * dy) / det
+        const p = (pfxPathPoints() || [])[Number(el.dataset.i)]
+        if (!p) return
+        const r1 = (v) => Math.round(v * 10) / 10
+        if (d.alt) { p.out = { x: r1(lx), y: r1(ly) }; p.in = { x: r1(-lx), y: r1(-ly) } }
+        else { p.x = r1(d.sx + lx); p.y = r1(d.sy + ly) }
+        pfxRestart()
+      })
+      const up = () => {
+        const d = pfx && pfx.drag
+        if (!d || d.el !== el) return
+        pfx.drag = null
+        if (d.alt && !d.moved) pfxToggleCorner(Number(el.dataset.i))
+        if (pfx.ui.rerender) pfx.ui.rerender()
+      }
+      el.addEventListener('pointerup', up)
+      el.addEventListener('pointercancel', up)
+      // 双击：删点
+      el.addEventListener('dblclick', (ev) => { ev.preventDefault(); ev.stopPropagation(); pfxDeletePathPoint(Number(el.dataset.i)) })
     }
     for (let i = n; i < have.length; i++) have[i].remove()
+    // 选中点的两个弧线手柄：拖动调弯曲，另一边反向跟着（长度不变）；按住 Alt 两边分开调
+    for (const side of ['in', 'out']) {
+      let el = stage.querySelector(`.pfx-path-hd[data-side="${side}"]`)
+      if (!pts) { if (el) el.remove(); continue }
+      if (el) continue
+      el = h('div', { class: 'pfx-path-hd', 'data-side': side, title: '弧线手柄（拖动；按住 Alt 两边分开调）', style: pfxHandleStyle('#e0b45a', true).replace('width:12px;height:12px;margin:-6px 0 0 -6px', 'width:9px;height:9px;margin:-4.5px 0 0 -4.5px') })
+      stage.append(el)
+      const other = side === 'in' ? 'out' : 'in', r1 = (v) => Math.round(v * 10) / 10
+      const rot = () => { const cfg = pfx.ui.config, a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1; return [Math.cos(a) * k, Math.sin(a) * k, -Math.sin(a) * k, Math.cos(a) * k] }
+      pfxDrag(el, () => { const p = pfxPathPoints()[pfx.pathSel], v = p[side] || { x: 0, y: 0 }; return { x: p.x + v.x, y: p.y + v.y } }, (x, y, ev) => {
+        const p = (pfxPathPoints() || [])[pfx.pathSel]
+        if (!p) return
+        const v = { x: r1(x - p.x), y: r1(y - p.y) }
+        p[side] = v
+        if (ev && ev.altKey) return
+        const o = p[other] || { x: 0, y: 0 }, lv = Math.hypot(v.x, v.y) || 1, lo = Math.hypot(o.x, o.y), L = lo > 0.5 ? lo : lv
+        p[other] = { x: r1((-v.x / lv) * L), y: r1((-v.y / lv) * L) }
+      }, rot)
+    }
+  }
+  /** 局部（路径点坐标）→ 屏幕的雅可比：画板 → 屏幕（这一帧的 J）乘系统旋转 / 缩放 */
+  function pfxLocalJacobian(M) {
+    const J = pfx.J
+    return [J[0] * M[0] + J[2] * M[1], J[1] * M[0] + J[3] * M[1], J[0] * M[2] + J[2] * M[3], J[1] * M[2] + J[3] * M[3]]
+  }
+  /** 尖角 ↔ 平滑（平滑 = 方向沿前后点、长度为到前后点距离的 1/3） */
+  function pfxToggleCorner(i) {
+    const pts = pfxPathPoints(), p = pts && pts[i]
+    if (!p) return
+    const flat = (v) => !v || Math.hypot(v.x || 0, v.y || 0) < 0.5
+    if (flat(p.in) && flat(p.out)) Object.assign(p, ParticleFx().autoHandles(pts, i, pfx.ui.config.pathClosed !== false))
+    else { p.in = { x: 0, y: 0 }; p.out = { x: 0, y: 0 } }
+    pfx.pathSel = i
+    pfxRestart()
+  }
+  /** 删一个路径点（至少留两个） */
+  function pfxDeletePathPoint(i) {
+    const pts = pfxPathPoints()
+    if (!pts || !pts[i]) return false
+    if (pts.length <= 2) { status('路径至少留两个点'); return true }
+    pts.splice(i, 1)
+    pfx.pathSel = -1
+    pfxRestart()
+    if (pfx.ui.rerender) pfx.ui.rerender()
+    return true
+  }
+  /**
+   * 画布编辑开着时在画布上点：点在线上（8 像素内）= 在那里插一个点（按曲线劈开，形状不变）；
+   * 点在空白处 = 在末尾加一个尖角点
+   */
+  function pfxClickAddPoint(ev) {
+    const pts = pfxPathPoints()
+    if (!pts || !pfx.J || !pfx.S0) return
+    const cfg = pfx.ui.config, a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1
+    const M = [Math.cos(a) * k, Math.sin(a) * k, -Math.sin(a) * k, Math.cos(a) * k], A = pfxLocalJacobian(M), det = A[0] * A[3] - A[1] * A[2] || 1
+    // 点到的位置：屏幕 → 路径点坐标（相对发射点）
+    const r = $('#stage').getBoundingClientRect(), J = pfx.J
+    const ex = pfx.PS.width / 2 + (cfg.systemX || 0), ey = pfx.PS.height / 2 + (cfg.systemY || 0)
+    const E = [pfx.S0[0] + J[0] * ex + J[2] * ey, pfx.S0[1] + J[1] * ex + J[3] * ey]
+    const sx = ev.clientX - r.left - E[0], sy = ev.clientY - r.top - E[1]
+    const r1 = (v) => Math.round(v * 10) / 10
+    const p = { x: r1((A[3] * sx - A[2] * sy) / det), y: r1((-A[1] * sx + A[0] * sy) / det), in: { x: 0, y: 0 }, out: { x: 0, y: 0 } }
+    const closed = cfg.pathClosed !== false, n = pts.length, hv = (v) => v || { x: 0, y: 0 }
+    const lerp = (u, v, t) => ({ x: u.x + (v.x - u.x) * t, y: u.y + (v.y - u.y) * t })
+    // 离得最近的曲线位置（屏幕距离）
+    let best = Infinity, seg = -1, bt = 0
+    for (let i = 0; i < (closed ? n : n - 1); i++) {
+      const P0 = pts[i], P3 = pts[(i + 1) % n], P1 = { x: P0.x + hv(P0.out).x, y: P0.y + hv(P0.out).y }, P2 = { x: P3.x + hv(P3.in).x, y: P3.y + hv(P3.in).y }
+      for (let s = 0; s <= 64; s++) {
+        const t = s / 64, mt = 1 - t, w0 = mt * mt * mt, w1 = 3 * mt * mt * t, w2 = 3 * mt * t * t, w3 = t * t * t
+        const qx = w0 * P0.x + w1 * P1.x + w2 * P2.x + w3 * P3.x - p.x, qy = w0 * P0.y + w1 * P1.y + w2 * P2.y + w3 * P3.y - p.y
+        const dd = Math.hypot(A[0] * qx + A[2] * qy, A[1] * qx + A[3] * qy)
+        if (dd < best) { best = dd; seg = i; bt = t }
+      }
+    }
+    let at = n
+    if (seg >= 0 && best <= 8 && bt > 0.02 && bt < 0.98) {
+      // de Casteljau 劈开那段：新点在曲线上，前后两点的控制柄跟着缩，形状不变
+      const P0 = pts[seg], P3 = pts[(seg + 1) % n], P1 = { x: P0.x + hv(P0.out).x, y: P0.y + hv(P0.out).y }, P2 = { x: P3.x + hv(P3.in).x, y: P3.y + hv(P3.in).y }
+      const Q0 = lerp(P0, P1, bt), Q1 = lerp(P1, P2, bt), Q2 = lerp(P2, P3, bt), R0 = lerp(Q0, Q1, bt), R1 = lerp(Q1, Q2, bt), S = lerp(R0, R1, bt)
+      p.x = r1(S.x); p.y = r1(S.y)
+      // 直线段（两头都没有控制柄）：新点也是尖角，拖它两边还是直线
+      const straight = Math.hypot(P1.x - P0.x, P1.y - P0.y) < 0.5 && Math.hypot(P2.x - P3.x, P2.y - P3.y) < 0.5
+      if (!straight) {
+        P0.out = { x: r1(Q0.x - P0.x), y: r1(Q0.y - P0.y) }
+        P3.in = { x: r1(Q2.x - P3.x), y: r1(Q2.y - P3.y) }
+        p.in = { x: r1(R0.x - S.x), y: r1(R0.y - S.y) }; p.out = { x: r1(R1.x - S.x), y: r1(R1.y - S.y) }
+      }
+      at = seg + 1
+    } else if (seg >= 0 && best <= 8) return   // 点在已有的点上：不加
+    pts.splice(at, 0, p)
+    pfx.pathSel = at
+    pfxRestart()
+    if (pfx.ui.rerender) pfx.ui.rerender()
   }
 
   /** 粒子原点：跟随图层 = 那张图的中心（换到选的骨骼里），不跟图层 = 骨骼原点；s = 图层的缩放 */
@@ -7718,11 +7843,32 @@
     }
     if (pathPts) {
       const a = ((cfg.systemRotationDeg || 0) * Math.PI) / 180, k = Number(cfg.systemScale) || 1, ca = Math.cos(a) * k, sa = Math.sin(a) * k
-      const els = $('#stage').querySelectorAll('.pfx-path-pt')
-      const line = []
-      pathPts.forEach((p, i) => { const q = pt(ex + p.x * ca - p.y * sa, ey + p.x * sa + p.y * ca); line.push(q); const el = els[i]; if (el) { el.style.display = ''; el.style.left = q[0] + 'px'; el.style.top = q[1] + 'px' } })
+      const els = $('#stage').querySelectorAll('.pfx-path-pt'), T = (x, y) => pt(ex + x * ca - y * sa, ey + x * sa + y * ca), hv = (v) => v || { x: 0, y: 0 }
+      pathPts.forEach((p, i) => { const q = T(p.x, p.y), el = els[i]; if (el) { el.style.display = ''; el.style.left = q[0] + 'px'; el.style.top = q[1] + 'px'; el.style.background = i === pfx.pathSel ? '#ffffff' : '#e0b45a' } })
+      // 曲线：和引擎一样按每个点的进 / 出控制柄画（闭环两点也来回）
+      const n = pathPts.length, closed = cfg.pathClosed !== false && n > 1
       ctx.save(); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.strokeStyle = 'rgba(224,180,90,.7)'; ctx.lineWidth = 1; ctx.setLineDash([])
-      ctx.beginPath(); line.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); if (cfg.pathClosed !== false && line.length > 2) ctx.closePath(); ctx.stroke(); ctx.restore()
+      ctx.beginPath()
+      const P0 = T(pathPts[0].x, pathPts[0].y)
+      ctx.moveTo(P0[0], P0[1])
+      for (let i = 0; i < (closed ? n : n - 1); i++) {
+        const A = pathPts[i], B = pathPts[(i + 1) % n], o = hv(A.out), ib = hv(B.in), c1 = T(A.x + o.x, A.y + o.y), c2 = T(B.x + ib.x, B.y + ib.y), e = T(B.x, B.y)
+        ctx.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], e[0], e[1])
+      }
+      ctx.stroke()
+      // 选中点的弧线手柄（长度为 0 = 尖角，不显示）
+      const sp = pathPts[pfx.pathSel]
+      ctx.strokeStyle = 'rgba(255,255,255,.75)'
+      for (const side of ['in', 'out']) {
+        const el = $('#stage').querySelector(`.pfx-path-hd[data-side="${side}"]`)
+        if (!el) continue
+        const v = sp ? hv(sp[side]) : null
+        if (!v || Math.hypot(v.x, v.y) < 0.5) { el.style.display = 'none'; continue }
+        const q = T(sp.x + v.x, sp.y + v.y), o = T(sp.x, sp.y)
+        el.style.display = ''; el.style.left = q[0] + 'px'; el.style.top = q[1] + 'px'
+        ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(q[0], q[1]); ctx.stroke()
+      }
+      ctx.restore()
     }
     if (!pfx.stage) return
     // 时间：动画够长（到「止」）就跟播放时间；动画比粒子短（比如空动画）就按粒子自己的时长播
@@ -7751,7 +7897,7 @@
 
   function closeParticleLayer() {
     $('#tree').removeAttribute('data-pfx-lock')
-    for (const el of [$('#pfxLayer'), $('#pfxHandle'), $('#pfxRot'), ...$('#stage').querySelectorAll('.pfx-path-pt')]) if (el) el.remove()
+    for (const el of [$('#pfxLayer'), $('#pfxHandle'), $('#pfxRot'), ...$('#stage').querySelectorAll('.pfx-path-pt, .pfx-path-hd')]) if (el) el.remove()
   }
 
   function openParticlePanel() {
@@ -7801,7 +7947,7 @@
     }
     const startFrame = () => Math.max(0, Math.round(PS.start || 0))
     const openSlot = state.sel && (state.sel.kind === 'slot' ? state.sel.name : state.sel.kind === 'att' ? state.sel.slot : null)
-    pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, lastSlotSel: openSlot, clock: 0 }
+    pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, lastSlotSel: openSlot, clock: 0, pathSel: -1 }
     $('#tree').setAttribute('data-pfx-lock', '1')
     pfx.ui = UI.openDock({
       host,
@@ -10342,6 +10488,7 @@
       if (typing) return
       const k = e.key.toLowerCase()
       const mod = e.ctrlKey || e.metaKey
+      if (pfx && e.key === 'Delete' && !state.dope.focus && pfx.pathSel >= 0 && pfxDeletePathPoint(pfx.pathSel)) { e.preventDefault(); return }
       if (pfx && ((mod && k === 'd') || (e.key === 'Delete' && !state.dope.focus) || e.key === 'F2' || (!mod && !e.altKey && (k === 'p' || k === 'k')))) { e.preventDefault(); status(PFX_LOCKED); return }
       if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
       else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo() }
