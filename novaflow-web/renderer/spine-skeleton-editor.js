@@ -2201,6 +2201,8 @@
           multi ? count : null,
           multi ? addBtn : null,
           multi ? allBtn : null,
+          opts && opts.toggle ? h('label', { class: 'pk-toggle', title: opts.toggle.title || '' },
+            h('input', { type: 'checkbox', checked: !!opts.toggle.get(), onchange: (e) => opts.toggle.set(e.target.checked) }), opts.toggle.label) : null,
           h('button', { class: 'btn small', title: '加新素材：图片导进当前文件夹', onclick: () => importFrom(false) }, '导入图片…'),
           h('button', { class: 'btn small', title: '加新素材：整个文件夹（带子文件夹）导进当前文件夹', onclick: () => importFrom(true) }, '导入文件夹…'),
           h('button', { class: 'xx', onclick: close }, '×')),
@@ -2210,14 +2212,62 @@
     fill()
   }
 
-  /** 换图: the attachment shows another picture (a region takes its size; a mesh keeps its vertices). */
-  function swapImage(sel, name) {
+  /** The picture an attachment shows: its path, else its key; none for boxes, clips, paths and points. */
+  const pictureOf = (key, a) => (a && !['boundingbox', 'clipping', 'path', 'point'].includes(a.type) ? a.path || key : null)
+  const shortName = (p) => String(p || '').split('/').pop()
+
+  /** Every attachment, in every skin, that shows `picture`. */
+  function attachmentsShowing(json, picture) {
+    const out = []
+    for (const sk of json.skins) for (const [slot, map] of Object.entries(sk.attachments || {})) {
+      for (const [key, a] of Object.entries(map || {})) if (pictureOf(key, a) === picture) out.push({ skin: sk.name, slot, key, mesh: a.type === 'mesh' || a.type === 'linkedmesh' })
+    }
+    return out
+  }
+
+  // 换图's 工程里用这张图的都换 (user 2026-10-16): off by default, kept for the session once ticked
+  let swapAllUses = false
+
+  /**
+   * 换图: the attachment shows another picture (a region takes its size; a mesh keeps its vertices).
+   * Its name follows the picture when it was the old picture's name (user 2026-10-16: 换完图了命名
+   * 是不是要改下) - a name of one's own stays, and so does a skin placeholder's (shared by every skin);
+   * a name the slot already has gets _2, _3. The slot keeps its name. `all`: every attachment in the
+   * project that shows the same picture is swapped the same way, as one undo step.
+   */
+  function swapImage(sel, name, opts) {
     const size = regionSize(name) || {}
-    edit(`已给「${sel.name}」换图：${name}`, (j) => {
+    const want = shortName(name)
+    edit((r) => (r.count > 1 ? `已把 ${r.count} 处「${shortName(r.old)}」换成 ${name}` : `已给「${sel.name}」换图：${name}`) + (r.renamed ? `，附件改名为 ${want}` : ''), (j) => {
       const sk = j.skins.find((x) => x.name === sel.skin)
-      const a = sk && sk.attachments[sel.slot] && sk.attachments[sel.slot][sel.name]
-      const mesh = a && (a.type === 'mesh' || a.type === 'linkedmesh')
-      return Ops.setAttachmentProps(j, sel.skin, sel.slot, sel.name, mesh ? { path: name } : { path: name, ...size })
+      const a0 = sk && sk.attachments[sel.slot] && sk.attachments[sel.slot][sel.name]
+      const old = pictureOf(sel.name, a0) || sel.name
+      const targets = opts && opts.all ? attachmentsShowing(j, old)
+        : [{ skin: sel.skin, slot: sel.slot, key: sel.name, mesh: !!a0 && (a0.type === 'mesh' || a0.type === 'linkedmesh') }]
+      let json = j, picked = sel.name, renamed = 0
+      for (const t of targets) {
+        json = Ops.setAttachmentProps(json, t.skin, t.slot, t.key, t.mesh ? { path: name } : { path: name, ...size }).json
+        if (t.key === want || (t.key !== old && t.key !== shortName(old))) continue
+        if (Ops.isPlaceholder(json, t.slot, t.key)) continue
+        const taken = (n) => json.skins.some((s) => s.attachments[t.slot] && s.attachments[t.slot][n]) || Ops.isPlaceholder(json, t.slot, n)
+        let to = want
+        for (let k = 2; taken(to); k++) to = `${want}_${k}`
+        const r = Ops.renameAttachment(json, t.slot, t.key, to)
+        json = r.json
+        renamed++
+        if (t.skin === sel.skin && t.slot === sel.slot && t.key === sel.name) picked = r.attachment
+      }
+      return { json, count: targets.length, old, renamed, attachment: picked }
+    }, (r) => { if (state.sel && state.sel.kind === sel.kind && state.sel.slot === sel.slot && state.sel.name === sel.name) state.sel = { ...state.sel, name: r.attachment } })
+  }
+
+  /** 换图 for the picked attachment: the picker, with the 都换 switch counting the picture's uses. */
+  function openSwapImage(sel) {
+    const sk = state.json.skins.find((x) => x.name === sel.skin)
+    const a = sk && sk.attachments[sel.slot] && sk.attachments[sel.slot][sel.name]
+    const uses = attachmentsShowing(state.json, pictureOf(sel.name, a) || sel.name).length
+    openImagePicker(`给「${sel.name}」换图`, (r) => swapImage(sel, r, { all: swapAllUses && uses > 1 }), {
+      toggle: { label: `工程里用这张图的都换（${uses} 处）`, title: '打开：所有皮肤、所有插槽里用同一张图的附件一起换成新图（名字跟着改）；关闭：只换这一个', get: () => swapAllUses, set: (v) => { swapAllUses = v } },
     })
   }
 
@@ -8440,7 +8490,7 @@
     out.push(h('div', { class: 'btns g2' },
       // not a mesh (网格 unticked): nothing to edit until it is one (user 2026-10-13)
       img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), disabled: !mesh, title: mesh ? '在画面里编辑这张网格的顶点' : '先勾「网格」转成网格，再编辑顶点' }) : null,
-      img ? btn('换图', () => openImagePicker(`给「${sel.name}」换图`, (r) => swapImage(sel, r))) : null,
+      img ? btn('换图', () => openSwapImage(sel)) : null,
       !inPlaceholder && others ? btn('转为皮肤占位符', () => edit(`「${sel.name}」已转为皮肤占位符，每个皮肤先用原图`,
         (j) => Ops.convertToPlaceholder(j, sel.slot, sel.name),
         () => { state.sel = { kind: 'ph', name: sel.name, slot: sel.slot } }), { title: '每个皮肤在这里放自己的图' }) : null,
