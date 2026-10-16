@@ -33,6 +33,10 @@
     }).catch(error => { bundled = null; throw error; });
     return structuredClone(await bundled);
   }
+  // Built-in templates taken out of the bundle (2026-10-16: 光点 = a duplicate fire, 按钮环绕流光,
+  // 线团, 雷电魔法球) leave libraries that were seeded with them before.
+  const RETIRED_IDS = new Set(['file_NovaFlow项目_光点', 'file_21_UI_按钮环绕流光', 'file_NovaFlow项目_线团', 'file_NovaFlow项目_雷电魔法球']);
+  const isRetired = item => Boolean(item && RETIRED_IDS.has(item.id));
   async function templates() {
     if (!initialization) initialization = (async () => {
       let data = await store('templates');
@@ -41,7 +45,10 @@
         const base = await defaults();
         const existing = Array.isArray(data) ? data : [];
         const ids = new Set(existing.map(item => item.id));
-        data = [...existing, ...base.filter(item => !ids.has(item.id))];
+        data = [...existing, ...base.filter(item => !ids.has(item.id))].filter(item => !isRetired(item));
+        await store('templates', data, true);
+      } else if (data.some(isRetired)) {
+        data = data.filter(item => !isRetired(item));
         await store('templates', data, true);
       }
       initialized = true;

@@ -205,12 +205,59 @@ export async function createStageEngine(systems: ParticleSystemConfig[], width: 
 }
 
 /** 模板库卡片里的小预览：一组系统缩到 w × h 的画布里，自己跑（step(dt) 每帧调） */
-export async function createPreview(systems: ParticleSystemConfig[], canvas: HTMLCanvasElement, scale = 0.35) {
+/**
+ * 模板库卡片预览（和粒子页一样，2026-10-16 用户：漩涡变成一团了）：先按粒子能跑到的范围定一个「世界」
+ * （速度 × 寿命 + 重力 + 发射形状 + 吸引 / 螺旋起始半径，256–1024），在离屏画布上按世界尺寸模拟——
+ * 螺旋从世界的一半处转进来；预跑半秒量出有内容的范围（留 6%），裁下来缩进卡片。
+ * 之前直接拿小卡片当世界，螺旋只能从几十像素处出发，大雾气贴图叠成一团
+ */
+function previewWorldSize(cfg: any) {
+  const life = Math.max(0.01, cfg.lifetimeMax || 0.01), speed = Math.max(0, cfg.speedMax || 0)
+  const gravity = cfg.gravityEnabled ? Math.hypot(cfg.gravityX || 0, cfg.gravityY || 0) : 0
+  const travel = speed * life + 0.5 * gravity * life * life
+  const shape = cfg.shape || { type: 'point' }
+  const shapeRadius = shape.type === 'circle' ? Math.max(0, shape.outerRadius || 0)
+    : shape.type === 'rect' ? Math.max(0, Math.hypot((shape.width || 0) / 2, (shape.height || 0) / 2))
+      : shape.type === 'cone' ? Math.max(0, shape.coneRadius || 0) : 0
+  const attractor = cfg.attractorEnabled ? Math.max(0, cfg.attractorRadius || 0) : 0
+  const spiral = cfg.attractorEnabled && cfg.attractorMode === 'spiral' ? Math.max(0, cfg.spiralStartRadius || 0) : 0
+  const size = Math.ceil((shapeRadius + travel + Math.max(attractor, spiral) + 80) * 2)
+  return Math.max(256, Math.min(1024, size || 512))
+}
+export async function createPreview(systems: ParticleSystemConfig[], canvas: HTMLCanvasElement, _scale = 0.35) {
   const ctx = canvas.getContext('2d')!
-  const scaled = systems.map((c) => ({ ...c, systemScale: (Number(c.systemScale) || 1) * scale, systemX: (Number(c.systemX) || 0) * scale, systemY: (Number(c.systemY) || 0) * scale }))
-  const list = await engines(scaled.map((c) => sequenceConfig({ ...c, loopAnimation: true } as any, Math.max(0.5, Number((c as any).loopDurationSec) || 2))), () => ctx, canvas.width, canvas.height)
+  const world = systems.reduce((acc, c) => Math.max(acc, previewWorldSize(c)), 0) || 512
+  const k = Math.min(1, 384 / world)
+  const off = document.createElement('canvas'); off.width = off.height = Math.max(1, Math.round(world * k))
+  const octx = off.getContext('2d')!
+  const local = systems.map((c) => sequenceConfig({ ...c, systemX: 0, systemY: 0, loopAnimation: true } as any, Math.max(0.5, Number((c as any).loopDurationSec) || 2)))
+  const list = await engines(local, () => octx, world, world)
+  const paint = () => { octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, off.width, off.height); octx.setTransform(k, 0, 0, k, 0, 0); for (const e of list) e.engine.draw({ clear: false }) }
+  // 有内容的范围（缩到 160 量 alpha > 10），留 6% 边
+  const measure = () => {
+    const probe = document.createElement('canvas'); probe.width = probe.height = 160
+    const p = probe.getContext('2d', { willReadFrequently: true })!; p.drawImage(off, 0, 0, 160, 160)
+    const d = p.getImageData(0, 0, 160, 160).data
+    let x0 = 160, y0 = 160, x1 = -1, y1 = -1
+    for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) if (d[(y * 160 + x) * 4 + 3] > 10) { if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y }
+    if (x1 < 0) return null
+    const w = off.width, pad = 0.06 * w
+    const L = Math.max(0, Math.floor((x0 / 160) * w - pad)), T = Math.max(0, Math.floor((y0 / 160) * w - pad))
+    const R = Math.min(w - 1, Math.ceil(((x1 + 1) / 160) * w + pad)), B = Math.min(w - 1, Math.ceil(((y1 + 1) / 160) * w + pad))
+    return { x: L, y: T, w: Math.max(1, R - L + 1), h: Math.max(1, B - T + 1) }
+  }
+  for (let i = 0; i < 30; i++) for (const e of list) e.engine.step(1 / 60, { draw: false })
+  paint()
+  const crop = measure()
   return {
-    step: (dt: number) => { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); for (const e of list) { e.engine.step(dt, { draw: false }); e.engine.draw({ clear: false }) } }
+    step: (dt: number) => {
+      for (const e of list) e.engine.step(dt, { draw: false })
+      paint()
+      const w = canvas.width, h = canvas.height, c = crop || { x: 0, y: 0, w: off.width, h: off.height }
+      const fit = Math.min(w / c.w, h / c.h) * 0.995, dw = c.w * fit, dh = c.h * fit
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, w, h); ctx.imageSmoothingEnabled = true
+      ctx.drawImage(off, c.x, c.y, c.w, c.h, (w - dw) / 2, (h - dh) / 2, dw, dh)
+    }
   }
 }
 
