@@ -7905,7 +7905,8 @@
     const D = pfx.D, startF = Math.max(0, PS.start || 0), endF = startF + Math.round(PS.duration)
     const own = !animOn() || lastFrame() < endF
     let tau
-    if (own) { pfx.clock = (pfx.clock || 0) + (state.playing || !animOn() || lastFrame() < 2 ? dt : 0); tau = pfx.clock % (D + (ParticleFx().anyLoop(pfx.ui.systems) ? 0 : 0.6)) }
+    // 自己的时钟也听播放 / 暂停（2026-10-16 用户：粒子编辑时播放暂停没法控制——空动画曾一直走）
+    if (own) { pfx.clock = (pfx.clock || 0) + (state.playing || !animOn() ? dt : 0); tau = pfx.clock % (D + (ParticleFx().anyLoop(pfx.ui.systems) ? 0 : 0.6)) }
     else tau = (state.frame + (state.playFrac || 0) - startF) / FPS
     if (tau < 0) return
     for (const e of pfx.stage.list) {
@@ -7977,6 +7978,8 @@
     const openSlot = state.sel && (state.sel.kind === 'slot' ? state.sel.name : state.sel.kind === 'att' ? state.sel.slot : null)
     pfx = { place, PS, ver: 0, stage: null, origin: null, ui: null, lastSel: selBone, lastSlotSel: openSlot, clock: 0, pathSel: -1 }
     $('#tree').setAttribute('data-pfx-lock', '1')
+    // 动画比粒子短（空动画等，粒子按自己的时钟播）而编辑器停着：打开就开始播，能随时暂停
+    if (animOn() && !state.playing && lastFrame() < Math.max(0, PS.start || 0) + Math.round(PS.duration)) togglePlay()
     pfx.ui = UI.openDock({
       host,
       last: state.particleLast,
