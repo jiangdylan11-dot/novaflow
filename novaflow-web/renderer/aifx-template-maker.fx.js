@@ -181,6 +181,7 @@
   // 每个像素最近的外圈轮廓点的弧长占比 T（0..1，绕一圈），带特征变换
   function outlineParam(geo) {
     if (geo._T) return geo._T
+    if (geo.derived && geo.derived.outlineT) return (geo._T = geo.derived.outlineT)
     const { W, H, N } = geo, seed = new Int32Array(N).fill(-1), tv = []
     const total = geo.outer.reduce((a, c) => a + c.len, 0) || 1
     let acc = 0
@@ -192,7 +193,7 @@
       acc += c.len
     }
     const T = new Float32Array(N)
-    if (!tv.length) { geo._T = T; return T }
+    if (!tv.length) { geo._T = T; if (geo.derived) geo.derived.outlineT = T; return T }
     const INF = 1e20, n = Math.max(W, H), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1), a = new Int32Array(n)
     const run = (len) => {
       let k = 0; v[0] = 0; z[0] = -INF; z[1] = INF
@@ -216,6 +217,7 @@
       for (let x = 0; x < W; x++) { const xx = a[x], yy = rowOf[y * W + xx], s = seed[yy * W + xx]; T[y * W + x] = s >= 0 ? tv[s] : 0 }
     }
     geo._T = T
+    if (geo.derived) geo.derived.outlineT = T
     return T
   }
   const pointOn = (geo, u) => FXM().pointOnOutline(geo, u)
@@ -1965,6 +1967,10 @@
   // export Workers. Geometry and interpolation indices are cached once, not per frame.
   function prepareHoly(ctx) {
     const g = ctx.geo, half = Math.min(g.W, g.H) / 2
+    if (g.derived && g.derived.holy) {
+      const s = g.derived.holy
+      return { ...s, field: new Float32Array(s.A * (s.B + 1)) }
+    }
     const A = Math.max(256, Math.min(1024, 2 ** Math.ceil(Math.log2(Math.min(g.W, g.H) * 2))))
     const B = Math.max(40, Math.min(112, Math.ceil(Math.min(g.W, g.H) / 5)))
     const boundary = new Float32Array(A)
@@ -1987,7 +1993,9 @@
       ai[i] = a0; aw[i] = af; bi[i] = Math.floor(depth); bw[i] = depth - bi[i]
       mask[i] = smooth(-.006, .014, g.sd[i] / half) * (1 - smooth(.86, .99, radius))
     }
-    return { A, B, ai, aw, bi, bw, mask, field: new Float32Array(A * (B + 1)) }
+    const prepared = { A, B, ai, aw, bi, bw, mask }
+    if (g.derived) g.derived.holy = prepared
+    return { ...prepared, field: new Float32Array(A * (B + 1)) }
   }
   const holyHash = (x) => frac(Math.sin(x * 127.1 + 311.7) * 43758.5453)
   const holyGaussian = (x, width) => Math.exp(-((x / Math.max(.0001, width)) ** 2))
@@ -2083,7 +2091,7 @@
   }))
   LIST.push(...HOLY_RAYS,
     {
-      id: 'holy-aurora', label: '极光冠冕', group: '环绕光效', palette: 'gold', lifecycle: 'loop',
+      id: 'holy-aurora', label: '极光冠冕', group: '环绕光效', palette: 'gold', lifecycle: 'loop', retired: true,
       hint: '柔软丝状光幕沿轮廓起伏，波峰持续环绕',
       params: [P('count', '光丝数量', 32, 320, 1, 200), PP.width, P('reach', '光幕高度', .3, 3, .05, 1), P('laps', '环绕圈数', 1, 6, 1, 1), PP.glow, PP.bright],
       prepare: (ctx) => ({ T: outlineParam(ctx.geo) }),
@@ -2165,7 +2173,12 @@
       },
       ai: (w) => ['rays', `several waves of light expanding outward from a ${w.noun}, a bright area travelling around the waves, soft glowing contours fading out`],
     })
-  const GROUP_ORDER = ['技能', '环绕光效', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
+  for (const e of LIST) {
+    if (HOLY_RAYS.includes(e) || ['godrays', 'aura'].includes(e.id)) e.group = '光晕放射'
+    if (e.id === 'holy-twin') e.group = '轮廓流光'
+    if (e.id === 'holy-tide') e.group = '扩散'
+  }
+  const GROUP_ORDER = ['轮廓流光', '技能', '光晕放射', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
   const ALL = LIST.slice().sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group))
   // 粒子类（自己管出场 / 收场，一次性结尾清空）
   const OVERLAY = ['fireworks', 'charge', 'sparkspread']
@@ -2181,7 +2194,7 @@
     e.inert = e.inert || {}
     if (e.id === 'shatter') { e.inert.trail = '这个效果没有拖尾'; e.inert.size = '碎块大小跟着「碎块」数量变' }
     if (!e.emit) e.inert.emit = '这个效果的发射位置是固定的'
-    if (!DIRS.includes(e.id) && e.group !== '环绕光效') e.inert.direction = '这个效果没有方向'
+    if (!DIRS.includes(e.id) && !e.id.startsWith('holy-')) e.inert.direction = '这个效果没有方向'
     e.inert.start = '没有起点'
   }
 

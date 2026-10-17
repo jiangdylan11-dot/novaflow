@@ -110,6 +110,7 @@
   const defaultScriptUrls = () => MAKER_SCRIPTS.map(scriptUrl)
   const WORKER_SRC = `
 let ctx = null, version = -1
+const preparedCache = {}
 const bases = new Map()
 self.onmessage = (event) => {
   const msg = event.data || {}
@@ -118,7 +119,7 @@ self.onmessage = (event) => {
     if (msg.type === 'prepare') {
       version = msg.version
       const b = msg.project.base && bases.get(msg.project.base.id)
-      ctx = self.NovaFlowFxMaker.prepare(msg.project, msg.scale, b || null)
+      ctx = self.NovaFlowFxMaker.prepare(msg.project, msg.scale, b || null, preparedCache)
       self.postMessage({ type: 'prepared', version, w: ctx.geo.W, h: ctx.geo.H })
       return
     }
@@ -257,7 +258,21 @@ self.postMessage({ type: 'ready' })`
 
     // ---------------------------------------------------------------- 预览渲染（2 个 Worker，半分辨率）
     const pool = []
-    const preview = { scale: 0.5, version: -1, frames: new Map(), next: new Map(), pending: new Set(), w: 0, h: 0, timer: 0 }
+    const preview = { scale: 0.5, version: -1, frontVersion: -1, waiting: true, target: 0, frames: new Map(), next: new Map(), pending: new Set(), w: 0, h: 0, timer: 0, cache: new Map(), cacheBytes: 0, cacheHits: 0, request: null, key: '' }
+    const PREVIEW_CACHE_BYTES = 32 * 1024 * 1024
+    function rememberFrame(key, index, img) {
+      // Retain a short opening sequence for fast A → B → A switching, never every 800px frame.
+      if (index >= 8) return
+      let entry = preview.cache.get(key)
+      if (!entry) { entry = new Map(); preview.cache.set(key, entry) }
+      if (entry.has(index)) return
+      entry.set(index, img); preview.cacheBytes += img.data.byteLength
+      while (preview.cacheBytes > PREVIEW_CACHE_BYTES && preview.cache.size) {
+        const oldest = preview.cache.keys().next().value, frames = preview.cache.get(oldest)
+        for (const frame of frames.values()) preview.cacheBytes -= frame.data.byteLength
+        preview.cache.delete(oldest)
+      }
+    }
     function makeWorker() {
       const w = createWorker(options.scriptUrls)
       w.ready = false; w.prepared = -1; w.busy = false
@@ -280,9 +295,10 @@ self.postMessage({ type: 'ready' })`
       S.version++
       S.exportCache = null
       clearTimeout(preview.timer)
-      preview.timer = setTimeout(doPrepare, fast ? 40 : 120)
+      preview.waiting = true
+      S.lastTick = 0
+      preview.timer = setTimeout(doPrepare, fast === 'switch' ? 0 : fast ? 40 : 120)
       if (overlay) overlayDirty()
-      layerMode()
       syncTime()
     }
     // 用底图画面的效果（碎裂 / 消失）：预览不再垫半透明底图、效果层正常显示（不按滤色叠）——画面就是成片
@@ -299,32 +315,52 @@ self.postMessage({ type: 'ready' })`
       preview.version = v
       preview.scale = previewScale()
       preview.pending.clear()
-      preview.next = new Map()   // 新版本的帧先攒着，旧帧继续显示，不闪
       const project = renderPayload()
-      for (const w of pool) if (w.ready) { w.prepared = -1; w.postMessage({ type: 'prepare', version: v, project, scale: preview.scale }) }
+      preview.key = JSON.stringify([project, preview.scale])
+      const saved = preview.cache.get(preview.key)
+      preview.next = new Map(saved || [])
+      preview.target = Math.floor(S.playhead) % n()
+      preview.request = { type: 'prepare', version: v, project, scale: preview.scale }
+      if (saved) { preview.cache.delete(preview.key); preview.cache.set(preview.key, saved) }
+      if (preview.next.has(preview.target)) { preview.cacheHits++; commitPreview() }
+      pump()
+    }
+    function commitPreview() {
+      // One front buffer, one generation. Never insert new frames into the old generation.
+      preview.frames = preview.next
+      preview.frontVersion = preview.version
+      preview.waiting = false
+      S.lastTick = 0
+      layerMode(); drawFrame(); syncTime()
     }
     function onWorker(w, msg) {
-      if (msg.type === 'ready') { w.ready = true; w.postMessage(baseMsg()); if (preview.version >= 0) w.postMessage({ type: 'prepare', version: preview.version, project: renderPayload(), scale: preview.scale }); else doPrepare(); return }
-      if (msg.type === 'prepared') { if (msg.version === preview.version) { w.prepared = msg.version; preview.w = msg.w; preview.h = msg.h; pump() } return }
-      if (msg.type === 'error') { console.error('[模板编辑器]', msg.message); setInfo('预览出错：' + msg.message.split('\n')[0]); w.busy = false; return }
-      if (msg.type === 'skip') { w.busy = false; preview.pending.delete(msg.index); pump(); return }
+      if (S.closed) return
+      if (msg.type === 'ready') { w.ready = true; w.postMessage(baseMsg()); if (!preview.request) doPrepare(); else pump(); return }
+      w.busy = false
+      if (msg.type === 'prepared') { w.prepared = msg.version; if (msg.version === S.version) { preview.w = msg.w; preview.h = msg.h } pump(); return }
+      if (msg.type === 'error') { if (msg.version === S.version) { console.error('[模板编辑器]', msg.message); setInfo('预览出错：' + msg.message.split('\n')[0]) } return }
+      if (msg.type === 'skip') { if (msg.version === preview.version) preview.pending.delete(msg.index); pump(); return }
       if (msg.type === 'frame') {
-        w.busy = false
-        preview.pending.delete(msg.index)
-        if (msg.version === preview.version) {
+        if (msg.version === preview.version) preview.pending.delete(msg.index)
+        if (msg.version === preview.version && msg.version === S.version) {
           const img = new ImageData(new Uint8ClampedArray(msg.rgba.buffer), msg.w, msg.h)
           preview.next.set(msg.index, img)
-          // 新版本的当前帧到了：换上整套新帧
-          if (msg.index === Math.floor(S.playhead) % n() || preview.next.size >= n()) { preview.frames = preview.next; drawFrame() }
-          else if (preview.frames !== preview.next) preview.frames.set(msg.index, img)
+          rememberFrame(preview.key, msg.index, img)
+          if (preview.waiting && msg.index === preview.target) commitPreview()
+          else if (!preview.waiting) drawFrame()
         }
         pump()
       }
     }
     function pump() {
-      const total = n(), start = Math.floor(S.playhead) % total
+      if (!preview.request || preview.request.version !== S.version) return
+      const total = n(), start = preview.waiting ? preview.target : Math.floor(S.playhead) % total
       for (const w of pool) {
-        if (!w.ready || w.busy || w.prepared !== preview.version) continue
+        if (!w.ready || w.busy) continue
+        if (w.prepared !== preview.version) {
+          w.busy = true; w.postMessage(preview.request)
+          continue
+        }
         let pick = -1
         for (let k = 0; k < total; k++) { const i = (start + k) % total; if (!preview.next.has(i) && !preview.pending.has(i)) { pick = i; break } }
         if (pick < 0) return
@@ -335,8 +371,9 @@ self.postMessage({ type: 'ready' })`
     const fxCtx = E.fxCanvas.getContext('2d')
     let drawn = null   // 画板上现在这张（同一张不重画）
     function drawFrame() {
+      if (preview.frontVersion !== S.version) return
       const i = Math.floor(S.playhead) % n()
-      const img = preview.frames.get(i) || preview.next && preview.next.get(i)
+      const img = preview.frames.get(i)
       if (!img || img === drawn) return
       drawn = img
       if (E.fxCanvas.width !== img.width || E.fxCanvas.height !== img.height) { E.fxCanvas.width = img.width; E.fxCanvas.height = img.height }
@@ -347,7 +384,7 @@ self.postMessage({ type: 'ready' })`
     function tick(now) {
       if (S.closed) return
       S.raf = requestAnimationFrame(tick)
-      if (S.playing) {
+      if (S.playing && !preview.waiting && preview.frontVersion === S.version) {
         if (!S.lastTick) S.lastTick = now
         const dt = Math.min(0.1, (now - S.lastTick) / 1000)
         S.playhead = (S.playhead + dt * playFps()) % n()
@@ -367,7 +404,7 @@ self.postMessage({ type: 'ready' })`
       setText(E.play, S.playing ? '❚❚' : '▶')
     }
     E.play.onclick = () => { S.playing = !S.playing; S.lastTick = 0; syncTime() }
-    E.scrub.oninput = () => { S.playing = false; S.playhead = Number(E.scrub.value); drawFrame(); syncTime(); pump() }
+    E.scrub.oninput = () => { S.playing = false; S.playhead = Number(E.scrub.value); if (preview.waiting) { preview.target = Math.floor(S.playhead) % n(); if (preview.version === S.version && preview.next.has(preview.target)) commitPreview() } drawFrame(); syncTime(); pump() }
 
     // ---------------------------------------------------------------- 画板摆放
     function layout() {
@@ -899,6 +936,7 @@ self.postMessage({ type: 'ready' })`
       // 按底图本身扫的（线性扫光 / 形态驱动 / 局部高光 / 径向）2026-10-16 用户：「在 AI 特效中取消，好像不适合」——不列出来；
       // 渲染还在：以前存成模板的打开编辑照常显示（当前选的就是它时才列出它那一组）
       for (const e of FX().effects()) {
+        if (e.retired) continue
         if (options.effectFilter ? !options.effectFilter(e) : e.kind === 'basesweep' && FX().effectOf(S.project.effect).group !== e.group) continue
         if (!groups.has(e.group)) groups.set(e.group, []); groups.get(e.group).push(e)
       }
@@ -916,6 +954,7 @@ self.postMessage({ type: 'ready' })`
     }
     function pickEffect(id) {
       const e = FX().effectOf(id)
+      const centeredBefore = !!fx().centered
       S.project.effect = id
       S.project.params = FX().effectDefaults(id)   // 换效果 = 用这个效果的默认参数
       if (e.kind === 'basesweep') S.project.colour = { mode: e.schemeColour.mode === 'custom' ? 'custom' : 'base', value: e.schemeColour.value }   // 流金扫光默认金色，其余默认底图色
@@ -923,7 +962,8 @@ self.postMessage({ type: 'ready' })`
       S.playhead = 0
       E.effects.querySelectorAll('[data-fx]').forEach((b) => b.setAttribute('data-on', b.dataset.fx === id ? 1 : 0))
       if (e.centered) S.selected = null
-      renderShapes(); renderParams(); changed()
+      if (centeredBefore !== !!e.centered) S.geoStale = true
+      renderShapes(); renderParams(); changed('switch', false); drawOverlay()
     }
 
     // ---------------------------------------------------------------- 信息 / 导出
@@ -1090,6 +1130,10 @@ self.postMessage({ type: 'ready' })`
       if (S.closed) return
       S.closed = true
       cancelAnimationFrame(S.raf)
+      cancelAnimationFrame(overlayRaf); clearTimeout(S.geoTimer)
+      clearTimeout(preview.timer)
+      preview.cache.clear(); preview.frames.clear(); preview.next.clear(); preview.pending.clear()
+      preview.cacheBytes = 0; preview.request = null
       ro.disconnect()
       document.removeEventListener('keydown', onKey, true)
       for (const w of pool) w.terminate()
@@ -1114,7 +1158,7 @@ self.postMessage({ type: 'ready' })`
       layout()
     }).catch((error) => setInfo('底图读取失败：' + error.message))
     layout(); changed()
-    const api = { close, state: S, get project() { return S.project }, renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver, rerender: () => renderParams(), refreshPreview: () => changed(true, false) }
+    const api = { close, state: S, get project() { return S.project }, previewStats: () => ({ version: S.version, frontVersion: preview.frontVersion, waiting: preview.waiting, ready: preview.next.size, cacheBytes: preview.cacheBytes, cacheHits: preview.cacheHits }), renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver, rerender: () => renderParams(), refreshPreview: () => changed(true, false) }
     root.__NovaFlowFxMakerOpen = api
     return api
   }

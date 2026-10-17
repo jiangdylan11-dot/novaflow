@@ -662,9 +662,24 @@
     return { R, G, B, A }
   }
 
-  function prepare(project, scale = 1, baseImg = null) {
-    const geo = geometry(project, scale)
-    geo.img = project.useImage === false ? null : sampleBase(project, geo, baseImg)
+  function prepare(project, scale = 1, baseImg = null, cache = null) {
+    // Preview workers repeatedly prepare the same outline with a different effect/slider.
+    // Cache only geometric inputs; colours, timing, image pixels and effect state stay separate.
+    const size = canvasSize(project)
+    const key = cache && JSON.stringify([size.w, size.h, scale, project.outlines, project.corner || 0, project.offset || 0, !!project.outerOnly, !!project.smoothAll, !!effectOf(project.effect).centered])
+    let shared = cache && cache.geometryKey === key ? cache.geometry : null
+    if (!shared) {
+      shared = geometry(project, scale)
+      shared.derived = {}
+      if (cache) { cache.geometryKey = key; cache.geometry = shared }
+    }
+    const geo = { ...shared }
+    const imageKey = cache && JSON.stringify([project.base, project.useImage])
+    if (cache && cache.imageSource === baseImg && cache.imageKey === imageKey && cache.imageGeometry === shared) geo.img = cache.image
+    else {
+      geo.img = project.useImage === false ? null : sampleBase(project, geo, baseImg)
+      if (cache) { cache.imageSource = baseImg; cache.imageKey = imageKey; cache.imageGeometry = shared; cache.image = geo.img }
+    }
     const fx = effectOf(project.effect)
     const params = { ...effectDefaults(fx.id), ...(project.params || {}) }
     const ctx = { project, geo, fx, params, n: frameCount(project), loop: project.lifecycle === 'loop' }
