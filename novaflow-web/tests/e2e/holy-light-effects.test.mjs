@@ -45,10 +45,12 @@ test('nine selectable effects have behaviour-based categories; retired projects 
 
 test('every exposed numeric parameter changes actual generated pixels', () => {
   for (const effect of effects) {
-    const p = project(effect.id), base = [.23, .57].map((at) => render(p, at))
     for (const def of effect.params) {
+      if (def.options) continue
+      const mode = def.key === 'speed' ? 'single' : ['angle', 'cycles'].includes(def.key) && effect.params.some(p => p.key === 'orbitMode') ? 'swing' : undefined
+      const p = project(effect.id, mode ? { orbitMode: mode } : {}), base = [.23, .57].map((at) => render(p, at))
       const next = Math.abs(def.max - def.def) >= Math.abs(def.def - def.min) ? def.max : def.min
-      const q = project(effect.id, { [def.key]: next })
+      const q = { ...p, params: { ...p.params, [def.key]: next } }
       const diff = Math.max(...[.23, .57].map((at, i) => difference(base[i], render(q, at))))
       assert.ok(diff > .08, `${effect.label}: ${def.label} changed pixels by ${diff.toFixed(4)}`)
     }
@@ -67,7 +69,7 @@ test('local effects expose no orbit; angular effects default to small reversible
     const e = F.effectOf(id), angle = e.params.find(p => p.key === 'angle')
     assert.ok(angle.def > 0 && angle.def <= 30)
     assert.ok(!e.params.some(p => p.key === 'laps'))
-    const p = project(id, { angle: 0 })
+    const p = project(id, { angle: 0, orbitMode: 'swing' })
     assert.deepEqual(render(p), render({ ...p, direction: 'cw' }), id + ' zero angular motion')
     const ctx = F.prepare(project(id, { angle: angle.max, cycles: 3 }), .125)
     assert.deepEqual(F.renderFrame(ctx, 0), F.renderFrame(ctx, ctx.n), id + ' loop seam at maximum motion')
@@ -84,6 +86,25 @@ test('direction, colours and JSON project reopening retain their real effect', (
     assert.ok(difference(original, render(blue)) > .2, effect.label + ' colour')
     const edited = project(effect.id, { width: 1.65, bright: 1.3, laps: 2 })
     assert.deepEqual(render(edited), render(JSON.parse(JSON.stringify(edited))), effect.label + ' saved parameters')
+  }
+})
+
+test('single direction advances monotonically in degrees per second and blends a partial loop seam', () => {
+  for (const id of ['holy-layers', 'holy-fans', 'holy-meteor', 'holy-rotate']) {
+    const p = project(id, { orbitMode: 'single', speed: 20 }), ctx = F.prepare(p, .125)
+    const motion = t => ctx.fx.motionAt(ctx, t)
+    for (let i = 1; i < 10; i++) for (let layer = 0; layer < 2; layer++) assert.ok(motion(i / 10)[layer].turn > motion((i - 1) / 10)[layer].turn)
+    const expected = 20 * Math.PI / 180 * ctx.n / F.FPS
+    assert.ok(Math.abs(motion(.8)[0].turn - motion(.2)[0].turn - expected * .6) < 1e-9)
+    const reversed = F.prepare({ ...p, direction: 'cw' }, .125)
+    assert.ok(reversed.fx.motionAt(reversed, .5)[0].turn < 0)
+    const slow = F.prepare(project(id, { orbitMode: 'single', speed: .5 }), .125)
+    assert.ok(slow.fx.motionAt(slow, .5)[0].turn > 0)
+    const first = F.renderFrame(ctx, 0).slice(), last = F.renderFrame(ctx, ctx.n - .00001)
+    assert.ok(difference(first, last) < .01, id + ' fractional-turn seam')
+    const still = F.prepare(project(id, { orbitMode: 'still' }), .125)
+    assert.deepEqual(still.fx.motionAt(still, .4), [{ turn: 0, weight: 1 }])
+    assert.deepEqual(render(p), render(JSON.parse(JSON.stringify(p))))
   }
 })
 

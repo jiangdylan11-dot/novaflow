@@ -193,6 +193,7 @@ self.postMessage({ type: 'ready' })`
     // data-novaflow-runtime-ignore：网页的全局脚本跳过这块。2026-10-16 用户：「时间轴速度跟不上、滑条很卡」——
     // 播放时每帧改时间轴 / 帧号文字都被全局脚本跟着处理，一秒只刷 14 帧
     const SW = options.sweep || null   // 特效扫光模式（骨骼动画）
+    if (!SW) delete S.project.effectDuration
     const overlay = el('div', { class: 'fxm-overlay' + (options.overlayClass ? ' ' + options.overlayClass : ''), 'data-novaflow-runtime-ignore': '1' })
     // 骨骼编辑器里：压在它自己的弹窗（图片选择器等 .mask，z 50）下面，挑底图的窗口才能盖在上面
     if (SW) overlay.style.zIndex = '40'
@@ -834,7 +835,7 @@ self.postMessage({ type: 'ready' })`
       }
       if (kind === 'free') shapeItems.push(seg('smoothAll', '圆滑', [{ id: '0', label: '按点' }, { id: '1', label: '全部圆滑' }], p.smoothAll ? '1' : '0', (v) => { p.smoothAll = v === '1'; changed() }))
       if (usesStart()) shapeItems.push(slider('startAngle', { label: '起点', min: 0, max: 359, step: 1, def: 0, format: (v) => Math.round(v) + '°' }, startAngle(), (v) => { setStartAngle(v); drawOverlay() }))
-      shapeItems.push(seg('direction', '方向', [{ id: 'ccw', label: '逆时针' }, { id: 'cw', label: '顺时针' }], p.direction, (v) => { p.direction = v; changed() }, inert.direction))
+      shapeItems.push(seg('direction', '方向', [{ id: 'ccw', label: '逆时针' }, { id: 'cw', label: '顺时针' }], p.direction, (v) => { p.direction = v; changed() }, inert.direction || (p.params.orbitMode === 'still' ? '原地模式没有旋转方向' : '')))
       if (S.base) {
         shapeItems.push(slider('base.opacity', { label: '底图透明', min: 0, max: 1, step: 0.01, def: 1 }, p.base.opacity, (v) => { p.base.opacity = v; drawBase() }, ''))
         if (!SW) shapeItems.push(slider('base.scale', { label: '底图大小', min: 0.2, max: 1.2, step: 0.01, def: 0.7 }, p.base.scale, (v) => { p.base.scale = v; drawBase(); changed(true) }, ''))
@@ -1047,6 +1048,7 @@ self.postMessage({ type: 'ready' })`
       } else if (p.canvas.preset === 'exact') p.canvas = { preset: '1:1' }
       p.framesFree = true
       p.frames = st.frames
+      p.effectDuration = st.duration / SW.fps
     }
     // 画板变了：图片轮廓重新描（保住起点角度），别的形状按比例搬过去
     function sweepCanvasChanged(before) {

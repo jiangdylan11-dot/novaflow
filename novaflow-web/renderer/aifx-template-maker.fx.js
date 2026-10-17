@@ -2000,21 +2000,40 @@
   const holyHash = (x) => frac(Math.sin(x * 127.1 + 311.7) * 43758.5453)
   const holyGaussian = (x, width) => Math.exp(-((x / Math.max(.0001, width)) ** 2))
   const holyWrap = (x) => x - TAU * Math.floor((x + Math.PI) / TAU)
+  function holyMotion(kind, ctx, t) {
+    const p = ctx.params, dir = ctx.project.direction === 'cw' ? -1 : 1
+    const mode = p.orbitMode || 'swing', cycles = Math.max(1, Math.round(p.cycles) || 1)
+    if (mode === 'still') return [{ turn: 0, weight: 1 }]
+    if (mode === 'single') {
+      const duration = ctx.project.effectDuration || ctx.n / FXM().FPS
+      const travel = (p.speed == null ? 20 : p.speed) * Math.PI / 180 * duration * dir
+      // Both light layers travel forward. Exchange their brightness across the seam;
+      // no reverse travel, forced full revolution, or fade of the whole image to black.
+      if (ctx.loop) {
+        const q = frac(t), weight = .5 - .5 * Math.cos(Math.PI * q)
+        return [{ turn: q * travel, weight: 1 - weight }, { turn: (q - 1) * travel, weight }]
+      }
+      return [{ turn: t * travel, weight: 1 }]
+    }
+    const angle = clamp(p.angle == null ? ({ rotate: 20, meteor: 30, layers: 12, fan: 18 }[kind] || 0) : p.angle, 0, 360)
+    return [{ turn: dir * Math.sin(frac(t) * TAU * cycles) * angle * Math.PI / 180, weight: 1 }]
+  }
   function renderHoly(kind, ctx, t, D) {
     const { params: p, state: s, project } = ctx, { A, B, field } = s
     const phase = frac(t) * TAU, dir = project.direction === 'cw' ? -1 : 1
     const cycles = Math.max(1, Math.round(p.cycles == null ? p.laps : p.cycles) || 1), clock = phase * cycles
-    // A partial orbit must return along its path to loop cleanly; only 360° makes a full turn.
-    const angle = clamp(p.angle == null ? ({ rotate: 20, meteor: 30, layers: 12, fan: 18 }[kind] || 0) : p.angle, 0, 360)
-    const turn = dir * (angle >= 360 ? clock : Math.sin(clock) * angle * Math.PI / 180)
     const flicker = phase * Math.round(p.flicker), width = p.width, reach = p.reach, glow = p.glow
+    field.fill(0)
+    for (const { turn, weight } of holyMotion(kind, ctx, t)) {
+    if (weight < 1e-8) continue
+    const otherTurn = p.orbitMode === 'single' ? turn : -turn
     const definitions = {
       rotate: [[p.count, turn, .018, .36, .82, .009, 1.7], [Math.max(3, Math.round(p.count * 11 / 29)), turn, .07, .34, .8, .012, .34 * glow], [p.count, turn, .005, .40, .82, .009, .48]],
-      fan: [[p.count, turn, .019, .44, .75, .008, 2.1], [Math.max(3, Math.round(p.count * 27 / 39)), -turn, .03, .34, .65, .01, 1.65]],
+      fan: [[p.count, turn, .019, .44, .75, .008, 2.1], [Math.max(3, Math.round(p.count * 27 / 39)), otherTurn, .03, .34, .65, .01, 1.65]],
       breathe: [[p.count, 0, .075, 1, .85, .022, 1.25], [Math.max(3, Math.round(p.count * 7 / 9)), 0, .155, .74, .5, .018, .63 * glow], [Math.max(3, Math.round(p.count * 21 / 9)), 0, .011, 1.15, .9, .008, .39]],
       meteor: [[p.count, turn, .015, .50, .7, .01, 1]],
       crown: [[p.count, 0, .013, 1, .85, .012, 1], [Math.max(3, Math.round(p.count * 17 / 52)), 0, .052, .8, .7, .012, .25]],
-      layers: [[p.count, turn, .06, .20, .95, .016, .9], [Math.max(3, Math.round(p.count * 34 / 14)), -turn, .012, .49, .8, .006, 1.2], [Math.max(3, Math.round(p.count * 9 / 14)), turn, .13, .23, .7, .02, .4 * glow]],
+      layers: [[p.count, turn, .06, .20, .95, .016, .9], [Math.max(3, Math.round(p.count * 34 / 14)), otherTurn, .012, .49, .8, .006, 1.2], [Math.max(3, Math.round(p.count * 9 / 14)), turn, .13, .23, .7, .02, .4 * glow]],
       iris: [[p.count, 0, 1, 1, .62, .006, 1], [p.count, 0, 1.9, .30, .62, .006, .33 * glow], [Math.max(3, Math.round(p.count * 33 / 17)), 0, .009, .28, .8, .006, 1]],
     }[kind]
     const bands = definitions.map(([count, rotation, w, length, jitter, drift, strength]) => {
@@ -2030,7 +2049,7 @@
       const open = .5 + .5 * Math.sin(clock), breathLength = .14 + .35 * (.5 + .5 * Math.sin(clock))
       const crown = (.5 + .5 * Math.sin(a * 5 + Math.sin(clock) * .65 + Math.sin(a * 3 + phase) * .5)) ** 2
       const fanA = holyGaussian(holyWrap(a - turn), .55) + holyGaussian(holyWrap(a - turn - Math.PI), .55)
-      const fanB = holyGaussian(holyWrap(a + turn - 1.6), .4) + holyGaussian(holyWrap(a + turn - 1.6 - Math.PI), .4)
+      const fanB = holyGaussian(holyWrap(a - otherTurn - 1.6), .4) + holyGaussian(holyWrap(a - otherTurn - 1.6 - Math.PI), .4)
       const sweep = ((1 + Math.cos(a - turn)) / 2) ** 16, tail = ((1 + Math.cos(a - turn + .55)) / 2) ** 5, sweep2 = ((1 + Math.cos(a - turn - Math.PI)) / 2) ** 24
       // Only the nearest three rays can contribute to a sample. Resolve them per angle.
       const samples = bands.map((band) => {
@@ -2066,8 +2085,9 @@
         if (kind === 'meteor') energy += (sweep + sweep2) * (.85 * Math.exp(-d * 9) * glow + 1.8 * Math.exp(-d * 54))
         if (kind === 'crown') energy += Math.exp(-d / (.06 + .12 * crown)) * (.13 + .24 * crown) * glow
         energy += Math.exp(-d * 54) * (.06 + .10 * (.5 + .25 * Math.sin(a * 3 - phase) + .15 * Math.sin(a * 7 + phase * 2) + .1 * Math.sin(a * 11 - phase))) * glow
-        field[k * (B + 1) + b] = energy
+        field[k * (B + 1) + b] += energy * weight
       }
+    }
     }
     const tint = project.colour && project.colour.mode === 'white' ? [.82, .88, 1] : project.colour && project.colour.mode === 'custom' ? ctx.pal.mid : [1, .52, .105]
     const hot = project.colour && ['white', 'custom'].includes(project.colour.mode) ? tint.map((v) => .8 + .2 * v) : [1, .94, .79]
@@ -2088,13 +2108,17 @@
     ['holy-fans', '交错光扇', 'fan', 39],
   ].map(([id, label, type, count]) => ({
     id, label, group: '环绕光效', palette: 'gold', lifecycle: 'loop', displayMapped: true,
-    hint: ({ iris: '光束原地开合，不绕整圈', breathe: '光束原地伸缩呼吸，不绕整圈', crown: '光冠局部起伏，不绕整圈', layers: '双层光幕小角度反向往返', fan: '两组光扇小角度交错往返', meteor: '亮区沿轮廓往返，幅度设为 360° 时连续环绕', rotate: '圣光缓缓往返，幅度设为 360° 时连续旋转' })[type],
+    hint: ({ iris: '光束原地开合，不绕整圈', breathe: '光束原地伸缩呼吸，不绕整圈', crown: '光冠局部起伏，不绕整圈', layers: '双层光幕支持原地、往返和单向运动', fan: '两组光扇支持原地、往返和单向运动', meteor: '亮区沿轮廓运动，单向速度可按度每秒调整', rotate: '支持原地、往返和单向旋转，单向速度独立可调' })[type],
     params: [P('count', '光束数量', 4, 80, 1, count), P('width', '光束宽度', .3, 3, .05, 1), P('reach', '光束长度', .3, 3, .05, 1),
-      P('cycles', ({ iris: '开合次数', breathe: '呼吸次数', crown: '起伏次数' })[type] || '运动次数', 1, 6, 1, 1),
-      ...(['layers', 'fan', 'meteor', 'rotate'].includes(type) ? [P('angle', ['layers', 'fan'].includes(type) ? '摆动幅度°' : '环绕幅度°', 0, ['layers', 'fan'].includes(type) ? 45 : 360, 1, ({ layers: 12, fan: 18, meteor: 30, rotate: 20 })[type])] : []),
+      { ...P('cycles', ({ iris: '开合次数', breathe: '呼吸次数', crown: '起伏次数' })[type] || '往返次数', 1, 6, 1, 1), inertWhen: p => ['layers', 'fan', 'meteor', 'rotate'].includes(type) && p.orbitMode !== 'swing' ? '往返模式使用次数' : '' },
+      ...(['layers', 'fan', 'meteor', 'rotate'].includes(type) ? [
+        { key: 'orbitMode', label: '运动', def: ['meteor', 'rotate'].includes(type) ? 'single' : 'swing', options: [{ id: 'still', label: '原地' }, { id: 'swing', label: '往返' }, { id: 'single', label: '单向' }] },
+        { ...P('angle', '摆动幅度°', 0, 180, 1, ({ layers: 12, fan: 18, meteor: 30, rotate: 20 })[type]), inertWhen: p => p.orbitMode !== 'swing' ? '往返模式使用摆幅' : '' },
+        { ...P('speed', '速度°/秒', .5, 180, .5, 20), inertWhen: p => p.orbitMode !== 'single' ? '单向模式使用速度' : '' },
+      ] : []),
       P('flicker', '明暗变化', 1, 6, 1, 1), PP.glow, PP.bright],
     inert: ['iris', 'breathe', 'crown'].includes(type) ? { direction: '这个效果原地变化，不做环绕旋转' } : {},
-    prepare: prepareHoly, render: (ctx, t, D) => renderHoly(type, ctx, t, D),
+    prepare: prepareHoly, render: (ctx, t, D) => renderHoly(type, ctx, t, D), motionAt: (ctx, t) => holyMotion(type, ctx, t),
     ai: (w) => ['rays', `soft holy light rays around the ${w.noun}, beams of varied widths and lengths, bright fine cores and soft halos, empty centre, ${type} motion, ${['iris', 'breathe', 'crown'].includes(type) ? 'local pulsing without rotation' : 'gentle angular motion'}`],
   }))
   LIST.push(...HOLY_RAYS,
