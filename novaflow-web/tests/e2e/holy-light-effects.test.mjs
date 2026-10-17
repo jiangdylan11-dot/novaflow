@@ -40,7 +40,7 @@ test('nine selectable effects have behaviour-based categories; retired projects 
   assert.equal(F.effectOf('holy-twin').group, '轮廓流光')
   assert.equal(F.effectOf('holy-tide').group, '扩散')
   for (const id of ['godrays', 'aura', 'holy-rotate', 'holy-iris']) assert.equal(F.effectOf(id).group, '光晕放射')
-  for (const e of effects) { assert.equal(e.kind, 'lib'); assert.equal(e.centered, false); assert.ok(!e.inert.direction); assert.ok(!e.needsBase); assert.ok(e.params.some((p) => p.key === 'bright')) }
+  for (const e of effects) { assert.equal(e.kind, 'lib'); assert.equal(e.centered, false); assert.ok(!e.needsBase); assert.ok(e.params.some((p) => p.key === 'bright')) }
 })
 
 test('every exposed numeric parameter changes actual generated pixels', () => {
@@ -55,11 +55,31 @@ test('every exposed numeric parameter changes actual generated pixels', () => {
   }
 })
 
+test('local effects expose no orbit; angular effects default to small reversible arcs', () => {
+  for (const id of ['holy-iris', 'holy-breathe', 'holy-crown']) {
+    const e = F.effectOf(id)
+    assert.ok(e.inert.direction)
+    assert.ok(!e.params.some(p => ['angle', 'laps'].includes(p.key)))
+    assert.ok(e.params.some(p => p.key === 'cycles'))
+    assert.ok(difference(render(project(id), .12), render(project(id), .35)) > .08)
+  }
+  for (const id of ['holy-layers', 'holy-fans', 'holy-meteor', 'holy-rotate']) {
+    const e = F.effectOf(id), angle = e.params.find(p => p.key === 'angle')
+    assert.ok(angle.def > 0 && angle.def <= 30)
+    assert.ok(!e.params.some(p => p.key === 'laps'))
+    const p = project(id, { angle: 0 })
+    assert.deepEqual(render(p), render({ ...p, direction: 'cw' }), id + ' zero angular motion')
+    const ctx = F.prepare(project(id, { angle: angle.max, cycles: 3 }), .125)
+    assert.deepEqual(F.renderFrame(ctx, 0), F.renderFrame(ctx, ctx.n), id + ' loop seam at maximum motion')
+  }
+})
+
 test('direction, colours and JSON project reopening retain their real effect', () => {
   for (const effect of effects) {
     const p = project(effect.id), original = render(p)
     const reverse = { ...p, direction: 'cw' }
-    assert.ok(difference(original, render(reverse)) > .08, effect.label + ' direction')
+    if (effect.inert.direction) assert.deepEqual(original, render(reverse), effect.label + ' stationary direction')
+    else assert.ok(difference(original, render(reverse)) > .08, effect.label + ' direction')
     const blue = { ...p, colour: { mode: 'custom', value: '#2385ff' } }
     assert.ok(difference(original, render(blue)) > .2, effect.label + ' colour')
     const edited = project(effect.id, { width: 1.65, bright: 1.3, laps: 2 })
