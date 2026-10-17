@@ -2152,9 +2152,9 @@
       params: [P('count', '光流数量', 1, 8, 1, 2), PP.width, P('trail', '拖尾长度', .1, .8, .01, .46), P('laps', '环绕圈数', 1, 6, 1, 1), PP.glow, PP.bright],
       render(ctx, t, D) {
         const { geo: g, params: p, pal } = ctx, unit = Math.min(g.W, g.H) / 500
-        const phase = (ctx.orbitTurn || 0) / TAU, G = glowLines(g)
+        const phase = frac(t) * p.laps * (ctx.project.direction === 'cw' ? -1 : 1), G = glowLines(g)
         for (let k = 0; k < p.count; k++) {
-          const dir = p.orbitMode === 'single' ? 1 : k % 2 ? -1 : 1, head = phase * dir + k / p.count + (k % 2 ? .05 : 0), offset = (4 + (k % 2) * 7) * unit
+          const dir = k % 2 ? -1 : 1, head = phase * dir + k / p.count + (k % 2 ? .05 : 0), offset = (4 + (k % 2) * 7) * unit
           let prev = null
           for (let j = 0; j <= 90; j++) {
             const z = j / 90, u = head - dir * p.trail * (1 - z), q = FXM().pointOnOutline(g, u), sway = 2 * unit * Math.sin(TAU * u * 5 - TAU * frac(t))
@@ -2177,7 +2177,7 @@
       prepare: (ctx) => ({ T: outlineParam(ctx.geo) }),
       render(ctx, t, D) {
         const { geo: g, params: p, state, pal } = ctx, unit = Math.min(g.W, g.H) / 500
-        const phase = (ctx.orbitTurn || 0) / TAU
+        const phase = frac(t) * (ctx.project.direction === 'cw' ? -1 : 1)
         for (let i = 0; i < g.N; i++) {
           const d = g.sd[i] / unit
           if (d < -3) continue
@@ -2208,15 +2208,6 @@
       },
       ai: (w) => ['rays', `several waves of light expanding outward from a ${w.noun}, a bright area travelling around the waves, soft glowing contours fading out`],
     })
-  for (const id of ['holy-twin', 'holy-tide']) {
-    const e = LIST.find(e => e.id === id), render = e.render
-    e.params = e.params.filter(p => id !== 'holy-twin' || p.key !== 'laps')
-    e.params.push({ ...P('cycles', '往返次数', 1, 6, 1, 1), inertWhen: p => p.orbitMode !== 'swing' ? '往返模式使用次数' : '' }, ...holyOrbitParams(id, 'single'))
-    e.motionAt = (ctx, t) => holyMotion(id, ctx, t)
-    e.render = (ctx, t, D) => {
-      for (const { turn, weight } of e.motionAt(ctx, t)) if (weight > 1e-8) render({ ...ctx, orbitTurn: turn, params: { ...ctx.params, bright: ctx.params.bright * weight } }, t, D)
-    }
-  }
   for (const e of LIST) {
     if (HOLY_RAYS.includes(e) || ['godrays', 'aura'].includes(e.id)) e.group = '光晕放射'
     if (e.id === 'holy-twin') e.group = '轮廓流光'

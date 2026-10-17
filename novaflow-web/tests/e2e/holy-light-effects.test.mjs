@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 import '../../renderer/sweep-light.core.js'
 import '../../renderer/aifx-template-maker.core.js'
 import '../../renderer/aifx-template-maker.fx.js'
 
 const F = globalThis.NovaFlowFxMaker
 const effects = F.effects().filter((e) => e.id.startsWith('holy-') && !e.retired)
+const orbitEffects = effects.filter(e => e.group === '光晕放射')
 const project = (effect, patch = {}) => ({ ...F.defaultProject(), effect, lifecycle: 'loop', params: { ...F.effectDefaults(effect), ...patch } })
 const render = (p, fraction = .23) => {
   const ctx = F.prepare(p, .125)
@@ -13,6 +15,21 @@ const render = (p, fraction = .23) => {
 }
 const difference = (a, b) => { let total = 0; for (let i = 0; i < a.length; i++) if (i % 4 !== 3) total += Math.abs(a[i] - b[i]); return total / (a.length / 4 * 3) }
 const energy = (a) => { let total = 0; for (let i = 0; i < a.length; i++) if (i % 4 !== 3) total += a[i]; return total }
+
+test('effects outside light-radiation retain their original controls and exact rendered frames', () => {
+  // Recorded from the pre-change 2.0.62 renderer, clockwise with three cycles.
+  const original = {
+    'holy-twin': ['938b679c158b4037e3b0010235f538b9961f80d499b953736e0064e1895cf8f3', '7719f8ae1e5cf45ceb816ec1565df50d7dd4c642c94e0a645b11e61aaca22319', '70fde2b7bf6de4a6d582e47190668b5a7a213abca824b98c5daa94c63afbbc4f'],
+    'holy-tide': ['84902647d41f4367978e65113a4f0225aa39fc6f874ddf9d4c34b6f01f334601', 'd0c06bd82ee830e5f83b8698942f0f134b6cb0c7922e5667b0fa8ec4b61954da', '561b885dc33730c7a4ebfac5f009185ea1381624858914c5aad97851a7637dc1'],
+  }
+  for (const [id, expected] of Object.entries(original)) {
+    const e = F.effectOf(id), p = { ...project(id, { laps: 3 }), direction: 'cw' }
+    assert.ok(!e.params.some(p => ['orbitMode', 'cycles', 'angle', 'speed'].includes(p.key)))
+    const ctx = F.prepare(p, .125)
+    assert.deepEqual([0, 7, 19].map(i => createHash('sha256').update(F.renderFrame(ctx, i)).digest('hex')), expected)
+    assert.deepEqual(render(p), render({ ...p, params: { ...p.params, orbitMode: 'still', speed: 180, angle: 180 } }), id + ' stale out-of-scope settings ignored')
+  }
+})
 
 test('preview cache reuses geometry without sharing mutable effect frames or changing output', () => {
   const cache = {}, p = project('holy-rotate'), a = F.prepare(p, .125, null, cache)
@@ -57,8 +74,8 @@ test('every exposed numeric parameter changes actual generated pixels', () => {
   }
 })
 
-test('all nine effects expose the same motion choices while retaining stationary local animation', () => {
-  for (const e of effects) {
+test('only the new light-radiation effects expose motion choices and retain local animation', () => {
+  for (const e of orbitEffects) {
     assert.deepEqual(e.params.find(p => p.key === 'orbitMode').options.map(o => o.id), ['still', 'swing', 'single'])
     const angle = e.params.find(p => p.key === 'angle')
     assert.ok(angle.def > 0 && angle.def <= 30)
@@ -86,7 +103,7 @@ test('direction, colours and JSON project reopening retain their real effect', (
 })
 
 test('single direction advances monotonically in degrees per second and blends a partial loop seam', () => {
-  for (const { id } of effects) {
+  for (const { id } of orbitEffects) {
     const p = project(id, { orbitMode: 'single', speed: 20 }), ctx = F.prepare(p, .125)
     const motion = t => ctx.fx.motionAt(ctx, t)
     for (let i = 1; i < 10; i++) for (let layer = 0; layer < 2; layer++) assert.ok(motion(i / 10)[layer].turn > motion((i - 1) / 10)[layer].turn)
