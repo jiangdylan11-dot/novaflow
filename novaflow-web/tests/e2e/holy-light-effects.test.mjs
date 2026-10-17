@@ -57,22 +57,18 @@ test('every exposed numeric parameter changes actual generated pixels', () => {
   }
 })
 
-test('local effects expose no orbit; angular effects default to small reversible arcs', () => {
-  for (const id of ['holy-iris', 'holy-breathe', 'holy-crown']) {
-    const e = F.effectOf(id)
-    assert.ok(e.inert.direction)
-    assert.ok(!e.params.some(p => ['angle', 'laps'].includes(p.key)))
-    assert.ok(e.params.some(p => p.key === 'cycles'))
-    assert.ok(difference(render(project(id), .12), render(project(id), .35)) > .08)
-  }
-  for (const id of ['holy-layers', 'holy-fans', 'holy-meteor', 'holy-rotate']) {
-    const e = F.effectOf(id), angle = e.params.find(p => p.key === 'angle')
+test('all nine effects expose the same motion choices while retaining stationary local animation', () => {
+  for (const e of effects) {
+    assert.deepEqual(e.params.find(p => p.key === 'orbitMode').options.map(o => o.id), ['still', 'swing', 'single'])
+    const angle = e.params.find(p => p.key === 'angle')
     assert.ok(angle.def > 0 && angle.def <= 30)
-    assert.ok(!e.params.some(p => p.key === 'laps'))
-    const p = project(id, { angle: 0, orbitMode: 'swing' })
-    assert.deepEqual(render(p), render({ ...p, direction: 'cw' }), id + ' zero angular motion')
-    const ctx = F.prepare(project(id, { angle: angle.max, cycles: 3 }), .125)
-    assert.deepEqual(F.renderFrame(ctx, 0), F.renderFrame(ctx, ctx.n), id + ' loop seam at maximum motion')
+    const p = project(e.id, { angle: 0, orbitMode: 'swing' })
+    assert.deepEqual(render(p), render({ ...p, direction: 'cw' }))
+    const ctx = F.prepare(project(e.id, { angle: angle.max, cycles: 3, orbitMode: 'swing' }), .125)
+    assert.deepEqual(F.renderFrame(ctx, 0), F.renderFrame(ctx, ctx.n))
+    const still = project(e.id, { orbitMode: 'still' })
+    assert.ok(difference(render(still, .12), render(still, .35)) > .08, e.label + ' local animation')
+    assert.ok(difference(render(still), render(project(e.id, { orbitMode: 'single' }))) > .08, e.label + ' real angular motion')
   }
 })
 
@@ -80,7 +76,7 @@ test('direction, colours and JSON project reopening retain their real effect', (
   for (const effect of effects) {
     const p = project(effect.id), original = render(p)
     const reverse = { ...p, direction: 'cw' }
-    if (effect.inert.direction) assert.deepEqual(original, render(reverse), effect.label + ' stationary direction')
+    if (effect.inert.direction || p.params.orbitMode === 'still') assert.deepEqual(original, render(reverse), effect.label + ' stationary direction')
     else assert.ok(difference(original, render(reverse)) > .08, effect.label + ' direction')
     const blue = { ...p, colour: { mode: 'custom', value: '#2385ff' } }
     assert.ok(difference(original, render(blue)) > .2, effect.label + ' colour')
@@ -90,7 +86,7 @@ test('direction, colours and JSON project reopening retain their real effect', (
 })
 
 test('single direction advances monotonically in degrees per second and blends a partial loop seam', () => {
-  for (const id of ['holy-layers', 'holy-fans', 'holy-meteor', 'holy-rotate']) {
+  for (const { id } of effects) {
     const p = project(id, { orbitMode: 'single', speed: 20 }), ctx = F.prepare(p, .125)
     const motion = t => ctx.fx.motionAt(ctx, t)
     for (let i = 1; i < 10; i++) for (let layer = 0; layer < 2; layer++) assert.ok(motion(i / 10)[layer].turn > motion((i - 1) / 10)[layer].turn)
@@ -101,7 +97,7 @@ test('single direction advances monotonically in degrees per second and blends a
     const slow = F.prepare(project(id, { orbitMode: 'single', speed: .5 }), .125)
     assert.ok(slow.fx.motionAt(slow, .5)[0].turn > 0)
     const first = F.renderFrame(ctx, 0).slice(), last = F.renderFrame(ctx, ctx.n - .00001)
-    assert.ok(difference(first, last) < .01, id + ' fractional-turn seam')
+    assert.ok(difference(first, last) < (['holy-twin', 'holy-tide'].includes(id) ? .05 : .01), id + ' fractional-turn seam')
     const still = F.prepare(project(id, { orbitMode: 'still' }), .125)
     assert.deepEqual(still.fx.motionAt(still, .4), [{ turn: 0, weight: 1 }])
     assert.deepEqual(render(p), render(JSON.parse(JSON.stringify(p))))
