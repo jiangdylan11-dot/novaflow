@@ -1960,7 +1960,212 @@
     },
   ]
 
-  const GROUP_ORDER = ['技能', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
+  // 2026-10-17: the ten user-selected ORIGINAL previews, shared by 模板制作 and 动画/特效扫光.
+  // A small polar field retains the preview's soft analytic rays without a GPU dependency in
+  // export Workers. Geometry and interpolation indices are cached once, not per frame.
+  function prepareHoly(ctx) {
+    const g = ctx.geo, half = Math.min(g.W, g.H) / 2
+    const A = Math.max(256, Math.min(1024, 2 ** Math.ceil(Math.log2(Math.min(g.W, g.H) * 2))))
+    const B = Math.max(40, Math.min(112, Math.ceil(Math.min(g.W, g.H) / 5)))
+    const boundary = new Float32Array(A)
+    for (let k = 0; k < A; k++) {
+      const angle = k / A * TAU, dx = Math.cos(angle), dy = -Math.sin(angle)
+      let radius = 0
+      for (const c of g.outer) for (let j = 0; j < c.x.length; j++) {
+        const n = (j + 1) % c.x.length, ex = c.x[n] - c.x[j], ey = c.y[n] - c.y[j], den = dx * ey - dy * ex
+        if (Math.abs(den) < 1e-8) continue
+        const px = c.x[j] - g.cx, py = c.y[j] - g.cy, r = (px * ey - py * ex) / den, u = (px * dy - py * dx) / den
+        if (r > radius && u >= 0 && u <= 1) radius = r
+      }
+      boundary[k] = radius / half
+    }
+    const ai = new Int32Array(g.N), aw = new Float32Array(g.N), bi = new Int32Array(g.N), bw = new Float32Array(g.N), mask = new Float32Array(g.N)
+    for (let y = 0; y < g.H; y++) for (let x = 0; x < g.W; x++) {
+      const i = y * g.W + x, px = (x + .5 - g.cx) / half, py = (g.cy - y - .5) / half, radius = Math.hypot(px, py)
+      const angle = frac(Math.atan2(py, px) / TAU) * A, a0 = Math.floor(angle), af = angle - a0
+      const edge = lerp(boundary[a0], boundary[(a0 + 1) % A], af), depth = clamp((radius - edge) / 1.5 * B, 0, B - 1e-5)
+      ai[i] = a0; aw[i] = af; bi[i] = Math.floor(depth); bw[i] = depth - bi[i]
+      mask[i] = smooth(-.006, .014, g.sd[i] / half) * (1 - smooth(.86, .99, radius))
+    }
+    return { A, B, ai, aw, bi, bw, mask, field: new Float32Array(A * (B + 1)) }
+  }
+  const holyHash = (x) => frac(Math.sin(x * 127.1 + 311.7) * 43758.5453)
+  const holyGaussian = (x, width) => Math.exp(-((x / Math.max(.0001, width)) ** 2))
+  const holyWrap = (x) => x - TAU * Math.floor((x + Math.PI) / TAU)
+  function renderHoly(kind, ctx, t, D) {
+    const { params: p, state: s, project } = ctx, { A, B, field } = s
+    const phase = frac(t) * TAU, dir = project.direction === 'cw' ? -1 : 1, clock = phase * Math.round(p.laps), turn = clock * dir
+    const flicker = phase * Math.round(p.flicker), width = p.width, reach = p.reach, glow = p.glow
+    const definitions = {
+      rotate: [[p.count, turn, .018, .36, .82, .009, 1.7], [Math.max(3, Math.round(p.count * 11 / 29)), turn, .07, .34, .8, .012, .34 * glow], [p.count, turn, .005, .40, .82, .009, .48]],
+      fan: [[p.count, turn, .019, .44, .75, .008, 2.1], [Math.max(3, Math.round(p.count * 27 / 39)), -turn, .03, .34, .65, .01, 1.65]],
+      breathe: [[p.count, .18 * Math.sin(turn), .075, 1, .85, .022, 1.25], [Math.max(3, Math.round(p.count * 7 / 9)), .18 * Math.sin(turn), .155, .74, .5, .018, .63 * glow], [Math.max(3, Math.round(p.count * 21 / 9)), .18 * Math.sin(turn), .011, 1.15, .9, .008, .39]],
+      meteor: [[p.count, turn, .015, .50, .7, .01, 1]],
+      crown: [[p.count, .05 * Math.sin(turn), .013, 1, .85, .012, 1], [Math.max(3, Math.round(p.count * 17 / 52)), .05 * Math.sin(turn), .052, .8, .7, .012, .25]],
+      layers: [[p.count, turn, .06, .20, .95, .016, .9], [Math.max(3, Math.round(p.count * 34 / 14)), -turn, .012, .49, .8, .006, 1.2], [Math.max(3, Math.round(p.count * 9 / 14)), turn, .13, .23, .7, .02, .4 * glow]],
+      iris: [[p.count, turn, 1, 1, .62, .006, 1], [p.count, turn, 1.9, .30, .62, .006, .33 * glow], [Math.max(3, Math.round(p.count * 33 / 17)), -turn, .009, .28, .8, .006, 1]],
+    }[kind]
+    const bands = definitions.map(([count, rotation, w, length, jitter, drift, strength]) => {
+      count = Math.round(count)
+      const rays = Array.from({ length: count }, (_, seed) => {
+        const h = holyHash(seed + 4.7), h2 = holyHash(seed + 72.3)
+        return { a: (seed + .5 + jitter * (h - .5)) * TAU / count, length: (.4 + .75 * h2) * (.79 + .21 * Math.sin(flicker * (1 + Math.floor(h * 3)) + seed)), energy: (.4 + .6 * h) * (.62 + .38 * Math.sin(flicker * (1 + Math.floor(h2 * 3)) + seed * 4.1)), seed }
+      })
+      return { count, rotation, w, length, drift, strength, rays }
+    })
+    for (let k = 0; k < A; k++) {
+      const a = k / A * TAU
+      const open = .5 + .5 * Math.sin(flicker), breathLength = .14 + .35 * (.5 + .5 * Math.sin(flicker))
+      const crown = (.5 + .5 * Math.sin(a * 5 - clock + Math.sin(a * 3 + phase) * .5)) ** 2
+      const fanA = holyGaussian(holyWrap(a - turn), .55) + holyGaussian(holyWrap(a - turn - Math.PI), .55)
+      const fanB = holyGaussian(holyWrap(a + turn - 1.6), .4) + holyGaussian(holyWrap(a + turn - 1.6 - Math.PI), .4)
+      const sweep = ((1 + Math.cos(a - turn)) / 2) ** 16, tail = ((1 + Math.cos(a - turn + .55)) / 2) ** 5, sweep2 = ((1 + Math.cos(a - turn - Math.PI)) / 2) ** 24
+      // Only the nearest three rays can contribute to a sample. Resolve them per angle.
+      const samples = bands.map((band) => {
+        const cell = Math.floor((a - band.rotation) / TAU * band.count)
+        return [-1, 0, 1].map((j) => {
+          const id = cell + j, seed = ((id % band.count) + band.count) % band.count, ray = band.rays[seed]
+          return { ray, delta: a - band.rotation - (ray.a + (id - seed) * TAU / band.count) }
+        })
+      })
+      for (let b = 0; b <= B; b++) {
+        const d = b / B * 1.5
+        let energy = 0
+        for (let j = 0; j < bands.length; j++) {
+          const band = bands[j]
+          let w = band.w * width, length = band.length * reach, strength = band.strength
+          if (kind === 'breathe') length *= breathLength
+          if (kind === 'fan') strength *= j === 0 ? fanA : fanB
+          if (kind === 'meteor') strength *= tail * .9 + sweep * 3.6 + sweep2 * 2.8
+          if (kind === 'crown') { length *= .16 + .26 * crown; strength *= j === 0 ? .38 + 1.7 * crown : crown }
+          if (kind === 'iris') {
+            if (j < 2) w *= .008 + .07 * open
+            if (j === 0) { length *= .49 - .18 * open; strength *= 1.25 - .3 * open }
+            if (j === 2) strength *= open * .45
+          }
+          for (const { ray, delta } of samples[j]) {
+            const shift = band.drift * Math.sin(phase + ray.seed * 2.3 + d * 2.6)
+            const angular = holyGaussian(delta + shift, w * (1 + d * .9))
+            if (angular < .0001) continue
+            energy += angular * Math.exp(-((d / Math.max(.03, length * ray.length)) ** 1.65)) * ray.energy * strength
+          }
+        }
+        if (kind === 'fan') energy += (fanA * .26 + fanB * .18) * Math.exp(-d * 5) * glow
+        if (kind === 'meteor') energy += (sweep + sweep2) * (.85 * Math.exp(-d * 9) * glow + 1.8 * Math.exp(-d * 54))
+        if (kind === 'crown') energy += Math.exp(-d / (.06 + .12 * crown)) * (.13 + .24 * crown) * glow
+        energy += Math.exp(-d * 54) * (.06 + .10 * (.5 + .25 * Math.sin(a * 3 - phase) + .15 * Math.sin(a * 7 + phase * 2) + .1 * Math.sin(a * 11 - phase))) * glow
+        field[k * (B + 1) + b] = energy
+      }
+    }
+    const tint = project.colour && project.colour.mode === 'white' ? [.82, .88, 1] : project.colour && project.colour.mode === 'custom' ? ctx.pal.mid : [1, .52, .105]
+    const hot = project.colour && ['white', 'custom'].includes(project.colour.mode) ? tint.map((v) => .8 + .2 * v) : [1, .94, .79]
+    for (let i = 0; i < s.mask.length; i++) {
+      if (s.mask[i] < .0001) continue
+      const a0 = s.ai[i], a1 = (a0 + 1) % A, b = s.bi[i], q0 = a0 * (B + 1) + b, q1 = a1 * (B + 1) + b
+      const energy = lerp(lerp(field[q0], field[q0 + 1], s.bw[i]), lerp(field[q1], field[q1 + 1], s.bw[i]), s.aw[i]) * s.mask[i] * p.bright
+      const heat = Math.max(0, energy - .28) ** 1.8 * .76
+      D.R[i] = (1 - Math.exp(-(tint[0] * energy * 1.35 + hot[0] * heat) * 1.35)) ** .84
+      D.G[i] = (1 - Math.exp(-(tint[1] * energy * 1.35 + hot[1] * heat) * 1.35)) ** .84
+      D.B[i] = (1 - Math.exp(-(tint[2] * energy * 1.35 + hot[2] * heat) * 1.35)) ** .84
+    }
+  }
+  const HOLY_RAYS = [
+    ['holy-iris', '虹膜开合', 'iris', 17], ['holy-breathe', '呼吸霞光', 'breathe', 9],
+    ['holy-layers', '双层天幕', 'layers', 14], ['holy-crown', '涌动光冠', 'crown', 52],
+    ['holy-meteor', '流星放射', 'meteor', 41], ['holy-rotate', '旋转圣光', 'rotate', 29],
+    ['holy-fans', '交错光扇', 'fan', 39],
+  ].map(([id, label, type, count]) => ({
+    id, label, group: '环绕光效', palette: 'gold', lifecycle: 'loop', displayMapped: true,
+    hint: '沿轮廓环绕的柔和放射光，数量、宽度、长度、圈数、明暗变化、光晕和亮度可调',
+    params: [P('count', '光束数量', 4, 80, 1, count), P('width', '光束宽度', .3, 3, .05, 1), P('reach', '光束长度', .3, 3, .05, 1), P('laps', '环绕圈数', 1, 6, 1, 1), P('flicker', '明暗变化', 1, 6, 1, 2), PP.glow, PP.bright],
+    prepare: prepareHoly, render: (ctx, t, D) => renderHoly(type, ctx, t, D),
+    ai: (w) => ['rays', `soft holy light rays orbiting the ${w.noun}, beams of varied widths and lengths, bright fine cores and soft halos, empty centre, ${type} motion`],
+  }))
+  LIST.push(...HOLY_RAYS,
+    {
+      id: 'holy-aurora', label: '极光冠冕', group: '环绕光效', palette: 'gold', lifecycle: 'loop',
+      hint: '柔软丝状光幕沿轮廓起伏，波峰持续环绕',
+      params: [P('count', '光丝数量', 32, 320, 1, 200), PP.width, P('reach', '光幕高度', .3, 3, .05, 1), P('laps', '环绕圈数', 1, 6, 1, 1), PP.glow, PP.bright],
+      prepare: (ctx) => ({ T: outlineParam(ctx.geo) }),
+      render(ctx, t, D) {
+        const { geo: g, params: p, state, pal } = ctx, phase = TAU * frac(t), turn = phase * p.laps * (ctx.project.direction === 'cw' ? -1 : 1)
+        const scale = Math.min(g.W, g.H) / 500, hot = pal.hot, mid = pal.mid
+        for (let i = 0; i < g.N; i++) {
+          const d = Math.max(0, g.sd[i]) / scale, u = state.T[i]
+          const crest = .5 + .5 * Math.sin(TAU * u * 5 - turn * 2 + Math.sin(TAU * u * 3 + phase))
+          const height = Math.max(7, (20 + 67 * crest * crest + 13 * Math.sin(TAU * u * 9 + phase)) * p.reach)
+          const thread = (.5 + .5 * Math.cos(TAU * u * p.count + d * .045 * Math.sin(turn))) ** (4 / p.width)
+          const envelope = Math.exp(-((d / height) ** 1.7)) * smooth(-1, 2, g.sd[i] / scale)
+          const energy = envelope * (.13 + .42 * thread) * p.bright
+          addPixel(D, i, energy, mid)
+          addPixel(D, i, Math.exp(-((d / (2.8 * p.width)) ** 2)) * (.1 + .18 * crest) * p.bright * smooth(-1, 2, g.sd[i] / scale), hot)
+        }
+      },
+      ai: (w) => ['rays', `a soft silky aurora curtain flowing around the outside of a ${w.noun}, fine shimmering filaments rising and falling in travelling waves`],
+    },
+    {
+      id: 'holy-twin', label: '双流交辉', group: '环绕光效', palette: 'gold', lifecycle: 'loop',
+      hint: '两道长尾光流反向沿轮廓游走，交汇自然提亮',
+      params: [P('count', '光流数量', 1, 8, 1, 2), PP.width, P('trail', '拖尾长度', .1, .8, .01, .46), P('laps', '环绕圈数', 1, 6, 1, 1), PP.glow, PP.bright],
+      render(ctx, t, D) {
+        const { geo: g, params: p, pal } = ctx, unit = Math.min(g.W, g.H) / 500
+        const phase = frac(t) * p.laps * (ctx.project.direction === 'cw' ? -1 : 1), G = glowLines(g)
+        for (let k = 0; k < p.count; k++) {
+          const dir = k % 2 ? -1 : 1, head = phase * dir + k / p.count + (k % 2 ? .05 : 0), offset = (4 + (k % 2) * 7) * unit
+          let prev = null
+          for (let j = 0; j <= 90; j++) {
+            const z = j / 90, u = head - dir * p.trail * (1 - z), q = FXM().pointOnOutline(g, u), sway = 2 * unit * Math.sin(TAU * u * 5 - TAU * frac(t))
+            const now = [q.x + q.nx * (offset + sway), q.y + q.ny * (offset + sway)]
+            if (prev) lineGlow(G, g, ...prev, ...now, 1.8 * unit * p.width, 1.8 * unit * p.width, z ** 2.2 * p.bright, z ** 2.2 * p.bright, 4.2, .24)
+            prev = now
+          }
+          const q = FXM().pointOnOutline(g, head), x = q.x + q.nx * offset, y = q.y + q.ny * offset
+          dot(D, x, y, 7 * unit * p.width, .6 * p.bright, pal.mid)
+          star(D, x, y, 1.1 * unit * p.width, 0, .65 * p.bright, pal.hot)
+        }
+        flushGlow(D, G, pal.hot, pal.mid)
+      },
+      ai: (w) => ['frame', `two bright light streams with long fading tails running in opposite directions around a ${w.noun}, glowing softly where they meet`],
+    },
+    {
+      id: 'holy-tide', label: '脉冲光潮', group: '环绕光效', palette: 'gold', lifecycle: 'loop',
+      hint: '轮廓光波层层外放，亮区环绕推进',
+      params: [P('count', '光波层数', 1, 8, 1, 4), PP.width, P('reach', '扩散距离', .3, 3, .05, 1), P('laps', '脉冲次数', 1, 6, 1, 2), PP.glow, PP.bright],
+      prepare: (ctx) => ({ T: outlineParam(ctx.geo) }),
+      render(ctx, t, D) {
+        const { geo: g, params: p, state, pal } = ctx, unit = Math.min(g.W, g.H) / 500
+        const phase = frac(t) * (ctx.project.direction === 'cw' ? -1 : 1)
+        for (let i = 0; i < g.N; i++) {
+          const d = g.sd[i] / unit
+          if (d < -3) continue
+          const pulse = .16 + .84 * ((1 + Math.cos(TAU * (state.T[i] - phase))) / 2) ** 5
+          let energy = 0
+          for (let k = 0; k < p.count; k++) {
+            const age = frac(frac(t) * p.laps + k / p.count), offset = age * 78 * p.reach, envelope = Math.sin(age * Math.PI) ** 1.5
+            energy += holyGaussian(d - offset, 1.1 * p.width) * envelope * pulse * .8
+            energy += holyGaussian(d - offset, 4.4 * p.width) * envelope * pulse * .16
+          }
+          addPixel(D, i, energy * p.bright, pal.hot)
+        }
+        // Keep the original moving bright tail and short rays between the expanding waves.
+        const G = glowLines(g)
+        let previous = null
+        for (let j = 0; j <= 64; j++) {
+          const z = j / 64, u = phase - .35 * (1 - z), q = FXM().pointOnOutline(g, u)
+          const now = [q.x + q.nx * 3 * unit, q.y + q.ny * 3 * unit]
+          if (previous) lineGlow(G, g, ...previous, ...now, 1.5 * unit * p.width, 1.5 * unit * p.width, z ** 2.2 * .9 * p.bright, z ** 2.2 * .9 * p.bright, 4, .2)
+          previous = now
+        }
+        for (let j = 0; j < 24; j++) {
+          const q = FXM().pointOnOutline(g, j / 24), dx = q.x - g.cx, dy = q.y - g.cy, radius = Math.hypot(dx, dy) || 1
+          const length = (24 + 40 * (.5 + .5 * Math.sin(TAU * (frac(t) * 2 - j / 24)))) * p.reach * unit
+          streak(D, q.x, q.y, q.x + dx / radius * length, q.y + dy / radius * length, 1.2 * unit * p.width, 2.5 * unit * p.width, .12 * p.bright, 0, pal.mid, pal.mid)
+        }
+        flushGlow(D, G, pal.hot, pal.mid)
+      },
+      ai: (w) => ['rays', `several waves of light expanding outward from a ${w.noun}, a bright area travelling around the waves, soft glowing contours fading out`],
+    })
+  const GROUP_ORDER = ['技能', '环绕光效', '法阵', '闪电', '烟雾', '水', '冰', '扩散', '爆炸', '消失', '破碎']
   const ALL = LIST.slice().sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group))
   // 粒子类（自己管出场 / 收场，一次性结尾清空）
   const OVERLAY = ['fireworks', 'charge', 'sparkspread']
@@ -1976,7 +2181,7 @@
     e.inert = e.inert || {}
     if (e.id === 'shatter') { e.inert.trail = '这个效果没有拖尾'; e.inert.size = '碎块大小跟着「碎块」数量变' }
     if (!e.emit) e.inert.emit = '这个效果的发射位置是固定的'
-    if (!DIRS.includes(e.id)) e.inert.direction = '这个效果没有方向'
+    if (!DIRS.includes(e.id) && e.group !== '环绕光效') e.inert.direction = '这个效果没有方向'
     e.inert.start = '没有起点'
   }
 

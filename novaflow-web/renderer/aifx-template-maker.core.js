@@ -775,6 +775,16 @@
       D.R[i] *= f; D.G[i] *= f; D.B[i] *= f
       if (D.IR) { D.IR[i] *= f; D.IG[i] *= f; D.IB[i] *= f; D.IA[i] *= f }
     }
+    // The selected holy-light presets already contain their original soft shafts and tone map.
+    // Applying the general library's bloom again would change the approved appearance.
+    if (layer.fx.displayMapped) {
+      const planes = [D.R, D.G, D.B]
+      for (let c = 0; c < 3; c++) for (let i = 0; i < N; i++) {
+        const v = Math.max(0, Math.min(1, planes[c][i]))
+        rgb[c][i] = 1 - (1 - rgb[c][i]) * (1 - v)
+      }
+      return
+    }
     const gk = clamp(Number(layer.params.glow) || 1, 0.2, 6)
     const planes = [D.R, D.G, D.B]
     // 染色泛光（2026-10-15 用户嫌「像草稿」）：近处一层按本色模糊，中、远两层按亮度模糊再染成配色的主色 / 深色——
