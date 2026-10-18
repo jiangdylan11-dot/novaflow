@@ -10,7 +10,8 @@ let status = rh.publicStatus(config);
 let checks = 0;
 let saves = 0;
 const errors = [];
-const preload = path.resolve(__dirname, "../license-admin-gui/preload.js");
+const uiRoot = process.env.NOVAFLOW_ADMIN_UI_ROOT || path.resolve(__dirname, "../license-admin-gui");
+const preload = path.join(uiRoot, "preload.js");
 for (const channel of new Set([...fs.readFileSync(preload, "utf8").matchAll(/ipcRenderer\.invoke\("([^"]+)"/g)].map((m) => m[1]))) {
   ipcMain.handle(channel, async (_event, payload) => {
     if (channel === "admin-default-paths") return {};
@@ -37,7 +38,7 @@ for (const channel of new Set([...fs.readFileSync(preload, "utf8").matchAll(/ipc
 app.whenReady().then(async () => {
   const win = new BrowserWindow({ show: false, width: 1440, height: 1080, webPreferences: { preload, contextIsolation: true, nodeIntegration: false } });
   win.webContents.on("console-message", (_e, level, message) => { if (level >= 3) errors.push(message); });
-  await win.loadFile(path.resolve(__dirname, "../license-admin-gui/index.html"));
+  await win.loadFile(path.join(uiRoot, "index.html"));
   const run = (code) => win.webContents.executeJavaScript(code);
   await run(`window.confirm = () => true; window.alert = (msg) => { throw new Error(msg); };
     new Promise((resolve, reject) => {
