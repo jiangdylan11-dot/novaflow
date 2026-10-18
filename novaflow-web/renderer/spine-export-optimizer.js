@@ -192,7 +192,9 @@
   function optimize(project,options={}) {
     let output=clone(project);const version=String(output.skeleton?.spine||output.skeleton?.version||'');
     const legacy=version.startsWith('3.8'),modern=/^4\.[012](\.|$)/.test(version);
-    const stats={spineVersion:version,enabled:legacy||modern,beforeKeys:0,afterKeys:0,optimized:0,addedBones:0,tracks:[],limits,bytesBefore:bytes(project)};
+    if(legacy&&root.NovaFlowMotionAnimation)output=root.NovaFlowMotionAnimation.expandAxisCurves(output);
+    const inputKeys=keyCount(output);
+    const stats={spineVersion:version,enabled:legacy||modern,beforeKeys:0,afterKeys:0,optimized:0,addedBones:0,tracks:[],limits,bytesBefore:bytes(output)};
     if(!stats.enabled)return {project:output,stats};
     const bones=output.bones||[],byName=new Map(bones.map(b=>[b.name,b]));
     // Divide the local error budget across a chain; long chains cannot accumulate the full budget per bone.
@@ -249,7 +251,7 @@
     }
     // 3.8 expects the four normalized handles in separate fields. Preserve native 4.x curves.
     if(legacy){const visit=node=>{if(!node||typeof node!=='object')return;if(Array.isArray(node.curve)&&node.curve.length===4){const c=node.curve;node.curve=c[0];node.c2=c[1];node.c3=c[2];node.c4=c[3];}for(const v of Object.values(node))if(typeof v==='object')visit(v);};visit(output.animations);}
-    stats.beforeKeys=keyCount(project);stats.afterKeys=keyCount(output);
+    stats.beforeKeys=inputKeys;stats.afterKeys=keyCount(output);
     stats.bytesAfter=bytes(output);stats.reduction=stats.beforeKeys?1-stats.afterKeys/stats.beforeKeys:0;
     return {project:output,stats};
   }

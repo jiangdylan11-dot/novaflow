@@ -2,9 +2,9 @@
   'use strict';
   const clone = value => JSON.parse(JSON.stringify(value));
   const n = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
-  function curve(t, f) {
+  function curve(t, f, key) {
     if (f?.curve === 'stepped') return 0;
-    const c = Array.isArray(f?.curve) ? f.curve : typeof f?.curve === 'number' ? [f.curve, f.c2 ?? 0, f.c3 ?? 1, f.c4 ?? 1] : null;
+    const c = f?.nfCurves?.[key] || (Array.isArray(f?.curve) ? f.curve : typeof f?.curve === 'number' ? [f.curve, f.c2 ?? 0, f.c3 ?? 1, f.c4 ?? 1] : null);
     if (!c || !c.slice(0, 4).every(Number.isFinite)) return t;
     const bez = (v, a, b) => 3 * (1-v)**2 * v * a + 3 * (1-v) * v*v * b + v*v*v;
     let lo = 0, hi = 1;
@@ -16,13 +16,34 @@
     let i = 0; while (i+1 < frames.length && n(frames[i+1].time) <= t) i++;
     const a=frames[i], b=frames[i+1], av=n(a[key] ?? a.value, fallback);
     if (!b) return av;
-    const u=curve((t-n(a.time))/Math.max(1e-9,n(b.time)-n(a.time)),a);
+    const u=curve((t-n(a.time))/Math.max(1e-9,n(b.time)-n(a.time)),a,key);
     return av+(n(b[key] ?? b.value,fallback)-av)*u;
   }
   function color(frames, t, fallback='ffffffff') {
     const base = /^[\da-f]{8}$/i.test(fallback) ? fallback : 'ffffffff';
     const channels = [0,2,4,6].map(i=>scalar((frames||[]).map(f=>({...f,v:parseInt((f.color||base).slice(i,i+2),16)})),t,'v',parseInt(base.slice(i,i+2),16)));
     return channels;
+  }
+  // Sparse editor keys retain separate normalized X/Y handles. Only playback
+  // copies are sampled for the 3.8 reader; authored keys and the hierarchy stay intact.
+  function expandAxisCurves(input) {
+    if(!Object.values(input.animations||{}).some(a=>Object.values(a.bones||{}).some(b=>['translate','scale','shear'].some(k=>b[k]?.some(f=>f.nfCurves)))))return input;
+    const output=clone(input);
+    for(const animation of Object.values(output.animations||{}))for(const bone of Object.values(animation.bones||{}))for(const channel of ['translate','scale','shear']){
+      const frames=bone[channel];if(!frames?.some(f=>f.nfCurves))continue;
+      const out=[];
+      for(let i=0;i<frames.length;i++){
+        const a=frames[i],b=frames[i+1],{nfCurves,...plain}=a;
+        if(!nfCurves||!b){out.push(plain);continue;}
+        const count=Math.max(2,Math.ceil((n(b.time)-n(a.time))*240));
+        for(let j=0;j<count;j++){
+          const time=n(a.time)+(n(b.time)-n(a.time))*j/count;
+          out.push({time,x:scalar(frames,time,'x',channel==='scale'?1:0),y:scalar(frames,time,'y',channel==='scale'?1:0)});
+        }
+      }
+      bone[channel]=out;
+    }
+    return output;
   }
   function duration(animation) {
     let max=n(animation?.duration);
@@ -75,7 +96,7 @@
   // a key's curve as [cx1,cy1,cx2,cy2] (Spine 3.8 curve/c2/c3/c4, or the 3.7 array), else null
   const curveOf=f=>Array.isArray(f?.curve)&&f.curve.length===4?f.curve.map(Number):typeof f?.curve==='number'?[f.curve,n(f.c2,0),n(f.c3,1),n(f.c4,1)]:null;
   // the key with that curve written the 3.8 way (null = linear, 'stepped' kept)
-  function withCurve(f,c){const {curve,c2,c3,c4,...rest}=f;if(c==='stepped')return {...rest,curve:'stepped'};return c?{...rest,curve:c[0],c2:c[1],c3:c[2],c4:c[3]}:rest;}
+  function withCurve(f,c){const {curve,c2,c3,c4,nfCurves,...rest}=f;if(c?.axes)return {...rest,nfCurves:c.axes};if(c==='stepped')return {...rest,curve:'stepped'};return c?{...rest,curve:c[0],c2:c[1],c3:c[2],c4:c[3]}:rest;}
   // the Bezier parameter at time fraction u for time handles x1 / x2
   function bezierT(x1,x2,u){let lo=0,hi=1,t=u;for(let i=0;i<24;i++){t=(lo+hi)/2;const x=3*(1-t)*(1-t)*t*x1+3*(1-t)*t*t*x2+t*t*t;if(x<u)lo=t;else hi=t;}return t;}
   function bezierAt(c,u){const t=bezierT(c[0],c[2],u);return 3*(1-t)*(1-t)*t*c[1]+3*(1-t)*t*t*c[3]+t*t*t;}
@@ -94,8 +115,8 @@
     const fits=(i,j,curve)=>{
       const span=time(s[j])-time(s[i]);
       for(let m=i+1;m<j;m++){
-        const u=(time(s[m])-time(s[i]))/span,w=curve?bezierAt(curve,u):u;
-        for(const k of keys){const a=val(s[i],k),b=val(s[j],k);if(Math.abs(a+(b-a)*w-val(s[m],k))>tol)return false;}
+        const u=(time(s[m])-time(s[i]))/span;
+        for(const k of keys){const w=curve?.axes?bezierAt(curve.axes[k],u):curve?bezierAt(curve,u):u,a=val(s[i],k),b=val(s[j],k);if(Math.abs(a+(b-a)*w-val(s[m],k))>tol)return false;}
       }
       return true;
     };
@@ -115,6 +136,25 @@
     };
     const ease=(i,j)=>{
       const span=time(s[j])-time(s[i]),deltas=keys.map(k=>val(s[j],k)-val(s[i],k));
+      if(opts?.axes){
+        const axes={};
+        for(const key of keys){
+          const d=val(s[j],key)-val(s[i],key);
+          if(Math.abs(d)<1e-9){if(s.slice(i,j+1).some(f=>Math.abs(val(f,key)-val(s[i],key))>tol))return null;axes[key]=[0,0,1,1];continue;}
+          const t0=slopeAt(i,key)*span/d,t1=slopeAt(j,key)*span/d;
+          let best=null,error=Infinity;
+          for(const a of [.2,.3,.4,.5])for(const b of [.2,.3,.4,.5]){
+            const c=[a,a*t0,1-b,1-b*t1].map(v=>Number(v.toFixed(6)));let err=0;
+            for(let m=i+1;m<j&&err<error;m++)err=Math.max(err,Math.abs(val(s[i],key)+d*bezierAt(c,(time(s[m])-time(s[i]))/span)-val(s[m],key)));
+            if(err<error){error=err;best=c;}
+          }
+          if(error>tol)return null;axes[key]=best;
+        }
+        const moving=keys.filter(k=>Math.abs(val(s[j],k)-val(s[i],k))>1e-9),first=axes[moving[0]];
+        if(!first)return null;
+        if(moving.every(k=>axes[k].every((v,i)=>Math.abs(v-first[i])<1e-4)))return first;
+        return {axes};
+      }
       if(!deltas.some(d=>Math.abs(d)>tol))return null;
       let k=0;for(let q=1;q<keys.length;q++)if(Math.abs(deltas[q])>Math.abs(deltas[k]))k=q;
       const d=deltas[k],t0=slopeAt(i,keys[k])*span/d,t1=slopeAt(j,keys[k])*span/d;
@@ -167,7 +207,7 @@
       if(!j){j=i+1;while(j<s.length-1&&!cand(j))j++;curve=ease(i,j);}
       // the leftover to the next extreme must start with an ease too (a two-frame line there is
       // a corner): back the key off until it can
-      const canGo=(a)=>{for(let m=a+1;m<s.length;m++){if(ease(a,m)){if(cand(m))return true;}else return false;if(must.has(m)&&cand(m))break;}return false;};
+      const canGo=(a)=>{for(let m=a+1;m<s.length;m++){if(ease(a,m)||fits(a,m,null)){if(cand(m))return true;}else return false;if(must.has(m)&&cand(m))break;}return false;};
       while(j>i+step&&!must.has(j)&&j<s.length-1&&!canGo(j)){j-=step;curve=ease(i,j);}
       out.push(withCurve(s[i],curve));
       i=j;
@@ -217,8 +257,9 @@
     const times=new Set();for(let f=startFrame;f<=startFrame+spanFrames;f++)times.add(frameTime(f));
     // Legacy Spine shares one timing curve for X and Y. A sparse Bezier fit
     // cannot independently smooth the two axes of an ellipse: it changes both
-    // speeds together and leaves corners in the orbit. Use uniform linear
-    // position samples instead, at >=60 Hz and <=3 degrees per axis step.
+    // speeds together and leaves corners in the orbit. Collect uniform
+    // fitting samples at >=60 Hz and <=3 degrees per axis step. They are
+    // reduced to independent X/Y Beziers before entering the project.
     const orbit=params.shuttle.enabled&&!params.shuttle.oneWay&&!params.bounce.enabled&&params.shuttle.axes.x.on&&params.shuttle.axes.y.on;
     const sampleTimes=new Set(times);
     if(orbit){
@@ -248,7 +289,7 @@
     // what a key may stray from the sampled motion: 3% of the travel, at least a pixel / half a
     // percent of scale / a quarter degree
     const floor={translate:1,scale:.005,rotate:.25},chans={translate:['x','y'],scale:['x','y'],rotate:['angle']};
-    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],(channel==='translate'&&orbit?item[channel].map(f=>withCurve(f,null)):sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel]),channel==='rotate'?{maxDelta:179}:undefined)),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
+    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel],orbit&&channel==='translate'?.0015:undefined),channel==='rotate'?{maxDelta:179}:chans[channel].length===2?{axes:true}:undefined),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
     if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],sparse(slotFrames.get(slot.name),['a'],toleranceFor(slotFrames.get(slot.name),['a'],3)).map(({a,...f})=>f),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
     // Spine derives duration from keys, not the editor's duration metadata.
     // Extend only a selected-bone channel so exported playback has the same length.
@@ -259,6 +300,6 @@
     }
     return {animation,targets,slots:alpha?slots.map(s=>s.name):[],start,end};
   }
-  const api={calculate,selection,descendants,duration,scalar,color,bounds,pose,sparse,toleranceFor,bezierAt,curveOf,FPS};root.NovaFlowMotionAnimation=api;
+  const api={calculate,selection,descendants,duration,scalar,color,bounds,pose,expandAxisCurves,sparse,toleranceFor,bezierAt,curveOf,FPS};root.NovaFlowMotionAnimation=api;
   if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);

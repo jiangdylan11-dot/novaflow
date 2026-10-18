@@ -1320,7 +1320,7 @@
     const json = clone(input)
     delete json[EMPTY_PLACEHOLDERS]
     delete json[NO_EXPORT]
-    return json
+    return globalThis.NovaFlowMotionAnimation?.expandAxisCurves(json) || json
   }
 
   /** Spine's 导出 on an image: false keeps it in the editor but out of the export. */
@@ -1350,9 +1350,9 @@
     const i = list.findIndex((k) => Math.abs(num(k.time, 0) - t) < 1e-4)
     const key = t ? { time: t, ...value } : { ...value }
     if (i >= 0) {
-      const curve = list[i].curve
+      const previous = list[i]
       list[i] = key
-      if (curve !== undefined) list[i].curve = curve
+      for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) if (previous[ck] !== undefined) list[i][ck] = clone(previous[ck])
     } else {
       list.push(key)
       list.sort((a, b) => num(a.time, 0) - num(b.time, 0))
@@ -1847,7 +1847,7 @@
             ring.unshift({ ...seam })
           }
           const atEnd = { ...clone(seam), time: keyTime(end) }
-          for (const ck of ['curve', 'c2', 'c3', 'c4']) delete atEnd[ck]
+          for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) delete atEnd[ck]
           ring.push(atEnd)
           for (const k of ring) if (sameTime(k.time, 0)) delete k.time
         }
@@ -1969,8 +1969,8 @@
       // upsertKey keeps an old curve; a pasted key brings its own
       const i = list.findIndex((k) => sameTime(k.time, t))
       if (i >= 0) {
-        for (const ck of ['curve', 'c2', 'c3', 'c4']) delete list[i][ck]
-        for (const ck of ['curve', 'c2', 'c3', 'c4']) if (key[ck] !== undefined) list[i][ck] = key[ck]
+        for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) delete list[i][ck]
+        for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) if (key[ck] !== undefined) list[i][ck] = key[ck]
       }
       setTrack(a, c.path, list)
       out.push({ path: c.path, time: t })
@@ -1988,7 +1988,7 @@
       if (!list) continue
       for (const k of list) {
         if (!g.times.some((t) => sameTime(k.time, t))) continue
-        for (const ck of ['curve', 'c2', 'c3', 'c4']) delete k[ck]
+        for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) delete k[ck]
         if (kind === 'stepped') k.curve = 'stepped'
         else if (kind === 'ease') { k.curve = 0.25; k.c2 = 0; k.c3 = 0.75; k.c4 = 1 }
       }
@@ -2012,7 +2012,7 @@
       if (!list) continue
       for (const k of list) {
         if (!g.times.some((t) => sameTime(k.time, t))) continue
-        for (const ck of ['curve', 'c2', 'c3', 'c4']) delete k[ck]
+        for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) delete k[ck]
         if (!linear) { k.curve = r4(c1); k.c2 = r4(c2); k.c3 = r4(c3); k.c4 = r4(c4) }
       }
     }
@@ -2024,6 +2024,7 @@
     const a = json && json.animations && json.animations[anim]
     const list = a && trackList(a, key.path)
     const k = list && list.find((x) => sameTime(x.time, key.time))
+    if (k?.nfCurves) return { kind: 'bezier', c: clone(k.nfCurves.x || k.nfCurves.y) }
     if (!k || k.curve === undefined) return { kind: 'linear', c: [0, 0, 1, 1] }
     if (k.curve === 'stepped') return { kind: 'stepped', c: [0, 0, 1, 1] }
     return { kind: 'bezier', c: [num(k.curve, 0), num(k.c2, 0), num(k.c3, 1), num(k.c4, 1)] }
@@ -2042,6 +2043,7 @@
     const a = json && json.animations && json.animations[anim]
     const list = a && trackList(a, key.path)
     const k = list && list.find((x) => sameTime(x.time, key.time))
+    if (k?.nfCurves) return 'ease'
     if (!k || k.curve === undefined) return 'linear'
     return k.curve === 'stepped' ? 'stepped' : 'ease'
   }

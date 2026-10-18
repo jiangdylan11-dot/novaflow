@@ -130,7 +130,7 @@
 
   // ---------------------------------------------------------------- timeline specs
 
-  const copyExcept = (k, drop) => { const o = {}; for (const [n, v] of Object.entries(k)) if (n !== 'time' && n !== 'curve' && n !== 'c2' && n !== 'c3' && n !== 'c4' && n !== KEEP && !drop.includes(n)) o[n] = v; return o }
+  const copyExcept = (k, drop) => { const o = {}; for (const [n, v] of Object.entries(k)) if (n !== 'time' && n !== 'curve' && n !== 'c2' && n !== 'c3' && n !== 'c4' && n !== KEEP && n !== 'nfCurves' && !drop.includes(n)) o[n] = v; return o }
 
   const ROTATE = {
     read4: (k) => [num(k.value, 0)], read38: (k) => [num(k.angle, 0)],
@@ -365,13 +365,15 @@
    * everything else is converted.
    */
   function fromSpine38(input, targetVersion) {
-    const json = clone(input)
+    const expanded = globalThis.NovaFlowMotionAnimation?.expandAxisCurves(input) || input
+    const axisCurves = expanded !== input
+    const json = clone(expanded)
     const stash = json[STASH] || null
     delete json[STASH]
     const own = stash ? stash.version : '3.8.99'
     const target = short(targetVersion || own) || '3.8'
     if (!VERSIONS[target]) throw new Error(`不支持导出为 Spine ${target}`)
-    if (target === '3.8') { json.skeleton = { ...(json.skeleton || {}), spine: short(own) === '3.8' && own ? own : '3.8.99' }; stripKeeps(json); return json }
+    if (target === '3.8') { json.skeleton = { ...(json.skeleton || {}), spine: short(own) === '3.8' && own ? own : '3.8.99' }; stripKeeps(json); return axisCurves ? (globalThis.NovaFlowSpineExportOptimizer?.optimize(json).project || json) : json }
     const mm = majorMinor(target)
     const at41 = mm[0] > 4 || (mm[0] === 4 && mm[1] >= 1)
     const at42 = mm[0] > 4 || (mm[0] === 4 && mm[1] >= 2)
@@ -478,7 +480,7 @@
       if (at42 && extras.physics) a.physics = extras.physics
     }
     stripKeeps(json)
-    return json
+    return axisCurves ? (globalThis.NovaFlowSpineExportOptimizer?.optimize(json).project || json) : json
   }
 
   /** The editor's own 3.8 data never keeps the 4.x originals once it leaves for a 3.8 file. */

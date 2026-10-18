@@ -10079,7 +10079,7 @@
   }
 
   /** What a key holds besides its time and curve: the part that decides whether a line is drawn. */
-  const keyValue = (k) => { const o = {}; for (const [n, v] of Object.entries(k)) if (n !== 'time' && n !== 'curve' && n !== 'c2' && n !== 'c3' && n !== 'c4' && n !== 'nf4') o[n] = v; return JSON.stringify(o) }
+  const keyValue = (k) => { const o = {}; for (const [n, v] of Object.entries(k)) if (n !== 'time' && n !== 'curve' && n !== 'c2' && n !== 'c3' && n !== 'c4' && n !== 'nfCurves' && n !== 'nf4') o[n] = v; return JSON.stringify(o) }
 
   /**
    * Spine's dopesheet lines: between two keys of a track whose values differ, a line (dashed when

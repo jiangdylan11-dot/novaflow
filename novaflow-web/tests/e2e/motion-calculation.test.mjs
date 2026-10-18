@@ -78,7 +78,7 @@ test('Spine 3.8 runtime reads saved tracks with matching displacement, scale, al
  const spine=runtime.spine,project=fixture();project.skeleton.spine='3.8.99';project.skins={};
  const stack=E.freshStack();stack.shuttle.enabled=true;stack.expand.enabled=true;stack.opacity.opacity.from=0;
  const animation=calc(project,stack,{...timing,animationDuration:3}).animation;
- const reader=new spine.SkeletonJson({}),data=reader.readSkeletonData({...project,animations:{idle:animation}});
+ const reader=new spine.SkeletonJson({}),data=reader.readSkeletonData(A.expandAxisCurves({...project,animations:{idle:animation}}));
  assert.equal(data.animations[0].duration,3);
  const skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));
  state.setAnimation(0,'idle',false);state.update(1);state.apply(skeleton);skeleton.updateWorldTransform();
@@ -267,7 +267,7 @@ test('Spine 3.8 actually plays complete constant-speed turns in both directions'
   const track=animation.bones.ball.rotate;
   const generated=track.filter(f=>f.time>=timing.animationDelay&&f.time<=timing.animationDelay+timing.boneDuration);
   for(let i=1;i<generated.length;i++)assert.ok(Math.abs(generated[i].angle-generated[i-1].angle)<180,'retain intermediate keys for shortest-arc playback');
-  const data=new spine.SkeletonJson({}).readSkeletonData({...project,animations:{idle:animation}});
+  const data=new spine.SkeletonJson({}).readSkeletonData(A.expandAxisCurves({...project,animations:{idle:animation}}));
   const skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));
   state.setAnimation(0,'idle',false);
   for(let i=0;i<=240;i++){
@@ -302,7 +302,7 @@ test('a single linear turn uses exactly four keys at common durations and replay
   const keys=animation.bones.root.rotate;
   assert.equal(keys.length,4,`one turn at ${frames} frames`);
   assert.ok(keys.every(f=>f.curve===undefined),'constant speed needs linear keys');
-  const data=new spine.SkeletonJson({}).readSkeletonData({...project,animations:{idle:animation}}),skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));state.setAnimation(0,'idle',false);
+  const data=new spine.SkeletonJson({}).readSkeletonData(A.expandAxisCurves({...project,animations:{idle:animation}})),skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));state.setAnimation(0,'idle',false);
   for(let i=0;i<=240;i++){
    if(i)state.update(duration/240);state.apply(skeleton);skeleton.updateWorldTransform();
    const angle=2*Math.PI*(reverse?1-i/240:i/240),b=skeleton.bones[0];
@@ -319,7 +319,7 @@ test('ellipse playback follows continuous XY velocity across keys and the loop s
   const duration=Number((frames/30).toFixed(4)),stack=E.freshStack();stack.shuttle=presetMotion('shuttle',0);stack.shuttle.duration=duration;stack.shuttle.reverse=reverse;
   const project={skeleton:{spine:'3.8.99'},bones:[{name:'root'}],slots:[],skins:{},animations:{idle:{bones:{}}}};
   const animation=A.calculate(project,'idle',['root'],stack,{animationDuration:duration,boneDuration:duration,animationDelay:0},E,M).animation;
-  const data=new spine.SkeletonJson({}).readSkeletonData({...project,animations:{idle:animation}}),skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));state.setAnimation(0,'idle',true);
+  const data=new spine.SkeletonJson({}).readSkeletonData(A.expandAxisCurves({...project,animations:{idle:animation}})),skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));state.setAnimation(0,'idle',true);
   const h=duration/1200;let previous=null;
   for(let i=0;i<=2400;i++){
    if(i)state.update(h);state.apply(skeleton);skeleton.updateWorldTransform();
