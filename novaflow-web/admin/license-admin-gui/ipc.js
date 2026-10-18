@@ -115,6 +115,8 @@ function registerLicenseAdminIpc() {
   });
   registerAdminDataList("admin:provider:comfyui:status", adminData.getAdminComfyUiProviderStatus);
   registerAdminDataList("admin:provider:grok:status", adminData.getAdminGrokProviderStatus);
+  registerAdminDataList("admin:provider:runninghub:status", adminData.getAdminRunningHubProviderStatus);
+  registerAdminDataList("admin:provider:runninghub:check", () => adminData.getAdminRunningHubProviderStatus({ checkAccount: true }));
 
   ipcMain.handle("admin:data:users:create", async (_evt, payload) => {
     try {

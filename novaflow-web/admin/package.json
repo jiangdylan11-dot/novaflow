@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "server": "node admin-server/server.js",
-    "test": "node tests/dashboard-contract.cjs",
+    "test": "node tests/dashboard-contract.cjs && node --test tests/runninghub-provider.test.cjs",
+    "test:runninghub-ui": "electron tests/runninghub-ui.cjs",
     "build:win": "electron-builder --config electron-builder.json --win nsis --x64"
   },
   "dependencies": {

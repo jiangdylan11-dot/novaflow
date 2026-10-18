@@ -163,3 +163,14 @@ Header: X-API-Key
 - NovaFlow 主程序负责 Workflow、Prompt、图片、参数、模型选择等 AI 创作逻辑。
 - 私钥不要发送给用户，不要提交到仓库。
 - 更换签名密钥会导致旧授权文件失效。
+## RunningHub 国内站服务商
+
+AI 服务页新增 RunningHub 国内站配置与只读账户检测。保存到本机后台环境变量，API Key 不回显；Key 留空保留原值，清空必须显式勾选。普通刷新只读取配置或上次检测结果，保存成功或点击“检测账户”才调用 `POST /uc/openapi/accountStatus`，不提交生成或 LLM 请求。余额与运行任务数为上次检测快照。
+
+配置变量：`NOVAFLOW_RUNNINGHUB_BASE_URL`（默认 `https://www.runninghub.cn`）、`NOVAFLOW_RUNNINGHUB_API_KEY`、`NOVAFLOW_RUNNINGHUB_LLM_BASE_URL`（默认 `https://llm.runninghub.cn/v1`）、`NOVAFLOW_RUNNINGHUB_LLM_MODEL`、`NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT`、`NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT`。后三项可留空；图片模型路径从国内站模型文档复制，以 `/openapi/v2/` 开头。
+
+本阶段仅新增服务商配置，尚未迁移 GPT / Google 的 ComfyUI 生成链路与 Grok 提示词服务，也未启用 RunningHub 积分计费。模型 API / LLM 需企业级－共享 Key，账户检测成功不能证明某个模型已获授权或调用成功。配置不自动同步到线上后端，线上使用时需在对应后端单独配置密钥。
+
+官方账户接口：https://www.runninghub.cn/runninghub-api-doc-cn/api-425748943
+
+验证：`npm run admin:test`；`npm --prefix novaflow-web/admin run test:runninghub-ui` 使用真实页面和 preload、隔离的模拟 IPC，不读写实际 Key、不发外部请求。

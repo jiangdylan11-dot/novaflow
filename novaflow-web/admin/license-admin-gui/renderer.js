@@ -963,8 +963,15 @@ function isGrokProvider(provider) {
   return key === "grok" || key === "xai" || key.includes("grok");
 }
 
+function isRunningHubProvider(provider) {
+  return String(provider?.provider_key || "").toLowerCase() === "runninghub";
+}
+
 function ensureCoreAiProviders(providers) {
   const list = Array.isArray(providers) ? [...providers] : [];
+  if (!list.some(isRunningHubProvider)) {
+    list.unshift({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
+  }
   if (!list.some(isGrokProvider)) {
     list.push({
       id: "provider-grok-ui",
@@ -989,6 +996,7 @@ function ensureCoreAiProviders(providers) {
 }
 
 function providerStatusValue(provider, grokStatus) {
+  if (isRunningHubProvider(provider)) return "待迁移";
   if (isGrokProvider(provider)) {
     return provider.status === "enabled" || grokStatus?.configured ? "enabled" : provider.status || "disabled";
   }
@@ -1047,7 +1055,7 @@ function providerBalanceCellText(provider, comfyStatus) {
   return "-";
 }
 
-function renderProviderRuntimeConfigControls(comfyStatus, grokStatus) {
+function renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus) {
   const comfyBase = $("comfyRuntimeBaseUrl");
   const comfyKey = $("comfyRuntimeApiKey");
   const comfyClear = $("comfyRuntimeClearKey");
@@ -1069,6 +1077,20 @@ function renderProviderRuntimeConfigControls(comfyStatus, grokStatus) {
   if (grokKey) grokKey.value = "";
   if (grokClear) grokClear.checked = false;
   if (grokHint) grokHint.textContent = grokStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
+
+  const runninghubFields = {
+    BaseUrl: runninghubStatus?.baseUrl || "https://www.runninghub.cn",
+    LlmBaseUrl: runninghubStatus?.llmBaseUrl || "https://llm.runninghub.cn/v1",
+    LlmModel: runninghubStatus?.llmModel || "",
+    GptImageEndpoint: runninghubStatus?.gptImageEndpoint || "",
+    GoogleImageEndpoint: runninghubStatus?.googleImageEndpoint || ""
+  };
+  for (const [field, value] of Object.entries(runninghubFields)) {
+    if ($(`runninghubRuntime${field}`)) $(`runninghubRuntime${field}`).value = value;
+  }
+  if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
+  if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
+  if ($("runninghubRuntimeConfigHint")) $("runninghubRuntimeConfigHint").textContent = runninghubStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
 
   if (status) status.textContent = "写入本机后台环境变量";
 }
@@ -1170,12 +1192,42 @@ function renderComfyProviderHealth(comfyStatus, settingsResult, providers) {
   renderSettingRows("comfyProviderHealthRows", entries, "暂无 ComfyUI 检测数据");
 }
 
-function renderAiServices(providersResult, settingsResult, comfyStatus, grokStatus) {
+function renderRunningHubProviderHealth(status) {
+  const connection = !status?.configured ? "未配置 Key" : status?.connected ? "账户连接正常" : status?.checked ? "检测失败" : "已配置，尚未检测";
+  renderSettingRows("runninghubProviderHealthRows", [
+    { label: "生成 API 地址", value: status?.baseUrl || "https://www.runninghub.cn" },
+    { label: "连接状态", value: connection },
+    { label: "官方余额", value: status?.balance?.text || "未检测" },
+    { label: "当前运行任务数", value: status?.currentTaskCounts == null ? "-" : String(status.currentTaskCounts) },
+    { label: "上次检测时间", value: status?.checkedAt ? formatDateTime(status.checkedAt) : "尚未检测" },
+    { label: "功能迁移", value: "仅配置服务商；GPT / Google 生成与 Grok 提示词尚未切换" },
+    { label: "检测耗时", value: durationText(status?.durationMs) },
+    { label: "错误提示", value: status?.error || "-" }
+  ], "尚未检测");
+}
+
+function runningHubProviderRow(provider, status) {
+  const tr = document.createElement("tr");
+  tr.appendChild(textCell(provider.name || "RunningHub（国内站）"));
+  tr.appendChild(textCell(status?.configured ? "已配置（不回显）" : "未配置"));
+  tr.appendChild(textCell("待迁移"));
+  tr.appendChild(textCell("尚未启用计费"));
+  const badge = statusBadge(status?.connected ? "Connected" : status?.checked ? "Error" : status?.configured ? "Configured" : "Not Configured");
+  badge.title = status?.error || (status?.checked ? "只读账户检测；模型调用未验证" : "尚未检测账户");
+  tr.appendChild(nodeCell(badge));
+  tr.appendChild(textCell(status?.connected ? "账户可用" : status?.checked ? "检测失败" : "尚未检测"));
+  tr.appendChild(textCell(status?.balance?.text || "未检测"));
+  return tr;
+}
+
+function renderAiServices(providersResult, settingsResult, comfyStatus, grokStatus, runninghubStatus) {
+  renderRunningHubProviderHealth(runninghubStatus);
   const providers = ensureCoreAiProviders(providersResult.records || []);
   if (isErrorResult(providersResult)) {
     replaceRows("aiProvidersTableBody", [], 7, resultErrorText(providersResult));
   } else {
     const providerRows = providers.map((provider) => {
+      if (isRunningHubProvider(provider)) return runningHubProviderRow(provider, runninghubStatus);
       const isComfyUi = isComfyUiProvider(provider);
       const tr = document.createElement("tr");
       const input = document.createElement("input");
@@ -1915,6 +1967,7 @@ async function loadAdminData() {
     const providerQuotasByKey = Object.fromEntries(quotaEntries);
     const comfyStatus = await loadAdminProviderStatus("getAdminComfyUiProviderStatus");
     const grokStatus = await loadAdminProviderStatus("getAdminGrokProviderStatus");
+    const runninghubStatus = await loadAdminProviderStatus("getAdminRunningHubProviderStatus");
     // For the dashboard's activity feed; the 算力节点 page loads its own copy.
     const usage = await loadAdminDataset("getAdminWebTaskUsage");
     const workers = await loadAdminDataset("getAdminGpuWorkers");
@@ -1927,8 +1980,8 @@ async function loadAdminData() {
     setDataBadge("aiServicesDataBadge", hasErrorResult([providers, settings]) ? { status: "error" } : hasSupabaseResult([providers, settings]) ? { source: "supabase" } : { source: "mock" });
 
     renderUsers(users, credits, providerQuotasByKey);
-    renderAiServices(providers, settings, comfyStatus, grokStatus);
-    renderProviderRuntimeConfigControls(comfyStatus, grokStatus);
+    renderAiServices(providers, settings, comfyStatus, grokStatus, runninghubStatus);
+    renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus);
     renderSettings(settings);
     renderCreditStats(credits, providerQuotasByKey.grok);
     renderMembers(users, credits, providerQuotasByKey.grok);
@@ -2356,6 +2409,18 @@ function providerBudgetPayload() {
 
 function providerRuntimeConfigPayload(providerKey) {
   const key = String(providerKey || "").toLowerCase();
+  if (key === "runninghub") {
+    const apiKey = $("runninghubRuntimeApiKey")?.value.trim() || "";
+    return {
+      providerKey: key, apiKey, updateApiKey: Boolean(apiKey),
+      clearApiKey: Boolean($("runninghubRuntimeClearKey")?.checked),
+      baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
+      llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
+      llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
+      gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || "",
+      googleImageEndpoint: $("runninghubRuntimeGoogleImageEndpoint")?.value.trim() || ""
+    };
+  }
   if (key === "comfyui") {
     const apiKey = $("comfyRuntimeApiKey")?.value.trim() || "";
     const clearApiKey = Boolean($("comfyRuntimeClearKey")?.checked);
@@ -2387,7 +2452,7 @@ async function saveProviderRuntimeConfig(providerKey) {
     alert("清空 Key 和填写新 Key 不能同时操作。");
     return;
   }
-  const providerName = key === "grok" ? "Grok" : "ComfyUI";
+  const providerName = key === "runninghub" ? "RunningHub" : key === "grok" ? "Grok" : "ComfyUI";
   const willChangeKey = payload.clearApiKey ? "清空当前 API Key" : payload.updateApiKey ? "覆盖当前 API Key" : "不修改当前 API Key";
   const confirmed = confirm(`确定保存 ${providerName} 配置？\n${willChangeKey}\n真实 Key 只写入本机后台环境变量，不会回显。`);
   if (!confirmed) return;
@@ -2401,7 +2466,10 @@ async function saveProviderRuntimeConfig(providerKey) {
       alert(result.error || res?.error || `保存 ${providerName} 配置失败`);
       return;
     }
-    if (key === "grok") {
+    if (key === "runninghub") {
+      if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
+      if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
+    } else if (key === "grok") {
       if ($("grokRuntimeApiKey")) $("grokRuntimeApiKey").value = "";
       if ($("grokRuntimeClearKey")) $("grokRuntimeClearKey").checked = false;
     } else {
@@ -2411,9 +2479,31 @@ async function saveProviderRuntimeConfig(providerKey) {
     if (status) status.textContent = "已保存";
     toast(`${providerName} 配置已保存`);
     await loadAdminData();
+    if (key === "runninghub") await checkRunningHubProvider();
   } catch (err) {
     if (status) status.textContent = "保存失败";
     alert(`保存 ${providerName} 配置失败：${String(err?.message || err)}`);
+  }
+}
+
+async function checkRunningHubProvider() {
+  const button = $("checkRunninghubProvider");
+  const hint = $("runninghubRuntimeConfigHint");
+  if (button) button.disabled = true;
+  if (hint) hint.textContent = "检测已保存配置中...";
+  try {
+    const response = await window.adminAPI.checkAdminRunningHubProviderStatus();
+    if (!response?.ok) throw new Error(response?.error || "检测失败");
+    const status = response.result;
+    renderRunningHubProviderHealth(status);
+    if (hint) hint.textContent = !status.configured ? "请先保存 API Key" : status.connected ? "账户连接正常；模型尚未验证" : status.error || "尚未检测";
+    // Reload reads the cached result and never submits a second provider request.
+    await loadAdminData();
+    if (hint) hint.textContent = !status.configured ? "请先保存 API Key" : status.connected ? "账户连接正常；模型尚未验证" : status.error || "尚未检测";
+  } catch (err) {
+    if (hint) hint.textContent = String(err?.message || err);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -2998,6 +3088,10 @@ async function init() {
   $("saveGrokRuntimeConfig").addEventListener("click", async () => {
     await saveProviderRuntimeConfig("grok");
   });
+  $("saveRunninghubRuntimeConfig").addEventListener("click", async () => {
+    await saveProviderRuntimeConfig("runninghub");
+  });
+  $("checkRunninghubProvider").addEventListener("click", checkRunningHubProvider);
 
   $("pickPub").addEventListener("click", async () => {
     const res = await window.adminAPI.pickPublicPath({ defaultPath: $("pubPath").value });

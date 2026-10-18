@@ -380,3 +380,12 @@ The server accepts `workflow_json` as opaque client payload for the future forwa
 - ComfyUI API keys must stay in backend/admin environment variables or a future secret manager; Supabase should store only `api_key_secret_ref`.
 - The dev login code must not be treated as production authentication.
 - AI task forwarding must be added only after Provider forwarding and credit deduction rules are implemented server-side.
+## RunningHub provider configuration (China)
+
+This phase adds admin-only configuration and read-only account checks, without migrating GPT/Google generation, Grok prompt services or credit settlement. Protected by the existing admin-token authentication:
+
+- `GET /api/admin/providers/runninghub/status`: redacted configuration and last check, no external request.
+- `POST /api/admin/providers/runninghub/check`: read-only `POST /uc/openapi/accountStatus` check; no generation/LLM call.
+- `POST /api/admin/providers/runninghub/config`: save `baseUrl`, `apiKey`, `clearApiKey`, `llmBaseUrl`, `llmModel`, `gptImageEndpoint`, `googleImageEndpoint`. Blank `apiKey` preserves the saved key; `clearApiKey: true` clears it. Other fields replace current configuration. Keys are never returned.
+
+See `deploy.env.example` for `NOVAFLOW_RUNNINGHUB_*` settings. Defaults target the domestic `.cn` service only. Local admin settings do not automatically deploy secrets to an online server or Edge Function. The model endpoint and LLM model fields are reserved configuration; they do not change existing routing in this phase.

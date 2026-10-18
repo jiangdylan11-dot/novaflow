@@ -3,6 +3,7 @@ const childProcess = require("child_process");
 const http = require("http");
 const https = require("https");
 const WebSocket = require("ws");
+const runningHub = require("./runninghub-provider.cjs");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -29,6 +30,7 @@ const PROVIDER_QUOTA_PREFIX = "provider_quota_";
 const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
 const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
 const WRITABLE_PROVIDER_ENV_NAMES = new Set([
+  ...Object.values(runningHub.ENV),
   ENV_COMFYUI_BASE_URL,
   ENV_COMFYUI_API_KEY,
   ENV_GROK_BASE_URL,
@@ -297,6 +299,21 @@ function readAdminGrokEnv() {
   };
 }
 
+function readAdminRunningHubEnv() {
+  return runningHub.readConfig(readAdminEnvValue);
+}
+
+let runningHubCheck = null;
+async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
+  const env = readAdminRunningHubEnv();
+  if (checkAccount) {
+    const result = await runningHub.checkAccount(env);
+    runningHubCheck = { baseUrl: env.baseUrl, apiKey: env.apiKey, result };
+  }
+  const cached = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey ? runningHubCheck.result : null;
+  return { ...runningHub.publicStatus(env), ...(cached || {}) };
+}
+
 function normalizeBaseUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -376,6 +393,7 @@ function sanitizeError(err) {
   const env = readAdminSupabaseEnv();
   const comfyEnv = readAdminComfyUiEnv();
   const grokEnv = readAdminGrokEnv();
+  const runningHubEnv = readAdminRunningHubEnv();
   let message = String(err?.message || err || "unknown");
   if (env.serviceRoleKey) {
     message = message.split(env.serviceRoleKey).join("[redacted-service-role-key]");
@@ -388,6 +406,9 @@ function sanitizeError(err) {
   }
   if (grokEnv.apiKey) {
     message = message.split(grokEnv.apiKey).join("[redacted-grok-api-key]");
+  }
+  if (runningHubEnv.apiKey) {
+    message = message.split(runningHubEnv.apiKey).join("[redacted-runninghub-api-key]");
   }
   return message;
 }
@@ -2592,6 +2613,7 @@ function parseProviderRuntimeConfigPayload(payload) {
   const model = String(payload?.model || "").trim();
   const updateApiKey = Boolean(payload?.updateApiKey || payload?.update_api_key || apiKey);
   const clearApiKey = Boolean(payload?.clearApiKey || payload?.clear_api_key);
+  if (providerKey === "runninghub") return { providerKey, ...runningHub.parseConfig(payload) };
   if (!["comfyui", "grok"].includes(providerKey)) throw new Error("Unsupported Provider");
   if (updateApiKey && !apiKey && !clearApiKey) throw new Error("API Key 不能为空；留空表示不修改，或勾选清空");
   return { providerKey, baseUrl, apiKey, model, updateApiKey, clearApiKey };
@@ -2617,7 +2639,15 @@ async function setAdminProviderRuntimeConfig(payload) {
 
   try {
     const written = [];
-    if (parsed.providerKey === "comfyui") {
+    if (parsed.providerKey === "runninghub") {
+      for (const [field, name] of Object.entries(runningHub.ENV)) {
+        if (field !== "apiKey") written.push(writeAdminEnvValue(name, parsed[field]));
+      }
+      if (parsed.clearApiKey || parsed.updateApiKey) {
+        written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
+      }
+      runningHubCheck = null;
+    } else if (parsed.providerKey === "comfyui") {
       written.push(writeAdminEnvValue(ENV_COMFYUI_BASE_URL, parsed.baseUrl || DEFAULT_COMFYUI_BASE_URL));
       if (parsed.clearApiKey) {
         written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, ""));
@@ -2634,7 +2664,9 @@ async function setAdminProviderRuntimeConfig(payload) {
       }
     }
 
-    const env = parsed.providerKey === "grok" ? readAdminGrokEnv() : readAdminComfyUiEnv();
+    const env = parsed.providerKey === "runninghub"
+      ? runningHub.publicStatus(readAdminRunningHubEnv())
+      : parsed.providerKey === "grok" ? readAdminGrokEnv() : readAdminComfyUiEnv();
     const durationMs = Date.now() - startedAt;
     const result = {
       source: "local",
@@ -2648,6 +2680,10 @@ async function setAdminProviderRuntimeConfig(payload) {
         provider_key: parsed.providerKey,
         baseUrl: env.baseUrl,
         model: env.model || "",
+        ...(parsed.providerKey === "runninghub" ? {
+          llmBaseUrl: env.llmBaseUrl, llmModel: env.llmModel,
+          gptImageEndpoint: env.gptImageEndpoint, googleImageEndpoint: env.googleImageEndpoint
+        } : {}),
         hasApiKey: Boolean(env.hasApiKey),
         configured: Boolean(env.configured)
       },
@@ -3842,6 +3878,8 @@ module.exports = {
   readAdminSupabaseAuthEnv,
   readAdminComfyUiEnv,
   readAdminGrokEnv,
+  readAdminRunningHubEnv,
+  getAdminRunningHubProviderStatus,
   getAdminUsers,
   getAdminCredits,
   getAdminCreditLogs,

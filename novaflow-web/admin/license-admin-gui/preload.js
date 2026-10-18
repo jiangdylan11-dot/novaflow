@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld("adminAPI", {
   getAdminProviderQuotas: (providerKey) => ipcRenderer.invoke("admin:data:provider_quotas:list", { providerKey }),
   getAdminComfyUiProviderStatus: () => ipcRenderer.invoke("admin:provider:comfyui:status"),
   getAdminGrokProviderStatus: () => ipcRenderer.invoke("admin:provider:grok:status"),
+  getAdminRunningHubProviderStatus: () => ipcRenderer.invoke("admin:provider:runninghub:status"),
+  checkAdminRunningHubProviderStatus: () => ipcRenderer.invoke("admin:provider:runninghub:check"),
   createAdminUser: (payload) => ipcRenderer.invoke("admin:data:users:create", payload),
   updateAdminUser: (payload) => ipcRenderer.invoke("admin:data:users:update", payload),
   deleteAdminUser: (payload) => ipcRenderer.invoke("admin:data:users:delete", payload),

@@ -181,7 +181,8 @@ function redactedConfig() {
     comfyUiApiKeySecretRefConfigured: Boolean(comfyUi.hasApiKeySecretRef),
     grokBaseUrl: grok.baseUrl || "",
     grokModel: grok.model || "",
-    grokApiKeyConfigured: Boolean(grok.hasApiKey)
+    grokApiKeyConfigured: Boolean(grok.hasApiKey),
+    runningHubApiKeyConfigured: Boolean(adminData.readAdminRunningHubEnv().apiKey)
   };
 }
 
@@ -217,6 +218,10 @@ function sanitizeError(err) {
   }
   if (grok.apiKey) {
     message = message.split(grok.apiKey).join("[redacted-grok-api-key]");
+  }
+  const runningHub = adminData.readAdminRunningHubEnv();
+  if (runningHub.apiKey) {
+    message = message.split(runningHub.apiKey).join("[redacted-runninghub-api-key]");
   }
   return message;
 }
@@ -11225,6 +11230,19 @@ async function handleGrokChatRequest(req, res) {
 
 async function handleAdminRoute(req, res, pathName) {
   if (!requireAdminToken(req, res)) return;
+  if (req.method === "GET" && pathName === "/api/admin/providers/runninghub/status") {
+    sendJson(res, 200, normalizeResult(await adminData.getAdminRunningHubProviderStatus()));
+    return;
+  }
+  if (req.method === "POST" && pathName === "/api/admin/providers/runninghub/check") {
+    sendJson(res, 200, normalizeResult(await adminData.getAdminRunningHubProviderStatus({ checkAccount: true })));
+    return;
+  }
+  if (req.method === "POST" && pathName === "/api/admin/providers/runninghub/config") {
+    const payload = await parseBody(req);
+    sendJson(res, 200, normalizeResult(await adminData.setAdminProviderRuntimeConfig({ ...payload, providerKey: "runninghub" })));
+    return;
+  }
 
   if (req.method === "GET" && pathName === "/api/admin/users") {
     sendJson(res, 200, await listHandler(adminData.getAdminUsers));
