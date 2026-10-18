@@ -232,20 +232,17 @@ test('one-way and reversed curves bake to native tracks and hold their target af
  }
 });
 
-test('rotation presets swing, spin, step and spring; cycles multiply inside the bone interval',()=>{
- assert.deepEqual(Array.from(presets.rotate,p=>p[0]),['左右摇摆','匀速旋转','单向旋转','受击回正']);
+test('rotation presets swing, spin and spring; cycles multiply inside the bone interval',()=>{
+ assert.deepEqual(Array.from(presets.rotate,p=>p[0]),['左右摇摆','匀速旋转','受击回正']);
  const at=(p,u)=>E.sample(p,u).r,near=(a,b)=>Math.abs(a-b)<1e-6;
  const swing=presetMotion('rotate',0);
  assert.ok(near(at(swing,0),0)&&near(at(swing,.25),25)&&near(at(swing,.75),-25)&&near(at(swing,1),0),'swing starts at rest and alternates');
  swing.reverse=true;assert.ok(near(at(swing,.25),-25),'reverse flips the swing direction');
  const spin=presetMotion('rotate',1);
  for(const u of [0,.25,.5,1])assert.ok(near(at(spin,u),360*u),'one linear turn per period');
+ spin.axes.r.amp=40;spin.hold=.3; // legacy controls cannot turn a full turn into a partial turn or a pause
  spin.cycles=3;assert.ok(near(at(spin,.5),540)&&near(at(spin,1),1080),'cycles are whole turns');
- const step=presetMotion('rotate',2);
- assert.ok(near(at(step,1),90));
- step.cycles=3;assert.ok(near(at(step,1/3),90)&&near(at(step,2/3),180)&&near(at(step,1),270),'cycles are consecutive eased steps');
- let previous=0;for(let j=1;j<=120;j++){const v=at(step,j/120);assert.ok(v-previous>=-1e-8,'steps never turn back');previous=v;}
- const spring=presetMotion('rotate',3);
+ const spring=presetMotion('rotate',2);
  assert.ok(near(at(spring,0),0)&&near(at(spring,1),0)&&Math.max(...Array.from({length:101},(_,j)=>at(spring,j/100)))>30,'spring leaves and returns to rest');
  spring.cycles=2;assert.ok(near(at(spring,.5),0),'each hit returns to rest');
  assert.equal(E.curveFor(spin,'r').length,2,'a linear turn is a single Bezier segment');
@@ -265,4 +262,31 @@ test('rotation bakes only a rotate track on top of existing keys; other channels
  assert.equal(animation.bones.other,project.animations.idle.bones.other);
  assert.equal(animation.bones.child,project.animations.idle.bones.child);
  assert.equal(animation.slots.ballSlot,project.animations.idle.slots.ballSlot,'no opacity change means no slot keys');
+});
+
+
+test('Spine 3.8 actually plays complete constant-speed turns in both directions',()=>{
+ const runtime=vm.createContext({console});
+ vm.runInContext(readFileSync(new URL('../../renderer/vendor/spine/spine-webgl-3.8.js',import.meta.url),'utf8'),runtime);
+ const spine=runtime.spine;
+ for(const cycles of [1,3,10])for(const reverse of [false,true]){
+  const project=fixture();project.skeleton.spine='3.8.99';project.skins={};
+  const stack=E.freshStack();stack.rotate=presetMotion('rotate',1);
+  Object.assign(stack.rotate,{cycles,reverse});
+  const {animation}=calc(project,stack);
+  const track=animation.bones.ball.rotate;
+  const generated=track.filter(f=>f.time>=timing.animationDelay&&f.time<=timing.animationDelay+timing.boneDuration);
+  for(let i=1;i<generated.length;i++)assert.ok(Math.abs(generated[i].angle-generated[i-1].angle)<180,'retain intermediate keys for shortest-arc playback');
+  const data=new spine.SkeletonJson({}).readSkeletonData({...project,animations:{idle:animation}});
+  const skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));
+  state.setAnimation(0,'idle',false);
+  for(let i=0;i<=240;i++){
+   const t=timing.animationDelay+timing.boneDuration*i/240;
+   if(i===0)state.update(t);else state.update(timing.boneDuration/240);
+   state.apply(skeleton);skeleton.updateWorldTransform();
+   const expected=(34+360*cycles*(reverse?1-i/240:i/240))*Math.PI/180;
+   const bone=skeleton.findBone('ball');
+   assert.ok(Math.abs(bone.a-Math.cos(expected))<.005&&Math.abs(bone.c-Math.sin(expected))<.005,`actual pose: ${cycles} turns, reverse=${reverse}, progress=${i}/240`);
+  }
+ }
 });

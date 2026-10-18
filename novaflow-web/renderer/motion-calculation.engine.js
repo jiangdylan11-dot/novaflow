@@ -58,6 +58,7 @@
   // `cycles` counts swings, hits, or one-way steps (turns for a 360° step) per period.
   const rotation = (p, u) => {
     const n = Math.max(1, Math.round(p.cycles || 1));
+    if (p.oneWay === 'linear') return n * u;
     if (p.spring) return expansion({ ...p, loop: false }, n > 1 ? (u >= 1 ? 1 : (u * n) % 1) : u);
     if (p.oneWay) { const k = Math.min(n - 1, Math.floor(u * n)); return k + oneWayProgress(p, u * n - k); }
     return wave(p, { ...p.axes.r, cycles: n }, u);
@@ -97,7 +98,7 @@
     const out = {};
     for (const k of channels) {
       const scale = k[0] === 's', a = p.axes[k];
-      out[k] = (scale ? 1 : 0) + (a.on ? a.amp * base[k] + (noCorrections ? 0 : correction(p.corrections[k], reversed(p,k)?1-u:u, p.mode === 'bounce' && k === 'y')) : 0);
+      out[k] = (scale ? 1 : 0) + (a.on ? (p.mode === 'rotate' && p.oneWay === 'linear' && k === 'r' ? 360 : a.amp) * base[k] + (noCorrections ? 0 : correction(p.corrections[k], reversed(p,k)?1-u:u, p.mode === 'bounce' && k === 'y')) : 0);
       if (scale && !unclamped) out[k] = Math.max(.08, out[k]);
     }
     if (p.mode === 'bounce') {

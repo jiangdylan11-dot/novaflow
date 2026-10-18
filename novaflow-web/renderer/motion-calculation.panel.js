@@ -240,7 +240,6 @@
     rotate: [
       ['左右摇摆', { loop:true, easing:1, hold:.06 }, { r: 25 }],
       ['匀速旋转', { oneWay:'linear', easing:0, hold:0 }, { r: 360 }],
-      ['单向旋转', { oneWay:'smooth', easing:1, hold:0 }, { r: 90 }],
       ['受击回正', { spring:true, loop:false, attack:.15, frequency:3, damping:6 }, { r: 40 }]
     ]
   };
@@ -443,9 +442,9 @@
     $('mainControls').hidden = mode === 'opacity';
     const singleExpansion=mode==='expand'&&p.oneWay;
     $('params').replaceChildren(...(singleExpansion?[]:commonKeys[mode]).map(makeParam));
-    const rotateKeys=['cycles',...(p.spring?['attack','frequency','damping']:p.oneWay==='linear'?['hold']:['easing','hold'])];
+    const rotateKeys=['cycles',...(p.spring?['attack','frequency','damping']:p.oneWay==='linear'?[]:['easing','hold'])];
     $('advancedParams').replaceChildren(...(singleExpansion?(p.oneWay==='linear'?['hold']:['easing','hold']):mode==='rotate'?rotateKeys:modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k))).map(makeParam));
-    $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
+    $('primaryAxes').replaceChildren(...(mode==='rotate'&&p.oneWay==='linear'?[]:primaryChannels[mode]).map(makeAxis));
     $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode === 'bounce';$('linkOption').hidden=mode!=='expand';$('directionLabel').textContent=mode==='opacity'?'循环':'反向';$('loop').checked=mode==='opacity'?!!p.loop:!!p.reverse;
     renderPresetButtons($('presets'),presetSets[mode],([name, vals, axes]) => {
       pointSelected=false;const reverse=p.reverse,loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode];p.initialized=true; p.duration = duration; p.delay = delay;p.reverse=!!reverse;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
@@ -456,7 +455,7 @@
       bounce: '只控制弹跳位移，移动计算在此基础上叠加。',
       expand: '围绕骨骼原点缩放，与已有位移动画同时生效。',
       shuttle: 'X/Y 独立调整。反向交换当前动作的起点和终点，保留曲线微调。',
-      rotate: '围绕骨骼原点旋转，叠加在已有旋转关键帧上；次数是一个周期内摆动/击打/步进的次数，反向改变转向。',
+      rotate: '围绕骨骼原点旋转，叠加在已有旋转关键帧上；匀速旋转每次为完整 360°，次数决定骨骼时段内的总圈数；反向改变转向。',
       opacity: '独立调整透明度，也可叠加到其他动作。'
     }[mode];
     syncEnabled();

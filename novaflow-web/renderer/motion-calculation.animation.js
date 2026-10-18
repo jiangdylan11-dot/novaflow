@@ -145,6 +145,9 @@
       // to an ease is a corner), a line only where no ease fits
       let j=0,curve=null;
       for(let m=i+1;m<s.length;m++){
+        // Spine 3.x interpolates rotation along the shortest arc. Keep turn keys
+        // below 180 degrees apart so a full turn cannot collapse to no motion.
+        if(opts?.maxDelta && keys.some(k=>Math.abs(val(s[m],k)-val(s[i],k))>opts.maxDelta))break;
         const c=ease(i,m);
         if(c){if(cand(m)){j=m;curve=c;}}
         else if(fits(i,m,null)){if(cand(m)){j=m;curve=null;}}
@@ -224,7 +227,7 @@
     // what a key may stray from the sampled motion: 3% of the travel, at least a pixel / half a
     // percent of scale / a quarter degree
     const floor={translate:1,scale:.005,rotate:.25},chans={translate:['x','y'],scale:['x','y'],rotate:['angle']};
-    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel])),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
+    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel]),channel==='rotate'?{maxDelta:120}:undefined),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
     if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],sparse(slotFrames.get(slot.name),['a'],toleranceFor(slotFrames.get(slot.name),['a'],3)).map(({a,...f})=>f),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
     // Spine derives duration from keys, not the editor's duration metadata.
     // Extend only a selected-bone channel so exported playback has the same length.
