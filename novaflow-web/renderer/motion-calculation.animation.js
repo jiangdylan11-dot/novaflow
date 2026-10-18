@@ -188,7 +188,7 @@
       if(segments<=n1&&indices.slice(1).every((j,i)=>keys.every(k=>Math.abs(val(s[j],k)-val(s[indices[i]],k))<180)))return indices.map(i=>withCurve(s[i],null));
       return Array.from({length:segments+1},(_,i)=>({time:Number((time(s[0])+(time(s[n1])-time(s[0]))*i/segments).toFixed(8)),...Object.fromEntries(keys.map(k=>[k,val(s[0],k)+(val(s[n1],k)-val(s[0],k))*i/segments]))}));
     }
-    const out=[];let i=0;
+    const out=[],indices=[];let i=0;
     while(i<s.length-1){
       // the farthest sample (not past the next extreme) an ease reaches within tol; the ease
       // comes first because it keeps the slope continuous through the key (a short line next
@@ -209,10 +209,44 @@
       // a corner): back the key off until it can
       const canGo=(a)=>{for(let m=a+1;m<s.length;m++){if(ease(a,m)||fits(a,m,null)){if(cand(m))return true;}else return false;if(must.has(m)&&cand(m))break;}return false;};
       while(j>i+step&&!must.has(j)&&j<s.length-1&&!canGo(j)){j-=step;curve=ease(i,j);}
-      out.push(withCurve(s[i],curve));
+      out.push(withCurve(s[i],curve));indices.push(i);
       i=j;
     }
-    out.push(withCurve(s[s.length-1],null));
+    out.push(withCurve(s[s.length-1],null));indices.push(s.length-1);
+    if(opts?.merge){
+      // The incremental fit can stop at a short span that fails even though a
+      // longer Bezier fits. Revisit neighbouring generated segments, preserving
+      // every required turning point and the existing playback within tolerance.
+      const cache=new WeakMap(),nativeAt=(c,u)=>{
+        if(!c)return u;
+        let points=cache.get(c);
+        if(!points){points=Array.from({length:11},(_,i)=>{const t=i/10,q=1-t;return [3*q*q*t*c[0]+3*q*t*t*c[2]+t*t*t,3*q*q*t*c[1]+3*q*t*t*c[3]+t*t*t];});cache.set(c,points);}
+        let n=1;while(n<10&&points[n][0]<u)n++;
+        const a=points[n-1],b=points[n];return a[1]+(b[1]-a[1])*(u-a[0])/Math.max(1e-12,b[0]-a[0]);
+      };
+      const baseline=out.slice(),curves=baseline.map(curveOf);
+      for(let a=0;a<indices.length-2;a++)for(let b=Math.min(indices.length-1,a+4);b>a+1;b--){
+        const first=indices[a],last=indices[b];
+        if([...must].some(m=>m>first&&m<last)||keys.some(k=>Math.abs(val(s[last],k)-val(s[first],k))>=180))continue;
+        const c=ease(first,last);if(!c&&!fits(first,last,null))continue;
+        if(c?.axes)continue;
+        let ok=true,segment=0;
+        for(let m=first;m<=last&&ok;m++){
+          const t=time(s[m]),u=(t-time(s[first]))/(time(s[last])-time(s[first]));
+          while(segment<baseline.length-2&&time(baseline[segment+1])<t)segment++;
+          const left=baseline[segment],right=baseline[segment+1],v=(t-time(left))/(time(right)-time(left));
+          for(const key of keys){
+            const candidate=val(s[first],key)+(val(s[last],key)-val(s[first],key))*nativeAt(c,u);
+            const original=val(left,key)+(val(right,key)-val(left,key))*nativeAt(curves[segment],v);
+            if(Math.abs(candidate-original)>tol){ok=false;break;}
+          }
+        }
+        if(!ok)continue;
+        out[a]=withCurve(s[first],c);
+        out.splice(a+1,b-a-1);indices.splice(a+1,b-a-1);
+        a=Math.max(-1,a-1);break;
+      }
+    }
     return out;
   }
   function merge(frames, generated, start, end, sampleBoundary) {

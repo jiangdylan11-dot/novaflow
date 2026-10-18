@@ -51517,7 +51517,7 @@
     const samples = [];
     // sampled at the solver's 60 fps; keys land on every second sample = the 30 fps frames
     for (let f = 0; f <= count; f += 1) { const t = f % 2 ? Number((f / 60).toFixed(4)) : Number(((f / 2) / 30).toFixed(4)); samples.push({ time: t, angle: Number(at(Math.min(t, last)).toFixed(3)) }); }
-    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.1, 0.0015) : 0.3, { step: 2 }).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
+    return api.sparse(samples, ["angle"], api.toleranceFor ? api.toleranceFor(samples, ["angle"], 0.1, 0.0015) : 0.3, { step: 2, merge: true }).map((frame) => ({ time: frame.time, [key]: frame.angle, ...(frame.curve !== undefined ? { curve: frame.curve, c2: frame.c2, c3: frame.c3, c4: frame.c4 } : {}) }));
   }
 
   function commitRibbonElasticWrittenTimeline(timeline, animationName = "", boneName = "", project = null) {
