@@ -138,6 +138,16 @@
       ext.push(s.length-1);
       for(let e=1;e<ext.length-1;e++){const v=val(s[ext[e]],k);if(Math.abs(v-val(s[ext[e-1]],k))>tol&&Math.abs(v-val(s[ext[e+1]],k))>tol)must.add(Math.min(s.length-1,Math.round(ext[e]/step)*step));}
     }
+    // Keep unedited linear rotation sparse without letting Spine wrap a whole
+    // turn to zero. Prefer integer-frame samples; very short or fast turns need
+    // subframe keys so every segment still stays strictly below 180 degrees.
+    if(opts?.maxDelta && keys.every(k=>s.every(f=>Math.abs(val(f,k)-(val(s[0],k)+(val(s[n1],k)-val(s[0],k))*(time(f)-time(s[0]))/(time(s[n1])-time(s[0]))))<1e-6))){
+      const travel=Math.max(...keys.map(k=>Math.abs(val(s[n1],k)-val(s[0],k))));
+      const segments=Math.max(1,Math.ceil(travel/opts.maxDelta));
+      const indices=Array.from({length:segments+1},(_,i)=>Math.round(i*n1/segments));
+      if(segments<=n1&&indices.slice(1).every((j,i)=>keys.every(k=>Math.abs(val(s[j],k)-val(s[indices[i]],k))<180)))return indices.map(i=>withCurve(s[i],null));
+      return Array.from({length:segments+1},(_,i)=>({time:Number((time(s[0])+(time(s[n1])-time(s[0]))*i/segments).toFixed(8)),...Object.fromEntries(keys.map(k=>[k,val(s[0],k)+(val(s[n1],k)-val(s[0],k))*i/segments]))}));
+    }
     const out=[];let i=0;
     while(i<s.length-1){
       // the farthest sample (not past the next extreme) an ease reaches within tol; the ease
@@ -205,6 +215,17 @@
     const affected=new Set(targets), slots=(project.slots||[]).filter(s=>affected.has(s.bone)&&(!only||only.has(s.name)));
     // one sample per frame of the interval (a seam or an impact lands on its nearest frame)
     const times=new Set();for(let f=startFrame;f<=startFrame+spanFrames;f++)times.add(frameTime(f));
+    // Legacy Spine shares one timing curve for X and Y. A sparse Bezier fit
+    // cannot independently smooth the two axes of an ellipse: it changes both
+    // speeds together and leaves corners in the orbit. Use uniform linear
+    // position samples instead, at >=60 Hz and <=3 degrees per axis step.
+    const orbit=params.shuttle.enabled&&!params.shuttle.oneWay&&!params.bounce.enabled&&params.shuttle.axes.x.on&&params.shuttle.axes.y.on;
+    const sampleTimes=new Set(times);
+    if(orbit){
+      const cycles=Math.max(params.shuttle.axes.x.cycles||1,params.shuttle.axes.y.cycles||1);
+      const count=Math.max(Math.ceil(span*60),Math.ceil(cycles*120));
+      for(let i=0;i<=count;i++)sampleTimes.add(Number((start+(end-start)*i/count).toFixed(4)));
+    }
     // only the targets and their ancestors are posed per sample: their parents' world frames
     // are all the keys need (posing all ~200 bones per sample made a slider drag stutter)
     const byName=new Map(project.bones.map(b=>[b.name,b])),chain=new Set(targets);
@@ -212,26 +233,26 @@
     const posed={...project,bones:project.bones.filter(b=>chain.has(b.name))};
     const entries=targets.map(name=>({name,i:posed.bones.findIndex(b=>b.name===name),translate:[],scale:[],rotate:[]}));
     const slotFrames=new Map(slots.map(s=>[s.name,[]]));
-    for(const time of [...times].sort((a,b)=>a-b)){
+    for(const time of [...sampleTimes].sort((a,b)=>a-b)){
       const t=time-start, value=engine.sampleStack(params,t/span), evaluated=pose(posed,original,time,math);
       for(const item of entries){const b=evaluated.bones[item.i],w=evaluated.world[item.i],parent=w.parent>=0?evaluated.world[w.parent]:null,old=original.bones?.[item.name]||{};
         let dx=translate?value.x:0,dy=translate?value.y:0;
         const [lx,ly]=invVector(parent,dx,dy);
         if(translate)item.translate.push({time,x:scalar(old.translate,time,'x',0)+lx,y:scalar(old.translate,time,'y',0)+ly});
-        if(scale)item.scale.push({time,x:scalar(old.scale,time,'x',1)*value.sx,y:scalar(old.scale,time,'y',1)*value.sy});
+        if(scale&&times.has(time))item.scale.push({time,x:scalar(old.scale,time,'x',1)*value.sx,y:scalar(old.scale,time,'y',1)*value.sy});
         // Local rotation adds to the existing key directly; no parent transform involved.
-        if(rotate)item.rotate.push({time,angle:scalar(old.rotate,time,'angle',0)+value.r});
+        if(rotate&&times.has(time))item.rotate.push({time,angle:scalar(old.rotate,time,'angle',0)+value.r});
       }
-      if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,a:rgba[3],color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}
+      if(alpha&&times.has(time))for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,a:rgba[3],color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}
     }
     // what a key may stray from the sampled motion: 3% of the travel, at least a pixel / half a
     // percent of scale / a quarter degree
     const floor={translate:1,scale:.005,rotate:.25},chans={translate:['x','y'],scale:['x','y'],rotate:['angle']};
-    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel]),channel==='rotate'?{maxDelta:120}:undefined),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
+    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],(channel==='translate'&&orbit?item[channel].map(f=>withCurve(f,null)):sparse(item[channel],chans[channel],toleranceFor(item[channel],chans[channel],floor[channel]),channel==='rotate'?{maxDelta:179}:undefined)),start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
     if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],sparse(slotFrames.get(slot.name),['a'],toleranceFor(slotFrames.get(slot.name),['a'],3)).map(({a,...f})=>f),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
     // Spine derives duration from keys, not the editor's duration metadata.
     // Extend only a selected-bone channel so exported playback has the same length.
-    if(duration({...animation,duration:0})<animation.duration){
+    if(duration({...animation,duration:0})<animation.duration-1e-4){
       const target=animation.bones[targets[0]],key=['scale','translate','rotate'].find(k=>target[k]?.length)||'translate',base=key==='scale'?1:0;
       const frames=target[key]||[],time=animation.duration;
       target[key]=[...frames,key==='rotate'?{time,angle:scalar(frames,time,'angle',0)}:{time,x:scalar(frames,time,'x',base),y:scalar(frames,time,'y',base)}];

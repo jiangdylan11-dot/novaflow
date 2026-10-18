@@ -186,9 +186,10 @@ test('calculation presets retain elastic, orbit and full-turn motions',()=>{
  assert.deepEqual(Array.from(presets.expand,p=>p[0]),['弹性放大','受击压扁']);
  assert.deepEqual(Array.from(presets.shuttle,p=>p[0]),['椭圆运动']);
  assert.deepEqual(Array.from(presets.rotate,p=>p[0]),['匀速旋转','受击回正']);
- const orbit=presetMotion('shuttle',0);
+ const orbit=presetMotion('shuttle',0),initial=E.freshStack().shuttle;
  for(const u of [0,.125,.25,.5,.75,1]){
   const v=E.sample(orbit,u);
+  assert.deepEqual(E.sample(initial,u),v,'fresh move controls start on the remaining ellipse preset');
   assert.ok(Math.abs((v.x/140)**2+(v.y/80)**2-1)<1e-6,'the remaining move preset generates a complete XY orbit');
  }
 });
@@ -287,4 +288,48 @@ test('fresh rotation defaults to a full turn, while saved swing parameters still
  const saved=JSON.parse(JSON.stringify(spin));delete saved.oneWay;
  Object.assign(saved,{easing:1,hold:.06});saved.axes.r.amp=25;
  for(const [u,angle]of [[0,0],[.25,25],[.75,-25],[1,0]])assert.ok(Math.abs(E.sample(saved,u).r-angle)<1e-6);
+});
+
+
+test('a single linear turn uses exactly four keys at common durations and replays at constant speed',()=>{
+ const runtime=vm.createContext({console});
+ vm.runInContext(readFileSync(new URL('../../renderer/vendor/spine/spine-webgl-3.8.js',import.meta.url),'utf8'),runtime);
+ const spine=runtime.spine;
+ for(const frames of [2,30,40,60,84,180])for(const reverse of [false,true]){
+  const duration=Number((frames/30).toFixed(4)),stack=E.freshStack();stack.rotate.enabled=true;stack.rotate.reverse=reverse;
+  const project={skeleton:{spine:'3.8.99'},bones:[{name:'root'}],slots:[],skins:{},animations:{idle:{bones:{}}}};
+  const animation=A.calculate(project,'idle',['root'],stack,{animationDuration:duration,boneDuration:duration,animationDelay:0},E,M).animation;
+  const keys=animation.bones.root.rotate;
+  assert.equal(keys.length,4,`one turn at ${frames} frames`);
+  assert.ok(keys.every(f=>f.curve===undefined),'constant speed needs linear keys');
+  const data=new spine.SkeletonJson({}).readSkeletonData({...project,animations:{idle:animation}}),skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));state.setAnimation(0,'idle',false);
+  for(let i=0;i<=240;i++){
+   if(i)state.update(duration/240);state.apply(skeleton);skeleton.updateWorldTransform();
+   const angle=2*Math.PI*(reverse?1-i/240:i/240),b=skeleton.bones[0];
+   assert.ok(Math.abs(b.a-Math.cos(angle))<.003&&Math.abs(b.c-Math.sin(angle))<.003,`${frames} frames, reverse=${reverse}, pose=${i}`);
+  }
+ }
+});
+
+test('ellipse playback follows continuous XY velocity across keys and the loop seam in Spine 3.8',()=>{
+ const runtime=vm.createContext({console});
+ vm.runInContext(readFileSync(new URL('../../renderer/vendor/spine/spine-webgl-3.8.js',import.meta.url),'utf8'),runtime);
+ const spine=runtime.spine;
+ for(const frames of [30,40,60,84])for(const reverse of [false,true]){
+  const duration=Number((frames/30).toFixed(4)),stack=E.freshStack();stack.shuttle=presetMotion('shuttle',0);stack.shuttle.duration=duration;stack.shuttle.reverse=reverse;
+  const project={skeleton:{spine:'3.8.99'},bones:[{name:'root'}],slots:[],skins:{},animations:{idle:{bones:{}}}};
+  const animation=A.calculate(project,'idle',['root'],stack,{animationDuration:duration,boneDuration:duration,animationDelay:0},E,M).animation;
+  const data=new spine.SkeletonJson({}).readSkeletonData({...project,animations:{idle:animation}}),skeleton=new spine.Skeleton(data),state=new spine.AnimationState(new spine.AnimationStateData(data));state.setAnimation(0,'idle',true);
+  const h=duration/1200;let previous=null;
+  for(let i=0;i<=2400;i++){
+   if(i)state.update(h);state.apply(skeleton);skeleton.updateWorldTransform();
+   const b=skeleton.bones[0],point=[b.worldX,b.worldY];
+   if(previous){
+    const u=((i-.5)/1200)%1,l=E.sampleStack(stack,u-.00001),r=E.sampleStack(stack,u+.00001);
+    const actual=point.map((v,j)=>(v-previous[j])/h),expected=['x','y'].map(k=>(r[k]-l[k])/(.00002*duration));
+    assert.ok(Math.hypot(...actual.map((v,j)=>v-expected[j]))/Math.hypot(...expected)<.06,`velocity at ${frames} frames, reverse=${reverse}, sample=${i}`);
+   }
+   previous=point;
+  }
+ }
 });

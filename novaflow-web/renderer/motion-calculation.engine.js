@@ -10,7 +10,7 @@
       axes: { x: { on: true, amp: 110 }, y: { on: true, amp: 190 }, sx: { on: true, amp: .34 }, sy: { on: true, amp: -.30 }, r: { on: false, amp: 0 } } },
     expand: { duration: 2.4, attack: .22, frequency: 3, damping: 5, anchor: 'center', ground: false,
       axes: { x: { on: true, amp: 0 }, y: { on: true, amp: 0 }, sx: { on: true, amp: .55 }, sy: { on: true, amp: .55 }, r: { on: false, amp: 0 } } },
-    shuttle: { duration: 3, easing: 1, hold: .06, anchor: 'center', ground: false,
+    shuttle: { duration: 3, easing: 1, hold: 0, anchor: 'center', ground: false,
       axes: { x: { on: true, amp: 140, cycles: 1, phase: 0 }, y: { on: true, amp: 80, cycles: 1, phase: 90 }, sx: { on: false, amp: .12, cycles: 1, phase: 0 }, sy: { on: false, amp: -.12, cycles: 1, phase: 0 }, r: { on: false, amp: 0, cycles: 1, phase: 0 } } },
     // New rotation tools start with a complete constant-speed turn around the bone origin.
     rotate: { duration: 3, cycles: 1, oneWay: 'linear', easing: 0, hold: 0, attack: .15, frequency: 3, damping: 6, anchor: 'center', ground: false,
