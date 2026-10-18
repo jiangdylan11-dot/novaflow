@@ -224,23 +224,13 @@
     expand: [
       ['弹性放大', { attack: .20, frequency: 2.5, damping: 5 }, { x: 0, y: 0, sx: .55, sy: .55 }],
       ['受击压扁', { attack: .12, frequency: 3.5, damping: 8 }, { x: 0, y: 0, sx: .42, sy: -.35 }],
-      ['柔和呼吸', { attack: .48, frequency: .25, damping: 1.3 }, { x: 0, y: 0, sx: .12, sy: .18 }],
-      ['匀速放大', { oneWay:'linear',easing:0,hold:0 }, { sx:.55,sy:.55 }],
-      ['柔和放大', { oneWay:'smooth',easing:1,hold:0 }, { sx:.55,sy:.55 }],
-      ['渐停放大', { oneWay:'out',easing:1,hold:0 }, { sx:.55,sy:.55 }]
     ],
     shuttle: [
-      ['左右往返', { easing: 1, hold: .06 }, { x: 145, y: 0, sx: .12, sy: -.12 }],
-      ['上下浮动', { easing: 1, hold: 0 }, { x: 0, y: 95, sx: .10, sy: -.10 }],
       ['椭圆运动', { easing: 1, hold: 0 }, { x: 140, y: 80, sx: .12, sy: -.12 }],
-      ['向左移动', { oneWay:'smooth',easing:1,hold:0 }, { x:-145,y:0 }],
-      ['向上移动', { oneWay:'smooth',easing:1,hold:0 }, { x:0,y:95 }],
-      ['斜向移动', { oneWay:'smooth',easing:1,hold:0 }, { x:140,y:80 }]
     ],
     rotate: [
-      ['左右摇摆', { loop:true, easing:1, hold:.06 }, { r: 25 }],
       ['匀速旋转', { oneWay:'linear', easing:0, hold:0 }, { r: 360 }],
-      ['受击回正', { spring:true, loop:false, attack:.15, frequency:3, damping:6 }, { r: 40 }]
+      ['受击回正', { oneWay:null, spring:true, loop:false, attack:.15, frequency:3, damping:6 }, { r: 40 }]
     ]
   };
   const schema = {

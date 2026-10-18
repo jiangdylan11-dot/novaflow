@@ -18,7 +18,7 @@ function compare(before,after,version){const a=player(before,version),b=player(a
  for(let i=0;i<=1200;i++){const t=a.duration*i/1200,x=a.at(t),y=b.at(t);x.bones.forEach((v,k)=>{const w=y.bones[k];position=Math.max(position,Math.hypot(v[0]-w[0],v[1]-w[1]));for(const [px,py]of [[0,0],[100,0],[0,100],[100,100]])geometry=Math.max(geometry,Math.hypot(v[0]+v[2]*px+v[3]*py-w[0]-w[2]*px-w[3]*py,v[1]+v[4]*px+v[5]*py-w[1]-w[4]*px-w[5]*py));});x.vertices.forEach((v,k)=>{geometry=Math.max(geometry,Math.abs(v-y.vertices[k]));});x.colors.forEach((v,k)=>v.forEach((n,c)=>alpha=Math.max(alpha,Math.abs(n-y.colors[k][c]))));}
  assert.ok(geometry<.65,`world geometry error ${geometry}`);assert.ok(alpha<.0032,`color error ${alpha}`);return {position,geometry,alpha};}
 function scenarios(){const list=[];
- for(const mode of ['bounce','expand','shuttle'])for(const [name,values,axes]of presets[mode]){
+ for(const mode of ['bounce','expand','shuttle','rotate'])for(const [name,values,axes]of presets[mode]){
   const stack=E.freshStack();for(const p of Object.values(stack))p.enabled=false;const p=stack[mode];Object.assign(p,values,{enabled:true});for(const key of E.ownedChannels[mode])p.axes[key].amp=axes[key];
   list.push({name,mode,stack});
   if(mode!=='bounce')list.push({name:name+'反向',mode,stack:plain({...stack,[mode]:{...p,reverse:true}})});

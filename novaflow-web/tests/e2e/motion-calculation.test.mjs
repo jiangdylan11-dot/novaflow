@@ -182,27 +182,19 @@ const panelSource=readFileSync(new URL('../../renderer/motion-calculation.panel.
 const presets=vm.runInNewContext('('+panelSource.match(/const presetSets = (\{[\s\S]*?\n  \});/)[1]+')');
 function presetMotion(mode,index){const [name,values,axes]=presets[mode][index],p=E.freshStack()[mode];Object.assign(p,values);for(const key of E.ownedChannels[mode])p.axes[key].amp=axes[key];p.enabled=true;return p;}
 
-test('scale and move keep their three original presets and add three one-way motions',()=>{
- assert.deepEqual(Array.from(presets.expand.slice(0,3),p=>p[0]),['弹性放大','受击压扁','柔和呼吸']);
- assert.deepEqual(Array.from(presets.shuttle.slice(0,3),p=>p[0]),['左右往返','上下浮动','椭圆运动']);
- for(const mode of ['expand','shuttle']){
-  assert.equal(presets[mode].length,6);
-  for(let i=0;i<3;i++)assert.equal(presetMotion(mode,i).oneWay,undefined);
-  for(let i=3;i<6;i++){
-   const p=presetMotion(mode,i);
-   for(const key of E.ownedChannels[mode]){
-    const base=key.startsWith('s')?1:0,amp=p.axes[key].amp;
-    assert.ok(Math.abs(E.sample(p,0)[key]-base)<1e-8);
-    assert.ok(Math.abs(E.sample(p,1)[key]-(base+amp))<1e-8,'single motion ends at target instead of returning');
-    let previous=E.sample(p,0)[key];
-    for(let j=1;j<=100;j++){const v=E.sample(p,j/100)[key];assert.ok((v-previous)*Math.sign(amp)>=-1e-8);previous=v;}
-   }
-  }
+test('calculation presets retain elastic, orbit and full-turn motions',()=>{
+ assert.deepEqual(Array.from(presets.expand,p=>p[0]),['弹性放大','受击压扁']);
+ assert.deepEqual(Array.from(presets.shuttle,p=>p[0]),['椭圆运动']);
+ assert.deepEqual(Array.from(presets.rotate,p=>p[0]),['匀速旋转','受击回正']);
+ const orbit=presetMotion('shuttle',0);
+ for(const u of [0,.125,.25,.5,.75,1]){
+  const v=E.sample(orbit,u);
+  assert.ok(Math.abs((v.x/140)**2+(v.y/80)**2-1)<1e-6,'the remaining move preset generates a complete XY orbit');
  }
 });
 
 test('reverse swaps full motion including edited Bezier handles without changing opacity or other effects',()=>{
- for(const mode of ['expand','shuttle'])for(let i=0;i<6;i++){
+ for(const mode of ['expand','shuttle'])for(let i=0;i<presets[mode].length;i++){
   const p=presetMotion(mode,i),key=mode==='expand'?'sx':'x';
   p.opacity.on=true;p.opacity.from=0;p.opacity.to=1;
   const knots=JSON.parse(JSON.stringify(E.curveFor(p,key))),at=E.insertCurvePoint(knots,.37);
@@ -218,9 +210,10 @@ test('reverse swaps full motion including edited Bezier handles without changing
  }
 });
 
-test('one-way and reversed curves bake to native tracks and hold their target after the bone interval',()=>{
+test('legacy one-way and reversed curves still bake to native tracks and hold their target after the bone interval',()=>{
  for(const mode of ['expand','shuttle'])for(const reverse of [false,true]){
-  const stack=E.freshStack();stack[mode]=presetMotion(mode,3);stack[mode].reverse=reverse;
+  const stack=E.freshStack(),p=stack[mode];Object.assign(p,{enabled:true,oneWay:'smooth',easing:1,hold:0,reverse});
+  if(mode==='expand'){p.axes.sx.amp=p.axes.sy.amp=.55;}else{p.axes.x.amp=-145;p.axes.y.amp=0;}
   const project=fixture();project.bones[0].rotation=0;delete project.animations.idle.bones.ball;
   const {animation}=calc(project,stack);
   const track=mode==='expand'?'scale':'translate',key=mode==='expand'?'sx':'x',fallback=mode==='expand'?1:0;
@@ -232,24 +225,20 @@ test('one-way and reversed curves bake to native tracks and hold their target af
  }
 });
 
-test('rotation presets swing, spin and spring; cycles multiply inside the bone interval',()=>{
- assert.deepEqual(Array.from(presets.rotate,p=>p[0]),['左右摇摆','匀速旋转','受击回正']);
+test('rotation presets spin and spring; cycles multiply inside the bone interval',()=>{
  const at=(p,u)=>E.sample(p,u).r,near=(a,b)=>Math.abs(a-b)<1e-6;
- const swing=presetMotion('rotate',0);
- assert.ok(near(at(swing,0),0)&&near(at(swing,.25),25)&&near(at(swing,.75),-25)&&near(at(swing,1),0),'swing starts at rest and alternates');
- swing.reverse=true;assert.ok(near(at(swing,.25),-25),'reverse flips the swing direction');
- const spin=presetMotion('rotate',1);
+ const spin=presetMotion('rotate',0);
  for(const u of [0,.25,.5,1])assert.ok(near(at(spin,u),360*u),'one linear turn per period');
  spin.axes.r.amp=40;spin.hold=.3; // legacy controls cannot turn a full turn into a partial turn or a pause
  spin.cycles=3;assert.ok(near(at(spin,.5),540)&&near(at(spin,1),1080),'cycles are whole turns');
- const spring=presetMotion('rotate',2);
+ const spring=presetMotion('rotate',1);
  assert.ok(near(at(spring,0),0)&&near(at(spring,1),0)&&Math.max(...Array.from({length:101},(_,j)=>at(spring,j/100)))>30,'spring leaves and returns to rest');
  spring.cycles=2;assert.ok(near(at(spring,.5),0),'each hit returns to rest');
  assert.equal(E.curveFor(spin,'r').length,2,'a linear turn is a single Bezier segment');
 });
 
 test('rotation bakes only a rotate track on top of existing keys; other channels and bones stay intact',()=>{
- const stack=E.freshStack();stack.rotate=presetMotion('rotate',1);
+ const stack=E.freshStack();stack.rotate=presetMotion('rotate',0);
  const project=fixture();
  const {animation}=calc(project,stack);
  const ball=animation.bones.ball,source=project.animations.idle.bones.ball;
@@ -271,7 +260,7 @@ test('Spine 3.8 actually plays complete constant-speed turns in both directions'
  const spine=runtime.spine;
  for(const cycles of [1,3,10])for(const reverse of [false,true]){
   const project=fixture();project.skeleton.spine='3.8.99';project.skins={};
-  const stack=E.freshStack();stack.rotate=presetMotion('rotate',1);
+  const stack=E.freshStack();stack.rotate=presetMotion('rotate',0);
   Object.assign(stack.rotate,{cycles,reverse});
   const {animation}=calc(project,stack);
   const track=animation.bones.ball.rotate;
@@ -289,4 +278,13 @@ test('Spine 3.8 actually plays complete constant-speed turns in both directions'
    assert.ok(Math.abs(bone.a-Math.cos(expected))<.005&&Math.abs(bone.c-Math.sin(expected))<.005,`actual pose: ${cycles} turns, reverse=${reverse}, progress=${i}/240`);
   }
  }
+});
+
+
+test('fresh rotation defaults to a full turn, while saved swing parameters still replay',()=>{
+ const spin=E.freshStack().rotate;
+ for(const u of [0,.25,.5,.75,1])assert.equal(E.sample(spin,u).r,360*u);
+ const saved=JSON.parse(JSON.stringify(spin));delete saved.oneWay;
+ Object.assign(saved,{easing:1,hold:.06});saved.axes.r.amp=25;
+ for(const [u,angle]of [[0,0],[.25,25],[.75,-25],[1,0]])assert.ok(Math.abs(E.sample(saved,u).r-angle)<1e-6);
 });
