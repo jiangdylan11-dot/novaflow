@@ -331,9 +331,16 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       'font:13px "Segoe UI","Microsoft YaHei",sans-serif'
     ].join(';'));
     gate.id = GATE_ID;
-    // The runtime clamps every rounded box under body to the control radius.
-    // The login card is a panel and keeps the reference's 14.
+    // Keep the signed-out layout independent of the editor's radius scanner.
     gate.setAttribute('data-novaflow-keep-radius', '1');
+
+    const artwork = el('img'); artwork.className = 'nf-login-art';
+    artwork.src = './assets/login-game-art.png';
+    artwork.alt = '';
+    artwork.draggable = false;
+    artwork.setAttribute('aria-hidden', 'true');
+    artwork.decoding = 'async';
+    gate.appendChild(artwork);
 
     const shell = el('div'); shell.className = 'nf-login-shell';
 
@@ -344,43 +351,30 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     logo.draggable = false;
     brand.appendChild(logo);
 
-    const headline = el('h1', '', '游戏美术工作站');
+    const headline = el('h1', '', '让游戏灵感，成为作品。');
     headline.className = 'nf-login-headline';
     brand.appendChild(headline);
 
     const lede = el('p'); lede.className = 'nf-login-lede';
-    lede.appendChild(root.document.createTextNode('粒子特效、序列动画、骨骼绑定、批量图像处理。'));
-    lede.appendChild(el('br'));
-    lede.appendChild(root.document.createTextNode('本地模型与云端模型，统一工作空间。'));
+    lede.appendChild(root.document.createTextNode('NovaFlow 游戏美术创作工作台'));
     brand.appendChild(lede);
 
     // Descriptive labels for what is inside. They are deliberately not
     // controls: the only way in from this screen is the form on the right.
     const tags = el('div'); tags.className = 'nf-login-tags';
-    for (const [icon, label] of [
-      ['✦', '粒子特效'], ['▷', 'AI 序列动画'], ['✎', '绘图与拆图'], ['▤', '批量工具']
-    ]) {
+    for (const label of ['AI 绘图', 'UI 设计', '智能拆图', '动画与特效']) {
       const tag = el('div'); tag.className = 'nf-login-tag';
-      const mark = el('span', '', icon); mark.className = 'nf-login-tag-icon';
-      mark.setAttribute('aria-hidden', 'true');
-      tag.appendChild(mark);
       tag.appendChild(el('span', '', label));
       tags.appendChild(tag);
     }
     brand.appendChild(tags);
 
-    const footnote = el('div'); footnote.className = 'nf-login-footnote';
-    footnote.appendChild(el('span', '', 'NOVAFLOW'));
-    footnote.appendChild(el('span', '', '|'));
-    footnote.appendChild(el('span', '', 'WEB 工作空间'));
-    brand.appendChild(footnote);
-
     shell.appendChild(brand);
 
     const card = el('div'); card.className = 'nf-login-card';
-    const cardTitle = el('h2', '', '登录'); cardTitle.className = 'nf-login-card-title';
+    const cardTitle = el('h2', '', '欢迎回来'); cardTitle.className = 'nf-login-card-title';
     card.appendChild(cardTitle);
-    const cardNote = el('p', '', '请使用 NovaFlow 账号登录。没有账号请找管理员开通。');
+    const cardNote = el('p', '', '登录你的创作工作空间');
     cardNote.className = 'nf-login-card-note';
     card.appendChild(cardNote);
 
@@ -417,12 +411,27 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     card.appendChild(wrap('user', account));
     const gap = el('div'); gap.className = 'nf-login-gap'; card.appendChild(gap);
     card.appendChild(passwordLabel);
-    card.appendChild(wrap('lock', password));
+    const passwordWrap = wrap('lock', password);
+    const reveal = el('button'); reveal.className = 'nf-login-reveal';
+    reveal.type = 'button';
+    reveal.setAttribute('aria-label', '显示密码');
+    reveal.setAttribute('aria-pressed', 'false');
+    reveal.setAttribute('aria-controls', password.id);
+    reveal.addEventListener('click', () => {
+      const visible = password.type === 'password';
+      password.type = visible ? 'text' : 'password';
+      reveal.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+      reveal.setAttribute('aria-pressed', String(visible));
+    });
+    passwordWrap.appendChild(reveal);
+    card.appendChild(passwordWrap);
 
-    const submit = el('button', '', '登录');
+    const submit = el('button', '', '进入工作台');
     submit.className = 'nf-login-submit';
     submit.type = 'button';
     card.appendChild(submit);
+    const help = el('p', '', '账号由管理员开通'); help.className = 'nf-login-help';
+    card.appendChild(help);
 
     const note = el('div');
     note.className = 'nf-login-note';
@@ -442,6 +451,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     shell.appendChild(card);
 
     async function login() {
+      if (submit.disabled) return;
       const name = account.value.trim();
       if (!name || !password.value) {
         note.style.color = '#fca5a5';
@@ -464,7 +474,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
         note.style.color = '#fca5a5';
         note.textContent = String((error && error.message) || error);
         submit.disabled = false;
-        submit.textContent = '登录';
+        submit.textContent = '进入工作台';
       }
     }
     submit.addEventListener('click', login);

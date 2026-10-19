@@ -19,9 +19,9 @@
  *
  * WHAT IT MAY AND MAY NOT DO
  *
- * Appearance only: colour, border, radius, spacing, typography, hover, focus
- * and selected states. No rule may change layout roles, hide a control, or
- * alter what anything does. Nothing here reads or writes application state.
+ * Editor rules change appearance only. The signed-out gate owns its own
+ * responsive composition; its real controls remain in novaflow-web-account.js.
+ * Nothing here reads or writes application state.
  *
  * Colour carries rank, not decoration:
  *   green  #1EA672  the one main action of a surface
@@ -31,7 +31,7 @@
  *
  * Yellow is NOT an action colour here. It was specified for AI 助手 and then
  * ruled out by the product owner, who kept that control grey with the prompt
- * actions it sits among; it survives only as the accent on one login tag.
+ * actions it sits among.
  *
  * Buttons are flat: no inset shadow, no bottom edge light, no gradient, no
  * bevel - in every state. Keyboard focus keeps a visible ring; removing the
@@ -83,23 +83,43 @@
    ========================================================================== */
 
 #novaflow-web-login-gate {
-  /* Plain near-black. No glow, no grid, no gradient - the product owner asked
-     for a plain backdrop, so the form is the only thing on it. */
-  background-color: #0B0B0C !important;
+  background-color: #101212 !important;
   background-image: none !important;
+  overflow: auto !important;
+  isolation: isolate;
+  color-scheme: dark;
+}
+/* Editor-wide font rules target descendants directly; keep login typography
+   explicit so Chinese labels and native buttons use the same sans-serif. */
+html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, .nf-login-tag, .nf-login-note) {
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif !important;
+}
+
+/* Artwork is decorative; all text, fields and feedback remain real DOM. */
+.nf-login-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: -1;
 }
 
 .nf-login-shell {
+  position: relative;
   width: 100%;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 48px;
+  max-width: 1920px;
+  min-height: 100%;
+  margin: auto;
+  padding: clamp(32px, 4.5vw, 86px) clamp(40px, 5.6vw, 108px);
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 31%);
   align-items: center;
-  gap: 100px;
-  /* Explicitly no frame: this is a layout grid, not a surface. */
+  gap: clamp(64px, 8vw, 160px);
   background: none;
   border: 0;
   box-shadow: none;
@@ -109,258 +129,182 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  align-self: stretch;
   min-width: 0;
+  min-height: min(720px, calc(100svh - 140px));
 }
 
 .nf-login-logo {
   display: block;
-  width: 330px;
+  width: clamp(205px, 17vw, 280px);
   max-width: 100%;
   height: auto;
   object-fit: contain;
-  margin-bottom: 32px;
+  margin-bottom: clamp(42px, 5vh, 68px);
 }
 
 .nf-login-headline {
-  margin: 0 0 15px;
-  font-size: 24px;
-  line-height: 1.32;
+  margin: 0 0 16px;
+  font-size: clamp(27px, 2.65vw, 44px);
+  line-height: 1.4;
   font-weight: 600;
-  letter-spacing: 0.4px;
-  color: #E1E4E8;
+  letter-spacing: .02em;
+  color: #eef0ef;
+  text-wrap: balance;
+  text-shadow: 0 2px 18px #101212;
 }
 
 .nf-login-lede {
   margin: 0;
-  font-size: 13px;
-  line-height: 2;
-  color: #818992;
+  font-size: clamp(14px, 1.4vw, 21px);
+  line-height: 1.7;
+  color: #929a98;
+  text-shadow: 0 2px 12px #101212;
 }
 
 .nf-login-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
-  margin-top: 28px;
+  gap: 10px 0;
+  margin-top: auto;
+  padding-top: 48px;
 }
 
-/* Descriptive only - these are not controls and must not look clickable. */
+/* Plain descriptive labels, never imitation buttons. */
 .nf-login-tag {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 35px;
-  padding: 0 14px;
-  box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.035);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.01);
-  font-size: 11px;
-  line-height: 1;
-  color: #A5ADB4;
+  font-size: clamp(11px, .9vw, 14px);
+  line-height: 1.7;
+  letter-spacing: .08em;
+  color: #858e8a;
   cursor: default;
   user-select: none;
 }
-
-.nf-login-tag-icon {
-  font-size: 11px;
-  line-height: 1;
-  color: #59C7A7;
-}
-
-.nf-login-tag:nth-child(4) .nf-login-tag-icon {
-  color: #E9C55C;
-}
-
-.nf-login-footnote {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin-top: 35px;
-  font-size: 11px;
-  letter-spacing: 1.7px;
-  color: #59636C;
-}
-
-.nf-login-footnote span:nth-child(2) {
-  color: #2E3338;
+.nf-login-tag + .nf-login-tag::before {
+  content: '·';
+  margin: 0 14px;
+  color: #59645e;
 }
 
 .nf-login-card {
   width: 100%;
+  max-width: 430px;
+  justify-self: end;
   box-sizing: border-box;
-  /* Flat fill and a hairline edge - no gradient, no shadow. */
-  background: #121517;
-  border: 1px solid #282E32;
-  border-radius: 14px;
-  padding: 32px 30px;
+  padding: 24px 0 0;
   display: flex;
   flex-direction: column;
   color: var(--nf-text);
+  background: none;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
 }
-
 .nf-login-card-title {
   margin: 0 0 12px;
-  font-size: 22px;
-  line-height: 1.3;
+  font-size: clamp(26px, 2.2vw, 36px);
+  line-height: 1.4;
   font-weight: 600;
-  color: #EAEAEA;
+  color: #eef0ef;
 }
-
 .nf-login-card-note {
-  margin: 0 0 27px;
-  font-size: 11px;
+  margin: 0 0 46px;
+  font-size: 15px;
   line-height: 1.7;
-  color: #898B93;
+  color: #8f9893;
 }
-
 .nf-login-field {
   display: block;
-  margin-bottom: 8px;
-  font-size: 11px;
-  line-height: 1;
-  color: #A2A4AD;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c4cbc6;
 }
-
-.nf-login-gap {
-  height: 17px;
-}
-
-/* The icon is drawn on the wrapper, never on the input: Chrome paints an
-   autofilled field with its own background and would cover it. */
-.nf-login-input-wrap {
-  position: relative;
-  display: block;
-}
-
-.nf-login-input-wrap::before {
-  content: "";
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  margin-top: -8px;
-  pointer-events: none;
-  background-color: #6A7078;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-  transition: background-color 120ms linear;
-}
-
-.nf-login-input-wrap-user::before {
-  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/><circle cx='12' cy='7' r='4'/></svg>");
-  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/><circle cx='12' cy='7' r='4'/></svg>");
-}
-
-.nf-login-input-wrap-lock::before {
-  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='11' width='18' height='11' rx='2'/><path d='M7 11V7a5 5 0 0 1 10 0v4'/></svg>");
-  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='11' width='18' height='11' rx='2'/><path d='M7 11V7a5 5 0 0 1 10 0v4'/></svg>");
-}
-
-.nf-login-input-wrap:focus-within::before {
-  background-color: var(--nf-focus);
-}
+.nf-login-gap { height: 26px; }
+.nf-login-input-wrap { position: relative; display: block; }
 
 #novaflow-web-login-gate input.nf-login-input {
   width: 100%;
-  height: 43px;
+  min-width: 0;
+  height: 50px;
   box-sizing: border-box;
-  /* Light fields on a dark screen, by request. Everything below follows from
-     that inversion: dark text, a darker icon, and an autofill fix that now
-     has to hold WHITE rather than keep Chrome's white out. */
-  /* !important throughout: the renderer ships a global field rule that
-     carries !important, so a plain declaration here loses regardless of
-     specificity. It was invisible while both sides were dark. */
-  background: #FFFFFF !important;
+  background: #1b1e1d !important;
   background-image: none !important;
-  border: 1px solid #C9CFD5 !important;
-  border-radius: 7px !important;
-  padding: 0 14px 0 40px !important;
+  border: 1px solid #343a37 !important;
+  border-radius: 6px !important;
+  padding: 0 16px !important;
   font: inherit;
-  font-size: 13px !important;
-  color: #16191D !important;
-  transition: border-color 120ms linear, box-shadow 120ms linear;
+  font-size: 14px !important;
+  color: #e7ece8 !important;
+  caret-color: #e7ece8;
+  transition: border-color 120ms linear;
 }
-
-#novaflow-web-login-gate input.nf-login-input::placeholder {
-  color: #8A9099 !important;
+#novaflow-web-login-gate .nf-login-input-wrap-lock input.nf-login-input {
+  padding-right: 52px !important;
 }
-
-#novaflow-web-login-gate input.nf-login-input:hover {
-  border-color: #AEB6BE !important;
-}
-
+#novaflow-web-login-gate input.nf-login-input::placeholder { color: #79827c !important; }
+#novaflow-web-login-gate input.nf-login-input:hover { border-color: #56635a !important; }
 #novaflow-web-login-gate input.nf-login-input:focus {
-  outline: none !important;
-  box-shadow: none !important;
+  border-color: #1ea672 !important;
+  box-shadow: 0 0 0 2px #1ea67222 !important;
 }
-
-/* Chrome paints an autofilled field with its own near-white background and
-   ignores background-color outright. The inset shadow is the only way to get
-   the dark field back, and -webkit-text-fill-color the only way to get the
-   text back; the absurd transition delay stops Chrome re-applying its own
-   colour afterwards. Without this the two fields flash white on a dark page. */
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill,
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill:hover,
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #16191D !important;
-  -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
-  box-shadow: 0 0 0 1000px #FFFFFF inset !important;
-  caret-color: #16191D;
+  -webkit-text-fill-color: #e7ece8 !important;
+  -webkit-box-shadow: 0 0 0 1000px #1b1e1d inset !important;
+  box-shadow: 0 0 0 1000px #1b1e1d inset !important;
+  caret-color: #e7ece8;
   transition: background-color 100000s ease-in-out 0s;
 }
-
-/* The main action of this screen: solid green, flat. */
+#novaflow-web-login-gate button.nf-login-reveal {
+  position: absolute;
+  right: 4px;
+  top: 3px;
+  width: 44px;
+  height: 44px;
+  padding: 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #98a39b;
+  cursor: pointer;
+}
+.nf-login-reveal::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7'%3E%3Cpath d='M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+#novaflow-web-login-gate button.nf-login-reveal:hover,
+#novaflow-web-login-gate button.nf-login-reveal[aria-pressed='true'] { color: #6fd9b8; }
 #novaflow-web-login-gate button.nf-login-submit {
   width: 100%;
-  height: 42px;
-  margin-top: 24px;
-  border: 1px solid #24B693;
-  border-radius: 7px;
+  height: 50px;
+  margin-top: 34px;
+  border: 1px solid #1ea672;
+  border-radius: 6px;
   background: var(--nf-primary);
   background-image: none;
   box-shadow: none;
-  color: #FFFFFF;
+  color: #fff;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: .08em;
   cursor: pointer;
   transition: background-color 120ms linear;
 }
-
-#novaflow-web-login-gate button.nf-login-submit:hover:not(:disabled) {
-  background: var(--nf-primary-hover);
-}
-
-#novaflow-web-login-gate button.nf-login-submit:active:not(:disabled) {
-  background: var(--nf-primary-press);
-}
-
-#novaflow-web-login-gate button.nf-login-submit:focus-visible {
-  outline: none;
-}
-
-#novaflow-web-login-gate button.nf-login-submit:disabled {
-  background: #23282C;
-  color: #767C82;
-  cursor: wait;
-}
-
-/* The module writes this line's colour inline per outcome (error / progress /
-   success); only its metrics are set here so those colours still show. */
-.nf-login-note {
-  min-height: 18px;
-  margin-top: 14px;
-  font-size: 12.5px;
-  line-height: 1.6;
-}
+#novaflow-web-login-gate button.nf-login-submit:hover:not(:disabled) { background: var(--nf-primary-hover); }
+#novaflow-web-login-gate button.nf-login-submit:active:not(:disabled) { background: var(--nf-primary-press); }
+#novaflow-web-login-gate button.nf-login-submit:disabled { background: #28332d; border-color: #28332d; color: #829389; cursor: wait; }
+#novaflow-web-login-gate button:focus-visible { outline: 2px solid #6fd9b8 !important; outline-offset: 3px; }
+.nf-login-help { margin: 20px 0 0; text-align: center; color: #7b867f; font-size: 12px; line-height: 1.6; }
+.nf-login-note { min-height: 22px; margin-top: 14px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 
 /* ==========================================================================
    2. Workspace shell - the reference's panel system
@@ -553,35 +497,34 @@ html body :focus-visible {
   outline: none !important;
 }
 
-/* Narrow viewports stack instead of letting the form overflow. */
-@media (max-width: 980px) {
-  #novaflow-web-login-gate {
-    align-items: flex-start !important;
-    overflow: auto !important;
-    padding: 48px 0 !important;
-  }
-
-  .nf-login-shell {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 40px;
-    padding: 0 28px;
-    max-width: 480px;
-  }
-
-  .nf-login-logo {
-    width: 260px;
-    margin-bottom: 22px;
-  }
-
-  .nf-login-headline {
-    font-size: 23px;
-  }
-
-  .nf-login-footnote {
-    margin-top: 28px;
-  }
+/* On narrow/short windows the real form remains reachable by scrolling. */
+@media (max-width: 900px) {
+  #novaflow-web-login-gate { align-items: flex-start !important; }
+  .nf-login-art { position: fixed; object-position: 32% center; opacity: .24; }
+  .nf-login-shell { grid-template-columns: minmax(0, 1fr); max-width: 540px; padding: 32px 28px; gap: 34px; }
+  .nf-login-brand { min-height: 0; }
+  .nf-login-logo { width: 210px; margin-bottom: 24px; }
+  .nf-login-headline { font-size: 25px; }
+  .nf-login-lede { font-size: 14px; }
+  .nf-login-tags { padding-top: 22px; }
+  .nf-login-tag { font-size: 11px; letter-spacing: 0; }
+  .nf-login-tag + .nf-login-tag::before { margin: 0 9px; }
+  .nf-login-card { max-width: none; padding: 0; justify-self: stretch; }
+  .nf-login-card-title { font-size: 26px; }
+  .nf-login-card-note { margin-bottom: 28px; font-size: 14px; }
+  #novaflow-web-login-gate input.nf-login-input { font-size: 16px !important; }
 }
-
+@media (max-width: 380px) {
+  .nf-login-shell { padding: 24px 20px; gap: 26px; }
+  .nf-login-headline { font-size: 22px; }
+  .nf-login-tag + .nf-login-tag::before { margin: 0 6px; }
+}
+@media (min-width: 901px) and (max-height: 650px) {
+  .nf-login-shell { padding-top: 28px; padding-bottom: 28px; }
+  .nf-login-brand { min-height: 440px; }
+  .nf-login-logo { margin-bottom: 28px; }
+  .nf-login-card-note { margin-bottom: 24px; }
+}
 
 /* 2.0f Canvas bar hover.
    The runtime writes these buttons' fill and ink inline through
