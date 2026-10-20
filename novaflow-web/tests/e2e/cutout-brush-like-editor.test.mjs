@@ -17,7 +17,7 @@ test('the bundle carries the 视频编辑-style cutout brush', () => {
   for (const text of [
     'type:`range`,min:1,max:300,step:1,value:Ye',
     'type:`range`,min:0,max:300,step:1,value:Ze',
-    'Ye/2/Math.max(1e-6,Number(',
+    'Math.max(.5,Ye/2)/Math.max(1e-6,Number(',
     '"--nf-cutout-feather"',
     '"data-nf-feather":Ze>0?`1`:`0`',
     'Xe(t=>Z(t+e*4,1,300))',

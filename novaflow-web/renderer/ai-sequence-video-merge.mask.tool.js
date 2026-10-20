@@ -32,11 +32,6 @@
     return Uint8ClampedArray.from(input)
   }
 
-  function smoothstep(value) {
-    const t = Math.max(0, Math.min(1, value))
-    return t * t * t * (t * (t * 6 - 15) + 10)
-  }
-
   function createFalloffTable(radiusPx, featherPx, mode) {
     if (featherPx <= 0) return null
     const size = 4096
@@ -46,7 +41,7 @@
     const squaredRange = Math.max(1e-9, outerRadius * outerRadius - innerSquared)
     for (let index = 0; index < size; index += 1) {
       const squaredDistance = innerSquared + squaredRange * index / (size - 1)
-      const strength = smoothstep((outerRadius - Math.sqrt(squaredDistance)) / featherPx)
+      const strength = root.NovaFlowSoftBrush.strength(Math.sqrt(squaredDistance), radiusPx, outerRadius)
       const strengthByte = Math.round(255 * strength)
       table[index] = mode === 'erase' ? 255 - strengthByte : strengthByte
     }
@@ -156,13 +151,13 @@
       const coreTarget = isErase ? 0 : 255
       let changed = false
       for (let y = y0; y < y1; y += 1) {
-        const deltaY = y - centerY
+        const deltaY = y + 0.5 - centerY
         const verticalSquared = deltaY * deltaY
         if (verticalSquared > outerSquared) continue
         const halfSpan = Math.sqrt(Math.max(0, outerSquared - verticalSquared))
-        const rowStart = Math.max(x0, Math.ceil(centerX - halfSpan))
-        const rowEnd = Math.min(x1, Math.floor(centerX + halfSpan) + 1)
-        let deltaX = rowStart - centerX
+        const rowStart = Math.max(x0, Math.ceil(centerX - halfSpan - 0.5))
+        const rowEnd = Math.min(x1, Math.floor(centerX + halfSpan - 0.5) + 1)
+        let deltaX = rowStart + 0.5 - centerX
         let index = y * width + rowStart
         for (let x = rowStart; x < rowEnd; x += 1, index += 1, deltaX += 1) {
           const distanceSquared = verticalSquared + deltaX * deltaX
@@ -173,12 +168,9 @@
           }
           const target = distanceSquared <= radiusSquared ? coreTarget : falloffTable[falloffIndex]
           const previous = coverage[index]
-          const opacity=(isErase ? 255-target : target)/255 * (stroke.featherPx>0 ? 0.16 : 1)
-          // Rounded to the nearest level, a soft dab stalled a few levels short of 0 / 255 (and
-          // far short at the feather's edge), so going over it again never cleared the shadow.
-          // Rounded up or down at random instead: the same strength on average, and it gets there.
+          const opacity = (isErase ? 255 - target : target) / 255
           const exact=isErase ? previous*(1-opacity) : previous+(255-previous)*opacity
-          const next=Math.min(255, Math.max(0, Math.floor(exact+Math.random())))
+          const next = Math.round(exact)
           if (next===previous) continue
           coverage[index] = next
           changed = true

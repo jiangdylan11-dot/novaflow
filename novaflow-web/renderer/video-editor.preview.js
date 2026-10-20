@@ -237,7 +237,7 @@
       if (maskEditing && event.button === 0) {
         const local = maskLocal(p); if (!local) return;
         try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* synthetic */ }
-        const radius = Math.max(0.5, maskEditing.brushSize / 2 / local.k), feather = Math.max(0, maskEditing.feather / local.k);
+        const radius = Math.max(0.5, maskEditing.brushSize / 2) / Math.max(1e-6, local.k), feather = Math.max(0, maskEditing.feather / local.k);
         try { maskEditing.surface.beginStroke({ mode: maskEditing.mode, radiusPx: radius, featherPx: feather, x: local.x, y: local.y }); }
         catch (error) { console.warn('[lab] mask stroke', error); return; }
         drag = { paint: true };

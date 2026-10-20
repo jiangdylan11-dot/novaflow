@@ -27391,7 +27391,7 @@
       applying: false,
       partId: '',
       brushSize: Number(current.brushSize) || 34,
-      feather: Number(current.feather) || 18,
+      feather: normalizeMaskFeatherValue(current.feather, 18),
       mode: current.mode === 'restore' ? 'restore' : 'erase',
       sourceDataUrl: '',
       maskDataUrl: '',
@@ -27437,7 +27437,7 @@
       applying: false,
       partId: part.id,
       brushSize: Number(state.maskEditor && state.maskEditor.brushSize) || 34,
-      feather: Number(state.maskEditor && state.maskEditor.feather) || 18,
+      feather: normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18),
       mode: state.maskEditor && state.maskEditor.mode === 'restore' ? 'restore' : 'erase',
       sourceDataUrl: layerImageDataUrl(part),
       maskDataUrl: layerMaskDataUrl(part),
@@ -27591,7 +27591,7 @@
   function normalizeMaskFeatherValue(value, fallback) {
     const number = Number(value)
     const base = Number.isFinite(number) ? number : Number(fallback || 18)
-    return Math.round(clampNumber(base, 1, 220))
+    return Math.round(clampNumber(base, 0, 300))
   }
 
   function setMaskEditorMode(mode) {
@@ -27622,7 +27622,7 @@
 
   function setMaskBrushSize(value, refresh) {
     if (!state.maskEditor || state.maskEditor.applying) return
-    state.maskEditor.brushSize = Math.round(clampNumber(value, 1, 180))
+    state.maskEditor.brushSize = Math.round(clampNumber(value, 1, 300))
     if (refresh) refreshMaskEditorSurface()
   }
 
@@ -27645,8 +27645,13 @@
   }
 
   function maskBrushMetrics() {
-    const brushRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2)
-    const feather = normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18)
+    // Controls describe screen pixels, as in video cutout / video editor. Convert both
+    // independently into source pixels so zoom changes neither the cursor nor its effect.
+    const canvas = activeMaskToolCanvas()
+    const rect = visibleCanvasRect(canvas, { preferCached: true })
+    const scale = rect && canvas ? Math.max(1e-6, rect.width / Math.max(1, canvas.width)) : 1
+    const brushRadius = Math.max(0.5, (Number(state.maskEditor && state.maskEditor.brushSize) || 34) / 2) / scale
+    const feather = normalizeMaskFeatherValue(state.maskEditor && state.maskEditor.feather, 18) / scale
     const coreRadius = brushRadius
     const radius = brushRadius + feather
     return { coreRadius, feather, radius }
@@ -27828,41 +27833,12 @@
       })
     })
     if (!bounds || bounds.right <= bounds.left || bounds.bottom <= bounds.top) return null
-    const width = bounds.right - bounds.left
-    const height = bounds.bottom - bounds.top
     const ctx = session.maskCanvas.getContext('2d', { willReadFrequently: true })
-    const image = ctx.getImageData(bounds.left, bounds.top, width, height)
-    const data = image.data
-    const radiusSquared = radius * radius, coreRadiusSquared = coreRadius * coreRadius
-    stamps.forEach((point) => {
-      const left = Math.max(bounds.left, Math.floor(point.x - radius - 1))
-      const top = Math.max(bounds.top, Math.floor(point.y - radius - 1))
-      const right = Math.min(bounds.right, Math.ceil(point.x + radius + 1))
-      const bottom = Math.min(bounds.bottom, Math.ceil(point.y + radius + 1))
-      for (let y = top; y < bottom; y += 1) {
-        const dy = y + 0.5 - point.y
-        for (let x = left; x < right; x += 1) {
-          const dx = x + 0.5 - point.x
-          const distanceSquared = dx * dx + dy * dy
-          if (distanceSquared > radiusSquared) continue
-          const soft = feather > 0 && distanceSquared > coreRadiusSquared
-            ? window.NovaFlowSoftBrush.strength(Math.sqrt(distanceSquared), coreRadius, radius)
-            : 1
-          const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
-          const offset = ((y - bounds.top) * width + (x - bounds.left)) * 4
-          const current = Math.round((data[offset] + data[offset + 1] + data[offset + 2]) / 3)
-          const opacity = soft * (feather > 0 ? 0.16 : 1)
-          // random rounding: nearest-level rounding stalled soft dabs short of 0 / 255, so a
-          // feathered erase left a shadow that more strokes could not clear
-          const next = Math.min(255, Math.max(0, Math.floor((restore ? current + (255 - current) * opacity : current * (1 - opacity)) + Math.random())))
-          data[offset] = next
-          data[offset + 1] = next
-          data[offset + 2] = next
-          data[offset + 3] = 255
-        }
-      }
-    })
-    ctx.putImageData(image, bounds.left, bounds.top)
+    ctx.save()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 1
+    for (const point of stamps) window.NovaFlowSoftBrush.paintStamp(ctx, point.x, point.y, coreRadius, feather, restore)
+    ctx.restore()
     return bounds
   }
   function queueMaskEditorStrokePoint(event, canvas, options = {}) {
@@ -27923,42 +27899,7 @@
   }
 
   function paintMaskEditorPoint(session, point) {
-    const ctx = session.maskCanvas.getContext('2d', { willReadFrequently: true })
-    const { coreRadius, feather, radius } = maskBrushMetrics()
-    const restore = state.maskEditor && state.maskEditor.mode === 'restore'
-    const left = Math.max(0, Math.floor(point.x - radius - 1))
-    const top = Math.max(0, Math.floor(point.y - radius - 1))
-    const right = Math.min(session.width, Math.ceil(point.x + radius + 1))
-    const bottom = Math.min(session.height, Math.ceil(point.y + radius + 1))
-    const width = Math.max(0, right - left)
-    const height = Math.max(0, bottom - top)
-    if (width <= 0 || height <= 0) return null
-    const image = ctx.getImageData(left, top, width, height)
-    const data = image.data
-    for (let y = 0; y < height; y += 1) {
-      const py = top + y + 0.5
-      for (let x = 0; x < width; x += 1) {
-        const px = left + x + 0.5
-        const distance = Math.hypot(px - point.x, py - point.y)
-        if (distance > radius) continue
-        const soft = feather > 0 && distance > coreRadius
-          ? window.NovaFlowSoftBrush.strength(distance, coreRadius, radius)
-          : 1
-        const target = restore ? Math.round(255 * soft) : Math.round(255 * (1 - soft))
-        const i = (y * width + x) * 4
-        const current = Math.round((data[i] + data[i + 1] + data[i + 2]) / 3)
-        const opacity = soft * (feather > 0 ? 0.16 : 1)
-          // random rounding: nearest-level rounding stalled soft dabs short of 0 / 255, so a
-          // feathered erase left a shadow that more strokes could not clear
-          const next = Math.min(255, Math.max(0, Math.floor((restore ? current + (255 - current) * opacity : current * (1 - opacity)) + Math.random())))
-        data[i] = next
-        data[i + 1] = next
-        data[i + 2] = next
-        data[i + 3] = 255
-      }
-    }
-    ctx.putImageData(image, left, top)
-    return { left, top, right, bottom }
+    return paintMaskEditorStampBatch(session, [point])
   }
 
   function drawMaskEditorBrushCursor(ctx, session) {
@@ -28410,11 +28351,11 @@
         button('恢复', () => setMaskEditorMode('restore'), state.maskEditor && state.maskEditor.mode === 'restore', { [TOOL_ACTION_ATTR]: 'maskRestore' }),
         h('label', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' } }, [
           h('span', { [TOOL_VALUE_ATTR]: 'maskBrush' }, `画笔 ${brush}`),
-          h('input', { [TOOL_RANGE_ATTR]: 'maskBrush', type: 'range', min: '1', max: '180', value: brush, oninput: (event) => { setMaskBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 180, '92px') })
+          h('input', { [TOOL_RANGE_ATTR]: 'maskBrush', type: 'range', min: '1', max: '300', value: brush, oninput: (event) => { setMaskBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 300, '92px') })
         ]),
         h('label', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' } }, [
           h('span', { [TOOL_VALUE_ATTR]: 'maskFeather' }, `羽化 ${feather}`),
-          h('input', { [TOOL_RANGE_ATTR]: 'maskFeather', type: 'range', min: '1', max: '220', step: '1', value: feather, oninput: (event) => { setMaskFeather(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(feather, 1, 220, '92px') })
+          h('input', { [TOOL_RANGE_ATTR]: 'maskFeather', type: 'range', min: '0', max: '300', step: '1', value: feather, oninput: (event) => { setMaskFeather(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(feather, 0, 300, '92px') })
         ]),
         button('退出', () => stopMaskEditor(), false, { [TOOL_ACTION_ATTR]: 'maskExit' })
       ]),
@@ -34353,6 +34294,10 @@
   }
   async function runMaskEditorApplySmokeTest() {
     await waitForSplitEditorPanel('mask Apply smoke')
+    assertMaskBrushFeatherSmoke()
+    // Enter through the visible edit controls so React mounts the editing workspace.
+    const editHeader = Array.from(document.querySelectorAll('button')).find((node) => node.textContent.trim() === '编辑' && node.getAttribute('aria-expanded') === 'false')
+    if (editHeader) { editHeader.click(); await new Promise((resolve) => window.setTimeout(resolve, 120)) }
     const fixture = await prepareSplitEditorRegressionFixture()
     setLayerSelection(fixture.partB.id)
     await startMaskEditor(); await new Promise((resolve) => window.setTimeout(resolve, 180))
@@ -34787,16 +34732,16 @@
       setMaskBrushSize(1, false)
       if (state.maskEditor.brushSize !== 1) throw new Error(`mask brush min did not reach 1: ${state.maskEditor.brushSize}`)
       setMaskBrushSize(34, false)
-      setMaskFeather(1, false)
-      if (state.maskEditor.feather !== 1) throw new Error(`mask feather min did not reach 1: ${state.maskEditor.feather}`)
+      setMaskFeather(0, false)
+      if (state.maskEditor.feather !== 0) throw new Error(`mask feather min did not reach 0: ${state.maskEditor.feather}`)
       setMaskFeather(18, false)
       adjustMaskFeather(-1, false)
       if (state.maskEditor.feather !== 17) throw new Error(`mask feather decrement jumped: ${state.maskEditor.feather}`)
-      setMaskFeather(2, false)
+      setMaskFeather(1, false)
       adjustMaskFeather(-1, false)
-      if (state.maskEditor.feather !== 1) throw new Error(`mask feather decrement did not reach 1: ${state.maskEditor.feather}`)
+      if (state.maskEditor.feather !== 0) throw new Error(`mask feather decrement did not reach 0: ${state.maskEditor.feather}`)
       adjustMaskFeather(-1, false)
-      if (state.maskEditor.feather !== 1) throw new Error(`mask feather went below 1: ${state.maskEditor.feather}`)
+      if (state.maskEditor.feather !== 0) throw new Error(`mask feather went below 0: ${state.maskEditor.feather}`)
       setMaskFeather(80, false)
       const canvas = canvasOfSize(260, 180)
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
@@ -34811,9 +34756,9 @@
       const middle = valueAt(177, 90)
       const outer = valueAt(211, 90)
       if (center > 8) throw new Error(`mask feather center not erased: ${center}`)
-      if (!(middle > 90 && middle < 180)) throw new Error(`mask feather middle not soft: ${middle}`)
+      if (!(middle > 10 && middle < 40)) throw new Error(`mask feather middle not soft: ${middle}`)
       if (!(outer > 190 && outer < 255)) throw new Error(`mask feather outer not broad: ${outer}`)
-      document.body.setAttribute('data-novaflow-mask-feather-smoke', `ok:${center},${middle},${outer}:min1`)
+      document.body.setAttribute('data-novaflow-mask-feather-smoke', `ok:${center},${middle},${outer}:min0`)
     } finally {
       state.maskEditor = previous
     }
