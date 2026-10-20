@@ -42,7 +42,7 @@
     for (let index = 0; index < size; index += 1) {
       const squaredDistance = innerSquared + squaredRange * index / (size - 1)
       const strength = root.NovaFlowSoftBrush.strength(Math.sqrt(squaredDistance), radiusPx, outerRadius)
-      const strengthByte = Math.round(255 * strength)
+      const strengthByte = root.NovaFlowSoftBrush.alphaByte(strength)
       table[index] = mode === 'erase' ? 255 - strengthByte : strengthByte
     }
     return table

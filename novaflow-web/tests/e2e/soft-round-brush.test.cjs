@@ -11,7 +11,36 @@ function load(file) {
 const brush = load('soft-round-brush.js')
 const mask = load('ai-sequence-video-merge.mask.tool.js')
 
-test('soft round falloff is continuous and fades evenly across the full feather', () => {
+test('feather joins the solid core and untouched outside with no slope kink', () => {
+  const epsilon = 0.0001
+  assert((1 - brush.falloff(1 - epsilon)) / epsilon < 0.001, 'the core-to-feather slope must start at zero')
+  assert(brush.falloff(epsilon) / epsilon < 0.001, 'the feather-to-outside slope must end at zero')
+  assert(brush.falloff(0.1) >= 0.05, 'the outer tenth must retain visible strength')
+})
+
+test('green pixels stay within the source/background colour range through mask preview and export', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
+  const {createCanvas} = require(process.env.NOVAFLOW_CANVAS)
+  const size = 361, sourceCanvas = createCanvas(size, size), maskCanvas = createCanvas(size, size)
+  const sourceCtx = sourceCanvas.getContext('2d'), maskCtx = maskCanvas.getContext('2d')
+  sourceCtx.fillStyle = '#019b0b'; sourceCtx.fillRect(0, 0, size, size)
+  maskCtx.fillStyle = 'white'; maskCtx.fillRect(0, 0, size, size)
+  brush.paintStamp(maskCtx, 180.5, 180.5, 68, 100, false)
+  const source = fs.readFileSync(path.join(__dirname, '../../renderer/spine-split-runtime.js'), 'utf8')
+  const begin = source.indexOf('  function maskedLayerCanvas('), end = source.indexOf('  function maskEditorPoint(', begin)
+  const sandbox = {canvasOfSize: createCanvas}; vm.createContext(sandbox); vm.runInContext(source.slice(begin, end), sandbox)
+  const masked = sandbox.maskedLayerCanvas({width: size, height: size, sourceCanvas, maskCanvas})
+  const displayed = createCanvas(size, size), ctx = displayed.getContext('2d')
+  ctx.fillStyle = '#232323'; ctx.fillRect(0, 0, size, size); ctx.drawImage(masked, 0, 0)
+  const pixels = ctx.getImageData(0, 0, size, size).data
+  for (let i = 0; i < pixels.length; i += 4) {
+    assert(pixels[i] >= 1 && pixels[i] <= 35, 'no extra red/white edge')
+    assert(pixels[i + 1] >= 35 && pixels[i + 1] <= 155, 'no brightness overshoot at the feather edge')
+    assert(pixels[i + 2] >= 11 && pixels[i + 2] <= 35, 'no extra blue/white edge')
+  }
+  assert.deepEqual(Array.from(sourceCtx.getImageData(180, 180, 1, 1).data), [1, 155, 11, 255])
+})
+
+test('soft round falloff is monotonic with smooth endpoints across the full feather', () => {
   let previous = 1
   for (let distance = 0; distance <= 40; distance += 0.1) {
     const value = brush.strength(distance, 0, 40)
@@ -20,8 +49,8 @@ test('soft round falloff is continuous and fades evenly across the full feather'
     previous = value
   }
   assert.equal(brush.strength(20, 0, 40), 0.5)
-  assert(Math.abs(brush.strength(0.1, 0, 40) - 0.9975) < 1e-10)
-  assert(Math.abs(brush.strength(39.9, 0, 40) - 0.0025) < 1e-10)
+  assert(brush.strength(0.1, 0, 40) > 0.99999)
+  assert(brush.strength(39.9, 0, 40) > 0 && brush.strength(39.9, 0, 40) < 0.00001)
 })
 
 test('merge mask is circular, agrees with the shared falloff, and supports undo/restore', () => {
@@ -124,11 +153,11 @@ test('the full feather width remains visible instead of flattening into a transp
   const canvas = createCanvas(361, 361), ctx = canvas.getContext('2d')
   brush.paintCanvas(ctx, 180.5, 180.5, 180.5, 180.5, 68, 100, true)
   const alpha = distance => ctx.getImageData(180 + distance, 180, 1, 1).data[3]
-  for (const offset of [0, 10, 25, 50, 75, 90, 95, 99, 100]) {
-    const expected = Math.round(255 * (1 - offset / 100))
+  for (const [offset, expected] of [[0,255], [10,241], [25,198], [50,128], [75,57], [90,14], [95,3], [99,1], [100,0]]) {
     assert(Math.abs(alpha(68 + offset) - expected) <= 1, `feather ${offset}%: ${alpha(68 + offset)} vs ${expected}`)
   }
   assert(alpha(167) > 0, 'the final interior pixel must still have an effect')
+  for (let distance = 69; distance < 168; distance++) assert(alpha(distance) > 0, 'no empty annulus before the boundary')
   assert.equal(alpha(168), 0, 'only the outside boundary reaches zero')
 })
 

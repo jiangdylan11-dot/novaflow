@@ -1,10 +1,25 @@
 (function (root) {
   'use strict'
   const canvasStrokes = new WeakMap()
-  // Use the entire feather width: a radial 100% -> 0% ramp. Eased curves flatten
-  // near zero, making a broad outer ring look untouched well before the cursor edge.
+  // Keep the middle 80% of the feather close to a straight ramp, with short rounded
+  // shoulders at both ends. Integrating smoothstep makes value, slope and curvature
+  // join continuously: no linear-ramp kink / apparent bright rim against a flat colour.
   function falloff(t) {
-    return Math.max(0, Math.min(1, t))
+    t = Math.max(0, Math.min(1, t))
+    const shoulder = 0.1, scale = 1 - shoulder
+    if (t < shoulder) {
+      const u = t / shoulder
+      return shoulder * u * u * u * (1 - u / 2) / scale
+    }
+    if (t > 1 - shoulder) {
+      const u = (1 - t) / shoulder
+      return 1 - shoulder * u * u * u * (1 - u / 2) / scale
+    }
+    return (t - shoulder / 2) / scale
+  }
+  function alphaByte(value) {
+    // A nonzero feather must not quantise to a wide fully empty band in an 8-bit mask.
+    return value > 0 ? Math.max(1, Math.round(Math.min(1, value) * 255)) : 0
   }
   function strength(distance, inner, outer) {
     if (distance <= inner) return 1
@@ -52,7 +67,7 @@
       const alpha = s
       const offset = (y * size + x) * 4
       pixels.data[offset] = pixels.data[offset + 1] = pixels.data[offset + 2] = white ? 255 : 0
-      pixels.data[offset + 3] = Math.round(alpha * 255)
+      pixels.data[offset + 3] = alphaByte(alpha)
     }
     g.putImageData(pixels, 0, 0)
     stamp = { canvas, half }
@@ -73,7 +88,7 @@
     for (const point of sampleStroke(state,x0,y0,x1,y1,radius+feather)) paintStamp(ctx,point.x,point.y,radius,feather,white)
     state.x=x1; state.y=y1
   }
-  const api = { falloff, strength, paintStamp, paintCanvas, sampleStroke }
+  const api = { falloff, strength, alphaByte, paintStamp, paintCanvas, sampleStroke }
   root.NovaFlowSoftBrush = api
   if (typeof module === 'object' && module.exports) module.exports = api
 })(typeof globalThis !== 'undefined' ? globalThis : this)
