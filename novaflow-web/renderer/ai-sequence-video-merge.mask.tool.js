@@ -32,22 +32,6 @@
     return Uint8ClampedArray.from(input)
   }
 
-  function createFalloffTable(radiusPx, featherPx, mode) {
-    if (featherPx <= 0) return null
-    const size = 4096
-    const table = new Uint8Array(size)
-    const innerSquared = radiusPx * radiusPx
-    const outerRadius = radiusPx + featherPx
-    const squaredRange = Math.max(1e-9, outerRadius * outerRadius - innerSquared)
-    for (let index = 0; index < size; index += 1) {
-      const squaredDistance = innerSquared + squaredRange * index / (size - 1)
-      const strength = root.NovaFlowSoftBrush.strength(Math.sqrt(squaredDistance), radiusPx, outerRadius)
-      const strengthByte = root.NovaFlowSoftBrush.alphaByte(strength)
-      table[index] = mode === 'erase' ? 255 - strengthByte : strengthByte
-    }
-    return table
-  }
-
   function createSurface(options = {}) {
     const width = positiveInteger(options.width, undefined, 'width')
     const height = positiveInteger(options.height, undefined, 'height')
@@ -99,22 +83,6 @@
       }
     }
 
-    function captureTilesForBounds(stroke, x0, y0, x1, y1) {
-      if (x1 <= x0 || y1 <= y0) return
-      const firstTileX = Math.floor(x0 / tileSize)
-      const lastTileX = Math.floor((x1 - 1) / tileSize)
-      const firstTileY = Math.floor(y0 / tileSize)
-      const lastTileY = Math.floor((y1 - 1) / tileSize)
-      for (let tileY = firstTileY; tileY <= lastTileY; tileY += 1) {
-        for (let tileX = firstTileX; tileX <= lastTileX; tileX += 1) {
-          const key = `${tileX}:${tileY}`
-          if (stroke.tiles.has(key)) continue
-          const bounds = tileBounds(tileX, tileY)
-          stroke.tiles.set(key, { ...bounds, before: copyRegion(bounds) })
-        }
-      }
-    }
-
     function markDirtyBounds(x0, y0, x1, y1) {
       const left = Math.max(0, Math.floor(x0))
       const top = Math.max(0, Math.floor(y0))
@@ -133,59 +101,9 @@
       }
     }
 
-    function paintPoint(stroke, centerX, centerY) {
-      const outerRadius = stroke.radiusPx + stroke.featherPx
-      const x0 = Math.max(0, Math.floor(centerX - outerRadius))
-      const y0 = Math.max(0, Math.floor(centerY - outerRadius))
-      const x1 = Math.min(width, Math.ceil(centerX + outerRadius + 1))
-      const y1 = Math.min(height, Math.ceil(centerY + outerRadius + 1))
-      captureTilesForBounds(stroke, x0, y0, x1, y1)
-      const radiusSquared = stroke.radiusPx * stroke.radiusPx
-      const outerSquared = outerRadius * outerRadius
-      const falloffTable = stroke.falloffTable
-      const lastFalloffIndex = falloffTable ? falloffTable.length - 1 : 0
-      const falloffScale = falloffTable
-        ? lastFalloffIndex / Math.max(1e-9, outerSquared - radiusSquared)
-        : 0
-      const isErase = stroke.mode === 'erase'
-      const coreTarget = isErase ? 0 : 255
-      let changed = false
-      for (let y = y0; y < y1; y += 1) {
-        const deltaY = y + 0.5 - centerY
-        const verticalSquared = deltaY * deltaY
-        if (verticalSquared > outerSquared) continue
-        const halfSpan = Math.sqrt(Math.max(0, outerSquared - verticalSquared))
-        const rowStart = Math.max(x0, Math.ceil(centerX - halfSpan - 0.5))
-        const rowEnd = Math.min(x1, Math.floor(centerX + halfSpan - 0.5) + 1)
-        let deltaX = rowStart + 0.5 - centerX
-        let index = y * width + rowStart
-        for (let x = rowStart; x < rowEnd; x += 1, index += 1, deltaX += 1) {
-          const distanceSquared = verticalSquared + deltaX * deltaX
-          let falloffIndex = 0
-          if (distanceSquared > radiusSquared) {
-            falloffIndex = ((distanceSquared - radiusSquared) * falloffScale) | 0
-            if (falloffIndex > lastFalloffIndex) falloffIndex = lastFalloffIndex
-          }
-          const target = distanceSquared <= radiusSquared ? coreTarget : falloffTable[falloffIndex]
-          const previous = coverage[index]
-          const opacity = (isErase ? 255 - target : target) / 255
-          const exact=isErase ? previous*(1-opacity) : previous+(255-previous)*opacity
-          const next = Math.round(exact)
-          if (next===previous) continue
-          coverage[index] = next
-          changed = true
-        }
-      }
-      stroke.modified = stroke.modified || changed
-      if (changed) markDirtyBounds(x0, y0, x1, y1)
-      return changed
-    }
-
     function paintSegment(stroke, startX, startY, endX, endY) {
-      const radius=stroke.radiusPx+stroke.featherPx
-      const points=root.NovaFlowSoftBrush.sampleStroke(stroke.samples || (stroke.samples={}),startX,startY,endX,endY,radius)
-      let changed=false
-      for (const point of points) changed=paintPoint(stroke,point.x,point.y)||changed
+      const changed = !!root.NovaFlowSoftBrush.paintCoverageSegment(stroke.raster, startX, startY, endX, endY)
+      stroke.modified = stroke.modified || changed
       return changed
     }
 
@@ -246,12 +164,16 @@
         mode,
         radiusPx: effectiveRadius,
         featherPx: effectiveFeather,
-        falloffTable: createFalloffTable(effectiveRadius, effectiveFeather, mode),
         lastX: x,
         lastY: y,
         tiles: new Map(),
         modified: false,
       }
+      activeStroke.raster = root.NovaFlowSoftBrush.createCoverageStroke({
+        width, height, tileSize, radius: effectiveRadius, feather: effectiveFeather, restore: mode === 'restore',
+        tiles: activeStroke.tiles, read: copyRegion,
+        write(tile) { writeRegion(tile, tile.data); markDirtyBounds(tile.x, tile.y, tile.x + tile.width, tile.y + tile.height) }
+      })
       if (paintSegment(activeStroke, x, y, x, y)) revision += 1
       return true
     }

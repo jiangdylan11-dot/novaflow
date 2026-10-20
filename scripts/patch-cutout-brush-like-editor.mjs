@@ -46,7 +46,7 @@ const EDITS = [
 export function patchCutoutBrushLikeEditor(source) {
   for (const [before, after, count = 1] of EDITS) {
     if (before === 'Ye/Math.max(1e-6,Number(' && source.includes('Math.max(.5,Ye/2)/Math.max(1e-6,Number(')) continue;
-    if (before === '{...e,feather:Ze}' && source.includes('{...e,feather:Ze*Math.max(1e-6,Number(e.r)||1)/Math.max(.5,Ye/2)}')) continue;
+    if (before === '{...e,feather:Ze}' && source.includes('feather:Ze*Math.max(1e-6,Number(e.r)||1)/Math.max(.5,Ye/2)')) continue;
     // already done: the replacement is there (some replacements contain their original)
     if (source.split(after).length - 1 >= count) continue;
     const found = source.split(before).length - 1;
@@ -60,7 +60,15 @@ export function patchCutoutBrushLikeEditor(source) {
     .replaceAll('Ze*Math.max(1,Number(e.r)||1)/Math.max(.5,Ye/2)', 'Ze*Math.max(1e-6,Number(e.r)||1)/Math.max(.5,Ye/2)')
     .replaceAll('Math.max(1,Number(t.r)||1)', 'Math.max(1e-6,Number(t.r)||1)')
     .replaceAll('Math.max(1,Number(e.r)||1)', 'Math.max(1e-6,Number(e.r)||1)')
-    .replaceAll('Math.max(1,e.r)', 'Math.max(1e-6,e.r)');
+    .replaceAll('Math.max(1,e.r)', 'Math.max(1e-6,e.r)')
+    .replaceAll('let t={...e,feather:Ze*', 'let t={...e,strokeId:Sn.current,feather:Ze*')
+    .replaceAll('let t={...e,strokeId:Sn.current,feather:Ze*', 'let t={...e,strokeId:Dn.current?.strokeId??Sn.current,feather:Ze*')
+    .replaceAll('e.stopPropagation(),Sn.current+=1,$e){', 'e.stopPropagation(),Sn.current+=1,Dn.current={strokeId:Sn.current},$e){')
+    .replaceAll('Dn.current={t:r,lastX:', 'Dn.current={strokeId:Dn.current?.strokeId??Sn.current,t:r,lastX:')
+    .replaceAll('Dn.current={t:s,lastX:', 'Dn.current={strokeId:c?.strokeId??Sn.current,t:s,lastX:')
+    .replaceAll('Math.round(i*100)/100,a].join', 'Math.round(i*100)/100,a,t.strokeId].join')
+    .replaceAll('e.feather,e.mode!==`erase`);', 'e.feather,e.mode!==`erase`,t.strokeId);')
+    .replaceAll('f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`);', 'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId);');
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

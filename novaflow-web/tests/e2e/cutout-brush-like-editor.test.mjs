@@ -26,3 +26,13 @@ test('the bundle carries the 视频编辑-style cutout brush', () => {
   ]) assert.ok(bundle.includes(text), text);
   for (const text of ['max:120,step:1,value:Ye', 'max:16,step:1,value:Ze', 'border:`2px solid rgba(34, 211, 238, 0.95)`']) assert.ok(!bundle.includes(text), 'gone: ' + text);
 });
+
+test('cutout passes a stable pointer-stroke id to both the saved mask and live preview', () => {
+  for (const text of [
+    'Dn.current={strokeId:Sn.current}',
+    'strokeId:Dn.current?.strokeId??Sn.current',
+    'a,t.strokeId].join',
+    'e.feather,e.mode!==`erase`,t.strokeId)',
+    'f*Math.max(o.dw/i,o.dh/a),e.mode!==`erase`,e.strokeId)'
+  ]) assert.ok(bundle.includes(text), text);
+});

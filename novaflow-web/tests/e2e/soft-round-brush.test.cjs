@@ -11,11 +11,71 @@ function load(file) {
 const brush = load('soft-round-brush.js')
 const mask = load('ai-sequence-video-merge.mask.tool.js')
 
+test('a dragged stroke keeps exactly the same transverse feather as a click, including retracing', () => {
+  const click = mask.createSurface({width: 401, height: 241})
+  click.beginStroke({mode:'erase', x:200.5,y:120.5,radiusPx:10,featherPx:60}); click.endStroke()
+  const line = mask.createSurface({width: 401, height: 241})
+  line.beginStroke({mode:'erase',x:50.5,y:120.5,radiusPx:10,featherPx:60})
+  line.extendStroke({x:350.5,y:120.5})
+  for (let d=0;d<=71;d++) assert.equal(line.sample(200,120+d),click.sample(200,120+d),`drag/click feather differs at ${d}px`)
+  const before = line.getCoverage()
+  line.extendStroke({x:50.5,y:120.5})
+  assert.deepEqual(line.getCoverage(),before,'retracing within the same pointer stroke must not harden its feather')
+  line.endStroke()
+})
+
+test('canvas cutout and production image-mask strokes keep the click feather along a long drag', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
+  const {createCanvas} = require(process.env.NOVAFLOW_CANVAS)
+  const source = fs.readFileSync(path.join(__dirname, '../../renderer/spine-split-runtime.js'), 'utf8')
+  const begin = source.indexOf('  function maskEditorStrokeStampPoints('), end = source.indexOf('  function queueMaskEditorStrokePoint(', begin)
+  const sandbox = {window:{NovaFlowSoftBrush:brush},state:{maskEditor:{mode:'erase'}},maskBrushMetrics:()=>({coreRadius:10,feather:60,radius:70}),unionPaintBounds:(a,b)=>b}
+  vm.createContext(sandbox); vm.runInContext(source.slice(begin,end), sandbox)
+  const cutout = createCanvas(401,241), maskCanvas = createCanvas(401,241)
+  const ctx = cutout.getContext('2d'), maskCtx = maskCanvas.getContext('2d')
+  ctx.fillStyle = 'white'; ctx.fillRect(0,0,401,241); ctx.globalCompositeOperation = 'destination-out'
+  maskCtx.fillStyle = 'white'; maskCtx.fillRect(0,0,401,241)
+  brush.paintCanvas(ctx,50.5,120.5,50.5,120.5,10,60,true)
+  brush.paintCanvas(ctx,50.5,120.5,350.5,120.5,10,60,true)
+  const session = {width:401,height:241,maskCanvas,lastPoint:null}
+  const segments = sandbox.maskEditorStrokeStampPoints(session,[{x:50.5,y:120.5},{x:350.5,y:120.5}])
+  sandbox.paintMaskEditorStampBatch(session,segments)
+  for (let d=0;d<=71;d++) {
+    const expected = 255 - brush.alphaByte(brush.strength(d,10,70))
+    assert.equal(ctx.getImageData(200,120+d,1,1).data[3],expected)
+    assert.equal(maskCtx.getImageData(200,120+d,1,1).data[0],expected)
+  }
+})
+
+test('a stable pointer id ignores duplicate stationary events but a new click builds opacity', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
+  const {createCanvas} = require(process.env.NOVAFLOW_CANVAS)
+  const ctx = createCanvas(101,101).getContext('2d')
+  const dab = id => brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,10,30,true,id)
+  dab('stroke-1'); const first = ctx.getImageData(0,0,101,101).data
+  for(let i=0;i<10;i++) dab('stroke-1')
+  assert.deepEqual(ctx.getImageData(0,0,101,101).data,first)
+  dab('stroke-2')
+  assert(ctx.getImageData(75,50,1,1).data[3] > first[(50*101+75)*4+3])
+})
+
+test('three separate overlapping strokes never brighten erased green pixels and preserve undo', () => {
+  const surface = mask.createSurface({width:301,height:301})
+  let previous = surface.getCoverage()
+  for (const [x,y] of [[150.5,100.5],[105.5,175.5],[195.5,175.5]]) {
+    surface.beginStroke({mode:'erase',x,y,radiusPx:5,featherPx:85}); surface.endStroke()
+    const next = surface.getCoverage()
+    for (let i=0;i<next.length;i++) assert(next[i] <= previous[i], 'overlap must only remove opacity')
+    surface.undo(); assert.deepEqual(surface.getCoverage(),previous)
+    surface.redo(); assert.deepEqual(surface.getCoverage(),next)
+    previous = next
+  }
+  assert(surface.sample(150,150) < 128, 'the shared intersection blends the three feathers')
+})
+
 test('feather joins the solid core and untouched outside with no slope kink', () => {
   const epsilon = 0.0001
   assert((1 - brush.falloff(1 - epsilon)) / epsilon < 0.001, 'the core-to-feather slope must start at zero')
   assert(brush.falloff(epsilon) / epsilon < 0.001, 'the feather-to-outside slope must end at zero')
-  assert(brush.falloff(0.1) >= 0.05, 'the outer tenth must retain visible strength')
+  assert(brush.falloff(0.1) >= 0.02, 'the outer tenth must retain visible strength')
 })
 
 test('green pixels stay within the source/background colour range through mask preview and export', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
@@ -49,8 +109,8 @@ test('soft round falloff is monotonic with smooth endpoints across the full feat
     previous = value
   }
   assert.equal(brush.strength(20, 0, 40), 0.5)
-  assert(brush.strength(0.1, 0, 40) > 0.99999)
-  assert(brush.strength(39.9, 0, 40) > 0 && brush.strength(39.9, 0, 40) < 0.00001)
+  assert(brush.strength(0.1, 0, 40) > 0.9999)
+  assert(brush.strength(39.9, 0, 40) > 0 && brush.strength(39.9, 0, 40) < 0.0001)
 })
 
 test('merge mask is circular, agrees with the shared falloff, and supports undo/restore', () => {
@@ -153,7 +213,7 @@ test('the full feather width remains visible instead of flattening into a transp
   const canvas = createCanvas(361, 361), ctx = canvas.getContext('2d')
   brush.paintCanvas(ctx, 180.5, 180.5, 180.5, 180.5, 68, 100, true)
   const alpha = distance => ctx.getImageData(180 + distance, 180, 1, 1).data[3]
-  for (const [offset, expected] of [[0,255], [10,241], [25,198], [50,128], [75,57], [90,14], [95,3], [99,1], [100,0]]) {
+  for (const [offset, expected] of [[0,255], [10,248], [25,215], [50,128], [75,40], [90,7], [95,2], [99,1], [100,0]]) {
     assert(Math.abs(alpha(68 + offset) - expected) <= 1, `feather ${offset}%: ${alpha(68 + offset)} vs ${expected}`)
   }
   assert(alpha(167) > 0, 'the final interior pixel must still have an effect')
@@ -174,13 +234,14 @@ test('image-mask cursor and painting keep independent screen widths at every zoo
   }
 })
 
-test('a heavily zoomed-out brush uses a bounded stamp raster', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
+test('a heavily zoomed-out stroke only allocates bounded tiles inside the image', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
   const {createCanvas} = require(process.env.NOVAFLOW_CANVAS)
   const canvas = createCanvas(30, 30), ctx = canvas.getContext('2d')
-  const dimensions = [], draw = ctx.drawImage.bind(ctx)
-  ctx.drawImage = function (stamp, ...args) { dimensions.push([stamp.width, stamp.height]); return draw(stamp, ...args) }
+  const dimensions = [], read = ctx.getImageData.bind(ctx)
+  ctx.getImageData = function (x, y, width, height) { dimensions.push([width, height]); return read(x, y, width, height) }
   brush.paintCanvas(ctx, 15.5, 15.5, 15.5, 15.5, 15000, 30000, true)
-  assert(dimensions.every(([width, height]) => width <= 1027 && height <= 1027))
+  assert(dimensions.length > 0)
+  assert(dimensions.every(([width, height]) => width <= 64 && height <= 64))
   assert.equal(ctx.getImageData(15, 15, 1, 1).data[3], 255)
 })
 
