@@ -34756,8 +34756,9 @@
       const middle = valueAt(177, 90)
       const outer = valueAt(211, 90)
       if (center > 8) throw new Error(`mask feather center not erased: ${center}`)
-      if (!(middle > 10 && middle < 40)) throw new Error(`mask feather middle not soft: ${middle}`)
-      if (!(outer > 190 && outer < 255)) throw new Error(`mask feather outer not broad: ${outer}`)
+      // Two dabs of the full-width linear ramp: (30/80)^2 and (64/80)^2 coverage.
+      if (Math.abs(middle - 36) > 1) throw new Error(`mask feather middle not soft: ${middle}`)
+      if (Math.abs(outer - 163) > 1) throw new Error(`mask feather outer not broad: ${outer}`)
       document.body.setAttribute('data-novaflow-mask-feather-smoke', `ok:${center},${middle},${outer}:min0`)
     } finally {
       state.maskEditor = previous

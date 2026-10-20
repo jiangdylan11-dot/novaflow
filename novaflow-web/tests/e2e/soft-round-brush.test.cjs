@@ -11,7 +11,7 @@ function load(file) {
 const brush = load('soft-round-brush.js')
 const mask = load('ai-sequence-video-merge.mask.tool.js')
 
-test('soft round falloff is monotonic with smooth centre and edge', () => {
+test('soft round falloff is continuous and fades evenly across the full feather', () => {
   let previous = 1
   for (let distance = 0; distance <= 40; distance += 0.1) {
     const value = brush.strength(distance, 0, 40)
@@ -20,8 +20,8 @@ test('soft round falloff is monotonic with smooth centre and edge', () => {
     previous = value
   }
   assert.equal(brush.strength(20, 0, 40), 0.5)
-  assert(brush.strength(0.1, 0, 40) > 0.99999)
-  assert(brush.strength(39.9, 0, 40) < 0.00001)
+  assert(Math.abs(brush.strength(0.1, 0, 40) - 0.9975) < 1e-10)
+  assert(Math.abs(brush.strength(39.9, 0, 40) - 0.0025) < 1e-10)
 })
 
 test('merge mask is circular, agrees with the shared falloff, and supports undo/restore', () => {
@@ -118,6 +118,20 @@ test('shrinking the core preserves the independently specified feather width',()
   }
 })
 
+test('the full feather width remains visible instead of flattening into a transparent outer ring', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
+  const {createCanvas} = require(process.env.NOVAFLOW_CANVAS)
+  // Match the reported geometry: 68 px solid radius and a separate 100 px feather.
+  const canvas = createCanvas(361, 361), ctx = canvas.getContext('2d')
+  brush.paintCanvas(ctx, 180.5, 180.5, 180.5, 180.5, 68, 100, true)
+  const alpha = distance => ctx.getImageData(180 + distance, 180, 1, 1).data[3]
+  for (const offset of [0, 10, 25, 50, 75, 90, 95, 99, 100]) {
+    const expected = Math.round(255 * (1 - offset / 100))
+    assert(Math.abs(alpha(68 + offset) - expected) <= 1, `feather ${offset}%: ${alpha(68 + offset)} vs ${expected}`)
+  }
+  assert(alpha(167) > 0, 'the final interior pixel must still have an effect')
+  assert.equal(alpha(168), 0, 'only the outside boundary reaches zero')
+})
+
 test('image-mask cursor and painting keep independent screen widths at every zoom', () => {
   const source = fs.readFileSync(path.join(__dirname, '../../renderer/spine-split-runtime.js'), 'utf8')
   const begin = source.indexOf('  function maskBrushMetrics('), end = source.indexOf('  function canvasOfSize(', begin)
@@ -168,7 +182,7 @@ test('real cutout, image-mask and video-mask pixels share a continuous core/feat
     }
     if (feather >= 8) {
       const at = d => a[((100 * size + 100 + d) * 4) + 3]
-      assert(Math.abs(at(core) - at(core + 1)) < 5, 'no sudden strength drop at the solid-core boundary')
+      assert(Math.abs(at(core) - at(core + 1)) <= Math.ceil(255 / feather) + 1, 'the join changes by one pixel of the same feather ramp, without an extra strength drop')
     }
   }
 })

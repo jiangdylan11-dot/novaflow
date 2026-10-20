@@ -1,10 +1,10 @@
 (function (root) {
   'use strict'
   const canvasStrokes = new WeakMap()
-  // Quintic falloff has no slope discontinuity at either end of the feather.
+  // Use the entire feather width: a radial 100% -> 0% ramp. Eased curves flatten
+  // near zero, making a broad outer ring look untouched well before the cursor edge.
   function falloff(t) {
-    t = Math.max(0, Math.min(1, t))
-    return t * t * t * (t * (t * 6 - 15) + 10)
+    return Math.max(0, Math.min(1, t))
   }
   function strength(distance, inner, outer) {
     if (distance <= inner) return 1
