@@ -11,20 +11,75 @@ function load(file) {
 const brush = load('soft-round-brush.js')
 const mask = load('ai-sequence-video-merge.mask.tool.js')
 
-test('a dragged stroke keeps exactly the same transverse feather as a click, including retracing', () => {
+test('one U-shaped stroke has a smooth feather where its two arms meet', () => {
+  const surface=mask.createSurface({width:321,height:321})
+  surface.beginStroke({x:110.5,y:40.5,radiusPx:10,featherPx:60,mode:'erase'})
+  for(const [x,y] of [[110.5,240.5],[210.5,240.5],[210.5,40.5]]) surface.extendStroke({x,y})
+  const at=x=>surface.sample(x,100)
+  for(let x=157;x<=163;x++) assert(Math.abs(at(x-1)-2*at(x)+at(x+1))<=2,'a maximum-of-ramps bisector leaves a sharp radial ridge')
+  assert(at(160)<130,'the shape feather must merge the facing arms instead of preserving a bright seam')
+  surface.endStroke();const after=surface.getCoverage();surface.undo();assert(surface.getCoverage().every(x=>x===255))
+  surface.redo();assert.deepEqual(surface.getCoverage(),after)
+})
+
+test('single-stroke circles and spirals are direction independent and do not build up when retraced', () => {
+  for(const spiral of [false,true]) {
+    const points=Array.from({length:61},(_,i)=>{const a=i/60*Math.PI*(spiral?5:2),r=spiral?50-i/60*40:40;return {x:100.5+r*Math.cos(a),y:100.5+r*Math.sin(a)}})
+    function draw(vertices,retrace){
+      const s=mask.createSurface({width:201,height:201})
+      s.beginStroke({...vertices[0],radiusPx:8,featherPx:40,mode:'erase'})
+      for(const p of vertices.slice(1))s.extendStroke(p)
+      const first=s.getCoverage()
+      if(retrace){for(const p of vertices.slice().reverse())s.extendStroke(p);assert.deepEqual(s.getCoverage(),first,'retracing rotates/pushes the existing feather')}
+      s.endStroke();return first
+    }
+    const forward=draw(points,true),reverse=draw(points.slice().reverse(),false)
+    let max=0;for(let i=0;i<forward.length;i++)max=Math.max(max,Math.abs(forward[i]-reverse[i]))
+    assert(max<=1,'clockwise/counterclockwise mismatch: '+max)
+  }
+})
+
+test('the feather includes stroke geometry beyond the image boundary',()=>{
+  const small=mask.createSurface({width:80,height:80}),large=mask.createSurface({width:160,height:160})
+  small.beginStroke({x:-4.5,y:40.5,radiusPx:10,featherPx:32,mode:'erase'});small.endStroke()
+  large.beginStroke({x:35.5,y:80.5,radiusPx:10,featherPx:32,mode:'erase'});large.endStroke()
+  for(let x=0;x<60;x++)assert.equal(small.sample(x,40),large.sample(x+40,80),'cropping must not clip the blur input')
+})
+
+// Independent continuous reference: area of intersection between the middle
+// contour disk and the circular feather kernel, divided by kernel area.
+function diskFeather(distance, core, feather) {
+  if (distance <= core) return 1
+  if (distance >= core + feather) return 0
+  const a = core + feather / 2, b = feather / 2, d = distance
+  return (a*a*Math.acos((d*d+a*a-b*b)/(2*d*a)) + b*b*Math.acos((d*d+b*b-a*a)/(2*d*b))
+    - Math.sqrt((-d+a+b)*(d+a-b)*(d-a+b)*(d+a+b))/2) / (Math.PI*b*b)
+}
+function lineFeather(distance, core, feather) {
+  if (distance <= core) return 1
+  if (distance >= core + feather) return 0
+  const t = (distance - core - feather/2)/(feather/2)
+  return (Math.acos(t)-t*Math.sqrt(1-t*t))/Math.PI
+}
+
+test('click and drag keep the same full core and feather extent, and retracing is idempotent', () => {
   const click = mask.createSurface({width: 401, height: 241})
   click.beginStroke({mode:'erase', x:200.5,y:120.5,radiusPx:10,featherPx:60}); click.endStroke()
   const line = mask.createSurface({width: 401, height: 241})
   line.beginStroke({mode:'erase',x:50.5,y:120.5,radiusPx:10,featherPx:60})
   line.extendStroke({x:350.5,y:120.5})
-  for (let d=0;d<=71;d++) assert.equal(line.sample(200,120+d),click.sample(200,120+d),`drag/click feather differs at ${d}px`)
+  for (let d=0;d<=71;d++) {
+    assert(Math.abs(line.sample(200,120+d) - 255*(1-lineFeather(d,10,60))) <= 3, `line profile ${d}`)
+    assert(Math.abs(click.sample(200,120+d) - 255*(1-diskFeather(d,10,60))) <= 3, `click profile ${d}`)
+    if(d>10 && d<70) for(const surface of [line,click]) assert(surface.sample(200,120+d)>0 && surface.sample(200,120+d)<255)
+  }
   const before = line.getCoverage()
   line.extendStroke({x:50.5,y:120.5})
   assert.deepEqual(line.getCoverage(),before,'retracing within the same pointer stroke must not harden its feather')
   line.endStroke()
 })
 
-test('canvas cutout and production image-mask strokes keep the click feather along a long drag', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
+test('canvas cutout and production image-mask agree with the geometric line feather', {skip: !process.env.NOVAFLOW_CANVAS}, () => {
   const {createCanvas} = require(process.env.NOVAFLOW_CANVAS)
   const source = fs.readFileSync(path.join(__dirname, '../../renderer/spine-split-runtime.js'), 'utf8')
   const begin = source.indexOf('  function maskEditorStrokeStampPoints('), end = source.indexOf('  function queueMaskEditorStrokePoint(', begin)
@@ -40,9 +95,9 @@ test('canvas cutout and production image-mask strokes keep the click feather alo
   const segments = sandbox.maskEditorStrokeStampPoints(session,[{x:50.5,y:120.5},{x:350.5,y:120.5}])
   sandbox.paintMaskEditorStampBatch(session,segments)
   for (let d=0;d<=71;d++) {
-    const expected = 255 - brush.alphaByte(brush.strength(d,10,70))
-    assert.equal(ctx.getImageData(200,120+d,1,1).data[3],expected)
-    assert.equal(maskCtx.getImageData(200,120+d,1,1).data[0],expected)
+    const actual = ctx.getImageData(200,120+d,1,1).data[3]
+    assert(Math.abs(actual - 255*(1-lineFeather(d,10,60))) <= 3)
+    assert.equal(maskCtx.getImageData(200,120+d,1,1).data[0],actual)
   }
 })
 
@@ -113,7 +168,7 @@ test('soft round falloff is monotonic with smooth endpoints across the full feat
   assert(brush.strength(39.9, 0, 40) > 0 && brush.strength(39.9, 0, 40) < 0.0001)
 })
 
-test('merge mask is circular, agrees with the shared falloff, and supports undo/restore', () => {
+test('merge mask is circular, agrees with disk convolution, and supports undo/restore', () => {
   const surface = mask.createSurface({width: 101, height: 101})
   surface.beginStroke({x:50.5, y:50.5, radiusPx:20, featherPx:20, mode:'erase'})
   surface.endStroke()
@@ -121,9 +176,9 @@ test('merge mask is circular, agrees with the shared falloff, and supports undo/
   const at = (x,y) => coverage[y * 101 + x]
   for (let d = 0; d <= 40; d++) {
     assert.equal(at(50+d,50), at(50,50+d))
-    assert(Math.abs(at(50+d,50) - Math.round(255*(1-brush.strength(d,20,40)))) <= 1)
+    assert(Math.abs(at(50+d,50) - Math.round(255*(1-diskFeather(d,20,20)))) <= 3)
   }
-  assert.equal(at(65,70), at(75,50)) // identical Euclidean radius, diagonal versus axis
+  assert(Math.abs(at(65,70) - at(75,50)) <= 3) // isotropic within raster sampling tolerance
   surface.undo()
   assert(surface.getCoverage().every(value => value === 255))
   surface.redo()
@@ -142,10 +197,10 @@ test('canvas brush paints a real circular alpha ramp without a blur filter', {sk
   const alpha=(x,y)=>pixels[(y*101+x)*4+3]
   assert.equal(alpha(50,50),255)
   assert.equal(alpha(90,50),0)
-  assert.equal(alpha(65,70),alpha(75,50))
-  assert(Math.abs(alpha(80,50)-128)<=1)
+  assert(Math.abs(alpha(65,70)-alpha(75,50))<=3)
+  assert(Math.abs(alpha(80,50)-255*diskFeather(30,20,20))<=3)
   brush.paintCanvas(ctx,50.5,50.5,50.5,50.5,20,20,true)
-  assert(ctx.getImageData(80,50,1,1).data[3]>128)
+  assert(ctx.getImageData(80,50,1,1).data[3]>alpha(80,50))
   if (process.env.NOVAFLOW_BRUSH_PREVIEW) require('node:fs').writeFileSync(process.env.NOVAFLOW_BRUSH_PREVIEW, canvas.toBuffer('image/png'))
 })
 
@@ -174,7 +229,7 @@ test('feather strokes accumulate smoothly and resampling keeps turns stable acro
   const surface=mask.createSurface({width:101,height:101})
   function dab(){surface.beginStroke({x:50.5,y:50.5,radiusPx:20,featherPx:20,mode:'erase'});surface.endStroke();return surface.getCoverage()[50*101+80]}
   const first=dab(),second=dab()
-  assert(first>120 && first<135 && second<first && second>55)
+  assert(Math.abs(first-255*(1-diskFeather(30,20,20)))<=3 && second<first && second>55)
 })
 
 test('production image-mask brush gives matching curved strokes at different event densities', {skip:!process.env.NOVAFLOW_CANVAS},()=>{
@@ -213,8 +268,9 @@ test('the full feather width remains visible instead of flattening into a transp
   const canvas = createCanvas(361, 361), ctx = canvas.getContext('2d')
   brush.paintCanvas(ctx, 180.5, 180.5, 180.5, 180.5, 68, 100, true)
   const alpha = distance => ctx.getImageData(180 + distance, 180, 1, 1).data[3]
-  for (const [offset, expected] of [[0,255], [10,248], [25,215], [50,128], [75,40], [90,7], [95,2], [99,1], [100,0]]) {
-    assert(Math.abs(alpha(68 + offset) - expected) <= 1, `feather ${offset}%: ${alpha(68 + offset)} vs ${expected}`)
+  for (const offset of [0,10,25,50,75,90,95,99,100]) {
+    const expected = 255*diskFeather(68+offset,68,100)
+    assert(Math.abs(alpha(68 + offset) - expected) <= 3, `feather ${offset}%: ${alpha(68 + offset)} vs ${expected}`)
   }
   assert(alpha(167) > 0, 'the final interior pixel must still have an effect')
   for (let distance = 69; distance < 168; distance++) assert(alpha(distance) > 0, 'no empty annulus before the boundary')
@@ -267,8 +323,9 @@ test('real cutout, image-mask and video-mask pixels share a continuous core/feat
     const a = ctx.getImageData(0, 0, size, size).data, b = imageCtx.getImageData(0, 0, size, size).data, c = surface.getCoverage()
     for (let d = 0; d <= core + feather + 1; d++) {
       const i = 100 * size + 100 + d
-      const expected = Math.round(255 * (restore ? brush.strength(d, core, core + feather) : 1 - brush.strength(d, core, core + feather)))
-      for (const value of [a[i * 4 + 3], b[i * 4], c[i]]) assert(Math.abs(value - expected) <= 1, `core ${core}, feather ${feather}, restore ${restore}, distance ${d}: ${value} vs ${expected}`)
+      const expected = a[i * 4 + 3]
+      for (const value of [b[i * 4], c[i]]) assert.equal(value,expected,`core ${core}, feather ${feather}, restore ${restore}, distance ${d}`)
+      if(d<=core || d>=core+feather) assert.equal(expected, restore ? d<=core?255:0 : d<=core?0:255)
     }
     if (feather >= 8) {
       const at = d => a[((100 * size + 100 + d) * 4) + 3]

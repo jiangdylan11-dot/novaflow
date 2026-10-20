@@ -34322,6 +34322,47 @@
     syncSplitWorkspace()
     return { ok: true, value }
   }
+  async function runMaskTurnSmokeTest() {
+    await runMaskEditorApplySmokeTest()
+    await startMaskEditor()
+    const session = await ensureMaskEditorSession(maskEditorPart())
+    const ctx = session.maskCanvas.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, session.width, session.height)
+    session.lastPoint = null; session.softBrushStroke = {}
+    state.maskEditor.mode = 'erase'; setMaskBrushSize(18, false); setMaskFeather(60, false)
+    render(); syncSplitWorkspace()
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
+    const canvas = activeMaskToolCanvas(), rect = canvas.getBoundingClientRect()
+    const scale = rect.width / canvas.width, radius = 22 / scale
+    const points = Array.from({length:65}, (_,i) => {
+      const a = i / 64 * Math.PI * 2
+      return {x:session.partX + session.width * 0.52 + radius * Math.cos(a), y:session.partY + session.height * 0.47 + radius * Math.sin(a)}
+    })
+    const dispatch = (type, point, buttons) => canvas.dispatchEvent(new PointerEvent(type, {
+      bubbles:true, cancelable:true, pointerId:717, pointerType:'mouse', isPrimary:true, button:0, buttons,
+      clientX:rect.left + point.x / canvas.width * rect.width, clientY:rect.top + point.y / canvas.height * rect.height
+    }))
+    dispatch('pointerdown', points[0], 1)
+    await new Promise(resolve => window.requestAnimationFrame(resolve))
+    const trace = async vertices => {
+      for(let i=0;i<vertices.length;i++) {
+        dispatch('pointermove', vertices[i], 1)
+        if(i%8===7) await new Promise(resolve => window.requestAnimationFrame(resolve))
+      }
+      await new Promise(resolve => window.requestAnimationFrame(resolve))
+      flushMaskEditorStrokeFrame(canvas,session)
+    }
+    await trace(points)
+    const before = canvasImageSnapshot(session.maskCanvas)
+    await trace(points.slice().reverse())
+    const changed = changedPixelsFromSnapshot(session.maskCanvas,before,3)
+    dispatch('pointerup', points[0], 0)
+    if(changed) throw new Error(`same-stroke circle retrace changed ${changed} pixels`)
+    if(!session.softBrushStroke.raster.shape) throw new Error('turn smoke did not use the shape feather')
+    scheduleMaskEditorPreview(canvas,session)
+    document.body.setAttribute('data-novaflow-mask-turn-smoke',`ok:single-pointer:circle-reversed:changed${changed}`)
+    setMessage('MASK_TURN_SMOKE_OK 单笔圆环正反向回绕，像素无堆积')
+  }
   function runMaskPaintPerformanceSmokeTest() {
     const previous = state.maskEditor
     try {
@@ -34757,9 +34798,9 @@
       const middle = valueAt(177, 90)
       const outer = valueAt(211, 90)
       if (center > 8) throw new Error(`mask feather center not erased: ${center}`)
-      // Two separate clicks, including the shared smooth ramp and 8-bit mask rounding.
-      if (Math.abs(middle - 26) > 1) throw new Error(`mask feather middle not soft: ${middle}`)
-      if (Math.abs(outer - 204) > 1) throw new Error(`mask feather outer not broad: ${outer}`)
+      // Two separate clicks. Reference: circular-kernel / middle-disk overlap area.
+      if (Math.abs(middle - 45) > 3) throw new Error(`mask feather middle not soft: ${middle}`)
+      if (Math.abs(outer - 201) > 3) throw new Error(`mask feather outer not broad: ${outer}`)
       document.body.setAttribute('data-novaflow-mask-feather-smoke', `ok:${center},${middle},${outer}:min0`)
     } finally {
       state.maskEditor = previous
@@ -36541,11 +36582,11 @@
     }, 250)
   }
 
-  const maskSmokeQuery = new URLSearchParams(window.location.search).has('__novaflow_mask_apply_smoke') ? 'apply' : (new URLSearchParams(window.location.search).has('__novaflow_mask_paint_perf_smoke') ? 'perf' : '')
+  const maskSmokeQuery = new URLSearchParams(window.location.search).has('__novaflow_mask_turn_smoke') ? 'turn' : new URLSearchParams(window.location.search).has('__novaflow_mask_apply_smoke') ? 'apply' : (new URLSearchParams(window.location.search).has('__novaflow_mask_paint_perf_smoke') ? 'perf' : '')
   if (maskSmokeQuery) {
-    window.setTimeout(() => Promise.resolve().then(() => maskSmokeQuery === 'apply' ? runMaskEditorApplySmokeTest() : runMaskPaintPerformanceSmokeTest()).catch((error) => {
+    window.setTimeout(() => Promise.resolve().then(() => maskSmokeQuery === 'turn' ? runMaskTurnSmokeTest() : maskSmokeQuery === 'apply' ? runMaskEditorApplySmokeTest() : runMaskPaintPerformanceSmokeTest()).catch((error) => {
       const message = String(error && error.message || error || `mask ${maskSmokeQuery} smoke failed`)
-      document.body.setAttribute(maskSmokeQuery === 'apply' ? 'data-novaflow-mask-apply-smoke' : 'data-novaflow-mask-paint-perf-smoke', `fail:${message}`)
+      document.body.setAttribute(maskSmokeQuery === 'turn' ? 'data-novaflow-mask-turn-smoke' : maskSmokeQuery === 'apply' ? 'data-novaflow-mask-apply-smoke' : 'data-novaflow-mask-paint-perf-smoke', `fail:${message}`)
       setMessage(`MASK_${maskSmokeQuery.toUpperCase()}_SMOKE_FAIL ${message}`, true)
       render()
       syncSplitWorkspace()
