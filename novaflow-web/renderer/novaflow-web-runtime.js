@@ -870,7 +870,7 @@
       try {
         const video = /:8189(?:\/|$)/.test(String(payload && payload.baseUrl || ''));
         const count = await poolHas(video ? 'h3_i2v' : 'qwen_t2i');
-        if (!count) return { ok: false, status: 503, error: '暂无可用算力节点，请稍后重试' };
+        if (!count) return { ok: false, status: 503, error: video ? '当前无可用视频节点，请稍后重试' : '当前无可用生图节点，请稍后重试' };
         return {
           ok: true,
           status: 200,

@@ -197,17 +197,17 @@
   // a user who has not logged in would be told 未连接 while machines are
   // sitting there idle; and which machines they are is nobody's business but
   // the pool owner's. A count is all the app needs to draw its indicator.
-  let lastCaps = { at: 0, count: 0 };
+  let lastCaps = { at: 0, count: 0, types: [] };
   if (typeof root.addEventListener === 'function') {
-    root.addEventListener('novaflow:compute-node', () => { lastCaps = { at: 0, count: 0 }; });
+    root.addEventListener('novaflow:compute-node', () => { lastCaps = { at: 0, count: 0, types: [] }; });
   }
   async function pollCapacity(maxAgeMs = 8000) {
     if (Date.now() - lastCaps.at < maxAgeMs) return lastCaps.count;
     try {
       const caps = await runtime.control('GET', '/api/web/capabilities');
-      lastCaps = { at: Date.now(), count: Number(caps.available_workers || 0) };
+      lastCaps = { at: Date.now(), count: Number(caps.available_workers || 0), types: caps.taskTypes || [] };
     } catch (_) {
-      lastCaps = { at: Date.now(), count: 0 };
+      lastCaps = { at: Date.now(), count: 0, types: [] };
     }
     return lastCaps.count;
   }
@@ -217,7 +217,7 @@
     if (!online) {
       return {
         ok: false, status: 'stopped', running: false, connected: false,
-        installed: true, detail: '暂无可用算力'
+        installed: true, source: 'web-compute-pool', detail: '算力池当前没有可用节点；生图与分析各需对应模型节点'
       };
     }
     return {
@@ -228,7 +228,9 @@
       installed: true,
       health: { ok: true },
       workers: online,
-      detail: online + ' 台算力可用'
+      source: 'web-compute-pool',
+      detail: online + ' 台算力可用；生图节点 ' + Number(lastCaps.types.find(t => t.task_type === 'qwen_t2i')?.available_workers || 0)
+        + '；本地分析节点 ' + Number(lastCaps.types.find(t => t.task_type === 'prompt_assistant')?.available_workers || 0)
     };
   };
 

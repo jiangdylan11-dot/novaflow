@@ -30039,12 +30039,12 @@
 
   function topbarAiRuntimeStatusPresentation(status) {
     if (isTopbarAiRuntimeConnected(status)) {
-      return { phase: "connected", label: "AI \u5df2\u8fde\u63a5", color: "rgba(126, 232, 181, 0.95)" };
+      return { phase: "connected", label: status?.source === "web-compute-pool" ? "算力池在线" : "AI \u5df2\u8fde\u63a5", color: "rgba(126, 232, 181, 0.95)" };
     }
     if (status?.status === "starting") {
       return { phase: "starting", label: "AI \u542f\u52a8\u4e2d", color: "rgba(250, 204, 21, 0.95)" };
     }
-    return { phase: "disconnected", label: "AI \u672a\u8fde\u63a5", color: "rgba(255,255,255,0.58)" };
+    return { phase: "disconnected", label: status?.source === "web-compute-pool" ? "算力池无可用节点" : "AI \u672a\u8fde\u63a5", color: "rgba(255,255,255,0.58)" };
   }
 
   function noteTopbarAiRuntimeStatus(status) {
@@ -30069,6 +30069,7 @@
     host.setAttribute("data-novaflow-topbar-ai-runtime-connected", presentation.phase === "connected" ? "1" : "0");
     host.setAttribute("data-novaflow-topbar-ai-runtime-phase", presentation.phase);
     label.textContent = presentation.label;
+    label.title = String(status?.detail || "");
     label.style.setProperty("color", presentation.color, "important");
   }
 
@@ -81507,7 +81508,6 @@
       host, state: ART_GENERATE_STATE, modelState: artGenerateModelState(),
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); },
       async loadCatalog(context) {
-        await detectArtGenerateBaseUrl();
         const response = await window.electronAPI?.qwenLoraCatalog?.(context);
         if (!response?.ok) throw new Error(response?.error || "读取兼容 LoRA 列表失败");
         return response;
@@ -84186,7 +84186,8 @@
     }, "\u5386\u53f2\u8bb0\u5f55");
     return createArtEl("div", { className: "novaflow-art-generate-prompt-history" }, [
       createArtEl("div", { className: "novaflow-art-generate-history-main" }, [
-        label
+        label,
+        ...(ui && key === "prompt" ? [window.NovaFlowUiDesignDrawing?.renderAnalysisSelector?.(document)].filter(Boolean) : [])
       ]),
       key === "prompt" ? renderArtGeneratePromptAssistantActions() : createArtEl("div", {
         className: "novaflow-art-generate-editor-actions"
@@ -86033,6 +86034,7 @@
         return await runArtGenerate({ uiPrepared: prepared });
       } catch (error) {
         ART_GENERATE_STATE.running = false;
+        resetArtGenerateProgress(error?.name === 'AbortError' || /中止|终止/.test(String(error?.message || '')) ? '任务已中止' : '分析失败，未提交生成', 0);
         setArtGenerateStatus(String(error?.message || error), true);
         return;
       }

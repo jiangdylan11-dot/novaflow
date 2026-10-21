@@ -48,7 +48,7 @@
     const localTarget = /主按钮|按钮|Spin|BUY|标题|主框|主盘|奖励栏|奖励牌|图标|人物|角色|符号|物品|局部|\b(?:button|title|reward|character|icon)\b/iu
     const globalTarget = /整体|全局|全图|整(?:个|张)(?:UI|界面)|(?:所有|全部|各)(?:UI)?(?:组件|部件)|\b(?:all|every)\s+(?:ui\s+)?components?\b|\b(?:whole|entire)\s+(?:ui|interface)\b/iu
     const construction = /保形|造型|构造|轮廓|外形|形状|外壳|边框|框体|承托|支撑|连接(?:方式|结构|件)|\b(?:forms?|shapes?|silhouettes?|construction|housings?|frames?|supports?|connectors?|connections?)\b/iu
-    const pure = /(?:纯(?:粹)?|仅(?:仅)?|只)(?:做|进行|是)?\s*(?:换皮|风格迁移)|(?:仅(?:仅)?|只)(?:改|换|改变|更换|调整)(?:画风|风格|配色|材质|纹理)|\b(?:reskin\s+only|only\s+(?:reskin|restyle|restyling)|pure(?:ly)?\s+(?:reskin|restyling|style[- ]transfer))\b/giu
+    const pure = /(?:纯(?:粹)?|仅(?:仅)?|只)(?:做|进行|是)?\s*(?:换皮|风格迁移)|(?:仅(?:仅)?|只)(?:改|换|改变|更换|调整)(?:画风|风格|配色|材质|纹理)|(?:仅(?:仅)?|只)(?:把|将)?(?:整体|全屏|整个|整张)?(?:UI|界面|画面|图片)?(?:的)?(?:画风|风格|配色|材质|纹理)(?:改成|换成|改为|更换|调整|转换|切换)|\b(?:reskin\s+only|only\s+(?:reskin|restyle|restyling)|pure(?:ly)?\s+(?:reskin|restyling|style[- ]transfer))\b/giu
     return String(input.prompt || '').split(FORM_CLAUSE).some(clause => {
       for (const match of clause.matchAll(pure)) {
         if (!isNegatedAction(clause, match) && !localTarget.test(clause.slice(0, match.index))) return true
@@ -133,7 +133,7 @@
     const rebuild = '(?:重新设计|重设计|重做|重新制作|重新绘制)'
     const complete = new RegExp('(?:' + whole + '\\s*' + rebuild + '|' + rebuild + '\\s*' + whole + ')(?:(?:成|为)([^，。；;,\\r\\n]+))?', 'giu')
     const prompt = String(input.prompt || '')
-    const keepTheme = /(?:保留|保持|沿用)(?:原有|原来|原|现有|当前|旧)(?:的)?(?:主题|题材)|(?:不|不要|不得)(?:更换|改变|替换)(?:主题|题材)/u.test(prompt)
+    const keepTheme = /(?:保留|保持|沿用)(?:原有|原来|原|现有|当前|旧)(?:的)?(?:主题|题材)|(?:不|不要|不得)(?:更换|改变|替换|换)(?:主题|题材)/u.test(prompt)
     return prompt.split(/[，。；;,\r\n]/u).some(clause => {
       for (const match of clause.matchAll(actions)) {
         if (isNegatedAction(clause, match) || /保留|保持|沿用/u.test(match[0])) continue
@@ -143,6 +143,12 @@
       // still form-only. An affirmative new whole screen takes precedence over
       // an unrelated material or character preservation clause.
       if (keepTheme || requestsFormPreservation(input)) return false
+      // A separate target-theme clause is still a theme request: e.g. change
+      // the art style, then name the new theme after a comma. A description of
+      // the current theme or a style-only edit must not expand that scope.
+      const target = clause.trim().replace(/^[：:\s]+/, '')
+      if (!/^(?:不|别|勿|无须|无需)/u.test(target) && !/保留|保持|沿用|原有|原来|原图|原主题|旧主题|现有|当前|参考图|不要|不得|不能|不换|别换|禁止|并非|不是|无需|不变|不改/u.test(target)
+        && /^(?:(?:目标|新|输出)(?:主题)?\s*[：:是为]\s*[^，。；;,\r\n]{1,48}|(?:(?:生成|制作|设计|做成|采用|使用)(?:一个|一张|一幅|为|成)?\s*)?[^，。；;,\r\n]{1,32}主题(?:的)?(?:老虎机|游戏(?:UI|界面)?|UI|界面|页面|画面|设计)?)[！!？?]?$/iu.test(target)) return true
       for (const match of clause.matchAll(complete)) {
         if (isNegatedAction(clause, match)) continue
         if (match[1]) {

@@ -51,6 +51,40 @@
     }
     for (const child of children) node.appendChild(child)
     return node
+  }
+  function analysisEngine() {
+    return mounted?.store.getState().settings?.assistantEngine === 'grok' ? 'grok' : 'local'
+  }
+  function syncAnalysisSelector(group) {
+    const engine = analysisEngine(), busy = Boolean(preparation || drawing()?.state.running)
+    for (const button of group.querySelectorAll('[data-novaflow-ui-analysis-engine]')) {
+      const selected = button.getAttribute('data-novaflow-ui-analysis-engine') === engine
+      if (button.getAttribute('aria-checked') !== String(selected)) {
+        button.setAttribute('aria-checked', String(selected))
+        Object.assign(button.style, { background: selected ? '#174e42' : '#262626', color: selected ? '#a5e8d4' : '#aaa', borderColor: selected ? '#328871' : '#424242' })
+      }
+      button.disabled = busy
+    }
+  }
+  function syncAnalysisSelectors() {
+    for (const group of root.document?.querySelectorAll?.('[data-novaflow-ui-analysis-source="1"]') || []) syncAnalysisSelector(group)
+  }
+  function renderAnalysisSelector(doc = root.document) {
+    const group = element(doc, 'span', { role: 'radiogroup', 'aria-label': '设计需求分析来源', 'data-novaflow-ui-analysis-source': '1', style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } })
+    for (const [engine, label] of [['local', '本地分析'], ['grok', 'Grok 分析']]) {
+      const button = element(doc, 'button', { type: 'button', role: 'radio', text: label, 'data-novaflow-ui-analysis-engine': engine,
+        title: engine === 'local' ? '由当前算力源的本地模型分析需求与参考图' : '手动选择 Grok 分析需求与参考图',
+        style: { height: '24px', padding: '2px 6px', border: '1px solid #424242', borderRadius: '5px', fontSize: '10px', lineHeight: '1', cursor: 'pointer' } })
+      button.addEventListener('click', event => {
+        event.preventDefault(); event.stopPropagation()
+        if (!mounted || preparation || drawing()?.state.running) return
+        mounted.store.patchSettings({ assistantEngine: engine })
+        syncAnalysisSelectors()
+      })
+      group.appendChild(button)
+    }
+    syncAnalysisSelector(group)
+    return group
   }
   function mount({ leftHost, store, getSessionToken }) {
     const doc = leftHost.ownerDocument, accordion = root.NovaFlowLeftPanelAccordion
@@ -149,6 +183,7 @@
     let started = false
     function sync() {
       if (!alive) return
+      syncAnalysisSelectors()
       smartSplit?.sync()
       // The drawing runtime may rebuild its accordion; reattach the extension without replacing it.
       const generate = leftHost.querySelector('[data-novaflow-spine-split-control-category="generate"]')
@@ -172,7 +207,9 @@
     const unsubscribe = store.subscribe(() => { try {
       root.localStorage.setItem('novaflow-ui-design-project-v1', JSON.stringify(store.serializeProject()))
       root.localStorage.setItem('novaflow-ui-design-project-initialized-v1', '1')
-    } catch {} })
+    } catch {}
+      syncAnalysisSelectors()
+    })
     const layers = root.NovaFlowUiDesignLayers?.mount({ leftHost, store, onOpen: () => show(false) })
     mounted = { store, editor, getSessionToken, layoutContext, sync, syncSize, getSelectionBinding: () => selectionBinding }
     bindSelection()
@@ -270,7 +307,7 @@
     const refs = root.NovaFlowUiDesignPromptPipeline.requireLayoutReferences(assignExplicitReferenceRoles(snapshot, prompt))
     const layout = refs.find(ref => ref.uiLayoutId)
     return {
-      uiCatalogEnabled: true, provider: state.provider || 'local', engine: mounted?.store.getState().settings?.assistantEngine || 'local',
+      uiCatalogEnabled: true, provider: state.provider || 'local', engine: analysisEngine(),
       targetEngine: (state.provider || 'local') === 'local' ? root.NovaFlowArtGenerateModels?.capabilityFor?.('local', state.mode, state)?.engine || '' : '',
       prompt, negativePrompt: String(state.negativePrompt || ''),
       preserveLayout: refs.length > 0 && !explicitlyChangesLayout(prompt),
@@ -301,6 +338,7 @@
     if (preparation) throw new Error('正在理解 UI 设计需求')
     const controller = new AbortController(), session = mounted
     preparation = controller
+    syncAnalysisSelectors()
     try {
       const originalPrompt = String(context.state.prompt || '')
       const originalSurface = context.generationSurface
@@ -378,7 +416,7 @@
         references: input.references, originalPrompt, optimizedPrompt: result.prompt, state, assertCurrent,
         store: session?.store,
       }
-    } finally { if (preparation === controller) preparation = null }
+    } finally { if (preparation === controller) preparation = null; syncAnalysisSelectors() }
   }
   function openAssistant() {
     const api = drawing()
@@ -413,7 +451,7 @@
   function recordResult(result, prepared) {
     prepared.store?.addResult({ ...result, dataUrl: result.imageUrl, originalUserPrompt: prepared.originalPrompt, optimizedPrompt: prepared.optimizedPrompt, uiPlan: prepared.uiPlan || null, analysisUiPlan:prepared.analysisUiPlan || null, uiCatalog:prepared.uiCatalog || null, referenceTreatments:(prepared.references || []).map(ref=>ref.uiReferenceTreatment).filter(Boolean) })
   }
-  root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, shouldPrepare, inputFor, selectedEditRegion, snapshotLayoutReferences, prepare, openAssistant, recordResult, generationOptions,
+  root.NovaFlowUiDesignDrawing = Object.freeze({ mount, isActive, shouldPrepare, renderAnalysisSelector, inputFor, selectedEditRegion, snapshotLayoutReferences, prepare, openAssistant, recordResult, generationOptions,
     syncOutputSize() { mounted?.syncSize() },
     cancelPreparation() { if (!preparation) return false; preparation.abort(); return true },
   })

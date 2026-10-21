@@ -42,61 +42,34 @@ test('assistant keeps a single UI screenshot as layout when the request explicit
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
   const result=await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',
     prompt:'参考图1，做一个中国风的生肖牛主题的老虎机，布局一样。',references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}],
-    electronAPI:{smartAiImageReverse:async payload=>({ok:true,prompt:'将'+payload.prompt.match(/__NOVAFLOW_[A-Z0-9_:-]+__/)[0]+'改成生肖牛老虎机。',uiPlan:null})}});
+    electronAPI:{smartAiImageReverse:async payload=>({ok:true,prompt:'将'+payload.prompt.match(/__NOVAFLOW_[A-Z0-9_:-]+__/)[0]+'改成生肖牛老虎机。',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}})}});
   assert.equal(result.uiPlan.layoutReference,1);
   assert.equal(result.uiPlan.layoutMode,'preserve');
   assert.equal(result.uiPlan.visualMode,'theme-redesign');
   assert.equal(result.uiPlan.references[0].role,'layout');
 });
 
-test('packaged client continues when old cloud planning rejects a valid layout reference',async()=>{
+test('packaged client stops when cloud planning rejects a valid layout reference',async()=>{
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
-  let sent;
-  const result=await context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',
+  let sent,calls=0;
+  await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',
     prompt:'参考图1的布局，生成一个高质量的2次元风格，生肖牛主题的老虎机。',preserveLayout:true,generationIntent:'redesign',references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}],
-    electronAPI:{smartAiImageReverse:async payload=>{sent=payload;throw new Error('Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成')}}});
-  assert.equal(sent.images[0].role,'layout');
-  assert.equal(result.uiPlan.layoutMode,'preserve');
-  assert.equal(result.uiPlan.visualMode,'theme-redesign');
-  assert.equal(result.uiPlan.references[0].role,'layout');
-  assert.match(result.prompt,/生肖牛主题/);
-  assert.match(result.prompt,/按新主题逐区设计人物、背景、图标符号/);
-  const compiled=context.NovaFlowUiDesignPromptPipeline.compileQwenPlan(result,{prompt:'参考图1的布局，生成一个高质量的2次元风格，生肖牛主题的老虎机。',
-    references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}],preserveLayout:true,generationIntent:'redesign'});
-  assert.equal(compiled.references.length,1);
-  assert.equal(compiled.plan.layoutReference,1);
-  assert.equal(compiled.plan.layoutMode,'preserve');
-  assert.equal(compiled.plan.references[0].role,'layout');
-  assert.match(compiled.prompt,/图片是唯一布局与业务依据/);
-  assert.match(compiled.prompt,/玩法拓扑、网格行列数量、控件数量与功能/);
-  assert.match(compiled.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
-  assert.doesNotMatch(compiled.prompt,/业务事实：/); // Failed planning cannot invent an inventory.
+    electronAPI:{smartAiImageReverse:async payload=>{sent=payload;calls++;throw new Error('Qwen 2.1 UI 设计规划不完整，请重试；本次未提交生成')},promptAssistantReverseImagePrompt:async()=>{throw new Error('must not change provider')}}}),/规划不完整/);
+  assert.equal(calls,1);assert.equal(sent.images[0].role,'layout');
 });
 
-test('web runtime returned planning error also falls back to a usable layout plan',async()=>{
+test('web runtime planning and authentication failures propagate without a fallback prompt',async()=>{
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
   const input={provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',
     prompt:'参考图1的布局，生成一个高质量的2次元风格，生肖牛主题的老虎机。',preserveLayout:true,generationIntent:'redesign',
     references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}]};
-  const result=await context.NovaFlowUiDesignAssistantWorkflow.run({...input,electronAPI:{smartAiImageReverse:async()=>({
-    ok:false,error:'2.1 UI 设计规划不完整，请重试；本次未提交生成',
-  })}});
-  assert.equal(result.uiPlan.layoutMode,'preserve');
-  assert.equal(result.uiPlan.layoutReference,1);
-  assert.match(result.prompt,/生肖牛主题/);
-  const compiled=context.NovaFlowUiDesignPromptPipeline.compileQwenPlan(result,input);
-  assert.equal(compiled.plan.layoutReference,1);
-  assert.equal(compiled.plan.layoutMode,'preserve');
-  assert.equal(compiled.plan.references[0].role,'layout');
-  assert.match(compiled.prompt,/图片是唯一布局与业务依据/);
-  assert.match(compiled.prompt,/玩法拓扑、网格行列数量、控件数量与功能/);
-  assert.match(compiled.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
-  assert.doesNotMatch(compiled.prompt,/业务事实：/); // Failed planning cannot invent an inventory.
-  await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...input,electronAPI:{smartAiImageReverse:async()=>({
-    ok:false,error:'登录已过期',
-  })}}),/登录已过期/);
+  for(const error of ['2.1 UI 设计规划不完整，请重试；本次未提交生成','登录已过期']) {
+    let calls=0;
+    await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...input,electronAPI:{smartAiImageReverse:async()=>{calls++;return {ok:false,error}}}}),new RegExp(error.split('，')[0]));
+    assert.equal(calls,1);
+  }
 });
 
 test('native UI planning uses all references once without an implicit grid-count gate',async()=>{
@@ -120,7 +93,7 @@ test('native UI planning uses all references once without an implicit grid-count
 test('assistant requires layout before transport and promotes the sole style image to layout',async()=>{
   const context={setTimeout,clearTimeout,console};vm.createContext(context);
   for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),context);
-  const requests=[],base={provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'新主题组件构造设计',electronAPI:{smartAiImageReverse:async payload=>{requests.push(payload);return {ok:true,prompt:'重设计布局图组件',uiPlan:null};}}};
+  const requests=[],base={provider:'local',engine:'grok',targetEngine:'qwen-2.1',sessionToken:'test',prompt:'新主题组件构造设计',electronAPI:{smartAiImageReverse:async payload=>{requests.push(payload);return {ok:true,prompt:'重设计布局图组件',uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}};}}};
   await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...base,references:[]}),/必须有布局图/);
   await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...base,references:[{role:'style',dataUrl:'data:image/png;base64,style'},{role:'character',dataUrl:'data:image/png;base64,character'}]}),/缺少布局图/);
   assert.equal(requests.length,0);

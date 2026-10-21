@@ -438,16 +438,6 @@
     if (currentPrompt.length > 18000 || String(options.negativePrompt || '').length > 10000) throw new Error('提示词过长，请精简后再试；本次未截断提交。')
     const currentNegative = String(options.negativePrompt == null ? '' : options.negativePrompt)
     const promptProtection = protectText(currentPrompt.replace(/(?<!@参考)(?:参考图|图)\s*([1-9][0-9]*)/g, (token, index, offset, full) => full.slice(Math.max(0, offset - 1), offset) === '@' ? token : `@参考图${index}`))
-    const recoverPlanningFailure = error => {
-      checkActive()
-      if (options.targetEngine !== 'qwen-2.1' || !/2\.1 UI 设计规划(?:不完整|JSON无效)/u.test(String(error?.message || error))) throw error
-      const scope = root?.NovaFlowUiDesignPromptPipeline?.requestsFormPreservation?.(options) === true
-        ? '保留参考图的组件轮廓、主体承托和连接，仅重绘用户要求的主题外观与风格材质；人物、符号和标题仅按用户明确的新主题或替换要求改变，其余身份、金额、文案及功能保持。'
-        : options.generationIntent === 'style-transfer' ? '只改变要求的视觉风格，保留参考图中的功能、内容身份和布局。'
-          : options.generationIntent === 'iteration' ? '只修改明确指定的部分，其余区域保持原样。'
-            : '以参考图为编辑画布，除用户明确要求改变的部分外沿用区域位置与功能关系；按新主题逐区设计人物、背景、图标符号、面板与按钮。'
-      return { ok: true, uiPlan: null, prompt: `${promptProtection.text}。${scope}` }
-    }
     const negativeProtection = protectText(currentNegative)
     const revision = typeof options.getRevision === 'function' ? options.getRevision() : options.revision
     const supportsNegativePrompt = provider === 'local'
@@ -486,13 +476,9 @@
           slotType: reference.role,
         })),
       }
-      try {
-        result = await withTimeout(() => call(request), options.timeoutMs, engine)
-      } catch (error) {
-        result = recoverPlanningFailure(error)
-      }
+      result = await withTimeout(() => call(request), options.timeoutMs, engine)
     } else if (references.length) {
-      try { result = await withTimeout(() => call({
+      result = await withTimeout(() => call({
         prompt: promptProtection.text,
         currentPrompt: promptProtection.text,
         negativePrompt: supportsNegativePrompt ? negativeProtection.text : '',
@@ -509,9 +495,9 @@
           role: reference.role,
           slotType: reference.role,
         })),
-      }), options.timeoutMs, engine) } catch (error) { result = recoverPlanningFailure(error) }
+      }), options.timeoutMs, engine)
     } else {
-      try { result = await withTimeout(() => call({
+      result = await withTimeout(() => call({
         prompt: promptProtection.text,
         currentPrompt: promptProtection.text,
         negativePrompt: supportsNegativePrompt ? negativeProtection.text : '',
@@ -522,7 +508,7 @@
         uiDesignIntent: ['iteration', 'style-transfer'].includes(options.generationIntent) ? options.generationIntent : 'redesign',
         uiPreserveLayout: options.preserveLayout === true,
         provider,
-      }), options.timeoutMs, engine) } catch (error) { result = recoverPlanningFailure(error) }
+      }), options.timeoutMs, engine)
     }
 
     if (typeof options.getRevision === 'function' && options.getRevision() !== revision) {
@@ -532,7 +518,6 @@
     }
 
     checkActive()
-    if (result?.ok === false) result = recoverPlanningFailure(new Error(text(result.error) || 'AI 助手执行失败'))
     const parsed = unwrapResult(result)
     if (options.targetEngine !== 'qwen-2.1' && options.preserveLayout) parsed.prompt = parsed.prompt.replace(/\[布局与功能\][\s\S]*?(?=\[区域设计\])/, '[布局与功能]\n除用户明确要求改变的项目外，沿用布局参考图的全部区域、位置、面积占比、顺序、叠放、对齐、网格行列和控件数量，人物展示区不得遗漏；逐区替换视觉，不扩大符号区挤占人物区。任何不确定的布局数据直接以参考图为准，禁止估算或套用常见模板。\n')
     const restoredPrompt = restoreText(parsed.prompt, promptProtection)
@@ -544,7 +529,11 @@
     }
 
     const finalPrompt = restoredPrompt.text
-    if (parsed.uiPlan && options.targetEngine === 'qwen-2.1') {
+    if (options.targetEngine === 'qwen-2.1') {
+      if (!parsed.uiPlan) throw new Error('Qwen 2.1 UI 设计规划不完整，本次未提交生成')
+      // Validate the analysis contract before applying defensive scope guards.
+      // Invalid analysis is an error, never permission to invent a fallback.
+      root.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(parsed.uiPlan, { ...options, references })
       const restoreList = list => Array.isArray(list) ? list.map(value => {
         let restored = value
         if (typeof restored !== 'string') return restored

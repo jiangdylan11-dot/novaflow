@@ -11,7 +11,8 @@
   // once and only refreshes quietly.
   const catalogCache = new Map()
   const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
-  // ...and across page loads: the answer (names, or the error line) is what sets the
+  const CATALOG_ERROR_RETRY_MS = 15000
+  // ...and across page loads: the successful names are what set the
   // block's height, and on a fresh page it arrived after the panel's first frame
   const STORAGE_KEY = 'nf_art_lora_catalog_v1'
   function readStore() {
@@ -131,7 +132,7 @@
       // The brand spec's final spacing, so a rebuilt slot does not move the rows below it.
       slot.style.cssText = 'display:grid;gap:5px;min-width:0;margin:0;text-align:left;'
       host.appendChild(slot)
-      record = { slot, options, names: [], loaded: false, loading: false, error: '', signature: '' }
+      record = { slot, options, names: [], loaded: false, loading: false, fetching: false, failedAt: 0, error: '', signature: '' }
       mounts.set(host, record)
     }
     record.options = options
@@ -140,7 +141,8 @@
       record.context = context; record.loaded = false; record.signature = ''
       const cached = catalogCache.get(context) || readStore()[context]
       record.names = cached && Array.isArray(cached.names) ? cached.names.slice() : []
-      record.error = cached && cached.error ? String(cached.error) : ''
+      record.error = cached?.error && Date.now() - Number(cached.at || 0) < CATALOG_ERROR_RETRY_MS ? String(cached.error) : ''
+      record.failedAt = record.error ? Number(cached.at || 0) : 0
       record.quiet = Boolean(cached)
     }
     const supported = supports(modelState)
@@ -153,15 +155,17 @@
       record.signature = signature
       render(record)
     }
-    if (!record.loaded && !record.loading) {
+    if (record.error && !state.running && Date.now() - record.failedAt >= CATALOG_ERROR_RETRY_MS) record.loaded = false
+    if (!record.loaded && !record.fetching && !state.running) {
       const cached = catalogCache.get(context)
-      if (cached && Date.now() - cached.at < CATALOG_CACHE_TTL_MS) { record.loaded = true; record.quiet = false }
+      if (cached && !record.error && Date.now() - cached.at < CATALOG_CACHE_TTL_MS) { record.loaded = true; record.quiet = false }
       else void refresh(record)
     }
   }
 
   async function refresh(record) {
-    if (record.loading) return
+    if (record.fetching) return
+    record.fetching = true
     const context = record.context
     const modelState = record.options.modelState || record.options.state
     const request = qwen21Route(modelState) ? { nsfw: false, engine: 'qwen-2.1' } : { nsfw: !!modelState.nsfw }
@@ -175,7 +179,7 @@
       const names = catalogFromInfo(await record.options.loadCatalog(request))
       catalogCache.set(context, { names: names.slice(), at: Date.now() })
       remember(context, { names: names.slice(), at: Date.now() })
-      if (context === record.context) record.error = ''
+      if (context === record.context) { record.error = ''; record.failedAt = 0 }
       if (context === record.context) {
         record.names = names
         const before = (record.options.state.loras || []).length
@@ -183,9 +187,12 @@
         dropped = record.options.state.loras.length !== before
       }
     } catch (error) {
-      if (context === record.context) record.error = String(error?.message || error)
-      remember(context, { error: String(error?.message || error), at: Date.now() })
+      if (context === record.context) { record.error = String(error?.message || error); record.failedAt = Date.now() }
+      // Connection failures describe this list fetch, not the runtime's current
+      // health. Keep successful names, never persist a stale connection error.
+      remember(context, { names: record.names.slice(), at: Date.now() })
     } finally {
+      record.fetching = false
       record.loading = false
       record.quiet = false
       mount(record.options)
@@ -228,7 +235,7 @@
     })
     children.push(select)
     if (record.error) {
-      const retry = element('button', `${(globalThis.NovaFlowNeutralText || String)(record.error)} · 重试`, 'color:#fca5a5;font-size:11px;background:transparent;border:0;padding:0;text-align:left;overflow-wrap:anywhere;cursor:pointer;')
+      const retry = element('button', `LoRA 列表读取失败：${(globalThis.NovaFlowNeutralText || String)(record.error)} · 重试`, 'color:#fca5a5;font-size:11px;background:transparent;border:0;padding:0;text-align:left;overflow-wrap:anywhere;cursor:pointer;')
       retry.type = 'button'
       retry.disabled = Boolean(state.running) || record.loading
       retry.addEventListener('click', () => { if (!state.running) void refresh(record) })
