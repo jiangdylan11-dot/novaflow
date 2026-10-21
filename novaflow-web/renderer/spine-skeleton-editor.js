@@ -5809,21 +5809,26 @@
     if (i) { i.focus(); i.select() }
   }
 
-  function renameTreeBone(name) {
-    if (state.pick || pfx || !bone(name)) return
+  function renameTreeItem(kind, name) {
+    const animation = kind === 'anim', word = animation ? '动画' : '骨骼'
+    if (state.pick || pfx || !(animation ? state.json && Object.hasOwn(state.json.animations || {}, name) : bone(name))) return
     // Selection rebuilds the tree on the first click, so resolve the current row.
-    const row = [...document.querySelectorAll('#tree .row[data-key]')].find((r) => r.dataset.key === 'b:' + name)
+    const row = [...document.querySelectorAll('#tree .row[data-key]')].find((r) => r.dataset.key === (animation ? 'anim:' : 'b:') + name)
     const label = row && row.querySelector('.label')
     if (!label || row.querySelector('input.rename')) return
-    const input = h('input', { class: 'rename', value: name, 'aria-label': `重命名骨骼 ${name}`, draggable: false })
+    const input = h('input', { class: 'rename', value: name, 'aria-label': `重命名${word} ${name}`, draggable: false })
     let finished = false
     const done = (save) => {
       if (finished) return
       const next = input.value.trim()
-      if (save && !next) { status('骨骼名称不能为空', 'error'); input.focus(); return }
+      if (save && !next) { status(`${word}名称不能为空`, 'error'); input.focus(); return }
       finished = true
       if (!save || next === name) { renderTree(); return }
-      edit(`已改名 ${name} → ${next}`, (j) => Ops.renameBone(j, name, next), (r) => { state.sel = { kind: 'bone', name: r.bone }; state.multi = [r.bone] })
+      if (animation) edit(`已改名动画 ${name} → ${next}`, (j) => Ops.renameAnimation(j, name, next), (r) => {
+        state.sel = { kind: 'anim', name: r.animation }
+        if (state.anim === name) state.anim = r.animation
+      })
+      else edit(`已改名 ${name} → ${next}`, (j) => Ops.renameBone(j, name, next), (r) => { state.sel = { kind: 'bone', name: r.bone }; state.multi = [r.bone] })
     }
     for (const type of ['pointerdown', 'click', 'dblclick', 'dragstart']) input.addEventListener(type, (e) => e.stopPropagation())
     input.addEventListener('keydown', (e) => {
@@ -5836,22 +5841,24 @@
     input.focus(); input.select()
   }
 
-  function bindTreeBoneRename() {
+  function bindTreeRename() {
     const tree = $('#tree')
+    const renameable = (key) => key && (key.startsWith('b:') || key.startsWith('anim:'))
+    const rename = (key) => renameTreeItem(key.startsWith('anim:') ? 'anim' : 'bone', key.slice(key.indexOf(':') + 1))
     let lastClick = null
     tree.addEventListener('click', (e) => {
       const row = e.target.closest('.row[data-key]')
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || state.pick || pfx ||
-          !row || !row.dataset.key.startsWith('b:') || e.target.closest('.caret,.vis,.lkey,.end,input,button')) { lastClick = null; return }
-      const name = row.dataset.key.slice(2), previous = lastClick
-      lastClick = { name, time: e.timeStamp, x: e.clientX, y: e.clientY }
+          !row || !renameable(row.dataset.key) || e.target.closest('.caret,.vis,.lkey,.end,input,button')) { lastClick = null; return }
+      const key = row.dataset.key, previous = lastClick
+      lastClick = { key, time: e.timeStamp, x: e.clientX, y: e.clientY }
       // Replacing the first clicked row resets the browser's native click count. Keep
       // the pair on the stable tree and intercept its second click before selection.
-      if (!previous || previous.name !== name || e.timeStamp - previous.time > 500 ||
+      if (!previous || previous.key !== key || e.timeStamp - previous.time > 500 ||
           Math.hypot(e.clientX - previous.x, e.clientY - previous.y) > 5) return
       lastClick = null
       e.preventDefault(); e.stopImmediatePropagation()
-      renameTreeBone(name)
+      rename(key)
     }, true)
     // The native double-click may target the stable tree after its first click replaced
     // the row. Hit the current row at that point instead of relying on a detached node.
@@ -5860,9 +5867,9 @@
       const target = tree.contains(e.target) && e.target !== tree ? e.target : document.elementFromPoint(e.clientX, e.clientY)
       if (!target || !tree.contains(target) || target.closest('.caret,.vis,.lkey,.end,input,button')) return
       const row = target.closest('.row[data-key]')
-      if (!row || !row.dataset.key.startsWith('b:')) return
+      if (!row || !renameable(row.dataset.key)) return
       e.preventDefault(); e.stopPropagation()
-      renameTreeBone(row.dataset.key.slice(2))
+      rename(row.dataset.key)
     })
   }
 
@@ -6126,9 +6133,8 @@
         for (const n of names) {
           const active = state.anim === n
           rows.push(h('div', {
-            class: 'row', style: pad(2), 'data-selected': isSel('anim', n) ? '1' : null,
+            class: 'row', style: pad(2), 'data-selected': isSel('anim', n) ? '1' : null, 'data-key': 'anim:' + n, title: '双击重命名动画',
             onclick: () => { state.anim = n; state.frame = 0; state.temp.clear(); state.mode = 'animate'; state.playing = false; if (state.tool === 'create') state.tool = 'rotate'; select({ kind: 'anim', name: n }) },
-            ondblclick: () => focusRename(),
           }, visDot(active, () => { state.anim = n; state.frame = 0; setMode('animate') }, null, true),
           caret(null), h('span', { class: 'ico', html: ICON.anim }), h('span', { class: 'label' }, n)))
         }
@@ -11009,7 +11015,7 @@
   initGl()
   bindChrome()
   bindViewport()
-  bindTreeBoneRename()
+  bindTreeRename()
   bindDope()
   bindCurve()
   refresh()
