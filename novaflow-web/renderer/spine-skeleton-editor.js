@@ -5809,6 +5809,63 @@
     if (i) { i.focus(); i.select() }
   }
 
+  function renameTreeBone(name) {
+    if (state.pick || pfx || !bone(name)) return
+    // Selection rebuilds the tree on the first click, so resolve the current row.
+    const row = [...document.querySelectorAll('#tree .row[data-key]')].find((r) => r.dataset.key === 'b:' + name)
+    const label = row && row.querySelector('.label')
+    if (!label || row.querySelector('input.rename')) return
+    const input = h('input', { class: 'rename', value: name, 'aria-label': `重命名骨骼 ${name}`, draggable: false })
+    let finished = false
+    const done = (save) => {
+      if (finished) return
+      const next = input.value.trim()
+      if (save && !next) { status('骨骼名称不能为空', 'error'); input.focus(); return }
+      finished = true
+      if (!save || next === name) { renderTree(); return }
+      edit(`已改名 ${name} → ${next}`, (j) => Ops.renameBone(j, name, next), (r) => { state.sel = { kind: 'bone', name: r.bone }; state.multi = [r.bone] })
+    }
+    for (const type of ['pointerdown', 'click', 'dblclick', 'dragstart']) input.addEventListener(type, (e) => e.stopPropagation())
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation()
+      if (e.isComposing) return
+      if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); done(e.key === 'Enter') }
+    })
+    input.addEventListener('blur', () => done(true))
+    label.replaceWith(input)
+    input.focus(); input.select()
+  }
+
+  function bindTreeBoneRename() {
+    const tree = $('#tree')
+    let lastClick = null
+    tree.addEventListener('click', (e) => {
+      const row = e.target.closest('.row[data-key]')
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || state.pick || pfx ||
+          !row || !row.dataset.key.startsWith('b:') || e.target.closest('.caret,.vis,.lkey,.end,input,button')) { lastClick = null; return }
+      const name = row.dataset.key.slice(2), previous = lastClick
+      lastClick = { name, time: e.timeStamp, x: e.clientX, y: e.clientY }
+      // Replacing the first clicked row resets the browser's native click count. Keep
+      // the pair on the stable tree and intercept its second click before selection.
+      if (!previous || previous.name !== name || e.timeStamp - previous.time > 500 ||
+          Math.hypot(e.clientX - previous.x, e.clientY - previous.y) > 5) return
+      lastClick = null
+      e.preventDefault(); e.stopImmediatePropagation()
+      renameTreeBone(name)
+    }, true)
+    // The native double-click may target the stable tree after its first click replaced
+    // the row. Hit the current row at that point instead of relying on a detached node.
+    tree.addEventListener('dblclick', (e) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || state.pick || pfx) return
+      const target = tree.contains(e.target) && e.target !== tree ? e.target : document.elementFromPoint(e.clientX, e.clientY)
+      if (!target || !tree.contains(target) || target.closest('.caret,.vis,.lkey,.end,input,button')) return
+      const row = target.closest('.row[data-key]')
+      if (!row || !row.dataset.key.startsWith('b:')) return
+      e.preventDefault(); e.stopPropagation()
+      renameTreeBone(row.dataset.key.slice(2))
+    })
+  }
+
   function selectSlotRange(name, prefix) {
     const pre = prefix || 'slot:'
     const rows = [...document.querySelectorAll(`#tree .row[data-key^="${pre}"]`)].map((r) => r.dataset.key.slice(pre.length))
@@ -5967,7 +6024,6 @@
             // a pick from search results opens its parents, so it stays in view once the search is cleared
             select({ kind: 'bone', name: b.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
           },
-          ondblclick: () => focusRename(),
           oncontextmenu: (e) => {
             // Spine: right click expands / collapses the node and everything below it
             e.preventDefault()
@@ -10928,6 +10984,7 @@
   initGl()
   bindChrome()
   bindViewport()
+  bindTreeBoneRename()
   bindDope()
   bindCurve()
   refresh()
