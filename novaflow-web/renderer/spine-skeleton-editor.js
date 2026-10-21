@@ -724,20 +724,10 @@
     const active = i === activeProject
     const name = projectName(i)
     const row = h('div', { class: 'row node project', style: pad(0), 'data-project': String(i), 'data-active': active ? '1' : null,
+      'data-rename': JSON.stringify({ kind: 'project', name, projectId: projects[i].id }),
       'data-selected': active && state.sel && state.sel.kind === 'project' ? '1' : null,
       title: `${name}（双击改名，拖动排序，左边箭头展开 / 收起）`,
-      onclick: () => { if (!active) switchProject(i); select({ kind: 'project', name: projectName(i) }) },
-      ondblclick: (e) => {
-        e.stopPropagation()
-        const label = row.querySelector('.label')
-        const input = h('input', { class: 'rename', value: name })
-        const done = (ok) => { if (ok) renameProject(i, input.value); else renderTree() }
-        input.addEventListener('keydown', (ev) => { ev.stopPropagation(); if (ev.key === 'Enter') done(true); if (ev.key === 'Escape') done(false) })
-        input.addEventListener('blur', () => done(true))
-        input.addEventListener('click', (ev) => ev.stopPropagation())
-        label.replaceWith(input)
-        input.focus(); input.select()
-      } },
+      onclick: () => { if (!active) switchProject(i); select({ kind: 'project', name: projectName(i) }) } },
       visDot(projects[i].visible !== false, () => setProjectVisible(i, projects[i].visible === false), null, true),
       caret(active && projects[i].open !== false, () => {
         if (active) { projects[i].open = projects[i].open === false; renderTree(); return }
@@ -5866,17 +5856,28 @@
 
   function focusRename() {
     const s = state.sel
-    if (!s || !PANEL_OF[s.kind]) return
-    renderProps()
-    const i = document.querySelector('#props input[data-rename="1"]')
-    if (i) { i.focus(); i.select() }
+    if (!s) return
+    const row = document.querySelector('#tree .row[data-selected="1"]')
+    const target = treeRenameTarget(row)
+    if (target) renameTreeItem(target.kind, target.name, { ...target, rowKey: row.dataset.key })
   }
 
-  function renameTreeItem(kind, name) {
-    const animation = kind === 'anim', word = animation ? '动画' : '骨骼'
-    if (state.pick || pfx || !(animation ? state.json && Object.hasOwn(state.json.animations || {}, name) : bone(name))) return
+  function treeRenameTarget(row) {
+    if (!row) return null
+    if (row.dataset.rename) { try { return JSON.parse(row.dataset.rename) } catch { return null } }
+    const key = row.dataset.key || '', at = key.indexOf(':')
+    const kind = { b: 'bone', anim: 'anim', slot: 'slot', order: 'slot', skin: 'skin', event: 'event', ik: 'ik', transform: 'transform', path: 'path' }[key.slice(0, at)]
+    return kind ? { kind, name: key.slice(at + 1) } : null
+  }
+
+  const treeRenameId = (s) => s ? JSON.stringify([s.kind, s.name, s.slot, s.skin, s.projectId]) : ''
+
+  function renameTreeItem(kind, name, extra) {
+    const target = { ...extra, kind, name }
+    const word = { project: '工程', bone: '骨骼', anim: '动画', slot: '插槽', att: '附件', ph: '占位符', skin: '皮肤', event: '事件', ik: '约束', transform: '约束', path: '约束' }[kind]
+    if (state.pick || pfx || !word || !state.json) return
     // Selection rebuilds the tree on the first click, so resolve the current row.
-    const row = [...document.querySelectorAll('#tree .row[data-key]')].find((r) => r.dataset.key === (animation ? 'anim:' : 'b:') + name)
+    const row = [...document.querySelectorAll('#tree .row[data-key],#tree .row[data-rename]')].find((r) => treeRenameId(treeRenameTarget(r)) === treeRenameId(target) && (!target.rowKey || r.dataset.key === target.rowKey))
     const label = row && row.querySelector('.label')
     if (!label || row.querySelector('input.rename')) return
     const input = h('input', { class: 'rename', value: name, 'aria-label': `重命名${word} ${name}`, draggable: false })
@@ -5887,11 +5888,32 @@
       if (save && !next) { status(`${word}名称不能为空`, 'error'); input.focus(); return }
       finished = true
       if (!save || next === name) { renderTree(); return }
-      if (animation) edit(`已改名动画 ${name} → ${next}`, (j) => Ops.renameAnimation(j, name, next), (r) => {
-        state.sel = { kind: 'anim', name: r.animation }
-        if (state.anim === name) state.anim = r.animation
+      if (kind === 'project') {
+        const i = projects.findIndex((p) => p.id === target.projectId)
+        if (i >= 0) { state.sel = { kind, name: next }; renameProject(i, next); renderProps() }
+        return
+      }
+      const op = (j) => {
+        if (kind === 'bone') return Ops.renameBone(j, name, next)
+        if (kind === 'anim') return Ops.renameAnimation(j, name, next)
+        if (kind === 'slot') return Ops.renameSlot(j, name, next)
+        if (kind === 'att' || kind === 'ph') return Ops.renameAttachment(j, target.slot, name, next)
+        if (kind === 'skin') return Ops.renameSkin(j, name, next)
+        if (kind === 'event') return Ops.renameEvent(j, name, next)
+        return Ops.renameConstraint(j, kind, name, next)
+      }
+      edit(`已改名${word} ${name} → ${next}`, op, () => {
+        state.sel = { kind, name: next, ...(kind === 'att' ? { skin: target.skin, slot: target.slot } : kind === 'ph' ? { slot: target.slot } : {}) }
+        if (kind === 'bone') state.multi = [next]
+        if (kind === 'anim' && state.anim === name) state.anim = next
+        if (kind === 'skin' && state.skin === name) state.skin = next
+        if (kind === 'slot') state.multiSlots = (state.multiSlots || []).map((n) => n === name ? next : n)
+        if (kind === 'att' || kind === 'ph') {
+          const renamed = (a) => a && a.slot === target.slot && a.name === name ? { ...a, name: next } : a
+          state.multiAtts = (state.multiAtts || []).map(renamed); state.attachmentAnchor = renamed(state.attachmentAnchor)
+        }
+        if (['ik', 'transform', 'path'].includes(kind)) state.multiCons = (state.multiCons || []).map((c) => c.kind === kind && c.name === name ? { kind, name: next } : c)
       })
-      else edit(`已改名 ${name} → ${next}`, (j) => Ops.renameBone(j, name, next), (r) => { state.sel = { kind: 'bone', name: r.bone }; state.multi = [r.bone] })
     }
     for (const type of ['pointerdown', 'click', 'dblclick', 'dragstart']) input.addEventListener(type, (e) => e.stopPropagation())
     input.addEventListener('keydown', (e) => {
@@ -5906,14 +5928,14 @@
 
   function bindTreeRename() {
     const tree = $('#tree')
-    const renameable = (key) => key && (key.startsWith('b:') || key.startsWith('anim:'))
-    const rename = (key) => renameTreeItem(key.startsWith('anim:') ? 'anim' : 'bone', key.slice(key.indexOf(':') + 1))
+    const rename = (s, row) => renameTreeItem(s.kind, s.name, { ...s, rowKey: row.dataset.key })
     let lastClick = null
     tree.addEventListener('click', (e) => {
-      const row = e.target.closest('.row[data-key]')
+      const row = e.target.closest('.row[data-key],.row[data-rename]')
+      const target = treeRenameTarget(row)
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || state.pick || pfx ||
-          !row || !renameable(row.dataset.key) || e.target.closest('.caret,.vis,.lkey,.end,input,button')) { lastClick = null; return }
-      const key = row.dataset.key, previous = lastClick
+          !target || e.target.closest('.caret,.vis,.lkey,.end,input,button')) { lastClick = null; return }
+      const key = JSON.stringify([treeRenameId(target), row.dataset.key]), previous = lastClick
       lastClick = { key, time: e.timeStamp, x: e.clientX, y: e.clientY }
       // Replacing the first clicked row resets the browser's native click count. Keep
       // the pair on the stable tree and intercept its second click before selection.
@@ -5921,7 +5943,7 @@
           Math.hypot(e.clientX - previous.x, e.clientY - previous.y) > 5) return
       lastClick = null
       e.preventDefault(); e.stopImmediatePropagation()
-      rename(key)
+      rename(target, row)
     }, true)
     // The native double-click may target the stable tree after its first click replaced
     // the row. Hit the current row at that point instead of relying on a detached node.
@@ -5929,10 +5951,11 @@
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || state.pick || pfx) return
       const target = tree.contains(e.target) && e.target !== tree ? e.target : document.elementFromPoint(e.clientX, e.clientY)
       if (!target || !tree.contains(target) || target.closest('.caret,.vis,.lkey,.end,input,button')) return
-      const row = target.closest('.row[data-key]')
-      if (!row || !renameable(row.dataset.key)) return
+      const row = target.closest('.row[data-key],.row[data-rename]')
+      const item = treeRenameTarget(row)
+      if (!item) return
       e.preventDefault(); e.stopPropagation()
-      rename(row.dataset.key)
+      rename(item, row)
     })
   }
 
@@ -6013,7 +6036,6 @@
           if (e.shiftKey) { selectSlotRange(s.name); return }
           select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
         },
-        ondblclick: () => focusRename(),
         oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
       },
       visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
@@ -6032,10 +6054,10 @@
           class: 'row', 'data-selected': isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
           'data-multi': selectedAttachments().some((x) => x.skin === 'default' && x.slot === s.name && x.name === a.name) && !isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
           'data-att-skin': 'default', 'data-att-slot': s.name, 'data-att-name': a.name,
+          'data-rename': JSON.stringify({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }),
           'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(depth + 1),
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
           onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
-          ondblclick: () => focusRename(),
         },
         visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
         caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
@@ -6049,8 +6071,8 @@
         rows.push(h('div', {
           class: 'row', 'data-selected': isSel('ph', ph.name, { slot: s.name }) ? '1' : null,
           'data-key': `ph:${s.name}:${ph.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + ph.name) ? '1' : null, style: pad(depth + 1),
+          'data-rename': JSON.stringify({ kind: 'ph', name: ph.name, slot: s.name }),
           onclick: () => { if (pick) return; select({ kind: 'ph', name: ph.name, slot: s.name }, false, { noReveal: true }) },
-          ondblclick: () => focusRename(),
         },
         visDot(shown, () => showAttachment(s.name, shown ? null : ph.name), null, true),
         caret(null), h('span', { class: 'ico', html: ICON.placeholder }), h('span', { class: 'label' }, ph.name),
@@ -6129,8 +6151,8 @@
         allCons.forEach(({ kind, c }) => {
           const row = h('div', {
             class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
+            'data-key': `${kind}:${c.name}`,
             onclick: (e) => select({ kind, name: c.name }, e.ctrlKey || e.metaKey),
-            ondblclick: () => focusRename(),
           }, caret(null), h('span', { class: 'ico', html: ICON[kind] }), h('span', { class: 'label' }, c.name),
           h('span', { class: 'meta' }, { ik: 'IK', transform: '变换', path: '路径' }[kind]),
           animOn() ? h('span', { class: 'lkey' }, keyBtn(kind === 'path' ? pathTracks(c.name) : [[kind, c.name]], () => keyConstraintNow(kind, c.name), `给 ${c.name} 打关键帧`)) : null)
@@ -6170,9 +6192,8 @@
         for (const s of named) {
           const active = state.skin === s.name
           rows.push(h('div', {
-            class: 'row', 'data-selected': isSel('skin', s.name) ? '1' : null, style: pad(2),
+            class: 'row', 'data-selected': isSel('skin', s.name) ? '1' : null, style: pad(2), 'data-key': 'skin:' + s.name,
             onclick: () => { setSkin(s.name); select({ kind: 'skin', name: s.name }) },
-            ondblclick: () => focusRename(),
           }, visDot(active, () => { setSkin(active ? 'default' : s.name); refresh(); status(active ? '不用皮肤' : `当前皮肤：${s.name}`) }, null, true),
           caret(null), h('span', { class: 'ico', html: ICON.skin }), h('span', { class: 'label' }, s.name)))
         }
@@ -6185,7 +6206,6 @@
           rows.push(h('div', {
             class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
             onclick: () => select({ kind: 'event', name: n }),
-            ondblclick: () => focusRename(),
           }, animOn() ? h('span', { class: 'lkey' }, keyBtn([['events', n]], () => keyEventNow(n), `在第 ${state.frame} 帧放事件 ${n}`)) : null,
           caret(null), h('span', { class: 'ico', html: ICON.event, style: `color:${KEY_COLOR.event}` }), h('span', { class: 'label' }, n)))
         }
