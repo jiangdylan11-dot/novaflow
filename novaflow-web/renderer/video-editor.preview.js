@@ -234,6 +234,7 @@
     }
     canvas.addEventListener('pointerdown', (event) => {
       const p = point(event);
+      canvas.focus({ preventScroll: true });
       if (maskEditing && event.button === 0) {
         const local = maskLocal(p); if (!local) return;
         try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* synthetic */ }
@@ -262,7 +263,15 @@
       if (drag && drag.paint) { maskEditing.surface.extendStroke({ x: maskLocal(p).x, y: maskLocal(p).y }); draw(); return; }
       if (!drag) { if (!maskEditing) canvas.style.cursor = clipAt(p) ? 'grab' : 'default'; return; }
       if (drag.pan) { view.panX = drag.panX + (p.x - drag.startX); view.panY = drag.panY + (p.y - drag.startY); applyView(); return; }
-      editor.setTransform(drag.clip.id, { centerX: drag.originX + (p.x - drag.startX) / stage.scale, centerY: drag.originY + (p.y - drag.startY) / stage.scale });
+      let dx = p.x - drag.startX, dy = p.y - drag.startY;
+      if (event.shiftKey) {
+        // Pick the dominant direction once, then keep that axis until Shift is released.
+        if (!drag.axis && Math.hypot(dx, dy) >= 3) drag.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+        if (drag.axis === 'x') dy = 0;
+        else if (drag.axis === 'y') dx = 0;
+        else dx = dy = 0;
+      } else drag.axis = null;
+      editor.setTransform(drag.clip.id, { centerX: drag.originX + dx / stage.scale, centerY: drag.originY + dy / stage.scale });
       draw();
     });
     const endDrag = (event) => {

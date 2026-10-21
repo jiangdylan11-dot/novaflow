@@ -10238,6 +10238,13 @@
       ctx.strokeRect(Math.round(x1) + 0.5, Math.round(y1) + 0.5, Math.round(x2 - x1), Hh - y1)
       ctx.fillStyle = '#9be4cd'
       for (const x of [x1, x2]) ctx.fillRect(Math.round(x) - 2, y1, 4, Hh - y1)
+      // Keep a visible grip in the sheet even when the selected rows are packed with keys.
+      const gy = Math.max(DOPE.rulerH, y1, Hh - 18)
+      for (const x of [x1, x2]) {
+        ctx.fillRect(Math.round(x) - 5, gy, 10, 14)
+        ctx.strokeStyle = '#164a3a'; ctx.lineWidth = 1
+        for (const dx of [-1.5, 1.5]) { ctx.beginPath(); ctx.moveTo(x + dx, gy + 3); ctx.lineTo(x + dx, gy + 11); ctx.stroke() }
+      }
       ctx.restore()
     }
     // box selection
@@ -10269,19 +10276,24 @@
     const i = Math.floor((y - DOPE.rulerH + d.scrollY) / DOPE.rowH)
     const row = d.rows[i]
     if (x < DOPE.nameW - 7) return { kind: 'name', row }
-    if (!row) return { kind: x < DOPE.nameW ? 'name' : 'empty' }
+    // The range extends below the last track. Its handles must be reachable there too.
+    const span = selectionSpan()
+    let handle = null
+    if (span && y >= Math.max(DOPE.rulerH, span.y)) {
+      const start = Math.abs(dopeX(span.f1) - x), end = Math.abs(dopeX(span.f2) - x)
+      if (Math.min(start, end) <= 6) handle = { kind: 'scale', edge: start < end ? 'start' : 'end', span }
+    }
+    // Grips take priority; the diamonds themselves still drag keys normally.
+    const gy = span && Math.max(DOPE.rulerH, span.y, $('#dope').clientHeight - 18)
+    if (handle && y >= gy && y <= gy + 14) return handle
+    if (!row) return handle || { kind: x < DOPE.nameW ? 'name' : 'empty' }
     let best = null
     for (const k of rowKeys(row)) {
       const dx = Math.abs(dopeX(k.frame) - x)
       if (dx <= 6 && (!best || dx < best.dx)) best = { dx, keys: k.keys, frame: k.frame }
     }
     if (best) return { kind: 'key', row, keys: best.keys, frame: best.frame }
-    // an end handle of the selection's span (below the rows too, where no key is in the way)
-    const span = selectionSpan()
-    if (span && y >= span.y) {
-      if (Math.abs(dopeX(span.f1) - x) <= 5) return { kind: 'scale', edge: 'start', span }
-      if (Math.abs(dopeX(span.f2) - x) <= 5) return { kind: 'scale', edge: 'end', span }
-    }
+    if (handle) return handle
     return x < DOPE.nameW ? { kind: 'name', row } : { kind: 'empty', row }
   }
 

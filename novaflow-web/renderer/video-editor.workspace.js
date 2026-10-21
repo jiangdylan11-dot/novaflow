@@ -25,6 +25,7 @@
     'data-novaflow-ai-video-merge-control-panel': '1',
   }
   const CANVAS_PRESETS = [['1280x720', '1280 × 720'], ['1920x1080', '1920 × 1080'], ['1080x1920', '1080 × 1920（竖）'], ['1024x1024', '1024 × 1024'], ['custom', '自定义']]
+  const CANVAS_ANCHORS = [['top-left', '左上', 0, 0], ['top', '上中', 0.5, 0], ['top-right', '右上', 1, 0], ['left', '左中', 0, 0.5], ['center', '居中', 0.5, 0.5], ['right', '右中', 1, 0.5], ['bottom-left', '左下', 0, 1], ['bottom', '下中', 0.5, 1], ['bottom-right', '右下', 1, 1]]
   let activeHandle = null
 
   const CSS = `
@@ -80,6 +81,12 @@
     .nf-ve-status{min-height:0;margin-top:6px;padding:0;border-radius:0;background:transparent;color:#8b8b8b;font-size:11px;line-height:1.6;word-break:break-word}
     .nf-ve-status[data-error="1"]{color:#f09595}.nf-ve-status[data-success="1"]{color:#8ff0c7}
     .nf-ve-hint{margin-top:4px;color:rgba(255,255,255,.43);font-size:11px;line-height:1.5}
+    .nf-ve-anchor-row{display:flex;align-items:center;gap:10px;margin:8px 0;color:rgba(255,255,255,.7);font-size:11px}
+    .nf-ve-anchor-grid{display:grid;grid-template-columns:repeat(3,24px);gap:2px;flex:0 0 auto}
+    .nf-ve-anchor-grid button{width:24px;height:24px;padding:0;border:1px solid #444;border-radius:3px;background:#303030;color:#aaa;cursor:pointer;font-size:14px;line-height:1}
+    .nf-ve-anchor-grid button:hover{border-color:#82cfb6;color:#fff}
+    .nf-ve-anchor-grid button[aria-pressed="true"]{background:#1c4136;border-color:#1ea672;color:#9be4cd}
+    .nf-ve-anchor-grid button:focus-visible{outline:2px solid #9be4cd;outline-offset:1px}
     .nf-ve-mask{margin-top:6px;padding:6px;border-radius:7px;background:#1a1a1a}
     /* the same pill toggle as 音频's 音乐/音效 and the 视频|音频 switch: 37 box, 3 pad, 29 pills, radius 8/5 */
     .nf-ve-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;box-sizing:border-box;height:37px;align-items:center;border:1px solid #262626;border-radius:7px;background:#101010;margin:0 0 4px}
@@ -296,6 +303,8 @@
           <input type="number" class="nf-ve-mid" id="ve-canvas-w" min="2" max="8192" step="2" value="1280" title="宽">
           <input type="number" id="ve-canvas-h" min="2" max="8192" step="2" value="720" title="高">
         </div>
+        <div class="nf-ve-anchor-row"><span>锚点</span><div class="nf-ve-anchor-grid" role="group" aria-label="修改画布尺寸时固定的位置">${CANVAS_ANCHORS.map(([id, label]) => `<button type="button" data-ve-canvas-anchor="${id}" aria-label="固定${label}" title="固定${label}，向其他方向扩展或裁减画布" aria-pressed="${id === 'center'}">${id === 'center' ? '●' : '↗'}</button>`).join('')}</div><span id="ve-canvas-anchor-label">居中</span></div>
+        <div class="nf-ve-hint">固定所选锚点，改宽高向其余方向扩展 / 裁减画布。</div>
         <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-canvas-from-clip" title="按选中片段的原始尺寸">取片段尺寸</button></div>
       </div>
       <div class="nf-ve-sec"><h4>片段</h4>
@@ -323,7 +332,7 @@
       <div class="nf-ve-sec"><h4>保存</h4>
         <div class="nf-ve-btns"><button class="nf-ve-btn primary wide" id="ve-save">保存到资源列表</button></div>
         <div class="nf-ve-status" id="ve-status">合成后存入资源列表和仓库。</div>
-        <div class="nf-ve-hint">快捷键：空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放时间轴</div>
+        <div class="nf-ve-hint">快捷键：Shift+画板拖动 锁定水平/垂直 · 方向键 移动 1 像素（Shift 加速至 10 像素） · 空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放时间轴</div>
       </div>
       <div class="nf-ve-sec"><div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-close-row">关闭</button></div></div>`
 
@@ -543,12 +552,25 @@
     function setSlider(id, value, max) { const node = $(id); if (max !== undefined) node.max = String(Math.max(Number(node.step) || 0.1, max)); if (documentRef.activeElement !== node) node.value = String(value); const lo = Number(node.min) || 0, hi = Number(node.max) || 1; node.style.setProperty('--fill', clamp((Number(node.value) - lo) / (hi - lo) * 100, 0, 100) + '%') }
 
     // ---- canvas
+    let canvasAnchor = CANVAS_ANCHORS[4]
+    function selectCanvasAnchor(id) {
+      canvasAnchor = CANVAS_ANCHORS.find((a) => a[0] === id) || CANVAS_ANCHORS[4]
+      const arrows = [['↖', '↑', '↗'], ['←', '●', '→'], ['↙', '↓', '↘']]
+      for (const b of leftPanel.querySelectorAll('[data-ve-canvas-anchor]')) {
+        const a = CANVAS_ANCHORS.find((a) => a[0] === b.dataset.veCanvasAnchor)
+        b.setAttribute('aria-pressed', String(a === canvasAnchor))
+        b.textContent = arrows[Math.sign(a[3] - canvasAnchor[3]) + 1][Math.sign(a[2] - canvasAnchor[2]) + 1]
+      }
+      $('ve-canvas-anchor-label').textContent = canvasAnchor[1]
+    }
+    for (const b of leftPanel.querySelectorAll('[data-ve-canvas-anchor]')) b.addEventListener('click', () => selectCanvasAnchor(b.dataset.veCanvasAnchor))
+    selectCanvasAnchor('center')
     function applyCanvas(w, h) {
       w = clamp(Math.round((finite(w, 1280)) / 2) * 2, 2, 8192); h = clamp(Math.round((finite(h, 720)) / 2) * 2, 2, 8192)
       $('ve-canvas-w').value = String(w); $('ve-canvas-h').value = String(h)
       const preset = CANVAS_PRESETS.find(([v]) => v === w + 'x' + h)
       $('ve-canvas-size').value = preset ? preset[0] : 'custom'; dropdowns.forEach((d) => d.sync())
-      editor.setCanvas(w, h); preview.resize(); syncClipBox()
+      editor.setCanvas(w, h, undefined, { x: canvasAnchor[2], y: canvasAnchor[3] }); preview.resize(); syncClipBox()
     }
     $('ve-canvas-size').addEventListener('change', () => { const v = $('ve-canvas-size').value; if (v === 'custom') { $('ve-canvas-w').focus(); return } const [w, h] = v.split('x').map(Number); applyCanvas(w, h) })
     $('ve-canvas-w').addEventListener('change', () => applyCanvas($('ve-canvas-w').value, $('ve-canvas-h').value))
@@ -706,7 +728,16 @@
       if ((event.ctrlKey || event.metaKey) && (key === 'v' || key === 'V')) { if (pasteAtPlayhead()) event.preventDefault(); return }
       if ((event.ctrlKey || event.metaKey) && (key === 'a' || key === 'A')) { event.preventDefault(); editor.selectAll(); return }
       if (event.ctrlKey || event.metaKey || event.altKey) return
-      if (event.code === 'Space') { event.preventDefault(); event.stopPropagation(); editor.toggle() }
+      const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key]
+      if (direction) {
+        const clip = editor.selectedClip()
+        if (!clip?.transform) return
+        const step = event.shiftKey ? 10 : 1
+        event.preventDefault(); event.stopPropagation()
+        editor.setTransform(clip.id, { centerX: clip.transform.centerX + direction[0] * step, centerY: clip.transform.centerY + direction[1] * step })
+        preview.draw(); syncClipBox()
+      }
+      else if (event.code === 'Space') { event.preventDefault(); event.stopPropagation(); editor.toggle() }
       else if (key === 'Delete' || key === 'Backspace') { if (editor.deleteSelected()) { event.preventDefault(); preview.refresh() } }
       else if (key === 's' || key === 'S') { editor.splitAtPlayhead(); preview.refresh() }
     }

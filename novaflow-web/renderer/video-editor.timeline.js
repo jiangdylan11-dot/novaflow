@@ -842,9 +842,19 @@
       scroller.scrollLeft = 0;
     }
     function changed() { syncHeaderIcons(); onChange('model'); }
-    function setCanvas(width, height, fps) {
-      state.canvas.width = Math.max(2, Math.round(width / 2) * 2);
-      state.canvas.height = Math.max(2, Math.round(height / 2) * 2);
+    function setCanvas(width, height, fps, anchor) {
+      const w = Math.max(2, Math.round(width / 2) * 2), h = Math.max(2, Math.round(height / 2) * 2);
+      // Keep the chosen point of the old frame fixed inside the new frame. All visual
+      // clips move together (including hidden / later clips); their source pixels stay intact.
+      const ax = anchor && Number.isFinite(anchor.x) ? clamp(anchor.x, 0, 1) : 0;
+      const ay = anchor && Number.isFinite(anchor.y) ? clamp(anchor.y, 0, 1) : 0;
+      const dx = (w - state.canvas.width) * ax, dy = (h - state.canvas.height) * ay;
+      if (dx || dy) for (const clip of allClips()) if (clip.transform) {
+        clip.transform.centerX += dx;
+        clip.transform.centerY += dy;
+      }
+      state.canvas.width = w;
+      state.canvas.height = h;
       if (fps) state.canvas.fps = Math.max(1, Math.min(120, Math.round(fps)));
       changed();
     }
