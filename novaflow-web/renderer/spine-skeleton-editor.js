@@ -6079,7 +6079,7 @@
             class: 'row', 'data-selected': isSel('slot', name) ? '1' : null, 'data-key': 'order:' + name,
             'data-multi': state.multiSlots.includes(name) && !isSel('slot', name) ? '1' : null,
             'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-clip': cl ? '1' : null,
-            title: cl ? `在剪裁「${cl.name}」里` : null, style: pad(2) + (cl ? `;--clip:${cl.tint}` : ''),
+            title: `${cl ? `在剪裁「${cl.name}」里；` : ''}+ 上移一层，- 下移一层（支持多选）`, style: pad(2) + (cl ? `;--clip:${cl.tint}` : ''),
             onclick: (e) => {
               if (pick) { resolvePick('slot', name); return }
               if (e.shiftKey) { selectSlotRange(name, 'order:'); return }
@@ -6239,6 +6239,30 @@
   function keyDrawOrderNow(order) {
     const o = order || drawOrderNow()
     edit(`第 ${state.frame} 帧：绘制顺序已打关键帧`, (j) => Ops.keyDrawOrder(j, state.anim, timeSec(), o))
+  }
+
+  function handleLayerOrderKey(e) {
+    const active = document.activeElement
+    if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey ||
+        /^(INPUT|SELECT|TEXTAREA)$/.test(active && active.tagName) || active?.isContentEditable || e.target?.isContentEditable) return false
+    const step = e.key === '+' || e.key === '=' || e.code === 'NumpadAdd' ? 1 : e.key === '-' || e.code === 'NumpadSubtract' ? -1 : 0
+    const primary = currentSlot()
+    if (!step || !state.json || state.pick || !primary) return false
+    e.preventDefault(); e.stopPropagation()
+    if (pfx) { status(PFX_LOCKED); return true }
+    const picked = new Set(state.multiSlots.includes(primary) ? state.multiSlots : [primary])
+    const before = drawOrderNow(), order = before.slice()
+    // Slots are stored bottom first. Walk from the destination edge so every selected
+    // layer moves past one unselected neighbour while selected layers keep their order.
+    for (let i = step > 0 ? order.length - 2 : 1; step > 0 ? i >= 0 : i < order.length; i -= step) {
+      if (picked.has(order[i]) && !picked.has(order[i + step])) [order[i], order[i + step]] = [order[i + step], order[i]]
+    }
+    if (order.every((name, i) => name === before[i])) return true
+    const what = picked.size > 1 ? `${picked.size} 个图层` : primary
+    const label = `${what} 已${step > 0 ? '上移' : '下移'}一层`
+    if (animOn()) edit(`第 ${state.frame} 帧：${label}`, (j) => Ops.keyDrawOrder(j, state.anim, timeSec(), order))
+    else edit(label, (j) => Ops.reorderSlots(j, order))
+    return true
   }
 
   /** The dopesheet's 筛选: which rows show (Spine's dopesheet filter). */
@@ -10939,6 +10963,7 @@
         if (!typing) { select(null); return }
       }
       if (typing) return
+      if (handleLayerOrderKey(e)) return
       const k = e.key.toLowerCase()
       const mod = e.ctrlKey || e.metaKey
       if (pfx && e.key === 'Delete' && !state.dope.focus && pfxPathPoints() && pfxDeletePicked()) { e.preventDefault(); return }
