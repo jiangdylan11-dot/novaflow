@@ -59,6 +59,8 @@
     sel: null, // { kind: 'bone'|'slot'|'att'|'ph'|'ik'|'transform'|'path'|'skin', name, slot?, skin? }
     multi: [], // bone names (Ctrl+click)
     multiSlots: [], // slot names (Ctrl / Shift in the tree): edited together
+    multiAtts: [], // attachment identities: skin + slot + name
+    attachmentAnchor: null,
     multiCons: [], // constraints (Ctrl in the tree): { kind, name }, together in the dopesheet
     panel: 'import',
     pick: null,
@@ -338,7 +340,7 @@
     Object.assign(state, {
       imageFolder,
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
-      addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiCons: [], pick: null,
+      addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiAtts: [], attachmentAnchor: null, multiCons: [], pick: null,
       offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
       folderKey: p.folderKey || (p.replace && state.folderKey) || newFolderKey(), pendingFolder: null,
@@ -385,7 +387,7 @@
   // is on the stage and unfolded in the tree, the others are rows that keep their whole editing state
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
-    'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
+    'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
@@ -408,6 +410,8 @@
   function restoreProject(snap) {
     leaveProjectEdits()
     for (const k of PROJECT_KEYS) state[k] = snap[k]
+    state.multiAtts = snap.multiAtts || []
+    state.attachmentAnchor = snap.attachmentAnchor || null
     state.temp.clear()
     for (const [k, v] of snap.temp || []) state.temp.set(k, v)
     rt.atlasKey = null
@@ -1366,6 +1370,9 @@
     }
     state.multi = state.multi.filter((n) => has('bone', n))
     state.multiSlots = state.multiSlots.filter((n) => has('slot', n))
+    const hasAtt = (a) => j.skins.some((sk) => sk.name === a.skin && sk.attachments[a.slot] && sk.attachments[a.slot][a.name])
+    state.multiAtts = selectedAttachments().filter(hasAtt)
+    if (state.attachmentAnchor && !hasAtt(state.attachmentAnchor)) state.attachmentAnchor = null
     state.multiCons = (state.multiCons || []).filter((c) => has(c.kind, c.name))
     if (state.multiSlots.length && !(state.sel && state.sel.kind === 'slot')) state.multiSlots = []
     for (const n of [...state.temp.keys()]) if (!has('bone', n)) state.temp.delete(n)
@@ -1394,7 +1401,20 @@
     const chainRoots = state.chainPick ? (state.chainRoots || []).slice() : null
     state.chainPick = null
     state.chainRoots = null
-    if (additive && sel && sel.kind === 'bone') {
+    if (!sel || sel.kind !== 'att') { state.multiAtts = []; state.attachmentAnchor = null }
+    if (sel && sel.kind === 'att') {
+      const list = additive ? selectedAttachments() : []
+      for (const a of (opts && opts.attachments) || [sel]) {
+        const i = list.findIndex((x) => sameAttachment(x, a))
+        if (i >= 0) { if (!(opts && opts.attachments)) list.splice(i, 1) }
+        else list.push({ ...a })
+      }
+      state.multiAtts = list
+      state.sel = list.find((a) => sameAttachment(a, sel)) || list[list.length - 1] || null
+      if (!(opts && opts.attachments)) state.attachmentAnchor = { ...sel }
+      state.multi = []; state.multiSlots = []; state.multiCons = []
+      if (list.length > 1) { state.meshEdit = null; state.meshDrag = null; meCache = null; state.clipEdit = null; state.clipDrag = null; state.pathEdit = null; state.pathDrag = null; state.weightEdit = null; state.weightStroke = null; weCache = null }
+    } else if (additive && sel && sel.kind === 'bone') {
       const set = new Set(chainRoots ? chainRoots : (state.multi.length ? state.multi : (state.sel && state.sel.kind === 'bone' ? [state.sel.name] : [])))
       if (set.has(sel.name)) set.delete(sel.name)
       else set.add(sel.name)
@@ -1433,7 +1453,7 @@
 
   /** Spine: Page Up / Page Down walk the selection history. */
   function pushHistory() {
-    const entry = JSON.stringify({ sel: state.sel, multi: state.multi, multiSlots: state.multiSlots })
+    const entry = JSON.stringify({ sel: state.sel, multi: state.multi, multiSlots: state.multiSlots, multiAtts: state.multiAtts, attachmentAnchor: state.attachmentAnchor })
     const h0 = state.selHistory
     if (h0[state.selIdx] === entry) return
     h0.splice(state.selIdx + 1)
@@ -1447,6 +1467,8 @@
     state.sel = e.sel
     state.multi = e.multi
     state.multiSlots = e.multiSlots || []
+    state.multiAtts = e.multiAtts || []
+    state.attachmentAnchor = e.attachmentAnchor || null
     validateSelection()
     if (state.sel) revealInTree(state.sel)
     refresh()
@@ -1523,7 +1545,8 @@
       if (!copiesKeys((j, animation) => Ops.duplicateBone(j, s.name, { ...state.dup, animation }))) { run(false); return }
       askDialog('复制', ['此骨骼已在动画中设为关键帧。', '要复制这些关键帧吗？'], run)
     } else if (s.kind === 'att') {
-      duplicateAttachmentSel(s, false)
+      if (selectedAttachments().length > 1) duplicateAttachments()
+      else duplicateAttachmentSel(s, false)
     } else if (s.kind === 'slot') {
       const run = (animation) => edit((r) => `已复制插槽 ${s.name} → ${r.slot}${animation ? '（带关键帧）' : ''}`,
         (j) => Ops.duplicateSlot(j, s.name, { animation }),
@@ -1550,6 +1573,41 @@
     try {
       return JSON.stringify(copy(state.json, true).json.animations || {}) !== JSON.stringify(copy(state.json, false).json.animations || {})
     } catch { return false }
+  }
+
+  function duplicateAttachments() {
+    const list = selectedAttachments()
+    if (!list.length) return
+    if (list.some((a) => Ops.isPlaceholder(state.json, a.slot, a.name))) { status('皮肤占位符里的附件不能直接复制'); return }
+    const run = (animation) => edit(`已复制 ${list.length} 个附件`, (j) => {
+      const attachments = []
+      for (const a of list) {
+        const r = Ops.duplicateAttachment(j, a.skin, a.slot, a.name, { animation })
+        j = r.json; attachments.push({ ...a, name: r.attachment })
+      }
+      return { json: j, attachments }
+    }, (r) => { state.multiAtts = r.attachments; state.sel = r.attachments[r.attachments.length - 1]; state.attachmentAnchor = r.attachments[0]; revealInTree(state.sel) })
+    if (list.some((a) => Ops.hasDeformKeys(state.json, a.skin, a.slot, a.name))) askDialog('复制', ['选中的网格包含变形关键帧。', '要复制这些关键帧吗？'], run)
+    else run(false)
+  }
+
+  // Delete selected linked children before their parents; an unselected dependent still blocks
+  // the entire edit, so a failed batch never leaves a partly deleted project.
+  function deleteAttachments(j, list) {
+    const visited = new Set(), ordered = []
+    const visit = (a) => {
+      const key = JSON.stringify([a.skin, a.slot, a.name])
+      if (visited.has(key)) return
+      visited.add(key)
+      for (const b of list) {
+        const sk = j.skins.find((x) => x.name === b.skin), att = sk && (sk.attachments[b.slot] || {})[b.name]
+        if (b.slot === a.slot && att && att.type === 'linkedmesh' && att.parent === a.name && (att.skin || 'default') === a.skin) visit(b)
+      }
+      ordered.push(a)
+    }
+    list.forEach(visit)
+    for (const a of ordered) j = (a.skin !== 'default' && Ops.isPlaceholder(j, a.slot, a.name) ? Ops.clearPlaceholder : Ops.deleteAttachment)(j, a.skin, a.slot, a.name).json
+    return { json: j }
   }
 
   /** A small 是 / 否 question; × or Esc cancels, Enter = 是. `onAnswer(true | false)`. */
@@ -1581,7 +1639,10 @@
       const names = state.multiSlots.slice()
       edit(`已删除 ${names.length} 个插槽`, (j) => names.reduce((r, n) => Ops.deleteSlot(r.json, n), { json: j }), () => { state.sel = null; state.multiSlots = [] })
     } else if (s.kind === 'slot') edit(`已删除插槽 ${s.name}`, (j) => Ops.deleteSlot(j, s.name), () => { state.sel = null })
-    else if (s.kind === 'att' && s.skin !== 'default' && Ops.isPlaceholder(state.json, s.slot, s.name)) {
+    else if (s.kind === 'att' && selectedAttachments().length > 1) {
+      const list = selectedAttachments()
+      edit(`已删除 ${list.length} 个附件`, (j) => deleteAttachments(j, list), () => { state.sel = { kind: 'slot', name: s.slot }; state.multiAtts = []; state.attachmentAnchor = null })
+    } else if (s.kind === 'att' && s.skin !== 'default' && Ops.isPlaceholder(state.json, s.slot, s.name)) {
       edit(`已清空皮肤 ${s.skin} 的「${s.name}」`, (j) => Ops.clearPlaceholder(j, s.skin, s.slot, s.name), () => { state.sel = { kind: 'ph', name: s.name, slot: s.slot } })
     } else if (s.kind === 'att') edit(`已删除图片 ${s.name}`, (j) => Ops.deleteAttachment(j, s.skin, s.slot, s.name), () => { state.sel = { kind: 'slot', name: s.slot } })
     else if (s.kind === 'ph') edit(`已删除占位符 ${s.name}`, (j) => Ops.deletePlaceholder(j, s.slot, s.name), () => { state.sel = { kind: 'slot', name: s.slot } })
@@ -4620,6 +4681,7 @@
    * a weighted one) takes the same world transform, so the picture keeps its shape (Spine).
    */
   function attDrag(sel, sx, sy) {
+    if (selectedAttachments().length > 1) return null
     const slot = rt.skeleton.findSlot(sel.slot)
     const att = slot && slot.getAttachment()
     // a clipping is a polygon of vertices: it moves / turns / scales / shears as a whole like a mesh
@@ -5716,6 +5778,7 @@
     if (payload && (state.mode === 'setup' || payload.type === 'order')) {
       row.draggable = true
       row.addEventListener('dragstart', (e) => {
+        if (payload.type === 'att' && selectedAttachments().length > 1) { e.preventDefault(); status('拖动附件：请先选择一个附件'); return }
         state.drag = payload
         e.dataTransfer.effectAllowed = 'copyMove'
         e.dataTransfer.setData('text/plain', payload.name)
@@ -5967,9 +6030,11 @@
         const shown = posed.get(s.name) === a.name
         const arow = h('div', {
           class: 'row', 'data-selected': isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
+          'data-multi': selectedAttachments().some((x) => x.skin === 'default' && x.slot === s.name && x.name === a.name) && !isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
+          'data-att-skin': 'default', 'data-att-slot': s.name, 'data-att-name': a.name,
           'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(depth + 1),
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
-          onclick: () => { if (pick) { resolvePick('slot', s.name); return } select({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, false, { noReveal: true }) },
+          onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
           ondblclick: () => focusRename(),
         },
         visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
@@ -6405,6 +6470,40 @@
     return null
   }
 
+  function sameAttachment(a, b) {
+    return !!(a && b && a.skin === b.skin && a.slot === b.slot && a.name === b.name)
+  }
+
+  function selectedAttachments() {
+    const s = state.sel
+    if (!s || s.kind !== 'att') return []
+    return (state.multiAtts || []).some((a) => sameAttachment(a, s)) ? state.multiAtts.slice() : [s]
+  }
+
+  function visibleAttachments(sel) {
+    return [...document.querySelectorAll('#tree .row[data-att-name]')].map((row) => ({ kind: 'att', skin: row.dataset.attSkin, slot: row.dataset.attSlot, name: row.dataset.attName }))
+      .filter((a) => a.skin === sel.skin && a.slot === sel.slot)
+  }
+
+  function selectAttachment(sel, e) {
+    const additive = !!(e.ctrlKey || e.metaKey)
+    if (e.shiftKey) {
+      const rows = visibleAttachments(sel), anchor = state.attachmentAnchor || state.sel
+      const from = rows.findIndex((a) => sameAttachment(a, anchor)), to = rows.findIndex((a) => sameAttachment(a, sel))
+      if (from >= 0 && to >= 0) { select(sel, additive, { noReveal: true, attachments: rows.slice(Math.min(from, to), Math.max(from, to) + 1) }); return }
+    }
+    select(sel, additive, { noReveal: true })
+  }
+
+  function selectAllAttachments() {
+    const s = state.sel
+    if (!s || s.kind !== 'att' || state.meshEdit || state.weightEdit || state.clipEdit || state.pathEdit || state.pick) return false
+    const attachments = visibleAttachments(s)
+    if (!attachments.length) return false
+    select(s, false, { noReveal: true, attachments })
+    return true
+  }
+
   function propsKind() {
     const s = state.sel
     if (!state.json) return { title: '属性', body: () => [h('div', { class: 'hint' }, '先在左侧「工程管理」里新建或导入工程。')] }
@@ -6413,6 +6512,7 @@
     if (s.kind === 'bone') return { title: '骨骼', body: boneBody }
     if (s.kind === 'slot' && state.multiSlots.length > 1) return { title: `插槽 · 已选 ${state.multiSlots.length} 个`, body: multiSlotBody }
     if (s.kind === 'slot') return { title: '插槽', body: slotBody }
+    if (s.kind === 'att' && selectedAttachments().length > 1) return { title: `附件 · 已选 ${selectedAttachments().length} 个`, body: multiAttachmentBody }
     if (s.kind === 'att') return { title: s.skin === 'default' ? '图片' : `图片 · 皮肤 ${s.skin}`, body: slotBody }
     if (s.kind === 'ph') return { title: '皮肤占位符', body: slotBody }
     if (s.kind === 'skin') return { title: '皮肤', body: skinBody }
@@ -8540,6 +8640,7 @@
   function setParentForSelection() {
     const s = state.sel
     if (!s) return
+    if (s.kind === 'att' && selectedAttachments().length > 1) { status('设置父级：请先选择一个附件'); return }
     if (animOn()) { status('设置父级是设置模式的操作：先切回「设置」'); return }
     if (s.kind === 'bone' && bone(s.name).parent) setParent(s.name)
     else if (s.kind === 'slot' && state.multiSlots.length > 1) {
@@ -8702,6 +8803,16 @@
     out.push(h('div', { class: 'btns' }, btn('设置父级', () => startPick({ want: 'bone', text: `${names.length} 个插槽挂到哪根骨骼：点骨骼`,
       done: (b) => { const m = setupMatrices(); edit(`已把 ${names.length} 个插槽挂到 ${b}`, (j) => names.reduce((r, n) => Ops.setSlotProps(r.json, n, { bone: b }, m), { json: j })) } }), { full: true, title: 'P：画面位置不变' })))
     return out
+  }
+
+  function multiAttachmentBody() {
+    const list = selectedAttachments()
+    const canCopy = list.every((a) => !Ops.isPlaceholder(state.json, a.slot, a.name))
+    return [h('div', { class: 'name-row' }, h('span', { class: 'nm' }, `${list.length} 个附件`),
+      canCopy ? ibtn('copy', `复制这 ${list.length} 个附件（Ctrl+D）`, duplicateAttachments) : null,
+      ibtn('trash', `删除这 ${list.length} 个附件（Delete）`, deleteSelection)),
+    h('div', { class: 'hint' }, 'Ctrl 点选加选 / 取消，Shift 连选，Ctrl+A 全选当前插槽的附件。'),
+    h('div', { class: 'hint' }, list.map((a) => h('div', {}, a.name)))]
   }
 
   /** The picked image (an attachment in the default skin, or one skin's content of a placeholder). */
@@ -9715,6 +9826,7 @@
   /** What the transform panel edits: one bone, or a region image in 设置. */
   function xformTarget() {
     const s = state.sel
+    if (selectedAttachments().length > 1) return null
     // several bones: one panel for all of them (Spine)
     if (state.multi.length >= 1 && s && s.kind === 'bone') return { kind: 'bone', name: s.name, names: state.multi.includes(s.name) ? state.multi.slice() : [s.name] }
     if (s && s.kind === 'att' && state.mode === 'setup') {
@@ -10928,8 +11040,9 @@
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); saveFromKey(e.shiftKey); return }
       // Ctrl+A: the picked bone and its whole branch; with a search on, only the branch rows the
       // tree shows (the matches and their ancestors)
-      // (Ctrl+A never selects the page's text - with no bone picked it does nothing)
+      // With an attachment picked, Ctrl+A selects its visible slot group instead.
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a') e.preventDefault()
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && selectAllAttachments()) return
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && state.json && state.sel && state.sel.kind === 'bone') {
         const m = searchMatches(), names = [state.sel.name], j = state.json
         const walk = (p) => { for (const b of j.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
