@@ -31,6 +31,7 @@ const qwen21Info = {
   ImageScale: { input: { required: { ...io('image', 'width', 'height'), upscale_method: [['lanczos']], crop: [['disabled', 'center']] } } },
   ImageScaleToTotalPixels: { input: { required: { ...io('image', 'megapixels', 'resolution_steps'), upscale_method: [['lanczos']] } } },
   ImageCrop: { input: { required: io('image', 'width', 'height', 'x', 'y') } },
+  ImagePadForOutpaint: { input: { required: io('image','left','right','top','bottom','feathering') } },
   EmptyLatentImage: { input: { required: io('width', 'height', 'batch_size') } },
   SaveImage: { input: { required: io('images', 'filename_prefix') } }
 };
@@ -68,6 +69,22 @@ const nativeGraph = await host21.buildGraph({module:'novaflow-brand-runtime',met
 ]}});
 assert.equal(nativeGraph['5'].inputs.prompt,nativePrompt,'native UI directive is not decorated with drawing rules or duplicate preservation clauses');
 assert.ok(nativeGraph['5'].inputs['images.image_2']);
+// Verify final model prompt through the actual UI worker builder, not just the editor preview.
+{
+ const {readFileSync}=await import('node:fs'); const vm=await import('node:vm');
+ const context={};vm.createContext(context);vm.runInContext(readFileSync(new URL('../../renderer/ui-design-prompt.pipeline.js',import.meta.url),'utf8'),context);
+ const pipeline=context.NovaFlowUiDesignPromptPipeline;
+ for(const theme of [true,false]) {
+  const input={prompt:theme?'更换埃及主题，全面重设计UI，保留业务功能':'只修改按钮颜色，其他内容不变',references:[{role:'layout',dataUrl:'data:image/png;base64,x'}],generationIntent:theme?'redesign':'edit',preserveLayout:true};
+  const compiled=pipeline.compileQwenPlan({prompt:input.prompt,uiPlan:{version:1,layoutReference:1,layoutMode:theme?'preserve':'partial',visualMode:theme?'theme-redesign':'partial',references:[{index:1,role:'layout'}],layoutChanges:theme?[]:['只修改按钮颜色'],preserve:['MAJOR 10,000'],grids:[]}},input);
+  const request={module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['screen.png'],'UI_intent',compiled.prompt,'','test',[{width:576,height:1250}],{provider:'local',mode:'img2img',width:576,height:1250,seed:7,localUiEngine:'qwen-2.1',uiPreserveLayout:true,uiNativeEditPrompt:true,uiLayoutMode:compiled.plan.layoutMode},10,{taskProfile:'ui-design',referenceRoles:[{index:0,role:'layout'}]}]}};
+   if(!theme){await assert.rejects(()=>host21.buildGraph(request),/缺少原生选区/);continue;}
+   const graph=await host21.buildGraph(request);
+  assert.equal(graph['5'].inputs.prompt,compiled.prompt);
+  if(theme)assert.doesNotMatch(graph['5'].inputs.prompt,/全部操作图标及功能状态逐项保留|每个盘的行列和逐格实例/);
+  else assert.match(graph['5'].inputs.prompt,/全部操作图标及功能状态逐项保留/);
+ }
+}
 // Changing UI output aspect must not silently discard the image's spatial edit input.
 // Drawing's existing aspect-dependent behavior stays intact; explicit UI reflow is still fresh.
 for (const [extraState, latent] of [[{uiNativeEditPrompt:true,uiPreserveLayout:true},'5'],[{uiNativeEditPrompt:true,uiPreserveLayout:false},'6'],[{},'6']]) {
@@ -120,7 +137,17 @@ const latent = byClass(ui, 'EmptyLatentImage')[0][1].inputs;
 // The working size keeps the requested aspect within 1% (flooring both sides stretched it 3%).
 assert.deepEqual([latent.width, latent.height], [640, 1376]);
 const sampler = byClass(ui, 'KSampler')[0][1].inputs;
-assert.deepEqual([sampler.seed, sampler.steps, sampler.cfg, sampler.latent_image[0]], [7, 25, 1, byClass(ui, 'EmptyLatentImage')[0][0]]);
+assert.deepEqual([sampler.seed, sampler.steps, sampler.cfg, sampler.latent_image[0]], [7, 40, 1, byClass(ui, 'EmptyLatentImage')[0][0]]);
+// A finished layout must remain at its native working resolution, rather than
+// being treated like a small style sample. The panel's sampling values are real.
+const preservedUi = await buildUi(host21, ['portrait.png','material.png'], [{width:576,height:1248},{width:512,height:512}], ['layout','material'], { uiPreserveLayout:true, uiNativeEditPrompt:true });
+assert.equal(preservedUi['7'].inputs.latent_image[0], '5');
+assert.equal(preservedUi['200'].inputs.width, 0);
+assert.equal(preservedUi['200'].inputs.height, preservedUi['6'].inputs.height);
+assert.equal(preservedUi['200'].inputs.crop, 'disabled');
+assert.equal(preservedUi[preservedUi['5'].inputs['images.image_1'][0]].class_type, 'ImagePadForOutpaint');
+const reflowUi = await buildUi(host21, ['portrait.png'], [{width:576,height:1248}], ['layout'], { uiPreserveLayout:true, uiLayoutMode:'reflow' });
+assert.equal(reflowUi['7'].inputs.latent_image[0], '6');
 // A filled negative prompt is used for real: cfg 1 would never evaluate it, so the run goes to 2.5.
 const withNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'img2img', names.slice(0, 2), 'NovaFlow_UI', 'slot main screen', '模糊，水印', 'client', sizes.slice(0, 2),
@@ -147,8 +174,9 @@ const iteration = await buildUi(host21, ['base.png', 's1.png', 's2.png'], [{ wid
   [{ role: 'content', treatment: 'base' }, 'content', 'content'], { uiRunIntent: 'iteration' });
 const iterationEncode = byClass(iteration, 'TextEncodeQwenImage21')[0][1].inputs;
 const baseScale = iteration[iterationEncode['images.image_1'][0]];
-assert.equal(baseScale.class_type, 'ImageScale');
-assert.deepEqual([baseScale.inputs.width, baseScale.inputs.height, baseScale.inputs.crop], [640, 1376, 'center']);
+assert.equal(baseScale.class_type, 'ImagePadForOutpaint');
+const baseFit = iteration[baseScale.inputs.image[0]];
+assert.deepEqual([baseFit.inputs.width, baseFit.inputs.height, baseFit.inputs.crop], [0, 1376, 'disabled']);
 const iterationLatent = byClass(iteration, 'EmptyLatentImage')[0][1].inputs;
 assert.deepEqual([iterationLatent.width, iterationLatent.height], [640, 1376]);
 assert.equal(iteration[iterationEncode['images.image_2'][0]].class_type, 'LoadImage');
@@ -562,3 +590,40 @@ for (const [provider,total] of [['gpt',16],['google',14]]) {
 }
 
 console.log(checks + ' passed, 0 failed: UI design on Qwen-Image-2.1 (page plan, worker graph, node probe)');
+
+// Measured native exception: the UI's W/H reach both the first encoded canvas
+// and the latent. Similar-looking requests outside this boundary are rejected.
+{
+ const boundedNames=['layout.png','style-samples.png','tiger.png'];
+ const boundedSizes=[{width:576,height:1250},{width:512,height:512},{width:175,height:218}];
+ const boundedState={width:864,height:1536,uiPreserveLayout:true,uiLayoutMode:'preserve',uiNativeEditPrompt:true};
+ const native=await buildUi(host21,boundedNames,boundedSizes,['layout','style','asset'],boundedState);
+ assert.equal(native['6'].inputs.width,864);assert.equal(native['6'].inputs.height,1536);
+ assert.deepEqual(native['7'].inputs.latent_image,['5',2]);
+ const pad=native[native['5'].inputs['images.image_1'][0]],fit=native[pad.inputs.image[0]];
+ assert.equal(pad.class_type,'ImagePadForOutpaint');assert.equal(pad.inputs.left,78);assert.equal(pad.inputs.right,78);
+ assert.equal(fit.inputs.width,0);assert.equal(fit.inputs.height,1536);assert.equal(fit.inputs.crop,'disabled');
+ assert.equal(native['10'].inputs.width,864);assert.equal(native['10'].inputs.height,1536);
+ await assert.rejects(()=>buildUi(host21,[...boundedNames,'more.png'],[...boundedSizes,{width:175,height:218}],['layout','style','asset','asset'],boundedState),/最多三图/);
+ await assert.rejects(()=>buildUi(host21,boundedNames,[boundedSizes[0],{width:1024,height:1024},{width:1024,height:1024}],['layout','style','asset'],boundedState),/参考像素/);
+ await assert.rejects(()=>buildUi(host21,boundedNames,boundedSizes,['layout','style','asset'],{...boundedState,samplingOverrides:{'qwen-2.1:img2img':{steps:32,cfg:1}}}),/40步/);
+ const ordinary=await buildUi(host21,boundedNames,boundedSizes,['layout','style','asset'],{...boundedState,width:1152,height:2048});
+ assert.ok(ordinary['6'].inputs.width*ordinary['6'].inputs.height<=1048576,'global working pixel cap remains unchanged');
+}
+
+// Common service-valid portrait/landscape sizes keep their exact16 alignment
+// under the existing1MP cap, including a fourth role reference.
+{
+ const names=['layout.png','style.png','material.png','tiger.png'];
+ const sizes=[{width:576,height:1250},{width:512,height:512},{width:768,height:384},{width:175,height:218}];
+ for(const [width,height] of [[720,1280],[1280,720]]) {
+  const graph=await buildUi(host21,names,sizes,['layout','style','style','asset'],{width,height,uiPreserveLayout:true,uiLayoutMode:'preserve',uiNativeEditPrompt:true,seed:10050506,randomSeed:false});
+  assert.equal(graph['6'].inputs.width,width);assert.equal(graph['6'].inputs.height,height);
+  assert.equal(graph['10'].inputs.width,width);assert.equal(graph['10'].inputs.height,height);
+  assert.equal(graph['7'].inputs.steps,40);assert.equal(graph['7'].inputs.cfg,1);
+  assert.deepEqual(graph['7'].inputs.latent_image,['5',2]);
+  assert.equal(Object.keys(graph['5'].inputs).filter(k=>k.startsWith('images.image_')).length,4);
+  assert.ok(width*height<=1048576);
+ }
+}
+console.log(checks + ' total assertions passed, including bounded 864x1536 native sampling and fit/pad.');

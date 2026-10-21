@@ -29,6 +29,7 @@ import { fetchFfmpegCore } from './fetch-ffmpeg-core.mjs';
 import { fetchOnnxRuntimeWeb } from './fetch-onnxruntime-web.mjs';
 import { allWorkflowEntryMethods, WORKFLOW_SOURCE_MODULES } from '../packages/shared/src/workflow-modules.mjs';
 import { minifyTree } from './minify-web-dist.mjs';
+import { verifyUiReleaseAssets } from './verify-ui-release-assets.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -359,6 +360,8 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
   // Last, once every file is on disk: give each local asset a ?v= derived
   // from its own bytes.
   await stampCacheTokens();
+  report.uiDependencies = await verifyUiReleaseAssets({ webRoot: WEB_OUT, workerSrcRoot: join(ROOT, 'worker/src'),
+    workerRendererRoot: WORKER_OUT, desktopRoot: resolve(ROOT, '../particle-editor-desktop') });
 
   log('web renderer built', {
     modules: report.redactedModules,

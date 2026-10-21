@@ -32,6 +32,8 @@ export function writeConfig(html, { controlUrl, authUrl }) {
   const m = BLOCK.exec(html);
   if (!m) throw new Error('the config block is not in web-dist/index.html - run the build first');
   const current = readConfig(html);
+  const nextAuth = authUrl ?? current.authUrl;
+  if (/\/functions\/v1\/novaflow-web\/?$/i.test(nextAuth)) throw new Error('账号认证地址不能指向算力控制函数 novaflow-web；请使用既有 novaflow-backend');
   const next =
     'window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
     '        controlUrl: "' + (controlUrl ?? current.controlUrl) + '",\n' +

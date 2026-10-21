@@ -18,6 +18,7 @@
 //                                            big runtimes
 
 import { readFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { createContext, runInContext } from 'node:vm';
 import { createDomSandbox } from './dom-shim.mjs';
@@ -63,10 +64,18 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
     ...all.filter((f) => !LOAD_FIRST.includes(f))
   ];
 
+  let uiSourceSHA256 = null;
+  const digest = source => createHash('sha256').update(source).digest('hex');
+  async function assertUiSourceCurrent(module, args) {
+    if (module !== 'novaflow-brand-runtime' || args?.[10]?.taskProfile !== 'ui-design') return;
+    const current = await readFile(join(rendererDir, 'novaflow-brand-runtime.js'), 'utf8');
+    if (!uiSourceSHA256 || digest(current) !== uiSourceSHA256) throw new Error('UI工作流源码已变化，请刷新节点工作流后重试；旧缓存未执行');
+  }
   const loaded = [];
   const partial = [];
   for (const file of ordered) {
     const source = await readFile(join(rendererDir, file), 'utf8');
+    if (file === 'novaflow-brand-runtime.js') uiSourceSHA256 = digest(source);
     try {
       runInContext(source, context, { filename: file, timeout: 30000 });
       loaded.push(file);
@@ -166,6 +175,7 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
      * registered cannot be reached by name, whatever a task claims.
      */
     async replay({ module, fn, args = [] }) {
+      await assertUiSourceCurrent(module, args);
       const builder = resolveBuilder(module, fn);
       if (!builder) {
         throw new Error('no registered builder ' + module + '.' + fn +
@@ -194,12 +204,14 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
         const args = options && options.__args;
         if (!Array.isArray(args)) throw new Error('missing positional workflow arguments');
         const safe = args.slice();
+        await assertUiSourceCurrent(module, safe);
         if (method === 'buildArtGenerateRunWorkflow') {
           // The art builder is synchronous on the desktop, so it cannot fetch /object_info itself.
           // Re-read the catalogue here; the builder reads it through __objectInfoSync to pick an
           // engine. It is fetched per build because the node can gain or lose the 2.1 weights while
           // this worker runs, and the page routes UI runs by the node's live answer.
           try { await sandbox.electronAPI.__refreshObjectInfo(); } catch (_) { /* no runtime: default graph */ }
+          await assertUiSourceCurrent(module, safe);
           const built = await builder(...safe);
           if (options.__controlNet) {
             const apply = resolveBuilder(module, 'applyArtReferenceControlNet');

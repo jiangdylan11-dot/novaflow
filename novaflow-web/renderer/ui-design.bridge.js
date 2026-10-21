@@ -836,8 +836,8 @@
     }, { visualEncoding: 'filled-regions-only' }) : null
     const references = preparedReferences || requiredGenerationReferences(context, generatorReferenceDescriptors(state, context.generator.id), guide, structure)
     return {
-      provider: context.provider,
-      engine: profile.settings.assistantEngine || 'grok',
+      uiCatalogEnabled: true, provider: context.provider,
+      engine: profile.settings.assistantEngine || 'local',
       targetEngine: context.provider === 'local' ? 'qwen-2.1' : '',
       generationIntent: context.iterationReferenceCount > 0 ? 'iteration' : 'redesign',
       preserveLayout: true,
@@ -864,8 +864,8 @@
       documentRef: payload.promptTextarea?.ownerDocument || root?.document,
       workflow: modules.assistantWorkflow,
       electronAPI: root?.electronAPI,
-      provider: context.provider,
-      engine: profile.settings.assistantEngine || 'grok',
+      uiCatalogEnabled: true, provider: context.provider,
+      engine: profile.settings.assistantEngine || 'local',
       targetEngine: input.targetEngine,
       generationIntent: input.generationIntent,
       preserveLayout: input.preserveLayout,
@@ -1114,7 +1114,7 @@
       mounted?.workspaceHandle?.recordOptimization?.(generatorNodeId, input, optimized)
       setGenerationStatus('生成 UI…', { generatorNodeId, running: true })
       let result = await modules.generateWorkflow.run(generationOptions)
-      result = { ...result, originalUserPrompt: input.prompt, optimizedPrompt: optimized.prompt, optimizationEngine: input.engine }
+      result = { ...result, originalUserPrompt: input.prompt, optimizedPrompt: optimized.prompt, optimizationEngine: input.engine, uiCatalog: optimized.uiCatalog || null }
 
       if (context.provider !== 'local' || runState.uiRunIntent === 'iteration') return result
       // Local UI is one Qwen-Image-2.1 pass; nothing refines or reviews it afterwards.

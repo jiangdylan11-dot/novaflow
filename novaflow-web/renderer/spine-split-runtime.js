@@ -30683,6 +30683,7 @@
       if (contentRoot) contentRoot.remove()
       contentRoot = h('div', {
         id: WORKSPACE_CONTENT_ID,
+        tabindex: '0',
         style: {
           position: 'absolute',
           zIndex: 1,
@@ -30693,6 +30694,9 @@
           pointerEvents: 'auto'
         }
       })
+      contentRoot.addEventListener('pointerdown', (event) => {
+        if (event.button === 0 && isNativeLayerHotkeyTarget(event.target) && !event.target.closest('button, [role="button"]')) contentRoot.focus({ preventScroll: true })
+      }, true)
       overlay.appendChild(contentRoot)
     }
     splitCanvasViewControls(overlay)
@@ -31704,7 +31708,7 @@
     const row = event.currentTarget instanceof Element ? event.currentTarget : (target && target.closest(`[${LAYER_ROW_ATTR}]`))
     if (!row) return
     const referencePart = splitPartForRightWorkspaceId(partId, setId)
-    const referenceImage = referencePart?.dataUrl ? { dataUrl: referencePart.dataUrl, name: String(referencePart.label || referencePart.name || referencePart.id || 'layer').replace(/\.(png|jpe?g|webp)$/i, '') + '.png' } : null
+    const referenceImage = referencePart?.dataUrl ? { dataUrl: referencePart.dataUrl, uiSplitContext: window.NovaFlowUiSmartSplit?.contextForPart(referencePart), name: String(referencePart.label || referencePart.name || referencePart.id || 'layer').replace(/\.(png|jpe?g|webp)$/i, '') + '.png' } : null
     const existing = state.layerPointerDrag
     const inputKind = layerPointerInputKind(event)
     if (existing) {
@@ -31793,6 +31797,7 @@
       if (!cancelled && sourceId) {
         state.layerPointerSuppressUntil = Date.now() + 200
         setLayerSelection(sourceId, event)
+        Array.from(document.querySelectorAll(`[${LAYER_ROW_ATTR}]`)).find(node => node.getAttribute(LAYER_ROW_ATTR) === sourceId)?.focus({ preventScroll: true })
       }
       return
     }
@@ -32154,11 +32159,19 @@
     return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable
   }
 
+  function isNativeLayerHotkeyTarget(target) {
+    if (!(target instanceof Element) || isTextEditingTarget(target)) return false
+    if (target.closest('[data-ui-layout-editor], [data-novaflow-ui-layout-section], [data-novaflow-ui-split-preview], [data-novaflow-ui-smart-split]')) return false
+    return !!target.closest(`[${LAYER_ROW_ATTR}], [data-novaflow-layer-scroll="1"], #${WORKSPACE_CONTENT_ID}`)
+  }
+
   function handleLayerHotkeys(event) {
     if (!isMountedCardVisible() || isTextEditingTarget(event.target)) return
     const rawKey = String(event.key || '')
     const key = rawKey.toLowerCase()
     const code = String(event.code || '')
+    if (event.target?.closest?.('[data-ui-layout-editor], [data-novaflow-ui-layout-section], [data-novaflow-ui-split-preview], [data-novaflow-ui-smart-split]')) return
+    if (['delete', 'del', 'backspace'].includes(key) && !isNativeLayerHotkeyTarget(event.target)) return
     if ((event.ctrlKey || event.metaKey) && ((event.shiftKey && key === 'z') || key === 'y')) {
       if (handleSplitToolRedo()) {
         event.preventDefault()
@@ -35827,6 +35840,18 @@
     getUiLayerEditingSnapshot, subscribeUiLayerState, getUiLayerToolbarHost, addUiLayer, patchUiLayer, removeUiLayer, moveUiLayer, exportUiLayerProject, getUiLayerExport, regenerateUiLayer, cancelUiLayerGeneration,
     undoUiLayerEdit: undoSplitLayerEdit, redoUiLayerEdit: redoSplitLayerEdit,
     importUiLayerProject,
+    async extractUiObject(dataUrl, options = {}) {
+      if (state.busy || window.__NovaFlowArtGenerate?.state.running) throw new Error('已有任务运行，请稍后拆图')
+      if (options.signal?.aborted) throw new Error('拆图已取消')
+      const baseUrl = await detectComfyBaseUrl()
+      const result = await requestJson(baseUrl, '/queue', { method: 'GET' })
+      const queue = result?.data
+      if (!result?.ok || !Array.isArray(queue?.queue_running) || !Array.isArray(queue?.queue_pending)) throw new Error('无法确认算力队列，未提交对象提取')
+      if (queue.queue_running.length || queue.queue_pending.length) throw new Error('已有任务运行或排队，未提交对象提取')
+      if (options.signal?.aborted) throw new Error('拆图已取消，未提交对象提取')
+      state.busy = true
+      try { return await runRmbgCutout(dataUrl) } finally { state.busy = false; syncSplitWorkspace() }
+    },
     subscribeUiLayerProjects,
     reportUiLayerProjectError(message) { setMessage(String(message || '旧图层项目恢复失败，原数据已保留'), true); syncSplitWorkspace() },
     importSourceDataUrl,

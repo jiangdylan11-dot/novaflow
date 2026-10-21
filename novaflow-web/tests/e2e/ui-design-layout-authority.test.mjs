@@ -56,7 +56,7 @@ function environment(references = [portrait()]) {
     NovaFlowUiDesignAssistantWorkflow: { run: async input => { analyses.push(input); return { prompt: '按图片原完整布局替换生肖主题内容', uiPlan: null }; } },
   };
   context.window = context; vm.createContext(context);
-  for (const name of ['ui-design-prompt.pipeline.js', 'ui-design.drawing.js']) {
+  for (const name of ['ui-design-prompt.pipeline.js', 'ui-design-style-reference.js', 'ui-design.drawing.js']) {
     vm.runInContext(readFileSync(new URL('../../renderer/' + name, import.meta.url), 'utf8'), context);
   }
   const drawing = context.NovaFlowUiDesignDrawing;

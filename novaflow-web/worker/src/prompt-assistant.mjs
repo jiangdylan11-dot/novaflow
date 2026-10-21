@@ -14,6 +14,7 @@
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
 // script, then stop it again so the next 绘图 has its memory back.
 import { spawn } from 'node:child_process';
+import { planUiCatalog, cpuCatalog } from './ui-catalog-planner.mjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
@@ -287,6 +288,8 @@ export function normalizeReverseRequest(payload = {}) {
   if (usesH3 && visualSchema !== 'nf.h3.visual.v1') throw new Error('MiniMax H3 reverse requires visualSchema nf.h3.visual.v1');
   if (usesH3 && (typeof payload.userPrompt !== 'string' || typeof payload.userRequirements !== 'string')) throw new Error('MiniMax H3 reverse requires explicit userPrompt and userRequirements fields');
   const policy = payload.contentPolicy && typeof payload.contentPolicy === 'object' ? payload.contentPolicy : {};
+  const usesUiSplit = purpose === 'ui-layer-proposal' && surface === 'ui-design';
+  if (usesUiSplit && (images.length !== 1 || visualSchema !== 'nf.ui.split.v1')) throw new Error('UI 拆图需一张原图及有效识别协议');
   const usesVisualV2 = purpose === 'static-image-reverse' && images.length === 1 && visualSchema === 'nf.visual.v2';
   return {
     usesVisualV2,
@@ -299,7 +302,8 @@ export function normalizeReverseRequest(payload = {}) {
       mandatoryChecklist: checklist,
       mandatoryChecklistTokens: checklist.map(item => item.checklistToken),
       ...(usesH3 ? { visualSchema, contentPolicy: { sensitiveVisualAnalysis: policy.sensitiveVisualAnalysis === true, allSubjectsConfirmedAdult: policy.allSubjectsConfirmedAdult === true } } : {}),
-      ...(usesVisualV2 ? { visualSchema, nsfw: payload.nsfw === true } : {})
+      ...(usesVisualV2 ? { visualSchema, nsfw: payload.nsfw === true } : {}),
+      ...(usesUiSplit ? { visualSchema, targetEngine: 'ui-split', ...(payload.uiSplitScope === 'children' ? { uiSplitScope: 'children', uiSplitGroupName: String(payload.uiSplitGroupName || '').slice(0, 120) } : {}) } : {})
     }
   };
 }
@@ -587,6 +591,20 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       return requestWithCache('optimizePrompt', normalized.request, normalized.timeoutMs);
     },
     async reverseImagePrompt(payload) {
+      // UI PE uses the already-installed runtime model, not the unrelated NF4 assistant.
+      if (payload?.uiPlanner === 'structure-catalog-v1') {
+        if (payload.surface !== 'ui-design' || payload.targetEngine !== 'qwen-2.1' || payload.uiDesignIntent !== 'redesign' || payload.uiPreserveLayout !== true) return invalid(new Error('UI 结构编译请求范围无效'));
+        if (lease) return { ok:false, error:'AI 助手正在处理另一项任务，请等待完成后重试', errorCode:'prompt-assistant-busy' };
+        lease = { command:'uiStructureCatalog', startedAt:Date.now() };
+        try {
+          const handoff = await releaseRuntimes();
+          if (!handoff.ok) return { ok:false, error:handoff.error, errorCode:handoff.errorCode };
+          const cfg = config();
+          const data = await planUiCatalog({ baseUrl:comfyUrls[0], payload, cpu: value => cpuCatalog({ python:cfg.pythonPath, serviceScript:cfg.serviceScript }, value) });
+          return { ok:true, data };
+        } catch (error) { return { ok:false, error:String(error?.message || error), errorCode:'ui-catalog-failed' }; }
+        finally { lease = null; }
+      }
       let normalized;
       try { normalized = normalizeReverseRequest(payload); } catch (error) { return invalid(error); }
       return requestWithCache('reverseImagePrompt', normalized.request, normalized.timeoutMs);

@@ -33,6 +33,8 @@ function environment({ ui = true, references = [{id:'default-layout',role:'layou
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(source('ui-design-prompt.pipeline.js'),sandbox);
+  vm.runInContext(source('ui-design-style-reference.js'),sandbox);
+  sandbox.Image = class { width=16; height=16; set src(value) { this.onload(); } };
   vm.runInContext(source('ui-design.drawing.js'),sandbox);
   const brand = source('novaflow-brand-runtime.js');
   vm.runInContext(brand.slice(brand.indexOf('  function resolveArtGenerateReferenceInputs('), brand.indexOf('  async function runArtGenerate(')),sandbox);
@@ -75,17 +77,13 @@ test('single UI reference follows its layout role despite a wrong AI plan',async
   assert.equal(prepared.uiPlan.references[0].role,'layout');
   assert.deepEqual(Array.from(prepared.uiPlan.layoutChanges),[]);
   assert.equal(prepared.references.length,1);
-  assert.match(prepared.promptSnapshot.prompt,/保留玩法拓扑、网格行列数量、控件数量与功能、信息层级及主要区域锚点/);
+  assert.match(prepared.promptSnapshot.prompt,/玩法拓扑、网格行列数量、控件数量与功能、信息层级及主要区域锚点/);
   assert.throws(()=>e.sandbox.NovaFlowUiDesignPromptPipeline.normalizeQwenPlan(null,{references:refs,prompt:'参考图1，人物缩小20%，其余布局一样。'}),/规划不完整/);
 });
 
-test('Qwen partial layout changes retain protected areas without a global position lock',async()=>{
-  const refs=[{dataUrl:'data:image/png;base64,ref',role:'layout'}];
-  const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'人物缩小20%，符号区上移，奖池和底部操作栏保持原位。',uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['人物缩小20%','符号区上移'],preserve:['奖池和底部操作栏保持原位']})})});
-  e.state.prompt='人物缩小20%，符号区上移，其他不变';await e.run();
-  assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiLayoutMode,'partial');
-  assert.match(e.builds[0][4],/只调整这些布局项目：人物缩小20%；符号区上移/);
-  assert.doesNotMatch(e.builds[0][4],/沿用布局参考图的全部区域|本次是局部修改，沿用全部/);
+test('Qwen layout iteration without selected native bounds is rejected before optimization',async()=>{
+  const e=environment({qwen:true});e.state.prompt='人物缩小20%，符号区上移，其他不变';await e.run();
+  assert.match(e.failures.at(-1),/选中/);assert.equal(e.calls.includes('optimize'),false);assert.equal(e.uploads.length,0);assert.equal(e.builds.length,0);
 });
 
 test('Qwen sends the second layout image first and retains the style image in native inputs',async()=>{
@@ -95,7 +93,7 @@ test('Qwen sends the second layout image first and retains the style image in na
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
   assert.equal(prepared.references.length,2);assert.equal(prepared.references[0].role,'layout');
   assert.equal(prepared.references[1].dataUrl,refs[0].dataUrl);
-  assert.match(prepared.promptSnapshot.prompt,/用<image2>的卡通风格，沿用<image1>的结构/);
+  assert.match(prepared.promptSnapshot.prompt,/用<image2>的卡通风格，沿用<image1>的布局/);
   assert.doesNotMatch(prepared.promptSnapshot.prompt,/@参考图|用户设计需求|[\r\n]/);
   assert.equal(prepared.state.uiNativeEditPrompt,true);
   assert.equal(e.state.prompt,'用@参考图1的卡通风格，沿用@参考图2的布局');
@@ -105,7 +103,7 @@ test('Qwen treats its sole image as mandatory layout even when marked style or a
   const refs=[{dataUrl:'data:image/png;base64,style',role:'style'}];
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'按卡通视觉设计新页面。',uiPlan:planFor(refs,{layoutMode:'create',layoutReference:0})})});
   await e.run();assert.deepEqual(e.failures,[]);assert.equal(e.builds[0][8].uiPreserveLayout,true);
-  assert.match(e.builds[0][4],/编辑画布，是唯一玩法结构与主要区域锚点依据/);
+  assert.match(e.builds[0][4],/唯一布局与业务依据/);
   assert.equal(e.builds[0][2].length,1);assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);
   for(const patch of [{uiPlan:null},{uiPlan:planFor(refs)}, {uiPlan:planFor(refs,{layoutMode:'partial',layoutChanges:['按钮上移'],preserve:[]})}]) {
     const recovered=environment({qwen:true,references:refs,optimize:async()=>({prompt:'设计',...patch})});
@@ -127,13 +125,13 @@ test('Qwen native editing carries supplied layout facts and maps all image ident
   const input={references,prompt:'参考图2是画布，用<image1>的风格'};
   const result={prompt:'将参考图2改成海盗主题，图1只提供材质。',uiPlan:planFor(references,{layoutReference:2,preserve:['符号区6列5行','四个奖池','五个底部按钮']})};
   const compiled=p.compileQwenPlan(result,input);
-  assert.match(compiled.prompt,/将<image1>改成海盗主题，<image2>只提供材质/);
+  assert.match(compiled.prompt,/<image1>是画布，用<image2>的风格/);
   assert.match(compiled.prompt,/符号区6列5行；四个奖池；五个底部按钮/);
   assert.doesNotMatch(compiled.prompt,/@参考图|参考图2|[\r\n]/);
   assert.equal((compiled.prompt.match(/符号区6列5行/g)||[]).length,1);
   assert.throws(()=>p.compileQwenPlan({...result,prompt:'参考图3'},input),/不存在的参考图/);
   const single=p.compileQwenPlan({prompt:'编辑<image1>的按钮颜色',uiPlan:planFor([{role:'layout'}])},{references:[{role:'layout'}],prompt:'图1按钮变蓝'});
-  assert.match(single.prompt,/编辑图片的按钮颜色/);
+  assert.match(single.prompt,/图片按钮变蓝/);
   assert.doesNotMatch(single.prompt,/<image/);
 });
 
@@ -180,20 +178,20 @@ test('explicit new theme keeps gameplay anchors and replaces content despite the
   const e=environment({qwen:true,references:refs,optimize:async()=>({prompt:'将图1的人物改为深海美人鱼，15格替换为9类海底物件，标题改为ABYSS GARDEN，做精致3D；保持金额与控制。',
     uiPlan:planFor(refs,{layoutMode:'reflow',visualMode:'style-transfer',layoutChanges:['新主题使用通用竖屏模板'],preserve:['符号区5列3行，共15格','原人物身份保持不变','原物品身份与顺序保持不变','原标题SUNSET OUTLAWS不变','人物展示区位置保持不变','金额和五个控制功能不变','新主题物品身份按用户指定的9类海底序列保持一致']})})});
   e.state.prompt='保留图1布局，换主题为深海美人鱼，人物、物品和标题全部替换，并把风格换成3D，金额与控制保持。';
-  assert.equal(e.adapter.inputFor({state:e.state,references:refs,referenceLimit:10}).generationIntent,'style-transfer','the generic selector can still label this as a style edit');
+  assert.equal(e.adapter.inputFor({state:e.state,references:refs,referenceLimit:10}).generationIntent,'redesign','an affirmative theme replacement takes precedence over a style phrase');
   const prepared=await e.adapter.prepare({state:e.state,references:refs,referenceLimit:10});
   assert.equal(prepared.uiPlan.layoutMode,'preserve');assert.equal(prepared.uiPlan.visualMode,'theme-redesign');
   assert.deepEqual(Array.from(prepared.uiPlan.layoutChanges),[]);
   assert.match(prepared.promptSnapshot.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
-  assert.match(prepared.promptSnapshot.prompt,/深海美人鱼.*15格.*9类海底物件.*ABYSS GARDEN/);
+  assert.match(prepared.promptSnapshot.prompt,/深海美人鱼，人物、物品和标题全部替换/);
   assert.match(prepared.promptSnapshot.prompt,/符号区5列3行，共15格；人物展示区位置保持不变；金额和五个控制功能不变/);
   assert.match(prepared.promptSnapshot.prompt,/新主题物品身份按用户指定的9类海底序列保持一致/);
   assert.doesNotMatch(prepared.promptSnapshot.prompt,/原人物身份保持不变|原物品身份与顺序保持不变|原标题SUNSET OUTLAWS|保留画布内的原人物与物品身份|通用竖屏模板/);
   await e.run();assert.deepEqual(e.failures,[]);
   assert.equal(e.builds[0][8].uiPreserveLayout,true);assert.equal(e.builds[0][8].uiLayoutMode,'preserve');
   assert.equal(e.builds[0][8].uiRunIntent,'redesign');
-  assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);assert.match(e.builds[0][4],/本次是主题重设/);
-  assert.match(e.builds[0][4],/标题、主框、奖励栏和按钮的轮廓、尺寸比例与装饰负形/);
+  assert.equal(e.uploads[0].dataUrl,refs[0].dataUrl);assert.match(e.builds[0][4],/主题重设计只保留布局图的业务结构/);
+  assert.match(e.builds[0][4],/锚定区域内可创意重设计组件构造/);
   assert.doesNotMatch(e.builds[0][4],/沿用布局参考的区域位置、面积比例|保留几何布局和功能/);
 });
 
@@ -205,7 +203,7 @@ test('theme form redesign releases planner frame measurements but preserves game
   const compiled=p.compileQwenPlan({prompt:'将图1重设为深海主题，保留玩法和金额。',uiPlan:planFor(refs,{preserve})},input);
   assert.deepEqual(Array.from(compiled.plan.preserve),preserve.filter(f=>!/原主框|奖励栏原尺寸|按钮圆角/.test(f)));
   assert.match(compiled.prompt,/玩法拓扑、网格行列数量、控件数量与功能、信息层级及主要区域锚点/);
-  assert.match(compiled.prompt,/锚定区域内可创意重设计标题、主框、奖励栏和按钮的轮廓、尺寸比例与装饰负形/);
+  assert.match(compiled.prompt,/锚定区域内可创意重设计组件构造/);
   assert.match(compiled.prompt,/点击目标可辨识，装饰不得遮挡玩法内容或控件/);
   assert.match(compiled.prompt,/主要区域锚点与用途（定位范围，不锁定组件外轮廓或尺寸比例）/);
   assert.match(compiled.prompt,/符号区5列3行，共15格；五个底部控件的功能保持不变；标题在上方，金额信息层级保持不变；用户明确要求主按钮直径120像素/);
@@ -213,7 +211,7 @@ test('theme form redesign releases planner frame measurements but preserves game
   // The image and native edit strategy stay anchored while its frame artwork changes.
   assert.equal(compiled.references[0],refs[0]);assert.equal(compiled.plan.layoutMode,'preserve');
   const guide=p.compileQwenPlan({prompt:'按定位图换成深海主题',uiPlan:planFor(refs,{preserve})},{...input,references:[{...refs[0],uiLayoutId:'guide'}]});
-  assert.match(guide.prompt,/锚定区域内可创意重设计/);assert.match(guide.prompt,/不保留灰块和占位框/);
+  assert.match(guide.prompt,/锚定区域内可创意重设计/);assert.match(guide.prompt,/不照搬灰框占位符|不保留灰块和占位框/);
 });
 
 test('form freedom is scoped to theme redesign and never loosens style transfer or partial occupancy',()=>{
@@ -235,10 +233,10 @@ test('component redesign removes unrequested source construction from both plann
   const compiled=p.compileQwenPlan({prompt:'将图1换成深海主题，保留四角铆钉，原奖励牌的连接方式不变，金额1000保持正确，主框承托结构重新设计。',uiPlan:planFor(refs,{preserve})},
     {references:refs,prompt:'保留玩法和金额，将图1换成深海主题，组件构造重新设计',preserveLayout:true,generationIntent:'redesign'});
   assert.deepEqual(Array.from(compiled.plan.preserve),['符号区5列3行，共15格','金额1000和四档奖励不变','五个控制功能及选中状态不变']);
-  assert.match(compiled.prompt,/主框承托结构重新设计/);assert.match(compiled.prompt,/金额1000保持正确/);
-  assert.match(compiled.prompt,/组件构造、边框组织、连接方式、装饰承托与支撑结构、层间叠放和负空间/);
-  assert.match(compiled.prompt,/保持目标完整画风与配色，并完成材质和光影/);
-  assert.match(compiled.prompt,/通过轮廓、承托与连接关系的具体变化辨认新构造/);
+  assert.match(compiled.prompt,/组件构造重新设计/);assert.match(compiled.prompt,/金额1000和四档奖励不变/);
+  assert.match(compiled.prompt,/锚定区域内可创意重设计组件构造/);
+  assert.match(compiled.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
+  assert.match(compiled.prompt,/锚定区域内可创意重设计组件构造/);
   assert.doesNotMatch(compiled.prompt,/去掉颜色|去色|灰度输出|grayscale/);
   assert.doesNotMatch(compiled.prompt,/保留四角铆钉|四角铆钉保持原样|原奖励牌的连接方式不变|奖励牌原连接方式与底座|用户明确指定四角圆点保持不变/);
 });
@@ -286,7 +284,7 @@ test('negated form requests and local edits cannot turn style migration into who
   const local=p.compileQwenPlan({prompt:'只重做按钮造型，其余不变',uiPlan:planFor(refs,{layoutMode:'partial',visualMode:'partial',layoutChanges:['仅重做主按钮轮廓'],preserve})},
     {references:refs,prompt:'只重做按钮造型，其余不变',generationIntent:'iteration'});
   assert.match(local.prompt,/只调整这些布局项目：仅重做主按钮轮廓/);
-  assert.doesNotMatch(local.prompt,/组件构造、边框组织、连接方式、装饰承托与支撑结构/);
+  assert.doesNotMatch(local.prompt,/锚定区域内可创意重设计组件构造/);
 });
 
 test('English source construction is filtered without losing functional facts or the human keep request',()=>{
@@ -297,7 +295,7 @@ test('English source construction is filtered without losing functional facts or
   assert.match(compiled.prompt,/Keep 5 columns and 3 rows with 15 symbols/);
   assert.match(compiled.prompt,/Keep the four reward values and functional connections unchanged/);
   assert.match(compiled.prompt,/Keep the main button circular/);
-  assert.match(compiled.prompt,/Rebuild the reward supports/);
+  assert.match(compiled.prompt,/按钮造型、面板边框、字体视觉、材质与配色不继承旧主题/);
   assert.doesNotMatch(compiled.prompt,/Preserve the original four-corner studs|rectangular plaques|original frame construction and connectors/);
 });
 
@@ -307,8 +305,8 @@ test('every native UI plan requires a layout image and rejects create or missing
     {references:refs,prompt:'图1只提供剪纸材质，设计全新界面',preserveLayout:false,generationIntent:'redesign'});
   assert.equal(compiled.plan.layoutMode,'preserve');assert.equal(compiled.plan.layoutReference,1);
   assert.equal(compiled.plan.references[0].role,'layout');
-  assert.match(compiled.prompt,/编辑画布，是唯一玩法结构与主要区域锚点依据/);
-  assert.match(compiled.prompt,/组件构造、边框组织、连接方式、装饰承托与支撑结构/);
+  assert.match(compiled.prompt,/唯一布局与业务依据/);
+  assert.match(compiled.prompt,/锚定区域内可创意重设计组件构造/);
   assert.throws(()=>p.normalizeQwenPlan(planFor(refs,{layoutMode:'create',layoutReference:0}),{references:refs}),/规划不完整/);
   assert.throws(()=>p.compileQwenPlan({prompt:'纯文字创建UI',uiPlan:null},{references:[],prompt:'纯文字创建UI'}),/必须有布局图/);
   assert.throws(()=>p.compileQwenPlan({prompt:'素材创建UI',uiPlan:null},{references:[{role:'style'},{role:'asset'}],prompt:'素材创建UI'}),/缺少布局图/);
@@ -324,8 +322,8 @@ test('theme reset survives malformed planning and keeps style assets separate fr
     const output=p.compileQwenPlan({prompt,uiPlan:null},{references:refs,prompt,preserveLayout:true,generationIntent:'style-transfer'});
     assert.equal(output.plan.visualMode,'theme-redesign');assert.equal(output.plan.layoutMode,'preserve');
     assert.equal(output.references[0].id,'old-layout');assert.equal(output.references[1].id,'paper-material');
-    assert.match(output.prompt,/<image2>是风格来源，只迁移美术表现/);
-    assert.match(output.prompt,/本次是主题重设/);assert.doesNotMatch(output.prompt,/保留画布内的原人物与物品身份/);
+    assert.match(output.prompt,/<image2>是风格来源，只取画风材质配色/);
+    assert.match(output.prompt,/主题重设计只保留布局图的业务结构/);assert.doesNotMatch(output.prompt,/保留画布内的原人物与物品身份/);
   }
 });
 
@@ -335,7 +333,7 @@ test('negated theme replacement remains a content-preserving style transfer',()=
   for (const prompt of ['不换主题，只把风格换成羊毛毡','不要更换主题，人物物品与标题保持，只换画风','主题不变，换风格为明亮扁平','只换风格但保留原主题','只换画风，不改主题','不要换成深海主题，只把画风换成羊毛毡','不需要换新主题','无需更换主题','并非换主题','保留原主题，不要换一个新的主题','不要把主题换成深海，只换羊毛毡画风','Do not change the theme; only restyle the materials','No theme redesign, only a felt style transfer']) {
     const output=p.compileQwenPlan({prompt,uiPlan:planFor(refs,{visualMode:'theme-redesign'})},{references:refs,prompt,preserveLayout:true,generationIntent:'style-transfer'});
     assert.equal(output.plan.visualMode,'style-transfer');assert.match(output.prompt,/保留画布内的原人物与物品身份、文案和功能/);
-    assert.doesNotMatch(output.prompt,/本次是主题重设/);
+    assert.doesNotMatch(output.prompt,/主题重设计只保留布局图的业务结构/);
   }
 });
 
@@ -350,13 +348,13 @@ test('layout plus style, color, material and scoped assets all reach the actual 
   assert.deepEqual(e.uploads.map(u=>u.dataUrl),[refs[3],refs[0],refs[1],refs[2],refs[4],refs[5]].map(r=>r.dataUrl));
   assert.equal(e.builds[0][2].length,6);
   const native=e.builds[0][4];
-  assert.match(native,/<image1>是编辑画布，是唯一玩法结构与主要区域锚点依据/);
+  assert.match(native,/<image1>是唯一布局与业务依据/);
   assert.match(native,/<image2>是风格来源/);assert.match(native,/<image3>是质感来源/);
   assert.match(native,/<image5>是配色来源/);
-  assert.match(native,/<image4>是人物或元素素材来源，只融合用户指定区域/);
-  assert.match(native,/<image6>是人物或元素素材来源，只融合用户指定区域/);
-  assert.match(native,/不带入素材的背景、布局、文案或额外控件/);
-  assert.equal((native.match(/唯一玩法结构与主要区域锚点依据/g)||[]).length,1);
+  assert.match(native,/<image4>是人物或元素素材来源，只取用户指定身份/);
+  assert.match(native,/<image6>是人物或元素素材来源，只取用户指定身份/);
+  assert.match(native,/不取背景、布局或文字/);
+  assert.equal((native.match(/唯一布局与业务依据/g)||[]).length,1);
   assert.equal(prepared.uiPlan.references.length,6);
   assert.equal(prepared.analysisUiPlan.layoutReference,4);
   assert.equal(e.state.results.length,1);
@@ -425,12 +423,12 @@ test('full UI redesign keeps the original instruction even when optimization car
   assert.match(e.builds[0][4],/全部视觉元素都要重新设计/);
 });
 
-test('explicit local editing retains iteration intent without making drawing a redesign',async()=>{
+test('unsupported local editing is rejected without a whole-image fallback',async()=>{
   const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}]});
   e.state.prompt='只修改旋转按钮颜色，其他保持不变';
   await e.run();
-  assert.equal(e.builds[0][8].uiRunIntent,'iteration');
-  assert.match(e.builds[0][4],/本次是局部修改/);
+  assert.match(e.failures.at(-1),/不支持原生局部|不会退为全图/);
+  assert.equal(e.builds.length,0);assert.equal(e.uploads.length,0);assert.equal(e.calls.includes('optimize'),false);
 });
 test('style changes preserve the layout and content instead of becoming a theme redesign',async()=>{
   const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}],optimize:async()=>({prompt:'[布局与功能]错误的3列4行\n[区域设计]不应引入的新人物\n[视觉规范]手绘水彩纸纹'})});
@@ -483,16 +481,15 @@ test('reference gaps map to uploaded image order; overflow and missing mentions 
   const keep=e.adapter.inputFor({state:{prompt:'只换风格，不改变布局，不要重新排版'},references:[ref],referenceLimit:10});
   assert.equal(keep.preserveLayout,true);
 });
-test('edits made while optimization is pending cannot change its parameter or original-text snapshot',async()=>{
+test('edits during optimization invalidate the old snapshot before generation',async()=>{
   let finish;
   const e=environment({optimize:()=>new Promise(resolve=>{finish=resolve;})});
   const pending=e.adapter.prepare({state:e.state,references:[{role:'layout',dataUrl:'data:image/png;base64,ref'}],referenceLimit:10});
   await Promise.resolve();await Promise.resolve();
   e.state.width=2048;e.state.prompt='下一张的需求';e.state.samplingOverrides['qwen-2.1:img2img'].steps=50;
   finish({prompt:'优化指令'});
-  const prepared=await pending;
-  assert.equal(prepared.state.width,1280);assert.equal(prepared.state.samplingOverrides['qwen-2.1:img2img'].steps,32);
-  assert.equal(prepared.originalPrompt,'设计一个角色装备界面');
+  await assert.rejects(()=>pending,/变化|旧结果/);
+  assert.equal(e.uploads.length,0);assert.equal(e.builds.length,0);
 });
 
 test('only an already published matching layout is refreshed without appending a hidden guide',()=>{
@@ -519,7 +516,7 @@ test('native Qwen treats a user layout as spatial guidance instead of preserving
  const input={references:refs,prompt:'按图2布局，用图1风格',structure:{width:1000,height:1000,regions:[{x:50,y:50,width:400,height:800,purpose:'人物展示'}]}};
  const output=p.compileQwenPlan({prompt:'设计完整角色界面',uiPlan:planFor(refs,{layoutReference:2,visualMode:'style-transfer'})},input);
  assert.equal(output.references.length,2);assert.equal(output.references[0].uiLayoutId,'L');
- assert.match(output.prompt,/自建布局定位图/);assert.match(output.prompt,/不保留灰块和占位框/);
+ assert.match(output.prompt,/自建布局定位图/);assert.match(output.prompt,/不照搬灰框占位符|不保留灰块和占位框/);
  assert.match(output.prompt,/只呈现用户需求指定的最终文案、物品图案与功能控件/);
  assert.match(output.prompt,/区域名、诊断编号、示例文字、灰块与空白占位仅用于定位/);
  assert.match(output.prompt,/不得输出缺少功能图标的空白按钮/);

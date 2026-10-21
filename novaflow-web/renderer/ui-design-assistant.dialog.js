@@ -182,6 +182,10 @@
       const result = await Promise.race([stopped, record.session.run({
         electronAPI: record.options.electronAPI,
         engine: record.engine,
+        targetEngine: record.options.targetEngine,
+        uiCatalogEnabled: record.options.uiCatalogEnabled === true,
+        generationIntent: record.options.generationIntent,
+        preserveLayout: record.options.preserveLayout,
         provider: record.options.provider || record.options.state?.provider,
         prompt: currentPrompt(record),
         negativePrompt: currentNegativePrompt(record),
@@ -206,6 +210,8 @@
         provider: result.provider,
         referenceCount: result.referenceCount,
         scene: result.scene,
+        uiPlan: result.uiPlan || null,
+        uiCatalog: result.uiCatalog || null,
       }
       if (result.provider === 'local' && result.hasNegativePrompt) {
         payload.negativePrompt = result.negativePrompt
@@ -309,7 +315,7 @@
     })
     const record = {
       options, documentRef, host, panel, body, contextSummary,
-      references: [], structure: {}, scene: '通用页面', engine: options.engine || 'grok',
+      references: [], structure: {}, scene: '通用页面', engine: options.engine || 'local',
       pending: false, referenceLimitError: false,
       requirements: element(documentRef, 'textarea', {
         rows: '3', placeholder: '补充视觉风格、配色、材质、信息层级或必须保留的要求。',

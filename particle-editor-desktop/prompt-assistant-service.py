@@ -16857,8 +16857,8 @@ class PromptAssistant:
             "风格图只供美术语言，人物/物品图只供素材，不能误作布局。style-transfer仅适用于只换画风不换内容身份。换主题或把人物、背景和符号替换成新身份时必须theme-redesign，即使同时说只参考某张图的风格、保持布局也不能误判为style-transfer；自查prompt内容与visualMode一致。用户未指定保留原武器时，prompt不要点名原武器种类，不给旧武器套主题外壳；描述符合新主题的新道具。"
             "新主题布局图只保留区域几何与功能，不沿用原人物、装备和图标轮廓。风格参考具体提取主色、强调色、明暗层级、材质反光和体积塑造。"
             "要求有质感时拉开背景与主体明暗，区分哑光、金属、宝石及柔软材料，色彩丰富协调；用户指定淡彩、简约或扁平时尊重原风格，不一律高饱和。"
-            "prompt用200至450字单段编辑指令，以修改动作开头，只描述所改外观；未改部分简短整体保留，尺寸不写入prompt。每个改动区域明确新人物外形、服饰、手持物、新背景地点光照、新符号造型或控件材质，不用全部按主题重做等概括句代替具体设计；适应用户题材和画风，不套固定游戏风格。"
-            "原图本身直接提供布局，不翻译成格子模板。grids为空数组，不将猜测数量或坐标写进prompt或preserve；用户或布局器明确指定的数量与位置才写入编辑指令和layoutChanges。"
+            "prompt用200至450字单段编辑指令，以修改动作开头，描述所改外观；未改区域的几何简短保持，尺寸不写入prompt。未要求改变的业务事实另逐项写入preserve：只采用布局图确实读到的有效文字、金额、特殊标记及其数值、操作功能与状态，不以原数值或原功能保留等泛句代替实际清单；风格素材图的业务内容不得加入。每个改动区域明确新人物外形、服饰、手持物、新背景地点光照、新符号造型或控件材质，不用全部按主题重做等概括句代替具体设计；适应用户题材和画风，不套固定游戏风格。"
+            "原图本身直接提供布局，不翻译成格子模板，grids保持空数组。只把唯一布局图中确实数清的玩法盘数量与每盘行列写入preserve，各玩法盘与相邻信息栏或操作栏分开清点；看不清时以原图为准，不填猜测数量或坐标。特殊标记可按新主题重做图案外观，但未要求改变的有效文字、数值和功能含义保持。只有用户或布局器明确要求调整的数量与位置才写入layoutChanges。"
             "preserve覆盖原图顶部、中部、底部全部功能区的顺序与相对关系，prompt明确原有功能栏原位保留，人物不能挤占其他区域，以实际参考图为准，不猜测数量或坐标、不写旧题材造型。局部修改不允许全局重排。有风格图时按其色彩层次、明暗跨度、边缘清晰度和材质完成度迁移，不能因题材擅自降饱和或加入磨砂、羽化。"
             "原样保留当前需求中的所有__NOVAFLOW_...__引用标识一次。用户需求最高优先级。"
         )
@@ -19986,6 +19986,12 @@ class PromptAssistant:
         image_tensors = [item["tensor"] for item in image_items]
         if not image_tensors:
             raise ValueError("没有可分析的图片数据")
+
+        if purpose == 'ui-layer-proposal':
+            if payload.get('visualSchema') != 'nf.ui.split.v1':
+                raise ValueError('UI 拆图识别协议无效')
+            from prompt_assistant.ui_split_proposal import propose
+            return propose(self, image_tensors, payload)
 
         if is_ui_design and payload.get("targetEngine") == "qwen-2.1":
             return self.plan_ui_qwen21(payload, image_items)

@@ -66,7 +66,12 @@ test('packaged client continues when old cloud planning rejects a valid layout r
     references:[{dataUrl:'data:image/png;base64,AA==',role:'reference'}],preserveLayout:true,generationIntent:'redesign'});
   assert.equal(compiled.references.length,1);
   assert.equal(compiled.plan.layoutReference,1);
-  assert.match(compiled.prompt,/编辑画布/);
+  assert.equal(compiled.plan.layoutMode,'preserve');
+  assert.equal(compiled.plan.references[0].role,'layout');
+  assert.match(compiled.prompt,/图片是唯一布局与业务依据/);
+  assert.match(compiled.prompt,/玩法拓扑、网格行列数量、控件数量与功能/);
+  assert.match(compiled.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
+  assert.doesNotMatch(compiled.prompt,/业务事实：/); // Failed planning cannot invent an inventory.
 });
 
 test('web runtime returned planning error also falls back to a usable layout plan',async()=>{
@@ -83,7 +88,12 @@ test('web runtime returned planning error also falls back to a usable layout pla
   assert.match(result.prompt,/生肖牛主题/);
   const compiled=context.NovaFlowUiDesignPromptPipeline.compileQwenPlan(result,input);
   assert.equal(compiled.plan.layoutReference,1);
-  assert.match(compiled.prompt,/编辑画布/);
+  assert.equal(compiled.plan.layoutMode,'preserve');
+  assert.equal(compiled.plan.references[0].role,'layout');
+  assert.match(compiled.prompt,/图片是唯一布局与业务依据/);
+  assert.match(compiled.prompt,/玩法拓扑、网格行列数量、控件数量与功能/);
+  assert.match(compiled.prompt,/人物、背景、玩法物品和标题按用户的新主题要求重做/);
+  assert.doesNotMatch(compiled.prompt,/业务事实：/); // Failed planning cannot invent an inventory.
   await assert.rejects(context.NovaFlowUiDesignAssistantWorkflow.run({...input,electronAPI:{smartAiImageReverse:async()=>({
     ok:false,error:'登录已过期',
   })}}),/登录已过期/);

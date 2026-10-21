@@ -16,8 +16,22 @@
     "!data/**/*"
   ],
   "extraResources": [
-    { "from": "src/matting", "to": "matting", "filter": ["*.py"] },
-    { "from": "../web-dist", "to": "web-dist", "filter": ["**/*", "!vendor/onnxruntime-web/**", "!vendor/matting/**"] },
+    {
+      "from": "src/matting",
+      "to": "matting",
+      "filter": [
+        "*.py"
+      ]
+    },
+    {
+      "from": "../web-dist",
+      "to": "web-dist",
+      "filter": [
+        "**/*",
+        "!vendor/onnxruntime-web/**",
+        "!vendor/matting/**"
+      ]
+    },
     {
       "from": "../../particle-editor-desktop",
       "to": "desktop-license",
@@ -28,7 +42,9 @@
         "main/birefnet-runner.py",
         "prompt-assistant-service.py",
         "prompt_assistant/*.py",
-        "prompt_assistant/*.json"
+        "prompt_assistant/*.json",
+        "prompt_assistant/ui_catalog/**/*.py",
+        "prompt_assistant/ui_catalog/**/*.json"
       ]
     },
     {
@@ -61,8 +77,21 @@
       "to": "lora-catalogs/minimax-h3-lora-catalog.cjs"
     }
   ],
-  "protocols": [{ "name": "NovaFlow 本地仓库", "schemes": ["novaflow"] }],
-  "fileAssociations": [{ "ext": "nfproj", "name": "NovaFlow 工程", "description": "NovaFlow 工程（骨骼动画）" }],
+  "protocols": [
+    {
+      "name": "NovaFlow 本地仓库",
+      "schemes": [
+        "novaflow"
+      ]
+    }
+  ],
+  "fileAssociations": [
+    {
+      "ext": "nfproj",
+      "name": "NovaFlow 工程",
+      "description": "NovaFlow 工程（骨骼动画）"
+    }
+  ],
   "asar": false,
   "win": {
     "icon": "electron/assets/favicon.ico",

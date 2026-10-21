@@ -156,7 +156,9 @@
     if (['layout', 'ui-layout', '布局'].includes(role)) return 'layout'
     if (['color', 'palette', '配色'].includes(role)) return 'color'
     if (['material', 'texture', '材质'].includes(role)) return 'material'
-    if (['content', 'asset', '内容', '素材'].includes(role)) return 'content'
+    if (role === 'asset') return 'asset'
+    if (role === 'combined') return 'combined'
+    if (['content', '内容', '素材'].includes(role)) return 'content'
     if (['character', '角色'].includes(role)) return 'character'
     if (['subject', 'identity', '主体'].includes(role)) return 'subject'
     return 'reference'
@@ -254,7 +256,8 @@
     const size = options.size || structure
     const preserveForms = root?.NovaFlowUiDesignPromptPipeline?.requestsFormPreservation?.(options) === true
     const preservedConstruction = '本次明确要求整体保形换皮：沿用布局图的全部组件外轮廓、尺寸比例、主体承托、边框组织、连接结构和负空间，仅重绘指定主题外观、画风、配色、材质与表面装饰，不提出构造或轮廓创新。更换主题时仍按用户要求替换人物、背景、玩法符号及标题内容，不因保形而保留旧主题身份；未要求替换的内容身份和文案保持，用户明确指定的局部改变仅处理该部分。'
-    const businessInventory = '先从用户完整布局图逐区清点实际业务内容：玩法盘数量，每个盘的准确行列和逐格实例、字母牌与重复符号关系、玩法特殊标记及其数值；全部奖励档位名称与金额、余额、下注、赢取信息、规则文案，以及各操作图标的实际功能和状态。将准确读到的名称、数值、数量和功能写入最终要求及保留事实，不按常见游戏模板猜测；看不清的内容以原图为准，不编造。主题内容可一对一替换普通物件，未被用户明确要求修改的业务文字、金额、特殊标记和功能必须保留，不能新增或重复游戏盘，不能因为主题而添加登录、邀请、任务或其他功能。自建定位图的诊断文字与示例值不属于业务数据，只采用用户明确提供的业务要求。'
+    const wholeTheme = root?.NovaFlowUiDesignPromptPipeline?.requestsThemeRedesign?.(options) === true
+    const businessInventory = '业务事实只来自指定布局图和用户明确业务要求，风格、配色、材质或人物素材里的文字、金额与控件不得加入业务清单。先从用户完整布局图逐区清点实际业务内容：玩法盘数量，' + (wholeTheme ? '每个盘的准确行列、重复符号关系、玩法特殊标记及其文字数值；普通物件的原身份和外观不写入保留事实，按新主题替换；' : '每个盘的准确行列和逐格实例、字母牌与重复符号关系、玩法特殊标记及其数值；') + '全部奖励档位名称与金额、余额、下注、赢取信息、规则文案，以及各操作图标的实际功能和状态。将准确读到的名称、数值、数量和功能写入最终要求及保留事实，不按常见游戏模板猜测；看不清的内容以原图为准，不编造。主题内容可一对一替换普通物件，未被用户明确要求修改的业务文字、金额、特殊标记和功能必须保留，不能新增或重复游戏盘，不能因为主题而添加登录、邀请、任务或其他功能。自建定位图的诊断文字与示例值不属于业务数据，只采用用户明确提供的业务要求。'
     if (options.targetEngine === 'qwen-2.1') {
       const requirements = [
         '这是 Qwen 2.1 UI 原生参考编辑规划。依据用户原文理解每张图的职责，独立判断视觉修改范围与布局修改范围，不使用固定主题或五段式绘图模板。',
@@ -410,6 +413,26 @@
     const rawStructure = await resolveValue(options.getStructureContext, options.structure || options.snapshot || {})
     const structure = structureSnapshot(rawStructure)
     const scene = inferPageScene(structure)
+    const useCatalog = options.uiCatalogEnabled === true && engine === 'local' && options.targetEngine === 'qwen-2.1'
+      && options.preserveLayout === true && options.generationIntent === 'redesign'
+      && !references.some(ref => ref.uiLayoutId)
+      && root.NovaFlowUiDesignPromptPipeline.requestsThemeRedesign(options)
+      && !root.NovaFlowUiDesignPromptPipeline.requestsFormPreservation(options)
+    if (useCatalog) {
+      const revision = typeof options.getRevision === 'function' ? options.getRevision() : options.revision
+      const call = localApi(options, references)
+      if (typeof call !== 'function') throw new Error('本地模型未就绪')
+      const request = [stripTargetStyleContract(options.prompt), options.requirements || ''].filter(Boolean).join('\n')
+      const result = await withTimeout(() => call({ uiPlanner:'structure-catalog-v1', surface:'ui-design', targetEngine:'qwen-2.1',
+        uiDesignIntent:'redesign', uiPreserveLayout:true, currentPrompt:request, uiStructure:structure,
+        images:references.map(ref => ({ dataUrl:ref.dataUrl, role:ref.role, label:ref.label })) }), options.timeoutMs || 900000, engine)
+      checkActive()
+      if (typeof options.getRevision === 'function' && options.getRevision() !== revision) throw new Error('设计要求已变化，本次结果未覆盖当前内容')
+      const data = result?.data || result
+      if (result?.ok === false || !data?.prompt || data?.uiCatalog?.schema !== 'nf.ui.structure-catalog.v1') throw new Error(result?.error || '结构编译未返回有效结果，本次未提交生成')
+      return Object.freeze({ ...data, provider, engine, targetStyle:'auto', purpose:'ui-design-reference', referenceCount:references.length,
+        references, structure, scene, hasNegativePrompt:false, negativePrompt:'' })
+    }
     const requirements = buildRequirements(options, structure, references)
     const currentPrompt = stripTargetStyleContract(options.prompt)
     if (currentPrompt.length > 18000 || String(options.negativePrompt || '').length > 10000) throw new Error('提示词过长，请精简后再试；本次未截断提交。')

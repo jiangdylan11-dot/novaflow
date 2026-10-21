@@ -267,6 +267,7 @@
     const raw = root.atob(match[2]), bytes = Uint8Array.from(raw, character => character.charCodeAt(0));
     const name = stringValue(image?.name || 'layer.png').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
     const file = new root.File([bytes], name, { type: match[1] });
+    if (image?.uiSplitContext) file.novaflowUiSplitContext = image.uiSplitContext;
     return Promise.resolve(controller?.onFile?.(index, file)).then(() => true);
   }
 
