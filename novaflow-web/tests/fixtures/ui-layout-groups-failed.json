@@ -1,0 +1,461 @@
+{
+  "grid": {
+    "shape": [
+      6,
+      5
+    ],
+    "cells": [
+      {
+        "row": 1,
+        "column": 1,
+        "symbol_id": "s1",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 1,
+        "column": 2,
+        "symbol_id": "s2",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 1,
+        "column": 3,
+        "symbol_id": "s3",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 1,
+        "column": 4,
+        "symbol_id": "s4",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 1,
+        "column": 5,
+        "symbol_id": "s5",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 2,
+        "column": 1,
+        "symbol_id": "s6",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 2,
+        "column": 2,
+        "symbol_id": "s7",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 2,
+        "column": 3,
+        "symbol_id": "s8",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 2,
+        "column": 4,
+        "symbol_id": "s9",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 2,
+        "column": 5,
+        "symbol_id": "s10",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 3,
+        "column": 1,
+        "symbol_id": "s11",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 3,
+        "column": 2,
+        "symbol_id": "s12",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 3,
+        "column": 3,
+        "symbol_id": "s13",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 3,
+        "column": 4,
+        "symbol_id": "s14",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 3,
+        "column": 5,
+        "symbol_id": "s15",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 4,
+        "column": 1,
+        "symbol_id": "s16",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 4,
+        "column": 2,
+        "symbol_id": "s17",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 4,
+        "column": 3,
+        "symbol_id": "s18",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 4,
+        "column": 4,
+        "symbol_id": "s19",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 4,
+        "column": 5,
+        "symbol_id": "s20",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 5,
+        "column": 1,
+        "symbol_id": "s21",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 5,
+        "column": 2,
+        "symbol_id": "s22",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 5,
+        "column": 3,
+        "symbol_id": "s23",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 5,
+        "column": 4,
+        "symbol_id": "s24",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 5,
+        "column": 5,
+        "symbol_id": "s25",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 6,
+        "column": 1,
+        "symbol_id": "s26",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 6,
+        "column": 2,
+        "symbol_id": "s27",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 6,
+        "column": 3,
+        "symbol_id": "s28",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 6,
+        "column": 4,
+        "symbol_id": "s29",
+        "category": "o",
+        "literal": ""
+      },
+      {
+        "row": 6,
+        "column": 5,
+        "symbol_id": "s30",
+        "category": "o",
+        "literal": ""
+      }
+    ]
+  },
+  "main_character_displays": {
+    "count": 0
+  },
+  "regions": {
+    "order": [
+      "grid",
+      "characters",
+      "information",
+      "readouts",
+      "controls"
+    ],
+    "numeric_proportions": null,
+    "characters_information_separate": true
+  },
+  "components": [
+    {
+      "id": "c1",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "GRAND",
+      "parent": ""
+    },
+    {
+      "id": "c2",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "1000",
+      "parent": ""
+    },
+    {
+      "id": "c3",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "MAJOR",
+      "parent": ""
+    },
+    {
+      "id": "c4",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "1000",
+      "parent": ""
+    },
+    {
+      "id": "c5",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "MINOR",
+      "parent": ""
+    },
+    {
+      "id": "c6",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "1000",
+      "parent": ""
+    },
+    {
+      "id": "c7",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "MINI",
+      "parent": ""
+    },
+    {
+      "id": "c8",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "1000",
+      "parent": ""
+    },
+    {
+      "id": "c9",
+      "interaction_type": "action",
+      "function": "purchase",
+      "literal": "BUY FREE GAME",
+      "parent": ""
+    },
+    {
+      "id": "c10",
+      "interaction_type": "display",
+      "function": "information_readout",
+      "literal": "2 or more",
+      "parent": ""
+    },
+    {
+      "id": "c11",
+      "interaction_type": "action",
+      "function": "rotation",
+      "parent": ""
+    },
+    {
+      "id": "c12",
+      "interaction_type": "display",
+      "function": "numeric_readout",
+      "literal": "¥1000",
+      "parent": ""
+    },
+    {
+      "id": "c13",
+      "interaction_type": "action",
+      "function": "adjust_minus",
+      "literal": "−",
+      "parent": ""
+    },
+    {
+      "id": "c14",
+      "interaction_type": "display",
+      "function": "numeric_readout",
+      "literal": "¥1000",
+      "parent": ""
+    },
+    {
+      "id": "c15",
+      "interaction_type": "action",
+      "function": "adjust_plus",
+      "literal": "+",
+      "parent": ""
+    },
+    {
+      "id": "c16",
+      "interaction_type": "display",
+      "function": "numeric_readout",
+      "literal": "¥1000",
+      "parent": ""
+    },
+    {
+      "id": "c17",
+      "interaction_type": "action",
+      "function": "sound",
+      "literal": "声音",
+      "parent": ""
+    },
+    {
+      "id": "c18",
+      "interaction_type": "action",
+      "function": "speed",
+      "literal": "极速",
+      "parent": ""
+    },
+    {
+      "id": "c19",
+      "interaction_type": "action",
+      "function": "auto",
+      "literal": "自动",
+      "parent": ""
+    },
+    {
+      "id": "c20",
+      "interaction_type": "action",
+      "function": "menu",
+      "literal": "菜单",
+      "parent": ""
+    }
+  ],
+  "containers": [
+    {
+      "id": "c_grid",
+      "type": "grid_container",
+      "children": [
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "s6",
+        "s7",
+        "s8",
+        "s9",
+        "s10",
+        "s11",
+        "s12",
+        "s13",
+        "s14",
+        "s15",
+        "s16",
+        "s17",
+        "s18",
+        "s19",
+        "s20",
+        "s21",
+        "s22",
+        "s23",
+        "s24",
+        "s25",
+        "s26",
+        "s27",
+        "s28",
+        "s29",
+        "s30"
+      ]
+    },
+    {
+      "id": "c_payline",
+      "type": "information_display",
+      "children": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "id": "c_buyfreegame",
+      "type": "shared_horizontal_strip",
+      "children": [
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "display_is_not_second_button": true
+    },
+    {
+      "id": "c_balance",
+      "type": "horizontal_readouts_with_adjusters",
+      "children_in_recognized_order": [
+        "c12",
+        "c13",
+        "c14",
+        "c15",
+        "c16"
+      ]
+    },
+    {
+      "id": "c_controls",
+      "type": "main_control_and_auxiliary_group",
+      "main": "c11",
+      "main_anchor": "center",
+      "auxiliary_order": [
+        "c17",
+        "c18",
+        "c19",
+        "c20"
+      ],
+      "auxiliary_order_basis": "left-to-right"
+    }
+  ]
+}

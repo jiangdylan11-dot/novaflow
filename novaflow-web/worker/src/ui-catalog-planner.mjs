@@ -9,7 +9,7 @@ export const UI_CATALOG_MODEL = 'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.s
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function parseCatalogObject(raw) {
-  const source = String(raw || '').replace(/^```(?:json)?\s*/u, '').trim();
+  const source = String(raw || '').split(/^\s*<\/think>\s*$/mu).at(-1).replace(/^```(?:json)?\s*/u, '').trim();
   // PE custom templates can return the continuation after the opening brace.
   for (const candidate of (source.startsWith('\"') ? ['{' + source, source] : [source, '{' + source])) {
     const first = candidate.indexOf('{');
@@ -30,7 +30,7 @@ export function parseCatalogObject(raw) {
 export function parseCatalogFields(raw, expectedKeys) {
   const original = String(raw || '').replace(/^```(?:json)?\s*/u, '').trim();
   const addedOpeningBrace = !original.startsWith('{'), source = addedOpeningBrace ? '{' + original : original;
-  let position = 1; const value = {}, spans = {};
+  let position = 1; const value = {}, spans = {}, ignoredFields = [], observedOrder = [], expected = new Set(expectedKeys);
   const skip = () => { while (/\s/u.test(source[position] || '') && position < source.length) position++; };
   const string = () => {
     const start = position; if (source[position] !== '"') throw new Error('主题美术字段格式不完整');
@@ -43,18 +43,25 @@ export function parseCatalogFields(raw, expectedKeys) {
     }
     throw new Error('主题美术字段被截断，本次未提交生图');
   };
-  expectedKeys.forEach((key,index) => {
-    skip(); const actual = string(); if (actual.value !== key) throw new Error('主题美术字段顺序或名称不符：' + key);
+  while (Object.keys(value).length < expectedKeys.length) {
+    skip(); const actual = string(), key = actual.value;
     skip(); if (source[position++] !== ':') throw new Error('主题美术字段缺少分隔符'); skip();
-    const field = string(); if (!field.value.trim()) throw new Error('主题美术字段为空：' + key);
-    value[key] = field.value; spans[key] = field.span;
-    if (index < expectedKeys.length - 1) { skip(); if (source[position++] !== ',') throw new Error('主题美术字段缺失'); }
-  });
-  return { value, proof:{ completeFields:expectedKeys.length, reconstructedValueSpans:spans, addedOpeningBrace,
+    const field = string();
+    if (expected.has(key)) {
+      if (Object.hasOwn(value,key)) throw new Error('主题美术字段在完整集合前重复：'+key);
+      if (!field.value.trim()) throw new Error('主题美术字段为空：'+key);
+      value[key]=field.value;spans[key]=field.span;observedOrder.push(key);
+    } else {
+      if (!/^(?:OBJECT|CHARACTER|MAIN_CHARACTER|SPECIAL|CARRIER)\d+$/.test(key)) throw new Error('主题美术返回了未支持字段：'+key);
+      ignoredFields.push(key);
+    }
+    if (Object.keys(value).length < expectedKeys.length) { skip(); if (source[position++] !== ',') throw new Error('主题美术字段缺失'); }
+  }
+  return { value, proof:{ completeFields:expectedKeys.length, reconstructedValueSpans:spans, ignoredFields, observedOrder, addedOpeningBrace,
     sourceSha256:createHash('sha256').update(original).digest('hex'), suffixQuarantinedChars:source.length-position, artWordEdits:0 } };
 }
 
-export function buildUiCatalogGraph({ system, context, images = [] }) {
+export function buildUiCatalogGraph({ system, context, images = [], observation = false, maxLength = 6144, continuation = '' }) {
   const graph = { '1': { class_type: 'CLIPLoader', inputs: { clip_name: UI_CATALOG_MODEL, type: 'qwen_image', device: 'default' } } };
   let image;
   images.forEach((name, i) => {
@@ -63,14 +70,18 @@ export function buildUiCatalogGraph({ system, context, images = [] }) {
     if (!image) image = [id, 0];
     else { const batch = String(11 + i * 2); graph[batch] = { class_type: 'ImageBatch', inputs: { image1: image, image2: [id, 0] } }; image = [batch, 0]; }
   });
-  graph['3'] = { class_type: 'TextGenerate', inputs: {
-    clip: ['1', 0], prompt: '<|im_start|>system\n' + system + '<|im_end|>\n<|im_start|>user\n' + images.map((_, i) => '图' + (i + 1) + '：<|vision_start|><|image_pad|><|vision_end|>\n').join('') + JSON.stringify(context) + '<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n{',
-    system_prompt: '', max_length: 3072, sampling_mode: 'on', thinking: false, use_default_template: false, mtp: 'off',
-    'sampling_mode.temperature': 1, 'sampling_mode.top_k': 20, 'sampling_mode.top_p': .95, 'sampling_mode.min_p': 0,
-    'sampling_mode.repetition_penalty': 1, 'sampling_mode.seed': 0, 'sampling_mode.presence_penalty': 0,
-    ...(image ? { image } : {})
-  } };
-  graph['4'] = { class_type: 'PreviewAny', inputs: { source: ['3', 0] } };
+  const vision = images.map((_,i) => (observation ? '' : '图'+(i+1)+'：')+'<|vision_start|><|image_pad|><|vision_end|>'+(observation ? '' : '\n')).join('');
+  const user = typeof context === 'string' ? context : JSON.stringify(context);
+  const tail = observation ? '<think>\n'+(continuation ? continuation+'\n</think>\n\n{' : '') : '<think>\n\n</think>\n\n{';
+  graph['3'] = { class_type:'TextGenerate',inputs:{
+    clip:['1',0],prompt:'<|im_start|>system\n'+system+'<|im_end|>\n<|im_start|>user\n'+vision+user+'<|im_end|>\n<|im_start|>assistant\n'+tail,
+    system_prompt:'',max_length:maxLength,sampling_mode:'on',thinking:observation&&!continuation,use_default_template:false,mtp:'off',
+    'sampling_mode.temperature':1,'sampling_mode.top_k':20,'sampling_mode.top_p':.95,'sampling_mode.min_p':0,
+    'sampling_mode.repetition_penalty':1,'sampling_mode.seed':0,'sampling_mode.presence_penalty':observation?1.5:0,
+    ...(image?{image}:{})
+  }};
+  graph['4']={class_type:'PreviewAny',inputs:{source:['3',0]}};
+  graph['5']={class_type:'PreviewAny',inputs:{source:['3',1]}};
   return graph;
 }
 
@@ -124,45 +135,74 @@ export async function planUiCatalog({ baseUrl, payload, cpu, fetchImpl = fetch, 
   const promptIds = [];
   let artExtraction = null;
   const decode = (raw, expectedKeys) => { if (!expectedKeys) return parseCatalogObject(raw); const extracted = parseCatalogFields(raw, expectedKeys); artExtraction = extracted.proof; return extracted.value; };
-  async function analyze(system, context, refs, resumeId = '', expectedKeys = null) {
-    if (resumeId) {
-      if (!/^[0-9a-f-]{36}$/i.test(resumeId)) throw new Error('UI 分析恢复任务 ID 无效');
-      const history = (await json('/history/' + resumeId))[resumeId];
-      if (!history?.status?.completed || history.status.status_str !== 'success') throw new Error('UI 分析恢复任务尚未成功完成');
-      const prior = history.prompt?.[2], expected = buildUiCatalogGraph({ system, context, images:refs });
-      const normalize = graph => Object.fromEntries(Object.entries(graph || {}).map(([id,node]) => [id,{...node,inputs:{...node.inputs,...(node.class_type === 'LoadImage' ? {image:'same-verified-source'} : {})}}]));
-      const canonical = value => JSON.stringify(value, function(key,item) { return item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(k=>[k,item[k]])) : item; });
-      if (canonical(normalize(prior)) !== canonical(normalize(expected))) throw new Error('UI 分析恢复的模型、要求或图职责已变化，未复用旧任务');
-      const loaded = Object.values(prior).filter(node=>node.class_type==='LoadImage');
-      if (loaded.length !== 1) throw new Error('UI 分析恢复只支持同一张已验证布局图');
-      const name = String(loaded[0].inputs.image), slash = name.lastIndexOf('/');
-      const response = await fetchImpl(base + '/view?' + new URLSearchParams({filename:name.slice(slash+1),subfolder:slash>=0?name.slice(0,slash):'',type:'input'}), {signal:AbortSignal.timeout(30000)});
-      if (!response.ok || createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex') !== sources[layoutIndex].sha256) throw new Error('UI 分析恢复的原图字节不一致');
-      promptIds.push(resumeId);
-      const raw = history.outputs?.['4']?.text;
-      return decode(Array.isArray(raw)?raw.join(''):raw, expectedKeys);
+  let dispatchClientId = '';
+  const canonical = value => JSON.stringify(value,function(key,item){return item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(k=>[k,item[k]])):item;});
+  async function verifyResume(id,history,expected,refs) {
+    const prior=history.prompt?.[2];
+    const normalize=graph=>Object.fromEntries(Object.entries(graph||{}).map(([key,node])=>[key,{...node,inputs:{...node.inputs,...(node.class_type==='LoadImage'?{image:'same-verified-source'}:{})}}]));
+    if(canonical(normalize(prior))!==canonical(normalize(expected)))throw new Error('UI分析恢复的模型、模板或要求已变化，未复用旧任务');
+    const loaded=Object.entries(prior).filter(([,n])=>n.class_type==='LoadImage').sort((a,b)=>Number(a[0])-Number(b[0]));
+    if(loaded.length!==refs.length)throw new Error('UI分析恢复的参考图数量不符');
+    for(let i=0;i<loaded.length;i++){
+      const name=String(loaded[i][1].inputs.image),slash=name.lastIndexOf('/');
+      const response=await fetchImpl(base+'/view?'+new URLSearchParams({filename:name.slice(slash+1),subfolder:slash>=0?name.slice(0,slash):'',type:'input'}),{signal:AbortSignal.timeout(30000)});
+      if(!response.ok||createHash('sha256').update(Buffer.from(await response.arrayBuffer())).digest('hex')!==sources[names.indexOf(refs[i])].sha256)throw new Error('UI分析恢复的原图字节不一致');
     }
-    await idle();
-    const sent = await json('/prompt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ client_id: 'novaflow-ui-catalog-' + randomUUID(), prompt: buildUiCatalogGraph({ system, context, images: refs }) }) });
-    if (!sent.prompt_id) throw new Error('UI 分析未返回任务 ID');
-    promptIds.push(sent.prompt_id);
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const history = (await json('/history/' + encodeURIComponent(sent.prompt_id)))[sent.prompt_id];
-      if (history?.status?.status_str === 'error') throw new Error('UI 分析任务失败，任务 ID：' + sent.prompt_id);
-      if (history?.status?.completed) {
-        const text = history.outputs?.['4']?.text;
-        return decode(Array.isArray(text) ? text.join('') : text, expectedKeys);
-      }
+  }
+  async function execute(graph,refs,resumeId='') {
+    if(promptIds.length>=7)throw new Error('UI分析已达到本次有界调用上限，本次未提交生图');
+    if(resumeId){
+      if(!/^[0-9a-f-]{36}$/i.test(resumeId))throw new Error('UI分析恢复任务ID无效');
+      const history=(await json('/history/'+resumeId))[resumeId];
+      if(!history?.status?.completed||history.status.status_str!=='success')throw new Error('UI分析恢复任务尚未成功完成');
+      await verifyResume(resumeId,history,graph,refs);promptIds.push(resumeId);return history;
+    }
+    await idle();dispatchClientId='novaflow-ui-catalog-'+randomUUID();
+    const sent=await json('/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:dispatchClientId,prompt:graph})});
+    if(!sent.prompt_id)throw new Error('UI分析提交状态未确认；请先核对运行时，本次不重复提交');
+    promptIds.push(sent.prompt_id);const start=Date.now();
+    while(Date.now()-start<timeoutMs){
+      const history=(await json('/history/'+sent.prompt_id))[sent.prompt_id];
+      if(history?.status?.status_str==='error')throw new Error('UI分析任务失败，任务ID：'+sent.prompt_id);
+      if(history?.status?.completed)return history;
       await sleep(pollMs);
     }
-    throw new Error('UI 分析等待超时；请先核对任务 ' + sent.prompt_id + ' 的状态，勿重复提交');
+    throw new Error('UI分析等待超时；请先核对任务 '+sent.prompt_id+' 的状态，勿重复提交');
   }
-  const rules = await cpu({ action: 'recognition-rules' });
-  const source = await analyze(rules.rules, { user_request: request, layout: payload.uiStructure || {} }, [names[layoutIndex]], String(payload.uiCatalogResume?.sourcePromptId || ''));
-  const job = await cpu({ action: 'design-job', source, request });
-  const catalog = await analyze(job.systemInstruction, { ...job.context, references: sources.map(({ index, role }) => ({ index, role })) }, names, String(payload.uiCatalogResume?.artPromptId || ''), job.output_keys);
-  const compiled = await cpu({ action: 'compile', case: job.case, catalog });
-  return { prompt: compiled.prompt, negativePrompt: '', uiCatalog: { schema: UI_CATALOG_SCHEMA, model: UI_CATALOG_MODEL, promptIds, providerCallCount: 2, resumedSourcePromptId:payload.uiCatalogResume?.sourcePromptId || null, resumedArtPromptId:payload.uiCatalogResume?.artPromptId || null, artExtraction, sources, inventory: compiled.proof.inventory, warnings: compiled.proof.business_guard.warnings, promptSha256: createHash('sha256').update(compiled.prompt).digest('hex') },
-    uiPlan: { version: 1, layoutMode: 'preserve', layoutReference: layoutIndex + 1, visualMode: 'theme-redesign', references: images.map((x,i) => ({ index:i+1, role:x.role === 'layout' ? 'layout' : ['style','color','material'].includes(x.role) ? 'style' : 'content' })), layoutChanges: [], preserve: [], grids: [] } };
+  const output=(history,id)=>{const text=history.outputs?.[id]?.text;return Array.isArray(text)?text.join(''):String(text||'');};
+  async function analyze(system,context,refs,{resumeId='',finalId='',expectedKeys=null,observation=false,maxLength=6144}={}){
+    const history=await execute(buildUiCatalogGraph({system,context,images:refs,observation,maxLength}),refs,resumeId);
+    try{return decode(output(history,'4'),expectedKeys);}catch(error){
+      const thinking=output(history,'5');
+      if(!observation||!thinking||thinking.length>80000)throw error;
+      // Only the actual model reasoning is retained. The suffix adds syntax,
+      // never a grid cell, identity, function, layout relation or art phrase.
+      const final=await execute(buildUiCatalogGraph({system,context,images:refs,observation,maxLength:1024,continuation:thinking}),refs,finalId);
+      return decode(output(final,'4'),expectedKeys);
+    }
+  }
+  let stage='grid-recognition',anchorRepaired=false;
+  try {
+    const resume=payload.uiCatalogResume||{},rules=await cpu({action:'recognition-rules'});
+    if(resume.sourcePromptId)throw new Error('旧单段结构恢复记录不兼容分阶段识别；本次未提交生图');
+    const refs=[names[layoutIndex]];
+    const grid=await analyze(rules.gridRules,rules.gridTask,refs,{observation:true,maxLength:4096,resumeId:resume.gridPromptId,finalId:resume.gridFinalPromptId});
+    stage='grid-validation';await cpu({action:'observed-grid-check',source:grid});
+    stage='business-recognition';
+    const business=await analyze(rules.businessRules,rules.businessTask,refs,{observation:true,maxLength:4096,resumeId:resume.businessPromptId,finalId:resume.businessFinalPromptId});
+    stage='structure-validation';const inspection=await cpu({action:'inspect-observations',grid,business});
+    let anchors;
+    if(inspection.needsAnchorRepair){
+      stage='structure-field-repair';
+      anchors=await analyze(rules.anchorRules,rules.anchorTask,refs,{observation:true,maxLength:1024,resumeId:resume.anchorPromptId,finalId:resume.anchorFinalPromptId});
+      anchorRepaired=true;
+    }
+    stage='structure-validation';
+    const job=await cpu({action:'merge-observed-job',grid,business,request,...(anchors?{anchors}:{})});
+    stage='theme-analysis';
+    const catalog=await analyze(job.systemInstruction,{...job.context,references:sources.map(({index,role})=>({index,role}))},names,{resumeId:resume.artPromptId,expectedKeys:job.output_keys});
+    stage='compile';const compiled=await cpu({action:'compile',case:job.case,catalog});
+    return {prompt:compiled.prompt,negativePrompt:'',uiCatalog:{schema:UI_CATALOG_SCHEMA,model:UI_CATALOG_MODEL,recognitionMethod:'staged-observation-v1',promptIds,providerCallCount:promptIds.length,anchorRepaired,artExtraction,sources,inventory:compiled.proof.inventory,warnings:compiled.proof.business_guard.warnings,promptSha256:createHash('sha256').update(compiled.prompt).digest('hex')},
+      uiPlan:{version:1,layoutMode:'preserve',layoutReference:layoutIndex+1,visualMode:'theme-redesign',references:images.map((x,i)=>({index:i+1,role:x.role==='layout'?'layout':['style','color','material'].includes(x.role)?'style':'content'})),layoutChanges:[],preserve:[],grids:[]}};
+  }catch(error){error.uiCatalogDiagnostics={stage,model:UI_CATALOG_MODEL,promptIds:[...promptIds],dispatchClientId,samplingSubmitted:false};throw error;}
 }

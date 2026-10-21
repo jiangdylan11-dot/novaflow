@@ -41,7 +41,7 @@ test('actual assistant transport asks for the observed business inventory withou
       size: {width: 576, height: 1250}, references: [{role: 'layout', dataUrl: 'data:image/png;base64,layout'}],
       electronAPI: {smartAiImageReverse: async request => {
         requests.push(request);
-        return {ok: true, prompt: '生肖主题的完整界面，保留原功能。', uiPlan: null};
+        return {ok: true, prompt: '生肖主题的完整界面，保留原功能。', uiPlan: {version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}};
       }}});
   }
   assert.equal(requests.length, 2);

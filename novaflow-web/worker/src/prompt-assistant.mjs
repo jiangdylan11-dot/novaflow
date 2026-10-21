@@ -602,7 +602,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
           const cfg = config();
           const data = await planUiCatalog({ baseUrl:comfyUrls[0], payload, cpu: value => cpuCatalog({ python:cfg.pythonPath, serviceScript:cfg.serviceScript }, value) });
           return { ok:true, data };
-        } catch (error) { return { ok:false, error:String(error?.message || error), errorCode:'ui-catalog-failed' }; }
+        } catch (error) { return { ok:false, error:String(error?.message || error), errorCode:'ui-catalog-failed', ...(error.uiCatalogDiagnostics ? {uiCatalogDiagnostics:error.uiCatalogDiagnostics} : {}) }; }
         finally { lease = null; }
       }
       let normalized;

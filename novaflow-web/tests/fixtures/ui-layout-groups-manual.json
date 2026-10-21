@@ -1,0 +1,542 @@
+{
+  "evidence": {
+    "kind": "manual visual inspection of actual task input; not a model response",
+    "taskId": "a83b3a82-5e03-47a8-8734-b34b0ca84dd5",
+    "imageSha256": "55f7b56e0d21fec2998ede57808bfe1c36739100b4f28d804881e023cd808bc0",
+    "ambiguousOrbIdentity": "two visibly different centers retained as separate source IDs; not a model recognition accuracy claim"
+  },
+  "source": {
+    "grid": {
+      "rows": 5,
+      "columns": 6,
+      "row_lengths": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "cells": [
+        {
+          "row": 1,
+          "column": 1,
+          "symbol_id": "purple",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 1,
+          "column": 2,
+          "symbol_id": "purple",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 1,
+          "column": 3,
+          "symbol_id": "red",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 1,
+          "column": 4,
+          "symbol_id": "red",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 1,
+          "column": 5,
+          "symbol_id": "scatter",
+          "category": "s",
+          "literal": "SCATTER"
+        },
+        {
+          "row": 1,
+          "column": 6,
+          "symbol_id": "green",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 2,
+          "column": 1,
+          "symbol_id": "eye",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 2,
+          "column": 2,
+          "symbol_id": "eye",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 2,
+          "column": 3,
+          "symbol_id": "orb_blue",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 2,
+          "column": 4,
+          "symbol_id": "orb_dark",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 2,
+          "column": 5,
+          "symbol_id": "coin",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 2,
+          "column": 6,
+          "symbol_id": "ring",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 3,
+          "column": 1,
+          "symbol_id": "yellow",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 3,
+          "column": 2,
+          "symbol_id": "bonus",
+          "category": "s",
+          "literal": "BONUS"
+        },
+        {
+          "row": 3,
+          "column": 3,
+          "symbol_id": "blue",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 3,
+          "column": 4,
+          "symbol_id": "blue",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 3,
+          "column": 5,
+          "symbol_id": "super_scatter",
+          "category": "s",
+          "literal": "SUPER SCATTER"
+        },
+        {
+          "row": 3,
+          "column": 6,
+          "symbol_id": "x_blue",
+          "category": "s",
+          "literal": "X500"
+        },
+        {
+          "row": 4,
+          "column": 1,
+          "symbol_id": "yellow",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 4,
+          "column": 2,
+          "symbol_id": "blue",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 4,
+          "column": 3,
+          "symbol_id": "chest",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 4,
+          "column": 4,
+          "symbol_id": "coin",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 4,
+          "column": 5,
+          "symbol_id": "ring",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 4,
+          "column": 6,
+          "symbol_id": "red",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 5,
+          "column": 1,
+          "symbol_id": "green",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 5,
+          "column": 2,
+          "symbol_id": "x_gold",
+          "category": "s",
+          "literal": "X500"
+        },
+        {
+          "row": 5,
+          "column": 3,
+          "symbol_id": "shell",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 5,
+          "column": 4,
+          "symbol_id": "ring",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 5,
+          "column": 5,
+          "symbol_id": "yellow",
+          "category": "o",
+          "literal": ""
+        },
+        {
+          "row": 5,
+          "column": 6,
+          "symbol_id": "green",
+          "category": "o",
+          "literal": ""
+        }
+      ]
+    },
+    "main_character_displays": {
+      "count": 1,
+      "items": [
+        {
+          "id": "hero1",
+          "region_id": "hero",
+          "framing": "half"
+        }
+      ]
+    },
+    "regions": {
+      "order": [
+        "jackpots",
+        "hero",
+        "play",
+        "feature",
+        "readouts",
+        "controls"
+      ],
+      "items": [
+        {
+          "id": "jackpots",
+          "kind": "information",
+          "label": "顶部四档奖池",
+          "container_ids": [
+            "jackpot1_panel",
+            "jackpot2_panel",
+            "jackpot3_panel",
+            "jackpot4_panel"
+          ]
+        },
+        {
+          "id": "hero",
+          "kind": "characters",
+          "label": "上部独立主角",
+          "container_ids": []
+        },
+        {
+          "id": "play",
+          "kind": "grid",
+          "label": "玩法网格",
+          "container_ids": [
+            "symbols"
+          ]
+        },
+        {
+          "id": "feature",
+          "kind": "information",
+          "label": "购买与规则长栏",
+          "container_ids": [
+            "purchase_strip"
+          ]
+        },
+        {
+          "id": "readouts",
+          "kind": "readouts",
+          "label": "金额与加减行",
+          "container_ids": [
+            "amount_row"
+          ]
+        },
+        {
+          "id": "controls",
+          "kind": "controls",
+          "label": "底部主控",
+          "container_ids": [
+            "main_controls"
+          ]
+        }
+      ],
+      "numeric_proportions": null
+    },
+    "components": [
+      {
+        "id": "jackpot1",
+        "interaction_type": "display",
+        "function": "information_readout",
+        "literal": "",
+        "literal_parts": [
+          "GRAND",
+          "1000"
+        ],
+        "parent": "jackpot1_panel"
+      },
+      {
+        "id": "jackpot2",
+        "interaction_type": "display",
+        "function": "information_readout",
+        "literal": "",
+        "literal_parts": [
+          "MAJOR",
+          "1000"
+        ],
+        "parent": "jackpot2_panel"
+      },
+      {
+        "id": "jackpot3",
+        "interaction_type": "display",
+        "function": "information_readout",
+        "literal": "",
+        "literal_parts": [
+          "MINOR",
+          "1000"
+        ],
+        "parent": "jackpot3_panel"
+      },
+      {
+        "id": "jackpot4",
+        "interaction_type": "display",
+        "function": "information_readout",
+        "literal": "",
+        "literal_parts": [
+          "MINI",
+          "1000"
+        ],
+        "parent": "jackpot4_panel"
+      },
+      {
+        "id": "purchase",
+        "interaction_type": "action",
+        "function": "purchase",
+        "literal": "BUY FREE GAME",
+        "parent": "purchase_strip"
+      },
+      {
+        "id": "rule",
+        "interaction_type": "display",
+        "function": "information_readout",
+        "literal": "2 or more",
+        "inline_symbol_id": "bonus",
+        "unresolved_literal_tail": true,
+        "parent": "purchase_strip"
+      },
+      {
+        "id": "balance",
+        "function": "numeric_readout",
+        "interaction_type": "display",
+        "literal": "¥1000",
+        "parent": "amount_row",
+        "functional_icon": "wallet"
+      },
+      {
+        "id": "minus",
+        "function": "adjust_minus",
+        "interaction_type": "action",
+        "literal": "−",
+        "parent": "amount_row"
+      },
+      {
+        "id": "bet",
+        "function": "numeric_readout",
+        "interaction_type": "display",
+        "literal": "¥1000",
+        "parent": "amount_row"
+      },
+      {
+        "id": "plus",
+        "function": "adjust_plus",
+        "interaction_type": "action",
+        "literal": "+",
+        "parent": "amount_row"
+      },
+      {
+        "id": "win",
+        "function": "numeric_readout",
+        "interaction_type": "display",
+        "literal": "¥1000",
+        "parent": "amount_row",
+        "badge_literal": "WIN"
+      },
+      {
+        "id": "spin",
+        "interaction_type": "action",
+        "function": "rotation",
+        "literal": "",
+        "parent": "main_controls"
+      },
+      {
+        "id": "sound",
+        "interaction_type": "action",
+        "function": "sound",
+        "literal": "声音",
+        "parent": "main_controls"
+      },
+      {
+        "id": "speed",
+        "interaction_type": "action",
+        "function": "speed",
+        "literal": "极速",
+        "parent": "main_controls"
+      },
+      {
+        "id": "auto",
+        "interaction_type": "action",
+        "function": "auto",
+        "literal": "自动",
+        "parent": "main_controls"
+      },
+      {
+        "id": "menu",
+        "interaction_type": "action",
+        "function": "menu",
+        "literal": "菜单",
+        "parent": "main_controls"
+      }
+    ],
+    "containers": [
+      {
+        "id": "jackpot1_panel",
+        "type": "information_display",
+        "children": [
+          "jackpot1"
+        ]
+      },
+      {
+        "id": "jackpot2_panel",
+        "type": "information_display",
+        "children": [
+          "jackpot2"
+        ]
+      },
+      {
+        "id": "jackpot3_panel",
+        "type": "information_display",
+        "children": [
+          "jackpot3"
+        ]
+      },
+      {
+        "id": "jackpot4_panel",
+        "type": "information_display",
+        "children": [
+          "jackpot4"
+        ]
+      },
+      {
+        "id": "symbols",
+        "type": "grid_container",
+        "children": [
+          "purple",
+          "purple",
+          "red",
+          "red",
+          "scatter",
+          "green",
+          "eye",
+          "eye",
+          "orb_blue",
+          "orb_dark",
+          "coin",
+          "ring",
+          "yellow",
+          "bonus",
+          "blue",
+          "blue",
+          "super_scatter",
+          "x_blue",
+          "yellow",
+          "blue",
+          "chest",
+          "coin",
+          "ring",
+          "red",
+          "green",
+          "x_gold",
+          "shell",
+          "ring",
+          "yellow",
+          "green"
+        ]
+      },
+      {
+        "id": "purchase_strip",
+        "type": "shared_horizontal_strip",
+        "children": [
+          "purchase",
+          "rule"
+        ],
+        "display_is_not_second_button": true
+      },
+      {
+        "id": "amount_row",
+        "type": "horizontal_readouts_with_adjusters",
+        "children_in_recognized_order": [
+          "balance",
+          "minus",
+          "bet",
+          "plus",
+          "win"
+        ]
+      },
+      {
+        "id": "main_controls",
+        "type": "main_control_and_auxiliary_group",
+        "main": "spin",
+        "main_anchor": "center",
+        "auxiliary_order": [
+          "sound",
+          "speed",
+          "auto",
+          "menu"
+        ],
+        "auxiliary_order_basis": "left-to-right"
+      }
+    ],
+    "unresolved_noninventory_fields": [
+      "purchase rule suffix not read reliably; preserve source pixels without inventing text"
+    ],
+    "schema": "nf.ui.recognition.v2"
+  }
+}

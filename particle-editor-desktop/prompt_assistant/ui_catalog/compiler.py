@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from .business_guard import audit
+from .layout_regions import kind_order, region_labels, container_location
 from .display_bindings import display_contract
 from .art_direction import rules as art_direction_rules
 from .natural_core import natural_grid_rows, parse_natural_grid, assert_clean_model_text
@@ -108,9 +109,23 @@ def compile_ui(case):
                 raise ValueError('Object alias needs an existing art quote: '+key)
         elif cat == 'p':
             alias = identity_by_key[key]['name']+'头像' if key in identity_by_key else '人物头像'+str(len(aliases)+1)
+        elif cat == 's' and bind.get('special_aliases',{}).get(key):
+            alias = bind['special_aliases'][key]+'“'+target['literal']+'”'
         else:
             alias = '“'+target['literal']+'”'
         aliases[target['symbol_id']] = alias
+    alias_groups, disambiguation = {}, []
+    for sid,alias in aliases.items(): alias_groups.setdefault(alias,[]).append(sid)
+    target_by_sid = {x['symbol_id']:x for x in targets}
+    for alias,sids in alias_groups.items():
+        if len(sids)<2: continue
+        if any(target_by_sid[sid]['category']!='s' for sid in sids):
+            raise ValueError('不同符号的引用名称仍有冲突')
+        descriptions=[art[target_by_sid[sid]['key']] for sid in sids]
+        if len(set(descriptions))!=len(sids):
+            raise ValueError('同字面不同特殊载体的美术描述完全相同，不能伪造身份区分')
+        for i,sid in enumerate(sids,1): aliases[sid]=alias+'（载体'+str(i)+'）'
+        disambiguation.append({'source_symbol_ids':sids,'original_alias':alias,'art_word_edits':0})
     rows, cols = inv['shape']
     mapping, row_text = natural_grid_rows(sk['grid']['cells'],aliases,rows,cols)
     sections = []
@@ -130,13 +145,15 @@ def compile_ui(case):
     containers = sk.get('containers',[])
     shared = [x for x in containers if x['type']=='shared_horizontal_strip']
     labels = {'grid':'玩法网格','characters':'独立人物场景','information':'共享信息长栏' if shared else '信息显示','readouts':'数值调节行','controls':'底部主控'}
-    order = sk.get('regions',{}).get('order',[])
-    region_text = '区域保持纵向顺序：'+'、'.join(labels.get(x,'其他已识别区域') for x in order)+'。' if order else ''
+    order = kind_order(sk)
+    region_text = '区域保持纵向顺序：'+'、'.join(region_labels(sk, labels))+'。' if order else ''
     if sk.get('regions',{}).get('characters_information_separate') is True:
         region_text += '人物与信息不并排；'
     if sk.get('regions',{}).get('numeric_proportions') is None:
         region_text += '比例未量化，留白与分区参照原图。'
     emit('regions',region_text)
+    if any(x['type']=='grid_container' for x in containers):
+        emit('grid_group_contract','玩法网格只使用清点的格位实例；网格分组不新增按钮、额外玩法盘或符号实例。')
     emit('definitions_intro','以下每种符号只定义一次；同名格位严格复用同一造型，不生成变体。')
     for target in targets:
         if target['category']=='o' and target['key'] in art:
@@ -172,7 +189,10 @@ def compile_ui(case):
     mains = inv['main_count']
     if mains:
         below = '网格下方的' if 'grid' in order and 'characters' in order and order.index('grid')<order.index('characters') else '独立人物区域的'
-        if mains == len(identities):
+        independent = case.get('independent_main_identities', [])
+        if independent:
+            text = '独立人物区严格展示'+str(mains)+'位新主题主角，按原人物区域与裁切展示，不因网格无头像而省略主角，不另添头像。'+''.join(x['definition'] for x in independent)
+        elif mains == len(identities):
             text = below+bind.get('stage_surface','人物场景')+'只展示上述'+zh(mains)+'个身份的完整全身，各1次，身份顺序沿用头像所在行从左到右的顺序；不另增人物。'
             if mains>1:
                 text += zh(mains)+'者服饰、装备和动作各不相同。'
@@ -184,12 +204,16 @@ def compile_ui(case):
         key = case.get('carrier_keys',{}).get(container['id'])
         if not key:
             continue
-        text = art.get(key,'')
+        text = container_location(sk,container)+art.get(key,'')
         missing = []
         for ident in container.get('children',[]):
             comp = components[ident]
             literals = comp.get('literal_parts') or ([comp['literal']] if comp.get('literal') else [])
             missing.extend(x for x in literals if not re.search('["“]'+re.escape(x)+'["”]',text))
+        for ident in container.get('children',[]):
+            inline = components[ident].get('inline_symbol_id')
+            if inline:
+                text += '信息显示内嵌同款'+aliases[inline]+'玩法符号，只作规则说明，不新增按钮或格位。'
         if missing:
             text += '业务字面逐字为'+'、'.join('“'+x+'”' for x in missing)+'。'
         if container['type']=='shared_horizontal_strip':
@@ -239,7 +263,7 @@ def compile_ui(case):
     expected = [{k:x[k] for k in ['row','column','symbol_id']} for x in sk['grid']['cells']]
     assert actual == expected
     return final, {'inventory':inv,'business_guard':check,'sections':ordered,
-                   'grid_roundtrip':True,'model_calls':0,'options':case.get('options',{}),
+                   'grid_roundtrip':True,'model_calls':0,'options':case.get('options',{}),'structural_alias_disambiguation':disambiguation,
                    'source_portrait_mapping_unknown_is_not_a_blocker':True}
 
 

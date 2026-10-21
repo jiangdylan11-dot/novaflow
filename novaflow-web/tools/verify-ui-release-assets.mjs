@@ -29,7 +29,7 @@ export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRend
     [workerRendererRoot, 'spine-split-runtime.js'], [workerRendererRoot, 'art-generate-reference-drop.tool.js'],
     [desktopRoot, 'prompt-assistant-service.py'], [desktopRoot, 'prompt_assistant/ui_split_proposal.py'],
     [desktopRoot, 'prompt_assistant/ui_catalog_cli.py'], [desktopRoot, 'prompt_assistant/ui_catalog/bridge.py'],
-    [desktopRoot, 'prompt_assistant/ui_catalog/compiler.py'], [desktopRoot, 'prompt_assistant/ui_catalog/OPTIONAL-DESIGN-RULES.json']
+    [desktopRoot, 'prompt_assistant/ui_catalog/compiler.py'], [desktopRoot, 'prompt_assistant/ui_catalog/layout_regions.py'], [desktopRoot, 'prompt_assistant/ui_catalog/observed_layout.py'], [desktopRoot, 'prompt_assistant/ui_catalog/OPTIONAL-DESIGN-RULES.json']
   ];
   for (const [base, file] of requirements) {
     try { await access(join(base, file)); } catch { throw new Error('Release missing UI dependency: ' + join(base, file)); }

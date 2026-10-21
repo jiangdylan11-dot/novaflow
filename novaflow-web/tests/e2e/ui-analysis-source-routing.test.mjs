@@ -82,7 +82,7 @@ test('the actual design-demand header renders the source selector beside its tit
 for(const prompt of ['@参考图1参考布局。换成迪士尼风格，白雪公主主题的老虎机','参考布局，改成水彩画风；森林精灵主题的游戏界面','参考布局。换成卡通风格\n海盗主题的老虎机','参考布局，白雪公主主题的老虎机，迪士尼画风','参考布局，目标主题：白雪公主','参考布局，完整重做为霓虹都市主题，保留玩法金额']) {
   test('explicit target theme enters the accepted catalog route: '+prompt,async()=>{
     const e=environment();e.state.prompt=prompt;
-    installAnalysis(e,()=>({ok:true,prompt:'按新主题重设计人物背景与符号',uiCatalog:{schema:'nf.ui.structure-catalog.v1'},uiPlan:{...plan(),visualMode:'theme-redesign'}}));
+    installAnalysis(e,()=>({ok:true,prompt:'按新主题重设计人物背景与符号',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'staged-observation-v1'},uiPlan:{...plan(),visualMode:'theme-redesign'}}));
     const i=e.input();assert.equal(i.generationIntent,'redesign');const r=await e.context.NovaFlowUiDesignAssistantWorkflow.run(i);
     assert.equal(e.calls.length,1);assert.equal(e.calls[0].payload.uiPlanner,'structure-catalog-v1');assert.equal(e.calls[0].payload.uiDesignIntent,'redesign');assert.equal(e.calls[0].payload.images[0].role,'layout');
     assert.ok(r.uiCatalog);e.mounted.destroy();

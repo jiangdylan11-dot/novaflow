@@ -3,13 +3,20 @@ import json
 import sys
 from prompt_assistant.ui_catalog.bridge import source_case, design_job, bind_catalog, RECOGNITION_RULES
 
+from prompt_assistant.ui_catalog.observed_layout import observed_grid, merge_observations, repair_business_anchors, inspect_observations, GRID_RULES, GRID_TASK, BUSINESS_RULES, BUSINESS_TASK, ANCHOR_RULES, ANCHOR_TASK
+
 if hasattr(sys.stdin, 'reconfigure'):
     sys.stdin.reconfigure(encoding='utf-8')
 
 def main():
     value = json.load(sys.stdin)
     action = value['action']
-    if action == 'recognition-rules': result = {'rules':RECOGNITION_RULES}
+    if action == 'recognition-rules': result = {'rules':RECOGNITION_RULES,'gridRules':GRID_RULES,'gridTask':GRID_TASK,'businessRules':BUSINESS_RULES,'businessTask':BUSINESS_TASK,'anchorRules':ANCHOR_RULES,'anchorTask':ANCHOR_TASK}
+    elif action == 'observed-grid-check': result = observed_grid(value['source'])
+    elif action == 'inspect-observations': result = inspect_observations(value['grid'],value['business'])
+    elif action == 'merge-observed-job':
+        business = repair_business_anchors(value['business'],value['anchors']) if 'anchors' in value else value['business']
+        result = design_job(source_case(merge_observations(value['grid'],business)),value['request'])
     elif action == 'design-job': result = design_job(source_case(value['source']), value['request'])
     elif action == 'compile': result = bind_catalog(value['case'],value['catalog'])
     else: raise ValueError('Unknown UI catalog CPU action')

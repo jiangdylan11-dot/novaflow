@@ -430,6 +430,7 @@
       if (typeof options.getRevision === 'function' && options.getRevision() !== revision) throw new Error('设计要求已变化，本次结果未覆盖当前内容')
       const data = result?.data || result
       if (result?.ok === false || !data?.prompt || data?.uiCatalog?.schema !== 'nf.ui.structure-catalog.v1') throw new Error(result?.error || '结构编译未返回有效结果，本次未提交生成')
+      if (data.uiCatalog.recognitionMethod !== 'staged-observation-v1') throw new Error('算力节点的 UI 分析组件需要更新，请安装最新本地助手后重试；本次未提交生图')
       return Object.freeze({ ...data, provider, engine, targetStyle:'auto', purpose:'ui-design-reference', referenceCount:references.length,
         references, structure, scene, hasNegativePrompt:false, negativePrompt:'' })
     }
