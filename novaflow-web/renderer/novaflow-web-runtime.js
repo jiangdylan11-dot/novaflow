@@ -1203,6 +1203,15 @@
       ? localControl('GET', '/local/prompt-assistant/status').catch(error => ({ ok: false, enabled: false, error: String(error.message || error) }))
       : ({ ok: true, result: { available: false, reason: 'web' } }),
     promptAssistantOptimizePrompt: async (payload) => localPromptAssistant('optimize-prompt', payload),
+    promptAssistantUiDesignCpu: async (payload) => {
+      // The old node rejects the deliberately empty image record during normalization, before any model work.
+      // Reuse the supported task action, without adding a control-plane permission.
+      const scope={surface:'ui-design',uiPlanner:'grok-vision-cpu-v1'};
+      const hello=await localPromptAssistant('reverse-image-prompt',{...scope,action:'capabilities',images:[{dataUrl:''}]});
+      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新本地助手后使用完整 Grok 分析；本次未调用云模型或本地推理'};
+      if(payload?.action==='capabilities')return hello;
+      return localPromptAssistant('reverse-image-prompt',{...payload,...scope});
+    },
     promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
     // 万物迁移 names the scene's style from this when it exists and paints without it otherwise.
     promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload),

@@ -22,7 +22,7 @@ def derive_case(case):
     sk = case['skeleton']
     supplied = {x['symbol_id']:x for x in case.get('targets',[])}
     symbols = {x.get('symbol_id',x.get('id')):x for x in sk['grid'].get('symbols',[])}
-    result, seen = [], set()
+    result, seen = (list(case.get('targets',[])) if sk['grid'].get('reference_only') else []), set()
     for cell in sorted(sk['grid']['cells'],key=lambda x:(x['row'],x['column'])):
         ident = cell['symbol_id']
         if ident in seen:
@@ -51,19 +51,20 @@ def derive_case(case):
 def inventory(case):
     case = derive_case(case)
     sk = case['skeleton']
-    rows, cols = sk['grid']['shape']
+    reference_only=sk['grid'].get('reference_only') is True
+    rows, cols = [None,None] if reference_only else sk['grid']['shape']
     targets = case['targets']
     identifiers = {x['symbol_id'] for x in targets}
     cells = sk['grid']['cells']
-    if len(cells) != rows*cols or any(x['symbol_id'] not in identifiers for x in cells):
+    if not reference_only and (len(cells) != rows*cols or any(x['symbol_id'] not in identifiers for x in cells)):
         raise ValueError('Explicit grid structure/target contradiction')
-    if len({(x['row'],x['column']) for x in cells}) != rows*cols:
+    if not reference_only and len({(x['row'],x['column']) for x in cells}) != rows*cols:
         raise ValueError('Duplicate/missing source positions')
     extra_keys = list(dict.fromkeys(case.get('carrier_keys',{}).values()))
     field_keys = [x['key'] for x in targets] + extra_keys
     if len(set(field_keys)) != len(field_keys):
         raise ValueError('Ambiguous field binding')
-    return {'shape':[rows,cols],'cells':len(cells),
+    return {'shape':[rows,cols],'cells':None if reference_only else len(cells),'geometry_authority':'original-reference' if reference_only else 'observed-cell-table',
             'portrait_definitions':sum(x['category']=='p' for x in targets),
             'portrait_instances':sum(next(t['category'] for t in targets if t['symbol_id']==x['symbol_id'])=='p' for x in cells),
             'main_count':sk.get('main_character_displays',{}).get('count'),
@@ -127,7 +128,8 @@ def compile_ui(case):
         for i,sid in enumerate(sids,1): aliases[sid]=alias+'（载体'+str(i)+'）'
         disambiguation.append({'source_symbol_ids':sids,'original_alias':alias,'art_word_edits':0})
     rows, cols = inv['shape']
-    mapping, row_text = natural_grid_rows(sk['grid']['cells'],aliases,rows,cols)
+    reference_only=sk['grid'].get('reference_only') is True
+    mapping, row_text = ([], '') if reference_only else natural_grid_rows(sk['grid']['cells'],aliases,rows,cols)
     sections = []
     def emit(kind,text):
         if text:
@@ -140,7 +142,7 @@ def compile_ui(case):
         if not any(literal in text for text in art.values()):
             raise ValueError('Allowed art literal needs an existing art source quote')
     text_policy = '仅印指定业务字面'+('及美术定义中已给出的装饰字面' if art_literals else '')+'，不印格位说明。'
-    emit('global','将原参考重绘为完整竖屏'+theme+style+'UI。'+text_policy+fr.get('environment_art',''))
+    emit('global',('原图只作布局与业务定位，旧人物、物件身份和原主题全部替换，不能保留旧主角再另添新主角。' if reference_only else '')+'将原参考重绘为完整竖屏'+theme+style+'UI。'+text_policy+fr.get('environment_art',''))
     emit('art_direction',art_direction_rules(case).get('compiled',''))
     containers = sk.get('containers',[])
     shared = [x for x in containers if x['type']=='shared_horizontal_strip']
@@ -185,7 +187,9 @@ def compile_ui(case):
     for target in targets:
         if target['category']=='s' and target['key'] in art:
             emit('special_definition','特殊玩法'+aliases[target['symbol_id']]+'：'+art[target['key']])
-    emit('grid_mapping',f'玩法网格严格{rows}行{cols}列共{rows*cols}格，格间轻分隔，不增加行列；下列每行从左到右各对应{cols}格：'+row_text)
+    if reference_only:
+        emit('grid_mapping',(str(case.get('reference_projection',{}).get('grid_axis_observations',{}).get('reported_columns'))+'列玩法格位，' if case.get('reference_projection',{}).get('grid_axis_observations',{}).get('reported_columns') else '')+'玩法网格的行列、格数、占位和头像展示全部由图1决定，本次没有逐格答案，不编造行列或格位。普通新物件在原玩法格位自主排列，不把普通格子改成人物头像，不删除已有头像展示。')
+    else: emit('grid_mapping',f'玩法网格严格{rows}行{cols}列共{rows*cols}格，格间轻分隔，不增加行列；下列每行从左到右各对应{cols}格：'+row_text)
     mains = inv['main_count']
     if mains:
         below = '网格下方的' if 'grid' in order and 'characters' in order and order.index('grid')<order.index('characters') else '独立人物区域的'
@@ -259,11 +263,11 @@ def compile_ui(case):
     ordered = [s for kind in front for s in sections if s['kind']==kind]+[s for s in sections if s['kind'] not in front]
     final = ''.join(x['text'] for x in ordered)
     assert_clean_model_text(final)
-    actual = parse_natural_grid(final,aliases,rows,cols)
+    actual = [] if reference_only else parse_natural_grid(final,aliases,rows,cols)
     expected = [{k:x[k] for k in ['row','column','symbol_id']} for x in sk['grid']['cells']]
     assert actual == expected
     return final, {'inventory':inv,'business_guard':check,'sections':ordered,
-                   'grid_roundtrip':True,'model_calls':0,'options':case.get('options',{}),'structural_alias_disambiguation':disambiguation,
+                   'grid_roundtrip':not reference_only,'reference_geometry_only':reference_only,'model_calls':0,'options':case.get('options',{}),'structural_alias_disambiguation':disambiguation,
                    'source_portrait_mapping_unknown_is_not_a_blocker':True}
 
 

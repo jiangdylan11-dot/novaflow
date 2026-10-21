@@ -396,6 +396,24 @@
     return await value()
   }
 
+  async function runGrokComplete(options,references,checkActive) {
+    const api=options.electronAPI||root.electronAPI||{},cpu=api.promptAssistantUiDesignCpu;
+    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整 Grok 看图分析需要更新本地助手并登录 NovaFlow；本次未调用付费分析');
+    const request=[stripTargetStyleContract(options.prompt),options.requirements||''].filter(Boolean).join('\n');
+    const callCpu=async payload=>{const r=await cpu({surface:'ui-design',...payload});if(r?.ok===false||!r?.data)throw new Error(r?.error||'UI CPU 组件未返回有效结果');return r.data;};
+    const job=await callCpu({action:'grok-vision-job',request,images:references.map(r=>({dataUrl:r.dataUrl,role:r.role}))});
+    checkActive();
+    const requestId=root.crypto?.randomUUID?.();if(!requestId)throw new Error('浏览器不能创建分析请求标识');
+    const reply=await root.NovaFlowWebRuntime.auth('POST','/../novaflow-grok-lean-research/analyze-v2',{...job,requestId},180000);
+    checkActive();
+    if(!reply?.ok||reply.model!=='grok-4.3'||reply.providerCallCount!==1||reply.retryCount!==0||reply.clientRequestId!==requestId||reply.finishReason!=='completed')throw new Error(reply?.error||'Grok 完整看图响应未完成；未切换分析来源或提交生图');
+    const compiled=await callCpu({action:'compile-grok-vision',request,rawOutputText:reply.rawOutputText});
+    checkActive();
+    const layoutReference=references.findIndex(r=>r.role==='layout')+1;
+    return {prompt:compiled.prompt,negativePrompt:'',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'grok-vision-full-v1',analysisProvider:'grok',model:reply.model,providerCallCount:1,providerRequestId:reply.requestId,proof:compiled.proof},
+      uiPlan:{version:1,layoutMode:'preserve',layoutReference,visualMode:'theme-redesign',references:references.map((r,i)=>({index:i+1,role:r.role==='layout'?'layout':r.role==='style'?'style':'content'})),layoutChanges:[],preserve:[],grids:[]}};
+  }
+
   async function run(options = {}) {
     const checkActive = () => { if (options.signal?.aborted) { const error = new Error('任务已中止'); error.name = 'AbortError'; throw error } }
     checkActive()
@@ -413,24 +431,31 @@
     const rawStructure = await resolveValue(options.getStructureContext, options.structure || options.snapshot || {})
     const structure = structureSnapshot(rawStructure)
     const scene = inferPageScene(structure)
-    const useCatalog = options.uiCatalogEnabled === true && engine === 'local' && options.targetEngine === 'qwen-2.1'
+    const useCatalog = options.uiCatalogEnabled === true && ['local','grok'].includes(engine) && options.targetEngine === 'qwen-2.1'
       && options.preserveLayout === true && options.generationIntent === 'redesign'
       && !references.some(ref => ref.uiLayoutId)
       && root.NovaFlowUiDesignPromptPipeline.requestsThemeRedesign(options)
       && !root.NovaFlowUiDesignPromptPipeline.requestsFormPreservation(options)
     if (useCatalog) {
       const revision = typeof options.getRevision === 'function' ? options.getRevision() : options.revision
-      const call = localApi(options, references)
-      if (typeof call !== 'function') throw new Error('本地模型未就绪')
+      const call = engine==='grok' ? null : localApi(options, references)
+      if (engine!=='grok' && typeof call !== 'function') throw new Error('本地模型未就绪')
+      if(engine==='local'){
+        const api=options.electronAPI||root.electronAPI||{};
+        if(typeof api.promptAssistantUiDesignCpu!=='function')throw new Error('请更新本地助手后使用完整UI设计，本次未调用其他分析模型');
+        const capability=await api.promptAssistantUiDesignCpu({surface:'ui-design',action:'capabilities'});
+        checkActive();
+        if(capability?.data?.localCompletePlanner!=='complete-catalog-v2')throw new Error('当前算力节点需要更新后才能运行完整UI设计，本次未提交分析或生图');
+      }
       const request = [stripTargetStyleContract(options.prompt), options.requirements || ''].filter(Boolean).join('\n')
-      const result = await withTimeout(() => call({ uiPlanner:'structure-catalog-v1', surface:'ui-design', targetEngine:'qwen-2.1',
+      const result = engine==='grok' ? await withTimeout(()=>runGrokComplete(options,references,checkActive),options.timeoutMs||240000,engine) : await withTimeout(() => call({ uiPlanner:'complete-catalog-v2', surface:'ui-design', targetEngine:'qwen-2.1',
         uiDesignIntent:'redesign', uiPreserveLayout:true, currentPrompt:request, uiStructure:structure,
         images:references.map(ref => ({ dataUrl:ref.dataUrl, role:ref.role, label:ref.label })) }), options.timeoutMs || 900000, engine)
       checkActive()
       if (typeof options.getRevision === 'function' && options.getRevision() !== revision) throw new Error('设计要求已变化，本次结果未覆盖当前内容')
       const data = result?.data || result
       if (result?.ok === false || !data?.prompt || data?.uiCatalog?.schema !== 'nf.ui.structure-catalog.v1') throw new Error(result?.error || '结构编译未返回有效结果，本次未提交生成')
-      if (data.uiCatalog.recognitionMethod !== 'staged-observation-v1') throw new Error('算力节点的 UI 分析组件需要更新，请安装最新本地助手后重试；本次未提交生图')
+      if (data.uiCatalog.recognitionMethod !== (engine==='grok'?'grok-vision-full-v1':'complete-natural-reference-v1')) throw new Error('算力节点的 UI 分析组件需要更新，请安装最新本地助手后重试；本次未提交生图')
       return Object.freeze({ ...data, provider, engine, targetStyle:'auto', purpose:'ui-design-reference', referenceCount:references.length,
         references, structure, scene, hasNegativePrompt:false, negativePrompt:'' })
     }

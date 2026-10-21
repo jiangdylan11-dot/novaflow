@@ -1,0 +1,405 @@
+{
+  "systemInstruction": "Use only the attached original layout reference and current theme brief. In ONE response, freshly observe its actual source layout and create an original complete themed art plan. Do not use prior answers or any default slot layout. Observe all large figures outside the grid, the grid's exact row and column count, each cell, repeated ordinary types, character portraits, and every visible display/button. Regions need geometry only, not the source materials or old art. Each grid coordinate appears EXACTLY ONCE in grid.cells, with one kind and one entity_id. No reverse portrait-coordinate list exists. For ordinary cells entity_id must equal an objects[].id; reuse one object ID for visually repeated symbols. For portrait cells entity_id must equal a characters[].id; a character's main_region_ids identifies its large outside-grid appearance. If correspondence is uncertain, kind unknown points to uncertain_symbols[].id and records the uncertainty. Do not force framed objects into characters. fixed_text/empty may have empty entity_id. Keep external banner/counter words OUTSIDE the grid in displays with their actual region; cell text belongs only to its actual cell. Character species/costumes, object appearance and all UI surface shapes must be newly designed by you for the requested theme. Source appearance descriptions are observations only, never target design instructions. One character's main and portraits share the SAME four strong identity anchors, including underlying species/form, ears/horns, skin/fur and face. Anchor species must be explicit, not merely costume. Main and portrait share identity, not pose. Create theme-coherent, attractive varied symbols and a detailed finished game illustration. UI displays/buttons are COMPLETE FINISHED FUNCTIONAL FACES: the actual readable label/value/symbol is already part of the described face, with designed silhouette, typography, edge integration and restrained details; never describe a blank carrier, empty socket, future insert or ornamental parts list. Preserve passive versus interactive roles; do not invent absent controls, displays, numbers or labels. Use Chinese for target art descriptions. Keep original visible literals unchanged in label_text/value_text/literal_text. Do not repeat those literals inside art prose: the local compiler inserts each into its finished face. Do not imitate the source's materials or shapes by merely recoloring them. No alternatives, no extra analysis call and no repair plan. JSON matching schema only.",
+  "outputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "regions",
+      "grid",
+      "characters",
+      "objects",
+      "uncertain_symbols",
+      "displays",
+      "buttons",
+      "art_direction",
+      "identity_evidence_zh",
+      "uncertainties_zh"
+    ],
+    "properties": {
+      "regions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind",
+            "order_from_top",
+            "geometry_only_zh"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "main_character",
+                "grid",
+                "information",
+                "counter",
+                "controls",
+                "decoration",
+                "unknown"
+              ]
+            },
+            "order_from_top": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "geometry_only_zh": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        }
+      },
+      "grid": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rows",
+          "columns",
+          "cells"
+        ],
+        "properties": {
+          "rows": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "columns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "row",
+                "column",
+                "kind",
+                "entity_id",
+                "literal_text",
+                "visible_observation_zh"
+              ],
+              "properties": {
+                "row": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12
+                },
+                "column": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "ordinary",
+                    "portrait",
+                    "portrait_with_text",
+                    "fixed_text",
+                    "unknown",
+                    "empty"
+                  ]
+                },
+                "entity_id": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "literal_text": {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                "visible_observation_zh": {
+                  "type": "string",
+                  "maxLength": 240
+                }
+              }
+            }
+          }
+        }
+      },
+      "characters": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "source_visible_identity_zh",
+            "main_region_ids",
+            "name_zh",
+            "identity_art_zh",
+            "main_action_art_zh",
+            "identity_anchors"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "source_visible_identity_zh": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "main_region_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "name_zh": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "identity_art_zh": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "main_action_art_zh": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "identity_anchors": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "species_form_zh",
+                "ears_horns_zh",
+                "hair_skin_fur_zh",
+                "face_features_zh"
+              ],
+              "properties": {
+                "species_form_zh": {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                "ears_horns_zh": {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                "hair_skin_fur_zh": {
+                  "type": "string",
+                  "maxLength": 240
+                },
+                "face_features_zh": {
+                  "type": "string",
+                  "maxLength": 240
+                }
+              }
+            }
+          }
+        }
+      },
+      "objects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "source_visible_description_zh",
+            "name_zh",
+            "appearance_zh"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "source_visible_description_zh": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "name_zh": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "appearance_zh": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        }
+      },
+      "uncertain_symbols": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "source_visible_description_zh",
+            "name_zh",
+            "appearance_zh"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "source_visible_description_zh": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "name_zh": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "appearance_zh": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        }
+      },
+      "displays": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "region_id",
+            "kind",
+            "label_text",
+            "value_text",
+            "complete_face_art_zh"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "region_id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "announcement",
+                "counter",
+                "other"
+              ]
+            },
+            "label_text": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "value_text": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "complete_face_art_zh": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        }
+      },
+      "buttons": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "region_id",
+            "label_text",
+            "symbol_description_zh",
+            "complete_face_art_zh"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "region_id": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "label_text": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "symbol_description_zh": {
+              "type": "string",
+              "maxLength": 240
+            },
+            "complete_face_art_zh": {
+              "type": "string",
+              "maxLength": 240
+            }
+          }
+        }
+      },
+      "art_direction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value_color_hierarchy_zh",
+          "shared_shape_material_zh",
+          "lighting_zh",
+          "background_art_zh",
+          "main_stage_art_zh",
+          "grid_structure_art_zh",
+          "style_zh"
+        ],
+        "properties": {
+          "value_color_hierarchy_zh": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "shared_shape_material_zh": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "lighting_zh": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "background_art_zh": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "main_stage_art_zh": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "grid_structure_art_zh": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "style_zh": {
+            "type": "string",
+            "maxLength": 240
+          }
+        }
+      },
+      "identity_evidence_zh": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 240
+        }
+      },
+      "uncertainties_zh": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 240
+        }
+      }
+    }
+  },
+  "provenance": "one-shot-first-draft/new-layout-panda7-future-city-20261019; original generic system prefix and schema"
+}

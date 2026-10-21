@@ -124,9 +124,9 @@ test('UI entry preserves the exact compiled prompt and original reference bytes;
 
   let calls=0, release;
 
-  const data={prompt:'已经编译的完整原文。',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'staged-observation-v1'},uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}};
+  const data={prompt:'已经编译的完整原文。',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'complete-natural-reference-v1'},uiPlan:{version:1,layoutMode:'preserve',layoutReference:1,visualMode:'theme-redesign',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]}};
 
-  const electronAPI={promptAssistantReverseImagePrompt:async req=>{calls++;assert.equal(req.uiPlanner,'structure-catalog-v1');return {ok:true,data};}};
+  const electronAPI={promptAssistantUiDesignCpu:async()=>({ok:true,data:{localCompletePlanner:'complete-catalog-v2'}}),promptAssistantReverseImagePrompt:async req=>{calls++;assert.equal(req.uiPlanner,'complete-catalog-v2');return {ok:true,data};}};
 
   const result=await root.NovaFlowUiDesignAssistantWorkflow.run({...input,electronAPI});
 
@@ -310,5 +310,5 @@ test('art extraction accepts field order without editing values and quarantines 
 
 test('an old node cannot silently return the former catalog implementation to the new UI',async()=>{
  const root=frontend();
- await assert.rejects(()=>root.NovaFlowUiDesignAssistantWorkflow.run({uiCatalogEnabled:true,provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:payload.currentPrompt,preserveLayout:true,generationIntent:'redesign',references:[{id:'L',role:'layout',dataUrl:images[0].dataUrl}],structure:{},electronAPI:{promptAssistantReverseImagePrompt:async()=>({ok:true,data:{prompt:'old result',uiCatalog:{schema:'nf.ui.structure-catalog.v1'}}})}}),/需要更新/);
+ await assert.rejects(()=>root.NovaFlowUiDesignAssistantWorkflow.run({uiCatalogEnabled:true,provider:'local',engine:'local',targetEngine:'qwen-2.1',prompt:payload.currentPrompt,preserveLayout:true,generationIntent:'redesign',references:[{id:'L',role:'layout',dataUrl:images[0].dataUrl}],structure:{},electronAPI:{promptAssistantReverseImagePrompt:async()=>({ok:true,data:{prompt:'old result',uiCatalog:{schema:'nf.ui.structure-catalog.v1'}}})}}),/更新本地助手/);
 });

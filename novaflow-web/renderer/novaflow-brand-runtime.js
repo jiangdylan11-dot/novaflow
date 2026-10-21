@@ -85655,6 +85655,22 @@
     const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: 0 };
     const clampEdge = (value) => Math.max(64, Math.min(QWEN21_UI_MAX_OUTPUT_EDGE, Math.round(Number(value) || 1024)));
     const requested = { width: clampEdge(state?.width), height: clampEdge(state?.height) };
+    // The approved local and Grok versions share this exact sampling graph.
+    if(providerOptions?.uiApprovedCatalog===true){
+      if(names.length!==1||mode!=="img2img"||nativeEdit||!preserveNativeLayout||roleAt(0)!=="layout"||!info.LatentUpscale||!info.SaveLatent)throw new Error('认可版本生图条件不完整，本次未提交');
+      if(runtime.unet!=='qwen-image-2.1-UC-Q8_0.gguf'||runtime.clip!=='qwen3vl_8b_w4a8_heretic.safetensors'||runtime.vae!=='qwen_image_2.1_vae_bf16.safetensors')throw new Error('认可版本的模型配置不匹配，本次未替换模型');
+      encode.resolution=1024;encode['images.image_1']=['100',0];
+      workflow['100']={class_type:'LoadImage',inputs:{image:names[0]}};
+      workflow['5']={class_type:'TextEncodeQwenImage21',inputs:encode};
+      workflow['200']={class_type:'LatentUpscale',inputs:{samples:['5',2],upscale_method:'nearest-exact',width:Math.round(requested.width/2),height:Math.round(requested.height/2),crop:'disabled'}};
+      workflow['50']={class_type:'SaveLatent',inputs:{samples:['200',0],filename_prefix:String(outputPrefix||'NovaFlow_UI')+'_latent'}};
+      workflow['7']={class_type:'KSampler',inputs:{model,positive:['5',0],negative:['5',1],latent_image:['50',0],seed,steps:sampling?.steps||40,cfg:sampling?.cfg||guidance.cfg,sampler_name:'euler',scheduler:'simple',denoise:1}};
+      workflow['8']={class_type:'VAEDecode',inputs:{samples:['7',0],vae:['3',0]}};
+      workflow['9']={class_type:'SplitImageWithAlpha',inputs:{image:['8',0]}};
+      workflow['11']={class_type:'SaveImage',inputs:{images:['9',0],filename_prefix:String(outputPrefix||'NovaFlow_UI')}};
+      return {workflow,modelKey:'qwen-image-2.1-ui'};
+    }
+
     const highNativeRequested = requested.width === 864 && requested.height === 1536;
     // The only >1MP exception is the measured three-reference, 40/1 model
     // combination. Count encoded auxiliary pixels, including rounding small assets.

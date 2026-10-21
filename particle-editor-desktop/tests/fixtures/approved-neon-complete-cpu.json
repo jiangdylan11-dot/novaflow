@@ -1,0 +1,1960 @@
+[
+  {
+    "provider": "local",
+    "case": {
+      "name": "03-neon20",
+      "skeleton": {
+        "schema": "typed_ui_skeleton_cpu_v1",
+        "source_reference_sha256": "5a7b87e169781e6808aac4fa2b2f6c4d69b641c6670003615971ea641942fcc0",
+        "provenance_policy": "Explicit reuse of three prior PE recognitions of the same source plus a user-confirmed shared-strip topology. Not one-pass automatic recognition.",
+        "regions": {
+          "order": [
+            "grid",
+            "characters",
+            "information",
+            "readouts",
+            "controls"
+          ],
+          "evidence": [
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                97,
+                110
+              ],
+              "quote": "网格下方为角色与底部控制区",
+              "edge": [
+                "grid",
+                "characters"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                97,
+                110
+              ],
+              "quote": "网格下方为角色与底部控制区",
+              "edge": [
+                "grid",
+                "controls"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                235,
+                541
+              ],
+              "quote": "操作组件：自上而下依次为——网格内符号（金元宝、红包、卷轴、字母J/K/Q/A/10、WILD符号）；底部信息栏左侧红色牌匾按钮内文字\"BUY FREE GAMES\"；绿色横条内橙色文字\"WIN 20.00\"；深红色余额栏左侧白色文字\"¥1000\"配钱包图标、黄色圆形减按钮内白色\"−\"、中央黄色文字\"¥1000\"、黄色圆形加按钮内白色\"+\"、右侧带\"WIN\"徽标图标配白色文字\"¥1000\"；中央红金配色圆形自转按钮；其下四个圆形按钮，左起菜单按钮内白色列表图标下白色文字\"菜单\"、极速按钮内白色火箭图标下白色文字\"极速\"、自动按钮内白色机器人图标下白色文字\"自动\"、声音按钮内白色喇叭图标下白色文字\"声音\"。",
+              "edge": [
+                "grid",
+                "information"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                235,
+                541
+              ],
+              "quote": "操作组件：自上而下依次为——网格内符号（金元宝、红包、卷轴、字母J/K/Q/A/10、WILD符号）；底部信息栏左侧红色牌匾按钮内文字\"BUY FREE GAMES\"；绿色横条内橙色文字\"WIN 20.00\"；深红色余额栏左侧白色文字\"¥1000\"配钱包图标、黄色圆形减按钮内白色\"−\"、中央黄色文字\"¥1000\"、黄色圆形加按钮内白色\"+\"、右侧带\"WIN\"徽标图标配白色文字\"¥1000\"；中央红金配色圆形自转按钮；其下四个圆形按钮，左起菜单按钮内白色列表图标下白色文字\"菜单\"、极速按钮内白色火箭图标下白色文字\"极速\"、自动按钮内白色机器人图标下白色文字\"自动\"、声音按钮内白色喇叭图标下白色文字\"声音\"。",
+              "edge": [
+                "information",
+                "readouts"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                235,
+                541
+              ],
+              "quote": "操作组件：自上而下依次为——网格内符号（金元宝、红包、卷轴、字母J/K/Q/A/10、WILD符号）；底部信息栏左侧红色牌匾按钮内文字\"BUY FREE GAMES\"；绿色横条内橙色文字\"WIN 20.00\"；深红色余额栏左侧白色文字\"¥1000\"配钱包图标、黄色圆形减按钮内白色\"−\"、中央黄色文字\"¥1000\"、黄色圆形加按钮内白色\"+\"、右侧带\"WIN\"徽标图标配白色文字\"¥1000\"；中央红金配色圆形自转按钮；其下四个圆形按钮，左起菜单按钮内白色列表图标下白色文字\"菜单\"、极速按钮内白色火箭图标下白色文字\"极速\"、自动按钮内白色机器人图标下白色文字\"自动\"、声音按钮内白色喇叭图标下白色文字\"声音\"。",
+              "edge": [
+                "readouts",
+                "controls"
+              ]
+            },
+            {
+              "source_id": "f026c387-3577-4bb5-ae05-71108b599867:区域分布",
+              "source_sha256": "90810971c17b808742b68207dc1e1f40e7eb77b0b740bf5ec6f9853925f778d5",
+              "span": [
+                39,
+                66
+              ],
+              "quote": "网格下方为主角与场景区，再往下依次为信息栏与底部控件区",
+              "edge": [
+                "grid",
+                "characters"
+              ]
+            },
+            {
+              "source_id": "f026c387-3577-4bb5-ae05-71108b599867:区域分布",
+              "source_sha256": "90810971c17b808742b68207dc1e1f40e7eb77b0b740bf5ec6f9853925f778d5",
+              "span": [
+                39,
+                66
+              ],
+              "quote": "网格下方为主角与场景区，再往下依次为信息栏与底部控件区",
+              "edge": [
+                "characters",
+                "information"
+              ]
+            },
+            {
+              "source_id": "f026c387-3577-4bb5-ae05-71108b599867:区域分布",
+              "source_sha256": "90810971c17b808742b68207dc1e1f40e7eb77b0b740bf5ec6f9853925f778d5",
+              "span": [
+                39,
+                66
+              ],
+              "quote": "网格下方为主角与场景区，再往下依次为信息栏与底部控件区",
+              "edge": [
+                "information",
+                "controls"
+              ]
+            }
+          ],
+          "numeric_proportions": null,
+          "characters_information_separate": true
+        },
+        "grid": {
+          "shape": [
+            4,
+            5
+          ],
+          "cells": [
+            {
+              "row": 1,
+              "column": 1,
+              "category": "o",
+              "literal": "",
+              "source_group": 1,
+              "symbol_id": "S_a0d46d0dd34e5f06"
+            },
+            {
+              "row": 1,
+              "column": 2,
+              "category": "o",
+              "literal": "",
+              "source_group": 2,
+              "symbol_id": "S_80b8db7006a82040"
+            },
+            {
+              "row": 1,
+              "column": 3,
+              "category": "g",
+              "literal": "J",
+              "source_group": 3,
+              "symbol_id": "S_1510010257584d45"
+            },
+            {
+              "row": 1,
+              "column": 4,
+              "category": "o",
+              "literal": "",
+              "source_group": 4,
+              "symbol_id": "S_23d47df6ac994534"
+            },
+            {
+              "row": 1,
+              "column": 5,
+              "category": "o",
+              "literal": "",
+              "source_group": 2,
+              "symbol_id": "S_80b8db7006a82040"
+            },
+            {
+              "row": 2,
+              "column": 1,
+              "category": "o",
+              "literal": "",
+              "source_group": 4,
+              "symbol_id": "S_23d47df6ac994534"
+            },
+            {
+              "row": 2,
+              "column": 2,
+              "category": "p",
+              "literal": "",
+              "source_group": 5,
+              "symbol_id": "S_ccf546aa6729f5be"
+            },
+            {
+              "row": 2,
+              "column": 3,
+              "category": "p",
+              "literal": "",
+              "source_group": 6,
+              "symbol_id": "S_e4ac50ce8c5e3dbb"
+            },
+            {
+              "row": 2,
+              "column": 4,
+              "category": "p",
+              "literal": "",
+              "source_group": 7,
+              "symbol_id": "S_4cdded1a53fbdda9"
+            },
+            {
+              "row": 2,
+              "column": 5,
+              "category": "g",
+              "literal": "10",
+              "source_group": 8,
+              "symbol_id": "S_1dd815da33135b3a"
+            },
+            {
+              "row": 3,
+              "column": 1,
+              "category": "g",
+              "literal": "Q",
+              "source_group": 9,
+              "symbol_id": "S_0bd8ff4328d3d164"
+            },
+            {
+              "row": 3,
+              "column": 2,
+              "category": "o",
+              "literal": "",
+              "source_group": 2,
+              "symbol_id": "S_80b8db7006a82040"
+            },
+            {
+              "row": 3,
+              "column": 3,
+              "category": "g",
+              "literal": "K",
+              "source_group": 10,
+              "symbol_id": "S_b88beff377dd28f7"
+            },
+            {
+              "row": 3,
+              "column": 4,
+              "category": "g",
+              "literal": "J",
+              "source_group": 11,
+              "symbol_id": "S_1510010257584d45"
+            },
+            {
+              "row": 3,
+              "column": 5,
+              "category": "o",
+              "literal": "",
+              "source_group": 1,
+              "symbol_id": "S_a0d46d0dd34e5f06"
+            },
+            {
+              "row": 4,
+              "column": 1,
+              "category": "g",
+              "literal": "J",
+              "source_group": 12,
+              "symbol_id": "S_1510010257584d45"
+            },
+            {
+              "row": 4,
+              "column": 2,
+              "category": "g",
+              "literal": "A",
+              "source_group": 13,
+              "symbol_id": "S_c5b20065e77aa60f"
+            },
+            {
+              "row": 4,
+              "column": 3,
+              "category": "o",
+              "literal": "",
+              "source_group": 1,
+              "symbol_id": "S_a0d46d0dd34e5f06"
+            },
+            {
+              "row": 4,
+              "column": 4,
+              "category": "s",
+              "literal": "WILD",
+              "source_group": 14,
+              "symbol_id": "S_e78eee0aef8ef913"
+            },
+            {
+              "row": 4,
+              "column": 5,
+              "category": "g",
+              "literal": "K",
+              "source_group": 15,
+              "symbol_id": "S_b88beff377dd28f7"
+            }
+          ],
+          "symbols": [
+            {
+              "symbol_id": "S_a0d46d0dd34e5f06",
+              "category": "o",
+              "literal": "",
+              "source_groups": [
+                1
+              ],
+              "cells": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  5
+                ],
+                [
+                  4,
+                  3
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_80b8db7006a82040",
+              "category": "o",
+              "literal": "",
+              "source_groups": [
+                2
+              ],
+              "cells": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  5
+                ],
+                [
+                  3,
+                  2
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_1510010257584d45",
+              "category": "g",
+              "literal": "J",
+              "source_groups": [
+                3,
+                11,
+                12
+              ],
+              "cells": [
+                [
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  1
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_23d47df6ac994534",
+              "category": "o",
+              "literal": "",
+              "source_groups": [
+                4
+              ],
+              "cells": [
+                [
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  1
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_ccf546aa6729f5be",
+              "category": "p",
+              "literal": "",
+              "source_groups": [
+                5
+              ],
+              "cells": [
+                [
+                  2,
+                  2
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_e4ac50ce8c5e3dbb",
+              "category": "p",
+              "literal": "",
+              "source_groups": [
+                6
+              ],
+              "cells": [
+                [
+                  2,
+                  3
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_4cdded1a53fbdda9",
+              "category": "p",
+              "literal": "",
+              "source_groups": [
+                7
+              ],
+              "cells": [
+                [
+                  2,
+                  4
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_1dd815da33135b3a",
+              "category": "g",
+              "literal": "10",
+              "source_groups": [
+                8
+              ],
+              "cells": [
+                [
+                  2,
+                  5
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_0bd8ff4328d3d164",
+              "category": "g",
+              "literal": "Q",
+              "source_groups": [
+                9
+              ],
+              "cells": [
+                [
+                  3,
+                  1
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_b88beff377dd28f7",
+              "category": "g",
+              "literal": "K",
+              "source_groups": [
+                10,
+                15
+              ],
+              "cells": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  4,
+                  5
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_c5b20065e77aa60f",
+              "category": "g",
+              "literal": "A",
+              "source_groups": [
+                13
+              ],
+              "cells": [
+                [
+                  4,
+                  2
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_e78eee0aef8ef913",
+              "category": "s",
+              "literal": "WILD",
+              "source_groups": [
+                14
+              ],
+              "cells": [
+                [
+                  4,
+                  4
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            }
+          ],
+          "unknown": [],
+          "source_id": "b833e709-49b3-48db-827c-c85b82913a62",
+          "policy": "Only independent glyph category g deduplicates by exact(category,literal). Other categories retain source-group boundaries."
+        },
+        "main_character_displays": {
+          "count": 3,
+          "items": [
+            {
+              "display_id": "M_1",
+              "role": "main_character_display",
+              "recognized_identity_link": null,
+              "source_order_index": 1
+            },
+            {
+              "display_id": "M_2",
+              "role": "main_character_display",
+              "recognized_identity_link": null,
+              "source_order_index": 2
+            },
+            {
+              "display_id": "M_3",
+              "role": "main_character_display",
+              "recognized_identity_link": null,
+              "source_order_index": 3
+            }
+          ],
+          "source": {
+            "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+            "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+            "span": [
+              123,
+              130
+            ],
+            "quote": "为三位格外展示"
+          },
+          "portrait_to_main_mapping": null,
+          "mapping_status": "unconfirmed; not inferred from equal display counts"
+        },
+        "components": [
+          {
+            "id": "A_purchase",
+            "interaction_type": "action",
+            "function": "purchase",
+            "literal": "BUY FREE GAMES",
+            "parent": "information_strip",
+            "source": {
+              "source": "existing semantic context,traceable to recognition button wording",
+              "span": [
+                137,
+                161
+              ],
+              "quote": "文字为“BUY FREE GAMES”的购买按钮"
+            }
+          },
+          {
+            "id": "D_information",
+            "interaction_type": "display",
+            "function": "information_readout",
+            "literal": "WIN 20.00",
+            "parent": "information_strip",
+            "clickable": false,
+            "button_affordance": false,
+            "source": {
+              "source": "existing semantic context,traceable to recognition horizontal information bar wording",
+              "span": [
+                165,
+                181
+              ],
+              "quote": "信息显示为“WIN 20.00”"
+            }
+          },
+          {
+            "id": "D_amount_1",
+            "interaction_type": "display",
+            "function": "numeric_readout",
+            "literal": "¥1000",
+            "parent": "readout_row",
+            "side": "left",
+            "business_meaning": null,
+            "source": {
+              "slot": "left",
+              "value": "¥1000",
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                353,
+                358
+              ],
+              "quote": "¥1000"
+            },
+            "clickable": false,
+            "functional_icon": "wallet",
+            "icon_source_quote": "配钱包图标"
+          },
+          {
+            "id": "D_amount_2",
+            "interaction_type": "display",
+            "function": "numeric_readout",
+            "literal": "¥1000",
+            "parent": "readout_row",
+            "side": "middle",
+            "business_meaning": null,
+            "source": {
+              "slot": "middle",
+              "value": "¥1000",
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                386,
+                391
+              ],
+              "quote": "¥1000"
+            },
+            "clickable": false
+          },
+          {
+            "id": "D_amount_3",
+            "interaction_type": "display",
+            "function": "numeric_readout",
+            "literal": "¥1000",
+            "parent": "readout_row",
+            "side": "right",
+            "business_meaning": null,
+            "source": {
+              "slot": "right",
+              "value": "¥1000",
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                425,
+                430
+              ],
+              "quote": "¥1000"
+            },
+            "clickable": false,
+            "badge_literal": "WIN",
+            "badge_is_separate_action": false,
+            "icon_source_quote": "右侧带\"WIN\"徽标图标"
+          },
+          {
+            "id": "A_minus",
+            "interaction_type": "action",
+            "function": "adjust_minus",
+            "literal": "−",
+            "parent": "readout_row",
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                369,
+                378
+              ],
+              "quote": "减按钮内白色\"−\""
+            }
+          },
+          {
+            "id": "A_plus",
+            "interaction_type": "action",
+            "function": "adjust_plus",
+            "literal": "+",
+            "parent": "readout_row",
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                397,
+                406
+              ],
+              "quote": "加按钮内白色\"+\""
+            }
+          },
+          {
+            "id": "A_rotation",
+            "interaction_type": "action",
+            "function": "rotation",
+            "literal": "",
+            "parent": "controls",
+            "anchor": "center",
+            "required_visual_semantics": "recognizable rotation arrow/ring as main action,not an extra text-only auxiliary",
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                432,
+                444
+              ],
+              "quote": "中央红金配色圆形自转按钮"
+            }
+          },
+          {
+            "id": "A_aux_1",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "菜单",
+            "literal": "菜单",
+            "parent": "controls",
+            "source_order_index": 1,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                473,
+                475
+              ],
+              "quote": "菜单"
+            }
+          },
+          {
+            "id": "A_aux_2",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "极速",
+            "literal": "极速",
+            "parent": "controls",
+            "source_order_index": 2,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                494,
+                496
+              ],
+              "quote": "极速"
+            }
+          },
+          {
+            "id": "A_aux_3",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "自动",
+            "literal": "自动",
+            "parent": "controls",
+            "source_order_index": 3,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                516,
+                518
+              ],
+              "quote": "自动"
+            }
+          },
+          {
+            "id": "A_aux_4",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "声音",
+            "literal": "声音",
+            "parent": "controls",
+            "source_order_index": 4,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                537,
+                539
+              ],
+              "quote": "声音"
+            }
+          }
+        ],
+        "containers": [
+          {
+            "id": "information_strip",
+            "type": "shared_horizontal_strip",
+            "children": [
+              "A_purchase",
+              "D_information"
+            ],
+            "embedded_action": "A_purchase",
+            "action_at": "leading_end",
+            "display_fills": "remaining_continuous_strip",
+            "display_is_not_second_button": true,
+            "source": {
+              "source": "parent relays current human reference correction",
+              "quote": "BUY FREE GAMES是购买按钮，旁WIN20.00是横向信息/公告展示栏，不是第二个可点击按钮；购买端嵌于横向长栏。",
+              "not_claimed_as_automatic_raw_PE_extraction": true
+            }
+          },
+          {
+            "id": "readout_row",
+            "type": "horizontal_readouts_with_adjusters",
+            "children_in_recognized_order": [
+              "D_amount_1",
+              "A_minus",
+              "D_amount_2",
+              "A_plus",
+              "D_amount_3"
+            ],
+            "source": "Ordering from exact readout/sign spans in current control recognition; no manual pixel positions"
+          },
+          {
+            "id": "controls",
+            "type": "main_control_and_auxiliary_group",
+            "main": "A_rotation",
+            "main_anchor": "center",
+            "auxiliary_order": [
+              "A_aux_1",
+              "A_aux_2",
+              "A_aux_3",
+              "A_aux_4"
+            ],
+            "auxiliary_order_basis": "recognized left-to-right sequence",
+            "aux_relative_vertical_to_main": null,
+            "vertical_relation_status": "Recognition says below; actual reference audit differs. Not silently promoted to confirmed geometry."
+          }
+        ],
+        "literal_policy": "Every cell/component literal immutable; repeated financial values remain separate displays. BadgeWIN belongs to rightmost readout,not a fourth value/action.",
+        "glyph_policy": "Independent glyphs keep their own category and literal; no character image replaces a letter/number.",
+        "repeat_policy": "One theme art definition per normalizedsymbol. Ordinary/portrait/special definitions keep source group boundaries.",
+        "unresolved_noninventory_fields": [
+          "Exact region proportions and pixel geometry",
+          "Portrait-to-main identity correspondence",
+          "Auxiliary buttons exact vertical relation/spacing relative to main rotation"
+        ],
+        "ready_for_minimal_symbol_art_design": true,
+        "ready_for_image_generation": false,
+        "reason_generation_not_ready": "New per-symbol theme art has not been designed or validated; skeleton is structure,not an image prompt."
+      },
+      "targets": [
+        {
+          "key": "A01",
+          "symbol_id": "S_a0d46d0dd34e5f06",
+          "category": "o",
+          "literal": "",
+          "role": "普通物件符号"
+        },
+        {
+          "key": "A02",
+          "symbol_id": "S_80b8db7006a82040",
+          "category": "o",
+          "literal": "",
+          "role": "普通物件符号"
+        },
+        {
+          "key": "A03",
+          "symbol_id": "S_1510010257584d45",
+          "category": "g",
+          "literal": "J",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A04",
+          "symbol_id": "S_23d47df6ac994534",
+          "category": "o",
+          "literal": "",
+          "role": "普通物件符号"
+        },
+        {
+          "key": "A05",
+          "symbol_id": "S_ccf546aa6729f5be",
+          "category": "p",
+          "literal": "",
+          "role": "人物头像"
+        },
+        {
+          "key": "A06",
+          "symbol_id": "S_e4ac50ce8c5e3dbb",
+          "category": "p",
+          "literal": "",
+          "role": "人物头像"
+        },
+        {
+          "key": "A07",
+          "symbol_id": "S_4cdded1a53fbdda9",
+          "category": "p",
+          "literal": "",
+          "role": "人物头像"
+        },
+        {
+          "key": "A08",
+          "symbol_id": "S_1dd815da33135b3a",
+          "category": "g",
+          "literal": "10",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A09",
+          "symbol_id": "S_0bd8ff4328d3d164",
+          "category": "g",
+          "literal": "Q",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A10",
+          "symbol_id": "S_b88beff377dd28f7",
+          "category": "g",
+          "literal": "K",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A11",
+          "symbol_id": "S_c5b20065e77aa60f",
+          "category": "g",
+          "literal": "A",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A12",
+          "symbol_id": "S_e78eee0aef8ef913",
+          "category": "s",
+          "literal": "WILD",
+          "role": "特殊玩法符号"
+        }
+      ],
+      "carrier_keys": {
+        "information_strip": "shared_strip"
+      },
+      "options": {
+        "complete_carrier_rule": true,
+        "conventional_menu_rule": true,
+        "preserve_intrinsic_color": true,
+        "separate_lighting_scope": true
+      },
+      "functional_contract": {
+        "rotation": {
+          "marker": "cycle_arrows",
+          "theme_shell_mutable": true
+        }
+      },
+      "display_designs": {
+        "instances": [
+          {
+            "display_id": "D_information",
+            "literal_parts": [
+              "WIN 20.00"
+            ]
+          },
+          {
+            "display_id": "D_amount_1",
+            "literal_parts": [
+              "¥1000"
+            ]
+          },
+          {
+            "display_id": "D_amount_2",
+            "literal_parts": [
+              "¥1000"
+            ]
+          },
+          {
+            "display_id": "D_amount_3",
+            "literal_parts": [
+              "¥1000"
+            ]
+          }
+        ],
+        "style_descriptions": []
+      },
+      "theme": "霓虹都市"
+    },
+    "catalog": {
+      "ENVIRONMENT_ART": "霓虹都市夜景：垂直耸立的摩天楼立面铺满发光招牌与网格状灯带，深靛蓝色夜空压顶，中景为交错的悬空高架与吊塔钢结构，远景楼宇在雾气中渐隐为冷暖光斑，唯一全局照明为来自左上方天际的冷白霓虹主光，配合右下方暖橙招牌补光，地面为潮湿反射的深色沥青，映出拉长倒影与接触阴影，整体为精细赛博朋克商业游戏美术风格，线条锐利、材质区分明确。",
+      "OBJECT1": "霓虹能量核心柱：造型为带环形发光带的圆柱体，固有色为电光青蓝色，表面为磨砂金属材质，环形灯带发出饱和青蓝光晕，柱体侧面带细密散热鳍片纹理，顶部接口凸起，体积感通过明暗面与底部接触阴影塑造，局部反射保留本体青蓝色。",
+      "OBJECT2": "数据水晶簇：造型为三枚悬浮切割晶体，固有色为紫红色，表面为高透玻璃材质，内部有发光纹路，晶体边缘带尖锐切面高光，悬浮于支架环上，体积感以通透折射与深色背光区分，局部反射保留本体紫红色。",
+      "OBJECT3": "电路滑板车：造型为低趴流线型代步板，固有色为亮橙色，表面为哑光喷漆金属材质，板面嵌有发光的能量条灯槽，单支轮组带金属轮毂与辐条纹理，前部有小型导流翼，体积感以亮暗面与地面接触阴影塑造，局部反射保留本体橙色。",
+      "GLYPH_FAMILY": "独立可读字形设计：笔画骨架采用直角切角的几何切线风格，端部收为平切斜角，字腔为封闭式空心结构，字母数字本身为主体，配色为电光青蓝到紫红的霓虹渐变，外层带一圈细窄的发光描边，材质层次为内层半透明发光体加外层磨砂亚克力质感，笔画粗细均匀，J、10、Q、K、A各自清晰可辨。",
+      "CHARACTER1": "名称：霓虹巡守员；头像：清晰头肩面部，短发挑染青蓝高光，面部轮廓利落，神情冷静专注，佩戴透明发光护目镜；全身：身穿深黑机能风连体战衣，肩部与肘部带青蓝色发光管线接口，腰侧挂数据平板，双手插兜站立，身体微侧面向镜头，双脚稳立于地面带接触阴影。",
+      "CHARACTER2": "名称：数据筑梦师；头像：清晰头肩面部，齐刘海棕色短发，眼神灵动带笑意，耳戴发光耳机；全身：身穿紫红色宽松机能外套，内搭黑底荧光纹样T恤，裙摆与裤腿带发光条纹，单手持悬浮数据板，另一手抬起指向斜上方，站姿活泼。",
+      "CHARACTER3": "名称：街头音浪客；头像：清晰头肩面部，金色利落短发，嘴角上扬自信微笑，眉骨带小型发光眉钉；全身：身穿亮橙色街头夹克，袖口与下摆为黑灰色拼接，颈挂发光音箱挂饰，一手扶滑板车把手，另一手比出手势，站姿松弛带动势。",
+      "SPECIAL_WILD": "独立特殊玩法载体：一枚六边形悬浮令牌，中央为清晰WILD字形，字形采用与GLYPH_FAMILY一致的切角几何骨架与霓虹描边，令牌边缘为发光环形凹槽，内部纹路呈放射状电路纹理，本体色为电光青蓝渐变至紫红，材质为半透明发光玻璃，悬浮于基座环上并带轻微投影，不作为主操作，不带主旋转箭头。",
+      "SHARED_STRIP": "一个连续横向载体：左端嵌入BUY FREE GAMES文字，采用切角几何字形、霓虹描边与半透明发光材质，字体为粗体无衬线切角设计，配色为青蓝底紫红字；其余连续栏面为唯一非交互WIN 20.00显示，数字采用同样的切角几何字形与霓虹描边，栏面整体为深色磨砂金属底带细密灯带分隔，左右端以弧形发光边框连接，本体色与字体统一设计，文字逐字保留。",
+      "INFORMATION_TYPE": "仅金额字形与小徽标的材料、笔画、颜色、明暗：金额字形为粗体切角几何骨架，端部平切斜角，字腔封闭式空心，填充为半透明电光青蓝发光体，外缘一圈细窄紫红发光描边，小徽标为六边形轮廓内嵌放射电路纹，同为磨砂亚克力加半透明发光层，明暗分明，不新列金额实例。",
+      "ADJUSTER_ART": "成对−和+的主题形状：−为横向短条刀形，+为十字星形，两者采用同一切角几何骨架，本体色为亮橙色哑光金属，边缘带橙色发光描边，中央嵌青蓝色发光圆点作为按压态指示，造型圆润厚重带体积感，底部有接触阴影，明暗面以左上方主光塑造。",
+      "ROTATION_ART": "独立居中主操作：清楚沿圆周循环的旋转箭头，箭头采用切角几何骨架与霓虹描边，本体色为电光青蓝，带半透明发光材质，外圈环绕细密刻度环与环形灯带，箭头呈对角双三角循环形态，居中放置于深色磨砂金属圆盘上，圆盘带金属拉丝纹理与放射状高光，体积感以明暗面、环形灯带与接触阴影塑造。",
+      "AUXILIARY_ART": "同一主控区四个独立按钮：菜单保持三横列表骨架，极速按钮外壳为亮橙色哑光金属配速度线图标，自动按钮外壳为紫红色磨砂金属配循环循环箭头图标，声音按钮外壳为青蓝色半透明发光体配扬声器图标，四个按钮分别设计外壳与图标层级，图标为切角几何骨架霓虹描边，文字极速、自动、声音逐字保留为清晰中文标签，排列紧凑等距，无多余标题、口号、数值。"
+    },
+    "expectedPrompt": "将原参考重绘为完整竖屏霓虹都市商业游戏美术UI。仅印指定业务字面，不印格位说明。霓虹都市夜景：垂直耸立的摩天楼立面铺满发光招牌与网格状灯带，深靛蓝色夜空压顶，中景为交错的悬空高架与吊塔钢结构，远景楼宇在雾气中渐隐为冷暖光斑，唯一全局照明为来自左上方天际的冷白霓虹主光，配合右下方暖橙招牌补光，地面为潮湿反射的深色沥青，映出拉长倒影与接触阴影，整体为精细赛博朋克商业游戏美术风格，线条锐利、材质区分明确。肤色、服装、道具与按钮各保留自身固有色和材质，环境氛围色体现为受光与反射；用可读中间调、亮面、暗面和局部细节塑造体积。区域保持纵向顺序：玩法网格、独立人物场景、共享信息长栏、数值调节行、底部主控。人物与信息不并排；比例未量化，留白与分区参照原图。玩法网格严格4行5列共20格，格间轻分隔，不增加行列；下列每行从左到右各对应5格：第1行：霓虹能量核心柱、数据水晶簇、“J”、电路滑板车、数据水晶簇。第2行：电路滑板车、霓虹巡守员头像、数据筑梦师头像、街头音浪客头像、“10”。第3行：“Q”、数据水晶簇、“K”、“J”、霓虹能量核心柱。第4行：“J”、“A”、霓虹能量核心柱、“WILD”、“K”。三种头像均面部清楚、身份可辨，统一头肩裁切；以下各身份只定义一次，在指定格位展示头像1次，在格外展示同身份全身1次。以下每种符号只定义一次；同名格位严格复用同一造型，不生成变体。霓虹能量核心柱：霓虹能量核心柱：造型为带环形发光带的圆柱体，固有色为电光青蓝色，表面为磨砂金属材质，环形灯带发出饱和青蓝光晕，柱体侧面带细密散热鳍片纹理，顶部接口凸起，体积感通过明暗面与底部接触阴影塑造，局部反射保留本体青蓝色。数据水晶簇：数据水晶簇：造型为三枚悬浮切割晶体，固有色为紫红色，表面为高透玻璃材质，内部有发光纹路，晶体边缘带尖锐切面高光，悬浮于支架环上，体积感以通透折射与深色背光区分，局部反射保留本体紫红色。电路滑板车：电路滑板车：造型为低趴流线型代步板，固有色为亮橙色，表面为哑光喷漆金属材质，板面嵌有发光的能量条灯槽，单支轮组带金属轮毂与辐条纹理，前部有小型导流翼，体积感以亮暗面与地面接触阴影塑造，局部反射保留本体橙色。“J”、“10”、“Q”、“K”、“A”组成同一独立字形家族：大写字母和数字本身为主体，均清晰可读；独立可读字形设计：笔画骨架采用直角切角的几何切线风格，端部收为平切斜角，字腔为封闭式空心结构，字母数字本身为主体，配色为电光青蓝到紫红的霓虹渐变，外层带一圈细窄的发光描边，材质层次为内层半透明发光体加外层磨砂亚克力质感，笔画粗细均匀，J、10、Q、K、A各自清晰可辨。。霓虹巡守员：头像表现为清晰头肩面部，短发挑染青蓝高光，面部轮廓利落，神情冷静专注，佩戴透明发光护目镜；全身动作与装备为身穿深黑机能风连体战衣，肩部与肘部带青蓝色发光管线接口，腰侧挂数据平板，双手插兜站立，身体微侧面向镜头，双脚稳立于地面带接触阴影。。数据筑梦师：头像表现为清晰头肩面部，齐刘海棕色短发，眼神灵动带笑意，耳戴发光耳机；全身动作与装备为身穿紫红色宽松机能外套，内搭黑底荧光纹样T恤，裙摆与裤腿带发光条纹，单手持悬浮数据板，另一手抬起指向斜上方，站姿活泼。。街头音浪客：头像表现为清晰头肩面部，金色利落短发，嘴角上扬自信微笑，眉骨带小型发光眉钉；全身动作与装备为身穿亮橙色街头夹克，袖口与下摆为黑灰色拼接，颈挂发光音箱挂饰，一手扶滑板车把手，另一手比出手势，站姿松弛带动势。。特殊玩法“WILD”：独立特殊玩法载体：一枚六边形悬浮令牌，中央为清晰WILD字形，字形采用与GLYPH_FAMILY一致的切角几何骨架与霓虹描边，令牌边缘为发光环形凹槽，内部纹路呈放射状电路纹理，本体色为电光青蓝渐变至紫红，材质为半透明发光玻璃，悬浮于基座环上并带轻微投影，不作为主操作，不带主旋转箭头。网格下方的人物场景只展示上述三个身份的完整全身，各1次，身份顺序沿用头像所在行从左到右的顺序；不另增人物。三者服饰、装备和动作各不相同。人物下方的信息长栏：一个连续横向载体：左端嵌入BUY FREE GAMES文字，采用切角几何字形、霓虹描边与半透明发光材质，字体为粗体无衬线切角设计，配色为青蓝底紫红字；其余连续栏面为唯一非交互WIN 20.00显示，数字采用同样的切角几何字形与霓虹描边，栏面整体为深色磨砂金属底带细密灯带分隔，左右端以弧形发光边框连接，本体色与字体统一设计，文字逐字保留。业务字面逐字为“BUY FREE GAMES”、“WIN 20.00”。信息区不是第二个按钮。长栏下方数值调节行从左到右：读数“¥1000”配钱包图示、减号按钮“−”、读数“¥1000”、加号按钮“+”、读数“¥1000”配小“WIN”徽标。三个金额各自独立、非交互，不合并；小徽标不是新增读数或按钮。金额字形沿用购买字形家族；仅金额字形与小徽标的材料、笔画、颜色、明暗：金额字形为粗体切角几何骨架，端部平切斜角，字腔封闭式空心，填充为半透明电光青蓝发光体，外缘一圈细窄紫红发光描边，小徽标为六边形轮廓内嵌放射电路纹，同为磨砂亚克力加半透明发光层，明暗分明，不新列金额实例。成对−和+的主题形状：−为横向短条刀形，+为十字星形，两者采用同一切角几何骨架，本体色为亮橙色哑光金属，边缘带橙色发光描边，中央嵌青蓝色发光圆点作为按压态指示，造型圆润厚重带体积感，底部有接触阴影，明暗面以左上方主光塑造。底部中央主旋转：独立居中主操作：清楚沿圆周循环的旋转箭头，箭头采用切角几何骨架与霓虹描边，本体色为电光青蓝，带半透明发光材质，外圈环绕细密刻度环与环形灯带，箭头呈对角双三角循环形态，居中放置于深色磨砂金属圆盘上，圆盘带金属拉丝纹理与放射状高光，体积感以明暗面、环形灯带与接触阴影塑造。同一主控区域另有4个独立辅助按钮，按左起顺序：同一主控区四个独立按钮：菜单保持三横列表骨架，极速按钮外壳为亮橙色哑光金属配速度线图标，自动按钮外壳为紫红色磨砂金属配循环循环箭头图标，声音按钮外壳为青蓝色半透明发光体配扬声器图标，四个按钮分别设计外壳与图标层级，图标为切角几何骨架霓虹描边，文字极速、自动、声音逐字保留为清晰中文标签，排列紧凑等距，无多余标题、口号、数值。按钮标签逐字为“菜单”、“极速”、“自动”、“声音”。"
+  },
+  {
+    "provider": "grok",
+    "case": {
+      "name": "03-neon20",
+      "skeleton": {
+        "schema": "typed_ui_skeleton_cpu_v1",
+        "source_reference_sha256": "5a7b87e169781e6808aac4fa2b2f6c4d69b641c6670003615971ea641942fcc0",
+        "provenance_policy": "Explicit reuse of three prior PE recognitions of the same source plus a user-confirmed shared-strip topology. Not one-pass automatic recognition.",
+        "regions": {
+          "order": [
+            "grid",
+            "characters",
+            "information",
+            "readouts",
+            "controls"
+          ],
+          "evidence": [
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                97,
+                110
+              ],
+              "quote": "网格下方为角色与底部控制区",
+              "edge": [
+                "grid",
+                "characters"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                97,
+                110
+              ],
+              "quote": "网格下方为角色与底部控制区",
+              "edge": [
+                "grid",
+                "controls"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                235,
+                541
+              ],
+              "quote": "操作组件：自上而下依次为——网格内符号（金元宝、红包、卷轴、字母J/K/Q/A/10、WILD符号）；底部信息栏左侧红色牌匾按钮内文字\"BUY FREE GAMES\"；绿色横条内橙色文字\"WIN 20.00\"；深红色余额栏左侧白色文字\"¥1000\"配钱包图标、黄色圆形减按钮内白色\"−\"、中央黄色文字\"¥1000\"、黄色圆形加按钮内白色\"+\"、右侧带\"WIN\"徽标图标配白色文字\"¥1000\"；中央红金配色圆形自转按钮；其下四个圆形按钮，左起菜单按钮内白色列表图标下白色文字\"菜单\"、极速按钮内白色火箭图标下白色文字\"极速\"、自动按钮内白色机器人图标下白色文字\"自动\"、声音按钮内白色喇叭图标下白色文字\"声音\"。",
+              "edge": [
+                "grid",
+                "information"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                235,
+                541
+              ],
+              "quote": "操作组件：自上而下依次为——网格内符号（金元宝、红包、卷轴、字母J/K/Q/A/10、WILD符号）；底部信息栏左侧红色牌匾按钮内文字\"BUY FREE GAMES\"；绿色横条内橙色文字\"WIN 20.00\"；深红色余额栏左侧白色文字\"¥1000\"配钱包图标、黄色圆形减按钮内白色\"−\"、中央黄色文字\"¥1000\"、黄色圆形加按钮内白色\"+\"、右侧带\"WIN\"徽标图标配白色文字\"¥1000\"；中央红金配色圆形自转按钮；其下四个圆形按钮，左起菜单按钮内白色列表图标下白色文字\"菜单\"、极速按钮内白色火箭图标下白色文字\"极速\"、自动按钮内白色机器人图标下白色文字\"自动\"、声音按钮内白色喇叭图标下白色文字\"声音\"。",
+              "edge": [
+                "information",
+                "readouts"
+              ]
+            },
+            {
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                235,
+                541
+              ],
+              "quote": "操作组件：自上而下依次为——网格内符号（金元宝、红包、卷轴、字母J/K/Q/A/10、WILD符号）；底部信息栏左侧红色牌匾按钮内文字\"BUY FREE GAMES\"；绿色横条内橙色文字\"WIN 20.00\"；深红色余额栏左侧白色文字\"¥1000\"配钱包图标、黄色圆形减按钮内白色\"−\"、中央黄色文字\"¥1000\"、黄色圆形加按钮内白色\"+\"、右侧带\"WIN\"徽标图标配白色文字\"¥1000\"；中央红金配色圆形自转按钮；其下四个圆形按钮，左起菜单按钮内白色列表图标下白色文字\"菜单\"、极速按钮内白色火箭图标下白色文字\"极速\"、自动按钮内白色机器人图标下白色文字\"自动\"、声音按钮内白色喇叭图标下白色文字\"声音\"。",
+              "edge": [
+                "readouts",
+                "controls"
+              ]
+            },
+            {
+              "source_id": "f026c387-3577-4bb5-ae05-71108b599867:区域分布",
+              "source_sha256": "90810971c17b808742b68207dc1e1f40e7eb77b0b740bf5ec6f9853925f778d5",
+              "span": [
+                39,
+                66
+              ],
+              "quote": "网格下方为主角与场景区，再往下依次为信息栏与底部控件区",
+              "edge": [
+                "grid",
+                "characters"
+              ]
+            },
+            {
+              "source_id": "f026c387-3577-4bb5-ae05-71108b599867:区域分布",
+              "source_sha256": "90810971c17b808742b68207dc1e1f40e7eb77b0b740bf5ec6f9853925f778d5",
+              "span": [
+                39,
+                66
+              ],
+              "quote": "网格下方为主角与场景区，再往下依次为信息栏与底部控件区",
+              "edge": [
+                "characters",
+                "information"
+              ]
+            },
+            {
+              "source_id": "f026c387-3577-4bb5-ae05-71108b599867:区域分布",
+              "source_sha256": "90810971c17b808742b68207dc1e1f40e7eb77b0b740bf5ec6f9853925f778d5",
+              "span": [
+                39,
+                66
+              ],
+              "quote": "网格下方为主角与场景区，再往下依次为信息栏与底部控件区",
+              "edge": [
+                "information",
+                "controls"
+              ]
+            }
+          ],
+          "numeric_proportions": null,
+          "characters_information_separate": true
+        },
+        "grid": {
+          "shape": [
+            4,
+            5
+          ],
+          "cells": [
+            {
+              "row": 1,
+              "column": 1,
+              "category": "o",
+              "literal": "",
+              "source_group": 1,
+              "symbol_id": "S_a0d46d0dd34e5f06"
+            },
+            {
+              "row": 1,
+              "column": 2,
+              "category": "o",
+              "literal": "",
+              "source_group": 2,
+              "symbol_id": "S_80b8db7006a82040"
+            },
+            {
+              "row": 1,
+              "column": 3,
+              "category": "g",
+              "literal": "J",
+              "source_group": 3,
+              "symbol_id": "S_1510010257584d45"
+            },
+            {
+              "row": 1,
+              "column": 4,
+              "category": "o",
+              "literal": "",
+              "source_group": 4,
+              "symbol_id": "S_23d47df6ac994534"
+            },
+            {
+              "row": 1,
+              "column": 5,
+              "category": "o",
+              "literal": "",
+              "source_group": 2,
+              "symbol_id": "S_80b8db7006a82040"
+            },
+            {
+              "row": 2,
+              "column": 1,
+              "category": "o",
+              "literal": "",
+              "source_group": 4,
+              "symbol_id": "S_23d47df6ac994534"
+            },
+            {
+              "row": 2,
+              "column": 2,
+              "category": "p",
+              "literal": "",
+              "source_group": 5,
+              "symbol_id": "S_ccf546aa6729f5be"
+            },
+            {
+              "row": 2,
+              "column": 3,
+              "category": "p",
+              "literal": "",
+              "source_group": 6,
+              "symbol_id": "S_e4ac50ce8c5e3dbb"
+            },
+            {
+              "row": 2,
+              "column": 4,
+              "category": "p",
+              "literal": "",
+              "source_group": 7,
+              "symbol_id": "S_4cdded1a53fbdda9"
+            },
+            {
+              "row": 2,
+              "column": 5,
+              "category": "g",
+              "literal": "10",
+              "source_group": 8,
+              "symbol_id": "S_1dd815da33135b3a"
+            },
+            {
+              "row": 3,
+              "column": 1,
+              "category": "g",
+              "literal": "Q",
+              "source_group": 9,
+              "symbol_id": "S_0bd8ff4328d3d164"
+            },
+            {
+              "row": 3,
+              "column": 2,
+              "category": "o",
+              "literal": "",
+              "source_group": 2,
+              "symbol_id": "S_80b8db7006a82040"
+            },
+            {
+              "row": 3,
+              "column": 3,
+              "category": "g",
+              "literal": "K",
+              "source_group": 10,
+              "symbol_id": "S_b88beff377dd28f7"
+            },
+            {
+              "row": 3,
+              "column": 4,
+              "category": "g",
+              "literal": "J",
+              "source_group": 11,
+              "symbol_id": "S_1510010257584d45"
+            },
+            {
+              "row": 3,
+              "column": 5,
+              "category": "o",
+              "literal": "",
+              "source_group": 1,
+              "symbol_id": "S_a0d46d0dd34e5f06"
+            },
+            {
+              "row": 4,
+              "column": 1,
+              "category": "g",
+              "literal": "J",
+              "source_group": 12,
+              "symbol_id": "S_1510010257584d45"
+            },
+            {
+              "row": 4,
+              "column": 2,
+              "category": "g",
+              "literal": "A",
+              "source_group": 13,
+              "symbol_id": "S_c5b20065e77aa60f"
+            },
+            {
+              "row": 4,
+              "column": 3,
+              "category": "o",
+              "literal": "",
+              "source_group": 1,
+              "symbol_id": "S_a0d46d0dd34e5f06"
+            },
+            {
+              "row": 4,
+              "column": 4,
+              "category": "s",
+              "literal": "WILD",
+              "source_group": 14,
+              "symbol_id": "S_e78eee0aef8ef913"
+            },
+            {
+              "row": 4,
+              "column": 5,
+              "category": "g",
+              "literal": "K",
+              "source_group": 15,
+              "symbol_id": "S_b88beff377dd28f7"
+            }
+          ],
+          "symbols": [
+            {
+              "symbol_id": "S_a0d46d0dd34e5f06",
+              "category": "o",
+              "literal": "",
+              "source_groups": [
+                1
+              ],
+              "cells": [
+                [
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  5
+                ],
+                [
+                  4,
+                  3
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_80b8db7006a82040",
+              "category": "o",
+              "literal": "",
+              "source_groups": [
+                2
+              ],
+              "cells": [
+                [
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  5
+                ],
+                [
+                  3,
+                  2
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_1510010257584d45",
+              "category": "g",
+              "literal": "J",
+              "source_groups": [
+                3,
+                11,
+                12
+              ],
+              "cells": [
+                [
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  1
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_23d47df6ac994534",
+              "category": "o",
+              "literal": "",
+              "source_groups": [
+                4
+              ],
+              "cells": [
+                [
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  1
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_ccf546aa6729f5be",
+              "category": "p",
+              "literal": "",
+              "source_groups": [
+                5
+              ],
+              "cells": [
+                [
+                  2,
+                  2
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_e4ac50ce8c5e3dbb",
+              "category": "p",
+              "literal": "",
+              "source_groups": [
+                6
+              ],
+              "cells": [
+                [
+                  2,
+                  3
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_4cdded1a53fbdda9",
+              "category": "p",
+              "literal": "",
+              "source_groups": [
+                7
+              ],
+              "cells": [
+                [
+                  2,
+                  4
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            },
+            {
+              "symbol_id": "S_1dd815da33135b3a",
+              "category": "g",
+              "literal": "10",
+              "source_groups": [
+                8
+              ],
+              "cells": [
+                [
+                  2,
+                  5
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_0bd8ff4328d3d164",
+              "category": "g",
+              "literal": "Q",
+              "source_groups": [
+                9
+              ],
+              "cells": [
+                [
+                  3,
+                  1
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_b88beff377dd28f7",
+              "category": "g",
+              "literal": "K",
+              "source_groups": [
+                10,
+                15
+              ],
+              "cells": [
+                [
+                  3,
+                  3
+                ],
+                [
+                  4,
+                  5
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_c5b20065e77aa60f",
+              "category": "g",
+              "literal": "A",
+              "source_groups": [
+                13
+              ],
+              "cells": [
+                [
+                  4,
+                  2
+                ]
+              ],
+              "normalization_basis": "exact(category,literal); no trimming/case/unicode conversion"
+            },
+            {
+              "symbol_id": "S_e78eee0aef8ef913",
+              "category": "s",
+              "literal": "WILD",
+              "source_groups": [
+                14
+              ],
+              "cells": [
+                [
+                  4,
+                  4
+                ]
+              ],
+              "normalization_basis": "existing source group only; no cross-group merge"
+            }
+          ],
+          "unknown": [],
+          "source_id": "b833e709-49b3-48db-827c-c85b82913a62",
+          "policy": "Only independent glyph category g deduplicates by exact(category,literal). Other categories retain source-group boundaries."
+        },
+        "main_character_displays": {
+          "count": 3,
+          "items": [
+            {
+              "display_id": "M_1",
+              "role": "main_character_display",
+              "recognized_identity_link": null,
+              "source_order_index": 1
+            },
+            {
+              "display_id": "M_2",
+              "role": "main_character_display",
+              "recognized_identity_link": null,
+              "source_order_index": 2
+            },
+            {
+              "display_id": "M_3",
+              "role": "main_character_display",
+              "recognized_identity_link": null,
+              "source_order_index": 3
+            }
+          ],
+          "source": {
+            "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+            "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+            "span": [
+              123,
+              130
+            ],
+            "quote": "为三位格外展示"
+          },
+          "portrait_to_main_mapping": null,
+          "mapping_status": "unconfirmed; not inferred from equal display counts"
+        },
+        "components": [
+          {
+            "id": "A_purchase",
+            "interaction_type": "action",
+            "function": "purchase",
+            "literal": "BUY FREE GAMES",
+            "parent": "information_strip",
+            "source": {
+              "source": "existing semantic context,traceable to recognition button wording",
+              "span": [
+                137,
+                161
+              ],
+              "quote": "文字为“BUY FREE GAMES”的购买按钮"
+            }
+          },
+          {
+            "id": "D_information",
+            "interaction_type": "display",
+            "function": "information_readout",
+            "literal": "WIN 20.00",
+            "parent": "information_strip",
+            "clickable": false,
+            "button_affordance": false,
+            "source": {
+              "source": "existing semantic context,traceable to recognition horizontal information bar wording",
+              "span": [
+                165,
+                181
+              ],
+              "quote": "信息显示为“WIN 20.00”"
+            }
+          },
+          {
+            "id": "D_amount_1",
+            "interaction_type": "display",
+            "function": "numeric_readout",
+            "literal": "¥1000",
+            "parent": "readout_row",
+            "side": "left",
+            "business_meaning": null,
+            "source": {
+              "slot": "left",
+              "value": "¥1000",
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                353,
+                358
+              ],
+              "quote": "¥1000"
+            },
+            "clickable": false,
+            "functional_icon": "wallet",
+            "icon_source_quote": "配钱包图标"
+          },
+          {
+            "id": "D_amount_2",
+            "interaction_type": "display",
+            "function": "numeric_readout",
+            "literal": "¥1000",
+            "parent": "readout_row",
+            "side": "middle",
+            "business_meaning": null,
+            "source": {
+              "slot": "middle",
+              "value": "¥1000",
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                386,
+                391
+              ],
+              "quote": "¥1000"
+            },
+            "clickable": false
+          },
+          {
+            "id": "D_amount_3",
+            "interaction_type": "display",
+            "function": "numeric_readout",
+            "literal": "¥1000",
+            "parent": "readout_row",
+            "side": "right",
+            "business_meaning": null,
+            "source": {
+              "slot": "right",
+              "value": "¥1000",
+              "source_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "source_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                425,
+                430
+              ],
+              "quote": "¥1000"
+            },
+            "clickable": false,
+            "badge_literal": "WIN",
+            "badge_is_separate_action": false,
+            "icon_source_quote": "右侧带\"WIN\"徽标图标"
+          },
+          {
+            "id": "A_minus",
+            "interaction_type": "action",
+            "function": "adjust_minus",
+            "literal": "−",
+            "parent": "readout_row",
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                369,
+                378
+              ],
+              "quote": "减按钮内白色\"−\""
+            }
+          },
+          {
+            "id": "A_plus",
+            "interaction_type": "action",
+            "function": "adjust_plus",
+            "literal": "+",
+            "parent": "readout_row",
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                397,
+                406
+              ],
+              "quote": "加按钮内白色\"+\""
+            }
+          },
+          {
+            "id": "A_rotation",
+            "interaction_type": "action",
+            "function": "rotation",
+            "literal": "",
+            "parent": "controls",
+            "anchor": "center",
+            "required_visual_semantics": "recognizable rotation arrow/ring as main action,not an extra text-only auxiliary",
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                432,
+                444
+              ],
+              "quote": "中央红金配色圆形自转按钮"
+            }
+          },
+          {
+            "id": "A_aux_1",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "菜单",
+            "literal": "菜单",
+            "parent": "controls",
+            "source_order_index": 1,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                473,
+                475
+              ],
+              "quote": "菜单"
+            }
+          },
+          {
+            "id": "A_aux_2",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "极速",
+            "literal": "极速",
+            "parent": "controls",
+            "source_order_index": 2,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                494,
+                496
+              ],
+              "quote": "极速"
+            }
+          },
+          {
+            "id": "A_aux_3",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "自动",
+            "literal": "自动",
+            "parent": "controls",
+            "source_order_index": 3,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                516,
+                518
+              ],
+              "quote": "自动"
+            }
+          },
+          {
+            "id": "A_aux_4",
+            "interaction_type": "action",
+            "function": "auxiliary",
+            "function_label": "声音",
+            "literal": "声音",
+            "parent": "controls",
+            "source_order_index": 4,
+            "source": {
+              "recognition_id": "88497d80-0167-4ba7-a309-1334891c2a60",
+              "raw_sha256": "80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a",
+              "span": [
+                537,
+                539
+              ],
+              "quote": "声音"
+            }
+          }
+        ],
+        "containers": [
+          {
+            "id": "information_strip",
+            "type": "shared_horizontal_strip",
+            "children": [
+              "A_purchase",
+              "D_information"
+            ],
+            "embedded_action": "A_purchase",
+            "action_at": "leading_end",
+            "display_fills": "remaining_continuous_strip",
+            "display_is_not_second_button": true,
+            "source": {
+              "source": "parent relays current human reference correction",
+              "quote": "BUY FREE GAMES是购买按钮，旁WIN20.00是横向信息/公告展示栏，不是第二个可点击按钮；购买端嵌于横向长栏。",
+              "not_claimed_as_automatic_raw_PE_extraction": true
+            }
+          },
+          {
+            "id": "readout_row",
+            "type": "horizontal_readouts_with_adjusters",
+            "children_in_recognized_order": [
+              "D_amount_1",
+              "A_minus",
+              "D_amount_2",
+              "A_plus",
+              "D_amount_3"
+            ],
+            "source": "Ordering from exact readout/sign spans in current control recognition; no manual pixel positions"
+          },
+          {
+            "id": "controls",
+            "type": "main_control_and_auxiliary_group",
+            "main": "A_rotation",
+            "main_anchor": "center",
+            "auxiliary_order": [
+              "A_aux_1",
+              "A_aux_2",
+              "A_aux_3",
+              "A_aux_4"
+            ],
+            "auxiliary_order_basis": "recognized left-to-right sequence",
+            "aux_relative_vertical_to_main": null,
+            "vertical_relation_status": "Recognition says below; actual reference audit differs. Not silently promoted to confirmed geometry."
+          }
+        ],
+        "literal_policy": "Every cell/component literal immutable; repeated financial values remain separate displays. BadgeWIN belongs to rightmost readout,not a fourth value/action.",
+        "glyph_policy": "Independent glyphs keep their own category and literal; no character image replaces a letter/number.",
+        "repeat_policy": "One theme art definition per normalizedsymbol. Ordinary/portrait/special definitions keep source group boundaries.",
+        "unresolved_noninventory_fields": [
+          "Exact region proportions and pixel geometry",
+          "Portrait-to-main identity correspondence",
+          "Auxiliary buttons exact vertical relation/spacing relative to main rotation"
+        ],
+        "ready_for_minimal_symbol_art_design": true,
+        "ready_for_image_generation": false,
+        "reason_generation_not_ready": "New per-symbol theme art has not been designed or validated; skeleton is structure,not an image prompt."
+      },
+      "targets": [
+        {
+          "key": "A01",
+          "symbol_id": "S_a0d46d0dd34e5f06",
+          "category": "o",
+          "literal": "",
+          "role": "普通物件符号"
+        },
+        {
+          "key": "A02",
+          "symbol_id": "S_80b8db7006a82040",
+          "category": "o",
+          "literal": "",
+          "role": "普通物件符号"
+        },
+        {
+          "key": "A03",
+          "symbol_id": "S_1510010257584d45",
+          "category": "g",
+          "literal": "J",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A04",
+          "symbol_id": "S_23d47df6ac994534",
+          "category": "o",
+          "literal": "",
+          "role": "普通物件符号"
+        },
+        {
+          "key": "A05",
+          "symbol_id": "S_ccf546aa6729f5be",
+          "category": "p",
+          "literal": "",
+          "role": "人物头像"
+        },
+        {
+          "key": "A06",
+          "symbol_id": "S_e4ac50ce8c5e3dbb",
+          "category": "p",
+          "literal": "",
+          "role": "人物头像"
+        },
+        {
+          "key": "A07",
+          "symbol_id": "S_4cdded1a53fbdda9",
+          "category": "p",
+          "literal": "",
+          "role": "人物头像"
+        },
+        {
+          "key": "A08",
+          "symbol_id": "S_1dd815da33135b3a",
+          "category": "g",
+          "literal": "10",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A09",
+          "symbol_id": "S_0bd8ff4328d3d164",
+          "category": "g",
+          "literal": "Q",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A10",
+          "symbol_id": "S_b88beff377dd28f7",
+          "category": "g",
+          "literal": "K",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A11",
+          "symbol_id": "S_c5b20065e77aa60f",
+          "category": "g",
+          "literal": "A",
+          "role": "独立字母或数字字形"
+        },
+        {
+          "key": "A12",
+          "symbol_id": "S_e78eee0aef8ef913",
+          "category": "s",
+          "literal": "WILD",
+          "role": "特殊玩法符号"
+        }
+      ],
+      "carrier_keys": {
+        "information_strip": "shared_strip"
+      },
+      "options": {
+        "complete_carrier_rule": true,
+        "conventional_menu_rule": true,
+        "preserve_intrinsic_color": true,
+        "separate_lighting_scope": true
+      },
+      "functional_contract": {
+        "rotation": {
+          "marker": "cycle_arrows",
+          "theme_shell_mutable": true
+        }
+      },
+      "display_designs": {
+        "instances": [
+          {
+            "display_id": "D_information",
+            "literal_parts": [
+              "WIN 20.00"
+            ]
+          },
+          {
+            "display_id": "D_amount_1",
+            "literal_parts": [
+              "¥1000"
+            ]
+          },
+          {
+            "display_id": "D_amount_2",
+            "literal_parts": [
+              "¥1000"
+            ]
+          },
+          {
+            "display_id": "D_amount_3",
+            "literal_parts": [
+              "¥1000"
+            ]
+          }
+        ],
+        "style_descriptions": []
+      },
+      "theme": "霓虹都市"
+    },
+    "catalog": {
+      "ENVIRONMENT_ART": "霓虹都市夜景，密集摩天楼群拔地而起，表面覆盖全息广告屏与流动霓虹管线，蓝紫粉三色光带交织闪烁，空中悬浮轨道列车划过，雨后地面镜面反射无数光点，唯一全局光源为高空多角度霓虹投射灯，营造冷峻赛博朋克纵深氛围。",
+      "OBJECT1": "名称：霓虹招牌；造型：霓虹招牌为竖立式全息金属框，固有色深蓝外壳镶嵌亮紫光管，表面刻蚀电路纹理，体积厚实带有边缘高光反射，悬浮于街头墙面。",
+      "OBJECT2": "名称：数据卷轴；造型：数据卷轴呈半透明全息圆柱，固有色银灰带绿光脉冲，内部流动代码纹理，卷轴两端为金色机械环，体积轻盈带有轻微透明折射效果。",
+      "OBJECT3": "名称：能源核心；造型：能源核心为球形水晶容器，固有色深紫内含跳动青色电弧，外部包裹碳纤维支架，表面布满细密网格纹理，体积沉稳带有内部光源自发光。",
+      "GLYPH_FAMILY": "J、10、Q、K、A五字符独立设计，主题笔画为锋利霓虹管线骨架，端部熔接金属焊点，字腔填充透明全息光晕，本体配色蓝紫渐变，材料层次为发光玻璃外覆碳纤维边缘，保持高辨识度。",
+      "CHARACTER1": "名称：影刃；头像：影刃为短黑发女性，锐利眼线与紫色瞳孔，面部有细微电路纹身；全身：影刃身着黑色皮质紧身衣，肩部镶嵌发光护甲，右手持霓虹短刃，左侧腰间悬挂全息手枪，站姿微侧准备战斗。",
+      "CHARACTER2": "名称：光影客；头像：光影客为戴全息眼镜的青年男子，棕色短发带蓝光，表情冷静；全身：光影客穿深灰风衣内衬发光衬衫，双手操作浮空键盘，身体前倾专注姿态，衣料带有雨水反光质感。",
+      "CHARACTER3": "名称：脉冲姬；头像：脉冲姬为粉色长发赛博少女，粉蓝渐变瞳孔，面部有发光唇妆；全身：脉冲姬身着透明材质短裙与金属束带，右手持能量鞭，左侧腿部装有机械义肢，动态扭身舞动姿态。",
+      "SPECIAL_WILD": "独立特殊玩法载体为全息能量球，球体表面环绕WILD霓虹字形，字形为粗壮蓝紫管线骨架，端部带电弧火花，材料为透明水晶内嵌流动数据，体积圆润自发光不带主旋转箭头。",
+      "SHARED_STRIP": "连续横向载体为金属导轨外壳，左端红色 BUY FREE GAMES 按钮采用霓虹蚀刻字体，中间青色WIN 20.00大字嵌入全息显示屏，右端连续栏面为渐变紫色面板，整体连接处有金色螺栓装饰，材料混用碳纤维与发光玻璃。",
+      "INFORMATION_TYPE": "金额字形采用细长霓虹管笔画，颜色蓝白渐变带轻微发光，¥符号为金属冲压质感，小徽标为圆形金边内嵌紫色脉冲图标，明暗面清晰区分管线高光与阴影。",
+      "ADJUSTER_ART": "成对−和+为圆形金属旋钮，固有色金黄外壳，−为横向霓虹刻线，+为十字交叉霓虹刻线，材料表面带细微划痕与边缘高光。",
+      "ROTATION_ART": "独立居中主操作为红色圆形能量环，内部沿圆周循环的旋转箭头为金色霓虹管构造，箭头头部带电弧效果，体积厚实带有金属质感与光影反射。",
+      "AUXILIARY_ART": "同一主控区四个独立按钮保持三横列表骨架，菜单按钮为黑色外壳内嵌三横白光图标，极速按钮为深蓝外壳内嵌火箭图标，自动按钮为紫色外壳内嵌机器人图标，声音按钮为深红外壳内嵌扬声器图标，四者均采用霓虹边缘与金属高光层次。"
+    },
+    "expectedPrompt": "将原参考重绘为完整竖屏霓虹都市商业游戏美术UI。仅印指定业务字面，不印格位说明。霓虹都市夜景，密集摩天楼群拔地而起，表面覆盖全息广告屏与流动霓虹管线，蓝紫粉三色光带交织闪烁，空中悬浮轨道列车划过，雨后地面镜面反射无数光点，唯一全局光源为高空多角度霓虹投射灯，营造冷峻赛博朋克纵深氛围。肤色、服装、道具与按钮各保留自身固有色和材质，环境氛围色体现为受光与反射；用可读中间调、亮面、暗面和局部细节塑造体积。区域保持纵向顺序：玩法网格、独立人物场景、共享信息长栏、数值调节行、底部主控。人物与信息不并排；比例未量化，留白与分区参照原图。玩法网格严格4行5列共20格，格间轻分隔，不增加行列；下列每行从左到右各对应5格：第1行：霓虹招牌、数据卷轴、“J”、能源核心、数据卷轴。第2行：能源核心、影刃头像、光影客头像、脉冲姬头像、“10”。第3行：“Q”、数据卷轴、“K”、“J”、霓虹招牌。第4行：“J”、“A”、霓虹招牌、“WILD”、“K”。三种头像均面部清楚、身份可辨，统一头肩裁切；以下各身份只定义一次，在指定格位展示头像1次，在格外展示同身份全身1次。以下每种符号只定义一次；同名格位严格复用同一造型，不生成变体。霓虹招牌：名称：霓虹招牌；造型：霓虹招牌为竖立式全息金属框，固有色深蓝外壳镶嵌亮紫光管，表面刻蚀电路纹理，体积厚实带有边缘高光反射，悬浮于街头墙面。数据卷轴：名称：数据卷轴；造型：数据卷轴呈半透明全息圆柱，固有色银灰带绿光脉冲，内部流动代码纹理，卷轴两端为金色机械环，体积轻盈带有轻微透明折射效果。能源核心：名称：能源核心；造型：能源核心为球形水晶容器，固有色深紫内含跳动青色电弧，外部包裹碳纤维支架，表面布满细密网格纹理，体积沉稳带有内部光源自发光。“J”、“10”、“Q”、“K”、“A”组成同一独立字形家族：大写字母和数字本身为主体，均清晰可读；J、10、Q、K、A五字符独立设计，主题笔画为锋利霓虹管线骨架，端部熔接金属焊点，字腔填充透明全息光晕，本体配色蓝紫渐变，材料层次为发光玻璃外覆碳纤维边缘，保持高辨识度。。影刃：头像表现为影刃为短黑发女性，锐利眼线与紫色瞳孔，面部有细微电路纹身；全身动作与装备为影刃身着黑色皮质紧身衣，肩部镶嵌发光护甲，右手持霓虹短刃，左侧腰间悬挂全息手枪，站姿微侧准备战斗。。光影客：头像表现为光影客为戴全息眼镜的青年男子，棕色短发带蓝光，表情冷静；全身动作与装备为光影客穿深灰风衣内衬发光衬衫，双手操作浮空键盘，身体前倾专注姿态，衣料带有雨水反光质感。。脉冲姬：头像表现为脉冲姬为粉色长发赛博少女，粉蓝渐变瞳孔，面部有发光唇妆；全身动作与装备为脉冲姬身着透明材质短裙与金属束带，右手持能量鞭，左侧腿部装有机械义肢，动态扭身舞动姿态。。特殊玩法“WILD”：独立特殊玩法载体为全息能量球，球体表面环绕WILD霓虹字形，字形为粗壮蓝紫管线骨架，端部带电弧火花，材料为透明水晶内嵌流动数据，体积圆润自发光不带主旋转箭头。网格下方的人物场景只展示上述三个身份的完整全身，各1次，身份顺序沿用头像所在行从左到右的顺序；不另增人物。三者服饰、装备和动作各不相同。人物下方的信息长栏：连续横向载体为金属导轨外壳，左端红色 BUY FREE GAMES 按钮采用霓虹蚀刻字体，中间青色WIN 20.00大字嵌入全息显示屏，右端连续栏面为渐变紫色面板，整体连接处有金色螺栓装饰，材料混用碳纤维与发光玻璃。业务字面逐字为“BUY FREE GAMES”、“WIN 20.00”。信息区不是第二个按钮。长栏下方数值调节行从左到右：读数“¥1000”配钱包图示、减号按钮“−”、读数“¥1000”、加号按钮“+”、读数“¥1000”配小“WIN”徽标。三个金额各自独立、非交互，不合并；小徽标不是新增读数或按钮。金额字形沿用购买字形家族；金额字形采用细长霓虹管笔画，颜色蓝白渐变带轻微发光，¥符号为金属冲压质感，小徽标为圆形金边内嵌紫色脉冲图标，明暗面清晰区分管线高光与阴影。成对−和+为圆形金属旋钮，固有色金黄外壳，−为横向霓虹刻线，+为十字交叉霓虹刻线，材料表面带细微划痕与边缘高光。底部中央主旋转：独立居中主操作为红色圆形能量环，内部沿圆周循环的旋转箭头为金色霓虹管构造，箭头头部带电弧效果，体积厚实带有金属质感与光影反射。同一主控区域另有4个独立辅助按钮，按左起顺序：同一主控区四个独立按钮保持三横列表骨架，菜单按钮为黑色外壳内嵌三横白光图标，极速按钮为深蓝外壳内嵌火箭图标，自动按钮为紫色外壳内嵌机器人图标，声音按钮为深红外壳内嵌扬声器图标，四者均采用霓虹边缘与金属高光层次。按钮标签逐字为“菜单”、“极速”、“自动”、“声音”。"
+  }
+]

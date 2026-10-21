@@ -169,7 +169,7 @@ def design_job(case, request):
     if 'numeric_readout' in functions: keys += ['INFORMATION_TYPE']
     if functions & {'adjust_minus','adjust_plus'}: keys += ['ADJUSTER_ART']
     if 'rotation' in functions: keys += ['ROTATION_ART']
-    if functions & {'menu','speed','auto','sound'}: keys += ['AUXILIARY_ART']
+    if functions & {'menu','speed','auto','sound'} or any(c.get('auxiliary_order') for c in case['skeleton'].get('containers',[])): keys += ['AUXILIARY_ART']
     context = {'user_request':request,'source_structure':case['skeleton'],'output_keys':keys,
                'specials':{f'SPECIAL{i+1}':x['literal'] for i,x in enumerate(specials)},
                'carriers':{f'CARRIER{i+1}':next(x for x in case['skeleton']['containers'] if x['id']==ident) for i,ident in enumerate(carriers)}}
@@ -186,6 +186,9 @@ def bind_catalog(case, catalog):
     for i,target in enumerate(x for x in targets if x['category']=='o'):
         value = catalog['OBJECT'+str(i+1)]
         m = re.fullmatch(r'名称[：:]([^；;\n]+)[；;]造型[：:]([\s\S]+)', value)
+        if not m:
+            # Exact alternate form accepted by the frozen original binder; no art words rewritten.
+            m = re.fullmatch(r'([^：:；;\n]{1,24})[：:]((?:造型为|造型[：:])[\s\S]+)', value)
         if not m or m[1].strip() != m[1]: raise ValueError('主题物件名称与造型未配对')
         aliases[target['key']] = m[1]; art[target['key']] = value
     if len(set(aliases.values())) != len(aliases): raise ValueError('不同物件使用了相同名称')
@@ -217,7 +220,7 @@ def bind_catalog(case, catalog):
     for key,source in [('environment_art','ENVIRONMENT_ART'),('information_type','INFORMATION_TYPE'),('adjuster_art','ADJUSTER_ART'),('rotation_art','ROTATION_ART'),('auxiliary_art_and_type','AUXILIARY_ART')]:
         if source in catalog: fragments[key] = catalog[source]
     result = deepcopy(case)
-    result.update(identities=identities,stage_tail='',bindings={'theme':'','style':'','stage_surface':'人物场景','object_aliases':aliases,'shared_glyph_clauses':[catalog['GLYPH_FAMILY']] if glyphs else [],'glyph_extras':{x['key']:'' for x in glyphs}})
+    result.update(identities=identities,stage_tail='',bindings={'theme':case.get('theme',''),'style':'商业游戏美术' if case.get('theme') else '','stage_surface':'人物场景','object_aliases':aliases,'shared_glyph_clauses':[catalog['GLYPH_FAMILY']] if glyphs else [],'glyph_extras':{x['key']:'' for x in glyphs}})
     if independent: result['independent_main_identities'] = independent
     if special_aliases: result['bindings']['special_aliases'] = special_aliases
     documents = {'art':art,'fragments':fragments}

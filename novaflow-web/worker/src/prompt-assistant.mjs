@@ -14,6 +14,7 @@
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
 // script, then stop it again so the next 绘图 has its memory back.
 import { spawn } from 'node:child_process';
+import { planNaturalUiDraft } from './complete-ui-draft.mjs';
 import { planUiCatalog, cpuCatalog } from './ui-catalog-planner.mjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
@@ -576,7 +577,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     get busy() { return Boolean(lease); },
     /** One request on behalf of a prompt_assistant pool task (worker-core). */
     async runForTask(taskId, method, payload) {
-      if (!['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle'].includes(String(method))) return invalid(new Error('未知的提示词助手操作'));
+      if (!['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle', 'uiDesignCpu'].includes(String(method))) return invalid(new Error('未知的提示词助手操作'));
       ownTaskId = String(taskId || '');
       try { return await api[method](payload); }
       finally { ownTaskId = ''; }
@@ -590,9 +591,21 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       try { normalized = normalizeOptimizeRequest(payload); } catch (error) { return invalid(error); }
       return requestWithCache('optimizePrompt', normalized.request, normalized.timeoutMs);
     },
+    async uiDesignCpu(payload) {
+      if (payload?.surface !== 'ui-design' || !['grok-vision-job','compile-grok-vision'].includes(payload?.action)) return invalid(new Error('未知的 UI CPU 操作'));
+      try {
+        const cfg=config();
+        return {ok:true,data:await cpuCatalog({python:cfg.pythonPath,serviceScript:cfg.serviceScript},payload)};
+      } catch(error) {return {ok:false,error:String(error?.message||error),errorCode:'ui-design-cpu-failed'};}
+    },
     async reverseImagePrompt(payload) {
+      if(payload?.uiPlanner==='grok-vision-cpu-v1') {
+        if(payload.surface!=='ui-design')return invalid(new Error('UI CPU 请求范围无效'));
+        if(payload.action==='capabilities')return {ok:true,data:{protocol:'nf.ui.grok-cpu.v1',cpuOnly:true,localCompletePlanner:'complete-catalog-v2'}};
+        return api.uiDesignCpu(payload);
+      }
       // UI PE uses the already-installed runtime model, not the unrelated NF4 assistant.
-      if (payload?.uiPlanner === 'structure-catalog-v1') {
+      if (['structure-catalog-v1','complete-catalog-v2'].includes(payload?.uiPlanner)) {
         if (payload.surface !== 'ui-design' || payload.targetEngine !== 'qwen-2.1' || payload.uiDesignIntent !== 'redesign' || payload.uiPreserveLayout !== true) return invalid(new Error('UI 结构编译请求范围无效'));
         if (lease) return { ok:false, error:'AI 助手正在处理另一项任务，请等待完成后重试', errorCode:'prompt-assistant-busy' };
         lease = { command:'uiStructureCatalog', startedAt:Date.now() };
@@ -600,7 +613,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
           const handoff = await releaseRuntimes();
           if (!handoff.ok) return { ok:false, error:handoff.error, errorCode:handoff.errorCode };
           const cfg = config();
-          const data = await planUiCatalog({ baseUrl:comfyUrls[0], payload, cpu: value => cpuCatalog({ python:cfg.pythonPath, serviceScript:cfg.serviceScript }, value) });
+          const data = await (payload.uiPlanner==='complete-catalog-v2'?planNaturalUiDraft:planUiCatalog)({ baseUrl:comfyUrls[0], payload, cpu: value => cpuCatalog({ python:cfg.pythonPath, serviceScript:cfg.serviceScript }, value) });
           return { ok:true, data };
         } catch (error) { return { ok:false, error:String(error?.message || error), errorCode:'ui-catalog-failed', ...(error.uiCatalogDiagnostics ? {uiCatalogDiagnostics:error.uiCatalogDiagnostics} : {}) }; }
         finally { lease = null; }

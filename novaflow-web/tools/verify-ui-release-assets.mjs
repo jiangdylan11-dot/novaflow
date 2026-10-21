@@ -25,10 +25,10 @@ export async function verifyUiReleaseAssets({ webRoot, workerSrcRoot, workerRend
   const { scripts } = await verifyScriptReferences(webRoot);
   const requirements = [
     ...UI_BROWSER_DEPENDENCIES.map(name => [webRoot, name]),
-    [workerSrcRoot, 'prompt-assistant.mjs'], [workerSrcRoot, 'ui-catalog-planner.mjs'],
+    [workerSrcRoot, 'prompt-assistant.mjs'], [workerSrcRoot, 'complete-ui-draft.mjs'], [workerSrcRoot, 'ui-catalog-planner.mjs'],
     [workerRendererRoot, 'spine-split-runtime.js'], [workerRendererRoot, 'art-generate-reference-drop.tool.js'],
     [desktopRoot, 'prompt-assistant-service.py'], [desktopRoot, 'prompt_assistant/ui_split_proposal.py'],
-    [desktopRoot, 'prompt_assistant/ui_catalog_cli.py'], [desktopRoot, 'prompt_assistant/ui_catalog/bridge.py'],
+    [desktopRoot, 'prompt_assistant/ui_catalog_cli.py'], [desktopRoot, 'prompt_assistant/natural_ui_draft.py'], [desktopRoot, 'prompt_assistant/ui_reference_catalog.py'], [desktopRoot, 'prompt_assistant/grok_ui_vision.py'], [desktopRoot, 'prompt_assistant/grok_ui_vision.recipe.json'], [desktopRoot, 'prompt_assistant/ui_catalog/bridge.py'],
     [desktopRoot, 'prompt_assistant/ui_catalog/compiler.py'], [desktopRoot, 'prompt_assistant/ui_catalog/layout_regions.py'], [desktopRoot, 'prompt_assistant/ui_catalog/observed_layout.py'], [desktopRoot, 'prompt_assistant/ui_catalog/OPTIONAL-DESIGN-RULES.json']
   ];
   for (const [base, file] of requirements) {

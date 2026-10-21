@@ -76,7 +76,7 @@ def validate_regions(sk):
         if any(not isinstance(x, str) or not x for x in main_ids) or len(main_ids) != len(set(main_ids)):
             raise ValueError('独立主角身份缺失或重复')
         for main in character_items:
-            if main.get('framing') not in ['full','half','portrait']:
+            if main.get('framing') not in ['full','half','portrait'] and not (sk.get('grid',{}).get('reference_only') and main.get('framing')=='reference'):
                 raise ValueError('独立主角展示裁切类型不完整')
             if known.get(main.get('region_id'), {}).get('kind') != 'characters':
                 raise ValueError('独立主角未关联已识别人物区域')

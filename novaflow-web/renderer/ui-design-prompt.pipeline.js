@@ -346,7 +346,7 @@
   }
   function compileQwenPlan(result, input) {
     if (result.uiCatalog?.schema === 'nf.ui.structure-catalog.v1') {
-      if (input.engine !== 'local' || input.generationIntent !== 'redesign' || input.preserveLayout !== true || !result.prompt?.trim()) throw new Error('结构编译结果与当前任务不匹配')
+      if (input.provider !== 'local' || !['local','grok'].includes(input.engine) || input.generationIntent !== 'redesign' || input.preserveLayout !== true || !result.prompt?.trim()) throw new Error('结构编译结果与当前任务不匹配')
       const plan = normalizeQwenPlan(result.uiPlan, input)
       if (!plan || plan.layoutMode !== 'preserve' || plan.visualMode !== 'theme-redesign') throw new Error('结构编译布局结果无效')
       return { prompt:result.prompt, references:input.references, plan, analysisPlan:plan, order:input.references.map((_,i)=>i+1), businessFacts:[], businessFactsSource:'typed-source-catalog', uiCatalog:result.uiCatalog }
