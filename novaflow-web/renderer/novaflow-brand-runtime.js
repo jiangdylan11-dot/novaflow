@@ -34173,6 +34173,22 @@
         style: { display: "flex", "flex-direction": "column", gap: "12px", "row-gap": "12px", width: "100%", margin: "0", padding: "0", height: "auto", "min-height": "0" }
       },
       {
+        // Batch imports must not shrink the upload well or its controls.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] > [data-novaflow-tools-section]:not([data-novaflow-tools-section-kind="batch"])',
+        style: { flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] > [data-novaflow-tools-section-kind="batch"]',
+        style: { flex: "1 1 0", "min-height": "0", "overflow-y": "auto", "overflow-x": "hidden" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-section-kind="batch"] > [data-novaflow-tools-batch-item]',
+        style: { "flex-shrink": "0" }
+      },
+      {
         // 普通 PNG / Spine 图集: the reference's segmented plate.
         when: "body.novaflow-primary-target-tools",
         selector: '[data-novaflow-tools-mode-row]',
@@ -43369,8 +43385,8 @@
     });
     if (leftPanel) {
       leftPanel.setAttribute("data-novaflow-tools-left-panel", "1");
-      leftPanel.style.setProperty("display", "grid", "important");
-      leftPanel.style.setProperty("grid-template-rows", "auto auto auto minmax(0, 1fr)", "important");
+      leftPanel.style.setProperty("display", "flex", "important");
+      leftPanel.style.setProperty("flex-direction", "column", "important");
       leftPanel.style.setProperty("width", `${PRIMARY_PANEL_INNER_WIDTH}px`, "important");
       leftPanel.style.setProperty("min-width", `${PRIMARY_PANEL_INNER_WIDTH}px`, "important");
       leftPanel.style.setProperty("max-width", `${PRIMARY_PANEL_INNER_WIDTH}px`, "important");
