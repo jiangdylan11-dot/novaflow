@@ -1,6 +1,5 @@
 (function (root) {
   'use strict';
-  const STORAGE = 'novaflow.pose-reference.v2';
   const scriptUrl = root.document?.currentScript?.src || root.location?.href;
   const vendor = name => new URL(`./vendor/vnccs/${name}`, scriptUrl).href;
   const size = value => Math.max(256, Math.min(2048, Math.round(Number(value) || 1024)));
@@ -468,7 +467,7 @@
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
-      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options-proportion{grid-template-columns:repeat(3,minmax(0,1fr))}.nf-pose-dialog .nf-pose-body-options-proportion button{min-width:0;padding:4px 2px;font-size:11px;white-space:nowrap}.nf-pose-modebar{display:flex;padding:8px 12px;border-bottom:1px solid #353535}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
+      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid #353535}.nf-pose-modebar,.nf-pose-camera-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.nf-pose-dialog .nf-pose-camera-tools button{padding:5px 8px;white-space:nowrap}.nf-pose-outputbar{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:8px 12px;border-top:1px solid #353535;color:#aab7bb;font-size:11px}.nf-pose-outputbar label{display:flex;align-items:center;gap:7px;white-space:nowrap}.nf-pose-dialog .nf-pose-outputbar input[type=number]{width:64px;min-height:30px;padding:4px 6px;text-align:center;appearance:textfield}.nf-pose-outputbar input[type=number]::-webkit-inner-spin-button,.nf-pose-outputbar input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}.nf-pose-outputbar input[type=color]{width:44px;height:28px;padding:2px;border:1px solid #48515a;border-radius:5px;background:#2b3036}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
       .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#090b10b8;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
       .nf-pose-dialog{width:min(1440px,100%);height:min(940px,100%);display:flex;flex-direction:column;background:#1d2024;border:1px solid #3b4148;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
       .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b3036;color:#d9dfdf;border:1px solid #3c434a;border-radius:7px;min-height:32px;padding:5px 10px;font:12px system-ui}
@@ -491,9 +490,7 @@
   async function createEditor() {
     installStyle();
     previousFocus = root.document.activeElement;
-    const state = { width: size(root.__NovaFlowArtGenerate?.state.width), height: size(root.__NovaFlowArtGenerate?.state.height), background: '#e4e5e8' };
-    let saved;
-    try { saved = normalizeDocument(JSON.parse(root.localStorage.getItem(STORAGE))); Object.assign(state, saved); } catch (_) {}
+    const state = { width: 1024, height: 1024, background: '#e4e5e8' };
     const abort = new AbortController();
     const overlay = element('div', { class: 'nf-pose-overlay', 'data-novaflow-pose-reference': '1', 'data-novaflow-runtime-ignore': '1', 'data-novaflow-source-layout': '1' });
     // Let the real canvas controls handle input, then keep workspace drag/zoom
@@ -512,12 +509,11 @@
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
     async function run(fn) { try { await fn(); } catch (error) { message(error.message || String(error), true); } }
-    let viewer, resizeObserver, saveTimer, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, bodyControls = [], actorControls = [], axisControls = [], editModes = [];
+    let viewer, resizeObserver, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, proportionSelect, proportionRequest = 0, actorControls = [], axisControls = [], editModes = [];
     function snapshot() { return { version: 2, ...characters.snapshot(), width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
-    function persist() { if (viewer?.isInitialized() && characters) { try { root.localStorage.setItem(STORAGE, JSON.stringify(snapshot())); } catch (_) { message('浏览器无法保存姿势，请使用「保存姿势」下载文件', true); } } }
-    function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); clearTimeout(saveTimer); saveTimer = setTimeout(persist, 180); syncAxes(); }
+    function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); syncAxes(); }
     function close() {
-      persist(); clearTimeout(saveTimer); abort.abort(); resizeObserver?.disconnect(); viewer?.dispose(); overlay.remove(); editor = null;
+      abort.abort(); resizeObserver?.disconnect(); viewer?.dispose(); overlay.remove(); editor = null;
       if (previousFocus?.isConnected) previousFocus.focus();
     }
     function download(blob, name) {
@@ -550,7 +546,7 @@
       // Viewport ratio always equals the output ratio, so orbit/pan/zoom are exported as seen.
       const image = viewer.capture(state.width, state.height, 1, state.background, 0, 0, 0, 0, { viewport: true });
       if (!image?.startsWith('data:image/png;base64,')) throw new Error('姿势图导出失败');
-      persist(); return image;
+      return image;
     }
     const fileInput = element('input', { type: 'file', accept: '.json,application/json', hidden: '', 'aria-label': '导入姿势文件', onchange: () => run(async () => {
       const file = fileInput.files[0]; fileInput.value = ''; if (!file) return;
@@ -612,7 +608,6 @@
           return [loadBodyModel(previous), loadBodyModel({ ...previous, gender: 'neutral' })];
         }));
       };
-      await loadSceneModels(saved);
       if (abort.signal.aborted) return;
       handPresets = HAND_PRESETS;
       viewer = new PoseViewerCore(canvas, { skinMode: 'flat_color', enableTextureSkinning: false, showCaptureFrame: false, ikEnabled: true, useHandControlPopover: false, onPoseChange: changed, onBoneSelectionChange: syncAxes });
@@ -624,9 +619,7 @@
       const floor = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
       addStudioGrid(viewer, floor);
       characters = createCharacters(viewer, changed, bodyModels);
-      characters.restore(saved || { pose: { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } } });
-      if (saved?.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: saved.pose.camera });
-      if (saved?.view) { viewer.camera.fov = saved.view.fov; viewer.camera.zoom = saved.view.zoom; viewer.camera.updateProjectionMatrix(); }
+      characters.restore({ pose: { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } } });
       libraryButton = button('打开姿势库', () => run(showLibrary), { 'data-novaflow-pose-library-open': '1', class: 'nf-pose-primary' });
       side.append(libraryButton, element('h3', { text: '场景人物' }));
       peopleList = element('div', { class: 'nf-pose-people', role: 'group', 'aria-label': '场景人物' });
@@ -636,24 +629,23 @@
         characters.remove(); changed(); message(`已删除${name || '人物'}，场景中剩余 ${characters.people.length} 人`);
       }));
       side.append(peopleList, element('div', { class: 'nf-pose-grid' }, [addPerson, deletePerson]));
-      for (const [key, label, options] of [['proportion', '头身比例', [[null, '自然'], ...PROPORTIONS.map(value => [value, `${value}头身`])]]]) {
-        const choices = options.map(([value, text]) => {
-          const control = button(text, () => run(async () => {
-            const person = characters.active(); if (!person) return;
-            await loadBodyModel({ ...person.body, [key]: value });
-            if (characters.active()?.id !== person.id || abort.signal.aborted) return;
-            characters.setBody(key, value); changed();
-          }), { 'aria-label': `${label}：${text}`, 'aria-pressed': 'false' });
-          bodyControls.push({ key, value, control }); actorControls.push(control); return control;
-        });
-        side.append(element('h3', { text: label }), element('div', { class: `nf-pose-body-options nf-pose-body-options-${key}`, role: 'group', 'aria-label': label }, choices));
-      }
+      proportionSelect = element('select', { 'aria-label': '头身比例', onchange: () => run(async () => {
+        const person = characters.active(); if (!person) return;
+        const value = proportionSelect.value === '' ? null : Number(proportionSelect.value), request = ++proportionRequest;
+        try {
+          await loadBodyModel({ ...person.body, proportion: value });
+          if (request !== proportionRequest || characters.active()?.id !== person.id || abort.signal.aborted) return;
+          characters.setBody('proportion', value); changed();
+        } finally { if (request === proportionRequest && !abort.signal.aborted) renderPeople(); }
+      }) }, [['', '自然'], ...PROPORTIONS.map(value => [String(value), `${value}头身`])].map(([value, text]) => element('option', { value, text })));
+      side.append(element('h3', { text: '头身比例' }), proportionSelect); actorControls.push(proportionSelect);
       selectedJoint = element('div', { class: 'nf-pose-selected-joint', role: 'status', text: '点击人偶上的关节进行旋转' });
       side.append(element('h3', { text: '骨骼编辑' }));
       editModes = [['translate', '移动关节'], ['rotate', '旋转关节']].map(([mode, text]) => {
         const control = button(text, () => movement?.setMode(mode), { 'aria-pressed': String(mode === 'translate') }); actorControls.push(control); return { mode, control };
       });
-      view.prepend(element('div', { class: 'nf-pose-body-options nf-pose-modebar', role: 'group', 'aria-label': '骨骼操作模式' }, editModes.map(item => item.control)));
+      const viewportToolbar = element('div', { class: 'nf-pose-toolbar' }, [element('div', { class: 'nf-pose-body-options nf-pose-modebar', role: 'group', 'aria-label': '骨骼操作模式' }, editModes.map(item => item.control))]);
+      view.prepend(viewportToolbar);
       side.append(selectedJoint);
       axisControls = ['X', 'Y', 'Z'].map((axis, i) => {
         const slider = element('input', { type: 'range', min: '-180', max: '180', value: '0', step: '1', 'aria-label': `关节 ${axis} 旋转` });
@@ -671,16 +663,18 @@
       side.append(element('h3', { text: '手势' }));
       const handSide = element('select', { 'aria-label': '手势作用侧' }, ['both', 'l', 'r'].map((value, i) => element('option', { value, text: ['双手', '左手', '右手'][i] })));
       const hands = element('div', { class: 'nf-pose-grid' }, [['OPEN', '张开'], ['FIST', '握拳'], ['CHOP', '并拢']].map(([key, text]) => button(text, () => { viewer.applyHandPreset(handSide.value, handPresets[key]); changed(); }))); side.append(handSide, hands); actorControls.push(handSide, ...hands.querySelectorAll('button'));
-      side.append(element('h3', { text: '镜头' }), button('适配全部人物', fitView), element('div', { class: 'nf-pose-grid' }, [['正面', 0], ['背面', Math.PI], ['左侧', -Math.PI / 2], ['右侧', Math.PI / 2]].map(([text, angle]) => button(text, () => {
+      viewportToolbar.append(element('div', { class: 'nf-pose-camera-tools', role: 'group', 'aria-label': '画布镜头' }, [button('适配全部人物', fitView), ...[['正面', 0], ['背面', Math.PI], ['左侧', -Math.PI / 2], ['右侧', Math.PI / 2]].map(([text, angle]) => button(text, () => {
         const distance = viewer.camera.position.distanceTo(viewer.orbit.target); viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(Math.sin(angle) * distance, 0, Math.cos(angle) * distance)); viewer.orbit.update(); fitView(); viewer.requestRender(); changed();
-      }))));
-      widthInput = element('input', { type: 'number', min: '256', max: '2048', value: state.width, 'aria-label': '姿势图宽度', onchange: () => { state.width = size(widthInput.value); widthInput.value = state.width; resize(); changed(); } });
-      heightInput = element('input', { type: 'number', min: '256', max: '2048', value: state.height, 'aria-label': '姿势图高度', onchange: () => { state.height = size(heightInput.value); heightInput.value = state.height; resize(); changed(); } });
+      }))]));
+      const updateOutputSize = () => { state.width = size(widthInput.value); state.height = size(heightInput.value); resize(); changed(); };
+      widthInput = element('input', { type: 'number', min: '256', max: '2048', value: state.width, 'data-novaflow-number-fill': '1', 'aria-label': '姿势图宽度', oninput: updateOutputSize, onchange: () => { updateOutputSize(); widthInput.value = state.width; } });
+      heightInput = element('input', { type: 'number', min: '256', max: '2048', value: state.height, 'data-novaflow-number-fill': '1', 'aria-label': '姿势图高度', oninput: updateOutputSize, onchange: () => { updateOutputSize(); heightInput.value = state.height; } });
       background = element('input', { type: 'color', value: state.background, 'aria-label': '姿势图背景', oninput: () => { state.background = background.value; viewer.scene.background.set(state.background); viewer.requestRender(); changed(); } });
-      side.append(element('label', { text: '输出尺寸' }, [element('div', { class: 'nf-pose-row' }, [widthInput, element('span', { class: 'nf-pose-times', text: '×' }), heightInput])]), element('label', { class: 'nf-pose-row' }, [element('span', { text: '背景颜色' }), background]));
+      const outputBar = element('div', { class: 'nf-pose-outputbar', role: 'group', 'aria-label': '画布输出设置' }, [element('label', { class: 'nf-pose-output-size' }, [element('span', { text: '输出尺寸' }), widthInput, element('span', { text: '×' }), heightInput]), element('label', { class: 'nf-pose-output-background' }, [element('span', { text: '背景颜色' }), background])]);
+      view.insertBefore(outputBar, view.lastChild);
       viewer.orbit.addEventListener('end', changed);
       resizeObserver = new ResizeObserver(resize); resizeObserver.observe(stage); resize();
-      if (!saved) { viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(0, 0, 4)); fitView(); }
+      viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(0, 0, 4)); fitView();
       actions.forEach(b => b.removeAttribute('disabled')); message('调整人偶与镜头后，导出 PNG 或用作姿势参考'); changed();
       movement = configureRootTranslation(viewer, characters, changed); syncAxes();
       viewer.options.onBoneSelectionChange = () => { movement.sync(); syncAxes(); };
@@ -711,7 +705,7 @@
 
     function renderPeople() {
       const current = characters.active();
-      // Keep focused position inputs alive while the rig reports pointer changes.
+      // Keep the people list stable while the rig reports pointer changes.
       if (peopleList.dataset.signature !== characters.people.map(p => `${p.id}:${p.id === current?.id}`).join('|')) {
         peopleList.dataset.signature = characters.people.map(p => `${p.id}:${p.id === current?.id}`).join('|');
         peopleList.replaceChildren(...characters.people.map(p => button(p.name, () => characters.select(p.id), { 'aria-pressed': String(p === current), 'aria-label': `选择${p.name}`, 'data-pose-person': p.id })));
@@ -719,7 +713,7 @@
       }
       if (deletePerson) deletePerson.disabled = !current;
       for (const control of actorControls) control.disabled = !current;
-      for (const { key, value, control } of bodyControls) control.setAttribute('aria-pressed', String(current?.body[key] === value));
+      if (proportionSelect) proportionSelect.value = String(current?.body.proportion ?? '');
       if (libraryButton) libraryButton.disabled = !current;
     }
 
