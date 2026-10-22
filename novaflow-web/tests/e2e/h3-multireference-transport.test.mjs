@@ -11,6 +11,9 @@ for(const file of ['h3-prompt-format.js','ai-sequence-minimax-h3.resource.js','a
 const resource=ctx.NovaFlowAiSequenceMiniMaxH3Resource,compiler=ctx.NovaFlowAiSequenceMiniMaxH3PromptWorkflow;
 const bindings=Array.from(resource.multiReferenceSlots,(r,i)=>({key:r.key,sourceId:'stable-'+i,kind:r.kind,modelToken:r.modelToken,fileName:'original-'+i,uploadedName:'stage-'+i+'.'+({image:'png',video:'mp4',audio:'wav'}[r.kind]),occupied:true,type:r.kind+'/test'}));
 const allPrompt=bindings.map(x=>x.modelToken).join(' ');
+const namedPrompt=Array.from(resource.multiReferenceSlots,x=>'@'+x.label).join(' ');
+assert.equal(resource.compileMentions(namedPrompt,bindings).text,allPrompt);
+assert.equal(resource.compileMentions('[已删除素材:参考视频 1]',bindings).invalidTokens.length,1);
 assert.equal(resource.compileMentions('@参考图9 @视频参考3 @声音参考3',bindings).text,'<Picture 9> <Video 3> <Audio 3>');
 assert.throws(()=>compiler.assertExplicitReferences({mode:'multi_reference',prompt:allPrompt,resources:bindings},'<Picture 1>'),/遗漏/);
 assert.equal(compiler.assertExplicitReferences({mode:'multi_reference',prompt:allPrompt,resources:bindings},allPrompt),true);

@@ -11,10 +11,10 @@ html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-source-id] .nf-upload-dropzone__icon,
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-source-id] [data-novaflow-plus-glyph] {display:none !important;}
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-preview {position:relative;display:flex;flex:1 1 0;align-items:center;justify-content:center;min-width:0;min-height:0;width:100%;overflow:hidden;pointer-events:none;}
-/* Images use the original native img branch, with no badges or overlays. */
+/* Images keep the original native img branch; the single caption is normalized after shared upload styles. */
 html body [data-novaflow-h3-media-panel="1"] [data-novaflow-h3-source-id][data-novaflow-h3-kind="image"] > img {display:block !important;position:static !important;flex:1 1 0 !important;min-height:0 !important;min-width:0 !important;width:100% !important;height:auto !important;object-fit:contain !important;opacity:1 !important;visibility:visible !important;filter:none !important;}
 html body [data-novaflow-h3-media-panel="1"] [data-novaflow-h3-source-id] > .nf-upload-dropzone__title {flex:0 0 18px !important;width:100% !important;height:18px !important;min-height:18px !important;line-height:18px !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;}
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-kind-icon {position:absolute;left:2px;top:2px;display:block;width:14px;height:14px;line-height:14px;color:#b8b8b8;}
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-kind-icon svg {display:block;width:14px;height:14px;}
-html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-duration {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#ddd;font-size:20px;font-weight:500;line-height:24px;white-space:nowrap;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-duration {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#ddd;font-size:12px;font-weight:400;line-height:18px;white-space:nowrap;}
 html body [data-novaflow-h3-media-panel="1"] > [role="alert"] {position:absolute;bottom:0;left:0;max-width:100%;color:#ffb0a8;font-size:11px;}

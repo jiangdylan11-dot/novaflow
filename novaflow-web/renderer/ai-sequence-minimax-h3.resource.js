@@ -50,21 +50,21 @@
   }
 
   const MULTI_REFERENCE_SLOTS = Object.freeze([
-    slot('multi_ref_image_1', '参考图1', 'image', '<Picture 1>', ['@参考图1', '@图片1']),
-    slot('multi_ref_image_2', '参考图2', 'image', '<Picture 2>', ['@参考图2', '@图片2']),
-    slot('multi_ref_image_3', '参考图3', 'image', '<Picture 3>', ['@参考图3', '@图片3']),
-    slot('multi_ref_image_4', '参考图4', 'image', '<Picture 4>', ['@参考图4', '@图片4']),
-    slot('multi_ref_image_5', '参考图5', 'image', '<Picture 5>', ['@参考图5', '@图片5']),
-    slot('multi_ref_image_6', '参考图6', 'image', '<Picture 6>', ['@参考图6', '@图片6']),
-    slot('multi_ref_image_7', '参考图7', 'image', '<Picture 7>', ['@参考图7', '@图片7']),
-    slot('multi_ref_image_8', '参考图8', 'image', '<Picture 8>', ['@参考图8', '@图片8']),
-    slot('multi_ref_image_9', '参考图9', 'image', '<Picture 9>', ['@参考图9', '@图片9']),
-    slot('multi_ref_video_1', '视频参考1', 'video', '<Video 1>', ['@视频参考1', '@视频1', '@视频参考']),
-    slot('multi_ref_video_2', '视频参考2', 'video', '<Video 2>', ['@视频参考2', '@视频2']),
-    slot('multi_ref_video_3', '视频参考3', 'video', '<Video 3>', ['@视频参考3', '@视频3']),
-    slot('multi_ref_audio_1', '声音参考1', 'audio', '<Audio 1>', ['@声音参考1', '@音频1', '@声音参考']),
-    slot('multi_ref_audio_2', '声音参考2', 'audio', '<Audio 2>', ['@声音参考2', '@音频2']),
-    slot('multi_ref_audio_3', '声音参考3', 'audio', '<Audio 3>', ['@声音参考3', '@音频3']),
+    slot('multi_ref_image_1', '参考图 1', 'image', '<Picture 1>', ['@参考图 1', '@参考图1', '@图片1']),
+    slot('multi_ref_image_2', '参考图 2', 'image', '<Picture 2>', ['@参考图 2', '@参考图2', '@图片2']),
+    slot('multi_ref_image_3', '参考图 3', 'image', '<Picture 3>', ['@参考图 3', '@参考图3', '@图片3']),
+    slot('multi_ref_image_4', '参考图 4', 'image', '<Picture 4>', ['@参考图 4', '@参考图4', '@图片4']),
+    slot('multi_ref_image_5', '参考图 5', 'image', '<Picture 5>', ['@参考图 5', '@参考图5', '@图片5']),
+    slot('multi_ref_image_6', '参考图 6', 'image', '<Picture 6>', ['@参考图 6', '@参考图6', '@图片6']),
+    slot('multi_ref_image_7', '参考图 7', 'image', '<Picture 7>', ['@参考图 7', '@参考图7', '@图片7']),
+    slot('multi_ref_image_8', '参考图 8', 'image', '<Picture 8>', ['@参考图 8', '@参考图8', '@图片8']),
+    slot('multi_ref_image_9', '参考图 9', 'image', '<Picture 9>', ['@参考图 9', '@参考图9', '@图片9']),
+    slot('multi_ref_video_1', '参考视频 1', 'video', '<Video 1>', ['@参考视频 1', '@参考视频1', '@视频参考1', '@视频1', '@视频参考']),
+    slot('multi_ref_video_2', '参考视频 2', 'video', '<Video 2>', ['@参考视频 2', '@参考视频2', '@视频参考2', '@视频2']),
+    slot('multi_ref_video_3', '参考视频 3', 'video', '<Video 3>', ['@参考视频 3', '@参考视频3', '@视频参考3', '@视频3']),
+    slot('multi_ref_audio_1', '参考音频 1', 'audio', '<Audio 1>', ['@参考音频 1', '@参考音频1', '@声音参考1', '@音频1', '@声音参考']),
+    slot('multi_ref_audio_2', '参考音频 2', 'audio', '<Audio 2>', ['@参考音频 2', '@参考音频2', '@声音参考2', '@音频2']),
+    slot('multi_ref_audio_3', '参考音频 3', 'audio', '<Audio 3>', ['@参考音频 3', '@参考音频3', '@声音参考3', '@音频3']),
   ])
 
   const SLOT_BY_KEY = new Map(MULTI_REFERENCE_SLOTS.map((entry) => [entry.key, entry]))
@@ -335,8 +335,8 @@
       validateResourceSnapshot(resources, { mode: 'multi_reference', requireAny: false }),
     )
     const byKey = new Map(snapshot.map((entry) => [entry.key, entry]))
-    const invalidTokens = []
-    const invalidSet = new Set()
+    const invalidTokens = sourceText.match(/\[已删除素材:[^\]]+\]/g) || []
+    const invalidSet = new Set(invalidTokens)
     const mentions = []
     const compiledText = sourceText.replace(MENTION_EXPRESSION, (alias) => {
       const descriptor = ALIAS_TO_SLOT.get(alias)

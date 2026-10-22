@@ -28,6 +28,7 @@
     Object.freeze({ key: "last_frame", label: "尾帧", kind: "image" })
   ]);
   const UI_DESIGN_MAX_REFERENCES = 15;
+  const H3_READABLE_MENTION_SOURCE = "@参考图 [1-9][0-9]*|@参考视频 ?[1-3]|@参考音频 ?[1-3]";
   const READABLE_MENTION_SOURCE = "@参考图[1-9][0-9]*|@参考图(?![0-9])|@首帧|@尾帧|@视频参考[1-3]?|@声音参考[1-3]?";
   const mountedControllers = new Set();
   const controllerByTextarea = new WeakMap();
@@ -84,7 +85,7 @@
     const normalized = normalizeSurface(surface);
     if (normalized === "art-generate") return artGenerateResourceConfig(resources);
     if (normalized === "ui-design") return uiDesignResourceConfig(resources);
-    if (normalized === "minimax_h3" || normalized === "minimax-h3") return (globalThis.NovaFlowAiSequenceMiniMaxH3Resource?.multiReferenceSlots || []).map(x=>({key:x.key,label:x.label,kind:x.kind}));
+    if (normalized === "minimax_h3" || normalized === "minimax-h3") return (globalThis.NovaFlowAiSequenceMiniMaxH3Resource?.multiReferenceSlots || []).map(x=>({key:x.key,label:x.label,kind:x.kind,legacyAliases:x.aliases.filter(alias=>alias!=="@"+x.label)}));
     if (normalized === "minimax-h3-image-video") return MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG;
     if (normalized === "minimax-h3-first-last") return MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG;
     return SEEDANCE_RESOURCE_CONFIG;
@@ -188,7 +189,7 @@
     const sourceText = stringValue(settings.text);
     const descriptors = buildResourceView(settings.surface, settings.resources);
     const byAlias = descriptorIndex(descriptors);
-    const expression = new RegExp(READABLE_MENTION_SOURCE, "g");
+    const expression = new RegExp((normalizeSurface(settings.surface) === "minimax_h3" || normalizeSurface(settings.surface) === "minimax-h3" ? H3_READABLE_MENTION_SOURCE + "|" : "") + READABLE_MENTION_SOURCE, "g");
     const mentions = [];
     const invalidTokens = [];
     const invalidSet = new Set();
@@ -243,7 +244,7 @@
     const sourceText = stringValue(text);
     const sequence = ++protectionSequence;
     const tokens = [];
-    const expression = new RegExp(READABLE_MENTION_SOURCE, "g");
+    const expression = new RegExp(H3_READABLE_MENTION_SOURCE + "|" + READABLE_MENTION_SOURCE, "g");
     const protectedText = sourceText.replace(expression, function (token) {
       const placeholder = "__NOVAFLOW_RESOURCE_MENTION_" + sequence + "_" + tokens.length + "__";
       tokens.push({ placeholder: placeholder, token: token });

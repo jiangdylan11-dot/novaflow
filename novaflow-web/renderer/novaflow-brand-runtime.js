@@ -11568,7 +11568,10 @@
     if (!(bottomWorkspace instanceof HTMLElement)) return;
     // H3 owns one full-width horizontal reference bar in this same dock.
     // Do not reapply the old fixed reference-column width/height afterward.
-    if (window.NovaFlowH3Media?.layoutReferenceBar?.(bottomWorkspace)) return;
+    if (window.NovaFlowH3Media?.layoutReferenceBar?.(bottomWorkspace)) {
+      window.NovaFlowH3Media.normalizeCardContents?.(bottomWorkspace);
+      return;
+    }
     const mainRow = bottomWorkspace.querySelector('[data-novaflow-ai-bottom-main-row="1"]');
     const referenceColumn = bottomWorkspace.querySelector('[data-novaflow-ai-reference-column="1"]');
     const promptGrid = bottomWorkspace.querySelector('[data-novaflow-ai-prompt-grid="1"]');

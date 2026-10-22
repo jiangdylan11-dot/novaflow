@@ -1,7 +1,8 @@
 (function (root) {
   'use strict';
   const LIMITS = Object.freeze({image:9,video:3,audio:3});
-  const CN = {image:'参考图',video:'视频参考',audio:'声音参考'};
+  const CN = {image:'参考图',video:'参考视频',audio:'参考音频'};
+  const OLD_CN = {image:'参考图',video:'视频参考',audio:'声音参考'};
   const TOKEN = {image:'Picture',video:'Video',audio:'Audio'};
   const clone = value => JSON.parse(JSON.stringify(value));
   function database() {
@@ -29,14 +30,14 @@
   }
   function resources(items) {
     const count={image:0,video:0,audio:0};
-    return items.map(x=>{const i=++count[x.kind];return {...x,key:'multi_ref_'+x.kind+'_'+i,label:CN[x.kind]+i,modelToken:'<'+TOKEN[x.kind]+' '+i+'>',previewUrl:x.dataUrl,objectUrl:x.dataUrl,occupied:true};});
+    return items.map(x=>{const i=++count[x.kind];return {...x,key:'multi_ref_'+x.kind+'_'+i,label:CN[x.kind]+' '+i,available:true,modelToken:'<'+TOKEN[x.kind]+' '+i+'>',previewUrl:x.dataUrl,objectUrl:x.dataUrl,occupied:true};});
   }
   function remapPrompt(text,before,after) {
     const next=new Map(resources(after).map(x=>[x.sourceId,x]));
     const labels=new Map();
     for(const x of resources(before)) {
       const y=next.get(x.sourceId), replacement=y?'@'+y.label:'[已删除素材:'+x.label+']';
-      for(const label of ['@'+x.label,x.modelToken,'@'+({image:'图片',video:'视频',audio:'音频'}[x.kind])+x.modelToken.match(/\d+/)[0]])labels.set(label,replacement);
+      for(const label of ['@'+x.label,'@'+CN[x.kind]+x.modelToken.match(/\d+/)[0],'@'+OLD_CN[x.kind]+x.modelToken.match(/\d+/)[0],x.modelToken,'@'+({image:'图片',video:'视频',audio:'音频'}[x.kind])+x.modelToken.match(/\d+/)[0]])labels.set(label,replacement);
       if(x.key==='multi_ref_video_1')labels.set('@视频参考',replacement);
       if(x.key==='multi_ref_audio_1')labels.set('@声音参考',replacement);
     }
@@ -90,6 +91,28 @@
     put(prompts,{'grid-column':'1','grid-row':'4',display:'grid','grid-template-columns':'minmax(0, 1fr)',width:'100%','min-width':'0px','max-width':'100%','margin-top':'0px'});
     return true;
   }
+  // Run after the shared upload normalizers: their legacy div/span and SVG
+  // rules otherwise flatten the nested preview and override caption styling.
+  function normalizeCardContents(bottom) {
+    const panel=bottom?.querySelector('[data-novaflow-h3-media-panel="1"]');
+    if(!panel)return;
+    const put=(el,values)=>{if(!el)return;for(const [name,value]of Object.entries(values))if(el.style.getPropertyValue(name)!==value||el.style.getPropertyPriority(name)!=='important')el.style.setProperty(name,value,'important');};
+    for(const card of panel.querySelectorAll('[data-novaflow-h3-source-id]')) {
+      const item=store.getResources().find(x=>x.sourceId===card.dataset.novaflowH3SourceId);
+      if(!item)continue;
+      const caption=card.querySelector(':scope > .nf-upload-dropzone__title');
+      if(caption){if(caption.textContent!==item.label)caption.textContent=item.label;caption.title=item.fileName;}
+      put(caption,{position:'absolute',left:'0px',right:'0px',bottom:'0px',top:'auto',width:'100%',height:'22px','min-height':'22px','max-height':'22px',margin:'0px',padding:'2px 6px','box-sizing':'border-box',background:'rgba(0, 0, 0, 0.65)',border:'0px','border-radius':'0px','font-family':'"Segoe UI", "Microsoft YaHei", sans-serif','font-size':'12px','font-weight':'400','font-style':'normal','line-height':'18px',color:'rgb(232, 232, 232)','text-align':'center','white-space':'nowrap',overflow:'hidden','text-overflow':'ellipsis','z-index':'2',transform:'none'});
+      const preview=card.querySelector('[data-novaflow-h3-preview]');
+      put(preview,{position:'relative',display:'flex',flex:'1 1 0px',width:'100%','min-width':'0px','min-height':'0px',height:'100%','align-items':'center','justify-content':'center',overflow:'hidden',padding:'0px',margin:'0px',background:'transparent',transform:'none'});
+      const icon=card.querySelector('[data-novaflow-h3-icon]');
+      put(icon,{position:'absolute',left:'2px',top:'2px',right:'auto',bottom:'auto',display:'block',width:'14px',height:'14px','min-width':'14px','max-width':'14px','min-height':'14px','max-height':'14px',padding:'0px',margin:'0px','line-height':'14px',background:'transparent',transform:'none',color:'rgb(184, 184, 184)'});
+      const svg=icon?.querySelector('svg');
+      put(svg,{display:'block',width:'14px',height:'14px',position:'static',margin:'0px',padding:'0px',fill:'none',stroke:'currentColor',background:'transparent',transform:'none'});
+      for(const shape of svg?.querySelectorAll('*')||[])put(shape,{fill:'none',stroke:'currentColor',background:'transparent'});
+      put(card.querySelector('[data-novaflow-h3-duration]'),{position:'absolute',left:'50%',top:'50%',right:'auto',bottom:'auto',transform:'translate(-50%, -50%)',display:'block',width:'auto',height:'18px',margin:'0px',padding:'0px',background:'transparent','font-family':'"Segoe UI", "Microsoft YaHei", sans-serif','font-size':'12px','font-weight':'400','line-height':'18px',color:'rgb(232, 232, 232)','white-space':'nowrap'});
+    }
+  }
   function Panel({react:React,card:Card,boardId='b1',prompt='',onPromptChange,legacy=[]}) {
     const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[durations,setDurations]=React.useState({}),inputs=React.useRef({});
     React.useEffect(()=>store.subscribe(()=>setTick(t=>t+1)),[]);
@@ -103,11 +126,20 @@
     const action=fn=>async()=>{setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}};
     const drop=kind=>e=>action(()=>importFiles(kind,Array.from(e.dataTransfer?.files||[])))();
     const addTitles={image:'添加参考图',video:'添加参考视频',audio:'添加参考音频'};
-    const loaded=x=>e=>{const seconds=e.currentTarget.duration;if(Number.isFinite(seconds))setDurations(old=>old[x.sourceId]===seconds?old:{...old,[x.sourceId]:seconds});};
+    React.useEffect(()=>{
+      // Detached metadata probes never enter the visible DOM. Shared upload CSS
+      // must not be able to reveal a hidden native video poster/controls surface.
+      const probes=list.filter(x=>x.kind!=='image').map(x=>{
+        const media=document.createElement(x.kind);media.preload='metadata';media.muted=true;
+        media.onloadedmetadata=()=>{const seconds=media.duration;if(Number.isFinite(seconds))setDurations(old=>old[x.sourceId]===seconds?old:{...old,[x.sourceId]:seconds});};
+        media.src=x.dataUrl;return media;
+      });
+      return()=>{for(const media of probes){media.onloadedmetadata=null;media.removeAttribute('src');media.load();}};
+    },[boardId,tick]);
+    React.useLayoutEffect(()=>{const bottom=document.querySelector('[data-novaflow-h3-media-panel="1"]')?.closest('[data-novaflow-ai-bottom-workspace]');normalizeCardContents(bottom);},[boardId,tick]);
     const icon=kind=>h('svg',{viewBox:'0 0 16 16',width:14,height:14,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},
       ...(kind==='video'?[h('rect',{key:'body',x:1,y:4,width:9,height:8,rx:1.5}),h('path',{key:'lens',d:'M10 6l4-2v8l-4-2Z'})]:[h('path',{key:'stem',d:'M6 12V4l7-2v8'}),h('ellipse',{key:'note1',cx:4,cy:12,rx:2,ry:1.5}),h('ellipse',{key:'note2',cx:11,cy:10,rx:2,ry:1.5})]));
     const preview=x=>h('div',{className:'nf-h3-card-preview','data-novaflow-h3-preview':x.kind},
-      h(x.kind,{src:x.dataUrl,hidden:true,muted:x.kind==='video',preload:'metadata',onLoadedMetadata:loaded(x)}),
       h('span',{className:'nf-h3-card-kind-icon','data-novaflow-h3-icon':x.kind},icon(x.kind)),
       h('span',{className:'nf-h3-card-duration','data-novaflow-h3-duration':x.kind},Number.isFinite(durations[x.sourceId])?durations[x.sourceId].toFixed(1)+'s':'--'));
 
@@ -115,12 +147,12 @@
     return h('div',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,className:'nf-h3-media',title:detail||undefined,'aria-busy':busy},
       ...Object.keys(LIMITS).map(kind=>h('input',{key:kind,ref:el=>{inputs.current[kind]=el;},type:'file',hidden:true,tabIndex:-1,multiple:true,accept:kind+'/*','aria-label':'选择'+CN[kind],'data-novaflow-h3-upload':kind,disabled:busy||counts[kind]>=LIMITS[kind],onChange:e=>{const files=Array.from(e.target.files||[]);e.target.value='';action(()=>importFiles(kind,files))();}})),
       h('div',{className:'nf-h3-media-cards','data-novaflow-h3-card-list':'1'},
-        ...list.map(x=>h(Card,{key:x.sourceId,title:x.fileName,dataUrl:x.kind==='image'?x.dataUrl:null,mediaName:x.fileName,h3Preview:x.kind==='image'?undefined:preview(x),onPick:()=>onPromptChange?.(current=>String(current||'')+' @'+x.label),onClear:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));}),onDropImport:drop(x.kind),h3Meta:{'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,'data-novaflow-h3-kind':x.kind,'data-novaflow-h3-filename':x.fileName,title:x.fileName,'aria-label':x.label+' '+x.fileName}})),
+        ...list.map(x=>h(Card,{key:x.sourceId,title:x.fileName,dataUrl:x.kind==='image'?x.dataUrl:null,mediaName:x.label,h3Preview:x.kind==='image'?undefined:preview(x),onPick:()=>onPromptChange?.(current=>String(current||'')+' @'+x.label),onClear:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));}),onDropImport:drop(x.kind),h3Meta:{'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,'data-novaflow-h3-kind':x.kind,'data-novaflow-h3-filename':x.fileName,title:x.fileName,'aria-label':x.label+' '+x.fileName}})),
         ...Object.keys(LIMITS).filter(kind=>counts[kind]<LIMITS[kind]).map(kind=>h(Card,{key:'add-'+kind,title:addTitles[kind],dataUrl:null,onPick:()=>{if(!busy)inputs.current[kind]?.click();},onDropImport:drop(kind),h3Meta:{'data-novaflow-h3-add':kind,'data-novaflow-h3-kind':kind,'aria-label':addTitles[kind]}}))
       ),
       error||store.getError()?h('span',{role:'alert','data-novaflow-h3-media-error':'1'},error||store.getError()):null
     );
   }
-  const api={layoutReferenceBar,LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
+  const api={layoutReferenceBar,normalizeCardContents,LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
   root.NovaFlowH3Media=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
