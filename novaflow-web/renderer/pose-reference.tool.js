@@ -539,6 +539,7 @@
       .nf-pose-view{flex:1;min-width:0;display:flex;flex-direction:column;background:#222}.nf-pose-stage{flex:1;min-height:0;display:grid;place-items:center;padding:10px;overflow:hidden}.nf-pose-canvas{display:block;touch-action:none;border:0;border-radius:8px;max-width:100%;max-height:100%}.nf-pose-hint{padding:8px 16px;text-align:center;color:#999;line-height:1.5;font-size:11px}.nf-pose-status{flex:1;min-width:160px;color:#aaa;line-height:1.5}.nf-pose-status[data-error=true]{color:#ff9898}.nf-pose-dialog .nf-pose-primary{background:#1e493d;border-color:#337c66;color:#e3f4ec}.nf-pose-dialog .nf-pose-primary:hover{background:#285b4b}.nf-pose-dialog input[type=range]{width:100%;accent-color:#20b58a}.nf-pose-side a{color:#aaa;font-size:10px}.nf-pose-busy{color:#aaa;text-align:center;padding:16px}.nf-pose-axis{display:grid;grid-template-columns:15px 1fr 51px;gap:6px;align-items:center}.nf-pose-axis input[type=number]{width:51px;padding:3px}
       .nf-pose-dialog{color:var(--nf-text,#e5e7eb)}.nf-pose-dialog input[type=range]{accent-color:var(--nf-accent,#1ea672)}.nf-pose-save-panel{display:flex;align-items:center;gap:8px;flex-basis:100%;padding-top:8px;border-top:1px solid #303030}.nf-pose-save-panel[hidden]{display:none}.nf-pose-save-panel input{flex:1;min-width:80px;background:#242424;color:#eee;border:1px solid #3b3b3b;border-radius:7px;padding:8px;font:12px system-ui}.nf-pose-library-item{position:relative;display:flex;min-width:0}.nf-pose-library-item>.nf-pose-card{width:100%;flex:1}.nf-pose-dialog .nf-pose-delete{position:absolute;top:9px;right:9px;min-height:24px;padding:2px 6px;font-size:10px;background:#1b1b1be8;color:#ccc;border-color:#4b4b4b}.nf-pose-dialog .nf-pose-delete:hover{color:#ffa6a6;border-color:#8f5252}.nf-pose-import-panel{position:absolute;inset:0;z-index:5;background:#1b1b1b;display:flex;flex-direction:column;gap:12px;padding:14px}.nf-pose-import-preview{flex:1;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#111;border-radius:7px}.nf-pose-import-preview canvas{max-width:100%;max-height:100%;object-fit:contain}.nf-pose-import-people{display:flex;gap:12px;flex-wrap:wrap}.nf-pose-import-people label{display:flex;align-items:center;gap:5px;cursor:pointer}.nf-pose-import-people input{accent-color:var(--nf-accent,#1ea672)}.nf-pose-import-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#aaa}.nf-pose-import-footer span{font-size:11px}
       .nf-pose-shape-modes[hidden]{display:none}.nf-pose-shape-modes{padding-left:10px;border-left:1px solid #3b3b3b}.nf-pose-modebar button[aria-pressed=true]{background:#1e493d;border-color:#337c66;color:#e3f4ec}.nf-pose-axis input[type=number]{min-width:0;appearance:textfield;text-align:center;text-overflow:clip}.nf-pose-axis input[type=number]::-webkit-inner-spin-button,.nf-pose-axis input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}
+      .nf-pose-dialog .nf-pose-close{border:0;background:transparent;min-height:28px;width:28px;height:28px;padding:0;font:22px/1 system-ui;color:#999;border-radius:6px}.nf-pose-dialog .nf-pose-close:hover{background:#ffffff14;color:#eee}
       @media(max-width:760px){.nf-pose-overlay{padding:6px}.nf-pose-side{width:176px;padding:10px}.nf-pose-head,.nf-pose-foot{padding:8px}.nf-pose-foot button{flex:1}.nf-pose-status{flex-basis:100%}.nf-pose-stage{padding:6px}}
     ` }));
   }
@@ -562,7 +563,7 @@
       overlay.addEventListener(type, event => { event.stopPropagation(); if (type === 'contextmenu') event.preventDefault(); });
     }
     const dialog = element('section', { class: 'nf-pose-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'nf-pose-title' });
-    const closeButton = button('关闭', close, { 'aria-label': '关闭姿势参考' });
+    const closeButton = button('×', close, { class: 'nf-pose-close', 'aria-label': '关闭姿势参考', title: '关闭' });
     const status = element('div', { class: 'nf-pose-status', role: 'status', 'aria-live': 'polite', text: '正在载入人偶编辑器…' });
     const side = element('div', { class: 'nf-pose-side' });
     const canvas = element('canvas', { class: 'nf-pose-canvas', width: '640', height: '640', tabindex: '0', 'data-novaflow-split-pan-exempt': '1', 'aria-label': '3D 人偶姿势视图' });
@@ -811,10 +812,9 @@
         imageModule ||= await import(new URL('./pose-reference-image.js', scriptUrl).href);
         if (abort.signal.aborted) return;
         imageRecognizer ||= imageModule.createImagePoseRecognizer();
-        const result = await imageRecognizer.detect(file, text => { if (!abort.signal.aborted) message(text); });
+        let result = await imageRecognizer.detect(file, text => { if (!abort.signal.aborted) message(text); });
         if (abort.signal.aborted) return;
-        const people = imageModule.detectedPeople(result);
-        if (!people.length) throw new Error('未识别到清晰人体，请使用人物较完整、遮挡较少的图片');
+        let people = imageModule.detectedPeople(result);
         if (library) library.hidden = true;
         importImageUrl = URL.createObjectURL(file);
         const sourceImage = element('img', { src: importImageUrl, alt: '待识别姿势图片' });
@@ -822,7 +822,8 @@
         const preview = element('canvas', { 'aria-label': `识别到 ${people.length} 个人物的姿势预览` });
         const scale = Math.min(1, 1200 / Math.max(sourceImage.naturalWidth, sourceImage.naturalHeight));
         preview.width = Math.round(sourceImage.naturalWidth * scale); preview.height = Math.round(sourceImage.naturalHeight * scale);
-        const ctx = preview.getContext('2d'), checks = people.map(() => true);
+        const ctx = preview.getContext('2d'); let checks = people.map(() => true), cropping = false, region = null, cropStart = null, jointDrag = null;
+        const heading = element('strong');
         const colors = ['#3be0a0', '#ffd36c', '#77baff', '#fa95ce', '#bf9bff'];
         const connections = [[11, 12], [11, 23], [12, 24], [23, 24], [11, 13], [13, 15], [12, 14], [14, 16], [23, 25], [25, 27], [24, 26], [26, 28]];
         const applyButton = button('', () => run(async () => {
@@ -832,19 +833,23 @@
             ++proportionRequest;
             characters.restore({ pose: { bones: {} } });
             const targetHeight = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).getSize(new viewer.THREE.Vector3()).y;
-            const torso = chosen.reduce((sum, person) => sum + person.torso, 0) / chosen.length;
-            const center = chosen.reduce((sum, person) => sum + person.x, 0) / chosen.length;
+            const positions = imageModule.layoutDetectedPeople(chosen, targetHeight); let lowest = Infinity;
             for (const [index, person] of chosen.entries()) {
               if (index) characters.add();
-              characters.setPositions({ x: Math.max(-50, Math.min(50, (person.x - center) * sourceImage.naturalWidth / sourceImage.naturalHeight / torso * targetHeight * 0.28)), y: 0, z: 0 });
+              characters.setPositions(positions[index]);
               imageModule.applyDetectedPose(viewer, person);
-              const bottom = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
-              characters.setPosition('y', viewer.gridHelper.position.y + 0.03 - bottom);
+              lowest = Math.min(lowest, new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y);
             }
+            // Shift the scene as one unit; grounding every person independently
+            // destroys the vertical arrangement of lying/overlapping figures.
+            const scene = characters.snapshot(), ground = viewer.gridHelper.position.y + 0.03 - lowest;
+            scene.characters.forEach(person => { person.transform.y = Math.max(-50, Math.min(50, person.transform.y + ground)); });
+            characters.restore(scene);
             characters.select(characters.people[0].id);
             libraryButton.textContent = '打开姿势库';
             viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(0, 0, 50)); viewer.orbit.update();
-            fitView(); changed(); dismissImport(); message(`已导入 ${chosen.length} 个人物，可继续调整并保存到姿势库`);
+            const partial = chosen.some(person => imageModule.uncertainPoseParts(person).length);
+            fitView(); changed(); dismissImport(); message(partial ? `已导入 ${chosen.length} 个人物，部分肢体识别不确定，请继续校正` : `已导入 ${chosen.length} 个人物，可继续调整并保存到姿势库`);
           } catch (error) { characters.restore(previous); if (previous.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: previous.pose.camera }); throw error; }
         }), { class: 'nf-pose-primary' });
         function draw() {
@@ -853,14 +858,84 @@
             if (!checks[index]) return;
             const p = i => [person.points[i].x * preview.width, person.points[i].y * preview.height];
             ctx.strokeStyle = colors[index % colors.length]; ctx.lineWidth = Math.max(2, preview.width / 300);
-            for (const [a, b] of connections) { ctx.beginPath(); ctx.moveTo(...p(a)); ctx.lineTo(...p(b)); ctx.stroke(); }
+            for (const [a, b] of connections) {
+              const uncertain = Math.min(person.points[a].visibility ?? 1, person.points[b].visibility ?? 1) < 0.25;
+              ctx.strokeStyle = uncertain ? '#ffb85c' : colors[index % colors.length]; ctx.setLineDash(uncertain ? [7, 5] : []);
+              ctx.beginPath(); ctx.moveTo(...p(a)); ctx.lineTo(...p(b)); ctx.stroke();
+            }
+            ctx.setLineDash([]);
+            for (const i of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+              ctx.beginPath(); ctx.arc(...p(i), Math.max(5, preview.width / 150), 0, Math.PI * 2);
+              ctx.fillStyle = (person.points[i].visibility ?? 1) < 0.25 ? '#ffb85c' : colors[index % colors.length]; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5; ctx.stroke();
+            }
             const [x, y] = p(11); ctx.fillStyle = '#151515'; ctx.fillRect(x - 14, y - 30, 28, 24); ctx.fillStyle = colors[index % colors.length]; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText(index + 1, x, y - 11);
           });
-          const count = checks.filter(Boolean).length; applyButton.textContent = `应用 ${count} 个人物`; applyButton.disabled = !count;
+          const count = checks.filter(Boolean).length; applyButton.textContent = `应用 ${count} 个人物`; applyButton.disabled = !count || cropButton.disabled;
+          if (region) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(region.x, region.y, region.width, region.height); ctx.setLineDash([]); }
         }
-        const choices = element('div', { class: 'nf-pose-import-people', role: 'group', 'aria-label': '选择导入人物' }, people.map((_, index) => element('label', {}, [element('input', { type: 'checkbox', checked: '', 'aria-label': `导入人物 ${index + 1}`, onchange: event => { checks[index] = event.target.checked; draw(); } }), element('span', { text: `人物 ${index + 1}` })])));
-        importPanel = element('div', { class: 'nf-pose-import-panel', 'aria-label': '图片姿势识别结果' }, [element('div', { class: 'nf-pose-library-bar' }, [button('返回编辑', dismissImport), element('strong', { text: `识别到 ${people.length} 个人物` })]), element('div', { class: 'nf-pose-import-preview' }, [preview]), choices, element('div', { class: 'nf-pose-import-footer' }, [element('span', { text: '应用后用所选人物重建当前场景；遮挡和前后深度可继续手动调整。' }), applyButton])]);
-        dialog.querySelector('.nf-pose-body').append(importPanel); draw(); message('请选择需要导入的人物');
+        const choices = element('div', { class: 'nf-pose-import-people', role: 'group', 'aria-label': '选择导入人物' });
+        function renderChoices() {
+          heading.textContent = people.length ? `识别到 ${people.length} 个人物` : '当前视角未识别到完整人体，可框选人物重试';
+          preview.setAttribute('aria-label', people.length ? `识别到 ${people.length} 个人物的姿势预览` : '未检出人体，可在图片上框选人物重试');
+          choices.replaceChildren(...people.map((person, index) => {
+            const uncertain = imageModule.uncertainPoseParts(person);
+            const label = uncertain.length ? `人物 ${index + 1} · ${uncertain.join('、')}待校正` : `人物 ${index + 1}`;
+            return element('label', {}, [element('input', { type: 'checkbox', 'aria-label': `导入人物 ${index + 1}`, onchange: event => { checks[index] = event.target.checked; draw(); } }), element('span', { text: label })]);
+          }));
+          choices.querySelectorAll('input').forEach((input, index) => { input.checked = checks[index]; });
+        }
+        const cropButton = button('框选人物重试', () => { cropping = true; region = null; preview.style.cursor = 'crosshair'; message('在图片上拖出框，包含人物全身并留少量边距，松开后重新识别'); draw(); });
+        const pointer = event => { const rect = preview.getBoundingClientRect(); return { x: Math.max(0, Math.min(preview.width, (event.clientX - rect.left) / rect.width * preview.width)), y: Math.max(0, Math.min(preview.height, (event.clientY - rect.top) / rect.height * preview.height)) }; };
+        preview.style.touchAction = 'none';
+        preview.addEventListener('pointerdown', event => {
+          if (event.button !== 0 || cropButton.disabled) return;
+          const point = pointer(event);
+          if (cropping) cropStart = point;
+          else {
+            let nearest = Math.max(12, preview.width / preview.getBoundingClientRect().width * 12);
+            people.forEach((person, index) => {
+              if (!checks[index]) return;
+              for (const joint of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+                const p = person.points[joint], distance = Math.hypot(p.x * preview.width - point.x, p.y * preview.height - point.y);
+                if (distance < nearest) { nearest = distance; jointDrag = { person, joint }; }
+              }
+            });
+          }
+          if (!cropStart && !jointDrag) return;
+          preview.setPointerCapture(event.pointerId); event.preventDefault();
+        });
+        preview.addEventListener('pointermove', event => {
+          const point = pointer(event);
+          if (jointDrag) { imageModule.correctPoseJoint(jointDrag.person, jointDrag.joint, point.x / preview.width, point.y / preview.height); draw(); return; }
+          if (!cropStart) return;
+          region = { x: Math.min(cropStart.x, point.x), y: Math.min(cropStart.y, point.y), width: Math.abs(point.x - cropStart.x), height: Math.abs(point.y - cropStart.y) }; draw();
+        });
+        preview.addEventListener('pointercancel', () => { cropStart = null; jointDrag = null; region = null; renderChoices(); draw(); });
+        preview.addEventListener('pointerup', event => {
+          if (jointDrag) { jointDrag = null; if (preview.hasPointerCapture(event.pointerId)) preview.releasePointerCapture(event.pointerId); renderChoices(); message('已校正关节点，应用后仍可在 3D 画布调整前后深度'); return; }
+          if (!cropStart) return; cropStart = null; if (preview.hasPointerCapture(event.pointerId)) preview.releasePointerCapture(event.pointerId);
+          if (!region || region.width < 20 || region.height < 20) { message('框选区域太小，请重新框选人物', true); return; }
+          const crop = { x: region.x / preview.width, y: region.y / preview.height, width: region.width / preview.width, height: region.height / preview.height };
+          cropping = false; preview.style.cursor = ''; cropButton.disabled = true; applyButton.disabled = true; importing = true; actions.forEach(b => { b.disabled = true; });
+          run(async () => {
+            try {
+              const x = Math.round(crop.x * sourceImage.naturalWidth), y = Math.round(crop.y * sourceImage.naturalHeight);
+              const width = Math.min(sourceImage.naturalWidth - x, Math.round(crop.width * sourceImage.naturalWidth)), height = Math.min(sourceImage.naturalHeight - y, Math.round(crop.height * sourceImage.naturalHeight));
+              const scale = Math.min(1, 2048 / Math.max(width, height));
+              const source = await createImageBitmap(file, x, y, width, height, { resizeWidth: Math.round(width * scale), resizeHeight: Math.round(height * scale) });
+              const canvas = new OffscreenCanvas(source.width, source.height); canvas.getContext('2d').drawImage(source, 0, 0); source.close();
+              const cropped = new File([await canvas.convertToBlob({ type: 'image/png' })], 'pose-crop.png', { type: 'image/png' }); canvas.width = canvas.height = 1;
+              const retry = await imageRecognizer.detect(cropped, text => { if (!abort.signal.aborted) message(text); });
+              if (abort.signal.aborted || !importPanel) return;
+              const next = imageModule.mergeCroppedPoseResult(result, retry, crop, sourceImage.naturalWidth / sourceImage.naturalHeight);
+              const found = imageModule.detectedPeople(next);
+              if (!imageModule.detectedPeople(retry).length) throw new Error('该区域仍未识别到可靠人体，当前视角可能超出识别模型的能力');
+              result = next; people = found; checks = people.map(() => true); region = null; renderChoices(); draw(); message(`重新识别后共有 ${people.length} 个人物，请检查关节点后应用`);
+            } finally { importing = false; if (!abort.signal.aborted) { cropButton.disabled = false; actions.forEach(b => { b.disabled = false; }); draw(); } }
+          });
+        });
+        importPanel = element('div', { class: 'nf-pose-import-panel', 'aria-label': '图片姿势识别结果' }, [element('div', { class: 'nf-pose-library-bar' }, [button('返回编辑', dismissImport), heading, cropButton]), element('div', { class: 'nf-pose-import-preview' }, [preview]), choices, element('div', { class: 'nf-pose-import-footer' }, [element('span', { text: '拖动圆点校正关节；橙色虚线表示不确定的肢体。应用后可继续调整前后深度。' }), applyButton])]);
+        dialog.querySelector('.nf-pose-body').append(importPanel); renderChoices(); draw(); message(people.length ? '请选择需要导入的人物，漏检时可框选人物重试' : '未检出可靠人体。可以框选单个人物重试，不会改动当前场景');
       } finally { importing = false; if (!abort.signal.aborted) actions.forEach(b => { b.disabled = false; }); }
     }
 

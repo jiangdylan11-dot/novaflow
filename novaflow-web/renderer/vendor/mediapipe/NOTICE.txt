@@ -1,4 +1,4 @@
-MediaPipe Tasks Vision 0.10.32 and Pose Landmarker Full model bundle.
+MediaPipe Tasks Vision 0.10.32 and Pose Landmarker Heavy / Full model bundles.
 Copyright Google LLC. Licensed under Apache License 2.0 (see LICENSE.txt).
 The unmodified CommonJS bundle is shipped as vision_bundle.js for classic web workers.
 Sources, model version and SHA-256 digests are recorded in UPSTREAM.json.
