@@ -1,0 +1,4 @@
+VNCCS Pose Library: poses and previews retain their upstream authors and terms.
+This is a local copy of the four public libraries and 55 presets referenced by Arekejoker/qwen21-nsfw-pose-skill.
+The Pose Studio MIT license does not relicense third-party pose libraries. Sources and pinned revisions are listed per entry in index.json.
+Totemistyk/Ballet_PoseStudio declares MIT; other sources do not declare a separate license in their model cards.

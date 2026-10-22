@@ -1,0 +1,4 @@
+# Preserve exact upstream bytes for provenance hashes, including original line endings.
+# Formatting changes belong upstream; whitespace checks apply to NovaFlow's adapter.
+* -text -whitespace
+.gitattributes text eol=lf

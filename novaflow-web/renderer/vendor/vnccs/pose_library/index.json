@@ -1,0 +1,1967 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "repository": "Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed"
+    },
+    {
+      "repository": "Totemistyk/Ballet_PoseStudio",
+      "revision": "14d658f5891ac752126f47fabc54993a48980f23"
+    },
+    {
+      "repository": "MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617"
+    },
+    {
+      "repository": "MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32"
+    }
+  ],
+  "recipe": {
+    "repo": "Arekejoker/qwen21-nsfw-pose-skill",
+    "commit": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c"
+  },
+  "poses": [
+    {
+      "id": "pose-001",
+      "name": "Peace Sign - Close Up",
+      "category": "Close Up",
+      "tags": [
+        "front view",
+        "close up",
+        "peace"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-001.json",
+      "jsonSha256": "7c1c2fd649fba868a7d330d22ef7d43f3b4675c830ff65ddbf0cc86dc2eb5f63",
+      "preview": "pose-001.webp",
+      "previewSha256": "c4b3df13b0297ac19fb72d3d08909104739c85544e7e6c30a975696fc2864e15"
+    },
+    {
+      "id": "pose-002",
+      "name": "Crawling",
+      "category": "Crawling",
+      "tags": [
+        "crawling",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-002.json",
+      "jsonSha256": "0be7c24ff7c6f44415cc5bf308d2923f45f84a12947e976db7122ef1c725a918",
+      "preview": "pose-002.webp",
+      "previewSha256": "0cbcab7b7bf93a821718eb293abfd0e85327765826f1653ad8dbf76f3bf0a07e"
+    },
+    {
+      "id": "pose-003",
+      "name": "Crawling - Rear View",
+      "category": "Crawling",
+      "tags": [
+        "crawling",
+        "rear view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-003.json",
+      "jsonSha256": "54c9891facf09e77baf748a9daf36f11cb6b3315ebbb32afcef538947e18d1e8",
+      "preview": "pose-003.webp",
+      "previewSha256": "bf89373ed9a5f90f50b6558baea17856fe8103525b8f984290440f6df1c9a4a1"
+    },
+    {
+      "id": "pose-004",
+      "name": "Crouching - Side View",
+      "category": "Crouching",
+      "tags": [
+        "side view",
+        "crouching"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-004.json",
+      "jsonSha256": "3b08298efb8b94a889acbdb91a1dd581b17e01de3cf873c44f5c89e49faf913f",
+      "preview": "pose-004.webp",
+      "previewSha256": "301e7f17b0c8f64dd2c36fafeafc6f31c20947599e496a6ddf39e671fe72e6c5"
+    },
+    {
+      "id": "pose-005",
+      "name": "Boxing Stance",
+      "category": "Fighting",
+      "tags": [
+        "fighting",
+        "boxing",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-005.json",
+      "jsonSha256": "dd6d65eb5f6ed0f0542516e5dd61a72333b5a66e402e816b6207e162b7109601",
+      "preview": "pose-005.webp",
+      "previewSha256": "8d7305e8ac95bf23f0e2586895497a953a3a9e831c2017856ca2ccf2df43096e"
+    },
+    {
+      "id": "pose-006",
+      "name": "Fighting - Right Jab",
+      "category": "Fighting",
+      "tags": [
+        "fighting",
+        "jab",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-006.json",
+      "jsonSha256": "ea0f9361b497eb1b47a65b512b7f40deccaf41405563ca63f3bebd128111967d",
+      "preview": "pose-006.webp",
+      "previewSha256": "a17d727af2615b1c5401085da44cd1c763d3af5ccefec0908d59523881ded3fc"
+    },
+    {
+      "id": "pose-007",
+      "name": "Handstand",
+      "category": "Gymnastics",
+      "tags": [
+        "gym",
+        "handstand"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-007.json",
+      "jsonSha256": "c1c7d2a388e92d98ae25b46682b99db69760f9eedb67326a7ed80556ca4cf892",
+      "preview": "pose-007.webp",
+      "previewSha256": "32fb45b7b848ac88c08544525c07af7ce7b81a811d46d76436155f6737fcb477"
+    },
+    {
+      "id": "pose-008",
+      "name": "Middle Splits",
+      "category": "Gymnastics",
+      "tags": [
+        "gym",
+        "middle splits",
+        "splits"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-008.json",
+      "jsonSha256": "493f4a866d16ab90d2e057735220cce492c91c407504f61a8e36ec2f706302d7",
+      "preview": "pose-008.webp",
+      "previewSha256": "99a7a2fbc43216de38495b73abdb74ab58864968bb297cabcdf7dfedbe3c5364"
+    },
+    {
+      "id": "pose-009",
+      "name": "Kneeling - Side View",
+      "category": "Kneeling",
+      "tags": [
+        "side view",
+        "kneeling"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-009.json",
+      "jsonSha256": "e865eed7d37cb2fdd9384a180cbb4ada20f754992addf9066d1f862c4c30dfc2",
+      "preview": "pose-009.webp",
+      "previewSha256": "dbd5e0cdec5d7983df1ac5ca25cfa14b5c7205019933111d04a8febdf1552039"
+    },
+    {
+      "id": "pose-010",
+      "name": "Kneeling on One Knee",
+      "category": "Kneeling",
+      "tags": [
+        "kneeling",
+        "one knee",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-010.json",
+      "jsonSha256": "83433608625eec8e37887df455b6242d7b0186e24ed073557bced6ba36f62a08",
+      "preview": "pose-010.webp",
+      "previewSha256": "c76eb20c000258a834efad5f7ecdf991ee1e25cc26d44888debfab71f18171fd"
+    },
+    {
+      "id": "pose-011",
+      "name": "Seiza",
+      "category": "Kneeling",
+      "tags": [
+        "front view",
+        "kneeling",
+        "seiza"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-011.json",
+      "jsonSha256": "a908d9485a81379c46969963d7438a9dbec411641809667a0e5296545264fedc",
+      "preview": "pose-011.webp",
+      "previewSha256": "c2de2608fe80a642ccf67c0a9fc3126e13e76ece2b0a1277dadef77192eb56ff"
+    },
+    {
+      "id": "pose-012",
+      "name": "Fetal Position - Overhead",
+      "category": "Laying",
+      "tags": [
+        "laying",
+        "fetal",
+        "overhead"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-012.json",
+      "jsonSha256": "22194efbb74f0474a69de8fd5a5147e742f9857f78890c5a8f597d073251636e",
+      "preview": "pose-012.webp",
+      "previewSha256": "9297f4ac79bcc0d0bd883e901c02999c0a9589dff3c00332d216ab77ebf1b24c"
+    },
+    {
+      "id": "pose-013",
+      "name": "Close Up - Overhead View",
+      "category": "Sitting",
+      "tags": [
+        "close up",
+        "overhead"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-013.json",
+      "jsonSha256": "6153464f4629d14bb41f0a866c70d910ac11149bf9a67e65ef73588b771812bc",
+      "preview": "pose-013.webp",
+      "previewSha256": "6e309a61d7ed8fb5f6e981ee8ca0feced83e0e8c944f0ee1c04052cb541b3918"
+    },
+    {
+      "id": "pose-014",
+      "name": "Fetal Position - Rear View",
+      "category": "Sitting",
+      "tags": [
+        "sitting",
+        "rear view",
+        "fetal position"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-014.json",
+      "jsonSha256": "cca1bcd0473b6087ab4e3d38ada10d08b2f55459309b755c70db715c29059088",
+      "preview": "pose-014.webp",
+      "previewSha256": "975f834854df10065c520e5782703cfd24d260d79dae31f07a14f38d8ee552d1"
+    },
+    {
+      "id": "pose-015",
+      "name": "Leaning Back",
+      "category": "Sitting",
+      "tags": [
+        "Leaning back",
+        "Sitting",
+        "legs akimbo",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-015.json",
+      "jsonSha256": "7113085135d19e927562d7e7676ea875e447b7ff25b418793c2181c214775538",
+      "preview": "pose-015.webp",
+      "previewSha256": "9f83cf9295fb55d4add86930a92e35bd250370930ab0521ba9ceef9eef20955d"
+    },
+    {
+      "id": "pose-016",
+      "name": "Sitting",
+      "category": "Sitting",
+      "tags": [
+        "front  view",
+        "sitting"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-016.json",
+      "jsonSha256": "3c2bf9495376faf985998cf8a0d7b2af660ee143cd486bf27faecf02a0784dc2",
+      "preview": "pose-016.webp",
+      "previewSha256": "0f51e909ceb0a346f820d73f6f7e01addb4b63e5a0c30c65661358843944c86b"
+    },
+    {
+      "id": "pose-017",
+      "name": "Sitting - Rear View",
+      "category": "Sitting",
+      "tags": [
+        "sitting",
+        "rear view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-017.json",
+      "jsonSha256": "dc93fffa6567e71e06946ae3ace4166cc70299850375b6dcd9ce6d279c6a01ef",
+      "preview": "pose-017.webp",
+      "previewSha256": "3f9ab7ab2b0622e8ff56ab967ead9e18c15b4e8dcf1cb8cb0380fc3a42fdd465"
+    },
+    {
+      "id": "pose-018",
+      "name": "Sitting - Side View",
+      "category": "Sitting",
+      "tags": [
+        "sitting",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-018.json",
+      "jsonSha256": "9132caf5f5761fd0a2eac04fcb39a746d7ebb1ae4ed7d6b00f3141190ee4ceda",
+      "preview": "pose-018.webp",
+      "previewSha256": "a4e4761d9d0f6da40d92e6406662d8fc9b8aa1c277f59ed5e295bfcf9d344a48"
+    },
+    {
+      "id": "pose-019",
+      "name": "Sitting Cross Legged",
+      "category": "Sitting",
+      "tags": [
+        "front view",
+        "sitting",
+        "cross legged"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-019.json",
+      "jsonSha256": "d17467805519b5d3ce9706358b77e44c9f993fb9ba186295d2bc733b711ad2c2",
+      "preview": "pose-019.webp",
+      "previewSha256": "5ae856aa3857099747f14d8e244523ed5550113d0d078e4c7bbace5164048c97"
+    },
+    {
+      "id": "pose-020",
+      "name": "Arms Behind Back - Side View",
+      "category": "Standing",
+      "tags": [
+        "arms behind back",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-020.json",
+      "jsonSha256": "82aaf2d8f70a5fd460463c4870a32ea451a5e3a674b018d21f2b646f0e8f4626",
+      "preview": "pose-020.webp",
+      "previewSha256": "2f676518600a385093455d8f906147d7ab9545c5c257cae06b544da95aca7b10"
+    },
+    {
+      "id": "pose-021",
+      "name": "Arms Crossed",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing",
+        "arms crossed"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-021.json",
+      "jsonSha256": "ca6a660842613c3b6792460611dca1bc3fef120adbb6d945c22813711651cbc7",
+      "preview": "pose-021.webp",
+      "previewSha256": "0cbb27a2f77ef256e21500bf0313a4cdd7b3f16a67e8f6a7bf22c4e4939bca6f"
+    },
+    {
+      "id": "pose-022",
+      "name": "Arms Extended Backwards - Side View",
+      "category": "Standing",
+      "tags": [
+        "arms extended backwards",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-022.json",
+      "jsonSha256": "fbb8a9fd76a6628dadbb2d76ceb741708410b966ed00e7ba56f159983d58ab3f",
+      "preview": "pose-022.webp",
+      "previewSha256": "9ac395220e180404ddc19e193e885afbc7cce50646fd31f4092ade3f063d02ff"
+    },
+    {
+      "id": "pose-023",
+      "name": "Arms Extended Forward - Side View",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "side view",
+        "arms extended"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-023.json",
+      "jsonSha256": "7bbcb7a232c395e238f8970a99072ad76f6c22691a1a9f29ea12b2d41538531a",
+      "preview": "pose-023.webp",
+      "previewSha256": "2a315cfde0f2c8602217282a8b2bc6709e14a4de474d20de15edb040bbefb33d"
+    },
+    {
+      "id": "pose-024",
+      "name": "Arms Outstretched",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing",
+        "arms outstretched"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-024.json",
+      "jsonSha256": "3af5ff38be3ab7f577a89d0b7978b93e872a149cf4bcab7893685faba0af8ef2",
+      "preview": "pose-024.webp",
+      "previewSha256": "fc0a0ff55ac339dfb87e2b59dbddc7e93c8520a3e8627617b0b1a759f9d630b9"
+    },
+    {
+      "id": "pose-025",
+      "name": "Arms Raised",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing",
+        "arms raised"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-025.json",
+      "jsonSha256": "a8b38eafacacae066a6679a6eb12a89c3e895f3712e2f03606892b360b3461a4",
+      "preview": "pose-025.webp",
+      "previewSha256": "1510278cdebb313144f516f23a0ba626171deb290914e32198cf137c85cf1337"
+    },
+    {
+      "id": "pose-026",
+      "name": "Arms Up",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "arms up",
+        "tiptoes"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-026.json",
+      "jsonSha256": "cf0ad9f950a147af09e78eaba2daf7cb283e3bc0742f45f51f2dab434bc697dd",
+      "preview": "pose-026.webp",
+      "previewSha256": "bc31c2a7ace71d70f262121be74a1cddb6f14ac881e78eb76a6b844dd4766293"
+    },
+    {
+      "id": "pose-027",
+      "name": "Contrapposto",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "contrapposto",
+        "standing"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-027.json",
+      "jsonSha256": "5c659612e708c309eda026a2751e11c27528666d9f39daa445343bec7729b9be",
+      "preview": "pose-027.webp",
+      "previewSha256": "50277cbf920237d02fe46ae5e1bf62e8e573fff283b0d4210fc52e29fa4a1183"
+    },
+    {
+      "id": "pose-028",
+      "name": "Contrapposto - Hand on Hip",
+      "category": "Standing",
+      "tags": [
+        "contrapposto",
+        "standing",
+        "front view",
+        "hand on hip"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-028.json",
+      "jsonSha256": "4a6fd2c6cbabf11ba9276d4547f07391929f53eed3d99a2780f9223830686434",
+      "preview": "pose-028.webp",
+      "previewSha256": "19c13fb1ca0cf2adb00ef6b60895e46c7090cee29b650d2f8e15f0266f7746b7"
+    },
+    {
+      "id": "pose-029",
+      "name": "Contrapposto - Rear View",
+      "category": "Standing",
+      "tags": [
+        "contrapposto",
+        "rear view",
+        "standing"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-029.json",
+      "jsonSha256": "edf90811c1bfcc553000047bdb95220845aba6808d9b6d39352c7fa5b3f5df8d",
+      "preview": "pose-029.webp",
+      "previewSha256": "5727bea6d4438fd73a4d76b2c5218decb670a1ae03a9cb8182c7ae2fa60aa9d8"
+    },
+    {
+      "id": "pose-030",
+      "name": "Feet Apart - Side View",
+      "category": "Standing",
+      "tags": [
+        "side view",
+        "feet apart"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-030.json",
+      "jsonSha256": "3e37b97c5e1b7f8378d71bf754e7778e2fb24fa76dcb8e30c1ec053aee0273de",
+      "preview": "pose-030.webp",
+      "previewSha256": "52b07b9d053368b27ff0a96ce3971988471b55e981ee9ab994e077fb8f75c5c8"
+    },
+    {
+      "id": "pose-031",
+      "name": "Hands on hips - Rear View",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "rear view",
+        "hands on hips"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-031.json",
+      "jsonSha256": "6e7630a01fc4b11958370da65ece2ca761fa4466e524531bf0974c28e653c27b",
+      "preview": "pose-031.webp",
+      "previewSha256": "6a3929cc3b6622ef81c1d649da4bf4030f72fc1f960b871c196df4897c7ee738"
+    },
+    {
+      "id": "pose-032",
+      "name": "Leaning Back - Side View",
+      "category": "Standing",
+      "tags": [
+        "side view",
+        "leaning back"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-032.json",
+      "jsonSha256": "616ab15b07584988433e3c8ebbcf6f606ce99a17edc355dc2b2d0569195c6af7",
+      "preview": "pose-032.webp",
+      "previewSha256": "ff9b8db42e154eaeeae8627a67a29bd897e5700a7e9ded195071a3fa354c57ce"
+    },
+    {
+      "id": "pose-033",
+      "name": "Leaning Forward",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "leaning forward",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-033.json",
+      "jsonSha256": "cd06f5bb78a83a71101190eb34a73272c32d4ce12948eea9f834d3147d7a7e8f",
+      "preview": "pose-033.webp",
+      "previewSha256": "7672fe10b9e895a61975436be140a6e557c7c3d21db8f1c458c33b83f50dad78"
+    },
+    {
+      "id": "pose-034",
+      "name": "Leaning Forward - Side View",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "leaning forward",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-034.json",
+      "jsonSha256": "87fd02face9ab3c2b26d0fd02a0948a3fed01569fc0cf964507f20b28345f2b3",
+      "preview": "pose-034.webp",
+      "previewSha256": "6722ae7ba7684609fae4f169347e79b509649ff4cdafc666018f7a92f539d36c"
+    },
+    {
+      "id": "pose-035",
+      "name": "One Arm Raised",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing",
+        "one arm raised"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-035.json",
+      "jsonSha256": "ebe321b4e8d5def667987c0919539515fb4787187b23b92ec60e69b0663ebd04",
+      "preview": "pose-035.webp",
+      "previewSha256": "24623ca019cc95674f8b7c10cdd21f68d758a5d5a4d7bab232d91c161479f809"
+    },
+    {
+      "id": "pose-036",
+      "name": "One Hand on Hip",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing",
+        "hand on hip"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-036.json",
+      "jsonSha256": "5b33decb87cbda8f8dcab591dc75663413eef2cb3653674f07420ab2ba3792ab",
+      "preview": "pose-036.webp",
+      "previewSha256": "659a5d6f796804e5f99efb2c16cf12fcb9dd615c69c00812a746ba37ff940824"
+    },
+    {
+      "id": "pose-037",
+      "name": "Slight Lean Back",
+      "category": "Standing",
+      "tags": [
+        "slight lean back",
+        "standing",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-037.json",
+      "jsonSha256": "c63ad6ff167194c272fcafddf182c9c8812d02c740138bb1cfeb3becb77f5868",
+      "preview": "pose-037.webp",
+      "previewSha256": "bb50627052b005b330dc17c7013ca1b7f338b0dd1f1a64f72d69217681f2e52b"
+    },
+    {
+      "id": "pose-038",
+      "name": "Standing",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-038.json",
+      "jsonSha256": "cf5885d8128c96f62659145f807cc8769269d49c885ffbb5e3a557017af1a2c8",
+      "preview": "pose-038.webp",
+      "previewSha256": "3ea4fe4d81ed9b7f1d8b822f0684ad43c925301ad244f8d1d0e4c4d001553d75"
+    },
+    {
+      "id": "pose-039",
+      "name": "Standing - Hands Behind Back",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "front view",
+        "hands behind back"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-039.json",
+      "jsonSha256": "3764cfdcd294d5aec608a24bb36d974fb010380b33dfad40417a83ea913e7bbb",
+      "preview": "pose-039.webp",
+      "previewSha256": "79a53391d394958d31518165f0c312a8a473c2989bc80db2858c831367123c3c"
+    },
+    {
+      "id": "pose-040",
+      "name": "Standing - Leaning Forward",
+      "category": "Standing",
+      "tags": [
+        "front view",
+        "standing",
+        "leaning"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-040.json",
+      "jsonSha256": "81cab262246029c5d39f2a3960a5d598644419d4ddeecab29ee7853efb05b541",
+      "preview": "pose-040.webp",
+      "previewSha256": "e4afe2f4a908132ff29ae74ba1d073c4041a8b72cdaab671e346d4e0f0b0bcb2"
+    },
+    {
+      "id": "pose-041",
+      "name": "Standing - Rear View",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "rear view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-041.json",
+      "jsonSha256": "5e144ef4fa188174f617f71d3b2b7b6706ebef1bc5f5c9c1d53e4c15be4d349d",
+      "preview": "pose-041.webp",
+      "previewSha256": "29081878600aa9ee412669118f20a2d3caf92a7fe8ceae537c174ecfe411fe2b"
+    },
+    {
+      "id": "pose-042",
+      "name": "Standing - Side View",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-042.json",
+      "jsonSha256": "7340fb3be44a0010e6155a8c79938563076878d6bcf9631df40d74644cbb6e23",
+      "preview": "pose-042.webp",
+      "previewSha256": "8ffc0630956e5af2367c655fcb3b0be90d1bb6ac1929e9e44ed8eb1c2f5ff693"
+    },
+    {
+      "id": "pose-043",
+      "name": "Stepping",
+      "category": "Standing",
+      "tags": [
+        "stepping",
+        "front view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-043.json",
+      "jsonSha256": "3a0fa10dfacf671849b606116730e6a2a088832dc0c8110898782765a2e86b8b",
+      "preview": "pose-043.webp",
+      "previewSha256": "a2148e872d8f896e3249b04ff1a0d03d043d806ae5a0a4fae3e18a1aec090198"
+    },
+    {
+      "id": "pose-044",
+      "name": "Touching Toes - Side View",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "touching toes",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-044.json",
+      "jsonSha256": "44c6e968b08aa4dae398d10c75824ab5226fdea57164b4e43d743b10e5946bcd",
+      "preview": "pose-044.webp",
+      "previewSha256": "94b7a600db980515622d71a55eab07d580d52b3fa149f21fef2c454e4c32e3cf"
+    },
+    {
+      "id": "pose-045",
+      "name": "Waving - Overhead View",
+      "category": "Standing",
+      "tags": [
+        "overhead view",
+        "waving",
+        "standing"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-045.json",
+      "jsonSha256": "858679a1520a1d7f04f486d06a66536b74b0b3bc535c05dde47c37a0301d1abf",
+      "preview": "pose-045.webp",
+      "previewSha256": "c7d162429c400cda6c85a7aca5f51677ee035be5a741752396864a5cb1d4347b"
+    },
+    {
+      "id": "pose-046",
+      "name": "Weight on One Leg - Side View",
+      "category": "Standing",
+      "tags": [
+        "side view",
+        "weight on one leg"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-046.json",
+      "jsonSha256": "87750faa97d09b02dd4670d7e4193b41279ff547178b0df4748cd05e765e3482",
+      "preview": "pose-046.webp",
+      "previewSha256": "e91ca38163af3932886b864f0241d24d785f3126928603494df9c8ca87f79534"
+    },
+    {
+      "id": "pose-047",
+      "name": "Squatting",
+      "category": "Uncategorized",
+      "tags": [
+        "front view",
+        "squatting"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-047.json",
+      "jsonSha256": "403c0e178089c7c1d940fc6c8d5b3b03a180e887433c72c5d0a6ea804c00e5c2",
+      "preview": "pose-047.webp",
+      "previewSha256": "36454858afc785aa19d7b0874290e5579a0f487eda734142b751f002f703265b"
+    },
+    {
+      "id": "pose-048",
+      "name": "Downward Dog",
+      "category": "Yoga",
+      "tags": [
+        "yoga",
+        "downward dog",
+        "side view"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-048.json",
+      "jsonSha256": "e4ce204341c93b40d33bb7d4ab458e2b5f061cb2faa5b8a7f5d9147c7a9f3e58",
+      "preview": "pose-048.webp",
+      "previewSha256": "12be04c75aca6ef5c5f9190106e4e90773cafddf9de3e3ab0fffe321e536e24e"
+    },
+    {
+      "id": "pose-049",
+      "name": "Warrior",
+      "category": "Yoga",
+      "tags": [
+        "warrior",
+        "side view",
+        "yoga"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-049.json",
+      "jsonSha256": "273cb67772e88fb5d786104e9ac2dd5f87deb970accef0c07dfcb8caa334e35a",
+      "preview": "pose-049.webp",
+      "previewSha256": "d799c5ade1f1bbbce1418394a5f656362686922d2039332343d2757d58986446"
+    },
+    {
+      "id": "pose-050",
+      "name": "Kneeling Legs Spread",
+      "category": "kneeling",
+      "tags": [
+        "front view",
+        "kneeling",
+        "legs spread"
+      ],
+      "source": "https://huggingface.co/Totemistyk/General_Poses_PoseStudio",
+      "revision": "23468b2be53ab91fe493754b241d27dcfeb965ed",
+      "json": "pose-050.json",
+      "jsonSha256": "1fc9ab0030271863a69dd7a3b7029599480c21e3a060ac0739a144186ec6422a",
+      "preview": "pose-050.webp",
+      "previewSha256": "27c9c6628316caa15149ca50c55f02075a752016e32bd1b202401eacf67217f7"
+    },
+    {
+      "id": "pose-051",
+      "name": "Arabesque",
+      "category": "Ballet",
+      "tags": [
+        "ballet",
+        "arabesque"
+      ],
+      "source": "https://huggingface.co/Totemistyk/Ballet_PoseStudio",
+      "revision": "14d658f5891ac752126f47fabc54993a48980f23",
+      "json": "pose-051.json",
+      "jsonSha256": "0ab40b3a6f01fffca61eda8dd3b5ef08b9ffec5934f1b0d4f54bd38436f230d8",
+      "preview": "pose-051.webp",
+      "previewSha256": "604d33f21ed38144db3c4a12d9ec5eac06ea53618f611c3faec7df1bd6f76f6b"
+    },
+    {
+      "id": "pose-052",
+      "name": "Dancing_on_knees",
+      "category": "Ballet",
+      "tags": [
+        "dancing",
+        "knees"
+      ],
+      "source": "https://huggingface.co/Totemistyk/Ballet_PoseStudio",
+      "revision": "14d658f5891ac752126f47fabc54993a48980f23",
+      "json": "pose-052.json",
+      "jsonSha256": "e81de13218b8badbca5f4f16d83b55d586fa97ad44426281e270663fec97fc64",
+      "preview": "pose-052.webp",
+      "previewSha256": "8cd09dadb545981504b79c879ebf6adf42f251ffaa93d53d8d93783685423d3a"
+    },
+    {
+      "id": "pose-053",
+      "name": "Splits_1",
+      "category": "Ballet",
+      "tags": [
+        "splits",
+        "ballet",
+        "hands_up"
+      ],
+      "source": "https://huggingface.co/Totemistyk/Ballet_PoseStudio",
+      "revision": "14d658f5891ac752126f47fabc54993a48980f23",
+      "json": "pose-053.json",
+      "jsonSha256": "154eb99fa9e306b90a44b5bacc9d93e62f87354594ecb89dd6db8e1893f9f9cc",
+      "preview": "pose-053.webp",
+      "previewSha256": "58ef871771f5739f70d740559c19c0ce452fb892f7fea19cd5427a3be2640506"
+    },
+    {
+      "id": "pose-054",
+      "name": "Fighting A",
+      "category": "Fighting",
+      "tags": [
+        "Fighting",
+        "standing",
+        "full body"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-054.json",
+      "jsonSha256": "cc507915997cd894d58ca08097bcb7bc7364522cd4a9cf73246828de59cd6b9b",
+      "preview": "pose-054.webp",
+      "previewSha256": "dc505c10336fa504a4a9941e2cc15366ff6c2c34dbc02325fa0d21fb654f6c4f"
+    },
+    {
+      "id": "pose-055",
+      "name": "Fighting B",
+      "category": "Fighting",
+      "tags": [
+        "Fighting",
+        "standing",
+        "full body"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-055.json",
+      "jsonSha256": "e3729f29f1270247e0d8bb978101cc42ec8fe161646c578ae4708a417e091099",
+      "preview": "pose-055.webp",
+      "previewSha256": "1205adb78d6f03fd0062c9a1a54e1dd08ab6f747a8032461e0511028d5804396"
+    },
+    {
+      "id": "pose-056",
+      "name": "Fighting C",
+      "category": "Fighting",
+      "tags": [
+        "Fighting",
+        "standing",
+        "full body"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-056.json",
+      "jsonSha256": "62deb7bcb55718e8c8dd8f20679a501e458bd4fa289379f44a5777bdb5ae1055",
+      "preview": "pose-056.webp",
+      "previewSha256": "33a83bed81dea7adbc0079bfeb6cb837754c8d4292efbc1a80f9b705b000db5c"
+    },
+    {
+      "id": "pose-057",
+      "name": "Fighting D",
+      "category": "Fighting",
+      "tags": [
+        "Fighting",
+        "standing",
+        "full body"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-057.json",
+      "jsonSha256": "685bd14332018d82fade8779afe4f2a4f4dddfa2b71fb02b4a34d6128cf60be4",
+      "preview": "pose-057.webp",
+      "previewSha256": "e32e870b5a5059a98221ec1c1ac382e0ff3e6cf999725952d435dcc428106f8a"
+    },
+    {
+      "id": "pose-058",
+      "name": "CloseUp  B",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-058.json",
+      "jsonSha256": "6134653701def9451c3288702a94087b9915d4145a5918db38613984f50df6ed",
+      "preview": "pose-058.webp",
+      "previewSha256": "417a5556e41b78d7557760156863a13e30f078d6cf0ea4bdc574eba4d93f1281"
+    },
+    {
+      "id": "pose-059",
+      "name": "CloseUp  C",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-059.json",
+      "jsonSha256": "0b363f9b5a3d9a301108af3c3bf5a995bec0cb31321a651037f48a4658e6efb5",
+      "preview": "pose-059.webp",
+      "previewSha256": "ec2fb5ff61ab2ec045bb109960990d6b8674d4cd9401d6d0b2e1d29300d38c93"
+    },
+    {
+      "id": "pose-060",
+      "name": "CloseUp  D",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-060.json",
+      "jsonSha256": "f16163dd486a69075e1f30167a2dd5941bd3a3b5581aea887934a89da70c5004",
+      "preview": "pose-060.webp",
+      "previewSha256": "d037832f98580ac2ef41efdf2af9d16a28129d373c3afbdd19b7b70ac1734c15"
+    },
+    {
+      "id": "pose-061",
+      "name": "CloseUp A",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-061.json",
+      "jsonSha256": "6bd6046842e768e8bed6334d52a24dc0c1b7081cab528df7c5663c8182974f9e",
+      "preview": "pose-061.webp",
+      "previewSha256": "284af155e81f975b8a0c695b4995f45cc042c1ba582bd1ea4afdae048dbf0a19"
+    },
+    {
+      "id": "pose-062",
+      "name": "Lying A",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "lying",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-062.json",
+      "jsonSha256": "ea322aead4809b243b4567b54dcff5366c6a644bcee7430d8cc85d0421a5caa8",
+      "preview": "pose-062.webp",
+      "previewSha256": "5f1404a1867b7793ce2168df2aa9f476d855090e212cf6757066371cc6704e60"
+    },
+    {
+      "id": "pose-063",
+      "name": "Lying B",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "lying",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-063.json",
+      "jsonSha256": "c66dccf32e56e390b269297aee8fa885adae863ac1d557ac4a3437d85d07a663",
+      "preview": "pose-063.webp",
+      "previewSha256": "8d32763cd13a14484b128fad878de5d54a2007cba274a4ab7b2bc61db4dfa8f0"
+    },
+    {
+      "id": "pose-064",
+      "name": "Lying C",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "lying",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-064.json",
+      "jsonSha256": "47c8ffcf267b8cf0c61f4737d1a660917810188b74d80f0f1260f35a8bb8b5fa",
+      "preview": "pose-064.webp",
+      "previewSha256": "f69e193125b9b734e2e837b811b3ef3b002f1275954af1b9e117d17b39fa33c7"
+    },
+    {
+      "id": "pose-065",
+      "name": "Lying D",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "lying",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-065.json",
+      "jsonSha256": "117dae735d64f06ff5394ad8a9ab4b3d4bcbff4e511c735a7b3402a6c1f4bb09",
+      "preview": "pose-065.webp",
+      "previewSha256": "e72f146f826e970ffed6399ec61f8d853ee109e374a779377c34c7c9e5fefaa3"
+    },
+    {
+      "id": "pose-066",
+      "name": "Standing A",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-066.json",
+      "jsonSha256": "452263e6203f9489a89969bbca4f848bf6dfc0650489c405fcc45777ed9732dd",
+      "preview": "pose-066.webp",
+      "previewSha256": "819d338d24c9f15fe35f49d895718ec152f132ca3b11ffac4d59a8c5fbcbcbc2"
+    },
+    {
+      "id": "pose-067",
+      "name": "Standing B",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-067.json",
+      "jsonSha256": "d053d7cd9433eae173648191cedf00f6747d4b783d1ac3b73a97e0c10224bc3b",
+      "preview": "pose-067.webp",
+      "previewSha256": "ec1970a7de0122e1ffe80ad25511fb5467e243e3d933c81161124c3a9051d85c"
+    },
+    {
+      "id": "pose-068",
+      "name": "Standing C",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-068.json",
+      "jsonSha256": "3954ed502e0d1f7adb6a8d9991648afc05cb8337ca15490d46f7b0d601542d26",
+      "preview": "pose-068.webp",
+      "previewSha256": "1e6404e8fd20a7de60c4d762f847113e7b1d6525dc79ccfeff17b76c13267a34"
+    },
+    {
+      "id": "pose-069",
+      "name": "Standing D",
+      "category": "Standing",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/VNCCS_PoseLibrary_Main",
+      "revision": "baef0455ef9d3cc31ce3e2a407f722069355c617",
+      "json": "pose-069.json",
+      "jsonSha256": "c2eb81d7ef6ba37c629f22c2aef22a030bc18cfc67e8ce6353af33442795b437",
+      "preview": "pose-069.webp",
+      "previewSha256": "f49b87f66bc13a88879250bf23f38c393ef44dd3379f4cb5616c4568364e026e"
+    },
+    {
+      "id": "pose-070",
+      "name": "CloseUp  B",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-070.json",
+      "jsonSha256": "c92330425ef0c3b295813b118fc957e2ce42bfae1480e26c65e07681d6b9ab49",
+      "preview": "pose-070.webp",
+      "previewSha256": "16c637582beab53c40a42f17c5dc80f40baf4dd0decb2517a26c953dec4ab6b8"
+    },
+    {
+      "id": "pose-071",
+      "name": "CloseUp  C",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-071.json",
+      "jsonSha256": "f5068b99a8d5c3845c1aa3692516950f5130e3ec4f1cc79b3907ea0f7d0c41a4",
+      "preview": "pose-071.webp",
+      "previewSha256": "e5bb04a18ead9a48788d8443dcbc2826af7ab9d6764e925339decec48429669c"
+    },
+    {
+      "id": "pose-072",
+      "name": "CloseUp  D",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-072.json",
+      "jsonSha256": "5668be04956b401097dbce94357cb3021425282dfd1b7ede07b69664b0b2c5ca",
+      "preview": "pose-072.webp",
+      "previewSha256": "fea607a60d44121a318c2c7f5d1ca133409dfd0493eac3afd5d2345b28887224"
+    },
+    {
+      "id": "pose-073",
+      "name": "CloseUp A",
+      "category": "Rest",
+      "tags": [
+        "closeup",
+        "rest",
+        "standing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-073.json",
+      "jsonSha256": "3e6d9d0ab7af14fcdbe15e362655cd7adbb4d8d80e93d0b0eca165ced245ebbf",
+      "preview": "pose-073.webp",
+      "previewSha256": "f1733cf27cab2cd0006be7e83469488fb1380b02d27ae6cbed6aa15946b09f50"
+    },
+    {
+      "id": "pose-074",
+      "name": "Sit on chair A",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "sit",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-074.json",
+      "jsonSha256": "2ea494570542feb04259c8f2a3a0259cf5ebfd0d92aa6b5b18d1b7e049fb98ba",
+      "preview": "pose-074.webp",
+      "previewSha256": "c4780357e053f277a948d66362381aa81d0fa3321266ea051867026f9b51d9a6"
+    },
+    {
+      "id": "pose-075",
+      "name": "Sit on chair B",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "sit",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-075.json",
+      "jsonSha256": "b803d6131bcccbcd697e16e4d9beed7a741180d8eba4d0654f1a59a18572c184",
+      "preview": "pose-075.webp",
+      "previewSha256": "295d07181c1c7ac541c1281fb81498239ec28b5591f85dc230a79d6c277526b8"
+    },
+    {
+      "id": "pose-076",
+      "name": "Sit on chair D",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "sit",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-076.json",
+      "jsonSha256": "cd1e701a5b26260e15ef09fe7049dcf70a1e2f97703f80f9e07b9af6b0084936",
+      "preview": "pose-076.webp",
+      "previewSha256": "69bf09b825048773ed462bede9f08debb95d24081682f32b31c0b000e7ac4348"
+    },
+    {
+      "id": "pose-077",
+      "name": "Sit on chair С",
+      "category": "Rest",
+      "tags": [
+        "calm",
+        "sit",
+        "rest"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-077.json",
+      "jsonSha256": "c1618292952cde1f9c9445165e5800023ddd3e634cc99048beaa799b46502569",
+      "preview": "pose-077.webp",
+      "previewSha256": "70e715dd91d80588838abc015a2dc1381f52f16d31aefd80c8b8f4bfb5447f9b"
+    },
+    {
+      "id": "pose-078",
+      "name": "Standing A",
+      "category": "Rest",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-078.json",
+      "jsonSha256": "0c8e7bb340a8eff21c8d96ed42d6a0657a867e1995dd4ce6e53f43b005da5035",
+      "preview": "pose-078.webp",
+      "previewSha256": "100ba62ef38a6b3aff86d3f8fe777c4830fab8d1e3b61e084ac26f2c140f9c83"
+    },
+    {
+      "id": "pose-079",
+      "name": "Standing B",
+      "category": "Rest",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-079.json",
+      "jsonSha256": "90f609cca3ddc97103052e5ebeaa407276859a305e56f9d5472f27a05ed6c6e8",
+      "preview": "pose-079.webp",
+      "previewSha256": "d8621b4871b80aebe02522ec57d750c0ef80d18ae576e0ccf8b5119929a0ed11"
+    },
+    {
+      "id": "pose-080",
+      "name": "Standing C",
+      "category": "Rest",
+      "tags": [],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-080.json",
+      "jsonSha256": "8eef9168c47ebf3b5d62135ed16da474d2a8b25e427a51cef3f6978b52dd9ea9",
+      "preview": "pose-080.webp",
+      "previewSha256": "8ae69b96cc7c7cf3d84d51cd786eb13842266db9a92d5d1da959276ea0a6baec"
+    },
+    {
+      "id": "pose-081",
+      "name": "Standing D",
+      "category": "Rest",
+      "tags": [
+        "standing",
+        "rest",
+        "relaxed",
+        "posing"
+      ],
+      "source": "https://huggingface.co/MIUProject/MySuperPoseRepo",
+      "revision": "75931b865e95b0ab97aaca2a3756f4d0fab83a32",
+      "json": "pose-081.json",
+      "jsonSha256": "c5ff1ae678457fae555a6acde836af3997e6ef37357adda1db86b4b124633c66",
+      "preview": "pose-081.webp",
+      "previewSha256": "d3d5b213583d8f93b96406cc8bbc05c3e2de9c1c69b42bff2716c91845655f8e"
+    },
+    {
+      "id": "pose-082",
+      "name": "Bent over toe touch profile",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-082.json",
+      "jsonSha256": "f9cd9fc33441d5434ada2666e36e87e61190f9eecca4a2a9e90bd5be90054b14",
+      "preview": "pose-082.webp",
+      "previewSha256": "16e07ad2442d998dd4a1937dad36b7c6b9683e25bee5e8dd7a238cb41654187f"
+    },
+    {
+      "id": "pose-083",
+      "name": "Boxing Stance",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-083.json",
+      "jsonSha256": "d47a0864465b9f5a559a7f742413742ccf03c4c5ba75f7bda1489ce879998cc4",
+      "preview": "pose-083.webp",
+      "previewSha256": "b54ae513cd52ab29f05e7645e19ed9b155f3524e3c0388fbb5b899945f934855"
+    },
+    {
+      "id": "pose-084",
+      "name": "Crawling rear",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-084.json",
+      "jsonSha256": "89bb92f0aae225052ab2756fb61dd4845ba9f2775d61cb9d29800e3074fceb07",
+      "preview": "pose-084.webp",
+      "previewSha256": "9d28e510d39de9d22fafbad968a6cffeb7c22e54504f9400836a7b2d8fdfd24e"
+    },
+    {
+      "id": "pose-085",
+      "name": "Crawling",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-085.json",
+      "jsonSha256": "3481004ed563bfffe3c43d5b8f8f26127cb9da489814b45491a2a5e9c36f66f3",
+      "preview": "pose-085.webp",
+      "previewSha256": "3018067f2060f2fdd324fa89f7aa2480f1d77efb61cc4f5ea28afe5a507a0a3c"
+    },
+    {
+      "id": "pose-086",
+      "name": "Feet Apart profile",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-086.json",
+      "jsonSha256": "9489db358e7d0d89c345c3d30b860ba451475534ec70232555dac800b5046b79",
+      "preview": "pose-086.webp",
+      "previewSha256": "a126a07994958f98b400d21615e2fe72cfc01243eae58503170aff8b2cd83572"
+    },
+    {
+      "id": "pose-087",
+      "name": "Feet Apart",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-087.json",
+      "jsonSha256": "bec73aa693684deb756b2557c8c3281da735a92a33626717b72b7766f3fd98d0",
+      "preview": "pose-087.webp",
+      "previewSha256": "09b487ad401d5baf1bf3fb517eed7a6300cd9b95af10d607a50388875ef0a873"
+    },
+    {
+      "id": "pose-088",
+      "name": "Fetal overhead",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-088.json",
+      "jsonSha256": "e8c44c3559c3d53d6d3b0d7735b35070ae2e409ba9c562ae48df9ef839701333",
+      "preview": "pose-088.webp",
+      "previewSha256": "f170ed9c0cda282c1dde60b4e609f5242d5281b1878826d6776c6d7fdc5502ef"
+    },
+    {
+      "id": "pose-089",
+      "name": "Fetal rear",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-089.json",
+      "jsonSha256": "3b0da0041470da94f8c1752d98bad329c66df547d029f5e42176439bf1fd8cc3",
+      "preview": "pose-089.webp",
+      "previewSha256": "b3478665a56951f72dc7faa1559681597b5832ed96d63b32d2178ae0cadfd4d7"
+    },
+    {
+      "id": "pose-090",
+      "name": "Fighting Straight Punch",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-090.json",
+      "jsonSha256": "26841b4d161fbfa2ad3f54f433ee27196f80989782b01983ebd63fe466873653",
+      "preview": "pose-090.webp",
+      "previewSha256": "81ed5cd2040c206ef4dce4e7380a1fc7ff8e827d60838964ca5f8647a032c112"
+    },
+    {
+      "id": "pose-091",
+      "name": "Jumping",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-091.json",
+      "jsonSha256": "a05110309bd68b6d5ba5f3517bf074ac6d7503f42e55623e10aeed6793d76c44",
+      "preview": "pose-091.webp",
+      "previewSha256": "825f280379f323631e19f207795651a313086c1af5369b753f7b3de6035b3132"
+    },
+    {
+      "id": "pose-092",
+      "name": "Kicking",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-092.json",
+      "jsonSha256": "3718fb7131dbaedf9ac9aaf3df5e6f8b168068f2fbcc0e4b77c566d328be1f38",
+      "preview": "pose-092.webp",
+      "previewSha256": "84649fba1f9ffa28dc41a425225588087db450680ae33dcc5a33b87e6a2a3541"
+    },
+    {
+      "id": "pose-093",
+      "name": "Kneeling Forward on Hands",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-093.json",
+      "jsonSha256": "f8766754e5acce4a72c5f394981203f6d0d38c7aeab42ced05ce9c659ed72963",
+      "preview": "pose-093.webp",
+      "previewSha256": "d2af4c2aa07e3b8c8c1fa76e74e926d58222ba1c5892a4378637ac317292e4da"
+    },
+    {
+      "id": "pose-094",
+      "name": "Kneeling Leaning Back",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-094.json",
+      "jsonSha256": "ed1882a1c8337973a8bf7a8adbe85fb3e08dace5eeed03d9b3c8db022a70526c",
+      "preview": "pose-094.webp",
+      "previewSha256": "e8711c9f94145e59ccf2d86a591063711beb07f8bf23b636b125786e680c3e81"
+    },
+    {
+      "id": "pose-095",
+      "name": "Kneeling Legs Apart",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-095.json",
+      "jsonSha256": "9788d5efa7dc6ce487802948355c8923dce850a4db0bca533f4eb595ddb38a4c",
+      "preview": "pose-095.webp",
+      "previewSha256": "ecd467b76d265d3313f9d201e40d4b6e074450e34e262aea625bfecb2c6de15b"
+    },
+    {
+      "id": "pose-096",
+      "name": "Kneeling overhead",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-096.json",
+      "jsonSha256": "106aa812e132dee46ff7ec86e9d3cbdba7d2c454eeae4bf19690746735177743",
+      "preview": "pose-096.webp",
+      "previewSha256": "fcfe1e058f1bb86a55f569ae609e987173e34b5347bc3e2e51583209d3deba5b"
+    },
+    {
+      "id": "pose-097",
+      "name": "Kneeling side",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-097.json",
+      "jsonSha256": "c56060ea4a202018bbe4007111e88562960f138a9300690e19cb4bfd17672e18",
+      "preview": "pose-097.webp",
+      "previewSha256": "9da5809c57baa22b0686e28cf6e683623639bf61a8bd62ba34f69ffe938100c0"
+    },
+    {
+      "id": "pose-098",
+      "name": "Kneeling",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-098.json",
+      "jsonSha256": "10dce6d4e5ac55ad653861740f3528ce5efff983b92df40e00c36e1fabc655c1",
+      "preview": "pose-098.webp",
+      "previewSha256": "7dfb21b442fbb8a6c35a1e2be1abb7692910a3450e66710112432bb41996f16c"
+    },
+    {
+      "id": "pose-099",
+      "name": "Laying Back Knees Spread Apart",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-099.json",
+      "jsonSha256": "37ffc2292ccec73a0f744a44da15bafbab48f6659975ee2e05e188e0d3f8b70f",
+      "preview": "pose-099.webp",
+      "previewSha256": "6d16273cdbd2e78f5b47051a9394571a72090bac11f210e0b84bd5aaede5f64e"
+    },
+    {
+      "id": "pose-100",
+      "name": "Laying Back Knees Up Together",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-100.json",
+      "jsonSha256": "fd4f8f7744b451bf7722d144d19eec438b14a26d7ad12d04a52aebd116d93ffc",
+      "preview": "pose-100.webp",
+      "previewSha256": "992fee5a4266948b22766757e168b1e27a382a7b3c1f3b8f8e0dae782da0a882"
+    },
+    {
+      "id": "pose-101",
+      "name": "Laying Back Legs Akimbo",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-101.json",
+      "jsonSha256": "535fe0831397336e8fb150b214206c3c14ea43601552f9f0b4f6e820b717d747",
+      "preview": "pose-101.webp",
+      "previewSha256": "461b94f0eafedaabea7144ce0065cbbccd235a3b408cbae6dd6206eae22c1490"
+    },
+    {
+      "id": "pose-102",
+      "name": "Laying Back Legs Crossed",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-102.json",
+      "jsonSha256": "57796c908ad6bedde84f88f48d48fd3449df3e7ee0b6ba8d883aa682f0a037e8",
+      "preview": "pose-102.webp",
+      "previewSha256": "05466a4de09d9faeaf08c95ce9cd67177068414256d526a994b67c19120204eb"
+    },
+    {
+      "id": "pose-103",
+      "name": "Laying Back Legs Spread",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-103.json",
+      "jsonSha256": "682fe82e9161bde48a999e2a2ff76a3f6436c8885e3a1a3ae4f6e893a1718609",
+      "preview": "pose-103.webp",
+      "previewSha256": "1eccdcf6cc22abf09084d6bbe2cdd7ff410e535c2a342c465a37d0abdb233fff"
+    },
+    {
+      "id": "pose-104",
+      "name": "Laying Back on Elbows",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-104.json",
+      "jsonSha256": "7b2a1e0c1f565c3cc546a72aa68e374bb7c384c7f2992868f26701a307aace5e",
+      "preview": "pose-104.webp",
+      "previewSha256": "c4ddb303075f8503c1c1420be43516fce1107a5f48578cdd9440f839c1a8f21d"
+    },
+    {
+      "id": "pose-105",
+      "name": "Laying on Back",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-105.json",
+      "jsonSha256": "64cf15afb71768fec1cf85f6453671f2109e857aef0d882a7f97f6eff2f01bbc",
+      "preview": "pose-105.webp",
+      "previewSha256": "ea266140a215938819082871c5c5c42e7ee2f8a0857c89c47bc282fb6032b4c7"
+    },
+    {
+      "id": "pose-106",
+      "name": "Leaning Back legs spread",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-106.json",
+      "jsonSha256": "fb8580616e1f7e683cf44b74c6276f3df13c0c36c81a3524b767bc0e1a763ec9",
+      "preview": "pose-106.webp",
+      "previewSha256": "71c866efb59b0df1104b24e7d13dcdc415b6e19129ff93cc6f4c5e87f8e05a7e"
+    },
+    {
+      "id": "pose-107",
+      "name": "Legs Crosed",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-107.json",
+      "jsonSha256": "29b2d2341ddcbe63640874a019f4090472d614e14cdf4189d3892004c7900a49",
+      "preview": "pose-107.webp",
+      "previewSha256": "19e5fbd976dc46dae3d234d5510b2d0c2616d1386dff9b66038af39e55b2085d"
+    },
+    {
+      "id": "pose-108",
+      "name": "Prone Feet Up profile",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-108.json",
+      "jsonSha256": "a06ff4ef2f41f55a2c73ba8361b5ef81ab65d9175751201913ef4795acfe99e0",
+      "preview": "pose-108.webp",
+      "previewSha256": "6df926f1759d0742141308cb07a5eb6be7a93de7a0655b84d919ee7bf04c9acf"
+    },
+    {
+      "id": "pose-109",
+      "name": "Prone Legs Up Side",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-109.json",
+      "jsonSha256": "445f3ae9c94659477db6f1d093fc71d6a7e3771960901be5574b208a9f904ed1",
+      "preview": "pose-109.webp",
+      "previewSha256": "b21855905fb8182ad8e42d92c6161a521d7dc38ac3626c05dce05b6cdd228c41"
+    },
+    {
+      "id": "pose-110",
+      "name": "Prone on Knees side",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-110.json",
+      "jsonSha256": "cf937b1832be651a79be7937a925407d1b3b6f64b16531038c50a1c68004d7dd",
+      "preview": "pose-110.webp",
+      "previewSha256": "a9ac1b3ae117de8fcb17be45927d4cf6b438c873d979301912ba4870417b3611"
+    },
+    {
+      "id": "pose-111",
+      "name": "Prone",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-111.json",
+      "jsonSha256": "20fa6d65f03a9513c0d565c7dc341f8e2e34ccbcef3dfba5ceaedff134ff482c",
+      "preview": "pose-111.webp",
+      "previewSha256": "cc513643ebdb0a16f11620e93a6374d09df18e13790fc21ebb83ba06596a63ba"
+    },
+    {
+      "id": "pose-112",
+      "name": "Seated on Floor",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-112.json",
+      "jsonSha256": "5a12187fb0f0fcc72625dccb3596f816d5e4c3eb4116177771ed801ddbf76e4d",
+      "preview": "pose-112.webp",
+      "previewSha256": "4741c605312474bd8c80d8246617b9eed04567d4bb9d5867f71e208fd8952f14"
+    },
+    {
+      "id": "pose-113",
+      "name": "Sitting legs crossed",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-113.json",
+      "jsonSha256": "fff467e4a6eead404d0271bf99b688f14b3c9bf9f77487cad48dfc47c18375fb",
+      "preview": "pose-113.webp",
+      "previewSha256": "280a1d19040c618d9eb97f5118bd14f25a1ebd7a3e24f1bfdc466344a5953df1"
+    },
+    {
+      "id": "pose-114",
+      "name": "Squatting Forward on Hands",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-114.json",
+      "jsonSha256": "d125f0c97cfc706c175a607122babae67dcb91fffb3f49fee4be663066090445",
+      "preview": "pose-114.webp",
+      "previewSha256": "5760acb4667271b17049486155be5feaf3f030c4aab9023bfaa53db534543409"
+    },
+    {
+      "id": "pose-115",
+      "name": "Squatting Leaning Back",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-115.json",
+      "jsonSha256": "9c040b389a8cb3fee66a2ff059eb83502771454aa151a3fb48bbed2d07cc5409",
+      "preview": "pose-115.webp",
+      "previewSha256": "17247d69ae23c43a3db19825ee6a5b70c58c3a15a522c23c0a43154015260823"
+    },
+    {
+      "id": "pose-116",
+      "name": "Squatting Leg Extended",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-116.json",
+      "jsonSha256": "18aa1aec51b08acb14206b8a0eae8e0b0b0355a385121b2d78f8d2eb8ba36500",
+      "preview": "pose-116.webp",
+      "previewSha256": "752c621539279c736bf412bf8ab13268f77a046b8ddf69f7a56f8b137852bc0d"
+    },
+    {
+      "id": "pose-117",
+      "name": "Squatting Legs Spread",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-117.json",
+      "jsonSha256": "74b46192e308391ca2614ef07abf0b89fb905a8049d74ab870dd1f55c73e4fa9",
+      "preview": "pose-117.webp",
+      "previewSha256": "aee1e98276e2a219e8f9ebb8923a3e239ca699a5cd58115dea8d1bf82a22b027"
+    },
+    {
+      "id": "pose-118",
+      "name": "Squatting overhead",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-118.json",
+      "jsonSha256": "a4b1624e71e1706da646bd362f7bc95fe752123c5569707023383488184017b7",
+      "preview": "pose-118.webp",
+      "previewSha256": "4c4e1b53cf97a1038801eebfdac35240bea77becd96727d056544ac3c7d097c0"
+    },
+    {
+      "id": "pose-119",
+      "name": "Squatting rear",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-119.json",
+      "jsonSha256": "53b0bdce22bb47e2d7504a459e1fc20829bd74feccdba19ca2048fe8e5a27dc4",
+      "preview": "pose-119.webp",
+      "previewSha256": "4d27548927b71a29337e48f4adb0f1810bb46eab621ac1ed4978e78e25e2a78b"
+    },
+    {
+      "id": "pose-120",
+      "name": "Squatting side",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-120.json",
+      "jsonSha256": "c6cab6a047765c3943c52f0643be099447ed833a6c41612b6f294e8fdcbeb49b",
+      "preview": "pose-120.webp",
+      "previewSha256": "5e59dc2f6d845bf434adddca0c863d5aa4821a962c0a50e6a379b9a5c9d6c698"
+    },
+    {
+      "id": "pose-121",
+      "name": "Squatting",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-121.json",
+      "jsonSha256": "a39ac53ebc238eaf8ef299506e31a2fdb499db6f74396b34f7f3f72586a6b038",
+      "preview": "pose-121.webp",
+      "previewSha256": "7eb996b97179a5e362bc0f2c956e31a62046c1a4fcc3e42661d4ec08690becb3"
+    },
+    {
+      "id": "pose-122",
+      "name": "Standing Hand on Hip",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-122.json",
+      "jsonSha256": "be4e6d98aa3d6905ea2718f9a10c9d708830f083b31946909f478d05e7acad01",
+      "preview": "pose-122.webp",
+      "previewSha256": "8bbd092bb24854822d011d8f54be56f677813ec7b66de13c11697ea7b676a373"
+    },
+    {
+      "id": "pose-123",
+      "name": "Standing Leaning Back",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-123.json",
+      "jsonSha256": "5b82cadd92bcec85105eb6cd695eecde761f34db62e0ed487d8fc2e186aceb06",
+      "preview": "pose-123.webp",
+      "previewSha256": "eb1b3c29d0ebcc8cc22914056a73f2b66a911c6861d52d30d7999337eae46c0f"
+    },
+    {
+      "id": "pose-124",
+      "name": "Standing Leaning Forward",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-124.json",
+      "jsonSha256": "542cba23badc2b7eb2e9caf78fef595a3de4905bb57299e62a1257785bcd7730",
+      "preview": "pose-124.webp",
+      "previewSha256": "c7b7afb926ec9639f65b74c0037d945db6214f465f38d98ba6b4967d8fd42acd"
+    },
+    {
+      "id": "pose-125",
+      "name": "Standing One Hand on Hip 2",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-125.json",
+      "jsonSha256": "98f219089446e3b1139bbce19abfcb1a7918242a644c90481698aeec1d354abc",
+      "preview": "pose-125.webp",
+      "previewSha256": "7022b3bf774ee12ec72e45b559f181b0ee8c57d9ade6012d4d85286de55094c1"
+    },
+    {
+      "id": "pose-126",
+      "name": "Standing One Leg Up",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-126.json",
+      "jsonSha256": "bcc03dd6d98728e6925bc8ad6ec0119de09a4073fc12571a3b329108f02be96f",
+      "preview": "pose-126.webp",
+      "previewSha256": "219c6e9ab25fc9b5196e24cfc442d7a10db519ca48c6106854d968247634ebe5"
+    },
+    {
+      "id": "pose-127",
+      "name": "Standing profile",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-127.json",
+      "jsonSha256": "6bf747610618deb549aba183dcfa5f102dad76380198a0f1ca97dd206b1b18f8",
+      "preview": "pose-127.webp",
+      "previewSha256": "6ae146900b5284cdd7d8072f4daccb5f45af5a67a42174de10a51f4b7c932952"
+    },
+    {
+      "id": "pose-128",
+      "name": "Standing",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-128.json",
+      "jsonSha256": "40162ac5afcdff21f74605a5f0ff17152b1dd56d66bbaa43217ddcda36df1aae",
+      "preview": "pose-128.webp",
+      "previewSha256": "2edb87af40a95eb18d390b280f407b2cd7cfdefe4d6775cbf854ee6fd99ba833"
+    },
+    {
+      "id": "pose-129",
+      "name": "Walking profile",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-129.json",
+      "jsonSha256": "9484a9f4cdae3f9696f4e4801e8abf0835bdcde043f0c12e24c87298516a4e22",
+      "preview": "pose-129.webp",
+      "previewSha256": "b41bd515d842f0f36b5cab0c93b3307761b7ee7c61bf1cc59745312ebe1bb8d6"
+    },
+    {
+      "id": "pose-130",
+      "name": "feet apart rear",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-130.json",
+      "jsonSha256": "095064394755607fac85b76d6564b1435b4cb0678ca79dee54576dda9e7c272f",
+      "preview": "pose-130.webp",
+      "previewSha256": "a06ea079d376553c6d7643de4f8d3796e26832f982124583fd1b2351fc9ef612"
+    },
+    {
+      "id": "pose-131",
+      "name": "forward step",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-131.json",
+      "jsonSha256": "24ae05e81c26ed32ab93b0c64435018f0998c0b3e40a66d1d294c39fdd9ce65c",
+      "preview": "pose-131.webp",
+      "previewSha256": "96cafda9efe74484b1301cef2799985f0afa0125d1f9b3445f342b0078a8dfc5"
+    },
+    {
+      "id": "pose-132",
+      "name": "knee raised profile",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-132.json",
+      "jsonSha256": "84abe543a343119fd6ff4445dab454a9c2ce9508baa9d823979ebb7812b4b465",
+      "preview": "pose-132.webp",
+      "previewSha256": "39d96f421250324230cf2ac3e4e19bfd6601d30c6b68075ee36429a3007d3846"
+    },
+    {
+      "id": "pose-133",
+      "name": "raised foot",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-133.json",
+      "jsonSha256": "b0c0343bdd9110012be6969eafa3d4b900481b63cffecf08fe0071fbd3bcf939",
+      "preview": "pose-133.webp",
+      "previewSha256": "0163dd841ba7f9a11b5a906325b792af3336299c58d9ead0d12c0496300f97eb"
+    },
+    {
+      "id": "pose-134",
+      "name": "sitting up on side",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-134.json",
+      "jsonSha256": "e28ef3262d5ec354a113d941c0655a0f020455b16dcbbdf71a8b75f6b26ccaf4",
+      "preview": "pose-134.webp",
+      "previewSha256": "0062e0d95d0f2314d31cfd83fe8de91e510d8f85aff975e0a43d5934167e1027"
+    },
+    {
+      "id": "pose-135",
+      "name": "standing profile right",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-135.json",
+      "jsonSha256": "2d0f0a4367e615639c45628538988c2164b5f4d538875ba52f2c5268d2b33665",
+      "preview": "pose-135.webp",
+      "previewSha256": "659ee9855d38cbda9b2cd1f48ba8d44b1eccdd197102a9308e726ee58c8a24d6"
+    },
+    {
+      "id": "pose-136",
+      "name": "standing rear",
+      "category": "精选姿势",
+      "tags": [],
+      "source": "https://github.com/Arekejoker/qwen21-nsfw-pose-skill",
+      "revision": "5fa2aa12ebbc106fbf32aa3e05c87f613303aa2c",
+      "json": "pose-136.json",
+      "jsonSha256": "09da13e453f00e436ac65972c5fc1f42621c22127a1aa303a3d3f10a1376bcf8",
+      "preview": "pose-136.webp",
+      "previewSha256": "e94a1a226b03f4499ba6efa7aead742acb9ed07e2f9419c035c8a8c33077369a"
+    }
+  ]
+}

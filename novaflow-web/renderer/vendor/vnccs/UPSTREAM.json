@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/AHEKOT/ComfyUI_VNCCS_Utils",
+  "commit": "2b0f4041b368e3408cfb826f4cf09e6f8dafa164",
+  "license": "MIT",
+  "files": {
+    "pose_studio/core.js": "4a0f4e0c0170d8c6c3551fb674de9bbd6196aede8b68ed4fc56a40de7a68bd94",
+    "pose_studio/hand_presets.js": "0012cd36af5cd60a4fa0ce595a5d4f6920c847cdbea41a5806b13ee87d23eaa1",
+    "vendor/three/three.module.js": "3dab5924b43ee586750b2d1af44e8f75a8222c3e94c158c27895b8c6b3881618",
+    "vendor/three/OrbitControls.js": "11af4fc1d92a24fd7197367d9a910a4cefba603f2b7c886b378a980360909945",
+    "vendor/three/TransformControls.js": "a85063ff8e0f67cebd0d530ef62318f16bacf6899473efa77536212b54eb962a",
+    "LICENSE.txt": "eb067508882e612f646174b5948a398f291f663e8f54a5474dd1da2c07dcbbfd",
+    "pose_studio/assets/MAKEHUMAN-LICENSE.txt": "478ce6343cc2da8f964bd3176b13bd70915390ab7869b708685501c0eb461e19",
+    "pose_studio/assets/CC0-1.0.txt": "f6089cba01cb570a24712b41ab8a586ccd3cc5ef53dc266ca50b95c288956d2c"
+  },
+  "mannequin": {
+    "source": "web/pose_studio/assets/pose_studio_makehuman.v2.bin.gz",
+    "sha256": "76adfddc9a98ecd89e5b4a334911e65469fc77939e3fb0500832ab9e2a1baec9",
+    "license": "CC0-1.0",
+    "shape": {
+      "gender": 0.5,
+      "age": 45.5,
+      "muscle": 0.5,
+      "weight": 0.5,
+      "height": 0.5,
+      "show_genitals": false
+    },
+    "bodyStage": "adult",
+    "note": "Neutral adult static mesh derived using upstream morph_runtime.mjs; no textures or optional anatomical mesh. Rounded to six decimal places."
+  }
+}
