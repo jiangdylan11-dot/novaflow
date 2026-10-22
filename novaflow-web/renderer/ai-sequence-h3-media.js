@@ -73,8 +73,31 @@
     }
     await store.add(items);
   }
+  // The old reference column assumes fixed-height frame slots. H3 owns a
+  // full-width row between progress and prompts; never run that legacy layout.
+  const bottomLayouts=new WeakMap();
+  function applyBottomLayout(bottom) {
+    const panel=bottom?.querySelector('[data-novaflow-h3-media-panel="1"]');
+    if(!panel){
+      const previous=bottom&&bottomLayouts.get(bottom);
+      if(previous){for(const record of previous){const {el,name,value,priority,ours}=record;if(el.style.getPropertyValue(name)===ours&&el.style.getPropertyPriority(name)==='important'){if(value)el.style.setProperty(name,value,priority);else el.style.removeProperty(name);}}bottomLayouts.delete(bottom);}
+      return false;
+    }
+    let previous=bottomLayouts.get(bottom);if(!previous){previous=[];bottomLayouts.set(bottom,previous);}
+    const column=bottom.querySelector('[data-novaflow-ai-reference-column="1"]');
+    const main=bottom.querySelector('[data-novaflow-ai-bottom-main-row="1"]');
+    const promptGrid=bottom.querySelector('[data-novaflow-ai-prompt-grid="1"]');
+    const put=(el,styles)=>{if(el)for(const [name,value]of Object.entries(styles)){let record=previous.find(x=>x.el===el&&x.name===name);if(!record){record={el,name,value:el.style.getPropertyValue(name),priority:el.style.getPropertyPriority(name)};previous.push(record);}record.ours=value;if(el.style.getPropertyValue(name)!==value||el.style.getPropertyPriority(name)!=='important')el.style.setProperty(name,value,'important');}};
+    put(column,{display:'none',width:'0px','min-width':'0px','max-width':'0px',flex:'0 0 0px',height:'auto','min-height':'0px','max-height':'none','margin-top':'0px'});
+    put(main,{'--novaflow-ai-reference-column-width':'0px','--novaflow-ai-reference-offset':'0px',height:'auto','min-height':'0px','max-height':'none'});
+    put(panel.parentElement,{flex:'1 1 0px',width:'100%','min-width':'0px','max-width':'100%'});
+    put(promptGrid,{'margin-top':'0px',width:'100%','min-width':'0px','max-width':'100%'});
+    for(const row of bottom.querySelectorAll('[data-novaflow-ai-settings-row="1"], [data-novaflow-ai-generation-progress="1"]'))put(row,{left:'0px',width:'100%','padding-right':'0px'});
+    return true;
+  }
   function Panel({react:React,boardId='b1',prompt='',onPromptChange,legacy=[]}) {
-    const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false);
+    const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[durations,setDurations]=React.useState({});
+    const inputs=React.useRef({});
     React.useEffect(()=>store.subscribe(()=>setTick(t=>t+1)),[]);
     React.useEffect(()=>{let live=true;store.load(boardId).then(async()=>{
       if(!live||store.hasSaved(boardId)||store.get(boardId).length||!legacy.length)return;
@@ -83,23 +106,35 @@
     }).catch(e=>setError(e.message));return()=>{live=false;};},[boardId]);
     const list=resources(store.get(boardId));
     const action=fn=>async()=>{setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}};
-    const input=(kind)=>h('input',{type:'file',multiple:true,accept:kind+'/*','data-novaflow-h3-upload':kind,disabled:busy,onChange:e=>{const files=Array.from(e.target.files||[]);e.target.value='';action(()=>importFiles(kind,files))();}});
-    return h('div',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,style:{display:'grid',gap:8,width:'100%',maxHeight:240,overflowY:'auto',padding:6,boxSizing:'border-box',fontSize:11}},
-      h('div',null,'参考素材 · 自动保存到当前画板（9 图 / 3 视频 / 3 独立音频）'),
-      ...Object.keys(LIMITS).map(kind=>h('div',{key:kind,style:{display:'grid',gap:4}},
-        h('label',null,CN[kind]+' '+list.filter(x=>x.kind===kind).length+'/'+LIMITS[kind],input(kind)),
-        h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},...list.filter(x=>x.kind===kind).map(x=>h('div',{key:x.sourceId,'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,style:{width:110,border:'1px solid #555',borderRadius:5,padding:5}},
-          h('button',{type:'button',title:'插入素材引用',onClick:()=>onPromptChange?.(prompt+' @'+x.label)},'@'+x.label),
-          kind==='image'?h('img',{src:x.dataUrl,alt:x.label,style:{width:96,height:52,objectFit:'contain'}}):h(kind,{src:x.dataUrl,controls:true,muted:kind==='video',style:{width:100,height:kind==='video'?55:28}}),
-          h('div',{title:x.fileName,style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},x.fileName),
-          h('button',{type:'button',disabled:busy,'aria-label':'删除'+x.label,onClick:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));})},'删除')
-        )))
-      )),
-      h('div',{style:{color:'#aaa'}},'视频内音轨不使用；声音槽作为独立条件。完整原音复用需明确选择一条音频，不自动混音。参考视频、音频各 2–15 秒；同类总计不超过 15 秒。'),
-      store.getReport(boardId)?h('div',{'data-novaflow-h3-binding-report':'1',style:{color:'#b4d8c8'}},'本次使用：'+store.getReport(boardId).selected.map(x=>x.label).join('、')+'；未使用：'+(store.getReport(boardId).unused.map(x=>x.label+'（'+x.fileName+'）').join('、')||'无')):null,
-      h('div',{role:'status','data-novaflow-h3-media-error':'1',style:{color:'#ffb0a8'}},error||store.getError())
+    const duration=x=>{const n=durations[x.sourceId];return Number.isFinite(n)?n.toFixed(1)+'s':'读取时长…';};
+    const metadata=x=>e=>{const n=e.currentTarget.duration;if(Number.isFinite(n))setDurations(old=>old[x.sourceId]===n?old:{...old,[x.sourceId]:n});};
+    const insert=x=>onPromptChange?.(current=>String(current||'')+' @'+x.label);
+    const report=store.getReport(boardId);
+    return h('section',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,className:'nf-h3-media'},
+      h('div',{className:'nf-h3-media-heading'},h('span',null,'参考素材'),h('span',{className:'nf-h3-media-saved'},'自动保存到当前画板')),
+      h('div',{className:'nf-h3-media-groups'},...Object.keys(LIMITS).map(kind=>{
+        const entries=list.filter(x=>x.kind===kind),full=entries.length>=LIMITS[kind];
+        return h('section',{key:kind,className:'nf-h3-media-group','data-novaflow-h3-group':kind},
+          h('div',{className:'nf-h3-media-group-title'},CN[kind],h('span',{'data-novaflow-h3-count':kind},entries.length+'/'+LIMITS[kind])),
+          h('input',{ref:el=>{inputs.current[kind]=el;},type:'file',hidden:true,tabIndex:-1,multiple:true,accept:kind+'/*','aria-label':'选择'+CN[kind],'data-novaflow-h3-upload':kind,disabled:busy||full,onChange:e=>{const files=Array.from(e.target.files||[]);e.target.value='';action(()=>importFiles(kind,files))();}}),
+          h('div',{className:'nf-h3-media-cards'},...entries.map(x=>h('div',{key:x.sourceId,className:'nf-h3-media-item','data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key},
+            h('button',{type:'button',className:'nf-h3-media-preview','aria-label':'插入引用 '+x.label,title:'插入 @'+x.label,onClick:()=>insert(x)},
+              kind==='image'?h('img',{src:x.dataUrl,alt:x.label}):kind==='video'?h('video',{src:x.dataUrl,muted:true,preload:'metadata',onLoadedMetadata:metadata(x)}):h('span',{className:'nf-h3-media-audio-icon','aria-hidden':true},'♪'),
+              h('span',{className:'nf-h3-media-badge'},({image:'图 ',video:'视频 ',audio:'声音 '}[kind])+x.modelToken.match(/\d+/)[0]),
+              kind!=='image'?h('span',{className:'nf-h3-media-duration'},duration(x)):null,
+              kind==='video'?h('span',{className:'nf-h3-media-play','aria-hidden':true},'▶'):null),
+            kind==='audio'?h('audio',{src:x.dataUrl,preload:'metadata',onLoadedMetadata:metadata(x),hidden:true}):null,
+            h('button',{type:'button',className:'nf-h3-media-remove',disabled:busy,'aria-label':'删除'+x.label,title:'删除'+x.label,onClick:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));})},'×'),
+            h('div',{className:'nf-h3-media-name',title:x.fileName},x.fileName)
+          )),!full?h('button',{type:'button',className:'nf-h3-media-add nf-upload-dropzone',disabled:busy,'data-novaflow-h3-add':kind,'aria-label':'添加'+CN[kind],onClick:()=>inputs.current[kind]?.click()},
+            h('span',{'data-novaflow-plus-glyph':'1',className:'nf-h3-media-plus','aria-hidden':true}),h('span',null,({image:'添加参考图',video:'添加参考视频',audio:'添加声音参考'}[kind]))):null)
+        );
+      })),
+      h('div',{className:'nf-h3-media-help'},'点击素材插入引用。视频内音轨不使用；声音参考为独立条件。原音复用需明确选择一条音频，不自动混音。视频/音频每段 2–15 秒，同类合计不超过 15 秒。'),
+      report?h('div',{'data-novaflow-h3-binding-report':'1',className:'nf-h3-media-report'},'本次使用：'+report.selected.map(x=>x.label).join('、')+'；未使用：'+(report.unused.map(x=>x.label+'（'+x.fileName+'）').join('、')||'无')):null,
+      error||store.getError()?h('div',{role:'status','data-novaflow-h3-media-error':'1',className:'nf-h3-media-error'},error||store.getError()):null
     );
   }
-  const api={LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
+  const api={applyBottomLayout,LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
   root.NovaFlowH3Media=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

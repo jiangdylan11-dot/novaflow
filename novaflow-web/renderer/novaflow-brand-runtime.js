@@ -10959,6 +10959,7 @@
 
   function lockAiAnimationEntryGenerationPanelHeight(bottomWorkspace) {
     if (!(bottomWorkspace instanceof HTMLElement)) return;
+    if (bottomWorkspace.querySelector('[data-novaflow-h3-media-panel="1"]')) { syncAiAnimationGenerationPanelHeight(bottomWorkspace); return; }
     const panel = getAiAnimationGenerationPanelElement(bottomWorkspace);
     if (!(panel instanceof HTMLElement)) return;
     if (document.body.classList.contains("novaflow-ai-animation-section-layers")) {
@@ -11561,6 +11562,7 @@
 
   function syncAiAnimationSourceOwnedBottomLayout(bottomWorkspace) {
     if (!(bottomWorkspace instanceof HTMLElement)) return;
+    if (window.NovaFlowH3Media?.applyBottomLayout?.(bottomWorkspace)) return;
     const mainRow = bottomWorkspace.querySelector('[data-novaflow-ai-bottom-main-row="1"]');
     const referenceColumn = bottomWorkspace.querySelector('[data-novaflow-ai-reference-column="1"]');
     const promptGrid = bottomWorkspace.querySelector('[data-novaflow-ai-prompt-grid="1"]');

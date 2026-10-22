@@ -1,0 +1,41 @@
+/* Same 87 x 59 upload tile, dashed border and plus glyph as the image panel.
+   Scoped to H3 so no other workflow or reference slot changes. */
+html body .nf-h3-media {
+  display: flex; flex-direction: column; gap: 9px; flex: 0 0 auto;
+  width: 100%; min-width: 0; max-width: 100%; height: auto;
+  padding: 10px 0; margin: 0; border-top: 1px solid #353535;
+  box-sizing: border-box; color: #d4d4d4; font: 11px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+  container-type: inline-size; overflow: visible;
+}
+html body .nf-h3-media *, html body .nf-h3-media *::before, html body .nf-h3-media *::after {box-sizing: border-box;}
+html body .nf-h3-media-heading {display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; min-width:0;}
+html body .nf-h3-media-saved {color:#818181; font-size:10px;}
+html body .nf-h3-media-groups {display:grid; grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr); gap:16px; min-width:0; max-height:278px; overflow:auto; scrollbar-gutter:stable; padding:0 3px 3px 0;}
+html body .nf-h3-media-group {display:flex; flex-direction:column; gap:7px; min-width:0; margin:0; padding:0;}
+html body .nf-h3-media-group-title {display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; color:#bdbdbd;}
+html body .nf-h3-media-group-title > span {color:#818181; font-size:10px; font-variant-numeric:tabular-nums;}
+html body .nf-h3-media input[type="file"], html body .nf-h3-media audio {display:none !important;}
+html body .nf-h3-media-cards {display:flex; flex-wrap:wrap; align-content:flex-start; gap:9px; min-width:0;}
+html body .nf-h3-media-item {position:relative; flex:0 0 87px; width:87px; min-width:0; margin:0;}
+html body .nf-h3-media button {font:inherit; color:inherit; cursor:pointer; margin:0; box-shadow:none;}
+html body .nf-h3-media button:focus-visible {outline:2px solid #1ea672; outline-offset:2px;}
+html body .nf-h3-media button:disabled {opacity:.5; cursor:wait;}
+html body .nf-h3-media-add, html body .nf-h3-media-preview {position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; flex:0 0 87px; width:87px; min-width:87px; max-width:87px; height:59px; min-height:59px; max-height:59px; border:1px dashed #4f4f4f; border-radius:8px; background:#202020; padding:4px; gap:5px; color:#adadad; overflow:hidden; line-height:14px;}
+html body .nf-h3-media-add > span:last-child {font-size:10px; white-space:nowrap;}
+html body .nf-h3-media-plus {position:relative; display:block; width:16px; height:16px; flex:0 0 16px;}
+html body .nf-h3-media-add:hover, html body .nf-h3-media-preview:hover {border-color:#1ea672; background:#262626;}
+html body .nf-h3-media-preview {border-style:solid; border-color:#3c3c3c; padding:0;}
+html body .nf-h3-media-preview img, html body .nf-h3-media-preview video {display:block; width:100%; height:100%; object-fit:contain; pointer-events:none;}
+html body .nf-h3-media-badge {position:absolute; left:3px; top:3px; max-width:62px; border-radius:3px; padding:0 4px; background:#151515d9; color:#ddd; font-size:9px; line-height:15px; white-space:nowrap; pointer-events:none;}
+html body .nf-h3-media-duration {position:absolute; right:3px; bottom:3px; border-radius:3px; background:#151515d9; color:#ddd; padding:0 3px; font-size:9px; line-height:14px; white-space:nowrap; pointer-events:none;}
+html body .nf-h3-media-play {position:absolute; left:37px; top:21px; color:white; font-size:15px; text-shadow:0 1px 4px #000; pointer-events:none;}
+html body .nf-h3-media-audio-icon {font-size:27px; color:#a8bdc3; line-height:34px;}
+html body .nf-h3-media-remove {position:absolute; top:-4px; right:-4px; display:flex; align-items:center; justify-content:center; width:17px; min-width:17px; height:17px; padding:0; border:1px solid #505050; border-radius:50%; background:#292929; color:#ddd; line-height:15px; font-size:13px; z-index:1;}
+html body .nf-h3-media-remove:hover {background:#633333; border-color:#ae6666;}
+html body .nf-h3-media-name {display:block; width:87px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:4px; font-size:10px; color:#929292;}
+html body .nf-h3-media-help, html body .nf-h3-media-report, html body .nf-h3-media-error {display:block; flex:0 0 auto; width:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; word-break:normal; margin:0; color:#858585; font-size:10px; line-height:16px;}
+html body .nf-h3-media-report {color:#a5c7b9;}
+html body .nf-h3-media-error {color:#ffb0a8;}
+@container (max-width: 700px) {
+  html body .nf-h3-media-groups {grid-template-columns:minmax(0,1fr); gap:12px; max-height:300px;}
+}
