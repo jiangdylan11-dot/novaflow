@@ -454,18 +454,29 @@
     return { sync, setMode, getMode: () => mode, getOffset, setOffset };
   }
 
+  function addStudioGrid(viewer, floor) {
+    const THREE = viewer.THREE, grid = new THREE.GridHelper(100, 100, '#68737e', '#7e8993');
+    grid.position.y = floor - 0.03; grid.material.transparent = true; grid.material.opacity = 0.22; grid.material.depthWrite = false;
+    grid.material.onBeforeCompile = shader => {
+      shader.uniforms.studioGridCenter = { value: viewer.orbit.target };
+      shader.vertexShader = 'varying vec3 studioGridPosition;\n' + shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nstudioGridPosition = (modelMatrix * vec4(position, 1.0)).xyz;');
+      shader.fragmentShader = 'varying vec3 studioGridPosition;\nuniform vec3 studioGridCenter;\n' + shader.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\ngl_FragColor.a *= 1.0 - smoothstep(8.0, 30.0, length(studioGridPosition.xz - studioGridCenter.xz));');
+    };
+    viewer.gridHelper = grid; viewer.scene.add(grid);
+  }
+
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
       .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options-proportion{grid-template-columns:repeat(3,minmax(0,1fr))}.nf-pose-dialog .nf-pose-body-options-proportion button{min-width:0;padding:4px 2px;font-size:11px;white-space:nowrap}.nf-pose-modebar{display:flex;padding:8px 12px;border-bottom:1px solid #353535}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
-      .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#0009;display:grid;place-items:center;padding:20px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
-      .nf-pose-dialog{width:min(1140px,100%);height:min(800px,100%);display:flex;flex-direction:column;background:#202020;border:1px solid #414141;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
-      .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;min-height:30px;padding:4px 9px;font:12px system-ui}
-      .nf-pose-dialog button{cursor:pointer}.nf-pose-dialog button:hover{background:#383838}.nf-pose-dialog button:disabled{opacity:.4;cursor:default}.nf-pose-dialog :focus-visible{outline:2px solid #24b78d;outline-offset:2px}
-      .nf-pose-head,.nf-pose-foot{display:flex;align-items:center;gap:8px;padding:12px 16px;flex:none}.nf-pose-head{border-bottom:1px solid #353535}.nf-pose-head h2{margin:0;flex:1;font-size:15px;font-weight:600;color:#eee!important}.nf-pose-foot{border-top:1px solid #353535;flex-wrap:wrap}
-      .nf-pose-body{position:relative;display:flex;flex:1;min-height:0}.nf-pose-side{width:224px;flex:none;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;border-right:1px solid #353535}.nf-pose-side label{display:grid;gap:6px;color:#bcbcbc}.nf-pose-side select{width:100%}.nf-pose-side h3{font-size:12px;margin:0;color:#ddd}.nf-pose-row{display:flex;gap:6px;align-items:center}.nf-pose-row>*{min-width:0;flex:1}.nf-pose-row input{width:66px}.nf-pose-row .nf-pose-times{flex:0 0 10px}.nf-pose-row input[type=number]{padding:4px;appearance:textfield}.nf-pose-row input[type=number]::-webkit-inner-spin-button{appearance:none}.nf-pose-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#090b10b8;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
+      .nf-pose-dialog{width:min(1440px,100%);height:min(940px,100%);display:flex;flex-direction:column;background:#1d2024;border:1px solid #3b4148;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
+      .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b3036;color:#d9dfdf;border:1px solid #3c434a;border-radius:7px;min-height:32px;padding:5px 10px;font:12px system-ui}
+      .nf-pose-dialog button{cursor:pointer;transition:background .12s,border-color .12s}.nf-pose-dialog button:hover{background:#363e45;border-color:#59666e}.nf-pose-dialog button:disabled{opacity:.35;cursor:default}.nf-pose-dialog :focus-visible{outline:2px solid #56bc9b;outline-offset:2px}
+      .nf-pose-head,.nf-pose-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;flex:none}.nf-pose-head{border-bottom:1px solid #30363c}.nf-pose-head h2{margin:0;flex:1;font-size:14px;font-weight:600;letter-spacing:.5px;color:#edf0ef!important}.nf-pose-foot{border-top:1px solid #30363c;flex-wrap:wrap}
+      .nf-pose-body{position:relative;display:flex;flex:1;min-height:0}.nf-pose-side{width:216px;flex:none;overflow:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;border-right:1px solid #30363c;scrollbar-width:thin;scrollbar-color:#46514f transparent}.nf-pose-side label{display:grid;gap:6px;color:#bcbcbc}.nf-pose-side select{width:100%}.nf-pose-side h3{font-size:11px;margin:6px 0 0;padding-top:12px;border-top:1px solid #30363c;color:#a7b5b4;font-weight:600;letter-spacing:.4px}.nf-pose-row{display:flex;gap:6px;align-items:center}.nf-pose-row>*{min-width:0;flex:1}.nf-pose-row input{width:66px}.nf-pose-row .nf-pose-times{flex:0 0 10px}.nf-pose-row input[type=number]{padding:4px;appearance:textfield}.nf-pose-row input[type=number]::-webkit-inner-spin-button{appearance:none}.nf-pose-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       .nf-pose-library{position:absolute;inset:0;z-index:4;background:#202020;display:flex;flex-direction:column;padding:12px;gap:10px}.nf-pose-library[hidden]{display:none}.nf-pose-library-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.nf-pose-library-bar input{min-width:80px;flex:1;background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;padding:7px;font:12px system-ui}.nf-pose-library-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));grid-auto-rows:max-content;gap:10px;overflow:auto;align-content:start;min-height:0;flex:1}.nf-pose-dialog .nf-pose-card{display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:6px!important;height:auto!important;min-height:176px!important;max-height:none!important;overflow:hidden}.nf-pose-card img{display:block;width:100%;height:126px;object-fit:contain;background:#171717;border-radius:4px;flex:none}.nf-pose-card span{font-size:11px;color:#ddd;line-height:1.4;overflow-wrap:anywhere}.nf-pose-card small{color:#999;font-size:10px}.nf-pose-library-count{color:#aaa;font-size:11px}.nf-pose-side label.nf-pose-row{display:flex}
-      .nf-pose-view{flex:1;min-width:0;display:flex;flex-direction:column;background:#181818}.nf-pose-stage{flex:1;min-height:0;display:grid;place-items:center;padding:16px;overflow:hidden}.nf-pose-canvas{display:block;touch-action:none;border:1px solid #505050;border-radius:4px;max-width:100%;max-height:100%}.nf-pose-hint{padding:8px 16px;color:#999;line-height:1.6;font-size:11px}.nf-pose-status{flex:1;min-width:160px;color:#aaa;line-height:1.5}.nf-pose-status[data-error=true]{color:#ff9898}.nf-pose-dialog .nf-pose-primary{background:#177758;border-color:#24866b}.nf-pose-dialog .nf-pose-primary:hover{background:#218c69}.nf-pose-dialog input[type=range]{width:100%;accent-color:#20b58a}.nf-pose-side a{color:#aaa;font-size:10px}.nf-pose-busy{color:#aaa;text-align:center;padding:16px}.nf-pose-axis{display:grid;grid-template-columns:15px 1fr 51px;gap:6px;align-items:center}.nf-pose-axis input[type=number]{width:51px;padding:3px}
+      .nf-pose-view{flex:1;min-width:0;display:flex;flex-direction:column;background:#252a30}.nf-pose-stage{flex:1;min-height:0;display:grid;place-items:center;padding:10px;overflow:hidden}.nf-pose-canvas{display:block;touch-action:none;border:0;border-radius:8px;max-width:100%;max-height:100%}.nf-pose-hint{padding:8px 16px;text-align:center;color:#929fa7;line-height:1.5;font-size:11px}.nf-pose-status{flex:1;min-width:160px;color:#aaa;line-height:1.5}.nf-pose-status[data-error=true]{color:#ff9898}.nf-pose-dialog .nf-pose-primary{background:#315f50;border-color:#447e69;color:#e3f4ec}.nf-pose-dialog .nf-pose-primary:hover{background:#3c7460}.nf-pose-dialog input[type=range]{width:100%;accent-color:#20b58a}.nf-pose-side a{color:#aaa;font-size:10px}.nf-pose-busy{color:#aaa;text-align:center;padding:16px}.nf-pose-axis{display:grid;grid-template-columns:15px 1fr 51px;gap:6px;align-items:center}.nf-pose-axis input[type=number]{width:51px;padding:3px}
       @media(max-width:760px){.nf-pose-overlay{padding:6px}.nf-pose-side{width:176px;padding:10px}.nf-pose-head,.nf-pose-foot{padding:8px}.nf-pose-foot button{flex:1}.nf-pose-status{flex-basis:100%}.nf-pose-stage{padding:6px}}
     ` }));
   }
@@ -496,7 +507,7 @@
     const side = element('div', { class: 'nf-pose-side' });
     const canvas = element('canvas', { class: 'nf-pose-canvas', width: '640', height: '640', tabindex: '0', 'data-novaflow-split-pan-exempt': '1', 'aria-label': '3D 人偶姿势视图' });
     const stage = element('div', { class: 'nf-pose-stage' }, [canvas]);
-    const view = element('div', { class: 'nf-pose-view' }, [stage, element('div', { class: 'nf-pose-hint', text: '左键拖动空白处旋转镜头，Ctrl＋左键拖动平移，滚轮缩放。点击人物切换；移动关节调整体型，旋转关节调整姿势。空间辅助线仅在编辑时显示。' })]);
+    const view = element('div', { class: 'nf-pose-view' }, [stage, element('div', { class: 'nf-pose-hint', text: '左键旋转视角 · Ctrl＋左键平移 · 滚轮缩放' })]);
     const actions = [];
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
@@ -515,7 +526,7 @@
     }
     function resize() {
       const rect = stage.getBoundingClientRect(), ratio = state.width / state.height;
-      const width = Math.max(1, Math.min(rect.width - 32, (rect.height - 32) * ratio));
+      const width = Math.max(1, Math.min(rect.width - 20, (rect.height - 20) * ratio));
       const height = Math.max(1, width / ratio);
       canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
       viewer?.resize(width, height);
@@ -611,9 +622,7 @@
       viewer.loadData(model); viewer.scene.background.set(state.background); viewer.setDirectionalSkydomeVisible(false);
       viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 0.65 }, { type: 'directional', color: '#ffffff', intensity: 2.0, x: 4, y: 10, z: 8 }]);
       const floor = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
-      viewer.gridHelper = new viewer.THREE.Group();
-      const axes = new viewer.THREE.AxesHelper(12);
-      viewer.gridHelper.position.y = floor - 0.03; viewer.gridHelper.add(axes); viewer.scene.add(viewer.gridHelper);
+      addStudioGrid(viewer, floor);
       characters = createCharacters(viewer, changed, bodyModels);
       characters.restore(saved || { pose: { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } } });
       if (saved?.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: saved.pose.camera });
@@ -668,7 +677,7 @@
       widthInput = element('input', { type: 'number', min: '256', max: '2048', value: state.width, 'aria-label': '姿势图宽度', onchange: () => { state.width = size(widthInput.value); widthInput.value = state.width; resize(); changed(); } });
       heightInput = element('input', { type: 'number', min: '256', max: '2048', value: state.height, 'aria-label': '姿势图高度', onchange: () => { state.height = size(heightInput.value); heightInput.value = state.height; resize(); changed(); } });
       background = element('input', { type: 'color', value: state.background, 'aria-label': '姿势图背景', oninput: () => { state.background = background.value; viewer.scene.background.set(state.background); viewer.requestRender(); changed(); } });
-      side.append(element('label', { text: '输出尺寸' }, [element('div', { class: 'nf-pose-row' }, [widthInput, element('span', { class: 'nf-pose-times', text: '×' }), heightInput])]), element('label', { class: 'nf-pose-row' }, [element('span', { text: '背景颜色' }), background]), element('a', { href: 'https://github.com/AHEKOT/ComfyUI_VNCCS_Utils', target: '_blank', rel: 'noopener noreferrer', text: 'VNCCS Pose Studio · MIT / MakeHuman · CC0' }));
+      side.append(element('label', { text: '输出尺寸' }, [element('div', { class: 'nf-pose-row' }, [widthInput, element('span', { class: 'nf-pose-times', text: '×' }), heightInput])]), element('label', { class: 'nf-pose-row' }, [element('span', { text: '背景颜色' }), background]));
       viewer.orbit.addEventListener('end', changed);
       resizeObserver = new ResizeObserver(resize); resizeObserver.observe(stage); resize();
       if (!saved) { viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(0, 0, 4)); fitView(); }
