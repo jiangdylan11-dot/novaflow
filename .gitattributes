@@ -1,2 +1,4 @@
 # Keep the pinned inference runtime and model byte-for-byte identical to upstream.
 /novaflow-web/renderer/vendor/mediapipe/** -text
+/novaflow-web/renderer/vendor/mediapipe/UPSTREAM.json text eol=lf
+/novaflow-web/renderer/vendor/mediapipe/NOTICE.txt text eol=lf
