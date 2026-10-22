@@ -69,3 +69,4 @@ await writeFile(join(target, 'UPSTREAM.json'), JSON.stringify({
   mannequin: { source: 'web/pose_studio/assets/pose_studio_makehuman.v2.bin.gz', sha256: createHash('sha256').update(source).digest('hex'), license: 'CC0-1.0', shape, bodyStage: 'adult', note: 'Neutral adult static mesh derived using upstream morph_runtime.mjs; no textures or optional anatomical mesh. Rounded to six decimal places.' },
 }, null, 2) + '\n');
 console.log(`Vendored ${commit}; mannequin ${compact.length} bytes, ${bones.length} bones`);
+await import('./vendor-pose-bodies.mjs');

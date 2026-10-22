@@ -1,0 +1,102 @@
+{
+  "license": "CC0-1.0",
+  "sourceSha256": "76adfddc9a98ecd89e5b4a334911e65469fc77939e3fb0500832ab9e2a1baec9",
+  "bodies": [
+    {
+      "id": "adult-neutral",
+      "age": "adult",
+      "gender": "neutral",
+      "shape": {
+        "gender": 0.5,
+        "age": 45.5,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin.json",
+      "sha256": "b6fccae7ab350187e9d5378858bf5b43058ef8716b63993f90cd5fcbf36286ff",
+      "bytes": 1431464
+    },
+    {
+      "id": "adult-female",
+      "age": "adult",
+      "gender": "female",
+      "shape": {
+        "gender": 0,
+        "age": 45.5,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin-adult-female.json",
+      "sha256": "50590930a52f238f61dd4b325d555f3595ae1d4dfe47513f38d3230a57ad77a4",
+      "bytes": 1431750
+    },
+    {
+      "id": "adult-male",
+      "age": "adult",
+      "gender": "male",
+      "shape": {
+        "gender": 1,
+        "age": 45.5,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin-adult-male.json",
+      "sha256": "130f37d9ff382e3659be89dce8e2812c6d4e297d2d3b2f95ed20bee85bcaca25",
+      "bytes": 1430690
+    },
+    {
+      "id": "child-neutral",
+      "age": "child",
+      "gender": "neutral",
+      "shape": {
+        "gender": 0.5,
+        "age": 17.6875,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin-child-neutral.json",
+      "sha256": "5d18575fb7d37b77b18860aeaf625a5ca14aa16ddaeb4a9faef2667bc0958304",
+      "bytes": 1437424
+    },
+    {
+      "id": "child-female",
+      "age": "child",
+      "gender": "female",
+      "shape": {
+        "gender": 0,
+        "age": 17.6875,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin-child-female.json",
+      "sha256": "95d9bfa7549b059b458de76c16602a20f5350d10bd496fba0c61dda7aff2062a",
+      "bytes": 1437321
+    },
+    {
+      "id": "child-male",
+      "age": "child",
+      "gender": "male",
+      "shape": {
+        "gender": 1,
+        "age": 17.6875,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin-child-male.json",
+      "sha256": "da491f0e8665f059a751d31bc2254b329fd0f402578e13b307d047c89a182968",
+      "bytes": 1435628
+    }
+  ]
+}

@@ -97,31 +97,40 @@ test('all 136 upstream poses and previews are present, unmodified, and load on t
   }
 });
 
-test('actual OrbitControls rotates on empty left drag, pans on right drag, and leaves rig drags exclusive', async () => {
+test('actual OrbitControls rotates on empty left drag, pans on Ctrl-left drag and ignores right drag, and leaves rig drags exclusive', async () => {
   const THREE = await import(new URL('vendor/vnccs/vendor/three/three.module.js', renderer));
   const { OrbitControls } = await import(new URL('vendor/vnccs/vendor/three/OrbitControls.js', renderer));
   class Canvas {
     style = {}; clientWidth = 640; clientHeight = 480; listeners = new Map();
     addEventListener(type, fn, options) { const list = this.listeners.get(type) || []; list.push({ fn, capture: options === true || options?.capture }); this.listeners.set(type, list); }
     removeEventListener(type, fn) { this.listeners.set(type, (this.listeners.get(type) || []).filter(entry => entry.fn !== fn)); }
-    setPointerCapture() {} releasePointerCapture() {}
+    capture = null; setPointerCapture(id) { this.capture = id; } hasPointerCapture(id) { return this.capture === id; } releasePointerCapture() { this.capture = null; }
     getBoundingClientRect() { return { left: 0, top: 0, width: 640, height: 480 }; }
-    fire(type, button, x, y) { let stopped = false; const event = { type, button, clientX: x, clientY: y, pageX: x, pageY: y, pointerId: 1, pointerType: 'mouse', preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() { stopped = true; } }; for (const { fn } of [...this.listeners.get(type) || []].sort((a, b) => Number(b.capture || false) - Number(a.capture || false))) { fn(event); if (stopped) break; } }
+    fire(type, button, x, y, ctrlKey = false) { let stopped = false; const event = { type, button, ctrlKey, clientX: x, clientY: y, pageX: x, pageY: y, pointerId: 1, pointerType: 'mouse', preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() { stopped = true; } }; for (const { fn } of [...this.listeners.get(type) || []].sort((a, b) => Number(b.capture || false) - Number(a.capture || false))) { fn(event); if (stopped) break; } }
   }
   const canvas = new Canvas(), camera = new THREE.PerspectiveCamera(45, 640 / 480, 0.1, 100);
   camera.position.set(0, 0, 5);
   const orbit = new OrbitControls(camera, canvas);
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
   tool.configureNavigation({ THREE, orbit, camera, skinnedMesh: mesh, jointMarkers: [] }, canvas);
-  const drag = (button, from, to) => { canvas.fire('pointerdown', button, ...from); canvas.fire('pointermove', button, ...to); canvas.fire('pointerup', button, ...to); };
+  const drag = (button, from, to, ctrl = false) => { canvas.fire('pointerdown', button, ...from, ctrl); canvas.fire('pointermove', button, ...to, ctrl); canvas.fire('pointerup', button, ...to, ctrl); };
   const initialPosition = camera.position.clone(), initialTarget = orbit.target.clone();
   drag(0, [20, 20], [100, 60]);
   assert.ok(camera.position.distanceTo(initialPosition) > 0.1, 'empty left drag must orbit');
   assert.ok(orbit.target.distanceTo(initialTarget) < 1e-10, 'orbit must retain its target');
   const initialOffset = camera.position.clone().sub(orbit.target), targetBeforePan = orbit.target.clone();
   drag(2, [30, 30], [100, 80]);
-  assert.ok(orbit.target.distanceTo(targetBeforePan) > 0.1, 'right drag must pan');
+  assert.ok(orbit.target.distanceTo(targetBeforePan) < 1e-10, 'right drag is disabled');
+  drag(0, [320, 240], [100, 80], true);
+  assert.ok(orbit.target.distanceTo(targetBeforePan) > 0.1, 'Ctrl-left drag must pan even over the body');
+  assert.equal(canvas.capture, null, 'pan releases pointer capture');
   assert.ok(camera.position.clone().sub(orbit.target).distanceTo(initialOffset) < 1e-10, 'pan must retain view direction');
+  canvas.fire('pointerdown', 0, 10, 10, true);
+  canvas.fire('pointercancel', 0, 10, 10, true);
+  assert.equal(canvas.capture, null, 'cancelled navigation releases capture');
+  const targetAfterCancel = orbit.target.clone();
+  canvas.fire('pointermove', 0, 140, 80);
+  assert.ok(orbit.target.distanceTo(targetAfterCancel) < 1e-10, 'a cancelled drag must not keep moving the camera');
   orbit.target.set(0, 0, 0); camera.position.set(0, 0, 5); orbit.update();
   const positionBeforeRigDrag = camera.position.clone();
   drag(0, [320, 240], [350, 260]);
@@ -149,4 +158,125 @@ test('pose selectors bypass global portals while ordinary workspace selectors re
   runInContext(brand.slice(start, end), host);
   assert.equal(host.shouldPortalNativeSelect(new Select(true)), false);
   assert.equal(host.shouldPortalNativeSelect(new Select(false)), true);
+});
+
+test('scene documents retain independent poses, positions, selection and empty scenes', () => {
+  const scene = { ...document, version: 2, activeCharacterId: 'person-2', characters: [
+    { id: 'person-1', name: '人物 1', pose: { bones: { head: [10, 0, 0] } }, transform: { x: -10, y: 0, z: 0 } },
+    { id: 'person-2', name: '人物 2', pose: { bones: { head: [-20, 0, 0] } }, transform: { x: 10, y: 0, z: 5 }, body: { gender: 'male', age: 'child' } },
+  ] };
+  const restored = tool.normalizeDocument(scene);
+  assert.deepEqual(plain(restored), scene);
+  restored.characters[0].pose.bones.head[0] = 90;
+  assert.equal(scene.characters[0].pose.bones.head[0], 10);
+  assert.equal(tool.normalizeDocument({ ...scene, characters: [] }).activeCharacterId, null);
+  assert.throws(() => tool.normalizeDocument({ ...scene, characters: [scene.characters[0], scene.characters[0]] }), /编号重复/);
+  assert.throws(() => tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], transform: { x: NaN } }] }), /人物位置/);
+  assert.throws(() => tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], body: { age: 'unknown', gender: 'neutral' } }] }), /体型/);
+});
+
+test('workspace coordinate fallbacks never intercept buttons inside the pose dialog', async () => {
+  const source = await readFile(new URL('spine-split-runtime.js', renderer), 'utf8');
+  class Element { constructor(pose = true) { this.pose = pose; } closest() { return this.pose ? this : null; } }
+  const host = createContext({ Element });
+  for (const name of ['splitControlElementFromPoint', 'splitLayerCommandElementFromPoint', 'splitLayerRowElementFromPoint', 'splitSetToggleElementFromPoint', 'inpaintModeElementFromPoint', 'splitToolElementFromPoint']) {
+    const start = source.indexOf(`  function ${name}(event) {`), end = source.indexOf('\n  function ', start + 10);
+    runInContext(source.slice(start, end), host);
+    // None of the workspace globals exist in this context: a modal event must
+    // return before inspecting underlying geometry, rows, actions or tools.
+    assert.equal(host[name]({ target: new Element(), clientX: 120, clientY: 180 }), null, name);
+    let checked = false;
+    host.isMountedCardVisible = () => { checked = true; return false; };
+    host[name]({ target: new Element(false), clientX: 120, clientY: 180 });
+    assert.equal(checked, true, `${name} retains ordinary workspace routing`);
+    delete host.isMountedCardVisible;
+  }
+});
+
+test('real upstream rigs add, switch, move, serialize and delete independently without moving the camera', async () => {
+  const THREE = await import(new URL('vendor/vnccs/vendor/three/three.module.js', renderer));
+  const { PoseViewerCore } = await import(new URL('vendor/vnccs/pose_studio/core.js', renderer));
+  const viewer = new PoseViewerCore({ width: 640, height: 480 }, { enableTextureSkinning: false, skinMode: 'flat_color' });
+  viewer.THREE = THREE; viewer.scene = new THREE.Scene(); viewer.camera = new THREE.PerspectiveCamera(30, 1, 0.1, 500);
+  viewer.camera.position.set(0, 0, 50);
+  viewer.orbit = { target: new THREE.Vector3(), update() {} };
+  viewer.transform = Object.assign(new THREE.EventDispatcher(), { detach() { this.object = null; }, setMode(mode) { this.mode = mode; }, setSpace(space) { this.space = space; }, attach(object) { this.object = object; } }); viewer.requestRender = () => {};
+  viewer.initialized = true;
+  viewer.loadData(JSON.parse(await readFile(new URL('vendor/vnccs/pose_studio/assets/mannequin.json', renderer), 'utf8')));
+  const catalog = JSON.parse(await readFile(new URL('vendor/vnccs/pose_studio/assets/body-types.json', renderer), 'utf8'));
+  const models = Object.fromEntries(await Promise.all(catalog.bodies.map(async body => [body.id, JSON.parse(await readFile(new URL(`vendor/vnccs/pose_studio/assets/${body.file}`, renderer), 'utf8'))])));
+  const characters = tool.createCharacters(viewer, () => {}, models);
+  characters.restore({ pose: { bones: { head: [12, 0, 0] } } });
+  const cameraBefore = viewer.camera.position.clone();
+  viewer.recordState(); viewer.bones.head.rotation.x = 0.7;
+  const second = characters.add();
+  assert.equal(characters.people.length, 2);
+  assert.equal(second.transform.x, 10, 'new people must have a distinct nearby position');
+  assert.equal(viewer.passiveCharacters.size, 1);
+  const firstMesh = viewer.passiveCharacters.get('person-1').mesh;
+  assert.notEqual(firstMesh.skeleton.bones[0], viewer.skeleton.bones[0]);
+  assert.equal(viewer.history.length, 0, 'new person has separate history');
+  viewer.bones.head.rotation.x = -0.4;
+  characters.setPosition('x', 15);
+  const saved = characters.snapshot();
+  characters.select('person-1');
+  assert.ok(Math.abs(viewer.bones.head.rotation.x - 0.7) < 1e-10);
+  assert.equal(viewer.history.length, 1, 'person switching retains its undo history');
+  assert.equal(viewer.passiveCharacters.get(second.id).mesh.position.x, 15);
+  characters.select(second.id);
+  assert.ok(Math.abs(viewer.bones.head.rotation.x + 0.4) < 1e-10);
+  assert.ok(viewer.camera.position.distanceTo(cameraBefore) < 1e-10);
+  characters.restore(saved);
+  assert.equal(characters.active().id, second.id);
+  assert.equal(viewer.skinnedMesh.position.x, 15);
+  characters.setBody('gender', 'male'); characters.setBody('age', 'child');
+  const childHeight = () => { viewer.skinnedMesh.computeBoundingBox(); return viewer.skinnedMesh.boundingBox.getSize(new THREE.Vector3()).y; };
+  const height = childHeight();
+  assert.equal(characters.active().body.age, 'child');
+  assert.ok(Math.abs(viewer.bones.head.rotation.x + 0.4) < 1e-10, 'body changes retain pose rotations');
+  characters.select('person-1'); characters.setBody('gender', 'female');
+  assert.ok(childHeight() > height, 'adult and child must use different physical proportions');
+  assert.ok(Math.abs(viewer.passiveCharacters.get(second.id).mesh.geometry.getAttribute('position').array[0] - models['child-male'].vertices[0]) < 1e-6);
+  const mixed = characters.snapshot(); characters.restore(mixed);
+  assert.equal(characters.active().body.gender, 'female');
+  characters.select(second.id);
+  assert.equal(characters.active().body.age, 'child'); assert.equal(viewer.skinnedMesh.position.x, 15);
+  assert.ok(Math.abs(childHeight() - height) < 1e-5, 'mixed body types survive scene restore');
+  const movement = tool.configureRootTranslation(viewer, characters, () => {});
+  viewer.selectBoneByName('Root'); movement.sync();
+  assert.equal(viewer.transform.mode, 'translate'); assert.equal(viewer.transform.space, 'world');
+  const poseBeforeMove = plain(viewer.getPose().bones);
+  viewer.recordState(); viewer.transform.dispatchEvent({ type: 'dragging-changed', value: true });
+  viewer.transform.object.position.x += 3; viewer.transform.object.position.z += 2;
+  viewer.transform.dispatchEvent({ type: 'objectChange' });
+  viewer.transform.dispatchEvent({ type: 'dragging-changed', value: false });
+  assert.equal(characters.active().transform.x, 18); assert.equal(characters.active().transform.z, 2);
+  assert.deepEqual(plain(viewer.getPose().bones), poseBeforeMove, 'whole-person movement must preserve every joint rotation');
+  viewer.undo(); assert.equal(characters.active().transform.x, 15); assert.equal(characters.active().transform.z, 0);
+  viewer.redo(); assert.equal(characters.active().transform.x, 18); assert.equal(characters.active().transform.z, 2);
+  viewer.selectBoneByName('head'); movement.sync(); assert.equal(viewer.transform.mode, 'rotate'); assert.equal(viewer.transform.space, 'local');
+  characters.remove(second.id); characters.remove('person-1');
+  assert.equal(characters.people.length, 0); assert.equal(viewer.passiveCharacters.size, 0);
+  assert.equal(viewer.skinnedMesh.visible, false);
+  assert.equal(characters.snapshot().activeCharacterId, null);
+  characters.add();
+  assert.equal(viewer.skinnedMesh.visible, true, 'adding to an empty scene restores the editor rig');
+  viewer.clearPassiveCharacters(); viewer._cleanupPrevious();
+});
+
+test('all six body variants have pinned CC0 hashes, shared ground and distinct age/gender geometry', async () => {
+  const catalog = JSON.parse(await readFile(new URL('vendor/vnccs/pose_studio/assets/body-types.json', renderer), 'utf8'));
+  const models = {};
+  for (const body of catalog.bodies) {
+    const bytes = await readFile(new URL(`vendor/vnccs/pose_studio/assets/${body.file}`, renderer));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), body.sha256);
+    assert.equal(body.shape.show_genitals, false);
+    models[body.id] = JSON.parse(bytes);
+    assert.equal(models[body.id].bones.length, 53);
+    const y = models[body.id].vertices.filter((_, i) => i % 3 === 1);
+    assert.ok(Math.abs(Math.min(...y) + 8.450465) < 1e-5, 'all bodies share the same floor');
+  }
+  assert.equal(Object.keys(models).length, 6);
+  assert.notDeepEqual(models['adult-female'].vertices, models['adult-male'].vertices);
+  assert.notDeepEqual(models['child-neutral'].vertices, models['adult-neutral'].vertices);
 });

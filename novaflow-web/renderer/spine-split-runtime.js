@@ -31211,6 +31211,8 @@
   }
 
   function splitControlElementFromPoint(event) {
+    // An owned pose dialog covers these workspace hit boxes. Never click through it.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const x = Number(event.clientX)
     const y = Number(event.clientY)
@@ -31280,6 +31282,8 @@
   }
 
   function splitLayerCommandElementFromPoint(event) {
+    // An owned pose dialog covers these workspace hit boxes. Never click through it.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const panel = document.getElementById(RIGHT_WORKSPACE_ID)
     if (!panel) return null
@@ -31333,6 +31337,8 @@
   }
 
   function splitLayerRowElementFromPoint(event) {
+    // An owned pose dialog covers these workspace hit boxes. Never click through it.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const panel = document.getElementById(RIGHT_WORKSPACE_ID)
     if (!panel) return null
@@ -31896,6 +31902,8 @@
   }
 
   function splitSetToggleElementFromPoint(event) {
+    // An owned pose dialog covers these workspace hit boxes. Never click through it.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const panel = document.getElementById(RIGHT_WORKSPACE_ID)
     if (!panel) return null
@@ -31936,6 +31944,8 @@
   }
 
   function inpaintModeElementFromPoint(event) {
+    // An owned pose dialog covers these workspace hit boxes. Never click through it.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const x = Number(event.clientX)
     const y = Number(event.clientY)
@@ -31972,6 +31982,8 @@
   }
 
   function splitToolElementFromPoint(event) {
+    // An owned pose dialog covers these workspace hit boxes. Never click through it.
+    if (event?.target instanceof Element && event.target.closest('[data-novaflow-pose-reference="1"]')) return null
     if (!event || !isMountedCardVisible()) return null
     const x = Number(event.clientX)
     const y = Number(event.clientY)

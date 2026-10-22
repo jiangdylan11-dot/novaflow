@@ -42,7 +42,26 @@
     if (pose.camera && !['posX', 'posY', 'posZ', 'targetX', 'targetY', 'targetZ'].every(key => Number.isFinite(pose.camera[key]))) throw new Error('镜头位置格式不正确');
     const view = input.view;
     if (view && (![view.fov, view.zoom].every(Number.isFinite) || view.fov < 10 || view.fov > 100 || view.zoom < 0.1 || view.zoom > 10)) throw new Error('镜头投影格式不正确');
-    return { version: 1, pose, width: size(input.width), height: size(input.height), background: /^#[a-f0-9]{6}$/i.test(input.background) ? input.background : '#e4e5e8', ...(view ? { view: { fov: view.fov, zoom: view.zoom } } : {}) };
+    const scene = input.version === 2 ? input.characters : undefined;
+    let characters;
+    if (scene !== undefined) {
+      if (!Array.isArray(scene) || scene.length > 32) throw new Error('人物列表格式不正确（最多 32 人）');
+      const ids = new Set();
+      characters = scene.map((person, i) => {
+        if (!person || typeof person !== 'object') throw new Error('人物格式不正确');
+        const id = String(person.id || `person-${i + 1}`).slice(0, 80);
+        if (ids.has(id)) throw new Error('人物编号重复'); ids.add(id);
+        const transform = {};
+        for (const axis of ['x', 'y', 'z']) {
+          const value = person.transform?.[axis] ?? 0;
+          if (!Number.isFinite(value) || Math.abs(value) > (axis === 'z' ? 40 : 50)) throw new Error('人物位置超出范围');
+          transform[axis] = value;
+        }
+        if (person.body && (!['female', 'male', 'neutral'].includes(person.body.gender) || !['adult', 'child'].includes(person.body.age))) throw new Error('人物体型格式不正确');
+        return { id, name: String(person.name || `人物 ${i + 1}`).slice(0, 40), pose: normalizeDocument({ pose: person.pose }).pose, transform, ...(person.body ? { body: { gender: person.body.gender, age: person.body.age } } : {}) };
+      });
+    }
+    return { version: characters ? 2 : 1, ...(characters ? { characters, activeCharacterId: characters.some(p => p.id === input.activeCharacterId) ? input.activeCharacterId : characters[0]?.id || null } : {}), pose, width: size(input.width), height: size(input.height), background: /^#[a-f0-9]{6}$/i.test(input.background) ? input.background : '#e4e5e8', ...(view ? { view: { fov: view.fov, zoom: view.zoom } } : {}) };
   }
 
   function referenceSlot(bridge) {
@@ -82,8 +101,8 @@
   }
   const button = (text, onclick, attrs = {}) => element('button', { type: 'button', text, onclick, ...attrs });
 
-  function configureNavigation(viewer, canvas, signal) {
-    viewer.orbit.mouseButtons = { LEFT: viewer.THREE.MOUSE.ROTATE, MIDDLE: viewer.THREE.MOUSE.PAN, RIGHT: viewer.THREE.MOUSE.PAN };
+  function configureNavigation(viewer, canvas, signal, selectAtPointer) {
+    viewer.orbit.mouseButtons = { LEFT: viewer.THREE.MOUSE.ROTATE, MIDDLE: -1, RIGHT: -1 };
     const ray = new viewer.THREE.Raycaster(), point = new viewer.THREE.Vector2();
     let pan = null;
     const right = new viewer.THREE.Vector3(), up = new viewer.THREE.Vector3();
@@ -95,15 +114,17 @@
       event?.preventDefault(); event?.stopImmediatePropagation();
     }
     canvas.addEventListener('pointerdown', event => {
-      if (event.button === 2) {
-        // Own the right drag rather than passing it through the editor/workspace
-        // pointer delegates. Pointer capture keeps panning outside canvas bounds.
+      if (event.button === 2) { event.preventDefault(); event.stopImmediatePropagation(); return; }
+      if (event.button === 0 && event.ctrlKey) {
+        // Ctrl + left drag always pans, including when starting over the rig.
+        // Capture keeps camera navigation exclusive from bone/IK manipulation.
         pan = { id: event.pointerId, x: event.clientX, y: event.clientY };
         canvas.setPointerCapture(event.pointerId);
         viewer.orbit.dispatchEvent({ type: 'start' });
         event.preventDefault(); event.stopImmediatePropagation(); return;
       }
       if (event.button !== 0) return;
+      selectAtPointer?.(event);
       const rect = canvas.getBoundingClientRect();
       point.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
       viewer.skinnedMesh?.updateMatrixWorld(true); viewer.camera.updateMatrixWorld(true);
@@ -129,10 +150,159 @@
     signal?.addEventListener('abort', () => finishPan(), { once: true });
   }
 
+  function jointLabel(name) {
+    const labels = { Root: '整体根骨', pelvis: '骨盆', spine_01: '腰部', spine_02: '背部', spine_03: '胸部', neck_01: '颈部', head: '头部', thigh: '大腿', calf: '小腿', clavicle: '锁骨', foot: '脚踝', upperarm: '上臂', ball: '脚趾', lowerarm: '前臂', hand: '手腕', index: '食指', middle: '中指', pinky: '小指', ring: '无名指', thumb: '拇指' };
+    const parts = name.split('_'), suffix = parts.at(-1);
+    return labels[name] || `${suffix === 'l' ? '左' : suffix === 'r' ? '右' : ''}${labels[parts[0]] || name}${/^\d+$/.test(parts[1]) ? parts[1] : ''}`;
+  }
+
+  function createCharacters(viewer, onChange = () => {}, models = {}) {
+    const people = [];
+    let activeId = null, nextId = 1, loadedBody = 'adult-neutral';
+    const neutral = { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } };
+    const active = () => people.find(p => p.id === activeId);
+    const poseOnly = pose => { const value = clone(pose); delete value.camera; delete value.cameraParams; return value; };
+    function save() {
+      const person = active(); if (!person) return;
+      person.pose = poseOnly(viewer.getPose());
+      person.history = viewer.history; person.future = viewer.future;
+    }
+    function showRig(visible) {
+      viewer.skinnedMesh.visible = visible;
+      if (viewer.skeletonHelper) viewer.skeletonHelper.visible = visible;
+      if (!visible) {
+        viewer.transform?.detach();
+        viewer.jointMarkers.forEach(marker => { marker.visible = false; });
+        for (const helper of [...Object.values(viewer.ikController?.effectors || {}), ...Object.values(viewer.ikController?.poleTargets || {})]) helper.visible = false;
+      } else {
+        viewer.setIKMode(viewer.ikMode);
+        viewer.jointMarkers.forEach(marker => { marker.visible = viewer._shouldMarkerBeVisible(marker); });
+      }
+    }
+    function applyActor(person) {
+      const key = `${person.body.age}-${person.body.gender}`;
+      if (key !== loadedBody && models[key]) { viewer.loadData(models[key], true); loadedBody = key; }
+      viewer.setPose(person.pose, true);
+      viewer.setActiveCharacterAppearance({ transform: person.transform });
+      viewer.updateIKEffectorPositions('all'); viewer.updateMarkers();
+    }
+    function load(person) {
+      activeId = person?.id || null;
+      viewer.deselectBone(); viewer.selectedIKEffector = null; viewer.selectedPoleTarget = null;
+      viewer.transform?.detach();
+      viewer.history = person?.history || []; viewer.future = person?.future || [];
+      if (person) applyActor(person);
+      showRig(Boolean(person)); viewer.requestRender(); onChange();
+    }
+    function select(id) {
+      const person = people.find(p => p.id === id);
+      if (!person || id === activeId) return;
+      save(); const previous = active();
+      if (previous) viewer.upsertPassiveCharacterFromActive(previous.id, previous);
+      viewer.removePassiveCharacter(id); load(person);
+    }
+    function add() {
+      if (people.length >= 32) throw new Error('一个场景最多添加 32 人');
+      save();
+      const occupied = new Set(people.map(p => `${p.transform.x},${p.transform.z}`));
+      let x = 0, z = 0;
+      for (let i = 1; occupied.has(`${x},${z}`); i++) { const column = i % 9; x = Math.ceil(column / 2) * (column % 2 ? 10 : -10); z = Math.floor(i / 9) * 10; }
+      const id = `person-${nextId++}`;
+      const person = { id, name: `人物 ${id.slice(7)}`, pose: clone(neutral), body: { gender: 'neutral', age: 'adult' }, transform: { x, y: 0, z }, history: [], future: [] };
+      people.push(person); select(id); return person;
+    }
+    function remove(id = activeId) {
+      const index = people.findIndex(p => p.id === id); if (index < 0) return;
+      save(); people.splice(index, 1); viewer.removePassiveCharacter(id);
+      if (id === activeId) {
+        const next = people[Math.min(index, people.length - 1)];
+        if (next) viewer.removePassiveCharacter(next.id);
+        load(next);
+      } else { viewer.requestRender(); onChange(); }
+    }
+    function setPositions(values) {
+      const person = active(); if (!person) return;
+      for (const axis of ['x', 'y', 'z']) {
+        const limit = axis === 'z' ? 40 : 50;
+        const delta = Math.max(-limit, Math.min(limit, Number(values[axis] ?? person.transform[axis]) || 0)) - person.transform[axis];
+        person.transform[axis] += delta;
+        for (const pole of Object.values(viewer.ikController?.poleTargets || {})) pole.position[axis] += delta;
+      }
+      viewer.setActiveCharacterAppearance({ transform: person.transform });
+      viewer.updateIKEffectorPositions('all'); onChange();
+    }
+    function setPosition(axis, value) { setPositions({ [axis]: value }); }
+    function setBody(key, value) {
+      const person = active(); if (!person || !['gender', 'age'].includes(key) || person.body[key] === value) return;
+      if (!(key === 'gender' ? ['female', 'male', 'neutral'] : ['adult', 'child']).includes(value)) return;
+      save(); person.body[key] = value;
+      // Rotations transfer between proportions; local rest offsets and world IK
+      // targets belong to the old skeleton and must be recomputed for the new one.
+      person.pose = { bones: person.pose.bones, modelRotation: person.pose.modelRotation || [0, 0, 0] };
+      person.history = []; person.future = []; load(person);
+    }
+    function restore(document) {
+      viewer.clearPassiveCharacters(); people.length = 0; activeId = null;
+      const entries = document.characters || [{ id: 'person-1', name: '人物 1', pose: poseOnly(document.pose), transform: { x: 0, y: 0, z: 0 } }];
+      for (const entry of entries) people.push({ ...clone(entry), body: { gender: 'neutral', age: 'adult', ...entry.body }, pose: poseOnly(entry.pose), history: [], future: [] });
+      nextId = Math.max(0, ...people.map(p => Number(p.id.replace('person-', '')) || 0)) + 1;
+      const person = people.find(p => p.id === document.activeCharacterId) || people[0];
+      for (const other of people) if (other !== person) { applyActor(other); viewer.upsertPassiveCharacterFromActive(other.id, other); }
+      load(person);
+      viewer.requestRender(); onChange();
+    }
+    function snapshot() {
+      save();
+      return { characters: people.map(({ id, name, pose, transform, body }) => clone({ id, name, pose, transform, body })), activeCharacterId: activeId };
+    }
+    function pick(event, canvas) {
+      if (viewer.transform?.axis) return;
+      const rect = canvas.getBoundingClientRect(), point = new viewer.THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+      viewer.scene.updateMatrixWorld(true);
+      const ray = new viewer.THREE.Raycaster(); ray.setFromCamera(point, viewer.camera);
+      const meshes = [active() && viewer.skinnedMesh, ...Array.from(viewer.passiveCharacters.values(), p => p.mesh)].filter(Boolean);
+      meshes.forEach(mesh => { mesh.skeleton.update(); mesh.computeBoundingSphere(); });
+      const hit = ray.intersectObjects(meshes, false)[0];
+      if (hit?.object !== viewer.skinnedMesh && hit?.object.userData.vnccsPassiveCharacterId) select(hit.object.userData.vnccsPassiveCharacterId);
+    }
+    return { people, active, select, add, remove, setPosition, setPositions, setBody, restore, snapshot, pick };
+  }
+
+  function configureRootTranslation(viewer, characters, onChange) {
+    const anchor = new viewer.THREE.Object3D(); viewer.scene.add(anchor);
+    let start = null;
+    viewer.options.captureHistoryContext = () => ({ characterPosition: { ...characters.active()?.transform } });
+    viewer.options.onHistoryRestore = pose => {
+      if (pose.editorState?.characterPosition) characters.setPositions(pose.editorState.characterPosition);
+      sync(); onChange();
+    };
+    function sync() {
+      if (viewer.selectedBone?.name !== 'Root' || !characters.active()) { viewer.transform.setSpace('local'); return; }
+      viewer.skinnedMesh.updateMatrixWorld(true);
+      viewer.selectedBone.getWorldPosition(anchor.position);
+      anchor.updateMatrixWorld(true);
+      viewer.selectedIKEffector = null; viewer.selectedPoleTarget = null;
+      viewer.transform.setMode('translate'); viewer.transform.setSpace('world'); viewer.transform.attach(anchor);
+      viewer.requestRender();
+    }
+    viewer.transform.addEventListener('dragging-changed', event => {
+      if (viewer.transform.object !== anchor) return;
+      if (event.value) start = { id: characters.active()?.id, anchor: anchor.position.clone(), position: { ...characters.active()?.transform } };
+      else { start = null; sync(); onChange(); }
+    });
+    viewer.transform.addEventListener('objectChange', () => {
+      if (!start || viewer.transform.object !== anchor || characters.active()?.id !== start.id) return;
+      const delta = anchor.position.clone().sub(start.anchor);
+      characters.setPositions(Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, start.position[axis] + delta[axis]])));
+      onChange();
+    });
+    return { sync };
+  }
+
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
-      .nf-pose-launch{width:100%;margin-top:12px;padding:8px 10px;text-align:left;border:1px solid #343434;border-radius:6px;background:#262626;color:#e9e9e9;cursor:pointer;font:12px system-ui}
+      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options-gender{grid-template-columns:repeat(3,1fr)}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}.nf-pose-side label.nf-pose-position{display:flex;align-items:center;justify-content:space-between;gap:6px}.nf-pose-position input{width:88px}
       .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#0009;display:grid;place-items:center;padding:20px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
       .nf-pose-dialog{width:min(1140px,100%);height:min(800px,100%);display:flex;flex-direction:column;background:#202020;border:1px solid #414141;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
       .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;min-height:30px;padding:4px 9px;font:12px system-ui}
@@ -171,15 +341,15 @@
     const side = element('div', { class: 'nf-pose-side' });
     const canvas = element('canvas', { class: 'nf-pose-canvas', width: '640', height: '640', tabindex: '0', 'data-novaflow-split-pan-exempt': '1', 'aria-label': '3D 人偶姿势视图' });
     const stage = element('div', { class: 'nf-pose-stage' }, [canvas]);
-    const view = element('div', { class: 'nf-pose-view' }, [stage, element('div', { class: 'nf-pose-hint', text: '左键拖动空白处旋转镜头，右键拖动平移，滚轮缩放。点击人偶选择关节；开启肢体拖动后可拖动手脚。导出自动隐藏关节、网格和操作手柄。' })]);
+    const view = element('div', { class: 'nf-pose-view' }, [stage, element('div', { class: 'nf-pose-hint', text: '左键拖动空白处旋转镜头，Ctrl＋左键拖动平移，滚轮缩放。点击人物切换，点击关节旋转或拖动手脚。空间辅助线仅在编辑时显示。' })]);
     const actions = [];
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
     async function run(fn) { try { await fn(); } catch (error) { message(error.message || String(error), true); } }
-    let viewer, resizeObserver, saveTimer, handPresets, boneSelect, library, libraryButton, libraryData, axisControls = [];
-    function snapshot() { return { version: 1, width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
-    function persist() { if (viewer?.isInitialized()) { try { root.localStorage.setItem(STORAGE, JSON.stringify(snapshot())); } catch (_) { message('浏览器无法保存姿势，请使用「保存姿势」下载文件', true); } } }
-    function changed() { clearTimeout(saveTimer); saveTimer = setTimeout(persist, 180); syncAxes(); }
+    let viewer, resizeObserver, saveTimer, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, positionInputs = [], bodyControls = [], actorControls = [], axisControls = [];
+    function snapshot() { return { version: 2, ...characters.snapshot(), width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
+    function persist() { if (viewer?.isInitialized() && characters) { try { root.localStorage.setItem(STORAGE, JSON.stringify(snapshot())); } catch (_) { message('浏览器无法保存姿势，请使用「保存姿势」下载文件', true); } } }
+    function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); clearTimeout(saveTimer); saveTimer = setTimeout(persist, 180); syncAxes(); }
     function close() {
       persist(); clearTimeout(saveTimer); abort.abort(); resizeObserver?.disconnect(); viewer?.dispose(); overlay.remove(); editor = null;
       if (previousFocus?.isConnected) previousFocus.focus();
@@ -196,9 +366,14 @@
       viewer?.resize(width, height);
     }
     function fitView() {
-      viewer.skinnedMesh.updateMatrixWorld(true); viewer.skeleton.update(); viewer.skinnedMesh.computeBoundingBox();
-      const bounds = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh), extent = bounds.getSize(new viewer.THREE.Vector3());
-      const distance = Math.max(extent.y, extent.x / viewer.camera.aspect) / (2 * Math.tan(viewer.camera.fov * Math.PI / 360)) * viewer.camera.zoom * 1.18;
+      if (!characters?.people.length) return;
+      const bounds = new viewer.THREE.Box3();
+      for (const mesh of [viewer.skinnedMesh, ...Array.from(viewer.passiveCharacters.values(), p => p.mesh)]) {
+        mesh.updateMatrixWorld(true); mesh.skeleton.update(); mesh.computeBoundingBox(); bounds.union(new viewer.THREE.Box3().setFromObject(mesh));
+      }
+      const inverseRotation = new viewer.THREE.Matrix4().makeRotationFromQuaternion(viewer.camera.quaternion.clone().invert());
+      const extent = bounds.clone().applyMatrix4(inverseRotation).getSize(new viewer.THREE.Vector3());
+      const distance = (Math.max(extent.y, extent.x / viewer.camera.aspect) / (2 * Math.tan(viewer.camera.fov * Math.PI / 360)) * viewer.camera.zoom + extent.z / 2) * 1.12;
       const direction = viewer.camera.position.clone().sub(viewer.orbit.target).normalize();
       viewer.orbit.target.copy(bounds.getCenter(new viewer.THREE.Vector3()));
       viewer.camera.position.copy(viewer.orbit.target).addScaledVector(direction, distance);
@@ -215,7 +390,7 @@
       const file = fileInput.files[0]; fileInput.value = ''; if (!file) return;
       if (file.size > 2 * 1024 * 1024) throw new Error('姿势文件不能超过 2 MB');
       const doc = normalizeDocument(JSON.parse(await file.text()));
-      viewer.recordState(); Object.assign(state, doc); viewer.setPose(doc.pose); viewer.scene.background.set(state.background);
+      Object.assign(state, doc); characters.restore(doc); if (doc.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: doc.pose.camera }); else fitView(); viewer.scene.background.set(state.background);
       if (doc.view) { viewer.camera.fov = doc.view.fov; viewer.camera.zoom = doc.view.zoom; viewer.camera.updateProjectionMatrix(); }
       widthInput.value = state.width; heightInput.value = state.height; background.value = state.background; resize(); changed(); message('姿势已导入');
     }) });
@@ -248,27 +423,60 @@
       ]);
       if (!modelResponse.ok) throw new Error(`人偶资源载入失败 (${modelResponse.status})`);
       const model = await modelResponse.json(); if (abort.signal.aborted) return;
+      const catalogResponse = await fetch(vendor('pose_studio/assets/body-types.json'));
+      if (!catalogResponse.ok) throw new Error('体型资源索引载入失败');
+      const catalog = await catalogResponse.json();
+      const bodyModels = Object.fromEntries(await Promise.all(catalog.bodies.map(async body => {
+        if (body.id === 'adult-neutral') return [body.id, model];
+        const response = await fetch(vendor(`pose_studio/assets/${body.file}`));
+        if (!response.ok) throw new Error(`体型资源载入失败：${body.id}`);
+        return [body.id, await response.json()];
+      })));
+      if (abort.signal.aborted) return;
       handPresets = HAND_PRESETS;
-      viewer = new PoseViewerCore(canvas, { skinMode: 'flat_color', enableTextureSkinning: false, showCaptureFrame: false, ikEnabled: true, onPoseChange: changed, onBoneSelectionChange: () => { if (boneSelect) boneSelect.value = viewer.selectedBone?.name || ''; syncAxes(); } });
+      viewer = new PoseViewerCore(canvas, { skinMode: 'flat_color', enableTextureSkinning: false, showCaptureFrame: false, ikEnabled: true, useHandControlPopover: false, onPoseChange: changed, onBoneSelectionChange: syncAxes });
       await viewer.init(); if (abort.signal.aborted) { viewer.dispose(); return; }
       if (!viewer.initialized || !viewer.renderer) throw new Error('无法创建 3D 视图，请检查浏览器硬件加速');
-      configureNavigation(viewer, canvas, abort.signal);
+      configureNavigation(viewer, canvas, abort.signal, event => characters?.pick(event, canvas));
       viewer.loadData(model); viewer.scene.background.set(state.background); viewer.setDirectionalSkydomeVisible(false);
       viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 1.2 }, { type: 'directional', color: '#ffffff', intensity: 2.2, x: 4, y: 10, z: 8 }]);
-      if (saved) { viewer.setPose(saved.pose); if (saved.view) { viewer.camera.fov = saved.view.fov; viewer.camera.zoom = saved.view.zoom; viewer.camera.updateProjectionMatrix(); } }
+      const floor = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
+      viewer.gridHelper = new viewer.THREE.Group();
+      const grid = new viewer.THREE.GridHelper(160, 80, '#8796a8', '#b2bbc6');
+      grid.material.transparent = true; grid.material.opacity = 0.6;
+      const axes = new viewer.THREE.AxesHelper(12);
+      viewer.gridHelper.position.y = floor - 0.03; viewer.gridHelper.add(grid, axes); viewer.scene.add(viewer.gridHelper);
+      characters = createCharacters(viewer, changed, bodyModels);
+      characters.restore(saved || { pose: { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } } });
+      if (saved?.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: saved.pose.camera });
+      if (saved?.view) { viewer.camera.fov = saved.view.fov; viewer.camera.zoom = saved.view.zoom; viewer.camera.updateProjectionMatrix(); }
       libraryButton = button('打开姿势库', () => run(showLibrary), { 'data-novaflow-pose-library-open': '1', class: 'nf-pose-primary' });
-      side.append(libraryButton, element('h3', { text: '快速姿势' }));
-      const presets = { '自然站立': { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] }, 'T 字站姿': { upperarm_l: [0, 0, 70], upperarm_r: [0, 0, -70] }, '双手举起': { upperarm_l: [0, 0, 145], upperarm_r: [0, 0, -145] }, '坐姿': { thigh_l: [-85, 0, 0], thigh_r: [-85, 0, 0], calf_l: [85, 0, 0], calf_r: [85, 0, 0], upperarm_l: [-20, 0, -15], upperarm_r: [-20, 0, 15] } };
-      side.append(element('div', { class: 'nf-pose-grid' }, Object.entries(presets).map(([name, bones]) => button(name, () => { viewer.recordState(); viewer.setPose({ bones }, true); changed(); }))));
-      const ik = element('input', { type: 'checkbox', checked: '', onchange: () => viewer.setIKMode(ik.checked) });
-      side.append(element('label', { class: 'nf-pose-row' }, [ik, element('span', { text: '拖动手脚（IK）' })]));
-      boneSelect = element('select', { 'aria-label': '选择关节', onchange: () => viewer.selectBoneByName(boneSelect.value) }, [element('option', { value: '', text: '选择关节' })]);
-      const labels = { Root: '整体根骨', pelvis: '骨盆', spine_01: '腰部', spine_02: '背部', spine_03: '胸部', neck_01: '颈部', head: '头部', thigh: '大腿', calf: '小腿', clavicle: '锁骨', foot: '脚踝', upperarm: '上臂', ball: '脚趾', lowerarm: '前臂', hand: '手腕', index: '食指', middle: '中指', pinky: '小指', ring: '无名指', thumb: '拇指' };
-      for (const bone of model.bones) {
-        const parts = bone.name.split('_'), suffix = parts.at(-1), label = labels[bone.name] || `${suffix === 'l' ? '左' : suffix === 'r' ? '右' : ''}${labels[parts[0]] || bone.name}${/^\d+$/.test(parts[1]) ? parts[1] : ''}`;
-        boneSelect.append(element('option', { value: bone.name, text: label }));
+      side.append(libraryButton, element('h3', { text: '场景人物' }));
+      peopleList = element('div', { class: 'nf-pose-people', role: 'group', 'aria-label': '场景人物' });
+      const addPerson = button('添加人物', () => run(() => { characters.add(); fitView(); changed(); }), { class: 'nf-pose-primary' });
+      deletePerson = button('删除人物', () => run(() => {
+        const name = characters.active()?.name;
+        characters.remove(); changed(); message(`已删除${name || '人物'}，场景中剩余 ${characters.people.length} 人`);
+      }));
+      side.append(peopleList, element('div', { class: 'nf-pose-grid' }, [addPerson, deletePerson]));
+      for (const [key, label, options] of [['gender', '性别', [['female', '女性'], ['male', '男性'], ['neutral', '中性']]], ['age', '年龄', [['child', '儿童'], ['adult', '成人']]]]) {
+        const choices = options.map(([value, text]) => {
+          const control = button(text, () => run(() => { characters.setBody(key, value); fitView(); changed(); }), { 'aria-label': `${label}：${text}`, 'aria-pressed': 'false' });
+          bodyControls.push({ key, value, control }); actorControls.push(control); return control;
+        });
+        side.append(element('h3', { text: label }), element('div', { class: `nf-pose-body-options nf-pose-body-options-${key}`, role: 'group', 'aria-label': label }, choices));
       }
-      side.append(element('label', { text: '关节旋转' }, [boneSelect]));
+      const movePerson = button('移动人物', () => viewer.selectBoneByName('Root')); side.append(movePerson); actorControls.push(movePerson);
+      positionInputs = ['x', 'y', 'z'].map(axis => {
+        const input = element('input', { type: 'number', min: axis === 'z' ? '-40' : '-50', max: axis === 'z' ? '40' : '50', step: '0.5', 'aria-label': `人物位置 ${axis.toUpperCase()}`, oninput: () => characters.setPosition(axis, input.value), onchange: () => {
+          characters.setPosition(axis, input.value); input.value = characters.active()?.transform[axis] ?? 0;
+        } });
+        side.append(element('label', { class: 'nf-pose-position', text: `位置 ${axis.toUpperCase()}` }, [input])); return input;
+      });
+      const ik = element('input', { type: 'checkbox', checked: '', onchange: () => viewer.setIKMode(ik.checked) });
+      side.append(element('label', { class: 'nf-pose-row' }, [ik, element('span', { text: '拖动手脚（IK）' })])); actorControls.push(ik);
+      selectedJoint = element('div', { class: 'nf-pose-selected-joint', role: 'status', text: '点击人偶上的关节进行旋转' });
+      side.append(element('h3', { text: '关节旋转' }), selectedJoint);
       axisControls = ['X', 'Y', 'Z'].map((axis, i) => {
         const slider = element('input', { type: 'range', min: '-180', max: '180', value: '0', step: '1', 'aria-label': `关节 ${axis} 旋转` });
         const number = element('input', { type: 'number', min: '-180', max: '180', value: '0', step: '1', 'aria-label': `关节 ${axis} 角度` });
@@ -276,33 +484,49 @@
         slider.addEventListener('pointerdown', () => viewer.recordState()); slider.addEventListener('input', () => commit(slider.value)); number.addEventListener('focus', () => viewer.recordState()); number.addEventListener('input', () => commit(number.value));
         side.append(element('div', { class: 'nf-pose-axis' }, [element('span', { text: axis }), slider, number])); return { slider, number };
       });
-      side.append(element('div', { class: 'nf-pose-grid' }, [button('撤销', () => { viewer.undo(); changed(); }), button('重做', () => { viewer.redo(); changed(); }), button('重置关节', () => { viewer.recordState(); viewer.resetSelectedBone(); changed(); }), button('重置姿势', () => { viewer.recordState(); viewer.resetPose(); changed(); })]));
+      const rigActions = element('div', { class: 'nf-pose-grid' }, [button('撤销', () => { viewer.undo(); changed(); }), button('重做', () => { viewer.redo(); changed(); }), button('重置关节', () => { viewer.recordState(); if (viewer.selectedBone?.name === 'Root') characters.setPositions({ x: 0, y: 0, z: 0 }); else viewer.resetSelectedBone(); changed(); }), button('重置姿势', () => { viewer.recordState(); viewer.resetPose(); changed(); })]); side.append(rigActions); actorControls.push(...rigActions.querySelectorAll('button'));
       side.append(element('h3', { text: '手势' }));
       const handSide = element('select', { 'aria-label': '手势作用侧' }, ['both', 'l', 'r'].map((value, i) => element('option', { value, text: ['双手', '左手', '右手'][i] })));
-      side.append(handSide, element('div', { class: 'nf-pose-grid' }, [['OPEN', '张开'], ['FIST', '握拳'], ['CHOP', '并拢']].map(([key, text]) => button(text, () => { viewer.applyHandPreset(handSide.value, handPresets[key]); changed(); }))));
-      side.append(element('h3', { text: '镜头' }), button('适配人偶', fitView), element('div', { class: 'nf-pose-grid' }, [['正面', 0], ['背面', Math.PI], ['左侧', -Math.PI / 2], ['右侧', Math.PI / 2]].map(([text, angle]) => button(text, () => {
-        const distance = viewer.camera.position.distanceTo(viewer.orbit.target); viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(Math.sin(angle) * distance, 0, Math.cos(angle) * distance)); viewer.orbit.update(); viewer.requestRender(); changed();
+      const hands = element('div', { class: 'nf-pose-grid' }, [['OPEN', '张开'], ['FIST', '握拳'], ['CHOP', '并拢']].map(([key, text]) => button(text, () => { viewer.applyHandPreset(handSide.value, handPresets[key]); changed(); }))); side.append(handSide, hands); actorControls.push(handSide, ...hands.querySelectorAll('button'));
+      side.append(element('h3', { text: '镜头' }), button('适配全部人物', fitView), element('div', { class: 'nf-pose-grid' }, [['正面', 0], ['背面', Math.PI], ['左侧', -Math.PI / 2], ['右侧', Math.PI / 2]].map(([text, angle]) => button(text, () => {
+        const distance = viewer.camera.position.distanceTo(viewer.orbit.target); viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(Math.sin(angle) * distance, 0, Math.cos(angle) * distance)); viewer.orbit.update(); fitView(); viewer.requestRender(); changed();
       }))));
       widthInput = element('input', { type: 'number', min: '256', max: '2048', value: state.width, 'aria-label': '姿势图宽度', onchange: () => { state.width = size(widthInput.value); widthInput.value = state.width; resize(); changed(); } });
       heightInput = element('input', { type: 'number', min: '256', max: '2048', value: state.height, 'aria-label': '姿势图高度', onchange: () => { state.height = size(heightInput.value); heightInput.value = state.height; resize(); changed(); } });
       background = element('input', { type: 'color', value: state.background, 'aria-label': '姿势图背景', oninput: () => { state.background = background.value; viewer.scene.background.set(state.background); viewer.requestRender(); changed(); } });
       side.append(element('label', { text: '输出尺寸' }, [element('div', { class: 'nf-pose-row' }, [widthInput, element('span', { class: 'nf-pose-times', text: '×' }), heightInput])]), element('label', { class: 'nf-pose-row' }, [element('span', { text: '背景颜色' }), background]), element('a', { href: 'https://github.com/AHEKOT/ComfyUI_VNCCS_Utils', target: '_blank', rel: 'noopener noreferrer', text: 'VNCCS Pose Studio · MIT / MakeHuman · CC0' }));
-      if (!saved) viewer.setPose({ bones: presets['自然站立'] }, true);
       viewer.orbit.addEventListener('end', changed);
       resizeObserver = new ResizeObserver(resize); resizeObserver.observe(stage); resize();
       if (!saved) { viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(0, 0, 4)); fitView(); }
       actions.forEach(b => b.removeAttribute('disabled')); message('调整人偶与镜头后，导出 PNG 或用作姿势参考'); changed();
-      function syncSelection() { boneSelect.value = viewer.selectedBone?.name || ''; }
-      // The core owns pointer picking; keeping the shell selection synchronized needs no raycasting.
-      viewer.options.onBoneSelectionChange = () => { syncSelection(); syncAxes(); };
+      movement = configureRootTranslation(viewer, characters, changed);
+      viewer.options.onBoneSelectionChange = () => { movement.sync(); syncAxes(); };
     } catch (error) { if (!abort.signal.aborted) message(`载入失败：${error.message}`, true); }
 
     function syncAxes() {
-      const rotation = viewer?.selectedBone?.rotation;
+      const moving = viewer?.selectedBone?.name === 'Root';
+      const rotation = characters?.active() && !moving && viewer?.selectedBone?.rotation;
+      if (selectedJoint) selectedJoint.textContent = viewer?.selectedBone && characters?.active() ? (moving ? '整体移动：拖动 X/Y/Z 箭头或平面' : `当前关节：${jointLabel(viewer.selectedBone.name)}`) : '点击人偶上的关节进行旋转';
       axisControls.forEach(({ slider, number }, i) => { slider.disabled = number.disabled = !rotation; if (rotation) slider.value = number.value = Math.round(rotation[['x', 'y', 'z'][i]] * 180 / Math.PI); });
     }
 
+    function renderPeople() {
+      const current = characters.active();
+      // Keep focused position inputs alive while the rig reports pointer changes.
+      if (peopleList.dataset.signature !== characters.people.map(p => `${p.id}:${p.id === current?.id}`).join('|')) {
+        peopleList.dataset.signature = characters.people.map(p => `${p.id}:${p.id === current?.id}`).join('|');
+        peopleList.replaceChildren(...characters.people.map(p => button(p.name, () => characters.select(p.id), { 'aria-pressed': String(p === current), 'aria-label': `选择${p.name}`, 'data-pose-person': p.id })));
+        if (!characters.people.length) peopleList.append(element('span', { text: '场景为空，请添加人物' }));
+      }
+      if (deletePerson) deletePerson.disabled = !current;
+      for (const control of actorControls) control.disabled = !current;
+      for (const { key, value, control } of bodyControls) control.setAttribute('aria-pressed', String(current?.body[key] === value));
+      if (libraryButton) libraryButton.disabled = !current;
+      positionInputs.forEach((input, i) => { input.disabled = !current; if (root.document.activeElement !== input) input.value = +(current?.transform[['x', 'y', 'z'][i]] ?? 0).toFixed(2); });
+    }
+
     async function showLibrary() {
+      if (!characters.active()) return;
       if (library) { library.hidden = false; library.querySelector('input')?.focus(); return; }
       message('正在载入姿势库…');
       const response = await fetch(vendor('pose_library/index.json'));
@@ -324,14 +548,20 @@
           const response = await fetch(vendor(`pose_library/${pose.json}`));
           if (!response.ok) throw new Error(`姿势载入失败 (${response.status})`);
           const document = normalizeDocument(await response.json()); if (abort.signal.aborted) return;
-          viewer.recordState(); viewer.setPose(document.pose, true);
+          const libraryPose = clone(document.pose);
+          if (characters.active()?.body.age !== 'adult' || characters.active()?.body.gender !== 'neutral') {
+            // A preset's local offsets and world-space IK targets belong to its
+            // original body proportions. Keep the selected body's rest lengths.
+            for (const key of ['bonePositions', 'hipBonePosition', 'ikEffectorPositions', 'poleTargetPositions']) delete libraryPose[key];
+          }
+          viewer.recordState(); viewer.setPose(libraryPose, true);
           // Library previews use the capture camera. The saved free-orbit camera
           // is an inspector view and may sit much farther away at another FOV.
           if (document.pose.cameraParams) {
             const p = document.pose.cameraParams; viewer.camera.fov = 30;
             viewer.snapToCaptureCamera(state.width, state.height, Math.max(0.1, Math.min(7, Number(p.zoom) || 1)), Number(p.offset_x) || 0, Number(p.offset_y) || 0, Number(p.yaw_deg) || 0, Number(p.pitch_deg) || 0);
             viewer.captureFrame.visible = false;
-          } else if (document.pose.camera) { viewer.setPose(document.pose); }
+          } else if (document.pose.camera) { viewer.setPose(libraryPose); }
           else fitView();
           // Community scenes use different body proportions. Keep their view
           // direction but frame our adult rig completely, except intentional close-ups.
@@ -348,7 +578,7 @@
     }
   }
 
-  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, getEditor: () => editor });
+  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, createCharacters, configureRootTranslation, getEditor: () => editor });
   if (root.document && typeof root.MutationObserver === 'function') {
     let queued = false;
     new root.MutationObserver(() => {
