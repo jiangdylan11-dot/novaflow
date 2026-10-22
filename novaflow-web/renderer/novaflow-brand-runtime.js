@@ -10962,7 +10962,6 @@
 
   function lockAiAnimationEntryGenerationPanelHeight(bottomWorkspace) {
     if (!(bottomWorkspace instanceof HTMLElement)) return;
-    if (bottomWorkspace.querySelector('[data-novaflow-h3-media-panel="1"]')) { syncAiAnimationGenerationPanelHeight(bottomWorkspace); return; }
     const panel = getAiAnimationGenerationPanelElement(bottomWorkspace);
     if (!(panel instanceof HTMLElement)) return;
     if (document.body.classList.contains("novaflow-ai-animation-section-layers")) {
@@ -11268,7 +11267,9 @@
       ? referenceColumn.closest('[data-novaflow-ai-bottom-workspace="1"][data-novaflow-source-layout="1"]')
       : null;
     if (sourceOwnedBottomWorkspace instanceof HTMLElement) {
-      const sourceOwnedCount = Math.max(1, Math.min(6, dropzones.length || 1));
+      // Keep the same three-card reference-column geometry as files accumulate.
+      const sourceOwnedCount = referenceColumn.querySelector('[data-novaflow-h3-media-panel="1"]')
+        ? 3 : Math.max(1, Math.min(6, dropzones.length || 1));
       const sourceOwnedFallbackWidth = sourceOwnedCount * AI_ANIMATION_REFERENCE_UPLOAD_WIDTH + Math.max(0, sourceOwnedCount - 1) * AI_ANIMATION_REFERENCE_UPLOAD_GAP;
       nfAnimationPerfCount("aiAnimationSourceReferenceMetricsFastPath");
       return getAiAnimationSourceOwnedReferenceMetrics(referenceColumn, dropzones, sourceOwnedFallbackWidth, sourceOwnedCount, options);
@@ -11565,7 +11566,6 @@
 
   function syncAiAnimationSourceOwnedBottomLayout(bottomWorkspace) {
     if (!(bottomWorkspace instanceof HTMLElement)) return;
-    if (window.NovaFlowH3Media?.applyBottomLayout?.(bottomWorkspace)) return;
     const mainRow = bottomWorkspace.querySelector('[data-novaflow-ai-bottom-main-row="1"]');
     const referenceColumn = bottomWorkspace.querySelector('[data-novaflow-ai-reference-column="1"]');
     const promptGrid = bottomWorkspace.querySelector('[data-novaflow-ai-prompt-grid="1"]');
@@ -12028,7 +12028,14 @@
       .filter((file) => file instanceof File);
   }
 
+  // H3's original-looking cards own their multi-file React handlers. Old
+  // single-slot proxies must not select a legacy input or truncate a batch.
+  function isH3MultiReferenceNode(node) {
+    return Boolean(node instanceof Element && node.closest('[data-novaflow-h3-media-panel="1"]'));
+  }
+
   function getAiSequenceSourceOwnedUploadKind(dropzone) {
+    if (isH3MultiReferenceNode(dropzone)) return "";
     return window.NovaFlowAiSequenceInputCompat?.getAiSequenceSourceOwnedUploadKind?.(dropzone) || "";
   }
 
@@ -12233,6 +12240,7 @@
   }
 
   function isAiAnimationReferenceUploadCandidate(node) {
+    if (isH3MultiReferenceNode(node)) return false;
     if (!(node instanceof HTMLElement)) return false;
     if (isAiAnimationRangeDragGuardActive()) {
       markAiAnimationRangeDragDirty(true);
@@ -12319,6 +12327,7 @@
   }
 
   function findAiAnimationReferenceDropzoneFromTarget(target) {
+    if (isH3MultiReferenceNode(target)) return null;
     if (!(target instanceof Element)) return null;
     if (target.closest('[data-novaflow-ai-collapse-heading]')) return null;
     const direct = target.closest([
@@ -12404,6 +12413,7 @@
   }
 
   function getAiSequenceBottomUploadZoneLabel(dropzone) {
+    if (isH3MultiReferenceNode(dropzone)) return "";
     if (!(dropzone instanceof HTMLElement)) return "";
     const stableLabel = getAiSequenceCanonicalBottomUploadSlotLabel(dropzone);
     if (stableLabel) return stableLabel;
@@ -13023,6 +13033,7 @@
   }
 
   function bindAiSequenceUploadInputChange(input, dropzone) {
+    if (isH3MultiReferenceNode(input)) return;
     if (!(input instanceof HTMLInputElement) || !(dropzone instanceof HTMLElement)) return;
     input.__novaflowAiSequenceDropzone = dropzone;
     if (input.getAttribute("data-novaflow-ai-sequence-upload-change-bound") === "1") return;
@@ -13230,6 +13241,7 @@
   }
 
   function ensureAiSequenceUploadClickProxy(dropzone) {
+    if (isH3MultiReferenceNode(dropzone)) return null;
     if (!(dropzone instanceof HTMLElement)) return null;
     const rawKind = getAiSequenceSourceOwnedUploadKind(dropzone);
     const rawKindConfig = AI_SEQUENCE_SOURCE_OWNED_UPLOAD_KIND_CONFIG[rawKind] || null;
@@ -13613,6 +13625,7 @@
   }
 
   function bindAiAnimationReferenceDropzone(dropzone) {
+    if (isH3MultiReferenceNode(dropzone)) return;
     if (!(dropzone instanceof HTMLElement) || dropzone.getAttribute("data-novaflow-ai-reference-drop-bound") === "1") return;
     if (isAiSequenceSourceOwnedBottomReferenceSlot(dropzone)) return;
     setAttributeIfChanged(dropzone, "data-novaflow-ai-reference-drop-bound", "1");
@@ -13926,6 +13939,7 @@
   }
 
   function handleAiSequenceSourceOwnedBottomReferenceDragCapture(event, dropzone) {
+    if (isH3MultiReferenceNode(dropzone)) return false;
     if (!(dropzone instanceof HTMLElement) || !isAiSequenceSourceOwnedBottomReferenceSlot(dropzone)) return false;
     const files = event.type === "drop" ? getAiAnimationDropFiles(event) : [];
     if (!files.length && !hasAiAnimationFileDrag(event)) return false;
