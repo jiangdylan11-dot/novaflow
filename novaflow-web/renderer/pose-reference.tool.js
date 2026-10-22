@@ -457,7 +457,7 @@
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
-      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options-proportion{grid-template-columns:repeat(3,minmax(0,1fr))}.nf-pose-dialog .nf-pose-body-options-proportion button{min-width:0;padding:4px 2px;font-size:11px;white-space:nowrap}.nf-pose-modebar{display:flex;padding:8px 12px;border-bottom:1px solid #353535}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}.nf-pose-side label.nf-pose-position{display:flex;align-items:center;justify-content:space-between;gap:6px}.nf-pose-position input{width:88px}
+      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options-proportion{grid-template-columns:repeat(3,minmax(0,1fr))}.nf-pose-dialog .nf-pose-body-options-proportion button{min-width:0;padding:4px 2px;font-size:11px;white-space:nowrap}.nf-pose-modebar{display:flex;padding:8px 12px;border-bottom:1px solid #353535}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
       .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#0009;display:grid;place-items:center;padding:20px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
       .nf-pose-dialog{width:min(1140px,100%);height:min(800px,100%);display:flex;flex-direction:column;background:#202020;border:1px solid #414141;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
       .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;min-height:30px;padding:4px 9px;font:12px system-ui}
@@ -501,7 +501,7 @@
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
     async function run(fn) { try { await fn(); } catch (error) { message(error.message || String(error), true); } }
-    let viewer, resizeObserver, saveTimer, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, positionInputs = [], bodyControls = [], actorControls = [], axisControls = [], editModes = [];
+    let viewer, resizeObserver, saveTimer, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, bodyControls = [], actorControls = [], axisControls = [], editModes = [];
     function snapshot() { return { version: 2, ...characters.snapshot(), width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
     function persist() { if (viewer?.isInitialized() && characters) { try { root.localStorage.setItem(STORAGE, JSON.stringify(snapshot())); } catch (_) { message('浏览器无法保存姿势，请使用「保存姿势」下载文件', true); } } }
     function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); clearTimeout(saveTimer); saveTimer = setTimeout(persist, 180); syncAxes(); }
@@ -641,13 +641,6 @@
         });
         side.append(element('h3', { text: label }), element('div', { class: `nf-pose-body-options nf-pose-body-options-${key}`, role: 'group', 'aria-label': label }, choices));
       }
-      const movePerson = button('移动人物', () => viewer.selectBoneByName('Root')); side.append(movePerson); actorControls.push(movePerson);
-      positionInputs = ['x', 'y', 'z'].map(axis => {
-        const input = element('input', { type: 'number', min: axis === 'z' ? '-40' : '-50', max: axis === 'z' ? '40' : '50', step: '0.5', 'aria-label': `人物位置 ${axis.toUpperCase()}`, oninput: () => characters.setPosition(axis, input.value), onchange: () => {
-          characters.setPosition(axis, input.value); input.value = characters.active()?.transform[axis] ?? 0;
-        } });
-        side.append(element('label', { class: 'nf-pose-position', text: `位置 ${axis.toUpperCase()}` }, [input])); return input;
-      });
       selectedJoint = element('div', { class: 'nf-pose-selected-joint', role: 'status', text: '点击人偶上的关节进行旋转' });
       side.append(element('h3', { text: '骨骼编辑' }));
       editModes = [['translate', '移动关节'], ['rotate', '旋转关节']].map(([mode, text]) => {
@@ -721,7 +714,6 @@
       for (const control of actorControls) control.disabled = !current;
       for (const { key, value, control } of bodyControls) control.setAttribute('aria-pressed', String(current?.body[key] === value));
       if (libraryButton) libraryButton.disabled = !current;
-      positionInputs.forEach((input, i) => { input.disabled = !current; if (root.document.activeElement !== input) input.value = +(current?.transform[['x', 'y', 'z'][i]] ?? 0).toFixed(2); });
     }
 
     async function showLibrary() {
