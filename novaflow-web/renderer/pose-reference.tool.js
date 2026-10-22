@@ -160,7 +160,117 @@
     return labels[name] || `${suffix === 'l' ? '左' : suffix === 'r' ? '右' : ''}${labels[parts[0]] || name}${/^\d+$/.test(parts[1]) ? parts[1] : ''}`;
   }
 
+  // Joint offsets edit the rest shape, not just the pose skinning matrices.
+  // Rebuild from the immutable source mesh each time so edits and undo never
+  // accumulate stretching. Limb sections keep their width; the torso follows
+  // the edited hip and shoulder spans instead of leaving a fixed pelvis behind.
+  function configureBodyShape(viewer) {
+    if (viewer.nfPoseBodyShape) return viewer.nfPoseBodyShape;
+    const THREE = viewer.THREE;
+    let base, signature;
+    function capture() {
+      const mesh = viewer.skinnedMesh; if (!mesh) return;
+      base = { mesh, vertices: mesh.geometry.getAttribute('position').array.slice(), heads: {}, locals: {} };
+      function head(bone) {
+        if (base.heads[bone.name]) return base.heads[bone.name];
+        const local = (viewer.shapedBoneRestPositions?.[bone.name] || viewer.initialBoneStates[bone.name].position).clone();
+        base.locals[bone.name] = local.clone();
+        const parent = viewer.bones[bone.userData.parentName];
+        return base.heads[bone.name] = parent ? local.add(head(parent)) : local;
+      }
+      viewer.boneList.forEach(head); signature = null;
+    }
+    function apply() {
+      if (!base || base.mesh !== viewer.skinnedMesh) capture();
+      if (!base) return;
+      const mesh = viewer.skinnedMesh, bones = viewer.boneList;
+      // Hip sockets cannot be pulled arbitrarily far away from the pelvis.
+      // Keep the width adjustment useful without making a sheet across the groin.
+      for (const name of ['thigh_l', 'thigh_r']) {
+        const bone = viewer.bones[name], rest = base.locals[name];
+        if (bone && rest && Math.abs(rest.x) > 1e-5) {
+          const ratio = Math.max(0.55, Math.min(1.5, bone.position.x / rest.x));
+          bone.position.x = rest.x * ratio;
+        }
+      }
+      for (const bone of bones) {
+        if (!/^(calf_|foot_|lowerarm_|hand_|spine_0|neck_01)/.test(bone.name)) continue;
+        const rest = base.locals[bone.name], length = bone.position.length(), initialLength = rest.length();
+        if (initialLength < 1e-6) continue;
+        if (length < 1e-6) bone.position.copy(rest).multiplyScalar(0.35);
+        else bone.position.multiplyScalar(Math.max(initialLength * 0.35, Math.min(initialLength * 2, length)) / length);
+      }
+      // Root/hips translation is a pose operation (including hips IK), not a
+      // new torso rest shape. Keep it out of both the deformation and bind pose.
+      const shapeLocal = bone => /^(Root|pelvis)$/.test(bone.name) ? base.locals[bone.name] : bone.position;
+      const nextSignature = bones.map(bone => shapeLocal(bone).toArray().join(',')).join(';');
+      if (signature === nextSignature) return;
+      const heads = {};
+      function head(bone) {
+        if (heads[bone.name]) return heads[bone.name];
+        const parent = viewer.bones[bone.userData.parentName], local = shapeLocal(bone).clone();
+        return heads[bone.name] = parent ? local.add(head(parent)) : local;
+      }
+      bones.forEach(head);
+      const primaryChild = { Root: 'pelvis', pelvis: 'spine_01', spine_01: 'spine_02', spine_02: 'spine_03', spine_03: 'neck_01', neck_01: 'head' };
+      const sections = bones.map(bone => {
+        const name = bone.name, from = base.heads[name], to = heads[name];
+        const childName = primaryChild[name] || bones.find(child => child.userData.parentName === name)?.name;
+        const oldEnd = childName ? base.heads[childName] : from.clone().add(new THREE.Vector3().fromArray(bone.userData.tailPos).sub(new THREE.Vector3().fromArray(bone.userData.headPos)));
+        const newEnd = childName ? heads[childName] : to.clone().add(oldEnd.clone().sub(from));
+        const direction = oldEnd.clone().sub(from), length = direction.length(), nextDirection = newEnd.clone().sub(to);
+        const rotation = new THREE.Quaternion();
+        if (length > 1e-6 && nextDirection.length() > 1e-6) rotation.setFromUnitVectors(direction.clone().normalize(), nextDirection.clone().normalize());
+        return { name, from, to, direction: direction.normalize(), length, newLength: nextDirection.length(), rotation };
+      });
+      const span = (points, left, right) => ({ center: points[left].clone().add(points[right]).multiplyScalar(0.5), width: Math.abs(points[left].x - points[right].x) });
+      const oldHip = span(base.heads, 'thigh_l', 'thigh_r'), newHip = span(heads, 'thigh_l', 'thigh_r');
+      const oldShoulder = span(base.heads, 'upperarm_l', 'upperarm_r'), newShoulder = span(heads, 'upperarm_l', 'upperarm_r');
+      const geometry = mesh.geometry, positions = geometry.getAttribute('position'), indices = geometry.getAttribute('skinIndex').array, weights = geometry.getAttribute('skinWeight').array;
+      const point = new THREE.Vector3(), local = new THREE.Vector3(), warped = new THREE.Vector3(), result = new THREE.Vector3();
+      for (let i = 0; i < positions.count; i++) {
+        point.fromArray(base.vertices, i * 3); result.set(0, 0, 0);
+        for (let slot = 0; slot < 4; slot++) {
+          const weight = weights[i * 4 + slot]; if (!weight) continue;
+          const section = sections[indices[i * 4 + slot]];
+          local.copy(point).sub(section.from);
+          const along = local.dot(section.direction);
+          if (section.length > 1e-6) local.addScaledVector(section.direction, along * (section.newLength / section.length - 1));
+          warped.copy(local).applyQuaternion(section.rotation).add(section.to);
+          if (/^(pelvis|spine_0[123])$/.test(section.name)) {
+            const t = Math.max(0, Math.min(1, (point.y - oldHip.center.y) / (oldShoulder.center.y - oldHip.center.y)));
+            const blend = t * t * (3 - 2 * t);
+            const oldCenter = oldHip.center.x * (1 - blend) + oldShoulder.center.x * blend;
+            const newCenter = newHip.center.x * (1 - blend) + newShoulder.center.x * blend;
+            const width = newHip.width / oldHip.width * (1 - blend) + newShoulder.width / oldShoulder.width * blend;
+            warped.x = newCenter + (point.x - oldCenter) * width;
+          }
+          result.addScaledVector(warped, weight);
+        }
+        result.toArray(positions.array, i * 3);
+      }
+      positions.needsUpdate = true; geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
+      const rotations = bones.map(bone => bone.quaternion.clone()), meshPosition = mesh.position.clone(), meshRotation = mesh.quaternion.clone(), meshScale = mesh.scale.clone();
+      const posePositions = bones.map(bone => bone.position.clone());
+      bones.forEach(bone => bone.position.copy(shapeLocal(bone)));
+      bones.forEach(bone => bone.quaternion.identity()); mesh.position.set(0, 0, 0); mesh.quaternion.identity(); mesh.scale.set(1, 1, 1);
+      mesh.updateMatrixWorld(true); viewer.skeleton.calculateInverses();
+      bones.forEach((bone, i) => { bone.quaternion.copy(rotations[i]); bone.position.copy(posePositions[i]); }); mesh.position.copy(meshPosition); mesh.quaternion.copy(meshRotation); mesh.scale.copy(meshScale);
+      mesh.updateMatrixWorld(true); viewer.skeleton.update(); mesh.boundingBox = null; mesh.boundingSphere = null;
+      signature = nextSignature;
+    }
+    const shape = { apply }; viewer.nfPoseBodyShape = shape;
+    for (const name of ['setPose', 'resetPose', 'resetSelectedBone']) {
+      const original = viewer[name];
+      viewer[name] = function (...args) { const result = original.apply(this, args); apply(); return result; };
+    }
+    const loadData = viewer.loadData;
+    viewer.loadData = function (...args) { const result = loadData.apply(this, args); capture(); return result; };
+    capture(); return shape;
+  }
+
   function createCharacters(viewer, onChange = () => {}, models = {}) {
+    configureBodyShape(viewer);
     const people = [];
     let activeId = null, nextId = 1, loadedBody = null;
     const neutral = { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } };
@@ -320,6 +430,7 @@
       else { start = null; sync(); onChange(); }
     });
     function updateBone() {
+      viewer.nfPoseBodyShape?.apply();
       viewer.skinnedMesh.updateMatrixWorld(true); viewer.skeleton.update();
       viewer.updateIKEffectorPositions('all'); viewer.updatePoleTargetPositions(); viewer.requestRender(); onChange();
     }
@@ -553,6 +664,7 @@
           const n = Math.max(-180, Math.min(180, Number(value) || 0)); viewer.selectedBone.rotation[axis.toLowerCase()] = n * Math.PI / 180; viewer.selectedBone.updateMatrixWorld(true); viewer.updateIKEffectorPositions(); viewer.requestRender(); changed();
         };
         slider.addEventListener('pointerdown', () => viewer.recordState()); slider.addEventListener('input', () => commit(slider.value)); number.addEventListener('focus', () => viewer.recordState()); number.addEventListener('input', () => commit(number.value));
+        number.addEventListener('change', () => { if (movement?.getMode() === 'translate') number.value = +movement.getOffset(axis.toLowerCase()).toFixed(2); });
         side.append(element('div', { class: 'nf-pose-axis' }, [element('span', { text: axis }), slider, number])); return { slider, number };
       });
       const rigActions = element('div', { class: 'nf-pose-grid' }, [button('撤销', () => { viewer.undo(); changed(); }), button('重做', () => { viewer.redo(); changed(); }), button('重置关节', () => { viewer.recordState(); if (viewer.selectedBone?.name === 'Root') characters.setPositions({ x: 0, y: 0, z: 0 }); else viewer.resetSelectedBone(); changed(); }), button('重置姿势', () => { viewer.recordState(); viewer.resetPose(); changed(); })]); side.append(rigActions); actorControls.push(...rigActions.querySelectorAll('button'));

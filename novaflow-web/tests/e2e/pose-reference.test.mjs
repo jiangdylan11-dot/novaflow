@@ -209,6 +209,7 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   const catalog = JSON.parse(await readFile(new URL('vendor/vnccs/pose_studio/assets/body-types.json', renderer), 'utf8'));
   const models = Object.fromEntries(await Promise.all(catalog.bodies.map(async body => [body.id, JSON.parse(await readFile(new URL(`vendor/vnccs/pose_studio/assets/${body.file}`, renderer), 'utf8'))])));
   const characters = tool.createCharacters(viewer, () => {}, models);
+  const originalModel = JSON.stringify(models['adult-neutral']);
   characters.restore({ pose: { bones: { head: [12, 0, 0] } } });
   assert.equal(characters.active().body.gender, 'neutral', 'all people default to the neutral mannequin');
   const cameraBefore = viewer.camera.position.clone();
@@ -272,18 +273,24 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   }
   assert.ok(footVertex >= 0);
   const vertexBefore = viewer.skinnedMesh.getVertexPosition(footVertex, new THREE.Vector3());
+  const geometryBefore = viewer.skinnedMesh.geometry.getAttribute('position').array.slice();
   viewer.recordState(); movement.setOffset('y', -1.25);
   assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8);
   assert.ok(viewer.bones.foot_l.getWorldPosition(new THREE.Vector3()).distanceTo(footBefore) > 1.2, 'moving a joint changes limb length');
-  assert.ok(viewer.skinnedMesh.getVertexPosition(footVertex, new THREE.Vector3()).distanceTo(vertexBefore) > 1.2, 'the actual skinned vertices must follow, not just the marker');
+  const movedDistance = viewer.skinnedMesh.getVertexPosition(footVertex, new THREE.Vector3()).distanceTo(vertexBefore);
+  assert.ok(movedDistance > 1.2 && movedDistance < 1.3, 'rebinding must move foot vertices once, without applying the shape offset twice');
+  const geometryMoved = viewer.skinnedMesh.geometry.getAttribute('position').array.slice();
+  assert.notDeepEqual(geometryMoved, geometryBefore, 'joint offsets must change the actual rest mesh');
   assert.deepEqual(plain(viewer.getPose().bones), bonesBefore);
   assert.deepEqual({ ...characters.active().transform }, actorPositionBefore);
   viewer.undo(); assert.ok(viewer.bones.calf_l.position.distanceTo(localBefore) < 1e-8);
+  assert.deepEqual(viewer.skinnedMesh.geometry.getAttribute('position').array, geometryBefore, 'undo must rebuild the original geometry without accumulated stretching');
   viewer.redo(); assert.ok(Math.abs(movement.getOffset('y') + 1.25) < 1e-8);
   const edited = characters.snapshot();
   characters.select('person-1'); characters.select(second.id);
   assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8, 'joint positions survive person switching');
   characters.restore(edited);
+  assert.deepEqual(viewer.skinnedMesh.geometry.getAttribute('position').array, geometryMoved, 'edited geometry must survive save, person changes and restore');
   assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8, 'joint positions survive scene saving and restoring');
   viewer.selectBoneByName('head'); movement.setMode('rotate'); movement.sync();
   assert.equal(viewer.transform.mode, 'rotate'); assert.equal(viewer.transform.space, 'local'); assert.equal(viewer.ikMode, true);
@@ -306,6 +313,43 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   characters.setBody('proportion', 9);
   assert.ok(Math.abs(viewer.bones.calf_l.position.x - viewer.shapedBoneRestPositions.calf_l.x - 0.75) < 1e-8, 'head ratios retain manually edited offsets');
   assert.equal(characters.snapshot().characters[0].body.proportion, 9);
+  characters.restore({ pose: { bones: {} } });
+  const baseGeometry = viewer.skinnedMesh.geometry.getAttribute('position').array.slice();
+  const hipsPose = { bones: {}, hipBonePosition: { hips: viewer.shapedBoneRestPositions.pelvis.toArray().map((v, i) => v + (i === 1 ? 1 : 0)) } };
+  const hipVertexBefore = viewer.skinnedMesh.getVertexPosition(0, new THREE.Vector3());
+  viewer.setPose(hipsPose, true);
+  assert.deepEqual(viewer.skinnedMesh.geometry.getAttribute('position').array, baseGeometry, 'hips IK translation must remain a pose operation without changing rest geometry');
+  const hipVertexMoved = viewer.skinnedMesh.getVertexPosition(0, new THREE.Vector3());
+  const hipsSaved = characters.snapshot(); characters.restore(hipsSaved);
+  assert.ok(viewer.skinnedMesh.getVertexPosition(0, new THREE.Vector3()).distanceTo(hipVertexMoved) < 1e-6, 'hips IK pose must survive save and restore without changing the silhouette');
+  assert.ok(hipVertexMoved.distanceTo(hipVertexBefore) > 0.9);
+  viewer.setPose({ bones: {} }, true);
+  const pelvisIndex = viewer.boneList.indexOf(viewer.bones.pelvis);
+  const skin = viewer.skinnedMesh.geometry.getAttribute('skinIndex').array, weight = viewer.skinnedMesh.geometry.getAttribute('skinWeight').array;
+  let pelvisVertex = -1;
+  for (let i = 0; i < baseGeometry.length / 3; i++) {
+    if (baseGeometry[i * 3] < 0.4) continue;
+    let influence = 0;
+    for (let j = 0; j < 4; j++) if (skin[i * 4 + j] === pelvisIndex) influence += weight[i * 4 + j];
+    if (influence > 0.8) { pelvisVertex = i; break; }
+  }
+  assert.ok(pelvisVertex >= 0);
+  viewer.selectBoneByName('thigh_l'); movement.setMode('translate'); viewer.recordState();
+  const hipRest = viewer.shapedBoneRestPositions.thigh_l.x;
+  movement.setOffset('x', hipRest * 0.35);
+  const widerGeometry = viewer.skinnedMesh.geometry.getAttribute('position').array.slice();
+  assert.ok(widerGeometry[pelvisVertex * 3] > baseGeometry[pelvisVertex * 3] + 0.02, 'the pelvis skin must follow hip width even where leg skin weights are zero');
+  viewer.undo(); assert.deepEqual(viewer.skinnedMesh.geometry.getAttribute('position').array, baseGeometry);
+  viewer.redo(); assert.deepEqual(viewer.skinnedMesh.geometry.getAttribute('position').array, widerGeometry);
+  movement.setOffset('x', 20);
+  assert.ok(Math.abs(viewer.bones.thigh_l.position.x / hipRest - 1.5) < 1e-8, 'extreme hip offsets must stop at the shape boundary');
+  const calfRestLength = viewer.shapedBoneRestPositions.calf_l.length();
+  viewer.selectBoneByName('calf_l'); movement.setOffset('y', -20);
+  assert.ok(viewer.bones.calf_l.position.length() <= calfRestLength * 2 + 1e-8, 'limb length must stop before unlimited skin stretching');
+  viewer.bones.calf_l.position.set(0, 0, 0); viewer.nfPoseBodyShape.apply();
+  assert.ok(Math.abs(viewer.bones.calf_l.position.length() - calfRestLength * 0.35) < 1e-8, 'a joint must not collapse its parent segment to zero length');
+  assert.ok(viewer.skinnedMesh.geometry.getAttribute('position').array.every(Number.isFinite));
+  assert.equal(JSON.stringify(models['adult-neutral']), originalModel, 'deformation must never mutate the source model');
   viewer.clearPassiveCharacters(); viewer._cleanupPrevious();
 });
 
