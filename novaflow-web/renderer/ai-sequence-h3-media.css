@@ -1,4 +1,19 @@
-/* H3 only: original cards and reference-column geometry own all visuals. */
-html body [data-novaflow-h3-media-panel="1"] input[type="file"] {display:none !important;}
-html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards {display:flex; flex-wrap:wrap; align-content:flex-start; gap:10px; width:100%; min-width:0; height:100%; overflow:auto; box-sizing:border-box;}
-html body [data-novaflow-h3-media-panel="1"] > [role="alert"] {position:absolute; bottom:0; left:0; max-width:100%; color:#ffb0a8; font-size:11px;}
+/* H3 reference bar only. Parameters, prompts, and other workflows retain
+   their existing components; the same reference DOM stays below progress. */
+html body [data-novaflow-h3-media-panel="1"] input[type="file"],
+html body [data-novaflow-h3-media-panel="1"] audio {display:none !important;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards {display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:flex-start !important;gap:10px !important;width:100% !important;min-width:0 !important;max-width:100% !important;height:144px !important;min-height:144px !important;max-height:144px !important;overflow-x:auto !important;overflow-y:hidden !important;box-sizing:border-box;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-kind] {flex:0 0 132px !important;width:132px !important;min-width:132px !important;max-width:132px !important;height:132px !important;min-height:132px !important;max-height:132px !important;}
+/* Occupied media never inherit a placeholder plus or a proxy's pseudo-plus. */
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-source-id]::before,
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-source-id]::after {content:none !important;display:none !important;background:none !important;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-source-id] .nf-upload-dropzone__icon,
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-media-cards > [data-novaflow-h3-source-id] [data-novaflow-plus-glyph] {display:none !important;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-preview {position:relative;display:flex;flex:1 1 0;align-items:center;justify-content:center;min-width:0;min-height:0;width:100%;overflow:hidden;pointer-events:none;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-preview img,
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-preview video {display:block;width:100%;height:100%;min-height:0;object-fit:contain;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-audio {font-size:34px;line-height:1;color:#adbbbf;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-type {position:absolute;left:2px;top:2px;padding:1px 4px;border-radius:3px;background:#171717de;color:#ddd;font-size:10px;line-height:14px;white-space:nowrap;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-play {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:white;font-size:21px;text-shadow:0 1px 4px #000;}
+html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-duration {position:absolute;right:2px;bottom:2px;padding:0 3px;border-radius:3px;background:#171717de;color:#ddd;font-size:10px;line-height:14px;white-space:nowrap;}
+html body [data-novaflow-h3-media-panel="1"] > [role="alert"] {position:absolute;bottom:0;left:0;max-width:100%;color:#ffb0a8;font-size:11px;}

@@ -73,8 +73,25 @@
     }
     await store.add(items);
   }
+  const referenceLayouts=new WeakMap();
+  function layoutReferenceBar(bottom) {
+    const panel=bottom?.querySelector('[data-novaflow-h3-media-panel="1"]');
+    if(!panel){const previous=bottom&&referenceLayouts.get(bottom);if(previous){for(const {el,name,value,priority,ours}of previous){if(el.style.getPropertyValue(name)===ours&&el.style.getPropertyPriority(name)==='important'){if(value)el.style.setProperty(name,value,priority);else el.style.removeProperty(name);}}referenceLayouts.delete(bottom);}return false;}
+    const column=panel.closest('[data-novaflow-ai-reference-column="1"]'),main=column?.parentElement,prompts=bottom.querySelector('[data-novaflow-ai-prompt-grid="1"]'),settings=prompts?.parentElement;
+    if(!column||!main||!prompts||!settings)return false;
+    let records=referenceLayouts.get(bottom);if(!records){records=[];referenceLayouts.set(bottom,records);}
+    const put=(el,values)=>{for(const [name,value]of Object.entries(values)){let record=records.find(x=>x.el===el&&x.name===name);if(!record){record={el,name,value:el.style.getPropertyValue(name),priority:el.style.getPropertyPriority(name)};records.push(record);}record.ours=value;if(el.style.getPropertyValue(name)!==value||el.style.getPropertyPriority(name)!=='important')el.style.setProperty(name,value,'important');}};
+    put(main,{display:'grid','grid-template-columns':'minmax(0, 1fr)','grid-auto-flow':'row',gap:'10px',width:'100%','min-width':'0px','max-width':'100%',height:'auto','min-height':'0px','max-height':'none','--novaflow-ai-reference-column-width':'0px','--novaflow-ai-reference-offset':'0px'});
+    put(settings,{display:'contents',width:'auto','min-width':'0px','max-width':'none',height:'auto','min-height':'0px','max-height':'none'});
+    for(const row of bottom.querySelectorAll('[data-novaflow-ai-settings-row="1"]'))put(row,{'grid-column':'1','grid-row':'1',position:'relative',left:'0px',width:'100%','min-width':'0px','max-width':'100%','margin-top':'0px'});
+    for(const progress of bottom.querySelectorAll('[data-novaflow-ai-generation-progress="1"]'))put(progress,{'grid-column':'1','grid-row':'2',position:'relative',left:'0px',width:'100%','min-width':'0px','max-width':'100%','margin-top':'0px','margin-bottom':'0px'});
+    put(column,{'grid-column':'1','grid-row':'3',display:'block',width:'100%','min-width':'0px','max-width':'100%',flex:'0 0 auto',height:'144px','min-height':'144px','max-height':'144px','margin-top':'0px',overflow:'hidden'});
+    put(panel,{display:'block',width:'100%','min-width':'0px','max-width':'100%',height:'144px','min-height':'144px','max-height':'144px',overflow:'hidden',position:'relative',padding:'0px',margin:'0px'});
+    put(prompts,{'grid-column':'1','grid-row':'4',display:'grid','grid-template-columns':'minmax(0, 1fr)',width:'100%','min-width':'0px','max-width':'100%','margin-top':'0px'});
+    return true;
+  }
   function Panel({react:React,card:Card,boardId='b1',prompt='',onPromptChange,legacy=[]}) {
-    const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),inputs=React.useRef({});
+    const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[durations,setDurations]=React.useState({}),inputs=React.useRef({});
     React.useEffect(()=>store.subscribe(()=>setTick(t=>t+1)),[]);
     React.useEffect(()=>{let live=true;store.load(boardId).then(async()=>{
       if(!live||store.hasSaved(boardId)||store.get(boardId).length||!legacy.length)return;
@@ -86,16 +103,25 @@
     const action=fn=>async()=>{setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}};
     const drop=kind=>e=>action(()=>importFiles(kind,Array.from(e.dataTransfer?.files||[])))();
     const addTitles={image:'添加参考图',video:'添加参考视频',audio:'添加参考音频'};
+    const typeName={image:'图片',video:'视频',audio:'音频'};
+    const loaded=x=>e=>{const seconds=e.currentTarget.duration;if(Number.isFinite(seconds))setDurations(old=>old[x.sourceId]===seconds?old:{...old,[x.sourceId]:seconds});};
+    const preview=x=>h('div',{className:'nf-h3-card-preview','data-novaflow-h3-preview':x.kind},
+      x.kind==='image'?h('img',{src:x.dataUrl,alt:x.label}):x.kind==='video'?h('video',{src:x.dataUrl,muted:true,preload:'metadata',onLoadedMetadata:loaded(x)}):h('span',{className:'nf-h3-card-audio','aria-hidden':true},'♪'),
+      x.kind==='audio'?h('audio',{src:x.dataUrl,hidden:true,preload:'metadata',onLoadedMetadata:loaded(x)}):null,
+      h('span',{className:'nf-h3-card-type','data-novaflow-h3-type':x.kind},typeName[x.kind]),
+      x.kind==='video'?h('span',{className:'nf-h3-card-play','aria-hidden':true},'▶'):null,
+      x.kind!=='image'?h('span',{className:'nf-h3-card-duration','data-novaflow-h3-duration':x.kind},Number.isFinite(durations[x.sourceId])?durations[x.sourceId].toFixed(1)+'s':'读取时长…'):null);
+
     const report=store.getReport(boardId),detail=error||store.getError()||(report?'本次使用：'+report.selected.map(x=>x.label).join('、')+'；未使用：'+(report.unused.map(x=>x.label+'（'+x.fileName+'）').join('、')||'无'):'');
     return h('div',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,className:'nf-h3-media',title:detail||undefined,'aria-busy':busy},
       ...Object.keys(LIMITS).map(kind=>h('input',{key:kind,ref:el=>{inputs.current[kind]=el;},type:'file',hidden:true,tabIndex:-1,multiple:true,accept:kind+'/*','aria-label':'选择'+CN[kind],'data-novaflow-h3-upload':kind,disabled:busy||counts[kind]>=LIMITS[kind],onChange:e=>{const files=Array.from(e.target.files||[]);e.target.value='';action(()=>importFiles(kind,files))();}})),
       h('div',{className:'nf-h3-media-cards','data-novaflow-h3-card-list':'1'},
-        ...list.map(x=>h(Card,{key:x.sourceId,title:x.label,dataUrl:x.kind==='image'?x.dataUrl:null,mediaName:x.kind==='image'?undefined:x.label+' · '+x.fileName,onPick:()=>onPromptChange?.(current=>String(current||'')+' @'+x.label),onClear:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));}),onDropImport:drop(x.kind),h3Meta:{'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,'data-novaflow-h3-kind':x.kind,title:x.label+' · '+x.fileName,'aria-label':x.label+' '+x.fileName}})),
+        ...list.map(x=>h(Card,{key:x.sourceId,title:typeName[x.kind]+' '+x.modelToken.match(/\d+/)[0],dataUrl:x.kind==='image'?x.dataUrl:null,mediaName:undefined,h3Preview:preview(x),onPick:()=>onPromptChange?.(current=>String(current||'')+' @'+x.label),onClear:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));}),onDropImport:drop(x.kind),h3Meta:{'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,'data-novaflow-h3-kind':x.kind,title:x.label+' · '+x.fileName,'aria-label':x.label+' '+x.fileName}})),
         ...Object.keys(LIMITS).filter(kind=>counts[kind]<LIMITS[kind]).map(kind=>h(Card,{key:'add-'+kind,title:addTitles[kind],dataUrl:null,onPick:()=>{if(!busy)inputs.current[kind]?.click();},onDropImport:drop(kind),h3Meta:{'data-novaflow-h3-add':kind,'data-novaflow-h3-kind':kind,'aria-label':addTitles[kind]}}))
       ),
       error||store.getError()?h('span',{role:'alert','data-novaflow-h3-media-error':'1'},error||store.getError()):null
     );
   }
-  const api={LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
+  const api={layoutReferenceBar,LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
   root.NovaFlowH3Media=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

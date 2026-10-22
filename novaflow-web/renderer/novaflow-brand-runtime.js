@@ -11023,6 +11023,8 @@
       stabilizeAiSequenceBottomReferenceDropzoneHitTarget(canonicalDropzone);
       Array.from(canonicalDropzone.querySelectorAll("div, span")).forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
+        // H3 media badges and duration overlays own their internal layout.
+        if (node.closest('[data-novaflow-h3-preview]')) return;
         const text = normalizeText(node.textContent || "");
         setImportantStyles(node, {
           margin: "0",
@@ -11267,9 +11269,7 @@
       ? referenceColumn.closest('[data-novaflow-ai-bottom-workspace="1"][data-novaflow-source-layout="1"]')
       : null;
     if (sourceOwnedBottomWorkspace instanceof HTMLElement) {
-      // Keep the same three-card reference-column geometry as files accumulate.
-      const sourceOwnedCount = referenceColumn.querySelector('[data-novaflow-h3-media-panel="1"]')
-        ? 3 : Math.max(1, Math.min(6, dropzones.length || 1));
+      const sourceOwnedCount = Math.max(1, Math.min(6, dropzones.length || 1));
       const sourceOwnedFallbackWidth = sourceOwnedCount * AI_ANIMATION_REFERENCE_UPLOAD_WIDTH + Math.max(0, sourceOwnedCount - 1) * AI_ANIMATION_REFERENCE_UPLOAD_GAP;
       nfAnimationPerfCount("aiAnimationSourceReferenceMetricsFastPath");
       return getAiAnimationSourceOwnedReferenceMetrics(referenceColumn, dropzones, sourceOwnedFallbackWidth, sourceOwnedCount, options);
@@ -11566,6 +11566,9 @@
 
   function syncAiAnimationSourceOwnedBottomLayout(bottomWorkspace) {
     if (!(bottomWorkspace instanceof HTMLElement)) return;
+    // H3 owns one full-width horizontal reference bar in this same dock.
+    // Do not reapply the old fixed reference-column width/height afterward.
+    if (window.NovaFlowH3Media?.layoutReferenceBar?.(bottomWorkspace)) return;
     const mainRow = bottomWorkspace.querySelector('[data-novaflow-ai-bottom-main-row="1"]');
     const referenceColumn = bottomWorkspace.querySelector('[data-novaflow-ai-reference-column="1"]');
     const promptGrid = bottomWorkspace.querySelector('[data-novaflow-ai-prompt-grid="1"]');
