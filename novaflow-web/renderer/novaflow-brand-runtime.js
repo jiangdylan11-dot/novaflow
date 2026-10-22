@@ -11309,7 +11309,7 @@
   function isAiAnimationModelMethodSelect(node) {
     if (!(node instanceof HTMLSelectElement)) return false;
     return Array.from(node.options || []).some((option) =>
-      ["local_a", "minimax_h3_local"].includes(String(option.value || ""))
+      ["local_a", "minimax_h3_local", "beta5_int8", "beta6_int8"].includes(String(option.value || ""))
     );
   }
 
@@ -11317,7 +11317,7 @@
     if (!(root instanceof Document) && !(root instanceof HTMLElement)) return "";
     const modelSelect = Array.from(root.querySelectorAll("select")).find((node) => isAiAnimationModelMethodSelect(node));
     if (!(modelSelect instanceof HTMLSelectElement)) return "";
-    return String(modelSelect.value || "").trim();
+    return ["beta5_int8","beta6_int8"].includes(modelSelect.value) ? "minimax_h3_local" : String(modelSelect.value || "").trim();
   }
 
   function isAiAnimationCloudModelMethod(root = document) {
@@ -63380,6 +63380,7 @@
   }
 
   function aiSequenceMiniMaxH3ResourceMentionSnapshot() {
+    if (window.NovaFlowH3Media?.getResources) return window.NovaFlowH3Media.getResources();
     const workspace = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
     return Object.entries(AI_SEQUENCE_SOURCE_OWNED_UPLOAD_KIND_CONFIG).map(([key, config]) => {
       const slot = workspace instanceof HTMLElement

@@ -369,9 +369,9 @@
     const selects = document.querySelectorAll ? document.querySelectorAll("select") : [];
     const select = Array.from(selects).find((node) => (
       node instanceof HTMLSelectElement &&
-      Array.from(node.options || []).some((option) => String(option?.value || "") === MINIMAX_H3_MODEL_ID)
+      Array.from(node.options || []).some((option) => [MINIMAX_H3_MODEL_ID, "beta5_int8", "beta6_int8"].includes(String(option?.value || "")))
     ));
-    return select instanceof HTMLSelectElement ? String(select.value || "").trim() : "";
+    return select instanceof HTMLSelectElement ? (["beta5_int8","beta6_int8"].includes(select.value) ? MINIMAX_H3_MODEL_ID : String(select.value || "").trim()) : "";
   }
 
   function miniMaxH3ActiveModelMethod(workspace) {
@@ -393,6 +393,9 @@
       : null;
     const durationSeconds = Number(durationInput?.value);
     const mode = miniMaxH3ActiveMode(workspace);
+    if (mode === 'multi_reference' && window.NovaFlowH3Media?.getResources) {
+      return Object.freeze({modelId, mode, durationSeconds, resources: window.NovaFlowH3Media.getResources()});
+    }
     return Object.freeze({
       modelId,
       mode,

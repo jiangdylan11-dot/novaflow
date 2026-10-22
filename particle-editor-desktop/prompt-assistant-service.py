@@ -16266,7 +16266,7 @@ class PromptAssistant:
         image_tensors = []
         if media_frames:
             labels = set(re.findall(r"<(?:Picture|Video) [1-9]\d*>", all_inventory_text))
-            if not isinstance(media_frames, list) or len(media_frames) > 13:
+            if not isinstance(media_frames, list) or len(media_frames) > 36:
                 raise ValueError("H3 参考画面数量无效")
             last_times = {}
             for item in media_frames:

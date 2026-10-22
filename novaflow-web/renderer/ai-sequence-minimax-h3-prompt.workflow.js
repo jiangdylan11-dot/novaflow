@@ -73,12 +73,21 @@
   )
 
   const MULTI_REFERENCE_SLOTS = Object.freeze([
-    referenceSlot('multi_ref_image_1', '\u53c2\u8003\u56fe1', 'image', '', ['@\u53c2\u8003\u56fe1', '@\u56fe\u72471']),
-    referenceSlot('multi_ref_image_2', '\u53c2\u8003\u56fe2', 'image', '', ['@\u53c2\u8003\u56fe2', '@\u56fe\u72472']),
-    referenceSlot('multi_ref_image_3', '\u53c2\u8003\u56fe3', 'image', '', ['@\u53c2\u8003\u56fe3', '@\u56fe\u72473']),
-    referenceSlot('multi_ref_image_4', '\u53c2\u8003\u56fe4', 'image', '', ['@\u53c2\u8003\u56fe4', '@\u56fe\u72474']),
-    referenceSlot('multi_ref_video_1', '\u89c6\u9891\u53c2\u8003', 'video', '', ['@\u89c6\u9891\u53c2\u8003', '@\u89c6\u98911']),
-    referenceSlot('multi_ref_audio_1', '\u58f0\u97f3\u53c2\u8003', 'audio', '', ['@\u58f0\u97f3\u53c2\u8003', '@\u97f3\u98911', '@\u97f3\u9891\u53c2\u8003']),
+    referenceSlot('multi_ref_image_1', '参考图1', 'image', '', ['@参考图1', '@图片1']),
+    referenceSlot('multi_ref_image_2', '参考图2', 'image', '', ['@参考图2', '@图片2']),
+    referenceSlot('multi_ref_image_3', '参考图3', 'image', '', ['@参考图3', '@图片3']),
+    referenceSlot('multi_ref_image_4', '参考图4', 'image', '', ['@参考图4', '@图片4']),
+    referenceSlot('multi_ref_image_5', '参考图5', 'image', '', ['@参考图5', '@图片5']),
+    referenceSlot('multi_ref_image_6', '参考图6', 'image', '', ['@参考图6', '@图片6']),
+    referenceSlot('multi_ref_image_7', '参考图7', 'image', '', ['@参考图7', '@图片7']),
+    referenceSlot('multi_ref_image_8', '参考图8', 'image', '', ['@参考图8', '@图片8']),
+    referenceSlot('multi_ref_image_9', '参考图9', 'image', '', ['@参考图9', '@图片9']),
+    referenceSlot('multi_ref_video_1', '视频参考1', 'video', '', ['@视频参考1', '@视频1', '@视频参考']),
+    referenceSlot('multi_ref_video_2', '视频参考2', 'video', '', ['@视频参考2', '@视频2']),
+    referenceSlot('multi_ref_video_3', '视频参考3', 'video', '', ['@视频参考3', '@视频3']),
+    referenceSlot('multi_ref_audio_1', '声音参考1', 'audio', '', ['@声音参考1', '@音频1', '@声音参考']),
+    referenceSlot('multi_ref_audio_2', '声音参考2', 'audio', '', ['@声音参考2', '@音频2']),
+    referenceSlot('multi_ref_audio_3', '声音参考3', 'audio', '', ['@声音参考3', '@音频3']),
   ])
 
   function mode(value, workflowMode, protocolName, fieldOrder, slots) {
@@ -125,7 +134,7 @@
   const MEDIA_REFERENCE_EXPRESSION = /<(Picture|Video|Audio) ([1-9][0-9]*)>/g
   // Five-section prompts written before the official layout (history, old engines).
   const LEGACY_EXPRESSION = /^\s*(?:【任务定位】|\{\s*"task"\s*:)/
-  const UI_REFERENCE_ALIAS_EXPRESSION = /@(?:\u9996\u5e27|\u5c3e\u5e27|\u7ed3\u675f\u5e27|\u53c2\u8003\u56fe(?:[1-4])?|\u56fe\u7247[1-4]|\u89c6\u9891\u53c2\u8003|\u89c6\u98911|\u58f0\u97f3\u53c2\u8003|\u97f3\u9891\u53c2\u8003|\u97f3\u98911)(?:\s*\((?:image|video|audio)\))?/iu
+  const UI_REFERENCE_ALIAS_EXPRESSION = /@(?:\u9996\u5e27|\u5c3e\u5e27|\u7ed3\u675f\u5e27|\u53c2\u8003\u56fe(?:[1-9])?|\u56fe\u7247[1-9]|\u89c6\u9891\u53c2\u8003[1-3]?|\u89c6\u9891[1-3]|\u58f0\u97f3\u53c2\u8003[1-3]?|\u97f3\u9891\u53c2\u8003[1-3]?|\u97f3\u9891[1-3])(?:\s*\((?:image|video|audio)\))?/iu
   const EXPLICIT_MINOR_EXPRESSION = /(?:\u672a\u6210\u5e74\u4eba?|\u672a\u6ee1\s*(?:18|\u5341\u516b)\s*\u5c81?|(?:18|\u5341\u516b)\s*\u5c81?\s*(?:\u4ee5\u4e0b|\u4ee5\u5185)|(?<![0-9])(?:1[0-7]|[0-9])\s*\u5c81(?![0-9])|\u513f\u7ae5|\u5b69\u7ae5|\u5c0f\u5b69|\u5e7c\u5973|\u5e7c\u7ae5|\u5e7c\u513f|\u5a74\u5e7c\u513f?|\u5a74\u513f|\u841d\u8389|\u6b63\u592a)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu
 
   function stringValue(value) {
@@ -1183,11 +1192,25 @@
   // effort for prompts the AI 助手 wrote. Anything it cannot turn into that (free-form text, a
   // prompt from another mode, a translate step that is missing or fails) goes out as the user
   // wrote it, the way every prompt did before the official layout. Only 任务中止 stops here.
+  function assertExplicitReferences(options, modelText) {
+    if (normalizeMode(options?.mode || 'multi_reference') !== 'multi_reference') return true
+    const catalog = createReferenceCatalog({mode:'multi_reference', resources:options.resources})
+    const original = toModelReferences(String(options.prompt || ''), catalog)
+    if (/\[已删除素材[:：]/.test(original)) { const e = new Error('提示词仍引用已删除素材，请先修改提示词'); e.h3ReferenceBinding = true; throw e }
+    const required = new Set(original.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])
+    const used = new Set(String(modelText).match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])
+    const missing = [...required].filter(token => !used.has(token))
+    if (missing.length) { const e = new Error('提示词编译遗漏明确引用的素材：' + missing.join('、')); e.h3ReferenceBinding = true; throw e }
+    return true
+  }
+
   async function compileForGeneration(options, optimize) {
     try {
-      return await compileOfficialForGeneration(options, optimize)
+      const result = await compileOfficialForGeneration(options, optimize)
+      assertExplicitReferences(options, result.modelText)
+      return result
     } catch (error) {
-      if (error?.novaflowStopped) throw error
+      if (error?.novaflowStopped || error?.h3ReferenceBinding) throw error
       const source = stringValue(options?.prompt).trim()
       let modelText = source
       try {
@@ -1226,6 +1249,7 @@
 
   const API = {
     compileForGeneration,
+    assertExplicitReferences,
     SNAPSHOT_VERSION,
     MINIMAX_H3_MODEL_ID,
     H3_VISUAL_SCHEMA,

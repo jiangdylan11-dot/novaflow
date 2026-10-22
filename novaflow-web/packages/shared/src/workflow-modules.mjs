@@ -140,6 +140,7 @@ export function workflowModelId(name, options) {
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
     if (ui || draw) return 'qwen-image-2.1';
   }
+  if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && String(options?.profile || options?.params?.profile) === 'beta6_int8') return 'minimax-h3-beta6';
   return entry.modelId;
 }
 

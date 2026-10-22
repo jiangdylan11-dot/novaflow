@@ -28,7 +28,7 @@
     Object.freeze({ key: "last_frame", label: "尾帧", kind: "image" })
   ]);
   const UI_DESIGN_MAX_REFERENCES = 15;
-  const READABLE_MENTION_SOURCE = "@参考图[1-9][0-9]*|@参考图(?![0-9])|@首帧|@尾帧|@视频参考|@声音参考";
+  const READABLE_MENTION_SOURCE = "@参考图[1-9][0-9]*|@参考图(?![0-9])|@首帧|@尾帧|@视频参考[1-3]?|@声音参考[1-3]?";
   const mountedControllers = new Set();
   const controllerByTextarea = new WeakMap();
   const menuByDocument = new WeakMap();
@@ -84,6 +84,7 @@
     const normalized = normalizeSurface(surface);
     if (normalized === "art-generate") return artGenerateResourceConfig(resources);
     if (normalized === "ui-design") return uiDesignResourceConfig(resources);
+    if (normalized === "minimax_h3" || normalized === "minimax-h3") return (globalThis.NovaFlowAiSequenceMiniMaxH3Resource?.multiReferenceSlots || []).map(x=>({key:x.key,label:x.label,kind:x.kind}));
     if (normalized === "minimax-h3-image-video") return MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG;
     if (normalized === "minimax-h3-first-last") return MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG;
     return SEEDANCE_RESOURCE_CONFIG;

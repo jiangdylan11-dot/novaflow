@@ -1,6 +1,7 @@
 (function (root, factory) {
   const profiles = Object.freeze([
-    Object.freeze({ id: 'beta5_int8', label: 'H3 beta5 TURBO · INT8', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
+    Object.freeze({ id: 'beta5_int8', label: '本地 beta5', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
+    Object.freeze({ id: 'beta6_int8', label: '本地 beta6', steps: 8, referenceOnly: true, checkpoint: 'Minimax_H3\\10Eros_Max_h3_8stepTURBO_beta6_int8.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'
@@ -8,6 +9,7 @@
   const settings = {}
   try {
     const saved = JSON.parse(root.localStorage.getItem(storageKey) || '{}')
+    if (profiles.some(p => p.id === saved.selected)) selected = saved.selected
     if (saved.settings && typeof saved.settings === 'object') {
       for (const profile of profiles) {
         if (saved.settings[profile.id]) settings[profile.id] = saved.settings[profile.id]
@@ -60,6 +62,33 @@
     if (!instances.has(key)) instances.set(key, factory(profile, acceleration))
     return instances.get(key)
   }
+  const prepareOptions = (input, inspection = false) => {
+    const bag = typeof input === 'string' ? {mode:input} : {...input?.params, ...input}
+    const profile = profileFor(bag.profile || selected)
+    bag.profile = profile.id
+    if (bag.steps == null) bag.steps = getProfileSettings(profile.id).steps
+    if (!profile.referenceOnly) return bag
+    const aliases = {text_video:'t2v',image_video:'i2v',first_last:'fl2v',multi_reference:'r2v'}
+    const mode = aliases[bag.mode] || bag.mode || 't2v'
+    if (bag.sourceMode) return bag
+    bag.sourceMode = mode
+    bag.mode = 'r2v'
+    if (mode === 'r2v') return bag
+    if (!['t2v','i2v','fl2v'].includes(mode)) throw new Error('Unknown beta6 mode')
+    const images = bag.images || (inspection ? (mode === 'i2v' ? ['first-frame.png'] : mode === 'fl2v' ? ['first-frame.png','last-frame.png'] : []) : [])
+    if (mode === 't2v') {
+      if (images.length || bag.firstFrame || bag.lastFrame) throw new Error('文生视频不接受参考帧')
+      bag.referenceImages = []
+    } else {
+      const first = bag.firstFrame || bag.firstImage || images[0]
+      const last = bag.lastFrame || bag.lastImage || images[1]
+      if (!first || (mode === 'fl2v' && !last) || images.length > (mode === 'i2v' ? 1 : 2) || (mode === 'i2v' && last)) throw new Error('beta6 首尾帧素材数量无效')
+      bag.referenceImages = mode === 'i2v' ? [first] : [first,last]
+      bag.frameGuides = mode === 'i2v' ? [0] : [0,-1]
+      bag.prompt = (mode === 'i2v' ? '<Picture 1> is the correct opening scene identity; preserve its characters, composition, lighting and background. ' : '<Picture 1> is the opening frame. <Picture 2> is the final frame. Connect the two endpoints with continuous motion. ') + String(bag.prompt || '')
+    }
+    return bag
+  }
   const api = Object.freeze({
     ...instances.get('beta5_int8'),
     PROFILES: profiles,
@@ -77,10 +106,10 @@
       const core = instances.get(profileFor(id).id)
       try { core.normalizeSteps(4, mode); return true } catch (_) { return false }
     },
-    getWorkflowJson: options => pick(options).getWorkflowJson(options),
-    buildWorkflow: options => pick(options).buildWorkflow(options),
-    patchWorkflow: (workflow, options) => pick(options).patchWorkflow(workflow, options),
-    validateWorkflow: (workflow, options) => pick(options).validateWorkflow(workflow, options),
+    getWorkflowJson: options => pick(prepareOptions(options,true)).getWorkflowJson(prepareOptions(options,true)),
+    buildWorkflow: options => pick(prepareOptions(options)).buildWorkflow(prepareOptions(options)),
+    patchWorkflow: (workflow, options) => pick(prepareOptions(options)).patchWorkflow(workflow, prepareOptions(options)),
+    validateWorkflow: (workflow, options) => pick(prepareOptions(options,true)).validateWorkflow(workflow, prepareOptions(options,true)),
   })
   persist()
   if (typeof module === 'object' && module.exports) module.exports = api
@@ -112,7 +141,7 @@
   const MAX_DURATION = 30
   const DURATION_STEP = 0.01
   const DEFAULT_PREFIX = 'video/MiniMax_H3'
-  const MAX_REFERENCE_IMAGES = 4
+  const MAX_REFERENCE_IMAGES = 9
 
   const ASPECT_RATIOS = Object.freeze([
     Object.freeze({ value: '1:1', width: 1, height: 1, orientation: 'square', label: '1:1（方形）' }),
@@ -173,6 +202,8 @@
 
   const CORE_NODE_TYPES = new Set([
     'NovaFlowH3SageAttention',
+    'MiniMaxH3SigmaShift',
+    'MiniMaxH3AddGuide',
     'UNETLoader',
     'CLIPLoader',
     'VAELoader',
@@ -710,8 +741,13 @@
     }
 
 
+    if (profile.referenceOnly) {
+      workflow['17'] = node('MiniMaxH3SigmaShift', {model:['1',0],shift_video:10,shift_audio:3}, 'beta6 video/audio shift 10/3')
+      workflow['6'].inputs.model = ['17',0]
+      workflow['9'].inputs.model = ['17',0]
+    }
     if (SAGE_ATTENTION) {
-      workflow['16'] = node('NovaFlowH3SageAttention', { model: ['1', 0] }, 'H3 SageAttention 加速')
+      workflow['16'] = node('NovaFlowH3SageAttention', { model: [profile.referenceOnly ? '17' : '1', 0] }, 'H3 SageAttention 加速')
       workflow['9'].inputs.model = ['16', 0]
     }
     return workflow
@@ -737,12 +773,12 @@
         }, 'reference_image_' + (index + 1))
         workflow['5'].inputs['ref_images.ref_image_' + index] = [id, 0]
       }
-      workflow['24'] = node('LoadVideo', { file: 'reference-video.mp4' }, 'reference_video')
-      workflow['25'] = node('GetVideoComponents', { video: ['24', 0] }, 'reference_video_components')
-      workflow['26'] = node('LoadAudio', { audio: 'reference-audio.wav' }, 'reference_audio')
-      workflow['27'] = node('NovaFlowH3ReferenceVideoFrames', { images: ['25', 0], source_fps: ['25', 2] }, 'Reference video at source timestamps')
-      workflow['5'].inputs['ref_videos.ref_video_0'] = ['27', 0]
-      workflow['5'].inputs['ref_audios.ref_audio_0'] = ['26', 0]
+      workflow['40'] = node('LoadVideo', { file: 'reference-video.mp4' }, 'reference_video')
+      workflow['41'] = node('GetVideoComponents', { video: ['40', 0] }, 'reference_video_components')
+      workflow['42'] = node('LoadAudio', { audio: 'reference-audio.wav' }, 'reference_audio')
+      workflow['43'] = node('NovaFlowH3ReferenceVideoFrames', { images: ['41', 0], source_fps: ['41', 2] }, 'Reference video at source timestamps')
+      workflow['5'].inputs['ref_videos.ref_video_0'] = ['43', 0]
+      workflow['5'].inputs['ref_audios.ref_audio_0'] = ['42', 0]
     }
     return workflow
   }
@@ -821,41 +857,40 @@
       'referenceImages',
     )
     if (referenceImages.length > MAX_REFERENCE_IMAGES) {
-      throw new RangeError('MiniMax H3 supports at most four reference images')
+      throw new RangeError('MiniMax H3 supports at most nine reference images')
     }
-    let referenceVideo = optionalFile(
-      firstProvided(options.referenceVideo, options.video),
-      'referenceVideo',
-    )
-    let referenceAudio = optionalFile(
-      firstProvided(options.referenceAudio, options.audio),
-      'referenceAudio',
-    )
+    let referenceVideos = fileList(options.referenceVideos ?? (options.referenceVideo || options.video ? [options.referenceVideo || options.video] : []), 'referenceVideos')
+    let referenceAudios = fileList(options.referenceAudios ?? (options.referenceAudio || options.audio ? [options.referenceAudio || options.audio] : []), 'referenceAudios')
+    if (referenceVideos.length > 3 || referenceAudios.length > 3) throw new Error('H3 最多支持 3 个视频和 3 个独立音频')
+    const originalGroups = {Picture:referenceImages.slice(), Video:referenceVideos.slice(), Audio:referenceAudios.slice()}
+    const bindingFiles = new Map((options.resourceBindings || []).map(b => [b.uploadedName,b]))
+    const tag = (id, kind, index, file) => { const b = bindingFiles.get(file); workflow[id]._meta = {...workflow[id]._meta, h3_source_id:b?.sourceId || file, h3_slot:b?.key || kind + (index+1), h3_model_token:'<' + kind + ' ' + (index+1) + '>', h3_uploaded_name:file} }
     if (/^subject_definitions:/m.test(conditioning.inputs.prompt)) {
-      // Uploaded assets are available choices, not mandatory conditioning.
-      // Compact selected pictures and their IDs together so Picture 2 cannot
-      // accidentally bind to the first (unused) uploaded file.
       const text = conditioning.inputs.prompt
       const used = new Set(text.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])
       const mapped = new Map()
-      referenceImages = referenceImages.filter((file, index) => {
-        const label = '<Picture ' + (index + 1) + '>'
-        if (!used.has(label)) return false
-        mapped.set(label, '<Picture ' + (mapped.size + 1) + '>')
-        return true
-      })
       for (const label of used) {
-        if (label.startsWith('<Picture ') && !mapped.has(label)) throw new TypeError('H3 引用的图片未上传：' + label)
-        if (label.startsWith('<Video ') && (label !== '<Video 1>' || !referenceVideo)) throw new TypeError('H3 引用的视频未上传：' + label)
-        if (label.startsWith('<Audio ') && (label !== '<Audio 1>' || !referenceAudio)) throw new TypeError('H3 缺少已引用的声音参考：' + label)
+        const [,kind,n] = /^<(Picture|Video|Audio) (\d+)>$/.exec(label)
+        if (!originalGroups[kind][Number(n)-1]) throw new Error('H3 引用的素材未上传：' + label)
       }
-      referenceVideo = used.has('<Video 1>') ? referenceVideo : ''
-      referenceAudio = used.has('<Audio 1>') ? referenceAudio : ''
-      conditioning.inputs.prompt = text.replace(/<Picture [1-9]\d*>/g, label => mapped.get(label))
+      for (const [kind,files] of Object.entries(originalGroups)) {
+        let i = 0
+        const selected = files.filter((file,index) => {
+          const label = '<' + kind + ' ' + (index+1) + '>'
+          if (!used.has(label)) return false
+          mapped.set(label,'<' + kind + ' ' + (++i) + '>'); return true
+        })
+        if (kind === 'Picture') referenceImages = selected
+        if (kind === 'Video') referenceVideos = selected
+        if (kind === 'Audio') referenceAudios = selected
+      }
+      conditioning.inputs.prompt = text.replace(/<(?:Picture|Video|Audio) [1-9]\d*>/g, label => mapped.get(label))
     }
-    if (!referenceImages.length && !referenceVideo && !referenceAudio) {
-      throw new TypeError('MiniMax H3 reference mode requires an image, video, or audio reference')
-    }
+    if (!referenceImages.length && !referenceVideos.length && !referenceAudios.length && !profile.referenceOnly) throw new Error('H3 多参模式至少需要一份素材')
+    conditioning._meta.h3_source_mode = options.sourceMode || 'r2v'
+    conditioning._meta.h3_bindings = []
+    for (const [kind,files] of [['Picture',referenceImages],['Video',referenceVideos],['Audio',referenceAudios]]) files.forEach((file,i) => conditioning._meta.h3_bindings.push({...bindingFiles.get(file), uploadedName:file, modelToken:'<' + kind + ' ' + (i+1) + '>'}))
+    conditioning._meta.h3_unused_uploads = Object.values(originalGroups).flat().filter(file => ![...referenceImages,...referenceVideos,...referenceAudios].includes(file))
 
     oneByClass(workflow, 'CreateVideo')[1].inputs.images = [oneByClass(workflow, 'VAEDecode')[0], 0]
     removeReferenceLoaders(workflow)
@@ -866,10 +901,11 @@
       workflow[id] = node('LoadImage', {
         image: referenceImages[index],
       }, 'reference_image_' + (index + 1))
+      tag(id, 'Picture', index, referenceImages[index])
       conditioning.inputs['ref_images.ref_image_' + index] = [id, 0]
     }
 
-    if (referenceVideo) {
+    referenceVideos.forEach((referenceVideo, index) => {
       const videoId = nextNodeId(workflow)
       workflow[videoId] = node('LoadVideo', { file: referenceVideo }, 'reference_video')
       const componentsId = nextNodeId(workflow)
@@ -880,8 +916,9 @@
       workflow[framesId] = node('NovaFlowH3ReferenceVideoFrames', {
         images: [componentsId, 0], source_fps: [componentsId, 2],
       }, 'Reference video at source timestamps')
-      conditioning.inputs['ref_videos.ref_video_0'] = [framesId, 0]
-    }
+      tag(videoId, 'Video', index, referenceVideo)
+      conditioning.inputs['ref_videos.ref_video_' + index] = [framesId, 0]
+    })
 
     for (let index = 0; index < referenceImages.length; index += 1) {
       const imageLink = conditioning.inputs['ref_images.ref_image_' + index]
@@ -902,9 +939,9 @@
     const sourceEdit = /(?:^|\n)summary:\s*\[[^\]]*\bvideo editing\b/.test(conditioning.inputs.prompt)
     // AI-authored controls are separate from the visible prose. A local
     // attribute edit must not authorize erasing the entire foreground.
-    const preserveBackground = sourceEdit && editPolicy.preserveBackground === true
+    const preserveBackground = referenceVideos.length === 1 && sourceEdit && editPolicy.preserveBackground === true
     const appearanceGuide = preserveBackground && editPolicy.preserveMotion === true && editPolicy.sameShapeAppearanceOnly === true
-    if (referenceImages.length === 1 && sourceVideoLink && (appearanceGuide || options.referencePreprocessing === 'isolated_sprite_motion')) {
+    if (referenceVideos.length === 1 && referenceImages.length === 1 && sourceVideoLink && (appearanceGuide || options.referencePreprocessing === 'isolated_sprite_motion')) {
       // The node checks every frame and leaves complex scenes untouched. For
       // a single flat-background sprite it suppresses old surface markings,
       // retaining the original boundary and directional lighting cues.
@@ -920,20 +957,22 @@
       create.inputs.images = [layoutId, 0]
     }
 
-    if (referenceAudio) {
+    referenceAudios.forEach((referenceAudio, index) => {
       const audioId = nextNodeId(workflow)
       workflow[audioId] = node('LoadAudio', { audio: referenceAudio }, 'reference_audio')
-      conditioning.inputs['ref_audios.ref_audio_0'] = [audioId, 0]
-    }
+      tag(audioId, 'Audio', index, referenceAudio)
+      conditioning.inputs['ref_audios.ref_audio_' + index] = [audioId, 0]
+    })
     // Only literal full-track reuse bypasses generated audio. Voice/style/rhythm
     // references still condition the model and use its decoded soundtrack.
     const create = oneByClass(workflow, 'CreateVideo')[1]
     const decoders = entriesByClass(workflow, 'VAEDecodeAudio')
     if (fullyCopiesReferenceAudio(conditioning.inputs.prompt)) {
-      if (!referenceAudio) throw new TypeError('H3 音频完整复用缺少声音参考文件')
+      const copied = copiedAudioIndex(conditioning.inputs.prompt)
+      if (!referenceAudios[copied]) throw new TypeError('H3 音频完整复用缺少对应声音参考文件')
       const trimId = nextNodeId(workflow)
       workflow[trimId] = node('TrimAudioDuration', {
-        audio: conditioning.inputs['ref_audios.ref_audio_0'].slice(), start_index: 0,
+        audio: conditioning.inputs['ref_audios.ref_audio_' + copied].slice(), start_index: 0,
         duration: conditioning.inputs.length / 24,
       }, 'Reuse reference audio within video duration')
       create.inputs.audio = [trimId, 0]
@@ -960,12 +999,16 @@
     }
   }
 
-  function fullyCopiesReferenceAudio(prompt) {
+  function copiedAudioIndex(prompt) {
     const text = String(prompt || '')
     const summary = /(?:^|\n)summary:\s*\[([^\]]+)\]/.exec(text)
+    if (!summary?.[1].split(/\s*\+\s*/).includes('audio reuse')) return -1
     const retention = /(?:^|\n)retention_analysis:\s*([\s\S]*?)(?=\n\s*detailed_description:|$)/.exec(text)?.[1] || ''
-    return !!summary?.[1].split(/\s*\+\s*/).includes('audio reuse') && /^<Audio 1>[^\n:]*:\s*fully_copy\b/m.test(retention)
+    const copies = [...retention.matchAll(/^<Audio ([1-3])>[^\n:]*:\s*fully_copy\b/gm)]
+    if (copies.length > 1) throw new Error('完整复用只能选择一个音频；多音频参考不会自动混音')
+    return copies.length ? Number(copies[0][1])-1 : -1
   }
+  function fullyCopiesReferenceAudio(prompt) { return copiedAudioIndex(prompt) >= 0 }
 
   function patchFrameWorkflow(workflow, mode, conditioning, options) {
     const images = fileList(options.images, 'images')
@@ -1020,7 +1063,7 @@
   function applyUserLoras(workflow, loras, steps) {
     const [unetId] = oneByClass(workflow, 'UNETLoader')
     const guider = oneByClass(workflow, 'BasicGuider')[1]
-    let upstreamId = unetId
+    let upstreamId = profile.referenceOnly ? oneByClass(workflow, 'MiniMaxH3SigmaShift')[0] : unetId
 
     for (const descriptor of loras) {
       const id = nextNodeId(workflow, 30)
@@ -1056,6 +1099,7 @@
       mode,
     )
     const loras = normalizeLoras(normalized.loras, mode, requestedSteps)
+    if (profile.referenceOnly && loras.some(x=>/eros[_-]?beta6mix/i.test(x.name))) throw new Error('beta6 已包含混合权重，不可叠加 Eros_beta6mix_Lora')
     if (templateSteps !== requestedSteps) {
       throw new TypeError(
         'MiniMax H3 workflow step topology mismatch: expected ' + requestedSteps + ', found ' + templateSteps,
@@ -1084,6 +1128,17 @@
       patchReferenceWorkflow(workflow, conditioning, normalized)
     } else {
       patchFrameWorkflow(workflow, mode, conditioning, normalized)
+    }
+
+    if (profile.referenceOnly && Array.isArray(normalized.frameGuides)) {
+      let positive = ['5',0]
+      const images = entriesByClass(workflow,'LoadImage')
+      normalized.frameGuides.forEach((frame,index) => {
+        const id = nextNodeId(workflow)
+        workflow[id] = node('MiniMaxH3AddGuide', {positive, latent:['5',1],vae:['3',0],image:[images[index][0],0],frame_idx:frame}, 'beta6 endpoint ' + frame)
+        positive = [id,0]
+      })
+      oneByClass(workflow,'BasicGuider')[1].inputs.conditioning = positive
     }
 
     // A supplied template may not smuggle pre-existing LoRA nodes into the
@@ -1156,46 +1211,34 @@
 
     const videoNodes = entriesByClass(workflow, 'LoadVideo')
     const componentNodes = entriesByClass(workflow, 'GetVideoComponents')
-    const pairedVideoAudioKeys = Object.keys(inputs).filter((key) => key.startsWith('ref_video_audios.'))
-    if (pairedVideoAudioKeys.length) {
-      throw new TypeError('MiniMax H3 r2v uses the standalone audio slot only; embedded video audio is disabled')
+    const framesNodes = entriesByClass(workflow, 'NovaFlowH3ReferenceVideoFrames')
+    if (Object.keys(inputs).some(k => k.startsWith('ref_video_audios.'))) throw new Error('视频内音轨未启用；请使用独立声音参考')
+    if (videoNodes.length > 3 || componentNodes.length !== videoNodes.length || framesNodes.length !== videoNodes.length) throw new Error('H3 视频参考节点数量不匹配')
+    const videoKeys = Object.keys(inputs).filter(k=>k.startsWith('ref_videos.'))
+    if(videoKeys.length !== videoNodes.length) throw new Error('H3 视频参考连线数量不匹配')
+    const usedVideos = new Set()
+    for(let i=0;i<videoNodes.length;i++) {
+      let link = inputs['ref_videos.ref_video_'+i]
+      if(workflow[link?.[0]]?.class_type === 'NovaFlowH3PrepareMotionReference') link=workflow[link[0]].inputs.images
+      const frames = workflow[link?.[0]]
+      if(frames?.class_type !== 'NovaFlowH3ReferenceVideoFrames' || link[1]!==0) throw new Error('H3 视频帧绑定无效')
+      const compId=frames.inputs.images?.[0], comp=workflow[compId]
+      if(comp?.class_type !== 'GetVideoComponents') throw new Error('H3 视频组件绑定无效')
+      requireLink(frames.inputs.source_fps,compId,2,'H3 原始帧率')
+      const videoId=comp.inputs.video?.[0]
+      if(workflow[videoId]?.class_type !== 'LoadVideo' || usedVideos.has(videoId)) throw new Error('H3 视频引用重复或遗漏')
+      usedVideos.add(videoId)
     }
-    if (videoNodes.length !== componentNodes.length || videoNodes.length > 1) {
-      throw new TypeError('MiniMax H3 r2v video reference topology is invalid')
+    const audioNodes = entriesByClass(workflow,'LoadAudio')
+    const audioKeys = Object.keys(inputs).filter(k=>k.startsWith('ref_audios.'))
+    if(audioNodes.length > 3 || audioKeys.length !== audioNodes.length) throw new Error('H3 音频参考节点数量不匹配')
+    const usedAudio = new Set()
+    for(let i=0;i<audioNodes.length;i++) {
+      const link=inputs['ref_audios.ref_audio_'+i]
+      if(workflow[link?.[0]]?.class_type !== 'LoadAudio' || link[1]!==0 || usedAudio.has(link[0])) throw new Error('H3 音频引用重复或遗漏')
+      usedAudio.add(link[0])
     }
-    if (videoNodes.length === 1) {
-      const [videoId] = videoNodes[0]
-      const [componentId, componentNode] = componentNodes[0]
-      requireLink(componentNode.inputs.video, videoId, 0, 'MiniMax H3 reference video components')
-      const [framesId, framesNode] = oneByClass(workflow, 'NovaFlowH3ReferenceVideoFrames')
-      requireLink(framesNode.inputs.images, componentId, 0, 'H3 source frames')
-      requireLink(framesNode.inputs.source_fps, componentId, 2, 'H3 original frame rate')
-      const motion = entriesByClass(workflow, 'NovaFlowH3PrepareMotionReference')
-      if (motion.length) {
-        if (motion.length !== 1) throw new TypeError('H3 motion reference topology is invalid')
-        requireLink(motion[0][1].inputs.images, framesId, 0, 'H3 source motion video')
-        requireLink(inputs['ref_videos.ref_video_0'], motion[0][0], 0, 'H3 prepared motion video')
-      } else requireLink(inputs['ref_videos.ref_video_0'], framesId, 0, 'MiniMax H3 reference video')
-    } else if (inputs['ref_videos.ref_video_0'] != null) {
-      throw new TypeError('MiniMax H3 r2v has dangling video reference inputs')
-    }
-
-    const audioNodes = entriesByClass(workflow, 'LoadAudio')
-    if (audioNodes.length > 1) throw new TypeError('MiniMax H3 r2v supports one standalone audio reference')
-    if (audioNodes.length === 1) {
-      requireLink(
-        inputs['ref_audios.ref_audio_0'],
-        audioNodes[0][0],
-        0,
-        'MiniMax H3 standalone reference audio',
-      )
-    } else if (inputs['ref_audios.ref_audio_0'] != null) {
-      throw new TypeError('MiniMax H3 r2v has a dangling standalone audio input')
-    }
-
-    if (!imageEntries.length && !videoNodes.length && !audioNodes.length) {
-      throw new TypeError('MiniMax H3 r2v requires at least one reference')
-    }
+    if (!imageEntries.length && !videoNodes.length && !audioNodes.length && !profile.referenceOnly) throw new Error('H3 多参至少需要一份素材')
   }
 
   function validateWorkflow(workflowValue, options = {}) {
@@ -1229,6 +1272,7 @@
 
     const expectedCounts = {
       NovaFlowH3SageAttention: SAGE_ATTENTION ? 1 : 0,
+      MiniMaxH3SigmaShift: profile.referenceOnly ? 1 : 0,
       UNETLoader: 1,
       CLIPLoader: 1,
       VAELoader: 2,
@@ -1263,6 +1307,11 @@
       throw new TypeError('MiniMax H3 workflow uses the wrong UNet')
     }
 
+    if (profile.referenceOnly) {
+      const shift = oneByClass(workflow, 'MiniMaxH3SigmaShift')[1]
+      requireLink(shift.inputs.model, unetId, 0, 'beta6 shift model')
+      if (shift.inputs.shift_video !== 10 || shift.inputs.shift_audio !== 3) throw new Error('beta6 requires shift 10/3')
+    }
     const clip = oneByClass(workflow, 'CLIPLoader')[1]
     if (
       clip.inputs.clip_name !== MODELS.clip ||
@@ -1289,7 +1338,7 @@
     if (steps !== requestedSteps || scheduler.inputs.steps !== steps) {
       throw new TypeError('MiniMax H3 workflow step count does not match the requested topology')
     }
-    requireLink(scheduler.inputs.model, unetId, 0, 'MiniMax H3 scheduler model')
+    requireLink(scheduler.inputs.model, profile.referenceOnly ? oneByClass(workflow, 'MiniMaxH3SigmaShift')[0] : unetId, 0, 'MiniMax H3 scheduler model')
     if (
       scheduler.inputs.scheduler !== 'simple' ||
       scheduler.inputs.denoise !== 1
@@ -1344,7 +1393,7 @@
       }
     }
 
-    let guiderModelId = unetId
+    let guiderModelId = profile.referenceOnly ? oneByClass(workflow, 'MiniMaxH3SigmaShift')[0] : unetId
     for (let index = 0; index < expectedUserLoras.length; index += 1) {
       const descriptor = expectedUserLoras[index]
       const [loraId, loraNode] = takeNextLoader(
@@ -1369,6 +1418,19 @@
       guiderModelId = attentionId
     }
     requireLink(guider.inputs.model, guiderModelId, 0, 'MiniMax H3 guider model')
+    const guides = entriesByClass(workflow,'MiniMaxH3AddGuide')
+    if (guides.length && !profile.referenceOnly) throw new Error('beta5 不接受 beta6 端点节点')
+    let positive = ['5',0]
+    if(guides.length > 2) throw new Error('beta6 端点数量无效')
+    guides.forEach(([id,guide],i)=>{
+      requireLink(guide.inputs.positive,positive[0],0,'beta6 端点条件')
+      requireLink(guide.inputs.latent,'5',1,'beta6 端点 latent')
+      requireLink(guide.inputs.vae,'3',0,'beta6 端点 VAE')
+      if(workflow[guide.inputs.image?.[0]]?.class_type !== 'LoadImage' || guide.inputs.frame_idx !== (i===0?0:-1)) throw new Error('beta6 端点帧绑定无效')
+      positive=[id,0]
+    })
+    requireLink(guider.inputs.conditioning,positive[0],0,'H3 conditioning chain')
+
 
     const conditioning = mode === 'r2v'
       ? oneByClass(workflow, 'MiniMaxH3ReferenceToVideo')[1]
@@ -1420,7 +1482,7 @@
       requireLink(outputImageLink, layout[0][0], 0, 'H3 aligned output images')
     } else requireLink(outputImageLink, oneByClass(workflow, 'VAEDecode')[0], 0, 'H3 decoded output images')
     if (mode === 'r2v' && fullyCopiesReferenceAudio(conditioning.inputs.prompt)) {
-      const audioId = oneByClass(workflow, 'LoadAudio')[0]
+      const audioId = oneByClass(workflow,'MiniMaxH3ReferenceToVideo')[1].inputs['ref_audios.ref_audio_' + copiedAudioIndex(conditioning.inputs.prompt)][0]
       const [trimId, trim] = oneByClass(workflow, 'TrimAudioDuration')
       requireLink(trim.inputs.audio, audioId, 0, 'MiniMax H3 copied reference audio')
       if (trim.inputs.start_index !== 0 || trim.inputs.duration !== conditioning.inputs.length / 24) throw new TypeError('H3 复用音轨时长与视频不一致')

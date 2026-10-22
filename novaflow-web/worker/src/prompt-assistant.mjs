@@ -156,7 +156,7 @@ const isCachePreparationFailure = result => failureCodes(result).some(code => CA
 
 function h3ReferenceFrames(value, requirements = '') {
   if (value == null) return [];
-  if (!Array.isArray(value) || value.length > 13) throw new Error('H3 参考画面数量无效');
+  if (!Array.isArray(value) || value.length > 36) throw new Error('H3 参考画面数量无效');
   const labels = new Set((requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || '').match(/<(?:Picture|Video) [1-9]\d*>/g) || []);
   const seen = new Map();
   let bytes = 0;

@@ -50,12 +50,21 @@
   }
 
   const MULTI_REFERENCE_SLOTS = Object.freeze([
-    slot('multi_ref_image_1', '\u53c2\u8003\u56fe1', 'image', '<Picture 1>', ['@\u53c2\u8003\u56fe1', '@\u56fe\u72471']),
-    slot('multi_ref_image_2', '\u53c2\u8003\u56fe2', 'image', '<Picture 2>', ['@\u53c2\u8003\u56fe2', '@\u56fe\u72472']),
-    slot('multi_ref_image_3', '\u53c2\u8003\u56fe3', 'image', '<Picture 3>', ['@\u53c2\u8003\u56fe3', '@\u56fe\u72473']),
-    slot('multi_ref_image_4', '\u53c2\u8003\u56fe4', 'image', '<Picture 4>', ['@\u53c2\u8003\u56fe4', '@\u56fe\u72474']),
-    slot('multi_ref_video_1', '\u89c6\u9891\u53c2\u8003', 'video', '<Video 1>', ['@\u89c6\u9891\u53c2\u8003', '@\u89c6\u98911']),
-    slot('multi_ref_audio_1', '\u58f0\u97f3\u53c2\u8003', 'audio', '<Audio 1>', ['@\u58f0\u97f3\u53c2\u8003', '@\u97f3\u98911', '@\u97f3\u9891\u53c2\u8003']),
+    slot('multi_ref_image_1', '参考图1', 'image', '<Picture 1>', ['@参考图1', '@图片1']),
+    slot('multi_ref_image_2', '参考图2', 'image', '<Picture 2>', ['@参考图2', '@图片2']),
+    slot('multi_ref_image_3', '参考图3', 'image', '<Picture 3>', ['@参考图3', '@图片3']),
+    slot('multi_ref_image_4', '参考图4', 'image', '<Picture 4>', ['@参考图4', '@图片4']),
+    slot('multi_ref_image_5', '参考图5', 'image', '<Picture 5>', ['@参考图5', '@图片5']),
+    slot('multi_ref_image_6', '参考图6', 'image', '<Picture 6>', ['@参考图6', '@图片6']),
+    slot('multi_ref_image_7', '参考图7', 'image', '<Picture 7>', ['@参考图7', '@图片7']),
+    slot('multi_ref_image_8', '参考图8', 'image', '<Picture 8>', ['@参考图8', '@图片8']),
+    slot('multi_ref_image_9', '参考图9', 'image', '<Picture 9>', ['@参考图9', '@图片9']),
+    slot('multi_ref_video_1', '视频参考1', 'video', '<Video 1>', ['@视频参考1', '@视频1', '@视频参考']),
+    slot('multi_ref_video_2', '视频参考2', 'video', '<Video 2>', ['@视频参考2', '@视频2']),
+    slot('multi_ref_video_3', '视频参考3', 'video', '<Video 3>', ['@视频参考3', '@视频3']),
+    slot('multi_ref_audio_1', '声音参考1', 'audio', '<Audio 1>', ['@声音参考1', '@音频1', '@声音参考']),
+    slot('multi_ref_audio_2', '声音参考2', 'audio', '<Audio 2>', ['@声音参考2', '@音频2']),
+    slot('multi_ref_audio_3', '声音参考3', 'audio', '<Audio 3>', ['@声音参考3', '@音频3']),
   ])
 
   const SLOT_BY_KEY = new Map(MULTI_REFERENCE_SLOTS.map((entry) => [entry.key, entry]))
@@ -357,9 +366,9 @@
   }
 
   const REFERENCE_MEDIA_POLICY = Object.freeze({
-    maxImages: 4,
-    maxVideos: 1,
-    maxAudios: 1,
+    maxImages: 9,
+    maxVideos: 3,
+    maxAudios: 3,
     minimumDurationSec: 2,
     maximumDurationSec: 15,
     maximumTypeDurationSec: 15,
