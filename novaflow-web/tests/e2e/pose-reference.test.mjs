@@ -31,6 +31,8 @@ test('internal pose documents retain camera, IK and translated joints without sh
   assert.throws(() => tool.normalizeDocument({ pose: { bones: {}, camera: { posX: 'bad' } } }), /镜头/);
   assert.throws(() => tool.normalizeDocument({ pose: { bones: {}, bonePositions: { Root: [0, 0] } } }), /关节位置/);
   assert.throws(() => tool.normalizeDocument(JSON.parse('{"pose":{"bones":{},"__proto__":{}}}')), /无效字段/);
+  assert.deepEqual(plain(tool.normalizeDocument({ pose: { bones: {}, boneScales: { head: [1.5, 1, 0.8] } } }).pose.boneScales), { head: [1.5, 1, 0.8] });
+  for (const value of [[-1, 1, 1], [0, 1, 1], [4, 1, 1], [1, NaN, 1], [1, 1]]) assert.throws(() => tool.normalizeDocument({ pose: { bones: {}, boneScales: { head: value } } }), /缩放|数值/);
 });
 
 test('sending a pose fills the first empty reference and preserves the 2511 route, parameters and prompt', () => {
@@ -250,6 +252,9 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   assert.ok(Math.abs(childHeight() - height) < 1e-5, 'mixed body types survive scene restore');
   viewer.setIKMode(false);
   const movement = tool.configureRootTranslation(viewer, characters, () => {});
+  assert.equal(movement.getMode(), 'rotate', 'pose adjustment is selected by default');
+  assert.equal(viewer.ikMode, true);
+  movement.setMode('translate');
   viewer.selectBoneByName('Root'); movement.sync();
   assert.equal(viewer.transform.mode, 'translate'); assert.equal(viewer.transform.space, 'world');
   const poseBeforeMove = plain(viewer.getPose().bones);
@@ -349,6 +354,47 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   viewer.bones.calf_l.position.set(0, 0, 0); viewer.nfPoseBodyShape.apply();
   assert.ok(Math.abs(viewer.bones.calf_l.position.length() - calfRestLength * 0.35) < 1e-8, 'a joint must not collapse its parent segment to zero length');
   assert.ok(viewer.skinnedMesh.geometry.getAttribute('position').array.every(Number.isFinite));
+  characters.restore({ pose: { bones: {} } });
+  viewer.selectBoneByName('head'); movement.setMode('scale');
+  assert.equal(viewer.transform.mode, 'scale'); assert.equal(viewer.transform.space, 'local'); assert.equal(viewer.ikMode, false);
+  const mesh = viewer.skinnedMesh, headIndex = viewer.boneList.indexOf(viewer.bones.head);
+  let headVertex = -1;
+  for (let i = 0; i < mesh.geometry.attributes.position.count && headVertex < 0; i++) for (let j = 0; j < 4; j++) {
+    if (mesh.geometry.attributes.skinIndex.array[i * 4 + j] === headIndex && mesh.geometry.attributes.skinWeight.array[i * 4 + j] > 0.99 && Math.abs(mesh.geometry.attributes.position.array[i * 3]) > 0.3) headVertex = i;
+  }
+  assert.ok(headVertex >= 0);
+  const originalVertex = mesh.getVertexPosition(headVertex, new THREE.Vector3());
+  viewer.recordState(); movement.setScale('x', 1.6);
+  const scaledVertex = mesh.getVertexPosition(headVertex, new THREE.Vector3());
+  assert.ok(scaledVertex.distanceTo(originalVertex) > 0.1, 'scaling must change the rendered body, not only its gizmo');
+  assert.deepEqual(plain(viewer.getPose().boneScales.head), [1.6, 1, 1]);
+  movement.setScale('x', 10); assert.equal(movement.getScale('x'), 3);
+  movement.setScale('x', 0.01); assert.equal(movement.getScale('x'), 0.25);
+  movement.setScale('x', 1.6);
+  viewer.undo(); assert.equal(movement.getScale('x'), 1);
+  assert.ok(mesh.getVertexPosition(headVertex, new THREE.Vector3()).distanceTo(originalVertex) < 1e-6);
+  viewer.redo(); assert.equal(movement.getScale('x'), 1.6);
+  movement.setMode('translate'); movement.setOffset('y', 0.3);
+  assert.equal(viewer.bones.head.scale.x, 1.6, 'rebinding after a movement must preserve scaling');
+  const combinedVertex = mesh.getVertexPosition(headVertex, new THREE.Vector3());
+  const shapedScene = plain(characters.snapshot());
+  const normalized = tool.normalizeDocument({ version: 2, ...shapedScene, pose: viewer.getPose() });
+  assert.deepEqual(plain(normalized.characters[0].pose.boneScales.head), [1.6, 1, 1], 'library documents must retain scales');
+  const newPerson = characters.add();
+  assert.equal(viewer.bones.head.scale.x, 1, 'new people must not inherit another person\'s scale');
+  const passiveHead = viewer.passiveCharacters.get('person-1').mesh.skeleton.bones.find(bone => bone.name === 'head');
+  assert.equal(passiveHead.scale.x, 1.6, 'passive characters retain scaled meshes');
+  characters.select('person-1');
+  assert.equal(viewer.bones.head.scale.x, 1.6);
+  characters.setBody('proportion', 6);
+  assert.equal(viewer.bones.head.scale.x, 1.6, 'head ratio changes preserve relative manual scaling');
+  characters.restore(shapedScene);
+  assert.ok(viewer.skinnedMesh.getVertexPosition(headVertex, new THREE.Vector3()).distanceTo(combinedVertex) < 1e-6, 'movement and scale must survive scene restore without double deformation');
+  viewer.selectBoneByName('head'); viewer.resetSelectedBone(); assert.equal(viewer.bones.head.scale.x, 1);
+  movement.setMode('scale'); movement.setScale('x', 1.5); viewer.resetPose(); assert.equal(viewer.bones.head.scale.x, 1);
+  viewer.selectBoneByName('Root'); movement.setMode('scale'); movement.setScale('y', 1.25);
+  assert.equal(viewer.transform.mode, 'scale'); assert.equal(viewer.bones.Root.scale.y, 1.25, 'the whole figure can be scaled from its root');
+  movement.setMode('rotate'); assert.equal(viewer.transform.mode, 'rotate'); assert.equal(viewer.ikMode, true);
   assert.equal(JSON.stringify(models['adult-neutral']), originalModel, 'deformation must never mutate the source model');
   viewer.clearPassiveCharacters(); viewer._cleanupPrevious();
 });

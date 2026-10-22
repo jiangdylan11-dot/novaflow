@@ -51,12 +51,16 @@
     // Validate source data before picking fields; pose-library scenes may also contain
     // body-shape settings and prompts. Those never replace the adult mannequin or user prompt.
     validate(rawPose);
-    const pose = Object.fromEntries(['bones', 'bonePositions', 'modelRotation', 'ikEffectorPositions', 'poleTargetPositions', 'hipBonePosition', 'cameraParams', 'camera'].filter(key => rawPose[key] !== undefined).map(key => [key, clone(rawPose[key])]));
+    const pose = Object.fromEntries(['bones', 'bonePositions', 'boneScales', 'modelRotation', 'ikEffectorPositions', 'poleTargetPositions', 'hipBonePosition', 'cameraParams', 'camera'].filter(key => rawPose[key] !== undefined).map(key => [key, clone(rawPose[key])]));
     if (pose.camera && !('posX' in pose.camera) && ('yaw_deg' in pose.camera || 'pitch_deg' in pose.camera)) {
       pose.cameraParams = { ...pose.cameraParams, ...pose.camera }; delete pose.camera;
     }
     for (const rotation of Object.values(pose.bones)) {
       if (!Array.isArray(rotation) || rotation.length !== 3 || !rotation.every(Number.isFinite)) throw new Error('骨骼旋转格式不正确');
+    }
+    if (pose.boneScales && (typeof pose.boneScales !== 'object' || Array.isArray(pose.boneScales))) throw new Error('关节缩放格式不正确');
+    for (const scale of Object.values(pose.boneScales || {})) {
+      if (!Array.isArray(scale) || scale.length !== 3 || !scale.every(value => Number.isFinite(value) && value >= 0.25 && value <= 3)) throw new Error('关节缩放范围为 25%–300%');
     }
     for (const key of ['bonePositions', 'ikEffectorPositions', 'poleTargetPositions', 'hipBonePosition']) {
       for (const position of Object.values(pose[key] || {})) {
@@ -193,7 +197,7 @@
     let base, signature;
     function capture() {
       const mesh = viewer.skinnedMesh; if (!mesh) return;
-      base = { mesh, vertices: mesh.geometry.getAttribute('position').array.slice(), heads: {}, locals: {} };
+      base = { mesh, vertices: mesh.geometry.getAttribute('position').array.slice(), heads: {}, locals: {}, scales: Object.fromEntries(viewer.boneList.map(bone => [bone.name, bone.scale.clone()])) };
       function head(bone) {
         if (base.heads[bone.name]) return base.heads[bone.name];
         const local = (viewer.shapedBoneRestPositions?.[bone.name] || viewer.initialBoneStates[bone.name].position).clone();
@@ -273,19 +277,45 @@
         result.toArray(positions.array, i * 3);
       }
       positions.needsUpdate = true; geometry.computeVertexNormals(); geometry.computeBoundingBox(); geometry.computeBoundingSphere();
-      const rotations = bones.map(bone => bone.quaternion.clone()), meshPosition = mesh.position.clone(), meshRotation = mesh.quaternion.clone(), meshScale = mesh.scale.clone();
+      const rotations = bones.map(bone => bone.quaternion.clone()), scales = bones.map(bone => bone.scale.clone()), meshPosition = mesh.position.clone(), meshRotation = mesh.quaternion.clone(), meshScale = mesh.scale.clone();
       const posePositions = bones.map(bone => bone.position.clone());
       bones.forEach(bone => bone.position.copy(shapeLocal(bone)));
-      bones.forEach(bone => bone.quaternion.identity()); mesh.position.set(0, 0, 0); mesh.quaternion.identity(); mesh.scale.set(1, 1, 1);
+      bones.forEach(bone => { bone.quaternion.identity(); bone.scale.copy(base.scales[bone.name]); }); mesh.position.set(0, 0, 0); mesh.quaternion.identity(); mesh.scale.set(1, 1, 1);
       mesh.updateMatrixWorld(true); viewer.skeleton.calculateInverses();
-      bones.forEach((bone, i) => { bone.quaternion.copy(rotations[i]); bone.position.copy(posePositions[i]); }); mesh.position.copy(meshPosition); mesh.quaternion.copy(meshRotation); mesh.scale.copy(meshScale);
+      bones.forEach((bone, i) => { bone.quaternion.copy(rotations[i]); bone.position.copy(posePositions[i]); bone.scale.copy(scales[i]); }); mesh.position.copy(meshPosition); mesh.quaternion.copy(meshRotation); mesh.scale.copy(meshScale);
       mesh.updateMatrixWorld(true); viewer.skeleton.update(); mesh.boundingBox = null; mesh.boundingSphere = null;
       signature = nextSignature;
     }
-    const shape = { apply }; viewer.nfPoseBodyShape = shape;
+    function getScale(bone, axis) { return bone ? bone.scale[axis] / (base?.scales[bone.name]?.[axis] || 1) : 1; }
+    function clampScale(bone) { for (const axis of ['x', 'y', 'z']) bone.scale[axis] = (base?.scales[bone.name]?.[axis] || 1) * Math.max(0.25, Math.min(3, getScale(bone, axis))); }
+    const shape = { apply, getScale, clampScale }; viewer.nfPoseBodyShape = shape;
+    const getPose = viewer.getPose;
+    viewer.getPose = function () {
+      const pose = getPose.call(this), scales = {};
+      for (const bone of this.boneList) {
+        const value = ['x', 'y', 'z'].map(axis => getScale(bone, axis));
+        if (value.some(v => Math.abs(v - 1) > 1e-6)) scales[bone.name] = value;
+      }
+      if (Object.keys(scales).length) pose.boneScales = scales;
+      return pose;
+    };
     for (const name of ['setPose', 'resetPose', 'resetSelectedBone']) {
       const original = viewer[name];
-      viewer[name] = function (...args) { const result = original.apply(this, args); apply(); return result; };
+      viewer[name] = function (...args) {
+        const selected = this.selectedBone;
+        const result = original.apply(this, args);
+        for (const bone of this.boneList) {
+          if (name === 'resetSelectedBone' && bone !== selected) continue;
+          const scale = name === 'setPose' ? args[0]?.boneScales?.[bone.name] : null;
+          bone.scale.copy(base.scales[bone.name]);
+          if (scale) bone.scale.multiply(new THREE.Vector3().fromArray(scale));
+          clampScale(bone);
+        }
+        apply(); this.skinnedMesh?.updateMatrixWorld(true); this.skeleton?.update();
+        if (this.skinnedMesh) { this.skinnedMesh.boundingBox = null; this.skinnedMesh.boundingSphere = null; }
+        this.updateIKEffectorPositions('all'); this.requestRender();
+        return result;
+      };
     }
     const loadData = viewer.loadData;
     viewer.loadData = function (...args) { const result = loadData.apply(this, args); capture(); return result; };
@@ -426,8 +456,8 @@
 
   function configureRootTranslation(viewer, characters, onChange) {
     const anchor = new viewer.THREE.Object3D(); viewer.scene.add(anchor);
-    let start = null, mode = 'translate';
-    viewer.setIKMode(false);
+    let start = null, mode = 'rotate';
+    viewer.setIKMode(true);
     viewer.options.captureHistoryContext = () => ({ characterPosition: { ...characters.active()?.transform } });
     viewer.options.onHistoryRestore = pose => {
       if (pose.editorState?.characterPosition) characters.setPositions(pose.editorState.characterPosition);
@@ -435,7 +465,7 @@
     };
     function sync() {
       if (!viewer.selectedBone || !characters.active()) return;
-      if (viewer.selectedBone.name !== 'Root') {
+      if (viewer.selectedBone.name !== 'Root' || mode !== 'translate') {
         viewer.selectedIKEffector = null; viewer.selectedPoleTarget = null;
         viewer.transform.setMode(mode); viewer.transform.setSpace(mode === 'translate' ? 'world' : 'local'); viewer.transform.attach(viewer.selectedBone);
         viewer.requestRender(); return;
@@ -455,6 +485,7 @@
     function updateBone() {
       viewer.nfPoseBodyShape?.apply();
       viewer.skinnedMesh.updateMatrixWorld(true); viewer.skeleton.update();
+      viewer.skinnedMesh.boundingBox = null; viewer.skinnedMesh.boundingSphere = null;
       viewer.updateIKEffectorPositions('all'); viewer.updatePoleTargetPositions(); viewer.requestRender(); onChange();
     }
     function rest() { return viewer.shapedBoneRestPositions?.[viewer.selectedBone?.name] || viewer.initialBoneStates?.[viewer.selectedBone?.name]?.position; }
@@ -464,17 +495,23 @@
       viewer.selectedBone.position[axis] = initial[axis] + Math.max(-20, Math.min(20, Number(value) || 0)); updateBone();
     }
     function setMode(next) {
-      if (!['translate', 'rotate'].includes(next)) return;
+      if (!['translate', 'rotate', 'scale'].includes(next)) return;
       mode = next; viewer.setIKMode(mode === 'rotate'); sync(); onChange();
     }
     viewer.transform.addEventListener('objectChange', () => {
-      if (mode === 'translate' && viewer.selectedBone && viewer.transform.object === viewer.selectedBone && viewer.selectedBone?.name !== 'Root') { updateBone(); return; }
+      if (mode !== 'rotate' && viewer.selectedBone && viewer.transform.object === viewer.selectedBone) { if (mode === 'scale') viewer.nfPoseBodyShape.clampScale(viewer.selectedBone); updateBone(); return; }
       if (!start || viewer.transform.object !== anchor || characters.active()?.id !== start.id) return;
       const delta = anchor.position.clone().sub(start.anchor);
       characters.setPositions(Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, start.position[axis] + delta[axis]])));
       onChange();
     });
-    return { sync, setMode, getMode: () => mode, getOffset, setOffset };
+    function getScale(axis) { return viewer.nfPoseBodyShape.getScale(viewer.selectedBone, axis); }
+    function setScale(axis, value) {
+      const bone = viewer.selectedBone; if (!bone) return;
+      const next = Math.max(0.25, Math.min(3, Number(value) || 1));
+      bone.scale[axis] *= next / getScale(axis); updateBone();
+    }
+    return { sync, setMode, getMode: () => mode, getOffset, setOffset, getScale, setScale };
   }
 
   function addStudioGrid(viewer, floor) {
@@ -501,6 +538,7 @@
       .nf-pose-library{position:absolute;inset:0;z-index:4;background:#202020;display:flex;flex-direction:column;padding:12px;gap:10px}.nf-pose-library[hidden]{display:none}.nf-pose-library-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.nf-pose-library-bar input{min-width:80px;flex:1;background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;padding:7px;font:12px system-ui}.nf-pose-library-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));grid-auto-rows:max-content;gap:10px;overflow:auto;align-content:start;min-height:0;flex:1}.nf-pose-dialog .nf-pose-card{display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:6px!important;height:auto!important;min-height:176px!important;max-height:none!important;overflow:hidden}.nf-pose-card img{display:block;width:100%;height:126px;object-fit:contain;background:#171717;border-radius:4px;flex:none}.nf-pose-card span{font-size:11px;color:#ddd;line-height:1.4;overflow-wrap:anywhere}.nf-pose-card small{color:#999;font-size:10px}.nf-pose-library-count{color:#aaa;font-size:11px}.nf-pose-side label.nf-pose-row{display:flex}
       .nf-pose-view{flex:1;min-width:0;display:flex;flex-direction:column;background:#222}.nf-pose-stage{flex:1;min-height:0;display:grid;place-items:center;padding:10px;overflow:hidden}.nf-pose-canvas{display:block;touch-action:none;border:0;border-radius:8px;max-width:100%;max-height:100%}.nf-pose-hint{padding:8px 16px;text-align:center;color:#999;line-height:1.5;font-size:11px}.nf-pose-status{flex:1;min-width:160px;color:#aaa;line-height:1.5}.nf-pose-status[data-error=true]{color:#ff9898}.nf-pose-dialog .nf-pose-primary{background:#1e493d;border-color:#337c66;color:#e3f4ec}.nf-pose-dialog .nf-pose-primary:hover{background:#285b4b}.nf-pose-dialog input[type=range]{width:100%;accent-color:#20b58a}.nf-pose-side a{color:#aaa;font-size:10px}.nf-pose-busy{color:#aaa;text-align:center;padding:16px}.nf-pose-axis{display:grid;grid-template-columns:15px 1fr 51px;gap:6px;align-items:center}.nf-pose-axis input[type=number]{width:51px;padding:3px}
       .nf-pose-dialog{color:var(--nf-text,#e5e7eb)}.nf-pose-dialog input[type=range]{accent-color:var(--nf-accent,#1ea672)}.nf-pose-save-panel{display:flex;align-items:center;gap:8px;flex-basis:100%;padding-top:8px;border-top:1px solid #303030}.nf-pose-save-panel[hidden]{display:none}.nf-pose-save-panel input{flex:1;min-width:80px;background:#242424;color:#eee;border:1px solid #3b3b3b;border-radius:7px;padding:8px;font:12px system-ui}.nf-pose-library-item{position:relative;display:flex;min-width:0}.nf-pose-library-item>.nf-pose-card{width:100%;flex:1}.nf-pose-dialog .nf-pose-delete{position:absolute;top:9px;right:9px;min-height:24px;padding:2px 6px;font-size:10px;background:#1b1b1be8;color:#ccc;border-color:#4b4b4b}.nf-pose-dialog .nf-pose-delete:hover{color:#ffa6a6;border-color:#8f5252}.nf-pose-import-panel{position:absolute;inset:0;z-index:5;background:#1b1b1b;display:flex;flex-direction:column;gap:12px;padding:14px}.nf-pose-import-preview{flex:1;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#111;border-radius:7px}.nf-pose-import-preview canvas{max-width:100%;max-height:100%;object-fit:contain}.nf-pose-import-people{display:flex;gap:12px;flex-wrap:wrap}.nf-pose-import-people label{display:flex;align-items:center;gap:5px;cursor:pointer}.nf-pose-import-people input{accent-color:var(--nf-accent,#1ea672)}.nf-pose-import-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#aaa}.nf-pose-import-footer span{font-size:11px}
+      .nf-pose-shape-modes[hidden]{display:none}.nf-pose-shape-modes{padding-left:10px;border-left:1px solid #3b3b3b}.nf-pose-modebar button[aria-pressed=true]{background:#1e493d;border-color:#337c66;color:#e3f4ec}.nf-pose-axis input[type=number]{min-width:0;appearance:textfield;text-align:center;text-overflow:clip}.nf-pose-axis input[type=number]::-webkit-inner-spin-button,.nf-pose-axis input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}
       @media(max-width:760px){.nf-pose-overlay{padding:6px}.nf-pose-side{width:176px;padding:10px}.nf-pose-head,.nf-pose-foot{padding:8px}.nf-pose-foot button{flex:1}.nf-pose-status{flex-basis:100%}.nf-pose-stage{padding:6px}}
     ` }));
   }
@@ -534,7 +572,7 @@
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
     async function run(fn) { try { await fn(); } catch (error) { message(error.message || String(error), true); } }
-    let viewer, resizeObserver, movement, handPresets, selectedJoint, library, libraryButton, libraryData, libraryRefresh, characters, peopleList, deletePerson, proportionSelect, proportionRequest = 0, actorControls = [], axisControls = [], editModes = [], imageRecognizer, imageModule, importPanel, importImageUrl, importing = false, saving = false;
+    let viewer, resizeObserver, movement, handPresets, selectedJoint, library, libraryButton, libraryData, libraryRefresh, characters, peopleList, deletePerson, proportionSelect, proportionRequest = 0, actorControls = [], axisControls = [], editModes = [], shapeModes = [], shapeMode = 'translate', shapeModeBar, imageRecognizer, imageModule, importPanel, importImageUrl, importing = false, saving = false;
     function snapshot() { return { version: 2, ...characters.snapshot(), width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
     function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); syncAxes(); }
     function close() {
@@ -656,25 +694,33 @@
       side.append(element('h3', { text: '头身比例' }), proportionSelect); actorControls.push(proportionSelect);
       selectedJoint = element('div', { class: 'nf-pose-selected-joint', role: 'status', text: '点击人偶上的关节进行旋转' });
       side.append(element('h3', { text: '骨骼编辑' }));
-      editModes = [['translate', '移动关节'], ['rotate', '旋转关节']].map(([mode, text]) => {
-        const control = button(text, () => movement?.setMode(mode), { 'aria-pressed': String(mode === 'translate') }); actorControls.push(control); return { mode, control };
+      editModes = [['rotate', '姿态调整'], ['shape', '型体调整']].map(([mode, text]) => {
+        const control = button(text, () => movement?.setMode(mode === 'shape' ? shapeMode : 'rotate'), { 'aria-pressed': String(mode === 'rotate') }); actorControls.push(control); return { mode, control };
       });
-      const viewportToolbar = element('div', { class: 'nf-pose-toolbar' }, [element('div', { class: 'nf-pose-body-options nf-pose-modebar', role: 'group', 'aria-label': '骨骼操作模式' }, editModes.map(item => item.control))]);
+      shapeModes = [['translate', '移动'], ['scale', '缩放']].map(([mode, text]) => {
+        const control = button(text, () => { shapeMode = mode; movement?.setMode(mode); }, { 'aria-pressed': String(mode === shapeMode), title: mode === 'scale' ? '拖动轴柄调整大小，中央手柄等比缩放' : '拖动箭头调整骨骼位置和体型' }); actorControls.push(control); return { mode, control };
+      });
+      shapeModeBar = element('div', { class: 'nf-pose-modebar nf-pose-shape-modes', role: 'group', 'aria-label': '型体调整操作', hidden: '' }, shapeModes.map(item => item.control));
+      const viewportToolbar = element('div', { class: 'nf-pose-toolbar' }, [element('div', { class: 'nf-pose-modebar', role: 'group', 'aria-label': '骨骼操作模式' }, [...editModes.map(item => item.control), shapeModeBar])]);
       view.prepend(viewportToolbar);
       side.append(selectedJoint);
       axisControls = ['X', 'Y', 'Z'].map((axis, i) => {
         const slider = element('input', { type: 'range', min: '-180', max: '180', value: '0', step: '1', 'aria-label': `关节 ${axis} 旋转` });
-        const number = element('input', { type: 'number', min: '-180', max: '180', value: '0', step: '1', 'aria-label': `关节 ${axis} 角度` });
+        const number = element('input', { type: 'number', min: '-180', max: '180', value: '0', step: '1', 'data-novaflow-number-fill': '1', 'aria-label': `关节 ${axis} 角度` });
         const commit = value => {
-          if (!viewer.selectedBone || viewer.selectedBone.name === 'Root') return;
+          if (!viewer.selectedBone) return;
+          if (movement?.getMode() === 'scale') { movement.setScale(axis.toLowerCase(), Number(value) / 100); return; }
           if (movement?.getMode() === 'translate') { movement.setOffset(axis.toLowerCase(), value); return; }
           const n = Math.max(-180, Math.min(180, Number(value) || 0)); viewer.selectedBone.rotation[axis.toLowerCase()] = n * Math.PI / 180; viewer.selectedBone.updateMatrixWorld(true); viewer.updateIKEffectorPositions(); viewer.requestRender(); changed();
         };
         slider.addEventListener('pointerdown', () => viewer.recordState()); slider.addEventListener('input', () => commit(slider.value)); number.addEventListener('focus', () => viewer.recordState()); number.addEventListener('input', () => commit(number.value));
-        number.addEventListener('change', () => { if (movement?.getMode() === 'translate') number.value = +movement.getOffset(axis.toLowerCase()).toFixed(2); });
+        number.addEventListener('change', () => {
+          if (movement?.getMode() === 'translate') number.value = +movement.getOffset(axis.toLowerCase()).toFixed(2);
+          else if (movement?.getMode() === 'scale') number.value = Math.round(movement.getScale(axis.toLowerCase()) * 100);
+        });
         side.append(element('div', { class: 'nf-pose-axis' }, [element('span', { text: axis }), slider, number])); return { slider, number };
       });
-      const rigActions = element('div', { class: 'nf-pose-grid' }, [button('撤销', () => { viewer.undo(); changed(); }), button('重做', () => { viewer.redo(); changed(); }), button('重置关节', () => { viewer.recordState(); if (viewer.selectedBone?.name === 'Root') characters.setPositions({ x: 0, y: 0, z: 0 }); else viewer.resetSelectedBone(); changed(); }), button('重置姿势', () => { viewer.recordState(); viewer.resetPose(); changed(); })]); side.append(rigActions); actorControls.push(...rigActions.querySelectorAll('button'));
+      const rigActions = element('div', { class: 'nf-pose-grid' }, [button('撤销', () => { viewer.undo(); changed(); }), button('重做', () => { viewer.redo(); changed(); }), button('重置关节', () => { viewer.recordState(); if (viewer.selectedBone?.name === 'Root') characters.setPositions({ x: 0, y: 0, z: 0 }); viewer.resetSelectedBone(); changed(); }), button('重置姿势', () => { viewer.recordState(); viewer.resetPose(); changed(); })]); side.append(rigActions); actorControls.push(...rigActions.querySelectorAll('button'));
       side.append(element('h3', { text: '手势' }));
       const handSide = element('select', { 'aria-label': '手势作用侧' }, ['both', 'l', 'r'].map((value, i) => element('option', { value, text: ['双手', '左手', '右手'][i] })));
       const hands = element('div', { class: 'nf-pose-grid' }, [['OPEN', '张开'], ['FIST', '握拳'], ['CHOP', '并拢']].map(([key, text]) => button(text, () => { viewer.applyHandPreset(handSide.value, handPresets[key]); changed(); }))); side.append(handSide, hands); actorControls.push(handSide, ...hands.querySelectorAll('button'));
@@ -697,24 +743,26 @@
 
     function syncAxes() {
       const rootSelected = viewer?.selectedBone?.name === 'Root';
-      const translating = movement?.getMode() !== 'rotate';
-      const bone = characters?.active() && !rootSelected && viewer?.selectedBone;
+      const mode = movement?.getMode() || 'rotate', translating = mode === 'translate', scaling = mode === 'scale';
+      const bone = characters?.active() && !(rootSelected && translating) && viewer?.selectedBone;
       if (selectedJoint) selectedJoint.textContent = viewer?.selectedBone && characters?.active()
-        ? (rootSelected ? '整体移动：拖动 X/Y/Z 箭头或平面' : `${translating ? '移动' : '旋转'}：${jointLabel(viewer.selectedBone.name)}${translating ? '（调整骨骼位置和体型）' : ''}`)
-        : '点击人偶关节，再拖动箭头移动或圆环旋转';
-      editModes.forEach(({ mode, control }) => control.setAttribute('aria-pressed', String(mode === (translating ? 'translate' : 'rotate'))));
+        ? (rootSelected && translating ? '整体移动：拖动 X/Y/Z 箭头或平面' : `${scaling ? '缩放' : translating ? '移动' : '旋转'}：${jointLabel(viewer.selectedBone.name)}${scaling ? '（100% 为原始大小）' : translating ? '（调整骨骼位置和体型）' : ''}`)
+        : scaling ? '点击人偶关节，再拖动轴柄缩放，中央手柄等比缩放' : translating ? '点击人偶关节，再拖动箭头调整型体' : '点击人偶关节，再拖动圆环调整姿态';
+      editModes.forEach(({ mode: tab, control }) => control.setAttribute('aria-pressed', String(tab === (mode === 'rotate' ? 'rotate' : 'shape'))));
+      shapeModes.forEach(({ mode: operation, control }) => control.setAttribute('aria-pressed', String(operation === mode)));
+      if (shapeModeBar) shapeModeBar.hidden = mode === 'rotate';
       axisControls.forEach(({ slider, number }, i) => {
         const axis = ['x', 'y', 'z'][i], label = axis.toUpperCase();
         slider.disabled = number.disabled = !bone;
-        slider.min = number.min = translating ? '-20' : '-180'; slider.max = number.max = translating ? '20' : '180';
+        slider.min = number.min = scaling ? '25' : translating ? '-20' : '-180'; slider.max = number.max = scaling ? '300' : translating ? '20' : '180';
         slider.step = number.step = translating ? '0.05' : '1';
-        slider.setAttribute('aria-label', `关节 ${label} ${translating ? '位移' : '旋转'}`);
-        number.setAttribute('aria-label', `关节 ${label} ${translating ? '位置偏移' : '角度'}`);
-        number.title = translating ? '相对默认骨架的局部位移，0 为默认位置' : '骨骼局部旋转角度';
+        slider.setAttribute('aria-label', `关节 ${label} ${scaling ? '缩放' : translating ? '位移' : '旋转'}`);
+        number.setAttribute('aria-label', `关节 ${label} ${scaling ? '缩放百分比' : translating ? '位置偏移' : '角度'}`);
+        number.title = scaling ? '100% 为原始大小，可调整范围 25%–300%' : translating ? '相对默认骨架的局部位移，0 为默认位置' : '骨骼局部旋转角度';
         if (bone) {
-          const value = translating ? +movement.getOffset(axis).toFixed(2) : Math.round(bone.rotation[axis] * 180 / Math.PI);
+          const value = scaling ? Math.round(movement.getScale(axis) * 100) : translating ? +movement.getOffset(axis).toFixed(2) : Math.round(bone.rotation[axis] * 180 / Math.PI);
           slider.value = value; if (root.document.activeElement !== number) number.value = value;
-        }
+        } else { slider.value = number.value = scaling ? 100 : 0; }
       });
     }
 
@@ -859,6 +907,7 @@
             for (const key of ['bonePositions', 'hipBonePosition', 'ikEffectorPositions', 'poleTargetPositions']) delete libraryPose[key];
           }
           libraryPose.bonePositions = clone(viewer.getPose().bonePositions || {});
+          libraryPose.boneScales = clone(viewer.getPose().boneScales || {});
           viewer.recordState(); viewer.setPose(libraryPose, true);
           // Library previews use the capture camera. The saved free-orbit camera
           // is an inspector view and may sit much farther away at another FOV.
