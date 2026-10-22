@@ -4899,6 +4899,9 @@
 
   function shouldPortalNativeSelect(select) {
     if (!(select instanceof HTMLSelectElement)) return false;
+    // Pose Studio owns its modal stacking and 3D pointer events. Portaling its
+    // selectors would clamp the editor below the workspace and leave a mask over it.
+    if (select.closest('[data-novaflow-pose-reference="1"]')) return false;
     if (select.closest(".novaflow-smart-ai-dialog")) return false;
     if (select.closest('[data-novaflow-ui-design-assistant-dialog="1"]')) return false;
     if (select.disabled || select.multiple || Number(select.size || 0) > 1) return false;

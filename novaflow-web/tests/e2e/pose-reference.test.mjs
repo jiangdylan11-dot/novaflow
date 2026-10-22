@@ -96,3 +96,57 @@ test('all 136 upstream poses and previews are present, unmodified, and load on t
     assert.equal(doc.pose.prompt, undefined, 'a library pose must not replace user prompt text');
   }
 });
+
+test('actual OrbitControls rotates on empty left drag, pans on right drag, and leaves rig drags exclusive', async () => {
+  const THREE = await import(new URL('vendor/vnccs/vendor/three/three.module.js', renderer));
+  const { OrbitControls } = await import(new URL('vendor/vnccs/vendor/three/OrbitControls.js', renderer));
+  class Canvas {
+    style = {}; clientWidth = 640; clientHeight = 480; listeners = new Map();
+    addEventListener(type, fn, options) { const list = this.listeners.get(type) || []; list.push({ fn, capture: options === true || options?.capture }); this.listeners.set(type, list); }
+    removeEventListener(type, fn) { this.listeners.set(type, (this.listeners.get(type) || []).filter(entry => entry.fn !== fn)); }
+    setPointerCapture() {} releasePointerCapture() {}
+    getBoundingClientRect() { return { left: 0, top: 0, width: 640, height: 480 }; }
+    fire(type, button, x, y) { let stopped = false; const event = { type, button, clientX: x, clientY: y, pageX: x, pageY: y, pointerId: 1, pointerType: 'mouse', preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() { stopped = true; } }; for (const { fn } of [...this.listeners.get(type) || []].sort((a, b) => Number(b.capture || false) - Number(a.capture || false))) { fn(event); if (stopped) break; } }
+  }
+  const canvas = new Canvas(), camera = new THREE.PerspectiveCamera(45, 640 / 480, 0.1, 100);
+  camera.position.set(0, 0, 5);
+  const orbit = new OrbitControls(camera, canvas);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
+  tool.configureNavigation({ THREE, orbit, camera, skinnedMesh: mesh, jointMarkers: [] }, canvas);
+  const drag = (button, from, to) => { canvas.fire('pointerdown', button, ...from); canvas.fire('pointermove', button, ...to); canvas.fire('pointerup', button, ...to); };
+  const initialPosition = camera.position.clone(), initialTarget = orbit.target.clone();
+  drag(0, [20, 20], [100, 60]);
+  assert.ok(camera.position.distanceTo(initialPosition) > 0.1, 'empty left drag must orbit');
+  assert.ok(orbit.target.distanceTo(initialTarget) < 1e-10, 'orbit must retain its target');
+  const initialOffset = camera.position.clone().sub(orbit.target), targetBeforePan = orbit.target.clone();
+  drag(2, [30, 30], [100, 80]);
+  assert.ok(orbit.target.distanceTo(targetBeforePan) > 0.1, 'right drag must pan');
+  assert.ok(camera.position.clone().sub(orbit.target).distanceTo(initialOffset) < 1e-10, 'pan must retain view direction');
+  orbit.target.set(0, 0, 0); camera.position.set(0, 0, 5); orbit.update();
+  const positionBeforeRigDrag = camera.position.clone();
+  drag(0, [320, 240], [350, 260]);
+  assert.ok(camera.position.distanceTo(positionBeforeRigDrag) < 1e-10, 'dragging the rig must not rotate the camera');
+  orbit.dispose(); mesh.geometry.dispose(); mesh.material.dispose();
+});
+
+test('sending a pose from Enhance opens image editing and preserves the current provider and references', () => {
+  const existing = { dataUrl: 'character' }, api = bridge([existing]); api.state.active = false; api.state.provider = 'gpt';
+  api.activate = function (mode) { this.state.active = true; this.state.mode = mode; };
+  assert.equal(tool.applyReference(api, document, 'data:image/png;base64,aGVsbG8='), 1);
+  assert.equal(api.state.active, true); assert.equal(api.state.mode, 'img2img'); assert.equal(api.state.provider, 'gpt'); assert.equal(api.references()[0], existing);
+});
+
+test('pose selectors bypass global portals while ordinary workspace selectors retain their behavior', async () => {
+  const brand = await readFile(new URL('novaflow-brand-runtime.js', renderer), 'utf8');
+  const start = brand.indexOf('  function shouldPortalNativeSelect('), end = brand.indexOf('  function setNativeControlValue(', start);
+  class Select {
+    disabled = false; multiple = false; size = 0; options = [{}];
+    constructor(pose) { this.pose = pose; }
+    closest(selector) { return this.pose && selector === '[data-novaflow-pose-reference="1"]' ? {} : null; }
+    getBoundingClientRect() { return { width: 100, height: 32 }; }
+  }
+  const host = createContext({ HTMLSelectElement: Select, window: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) } });
+  runInContext(brand.slice(start, end), host);
+  assert.equal(host.shouldPortalNativeSelect(new Select(true)), false);
+  assert.equal(host.shouldPortalNativeSelect(new Select(false)), true);
+});

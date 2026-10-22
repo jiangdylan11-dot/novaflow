@@ -13671,7 +13671,8 @@
         { action: 'imageUpscale', label: '\u9ad8\u6e05\u653e\u5927', title: '对当前原图执行单图高清放大' },
         { action: 'imageOutpaint', label: '无限扩图', title: '扩展画布后生成新增区域，原图区域强制保留' },
         { action: 'objectTransfer', label: '\u4e07\u7269\u8fc1\u79fb', title: '\u4e0a\u4f20\u53c2\u8003\u7269\uff0c\u81ea\u52a8\u63d0\u53d6\u4e3b\u4f53\u540e\u62d6\u653e\u5230\u753b\u5e03\u76ee\u6807\u4f4d\u7f6e\u5e76\u6267\u884c\u878d\u5408\u8fc1\u79fb' },
-        { action: 'imageAngleAdjust', label: '角度调整', title: '按设定的角度重画当前原图' }
+        { action: 'imageAngleAdjust', label: '角度调整', title: '按设定的角度重画当前原图' },
+        { action: 'poseReference', label: '姿势参考', title: '摆放 3D 人偶并生成姿势参考图' }
       ]
     }
   ]
@@ -31230,6 +31231,7 @@
   }
 
   function runSplitControlAction(action, options = {}) {
+    if (action === 'poseReference') return window.NovaFlowPoseReferenceTool?.open?.()
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     
     if (guardPendingSourceDataUrl(action)) return null

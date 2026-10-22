@@ -46,7 +46,7 @@
   }
 
   function referenceSlot(bridge) {
-    if (!bridge?.state?.active) throw new Error('请先打开生图工具');
+    if (!bridge?.state || (!bridge.state.active && typeof bridge.activate !== 'function')) throw new Error('请先打开生图工具');
     if (bridge.state.running) throw new Error('请等待当前生成结束后再加入姿势参考');
     const refs = bridge.references(), limit = bridge.referenceLimit();
     const index = Array.from({ length: limit }, (_, i) => i).find(i => !refs[i]?.dataUrl);
@@ -58,6 +58,10 @@
     const index = referenceSlot(bridge);
     if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) throw new Error('姿势图导出失败');
     const doc = normalizeDocument(document);
+    if (!bridge.state.active) {
+      bridge.activate('img2img');
+      if (!bridge.state.active) throw new Error('无法打开生图工具，请回到绘图页面后重试');
+    }
     bridge.setReference(index, { name: `姿势参考_${index + 1}.png`, dataUrl, mimeType: 'image/png', width: doc.width, height: doc.height, source: 'pose-reference', poseDocument: doc });
     bridge.state.status = `姿势图已加入参考图${index + 1}`;
     bridge.state.error = '';
@@ -77,6 +81,53 @@
     return node;
   }
   const button = (text, onclick, attrs = {}) => element('button', { type: 'button', text, onclick, ...attrs });
+
+  function configureNavigation(viewer, canvas, signal) {
+    viewer.orbit.mouseButtons = { LEFT: viewer.THREE.MOUSE.ROTATE, MIDDLE: viewer.THREE.MOUSE.PAN, RIGHT: viewer.THREE.MOUSE.PAN };
+    const ray = new viewer.THREE.Raycaster(), point = new viewer.THREE.Vector2();
+    let pan = null;
+    const right = new viewer.THREE.Vector3(), up = new viewer.THREE.Vector3();
+    function finishPan(event) {
+      if (!pan || (event && event.pointerId !== pan.id)) return;
+      const id = pan.id; pan = null;
+      if (canvas.hasPointerCapture?.(id)) canvas.releasePointerCapture(id);
+      if (!signal?.aborted) viewer.orbit.dispatchEvent({ type: 'end' });
+      event?.preventDefault(); event?.stopImmediatePropagation();
+    }
+    canvas.addEventListener('pointerdown', event => {
+      if (event.button === 2) {
+        // Own the right drag rather than passing it through the editor/workspace
+        // pointer delegates. Pointer capture keeps panning outside canvas bounds.
+        pan = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        canvas.setPointerCapture(event.pointerId);
+        viewer.orbit.dispatchEvent({ type: 'start' });
+        event.preventDefault(); event.stopImmediatePropagation(); return;
+      }
+      if (event.button !== 0) return;
+      const rect = canvas.getBoundingClientRect();
+      point.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
+      viewer.skinnedMesh?.updateMatrixWorld(true); viewer.camera.updateMatrixWorld(true);
+      ray.setFromCamera(point, viewer.camera);
+      const targets = [...viewer.jointMarkers, ...Object.values(viewer.ikController?.effectors || {}), ...Object.values(viewer.ikController?.poleTargets || {}), viewer.skinnedMesh].filter(object => object?.visible);
+      const onHandle = Boolean(viewer.transform?.axis) || ray.intersectObjects(targets, false).length > 0;
+      // Run before OrbitControls' pointerdown; keep rig/gizmo drags exclusive.
+      viewer.orbit.mouseButtons.LEFT = onHandle ? viewer.THREE.MOUSE.NONE : viewer.THREE.MOUSE.ROTATE;
+    }, { capture: true, signal });
+    canvas.addEventListener('pointermove', event => {
+      if (!pan || event.pointerId !== pan.id) return;
+      const rect = canvas.getBoundingClientRect(), camera = viewer.camera;
+      camera.updateMatrixWorld(true);
+      const scale = 2 * camera.position.distanceTo(viewer.orbit.target) * Math.tan(camera.getEffectiveFOV() * Math.PI / 360) / Math.max(1, rect.height);
+      right.setFromMatrixColumn(camera.matrixWorld, 0).multiplyScalar(-(event.clientX - pan.x) * scale);
+      up.setFromMatrixColumn(camera.matrixWorld, 1).multiplyScalar((event.clientY - pan.y) * scale);
+      right.add(up); camera.position.add(right); viewer.orbit.target.add(right);
+      pan.x = event.clientX; pan.y = event.clientY;
+      viewer.orbit.update(); viewer.requestRender?.();
+      event.preventDefault(); event.stopImmediatePropagation();
+    }, { capture: true, signal });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, finishPan, { capture: true, signal });
+    signal?.addEventListener('abort', () => finishPan(), { once: true });
+  }
 
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
@@ -108,14 +159,19 @@
     let saved;
     try { saved = normalizeDocument(JSON.parse(root.localStorage.getItem(STORAGE))); Object.assign(state, saved); } catch (_) {}
     const abort = new AbortController();
-    const overlay = element('div', { class: 'nf-pose-overlay', 'data-novaflow-pose-reference': '1' });
+    const overlay = element('div', { class: 'nf-pose-overlay', 'data-novaflow-pose-reference': '1', 'data-novaflow-runtime-ignore': '1', 'data-novaflow-source-layout': '1' });
+    // Let the real canvas controls handle input, then keep workspace drag/zoom
+    // delegates from also handling the same gesture outside this owned surface.
+    for (const type of ['pointerdown', 'pointermove', 'pointerup', 'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'wheel', 'contextmenu']) {
+      overlay.addEventListener(type, event => { event.stopPropagation(); if (type === 'contextmenu') event.preventDefault(); });
+    }
     const dialog = element('section', { class: 'nf-pose-dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'nf-pose-title' });
     const closeButton = button('关闭', close, { 'aria-label': '关闭姿势参考' });
     const status = element('div', { class: 'nf-pose-status', role: 'status', 'aria-live': 'polite', text: '正在载入人偶编辑器…' });
     const side = element('div', { class: 'nf-pose-side' });
-    const canvas = element('canvas', { class: 'nf-pose-canvas', width: '640', height: '640', tabindex: '0', 'aria-label': '3D 人偶姿势视图' });
+    const canvas = element('canvas', { class: 'nf-pose-canvas', width: '640', height: '640', tabindex: '0', 'data-novaflow-split-pan-exempt': '1', 'aria-label': '3D 人偶姿势视图' });
     const stage = element('div', { class: 'nf-pose-stage' }, [canvas]);
-    const view = element('div', { class: 'nf-pose-view' }, [stage, element('div', { class: 'nf-pose-hint', text: '点击关节旋转；开启肢体拖动后拖动手脚。空白处拖动旋转视角，右键平移，滚轮缩放。导出自动隐藏关节、网格和操作手柄。' })]);
+    const view = element('div', { class: 'nf-pose-view' }, [stage, element('div', { class: 'nf-pose-hint', text: '左键拖动空白处旋转镜头，右键拖动平移，滚轮缩放。点击人偶选择关节；开启肢体拖动后可拖动手脚。导出自动隐藏关节、网格和操作手柄。' })]);
     const actions = [];
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
@@ -196,6 +252,7 @@
       viewer = new PoseViewerCore(canvas, { skinMode: 'flat_color', enableTextureSkinning: false, showCaptureFrame: false, ikEnabled: true, onPoseChange: changed, onBoneSelectionChange: () => { if (boneSelect) boneSelect.value = viewer.selectedBone?.name || ''; syncAxes(); } });
       await viewer.init(); if (abort.signal.aborted) { viewer.dispose(); return; }
       if (!viewer.initialized || !viewer.renderer) throw new Error('无法创建 3D 视图，请检查浏览器硬件加速');
+      configureNavigation(viewer, canvas, abort.signal);
       viewer.loadData(model); viewer.scene.background.set(state.background); viewer.setDirectionalSkydomeVisible(false);
       viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 1.2 }, { type: 'directional', color: '#ffffff', intensity: 2.2, x: 4, y: 10, z: 8 }]);
       if (saved) { viewer.setPose(saved.pose); if (saved.view) { viewer.camera.fov = saved.view.fov; viewer.camera.zoom = saved.view.zoom; viewer.camera.updateProjectionMatrix(); } }
@@ -291,20 +348,12 @@
     }
   }
 
-  function mount() {
-    const host = root.document?.querySelector('[data-novaflow-art-generate-control-host="1"]');
-    if (!host || host.querySelector('[data-novaflow-pose-reference-open]')) return;
-    if (root.NovaFlowUiDesignDrawing?.isActive?.()) return;
-    installStyle();
-    host.append(button('姿势参考', () => open(), { class: 'nf-pose-launch', 'data-novaflow-pose-reference-open': '1' }));
-  }
-  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), mount, normalizeDocument, referenceSlot, applyReference, getEditor: () => editor });
+  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, getEditor: () => editor });
   if (root.document && typeof root.MutationObserver === 'function') {
     let queued = false;
     new root.MutationObserver(() => {
       if (queued) return; queued = true;
-      root.queueMicrotask(() => { queued = false; mount(); if (editor && root.__NovaFlowArtGenerate?.state.active === false) editor.close(); });
+      root.queueMicrotask(() => { queued = false; if (editor && !root.document.querySelector('[data-novaflow-spine-split-control-category="enhance"]')) editor.close(); });
     }).observe(root.document.documentElement, { childList: true, subtree: true });
-    mount();
   }
 })(typeof window !== 'undefined' ? window : globalThis);
