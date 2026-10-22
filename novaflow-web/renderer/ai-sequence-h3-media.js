@@ -48,16 +48,17 @@
     const boards=new Map(),loads=new Map(),listeners=new Set(),reports=new Map(),savedBoards=new Set();let active='b1',pending=Promise.resolve(),error='';
     const emit=()=>listeners.forEach(fn=>fn());
     const get=(id=active)=>boards.get(id)||[];
-    const load=id=>{active=String(id||'b1');if(!loads.has(active)){const key=active;loads.set(key,storage.get(key).then(saved=>{const items=saved?.version===1?saved.items:[];validate(items);if(saved?.version===1)savedBoards.add(key);boards.set(key,items);emit();}).catch(e=>{error='H3 素材恢复失败：'+e.message;emit();throw e;}));}return loads.get(active);};
+    const ensureLoaded=id=>{id=String(id||'b1');if(!loads.has(id)){const key=id;loads.set(key,storage.get(key).then(saved=>{const items=saved?.version===1?saved.items:[];validate(items);if(saved?.version===1)savedBoards.add(key);boards.set(key,items);emit();}).catch(e=>{error='H3 素材恢复失败：'+e.message;emit();throw e;}));}return loads.get(id);};
+    const load=id=>{active=String(id||'b1');return ensureLoaded(active);};
     const set=async(id,items)=>{validate(items);await storage.put(id,{version:1,items:clone(items)});savedBoards.add(id);boards.set(id,clone(items));error='';emit();};
-    const mutate=fn=>{const id=active;pending=pending.catch(()=>{}).then(()=>load(id)).then(()=>fn(id));return pending.catch(e=>{error=e.message;emit();throw e;});};
+    const mutate=(fn,id=active)=>{pending=pending.catch(()=>{}).then(()=>ensureLoaded(id)).then(()=>fn(id));return pending.catch(e=>{error=e.message;emit();throw e;});};
     return {
       load,get,hasSaved:(id=active)=>savedBoards.has(id),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},getError:()=>error,
-      getResources:()=>resources(get()),
+      getResources:(id=active)=>resources(get(id)),clearError(){error='';emit();},
       getReport:(id=active)=>reports.get(id)||null,
       reportUsage(prompt,files,id=active){const structured=/^subject_definitions:/m.test(prompt),used=new Set(String(prompt).match(/<(?:Picture|Video|Audio) [1-9]\d*>/g)||[]);const selected=files.filter(x=>!structured||used.has(x.modelToken));const unused=files.filter(x=>!selected.includes(x));const report={selected:selected.map(x=>({sourceId:x.sourceId,label:x.label,fileName:x.fileName})),unused:unused.map(x=>({sourceId:x.sourceId,label:x.label,fileName:x.fileName}))};reports.set(id,report);emit();return report;},
-      async snapshot(id=active){await load(id);await pending;return resources(clone(get(id)));},
-      add(items){return mutate(id=>set(id,[...get(id),...items]));},
+      async snapshot(id=active){await ensureLoaded(id);await pending;return resources(clone(get(id)));},
+      add(items,id=active){return mutate(key=>set(key,[...get(key),...items]),id);},
       remove(sourceId){return mutate(async id=>{const before=clone(get(id));const after=before.filter(x=>x.sourceId!==sourceId);await set(id,after);return {before,after};});},
       restore(value){return mutate(id=>{if(value.version!==1)throw new Error('H3 素材存档版本无效');return set(id,value.items);});},
       export:()=>({version:1,items:clone(get())}),
@@ -66,14 +67,73 @@
   }
   const store = createStore(root.indexedDB ? database() : {async get(){return null;},async put(){throw new Error('本地素材存储不可用，未保存');}});
   const toDataUrl=file=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result));r.onerror=()=>no(r.error);r.readAsDataURL(file);});
-  async function importFiles(kind,files) {
-    const items=[];
-    for(const file of files) {
-      if(!String(file.type).startsWith(kind+'/'))throw new Error(CN[kind]+'类型不匹配：'+file.name);
-      items.push({sourceId:root.crypto.randomUUID(),kind,fileName:file.name,type:file.type,size:file.size,lastModified:file.lastModified,dataUrl:await toDataUrl(file)});
-    }
-    await store.add(items);
+  function createImporter(target,options={}) {
+    const extract=options.extractAudio||((file)=>{
+      if(typeof root.electronAPI?.extractAudioTrack!=='function')throw new Error('音轨提取工具未加载，请更新本地客户端');
+      return root.electronAPI.extractAudioTrack({file,jobId:'h3-audio-'+root.crypto.randomUUID()});
+    });
+    const read=options.readFile||toDataUrl,probe=options.duration||readDuration;
+    const reservations=new Map(),inFlight=new Set(),notices=new Map(),listeners=new Set();let queue=Promise.resolve();
+    const emit=()=>listeners.forEach(fn=>fn());
+    const count=(id,kind)=>reservations.get(id)?.[kind]||0;
+    const reserve=(id,kind,delta)=>{const values=reservations.get(id)||{image:0,video:0,audio:0};values[kind]+=delta;reservations.set(id,values);emit();};
+    const type=file=>/^video\//.test(file.type||'')||/\.(mp4|mov|m4v|webm|mkv|avi|wmv)$/i.test(file.name||'')?'video':/^audio\//.test(file.type||'')||/\.(wav|mp3|m4a|aac|flac|ogg|opus)$/i.test(file.name||'')?'audio':String(file.type||'').split('/')[0];
+    const publish=(id,kind,errors,focus)=>{if(errors.length){const pending=notices.get(id)||[];pending.push({kind,errors,focus});notices.set(id,pending);}emit();};
+    return {
+      subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},
+      pending:(id,kind)=>kind?count(id,kind):Object.values(reservations.get(id)||{}).reduce((a,b)=>a+b,0),
+      async whenIdle(id){if(!Object.values(reservations.get(id)||{}).some(Boolean))return;await queue;return this.whenIdle(id);},
+      takeNotices(id){if(Object.values(reservations.get(id)||{}).some(Boolean))return [];const value=notices.get(id)||[];notices.delete(id);return value;},
+      async importFiles(kind,files,{boardId=target.activeBoard(),focus}={}) {
+        const id=String(boardId);await target.snapshot(id);
+        const errors=[],accepted=[],imported=[];
+        const canQueue=target.get(id).filter(x=>x.kind===kind).length+count(id,kind)<LIMITS[kind];
+        for(const file of Array.from(files||[])){
+          const actual=type(file),key=JSON.stringify([id,kind,file.name,file.size,file.lastModified,file.type]);
+          if(actual!==kind&&!(kind==='audio'&&actual==='video')){errors.push({fileName:file.name,message:CN[kind]+'类型不匹配'});continue;}
+          if(inFlight.has(key)){errors.push({fileName:file.name,message:'该文件正在导入，请等待完成'});continue;}
+          if(!canQueue){errors.push({fileName:file.name,message:CN[kind]+'已满，最多 '+LIMITS[kind]+' 个'});continue;}
+          inFlight.add(key);reserve(id,kind,1);accepted.push({file,actual,key});
+        }
+        const operation=async()=>{
+          for(const {file,actual,key}of accepted)try {
+            if(target.get(id).filter(x=>x.kind===kind).length>=LIMITS[kind])throw new Error(CN[kind]+'已满，最多 '+LIMITS[kind]+' 个');
+            let blob=file,name=file.name,derived=false;
+            if(kind==='audio'&&actual==='video'){
+              const result=await extract(file);
+              if(!result?.ok||!result.blob)throw new Error(result?.error||'视频音轨提取失败');
+              blob=result.blob;name=result.fileName||file.name.replace(/\.[^.]+$/,'')+'.wav';derived=true;
+              const header=new Uint8Array(await blob.slice(0,12).arrayBuffer());
+              if(blob.size<=44||String.fromCharCode(...header.slice(0,4))!=='RIFF'||String.fromCharCode(...header.slice(8,12))!=='WAVE')throw new Error('音轨提取结果不是有效 WAV');
+            }
+            if(!String(blob.type||'').startsWith(kind+'/'))blob=new Blob([blob],{type:kind==='audio'?'audio/'+(/\.mp3$/i.test(name)?'mpeg':/\.m4a$/i.test(name)?'mp4':name.split('.').pop()):file.type});
+            const item={sourceId:root.crypto.randomUUID(),kind,fileName:name,type:blob.type,size:blob.size,lastModified:file.lastModified,dataUrl:await read(blob),...(derived?{originalFileName:file.name,derivedFromVideo:true}: {})};
+            if(kind==='audio'){
+              const durationSec=await probe(item);item.durationSec=durationSec;
+              const policy=root.NovaFlowAiSequenceMiniMaxH3Resource;
+              const audios=target.get(id).filter(x=>x.kind==='audio');
+              const durations=await Promise.all(audios.map(async x=>({durationSec:x.durationSec||await probe(x)})));
+              if(policy?.validateReferenceMediaPolicy)policy.validateReferenceMediaPolicy({audios:[...durations,{durationSec}]});
+              else if(durationSec<2||durationSec>15||durations.reduce((n,x)=>n+x.durationSec,0)+durationSec>15.0005)throw new Error('参考音频需为 2–15 秒，全部音频合计不超过 15 秒');
+            }
+            await target.add([item],id);imported.push(item);
+          }catch(error){errors.push({fileName:file.name,message:String(error?.message||error)});target.clearError?.();}
+          finally{inFlight.delete(key);reserve(id,kind,-1);}
+          publish(id,kind,errors,focus);return {boardId:id,imported,errors};
+        };
+        const result=queue.catch(()=>{}).then(operation);queue=result.catch(()=>{});return result;
+      }
+    };
   }
+  function importFiles(kind,files,options){return importer.importFiles(kind,files,options);}
+  function showUploadErrors(entries,boardId) {
+    if(!entries.length)return;
+    const lines=entries.flatMap(x=>x.errors.map(error=>error.fileName+'：'+error.message));
+    root.alert('参考素材导入未完成\n'+lines.slice(0,20).join('\n')+(lines.length>20?'\n另有 '+(lines.length-20)+' 项错误':''));
+    const entry=entries.at(-1),panel=document.querySelector('[data-novaflow-h3-media-panel="1"]');
+    if(panel?.dataset.boardId===boardId){const focus=entry.focus?.isConnected?entry.focus:panel.querySelector('[data-novaflow-h3-add="'+entry.kind+'"]')||panel.querySelector('[data-novaflow-h3-kind="'+entry.kind+'"]');focus?.focus({preventScroll:true});}
+  }
+
   const referenceLayouts=new WeakMap();
   function layoutReferenceBar(bottom) {
     const panel=bottom?.querySelector('[data-novaflow-h3-media-panel="1"]');
@@ -134,18 +194,22 @@
     if(durationCache.size>32)for(const [key,value]of durationCache){if(key!==item.sourceId&&value.seconds!==null){durationCache.delete(key);if(durationCache.size<=32)break;}}
     return entry.promise;
   }
+  const importer=createImporter(store);
   function Panel({react:React,card:Card,boardId='b1',prompt='',onPromptChange,legacy=[]}) {
     const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[durations,setDurations]=React.useState(()=>Object.fromEntries([...durationCache].filter(([,x])=>x.seconds!==null).map(([id,x])=>[id,x.seconds]))),[durationErrors,setDurationErrors]=React.useState({}),inputs=React.useRef({});
     React.useEffect(()=>store.subscribe(()=>setTick(t=>t+1)),[]);
+    React.useEffect(()=>importer.subscribe(()=>setTick(t=>t+1)),[]);
+    React.useEffect(()=>{showUploadErrors(importer.takeNotices(boardId),boardId);},[boardId,tick]);
+    React.useEffect(()=>{if(error){showUploadErrors([{kind:'audio',errors:[{fileName:'素材',message:error}]}],boardId);setError('');store.clearError();}},[error,boardId]);
     React.useEffect(()=>{let live=true;store.load(boardId).then(async()=>{
       if(!live||store.hasSaved(boardId)||store.get(boardId).length||!legacy.length)return;
       const old=[];for(const x of legacy.filter(Boolean)){const src=x.dataUrl||x.objectUrl;if(!src)continue;const blob=await(await fetch(src)).blob();old.push({...x,sourceId:x.sourceId||root.crypto.randomUUID(),dataUrl:await toDataUrl(blob)});}
       if(live&&store.activeBoard()===boardId&&old.length)await store.add(old);
-    }).catch(e=>setError(e.message));return()=>{live=false;};},[boardId]);
+    }).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[boardId]);
     if(typeof Card!=='function')throw new Error('H3 原上传卡片组件未载入，请更新客户端');
     const list=resources(store.get(boardId)),counts={image:0,video:0,audio:0};for(const x of list)counts[x.kind]++;
     const action=fn=>async()=>{setBusy(true);setError('');try{await fn();}catch(e){setError(e.message);}finally{setBusy(false);}};
-    const drop=kind=>e=>action(()=>importFiles(kind,Array.from(e.dataTransfer?.files||[])))();
+    const drop=kind=>e=>{const focus=e.currentTarget;action(()=>importFiles(kind,Array.from(e.dataTransfer?.files||[]),{boardId,focus}))();};
     const addTitles={image:'添加参考图',video:'添加参考视频',audio:'添加参考音频'};
     React.useEffect(()=>{
       let live=true;
@@ -163,15 +227,15 @@
         h('span',{className:'nf-h3-card-duration','data-novaflow-h3-duration':x.kind,'data-duration-state':durationErrors[x.sourceId]?'error':Number.isFinite(durations[x.sourceId])?'ready':'loading'},Number.isFinite(durations[x.sourceId])?durations[x.sourceId].toFixed(1)+'s':durationErrors[x.sourceId]?'时长不可用':'--')));
 
     const report=store.getReport(boardId),detail=error||store.getError()||(report?'本次使用：'+report.selected.map(x=>x.label).join('、')+'；未使用：'+(report.unused.map(x=>x.label+'（'+x.fileName+'）').join('、')||'无'):'');
-    return h('div',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,className:'nf-h3-media',title:detail||undefined,'aria-busy':busy},
-      ...Object.keys(LIMITS).map(kind=>h('input',{key:kind,ref:el=>{inputs.current[kind]=el;},type:'file',hidden:true,tabIndex:-1,multiple:true,accept:kind+'/*','aria-label':'选择'+CN[kind],'data-novaflow-h3-upload':kind,disabled:busy||counts[kind]>=LIMITS[kind],onChange:e=>{const files=Array.from(e.target.files||[]);e.target.value='';action(()=>importFiles(kind,files))();}})),
+    return h('div',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,className:'nf-h3-media',title:detail||undefined,'aria-busy':busy||importer.pending(boardId)>0},
+      ...Object.keys(LIMITS).map(kind=>h('input',{key:kind,ref:el=>{inputs.current[kind]=el;},type:'file',hidden:true,tabIndex:-1,multiple:true,accept:kind==='audio'?'audio/*,video/*,.mp4,.mov,.m4v,.webm,.mkv,.avi,.wmv':kind+'/*','aria-label':'选择'+CN[kind],'data-novaflow-h3-upload':kind,disabled:busy||counts[kind]+importer.pending(boardId,kind)>=LIMITS[kind],onChange:e=>{const files=Array.from(e.target.files||[]);e.target.value='';action(()=>importFiles(kind,files,{boardId,focus:document.querySelector('[data-novaflow-h3-add="'+kind+'"]')}))();}})),
       h('div',{className:'nf-h3-media-cards','data-novaflow-h3-card-list':'1'},
-        ...list.map(x=>h(Card,{key:x.sourceId,title:x.fileName,dataUrl:x.kind==='image'?x.dataUrl:null,mediaName:x.label,h3Preview:x.kind==='image'?undefined:preview(x),onPick:()=>onPromptChange?.(current=>String(current||'')+' @'+x.label),onClear:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));}),onDropImport:drop(x.kind),h3Meta:{'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,'data-novaflow-h3-kind':x.kind,'data-novaflow-h3-filename':x.fileName,title:x.fileName,'aria-label':x.label+' '+x.fileName}})),
-        ...Object.keys(LIMITS).filter(kind=>counts[kind]<LIMITS[kind]).map(kind=>h(Card,{key:'add-'+kind,title:addTitles[kind],dataUrl:null,onPick:()=>{if(!busy)inputs.current[kind]?.click();},onDropImport:drop(kind),h3Meta:{'data-novaflow-h3-add':kind,'data-novaflow-h3-kind':kind,'aria-label':addTitles[kind]}}))
+        ...list.map(x=>h(Card,{key:x.sourceId,title:x.fileName,dataUrl:x.kind==='image'?x.dataUrl:null,mediaName:x.label,h3Preview:x.kind==='image'?undefined:preview(x),onPick:()=>onPromptChange?.(current=>String(current||'')+' @'+x.label),onClear:action(async()=>{const {before,after}=await store.remove(x.sourceId);onPromptChange?.(current=>remapPrompt(current,before,after));}),onDropImport:drop(x.kind),h3Meta:{tabIndex:0,'data-novaflow-h3-source-id':x.sourceId,'data-novaflow-h3-slot':x.key,'data-novaflow-h3-kind':x.kind,'data-novaflow-h3-filename':x.fileName,title:x.fileName,'aria-label':x.label+' '+x.fileName}})),
+        ...Object.keys(LIMITS).filter(kind=>counts[kind]<LIMITS[kind]).map(kind=>h(Card,{key:'add-'+kind,title:addTitles[kind],dataUrl:null,onPick:()=>{if(!busy)inputs.current[kind]?.click();},onDropImport:drop(kind),h3Meta:{tabIndex:0,'data-novaflow-h3-add':kind,'data-novaflow-h3-kind':kind,'aria-label':addTitles[kind]}}))
       ),
-      error||store.getError()?h('span',{role:'alert','data-novaflow-h3-media-error':'1'},error||store.getError()):null
+      null
     );
   }
-  const api={layoutReferenceBar,normalizeCardContents,LIMITS,createStore,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),snapshot:id=>store.snapshot(id),reportUsage:(...args)=>store.reportUsage(...args),importFiles};
+  const api={layoutReferenceBar,normalizeCardContents,LIMITS,createStore,createImporter,validate,resources,remapPrompt,Panel,store,getResources:()=>store.getResources(),pendingImports:id=>importer.pending(id||store.activeBoard()),snapshot:async id=>{const key=id||store.activeBoard();await importer.whenIdle(key);return store.snapshot(key);},reportUsage:(...args)=>store.reportUsage(...args),importFiles};
   root.NovaFlowH3Media=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

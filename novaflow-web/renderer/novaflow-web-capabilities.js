@@ -793,7 +793,10 @@
       throw error;
     } finally {
       busy.end(jobId);
-      if (ffmpegPromise) await ffmpeg.deleteFile(inName).catch(() => {});
+      if (ffmpegPromise) {
+        await ffmpeg.deleteFile(inName).catch(() => {});
+        if (tool === 'audio-extract') await ffmpeg.deleteFile(outFile).catch(() => {});
+      }
       ffmpegJob = null;
     }
   }
@@ -938,14 +941,18 @@
       const file = payload && payload.file instanceof Blob ? payload.file : null;
       if (!file) throw new Error('没有收到文件');
       const fileName = videoStem(file.name, 'audio') + '.wav';
-      const { blob } = await runVideoJob({
+      const { blob, token } = await runVideoJob({
         tool: 'audio-extract', jobId: String((payload && payload.jobId) || 'audio_extract_' + Date.now()), file,
         buildArgs: (inName, outFile, probeLog) => {
-          if (!sourceFromLog(probeLog).hasAudio) throw new Error('这个视频没有音轨');
+          if (!sourceFromLog(probeLog).hasAudio) {
+            if (!/Stream #0:\d+.*?Video:/.test(probeLog)) throw new Error('无法解码这个视频或读取媒体流');
+            throw new Error('这个视频没有音轨');
+          }
           return ['-i', inName, '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'pcm_s16le', outFile];
         },
         outName: fileName, mimeType: 'audio/wav'
       });
+      releaseVideoOutputs(null, token);
       return { ok: true, blob, fileName, bytesIn: file.size, bytesOut: blob.size };
     } catch (error) {
       return { ok: false, error: '提取音轨失败：' + String((error && error.message) || error).slice(0, 240) };

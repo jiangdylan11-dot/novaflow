@@ -17,6 +17,5 @@ html body [data-novaflow-h3-media-panel="1"] [data-novaflow-h3-source-id] > .nf-
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-kind-icon {position:static;flex:0 0 14px;display:block;width:14px;height:14px;line-height:14px;color:#b8b8b8;}
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-kind-icon svg {display:block;width:14px;height:14px;}
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-duration {position:static;color:#ddd;font-size:12px;font-weight:400;line-height:18px;white-space:nowrap;}
-html body [data-novaflow-h3-media-panel="1"] > [role="alert"] {position:absolute;bottom:0;left:0;max-width:100%;color:#ffb0a8;font-size:11px;}
 
 html body [data-novaflow-h3-media-panel="1"] .nf-h3-card-duration-row {display:inline-flex;align-items:center;justify-content:center;gap:6px;height:18px;}
