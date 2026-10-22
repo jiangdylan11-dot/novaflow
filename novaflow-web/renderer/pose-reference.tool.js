@@ -612,10 +612,8 @@
       viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 0.65 }, { type: 'directional', color: '#ffffff', intensity: 2.0, x: 4, y: 10, z: 8 }]);
       const floor = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
       viewer.gridHelper = new viewer.THREE.Group();
-      const grid = new viewer.THREE.GridHelper(160, 80, '#8796a8', '#b2bbc6');
-      grid.material.transparent = true; grid.material.opacity = 0.6;
       const axes = new viewer.THREE.AxesHelper(12);
-      viewer.gridHelper.position.y = floor - 0.03; viewer.gridHelper.add(grid, axes); viewer.scene.add(viewer.gridHelper);
+      viewer.gridHelper.position.y = floor - 0.03; viewer.gridHelper.add(axes); viewer.scene.add(viewer.gridHelper);
       characters = createCharacters(viewer, changed, bodyModels);
       characters.restore(saved || { pose: { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } } });
       if (saved?.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: saved.pose.camera });
