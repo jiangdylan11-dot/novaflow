@@ -269,6 +269,8 @@ function keepSupplement(text, cap) {
 export function normalizeReverseRequest(payload = {}) {
   const surface = String(payload.surface || '').trim().slice(0, 80);
   const purpose = String(payload.purpose || '').trim().slice(0, 80);
+  const usesArtReview = purpose === 'art-director-review' && surface === 'art';
+  const usesArtDirection = (purpose === 'art-director' || usesArtReview) && surface === 'art';
   const normalizedPurpose = purpose.toLowerCase().replace(/_/g, '-');
   const usesUiQwen = surface === 'ui-design' && payload.targetEngine === 'qwen-2.1';
   const usesH3 = H3_REVERSE_PURPOSES.includes(normalizedPurpose);
@@ -285,6 +287,18 @@ export function normalizeReverseRequest(payload = {}) {
     dataUrl: String(item?.dataUrl || '')
   })).filter(item => item.dataUrl) : [];
   if (Array.isArray(payload.images) && images.length !== payload.images.length) throw new Error('参考图数据无效，本次未截断提交');
+  let artContext;
+  if (usesArtDirection) {
+    if (payload.visualSchema !== (usesArtReview ? 'nf.art.review.v1' : 'nf.art.direction.v1') || !Array.isArray(payload.artContext?.references) || payload.artContext.references.length !== images.length) throw new Error('绘图分析协议或参考图编号无效');
+    const seen = new Set();
+    artContext = { task: String(payload.artContext.task || 'auto').slice(0, 40), width: Number(payload.artContext.width) || 1024, height: Number(payload.artContext.height) || 1024,
+      references: payload.artContext.references.map(item => {
+        if (!Number.isInteger(item.source) || item.source < (usesArtReview ? 0 : 1) || item.source > 16 || seen.has(item.source)) throw new Error('绘图参考图编号无效');
+        seen.add(item.source);
+        return { source: item.source, role: String(item.role || 'auto').slice(0, 40), ...(Array.isArray(item.roles) ? { roles: item.roles.map(role => String(role).slice(0,40)).slice(0,10) } : {}), ...(Array.isArray(item.excludedRoles) ? {excludedRoles:item.excludedRoles.map(role=>String(role).slice(0,40)).slice(0,10)} : {}) };
+      }) };
+    if (usesArtReview) artContext.plan = JSON.parse(JSON.stringify(payload.artContext.plan || {}));
+  }
   const visualSchema = String(payload.visualSchema || '').trim().slice(0, 80);
   if (usesH3 && visualSchema !== 'nf.h3.visual.v1') throw new Error('MiniMax H3 reverse requires visualSchema nf.h3.visual.v1');
   if (usesH3 && (typeof payload.userPrompt !== 'string' || typeof payload.userRequirements !== 'string')) throw new Error('MiniMax H3 reverse requires explicit userPrompt and userRequirements fields');
@@ -294,9 +308,10 @@ export function normalizeReverseRequest(payload = {}) {
   const usesVisualV2 = purpose === 'static-image-reverse' && images.length === 1 && visualSchema === 'nf.visual.v2';
   return {
     usesVisualV2,
-    timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : 300000,
+    timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : usesArtDirection ? 600000 : 300000,
     request: {
       images, requirements, surface, purpose, provider: 'local', currentPrompt,
+      ...(usesArtDirection ? { visualSchema: usesArtReview ? 'nf.art.review.v1' : 'nf.art.direction.v1', artContext, negativePrompt: String(payload.negativePrompt || '').slice(0, 12000), nsfw: payload.nsfw === true } : {}),
       ...(usesUiQwen ? { targetEngine:'qwen-2.1', supportsNegativePrompt:payload.supportsNegativePrompt !== false, uiDesignIntent:payload.uiDesignIntent, uiPreserveLayout:payload.uiPreserveLayout } : {}),
       ...(usesH3 ? { userPrompt: payload.userPrompt.trim().slice(0, 20000), userRequirements: payload.userRequirements.trim().slice(0, 12000), h3Mode: payload.h3Mode, durationSeconds: payload.durationSeconds } : {}),
       ...(preferredOutputLanguage ? { preferredOutputLanguage } : {}),

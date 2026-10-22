@@ -19967,7 +19967,8 @@ class PromptAssistant:
             if requirements else ""
         )
         merge_instruction = f"{current_prompt_instruction}{requirements_instruction}"
-        if not isinstance(images, list) or not images:
+        is_art_direction = purpose in ('art-director', 'art-director-review') and payload.get('surface') == 'art'
+        if not isinstance(images, list) or (not images and not is_art_direction):
             raise ValueError("请先选择可分析的图片")
         image_items = []
         for item in images:
@@ -19984,6 +19985,17 @@ class PromptAssistant:
                 "label": str(item.get("label") or ""),
             })
         image_tensors = [item["tensor"] for item in image_items]
+        if is_art_direction:
+            if purpose == 'art-director-review':
+                if payload.get('visualSchema') != 'nf.art.review.v1':
+                    raise ValueError('成图检查协议无效')
+                from prompt_assistant.art_direction import review
+                return review(self, image_tensors, payload)
+            if payload.get('visualSchema') != 'nf.art.direction.v1':
+                raise ValueError('绘图分析协议无效')
+            art_reference_block_sensitive_minor(current_prompt or requirements)
+            from prompt_assistant.art_direction import plan
+            return plan(self, image_tensors, payload)
         if not image_tensors:
             raise ValueError("没有可分析的图片数据")
 

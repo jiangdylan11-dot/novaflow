@@ -6,6 +6,7 @@ const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
 const h3PromptEnhance = require("./h3-prompt-enhance");
+const artDirection = require("./art-direction");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -9178,6 +9179,8 @@ function grokResponsesPublicResult(data, options = {}) {
       )
       : parseSmartAiPromptResult(rawText, options);
   const uiPlan = options.uiQwen21Plan === true ? validateUiQwen21Plan(parseSmartAiPromptJson(rawText)?.ui_plan, options.referenceCount || 0, options) : null;
+  const drawingPlan = options.artDirection === true ? artDirection.validate(parseSmartAiPromptJson(rawText)?.art_direction, options.referenceNumbers || []) : null;
+  const drawingReview = options.artReview === true ? artDirection.validateReview(parseSmartAiPromptJson(rawText)?.art_review) : null;
   if (options.uiQwen21Plan === true) {
     if (!String(parsed.prompt || '').trim()) throw new Error('Qwen 2.1 UI 设计指令为空');
     const tokens = [...new Set(String(options.originalPrompt || '').match(/__NOVAFLOW_[A-Z0-9_:-]+__/g) || [])];
@@ -9267,6 +9270,8 @@ function grokResponsesPublicResult(data, options = {}) {
     model: data?.model || "",
     output_text: parsed.prompt,
     ...(uiPlan ? {uiPlan} : {}),
+    ...(drawingPlan ? {artDirection:drawingPlan} : {}),
+    ...(drawingReview ? {artReview:drawingReview} : {}),
     negative_prompt: parsed.negative_prompt,
     has_negative_prompt: parsed.has_negative_prompt,
     visualSchema: expectedVisualSchema,
@@ -9991,6 +9996,8 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
 }
 
 function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
+  if (payload?.surface === 'art' && payload?.purpose === 'art-director') return artDirection.build(payload, model);
+  if (payload?.surface === 'art' && payload?.purpose === 'art-director-review') return artDirection.buildReview(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
   if (miniMaxH3ReverseMode(payload)) return buildMiniMaxH3GrokReverseRequest(payload, String(model || "grok-4.3"));
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
@@ -11109,6 +11116,8 @@ async function handleGrokImageReverseRequest(req, res) {
     mode,
     prompt: grok.data.output_text,
     ...(grok.data.uiPlan ? {uiPlan:grok.data.uiPlan} : {}),
+    ...(grok.data.artDirection ? {artDirection:grok.data.artDirection} : {}),
+    ...(grok.data.artReview ? {artReview:grok.data.artReview} : {}),
     negative_prompt: grok.data.negative_prompt,
     has_negative_prompt: Boolean(grok.data.has_negative_prompt),
     visualSchema: String(grok.data.visualSchema || ""),

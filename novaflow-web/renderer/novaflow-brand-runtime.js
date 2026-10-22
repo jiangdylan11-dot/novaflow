@@ -82540,6 +82540,7 @@
 
   async function cancelArtGenerateRun() {
     if (window.NovaFlowUiDesignDrawing?.cancelPreparation?.()) return;
+    if (window.NovaFlowArtDirection?.cancelPreparation?.()) return;
     if (!ART_GENERATE_STATE.running) return;
     const cancelToken = Math.max(0, Number(ART_GENERATE_STATE.runToken) || 0) + 1;
     const baseUrl = ART_GENERATE_STATE.activeBaseUrl || String(localStorage.getItem(ART_GENERATE_LAST_RUNTIME_KEY) || "").trim();
@@ -82814,6 +82815,10 @@
       if (textarea.value !== value) textarea.value = value;
       // Mounts or drops the @ mention editor for the current mode, and redraws it.
       if (key === "prompt") mountArtGenerateResourceMentionTextarea(textarea);
+      if (key === "prompt" && !window.NovaFlowUiDesignDrawing?.isActive?.()) {
+        const old = from.querySelector('.nf-art-direction-controls');
+        if (old) old.replaceWith(window.NovaFlowArtDirection.controls(createArtEl, ART_GENERATE_STATE, () => renderArtGenerateSurfaces({ forceBottom: true })));
+      }
     });
     return () => {
       if (!focus || !focus.node.isConnected || document.activeElement === focus.node) return;
@@ -83718,7 +83723,11 @@
             renderArtGenerateSurfaces({ forceBottom: true });
           }
         }, "\u00d7"),
-        renderArtGenerateReferenceSizeBadge(index, current)
+        renderArtGenerateReferenceSizeBadge(index, current),
+        !window.NovaFlowUiDesignDrawing?.isActive?.() && window.NovaFlowArtDirection?.referenceControl?.(createArtEl, current, index + 1, role => {
+          current.drawingRole = role;
+          renderArtGenerateSurfaces({ forceBottom: true });
+        })
       ]
       : [
         createArtEl("span", { className: "nf-upload-dropzone__icon", text: "+" }),
@@ -84399,6 +84408,7 @@
   function renderArtGeneratePromptBox(key, label, placeholder) {
     const ui = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
     if (ui) placeholder = key === "prompt" ? "描述要生成的界面、参考图用途和目标风格" : "描述不希望出现的元素、风格或效果（可选）";
+    else if (key === "prompt") placeholder = "简单描述即可，例如：图1人物，用图2画风；也可选参考用途后直接生成";
     const textarea = createArtEl("textarea", {
       placeholder,
       tabIndex: "0",
@@ -84432,6 +84442,7 @@
       "data-novaflow-art-generate-prompt-surface": ui ? "ui" : "drawing"
     }, [
       renderArtGeneratePromptHistory(key),
+      !ui && key === "prompt" ? window.NovaFlowArtDirection?.controls?.(createArtEl, ART_GENERATE_STATE, () => renderArtGenerateSurfaces({ forceBottom: true })) : null,
       textarea
     ]);
   }
@@ -85511,7 +85522,9 @@
     // size and the run is an edit. Native UI preservation also keeps that spatial input
     // when resized; Drawing retains its aspect-dependent fresh-layout behavior.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
-    const editInPlace = (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
+    const scopedDrawingRoles = providerOptions?.taskProfile === 'art-direction' && Array.isArray(providerOptions.referenceRoles) ? providerOptions.referenceRoles : [];
+    const changesDrawingLayout = scopedDrawingRoles.length > 0 && (scopedDrawingRoles[0] !== 'subject' || scopedDrawingRoles.some(role => role === 'pose' || role === 'composition'));
+    const editInPlace = !changesDrawingLayout && (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
     if (state?.uiNativeEditPrompt === true) { /* UI compiler already supplies one native edit directive. */ }
@@ -86068,7 +86081,7 @@
     const ui = window.NovaFlowUiDesignDrawing;
     const getCurrentContext = () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
       generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? ui?.isActive?.() ? 'ui' : 'drawing' : 'other' });
-    if (!options.uiPrepared && (ui?.shouldPrepare?.(getCurrentContext()) ?? ui?.isActive?.())) {
+    if (!options.uiPrepared && !options.drawingPrepared && (ui?.shouldPrepare?.(getCurrentContext()) ?? ui?.isActive?.())) {
       captureArtGeneratePromptSnapshot();
       ART_GENERATE_STATE.running = true;
       setArtGenerateProgress("理解 UI 设计需求…", 0);
@@ -86084,11 +86097,28 @@
         return;
       }
     }
-    try { options.uiPrepared?.assertCurrent?.(); } catch (error) { setArtGenerateStatus(String(error?.message || error), true); return; }
-    const promptSnapshot = options.uiPrepared?.promptSnapshot || captureArtGeneratePromptSnapshot();
-    const settingsSnapshot = options.uiPrepared?.state || ART_GENERATE_STATE;
+    if (!options.uiPrepared && !options.drawingPrepared && getCurrentContext().generationSurface === 'drawing') {
+      captureArtGeneratePromptSnapshot();
+      ART_GENERATE_STATE.running = true;
+      try {
+        if (!window.NovaFlowArtDirection?.prepare) throw new Error('绘图分析组件未加载，请刷新页面');
+        const drawingPrepared = await window.NovaFlowArtDirection.prepare({ ...getCurrentContext(), getCurrentContext,
+          onProgress: message => { setArtGenerateProgress(message, 0); setArtGenerateStatus(message); } });
+        ART_GENERATE_STATE.running = false;
+        return await runArtGenerate({ drawingPrepared });
+      } catch (error) {
+        ART_GENERATE_STATE.running = false;
+        resetArtGenerateProgress(error?.name === 'AbortError' ? '任务已中止' : '分析失败，未提交生成', 0);
+        setArtGenerateStatus(String(error?.message || error), error?.name !== 'AbortError');
+        return;
+      }
+    }
+    const prepared = options.uiPrepared || options.drawingPrepared;
+    try { prepared?.assertCurrent?.(); } catch (error) { setArtGenerateStatus(String(error?.message || error), true); return; }
+    const promptSnapshot = prepared?.promptSnapshot || captureArtGeneratePromptSnapshot();
+    const settingsSnapshot = prepared?.state || ART_GENERATE_STATE;
     const runProvider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(settingsSnapshot.provider) || "local";
-    const runMode = options.uiPrepared ? (options.uiPrepared.references.length ? "img2img" : "txt2img") : (ART_GENERATE_STATE.mode === "img2img" ? "img2img" : "txt2img");
+    const runMode = prepared ? (prepared.references.length ? "img2img" : "txt2img") : (ART_GENERATE_STATE.mode === "img2img" ? "img2img" : "txt2img");
     const providerLabel = artGenerateProviderTitle(runProvider);
     if (runProvider !== "local" && !["preload-price-v1", "web-control-plane-v1"].includes(window.electronAPI?.runtimeProviderUsageSettlement)) {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
@@ -86100,7 +86130,7 @@
       setArtGenerateStatus("\u8bf7\u5148\u8f93\u5165\u63d0\u793a\u8bcd", true);
       return;
     }
-    const qualityCompiled = options.uiPrepared?.promptSnapshot || window.NovaFlowArtQualityProfile?.compileFinal?.({
+    const qualityCompiled = prepared?.promptSnapshot || window.NovaFlowArtQualityProfile?.compileFinal?.({
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt,
       assetType: ART_GENERATE_STATE.starterPreset || "",
@@ -86111,14 +86141,14 @@
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt
     };
-    const allRefs = options.uiPrepared?.references || artGenerateReferences().filter((item) => item && item.dataUrl);
+    const allRefs = prepared?.references || artGenerateReferences().filter((item) => item && item.dataUrl);
     const referenceLimit = Number(window.NovaFlowArtGenerateModels?.capabilityFor?.(runProvider, "img2img", settingsSnapshot)?.referenceLimit) || artGenerateReferenceLimit();
     if (runMode === "img2img" && allRefs.length > referenceLimit) {
       resetArtGenerateProgress("等待生成", 0);
       setArtGenerateStatus(`${providerLabel} 最多支持 ${referenceLimit} 张参考图，当前 ${allRefs.length} 张。请移除多余图片或切换模型；本次未截断提交。`, true);
       return;
     }
-    const assistantRolePlan = !options.uiPrepared && runMode === "img2img"
+    const assistantRolePlan = !prepared && runMode === "img2img"
       ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs)
       : null;
     const { refs, rolePlan } = resolveArtGenerateReferenceInputs(allRefs, assistantRolePlan);
@@ -86144,7 +86174,7 @@
     const promptWithReferenceRoles = referenceRoleConstraint
       ? `${qualityCompiled.prompt}\n\n参考图职责（严格执行）：\n${referenceRoleConstraint}\n禁止任何辅助约束图改变主体身份。`
       : qualityCompiled.prompt;
-    const compiledPrompt = compileArtGeneratePromptMentions(refs, promptWithReferenceRoles, Boolean(options.uiPrepared));
+    const compiledPrompt = compileArtGeneratePromptMentions(refs, promptWithReferenceRoles, Boolean(prepared));
     if (compiledPrompt.invalidTokens.length) {
       resetArtGenerateProgress("\u7b49\u5f85\u751f\u6210", 0);
       setArtGenerateStatus(`\u8d44\u6e90\u5f15\u7528\u5df2\u5931\u6548: ${compiledPrompt.invalidTokens.join(", ")}`, true);
@@ -86171,7 +86201,7 @@
     try {
       const baseUrl = await detectArtGenerateBaseUrl();
       if (!isArtGenerateRunCurrent(runToken)) return;
-      options.uiPrepared?.assertCurrent?.();
+      prepared?.assertCurrent?.();
       ART_GENERATE_STATE.activeBaseUrl = baseUrl;
       setArtGenerateProgress(`${providerLabel}\u5df2\u5c31\u7eea`, 0.08);
       setArtGenerateStatus(`${providerLabel}\u5df2\u5c31\u7eea`);
@@ -86187,7 +86217,7 @@
         const names = [];
         for (let i = 0; i < refs.length; i += 1) {
           if (!isArtGenerateRunCurrent(runToken)) return null;
-          options.uiPrepared?.assertCurrent?.();
+          prepared?.assertCurrent?.();
           const item = refs[i];
           const mime = String(item.mimeType || artDataUrlMime(item.dataUrl) || "");
           const ext = /jpe?g/i.test(mime) ? "jpg" : /webp/i.test(mime) ? "webp" : "png";
@@ -86203,10 +86233,10 @@
         setArtGenerateStatus("\u6b63\u5728\u4e0a\u4f20\u53c2\u8003\u56fe...");
         for (let i = 0; i < refs.length; i += 1) {
           if (!isArtGenerateRunCurrent(runToken)) return;
-          options.uiPrepared?.assertCurrent?.();
+          prepared?.assertCurrent?.();
           const image = await loadNovaflowArtExportImage(refs[i].dataUrl);
           if (!isArtGenerateRunCurrent(runToken)) return;
-          options.uiPrepared?.assertCurrent?.();
+          prepared?.assertCurrent?.();
           const width = Number(image.naturalWidth || image.width), height = Number(image.naturalHeight || image.height);
           if (options.uiPrepared && (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)) throw new Error('UI参考图尺寸无法读取，任务未提交');
           if (options.uiPrepared?.nativeEdit && i === 0 && Math.abs(width / height - Number(settingsSnapshot.width) / Number(settingsSnapshot.height)) > .001) throw new Error('修改底图与选区尺寸比例不匹配，任务未提交');
@@ -86226,21 +86256,24 @@
       ART_GENERATE_STATE.batchIndex = 0;
       ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
       let lastPromptId = "";
+      let drawingCorrection = 0;
+      let drawingRepair = "";
+      let drawingNeedsAttention = false;
       for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
         ART_GENERATE_STATE.batchIndex = batchIndex;
-        if (batchIndex > 0 && runMode === "img2img" && window.NovaFlowWebRuntime) {
+        if ((batchIndex > 0 || drawingCorrection > 0) && runMode === "img2img" && window.NovaFlowWebRuntime) {
           uploadedNames = await uploadReferences(batchIndex);
           if (!uploadedNames) return;
         }
         if (!isArtGenerateRunCurrent(runToken)) return;
-        options.uiPrepared?.assertCurrent?.();
+        prepared?.assertCurrent?.();
         const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
         const workflowRun = buildArtGenerateWorkflowWithSeed(
           fixedSeed ? baseSeed + batchIndex : null,
-          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
-            options.uiPrepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE,
-            options.uiPrepared ? referenceLimit : undefined,
-            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : {})
+          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, drawingRepair ? `${compiledPrompt.text}\n\n本次纠正：${drawingRepair}` : compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
+            prepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE,
+            prepared ? referenceLimit : undefined,
+            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? { taskProfile: "art-direction", referenceRoles: options.drawingPrepared.references.map(ref => ref.role) } : {})
         );
         const workflow = workflowRun.workflow;
         const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
@@ -86256,7 +86289,7 @@
           );
           if (!isArtGenerateRunCurrent(runToken)) return;
         }
-        options.uiPrepared?.assertCurrent?.();
+        prepared?.assertCurrent?.();
         setArtGenerateProgress("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...", 0.28);
         setArtGenerateStatus("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...");
         const onNodeWait = (event) => {
@@ -86285,7 +86318,7 @@
           if (sent?.ok && stalePromptId) await artRequestJson(baseUrl, '/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: stalePromptId }) }).catch(() => {});
           return;
         }
-        try { options.uiPrepared?.assertCurrent?.(); } catch (error) {
+        try { prepared?.assertCurrent?.(); } catch (error) {
           const stalePromptId = String(sent?.data?.prompt_id || '');
           if (sent?.ok && stalePromptId) await artRequestJson(baseUrl, '/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: stalePromptId }) }).catch(() => {});
           throw error;
@@ -86348,7 +86381,29 @@
         }
         const imageUrl = await artBlobToDataUrl(blob);
         if (!isArtGenerateRunCurrent(runToken)) return;
-        options.uiPrepared?.assertCurrent?.();
+        prepared?.assertCurrent?.();
+        let drawingReview = null;
+        if (options.drawingPrepared) {
+          try {
+            drawingReview = await window.NovaFlowArtDirection.review(options.drawingPrepared, imageUrl,
+              message => { setArtGenerateProgress(message, .97, { promptId }); setArtGenerateStatus(message); });
+          } catch (error) {
+            prepared.assertCurrent();
+            if (error?.name === 'AbortError') throw error;
+            drawingReview = { schema: 'nf.art.review.v1', pass: null, issues: [String(error?.message || '检查未完成')], repair: '' };
+            options.drawingPrepared.recordReview?.(drawingReview);
+          }
+          if (!isArtGenerateRunCurrent(runToken)) return;
+          prepared.assertCurrent();
+          if (drawingReview.pass === false && drawingCorrection < 1 && runProvider === 'local') {
+            drawingCorrection += 1;
+            drawingRepair = drawingReview.repair;
+            setArtGenerateStatus('成图与需求存在偏差，正在自动纠正（最多一次）');
+            batchIndex -= 1;
+            continue;
+          }
+          drawingNeedsAttention ||= drawingReview.pass !== true;
+        }
         const result = {
           id: `artgen_${Date.now().toString(36)}`,
           kind: "original",
@@ -86363,6 +86418,9 @@
           workflow: runProvider === "local" ? artWorkflowKey() : `${runProvider}:${workflowRun.modelKey}`
         };
         artImageStartedAt = Date.now();
+        if (options.drawingPrepared) result.artDirection = { schema: options.drawingPrepared.plan.schema, originalPrompt: options.drawingPrepared.originalPrompt, plan: options.drawingPrepared.plan, review: drawingReview, corrections: drawingCorrection, references: options.drawingPrepared.references.map(ref => ({ sourceNumber: ref.sourceNumber, role: ref.role, treatment: ref.treatment, target: ref.target })) };
+        drawingCorrection = 0;
+        drawingRepair = "";
         ART_GENERATE_STATE.results.unshift(result);
         if (options.uiPrepared) ui?.recordResult?.(result, options.uiPrepared);
         ART_GENERATE_STATE.selectedResultId = result.id;
@@ -86378,7 +86436,7 @@
       }
       clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
-      const completeMessage = batchCount > 1
+      const completeMessage = drawingNeedsAttention ? '已生成，需求检查有待确认；可在“查看分析”中查看详情' : batchCount > 1
         ? (runProvider === "local" ? `已生成 ${batchCount} 张` : `已生成 ${batchCount} 张，计费后台处理中`)
         : (runProvider === "local" ? "\u751f\u6210\u5b8c\u6210" : "\u751f\u6210\u5b8c\u6210\uff0c\u8ba1\u8d39\u540e\u53f0\u5904\u7406\u4e2d");
       setArtGenerateProgress(completeMessage, 1, { promptId: lastPromptId });
