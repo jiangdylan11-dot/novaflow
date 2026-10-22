@@ -1776,13 +1776,13 @@
 
   const NUMERIC_KEY_FIELDS = ['angle', 'x', 'y', 'mix', 'softness', 'rotateMix', 'translateMix', 'scaleMix', 'shearMix', 'position', 'spacing']
 
-  /** A key's value between two keys (linear; colours per channel, vertices per entry, others held). */
-  function lerpKey(k0, k1, f) {
+  /** A key's value between two keys; separate axis curves can supply their own progress. */
+  function lerpKey(k0, k1, f, axes) {
     const out = {}
     for (const [key, v] of Object.entries(k0)) {
-      if (key === 'time' || key === 'curve' || key === 'c2' || key === 'c3' || key === 'c4') continue
+      if (['time', 'curve', 'c2', 'c3', 'c4', 'nfCurves', 'nf4'].includes(key)) continue
       const w = k1[key]
-      if (NUMERIC_KEY_FIELDS.includes(key) && typeof v === 'number') out[key] = Math.round((v + (num(w, v) - v) * f) * 1000) / 1000
+      if (NUMERIC_KEY_FIELDS.includes(key) && typeof v === 'number') out[key] = v + (num(w, v) - v) * (axes && axes[key] != null ? axes[key] : f)
       else if ((key === 'color' || key === 'light' || key === 'dark') && typeof v === 'string' && typeof w === 'string' && v.length === w.length) {
         let hex = ''
         for (let i = 0; i < v.length; i += 2) {
@@ -1801,6 +1801,73 @@
       delete out.offset
       if (vs.some((x) => Math.abs(x) > 1e-4)) out.vertices = vs
       else delete out.vertices
+    }
+    return out
+  }
+
+  const CURVE_FIELDS = ['curve', 'c2', 'c3', 'c4', 'nfCurves', 'nf4']
+  const curveControls = (key) => Array.isArray(key.curve) ? key.curve.slice(0, 4)
+    : typeof key.curve === 'number' ? [key.curve, num(key.c2, 0), num(key.c3, 1), num(key.c4, 1)] : [0, 0, 1, 1]
+
+  /** Restrict a cubic to [a,b] in time using de Casteljau, retaining its actual easing. */
+  function curveSlice(c, a, b) {
+    const mix = (p, q, t) => p.map((v, i) => v + (q[i] - v) * t)
+    const split = (p, t) => {
+      const A = mix(p[0], p[1], t), B = mix(p[1], p[2], t), C = mix(p[2], p[3], t)
+      const D = mix(A, B, t), E = mix(B, C, t), F = mix(D, E, t)
+      return [[p[0], A, D, F], [F, E, C, p[3]]]
+    }
+    const param = (x) => {
+      if (x <= 0 || x >= 1) return Math.max(0, Math.min(1, x))
+      let lo = 0, hi = 1
+      for (let i = 0; i < 48; i++) {
+        const t = (lo + hi) / 2, s = 1 - t
+        if (3 * s * s * t * c[0] + 3 * s * t * t * c[2] + t * t * t < x) lo = t
+        else hi = t
+      }
+      return (lo + hi) / 2
+    }
+    const ta = param(a), tb = param(b)
+    let p = [[0, 0], [c[0], c[1]], [c[2], c[3]], [1, 1]]
+    if (tb < 1) p = split(p, tb)[0]
+    if (ta > 0) p = split(p, ta / tb)[1]
+    const dx = p[3][0] - p[0][0], dy = p[3][1] - p[0][1]
+    const flat = p.every(q => Math.abs(q[1] - p[0][1]) < 1e-10)
+    return { start: p[0][1], end: p[3][1], degenerate: Math.abs(dy) < 1e-10 && !flat,
+      c: flat ? [0, 0, 1, 1] : [(p[1][0] - p[0][0]) / dx, (p[1][1] - p[0][1]) / dy, (p[2][0] - p[0][0]) / dx, (p[2][1] - p[0][1]) / dy] }
+  }
+
+  /** Split the segment crossing the loop seam, rather than restarting or linearising its curve. */
+  function loopSeamKeys(last, first, end, path) {
+    const t0 = num(last.time, 0), span = end - t0 + num(first.time, 0), cut = (end - t0) / span
+    const A = clone(last), B = clone(first)
+    if (path[0] === 'bones') {
+      const fields = path[2] === 'rotate' ? ['angle'] : ['x', 'y'], fallback = path[2] === 'scale' ? 1 : 0
+      for (const field of fields) { A[field] = num(A[field], fallback); B[field] = num(B[field], fallback) }
+    }
+    const controls = { shared: curveControls(A), ...(A.nfCurves || {}) }
+    const parts = [0, cut, 1]
+    // An overshooting curve can return to the same value at the cut. Add a point so each
+    // half remains expressible as Spine's normalised time/value cubic (no division by zero).
+    if (A.curve !== 'stepped') for (let i = 0; i < parts.length - 1; i++) {
+      if (Object.values(controls).some(c => curveSlice(c, parts[i], parts[i + 1]).degenerate)) {
+        parts.splice(i + 1, 0, (parts[i] + parts[i + 1]) / 2); i--
+      }
+    }
+    const out = []
+    for (let i = 0; i < parts.length - 1; i++) {
+      const slices = Object.fromEntries(Object.entries(controls).map(([name, c]) => [name, curveSlice(c, parts[i], parts[i + 1])]))
+      const axes = Object.fromEntries(Object.entries(slices).filter(([name]) => name !== 'shared').map(([name, s]) => [name, s.start]))
+      const key = i ? lerpKey(A, B, A.curve === 'stepped' ? 0 : slices.shared.start, A.curve === 'stepped' ? null : axes) : last
+      for (const field of CURVE_FIELDS) delete key[field]
+      if (A.curve === 'stepped') key.curve = 'stepped'
+      else {
+        if (A.curve !== undefined) [key.curve, key.c2, key.c3, key.c4] = slices.shared.c
+        if (A.nfCurves) key.nfCurves = Object.fromEntries(Object.keys(A.nfCurves).map(name => [name, slices[name].c]))
+      }
+      const time = t0 + span * parts[i]
+      key.time = keyTime(time >= end - 1e-9 ? time - end : time)
+      if (i) out.push(key)
     }
     return out
   }
@@ -1824,6 +1891,10 @@
       const last = Math.max(...g.times)
       let going = list.filter((k) => g.times.some((t) => sameTime(k.time, t)) || (o.shift && num(k.time, 0) > last + 1e-4))
       if (o.offset && end > 0) {
+        if (Math.abs(dt % end) < 1e-9) {
+          for (const k of going) moved.push({ path: g.path, time: num(k.time, 0) })
+          continue
+        }
         // a loop: the key at the end is the key at 0 again, so it is dropped and rebuilt
         const hasStart = list.some((k) => sameTime(k.time, 0))
         let ring = list.filter((k) => !(hasStart && sameTime(k.time, end)))
@@ -1842,9 +1913,9 @@
           let seam = ring.find((k) => sameTime(k.time, 0))
           if (!seam) {
             const lastK = ring[ring.length - 1], firstK = ring[0]
-            const span = end - num(lastK.time, 0) + num(firstK.time, 0)
-            seam = lerpKey(lastK, firstK, span > 1e-6 ? (end - num(lastK.time, 0)) / span : 0)
-            ring.unshift({ ...seam })
+            ring.push(...loopSeamKeys(lastK, firstK, end, g.path))
+            ring.sort((x, y) => num(x.time, 0) - num(y.time, 0))
+            seam = ring.find((k) => sameTime(k.time, 0))
           }
           const atEnd = { ...clone(seam), time: keyTime(end) }
           for (const ck of ['curve', 'c2', 'c3', 'c4', 'nfCurves']) delete atEnd[ck]

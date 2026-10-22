@@ -101,7 +101,7 @@
     meshEdit: null, // 编辑网格: { skin, slot, name, tool, isolate, deform, sel, draft }
     weightEdit: null, // 编辑权重: { skin, slot, name, bone, mode, strength, size, feather, overlay, onlySel, isolate, direct, vsel, binding, order, extra }
     traceOpts: null,  // 描绘 settings, kept for the session (Spine keeps them too)
-    clipEdit: null,   // 编辑剪裁: { skin, slot, name, tool: 'create' | 'delete' }
+    clipEdit: null,   // 编辑剪裁: { skin, slot, name, tool, draft?: worldPoints }; only commit a draft on explicit close
     clipDrag: null,
     pathEdit: null,   // 编辑路径: { skin, slot, name, tool: 'create' | 'delete' }
     pathDrag: null,   // the points while a 编辑路径 drag is on: { pts, closed }
@@ -8890,7 +8890,7 @@
       state.sel = { kind: 'att', skin: 'default', slot: r.slot, name: r.attachment }
       state.collapsed.delete('s:' + r.slot)
       revealInTree(state.sel)
-      state.clipEdit = { skin: 'default', slot: r.slot, name: r.attachment, tool: 'create' }
+      state.clipEdit = { skin: 'default', slot: r.slot, name: r.attachment, tool: 'create', draft: [] }
     })
   }
   const uniqueSlotName = (json, base) => { const t = new Set(json.slots.map((x) => x.name)); if (!t.has(base)) return base; let i = 2; while (t.has(base + i)) i++; return base + i }
@@ -8937,6 +8937,9 @@
     if (state.mode !== 'setup') { status('编辑剪裁在「设置」模式下用'); return }
     state.meshEdit = null; state.weightEdit = null
     state.clipEdit = { skin: sel.skin, slot: sel.slot, name: sel.name, tool: 'create' }
+    const R = clipRuntime()
+    if (R && R.att.worldVerticesLength < 6) state.clipEdit.draft = clipWorld(R.slot, R.att)
+    state.meshPointer = null
     refresh()
   }
 
@@ -8944,7 +8947,15 @@
     if (!state.clipEdit) return
     state.clipEdit = null
     state.clipDrag = null
+    state.meshPointer = null
     refresh()
+  }
+
+  function closeClipDraft() {
+    const ce = state.clipEdit
+    if (!ce || !ce.draft) return false
+    if (ce.draft.length < 3) { status('至少绘制 3 个顶点后，点击起点闭合'); return false }
+    return !!commitClip(ce.draft, '剪裁已闭合', () => { ce.draft = null; state.meshPointer = null })
   }
 
   function clipRuntime() {
@@ -8966,14 +8977,14 @@
   }
 
   /** World points → the clipping's vertices in its slot bone's space (one undo step). */
-  function commitClip(pts, label) {
+  function commitClip(pts, label, after) {
     const ce = state.clipEdit, R = clipRuntime()
     if (!ce || !R) return
     const b = R.slot.bone
     const det = b.a * b.d - b.b * b.c || 1
     const local = []
     for (const [x, y] of pts) { const dx = x - b.worldX, dy = y - b.worldY; local.push((b.d * dx - b.b * dy) / det, (b.a * dy - b.c * dx) / det) }
-    edit(label, (j) => Ops.setClipping(j, ce.skin, ce.slot, ce.name, { vertices: local }))
+    return edit(label, (j) => Ops.setClipping(j, ce.skin, ce.slot, ce.name, { vertices: local }), after)
   }
 
   function clipVertexAt(pts, sx, sy) {
@@ -8982,18 +8993,24 @@
     return best
   }
 
-  /** 创建: drag a vertex, or click to add one (into the nearest edge); 删除: click a vertex. */
+  /** Drafts append in click order until the user closes them; existing polygons insert into the nearest edge. */
   function clipPointerDown(e, sx, sy) {
     const ce = state.clipEdit, R = clipRuntime()
     if (!R) return null
-    const pts = clipWorld(R.slot, R.att)
+    const pts = ce.draft || clipWorld(R.slot, R.att)
     const vi = clipVertexAt(pts, sx, sy)
     if (ce.tool === 'delete') {
-      if (vi >= 0) commitClip(pts.filter((_, i) => i !== vi), '已删除剪裁顶点')
+      if (vi >= 0) {
+        const next = pts.filter((_, i) => i !== vi)
+        if (ce.draft) { ce.draft = next; renderClipPanel() }
+        else commitClip(next, '已删除剪裁顶点')
+      }
       return null
     }
+    if (ce.draft && vi === 0 && pts.length >= 3) { closeClipDraft(); return null }
     if (vi >= 0) return { kind: 'clipMove', vi, pts, sx, sy, moved: false }
     const [wx, wy] = toWorld(sx, sy)
+    if (ce.draft) { ce.draft = [...pts, [wx, wy]]; renderClipPanel(); return null }
     let next
     if (pts.length < 3) next = [...pts, [wx, wy]]
     else {
@@ -9016,6 +9033,7 @@
     state.clipDrag = null
     if (!d.moved || !cd) return
     const next = d.pts.map((p, i) => (i === d.vi ? cd.p : p))
+    if (state.clipEdit && state.clipEdit.draft) { state.clipEdit.draft = next; renderClipPanel(); return }
     commitClip(next, '已移动剪裁顶点')
   }
 
@@ -9032,7 +9050,8 @@
     if (R) items.push({ slot: R.slot, att: R.att, edit: true })
     g.save()
     for (const it of items) {
-      let pts = clipWorld(it.slot, it.att)
+      const drafting = it.edit && ce.draft
+      let pts = drafting || clipWorld(it.slot, it.att)
       if (it.edit && state.clipDrag) pts = pts.map((p, i) => (i === state.clipDrag.vi ? state.clipDrag.p : p))
       const q = pts.map(([x, y]) => toScreen(x, y))
       // no colour in the file: Spine's editor red (the 3.8 runtime's own default is a blue)
@@ -9044,12 +9063,13 @@
       if (q.length) {
         g.beginPath()
         q.forEach(([x, y], i) => { if (i) g.lineTo(x, y); else g.moveTo(x, y) })
-        if (q.length >= 3) g.closePath()
+        if (!drafting && q.length >= 3) g.closePath()
         g.stroke()
-        if (it.edit && q.length < 3 && state.meshPointer) { g.setLineDash([4, 3]); g.beginPath(); g.moveTo(q[q.length - 1][0], q[q.length - 1][1]); g.lineTo(state.meshPointer[0], state.meshPointer[1]); g.stroke(); g.setLineDash([]) }
+        if (drafting && state.meshPointer) { g.setLineDash([4, 3]); g.beginPath(); g.moveTo(q[q.length - 1][0], q[q.length - 1][1]); g.lineTo(state.meshPointer[0], state.meshPointer[1]); g.stroke(); g.setLineDash([]) }
       }
       if (it.edit) {
         q.forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill(); g.lineWidth = 1.5; g.strokeStyle = col + '1)'; g.stroke() })
+        if (drafting && q.length >= 3) { g.beginPath(); g.arc(q[0][0], q[0][1], 7, 0, Math.PI * 2); g.strokeStyle = '#1ea672'; g.stroke() }
       }
       if (state.opt.otherName && q.length) {
         let cx = 0, cy = 0
@@ -9093,17 +9113,19 @@
     p.hidden = !R
     p.textContent = ''
     if (!R) return
-    const n = R.att.worldVerticesLength / 2
+    const drafting = !!ce.draft
+    const n = drafting ? ce.draft.length : R.att.worldVerticesLength / 2
     const tool = (id, label, title) => h('button', { class: 'mt', 'aria-pressed': String(ce.tool === id), title, onclick: () => { ce.tool = id; renderClipPanel() } }, label)
     p.append(
       h('div', { class: 'mname' }, `${ce.slot} · ${ce.name}`),
-      h('div', { class: 'mhd' }, h('b', {}, '编辑剪裁'), h('button', { class: 'xx', title: '完成（Enter / Esc）', onclick: exitClipEdit }, '×')),
+      h('div', { class: 'mhd' }, h('b', {}, '编辑剪裁'), h('button', { class: 'xx', title: drafting ? '取消未闭合的绘制（Esc）' : '完成（Enter / Esc）', onclick: exitClipEdit }, '×')),
       h('div', { class: 'mrow' },
-        tool('create', '创建', '点空白处加顶点（3 个以后插进最近的边），拖顶点移动'),
+        tool('create', '创建', drafting ? '依次点击添加顶点，点击起点闭合；拖顶点移动' : '点空白处向最近的边添加顶点，拖顶点移动'),
         tool('delete', '删除', '点顶点删除')),
       h('div', { class: 'mrow' },
-        h('button', { class: 'mt', title: '清空多边形，重新点', onclick: () => { ce.tool = 'create'; commitClip([], '已清空剪裁，重新点多边形') } }, '新建')),
-      h('div', { class: 'mrow mopts' }, h('span', { class: 'mcount' }, n < 3 ? `顶点：${n}（至少 3 个才剪裁）` : `顶点：${n}`)))
+        h('button', { class: 'mt', title: '清空多边形，重新点', onclick: () => { commitClip([], '已清空剪裁，重新点多边形', () => { ce.tool = 'create'; ce.draft = []; state.meshPointer = null }) } }, '新建'),
+        drafting ? h('button', { class: 'mt', disabled: n < 3, title: '连接首尾并应用剪裁（Enter）', onclick: closeClipDraft }, '闭合') : null),
+      h('div', { class: 'mrow mopts' }, h('span', { class: 'mcount' }, drafting ? `顶点：${n}（${n < 3 ? '至少 3 个，点击起点闭合' : '点击起点或按 Enter 闭合'}）` : `顶点：${n}`)))
     layoutFloats()
   }
 
@@ -11080,7 +11102,12 @@
         pushHistory(); refresh()
         return
       }
-      if (state.clipEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitClipEdit(); return }
+      if (state.clipEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) {
+        e.preventDefault()
+        if (e.key === 'Enter' && state.clipEdit.draft) closeClipDraft()
+        else exitClipEdit()
+        return
+      }
       if (state.pathEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); exitPathEdit(); return }
       if (state.weightEdit && !typing && (e.key === 'Escape' || e.key === 'Enter')) {
         e.preventDefault()
