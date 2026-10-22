@@ -1872,6 +1872,11 @@
     return out
   }
 
+  // Consecutive offset gestures work from the authored keys, not from seam keys generated
+  // by the previous gesture. Object identity and the track signature invalidate this after
+  // other edits; the cache never enters saved projects, exports, or undo snapshots.
+  const offsetOrigins = new WeakMap()
+
   /**
    * Move keys by `dt` seconds (Spine: drag keys in the dopesheet). A moved key
    * that lands on a key that stayed replaces it. Options:
@@ -1885,14 +1890,32 @@
     const a = animationOf(json, anim)
     const end = animationEnd(a)
     const moved = []
+    const previous = offsetOrigins.get(input)
+    const origins = previous && previous.anim === anim && sameTime(previous.end, end) ? new Map(previous.tracks) : new Map()
     for (const g of groupKeys(keys)) {
-      const list = trackList(a, g.path)
+      let list = trackList(a, g.path)
       if (!list) continue
+      const id = JSON.stringify(g.path)
       const last = Math.max(...g.times)
       let going = list.filter((k) => g.times.some((t) => sameTime(k.time, t)) || (o.shift && num(k.time, 0) > last + 1e-4))
       if (o.offset && end > 0) {
-        if (Math.abs(dt % end) < 1e-9) {
+        let delta = dt, origin = null
+        if (going.length === list.length) {
+          const old = origins.get(id)
+          const valid = old && old.signature === JSON.stringify(list)
+          const source = clone(valid ? old.source : list)
+          delta = Math.round(((valid ? old.phase : 0) + dt) * 1e10) / 1e10
+          origin = { source, phase: delta }
+          list = clone(source); going = list.slice()
+        }
+        origins.delete(id)
+        const remember = () => {
+          if (origin) origins.set(id, { ...origin, signature: JSON.stringify(trackList(a, g.path)) })
+        }
+        if (Math.abs(delta % end) < 1e-9) {
+          setTrack(a, g.path, list)
           for (const k of going) moved.push({ path: g.path, time: num(k.time, 0) })
+          remember()
           continue
         }
         // a loop: the key at the end is the key at 0 again, so it is dropped and rebuilt
@@ -1900,7 +1923,7 @@
         let ring = list.filter((k) => !(hasStart && sameTime(k.time, end)))
         going = going.filter((k) => ring.includes(k))
         for (const k of going) {
-          let t = (num(k.time, 0) + dt) % end
+          let t = (num(k.time, 0) + delta) % end
           if (t < 0) t += end
           if (end - t < 1e-4) t = 0
           k.time = keyTime(t)
@@ -1923,6 +1946,7 @@
           for (const k of ring) if (sameTime(k.time, 0)) delete k.time
         }
         setTrack(a, g.path, ring)
+        remember()
         continue
       }
       for (const k of going) {
@@ -1934,7 +1958,9 @@
       const staying = list.filter((k) => !going.includes(k) && !going.some((m) => sameTime(m.time, k.time)))
       setTrack(a, g.path, [...staying, ...going].sort((x, y) => num(x.time, 0) - num(y.time, 0)))
     }
-    return { json: tidy(json), keys: moved }
+    tidy(json)
+    if (o.offset && origins.size) offsetOrigins.set(json, { anim, end, tracks: origins })
+    return { json, keys: moved }
   }
 
   /**

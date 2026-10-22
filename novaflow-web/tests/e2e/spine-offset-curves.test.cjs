@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const renderer = path.resolve(__dirname, '../../renderer')
-require(path.join(renderer, 'spine-structure.ops.js'))
+require(process.env.NF_SPINE_OPS_PATH || path.join(renderer, 'spine-structure.ops.js'))
 require(path.join(renderer, 'motion-calculation.animation.js'))
 const Ops = globalThis.NovaFlowSpineStructureOps
 const Motion = globalThis.NovaFlowMotionAnimation
@@ -112,4 +112,52 @@ test('unrelated timelines retain their keys and curves exactly', () => {
   const before = JSON.stringify(j.animations.loop.bones.other)
   const r = Ops.moveKeys(j, 'loop', picked(j, 'rotate'), -0.31, { offset: true })
   assert.equal(JSON.stringify(r.json.animations.loop.bones.other), before)
+})
+
+test('10-frame offset recalculates both seam halves of the original 30-to-60-frame curve', () => {
+  const j = project()
+  keysOf(j, 'rotate')[1].time = 1
+  keysOf(j, 'rotate')[2].time = 2
+  const r = Ops.moveKeys(j, 'loop', picked(j, 'rotate'), 10 / 30, { offset: true })
+  const list = keysOf(r.json, 'rotate')
+  assert.deepEqual(list.map(k => Math.round((k.time || 0) * 30)), [0, 10, 40, 60])
+  assert.equal(typeof list[0].curve, 'number')
+  const handles = k => [k.curve, k.c2, k.c3, k.c4]
+  assert.notDeepEqual(handles(list[0]), handles(keysOf(j, 'rotate')[1]))
+  assert.notDeepEqual(handles(list[2]), handles(keysOf(j, 'rotate')[1]))
+  assert.deepEqual(handles(list[1]), handles(keysOf(j, 'rotate')[0]), 'an uncut segment keeps its shape')
+  for (let frame = 0; frame < 60; frame += .25) {
+    const t = frame / 30, source = ((t - 10 / 30) % 2 + 2) % 2
+    assert(Math.abs(Motion.scalar(list, t, 'angle', 0) - Motion.scalar(keysOf(j, 'rotate'), source, 'angle', 0)) < .02)
+  }
+})
+
+test('successive offsets resplit the authored curve without accumulating previous seam keys', () => {
+  const j = project()
+  let shifted = j
+  for (let i = 0; i < 5; i++) {
+    shifted = Ops.moveKeys(shifted, 'loop', picked(shifted, 'rotate'), .07, { offset: true }).json
+    assert.equal(keysOf(shifted, 'rotate').length, 4)
+  }
+  const direct = Ops.moveKeys(j, 'loop', picked(j, 'rotate'), .35, { offset: true }).json
+  assert.deepEqual(keysOf(shifted, 'rotate'), keysOf(direct, 'rotate'))
+  const restored = Ops.moveKeys(shifted, 'loop', picked(shifted, 'rotate'), -.35, { offset: true }).json
+  assert.deepEqual(keysOf(restored, 'rotate'), keysOf(j, 'rotate'))
+})
+
+test('editing a curve between offsets invalidates the remembered source', () => {
+  const j = project()
+  const shifted = Ops.moveKeys(j, 'loop', picked(j, 'rotate'), .07, { offset: true }).json
+  const c = [.4, .2, .6, .8]
+  const edited = Ops.setKeyBezier(shifted, 'loop', [{ path: ['bones', 'root', 'rotate'], time: .07 }], c).json
+  const next = Ops.moveKeys(edited, 'loop', picked(edited, 'rotate'), .07, { offset: true }).json
+  const key = keysOf(next, 'rotate').find(k => Math.abs((k.time || 0) - .14) < 1e-6)
+  assert.deepEqual([key.curve, key.c2, key.c3, key.c4], c)
+})
+
+test('independent axis curves survive repeated offsets and a full turn back to the source', () => {
+  const j = project('translate', { nfCurves: { x: [.1, 0, .7, 1], y: [.8, 0, 1, .2] } })
+  let current = j
+  for (const dt of [.13, -.32, .07, .12]) current = Ops.moveKeys(current, 'loop', picked(current, 'translate'), dt, { offset: true }).json
+  assert.deepEqual(keysOf(current, 'translate'), keysOf(j, 'translate'))
 })
