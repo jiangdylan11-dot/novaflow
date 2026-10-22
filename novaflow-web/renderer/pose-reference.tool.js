@@ -58,7 +58,9 @@
           transform[axis] = value;
         }
         if (person.body && (!['female', 'male', 'neutral'].includes(person.body.gender) || !['adult', 'child'].includes(person.body.age))) throw new Error('人物体型格式不正确');
-        return { id, name: String(person.name || `人物 ${i + 1}`).slice(0, 40), pose: normalizeDocument({ pose: person.pose }).pose, transform, ...(person.body ? { body: { gender: person.body.gender, age: person.body.age } } : {}) };
+        const characterPose = normalizeDocument({ pose: person.pose }).pose;
+        if (person.body?.gender === 'neutral') for (const key of ['bonePositions', 'hipBonePosition', 'ikEffectorPositions', 'poleTargetPositions']) delete characterPose[key];
+        return { id, name: String(person.name || `人物 ${i + 1}`).slice(0, 40), pose: characterPose, transform, ...(person.body ? { body: { gender: person.body.gender === 'male' ? 'male' : 'female', age: person.body.age } } : {}) };
       });
     }
     return { version: characters ? 2 : 1, ...(characters ? { characters, activeCharacterId: characters.some(p => p.id === input.activeCharacterId) ? input.activeCharacterId : characters[0]?.id || null } : {}), pose, width: size(input.width), height: size(input.height), background: /^#[a-f0-9]{6}$/i.test(input.background) ? input.background : '#e4e5e8', ...(view ? { view: { fov: view.fov, zoom: view.zoom } } : {}) };
@@ -158,7 +160,7 @@
 
   function createCharacters(viewer, onChange = () => {}, models = {}) {
     const people = [];
-    let activeId = null, nextId = 1, loadedBody = 'adult-neutral';
+    let activeId = null, nextId = 1, loadedBody = null;
     const neutral = { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } };
     const active = () => people.find(p => p.id === activeId);
     const poseOnly = pose => { const value = clone(pose); delete value.camera; delete value.cameraParams; return value; };
@@ -183,7 +185,7 @@
       const key = `${person.body.age}-${person.body.gender}`;
       if (key !== loadedBody && models[key]) { viewer.loadData(models[key], true); loadedBody = key; }
       viewer.setPose(person.pose, true);
-      viewer.setActiveCharacterAppearance({ transform: person.transform });
+      viewer.setActiveCharacterAppearance({ color: '#a4aab2', transform: person.transform });
       viewer.updateIKEffectorPositions('all'); viewer.updateMarkers();
     }
     function load(person) {
@@ -208,7 +210,7 @@
       let x = 0, z = 0;
       for (let i = 1; occupied.has(`${x},${z}`); i++) { const column = i % 9; x = Math.ceil(column / 2) * (column % 2 ? 10 : -10); z = Math.floor(i / 9) * 10; }
       const id = `person-${nextId++}`;
-      const person = { id, name: `人物 ${id.slice(7)}`, pose: clone(neutral), body: { gender: 'neutral', age: 'adult' }, transform: { x, y: 0, z }, history: [], future: [] };
+      const person = { id, name: `人物 ${id.slice(7)}`, pose: clone(neutral), body: { gender: 'female', age: 'adult' }, transform: { x, y: 0, z }, history: [], future: [] };
       people.push(person); select(id); return person;
     }
     function remove(id = activeId) {
@@ -228,13 +230,13 @@
         person.transform[axis] += delta;
         for (const pole of Object.values(viewer.ikController?.poleTargets || {})) pole.position[axis] += delta;
       }
-      viewer.setActiveCharacterAppearance({ transform: person.transform });
+      viewer.setActiveCharacterAppearance({ color: '#a4aab2', transform: person.transform });
       viewer.updateIKEffectorPositions('all'); onChange();
     }
     function setPosition(axis, value) { setPositions({ [axis]: value }); }
     function setBody(key, value) {
       const person = active(); if (!person || !['gender', 'age'].includes(key) || person.body[key] === value) return;
-      if (!(key === 'gender' ? ['female', 'male', 'neutral'] : ['adult', 'child']).includes(value)) return;
+      if (!(key === 'gender' ? ['female', 'male'] : ['adult', 'child']).includes(value)) return;
       save(); person.body[key] = value;
       // Rotations transfer between proportions; local rest offsets and world IK
       // targets belong to the old skeleton and must be recomputed for the new one.
@@ -244,7 +246,11 @@
     function restore(document) {
       viewer.clearPassiveCharacters(); people.length = 0; activeId = null;
       const entries = document.characters || [{ id: 'person-1', name: '人物 1', pose: poseOnly(document.pose), transform: { x: 0, y: 0, z: 0 } }];
-      for (const entry of entries) people.push({ ...clone(entry), body: { gender: 'neutral', age: 'adult', ...entry.body }, pose: poseOnly(entry.pose), history: [], future: [] });
+      for (const entry of entries) {
+        const pose = poseOnly(entry.pose);
+        if (!entry.body || entry.body.gender === 'neutral') for (const key of ['bonePositions', 'hipBonePosition', 'ikEffectorPositions', 'poleTargetPositions']) delete pose[key];
+        people.push({ ...clone(entry), body: { age: entry.body?.age || 'adult', gender: entry.body?.gender === 'male' ? 'male' : 'female' }, pose, history: [], future: [] });
+      }
       nextId = Math.max(0, ...people.map(p => Number(p.id.replace('person-', '')) || 0)) + 1;
       const person = people.find(p => p.id === document.activeCharacterId) || people[0];
       for (const other of people) if (other !== person) { applyActor(other); viewer.upsertPassiveCharacterFromActive(other.id, other); }
@@ -302,7 +308,7 @@
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
-      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options-gender{grid-template-columns:repeat(3,1fr)}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}.nf-pose-side label.nf-pose-position{display:flex;align-items:center;justify-content:space-between;gap:6px}.nf-pose-position input{width:88px}
+      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}.nf-pose-side label.nf-pose-position{display:flex;align-items:center;justify-content:space-between;gap:6px}.nf-pose-position input{width:88px}
       .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#0009;display:grid;place-items:center;padding:20px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
       .nf-pose-dialog{width:min(1140px,100%);height:min(800px,100%);display:flex;flex-direction:column;background:#202020;border:1px solid #414141;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
       .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;min-height:30px;padding:4px 9px;font:12px system-ui}
@@ -419,7 +425,7 @@
     let widthInput, heightInput, background;
     try {
       const [{ PoseViewerCore }, { HAND_PRESETS }, modelResponse] = await Promise.all([
-        import(vendor('pose_studio/core.js')), import(vendor('pose_studio/hand_presets.js')), fetch(vendor('pose_studio/assets/mannequin.json')),
+        import(vendor('pose_studio/core.js')), import(vendor('pose_studio/hand_presets.js')), fetch(vendor('pose_studio/assets/mannequin-adult-female.json')),
       ]);
       if (!modelResponse.ok) throw new Error(`人偶资源载入失败 (${modelResponse.status})`);
       const model = await modelResponse.json(); if (abort.signal.aborted) return;
@@ -427,7 +433,7 @@
       if (!catalogResponse.ok) throw new Error('体型资源索引载入失败');
       const catalog = await catalogResponse.json();
       const bodyModels = Object.fromEntries(await Promise.all(catalog.bodies.map(async body => {
-        if (body.id === 'adult-neutral') return [body.id, model];
+        if (body.id === 'adult-female') return [body.id, model];
         const response = await fetch(vendor(`pose_studio/assets/${body.file}`));
         if (!response.ok) throw new Error(`体型资源载入失败：${body.id}`);
         return [body.id, await response.json()];
@@ -439,7 +445,7 @@
       if (!viewer.initialized || !viewer.renderer) throw new Error('无法创建 3D 视图，请检查浏览器硬件加速');
       configureNavigation(viewer, canvas, abort.signal, event => characters?.pick(event, canvas));
       viewer.loadData(model); viewer.scene.background.set(state.background); viewer.setDirectionalSkydomeVisible(false);
-      viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 1.2 }, { type: 'directional', color: '#ffffff', intensity: 2.2, x: 4, y: 10, z: 8 }]);
+      viewer.updateLights([{ type: 'ambient', color: '#ffffff', intensity: 0.65 }, { type: 'directional', color: '#ffffff', intensity: 2.0, x: 4, y: 10, z: 8 }]);
       const floor = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
       viewer.gridHelper = new viewer.THREE.Group();
       const grid = new viewer.THREE.GridHelper(160, 80, '#8796a8', '#b2bbc6');
@@ -459,9 +465,9 @@
         characters.remove(); changed(); message(`已删除${name || '人物'}，场景中剩余 ${characters.people.length} 人`);
       }));
       side.append(peopleList, element('div', { class: 'nf-pose-grid' }, [addPerson, deletePerson]));
-      for (const [key, label, options] of [['gender', '性别', [['female', '女性'], ['male', '男性'], ['neutral', '中性']]], ['age', '年龄', [['child', '儿童'], ['adult', '成人']]]]) {
+      for (const [key, label, options] of [['gender', '性别', [['female', '女性'], ['male', '男性']]], ['age', '年龄', [['child', '儿童'], ['adult', '成人']]]]) {
         const choices = options.map(([value, text]) => {
-          const control = button(text, () => run(() => { characters.setBody(key, value); fitView(); changed(); }), { 'aria-label': `${label}：${text}`, 'aria-pressed': 'false' });
+          const control = button(text, () => run(() => { characters.setBody(key, value); changed(); }), { 'aria-label': `${label}：${text}`, 'aria-pressed': 'false' });
           bodyControls.push({ key, value, control }); actorControls.push(control); return control;
         });
         side.append(element('h3', { text: label }), element('div', { class: `nf-pose-body-options nf-pose-body-options-${key}`, role: 'group', 'aria-label': label }, choices));
@@ -549,7 +555,7 @@
           if (!response.ok) throw new Error(`姿势载入失败 (${response.status})`);
           const document = normalizeDocument(await response.json()); if (abort.signal.aborted) return;
           const libraryPose = clone(document.pose);
-          if (characters.active()?.body.age !== 'adult' || characters.active()?.body.gender !== 'neutral') {
+          {
             // A preset's local offsets and world-space IK targets belong to its
             // original body proportions. Keep the selected body's rest lengths.
             for (const key of ['bonePositions', 'hipBonePosition', 'ikEffectorPositions', 'poleTargetPositions']) delete libraryPose[key];

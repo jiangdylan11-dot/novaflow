@@ -173,6 +173,9 @@ test('scene documents retain independent poses, positions, selection and empty s
   assert.throws(() => tool.normalizeDocument({ ...scene, characters: [scene.characters[0], scene.characters[0]] }), /编号重复/);
   assert.throws(() => tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], transform: { x: NaN } }] }), /人物位置/);
   assert.throws(() => tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], body: { age: 'unknown', gender: 'neutral' } }] }), /体型/);
+  const legacy = tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], body: { gender: 'neutral', age: 'adult' }, pose: { bones: { head: [10, 0, 0] }, bonePositions: { pelvis: [1, 2, 3] } } }] });
+  assert.equal(legacy.characters[0].body.gender, 'female');
+  assert.equal(legacy.characters[0].pose.bonePositions, undefined, 'removed neutral rest offsets must not distort the female skeleton');
 });
 
 test('workspace coordinate fallbacks never intercept buttons inside the pose dialog', async () => {
@@ -207,6 +210,7 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   const models = Object.fromEntries(await Promise.all(catalog.bodies.map(async body => [body.id, JSON.parse(await readFile(new URL(`vendor/vnccs/pose_studio/assets/${body.file}`, renderer), 'utf8'))])));
   const characters = tool.createCharacters(viewer, () => {}, models);
   characters.restore({ pose: { bones: { head: [12, 0, 0] } } });
+  assert.equal(characters.active().body.gender, 'female', 'new and legacy people default to a supported body');
   const cameraBefore = viewer.camera.position.clone();
   viewer.recordState(); viewer.bones.head.rotation.x = 0.7;
   const second = characters.add();
@@ -230,6 +234,7 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   assert.equal(characters.active().id, second.id);
   assert.equal(viewer.skinnedMesh.position.x, 15);
   characters.setBody('gender', 'male'); characters.setBody('age', 'child');
+  assert.ok(viewer.camera.position.distanceTo(cameraBefore) < 1e-10, 'body changes must not rescale the camera');
   const childHeight = () => { viewer.skinnedMesh.computeBoundingBox(); return viewer.skinnedMesh.boundingBox.getSize(new THREE.Vector3()).y; };
   const height = childHeight();
   assert.equal(characters.active().body.age, 'child');
@@ -264,7 +269,7 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   viewer.clearPassiveCharacters(); viewer._cleanupPrevious();
 });
 
-test('all six body variants have pinned CC0 hashes, shared ground and distinct age/gender geometry', async () => {
+test('all four body variants have pinned CC0 hashes, shared ground and distinct age/gender geometry', async () => {
   const catalog = JSON.parse(await readFile(new URL('vendor/vnccs/pose_studio/assets/body-types.json', renderer), 'utf8'));
   const models = {};
   for (const body of catalog.bodies) {
@@ -276,7 +281,15 @@ test('all six body variants have pinned CC0 hashes, shared ground and distinct a
     const y = models[body.id].vertices.filter((_, i) => i % 3 === 1);
     assert.ok(Math.abs(Math.min(...y) + 8.450465) < 1e-5, 'all bodies share the same floor');
   }
-  assert.equal(Object.keys(models).length, 6);
+  assert.equal(Object.keys(models).length, 4);
   assert.notDeepEqual(models['adult-female'].vertices, models['adult-male'].vertices);
-  assert.notDeepEqual(models['child-neutral'].vertices, models['adult-neutral'].vertices);
+  assert.notDeepEqual(models['child-female'].vertices, models['adult-female'].vertices);
+  const shoulderRatio = model => {
+    const bones = Object.fromEntries(model.bones.map(bone => [bone.name, bone]));
+    const shoulderWidth = Math.hypot(...bones.upperarm_l.headPos.map((v, i) => v - bones.upperarm_r.headPos[i]));
+    const y = model.vertices.filter((_, i) => i % 3 === 1);
+    return shoulderWidth / (Math.max(...y) - Math.min(...y));
+  };
+  assert.ok(shoulderRatio(models['adult-male']) > shoulderRatio(models['adult-female']) * 1.1, 'adult meshes must differ in silhouette proportions, beyond overall scale');
+  assert.deepEqual(catalog.bodies.map(body => body.id).sort(), ['adult-female', 'adult-male', 'child-female', 'child-male']);
 });

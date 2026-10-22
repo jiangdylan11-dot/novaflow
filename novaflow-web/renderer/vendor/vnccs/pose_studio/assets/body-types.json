@@ -3,22 +3,6 @@
   "sourceSha256": "76adfddc9a98ecd89e5b4a334911e65469fc77939e3fb0500832ab9e2a1baec9",
   "bodies": [
     {
-      "id": "adult-neutral",
-      "age": "adult",
-      "gender": "neutral",
-      "shape": {
-        "gender": 0.5,
-        "age": 45.5,
-        "muscle": 0.5,
-        "weight": 0.5,
-        "height": 0.5,
-        "show_genitals": false
-      },
-      "file": "mannequin.json",
-      "sha256": "b6fccae7ab350187e9d5378858bf5b43058ef8716b63993f90cd5fcbf36286ff",
-      "bytes": 1431464
-    },
-    {
       "id": "adult-female",
       "age": "adult",
       "gender": "female",
@@ -49,22 +33,6 @@
       "file": "mannequin-adult-male.json",
       "sha256": "130f37d9ff382e3659be89dce8e2812c6d4e297d2d3b2f95ed20bee85bcaca25",
       "bytes": 1430690
-    },
-    {
-      "id": "child-neutral",
-      "age": "child",
-      "gender": "neutral",
-      "shape": {
-        "gender": 0.5,
-        "age": 17.6875,
-        "muscle": 0.5,
-        "weight": 0.5,
-        "height": 0.5,
-        "show_genitals": false
-      },
-      "file": "mannequin-child-neutral.json",
-      "sha256": "5d18575fb7d37b77b18860aeaf625a5ca14aa16ddaeb4a9faef2667bc0958304",
-      "bytes": 1437424
     },
     {
       "id": "child-female",

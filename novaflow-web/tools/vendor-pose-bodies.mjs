@@ -21,12 +21,12 @@ const neutral = JSON.parse(await readFile(join(assets, 'mannequin.json'), 'utf8'
 let ground = Infinity;
 for (let i = 1; i < neutral.vertices.length; i += 3) ground = Math.min(ground, neutral.vertices[i]);
 const catalog = { license: 'CC0-1.0', sourceSha256: provenance.mannequin.sha256, bodies: [] };
-for (const age of ['adult', 'child']) for (const [gender, factor] of [['neutral', 0.5], ['female', 0], ['male', 1]]) {
+for (const age of ['adult', 'child']) for (const [gender, factor] of [['female', 0], ['male', 1]]) {
   // These are morph-space coordinates, not chronological ages. 0.1875 is
   // MakeHuman's child target; 0.5 is the full adult target, with no old morph.
   const shape = { ...provenance.mannequin.shape, gender: factor, age: age === 'adult' ? 45.5 : 1 + 89 * 0.1875, show_genitals: false };
-  const id = `${age}-${gender}`, file = id === 'adult-neutral' ? 'mannequin.json' : `mannequin-${id}.json`;
-  if (id !== 'adult-neutral') {
+  const id = `${age}-${gender}`, file = `mannequin-${id}.json`;
+  {
     const solved = solveMorph(pack, shape);
     let minY = Infinity;
     for (let i = 1; i < solved.vertices.length; i += 3) minY = Math.min(minY, solved.vertices[i]);
