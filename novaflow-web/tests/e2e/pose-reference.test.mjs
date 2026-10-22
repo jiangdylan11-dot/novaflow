@@ -247,6 +247,7 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   characters.select(second.id);
   assert.equal(characters.active().body.age, 'child'); assert.equal(viewer.skinnedMesh.position.x, 15);
   assert.ok(Math.abs(childHeight() - height) < 1e-5, 'mixed body types survive scene restore');
+  viewer.setIKMode(false);
   const movement = tool.configureRootTranslation(viewer, characters, () => {});
   viewer.selectBoneByName('Root'); movement.sync();
   assert.equal(viewer.transform.mode, 'translate'); assert.equal(viewer.transform.space, 'world');
@@ -286,6 +287,8 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8, 'joint positions survive scene saving and restoring');
   viewer.selectBoneByName('head'); movement.setMode('rotate'); movement.sync();
   assert.equal(viewer.transform.mode, 'rotate'); assert.equal(viewer.transform.space, 'local'); assert.equal(viewer.ikMode, true);
+  movement.setMode('translate'); assert.equal(viewer.ikMode, false, 'joint translation must disable IK');
+  movement.setMode('rotate'); assert.equal(viewer.ikMode, true, 'rotation must always enable IK, including when it was initially disabled');
   characters.remove(second.id); characters.remove('person-1');
   assert.equal(characters.people.length, 0); assert.equal(viewer.passiveCharacters.size, 0);
   assert.equal(viewer.skinnedMesh.visible, false);

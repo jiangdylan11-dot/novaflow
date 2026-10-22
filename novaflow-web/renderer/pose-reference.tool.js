@@ -293,7 +293,7 @@
 
   function configureRootTranslation(viewer, characters, onChange) {
     const anchor = new viewer.THREE.Object3D(); viewer.scene.add(anchor);
-    let start = null, mode = 'translate', ikPreference = viewer.ikMode;
+    let start = null, mode = 'translate';
     viewer.setIKMode(false);
     viewer.options.captureHistoryContext = () => ({ characterPosition: { ...characters.active()?.transform } });
     viewer.options.onHistoryRestore = pose => {
@@ -331,9 +331,8 @@
     }
     function setMode(next) {
       if (!['translate', 'rotate'].includes(next)) return;
-      mode = next; viewer.setIKMode(mode === 'rotate' && ikPreference); sync(); onChange();
+      mode = next; viewer.setIKMode(mode === 'rotate'); sync(); onChange();
     }
-    function setIK(enabled) { ikPreference = enabled; viewer.setIKMode(mode === 'rotate' && enabled); sync(); onChange(); }
     viewer.transform.addEventListener('objectChange', () => {
       if (mode === 'translate' && viewer.selectedBone && viewer.transform.object === viewer.selectedBone && viewer.selectedBone?.name !== 'Root') { updateBone(); return; }
       if (!start || viewer.transform.object !== anchor || characters.active()?.id !== start.id) return;
@@ -341,7 +340,7 @@
       characters.setPositions(Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, start.position[axis] + delta[axis]])));
       onChange();
     });
-    return { sync, setMode, getMode: () => mode, setIK, getOffset, setOffset };
+    return { sync, setMode, getMode: () => mode, getOffset, setOffset };
   }
 
   function installStyle() {
@@ -391,7 +390,7 @@
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
     async function run(fn) { try { await fn(); } catch (error) { message(error.message || String(error), true); } }
-    let viewer, resizeObserver, saveTimer, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, positionInputs = [], bodyControls = [], actorControls = [], axisControls = [], editModes = [], ikInput;
+    let viewer, resizeObserver, saveTimer, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, positionInputs = [], bodyControls = [], actorControls = [], axisControls = [], editModes = [];
     function snapshot() { return { version: 2, ...characters.snapshot(), width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
     function persist() { if (viewer?.isInitialized() && characters) { try { root.localStorage.setItem(STORAGE, JSON.stringify(snapshot())); } catch (_) { message('浏览器无法保存姿势，请使用「保存姿势」下载文件', true); } } }
     function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); clearTimeout(saveTimer); saveTimer = setTimeout(persist, 180); syncAxes(); }
@@ -538,8 +537,6 @@
         } });
         side.append(element('label', { class: 'nf-pose-position', text: `位置 ${axis.toUpperCase()}` }, [input])); return input;
       });
-      const ik = element('input', { type: 'checkbox', checked: '', title: '移动骨骼时暂时关闭 IK；旋转模式可拖动手脚', onchange: () => movement?.setIK(ik.checked) }); ikInput = ik;
-      side.append(element('label', { class: 'nf-pose-row' }, [ik, element('span', { text: '拖动手脚（IK）' })])); actorControls.push(ik);
       selectedJoint = element('div', { class: 'nf-pose-selected-joint', role: 'status', text: '点击人偶上的关节进行旋转' });
       side.append(element('h3', { text: '骨骼编辑' }));
       editModes = [['translate', '移动关节'], ['rotate', '旋转关节']].map(([mode, text]) => {
@@ -584,7 +581,6 @@
       if (selectedJoint) selectedJoint.textContent = viewer?.selectedBone && characters?.active()
         ? (rootSelected ? '整体移动：拖动 X/Y/Z 箭头或平面' : `${translating ? '移动' : '旋转'}：${jointLabel(viewer.selectedBone.name)}${translating ? '（调整骨骼位置和体型）' : ''}`)
         : '点击人偶关节，再拖动箭头移动或圆环旋转';
-      if (ikInput) { ikInput.checked = Boolean(viewer?.ikMode); ikInput.disabled = !characters?.active() || translating; }
       editModes.forEach(({ mode, control }) => control.setAttribute('aria-pressed', String(mode === (translating ? 'translate' : 'rotate'))));
       axisControls.forEach(({ slider, number }, i) => {
         const axis = ['x', 'y', 'z'][i], label = axis.toUpperCase();
