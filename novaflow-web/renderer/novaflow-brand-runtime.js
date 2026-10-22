@@ -11024,7 +11024,8 @@
       Array.from(canonicalDropzone.querySelectorAll("div, span")).forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
         // H3 media badges and duration overlays own their internal layout.
-        if (node.closest('[data-novaflow-h3-preview]')) return;
+        // The H3 card owns its caption and media row across every late pass.
+        if (isH3MultiReferenceNode(node) && node.closest('[data-novaflow-h3-source-id]')) return;
         const text = normalizeText(node.textContent || "");
         setImportantStyles(node, {
           margin: "0",
@@ -12663,6 +12664,7 @@
   }
 
   function normalizeAiSequenceSourceOwnedReferenceTitle(slot) {
+    if (isH3MultiReferenceNode(slot)) return;
     if (!isAiSequenceSourceOwnedBottomReferenceSlot(slot)) return;
     Array.from(slot.querySelectorAll(".nf-upload-dropzone__title")).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
@@ -64777,6 +64779,7 @@
     ];
     dropzones.forEach((dropzone) => {
       if (!(dropzone instanceof HTMLElement) || !isVisible(dropzone)) return;
+      if (isH3MultiReferenceNode(dropzone)) return;
       if (isInsideSourceOwnedLayout(dropzone)) {
         return;
       }

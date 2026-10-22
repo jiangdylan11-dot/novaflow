@@ -105,16 +105,37 @@
       put(caption,{position:'absolute',left:'0px',right:'0px',bottom:'0px',top:'auto',width:'100%',height:'22px','min-height':'22px','max-height':'22px',margin:'0px',padding:'2px 6px','box-sizing':'border-box',background:'rgba(0, 0, 0, 0.65)',border:'0px','border-radius':'0px','font-family':'"Segoe UI", "Microsoft YaHei", sans-serif','font-size':'12px','font-weight':'400','font-style':'normal','line-height':'18px',color:'rgb(232, 232, 232)','text-align':'center','white-space':'nowrap',overflow:'hidden','text-overflow':'ellipsis','z-index':'2',transform:'none'});
       const preview=card.querySelector('[data-novaflow-h3-preview]');
       put(preview,{position:'relative',display:'flex',flex:'1 1 0px',width:'100%','min-width':'0px','min-height':'0px',height:'100%','align-items':'center','justify-content':'center',overflow:'hidden',padding:'0px',margin:'0px',background:'transparent',transform:'none'});
+      put(card.querySelector('[data-novaflow-h3-duration-row]'),{position:'static',display:'inline-flex','align-items':'center','justify-content':'center',gap:'6px',width:'max-content',height:'18px',margin:'0px',padding:'0px',background:'transparent',transform:'none'});
       const icon=card.querySelector('[data-novaflow-h3-icon]');
-      put(icon,{position:'absolute',left:'2px',top:'2px',right:'auto',bottom:'auto',display:'block',width:'14px',height:'14px','min-width':'14px','max-width':'14px','min-height':'14px','max-height':'14px',padding:'0px',margin:'0px','line-height':'14px',background:'transparent',transform:'none',color:'rgb(184, 184, 184)'});
+      put(icon,{position:'static',left:'auto',top:'auto',right:'auto',bottom:'auto',flex:'0 0 14px',display:'block',width:'14px',height:'14px','min-width':'14px','max-width':'14px','min-height':'14px','max-height':'14px',padding:'0px',margin:'0px','line-height':'14px',background:'transparent',transform:'none',color:'rgb(184, 184, 184)'});
       const svg=icon?.querySelector('svg');
       put(svg,{display:'block',width:'14px',height:'14px',position:'static',margin:'0px',padding:'0px',fill:'none',stroke:'currentColor',background:'transparent',transform:'none'});
       for(const shape of svg?.querySelectorAll('*')||[])put(shape,{fill:'none',stroke:'currentColor',background:'transparent'});
-      put(card.querySelector('[data-novaflow-h3-duration]'),{position:'absolute',left:'50%',top:'50%',right:'auto',bottom:'auto',transform:'translate(-50%, -50%)',display:'block',width:'auto',height:'18px',margin:'0px',padding:'0px',background:'transparent','font-family':'"Segoe UI", "Microsoft YaHei", sans-serif','font-size':'12px','font-weight':'400','line-height':'18px',color:'rgb(232, 232, 232)','white-space':'nowrap'});
+      put(card.querySelector('[data-novaflow-h3-duration]'),{position:'static',left:'auto',top:'auto',right:'auto',bottom:'auto',transform:'none',display:'block',width:'auto',height:'18px',margin:'0px',padding:'0px',background:'transparent','font-family':'"Segoe UI", "Microsoft YaHei", sans-serif','font-size':'12px','font-weight':'400','line-height':'18px',color:'rgb(232, 232, 232)','white-space':'nowrap'});
     }
   }
+  // One bounded, detached metadata probe per immutable uploaded source. Mode
+  // changes may unmount Panel, but must not cancel/restart an in-flight probe.
+  const durationCache=new Map();
+  function readDuration(item) {
+    const cached=durationCache.get(item.sourceId);
+    if(cached?.dataUrl===item.dataUrl)return cached.promise;
+    const entry={dataUrl:item.dataUrl,seconds:null,promise:null};
+    durationCache.set(item.sourceId,entry);
+    entry.promise=new Promise((resolve,reject)=>{
+      const media=document.createElement(item.kind);media.preload='metadata';media.muted=true;
+      let settled=false;
+      const finish=(error,seconds)=>{if(settled)return;settled=true;clearTimeout(timer);media.onloadedmetadata=null;media.ondurationchange=null;media.onerror=null;media.removeAttribute('src');media.load();if(error){durationCache.delete(item.sourceId);reject(error);}else{entry.seconds=seconds;resolve(seconds);}};
+      const ready=()=>{if(Number.isFinite(media.duration)&&media.duration>0)finish(null,media.duration);};
+      const timer=setTimeout(()=>finish(new Error('读取时长超时，请重新导入素材')),10000);
+      media.onloadedmetadata=ready;media.ondurationchange=ready;media.onerror=()=>finish(new Error('无法读取素材时长，请检查文件编码'));
+      media.src=item.dataUrl;media.load();
+    });
+    if(durationCache.size>32)for(const [key,value]of durationCache){if(key!==item.sourceId&&value.seconds!==null){durationCache.delete(key);if(durationCache.size<=32)break;}}
+    return entry.promise;
+  }
   function Panel({react:React,card:Card,boardId='b1',prompt='',onPromptChange,legacy=[]}) {
-    const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[durations,setDurations]=React.useState({}),inputs=React.useRef({});
+    const h=React.createElement,[tick,setTick]=React.useState(0),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false),[durations,setDurations]=React.useState(()=>Object.fromEntries([...durationCache].filter(([,x])=>x.seconds!==null).map(([id,x])=>[id,x.seconds]))),[durationErrors,setDurationErrors]=React.useState({}),inputs=React.useRef({});
     React.useEffect(()=>store.subscribe(()=>setTick(t=>t+1)),[]);
     React.useEffect(()=>{let live=true;store.load(boardId).then(async()=>{
       if(!live||store.hasSaved(boardId)||store.get(boardId).length||!legacy.length)return;
@@ -127,21 +148,19 @@
     const drop=kind=>e=>action(()=>importFiles(kind,Array.from(e.dataTransfer?.files||[])))();
     const addTitles={image:'添加参考图',video:'添加参考视频',audio:'添加参考音频'};
     React.useEffect(()=>{
-      // Detached metadata probes never enter the visible DOM. Shared upload CSS
-      // must not be able to reveal a hidden native video poster/controls surface.
-      const probes=list.filter(x=>x.kind!=='image').map(x=>{
-        const media=document.createElement(x.kind);media.preload='metadata';media.muted=true;
-        media.onloadedmetadata=()=>{const seconds=media.duration;if(Number.isFinite(seconds))setDurations(old=>old[x.sourceId]===seconds?old:{...old,[x.sourceId]:seconds});};
-        media.src=x.dataUrl;return media;
-      });
-      return()=>{for(const media of probes){media.onloadedmetadata=null;media.removeAttribute('src');media.load();}};
+      let live=true;
+      for(const item of list.filter(x=>x.kind!=='image'))readDuration(item).then(seconds=>{
+        if(live){setDurations(old=>old[item.sourceId]===seconds?old:{...old,[item.sourceId]:seconds});setDurationErrors(old=>{if(!old[item.sourceId])return old;const next={...old};delete next[item.sourceId];return next;});}
+      }).catch(error=>{if(live)setDurationErrors(old=>({...old,[item.sourceId]:error.message}));});
+      return()=>{live=false;};
     },[boardId,tick]);
     React.useLayoutEffect(()=>{const bottom=document.querySelector('[data-novaflow-h3-media-panel="1"]')?.closest('[data-novaflow-ai-bottom-workspace]');normalizeCardContents(bottom);},[boardId,tick]);
     const icon=kind=>h('svg',{viewBox:'0 0 16 16',width:14,height:14,fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},
       ...(kind==='video'?[h('rect',{key:'body',x:1,y:4,width:9,height:8,rx:1.5}),h('path',{key:'lens',d:'M10 6l4-2v8l-4-2Z'})]:[h('path',{key:'stem',d:'M6 12V4l7-2v8'}),h('ellipse',{key:'note1',cx:4,cy:12,rx:2,ry:1.5}),h('ellipse',{key:'note2',cx:11,cy:10,rx:2,ry:1.5})]));
     const preview=x=>h('div',{className:'nf-h3-card-preview','data-novaflow-h3-preview':x.kind},
-      h('span',{className:'nf-h3-card-kind-icon','data-novaflow-h3-icon':x.kind},icon(x.kind)),
-      h('span',{className:'nf-h3-card-duration','data-novaflow-h3-duration':x.kind},Number.isFinite(durations[x.sourceId])?durations[x.sourceId].toFixed(1)+'s':'--'));
+      h('span',{className:'nf-h3-card-duration-row','data-novaflow-h3-duration-row':x.kind,title:durationErrors[x.sourceId]||undefined},
+        h('span',{className:'nf-h3-card-kind-icon','data-novaflow-h3-icon':x.kind},icon(x.kind)),
+        h('span',{className:'nf-h3-card-duration','data-novaflow-h3-duration':x.kind,'data-duration-state':durationErrors[x.sourceId]?'error':Number.isFinite(durations[x.sourceId])?'ready':'loading'},Number.isFinite(durations[x.sourceId])?durations[x.sourceId].toFixed(1)+'s':durationErrors[x.sourceId]?'时长不可用':'--')));
 
     const report=store.getReport(boardId),detail=error||store.getError()||(report?'本次使用：'+report.selected.map(x=>x.label).join('、')+'；未使用：'+(report.unused.map(x=>x.label+'（'+x.fileName+'）').join('、')||'无'):'');
     return h('div',{'data-novaflow-h3-media-panel':'1','data-board-id':boardId,className:'nf-h3-media',title:detail||undefined,'aria-busy':busy},
