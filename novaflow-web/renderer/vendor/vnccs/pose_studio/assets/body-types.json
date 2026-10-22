@@ -3,9 +3,27 @@
   "sourceSha256": "76adfddc9a98ecd89e5b4a334911e65469fc77939e3fb0500832ab9e2a1baec9",
   "bodies": [
     {
+      "id": "adult-neutral",
+      "age": "adult",
+      "gender": "neutral",
+      "legacy": false,
+      "shape": {
+        "gender": 0.5,
+        "age": 45.5,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin.json",
+      "sha256": "b6fccae7ab350187e9d5378858bf5b43058ef8716b63993f90cd5fcbf36286ff",
+      "bytes": 1431464
+    },
+    {
       "id": "adult-female",
       "age": "adult",
       "gender": "female",
+      "legacy": true,
       "shape": {
         "gender": 0,
         "age": 45.5,
@@ -22,6 +40,7 @@
       "id": "adult-male",
       "age": "adult",
       "gender": "male",
+      "legacy": true,
       "shape": {
         "gender": 1,
         "age": 45.5,
@@ -35,9 +54,27 @@
       "bytes": 1430690
     },
     {
+      "id": "child-neutral",
+      "age": "child",
+      "gender": "neutral",
+      "legacy": false,
+      "shape": {
+        "gender": 0.5,
+        "age": 17.6875,
+        "muscle": 0.5,
+        "weight": 0.5,
+        "height": 0.5,
+        "show_genitals": false
+      },
+      "file": "mannequin-child-neutral.json",
+      "sha256": "5d18575fb7d37b77b18860aeaf625a5ca14aa16ddaeb4a9faef2667bc0958304",
+      "bytes": 1437424
+    },
+    {
       "id": "child-female",
       "age": "child",
       "gender": "female",
+      "legacy": true,
       "shape": {
         "gender": 0,
         "age": 17.6875,
@@ -54,6 +91,7 @@
       "id": "child-male",
       "age": "child",
       "gender": "male",
+      "legacy": true,
       "shape": {
         "gender": 1,
         "age": 17.6875,
@@ -65,6 +103,214 @@
       "file": "mannequin-child-male.json",
       "sha256": "da491f0e8665f059a751d31bc2254b329fd0f402578e13b307d047c89a182968",
       "bytes": 1435628
+    },
+    {
+      "id": "adult-neutral-3",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 3,
+      "chinVertex": 991,
+      "measuredRatio": 2.999999823171313,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-3.json",
+      "bytes": 1437695,
+      "sha256": "7ff7e6652b8f667af9dbabb4e49d7268b107b9b683cd2584dd008f988927bbe2"
+    },
+    {
+      "id": "adult-neutral-4",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 4,
+      "chinVertex": 991,
+      "measuredRatio": 4,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-4.json",
+      "bytes": 1437036,
+      "sha256": "aa1e9ed8c63f715da145f679aab7b5e5ee911ed399dafef162fb7282532c113f"
+    },
+    {
+      "id": "adult-neutral-5",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 5,
+      "chinVertex": 991,
+      "measuredRatio": 5.000000589429061,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-5.json",
+      "bytes": 1435915,
+      "sha256": "de245714fca048c8ccb6965c45ec3286b7cfe17ef06e0def7d4332a70f5f42f9"
+    },
+    {
+      "id": "adult-neutral-6",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 6,
+      "chinVertex": 991,
+      "measuredRatio": 6.000000707314873,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-6.json",
+      "bytes": 1433989,
+      "sha256": "d7f4c01891d9292905c2c9c02c1b545fe1df21da83f1edc101fb688ae7398f34"
+    },
+    {
+      "id": "adult-neutral-7",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 7,
+      "chinVertex": 991,
+      "measuredRatio": 7.0000004126003175,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-7.json",
+      "bytes": 1432180,
+      "sha256": "aa6800bef936c203dc429bc80cb5f5cf3436a482e4c1bb02643d2b0769c8c6ad"
+    },
+    {
+      "id": "adult-neutral-7.5",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 7.5,
+      "chinVertex": 991,
+      "measuredRatio": 7.500000884143591,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-7.5.json",
+      "bytes": 1431899,
+      "sha256": "f06562535a6366fc380ceb8b185809d1a2d782755d18071ecf61c59389fb2265"
+    },
+    {
+      "id": "adult-neutral-8",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 8,
+      "chinVertex": 991,
+      "measuredRatio": 8.000001886173218,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-8.json",
+      "bytes": 1431732,
+      "sha256": "9fc090d37c5a9f97a2763ad4c2104076ef61bc7c072e2283eccca6434212d68f"
+    },
+    {
+      "id": "adult-neutral-9",
+      "age": "adult",
+      "gender": "neutral",
+      "proportion": 9,
+      "chinVertex": 991,
+      "measuredRatio": 8.999997878056128,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-adult-neutral-9.json",
+      "bytes": 1431237,
+      "sha256": "45843bdacbbb4ba8e5f7fb5f4fba10ca8bf55bc3d8177894d267fe5e5cb469fb"
+    },
+    {
+      "id": "child-neutral-3",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 3,
+      "chinVertex": 991,
+      "measuredRatio": 2.9999999999999996,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-3.json",
+      "bytes": 1439778,
+      "sha256": "33fe256e353b6a20d5e01858b905aaf8436cd49c7ef5939bfecdd1da0a063e47"
+    },
+    {
+      "id": "child-neutral-4",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 4,
+      "chinVertex": 991,
+      "measuredRatio": 4.000000298565483,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-4.json",
+      "bytes": 1438736,
+      "sha256": "b8422f23e0bbade50577384c81c09c2f6183a1620dc98225dababe6f0dfb5dcf"
+    },
+    {
+      "id": "child-neutral-5",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 5,
+      "chinVertex": 991,
+      "measuredRatio": 5.000000746413761,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-5.json",
+      "bytes": 1437908,
+      "sha256": "15bc7ff5edf932460a313232d9382ed0da7f6cb34f59b1c821d6fd90c6446f36"
+    },
+    {
+      "id": "child-neutral-6",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 6,
+      "chinVertex": 991,
+      "measuredRatio": 6.000001343544871,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-6.json",
+      "bytes": 1437431,
+      "sha256": "4449546a71ef87a551583d41583f875b0d2dd539bc715465d56aa1d1c898f5da"
+    },
+    {
+      "id": "child-neutral-7",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 7,
+      "chinVertex": 991,
+      "measuredRatio": 6.9999994775104835,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-7.json",
+      "bytes": 1437038,
+      "sha256": "a0417839e8c53f4847c704269737f200d05f98c59e08a83edb771031ff0a33e4"
+    },
+    {
+      "id": "child-neutral-7.5",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 7.5,
+      "chinVertex": 991,
+      "measuredRatio": 7.499998320569661,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-7.5.json",
+      "bytes": 1436857,
+      "sha256": "35aec3c9ee96eef54b39887ecb550b5cfd75e5b2b88b5c3dd3b63f952beb6566"
+    },
+    {
+      "id": "child-neutral-8",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 8,
+      "chinVertex": 991,
+      "measuredRatio": 7.999998208607639,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-8.json",
+      "bytes": 1436639,
+      "sha256": "e8ea5f3f313882ef32f706d4ab25213128d477e6a16d9d59b486d8649f7e7e63"
+    },
+    {
+      "id": "child-neutral-9",
+      "age": "child",
+      "gender": "neutral",
+      "proportion": 9,
+      "chinVertex": 991,
+      "measuredRatio": 8.999997984683594,
+      "legacy": false,
+      "license": "CC0-1.0",
+      "file": "mannequin-child-neutral-9.json",
+      "bytes": 1434983,
+      "sha256": "e51f496111a023fbedc0b7f9cd3299ee388f9ecd2efc0776d7c2d651dc8c6713"
     }
   ]
 }

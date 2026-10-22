@@ -174,8 +174,8 @@ test('scene documents retain independent poses, positions, selection and empty s
   assert.throws(() => tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], transform: { x: NaN } }] }), /人物位置/);
   assert.throws(() => tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], body: { age: 'unknown', gender: 'neutral' } }] }), /体型/);
   const legacy = tool.normalizeDocument({ ...scene, characters: [{ ...scene.characters[0], body: { gender: 'neutral', age: 'adult' }, pose: { bones: { head: [10, 0, 0] }, bonePositions: { pelvis: [1, 2, 3] } } }] });
-  assert.equal(legacy.characters[0].body.gender, 'female');
-  assert.equal(legacy.characters[0].pose.bonePositions, undefined, 'removed neutral rest offsets must not distort the female skeleton');
+  assert.equal(legacy.characters[0].body.gender, 'neutral');
+  assert.deepEqual(plain(legacy.characters[0].pose.bonePositions), { pelvis: [1, 2, 3] }, 'neutral joint edits must survive document validation');
 });
 
 test('workspace coordinate fallbacks never intercept buttons inside the pose dialog', async () => {
@@ -210,7 +210,7 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   const models = Object.fromEntries(await Promise.all(catalog.bodies.map(async body => [body.id, JSON.parse(await readFile(new URL(`vendor/vnccs/pose_studio/assets/${body.file}`, renderer), 'utf8'))])));
   const characters = tool.createCharacters(viewer, () => {}, models);
   characters.restore({ pose: { bones: { head: [12, 0, 0] } } });
-  assert.equal(characters.active().body.gender, 'female', 'new and legacy people default to a supported body');
+  assert.equal(characters.active().body.gender, 'neutral', 'all people default to the neutral mannequin');
   const cameraBefore = viewer.camera.position.clone();
   viewer.recordState(); viewer.bones.head.rotation.x = 0.7;
   const second = characters.add();
@@ -233,17 +233,17 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   characters.restore(saved);
   assert.equal(characters.active().id, second.id);
   assert.equal(viewer.skinnedMesh.position.x, 15);
-  characters.setBody('gender', 'male'); characters.setBody('age', 'child');
+  characters.setBody('age', 'child');
   assert.ok(viewer.camera.position.distanceTo(cameraBefore) < 1e-10, 'body changes must not rescale the camera');
   const childHeight = () => { viewer.skinnedMesh.computeBoundingBox(); return viewer.skinnedMesh.boundingBox.getSize(new THREE.Vector3()).y; };
   const height = childHeight();
   assert.equal(characters.active().body.age, 'child');
   assert.ok(Math.abs(viewer.bones.head.rotation.x + 0.4) < 1e-10, 'body changes retain pose rotations');
-  characters.select('person-1'); characters.setBody('gender', 'female');
+  characters.select('person-1'); characters.setBody('proportion', 9);
   assert.ok(childHeight() > height, 'adult and child must use different physical proportions');
-  assert.ok(Math.abs(viewer.passiveCharacters.get(second.id).mesh.geometry.getAttribute('position').array[0] - models['child-male'].vertices[0]) < 1e-6);
+  assert.ok(Math.abs(viewer.passiveCharacters.get(second.id).mesh.geometry.getAttribute('position').array[0] - models['child-neutral'].vertices[0]) < 1e-6);
   const mixed = characters.snapshot(); characters.restore(mixed);
-  assert.equal(characters.active().body.gender, 'female');
+  assert.equal(characters.active().body.gender, 'neutral'); assert.equal(characters.active().body.proportion, 9);
   characters.select(second.id);
   assert.equal(characters.active().body.age, 'child'); assert.equal(viewer.skinnedMesh.position.x, 15);
   assert.ok(Math.abs(childHeight() - height) < 1e-5, 'mixed body types survive scene restore');
@@ -259,29 +259,66 @@ test('real upstream rigs add, switch, move, serialize and delete independently w
   assert.deepEqual(plain(viewer.getPose().bones), poseBeforeMove, 'whole-person movement must preserve every joint rotation');
   viewer.undo(); assert.equal(characters.active().transform.x, 15); assert.equal(characters.active().transform.z, 0);
   viewer.redo(); assert.equal(characters.active().transform.x, 18); assert.equal(characters.active().transform.z, 2);
-  viewer.selectBoneByName('head'); movement.sync(); assert.equal(viewer.transform.mode, 'rotate'); assert.equal(viewer.transform.space, 'local');
+  viewer.selectBoneByName('calf_l'); movement.sync();
+  assert.equal(viewer.transform.mode, 'translate'); assert.equal(viewer.ikMode, false);
+  const localBefore = viewer.bones.calf_l.position.clone();
+  const footBefore = viewer.bones.foot_l.getWorldPosition(new THREE.Vector3());
+  const bonesBefore = plain(viewer.getPose().bones), actorPositionBefore = { ...characters.active().transform };
+  const footIndex = viewer.boneList.indexOf(viewer.bones.foot_l), skinIndices = viewer.skinnedMesh.geometry.getAttribute('skinIndex');
+  let footVertex = -1;
+  for (let i = 0; i < skinIndices.count && footVertex < 0; i++) for (let j = 0; j < 4; j++) {
+    if (skinIndices.array[i * 4 + j] === footIndex && viewer.skinnedMesh.geometry.getAttribute('skinWeight').array[i * 4 + j] > 0.9) footVertex = i;
+  }
+  assert.ok(footVertex >= 0);
+  const vertexBefore = viewer.skinnedMesh.getVertexPosition(footVertex, new THREE.Vector3());
+  viewer.recordState(); movement.setOffset('y', -1.25);
+  assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8);
+  assert.ok(viewer.bones.foot_l.getWorldPosition(new THREE.Vector3()).distanceTo(footBefore) > 1.2, 'moving a joint changes limb length');
+  assert.ok(viewer.skinnedMesh.getVertexPosition(footVertex, new THREE.Vector3()).distanceTo(vertexBefore) > 1.2, 'the actual skinned vertices must follow, not just the marker');
+  assert.deepEqual(plain(viewer.getPose().bones), bonesBefore);
+  assert.deepEqual({ ...characters.active().transform }, actorPositionBefore);
+  viewer.undo(); assert.ok(viewer.bones.calf_l.position.distanceTo(localBefore) < 1e-8);
+  viewer.redo(); assert.ok(Math.abs(movement.getOffset('y') + 1.25) < 1e-8);
+  const edited = characters.snapshot();
+  characters.select('person-1'); characters.select(second.id);
+  assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8, 'joint positions survive person switching');
+  characters.restore(edited);
+  assert.ok(Math.abs(viewer.bones.calf_l.position.y - localBefore.y + 1.25) < 1e-8, 'joint positions survive scene saving and restoring');
+  viewer.selectBoneByName('head'); movement.setMode('rotate'); movement.sync();
+  assert.equal(viewer.transform.mode, 'rotate'); assert.equal(viewer.transform.space, 'local'); assert.equal(viewer.ikMode, true);
   characters.remove(second.id); characters.remove('person-1');
   assert.equal(characters.people.length, 0); assert.equal(viewer.passiveCharacters.size, 0);
   assert.equal(viewer.skinnedMesh.visible, false);
   assert.equal(characters.snapshot().activeCharacterId, null);
   characters.add();
   assert.equal(viewer.skinnedMesh.visible, true, 'adding to an empty scene restores the editor rig');
+  const femaleCalf = models['adult-female'].bones.find(bone => bone.name === 'calf_l');
+  const femaleThigh = models['adult-female'].bones.find(bone => bone.name === femaleCalf.parent);
+  const oldPosition = femaleCalf.headPos.map((v, i) => v - femaleThigh.headPos[i]); oldPosition[0] += 0.75;
+  characters.restore({ characters: [{ id: 'person-1', name: '骨骼移动验证', body: { age: 'adult', gender: 'female' }, transform: { x: 4, y: 0, z: 0 }, pose: { bones: {}, bonePositions: { calf_l: oldPosition } } }] });
+  assert.equal(characters.active().name, '人物 1'); assert.equal(characters.active().body.gender, 'neutral');
+  assert.ok(Math.abs(viewer.bones.calf_l.position.x - viewer.shapedBoneRestPositions.calf_l.x - 0.75) < 1e-8, 'legacy body migration retains the manually edited offset');
+  characters.setBody('proportion', 3);
+  assert.ok(Math.abs(viewer.bones.calf_l.position.x - viewer.shapedBoneRestPositions.calf_l.x - 0.75) < 1e-8);
+  characters.setBody('proportion', 9);
+  assert.ok(Math.abs(viewer.bones.calf_l.position.x - viewer.shapedBoneRestPositions.calf_l.x - 0.75) < 1e-8, 'head ratios retain manually edited offsets');
+  assert.equal(characters.snapshot().characters[0].body.proportion, 9);
   viewer.clearPassiveCharacters(); viewer._cleanupPrevious();
 });
 
-test('all four body variants have pinned CC0 hashes, shared ground and distinct age/gender geometry', async () => {
+test('neutral age and head-ratio models have pinned geometry, shared ground and measured nonuniform proportions', async () => {
   const catalog = JSON.parse(await readFile(new URL('vendor/vnccs/pose_studio/assets/body-types.json', renderer), 'utf8'));
   const models = {};
   for (const body of catalog.bodies) {
     const bytes = await readFile(new URL(`vendor/vnccs/pose_studio/assets/${body.file}`, renderer));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), body.sha256);
-    assert.equal(body.shape.show_genitals, false);
+    if (body.shape) assert.equal(body.shape.show_genitals, false);
     models[body.id] = JSON.parse(bytes);
     assert.equal(models[body.id].bones.length, 53);
     const y = models[body.id].vertices.filter((_, i) => i % 3 === 1);
     assert.ok(Math.abs(Math.min(...y) + 8.450465) < 1e-5, 'all bodies share the same floor');
   }
-  assert.equal(Object.keys(models).length, 4);
+  assert.equal(Object.keys(models).length, 22);
   assert.notDeepEqual(models['adult-female'].vertices, models['adult-male'].vertices);
   assert.notDeepEqual(models['child-female'].vertices, models['adult-female'].vertices);
   const shoulderRatio = model => {
@@ -291,5 +328,17 @@ test('all four body variants have pinned CC0 hashes, shared ground and distinct 
     return shoulderWidth / (Math.max(...y) - Math.min(...y));
   };
   assert.ok(shoulderRatio(models['adult-male']) > shoulderRatio(models['adult-female']) * 1.1, 'adult meshes must differ in silhouette proportions, beyond overall scale');
-  assert.deepEqual(catalog.bodies.map(body => body.id).sort(), ['adult-female', 'adult-male', 'child-female', 'child-male']);
+  const presets = catalog.bodies.filter(body => body.proportion);
+  assert.equal(presets.length, 16);
+  for (const body of presets) {
+    const model = models[body.id], y = model.vertices.filter((_, i) => i % 3 === 1), height = Math.max(...y) - Math.min(...y);
+    const headHeight = Math.max(...y) - model.vertices[body.chinVertex * 3 + 1];
+    assert.ok(Math.abs(height / headHeight - body.proportion) < 0.001, `${body.id}: measured head count`);
+  }
+  const small = models['adult-neutral-3'], tall = models['adult-neutral-9'];
+  const boneLength = (model, name) => { const b = model.bones.find(bone => bone.name === name); return Math.hypot(...b.headPos.map((v, i) => b.tailPos[i] - v)); };
+  assert.ok(boneLength(tall, 'calf_l') > boneLength(small, 'calf_l') * 1.5, '9-head legs must be proportionally longer');
+  assert.ok(boneLength(small, 'head') > boneLength(tall, 'head') * 2, '3-head preset must enlarge the head instead of uniformly shrinking the figure');
+  assert.ok(Math.abs(Math.max(...small.vertices.filter((_, i) => i % 3 === 1)) - Math.max(...tall.vertices.filter((_, i) => i % 3 === 1))) < 0.001, 'preset silhouettes retain the same overall standing height');
+
 });
