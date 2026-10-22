@@ -7,6 +7,30 @@
   const PROPORTIONS = [3, 4, 5, 6, 7, 7.5, 8, 9];
   const modelKey = body => `${body?.age || 'adult'}-${body?.gender || 'neutral'}${body?.gender === 'neutral' && body?.proportion ? `-${body.proportion}` : ''}`;
   let editor = null, opening = null, previousFocus = null;
+  let libraryStore;
+  function createPoseLibraryStore(factory = root.indexedDB) {
+    let connection;
+    function database() {
+      if (!factory) return Promise.reject(new Error('浏览器不支持本地姿势库保存'));
+      if (!connection) connection = new Promise((resolve, reject) => {
+        const request = factory.open('novaflow-pose-library', 1);
+        request.onupgradeneeded = () => request.result.createObjectStore('poses', { keyPath: 'id' });
+        request.onsuccess = () => { const db = request.result; db.onversionchange = () => { db.close(); connection = null; }; resolve(db); };
+        request.onerror = () => { connection = null; reject(new Error('无法读取本地姿势库')); };
+      });
+      return connection;
+    }
+    async function transaction(mode, operation) {
+      const db = await database();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('poses', mode), request = operation(tx.objectStore('poses'));
+        tx.oncomplete = () => resolve(request.result);
+        tx.onerror = tx.onabort = () => reject(new Error(tx.error?.name === 'QuotaExceededError' ? '本地空间不足，姿势未保存' : '本地姿势库操作失败，请重试'));
+      });
+    }
+    return { list: () => transaction('readonly', store => store.getAll()), put: record => transaction('readwrite', store => store.put(record)), remove: id => transaction('readwrite', store => store.delete(id)) };
+  }
+  const savedLibrary = () => libraryStore || (libraryStore = createPoseLibraryStore());
 
   // Keep the complete upstream pose (including camera, IK and root translations).
   function normalizeDocument(input) {
@@ -467,15 +491,16 @@
   function installStyle() {
     if (root.document.getElementById('nf-pose-style')) return;
     root.document.head.append(element('style', { id: 'nf-pose-style', text: `
-      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid #353535}.nf-pose-modebar,.nf-pose-camera-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.nf-pose-dialog .nf-pose-camera-tools button{padding:5px 8px;white-space:nowrap}.nf-pose-outputbar{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:8px 12px;border-top:1px solid #353535;color:#aab7bb;font-size:11px}.nf-pose-outputbar label{display:flex;align-items:center;gap:7px;white-space:nowrap}.nf-pose-dialog .nf-pose-outputbar input[type=number]{width:64px;min-height:30px;padding:4px 6px;text-align:center;appearance:textfield}.nf-pose-outputbar input[type=number]::-webkit-inner-spin-button,.nf-pose-outputbar input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}.nf-pose-outputbar input[type=color]{width:44px;height:28px;padding:2px;border:1px solid #48515a;border-radius:5px;background:#2b3036}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#22694f;border-color:#40a780}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
-      .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#090b10b8;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
-      .nf-pose-dialog{width:min(1440px,100%);height:min(940px,100%);display:flex;flex-direction:column;background:#1d2024;border:1px solid #3b4148;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
-      .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2b3036;color:#d9dfdf;border:1px solid #3c434a;border-radius:7px;min-height:32px;padding:5px 10px;font:12px system-ui}
-      .nf-pose-dialog button{cursor:pointer;transition:background .12s,border-color .12s}.nf-pose-dialog button:hover{background:#363e45;border-color:#59666e}.nf-pose-dialog button:disabled{opacity:.35;cursor:default}.nf-pose-dialog :focus-visible{outline:2px solid #56bc9b;outline-offset:2px}
-      .nf-pose-head,.nf-pose-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;flex:none}.nf-pose-head{border-bottom:1px solid #30363c}.nf-pose-head h2{margin:0;flex:1;font-size:14px;font-weight:600;letter-spacing:.5px;color:#edf0ef!important}.nf-pose-foot{border-top:1px solid #30363c;flex-wrap:wrap}
-      .nf-pose-body{position:relative;display:flex;flex:1;min-height:0}.nf-pose-side{width:216px;flex:none;overflow:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;border-right:1px solid #30363c;scrollbar-width:thin;scrollbar-color:#46514f transparent}.nf-pose-side label{display:grid;gap:6px;color:#bcbcbc}.nf-pose-side select{width:100%}.nf-pose-side h3{font-size:11px;margin:6px 0 0;padding-top:12px;border-top:1px solid #30363c;color:#a7b5b4;font-weight:600;letter-spacing:.4px}.nf-pose-row{display:flex;gap:6px;align-items:center}.nf-pose-row>*{min-width:0;flex:1}.nf-pose-row input{width:66px}.nf-pose-row .nf-pose-times{flex:0 0 10px}.nf-pose-row input[type=number]{padding:4px;appearance:textfield}.nf-pose-row input[type=number]::-webkit-inner-spin-button{appearance:none}.nf-pose-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+      .nf-pose-people{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-pose-body-options{display:grid;gap:6px;grid-template-columns:1fr 1fr}.nf-pose-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid #303030}.nf-pose-modebar,.nf-pose-camera-tools{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.nf-pose-dialog .nf-pose-camera-tools button{padding:5px 8px;white-space:nowrap}.nf-pose-outputbar{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:8px 12px;border-top:1px solid #303030;color:#aaa;font-size:11px}.nf-pose-outputbar label{display:flex;align-items:center;gap:7px;white-space:nowrap}.nf-pose-dialog .nf-pose-outputbar input[type=number]{width:64px;min-height:30px;padding:4px 6px;text-align:center;appearance:textfield}.nf-pose-outputbar input[type=number]::-webkit-inner-spin-button,.nf-pose-outputbar input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}.nf-pose-outputbar input[type=color]{width:44px;height:28px;padding:2px;border:1px solid #454545;border-radius:5px;background:#2a2a2a}.nf-pose-body-options button[aria-pressed=true],.nf-pose-people button[aria-pressed=true]{background:#1e493d;border-color:#337c66}.nf-pose-selected-joint{font-size:11px;color:#aaa;line-height:1.5}
+      .nf-pose-overlay{position:fixed;inset:0;z-index:2147483647;background:#000000b8;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e9e9e9;font:12px system-ui}
+      .nf-pose-dialog{width:min(1440px,100%);height:min(940px,100%);display:flex;flex-direction:column;background:#181818;border:1px solid #373737;border-radius:12px;box-shadow:0 24px 80px #0008;overflow:hidden}
+      .nf-pose-dialog *{box-sizing:border-box}.nf-pose-dialog button,.nf-pose-dialog select,.nf-pose-dialog input[type=number]{background:#2a2a2a;color:#ddd;border:1px solid #3b3b3b;border-radius:7px;min-height:32px;padding:5px 10px;font:12px system-ui}
+      .nf-pose-dialog button{cursor:pointer;transition:background .12s,border-color .12s}.nf-pose-dialog button:hover{background:#333;border-color:#555}.nf-pose-dialog button:disabled{opacity:.35;cursor:default}.nf-pose-dialog :focus-visible{outline:2px solid #56bc9b;outline-offset:2px}
+      .nf-pose-head,.nf-pose-foot{display:flex;align-items:center;gap:8px;padding:10px 16px;flex:none}.nf-pose-head{border-bottom:1px solid #303030}.nf-pose-head h2{margin:0;flex:1;font-size:14px;font-weight:600;letter-spacing:.5px;color:#eee!important}.nf-pose-foot{border-top:1px solid #303030;flex-wrap:wrap}
+      .nf-pose-body{position:relative;display:flex;flex:1;min-height:0}.nf-pose-side{width:216px;flex:none;overflow:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;border-right:1px solid #303030;scrollbar-width:thin;scrollbar-color:#454545 transparent}.nf-pose-side label{display:grid;gap:6px;color:#bcbcbc}.nf-pose-side select{width:100%}.nf-pose-side h3{font-size:11px;margin:6px 0 0;padding-top:12px;border-top:1px solid #303030;color:#aaa;font-weight:600;letter-spacing:.4px}.nf-pose-row{display:flex;gap:6px;align-items:center}.nf-pose-row>*{min-width:0;flex:1}.nf-pose-row input{width:66px}.nf-pose-row .nf-pose-times{flex:0 0 10px}.nf-pose-row input[type=number]{padding:4px;appearance:textfield}.nf-pose-row input[type=number]::-webkit-inner-spin-button{appearance:none}.nf-pose-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       .nf-pose-library{position:absolute;inset:0;z-index:4;background:#202020;display:flex;flex-direction:column;padding:12px;gap:10px}.nf-pose-library[hidden]{display:none}.nf-pose-library-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.nf-pose-library-bar input{min-width:80px;flex:1;background:#2b2b2b;color:#eee;border:1px solid #454545;border-radius:5px;padding:7px;font:12px system-ui}.nf-pose-library-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));grid-auto-rows:max-content;gap:10px;overflow:auto;align-content:start;min-height:0;flex:1}.nf-pose-dialog .nf-pose-card{display:flex;flex-direction:column;align-items:stretch;gap:6px;text-align:center;padding:6px!important;height:auto!important;min-height:176px!important;max-height:none!important;overflow:hidden}.nf-pose-card img{display:block;width:100%;height:126px;object-fit:contain;background:#171717;border-radius:4px;flex:none}.nf-pose-card span{font-size:11px;color:#ddd;line-height:1.4;overflow-wrap:anywhere}.nf-pose-card small{color:#999;font-size:10px}.nf-pose-library-count{color:#aaa;font-size:11px}.nf-pose-side label.nf-pose-row{display:flex}
-      .nf-pose-view{flex:1;min-width:0;display:flex;flex-direction:column;background:#252a30}.nf-pose-stage{flex:1;min-height:0;display:grid;place-items:center;padding:10px;overflow:hidden}.nf-pose-canvas{display:block;touch-action:none;border:0;border-radius:8px;max-width:100%;max-height:100%}.nf-pose-hint{padding:8px 16px;text-align:center;color:#929fa7;line-height:1.5;font-size:11px}.nf-pose-status{flex:1;min-width:160px;color:#aaa;line-height:1.5}.nf-pose-status[data-error=true]{color:#ff9898}.nf-pose-dialog .nf-pose-primary{background:#315f50;border-color:#447e69;color:#e3f4ec}.nf-pose-dialog .nf-pose-primary:hover{background:#3c7460}.nf-pose-dialog input[type=range]{width:100%;accent-color:#20b58a}.nf-pose-side a{color:#aaa;font-size:10px}.nf-pose-busy{color:#aaa;text-align:center;padding:16px}.nf-pose-axis{display:grid;grid-template-columns:15px 1fr 51px;gap:6px;align-items:center}.nf-pose-axis input[type=number]{width:51px;padding:3px}
+      .nf-pose-view{flex:1;min-width:0;display:flex;flex-direction:column;background:#222}.nf-pose-stage{flex:1;min-height:0;display:grid;place-items:center;padding:10px;overflow:hidden}.nf-pose-canvas{display:block;touch-action:none;border:0;border-radius:8px;max-width:100%;max-height:100%}.nf-pose-hint{padding:8px 16px;text-align:center;color:#999;line-height:1.5;font-size:11px}.nf-pose-status{flex:1;min-width:160px;color:#aaa;line-height:1.5}.nf-pose-status[data-error=true]{color:#ff9898}.nf-pose-dialog .nf-pose-primary{background:#1e493d;border-color:#337c66;color:#e3f4ec}.nf-pose-dialog .nf-pose-primary:hover{background:#285b4b}.nf-pose-dialog input[type=range]{width:100%;accent-color:#20b58a}.nf-pose-side a{color:#aaa;font-size:10px}.nf-pose-busy{color:#aaa;text-align:center;padding:16px}.nf-pose-axis{display:grid;grid-template-columns:15px 1fr 51px;gap:6px;align-items:center}.nf-pose-axis input[type=number]{width:51px;padding:3px}
+      .nf-pose-dialog{color:var(--nf-text,#e5e7eb)}.nf-pose-dialog input[type=range]{accent-color:var(--nf-accent,#1ea672)}.nf-pose-save-panel{display:flex;align-items:center;gap:8px;flex-basis:100%;padding-top:8px;border-top:1px solid #303030}.nf-pose-save-panel[hidden]{display:none}.nf-pose-save-panel input{flex:1;min-width:80px;background:#242424;color:#eee;border:1px solid #3b3b3b;border-radius:7px;padding:8px;font:12px system-ui}.nf-pose-library-item{position:relative;display:flex;min-width:0}.nf-pose-library-item>.nf-pose-card{width:100%;flex:1}.nf-pose-dialog .nf-pose-delete{position:absolute;top:9px;right:9px;min-height:24px;padding:2px 6px;font-size:10px;background:#1b1b1be8;color:#ccc;border-color:#4b4b4b}.nf-pose-dialog .nf-pose-delete:hover{color:#ffa6a6;border-color:#8f5252}.nf-pose-import-panel{position:absolute;inset:0;z-index:5;background:#1b1b1b;display:flex;flex-direction:column;gap:12px;padding:14px}.nf-pose-import-preview{flex:1;min-height:0;display:flex;justify-content:center;align-items:center;overflow:hidden;background:#111;border-radius:7px}.nf-pose-import-preview canvas{max-width:100%;max-height:100%;object-fit:contain}.nf-pose-import-people{display:flex;gap:12px;flex-wrap:wrap}.nf-pose-import-people label{display:flex;align-items:center;gap:5px;cursor:pointer}.nf-pose-import-people input{accent-color:var(--nf-accent,#1ea672)}.nf-pose-import-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#aaa}.nf-pose-import-footer span{font-size:11px}
       @media(max-width:760px){.nf-pose-overlay{padding:6px}.nf-pose-side{width:176px;padding:10px}.nf-pose-head,.nf-pose-foot{padding:8px}.nf-pose-foot button{flex:1}.nf-pose-status{flex-basis:100%}.nf-pose-stage{padding:6px}}
     ` }));
   }
@@ -509,11 +534,11 @@
     const action = (text, fn, attrs = {}) => { const b = button(text, () => run(fn), { disabled: '', ...attrs }); actions.push(b); return b; };
     function message(text, error = false) { status.textContent = text; status.dataset.error = String(error); }
     async function run(fn) { try { await fn(); } catch (error) { message(error.message || String(error), true); } }
-    let viewer, resizeObserver, movement, handPresets, selectedJoint, library, libraryButton, libraryData, characters, peopleList, deletePerson, proportionSelect, proportionRequest = 0, actorControls = [], axisControls = [], editModes = [];
+    let viewer, resizeObserver, movement, handPresets, selectedJoint, library, libraryButton, libraryData, libraryRefresh, characters, peopleList, deletePerson, proportionSelect, proportionRequest = 0, actorControls = [], axisControls = [], editModes = [], imageRecognizer, imageModule, importPanel, importImageUrl, importing = false, saving = false;
     function snapshot() { return { version: 2, ...characters.snapshot(), width: state.width, height: state.height, background: state.background, pose: viewer.getPose(), view: { fov: viewer.camera.fov, zoom: viewer.camera.zoom } }; }
     function changed() { if (peopleList) renderPeople(); if (movement && !viewer.transform.dragging) movement.sync(); syncAxes(); }
     function close() {
-      abort.abort(); resizeObserver?.disconnect(); viewer?.dispose(); overlay.remove(); editor = null;
+      abort.abort(); imageRecognizer?.close(); if (importImageUrl) URL.revokeObjectURL(importImageUrl); resizeObserver?.disconnect(); viewer?.dispose(); overlay.remove(); editor = null;
       if (previousFocus?.isConnected) previousFocus.focus();
     }
     function download(blob, name) {
@@ -548,27 +573,24 @@
       if (!image?.startsWith('data:image/png;base64,')) throw new Error('姿势图导出失败');
       return image;
     }
-    const fileInput = element('input', { type: 'file', accept: '.json,application/json', hidden: '', 'aria-label': '导入姿势文件', onchange: () => run(async () => {
-      const file = fileInput.files[0]; fileInput.value = ''; if (!file) return;
-      if (file.size > 2 * 1024 * 1024) throw new Error('姿势文件不能超过 2 MB');
-      const doc = normalizeDocument(JSON.parse(await file.text()));
-      await loadSceneModels(doc);
-      Object.assign(state, doc); characters.restore(doc); if (doc.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: doc.pose.camera }); else fitView(); viewer.scene.background.set(state.background);
-      if (doc.view) { viewer.camera.fov = doc.view.fov; viewer.camera.zoom = doc.view.zoom; viewer.camera.updateProjectionMatrix(); }
-      widthInput.value = state.width; heightInput.value = state.height; background.value = state.background; resize(); changed(); message('姿势已导入');
-    }) });
-    const footer = element('footer', { class: 'nf-pose-foot' }, [status,
-      action('导入姿势', () => fileInput.click()),
-      action('保存姿势', () => download(new Blob([JSON.stringify(snapshot(), null, 2)], { type: 'application/json' }), 'NovaFlow_姿势.json')),
+    const saveName = element('input', { type: 'text', maxlength: '60', 'aria-label': '姿势名称', placeholder: '输入姿势名称' });
+    const confirmSave = button('确认保存', () => {} , { type: 'submit' });
+    const savePanel = element('form', { class: 'nf-pose-save-panel', hidden: '', 'aria-label': '保存到姿势库', onsubmit: event => { event.preventDefault(); run(saveCurrentPose); } }, [saveName, confirmSave, button('取消', () => { savePanel.hidden = true; })]);
+    const undoDelete = button('撤销删除', () => run(async () => { if (!lastDeleted) return; const entry = lastDeleted; if (entry.custom) await savedLibrary().put(entry); else await savedLibrary().remove(`hidden:${entry.id}`); lastDeleted = null; undoDelete.hidden = true; await libraryRefresh?.(); message('已恢复姿势'); }), { hidden: '' });
+    let lastDeleted;
+    const imageInput = element('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/bmp', hidden: '', 'aria-label': '导入姿势图片', onchange: () => { const file = imageInput.files[0]; imageInput.value = ''; if (file) run(() => importPoseImage(file)); } });
+    const footer = element('footer', { class: 'nf-pose-foot' }, [status, undoDelete,
+      action('导入姿势', () => imageInput.click(), { title: '导入图片并识别单人或多人姿势' }),
+      action('保存姿势', async () => { if (importing || saving) return; saveName.value = `我的姿势 ${(await savedLibrary().list()).filter(p => p.custom).length + 1}`; savePanel.hidden = false; saveName.focus(); saveName.select(); }, { title: '将当前人物、姿势和镜头保存到姿势库' }),
       action('导出 PNG', async () => { const image = await capture(); download(await (await fetch(image)).blob(), 'NovaFlow_姿势参考.png'); message('姿势图已导出'); }),
-      action('用作姿势参考', async () => { referenceSlot(root.__NovaFlowArtGenerate); const image = await capture(); applyReference(root.__NovaFlowArtGenerate, snapshot(), image); close(); }, { class: 'nf-pose-primary' }), fileInput]);
+      action('用作姿势参考', async () => { referenceSlot(root.__NovaFlowArtGenerate); const image = await capture(); applyReference(root.__NovaFlowArtGenerate, snapshot(), image); close(); }, { class: 'nf-pose-primary' }), savePanel, imageInput]);
     dialog.append(element('header', { class: 'nf-pose-head' }, [element('h2', { id: 'nf-pose-title', text: '姿势参考' }), closeButton]), element('div', { class: 'nf-pose-body' }, [side, view]), footer);
     overlay.append(dialog); root.document.body.append(overlay);
     editor = { close, closeButton, snapshot, capture, get viewer() { return viewer; } };
     root.document.addEventListener('keydown', event => {
       if (!editor) return;
       event.stopImmediatePropagation();
-      if (event.key === 'Escape') { event.preventDefault(); if (library && !library.hidden) { library.hidden = true; libraryButton.focus(); } else close(); }
+      if (event.key === 'Escape') { event.preventDefault(); if (importPanel) dismissImport(); else if (!savePanel.hidden) savePanel.hidden = true; else if (library && !library.hidden) { library.hidden = true; libraryButton.focus(); } else close(); }
       else if (event.key === 'Tab') {
         const focusables = Array.from(dialog.querySelectorAll('button:not(:disabled),select,input:not([hidden]),canvas,a')).filter(n => n.getClientRects().length);
         const first = focusables[0], last = focusables[focusables.length - 1];
@@ -579,7 +601,7 @@
       }
     }, { capture: true, signal: abort.signal });
     closeButton.focus();
-    let widthInput, heightInput, background, loadBodyModel, loadSceneModels;
+    let widthInput, heightInput, background, loadBodyModel;
     try {
       const [{ PoseViewerCore }, { HAND_PRESETS }, modelResponse] = await Promise.all([
         import(vendor('pose_studio/core.js')), import(vendor('pose_studio/hand_presets.js')), fetch(vendor('pose_studio/assets/mannequin.json')),
@@ -600,13 +622,6 @@
           return bodyModels[key] = await response.json();
         })().finally(() => pendingModels.delete(key)));
         return pendingModels.get(key);
-      };
-      loadSceneModels = async doc => {
-        const people = doc?.characters || [{ body: { age: 'adult', gender: 'neutral' } }];
-        await Promise.all(people.flatMap(person => {
-          const previous = { age: 'adult', gender: 'neutral', ...person.body };
-          return [loadBodyModel(previous), loadBodyModel({ ...previous, gender: 'neutral' })];
-        }));
       };
       if (abort.signal.aborted) return;
       handPresets = HAND_PRESETS;
@@ -714,19 +729,103 @@
       if (deletePerson) deletePerson.disabled = !current;
       for (const control of actorControls) control.disabled = !current;
       if (proportionSelect) proportionSelect.value = String(current?.body.proportion ?? '');
-      if (libraryButton) libraryButton.disabled = !current;
     }
 
-    async function showLibrary() {
-      if (!characters.active()) return;
-      if (library) { library.hidden = false; library.querySelector('input')?.focus(); return; }
+    async function saveCurrentPose() {
+      if (saving) return;
+      const name = saveName.value.trim();
+      if (!name) { saveName.focus(); throw new Error('请输入姿势名称'); }
+      if (!characters.people.length) throw new Error('请先添加人物再保存姿势');
+      saving = true; confirmSave.disabled = true;
+      try {
+        await viewer.waitForCaptureReady(); if (abort.signal.aborted) return;
+        const document = normalizeDocument(snapshot());
+        const ratio = state.width / state.height;
+        const preview = viewer.capture(Math.round(256 * Math.min(1, ratio)), Math.round(256 * Math.min(1, 1 / ratio)), 1, state.background, 0, 0, 0, 0, { viewport: true });
+        if (!preview?.startsWith('data:image/png;base64,')) throw new Error('姿势缩略图生成失败，请重试');
+        await savedLibrary().put({ id: `custom:${root.crypto.randomUUID()}`, name, custom: true, category: '我的姿势', tags: [], createdAt: Date.now(), document, preview });
+        if (abort.signal.aborted) return;
+        savePanel.hidden = true; await showLibrary(true); message(`已保存到姿势库：${name}`);
+      } finally { saving = false; confirmSave.disabled = false; }
+    }
+
+    function dismissImport() {
+      importPanel?.remove(); importPanel = null;
+      if (importImageUrl) { URL.revokeObjectURL(importImageUrl); importImageUrl = null; }
+    }
+
+    async function importPoseImage(file) {
+      if (importing) return;
+      importing = true; actions.forEach(b => { b.disabled = true; });
+      dismissImport(); savePanel.hidden = true;
+      try {
+        message('正在准备图片识别…');
+        imageModule ||= await import(new URL('./pose-reference-image.js', scriptUrl).href);
+        if (abort.signal.aborted) return;
+        imageRecognizer ||= imageModule.createImagePoseRecognizer();
+        const result = await imageRecognizer.detect(file, text => { if (!abort.signal.aborted) message(text); });
+        if (abort.signal.aborted) return;
+        const people = imageModule.detectedPeople(result);
+        if (!people.length) throw new Error('未识别到清晰人体，请使用人物较完整、遮挡较少的图片');
+        if (library) library.hidden = true;
+        importImageUrl = URL.createObjectURL(file);
+        const sourceImage = element('img', { src: importImageUrl, alt: '待识别姿势图片' });
+        await sourceImage.decode(); if (abort.signal.aborted) return;
+        const preview = element('canvas', { 'aria-label': `识别到 ${people.length} 个人物的姿势预览` });
+        const scale = Math.min(1, 1200 / Math.max(sourceImage.naturalWidth, sourceImage.naturalHeight));
+        preview.width = Math.round(sourceImage.naturalWidth * scale); preview.height = Math.round(sourceImage.naturalHeight * scale);
+        const ctx = preview.getContext('2d'), checks = people.map(() => true);
+        const colors = ['#3be0a0', '#ffd36c', '#77baff', '#fa95ce', '#bf9bff'];
+        const connections = [[11, 12], [11, 23], [12, 24], [23, 24], [11, 13], [13, 15], [12, 14], [14, 16], [23, 25], [25, 27], [24, 26], [26, 28]];
+        const applyButton = button('', () => run(async () => {
+          const chosen = people.filter((_, i) => checks[i]); if (!chosen.length) return;
+          const previous = snapshot();
+          try {
+            ++proportionRequest;
+            characters.restore({ pose: { bones: {} } });
+            const targetHeight = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).getSize(new viewer.THREE.Vector3()).y;
+            const torso = chosen.reduce((sum, person) => sum + person.torso, 0) / chosen.length;
+            const center = chosen.reduce((sum, person) => sum + person.x, 0) / chosen.length;
+            for (const [index, person] of chosen.entries()) {
+              if (index) characters.add();
+              characters.setPositions({ x: Math.max(-50, Math.min(50, (person.x - center) * sourceImage.naturalWidth / sourceImage.naturalHeight / torso * targetHeight * 0.28)), y: 0, z: 0 });
+              imageModule.applyDetectedPose(viewer, person);
+              const bottom = new viewer.THREE.Box3().setFromObject(viewer.skinnedMesh).min.y;
+              characters.setPosition('y', viewer.gridHelper.position.y + 0.03 - bottom);
+            }
+            characters.select(characters.people[0].id);
+            libraryButton.textContent = '打开姿势库';
+            viewer.camera.position.copy(viewer.orbit.target).add(new viewer.THREE.Vector3(0, 0, 50)); viewer.orbit.update();
+            fitView(); changed(); dismissImport(); message(`已导入 ${chosen.length} 个人物，可继续调整并保存到姿势库`);
+          } catch (error) { characters.restore(previous); if (previous.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: previous.pose.camera }); throw error; }
+        }), { class: 'nf-pose-primary' });
+        function draw() {
+          ctx.drawImage(sourceImage, 0, 0, preview.width, preview.height);
+          people.forEach((person, index) => {
+            if (!checks[index]) return;
+            const p = i => [person.points[i].x * preview.width, person.points[i].y * preview.height];
+            ctx.strokeStyle = colors[index % colors.length]; ctx.lineWidth = Math.max(2, preview.width / 300);
+            for (const [a, b] of connections) { ctx.beginPath(); ctx.moveTo(...p(a)); ctx.lineTo(...p(b)); ctx.stroke(); }
+            const [x, y] = p(11); ctx.fillStyle = '#151515'; ctx.fillRect(x - 14, y - 30, 28, 24); ctx.fillStyle = colors[index % colors.length]; ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.fillText(index + 1, x, y - 11);
+          });
+          const count = checks.filter(Boolean).length; applyButton.textContent = `应用 ${count} 个人物`; applyButton.disabled = !count;
+        }
+        const choices = element('div', { class: 'nf-pose-import-people', role: 'group', 'aria-label': '选择导入人物' }, people.map((_, index) => element('label', {}, [element('input', { type: 'checkbox', checked: '', 'aria-label': `导入人物 ${index + 1}`, onchange: event => { checks[index] = event.target.checked; draw(); } }), element('span', { text: `人物 ${index + 1}` })])));
+        importPanel = element('div', { class: 'nf-pose-import-panel', 'aria-label': '图片姿势识别结果' }, [element('div', { class: 'nf-pose-library-bar' }, [button('返回编辑', dismissImport), element('strong', { text: `识别到 ${people.length} 个人物` })]), element('div', { class: 'nf-pose-import-preview' }, [preview]), choices, element('div', { class: 'nf-pose-import-footer' }, [element('span', { text: '应用后用所选人物重建当前场景；遮挡和前后深度可继续手动调整。' }), applyButton])]);
+        dialog.querySelector('.nf-pose-body').append(importPanel); draw(); message('请选择需要导入的人物');
+      } finally { importing = false; if (!abort.signal.aborted) actions.forEach(b => { b.disabled = false; }); }
+    }
+
+    async function showLibrary(mine = false) {
+      if (library) { await libraryRefresh(mine); library.hidden = false; library.querySelector('input')?.focus(); return; }
       message('正在载入姿势库…');
       const response = await fetch(vendor('pose_library/index.json'));
       if (!response.ok) throw new Error(`姿势库载入失败 (${response.status})`);
       libraryData = await response.json(); if (abort.signal.aborted) return;
       const categoryNames = { 'Close Up': '特写', Crawling: '爬行', Crouching: '蹲姿', Fighting: '格斗', Gymnastics: '体操', Kneeling: '跪姿', Laying: '卧姿', Sitting: '坐姿', Standing: '站姿', Walking: '行走', Ballet: '芭蕾', Rest: '休息' };
       const translate = name => name.replace(/Standing/gi, '站立').replace(/Sitting|Seated/gi, '坐姿').replace(/Squatting|Crouching/gi, '蹲姿').replace(/Kneeling/gi, '跪姿').replace(/Crawling/gi, '爬行').replace(/Fighting|Boxing/gi, '格斗').replace(/Laying|Lying|Prone/gi, '卧姿').replace(/Walking/gi, '行走').replace(/Jumping/gi, '跳跃').replace(/Kicking/gi, '踢腿').replace(/rear( view)?/gi, '背面').replace(/side( view)?|profile/gi, '侧面').replace(/overhead( view)?/gi, '俯视').replace(/Close ?Up/gi, '特写').replace(/Leaning Back/gi, '后仰').replace(/Legs Crossed/gi, '交叉腿').replace(/Hand on Hip/gi, '叉腰').replace(/Arabesque/gi, '燕式平衡').replace(/Dancing_on_knees/gi, '跪姿舞蹈').replace(/Splits_1/gi, '劈叉');
-      const category = element('select', { 'aria-label': '姿势分类' }, [element('option', { value: '', text: '全部分类' }), ...Array.from(new Set(libraryData.poses.map(p => p.category))).map(key => element('option', { value: key, text: categoryNames[key] || key }))]);
+      let personal = [], hiddenIds = new Set();
+      const category = element('select', { 'aria-label': '姿势分类' }, [element('option', { value: '', text: '全部分类' }), element('option', { value: '我的姿势', text: '我的姿势' }), ...Array.from(new Set(libraryData.poses.map(p => p.category))).map(key => element('option', { value: key, text: categoryNames[key] || key }))]);
       const search = element('input', { type: 'search', placeholder: '搜索姿势', 'aria-label': '搜索姿势' });
       const count = element('span', { class: 'nf-pose-library-count' });
       const grid = element('div', { class: 'nf-pose-library-grid', 'data-novaflow-pose-library-grid': '1' });
@@ -734,9 +833,22 @@
       dialog.querySelector('.nf-pose-body').append(library);
       function renderLibrary() {
         const text = search.value.trim().toLowerCase();
-        const poses = libraryData.poses.filter(p => (!category.value || p.category === category.value) && (!text || `${p.name} ${translate(p.name)} ${categoryNames[p.category] || p.category} ${p.tags.join(' ')}`.toLowerCase().includes(text)));
-        count.textContent = `${poses.length} / ${libraryData.poses.length} 个姿势`;
+        const available = [...personal, ...libraryData.poses.filter(p => !hiddenIds.has(p.id))];
+        const poses = available.filter(p => (!category.value || p.category === category.value) && (!text || `${p.name} ${translate(p.name)} ${categoryNames[p.category] || p.category} ${(p.tags || []).join(' ')}`.toLowerCase().includes(text)));
+        count.textContent = `${poses.length} / ${available.length} 个姿势`;
         grid.replaceChildren(...poses.map(pose => button('', () => run(async () => {
+          if (pose.custom) {
+            const doc = normalizeDocument(pose.document);
+            await Promise.all(doc.characters.flatMap(p => [loadBodyModel(p.body), loadBodyModel({ ...p.body, gender: 'neutral' })]));
+            if (abort.signal.aborted) return;
+            ++proportionRequest;
+            characters.restore(doc); Object.assign(state, { width: doc.width, height: doc.height, background: doc.background });
+            widthInput.value = state.width; heightInput.value = state.height; background.value = state.background; viewer.scene.background.set(state.background);
+            if (doc.view) { viewer.camera.fov = doc.view.fov; viewer.camera.zoom = doc.view.zoom; viewer.camera.updateProjectionMatrix(); }
+            if (doc.pose.camera) viewer.setPose({ ...viewer.getPose(), camera: doc.pose.camera });
+            resize(); viewer.requestRender(); library.hidden = true; libraryButton.textContent = `姿势库 · ${pose.name}`; libraryButton.focus(); changed(); message(`已应用：${pose.name}`); return;
+          }
+          if (!characters.active()) characters.add();
           const response = await fetch(vendor(`pose_library/${pose.json}`));
           if (!response.ok) throw new Error(`姿势载入失败 (${response.status})`);
           const document = normalizeDocument(await response.json()); if (abort.signal.aborted) return;
@@ -762,16 +874,33 @@
           viewer.updateMarkers(); viewer.updateIKEffectorPositions(); viewer.requestRender();
           library.hidden = true; libraryButton.textContent = `姿势库 · ${translate(pose.name)}`; libraryButton.focus(); changed(); message(`已应用：${translate(pose.name)}`);
         }), { class: 'nf-pose-card', 'aria-label': `应用姿势 ${pose.name}`, title: pose.name, 'data-pose-id': pose.id })).map((card, i) => {
-          const pose = poses[i]; card.append(element('img', { src: vendor(`pose_library/${pose.preview}`), alt: '', loading: 'lazy' }), element('span', { text: translate(pose.name) }), element('small', { text: categoryNames[pose.category] || pose.category })); return card;
+          const pose = poses[i]; card.append(element('img', { src: pose.custom ? pose.preview : vendor(`pose_library/${pose.preview}`), alt: '', loading: 'lazy' }), element('span', { text: pose.custom ? pose.name : translate(pose.name) }), element('small', { text: categoryNames[pose.category] || pose.category }));
+          const remove = button('删除', () => run(async () => {
+            remove.disabled = true;
+            try {
+              if (pose.custom) await savedLibrary().remove(pose.id); else await savedLibrary().put({ id: `hidden:${pose.id}`, hiddenPoseId: pose.id });
+              lastDeleted = pose; undoDelete.hidden = false; await libraryRefresh(); message(`已删除：${pose.name}`);
+            } finally { remove.disabled = false; }
+          }), { class: 'nf-pose-delete', 'aria-label': `删除姿势 ${pose.name}`, title: '从姿势库删除' });
+          return element('div', { class: 'nf-pose-library-item' }, [card, remove]);
         }));
         if (!poses.length) grid.append(element('div', { class: 'nf-pose-busy', text: '没有匹配的姿势' }));
       }
-      search.addEventListener('input', renderLibrary); category.addEventListener('change', renderLibrary); renderLibrary(); search.focus();
-      message(`已载入 ${libraryData.poses.length} 个姿势，点击缩略图应用`);
+      libraryRefresh = async mine => {
+        const records = await savedLibrary().list(); if (abort.signal.aborted) return;
+        personal = records.filter(p => p.custom).sort((a, b) => b.createdAt - a.createdAt);
+        hiddenIds = new Set(records.filter(p => p.hiddenPoseId).map(p => p.hiddenPoseId));
+        if (mine) { category.value = '我的姿势'; search.value = ''; }
+        renderLibrary();
+      };
+      search.addEventListener('input', renderLibrary); category.addEventListener('change', renderLibrary);
+      try { await libraryRefresh(mine); } catch (error) { renderLibrary(); search.focus(); message(error.message, true); return; }
+      search.focus();
+      message('点击缩略图应用姿势，也可保存当前姿势或删除库内姿势');
     }
   }
 
-  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, createCharacters, configureRootTranslation, getEditor: () => editor });
+  root.NovaFlowPoseReferenceTool = Object.freeze({ open, close: () => editor?.close(), normalizeDocument, referenceSlot, applyReference, configureNavigation, createCharacters, configureRootTranslation, createPoseLibraryStore, getEditor: () => editor });
   if (root.document && typeof root.MutationObserver === 'function') {
     let queued = false;
     new root.MutationObserver(() => {

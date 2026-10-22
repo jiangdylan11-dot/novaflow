@@ -21,7 +21,7 @@ function bridge(references = [], limit = 3) {
   };
 }
 
-test('pose file round trip retains camera, IK and translated joints without sharing mutable state', () => {
+test('internal pose documents retain camera, IK and translated joints without sharing mutable state', () => {
   const restored = tool.normalizeDocument(document);
   assert.deepEqual(plain(restored), document);
   restored.pose.bones.head[0] = 90;

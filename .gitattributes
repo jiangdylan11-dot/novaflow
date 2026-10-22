@@ -1,0 +1,2 @@
+# Keep the pinned inference runtime and model byte-for-byte identical to upstream.
+/novaflow-web/renderer/vendor/mediapipe/** -text
