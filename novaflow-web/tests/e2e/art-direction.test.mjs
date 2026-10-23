@@ -22,7 +22,7 @@ function env(answer) {
   return {api:sandbox.NovaFlowArtDirection,calls,draws,sandbox};
 }
 const ref=(id,role)=>({dataUrl:`data:image/png;base64,${Buffer.from(id).toString('base64')}`,drawingRole:role,name:id+'.png'});
-const ctx=(state,references)=>({state,references,referenceLimit:10,generationSurface:'drawing'});
+const ctx=(state,references)=>{if(!Object.hasOwn(state,'drawingAnalysisEngine'))state.drawingAnalysisEngine='local';return {state,references,referenceLimit:10,generationSurface:'drawing'};};
 
 test('backend validation failure cannot be bypassed by reparsing its rejected raw output',async()=>{
   const e=env();e.sandbox.electronAPI.promptAssistantReverseImagePrompt=async()=>({ok:true,data:{artDirection:null,validationError:'缺少风格区域',rawOutput:JSON.stringify(plan())}});
@@ -36,6 +36,60 @@ test('one click analyzes a short prompt, preserves user text and uses no confirm
   assert.equal(e.calls[0].purpose,'art-director');assert.equal(e.calls[0].currentPrompt,'冰系女剑客');
   assert.equal(result.promptSnapshot.negativePrompt,'不要文字');assert.equal(result.state.mode,'txt2img');
   assert.equal(result.state.localDrawEngine,'qwen-2.1');
+});
+
+test('local AI text-to-image optimizes once and does not call a second model review after generation',async()=>{
+  const e=env(plan()),state={prompt:'冰系女剑客',provider:'local',drawingAnalysisEngine:'local'};
+  const p=await e.api.prepare(ctx(state,[]));assert.equal(e.calls.length,1);
+  assert.match(p.promptSnapshot.prompt,/水彩/);
+  const r=await e.api.review(p,ref('result').dataUrl);assert.equal(r.skipped,true);assert.equal(e.calls.length,1);
+});
+
+test('AI writeback fills the editable boxes, keeps actual reference numbers and still rejects later changes',async()=>{
+  const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-style-observation',version:'drawing-style-observation-v1',prompt:'将<image2>按<image1>实际画风重绘。',sourceOrder:[2,5],renderingClass:'other'};
+  const e=env(p),state={provider:'local',prompt:'图5用图2画风',negativePrompt:'不要文字'},refs=[null,ref('style'),null,null,ref('photo')];
+  const context=ctx(state,refs);context.getCurrentContext=()=>context;
+  const result=await e.api.prepare(context);assert.equal(state.prompt,'图5用图2画风');
+  assert.equal(result.applyPromptToState(),true);
+  assert.match(state.prompt,/将@参考图5按@参考图2实际画风/);assert.equal(state.negativePrompt,result.promptSnapshot.negativePrompt);
+  assert.equal(result.originalPrompt,'图5用图2画风');assert.doesNotThrow(result.assertCurrent);
+  state.prompt+='，换成红衣';assert.throws(result.assertCurrent,/已变化/);
+});
+
+test('direct editing bypasses every analyzer and reviewer and preserves original pixels and user constraints',async()=>{
+  const e=env(()=>assert.fail('direct generation must not call an analyzer'));
+  const original={...ref('original-jpeg'),dataUrl:'data:image/jpeg;base64,eA=='};
+  const state={prompt:'换成白色衬衫，背景和姿势不变',negativePrompt:'不要文字',provider:'local',drawingAnalysisEngine:'direct',seed:7};
+  const prepared=await e.api.prepare(ctx(state,[original]));
+  assert.equal(e.calls.length,0);assert.equal(e.draws.length,0);
+  assert.equal(prepared.promptSnapshot.prompt,state.prompt);assert.equal(prepared.promptSnapshot.negativePrompt,'不要文字');
+  assert.equal(prepared.references[0].dataUrl,original.dataUrl);assert.equal(prepared.references[0].mimeType,'image/jpeg');
+  assert.equal(prepared.state.seed,7);assert.equal(prepared.direct,true);assert.equal(prepared.renderingPolicy,undefined);
+  const review=await e.api.review(prepared,ref('output').dataUrl);
+  assert.equal(review.skipped,true);assert.equal(e.calls.length,0);
+  assert.equal(e.api.analysisControl(()=>assert.fail('direct mode has no analysis panel'),state),null);
+});
+
+test('direct multi-reference edits only translate source labels to actual input slots without crops or omissions',async()=>{
+  const e=env(()=>assert.fail('unexpected analysis'));
+  const refs=[null,ref('pose'),null,null,ref('subject')],state={prompt:'@参考图5人物换成@参考图2姿势，保留衣服',drawingAnalysisEngine:'direct'};
+  const p=await e.api.prepare(ctx(state,refs));
+  assert.equal(p.promptSnapshot.prompt,'<image2>人物换成<image1>姿势，保留衣服');
+  assert.deepEqual(Array.from(p.references,r=>r.sourceNumber),[2,5]);
+  assert.equal(p.references[0].dataUrl,refs[1].dataUrl);assert.equal(p.references[1].dataUrl,refs[4].dataUrl);
+  assert.equal(e.draws.length,0);assert.equal(e.calls.length,0);
+  await assert.rejects(e.api.prepare(ctx({...state,prompt:'图3人物'},refs)),/图3尚未添加/);
+});
+
+test('direct text generation, remembered selection and explicit analysis mode remain independent',async()=>{
+  const e=env(plan());
+  const p=await e.api.prepare(ctx({drawingAnalysisEngine:'direct',prompt:'冰系女剑客',provider:'local'},[]));
+  assert.equal(p.state.mode,'txt2img');assert.equal(p.promptSnapshot.prompt,'冰系女剑客');assert.equal(e.calls.length,0);
+  await assert.rejects(e.api.prepare(ctx({drawingAnalysisEngine:'direct',prompt:''},[ref('photo')])),/写一句要求/);
+  e.sandbox.localStorage.setItem('novaflow.drawing.analysis.v2','direct');
+  assert.equal(e.api.input({state:{prompt:'换衣服'},references:[]}).engine,'direct');
+  assert.equal(e.api.input(ctx({prompt:'换衣服',drawingAnalysisEngine:'local'},[])).engine,'local');
 });
 test('selected task and reference can generate with an empty prompt',async()=>{
   const e=env(plan([{source:1,uses:[use('subject')],omit:[]}])),state={prompt:'',drawingTask:'anime',provider:'local'};
@@ -352,7 +406,7 @@ test('text-to-image ignores cached hidden reference uploads and a mode switch in
 
 function drawingRun(answers, reviewAnswers=[{schema:'nf.art.review.v1',pass:true,issues:[],repair:''}]) {
   const e=env(payload=>payload.purpose==='art-director-review'?reviewAnswers.shift():answers);
-  const state={provider:'local',mode:'img2img',prompt:'',drawingTask:'anime',negativePrompt:'',width:768,height:1024,count:1,randomSeed:false,seed:17,loras:[],samplingOverrides:{},results:[]};
+  const state={provider:'local',mode:'img2img',prompt:'',drawingTask:'anime',drawingAnalysisEngine:'local',negativePrompt:'',width:768,height:1024,count:1,randomSeed:false,seed:17,loras:[],samplingOverrides:{},results:[]};
   const refs=[ref('base')],builds=[],uploads=[],statuses=[];const noop=()=>{};
   Object.assign(e.sandbox,{URLSearchParams,ART_GENERATE_STATE:state,NovaFlowUiDesignDrawing:{shouldPrepare:()=>false,isActive:()=>false},NovaFlowWebRuntime:{},
     captureArtGeneratePromptSnapshot:()=>({prompt:state.prompt,negativePrompt:state.negativePrompt}),artGenerateReferences:()=>refs,artGenerateReferenceLimit:()=>10,artGenerateProviderTitle:p=>p,
@@ -367,21 +421,42 @@ function drawingRun(answers, reviewAnswers=[{schema:'nf.art.review.v1',pass:true
   const source=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
   runInContext(source.slice(source.indexOf('  function resolveArtGenerateReferenceInputs('),source.indexOf('  async function runArtGenerate(')),e.sandbox);
   runInContext(source.slice(source.indexOf('  async function runArtGenerate('),source.indexOf('  function createArtGenerateExecutionBridge()')),e.sandbox);
-  return {e,state,refs,builds,uploads,statuses,run:()=>e.sandbox.runArtGenerate()};
+  return {e,state,refs,builds,uploads,statuses,run:options=>e.sandbox.runArtGenerate(options)};
 }
-test('real generation entry accepts an empty prompt with references, preserves original input and records review',async()=>{
+
+test('real generation entry fills the optimized prompt into the input and records the original request separately',async()=>{
   const p=plan([{source:1,uses:[use('subject')],omit:[]}]);const d=drawingRun(p);
-  await d.run();assert.equal(d.state.results.length,1);assert.equal(d.builds.length,1);assert.equal(d.state.prompt,'');
+  await d.run();assert.equal(d.state.results.length,1);assert.equal(d.builds.length,1);assert.match(d.state.prompt,/整幅照片重新绘制/);
+  assert.equal(d.state.results[0].artDirection.originalPrompt,'');
   assert.equal(d.builds[0][10].taskProfile,'art-direction');assert.deepEqual(Array.from(d.builds[0][10].referenceRoles),['subject']);
   assert.equal(d.state.results[0].artDirection.review.pass,true);assert.equal(d.state.running,false);
   assert.equal(d.statuses.some(s=>s.error),false);assert.equal(d.e.calls.filter(c=>c.purpose==='art-director').length,1);
+});
+
+test('real generation entry submits direct edits once without analysis, review or automatic correction',async()=>{
+  const d=drawingRun(()=>assert.fail('direct run must not analyze'));
+  d.state.prompt='换成白色衬衫，保持背景';d.state.drawingAnalysisEngine='direct';
+  await d.run();
+  assert.equal(d.e.calls.length,0);assert.equal(d.builds.length,1);assert.equal(d.uploads.length,1);
+  assert.equal(d.builds[0][4],d.state.prompt);assert.equal(d.uploads[0].dataUrl,d.refs[0].dataUrl);
+  assert.equal(d.state.results[0].artDirection.review.skipped,true);
+  assert.equal(d.state.results[0].artDirection.corrections,0);
+});
+
+test('ordinary short text is optimized into the prompt box before its one generation submission',async()=>{
+  const d=drawingRun(plan());d.refs.length=0;d.state.mode='txt2img';d.state.prompt='冰系女剑客';
+  await d.run();assert.equal(d.builds.length,1);assert.match(d.state.prompt,/精致的水彩画风/);
+  assert.equal(d.builds[0][4],d.state.prompt);assert.equal(d.e.calls.length,1);
+  assert.equal(d.state.results[0].artDirection.originalPrompt,'冰系女剑客');
+  assert.equal(d.state.drawingAnalysisEngine,'direct');
+  await d.run();assert.equal(d.builds.length,2);assert.equal(d.e.calls.length,1,'the next generation reuses the prompt with no new AI analysis');
 });
 test('real generation entry limits correction to one and stages inputs for each attempt',async()=>{
   const failed={schema:'nf.art.review.v1',pass:false,issues:['姿势不符'],repair:'双腿改为站立，人物身份保持'};
   const d=drawingRun(plan([{source:1,uses:[use('subject')],omit:[]}]),[failed,failed]);
   await d.run();assert.equal(d.builds.length,2);assert.equal(d.uploads.length,2);assert.equal(d.state.results.length,1);
   assert.match(d.builds[1][4],/本次纠正：双腿改为站立/);assert.equal(d.state.results[0].artDirection.corrections,1);
-  assert.equal(d.state.results[0].artDirection.review.pass,false);assert.match(d.statuses.at(-1).s,/自动检查未通过或未完成/);
+  assert.equal(d.state.results[0].artDirection.review.pass,false);assert.match(d.statuses.at(-1).s,/自动检查发现偏差/);
 });
 test('a failed review cannot silently submit a second paid cloud generation',async()=>{
   const failed={schema:'nf.art.review.v1',pass:false,issues:['画风不足'],repair:'改为水彩笔触'};
@@ -391,13 +466,15 @@ test('a failed review cannot silently submit a second paid cloud generation',asy
   assert.equal(d.state.results[0].artDirection.corrections,0);assert.equal(d.state.results[0].artDirection.review.pass,false);
 });
 
-test('drawing analysis controls contain only the two routes and no task selector or duplicated label',()=>{
+test('drawing controls offer direct generation and explicit analysis without a task dropdown',()=>{
   const e=env(),state={};let refreshed=0;
   const create=(tag,props={})=>({tag,...props,children:[],appendChild(node){this.children.push(node);return node;}});
   const row=e.api.controls(create,state,()=>refreshed++);
-  assert.deepEqual(row.children.map(n=>n.text),['本地分析','Grok 分析']);
+  assert.deepEqual(row.children.map(n=>n.text),['无AI','本地AI','云端AI']);
+  assert.equal(row.children[0]['aria-pressed'],'true');
   assert.ok(row.children.every(n=>n.tag==='button'));
-  row.children[1].onclick();assert.equal(state.drawingAnalysisEngine,'grok');assert.equal(refreshed,1);
+  row.children[0].onclick();assert.equal(state.drawingAnalysisEngine,'direct');assert.equal(refreshed,1);
+  row.children[2].onclick();assert.equal(state.drawingAnalysisEngine,'grok');assert.equal(refreshed,2);
 });
 
 test('drawing references show their source numbers without asking for manual roles',()=>{

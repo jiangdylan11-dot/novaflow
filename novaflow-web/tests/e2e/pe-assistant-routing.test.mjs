@@ -47,7 +47,7 @@ test('pool queues Turbo drawing and explicit editing tools for the Turbo checkpo
  assert.equal(workflowModelId('spine-split-runtime',{},'defaultRmbgWorkflow'),'qwen-image-2511');
 });
 
-test('the existing model selector switches drawing to Turbo without changing its provider or adding UI choices',()=>{
+test('model choices contain only providers and leave acceleration under the parameter switch',()=>{
  class Element{
   constructor(tag,doc){this.tagName=tag.toUpperCase();this.ownerDocument=doc;this.children=[];this.attributes={};this.events={};this.style={setProperty(){}};}
   replaceChildren(...children){this.children=children;} appendChild(child){this.children.push(child);child.parentElement=this;return child;}
@@ -58,9 +58,19 @@ test('the existing model selector switches drawing to Turbo without changing its
  const c=createContext({document:doc});runInContext(readFileSync(new URL('../../renderer/art-generate-mode.tool.js',import.meta.url),'utf8'),c);
  const host=doc.createElement('div'),state={provider:'local'};let changes=0;
  const refresh=()=>c.NovaFlowArtGenerateModeTool.syncControlPanel({host,state,showAccount:false,showTurboRoute:true,onChange:()=>changes++});
- refresh();const select=host.children[0].children[1];assert.ok(select.children.some(x=>x.value==='local-turbo'));
- select.value='local-turbo';select.events.change();assert.equal(state.provider,'local');assert.equal(state.localQwen21Variant,'turbo');assert.equal(changes,1);
- refresh();assert.equal(select.value,'local-turbo');
+ refresh();const select=host.children[0].children[1];assert.deepEqual(Array.from(select.children,x=>x.value),['local','gpt','google']);
+ state.localQwen21Variant='turbo';refresh();assert.equal(select.value,'local');
+ select.value='gpt';select.events.change();assert.equal(state.provider,'gpt');assert.equal(state.localQwen21Variant,'turbo');assert.equal(changes,1);
+ select.value='local';select.events.change();assert.equal(state.provider,'local');assert.equal(state.localQwen21Variant,'turbo');
  c.NovaFlowArtGenerateModeTool.syncControlPanel({host,state,showAccount:false,showTurboRoute:false});
  assert.ok(select.children.every(x=>x.value!=='local-turbo'),'UI gets ordinary BF16 only');
+});
+
+test('the local acceleration control follows NSFW and is absent from cloud parameter fields',()=>{
+ const c=createContext({NovaFlowArtGenerateModels:models});runInContext(readFileSync(new URL('../../renderer/art-generate-mode.tool.js',import.meta.url),'utf8'),c);
+ const nsfw={id:'nsfw'},fast={id:'fast'};
+ const fields=c.NovaFlowArtGenerateModeTool.renderParameterFields({state:{provider:'local'},createElement:()=>({}),nsfwSwitch:nsfw,accelerationSwitch:fast,renderNumber:()=>({}),renderSeedToggle:()=>({})});
+ assert.equal(fields.at(-1),fast);assert.equal(fields.at(-2),nsfw);
+ const cloud=c.NovaFlowArtGenerateModeTool.renderParameterFields({state:{provider:'gpt'},createElement:()=>({}),accelerationSwitch:fast});
+ assert.equal(cloud.includes(fast),false);
 });

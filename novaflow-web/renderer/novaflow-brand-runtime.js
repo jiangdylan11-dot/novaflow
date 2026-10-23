@@ -83183,6 +83183,16 @@
         setArtGenerateNsfwEnabled(!ART_GENERATE_STATE.nsfw);
       })
     ]);
+    const accelerationToggle = renderArtGenerateToggleButton(ART_GENERATE_STATE.localQwen21Variant === 'turbo' && !ART_GENERATE_STATE.nsfw, '加速', () => {
+      if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfw) return;
+      ART_GENERATE_STATE.localQwen21Variant = ART_GENERATE_STATE.localQwen21Variant === 'turbo' ? 'standard' : 'turbo';
+      renderArtGenerateSurfaces({ forceBottom: true });
+    });
+    accelerationToggle.disabled = !!(ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfw);
+    accelerationToggle.title = ART_GENERATE_STATE.nsfw ? '关闭 NSFW 后可用' : '开启使用 Turbo 8 步，关闭使用普通版 25 步';
+    const accelerationSwitch = window.NovaFlowUiDesignDrawing?.isActive?.() ? null : createArtEl('div', {
+      className: 'novaflow-art-generate-param', 'data-novaflow-art-generate-acceleration': '1'
+    }, [createArtEl('span', {text:'加速'}), accelerationToggle]);
     const creditSnapshot = artGenerateCreditSnapshot();
     const creditPricing = window.NovaFlowArtGenerateCreditPricing;
     const idleSubmitLabel = creditPricing && typeof creditPricing.getButtonLabel === "function"
@@ -83205,6 +83215,7 @@
       renderSampling: renderArtGenerateSamplingField,
       renderSeedToggle: renderArtGenerateSeedToggle,
       nsfwSwitch,
+      accelerationSwitch,
       rerender: () => renderArtGenerateSurfaces({ forceBottom: true })
     }) || [];
     // 生成数量 applies to every provider, so it sits after the provider-specific fields (after NSFW for 本地模型).
@@ -86117,11 +86128,12 @@
         if (!window.NovaFlowArtDirection?.prepare) throw new Error('绘图分析组件未加载，请刷新页面');
         const drawingPrepared = await window.NovaFlowArtDirection.prepare({ ...getCurrentContext(), getCurrentContext,
           onProgress: message => { setArtGenerateProgress(message, 0); setArtGenerateStatus(message); } });
+        if (drawingPrepared.applyPromptToState?.()) renderArtGenerateSurfaces({ forceBottom: true });
         ART_GENERATE_STATE.running = false;
         return await runArtGenerate({ drawingPrepared });
       } catch (error) {
         ART_GENERATE_STATE.running = false;
-        resetArtGenerateProgress(error?.name === 'AbortError' ? '任务已中止' : '分析失败，未提交生成', 0);
+        resetArtGenerateProgress(error?.name === 'AbortError' ? '任务已中止' : '准备失败，未提交生成', 0);
         setArtGenerateStatus(String(error?.message || error), error?.name !== 'AbortError');
         return;
       }
@@ -86449,7 +86461,11 @@
       }
       clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
-      const completeMessage = drawingNeedsAttention ? '已生成，自动检查未通过或未完成；可在“查看分析”中查看原因' : batchCount > 1
+      if (options.drawingPrepared && !options.drawingPrepared.direct) {
+        ART_GENERATE_STATE.drawingAnalysisEngine = 'direct';
+        try { window.localStorage.setItem('novaflow.drawing.analysis.v2', 'direct'); } catch {}
+      }
+      const completeMessage = drawingNeedsAttention ? '已生成，自动检查发现偏差，请检查成图后调整提示词' : batchCount > 1
         ? (runProvider === "local" ? `已生成 ${batchCount} 张` : `已生成 ${batchCount} 张，计费后台处理中`)
         : (runProvider === "local" ? "\u751f\u6210\u5b8c\u6210" : "\u751f\u6210\u5b8c\u6210\uff0c\u8ba1\u8d39\u540e\u53f0\u5904\u7406\u4e2d");
       setArtGenerateProgress(completeMessage, 1, { promptId: lastPromptId });

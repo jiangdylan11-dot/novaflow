@@ -8,7 +8,6 @@
   const CACHE = new Map();
   const previews = new WeakMap();
   let controller = null;
-  let previewNumber=0;
   const text = value => String(value ?? '').trim();
   const copy = value => JSON.parse(JSON.stringify(value));
   const abortError = () => Object.assign(new Error('任务已中止'), { name: 'AbortError' });
@@ -133,8 +132,8 @@
   }
 
   function engine(state) {
-    if (['local', 'grok'].includes(state.drawingAnalysisEngine)) return state.drawingAnalysisEngine;
-    try { return root.localStorage.getItem('novaflow.drawing.analysis.v1') === 'grok' ? 'grok' : 'local'; } catch { return 'local'; }
+    if (['direct', 'local', 'grok'].includes(state.drawingAnalysisEngine)) return state.drawingAnalysisEngine;
+    try { const saved=root.localStorage.getItem('novaflow.drawing.analysis.v2');return ['direct','local','grok'].includes(saved)?saved:'direct'; } catch { return 'direct'; }
   }
   function input(context) {
     const s = context.state;
@@ -494,28 +493,47 @@
     const automaticNegative=[renderingNegative,...isolatedDonor].filter(Boolean).join(', ');
     return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...((isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
   }
+  function directPreparation(source) {
+    if(!source.prompt)throw new Error('请写一句要求，例如“换成白色衬衫”；需要自动理解参考图时可选择本地AI');
+    const references=source.references.map(ref=>{
+      const mimeType=ref.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
+      if(!mimeType)throw new Error(`图${ref.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
+      const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
+      return {name:`reference_${ref.source}_direct.${extension}`,mimeType,dataUrl:ref.dataUrl,sourceIndex:ref.source-1,sourceNumber:ref.source,role:ref.roles[0]||'auto',detail:'原始完整参考图',treatment:'direct-original'};
+    });
+    const prompt=source.references.length?source.prompt.replace(/(?:@?参考图|图片|图|image)\s*(\d+)/gi,(mention,number)=>{
+      const index=references.findIndex(ref=>ref.sourceNumber===Number(number));
+      if(index<0)throw new Error(`图${number}不存在，请检查参考图编号`);
+      return `<image${index+1}>`;
+    }):source.prompt;
+    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
+  }
   async function prepare(context) {
     if (controller) throw new Error('请等待当前绘图分析结束');
     const current=new AbortController();controller=current;
-    const source=input(context),status=context.onProgress||(()=>{});let preparing=true;
+    const source=input(context),status=context.onProgress||(()=>{});let preparing=true,expectedSource=source;
     previews.delete(context.state);
-    const check=()=>{if(current.signal.aborted)throw abortError();if(!same(source,input(context.getCurrentContext?context.getCurrentContext():context)))throw new Error('参考图、用途、需求或尺寸已变化，旧分析未提交，请重新生成');if(preparing&&context.getCurrentContext?.().generationSurface && context.getCurrentContext().generationSurface!=='drawing')throw new Error('绘图页面已切换，旧任务未提交');};
+    const check=()=>{if(current.signal.aborted)throw abortError();if(!same(expectedSource,input(context.getCurrentContext?context.getCurrentContext():context)))throw new Error('参考图、用途、需求或尺寸已变化，旧分析未提交，请重新生成');if(preparing&&context.getCurrentContext?.().generationSurface && context.getCurrentContext().generationSurface!=='drawing')throw new Error('绘图页面已切换，旧任务未提交');};
     try {
       if(!source.prompt&&!source.references.length)throw new Error('请写一句需求，或添加参考图后直接生成');
       if(source.references.length>(context.referenceLimit||10))throw new Error(`当前模型支持 ${context.referenceLimit||10} 张参考图，请减少图片或切换模型；本次未截断提交`);
       const cacheKey=await key(source);check();
       let prepared=CACHE.get(cacheKey);
       if(!prepared){
-        status(source.references.length?'正在理解需求与参考图片…':'正在完善画面表现…');
-        const plan=await analyze(source,current.signal);check();
-        if(plan.clarification)throw new Error(`需要补充一句：${plan.clarification}`);
-        prepared={...(await compile(plan,source,status,check,context.referenceLimit||10)),plan};check();
+        if(source.engine==='direct'){
+          status('正在准备直接生成…');prepared=directPreparation(source);check();
+        }else{
+          status(source.references.length?'正在理解需求与参考图片…':'正在完善画面表现…');
+          const plan=await analyze(source,current.signal);check();
+          if(plan.clarification)throw new Error(`需要补充一句：${plan.clarification}`);
+          prepared={...(await compile(plan,source,status,check,context.referenceLimit||10)),plan};check();
+        }
         CACHE.set(cacheKey,prepared);if(CACHE.size>4)CACHE.delete(CACHE.keys().next().value);
       }
       previews.set(context.state,{...prepared,originalPrompt:source.prompt});
       const state=copy(Object.fromEntries(GENERATION_SETTINGS.filter(k=>Object.hasOwn(context.state,k)).map(k=>[k,context.state[k]])));
       // A complete restyle must be free to rebuild facial planes and illumination.
-      if(prepared.references.some(r=>r.role==='style'))state.uiPreserveLayout=false;
+      if(!prepared.direct&&prepared.references.some(r=>r.role==='style'))state.uiPreserveLayout=false;
       state.mode=prepared.references.length?'img2img':'txt2img';state.localDrawEngine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine||'';
       if(prepared.renderingPolicy&&state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant!=='turbo'){
         state.negativePrompt=prepared.promptSnapshot.negativePrompt;
@@ -524,11 +542,25 @@
       }
       preparing=false;
       return {...prepared,state,analysisInput:source,originalPrompt:source.prompt,assertCurrent:check,
+        applyPromptToState:()=>{
+          check();if(prepared.direct)return false;
+          context.state.prompt=prepared.promptSnapshot.prompt.replace(/<image(\d+)>/g,(tag,n)=>{
+            const ref=prepared.references[Number(n)-1];return ref?`@参考图${ref.sourceNumber||Number(n)}`:tag;
+          });
+          context.state.negativePrompt=prepared.promptSnapshot.negativePrompt;
+          expectedSource=input(context.getCurrentContext?context.getCurrentContext():context);
+          return true;
+        },
         recordReview:review=>{const previous=previews.get(context.state);if(previous)previous.review=review;}};
     } finally {if(controller===current)controller=null;}
   }
   async function review(prepared, outputUrl, onProgress = () => {}) {
-    if(prepared.plan.editEnhancer?.kind==='qwen21-pe-i2i'&&prepared.analysisInput.engine==='local'){
+    if(prepared.direct){
+      prepared.assertCurrent();
+      const result={schema:'nf.art.review.v1',pass:null,skipped:true,issues:[],repair:'',reason:'直接生成未调用分析或复审模型'};
+      prepared.recordReview?.(result);return result;
+    }
+    if(prepared.analysisInput.engine==='local'&&(!prepared.references.length||prepared.plan.editEnhancer?.kind==='qwen21-pe-i2i')){
       prepared.assertCurrent();
       const result={schema:'nf.art.review.v1',pass:null,skipped:true,issues:[],repair:'',reason:'PE 单次分析线路不再调用额外模型复审'};
       prepared.recordReview?.(result);return result;
@@ -593,26 +625,12 @@
   function cancelPreparation(){if(!controller)return false;controller.abort();return true;}
   function controls(create,state,refresh) {
     const row=create('div',{className:'nf-art-direction-controls'});
-    for(const [value,label]of [['local','本地分析'],['grok','Grok 分析']])row.appendChild(create('button',{type:'button',title:value==='grok'?'生成前理解参考，成图后检查；会使用现有 Grok 分析次数':'使用本地视觉模型理解参考并检查成图；本地生成存在偏差时自动纠偏一次','data-active':engine(state)===value?'1':'0','aria-pressed':engine(state)===value?'true':'false',text:label,onclick:()=>{state.drawingAnalysisEngine=value;try{root.localStorage.setItem('novaflow.drawing.analysis.v1',value);}catch{}refresh();}}));
+    const titles={direct:'不调用提示词分析模型；使用原始提示词和完整参考图直接生图',local:'使用本地 PE 理解需求与参考，自动整理生图指令',grok:'使用云端 Grok 理解参考并检查成图，会使用现有 Grok 分析次数'};
+    for(const [value,label]of [['direct','无AI'],['local','本地AI'],['grok','云端AI']])row.appendChild(create('button',{type:'button',title:titles[value],'data-active':engine(state)===value?'1':'0','aria-pressed':engine(state)===value?'true':'false',text:label,onclick:()=>{state.drawingAnalysisEngine=value;try{root.localStorage.setItem('novaflow.drawing.analysis.v2',value);}catch{}refresh();}}));
     return row;
   }
   function analysisControl(create,state) {
-    const data=previews.get(state);
-    if(!data)return null;
-    const row=create('div',{className:'nf-art-direction-analysis-action'});
-    if(data){
-      const panel=create('div',{id:`nf-art-analysis-${++previewNumber}`,className:'nf-art-direction-analysis-panel',popover:'auto'}),nativePopover=typeof panel.togglePopover==='function';panel.hidden=!nativePopover;
-      const button=create('button',{type:'button',className:'nf-art-direction-analysis-button',text:'查看分析','aria-expanded':'false',...(nativePopover?{popovertarget:panel.id}:{onclick:()=>{panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden));}})});
-      panel.addEventListener('toggle',event=>button.setAttribute('aria-expanded',String(event.newState==='open')));
-      panel.appendChild(create('p',{text:data.plan.summary||'已按参考用途生成画面要求'}));
-      if(data.plan.editEnhancer)panel.appendChild(create('p',{text:data.plan.editEnhancer.kind==='qwen21-style-observation'?'本地独立风格观察 · 分别采用材质、受光与暗面；原始需求保留，无需再次确认提示词':'本地 PE-I2I · 绘图专用编辑边界；原始需求保留，无需再次确认提示词'}));
-      if(data.review)panel.appendChild(create('p',{text:data.review.skipped?'PE 单次分析 · 未执行模型复审':data.review.pass===true?'自动检查：未发现明显偏差':`成图检查：${data.review.issues.join('；')}`}));
-      if(data.renderingPolicy)panel.appendChild(create('p',{text:`已根据目标画风生成画法排除项，自动预设 CFG ${data.renderingPolicy.cfg}；手动采样设置优先。原需求保持，双向采样会增加生成时间。`}));
-      for(const ref of data.references){const item=create('div',{className:'nf-art-direction-preview'});item.appendChild(create('img',{src:ref.dataUrl,alt:`图${ref.sourceNumber}实际采用的${ROLES[ref.role]}`}));item.appendChild(create('span',{text:`图${ref.sourceNumber} · ${ROLES[ref.role]}${ref.target?` → ${ref.target}`:''}：${ref.detail}`}));panel.appendChild(item);}
-      panel.appendChild(create('pre',{text:data.promptSnapshot.prompt}));row.appendChild(button);row.appendChild(panel);
-      if(data.renderingPolicy)panel.appendChild(create('pre',{text:`本次画法排除项：${data.promptSnapshot.negativePrompt}`}));
-    }
-    return row;
+    return null;
   }
   function referenceControl(create,ref,number) {
     return create('span',{className:'nf-art-direction-reference',text:`图${number}`});

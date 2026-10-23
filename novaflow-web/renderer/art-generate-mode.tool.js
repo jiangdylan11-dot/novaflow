@@ -63,14 +63,12 @@
   }
 
   function syncModelChoices(select, documentRef, options) {
-    const turbo=options.showTurboRoute===true && normalizeProvider(options.provider)==='local'
     const choices=[]
     for(const item of PROVIDER_OPTIONS){
       const option=documentRef.createElement('option');option.value=item.value;option.textContent=item.label;choices.push(option)
-      if(item.value==='local'&&turbo){const fast=documentRef.createElement('option');fast.value='local-turbo';fast.textContent='本地模型 · Turbo BF16';choices.push(fast)}
     }
     select.replaceChildren(...choices)
-    select.value=turbo&&options.localQwen21Variant==='turbo'?'local-turbo':normalizeProvider(options.provider)
+    select.value=normalizeProvider(options.provider)
   }
 
   function mount(options = {}) {
@@ -117,7 +115,7 @@
       handle: null,
     }
     select.addEventListener('change', () => {
-      if (typeof record.onProviderChange === 'function') record.onProviderChange(normalizeProvider(select.value==='local-turbo'?'local':select.value),select.value==='local-turbo'?'turbo':'standard')
+      if (typeof record.onProviderChange === 'function') record.onProviderChange(normalizeProvider(select.value))
     })
 
     modelField.appendChild(label)
@@ -211,6 +209,7 @@
       if (fields.has('cfg') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('cfg', mode))
       if (fields.has('seed')) nodes.push(options.renderSeedToggle())
       if (fields.has('nsfw') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
+      if (options.accelerationSwitch) nodes.push(options.accelerationSwitch)
       return nodes
     }
     if (provider === 'gpt') {
@@ -247,13 +246,11 @@
       showAccount: options.showAccount,
       provider: state.provider, localQwen21Variant: state.localQwen21Variant, showTurboRoute: options.showTurboRoute===true&&state.nsfw!==true,
       disabled: Boolean(state.running),
-      onProviderChange(provider,variant) {
+      onProviderChange(provider) {
         if (state.running) return
         const nextProvider = normalizeProvider(provider)
-        const nextVariant=variant==='turbo'?'turbo':'standard'
-        if (nextProvider === state.provider && (nextProvider!=='local'||nextVariant===(state.localQwen21Variant||'standard'))) return
+        if (nextProvider === state.provider) return
         state.provider = nextProvider
-        if(nextProvider==='local')state.localQwen21Variant=nextVariant
         state.error = ''
         state.status = ''
         options.onChange?.(nextProvider)
