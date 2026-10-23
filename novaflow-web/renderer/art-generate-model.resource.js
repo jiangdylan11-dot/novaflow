@@ -94,10 +94,10 @@
 
   // Steps and CFG on the drawing panel, for every local route that samples (Ideogram Instant has
   // neither). Each route starts from what its publisher recommends; a value the user types is kept
-  // per route and mode, so switching to NSFW never carries 2.1's 40 steps over. Only the user's own
+  // per route and mode, so switching to NSFW never carries 2.1's drawing steps over. Only the user's own
   // negative prompt counts as filled: the quality profile's automatic negatives would otherwise
   // switch every run to real guidance.
-  //   Qwen-Image-2.1: 40 steps (the model card's pipeline). CFG 1, where the negative prompt is
+  //   Qwen-Image-2.1: 25 drawing steps (user's default); UI retains its 40-step baseline. CFG 1, where the negative prompt is
   //     never evaluated; a filled negative raises it to 2.5 (ComfyUI's note: raise cfg only with one).
   //   NSFW, Rapid AIO: 6 steps, CFG 1 (the author: 4 basic, 6 usually best, never more than 8;
   //     only CFG 1).
@@ -109,7 +109,7 @@
     rapid: Object.freeze({ steps: [1, 8], cfg: [1, 10] }),
     standard: Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
   })
-  const QWEN21_DEFAULT_STEPS = 40
+  const QWEN21_DEFAULT_STEPS = 25
   const QWEN21_NEGATIVE_CFG = 2.5
   const RAPID_DEFAULT_STEPS = 6
   const STANDARD_LIGHTNING_STEPS = 4
@@ -141,7 +141,7 @@
   // defaultSteps, defaultCfg, stepsManual, cfgManual }. userNegativePrompt is the text the user wrote
   // (state.negativePrompt when not given). The panel finds the route from the node's features; a run
   // names the route it actually builds. null off the sampling routes.
-  function localSamplingFor(state, mode, userNegativePrompt, route) {
+  function localSamplingFor(state, mode, userNegativePrompt, route, surface = 'drawing') {
     const modeKey = normalizeMode(mode || state?.mode)
     route = route==='qwen-2.1'&&state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
     if (!route) return null
@@ -150,7 +150,7 @@
     const manualSteps = clampLocalSampling(route, 'steps', override.steps)
     const manualCfg = clampLocalSampling(route, 'cfg', override.cfg)
     const defaultSteps = route === 'qwen-2.1-turbo' ? 8 : route === 'qwen-2.1'
-      ? QWEN21_DEFAULT_STEPS
+      ? (surface === 'ui' ? 40 : QWEN21_DEFAULT_STEPS)
       : route === 'rapid'
         ? RAPID_DEFAULT_STEPS
         : (negative ? STANDARD_FULL_STEPS : STANDARD_LIGHTNING_STEPS)

@@ -11,6 +11,16 @@ import {readFileSync} from 'node:fs';
 import {createContext,runInContext} from 'node:vm';
 const modelContext=createContext({});runInContext(readFileSync(new URL('../../renderer/art-generate-model.resource.js',import.meta.url),'utf8'),modelContext);
 const models=modelContext.NovaFlowArtGenerateModels;
+test('ordinary drawing defaults to 25, preserves explicit 40, and keeps UI and Turbo baselines',()=>{
+ const state={provider:'local',localDrawEngine:'qwen-2.1'};
+ assert.equal(models.localSamplingFor(state,'img2img','','qwen-2.1').steps,25);
+ assert.equal(models.localSamplingFor(state,'txt2img','','qwen-2.1').steps,25);
+ assert.equal(models.localSamplingFor(state,'img2img','','qwen-2.1','ui').steps,40);
+ state.samplingOverrides={'qwen-2.1:img2img':{steps:40}};
+ assert.equal(models.localSamplingFor(state,'img2img','','qwen-2.1').steps,40);
+ state.localQwen21Variant='turbo';
+ assert.equal(models.localSamplingFor(state,'img2img','','qwen-2.1').steps,8);
+});
 test('production assistant is available from PE alone and reports no NF4 cache dependency',async()=>{
  const root=await mkdtemp(join(tmpdir(),'nf-single-pe-'));let assistant;
  try{

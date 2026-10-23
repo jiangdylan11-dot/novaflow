@@ -83018,7 +83018,7 @@
       ? `\u5df2\u624b\u52a8\u8bbe\u7f6e\uff0c\u6e05\u7a7a\u6062\u590d\u9ed8\u8ba4 ${fallback}`
       : `\u9ed8\u8ba4 ${fallback}\uff08\u6309\u5f53\u524d\u6a21\u578b\uff09`];
     if (sampling.route === "qwen-2.1" && kind === "cfg") lines.push("\u53cd\u5411\u63d0\u793a\u8bcd\u7559\u7a7a\u65f6 CFG 1\uff08\u53cd\u5411\u4e0d\u751f\u6548\uff09\uff0c\u586b\u5199\u540e\u9ed8\u8ba4 2.5");
-    if (sampling.route === "qwen-2.1" && kind === "steps") lines.push("\u5b98\u65b9\u63a8\u8350 40 \u6b65");
+    if (sampling.route === "qwen-2.1" && kind === "steps") lines.push("绘图默认 25 步；官方示例为 40 步，可手动调整");
     if (sampling.route === "rapid") lines.push("NSFW \u6a21\u578b\u4f5c\u8005\u5efa\u8bae\uff1a4\u20138 \u6b65\uff086 \u6700\u4f73\uff0c\u6700\u591a 8\uff09\uff0cCFG 1");
     if (sampling.route === "standard" && kind === "steps") lines.push("8 \u6b65\u53ca\u4ee5\u4e0b\u4f7f\u7528 4 \u6b65\u52a0\u901f LoRA\uff0c\u66f4\u591a\u6b65\u6570\u5173\u95ed\u52a0\u901f");
     return lines.join("\n");
@@ -85429,11 +85429,11 @@
 
   function artQwen21Runtime(options) {
     const info = window.electronAPI?.__objectInfoSync?.();
-    if (!info || !info.TextEncodeQwenImage21 || !info.UnetLoaderGGUF || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
-    const unet = artQwen21Choice(info.UnetLoaderGGUF, "unet_name", options?.localQwen21Variant==='turbo'?ART_QWEN21_TURBO_UNETS:ART_QWEN21_UNETS);
+    if (!info || !info.TextEncodeQwenImage21 || !info.NovaFlowGGUFBF16Loader || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
+    const unet = artQwen21Choice(info.NovaFlowGGUFBF16Loader, "unet_name", options?.localQwen21Variant==='turbo'?ART_QWEN21_TURBO_UNETS:ART_QWEN21_UNETS);
     const clip = artQwen21Choice(info.CLIPLoader, "clip_name", ART_QWEN21_CLIPS);
     const vae = artQwen21Choice(info.VAELoader, "vae_name", [ART_QWEN21_VAE]);
-    return unet && clip && vae ? { info, unet, clip, vae, loader:'UnetLoaderGGUF' } : null;
+    return unet && clip && vae ? { info, unet, clip, vae, loader:'NovaFlowGGUFBF16Loader' } : null;
   }
 
   // At cfg 1 (the 2.1 default) the sampler never evaluates the negative prompt: filled and empty gave
@@ -85449,7 +85449,7 @@
   // Drawing on 2.1: up to 10 references, the model card's limit (the encoder node has 16 inputs).
   const QWEN21_ART_MAX_REFERENCES = 10;
   // The model card's pipeline runs 40 steps (ComfyUI's template starts at 25 for speed).
-  const QWEN21_ART_DEFAULT_STEPS = 40;
+  const QWEN21_ART_DEFAULT_STEPS = 25;
   // Sampling past ~1.3 MP adds time rather than detail: a larger W / H is sampled at this size and
   // scaled up at the end.
   const QWEN21_ART_MAX_WORKING_PIXELS = 1300000;
@@ -85652,7 +85652,7 @@
 
   function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
     const guidance = qwen21Guidance(negativePrompt);
-    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, negativePrompt, "qwen-2.1");
+    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, negativePrompt, "qwen-2.1", "ui");
     const preserveNativeLayout = state?.uiPreserveLayout === true && state?.uiLayoutMode !== "reflow" && state?.uiLayoutMode !== "create";
     const nativeEdit = providerOptions?.uiNativeEdit || null;
     const editRegions = nativeEdit?.regions;

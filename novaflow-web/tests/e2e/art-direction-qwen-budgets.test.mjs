@@ -6,8 +6,8 @@ import {createContext,runInContext} from 'node:vm';
 const source=readFileSync(new URL('../../renderer/novaflow-brand-runtime.js',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('  const ART_QWEN21_UNETS ='),source.indexOf('  // UI design on a Qwen-Image-2.1 node:'));
 function build(options,extra=false,native=true,state={}){
-  const info={UnetLoaderGGUF:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf','Qwen-Image-2.1-Turbo-BF16.gguf']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
-  if(!native)info.UnetLoaderGGUF.input.required.unet_name[0]=['qwen-image-2.1-UC-Q8_0.gguf'];
+  const info={NovaFlowGGUFBF16Loader:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf','Qwen-Image-2.1-Turbo-BF16.gguf']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
+  if(!native)info.NovaFlowGGUFBF16Loader.input.required.unet_name[0]=['qwen-image-2.1-UC-Q8_0.gguf'];
   if(native){info.UNETLoader={input:{required:{unet_name:[['qwen-image-2.1-UC-BF16-native.safetensors']]}}};info.CLIPLoader.input.required.clip_name[0].push('qwen3vl_8b_bf16_heretic.safetensors');}
   const vm=createContext({window:{electronAPI:{__objectInfoSync:()=>info}}});runInContext(readFileSync(new URL('../../renderer/qwen21-turbo.workflow.js',import.meta.url),'utf8'),vm);vm.NovaFlowQwen21Turbo=vm.NovaFlowQwen21Turbo;vm.window.NovaFlowQwen21Turbo=vm.NovaFlowQwen21Turbo;runInContext(code,vm);
   return vm.buildArtQwen21Workflow('img2img',extra?['source','style','pose']:['source','style'],'proof','prompt',{width:832,height:1216,seed:7,randomSeed:false,uiPreserveLayout:false,negativePrompt:'avoid donor',...state},extra?[{width:1280,height:960},{width:3328,height:4864},{width:1000,height:1000}]:[{width:1280,height:960},{width:3328,height:4864}],options,'avoid donor',{cfg:3,steps:40});
@@ -38,10 +38,10 @@ test('keeping source dimensions still executes grounded style priority without c
 
 test('analyzed drawing uses available native BF16 with matching encoder while ordinary edits keep their route',()=>{
   const high=build({taskProfile:'art-direction',referenceRoles:['subject','style']},false,true).workflow;
-  assert.equal(high['1'].class_type,'UnetLoaderGGUF');assert.equal(high['1'].inputs.unet_name,'qwen-image-2.1-UC-BF16.gguf');
+  assert.equal(high['1'].class_type,'NovaFlowGGUFBF16Loader');assert.equal(high['1'].inputs.unet_name,'qwen-image-2.1-UC-BF16.gguf');
   assert.equal(high['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');assert.equal(high['7'].inputs.steps,40);
   const ordinary=build({},false,true).workflow;
-  assert.equal(ordinary['1'].class_type,'UnetLoaderGGUF');assert.equal(ordinary['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');
+  assert.equal(ordinary['1'].class_type,'NovaFlowGGUFBF16Loader');assert.equal(ordinary['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');
   assert.equal(build({taskProfile:'art-direction'},false,false),null,'Q8-only nodes do not silently replace BF16');
 });
 test('style priority cannot re-budget pose controls, ordinary edits or UI generation',()=>{
@@ -54,7 +54,7 @@ test('style priority cannot re-budget pose controls, ordinary edits or UI genera
 
 test('Turbo drawing selects the exact Turbo BF16 GGUF and the shipped eight-step schedule',()=>{
   const graph=build({taskProfile:'art-direction'},false,true,{localQwen21Variant:'turbo'}).workflow;
-  assert.equal(graph['1'].class_type,'UnetLoaderGGUF');
+  assert.equal(graph['1'].class_type,'NovaFlowGGUFBF16Loader');
   assert.equal(graph['1'].inputs.unet_name,'Qwen-Image-2.1-Turbo-BF16.gguf');
   assert.equal(graph['2'].inputs.clip_name,'qwen3vl_8b_bf16_heretic.safetensors');
   assert.equal(graph['7'].class_type,'SamplerCustom');assert.equal(graph['7'].inputs.cfg,1);

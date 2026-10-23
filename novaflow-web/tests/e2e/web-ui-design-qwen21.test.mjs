@@ -20,7 +20,7 @@ const assert = new Proxy(strictAssert, { get(target, key) {
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Info = {
   LoadImage: { input: { required: { image: [['x.png']] } } },
-  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
   CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: { ...io('clip', 'prompt', 'negative_prompt'), resolution: ['INT', { default: 1024 }], images: ['COMFY_AUTOGROW_V3', {}] }, optional: io('vae') } },
@@ -50,7 +50,7 @@ for (const [intent, preserveLayout] of [[undefined,undefined], ['redesign',false
   });
   assert.equal(graph['7'].inputs.latent_image[0], preserveLayout ? '5' : intent === 'redesign' ? '6' : '5');
   assert.equal(graph['7'].inputs.denoise, 1);
-  assert.equal(graph['7'].inputs.steps, 40);
+  assert.equal(graph['7'].inputs.steps, 25);
   if (preserveLayout) assert.match(graph['5'].inputs.prompt, /保持布局参考图的全部区域.*网格行列及控件数量/);
   if (intent === 'redesign' || intent === 'style-transfer') assert.doesNotMatch(graph['5'].inputs.prompt, /保持图1中主体的位置/);
   else assert.match(graph['5'].inputs.prompt, /保持图1中主体的位置/);
@@ -212,8 +212,8 @@ const buildDraw = async (names, sizes, width, height, negative = '', extraState 
   { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1', ...extraState }, 4, {}
 ] } })));
 const drawI2i = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720);
-// The model card's 40 steps unless the panel says otherwise.
-assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.steps, 40);
+// Drawing defaults to the user's 25 steps unless the panel says otherwise.
+assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.steps, 25);
 const drawSaved = drawI2i[byClass(drawI2i, 'SaveImage')[0][1].inputs.images[0]];
 assert.equal(drawSaved.class_type, 'ImageScale');
 assert.deepEqual([drawSaved.inputs.width, drawSaved.inputs.height], [512, 720]);
@@ -265,7 +265,7 @@ const drawT2i = async (userNegative, compiledNegative, extraState = {}) => JSON.
 ] } })));
 const profileOnly = await drawT2i('', '错误人体，畸形手指，低完成度');
 assert.equal(byClass(profileOnly, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, '');
-assert.deepEqual([byClass(profileOnly, 'KSampler')[0][1].inputs.steps, byClass(profileOnly, 'KSampler')[0][1].inputs.cfg], [40, 1]);
+assert.deepEqual([byClass(profileOnly, 'KSampler')[0][1].inputs.steps, byClass(profileOnly, 'KSampler')[0][1].inputs.cfg], [25, 1]);
 const drawNegative = await drawT2i('blurry, extra fingers', 'blurry, extra fingers，错误人体，低完成度');
 assert.equal(byClass(drawNegative, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, 'blurry, extra fingers');
 assert.equal(byClass(drawNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
@@ -298,7 +298,7 @@ assert.equal(sanitizeReferences(Array.from({ length: 25 }, (_, i) => ({ name: `r
 // ---- node probe -----------------------------------------------------------------------------
 const catalogue = {
   ...qwen21Info,
-  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } }
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } }
 };
 let served = catalogue;
 const server = createServer((req, res) => {
@@ -309,7 +309,7 @@ const server = createServer((req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const comfy = { baseUrl: `http://127.0.0.1:${server.address().port}` };
 assert.equal(await detectQwenImage21(comfy), true);
-served = { ...catalogue, UnetLoaderGGUF: { input: { required: { unet_name: [['flux1-dev-Q8_0.gguf']] } } } };
+served = { ...catalogue, NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['flux1-dev-Q8_0.gguf']] } } } };
 assert.equal(await detectQwenImage21(comfy), false);
 served = { ...catalogue, TextEncodeQwenImage21: undefined };
 assert.equal(await detectQwenImage21(comfy), false);
@@ -451,24 +451,24 @@ assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img', nsfw: tru
 assert.deepEqual([...models.capabilityFor('local', 'txt2img', { nsfw: true }).fields], allFields);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], allFields);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { nsfw: true }).fields], allFields);
-// Route defaults: 2.1 40 steps, CFG 1 (2.5 with the user's negative); NSFW (Rapid AIO) 6 steps, CFG 1;
+// Route defaults: 2.1 drawing 25 steps, CFG 1 (2.5 with the user's negative); NSFW (Rapid AIO) 6 steps, CFG 1;
 // the 2511 route of a LoRA run 4 Lightning steps at CFG 1, the base 40 steps at CFG 4 with a negative.
 const pick = (sampling) => sampling && [sampling.route, sampling.steps, sampling.cfg, sampling.lightning];
-assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'txt2img', '')), ['qwen-2.1', 40, 1, false]);
-assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'img2img', 'blurry')), ['qwen-2.1', 40, 2.5, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'txt2img', '')), ['qwen-2.1', 25, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'img2img', 'blurry')), ['qwen-2.1', 25, 2.5, false]);
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'img2img', 'blurry')), ['rapid', 6, 1, false]);
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'txt2img', '')), ['rapid', 6, 1, false]);
 // A LoRA run stays on 2.1 there (its list offers only LoRAs made for 2.1).
 const lora = { provider: 'local', loras: [{ name: 'x' }] };
-assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 40, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 25, 1, false]);
 // The 2511 route is only ever named by a run (no panel shows it): 4 Lightning steps at CFG 1, the
 // base 40 steps at CFG 4 with a negative. Without the node's answer the panel still shows 2.1.
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '', 'standard')), ['standard', 4, 1, true]);
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', 'blurry', 'standard')), ['standard', 40, 4, false]);
 const withQwen21 = globalThis.electronAPI;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-assert.deepEqual(pick(models.localSamplingFor(lora, 'txt2img', '')), ['qwen-2.1', 40, 1, false]);
-assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 40, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'txt2img', '')), ['qwen-2.1', 25, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 25, 1, false]);
 globalThis.electronAPI = withQwen21;
 assert.equal(models.localSamplingFor({ provider: 'gpt' }, 'img2img', ''), null);
 // The state's own negative prompt is the default source; a run can name its route.
@@ -481,10 +481,13 @@ assert.equal(models.setLocalSamplingValue(typed, 'img2img', 'steps', '20').steps
 assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, true);
 assert.equal(models.localSamplingFor(typed, 'txt2img').steps, 6);
 typed.nsfw = false;
-assert.equal(models.localSamplingFor(typed, 'img2img').steps, 40);
+assert.equal(models.localSamplingFor(typed, 'img2img').steps, 25);
 models.setLocalSamplingValue(typed, 'img2img', 'cfg', '3.25');
 assert.equal(models.localSamplingFor(typed, 'img2img').cfg, 3.3);
 models.setLocalSamplingValue(typed, 'img2img', 'steps', '40');
+assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, true);
+assert.equal(models.localSamplingFor(typed, 'img2img').steps, 40);
+models.setLocalSamplingValue(typed, 'img2img', 'steps', '25');
 assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, false);
 models.setLocalSamplingValue(typed, 'img2img', 'cfg', '');
 assert.equal(typed.samplingOverrides['qwen-2.1:img2img'], undefined);

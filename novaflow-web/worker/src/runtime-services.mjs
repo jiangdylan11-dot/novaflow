@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import net from 'node:net';
 import { spawn, execFile } from 'node:child_process';
 import { assertLocalOnly } from './comfy/comfy-client.mjs';
+import { installQwen21Bf16Node } from './comfy/install-qwen21-bf16.mjs';
 // The batch file starts a long-lived Python process. execFile waits for its
 // inherited output pipes to close, even after the launcher itself has exited.
 // Runtime logs already go to files; wait for the launcher's exit, not Python.
@@ -215,6 +216,10 @@ export function createRuntimeServices({
   return {
     async start(onProgress = () => {}) {
       const results = await Promise.all(entries.map(async entry => {
+        if(entry.kind==='image') {
+          try { if(await installQwen21Bf16Node(entry.home.root)) logger('BF16 GGUF adapter updated; an already-running image runtime needs a restart to load it'); }
+          catch(error) { logger('BF16 GGUF adapter install failed: '+String(error.message||error)); }
+        }
         try { await placeEntry(entry); } catch (error) {
           const message = entry.kind + '：' + String(error.message || error);
           logger(message);

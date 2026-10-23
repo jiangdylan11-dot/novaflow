@@ -151,7 +151,7 @@ export async function inspectAllModels(modelsRoot, { verifyHashes = false, manif
 const QWEN21_UNETS = ['qwen-image-2.1-UC-BF16.gguf'];
 const QWEN21_CLIPS = ['qwen3vl_8b_bf16_heretic.safetensors', 'qwen3vl_8b_bf16.safetensors'];
 const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors';
-const QWEN21_NODES = ['TextEncodeQwenImage21', 'UnetLoaderGGUF', 'CLIPLoader', 'VAELoader', 'EmptyLatentImage', 'SplitImageWithAlpha', 'ImageScale', 'ImageCrop'];
+const QWEN21_NODES = ['TextEncodeQwenImage21', 'NovaFlowGGUFBF16Loader', 'CLIPLoader', 'VAELoader', 'EmptyLatentImage', 'SplitImageWithAlpha', 'ImageScale', 'ImageCrop'];
 
 export async function detectQwenImage21(comfy, { timeoutMs = 5000, variant = 'standard' } = {}) {
   const specs = {};
@@ -168,7 +168,7 @@ export async function detectQwenImage21(comfy, { timeoutMs = 5000, variant = 'st
     const field = specs[node]?.input?.required?.[key];
     return Array.isArray(field) && Array.isArray(field[0]) ? field[0].map(String) : [];
   };
-  return (variant==='turbo'?['Qwen-Image-2.1-Turbo-BF16.gguf']:QWEN21_UNETS).some((name) => choices('UnetLoaderGGUF', 'unet_name').includes(name))
+  return (variant==='turbo'?['Qwen-Image-2.1-Turbo-BF16.gguf']:QWEN21_UNETS).some((name) => choices('NovaFlowGGUFBF16Loader', 'unet_name').includes(name))
     && QWEN21_CLIPS.some((name) => choices('CLIPLoader', 'clip_name').includes(name))
     && choices('VAELoader', 'vae_name').includes(QWEN21_VAE);
 }

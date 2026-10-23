@@ -27,7 +27,7 @@ const combo = (options) => [options, {}];
 const nodes = () => ({
   LoadImage: { input: { required: { image: combo([]) } } },
   UNETLoader: { input: { required: { unet_name: combo(['qwen_image_edit_2511_bf16.safetensors', 'qwen_image_edit_2511_fp8mixed.safetensors']), weight_dtype: combo(['default', 'fp8_e4m3fn']) } } },
-  UnetLoaderGGUF: { input: { required: { unet_name: combo(['Qwen-Image-2.1-Turbo-BF16.gguf']) } } },
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: combo(['Qwen-Image-2.1-Turbo-BF16.gguf']) } } },
   CLIPLoader: { input: { required: { clip_name: combo(['qwen3vl_8b_bf16_heretic.safetensors', 'qwen_2.5_vl_7b_fp8_scaled.safetensors']), type: combo(['qwen_image']) }, optional: { device: combo(['default']) } } },
   VAELoader: { input: { required: { vae_name: combo(['qwen_image_2.1_vae_bf16.safetensors', 'qwen_image_vae.safetensors']) } } },
   VAEEncode: { input: { required: { pixels: ['IMAGE', {}], vae: ['VAE', {}] } } },
@@ -65,10 +65,10 @@ section('runtime resolution: 2.1 by name, an error on a node that cannot build i
   delete no21.TextEncodeQwenImage21;
   await checkThrows('a node without the 2.1 encoder is an error, never a 2511 run', () => s.resolveObjectTransferRuntime(no21), /缺少所需的模型或节点.*万物迁移/);
   const noWeights = nodes();
-  noWeights.UnetLoaderGGUF.input.required.unet_name = combo(['other.gguf']);
+  noWeights.NovaFlowGGUFBF16Loader.input.required.unet_name = combo(['other.gguf']);
   await checkThrows('and so is a node with the loader but not the weights', () => s.resolveObjectTransferRuntime(noWeights), /缺少所需的模型或节点/);
   const only2511 = nodes();
-  delete only2511.UnetLoaderGGUF;
+  delete only2511.NovaFlowGGUFBF16Loader;
   await checkThrows('a node that has only the 2511 files cannot run it either', () => s.resolveObjectTransferRuntime(only2511), /缺少所需的模型或节点/);
   await checkThrows('the effect tools name themselves in the same error', () => s.resolveQwen21EditRuntime(no21, '特效提取'), /无法执行特效提取/);
 }
@@ -82,7 +82,7 @@ section('the 万物迁移 graph: two references at their own size, the encoder l
     ['restyle', s.buildObjectTransferRestyleWorkflow(info, uploads, 'NovaFlow_object_transfer_x_restyle', resolved, ''), 8, 1]
   ]) {
     checkEqual(label + ': no 2511 pieces', PIECES_2511.filter((type) => byType(graph, type).length), []);
-    checkEqual(label + ': the GGUF loader carries the 2.1 file', byType(graph, 'UnetLoaderGGUF').map(([, n]) => n.inputs.unet_name), ['Qwen-Image-2.1-Turbo-BF16.gguf']);
+    checkEqual(label + ': the GGUF loader carries the 2.1 file', byType(graph, 'NovaFlowGGUFBF16Loader').map(([, n]) => n.inputs.unet_name), ['Qwen-Image-2.1-Turbo-BF16.gguf']);
     checkEqual(label + ': the encoder is Qwen3-VL as qwen_image', byType(graph, 'CLIPLoader').map(([, n]) => [n.inputs.clip_name, n.inputs.type]), [['qwen3vl_8b_bf16_heretic.safetensors', 'qwen_image']]);
     const [encodeId, encode] = byType(graph, 'TextEncodeQwenImage21')[0];
     checkEqual(label + ': the plate is image_1 and the untouched scene image_2, each at its own size', [encode.inputs['images.image_1'], encode.inputs['images.image_2'], encode.inputs.resolution], [['1', 0], ['2', 0], 0]);
@@ -108,7 +108,7 @@ section('the 万物迁移 graph: two references at their own size, the encoder l
   const plain = s.buildObjectTransferQwenWorkflow(noCache, uploads, 'x', resolved);
   checkEqual('without the cache node the sampler takes the loader directly', byType(plain, 'KSampler')[0][1].inputs.model, ['4', 0]);
   const noGguf = nodes();
-  delete noGguf.UnetLoaderGGUF;
+  delete noGguf.NovaFlowGGUFBF16Loader;
   await checkThrows('replayed on a node without 2.1 (the page sent a marker), the graph is refused', () => s.buildObjectTransferQwenWorkflow(noGguf, uploads, 'x', 'marker'), /缺少所需的模型或节点/);
 }
 
@@ -126,7 +126,7 @@ section('特效提取 / 去特效 on 2.1: the extract redraws the plate onto a b
     for (const [how, given] of [['page-resolved', resolved], ['node-resolved (Web marker)', 'marker']]) {
       const graph = build(info, 'plate_input.png', 'NovaFlow_effect_x', given);
       checkEqual(`${label} ${how}: no 2511 pieces`, PIECES_2511.filter((type) => byType(graph, type).length), []);
-      checkEqual(`${label} ${how}: the 2.1 files`, [byType(graph, 'UnetLoaderGGUF')[0][1].inputs.unet_name, byType(graph, 'CLIPLoader')[0][1].inputs.clip_name, byType(graph, 'VAELoader')[0][1].inputs.vae_name],
+      checkEqual(`${label} ${how}: the 2.1 files`, [byType(graph, 'NovaFlowGGUFBF16Loader')[0][1].inputs.unet_name, byType(graph, 'CLIPLoader')[0][1].inputs.clip_name, byType(graph, 'VAELoader')[0][1].inputs.vae_name],
         ['Qwen-Image-2.1-Turbo-BF16.gguf', 'qwen3vl_8b_bf16_heretic.safetensors', 'qwen_image_2.1_vae_bf16.safetensors']);
       const [encodeId, encode] = byType(graph, 'TextEncodeQwenImage21')[0];
       if (label === 'extract') {
