@@ -1,9 +1,83 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ART_EDIT_MODEL,ART_EDIT_SYSTEM,isArtEditRequest,parseArtEdit,buildArtEditGraph,planArtEdit,artEditRendering} from '../../worker/src/art-edit-planner.mjs';
+import {ART_EDIT_MODEL,ART_STYLE_MODEL,ART_EDIT_SYSTEM,isArtEditRequest,parseArtEdit,buildArtEditGraph,planArtEdit,artEditRendering,buildArtStyleGraph,parseArtStyle,artStyleDirective} from '../../worker/src/art-edit-planner.mjs';
 function png(side){const b=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(b);b.writeUInt32BE(side,16);b.writeUInt32BE(side,20);return 'data:image/png;base64,'+b.toString('base64');}
 const request=()=>({surface:'art',purpose:'art-director',visualSchema:'nf.art.direction.v1',currentPrompt:'@参考图5用@参考图2画风',images:[{dataUrl:png(32)},{dataUrl:png(32)}],artContext:{editEnhancer:'qwen21-pe-i2i',width:832,height:1216,references:[{source:2,roles:['style']},{source:5,roles:['subject']}]}});
 const rewrite=()=>({rewritten_prompt:'将<image2>整体按<image1>的画法、配色与光感重绘，保留主要内容，造型允许重构。',wh_ratio:'13:19',ratio_follow:''});
+const styleProfile=()=>({medium:'风格化CG',facialStyle:'概括鼻口与眼睑体积',markMaking:'成束发丝与细亮边缘',shading:'软体积过渡结合硬投影',surface:'细微表面细节与局部锐利反光',litPlanes:'局部暖亮受光',shadowPlanes:'较冷的紫灰暗面',edgeLight:'局部暖亮边光',palette:'冷暗面与暖亮面分离'});
+
+test('independent style observation sees one complete reference and never the content photo',()=>{
+  const graph=buildArtStyleGraph('whole-style.jpg');
+  assert.deepEqual(graph['10'].inputs,{image:'whole-style.jpg'});
+  assert.deepEqual(graph['3'].inputs.image,['10',0]);
+  assert.equal(Object.values(graph).filter(n=>n.class_type==='LoadImage').length,1);
+  assert.ok(Object.values(graph).every(n=>!['ImageBatch','ImageCrop'].includes(n.class_type)));
+  assert.match(graph['3'].inputs.prompt,/litPlanes.*shadowPlanes.*edgeLight/);
+  assert.match(graph['3'].inputs.prompt,/Warm hair\/highlights cannot establish warm skin shadows/);
+});
+
+test('style evidence requires separate actual surface and light fields without donor content',()=>{
+  assert.deepEqual(parseArtStyle(JSON.stringify(styleProfile())),styleProfile());
+  assert.throws(()=>parseArtStyle(JSON.stringify({...styleProfile(),shadowPlanes:undefined})),/完整/);
+  assert.throws(()=>parseArtStyle(JSON.stringify({...styleProfile(),palette:'酒瓶深绿色，连衣裙米白'})),/供体内容/);
+  const ink={...styleProfile(),medium:'水墨',facialStyle:'',surface:'墨色晕散与干湿笔触',shadowPlanes:'墨色浓淡组织',litPlanes:'留白',palette:'低饱和墨色'};
+  const p=parseArtStyle(JSON.stringify(ink));
+  assert.equal(p.medium,'水墨');assert.equal(p.facialStyle,'');
+  assert.doesNotMatch(artStyleDirective(p,{references:[{source:5,roles:['subject']},{source:2,roles:['style']}],userRequest:'图5用图2画风'}),/风格化CG|紫灰/);
+});
+
+test('typed style directive keeps user reference mapping and distinct light layers',()=>{
+  const prompt=artStyleDirective(styleProfile(),{references:[{source:2,roles:['style']},{source:5,roles:['subject']}],userRequest:'保留图5脸型，图5用图2画风'});
+  assert.match(prompt,/将<image2>整幅按<image1>/);
+  assert.match(prompt,/暗面：较冷的紫灰暗面/);
+  assert.match(prompt,/受光面：局部暖亮受光/);
+  assert.match(prompt,/用户明确的保留与修改要求优先：保留<image2>脸型/);
+  assert.doesNotMatch(prompt,/整体暖棕|全部内容不变/);
+  assert.doesNotMatch(artStyleDirective({...styleProfile(),medium:'赛璐璐'}, {references:[{source:1,roles:['subject']},{source:2,roles:['style']}]}),/赛璐璐/);
+});
+
+test('actual scene captions cannot masquerade as brushwork or palette in the style protocol',()=>{
+  assert.throws(()=>parseArtStyle(JSON.stringify({...styleProfile(),markMaking:'树木和屋顶的笔触概括，墨色晕染与留白'})),/供体内容/);
+  assert.throws(()=>parseArtStyle(JSON.stringify({...styleProfile(),palette:'柔和色彩营造宁静乡村氛围'})),/供体内容/);
+});
+
+test('a whole-image style with unreadable faces does not invent facial or skin requirements',()=>{
+  const p={...styleProfile(),facialStyle:'',markMaking:'浓淡墨色、断续干笔和留白',surface:'可见纸纤维与颜料边缘',litPlanes:'',shadowPlanes:'',edgeLight:''};
+  const parsed=parseArtStyle(JSON.stringify(p));
+  const directive=artStyleDirective(parsed,{references:[{source:1,roles:['subject']},{source:2,roles:['style']}],userRequest:'图1用图2画风'});
+  assert.match(directive,/浓淡墨色、断续干笔和留白/);
+  assert.doesNotMatch(directive,/五官造型方法：|受光面：|暗面：|边缘光：/);
+  const graph=buildArtStyleGraph('whole.jpg','',ART_STYLE_MODEL);
+  assert.match(graph['3'].inputs.system_prompt,/DOMINANT.*WHOLE/);
+  assert.match(graph['3'].inputs.prompt,/不要强行分析皮肤/);
+});
+
+test('independent adapter uploads only style pixels, selects installed observer and preserves actual image roles',async()=>{
+  const p=request();p.artContext.styleObservation='reference-only-v1';p.images[1].dataUrl=png(64);
+  const graphs=[],uploads=[];
+  const fake=async(url,init={})=>{
+    let data;
+    if(url.endsWith('/object_info/CLIPLoader'))data={CLIPLoader:{input:{required:{clip_name:[[ART_STYLE_MODEL,ART_EDIT_MODEL]]}}}};
+    else if(url.endsWith('/queue'))data={queue_running:[],queue_pending:[]};
+    else if(url.endsWith('/upload/image')){uploads.push(init.body);data={name:'style-only.png'};}
+    else if(url.endsWith('/prompt')){graphs.push(JSON.parse(init.body).prompt);data={prompt_id:'style-proof'};}
+    else if(url.endsWith('/history/style-proof'))data={'style-proof':{status:{status_str:'success'},outputs:{'4':{text:[JSON.stringify(styleProfile())]}}}};
+    else assert.fail(url);
+    return new Response(JSON.stringify(data));
+  };
+  const r=await planArtEdit({baseUrl:'http://local',payload:p,fetchImpl:fake});
+  assert.equal(uploads.length,1);assert.equal(graphs[0]['1'].inputs.clip_name,ART_STYLE_MODEL);
+  assert.equal(graphs[0]['3'].inputs.thinking,false);assert.equal(graphs[0]['3'].inputs.use_default_template,true);
+  assert.equal(r.artDirection.editEnhancer.kind,'qwen21-style-observation');
+  assert.equal(r.artDirection.editEnhancer.model,ART_STYLE_MODEL);
+  assert.match(r.artDirection.editEnhancer.prompt,/将<image2>整幅按<image1>/);
+  assert.deepEqual(r.artDirection.references.map(r=>r.source),[2,5]);
+  const swapped={...p,images:[{dataUrl:png(96)},{dataUrl:png(32)}],currentPrompt:'图7用图9画风',artContext:{...p.artContext,references:[{source:7,roles:['subject']},{source:9,roles:['style']}]}};
+  const cached=await planArtEdit({baseUrl:'http://local',payload:swapped,fetchImpl:fake});
+  assert.equal(graphs.length,1,'a different subject reuses only the identical style observation');
+  assert.match(cached.artDirection.editEnhancer.prompt,/将<image1>整幅按<image2>/);
+  assert.deepEqual(cached.artDirection.editEnhancer.sourceOrder,[7,9]);
+});
 
 test('PE is scoped to the opted-in local drawing content/style pair',()=>{
   const p=request();assert.equal(isArtEditRequest(p),true);

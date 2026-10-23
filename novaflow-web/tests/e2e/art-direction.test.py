@@ -33,6 +33,13 @@ class DrawingDirection(unittest.TestCase):
         self.assertEqual(len(model.calls), 2)
         self.assertIn('preserve actual lighting', model.calls[1][0])
 
+    def test_donor_isolation_cannot_exclude_the_requested_medium_or_technique(self):
+        for technique in ['水墨晕染', '油画厚涂', '纸纹质感', '赛璐璐平涂', 'watercolor', 'CG rendering']:
+            with self.subTest(technique=technique):
+                model = Assistant([{'exclusions': ['茅草屋', technique]}, {'exclusions': ['茅草屋', '古装女子']}])
+                self.assertEqual(direction.donor_exclusions(model, 'beach-photo', 'style', '图1用图2画风'), ['茅草屋', '古装女子'])
+                self.assertEqual(len(model.calls), 2)
+
     def test_pe_donor_isolation_never_rewrites_style_and_obeys_actual_role_order(self):
         model = Assistant([{'exclusions': ['户外木椅', '酒瓶', '花纹吊带裙']}])
         payload = {'currentPrompt': '图2用图5画风', 'artContext': {'donorIsolationOnly': True, 'references': [{'source': 5, 'roles': ['style']}, {'source': 2, 'roles': ['subject']}]}}
@@ -50,6 +57,16 @@ class DrawingDirection(unittest.TestCase):
         self.assertEqual(result['artDirection']['references'], [])
         self.assertIn('ZERO reference images', model.calls[0][0])
         self.assertIn('冰系女剑客', model.calls[0][0])
+
+    def test_independent_style_path_observes_expression_only_from_original_subject(self):
+        observed = {'faces': 1, 'eyes': 'one-closed', 'mouth': 'closed-smile', 'scene': '机场', 'clothing': '条纹上衣', 'objects': '饮料杯', 'action': '眨眼持杯'}
+        model = Assistant([{'exclusions': ['酒瓶']}, observed])
+        payload = {'currentPrompt': '图2用图5画风', 'artContext': {'donorIsolationOnly': True, 'styleObservation': 'reference-only-v1', 'references': [{'source': 5, 'roles': ['style']}, {'source': 2, 'roles': ['subject']}]}}
+        result = direction.plan(model, ['style', 'source'], payload)
+        self.assertEqual(result['sourceExpression']['eyes'], 'one-closed')
+        self.assertEqual(result['sourceContent']['objects'], '饮料杯')
+        self.assertEqual(model.calls[1][1]['images'], ['source'])
+        self.assertEqual(result['donorExclusions'], ['酒瓶'])
 
     def test_active_original_numbers_are_not_compacted(self):
         refs = [{'source': n, 'uses': [{'role': 'subject', 'detail': '对应人物', 'samples': []}], 'omit': []} for n in [2, 5]]
@@ -189,6 +206,16 @@ class DrawingDirection(unittest.TestCase):
         self.assertEqual(len(model.calls), 1)
         self.assertEqual(model.calls[0][1]['images'], ['source', 'result'])
         self.assertIn('室外花园', result['artReview']['issues'][0])
+
+    def test_lost_source_wink_is_checked_against_the_photo_not_the_style_face(self):
+        context = {'references': [{'source': 0}, {'source': 1}, {'source': 2}], 'plan': {'references': [
+            {'source': 1, 'uses': [{'role': 'subject', 'retainedExpression': {'eyes': 'one-closed', 'mouth': 'closed-smile'}}]},
+            {'source': 2, 'uses': [{'role': 'style'}]}]}}
+        model = Assistant([{'checks': [{'field': 'expression', 'retained': False, 'evidence': '原图眨眼，成图双眼睁开'}, {'field': 'addedContent', 'retained': True, 'evidence': '未见无关新增'}]}])
+        result = direction.review(model, ['result', 'source', 'style'], {'artContext': context})
+        self.assertFalse(result['artReview']['pass'])
+        self.assertIn('眨眼', result['artReview']['issues'][0])
+        self.assertEqual(model.calls[0][1]['images'], ['source', 'result'])
 
     def test_reconstructed_content_still_requires_separate_style_review(self):
         context = {'references': [{'source': 0}, {'source': 1}, {'source': 2}], 'plan': {'references': [

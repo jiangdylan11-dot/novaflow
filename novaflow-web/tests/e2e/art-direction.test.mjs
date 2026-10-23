@@ -161,6 +161,9 @@ test('local transport preserves schema, numbers, all images, task and negative r
   assert.throws(()=>normalizeReverseRequest({...payload,artContext:{references:[{source:1},{source:1}]}}),/编号/);
   const excluded=normalizeReverseRequest({...payload,artContext:{...payload.artContext,references:[{source:1,role:'auto',roles:['style'],excludedRoles:['subject','background']},{source:3,role:'subject'}]}}).request;
   assert.deepEqual(excluded.artContext.references[0].excludedRoles,['subject','background']);
+  const independent=normalizeReverseRequest({...payload,artContext:{...payload.artContext,editEnhancer:'qwen21-pe-i2i',styleObservation:'reference-only-v1'}}).request;
+  assert.equal(independent.artContext.styleObservation,'reference-only-v1');
+  assert.equal(normalizeReverseRequest({...payload,artContext:{...payload.artContext,styleObservation:'arbitrary'}}).request.artContext.styleObservation,undefined);
 });
 test('Grok uses the same structured contract for pictures and text-only requests',()=>{
   for(const count of [0,4]){
@@ -375,7 +378,7 @@ test('real generation entry limits correction to one and stages inputs for each 
   const d=drawingRun(plan([{source:1,uses:[use('subject')],omit:[]}]),[failed,failed]);
   await d.run();assert.equal(d.builds.length,2);assert.equal(d.uploads.length,2);assert.equal(d.state.results.length,1);
   assert.match(d.builds[1][4],/本次纠正：双腿改为站立/);assert.equal(d.state.results[0].artDirection.corrections,1);
-  assert.equal(d.state.results[0].artDirection.review.pass,false);assert.match(d.statuses.at(-1).s,/检查有待确认/);
+  assert.equal(d.state.results[0].artDirection.review.pass,false);assert.match(d.statuses.at(-1).s,/自动检查未通过或未完成/);
 });
 test('a failed review cannot silently submit a second paid cloud generation',async()=>{
   const failed={schema:'nf.art.review.v1',pass:false,issues:['画风不足'],repair:'改为水彩笔触'};
@@ -423,18 +426,32 @@ test('content review receives only retained source categories after user and ref
   assert.equal(retained.objects,'饮料杯');assert.equal(retained.action,'持杯');
 });
 
-test('drawing PE uses complete square previews and remaps its slots after subject reordering',async()=>{
+test('drawing style observation keeps complete native-aspect previews and remaps slots after subject reordering',async()=>{
   const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
   p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image2>按<image1>画风完整重绘，造型与配色按目标参考重构。',renderingClass:'anime',sourceOrder:[2,5],promptIds:['proof']};
   const e=env(p),state={prompt:'@参考图5用@参考图2画风',provider:'local'};
   const r=await e.api.prepare(ctx(state,[null,ref('style'),null,null,ref('photo')]));
   assert.equal(e.calls[0].artContext.editEnhancer,'qwen21-pe-i2i',JSON.stringify(e.calls[0].artContext.references));
-  for(const im of e.calls[0].images){const [w,h,ops]=JSON.parse(Buffer.from(im.dataUrl.split(',')[1],'base64'));assert.equal(w,1024);assert.equal(h,1024);assert.deepEqual(ops[0],[112,12,800,1000]);}
+  assert.equal(e.calls[0].artContext.styleObservation,'reference-only-v1');
+  for(const im of e.calls[0].images){const [w,h,ops]=JSON.parse(Buffer.from(im.dataUrl.split(',')[1],'base64'));assert.equal(w,800);assert.equal(h,1000);assert.deepEqual(ops[0],[0,0,800,1000]);}
   assert.match(r.promptSnapshot.prompt,/将<image1>按<image2>画风完整重绘/);
   assert.doesNotMatch(r.promptSnapshot.prompt,/<image0>|<image3>/);assert.equal(state.prompt,'@参考图5用@参考图2画风');
   assert.equal(r.referencePolicy.stylePriority,true);assert.equal(r.plan.editEnhancer.promptIds[0],'proof');
   assert.match(r.promptSnapshot.negativePrompt,/photorealistic facial proportions/);
   assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+});
+
+test('independent style fields preserve source expression without forcing source face geometry',async()=>{
+  const p=plan([{source:1,uses:[use('subject',{sourceExpression:{faces:1,eyes:'one-closed',mouth:'closed-smile'},sourceContent:{action:'眨眼持杯'}})],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-style-observation',version:'drawing-style-observation-v1',model:'qwen3.5_9b_bf16.safetensors',prompt:'将<image1>按完整<image2>重新绘制。暗面采用实际冷色层次。',sourceOrder:[1,2]};
+  const e=env(request=>request.purpose==='art-director-review'?{schema:'nf.art.review.v1',pass:true,issues:[],repair:''}:p),r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('style')]));
+  assert.match(r.promptSnapshot.prompt,/保持<image1>原有的一只眼闭合眨眼、另一只眼睁开/);
+  assert.match(r.promptSnapshot.prompt,/五官比例仍按目标画风重绘/);
+  assert.doesNotMatch(r.promptSnapshot.negativePrompt,/photographic skin texture|realistic nose/);
+  await e.api.review(r,ref('output').dataUrl);
+  assert.equal(e.calls[1].artContext.plan.references.find(ref=>ref.source===1).uses[0].retainedExpression.eyes,'one-closed');
+  const changed=env(p),c=await changed.api.prepare(ctx({prompt:'图1用图2画风，改成睁眼'},[ref('photo'),ref('style')]));
+  assert.doesNotMatch(c.promptSnapshot.prompt,/保持<image1>原有的一只眼闭合/);
 });
 test('invalid PE slots cannot bypass reference-role validation',async()=>{
   const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
@@ -473,6 +490,14 @@ test('PE donor-content exclusions execute even without legacy observer medium fi
   assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
   assert.doesNotMatch(r.promptSnapshot.negativePrompt,/photograph|photorealistic|skin texture/);
   assert.equal(r.references.find(r=>r.role==='style').renderingProfile,undefined);
+});
+
+test('an upstream isolation mistake cannot compile target media or techniques into negative guidance',async()=>{
+  for(const technique of ['水墨晕染','油画厚涂','纸纹质感','赛璐璐平涂','watercolor','CG rendering']){
+    const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{donorExclusions:['茅草屋',technique]})],omit:[]}]);
+    const e=env(p);
+    await assert.rejects(e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},[ref('photo'),ref('style')])),/排除项超出内容职责/);
+  }
 });
 
 test('explicit semi-real 3D material intent wins over an erroneous flat-anime observation without changing the original request',async()=>{

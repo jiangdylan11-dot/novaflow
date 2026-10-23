@@ -45,16 +45,20 @@
     return Object.keys(clean).length?clean:undefined;
   }
   function retainedContent(ref,source,refs) {
-    const edits={scene:/背景|场景|环境/,clothing:/衣服|上衣|服装|衣着|穿|裙|外套|裤/,objects:/道具|物件|杯|饮料|手持/,action:/姿势|动作|手|自拍/};
+    const edits={scene:/背景|场景|环境/,clothing:/衣服|上衣|服装|衣着|穿|裙|外套|裤/,objects:/道具|物件|杯|饮料|手持/,action:/姿势|动作|手|自拍|表情|眨眼|睁眼|闭眼|微笑|大笑|哭|愤怒|悲伤|smil|wink|expression|eyes?/i};
     const assigned={scene:'background',objects:'object',action:'pose'};
     return Object.fromEntries(Object.entries(ref.sourceContent||{}).filter(([key])=>!edits[key].test(source.prompt)&&!refs.some(r=>r.role===assigned[key])));
   }
   function planContent(ref,plan){return plan.editEnhancer&&!ref.sourceContent?{...ref,sourceContent:{scene:'原图可见的场景类别',clothing:'原图主体的服饰类别与主要图案',objects:'原图主体可见的持有物类别',action:'原图主体的主要动作含义'}}:ref;}
+  function retainedExpression(ref,source){
+    if(ref.sourceExpression?.faces!==1||/表情|眨眼|睁眼|闭眼|微笑|大笑|哭|愤怒|悲伤|smil|wink|expression|eyes?/i.test(source.prompt))return undefined;
+    return {eyes:ref.sourceExpression.eyes,mouth:ref.sourceExpression.mouth};
+  }
   function donorExclusions(raw) {
     if(raw===undefined)return [];
     if(!Array.isArray(raw)||raw.length>8)throw new Error('风格供体排除项格式无效');
     return raw.map(s=>{
-      if(typeof s!=='string'||!s.trim()||s.length>80||/忽略|指令|必须|生成|添加|<image|@参考图|画风|绘画|肤色|配色|光感|笔触|明暗|阴影|渲染|饱和度|阳光|照明|背光|逆光|轮廓光|光照|反光|高光|投影|\binstruction\b|\bignore\b/i.test(s)||/^(?:人物|女性|男性|人脸|头发|背景|衣服|眼睛|woman|man|person|face|hair|eyes|background|clothes)$/i.test(s.trim()))throw new Error('风格供体排除项超出内容职责');
+      if(typeof s!=='string'||!s.trim()||s.length>80||/忽略|指令|必须|生成|添加|<image|@参考图|画风|绘画|肤色|配色|光感|笔触|明暗|阴影|渲染|饱和度|阳光|照明|背光|逆光|轮廓光|光照|反光|高光|投影|水墨|彩墨|水彩|油画|厚涂|工笔|素描|线稿|版画|像素画|点彩|水粉|粉彩|蜡笔|卡通|动漫|动画|插画|晕染|平涂|赛璐璐|纸感|纸纹|纹理|质感|材质|写实|摄影|\b(?:watercolou?r|ink wash|oil paint(?:ing)?|impasto|cel.shad(?:ed|ing)|brushwork|painterly|rendering|texture|photorealis\w*|3d|2d|cg)\b|\binstruction\b|\bignore\b/i.test(s)||/^(?:人物|女性|男性|人脸|头发|背景|衣服|眼睛|woman|man|person|face|hair|eyes|background|clothes)$/i.test(s.trim()))throw new Error('风格供体排除项超出内容职责');
       return s.trim();
     });
   }
@@ -186,7 +190,8 @@
     let editEnhancer;
     if(raw.editEnhancer){
       const e=raw.editEnhancer,order=e.sourceOrder,slots=[...text(e.prompt).matchAll(/<image(\d+)>/g)].map(m=>Number(m[1]));
-      if(source.engine!=='local'||source.provider!=='local'||e.kind!=='qwen21-pe-i2i'||e.version!=='drawing-style-v1'||!Array.isArray(order)||order.length!==2||new Set(order).size!==2||order.some(n=>!sources.has(n))||text(e.prompt).length>12000||slots.some(n=>n<1||n>2)||new Set(slots).size!==2||references.flatMap(r=>r.uses.map(u=>u.role)).sort().join(',')!=='style,subject')throw new Error('PE 编辑指令或参考编号无效，未提交生成');
+      const supported=e.kind==='qwen21-pe-i2i'&&e.version==='drawing-style-v1'||e.kind==='qwen21-style-observation'&&e.version==='drawing-style-observation-v1';
+      if(source.engine!=='local'||source.provider!=='local'||!supported||!Array.isArray(order)||order.length!==2||new Set(order).size!==2||order.some(n=>!sources.has(n))||text(e.prompt).length>12000||slots.some(n=>n<1||n>2)||new Set(slots).size!==2||references.flatMap(r=>r.uses.map(u=>u.role)).sort().join(',')!=='style,subject')throw new Error('PE 编辑指令或参考编号无效，未提交生成');
       editEnhancer={kind:e.kind,model:text(e.model),version:e.version,prompt:text(e.prompt),renderingClass:['anime','animated-3d'].includes(e.renderingClass)?e.renderingClass:'other',sourceOrder:order.slice(),promptIds:Array.isArray(e.promptIds)?e.promptIds.map(text).slice(0,2):[]};
     }
     return { schema: SCHEMA, prompt: source.references.length ? source.prompt || TASKS[source.task] || '' : text(raw.prompt).slice(0, 12000), summary: source.references.length ? references.map(r=>`图${r.source}：${r.uses.map(u=>ROLES[u.role]).join('、')}`).join('；') : text(raw.summary).slice(0, 2000), references,
@@ -205,11 +210,11 @@
     const usePe=source.engine==='local'&&source.provider==='local'&&!source.nsfw&&source.references.length===2&&source.references.every(r=>r.roles.length===1)&&source.references.map(r=>r.roles[0]).sort().join(',')==='style,subject';
     for (const r of source.references) {
       if (signal.aborted) throw abortError();
-      analysisImages.push({ dataUrl: await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)), usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
+      analysisImages.push({ dataUrl: await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),r.roles.includes('style')?1536:1024), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
     const payload = { surface: 'art', purpose: 'art-director', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
       negativePrompt: source.negativePrompt, nsfw: source.nsfw, supportsNegativePrompt: false,
-      artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
+      artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i',styleObservation:'reference-only-v1'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
       images: analysisImages };
     const fn = source.engine === 'grok' ? api.smartAiImageReverse : api.promptAssistantReverseImagePrompt;
     if (typeof fn !== 'function') throw new Error('所选绘图分析线路未就绪');
@@ -457,7 +462,7 @@
       // A lit skin color is not a material's diffuse color. Do not flatten a
       // volumetric target's colored light and shadow to one measured midtone.
       const colorEvidence=plan.editEnhancer.renderingClass==='anime'&&!volumeRequested&&!separateColor&&!separateLighting&&!preserveSkin?refs.flatMap((r,i)=>r.role==='style'&&r.skinProfile?[`${imageLabel(i)}完整风格的皮肤实测为${r.skinProfile.description}；只校验皮肤中间调，不统一铺色，受光高光与阴影的冷暖和深浅仍按完整参考，不继承照片的暖黄色偏色。`]:[]).join('\n'):'';
-      prompt=[edited,styleBoundary,valueEvidence,colorEvidence,brief,source.negativePrompt&&`必须避免：${source.negativePrompt}`,'只输出一张完整成图，不增加需求以外的人物、文字或采样板。'].filter(Boolean).join('\n\n');
+      prompt=[edited,styleBoundary,valueEvidence,colorEvidence,plan.editEnhancer.kind==='qwen21-style-observation'?expressions:'',brief,source.negativePrompt&&`必须避免：${source.negativePrompt}`,'只输出一张完整成图，不增加需求以外的人物、文字或采样板。'].filter(Boolean).join('\n\n');
     }
     // PE has its own editing contract rather than seven observer fields. Keep
     // the same rendering-only guidance when PE actually names an anime target.
@@ -534,7 +539,7 @@
       const actualUses=new Map();
       for(const ref of prepared.references){
         if(!actualUses.has(ref.sourceNumber))actualUses.set(ref.sourceNumber,[]);
-        actualUses.get(ref.sourceNumber).push({role:ref.role,target:ref.target,...(ref.renderingProfile?{renderingProfile:ref.renderingProfile}:{}),...(ref.donorExclusions?.length?{forbiddenDonorContent:ref.donorExclusions}:{}),...(ref.role==='subject'?{retainedContent:retainedContent(planContent(ref,prepared.plan),source,prepared.references)}:{})});
+        actualUses.get(ref.sourceNumber).push({role:ref.role,target:ref.target,...(ref.renderingProfile?{renderingProfile:ref.renderingProfile}:{}),...(ref.donorExclusions?.length?{forbiddenDonorContent:ref.donorExclusions}:{}),...(ref.role==='subject'?{retainedContent:retainedContent(planContent(ref,prepared.plan),source,prepared.references),retainedExpression:retainedExpression(ref,source)}:{})});
       }
       const contract={styleBoundary:'主体提供辨识特征与主要内容：主要动作、服饰类别、持有物与场景类型仍可辨认。造型比例、轮廓、衣褶、背景安排和具体细节允许整体重构，成图质量与协调氛围优先，无需逐处对应原照片。五官构建、线条、上色、质感、整体配色、肤色色层和照明都以风格参考为准。必须比较目标参考的色相、饱和度与冷暖层次；原照片的暖棕色不能覆盖目标配色。不能替换成供体人物或供体服饰、场景物件；精灵耳、叶饰、露肤程度不是画风，其缺失绝不能判错或要求补入。用户明确保留要求或独立参考职责优先',task:source.task,rendering:TASK_BRIEFS[source.task]||TASK_BRIEFS.auto,references:[...actualUses].map(([source,uses])=>({source,uses}))};
       const payload={surface:'art',purpose:'art-director-review',visualSchema:'nf.art.review.v1',currentPrompt:source.prompt,nsfw:source.nsfw,
@@ -583,7 +588,7 @@
       const button=create('button',{type:'button',className:'nf-art-direction-analysis-button',text:'查看分析','aria-expanded':'false',...(nativePopover?{popovertarget:panel.id}:{onclick:()=>{panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden));}})});
       panel.addEventListener('toggle',event=>button.setAttribute('aria-expanded',String(event.newState==='open')));
       panel.appendChild(create('p',{text:data.plan.summary||'已按参考用途生成画面要求'}));
-      if(data.plan.editEnhancer)panel.appendChild(create('p',{text:'本地 PE-I2I · 绘图专用编辑边界；原始需求保留，无需再次确认提示词'}));
+      if(data.plan.editEnhancer)panel.appendChild(create('p',{text:data.plan.editEnhancer.kind==='qwen21-style-observation'?'本地独立风格观察 · 分别采用材质、受光与暗面；原始需求保留，无需再次确认提示词':'本地 PE-I2I · 绘图专用编辑边界；原始需求保留，无需再次确认提示词'}));
       if(data.review)panel.appendChild(create('p',{text:data.review.pass===true?'自动检查：未发现明显偏差':`成图检查：${data.review.issues.join('；')}`}));
       if(data.renderingPolicy)panel.appendChild(create('p',{text:`已根据目标画风生成画法排除项，自动预设 CFG ${data.renderingPolicy.cfg}；手动采样设置优先。原需求保持，双向采样会增加生成时间。`}));
       for(const ref of data.references){const item=create('div',{className:'nf-art-direction-preview'});item.appendChild(create('img',{src:ref.dataUrl,alt:`图${ref.sourceNumber}实际采用的${ROLES[ref.role]}`}));item.appendChild(create('span',{text:`图${ref.sourceNumber} · ${ROLES[ref.role]}${ref.target?` → ${ref.target}`:''}：${ref.detail}`}));panel.appendChild(item);}

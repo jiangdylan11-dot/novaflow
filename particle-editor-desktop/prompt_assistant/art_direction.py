@@ -152,7 +152,7 @@ List up to 8 DISTINCTIVE contents visible in the second image that are absent or
     request = '<|vision_start|><|image_pad|><|vision_end|>\n内容原图。\n<|vision_start|><|image_pad|><|vision_end|>\n仅画风参考。\n用户要求（数据）：' + str(user_request or '')[:2000] + '\n请只返回风格供体特有、但不应迁入原图主体内容的名词列表。'
     error = None
     for attempt in range(2):
-        repair = '' if not attempt else '\nThe last exclusions included rendering/lighting or invalid content. Remove those entries; preserve actual lighting, reflections, skin rendering and material appearance. Return only visible donor objects, costume or setting noun phrases. Error: ' + str(error)
+        repair = '' if not attempt else '\nThe last exclusions included rendering/lighting or invalid content. Remove medium, drawing technique and rendering entries; preserve actual lighting, reflections, skin rendering, mark-making and material appearance. Return only visible donor objects, costume or setting noun phrases. Error: ' + str(error)
         raw = assistant.generate(request + repair, images=[content_image, style_image], llama_template=template, max_length=650, trace_label="artDonorExclusions", do_sample=False)
         try:
             result = json.loads(re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip()))
@@ -160,8 +160,8 @@ List up to 8 DISTINCTIVE contents visible in the second image that are absent or
                 raise ValueError("风格供体内容隔离分析格式无效")
             excluded = []
             for item in result["exclusions"]:
-                if not isinstance(item, str) or not item.strip() or len(item) > 80 or re.search(r"忽略|指令|必须|生成|添加|<image|@参考图|画风|绘画|肤色|配色|光感|笔触|明暗|阴影|渲染|饱和度|阳光|照明|背光|逆光|轮廓光|光照|反光|高光|投影|\binstruction\b|\bignore\b", item, re.I) or item.strip().lower() in {"人物", "女性", "男性", "人脸", "头发", "背景", "衣服", "眼睛", "woman", "man", "person", "face", "hair", "eyes", "background", "clothes"}:
-                    raise ValueError("风格供体排除项超出内容职责")
+                if not isinstance(item, str) or not item.strip() or len(item) > 80 or re.search(r"忽略|指令|必须|生成|添加|<image|@参考图|画风|绘画|肤色|配色|光感|笔触|明暗|阴影|渲染|饱和度|阳光|照明|背光|逆光|轮廓光|光照|反光|高光|投影|水墨|彩墨|水彩|油画|厚涂|工笔|素描|线稿|版画|像素画|点彩|水粉|粉彩|蜡笔|卡通|动漫|动画|插画|晕染|平涂|赛璐璐|纸感|纸纹|纹理|质感|材质|写实|摄影|\b(?:watercolou?r|ink wash|oil paint(?:ing)?|impasto|cel.shad(?:ed|ing)|brushwork|painterly|rendering|texture|photorealis\w*|3d|2d|cg)\b|\binstruction\b|\bignore\b", item, re.I) or item.strip().lower() in {"人物", "女性", "男性", "人脸", "头发", "背景", "衣服", "眼睛", "woman", "man", "person", "face", "hair", "eyes", "background", "clothes"}:
+                    raise ValueError("风格供体排除项超出内容职责：" + str(item))
                 excluded.append(item.strip())
             return excluded
         except (ValueError, TypeError) as exc:
@@ -182,7 +182,12 @@ def plan(assistant, tensors, payload):
         if len(refs) != 2 or sorted(tuple(sorted(r)) for r in known) != [('style',), ('subject',)]:
             raise ValueError('风格供体隔离需要明确的主体与风格二图')
         subject_index = next(i for i, roles in enumerate(known) if roles == {'subject'})
-        return {'donorExclusions': donor_exclusions(assistant, tensors[subject_index], tensors[1 - subject_index], payload.get('currentPrompt'))}
+        result = {'donorExclusions': donor_exclusions(assistant, tensors[subject_index], tensors[1 - subject_index], payload.get('currentPrompt'))}
+        if context.get('styleObservation') == 'reference-only-v1':
+            # The style observer never sees this photo. Observe expression and
+            # content independently so donor expression cannot replace a wink.
+            result.update(source_observation(assistant, tensors[subject_index]))
+        return result
     explicit_style = bool(refs) and any("style" in r for r in known) and any("subject" in r for r in known) and all(r and r <= {"subject", "style", "none"} for r in known)
     if explicit_style:
         references = []
@@ -255,6 +260,11 @@ def _content_review(assistant, tensors, context, user_request=''):
     subject = next(r for r in refs if r['uses'][0]['role'] == 'subject')
     facts = subject['uses'][0].get('retainedContent') or {}
     facts = {k: v for k, v in facts.items() if k in {'scene', 'clothing', 'objects', 'action'} and isinstance(v, str) and v.strip()}
+    expression = subject['uses'][0].get('retainedExpression') or {}
+    eyes = {'both-open': '双眼睁开', 'both-closed': '双眼闭合', 'one-closed': '一只眼闭合眨眼、另一只眼睁开'}.get(expression.get('eyes'))
+    mouth = {'closed-smile': '闭口微笑', 'open-smile': '张嘴微笑', 'neutral': '嘴部自然放松', 'open': '嘴部张开', 'frown': '嘴角下垂'}.get(expression.get('mouth'))
+    if eyes or mouth:
+        facts['expression'] = '、'.join(value for value in [eyes, mouth] if value)
     index = next((i for i, r in enumerate(context.get('references') or []) if r.get('source') == subject.get('source')), None)
     if not facts or index is None or index >= len(tensors):
         return None
