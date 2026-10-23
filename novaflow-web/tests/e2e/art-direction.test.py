@@ -29,16 +29,15 @@ class Assistant:
 class DrawingDirection(unittest.TestCase):
     def test_donor_isolation_repairs_a_lighting_exclusion_once_without_excluding_the_target_look(self):
         model = Assistant([{'exclusions': ['酒瓶', '阳光斑驳']}, {'exclusions': ['酒瓶', '吊带裙']}])
-        self.assertEqual(direction.donor_exclusions(model, 'source', 'style', '图1用图2画风'), ['酒瓶', '吊带裙'])
-        self.assertEqual(len(model.calls), 2)
-        self.assertIn('preserve actual lighting', model.calls[1][0])
+        self.assertEqual(direction.donor_exclusions(model, 'source', 'style', '图1用图2画风'), ['酒瓶'])
+        self.assertEqual(len(model.calls), 1)
 
     def test_donor_isolation_cannot_exclude_the_requested_medium_or_technique(self):
-        for technique in ['水墨晕染', '油画厚涂', '纸纹质感', '赛璐璐平涂', 'watercolor', 'CG rendering']:
+        for technique in ['水墨晕染', '油画厚涂', '纸纹质感', '赛璐璐平涂', 'watercolor', 'CG rendering', '月夜雨景', '纯红色背景', '蓝紫色背景']:
             with self.subTest(technique=technique):
                 model = Assistant([{'exclusions': ['茅草屋', technique]}, {'exclusions': ['茅草屋', '古装女子']}])
-                self.assertEqual(direction.donor_exclusions(model, 'beach-photo', 'style', '图1用图2画风'), ['茅草屋', '古装女子'])
-                self.assertEqual(len(model.calls), 2)
+                self.assertEqual(direction.donor_exclusions(model, 'beach-photo', 'style', '图1用图2画风'), ['茅草屋'])
+                self.assertEqual(len(model.calls), 1)
 
     def test_pe_donor_isolation_never_rewrites_style_and_obeys_actual_role_order(self):
         model = Assistant([{'exclusions': ['户外木椅', '酒瓶', '花纹吊带裙']}])

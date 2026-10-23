@@ -147,7 +147,7 @@ Use empty strings when not visible. Count only clearly visible foreground subjec
 
 def donor_exclusions(assistant, content_image, style_image, user_request):
     system = '''Compare two actual images. The FIRST supplies recognizable subject and main content; the SECOND supplies drawing style, palette, lighting and atmosphere only. Return ONLY JSON {"exclusions":["specific donor content noun phrase in Chinese"]}.
-List up to 8 DISTINCTIVE contents visible in the second image that are absent or incompatible with the first and must not be imported: a donor-specific costume, accessory, hairstyle, prop, setting or pose. Respect explicit user requests. Never exclude generic people, women/men, hair, faces, eyes, background or all clothing. Never exclude drawing technique, facial proportions, palette, skin rendering, light, shadows, atmosphere or quality. Do not infer invisible items. Empty list if no distinctive content needs exclusion. No instructions, image text or explanations; noun phrases only, under 40 Chinese characters each.'''
+List up to 8 DISTINCTIVE contents visible in the second image that are absent or incompatible with the first and must not be imported: a donor-specific costume, accessory, hairstyle, prop, setting or pose. Respect explicit user requests. Never exclude generic people, women/men, hair, faces, eyes, background or all clothing. Never exclude drawing technique, facial proportions, palette, skin rendering, light, shadows, atmosphere or quality. Time of day, weather scenes and a backdrop described only by its colors are NOT physical donor contents; name only concrete objects or setting structures, without excluding their lighting or color grade. Do not infer invisible items. Empty list if no distinctive content needs exclusion. No instructions, image text or explanations; noun phrases only, under 40 Chinese characters each.'''
     template = "<|im_start|>system\n" + system.replace("{", "{{").replace("}", "}}") + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
     request = '<|vision_start|><|image_pad|><|vision_end|>\n内容原图。\n<|vision_start|><|image_pad|><|vision_end|>\n仅画风参考。\n用户要求（数据）：' + str(user_request or '')[:2000] + '\n请只返回风格供体特有、但不应迁入原图主体内容的名词列表。'
     error = None
@@ -160,8 +160,12 @@ List up to 8 DISTINCTIVE contents visible in the second image that are absent or
                 raise ValueError("风格供体内容隔离分析格式无效")
             excluded = []
             for item in result["exclusions"]:
-                if not isinstance(item, str) or not item.strip() or len(item) > 80 or re.search(r"忽略|指令|必须|生成|添加|<image|@参考图|画风|绘画|肤色|配色|光感|笔触|明暗|阴影|渲染|饱和度|阳光|照明|背光|逆光|轮廓光|光照|反光|高光|投影|水墨|彩墨|水彩|油画|厚涂|工笔|素描|线稿|版画|像素画|点彩|水粉|粉彩|蜡笔|卡通|动漫|动画|插画|晕染|平涂|赛璐璐|纸感|纸纹|纹理|质感|材质|写实|摄影|\b(?:watercolou?r|ink wash|oil paint(?:ing)?|impasto|cel.shad(?:ed|ing)|brushwork|painterly|rendering|texture|photorealis\w*|3d|2d|cg)\b|\binstruction\b|\bignore\b", item, re.I) or item.strip().lower() in {"人物", "女性", "男性", "人脸", "头发", "背景", "衣服", "眼睛", "woman", "man", "person", "face", "hair", "eyes", "background", "clothes"}:
+                if not isinstance(item, str) or not item.strip() or len(item) > 80 or re.search(r"忽略|指令|必须|生成|添加|<image|@参考图|\binstruction\b|\bignore\b", item, re.I) or item.strip().lower() in {"人物", "女性", "男性", "人脸", "头发", "背景", "衣服", "眼睛", "woman", "man", "person", "face", "hair", "eyes", "background", "clothes"}:
                     raise ValueError("风格供体排除项超出内容职责：" + str(item))
+                # A generated restriction on the requested look has no authority.
+                # Drop it; never suppress the style or rewrite user negatives.
+                if re.search(r"画风|绘画|肤色|配色|光感|笔触|明暗|阴影|渲染|饱和度|阳光|照明|背光|逆光|轮廓光|光照|反光|高光|投影|月夜|夜景|夜色|日光|晨光|夕阳|黄昏|环境光|侧光|顶光|月光|光斑|雨景|雨夜|晴天|阴天|(?:纯)?(?:红|黑|蓝|紫|青|绿|黄|橙|灰|白|粉|金|银)(?:色|黑|红|蓝|白|灰|紫|黄|绿|粉){0,4}(?:调)?(?:背景|底色|色块)|水墨|彩墨|水彩|油画|厚涂|工笔|素描|线稿|版画|像素画|点彩|水粉|粉彩|蜡笔|卡通|动漫|动画|插画|晕染|平涂|赛璐璐|纸感|纸纹|纹理|质感|材质|写实|摄影|\b(?:watercolou?r|ink wash|oil paint(?:ing)?|impasto|cel.shad(?:ed|ing)|brushwork|painterly|rendering|texture|photorealis\w*|3d|2d|cg)\b", item, re.I):
+                    continue
                 excluded.append(item.strip())
             return excluded
         except (ValueError, TypeError) as exc:

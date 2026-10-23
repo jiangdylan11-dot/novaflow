@@ -292,7 +292,7 @@ export function normalizeReverseRequest(payload = {}) {
   if (usesArtDirection) {
     if (payload.visualSchema !== (usesArtReview ? 'nf.art.review.v1' : 'nf.art.direction.v1') || !Array.isArray(payload.artContext?.references) || payload.artContext.references.length !== images.length) throw new Error('绘图分析协议或参考图编号无效');
     const seen = new Set();
-    artContext = { task: String(payload.artContext.task || 'auto').slice(0, 40), width: Number(payload.artContext.width) || 1024, height: Number(payload.artContext.height) || 1024,...(payload.artContext.editEnhancer==='qwen21-pe-i2i'?{editEnhancer:'qwen21-pe-i2i'}:{}),...(payload.artContext.styleObservation==='reference-only-v1'?{styleObservation:'reference-only-v1'}:{}),
+    artContext = { task: String(payload.artContext.task || 'auto').slice(0, 40), width: Number(payload.artContext.width) || 1024, height: Number(payload.artContext.height) || 1024,...(payload.artContext.editEnhancer==='qwen21-pe-i2i'?{editEnhancer:'qwen21-pe-i2i'}:{}),...(['anime','painterly'].includes(payload.artContext.peStyleClass)?{peStyleClass:payload.artContext.peStyleClass}:{}),...(['reference-only-v1','routing-first-v1'].includes(payload.artContext.styleObservation)?{styleObservation:payload.artContext.styleObservation}:{}),
       references: payload.artContext.references.map(item => {
         if (!Number.isInteger(item.source) || item.source < (usesArtReview ? 0 : 1) || item.source > 16 || seen.has(item.source)) throw new Error('绘图参考图编号无效');
         seen.add(item.source);
@@ -625,19 +625,20 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
             const r=await fetch(base+'/object_info/CLIPLoader',{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('无法核对本地 PE 模型');const info=await r.json();
             if(info.CLIPLoader?.input?.required?.clip_name?.[0]?.includes(ART_EDIT_MODEL)){
               await stop();
-              if(normalized.request.artContext.styleObservation==='reference-only-v1'){
+              if(['reference-only-v1','routing-first-v1'].includes(normalized.request.artContext.styleObservation)){
                 const before=await releaseRuntimes();if(!before.ok)throw Error(before.error);
               }
               const data=await planArtEdit({baseUrl:base,payload:normalized.request});
               // PE defines the redraw. A separate contrastive observation only
               // isolates donor content; it must never rewrite the target style.
               const handoff=await releaseRuntimes();if(!handoff.ok)throw Error(handoff.error);
+              if(normalized.request.artContext.styleObservation==='routing-first-v1'&&['anime','painterly'].includes(data.artDirection.editEnhancer.renderingClass))return {ok:true,data};
               try{
                 const child=await ensureProcess(config());
                 const isolation=await send(child,'reverseImagePrompt',{...normalized.request,artContext:{...normalized.request.artContext,donorIsolationOnly:true}},normalized.timeoutMs);
                 if(!Array.isArray(isolation?.donorExclusions))throw Error('风格供体内容隔离未返回有效结论');
                 data.artDirection.references.find(r=>r.uses[0].role==='style').uses[0].donorExclusions=isolation.donorExclusions;
-                if(normalized.request.artContext.styleObservation==='reference-only-v1'){
+                if(['reference-only-v1','routing-first-v1'].includes(normalized.request.artContext.styleObservation)){
                   const subject=data.artDirection.references.find(r=>r.uses[0].role==='subject').uses[0];
                   if(isolation.sourceExpression)subject.sourceExpression=isolation.sourceExpression;
                   if(isolation.sourceContent)subject.sourceContent=isolation.sourceContent;

@@ -163,6 +163,9 @@ test('local transport preserves schema, numbers, all images, task and negative r
   assert.deepEqual(excluded.artContext.references[0].excludedRoles,['subject','background']);
   const independent=normalizeReverseRequest({...payload,artContext:{...payload.artContext,editEnhancer:'qwen21-pe-i2i',styleObservation:'reference-only-v1'}}).request;
   assert.equal(independent.artContext.styleObservation,'reference-only-v1');
+  assert.equal(normalizeReverseRequest({...payload,artContext:{...payload.artContext,peStyleClass:'anime'}}).request.artContext.peStyleClass,'anime');
+  assert.equal(normalizeReverseRequest({...payload,artContext:{...payload.artContext,peStyleClass:'arbitrary'}}).request.artContext.peStyleClass,undefined);
+  assert.equal(normalizeReverseRequest({...payload,artContext:{...payload.artContext,styleObservation:'routing-first-v1'}}).request.artContext.styleObservation,'routing-first-v1');
   assert.equal(normalizeReverseRequest({...payload,artContext:{...payload.artContext,styleObservation:'arbitrary'}}).request.artContext.styleObservation,undefined);
 });
 test('Grok uses the same structured contract for pictures and text-only requests',()=>{
@@ -426,13 +429,13 @@ test('content review receives only retained source categories after user and ref
   assert.equal(retained.objects,'饮料杯');assert.equal(retained.action,'持杯');
 });
 
-test('drawing style observation keeps complete native-aspect previews and remaps slots after subject reordering',async()=>{
+test('drawing observes complete native-aspect style previews and remaps reordered slots',async()=>{
   const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
   p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image2>按<image1>画风完整重绘，造型与配色按目标参考重构。',renderingClass:'anime',sourceOrder:[2,5],promptIds:['proof']};
   const e=env(p),state={prompt:'@参考图5用@参考图2画风',provider:'local'};
   const r=await e.api.prepare(ctx(state,[null,ref('style'),null,null,ref('photo')]));
   assert.equal(e.calls[0].artContext.editEnhancer,'qwen21-pe-i2i',JSON.stringify(e.calls[0].artContext.references));
-  assert.equal(e.calls[0].artContext.styleObservation,'reference-only-v1');
+  assert.equal(e.calls[0].artContext.styleObservation,'routing-first-v1');
   for(const im of e.calls[0].images){const [w,h,ops]=JSON.parse(Buffer.from(im.dataUrl.split(',')[1],'base64'));assert.equal(w,800);assert.equal(h,1000);assert.deepEqual(ops[0],[0,0,800,1000]);}
   assert.match(r.promptSnapshot.prompt,/将<image1>按<image2>画风完整重绘/);
   assert.doesNotMatch(r.promptSnapshot.prompt,/<image0>|<image3>/);assert.equal(state.prompt,'@参考图5用@参考图2画风');
@@ -493,10 +496,12 @@ test('PE donor-content exclusions execute even without legacy observer medium fi
 });
 
 test('an upstream isolation mistake cannot compile target media or techniques into negative guidance',async()=>{
-  for(const technique of ['水墨晕染','油画厚涂','纸纹质感','赛璐璐平涂','watercolor','CG rendering']){
+  for(const technique of ['水墨晕染','油画厚涂','纸纹质感','赛璐璐平涂','watercolor','CG rendering','月夜雨景','纯红色背景','蓝紫色背景']){
     const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{donorExclusions:['茅草屋',technique]})],omit:[]}]);
+    p.editEnhancer={kind:'qwen21-style-observation',version:'drawing-style-observation-v1',prompt:'将<image1>按<image2>画法重绘。',sourceOrder:[1,2]};
     const e=env(p);
-    await assert.rejects(e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},[ref('photo'),ref('style')])),/排除项超出内容职责/);
+    const r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风',negativePrompt:'用户指定不要暖光'},[ref('photo'),ref('style')]));
+    assert.equal(r.promptSnapshot.negativePrompt,'用户指定不要暖光, 茅草屋');
   }
 });
 
@@ -546,4 +551,46 @@ test('local review tolerates the completed generation handoff race without submi
   e.sandbox.electronAPI.promptAssistantReverseImagePrompt=async()=>{calls++;return {ok:false,errorCode:'model-failed',error:'模型失败'};};
   await assert.rejects(e.api.review(prepared,ref('output').dataUrl),/模型失败/);
   assert.equal(calls,3);
+});
+
+test('observed drawn construction retains paired PE while actual CG preserves the latest complete-style path',async()=>{
+  for(const renderingClass of ['anime','painterly','other']){
+    const refs=[{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{donorExclusions:['背包']})],omit:[]}];
+    const observed={...plan(refs),editEnhancer:{kind:'qwen21-style-observation',version:'drawing-style-observation-v1',prompt:'按<image2>实际材质、受光与冷暗面重绘<image1>。',renderingClass,sourceOrder:[1,2],promptIds:['actual-style-proof']}};
+    const paired={...plan(refs),editEnhancer:{kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image1>按<image2>实际画法重绘。',sourceOrder:[1,2],promptIds:['paired-proof']}};
+    const e=env(p=>p.artContext.styleObservation==='routing-first-v1'?observed:paired),state={prompt:'图1用图2画风',provider:'local',width:1280,height:960};
+    const r=await e.api.prepare(ctx(state,[ref('original-photo'),ref('original-style')]));
+    assert.equal(e.calls.length,renderingClass!=='other'?2:1);
+    assert.equal(e.calls[0].artContext.styleObservation,'routing-first-v1');
+    assert.equal(r.plan.editEnhancer.kind,renderingClass!=='other'?'qwen21-pe-i2i':'qwen21-style-observation');
+    assert.equal(state.prompt,'图1用图2画风');assert.equal(r.state.width,1280);assert.equal(r.state.height,960);
+    for(const image of e.calls[0].images){const [w,h,ops]=JSON.parse(Buffer.from(image.dataUrl.split(',')[1],'base64'));assert.equal(w,800);assert.equal(h,1000);assert.deepEqual(ops[0],[0,0,800,1000]);}
+    if(renderingClass!=='other'){
+      assert.equal(e.calls[1].artContext.styleObservation,undefined);
+      assert.equal(e.calls[1].artContext.peStyleClass,renderingClass);
+      for(const image of e.calls[1].images){const [w,h,ops]=JSON.parse(Buffer.from(image.dataUrl.split(',')[1],'base64'));assert.equal(w,1024);assert.equal(h,1024);assert.deepEqual(ops[0],[112,12,800,1000]);}
+      assert.equal(r.plan.editEnhancer.promptIds[0],'paired-proof');
+      if(renderingClass==='painterly'){
+        assert.equal(r.plan.editEnhancer.renderingClass,'painterly');assert.equal(r.renderingPolicy,undefined);assert.equal(r.promptSnapshot.negativePrompt,'');
+        const manual=env(p=>p.artContext.styleObservation==='routing-first-v1'?observed:paired);
+        const kept=await manual.api.prepare(ctx({...state,negativePrompt:'禁止文字',samplingOverrides:{'qwen-2.1:img2img':{cfg:2.25}}},[ref('original-photo'),ref('original-style')]));
+        assert.equal(kept.promptSnapshot.negativePrompt,'禁止文字');assert.equal(kept.state.samplingOverrides['qwen-2.1:img2img'].cfg,2.25);
+      }
+    }else {assert.equal(r.plan.editEnhancer.promptIds[0],'actual-style-proof');assert.equal(r.renderingPolicy.cfg,3);assert.match(r.promptSnapshot.negativePrompt,/背包/);}
+  }
+  const p={...plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]),editEnhancer:{kind:'qwen21-style-observation',version:'drawing-style-observation-v1',prompt:'按<image2>平涂画法重绘<image1>',renderingClass:'anime',sourceOrder:[1,2]}};
+  const e=env(req=>{if(!req.artContext.styleObservation)throw Error('双图 PE 失败');return p;});
+  await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风',provider:'local'},[ref('photo'),ref('style')])),/双图 PE 失败/);
+});
+
+
+test('approved PE anime keeps its rendering negative without layering donor nouns or redundant exposure grading',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{donorExclusions:['女仆装','飞鸟群']})],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'按<image2>的明亮细腻动漫画风重绘<image1>。',renderingClass:'anime',sourceOrder:[1,2]};
+  const e=env(p),r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风',negativePrompt:'不要文字'},[ref('photo'),ref('bright-style')]));
+  assert.doesNotMatch(r.promptSnapshot.prompt,/整体明暗校验/);
+  assert.match(r.promptSnapshot.negativePrompt,/不要文字.*photograph/);
+  assert.doesNotMatch(r.promptSnapshot.negativePrompt,/女仆装|飞鸟群/);
+  assert.deepEqual(Array.from(r.references.find(x=>x.role==='style').donorExclusions),['女仆装','飞鸟群'],'physical contents remain review evidence');
+  assert.equal(r.renderingPolicy.cfg,3);
 });
