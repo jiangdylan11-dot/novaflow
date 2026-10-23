@@ -71,7 +71,7 @@ const webRoot = join(dataDir, 'web'); await mkdir(webRoot); await writeFile(join
 const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
 const license = { state: async () => ({ status: 'licensed', machineId: 'fixture' }), assertAllowed: async () => {}, importLicense: async () => { throw new Error('fixture'); } };
 const services = { start: async () => [{ kind: 'image', running: true, reused: true }], stop: async () => {} };
-const promptAssistantOptions = { pythonPath: process.execPath, serviceScript: fixture, runtimeJsonPath };
+const promptAssistantOptions = { analysisBackend: 'legacy-nf4', pythonPath: process.execPath, serviceScript: fixture, runtimeJsonPath };
 const assistant = await createLocalAssistant({ dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot, modelsRoot: modelsDir,
   localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, workerName: 'prompt-assistant-test',
   comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30, promptAssistant: promptAssistantOptions });
@@ -231,7 +231,7 @@ try {
     }
     // Pool readiness: the manifest's own disk check, and what the node reports.
     const disk = await inspectModel(models, findModel(PROMPT_ASSISTANT_MODEL_ID));
-    equal(disk.status, layout.cache || layout.raw ? 'ready' : 'missing', layout.name + ': manifest disk check');
+    equal(disk.status, 'missing', layout.name + ': the production manifest no longer advertises NF4 weights');
     const node = createWorker({ dataDir: root, configPath: join(root, 'identity.json'), modelsRoot: models, tunnel: false, promptAssistant: local, logger: () => {} });
     const reported = (await node.reportModels()).find(m => m.model_id === PROMPT_ASSISTANT_MODEL_ID);
     equal(reported.status, layout.enabled ? 'ready' : 'missing', layout.name + ': the node advertises 提示词助手 only when the assistant can run');

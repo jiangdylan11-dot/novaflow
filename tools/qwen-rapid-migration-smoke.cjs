@@ -14,7 +14,9 @@ function loadSpine(file) {
   const constants = source.slice(source.indexOf('  const IMAGE_ANGLE_ADJUST_TIMEOUT_MS'), source.indexOf('  const SPLIT_MODE_DIALOG_ID'));
   const routeConstants = [...source.matchAll(/^  const ((?:SELECTION_INPAINT_MODE_)[A-Z_]+) = [\s\S]*?(?=^  (?:const |let |(?:async )?function ))/gm)].map(m=>m[0]).join('\n');
   const sandbox = { state: {}, console };
+  sandbox.window=sandbox;
   vm.createContext(sandbox);
+  vm.runInContext(fs.readFileSync(path.join(root,'novaflow-web/renderer/qwen21-turbo.workflow.js'),'utf8'),sandbox);
   const checkpointConstant = source.includes('const QWEN_RAPID_CHECKPOINT =') ? 'QWEN_RAPID_CHECKPOINT' : 'IMAGE_WASH_QWEN_CHECKPOINT';
   vm.runInContext('const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8; const '+checkpointConstant+' = '+JSON.stringify(checkpoint)+';\n' + constants + '\n' + routeConstants + '\n' + declarations, sandbox);
   return sandbox;

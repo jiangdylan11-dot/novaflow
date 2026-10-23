@@ -97,8 +97,8 @@ try {
 // ---- the node reports 2.1 when it can build the graph --------------------------------------------
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Nodes = {
-  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-Q8_0.gguf']] } } },
-  CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_w4a8_heretic.safetensors']], type: [['qwen_image']] } } },
+  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
+  CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['qwen_image']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: io('clip', 'prompt') } },
   EmptyLatentImage: { input: { required: io('width', 'height', 'batch_size') } },

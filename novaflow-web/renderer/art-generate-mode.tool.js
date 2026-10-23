@@ -62,6 +62,17 @@
     }
   }
 
+  function syncModelChoices(select, documentRef, options) {
+    const turbo=options.showTurboRoute===true && normalizeProvider(options.provider)==='local'
+    const choices=[]
+    for(const item of PROVIDER_OPTIONS){
+      const option=documentRef.createElement('option');option.value=item.value;option.textContent=item.label;choices.push(option)
+      if(item.value==='local'&&turbo){const fast=documentRef.createElement('option');fast.value='local-turbo';fast.textContent='本地模型 · Turbo BF16';choices.push(fast)}
+    }
+    select.replaceChildren(...choices)
+    select.value=turbo&&options.localQwen21Variant==='turbo'?'local-turbo':normalizeProvider(options.provider)
+  }
+
   function mount(options = {}) {
     const host = options.host
     if (!host || typeof host.replaceChildren !== 'function') throw new TypeError('Art Generate control host is required')
@@ -72,7 +83,7 @@
     const existing = mountedControls.get(host)
     if (existing) {
       existing.onProviderChange = options.onProviderChange
-      existing.select.value = normalizeProvider(options.provider)
+      syncModelChoices(existing.select,documentRef,options)
       syncDisabled(existing.select, options.disabled)
       mountSharedAccount(existing, options.showAccount !== false)
       return existing.handle
@@ -95,13 +106,7 @@
     select.setAttribute('data-novaflow-art-generate-provider', '1')
     select.setAttribute('style', 'width:100%;height:32px;min-height:32px;max-height:32px;min-width:0;border-radius:6px;border:1px solid #343434;background:#262626;color:#e9e9e9;padding:0 26px 0 10px;font-size:12px;box-sizing:border-box;appearance:none;-webkit-appearance:none;')
     syncDisabled(select, options.disabled)
-    PROVIDER_OPTIONS.forEach((providerOption) => {
-      const option = documentRef.createElement('option')
-      option.value = providerOption.value
-      option.textContent = providerOption.label
-      select.appendChild(option)
-    })
-    select.value = normalizeProvider(options.provider)
+    syncModelChoices(select,documentRef,options)
     const record = {
       host,
       modelField,
@@ -112,7 +117,7 @@
       handle: null,
     }
     select.addEventListener('change', () => {
-      if (typeof record.onProviderChange === 'function') record.onProviderChange(normalizeProvider(select.value))
+      if (typeof record.onProviderChange === 'function') record.onProviderChange(normalizeProvider(select.value==='local-turbo'?'local':select.value),select.value==='local-turbo'?'turbo':'standard')
     })
 
     modelField.appendChild(label)
@@ -240,13 +245,15 @@
     mount({
       host,
       showAccount: options.showAccount,
-      provider: state.provider,
+      provider: state.provider, localQwen21Variant: state.localQwen21Variant, showTurboRoute: options.showTurboRoute===true&&state.nsfw!==true,
       disabled: Boolean(state.running),
-      onProviderChange(provider) {
+      onProviderChange(provider,variant) {
         if (state.running) return
         const nextProvider = normalizeProvider(provider)
-        if (nextProvider === state.provider) return
+        const nextVariant=variant==='turbo'?'turbo':'standard'
+        if (nextProvider === state.provider && (nextProvider!=='local'||nextVariant===(state.localQwen21Variant||'standard'))) return
         state.provider = nextProvider
+        if(nextProvider==='local')state.localQwen21Variant=nextVariant
         state.error = ''
         state.status = ''
         options.onChange?.(nextProvider)

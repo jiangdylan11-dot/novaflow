@@ -2,13 +2,11 @@
 //
 // The desktop client starts prompt-assistant-service.py beside ComfyUI's own
 // Python and talks to it over stdin/stdout, one JSON line per request. The
-// browser opened by 启动NovaFlow reaches the same script through the local
-// server here, so 本地模型 in 智能 AI means this machine's Qwen3-VL 8B instead
-// of a refusal.
+// browser and desktop use the same CPU protocol process. Production inference
+// is delegated to the installed PE checkpoint in ComfyUI; no NF4 model is loaded.
 //
-// Every command runs on that one model. It is here when its NF4 cache folder
-// is (what the script loads), or its raw folder is (what that cache is built
-// from); either one is enough.
+// Production uses the one installed PE checkpoint. Legacy NF4 validators
+// remain only for explicit compatibility diagnostics, never automatic fallback.
 //
 // The model shares the GPU with the drawing runtime, so a request follows the
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
@@ -353,13 +351,14 @@ async function freeMemory(baseUrl, timeoutMs = 15000) {
   return first.status === 404 ? post('/api/free') : first;
 }
 
-export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env } = {}) {
+export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend = 'pe' } = {}) {
   const log = logger || (() => {});
   let proc = null, startPromise = null, stopPromise = null, lease = null;
   let nextId = 1, buffer = '', stderrTail = [], pending = new Map();
   let lastError = '', lastWarning = '';
   // The pool task the worker is running for us: its own currentTaskId, not a drawing holding the GPU.
   let ownTaskId = '';
+  let taskIsCancelled = () => false;
 
   function config() {
     const runtimeJson = runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON || runtimeJsonDefault();
@@ -367,6 +366,12 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     const script = serviceScript || serviceScriptPath();
     const python = pythonPath || process.env.NOVAFLOW_PROMPT_ASSISTANT_PYTHON
       || [join(runtime.installPath, 'engine', 'python', 'python.exe')].find(existsSync) || 'python';
+    if(analysisBackend==='pe'){
+      const file=modelPath||join(runtime.modelsPath||'', 'text_encoders', ART_EDIT_MODEL);
+      const modelExists=isFile(file),serviceExists=isFile(script);
+      return {modelType:'qwen35_pe_i2i',modelPath:file,modelFolderReady:modelExists,cachePath:'',cacheReady:false,modelExists,serviceScript:script,serviceExists,pythonPath:python,comfyRoot:process.env.NOVAFLOW_COMFY_ROOT||join(runtime.installPath,'engine','ComfyUI'),runtimeJsonPath:runtimeJson,enabled:modelExists&&serviceExists,runtimeStatus:lease?'推理中':modelExists?'模型可用':'未配置模型',error:!serviceExists?'Prompt Assistant 服务脚本不存在':modelExists?lastError:'缺少绘图/UI 共用的本地 PE 模型：'+ART_EDIT_MODEL};
+    }
+    // Retained for explicit legacy diagnostics, never an automatic fallback.
     const folders = [modelPath, process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH,
       runtime.modelsPath && join(runtime.modelsPath, 'prompt_assistant', MODEL_DIR), runtime.modelsPath && join(runtime.modelsPath, 'vlm', MODEL_DIR)].filter(Boolean);
     const folder = folders.find(isReverseModelDir) || folders[0] || '';
@@ -431,12 +436,11 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         env: {
           ...process.env, ...(env || {}), PYTHONIOENCODING: 'utf-8',
           NOVAFLOW_RUNTIME_JSON: cfg.runtimeJsonPath, NOVAFLOW_COMFY_ROOT: cfg.comfyRoot,
+          NOVAFLOW_PROMPT_ASSISTANT_COMFY_URL: String(comfyUrls[0]||'http://127.0.0.1:8188').replace(/\/+$/,''),
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: cfg.modelPath,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: cfg.modelType,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.cachePath,
-          // A missing NF4 copy is reported instead of quantizing the raw folder on every request;
-          // requestWithCache below builds it once and retries.
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: '1'
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: cfg.modelType==='qwen35_pe_i2i'?'0':'1'
         }
       });
       proc = child; buffer = ''; stderrTail = [];
@@ -568,6 +572,10 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       log('prompt-assistant failed', { command, error: lastError });
       result = { ...publicConfig(cfg), ok: false, runtimeStatus: '推理失败', error: lastError, ...failureMetadata(error) };
     } finally {
+      if(started&&cfg.modelType==='qwen35_pe_i2i'){
+        const released=await releaseRuntimes();
+        if(!released.ok)result={...publicConfig(cfg),ok:false,error:released.error,errorCode:released.errorCode||'pe-memory-handoff-failed'};
+      }
       const stopped = started ? await stop().catch(() => 'stop-error') : 'not-running';
       lease = null;
       if (stopped === 'stop-timeout' || stopped === 'stop-error') {
@@ -580,7 +588,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   /** A machine with only the raw model folder builds the NF4 copy once on disk, then retries. */
   async function requestWithCache(command, payload, timeoutMs) {
     const result = await request(command, payload, timeoutMs);
-    if (!isCachePreparationFailure(result)) return result;
+    if (config().modelType==='qwen35_pe_i2i'||!isCachePreparationFailure(result)) return result;
     const prepared = await request('prepareReverseCache', {}, 900000);
     if (prepared?.ok !== true) return { ...prepared, ok: false, runtimeStatus: '模型准备失败', error: '千问 3 提示词模型的 NF4 磁盘缓存准备失败，请重试', errorCode: String(prepared?.errorCode || 'reverse-cache-prepare-failed'), failureCategory: 'model_preparation', retryable: true };
     return request(command, payload, timeoutMs);
@@ -592,11 +600,12 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     get running() { return Boolean(proc); },
     get busy() { return Boolean(lease); },
     /** One request on behalf of a prompt_assistant pool task (worker-core). */
-    async runForTask(taskId, method, payload) {
+    async runForTask(taskId, method, payload, context = {}) {
       if (!['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle', 'uiDesignCpu'].includes(String(method))) return invalid(new Error('未知的提示词助手操作'));
       ownTaskId = String(taskId || '');
+      taskIsCancelled = typeof context.isCancelled === 'function' ? context.isCancelled : () => false;
       try { return await api[method](payload); }
-      finally { ownTaskId = ''; }
+      finally { ownTaskId = ''; taskIsCancelled = () => false; }
     },
     status() {
       const cfg = config();
@@ -628,28 +637,16 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
               if(['reference-only-v1','routing-first-v1'].includes(normalized.request.artContext.styleObservation)){
                 const before=await releaseRuntimes();if(!before.ok)throw Error(before.error);
               }
-              const data=await planArtEdit({baseUrl:base,payload:normalized.request});
-              // PE defines the redraw. A separate contrastive observation only
-              // isolates donor content; it must never rewrite the target style.
+              const data=await planArtEdit({baseUrl:base,payload:normalized.request,isCancelled:()=>taskIsCancelled()});
+              // PE is the only analysis checkpoint. Do not load a second observer
+              // for donor isolation; the paired edit contract already owns that boundary.
               const handoff=await releaseRuntimes();if(!handoff.ok)throw Error(handoff.error);
-              if(normalized.request.artContext.styleObservation==='routing-first-v1'&&['anime','painterly'].includes(data.artDirection.editEnhancer.renderingClass))return {ok:true,data};
-              try{
-                const child=await ensureProcess(config());
-                const isolation=await send(child,'reverseImagePrompt',{...normalized.request,artContext:{...normalized.request.artContext,donorIsolationOnly:true}},normalized.timeoutMs);
-                if(!Array.isArray(isolation?.donorExclusions))throw Error('风格供体内容隔离未返回有效结论');
-                data.artDirection.references.find(r=>r.uses[0].role==='style').uses[0].donorExclusions=isolation.donorExclusions;
-                if(['reference-only-v1','routing-first-v1'].includes(normalized.request.artContext.styleObservation)){
-                  const subject=data.artDirection.references.find(r=>r.uses[0].role==='subject').uses[0];
-                  if(isolation.sourceExpression)subject.sourceExpression=isolation.sourceExpression;
-                  if(isolation.sourceContent)subject.sourceContent=isolation.sourceContent;
-                }
-              }finally{const stopped=await stop();if(stopped==='stop-timeout'||stopped==='stop-error')throw Error('风格隔离模型未确认退出，本次未提交生成');}
               return {ok:true,data};
             }
+            throw Error('缺少本地 PE 模型，本次未提交分析；不会回退到其他模型');
           }catch(error){return {ok:false,error:String(error.message||error),errorCode:'art-edit-pe-failed'};}
           finally{lease=null;}
-          // Nodes without PE retain their existing local observer, and do not
-          // report PE metadata or download a model implicitly.
+          // Missing PE is an explicit failure; no other checkpoint is substituted.
         }
       }
       if(payload?.uiPlanner==='grok-vision-cpu-v1') {

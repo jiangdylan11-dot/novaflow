@@ -61,7 +61,8 @@ from prompt_assistant.art_prompt_contract import (
     parse_simple_art_prompt_contract,
     terminal_constraint_text as art_prompt_terminal_constraint_text,
 )
-from prompt_assistant.qwen3_vl_adapter import Qwen3VLAbliteratedAdapter, Qwen3VLProviderError
+from prompt_assistant.qwen3_vl_adapter import Qwen3VLProviderError
+from prompt_assistant.pe_adapter import ComfyPEAdapter as Qwen3VLAbliteratedAdapter
 from prompt_assistant.visual_contract import (
     RICH_PLAIN_BACKGROUND_PATTERN,
     RICH_VISUAL_SYSTEM_TEXT,
@@ -95,7 +96,7 @@ if hasattr(sys.stdin, "reconfigure"):
     sys.stdin.reconfigure(encoding="utf-8")
 
 
-MODEL_TYPE = "qwen3_vl_8b_abliterated_nf4"
+MODEL_TYPE = "qwen35_pe_i2i"
 DEFAULT_RUNTIME_JSON = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\runtime.json")
 DEFAULT_COMFY_ROOT = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\engine\ComfyUI")
 DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
@@ -14759,7 +14760,7 @@ class PromptAssistant:
             return output
         adapter = self.qwen3_adapter()
         system_text, parts = qwen3_chat_parts(prompt, llama_template, images)
-        profile["provider"] = "qwen3-vl-instruct"
+        profile["provider"] = "qwen35-pe-i2i"
         profile["embeddedImageCount"] = sum(1 for part in parts if not isinstance(part, str))
         generate_started = time.perf_counter()
         if trace_label:
@@ -14807,7 +14808,7 @@ class PromptAssistant:
         chats = [qwen3_chat_parts(prompt.replace(QWEN3_CHAT_VISION_TOKEN, ''), llama_template, None) for prompt in prompts]
         started = time.perf_counter()
         profile = {"traceLabel": trace_label, "batch": len(prompts), "promptChars": sum(map(len, prompts)), "maxLength": int(max_length or 0),
-                   "provider": "qwen3-vl-instruct"}
+                   "provider": "qwen35-pe-i2i"}
         log_prompt_assistant_event("prompt_assistant_generate_start", command=trace_label, batch=len(prompts), promptChars=profile["promptChars"], maxLength=max_length)
         try:
             if not callable(getattr(adapter, "generate_batch", None)) or any(len(parts) != 1 or not isinstance(parts[0], str) for _, parts in chats):
@@ -17681,7 +17682,7 @@ class PromptAssistant:
                 "contractFailureCode": str(contract_code or "")[:80],
                 "retryAttempted": bool(quality_gate_retried),
                 "retryCount": int(retry_count),
-                "reverseProvider": "qwen3_vl_abliterated_nf4",
+                "reverseProvider": "qwen35_pe_i2i",
                 "legacyFallbackSuppressed": True,
                 "requestedVisualSchema": requested_schema,
                 "retryable": bool(retryable),
@@ -17757,7 +17758,7 @@ class PromptAssistant:
                 log_prompt_assistant_event(
                     "reverse_local_stage",
                     command="reverseImagePrompt",
-                    provider="qwen3_vl_abliterated_nf4",
+                    provider="qwen35_pe_i2i",
                     visualSchema=requested_schema,
                     stage=bounded_stage,
                     **safe_fields,
@@ -17862,7 +17863,7 @@ class PromptAssistant:
                             log_prompt_assistant_event(
                                 "reverse_rich_prompt_skipped",
                                 command="reverseImagePrompt",
-                                provider="qwen3_vl_abliterated_nf4",
+                                provider="qwen35_pe_i2i",
                                 visualSchema=requested_schema,
                                 reason="partial-contract-not-safe-to-enrich",
                                 contractElapsedMs=contract_elapsed_ms,
@@ -17886,7 +17887,7 @@ class PromptAssistant:
                         log_prompt_assistant_event(
                             "reverse_rich_prompt_deterministic",
                             command="reverseImagePrompt",
-                            provider="qwen3_vl_abliterated_nf4",
+                            provider="qwen35_pe_i2i",
                             visualSchema=requested_schema,
                             reason="validated-contract-primary",
                             contractElapsedMs=contract_elapsed_ms,
@@ -17977,7 +17978,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_visual_contract_syntax_normalized",
                                         command="reverseImagePrompt",
-                                        provider="qwen3_vl_abliterated_nf4",
+                                        provider="qwen35_pe_i2i",
                                         visualSchema=requested_schema,
                                         attempt=attempt,
                                         retryReason=retry_reason,
@@ -18053,7 +18054,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
-                                    provider="qwen3_vl_abliterated_nf4",
+                                    provider="qwen35_pe_i2i",
                                     visualSchema=requested_schema,
                                     attempt=attempt,
                                     nextAttempt=2,
@@ -18095,7 +18096,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
-                                    provider="qwen3_vl_abliterated_nf4",
+                                    provider="qwen35_pe_i2i",
                                     visualSchema=requested_schema,
                                     attempt=attempt,
                                     nextAttempt=2,
@@ -18119,7 +18120,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
-                                    provider="qwen3_vl_abliterated_nf4",
+                                    provider="qwen35_pe_i2i",
                                     visualSchema=requested_schema,
                                     attempt=attempt,
                                     nextAttempt=2,
@@ -18329,7 +18330,7 @@ class PromptAssistant:
                                         else "reverse_provider_degraded"
                                     ),
                                     command="reverseImagePrompt",
-                                    provider="qwen3_vl_abliterated_nf4",
+                                    provider="qwen35_pe_i2i",
                                     visualSchema=requested_schema,
                                     errorCode=exc.code,
                                     retryCount=retry_count,
@@ -18360,7 +18361,7 @@ class PromptAssistant:
                                     "qualityGateFailed": True,
                                     "qualityGateRetried": quality_gate_retried,
                                     "visualSchema": requested_schema,
-                                    "reverseProvider": "qwen3_vl_abliterated_nf4",
+                                    "reverseProvider": "qwen35_pe_i2i",
                                     "reverseModelPath": model_name,
                                     "reverseFallbackReason": (
                                         "rich-prompt-fallback"
@@ -18450,7 +18451,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_salient_inventory_applied",
                                         command="reverseImagePrompt",
-                                        provider="qwen3_vl_abliterated_nf4",
+                                        provider="qwen35_pe_i2i",
                                         visualSchema=requested_schema,
                                         partialPeopleCount=len(
                                             salient_inventory["partial_people"]
@@ -18463,7 +18464,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_salient_inventory_skipped",
                                         command="reverseImagePrompt",
-                                        provider="qwen3_vl_abliterated_nf4",
+                                        provider="qwen35_pe_i2i",
                                         visualSchema=requested_schema,
                                         reason="empty-inventory",
                                         contractElapsedMs=contract_elapsed_ms,
@@ -18492,7 +18493,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_provider_degraded",
                                         command="reverseImagePrompt",
-                                        provider="qwen3_vl_abliterated_nf4",
+                                        provider="qwen35_pe_i2i",
                                         visualSchema=requested_schema,
                                         errorCode=salient_error_code,
                                         retryCount=retry_count,
@@ -18515,7 +18516,7 @@ class PromptAssistant:
                                         "retryAttempted": quality_gate_retried,
                                         "retryCount": retry_count,
                                         "visualSchema": requested_schema,
-                                        "reverseProvider": "qwen3_vl_abliterated_nf4",
+                                        "reverseProvider": "qwen35_pe_i2i",
                                         "reverseModelPath": model_name,
                                         "reverseFallbackReason": "",
                                         "visualHasOcr": False,
@@ -18537,7 +18538,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_salient_inventory_skipped",
                                     command="reverseImagePrompt",
-                                    provider="qwen3_vl_abliterated_nf4",
+                                    provider="qwen35_pe_i2i",
                                     visualSchema=requested_schema,
                                     reason=salient_error_reason,
                                     contractElapsedMs=contract_elapsed_ms,
@@ -18552,7 +18553,7 @@ class PromptAssistant:
                             "reverse_provider_selected",
                             command="reverseImagePrompt",
                             requestedProvider=requested_provider,
-                            reverseProvider="qwen3_vl_abliterated_nf4",
+                            reverseProvider="qwen35_pe_i2i",
                             visualSchema=requested_schema,
                             modelName=model_name,
                             fallbackCode="",
@@ -18574,7 +18575,7 @@ class PromptAssistant:
                             "retryAttempted": quality_gate_retried,
                             "retryCount": retry_count,
                             "visualSchema": requested_schema,
-                            "reverseProvider": "qwen3_vl_abliterated_nf4",
+                            "reverseProvider": "qwen35_pe_i2i",
                             "reverseModelPath": model_name,
                             "reverseFallbackReason": (
                                 "rich-prompt-fallback"
@@ -18618,7 +18619,7 @@ class PromptAssistant:
                         ),
                         command="reverseImagePrompt",
                         requestedProvider=requested_provider,
-                        fromProvider="qwen3_vl_abliterated_nf4",
+                        fromProvider="qwen35_pe_i2i",
                         **(
                             {}
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
@@ -18648,7 +18649,7 @@ class PromptAssistant:
                         ),
                         command="reverseImagePrompt",
                         requestedProvider=requested_provider,
-                        fromProvider="qwen3_vl_abliterated_nf4",
+                        fromProvider="qwen35_pe_i2i",
                         **(
                             {}
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
@@ -18686,7 +18687,7 @@ class PromptAssistant:
                     ),
                     command="reverseImagePrompt",
                     requestedProvider=requested_provider,
-                    fromProvider="qwen3_vl_abliterated_nf4",
+                    fromProvider="qwen35_pe_i2i",
                     **(
                         {}
                         if requested_schema == VISUAL_SCHEMA_VERSION_V2
@@ -18908,7 +18909,7 @@ class PromptAssistant:
                 visualSchema=visual_policy.get("schema") or "",
                 imageCount=len(image_tensors),
                 sensitiveVisualAnalysis=sensitive_enabled,
-                provider="qwen3_vl_abliterated_nf4",
+                provider="qwen35_pe_i2i",
             )
             try:
                 interaction_ir_repair_calls = 0
@@ -19004,7 +19005,7 @@ class PromptAssistant:
                         command="reverseImagePrompt",
                         mode=mode,
                         visualSchema=visual_policy.get("schema") or "",
-                        provider="qwen3_vl_abliterated_nf4",
+                        provider="qwen35_pe_i2i",
                         interactionRepairCalls=0,
                         interactionDeactivationFallback=False,
                         visualIrRepairUsed=False,
@@ -19389,7 +19390,7 @@ class PromptAssistant:
                         command="reverseImagePrompt",
                         mode=mode,
                         visualSchema=visual_policy.get("schema") or "",
-                        provider="qwen3_vl_abliterated_nf4",
+                        provider="qwen35_pe_i2i",
                         interactionRepairCalls=interaction_repair_calls,
                         interactionDeactivationFallback=interaction_deactivation_fallback,
                         visualIrRepairUsed=ir_repair_used and repair_kind == "visual-ir",
@@ -19402,7 +19403,7 @@ class PromptAssistant:
                     command="reverseImagePrompt",
                     mode=mode,
                     visualSchema=visual_policy.get("schema") or "",
-                    provider="qwen3_vl_abliterated_nf4",
+                    provider="qwen35_pe_i2i",
                     errorCode=code,
                     completedStages=len(visual_contracts),
                     imageCount=len(image_tensors),

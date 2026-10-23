@@ -68,11 +68,11 @@ test('independent adapter uploads only style pixels, selects installed observer 
     return new Response(JSON.stringify(data));
   };
   const r=await planArtEdit({baseUrl:'http://local',payload:p,fetchImpl:fake});
-  assert.equal(uploads.length,1);assert.equal(graphs[0]['1'].inputs.clip_name,ART_STYLE_MODEL);
-  assert.equal(graphs[0]['3'].inputs.thinking,false);assert.equal(graphs[0]['3'].inputs.use_default_template,true);
-  assert.doesNotMatch(graphs[0]['3'].inputs.prompt,/<\|vision_start\|>|<\|image_pad\|>|<\|vision_end\|>/,'default vision template owns the single image placeholder');
+  assert.equal(uploads.length,1);assert.equal(graphs[0]['1'].inputs.clip_name,ART_EDIT_MODEL);
+  assert.equal(graphs[0]['3'].inputs.thinking,true);assert.equal(graphs[0]['3'].inputs.use_default_template,false);
+  assert.equal((graphs[0]['3'].inputs.prompt.match(/<\|image_pad\|>/g)||[]).length,1,'the single PE observes one complete style image');
   assert.equal(r.artDirection.editEnhancer.kind,'qwen21-style-observation');
-  assert.equal(r.artDirection.editEnhancer.model,ART_STYLE_MODEL);
+  assert.equal(r.artDirection.editEnhancer.model,ART_EDIT_MODEL);
   assert.match(r.artDirection.editEnhancer.prompt,/将<image2>整幅按<image1>/);
   assert.deepEqual(r.artDirection.references.map(r=>r.source),[2,5]);
   const swapped={...p,images:[{dataUrl:png(96)},{dataUrl:png(32)}],currentPrompt:'图7用图9画风',artContext:{...p.artContext,references:[{source:7,roles:['subject']},{source:9,roles:['style']}]}};
@@ -97,7 +97,7 @@ test('drawing PE keeps its trained three-field contract, thinking and source-num
   const user=g['3'].inputs.prompt.split('<|im_start|>user\n')[1];
   assert.match(user,/按<image1>的五官塑造/);assert.match(user,/完整重构<image2>/);
   assert.match(user,/用户原始需求中的明确保留要求优先/);assert.match(user,/wh_ratio必须为"832:1216"/);
-  assert.match(user,/同属动漫也要依据这张参考可见的脸部轮廓/);assert.match(user,/不强加细线描边、赛璐璐或固定动漫脸/);
+  assert.match(user,/线条、上色、肤色色层、整体配色、光感与质感/);assert.doesNotMatch(user,/不强加细线描边/);
   assert.match(ART_EDIT_SYSTEM,/not an OCR task/);assert.match(ART_EDIT_SYSTEM,/Closed eyes/);
   assert.match(ART_EDIT_SYSTEM,/Explicit user locks/);assert.match(ART_EDIT_SYSTEM,/proportions.*may change/);
   assert.ok(Object.values(g).every(n=>!n.class_type.includes('Crop')));

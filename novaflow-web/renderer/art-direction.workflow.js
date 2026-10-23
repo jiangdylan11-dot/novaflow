@@ -3,7 +3,7 @@
   const SCHEMA = 'nf.art.direction.v1';
   const ROLES = Object.freeze({ subject: '主体', style: '风格', pose: '姿势', background: '背景', material: '材质', color: '配色', composition: '构图', lighting: '光影', object: '物件', none: '不使用' });
   const TASKS = Object.freeze({ auto: '自动理解', anime: '转二次元', game_cg: '转游戏 CG', style: '参考画风', preserve: '精修原图' });
-  const GENERATION_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','count','seed','randomSeed','nsfw','loras','samplingOverrides','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','googleAspectRatioTxt2img','googleAspectRatioImg2img','googleResolution','localDrawEngine','drawingTask','drawingAnalysisEngine'];
+  const GENERATION_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','count','seed','randomSeed','nsfw','loras','samplingOverrides','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','googleAspectRatioTxt2img','googleAspectRatioImg2img','googleResolution','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine'];
   const TASK_BRIEFS=Object.freeze({auto:'依照用户要求处理主体参考，未指定改变的内容保持',anime:'保留主体身份、设计和数量，将整幅照片重新绘制为精致二次元插画，使用明确的手绘轮廓、概括造型与分层明暗，不保留摄影皮肤纹理',game_cg:'保留主体身份、服饰、姿势和数量，将整幅照片重新绘制为高完成度的半写实游戏角色宣传插画。使用数字厚涂、概括而精准的手绘体积塑造、精致五官与头发分组、统一的绘画光影和材质笔触。人物、衣服和环境都必须重新绘画，呈现明确的游戏原画CG质感，去除摄影皮肤毛孔与镜头散景，不是照片美化或摄影滤镜',style:'保留主体内容，采用指定风格的绘画语言',preserve:'精修原图，保持原有设计'});
   const CACHE = new Map();
   const previews = new WeakMap();
@@ -211,11 +211,11 @@
     const usePe=source.engine==='local'&&source.provider==='local'&&!source.nsfw&&source.references.length===2&&source.references.every(r=>r.roles.length===1)&&source.references.map(r=>r.roles[0]).sort().join(',')==='style,subject';
     for (const r of source.references) {
       if (signal.aborted) throw abortError();
-      analysisImages.push({ dataUrl: await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),r.roles.includes('style')?1536:1024), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
+      analysisImages.push({ dataUrl: await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
     const payload = { surface: 'art', purpose: 'art-director', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
       negativePrompt: source.negativePrompt, nsfw: source.nsfw, supportsNegativePrompt: false,
-      artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i',styleObservation:'routing-first-v1'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
+      artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
       images: analysisImages };
     const fn = source.engine === 'grok' ? api.smartAiImageReverse : api.promptAssistantReverseImagePrompt;
     if (typeof fn !== 'function') throw new Error('所选绘图分析线路未就绪');
@@ -223,18 +223,7 @@
     const stopped = new Promise((_, reject) => { cancel = () => reject(abortError()); signal.addEventListener('abort', cancel, { once: true }); });
     try {
       const result=validate(unwrap(await Promise.race([fn.call(api, payload), stopped])),source);
-      if(!usePe||result.editEnhancer?.kind!=='qwen21-style-observation'||!['anime','painterly'].includes(result.editEnhancer.renderingClass))return result;
-      if(signal.aborted)throw abortError();
-      // Only grounded drawn construction invokes paired PE. Material-heavy CG
-      // retains the latest complete-style observer without a PE rewrite.
-      const images=[];
-      for(const r of source.references){
-        if(signal.aborted)throw abortError();
-        images.push({dataUrl:await analysisImage(r.dataUrl,Math.min(450000,Math.floor(6000000/source.references.length)),1024,true),name:r.name||`reference_${r.source}.png`,label:`图${r.source}`,role:r.role});
-      }
-      const paired=validate(unwrap(await Promise.race([fn.call(api,{...payload,artContext:{...payload.artContext,styleObservation:undefined,peStyleClass:result.editEnhancer.renderingClass},images}),stopped])),source);
-      if(result.editEnhancer.renderingClass==='painterly'&&paired.editEnhancer)paired.editEnhancer.renderingClass='painterly';
-      return paired;
+      return result;
     }
     catch(error){if(error?.name==='SyntaxError')throw new Error(source.engine==='grok'?'当前 Grok 服务未返回绘图参考分析协议；本次未提交生成，请更新服务或切换本地分析':'绘图分析返回格式无效，本次未提交生成，请重试');throw error;}
     finally { signal.removeEventListener('abort', cancel); }
@@ -528,7 +517,7 @@
       // A complete restyle must be free to rebuild facial planes and illumination.
       if(prepared.references.some(r=>r.role==='style'))state.uiPreserveLayout=false;
       state.mode=prepared.references.length?'img2img':'txt2img';state.localDrawEngine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine||'';
-      if(prepared.renderingPolicy&&state.localDrawEngine==='qwen-2.1'){
+      if(prepared.renderingPolicy&&state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant!=='turbo'){
         state.negativePrompt=prepared.promptSnapshot.negativePrompt;
         const route=`qwen-2.1:${state.mode}`,overrides=state.samplingOverrides||{},manual=overrides[route]||{};
         state.samplingOverrides={...overrides,[route]:{...manual,cfg:Number(manual.cfg)>0?manual.cfg:prepared.renderingPolicy.cfg}};
@@ -539,6 +528,11 @@
     } finally {if(controller===current)controller=null;}
   }
   async function review(prepared, outputUrl, onProgress = () => {}) {
+    if(prepared.plan.editEnhancer?.kind==='qwen21-pe-i2i'&&prepared.analysisInput.engine==='local'){
+      prepared.assertCurrent();
+      const result={schema:'nf.art.review.v1',pass:null,skipped:true,issues:[],repair:'',reason:'PE 单次分析线路不再调用额外模型复审'};
+      prepared.recordReview?.(result);return result;
+    }
     if(controller)throw new Error('请等待当前绘图分析结束');
     const current=new AbortController();controller=current;
     let stop;
@@ -612,7 +606,7 @@
       panel.addEventListener('toggle',event=>button.setAttribute('aria-expanded',String(event.newState==='open')));
       panel.appendChild(create('p',{text:data.plan.summary||'已按参考用途生成画面要求'}));
       if(data.plan.editEnhancer)panel.appendChild(create('p',{text:data.plan.editEnhancer.kind==='qwen21-style-observation'?'本地独立风格观察 · 分别采用材质、受光与暗面；原始需求保留，无需再次确认提示词':'本地 PE-I2I · 绘图专用编辑边界；原始需求保留，无需再次确认提示词'}));
-      if(data.review)panel.appendChild(create('p',{text:data.review.pass===true?'自动检查：未发现明显偏差':`成图检查：${data.review.issues.join('；')}`}));
+      if(data.review)panel.appendChild(create('p',{text:data.review.skipped?'PE 单次分析 · 未执行模型复审':data.review.pass===true?'自动检查：未发现明显偏差':`成图检查：${data.review.issues.join('；')}`}));
       if(data.renderingPolicy)panel.appendChild(create('p',{text:`已根据目标画风生成画法排除项，自动预设 CFG ${data.renderingPolicy.cfg}；手动采样设置优先。原需求保持，双向采样会增加生成时间。`}));
       for(const ref of data.references){const item=create('div',{className:'nf-art-direction-preview'});item.appendChild(create('img',{src:ref.dataUrl,alt:`图${ref.sourceNumber}实际采用的${ROLES[ref.role]}`}));item.appendChild(create('span',{text:`图${ref.sourceNumber} · ${ROLES[ref.role]}${ref.target?` → ${ref.target}`:''}：${ref.detail}`}));panel.appendChild(item);}
       panel.appendChild(create('pre',{text:data.promptSnapshot.prompt}));row.appendChild(button);row.appendChild(panel);

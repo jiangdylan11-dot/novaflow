@@ -260,9 +260,9 @@
   //   A seed 424242: fp8mixed 10.99 / 32.57, q21 9.82 / 23.46
   // 2.1 left the rest of the picture alone and drew a soft contact shadow; both 2511 files (bf16 and
   // fp8mixed, cast to fp8_e4m3fn alike) painted a hard black blot under the object on the same seed.
-  const OBJECT_TRANSFER_QWEN21_STEPS = 25
+  const OBJECT_TRANSFER_QWEN21_STEPS = 8
   const OBJECT_TRANSFER_QWEN21_CFG = 1
-  const OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS = 25
+  const OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS = 8
   const OBJECT_TRANSFER_QWEN21_RESTYLE_CFG = 1
   const EFFECT_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
   const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
@@ -5544,7 +5544,7 @@
         safeDimensionStep: IMAGE_OUTPAINT_SAFE_DIMENSION_STEP
       }
     }
-    return workflow
+    return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
   async function runQwenImageOutpaint(dataUrl, fileName, delta, nextSize, options = {}) {
@@ -5990,7 +5990,7 @@
         nodeCount: Object.keys(workflow).length
       }
     }
-    return workflow
+    return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
   async function runImageAngleAdjust(dataUrl, fileName, options) {
@@ -7965,7 +7965,7 @@
     nextId += 1
     workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: [rgbId, 0] }) }
-    return workflow
+    return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
   async function objectTransferSceneArtStyleText(sceneCanvas) {
@@ -8708,18 +8708,10 @@
   // ComfyUI 0.24.1 (the 8188 default) has none of them, so this is false there and every existing
   // route keeps running exactly as before. Point NOVAFLOW_COMFY_IMAGE_URL at a 0.37.0 Runtime that
   // carries the 2.1 weights and the 2.1 branches light up with no other configuration.
-  const QWEN21_UNETS = [
-    'qwen-image-2.1-UC-Q8_0.gguf',
-    'qwen-image-2.1-UC-Q5_K_M.gguf',
-    'qwen-image-2.1-UC-Q4_K_M.gguf'
-  ]
-  const QWEN21_CLIPS = [
-    'qwen3vl_8b_w4a8_heretic.safetensors',
-    'qwen3vl_8b_int8_convrot.safetensors',
-    'qwen3vl_8b_bf16.safetensors'
-  ]
+  const QWEN21_UNETS = ['Qwen-Image-2.1-Turbo-BF16.gguf']
+  const QWEN21_CLIPS = ['qwen3vl_8b_bf16_heretic.safetensors', 'qwen3vl_8b_bf16.safetensors']
   const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors'
-  const QWEN21_STEPS = 25
+  const QWEN21_STEPS = 8
   // Smart completion runs on 2.1 since 2026-09-26. The earlier blind test that kept it on 2509 used the
   // "game-art layer with a pale blank hole" wording below; with the 局部编辑 recipe (plain "picture"
   // wording, the undug crop as reference, the user's own 补全...缺失结构 words) 2.1 beat 2509 +
@@ -8932,7 +8924,7 @@
       nextId += 1
     }
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
-    return workflow
+    return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
   // --- 智能补图 + FLUX (Flux Fill) ------------------------------------------------------------
@@ -22568,7 +22560,7 @@
     const rgbId = String(nextId++)
     workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: [rgbId, 0] }) }
-    return workflow
+    return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
   function effectExtractCropOptions(bounds) {
@@ -22842,7 +22834,7 @@
     const rgbId = String(nextId++)
     workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: [rgbId, 0] }) }
-    return workflow
+    return window.NovaFlowQwen21Turbo.apply(workflow)
   }
 
   async function runEffectDeeffectPass(extraction, runId) {

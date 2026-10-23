@@ -20,8 +20,8 @@ const assert = new Proxy(strictAssert, { get(target, key) {
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Info = {
   LoadImage: { input: { required: { image: [['x.png']] } } },
-  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-Q8_0.gguf']] } } },
-  CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_w4a8_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
+  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
+  CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: { ...io('clip', 'prompt', 'negative_prompt'), resolution: ['INT', { default: 1024 }], images: ['COMFY_AUTOGROW_V3', {}] }, optional: io('vae') } },
   QwenImage21Cache: { input: { required: { model: ['MODEL'], device: [['auto', 'cpu']], dtype: [['default', 'int8']] } } },
@@ -298,7 +298,7 @@ assert.equal(sanitizeReferences(Array.from({ length: 25 }, (_, i) => ({ name: `r
 // ---- node probe -----------------------------------------------------------------------------
 const catalogue = {
   ...qwen21Info,
-  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-Q8_0.gguf']] } } }
+  UnetLoaderGGUF: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } }
 };
 let served = catalogue;
 const server = createServer((req, res) => {

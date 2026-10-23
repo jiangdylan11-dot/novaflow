@@ -105,6 +105,7 @@
   //     switches to the base model's 40 steps at CFG 4. Past 8 steps the Lightning LoRA is off.
   const LOCAL_SAMPLING_ROUTES = Object.freeze({
     'qwen-2.1': Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
+    'qwen-2.1-turbo': Object.freeze({ steps: [8, 8], cfg: [1, 1] }),
     rapid: Object.freeze({ steps: [1, 8], cfg: [1, 10] }),
     standard: Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
   })
@@ -118,7 +119,7 @@
 
   function localSamplingRoute(state, mode) {
     if (normalizeProvider(state?.provider) !== 'local') return ''
-    if (localQwen21Drawing(state)) return 'qwen-2.1'
+    if (localQwen21Drawing(state)) return state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1'
     if (state?.nsfw === true) return 'rapid'
     return normalizeMode(mode || state?.mode) === 'img2img' ? 'standard' : ''
   }
@@ -142,13 +143,13 @@
   // names the route it actually builds. null off the sampling routes.
   function localSamplingFor(state, mode, userNegativePrompt, route) {
     const modeKey = normalizeMode(mode || state?.mode)
-    route = LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
+    route = route==='qwen-2.1'&&state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
     if (!route) return null
     const negative = String(userNegativePrompt ?? state?.negativePrompt ?? '').trim()
     const override = localSamplingOverride(state, route, modeKey)
     const manualSteps = clampLocalSampling(route, 'steps', override.steps)
     const manualCfg = clampLocalSampling(route, 'cfg', override.cfg)
-    const defaultSteps = route === 'qwen-2.1'
+    const defaultSteps = route === 'qwen-2.1-turbo' ? 8 : route === 'qwen-2.1'
       ? QWEN21_DEFAULT_STEPS
       : route === 'rapid'
         ? RAPID_DEFAULT_STEPS
@@ -221,7 +222,7 @@
     const provider = normalizeProvider(state?.provider)
     const mode = normalizeMode(state?.mode)
     const route = provider === 'local' && localQwen21Drawing(state)
-      ? 'qwen-2.1'
+      ? (state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1')
       : provider === 'local' && mode === 'txt2img' ? 'rapid' : ''
     return `${provider}:${mode}:${route}`
   }

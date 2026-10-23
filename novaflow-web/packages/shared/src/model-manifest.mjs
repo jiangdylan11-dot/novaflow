@@ -117,25 +117,19 @@ export const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
-    // 提示词助手's own model, Qwen3-VL 8B in NF4. 'local' like BiRefNet: ComfyUI
-    // never loads it. Either folder is enough ('any'): the NF4 cache the
-    // assistant loads, or the raw model it builds that cache from on first use.
-    // worker-core then asks the assistant itself (reportModels), which checks
-    // the whole folder and its Python service, before advertising it.
+    // Drawing, UI and the legacy assistant protocols share one PE checkpoint.
     model_id: 'prompt-assistant',
-    display_name: '提示词助手 (Qwen3-VL 8B)',
-    version: '2.0.0',
+    display_name: '提示词助手 (Qwen3.5 PE)',
+    version: '3.5',
     runtime: 'local',
     min_vram_mb: 8000,
     compatible_workflows: ['prompt_assistant'],
-    required_match: 'any',
     required_files: [
-      { path: 'prompt_assistant/cache/Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-v1/novaflow_nf4_cache.json', min_bytes: 100, sha256: null },
-      { path: 'prompt_assistant/Huihui-Qwen3-VL-8B-Instruct-Abliterated/model.safetensors.index.json', min_bytes: 10_000, sha256: null }
+      { path: 'text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors', min_bytes: 9_000_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 prompt_assistant/cache 下的 NF4 缓存文件夹（例如 E:/NovaFlow/models/prompt_assistant）。'
+      hint: '导入绘图和 UI 共用的 Qwen3.5 9B PE 模型；不再需要 NF4 缓存。'
     }
   },
   {
@@ -149,14 +143,23 @@ export const MODEL_MANIFEST = Object.freeze([
     min_vram_mb: 16000,
     compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
     required_files: [
-      { path: 'diffusion_models/qwen-image-2.1-UC-Q8_0.gguf', min_bytes: 7_000_000_000, sha256: null },
-      { path: 'text_encoders/qwen3vl_8b_w4a8_heretic.safetensors', min_bytes: 6_000_000_000, sha256: null },
+      { path: 'diffusion_models/qwen-image-2.1-UC-BF16.gguf', min_bytes: 14_000_000_000, sha256: null },
+      { path: 'text_encoders/qwen3vl_8b_bf16_heretic.safetensors', min_bytes: 17_000_000_000, sha256: null },
       { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装支持 Qwen 2.1 BF16 的 ComfyUI 节点。'
     }
+  },
+  {
+    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo GGUF BF16', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
+    compatible_workflows:['novaflow-brand-runtime.buildArtGenerateRunWorkflow','spine-split-runtime'],
+    required_files:[
+      {path:'diffusion_models/Qwen-Image-2.1-Turbo-BF16.gguf',min_bytes:14_000_000_000,sha256:null},
+      {path:'text_encoders/qwen3vl_8b_bf16_heretic.safetensors',min_bytes:17_000_000_000,sha256:null},
+      {path:'vae/qwen_image_2.1_vae_bf16.safetensors',min_bytes:600_000_000,sha256:null}
+    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-BF16.gguf、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
   },
   {
     // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.

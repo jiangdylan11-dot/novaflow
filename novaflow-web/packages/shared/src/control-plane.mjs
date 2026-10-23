@@ -723,7 +723,7 @@ export function createControlPlane({ store, secrets, logger }) {
       // rather than reshaped - but the COST is still derived here, from the
       // dimensions and duration we can read out of them.
       parameters = sanitizeWorkflowOptions(body.parameters);
-      req = { modelId: workflowModelId(moduleName, parameters), minVramMb: entry.minVramMb, kind: entry.kind };
+      req = { modelId: workflowModelId(moduleName, parameters, method), minVramMb: entry.minVramMb, kind: entry.kind };
       pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {

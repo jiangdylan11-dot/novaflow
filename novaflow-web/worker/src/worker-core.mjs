@@ -480,13 +480,15 @@ export function createWorker(options) {
     }
     const diskModels = modelsRoot ? await inspectAllModels(modelsRoot).catch(() => []) : [];
     const qwen21 = state.comfy.image ? await detectQwenImage21(comfyImage).catch(() => false) : false;
+    const qwen21Turbo=state.comfy.image?await detectQwenImage21(comfyImage,{variant:'turbo'}).catch(()=>false):false;
     const models = MODEL_MANIFEST.map((spec) => {
       const found = byId.get(spec.model_id) || diskModels.find(m => m.model_id === spec.model_id);
       // Qwen-Image-2.1 is ready when this node can build its graph: the builder's own check, which
       // also covers the other quantisations and text encoders it accepts.
-      if (spec.model_id === QWEN21_MODEL_ID) {
-        return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: qwen21 ? 'ready' : 'missing',
-          detail: { ...(found?.detail || {}), ...(qwen21 ? {} : { reason: 'qwen_image_21_unavailable' }) } };
+      if (spec.model_id === QWEN21_MODEL_ID || spec.model_id==='qwen-image-2.1-turbo') {
+        const ready=spec.model_id==='qwen-image-2.1-turbo'?qwen21Turbo:qwen21;
+        return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: ready ? 'ready' : 'missing',
+          detail: { ...(found?.detail || {}), ...(ready ? {} : { reason: 'qwen_image_21_unavailable' }) } };
       }
       // A 'local' model is not loaded by ComfyUI, so no node catalogue can
       // vouch for it. The loop above only ever asks the 'image' and 'video'
@@ -959,7 +961,7 @@ export function createWorker(options) {
     catch (error) { throw new Error('提示词请求不是有效的 JSON：' + String(error.message || error)); }
 
     await reportProgress(task.id, TASK_STATE.PROCESSING, 10, '本地模型推理中');
-    const reply = await assistant.runForTask(task.id, method, request && typeof request === 'object' ? request : {});
+    const reply = await assistant.runForTask(task.id, method, request && typeof request === 'object' ? request : {}, { isCancelled: () => { try { checkCancelled(task.id); return false; } catch { return true; } } });
     checkCancelled(task.id);
     const bytes = Buffer.from(JSON.stringify(reply ?? { ok: false, error: '提示词助手没有返回结果' }));
     await writeFile(join(outDir, PROMPT_ASSISTANT_RESULT_FILE), bytes);

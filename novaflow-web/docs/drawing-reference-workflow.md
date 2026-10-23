@@ -2,6 +2,24 @@
 
 日期：2026-10-23。范围为美工的“绘图”页，UI 设计流程保留原入口。
 
+## 2.0.95 当前模型线路
+
+本节取代后文历史记录中的多模型分析链。后文已认可样图继续作为效果基线，不代表旧模型仍在使用。
+
+| 入口 | 生图权重 | 编码器 | 采样 |
+| --- | --- | --- | --- |
+| 绘图普通线路、UI | `qwen-image-2.1-UC-BF16.gguf` | `qwen3vl_8b_bf16_heretic.safetensors` | 普通版原有参数，绘图默认 40 步 |
+| 绘图新增 Turbo 测试线路 | `Qwen-Image-2.1-Turbo-BF16.gguf` | 同一 BF16 编码器 | 官方固定 8 步序列、Euler、CFG 1 |
+| Qwen 2.1 图像编辑工具 | 同一 Turbo GGUF BF16 | 同一 BF16 编码器 | 同一 Turbo 序列，保留各工具原本的蒙版与尺寸处理 |
+
+- 绘图左侧“模型方式”可选择“本地模型”或“本地模型 · Turbo BF16”；两者采样设置分开，普通版 40 步/CFG 不带入 Turbo。UI 固定普通版。
+- 分析只使用 `qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors`。双图风格迁移一次读取完整主体图和完整风格图，不再先调用通用 BF16 观察、再 PE 重写、再 NF4 隔离/复审。
+- 原助手接口由 CPU 协议进程转交同一个 ComfyUI PE 检查点，保留已有输出协议，不加载 NF4、不会自动构建 NF4 缓存。PE 的 INT8 权重本身必须保留；它不是已停用的生图量化版。
+- 双图 PE 线路的成图记录明确写“未执行模型复审”，不能把省略检查伪报成质量通过。
+- Turbo 使用 [Comfy-Org 官方工作流](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_qwen_image_2_1_turbo_image_edit.json) 的 `1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0`，通过 `ManualSigmas + SamplerCustom` 执行，不能用普通 `simple` 八步代替。
+- 模型目录清理：停用的 NF4 缓存、通用 9B BF16 分析权重、W4A8 编码器、普通/Turbo Q8、Turbo INT8 和未完成 Q4 下载共 7 项已移入 Windows 回收站（约 56.14 GB），未清空回收站。BF16 权重、PE、VAE、其他模型共用编码器保留。
+- 真实节点记录：普通 GGUF BF16 生图 `724514de-ed8f-4f4b-a671-b58fac821538`，Turbo GGUF BF16 生图 `c67ad69a-a934-46a6-bc9a-88295c283ff1`，Turbo 角度编辑 `1fb0ba2b-65b2-4bb9-8a84-acbc95da0956` 均成功完成。加载/出图通过不等于全部参考风格效果验收。
+
 ## 使用方式
 
 - 添加参考图，写一句用途关系，例如“图1用图2画风”，直接生成。

@@ -36,6 +36,7 @@ const NOT_RUNTIME = new Set([
 
 // Loaded first: later modules read their globals at definition time.
 const LOAD_FIRST = [
+  'qwen21-turbo.workflow.js',
   'comfyui-workflow-credit-cost.js',
   'art-quality-profile.workflow.js',
   'art-reference-compiler.workflow.js'

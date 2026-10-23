@@ -81530,6 +81530,7 @@
     const tool = window.NovaFlowArtGenerateModeTool;
     const mounted = !!(host instanceof HTMLElement && tool?.syncControlPanel?.({
       host, state: ART_GENERATE_STATE, workspaceId: ART_GENERATE_WORKSPACE_ID,
+      showTurboRoute: !window.NovaFlowUiDesignDrawing?.isActive?.(),
       showAccount: !window.NovaFlowUiDesignDrawing?.isActive?.(),
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); syncArtGenerateRuntime(); scheduleArtGeneratePreviewRefresh([0, 16, 64]); }
     }));
@@ -85414,9 +85415,10 @@
   // It only runs on a compute node whose ComfyUI carries the 2.1 weights: the worker warms the node
   // catalogue and exposes it as electronAPI.__objectInfoSync. The desktop and the browser never have
   // that hook, so they keep their current graphs; NSFW, LoRA and UI-design runs keep theirs too.
-  const ART_QWEN21_UNETS = ["qwen-image-2.1-UC-Q8_0.gguf", "qwen-image-2.1-UC-Q5_K_M.gguf", "qwen-image-2.1-UC-Q4_K_M.gguf"];
-  const ART_QWEN21_NATIVE_BF16 = ["qwen-image-2.1-UC-BF16-native.safetensors", "qwen-image-2.1-UC-BF16.safetensors"];
-  const ART_QWEN21_CLIPS = ["qwen3vl_8b_w4a8_heretic.safetensors", "qwen3vl_8b_int8_convrot.safetensors", "qwen3vl_8b_bf16.safetensors"];
+  const ART_QWEN21_UNETS = ["qwen-image-2.1-UC-BF16.gguf"];
+  const ART_QWEN21_TURBO_UNETS = ["Qwen-Image-2.1-Turbo-BF16.gguf"];
+  const ART_QWEN21_BF16 = ART_QWEN21_UNETS;
+  const ART_QWEN21_CLIPS = ["qwen3vl_8b_bf16_heretic.safetensors", "qwen3vl_8b_bf16.safetensors"];
   const ART_QWEN21_VAE = "qwen_image_2.1_vae_bf16.safetensors";
 
   function artQwen21Choice(nodeInfo, key, candidates) {
@@ -85428,11 +85430,10 @@
   function artQwen21Runtime(options) {
     const info = window.electronAPI?.__objectInfoSync?.();
     if (!info || !info.TextEncodeQwenImage21 || !info.UnetLoaderGGUF || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
-    const native = options?.taskProfile === 'art-direction' ? artQwen21Choice(info.UNETLoader, "unet_name", ART_QWEN21_NATIVE_BF16) : '';
-    const unet = native || artQwen21Choice(info.UnetLoaderGGUF, "unet_name", ART_QWEN21_UNETS);
-    const clip = artQwen21Choice(info.CLIPLoader, "clip_name", native ? ["qwen3vl_8b_bf16_heretic.safetensors", "qwen3vl_8b_bf16.safetensors", ...ART_QWEN21_CLIPS] : ART_QWEN21_CLIPS);
+    const unet = artQwen21Choice(info.UnetLoaderGGUF, "unet_name", options?.localQwen21Variant==='turbo'?ART_QWEN21_TURBO_UNETS:ART_QWEN21_UNETS);
+    const clip = artQwen21Choice(info.CLIPLoader, "clip_name", ART_QWEN21_CLIPS);
     const vae = artQwen21Choice(info.VAELoader, "vae_name", [ART_QWEN21_VAE]);
-    return unet && clip && vae ? { info, unet, clip, vae, loader:native?'UNETLoader':'UnetLoaderGGUF' } : null;
+    return unet && clip && vae ? { info, unet, clip, vae, loader:'UnetLoaderGGUF' } : null;
   }
 
   // At cfg 1 (the 2.1 default) the sampler never evaluates the negative prompt: filled and empty gave
@@ -85488,7 +85489,7 @@
       : [];
     if (references.length > QWEN21_ART_MAX_REFERENCES) throw new Error(`Qwen-Image 2.1 最多支持 ${QWEN21_ART_MAX_REFERENCES} 张参考图，本次未截断提交。`);
     if (mode === "img2img" && !references.length) return null;
-    const runtime = artQwen21Runtime(providerOptions);
+    const runtime = artQwen21Runtime(state);
     if (!runtime) return null;
     const info = runtime.info || {};
     const seed = state?.randomSeed || Number(state?.seed) < 0
@@ -85514,7 +85515,7 @@
       workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
       workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
       workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
-      return { workflow, modelKey: "qwen-image-2.1-t2i" };
+      return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-t2i":"qwen-image-2.1-t2i" };
     }
     const sizes = references.map((_, index) => {
       const size = Array.isArray(referenceSizes) ? referenceSizes[index] : null;
@@ -85592,7 +85593,7 @@
       output = ["9", 0];
     }
     workflow["10"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
-    return { workflow, modelKey: "qwen-image-2.1-i2i" };
+    return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-i2i":"qwen-image-2.1-i2i" };
   }
 
   // UI design on a Qwen-Image-2.1 node: every connected reference goes in as images.image_N and the
@@ -85695,7 +85696,7 @@
       ? Math.floor(Math.random() * 1000000000)
       : Math.round(Number(state?.seed) || 0);
     const workflow = {
-      "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: runtime.unet } },
+      "1": { class_type: runtime.loader, inputs: { unet_name: runtime.unet, weight_dtype: "default" } },
       "2": { class_type: "CLIPLoader", inputs: { clip_name: runtime.clip, type: "qwen_image", device: "default" } },
       "3": { class_type: "VAELoader", inputs: { vae_name: runtime.vae } }
     };
@@ -85712,7 +85713,7 @@
     // The approved local and Grok versions share this exact sampling graph.
     if(providerOptions?.uiApprovedCatalog===true){
       if(names.length!==1||mode!=="img2img"||nativeEdit||!preserveNativeLayout||roleAt(0)!=="layout"||!info.LatentUpscale||!info.SaveLatent)throw new Error('认可版本生图条件不完整，本次未提交');
-      if(runtime.unet!=='qwen-image-2.1-UC-Q8_0.gguf'||runtime.clip!=='qwen3vl_8b_w4a8_heretic.safetensors'||runtime.vae!=='qwen_image_2.1_vae_bf16.safetensors')throw new Error('认可版本的模型配置不匹配，本次未替换模型');
+      if(!ART_QWEN21_BF16.includes(runtime.unet)||!ART_QWEN21_CLIPS.includes(runtime.clip)||runtime.vae!=='qwen_image_2.1_vae_bf16.safetensors')throw new Error('认可版本的模型配置不匹配，本次未替换模型');
       encode.resolution=1024;encode['images.image_1']=['100',0];
       workflow['100']={class_type:'LoadImage',inputs:{image:names[0]}};
       workflow['5']={class_type:'TextEncodeQwenImage21',inputs:encode};
@@ -85738,7 +85739,7 @@
     }, 0);
     const safeNative = preserveNativeLayout && isBase(0) && names.length <= 3 && names.length > 0 && !String(negativePrompt || '').trim()
       && auxiliaryEncodedPixels <= 527360 && (sampling?.steps || 40) === 40 && (sampling?.cfg || guidance.cfg) === 1
-      && runtime.unet === 'qwen-image-2.1-UC-Q8_0.gguf' && runtime.clip === 'qwen3vl_8b_w4a8_heretic.safetensors'
+      && ART_QWEN21_BF16.includes(runtime.unet) && ART_QWEN21_CLIPS.includes(runtime.clip)
       && runtime.vae === 'qwen_image_2.1_vae_bf16.safetensors' && sizes[0].width > 0 && sizes[0].height > 0;
     if (highNativeRequested && !safeNative) throw new Error('864×1536 原生采样当前仅支持已测模型、40步/CFG1、最多三图及受限参考像素；请使用较小尺寸或减少参考图。');
     if (nativeEdit && requested.width * requested.height > 1048576 && !highNativeRequested) throw new Error("局部原生采样超过已验证尺寸；请使用不超过1MP的尺寸或已验证的864×1536");
@@ -85845,7 +85846,7 @@
     if (String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design' && state?.uiLayoutMode === 'partial' && !providerOptions.uiNativeEdit) throw new Error('局部UI任务缺少原生选区，禁止退为全图编辑');
     if (window.NovaFlowWebRuntime) {
       const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
-        'samplingOverrides', 'negativePrompt',
+        'samplingOverrides', 'negativePrompt', 'localQwen21Variant',
         'uiRunIntent', 'uiPreserveLayout', 'uiLayoutMode', 'uiNativeEditPrompt', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
         'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
@@ -86414,7 +86415,7 @@
             batchIndex -= 1;
             continue;
           }
-          drawingNeedsAttention ||= drawingReview.pass !== true;
+          drawingNeedsAttention ||= !drawingReview.skipped && drawingReview.pass !== true;
         }
         const result = {
           id: `artgen_${Date.now().toString(36)}`,
