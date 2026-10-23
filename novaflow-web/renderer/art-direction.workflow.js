@@ -7,6 +7,7 @@
   const TASK_BRIEFS=Object.freeze({auto:'依照用户要求处理主体参考，未指定改变的内容保持',anime:'保留主体身份、设计和数量，将整幅照片重新绘制为精致二次元插画，使用明确的手绘轮廓、概括造型与分层明暗，不保留摄影皮肤纹理',game_cg:'保留主体身份、服饰、姿势和数量，将整幅照片重新绘制为高完成度的半写实游戏角色宣传插画。使用数字厚涂、概括而精准的手绘体积塑造、精致五官与头发分组、统一的绘画光影和材质笔触。人物、衣服和环境都必须重新绘画，呈现明确的游戏原画CG质感，去除摄影皮肤毛孔与镜头散景，不是照片美化或摄影滤镜',style:'保留主体内容，采用指定风格的绘画语言',preserve:'精修原图，保持原有设计'});
   const CACHE = new Map();
   const previews = new WeakMap();
+  const writtenReferencePolicies = new WeakMap();
   let controller = null;
   const text = value => String(value ?? '').trim();
   const copy = value => JSON.parse(JSON.stringify(value));
@@ -493,9 +494,13 @@
     const automaticNegative=[renderingNegative,...isolatedDonor].filter(Boolean).join(', ');
     return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...((isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
   }
-  function directPreparation(source) {
+  function directPreparation(source, written) {
     if(!source.prompt)throw new Error('请写一句要求，例如“换成白色衬衫”；需要自动理解参考图时可选择本地AI');
-    const references=source.references.map(ref=>{
+    // An unchanged compiled prompt still addresses the slots selected by AI.
+    // Keep only that pair's reference routing; first-time direct requests retain
+    // their original upload order, pixels and inferred roles.
+    const inputs=written?written.order.map(({sourceNumber,role})=>({...source.references.find(ref=>ref.source===sourceNumber),roles:[role]})):source.references;
+    const references=inputs.map(ref=>{
       const mimeType=ref.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
       if(!mimeType)throw new Error(`图${ref.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
       const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
@@ -506,7 +511,7 @@
       if(index<0)throw new Error(`图${number}不存在，请检查参考图编号`);
       return `<image${index+1}>`;
     }):source.prompt;
-    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
+    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},...(written?.policy?{referencePolicy:copy(written.policy)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
   }
   async function prepare(context) {
     if (controller) throw new Error('请等待当前绘图分析结束');
@@ -517,6 +522,12 @@
     try {
       if(!source.prompt&&!source.references.length)throw new Error('请写一句需求，或添加参考图后直接生成');
       if(source.references.length>(context.referenceLimit||10))throw new Error(`当前模型支持 ${context.referenceLimit||10} 张参考图，请减少图片或切换模型；本次未截断提交`);
+      let written=writtenReferencePolicies.get(context.state);
+      // Choosing 无AI is expected after writeback. Every actual input change
+      // invalidates the saved policy, including pixels, roles and source order.
+      if(written&&!same({...written.source,engine:source.engine},source)){
+        writtenReferencePolicies.delete(context.state);written=null;
+      }
       const cacheKey=await key(source);check();
       let prepared=CACHE.get(cacheKey);
       if(!prepared){
@@ -530,10 +541,14 @@
         }
         CACHE.set(cacheKey,prepared);if(CACHE.size>4)CACHE.delete(CACHE.keys().next().value);
       }
+      // Apply state-specific replay outside CACHE: a new direct request with the
+      // same text must not inherit another state object's AI routing policy.
+      if(source.engine==='direct'&&written)prepared=directPreparation(source,written);
       previews.set(context.state,{...prepared,originalPrompt:source.prompt});
       const state=copy(Object.fromEntries(GENERATION_SETTINGS.filter(k=>Object.hasOwn(context.state,k)).map(k=>[k,context.state[k]])));
       // A complete restyle must be free to rebuild facial planes and illumination.
       if(!prepared.direct&&prepared.references.some(r=>r.role==='style'))state.uiPreserveLayout=false;
+      if(prepared.direct&&written&&typeof written.uiPreserveLayout==='boolean')state.uiPreserveLayout=written.uiPreserveLayout;
       state.mode=prepared.references.length?'img2img':'txt2img';state.localDrawEngine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine||'';
       if(prepared.renderingPolicy&&state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant!=='turbo'){
         state.negativePrompt=prepared.promptSnapshot.negativePrompt;
@@ -548,7 +563,16 @@
             const ref=prepared.references[Number(n)-1];return ref?`@参考图${ref.sourceNumber||Number(n)}`:tag;
           });
           context.state.negativePrompt=prepared.promptSnapshot.negativePrompt;
+          if(prepared.renderingPolicy&&state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant!=='turbo'){
+            const route=`qwen-2.1:${state.mode}`,overrides=context.state.samplingOverrides||{},manual=overrides[route]||{},requestedCfg=Number(manual.cfg);
+            const cfg=Number.isFinite(requestedCfg)&&requestedCfg>0?manual.cfg:state.samplingOverrides[route].cfg;
+            context.state.samplingOverrides={...overrides,[route]:{...manual,cfg}};
+            state.samplingOverrides={...state.samplingOverrides,[route]:{...state.samplingOverrides[route],cfg}};
+          }
           expectedSource=input(context.getCurrentContext?context.getCurrentContext():context);
+          if(prepared.references.length===2&&prepared.references[0].role==='subject'&&prepared.references[1].role==='style'){
+            writtenReferencePolicies.set(context.state,{source:expectedSource,...(prepared.referencePolicy?{policy:copy(prepared.referencePolicy)}:{}),uiPreserveLayout:state.uiPreserveLayout,order:prepared.references.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
+          }else writtenReferencePolicies.delete(context.state);
           return true;
         },
         recordReview:review=>{const previous=previews.get(context.state);if(previous)previous.review=review;}};

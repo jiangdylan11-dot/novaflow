@@ -5,6 +5,7 @@ import { createContext, runInContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { normalizeReverseRequest } from '../../worker/src/prompt-assistant.mjs';
+import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 const require=createRequire(import.meta.url);
 const cloud=require('../../admin/admin-server/art-direction.js');
 const samples=[[0,0,180,180],[210,0,390,180],[400,0,580,180],[600,0,780,180]];
@@ -55,6 +56,118 @@ test('AI writeback fills the editable boxes, keeps actual reference numbers and 
   assert.match(state.prompt,/将@参考图5按@参考图2实际画风/);assert.equal(state.negativePrompt,result.promptSnapshot.negativePrompt);
   assert.equal(result.originalPrompt,'图5用图2画风');assert.doesNotThrow(result.assertCurrent);
   state.prompt+='，换成红衣';assert.throws(result.assertCurrent,/已变化/);
+});
+
+test('unchanged AI writeback retains its grounded style policy and actual slots when generated without AI',async()=>{
+  const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image2>按<image1>的实际画风完整重绘。',sourceOrder:[2,5],renderingClass:'anime'};
+  const e=env(p),state={provider:'local',mode:'img2img',prompt:'图5用图2画风',width:1280,height:960},refs=[null,ref('style'),null,null,ref('photo')];
+  const first=await e.api.prepare(ctx(state,refs));first.applyPromptToState();
+  state.drawingAnalysisEngine='direct';
+  const repeated=await e.api.prepare(ctx(state,refs));
+  assert.equal(repeated.direct,true);assert.equal(e.calls.length,1);
+  assert.equal(e.api.generationOptions(repeated).styleReferencePriority,true);
+  assert.deepEqual(Array.from(repeated.references,r=>[r.sourceNumber,r.role]),[[5,'subject'],[2,'style']]);
+  assert.equal(repeated.references[0].dataUrl,refs[4].dataUrl);assert.equal(repeated.references[1].dataUrl,refs[1].dataUrl);
+  assert.equal(repeated.promptSnapshot.prompt,first.promptSnapshot.prompt);
+  assert.equal(repeated.renderingPolicy,undefined,'replay does not change sampling policy');
+  const again=await e.api.prepare(ctx(state,refs));assert.equal(e.api.generationOptions(again).styleReferencePriority,true);
+  const fresh=await e.api.prepare(ctx({...state},refs));
+  assert.equal(e.api.generationOptions(fresh).styleReferencePriority,false,'the shared direct cache cannot leak a state-specific compiled policy');
+  assert.deepEqual(Array.from(fresh.references,r=>r.sourceNumber),[2,5]);
+});
+
+test('editing a compiled prompt or its inputs invalidates only its saved reference policy',async()=>{
+  for(const change of [
+    (state)=>{state.prompt+='，换成红衣';},
+    (state)=>{state.negativePrompt+='，不要耳环';},
+    (state,refs)=>{refs[1]=ref('replacement-style');},
+    (state,refs)=>{refs[0]={...refs[0],drawingRole:'background'};},
+    (state)=>{state.width=960;},
+    (state)=>{state.provider='google';},
+    (state)=>{state.nsfw=true;},
+    (state)=>{state.drawingTask='preserve';},
+  ]){
+    const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+    p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image1>按<image2>的实际画风重绘。',sourceOrder:[1,2],renderingClass:'anime'};
+    const e=env(p),state={provider:'local',mode:'img2img',prompt:'图1用图2画风',width:1280,height:960},refs=[ref('photo'),ref('style')];
+    const first=await e.api.prepare(ctx(state,refs));first.applyPromptToState();state.drawingAnalysisEngine='direct';
+    const oldPrompt=state.prompt,oldNegative=state.negativePrompt,oldRefs=[...refs],oldState={...state};
+    change(state,refs);
+    const changed=await e.api.prepare(ctx(state,refs));
+    assert.equal(e.api.generationOptions(changed).styleReferencePriority,false,change.toString());
+    assert.equal(e.calls.length,1,'invalidation never invokes an analyzer');
+    Object.assign(state,oldState,{prompt:oldPrompt,negativePrompt:oldNegative});refs.splice(0,refs.length,...oldRefs);
+    const restored=await e.api.prepare(ctx(state,refs));
+    assert.equal(e.api.generationOptions(restored).styleReferencePriority,false,'an invalidated policy does not reappear from a cached direct request');
+  }
+});
+
+test('formal Qwen builders retain reference budgets and sampling geometry after AI writeback switches to direct',async()=>{
+  const info={NovaFlowGGUFBF16Loader:{input:{required:{unet_name:[['qwen-image-2.1-UC-BF16.gguf','Qwen-Image-2.1-Turbo-BF16.gguf']]}}},CLIPLoader:{input:{required:{clip_name:[['qwen3vl_8b_bf16_heretic.safetensors']]}}},VAELoader:{input:{required:{vae_name:[['qwen_image_2.1_vae_bf16.safetensors']]}}},TextEncodeQwenImage21:{},QwenImage21Cache:{},KSampler:{},VAEDecode:{},SaveImage:{},ImageScale:{}};
+  const host=await createWorkflowHost({rendererDir:new URL('../../worker-renderer/',import.meta.url).pathname.replace(/^\/([A-Z]:)/,'$1'),objectInfo:info});
+  for(const [localQwen21Variant,manualCfg] of [['standard',undefined],['standard',3],['turbo',undefined],['turbo',3]])for(const preserve of ['','保持原有光感','保持原配色','保持原取景']){
+    const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
+    p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image2>按<image1>的实际动漫画风整体重绘。'+preserve,sourceOrder:[2,5],renderingClass:'anime'};
+    const e=env(p),state={provider:'local',mode:'img2img',prompt:'图5用图2画风'+(preserve?'，'+preserve:''),negativePrompt:'不要文字',drawingAnalysisEngine:'local',localQwen21Variant,localDrawEngine:'qwen-2.1',width:1280,height:960,seed:324423870,randomSeed:false,nsfw:false,samplingOverrides:manualCfg?{'qwen-2.1:img2img':{steps:25,cfg:manualCfg}}:{}},refs=[null,ref('cg'),null,null,ref('photo')];
+    const first=await e.api.prepare(ctx(state,refs));first.applyPromptToState();state.drawingAnalysisEngine='direct';
+    const repeated=await e.api.prepare(ctx(state,refs)),graphs=[];
+    assert.equal(first.state.uiPreserveLayout,false);assert.equal(repeated.state.uiPreserveLayout,false);
+    assert.equal(e.api.generationOptions(first).styleReferencePriority,!preserve);
+    assert.equal(e.api.generationOptions(repeated).styleReferencePriority,!preserve);
+    assert.deepEqual(Array.from(repeated.references,r=>[r.sourceNumber,r.role]),[[5,'subject'],[2,'style']]);
+    if(preserve){assert.equal(first.referencePolicy,undefined);assert.equal(repeated.referencePolicy,undefined);}
+    for(const prepared of [first,repeated])graphs.push(JSON.parse(JSON.stringify(await host.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['photo.jpg','cg.jpg'],'NF_replay',prepared.promptSnapshot.prompt,prepared.promptSnapshot.negativePrompt,'test',[{width:1280,height:960},{width:768,height:1344}],prepared.state,10,e.api.generationOptions(prepared)]}}))));
+    const comparable=structuredClone(graphs);
+    if(localQwen21Variant==='turbo'){
+      assert.equal(graphs[0]['7'].inputs.cfg,1);assert.equal(graphs[1]['7'].inputs.cfg,1);
+      // CFG 1 skips the negative branch; writing that text back does not alter sampling.
+      for(const graph of comparable)delete graph['5'].inputs.negative_prompt;
+    }else{
+      assert.equal(graphs[0]['7'].inputs.cfg,3);assert.equal(graphs[1]['7'].inputs.cfg,3);
+      assert.equal(graphs[0]['7'].inputs.steps,25);assert.equal(graphs[1]['7'].inputs.steps,25);
+    }
+    assert.deepEqual(comparable[1],comparable[0],localQwen21Variant+' '+preserve+' must retain effective guidance and reference geometry');
+    assert.equal(graphs[1]['200'].inputs.width,preserve?1152:800);assert.equal(graphs[1]['200'].inputs.height,preserve?864:608);
+    if(preserve){assert.equal(graphs[1]['201'].inputs.width,512);assert.equal(graphs[1]['201'].inputs.height,928);}
+    else assert.equal(graphs[1]['201'],undefined,'the complete CG reference fits its 1 MP budget');
+    assert.deepEqual(graphs[1]['7'].inputs.latent_image,['6',0]);assert.equal(graphs[1]['6'].inputs.width,1280);assert.equal(graphs[1]['6'].inputs.height,960);
+    assert.doesNotMatch(graphs[1]['5'].inputs.prompt,/未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变/);
+    assert.equal(e.calls.length,1);
+  }
+});
+
+test('AI writeback retains the effective ordinary Qwen guidance while manual values and Turbo keep precedence',async()=>{
+  for(const [variant,manualCfg] of [['standard',undefined],['standard',4],['turbo',undefined]]){
+    const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+    p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image1>按<image2>的实际动漫画风重绘。',sourceOrder:[1,2],renderingClass:'anime'};
+    const e=env(p),state={provider:'local',mode:'img2img',prompt:'图1用图2画风',drawingAnalysisEngine:'local',localQwen21Variant:variant,samplingOverrides:{'rapid:img2img':{steps:6,cfg:1},...(manualCfg?{'qwen-2.1:img2img':{steps:25,cfg:manualCfg}}:{})}};
+    const first=await e.api.prepare(ctx(state,[ref('photo'),ref('style')]));
+    assert.equal(state.samplingOverrides['qwen-2.1:img2img']?.cfg,manualCfg,'preparation alone leaves editable settings untouched');
+    first.applyPromptToState();
+    assert.deepEqual(state.samplingOverrides['rapid:img2img'],{steps:6,cfg:1});
+    if(variant==='standard'){
+      assert.equal(state.samplingOverrides['qwen-2.1:img2img'].cfg,manualCfg||3);
+      assert.equal(state.samplingOverrides['qwen-2.1:img2img'].cfg,first.state.samplingOverrides['qwen-2.1:img2img'].cfg);
+      if(manualCfg)assert.equal(state.samplingOverrides['qwen-2.1:img2img'].steps,25);
+    }else assert.equal(state.samplingOverrides['qwen-2.1:img2img'],undefined,'Turbo does not acquire ordinary guidance overrides');
+  }
+});
+
+test('a newly edited manual CFG wins at writeback and also updates the prepared generation settings',async()=>{
+  for(const nextCfg of [5,undefined]){
+    const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+    p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image1>按<image2>的实际动漫画风重绘。',sourceOrder:[1,2],renderingClass:'anime'};
+    const e=env(p);
+    const state={provider:'local',mode:'img2img',prompt:'图1用图2画风',drawingAnalysisEngine:'local',samplingOverrides:{'qwen-2.1:img2img':{steps:25,cfg:4}}};
+    const first=await e.api.prepare(ctx(state,[ref('photo'),ref('style')]));assert.equal(first.state.samplingOverrides['qwen-2.1:img2img'].cfg,4);
+    state.samplingOverrides['qwen-2.1:img2img'].cfg=nextCfg;
+    first.applyPromptToState();
+    const expected=nextCfg===undefined?4:nextCfg;
+    assert.equal(state.samplingOverrides['qwen-2.1:img2img'].cfg,expected);
+    assert.equal(first.state.samplingOverrides['qwen-2.1:img2img'].cfg,expected,'the value shown and the value sampled must agree');
+    assert.equal(state.samplingOverrides['qwen-2.1:img2img'].steps,25);
+  }
 });
 
 test('direct editing bypasses every analyzer and reviewer and preserves original pixels and user constraints',async()=>{
