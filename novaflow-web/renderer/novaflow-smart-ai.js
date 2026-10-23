@@ -5064,7 +5064,7 @@
 
   function mountButton(actions, surface) {
     if (!(actions instanceof HTMLElement)) return;
-    if (surface === "art" && window.NovaFlowUiDesignDrawing?.isActive?.()) {
+    if (surface === "art" && (window.NovaFlowUiDesignDrawing?.isActive?.() || window.NovaFlowArtDirection && actions.closest('[data-novaflow-art-generate-prompt-surface="drawing"]'))) {
       actions.querySelectorAll(`[${SMART_BUTTON_ATTR}="1"]`).forEach((button) => {
         if (button.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") button.remove();
       });

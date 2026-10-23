@@ -14,6 +14,7 @@
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
 // script, then stop it again so the next 绘图 has its memory back.
 import { spawn } from 'node:child_process';
+import { ART_EDIT_MODEL, isArtEditRequest, planArtEdit } from './art-edit-planner.mjs';
 import { planNaturalUiDraft } from './complete-ui-draft.mjs';
 import { planUiCatalog, cpuCatalog } from './ui-catalog-planner.mjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -291,7 +292,7 @@ export function normalizeReverseRequest(payload = {}) {
   if (usesArtDirection) {
     if (payload.visualSchema !== (usesArtReview ? 'nf.art.review.v1' : 'nf.art.direction.v1') || !Array.isArray(payload.artContext?.references) || payload.artContext.references.length !== images.length) throw new Error('绘图分析协议或参考图编号无效');
     const seen = new Set();
-    artContext = { task: String(payload.artContext.task || 'auto').slice(0, 40), width: Number(payload.artContext.width) || 1024, height: Number(payload.artContext.height) || 1024,
+    artContext = { task: String(payload.artContext.task || 'auto').slice(0, 40), width: Number(payload.artContext.width) || 1024, height: Number(payload.artContext.height) || 1024,...(payload.artContext.editEnhancer==='qwen21-pe-i2i'?{editEnhancer:'qwen21-pe-i2i'}:{}),
       references: payload.artContext.references.map(item => {
         if (!Number.isInteger(item.source) || item.source < (usesArtReview ? 0 : 1) || item.source > 16 || seen.has(item.source)) throw new Error('绘图参考图编号无效');
         seen.add(item.source);
@@ -614,6 +615,24 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       } catch(error) {return {ok:false,error:String(error?.message||error),errorCode:'ui-design-cpu-failed'};}
     },
     async reverseImagePrompt(payload) {
+      if(payload?.surface==='art'&&payload.purpose==='art-director'&&payload.artContext?.editEnhancer==='qwen21-pe-i2i'){
+        let normalized;try{normalized=normalizeReverseRequest(payload);}catch(error){return invalid(error);}
+        if(isArtEditRequest(normalized.request)){
+          if(lease)return {ok:false,error:'本地分析正在执行另一项任务，请等待完成',errorCode:'prompt-assistant-busy'};
+          lease={command:'artEditPe',startedAt:Date.now()};
+          try{
+            const base=String(comfyUrls[0]||'').replace(/\/+$/,'');if(!base)throw Error('未配置本地绘图运行时');
+            const r=await fetch(base+'/object_info/CLIPLoader',{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('无法核对本地 PE 模型');const info=await r.json();
+            if(info.CLIPLoader?.input?.required?.clip_name?.[0]?.includes(ART_EDIT_MODEL)){
+              await stop();
+              return {ok:true,data:await planArtEdit({baseUrl:base,payload:normalized.request})};
+            }
+          }catch(error){return {ok:false,error:String(error.message||error),errorCode:'art-edit-pe-failed'};}
+          finally{lease=null;}
+          // Nodes without PE retain their existing local observer, and do not
+          // report PE metadata or download a model implicitly.
+        }
+      }
       if(payload?.uiPlanner==='grok-vision-cpu-v1') {
         if(payload.surface!=='ui-design')return invalid(new Error('UI CPU 请求范围无效'));
         if(payload.action==='capabilities')return {ok:true,data:{protocol:'nf.ui.grok-cpu.v1',cpuOnly:true,localCompletePlanner:'complete-catalog-v2'}};

@@ -63,17 +63,26 @@ test('an untouched JPEG subject retains its actual encoding and upload MIME',asy
   const r=await e.api.prepare(ctx({prompt:'水彩画'},[photo]));assert.equal(r.references[0].mimeType,'image/jpeg');
   assert.match(r.references[0].name,/\.jpg$/);assert.equal(r.references[0].dataUrl,photo.dataUrl);
 });
+
+test('a vision-selected subject crop cannot discard the original framing during style transfer',async()=>{
+  const original=ref('complete-photo');
+  const e=env(plan([{source:1,uses:[use('subject',{box:[240,320,820,920]})],omit:[]},{source:2,uses:[use('style')],omit:[]}]));
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[original,ref('style')]));
+  assert.deepEqual(Array.from(r.plan.references[0].uses[0].box),[0,0,1000,1000]);
+  assert.equal(r.references[0].dataUrl,original.dataUrl);assert.equal(r.references[0].treatment,'subject-original');
+});
 test('generation parameters contain settings, not cached pixels, histories, progress or inherited UI constraints',async()=>{
   const e=env(plan()),state={prompt:'水彩人像',provider:'local',seed:7,randomSeed:false,samplingOverrides:{qwen:{steps:40}},references:[ref('huge-pixels')],results:[ref('old-output')],promptHistory:Array(300).fill('x'.repeat(2000)),progressLabel:'old-status',uiPreserveLayout:true};
   const r=await e.api.prepare(ctx(state,[]));assert.equal(r.state.seed,7);assert.equal(r.state.prompt,'水彩人像');
   assert.ok(JSON.stringify(r.state).length<1000);assert.equal(r.state.uiPreserveLayout,undefined);assert.equal(r.state.results,undefined);assert.equal(r.state.promptHistory,undefined);
 });
-test('style pixels become scoped samples, never the complete donor; subject preserves its pixels',async()=>{
+test('the complete style image retains facial construction and global light with an explicit scoped role',async()=>{
   const e=env(plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[[0,600,250,950]]}]));
   const refs=[ref('subject'),ref('style')],r=await e.api.prepare(ctx({prompt:'图1人物用图2画风'},refs));
-  assert.equal(r.references[0].dataUrl,refs[0].dataUrl);assert.notEqual(r.references[1].dataUrl,refs[1].dataUrl);
-  assert.equal(r.references[1].treatment,'isolated-style-samples');assert.match(r.promptSnapshot.prompt,/不复制样本排列/);
-  assert.ok(e.draws.some(d=>d.length===9),'samples are actually cropped');
+  assert.equal(r.references[0].dataUrl,refs[0].dataUrl);assert.equal(r.references[1].dataUrl,refs[1].dataUrl);
+  assert.equal(r.references[1].treatment,'complete-style-reference');assert.equal(r.state.uiPreserveLayout,false);
+  assert.match(r.promptSnapshot.prompt,/以<image1>为内容参考，用<image2>的完整画风整体重新绘画/);
+  assert.match(r.promptSnapshot.prompt,/参考人物和场景物件不作为新增内容/);
 });
 test('each uploaded source survives past three images and gaps keep their original numbers',async()=>{
   const refs=[ref('a'),null,ref('b'),ref('c'),ref('d')];
@@ -86,15 +95,26 @@ test('a later uploaded subject is first in model inputs; multi-use sources produ
   const e=env(plan([{source:1,uses:[use('style'),use('material')],omit:[]},{source:2,uses:[use('subject')],omit:[]}]));
   const r=await e.api.prepare(ctx({prompt:'图2主体，图1画风和衣服材质'},[ref('style'),ref('subject')]));
   assert.equal(r.references[0].sourceNumber,2);assert.equal(r.references.length,3);
-  assert.match(r.promptSnapshot.prompt,/输入图片1（原图2，主体/);assert.match(r.promptSnapshot.prompt,/只向指定目标应用表面材质/);
+  assert.match(r.promptSnapshot.prompt,/<image1>（原图2，主体/);assert.match(r.promptSnapshot.prompt,/只向指定目标应用表面材质/);
 });
-test('unsafe full-image style samples and missing references stop before generation',async()=>{
-  const e=env();const source={prompt:'',references:[{source:1,role:'auto'}]};
-  const scoped=e.api.validate(plan([{source:1,uses:[use('style',{samples:[[0,0,1000,1000]]})],omit:[]}]),source);
-  const processed=await e.api.renderReference({source:1,...ref('style')},scoped.references[0].uses[0],[],()=>{});
-  assert.ok(processed.samples.every(b=>b[2]-b[0]<=125&&b[3]-b[1]<=125),'oversized proposals are physically subdivided, never passed whole');
+
+test('thumbnail mentions bind original slots to encoded Qwen tags after gaps and subject reordering',async()=>{
+  const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
+  const e=env(p),state={prompt:'@参考图5用@参考图2画风',provider:'local'};
+  const r=await e.api.prepare(ctx(state,[null,ref('style'),null,null,ref('subject')]));
+  assert.deepEqual(Array.from(r.references,x=>x.sourceNumber),[5,2]);
+  assert.match(r.promptSnapshot.prompt,/用户要求：<image1>用<image2>画风/);
+  assert.match(r.promptSnapshot.prompt,/<image1>（原图5，主体/);
+  assert.match(r.promptSnapshot.prompt,/<image2>（原图2，风格/);
+  assert.equal(r.originalPrompt,'@参考图5用@参考图2画风');
+  assert.doesNotMatch(r.promptSnapshot.prompt,/@参考图|<image5>/);
+});
+test('style analysis no longer requires arbitrary crop regions and missing references still fail',async()=>{
+  const e=env(),source={prompt:'',references:[{source:1,role:'auto'}]};
+  const scoped=e.api.validate(plan([{source:1,uses:[use('style',{samples:[]})],omit:[]}]),source);
+  const original=ref('style');const processed=await e.api.renderReference({source:1,...original},scoped.references[0].uses[0],[],()=>{});
+  assert.equal(processed.dataUrl,original.dataUrl);assert.equal(processed.treatment,'complete-style-reference');
   assert.throws(()=>e.api.validate(plan([]),source),/遗漏/);
-  await assert.rejects(e.api.compile(plan([{source:1,uses:[use('style')],omit:[[0,0,1000,1000]]}]),{references:[{source:1,...ref('x')}]},()=>{},()=>{},10),/风格样本/);
 });
 test('role or request changes during analysis invalidate the result instead of applying it',async()=>{
   let complete;const e=env(()=>new Promise(resolve=>{complete=resolve;}));
@@ -115,10 +135,14 @@ test('leaving drawing during analysis stops submission but browsing after prepar
   const prepared=await ready.api.prepare(next);next.generationSurface='other';assert.doesNotThrow(()=>prepared.assertCurrent());
 });
 
-test('a pure style conversion explicitly preserves original framing and visible hands and feet',async()=>{
-  const e=env(plan([{source:1,uses:[use('subject')],omit:[]}]));
-  const r=await e.api.prepare(ctx({prompt:'水彩画'},[ref('photo')]));
-  assert.match(r.promptSnapshot.prompt,/不裁掉原图已显示的头、手或脚/);
+test('reference style reconstructs the whole picture and only explicit framing requests lock it',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  const e=env(p),refs=[ref('photo'),ref('style')];
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},refs));
+  assert.match(r.promptSnapshot.prompt,/不锁死摄影轮廓和写实五官比例/);
+  assert.doesNotMatch(r.promptSnapshot.prompt,/保持主体的相对位置|主体配饰必须保留|保持主体身份|原有取景/);
+  const locked=await e.api.prepare(ctx({prompt:'图1用图2画风，保持原构图'},refs));
+  assert.match(locked.promptSnapshot.prompt,/保持主体的相对位置/);
 });
 test('cancel during analysis returns promptly and discards a later result',async()=>{
   let complete;const e=env(()=>new Promise(resolve=>{complete=resolve;}));const pending=e.api.prepare(ctx({prompt:'剑客'},[]));
@@ -163,16 +187,117 @@ test('explicit role relations exclude unrequested dimensions and unused uploads'
   const e=env(reply);const r=await e.api.prepare(ctx({prompt:'图1换成图2的画风'},[ref('base'),ref('style'),ref('unused')]));
   assert.deepEqual(Array.from(r.references,r=>r.role),['subject','style']);assert.equal(r.references.length,2);
   assert.equal(r.promptSnapshot.prompt.includes('擅自换背景'),false);assert.equal(r.promptSnapshot.prompt.includes('加一把弓'),false);
-  assert.match(r.promptSnapshot.prompt,/用户要求：原始参考1换成原始参考2的画风/);
+  assert.match(r.promptSnapshot.prompt,/用户要求：<image1>换成<image2>的画风/);
 });
 test('a style caption cannot import depicted energy effects into the executable brief or review contract',async()=>{
   const reply=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{detail:'粗犷水墨笔触，绿色能量漩涡，天空传送门，弓箭'})],omit:[]}]);
   const e=env(p=>p.purpose==='art-director-review'?{schema:'nf.art.review.v1',pass:true,issues:[],repair:''}:reply);
   const r=await e.api.prepare(ctx({prompt:'图1换成图2的画风'},[ref('base'),ref('style')]));
   assert.doesNotMatch(r.promptSnapshot.prompt,/绿色能量漩涡|天空传送门|弓箭/);
-  assert.match(r.promptSnapshot.prompt,/水墨浓淡/,'drawing technique survives through a closed vocabulary');
+  assert.equal(r.references[1].treatment,'complete-style-reference','actual original pixels carry the style, never a guessed genre keyword');
   await e.api.review(r,ref('generated').dataUrl);
   assert.doesNotMatch(JSON.stringify(e.calls[1].artContext.plan),/绿色能量漩涡|天空传送门|弓箭/);
+});
+
+test('reference style includes facial construction and lighting without copying the donor person',async()=>{
+  const reply=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{detail:'二次元，夸张大眼，简化鼻口，面部体块，暖光，柔光，逆光，戴银色耳环的女性站在树林中'})],omit:[]}]);
+  const e=env(reply),r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('male-photo'),ref('anime-style')]));
+  assert.match(r.promptSnapshot.prompt,/五官比例、面部体积/);
+  assert.match(r.promptSnapshot.prompt,/皮肤与发丝质感/);
+  assert.match(r.promptSnapshot.prompt,/全画面光感均由目标画风重新构建/);
+  assert.match(r.promptSnapshot.prompt,/不锁死摄影轮廓和写实五官比例/);
+  assert.doesNotMatch(r.promptSnapshot.prompt,/银色耳环|女性站在树林/);
+});
+
+test('scoped observed drawing attributes reach the generator without donor content captions',async()=>{
+  const profile={medium:'明亮二维动漫',facialStyle:'大眼睛，简化鼻口',markMaking:'有粗细变化的线稿；金发女仆手持雨伞',shading:'硬边赛璐璐阴影',surface:'平滑无摄影纹理',lightingStyle:'蓝色环境补光'};
+  const reply=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{detail:'金发女仆站在森林',renderingProfile:profile})],omit:[]}]);
+  const e=env(reply),r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('style')]));
+  assert.match(r.promptSnapshot.prompt,/<image2>的实际绘画属性/);
+  for(const expected of ['明亮二维动漫','大眼睛，简化鼻口','硬边赛璐璐阴影','蓝色环境补光'])assert.ok(r.promptSnapshot.prompt.includes(expected));
+  assert.doesNotMatch(r.promptSnapshot.prompt,/金发|女仆|雨伞|森林/);
+  assert.match(r.promptSnapshot.prompt,/主体辨识特征、主要动作、服饰类别、持有物和场景类型取自主体参考/);
+  assert.match(r.promptSnapshot.prompt,/成图质量与协调氛围优先，无需逐处复现照片/);
+  assert.equal(r.references.length,2);assert.equal(r.references[0].dataUrl,ref('photo').dataUrl);
+});
+
+test('measured dark reference values override a mistaken high-key caption but respect separate lighting',async()=>{
+  const reply=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'二维动漫',lightingStyle:'高调冷色侧光'}})],omit:[]}]);
+  const e=env(reply),make=e.sandbox.document.createElement;
+  e.sandbox.document.createElement=tag=>{const c=make(tag),get=c.getContext;c.getContext=()=>({...get(),getImageData:()=>({data:[8,12,20,255]})});return c;};
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('dark-style')]));
+  assert.equal(r.references[1].valueProfile.key,'low');
+  assert.match(r.promptSnapshot.prompt,/整体低调/);assert.doesNotMatch(r.promptSnapshot.prompt,/高调/);
+  assert.equal(r.references[1].dataUrl,ref('dark-style').dataUrl);
+  const locked=await e.api.prepare(ctx({prompt:'图1用图2画风，保持原光感'},[ref('photo'),ref('dark-style')]));
+  assert.doesNotMatch(locked.promptSnapshot.prompt,/整体低调|高调冷色侧光/);
+});
+test('observed source expression survives a repaint without locking facial proportions or overriding user edits',async()=>{
+  const p=plan([{source:1,uses:[use('subject',{sourceExpression:{faces:1,eyes:'one-closed',mouth:'closed-smile',extra:'wear a crown'}})],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  const e=env(p),refs=[ref('photo'),ref('style')];
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},refs));
+  assert.match(r.promptSnapshot.prompt,/一只眼闭合眨眼、另一只眼睁开、闭口微笑/);
+  assert.match(r.promptSnapshot.prompt,/五官比例仍按目标画风重绘/);
+  assert.doesNotMatch(r.promptSnapshot.prompt,/crown/);
+  const changed=await e.api.prepare(ctx({prompt:'图1用图2画风，表情改为大笑'},refs));
+  assert.doesNotMatch(changed.promptSnapshot.prompt,/一只眼闭合眨眼|闭口微笑/);
+});
+test('actual anime drawing attributes activate real negative guidance without changing user boxes or manual settings',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'二维动漫插画',markMaking:'头发分组成块状',surface:'无明显笔触或纸纹'}})],omit:[]}]);
+  const e=env(p),refs=[ref('photo'),ref('anime')],state={provider:'local',prompt:'图1用图2画风',negativePrompt:'不要水印',samplingOverrides:{}};
+  const r=await e.api.prepare(ctx(state,refs));
+  assert.match(r.promptSnapshot.prompt,/^将<image1>整幅重绘成<image2>的二维动漫插画/);
+  assert.match(r.promptSnapshot.negativePrompt,/不要水印.*photorealistic facial proportions/);
+  assert.match(r.promptSnapshot.negativePrompt,/dense individually rendered hair strands.*paper grain/);
+  assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+  assert.equal(state.negativePrompt,'不要水印');assert.deepEqual(state.samplingOverrides,{});
+  state.samplingOverrides={'qwen-2.1:img2img':{cfg:1,steps:25}};
+  const manual=await e.api.prepare(ctx(state,refs));assert.equal(manual.state.samplingOverrides['qwen-2.1:img2img'].cfg,1);assert.equal(manual.state.samplingOverrides['qwen-2.1:img2img'].steps,25);
+  const locked=await e.api.prepare(ctx({...state,prompt:'图1用图2画风，保留写实五官'},refs));assert.equal(locked.renderingPolicy,undefined);
+  const cloud=await e.api.prepare(ctx({...state,provider:'gpt'},refs));assert.equal(cloud.renderingPolicy,undefined);
+});
+test('source content anchors preserve only unedited content and style observations cannot request donor scenery',async()=>{
+  const p=plan([{source:1,uses:[use('subject',{sourceContent:{scene:'机场候机厅',clothing:'条纹露肩上衣',objects:'透明饮料杯',action:'持杯自拍'}})],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'水墨设色人物画',markMaking:'轮廓线自然，建筑与树木以块面概括',shading:'淡墨渲染，屋檐与花丛有明暗过渡'}})],omit:[]},{source:3,uses:[use('background',{detail:'沙漠沙丘'})],omit:[]}]);
+  const e=env(p),refs=[ref('photo'),ref('ink'),ref('desert')];
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风，背景用图3'},refs));
+  assert.match(r.promptSnapshot.prompt,/条纹露肩上衣/);assert.match(r.promptSnapshot.prompt,/透明饮料杯/);
+  assert.doesNotMatch(r.promptSnapshot.prompt,/机场候机厅|建筑|树木|屋檐|花丛/);
+  assert.match(r.promptSnapshot.prompt,/沙漠/);assert.equal(r.renderingPolicy,undefined);
+});
+test('actual skin color and palette guide the repaint while explicit original colors remain authoritative',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'二维动漫',palette:'蓝白主调，肤色米白偏粉，暗部蓝灰'}})],omit:[]}]);
+  const e=env(p),refs=[ref('photo'),ref('style')],r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},refs));
+  assert.match(r.promptSnapshot.prompt,/整体配色与肤色色层：蓝白主调，肤色米白偏粉，暗部蓝灰/);
+  assert.match(r.promptSnapshot.negativePrompt,/yellow-orange skin color cast/);
+  const locked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，保留原配色'},refs));
+  assert.doesNotMatch(locked.promptSnapshot.prompt,/蓝白主调/);
+  assert.doesNotMatch(locked.promptSnapshot.negativePrompt,/yellow-orange skin color cast/);
+  const skinLocked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，保留原肤色'},refs));
+  assert.doesNotMatch(skinLocked.promptSnapshot.prompt,/肤色米白偏粉/);
+  assert.match(skinLocked.promptSnapshot.prompt,/蓝白主调/);
+  assert.doesNotMatch(skinLocked.promptSnapshot.negativePrompt,/yellow-orange skin color cast/);
+});
+test('visually compared donor contents enter only negative guidance and enable scoped style priority',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'二维动漫'},donorExclusions:['女仆裙装','红色蝴蝶结','户外街灯']})],omit:[]}]);
+  const e=env(p),refs=[ref('photo'),ref('style')],r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},refs));
+  assert.doesNotMatch(r.promptSnapshot.prompt,/女仆裙装|红色蝴蝶结|户外街灯/);
+  assert.match(r.promptSnapshot.negativePrompt,/女仆裙装.*红色蝴蝶结.*户外街灯/);
+  assert.equal(e.api.generationOptions(r).styleReferencePriority,true);
+  const locked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，保持原构图'},refs));
+  assert.equal(e.api.generationOptions(locked).styleReferencePriority,false);
+  const colorsLocked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，保留原配色'},refs));
+  assert.equal(e.api.generationOptions(colorsLocked).styleReferencePriority,false);
+  p.references[1].uses[0].donorExclusions=['人物'];
+  assert.throws(()=>e.api.validate(p,e.api.input(ctx({provider:'local',prompt:'图1用图2画风'},refs))),/超出内容职责/);
+});
+test('review uses the executed palette after pixel correction rather than the rejected vision caption',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'二维动漫',palette:'暖橙肤色'}})],omit:[]}]);
+  const e=env(payload=>payload.purpose==='art-director-review'?{schema:'nf.art.review.v1',pass:true,issues:[],repair:''}:p);
+  const r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},[ref('photo'),ref('style')]));
+  r.references[1].renderingProfile.palette='脸部实测明亮低饱和粉色肤色中间调';
+  await e.api.review(r,ref('output').dataUrl);
+  const contract=JSON.stringify(e.calls[1].artContext.plan);
+  assert.match(contract,/实测明亮低饱和粉色/);assert.doesNotMatch(contract,/暖橙肤色/);
 });
 test('pose and background replacements cannot inherit a subject caption that reintroduces the original pose and setting',async()=>{
   const reply=plan([{source:1,uses:[use('subject',{detail:'原来坐在大理石台阶上'})],omit:[]},{source:2,uses:[use('background',{detail:'雪山田野'})],omit:[]}]);
@@ -258,4 +383,61 @@ test('a failed review cannot silently submit a second paid cloud generation',asy
   d.state.provider='gpt';d.e.sandbox.NovaFlowArtGenerateModels.normalizeProvider=value=>value;d.e.sandbox.electronAPI.runtimeProviderUsageSettlement='web-control-plane-v1';
   await d.run();assert.equal(d.builds.length,1);assert.equal(d.state.results.length,1);
   assert.equal(d.state.results[0].artDirection.corrections,0);assert.equal(d.state.results[0].artDirection.review.pass,false);
+});
+
+test('drawing analysis controls contain only the two routes and no task selector or duplicated label',()=>{
+  const e=env(),state={};let refreshed=0;
+  const create=(tag,props={})=>({tag,...props,children:[],appendChild(node){this.children.push(node);return node;}});
+  const row=e.api.controls(create,state,()=>refreshed++);
+  assert.deepEqual(row.children.map(n=>n.text),['本地分析','Grok 分析']);
+  assert.ok(row.children.every(n=>n.tag==='button'));
+  row.children[1].onclick();assert.equal(state.drawingAnalysisEngine,'grok');assert.equal(refreshed,1);
+});
+
+test('drawing references show their source numbers without asking for manual roles',()=>{
+  const e=env(),node=e.api.referenceControl((tag,props)=>({tag,...props}),{},3,()=>assert.fail('no manual selector'));
+  assert.equal(node.tag,'span');assert.equal(node.text,'图3');assert.equal(e.api.analysisControl(()=>assert.fail('no analysis until prepared'),{}),null);
+});
+
+test('a legacy Grok prose response reports an unsupported contract instead of pretending analysis succeeded',async()=>{
+  const e=env();e.sandbox.electronAPI.smartAiImageReverse=async()=>({ok:true,data:{prompt:'一位长发女子'}});
+  await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风',drawingAnalysisEngine:'grok'},[ref('photo'),ref('style')])),/Grok 服务未返回绘图参考分析协议/);
+});
+
+test('a style review cannot turn donor ears, ornaments or clothing into an executable correction',async()=>{
+  const e=env(p=>p.purpose==='art-director-review'?{schema:'nf.art.review.v1',pass:false,issues:['应添加精灵耳和叶饰'],repair:'改成精灵耳，穿上叶片服饰，移到森林'}:plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]));
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('elf')]));
+  const verdict=await e.api.review(r,ref('output').dataUrl);
+  assert.equal(verdict.repairOrigin,'reference-contract');assert.doesNotMatch(verdict.repair,/精灵耳|叶饰|叶片|森林/);
+  assert.match(verdict.repair,/重构五官比例、轮廓概括/);
+  assert.equal(e.calls[1].artContext.references[1].role,'subject');assert.equal(e.calls[1].artContext.references[2].role,'style');
+});
+
+test('content review receives only retained source categories after user and reference replacements',async()=>{
+  const facts={scene:'机场',clothing:'条纹上衣',objects:'饮料杯',action:'持杯'};
+  const e=env(p=>p.purpose==='art-director-review'?{schema:'nf.art.review.v1',pass:true,issues:[],repair:''}:plan([{source:1,uses:[use('subject',{sourceContent:facts})],omit:[]},{source:2,uses:[use('style')],omit:[]},{source:3,uses:[use('background')],omit:[]}]));
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风，图3背景，换成连衣裙'},[ref('photo'),ref('style'),ref('scene')]));
+  await e.api.review(r,ref('output').dataUrl);
+  const retained=e.calls[1].artContext.plan.references.find(r=>r.source===1).uses[0].retainedContent;
+  assert.equal(retained.scene,undefined);assert.equal(retained.clothing,undefined);
+  assert.equal(retained.objects,'饮料杯');assert.equal(retained.action,'持杯');
+});
+
+test('drawing PE uses complete square previews and remaps its slots after subject reordering',async()=>{
+  const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image2>按<image1>画风完整重绘，造型与配色按目标参考重构。',renderingClass:'anime',sourceOrder:[2,5],promptIds:['proof']};
+  const e=env(p),state={prompt:'@参考图5用@参考图2画风',provider:'local'};
+  const r=await e.api.prepare(ctx(state,[null,ref('style'),null,null,ref('photo')]));
+  assert.equal(e.calls[0].artContext.editEnhancer,'qwen21-pe-i2i',JSON.stringify(e.calls[0].artContext.references));
+  for(const im of e.calls[0].images){const [w,h,ops]=JSON.parse(Buffer.from(im.dataUrl.split(',')[1],'base64'));assert.equal(w,1024);assert.equal(h,1024);assert.deepEqual(ops[0],[112,12,800,1000]);}
+  assert.match(r.promptSnapshot.prompt,/将<image1>按<image2>画风完整重绘/);
+  assert.doesNotMatch(r.promptSnapshot.prompt,/<image0>|<image3>/);assert.equal(state.prompt,'@参考图5用@参考图2画风');
+  assert.equal(r.referencePolicy.stylePriority,true);assert.equal(r.plan.editEnhancer.promptIds[0],'proof');
+  assert.match(r.promptSnapshot.negativePrompt,/photorealistic facial proportions/);
+  assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+});
+test('invalid PE slots cannot bypass reference-role validation',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image1>按<image3>重绘',sourceOrder:[1,2]};
+  const e=env(p);await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('a'),ref('b')])),/PE 编辑指令或参考编号无效/);
 });

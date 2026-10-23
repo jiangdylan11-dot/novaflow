@@ -35809,10 +35809,10 @@
         // Tiles on their own row; the two prompts side by side under them
         // (as asked: not one above the other).
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid",
-        style: {
-          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "auto",
+        style: (node) => ({
+          display: "grid", "grid-template-columns": node.querySelector('[data-novaflow-art-generate-prompt-surface="drawing"]') ? "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" : "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "auto",
           gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
-        }
+        })
       },
       {
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-ref-grid",
@@ -82839,7 +82839,7 @@
     if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return;
     Array.from(from.children).forEach((child) => {
       if (!(child instanceof HTMLElement) || child.getAttribute("data-novaflow-smart-ai-button") !== "1") return;
-      if (window.NovaFlowUiDesignDrawing?.isActive?.() && child.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") return;
+      if ((window.NovaFlowUiDesignDrawing?.isActive?.() || window.NovaFlowArtDirection) && child.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") return;
       if (child.getAttribute("data-novaflow-ai-prompt-expand-button") === "1") to.appendChild(child);
       else to.insertBefore(child, to.firstChild);
     });
@@ -83273,6 +83273,7 @@
           style: { display: creditView ? "" : "none" }
         }),
         promptText ? createArtEl("div", { className: "novaflow-art-generate-progress-prompt", text: promptText }) : null,
+        !window.NovaFlowUiDesignDrawing?.isActive?.() ? window.NovaFlowArtDirection?.analysisControl?.(createArtEl, ART_GENERATE_STATE) : null,
         state.running ? createArtEl("button", {
           type: "button",
           className: "novaflow-art-generate-progress-cancel",
@@ -84225,7 +84226,8 @@
     return createArtEl("div", { className: "novaflow-art-generate-prompt-history" }, [
       createArtEl("div", { className: "novaflow-art-generate-history-main" }, [
         label,
-        ...(ui && key === "prompt" ? [window.NovaFlowUiDesignDrawing?.renderAnalysisSelector?.(document)].filter(Boolean) : [])
+        ...(ui && key === "prompt" ? [window.NovaFlowUiDesignDrawing?.renderAnalysisSelector?.(document)].filter(Boolean) : []),
+        ...(!ui && key === "prompt" ? [window.NovaFlowArtDirection?.controls?.(createArtEl, ART_GENERATE_STATE, () => renderArtGenerateSurfaces({ forceBottom: true }))].filter(Boolean) : [])
       ]),
       key === "prompt" ? renderArtGeneratePromptAssistantActions() : createArtEl("div", {
         className: "novaflow-art-generate-editor-actions"
@@ -84408,7 +84410,7 @@
   function renderArtGeneratePromptBox(key, label, placeholder) {
     const ui = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
     if (ui) placeholder = key === "prompt" ? "描述要生成的界面、参考图用途和目标风格" : "描述不希望出现的元素、风格或效果（可选）";
-    else if (key === "prompt") placeholder = "简单描述即可，例如：图1人物，用图2画风；也可选参考用途后直接生成";
+    else if (key === "prompt") placeholder = "简单描述即可，例如：图1人物，用图2画风；支持多张参考图";
     const textarea = createArtEl("textarea", {
       placeholder,
       tabIndex: "0",
@@ -84442,7 +84444,6 @@
       "data-novaflow-art-generate-prompt-surface": ui ? "ui" : "drawing"
     }, [
       renderArtGeneratePromptHistory(key),
-      !ui && key === "prompt" ? window.NovaFlowArtDirection?.controls?.(createArtEl, ART_GENERATE_STATE, () => renderArtGenerateSurfaces({ forceBottom: true })) : null,
       textarea
     ]);
   }
@@ -84914,7 +84915,7 @@
   }
 
   function renderArtGeneratePromptAssistantActions() {
-    if (window.NovaFlowUiDesignDrawing?.isActive?.()) return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" });
+    if (window.NovaFlowUiDesignDrawing?.isActive?.() || window.NovaFlowArtDirection) return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" });
     const running = String(ART_GENERATE_STATE.promptAssistantRunning || "");
     const disabled = running || ART_GENERATE_STATE.running ? "disabled" : null;
     return createArtEl("div", { className: "novaflow-art-generate-assistant-actions" }, [
@@ -85414,6 +85415,7 @@
   // catalogue and exposes it as electronAPI.__objectInfoSync. The desktop and the browser never have
   // that hook, so they keep their current graphs; NSFW, LoRA and UI-design runs keep theirs too.
   const ART_QWEN21_UNETS = ["qwen-image-2.1-UC-Q8_0.gguf", "qwen-image-2.1-UC-Q5_K_M.gguf", "qwen-image-2.1-UC-Q4_K_M.gguf"];
+  const ART_QWEN21_NATIVE_BF16 = ["qwen-image-2.1-UC-BF16-native.safetensors", "qwen-image-2.1-UC-BF16.safetensors"];
   const ART_QWEN21_CLIPS = ["qwen3vl_8b_w4a8_heretic.safetensors", "qwen3vl_8b_int8_convrot.safetensors", "qwen3vl_8b_bf16.safetensors"];
   const ART_QWEN21_VAE = "qwen_image_2.1_vae_bf16.safetensors";
 
@@ -85423,13 +85425,14 @@
     return candidates.find((name) => choices.includes(name)) || "";
   }
 
-  function artQwen21Runtime() {
+  function artQwen21Runtime(options) {
     const info = window.electronAPI?.__objectInfoSync?.();
     if (!info || !info.TextEncodeQwenImage21 || !info.UnetLoaderGGUF || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
-    const unet = artQwen21Choice(info.UnetLoaderGGUF, "unet_name", ART_QWEN21_UNETS);
-    const clip = artQwen21Choice(info.CLIPLoader, "clip_name", ART_QWEN21_CLIPS);
+    const native = options?.taskProfile === 'art-direction' ? artQwen21Choice(info.UNETLoader, "unet_name", ART_QWEN21_NATIVE_BF16) : '';
+    const unet = native || artQwen21Choice(info.UnetLoaderGGUF, "unet_name", ART_QWEN21_UNETS);
+    const clip = artQwen21Choice(info.CLIPLoader, "clip_name", native ? ["qwen3vl_8b_bf16_heretic.safetensors", "qwen3vl_8b_bf16.safetensors", ...ART_QWEN21_CLIPS] : ART_QWEN21_CLIPS);
     const vae = artQwen21Choice(info.VAELoader, "vae_name", [ART_QWEN21_VAE]);
-    return unet && clip && vae ? { info, unet, clip, vae } : null;
+    return unet && clip && vae ? { info, unet, clip, vae, loader:native?'UNETLoader':'UnetLoaderGGUF' } : null;
   }
 
   // At cfg 1 (the 2.1 default) the sampler never evaluates the negative prompt: filled and empty gave
@@ -85455,6 +85458,12 @@
   const QWEN21_ART_FIRST_REFERENCE_PIXELS = 1048576;
   const QWEN21_ART_REFERENCE_PIXELS = 500000;
   const QWEN21_ART_EXTRA_REFERENCE_PIXELS = 1500000;
+  // A grounded style transfer balances content cues with full style detail.
+  // Below 0.5 MP the content may collapse into the donor on some seeds.
+  // Only the analyzed two-image route enables this after isolating
+  // donor content; ordinary edits and multi-role controls retain their budgets.
+  const QWEN21_ART_STYLE_CONTENT_PIXELS = 500000;
+  const QWEN21_ART_STYLE_REFERENCE_PIXELS = 1048576;
 
   function artQwen21WorkingSize(width, height) {
     if (width * height <= QWEN21_ART_MAX_WORKING_PIXELS) {
@@ -85479,14 +85488,14 @@
       : [];
     if (references.length > QWEN21_ART_MAX_REFERENCES) throw new Error(`Qwen-Image 2.1 最多支持 ${QWEN21_ART_MAX_REFERENCES} 张参考图，本次未截断提交。`);
     if (mode === "img2img" && !references.length) return null;
-    const runtime = artQwen21Runtime();
+    const runtime = artQwen21Runtime(providerOptions);
     if (!runtime) return null;
     const info = runtime.info || {};
     const seed = state?.randomSeed || Number(state?.seed) < 0
       ? Math.floor(Math.random() * 1000000000)
       : Math.round(Number(state?.seed) || 0);
     const workflow = {
-      "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: runtime.unet } },
+      "1": { class_type: runtime.loader, inputs: { unet_name: runtime.unet, ...(runtime.loader==='UNETLoader'?{weight_dtype:'default'}:{}) } },
       "2": { class_type: "CLIPLoader", inputs: { clip_name: runtime.clip, type: "qwen_image", device: "default" } },
       "3": { class_type: "VAELoader", inputs: { vae_name: runtime.vae } }
     };
@@ -85548,8 +85557,9 @@
       const factor = Math.sqrt(pixels / (width * height));
       return scaleTo(index, image, Math.max(32, Math.floor(width * factor / 32) * 32), Math.max(32, Math.floor(height * factor / 32) * 32));
     };
+    const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
     const extraBudgets = sizes.slice(1).map(({ width, height }) => (
-      width * height > 0 ? Math.min(width * height, QWEN21_ART_REFERENCE_PIXELS) : QWEN21_ART_REFERENCE_PIXELS
+      width * height > 0 ? Math.min(width * height, prioritizedStyle ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS) : prioritizedStyle ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS
     ));
     const extraTotal = extraBudgets.reduce((sum, value) => sum + value, 0);
     const share = extraTotal > QWEN21_ART_EXTRA_REFERENCE_PIXELS ? QWEN21_ART_EXTRA_REFERENCE_PIXELS / extraTotal : 1;
@@ -85560,7 +85570,7 @@
       if (index === 0 && editInPlace) {
         if (first.width !== working.width || first.height !== working.height) image = scaleTo(0, image, working.width, working.height);
       } else if (index === 0) {
-        image = scaleToPixels(0, image, QWEN21_ART_FIRST_REFERENCE_PIXELS);
+        image = scaleToPixels(0, image, prioritizedStyle ? QWEN21_ART_STYLE_CONTENT_PIXELS : QWEN21_ART_FIRST_REFERENCE_PIXELS);
       } else {
         image = scaleToPixels(index, image, extraBudgets[index - 1] * share);
       }
@@ -86273,7 +86283,7 @@
           () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, drawingRepair ? `${compiledPrompt.text}\n\n本次纠正：${drawingRepair}` : compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes,
             prepared ? { ...settingsSnapshot, ...(fixedSeed ? { seed: baseSeed + batchIndex, randomSeed: false } : {}) } : ART_GENERATE_STATE,
             prepared ? referenceLimit : undefined,
-            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? { taskProfile: "art-direction", referenceRoles: options.drawingPrepared.references.map(ref => ref.role) } : {})
+            options.uiPrepared ? ui?.generationOptions?.(options.uiPrepared) || {} : options.drawingPrepared ? window.NovaFlowArtDirection.generationOptions(options.drawingPrepared) : {})
         );
         const workflow = workflowRun.workflow;
         const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
