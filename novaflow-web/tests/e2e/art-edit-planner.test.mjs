@@ -20,6 +20,7 @@ test('drawing PE keeps its trained three-field contract, thinking and source-num
   const user=g['3'].inputs.prompt.split('<|im_start|>user\n')[1];
   assert.match(user,/按<image1>的五官塑造/);assert.match(user,/完整重构<image2>/);
   assert.match(user,/用户原始需求中的明确保留要求优先/);assert.match(user,/wh_ratio必须为"832:1216"/);
+  assert.match(user,/同属动漫也要依据这张参考可见的脸部轮廓/);assert.match(user,/不强加细线描边、赛璐璐或固定动漫脸/);
   assert.match(ART_EDIT_SYSTEM,/not an OCR task/);assert.match(ART_EDIT_SYSTEM,/Closed eyes/);
   assert.match(ART_EDIT_SYSTEM,/Explicit user locks/);assert.match(ART_EDIT_SYSTEM,/proportions.*may change/);
   assert.ok(Object.values(g).every(n=>!n.class_type.includes('Crop')));
@@ -38,6 +39,26 @@ test('rendering guidance requires a positive anime target, never a donor prohibi
   assert.equal(artEditRendering('将照片改为二维动漫插画画风，不保留摄影质感。'),'anime');
   assert.equal(artEditRendering('重绘为半写实游戏CG，不采用动漫插画。'),'other');
   assert.equal(artEditRendering('不要二维动漫，采用油画。'),'other');
+  assert.equal(artEditRendering('将照片画成动漫游戏CG，厚涂体块与材质塑造。'),'other');
+  assert.equal(artEditRendering('动漫插画式人物，三维渲染质感。'),'animated-3d');
+  assert.equal(artEditRendering('半写实3D动画电影角色，立体皮肤与材质高光。'),'animated-3d');
+  assert.equal(artEditRendering('建筑三维渲染，金属与混凝土材质。'),'other');
+});
+
+test('a requested semi-real 3D finish cannot be rewritten as flat 2D, while facial stylization and negative exclusions remain valid',()=>{
+  const flat={...rewrite(),rewritten_prompt:'将<image2>按<image1>画风转换为二维动漫插画，采用纯平涂。'};
+  assert.throws(()=>parseArtEdit(JSON.stringify(flat),2,'图2用图1画风，半写实3D质感'),/改成了二维平涂/);
+  assert.doesNotThrow(()=>parseArtEdit(JSON.stringify({...flat,rewritten_prompt:'将<image2>按<image1>的半写实3D质感重建，不采用二维插画，不强加赛璐璐渲染。'}),2,'半写实3D质感'));
+  assert.doesNotThrow(()=>parseArtEdit(JSON.stringify(flat),2,'不要3D，采用二维动漫'));
+});
+
+test('donor scenery cannot become a positive example of style while scoped source content and exclusions remain valid',()=>{
+  const refs=[{roles:['subject']},{roles:['style']}];
+  const leaked={...rewrite(),rewritten_prompt:'以<image2>画风重绘<image1>。<image2>的画法为树冠用墨色、草叶与花朵以点簇笔法塑造。'};
+  assert.throws(()=>parseArtEdit(JSON.stringify(leaked),2,'图1用图2画风',refs),/供体景物/);
+  assert.doesNotThrow(()=>parseArtEdit(JSON.stringify({...leaked,rewritten_prompt:'以<image2>的淡墨晕染和点簇笔触重绘<image1>。不得引入<image2>的树木、花朵和茅草屋。'}),2,'图1用图2画风',refs));
+  assert.doesNotThrow(()=>parseArtEdit(JSON.stringify({...leaked,rewritten_prompt:'用<image2>画法重绘<image1>的树木与草叶，保留原场景类别。'}),2,'图1用图2画风',refs));
+  assert.doesNotThrow(()=>parseArtEdit(JSON.stringify({...leaked,rewritten_prompt:'以<image2>画风重绘<image1>。采用<image2>画法并添加用户指定的花朵。'}),2,'图1用图2画风，添加花朵',refs));
 });
 test('unrequested photographic locks are rejected but explicit geometry locks still win',()=>{
   const locked={...rewrite(),rewritten_prompt:rewrite().rewritten_prompt+'保持<image2>全部内容不变，保留原布局和脸型。'};

@@ -85532,8 +85532,11 @@
     // when resized; Drawing retains its aspect-dependent fresh-layout behavior.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
     const scopedDrawingRoles = providerOptions?.taskProfile === 'art-direction' && Array.isArray(providerOptions.referenceRoles) ? providerOptions.referenceRoles : [];
+    const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
     const changesDrawingLayout = scopedDrawingRoles.length > 0 && (scopedDrawingRoles[0] !== 'subject' || scopedDrawingRoles.some(role => role === 'pose' || role === 'composition'));
-    const editInPlace = !changesDrawingLayout && (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
+    // Keeping the canvas size does not request photographic geometry protection.
+    // The grounded style route must retain its content/detail balance at any ratio.
+    const editInPlace = !prioritizedStyle && !changesDrawingLayout && (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
     if (state?.uiNativeEditPrompt === true) { /* UI compiler already supplies one native edit directive. */ }
@@ -85557,7 +85560,6 @@
       const factor = Math.sqrt(pixels / (width * height));
       return scaleTo(index, image, Math.max(32, Math.floor(width * factor / 32) * 32), Math.max(32, Math.floor(height * factor / 32) * 32));
     };
-    const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
     const extraBudgets = sizes.slice(1).map(({ width, height }) => (
       width * height > 0 ? Math.min(width * height, prioritizedStyle ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS) : prioritizedStyle ? QWEN21_ART_STYLE_REFERENCE_PIXELS : QWEN21_ART_REFERENCE_PIXELS
     ));
@@ -86446,7 +86448,7 @@
       }
       clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
-      const completeMessage = drawingNeedsAttention ? '已生成，需求检查有待确认；可在“查看分析”中查看详情' : batchCount > 1
+      const completeMessage = drawingNeedsAttention ? '已生成，自动检查未通过或未完成；可在“查看分析”中查看原因' : batchCount > 1
         ? (runProvider === "local" ? `已生成 ${batchCount} 张` : `已生成 ${batchCount} 张，计费后台处理中`)
         : (runProvider === "local" ? "\u751f\u6210\u5b8c\u6210" : "\u751f\u6210\u5b8c\u6210\uff0c\u8ba1\u8d39\u540e\u53f0\u5904\u7406\u4e2d");
       setArtGenerateProgress(completeMessage, 1, { promptId: lastPromptId });

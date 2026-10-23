@@ -213,7 +213,7 @@ test('scoped observed drawing attributes reach the generator without donor conte
   const profile={medium:'明亮二维动漫',facialStyle:'大眼睛，简化鼻口',markMaking:'有粗细变化的线稿；金发女仆手持雨伞',shading:'硬边赛璐璐阴影',surface:'平滑无摄影纹理',lightingStyle:'蓝色环境补光'};
   const reply=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{detail:'金发女仆站在森林',renderingProfile:profile})],omit:[]}]);
   const e=env(reply),r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('style')]));
-  assert.match(r.promptSnapshot.prompt,/<image2>的实际绘画属性/);
+  assert.match(r.promptSnapshot.prompt,/<image2>的实际视觉属性/);
   for(const expected of ['明亮二维动漫','大眼睛，简化鼻口','硬边赛璐璐阴影','蓝色环境补光'])assert.ok(r.promptSnapshot.prompt.includes(expected));
   assert.doesNotMatch(r.promptSnapshot.prompt,/金发|女仆|雨伞|森林/);
   assert.match(r.promptSnapshot.prompt,/主体辨识特征、主要动作、服饰类别、持有物和场景类型取自主体参考/);
@@ -440,4 +440,85 @@ test('invalid PE slots cannot bypass reference-role validation',async()=>{
   const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
   p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image1>按<image3>重绘',sourceOrder:[1,2]};
   const e=env(p);await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('a'),ref('b')])),/PE 编辑指令或参考编号无效/);
+});
+
+test('PE retains distinct drawing methods within anime and does not force ink or CG into anime',async()=>{
+  const methods=[['bright','anime','硬边色块、简洁轮廓、通透明亮的日光'],['dark','anime','狭长眼部与克制高光、冷灰紫暗部、低对比暗色皮肤'],['ink','other','宣纸吸水纹理、干湿笔锋、淡墨渗化、少量矿物设色'],['cg','other','半写实体块、绘画性厚涂、笔触转折与材质反光']];
+  for(const [id,renderingClass,method]of methods){
+    const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+    p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:`按<image2>的${method}整体重绘<image1>。`,sourceOrder:[1,2],renderingClass};
+    const e=env(p),r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},[ref('photo'),ref(id)]));
+    assert.ok(r.promptSnapshot.prompt.includes(method));
+    for(const [other,,otherMethod]of methods)if(other!==id)assert.ok(!r.promptSnapshot.prompt.includes(otherMethod));
+    if(renderingClass==='other'){assert.equal(r.renderingPolicy,undefined);assert.equal(r.promptSnapshot.negativePrompt,'');assert.doesNotMatch(r.promptSnapshot.prompt,/大眼睛|赛璐璐|动漫脸/);}
+  }
+});
+
+test('PE uses measured dark reference values without overriding explicitly preserved illumination',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'用<image2>的高调动漫画风重绘<image1>。',sourceOrder:[1,2],renderingClass:'anime'};
+  const e=env(p),make=e.sandbox.document.createElement;
+  e.sandbox.document.createElement=tag=>{const c=make(tag),get=c.getContext;c.getContext=()=>({...get(),getImageData:()=>({data:[8,12,20,255]})});return c;};
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('dark')]));
+  assert.match(r.promptSnapshot.prompt,/整体明暗校验：整体低调/);assert.match(r.promptSnapshot.prompt,/该校验优先于文字分析中不一致/);
+  const locked=await e.api.prepare(ctx({prompt:'图1用图2画风，保持原光感'},[ref('photo'),ref('dark')]));
+  assert.doesNotMatch(locked.promptSnapshot.prompt,/整体明暗校验/);
+});
+
+test('PE donor-content exclusions execute even without legacy observer medium fields and never suppress CG realism',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{donorExclusions:['花纹吊带裙','酒瓶','户外木椅']})],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'按<image2>的半写实CG体积与材质重绘<image1>。',sourceOrder:[1,2],renderingClass:'other'};
+  const e=env(p),r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},[ref('photo'),ref('cg')]));
+  assert.equal(r.promptSnapshot.negativePrompt,'花纹吊带裙, 酒瓶, 户外木椅');
+  assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+  assert.doesNotMatch(r.promptSnapshot.negativePrompt,/photograph|photorealistic|skin texture/);
+  assert.equal(r.references.find(r=>r.role==='style').renderingProfile,undefined);
+});
+
+test('explicit semi-real 3D material intent wins over an erroneous flat-anime observation without changing the original request',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style',{renderingProfile:{medium:'二维动漫插画',facialStyle:'简洁眼睑',markMaking:'分组发丝',shading:'平涂',surface:'无纸纹或笔触',lightingStyle:'日光',palette:'暖色'}})],omit:[]}]);
+  const e=env(p),state={provider:'local',prompt:'图1用图2画风，半写实3D质感'};
+  const r=await e.api.prepare(ctx(state,[ref('photo'),ref('cg')]));
+  assert.doesNotMatch(r.promptSnapshot.negativePrompt,/photorealistic|photographic skin|realistic nose/);
+  assert.doesNotMatch(r.promptSnapshot.prompt,/二维动漫插画|上色明暗：平涂/);
+  assert.ok(r.promptSnapshot.prompt.includes(state.prompt.replace('图1','<image1>').replace('图2','<image2>')));
+  assert.equal(state.prompt,'图1用图2画风，半写实3D质感');
+});
+
+test('animated 3D separates facial stylization from realistic skin and materials and respects an explicit face lock',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'采用<image2>的半写实3D动画角色造型与立体材质，重建<image1>。',sourceOrder:[1,2],renderingClass:'animated-3d'};
+  const e=env(p),r=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风'},[ref('photo'),ref('cg')]));
+  assert.equal(r.promptSnapshot.negativePrompt,'photographic facial proportions, live action human face');
+  assert.doesNotMatch(r.promptSnapshot.negativePrompt,/photographic skin|realistic nose|photograph,/);
+  assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+  for(const lock of ['保持真实五官','保持脸型','不要改变面部轮廓']){
+    const locked=await e.api.prepare(ctx({provider:'local',prompt:'图1用图2画风，'+lock},[ref('photo'),ref('cg')]));
+    assert.equal(locked.promptSnapshot.negativePrompt,'');
+  }
+});
+
+test('measured reference contrast is preserved independently of global exposure',async()=>{
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'按<image2>半写实3D动画质感重构<image1>。',sourceOrder:[1,2],renderingClass:'animated-3d'};
+  const e=env(p),make=e.sandbox.document.createElement;
+  e.sandbox.document.createElement=tag=>{const c=make(tag),get=c.getContext;c.getContext=()=>({...get(),getImageData:()=>({data:[12,12,12,255,50,50,50,255,115,115,115,255,230,230,230,255]})});return c;};
+  const r=await e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('photo'),ref('cg')]));
+  const v=r.references.find(r=>r.role==='style').valueProfile;
+  assert.equal(v.key,'mid');assert.equal(v.strongContrast,true);
+  assert.match(r.promptSnapshot.prompt,/亮暗跨度较大.*不把暗面均匀填亮/);
+  const separate=await e.api.prepare(ctx({prompt:'图1用图2画风，保持原照明'},[ref('photo'),ref('cg')]));
+  assert.doesNotMatch(separate.promptSnapshot.prompt,/亮暗跨度较大/);
+});
+
+test('local review tolerates the completed generation handoff race without submitting another image',async()=>{
+  const e=env(plan([{source:1,uses:[use('subject')],omit:[]}])),prepared=await e.api.prepare(ctx({prompt:'精修图1'},[ref('photo')]));
+  let calls=0;
+  e.sandbox.setTimeout=fn=>{queueMicrotask(fn);return 1;};
+  e.sandbox.electronAPI.promptAssistantReverseImagePrompt=async p=>{assert.equal(p.purpose,'art-director-review');calls++;return calls===1?{ok:false,errorCode:'runtime-generation-busy',error:'运行时交接中'}:{ok:true,data:{artReview:{schema:'nf.art.review.v1',pass:true,issues:[],repair:''}}};};
+  assert.equal((await e.api.review(prepared,ref('output').dataUrl)).pass,true);
+  assert.equal(calls,2);
+  e.sandbox.electronAPI.promptAssistantReverseImagePrompt=async()=>{calls++;return {ok:false,errorCode:'model-failed',error:'模型失败'};};
+  await assert.rejects(e.api.review(prepared,ref('output').dataUrl),/模型失败/);
+  assert.equal(calls,3);
 });

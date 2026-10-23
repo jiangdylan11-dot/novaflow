@@ -625,7 +625,17 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
             const r=await fetch(base+'/object_info/CLIPLoader',{signal:AbortSignal.timeout(30000)});if(!r.ok)throw Error('无法核对本地 PE 模型');const info=await r.json();
             if(info.CLIPLoader?.input?.required?.clip_name?.[0]?.includes(ART_EDIT_MODEL)){
               await stop();
-              return {ok:true,data:await planArtEdit({baseUrl:base,payload:normalized.request})};
+              const data=await planArtEdit({baseUrl:base,payload:normalized.request});
+              // PE defines the redraw. A separate contrastive observation only
+              // isolates donor content; it must never rewrite the target style.
+              const handoff=await releaseRuntimes();if(!handoff.ok)throw Error(handoff.error);
+              try{
+                const child=await ensureProcess(config());
+                const isolation=await send(child,'reverseImagePrompt',{...normalized.request,artContext:{...normalized.request.artContext,donorIsolationOnly:true}},normalized.timeoutMs);
+                if(!Array.isArray(isolation?.donorExclusions))throw Error('风格供体内容隔离未返回有效结论');
+                data.artDirection.references.find(r=>r.uses[0].role==='style').uses[0].donorExclusions=isolation.donorExclusions;
+              }finally{const stopped=await stop();if(stopped==='stop-timeout'||stopped==='stop-error')throw Error('风格隔离模型未确认退出，本次未提交生成');}
+              return {ok:true,data};
             }
           }catch(error){return {ok:false,error:String(error.message||error),errorCode:'art-edit-pe-failed'};}
           finally{lease=null;}

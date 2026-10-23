@@ -27,6 +27,23 @@ class Assistant:
 
 
 class DrawingDirection(unittest.TestCase):
+    def test_donor_isolation_repairs_a_lighting_exclusion_once_without_excluding_the_target_look(self):
+        model = Assistant([{'exclusions': ['酒瓶', '阳光斑驳']}, {'exclusions': ['酒瓶', '吊带裙']}])
+        self.assertEqual(direction.donor_exclusions(model, 'source', 'style', '图1用图2画风'), ['酒瓶', '吊带裙'])
+        self.assertEqual(len(model.calls), 2)
+        self.assertIn('preserve actual lighting', model.calls[1][0])
+
+    def test_pe_donor_isolation_never_rewrites_style_and_obeys_actual_role_order(self):
+        model = Assistant([{'exclusions': ['户外木椅', '酒瓶', '花纹吊带裙']}])
+        payload = {'currentPrompt': '图2用图5画风', 'artContext': {'donorIsolationOnly': True, 'references': [{'source': 5, 'roles': ['style']}, {'source': 2, 'roles': ['subject']}]}}
+        result = direction.plan(model, ['style', 'source'], payload)
+        self.assertEqual(result, {'donorExclusions': ['户外木椅', '酒瓶', '花纹吊带裙']})
+        self.assertEqual(len(model.calls), 1)
+        self.assertEqual(model.calls[0][1]['images'], ['source', 'style'])
+        payload['artContext']['references'][0]['roles'] = ['pose']
+        with self.assertRaisesRegex(ValueError, '明确的主体与风格二图'):
+            direction.plan(model, ['pose', 'source'], payload)
+
     def test_short_text_has_zero_visual_references_and_preserves_the_words(self):
         model = Assistant([valid()])
         result = direction.plan(model, [], {'currentPrompt': '冰系女剑客', 'artContext': {'references': []}})
@@ -166,7 +183,7 @@ class DrawingDirection(unittest.TestCase):
         context = {'references': [{'source': 0}, {'source': 5}, {'source': 2}], 'plan': {'references': [
             {'source': 2, 'uses': [{'role': 'style'}]},
             {'source': 5, 'uses': [{'role': 'subject', 'retainedContent': {'scene': '机场', 'clothing': '条纹上衣'}}]}]}}
-        model = Assistant([{'checks': [{'field': 'scene', 'retained': False, 'evidence': '结果是室外花园'}, {'field': 'clothing', 'retained': False, 'evidence': '结果穿女仆裙'}]}])
+        model = Assistant([{'checks': [{'field': 'scene', 'retained': False, 'evidence': '结果是室外花园'}, {'field': 'clothing', 'retained': False, 'evidence': '结果穿女仆裙'}, {'field': 'addedContent', 'retained': False, 'evidence': '添加了花园'}]}])
         result = direction.review(model, ['result', 'source', 'donor'], {'artContext': context})
         self.assertFalse(result['artReview']['pass'])
         self.assertEqual(len(model.calls), 1)
@@ -177,17 +194,18 @@ class DrawingDirection(unittest.TestCase):
         context = {'references': [{'source': 0}, {'source': 1}, {'source': 2}], 'plan': {'references': [
             {'source': 1, 'uses': [{'role': 'subject', 'retainedContent': {'clothing': '条纹上衣'}}]},
             {'source': 2, 'uses': [{'role': 'style'}]}]}}
-        model = Assistant([{'checks': [{'field': 'clothing', 'retained': True, 'evidence': '重绘条纹上衣'}]}, {'schema': 'nf.art.review.v1', 'pass': False, 'issues': ['画法仍偏摄影'], 'repair': '按照目标画法重绘'}])
+        model = Assistant([{'checks': [{'field': 'clothing', 'retained': True, 'evidence': '重绘条纹上衣'}, {'field': 'addedContent', 'retained': True, 'evidence': '无明显新增物件'}]}, {'schema': 'nf.art.review.v1', 'pass': False, 'issues': ['画法仍偏摄影'], 'repair': '按照目标画法重绘'}])
         result = direction.review(model, ['result', 'source', 'donor'], {'artContext': context})
         self.assertFalse(result['artReview']['pass'])
         self.assertEqual(len(model.calls), 2)
-        self.assertEqual(model.calls[1][1]['images'], ['result', 'source', 'donor'])
+        self.assertEqual(model.calls[1][1]['images'], ['result', 'donor'])
+        self.assertIn('only the REPAINT and its assigned STYLE TARGET', model.calls[1][0])
 
     def test_incomplete_content_audit_is_repaired_once_without_exposing_style_donor(self):
         context = {'references': [{'source': 0}, {'source': 1}, {'source': 2}], 'plan': {'references': [
             {'source': 1, 'uses': [{'role': 'subject', 'retainedContent': {'scene': '原场景类别', 'clothing': '原服装类别'}}]},
             {'source': 2, 'uses': [{'role': 'style'}]}]}}
-        correct = {'checks': [{'field': 'scene', 'retained': True, 'evidence': '候机厅'}, {'field': 'clothing', 'retained': False, 'evidence': '女仆裙'}]}
+        correct = {'checks': [{'field': 'scene', 'retained': True, 'evidence': '候机厅'}, {'field': 'clothing', 'retained': False, 'evidence': '女仆裙'}, {'field': 'addedContent', 'retained': True, 'evidence': '无其他新增物件'}]}
         model = Assistant([{'checks': []}, correct])
         result = direction.review(model, ['result', 'source', 'donor'], {'artContext': context})
         self.assertFalse(result['artReview']['pass'])
@@ -198,6 +216,18 @@ class DrawingDirection(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '完整结论'):
             direction.review(broken, ['result', 'source', 'donor'], {'artContext': context})
         self.assertEqual(len(broken.calls), 2)
+
+    def test_added_scenery_fails_even_when_the_original_setting_category_survives(self):
+        context = {'references': [{'source': 0}, {'source': 1}, {'source': 2}], 'plan': {'references': [
+            {'source': 1, 'uses': [{'role': 'subject', 'retainedContent': {'scene': '候机厅'}}]},
+            {'source': 2, 'uses': [{'role': 'style'}]}]}}
+        model = Assistant([{'checks': [{'field': 'scene', 'retained': True, 'evidence': '保留机场座椅'}, {'field': 'addedContent', 'retained': False, 'evidence': '天花板上方新增树木'}]}])
+        result = direction.review(model, ['result', 'source', 'donor'], {'currentPrompt': '图1用图2画风', 'artContext': context})
+        self.assertFalse(result['artReview']['pass'])
+        self.assertIn('新增树木', result['artReview']['issues'][0])
+        self.assertEqual(model.calls[0][1]['images'], ['source', 'result'])
+        self.assertIn('User requested edits', model.calls[0][0])
+        self.assertIn('图1用图2画风', model.calls[0][0])
 
 
 if __name__ == '__main__':
