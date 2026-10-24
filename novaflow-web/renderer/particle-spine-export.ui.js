@@ -71,7 +71,7 @@
     const sel = versionSelect(scope)
     if (sel) {
       const prev = sel.previousElementSibling
-      const hide = [sel, prev && /Spine 版本/.test(prev.textContent || '') ? prev : null, ...Array.from(sel.parentElement ? sel.parentElement.querySelectorAll('p') : []).filter((p) => /小版本号/.test(p.textContent || ''))]
+      const hide = [sel, prev && /^(?:Spine\s*)?版本$|^工程版本$/.test((prev.textContent || '').trim()) ? prev : null, ...Array.from(sel.parentElement ? sel.parentElement.querySelectorAll('p') : []).filter((p) => /小版本号/.test(p.textContent || ''))]
       for (const el of hide) if (el && !el.hasAttribute('data-nf-particle-hidden')) { el.setAttribute('data-nf-particle-hidden', '1'); el.style.setProperty('display', 'none', 'important') }
     }
     run.parentNode.insertBefore(row, run)
@@ -91,7 +91,7 @@
     row.querySelectorAll('[data-format]').forEach((b) => b.classList.toggle('primary', (b.getAttribute('data-format') === 'skel') === skel()))
     const run = runButton(scope)
     if (run) {
-      const wanted = '导出粒子动画工程'
+      const wanted = '导出动画工程'
       if (run.textContent !== wanted) run.textContent = wanted
     }
     const hint = row.querySelector('[data-pack-hint]')
