@@ -105,7 +105,7 @@
   //     switches to the base model's 40 steps at CFG 4. Past 8 steps the Lightning LoRA is off.
   const LOCAL_SAMPLING_ROUTES = Object.freeze({
     'qwen-2.1': Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
-    'qwen-2.1-turbo': Object.freeze({ steps: [8, 8], cfg: [1, 1] }),
+    'qwen-2.1-turbo': Object.freeze({ steps: [8, 8], cfg: [1, 10] }),
     rapid: Object.freeze({ steps: [1, 8], cfg: [1, 10] }),
     standard: Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
   })
@@ -141,7 +141,7 @@
   // defaultSteps, defaultCfg, stepsManual, cfgManual }. userNegativePrompt is the text the user wrote
   // (state.negativePrompt when not given). The panel finds the route from the node's features; a run
   // names the route it actually builds. null off the sampling routes.
-  function localSamplingFor(state, mode, userNegativePrompt, route, surface = 'drawing') {
+  function localSamplingFor(state, mode, userNegativePrompt, route, surface = 'drawing', runPolicy) {
     const modeKey = normalizeMode(mode || state?.mode)
     route = route==='qwen-2.1'&&state?.localQwen21Variant==='turbo'?'qwen-2.1-turbo':LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
     if (!route) return null
@@ -156,7 +156,12 @@
         : (negative ? STANDARD_FULL_STEPS : STANDARD_LIGHTNING_STEPS)
     const steps = manualSteps ?? defaultSteps
     const lightning = route === 'standard' ? steps <= STANDARD_LIGHTNING_MAX_STEPS : false
-    const defaultCfg = route === 'qwen-2.1'
+    const guidedTurbo = surface === 'drawing' && modeKey === 'img2img'
+      && runPolicy?.taskProfile === 'art-direction' && runPolicy.styleReferencePriority === true
+      && runPolicy.referenceRoles?.length === 2 && runPolicy.referenceRoles[0] === 'subject' && runPolicy.referenceRoles[1] === 'style'
+      && runPolicy.qwen21TurboGuidance?.renderingClass === 'anime' && Number(runPolicy.qwen21TurboGuidance.cfg) === 3
+      && negative.length > 0
+    const defaultCfg = route === 'qwen-2.1-turbo' && guidedTurbo ? 3 : route === 'qwen-2.1'
       ? (negative ? QWEN21_NEGATIVE_CFG : 1)
       : route === 'standard' && !lightning ? STANDARD_FULL_CFG : 1
     return Object.freeze({
@@ -174,8 +179,9 @@
   }
 
   // A typed value is kept for this route and mode; an empty field, or the value the route would use
-  // anyway, goes back to following the route's default.
-  function setLocalSamplingValue(state, mode, key, rawValue) {
+  // anyway, goes back to following the route's default. Turbo's explicit CFG,
+  // including 1, is retained because its confirmed anime default can be 3.
+  function setLocalSamplingValue(state, mode, key, rawValue, runPolicy) {
     if (!state || typeof state !== 'object' || (key !== 'steps' && key !== 'cfg')) return null
     const modeKey = normalizeMode(mode || state.mode)
     const route = localSamplingRoute(state, modeKey)
@@ -189,11 +195,11 @@
     const text = String(rawValue ?? '').trim()
     const value = text === '' ? null : clampLocalSampling(route, key, text)
     if (value != null) {
-      const automatic = localSamplingFor(state, modeKey)
-      if (value !== (key === 'steps' ? automatic.defaultSteps : automatic.defaultCfg)) entry[key] = value
+      const automatic = localSamplingFor(state, modeKey, undefined, undefined, 'drawing', runPolicy)
+      if (route === 'qwen-2.1-turbo' && key === 'cfg' || value !== (key === 'steps' ? automatic.defaultSteps : automatic.defaultCfg)) entry[key] = value
     }
     if (!Object.keys(entry).length) delete overrides[entryKey]
-    return localSamplingFor(state, modeKey)
+    return localSamplingFor(state, modeKey, undefined, undefined, 'drawing', runPolicy)
   }
 
   function getCapability(provider, mode) {

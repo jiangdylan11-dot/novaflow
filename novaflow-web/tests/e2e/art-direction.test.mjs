@@ -5,6 +5,7 @@ import { createContext, runInContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { normalizeReverseRequest } from '../../worker/src/prompt-assistant.mjs';
+import { artEditRendering } from '../../worker/src/art-edit-planner.mjs';
 import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 const require=createRequire(import.meta.url);
 const cloud=require('../../admin/admin-server/art-direction.js');
@@ -110,7 +111,7 @@ test('formal Qwen builders retain reference budgets and sampling geometry after 
   for(const [localQwen21Variant,manualCfg] of [['standard',undefined],['standard',3],['turbo',undefined],['turbo',3]])for(const preserve of ['','保持原有光感','保持原配色','保持原取景']){
     const p=plan([{source:2,uses:[use('style')],omit:[]},{source:5,uses:[use('subject')],omit:[]}]);
     p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:'将<image2>按<image1>的实际动漫画风整体重绘。'+preserve,sourceOrder:[2,5],renderingClass:'anime'};
-    const e=env(p),state={provider:'local',mode:'img2img',prompt:'图5用图2画风'+(preserve?'，'+preserve:''),negativePrompt:'不要文字',drawingAnalysisEngine:'local',localQwen21Variant,localDrawEngine:'qwen-2.1',width:1280,height:960,seed:324423870,randomSeed:false,nsfw:false,samplingOverrides:manualCfg?{'qwen-2.1:img2img':{steps:25,cfg:manualCfg}}:{}},refs=[null,ref('cg'),null,null,ref('photo')];
+    const e=env(p),state={provider:'local',mode:'img2img',prompt:'图5用图2画风'+(preserve?'，'+preserve:''),negativePrompt:'不要文字',drawingAnalysisEngine:'local',localQwen21Variant,localDrawEngine:'qwen-2.1',width:1280,height:960,seed:324423870,randomSeed:false,nsfw:false,samplingOverrides:manualCfg?{[`${localQwen21Variant==='turbo'?'qwen-2.1-turbo':'qwen-2.1'}:img2img`]:{steps:25,cfg:manualCfg}}:{}},refs=[null,ref('cg'),null,null,ref('photo')];
     const first=await e.api.prepare(ctx(state,refs));first.applyPromptToState();state.drawingAnalysisEngine='direct';
     const repeated=await e.api.prepare(ctx(state,refs)),graphs=[];
     assert.equal(first.state.uiPreserveLayout,false);assert.equal(repeated.state.uiPreserveLayout,false);
@@ -121,9 +122,7 @@ test('formal Qwen builders retain reference budgets and sampling geometry after 
     for(const prepared of [first,repeated])graphs.push(JSON.parse(JSON.stringify(await host.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['photo.jpg','cg.jpg'],'NF_replay',prepared.promptSnapshot.prompt,prepared.promptSnapshot.negativePrompt,'test',[{width:1280,height:960},{width:768,height:1344}],prepared.state,10,e.api.generationOptions(prepared)]}}))));
     const comparable=structuredClone(graphs);
     if(localQwen21Variant==='turbo'){
-      assert.equal(graphs[0]['7'].inputs.cfg,1);assert.equal(graphs[1]['7'].inputs.cfg,1);
-      // CFG 1 skips the negative branch; writing that text back does not alter sampling.
-      for(const graph of comparable)delete graph['5'].inputs.negative_prompt;
+      assert.equal(graphs[0]['7'].inputs.cfg,manualCfg||3);assert.equal(graphs[1]['7'].inputs.cfg,manualCfg||3);
     }else{
       assert.equal(graphs[0]['7'].inputs.cfg,3);assert.equal(graphs[1]['7'].inputs.cfg,3);
       assert.equal(graphs[0]['7'].inputs.steps,25);assert.equal(graphs[1]['7'].inputs.steps,25);
@@ -632,6 +631,21 @@ test('drawing sends one complete letterboxed pair to PE and remaps reordered slo
   assert.equal(r.referencePolicy.stylePriority,true);assert.equal(r.plan.editEnhancer.promptIds[0],'proof');
   assert.match(r.promptSnapshot.negativePrompt,/photorealistic facial proportions/);
   assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+});
+
+test('the actual PE Q8 anime rewrite reaches existing rendering guidance and keeps the style-priority contract',async()=>{
+  const {rewritten_prompt}=JSON.parse(readFileSync(new URL('../fixtures/art-pe-bright-q8-rewrite.json',import.meta.url),'utf8'));
+  const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
+  p.editEnhancer={kind:'qwen21-pe-i2i',version:'drawing-style-v1',prompt:rewritten_prompt,renderingClass:artEditRendering(rewritten_prompt),sourceOrder:[1,2]};
+  const e=env(p),state={prompt:'图1用图2画风',provider:'local',width:1280,height:960,negativePrompt:''};
+  const r=await e.api.prepare(ctx(state,[ref('photo'),ref('style')]));
+  assert.equal(r.plan.editEnhancer.renderingClass,'anime');
+  assert.ok(r.promptSnapshot.prompt.startsWith(rewritten_prompt),'the PE directive is not rewritten by the classification fix');
+  assert.match(r.promptSnapshot.negativePrompt,/photographic skin texture/);
+  assert.equal(r.state.samplingOverrides['qwen-2.1:img2img'].cfg,3);
+  assert.equal(r.state.uiPreserveLayout,false);
+  assert.equal(e.api.generationOptions(r).styleReferencePriority,true);
+  assert.deepEqual([r.state.width,r.state.height],[1280,960]);
 });
 
 test('independent style fields preserve source expression without forcing source face geometry',async()=>{

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
+import {readFileSync} from 'node:fs';
 import {createPromptAssistant} from '../../worker/src/prompt-assistant.mjs';
 import {ART_EDIT_MODEL,ART_STYLE_MODEL,ART_EDIT_SYSTEM,isArtEditRequest,parseArtEdit,buildArtEditGraph,planArtEdit,artEditRendering,buildArtStyleGraph,parseArtStyle,artStyleRendering,artStyleDirective} from '../../worker/src/art-edit-planner.mjs';
 function png(side){const b=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(b);b.writeUInt32BE(side,16);b.writeUInt32BE(side,20);return 'data:image/png;base64,'+b.toString('base64');}
@@ -120,6 +121,31 @@ test('rendering guidance requires a positive anime target, never a donor prohibi
   assert.equal(artEditRendering('动漫插画式人物，三维渲染质感。'),'animated-3d');
   assert.equal(artEditRendering('半写实3D动画电影角色，立体皮肤与材质高光。'),'animated-3d');
   assert.equal(artEditRendering('建筑三维渲染，金属与混凝土材质。'),'other');
+});
+
+test('the actual PE Q8 rewrite identifies its anime construction without requiring the old exact category words',()=>{
+  const result=JSON.parse(readFileSync(new URL('../fixtures/art-pe-bright-q8-rewrite.json',import.meta.url),'utf8'));
+  assert.equal(parseArtEdit(JSON.stringify(result),2).rewritten_prompt,result.rewritten_prompt);
+  assert.equal(artEditRendering(result.rewritten_prompt),'anime');
+  for(const method of ['完整动漫化重构','干净的动漫轮廓线','平涂加柔和赛璐璐阴影']){
+    assert.equal(artEditRendering(`按<image2>画风执行${method}。`),'anime',method);
+  }
+});
+
+test('anime drawing evidence does not override an excluded style, source description or realistic target',()=>{
+  for(const prompt of [
+    '采用游戏CG质感，不使用动漫轮廓线和赛璐璐阴影。',
+    '避免完整动漫化重构，采用摄影写实。',
+    '不是动漫插画，采用照片质感。',
+    '主体是动漫插画人物，按参考图重绘。',
+    '原图原本是动漫插画，采用真人摄影质感。',
+    '保留动漫人物身份，使用真人照片风格。',
+    '采用动漫轮廓线与半写实游戏CG材质。',
+    '采用动漫轮廓线，皮肤与头发保持摄影质感。',
+  ])assert.equal(artEditRendering(prompt),'other',prompt);
+  assert.equal(artEditRendering('主体是动漫插画人物，采用建筑三维渲染材质。'),'other');
+  assert.equal(artEditRendering('执行完整动漫化重构，不保留摄影质感，不锁死摄影脸型。'),'anime');
+  assert.equal(artEditRendering('完整动漫化重构，采用半写实3D动画的体积材质。'),'animated-3d');
 });
 
 test('a requested semi-real 3D finish cannot be rewritten as flat 2D, while facial stylization and negative exclusions remain valid',()=>{

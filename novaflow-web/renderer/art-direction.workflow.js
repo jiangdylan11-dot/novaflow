@@ -508,7 +508,10 @@
     const approvedPe=plan.editEnhancer?.kind==='qwen21-pe-i2i'&&['anime','painterly'].includes(plan.editEnhancer.renderingClass);
     const isolatedDonor=!approvedPe&&source.provider==='local'&&!source.nsfw&&(pairStyle||plan.editEnhancer)?refs.find(r=>r.role==='style')?.donorExclusions||[]:[];
     const automaticNegative=[renderingNegative,...isolatedDonor].filter(Boolean).join(', ');
-    return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...(localStylePair(source,refs)||(isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
+    // This opt-in is narrower than renderingPolicy: animated 3D and donor-only
+    // exclusions also use that policy, but retain Turbo's default CFG 1.
+    const turboGuidance=renderingNegative&&plan.editEnhancer?.renderingClass==='anime'&&localStylePair(source,refs)?{renderingClass:'anime',cfg:3}:null;
+    return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...(turboGuidance?{turboGuidance}:{}),...(localStylePair(source,refs)||(isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
   }
   function directPreparation(source, written) {
     if(!source.prompt)throw new Error('请写一句要求，例如“换成白色衬衫”；需要自动理解参考图时可选择本地AI');
@@ -528,7 +531,7 @@
       if(index<0)throw new Error(`图${number}不存在，请检查参考图编号`);
       return `<image${index+1}>`;
     }):source.prompt;
-    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},...(localStylePair(source,references)?{referencePolicy:{stylePriority:true}}:written?.policy?{referencePolicy:copy(written.policy)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
+    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},...(localStylePair(source,references)?{referencePolicy:{stylePriority:true}}:written?.policy?{referencePolicy:copy(written.policy)}:{}),...(written?.turboGuidance?{turboGuidance:copy(written.turboGuidance)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
   }
   async function prepare(context) {
     if (controller) throw new Error('请等待当前绘图分析结束');
@@ -572,6 +575,7 @@
         const route=`qwen-2.1:${state.mode}`,overrides=state.samplingOverrides||{},manual=overrides[route]||{};
         state.samplingOverrides={...overrides,[route]:{...manual,cfg:Number(manual.cfg)>0?manual.cfg:prepared.renderingPolicy.cfg}};
       }
+      if(prepared.turboGuidance&&state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant==='turbo')state.negativePrompt=prepared.promptSnapshot.negativePrompt;
       preparing=false;
       return {...prepared,state,analysisInput:source,originalPrompt:source.prompt,assertCurrent:check,
         applyPromptToState:()=>{
@@ -586,9 +590,12 @@
             context.state.samplingOverrides={...overrides,[route]:{...manual,cfg}};
             state.samplingOverrides={...state.samplingOverrides,[route]:{...state.samplingOverrides[route],cfg}};
           }
+          // An automatic style default is run metadata, never a persistent
+          // manual override. Preserve any CFG the user typed during analysis.
+          if(state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant==='turbo')state.samplingOverrides=copy(context.state.samplingOverrides||{});
           expectedSource=input(context.getCurrentContext?context.getCurrentContext():context);
           if(prepared.references.length===2&&prepared.references[0].role==='subject'&&prepared.references[1].role==='style'){
-            writtenReferencePolicies.set(context.state,{source:expectedSource,...(prepared.referencePolicy?{policy:copy(prepared.referencePolicy)}:{}),uiPreserveLayout:state.uiPreserveLayout,order:prepared.references.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
+            writtenReferencePolicies.set(context.state,{source:expectedSource,...(prepared.referencePolicy?{policy:copy(prepared.referencePolicy)}:{}),...(prepared.turboGuidance?{turboGuidance:copy(prepared.turboGuidance)}:{}),uiPreserveLayout:state.uiPreserveLayout,order:prepared.references.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
           }else writtenReferencePolicies.delete(context.state);
           return true;
         },
@@ -676,6 +683,18 @@
   function referenceControl(create,ref,number) {
     return create('span',{className:'nf-art-direction-reference',text:`图${number}`});
   }
-  function generationOptions(prepared){return {taskProfile:'art-direction',referenceRoles:prepared.references.map(r=>r.role),styleReferencePriority:prepared.referencePolicy?.stylePriority===true};}
-  root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,controls,analysisControl,referenceControl,generationOptions,validate,compile,input,same,renderReference,roleRendering});
+  function generationOptions(prepared){
+    const referenceRoles=prepared.references.map(r=>r.role),styleReferencePriority=prepared.referencePolicy?.stylePriority===true;
+    const guided=styleReferencePriority&&referenceRoles.length===2&&referenceRoles[0]==='subject'&&referenceRoles[1]==='style'
+      &&prepared.turboGuidance?.renderingClass==='anime'&&Number(prepared.turboGuidance.cfg)===3;
+    return {taskProfile:'art-direction',referenceRoles,styleReferencePriority,...(guided?{qwen21TurboGuidance:{renderingClass:'anime',cfg:3}}:{})};
+  }
+  // The panel and a reused NoAI run consult the same validated writeback. A
+  // changed prompt, negative, image or role cannot inherit a stale style CFG.
+  function samplingOptions(context){
+    const written=writtenReferencePolicies.get(context.state),source=input(context);
+    if(!written||!same({...written.source,engine:source.engine},source))return {};
+    return generationOptions({references:written.order,referencePolicy:written.policy,turboGuidance:written.turboGuidance});
+  }
+  root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,controls,analysisControl,referenceControl,generationOptions,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
 })(typeof window!=='undefined'?window:globalThis);

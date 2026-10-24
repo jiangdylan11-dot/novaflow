@@ -82728,8 +82728,12 @@
     return window.NovaFlowUiDesignDrawing?.isActive?.() ? { ...ART_GENERATE_STATE, nsfw: false } : ART_GENERATE_STATE;
   }
 
+  function artGenerateSamplingOptions() {
+    return window.NovaFlowUiDesignDrawing?.isActive?.() ? {} : window.NovaFlowArtDirection?.samplingOptions?.({ state: ART_GENERATE_STATE, references: artGenerateReferences() }) || {};
+  }
+
   function artGenerateSurfaceRenderKey() {
-    return `${window.NovaFlowUiDesignDrawing?.isActive?.() ? "ui" : "drawing"}:${window.NovaFlowArtGenerateModels?.renderKey?.(artGenerateModelState()) || ""}`;
+    return `${window.NovaFlowUiDesignDrawing?.isActive?.() ? "ui" : "drawing"}:${window.NovaFlowArtGenerateModels?.renderKey?.(artGenerateModelState()) || ""}:${artGenerateSamplingOptions().qwen21TurboGuidance?.renderingClass || ""}`;
   }
 
   function shouldKeepArtGenerateBottomContent(bottom, forceBottomRender = false) {
@@ -83040,7 +83044,7 @@
   // Keeps the 步数 / CFG fields on what the next run will use: a route default can change with the
   // negative prompt (2.1's CFG, the 2511 route) or with the steps (Lightning on or off).
   function syncArtGenerateSamplingFields() {
-    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(artGenerateModelState(), ART_GENERATE_STATE.mode);
+    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(artGenerateModelState(), ART_GENERATE_STATE.mode, undefined, undefined, 'drawing', artGenerateSamplingOptions());
     if (!sampling) return;
     document.querySelectorAll(`#${ART_GENERATE_WORKSPACE_ID} input[data-novaflow-art-generate-sampling]`).forEach((input) => {
       if (!(input instanceof HTMLInputElement) || document.activeElement === input) return;
@@ -83052,17 +83056,19 @@
   }
 
   // 步数 / CFG: shows what the run will use. A typed value is kept for this route and mode; clearing
-  // the field, or typing the route's own default, goes back to following the route.
+  // the field goes back to following the route. Turbo retains an explicitly typed CFG 1.
   function renderArtGenerateSamplingField(kind, mode) {
     const models = window.NovaFlowArtGenerateModels;
     const runMode = mode || ART_GENERATE_STATE.mode;
-    const sampling = models?.localSamplingFor?.(artGenerateModelState(), runMode);
+    const sampling = models?.localSamplingFor?.(artGenerateModelState(), runMode, undefined, undefined, 'drawing', artGenerateSamplingOptions());
     if (!sampling || (kind !== "steps" && kind !== "cfg")) return null;
     const label = kind === "steps" ? "\u6b65\u6570" : "CFG";
+    let edited = false;
     const commit = (input) => {
-      if (!(input instanceof HTMLInputElement)) return;
+      if (!(input instanceof HTMLInputElement) || !edited) return;
+      edited = false;
       const state = artGenerateModelState();
-      const next = models.setLocalSamplingValue?.(state, runMode, kind, input.value);
+      const next = models.setLocalSamplingValue?.(state, runMode, kind, input.value, artGenerateSamplingOptions());
       if (next) ART_GENERATE_STATE.samplingOverrides = state.samplingOverrides;
       if (next) input.value = formatArtGenerateSamplingValue(kind, next);
       syncArtGenerateSamplingFields();
@@ -83083,6 +83089,7 @@
       oninput: (event) => {
         const inputNode = event.currentTarget;
         if (!(inputNode instanceof HTMLInputElement)) return;
+        edited = true;
         const next = kind === "cfg"
           ? inputNode.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
           : inputNode.value.replace(/[^\d]/g, "");
@@ -83091,6 +83098,7 @@
       onkeydown: (event) => {
         if (event?.key !== "Enter") return;
         event.preventDefault();
+        edited = true;
         commit(event.currentTarget);
       },
       onchange: (event) => {
@@ -84451,7 +84459,7 @@
       },
       oninput: (event) => {
         ART_GENERATE_STATE[key] = String(event.currentTarget.value || "");
-        if (key === "negativePrompt") syncArtGenerateSamplingFields();
+        if (key === "negativePrompt" || key === "prompt") syncArtGenerateSamplingFields();
       },
       onchange: (event) => {
         addArtGeneratePromptHistoryValue(key, event.currentTarget.value);
@@ -85513,6 +85521,11 @@
       : [];
     if (references.length > QWEN21_ART_MAX_REFERENCES) throw new Error(`Qwen-Image 2.1 最多支持 ${QWEN21_ART_MAX_REFERENCES} 张参考图，本次未截断提交。`);
     if (mode === "img2img" && !references.length) return null;
+    const scopedDrawingRoles = providerOptions?.taskProfile === 'art-direction' && Array.isArray(providerOptions.referenceRoles) ? providerOptions.referenceRoles : [];
+    const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
+    const guidedTurbo = mode === 'img2img' && prioritizedStyle && providerOptions?.qwen21TurboGuidance?.renderingClass === 'anime'
+      && Number(providerOptions.qwen21TurboGuidance.cfg) === 3 && guidance.negative.length > 0;
+    const turboCfg = sampling?.cfgManual === true ? cfg : guidedTurbo ? 3 : 1;
     const runtime = artQwen21Runtime(state);
     if (!runtime) return null;
     const info = runtime.info || {};
@@ -85539,7 +85552,7 @@
       workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
       workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
       workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
-      return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-t2i":"qwen-image-2.1-t2i" };
+      return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-t2i":"qwen-image-2.1-t2i" };
     }
     const sizes = references.map((_, index) => {
       const size = Array.isArray(referenceSizes) ? referenceSizes[index] : null;
@@ -85556,8 +85569,6 @@
     // size and the run is an edit. Native UI preservation also keeps that spatial input
     // when resized; Drawing retains its aspect-dependent fresh-layout behavior.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
-    const scopedDrawingRoles = providerOptions?.taskProfile === 'art-direction' && Array.isArray(providerOptions.referenceRoles) ? providerOptions.referenceRoles : [];
-    const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
     const changesDrawingLayout = scopedDrawingRoles.length > 0 && (scopedDrawingRoles[0] !== 'subject' || scopedDrawingRoles.some(role => role === 'pose' || role === 'composition'));
     // Keeping the canvas size does not request photographic geometry protection.
     // The grounded style route must retain its content/detail balance at any ratio.
@@ -85617,7 +85628,7 @@
       output = ["9", 0];
     }
     workflow["10"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
-    return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-i2i":"qwen-image-2.1-i2i" };
+    return { workflow:state?.localQwen21Variant==='turbo'?window.NovaFlowQwen21Turbo.apply(workflow,{cfg:turboCfg}):workflow, modelKey: state?.localQwen21Variant==='turbo'?"qwen-image-2.1-turbo-i2i":"qwen-image-2.1-i2i" };
   }
 
   // UI design on a Qwen-Image-2.1 node: every connected reference goes in as images.image_N and the
@@ -85890,7 +85901,7 @@
     // keeps its own presets.
     const drawingRun = provider === "local" && !/^ui-design/i.test(String(providerOptions?.taskProfile || ""));
     const samplingFor = (route) => (drawingRun
-      ? window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, state?.negativePrompt, route) || null
+      ? window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, state?.negativePrompt, route, 'drawing', providerOptions) || null
       : null);
     let localWorkflow = null;
     let localModelKey = artWorkflowKeyForState(state);
