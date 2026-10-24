@@ -551,7 +551,7 @@ export function SkeletonAnimationSidebar({
             style={{ alignItems: 'stretch', textAlign: 'left' }}
           >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.86)' }}>导入 Spine 工程</div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: 'rgba(255,255,255,0.86)' }}>导入动画工程</div>
               <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.80)' }}>可拖拽到此处</div>
             </div>
             <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
@@ -1156,7 +1156,7 @@ export function SkeletonAnimationPreview({
       return {
         id: 'root',
         kind: 'root',
-        label: 'Spine工程',
+        label: '动画工程',
         children: [
           {
             id: 'bone:root',
@@ -1237,7 +1237,7 @@ export function SkeletonAnimationPreview({
 
     const roots = boneChildren.get('') || []
     const rootChildren = roots.length ? roots.map(makeBoneNode) : bones.map(makeBoneNode)
-    const projectName = String((project as any)?.skeleton?.spine || '') ? 'Spine工程' : 'Spine工程'
+    const projectName = String((project as any)?.skeleton?.spine || '') ? '动画工程' : '动画工程'
     return { id: 'root', kind: 'root', label: projectName, children: rootChildren.length ? rootChildren : undefined } as BoneTreeNode
   }, [project, skinName])
 

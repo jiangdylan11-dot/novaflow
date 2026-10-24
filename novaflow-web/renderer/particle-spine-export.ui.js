@@ -33,8 +33,8 @@
   }
   // the Spine tab's own run button ("导出 SPINE 工程（JSON+ATLAS+PNG）", or as relabelled below) - never the
   // 序列帧 tab's "导出粒子序列 PNG + Spine 工程（选文件夹）", which has its own 打包图集 row
-  const runButton = (scope) => Array.from(scope.querySelectorAll('button')).find((b) => /^导出\s*(粒子特效\s*)?SPINE 工程/i.test((b.textContent || '').trim()))
-  const versionSelect = (scope) => Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.textContent === 'Spine 3.8'))
+  const runButton = (scope) => Array.from(scope.querySelectorAll('button')).find((b) => /^(导出\s*(粒子特效\s*)?SPINE 工程|导出(?:粒子)?动画工程)/i.test((b.textContent || '').trim()))
+  const versionSelect = (scope) => Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.value === '3.8'))
 
   /** The dialog's React select takes the value through its own setter plus a change event. */
   function setSelect(select, value) {
@@ -60,7 +60,7 @@
     const label = (t, extra) => `<span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:2px${extra || ''}">${t}</span>`
     row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
       + VERSIONS.map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v}</button>`).join('')
-      + label('格式', ';margin-left:12px') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
+      + '</div><div class="nf-atlas-row" style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap;margin-bottom:8px">' + label('格式') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
       + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap"><label class="nf-atlas-check" style="margin:0"><input type="checkbox" data-packed="1">打包图集</label>'
       + '<button type="button" class="nf-atlas-button" data-settings="1" style="margin-left:auto">打包设置…</button></div><p class="nf-atlas-hint" data-pack-hint style="margin:6px 0 0"></p>'
     row.querySelector('[data-packed]').addEventListener('change', (e) => { save({ packed: !!e.target.checked }); sync(row, scope) })
@@ -91,11 +91,11 @@
     row.querySelectorAll('[data-format]').forEach((b) => b.classList.toggle('primary', (b.getAttribute('data-format') === 'skel') === skel()))
     const run = runButton(scope)
     if (run) {
-      const wanted = pack ? `导出粒子特效 Spine 工程（${fmt}+ATLAS+PNG）` : `导出粒子特效 Spine 工程（${fmt}+images）`
+      const wanted = '导出粒子动画工程'
       if (run.textContent !== wanted) run.textContent = wanted
     }
     const hint = row.querySelector('[data-pack-hint]')
-    const t = pack ? `按 Spine ${ver} 导出，${fmt}＋atlas＋图集 PNG，只打包粒子用到的图片。` : `按 Spine ${ver} 导出，${fmt}＋images 文件夹（每张图一个 PNG）。`
+    const t = pack ? `按 ${ver} 导出，${fmt}＋atlas＋图集 PNG，只打包粒子用到的图片。` : `按 ${ver} 导出，${fmt}＋images 文件夹（每张图一个 PNG）。`
     if (hint.textContent !== t) hint.textContent = t
   }
 

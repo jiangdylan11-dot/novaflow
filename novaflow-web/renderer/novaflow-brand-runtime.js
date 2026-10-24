@@ -6751,7 +6751,7 @@
   function isNovaflowExportTabButton(button) {
     if (!(button instanceof HTMLButtonElement)) return false;
     const text = normalizeText(button.textContent || "");
-    return text === "\u5e8f\u5217\u5e27" || text === "\u89c6\u9891" || text === "Spine";
+    return text === "\u5e8f\u5217\u5e27" || text === "\u89c6\u9891" || text === "Spine" || text === "动画工程";
   }
 
   function getNovaflowExportTabModeFromButton(button) {
@@ -6759,7 +6759,7 @@
     const text = normalizeText(button.textContent || "");
     if (text === "\u5e8f\u5217\u5e27") return "seq";
     if (text === "\u89c6\u9891") return "video";
-    if (text === "Spine") return "spine";
+    if (text === "Spine" || text === "动画工程") return "spine";
     return "";
   }
 
@@ -6921,6 +6921,7 @@
     const text = normalizeText(button.textContent || "");
     const upper = text.toUpperCase();
     if (!text.includes("\u5bfc\u51fa")) return "";
+    if (text === "导出动画工程" || button.getAttribute("data-novaflow-skeleton-spine-export") === "1") return "spine";
     if (upper.includes("SPINE") && (upper.includes("JSON") || upper.includes("ATLAS") || text.includes("\u5de5\u7a0b"))) return "spine";
     if (text.includes("\u89c6\u9891")) return "video";
     if (text.includes("\u5e8f\u5217") || upper.includes("PNG")) return "seq";
@@ -7103,6 +7104,9 @@
       setNovaflowExportElementHidden(node, hideIncludeBackground);
     });
     findNovaflowExportSettingBlock(root, "\u5bfc\u51fa SPINE \u5e8f\u5217\u5de5\u7a0b").forEach((node) => {
+      setNovaflowExportElementHidden(node, hideSpineSequenceProject);
+    });
+    findNovaflowExportSettingBlock(root, "导出序列动画工程").forEach((node) => {
       setNovaflowExportElementHidden(node, hideSpineSequenceProject);
     });
     syncNovaflowAifxExportModalControls(root, context);
@@ -69580,7 +69584,7 @@
     if (
       menuText !== "\u6587\u4ef6" &&
       !(
-        dropdownText.includes("\u5bfc\u5165Spine\u5de5\u7a0b") &&
+        (dropdownText.includes("\u5bfc\u5165Spine\u5de5\u7a0b") || dropdownText.includes("导入动画工程")) &&
         dropdownText.includes("\u4fdd\u5b58\u7c92\u5b50\u9879\u76ee")
       )
     ) {
@@ -69600,7 +69604,7 @@
     const menuText = normalizeText(menuButton instanceof HTMLElement ? menuButton.textContent || "" : "");
     const dropdownText = normalizeText(dropdown instanceof HTMLElement ? dropdown.textContent || "" : "");
     return menuText === "\u6587\u4ef6" || (
-      dropdownText.includes("\u5bfc\u5165Spine\u5de5\u7a0b") &&
+      (dropdownText.includes("\u5bfc\u5165Spine\u5de5\u7a0b") || dropdownText.includes("导入动画工程")) &&
       dropdownText.includes("\u4fdd\u5b58\u7c92\u5b50\u9879\u76ee")
     );
   }
@@ -69632,7 +69636,7 @@
       if (menuText === "\u6587\u4ef6") return true;
       const dropdown = candidate.querySelector(".nf-dropdown, .nf-menu");
       const dropdownText = normalizeText(dropdown instanceof HTMLElement ? dropdown.textContent || "" : "");
-      return dropdownText.includes("\u5bfc\u5165Spine\u5de5\u7a0b") && dropdownText.includes("\u4fdd\u5b58\u7c92\u5b50\u9879\u76ee");
+      return (dropdownText.includes("\u5bfc\u5165Spine\u5de5\u7a0b") || dropdownText.includes("导入动画工程")) && dropdownText.includes("\u4fdd\u5b58\u7c92\u5b50\u9879\u76ee");
     });
     if (wrap instanceof HTMLElement) {
       setAttributeIfChanged(wrap, PARTICLE_PROJECT_FILE_MENU_ATTR, "1");
@@ -71842,6 +71846,11 @@
     const optimized = window.NovaFlowSpineExportOptimizer?.optimize(output);
     if (!optimized) throw new Error("动画导出优化器尚未加载，请刷新后重试");
     output = optimized.project;
+    // 3.7 map skins belong only in the file; the live export workspace keeps 3.8 array skins.
+    const skeletonEditor = window.NovaFlowSkeletonEditor;
+    if (skeletonEditor?.active?.() && skeletonEditor.exportVersion?.() === "3.7") {
+      output = skeletonEditor.convertExportVersion(output, "3.7");
+    }
     const optimization = optimized.stats;
     window.__NovaFlowSkeletonSpineExportLastOptimization = optimization;
     console.info("[NovaFlow] Spine export key reduction", optimization);
@@ -71877,10 +71886,10 @@
     const context = prepareSkeletonSpineProjectForExport();
     const sourceInfo = getSkeletonSpineExportSourceInfo(context);
     if (!sourceInfo.atlasText) {
-      throw new Error("\u5f53\u524d\u9aa8\u9abc\u5de5\u7a0b\u7f3a\u5c11 atlas\uff0c\u65e0\u6cd5\u5bfc\u51fa Spine \u5de5\u7a0b");
+      throw new Error("\u5f53\u524d\u9aa8\u9abc\u5de5\u7a0b\u7f3a\u5c11 atlas\uff0c\u65e0\u6cd5\u5bfc\u51fa \u52a8\u753b\u5de5\u7a0b");
     }
     if (!sourceInfo.images.length) {
-      throw new Error("\u5f53\u524d\u9aa8\u9abc\u5de5\u7a0b\u7f3a\u5c11\u8d34\u56fe\uff0c\u65e0\u6cd5\u5bfc\u51fa Spine \u5de5\u7a0b");
+      throw new Error("\u5f53\u524d\u9aa8\u9abc\u5de5\u7a0b\u7f3a\u5c11\u8d34\u56fe\uff0c\u65e0\u6cd5\u5bfc\u51fa \u52a8\u753b\u5de5\u7a0b");
     }
     const json = buildSkeletonSpineExportJson(context, sourceInfo);
     const displayName = getSkeletonSpineProjectDisplayName(context, sourceInfo);
@@ -72018,6 +72027,7 @@
     if (button.getAttribute("data-novaflow-skeleton-spine-export") === "1") return true;
     const text = normalizeText(button.textContent || "");
     const upper = text.toUpperCase();
+    if (text === "导出动画工程") return true;
     return text.includes("\u5bfc\u51fa") &&
       upper.includes("SPINE") &&
       upper.includes("JSON") &&
@@ -72037,17 +72047,17 @@
     // The shared particle dialog's version picker never converted this project's data.
     const nativeVersion = getSkeletonSpineExportVersion(getSkeletonSpineExportContext()?.project).match(/^\d+\.\d+/)?.[0];
     Array.from(scope.querySelectorAll?.('select') || []).forEach((select) => {
-      if (!nativeVersion || !Array.from(select.options).some((option) => option.textContent === 'Spine 3.8')) return;
-      const current = Array.from(select.options).find((option) => option.textContent === `Spine ${nativeVersion}`);
+      if (!nativeVersion || !Array.from(select.options).some((option) => option.value === '3.8')) return;
+      const current = Array.from(select.options).find((option) => option.value === nativeVersion);
       if (!current) return;
       if (select.value !== current.value) select.value = current.value;
       if (!select.disabled) select.disabled = true;
-      setAttributeIfChanged(select, 'title', `骨骼工程按原版本 ${nativeVersion} 保真导出`);
+      setAttributeIfChanged(select, 'title', `动画工程按原版本 ${nativeVersion} 导出`);
       const parent = select.parentElement?.parentElement;
       Array.from(parent?.querySelectorAll('p') || []).forEach((hint) => {
         if (hint.textContent.includes('小版本号') || hint.hasAttribute('data-novaflow-native-export-version')) {
           setAttributeIfChanged(hint, 'data-novaflow-native-export-version', '1');
-          const text = `当前骨骼工程按 Spine ${nativeVersion} 原版本导出，保留骨架和曲线格式。`;
+          const text = `当前动画工程按 ${nativeVersion} 原版本导出，保留骨架和曲线格式。`;
           if (hint.textContent !== text) hint.textContent = text;
         }
       });
@@ -72056,8 +72066,11 @@
       if (!(button instanceof HTMLButtonElement)) return;
       if (!isSkeletonSpinePackageExportButton(button)) return;
       setAttributeIfChanged(button, "data-novaflow-skeleton-spine-export", "1");
-      const skeletonFormat = window.__NovaFlowSpineExportSkel === true ? "SKEL" : "JSON";
-      const wanted = `导出当前骨骼动画 Spine 工程（${skeletonFormat}+ATLAS+PNG）`;
+      const wanted = "导出动画工程";
+      if (button.hasAttribute("data-nf-skeleton-wait")) {
+        setAttributeIfChanged(button, "data-nf-skeleton-label", wanted);
+        return;
+      }
       if (normalizeText(button.textContent || "") !== normalizeText(wanted)) {
         button.textContent = wanted;
       }
@@ -72087,7 +72100,7 @@
     };
     const result = await saveSkeletonSpineExportPayload(payload);
     if (!result?.canceled) {
-      showTopbarExportAvailabilityNotice("\u5df2\u5bfc\u51fa\u5f53\u524d\u9aa8\u9abc\u52a8\u753b Spine \u5de5\u7a0b");
+      showTopbarExportAvailabilityNotice("\u5df2\u5bfc\u51fa\u52a8\u753b\u5de5\u7a0b");
     }
     return result;
   }

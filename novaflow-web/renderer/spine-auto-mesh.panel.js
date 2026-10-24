@@ -3162,7 +3162,7 @@
     button.type = 'button'
     styleButton(button, false)
     button.setAttribute('data-nf-ps-import', '1') // hover like its neighbour 清空 (theme 3.1b)
-    button.title = 'PhotoshopToSpine 导出的文件夹（JSON + 贴图）可以直接用，不需要先过一遍 Spine；也可以直接把那个文件夹拖到这个按钮上'
+    button.title = 'PS 导出的图层工程文件夹（JSON + 贴图）可以直接导入，也可以把文件夹拖到这个按钮上'
     // the panel this button lives in is the app's 导入工程; the status line it used to write to
     // sits inside 自动蒙皮, which is collapsed on entry — so a click looked like nothing happened
     const psStatus = el('div', {
@@ -3201,7 +3201,7 @@
       const api = window.electronAPI
       if (api && typeof api.openPhotoshopProject === 'function') {
         guardWith(say)(async () => {
-          say('选择 PhotoshopToSpine 导出的文件夹…')
+          say('选择 PS 导出的图层工程文件夹…')
           let res = null
           diag('ipcstart', {})
           try {
@@ -3318,7 +3318,7 @@
     // What to pick, under the button (the name alone is short now).
     // no top margin: the brand runtime's rhythm pass sets the panel's spacing and zeroed it a frame later
     const psNote = el('div', { marginTop: '0', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
-      '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到按钮上')
+      '选择 PS 导出的图层工程文件夹（JSON + 贴图），也可以直接拖到按钮上')
     psNote.setAttribute('data-novaflow-ps-import-note', '1')
     // a line between the file-by-file import above and the project buttons (user 2026-10-13)
     const divider = el('div', { height: '1px', margin: '4px 0', background: '#272727', width: '100%' })

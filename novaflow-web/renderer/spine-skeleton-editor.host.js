@@ -542,12 +542,16 @@
     if (!a.loaded()) throw new Error('先在「工程管理」里新建或导入工程')
     const mode = packMode()
     const version = wantVersion === 'spine' ? exportVersion() : '3.8'
-    if (appJson === a.json() && appMode === mode && appVersion === version) return
+    // The React workspace uses array skins. Keep 3.7's map skins out of that live project;
+    // buildSkeletonSpineExportJson converts the final file after the preview has been read.
+    const bridgeVersion = version === '3.7' ? '3.8' : version
+    const previousBridgeVersion = appVersion === '3.7' ? '3.8' : appVersion
+    if (appJson === a.json() && appMode === mode && previousBridgeVersion === bridgeVersion) { appVersion = version; return }
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
     const bridge = window.__NovaFlowSpineImportInlineBridge
     if (!cache || !bridge || typeof bridge.start !== 'function') throw new Error('导入通道不可用')
     const json = a.json()
-    const { source } = await a.packForApp({ mode, version })
+    const { source } = await a.packForApp({ mode, version: bridgeVersion })
     ownText = source.json.text
     // fill the bridge's own object field by field (the bundle holds on to that object)
     cache.json = source.json; cache.atlas = source.atlas; cache.images = source.images
@@ -563,10 +567,12 @@
     return !kind || kind === 'skeleton' ? root : null
   }
   /** The dialog's run buttons (导出…), not its tabs. */
+  const exportRunLabel = (b) => (b.getAttribute('data-nf-skeleton-label') || b.textContent || '').trim()
   function isExportRun(b) {
     if (!(b instanceof HTMLButtonElement) || !exportRoot(b) || b.closest('[data-nf-skeleton-pack]')) return false
-    return /^导出/.test((b.textContent || '').trim())
+    return /^导出/.test(exportRunLabel(b))
   }
+  const isSpineExportRun = (b) => isExportRun(b) && (b.getAttribute('data-novaflow-skeleton-spine-export') === '1' || /Spine\s*工程|^导出动画工程$/i.test(exportRunLabel(b)))
   const inSync = () => !!(api && appJson === api.json() && appMode === packMode() && appVersion === (wantVersion === 'spine' ? exportVersion() : '3.8'))
   const exportName = (root) => { const i = root && root.querySelector('input[type=text], input:not([type])'); return i ? i.value : '' }
   const setExportName = (root, v) => {
@@ -580,11 +586,11 @@
     if (bypass || !window.NovaFlowSkeletonEditor.active()) return
     const b = e.target instanceof Element ? e.target.closest('button') : null
     if (!b || !isExportRun(b)) return
-    wantVersion = /Spine 工程/.test(b.textContent || '') ? 'spine' : '3.8'
+    wantVersion = isSpineExportRun(b) ? 'spine' : '3.8'
     if (inSync() && !syncing) return
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
     // the app rebuilds its project (and with it this dialog): run the button that is there then
-    const label = (b.textContent || '').trim()
+    const label = exportRunLabel(b)
     const name = exportName(exportRoot(b))
     b.textContent = '准备工程…'
     // a click while the dialog's own sync still runs waits for it instead of being lost
@@ -632,7 +638,12 @@
     const root = document.querySelector('[data-novaflow-export-modal-root="1"]')
     const scope = root ? exportRoot(root) : null
     if (!scope || !window.NovaFlowSkeletonEditor.active() || !api || !api.loaded()) { window.__NovaFlowSpineExportSkel = false; return }
-    const run = Array.from(scope.querySelectorAll('button')).find((b) => /Spine 工程/.test(b.textContent || '') && /^导出/.test((b.textContent || '').trim()))
+    for (const b of scope.querySelectorAll('button')) if (/^Spine$/i.test((b.textContent || '').trim()) || b.hasAttribute('data-nf-animation-project-tab')) {
+      b.setAttribute('data-nf-animation-project-tab', '1')
+      if (b.textContent !== '动画工程') b.textContent = '动画工程'
+    }
+    const run = Array.from(scope.querySelectorAll('button')).find(isSpineExportRun)
+    if (run) run.setAttribute('data-novaflow-skeleton-spine-export', '1')
     const old = scope.querySelector('[data-nf-skeleton-pack]')
     if (!run) { if (old) old.remove(); return }
     if (old && old.nextElementSibling === run) { syncPackRow(old); return }
@@ -642,9 +653,10 @@
     row.className = 'nf-atlas-controls'
     row.style.cssText = 'margin:0 0 10px'
     const label = (t, extra) => `<span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:2px${extra || ''}">${t}</span>`
-    row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
+    row.innerHTML = '<div class="nf-atlas-row" data-nf-skeleton-row="version" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
       + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v === '3.7' ? '3.7.94' : v}</button>`).join('')
-      + label('格式', ';margin-left:12px') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
+      + '</div><div class="nf-atlas-row" data-nf-skeleton-row="format" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:nowrap;margin-bottom:8px">'
+      + label('格式') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
       + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap">' + label('打包')
       + '<button type="button" class="nf-atlas-button" data-mode="atts"></button><button type="button" class="nf-atlas-button" data-mode="folder"></button>'
       + '<button type="button" class="nf-atlas-button" data-settings="1" style="margin-left:auto">打包设置…</button></div><p class="nf-atlas-hint" data-pack-hint style="margin:6px 0 0"></p>'
@@ -652,7 +664,7 @@
     row.querySelectorAll('[data-version]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setExportVersion(b.getAttribute('data-version')); syncPackRow(row) }))
     row.querySelectorAll('[data-format]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); setPackSkel(b.getAttribute('data-format') === 'skel'); syncPackRow(row) }))
     // the app's own version picker is pinned to the project's version (it never converted); ours does
-    const sel = Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.textContent === 'Spine 3.8'))
+    const sel = Array.from(scope.querySelectorAll('select')).find((x) => Array.from(x.options).some((o) => o.value === '3.8'))
     if (sel) {
       // the select, its label right before it and the app's hint under it (the dialog's other rows stay)
       const hide = [sel, sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL' ? sel.previousElementSibling : null, sel.parentElement && sel.parentElement.querySelector('p[data-novaflow-native-export-version]')]
@@ -673,9 +685,11 @@
     const fmt = skel ? 'SKEL' : 'JSON'
     // the run button says what goes out, right away (the runtime relabels it the same way on its next pass)
     const scope = row.closest('[data-novaflow-export-modal-root="1"]')
-    const run = scope && Array.from(scope.querySelectorAll('button')).find((b) => /Spine 工程/.test(b.textContent || '') && /^导出/.test((b.textContent || '').trim()))
+    // The custom picker owns the version hint, including after the app adds its hint later.
+    if (scope) for (const hint of scope.querySelectorAll('[data-novaflow-native-export-version]')) hint.style.setProperty('display', 'none', 'important')
+    const run = scope && Array.from(scope.querySelectorAll('button')).find(isSpineExportRun)
     if (run) {
-      const wanted = `导出当前骨骼动画 Spine 工程（${fmt}+ATLAS+PNG）`
+      const wanted = '导出动画工程'
       if (run.hasAttribute('data-nf-skeleton-wait')) { if (run.getAttribute('data-nf-skeleton-label') !== wanted) run.setAttribute('data-nf-skeleton-label', wanted) }
       else if (run.textContent !== wanted) run.textContent = wanted
     }
@@ -687,7 +701,8 @@
       b.classList.toggle('primary', m === mode)
     })
     const hint = row.querySelector('[data-pack-hint]')
-    const t = (ver === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${ver}`) + `，${fmt}＋atlas＋图集 PNG` + (mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
+    const target = ver === '3.7' ? '3.7.94' : ver
+    const t = (ver === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${target}`) + `，${fmt}＋atlas＋图集 PNG` + (mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
     if (hint.textContent !== t) hint.textContent = t
   }
 
@@ -768,6 +783,12 @@
     ready,
     call,
     api: () => api,
+    exportVersion,
+    convertExportVersion: (json, version) => {
+      const converter = frame && frame.contentWindow && frame.contentWindow.NovaFlowSpineVersion
+      if (!converter) throw new Error('工程版本转换器尚未加载，请刷新后重试')
+      return converter.fromSpine38(json, version)
+    },
     setPanel: (kind, open) => { ready().then((a) => a.setPanel(kind, open)) },
     /** 动画工具 → 粒子特效（扩展弹框） */
     openParticle: () => { ready().then((a) => { if (a.openParticlePanel) a.openParticlePanel() }) },

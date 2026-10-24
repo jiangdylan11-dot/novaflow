@@ -123,4 +123,13 @@ test('the application export builder preserves the 3.7 wire format', () => {
   const out = JSON.parse(ctx.buildSkeletonSpineExportJson({ project: json }, { jsonText: JSON.stringify(json) }));
   assert.deepEqual(out, json);
   assert.equal(read(out).findAnimation('move').duration, 1);
+  // Main-app export: the live bridge stays at 3.8; only the resulting file becomes 3.7.
+  vm.runInContext(readFileSync(new URL('../../renderer/spine-version-convert.js', import.meta.url), 'utf8'), ctx);
+  ctx.NovaFlowSkeletonEditor = { active: () => true, exportVersion: () => '3.7', convertExportVersion: V.fromSpine38 };
+  const editable = fixture(), before = JSON.stringify(editable);
+  const final = JSON.parse(ctx.buildSkeletonSpineExportJson({ project: editable }, { jsonText: JSON.stringify(editable) }));
+  assert.equal(final.skeleton.spine, '3.7.94');
+  assert.equal(Array.isArray(final.skins), false);
+  assert.equal(read(final).findAnimation('move').duration, 1);
+  assert.equal(JSON.stringify(editable), before);
 });

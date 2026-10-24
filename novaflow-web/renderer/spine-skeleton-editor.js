@@ -280,7 +280,7 @@
         if (parsed && parsed.bones) { json = parsed; jsonFile = f; break }
       } catch {}
     }
-    if (!json) throw new Error('JSON 不是 Spine 骨架')
+    if (!json) throw new Error('JSON 不是有效的动画骨架')
     // images keep their folders: relative to the skeleton's image folder (or the JSON's folder)
     const dirOf = (p) => String(p || '').split('/').slice(0, -1).join('/')
     const norm = (p) => p.split('/').filter((x) => x && x !== '.').join('/')
@@ -376,7 +376,7 @@
     refresh()
     const lost = [...rt.missingPages, ...rt.missingRegions]
     if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（这些附件先显示为空）`, 'error')
-    else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（Spine ${fromVersion} 工程，导出时保持 ${fromVersion}）` : ''}`, 'ok')
+    else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（工程版本 ${fromVersion}，导出时保持 ${fromVersion}）` : ''}`, 'ok')
     if (p.askFolder && !state.imageFolder && regionList().length) setTimeout(askImageFolder, 0)
     if (state.imageFolder && state.imageFolder.handle) rememberFolder(state.imageFolder.handle)
     else if (p.restoreFolder) restoreImageFolder()
@@ -2624,14 +2624,14 @@
       if (saving && o.kind === 'novaflow') {
         body.append(
           h('label', { class: 'fl' }, '工程名称'), nameIn,
-          h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', 'Spine 工程'), kseg('novaflow', 'NovaFlow 工程'))),
+          h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'NovaFlow 工程'))),
           h('div', { class: 'hint' }, `工程树里的 ${projects.length} 个工程（骨架、图集、图片、名字和顺序）存成一个 .nfproj 文件，下次用 导入工程 打开。`),
           h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 NovaFlow 工程（${o.name || '工程'}.nfproj）`))
         return
       }
       body.append(
         h('label', { class: 'fl' }, saving ? '工程名称' : '导出名称'), nameIn,
-        saving ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', 'Spine 工程'), kseg('novaflow', 'NovaFlow 工程'))) : null,
+        saving ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'NovaFlow 工程'))) : null,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
         // SKEL = Spine's binary skeleton (the version chosen above); JSON = text
         h('div', { class: 'pk' }, h('span', { class: 'fl' }, '格式'), h('div', { class: 'seg' }, fseg(false, 'JSON'), fseg(true, 'SKEL'))),
@@ -2643,7 +2643,7 @@
         h('div', { class: 'hint' }, (o.version === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${o.version}`) + (o.packed
           ? `，${fmt}＋atlas＋图集 PNG` + (o.mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
           : `，${fmt}＋images 文件夹（每张图一个 PNG）。`)),
-        h('button', { class: 'btn primary big', onclick: run }, (saving ? '保存' : '导出') + (o.packed ? ` Spine 工程（${fmt}+ATLAS+PNG，选文件夹）` : ` Spine 工程（${fmt}+images，选文件夹）`)))
+        h('button', { class: 'btn primary big', onclick: run }, saving ? '保存动画工程' : '导出动画工程'))
     }
     const runNovaflow = async () => {
       const A = window.NovaFlowSequenceAtlas
@@ -6605,7 +6605,7 @@
         h('div', { class: 'btns' }, btn('清空', () => { state.importFiles = { json: null, atlas: null, images: [] }; renderLeft() }, { full: true })),
         h('div', { class: 'btns' }, btn('开始导入', () => run(() => loadFiles([f.json, f.atlas, ...f.images].filter(Boolean), undefined, { askFolder: true })), { full: true, disabled: !f.json })),
         h('div', { class: 'btns' }, btn('导入PS工程', () => { $('#fileDir').value = ''; $('#fileDir').click() }, { full: true })),
-        h('div', { class: 'hint', style: 'margin-top:6px' }, '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到画面上'),
+        h('div', { class: 'hint', style: 'margin-top:6px' }, '选择 PS 导出的图层工程文件夹（JSON + 贴图），也可以直接拖到画面上'),
         h('div', { style: 'margin-top:8px' }, sample),
       ], false, 'import'),
       panel('骨骼架设', 'bone', null, true),
