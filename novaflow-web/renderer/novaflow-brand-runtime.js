@@ -85611,8 +85611,11 @@
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
     const changesDrawingLayout = scopedDrawingRoles.length > 0 && (scopedDrawingRoles[0] !== 'subject' || scopedDrawingRoles.some(role => role === 'pose' || role === 'composition'));
     // Keeping the canvas size does not request photographic geometry protection.
-    // The grounded style route must retain its content/detail balance at any ratio.
     const editInPlace = !prioritizedStyle && !changesDrawingLayout && (typeof state?.uiPreserveLayout === "boolean" ? state.uiPreserveLayout : state?.uiRunIntent !== "redesign") && firstAspect > 0 && (state?.uiNativeEditPrompt === true || Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02);
+    // Match the style route's spatial input to sampling at the source aspect, without
+    // enabling editInPlace's photographic framing directive. Other aspect/layout
+    // requests retain their separate content budget and fresh sampling canvas.
+    const alignStyleContent = prioritizedStyle && !changesDrawingLayout && firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
     // The result is laid back over the source 1:1, and the model now and then redraws the subject a
     // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
     if (state?.uiNativeEditPrompt === true) { /* UI compiler already supplies one native edit directive. */ }
@@ -85645,7 +85648,7 @@
       const loadId = String(100 + index);
       workflow[loadId] = { class_type: "LoadImage", inputs: { image: name } };
       let image = [loadId, 0];
-      if (index === 0 && editInPlace) {
+      if (index === 0 && (editInPlace || alignStyleContent)) {
         if (first.width !== working.width || first.height !== working.height) image = scaleTo(0, image, working.width, working.height);
       } else if (index === 0) {
         image = scaleToPixels(0, image, prioritizedStyle ? QWEN21_ART_STYLE_CONTENT_PIXELS : QWEN21_ART_FIRST_REFERENCE_PIXELS);
@@ -85655,7 +85658,7 @@
       encode[`images.image_${index + 1}`] = image;
     });
     let latent = ["5", 2];
-    if (!editInPlace) {
+    if (!editInPlace && !alignStyleContent) {
       workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: working.width, height: working.height, batch_size: 1 } };
       latent = ["6", 0];
     }

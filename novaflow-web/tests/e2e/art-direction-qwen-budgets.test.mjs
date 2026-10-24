@@ -13,27 +13,58 @@ function build(options,extra=false,native=true,state={}){
   return vm.buildArtQwen21Workflow('img2img',extra?['source','style','pose']:['source','style'],'proof','prompt',{width:832,height:1216,seed:7,randomSeed:false,uiPreserveLayout:false,negativePrompt:'avoid donor',...state},extra?[{width:1280,height:960},{width:3328,height:4864},{width:1000,height:1000}]:[{width:1280,height:960},{width:3328,height:4864}],options,'avoid donor',{cfg:3,steps:40});
 }
 
-test('only the grounded subject/style pair trades photographic detail for complete style detail',()=>{
+test('a portrait relayout retains the grounded pair content budget and full style detail',()=>{
   const options={taskProfile:'art-direction',referenceRoles:['subject','style']};
   const ordinary=build(options).workflow,style=build({...options,styleReferencePriority:true}).workflow;
   assert.equal(ordinary['200'].inputs.width,1152);assert.equal(ordinary['201'].inputs.width,576);
   assert.equal(style['200'].inputs.width,800);assert.equal(style['200'].inputs.height,608);
   assert.equal(style['201'].inputs.width,832);assert.equal(style['201'].inputs.height,1216);
   assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['200',0]);assert.deepEqual(Array.from(style['5'].inputs['images.image_2']),['201',0]);
+  assert.equal(style['6'].inputs.width,832);assert.equal(style['6'].inputs.height,1216);
+  assert.deepEqual(Array.from(style['7'].inputs.latent_image),['6',0]);
   assert.equal(style['7'].inputs.cfg,3);assert.equal(style['7'].inputs.steps,40);
 });
 
-test('keeping source dimensions still executes grounded style priority without changing the canvas',()=>{
+test('source-sized grounded style uses the first reference latent without a photographic framing lock',()=>{
   const options={taskProfile:'art-direction',referenceRoles:['subject','style']};
   const state={width:1280,height:960,uiPreserveLayout:undefined};
   const ordinary=build(options,false,true,state).workflow;
   assert.deepEqual(Array.from(ordinary['7'].inputs.latent_image),['5',2]);
   assert.equal(ordinary['200'],undefined);
-  const style=build({...options,styleReferencePriority:true},false,true,state).workflow;
-  assert.equal(style['200'].inputs.width,800);assert.equal(style['200'].inputs.height,608);
-  assert.equal(style['6'].inputs.width,1280);assert.equal(style['6'].inputs.height,960);
-  assert.deepEqual(Array.from(style['7'].inputs.latent_image),['6',0]);
-  assert.doesNotMatch(style['5'].inputs.prompt,/主体的位置、大小和画面取景不变/);
+  for(const uiPreserveLayout of [undefined,false]){
+    const style=build({...options,styleReferencePriority:true},false,true,{...state,uiPreserveLayout}).workflow;
+    assert.equal(style['200'],undefined);
+    assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['100',0]);
+    assert.equal(style['201'].inputs.width,832);assert.equal(style['201'].inputs.height,1216);
+    assert.equal(style['6'],undefined);
+    assert.deepEqual(Array.from(style['7'].inputs.latent_image),['5',2]);
+    assert.equal(style['5'].inputs.prompt,'prompt');
+  }
+});
+
+test('same-aspect grounded style scales source to working dimensions and samples its latent',()=>{
+  const style=build({taskProfile:'art-direction',referenceRoles:['subject','style'],styleReferencePriority:true},false,true,{width:1024,height:768,uiPreserveLayout:false}).workflow;
+  assert.equal(style['200'].inputs.width,1024);assert.equal(style['200'].inputs.height,768);
+  assert.deepEqual(Array.from(style['5'].inputs['images.image_1']),['200',0]);
+  assert.equal(style['201'].inputs.width,832);assert.equal(style['201'].inputs.height,1216);
+  assert.equal(style['6'],undefined);
+  assert.deepEqual(Array.from(style['7'].inputs.latent_image),['5',2]);
+  assert.equal(style['5'].inputs.prompt,'prompt');
+});
+
+test('source-aspect alignment stays scoped away from fresh-layout controls and ordinary edits',()=>{
+  const state={width:1280,height:960,uiPreserveLayout:false};
+  for(const [options,extra]of [
+    [{taskProfile:'art-direction',referenceRoles:['subject','style','pose'],styleReferencePriority:true},true],
+    [{taskProfile:'art-direction',referenceRoles:['subject','pose'],styleReferencePriority:true},false],
+    [{taskProfile:'art-direction',referenceRoles:['subject','composition'],styleReferencePriority:true},false],
+    [{},false]
+  ]){
+    const graph=build(options,extra,true,state).workflow;
+    assert.equal(graph['200'].inputs.width,1152);assert.equal(graph['200'].inputs.height,864);
+    assert.equal(graph['6'].inputs.width,1280);assert.equal(graph['6'].inputs.height,960);
+    assert.deepEqual(Array.from(graph['7'].inputs.latent_image),['6',0]);
+  }
 });
 
 test('analyzed drawing uses available native BF16 with matching encoder while ordinary edits keep their route',()=>{

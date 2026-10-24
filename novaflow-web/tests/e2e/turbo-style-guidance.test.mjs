@@ -146,7 +146,10 @@ test('formal source worker graph receives guidance metadata, real negative and t
       assert.equal(g['1'].inputs.unet_name,'Qwen-Image-2.1-Turbo-BF16.gguf');assert.equal(g['7'].class_type,'SamplerCustom');assert.equal(g['7'].inputs.cfg,manual??3);
       assert.equal(g[g['7'].inputs.sigmas[0]].inputs.sigmas,sigmas);assert.deepEqual(g['7'].inputs.negative,['5',1]);
       assert.equal(g['5'].inputs.negative_prompt,prepared.promptSnapshot.negativePrompt);assert.equal(g['7'].inputs.noise_seed,957282577);
-      assert.equal(g['6'].inputs.width,1280);assert.equal(g['6'].inputs.height,960);
+      assert.deepEqual(g['7'].inputs.latent_image,['5',2]);
+      assert.deepEqual(g['5'].inputs['images.image_1'],['100',0]);
+      assert.equal(g['6'],undefined);assert.equal(g['200'],undefined);
+      assert.doesNotMatch(g['5'].inputs.prompt,/主体的位置、大小和画面取景不变/);
     }
   }
 });
