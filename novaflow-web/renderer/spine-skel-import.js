@@ -24,7 +24,7 @@
 (function (root) {
   'use strict';
 
-  const SUPPORTED_MAJOR = '3.8';
+  const SUPPORTED_MAJOR = '3.7/3.8';
   const TRANSFORM_MODES = ['normal', 'onlyTranslation', 'noRotationOrReflection', 'noScale', 'noScaleOrReflection'];
   const BLEND_MODES = ['normal', 'additive', 'multiply', 'screen'];
   const POSITION_MODES = ['fixed', 'percent'];
@@ -76,6 +76,7 @@
       return optimizePositive ? result : ((result >>> 1) ^ -(result & 1));
     }
     readStringRef() {
+      if (this.old) return this.readString();
       const index = this.readInt(true);
       if (index === 0) return null;
       if (index > this.strings.length) throw new Error('.skel 字符串表引用越界');
@@ -135,10 +136,13 @@
         frame.curve = 'stepped';
         break;
       case CURVE_BEZIER:
-        frame.curve = input.readFloat();
-        frame.c2 = input.readFloat();
-        frame.c3 = input.readFloat();
-        frame.c4 = input.readFloat();
+        if (input.old) frame.curve = readFloatArray(input, 4);
+        else {
+          frame.curve = input.readFloat();
+          frame.c2 = input.readFloat();
+          frame.c3 = input.readFloat();
+          frame.c4 = input.readFloat();
+        }
         break;
       default:
         break;
@@ -246,6 +250,7 @@
       skin.name = 'default';
     } else {
       skin.name = input.readStringRef();
+      if (!input.old) {
       const bones = new Array(input.readInt(true));
       for (let i = 0; i < bones.length; i += 1) bones[i] = ctx.boneName(input.readInt(true));
       if (bones.length) skin.bones = bones;
@@ -258,6 +263,7 @@
       const path = [];
       for (let i = 0, n = input.readInt(true); i < n; i += 1) path.push(ctx.pathName(input.readInt(true)));
       if (path.length) skin.path = path;
+      }
       slotCount = input.readInt(true);
     }
     skin.attachments = {};
@@ -340,7 +346,8 @@
       const frameCount = input.readInt(true);
       const frames = [];
       for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-        const frame = { time: input.readFloat(), mix: input.readFloat(), softness: input.readFloat() };
+        const frame = { time: input.readFloat(), mix: input.readFloat() };
+        if (!input.old) frame.softness = input.readFloat();
         frame.bendPositive = input.readByte() === 1;
         frame.compress = input.readBoolean();
         frame.stretch = input.readBoolean();
@@ -385,7 +392,7 @@
         pathMap[timelineType === PATH_POSITION ? 'position' : timelineType === PATH_SPACING ? 'spacing' : 'mix'] = frames;
       }
     }
-    if (Object.keys(path).length) animation.path = path;
+    if (Object.keys(path).length) animation[input.old ? 'paths' : 'path'] = path;
     // Deform.
     const deform = {};
     for (let i = 0, n = input.readInt(true); i < n; i += 1) {
@@ -478,16 +485,19 @@
     if (bytes.length < 8) throw new Error('不是 Spine .skel 文件');
     const version = detectVersion(bytes);
     if (!version) throw new Error('不是 Spine .skel 文件，或文件已损坏');
-    if (!version.startsWith(SUPPORTED_MAJOR)) {
-      throw new Error('暂只支持 Spine 3.8 导出的 .skel（这个文件是 ' + version + '），请在 Spine 里导出 JSON 后导入');
+    if (!/^3\.(7|8)(\.|$)/.test(version)) {
+      throw new Error('暂只支持 3.7/3.8 的 .skel（这个文件是 ' + version + '），请导出 JSON 后导入');
     }
     const input = new BinaryInput(bytes);
+    input.old = /^3\.7(\.|$)/.test(version);
     const skeleton = {};
     skeleton.hash = input.readString();
     skeleton.spine = input.readString();
     if (skeleton.spine === '3.8.75') throw new Error('Spine 3.8.75 导出的 .skel 不受支持，请用更新的 Spine 重新导出');
-    skeleton.x = input.readFloat();
-    skeleton.y = input.readFloat();
+    if (!input.old) {
+      skeleton.x = input.readFloat();
+      skeleton.y = input.readFloat();
+    }
     skeleton.width = input.readFloat();
     skeleton.height = input.readFloat();
     const nonessential = input.readBoolean();
@@ -501,7 +511,7 @@
     const json = { skeleton };
 
     // Strings.
-    for (let i = 0, n = input.readInt(true); i < n; i += 1) input.strings.push(input.readString());
+    if (!input.old) for (let i = 0, n = input.readInt(true); i < n; i += 1) input.strings.push(input.readString());
 
     // Bones.
     const bones = [];
@@ -518,7 +528,7 @@
       bone.length = input.readFloat();
       bone.transform = TRANSFORM_MODES[input.readInt(true)];
       if (!bone.transform) throw new Error('.skel 骨骼变换模式无效');
-      bone.skin = input.readBoolean();
+      if (!input.old) bone.skin = input.readBoolean();
       if (nonessential) bone.color = rgba8888(input.readInt32());
       bones.push(bone);
     }
@@ -545,12 +555,12 @@
     for (let i = 0, n = input.readInt(true); i < n; i += 1) {
       const constraint = { name: input.readString() };
       constraint.order = input.readInt(true);
-      constraint.skin = input.readBoolean();
+      if (!input.old) constraint.skin = input.readBoolean();
       constraint.bones = [];
       for (let ii = 0, nn = input.readInt(true); ii < nn; ii += 1) constraint.bones.push(bones[input.readInt(true)].name);
       constraint.target = bones[input.readInt(true)].name;
       constraint.mix = input.readFloat();
-      constraint.softness = input.readFloat();
+      if (!input.old) constraint.softness = input.readFloat();
       constraint.bendPositive = input.readByte() === 1;
       constraint.compress = input.readBoolean();
       constraint.stretch = input.readBoolean();
@@ -564,7 +574,7 @@
     for (let i = 0, n = input.readInt(true); i < n; i += 1) {
       const constraint = { name: input.readString() };
       constraint.order = input.readInt(true);
-      constraint.skin = input.readBoolean();
+      if (!input.old) constraint.skin = input.readBoolean();
       constraint.bones = [];
       for (let ii = 0, nn = input.readInt(true); ii < nn; ii += 1) constraint.bones.push(bones[input.readInt(true)].name);
       constraint.target = bones[input.readInt(true)].name;
@@ -589,7 +599,7 @@
     for (let i = 0, n = input.readInt(true); i < n; i += 1) {
       const constraint = { name: input.readString() };
       constraint.order = input.readInt(true);
-      constraint.skin = input.readBoolean();
+      if (!input.old) constraint.skin = input.readBoolean();
       constraint.bones = [];
       for (let ii = 0, nn = input.readInt(true); ii < nn; ii += 1) constraint.bones.push(bones[input.readInt(true)].name);
       constraint.target = slots[input.readInt(true)].name;
@@ -624,7 +634,7 @@
     const defaultSkin = readSkin(input, ctx, true, nonessential);
     if (defaultSkin) skins.push(defaultSkin);
     for (let i = 0, n = input.readInt(true); i < n; i += 1) skins.push(readSkin(input, ctx, false, nonessential));
-    if (skins.length) json.skins = skins;
+    if (skins.length) json.skins = input.old ? Object.fromEntries(skins.map((skin) => [skin.name, skin.attachments])) : skins;
 
     // Events.
     const eventList = [];

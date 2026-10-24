@@ -834,9 +834,10 @@
     const skeleton = rawSource?.skeleton || {}
     const atlas = rawSource?.atlas || {}
     const images = Array.isArray(rawSource?.images) ? rawSource.images : []
-    const jsonText = String(skeleton.text || rawSource?.jsonText || '').trim()
+    let jsonText = String(skeleton.text || rawSource?.jsonText || '').trim()
     const atlasText = String(atlas.text || rawSource?.atlasText || '').trim()
     if (!jsonText || !atlasText || images.length <= 0) throw new Error('Missing Spine source files')
+    jsonText = window.NovaFlowSpineVersion?.runtimeJsonText(jsonText) || jsonText
     const version = detectVersion(jsonText)
     const parts = version.split('.').map((part) => Number(part || 0))
     const major = parts[0] || 0

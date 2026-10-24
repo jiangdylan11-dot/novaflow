@@ -58,6 +58,8 @@ const isAbortError = (error: unknown) => {
 
 const parseSpineProjectInWorker = (source: SpineSource & { key: string }, signal: AbortSignal) => {
   if (signal.aborted) return Promise.reject(makeAbortError('Spine import aborted'))
+  const converter = (window as any).NovaFlowSpineVersion
+  if (converter) source = { ...source, jsonText: converter.runtimeJsonText(source.jsonText) }
   if (typeof Worker === 'undefined') {
     return Promise.resolve(buildSpineProject(source.jsonText, source.atlasText, source.images))
   }

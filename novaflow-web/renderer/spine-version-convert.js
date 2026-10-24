@@ -220,6 +220,12 @@
   const TARGETS = Object.keys(VERSIONS)
   const short = (v) => { const m = majorMinor(v); return m ? `${m[0]}.${m[1]}` : '' }
 
+  /** 3.7 files remain 3.7 on disk; readers that use our 3.8 runtime get a converted copy. */
+  function runtimeJsonText(text) {
+    const json = JSON.parse(text)
+    return short(versionOf(json)) === '3.7' ? JSON.stringify(toSpine38(json)) : text
+  }
+
   /** 3.7 and older wrote a key's curve as [c1, c2, c3, c4]; 3.8 spreads it over curve / c2 / c3 / c4. */
   function upgradeOld3(json) {
     if (short(versionOf(json)) === '3.7') json.nfSpine3 = versionOf(json)
@@ -587,5 +593,5 @@
     return { text: out.join('\n'), pma, pages: pages.length }
   }
 
-  return { STASH, KEEP, VERSIONS, TARGETS, versionOf, is4, short, toSpine38, fromSpine38, stripKeeps, curve38, curve4, atlasToSpine38 }
+  return { STASH, KEEP, VERSIONS, TARGETS, versionOf, is4, short, runtimeJsonText, toSpine38, fromSpine38, stripKeeps, curve38, curve4, atlasToSpine38 }
 })

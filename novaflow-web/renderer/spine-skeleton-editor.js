@@ -2616,7 +2616,7 @@
       const nameIn = h('input', { type: 'text', value: o.name, oninput: (e) => { o.name = e.target.value } })
       const seg = (val, label) => h('button', { 'aria-pressed': String(o.mode === val), onclick: () => { o.mode = val; fill() } }, label)
       const usedN = exportImageNames(Ops.exportable(state.json)).length
-      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, v === '3.7' ? '3.7.94' : v)
+      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, v)
       const fseg = (val, label) => h('button', { 'aria-pressed': String(!!o.skel === val), onclick: () => { o.skel = val; fill() } }, label)
       const fmt = o.skel ? 'SKEL' : 'JSON'
       // 保存工程: Spine data (a folder Spine opens with 导入数据) or NovaFlow's own file with every open project

@@ -658,7 +658,7 @@
     row.style.cssText = 'margin:0 0 10px'
     const label = (t, extra) => `<span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:2px${extra || ''}">${t}</span>`
     row.innerHTML = '<div class="nf-atlas-row" data-nf-skeleton-row="version" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
-      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v === '3.7' ? '3.7.94' : v}</button>`).join('')
+      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v}</button>`).join('')
       + '</div><div class="nf-atlas-row" data-nf-skeleton-row="format" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:nowrap;margin-bottom:8px">'
       + label('格式') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
       + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap">' + label('打包')
@@ -705,7 +705,7 @@
       b.classList.toggle('primary', m === mode)
     })
     const hint = row.querySelector('[data-pack-hint]')
-    const target = ver === '3.7' ? '3.7.94' : ver
+    const target = ver
     const t = (ver === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${target}`) + `，${fmt}＋atlas＋图集 PNG` + (mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
     if (hint.textContent !== t) hint.textContent = t
   }
