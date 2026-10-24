@@ -1,0 +1,11 @@
+{
+  "selectedWallPixels": 45962,
+  "beforeMeanRgbError": 4.870777308791321,
+  "afterMeanRgbError": 0,
+  "afterMaxChannelError": 0,
+  "outsideChanges": 0,
+  "correction": {
+    "regions": 1,
+    "correctedPixels": 61577
+  }
+}

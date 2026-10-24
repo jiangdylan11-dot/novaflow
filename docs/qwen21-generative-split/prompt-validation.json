@@ -1,0 +1,13 @@
+{
+  "stage": "background",
+  "profile": "turbo",
+  "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+  "completed": true,
+  "status": "success",
+  "userPrompt": "恢复均匀米色平涂背景，严格匹配周围原图底色，不增加渐变、阴影或纹理。保留蓝色横板和下方桌面。",
+  "userPromptPresent": true,
+  "elapsedMs": 422385,
+  "width": 512,
+  "height": 512,
+  "sampler": "ManualSigmas"
+}

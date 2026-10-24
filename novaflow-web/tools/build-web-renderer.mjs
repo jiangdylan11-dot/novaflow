@@ -229,7 +229,8 @@ export async function buildWebRenderer({ logger, clean = true, minify = false } 
         && !(moduleName === 'novaflow-brand-runtime' && name === 'buildRunWorkflow')),
       replacement: REPLACEMENT(WORKFLOW_SOURCE_MODULES[moduleName] || moduleName)
     });
-    const instrumented = instrumentModule(source, { moduleName, forceNames: moduleName === 'novaflow-brand-runtime' ? ['buildArtGenerateRunWorkflow'] : [] });
+    const instrumented = instrumentModule(source, { moduleName, forceNames: moduleName === 'novaflow-brand-runtime'
+      ? ['buildArtGenerateRunWorkflow'] : moduleName === 'spine-split-runtime' ? ['buildGenerativeSplitWorkflow'] : [] });
 
     await writeFile(join(WEB_OUT, entry.name), redacted.code, 'utf8');
     await writeFile(join(WORKER_OUT, entry.name), instrumented.code, 'utf8');

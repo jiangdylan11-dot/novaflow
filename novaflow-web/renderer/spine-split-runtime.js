@@ -164,7 +164,7 @@
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
   const SPLIT_BUSY_OVERLAY_Z_INDEX = '2147483647'
-  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'removeBackground', 'effectExtract', 'effectRemove', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer'])
+  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'generativeSplit', 'removeBackground', 'effectExtract', 'effectRemove', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer'])
   
   
   
@@ -540,6 +540,7 @@
       fromPartId: '',
       setId: ''
     },
+    generativeSplit: { profile: 'turbo', objectName: '', advancedPrompts: false, objectPrompt: '', backgroundPrompt: '' },
     selectionTool: {
       active: false,
       mode: '',
@@ -2684,6 +2685,7 @@
       objectTransfer: '\u6b63\u5728\u6267\u884c\u4e07\u7269\u8fc1\u79fb...',
       split: '\u6b63\u5728\u62c6\u56fe...',
       cutout: '\u5bf9\u8c61\u63d0\u53d6\u5904\u7406\u4e2d...',
+      generativeSplit: '正在分离对象...',
       removeBackground: '\u6b63\u5728\u81ea\u52a8\u53bb\u80cc...',
       effectExtract: '\u6b63\u5728\u63d0\u53d6\u7279\u6548...',
       effectRemove: '\u6b63\u5728\u53bb\u9664\u7279\u6548...',
@@ -2838,6 +2840,7 @@
   }
 
   function splitControlToolKindForAction(action) {
+    if (action === 'generativeSplit') return 'cutout'
     const inpaintMode = inpaintModeForControlAction(action)
     return inpaintMode ? 'inpaint' : String(action || '')
   }
@@ -2846,6 +2849,7 @@
     const kind = activeSplitEditToolKind()
     if (!kind) return true
     const name = String(action || '')
+    if (kind === 'cutout') return name === (state.selectionTool.generativeSplit ? 'generativeSplit' : 'cutout')
     if (kind === 'inpaint') {
       const mode = inpaintModeForControlAction(name)
       return !!mode && mode === normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
@@ -2857,6 +2861,7 @@
     const kind = activeSplitEditToolKind()
     if (!kind) return true
     const name = String(action || '')
+    if (kind === 'cutout' && state.selectionTool.generativeSplit && (name === 'generativeSplitAdd' || name === 'generativeSplitClear')) return true
     if (kind === 'cutout' || kind === 'inpaint') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionCursor' || name === 'selectionNsfw' || name === 'selectionExit' || name === 'selectionEffect' || (kind === 'cutout' && name === 'selectionRemoveBackground')
     if (kind === 'penCutout' || kind === 'penFill') return name === 'penClose' || name === 'penUndo' || name === 'penClear' || name === 'penExit'
     if (kind === 'mask') return name === 'maskErase' || name === 'maskRestore' || name === 'maskCursor' || name === 'maskExit'
@@ -4101,9 +4106,9 @@
       syncSplitWorkspace()
       return true
     }
-    splitLayerRedoStack.push(splitLayerHistorySnapshot('redo layer edit', snapshot.targetPartId))
+    splitLayerRedoStack.push(splitLayerHistorySnapshot(snapshot.label === 'generative split' ? snapshot.label : 'redo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerRedoStack)
-    const message = snapshot.label.startsWith('ui layer') ? '已撤销图层操作' : snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销快速补缺'
+    const message = snapshot.label === 'generative split' ? '已撤销对象分离' : snapshot.label.startsWith('ui layer') ? '已撤销图层操作' : snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销快速补缺'
     const fallbackMessage = '快速补缺撤销失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
@@ -4125,9 +4130,9 @@
       syncSplitWorkspace()
       return true
     }
-    splitLayerUndoStack.push(splitLayerHistorySnapshot('undo layer edit', snapshot.targetPartId))
+    splitLayerUndoStack.push(splitLayerHistorySnapshot(snapshot.label === 'generative split' ? snapshot.label : 'undo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerUndoStack)
-    const message = snapshot.label.includes('layer edit') ? '已重做图层操作' : '已重做快速补缺'
+    const message = snapshot.label === 'generative split' ? '已重做对象分离' : snapshot.label.includes('layer edit') ? '已重做图层操作' : '已重做快速补缺'
     const fallbackMessage = '快速补缺重做失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
@@ -4309,6 +4314,7 @@
       || name === 'imageAngleAdjust'
       || name === 'objectTransfer'
       || name === 'cutout'
+      || name === 'generativeSplit'
       || name === 'inpaint'
       || name === 'inpaintCompletion'
       || name === 'inpaintEdit'
@@ -13652,7 +13658,8 @@
       items: [
         { action: 'split', label: '一键拆图（骨骼动画）', style: { gridColumn: '1 / -1', height: '34px' } },
         { action: 'penCutout', label: '钢笔抠图', title: '使用可调曲线的钢笔闭合路径精准分割图层；右键拖动画布，滚轮缩放，Esc 退出' },
-        { action: 'cutout', label: '智能抠图', title: '绘制遮罩区域后执行对象提取；右键拖动画布，滚轮缩放，Esc 退出' }
+        { action: 'cutout', label: '智能抠图', title: '绘制遮罩区域后执行对象提取；右键拖动画布，滚轮缩放，Esc 退出' },
+        { action: 'generativeSplit', label: '对象分离', title: '涂满目标可见范围，分离并补全透明对象，同时修复底图', style: { gridColumn: '1 / -1' } }
       ]
     },
     {
@@ -14187,7 +14194,8 @@
     const maskActive = state.maskEditor && state.maskEditor.active
     const maskApplying = !!maskEditorApplyPromise || maskActive && state.maskEditor.applying
     const objectTransferActive = state.objectTransfer && state.objectTransfer.active
-    const active = (name === 'cutout' && cutoutActive)
+    const active = (name === 'cutout' && cutoutActive && !state.selectionTool.generativeSplit)
+      || (name === 'generativeSplit' && cutoutActive && state.selectionTool.generativeSplit)
       || (name === 'inpaint' && inpaintActive)
       || (name === 'inpaintCompletion' && inpaintActive && selectedInpaintMode === 'completion')
       || (name === 'inpaintEdit' && inpaintActive && selectedInpaintMode === 'edit')
@@ -14207,7 +14215,8 @@
       objectTransfer: state.busy && state.busyAction === 'objectTransfer' ? '\u8fc1\u79fb\u4e2d\u2026' : (objectTransferActive ? '\u6267\u884c\u8fc1\u79fb' : '\u4e07\u7269\u8fc1\u79fb'),
       imageOutpaint: state.busy && state.busyAction === 'imageOutpaint' ? '无限扩图中…' : '无限扩图',
       imageAngleAdjust: state.busy && state.busyAction === 'imageAngleAdjust' ? '角度调整中…' : '角度调整',
-      cutout: isCutting ? '智能抠图中…' : (isEffectExtracting ? '特效提取中…' : (cutoutActive ? (effectModeActive ? '执行特效提取' : '执行抠图') : '智能抠图')),
+      cutout: isCutting ? '智能抠图中…' : (isEffectExtracting ? '特效提取中…' : (cutoutActive && !state.selectionTool.generativeSplit ? (effectModeActive ? '执行特效提取' : '执行抠图') : '智能抠图')),
+      generativeSplit: state.busy && state.busyAction === 'generativeSplit' ? '分离中…' : (cutoutActive && state.selectionTool.generativeSplit ? '执行分离' : '对象分离'),
       inpaint: isEffectRemoving ? '特效去除中…' : (isInpainting ? selectionInpaintModeBusyLabel(selectedInpaintMode) : (inpaintActive ? (effectRemovalActive ? '执行特效去除' : selectionInpaintModeExecuteLabel(selectedInpaintMode)) : '\u667a\u80fd\u8865\u56fe')),
       inpaintCompletion: isInpainting && selectedInpaintMode === 'completion' ? selectionInpaintModeBusyLabel('completion') : (inpaintActive && selectedInpaintMode === 'completion' ? selectionInpaintModeExecuteLabel('completion') : selectionInpaintModeStartLabel('completion')),
       inpaintEdit: isInpainting && selectedInpaintMode === 'edit' ? selectionInpaintModeBusyLabel('edit') : (inpaintActive && selectedInpaintMode === 'edit' ? selectionInpaintModeExecuteLabel('edit') : selectionInpaintModeStartLabel('edit')),
@@ -22163,6 +22172,218 @@
     throw new Error(errors.join('；'))
   }
 
+  let generativeSplitTargets = []
+  let generativeSplitRunId = 0
+
+  function buildGenerativeSplitWorkflow(info, options) {
+    const api = window.NovaFlowGenerativeSplitWorkflow
+    if (!api) throw new Error('对象分离模块未加载，请刷新后重试')
+    return api.buildWorkflow({ ...options, objectInfo: info })
+  }
+
+  function generativeSplitToolbarNodes() {
+    const api = window.NovaFlowGenerativeSplitWorkflow
+    return [
+      h('select', {
+        'data-novaflow-generative-split-profile': '1',
+        'aria-label': '对象分离线路',
+        disabled: state.busy,
+        onchange: event => { state.generativeSplit.profile = event.currentTarget.value },
+        style: { height: '28px', color: '#fff', background: SPLIT_PANEL_BACKGROUND, border: '0', borderRadius: '8px', padding: '0 8px' }
+      }, (api?.profiles || []).map(profile => h('option', { value: profile.id, selected: profile.id === state.generativeSplit.profile }, profile.label))),
+      button(`添加对象${generativeSplitTargets.length ? `（已选 ${generativeSplitTargets.length}）` : ''}`, () => addGenerativeSplitTarget(), false, {
+        [TOOL_ACTION_ATTR]: 'generativeSplitAdd', 'data-novaflow-generative-split-add': '1', disabled: state.busy,
+        title: generativeSplitTargets.map((target, index) => target.name || `对象 ${index + 1}`).join('、') || '保存当前选区，再涂选下一个对象；同一对象可以包含多段笔触'
+      }),
+      generativeSplitTargets.length ? button('清空对象', () => clearGenerativeSplitTargets(), false, { [TOOL_ACTION_ATTR]: 'generativeSplitClear', disabled: state.busy }) : null
+    ].filter(Boolean)
+  }
+
+  function clearGenerativeSplitTargets() {
+    if (state.busy) return
+    generativeSplitTargets = []
+    render()
+    syncSplitWorkspace()
+  }
+
+  function generativeSplitPromptFields() {
+    return h('details', {
+      'data-novaflow-generative-split-advanced': '1', open: !!state.generativeSplit.advancedPrompts,
+      'data-novaflow-split-pan-exempt': '1',
+      onpointerdown: event => event.stopPropagation(), onclick: event => event.stopPropagation(),
+      ontoggle: event => {
+        const open = event.currentTarget.open
+        if (state.generativeSplit.advancedPrompts === open) return
+        state.generativeSplit.advancedPrompts = open
+        syncSplitWorkspace()
+      },
+      style: { width: 'min(760px, 96%)', color: '#aaa', fontSize: '11px' }
+    }, [
+      h('summary', { style: { cursor: 'pointer', padding: '2px 0' } }, '特殊要求（通常无需填写）'),
+      h('div', { style: { padding: '7px 0', color: '#aaa' } }, '默认自动补全并保持原图颜色、质感和光照。仅展开时启用下面的补充要求。'),
+      h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px' } }, [
+      ['object', '对象特殊要求', 'objectPrompt', '例：保留杯柄上原有的缺口'],
+      ['background', '背景特殊要求', 'backgroundPrompt', '例：保留桌面上原有的投影']
+    ].map(([stage, label, key, placeholder]) => h('label', {
+      style: { display: 'grid', gap: '4px', color: '#ddd', fontSize: '11px', minWidth: 0 }
+    }, [h('span', {}, `${label}（选填）`), h('textarea', {
+      'data-novaflow-generative-split-prompt': stage, 'aria-label': label,
+      placeholder, maxLength: '2000', rows: '2', disabled: state.busy,
+      oninput: event => { state.generativeSplit[key] = event.currentTarget.value },
+      onkeydown: event => event.stopPropagation(),
+      style: { width: '100%', height: '48px', minWidth: 0, resize: 'vertical', borderRadius: '7px', border: '1px solid #444', background: '#303030', color: '#fff', padding: '5px 7px', boxSizing: 'border-box', fontSize: '11px', fontFamily: 'inherit' }
+    }, state.generativeSplit[key] || '')])))])
+  }
+
+  async function addGenerativeSplitTarget() {
+    if (state.busy) return
+    const session = await ensureSelectionToolSession()
+    const mask = thresholdMaskCanvas(session.maskCanvas, 8)
+    const bounds = maskBBoxEngine(mask, 8)
+    if (!bounds || bounds.count < 16) { setMessage('请先涂选一个对象', true); return }
+    generativeSplitTargets.push({ name: state.generativeSplit.objectName.trim(), prompt: state.generativeSplit.advancedPrompts ? state.generativeSplit.objectPrompt.trim() : '', mask, bounds })
+    session.maskCanvas.getContext('2d').clearRect(0, 0, session.maskCanvas.width, session.maskCanvas.height)
+    state.selectionTool.maskDataUrl = ''
+    state.generativeSplit.objectName = ''
+    state.generativeSplit.objectPrompt = ''
+    selectionToolUndoStack = []
+    selectionToolRedoStack = []
+    setMessage(`已选 ${generativeSplitTargets.length} 个对象，可继续涂选或点击“执行分离”`)
+    render()
+    syncSplitWorkspace()
+  }
+
+  async function executeGenerativeSplitTool() {
+    if (state.busy) return
+    if (!state.selectionTool?.active || !state.selectionTool.generativeSplit) {
+      await startSelectionTool('cutout')
+      if (!state.selectionTool?.active) return
+      state.selectionTool.generativeSplit = true
+      generativeSplitTargets = []
+      setMessage('涂满对象可见范围后执行分离，自动补全遮挡并保持原图颜色和质感；对象说明可留空。多个对象可分别添加。')
+      render()
+      syncSplitWorkspace()
+      return
+    }
+    const api = window.NovaFlowGenerativeSplitWorkflow
+    if (!api) { setMessage('对象分离模块未加载', true); return }
+    const session = await ensureSelectionToolSession()
+    const currentMask = thresholdMaskCanvas(session.maskCanvas, 8)
+    const currentBounds = maskBBoxEngine(currentMask, 8)
+    const advancedPrompts = !!state.generativeSplit.advancedPrompts
+    const targets = generativeSplitTargets.map(target => ({ ...target, prompt: advancedPrompts ? target.prompt : '' }))
+    if (currentBounds?.count >= 16) targets.push({ name: state.generativeSplit.objectName.trim(), prompt: advancedPrompts ? state.generativeSplit.objectPrompt.trim() : '', mask: currentMask, bounds: currentBounds })
+    if (!targets.length) { setMessage('请先涂选要分离的对象', true); return }
+    const source = cloneCanvas(session.baseCanvas)
+    const sourceDataUrl = state.source?.dataUrl
+    const sourceResourceId = state.activeSourceResourceId
+    const sourceKind = state.selectionTool.cutoutSource
+    const sourcePart = sourceKind === 'layer' ? currentEditableLayerPart() : null
+    const sourcePartImage = sourcePart?.dataUrl
+    const profile = state.generativeSplit.profile
+    const backgroundPrompt = advancedPrompts ? state.generativeSplit.backgroundPrompt : ''
+    const runId = ++generativeSplitRunId
+    const prefix = `NovaFlow_GenerativeSplit_${Date.now()}_${runId}`
+    const seed = Math.floor(Math.random() * 1_000_000_000)
+    const union = canvasOfSize(source.width, source.height)
+    const unionCtx = union.getContext('2d')
+    unionCtx.globalCompositeOperation = 'lighten'
+    for (const target of targets) unionCtx.drawImage(target.mask, 0, 0)
+    const unionBounds = maskBBoxEngine(union, 8)
+    const blendMask = api.backgroundMask(union)
+    const contextStillApplies = () => runId === generativeSplitRunId && state.source?.dataUrl === sourceDataUrl
+      && state.activeSourceResourceId === sourceResourceId
+      && (!sourcePart || state.parts.some(part => part.id === sourcePart.id && part.dataUrl === sourcePartImage))
+    const assertCurrent = () => {
+      if (splitStopRequested()) throw splitStoppedError()
+      if (!contextStillApplies()) throw new Error('原图或来源图层已变化，本次结果未置入；请重新拆层')
+    }
+    state.busy = true
+    state.busyAction = 'generativeSplit'
+    state.busyStartedAt = Date.now()
+    render()
+    try {
+      const baseUrl = await detectComfyBaseUrl()
+      const info = window.NovaFlowWebRuntime ? {} : await comfyAllObjectInfo(baseUrl)
+      const generate = async (stage, mask, bounds, objectName, index, prompt) => {
+        assertCurrent()
+        const frame = api.planFrame(source.width, source.height, bounds)
+        const prepared = api.prepareFrame(source, mask, frame)
+        const stagePrefix = `${prefix}_${stage}_${index}`
+        const imageName = await uploadDataUrl(baseUrl, `${stagePrefix}_source.png`, prepared.imageDataUrl)
+        const guideName = await uploadDataUrl(baseUrl, `${stagePrefix}_guide.png`, prepared.guideDataUrl)
+        assertCurrent()
+        const workflow = buildGenerativeSplitWorkflow(info, { taskProfile: 'generative-split', profile, stage, imageName, guideName, objectName, prompt, seed, outputPrefix: stagePrefix })
+        const result = await runPromptForFirstImage(baseUrl, workflow, stagePrefix, 900000)
+        assertCurrent()
+        return { frame, image: await loadImage(result) }
+      }
+      setMessage(`正在修复底图（1/${targets.length + 1}）…`)
+      setSplitBusyDetail(`修复底图 · ${profile === 'turbo' ? 'Turbo' : '普通'} BF16`)
+      const background = await generate('background', union, unionBounds, targets.map((target, index) => target.name || `标记中的对象 ${index + 1}`).join('、'), 0, backgroundPrompt)
+      const cleanBase = api.composeBackground(source, background.image, background.frame, blendMask)
+      const objects = []
+      for (let index = 0; index < targets.length; index++) {
+        const target = targets[index]
+        setMessage(`正在提取并补全对象 ${index + 1}（${index + 2}/${targets.length + 1}）…`)
+        setSplitBusyDetail(target.name || `对象 ${index + 1}`)
+        const generated = await generate('object', target.mask, target.bounds, target.name, index + 1, target.prompt)
+        objects.push({ ...target, ...api.composeObject(source, generated.image, generated.frame, target.mask), frame: generated.frame })
+      }
+      assertCurrent()
+      const baseLayer = sourcePart ? spineLayerRank(sourcePart) : 0
+      const createPart = async (image, name, index, role) => {
+        const id = uniqueManualPartId(`generative_split_${runId}_${Date.now()}_${index}`)
+        const dataUrl = image.toDataURL('image/png')
+        let part = await cropEditorLayer(dataUrl, { ...presetFor(id), id, label: name, layer: baseLayer + index / (targets.length + 1), pivot: { x: 0.5, y: 0.5 } })
+        const alpha = await alphaCanvasFromDataUrl(dataUrl, source.width, source.height)
+        part = withLayerImageAndMask(part, cropCanvasToLayerRect(image, part), layerMaskCanvasFromFullMask(alpha, part), {
+          kind: 'generative-split', role, profile, seed, prompt: role === 'background' ? backgroundPrompt : objects[index - 1]?.prompt || '', sourceLayerId: sourcePart?.id || '', sourceResourceId, runId
+        })
+        return { ...part, name, displayName: name, layerName: name, visible: true, needsInpaint: false }
+      }
+      const parts = [await createPart(cleanBase, '干净底图', 0, 'background')]
+      for (let index = 0; index < objects.length; index++) parts.push(await createPart(objects[index].canvas, objects[index].name || `对象 ${index + 1}`, index + 1, 'object'))
+      assertCurrent()
+      syncActiveSplitSet()
+      const newSet = !sourcePart
+      const previous = splitLayerHistorySnapshot('generative split', sourcePart?.id || '')
+      if (newSet) {
+        previous.parts = []
+        previous.activePartId = ''
+        previous.selectedPartIds = []
+        previous.viewMode = 'source'
+      }
+      state.parts = normalizeSpineLayerOrder(newSet ? parts : [...state.parts.map(part => part.id === sourcePart.id ? { ...part, visible: false } : part), ...parts])
+      state.activePartId = parts[1].id
+      state.selectedPartIds = parts.map(part => part.id)
+      state.viewMode = 'parts'
+      if (newSet || !splitSetById(state.activeSplitSetId)) registerSplitSet({ baseName: '对象分离', originKind: SPLIT_SET_SOURCE_ORIGIN })
+      previous.context = splitLayerHistoryContextSignature()
+      previous.activeSplitSetId = state.activeSplitSetId
+      splitLayerUndoStack.push(previous)
+      trimSplitLayerHistoryStack(splitLayerUndoStack)
+      clearSplitLayerRedoHistory()
+      generativeSplitTargets = []
+      resetSelectionTool()
+      let previewWarning = ''
+      try { await refreshSplitPreview() } catch (error) { previewWarning = '；预览刷新失败，可切换图层重试' }
+      syncActiveSplitSet()
+      try { await cacheTempSplitPackage() } catch (error) { previewWarning += '；临时缓存失败，请手动保存项目' }
+      state.lastProcessingDebug = { operation: 'generative-split', profile, seed, targetCount: objects.length, objectChecks: objects.map(object => object.stats), backgroundHarmonization: cleanBase.__generativeSplitBackgroundStats }
+      setMessage(`已生成 ${parts.length} 个图层：干净底图＋${objects.length} 个补全对象${previewWarning}`)
+    } catch (error) {
+      setMessage(String(error?.message || error || '对象分离失败'), true)
+    } finally {
+      state.busy = false
+      state.busyAction = ''
+      state.busyDetail = ''
+      state.busyStartedAt = 0
+      render()
+      syncSplitWorkspace()
+    }
+  }
+
   async function executeCutoutTool() {
     if (state.busy) return
     if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'cutout') return startSelectionTool('cutout')
@@ -23588,22 +23809,23 @@
     const inpaintPromptValue = String(state.selectionTool && state.selectionTool.inpaintPrompt || '')
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
     const effectRemovalTool = isInpaint && selectedInpaintMode === 'repair' // 去除物体：把特效减掉，而不是重绘
-    const effectToolAvailable = isCutoutTool || effectRemovalTool
+    const isGenerativeSplit = isCutoutTool && !!state.selectionTool.generativeSplit
+    const effectToolAvailable = (isCutoutTool && !isGenerativeSplit) || effectRemovalTool
     const effectModeEnabled = effectToolAvailable && !!state.selectionTool.effectMode
     const showInpaintNsfw = isInpaint && selectionInpaintNsfwAvailable(selectedInpaintMode)
     const inpaintNsfwEnabled = showInpaintNsfw && !!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
     const showInpaintFlux = isInpaint && selectedInpaintMode === 'completion'
     const inpaintFluxEnabled = showInpaintFlux && !!(state.selectionTool && state.selectionTool.inpaintFluxEnabled)
     // 特效去除 keys the effect out and reads no text, so 去除物体 shows its box only with 特效 off.
-    const showInpaintPrompt = isInpaint && selectionInpaintModeHasPrompt(selectedInpaintMode) && !(effectRemovalTool && effectModeEnabled)
-    const inpaintPromptLabel = selectionInpaintModePromptLabel(selectedInpaintMode)
-    const inpaintPromptPlaceholder = selectionInpaintModePromptPlaceholder(selectedInpaintMode)
+    const showInpaintPrompt = isGenerativeSplit || isInpaint && selectionInpaintModeHasPrompt(selectedInpaintMode) && !(effectRemovalTool && effectModeEnabled)
+    const inpaintPromptLabel = isGenerativeSplit ? '对象说明（选填）' : selectionInpaintModePromptLabel(selectedInpaintMode)
+    const inpaintPromptPlaceholder = isGenerativeSplit ? '默认按涂选自动识别；有歧义时填写，如：只要杯子' : selectionInpaintModePromptPlaceholder(selectedInpaintMode)
     const inpaintPanelText = selectionInpaintModePanelText(selectedInpaintMode)
     const stopSelectionControlEvent = (event) => {
       if (!event) return
       event.stopPropagation()
     }
-    return h('div', { style: { width: '100%', height: '100%', minHeight: 0, display: 'grid', gridTemplateRows: isInpaint ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)', gap: '10px', alignItems: 'center', justifyItems: 'center', padding: '12px', boxSizing: 'border-box' } }, [
+    return h('div', { style: { width: '100%', height: '100%', minHeight: 0, display: 'grid', gridTemplateRows: isGenerativeSplit ? 'auto auto auto minmax(0, 1fr)' : isInpaint ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)', gap: '10px', alignItems: 'center', justifyItems: 'center', padding: '12px', boxSizing: 'border-box' } }, [
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         effectToolAvailable ? button('\u7279\u6548', () => toggleSelectionEffectMode(), effectModeEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionEffect',
@@ -23625,12 +23847,13 @@
           h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })
         ]),
         button('\u9000\u51fa', () => stopSelectionTool(), false, { [TOOL_ACTION_ATTR]: 'selectionExit' }),
-        isCutoutTool ? button('\u53bb\u80cc', () => executeSelectionRemoveBackground(), false, {
+        isCutoutTool && !isGenerativeSplit ? button('\u53bb\u80cc', () => executeSelectionRemoveBackground(), false, {
           [TOOL_ACTION_ATTR]: 'selectionRemoveBackground',
           title: '\u4e0d\u9700\u8981\u7ed8\u5236\u906e\u7f69\uff1a\u5bf9\u5f53\u524d\u62a0\u56fe\u6765\u6e90\u6574\u56fe\u81ea\u52a8\u63d0\u53d6\u900f\u660e\u4e3b\u4f53\uff0c\u5e76\u751f\u6210\u65b0\u7684\u900f\u660e\u56fe\u5c42',
           disabled: state.busy,
           style: { marginLeft: '2px' }
         }) : null,
+        ...(isGenerativeSplit ? generativeSplitToolbarNodes() : []),
         showInpaintNsfw ? button('NSFW', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionNsfw',
           'data-novaflow-selection-inpaint-nsfw': inpaintNsfwEnabled ? 'on' : 'off',
@@ -23703,10 +23926,12 @@
         h('span', { style: { whiteSpace: 'nowrap', flex: '0 0 auto' } }, inpaintPromptLabel),
         h('input', {
           type: 'text',
-          value: inpaintPromptValue,
+          value: isGenerativeSplit ? state.generativeSplit.objectName : inpaintPromptValue,
           placeholder: inpaintPromptPlaceholder,
           oninput: (event) => {
-            if (state.selectionTool) state.selectionTool.inpaintPrompt = String(event.currentTarget && event.currentTarget.value || '')
+            const value = String(event.currentTarget && event.currentTarget.value || '')
+            if (isGenerativeSplit) state.generativeSplit.objectName = value
+            else if (state.selectionTool) state.selectionTool.inpaintPrompt = value
           },
           onkeydown: (event) => event.stopPropagation(),
           style: {
@@ -23722,6 +23947,7 @@
           }
         })
       ]) : null,
+      isGenerativeSplit ? generativeSplitPromptFields() : null,
       h('div', Object.assign(splitCanvasPanHandlers(), { onwheel: handleSplitCanvasWheel, style: transparentEditCanvasStyle({ width: '100%', height: '100%', minHeight: 0, overflow: 'auto', borderRadius: '10px', border: '0', padding: '10px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: splitCanvasIdlePanCursor() }) }),
         h('div', { 'data-novaflow-split-canvas-art': '1', style: splitCanvasPanStyle({ position: 'relative', width: `${cssW}px`, height: `${cssH}px`, lineHeight: '0', flex: '0 0 auto' }) }, [
           ...selectionToolBackgroundNodes(size),
@@ -28742,6 +28968,9 @@
     return {
       active: !!tool.active,
       mode: String(tool.mode || ''),
+      generativeSplit: !!tool.generativeSplit,
+      generativeSplitTargetCount: tool.generativeSplit ? generativeSplitTargets.length : 0,
+      generativeSplitAdvancedPrompts: !!(tool.generativeSplit && state.generativeSplit.advancedPrompts),
       inpaintMode: normalizeSelectionInpaintMode(tool.inpaintMode),
       inpaintNsfwEnabled: !!tool.inpaintNsfwEnabled,
       inpaintFluxEnabled: !!tool.inpaintFluxEnabled,
@@ -31236,6 +31465,7 @@
     if (action === 'imageAngleAdjust') return executeImageAngleAdjustTool()
     if (action === 'objectTransfer') return executeObjectTransferTool()
     if (action === 'cutout') return executeCutoutTool()
+    if (action === 'generativeSplit') return executeGenerativeSplitTool()
     if (action === 'inpaint') return executeInpaintTool()
     if (action === 'inpaintCompletion') return executeInpaintTool('completion')
     if (action === 'inpaintEdit') return executeInpaintTool('edit')
@@ -32007,6 +32237,8 @@
     if (action === 'selectionUndo') return undoSelectionTool()
     if (action === 'selectionRedo') return redoSelectionTool()
     if (action === 'selectionExit') return stopSelectionTool()
+    if (action === 'generativeSplitAdd') return addGenerativeSplitTarget()
+    if (action === 'generativeSplitClear') return clearGenerativeSplitTargets()
     if (action === 'selectionRemoveBackground') return executeSelectionRemoveBackground()
     if (action === 'selectionEffect') return toggleSelectionEffectMode()
     if (action === 'penClose') return penClosePath()

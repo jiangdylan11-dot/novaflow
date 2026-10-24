@@ -34,7 +34,7 @@ export const WORKFLOW_MODULES = Object.freeze({
       'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
       'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
       'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow',
-      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
+      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow', 'buildGenerativeSplitWorkflow'
     ]
   },
   // ---- 美工 -------------------------------------------------------------
@@ -132,6 +132,9 @@ export function isAllowedWorkflowCall(name, method) {
 export function workflowModelId(name, options, method='') {
   const entry = workflowModule(name);
   if (!entry) return null;
+  if (name === 'spine-split-runtime' && (method === 'buildGenerativeSplitWorkflow' || options?.__args?.[1]?.taskProfile === 'generative-split')) {
+    return options?.__args?.[1]?.profile === 'standard' ? 'qwen-image-2.1' : 'qwen-image-2.1-turbo';
+  }
   const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
   if (args && args[0] === 'local') {
     const state = args[8] && typeof args[8] === 'object' ? args[8] : {};

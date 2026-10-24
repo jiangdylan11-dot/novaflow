@@ -299,7 +299,8 @@ export const CATALOGUE_FIRST = new Set([
   'buildImageAngleAdjustWorkflow',
   'buildObjectTransferQwen21Workflow',
   'buildEffectExtractQwenWorkflow',
-  'buildEffectDeeffectQwenWorkflow'
+  'buildEffectDeeffectQwenWorkflow',
+  'buildGenerativeSplitWorkflow'
 ]);
 
 /**
