@@ -97,7 +97,7 @@ test('drawing PE keeps its trained three-field contract, thinking and source-num
   const user=g['3'].inputs.prompt.split('<|im_start|>user\n')[1];
   assert.match(user,/按<image1>的五官塑造/);assert.match(user,/完整重构<image2>/);
   assert.match(user,/用户原始需求中的明确保留要求优先/);assert.match(user,/wh_ratio必须为"832:1216"/);
-  assert.match(user,/线条、上色、肤色色层、整体配色、光感与质感/);assert.doesNotMatch(user,/不强加细线描边/);
+  assert.match(user,/实际媒介、表面材质、肤色色层、整体配色和照明/);assert.match(user,/不强加细线描边/);
   assert.match(ART_EDIT_SYSTEM,/not an OCR task/);assert.match(ART_EDIT_SYSTEM,/Closed eyes/);
   assert.match(ART_EDIT_SYSTEM,/Explicit user locks/);assert.match(ART_EDIT_SYSTEM,/proportions.*may change/);
   assert.ok(Object.values(g).every(n=>!n.class_type.includes('Crop')));

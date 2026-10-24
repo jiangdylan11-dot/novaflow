@@ -5,6 +5,7 @@
   const TASKS = Object.freeze({ auto: '自动理解', anime: '转二次元', game_cg: '转游戏 CG', style: '参考画风', preserve: '精修原图' });
   const GENERATION_SETTINGS=['provider','mode','prompt','negativePrompt','width','height','count','seed','randomSeed','nsfw','loras','samplingOverrides','gptQualityTxt2img','gptQualityImg2img','gptSize','gptCustomWidth','gptCustomHeight','googleAspectRatioTxt2img','googleAspectRatioImg2img','googleResolution','localDrawEngine','localQwen21Variant','drawingTask','drawingAnalysisEngine'];
   const TASK_BRIEFS=Object.freeze({auto:'依照用户要求处理主体参考，未指定改变的内容保持',anime:'保留主体身份、设计和数量，将整幅照片重新绘制为精致二次元插画，使用明确的手绘轮廓、概括造型与分层明暗，不保留摄影皮肤纹理',game_cg:'保留主体身份、服饰、姿势和数量，将整幅照片重新绘制为高完成度的半写实游戏角色宣传插画。使用数字厚涂、概括而精准的手绘体积塑造、精致五官与头发分组、统一的绘画光影和材质笔触。人物、衣服和环境都必须重新绘画，呈现明确的游戏原画CG质感，去除摄影皮肤毛孔与镜头散景，不是照片美化或摄影滤镜',style:'保留主体内容，采用指定风格的绘画语言',preserve:'精修原图，保持原有设计'});
+  const STYLE_BOUNDARY='主体辨识特征、主要动作、服饰类别、持有物和场景类型取自主体参考；人物比例与轮廓、头发组织、衣褶、背景安排均按目标画风整体重构，不锁死摄影轮廓和写实五官比例。配色、肤色表现、材质与打光优先采用目标风格，成图质量与协调氛围优先，无需逐处复现照片。风格参考人物和场景物件不作为新增内容。用户明确的保留要求与另外指定的参考职责优先。';
   const CACHE = new Map();
   const previews = new WeakMap();
   const writtenReferencePolicies = new WeakMap();
@@ -75,6 +76,9 @@
     return '';
   }
   function requestedRoles(prompt, references) {
+    // The application's own writeback boundary describes all visual dimensions;
+    // it does not assign those dimensions as extra roles to the preceding image.
+    prompt=prompt.split(STYLE_BOUNDARY).join('');
     const matches=Array.from(prompt.matchAll(/(?:@?参考图|图片|图|image)\s*(\d+)/gi)),states=new Map();
     const rolesIn=clause=>ROLE_WORDS.filter(([,pattern])=>pattern.test(clause)).map(([role])=>role);
     const preserve=/保留|保持|不变|不动|别动|不改变|不更换|不要改|不要变|不得改|不许改|原有|原来/;
@@ -93,7 +97,7 @@
       // “图5用图2画风” identifies the editing target even when it was not
       // uploaded first. Do not let the first donor become the default subject.
       const next=matches[i+1],nextUse=next?prompt.slice(next.index+next[0].length,matches[i+2]?.index??prompt.length).split(/[，,。；;\n]/)[0]:'';
-      if(next&&!leadingNegative&&/^(?:的主体|主体|的人物|人物)?\s*(?:用|采用|参考|换成|改成|转成|转为|变成)\s*$/.test(segment)&&rolesIn(nextUse).some(role=>role!=='subject'))state.set('subject',true);
+      if(next&&!leadingNegative&&/^(?:的主体|主体|的人物|人物)?\s*(?:用|按|采用|参考|换成|改成|转成|转为|变成)\s*$/.test(segment)&&rolesIn(nextUse).some(role=>role!=='subject'))state.set('subject',true);
       // A role can precede the image number: “背景用图4，保持原配色”.
       // The later preservation clause must not turn that donor into a palette.
       const prefixRoles=/(?:用|参考|采用|来自|取自)\s*$/.test(before)?rolesIn(before).filter(role=>role!=='subject'):[];
@@ -375,6 +379,15 @@
     }
     return {dataUrl:c.toDataURL('image/png'),treatment:use.role==='background'?'background-with-foreground-removed':`${use.role}-region`};
   }
+  function localStylePair(source, references) {
+    if(source.provider!=='local'||source.nsfw||source.task==='preserve'||references.length!==2
+      ||references.map(r=>r.role).sort().join(',')!=='style,subject')return false;
+    return references.every(r=>{
+      const original=source.references.find(s=>s.source===(r.sourceNumber||r.source));
+      const allowed=r.role==='subject'?['subject']:['style','material','color','lighting'];
+      return !original||original.roles.every(role=>allowed.includes(role));
+    });
+  }
   async function compile(plan, source, status, check, limit) {
     const refs=[];
     // The base content precedes its controls even if it was uploaded into a later slot.
@@ -428,7 +441,7 @@
     const brief=source.references.length?`${restyle?'':taskText+'。'}${request?`用户要求：${request}。`:''}`:plan.prompt;
     const styleInputs=refs.flatMap((r,i)=>r.role==='style'?[imageLabel(i)]:[]).join('、');
     const subjectInputs=refs.flatMap((r,i)=>r.role==='subject'?[imageLabel(i)]:[]).join('、');
-    const styleBoundary='主体辨识特征、主要动作、服饰类别、持有物和场景类型取自主体参考；人物比例与轮廓、头发组织、衣褶、背景安排均按目标画风整体重构，不锁死摄影轮廓和写实五官比例。配色、肤色表现、材质与打光优先采用目标风格，成图质量与协调氛围优先，无需逐处复现照片。风格参考人物和场景物件不作为新增内容。用户明确的保留要求与另外指定的参考职责优先。';
+    const styleBoundary=STYLE_BOUNDARY;
     const styleDirective=styleInputs?`以${subjectInputs||'用户要求的画面'}为内容参考，用${styleInputs}的完整画风整体重新绘画。五官比例、面部体积、轮廓概括、线条上色、皮肤与发丝质感及全画面光感均由目标画风重新构建。${styleBoundary}` : '';
     const profileLabels={medium:'媒介',facialStyle:'五官画法',markMaking:'线条与造型',shading:'上色明暗',surface:'质感',lightingStyle:'照明',palette:'整体配色与肤色色层'};
     const separateLighting=refs.some(x=>x.role==='lighting')||/(?:保持|保留|不改|不改变).{0,8}(?:光感|光线|照明|光照|打光)|(?:光感|光线|照明|光照|打光).{0,5}不变/.test(source.prompt);
@@ -458,7 +471,10 @@
     const pairStyle=refs.length===2&&refs[0].role==='subject'&&refs[1].role==='style'&&refs[1].renderingProfile?.medium;
     const operation=pairStyle?conflictsWithVolume(refs[1])?`以${imageLabel(1)}为视觉参考，按照用户指定的立体材质与体积表现整体重新塑造和渲染${imageLabel(0)}；不执行与此要求冲突的二维简化标签。`:`将${imageLabel(0)}整幅重绘成${imageLabel(1)}的${refs[1].renderingProfile.medium}。`:styleDirective;
     const contentBoundary=pairStyle?styleBoundary:'';
-    let prompt=[operation,styleMethods,contentBoundary,sourceFacts,expressions,actions,brief,sourcePreserve,replacements,framing,instructions&&`图片职责（括号内原图编号对应原始参考编号）：\n${pairStyle?refs.map((r,i)=>`${imageLabel(i)}（原图${r.sourceNumber}，${ROLES[r.role]}）`).join('\n'):instructions}`,source.negativePrompt&&`必须避免：${source.negativePrompt}`,
+    // Local Qwen receives negative text through its conditioning input. Cloud
+    // providers without that input still need their exclusions in the request.
+    const negativeInstruction=source.provider==='local'&&!source.nsfw?'':source.negativePrompt&&`必须避免：${source.negativePrompt}`;
+    let prompt=[operation,styleMethods,contentBoundary,sourceFacts,expressions,actions,brief,sourcePreserve,replacements,framing,instructions&&`图片职责（括号内原图编号对应原始参考编号）：\n${pairStyle?refs.map((r,i)=>`${imageLabel(i)}（原图${r.sourceNumber}，${ROLES[r.role]}）`).join('\n'):instructions}`,negativeInstruction,
       '只输出一张完整成图。遵循指定画风精修构图、结构、边缘、光影与材质；不增加需求以外的人物、物件、装饰、文字、拼图或采样板。'].filter(Boolean).join('\n\n');
     if(plan.editEnhancer){
       const edited=plan.editEnhancer.prompt.replace(/<image(\d+)>/g,(_,n)=>imageLabel(refs.findIndex(r=>r.sourceNumber===plan.editEnhancer.sourceOrder[Number(n)-1])));
@@ -473,7 +489,7 @@
       // A lit skin color is not a material's diffuse color. Do not flatten a
       // volumetric target's colored light and shadow to one measured midtone.
       const colorEvidence=plan.editEnhancer.renderingClass==='anime'&&!volumeRequested&&!separateColor&&!separateLighting&&!preserveSkin?refs.flatMap((r,i)=>r.role==='style'&&r.skinProfile?[`${imageLabel(i)}完整风格的皮肤实测为${r.skinProfile.description}；${drawnPe?'采用该肤色色层':'只校验皮肤中间调，不统一铺色，受光高光与阴影的冷暖和深浅仍按完整参考'}，不继承照片的暖黄色偏色。`]:[]).join('\n'):'';
-      prompt=[edited,styleBoundary,valueEvidence,colorEvidence,plan.editEnhancer.kind==='qwen21-style-observation'?expressions:'',brief,source.negativePrompt&&`必须避免：${source.negativePrompt}`,'只输出一张完整成图，不增加需求以外的人物、文字或采样板。'].filter(Boolean).join('\n\n');
+      prompt=[edited,styleBoundary,valueEvidence,colorEvidence,plan.editEnhancer.kind==='qwen21-style-observation'?expressions:'',brief,negativeInstruction,'只输出一张完整成图，不增加需求以外的人物、文字或采样板。'].filter(Boolean).join('\n\n');
     }
     // PE has its own editing contract rather than seven observer fields. Keep
     // the same rendering-only guidance when PE actually names an anime target.
@@ -492,14 +508,15 @@
     const approvedPe=plan.editEnhancer?.kind==='qwen21-pe-i2i'&&['anime','painterly'].includes(plan.editEnhancer.renderingClass);
     const isolatedDonor=!approvedPe&&source.provider==='local'&&!source.nsfw&&(pairStyle||plan.editEnhancer)?refs.find(r=>r.role==='style')?.donorExclusions||[]:[];
     const automaticNegative=[renderingNegative,...isolatedDonor].filter(Boolean).join(', ');
-    return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...((isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
+    return {references:refs,promptSnapshot:{prompt,negativePrompt:[source.negativePrompt,automaticNegative].filter(Boolean).join(', ')},...(automaticNegative?{renderingPolicy:{cfg:3,negativePrompt:automaticNegative}}:{}),...(localStylePair(source,refs)||(isolatedDonor.length||plan.editEnhancer)&&!lockedFraming&&!separateColor&&!preserveSkin&&!separateLighting?{referencePolicy:{stylePriority:true}}:{})};
   }
   function directPreparation(source, written) {
     if(!source.prompt)throw new Error('请写一句要求，例如“换成白色衬衫”；需要自动理解参考图时可选择本地AI');
     // An unchanged compiled prompt still addresses the slots selected by AI.
-    // Keep only that pair's reference routing; first-time direct requests retain
-    // their original upload order, pixels and inferred roles.
-    const inputs=written?written.order.map(({sourceNumber,role})=>({...source.references.find(ref=>ref.source===sourceNumber),roles:[role]})):source.references;
+    // Explicit local subject/style pairs use the same slot order and image
+    // budgets with or without AI. Other edits retain their upload order.
+    let inputs=written?written.order.map(({sourceNumber,role})=>({...source.references.find(ref=>ref.source===sourceNumber),roles:[role]})):source.references;
+    if(localStylePair(source,inputs.map(r=>({source:r.source,role:r.roles[0]}))))inputs=[...inputs].sort((a,b)=>Number(b.roles[0]==='subject')-Number(a.roles[0]==='subject'));
     const references=inputs.map(ref=>{
       const mimeType=ref.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
       if(!mimeType)throw new Error(`图${ref.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
@@ -511,7 +528,7 @@
       if(index<0)throw new Error(`图${number}不存在，请检查参考图编号`);
       return `<image${index+1}>`;
     }):source.prompt;
-    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},...(written?.policy?{referencePolicy:copy(written.policy)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
+    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},...(localStylePair(source,references)?{referencePolicy:{stylePriority:true}}:written?.policy?{referencePolicy:copy(written.policy)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
   }
   async function prepare(context) {
     if (controller) throw new Error('请等待当前绘图分析结束');
@@ -547,7 +564,7 @@
       previews.set(context.state,{...prepared,originalPrompt:source.prompt});
       const state=copy(Object.fromEntries(GENERATION_SETTINGS.filter(k=>Object.hasOwn(context.state,k)).map(k=>[k,context.state[k]])));
       // A complete restyle must be free to rebuild facial planes and illumination.
-      if(!prepared.direct&&prepared.references.some(r=>r.role==='style'))state.uiPreserveLayout=false;
+      if(!prepared.direct&&prepared.references.some(r=>r.role==='style')||localStylePair(source,prepared.references))state.uiPreserveLayout=false;
       if(prepared.direct&&written&&typeof written.uiPreserveLayout==='boolean')state.uiPreserveLayout=written.uiPreserveLayout;
       state.mode=prepared.references.length?'img2img':'txt2img';state.localDrawEngine=root.NovaFlowArtGenerateModels?.capabilityFor?.(state.provider,state.mode,state)?.engine||'';
       if(prepared.renderingPolicy&&state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant!=='turbo'){

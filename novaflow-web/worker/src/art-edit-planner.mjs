@@ -130,7 +130,8 @@ export function buildArtEditGraph(names,context,repair=''){
   // The editing checkpoint follows the actual edit instruction most strongly.
   // State the application's drawing boundary there, not only in a system role
   // or an opaque JSON context that leaves its blanket preservation habit intact.
-  const approvedDrawing=context.peStyleClass!=='painterly';
+  // Unknown references must not inherit the previously approved anime wording.
+  const approvedDrawing=context.peStyleClass==='anime';
   const request=[`用户原始需求：${user}`,
     `图片职责：${subject}提供主体与主要内容；${style}只提供完整画风。`,
     `绘图任务边界：目标是按${style}的五官塑造、${approvedDrawing?'线条、上色、肤色色层、整体配色、光感与质感':'实际媒介、表面材质、肤色色层、整体配色和照明'}完整重构${subject}。${approvedDrawing?'':'线稿、笔触、体积与反射仅在参考实际可见时描述，不预先指定渲染类别。'}仅保留主体可辨认特征、主要动作、服饰类别、持有物和场景类型；人物比例、轮廓、发束、衣褶与背景安排允许按目标画风重建，不锁死摄影脸型和原布局。质量与协调氛围优先。只迁移${approvedDrawing?'绘画':'视觉'}表现，不引入风格图的人物、服装和景物。以上只适用于用户未明确锁定的维度，用户原始需求中的明确保留要求优先。`,
