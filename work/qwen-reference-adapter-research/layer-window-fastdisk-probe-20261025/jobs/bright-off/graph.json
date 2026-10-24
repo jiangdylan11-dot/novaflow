@@ -1,0 +1,168 @@
+{
+  "1": {
+    "class_type": "NovaFlowGGUFBF16Loader",
+    "inputs": {
+      "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Assign content to <image1> and artistic reference to <image2>. Redraw the source scene in the clean, high-saturation anime style of the reference. The reference employs crisp, confident linework with smooth cel-shaded planes: skin is rendered as broad, luminous surfaces with soft pink blush on cheeks, clean shadow transitions under the jaw and along the neck, and minimal surface texture. Hair is modelled as flowing, ribbon-like masses with bright highlight bands running along the top curves, dark shadow shapes beneath, and individual strands suggested by thin, tapered outlines at the edges. The overall tonal distribution is high-key: dominant mid-tones are bright and saturated, with dark accents limited to defined shadow planes and outlines. The reference's palette is dominated by vivid sky-blue, clean whites, warm golden highlights, and cool navy-blue fabric tones, with local warm accents (red ribbons, pink flowers) punctuating the composition. Focal hierarchy places the subject in sharp, clean focus with strong edge definition, while background elements recede through atmospheric softening and reduced saturation. Materials respond to a coherent overhead light source: glossy surfaces (the cup, nails) catch bright specular highlights, fabric folds show clean shadow shapes, and the striped top reads as alternating bands of deep navy and bright white with smooth, flat shading. Edges are crisp on the subject and soften progressively into the background. The airport environment—rows of grey seats, slatted metal ceiling, yellow flight-information screens, glass curtain wall—must be rendered using these same anime conventions: clean outlines, flat color planes, saturated screen glows, and atmospheric depth fading, retaining the existing spatial structures without inventing new scenery. The subject's winking expression, smile, long wavy auburn hair, small mole on her cheek, navy-and-white striped top, red-nailed hand holding a clear cup of iced milk tea with a straw, and seated position among grey airport seats are preserved as the explicit content. A young woman with long wavy auburn hair winks one eye and smiles while wearing a navy-and-white striped top, holding a clear cup of iced milk tea with a straw in her red-nailed hand, a small mole on her cheek, seated in an airport terminal with rows of grey seats, a slatted metal ceiling, yellow flight-information screens and a glass curtain wall.",
+      "negative_prompt": "photograph, photorealistic facial proportions, realistic nose and lips, photographic skin texture, yellow-orange skin color cast, oversaturated orange skin, monochromatic warm color grading",
+      "resolution": 0,
+      "images.image_1": [
+        "100",
+        0
+      ],
+      "images.image_2": [
+        "201",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "model": [
+        "901",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": 54792256,
+      "cfg": 3,
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "5",
+        1
+      ],
+      "latent_image": [
+        "5",
+        2
+      ],
+      "sampler": [
+        "nf_turbo_7_sampler",
+        0
+      ],
+      "sigmas": [
+        "nf_turbo_7_sigmas",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "NF_LAYER_WINDOW_bright_off"
+    }
+  },
+  "100": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "layer-window-probe/NF_LW_bright-off_source.jpg"
+    }
+  },
+  "101": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "layer-window-probe/NF_LW_bright-off_style.webp"
+    }
+  },
+  "201": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "101",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 832,
+      "height": 1216,
+      "crop": "disabled"
+    }
+  },
+  "nf_turbo_7_sigmas": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+    }
+  },
+  "nf_turbo_7_sampler": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "901": {
+    "class_type": "NovaFlowQwen21StyleKeyLayerWindowExperimental",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "enabled": false,
+      "style_reference_index": 1,
+      "high_scale": 0.5,
+      "low_scale": 1.5,
+      "beta": 2.0,
+      "layer_start": 24,
+      "layer_end": 31,
+      "audit_log": true,
+      "cap_amplification": false,
+      "active_sigma_min": 0.0
+    }
+  }
+}

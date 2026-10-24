@@ -1,0 +1,183 @@
+{
+  "ok": true,
+  "job": "bright-on",
+  "promptId": "adec6161-b57a-4f16-b88e-0ce0945a542a",
+  "enabled": true,
+  "style": "bright",
+  "newAIAnalysis": false,
+  "additionalAIAnalysisSeconds": 0,
+  "promptSource": "unchanged-baseline-native-prompt",
+  "baseline": {
+    "case": "bright-balanced-cache-v3-formal",
+    "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+    "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+    "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+    "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+  },
+  "nodeInputs": {
+    "model": [
+      "4",
+      0
+    ],
+    "enabled": true,
+    "style_reference_index": 1,
+    "high_scale": 0.5,
+    "low_scale": 1.5,
+    "beta": 2.0,
+    "layer_start": 24,
+    "layer_end": 31,
+    "audit_log": true,
+    "cap_amplification": false,
+    "active_sigma_min": 0.0
+  },
+  "graphSHA256": "f5c5ea0eaec915d238511febaf631f40a927f0538532e9ebf12a41c972313004",
+  "output": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-on\\output.png",
+    "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_bright_on_00001_.png",
+    "sha256": "daf6803a77b069ed9fbb4eeed42422fa02bd589cd91d1093c668d1aef702c724",
+    "decodedRGBA_SHA256": "461d52db77d9cefc689ff9e36fb6fd356e21df2e3d410f2dedb6cf95e53e1454",
+    "width": 1280,
+    "height": 960
+  },
+  "actualNodeAudit": {
+    "auditLines": 16,
+    "last": {
+      "forwards": 16,
+      "active_forwards": 16,
+      "bypassed_forwards": 0,
+      "target_calls": 128,
+      "prefix_calls": 320,
+      "key_copies": 128,
+      "previous_override_calls": 0,
+      "latest_layout": {
+        "references": [
+          {
+            "start": 8,
+            "end": 4808
+          },
+          {
+            "start": 4814,
+            "end": 8766
+          }
+        ],
+        "target_tokens": 4800,
+        "prefix_tokens": 8807,
+        "total_tokens": 13607,
+        "batch": 1
+      },
+      "selected_target_by_layer": {
+        "24": 16,
+        "25": 16,
+        "26": 16,
+        "27": 16,
+        "28": 16,
+        "29": 16,
+        "30": 16,
+        "31": 16
+      },
+      "bypassed_target_by_layer": {
+        "0": 16,
+        "1": 16,
+        "2": 16,
+        "3": 16,
+        "4": 16,
+        "5": 16,
+        "6": 16,
+        "7": 16,
+        "8": 16,
+        "9": 16,
+        "10": 16,
+        "11": 16,
+        "12": 16,
+        "13": 16,
+        "14": 16,
+        "15": 16,
+        "16": 16,
+        "17": 16,
+        "18": 16,
+        "19": 16,
+        "20": 16,
+        "21": 16,
+        "22": 16,
+        "23": 16
+      },
+      "prefix_by_layer": {
+        "0": 10,
+        "1": 10,
+        "2": 10,
+        "3": 10,
+        "4": 10,
+        "5": 10,
+        "6": 10,
+        "7": 10,
+        "8": 10,
+        "9": 10,
+        "10": 10,
+        "11": 10,
+        "12": 10,
+        "13": 10,
+        "14": 10,
+        "15": 10,
+        "16": 10,
+        "17": 10,
+        "18": 10,
+        "19": 10,
+        "20": 10,
+        "21": 10,
+        "22": 10,
+        "23": 10,
+        "24": 10,
+        "25": 10,
+        "26": 10,
+        "27": 10,
+        "28": 10,
+        "29": 10,
+        "30": 10,
+        "31": 10
+      },
+      "key_copies_this_forward": 8,
+      "selected_target_this_forward": {
+        "24": 1,
+        "25": 1,
+        "26": 1,
+        "27": 1,
+        "28": 1,
+        "29": 1,
+        "30": 1,
+        "31": 1
+      },
+      "layer_start": 24,
+      "layer_end": 31,
+      "actual_num_layers": 32,
+      "style_reference_index": 1,
+      "high_scale": 0.5,
+      "low_scale": 1.5,
+      "beta": 2.0,
+      "cap_amplification": false,
+      "active_sigma_min": 0.0,
+      "actual_sigma": 0.4145680069923401,
+      "active": true,
+      "axes": [
+        16,
+        56,
+        56
+      ],
+      "axis0_scale": 1.0,
+      "preferred_backend_check": {
+        "required": true,
+        "checked_layers": 32,
+        "non_null_count": 0
+      }
+    },
+    "actualSelectedLayersVerified": true
+  },
+  "uploadSeconds": 0.9529999999795109,
+  "enqueueToSuccessfulHistorySeconds": 56.35999999998603,
+  "individualJobFullSeconds": 59.42200000002049,
+  "includesUploadDownloadAndFree": true,
+  "timingIsNodeSpeedupEvidence": false,
+  "coldWarmEffectsNotControlled": true,
+  "qualityAccepted": false,
+  "referenceStyleAccepted": false,
+  "formalDefaultChanged": false
+}

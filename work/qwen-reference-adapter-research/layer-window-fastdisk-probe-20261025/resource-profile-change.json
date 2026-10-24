@@ -1,0 +1,91 @@
+{
+  "schema": "nf.qa.isolated-layer-window-fastdisk-profile-change.v1",
+  "scope": "Fresh work-only sibling; no previous records copied and no service/model execution by preparing agent",
+  "originalAttempt": {
+    "directory": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-probe-20261025",
+    "runnerSHA256": "1b8104663e5a80e5b627a3c034a548ec709f43a3142157ba7ff140072b700a83",
+    "resultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-probe-20261025\\result.json",
+    "resultSHA256": "f7bc7e64715768060bf97ac0120b50587543371eb5ba2ea03ffaca90135dc432",
+    "resourceSummaryPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-probe-20261025\\resource-summary.json",
+    "resourceSummarySHA256": "f93e7d9cb82ef928a748d9975e6d5e76f3cb29bda5626f2f6e2ccd17d5d0dcc5",
+    "completedJobs": 0,
+    "abortReason": "Sustained low physical RAM/VRAM headroom; stop owned QA without retry",
+    "resourceLimits": {
+      "minRAMGiB": 4.0,
+      "minVRAMFreeMiB": 768,
+      "sustainedSeconds": 2.0
+    }
+  },
+  "newAttempt": {
+    "directory": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025",
+    "runnerSHA256": "292b65f704609d32de4f39da54ffa8e3bb77352323871d51b8ac0b49594d642e",
+    "copiedOnly": [
+      "run-isolated-layer-window.py",
+      "README.md"
+    ],
+    "ownRuntimeDirectoriesDerivedFromHERE": true,
+    "priorLoadOrResultCopied": false
+  },
+  "launchCodeDifferenceOnly": {
+    "addedArgument": "--fast-disk",
+    "sameOwned8192Lifecycle": true,
+    "sameWhitelist": true,
+    "sameExternalReadOnlyPaths": true,
+    "sourceGuardDefaultsChanged": false
+  },
+  "executionGuardCLI": {
+    "minRAMGiB": 4,
+    "minVRAMFreeMiB": 768,
+    "sustainedSeconds": 2
+  },
+  "sameFrozenBaselines": {
+    "bright": {
+      "case": "bright-balanced-cache-v3-formal",
+      "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+      "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+      "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+      "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+    },
+    "dark": {
+      "case": "dark-r10-formal",
+      "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+      "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+      "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+      "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+    }
+  },
+  "samePrototypeFiles": {
+    "__init__.py": "c5b3f3b59042a3c1742343c1a8564ae54b2a9ba17e264acb660d120576c45e25",
+    "reference_frequency_layers.py": "ff04b5547da3695b99dc2cd06e80de030e123641268fd454dc5dfa05e4210b4a",
+    "frequency_core.py": "6e032007203717d286cfeaeaa2d78cdbbdec7211ace56c45bbab4a044b3f3b2c",
+    "layout.py": "b5934f24fa8a6aa02e7d2c75c5fb105866c9fbb011be5e5171ad696de9b18d24"
+  },
+  "sameNodeParameters": {
+    "style_reference_index": 1,
+    "high_scale": 0.5,
+    "low_scale": 1.5,
+    "beta": 2.0,
+    "layer_start": 24,
+    "layer_end": 31,
+    "audit_log": true,
+    "cap_amplification": false,
+    "active_sigma_min": 0.0
+  },
+  "weightsChanged": false,
+  "dtypeChanged": false,
+  "promptChanged": false,
+  "samplingChanged": false,
+  "resourceSavingsGuaranteed": false,
+  "previousAttemptChanged": false,
+  "prototypeChanged": false,
+  "galleryChanged": false,
+  "productChanged": false,
+  "GPUInferenceStarted": false,
+  "CPUPreflight": {
+    "passed": true,
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\preflight.json",
+    "sha256": "9bd6ad88339e8853b8bfee18a6fa16e18b248bfd5e465fb5a7f03ca054d9ae14",
+    "serverStarted": false,
+    "GPUInferenceStarted": false
+  }
+}

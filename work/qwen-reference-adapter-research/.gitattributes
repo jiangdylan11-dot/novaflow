@@ -1,0 +1,8 @@
+# Keep byte-level provenance and frozen QA hashes valid across checkouts.
+prototype_frequency_layers_v2/** -text whitespace=cr-at-eol,-blank-at-eof
+prototype_frequency_keys/layout.py -text whitespace=cr-at-eol,-blank-at-eof
+prototype_frequency_keys/reference_frequency_keys.py -text whitespace=cr-at-eol,-blank-at-eof
+layer-window-probe-20261025/** -text whitespace=cr-at-eol
+layer-window-fastdisk-probe-20261025/** -text whitespace=cr-at-eol
+layer-window-fastdisk-analysis-20261025.* -text whitespace=cr-at-eol
+layer-window-visual-decision-20261025.json -text whitespace=cr-at-eol

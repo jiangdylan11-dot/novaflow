@@ -1,0 +1,183 @@
+{
+  "ok": true,
+  "job": "dark-on",
+  "promptId": "0148caf5-552b-4843-a378-a559404c83b7",
+  "enabled": true,
+  "style": "dark",
+  "newAIAnalysis": false,
+  "additionalAIAnalysisSeconds": 0,
+  "promptSource": "unchanged-baseline-native-prompt",
+  "baseline": {
+    "case": "dark-r10-formal",
+    "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+    "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+    "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+    "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+  },
+  "nodeInputs": {
+    "model": [
+      "4",
+      0
+    ],
+    "enabled": true,
+    "style_reference_index": 1,
+    "high_scale": 0.5,
+    "low_scale": 1.5,
+    "beta": 2.0,
+    "layer_start": 24,
+    "layer_end": 31,
+    "audit_log": true,
+    "cap_amplification": false,
+    "active_sigma_min": 0.0
+  },
+  "graphSHA256": "0e51479987c97d836291ec8798eef1bddce74e54c0392df7ffd757f5fd3a2f71",
+  "output": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-on\\output.png",
+    "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_dark_on_00001_.png",
+    "sha256": "f4637c928a6357134a4c04821479dcdc9ef15d41d6e3104fc3d0c70148982be1",
+    "decodedRGBA_SHA256": "cb7f905e6fa582f311861e03f23f1cccf6ddca1e5ee787f1883119ccd9dd9aac",
+    "width": 1280,
+    "height": 960
+  },
+  "actualNodeAudit": {
+    "auditLines": 16,
+    "last": {
+      "forwards": 16,
+      "active_forwards": 16,
+      "bypassed_forwards": 0,
+      "target_calls": 128,
+      "prefix_calls": 320,
+      "key_copies": 128,
+      "previous_override_calls": 0,
+      "latest_layout": {
+        "references": [
+          {
+            "start": 8,
+            "end": 4808
+          },
+          {
+            "start": 4814,
+            "end": 8766
+          }
+        ],
+        "target_tokens": 4800,
+        "prefix_tokens": 8807,
+        "total_tokens": 13607,
+        "batch": 1
+      },
+      "selected_target_by_layer": {
+        "24": 16,
+        "25": 16,
+        "26": 16,
+        "27": 16,
+        "28": 16,
+        "29": 16,
+        "30": 16,
+        "31": 16
+      },
+      "bypassed_target_by_layer": {
+        "0": 16,
+        "1": 16,
+        "2": 16,
+        "3": 16,
+        "4": 16,
+        "5": 16,
+        "6": 16,
+        "7": 16,
+        "8": 16,
+        "9": 16,
+        "10": 16,
+        "11": 16,
+        "12": 16,
+        "13": 16,
+        "14": 16,
+        "15": 16,
+        "16": 16,
+        "17": 16,
+        "18": 16,
+        "19": 16,
+        "20": 16,
+        "21": 16,
+        "22": 16,
+        "23": 16
+      },
+      "prefix_by_layer": {
+        "0": 10,
+        "1": 10,
+        "2": 10,
+        "3": 10,
+        "4": 10,
+        "5": 10,
+        "6": 10,
+        "7": 10,
+        "8": 10,
+        "9": 10,
+        "10": 10,
+        "11": 10,
+        "12": 10,
+        "13": 10,
+        "14": 10,
+        "15": 10,
+        "16": 10,
+        "17": 10,
+        "18": 10,
+        "19": 10,
+        "20": 10,
+        "21": 10,
+        "22": 10,
+        "23": 10,
+        "24": 10,
+        "25": 10,
+        "26": 10,
+        "27": 10,
+        "28": 10,
+        "29": 10,
+        "30": 10,
+        "31": 10
+      },
+      "key_copies_this_forward": 8,
+      "selected_target_this_forward": {
+        "24": 1,
+        "25": 1,
+        "26": 1,
+        "27": 1,
+        "28": 1,
+        "29": 1,
+        "30": 1,
+        "31": 1
+      },
+      "layer_start": 24,
+      "layer_end": 31,
+      "actual_num_layers": 32,
+      "style_reference_index": 1,
+      "high_scale": 0.5,
+      "low_scale": 1.5,
+      "beta": 2.0,
+      "cap_amplification": false,
+      "active_sigma_min": 0.0,
+      "actual_sigma": 0.4145680069923401,
+      "active": true,
+      "axes": [
+        16,
+        56,
+        56
+      ],
+      "axis0_scale": 1.0,
+      "preferred_backend_check": {
+        "required": true,
+        "checked_layers": 32,
+        "non_null_count": 0
+      }
+    },
+    "actualSelectedLayersVerified": true
+  },
+  "uploadSeconds": 0.9849999999860302,
+  "enqueueToSuccessfulHistorySeconds": 62.375,
+  "individualJobFullSeconds": 66.51600000006147,
+  "includesUploadDownloadAndFree": true,
+  "timingIsNodeSpeedupEvidence": false,
+  "coldWarmEffectsNotControlled": true,
+  "qualityAccepted": false,
+  "referenceStyleAccepted": false,
+  "formalDefaultChanged": false
+}

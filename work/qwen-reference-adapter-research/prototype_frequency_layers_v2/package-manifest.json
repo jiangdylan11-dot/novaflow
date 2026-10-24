@@ -1,0 +1,19 @@
+{
+  "scope": "Isolated work-only CPU-tested package; no GPU/model weights/service/install/product source change",
+  "node": "NovaFlowQwen21StyleKeyLayerWindowExperimental",
+  "files": {
+    "__init__.py": "c5b3f3b59042a3c1742343c1a8564ae54b2a9ba17e264acb660d120576c45e25",
+    "cpu-test-results.json": "e27ec4adb3f466676d07761c4c7825b5aed907f3104cb5485943a7a8e71a868b",
+    "frequency_core.py": "6e032007203717d286cfeaeaa2d78cdbbdec7211ace56c45bbab4a044b3f3b2c",
+    "layout.py": "b5934f24fa8a6aa02e7d2c75c5fb105866c9fbb011be5e5171ad696de9b18d24",
+    "LICENSE": "494a2f104ef401f8a7f4fb81e96c3356d8608345da258f0b47e1744c411700aa",
+    "NOTICE.md": "f9b94ddeff3aff5ee66c73bbc309743b027792d3a174bab904400b7f787d98c6",
+    "ORIGIN.json": "97b0cbed8b230e021ee8c9387ce30a1fcfc21acab00d84cf6be650f76cc55fd0",
+    "README.md": "0c49df70a7155bc356342c118ffe9f38830d1f75be918732f649e285ee03b9a7",
+    "reference_frequency_layers.py": "ff04b5547da3695b99dc2cd06e80de030e123641268fd454dc5dfa05e4210b4a",
+    "test_frequency_layers.py": "63b96a9d14afd873c225444c5e9e73e17410f6223667b8bf4da51c481de4ce78"
+  },
+  "tests_run": 16,
+  "tests_passed": true,
+  "old_frequency_sources_unchanged": true
+}

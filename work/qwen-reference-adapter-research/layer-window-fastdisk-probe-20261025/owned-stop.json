@@ -1,0 +1,55 @@
+{
+  "serverWasStarted": true,
+  "terminatedOwnedIdentities": [
+    {
+      "pid": 95192,
+      "createTime": 1792872057.6600344,
+      "exe": "C:\\Windows\\System32\\conhost.exe",
+      "cmdline": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ],
+      "ppid": 85348
+    },
+    {
+      "pid": 85348,
+      "createTime": 1792872057.6519647,
+      "exe": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+      "cmdline": [
+        "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+        "-s",
+        "-B",
+        "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        "8192",
+        "--base-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root",
+        "--extra-model-paths-config",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\extra-model-paths.yaml",
+        "--input-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input",
+        "--output-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output",
+        "--temp-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\temp",
+        "--user-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\user",
+        "--fast-disk",
+        "--disable-auto-launch",
+        "--disable-api-nodes",
+        "--disable-all-custom-nodes",
+        "--whitelist-custom-nodes",
+        "ComfyUI-GGUF-leejet",
+        "novaflow_qwen_bf16_loader",
+        "prototype_frequency_layers_v2"
+      ],
+      "ppid": 31524
+    }
+  ],
+  "skippedIdentities": [],
+  "remainingOwnedIdentities": [],
+  "port8192ListeningAfterStop": false,
+  "exitCode": 15
+}

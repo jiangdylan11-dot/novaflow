@@ -1,0 +1,661 @@
+{
+  "schema": "nf.qa.layer-window-fastdisk-postrun-audit.v1",
+  "auditedAt": 1792872446.755975,
+  "probe": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025",
+  "controllerResult": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\result.json",
+    "sha256": "2bfbb269cb00d50328562b39997536f5e3033807fbc8898f731db98863fe3fb4"
+  },
+  "preflight": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\preflight.json",
+    "sha256": "9bd6ad88339e8853b8bfee18a6fa16e18b248bfd5e465fb5a7f03ca054d9ae14"
+  },
+  "resourceProfileChange": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\resource-profile-change.json",
+    "sha256": "4a04a9694bf29422ca0b2191d81af3e9f61e6110399fde8df450c2f1b9f69e49"
+  },
+  "prototypeFiles": {
+    "__init__.py": "c5b3f3b59042a3c1742343c1a8564ae54b2a9ba17e264acb660d120576c45e25",
+    "reference_frequency_layers.py": "ff04b5547da3695b99dc2cd06e80de030e123641268fd454dc5dfa05e4210b4a",
+    "frequency_core.py": "6e032007203717d286cfeaeaa2d78cdbbdec7211ace56c45bbab4a044b3f3b2c",
+    "layout.py": "b5934f24fa8a6aa02e7d2c75c5fb105866c9fbb011be5e5171ad696de9b18d24"
+  },
+  "verificationPassed": true,
+  "rows": [
+    {
+      "job": "bright-off",
+      "enabled": false,
+      "style": "bright",
+      "taskId": "54410ddb-b65a-489e-96d4-d5370bd9b7fb",
+      "baseline": {
+        "case": "bright-balanced-cache-v3-formal",
+        "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+        "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+        "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+        "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+      },
+      "graph": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-off\\graph.json",
+        "sha256": "1d45027350ceb5c9698a88461da825723751feb1b2d17f64c0539c31af401887"
+      },
+      "history": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-off\\history.json",
+        "sha256": "008115a8ecfc43bab0f594725c46c9e2644dffb71fe7b38742a6ad234e9320c0"
+      },
+      "result": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-off\\result.json",
+        "sha256": "0ab8e1222dd789cedf625a89eea3deb838a3eb2c38f0ad51bba94aac41c63472"
+      },
+      "originalReferences": [
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+          "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+          "bytes": 180849,
+          "role": "source",
+          "upload": {
+            "name": "NF_LW_bright-off_source.jpg",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_bright-off_source.jpg",
+          "graphName": "layer-window-probe/NF_LW_bright-off_source.jpg"
+        },
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\RVDS892WEPDK7BFK5CX9A9T840.webp",
+          "sha256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+          "bytes": 980854,
+          "role": "style",
+          "upload": {
+            "name": "NF_LW_bright-off_style.webp",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_bright-off_style.webp",
+          "graphName": "layer-window-probe/NF_LW_bright-off_style.webp"
+        }
+      ],
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-off\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_bright_off_00001_.png",
+        "sha256": "f6eda1ebf4ed8e6b084bd7f4335667384e7d4347839a4dcb65058f6d6c020fd0",
+        "decodedRGBA_SHA256": "8f7175baf8af0676fc2c229573acbf687af4c2d8192bc885559a549e92e979e1",
+        "width": 1280,
+        "height": 960,
+        "decodedSHARecomputed": "8f7175baf8af0676fc2c229573acbf687af4c2d8192bc885559a549e92e979e1"
+      },
+      "fullFrozenNativePromptSHA256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+      "nativePromptExactlyUnchanged": true,
+      "negativeExactlyUnchanged": true,
+      "nativePromptSourcePath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-balanced-cache-v3-formal\\generation-flash\\prompt.txt",
+      "frozenBaselineGraphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-balanced-cache-v3-formal\\generation-flash\\graph.json",
+      "onlyAllowedModelNodeAndFileNamespaceChangesFromBaseline": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image",
+        "7.inputs.model",
+        "901"
+      ],
+      "runtime": {
+        "disabledIdentityPath": true,
+        "runtimeAuditLines": 0
+      },
+      "enqueueToSuccessfulHistorySeconds": 54.70400000002701,
+      "individualJobFullSeconds": 58.79700000002049,
+      "additionalAIAnalysisSeconds": 0,
+      "timingIsNodeSpeedupEvidence": false,
+      "visualQualityPendingRootReview": true,
+      "referenceStyleAccepted": false
+    },
+    {
+      "job": "bright-on",
+      "enabled": true,
+      "style": "bright",
+      "taskId": "adec6161-b57a-4f16-b88e-0ce0945a542a",
+      "baseline": {
+        "case": "bright-balanced-cache-v3-formal",
+        "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+        "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+        "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+        "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+      },
+      "graph": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-on\\graph.json",
+        "sha256": "f5c5ea0eaec915d238511febaf631f40a927f0538532e9ebf12a41c972313004"
+      },
+      "history": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-on\\history.json",
+        "sha256": "7f51455809b25ad708906fb1ec530e2154a9b731e82696c27aa891d4cfc7077c"
+      },
+      "result": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-on\\result.json",
+        "sha256": "1e467bfdd2ae55d0e80933d0b0f3a27af43aef6c5d2fc3122863aaf0a6a67c63"
+      },
+      "originalReferences": [
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+          "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+          "bytes": 180849,
+          "role": "source",
+          "upload": {
+            "name": "NF_LW_bright-on_source.jpg",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_bright-on_source.jpg",
+          "graphName": "layer-window-probe/NF_LW_bright-on_source.jpg"
+        },
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\RVDS892WEPDK7BFK5CX9A9T840.webp",
+          "sha256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+          "bytes": 980854,
+          "role": "style",
+          "upload": {
+            "name": "NF_LW_bright-on_style.webp",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_bright-on_style.webp",
+          "graphName": "layer-window-probe/NF_LW_bright-on_style.webp"
+        }
+      ],
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-on\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_bright_on_00001_.png",
+        "sha256": "daf6803a77b069ed9fbb4eeed42422fa02bd589cd91d1093c668d1aef702c724",
+        "decodedRGBA_SHA256": "461d52db77d9cefc689ff9e36fb6fd356e21df2e3d410f2dedb6cf95e53e1454",
+        "width": 1280,
+        "height": 960,
+        "decodedSHARecomputed": "461d52db77d9cefc689ff9e36fb6fd356e21df2e3d410f2dedb6cf95e53e1454"
+      },
+      "fullFrozenNativePromptSHA256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+      "nativePromptExactlyUnchanged": true,
+      "negativeExactlyUnchanged": true,
+      "nativePromptSourcePath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-balanced-cache-v3-formal\\generation-flash\\prompt.txt",
+      "frozenBaselineGraphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-balanced-cache-v3-formal\\generation-flash\\graph.json",
+      "onlyAllowedModelNodeAndFileNamespaceChangesFromBaseline": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image",
+        "7.inputs.model",
+        "901"
+      ],
+      "runtime": {
+        "forwards": 16,
+        "targetLayerCopiesPerForward": 8,
+        "totalKeyCopies": 128,
+        "selectedLayers": [
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "targetHitsPerSelectedLayer": 16,
+        "unselectedTargetLayersBypassed": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "prefixCallsByForward": [
+          160,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320
+        ],
+        "prefixTokenCountsByForward": [
+          9253,
+          8807,
+          9253,
+          8807,
+          9253,
+          8807,
+          9253,
+          8807,
+          9253,
+          8807,
+          9253,
+          8807,
+          9253,
+          8807,
+          9253,
+          8807
+        ],
+        "prefixComputedOncePerPositiveAndNegativeConditioningContext": true,
+        "prefixComputedOnlyOnGlobalFirstForward": false,
+        "prefixCacheStableAfterSecondForward": true,
+        "axis0ScaleUnchanged": true,
+        "nativePreferredAttentionVerified": true
+      },
+      "enqueueToSuccessfulHistorySeconds": 56.35999999998603,
+      "individualJobFullSeconds": 59.42200000002049,
+      "additionalAIAnalysisSeconds": 0,
+      "timingIsNodeSpeedupEvidence": false,
+      "visualQualityPendingRootReview": true,
+      "referenceStyleAccepted": false
+    },
+    {
+      "job": "dark-off",
+      "enabled": false,
+      "style": "dark",
+      "taskId": "27dce665-e2bb-4925-af40-a767588fecfd",
+      "baseline": {
+        "case": "dark-r10-formal",
+        "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+        "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+        "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+        "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+      },
+      "graph": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-off\\graph.json",
+        "sha256": "239bca14c0a6f5def5b07ac25e498fab74f7fe88e6e81baed71abdd6b16f201a"
+      },
+      "history": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-off\\history.json",
+        "sha256": "a3b7e1a30e554023e11401f9a19dbb018a80beb5e2703180e268f32cfbe2fc19"
+      },
+      "result": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-off\\result.json",
+        "sha256": "eec4bf406d52ab85278240358459e144fdf9d40d9bf3d936759ce703306129e5"
+      },
+      "originalReferences": [
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+          "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+          "bytes": 180849,
+          "role": "source",
+          "upload": {
+            "name": "NF_LW_dark-off_source.jpg",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_dark-off_source.jpg",
+          "graphName": "layer-window-probe/NF_LW_dark-off_source.jpg"
+        },
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\A1W8ZDVXEH79NV5G0V0N6FYWJ0.png",
+          "sha256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+          "bytes": 2490540,
+          "role": "style",
+          "upload": {
+            "name": "NF_LW_dark-off_style.png",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_dark-off_style.png",
+          "graphName": "layer-window-probe/NF_LW_dark-off_style.png"
+        }
+      ],
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-off\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_dark_off_00001_.png",
+        "sha256": "26dc932dc7fdc9151bf1e5c288afc7b0231b1a4de7a8a90445c6d780ab4e0d63",
+        "decodedRGBA_SHA256": "307989d61b76676239c3737663c40c7f80493d799d60e8d29ff417c30d8758f1",
+        "width": 1280,
+        "height": 960,
+        "decodedSHARecomputed": "307989d61b76676239c3737663c40c7f80493d799d60e8d29ff417c30d8758f1"
+      },
+      "fullFrozenNativePromptSHA256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+      "nativePromptExactlyUnchanged": true,
+      "negativeExactlyUnchanged": true,
+      "nativePromptSourcePath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\prompt.txt",
+      "frozenBaselineGraphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\graph.json",
+      "onlyAllowedModelNodeAndFileNamespaceChangesFromBaseline": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image",
+        "7.inputs.model",
+        "901"
+      ],
+      "runtime": {
+        "disabledIdentityPath": true,
+        "runtimeAuditLines": 0
+      },
+      "enqueueToSuccessfulHistorySeconds": 58.85999999998603,
+      "individualJobFullSeconds": 62.85899999993853,
+      "additionalAIAnalysisSeconds": 0,
+      "timingIsNodeSpeedupEvidence": false,
+      "visualQualityPendingRootReview": true,
+      "referenceStyleAccepted": false
+    },
+    {
+      "job": "dark-on",
+      "enabled": true,
+      "style": "dark",
+      "taskId": "0148caf5-552b-4843-a378-a559404c83b7",
+      "baseline": {
+        "case": "dark-r10-formal",
+        "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+        "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+        "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+        "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+      },
+      "graph": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-on\\graph.json",
+        "sha256": "0e51479987c97d836291ec8798eef1bddce74e54c0392df7ffd757f5fd3a2f71"
+      },
+      "history": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-on\\history.json",
+        "sha256": "ea9c44cbcc31b89910db509c6b6eaf95d02dd1eb2cc52ff0fbd93d7f59facbcf"
+      },
+      "result": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-on\\result.json",
+        "sha256": "bc77bfa2b685154c4da280e049f877d15bd45b55363896b5756b070feaa65f43"
+      },
+      "originalReferences": [
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+          "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+          "bytes": 180849,
+          "role": "source",
+          "upload": {
+            "name": "NF_LW_dark-on_source.jpg",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_dark-on_source.jpg",
+          "graphName": "layer-window-probe/NF_LW_dark-on_source.jpg"
+        },
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\A1W8ZDVXEH79NV5G0V0N6FYWJ0.png",
+          "sha256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+          "bytes": 2490540,
+          "role": "style",
+          "upload": {
+            "name": "NF_LW_dark-on_style.png",
+            "subfolder": "layer-window-probe",
+            "type": "input"
+          },
+          "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_dark-on_style.png",
+          "graphName": "layer-window-probe/NF_LW_dark-on_style.png"
+        }
+      ],
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-on\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_dark_on_00001_.png",
+        "sha256": "f4637c928a6357134a4c04821479dcdc9ef15d41d6e3104fc3d0c70148982be1",
+        "decodedRGBA_SHA256": "cb7f905e6fa582f311861e03f23f1cccf6ddca1e5ee787f1883119ccd9dd9aac",
+        "width": 1280,
+        "height": 960,
+        "decodedSHARecomputed": "cb7f905e6fa582f311861e03f23f1cccf6ddca1e5ee787f1883119ccd9dd9aac"
+      },
+      "fullFrozenNativePromptSHA256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+      "nativePromptExactlyUnchanged": true,
+      "negativeExactlyUnchanged": true,
+      "nativePromptSourcePath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\prompt.txt",
+      "frozenBaselineGraphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\graph.json",
+      "onlyAllowedModelNodeAndFileNamespaceChangesFromBaseline": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image",
+        "7.inputs.model",
+        "901"
+      ],
+      "runtime": {
+        "forwards": 16,
+        "targetLayerCopiesPerForward": 8,
+        "totalKeyCopies": 128,
+        "selectedLayers": [
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31
+        ],
+        "targetHitsPerSelectedLayer": 16,
+        "unselectedTargetLayersBypassed": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "prefixCallsByForward": [
+          160,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320,
+          320
+        ],
+        "prefixTokenCountsByForward": [
+          9260,
+          8807,
+          9260,
+          8807,
+          9260,
+          8807,
+          9260,
+          8807,
+          9260,
+          8807,
+          9260,
+          8807,
+          9260,
+          8807,
+          9260,
+          8807
+        ],
+        "prefixComputedOncePerPositiveAndNegativeConditioningContext": true,
+        "prefixComputedOnlyOnGlobalFirstForward": false,
+        "prefixCacheStableAfterSecondForward": true,
+        "axis0ScaleUnchanged": true,
+        "nativePreferredAttentionVerified": true
+      },
+      "enqueueToSuccessfulHistorySeconds": 62.375,
+      "individualJobFullSeconds": 66.51600000006147,
+      "additionalAIAnalysisSeconds": 0,
+      "timingIsNodeSpeedupEvidence": false,
+      "visualQualityPendingRootReview": true,
+      "referenceStyleAccepted": false
+    }
+  ],
+  "pairs": [
+    {
+      "style": "bright",
+      "canonicalGraphDifferences": [
+        "901.inputs.enabled"
+      ],
+      "onlyEnabledChanges": true,
+      "rawGraphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image",
+        "901.inputs.enabled"
+      ],
+      "originalBaselineDecodedRGBA": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-balanced-cache-v3-formal\\generation-flash\\NF_AB_bright-balanced-cache-v3-formal_flash_turbo8_cfg3_00001_.png",
+        "size": [
+          1280,
+          960
+        ],
+        "rgbaSHA256": "2c48883649fda98479cb8d4c8907ca3c95aedeab2843a42f9af78257008661f1"
+      },
+      "newOFFDecodedRGBA_SHA256": "8f7175baf8af0676fc2c229573acbf687af4c2d8192bc885559a549e92e979e1",
+      "baselineAndOFFPixelsIdentical": false,
+      "OFFAndONPixelsIdentical": false,
+      "interpretation": "Identical frozen graph/seed does not imply exact cross-run pixels; OFF-to-ON is the within-instance graph control. Visual quality remains root/user review."
+    },
+    {
+      "style": "dark",
+      "canonicalGraphDifferences": [
+        "901.inputs.enabled"
+      ],
+      "onlyEnabledChanges": true,
+      "rawGraphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image",
+        "901.inputs.enabled"
+      ],
+      "originalBaselineDecodedRGBA": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\NF_AB_dark-r10-formal_flash_turbo8_cfg3_00001_.png",
+        "size": [
+          1280,
+          960
+        ],
+        "rgbaSHA256": "dc6c80cd075a0dcdccf41370e0d6d0cc92af6b70aa51db51047144060b1b2e5d"
+      },
+      "newOFFDecodedRGBA_SHA256": "307989d61b76676239c3737663c40c7f80493d799d60e8d29ff417c30d8758f1",
+      "baselineAndOFFPixelsIdentical": false,
+      "OFFAndONPixelsIdentical": false,
+      "interpretation": "Identical frozen graph/seed does not imply exact cross-run pixels; OFF-to-ON is the within-instance graph control. Visual quality remains root/user review."
+    }
+  ],
+  "resources": {
+    "samples": 228,
+    "sampledMaxVRAMMiB": 15409.0,
+    "sampledMinRAMAvailableBytes": 5395865600,
+    "first": {
+      "at": 1792872057.197731,
+      "ramAvailableBytes": 41447886848,
+      "vramUsedMiB": 1528.0,
+      "vramTotalMiB": 16376.0,
+      "gpuUtilization": 4.0
+    },
+    "last": {
+      "at": 1792872318.6508744,
+      "ramAvailableBytes": 40634073088,
+      "vramUsedMiB": 1520.0,
+      "vramTotalMiB": 16376.0,
+      "gpuUtilization": 8.0
+    },
+    "abortReason": null,
+    "limits": {
+      "minRAMGiB": 4.0,
+      "minVRAMFreeMiB": 768,
+      "sustainedSeconds": 2.0
+    },
+    "scope": "Sampled whole-device usage; not model-only memory"
+  },
+  "ownedCleanup": {
+    "serverWasStarted": true,
+    "terminatedOwnedIdentities": [
+      {
+        "pid": 95192,
+        "createTime": 1792872057.6600344,
+        "exe": "C:\\Windows\\System32\\conhost.exe",
+        "cmdline": [
+          "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+          "0x4"
+        ],
+        "ppid": 85348
+      },
+      {
+        "pid": 85348,
+        "createTime": 1792872057.6519647,
+        "exe": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+        "cmdline": [
+          "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+          "-s",
+          "-B",
+          "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+          "--listen",
+          "127.0.0.1",
+          "--port",
+          "8192",
+          "--base-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root",
+          "--extra-model-paths-config",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\extra-model-paths.yaml",
+          "--input-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input",
+          "--output-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output",
+          "--temp-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\temp",
+          "--user-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\user",
+          "--fast-disk",
+          "--disable-auto-launch",
+          "--disable-api-nodes",
+          "--disable-all-custom-nodes",
+          "--whitelist-custom-nodes",
+          "ComfyUI-GGUF-leejet",
+          "novaflow_qwen_bf16_loader",
+          "prototype_frequency_layers_v2"
+        ],
+        "ppid": 31524
+      }
+    ],
+    "skippedIdentities": [],
+    "remainingOwnedIdentities": [],
+    "port8192ListeningAfterStop": false,
+    "exitCode": 15
+  },
+  "allOriginalProtectedFilesAndGalleryUnchanged": true,
+  "rawTimingsAreNotControlledSpeedupEvidence": true,
+  "newAIAnalysisPerformed": false,
+  "imageEditedByAudit": false,
+  "rootVisualQualityPending": true,
+  "generalStyleTransferAccepted": false,
+  "productionDefaultsChanged": false,
+  "noGPUOrServiceActionByThisAudit": true
+}

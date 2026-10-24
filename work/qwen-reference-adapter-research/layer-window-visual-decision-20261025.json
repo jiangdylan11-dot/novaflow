@@ -1,0 +1,24 @@
+{
+  "schema": "nf.qa.layer-window.visual-review.v1",
+  "scope": "Root actual-image review and independent agent review; not user acceptance",
+  "newAIAnalysisCalls": 0,
+  "node": "NovaFlowQwen21StyleKeyLayerWindowExperimental",
+  "parameters": {
+    "layers": [
+      24,
+      31
+    ],
+    "high_scale": 0.5,
+    "low_scale": 1.5,
+    "beta": 2
+  },
+  "bright": "No convincing image-quality or reference-style gain. Hair/face/cup simplified slightly; no strong gray or blue-violet veil. Content retained.",
+  "dark": "Small local face-shape/skin-color variation. Overall drawing, lighting and material finish close to OFF; no convincing general gain. Content retained.",
+  "adopted": false,
+  "generalStyleTransferAccepted": false,
+  "formalDefaultChanged": false,
+  "replacesAcceptedDark": false,
+  "preservesBrightQualityAcceptance": true,
+  "oldBaselineAndNewOFFArePixelIdentical": false,
+  "speedupClaim": false
+}

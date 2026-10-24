@@ -1,0 +1,11 @@
+--- original/run-isolated-layer-window.py
++++ fastdisk/run-isolated-layer-window.py
+@@ -284,7 +284,7 @@
+         "--base-directory", str(BASE), "--extra-model-paths-config", str(HERE / "extra-model-paths.yaml"),
+         "--input-directory", str(BASE / "input"), "--output-directory", str(BASE / "output"),
+         "--temp-directory", str(BASE / "temp"), "--user-directory", str(BASE / "user"),
+-        "--disable-auto-launch", "--disable-api-nodes", "--disable-all-custom-nodes", "--whitelist-custom-nodes", *WHITELIST]
++        "--fast-disk", "--disable-auto-launch", "--disable-api-nodes", "--disable-all-custom-nodes", "--whitelist-custom-nodes", *WHITELIST]
+     report = {"ok": True, "preflightOnly": True, "serverStarted": False, "gpuInferenceStarted": False,
+         "port": PORT, "command": command, "baseDirectory": str(BASE), "prototype": {"source": str(PROTO), "staged": str(staged),
+         "files": PINNED_PROTO, "packageManifestSHA256": digest((PROTO / "package-manifest.json").read_bytes()), "cpuTestsPassed": 16, "INPUT_TYPES": schema},

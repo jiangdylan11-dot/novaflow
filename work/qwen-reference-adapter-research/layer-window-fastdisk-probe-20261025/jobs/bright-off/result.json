@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "job": "bright-off",
+  "promptId": "54410ddb-b65a-489e-96d4-d5370bd9b7fb",
+  "enabled": false,
+  "style": "bright",
+  "newAIAnalysis": false,
+  "additionalAIAnalysisSeconds": 0,
+  "promptSource": "unchanged-baseline-native-prompt",
+  "baseline": {
+    "case": "bright-balanced-cache-v3-formal",
+    "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+    "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+    "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+    "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+  },
+  "nodeInputs": {
+    "model": [
+      "4",
+      0
+    ],
+    "enabled": false,
+    "style_reference_index": 1,
+    "high_scale": 0.5,
+    "low_scale": 1.5,
+    "beta": 2.0,
+    "layer_start": 24,
+    "layer_end": 31,
+    "audit_log": true,
+    "cap_amplification": false,
+    "active_sigma_min": 0.0
+  },
+  "graphSHA256": "1d45027350ceb5c9698a88461da825723751feb1b2d17f64c0539c31af401887",
+  "output": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-off\\output.png",
+    "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_bright_off_00001_.png",
+    "sha256": "f6eda1ebf4ed8e6b084bd7f4335667384e7d4347839a4dcb65058f6d6c020fd0",
+    "decodedRGBA_SHA256": "8f7175baf8af0676fc2c229573acbf687af4c2d8192bc885559a549e92e979e1",
+    "width": 1280,
+    "height": 960
+  },
+  "actualNodeAudit": {
+    "auditLines": 0,
+    "disabledModelIdentityPath": true
+  },
+  "uploadSeconds": 0.9529999999795109,
+  "enqueueToSuccessfulHistorySeconds": 54.70400000002701,
+  "individualJobFullSeconds": 58.79700000002049,
+  "includesUploadDownloadAndFree": true,
+  "timingIsNodeSpeedupEvidence": false,
+  "coldWarmEffectsNotControlled": true,
+  "qualityAccepted": false,
+  "referenceStyleAccepted": false,
+  "formalDefaultChanged": false
+}

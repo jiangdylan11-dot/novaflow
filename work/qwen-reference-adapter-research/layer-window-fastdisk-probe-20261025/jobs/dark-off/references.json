@@ -1,0 +1,28 @@
+[
+  {
+    "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+    "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "bytes": 180849,
+    "role": "source",
+    "upload": {
+      "name": "NF_LW_dark-off_source.jpg",
+      "subfolder": "layer-window-probe",
+      "type": "input"
+    },
+    "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_dark-off_source.jpg",
+    "graphName": "layer-window-probe/NF_LW_dark-off_source.jpg"
+  },
+  {
+    "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\A1W8ZDVXEH79NV5G0V0N6FYWJ0.png",
+    "sha256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+    "bytes": 2490540,
+    "role": "style",
+    "upload": {
+      "name": "NF_LW_dark-off_style.png",
+      "subfolder": "layer-window-probe",
+      "type": "input"
+    },
+    "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input\\layer-window-probe\\NF_LW_dark-off_style.png",
+    "graphName": "layer-window-probe/NF_LW_dark-off_style.png"
+  }
+]

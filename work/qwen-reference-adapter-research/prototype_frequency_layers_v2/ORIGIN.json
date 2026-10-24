@@ -1,0 +1,12 @@
+{
+  "scope": "Self-contained copy of our own earlier isolated prototype helpers; original files unchanged.",
+  "sources": {
+    "work\\qwen-reference-adapter-research\\prototype_frequency_keys\\layout.py": "b5934f24fa8a6aa02e7d2c75c5fb105866c9fbb011be5e5171ad696de9b18d24",
+    "work\\qwen-reference-adapter-research\\prototype_frequency_keys\\reference_frequency_keys.py": "53012adb2298f28570ca4492e2184fb8eb50ed9ff1760c8dfd834dd91cadb92b"
+  },
+  "copied": {
+    "layout.py": "exact bytes",
+    "frequency_core.py": "original prefix before class StyleKeyFrequencyForward; no node registered from this helper"
+  },
+  "thirdPartyNodeCodeCopied": false
+}

@@ -1,0 +1,135 @@
+{
+  "timestamp_utc": "2026-10-24T19:44:19.449783+00:00",
+  "tests_run": 16,
+  "failures": 0,
+  "errors": 0,
+  "passed": true,
+  "test_seconds": 0.14632209995761514,
+  "native_comfy_root": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI",
+  "native_device": "cpu",
+  "cuda_initialized": false,
+  "loaded_generation_model_weights": false,
+  "image_quality_validated": false,
+  "old_frequency_sources_unchanged": true,
+  "input_types": {
+    "required": {
+      "model": [
+        "MODEL"
+      ],
+      "enabled": [
+        "BOOLEAN",
+        {
+          "default": false
+        }
+      ],
+      "style_reference_index": [
+        "INT",
+        {
+          "default": 1,
+          "min": 0,
+          "max": 15
+        }
+      ],
+      "high_scale": [
+        "FLOAT",
+        {
+          "default": 0.5,
+          "min": 0.0,
+          "max": 4.0,
+          "step": 0.05
+        }
+      ],
+      "low_scale": [
+        "FLOAT",
+        {
+          "default": 1.5,
+          "min": 0.0,
+          "max": 4.0,
+          "step": 0.05
+        }
+      ],
+      "beta": [
+        "FLOAT",
+        {
+          "default": 2.0,
+          "min": 0.01,
+          "max": 16.0,
+          "step": 0.1
+        }
+      ],
+      "layer_start": [
+        "INT",
+        {
+          "default": 24,
+          "min": 0,
+          "max": 31
+        }
+      ],
+      "layer_end": [
+        "INT",
+        {
+          "default": 31,
+          "min": 0,
+          "max": 31
+        }
+      ],
+      "audit_log": [
+        "BOOLEAN",
+        {
+          "default": false
+        }
+      ]
+    },
+    "optional": {
+      "cap_amplification": [
+        "BOOLEAN",
+        {
+          "default": false
+        }
+      ],
+      "active_sigma_min": [
+        "FLOAT",
+        {
+          "default": 0.0,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01
+        }
+      ]
+    }
+  },
+  "actual_native_random_32_layer_window": {
+    "24": 1,
+    "25": 1,
+    "26": 1,
+    "27": 1,
+    "28": 1,
+    "29": 1,
+    "30": 1,
+    "31": 1
+  },
+  "native_tiny_layers": 3,
+  "native_tiny_selected_layers": [
+    2
+  ],
+  "cache_selections": [
+    false,
+    true,
+    true
+  ],
+  "cached_prefix_max_change": 0.0,
+  "cached_vs_uncached_max_error": 0.0,
+  "cached_repeat_max_error": 0.0,
+  "native_nonidentity_max_change": 7.033348083496094e-06,
+  "selected_32_layer_indices": [
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "copies_per_32_target_calls": 8
+}

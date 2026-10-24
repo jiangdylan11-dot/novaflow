@@ -1,0 +1,168 @@
+{
+  "1": {
+    "class_type": "NovaFlowGGUFBF16Loader",
+    "inputs": {
+      "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Assign content to <image1> and artistic reference to <image2>. Redraw the source photograph in the target anime illustration direction shown in <image2>, transferring its method of drawing and lighting rather than its depicted subject. Adopt the reference's high-contrast, low-key illumination: a dominant cool ambient tone with selective warm accents, strong rim/edge light that separates the figure from the background, and a clear focal hierarchy where the face and the held object read as the brightest, most saturated focal points while the surrounding environment falls into deeper, softer shadow. Build depth through layered color planes—bright foreground figure, mid-tone seating, darker recessed background—so the eye travels from the lit face outward. Treat edges with crisp, confident linework on the silhouette and hair strands, with subtle softening on skin transitions. Model skin as smooth, luminous matte surfaces with gentle blush gradients on cheeks and a soft highlight on the nose and lips, keeping the winking eye, smile, and cheek mole as recognizable identity marks; allow facial proportions and hair locks to be re-formed naturally by the anime style. Render the long wavy hair as layered, flowing locks with glossy top highlights and dark shadowed under-strands, preserving the reddish-brown hue. Under coherent illumination, make the striped fabric read as clean flat color bands with modest shading, the plastic cup as a translucent glossy volume catching a bright specular edge, and the red nails as small saturated accents. Relight the existing airport terminal—rows of grey seats, the angled glass curtain wall, and the glowing flight-information screens—using the reference's cool night-like key light with warm practical-light points from the screens and interior lamps, so the original interior space remains recognizable as an airport seating area while being repainted in the target art direction. Do not import the donor's umbrella, moon, rain, school uniform, red eyes, or outdoor scenery; only its drawing technique, color layering, edge treatment, and dramatic cool-warm lighting logic are transferred. The finished artwork's explicit subject is: A young woman with long wavy reddish-brown hair, winking with one eye closed and smiling, wearing a navy-and-white striped top and holding a clear plastic cup of iced milk tea with a straw, a small mole on her cheek, seated in an airport terminal with rows of grey seats, a glass curtain wall and illuminated flight-information screens behind her.",
+      "negative_prompt": "photograph, photorealistic facial proportions, realistic nose and lips, photographic skin texture, yellow-orange skin color cast, oversaturated orange skin, monochromatic warm color grading",
+      "resolution": 0,
+      "images.image_1": [
+        "100",
+        0
+      ],
+      "images.image_2": [
+        "201",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "model": [
+        "901",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": 54792256,
+      "cfg": 3,
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "5",
+        1
+      ],
+      "latent_image": [
+        "5",
+        2
+      ],
+      "sampler": [
+        "nf_turbo_7_sampler",
+        0
+      ],
+      "sigmas": [
+        "nf_turbo_7_sigmas",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "NF_LAYER_WINDOW_dark_on"
+    }
+  },
+  "100": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "layer-window-probe/NF_LW_dark-on_source.jpg"
+    }
+  },
+  "101": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "layer-window-probe/NF_LW_dark-on_style.png"
+    }
+  },
+  "201": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "101",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 832,
+      "height": 1216,
+      "crop": "disabled"
+    }
+  },
+  "nf_turbo_7_sigmas": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+    }
+  },
+  "nf_turbo_7_sampler": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "901": {
+    "class_type": "NovaFlowQwen21StyleKeyLayerWindowExperimental",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "enabled": true,
+      "style_reference_index": 1,
+      "high_scale": 0.5,
+      "low_scale": 1.5,
+      "beta": 2.0,
+      "layer_start": 24,
+      "layer_end": 31,
+      "audit_log": true,
+      "cap_amplification": false,
+      "active_sigma_min": 0.0
+    }
+  }
+}

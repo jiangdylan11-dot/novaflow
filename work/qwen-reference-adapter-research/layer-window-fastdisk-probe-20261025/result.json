@@ -1,0 +1,549 @@
+{
+  "ok": true,
+  "serverPort": 8192,
+  "newAIAnalysis": false,
+  "jobs": [
+    {
+      "ok": true,
+      "job": "bright-off",
+      "promptId": "54410ddb-b65a-489e-96d4-d5370bd9b7fb",
+      "enabled": false,
+      "style": "bright",
+      "newAIAnalysis": false,
+      "additionalAIAnalysisSeconds": 0,
+      "promptSource": "unchanged-baseline-native-prompt",
+      "baseline": {
+        "case": "bright-balanced-cache-v3-formal",
+        "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+        "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+        "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+        "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+      },
+      "nodeInputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "enabled": false,
+        "style_reference_index": 1,
+        "high_scale": 0.5,
+        "low_scale": 1.5,
+        "beta": 2.0,
+        "layer_start": 24,
+        "layer_end": 31,
+        "audit_log": true,
+        "cap_amplification": false,
+        "active_sigma_min": 0.0
+      },
+      "graphSHA256": "1d45027350ceb5c9698a88461da825723751feb1b2d17f64c0539c31af401887",
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-off\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_bright_off_00001_.png",
+        "sha256": "f6eda1ebf4ed8e6b084bd7f4335667384e7d4347839a4dcb65058f6d6c020fd0",
+        "decodedRGBA_SHA256": "8f7175baf8af0676fc2c229573acbf687af4c2d8192bc885559a549e92e979e1",
+        "width": 1280,
+        "height": 960
+      },
+      "actualNodeAudit": {
+        "auditLines": 0,
+        "disabledModelIdentityPath": true
+      },
+      "uploadSeconds": 0.9529999999795109,
+      "enqueueToSuccessfulHistorySeconds": 54.70400000002701,
+      "individualJobFullSeconds": 58.79700000002049,
+      "includesUploadDownloadAndFree": true,
+      "timingIsNodeSpeedupEvidence": false,
+      "coldWarmEffectsNotControlled": true,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "formalDefaultChanged": false
+    },
+    {
+      "ok": true,
+      "job": "bright-on",
+      "promptId": "adec6161-b57a-4f16-b88e-0ce0945a542a",
+      "enabled": true,
+      "style": "bright",
+      "newAIAnalysis": false,
+      "additionalAIAnalysisSeconds": 0,
+      "promptSource": "unchanged-baseline-native-prompt",
+      "baseline": {
+        "case": "bright-balanced-cache-v3-formal",
+        "graph_sha256": "b150db9cde0193a20d8a3cd76f89730e5c53ed041b9a0771e41d92f851733562",
+        "case_sha256": "0746ee96c40e0fd73604e22b76a42bdc7a9f7f80eff4ed77761115dd8102657a",
+        "prompt_sha256": "e51eb53b517e3dffe2a65aec47a7e6ae6e7cf5355932843919fe77e663f6134c",
+        "output_sha256": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312"
+      },
+      "nodeInputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "enabled": true,
+        "style_reference_index": 1,
+        "high_scale": 0.5,
+        "low_scale": 1.5,
+        "beta": 2.0,
+        "layer_start": 24,
+        "layer_end": 31,
+        "audit_log": true,
+        "cap_amplification": false,
+        "active_sigma_min": 0.0
+      },
+      "graphSHA256": "f5c5ea0eaec915d238511febaf631f40a927f0538532e9ebf12a41c972313004",
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\bright-on\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_bright_on_00001_.png",
+        "sha256": "daf6803a77b069ed9fbb4eeed42422fa02bd589cd91d1093c668d1aef702c724",
+        "decodedRGBA_SHA256": "461d52db77d9cefc689ff9e36fb6fd356e21df2e3d410f2dedb6cf95e53e1454",
+        "width": 1280,
+        "height": 960
+      },
+      "actualNodeAudit": {
+        "auditLines": 16,
+        "last": {
+          "forwards": 16,
+          "active_forwards": 16,
+          "bypassed_forwards": 0,
+          "target_calls": 128,
+          "prefix_calls": 320,
+          "key_copies": 128,
+          "previous_override_calls": 0,
+          "latest_layout": {
+            "references": [
+              {
+                "start": 8,
+                "end": 4808
+              },
+              {
+                "start": 4814,
+                "end": 8766
+              }
+            ],
+            "target_tokens": 4800,
+            "prefix_tokens": 8807,
+            "total_tokens": 13607,
+            "batch": 1
+          },
+          "selected_target_by_layer": {
+            "24": 16,
+            "25": 16,
+            "26": 16,
+            "27": 16,
+            "28": 16,
+            "29": 16,
+            "30": 16,
+            "31": 16
+          },
+          "bypassed_target_by_layer": {
+            "0": 16,
+            "1": 16,
+            "2": 16,
+            "3": 16,
+            "4": 16,
+            "5": 16,
+            "6": 16,
+            "7": 16,
+            "8": 16,
+            "9": 16,
+            "10": 16,
+            "11": 16,
+            "12": 16,
+            "13": 16,
+            "14": 16,
+            "15": 16,
+            "16": 16,
+            "17": 16,
+            "18": 16,
+            "19": 16,
+            "20": 16,
+            "21": 16,
+            "22": 16,
+            "23": 16
+          },
+          "prefix_by_layer": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10,
+            "8": 10,
+            "9": 10,
+            "10": 10,
+            "11": 10,
+            "12": 10,
+            "13": 10,
+            "14": 10,
+            "15": 10,
+            "16": 10,
+            "17": 10,
+            "18": 10,
+            "19": 10,
+            "20": 10,
+            "21": 10,
+            "22": 10,
+            "23": 10,
+            "24": 10,
+            "25": 10,
+            "26": 10,
+            "27": 10,
+            "28": 10,
+            "29": 10,
+            "30": 10,
+            "31": 10
+          },
+          "key_copies_this_forward": 8,
+          "selected_target_this_forward": {
+            "24": 1,
+            "25": 1,
+            "26": 1,
+            "27": 1,
+            "28": 1,
+            "29": 1,
+            "30": 1,
+            "31": 1
+          },
+          "layer_start": 24,
+          "layer_end": 31,
+          "actual_num_layers": 32,
+          "style_reference_index": 1,
+          "high_scale": 0.5,
+          "low_scale": 1.5,
+          "beta": 2.0,
+          "cap_amplification": false,
+          "active_sigma_min": 0.0,
+          "actual_sigma": 0.4145680069923401,
+          "active": true,
+          "axes": [
+            16,
+            56,
+            56
+          ],
+          "axis0_scale": 1.0,
+          "preferred_backend_check": {
+            "required": true,
+            "checked_layers": 32,
+            "non_null_count": 0
+          }
+        },
+        "actualSelectedLayersVerified": true
+      },
+      "uploadSeconds": 0.9529999999795109,
+      "enqueueToSuccessfulHistorySeconds": 56.35999999998603,
+      "individualJobFullSeconds": 59.42200000002049,
+      "includesUploadDownloadAndFree": true,
+      "timingIsNodeSpeedupEvidence": false,
+      "coldWarmEffectsNotControlled": true,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "formalDefaultChanged": false
+    },
+    {
+      "ok": true,
+      "job": "dark-off",
+      "promptId": "27dce665-e2bb-4925-af40-a767588fecfd",
+      "enabled": false,
+      "style": "dark",
+      "newAIAnalysis": false,
+      "additionalAIAnalysisSeconds": 0,
+      "promptSource": "unchanged-baseline-native-prompt",
+      "baseline": {
+        "case": "dark-r10-formal",
+        "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+        "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+        "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+        "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+      },
+      "nodeInputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "enabled": false,
+        "style_reference_index": 1,
+        "high_scale": 0.5,
+        "low_scale": 1.5,
+        "beta": 2.0,
+        "layer_start": 24,
+        "layer_end": 31,
+        "audit_log": true,
+        "cap_amplification": false,
+        "active_sigma_min": 0.0
+      },
+      "graphSHA256": "239bca14c0a6f5def5b07ac25e498fab74f7fe88e6e81baed71abdd6b16f201a",
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-off\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_dark_off_00001_.png",
+        "sha256": "26dc932dc7fdc9151bf1e5c288afc7b0231b1a4de7a8a90445c6d780ab4e0d63",
+        "decodedRGBA_SHA256": "307989d61b76676239c3737663c40c7f80493d799d60e8d29ff417c30d8758f1",
+        "width": 1280,
+        "height": 960
+      },
+      "actualNodeAudit": {
+        "auditLines": 0,
+        "disabledModelIdentityPath": true
+      },
+      "uploadSeconds": 0.8589999999385327,
+      "enqueueToSuccessfulHistorySeconds": 58.85999999998603,
+      "individualJobFullSeconds": 62.85899999993853,
+      "includesUploadDownloadAndFree": true,
+      "timingIsNodeSpeedupEvidence": false,
+      "coldWarmEffectsNotControlled": true,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "formalDefaultChanged": false
+    },
+    {
+      "ok": true,
+      "job": "dark-on",
+      "promptId": "0148caf5-552b-4843-a378-a559404c83b7",
+      "enabled": true,
+      "style": "dark",
+      "newAIAnalysis": false,
+      "additionalAIAnalysisSeconds": 0,
+      "promptSource": "unchanged-baseline-native-prompt",
+      "baseline": {
+        "case": "dark-r10-formal",
+        "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+        "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+        "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+        "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+      },
+      "nodeInputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "enabled": true,
+        "style_reference_index": 1,
+        "high_scale": 0.5,
+        "low_scale": 1.5,
+        "beta": 2.0,
+        "layer_start": 24,
+        "layer_end": 31,
+        "audit_log": true,
+        "cap_amplification": false,
+        "active_sigma_min": 0.0
+      },
+      "graphSHA256": "0e51479987c97d836291ec8798eef1bddce74e54c0392df7ffd757f5fd3a2f71",
+      "output": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-on\\output.png",
+        "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_dark_on_00001_.png",
+        "sha256": "f4637c928a6357134a4c04821479dcdc9ef15d41d6e3104fc3d0c70148982be1",
+        "decodedRGBA_SHA256": "cb7f905e6fa582f311861e03f23f1cccf6ddca1e5ee787f1883119ccd9dd9aac",
+        "width": 1280,
+        "height": 960
+      },
+      "actualNodeAudit": {
+        "auditLines": 16,
+        "last": {
+          "forwards": 16,
+          "active_forwards": 16,
+          "bypassed_forwards": 0,
+          "target_calls": 128,
+          "prefix_calls": 320,
+          "key_copies": 128,
+          "previous_override_calls": 0,
+          "latest_layout": {
+            "references": [
+              {
+                "start": 8,
+                "end": 4808
+              },
+              {
+                "start": 4814,
+                "end": 8766
+              }
+            ],
+            "target_tokens": 4800,
+            "prefix_tokens": 8807,
+            "total_tokens": 13607,
+            "batch": 1
+          },
+          "selected_target_by_layer": {
+            "24": 16,
+            "25": 16,
+            "26": 16,
+            "27": 16,
+            "28": 16,
+            "29": 16,
+            "30": 16,
+            "31": 16
+          },
+          "bypassed_target_by_layer": {
+            "0": 16,
+            "1": 16,
+            "2": 16,
+            "3": 16,
+            "4": 16,
+            "5": 16,
+            "6": 16,
+            "7": 16,
+            "8": 16,
+            "9": 16,
+            "10": 16,
+            "11": 16,
+            "12": 16,
+            "13": 16,
+            "14": 16,
+            "15": 16,
+            "16": 16,
+            "17": 16,
+            "18": 16,
+            "19": 16,
+            "20": 16,
+            "21": 16,
+            "22": 16,
+            "23": 16
+          },
+          "prefix_by_layer": {
+            "0": 10,
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 10,
+            "5": 10,
+            "6": 10,
+            "7": 10,
+            "8": 10,
+            "9": 10,
+            "10": 10,
+            "11": 10,
+            "12": 10,
+            "13": 10,
+            "14": 10,
+            "15": 10,
+            "16": 10,
+            "17": 10,
+            "18": 10,
+            "19": 10,
+            "20": 10,
+            "21": 10,
+            "22": 10,
+            "23": 10,
+            "24": 10,
+            "25": 10,
+            "26": 10,
+            "27": 10,
+            "28": 10,
+            "29": 10,
+            "30": 10,
+            "31": 10
+          },
+          "key_copies_this_forward": 8,
+          "selected_target_this_forward": {
+            "24": 1,
+            "25": 1,
+            "26": 1,
+            "27": 1,
+            "28": 1,
+            "29": 1,
+            "30": 1,
+            "31": 1
+          },
+          "layer_start": 24,
+          "layer_end": 31,
+          "actual_num_layers": 32,
+          "style_reference_index": 1,
+          "high_scale": 0.5,
+          "low_scale": 1.5,
+          "beta": 2.0,
+          "cap_amplification": false,
+          "active_sigma_min": 0.0,
+          "actual_sigma": 0.4145680069923401,
+          "active": true,
+          "axes": [
+            16,
+            56,
+            56
+          ],
+          "axis0_scale": 1.0,
+          "preferred_backend_check": {
+            "required": true,
+            "checked_layers": 32,
+            "non_null_count": 0
+          }
+        },
+        "actualSelectedLayersVerified": true
+      },
+      "uploadSeconds": 0.9849999999860302,
+      "enqueueToSuccessfulHistorySeconds": 62.375,
+      "individualJobFullSeconds": 66.51600000006147,
+      "includesUploadDownloadAndFree": true,
+      "timingIsNodeSpeedupEvidence": false,
+      "coldWarmEffectsNotControlled": true,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "formalDefaultChanged": false
+    }
+  ],
+  "formalDefaultChanged": false,
+  "qualityAccepted": false,
+  "timingIsNodeSpeedupEvidence": false,
+  "coldWarmEffectsNotControlled": true,
+  "startedAt": 1792872057.1432364,
+  "ownedProcessCleanup": {
+    "serverWasStarted": true,
+    "terminatedOwnedIdentities": [
+      {
+        "pid": 95192,
+        "createTime": 1792872057.6600344,
+        "exe": "C:\\Windows\\System32\\conhost.exe",
+        "cmdline": [
+          "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+          "0x4"
+        ],
+        "ppid": 85348
+      },
+      {
+        "pid": 85348,
+        "createTime": 1792872057.6519647,
+        "exe": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+        "cmdline": [
+          "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+          "-s",
+          "-B",
+          "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+          "--listen",
+          "127.0.0.1",
+          "--port",
+          "8192",
+          "--base-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root",
+          "--extra-model-paths-config",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\extra-model-paths.yaml",
+          "--input-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\input",
+          "--output-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output",
+          "--temp-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\temp",
+          "--user-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\user",
+          "--fast-disk",
+          "--disable-auto-launch",
+          "--disable-api-nodes",
+          "--disable-all-custom-nodes",
+          "--whitelist-custom-nodes",
+          "ComfyUI-GGUF-leejet",
+          "novaflow_qwen_bf16_loader",
+          "prototype_frequency_layers_v2"
+        ],
+        "ppid": 31524
+      }
+    ],
+    "skippedIdentities": [],
+    "remainingOwnedIdentities": [],
+    "port8192ListeningAfterStop": false,
+    "exitCode": 15
+  },
+  "resourceAbortReason": null,
+  "totalOwnedRunSeconds": 261.64100000006147,
+  "endedAt": 1792872318.7889369,
+  "existingServicesWereNeverMutated": true,
+  "galleryChanged": false,
+  "productionDefaultChanged": false
+}

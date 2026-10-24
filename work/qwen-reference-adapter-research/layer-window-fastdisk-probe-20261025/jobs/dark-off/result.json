@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "job": "dark-off",
+  "promptId": "27dce665-e2bb-4925-af40-a767588fecfd",
+  "enabled": false,
+  "style": "dark",
+  "newAIAnalysis": false,
+  "additionalAIAnalysisSeconds": 0,
+  "promptSource": "unchanged-baseline-native-prompt",
+  "baseline": {
+    "case": "dark-r10-formal",
+    "graph_sha256": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+    "case_sha256": "06f04b4eedab45b38fffac5c56037a43797e2be96eed93a85d96dd9dcc73307c",
+    "prompt_sha256": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+    "output_sha256": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3"
+  },
+  "nodeInputs": {
+    "model": [
+      "4",
+      0
+    ],
+    "enabled": false,
+    "style_reference_index": 1,
+    "high_scale": 0.5,
+    "low_scale": 1.5,
+    "beta": 2.0,
+    "layer_start": 24,
+    "layer_end": 31,
+    "audit_log": true,
+    "cap_amplification": false,
+    "active_sigma_min": 0.0
+  },
+  "graphSHA256": "239bca14c0a6f5def5b07ac25e498fab74f7fe88e6e81baed71abdd6b16f201a",
+  "output": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\jobs\\dark-off\\output.png",
+    "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\comfy-root\\output\\NF_LAYER_WINDOW_dark_off_00001_.png",
+    "sha256": "26dc932dc7fdc9151bf1e5c288afc7b0231b1a4de7a8a90445c6d780ab4e0d63",
+    "decodedRGBA_SHA256": "307989d61b76676239c3737663c40c7f80493d799d60e8d29ff417c30d8758f1",
+    "width": 1280,
+    "height": 960
+  },
+  "actualNodeAudit": {
+    "auditLines": 0,
+    "disabledModelIdentityPath": true
+  },
+  "uploadSeconds": 0.8589999999385327,
+  "enqueueToSuccessfulHistorySeconds": 58.85999999998603,
+  "individualJobFullSeconds": 62.85899999993853,
+  "includesUploadDownloadAndFree": true,
+  "timingIsNodeSpeedupEvidence": false,
+  "coldWarmEffectsNotControlled": true,
+  "qualityAccepted": false,
+  "referenceStyleAccepted": false,
+  "formalDefaultChanged": false
+}
