@@ -27636,6 +27636,32 @@
       body.novaflow-primary-target-animation [data-novaflow-ai-bottom-workspace="1"] [data-novaflow-ai-prompt-frame="1"] div[style*="position: fixed"][style*="z-index: 9999"][style*="max-height: 320px"] > div > div[style*="display: flex"][style*="height: 28px"][style*="border-radius: 10px"]:first-child:hover {
         background: rgba(255, 255, 255, 0.095) !important;
       }
+      [data-novaflow-history-current="1"],
+      #root [data-novaflow-history-current="1"],
+      #root [data-novaflow-history-current="1"]:hover,
+      body [data-novaflow-history-current="1"]:hover {
+        background: #202020 !important;
+        background-color: #202020 !important;
+        border-color: #32cc98 !important;
+        box-shadow: none !important;
+      }
+      [data-novaflow-history-kind="saved"] > button:first-of-type,
+      #root [data-novaflow-history-kind="saved"] > button:first-of-type {
+        color: #e8d4a6 !important;
+      }
+      [data-novaflow-history-kind="recent"] > button:first-of-type,
+      #root [data-novaflow-history-kind="recent"] > button:first-of-type {
+        color: #aaaaaa !important;
+      }
+      [data-novaflow-history-current-badge="1"] {
+        display: none !important;
+      }
+      [data-novaflow-history-latest-badge="1"] {
+        flex: 0 0 auto;
+        color: #a7cbbc;
+        font-size: 11px;
+        white-space: nowrap;
+      }
       body.novaflow-primary-target-animation [data-novaflow-ai-history-popover-row="1"]:hover {
         background: rgba(255, 255, 255, 0.075) !important;
         background-color: rgba(255, 255, 255, 0.075) !important;
@@ -63220,7 +63246,8 @@
         if (!(row instanceof HTMLElement)) return;
         row.setAttribute("data-novaflow-ai-history-popover-row", "1");
         const children = Array.from(row.children || []).filter((child) => child instanceof HTMLElement);
-        const textControl = children.find((child) => isAiAnimationHistoryPopoverActionText(child.textContent)) || null;
+        const textControl = children.find((child) => child instanceof HTMLButtonElement && child.hasAttribute("aria-pressed"))
+          || children.find((child) => isAiAnimationHistoryPopoverActionText(child.textContent)) || null;
         Array.from(row.querySelectorAll('[data-novaflow-ai-history-popover-text="1"]')).forEach((node) => {
           if (node !== textControl) node.removeAttribute("data-novaflow-ai-history-popover-text");
         });
@@ -63251,9 +63278,10 @@
     const marked = row.querySelector('[data-novaflow-ai-history-popover-text="1"]');
     const textControl = marked instanceof HTMLElement
       ? marked
-      : Array.from(row.children || []).find((child) => (
-        child instanceof HTMLElement && isAiAnimationHistoryPopoverActionText(child.textContent || "")
-      ));
+      : (Array.from(row.children || []).find((child) => child instanceof HTMLButtonElement && child.hasAttribute("aria-pressed"))
+        || Array.from(row.children || []).find((child) => (
+          child instanceof HTMLElement && isAiAnimationHistoryPopoverActionText(child.textContent || "")
+        )));
     if (!(textControl instanceof HTMLElement)) return null;
     if (isAiAnimationPromptHistoryUtilityTarget(target, textControl)) return null;
     return textControl;
@@ -84040,7 +84068,9 @@
 
   function buildArtGeneratePromptHistoryPopoverEntries(key) {
     const group = getArtGeneratePromptHistoryGroup(key);
-    const recent = normalizeArtGeneratePromptHistoryItems(group.recent);
+    const recent = normalizeArtGeneratePromptHistoryItems(group.recent)
+      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+    const currentKey = artGeneratePromptHistoryCompareKey(ART_GENERATE_STATE[key]);
     const seen = new Set();
     const entries = [];
     const add = (item, options = {}) => {
@@ -84049,12 +84079,12 @@
       const compareKey = artGeneratePromptHistoryCompareKey(text);
       if (!compareKey || seen.has(compareKey)) return;
       seen.add(compareKey);
-      entries.push({ item: { ...(item && typeof item === "object" ? item : {}), text }, options });
+      entries.push({ item: { ...(item && typeof item === "object" ? item : {}), text }, options: { ...options, current: Boolean(currentKey && currentKey === compareKey) } });
     };
-    if (recent[0]) add(recent[0], { primary: true });
     group.pinnedSlots.forEach((item, index) => {
       if (item) add(item, { slotIndex0: index });
     });
+    if (recent[0]) add(recent[0], { primary: true });
     recent.slice(1).forEach((item) => add(item));
     return entries.slice(0, ART_GENERATE_PROMPT_HISTORY_TOTAL_CAP);
   }
@@ -84128,7 +84158,12 @@
   function pickArtGeneratePromptHistoryValue(key, text) {
     const value = normalizeArtGeneratePromptHistoryText(text);
     if (!value) return;
+    const kind = key === "negativePrompt" ? "negative" : "positive";
+    document.querySelectorAll(`#${ART_GENERATE_WORKSPACE_ID} [data-novaflow-art-generate-prompt-kind="${kind}"] textarea`).forEach((textarea) => {
+      if (textarea instanceof HTMLTextAreaElement) textarea.value = value;
+    });
     ART_GENERATE_STATE[key] = value;
+    addArtGeneratePromptHistoryValue(key, value);
     closeArtGeneratePromptHistoryPopover(false);
     renderArtGenerateSurfaces({ forceBottom: true });
   }
@@ -84282,8 +84317,9 @@
     const text = normalizeArtGeneratePromptHistoryText(item && item.text);
     if (!text) return null;
     const actions = [];
+    if (options.primary) actions.push(createArtEl("span", { "data-novaflow-history-latest-badge": "1", text: "最近" }));
     if (options.slotIndex0 != null) {
-      actions.push(createArtEl("div", { className: "novaflow-art-generate-history-popover-slot-label", text: `\u8bb0\u5f55${Number(options.slotIndex0) + 1}` }));
+      actions.push(createArtEl("div", { className: "novaflow-art-generate-history-popover-slot-label", text: `已保存 ${Number(options.slotIndex0) + 1}` }));
       actions.push(createArtEl("button", {
         type: "button",
         className: "novaflow-art-generate-history-popover-delete",
@@ -84341,12 +84377,16 @@
     }
     return createArtEl("div", {
       className: "novaflow-art-generate-history-popover-row",
-      "data-primary": options.primary ? "1" : "0"
+      "data-primary": options.primary ? "1" : "0",
+      "data-novaflow-history-kind": options.slotIndex0 != null ? "saved" : "recent",
+      "data-novaflow-history-current": options.current ? "1" : "0"
     }, [
+      options.current ? createArtEl("span", { "data-novaflow-history-current-badge": "1", text: "当前" }) : null,
       createArtEl("button", {
         type: "button",
         className: "novaflow-art-generate-history-popover-text",
         title: text,
+        "aria-pressed": options.current ? "true" : "false",
         "data-novaflow-art-history-action": "pick-text",
         "data-novaflow-art-history-key": key,
         "data-novaflow-art-history-text": text,
