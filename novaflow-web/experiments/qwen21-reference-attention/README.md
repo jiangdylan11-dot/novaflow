@@ -57,3 +57,14 @@ The committed source is byte-identical to the isolated prototype used for these 
 - Both full samples retained the earlier completion level, but the visible style change was small. An independent visual review of gain2 versus the unmodified control found no clear improvement in reference drawing technique, shadow colors or light separation. No broad reference-transfer quality claim or production promotion follows from these samples. The four accepted style baselines remain the regression targets.
 
 These experiments isolate attention weighting from AI prompt generation. The historical accepted prompt is a control, not a new 30B analysis output. No result here demonstrates that 30B outperforms PE.
+
+## Related routing controls, not production candidates
+
+Two further isolated controls checked whether removing direct style VAE conditioning could separate rendering from donor content. They are recorded here to avoid repeating failed approaches; neither changes this node's implementation.
+
+| Route | Case / task | Observed workflow time | Visual result |
+| --- | --- | --- | --- |
+| Source VAE plus retained style VL span; direct source VL span removed | Dark anime, `ed76c723-dfd1-4067-9770-67de39711f71` | 163.733s | Strong anime drawing, but donor umbrella, sailor uniform and outdoor moon/rain scene entered the image. Rejected. |
+| Stock `TextEncodeQwenImage21` with its optional encoder VAE disconnected; both source/style VL spans retained | Dark anime, `3e4fecd7-78b9-48d5-9e6d-ce4b4af6dc9e` | 112.341s | Donor garments, umbrella and setting entered; source wink was lost. Rejected. |
+
+Both used normal BF16 GGUF, 25 steps, CFG3, the exact accepted historical prompt/negative, original source/style budget, seed and an independent 1280x960 target latent. The decoder VAE stayed connected; the native decoded image was saved without resizing. These are observed runs, not controlled speed comparisons. Real encoding and sampling succeeded, but visual-only conditioning is not style-only conditioning. Whole-reference gains and routing alone have not demonstrated reliable style/content separation. The maintained route and the four accepted regression targets remain unchanged. The owned QA server was stopped after its queue became idle; existing services were preserved.
