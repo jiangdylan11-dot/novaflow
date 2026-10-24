@@ -1,0 +1,12 @@
+{
+  "sharedBatchResult": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+  "sharedLoadReceipt": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\load.json",
+  "sharedIdentityReceipt": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\identity.json",
+  "sharedReleaseReceipt": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\release.json",
+  "sharedAfterStatus": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\after-status.json",
+  "independentCaseUnload": false,
+  "copiedOnlyAfterSharedReleaseConfirmed": true,
+  "sharedSettingsSHA256": "23e90ca85da1028b8c559a1dd633e11b80f7d4648cbb0a89386182e73c9ccda6",
+  "identity.jsonSHA256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e",
+  "release.jsonSHA256": "7ecce9a1ca60c5cb11f31ce4bbc4b9ccb4555781c4eb3715f4fe7818f16908da"
+}

@@ -1,0 +1,2 @@
+# Preserve the exact bytes bound by the user-reference experiment receipts.
+usr8-*/** -text whitespace=cr-at-eol,-blank-at-eof

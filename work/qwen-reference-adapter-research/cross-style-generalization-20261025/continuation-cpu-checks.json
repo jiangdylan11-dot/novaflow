@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "checks": [
+    "actual Dark complete raw accepted without a single prompt character change",
+    "source exact copy is not required",
+    "JSON fence transport preserved",
+    "missing image marker still rejected",
+    "exact six unattempted cases selected",
+    "40 original frozen hashes retained"
+  ],
+  "runtimeStarted": false,
+  "controllerSHA256": "0ec3d6b86e3c37e4a4da8a956afca11610689df9f34b4e0ff6d5f46b29521e67",
+  "darkPromptSHA256": "b3d19c9f768b145bbe95b77541910d36c9ecad44d9e1db8105cc58301b008af5"
+}

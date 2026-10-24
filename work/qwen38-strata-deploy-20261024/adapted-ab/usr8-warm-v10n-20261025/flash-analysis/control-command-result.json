@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "command": "status",
+  "phase": "begin",
+  "state": "complete",
+  "startedAt": 1792875464.8484437,
+  "events": [],
+  "updatedAt": 1792875465.190769,
+  "finishedAt": 1792875465.190769,
+  "result": {
+    "ok": true,
+    "ownedHttpAlive": false,
+    "portOpen": false,
+    "heavyProcesses": []
+  },
+  "errorCode": null,
+  "error": null
+}

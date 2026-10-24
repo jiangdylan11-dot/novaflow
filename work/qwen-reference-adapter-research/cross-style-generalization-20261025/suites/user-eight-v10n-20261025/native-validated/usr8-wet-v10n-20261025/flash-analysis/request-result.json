@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "model": "swift-1.5-qwen38-iq2-xs",
+  "attempted": true,
+  "qualityAccepted": false,
+  "formalDefaultChanged": false,
+  "firstReasoningMs": 6061.671,
+  "firstContentMs": 20531.201,
+  "usage": {
+    "prompt_tokens": 3915,
+    "completion_tokens": 1386,
+    "total_tokens": 5301,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 3915,
+    "prompt_ms": 4726.0,
+    "prompt_per_token_ms": 1.207,
+    "prompt_per_second": 828.4,
+    "predicted_n": 1386,
+    "predicted_ms": 28227.7,
+    "predicted_per_token_ms": 20.366,
+    "predicted_per_second": 49.1,
+    "draft_n": 1191,
+    "draft_n_accepted": 736
+  },
+  "promptChars": 2937,
+  "promptSHA256": "bf5b2160edb0b2b6e8bd0ae8466b70485a4ca0d8ba773cf785681e2246cfda2e",
+  "finishReason": "stop",
+  "nativePromptUnmodified": true,
+  "requestMs": 34264.63,
+  "reasoningChars": 3552
+}

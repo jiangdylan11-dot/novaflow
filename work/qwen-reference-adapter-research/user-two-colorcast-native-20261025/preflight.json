@@ -1,0 +1,625 @@
+{
+  "ok": true,
+  "preflightOnly": true,
+  "serverStarted": false,
+  "plan": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-plan-20261025.json",
+    "sha256": "a2a513f839d31cb3db469191e5ec8ac08113164b33eb071f5e1bb653e4229639"
+  },
+  "command": [
+    "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+    "-s",
+    "-B",
+    "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+    "--listen",
+    "127.0.0.1",
+    "--port",
+    "8192",
+    "--base-directory",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root",
+    "--extra-model-paths-config",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\extra-model-paths.yaml",
+    "--input-directory",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\input",
+    "--output-directory",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\output",
+    "--temp-directory",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\temp",
+    "--user-directory",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\user",
+    "--fast-disk",
+    "--disable-pinned-memory",
+    "--disable-auto-launch",
+    "--disable-api-nodes",
+    "--disable-all-custom-nodes",
+    "--whitelist-custom-nodes",
+    "ComfyUI-GGUF-leejet",
+    "novaflow_qwen_bf16_loader"
+  ],
+  "jobOrder": [
+    "usr8-bright-v10n-20261025-colorcast-formal",
+    "usr8-cg-v10n-20261025-colorcast-formal"
+  ],
+  "nodeWhitelist": [
+    "ComfyUI-GGUF-leejet",
+    "novaflow_qwen_bf16_loader"
+  ],
+  "experimentalLayerNodePresent": false,
+  "resourceGuard": {
+    "minRAMGiB": 4.0,
+    "minVRAMFreeMiB": 768,
+    "sustainedSeconds": 2.0
+  },
+  "nvidiaSmi": "C:\\Windows\\system32\\nvidia-smi.EXE",
+  "existingServicesReadOnly": {
+    "8191": {
+      "listening": false
+    },
+    "8198": {
+      "listening": false
+    },
+    "8188": {
+      "listening": true,
+      "queue_running": [],
+      "queue_pending": []
+    },
+    "8189": {
+      "listening": true,
+      "queue_running": [],
+      "queue_pending": []
+    },
+    "8190": {
+      "listening": true,
+      "queue_running": [],
+      "queue_pending": []
+    }
+  },
+  "protectedFiles": {
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\output.png": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\NF_AB_dark-r10-formal_flash_turbo8_cfg3_00001_.png": "8bbbd360216faa49629ff964b724962914ed6b5b85b0fe775ffc97f4eb0d0fc3",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\graph.json": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\graph.json": "5ece70d7579b64d3a17649d1f8186205a38f1b0dc6bec3328c29d1da29c335f2",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\prompt.txt": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\prompt.txt": "b646f0e734db3b7a600f9c509a728bb9e747e0943de6db75be3f0fbcbee26af2",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\generation-result.json": "beedcc0b9f57b3a3a88d3339538a5a73791b2ae3a678fe613864ad539c9fb42a",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\result.json": "beedcc0b9f57b3a3a88d3339538a5a73791b2ae3a678fe613864ad539c9fb42a",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\generation-provenance.json": "25c177aca7474682e70e4fdb0d6e5f661f88c53f56103a8c6180524ab1ae0d8e",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\generation-flash\\provenance.json": "25c177aca7474682e70e4fdb0d6e5f661f88c53f56103a8c6180524ab1ae0d8e",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\formal-build-proof.json": "a375698ccc72dad2ac79b53b03e410e460a2959a3cdbe0d0cb34986a5fca23d3",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-formal\\formal-build-proof.json": "a375698ccc72dad2ac79b53b03e410e460a2959a3cdbe0d0cb34986a5fca23d3",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\analysis-result.json": "30bc79bcc1ee298aa8116ea8e1941f1640cd8b141d0474def7c8d45de933c718",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-source-aligned\\flash-analysis\\result.json": "30bc79bcc1ee298aa8116ea8e1941f1640cd8b141d0474def7c8d45de933c718",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\analysis-raw.txt": "621e18f534a583cdf6efd1db85bebecd5df894c27acd0121f06599cecc8487d8",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-source-aligned\\flash-analysis\\raw.txt": "621e18f534a583cdf6efd1db85bebecd5df894c27acd0121f06599cecc8487d8",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\analysis-parsed.json": "e3733cce5a7d03804077d8cdb0d261e80f633ffade1829848acc39f9d071ec6b",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-source-aligned\\flash-analysis\\parsed.json": "e3733cce5a7d03804077d8cdb0d261e80f633ffade1829848acc39f9d071ec6b",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\analysis-request-metadata.json": "b825baa643b3184e68d080746f485ebea6d2c9ba5f53ede1750c51aada0211fb",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\dark-r10-source-aligned\\flash-analysis\\request-metadata.json": "b825baa643b3184e68d080746f485ebea6d2c9ba5f53ede1750c51aada0211fb",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\flash-system-v10.json": "0c666fce5cd6f048cd331d6e42420c4a99113565078a0e6d5e609f77fb8e2e8f",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\flash-v10-design.json": "0c666fce5cd6f048cd331d6e42420c4a99113565078a0e6d5e609f77fb8e2e8f",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\source.jpg": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\style.png": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+    "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\A1W8ZDVXEH79NV5G0V0N6FYWJ0.png": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\accepted-dark-r10\\manifest.json": "23d3be83dbbb479de5b3a7e469248d3edeeab2eafde2353171baa139171bc491",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\manifest.json": "0e56ce36441311578da80016b2e57d7a752c529334b94fdedd405841a33f0626",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\data.js": "bf1badc661e875210acdfe86a9acfafc2746e684db6793dce8cda1d01d843480",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\gallery.js": "e5ffc7393925f30ef61af3982dd8129166561d42144012ce9e74d030656246c3",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\assets\\strata-flash-bright-r10-source-aligned-r10-86e0a1d053f3.png": "86e0a1d053f3eaad82660a213107b54b7ef5599459a9f76318c0894db5c1c8e9",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-r10-source-aligned\\generation-flash\\NF_AB_bright-r10-source-aligned_flash_turbo8_cfg3_00001_.png": "86e0a1d053f3eaad82660a213107b54b7ef5599459a9f76318c0894db5c1c8e9",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\assets\\strata-flash-bright-balanced-cache-v3-formal-674dcfc105eb.png": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\bright-balanced-cache-v3-formal\\generation-flash\\NF_AB_bright-balanced-cache-v3-formal_flash_turbo8_cfg3_00001_.png": "674dcfc105eb2799b4ec72e63b64904af3993b86a9295a2cbbc57f97c45c7312",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\strata-flash-bright-balanced-cache-v3-formal.json": "d8e0cd4fdb9ce57c05a56ad781064813e39256e3e4ee077067eb1b5925f8c858",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\strata-flash-dark-r10-formal-r10-formal.json": "dabc297c52b8261b65a2f0a17415653874f714db4f28cff52f6b84572aa02668",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\strata-flash-bright-r10-source-aligned-r10.json": "fab7af6baba579d8c1a9fdd733e431ea8e7ada6b18240c8fbc381b309fddba56",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\strata-adapted-ab-dark-r3-pe.json": "9435e46bd4b9a7048314c48d91e899a85db1f9a0d97d449db4715f49ac0c094f",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\strata-adapted-ab-dark-r2-pe.json": "5133ce393e93798f530fcd84bcc23799ac703c269de874ab54759ed2f0a384db",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\strata-adapted-ab-dark-r1-pe.json": "a423aa6daa3e962c20059bea04539d936dd54a5f6349aaa316d12c7950689249",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\quality-bright-source-vl-full-style-vae.json": "5a1b5689fa216fb7ef5c47d9de6c9347796f1c3bc766bb43611ab7ddf9b3ca03",
+    "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\gallery-20261024\\records\\quality-bright-source-vl-style-vae.json": "e59e1f32708a21d3f5f80880abe95d18705993357ba65e6fd30dc6a0f1267f74"
+  },
+  "knownLoaderPythonFiles": [
+    {
+      "path": "E:\\NovaFlow\\custom_nodes\\ComfyUI-GGUF-leejet",
+      "pythonFiles": {
+        "__init__.py": "6d64d9ffa5e0e0107805cef67a2e3b1329d4cc613505f5cba8e8c08b2131580a",
+        "dequant.py": "215369438d96c372c09eb8701eec3c3b0348084c96dd3ea83872601ebed42017",
+        "loader.py": "9b84405e362d443d86d8b5e473565586f699b86abfacdd621dc90e671c0d845b",
+        "nodes.py": "16be3b08b13de6279fc432addc628320019fcb24963cbc6b52b248de8f06316e",
+        "ops.py": "b927e24a7b00c181e9511900fb5afde45464793cf460e1d39a5e736ba093ce64",
+        "tools\\convert.py": "70df458256019dd7d2884f9cf28a1365613c37441a9a061a134d3a183563a1fb",
+        "tools\\fix_5d_tensors.py": "a9368a0a5695903e48c53ed7f817384a86493347d602daa62a773483396a8d49",
+        "tools\\fix_lines_ending.py": "f12b56c7a64413cc12570448f84f59587bab6b3bc57276cff7e61ca8fb5c5cc0",
+        "tools\\read_tensors.py": "8edead4f867f3573518b9620157129f086a824c9a941f26adcf52db9b589098a"
+      }
+    },
+    {
+      "path": "E:\\NovaFlow\\custom_nodes\\novaflow_qwen_bf16_loader",
+      "pythonFiles": {
+        "__init__.py": "93e887c30293975e8823e27d95e65937a8166f51ea76050c8b8e76d339996e32"
+      }
+    }
+  ],
+  "modelFiles": [
+    {
+      "path": "E:\\NovaFlow\\models\\diffusion_models\\Qwen-Image-2.1-Turbo-BF16.gguf",
+      "bytes": 14230275808,
+      "liveMultiGBSHARecomputed": false
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\text_encoders\\qwen3vl_8b_bf16_heretic.safetensors",
+      "bytes": 17534334584,
+      "liveMultiGBSHARecomputed": false
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\vae\\qwen_image_2.1_vae_bf16.safetensors",
+      "bytes": 675509688,
+      "liveMultiGBSHARecomputed": false
+    }
+  ],
+  "frozenCases": [
+    {
+      "id": "usr8-bright-v10n-20261025-colorcast-formal",
+      "formalCaseDirectory": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025-colorcast-formal",
+      "files": [
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025-colorcast-formal\\case.json",
+          "sha256": "2b591217ef684c072740ff1bc4d9c35d47cc69dbe26c9c933b1e92f619b5b18d"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025-colorcast-formal\\worker-graph.json",
+          "sha256": "64fe0d1a59ef8d5ab3ea3a27deff7d3aa7c3987b53b14b7059410f1967be4eec"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025-colorcast-formal\\formal-build-proof.json",
+          "sha256": "9d5bfa7ac0878c1da776443a1c1cde24a468f9429e53fa2e93eda5d766195d6b"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025-colorcast-formal\\flash-analysis\\result.json",
+          "sha256": "8064b194b488c423fcd00a589118d1c5fea4f73616cf76440dd127dafb471fab"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\result.json",
+          "sha256": "b8058db39942f3ddf9bc080f6c2eccbfa9514c35c1069f27b161a5a8ba8015c6"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\request-metadata.json",
+          "sha256": "e0ece4d94cdbb1dc943fedc739f854bc63a633519c2fd0d48a8712aa9c11f9ab"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\identity.json",
+          "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\release.json",
+          "sha256": "b7771dbd89e98a5def60f547deb4bc14e469b2de233563f2648263ae2c6c16a0"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\events.json",
+          "sha256": "506ceba942c3dcfe9bd4b18f600202152129177c25bc5bcc9a5944fb3be97118"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\raw.txt",
+          "sha256": "8718b1551dab786ad024b1615e9cd08197107a2ef8eea0511cc060aac4e5c040"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\parsed.json",
+          "sha256": "199c0e4d118b71119c6c294ba01c95aee6b4a14e4610ee0f66264243a930d5ec"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\prompt.txt",
+          "sha256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+          "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\shared-runtime-provenance.json",
+          "sha256": "f3475d5e627ad39112ad3993a2f803dc91a9bdda09fc6c7507ca0d107014cdc0"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\load.json",
+          "sha256": "e552860a071a72d9b40025c5005c29be8f39ac471c031cd121d6c217e5b411ad"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\identity.json",
+          "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\release.json",
+          "sha256": "b7771dbd89e98a5def60f547deb4bc14e469b2de233563f2648263ae2c6c16a0"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\after-status.json",
+          "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+          "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+          "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\shared-colorcast-only-negative-policy.json",
+          "sha256": "9d4dc1510c836749bd32702f5b833b2ecd98b846ebff0a1352dabed5cd5ccc4a"
+        }
+      ],
+      "graphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025-colorcast-formal\\worker-graph.json",
+      "graphSHA256": "64fe0d1a59ef8d5ab3ea3a27deff7d3aa7c3987b53b14b7059410f1967be4eec",
+      "promptPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\prompt.txt",
+      "promptSHA256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8",
+      "analysisResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\result.json",
+      "analysisModel": "swift-1.5-qwen38-iq2-xs",
+      "analysisTimingScope": "composite-shared-batch-request-only",
+      "originalAnalysisTotalSeconds": null,
+      "originalAnalysisRequestSeconds": 31.689616,
+      "sharedAnalysisTimingProvenance": {
+        "batchResult": {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+          "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+        },
+        "runtimeProvenance": {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\shared-runtime-provenance.json",
+          "sha256": "f3475d5e627ad39112ad3993a2f803dc91a9bdda09fc6c7507ca0d107014cdc0"
+        },
+        "case": "usr8-bright-v10n-20261025",
+        "actualSession": {
+          "sessionId": "session-1-original",
+          "caseIds": [
+            "usr8-bright-v10n-20261025",
+            "usr8-dark-v10n-20261025"
+          ],
+          "receipt": {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+            "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+          },
+          "loadSeconds": 44.229251,
+          "unloadSeconds": 3.8625700000000003,
+          "executionSeconds": 104.510757,
+          "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+          "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+        },
+        "sessions": [
+          {
+            "sessionId": "session-1-original",
+            "caseIds": [
+              "usr8-bright-v10n-20261025",
+              "usr8-dark-v10n-20261025"
+            ],
+            "receipt": {
+              "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+              "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+            },
+            "loadSeconds": 44.229251,
+            "unloadSeconds": 3.8625700000000003,
+            "executionSeconds": 104.510757,
+            "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+            "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+          },
+          {
+            "sessionId": "session-2-continuation",
+            "caseIds": [
+              "usr8-warm-v10n-20261025",
+              "usr8-cg-v10n-20261025",
+              "usr8-soft-v10n-20261025",
+              "usr8-wet-v10n-20261025",
+              "usr8-graphic-v10n-20261025",
+              "usr8-eastern-v10n-20261025"
+            ],
+            "receipt": {
+              "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+              "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+            },
+            "loadSeconds": 31.132403999999998,
+            "unloadSeconds": 4.592321,
+            "executionSeconds": 225.348571,
+            "startedAtUTC": "2026-10-24T20:53:59.868648Z",
+            "finishedAtUTC": "2026-10-24T20:57:45.232194Z"
+          }
+        ],
+        "sumSessionExecutionSeconds": 329.859328,
+        "sumSharedLoadSeconds": 75.361655,
+        "sumSharedUnloadSeconds": 8.454891,
+        "wallClockSpanSeconds": 654.6057872772217,
+        "wallClockSpanIncludesInterSessionGap": true,
+        "sharedLoadUnattributed": true,
+        "independentCaseUnload": false,
+        "allocatedSharedOverheadToThisCase": false,
+        "receipts": [
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\load.json",
+            "sha256": "e552860a071a72d9b40025c5005c29be8f39ac471c031cd121d6c217e5b411ad"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\identity.json",
+            "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\release.json",
+            "sha256": "b7771dbd89e98a5def60f547deb4bc14e469b2de233563f2648263ae2c6c16a0"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\after-status.json",
+            "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+            "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+            "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+          }
+        ]
+      },
+      "additionalAnalysisDuringRenderSeconds": 0,
+      "references": [
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+          "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+          "bytes": 180849,
+          "size": [
+            1280,
+            960
+          ],
+          "role": "source"
+        },
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\RVDS892WEPDK7BFK5CX9A9T840.webp",
+          "sha256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+          "bytes": 980854,
+          "size": [
+            3328,
+            4864
+          ],
+          "role": "style"
+        }
+      ],
+      "renderer": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\novaflow-web\\worker-renderer\\novaflow-brand-runtime.js",
+        "sha256": "5392f2c9cf9dc816c07c830353937f1234a6b2998ffd0963b38d519332955d50"
+      },
+      "nativeSSEToPromptExact": true
+    },
+    {
+      "id": "usr8-cg-v10n-20261025-colorcast-formal",
+      "formalCaseDirectory": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-colorcast-formal",
+      "files": [
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-colorcast-formal\\case.json",
+          "sha256": "dc79ddd39eca5946dd6f9aae55413884fd08e8b4d265a7a6df4e779279461d51"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-colorcast-formal\\worker-graph.json",
+          "sha256": "56ffcf0719b895ea5e52f6a4e90437e23012e580e1677333b080a9e68658b14c"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-colorcast-formal\\formal-build-proof.json",
+          "sha256": "193d3b996aa8ff977bb3dd9bcc33c715955b36838d3919e8df4b62dc5b0dafea"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-colorcast-formal\\flash-analysis\\result.json",
+          "sha256": "0a808eb553377e017d37ae8c2a0bbe0cf2e5fced9bc8252f6334ba0fc2c8a91c"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\result.json",
+          "sha256": "e6a68d869934aa1d0f20999821254cfd3806ad24859054e380237c155b4def4b"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\request-metadata.json",
+          "sha256": "27efd13ba906361eff9c7b2da2edf1f0317c9ef08e8bb5fd18715560e1091d81"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\identity.json",
+          "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\release.json",
+          "sha256": "7ecce9a1ca60c5cb11f31ce4bbc4b9ccb4555781c4eb3715f4fe7818f16908da"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\events.json",
+          "sha256": "82c51ee8a6fef5e2ae200fb55a027b54e08ea898f06b7cc7d7f67027d90f66bb"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\raw.txt",
+          "sha256": "dd313781425489d60f38e6b89df2ae828c445cbc381af1a5f0b253dc69b61699"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\parsed.json",
+          "sha256": "b95532ede0c0f29647abc47e6268536f159c8adff1c06b90950dea73e48759ae"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\prompt.txt",
+          "sha256": "6c2bb03698ae972f2011537c99d530af8fa7944aeacad9c3400d40cd8692d8d2"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+          "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\shared-runtime-provenance.json",
+          "sha256": "44e5acfdab50c0656e052f9e85660c3a2aed312c01bdbd015a3976c0e40b64a4"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\load.json",
+          "sha256": "3d657cd960357456b9c2d015cdaf6b05d2208e1d33a83355acc6a52fe10594e2"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\identity.json",
+          "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\release.json",
+          "sha256": "7ecce9a1ca60c5cb11f31ce4bbc4b9ccb4555781c4eb3715f4fe7818f16908da"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\after-status.json",
+          "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+          "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+          "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\shared-colorcast-only-negative-policy.json",
+          "sha256": "9d4dc1510c836749bd32702f5b833b2ecd98b846ebff0a1352dabed5cd5ccc4a"
+        }
+      ],
+      "graphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-colorcast-formal\\worker-graph.json",
+      "graphSHA256": "56ffcf0719b895ea5e52f6a4e90437e23012e580e1677333b080a9e68658b14c",
+      "promptPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\prompt.txt",
+      "promptSHA256": "6c2bb03698ae972f2011537c99d530af8fa7944aeacad9c3400d40cd8692d8d2",
+      "analysisResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\result.json",
+      "analysisModel": "swift-1.5-qwen38-iq2-xs",
+      "analysisTimingScope": "composite-shared-batch-request-only",
+      "originalAnalysisTotalSeconds": null,
+      "originalAnalysisRequestSeconds": 27.808476,
+      "sharedAnalysisTimingProvenance": {
+        "batchResult": {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+          "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+        },
+        "runtimeProvenance": {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\shared-runtime-provenance.json",
+          "sha256": "44e5acfdab50c0656e052f9e85660c3a2aed312c01bdbd015a3976c0e40b64a4"
+        },
+        "case": "usr8-cg-v10n-20261025",
+        "actualSession": {
+          "sessionId": "session-2-continuation",
+          "caseIds": [
+            "usr8-warm-v10n-20261025",
+            "usr8-cg-v10n-20261025",
+            "usr8-soft-v10n-20261025",
+            "usr8-wet-v10n-20261025",
+            "usr8-graphic-v10n-20261025",
+            "usr8-eastern-v10n-20261025"
+          ],
+          "receipt": {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+            "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+          },
+          "loadSeconds": 31.132403999999998,
+          "unloadSeconds": 4.592321,
+          "executionSeconds": 225.348571,
+          "startedAtUTC": "2026-10-24T20:53:59.868648Z",
+          "finishedAtUTC": "2026-10-24T20:57:45.232194Z"
+        },
+        "sessions": [
+          {
+            "sessionId": "session-1-original",
+            "caseIds": [
+              "usr8-bright-v10n-20261025",
+              "usr8-dark-v10n-20261025"
+            ],
+            "receipt": {
+              "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+              "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+            },
+            "loadSeconds": 44.229251,
+            "unloadSeconds": 3.8625700000000003,
+            "executionSeconds": 104.510757,
+            "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+            "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+          },
+          {
+            "sessionId": "session-2-continuation",
+            "caseIds": [
+              "usr8-warm-v10n-20261025",
+              "usr8-cg-v10n-20261025",
+              "usr8-soft-v10n-20261025",
+              "usr8-wet-v10n-20261025",
+              "usr8-graphic-v10n-20261025",
+              "usr8-eastern-v10n-20261025"
+            ],
+            "receipt": {
+              "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+              "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+            },
+            "loadSeconds": 31.132403999999998,
+            "unloadSeconds": 4.592321,
+            "executionSeconds": 225.348571,
+            "startedAtUTC": "2026-10-24T20:53:59.868648Z",
+            "finishedAtUTC": "2026-10-24T20:57:45.232194Z"
+          }
+        ],
+        "sumSessionExecutionSeconds": 329.859328,
+        "sumSharedLoadSeconds": 75.361655,
+        "sumSharedUnloadSeconds": 8.454891,
+        "wallClockSpanSeconds": 654.6057872772217,
+        "wallClockSpanIncludesInterSessionGap": true,
+        "sharedLoadUnattributed": true,
+        "independentCaseUnload": false,
+        "allocatedSharedOverheadToThisCase": false,
+        "receipts": [
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\load.json",
+            "sha256": "3d657cd960357456b9c2d015cdaf6b05d2208e1d33a83355acc6a52fe10594e2"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\identity.json",
+            "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\release.json",
+            "sha256": "7ecce9a1ca60c5cb11f31ce4bbc4b9ccb4555781c4eb3715f4fe7818f16908da"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\after-status.json",
+            "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+            "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+          },
+          {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+            "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+          }
+        ]
+      },
+      "additionalAnalysisDuringRenderSeconds": 0,
+      "references": [
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+          "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+          "bytes": 180849,
+          "size": [
+            1280,
+            960
+          ],
+          "role": "source"
+        },
+        {
+          "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\92S8TJM12JWRA6NW8S0PD6ASE0.jpg",
+          "sha256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+          "bytes": 245756,
+          "size": [
+            768,
+            1344
+          ],
+          "role": "style"
+        }
+      ],
+      "renderer": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\novaflow-web\\worker-renderer\\novaflow-brand-runtime.js",
+        "sha256": "5392f2c9cf9dc816c07c830353937f1234a6b2998ffd0963b38d519332955d50"
+      },
+      "nativeSSEToPromptExact": true
+    }
+  ],
+  "runner": {
+    "planSHA256": "a2a513f839d31cb3db469191e5ec8ac08113164b33eb071f5e1bb653e4229639",
+    "runner": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch-colorcast.py",
+    "runnerSHA256": "cde152364b5fbe3ce4de641aecd71c079ddff5248008b6749ba31047500a7a47",
+    "runtimeCoreSHA256": "11ec85ec4dd37ed3539ba8c6145b396e79a90981566e88a36fee775c1f079cc6"
+  },
+  "fastDiskRAMBenefitGuaranteed": false
+}

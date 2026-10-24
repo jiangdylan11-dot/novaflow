@@ -1,0 +1,20 @@
+{
+  "schema": "nf.shared-negative-policy-candidate.v1",
+  "scope": "universal-style-transfer",
+  "styleSpecific": false,
+  "baseAnalysisContractSHA256": "b1b601dfeb08fa901f041fad1a19fe00aa3d7d562a9abf3c55637da65051ee70",
+  "negativePrompt": "",
+  "negativePromptUTF8SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "reason": "Same empty negative frozen before all selected new-reference generations; no per-reference policy.",
+  "requiredGeneration": {
+    "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+    "steps": 8,
+    "cfg": 3,
+    "seed": 54792256,
+    "width": 1280,
+    "height": 960,
+    "frequencyAdapter": false
+  },
+  "qualityGate": "Review each actual reference/output pair; this new suite does not inherit accepted Dark quality and cannot promote defaults.",
+  "formalDefaultChanged": false
+}

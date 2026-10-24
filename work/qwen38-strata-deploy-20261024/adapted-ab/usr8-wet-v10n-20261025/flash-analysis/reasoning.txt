@@ -1,0 +1,53 @@
+Let me analyze both images carefully.
+
+**Image 1 (Source Content):**
+- A young woman with long reddish-brown wavy hair
+- She is winking (one eye closed, one eye open) with a playful smile
+- A small beauty mark/mole visible on her left cheek (viewer's right side)
+- She's wearing a navy and white striped top (horizontal stripes)
+- She's holding a clear plastic cup with a milky/cream-colored drink (looks like milk tea) with a straw, in her right hand (raised up)
+- Red nail polish on her fingernails
+- Setting: an airport terminal - rows of gray seats, large glass windows, overhead signage with yellow/amber text, ceiling with linear lighting strips
+- The scene is interior, airport waiting area
+
+**Image 2 (Style Reference):**
+- Anime style, highly detailed illustration
+- The character is a teal-haired anime girl (Hatsune Miku-like)
+- Key artistic features:
+  - Very saturated, vibrant color palette with strong teal/cyan tones
+  - Wet/glossy rendering - everything appears wet with water droplets
+  - Strong luminous glow from the vending machine behind, creating a cool blue backlight
+  - High contrast between the dark background and the brightly lit subject
+  - Detailed hair rendering with individual strands, glossy highlights, and wet texture
+  - Skin rendered with soft blush, subtle shading, and a luminous quality
+  - Eyes are large, detailed, with rich iris coloring and reflective highlights
+  - Strong depth hierarchy: foreground subject is crisp and detailed, background is softer
+  - The background elements (vending machine) are rendered with bright, glowing, almost neon-like illumination
+  - Wet surface reflections on the ground
+  - The overall mood is cool, luminous, with a strong sense of atmospheric moisture
+  - The rendering style is polished anime illustration with rich gradients, glossy material responses, and a cohesive cool-toned color scheme
+  - Strong edge definition on hair strands, soft blending on skin
+  - The lighting is dramatic: a strong cool light source from behind (the vending machine) creating rim lighting, combined with frontal soft illumination on the face
+
+Now I need to write the style transfer brief. The key transferable elements from Image 2:
+1. Highly saturated, cool-toned color palette with strong luminosity
+2. Glossy, wet-looking material rendering - surfaces appear moist and reflective
+3. Strong backlight/rim-lighting creating a luminous glow around the subject
+4. Detailed hair rendering with individual strands, glossy highlights, and wet texture
+5. Soft, luminous skin rendering with subtle blush
+6. Large, expressive eyes with rich iris detail
+7. Strong depth hierarchy - foreground crisp, background softer
+8. Background elements rendered with glowing, almost neon-like illumination
+9. High contrast between dark background areas and brightly lit subject
+10. Polished anime illustration style with rich gradients
+
+The source scene is an airport terminal. I need to relit the airport in the target art direction while keeping the airport structures recognizable.
+
+Let me write the sourceContent sentence:
+"A young woman with long reddish-brown wavy hair winks playfully while holding up a clear cup of milky drink with a straw, wearing a navy-and-white striped top, seated among rows of gray airport terminal seats beneath linear ceiling lights and large glass windows with illuminated signage."
+
+Now the prompt needs to be a complete execution brief. Let me draft it.
+
+The rendering class is "anime" since Image 2 is clearly anime illustration.
+
+Let me write the full prompt now.

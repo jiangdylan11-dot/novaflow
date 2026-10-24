@@ -1,0 +1,13 @@
+{
+  "schema": "nf.qa.user-reference-only-steering.v1",
+  "userInstruction": "算了你找的这些图都太丑了。不要搞了。就用我的图",
+  "onlineReferenceSearchStopped": true,
+  "downloadedCandidatesUsedInAnalysis": false,
+  "downloadedCandidatesUsedInGeneration": false,
+  "downloadedCandidatesPublished": false,
+  "onlineEightStyleSuiteWasNeverExecuted": true,
+  "activeSelection": "Only the user's existing original references in C:/Users/jiang/OneDrive/Desktop/参考风格",
+  "generation": {"variant": "Turbo", "steps": 8, "cfg": 3},
+  "newExperimentalNode": false,
+  "formalDefaultChanged": false
+}

@@ -1,0 +1,296 @@
+{
+  "schema": "nf.native-style-analysis-text-audit.v1",
+  "suiteId": "user-eight-v10n-20261025",
+  "scope": "Read-only audit of complete native Flash answers against directly viewed original source/reference images. This is not generated-image quality or style-transfer acceptance.",
+  "textOnlyAudit": true,
+  "generatedImageQualityAssessed": false,
+  "promptsModified": false,
+  "inferencePerformedByReviewer": false,
+  "conclusion": "The shared protocol produces visibly different directions for wet, graphic and eastern references, but still has generic anime/material language, warm-light overgeneralization and a few content errors. All eight need actual output/reference review; complete JSON is not proof of successful transfer.",
+  "source": {
+    "path": "C:/Users/jiang/OneDrive/Desktop/photo_2026-10-22_20-57-15.jpg",
+    "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "directlyViewed": true,
+    "explicitPhoto21_07Used": false
+  },
+  "sharedFindings": [
+    "All prompts retain explicit image1/source and image2/style markers and the airport subject relationship. A non-verbatim sourceContent sentence is logged rather than repaired or treated as semantic failure.",
+    "Several answers reuse warm golden highlights, glossy hair strands and sharp-subject/soft-background language. These phrases are sometimes plausible, but their recurrence does not demonstrate recognition of the reference's specific rendering construction.",
+    "renderingClass is only a coarse label. In particular, anime does not by itself disprove CG-like rendering; the executable prompt's actual instructions and resulting image must be assessed.",
+    "CG assigns left cheek and Eastern assigns right hand despite the system's instruction not to guess sides. These are avoidable source-content commitments, not evidence of accurate subject-side recognition.",
+    "The old Dark failure was an overly strict verbatim-source check. Its original complete raw answer remains untouched and is independently validated without another inference."
+  ],
+  "cases": [
+    {
+      "key": "bright",
+      "case": "usr8-bright-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "Plausible but generic: crisp contours, grouped hair and directional separation fit the clean cel/painted anime reference; smooth gradient shading underdescribes its decisive painted shadow planes.",
+      "lightColorAssessment": "Partial mismatch risk: the reference is dominated by daylight sky blues, clean whites and pink/cool shadow planes, with local gold hair. The prompt instead promotes warm luminous interior glow and golden signage accents; local gold may have become a global warm-light rule.",
+      "donorContentAssessment": "No explicit donor blonde hair, maid dress, birds or flowers were imported into the subject instruction.",
+      "sourceContentConcerns": [
+        "off-shoulder top is a finer garment classification than clearly established by the source's wide neckline; it should not be treated as an authoritative garment edit"
+      ],
+      "quotes": [
+        "warm, luminous interior glow",
+        "clean crisp linework",
+        "smooth gradient shading"
+      ],
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "8718b1551dab786ad024b1615e9cd08197107a2ef8eea0511cc060aac4e5c040",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 31689.616,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": true,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\RVDS892WEPDK7BFK5CX9A9T840.webp",
+        "originalReferenceSHA256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f"
+      }
+    },
+    {
+      "key": "dark",
+      "case": "usr8-dark-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "Reasonably aligned at the textual level: clean anime contours, broad layered glossy hair masses and large shaded planes are present. Gradient/flat-plane language remains less specific than the reference's detailed edge and fabric rendering.",
+      "lightColorAssessment": "Cool ambient recession, deep shadows and selective focal light reflect the night reference. It does not explicitly import the donor's moon or rain. Generic cool haze and warm focal accents still require image verification.",
+      "donorContentAssessment": "No explicit umbrella, school uniform, red eyes or outdoor replacement is instructed.",
+      "sourceContentConcerns": [],
+      "quotes": [
+        "cool atmospheric haze, deep shadows",
+        "broad glossy layered shapes",
+        "rather than replacing them with the donor's scenery"
+      ],
+      "validationNote": "Complete legal JSON and both image markers were present. sourceContent was grammatically paraphrased in the final sentence; the original failed receipt is preserved, and validated views do not change the prompt.",
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "a9b0295369ca6795db45423650af7c12945511d3d552ebba076f1e2ae2932e54",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 24464.497,
+        "originalRecordOk": false,
+        "finishReason": "stop",
+        "nativePromptSHA256": "b3d19c9f768b145bbe95b77541910d36c9ecad44d9e1db8105cc58301b008af5",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": false,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\A1W8ZDVXEH79NV5G0V0N6FYWJ0.png",
+        "originalReferenceSHA256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6"
+      }
+    },
+    {
+      "key": "warm",
+      "case": "usr8-warm-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "Partial: polished skin volume, glossy grouped hair and material response are relevant, but clean flat fabric bands and generalized crisp-line anime language simplify a reference with considerable surface texture and continuous shading.",
+      "lightColorAssessment": "Overgeneralization risk: the reference has local orange hair/sunlit accents against relatively neutral daylight architecture. Repeated golden-amber ambient glow and soft warm airport blur can introduce a broader warm grade than evidenced.",
+      "donorContentAssessment": "No explicit donor blue earrings, hair clips, butterfly tattoo, backpack or mesh clothing is requested.",
+      "sourceContentConcerns": [
+        "off-shoulder top is not a necessary or secure source fact"
+      ],
+      "quotes": [
+        "warm golden-amber ambient glow",
+        "clean flat color bands",
+        "soft depth-of-field blur"
+      ],
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "6fa036b5ed316f5e07c063a0b2b11fefa717be16e901c09a52ea6b72f9ea3e52",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 39779.186,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "f6999812f60f6621a26dd64834b05b7aaa3d2c8f67d0e10b4c66091d4994daa9",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": true,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\P8E9TVNY82BCAKQHJ0FMRWK1W0.jpg",
+        "originalReferenceSHA256": "ec3ab32034358305864e0c637933da15315e446e040cd873e6baf111ed0cf7cd"
+      }
+    },
+    {
+      "key": "cg",
+      "case": "usr8-cg-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "Ambiguous/under-specified: it notices luminous continuous skin gradients, directional highlights and recessed shadows, but packages them as anime illustration/painterly gradients with generic glossy strands. It does not distinctly establish the reference's continuous CG-like form/material construction. The anime class alone is not the failure criterion.",
+      "lightColorAssessment": "Warm directional illumination and cooler shadows are genuinely present. An amber-gold dominant airport and warm-toned exterior may overextend localized warm lighting into overall grading.",
+      "donorContentAssessment": "No literal donor freckles, blue eyes, short bob, patterned dress, bottle or bench scene are explicitly imported.",
+      "sourceContentConcerns": [
+        "small mole on her left cheek guesses an unqualified side despite the system instruction; the source visible mark location should not be reinterpreted from this wording"
+      ],
+      "quotes": [
+        "anime illustration style",
+        "smooth painterly skin gradients",
+        "small mole on her left cheek",
+        "warm amber-gold dominant"
+      ],
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "dd313781425489d60f38e6b89df2ae828c445cbc381af1a5f0b253dc69b61699",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 27808.476,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "6c2bb03698ae972f2011537c99d530af8fa7944aeacad9c3400d40cd8692d8d2",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": false,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\92S8TJM12JWRA6NW8S0PD6ASE0.jpg",
+        "originalReferenceSHA256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c"
+      }
+    },
+    {
+      "key": "soft",
+      "case": "usr8-soft-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "Partial: soft skin shading and fine material rendering fit the illustrated reference, but individually highlighted flowing strands are less faithful than its grouped painted locks and controlled highlights. The sourceContent field omits the mole, but the complete prompt does preserve it.",
+      "lightColorAssessment": "Warm intimate lighting is correctly noticed. Bathing the entire airport in amber-golden ambient light is broader than the reference's directional lamp highlights and darker neutral field.",
+      "donorContentAssessment": "No cat ears, tail, wink-side replacement, sign text or knit sweater are literally assigned to the source.",
+      "sourceContentConcerns": [],
+      "quotes": [
+        "each lock catching the warm light individually",
+        "unified warm amber-golden ambient light",
+        "small beauty mark on the cheek"
+      ],
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-soft-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "f8f6a8fbfcfc55ce1184c08ea63f1b41b348498b180bb1331c6ae24dfd5e9b2c",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-soft-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 24478.185,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "e1d40e676e8fa4fb498368b95c50d52009ae7771b4482108abdee57f7d6bb6fb",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": false,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\70DSZBBZR10K5KZHVB53EZRHA0.png",
+        "originalReferenceSHA256": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4"
+      }
+    },
+    {
+      "key": "wet",
+      "case": "usr8-wet-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "Distinct reference-specific features are recognized: wet reflective surface treatment, glossy streaks, luminous rim separation and saturated painted anime construction. Strand-by-strand wording may still pull toward detailed realistic hair rather than the reference's broader brush/cel shapes.",
+      "lightColorAssessment": "Largely plausible in text: cool cyan/teal backlight, bright rim against darker surroundings, luminous background accents. The vending machine itself is not transplanted.",
+      "donorContentAssessment": "No turquoise hair color, twin tails, hair ornaments, red uniform, vending-machine scene or donor identity is explicitly copied. Wet-looking finish is a transferred material choice rather than proof of literal clothing replacement.",
+      "sourceContentConcerns": [],
+      "quotes": [
+        "cool blue-teal undertones",
+        "wet-look sheen",
+        "glossy, strand-by-strand treatment"
+      ],
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-wet-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "14f21e70a1e637b93a7f3b730bc6a05ea8e93cc0ecac212515caa6e56ee1cdf8",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-wet-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 34264.63,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "bf5b2160edb0b2b6e8bd0ae8466b70485a4ca0d8ba773cf785681e2246cfda2e",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": false,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\KDS3ACB7H96ZG1915Y1KQPW2Q0.png",
+        "originalReferenceSHA256": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13"
+      }
+    },
+    {
+      "key": "graphic",
+      "case": "usr8-graphic-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "The strongest explicit graphic-method recognition: bold color blocking, deep dark masses, clean edges and ink-splatter mark-making match the red/black reference. Transferring abstract marks is not automatically literal donor-scene copying.",
+      "lightColorAssessment": "Red/black contrast and local gold accents are observed, but a red-orange ambient wash can shift the source reference's more decisive crimson/red field toward orange. Porcelain-like warm face highlights may understate its dark face mass.",
+      "donorContentAssessment": "A concrete appearance leak exists: warm golden iris glow assigns the donor's luminous iris coloration to the source. No thorn halo, veil, cross earring or profile pose is explicitly imported.",
+      "sourceContentConcerns": [
+        "golden iris color is not a source-content fact and is avoidable donor-appearance contamination"
+      ],
+      "quotes": [
+        "warm golden iris glow",
+        "dominant warm red-orange atmospheric wash",
+        "bold saturated color blocking"
+      ],
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "c86ee441a013c3a3096c0b14d5810a1c44701c814e8884371f25ba0c1395cb67",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 31909.687,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "241268fa578d4efa588fb465ac92286e43a04ae3284825ba658c44651b1f6991",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": false,
+        "renderingClassFromModel": "anime",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\YS6B6EB1RQYV2MV3V0XMPV3ES0.png",
+        "originalReferenceSHA256": "92f36730461cfe4122f7bf913f0c7db3af660eaebf7bf20dbf0467ed2015f053"
+      }
+    },
+    {
+      "key": "eastern",
+      "case": "usr8-eastern-v10n-20261025",
+      "referenceDirectlyViewed": true,
+      "methodAssessment": "The painterly semi-realistic fantasy classification, rich mid-tone shaping, soft translucency and material separation are directionally appropriate. Flowing linework/ribbon-like hair remains broad and not a complete description of the detailed game-illustration rendering.",
+      "lightColorAssessment": "Local red/white/gold palette and softly lit material volume are visible. A darker, moodier ambient field is not secure lighting evidence: this is a transparent cutout, with approximately 43.87% fully transparent pixels. Its empty/black-composited display must not be treated as a real dark environment.",
+      "donorContentAssessment": "No koi, staff, headdress, red-white robe or jewelry is literally added to the source. General ornamental detail and global red/gold unification could still leak costume palette or decorative density and require image review.",
+      "sourceContentConcerns": [
+        "right hand is an unqualified side assignment despite the no-guessing instruction"
+      ],
+      "quotes": [
+        "darker, moodier ambient field",
+        "refined semi-realistic fantasy-illustration painting method",
+        "in her right hand"
+      ],
+      "referenceAlphaEvidence": {
+        "mode": "RGBA",
+        "size": [
+          3000,
+          4000
+        ],
+        "alphaExtrema": [
+          0,
+          255
+        ],
+        "zeroAlphaFraction": 0.43874216666666666,
+        "fullyOpaqueFraction": 0.4902734166666667
+      },
+      "imageOutcomeStatus": "Not assessed by this audit",
+      "auditEvidence": {
+        "originalRawPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-eastern-v10n-20261025\\flash-analysis\\raw.txt",
+        "rawSHA256": "5123b35f7fb4e9101d45d0b65280f66d241445b0286de428f60134261b881836",
+        "originalRequestResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-eastern-v10n-20261025\\flash-analysis\\request-result.json",
+        "requestMs": 30849.029,
+        "originalRecordOk": true,
+        "finishReason": "stop",
+        "nativePromptSHA256": "90b2909f88922a32b194873949a44d4b8f178b1fe3cd296d701a2dc109941c03",
+        "image1MarkerPresent": true,
+        "image2MarkerPresent": true,
+        "sourceContentExactSubstring": false,
+        "renderingClassFromModel": "painterly",
+        "originalReferencePath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\绯瑶.png",
+        "originalReferenceSHA256": "05bde8df7e8d0f7a8a6c2ce6b4265c8ecb45ef92c3369905ab57848445228427"
+      }
+    }
+  ],
+  "compositeEvidence": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+    "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+  },
+  "allEightNativeAnswersComplete": true,
+  "allImageRoleMarkersPresent": true
+}

@@ -1,0 +1,36 @@
+[
+  {
+    "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+    "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "bytes": 180849,
+    "size": [
+      1280,
+      960
+    ],
+    "role": "source",
+    "upload": {
+      "name": "NF_NATIVE_usr8-bright-v10n-20261025-formal_source.jpg",
+      "subfolder": "layer-window-probe",
+      "type": "input"
+    },
+    "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\comfy-root\\input\\layer-window-probe\\NF_NATIVE_usr8-bright-v10n-20261025-formal_source.jpg",
+    "graphName": "layer-window-probe/NF_NATIVE_usr8-bright-v10n-20261025-formal_source.jpg"
+  },
+  {
+    "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\RVDS892WEPDK7BFK5CX9A9T840.webp",
+    "sha256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+    "bytes": 980854,
+    "size": [
+      3328,
+      4864
+    ],
+    "role": "style",
+    "upload": {
+      "name": "NF_NATIVE_usr8-bright-v10n-20261025-formal_style.webp",
+      "subfolder": "layer-window-probe",
+      "type": "input"
+    },
+    "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\comfy-root\\input\\layer-window-probe\\NF_NATIVE_usr8-bright-v10n-20261025-formal_style.webp",
+    "graphName": "layer-window-probe/NF_NATIVE_usr8-bright-v10n-20261025-formal_style.webp"
+  }
+]

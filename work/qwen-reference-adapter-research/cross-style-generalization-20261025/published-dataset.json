@@ -1,0 +1,665 @@
+{
+  "schema": "nf.qa.user-reference-local-dataset.v1",
+  "source": {
+    "id": "source",
+    "path": "assets/source.jpg",
+    "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-direction-20261023\\retest-20261024\\restore-approved-four\\cg\\source-input.jpg",
+    "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "bytes": 180849,
+    "width": 1280,
+    "height": 960
+  },
+  "images": {
+    "user-eight-v10n-20261025-reference-bright": {
+      "id": "user-eight-v10n-20261025-reference-bright",
+      "path": "assets/user-eight-v10n-20261025-reference-bright-b791a49be60c.webp",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\RVDS892WEPDK7BFK5CX9A9T840.webp",
+      "sha256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+      "bytes": 980854,
+      "width": 3328,
+      "height": 4864
+    },
+    "user-eight-v10n-20261025-bright-output": {
+      "id": "user-eight-v10n-20261025-bright-output",
+      "path": "assets/user-eight-v10n-20261025-bright-output-a28aa4ffd3dd.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-bright-v10n-20261025-formal\\output.png",
+      "sha256": "a28aa4ffd3dd703bb03a51c0fa674d082f1f140db243ecf72221f51ce766ef6a",
+      "bytes": 2050620,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-dark": {
+      "id": "user-eight-v10n-20261025-reference-dark",
+      "path": "assets/user-eight-v10n-20261025-reference-dark-929e6cce4d0a.png",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\A1W8ZDVXEH79NV5G0V0N6FYWJ0.png",
+      "sha256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+      "bytes": 2490540,
+      "width": 1280,
+      "height": 1856
+    },
+    "user-eight-v10n-20261025-dark-output": {
+      "id": "user-eight-v10n-20261025-dark-output",
+      "path": "assets/user-eight-v10n-20261025-dark-output-fc7b7f954550.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-dark-v10n-20261025-formal\\output.png",
+      "sha256": "fc7b7f9545506d9c20eb4d2835163c15da9df90764ff2ed487ad647821035c2a",
+      "bytes": 1828655,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-warm": {
+      "id": "user-eight-v10n-20261025-reference-warm",
+      "path": "assets/user-eight-v10n-20261025-reference-warm-ec3ab3203435.jpg",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\P8E9TVNY82BCAKQHJ0FMRWK1W0.jpg",
+      "sha256": "ec3ab32034358305864e0c637933da15315e446e040cd873e6baf111ed0cf7cd",
+      "bytes": 351290,
+      "width": 832,
+      "height": 1232
+    },
+    "user-eight-v10n-20261025-warm-output": {
+      "id": "user-eight-v10n-20261025-warm-output",
+      "path": "assets/user-eight-v10n-20261025-warm-output-e0bfdced2b5d.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-warm-v10n-20261025-formal\\output.png",
+      "sha256": "e0bfdced2b5d2916fc9642da87535ea35e76be38afc67d07f5b261f1b3827f51",
+      "bytes": 1947012,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-cg": {
+      "id": "user-eight-v10n-20261025-reference-cg",
+      "path": "assets/user-eight-v10n-20261025-reference-cg-34abd780a145.jpg",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\92S8TJM12JWRA6NW8S0PD6ASE0.jpg",
+      "sha256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+      "bytes": 245756,
+      "width": 768,
+      "height": 1344
+    },
+    "user-eight-v10n-20261025-cg-output": {
+      "id": "user-eight-v10n-20261025-cg-output",
+      "path": "assets/user-eight-v10n-20261025-cg-output-e9dcce921969.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-cg-v10n-20261025-formal\\output.png",
+      "sha256": "e9dcce92196969cb1d73444743d2d90550e81e70d0c2cbd2947edcea97ed3ca3",
+      "bytes": 2078865,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-soft": {
+      "id": "user-eight-v10n-20261025-reference-soft",
+      "path": "assets/user-eight-v10n-20261025-reference-soft-95f8b2af105b.png",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\70DSZBBZR10K5KZHVB53EZRHA0.png",
+      "sha256": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4",
+      "bytes": 1360427,
+      "width": 832,
+      "height": 1216
+    },
+    "user-eight-v10n-20261025-soft-output": {
+      "id": "user-eight-v10n-20261025-soft-output",
+      "path": "assets/user-eight-v10n-20261025-soft-output-75051313d747.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-soft-v10n-20261025-formal\\output.png",
+      "sha256": "75051313d747d94039a91812a2a2626dc5ac32a24f65e5f4a8b4bc113f637da4",
+      "bytes": 2022511,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-wet": {
+      "id": "user-eight-v10n-20261025-reference-wet",
+      "path": "assets/user-eight-v10n-20261025-reference-wet-f3784778775b.png",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\KDS3ACB7H96ZG1915Y1KQPW2Q0.png",
+      "sha256": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13",
+      "bytes": 3261198,
+      "width": 1248,
+      "height": 1824
+    },
+    "user-eight-v10n-20261025-wet-output": {
+      "id": "user-eight-v10n-20261025-wet-output",
+      "path": "assets/user-eight-v10n-20261025-wet-output-b6894e3e9edd.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-wet-v10n-20261025-formal\\output.png",
+      "sha256": "b6894e3e9edd51f034b9c83bf1acd1bb3c5028cd90aee853fa916b1d5f9e65e9",
+      "bytes": 2090445,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-graphic": {
+      "id": "user-eight-v10n-20261025-reference-graphic",
+      "path": "assets/user-eight-v10n-20261025-reference-graphic-92f36730461c.png",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\YS6B6EB1RQYV2MV3V0XMPV3ES0.png",
+      "sha256": "92f36730461cfe4122f7bf913f0c7db3af660eaebf7bf20dbf0467ed2015f053",
+      "bytes": 9235064,
+      "width": 2496,
+      "height": 3744
+    },
+    "user-eight-v10n-20261025-graphic-output": {
+      "id": "user-eight-v10n-20261025-graphic-output",
+      "path": "assets/user-eight-v10n-20261025-graphic-output-0c21142a86f4.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-graphic-v10n-20261025-formal\\output.png",
+      "sha256": "0c21142a86f40eee23e0bc6d4d7290c9cfa76501a4936faf95ffc1ad5db74dde",
+      "bytes": 2071815,
+      "width": 1280,
+      "height": 960
+    },
+    "user-eight-v10n-20261025-reference-eastern": {
+      "id": "user-eight-v10n-20261025-reference-eastern",
+      "path": "assets/user-eight-v10n-20261025-reference-eastern-05bde8df7e8d.png",
+      "originalPath": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\绯瑶.png",
+      "sha256": "05bde8df7e8d0f7a8a6c2ce6b4265c8ecb45ef92c3369905ab57848445228427",
+      "bytes": 9943085,
+      "width": 3000,
+      "height": 4000
+    },
+    "user-eight-v10n-20261025-eastern-output": {
+      "id": "user-eight-v10n-20261025-eastern-output",
+      "path": "assets/user-eight-v10n-20261025-eastern-output-40223326c1ce.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-eastern-v10n-20261025-formal\\output.png",
+      "sha256": "40223326c1cebb745c04642c6f10fc7077baf1fe4cdb2473d6e298394e7f28ff",
+      "bytes": 1895550,
+      "width": 1280,
+      "height": 960
+    },
+    "user-two-colorcast-20261025-bright-output": {
+      "id": "user-two-colorcast-20261025-bright-output",
+      "path": "assets/user-two-colorcast-20261025-bright-output-4b450baa013d.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\jobs\\usr8-bright-v10n-20261025-colorcast-formal\\output.png",
+      "sha256": "4b450baa013d55ac97d1ebd3d30491d9e044dc2f7130a3bbab556431d6451349",
+      "bytes": 1986333,
+      "width": 1280,
+      "height": 960
+    },
+    "user-two-colorcast-20261025-cg-output": {
+      "id": "user-two-colorcast-20261025-cg-output",
+      "path": "assets/user-two-colorcast-20261025-cg-output-28f255e264c3.png",
+      "originalPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\jobs\\usr8-cg-v10n-20261025-colorcast-formal\\output.png",
+      "sha256": "28f255e264c3248ca1ce0b7c9e5d87bb6f20525bd31f7f65b5fc1fa4b1a112f7",
+      "bytes": 1989816,
+      "width": 1280,
+      "height": 960
+    }
+  },
+  "comparisons": [
+    {
+      "id": "user-eight-v10n-20261025-bright-pair",
+      "title": "用户参考图·统一流程实测｜明亮参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-bright",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-bright-output",
+          "label": "分析请求31.690秒 / 入队→成功历史56.344秒 / 单任务全程59.453秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 56.34399999992456,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 59.45299999997951
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求31.690秒；入队到成功历史56.344秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程59.453秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-bright-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-bright-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-dark-pair",
+      "title": "用户参考图·统一流程实测｜冷暗参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-dark",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-dark-output",
+          "label": "分析请求24.464秒 / 入队→成功历史57.500秒 / 单任务全程60.453秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 57.5,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 60.45299999997951
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求24.464秒；入队到成功历史57.500秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程60.453秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-dark-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-dark-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-warm-pair",
+      "title": "用户参考图·统一流程实测｜暖光参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-warm",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-warm-output",
+          "label": "分析请求39.779秒 / 入队→成功历史60.453秒 / 单任务全程63.453秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 60.45299999997951,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 63.453000000095926
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求39.779秒；入队到成功历史60.453秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程63.453秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-warm-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-warm-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-cg-pair",
+      "title": "用户参考图·统一流程实测｜连续体积参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-cg",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-cg-output",
+          "label": "分析请求27.808秒 / 入队→成功历史62.359秒 / 单任务全程65.375秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 62.35900000005495,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 65.375
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求27.808秒；入队到成功历史62.359秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程65.375秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-cg-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-cg-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-soft-pair",
+      "title": "用户参考图·统一流程实测｜柔和细绘参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-soft",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-soft-output",
+          "label": "分析请求24.478秒 / 入队→成功历史62.125秒 / 单任务全程65.140秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 62.125,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 65.14000000001397
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求24.478秒；入队到成功历史62.125秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程65.140秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-soft-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-soft-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-wet-pair",
+      "title": "用户参考图·统一流程实测｜湿润材质参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-wet",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-wet-output",
+          "label": "分析请求34.265秒 / 入队→成功历史63.078秒 / 单任务全程67.109秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 63.07799999997951,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 67.10900000005495
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求34.265秒；入队到成功历史63.078秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程67.109秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-wet-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-wet-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-graphic-pair",
+      "title": "用户参考图·统一流程实测｜红黑图形参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-graphic",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-graphic-output",
+          "label": "分析请求31.910秒 / 入队→成功历史63.656秒 / 单任务全程66.719秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 63.65600000007544,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 66.71900000004098
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求31.910秒；入队到成功历史63.656秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程66.719秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-graphic-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-graphic-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-eight-v10n-20261025-eastern-pair",
+      "title": "用户参考图·统一流程实测｜国风人物参考",
+      "subtitle": "实际完整风格参考＋本轮实际成图",
+      "badge": "待用户验收",
+      "style": "user-eight-v10n-20261025-reference-eastern",
+      "styleLabel": "用户完整实际参考",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-eastern-output",
+          "label": "分析请求30.849秒 / 入队→成功历史63.750秒 / 单任务全程66.891秒",
+          "steps": 8,
+          "cfg": 3.0,
+          "seed": 54792256,
+          "sigmas": [
+            1.0,
+            0.978453,
+            0.95418,
+            0.926626,
+            0.89508,
+            0.845148,
+            0.704534,
+            0.414568,
+            0.0
+          ],
+          "sampler": "euler",
+          "scheduler": "ManualSigmas",
+          "seconds": 63.75,
+          "secondsSource": "enqueueToSuccessfulHistorySeconds",
+          "individualJobFullSeconds": 66.89099999994505
+        }
+      ],
+      "notes": "用户自己的完整参考图；统一v10双图单次Flash分析，无源内容缓存，无逐风格手填提示词，统一空负向。本次真实完整回答原文直接生图。八张是新实验，均待用户验收，不继承旧暗色r10或其他结果的认可。本图分析请求30.849秒；入队到成功历史63.750秒（含提交/排队/执行/历史轮询，非纯采样）；单任务全程66.891秒（另含入队前准备/上传、下载校验、free释放等待，已包含前项，不相加）；共享加载75.362秒/卸载8.455秒仅在批次生命周期区计一次，不摊入本卡。",
+      "conditions": "完整双图；1280×960；Qwen-Image-2.1-Turbo-BF16 GGUF；专用8步；CFG3；seed54792256；统一空负向；原图与输出对齐。CPU视觉审核只确认已看图，不代表用户认可；不改变既有置顶和验收记录。",
+      "proof": "records/user-eight-v10n-20261025-eastern-proof.json",
+      "proofLabel": "实际分析、完整生成图与视觉审核证据",
+      "supplementaryFeedbackProofs": [
+        {
+          "label": "查看本次实际完整生图提示词",
+          "path": "records/user-eight-v10n-20261025-eastern-prompt.txt"
+        },
+        {
+          "label": "查看共享加载与卸载（仅计一次）",
+          "path": "records/user-eight-v10n-20261025-shared-lifecycle.json"
+        }
+      ],
+      "qualityPassed": false,
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "finalTaskAccepted": false,
+      "productionPromotion": false
+    },
+    {
+      "id": "user-two-colorcast-20261025-bright",
+      "title": "明亮动漫 · 仅色偏负向 A/B",
+      "subtitle": "完整原生正向不变；只验证通用色偏约束，不增加分析",
+      "badge": "减黄有改善 · 画风待验收",
+      "style": "user-eight-v10n-20261025-reference-bright",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-bright-output",
+          "label": "空负向 · 56.344秒"
+        },
+        {
+          "image": "user-two-colorcast-20261025-bright-output",
+          "label": "抑制全局色偏 · 57.172秒"
+        }
+      ],
+      "notes": "整图橙黄减轻，肤色、白色条纹和环境蓝灰的区分更清楚；头发仍偏红，参考蓝白晴朗与轻盈画法未完整迁入。",
+      "conditions": "相同原图/参考、Flash原生正向、Turbo 8步、CFG3、seed54792256、1280×960；只增加一组共享色偏负向。均为关闭锁页内存的隔离运行。上方计时为入队至成功历史，非受控速度比较。",
+      "proof": "records/user-two-colorcast-20261025-bright-proof.json",
+      "proofLabel": "查看实际任务、原文及单变量证明",
+      "userAcceptanceStatus": "pending",
+      "qualityAccepted": false
+    },
+    {
+      "id": "user-two-colorcast-20261025-cg",
+      "title": "CG参考 · 仅色偏负向 A/B",
+      "subtitle": "完整原生正向不变；只验证通用色偏约束，不增加分析",
+      "badge": "减黄有改善 · 画风待验收",
+      "style": "user-eight-v10n-20261025-reference-cg",
+      "variants": [
+        {
+          "image": "user-eight-v10n-20261025-cg-output",
+          "label": "空负向 · 62.359秒"
+        },
+        {
+          "image": "user-two-colorcast-20261025-cg-output",
+          "label": "抑制全局色偏 · 62.812秒"
+        }
+      ],
+      "notes": "整体黄橙罩色减轻，皮肤和背景色彩分离改善；脸部依旧过亮，参考的强定向阴影与CG塑造还未到位。",
+      "conditions": "相同原图/参考、Flash原生正向、Turbo 8步、CFG3、seed54792256、1280×960；只增加一组共享色偏负向。均为关闭锁页内存的隔离运行。上方计时为入队至成功历史，非受控速度比较。",
+      "proof": "records/user-two-colorcast-20261025-cg-proof.json",
+      "proofLabel": "查看实际任务、原文及单变量证明",
+      "userAcceptanceStatus": "pending",
+      "qualityAccepted": false
+    }
+  ],
+  "sharedLifecycle": [
+    {
+      "id": "user-eight-v10n-20261025-shared-analysis-lifecycle",
+      "title": "用户参考图·统一流程实测｜八图共享分析生命周期",
+      "badge": "实际用时 · 每次生命周期只计一次",
+      "description": "八次独立完整双图请求，实际2次模型加载与卸载。加载合计75.362秒，卸载合计8.455秒；各卡请求与生图分别列示，原中止/复核证据保留。",
+      "runs": [
+        {
+          "label": "Flash统一v10｜8次独立请求",
+          "analysisSeconds": 245.243306,
+          "loadSeconds": 75.361655,
+          "totalSeconds": 329.859328,
+          "status": "8次请求完成；实际2次加载；卸载合计8.455秒；待用户验收",
+          "findings": [
+            "每张使用本轮实际原生完整提示词，无历史提示词替代。",
+            "共享加载/卸载不重复归给单张；全程已包含准备等，不与各分项相加。"
+          ]
+        }
+      ],
+      "limitations": "这是同一主体、八张用户参考的局部实测；不是所有主体或所有风格验收，也不是正式默认接入。生图时间独立另计。当前静态发布仅校验归档凭证和根代理完成/看图声明，不查询实时GPU。",
+      "proof": "records/user-eight-v10n-20261025-shared-lifecycle.json",
+      "sharedUnloadSeconds": 8.454891
+    }
+  ],
+  "note": "Full image/SSE/runtime files remain local. This committed subset contains only the current user-reference experiment, not unrelated historical gallery records."
+}

@@ -1,0 +1,212 @@
+{
+  "1c38be26-3af1-4366-8f2e-c47931fa8119": {
+    "prompt": [
+      1,
+      "1c38be26-3af1-4366-8f2e-c47931fa8119",
+      {
+        "1": {
+          "class_type": "NovaFlowGGUFBF16Loader",
+          "inputs": {
+            "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+          }
+        },
+        "2": {
+          "class_type": "CLIPLoader",
+          "inputs": {
+            "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+            "type": "qwen_image",
+            "device": "default"
+          }
+        },
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+          }
+        },
+        "4": {
+          "class_type": "QwenImage21Cache",
+          "inputs": {
+            "model": [
+              "1",
+              0
+            ],
+            "device": "auto",
+            "dtype": "default"
+          }
+        },
+        "5": {
+          "class_type": "TextEncodeQwenImage21",
+          "inputs": {
+            "clip": [
+              "2",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ],
+            "prompt": "Assign the content of <image1> as the subject and the artistic rendering, illumination and color logic of <image2> as the target style. Redraw the source photograph as a polished cel-shaded anime illustration: clean crisp outlines, smooth gradient skin shading with soft blush, and hair built from broad glossy layered shapes with sharp specular highlights, exactly as the reference treats long hair as luminous ribbon-like masses. Keep the source's winking expression, the beauty mark on the cheek, the long red hair, the navy-and-white striped top, and the raised clear cup of iced milk tea with a straw as the recognizable identity and content anchors; allow facial proportions and hair strands to be reorganized into the reference's anime form language. Adopt the reference's depth hierarchy and unified light atmosphere: a luminous focal light on the face and the held drink, with the surrounding environment receding into cool atmospheric haze, deep shadows and a layered color structure of broad shapes over fine detail. Translate the reference's coherent illumination onto the airport interior by relighting the existing rows of waiting chairs, the glass facade and the ceiling grid with cool ambient tones and warm focal accents, preserving the spatial structures of the source scene rather than replacing them with the donor's scenery. Maintain the reference's balance of large flat color planes, soft gradients and selective sharp highlights without resorting to generic genre shortcuts, so the striped fabric, the translucent cup and the liquid read as anime materials responding to one consistent light. The finished artwork depicts a red-haired woman with a beauty mark on her cheek winking playfully while wearing a navy-and-white striped top and raising a clear plastic cup of iced milk tea with a straw, seated among rows of airport waiting chairs beneath a glass facade.",
+            "negative_prompt": "",
+            "resolution": 0,
+            "images.image_1": [
+              "100",
+              0
+            ],
+            "images.image_2": [
+              "201",
+              0
+            ]
+          }
+        },
+        "7": {
+          "class_type": "SamplerCustom",
+          "inputs": {
+            "model": [
+              "4",
+              0
+            ],
+            "add_noise": true,
+            "noise_seed": 54792256,
+            "cfg": 3.0,
+            "positive": [
+              "5",
+              0
+            ],
+            "negative": [
+              "5",
+              1
+            ],
+            "latent_image": [
+              "5",
+              2
+            ],
+            "sampler": [
+              "nf_turbo_7_sampler",
+              0
+            ],
+            "sigmas": [
+              "nf_turbo_7_sigmas",
+              0
+            ]
+          }
+        },
+        "8": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": [
+              "7",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "10": {
+          "class_type": "SaveImage",
+          "inputs": {
+            "images": [
+              "8",
+              0
+            ],
+            "filename_prefix": "NF_NATIVE_BATCH_usr8-dark-v10n-20261025-formal"
+          }
+        },
+        "100": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "layer-window-probe/NF_NATIVE_usr8-dark-v10n-20261025-formal_source.jpg"
+          }
+        },
+        "101": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "layer-window-probe/NF_NATIVE_usr8-dark-v10n-20261025-formal_style.png"
+          }
+        },
+        "201": {
+          "class_type": "ImageScale",
+          "inputs": {
+            "image": [
+              "101",
+              0
+            ],
+            "upscale_method": "lanczos",
+            "width": 832,
+            "height": 1216,
+            "crop": "disabled"
+          }
+        },
+        "nf_turbo_7_sigmas": {
+          "class_type": "ManualSigmas",
+          "inputs": {
+            "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+          }
+        },
+        "nf_turbo_7_sampler": {
+          "class_type": "KSamplerSelect",
+          "inputs": {
+            "sampler_name": "euler"
+          }
+        }
+      },
+      {
+        "qa_job": "usr8-dark-v10n-20261025-formal",
+        "client_id": "nf-owned-native-batch",
+        "create_time": 1792875956133
+      },
+      [
+        "10"
+      ]
+    ],
+    "outputs": {
+      "10": {
+        "images": [
+          {
+            "filename": "NF_NATIVE_BATCH_usr8-dark-v10n-20261025-formal_00001_.png",
+            "subfolder": "",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "1c38be26-3af1-4366-8f2e-c47931fa8119",
+            "timestamp": 1792875956135
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [],
+            "prompt_id": "1c38be26-3af1-4366-8f2e-c47931fa8119",
+            "timestamp": 1792875956138
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "1c38be26-3af1-4366-8f2e-c47931fa8119",
+            "timestamp": 1792876012852
+          }
+        ]
+      ]
+    },
+    "meta": {
+      "10": {
+        "node_id": "10",
+        "display_node": "10",
+        "parent_node": null,
+        "real_node_id": "10"
+      }
+    }
+  }
+}

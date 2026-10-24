@@ -1,0 +1,14 @@
+{
+  "originalRunner": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch.py",
+  "originalSHA256": "44e35f75a0360b0b8dfae6c9204ff05eb4dd0ae1d4147377b92c3fefd6471c34",
+  "newRunner": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch-no-pinned.py",
+  "newSHA256": "90be5c61b47bf911f9042095a3608a4b96a9a8b78d9832d0bf7eb373097bfef4",
+  "onlySourceChange": {
+    "old": "\"--fast-disk\", \"--disable-auto-launch\"",
+    "new": "\"--fast-disk\", \"--disable-pinned-memory\", \"--disable-auto-launch\""
+  },
+  "modelWeightsDtypeGraphPromptSamplingUnchanged": true,
+  "resourceGuardLowered": false,
+  "runtimeFilesModified": false,
+  "priorFailedRunPreserved": true
+}

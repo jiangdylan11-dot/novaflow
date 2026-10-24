@@ -1,0 +1,85 @@
+{
+  "user": "用户需求：<image1>用<image2>画风。<image1>提供主体与原场景，<image2>仅提供绘画技法和配色光感。保留可辨识身份、实际表情动作、服饰类别、持有物、场景空间关系与可见身份标记，允许五官与发束按目标画法自然重构。输出画布1280×960。",
+  "images": [
+    {
+      "path": "C:/Users/jiang/OneDrive/Desktop/photo_2026-10-22_20-57-15.jpg",
+      "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+      "mime": "image/jpeg",
+      "size": [
+        1280,
+        960
+      ],
+      "transport": "Original complete file bytes, independent native image input; no application crop, resize, square padding or ImageBatch."
+    },
+    {
+      "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\92S8TJM12JWRA6NW8S0PD6ASE0.jpg",
+      "sha256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+      "mime": "image/jpeg",
+      "size": [
+        768,
+        1344
+      ],
+      "transport": "Original complete file bytes, independent native image input; no crop/resize/padding."
+    }
+  ],
+  "analysisComparison": "Same complete input images, image roles and user task. Model-specific system/output protocol and recommended decoding differ; no claim of identical inference settings.",
+  "generation": {
+    "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+    "steps": 8,
+    "cfg": 3,
+    "seed": 54792256,
+    "width": 1280,
+    "height": 960,
+    "frequencyAdapter": false
+  },
+  "flashSystemVersion": "v10",
+  "visualMaxTokensPerImage": 2048,
+  "reasoningBudget": 1024,
+  "temperature": 0.4,
+  "topP": 0.95,
+  "fixedProtocolContract": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\shared-v10n-contract.json",
+    "sha256": "b1b601dfeb08fa901f041fad1a19fe00aa3d7d562a9abf3c55637da65051ee70"
+  },
+  "sharedNegativePolicy": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\shared-colorcast-only-negative-policy.json",
+    "sha256": "9d4dc1510c836749bd32702f5b833b2ecd98b846ebff0a1352dabed5cd5ccc4a"
+  },
+  "analysisInputSlots": [
+    1,
+    2
+  ],
+  "formalWorkerGraph": {
+    "file": "worker-graph.json",
+    "sha256": "56ffcf0719b895ea5e52f6a4e90437e23012e580e1677333b080a9e68658b14c",
+    "rendererPath": "D:\\AI_APP\\NovaFlow-Web\\novaflow-web\\worker-renderer\\novaflow-brand-runtime.js",
+    "rendererSHA256": "5392f2c9cf9dc816c07c830353937f1234a6b2998ffd0963b38d519332955d50",
+    "generatedBy": "createWorkflowHost.buildGraph",
+    "workerHostPath": "D:\\AI_APP\\NovaFlow-Web\\novaflow-web\\worker\\src\\comfy\\workflow-host.mjs",
+    "liveCatalog": true,
+    "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+    "renderingClass": "anime",
+    "sourceAlignedToOutput": true,
+    "sourcePixels": [
+      1280,
+      960
+    ],
+    "latentFrom": [
+      "5",
+      2
+    ],
+    "actualAnalysisResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis\\result.json",
+    "actualPromptSHA256": "6c2bb03698ae972f2011537c99d530af8fa7944aeacad9c3400d40cd8692d8d2",
+    "formalBuilderSourceUpdated": true,
+    "manualDiagnosticPrompt": false,
+    "sharedNegativePolicy": {
+      "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\shared-colorcast-only-negative-policy.json",
+      "sha256": "9d4dc1510c836749bd32702f5b833b2ecd98b846ebff0a1352dabed5cd5ccc4a"
+    },
+    "fixedGenericPromptPolicy": null,
+    "programSuppliedPrompt": false,
+    "primaryAssistantReloadVerified": false,
+    "flashDefaultPromoted": false
+  },
+  "reusedAnalysisRecord": true
+}

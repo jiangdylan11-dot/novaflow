@@ -1,0 +1,41 @@
+{
+  "schema": "nf.qa.native-batch-cpu-readiness.v1",
+  "createdAt": 1792873712.1726134,
+  "supportedCaseCount": [
+    2,
+    8
+  ],
+  "latestRequestedCaseCount": 8,
+  "latestStyles": [
+    "Ghibli",
+    "Pixar",
+    "Eastern",
+    "chibi",
+    "cyberpunk",
+    "pixel",
+    "game-CG",
+    "semi-real illustration"
+  ],
+  "cpuTestsRun": 12,
+  "cpuTestsPassed": true,
+  "testedFrozenBatchSizes": [
+    6,
+    8
+  ],
+  "syntaxASTPassed": true,
+  "sixteenOwnedRuntimeDefinitionsCopiedVerbatim": true,
+  "networkChecksWereMocked": true,
+  "archivedNativeCaseReadOnlyChecks": true,
+  "torchImportedByNativeChecks": false,
+  "liveEndpointPreflightPerformed": false,
+  "newCasesFrozen": false,
+  "modelServiceOrGPUStarted": false,
+  "productionOrGalleryChanged": false,
+  "files": {
+    "owned_comfy_runtime.py": "11ec85ec4dd37ed3539ba8c6145b396e79a90981566e88a36fee775c1f079cc6",
+    "README.md": "9d360a85272cc7cf40f9d848977ad4b4f5b8e4ade0ce14e797dcccb8dc518ed8",
+    "run-native-batch.py": "d5f967027f65bf0248a33b832d4bb461f1f7cbae5c5816aedf14f29e7daf5b1c",
+    "runtime-core-origin.json": "87443d0dca6fdc198ed68c0680c2b44513e1d3b64833ef2d0fa10cd5bbc3eb5c",
+    "test_native_batch_cpu.py": "aadb83ebc9d9919de58d2b40728debb67f8e5b805ce5a9bb0b01f6c8ad23bd0e"
+  }
+}

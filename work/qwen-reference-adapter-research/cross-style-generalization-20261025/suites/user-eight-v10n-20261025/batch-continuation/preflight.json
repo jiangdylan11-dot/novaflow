@@ -1,0 +1,37 @@
+{
+  "static": {
+    "frozenFiles": 40,
+    "caseCount": 6,
+    "onlyReferenceDiffers": true,
+    "baselineUnchanged": true,
+    "runtimeStarted": false
+  },
+  "network": {
+    "ok": true,
+    "queues": {
+      "8188": {
+        "running": 0,
+        "pending": 0
+      },
+      "8189": {
+        "running": 0,
+        "pending": 0
+      },
+      "8190": {
+        "running": 0,
+        "pending": 0
+      }
+    },
+    "closedPorts": [
+      8191,
+      8192,
+      8198
+    ],
+    "httpMethods": [
+      "GET"
+    ],
+    "mutations": [],
+    "at": 1792875188.9299252
+  },
+  "runtimeStarted": false
+}

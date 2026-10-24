@@ -1,0 +1,55 @@
+{
+  "suiteId": "user-eight-v10n-20261025",
+  "analysisBatches": [
+    {
+      "label": "session-1-original",
+      "resultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json"
+    },
+    {
+      "label": "session-2-continuation",
+      "resultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json"
+    }
+  ],
+  "cases": [
+    {
+      "name": "usr8-bright-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-bright-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-dark-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-dark-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-dark-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-warm-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-warm-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-warm-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-cg-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-cg-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-cg-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-soft-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-soft-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-soft-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-wet-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-wet-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-wet-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-graphic-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-graphic-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-graphic-v10n-20261025-formal"
+    },
+    {
+      "name": "usr8-eastern-v10n-20261025",
+      "analysisDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-eastern-v10n-20261025\\flash-analysis",
+      "generationDir": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-eastern-v10n-20261025-formal"
+    }
+  ]
+}

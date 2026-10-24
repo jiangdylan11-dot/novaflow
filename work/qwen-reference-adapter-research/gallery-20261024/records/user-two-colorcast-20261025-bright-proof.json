@@ -1,0 +1,280 @@
+{
+  "case": "bright",
+  "onlyGenerationConditionChanged": "5.inputs.negative_prompt",
+  "negativePrompt": "uniform yellow-orange color cast, oversaturated orange skin, monochromatic warm color grading, sepia filter, muddy color separation",
+  "nativePositiveUnchanged": true,
+  "newAIAnalysis": false,
+  "sameOriginalReferenceSHA256": [
+    "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f"
+  ],
+  "baseline": {
+    "ok": true,
+    "job": "usr8-bright-v10n-20261025-formal",
+    "promptId": "84e0d49f-83f5-4e39-82e1-4b3845ed366d",
+    "nativeOnly": true,
+    "experimentalLayerNodePresent": false,
+    "newAIAnalysis": false,
+    "additionalAIAnalysisSeconds": 0,
+    "originalAnalysisRecord": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\result.json",
+    "originalAnalysisTotalSecondsForTraceOnly": null,
+    "nativePromptPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\prompt.txt",
+    "nativePromptSHA256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8",
+    "analysisTimingScope": "composite-shared-batch-request-only",
+    "originalAnalysisRequestSecondsForTraceOnly": 31.689616,
+    "sharedAnalysisTimingProvenance": {
+      "batchResult": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+        "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+      },
+      "runtimeProvenance": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\shared-runtime-provenance.json",
+        "sha256": "f3475d5e627ad39112ad3993a2f803dc91a9bdda09fc6c7507ca0d107014cdc0"
+      },
+      "case": "usr8-bright-v10n-20261025",
+      "actualSession": {
+        "sessionId": "session-1-original",
+        "caseIds": [
+          "usr8-bright-v10n-20261025",
+          "usr8-dark-v10n-20261025"
+        ],
+        "receipt": {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+          "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+        },
+        "loadSeconds": 44.229251,
+        "unloadSeconds": 3.8625700000000003,
+        "executionSeconds": 104.510757,
+        "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+        "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+      },
+      "sessions": [
+        {
+          "sessionId": "session-1-original",
+          "caseIds": [
+            "usr8-bright-v10n-20261025",
+            "usr8-dark-v10n-20261025"
+          ],
+          "receipt": {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+            "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+          },
+          "loadSeconds": 44.229251,
+          "unloadSeconds": 3.8625700000000003,
+          "executionSeconds": 104.510757,
+          "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+          "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+        },
+        {
+          "sessionId": "session-2-continuation",
+          "caseIds": [
+            "usr8-warm-v10n-20261025",
+            "usr8-cg-v10n-20261025",
+            "usr8-soft-v10n-20261025",
+            "usr8-wet-v10n-20261025",
+            "usr8-graphic-v10n-20261025",
+            "usr8-eastern-v10n-20261025"
+          ],
+          "receipt": {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+            "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+          },
+          "loadSeconds": 31.132403999999998,
+          "unloadSeconds": 4.592321,
+          "executionSeconds": 225.348571,
+          "startedAtUTC": "2026-10-24T20:53:59.868648Z",
+          "finishedAtUTC": "2026-10-24T20:57:45.232194Z"
+        }
+      ],
+      "sumSessionExecutionSeconds": 329.859328,
+      "sumSharedLoadSeconds": 75.361655,
+      "sumSharedUnloadSeconds": 8.454891,
+      "wallClockSpanSeconds": 654.6057872772217,
+      "wallClockSpanIncludesInterSessionGap": true,
+      "sharedLoadUnattributed": true,
+      "independentCaseUnload": false,
+      "allocatedSharedOverheadToThisCase": false,
+      "receipts": [
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\load.json",
+          "sha256": "e552860a071a72d9b40025c5005c29be8f39ac471c031cd121d6c217e5b411ad"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\identity.json",
+          "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\release.json",
+          "sha256": "b7771dbd89e98a5def60f547deb4bc14e469b2de233563f2648263ae2c6c16a0"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\after-status.json",
+          "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+          "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+          "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+        }
+      ]
+    },
+    "graphSHA256": "24c070d2af1bca9560e5c9f1f6d1d921c28f7d9b60319359b17b8f05309559a4",
+    "output": {
+      "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\jobs\\usr8-bright-v10n-20261025-formal\\output.png",
+      "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-no-pinned-20261025\\comfy-root\\output\\NF_NATIVE_BATCH_usr8-bright-v10n-20261025-formal_00001_.png",
+      "sha256": "a28aa4ffd3dd703bb03a51c0fa674d082f1f140db243ecf72221f51ce766ef6a",
+      "decodedRGBA_SHA256": "77729d5bc5b5933ef279d95d2d458dbac486532157bf206ae8ee2ea217c6f6e0",
+      "width": 1280,
+      "height": 960
+    },
+    "uploadSeconds": 0.984000000054948,
+    "enqueueToSuccessfulHistorySeconds": 56.34399999992456,
+    "individualJobFullSeconds": 59.45299999997951,
+    "includesUploadDownloadAndFree": true,
+    "timingIsControlledSpeedEvidence": false,
+    "coldWarmEffectsNotControlled": true,
+    "qualityAccepted": false,
+    "referenceStyleAccepted": false,
+    "formalDefaultChanged": false
+  },
+  "colorcastControl": {
+    "ok": true,
+    "job": "usr8-bright-v10n-20261025-colorcast-formal",
+    "promptId": "03f85f5f-1581-45e6-a071-80775cfb510c",
+    "nativeOnly": true,
+    "experimentalLayerNodePresent": false,
+    "newAIAnalysis": false,
+    "additionalAIAnalysisSeconds": 0,
+    "originalAnalysisRecord": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\result.json",
+    "originalAnalysisTotalSecondsForTraceOnly": null,
+    "nativePromptPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\prompt.txt",
+    "nativePromptSHA256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8",
+    "analysisTimingScope": "composite-shared-batch-request-only",
+    "originalAnalysisRequestSecondsForTraceOnly": 31.689616,
+    "sharedAnalysisTimingProvenance": {
+      "batchResult": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+        "sha256": "5a9f66b502d0ff28fc1534651c7f97e2e7141e27c14a122bc6927960bd58000d"
+      },
+      "runtimeProvenance": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-bright-v10n-20261025\\flash-analysis\\shared-runtime-provenance.json",
+        "sha256": "f3475d5e627ad39112ad3993a2f803dc91a9bdda09fc6c7507ca0d107014cdc0"
+      },
+      "case": "usr8-bright-v10n-20261025",
+      "actualSession": {
+        "sessionId": "session-1-original",
+        "caseIds": [
+          "usr8-bright-v10n-20261025",
+          "usr8-dark-v10n-20261025"
+        ],
+        "receipt": {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+          "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+        },
+        "loadSeconds": 44.229251,
+        "unloadSeconds": 3.8625700000000003,
+        "executionSeconds": 104.510757,
+        "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+        "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+      },
+      "sessions": [
+        {
+          "sessionId": "session-1-original",
+          "caseIds": [
+            "usr8-bright-v10n-20261025",
+            "usr8-dark-v10n-20261025"
+          ],
+          "receipt": {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+            "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+          },
+          "loadSeconds": 44.229251,
+          "unloadSeconds": 3.8625700000000003,
+          "executionSeconds": 104.510757,
+          "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+          "finishedAtUTC": "2026-10-24T20:48:35.156385Z"
+        },
+        {
+          "sessionId": "session-2-continuation",
+          "caseIds": [
+            "usr8-warm-v10n-20261025",
+            "usr8-cg-v10n-20261025",
+            "usr8-soft-v10n-20261025",
+            "usr8-wet-v10n-20261025",
+            "usr8-graphic-v10n-20261025",
+            "usr8-eastern-v10n-20261025"
+          ],
+          "receipt": {
+            "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+            "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+          },
+          "loadSeconds": 31.132403999999998,
+          "unloadSeconds": 4.592321,
+          "executionSeconds": 225.348571,
+          "startedAtUTC": "2026-10-24T20:53:59.868648Z",
+          "finishedAtUTC": "2026-10-24T20:57:45.232194Z"
+        }
+      ],
+      "sumSessionExecutionSeconds": 329.859328,
+      "sumSharedLoadSeconds": 75.361655,
+      "sumSharedUnloadSeconds": 8.454891,
+      "wallClockSpanSeconds": 654.6057872772217,
+      "wallClockSpanIncludesInterSessionGap": true,
+      "sharedLoadUnattributed": true,
+      "independentCaseUnload": false,
+      "allocatedSharedOverheadToThisCase": false,
+      "receipts": [
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\load.json",
+          "sha256": "e552860a071a72d9b40025c5005c29be8f39ac471c031cd121d6c217e5b411ad"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\identity.json",
+          "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\release.json",
+          "sha256": "b7771dbd89e98a5def60f547deb4bc14e469b2de233563f2648263ae2c6c16a0"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\after-status.json",
+          "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+          "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+        },
+        {
+          "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+          "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+        }
+      ]
+    },
+    "graphSHA256": "da3776e148909199e0d7e0011ddd7c70a5d218b7417719d93cc4007716a190de",
+    "output": {
+      "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\jobs\\usr8-bright-v10n-20261025-colorcast-formal\\output.png",
+      "isolatedServerOutput": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\output\\NF_NATIVE_BATCH_usr8-bright-v10n-20261025-colorcast-formal_00001_.png",
+      "sha256": "4b450baa013d55ac97d1ebd3d30491d9e044dc2f7130a3bbab556431d6451349",
+      "decodedRGBA_SHA256": "a671ab0e9ae4a3898fec22e84d5cba88fbbbf9c11b0de1ea26746598d6ebe793",
+      "width": 1280,
+      "height": 960
+    },
+    "uploadSeconds": 0.9220000000204891,
+    "enqueueToSuccessfulHistorySeconds": 57.17200000002049,
+    "individualJobFullSeconds": 60.21900000004098,
+    "includesUploadDownloadAndFree": true,
+    "timingIsControlledSpeedEvidence": false,
+    "coldWarmEffectsNotControlled": true,
+    "qualityAccepted": false,
+    "referenceStyleAccepted": false,
+    "formalDefaultChanged": false
+  },
+  "rootVisualReview": "整图橙黄减轻，肤色、白色条纹和环境蓝灰的区分更清楚；头发仍偏红，参考蓝白晴朗与轻盈画法未完整迁入。",
+  "qualityAccepted": false,
+  "referenceStyleAccepted": false,
+  "formalDefaultChanged": false,
+  "timingIsControlledSpeedEvidence": false
+}

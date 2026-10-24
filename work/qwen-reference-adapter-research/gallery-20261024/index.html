@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>风格迁移 · 实际成图对比</title><link rel="stylesheet" href="gallery.css"><link rel="stylesheet" href="comparison.css"></head>
+<body><main>
+ <header><div><span class="eyebrow">NovaFlow · 本地实验记录</span><h1>风格迁移 · 实际成图对比</h1><p>最终目标：ChatGPT 示例级的真实风格迁移与高质量。四张历史图仅是勉强可接受的最低回退线，用来防止继续退步。图片完整显示，点击查看原始像素。</p></div><a id="source-link" class="source-preview" href="#"><img id="source-img" alt="共同内容原图"><span>共同内容原图</span></a></header>
+ <nav aria-label="对比分类"><button type="button" data-view="approved" aria-selected="true">历史最低线 <span>4</span></button><button type="button" data-view="cg" aria-selected="false">CG 对照</button><button type="button" data-view="dark" aria-selected="false">动漫失败实验</button><button type="button" data-view="latest" aria-selected="false">最新实测 <span id="latest-count">0</span></button><button type="button" data-view="user-references" aria-selected="false">本轮参考 <span>8</span></button></nav>
+ <section id="approved" class="panel"><div class="section-heading"><h2>历史勉强可接受 · 最低回退线</h2><p>保留四张当时的原始成图和尺寸。达到这条最低线不等于目标完成；后续还需实际提高风格迁移的准确性与精致度。</p></div><div id="approved-grid" class="cases"></div></section>
+ <section id="cg" class="panel" hidden><div class="section-heading"><h2>CG：控制图与参考强度实验</h2><p>本轮复用历史完整提示词，没有重新调用 30B 或 PE。gain 2.0 未显示明确的画法迁移提升，不能作为已通过的升级。</p></div><div id="cg-grid" class="cases"></div></section>
+ <section id="dark" class="panel" hidden><div class="section-heading"><h2>动漫实验：画法变化与内容串入</h2><p>这些是失败实验，画出来了也不代表合格。重点检查条纹衫、机场、眨眼是否保住，以及红伞、服装、月夜场景是否误迁入。</p></div><div id="dark-grid" class="cases"></div></section>
+ <section id="latest" class="panel" hidden><div class="section-heading"><h2>最新实测</h2><p>这里只加入实际完成的任务图片。新结果默认待验收，能出图不代表风格迁移或质量已合格；每张图分别记录有无新分析及生图条件。</p></div><div id="latest-empty" class="empty-state">还没有加入新的完成结果。任务完成并导入后，这里会自动更新。</div><div id="latest-grid" class="cases"></div></section>
+ <section id="user-references" class="panel" hidden><div class="section-heading"><h2>用户参考图 · 本轮统一流程实测</h2><p>只使用你的 8 张本地人物参考图。先看两组“空负向／排黄负向”对照，再看八张统一流程基线；8 表示参考图数量，不代表 8 种独立画风，也不代表迁移已经通过。每张结果均待你分别验收，原有认可结果保留在原分类。</p></div><div id="user-references-grid" class="cases"></div></section>
+ <footer><strong>用时口径</strong><p>下方时间来自已有实际任务；历史生图、热运行和分析时间分别标注，不等于冷启动或“点击生成到完成”的总用时。此页只展示已有图片。</p><p id="update-status" role="status">每 7 秒检查新结果，更新时保留当前分类。</p><a href="manifest.json" target="_blank" rel="noopener">查看完整来源与 SHA 清单</a></footer>
+</main>
+<dialog id="viewer"><div class="viewer-bar"><div><strong id="viewer-title"></strong><span id="viewer-size"></span></div><a id="viewer-original" target="_blank" rel="noopener">新窗口打开</a><button id="viewer-close" type="button" aria-label="关闭原图">关闭 ×</button></div><div class="viewer-scroll"><img id="viewer-image" alt=""></div></dialog>
+<script src="data.js"></script><script src="gallery.js"></script></body></html>

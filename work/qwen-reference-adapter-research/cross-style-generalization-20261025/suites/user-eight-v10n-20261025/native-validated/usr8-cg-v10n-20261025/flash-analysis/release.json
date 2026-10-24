@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "released": true,
+  "ownedHttpPid": 77200,
+  "ownedChildPids": [
+    118144,
+    83080,
+    105264
+  ],
+  "releasedAt": 1792875464.6709275,
+  "apiUnloadStatus": "unloaded"
+}

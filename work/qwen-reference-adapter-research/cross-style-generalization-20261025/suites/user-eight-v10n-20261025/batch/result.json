@@ -1,0 +1,101 @@
+{
+  "ok": false,
+  "resourcesReleased": true,
+  "model": "swift-1.5-qwen38-iq2-xs",
+  "qualityAccepted": false,
+  "formalDefaultChanged": false,
+  "requests": [
+    {
+      "case": "usr8-bright-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 9382.338,
+      "firstContentMs": 21365.088,
+      "usage": {
+        "prompt_tokens": 3915,
+        "completion_tokens": 1124,
+        "total_tokens": 5039,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3915,
+        "prompt_ms": 6652.7,
+        "prompt_per_token_ms": 1.699,
+        "prompt_per_second": 588.5,
+        "predicted_n": 1124,
+        "predicted_ms": 22653.1,
+        "predicted_per_token_ms": 20.154,
+        "predicted_per_second": 49.6,
+        "draft_n": 929,
+        "draft_n_accepted": 623
+      },
+      "promptChars": 2123,
+      "promptSHA256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 31689.616,
+      "reasoningChars": 3022
+    },
+    {
+      "case": "usr8-dark-v10n-20261025",
+      "ok": false,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 6683.513,
+      "firstContentMs": 15313.046,
+      "usage": {
+        "prompt_tokens": 3915,
+        "completion_tokens": 792,
+        "total_tokens": 4707,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3915,
+        "prompt_ms": 5490.7,
+        "prompt_per_token_ms": 1.402,
+        "prompt_per_second": 713.0,
+        "predicted_n": 792,
+        "predicted_ms": 17804.4,
+        "predicted_per_token_ms": 22.48,
+        "predicted_per_second": 44.5,
+        "draft_n": 661,
+        "draft_n_accepted": 404
+      },
+      "error": "Native v10 source inclusion or image-role fields missing; no automatic repair",
+      "requestMs": 24464.497,
+      "reasoningChars": 1827,
+      "finishReason": "stop"
+    }
+  ],
+  "sharedSettingsSHA256": "23e90ca85da1028b8c559a1dd633e11b80f7d4648cbb0a89386182e73c9ccda6",
+  "sharedLoadMs": 44229.251,
+  "error": "Independent request failed; no retry: usr8-dark-v10n-20261025",
+  "afterStatus": {
+    "ok": true,
+    "ownedHttpAlive": false,
+    "portOpen": false,
+    "heavyProcesses": []
+  },
+  "sharedUnloadMs": 3862.57,
+  "batchTotalMs": 104510.757,
+  "resourceStop": null,
+  "unattemptedCases": [
+    "usr8-warm-v10n-20261025",
+    "usr8-cg-v10n-20261025",
+    "usr8-soft-v10n-20261025",
+    "usr8-wet-v10n-20261025",
+    "usr8-graphic-v10n-20261025",
+    "usr8-eastern-v10n-20261025"
+  ]
+}

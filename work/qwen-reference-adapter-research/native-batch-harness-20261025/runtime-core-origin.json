@@ -1,0 +1,25 @@
+{
+  "schema": "nf.qa.owned-runtime-copy-origin.v1",
+  "copiedFrom": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\layer-window-fastdisk-probe-20261025\\run-isolated-layer-window.py",
+  "copiedFromSHA256": "292b65f704609d32de4f39da54ffa8e3bb77352323871d51b8ac0b49594d642e",
+  "sourceFunctionsCopiedVerbatim": [
+    "digest",
+    "read",
+    "checked",
+    "save",
+    "emit",
+    "port_open",
+    "http",
+    "other_services_idle",
+    "resolve_under",
+    "graph_differences",
+    "OwnedServer",
+    "ResourceGuard",
+    "upload",
+    "log_parts",
+    "wait_history",
+    "release_between_jobs"
+  ],
+  "newCoreSHA256": "11ec85ec4dd37ed3539ba8c6145b396e79a90981566e88a36fee775c1f079cc6",
+  "scope": "Only global run-root configuration is supplied by new harness; copied lifecycle/helper function bodies unchanged. No old records copied."
+}

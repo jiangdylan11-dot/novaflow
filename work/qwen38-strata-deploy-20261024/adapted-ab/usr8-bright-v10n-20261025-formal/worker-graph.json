@@ -1,0 +1,149 @@
+{
+  "1": {
+    "class_type": "NovaFlowGGUFBF16Loader",
+    "inputs": {
+      "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Assign content from <image1> and artistic rendering from <image2>. Redraw the source photograph in the high-quality anime illustration style of <image2>, adopting its clean crisp linework, smooth gradient shading, and strong directional light separation between highlights and shadows. The subject should be rendered with defined edge contours, flowing hair clumps with clear highlight strands, soft skin gradients with subtle blush, and clean fabric folds on the striped top showing strong light-shadow contrast. The milk tea cup should be rendered with translucent plastic quality, visible liquid layers, and a straw catching light. The airport environment must be retained: rows of gray seats receding into depth, glass window panels reflecting interior lights, overhead ceiling panels with linear lighting, and yellow-lit departure signage boards in the background. Relight the scene with a warm, luminous interior glow consistent with the reference's bright, saturated color atmosphere, using strong key-light highlights on the subject's face, hair, and hand while allowing cooler ambient tones in the background seats and windows. Maintain a clear depth hierarchy: sharp, detailed foreground subject; softer mid-ground seats and passengers; atmospheric, slightly diffused background signage and window reflections. The color palette should be vibrant and saturated, with warm highlights on skin and hair, cool blue-grey tones in the seating, and golden-yellow accents from the signage. Preserve the subject's winking expression, playful smile, beauty mark, auburn hair, striped top, held drink, and red nails as the explicit subject of the finished artwork, rendered in the clean anime style with luminous, directional illumination and layered color depth. A young woman with long auburn wavy hair winks playfully with a beauty mark on her cheek, wearing a navy-and-white horizontal striped off-shoulder top, holding a clear plastic cup of milk tea with a straw and red-painted nails, seated in an airport terminal with rows of gray seats, glass windows, overhead lighting panels, and yellow departure signage boards.",
+      "negative_prompt": "",
+      "resolution": 0,
+      "images.image_1": [
+        "100",
+        0
+      ],
+      "images.image_2": [
+        "201",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": 54792256,
+      "cfg": 3,
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "5",
+        1
+      ],
+      "latent_image": [
+        "5",
+        2
+      ],
+      "sampler": [
+        "nf_turbo_7_sampler",
+        0
+      ],
+      "sigmas": [
+        "nf_turbo_7_sigmas",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "NF_AB_usr8-bright-v10n-20261025-formal_flash_turbo8_cfg3"
+    }
+  },
+  "100": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_AB_usr8-bright-v10n-20261025-formal_source.jpg"
+    }
+  },
+  "101": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_AB_usr8-bright-v10n-20261025-formal_style.webp"
+    }
+  },
+  "201": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "101",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 832,
+      "height": 1216,
+      "crop": "disabled"
+    }
+  },
+  "nf_turbo_7_sigmas": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+    }
+  },
+  "nf_turbo_7_sampler": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  }
+}

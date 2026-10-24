@@ -1,0 +1,59 @@
+{
+  "exe": "C:/ProgramData/NovaFlow/AI-Runtime/engine/strata/engine-0.1.48-windows-cuda13/strata.exe",
+  "args": [
+    "--pack",
+    "E:/NovaFlow/models/LLM/qwen38_swift15_strata/strata-pack-resident",
+    "--native",
+    "E:/NovaFlow/models/LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+    "--ple-gguf",
+    "E:/NovaFlow/models/LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+    "--expert-profile",
+    "C:/ProgramData/NovaFlow/AI-Runtime/engine/strata/control-0.1.49.2/data/expert-profile.bin",
+    "--expert-cache",
+    "auto",
+    "--prefill",
+    "4096",
+    "--max-context",
+    "12288",
+    "--resident-budget-gib",
+    "24",
+    "--ple-io",
+    "direct",
+    "--spec",
+    "4",
+    "--mtp",
+    "E:/NovaFlow/models/LLM/qwen38_swift15_strata/mtp/rt",
+    "--spec-min-p",
+    "0.5",
+    "--conversation-cache-mib",
+    "0",
+    "--vram-reserve-mib",
+    "3072"
+  ],
+  "cwd": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis",
+  "tokenizer": "E:/NovaFlow/models/LLM/qwen38_swift15_strata/strata-pack/tokenizer",
+  "model_name": "swift-1.5-qwen38-iq2-xs",
+  "host": "127.0.0.1",
+  "port": 8198,
+  "backend": "cuda",
+  "gpu": 0,
+  "lib_dirs": [
+    "C:/ProgramData/NovaFlow/AI-Runtime/engine/strata/engine-0.1.48-windows-cuda13"
+  ],
+  "mtp": true,
+  "lazy_load": true,
+  "open_browser": false,
+  "log": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\engine.log",
+  "vision": {
+    "exe": "C:/ProgramData/NovaFlow/AI-Runtime/engine/strata/engine-0.1.48-windows-cuda13/strata-vision.exe",
+    "mmproj": "E:/NovaFlow/models/LLM/qwen38_swift15_strata/mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf",
+    "model": "E:/NovaFlow/models/LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+    "gpu": true,
+    "max_tokens": 2048
+  },
+  "env": {
+    "STRATA_RESIDENT_HEADROOM_GIB": "6",
+    "STRATA_UNBUFFERED_LOAD": "1",
+    "STRATA_ROUTE_TAIL_SKIP": "0"
+  }
+}

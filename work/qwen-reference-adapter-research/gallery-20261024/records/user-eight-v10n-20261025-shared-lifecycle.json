@@ -1,0 +1,68 @@
+{
+  "suiteId": "user-eight-v10n-20261025",
+  "model": "swift-1.5-qwen38-iq2-xs",
+  "caseCount": 8,
+  "actualLoadCount": 2,
+  "actualUnloadCount": 2,
+  "legs": [
+    {
+      "label": "session-1-original",
+      "sharedLoadSeconds": 44.229251,
+      "sharedUnloadSeconds": 3.8625700000000003,
+      "analysisBatchWallSeconds": 104.510757,
+      "originalBatchOK": false,
+      "originalBatchError": "Independent request failed; no retry: usr8-dark-v10n-20261025",
+      "resourcesReleased": true,
+      "batchResult": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+        "sha256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422"
+      },
+      "identity": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\identity.json",
+        "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+      },
+      "release": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\release.json",
+        "sha256": "b7771dbd89e98a5def60f547deb4bc14e469b2de233563f2648263ae2c6c16a0"
+      },
+      "afterStatus": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\after-status.json",
+        "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+      }
+    },
+    {
+      "label": "session-2-continuation",
+      "sharedLoadSeconds": 31.132403999999998,
+      "sharedUnloadSeconds": 4.592321,
+      "analysisBatchWallSeconds": 225.348571,
+      "originalBatchOK": true,
+      "originalBatchError": null,
+      "resourcesReleased": true,
+      "batchResult": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+        "sha256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4"
+      },
+      "identity": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\identity.json",
+        "sha256": "431d80fdf0ad37f8f5c77f6c19f56ede0b1a15820b388567ba92f1a5b9e2b91e"
+      },
+      "release": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\release.json",
+        "sha256": "7ecce9a1ca60c5cb11f31ce4bbc4b9ccb4555781c4eb3715f4fe7818f16908da"
+      },
+      "afterStatus": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\after-status.json",
+        "sha256": "6fed6d78ee9885785b5988da419db1800a54e1f1ad5d5e8c06c45b01ffb26620"
+      }
+    }
+  ],
+  "sharedLoadSeconds": 75.361655,
+  "sharedUnloadSeconds": 8.454891,
+  "analysisBatchWallSeconds": 329.859328,
+  "requestSecondsSum": 245.243306,
+  "resourcesReleased": true,
+  "eachActualLifecycleCountedOnce": true,
+  "perCardLifecycleAttribution": false,
+  "analysisBatchWallScope": "Sum of actual owned batch wall durations; pauses/CPU revalidation between batches excluded.",
+  "timingScope": "请求分别实测；每次实际加载/卸载各计一次，不把两次加载冒称一次。批次全程已含分项，不再相加。生图另计。"
+}

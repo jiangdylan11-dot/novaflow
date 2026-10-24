@@ -1,0 +1,8 @@
+{
+  "testsRun": 13,
+  "failures": 0,
+  "errors": 0,
+  "ok": true,
+  "runtime": "CPU-only fakes; no model/HTTP/service/GPU launch",
+  "controllerSHA256": "cd8e11ad3389ec7a819430c40a0a156b2ff9a34c166372ae9136b8d7de2ffa5c"
+}

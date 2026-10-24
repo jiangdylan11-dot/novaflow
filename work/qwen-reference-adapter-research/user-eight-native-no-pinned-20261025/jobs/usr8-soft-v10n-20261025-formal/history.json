@@ -1,0 +1,199 @@
+{
+  "23d2d3aa-907c-4711-b2fd-2d9f4789d29c": {
+    "prompt": [
+      4,
+      "23d2d3aa-907c-4711-b2fd-2d9f4789d29c",
+      {
+        "1": {
+          "class_type": "NovaFlowGGUFBF16Loader",
+          "inputs": {
+            "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+          }
+        },
+        "2": {
+          "class_type": "CLIPLoader",
+          "inputs": {
+            "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+            "type": "qwen_image",
+            "device": "default"
+          }
+        },
+        "3": {
+          "class_type": "VAELoader",
+          "inputs": {
+            "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+          }
+        },
+        "4": {
+          "class_type": "QwenImage21Cache",
+          "inputs": {
+            "model": [
+              "1",
+              0
+            ],
+            "device": "auto",
+            "dtype": "default"
+          }
+        },
+        "5": {
+          "class_type": "TextEncodeQwenImage21",
+          "inputs": {
+            "clip": [
+              "2",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ],
+            "prompt": "Assign content from <image1> and artistic rendering from <image2>. Redraw the source scene in the warm, cozy anime style of <image2>, translating its key artistic relationships: a unified warm amber-golden ambient light that bathes the entire scene in soft, intimate glow, with gentle highlights catching hair strands, skin, and fabric surfaces. The focal hierarchy places the subject in sharp, detailed rendering while the background recedes into softer, painterly depth with warm tonal layers. Skin is modeled with soft gradient shading, subtle rosy blush on the cheeks, and luminous highlights on the nose tip and lips, giving a gentle, warm-lit quality. Hair is rendered as detailed flowing strands with bright specular highlights along the top layers, each lock catching the warm light individually, creating a sense of soft volume and movement. The striped top and the plastic cup are rendered with careful attention to material response — the fabric shows subtle texture and soft folds catching warm light, the transparent cup reveals the drink inside with gentle refraction highlights, and the red-painted nails glow warmly under the ambient illumination. The airport terminal environment retains its recognizable spatial structure: rows of gray seats receding behind, large glass windows with cool-toned reflections, overhead departure boards, and ceiling lighting, all repainted under the warm golden atmosphere of the target style, with background elements softened into layered depth. The winking expression, the playful smile, the small beauty mark on the cheek, the auburn hair, the striped top, the held drink cup, and the airport seating arrangement are all preserved as the explicit subject of the finished artwork.",
+            "negative_prompt": "",
+            "resolution": 0,
+            "images.image_1": [
+              "100",
+              0
+            ],
+            "images.image_2": [
+              "101",
+              0
+            ]
+          }
+        },
+        "7": {
+          "class_type": "SamplerCustom",
+          "inputs": {
+            "model": [
+              "4",
+              0
+            ],
+            "add_noise": true,
+            "noise_seed": 54792256,
+            "cfg": 3.0,
+            "positive": [
+              "5",
+              0
+            ],
+            "negative": [
+              "5",
+              1
+            ],
+            "latent_image": [
+              "5",
+              2
+            ],
+            "sampler": [
+              "nf_turbo_7_sampler",
+              0
+            ],
+            "sigmas": [
+              "nf_turbo_7_sigmas",
+              0
+            ]
+          }
+        },
+        "8": {
+          "class_type": "VAEDecode",
+          "inputs": {
+            "samples": [
+              "7",
+              0
+            ],
+            "vae": [
+              "3",
+              0
+            ]
+          }
+        },
+        "10": {
+          "class_type": "SaveImage",
+          "inputs": {
+            "images": [
+              "8",
+              0
+            ],
+            "filename_prefix": "NF_NATIVE_BATCH_usr8-soft-v10n-20261025-formal"
+          }
+        },
+        "100": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "layer-window-probe/NF_NATIVE_usr8-soft-v10n-20261025-formal_source.jpg"
+          }
+        },
+        "101": {
+          "class_type": "LoadImage",
+          "inputs": {
+            "image": "layer-window-probe/NF_NATIVE_usr8-soft-v10n-20261025-formal_style.png"
+          }
+        },
+        "nf_turbo_7_sigmas": {
+          "class_type": "ManualSigmas",
+          "inputs": {
+            "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+          }
+        },
+        "nf_turbo_7_sampler": {
+          "class_type": "KSamplerSelect",
+          "inputs": {
+            "sampler_name": "euler"
+          }
+        }
+      },
+      {
+        "qa_job": "usr8-soft-v10n-20261025-formal",
+        "client_id": "nf-owned-native-batch",
+        "create_time": 1792876145475
+      },
+      [
+        "10"
+      ]
+    ],
+    "outputs": {
+      "10": {
+        "images": [
+          {
+            "filename": "NF_NATIVE_BATCH_usr8-soft-v10n-20261025-formal_00001_.png",
+            "subfolder": "",
+            "type": "output"
+          }
+        ]
+      }
+    },
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "23d2d3aa-907c-4711-b2fd-2d9f4789d29c",
+            "timestamp": 1792876145476
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [],
+            "prompt_id": "23d2d3aa-907c-4711-b2fd-2d9f4789d29c",
+            "timestamp": 1792876145479
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "23d2d3aa-907c-4711-b2fd-2d9f4789d29c",
+            "timestamp": 1792876207318
+          }
+        ]
+      ]
+    },
+    "meta": {
+      "10": {
+        "node_id": "10",
+        "display_node": "10",
+        "parent_node": null,
+        "real_node_id": "10"
+      }
+    }
+  }
+}

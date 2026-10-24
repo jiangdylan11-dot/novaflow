@@ -1,0 +1,43 @@
+Let me analyze both images carefully.
+
+**Image 1 (Source Content):**
+- A young woman with long reddish-brown/auburn wavy hair
+- She is winking (one eye closed, one eye open) with a playful smile
+- She has a small beauty mark/mole on her left cheek (viewer's right side of her face)
+- She's wearing a navy blue and white striped top (horizontal stripes)
+- She's holding a clear plastic cup with a straw containing what appears to be a milk tea/coffee drink
+- Her nails are painted red/coral
+- She's seated in what appears to be an airport terminal - rows of grey seats, large glass windows, overhead lighting, digital departure boards visible in the background
+- The setting is clearly an airport/terminal interior
+
+**Image 2 (Style Reference):**
+- A highly stylized anime/illustration style with dramatic lighting
+- Strong contrast: deep blacks against vivid red background
+- Sharp, clean line work with high contrast
+- The skin is rendered with smooth, almost porcelain-like quality with dramatic light hitting specific areas
+- Hair is rendered in deep black with sharp, defined strands
+- There's a strong use of warm golden light accents (sparkles, highlights)
+- The background is a bold, saturated red with splatter effects
+- The overall aesthetic is: high-contrast, graphic, with bold color blocking, sharp edges, dramatic rim lighting, and a sense of luminous glow against dark forms
+- The style is anime-influenced with painterly qualities - it's a "painterly anime" style with strong graphic contrast
+- Key transferable qualities: bold saturated background color, deep dark forms with sharp highlights, dramatic light contrast, clean sharp edges, luminous accent points, strong value contrast between dark masses and bright highlights
+
+**Rendering Class:** This is anime-influenced with painterly qualities. I'll classify it as "anime" since the line work, eye rendering, and overall aesthetic are anime-driven, though with painterly contrast.
+
+**Source Content sentence:**
+A young woman with long auburn wavy hair winks playfully while holding a clear cup of milk tea with a straw, wearing a navy-and-white striped top, seated in rows of grey airport terminal chairs with large glass windows and departure boards behind her.
+
+Now let me craft the prompt, translating the style qualities from image 2 to image 1's content.
+
+Key style elements to transfer:
+1. Bold, saturated background color treatment - the airport terminal should be rendered with strong color blocking, not photographic realism
+2. High contrast between dark masses (hair, clothing) and bright highlights
+3. Sharp, clean edges and graphic line quality
+4. Dramatic light - warm golden highlights catching specific surfaces
+5. Smooth, almost porcelain skin rendering with selective luminous spots
+6. Hair rendered as deep dark mass with sharp defined strands and luminous accents
+7. The background should be simplified into bold color fields with graphic elements (the departure boards, windows, seats rendered as strong shapes)
+8. Splatter/particle effects as atmospheric elements
+9. Strong value hierarchy: dark foreground, bright background accents
+
+Let me write the prompt now.

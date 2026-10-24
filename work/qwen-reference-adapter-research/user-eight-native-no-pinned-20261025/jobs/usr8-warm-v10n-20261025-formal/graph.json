@@ -1,0 +1,136 @@
+{
+  "1": {
+    "class_type": "NovaFlowGGUFBF16Loader",
+    "inputs": {
+      "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Assign the content of <image1> and the artistic rendering of <image2>. The finished artwork adopts the polished anime illustration style of <image2>, defined by a warm golden-amber ambient glow that bathes the figure in soft directional warmth, with clean crisp edges separating the subject from a softly blurred background. The color palette favors saturated warm tones—amber highlights on skin, rich golden sheen on hair, soft peachy blush—while the cool grey seating, navy stripes, and glass surfaces of the source scene remain as grounding anchors. The illumination reads as a warm interior light source casting gentle golden reflections across the figure, harmonizing the artificial airport lighting with the reference's golden-hour warmth, so the scene feels unified in a single warm-cool light atmosphere rather than tinted uniformly.\n\nThe figure is rendered with smooth, polished skin featuring soft blush on the cheeks, clean line-defined contours, and large expressive eyes with clear iris detail and a winking eye that carries playful charm. Hair is modeled as flowing glossy strand clusters with strong specular highlights, giving volume, a polished sheen, and natural wave flow. The striped top is rendered with clean flat color bands and subtle shading; the plastic cup shows translucent material response with visible liquid inside; the red nails carry a glossy lacquer finish. Skin responds to the warm ambient light with soft golden highlights on the shoulder, forearm, and cheek, while shadows remain soft and diffused. The small cheek mole is preserved as a visible identity mark.\n\nThe background retains the existing airport terminal structures—rows of grey seating, the slatted ceiling, large glass windows, and illuminated signage—rendered with a soft depth-of-field blur and warm ambient glow, using the reference's technique of keeping the background painterly and atmospheric while the foreground figure stays crisp and detailed. The finished artwork depicts: A young woman with long wavy auburn hair, a small mole on her cheek, and red-painted nails winks playfully while holding a clear cup of iced milk tea, wearing a navy-and-white striped off-shoulder top, seated in rows of grey airport terminal chairs beneath a slatted ceiling with large glass windows and glowing signage behind her.",
+      "negative_prompt": "",
+      "resolution": 0,
+      "images.image_1": [
+        "100",
+        0
+      ],
+      "images.image_2": [
+        "101",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": 54792256,
+      "cfg": 3,
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "5",
+        1
+      ],
+      "latent_image": [
+        "5",
+        2
+      ],
+      "sampler": [
+        "nf_turbo_7_sampler",
+        0
+      ],
+      "sigmas": [
+        "nf_turbo_7_sigmas",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "NF_NATIVE_BATCH_usr8-warm-v10n-20261025-formal"
+    }
+  },
+  "100": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "layer-window-probe/NF_NATIVE_usr8-warm-v10n-20261025-formal_source.jpg"
+    }
+  },
+  "101": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "layer-window-probe/NF_NATIVE_usr8-warm-v10n-20261025-formal_style.jpg"
+    }
+  },
+  "nf_turbo_7_sigmas": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+    }
+  },
+  "nf_turbo_7_sampler": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  }
+}

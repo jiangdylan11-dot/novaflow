@@ -1,0 +1,15 @@
+{
+  "at": 1792874810.6264064,
+  "ownedConfig": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\prompt-config.json",
+  "cases": [
+    "usr8-bright-v10n-20261025",
+    "usr8-dark-v10n-20261025",
+    "usr8-warm-v10n-20261025",
+    "usr8-cg-v10n-20261025",
+    "usr8-soft-v10n-20261025",
+    "usr8-wet-v10n-20261025",
+    "usr8-graphic-v10n-20261025",
+    "usr8-eastern-v10n-20261025"
+  ],
+  "sharedLoad": true
+}

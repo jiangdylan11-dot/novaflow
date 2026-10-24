@@ -1,0 +1,78 @@
+{
+  "ok": false,
+  "plan": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-plan-20261025.json",
+    "sha256": "1243462ce303d6021f2792eee6a1fc5a64df0539656f73f3466a7e022e2d7fb4"
+  },
+  "jobs": [],
+  "nativeOnly": true,
+  "newAIAnalysis": false,
+  "experimentalLayerNodePresent": false,
+  "formalDefaultChanged": false,
+  "qualityAccepted": false,
+  "timingIsControlledSpeedEvidence": false,
+  "startedAt": 1792875623.2338138,
+  "error": "Sustained low physical RAM/VRAM headroom; stop owned QA without retry",
+  "exceptionType": "RuntimeError",
+  "traceback": "Traceback (most recent call last):\n  File \"D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch.py\", line 510, in main\n    result[\"jobs\"].append(run_job(owner, guard, case, idle_vram, options.job_timeout))\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch.py\", line 412, in run_job\n    history, _ = rt.wait_history(owner, guard, prompt_id, timeout, folder)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\owned_comfy_runtime.py\", line 325, in wait_history\n    guard.check()\n  File \"D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\owned_comfy_runtime.py\", line 256, in check\n    raise RuntimeError(self.reason)\nRuntimeError: Sustained low physical RAM/VRAM headroom; stop owned QA without retry\n",
+  "ownedProcessCleanup": {
+    "serverWasStarted": true,
+    "terminatedOwnedIdentities": [
+      {
+        "pid": 85964,
+        "createTime": 1792875623.7536151,
+        "exe": "C:\\Windows\\System32\\conhost.exe",
+        "cmdline": [
+          "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+          "0x4"
+        ],
+        "ppid": 29336
+      },
+      {
+        "pid": 29336,
+        "createTime": 1792875623.7453628,
+        "exe": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+        "cmdline": [
+          "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+          "-s",
+          "-B",
+          "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+          "--listen",
+          "127.0.0.1",
+          "--port",
+          "8192",
+          "--base-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-turbo-20261025\\comfy-root",
+          "--extra-model-paths-config",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-turbo-20261025\\extra-model-paths.yaml",
+          "--input-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-turbo-20261025\\comfy-root\\input",
+          "--output-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-turbo-20261025\\comfy-root\\output",
+          "--temp-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-turbo-20261025\\comfy-root\\temp",
+          "--user-directory",
+          "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-eight-native-turbo-20261025\\comfy-root\\user",
+          "--fast-disk",
+          "--disable-auto-launch",
+          "--disable-api-nodes",
+          "--disable-all-custom-nodes",
+          "--whitelist-custom-nodes",
+          "ComfyUI-GGUF-leejet",
+          "novaflow_qwen_bf16_loader"
+        ],
+        "ppid": 64024
+      }
+    ],
+    "skippedIdentities": [],
+    "remainingOwnedIdentities": [],
+    "port8192ListeningAfterStop": false,
+    "exitCode": 15
+  },
+  "resourceAbortReason": "Sustained low physical RAM/VRAM headroom; stop owned QA without retry",
+  "totalOwnedRunSeconds": 49.93799999996554,
+  "endedAt": 1792875673.1778057,
+  "existingServicesNeverMutated": true,
+  "galleryChanged": false,
+  "productSourceChanged": false
+}

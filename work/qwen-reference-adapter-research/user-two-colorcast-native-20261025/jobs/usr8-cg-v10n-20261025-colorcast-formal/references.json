@@ -1,0 +1,36 @@
+[
+  {
+    "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\photo_2026-10-22_20-57-15.jpg",
+    "sha256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+    "bytes": 180849,
+    "size": [
+      1280,
+      960
+    ],
+    "role": "source",
+    "upload": {
+      "name": "NF_NATIVE_usr8-cg-v10n-20261025-colorcast-formal_source.jpg",
+      "subfolder": "layer-window-probe",
+      "type": "input"
+    },
+    "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\input\\layer-window-probe\\NF_NATIVE_usr8-cg-v10n-20261025-colorcast-formal_source.jpg",
+    "graphName": "layer-window-probe/NF_NATIVE_usr8-cg-v10n-20261025-colorcast-formal_source.jpg"
+  },
+  {
+    "path": "C:\\Users\\jiang\\OneDrive\\Desktop\\参考风格\\92S8TJM12JWRA6NW8S0PD6ASE0.jpg",
+    "sha256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+    "bytes": 245756,
+    "size": [
+      768,
+      1344
+    ],
+    "role": "style",
+    "upload": {
+      "name": "NF_NATIVE_usr8-cg-v10n-20261025-colorcast-formal_style.jpg",
+      "subfolder": "layer-window-probe",
+      "type": "input"
+    },
+    "localPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\input\\layer-window-probe\\NF_NATIVE_usr8-cg-v10n-20261025-colorcast-formal_style.jpg",
+    "graphName": "layer-window-probe/NF_NATIVE_usr8-cg-v10n-20261025-colorcast-formal_style.jpg"
+  }
+]

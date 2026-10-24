@@ -1,0 +1,26 @@
+{
+  "samples": 43,
+  "sampledMaxVRAMMiB": 15231.0,
+  "sampledMinRAMAvailableBytes": 4110508032,
+  "first": {
+    "at": 1792875623.2887568,
+    "ramAvailableBytes": 40069386240,
+    "vramUsedMiB": 1643.0,
+    "vramTotalMiB": 16376.0,
+    "gpuUtilization": 3.0
+  },
+  "last": {
+    "at": 1792875672.061465,
+    "ramAvailableBytes": 30597320704,
+    "vramUsedMiB": 1634.0,
+    "vramTotalMiB": 16376.0,
+    "gpuUtilization": 5.0
+  },
+  "abortReason": "Sustained low physical RAM/VRAM headroom; stop owned QA without retry",
+  "limits": {
+    "minRAMGiB": 4.0,
+    "minVRAMFreeMiB": 768,
+    "sustainedSeconds": 2.0
+  },
+  "scope": "Sampled whole-device usage; not model-only memory"
+}

@@ -1,0 +1,11 @@
+User wants style transfer: image1 content (woman winking, striped top, holding iced drink, airport seating, red hair, beauty mark) rendered in image2's anime style (clean cel-shaded anime, strong rim/ambient light, cool night palette, smooth skin shading, hair as glossy layered shapes, crisp edges, depth hierarchy with atmospheric background). I must keep source content: winking expression, striped top, held cup with straw, red hair, beauty mark, airport interior with rows of seats and glass facade.
+
+I need to write sourceContent as one factual sentence, then a prompt that assigns content to image1 and art direction to image2, translating the anime method (cel shading, glossy hair, clean line edges, luminous cool ambient light, depth via atmospheric haze, focal hierarchy) onto the source scene. End with the exact sourceContent sentence as subject.
+
+Let me craft sourceContent: "A red-haired woman with a beauty mark on her cheek winks playfully while wearing a navy-and-white striped top and raising a clear plastic cup of iced milk tea with a straw, seated among rows of airport waiting chairs beneath a glass facade." Good.
+
+Now prompt: two-three paragraphs. Start assigning. Then describe transferable relationships: cel-shaded anime rendering, smooth gradient skin, glossy layered hair as broad shapes with crisp highlights, clean crisp outlines, cool ambient night-like illumination with warm focal light on face, depth hierarchy with atmospheric haze on background seats/glass, focal on face and drink. Keep striped top, cup, winking expression, beauty mark, red hair color. Background uses existing structures (rows of seats, glass facade, ceiling) repainted with anime atmospheric depth, not inventing new scenery. End with sourceContent sentence.
+
+renderingClass: anime.
+
+Write JSON with escaped newlines.

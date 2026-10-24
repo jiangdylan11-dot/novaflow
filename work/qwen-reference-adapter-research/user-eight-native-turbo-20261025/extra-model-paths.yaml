@@ -1,0 +1,15 @@
+{
+  "existing_model_weights_readonly": {
+    "base_path": "E:/NovaFlow/models",
+    "is_default": true,
+    "diffusion_models": "diffusion_models\nunet",
+    "unet": "diffusion_models\nunet",
+    "text_encoders": "text_encoders\nclip",
+    "clip": "text_encoders\nclip",
+    "vae": "vae"
+  },
+  "two_known_loaders_readonly": {
+    "base_path": "E:/NovaFlow/custom_nodes",
+    "custom_nodes": "."
+  }
+}

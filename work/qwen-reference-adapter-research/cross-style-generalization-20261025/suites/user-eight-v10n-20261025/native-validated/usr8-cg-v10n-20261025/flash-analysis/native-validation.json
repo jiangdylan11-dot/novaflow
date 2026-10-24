@@ -1,0 +1,36 @@
+{
+  "nativePromptUnmodified": true,
+  "newInferencePerformed": false,
+  "originalCaseId": "usr8-cg-v10n-20261025",
+  "originalRequestResult": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\request-result.json",
+    "sha256": "b2d7e3ea41631e7e08f386af824917b788617843a30fc23f7a8ca691cf4cf066"
+  },
+  "originalRaw": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\raw.txt",
+    "sha256": "dd313781425489d60f38e6b89df2ae828c445cbc381af1a5f0b253dc69b61699"
+  },
+  "originalEvents": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\events.json",
+    "sha256": "82c51ee8a6fef5e2ae200fb55a027b54e08ea898f06b7cc7d7f67027d90f66bb"
+  },
+  "originalSSE": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\sse.txt",
+    "sha256": "b103a1e0acc9ddcb1d8f0db49914e7c3461a448a542479daf9e56052c56c1b7b"
+  },
+  "originalRequestMetadata": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025\\flash-analysis\\request-metadata.json",
+    "sha256": "27efd13ba906361eff9c7b2da2edf1f0317c9ef08e8bb5fd18715560e1091d81"
+  },
+  "validator": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\run-flash-suite-continuation.py",
+    "sha256": "0ec3d6b86e3c37e4a4da8a956afca11610689df9f34b4e0ff6d5f46b29521e67"
+  },
+  "completeStopConfirmed": true,
+  "sourceContentExactSubstring": false,
+  "extractedPromptSHA256": "6c2bb03698ae972f2011537c99d530af8fa7944aeacad9c3400d40cd8692d8d2",
+  "validationWarning": [
+    "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+  ],
+  "semanticRewrite": false
+}

@@ -1,0 +1,398 @@
+{
+  "schema": "nf.native-validated-composite.v1",
+  "ok": true,
+  "resourcesReleased": true,
+  "resourceStop": null,
+  "model": "swift-1.5-qwen38-iq2-xs",
+  "sharedSettingsSHA256": "23e90ca85da1028b8c559a1dd633e11b80f7d4648cbb0a89386182e73c9ccda6",
+  "qualityAccepted": false,
+  "formalDefaultChanged": false,
+  "newInferencePerformedByFinalizer": false,
+  "originalManifest": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\suite-manifest.json",
+    "sha256": "fb338b1c987670dc49d683f74a9363bf1eae171af3d653020032c1f78498f8e3"
+  },
+  "requests": [
+    {
+      "case": "usr8-bright-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 9382.338,
+      "firstContentMs": 21365.088,
+      "usage": {
+        "prompt_tokens": 3915,
+        "completion_tokens": 1124,
+        "total_tokens": 5039,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3915,
+        "prompt_ms": 6652.7,
+        "prompt_per_token_ms": 1.699,
+        "prompt_per_second": 588.5,
+        "predicted_n": 1124,
+        "predicted_ms": 22653.1,
+        "predicted_per_token_ms": 20.154,
+        "predicted_per_second": 49.6,
+        "draft_n": 929,
+        "draft_n_accepted": 623
+      },
+      "promptChars": 2123,
+      "promptSHA256": "4626816443b838bfe42a3c44396cabe046578027bf8fa0a9f4691c6653b8c0d8",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 31689.616,
+      "reasoningChars": 3022,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-1-original",
+      "validationWarning": []
+    },
+    {
+      "case": "usr8-dark-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 6683.513,
+      "firstContentMs": 15313.046,
+      "usage": {
+        "prompt_tokens": 3915,
+        "completion_tokens": 792,
+        "total_tokens": 4707,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3915,
+        "prompt_ms": 5490.7,
+        "prompt_per_token_ms": 1.402,
+        "prompt_per_second": 713.0,
+        "predicted_n": 792,
+        "predicted_ms": 17804.4,
+        "predicted_per_token_ms": 22.48,
+        "predicted_per_second": 44.5,
+        "draft_n": 661,
+        "draft_n_accepted": 404
+      },
+      "requestMs": 24464.497,
+      "reasoningChars": 1827,
+      "finishReason": "stop",
+      "promptSHA256": "b3d19c9f768b145bbe95b77541910d36c9ecad44d9e1db8105cc58301b008af5",
+      "promptChars": 1888,
+      "nativePromptUnmodified": true,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-1-original",
+      "validationWarning": [
+        "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+      ],
+      "oldFailureReceipt": {
+        "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\result.json",
+        "sha256": "246f25f22b57352b722df8cb7bf2af6034e2f7a856dfdcb861df7110be3b37a1"
+      }
+    },
+    {
+      "case": "usr8-warm-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 6356.53,
+      "firstContentMs": 26799.408,
+      "usage": {
+        "prompt_tokens": 2931,
+        "completion_tokens": 1589,
+        "total_tokens": 4520,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 2931,
+        "prompt_ms": 5489.5,
+        "prompt_per_token_ms": 1.873,
+        "prompt_per_second": 533.9,
+        "predicted_n": 1589,
+        "predicted_ms": 33125.8,
+        "predicted_per_token_ms": 21.086,
+        "predicted_per_second": 47.4,
+        "draft_n": 1344,
+        "draft_n_accepted": 896
+      },
+      "promptChars": 2316,
+      "promptSHA256": "f6999812f60f6621a26dd64834b05b7aaa3d2c8f67d0e10b4c66091d4994daa9",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 39779.186,
+      "reasoningChars": 5028,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-2-continuation",
+      "validationWarning": []
+    },
+    {
+      "case": "usr8-cg-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 5534.184,
+      "firstContentMs": 17707.243,
+      "usage": {
+        "prompt_tokens": 2925,
+        "completion_tokens": 1064,
+        "total_tokens": 3989,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 2925,
+        "prompt_ms": 5149.2,
+        "prompt_per_token_ms": 1.76,
+        "prompt_per_second": 568.0,
+        "predicted_n": 1064,
+        "predicted_ms": 22313.4,
+        "predicted_per_token_ms": 20.971,
+        "predicted_per_second": 47.7,
+        "draft_n": 962,
+        "draft_n_accepted": 568
+      },
+      "promptChars": 2025,
+      "promptSHA256": "6c2bb03698ae972f2011537c99d530af8fa7944aeacad9c3400d40cd8692d8d2",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 27808.476,
+      "reasoningChars": 2849,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-2-continuation",
+      "validationWarning": [
+        "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+      ]
+    },
+    {
+      "case": "usr8-soft-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 5102.65,
+      "firstContentMs": 16175.922,
+      "usage": {
+        "prompt_tokens": 2905,
+        "completion_tokens": 1005,
+        "total_tokens": 3910,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 2905,
+        "prompt_ms": 4694.4,
+        "prompt_per_token_ms": 1.616,
+        "prompt_per_second": 618.8,
+        "predicted_n": 1005,
+        "predicted_ms": 19398.0,
+        "predicted_per_token_ms": 19.301,
+        "predicted_per_second": 51.8,
+        "draft_n": 866,
+        "draft_n_accepted": 546
+      },
+      "promptChars": 1732,
+      "promptSHA256": "e1d40e676e8fa4fb498368b95c50d52009ae7771b4482108abdee57f7d6bb6fb",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 24478.185,
+      "reasoningChars": 2781,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-2-continuation",
+      "validationWarning": [
+        "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+      ]
+    },
+    {
+      "case": "usr8-wet-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 6061.671,
+      "firstContentMs": 20531.201,
+      "usage": {
+        "prompt_tokens": 3915,
+        "completion_tokens": 1386,
+        "total_tokens": 5301,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3915,
+        "prompt_ms": 4726.0,
+        "prompt_per_token_ms": 1.207,
+        "prompt_per_second": 828.4,
+        "predicted_n": 1386,
+        "predicted_ms": 28227.7,
+        "predicted_per_token_ms": 20.366,
+        "predicted_per_second": 49.1,
+        "draft_n": 1191,
+        "draft_n_accepted": 736
+      },
+      "promptChars": 2937,
+      "promptSHA256": "bf5b2160edb0b2b6e8bd0ae8466b70485a4ca0d8ba773cf785681e2246cfda2e",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 34264.63,
+      "reasoningChars": 3552,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-2-continuation",
+      "validationWarning": [
+        "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+      ]
+    },
+    {
+      "case": "usr8-graphic-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 7003.081,
+      "firstContentMs": 20870.155,
+      "usage": {
+        "prompt_tokens": 3897,
+        "completion_tokens": 1203,
+        "total_tokens": 5100,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3897,
+        "prompt_ms": 5458.2,
+        "prompt_per_token_ms": 1.401,
+        "prompt_per_second": 714.0,
+        "predicted_n": 1203,
+        "predicted_ms": 24930.3,
+        "predicted_per_token_ms": 20.723,
+        "predicted_per_second": 48.3,
+        "draft_n": 996,
+        "draft_n_accepted": 638
+      },
+      "promptChars": 2439,
+      "promptSHA256": "241268fa578d4efa588fb465ac92286e43a04ae3284825ba658c44651b1f6991",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 31909.687,
+      "reasoningChars": 3155,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-2-continuation",
+      "validationWarning": [
+        "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+      ]
+    },
+    {
+      "case": "usr8-eastern-v10n-20261025",
+      "ok": true,
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "attempted": true,
+      "qualityAccepted": false,
+      "formalDefaultChanged": false,
+      "firstReasoningMs": 7083.496,
+      "firstContentMs": 18653.923,
+      "usage": {
+        "prompt_tokens": 3945,
+        "completion_tokens": 974,
+        "total_tokens": 4919,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "timings": {
+        "cache_n": 0,
+        "prompt_n": 3945,
+        "prompt_ms": 5343.6,
+        "prompt_per_token_ms": 1.355,
+        "prompt_per_second": 738.3,
+        "predicted_n": 974,
+        "predicted_ms": 23792.4,
+        "predicted_per_token_ms": 24.428,
+        "predicted_per_second": 40.9,
+        "draft_n": 802,
+        "draft_n_accepted": 504
+      },
+      "promptChars": 1959,
+      "promptSHA256": "90b2909f88922a32b194873949a44d4b8f178b1fe3cd296d701a2dc109941c03",
+      "finishReason": "stop",
+      "nativePromptUnmodified": true,
+      "requestMs": 30849.029,
+      "reasoningChars": 826,
+      "newInferencePerformed": false,
+      "sharedSessionId": "session-2-continuation",
+      "validationWarning": [
+        "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "sessionId": "session-1-original",
+      "caseIds": [
+        "usr8-bright-v10n-20261025",
+        "usr8-dark-v10n-20261025"
+      ],
+      "receiptPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+      "receiptSHA256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422",
+      "loadMs": 44229.251,
+      "unloadMs": 3862.57,
+      "executionMs": 104510.757,
+      "startedAtUTC": "2026-10-24T20:46:50.626406Z",
+      "finishedAtUTC": "2026-10-24T20:48:35.156385Z",
+      "wallTimestampBasis": "Claim sentinel epoch and result file modification time; measured executionMs remains separate"
+    },
+    {
+      "sessionId": "session-2-continuation",
+      "caseIds": [
+        "usr8-warm-v10n-20261025",
+        "usr8-cg-v10n-20261025",
+        "usr8-soft-v10n-20261025",
+        "usr8-wet-v10n-20261025",
+        "usr8-graphic-v10n-20261025",
+        "usr8-eastern-v10n-20261025"
+      ],
+      "receiptPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-continuation\\result.json",
+      "receiptSHA256": "d569180f4aaa8e548f1e40b3e697a0e9e4099dd2a79a048f0272684ddc72d2f4",
+      "loadMs": 31132.404,
+      "unloadMs": 4592.321,
+      "executionMs": 225348.571,
+      "startedAtUTC": "2026-10-24T20:53:59.868648Z",
+      "finishedAtUTC": "2026-10-24T20:57:45.232194Z",
+      "wallTimestampBasis": "Claim sentinel epoch and result file modification time; measured executionMs remains separate"
+    }
+  ],
+  "sharedLoadMs": 75361.655,
+  "sharedUnloadMs": 8454.891,
+  "batchTotalMs": 329859.328,
+  "sumLoadsMs": 75361.655,
+  "sumUnloadsMs": 8454.891,
+  "sumSessionExecutionMs": 329859.328,
+  "wallClockSpanMs": 654605.7872772217,
+  "wallClockSpanIncludesInterSessionGap": true,
+  "timingScope": "Two actual owned sessions; per-case requestMs is measured. No per-case full stage time is invented."
+}

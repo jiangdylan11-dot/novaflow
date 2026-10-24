@@ -1,0 +1,32 @@
+{
+  "file": "worker-graph.json",
+  "sha256": "0331cce704bb767a560af70520d61bd0b9b4367336b724897877a1ccf5833535",
+  "rendererPath": "D:\\AI_APP\\NovaFlow-Web\\novaflow-web\\worker-renderer\\novaflow-brand-runtime.js",
+  "rendererSHA256": "5392f2c9cf9dc816c07c830353937f1234a6b2998ffd0963b38d519332955d50",
+  "generatedBy": "createWorkflowHost.buildGraph",
+  "workerHostPath": "D:\\AI_APP\\NovaFlow-Web\\novaflow-web\\worker\\src\\comfy\\workflow-host.mjs",
+  "liveCatalog": true,
+  "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+  "renderingClass": "anime",
+  "sourceAlignedToOutput": true,
+  "sourcePixels": [
+    1280,
+    960
+  ],
+  "latentFrom": [
+    "5",
+    2
+  ],
+  "actualAnalysisResultPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-warm-v10n-20261025\\flash-analysis\\result.json",
+  "actualPromptSHA256": "f6999812f60f6621a26dd64834b05b7aaa3d2c8f67d0e10b4c66091d4994daa9",
+  "formalBuilderSourceUpdated": true,
+  "manualDiagnosticPrompt": false,
+  "sharedNegativePolicy": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\shared-empty-negative-policy.json",
+    "sha256": "6f4431cbcb6bfd8696c4450b3bfc5d961503076c215057260f97f7502cc37474"
+  },
+  "fixedGenericPromptPolicy": null,
+  "programSuppliedPrompt": false,
+  "primaryAssistantReloadVerified": false,
+  "flashDefaultPromoted": false
+}

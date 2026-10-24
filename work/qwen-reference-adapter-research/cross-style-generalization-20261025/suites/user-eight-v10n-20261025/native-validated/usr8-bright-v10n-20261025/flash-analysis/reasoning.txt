@@ -1,0 +1,41 @@
+Let me analyze both images carefully.
+
+**Image 1 (Source Content):**
+- A young woman with long reddish-brown/auburn wavy hair
+- She is winking (one eye closed, one eye open) with a playful smile
+- She has a beauty mark on her left cheek (from viewer's perspective, her right cheek)
+- She's wearing a navy and white striped top (horizontal stripes, off-shoulder style)
+- She's holding a clear plastic cup with a straw containing what appears to be a milk tea/coffee drink
+- Her nails are painted red/coral
+- Setting: an airport terminal - rows of gray seats, glass windows showing dark exterior (night), overhead lighting panels, departure/arrival signage boards with yellow text, other passengers visible in the background
+- The scene is clearly an airport waiting area at night
+
+**Image 2 (Style Reference):**
+- Anime illustration style - high-quality, detailed anime art
+- Bright, saturated color palette with strong blue sky tones
+- Clean, crisp line work with soft shading
+- Strong directional light (sunlight from upper right) creating clear highlights and shadows
+- Luminous, airy atmosphere with warm highlights on skin
+- Hair rendered with smooth flowing strands, clear highlights, and defined clumps
+- Skin rendered with soft gradients, subtle blush, clean edges
+- Clothing rendered with clear fabric folds, strong light/shadow contrast, saturated colors
+- Background rendered with atmospheric depth - clear sky, soft clouds, distant mountains, detailed foreground flowers
+- Strong sense of depth with foreground/background separation
+- The overall feel is bright, cheerful, high-contrast anime with clean linework and vibrant color layering
+
+**Key transferable artistic relationships from Image 2:**
+1. Clean, crisp anime linework with defined edges
+2. Strong directional lighting with clear highlight/shadow separation
+3. Smooth skin rendering with soft gradients and subtle blush
+4. Hair rendered in flowing clumps with defined highlights
+5. Vibrant, saturated color palette
+6. Strong depth hierarchy: sharp foreground subject, softer mid-ground, atmospheric background
+7. Clean fabric rendering with clear fold structure
+8. Bright, luminous atmosphere
+
+Now, the source is an airport at night. The style reference is bright daylight anime. The instruction says to transfer HOW it's drawn and lit, not WHAT is depicted. The target illumination can change while retaining the original environment. So I need to relight the airport scene in the anime style's approach to lighting - clean, directional, with strong highlights and shadows, vibrant colors - while keeping the airport setting.
+
+Let me write the sourceContent sentence:
+- Young woman with long auburn wavy hair, winking with a playful smile, beauty mark on cheek, wearing navy-and-white horizontal striped off-shoulder top, holding a clear plastic cup of milk tea with straw, red-painted nails, in an airport terminal with rows of gray seats, glass windows, overhead lighting panels, and yellow departure signage boards.
+
+Now let me craft the prompt.

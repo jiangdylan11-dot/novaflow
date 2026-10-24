@@ -1,0 +1,55 @@
+{
+  "serverWasStarted": true,
+  "terminatedOwnedIdentities": [
+    {
+      "pid": 148384,
+      "createTime": 1792876510.5741644,
+      "exe": "C:\\Windows\\System32\\conhost.exe",
+      "cmdline": [
+        "\\??\\C:\\WINDOWS\\system32\\conhost.exe",
+        "0x4"
+      ],
+      "ppid": 91648
+    },
+    {
+      "pid": 91648,
+      "createTime": 1792876510.5656598,
+      "exe": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+      "cmdline": [
+        "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+        "-s",
+        "-B",
+        "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        "8192",
+        "--base-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root",
+        "--extra-model-paths-config",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\extra-model-paths.yaml",
+        "--input-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\input",
+        "--output-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\output",
+        "--temp-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\temp",
+        "--user-directory",
+        "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\user-two-colorcast-native-20261025\\comfy-root\\user",
+        "--fast-disk",
+        "--disable-pinned-memory",
+        "--disable-auto-launch",
+        "--disable-api-nodes",
+        "--disable-all-custom-nodes",
+        "--whitelist-custom-nodes",
+        "ComfyUI-GGUF-leejet",
+        "novaflow_qwen_bf16_loader"
+      ],
+      "ppid": 81164
+    }
+  ],
+  "skippedIdentities": [],
+  "remainingOwnedIdentities": [],
+  "port8192ListeningAfterStop": false,
+  "exitCode": 15
+}

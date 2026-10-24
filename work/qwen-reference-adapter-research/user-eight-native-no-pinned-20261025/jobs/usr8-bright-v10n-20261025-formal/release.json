@@ -1,0 +1,18 @@
+{
+  "ack": {
+    "httpStatus": 200
+  },
+  "queue": {
+    "queue_running": [],
+    "queue_pending": []
+  },
+  "resourceSample": {
+    "at": 1792875954.6413343,
+    "ramAvailableBytes": 34900115456,
+    "vramUsedMiB": 1947.0,
+    "vramTotalMiB": 16376.0,
+    "gpuUtilization": 1.0
+  },
+  "seconds": 2.047000000020489,
+  "criterion": "queue idle and device VRAM <= ready-idle baseline + 768 MiB for two polls; not a zero-memory claim"
+}

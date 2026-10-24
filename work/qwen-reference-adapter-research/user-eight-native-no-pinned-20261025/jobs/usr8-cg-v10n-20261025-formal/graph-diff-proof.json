@@ -1,0 +1,12 @@
+{
+  "frozenGraph": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-cg-v10n-20261025-formal\\worker-graph.json",
+    "sha256": "c31f964511d5fd2c32c12e6d9797bfd489643c6a54cc4fb5b59ab208d0b3387c"
+  },
+  "actualDifferences": [
+    "10.inputs.filename_prefix",
+    "100.inputs.image",
+    "101.inputs.image"
+  ],
+  "promptAndSamplingUnchanged": true
+}

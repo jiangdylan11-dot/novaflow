@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "configPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\prompt-config.json",
+  "serverConfigPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\server.json",
+  "baseUrl": "http://127.0.0.1:8198",
+  "http": {
+    "pid": 77200,
+    "createTime": 1792875240.3070507,
+    "exe": "c:\\programdata\\novaflow\\ai-runtime\\engine\\strata\\control-0.1.49.2\\python\\python.exe",
+    "cmdline": [
+      "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\strata\\control-0.1.49.2\\python\\python.exe",
+      "-m",
+      "serve.server",
+      "--engine",
+      "strata",
+      "--config",
+      "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\server.json",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8198",
+      "--lazy",
+      "--offline",
+      "--ready-file",
+      "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\http-ready.json"
+    ]
+  },
+  "children": [
+    {
+      "pid": 118144,
+      "createTime": 1792875240.314773,
+      "exe": "c:\\windows\\system32\\conhost.exe",
+      "observedParentPid": 77200
+    },
+    {
+      "pid": 83080,
+      "createTime": 1792875241.544425,
+      "exe": "c:\\programdata\\novaflow\\ai-runtime\\engine\\strata\\engine-0.1.48-windows-cuda13\\strata-vision.exe",
+      "observedParentPid": 77200
+    },
+    {
+      "pid": 105264,
+      "createTime": 1792875258.4466727,
+      "exe": "c:\\programdata\\novaflow\\ai-runtime\\engine\\strata\\engine-0.1.48-windows-cuda13\\strata.exe",
+      "observedParentPid": 77200
+    }
+  ],
+  "state": "released",
+  "startedAt": 1792875240.3049986,
+  "updatedAt": 1792875464.6709275,
+  "instanceId": "7b8371a44bcb4999a58e4037ab2c16c0",
+  "loadedAt": 1792875270.8599963,
+  "releasedAt": 1792875464.6709275
+}

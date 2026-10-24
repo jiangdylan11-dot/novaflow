@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "configPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\prompt-config.json",
+  "serverConfigPath": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\server.json",
+  "baseUrl": "http://127.0.0.1:8198",
+  "http": {
+    "pid": 63056,
+    "createTime": 1792874811.0992243,
+    "exe": "c:\\programdata\\novaflow\\ai-runtime\\engine\\strata\\control-0.1.49.2\\python\\python.exe",
+    "cmdline": [
+      "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\strata\\control-0.1.49.2\\python\\python.exe",
+      "-m",
+      "serve.server",
+      "--engine",
+      "strata",
+      "--config",
+      "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\server.json",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8198",
+      "--lazy",
+      "--offline",
+      "--ready-file",
+      "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-bright-v10n-20261025\\flash-analysis\\http-ready.json"
+    ]
+  },
+  "children": [
+    {
+      "pid": 83464,
+      "createTime": 1792874811.1077354,
+      "exe": "c:\\windows\\system32\\conhost.exe",
+      "observedParentPid": 63056
+    },
+    {
+      "pid": 106480,
+      "createTime": 1792874814.1086931,
+      "exe": "c:\\programdata\\novaflow\\ai-runtime\\engine\\strata\\engine-0.1.48-windows-cuda13\\strata-vision.exe",
+      "observedParentPid": 63056
+    },
+    {
+      "pid": 105400,
+      "createTime": 1792874838.013443,
+      "exe": "c:\\programdata\\novaflow\\ai-runtime\\engine\\strata\\engine-0.1.48-windows-cuda13\\strata.exe",
+      "observedParentPid": 63056
+    }
+  ],
+  "state": "released",
+  "startedAt": 1792874811.097229,
+  "updatedAt": 1792874914.6399384,
+  "instanceId": "a6c6f4c16d864cd79f99b5328da32a00",
+  "loadedAt": 1792874854.6197083,
+  "releasedAt": 1792874914.6399384
+}

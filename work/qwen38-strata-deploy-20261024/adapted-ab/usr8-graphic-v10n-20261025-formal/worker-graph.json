@@ -1,0 +1,149 @@
+{
+  "1": {
+    "class_type": "NovaFlowGGUFBF16Loader",
+    "inputs": {
+      "unet_name": "Qwen-Image-2.1-Turbo-BF16.gguf"
+    }
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "prompt": "Assign content from <image1> and artistic rendering from <image2>. Redraw the source photograph using the graphic, high-contrast anime-painterly style of <image2>: the entire scene must be re-rendered with bold saturated color blocking, deep dark masses sharply separated from luminous highlights, and clean graphic edges. The background airport terminal — rows of grey seats, large glass window panels, overhead strip lighting, and glowing departure boards — should be flattened into strong, saturated color fields with simplified geometric shapes, using a dominant warm red-orange atmospheric wash as the ambient ground, with scattered dark ink-splatter particles and small golden sparkle points floating in the air to create depth and energy. The departure boards and window reflections become bright graphic accents against the saturated backdrop. The woman's long auburn hair is rendered as a deep, rich dark mass with sharp defined strand edges, catching warm golden rim-light along the outer contours and luminous accent points where light strikes individual locks. Her skin is smooth and porcelain-like, with selective warm highlights on the cheekbone, nose bridge, and lips, and a small dark beauty mark on the cheek preserved as a sharp graphic dot. Her winking expression — one eye tightly closed, the other open with a playful smile — is rendered with clean anime-style line work, the open eye bright and luminous with a warm golden iris glow. The navy-and-white striped top is rendered as bold, flat graphic bands of deep navy and cream, with sharp clean edges and minimal soft shading. The clear plastic cup of milk tea is rendered as a translucent luminous form with warm amber tones inside, the straw as a clean bright line, and the red-painted nails as sharp graphic accents. The hand holding the cup is drawn with smooth, simplified form and selective highlight. The overall illumination follows the reference's dramatic contrast: dark foreground forms (hair, clothing) set against the saturated warm background, with golden light points scattered as atmospheric particles, creating a unified high-contrast graphic atmosphere. The finished artwork depicts a young woman with long auburn wavy hair winking playfully while holding a clear cup of milk tea with a straw, wearing a navy-and-white striped top, seated in rows of grey airport terminal chairs with large glass windows and illuminated departure boards behind her.",
+      "negative_prompt": "",
+      "resolution": 0,
+      "images.image_1": [
+        "100",
+        0
+      ],
+      "images.image_2": [
+        "201",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "SamplerCustom",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "add_noise": true,
+      "noise_seed": 54792256,
+      "cfg": 3,
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "5",
+        1
+      ],
+      "latent_image": [
+        "5",
+        2
+      ],
+      "sampler": [
+        "nf_turbo_7_sampler",
+        0
+      ],
+      "sigmas": [
+        "nf_turbo_7_sigmas",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "NF_AB_usr8-graphic-v10n-20261025-formal_flash_turbo8_cfg3"
+    }
+  },
+  "100": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_AB_usr8-graphic-v10n-20261025-formal_source.jpg"
+    }
+  },
+  "101": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_AB_usr8-graphic-v10n-20261025-formal_style.png"
+    }
+  },
+  "201": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "101",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 832,
+      "height": 1248,
+      "crop": "disabled"
+    }
+  },
+  "nf_turbo_7_sigmas": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+    }
+  },
+  "nf_turbo_7_sampler": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  }
+}

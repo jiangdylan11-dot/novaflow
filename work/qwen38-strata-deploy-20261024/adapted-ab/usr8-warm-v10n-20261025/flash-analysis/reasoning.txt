@@ -1,0 +1,59 @@
+Let me analyze both images carefully.
+
+**Image 1 (Source Content):**
+- A young woman with long wavy auburn/reddish-brown hair
+- She is winking (one eye closed, one open) with a playful smile
+- A small beauty mark/mole on her left cheek (viewer's right side)
+- Wearing a navy and white striped top (off-shoulder style)
+- Holding a clear plastic cup with a milk tea/coffee drink with a straw, red-painted nails
+- Setting: an airport terminal interior - rows of grey seating, large glass windows, overhead slatted ceiling, illuminated signage in the background, other passengers visible
+- Nighttime interior lighting (artificial, warm-cool mix)
+
+**Image 2 (Art Style Reference):**
+- Anime/illustration style with clean line work
+- Warm, saturated color palette - golden/amber tones dominate
+- Smooth, polished skin rendering with soft blush
+- Hair rendered with distinct strand clusters, glossy highlights, flowing volume
+- Eyes are large, expressive, with clear iris detail
+- Background is softly rendered with depth-of-field blur, urban setting
+- Strong warm directional light (sunlight) creating a golden-hour feel
+- Clean, crisp edges on the figure against a softer background
+- The style is polished anime illustration with semi-realistic shading, glossy highlights on hair and skin, warm ambient glow
+
+**Target Art Direction from Image 2:**
+- Polished anime illustration style
+- Warm golden/amber color atmosphere
+- Smooth skin with soft blush, clean line edges
+- Hair as flowing glossy strand clusters with strong highlights
+- Large expressive eyes
+- Soft background with depth blur
+- Warm directional illumination creating golden glow on skin and hair
+- Clean, crisp figure edges against softer background
+
+Now I need to write the sourceContent sentence. It should be ONE short factual English sentence describing: who/what, expression, action, clothing, held object, identity marks, scene structures.
+
+Let me craft it:
+"A young woman with long wavy auburn hair, a small mole on her cheek, and red-painted nails winks playfully while holding a clear cup of iced milk tea, wearing a navy-and-white striped off-shoulder top, seated in rows of grey airport terminal chairs beneath a slatted ceiling with large glass windows and illuminated signage behind her."
+
+That's a bit long. Let me tighten it:
+"A young woman with long wavy auburn hair, a cheek mole, and red nails winks playfully while holding a clear cup of iced milk tea, wearing a navy-and-white striped off-shoulder top, seated in grey airport terminal chairs beneath a slatted ceiling with glass windows and glowing signage behind her."
+
+That works. Now the prompt:
+
+I need to write 2-3 connected paragraphs translating the artistic relationships from image 2 into instructions for redrawing image 1. Then end with the sourceContent sentence as the explicit subject.
+
+Let me draft the prompt:
+
+Paragraph 1: Assign content and reference. Establish the overall light/color atmosphere.
+Paragraph 2: Focal hierarchy, form/edge treatment, skin/hair modelling, material response.
+Paragraph 3: Background rendering using existing structures. End with sourceContent.
+
+Let me write it out:
+
+"Assign the content of <image1> and the artistic rendering of <image2>. The finished artwork should adopt the polished anime illustration style of <image2>, characterized by a warm golden-amber ambient glow that bathes the figure in soft directional warmth, with clean crisp edges defining the subject against a softly blurred background. The color palette should favor saturated warm tones—amber highlights on skin, rich golden sheen on hair, and soft peachy blush—while retaining the cool grey and navy elements of the source scene as grounding anchors. The overall illumination should feel like a warm interior light source casting gentle golden reflections across the figure, harmonizing the artificial airport lighting with the reference's golden-hour warmth.
+
+The figure should be rendered with smooth, polished skin featuring soft blush on the cheeks, clean line-defined edges, and large expressive eyes with clear iris detail. Hair should be modeled as flowing glossy strand clusters with strong specular highlights, giving volume and a polished sheen. The striped top should be rendered with clean flat color bands and subtle shading, the plastic cup with translucent material response showing the liquid inside, and the red nails with a glossy lacquer finish. The skin should respond to the warm ambient light with soft golden highlights on the shoulder, forearm, and cheek, while shadows remain soft and diffused.
+
+The background should retain the existing airport terminal structures—rows of grey seating, the slatted ceiling, large glass windows, and illuminated signage—rendered with a soft depth-of-field blur and warm ambient glow, using the reference's technique of keeping the background painterly and atmospheric while the foreground figure remains crisp and detailed. The finished artwork depicts:
+
+I have thought about this long enough; time to give my answer.

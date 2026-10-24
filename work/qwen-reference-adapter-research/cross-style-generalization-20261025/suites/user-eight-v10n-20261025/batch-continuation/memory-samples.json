@@ -1,0 +1,2599 @@
+[
+  {
+    "ramAvailableBytes": 40170446848,
+    "vramUsedMiB": 1583,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875239.9302053
+  },
+  {
+    "ramAvailableBytes": 40111685632,
+    "vramUsedMiB": 1583,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875240.4880815
+  },
+  {
+    "ramAvailableBytes": 40066953216,
+    "vramUsedMiB": 1583,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875241.0475078
+  },
+  {
+    "ramAvailableBytes": 39884648448,
+    "vramUsedMiB": 1583,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875241.6119528
+  },
+  {
+    "ramAvailableBytes": 39530639360,
+    "vramUsedMiB": 1790,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 28,
+    "at": 1792875242.178719
+  },
+  {
+    "ramAvailableBytes": 39527911424,
+    "vramUsedMiB": 2656,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 16,
+    "at": 1792875242.7382598
+  },
+  {
+    "ramAvailableBytes": 39183282176,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 17,
+    "at": 1792875243.2984536
+  },
+  {
+    "ramAvailableBytes": 39025999872,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875243.8548899
+  },
+  {
+    "ramAvailableBytes": 39089790976,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 26,
+    "at": 1792875244.4191198
+  },
+  {
+    "ramAvailableBytes": 39100862464,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875244.9851117
+  },
+  {
+    "ramAvailableBytes": 39084294144,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875245.5507681
+  },
+  {
+    "ramAvailableBytes": 39100133376,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 2,
+    "at": 1792875246.1158497
+  },
+  {
+    "ramAvailableBytes": 39229407232,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 2,
+    "at": 1792875246.675893
+  },
+  {
+    "ramAvailableBytes": 39236067328,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875247.2389855
+  },
+  {
+    "ramAvailableBytes": 39347396608,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875247.799083
+  },
+  {
+    "ramAvailableBytes": 39352623104,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875248.3628213
+  },
+  {
+    "ramAvailableBytes": 39351418880,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875248.9295197
+  },
+  {
+    "ramAvailableBytes": 39343304704,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875249.5111167
+  },
+  {
+    "ramAvailableBytes": 39337947136,
+    "vramUsedMiB": 3012,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 8,
+    "at": 1792875250.0778062
+  },
+  {
+    "ramAvailableBytes": 39349706752,
+    "vramUsedMiB": 3015,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 9,
+    "at": 1792875250.636496
+  },
+  {
+    "ramAvailableBytes": 39339675648,
+    "vramUsedMiB": 3014,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 3,
+    "at": 1792875251.1974072
+  },
+  {
+    "ramAvailableBytes": 39345704960,
+    "vramUsedMiB": 3014,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875251.775279
+  },
+  {
+    "ramAvailableBytes": 39212740608,
+    "vramUsedMiB": 3014,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 3,
+    "at": 1792875252.3353884
+  },
+  {
+    "ramAvailableBytes": 39200567296,
+    "vramUsedMiB": 3014,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875252.9042401
+  },
+  {
+    "ramAvailableBytes": 39064424448,
+    "vramUsedMiB": 3014,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875253.4633646
+  },
+  {
+    "ramAvailableBytes": 39081615360,
+    "vramUsedMiB": 3014,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 9,
+    "at": 1792875254.017717
+  },
+  {
+    "ramAvailableBytes": 39087763456,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 9,
+    "at": 1792875254.577228
+  },
+  {
+    "ramAvailableBytes": 39082733568,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 2,
+    "at": 1792875255.1551797
+  },
+  {
+    "ramAvailableBytes": 39073378304,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875255.7131617
+  },
+  {
+    "ramAvailableBytes": 39077478400,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 3,
+    "at": 1792875256.280058
+  },
+  {
+    "ramAvailableBytes": 39087632384,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875256.8524725
+  },
+  {
+    "ramAvailableBytes": 39083495424,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875257.4181523
+  },
+  {
+    "ramAvailableBytes": 39207440384,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875257.979204
+  },
+  {
+    "ramAvailableBytes": 39277256704,
+    "vramUsedMiB": 3013,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 10,
+    "at": 1792875258.555582
+  },
+  {
+    "ramAvailableBytes": 38292799488,
+    "vramUsedMiB": 3298,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 47,
+    "at": 1792875259.1110568
+  },
+  {
+    "ramAvailableBytes": 38346244096,
+    "vramUsedMiB": 4918,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 47,
+    "at": 1792875259.6856968
+  },
+  {
+    "ramAvailableBytes": 37499199488,
+    "vramUsedMiB": 6273,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 23,
+    "at": 1792875260.246603
+  },
+  {
+    "ramAvailableBytes": 38099910656,
+    "vramUsedMiB": 7907,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 38,
+    "at": 1792875260.8042963
+  },
+  {
+    "ramAvailableBytes": 37926952960,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 87,
+    "at": 1792875261.3935628
+  },
+  {
+    "ramAvailableBytes": 37682548736,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 21,
+    "at": 1792875261.9892476
+  },
+  {
+    "ramAvailableBytes": 37658488832,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 26,
+    "at": 1792875262.571563
+  },
+  {
+    "ramAvailableBytes": 36881047552,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 15,
+    "at": 1792875263.131375
+  },
+  {
+    "ramAvailableBytes": 27967807488,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875263.6924298
+  },
+  {
+    "ramAvailableBytes": 22289108992,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875264.25522
+  },
+  {
+    "ramAvailableBytes": 16526061568,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875264.8211572
+  },
+  {
+    "ramAvailableBytes": 11892666368,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875265.440805
+  },
+  {
+    "ramAvailableBytes": 11873390592,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 6,
+    "at": 1792875266.0433636
+  },
+  {
+    "ramAvailableBytes": 11639324672,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 4,
+    "at": 1792875266.6167881
+  },
+  {
+    "ramAvailableBytes": 11724181504,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875267.198806
+  },
+  {
+    "ramAvailableBytes": 11660247040,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875267.7819846
+  },
+  {
+    "ramAvailableBytes": 11644334080,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875268.3513827
+  },
+  {
+    "ramAvailableBytes": 11638026240,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 2,
+    "at": 1792875268.9102361
+  },
+  {
+    "ramAvailableBytes": 11650179072,
+    "vramUsedMiB": 12319,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 1,
+    "at": 1792875269.489932
+  },
+  {
+    "ramAvailableBytes": 11757453312,
+    "vramUsedMiB": 12391,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 34,
+    "at": 1792875270.0607562
+  },
+  {
+    "ramAvailableBytes": 11025690624,
+    "vramUsedMiB": 12497,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 33,
+    "at": 1792875270.633819
+  },
+  {
+    "ramAvailableBytes": 11066056704,
+    "vramUsedMiB": 12707,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 4,
+    "at": 1792875271.1933556
+  },
+  {
+    "ramAvailableBytes": 11134050304,
+    "vramUsedMiB": 12707,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875271.7542548
+  },
+  {
+    "ramAvailableBytes": 10910699520,
+    "vramUsedMiB": 12719,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 73,
+    "at": 1792875272.3429098
+  },
+  {
+    "ramAvailableBytes": 10480623616,
+    "vramUsedMiB": 12755,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 30,
+    "at": 1792875272.92148
+  },
+  {
+    "ramAvailableBytes": 10467168256,
+    "vramUsedMiB": 12755,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 57,
+    "at": 1792875273.4996502
+  },
+  {
+    "ramAvailableBytes": 10466459648,
+    "vramUsedMiB": 12755,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 73,
+    "at": 1792875274.078222
+  },
+  {
+    "ramAvailableBytes": 10468478976,
+    "vramUsedMiB": 12755,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875274.6613815
+  },
+  {
+    "ramAvailableBytes": 10435530752,
+    "vramUsedMiB": 12783,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875275.2530274
+  },
+  {
+    "ramAvailableBytes": 10311843840,
+    "vramUsedMiB": 12784,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 70,
+    "at": 1792875275.9026937
+  },
+  {
+    "ramAvailableBytes": 10001543168,
+    "vramUsedMiB": 12780,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 85,
+    "at": 1792875276.482335
+  },
+  {
+    "ramAvailableBytes": 9671868416,
+    "vramUsedMiB": 12780,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 15,
+    "at": 1792875277.0715306
+  },
+  {
+    "ramAvailableBytes": 9648177152,
+    "vramUsedMiB": 12830,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 77,
+    "at": 1792875277.6641676
+  },
+  {
+    "ramAvailableBytes": 9649278976,
+    "vramUsedMiB": 12830,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875278.2470708
+  },
+  {
+    "ramAvailableBytes": 9644576768,
+    "vramUsedMiB": 12846,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875278.8386214
+  },
+  {
+    "ramAvailableBytes": 9642209280,
+    "vramUsedMiB": 12846,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875279.4254794
+  },
+  {
+    "ramAvailableBytes": 9530884096,
+    "vramUsedMiB": 12830,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875280.0102952
+  },
+  {
+    "ramAvailableBytes": 9556652032,
+    "vramUsedMiB": 12825,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875280.61172
+  },
+  {
+    "ramAvailableBytes": 9702354944,
+    "vramUsedMiB": 12825,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875281.2159226
+  },
+  {
+    "ramAvailableBytes": 9704292352,
+    "vramUsedMiB": 12825,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875281.798165
+  },
+  {
+    "ramAvailableBytes": 9704042496,
+    "vramUsedMiB": 12825,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875282.3810859
+  },
+  {
+    "ramAvailableBytes": 9609523200,
+    "vramUsedMiB": 12825,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875282.9649124
+  },
+  {
+    "ramAvailableBytes": 9620860928,
+    "vramUsedMiB": 12825,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875283.5547452
+  },
+  {
+    "ramAvailableBytes": 9627561984,
+    "vramUsedMiB": 12826,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875284.1406648
+  },
+  {
+    "ramAvailableBytes": 9626161152,
+    "vramUsedMiB": 12826,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875284.743702
+  },
+  {
+    "ramAvailableBytes": 9746513920,
+    "vramUsedMiB": 12826,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875285.3318865
+  },
+  {
+    "ramAvailableBytes": 9745481728,
+    "vramUsedMiB": 12826,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875285.9240804
+  },
+  {
+    "ramAvailableBytes": 9743622144,
+    "vramUsedMiB": 12826,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875286.5050707
+  },
+  {
+    "ramAvailableBytes": 9840852992,
+    "vramUsedMiB": 12826,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875287.097438
+  },
+  {
+    "ramAvailableBytes": 9886543872,
+    "vramUsedMiB": 12842,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875287.6800914
+  },
+  {
+    "ramAvailableBytes": 9870364672,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875288.2727695
+  },
+  {
+    "ramAvailableBytes": 9738387456,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875288.8518126
+  },
+  {
+    "ramAvailableBytes": 9692147712,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875289.4409404
+  },
+  {
+    "ramAvailableBytes": 9696272384,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875290.0379376
+  },
+  {
+    "ramAvailableBytes": 9728647168,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875290.6242793
+  },
+  {
+    "ramAvailableBytes": 9471025152,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875291.20593
+  },
+  {
+    "ramAvailableBytes": 9471979520,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875291.8181195
+  },
+  {
+    "ramAvailableBytes": 9472266240,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875292.394199
+  },
+  {
+    "ramAvailableBytes": 9474486272,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875292.9693732
+  },
+  {
+    "ramAvailableBytes": 9471463424,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875293.5529773
+  },
+  {
+    "ramAvailableBytes": 9616883712,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875294.1410294
+  },
+  {
+    "ramAvailableBytes": 9616179200,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875294.7407649
+  },
+  {
+    "ramAvailableBytes": 9707442176,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875295.3152936
+  },
+  {
+    "ramAvailableBytes": 9740341248,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875295.9054623
+  },
+  {
+    "ramAvailableBytes": 9801650176,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875296.4818654
+  },
+  {
+    "ramAvailableBytes": 9691594752,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875297.0848813
+  },
+  {
+    "ramAvailableBytes": 9635340288,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875297.6844933
+  },
+  {
+    "ramAvailableBytes": 9669570560,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875298.2915645
+  },
+  {
+    "ramAvailableBytes": 9708183552,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875298.875337
+  },
+  {
+    "ramAvailableBytes": 9719779328,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875299.460153
+  },
+  {
+    "ramAvailableBytes": 9745154048,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875300.0499566
+  },
+  {
+    "ramAvailableBytes": 9593044992,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875300.6529005
+  },
+  {
+    "ramAvailableBytes": 9484472320,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875301.2519915
+  },
+  {
+    "ramAvailableBytes": 9505374208,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875301.8391824
+  },
+  {
+    "ramAvailableBytes": 9479368704,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875302.4407241
+  },
+  {
+    "ramAvailableBytes": 9515016192,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875303.027771
+  },
+  {
+    "ramAvailableBytes": 9415225344,
+    "vramUsedMiB": 12858,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875303.6205585
+  },
+  {
+    "ramAvailableBytes": 9348804608,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875304.222393
+  },
+  {
+    "ramAvailableBytes": 9355632640,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875304.8414612
+  },
+  {
+    "ramAvailableBytes": 9283080192,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875305.4184706
+  },
+  {
+    "ramAvailableBytes": 9272250368,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875306.0127773
+  },
+  {
+    "ramAvailableBytes": 9373310976,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875306.6096253
+  },
+  {
+    "ramAvailableBytes": 9359093760,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875307.1884127
+  },
+  {
+    "ramAvailableBytes": 9311027200,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875307.7843034
+  },
+  {
+    "ramAvailableBytes": 9347289088,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875308.3880224
+  },
+  {
+    "ramAvailableBytes": 9332932608,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875308.988016
+  },
+  {
+    "ramAvailableBytes": 9544429568,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875309.593585
+  },
+  {
+    "ramAvailableBytes": 9543516160,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875310.1762176
+  },
+  {
+    "ramAvailableBytes": 9594273792,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875310.7646134
+  },
+  {
+    "ramAvailableBytes": 9634795520,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 36,
+    "at": 1792875311.3672683
+  },
+  {
+    "ramAvailableBytes": 9575784448,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875311.9435112
+  },
+  {
+    "ramAvailableBytes": 9647079424,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 26,
+    "at": 1792875312.554417
+  },
+  {
+    "ramAvailableBytes": 9600233472,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875313.261874
+  },
+  {
+    "ramAvailableBytes": 9456492544,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 66,
+    "at": 1792875313.8439765
+  },
+  {
+    "ramAvailableBytes": 9541373952,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 76,
+    "at": 1792875314.4348707
+  },
+  {
+    "ramAvailableBytes": 9554755584,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 70,
+    "at": 1792875315.016985
+  },
+  {
+    "ramAvailableBytes": 9446703104,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 26,
+    "at": 1792875315.5877883
+  },
+  {
+    "ramAvailableBytes": 9416118272,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 11,
+    "at": 1792875316.1597192
+  },
+  {
+    "ramAvailableBytes": 9350230016,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 87,
+    "at": 1792875316.753472
+  },
+  {
+    "ramAvailableBytes": 9390305280,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875317.3517401
+  },
+  {
+    "ramAvailableBytes": 9410039808,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875317.9461765
+  },
+  {
+    "ramAvailableBytes": 9448497152,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875318.539392
+  },
+  {
+    "ramAvailableBytes": 9447378944,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 96,
+    "at": 1792875319.1278818
+  },
+  {
+    "ramAvailableBytes": 9660440576,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875319.7184918
+  },
+  {
+    "ramAvailableBytes": 9660637184,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875320.2931697
+  },
+  {
+    "ramAvailableBytes": 9647726592,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875320.8697224
+  },
+  {
+    "ramAvailableBytes": 9651089408,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875321.4479237
+  },
+  {
+    "ramAvailableBytes": 9649451008,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875322.0508926
+  },
+  {
+    "ramAvailableBytes": 9603239936,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875322.6493049
+  },
+  {
+    "ramAvailableBytes": 9495601152,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 88,
+    "at": 1792875323.2531948
+  },
+  {
+    "ramAvailableBytes": 9418403840,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875323.8383977
+  },
+  {
+    "ramAvailableBytes": 9445433344,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875324.4193153
+  },
+  {
+    "ramAvailableBytes": 9490501632,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875325.0085924
+  },
+  {
+    "ramAvailableBytes": 9483317248,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875325.5910826
+  },
+  {
+    "ramAvailableBytes": 9473585152,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 94,
+    "at": 1792875326.1727448
+  },
+  {
+    "ramAvailableBytes": 9437782016,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875326.7748277
+  },
+  {
+    "ramAvailableBytes": 9430851584,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875327.3642688
+  },
+  {
+    "ramAvailableBytes": 9432752128,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875327.9423492
+  },
+  {
+    "ramAvailableBytes": 9498570752,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875328.539238
+  },
+  {
+    "ramAvailableBytes": 9537392640,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875329.1441467
+  },
+  {
+    "ramAvailableBytes": 9416978432,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875329.7322843
+  },
+  {
+    "ramAvailableBytes": 9449033728,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875330.3231401
+  },
+  {
+    "ramAvailableBytes": 9533034496,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875330.927903
+  },
+  {
+    "ramAvailableBytes": 9531420672,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875331.5043573
+  },
+  {
+    "ramAvailableBytes": 9527058432,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875332.0976121
+  },
+  {
+    "ramAvailableBytes": 9534816256,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875332.6902301
+  },
+  {
+    "ramAvailableBytes": 9534455808,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875333.2686636
+  },
+  {
+    "ramAvailableBytes": 9534263296,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875333.8441193
+  },
+  {
+    "ramAvailableBytes": 9528184832,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875334.4229376
+  },
+  {
+    "ramAvailableBytes": 9529954304,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875335.0060117
+  },
+  {
+    "ramAvailableBytes": 9531641856,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875335.597719
+  },
+  {
+    "ramAvailableBytes": 9665142784,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875336.2071922
+  },
+  {
+    "ramAvailableBytes": 9684643840,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875336.8127515
+  },
+  {
+    "ramAvailableBytes": 9685098496,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875337.411111
+  },
+  {
+    "ramAvailableBytes": 9724837888,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875338.0069015
+  },
+  {
+    "ramAvailableBytes": 9703616512,
+    "vramUsedMiB": 12859,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875338.5894969
+  },
+  {
+    "ramAvailableBytes": 9681690624,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875339.16987
+  },
+  {
+    "ramAvailableBytes": 9774002176,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 83,
+    "at": 1792875339.772502
+  },
+  {
+    "ramAvailableBytes": 9771212800,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 65,
+    "at": 1792875340.3776786
+  },
+  {
+    "ramAvailableBytes": 9770668032,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 70,
+    "at": 1792875340.9777377
+  },
+  {
+    "ramAvailableBytes": 9782874112,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 45,
+    "at": 1792875341.579271
+  },
+  {
+    "ramAvailableBytes": 9715269632,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875342.1797554
+  },
+  {
+    "ramAvailableBytes": 9612562432,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 64,
+    "at": 1792875342.7993824
+  },
+  {
+    "ramAvailableBytes": 9510342656,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 77,
+    "at": 1792875343.3827333
+  },
+  {
+    "ramAvailableBytes": 9511395328,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 13,
+    "at": 1792875343.995009
+  },
+  {
+    "ramAvailableBytes": 9530064896,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875344.5970793
+  },
+  {
+    "ramAvailableBytes": 9532198912,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875345.192689
+  },
+  {
+    "ramAvailableBytes": 9532903424,
+    "vramUsedMiB": 12862,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875345.7898595
+  },
+  {
+    "ramAvailableBytes": 9559339008,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875346.379667
+  },
+  {
+    "ramAvailableBytes": 9556430848,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875346.988498
+  },
+  {
+    "ramAvailableBytes": 9714225152,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875347.5885825
+  },
+  {
+    "ramAvailableBytes": 9712795648,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875348.1854243
+  },
+  {
+    "ramAvailableBytes": 9715253248,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 94,
+    "at": 1792875348.787076
+  },
+  {
+    "ramAvailableBytes": 9712537600,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875349.3748581
+  },
+  {
+    "ramAvailableBytes": 9723240448,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875349.9641356
+  },
+  {
+    "ramAvailableBytes": 9726234624,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875350.5499773
+  },
+  {
+    "ramAvailableBytes": 9716367360,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875351.167459
+  },
+  {
+    "ramAvailableBytes": 9772331008,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875351.7588668
+  },
+  {
+    "ramAvailableBytes": 9769451520,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875352.3534157
+  },
+  {
+    "ramAvailableBytes": 9766952960,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875352.9485934
+  },
+  {
+    "ramAvailableBytes": 9775677440,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875353.5551035
+  },
+  {
+    "ramAvailableBytes": 9792778240,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875354.157331
+  },
+  {
+    "ramAvailableBytes": 9775599616,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875354.7478106
+  },
+  {
+    "ramAvailableBytes": 9763971072,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875355.3440204
+  },
+  {
+    "ramAvailableBytes": 9759436800,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875355.9289474
+  },
+  {
+    "ramAvailableBytes": 9753817088,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 87,
+    "at": 1792875356.5384345
+  },
+  {
+    "ramAvailableBytes": 9753767936,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875357.131084
+  },
+  {
+    "ramAvailableBytes": 9563717632,
+    "vramUsedMiB": 12861,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875357.733818
+  },
+  {
+    "ramAvailableBytes": 9565315072,
+    "vramUsedMiB": 12861,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875358.3085365
+  },
+  {
+    "ramAvailableBytes": 9531891712,
+    "vramUsedMiB": 12861,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875358.9178529
+  },
+  {
+    "ramAvailableBytes": 9570045952,
+    "vramUsedMiB": 12861,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875359.518623
+  },
+  {
+    "ramAvailableBytes": 9564573696,
+    "vramUsedMiB": 12861,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875360.1218913
+  },
+  {
+    "ramAvailableBytes": 9558990848,
+    "vramUsedMiB": 12861,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875360.7219715
+  },
+  {
+    "ramAvailableBytes": 9571835904,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875361.3101594
+  },
+  {
+    "ramAvailableBytes": 9586266112,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875361.9044385
+  },
+  {
+    "ramAvailableBytes": 9590296576,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875362.506198
+  },
+  {
+    "ramAvailableBytes": 9590910976,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875363.1086478
+  },
+  {
+    "ramAvailableBytes": 9696702464,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 9,
+    "at": 1792875363.7319849
+  },
+  {
+    "ramAvailableBytes": 9693347840,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875364.3135023
+  },
+  {
+    "ramAvailableBytes": 9777463296,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875364.931718
+  },
+  {
+    "ramAvailableBytes": 9783496704,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875365.5687926
+  },
+  {
+    "ramAvailableBytes": 9778630656,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875366.1984766
+  },
+  {
+    "ramAvailableBytes": 9771335680,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875366.8415806
+  },
+  {
+    "ramAvailableBytes": 9796329472,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 97,
+    "at": 1792875367.4676032
+  },
+  {
+    "ramAvailableBytes": 9805209600,
+    "vramUsedMiB": 12860,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875368.0805182
+  },
+  {
+    "ramAvailableBytes": 9682268160,
+    "vramUsedMiB": 12905,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 20,
+    "at": 1792875368.6674979
+  },
+  {
+    "ramAvailableBytes": 9683681280,
+    "vramUsedMiB": 12905,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 16,
+    "at": 1792875369.2565224
+  },
+  {
+    "ramAvailableBytes": 9712545792,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875369.8510585
+  },
+  {
+    "ramAvailableBytes": 9696718848,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875370.453114
+  },
+  {
+    "ramAvailableBytes": 9689870336,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875371.060457
+  },
+  {
+    "ramAvailableBytes": 9678422016,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875371.672019
+  },
+  {
+    "ramAvailableBytes": 9686454272,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875372.2498255
+  },
+  {
+    "ramAvailableBytes": 9682776064,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875372.8416665
+  },
+  {
+    "ramAvailableBytes": 9714946048,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875373.4411998
+  },
+  {
+    "ramAvailableBytes": 9707978752,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875374.0354724
+  },
+  {
+    "ramAvailableBytes": 9709322240,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875374.6377003
+  },
+  {
+    "ramAvailableBytes": 9723166720,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875375.2327554
+  },
+  {
+    "ramAvailableBytes": 9721794560,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875375.835232
+  },
+  {
+    "ramAvailableBytes": 9722621952,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875376.422463
+  },
+  {
+    "ramAvailableBytes": 9718247424,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875377.0166245
+  },
+  {
+    "ramAvailableBytes": 9718644736,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875377.615295
+  },
+  {
+    "ramAvailableBytes": 9718194176,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875378.2227163
+  },
+  {
+    "ramAvailableBytes": 9716219904,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875378.8291082
+  },
+  {
+    "ramAvailableBytes": 9715662848,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875379.4274557
+  },
+  {
+    "ramAvailableBytes": 9728811008,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875380.0194602
+  },
+  {
+    "ramAvailableBytes": 9724870656,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 96,
+    "at": 1792875380.613297
+  },
+  {
+    "ramAvailableBytes": 9708802048,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875381.2302613
+  },
+  {
+    "ramAvailableBytes": 9724805120,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875381.8434718
+  },
+  {
+    "ramAvailableBytes": 9724637184,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875382.4416022
+  },
+  {
+    "ramAvailableBytes": 9718530048,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875383.0645123
+  },
+  {
+    "ramAvailableBytes": 9738133504,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 88,
+    "at": 1792875383.6623127
+  },
+  {
+    "ramAvailableBytes": 9720086528,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875384.268746
+  },
+  {
+    "ramAvailableBytes": 9744068608,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875384.8902488
+  },
+  {
+    "ramAvailableBytes": 9686138880,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875385.5000153
+  },
+  {
+    "ramAvailableBytes": 9609117696,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875386.088117
+  },
+  {
+    "ramAvailableBytes": 9617526784,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875386.6967082
+  },
+  {
+    "ramAvailableBytes": 9637113856,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875387.3169475
+  },
+  {
+    "ramAvailableBytes": 9623080960,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875387.9251907
+  },
+  {
+    "ramAvailableBytes": 9622765568,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875388.5297966
+  },
+  {
+    "ramAvailableBytes": 9589673984,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 40,
+    "at": 1792875389.134619
+  },
+  {
+    "ramAvailableBytes": 9492914176,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 88,
+    "at": 1792875389.7415054
+  },
+  {
+    "ramAvailableBytes": 9342992384,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875390.3486392
+  },
+  {
+    "ramAvailableBytes": 9443500032,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875390.9561203
+  },
+  {
+    "ramAvailableBytes": 9428275200,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875391.5558054
+  },
+  {
+    "ramAvailableBytes": 9429192704,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875392.145952
+  },
+  {
+    "ramAvailableBytes": 9417211904,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875392.7463102
+  },
+  {
+    "ramAvailableBytes": 9418817536,
+    "vramUsedMiB": 12904,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875393.3648071
+  },
+  {
+    "ramAvailableBytes": 9425862656,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875393.9696758
+  },
+  {
+    "ramAvailableBytes": 9428414464,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875394.5767832
+  },
+  {
+    "ramAvailableBytes": 9428168704,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875395.187083
+  },
+  {
+    "ramAvailableBytes": 9700007936,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875395.7889092
+  },
+  {
+    "ramAvailableBytes": 9701937152,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875396.3976583
+  },
+  {
+    "ramAvailableBytes": 9704448000,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875397.0034957
+  },
+  {
+    "ramAvailableBytes": 9678594048,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875397.6224744
+  },
+  {
+    "ramAvailableBytes": 9430986752,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 2,
+    "at": 1792875398.2270694
+  },
+  {
+    "ramAvailableBytes": 9313509376,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875398.7990432
+  },
+  {
+    "ramAvailableBytes": 9401094144,
+    "vramUsedMiB": 12903,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875399.4487584
+  },
+  {
+    "ramAvailableBytes": 9444179968,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 73,
+    "at": 1792875400.070984
+  },
+  {
+    "ramAvailableBytes": 9448824832,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 57,
+    "at": 1792875400.7633352
+  },
+  {
+    "ramAvailableBytes": 9461366784,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 61,
+    "at": 1792875401.3955767
+  },
+  {
+    "ramAvailableBytes": 9466859520,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 87,
+    "at": 1792875401.9902885
+  },
+  {
+    "ramAvailableBytes": 9600393216,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 78,
+    "at": 1792875402.5908678
+  },
+  {
+    "ramAvailableBytes": 9598599168,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 96,
+    "at": 1792875403.2100842
+  },
+  {
+    "ramAvailableBytes": 9478823936,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875403.7996788
+  },
+  {
+    "ramAvailableBytes": 9621979136,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 18,
+    "at": 1792875404.3771827
+  },
+  {
+    "ramAvailableBytes": 9590525952,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 17,
+    "at": 1792875404.9927132
+  },
+  {
+    "ramAvailableBytes": 9587249152,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 87,
+    "at": 1792875405.5953846
+  },
+  {
+    "ramAvailableBytes": 9539350528,
+    "vramUsedMiB": 12902,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 86,
+    "at": 1792875406.1985543
+  },
+  {
+    "ramAvailableBytes": 9550073856,
+    "vramUsedMiB": 12911,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875406.8022966
+  },
+  {
+    "ramAvailableBytes": 9519022080,
+    "vramUsedMiB": 12911,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875407.4185555
+  },
+  {
+    "ramAvailableBytes": 9485070336,
+    "vramUsedMiB": 12911,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875408.0174177
+  },
+  {
+    "ramAvailableBytes": 9478324224,
+    "vramUsedMiB": 12911,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875408.6292593
+  },
+  {
+    "ramAvailableBytes": 9512468480,
+    "vramUsedMiB": 12911,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875409.232793
+  },
+  {
+    "ramAvailableBytes": 9476898816,
+    "vramUsedMiB": 12911,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 88,
+    "at": 1792875409.844754
+  },
+  {
+    "ramAvailableBytes": 9489547264,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875410.4541185
+  },
+  {
+    "ramAvailableBytes": 9490649088,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875411.0513747
+  },
+  {
+    "ramAvailableBytes": 9532690432,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875411.6606162
+  },
+  {
+    "ramAvailableBytes": 9533100032,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875412.2584205
+  },
+  {
+    "ramAvailableBytes": 9531944960,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875412.8724213
+  },
+  {
+    "ramAvailableBytes": 9512120320,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875413.4847383
+  },
+  {
+    "ramAvailableBytes": 9514520576,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875414.0973427
+  },
+  {
+    "ramAvailableBytes": 9519677440,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875414.6917465
+  },
+  {
+    "ramAvailableBytes": 9384890368,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 84,
+    "at": 1792875415.3076081
+  },
+  {
+    "ramAvailableBytes": 9331580928,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875415.9243774
+  },
+  {
+    "ramAvailableBytes": 9324486656,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875416.5160062
+  },
+  {
+    "ramAvailableBytes": 9338683392,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875417.114505
+  },
+  {
+    "ramAvailableBytes": 9339170816,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875417.7224796
+  },
+  {
+    "ramAvailableBytes": 9334280192,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875418.3171954
+  },
+  {
+    "ramAvailableBytes": 9338572800,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875418.9332457
+  },
+  {
+    "ramAvailableBytes": 9333858304,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875419.5278552
+  },
+  {
+    "ramAvailableBytes": 9325293568,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875420.1478784
+  },
+  {
+    "ramAvailableBytes": 9315147776,
+    "vramUsedMiB": 12914,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875420.7435308
+  },
+  {
+    "ramAvailableBytes": 9480622080,
+    "vramUsedMiB": 12914,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875421.352542
+  },
+  {
+    "ramAvailableBytes": 9558245376,
+    "vramUsedMiB": 12914,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875421.9735837
+  },
+  {
+    "ramAvailableBytes": 9522946048,
+    "vramUsedMiB": 12914,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875422.5769846
+  },
+  {
+    "ramAvailableBytes": 9528193024,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875423.1799695
+  },
+  {
+    "ramAvailableBytes": 9525886976,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875423.773312
+  },
+  {
+    "ramAvailableBytes": 9418203136,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875424.370985
+  },
+  {
+    "ramAvailableBytes": 9337253888,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875424.9835346
+  },
+  {
+    "ramAvailableBytes": 9366130688,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875425.5867019
+  },
+  {
+    "ramAvailableBytes": 9355210752,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875426.1941268
+  },
+  {
+    "ramAvailableBytes": 9381658624,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875426.8025322
+  },
+  {
+    "ramAvailableBytes": 9385222144,
+    "vramUsedMiB": 12908,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875427.4103181
+  },
+  {
+    "ramAvailableBytes": 9383763968,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 89,
+    "at": 1792875428.0278816
+  },
+  {
+    "ramAvailableBytes": 9386668032,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875428.6205025
+  },
+  {
+    "ramAvailableBytes": 9389883392,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875429.2273345
+  },
+  {
+    "ramAvailableBytes": 9379528704,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875429.808665
+  },
+  {
+    "ramAvailableBytes": 9303547904,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 0,
+    "at": 1792875430.3866103
+  },
+  {
+    "ramAvailableBytes": 9302990848,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875430.9625072
+  },
+  {
+    "ramAvailableBytes": 9603469312,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 79,
+    "at": 1792875431.576123
+  },
+  {
+    "ramAvailableBytes": 9583034368,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875432.1901615
+  },
+  {
+    "ramAvailableBytes": 9588912128,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 44,
+    "at": 1792875432.8069417
+  },
+  {
+    "ramAvailableBytes": 9611583488,
+    "vramUsedMiB": 12909,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 96,
+    "at": 1792875433.4483354
+  },
+  {
+    "ramAvailableBytes": 9584365568,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 83,
+    "at": 1792875434.0730674
+  },
+  {
+    "ramAvailableBytes": 9475162112,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 97,
+    "at": 1792875434.7475348
+  },
+  {
+    "ramAvailableBytes": 9422020608,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 64,
+    "at": 1792875435.3866403
+  },
+  {
+    "ramAvailableBytes": 9318752256,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 97,
+    "at": 1792875435.985047
+  },
+  {
+    "ramAvailableBytes": 9317761024,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 18,
+    "at": 1792875436.5628178
+  },
+  {
+    "ramAvailableBytes": 9319149568,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875437.1731086
+  },
+  {
+    "ramAvailableBytes": 9347313664,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875437.8151467
+  },
+  {
+    "ramAvailableBytes": 9350983680,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875438.431215
+  },
+  {
+    "ramAvailableBytes": 9361862656,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875439.0523293
+  },
+  {
+    "ramAvailableBytes": 9360961536,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875439.6777158
+  },
+  {
+    "ramAvailableBytes": 9350066176,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875440.2874918
+  },
+  {
+    "ramAvailableBytes": 9480712192,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875440.8903158
+  },
+  {
+    "ramAvailableBytes": 9493737472,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875441.4981837
+  },
+  {
+    "ramAvailableBytes": 9498275840,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875442.0999043
+  },
+  {
+    "ramAvailableBytes": 9510690816,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875442.707591
+  },
+  {
+    "ramAvailableBytes": 9509916672,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875443.2993758
+  },
+  {
+    "ramAvailableBytes": 9508446208,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 93,
+    "at": 1792875443.9045408
+  },
+  {
+    "ramAvailableBytes": 9508388864,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875444.4950244
+  },
+  {
+    "ramAvailableBytes": 9514074112,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875445.1163993
+  },
+  {
+    "ramAvailableBytes": 9436901376,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875445.7748706
+  },
+  {
+    "ramAvailableBytes": 9354403840,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875446.3706746
+  },
+  {
+    "ramAvailableBytes": 9349091328,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875446.9850166
+  },
+  {
+    "ramAvailableBytes": 9395507200,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875447.609919
+  },
+  {
+    "ramAvailableBytes": 9400823808,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875448.2283013
+  },
+  {
+    "ramAvailableBytes": 9397182464,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875448.8496552
+  },
+  {
+    "ramAvailableBytes": 9363718144,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875449.465826
+  },
+  {
+    "ramAvailableBytes": 9350529024,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875450.07723
+  },
+  {
+    "ramAvailableBytes": 9330794496,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875450.6998782
+  },
+  {
+    "ramAvailableBytes": 9469083648,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 86,
+    "at": 1792875451.321732
+  },
+  {
+    "ramAvailableBytes": 9474793472,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875451.9486275
+  },
+  {
+    "ramAvailableBytes": 9468653568,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 98,
+    "at": 1792875452.5684853
+  },
+  {
+    "ramAvailableBytes": 9528762368,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875453.1922324
+  },
+  {
+    "ramAvailableBytes": 9380925440,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875453.8239043
+  },
+  {
+    "ramAvailableBytes": 9384325120,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 88,
+    "at": 1792875454.4194293
+  },
+  {
+    "ramAvailableBytes": 9399451648,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 95,
+    "at": 1792875455.0284843
+  },
+  {
+    "ramAvailableBytes": 9390927872,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875455.6451252
+  },
+  {
+    "ramAvailableBytes": 9381568512,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 91,
+    "at": 1792875456.2509542
+  },
+  {
+    "ramAvailableBytes": 9108500480,
+    "vramUsedMiB": 12912,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875456.874861
+  },
+  {
+    "ramAvailableBytes": 8984080384,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 84,
+    "at": 1792875457.4749944
+  },
+  {
+    "ramAvailableBytes": 8998600704,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875458.068205
+  },
+  {
+    "ramAvailableBytes": 9158377472,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 90,
+    "at": 1792875458.6680808
+  },
+  {
+    "ramAvailableBytes": 9161830400,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 100,
+    "at": 1792875459.280464
+  },
+  {
+    "ramAvailableBytes": 9164967936,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 92,
+    "at": 1792875459.915003
+  },
+  {
+    "ramAvailableBytes": 9168240640,
+    "vramUsedMiB": 12913,
+    "vramTotalMiB": 16376,
+    "gpuUtilization": 99,
+    "at": 1792875460.508687
+  }
+]

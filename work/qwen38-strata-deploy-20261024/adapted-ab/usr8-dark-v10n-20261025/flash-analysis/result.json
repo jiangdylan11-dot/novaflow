@@ -1,0 +1,49 @@
+{
+  "ok": false,
+  "model": "swift-1.5-qwen38-iq2-xs",
+  "attempted": true,
+  "qualityAccepted": false,
+  "formalDefaultChanged": false,
+  "firstReasoningMs": 6683.513,
+  "firstContentMs": 15313.046,
+  "usage": {
+    "prompt_tokens": 3915,
+    "completion_tokens": 792,
+    "total_tokens": 4707,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 3915,
+    "prompt_ms": 5490.7,
+    "prompt_per_token_ms": 1.402,
+    "prompt_per_second": 713.0,
+    "predicted_n": 792,
+    "predicted_ms": 17804.4,
+    "predicted_per_token_ms": 22.48,
+    "predicted_per_second": 44.5,
+    "draft_n": 661,
+    "draft_n_accepted": 404
+  },
+  "error": "Native v10 source inclusion or image-role fields missing; no automatic repair",
+  "requestMs": 24464.497,
+  "reasoningChars": 1827,
+  "finishReason": "stop",
+  "resourcesReleased": true,
+  "sharedBatchResult": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+  "sharedLoadUnattributed": true,
+  "sharedBatchCompleted": false,
+  "resourceStop": null,
+  "afterStatus": {
+    "ok": true,
+    "ownedHttpAlive": false,
+    "portOpen": false,
+    "heavyProcesses": []
+  },
+  "sharedSettingsSHA256": "23e90ca85da1028b8c559a1dd633e11b80f7d4648cbb0a89386182e73c9ccda6",
+  "mtp": true,
+  "thinking": "low",
+  "thinkingBudget": 1024
+}

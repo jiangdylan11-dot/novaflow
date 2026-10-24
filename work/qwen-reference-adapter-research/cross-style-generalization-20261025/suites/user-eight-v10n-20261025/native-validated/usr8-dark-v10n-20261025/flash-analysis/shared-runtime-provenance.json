@@ -1,0 +1,14 @@
+{
+  "sharedBatchResult": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch-final\\result.json",
+  "sharedSessionId": "session-1-original",
+  "sharedSessionResult": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\result.json",
+  "sharedSessionResultSHA256": "4343c67e8ae639d63854c22311ff10a3e99e853f365d2948f8bb5b4e63e76422",
+  "sharedLoadReceipt": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\load.json",
+  "sharedIdentityReceipt": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\identity.json",
+  "sharedReleaseReceipt": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\release.json",
+  "sharedAfterStatus": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\batch\\after-status.json",
+  "independentCaseUnload": false,
+  "copiedOnlyAfterSharedReleaseConfirmed": true,
+  "nativeValidation": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\suites\\user-eight-v10n-20261025\\native-validated\\usr8-dark-v10n-20261025\\flash-analysis\\native-validation.json",
+  "originalCaseId": "usr8-dark-v10n-20261025"
+}

@@ -1,0 +1,41 @@
+{
+  "nativePromptUnmodified": true,
+  "newInferencePerformed": false,
+  "originalCaseId": "usr8-dark-v10n-20261025",
+  "originalRequestResult": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\request-result.json",
+    "sha256": "f9d50c805de9edcd0cdd94c1e9bed53f26bfff051e7e183d5fbfd4c2638cf1cc"
+  },
+  "originalRaw": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\raw.txt",
+    "sha256": "a9b0295369ca6795db45423650af7c12945511d3d552ebba076f1e2ae2932e54"
+  },
+  "originalEvents": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\events.json",
+    "sha256": "c1b38a302a5755e34ea01304d01b2b536ba2b9f4818f9cb1979bcce19dd653cb"
+  },
+  "originalSSE": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\sse.txt",
+    "sha256": "2e55983d6f30ac99b28fa5fc341bee43eba0964e650f8b96a58ed5a549533a3f"
+  },
+  "originalRequestMetadata": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\request-metadata.json",
+    "sha256": "19a2898716b321630682d46059bc8a1f0ed47ade0bcae6255b1021fad24c53c3"
+  },
+  "validator": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\run-flash-suite-continuation.py",
+    "sha256": "0ec3d6b86e3c37e4a4da8a956afca11610689df9f34b4e0ff6d5f46b29521e67"
+  },
+  "completeStopConfirmed": true,
+  "sourceContentExactSubstring": false,
+  "extractedPromptSHA256": "b3d19c9f768b145bbe95b77541910d36c9ecad44d9e1db8105cc58301b008af5",
+  "validationWarning": [
+    "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+  ],
+  "semanticRewrite": false,
+  "oldFailureReceipt": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-dark-v10n-20261025\\flash-analysis\\result.json",
+    "sha256": "246f25f22b57352b722df8cb7bf2af6034e2f7a856dfdcb861df7110be3b37a1"
+  },
+  "oldFailureMessage": "Native v10 source inclusion or image-role fields missing; no automatic repair"
+}

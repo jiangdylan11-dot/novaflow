@@ -1,0 +1,30 @@
+{
+  "originalRunner": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch-no-pinned.py",
+  "originalSHA256": "90be5c61b47bf911f9042095a3608a4b96a9a8b78d9832d0bf7eb373097bfef4",
+  "runner": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\native-batch-harness-20261025\\run-native-batch-colorcast.py",
+  "runnerSHA256": "cde152364b5fbe3ce4de641aecd71c079ddff5248008b6749ba31047500a7a47",
+  "sourceEdits": [
+    [
+      "graph[\"5\"][\"inputs\"][\"negative_prompt\"] == \"\"",
+      "graph[\"5\"][\"inputs\"][\"negative_prompt\"] == COLORCAST_NEGATIVE"
+    ],
+    [
+      "[\"negativePrompt\"] == \"\"",
+      "[\"negativePrompt\"] == COLORCAST_NEGATIVE"
+    ],
+    [
+      "\"negativePrompt\": \"\", \"layerNodePresent\"",
+      "\"negativePrompt\": COLORCAST_NEGATIVE, \"layerNodePresent\""
+    ]
+  ],
+  "constant": "uniform yellow-orange color cast, oversaturated orange skin, monochromatic warm color grading, sepia filter, muddy color separation",
+  "policy": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\shared-colorcast-only-negative-policy.json",
+    "sha256": "9d4dc1510c836749bd32702f5b833b2ecd98b846ebff0a1352dabed5cd5ccc4a"
+  },
+  "singleGenerationVariable": "TextEncodeQwenImage21.negative_prompt",
+  "nativePositiveUnchanged": true,
+  "newAIAnalysis": false,
+  "memoryProfile": "fast-disk + disable-pinned-memory",
+  "resourceGuardUnchanged": true
+}

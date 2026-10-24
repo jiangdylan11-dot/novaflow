@@ -1,0 +1,36 @@
+{
+  "nativePromptUnmodified": true,
+  "newInferencePerformed": false,
+  "originalCaseId": "usr8-graphic-v10n-20261025",
+  "originalRequestResult": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\request-result.json",
+    "sha256": "56f4e1c8ad8a61688d3ac02f2126a9c3096be2d753a8fe27f24d523350704f24"
+  },
+  "originalRaw": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\raw.txt",
+    "sha256": "c86ee441a013c3a3096c0b14d5810a1c44701c814e8884371f25ba0c1395cb67"
+  },
+  "originalEvents": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\events.json",
+    "sha256": "0564ef44bd0a9fccadc6494f963be3090e27df7f1f255c8234801a0967c39490"
+  },
+  "originalSSE": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\sse.txt",
+    "sha256": "16b15e35a98930e6c30e204ff3e2d2595fe0278ee4338d20de48863a81fa46a2"
+  },
+  "originalRequestMetadata": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-graphic-v10n-20261025\\flash-analysis\\request-metadata.json",
+    "sha256": "905a664f1fe887e4ae2c92a7606ca1e2193d0620a75c63c25d3414899cdd4f82"
+  },
+  "validator": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\run-flash-suite-continuation.py",
+    "sha256": "0ec3d6b86e3c37e4a4da8a956afca11610689df9f34b4e0ff6d5f46b29521e67"
+  },
+  "completeStopConfirmed": true,
+  "sourceContentExactSubstring": false,
+  "extractedPromptSHA256": "241268fa578d4efa588fb465ac92286e43a04ae3284825ba658c44651b1f6991",
+  "validationWarning": [
+    "sourceContent sentence is not a verbatim substring; native prompt retained without rewriting or another inference"
+  ],
+  "semanticRewrite": false
+}

@@ -1,0 +1,83 @@
+{
+  "suiteId": "user-eight-v10n-20261025",
+  "reviewedBy": "root: actual complete 1280x960 outputs inspected with view_image against original user references",
+  "allGpuJobsCompleted": true,
+  "allGenerationTasksTerminal": true,
+  "analysisResourcesReleased": true,
+  "scope": "Eight original-reference native baseline results. Separate two-case color-cast controls also complete and fully released.",
+  "cases": [
+    {
+      "name": "usr8-bright-v10n-20261025",
+      "outputSHA256": "a28aa4ffd3dd703bb03a51c0fa674d082f1f140db243ecf72221f51ce766ef6a",
+      "visualReviewed": true,
+      "notes": "主体、机场、眨眼和单颗泪痣保住，线绘成图完整；整体橙金偏重，蓝白晴朗色彩与轻盈笔触未迁到位。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-dark-v10n-20261025",
+      "outputSHA256": "fc7b7f9545506d9c20eb4d2835163c15da9df90764ff2ed487ad647821035c2a",
+      "visualReviewed": true,
+      "notes": "背景转冷暗、头发块状高光更明确；人物仍是明亮暖桃肤色和红橙头发，参考冷暗环境与低调材质关系不足，不继承旧r10认可。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-warm-v10n-20261025",
+      "outputSHA256": "e0bfdced2b5d2916fc9642da87535ea35e76be38afc67d07f5b261f1b3827f51",
+      "visualReviewed": true,
+      "notes": "主体和环境稳定，皮肤与头发有连续柔滑体积；全局橙黄罩色明显，原参考局部暖光与中性灰蓝材色的分离不足。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-cg-v10n-20261025",
+      "outputSHA256": "e9dcce92196969cb1d73444743d2d90550e81e70d0c2cbd2947edcea97ed3ca3",
+      "visualReviewed": true,
+      "notes": "肤色渐变和材质体积有所塑造，主体完整；整张金橙、亮脸占优，参考定向强光与深色阴影的对比和CG材质仍不足。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-soft-v10n-20261025",
+      "outputSHA256": "75051313d747d94039a91812a2a2626dc5ac32a24f65e5f4a8b4bc113f637da4",
+      "visualReviewed": true,
+      "notes": "主体、举杯、条纹和泪痣保留，柔光体积较完整；全局偏黄，细发丝偏写实，未充分迁入参考中性奶白、精细线绘和分材质质感。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-wet-v10n-20261025",
+      "outputSHA256": "b6894e3e9edd51f034b9c83bf1acd1bb3c5028cd90aee853fa916b1d5f9e65e9",
+      "visualReviewed": true,
+      "notes": "青蓝环境、强背光和杯子亮边有明显迁入，画质可用；发丝与皮肤仍偏半写实，参考清楚的绘画色层和发束分区未完整迁入。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-graphic-v10n-20261025",
+      "outputSHA256": "0c21142a86f40eee23e0bc6d4d7290c9cfa76501a4936faf95ffc1ad5db74dde",
+      "visualReviewed": true,
+      "notes": "红黑大色块、墨点与强轮廓有明显迁入；画面偏红橙，人物没有参考深灰低调肤色，并混入金色虹膜，风格与身份边界仍需改进。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    },
+    {
+      "name": "usr8-eastern-v10n-20261025",
+      "outputSHA256": "40223326c1cebb745c04642c6f10fc7077baf1fe4cdb2473d6e298394e7f28ff",
+      "visualReviewed": true,
+      "notes": "柔滑体积、肤色和玻璃反射比较完整，保住机场内容；整体更像半写实柔光重绘，原参考精细幻想插画的笔触、材质层次还不充分。",
+      "qualityAccepted": false,
+      "referenceStyleAccepted": false,
+      "userAcceptanceStatus": "pending"
+    }
+  ],
+  "overall": "Subject/content retention is relatively stable, while style, lighting and palette transfer vary. No general quality acceptance inferred."
+}

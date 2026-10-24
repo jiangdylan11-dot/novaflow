@@ -1,0 +1,67 @@
+{
+  "date": "2026-10-25",
+  "scope": "Local research only; user-provided references only",
+  "selection": {
+    "folder": "C:/Users/jiang/OneDrive/Desktop/参考风格",
+    "referenceCount": 8,
+    "chineseFantasySheetsAreRelated": true,
+    "selectedFromChineseFantasySheets": "绯瑶.png",
+    "webReferencesUsed": false,
+    "eightDoesNotMeanEightIndependentGenres": true
+  },
+  "analysis": {
+    "model": "swift-1.5-qwen38-iq2-xs",
+    "nativeCompletedAnswers": 8,
+    "requestsRepeated": 0,
+    "requestSecondsRange": [
+      24.464497,
+      39.779186
+    ],
+    "requestSecondsExcludeSharedLoading": true,
+    "actualLoadSessions": 2,
+    "sharedLoadSecondsSum": 75.361655,
+    "sharedUnloadSecondsSum": 8.454891,
+    "nativeAnswersNeverRewritten": true,
+    "oldLiteralSourceCopyGateFailurePreserved": true,
+    "compositeRecord": "suites/user-eight-v10n-20261025/batch-final/result.json"
+  },
+  "generation": {
+    "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+    "steps": 8,
+    "cfg": 3,
+    "seed": 54792256,
+    "canvas": [
+      1280,
+      960
+    ],
+    "experimentalAdapterNode": false,
+    "baselineImagesCompleted": 8,
+    "colorcastControlImagesCompleted": 2,
+    "additionalAnalysisForControls": false,
+    "firstPinnedRunProducedNoImage": true,
+    "memoryProfile": "--fast-disk --disable-pinned-memory",
+    "guardRAMGiB": 4,
+    "guardFreeVRAMMiB": 768,
+    "baselineHistorySecondsRange": [
+      56.344,
+      63.75
+    ],
+    "minimumSampledAvailableRAMGiB": 11.392215728759766,
+    "allOwnedServicesReleased": true
+  },
+  "findings": {
+    "contentRetention": "Recognizable subject, pose, striped clothing, drink, airport and single beauty mark retained across the inspected eight outputs.",
+    "styleTransfer": "Reference-dependent palette and method differences exist, especially wet/cyan and red/black, but style fidelity remains inconsistent.",
+    "colorcastAB": "Both exact-positive controls visually reduced the global orange-yellow cast. Reference method, hair and relative lighting differences remain.",
+    "acceptedDarkR10Superseded": false,
+    "generalStyleTransferAccepted": false,
+    "qualityAccepted": false,
+    "userAcceptanceStatus": "pending"
+  },
+  "gallery": "http://127.0.0.1:4794/#user-references",
+  "productSourceChanged": false,
+  "formalDefaultsChanged": false,
+  "installedAppUpdated": false,
+  "packagedOrDeployed": false,
+  "pushed": false
+}

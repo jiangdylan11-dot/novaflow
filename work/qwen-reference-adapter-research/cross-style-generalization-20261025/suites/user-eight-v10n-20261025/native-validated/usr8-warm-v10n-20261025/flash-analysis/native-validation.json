@@ -1,0 +1,34 @@
+{
+  "nativePromptUnmodified": true,
+  "newInferencePerformed": false,
+  "originalCaseId": "usr8-warm-v10n-20261025",
+  "originalRequestResult": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\request-result.json",
+    "sha256": "8268bcdb20040764d44b41d2fc0d230b307815f8a3538b991929e28d8ac34431"
+  },
+  "originalRaw": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\raw.txt",
+    "sha256": "6fa036b5ed316f5e07c063a0b2b11fefa717be16e901c09a52ea6b72f9ea3e52"
+  },
+  "originalEvents": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\events.json",
+    "sha256": "81797a296125351a0eca10ad3ee96848bdf72e291cf6355c7a3d6bc3aee8f3a9"
+  },
+  "originalSSE": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\sse.txt",
+    "sha256": "5e42b620e09edbda8ee8019c02d200ffd797f9f5ef961e1f829e8c851d09c859"
+  },
+  "originalRequestMetadata": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen38-strata-deploy-20261024\\adapted-ab\\usr8-warm-v10n-20261025\\flash-analysis\\request-metadata.json",
+    "sha256": "9dd9f0d307691648ada557f003113b8b9ef868ee09336c9b82cded7002b55653"
+  },
+  "validator": {
+    "path": "D:\\AI_APP\\NovaFlow-Web\\work\\qwen-reference-adapter-research\\cross-style-generalization-20261025\\run-flash-suite-continuation.py",
+    "sha256": "0ec3d6b86e3c37e4a4da8a956afca11610689df9f34b4e0ff6d5f46b29521e67"
+  },
+  "completeStopConfirmed": true,
+  "sourceContentExactSubstring": true,
+  "extractedPromptSHA256": "f6999812f60f6621a26dd64834b05b7aaa3d2c8f67d0e10b4c66091d4994daa9",
+  "validationWarning": [],
+  "semanticRewrite": false
+}

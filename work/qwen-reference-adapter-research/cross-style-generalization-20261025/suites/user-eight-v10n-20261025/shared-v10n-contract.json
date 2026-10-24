@@ -1,0 +1,56 @@
+{
+  "schema": "nf.fixed-style-transfer-regression.v1",
+  "scope": "One controlled source, preselected new references; not general acceptance",
+  "systemUTF8SHA256": "9a56dcafcfe02d084b30cf5f2a82014c877af5380014071ab4620b6508841c35",
+  "userUTF8SHA256": "e3db6a618691de29dc7676a3d565fa219575b679e275bcc3e7e988a0df23ed93",
+  "sourceImageSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+  "requestSettings": {
+    "model": "swift-1.5-qwen38-iq2-xs",
+    "temperature": 0.4,
+    "top_p": 0.95,
+    "top_k": 20,
+    "min_p": 0,
+    "repetition_penalty": 1,
+    "seed": 957282577,
+    "reasoning_effort": "low",
+    "reasoning_budget_tokens": 1024,
+    "max_tokens": 4096
+  },
+  "generation": {
+    "model": "Qwen-Image-2.1-Turbo-BF16.gguf",
+    "steps": 8,
+    "cfg": 3,
+    "seed": 54792256,
+    "width": 1280,
+    "height": 960,
+    "frequencyAdapter": false
+  },
+  "forbiddenCaseOverrides": [
+    "analysisUser",
+    "manualPromptDiagnostic",
+    "providedPromptBaseline",
+    "cachedSourceContent",
+    "measuredReferencePalette",
+    "refinement"
+  ],
+  "visualMaxTokensPerImage": 2048,
+  "existingEvidence": {},
+  "newCases": {
+    "1": "usr8-bright-v10n-20261025",
+    "2": "usr8-dark-v10n-20261025",
+    "3": "usr8-warm-v10n-20261025",
+    "4": "usr8-cg-v10n-20261025",
+    "5": "usr8-soft-v10n-20261025",
+    "6": "usr8-wet-v10n-20261025",
+    "7": "usr8-graphic-v10n-20261025",
+    "8": "usr8-eastern-v10n-20261025"
+  },
+  "qualityGate": "Each picture needs its own image/reference review; any failure means this suite is not fully passed. No per-style patch may be described as this fixed protocol.",
+  "formalDefaultChanged": false,
+  "expectedCaseCount": 8,
+  "noHandFilledVisualAnswers": true,
+  "oneModelOneCallPerReference": true,
+  "sharedLoadOnly": true,
+  "sourceCache": false,
+  "conversations": false
+}

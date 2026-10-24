@@ -1,0 +1,53 @@
+{
+  "suiteId": "user-eight-v10n-20261025",
+  "expectedCaseCount": 8,
+  "referencesAreUserLocal": true,
+  "websiteReferencesUsed": false,
+  "explicitPhoto21_07Excluded": true,
+  "sourceImagePath": "C:/Users/jiang/OneDrive/Desktop/photo_2026-10-22_20-57-15.jpg",
+  "sourceImageSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+  "cases": [
+    {
+      "name": "usr8-bright-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/RVDS892WEPDK7BFK5CX9A9T840.webp",
+      "sha256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+      "losslessPngPath": "D:/AI_APP/NovaFlow-Web/work/art-direction-20261023/retest-20261024/restore-approved-four-analysis-30b-adapted/bright/style-original-full-rgba.png",
+      "losslessPngSHA256": "4746653b150047a973cda1613a0bef86c4869f34bdb6409725faca65d52d1c62"
+    },
+    {
+      "name": "usr8-dark-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/A1W8ZDVXEH79NV5G0V0N6FYWJ0.png",
+      "sha256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6"
+    },
+    {
+      "name": "usr8-warm-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/P8E9TVNY82BCAKQHJ0FMRWK1W0.jpg",
+      "sha256": "ec3ab32034358305864e0c637933da15315e446e040cd873e6baf111ed0cf7cd"
+    },
+    {
+      "name": "usr8-cg-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/92S8TJM12JWRA6NW8S0PD6ASE0.jpg",
+      "sha256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c"
+    },
+    {
+      "name": "usr8-soft-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/70DSZBBZR10K5KZHVB53EZRHA0.png",
+      "sha256": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4"
+    },
+    {
+      "name": "usr8-wet-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/KDS3ACB7H96ZG1915Y1KQPW2Q0.png",
+      "sha256": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13"
+    },
+    {
+      "name": "usr8-graphic-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/YS6B6EB1RQYV2MV3V0XMPV3ES0.png",
+      "sha256": "92f36730461cfe4122f7bf913f0c7db3af660eaebf7bf20dbf0467ed2015f053"
+    },
+    {
+      "name": "usr8-eastern-v10n-20261025",
+      "referencePath": "C:/Users/jiang/OneDrive/Desktop/参考风格/绯瑶.png",
+      "sha256": "05bde8df7e8d0f7a8a6c2ce6b4265c8ecb45ef92c3369905ab57848445228427"
+    }
+  ]
+}
