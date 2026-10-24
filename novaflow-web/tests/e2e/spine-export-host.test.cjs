@@ -67,3 +67,21 @@ test('a new project recovers from preparation without losing its export controls
   assert.equal(f.button.disabled, false)
   assert.equal(f.button.hasAttribute('data-nf-skeleton-wait'), false)
 })
+
+test('an export bridge refresh preserves the version selected while preparation runs', () => {
+  const start = source.indexOf('  function syncSource()'), end = source.indexOf('\n  /**', start)
+  let loads = 0
+  const src = { skeleton: { text: 'normalized preview' } }
+  const ctx = vm.createContext({ window: { __NOVA_SPINE_LAST_SOURCE: src }, api: { loadSource: () => { loads++; return Promise.resolve() } },
+    lastSource: null, lastKey: null, ownText: 'original preview', bridgeImporting: true, chosenVersion: '3.7', appJson: {},
+    sourceKey: s => s.skeleton.text, forgetReact() {}, durations: new Map(), console })
+  vm.runInContext(source.slice(start, end), ctx)
+  vm.runInContext('syncSource()', ctx)
+  assert.equal(ctx.chosenVersion, '3.7')
+  assert.equal(loads, 0)
+  ctx.bridgeImporting = false
+  ctx.window.__NOVA_SPINE_LAST_SOURCE = { skeleton: { text: 'user imported another project' } }
+  vm.runInContext('syncSource()', ctx)
+  assert.equal(ctx.chosenVersion, null)
+  assert.equal(loads, 1)
+})

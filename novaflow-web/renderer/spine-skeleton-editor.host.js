@@ -173,7 +173,7 @@
     if (!api || !src || src === lastSource) return
     lastSource = src
     // the project the editor itself handed the app for 导出: nothing new to load
-    if (ownText && src.skeleton && src.skeleton.text === ownText) { forgetReact(); return }
+    if (bridgeImporting || (ownText && src.skeleton && src.skeleton.text === ownText)) { forgetReact(); return }
     // the same import in a new object (the app's 保存动画 and write-backs do that): keep the editor's work
     const key = sourceKey(src)
     if (key === lastKey) { forgetReact(); return }
@@ -518,6 +518,7 @@
   const PACK_KEY = 'nf-skel-export'
   const ATLAS_KEY = 'novaflow.sequenceAtlas.settings.v1'
   let ownText = null
+  let bridgeImporting = false
   let appJson = null
   let appMode = null
   let syncing = false
@@ -555,7 +556,9 @@
     ownText = source.json.text
     // fill the bridge's own object field by field (the bundle holds on to that object)
     cache.json = source.json; cache.atlas = source.atlas; cache.images = source.images
-    const ok = await bridge.start()
+    let ok
+    bridgeImporting = true
+    try { ok = await bridge.start() } finally { bridgeImporting = false }
     if (ok === false) throw new Error('工程没能交给导出')
     appJson = json; appMode = mode; appVersion = version
   }
