@@ -181,9 +181,8 @@
     forgetReact()
     durations.clear()
     appJson = null
-    // Preview imports can settle after bridge.start returns. The open dialog owns its
-    // explicit target version throughout those refreshes.
-    if (!document.querySelector('[data-novaflow-export-modal-root="1"]')) chosenVersion = null
+    // Keep the user's explicit export target across project/preview refreshes.
+    // Until a version is selected, exportVersion still follows the project's own version.
     api.loadSource(src, { directory: window.__NovaFlowLastProjectDirectory || null }).catch((error) => console.warn('[skeleton editor] load', error))
   }
 

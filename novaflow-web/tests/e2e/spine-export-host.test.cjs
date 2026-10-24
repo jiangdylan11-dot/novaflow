@@ -87,6 +87,6 @@ test('an export bridge refresh preserves the version selected while preparation 
   dialogOpen = false
   ctx.window.__NOVA_SPINE_LAST_SOURCE = { skeleton: { text: 'user imported another project' } }
   vm.runInContext('syncSource()', ctx)
-  assert.equal(ctx.chosenVersion, null)
+  assert.equal(ctx.chosenVersion, '3.7')
   assert.equal(loads, 2)
 })
