@@ -1,9 +1,10 @@
 /**
  * Spine binary (.skel) writers: the mirror image of the runtimes' SkeletonBinary readers, fed
- * with the JSON of the same version (3.8 as the editor holds it; 4.0 / 4.1 / 4.2 as
+ * with the JSON of the same version (3.8 as the editor holds it; 3.7 / 4.0 / 4.1 / 4.2 as
  * spine-version-convert.js produces it).
  *
  *   NovaFlowSpineBinary.write(json, version, { nonessential: true }) -> Uint8Array
+ *   NovaFlowSpineBinary.write37(json, opts)      Spine 3.7.94 (inline strings, no skin requirements)
  *   NovaFlowSpineBinary.write38(json, opts)      Spine 3.8  (vendor/spine/spine-webgl-3.8.js)
  *   NovaFlowSpineBinary.write4(json, '4.1', opts) Spine 4.0 / 4.1 / 4.2 (spine-core 4.x)
  *
@@ -73,18 +74,20 @@
   const colorBytes = (hex, count, fallback) => { const h = /^[0-9a-f]{6,8}$/i.test(hex || '') ? String(hex) : fallback; const out = []; for (let i = 0; i < count; i++) out.push(h.length >= i * 2 + 2 ? parseInt(h.slice(i * 2, i * 2 + 2), 16) : 255); return out }
 
   /** skins as the readers list them: default first (only when it has attachments), then the rest */
-  function skinOrder(json) {
+  function skinOrder(json, keepEmptyDefault = false) {
     const skinsIn = Array.isArray(json.skins) ? json.skins : Object.entries(json.skins || {}).map(([name, attachments]) => ({ name, attachments }))
     const defaultSkin = skinsIn.find((s) => s.name === 'default') || null
     const otherSkins = skinsIn.filter((s) => s !== defaultSkin)
-    const defaultHasSlots = !!(defaultSkin && Object.keys(defaultSkin.attachments || {}).length)
+    const defaultHasSlots = !!(defaultSkin && (Object.keys(defaultSkin.attachments || {}).length || (keepEmptyDefault && (json.slots || []).length)))
     const skinList = [...(defaultHasSlots ? [defaultSkin] : []), ...otherSkins]
     return { defaultSkin, otherSkins, defaultHasSlots, skinList, skinListIndex: new Map(skinList.map((s, i) => [s.name, i])) }
   }
   const attName = (key, a) => (a && a.name && a.name !== key ? a.name : null)
 
-  // ======================================================================================= 3.8
-  function write38(input, options) {
+  // ======================================================================================= 3.7 / 3.8
+  const write37 = (input, options) => write3(input, options, true)
+  const write38 = (input, options) => write3(input, options, false)
+  function write3(input, options, old) {
     const json = input || fail('没有工程')
     const nonessential = !options || options.nonessential !== false
     const out = Output()
@@ -93,7 +96,7 @@
     const slotIndex = new Map(slots.map((s, i) => [s.name, i]))
     const ik = json.ik || [], transform = json.transform || [], path = json.path || []
     const ikIndex = new Map(ik.map((c, i) => [c.name, i])), trIndex = new Map(transform.map((c, i) => [c.name, i])), pathIndex = new Map(path.map((c, i) => [c.name, i]))
-    const { defaultSkin, otherSkins, defaultHasSlots, skinList, skinListIndex } = skinOrder(json)
+    const { defaultSkin, otherSkins, defaultHasSlots, skinList, skinListIndex } = skinOrder(json, old)
     const events = Object.entries(json.events || {})
     const eventIndex = new Map(events.map(([name], i) => [name, i]))
     const animations = Object.entries(json.animations || {})
@@ -101,6 +104,8 @@
     // ---- the string table: everything the reader takes through readStringRef
     const strings = [], stringAt = new Map()
     const ref = (s) => { if (s == null) return 0; const k = String(s); if (!stringAt.has(k)) { stringAt.set(k, strings.length + 1); strings.push(k) } return stringAt.get(k) }
+    // 3.7 writes strings inline; 3.8 replaces these with string-table indices.
+    const writeRef = (s) => { if (old) out.string(s); else out.int(ref(s), true) }
     for (const s of slots) if (s.attachment) ref(s.attachment)
     for (const sk of otherSkins) ref(sk.name)
     for (const sk of skinList) for (const atts of Object.values(sk.attachments || {})) for (const [key, a] of Object.entries(atts || {})) {
@@ -118,12 +123,12 @@
     // ---- header
     const sk0 = json.skeleton || {}
     out.string(sk0.hash || '')
-    out.string('3.8.99')
-    out.float(sk0.x); out.float(sk0.y); out.float(sk0.width); out.float(sk0.height)
+    out.string(old ? '3.7.94' : '3.8.99')
+    if (!old) { out.float(sk0.x); out.float(sk0.y) }
+    out.float(sk0.width); out.float(sk0.height)
     out.bool(nonessential)
     if (nonessential) { out.float(num(sk0.fps, 30)); out.string(sk0.images || ''); out.string(sk0.audio || '') }
-    out.int(strings.length, true)
-    for (const s of strings) out.string(s)
+    if (!old) { out.int(strings.length, true); for (const s of strings) out.string(s) }
 
     // ---- bones (parents before children; the first bone is the root)
     out.int(bones.length, true)
@@ -133,7 +138,7 @@
       out.float(b.rotation); out.float(b.x); out.float(b.y); out.float(num(b.scaleX, 1)); out.float(num(b.scaleY, 1))
       out.float(b.shearX); out.float(b.shearY); out.float(b.length)
       out.int(enumIndex(TRANSFORM_MODES, b.transform, 0), true)
-      out.bool(!!b.skin)
+      if (!old) out.bool(!!b.skin)
       if (nonessential) out.int32(rgba8888(b.color, '9b9b9bff'))
     })
     // ---- slots
@@ -143,22 +148,22 @@
       out.int(boneIndex.has(s.bone) ? boneIndex.get(s.bone) : fail(`插槽 ${s.name} 的骨骼 ${s.bone} 不存在`), true)
       out.int32(rgba8888(s.color))
       out.int32(s.dark ? rgb888(s.dark) : -1)
-      out.int(ref(s.attachment || null), true)
+      writeRef(s.attachment || null)
       out.int(enumIndex(BLEND_MODES, s.blend, 0), true)
     }
     // ---- constraints (order: absent = 0, as the JSON reader has it)
     out.int(ik.length, true)
     ik.forEach((c) => {
-      out.string(c.name); out.int(num(c.order, 0), true); out.bool(!!c.skin)
+      out.string(c.name); out.int(num(c.order, 0), true); if (!old) out.bool(!!c.skin)
       out.int((c.bones || []).length, true); for (const b of c.bones || []) out.int(boneIndex.get(b), true)
       out.int(boneIndex.get(c.target), true)
-      out.float(num(c.mix, 1)); out.float(c.softness)
+      out.float(num(c.mix, 1)); if (!old) out.float(c.softness)
       out.byte(c.bendPositive === false ? -1 : 1)
       out.bool(!!c.compress); out.bool(!!c.stretch); out.bool(!!c.uniform)
     })
     out.int(transform.length, true)
     transform.forEach((c) => {
-      out.string(c.name); out.int(num(c.order, 0), true); out.bool(!!c.skin)
+      out.string(c.name); out.int(num(c.order, 0), true); if (!old) out.bool(!!c.skin)
       out.int((c.bones || []).length, true); for (const b of c.bones || []) out.int(boneIndex.get(b), true)
       out.int(boneIndex.get(c.target), true)
       out.bool(!!c.local); out.bool(!!c.relative)
@@ -167,7 +172,7 @@
     })
     out.int(path.length, true)
     path.forEach((c) => {
-      out.string(c.name); out.int(num(c.order, 0), true); out.bool(!!c.skin)
+      out.string(c.name); out.int(num(c.order, 0), true); if (!old) out.bool(!!c.skin)
       out.int((c.bones || []).length, true); for (const b of c.bones || []) out.int(boneIndex.get(b), true)
       out.int(slotIndex.get(c.target), true)
       out.int(enumIndex(POSITION_MODES, c.positionMode, 1), true)
@@ -193,20 +198,20 @@
     const writeShorts = (arr) => { const a = arr || []; out.int(a.length, true); for (const x of a) out.short(x) }
     const writeAttachment = (key, a) => {
       const nm = attName(key, a)
-      out.int(ref(nm), true)
+      writeRef(nm)
       const t = a.type || 'region'
       if (!(t in ATTACHMENT_TYPES)) fail(`不认识的附件类型：${t}`)
       out.byte(ATTACHMENT_TYPES[t])
       const name = nm || key
       if (t === 'region') {
-        out.int(ref(a.path && a.path !== name ? a.path : null), true)
+        writeRef(a.path && a.path !== name ? a.path : null)
         out.float(a.rotation); out.float(a.x); out.float(a.y); out.float(num(a.scaleX, 1)); out.float(num(a.scaleY, 1))
         out.float(a.width); out.float(a.height); out.int32(rgba8888(a.color))
       } else if (t === 'boundingbox') {
         const n = num(a.vertexCount, (a.vertices || []).length / 2)
         out.int(n, true); writeVertices(a, n); if (nonessential) out.int32(rgba8888(a.color, '60f000ff'))
       } else if (t === 'mesh') {
-        out.int(ref(a.path && a.path !== name ? a.path : null), true)
+        writeRef(a.path && a.path !== name ? a.path : null)
         out.int32(rgba8888(a.color))
         const n = (a.uvs || []).length / 2
         out.int(n, true)
@@ -216,9 +221,9 @@
         out.int(num(a.hull, 0), true)
         if (nonessential) { writeShorts(a.edges); out.float(a.width); out.float(a.height) }
       } else if (t === 'linkedmesh') {
-        out.int(ref(a.path && a.path !== name ? a.path : null), true)
+        writeRef(a.path && a.path !== name ? a.path : null)
         out.int32(rgba8888(a.color))
-        out.int(ref(a.skin || null), true); out.int(ref(a.parent), true)
+        writeRef(a.skin || null); writeRef(a.parent)
         out.bool(a.deform !== false)
         if (nonessential) { out.float(a.width); out.float(a.height) }
       } else if (t === 'path') {
@@ -239,28 +244,32 @@
     }
     const writeSkinSlots = (sk) => {
       const entries = Object.entries(sk.attachments || {}).filter(([slot]) => slotIndex.has(slot))
+      // 3.7 interprets zero slots as a null skin; an empty slot preserves a named empty skin.
+      if (old && !entries.length && slots.length) entries.push([slots[0].name, {}])
       out.int(entries.length, true)
       for (const [slot, atts] of entries) {
         out.int(slotIndex.get(slot), true)
         const list = Object.entries(atts || {})
         out.int(list.length, true)
-        for (const [key, a] of list) { out.int(ref(key), true); writeAttachment(key, a) }
+        for (const [key, a] of list) { writeRef(key); writeAttachment(key, a) }
       }
     }
     if (defaultHasSlots) writeSkinSlots(defaultSkin); else out.int(0, true)
     out.int(otherSkins.length, true)
     for (const sk of otherSkins) {
-      out.int(ref(sk.name), true)
-      out.int((sk.bones || []).length, true); for (const b of sk.bones || []) out.int(boneIndex.get(b), true)
-      const cons = (names, index) => { const l = (names || []).filter((n) => index.has(n)); out.int(l.length, true); for (const n of l) out.int(index.get(n), true) }
-      cons(sk.ik, ikIndex); cons(sk.transform, trIndex); cons(sk.path, pathIndex)
+      writeRef(sk.name)
+      if (!old) {
+        out.int((sk.bones || []).length, true); for (const b of sk.bones || []) out.int(boneIndex.get(b), true)
+        const cons = (names, index) => { const l = (names || []).filter((n) => index.has(n)); out.int(l.length, true); for (const n of l) out.int(index.get(n), true) }
+        cons(sk.ik, ikIndex); cons(sk.transform, trIndex); cons(sk.path, pathIndex)
+      }
       writeSkinSlots(sk)
     }
 
     // ---- events
     out.int(events.length, true)
     for (const [name, e] of events) {
-      out.int(ref(name), true)
+      writeRef(name)
       // the string defaults to '' (as the JSON reader has it), the audio path to none
       out.int(num(e.int, 0), false); out.float(e.float); out.string(e.string == null ? '' : String(e.string))
       out.string(e.audio == null ? null : String(e.audio))
@@ -286,7 +295,7 @@
         const kinds = [['attachment', tl.attachment], ['color', tl.color], ['twoColor', tl.twoColor]].filter(([, l]) => Array.isArray(l) && l.length)
         out.int(kinds.length, true)
         for (const [kind, list] of kinds) {
-          if (kind === 'attachment') { out.byte(0); out.int(list.length, true); for (const k of list) { out.float(k.time); out.int(ref(k.name == null ? null : k.name), true) } }
+          if (kind === 'attachment') { out.byte(0); out.int(list.length, true); for (const k of list) { out.float(k.time); writeRef(k.name == null ? null : k.name) } }
           else if (kind === 'color') { out.byte(1); frames(list, (k) => { out.float(k.time); out.int32(rgba8888(k.color)) }) }
           else { out.byte(2); frames(list, (k) => { out.float(k.time); out.int32(rgba8888(k.light)); out.int32(rgb888(k.dark || 'ffffff')) }) }
         }
@@ -307,11 +316,11 @@
       // ik / transform / path constraints
       const ikTl = Object.entries(an.ik || {}).filter(([c]) => ikIndex.has(c))
       out.int(ikTl.length, true)
-      for (const [c, list] of ikTl) { out.int(ikIndex.get(c), true); frames(list || [], (k) => { out.float(k.time); out.float(num(k.mix, 1)); out.float(k.softness); out.byte(k.bendPositive === false ? -1 : 1); out.bool(!!k.compress); out.bool(!!k.stretch) }) }
+      for (const [c, list] of ikTl) { out.int(ikIndex.get(c), true); frames(list || [], (k) => { out.float(k.time); out.float(num(k.mix, 1)); if (!old) out.float(k.softness); out.byte(k.bendPositive === false ? -1 : 1); out.bool(!!k.compress); out.bool(!!k.stretch) }) }
       const trTl = Object.entries(an.transform || {}).filter(([c]) => trIndex.has(c))
       out.int(trTl.length, true)
       for (const [c, list] of trTl) { out.int(trIndex.get(c), true); frames(list || [], (k) => { out.float(k.time); out.float(num(k.rotateMix, 1)); out.float(num(k.translateMix, 1)); out.float(num(k.scaleMix, 1)); out.float(num(k.shearMix, 1)) }) }
-      const pathTl = Object.entries(an.path || {}).filter(([c]) => pathIndex.has(c))
+      const pathTl = Object.entries((old ? an.paths || an.path : an.path) || {}).filter(([c]) => pathIndex.has(c))
       out.int(pathTl.length, true)
       for (const [c, tl] of pathTl) {
         out.int(pathIndex.get(c), true)
@@ -335,7 +344,7 @@
           const atts = Object.entries(byAtt || {})
           out.int(atts.length, true)
           for (const [attKey, list] of atts) {
-            out.int(ref(attKey), true)
+            writeRef(attKey)
             frames(list || [], (k) => {
               out.float(k.time)
               const v = k.vertices || []
@@ -874,14 +883,15 @@
     return out.bytes()
   }
 
-  /** The binary of the JSON's version: '3.8' (or the project's `skeleton.spine`), '4.0', '4.1', '4.2'. */
+  /** The binary of the JSON's version: '3.7', '3.8', '4.0', '4.1', '4.2' (or `skeleton.spine`). */
   function write(json, version, options) {
     const v = String(version || (json && json.skeleton && json.skeleton.spine) || '3.8')
     const m = /^(\d+)\.(\d+)/.exec(v) || fail(`不认识的 Spine 版本：${v}`)
-    if (m[1] === '3') return write38(json, options)
+    if (m[1] === '3' && m[2] === '7') return write37(json, options)
+    if (m[1] === '3' && m[2] === '8') return write38(json, options)
     if (m[1] === '4') return write4(json, `${m[1]}.${m[2]}`, options)
     return fail(`不支持写 Spine ${v} 的二进制`)
   }
 
-  return { write, write38, write4 }
+  return { write, write37, write38, write4 }
 })

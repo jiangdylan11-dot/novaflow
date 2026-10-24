@@ -1,5 +1,5 @@
 /*
- * Spine 4.x JSON <-> 3.8 JSON, for the 骨骼动画 editor (it edits 3.8 data).
+ * Spine 3.7 / 4.x JSON <-> 3.8 JSON, for the 骨骼动画 editor (it edits 3.8 data).
  *
  * toSpine38(json) turns a 4.0 / 4.1 / 4.2 skeleton into 3.8 data the editor and its 3.8
  * runtime understand; fromSpine38(json) turns it back into the version it came in, so an
@@ -216,17 +216,19 @@
 
   // ---------------------------------------------------------------- 4.x -> 3.8
 
-  const VERSIONS = { '3.8': '3.8.99', '4.0': '4.0.64', '4.1': '4.1.24', '4.2': '4.2.19' }
+  const VERSIONS = { '3.7': '3.7.94', '3.8': '3.8.99', '4.0': '4.0.64', '4.1': '4.1.24', '4.2': '4.2.19' }
   const TARGETS = Object.keys(VERSIONS)
   const short = (v) => { const m = majorMinor(v); return m ? `${m[0]}.${m[1]}` : '' }
 
   /** 3.7 and older wrote a key's curve as [c1, c2, c3, c4]; 3.8 spreads it over curve / c2 / c3 / c4. */
   function upgradeOld3(json) {
+    if (short(versionOf(json)) === '3.7') json.nfSpine3 = versionOf(json)
     const walk = (v) => {
       if (Array.isArray(v)) { for (const k of v) if (k && typeof k === 'object') { if (Array.isArray(k.curve) && k.curve.length === 4) { const [c1, c2, c3, c4] = k.curve; k.curve = c1; if (c2) k.c2 = c2; else delete k.c2; if (c3 !== 1) k.c3 = c3; else delete k.c3; if (c4 !== 1) k.c4 = c4; else delete k.c4 } walk(k) } }
       else if (v && typeof v === 'object') for (const x of Object.values(v)) walk(x)
     }
     walk(json.animations || {})
+    for (const a of Object.values(json.animations || {})) if (a.paths) { a.path = a.paths; delete a.paths }
     if (json.skins && !Array.isArray(json.skins)) json.skins = Object.entries(json.skins).map(([name, attachments]) => ({ name, attachments }))
     json.skeleton = { ...(json.skeleton || {}), spine: '3.8.99' }
     return json
@@ -359,8 +361,37 @@
 
   // ---------------------------------------------------------------- 3.8 -> 4.x
 
+  /** 3.7 uses skin-name maps and four-number Bezier arrays, without 3.8 skin requirements or IK softness. */
+  function toSpine37(json) {
+    json.skeleton = { ...(json.skeleton || {}), spine: VERSIONS['3.7'] }
+    json.skins = Object.fromEntries((Array.isArray(json.skins) ? json.skins : Object.entries(json.skins || {}).map(([name, attachments]) => ({ name, attachments })))
+      .map((skin) => [skin.name, skin.attachments || {}]))
+    for (const b of json.bones || []) delete b.skin
+    for (const kind of ['ik', 'transform', 'path']) for (const c of json[kind] || []) { delete c.skin; if (kind === 'ik') delete c.softness }
+    const walk = (v, field) => {
+      if (!v || typeof v !== 'object') return
+      // The 3.7 libGDX reader requires time even on the first key (3.8 may omit zero).
+      if (Array.isArray(v) && field !== 'offsets') for (const k of v)
+        if (k && typeof k === 'object' && !Array.isArray(k) && !has(k, 'time')) k.time = 0
+      if (typeof v.curve === 'number') v.curve = [v.curve, num(v.c2, 0), num(v.c3, 1), num(v.c4, 1)]
+      delete v.c2; delete v.c3; delete v.c4
+      for (const [key, x] of Object.entries(v)) walk(x, key)
+    }
+    for (const a of Object.values(json.animations || {})) {
+      for (const tl of Object.values(a.bones || {})) {
+        for (const k of tl.rotate || []) if (!has(k, 'angle')) k.angle = 0
+        // Some 3.7 runtimes default omitted scale channels to zero, while 3.8 defaults to one.
+        for (const k of tl.scale || []) { if (!has(k, 'x')) k.x = 1; if (!has(k, 'y')) k.y = 1 }
+      }
+      if (a.path) { a.paths = a.path; delete a.path }
+      for (const keys of Object.values(a.ik || {})) for (const k of keys || []) delete k.softness
+      walk(a)
+    }
+    return json
+  }
+
   /**
-   * 3.8 data out as `target` ('3.8' | '4.0' | '4.1' | '4.2'; none = the version the file came
+   * 3.8 data out as `target` ('3.7' | '3.8' | '4.0' | '4.1' | '4.2'; none = the version the file came
    * in as, 3.8 for a native 3.8 file). A 4.x key the editor did not touch goes back exactly;
    * everything else is converted.
    */
@@ -370,9 +401,15 @@
     const json = clone(expanded)
     const stash = json[STASH] || null
     delete json[STASH]
-    const own = stash ? stash.version : '3.8.99'
+    const own = json.nfSpine3 || (stash ? stash.version : '3.8.99')
+    delete json.nfSpine3
     const target = short(targetVersion || own) || '3.8'
     if (!VERSIONS[target]) throw new Error(`不支持导出为 Spine ${target}`)
+    if (target === '3.7') {
+      stripKeeps(json)
+      const optimized = axisCurves ? (globalThis.NovaFlowSpineExportOptimizer?.optimize(json).project || json) : json
+      return toSpine37(optimized)
+    }
     if (target === '3.8') { json.skeleton = { ...(json.skeleton || {}), spine: short(own) === '3.8' && own ? own : '3.8.99' }; stripKeeps(json); return axisCurves ? (globalThis.NovaFlowSpineExportOptimizer?.optimize(json).project || json) : json }
     const mm = majorMinor(target)
     const at41 = mm[0] > 4 || (mm[0] === 4 && mm[1] >= 1)

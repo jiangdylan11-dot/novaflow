@@ -159,12 +159,12 @@
   }
   function makeAtlas(pages, settings, version = '4.1') {
     return pages.map(page => [page.fileName, `size: ${page.width},${page.height}`, 'format: RGBA8888', 'filter: Linear,Linear', 'repeat: none',
-      ...(String(version).startsWith('3.8') ? [] : [`pma: ${settings.premultiplyAlpha}`]), ...page.regions.flatMap(region => [region.name, '  rotate: false', `  xy: ${region.x}, ${region.y}`,
+      ...(String(version).startsWith('3.') ? [] : [`pma: ${settings.premultiplyAlpha}`]), ...page.regions.flatMap(region => [region.name, '  rotate: false', `  xy: ${region.x}, ${region.y}`,
         `  size: ${region.width}, ${region.height}`, `  orig: ${region.originalWidth}, ${region.originalHeight}`,
         `  offset: ${region.offsetX}, ${region.offsetY}`, '  index: -1']), ''].join('\n')).join('\n');
   }
   function makeSkeleton({ baseName, version = '4.1', frames, fps = 30, duration, loop = true, packed = false }) {
-    const versions = { '3.8': '3.8.99', '4.0': '4.0.64', '4.1': '4.1.24', '4.2': '4.2.19' };
+    const versions = { '3.7': '3.7.94', '3.8': '3.8.99', '4.0': '4.0.64', '4.1': '4.1.24', '4.2': '4.2.19' };
     const key = String(version).slice(0, 3);
     if (!versions[key]) throw new Error('不支持的 Spine 导出版本');
     const first = frames[0], last = frames[frames.length - 1], unique = frames.filter(frame => frame.unique !== false), native = key === '4.1' || key === '4.2', attachment = native ? `${baseName}_seq` : first.region;
@@ -176,7 +176,7 @@
     const sequence = [{ time: 0, mode: loop ? 'loop' : 'once', index: 0, delay: 1 / fps }, { time: seconds, mode: 'hold', index: loop ? 0 : frames.length - 1, delay: 1 / fps }];
     return { skeleton: { spine: versions[key], fps, x: 0, y: 0, width: first.originalWidth, height: first.originalHeight, images: packed ? './' : 'images/', audio: '' },
       bones: [{ name: 'root' }, { name: 'bone', parent: 'root' }], slots: [{ name: 'slot', bone: 'bone', attachment, color: 'ffffffff' }],
-      skins: [{ name: 'default', attachments: { slot: attachments } }], animations: { animation: native
+      skins: key === '3.7' ? { default: { slot: attachments } } : [{ name: 'default', attachments: { slot: attachments } }], animations: { animation: native
         ? { attachments: { default: { slot: { [attachment]: { sequence: unique.length === frames.length ? sequence : holdSequence(sequence, frames) } } } } }
         : { slots: { slot: { attachment: timeline } } } } };
   }
@@ -317,6 +317,9 @@
       if (finished || !frames.length) throw new Error('没有可导出的序列帧');
       if (packed) { await flush(); await options.write(`${baseName}.atlas`, makeAtlas(pages, settings, options.version)); }
       const skeleton = json ? normalizeSkeleton(json, frames, packed) : makeSkeleton({ ...options, baseName, frames, packed });
+      // Normalization uses the editor's array skins internally; restore the 3.7 wire format last.
+      if (String(skeleton.skeleton?.spine).startsWith('3.7') && Array.isArray(skeleton.skins))
+        skeleton.skins = Object.fromEntries(skeleton.skins.map(skin => [skin.name, skin.attachments || {}]));
       if (options.skel) {
         // .skel: the same skeleton as Spine 3.8 binary (renderer/spine-binary-write.js)
         const B = globalThis.NovaFlowSpineBinary;

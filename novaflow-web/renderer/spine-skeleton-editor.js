@@ -309,9 +309,9 @@
   /** One project from its parts: the JSON, the atlas text (none = one page per picture), the images. */
   async function loadParts(p) {
     let json = p.json
-    // a Spine 4.x project is edited as 3.8 and goes back to its own version on export
+    // Other supported versions are edited as 3.8 and keep their export version.
     const SV = window.NovaFlowSpineVersion
-    const fromVersion = SV && SV.is4(json) ? SV.versionOf(json) : ''
+    const fromVersion = SV && (SV.is4(json) || SV.short(SV.versionOf(json)) === '3.7') ? SV.versionOf(json) : ''
     if (fromVersion) json = SV.toSpine38(json)
     Attach.normalizeToSpine38(json)
     const jsonFile = { name: p.jsonName || 'skeleton.json' }
@@ -2532,7 +2532,8 @@
   /** The images the attachments use (附件). */
   function exportImageNames(json) {
     const names = new Set()
-    for (const skin of json.skins || []) for (const map of Object.values(skin.attachments || {})) for (const [n, att] of Object.entries(map)) {
+    const skins = Array.isArray(json.skins) ? json.skins : Object.values(json.skins || {}).map((attachments) => ({ attachments }))
+    for (const skin of skins) for (const map of Object.values(skin.attachments || {})) for (const [n, att] of Object.entries(map)) {
       const type = att.type || 'region'
       // Spine 3.8 reads the picture from path, then the attachment's own name field, then the key
       if (type === 'region' || type === 'mesh' || type === 'linkedmesh') names.add(att.path || att.name || n)
@@ -2569,10 +2570,10 @@
     const edited = Ops.exportable(state.json)
     const stash = SV && edited[SV.STASH]
     // out as the version asked for (none = the one the project came in as; 3.8 for a 3.8 file)
-    const version = SV ? SV.short(opts.version || (stash ? stash.version : '3.8')) : '3.8'
+    const version = SV ? SV.short(opts.version || ownVersion()) : '3.8'
     const json = SV ? SV.fromSpine38(edited, version) : edited
     const items = opts.mode === 'folder' ? await folderImages() : exportImageNames(json).map((name) => ({ name }))
-    if (stash && opts.mode !== 'folder' && version !== '3.8') {
+    if (stash && opts.mode !== 'folder' && (version === '4.1' || version === '4.2')) {
       // 4.1 sequences: every frame, not only the one the editor shows
       const have = new Set(items.map((i) => i.name))
       for (const seq of Object.values(stash.sequences || {})) {
@@ -2615,7 +2616,7 @@
       const nameIn = h('input', { type: 'text', value: o.name, oninput: (e) => { o.name = e.target.value } })
       const seg = (val, label) => h('button', { 'aria-pressed': String(o.mode === val), onclick: () => { o.mode = val; fill() } }, label)
       const usedN = exportImageNames(Ops.exportable(state.json)).length
-      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, v)
+      const vseg = (v) => h('button', { 'aria-pressed': String(o.version === v), onclick: () => { o.version = v; fill() } }, v === '3.7' ? '3.7.94' : v)
       const fseg = (val, label) => h('button', { 'aria-pressed': String(!!o.skel === val), onclick: () => { o.skel = val; fill() } }, label)
       const fmt = o.skel ? 'SKEL' : 'JSON'
       // 保存工程: Spine data (a folder Spine opens with 导入数据) or NovaFlow's own file with every open project
@@ -2695,7 +2696,7 @@
   function ownVersion() {
     const SV = window.NovaFlowSpineVersion
     const st = state.json && SV && state.json[SV.STASH]
-    return SV ? SV.short(st ? st.version : '3.8') || '3.8' : '3.8'
+    return SV ? SV.short(state.json?.nfSpine3 || (st ? st.version : '3.8')) || '3.8' : '3.8'
   }
 
   /** The production 图集打包设置 (same fields, same saved values). */

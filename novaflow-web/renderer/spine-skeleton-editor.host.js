@@ -643,7 +643,7 @@
     row.style.cssText = 'margin:0 0 10px'
     const label = (t, extra) => `<span style="font-size:12px;color:rgba(255,255,255,.72);margin-right:2px${extra || ''}">${t}</span>`
     row.innerHTML = '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;margin-bottom:8px">' + label('版本')
-      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v}</button>`).join('')
+      + api.versions().map((v) => `<button type="button" class="nf-atlas-button" data-version="${v}">${v === '3.7' ? '3.7.94' : v}</button>`).join('')
       + label('格式', ';margin-left:12px') + '<button type="button" class="nf-atlas-button" data-format="json">JSON</button><button type="button" class="nf-atlas-button" data-format="skel">SKEL</button></div>'
       + '<div class="nf-atlas-row" style="display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap">' + label('打包')
       + '<button type="button" class="nf-atlas-button" data-mode="atts"></button><button type="button" class="nf-atlas-button" data-mode="folder"></button>'
