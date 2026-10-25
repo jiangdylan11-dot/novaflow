@@ -18,7 +18,7 @@ test('natural result feedback is silent, result-bound and never starts an extra 
   const resultSHA256=Buffer.from(await webcrypto.subtle.digest('SHA-256',bytes)).toString('hex');
   api.artLearning=async command=>{commands.push(plain(command));return {ok:true,data:command.action==='list'?{tasks:[{id:'task-result',resultId:'actual-result',resultSHA256,execution:'succeeded'}]}:{feedback:'satisfied'}};};
   const controller=e.api.createController({bridge:e.bridge,api:()=>api});
-  for(const message of ['这次效果很好。','不太满意']) {
+  for(const message of ['这次效果很好。','这张图做的挺好的。','不太满意']) {
     await controller.send(message);await new Promise(r=>setTimeout(r,10));
     const feedback=commands.findLast(c=>c.action==='feedback');assert.equal(feedback.taskId,'task-result');assert.equal(feedback.resultId,'actual-result');assert.equal(feedback.message,message);
   }

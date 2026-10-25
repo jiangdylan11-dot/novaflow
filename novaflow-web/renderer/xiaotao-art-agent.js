@@ -492,13 +492,15 @@
     async function send(message, {includeResult = false, confirmed = false, recordMessage = true} = {}) {
       if (state.pending || state.generating || state.applying) return false;
       message = String(message || '').trim(); if (!message) return false;
-      const purePositive = /^(?:这次|这张|这个|效果|结果)?(?:效果)?(?:很好|很满意|满意|很棒|不错)[。！!]*$|^(?:这次|这张|这个)?(?:就用|采用|最终采用|确认采用)(?:这张|这个|本次)?[。！!]*$/.test(message);
+      const positiveEvaluation = /^(?:这次|这张(?:图)?|这个|效果|结果)?(?:的)?(?:效果|画面)?(?:做得|做的|画得|画的)?(?:挺好(?:的)?|很好|很满意|满意|很棒|不错)(?:了)?[，,\s]*$/;
+      const purePositive = positiveEvaluation.test(message.replace(/[。！!]+$/,'')) || /^(?:这次|这张|这个)?(?:就用|采用|最终采用|确认采用)(?:这张|这个|本次)?[。！!]*$/.test(message);
       const pureNegative = /^(?:这次|这张|这个)?(?:不满意|不太满意|效果不好|不行)[。！!]*$/.test(message);
       if ((purePositive || pureNegative) && !state.confirmation && bridge.hasResult?.()) {
         state.messages.push({role:'user',content:message});
         if (typeof api()?.artLearning === 'function') void recordFeedback(message);
         state.messages.push({role:'assistant',content:purePositive ? '好，这张的效果就按你的评价保留。' : '明白，这张还没达到要求。告诉我主要需要调整哪里，我会针对性修改。'}); notify(); return true;
       }
+      if (!purePositive && bridge.hasResult?.() && positiveEvaluation.test(message.split(/[。！!]/)[0]) && typeof api()?.artLearning === 'function') void recordFeedback(message);
       if (/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) {reset(); return true;}
       if (state.confirmation && !confirmed) {
         const choice = samplingChoice(message); if (choice) return confirmSampling(choice);

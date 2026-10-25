@@ -9,9 +9,10 @@ export function classifyArtFeedback(message){
   text(message);
   if(/不满意|不太满意|效果不好|这张不行|画风不对|不要再使用刚才那个策略/.test(message))return 'unsatisfied';
   if(/人物.{0,6}(?:不错|没问题|可以).{0,12}(?:但是|主要|只是)|画风不够|光影不对|上次的画风更准确|调整|修改|改成|太蓝|太黄/.test(message))return 'revision';
+  if(/但是|不过|只是|还需|还要|希望|如果/.test(message))return 'unrated';
   // Only explicit evaluations count; questions, conditional wishes and mixed
   // corrections must never silently become positive training evidence.
-  if(/^(?:这次|这张(?:图)?|这个|效果|结果)?(?:的)?(?:效果|画面)?(?:做得|做的|画得|画的)?(?:挺好(?:的)?|很好|很满意|满意|很棒|不错)(?:了)?[。！!，,\s]*$/.test(message.trim()))return 'satisfied';
+  if(/^(?:这次|这张(?:图)?|这个|效果|结果)?(?:的)?(?:效果|画面)?(?:做得|做的|画得|画的)?(?:挺好(?:的)?|很好|很满意|满意|很棒|不错)(?:了)?[，,\s]*$/.test(message.trim().split(/[。！!]/)[0]))return 'satisfied';
   if(/^(?:这次|这张|这个)?(?:就用|采用|最终采用|确认采用)(?:这张|这个|本次)?[。！!]*$/.test(message.trim()))return 'adopted';
   return 'unrated';
 }
