@@ -257,7 +257,7 @@
     const lines = []
     for (const img of images || []) {
       const file = String(img.fileName || '')
-      const name = file.replace(/\.[^.]+$/, '')
+      const name = String(img.name || file.replace(/\.[^.]+$/, ''))
       const w = Math.max(1, Math.round(Number(img.width) || 0))
       const h = Math.max(1, Math.round(Number(img.height) || 0))
       if (!name || !w || !h) continue
@@ -276,6 +276,29 @@
       lines.push('  index: -1')
     }
     return lines.join(String.fromCharCode(10))
+  }
+
+  /** A cropped/resized replacement keeps the old artwork's frame inside its transparent canvas. */
+  function replacementFrame(oldPixels, width, height, pixels, newWidth, newHeight) {
+    if (width === newWidth && height === newHeight) return null
+    const bounds = (rgba, w, h) => {
+      let x = w, y = h, right = 0, bottom = 0
+      for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+        if (rgba[(py * w + px) * 4 + 3] <= 8) continue
+        x = Math.min(x, px); y = Math.min(y, py); right = Math.max(right, px + 1); bottom = Math.max(bottom, py + 1)
+      }
+      return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null
+    }
+    const old = bounds(oldPixels, width, height), source = bounds(pixels, newWidth, newHeight)
+    if (!old || !source) return null
+    // A full-canvas image (or a uniformly resized canvas with the same margins) already maps correctly.
+    const sides = (b, w, h) => [b.x / w, b.y / h, (b.x + b.width) / w, (b.y + b.height) / h]
+    const before = sides(old, width, height), after = sides(source, newWidth, newHeight)
+    if (old.x <= 1 && old.y <= 1 && width - old.x - old.width <= 1 && height - old.y - old.height <= 1) return null
+    if (before.every((v, i) => Math.abs(v - after[i]) <= Math.max(1 / width, 1 / height, 1 / newWidth, 1 / newHeight))) return null
+    const scale = Math.min(old.width / source.width, old.height / source.height)
+    const dw = source.width * scale, dh = source.height * scale
+    return { width, height, source, destination: { x: old.x + (old.width - dw) / 2, y: old.y + (old.height - dh) / 2, width: dw, height: dh } }
   }
 
   /**
@@ -311,5 +334,5 @@
     return onlyRoot && !!skeleton.skins
   }
 
-  return { applyMeshes, meshAttachment, normalizeToSpine38, parseAtlas, retargetTrimmed, stripMeshes, hullEdges, imageKey, synthesizeAtlas, looksLikePhotoshopExport }
+  return { applyMeshes, meshAttachment, normalizeToSpine38, parseAtlas, retargetTrimmed, stripMeshes, hullEdges, imageKey, synthesizeAtlas, replacementFrame, looksLikePhotoshopExport }
 })

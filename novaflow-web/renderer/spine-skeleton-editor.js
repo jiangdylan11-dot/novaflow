@@ -2437,6 +2437,48 @@
   // 换图's 工程里用这张图的都换 (user 2026-10-16): off by default, kept for the session once ticked
   let swapAllUses = false
 
+  /** Prepare an in-project image with the old transparent frame; linked meshes keep their shared UVs. */
+  async function prepareSwapImage(json, sel, name) {
+    const sk = json.skins.find((s) => s.name === sel.skin)
+    const att = sk && (sk.attachments[sel.slot] || {})[sel.name]
+    const old = pictureOf(sel.name, att)
+    if (!old || old === name || !rt.atlas || !Attach.replacementFrame) return null
+    const from = rt.atlas.findRegion(old), to = rt.atlas.findRegion(name)
+    if (!from || !to) return null
+    const width = from.originalWidth, height = from.originalHeight
+    const nw = to.originalWidth, nh = to.originalHeight
+    if (width === nw && height === nh) return null
+    const oldPixels = regionPixels(from, width, height), pixels = regionPixels(to, nw, nh)
+    if (!oldPixels || !pixels) throw new Error('读不到换图所需的图片像素')
+    const frame = Attach.replacementFrame(oldPixels, width, height, pixels, nw, nh)
+    if (!frame) return null
+    const source = document.createElement('canvas'), canvas = document.createElement('canvas')
+    source.width = nw; source.height = nh; canvas.width = width; canvas.height = height
+    source.getContext('2d').putImageData(new ImageData(pixels, nw, nh), 0, 0)
+    const s = frame.source, d = frame.destination
+    canvas.getContext('2d').drawImage(source, s.x, s.y, s.width, s.height, d.x, d.y, d.width, d.height)
+    const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => b ? resolve(b) : reject(new Error('换图图片编码失败')), 'image/png'))
+    const img = await imageFromBlob(blob)
+    // Replacing an unused imported region is safe. A picture already in use gets a separate copy.
+    let path = name
+    if (attachmentsShowing(json, name).length) for (let k = 2; rt.atlas.findRegion(path); k++) path = `${name}_${k}`
+    let fileName = '__nf_swap_1.png'
+    for (let k = 2; state.images.has(lower(fileName)); k++) fileName = `__nf_swap_${k}.png`
+    let atlasText = state.atlasText
+    if (path === name) {
+      // Only this region's declaration is replaced; its old page and all other regions stay intact.
+      let omit = false
+      atlasText = atlasText.split(/\r?\n/).filter((line) => {
+        if (line.trim() === name) { omit = true; return false }
+        if (omit && line.trim() && line.includes(':')) return false
+        omit = false
+        return true
+      }).join('\n')
+    }
+    atlasText = atlasText.replace(/\s+$/, '') + '\n\n' + Attach.synthesizeAtlas([{ fileName, name: path, width, height }]) + '\n'
+    return { path, atlasText, width, height, image: { fileName, img, blob } }
+  }
+
   /**
    * 换图: the attachment shows another picture (a region takes its size; a mesh keeps its vertices).
    * Its name follows the picture when it was the old picture's name (user 2026-10-16: 换完图了命名
@@ -2444,10 +2486,21 @@
    * a name the slot already has gets _2, _3. The slot keeps its name. `all`: every attachment in the
    * project that shows the same picture is swapped the same way, as one undo step.
    */
-  function swapImage(sel, name, opts) {
-    const size = regionSize(name) || {}
+  async function swapImage(sel, name, opts) {
+    const before = state.json
+    let prepared
+    try { prepared = await prepareSwapImage(before, sel, name) } catch (e) { status('换图失败：' + e.message, 'error'); return }
+    if (state.json !== before) { status('工程已变化，请重新换图', 'error'); return }
+    if (prepared) name = prepared.path
+    const size = prepared ? { width: prepared.width, height: prepared.height } : regionSize(name) || {}
     const want = shortName(name)
     edit((r) => (r.count > 1 ? `已把 ${r.count} 处「${shortName(r.old)}」换成 ${name}` : `已给「${sel.name}」换图：${name}`) + (r.renamed ? `，附件改名为 ${want}` : ''), (j) => {
+      if (prepared) {
+        state.images.set(lower(prepared.image.fileName), prepared.image)
+        state.atlasText = prepared.atlasText
+        state.atlasChanged = true
+        rt.atlasKey = null
+      }
       const sk = j.skins.find((x) => x.name === sel.skin)
       const a0 = sk && sk.attachments[sel.slot] && sk.attachments[sel.slot][sel.name]
       const old = pictureOf(sel.name, a0) || sel.name
@@ -2482,6 +2535,8 @@
 
   /** 放图: a picture into a skin placeholder. */
   function fillPlaceholder(skin, slot, name, image) {
+    const sk = state.json.skins.find((s) => s.name === skin)
+    if (sk && (sk.attachments[slot] || {})[name]) return swapImage({ kind: 'att', skin, slot, name }, image)
     edit(`已给「${name}」放图：${image}`, (j) => Ops.fillPlaceholder(j, skin, slot, name, { path: image, ...(regionSize(image) || {}) }))
   }
 
