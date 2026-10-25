@@ -202,6 +202,12 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
     need(typeof flash?.inferConversation === 'function' && typeof flash?.identity?.id === 'string'
       && flash.identity.id, 'flash-agent-session-required', '缺少已核验的本地 Flash 对话会话');
     const chat = payload.mode === 'chat', creation = payload.mode === 'creation', context = payload.artContext, fingerprint = payload.contextFingerprint;
+    // preflight has verified this approval against the request, snapshot and
+    // sampling. Confirmed drawing needs only its final execution tool; retain
+    // the full tool menus for unconfirmed requests and other modes.
+    const tools = !chat && !creation && payload.executionApproval
+      ? FLASH_ART_AGENT_TOOLS.filter(tool => tool.function.name === 'generate_art_image')
+      : creation ? FLASH_CREATION_AGENT_TOOLS : FLASH_ART_AGENT_TOOLS;
     const images = completeImages(payload.images, chat || creation);
     const history = payload.history;
     const id = payload.conversationId || randomUUID();
@@ -241,7 +247,7 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
     try {
       for (let round = 1; round <= 3; round++) {
         if (signal?.aborted) fail('flash-agent-aborted', '绘图对话已取消');
-        const response = await flash.inferConversation({ messages, ...(chat ? {} : { tools: creation ? FLASH_CREATION_AGENT_TOOLS : FLASH_ART_AGENT_TOOLS }),
+        const response = await flash.inferConversation({ messages, ...(chat ? {} : { tools }),
           maxTokens: chat ? 1536 : 4096, temperature: .4, reasoningEffort: 'none', reasoningBudgetTokens: 0,
           stage: chat ? 'assistant-chat' : `art-agent-round-${round}` });
         need(response?.model === flash.identity.id && typeof response.requestId === 'string' && response.requestId,

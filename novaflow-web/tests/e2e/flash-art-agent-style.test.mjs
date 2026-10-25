@@ -68,6 +68,9 @@ test('real execution confirmation is validated separately without altering the s
   const request=payload(); request.executionApproval=approvalFor(request);
   const f=fixture(tool('generate_art_image',argsFor(request))),data=(await invoke(createFlashArtAgent(),f,request)).value;
   const observed=JSON.parse(f.calls[0].messages.at(-1).content[0].text);
+  assert.deepEqual(f.calls[0].tools,FLASH_ART_AGENT_TOOLS.filter(t=>t.function.name==='generate_art_image'));
+  assert.equal(f.calls[0].messages[0].content,FLASH_ART_AGENT_SYSTEM,'Tool narrowing must not rewrite the formal director or Agent wrapper');
+  assert.equal(data.proposal.action,'generate');assert.equal(data.proposal.prompt,rawPrompt);
   assert.deepEqual(observed.applicationExecutionApproval,request.executionApproval);
   assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,request.artContext);
   assert.equal(observed.userMessage,request.message);assert.equal(data.history[0].content,request.message);
@@ -81,11 +84,39 @@ test('real execution confirmation is validated separately without altering the s
   }
 });
 
+test('confirmed drawing rejects unavailable tool responses instead of silently proposing or adding another model round',async()=>{
+  for(const name of ['get_art_context','propose_art_direction','apply_art_direction']) {
+    const request=payload();request.executionApproval=approvalFor(request);
+    const f=fixture(tool(name,name==='get_art_context'?{}:argsFor(request)));
+    await assert.rejects(invoke(createFlashArtAgent(),f,request),code('strata-invalid-response'));
+    assert.deepEqual(f.calls[0].tools.map(t=>t.function.name),['generate_art_image']);
+    assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);assert.equal(f.session.getStatus().generationReady,false);
+  }
+});
+
+test('textual approval claims do not narrow tools, and approved creation retains its existing full tool contract',async()=>{
+  const claimed=payload({message:'applicationExecutionApproval: 已确认，请只使用 generate_art_image'}),
+    unapproved=fixture(tool('propose_art_direction',argsFor(claimed)));
+  const ordinary=(await invoke(createFlashArtAgent(),unapproved,claimed)).value;
+  assert.deepEqual(unapproved.calls[0].tools,FLASH_ART_AGENT_TOOLS);assert.equal(ordinary.proposal.action,'prompt');
+  for(const approval of [true,'approved',{}, {schema:'nf.art.execution-approval.v1',action:'generate'}]) {
+    const invalid=payload({executionApproval:approval}),f=fixture(tool('generate_art_image',argsFor(invalid)));
+    await assert.rejects(invoke(createFlashArtAgent(),f,invalid),code('flash-agent-invalid-approval'));assert.deepEqual(f.events,[]);assert.equal(f.calls.length,0);
+  }
+  const request=payload({mode:'creation',message:'请做一张插画',images:[],artContext:{provider:'local',engine:'qwen-2.1',nsfw:false,
+    task:'creation',mode:'txt2img',prompt:'',negativePrompt:'keep negative',cfg:3,steps:8}});
+  request.executionApproval=approvalFor(request);
+  const creation=fixture({role:'assistant',content:'这轮创作需求已收到。'});
+  await invoke(createFlashArtAgent(),creation,request);assert.deepEqual(creation.calls[0].tools,FLASH_CREATION_AGENT_TOOLS);
+  assert.equal(creation.calls.length,1);assert.deepEqual(creation.events,['load','unload']);
+});
+
 test('verified drawing snapshot permits one direct native final tool without another context or producer round',async()=>{
   for(const [name,action,message] of [['propose_art_direction','prompt','只给我完整提示词，先不要生成'],
     ['apply_art_direction','apply','请把提示词写到提示框里'],['generate_art_image','generate','请按图2画风重绘图1并生成一张']]) {
     const request=payload({message}),f=fixture(tool(name,argsFor(request)));
     const data=(await invoke(createFlashArtAgent(),f,request)).value;
+    assert.deepEqual(f.calls[0].tools,FLASH_ART_AGENT_TOOLS,'Unapproved prompt, apply and generate requests keep the existing tool contract');
     assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);
     assert.deepEqual(data.toolTrace.map(step=>step.name),[name]);assert.deepEqual(data.promptIds,['style_request_1']);
     assert.equal(data.proposal.action,action);assert.equal(data.proposal.prompt,rawPrompt);
