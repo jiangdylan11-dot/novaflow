@@ -29452,8 +29452,13 @@
     return host
   }
 
+  function isXiaotaoArtRuntimeElement(node) {
+    return !!node?.closest?.('#nf-xiaotao-art-root, .nf-xiaotao-art-root')
+  }
+
   function isRightPanelRootCandidate(node) {
     if (!(node instanceof HTMLElement)) return false
+    if (isXiaotaoArtRuntimeElement(node)) return false
     if (node.id === RIGHT_WORKSPACE_ID || node.id === WORKSPACE_OVERLAY_ID) return false
     if (node.closest(`#${WORKSPACE_OVERLAY_ID}, #${RIGHT_WORKSPACE_ID}`)) return false
     // Generated overlays are consumers of the right-column geometry, never its host.
@@ -29521,6 +29526,8 @@
 
   function hideManagedNode(node, hidden) {
     if (!node || node.id === RIGHT_WORKSPACE_ID || node.id === WORKSPACE_OVERLAY_ID) return
+    // Preserve restoration of nodes hidden before this exclusion was installed.
+    if (hidden && isXiaotaoArtRuntimeElement(node)) return
     if (hidden) uiTraceCurrent('SpineSplitHideManagedNode', { phase: 'hideManagedNode' })
     if (hidden) {
       if (!node.hasAttribute(HIDDEN_ATTR)) node.setAttribute(HIDDEN_ATTR, node.style.display || '')
