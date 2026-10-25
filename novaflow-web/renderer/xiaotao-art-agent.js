@@ -581,7 +581,7 @@
       } catch (error) {state.error = String(error?.message || error); state.status = '未完成生成'; invalidate(); return false;}
       finally {state.generating = false; state.applying = false; notify();}
     }
-    function reset() {if (state.pending || state.generating || state.applying) return; ++serial; bridge.clearPrepared(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify();}
+    function reset() {if (state.pending || state.generating || state.applying) return false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; bridge.clearPrepared(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify(); return true;}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying) return false;
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
@@ -611,9 +611,9 @@
     const tools = el('div', 'nf-xiaotao-tools');
     const status = el('div', 'nf-xiaotao-status'); status.setAttribute('role', 'status'); const error = el('p', 'nf-xiaotao-error'); error.setAttribute('role', 'alert');
     const footer = el('form', 'nf-xiaotao-compose'), input = el('textarea'); input.rows = 3; input.placeholder = '有什么需要我帮助的？'; input.setAttribute('aria-label', '给智能助手的消息');
-    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), localBrain = el('button', '', '本地智能'), onlineBrain = el('button', '', '在线智能'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送');
+    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), localBrain = el('button', '', '本地智能'), onlineBrain = el('button', '', '在线智能'), newConversation = el('button', '', '新对话'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送');
     providers.setAttribute('role','group'); providers.setAttribute('aria-label','切换AI大脑');
-    for (const b of [localBrain, onlineBrain, stop]) b.type = 'button'; send.type = 'submit'; providers.append(localBrain, onlineBrain); footerActions.append(providers, stop, send); footer.append(input, footerActions);
+    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); send.type = 'submit'; providers.append(localBrain, onlineBrain); footerActions.append(providers, newConversation, stop, send); footer.append(input, footerActions);
     panel.append(header, context, messages, confirmation, proposal, tools, status, error, footer); host.append(fab, greeting, panel); doc.body.append(host);
     const drag = bindPanelDrag(panel, header);
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onStart:() => {greeting.hidden = true;},onEnd:() => {if (open) anchorPanel();}});
@@ -636,7 +636,7 @@
       status.textContent = state.status; error.textContent = state.error; error.hidden = !state.error; proposal.hidden = !state.proposal;
       confirmation.hidden = !state.confirmation; confirmationText.textContent = state.confirmation ? `当前为 ${samplingLabel(state.confirmation.sampling)}。${state.confirmation.sampling.styleTransfer ? '双图风格迁移使用 CFG3；按当前参数会保留版本和步数，并设为 CFG3。' : ''}确认后才分析并生成一张。` : '';
       if(state.proposal!==renderedProposal) {renderedProposal=state.proposal; proposal.open=Boolean(state.proposal); copyPrompt.textContent='复制完整提示词';}
-      proposalText.textContent = state.proposal?.prompt || ''; const busy = state.pending || state.generating || state.applying; applyButton.disabled = busy || state.applied; generateButton.disabled = busy; send.disabled = busy; stop.hidden = !state.pending && !state.generating; input.disabled = busy;
+      proposalText.textContent = state.proposal?.prompt || ''; const busy = state.pending || state.generating || state.applying; applyButton.disabled = busy || state.applied; generateButton.disabled = busy; newConversation.disabled = busy; send.disabled = busy; stop.hidden = !state.pending && !state.generating; input.disabled = busy;
       for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) {button.disabled = busy; button.setAttribute('aria-pressed',String(state.provider === value));}
     }
     function anchorPanel() {
@@ -644,12 +644,29 @@
       drag.place(anchoredPanelPosition(robot, size, {width:root.innerWidth,height:root.innerHeight}), size);
     }
     const setOpen = value => {open = value; greeting.hidden = true; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {anchorPanel(); tick(); void controller.calibrateLocalStatus(); input.focus();}};
+    function navigationSelection() {
+      const selected = (kind) => Array.from(doc.querySelectorAll(`[data-novaflow-${kind}-entry="1"]`)).find(node => (node.getAttribute(`data-novaflow-${kind}-active`) === '1' || node.getAttribute('aria-pressed') === 'true' || node.getAttribute('aria-current') === 'page') && node.getClientRects().length);
+      const primary = selected('primary'), secondary = selected('secondary');
+      let surface = ''; try {surface = bridge.captureChat().artContext.surface;} catch {}
+      return {primary:primary?.getAttribute('data-novaflow-primary-label') || primary?.getAttribute('aria-label') || primary?.textContent.trim() || '',secondary:secondary?.getAttribute('aria-label') || secondary?.textContent.trim() || '',surface};
+    }
+    let navigation = navigationSelection();
+    function closeOnNavigation() {
+      const next = navigationSelection(), changedPrimary = navigation.primary && next.primary && navigation.primary !== next.primary,
+        changedSecondary = navigation.primary === next.primary && navigation.secondary && next.secondary && navigation.secondary !== next.secondary,
+        changedSurface = navigation.surface && next.surface && navigation.surface !== next.surface;
+      if (changedPrimary || changedSecondary || changedSurface) setOpen(false);
+      navigation = {primary:next.primary || navigation.primary,secondary:next.secondary || ((!next.primary || next.primary === navigation.primary) ? navigation.secondary : ''),surface:next.surface || navigation.surface};
+    }
+    doc.addEventListener('click',event => {if (event.target?.closest?.('[data-novaflow-primary-entry="1"], [data-novaflow-secondary-entry="1"]')) root.setTimeout(closeOnNavigation,0);},true);
     fab.onclick = event => {if (robotDrag.consumeClick()) {event.preventDefault(); return;} setOpen(!open);}; close.onclick = () => setOpen(false); stop.onclick = () => void controller.stop(); applyButton.onclick = () => void controller.apply(); generateButton.onclick = () => void controller.apply({generate:true});
+    newConversation.onclick = () => {if (controller.reset()) {input.value = ''; input.focus();}};
     for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) button.onclick = () => {if (controller.setProvider(value)) {contextStamp = ''; tick(); if (value === 'local') void controller.calibrateLocalStatus(); input.focus();}};
     footer.onsubmit = event => {event.preventDefault(); const text = input.value; if (text.trim()) {input.value = ''; void controller.send(text);}};
     input.onkeydown = event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); footer.requestSubmit();}};
     function tick() {
       if (drag.dragging() || robotDrag.dragging()) return;
+      closeOnNavigation();
       controller.refreshContext(); if (!open) return;
       if (controller.state.provider === 'api') {contextLabel.textContent = '在线智能当前仅支持文字对话，不会上传参考图。'; thumbs.replaceChildren(); previewImages = []; return;}
       try {const snapshot = bridge.captureAny({includeResult:bridge.hasResult()}), stamp = JSON.stringify(snapshot.artContext); if (stamp !== contextStamp || snapshot.images.some((img, i) => img.dataUrl !== previewImages[i]) || snapshot.images.length!==previewImages.length) {contextStamp = stamp; previewImages = snapshot.images.map(img => img.dataUrl); contextLabel.textContent = snapshot.artContext.sourceSurface && snapshot.artContext.sourceSurface!=='drawing' ? '普通对话 · 也可直接让小桃做图' : `当前绘图 · ${snapshot.artContext.mode==='txt2img'?'文生图 · ':''}${snapshot.artContext.width} × ${snapshot.artContext.height} · 原负向与手动参数保留`; thumbs.replaceChildren(); for (const ref of snapshot.images) {const item = el('span'), img = el('img'), name=ref.role==='subject'?'主体':ref.role==='style'?'画风':'当前成图'; img.src = ref.dataUrl; img.alt=name; item.append(img, el('small', '',ref.source?`图${ref.source} · ${name}`:name)); thumbs.append(item);}}}

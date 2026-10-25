@@ -543,3 +543,43 @@ test('a sampling change during asynchronous fingerprinting cannot send a stale e
   const controller=e.api.createController({bridge:e.bridge,onChange:state=>{if(mutate && state.pending){mutate=false;e.state.samplingOverrides['qwen-2.1-turbo:img2img'].cfg=4;}},api:()=>({artAgentChat:async()=>{calls++;throw Error('must not infer');}})});
   await controller.send('帮我把图1的风格换成图2');mutate=true;assert.equal(await controller.confirmSampling('turbo'),false);assert.equal(calls,0);assert.equal(e.calls.length,0);assert.match(controller.state.error,/已变化/);
 });
+
+test('new conversation clears the entire conversation context while keeping drawing settings, references and selected intelligence',()=>{
+  const e=env({cfg:3}),controller=e.api.createController({bridge:e.bridge}),drawing=plain(e.state),references=plain(e.refs);controller.setProvider('api');
+  Object.assign(controller.state,{messages:[{role:'user',content:'old message'}],history:[{role:'assistant',content:'old history'}],conversationId:'old-conversation',proposal:{prompt:'old proposal'},proposalSnapshot:{old:true},applied:true,
+    confirmation:{old:true},samplingApproval:{old:true},operation:{old:true},toolTrace:[{name:'old-tool'}],error:'old error'});
+  for(const flag of ['pending','applying','generating']) {controller.state[flag]=true;assert.equal(controller.reset(),false);assert.equal(controller.state.conversationId,'old-conversation');controller.state[flag]=false;}
+  assert.equal(controller.reset(),true);assert.deepEqual(plain(controller.state.messages),[]);assert.deepEqual(plain(controller.state.history),[]);assert.equal(controller.state.conversationId,'');
+  for(const key of ['proposal','proposalSnapshot','confirmation','samplingApproval','operation'])assert.equal(controller.state[key],null,key);
+  assert.deepEqual(plain(controller.state.toolTrace),[]);assert.equal(controller.state.error,'');assert.equal(controller.state.applied,false);assert.equal(controller.state.provider,'api');assert.deepEqual(plain(e.state),drawing);assert.deepEqual(plain(e.refs),references);
+});
+
+test('mounted new-dialog button clears its draft and navigation closes only on a changed section, preserving chat and active requests',async()=>{
+  const e=env({cfg:3}),events={},scheduled=[],intervals=[],nodes=[],attrs=node=>node.attributes;
+  const matches=(node,selector)=>selector.split(',').some(part=>[...part.matchAll(/\[([^=\]]+)(?:="([^"]*)")?\]/g)].every(([,key,value])=>attrs(node).has(key)&&(value===undefined||attrs(node).get(key)===value)));
+  class Node {
+    constructor(tag,text=''){this.tagName=tag.toUpperCase();this.children=[];this.style={};this.dataset={};this.attributes=new Map();this.value='';this.ownText=text;this.hidden=false;this.classList={add(){},remove(){}};nodes.push(this);}
+    append(...children){for(const child of children){child.parentElement=this;this.children.push(child);}}
+    replaceChildren(...children){this.children=[];this.ownText='';this.append(...children);}
+    set textContent(value){this.children=[];this.ownText=String(value);}get textContent(){return this.ownText+this.children.map(child=>child.textContent).join('');}
+    setAttribute(key,value){this.attributes.set(key,String(value));}getAttribute(key){return this.attributes.get(key)??null;}
+    addEventListener(){}getBoundingClientRect(){return {left:700,top:100,right:1090,bottom:750,width:390,height:650};}getClientRects(){return this.hidden?[]:[this.getBoundingClientRect()];}
+    closest(selector){return matches(this,selector)?this:this.parentElement?.closest(selector)||null;}
+    focus(){doc.activeElement=this;}click(){if(this.disabled)return;const event={target:this,preventDefault(){},stopPropagation(){}};for(const fn of events.click||[])fn(event);this.onclick?.(event);}
+  }
+  const doc={readyState:'complete',hidden:false,createElement:tag=>new Node(tag),createTextNode:text=>new Node('#text',text),getElementById:id=>nodes.find(node=>node.id===id)||null,
+    querySelectorAll:selector=>nodes.filter(node=>matches(node,selector)),addEventListener:(name,fn)=>(events[name]??=[]).push(fn)};doc.body=new Node('body');
+  Object.assign(e.sandbox,{document:doc,innerWidth:1400,innerHeight:900,addEventListener(){},setTimeout:(fn,delay)=>{scheduled.push({fn,delay});return scheduled.length;},clearTimeout(){},setInterval:(fn,delay)=>{intervals.push({fn,delay});return intervals.length;}});
+  const nav=(kind,label,active)=>{const node=doc.createElement('button');node.textContent=label;node.setAttribute(`data-novaflow-${kind}-entry`,'1');node.setAttribute(`data-novaflow-${kind}-active`,active?'1':'0');node.setAttribute('aria-pressed',String(active));if(kind==='primary')node.setAttribute('data-novaflow-primary-label',label);doc.body.append(node);return node;};
+  const art=nav('primary','美工',true),animation=nav('primary','动画',false),drawing=nav('secondary','绘图',true),ui=nav('secondary','UI',false);
+  for(const [node,kind,peers]of[[art,'primary',[art,animation]],[animation,'primary',[art,animation]],[drawing,'secondary',[drawing,ui]],[ui,'secondary',[drawing,ui]]])node.onclick=()=>{for(const peer of peers){const active=peer===node;peer.setAttribute('aria-pressed',String(active));peer.setAttribute(`data-novaflow-${kind}-active`,active?'1':'0');}};
+  const gate=deferred(),entered=deferred();let waiting=false,stops=0;e.sandbox.electronAPI={artAgentChat:async p=>{if(waiting){entered.resolve();return gate.promise;}return {ok:true,data:{reply:'旧回复',conversationId:'old-session',history:[{role:'user',content:p.message},{role:'assistant',content:'旧回复'}]}};},artAgentStop:async()=>{stops++;return {ok:true};}};
+  e.api.mount();const panel=e.api.panel,controller=panel.controller,button=nodes.find(node=>node.tagName==='BUTTON'&&node.textContent==='新对话'),input=nodes.find(node=>node.getAttribute('aria-label')==='给智能助手的消息'),aside=nodes.find(node=>node.id==='nf-xiaotao-art-panel'),log=nodes.find(node=>node.getAttribute('role')==='log');
+  assert(button);assert.equal(button.type,'button');await controller.send('旧消息');input.value='未发送的旧草稿';const before=plain(e.state);button.click();assert.equal(controller.state.messages.length,0);assert.equal(controller.state.history.length,0);assert.equal(controller.state.conversationId,'');assert.equal(log.textContent.includes('旧消息'),false);assert.equal(input.value,'');assert.equal(doc.activeElement,input);assert.deepEqual(plain(e.state),before);
+  panel.open();const flush=()=>{for(const timer of scheduled.splice(0)){if(timer.delay===0)timer.fn();}};art.click();flush();assert.equal(aside.hidden,false);const random=doc.createElement('button');doc.body.append(random);random.click();flush();assert.equal(aside.hidden,false);
+  ui.click();flush();assert.equal(aside.hidden,true);panel.open();animation.click();flush();assert.equal(aside.hidden,true);assert.equal(doc.getElementById('nf-xiaotao-art-root').hidden,false);
+  panel.open();e.state.seed++;for(const timer of intervals)if(timer.delay===500)timer.fn();assert.equal(aside.hidden,false);
+  e.setSurface('editing');for(const timer of intervals)if(timer.delay===500)timer.fn();assert.equal(aside.hidden,true);
+  controller.setProvider('api');waiting=true;const pending=controller.send('正在等待的消息');await entered.promise;panel.open();const count=controller.state.messages.length;assert.equal(button.disabled,true);button.click();assert.equal(controller.state.messages.length,count);art.click();flush();assert.equal(aside.hidden,true);assert.equal(controller.state.pending,true);assert.equal(stops,0);assert.equal(controller.state.messages.length,count);
+  gate.resolve({ok:true,data:{reply:'等待结束',history:[]}});await pending;assert.equal(button.disabled,false);button.click();assert.equal(controller.state.provider,'api');assert.equal(controller.state.messages.length,0);
+});
