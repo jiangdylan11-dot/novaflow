@@ -1,7 +1,7 @@
 {
   "name": "@novaflow-web/web",
   "private": true,
-  "version": "2.0.110",
+  "version": "2.0.111",
   "type": "module",
   "scripts": {
     "dev": "vite --port 4891 --strictPort",

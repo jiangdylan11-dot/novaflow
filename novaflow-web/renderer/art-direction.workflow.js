@@ -757,6 +757,26 @@
     const native=styleReferencePriority&&referenceRoles.length===2&&referenceRoles[0]==='subject'&&referenceRoles[1]==='style'&&isNative(prepared.nativeExecution)?prepared.nativeExecution:null;
     return {taskProfile:'art-direction',referenceRoles,styleReferencePriority,...(guided?{qwen21TurboGuidance:{renderingClass:'anime',cfg:3}}:{}),...(native?{qwen21NativeGuidance:{kind:NATIVE_KIND,version:NATIVE_VERSION,cfg:native.providerPolicy.cfg}}:{})};
   }
+  // Agent writeback uses the same grounded policy as the ordinary director.
+  // Register only after its prompt has actually been written to this workspace.
+  function registerAgentWriteback(context,prepared){
+    const state=context?.state,native=prepared?.nativeExecution,refs=prepared?.references;
+    if(!state||state.provider!=='local'||state.nsfw||state.mode!=='img2img'||!isNative(native)
+      ||prepared.referencePolicy?.stylePriority!==true||!Array.isArray(refs)||refs.length!==2
+      ||refs[0].role!=='subject'||refs[1].role!=='style')throw new Error('小桃绘图写回缺少完整主体与风格凭据');
+    nativeMetadata(native);
+    const source=input(context),numbers=refs.map(ref=>ref.sourceNumber);
+    if(new Set(numbers).size!==2||numbers.some(number=>!Number.isInteger(number)||number<1)
+      ||refs.some(ref=>{const original=source.references.find(item=>item.source===ref.sourceNumber);return !ref.dataUrl||original?.dataUrl!==ref.dataUrl||original.role!=='auto'&&original.role!==ref.role;}))throw new Error('小桃绘图参考已变化，未登记旧采样策略');
+    const nativePrompt=String(native.prompt??'').replace(/<image(\d+)>/g,(_,n)=>`<image${refs.findIndex(ref=>ref.sourceNumber===native.sourceOrder?.[Number(n)-1])+1}>`);
+    if(nativePrompt!==prepared.promptSnapshot?.prompt)throw new Error('小桃绘图完整提示词凭据不一致');
+    const expected=String(prepared.promptSnapshot?.prompt??'').replace(/<image(\d+)>/g,(_,n)=>`@参考图${refs[Number(n)-1]?.sourceNumber||n}`);
+    if(!expected.trim()||String(state.prompt??'')!==expected
+      ||String(state.negativePrompt??'')!==prepared.promptSnapshot?.negativePrompt)throw new Error('小桃绘图提示词未完整写回，未登记采样策略');
+    writtenReferencePolicies.set(state,{source,policy:copy(prepared.referencePolicy),nativeExecution:copy(native),
+      uiPreserveLayout:false,order:refs.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
+    return generationOptions(prepared);
+  }
   // The panel and a reused NoAI run consult the same validated writeback. A
   // changed prompt, negative, image or role cannot inherit a stale style CFG.
   function samplingOptions(context){
@@ -764,5 +784,5 @@
     if(!written||!same({...written.source,engine:source.engine},source))return {};
     return generationOptions({references:written.order,referencePolicy:written.policy,turboGuidance:written.turboGuidance,nativeExecution:written.nativeExecution});
   }
-  root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,selectManual,controls,analysisControl,referenceControl,generationOptions,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
+  root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,selectManual,controls,analysisControl,referenceControl,generationOptions,registerAgentWriteback,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
 })(typeof window!=='undefined'?window:globalThis);

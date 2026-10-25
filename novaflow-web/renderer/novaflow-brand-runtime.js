@@ -79813,6 +79813,25 @@
     img2imgNsfw: `{"1":{"inputs":{"ckpt_name":"Qwen-Rapid-AIO-NSFW-v20.safetensors"},"class_type":"CheckpointLoaderSimple","_meta":{"title":"Checkpoint\\u52a0\\u8f7d\\u5668\\uff08\\u7b80\\u6613\\uff09"}},"2":{"inputs":{"seed":896290897812950,"steps":8,"cfg":1,"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["1",0],"positive":["3",0],"negative":["4",0],"latent_image":["16",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"3":{"inputs":{"prompt":"\\u56fe1\\u7684\\u5973\\u4eba\\u6362\\u4e00\\u4e2a\\u6027\\u611f\\u7ad9\\u52bf\\uff0c\\u540c\\u65f6\\u4fdd\\u6301\\u4eba\\u7269\\u4e00\\u81f4\\u6027\\uff0c\\u8138\\u90e8\\u7279\\u5f81\\u4e00\\u81f4\\u6027\\uff0c\\u80cc\\u666f\\u4e0d\\u53d8","clip":["1",1],"vae":["1",2],"image1":["10",0]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Input Prompt"}},"4":{"inputs":{"prompt":"Vibrant colors, overexposed, blurred details, poor composition, image, overall gray, worst quality, low quality, ugly, imperfect, extra fingers, poor hand drawing, poor face drawing, deformed, disfigured, deformed limbs, fused fingers, static image, cluttered background, three legs, many people in the background,oversaturated","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Negative (leave blank)"}},"5":{"inputs":{"samples":["2",0],"vae":["1",2]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"9":{"inputs":{"width":1536,"height":2720,"batch_size":1},"class_type":"EmptyLatentImage","_meta":{"title":"Final Image Size"}},"10":{"inputs":{"image":"ComfyUI_00212_.png"},"class_type":"LoadImage","_meta":{"title":"Optional Input Image"}},"13":{"inputs":{"filename_prefix":"ComfyUI","images":["5",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}},"15":{"inputs":{"upscale_method":"lanczos","megapixels":1,"resolution_steps":1,"image":["10",0]},"class_type":"ImageScaleToTotalPixels","_meta":{"title":"\\u7f29\\u653e\\u56fe\\u50cf\\uff08\\u50cf\\u7d20\\uff09"}},"16":{"inputs":{"pixels":["15",0],"vae":["1",2]},"class_type":"VAEEncode","_meta":{"title":"VAE\\u7f16\\u7801"}},"22":{"inputs":{"rgthree_comparer":{"images":[{"name":"A","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00003_.png&type=temp&subfolder=&rand=0.6706113575006749"},{"name":"B","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00004_.png&type=temp&subfolder=&rand=0.3979363499997244"}]},"image_a":["10",0],"image_b":["5",0]},"class_type":"Image Comparer (rgthree)","_meta":{"title":"\\u56fe\\u50cf\\u6bd4\\u8f83\\u5668"}}}`
   };
 
+  const ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY = 'novaflow.drawing.qwen21.sampling.v1';
+  function normalizeArtGenerateDrawingSamplingPreferences(value) {
+    const result = {};
+    if (!value || value.version !== 1) return result;
+    if (['standard', 'turbo'].includes(value.localQwen21Variant)) result.localQwen21Variant = value.localQwen21Variant;
+    return result;
+  }
+  function readArtGenerateDrawingSamplingPreferences() {
+    try { return normalizeArtGenerateDrawingSamplingPreferences(JSON.parse(window.localStorage?.getItem(ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY) || 'null')); }
+    catch { return {}; }
+  }
+  function saveArtGenerateDrawingSamplingPreferences(state) {
+    if (!state || state.provider !== 'local' || state.nsfw || window.NovaFlowUiDesignDrawing?.isActive?.()) return false;
+    const value = normalizeArtGenerateDrawingSamplingPreferences({ version: 1, localQwen21Variant: state.localQwen21Variant });
+    if (!value.localQwen21Variant) return false;
+    try { window.localStorage?.setItem(ART_GENERATE_DRAWING_SAMPLING_STORAGE_KEY, JSON.stringify({ version: 1, ...value })); return true; }
+    catch { return false; }
+  }
+  const ART_GENERATE_DRAWING_SAMPLING_PREFERENCES = readArtGenerateDrawingSamplingPreferences();
   const ART_GENERATE_STATE = {
     active: false,
     mode: "txt2img",
@@ -79832,6 +79851,7 @@
     height: 1024,
     // Steps / CFG the user typed, per route and mode (see localSamplingFor); empty = route defaults.
     samplingOverrides: {},
+    ...ART_GENERATE_DRAWING_SAMPLING_PREFERENCES,
     loras: [],
     seed: -1,
     randomSeed: true,
@@ -83241,6 +83261,7 @@
     const accelerationToggle = renderArtGenerateToggleButton(ART_GENERATE_STATE.localQwen21Variant === 'turbo' && !ART_GENERATE_STATE.nsfw, '加速', () => {
       if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfw) return;
       ART_GENERATE_STATE.localQwen21Variant = ART_GENERATE_STATE.localQwen21Variant === 'turbo' ? 'standard' : 'turbo';
+      saveArtGenerateDrawingSamplingPreferences(ART_GENERATE_STATE);
       renderArtGenerateSurfaces({ forceBottom: true });
     });
     accelerationToggle.disabled = !!(ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfw);

@@ -62,17 +62,26 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
   // A failed/partial load still needs cleanup, but only for its own operation.
   // Never use the shared config receipt as permission to unload another client.
   const ownedOperations=new Set();
+  const operationOwners=new Map();
+  let operation=null,operationTicket=null;
+  function setOperationPhase(ticket,phase) {
+    if(!ticket || operationTicket!==ticket || !operation || operation.phase===phase)return;
+    operation={...operation,phase,phaseStartedAt:Date.now()};
+  }
   const lifecycle={
     load(options){
       const token=options?.ownerToken;
       if(!/^[A-Za-z0-9_-]{8,128}$/.test(token || ''))throw Object.assign(Error('Flash 会话缺少资源归属标记'),{errorCode:'strata-owner-token-required'});
-      ownedOperations.add(token);return runtimeLifecycle.load(options);
+      ownedOperations.add(token);
+      if(operationTicket)operationOwners.set(token,operationTicket);
+      return runtimeLifecycle.load(options);
     },
     async unload(options){
       const token=options?.ownerToken;
       if(!ownedOperations.has(token))return {ok:true,released:true,notOwned:true};
+      setOperationPhase(operationOwners.get(token),'releasing');
       const result=await runtimeLifecycle.unload(options);
-      if(result?.released===true && result?.ok!==false)ownedOperations.delete(token);
+      if(result?.released===true && result?.ok!==false){ownedOperations.delete(token);operationOwners.delete(token);}
       return result;
     }
   };
@@ -104,8 +113,8 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
     artAgent:{version:'xiaotao-art-agent-v2',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation'],tools:FLASH_ART_AGENT_TOOLS.map(tool=>tool.function.name),supportsFeedbackImages:true,
       styleProtocol:{version:FLASH_ART_AGENT_STYLE_VERSION,parentSystemSHA256:FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256}},
-    chatSession,modelLoaded:chatSession.modelLoaded,
-    modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || chatSession.state==='releasing'?'释放中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
+    chatSession,modelLoaded:chatSession.modelLoaded,operation:operation?{...operation}:null,
+    modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || operation?.phase==='releasing' || chatSession.state==='releasing'?'释放中':operation?.phase==='loading'?'加载中':operation?.phase==='analyzing'?'分析中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
   const blocked=()=>({ok:false,errorCode:cleanupFault?'strata-release-unconfirmed':'prompt-assistant-stopping',error:cleanupFault?'Flash 资源尚未确认释放，请先释放显存后重试':'本地 AI 正在释放资源'});
   async function releaseRuntimes(ownTaskId='') {
     const state=worker?.getState?.() || {};
@@ -202,8 +211,21 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       if(context.isCancelled?.())throw Object.assign(Error('任务已取消'),{errorCode:'task-cancelled'});
       const handoff=await releaseRuntimes(context.taskId);if(!handoff.ok)return handoff;
       stopGuard=startGuard(abort);
+      if(method==='artAgentChat' && ['drawing','creation'].includes(payload.mode || 'drawing')) {
+        const now=Date.now();operationTicket=ticket;
+        operation={requestId:ticket.requestId,mode:payload.mode || 'drawing',phase:'loading',startedAt:ticket.startedAt,phaseStartedAt:now};
+      }
       const answer=await session.withSession(async flash=>{
-        if(method==='artAgentChat')return {ok:true,data:await artAgent.run({payload,flash,signal:abort.signal})};
+        if(method==='artAgentChat') {
+          // Native drawing owns a separate session from warm ordinary chat. Its
+          // progress follows this request's real inference and owned cleanup,
+          // without inventing token-level progress or another model request.
+          const trackedFlash=operationTicket===ticket?{...flash,
+            infer:(...args)=>{setOperationPhase(ticket,'analyzing');return flash.infer(...args);},
+            inferConversation:(...args)=>{setOperationPhase(ticket,'analyzing');return flash.inferConversation(...args);}
+          }:flash;
+          return {ok:true,data:await artAgent.run({payload,flash:trackedFlash,signal:abort.signal})};
+        }
         const nativeArtPayload=method==='reverseImagePrompt' ? wholeSourceArtPair(payload) : payload;
         if(method==='reverseImagePrompt' && isFlashArtDirectionRequest(nativeArtPayload)) {
           const data=await planFlashArtDirection({payload:nativeArtPayload,flash});
@@ -238,7 +260,8 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     }catch(error){lastError=String(error.message || error);const code=error.errorCode || error.code || 'strata-analysis-failed';
       if(['strata-release-unconfirmed','strata-unload-failed'].includes(code))cleanupFault=true;
       return {ok:false,error:lastError,errorCode:code,analysisBackend:'strata'};
-    }finally{clearInterval(cancelTimer);stopGuard();abort.signal.removeEventListener('abort',stopCpu);if(activeAbort===abort)activeAbort=null;finishLease(ticket);}
+    }finally{clearInterval(cancelTimer);stopGuard();abort.signal.removeEventListener('abort',stopCpu);if(activeAbort===abort)activeAbort=null;
+      if(operationTicket===ticket){operation=null;operationTicket=null;}finishLease(ticket);}
   }
   const uiCpuActions=new Set(['capabilities','grok-vision-job','compile-grok-vision','native-ui-cloud','native-ui-compile']);
   async function runUiCpu(payload,context={}) {

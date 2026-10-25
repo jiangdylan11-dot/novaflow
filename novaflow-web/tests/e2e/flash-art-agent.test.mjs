@@ -278,7 +278,9 @@ test('restricted multi-turn memory validates exact history and rejects stale rep
   const next = payload({ conversationId: first.value.conversationId, history: first.value.history, message: '继续说说画法' });
   const f = fixture([{ role: 'assistant', content: '参考的发束更整体，阴影分组更明确。' }]);
   const second = await invoke(agent, f, next);
-  assert.deepEqual(f.calls[0].messages.slice(1, 3), first.value.history);
+  assert.deepEqual(f.calls[0].messages.slice(1, -1), first.value.history.filter(item => item.role === 'user'));
+  assert.equal(f.calls[0].messages.some(item => item.content === first.value.reply), false,
+    'The visible assistant history is validated but not repeated as another style brief');
   assert.equal(second.value.history.length, 4);
   await assert.rejects(agent.run({ payload: next, flash: { identity: { id: MODEL }, inferConversation() { assert.fail('No inference for stale history'); } } }),
     code('flash-agent-stale-history'));
@@ -308,6 +310,19 @@ test('CPU preflight rejects invalid context, bytes, request IDs and history befo
   assert.throws(() => prepareFlashArtAgentPayload(request), /暂不支持 NSFW/);
 });
 
+test('creation execution confirmation requires the effective sampling snapshot and chat never accepts it',()=>{
+  const request={requestId:randomUUID(),mode:'creation',message:'生成一张花园插画',history:[],images:[],
+    artContext:{task:'creation',provider:'local',engine:'qwen-2.1',nsfw:false,mode:'txt2img',prompt:'',negativePrompt:'',localQwen21Variant:'turbo',steps:8,cfg:2}};
+  request.contextFingerprint=computeArtAgentFingerprint(request);
+  request.executionApproval={schema:'nf.art.execution-approval.v1',requestId:request.requestId,contextFingerprint:request.contextFingerprint,
+    action:'generate',imageCount:1,sampling:{variant:'turbo',steps:8,cfg:2},basis:'sampling-confirmation'};
+  assert.deepEqual(prepareFlashArtAgentPayload(request).executionApproval,request.executionApproval);
+  const stale=structuredClone(request);stale.executionApproval.sampling.cfg=3;
+  assert.throws(()=>prepareFlashArtAgentPayload(stale),code('flash-agent-invalid-approval'));
+  const chat={...chatPayload(),executionApproval:request.executionApproval};
+  assert.throws(()=>prepareFlashArtAgentPayload(chat),code('flash-agent-invalid-approval'));
+});
+
 test('missing conversation ID can restore bounded text history but never restores tool authority', async () => {
   const history = [{ role: 'user', content: '上一轮我希望保留机场。' }, { role: 'assistant', content: '之前曾讨论脸和头发。' }];
   const request = payload({ history }), agent = createFlashArtAgent();
@@ -316,8 +331,10 @@ test('missing conversation ID can restore bounded text history but never restore
   const f = fixture([{ role: 'assistant', content: '我会重新查看这次完整参考图，历史仅作为文本。' }]);
   const result = (await invoke(agent, f, request)).value;
   assert.equal(result.historyRestored, 'text-only');
-  assert.deepEqual(f.calls[0].messages.slice(1, 3), history);
-  assert.equal(f.calls[0].messages[3].content.filter(item => item.type === 'image_url').length, 2);
+  assert.equal(f.calls[0].messages.length, 2, 'Unverified restored history cannot override the current reference');
+  assert.equal(JSON.parse(f.calls[0].messages[1].content[0].text).referencesUnverified, true);
+  assert.equal(f.calls[0].messages[1].content.filter(item => item.type === 'image_url').length, 2);
+  assert.deepEqual(result.history.slice(0, 2), history, 'Visible history remains available');
   assert.equal(result.history.length, 4);
   assert.throws(() => agent.preflight(request), code('flash-agent-replayed-request'));
   const stale = payload({ conversationId: result.conversationId, history: [] });

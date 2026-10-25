@@ -10,6 +10,7 @@ import { FLASH_ART_SYSTEM, FLASH_ART_SYSTEM_SHA256 } from '../../worker/src/flas
 // CPU-only protocol acceptance. These fixtures do not establish visual quality.
 const MODEL = 'swift-style-fixture', WEIGHT = 'E:/models/swift-style-fixture.gguf';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+const DIFFERENT_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
 const rawPrompt = '  Repaint the source content in <image1> in the illustrated form and lighting language of <image2>.\nKeep the original subject and scene recognizable.  ';
 const sourceContent = 'The source subject remains in the original recognizable scene.';
 const code = expected => error => { assert.equal(error.code, expected); return true; };
@@ -21,6 +22,8 @@ function payload(extra = {}) {
   value.contextFingerprint = computeArtAgentFingerprint(value); return value;
 }
 const argsFor = request => ({contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'按参考的造型、光影和材质绘制。',sourceContent,renderingClass:'anime'});
+const approvalFor = request => ({schema:'nf.art.execution-approval.v1',requestId:request.requestId,contextFingerprint:request.contextFingerprint,
+  action:'generate',imageCount:1,sampling:{variant:'standard',steps:request.artContext.steps,cfg:request.artContext.cfg},basis:'sampling-confirmation'});
 const tool = (name,args) => ({role:'assistant',content:null,tool_calls:[{id:'final_style_tool',type:'function',function:{name,arguments:JSON.stringify(args)}}]});
 function fixture(message, {unload = async () => ({ok:true,released:true})} = {}) {
   const calls=[],events=[];
@@ -58,6 +61,23 @@ test('drawing inherits the entire formal director body and records a distinct na
   for(const tool of FLASH_CREATION_AGENT_TOOLS.filter(t=>t.function.name!=='get_art_context')) {
     assert.equal(tool.function.parameters.required.includes('sourceContent'),false);
     assert.equal(tool.function.parameters.properties.renderingClass,undefined);
+  }
+});
+
+test('real execution confirmation is validated separately without altering the snapshot, message or history',async()=>{
+  const request=payload(); request.executionApproval=approvalFor(request);
+  const f=fixture(tool('generate_art_image',argsFor(request))),data=(await invoke(createFlashArtAgent(),f,request)).value;
+  const observed=JSON.parse(f.calls[0].messages.at(-1).content[0].text);
+  assert.deepEqual(observed.applicationExecutionApproval,request.executionApproval);
+  assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,request.artContext);
+  assert.equal(observed.userMessage,request.message);assert.equal(data.history[0].content,request.message);
+  assert.equal(data.contextFingerprint,request.contextFingerprint);assert.equal(f.calls.length,1);
+  for(const mutate of [a=>{a.requestId='other-request';},a=>{a.contextFingerprint='0'.repeat(64);},a=>{a.imageCount=2;},
+    a=>{a.sampling.cfg=1;},a=>{a.sampling.steps=25;},a=>{a.sampling.variant='turbo';},a=>{a.basis='model-decided';},a=>{a.extra='shell';}]) {
+    const invalid=structuredClone(request);invalid.requestId=randomUUID();invalid.executionApproval=approvalFor(invalid);mutate(invalid.executionApproval);
+    const rejected=fixture(tool('generate_art_image',argsFor(invalid)));
+    await assert.rejects(invoke(createFlashArtAgent(),rejected,invalid),code('flash-agent-invalid-approval'));
+    assert.deepEqual(rejected.events,[]);assert.equal(rejected.calls.length,0);
   }
 });
 
@@ -126,4 +146,74 @@ test('one-call style handoff still cannot grant its own release credentials',asy
   await assert.rejects(invoke(createFlashArtAgent(),f,request),code('strata-release-unconfirmed'));
   assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);
   assert.equal(f.session.getStatus().generationReady,false);
+});
+
+test('drawing and actual-result feedback explicitly disable hidden thinking in the native HTTP request',async()=>{
+  const agent=createFlashArtAgent(),first=payload(),initial=fixture(tool('generate_art_image',argsFor(first)));
+  const previous=(await invoke(agent,initial,first)).value;
+  const feedback=payload({conversationId:previous.conversationId,history:previous.history,message:'这张头发过于写实，请修改后生成',
+    images:[{role:'subject',dataUrl:PNG},{role:'style',dataUrl:PNG},{role:'result',dataUrl:DIFFERENT_PNG}]}),
+    corrected=fixture(tool('generate_art_image',argsFor(feedback)));
+  await invoke(agent,corrected,feedback);
+  for(const f of [initial,corrected]) {
+    assert.equal(f.calls.length,1);assert.equal(f.calls[0].reasoning_effort,'none');assert.equal(f.calls[0].reasoning_budget_tokens,0);
+    assert.deepEqual(f.events,['load','unload']);
+  }
+  const observed=JSON.parse(corrected.calls[0].messages.at(-1).content[0].text);
+  assert.equal(observed.referencesChanged,false,'A new result does not replace the unchanged subject/style references');
+  assert.equal(observed.feedbackImage.generationInput,false);
+  assert.equal(corrected.calls[0].messages.at(-1).content.filter(part=>part.type==='image_url').at(-1).image_url.url,DIFFERENT_PNG);
+});
+
+test('same-reference feedback keeps the current draft once without repeating old proposal text or assistant descriptions',async()=>{
+  const oldPrompt='UNIQUE_OLD_EXECUTION_BRIEF: Keep <image1> content in <image2> drawn form language.',
+    oldExplanation='旧助手解释的唯一标记：黄色环境顶灯。',agent=createFlashArtAgent(),first=payload({message:'旧用户希望头发有明确发束'}),
+    initial=fixture(tool('generate_art_image',{...argsFor(first),prompt:oldPrompt,explanation:oldExplanation}));
+  const previous=(await invoke(agent,initial,first)).value;
+  const feedback=payload({conversationId:previous.conversationId,history:previous.history,message:'颜色不对，按实际参考修改',
+    artContext:{...first.artContext,prompt:previous.proposal.prompt},
+    images:[...first.images,{role:'result',dataUrl:DIFFERENT_PNG}]}),f=fixture(tool('generate_art_image',argsFor(feedback)));
+  await invoke(agent,f,feedback);
+  const body=f.calls[0],observed=JSON.parse(body.messages.at(-1).content[0].text),wire=JSON.stringify(body.messages);
+  assert.equal(observed.referencesChanged,false);assert.equal(observed.referencesUnverified,false);
+  assert.equal(observed.verifiedDrawingSnapshot.artContext.prompt,oldPrompt,'The current application prompt remains available for revision');
+  assert.equal(observed.previousProposal.prompt,undefined);assert.equal(observed.previousProposal.promptSHA256,createHash('sha256').update(oldPrompt).digest('hex'));
+  assert.equal(wire.split(oldPrompt).length-1,1,'Do not send the same complete execution prompt in both snapshot and previousProposal');
+  assert.equal(wire.includes(oldExplanation),false,'Prior assistant prose is not reintroduced as visual evidence');
+  assert.deepEqual(body.messages.slice(1,-1),[{role:'user',content:first.message}],'Keep the recent user constraint without assistant echo');
+  assert.equal(observed.userMessage,feedback.message);
+});
+
+test('changed style pixels discard old reference history while preserving a separately edited manual prompt',async()=>{
+  for(const manual of [false,true]) {
+    const agent=createFlashArtAgent(),first=payload({message:'旧参考专用条件：蓝色雾光'}),
+      initial=fixture(tool('generate_art_image',{...argsFor(first),prompt:'OLD_STYLE_EXECUTION: <image1> with <image2> blue environmental lighting.',explanation:'旧参考的助手描述'}));
+    const previous=(await invoke(agent,initial,first)).value;
+    const currentPrompt=manual?'MANUAL_CURRENT_DRAFT: Preserve the subject and follow the new style reference.':previous.proposal.prompt;
+    const changed=payload({conversationId:previous.conversationId,history:previous.history,message:'已换图2，按新的画风重新生成',
+      artContext:{...first.artContext,prompt:currentPrompt},images:[{role:'subject',dataUrl:PNG},{role:'style',dataUrl:DIFFERENT_PNG}]}),
+      f=fixture(tool('generate_art_image',argsFor(changed)));
+    await invoke(agent,f,changed);
+    const body=f.calls[0],content=body.messages.at(-1).content,observed=JSON.parse(content[0].text);
+    assert.equal(observed.referencesChanged,true);assert.equal(observed.referencesUnverified,false);
+    assert.equal(observed.previousProposal,undefined);assert.equal(body.messages.length,2,'Only system and the verified current request reach the model after changing references');
+    assert.equal(JSON.stringify(body.messages).includes(first.message),false);assert.equal(JSON.stringify(body.messages).includes('旧参考的助手描述'),false);
+    assert.equal(observed.verifiedDrawingSnapshot.artContext.prompt,manual?currentPrompt:undefined,
+      manual?'Respect the separately edited current manual draft':'An unchanged auto-generated old-style prompt must not override new reference pixels');
+    assert.equal(changed.artContext.prompt,currentPrompt,'Model-only filtering never edits the actual application prompt');
+    assert.deepEqual(content.filter(part=>part.type==='image_url').map(part=>part.image_url.url),[PNG,DIFFERENT_PNG]);
+  }
+});
+
+test('restored text without a live conversation marks reference history unverified and retains only current explicit context',async()=>{
+  const first=payload(),oldAgent=createFlashArtAgent(),initial=fixture(tool('generate_art_image',{...argsFor(first),explanation:'恢复的旧助手描述不应再次发送'}));
+  const previous=(await invoke(oldAgent,initial,first)).value;
+  const manualPrompt='CURRENT_MANUAL_DRAFT: use the actual current references.',restored=payload({history:previous.history,message:'按照当前两张图重新生成',
+    artContext:{...first.artContext,prompt:manualPrompt}}),f=fixture(tool('generate_art_image',argsFor(restored)));
+  const data=(await invoke(createFlashArtAgent(),f,restored)).value;
+  const body=f.calls[0],observed=JSON.parse(body.messages.at(-1).content[0].text);
+  assert.equal(observed.referencesUnverified,true);assert.equal(observed.referencesChanged,false);assert.equal(observed.previousProposal,undefined);
+  assert.equal(body.messages.length,2);assert.equal(JSON.stringify(body.messages).includes('恢复的旧助手描述不应再次发送'),false);
+  assert.equal(observed.verifiedDrawingSnapshot.artContext.prompt,manualPrompt);assert.equal(observed.userMessage,restored.message);
+  assert.equal(data.historyRestored,'text-only');assert.ok(data.history.some(item=>item.content===previous.reply),'Text can remain visible in the conversation without being treated as verified image history');
 });
