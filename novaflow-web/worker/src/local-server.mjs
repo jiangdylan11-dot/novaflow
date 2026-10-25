@@ -21,7 +21,7 @@ async function bodyOf(req, limit = 256 * 1024) {
   try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { throw fail('无效 JSON'); }
 }
 
-export async function startLocalServer({ worker, tasks, license, dataDir, webRoot, port = 4784, controlUrl = '', promptAssistant = null, artLearning = null, artKnowledgeEnabled = false }) {
+export async function startLocalServer({ worker, tasks, license, dataDir, webRoot, port = 4784, controlUrl = '', promptAssistant = null, artLearning = null, artActor = null, artKnowledgeEnabled = false, artKnowledgeUrl = '' }) {
   const secret = randomBytes(32).toString('hex');
   const grantKey = randomBytes(32).toString('hex');
   const gateway = createGateway({ workerId: worker.identity.workerId, dataDir, getGrantKey: () => grantKey });
@@ -64,8 +64,9 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
             if (!artLearning) throw fail('本机尚未启用任务反馈服务', 404);
             // A logged-in browser may only use this node's verified bound account.
             // Unbound local mode is one paired device owner, not a Web tenant API.
-            if (body.accountId && body.accountId !== s.boundAccount?.id) throw fail('当前账号与本机任务所属账号不一致，请先绑定本机账号', 403);
-            const {accountId, ...command} = body;
+            const {accountId,accountToken,...command} = body;
+            if(artActor){const ownerId=await artActor.identify(body);return json(200,{ok:true,data:command.action==='identify'?{ownerId}:await artActor.runAs(ownerId,()=>artLearning.command(command))});}
+            if (accountId && accountId !== s.boundAccount?.id) throw fail('当前账号与本机任务所属账号不一致，请先绑定本机账号', 403);
             return json(200, {ok:true,data:await artLearning.command(command)});
           }
           if (req.method === 'GET' && action === 'status') return json(200, promptAssistant.status());
@@ -74,9 +75,11 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
           if (req.method === 'POST' && action === 'cancel-request') return json(200, await promptAssistant.cancelRequest(body));
           if (req.method === 'POST' && action === 'describe-art-style') return json(200, await promptAssistant.describeArtStyle(body));
           if (req.method === 'POST' && action === 'art-agent-chat') {
-            const learningAllowed = !body.accountId || body.accountId === s.boundAccount?.id;
-            const response = await promptAssistant.artAgentChat(body, {learningAllowed});
-            if (!learningAllowed) response.learningWarning = '当前账号未绑定本机，本次沿用原有生成流程，未读写任务反馈';
+            const {accountId,accountToken,...payload}=body;let ownerId=null,learningAllowed=!accountId||accountId===s.boundAccount?.id;
+            if(artActor){try{ownerId=await artActor.identify(body);learningAllowed=true;}catch{learningAllowed=false;}}
+            const run=()=>promptAssistant.artAgentChat(payload,{learningAllowed});
+            const response = ownerId?await artActor.runAs(ownerId,run):await run();
+            if (!learningAllowed) response.learningWarning = '当前登录身份暂时无法核验，本次沿用原有生成流程，未读写账号任务反馈';
             return json(200,response);
           }
           if (req.method === 'POST' && action === 'art-agent-stop') return json(200, await promptAssistant.artAgentStop(body));
@@ -139,7 +142,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
       if (path === join(root, 'index.html')) {
         // The same web-dist used by the hosted site; only local connection
         // metadata is injected, never a license bypass or session credential.
-        const config = JSON.stringify({ controlUrl, localAssistant: true, localOrigin: origin, artKnowledgeEnabled: artKnowledgeEnabled === true }).replace(/</g, '\\u003c');
+        const config = JSON.stringify({ controlUrl, localAssistant: true, localOrigin: origin, artKnowledgeEnabled: artKnowledgeEnabled === true, artKnowledgeUrl }).replace(/</g, '\\u003c');
         bytes = Buffer.from(bytes.toString().replace('<head>', '<head><script>window.NOVAFLOW_WEB_CONFIG=' + config + ';</script>'));
       }
       res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'SAMEORIGIN' });

@@ -32,6 +32,7 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
     const principal=isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
     if(typeof store.readArtKnowledge!=='function')fail(503,'shared art knowledge is not enabled');
     if(isRead){if(!skill(query.skillId))fail(400,'invalid art skill');return {ok:true,...await store.readArtKnowledge(query.skillId,query.knownVersion)};}
+    if(method==='GET'&&path==='/api/web/art-knowledge/publisher')return {ok:true,publisher:await store.isArtPublisher(principal.id)};
     if(path==='/api/web/art-knowledge/consent') {
       if(method==='GET')return {ok:true,allowed:await store.getArtLearningConsent(principal.id)};
       if(method==='POST'&&shape(body,['allow'])&&typeof body.allow==='boolean'){await store.setArtLearningConsent(principal.id,body.allow);return {ok:true,allowed:body.allow};}
@@ -41,10 +42,12 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
       const input=candidate(body);if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
       return {ok:true,...await store.submitArtMethod(principal.id,input)};
     }
-    if(principal.role!=='admin')fail(403,'administrator review is required');
+    const publisher=await store.isArtPublisher(principal.id);
+    if(principal.role!=='admin'&&!publisher)fail(403,'owner or administrator review is required');
+    if(method==='GET'&&path==='/api/web/art-knowledge/review'){if(!publisher)fail(403,'publisher owner required');return {ok:true,review:await store.getArtReview()};}
     if(method==='GET' && path==='/api/web/art-knowledge/candidates')return {ok:true,candidates:await store.listArtCandidates()};
     if(['/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback','/api/web/art-knowledge/prepare'].includes(path)
-      && !await store.isArtPublisher(principal.id))fail(403,'only the configured publisher owner may approve a release');
+      && !publisher)fail(403,'only the configured publisher owner may approve a release');
     if(method==='POST' && ['/api/web/art-knowledge/prepare','/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback'].includes(path)) {
       const rollback=path.endsWith('/rollback'),prepare=path.endsWith('/prepare');
       if(!shape(body,rollback?['skillId','version']:['skillId','version','candidateIds','validation','skill',...(prepare?[]:['approval'])]) || !skill(body.skillId)
@@ -74,9 +77,9 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
         candidates:ordered.map(c=>({id:c.id,method:c.method,scope:c.scope,evidenceFingerprint:c.evidence_fingerprint})),
         validation:body.validation,skill:body.skill||null};
       const batchSHA256=await sha256Hex(JSON.stringify(batch));
-      if(prepare)return {ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
+      if(prepare){const report={ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
         selected:ordered,excluded,remaining:eligible.length-selected.length,
-        publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};
+        publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};await store.saveArtReview(principal.id,report);return report;}
       if(!shape(body.approval,['approved','batchSHA256'])||body.approval.approved!==true||body.approval.batchSHA256!==batchSHA256)fail(409,'explicit owner approval for this exact unchanged batch is required');
       return {ok:true,...await store.publishArtKnowledge(principal.id,{...body,candidateIds:ids,validation:{...body.validation,
         baseVersion:active.version,evidenceFingerprints:Object.fromEntries(ordered.map(c=>[c.id,c.evidence_fingerprint])),

@@ -142,6 +142,13 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       credits.textContent = displayNumber(who.credits && who.credits.balance);
       const quota = metric('提示词服务', '剩余次数 / 总次数');
       const note = el('div', '', '正在读取账户信息…'); note.className = 'nf-account-error'; note.setAttribute('role', 'status'); body.appendChild(note);
+      if(typeof api().artKnowledgeState==='function')void (async()=>{
+        const state=await api().artKnowledgeState();if(!state.ok||!state.enabled||!backdrop.isConnected)return;
+        const privacy=el('div','font-size:12px;line-height:1.7;color:#aaa'),label=el('label','display:flex;gap:8px;align-items:center;cursor:pointer'),check=el('input');check.type='checkbox';check.checked=state.allowed===true;
+        label.append(check,el('span','','允许贡献通用美术方法'));privacy.append(label,el('div','font-size:11px;margin-top:5px','仅贡献筛选后的方法摘要，不共享原图、完整提示词或聊天；正式方法经发布人审核后供大家使用。'));
+        check.addEventListener('change',async()=>{check.disabled=true;try{await api().artKnowledgeConsent(check.checked);}catch{check.checked=!check.checked;}finally{check.disabled=false;}});body.appendChild(privacy);
+        if(state.publisher){const review=el('button','padding:9px;background:#333;color:#ddd;border:1px solid #555;border-radius:6px;cursor:pointer','审核专业经验');review.type='button';review.addEventListener('click',()=>root.NovaFlowArtKnowledgeReview?.open());body.appendChild(review);}
+      })().catch(()=>{});
       const actions = el('div'); actions.className = 'nf-account-actions'; body.appendChild(actions);
       const retry = el('button', '', '重新读取'); retry.type = 'button'; retry.hidden = true; actions.appendChild(retry);
       const out = el('button', '', '退出登录'); out.type = 'button'; actions.appendChild(out);

@@ -89,6 +89,11 @@ const supabaseStore = {
     const {data,error}=await admin().rpc('novaflow_art_review_candidates');
     if(error)throw error;return data || [];
   },
+  async saveArtReview(userId: string,report: any){
+    const {error:oldError}=await admin().from('art_knowledge_reviews').update({state:'outdated'}).eq('state','pending').eq('report->publishRequest->>skillId',report.publishRequest.skillId).neq('batch_sha256',report.batchSHA256);if(oldError)throw oldError;
+    const {error}=await admin().from('art_knowledge_reviews').upsert({batch_sha256:report.batchSHA256,report,prepared_by:userId},{onConflict:'batch_sha256'});if(error)throw error;
+  },
+  async getArtReview(){const {data,error}=await admin().from('art_knowledge_reviews').select('report').eq('state','pending').order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data?.report||null;},
   async publishArtKnowledge(userId: string,input: any) {
     const {data,error}=await admin().rpc('novaflow_art_publish_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version,p_candidate_ids:input.candidateIds,p_validation:input.validation,p_skill:input.skill||null});
     if(error)throw error;return data;

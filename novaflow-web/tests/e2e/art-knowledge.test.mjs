@@ -19,7 +19,7 @@ test('shared methods require consent, exact owner review, immutable releases and
   const owner=(await call(null,'/dev/login',{email:'publisher@local.test'})).body;
   const other=(await call(null,'/dev/login',{email:'other-admin@local.test'})).body;
   const user=(await call(null,'/dev/login',{email:'contributor@local.test'})).body;
-  await ctx.db.query("update public.users set role='admin' where id=any($1::uuid[])",[[owner.user.id,other.user.id]]);
+  await ctx.db.query("update public.users set role='admin' where id=any($1::uuid[])",[[other.user.id]]);
   const root='/api/web/art-knowledge',scope={skillId:'style-transfer',generationModel:'qwen-2.1',variant:'standard',brain:'*'};
   const candidate=(method='分别分析暗面、高光。',feedback='satisfied',id='task-1')=>({schema:'nf.art.method-candidate.v1',key:'local-key',status:'candidate',scope,method,evidence:[{taskId:id,resultSHA256:'a'.repeat(64),feedback,improvement:false}]});
   const release={skillId:'style-transfer',version:'1.0.1',validation:{passed:true,benchmarkSHA256:'b'.repeat(64),cases:1}};
@@ -80,7 +80,7 @@ test('shared methods require consent, exact owner review, immutable releases and
   });
   await t.test('SQL enforces owner and unchanged evidence even without the HTTP wrapper',async()=>{
     await assert.rejects(ctx.store.publishArtKnowledge(other.user.id,{...release,candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:other.user.id}}),/publisher owner/);
-    await assert.rejects(ctx.store.publishArtKnowledge(owner.user.id,{...release,version:'9.0.0',candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:owner.user.id}}),/reviewed evidence changed/);
+    await assert.rejects(ctx.store.publishArtKnowledge(owner.user.id,{...release,version:'9.0.0',candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:owner.user.id}}),/pending owner review required|reviewed evidence changed/);
     await ctx.db.exec('set role authenticated');
     try{await assert.rejects(ctx.db.query('select * from public.art_method_candidates'),/permission denied/);
       await assert.rejects(ctx.db.query('select public.novaflow_art_review_candidates()'),/permission denied/);}

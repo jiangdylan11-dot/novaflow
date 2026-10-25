@@ -10,6 +10,7 @@ import { createBorrowedRuntimeServices } from './borrowed-runtime-services.mjs';
 import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
 import { createArtLearning } from './art-learning.mjs';
 import { createArtKnowledgeCache } from './art-knowledge-cache.mjs';
+import { createArtTaskIdentity } from './art-task-identity.mjs';
 
 export async function createLocalAssistant(options) {
   if (!options.modelsRoot) {
@@ -26,10 +27,12 @@ export async function createLocalAssistant(options) {
     stateFile: options.dataDir ? join(options.dataDir, 'owned-runtimes.json') : '' });
   let promptAssistant = null;
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
+  const artActor = createArtTaskIdentity({identifyUser:token=>worker.identifyArtUser(token),
+    fallbackOwner:()=>worker.getState().boundAccount?.id||`local-device:${worker.identity.workerId}`});
   const knowledgeCache = createArtKnowledgeCache({directory:join(options.dataDir,'art-knowledge-cache'),
     fetchPacket:scope=>worker.readArtKnowledge(scope)});
   const artLearning = createArtLearning({ directory: join(options.dataDir, 'art-learning'),
-    getOwner: () => worker.getState().boundAccount?.id || `local-device:${worker.identity.workerId}`,
+    getOwner: artActor.owner,
     getKnowledge:scope=>knowledgeCache.read(scope)});
   if((options.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata')==='strata') {
     const prepared = await ensureFlashBrainConfiguration({
@@ -94,7 +97,7 @@ export async function createLocalAssistant(options) {
         await ensureServices();
         await worker.startLocal({ onProgress: progress });
         progress(90, '正在启动本地网页服务');
-        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant, artLearning, artKnowledgeEnabled: options.artKnowledge?.enabled === true,
+        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant, artLearning, artActor, artKnowledgeEnabled: options.artKnowledge?.enabled === true, artKnowledgeUrl: options.artKnowledge?.baseUrl || options.controlUrl,
           webRoot: options.webRoot, port: options.localPort ?? 4784, controlUrl: options.controlUrl });
         // Deliberately off until the new cloud service passes deployment gates.
         // Startup never waits for Supabase and every task reads local files only.

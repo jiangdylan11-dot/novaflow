@@ -25,10 +25,11 @@ export function readConfig(html) {
   if (!m) return null;
   const control = /controlUrl:\s*"([^"]*)"/.exec(m[0]);
   const auth = /authUrl:\s*"([^"]*)"/.exec(m[0]);
-  return { controlUrl: control ? control[1] : '', authUrl: auth ? auth[1] : '' };
+  const knowledge=/artKnowledgeUrl:\s*"([^"]*)"/.exec(m[0]),enabled=/artKnowledgeEnabled:\s*(true|false)/.exec(m[0]);
+  return {controlUrl:control?control[1]:'',authUrl:auth?auth[1]:'',...(knowledge?{artKnowledgeUrl:knowledge[1]}:{}),...(enabled?{artKnowledgeEnabled:enabled[1]==='true'}:{})};
 }
 
-export function writeConfig(html, { controlUrl, authUrl }) {
+export function writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled }) {
   const m = BLOCK.exec(html);
   if (!m) throw new Error('the config block is not in web-dist/index.html - run the build first');
   const current = readConfig(html);
@@ -37,7 +38,9 @@ export function writeConfig(html, { controlUrl, authUrl }) {
   const next =
     'window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
     '        controlUrl: "' + (controlUrl ?? current.controlUrl) + '",\n' +
-    '        authUrl: "' + (authUrl ?? current.authUrl) + '"\n' +
+    '        authUrl: '+JSON.stringify(authUrl??current.authUrl)+
+    ((artKnowledgeUrl??current.artKnowledgeUrl)!==undefined?',\n        artKnowledgeUrl: '+JSON.stringify(artKnowledgeUrl??current.artKnowledgeUrl):'')+
+    ((artKnowledgeEnabled??current.artKnowledgeEnabled)!==undefined?',\n        artKnowledgeEnabled: '+JSON.stringify(artKnowledgeEnabled??current.artKnowledgeEnabled):'')+'\n'+
     '      };';
   return html.slice(0, m.index) + next + html.slice(m.index + m[0].length);
 }
@@ -56,14 +59,14 @@ if (invokedDirectly) {
     process.exit(1);
   }
 
-  if (process.argv.includes('--show') || (!arg('control-url') && !arg('auth-url'))) {
+  if (process.argv.includes('--show') || (!arg('control-url') && !arg('auth-url') && !arg('art-knowledge-url') && !process.argv.includes('--enable-art-knowledge'))) {
     console.log('controlUrl: ' + current.controlUrl);
     console.log('authUrl   : ' + current.authUrl);
     process.exit(0);
   }
 
   const controlUrl = arg('control-url');
-  const authUrl = arg('auth-url');
+  const authUrl = arg('auth-url'),artKnowledgeUrl=arg('art-knowledge-url'),artKnowledgeEnabled=process.argv.includes('--enable-art-knowledge')?true:undefined;
   for (const [label, value] of [['control-url', controlUrl], ['auth-url', authUrl]]) {
     if (value && !/^https?:\/\//.test(value)) {
       console.error(label + ' must be an absolute http(s) URL: ' + value);
@@ -71,7 +74,7 @@ if (invokedDirectly) {
     }
   }
 
-  const next = writeConfig(html, { controlUrl, authUrl });
+  const next = writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled });
   await writeFile(INDEX, next, 'utf8');
 
   // Read it back rather than trusting the write.

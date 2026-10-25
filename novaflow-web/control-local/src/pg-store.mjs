@@ -30,6 +30,11 @@ export function createPgStore(db) {
     async listArtCandidates() {
       return (await one('select public.novaflow_art_review_candidates() as result',[])).result;
     },
+    async saveArtReview(userId,report){
+      await many("update public.art_knowledge_reviews set state='outdated' where state='pending' and report->'publishRequest'->>'skillId'=$1 and batch_sha256<>$2",[report.publishRequest.skillId,report.batchSHA256]);
+      await one("insert into public.art_knowledge_reviews(batch_sha256,report,prepared_by) values($1,$2::jsonb,$3) on conflict(batch_sha256) do update set report=excluded.report returning batch_sha256",[report.batchSHA256,JSON.stringify(report),userId]);
+    },
+    async getArtReview(){return (await one("select report from public.art_knowledge_reviews where state='pending' order by created_at desc limit 1",[]))?.report||null;},
     async publishArtKnowledge(userId,input) {
       const row=await one('select public.novaflow_art_publish_knowledge($1,$2,$3,$4::uuid[],$5::jsonb,$6::jsonb) as result',[userId,input.skillId,input.version,input.candidateIds,JSON.stringify(input.validation),input.skill?JSON.stringify(input.skill):null]);return row.result;
     },

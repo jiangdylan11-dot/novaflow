@@ -43,6 +43,16 @@ create table if not exists public.art_knowledge_releases (
   created_at timestamptz not null default now(),
   primary key(skill_id,version)
 );
+create table if not exists public.art_knowledge_reviews (
+  batch_sha256 text primary key check(batch_sha256 ~ '^[a-f0-9]{64}$'),
+  report jsonb not null,
+  prepared_by uuid not null references public.users(id),
+  state text not null default 'pending' check(state in ('pending','published','outdated')),
+  created_at timestamptz not null default now()
+);
+alter table public.art_knowledge_reviews enable row level security;
+revoke all on public.art_knowledge_reviews from public,anon,authenticated;
+grant select,insert,update on public.art_knowledge_reviews to service_role;
 create unique index if not exists art_knowledge_active_skill on public.art_knowledge_releases(skill_id) where active;
 alter table public.art_method_candidates enable row level security;
 alter table public.art_learning_consents enable row level security;
@@ -66,7 +76,7 @@ begin
   perform pg_advisory_xact_lock(hashtext('art:'||(p_scope->>'skillId')));
   perform pg_advisory_xact_lock(hashtext(p_user_id::text));
   if (select count(*) from public.art_method_evidence where user_id=p_user_id and created_at>now()-interval '1 hour')>=100 then raise exception 'method feedback limit'; end if;
-  v_key=encode(public.digest(p_scope::text||E'\n'||lower(regexp_replace(normalize(p_method,NFKC),'[[:space:][:punct:]，。！？；：、（）【】《》“”‘’]','','g')),'sha256'),'hex');
+  v_key=encode(pg_catalog.sha256(pg_catalog.convert_to(p_scope::text||E'\n'||lower(regexp_replace(normalize(p_method,NFKC),'[[:space:][:punct:]，。！？；：、（）【】《》“”‘’]','','g')),'UTF8')),'hex');
   insert into public.art_method_candidates(fingerprint,scope,method) values(v_key,p_scope,p_method)
     on conflict(fingerprint) do update set fingerprint=excluded.fingerprint returning id into v_id;
   for v_item in select value from jsonb_array_elements(p_evidence) loop
@@ -88,7 +98,7 @@ returns jsonb language sql security invoker set search_path=pg_catalog,public as
       'negative_count',count(*) filter(where e.feedback in ('unsatisfied','revision')),
       'positive_users',count(distinct e.user_id) filter(where e.feedback in ('satisfied','adopted')),
       'improvement_count',count(*) filter(where e.improvement and e.feedback in ('satisfied','adopted')),
-      'evidence_fingerprint',encode(public.digest(coalesce(jsonb_agg(jsonb_build_array(e.user_id,e.task_id,e.result_sha256,e.feedback,e.improvement) order by e.user_id,e.task_id) filter(where e.candidate_id is not null),'[]'::jsonb)::text,'sha256'),'hex')) as row_data
+      'evidence_fingerprint',encode(pg_catalog.sha256(pg_catalog.convert_to(coalesce(jsonb_agg(jsonb_build_array(e.user_id,e.task_id,e.result_sha256,e.feedback,e.improvement) order by e.user_id,e.task_id) filter(where e.candidate_id is not null),'[]'::jsonb)::text,'UTF8')),'hex')) as row_data
     from public.art_method_candidates c left join public.art_method_evidence e on e.candidate_id=c.id
     group by c.id order by c.created_at desc limit 500
   ) reviewed;
@@ -100,7 +110,7 @@ create or replace function public.novaflow_art_publish_knowledge(p_admin_id uuid
 returns jsonb language plpgsql security invoker set search_path=pg_catalog,public as $$
 declare v_methods jsonb; v_count integer; v_current jsonb; v_review jsonb; v_row jsonb;
 begin
-  if not exists(select 1 from public.users u join public.art_knowledge_policy p on p.publisher_user_id=u.id where u.id=p_admin_id and u.role='admin' and u.status='active') then raise exception 'publisher owner required'; end if;
+  if not exists(select 1 from public.users u join public.art_knowledge_policy p on p.publisher_user_id=u.id where u.id=p_admin_id and u.status='active') then raise exception 'publisher owner required'; end if;
   if p_skill_id not in ('style-transfer','image-creation') or p_version!~'^[0-9]+\.[0-9]+\.[0-9]+$'
      or coalesce(p_validation->>'passed','')<>'true'
      or coalesce(p_validation->>'benchmarkSHA256','')!~'^[a-f0-9]{64}$'
@@ -108,8 +118,9 @@ begin
      or coalesce(p_validation->>'ownerApproved','')<>'true'
      or coalesce(p_validation->>'approvedBy','')<>p_admin_id::text then raise exception 'fixed benchmark and explicit owner approval required'; end if;
   if cardinality(p_candidate_ids) not between 1 and 20 then raise exception 'invalid release size'; end if;
+  if not exists(select 1 from public.art_knowledge_reviews where batch_sha256=p_validation->>'approvalSHA256' and prepared_by=p_admin_id and state='pending') then raise exception 'pending owner review required'; end if;
   if p_skill is not null and (p_skill->>'id'<>p_skill_id or p_skill->>'status'<>'stable'
-    or encode(public.digest(p_skill->>'systemPrompt','sha256'),'hex')<>p_skill->>'systemSHA256') then raise exception 'invalid professional skill'; end if;
+    or encode(pg_catalog.sha256(pg_catalog.convert_to(p_skill->>'systemPrompt','UTF8')),'hex')<>p_skill->>'systemSHA256') then raise exception 'invalid professional skill'; end if;
   -- Serialize submissions and publication per skill, then recheck the exact
   -- evidence fingerprints reviewed by the owner to close the approval race.
   perform pg_advisory_xact_lock(hashtext('art:'||p_skill_id));
@@ -133,12 +144,14 @@ begin
   insert into public.art_knowledge_releases(skill_id,version,methods,validation,reviewed_by,skill) values(p_skill_id,p_version,v_methods,p_validation,p_admin_id,p_skill);
   update public.art_knowledge_releases set active=false where skill_id=p_skill_id and active;
   update public.art_knowledge_releases set active=true where skill_id=p_skill_id and version=p_version;
+  update public.art_knowledge_reviews set state='published' where batch_sha256=p_validation->>'approvalSHA256';
+  update public.art_knowledge_reviews set state='outdated' where state='pending' and report->'publishRequest'->>'skillId'=p_skill_id;
   return jsonb_build_object('version',p_version,'methods',v_methods,'skill',p_skill);
 end $$;
 create or replace function public.novaflow_art_rollback_knowledge(p_admin_id uuid,p_skill_id text,p_version text)
 returns jsonb language plpgsql security invoker set search_path=pg_catalog,public as $$
 begin
-  if not exists(select 1 from public.users u join public.art_knowledge_policy p on p.publisher_user_id=u.id where u.id=p_admin_id and u.role='admin' and u.status='active') then raise exception 'publisher owner required'; end if;
+  if not exists(select 1 from public.users u join public.art_knowledge_policy p on p.publisher_user_id=u.id where u.id=p_admin_id and u.status='active') then raise exception 'publisher owner required'; end if;
   perform pg_advisory_xact_lock(hashtext('art:'||p_skill_id));
   if not exists(select 1 from public.art_knowledge_releases where skill_id=p_skill_id and version=p_version) then raise exception 'approved version not found'; end if;
   update public.art_knowledge_releases set active=false where skill_id=p_skill_id and active;

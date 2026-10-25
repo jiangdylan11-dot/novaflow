@@ -32,7 +32,7 @@ function arg(name) {
 
 const LOCAL = /^https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0)(?::\d+)?/i;
 
-export async function packageSite({ controlUrl, authUrl, out, allowLocal = false, logger } = {}) {
+export async function packageSite({ controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled, out, allowLocal = false, logger } = {}) {
   const log = logger || (() => {});
 
   // 1. build - this writes the local default into index.html. The published
@@ -41,9 +41,9 @@ export async function packageSite({ controlUrl, authUrl, out, allowLocal = false
   log('built', { modules: report.redactedModules, copied: report.copied, minified: report.minify ? report.minify.minified : 0 });
 
   // 2. repoint
-  if (controlUrl || authUrl) {
+  if (controlUrl || authUrl || artKnowledgeUrl || artKnowledgeEnabled!==undefined) {
     const html = await readFile(INDEX, 'utf8');
-    await writeFile(INDEX, writeConfig(html, { controlUrl, authUrl }), 'utf8');
+    await writeFile(INDEX, writeConfig(html, { controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled }), 'utf8');
   }
 
   // 3. verify what actually landed, by reading the file back
@@ -97,6 +97,7 @@ if (invokedDirectly) {
     const res = await packageSite({
       controlUrl: arg('control-url'),
       authUrl: arg('auth-url'),
+      artKnowledgeUrl: arg('art-knowledge-url')||undefined,artKnowledgeEnabled:process.argv.includes('--enable-art-knowledge')?true:undefined,
       out: arg('out'),
       allowLocal: process.argv.includes('--allow-local'),
       logger: (m, x) => console.log('  ' + m + ' ' + (x ? JSON.stringify(x) : ''))
