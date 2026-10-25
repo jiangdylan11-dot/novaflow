@@ -36,27 +36,27 @@ function fixture() {
   vm.runInContext('state.filter = Object.fromEntries(TREE_FILTERS.map(([key]) => [key, true]))', ctx)
   return { state, ctx, tree, only(...keys) { for (const key in state.filter) state.filter[key] = keys.includes(key) },
     keys() { ctx.renderTree(); return tree.rows.map(r => r.attrs['data-key']).filter(Boolean) },
+    rigKeys() { return this.keys().filter(k => /^(att:|ph:|b:|slot:)/.test(k)) },
     texts() { const text = n => typeof n === 'string' ? n : (n?.kids || []).map(text).join(' '); return tree.rows.map(text).join(' ') } }
 }
 
 test('mesh-only finds regular, linked, and current-skin placeholder meshes without bones or slots', () => {
   const f = fixture(); f.only('mesh'); f.state.collapsed.add('s:slot'); f.state.collapsed.add('b:root')
-  assert.deepEqual(f.keys(), ['att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
-  assert(!f.texts().includes('动画')); assert(!f.texts().includes('皮肤'))
-  f.state.skin = 'red'; assert.deepEqual(f.keys(), ['att:default:slot:mesh', 'att:default:slot:linked'])
+  assert.deepEqual(f.rigKeys(), ['att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
+  f.state.skin = 'red'; assert.deepEqual(f.rigKeys(), ['att:default:slot:mesh', 'att:default:slot:linked'])
 })
 
 test('hidden slots promote matching attachments under visible bones and ignore the hidden slot collapse', () => {
   const f = fixture(); f.only('bones', 'mesh'); f.state.collapsed.add('s:slot')
-  assert.deepEqual(f.keys(), ['b:root', 'att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
-  f.state.collapsed.add('b:root'); assert.deepEqual(f.keys(), ['b:root'])
+  assert.deepEqual(f.rigKeys(), ['b:root', 'att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
+  f.state.collapsed.add('b:root'); assert.deepEqual(f.rigKeys(), ['b:root'])
 })
 
 test('slot-only and placeholder-only are independent categories; placeholders never duplicate', () => {
-  const f = fixture(); f.only('slots'); assert.deepEqual(f.keys(), ['slot:slot'])
-  f.only('placeholder'); assert.deepEqual(f.keys(), ['ph:slot:placeholder', 'ph:slot:empty'])
+  const f = fixture(); f.only('slots'); assert.deepEqual(f.rigKeys(), ['slot:slot'])
+  f.only('placeholder'); assert.deepEqual(f.rigKeys(), ['ph:slot:placeholder', 'ph:slot:empty'])
   f.only('placeholder', 'mesh'); assert.equal(f.keys().filter(k => k === 'ph:slot:placeholder').length, 1)
-  f.state.skin = 'default'; f.only('mesh'); assert.deepEqual(f.keys(), ['att:default:slot:mesh', 'att:default:slot:linked'])
+  f.state.skin = 'default'; f.only('mesh'); assert.deepEqual(f.rigKeys(), ['att:default:slot:mesh', 'att:default:slot:linked'])
 })
 
 test('search and type filters compose even when bones and slots are hidden', () => {
@@ -64,25 +64,34 @@ test('search and type filters compose even when bones and slots are hidden', () 
   assert.deepEqual(f.keys(), ['ph:slot:placeholder'])
   f.state.search = 'image'; assert.deepEqual(f.keys(), ['ph:slot:placeholder'])
   f.state.search = 'not-found'; assert.deepEqual(f.keys(), []); assert(f.texts().includes('当前筛选无匹配节点'))
-  f.only('slots'); f.state.search = 'mesh'; assert.deepEqual(f.keys(), ['slot:slot'])
+  f.only('slots'); f.state.search = 'mesh'; assert.deepEqual(f.rigKeys(), ['slot:slot'])
 })
 
-test('constraints, skins, events, animations and images obey their own switches', () => {
+test('management sections remain available independently of hierarchy type filters', () => {
   const f = fixture()
-  for (const [filter, key] of [['cons', 'transform:follow'], ['skins', 'skin:blue'], ['events', 'event:end'], ['anims', 'anim:idle'], ['images', 'images']]) {
-    f.only(filter); const keys = f.keys(); assert(keys.includes(key)); assert(keys.every(k => filter === 'skins' ? k.startsWith('skin:') : k === key))
+  for (const filter of [[], ['mesh'], ['images']]) {
+    f.only(...filter)
+    const keys = f.keys()
+    for (const key of ['transform:follow', 'skin:blue', 'event:end', 'anim:idle']) assert(keys.includes(key))
   }
-  f.only(); assert.deepEqual(f.keys(), []); assert(f.texts().includes('当前筛选无匹配节点'))
+  f.only(); assert.deepEqual(f.rigKeys(), [])
 })
 
-test('menu matches supported tree types, removes bounding boxes and points, and all-hide/all-show control every switch', () => {
+test('one image switch controls ordinary image attachments and the image library', () => {
+  const f = fixture(); f.only('images')
+  assert.deepEqual(f.rigKeys(), ['att:default:slot:image', 'ph:slot:empty']); assert(f.keys().includes('images'))
+  f.state.skin = 'red'; assert.deepEqual(f.rigKeys(), ['att:default:slot:image', 'ph:slot:placeholder'])
+  f.only('mesh'); assert(!f.keys().includes('images')); assert(!f.rigKeys().includes('att:default:slot:image'))
+})
+
+test('menu contains only the seven supported hierarchy filters and both bulk actions', () => {
   const f = fixture(), btn = { getBoundingClientRect: () => ({ right: 600, bottom: 100 }) }
   f.ctx.filterMenu(btn)
   const labels = () => f.ctx.menu.kids.filter(n => n.tag === 'button').map(n => n.kids.filter(x => typeof x === 'string').join(''))
-  assert(!labels().includes('边界框')); assert(!labels().includes('端点')); assert(labels().includes('约束')); assert(labels().includes('图片'))
+  assert.deepEqual(labels(), ['骨骼', '插槽', '图片', '网格', '剪裁', '路径', '皮肤占位符', '全部显示', '全部隐藏'])
   const click = label => f.ctx.menu.kids.find(n => n.tag === 'button' && n.kids.includes(label)).attrs.onclick({ stopPropagation() {} })
-  click('全部隐藏'); assert(Object.values(f.state.filter).every(v => !v)); assert.deepEqual(f.keys(), [])
-  click('网格'); assert.deepEqual(f.keys(), ['att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
+  click('全部隐藏'); assert(Object.values(f.state.filter).every(v => !v)); assert.deepEqual(f.rigKeys(), [])
+  click('网格'); assert.deepEqual(f.rigKeys(), ['att:default:slot:mesh', 'att:default:slot:linked', 'ph:slot:placeholder'])
   click('全部显示'); assert(Object.values(f.state.filter).every(Boolean)); assert(f.keys().includes('skin:blue'))
 })
 
@@ -91,5 +100,5 @@ test('imported bounding boxes and points remain accessible in the full tree and 
   f.state.json.skins[0].attachments.slot.importedPoint = { type: 'point' }
   assert(f.keys().includes('att:default:slot:importedBox'))
   assert(f.keys().includes('att:default:slot:importedPoint'))
-  for (const type of ['region', 'mesh']) { f.only(type); assert(!f.keys().includes('att:default:slot:importedBox')); assert(!f.keys().includes('att:default:slot:importedPoint')) }
+  for (const type of ['images', 'mesh']) { f.only(type); assert(!f.keys().includes('att:default:slot:importedBox')); assert(!f.keys().includes('att:default:slot:importedPoint')) }
 })

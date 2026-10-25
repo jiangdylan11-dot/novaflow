@@ -22,7 +22,7 @@
   const spine = window.spine
   const FPS = 30
   const DEG = 180 / Math.PI
-  const TREE_FILTERS = [['bones', '骨骼'], ['slots', '插槽'], ['region', '区域'], ['mesh', '网格'], ['clipping', '剪裁'], ['path', '路径'], ['placeholder', '皮肤占位符'], ['cons', '约束'], ['skins', '皮肤'], ['events', '事件'], ['anims', '动画'], ['images', '图片']]
+  const TREE_FILTERS = [['bones', '骨骼'], ['slots', '插槽'], ['images', '图片'], ['mesh', '网格'], ['clipping', '剪裁'], ['path', '路径'], ['placeholder', '皮肤占位符']]
 
   const $ = (s) => document.querySelector(s)
   // inside the 骨骼动画 section (the host's iframe): no rail / left column of its own
@@ -5829,7 +5829,7 @@
   const attIcon = (type) => (type === 'region' ? 'region' : type === 'mesh' || type === 'linkedmesh' ? 'mesh' : type === 'clipping' ? 'clip' : type === 'path' ? 'path' : 'other')
 
   function treeAttachmentKind(type) {
-    if (!type || type === 'region') return 'region'
+    if (!type || type === 'region') return 'images'
     return type === 'linkedmesh' ? 'mesh' : type
   }
 
@@ -5839,7 +5839,7 @@
     // the type filters, so hiding placeholders never hides a matching mesh or region.
     // Imported bounding boxes and points stay accessible in the full tree, without advertising
     // an unsupported authoring/filter feature or treating them as image regions.
-    const matches = (type) => F[treeAttachmentKind(type)] === true || (['boundingbox', 'point'].includes(type) && ['region', 'mesh', 'clipping', 'path'].every((key) => F[key]))
+    const matches = (type) => F[treeAttachmentKind(type)] === true || (['boundingbox', 'point'].includes(type) && ['images', 'mesh', 'clipping', 'path'].every((key) => F[key]))
     return { atts: c.atts.filter((a) => matches(a.type)), phs: c.phs.filter((p) => F.placeholder || (p.current && matches(p.current.type))) }
   }
 
@@ -6280,7 +6280,7 @@
     if (!m) {
       // 约束（上下拖动 = 求解顺序）
       const allCons = allConstraints()
-      if (F.cons && node('cons', '约束', 'cons', allCons.length, 1)) {
+      if (node('cons', '约束', 'cons', allCons.length, 1)) {
         allCons.forEach(({ kind, c }) => {
           const row = h('div', {
             class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
@@ -6321,7 +6321,7 @@
       // 皮肤（双击「皮肤」新建，和 Spine 一样）
       // Spine: the default skin (what shows without a skin) is not listed; the active skin's dot turns it off again
       const named = j.skins.filter((x) => x.name !== 'default')
-      if (F.skins && node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
+      if (node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
         for (const s of named) {
           const active = state.skin === s.name
           rows.push(h('div', {
@@ -6335,7 +6335,7 @@
 
       // 事件 (Spine): double-click creates one; in an animation its key fires it at the current frame
       const evNames = Object.keys(j.events || {})
-      if (F.events && node('events', '事件', 'event', evNames.length, 1, newEvent)) {
+      if (node('events', '事件', 'event', evNames.length, 1, newEvent)) {
         for (const n of evNames) {
           rows.push(h('div', {
             class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
@@ -6348,7 +6348,7 @@
       // 动画
       const names = Object.keys(j.animations)
       // Spine: double-click 「动画」 creates an animation; the dot = the animation being played
-      if (F.anims && node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
+      if (node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
         for (const n of names) {
           const active = state.anim === n
           rows.push(h('div', {
