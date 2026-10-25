@@ -503,12 +503,13 @@
     if (!token || !accountId) return;
     artUploadRunning = true;
     try {
+      const pending = await localControl('POST', '/local/prompt-assistant/art-learning', {action:'pending',accountId,accountToken:token}, 10000);
+      if(!pending?.data?.candidates?.length||currentSession()?.token!==token)return;
       const consent = await artKnowledgeRequest('GET','/consent');
       if (!consent.allowed || currentSession()?.token !== token) return;
-      const pending = await localControl('POST', '/local/prompt-assistant/art-learning', {action:'pending',accountId,accountToken:token}, 10000);
       for (const candidate of pending?.data?.candidates || []) {
         if (currentSession()?.token !== token) return;
-        const sent = await artKnowledgeRequest('POST','/candidates',candidate);
+        const sent = await artKnowledgeRequest('POST',candidate.schema==='nf.art.method-outcome.v1'?'/outcomes':'/candidates',candidate);
         if (sent.accepted && currentSession()?.token === token) {
           const bytes = new TextEncoder().encode(JSON.stringify(candidate.evidence));
           const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2,'0')).join('');
@@ -1253,6 +1254,7 @@
     },
 
     async clientAuthLogout() {
+      const previous=currentSession();if(computeMode==='local'&&previous?.token)void localControl('POST','/local/prompt-assistant/art-learning',{action:'forget-session',accountId:previous.user?.id||'',accountToken:previous.token},10000).catch(()=>{});
       saveSession(null);
       try { root.localStorage.removeItem(CLIENT_AUTH_KEY); } catch (_) {}
       return { ok: true, result: { authenticated: false } };
@@ -1340,6 +1342,7 @@
     artKnowledgeConsent:allow=>artKnowledgeRequest('POST','/consent',{allow}),
     artKnowledgeCandidates:()=>artKnowledgeRequest('GET','/candidates'),
     artKnowledgeReview:()=>artKnowledgeRequest('GET','/review'),
+    artKnowledgeReleases:()=>artKnowledgeRequest('GET','/releases'),
     artKnowledgePrepare:body=>artKnowledgeRequest('POST','/prepare',body),
     artKnowledgePublish:body=>artKnowledgeRequest('POST','/publish',body),
     artKnowledgeRollback:body=>artKnowledgeRequest('POST','/rollback',body),

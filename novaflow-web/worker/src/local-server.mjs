@@ -65,7 +65,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
             // A logged-in browser may only use this node's verified bound account.
             // Unbound local mode is one paired device owner, not a Web tenant API.
             const {accountId,accountToken,...command} = body;
-            if(artActor){const ownerId=await artActor.identify(body);return json(200,{ok:true,data:command.action==='identify'?{ownerId}:await artActor.runAs(ownerId,()=>artLearning.command(command))});}
+            if(artActor){const ownerId=await artActor.identify(body);if(command.action==='forget-session'){artActor.forget(accountToken);return json(200,{ok:true});}return json(200,{ok:true,data:command.action==='identify'?{ownerId}:await artActor.runAs(ownerId,()=>artLearning.command(command))});}
             if (accountId && accountId !== s.boundAccount?.id) throw fail('当前账号与本机任务所属账号不一致，请先绑定本机账号', 403);
             return json(200, {ok:true,data:await artLearning.command(command)});
           }

@@ -28,9 +28,10 @@ export async function createLocalAssistant(options) {
   let promptAssistant = null;
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
   const artActor = createArtTaskIdentity({identifyUser:token=>worker.identifyArtUser(token),
-    fallbackOwner:()=>worker.getState().boundAccount?.id||`local-device:${worker.identity.workerId}`});
+    fallbackOwner:()=>worker.getState().boundAccount?.id||`local-device:${worker.identity.workerId}`,
+    onSession:()=>{if(options.artKnowledge?.enabled===true)void knowledgeCache.sync();}});
   const knowledgeCache = createArtKnowledgeCache({directory:join(options.dataDir,'art-knowledge-cache'),
-    fetchPacket:scope=>worker.readArtKnowledge(scope)});
+    fetchPacket:scope=>worker.readArtKnowledge({...scope,sessionToken:artActor.session()?.token})});
   const artLearning = createArtLearning({ directory: join(options.dataDir, 'art-learning'),
     getOwner: artActor.owner,
     getKnowledge:scope=>knowledgeCache.read(scope)});

@@ -20,6 +20,8 @@ export async function serveArtKnowledge({name,qa=false}:{name:string,qa?:boolean
   async getArtLearningConsent(id:string){return result(await client.from(table('learning_consents')).select('allowed').eq('user_id',id).maybeSingle())?.allowed===true;},
   async setArtLearningConsent(id:string,allowed:boolean){result(await client.from(table('learning_consents')).upsert({user_id:id,allowed,updated_at:new Date().toISOString()}));},
   async submitArtMethod(id:string,input:any){return result(await client.rpc(rpc('submit_method'),{p_user_id:id,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence}));},
+  async submitArtOutcome(id:string,input:any){return result(await client.rpc(rpc('submit_outcome'),{p_user_id:id,p_method_ids:input.appliedMethodIds,p_evidence:input.evidence}));},
+  async listArtReleases(){return result(await client.rpc(rpc('release_history')))||[];},
   async listArtCandidates(){return result(await client.rpc(rpc('review_candidates')))||[];},
   async saveArtReview(id:string,report:any){result(await client.from(table('knowledge_reviews')).update({state:'outdated'}).eq('state','pending').eq('report->publishRequest->>skillId',report.publishRequest.skillId).neq('batch_sha256',report.batchSHA256));result(await client.from(table('knowledge_reviews')).upsert({batch_sha256:report.batchSHA256,report,prepared_by:id},{onConflict:'batch_sha256'}));},
   async getArtReview(){return result(await client.from(table('knowledge_reviews')).select('report').eq('state','pending').order('created_at',{ascending:false}).limit(1).maybeSingle())?.report||null;},

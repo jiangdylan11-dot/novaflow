@@ -124,6 +124,10 @@ async function ensureWorker() {
   worker = await factory({
     license: await getLicense(),
     controlUrl: config.controlUrl,
+    artKnowledge: config.artKnowledge || {
+      enabled: true,
+      baseUrl: String(config.controlUrl || '').replace(/\/novaflow-web\/?$/, '/novaflow-art-knowledge')
+    },
     dataDir: DATA_DIR,
     workflowDir: path.join(__dirname, '../workflows'),
     webRoot: firstExisting([path.join(process.resourcesPath || '', 'web-dist'), path.join(__dirname, '../../web-dist')]),

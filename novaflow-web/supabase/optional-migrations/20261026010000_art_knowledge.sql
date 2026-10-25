@@ -90,12 +90,48 @@ begin
 end $$;
 
 -- Shared by both adapters. No raw task text, user IDs or image data leave SQL.
+create index if not exists art_evidence_user_time on public.art_method_evidence(user_id,created_at desc);
+create index if not exists art_release_methods_lookup on public.art_knowledge_releases using gin(methods jsonb_path_ops);
+create or replace function public.novaflow_art_submit_outcome(p_user_id uuid,p_method_ids uuid[],p_evidence jsonb)
+returns jsonb language plpgsql security invoker set search_path=pg_catalog,public as $$
+declare v_id uuid;v_existing text;v_skill text;
+begin
+  if not exists(select 1 from public.users where id=p_user_id and status='active') or not exists(select 1 from public.art_learning_consents where user_id=p_user_id and allowed) then raise exception 'shared learning consent required';end if;
+  if cardinality(p_method_ids) not between 1 and 5 or coalesce(p_evidence->>'resultSHA256','')!~'^[a-f0-9]{64}$' or coalesce(p_evidence->>'taskId','')!~'^[A-Za-z0-9_-]{1,128}$' then raise exception 'invalid method outcome';end if;
+  -- Match publication's skill lock before the user lock, so an outcome cannot
+  -- change evidence between the owner's fingerprint check and commit.
+  for v_skill in select distinct scope->>'skillId' from public.art_method_candidates where id=any(p_method_ids) order by 1 loop
+    perform pg_advisory_xact_lock(hashtext('art:'||v_skill));
+  end loop;
+  perform pg_advisory_xact_lock(hashtext(p_user_id::text));
+  if(select count(*) from public.art_method_evidence where user_id=p_user_id and created_at>now()-interval '1 hour')>=100 then raise exception 'method feedback limit';end if;
+  foreach v_id in array p_method_ids loop
+    if not exists(select 1 from public.art_knowledge_releases where methods @> jsonb_build_array(jsonb_build_object('id',v_id))) then raise exception 'method was never published';end if;
+    select result_sha256 into v_existing from public.art_method_evidence where candidate_id=v_id and user_id=p_user_id and task_id=p_evidence->>'taskId';
+    if found and v_existing<>p_evidence->>'resultSHA256' then raise exception 'result identity changed';end if;
+    insert into public.art_method_evidence(candidate_id,user_id,task_id,result_sha256,feedback,improvement)
+      values(v_id,p_user_id,p_evidence->>'taskId',p_evidence->>'resultSHA256',p_evidence->>'feedback',coalesce((p_evidence->>'improvement')::boolean,false))
+      on conflict(candidate_id,user_id,task_id) do update set feedback=excluded.feedback,improvement=excluded.improvement;
+  end loop;
+  return jsonb_build_object('accepted',true);
+end $$;
+revoke all on function public.novaflow_art_submit_outcome(uuid,uuid[],jsonb) from public,anon,authenticated;
+grant execute on function public.novaflow_art_submit_outcome(uuid,uuid[],jsonb) to service_role;
+create or replace function public.novaflow_art_release_history()
+returns jsonb language sql security invoker set search_path=pg_catalog,public as $$
+ select coalesce(jsonb_agg(row_data order by created_at desc),'[]'::jsonb) from (
+ select created_at,jsonb_build_object('skill_id',skill_id,'version',version,'active',active,'method_count',jsonb_array_length(methods),'created_at',created_at) row_data
+ from public.art_knowledge_releases order by created_at desc limit 50) history;
+$$;
+revoke all on function public.novaflow_art_release_history() from public,anon,authenticated;
+grant execute on function public.novaflow_art_release_history() to service_role;
 create or replace function public.novaflow_art_review_candidates()
 returns jsonb language sql security invoker set search_path=pg_catalog,public as $$
   select coalesce(jsonb_agg(row_data order by created_at desc),'[]'::jsonb) from (
     select c.created_at,jsonb_build_object('id',c.id,'scope',c.scope,'method',c.method,
       'evidence_count',count(e.*),'positive_count',count(*) filter(where e.feedback in ('satisfied','adopted')),
       'negative_count',count(*) filter(where e.feedback in ('unsatisfied','revision')),
+      'published_before',exists(select 1 from public.art_knowledge_releases r where r.methods @> jsonb_build_array(jsonb_build_object('id',c.id))),
       'positive_users',count(distinct e.user_id) filter(where e.feedback in ('satisfied','adopted')),
       'improvement_count',count(*) filter(where e.improvement and e.feedback in ('satisfied','adopted')),
       'evidence_fingerprint',encode(pg_catalog.sha256(pg_catalog.convert_to(coalesce(jsonb_agg(jsonb_build_array(e.user_id,e.task_id,e.result_sha256,e.feedback,e.improvement) order by e.user_id,e.task_id) filter(where e.candidate_id is not null),'[]'::jsonb)::text,'UTF8')),'hex')) as row_data
@@ -141,6 +177,7 @@ begin
   ) merged;
   if jsonb_array_length(v_methods)>100 or octet_length(v_methods::text)>100000 then raise exception 'knowledge capacity review required'; end if;
   if p_skill is null then select skill into p_skill from public.art_knowledge_releases where skill_id=p_skill_id and active; end if;
+  if octet_length(jsonb_build_object('version',p_version,'methods',v_methods,'skill',p_skill)::text)>131072 then raise exception 'knowledge packet too large';end if;
   insert into public.art_knowledge_releases(skill_id,version,methods,validation,reviewed_by,skill) values(p_skill_id,p_version,v_methods,p_validation,p_admin_id,p_skill);
   update public.art_knowledge_releases set active=false where skill_id=p_skill_id and active;
   update public.art_knowledge_releases set active=true where skill_id=p_skill_id and version=p_version;

@@ -27,6 +27,8 @@ export function createPgStore(db) {
     async submitArtMethod(userId,input) {
       const row=await one('select public.novaflow_art_submit_method($1,$2::jsonb,$3,$4::jsonb) as result',[userId,JSON.stringify(input.scope),input.method,JSON.stringify(input.evidence)]);return row.result;
     },
+    async submitArtOutcome(userId,input){return (await one('select public.novaflow_art_submit_outcome($1,$2::uuid[],$3::jsonb) as result',[userId,input.appliedMethodIds,JSON.stringify(input.evidence)])).result;},
+    async listArtReleases(){return (await one('select public.novaflow_art_release_history() as result',[])).result;},
     async listArtCandidates() {
       return (await one('select public.novaflow_art_review_candidates() as result',[])).result;
     },

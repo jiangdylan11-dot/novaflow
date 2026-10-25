@@ -84,6 +84,8 @@ const supabaseStore = {
     const {data,error}=await admin().rpc('novaflow_art_submit_method',{p_user_id:userId,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence});
     if(error)throw error;return data;
   },
+  async submitArtOutcome(userId:string,input:any){const {data,error}=await admin().rpc('novaflow_art_submit_outcome',{p_user_id:userId,p_method_ids:input.appliedMethodIds,p_evidence:input.evidence});if(error)throw error;return data;},
+  async listArtReleases(){const {data,error}=await admin().rpc('novaflow_art_release_history');if(error)throw error;return data||[];},
   async listArtCandidates() {
     // Provenance remains server-only. The review API exposes abstract methods.
     const {data,error}=await admin().rpc('novaflow_art_review_candidates');

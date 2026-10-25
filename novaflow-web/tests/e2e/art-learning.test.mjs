@@ -82,4 +82,11 @@ test('coordinator consumes the stable shared packet exactly once while preservin
     return Response.json({model:'flash',id:randomUUID(),choices:[{finish_reason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'final',type:'function',function:{name:'propose_art_direction',arguments:JSON.stringify({contextFingerprint:snapshot.contextFingerprint,prompt:'Redraw <image1> using <image2>, distinguishing skin shadows and highlights.',sourceContent:'The original person remains recognizable.',renderingClass:'anime',explanation:'分别组织暗面与高光。',learningMethod:'在光色修正中分别组织受光面、暗面和高光。'})}}]}}]});}});
   const response=await assistant.artAgentChat(request());assert.equal(response.ok,true);assert.equal(count,1);assert.deepEqual(events,['load','unload']);assert.deepEqual(response.data.learning.appliedExperienceIds,['approved-method']);assert.equal(response.resourcesReleased,true);assert.equal(response.data.proposal.negativePrompt,'keep negative');
 });
-test('feedback classification never treats continuing work as satisfaction',()=>{for(const [value,state] of [['这次效果很好。','satisfied'],['不太满意','unsatisfied'],['人物没问题，主要是光影不对。','revision'],['最终采用这张','adopted'],['再来一张','unrated']])assert.equal(classifyArtFeedback(value),state);});
+test('feedback records the actual outcome of applied shared methods even without a new abstraction',async t=>{
+  const f=await fixture(t);f.hub.methods=[{id:'1f4f72dd-e1e3-4c74-9856-e07c4432a4da',text:'已有正式方法。',status:'stable',scope:{skillId:'style-transfer',generationModel:'*',variant:'*',brain:'*'}}];
+  const task=await complete(f.learning,{method:''});await f.learning.command({action:'feedback',taskId:task.session.taskId,resultId:task.resultId,message:'不满意'});await tick();
+  const outcome=f.sent.find(c=>c.schema==='nf.art.method-outcome.v1');assert(outcome);assert.deepEqual(outcome.appliedMethodIds,[f.hub.methods[0].id]);assert.equal(outcome.evidence.feedback,'unsatisfied');
+  assert(!JSON.stringify(outcome).includes('userRequest'));assert.equal((await f.learning.begin(request(),'flash')).experiences.length,1,'Feedback never silently publishes or removes a formal rule');
+});
+
+test('feedback classification never treats continuing work or questions as satisfaction',()=>{for(const [value,state] of [['这次效果很好。','satisfied'],['这张图做的挺好的。','satisfied'],['这张画得不错！','satisfied'],['不太满意','unsatisfied'],['人物没问题，主要是光影不对。','revision'],['最终采用这张','adopted'],['再来一张','unrated'],['这张图做的挺好吗？','unrated'],['希望效果很好','unrated'],['这张不错，但是还要修改','revision']])assert.equal(classifyArtFeedback(value),state,value);});

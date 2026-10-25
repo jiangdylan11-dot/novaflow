@@ -1306,10 +1306,11 @@ export function createWorker(options) {
       const response=await fetch(controlUrl+'/api/web/me',{headers:{authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
       if(!response.ok)throw Error('browser session could not be verified');const value=await response.json();if(!value.user?.id)throw Error('missing verified user');return value.user;
     },
-    async readArtKnowledge({skillId,knownVersion}) {
-      if(!controlUrl || !state.workerToken)throw Error('共享知识同步尚未连接控制面');
+    async readArtKnowledge({skillId,knownVersion,sessionToken}) {
+      const token=sessionToken||state.workerToken;
+      if(!controlUrl || !token)throw Error('共享知识同步尚未连接控制面');
       const query=new URLSearchParams({skillId,knownVersion});
-      const response=await fetch((options.artKnowledge?.baseUrl||controlUrl)+'/api/web/art-knowledge?'+query,{headers:{authorization:'Bearer '+state.workerToken},signal:AbortSignal.timeout(5000)});
+      const response=await fetch((options.artKnowledge?.baseUrl||controlUrl)+'/api/web/art-knowledge?'+query,{headers:{authorization:'Bearer '+token},signal:AbortSignal.timeout(5000)});
       if(!response.ok)throw Error('共享知识同步暂不可用');return response.json();
     },
     rewriteAudioPrompt,

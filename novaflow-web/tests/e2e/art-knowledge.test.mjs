@@ -78,6 +78,16 @@ test('shared methods require consent, exact owner review, immutable releases and
     assert.equal((await call(owner,root+'/rollback',{skillId:'style-transfer',version:'1.0.1'})).status,200);
     assert.equal((await call(user,root+'?skillId=style-transfer')).body.methods.length,1);
   });
+  await t.test('published method outcomes remain evidence, are idempotent and flag regression without automatic rule changes',async()=>{
+    const outcome={schema:'nf.art.method-outcome.v1',key:'outcome-fixture',status:'candidate',appliedMethodIds:[first.candidateId],evidence:{taskId:'published-outcome',resultSHA256:'c'.repeat(64),feedback:'unsatisfied',improvement:false}};
+    assert.equal((await call(user,root+'/outcomes',outcome)).status,200);assert.equal((await call(user,root+'/outcomes',outcome)).status,200);
+    assert.equal((await call(user,root+'/outcomes',{...outcome,evidence:{...outcome.evidence,resultSHA256:'d'.repeat(64)}})).status,409);
+    const report=(await call(owner,root+'/prepare',{...release,version:'1.0.3'})).body;
+    assert.equal(report.selected.length,0);assert.equal(report.monitor.length,1);assert.equal(report.monitor[0].negative_count,1);
+    assert(report.excluded.some(c=>c.reason==='previously-withdrawn'),'A rolled-back method never becomes an automatic new candidate');
+    assert.equal((await call(user,root+'?skillId=style-transfer')).body.version,'1.0.1');
+    assert((await call(owner,root+'/releases')).body.releases.length>=2);assert.equal((await call(user,root+'/releases')).status,403);
+  });
   await t.test('SQL enforces owner and unchanged evidence even without the HTTP wrapper',async()=>{
     await assert.rejects(ctx.store.publishArtKnowledge(other.user.id,{...release,candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:other.user.id}}),/publisher owner/);
     await assert.rejects(ctx.store.publishArtKnowledge(owner.user.id,{...release,version:'9.0.0',candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:owner.user.id}}),/pending owner review required|reviewed evidence changed/);

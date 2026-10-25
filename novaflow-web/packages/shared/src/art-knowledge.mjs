@@ -1,4 +1,18 @@
 import {sha256Hex} from './tokens.mjs';
+// Shared by the owner API and the read-only deployment report. Filtering does
+// not publish, infer quality from silence, or discard conflicting evidence.
+export function filterArtCandidates({rows,active,skillId}) {
+  const normalized=v=>v.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,'');
+  const scopeKey=scope=>JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>scope[k]));
+  const known=new Set(active.methods.map(m=>scopeKey(m.scope)+'\n'+normalized(m.text))),excluded=[],eligible=[],monitor=[];
+  for(const row of rows.filter(c=>c.scope.skillId===skillId)) {
+    const reason=known.has(scopeKey(row.scope)+'\n'+normalized(row.method))?'already-published':row.published_before?'previously-withdrawn':Number(row.positive_count)<1?'no-positive-evidence':null;
+    if(reason==='already-published'&&Number(row.negative_count)>0)monitor.push(row);
+    if(reason)excluded.push({id:row.id,reason});
+    else eligible.push({...row,reviewNotes:[...(row.negative_count?['conflicting-feedback']:[]),...(row.positive_users<2?['single-user-evidence']:[]),'fixed-benchmark-and-owner-review-required']});
+  }
+  return {eligible,excluded,monitor};
+}
 // Brain-independent, method-only shared knowledge API. Source task records and
 // personal preferences are deliberately outside this protocol.
 export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError}) {
@@ -35,12 +49,22 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
       if(method==='POST'&&shape(body,['allow'])&&typeof body.allow==='boolean'){await store.setArtLearningConsent(principal.id,body.allow);return {ok:true,allowed:body.allow};}
       fail(400,'invalid sharing consent');
     }
+    if(method==='POST'&&path==='/api/web/art-knowledge/outcomes'){
+      if(!shape(body,['schema','key','status','appliedMethodIds','evidence'])||body.schema!=='nf.art.method-outcome.v1'||body.status!=='candidate'
+        ||!Array.isArray(body.appliedMethodIds)||body.appliedMethodIds.length<1||body.appliedMethodIds.length>5||body.appliedMethodIds.some(id=>!/^[a-f0-9-]{36}$/i.test(id))
+        ||!shape(body.evidence,['taskId','resultSHA256','feedback','improvement'])||!/^[A-Za-z0-9_-]{1,128}$/.test(body.evidence.taskId||'')
+        ||!/^[a-f0-9]{64}$/.test(body.evidence.resultSHA256||'')||!['satisfied','adopted','unsatisfied','revision'].includes(body.evidence.feedback)||typeof body.evidence.improvement!=='boolean')fail(400,'invalid method outcome');
+      if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
+      try{return {ok:true,...await store.submitArtOutcome(principal.id,body)};}
+      catch(error){const message=String(error?.message||error);if(message.includes('method was never published'))fail(400,'only published method outcomes are accepted');if(message.includes('result identity changed'))fail(409,'task result identity cannot change');throw error;}
+    }
     if(method==='POST' && path==='/api/web/art-knowledge/candidates') {
       const input=candidate(body);if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
       return {ok:true,...await store.submitArtMethod(principal.id,input)};
     }
     const publisher=await store.isArtPublisher(principal.id);
     if(principal.role!=='admin'&&!publisher)fail(403,'owner or administrator review is required');
+    if(method==='GET'&&path==='/api/web/art-knowledge/releases'){if(!publisher)fail(403,'publisher owner required');return {ok:true,releases:await store.listArtReleases()};}
     if(method==='GET'&&path==='/api/web/art-knowledge/review'){if(!publisher)fail(403,'publisher owner required');return {ok:true,review:await store.getArtReview()};}
     if(method==='GET' && path==='/api/web/art-knowledge/candidates')return {ok:true,candidates:await store.listArtCandidates()};
     if(['/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback','/api/web/art-knowledge/prepare'].includes(path)
@@ -53,17 +77,11 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
       if(!shape(body.validation,['passed','benchmarkSHA256','cases']) || body.validation.passed!==true
         || !/^[a-f0-9]{64}$/.test(body.validation.benchmarkSHA256||'') || !Number.isInteger(body.validation.cases)||body.validation.cases<1)fail(400,'fixed benchmark acceptance is required');
       if(body.skill && (body.skill.schema!=='nf.art.skill.v1'||body.skill.status!=='stable'||body.skill.id!==body.skillId||body.skill.version!==body.version
-        || typeof body.skill.systemPrompt!=='string'||body.skill.systemPrompt.length>24000||await sha256Hex(body.skill.systemPrompt)!==body.skill.systemSHA256))fail(400,'invalid professional skill version');
+        ||body.skillId!=='style-transfer'||body.skill.applicability?.task!=='drawing'||body.skill.applicability?.generationModels?.join(',')!=='qwen-2.1'
+        ||!Array.isArray(body.skill.brainStrategies)||body.skill.brainStrategies.length>16||body.skill.brainStrategies.some(s=>typeof s.brain!=='string'||s.brain.length>240||!['none','low'].includes(s.reasoningEffort)||!Number.isInteger(s.reasoningBudgetTokens)||s.reasoningBudgetTokens<0||s.reasoningBudgetTokens>1024||s.reasoningEffort==='none'&&s.reasoningBudgetTokens!==0)
+        || typeof body.skill.systemPrompt!=='string'||body.skill.systemPrompt.length>=24000||!body.skill.systemPrompt.includes('Return ONLY JSON:')||await sha256Hex(body.skill.systemPrompt)!==body.skill.systemSHA256))fail(400,'invalid professional skill version');
       const active=await store.readArtKnowledge(body.skillId),rows=(await store.listArtCandidates()).filter(c=>c.scope.skillId===body.skillId);
-      const normalized=v=>v.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,'');
-      const scopeKey=s=>JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>s[k]));
-      const known=new Set(active.methods.map(m=>scopeKey(m.scope)+'\n'+normalized(m.text)));
-      const excluded=[],eligible=[];
-      for(const row of rows) {
-        const reason=known.has(scopeKey(row.scope)+'\n'+normalized(row.method))?'already-published':Number(row.positive_count)<1?'no-positive-evidence':null;
-        if(reason)excluded.push({id:row.id,reason});
-        else eligible.push({...row,reviewNotes:[...(row.negative_count?['conflicting-feedback']:[]),...(row.positive_users<2?['single-user-evidence']:[]),'fixed-benchmark-and-owner-review-required']});
-      }
+      const {eligible,excluded,monitor}=filterArtCandidates({rows,active,skillId:body.skillId});
       const ids=body.candidateIds??(prepare?eligible.slice(0,20).map(c=>c.id):null);
       if(!Array.isArray(ids)||ids.length>20||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id))||new Set(ids).size!==ids.length)fail(400,'invalid candidate selection');
       const selected=ids.map(id=>eligible.find(c=>c.id===id));
@@ -75,7 +93,7 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
         validation:body.validation,skill:body.skill||null};
       const batchSHA256=await sha256Hex(JSON.stringify(batch));
       if(prepare){const report={ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
-        selected:ordered,excluded,remaining:eligible.length-selected.length,
+        selected:ordered,excluded,monitor,remaining:eligible.length-selected.length,
         publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};await store.saveArtReview(principal.id,report);return report;}
       if(!shape(body.approval,['approved','batchSHA256'])||body.approval.approved!==true||body.approval.batchSHA256!==batchSHA256)fail(409,'explicit owner approval for this exact unchanged batch is required');
       return {ok:true,...await store.publishArtKnowledge(principal.id,{...body,candidateIds:ids,validation:{...body.validation,

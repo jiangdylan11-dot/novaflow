@@ -20,6 +20,8 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { buildWebRenderer, PATHS, HOST_FILE_LIMIT } from './build-web-renderer.mjs';
 import { readConfig, writeConfig } from './set-web-config.mjs';
+import { prepareDeploymentArtReview } from './art-knowledge-deploy-review.mjs';
+import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -34,6 +36,10 @@ const LOCAL = /^https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0)(?::\d+)?/i;
 
 export async function packageSite({ controlUrl, authUrl, artKnowledgeUrl, artKnowledgeEnabled, out, allowLocal = false, logger } = {}) {
   const log = logger || (() => {});
+  // Software deployment prepares the review automatically but never grants
+  // approval or publishes pending methods on the owner's behalf.
+  const artReview=artKnowledgeEnabled===true?await prepareDeploymentArtReview({outputPath:join(ROOT,'.artifacts',`art-knowledge-review-${RELEASE_VERSION}.json`)}):null;
+  if(artReview)log('art review prepared',artReview);
 
   // 1. build - this writes the local default into index.html. The published
   // site is minified: comments stripped, names mangled (anti-copy).
@@ -88,7 +94,7 @@ export async function packageSite({ controlUrl, authUrl, artKnowledgeUrl, artKno
   execFileSync(tar, ['-a', '-c', '-f', zip, '.'], { cwd: PATHS.WEB_OUT, stdio: 'pipe' });
 
   const bytes = (await import('node:fs')).statSync(zip).size;
-  return { zip, bytes, config, files: report };
+  return { zip, bytes, config, files: report, ...(artReview?{artReview}:{}) };
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('package-site.mjs');

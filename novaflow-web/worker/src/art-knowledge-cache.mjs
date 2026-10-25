@@ -15,7 +15,7 @@ function validate(packet,skillId){
 // Startup + periodic sync only. read() never performs a network request.
 // A failed response, partial write or malformed packet leaves the last valid
 // cache usable. Sync is CPU/network work and never loads a model.
-export function createArtKnowledgeCache({directory,fetchPacket,intervalMs=60000,timers=globalThis}){
+export function createArtKnowledgeCache({directory,fetchPacket,intervalMs=300000,timers=globalThis}){
   const values=new Map(),loaded=new Set();let timer=null,running=null,stopped=true;
   async function read({skillId}){
     if(!skills.includes(skillId))return empty();

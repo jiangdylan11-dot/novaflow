@@ -15,6 +15,7 @@ test('browser accounts are verified independently of compute binding, cached and
   assert.equal(await actor.identify(b),'B');await assert.rejects(actor.identify({...a,accountId:'B'}),/无法核验/);
   const values=await Promise.all(['A','B'].map(id=>actor.runAs(id,async()=>{await new Promise(r=>setTimeout(r,id==='A'?10:1));return actor.owner();})));
   assert.deepEqual(values,['A','B']);assert.equal(actor.owner(),'device');
+  assert.equal(actor.session().ownerId,'B');actor.forget(token('B'));assert.equal(actor.session(),null);
   await assert.rejects(actor.identify({accountId:'A'}),/无法核验/);assert.equal(await actor.identify({}),'device');
 });
 test('failed verification creates no trusted identity and cached identity cannot exceed the bounded lifetime',async()=>{
