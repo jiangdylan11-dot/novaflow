@@ -292,6 +292,29 @@
     window.__NovaFlowLastProjectDirectory = { handle, name: prev && handle ? prev.name : '', files: Array.from(files || []), at: Date.now() }
   }
 
+  /** Match every skin's image reference to its file, retaining subfolder names in the atlas. */
+  function photoshopImagePlan(skeleton, files) {
+    const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/^\.\//, '')
+    const key = (p) => norm(p).replace(/\.(png|jpe?g|webp)$/i, '').toLowerCase()
+    const wanted = new Set()
+    const skins = Array.isArray(skeleton.skins) ? skeleton.skins : Object.values(skeleton.skins || {}).map((attachments) => ({ attachments }))
+    for (const skin of skins) for (const map of Object.values(skin.attachments || {})) for (const [name, att] of Object.entries(map || {})) {
+      if (att && (!att.type || ['region', 'mesh', 'linkedmesh'].includes(att.type))) wanted.add(String(att.path || att.name || name))
+    }
+    if (!wanted.size) return files.map((file) => ({ file, name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name }))
+    const plan = []
+    for (const name of wanted) {
+      const target = key(name)
+      const matches = files.filter((f) => { const rel = key(f.webkitRelativePath || f.name); return rel === target || rel.endsWith('/' + target) })
+      if (matches.length > 1) throw new Error(`贴图路径不明确：${name}，请保留图片子目录或移走重复文件`)
+      if (!matches.length) continue
+      const file = matches[0]
+      const fileName = norm(name) + (/\.(png|jpe?g|webp)$/i.test(name) ? '' : file.name.match(/\.[^.]+$/)[0])
+      plan.push({ file, name, fileName })
+    }
+    return plan
+  }
+
   async function importPhotoshopProject(files, setStatus) {
     const Attach = window.NovaFlowAutoMeshAttach
     const bridge = window.__NovaFlowSpineImportInlineBridge
@@ -371,26 +394,14 @@
 
     // only keep images an attachment actually refers to, so a stray template.png
     // does not become a page
-    const wanted = new Set()
-    const collect = (attachments) => {
-      for (const slot of Object.keys(attachments || {})) {
-        for (const att of Object.keys(attachments[slot] || {})) wanted.add(att.toLowerCase())
-      }
-    }
-    if (Array.isArray(skeleton.skins)) for (const sk of skeleton.skins) collect(sk && sk.attachments)
-    else if (skeleton.skins) for (const k of Object.keys(skeleton.skins)) collect(skeleton.skins[k])
+    const plan = photoshopImagePlan(skeleton, imageFiles)
 
     const images = []
     /** image stem -> crop, so the attachments can be moved to match */
     const trims = new Map()
-    const total = imageFiles.filter((f) => {
-      const stem = f.name.replace(/\.[^.]+$/, '')
-      return !wanted.size || wanted.has(stem.toLowerCase())
-    }).length
+    const total = plan.length
     let done = 0
-    for (const f of imageFiles) {
-      const stem = f.name.replace(/\.[^.]+$/, '')
-      if (wanted.size && !wanted.has(stem.toLowerCase())) continue
+    for (const { file: f, name, fileName } of plan) {
       done++
       setStatus(`读取并裁切贴图 ${done}/${total}…`)
       await nextFrame()
@@ -399,10 +410,10 @@
       let trimmed = null
       try { trimmed = await trimToArtwork(dataUrl, size.width, size.height) } catch { trimmed = null }
       if (trimmed) {
-        trims.set(stem.toLowerCase(), trimmed)
-        images.push({ fileName: f.name, dataUrl: trimmed.dataUrl, width: trimmed.width, height: trimmed.height })
+        trims.set(name.toLowerCase(), trimmed)
+        images.push({ name, fileName, dataUrl: trimmed.dataUrl, width: trimmed.width, height: trimmed.height })
       } else {
-        images.push({ fileName: f.name, dataUrl, width: size.width, height: size.height })
+        images.push({ name, fileName, dataUrl, width: size.width, height: size.height })
       }
     }
     const moved = trims.size ? Attach.retargetTrimmed(skeleton, trims) : 0

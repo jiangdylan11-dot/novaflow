@@ -1913,7 +1913,7 @@
       : Object.entries((json && json.skins) || {}).map(([name, attachments]) => ({ name, attachments }))
     for (const sk of skins) for (const slot of Object.values((sk && sk.attachments) || {})) for (const [name, a] of Object.entries(slot || {})) {
       if (a && (a.type === 'boundingbox' || a.type === 'clipping' || a.type === 'path' || a.type === 'point')) continue
-      names.add(String((a && a.path) || name))
+      names.add(String((a && (a.path || a.name)) || name))
     }
     return names
   }
@@ -2463,8 +2463,8 @@
     fill()
   }
 
-  /** The picture an attachment shows: its path, else its key; none for boxes, clips, paths and points. */
-  const pictureOf = (key, a) => (a && !['boundingbox', 'clipping', 'path', 'point'].includes(a.type) ? a.path || key : null)
+  /** Spine resolves an image by path, then the legacy name override, then the placeholder key. */
+  const pictureOf = (key, a) => (a && !['boundingbox', 'clipping', 'path', 'point'].includes(a.type) ? a.path || a.name || key : null)
   const shortName = (p) => String(p || '').split('/').pop()
 
   /** Every attachment, in every skin, that shows `picture`. */
@@ -9002,7 +9002,8 @@
         (v) => edit(v ? `「${sel.name}」已转成网格` : `「${sel.name}」已转回图片（网格和变形关键帧去掉）`, (j) => v ? Ops.regionToMesh(j, sel.skin, sel.slot, sel.name) : Ops.meshToRegion(j, sel.skin, sel.slot, sel.name)),
         { title: '勾 = 转成网格；不勾 = 转回普通图片（网格顶点、权重和变形关键帧都去掉）' }) : null))
     // the picture's name only when it differs from the attachment's (the title shows that one)
-    if (img && att.path && att.path !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, att.path))))
+    const picture = pictureOf(sel.name, att)
+    if (img && picture !== sel.name) out.push(field('图片', h('div', { class: 'inline' }, h('span', {}, picture))))
     out.push(h('div', { class: 'btns g2' },
       // not a mesh (网格 unticked): nothing to edit until it is one (user 2026-10-13)
       img && state.mode === 'setup' ? btn('编辑网格', () => enterMeshEdit(sel), { primary: !!(state.meshEdit && state.meshEdit.name === sel.name && state.meshEdit.slot === sel.slot), disabled: !mesh, title: mesh ? '在画面里编辑这张网格的顶点' : '先勾「网格」转成网格，再编辑顶点' }) : null,
@@ -9886,7 +9887,7 @@
           const att = ph.skins[name]
           return h('div', { class: 'li', onclick: () => select({ kind: 'ph', name: ph.name, slot }, false, { keepPanel: true }) },
             h('span', { class: 'n' }, ph.name === slot ? slot : `${slot} / ${ph.name}`),
-            h('span', { class: 'm' + (att ? '' : ' empty') }, att ? (att.path || ph.name) : '空'),
+            h('span', { class: 'm' + (att ? '' : ' empty') }, att ? (att.path || att.name || ph.name) : '空'),
             btn(att ? '换图' : '放图', (e) => { e.stopPropagation(); openImagePicker(`「${ph.name}」· 皮肤 ${name}`, (r) => fillPlaceholder(name, slot, ph.name, r)) }, { primary: !att }))
         })) : h('div', { class: 'hint' }, '还没有占位符：插槽「新建…」→ 皮肤占位符，或把一张图「转为皮肤占位符」。')))
     }

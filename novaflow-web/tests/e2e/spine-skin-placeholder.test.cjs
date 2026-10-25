@@ -28,7 +28,8 @@ function fixture() {
     openImagePicker: (title, done) => picks.push({ title, done }),
     fillPlaceholder: (skin, slot, name, image) => { state.json = Ops.fillPlaceholder(state.json, skin, slot, name, image).json }
   })
-  vm.runInContext(section('  function layerSel()', '  const attJson')
+  vm.runInContext(section('  const pictureOf =', '  const shortName =')
+    + section('  function layerSel()', '  const attJson')
     + section('  function attPanel(', '  // ---------- 剪裁')
     + section('  function placeholderAttachment(', '  // ---------- 动画'), ctx)
   const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node && typeof node === 'object' ? [node, ...nodes(node.children || [])] : []
@@ -37,6 +38,15 @@ function fixture() {
   return { state, ctx, history, edits, picks, panel, control,
     att: skin => state.json.skins.find(s => s.name === skin).attachments.pifu?.pifu }
 }
+
+test('legacy skin name overrides show the actual picture in placeholder properties', () => {
+  const f = fixture(), att = f.att('fangpian2')
+  delete att.path; att.name = 'legacy-card'
+  const fields = f.panel().filter(n => n.tag === 'field')
+  assert(fields.some(n => n.children[0] === '图片'))
+  const text = node => typeof node === 'string' ? node : (node?.children || []).map(text).join(' ')
+  assert(fields.some(n => text(n).includes('legacy-card')))
+})
 
 test('placeholder properties show only the active image and expose its mesh controls', () => {
   const f = fixture(), before = JSON.stringify(f.state.json)
