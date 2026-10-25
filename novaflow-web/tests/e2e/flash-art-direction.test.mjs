@@ -24,10 +24,11 @@ function flash(answer=native()){
 }
 function released(direction){const result=clone(direction);Object.assign(result.artDirection.editEnhancer,{analysisBackend:'strata',modelIdentity:identity,resourcesReleased:true,generationReady:true});return result;}
 
-test('art-direction-v1 system hash, one native call, complete images and unique canonical prompt are preserved',async()=>{
+test('art-direction-v3 system hash, one native call, complete images and unique canonical prompt are preserved',async()=>{
   assert.equal(createHash('sha256').update(FLASH_ART_SYSTEM).digest('hex'),FLASH_ART_SYSTEM_SHA256);
-  assert.equal(FLASH_ART_SYSTEM_SHA256,'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be');
-  const request=payload(),session=flash(),answer=await planFlashArtDirection({payload:request,flash:session});
+  assert.equal(FLASH_ART_SYSTEM_SHA256,'5b19d300705a2204ccd6a20e19400b7c8433bc06cc94f7f1aa8e3f3dfc77b3bb');
+  const styleSignature={formLanguage:'Grouped forms.',edgesAndShading:'Painted edges.',valueDistribution:'Large dark areas.',paletteHierarchy:'Cool fields, sparse warm accents.',highlightScale:'Small restrained highlights.'};
+  const request=payload(),session=flash(native({styleSignature})),answer=await planFlashArtDirection({payload:request,flash:session});
   assert.equal(session.calls.length,1);assert.equal(session.calls[0].system,FLASH_ART_SYSTEM);
   assert.deepEqual(session.calls[0].images.map(image=>image.dataUrl),[PNG,PNG]);
   assert.equal(session.calls[0].maxTokens,4096);assert.equal(session.calls[0].temperature,.4);assert.equal(session.calls[0].responseFormat,undefined);
@@ -35,6 +36,8 @@ test('art-direction-v1 system hash, one native call, complete images and unique 
   assert.equal(answer.artDirection.editEnhancer.kind,'qwen21-strata-native');assert.equal(answer.artDirection.editEnhancer.providerPolicy.cfg,3);
   assert.equal(answer.artDirection.editEnhancer.resourcesReleased,undefined);assert.equal(answer.artDirection.editEnhancer.modelIdentity,undefined);
   assert.equal(answer.resourcesReleased,undefined);assert.equal(answer.nativeAnalysis.sourceContent,native().sourceContent);
+  assert.deepEqual(answer.nativeAnalysis.styleSignature,styleSignature);
+  assert.deepEqual(answer.nativeAnalysis.styleSignatureMetadata,{source:'model',valid:true});
   assert.equal(answer.nativeAnalysis.images[0].sha256,createHash('sha256').update(Buffer.from(PNG.split(',')[1],'base64')).digest('hex'));
   assert.equal(JSON.stringify(answer.nativeAnalysis).includes('base64,'),false);
 });
@@ -49,6 +52,13 @@ test('missing rendering class defaults metadata only while native text, exclusio
   assert.equal(answer.artDirection.prompt,canonical);assert.equal(answer.artDirection.editEnhancer.prompt,canonical);
   assert.equal(answer.artDirection.editEnhancer.renderingClass,'other');
   assert.deepEqual(answer.nativeAnalysis.renderingClassMetadata,{value:'other',source:'program-default-missing'});
+  assert.deepEqual(answer.nativeAnalysis.styleSignatureMetadata,{source:'missing',valid:false});
+  for(const styleSignature of [null,42,{valueDistribution:'Dark.'}]){
+    const observed=flash(native({styleSignature})),unchanged=await planFlashArtDirection({payload:payload(),flash:observed});
+    assert.equal(observed.calls.length,1);assert.equal(unchanged.artDirection.prompt,canonical);
+    assert.deepEqual(JSON.parse(unchanged.rawOutput).styleSignature,styleSignature);
+    assert.deepEqual(unchanged.nativeAnalysis.styleSignatureMetadata,{source:'model',valid:false});
+  }
   const h=await renderer(released(answer)),c=context(),prepared=await h.api.prepare(c);
   assert.equal(prepared.promptSnapshot.prompt,canonical);
   assert.equal(prepared.promptSnapshot.negativePrompt,request.negativePrompt);
