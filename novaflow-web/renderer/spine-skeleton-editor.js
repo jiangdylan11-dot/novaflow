@@ -22,6 +22,7 @@
   const spine = window.spine
   const FPS = 30
   const DEG = 180 / Math.PI
+  const TREE_FILTERS = [['bones', '骨骼'], ['slots', '插槽'], ['region', '区域'], ['mesh', '网格'], ['clipping', '剪裁'], ['path', '路径'], ['placeholder', '皮肤占位符'], ['cons', '约束'], ['skins', '皮肤'], ['events', '事件'], ['anims', '动画'], ['images', '图片']]
 
   const $ = (s) => document.querySelector(s)
   // inside the 骨骼动画 section (the host's iframe): no rail / left column of its own
@@ -89,7 +90,7 @@
     groups: {},
     alwaysName: new Set(),
     unselectable: new Set(),
-    filter: { bones: true, slots: true, region: true, mesh: true, bbox: true, clipping: true, path: true, point: true, placeholder: true },
+    filter: Object.fromEntries(TREE_FILTERS.map(([key]) => [key, true])),
     temp: new Map(), // bone -> { x, y, rotation, scaleX, scaleY } local, preview only
     collapsed: new Set(),
     sections: new Set(['order']),
@@ -5827,6 +5828,21 @@
 
   const attIcon = (type) => (type === 'region' ? 'region' : type === 'mesh' || type === 'linkedmesh' ? 'mesh' : type === 'clipping' ? 'clip' : type === 'path' ? 'path' : 'other')
 
+  function treeAttachmentKind(type) {
+    if (!type || type === 'region') return 'region'
+    return type === 'linkedmesh' ? 'mesh' : type
+  }
+
+  function filteredSlotContents(slot) {
+    const c = slotContents(slot), F = state.filter
+    // A placeholder remains one row. Its current skin attachment also participates in
+    // the type filters, so hiding placeholders never hides a matching mesh or region.
+    // Imported bounding boxes and points stay accessible in the full tree, without advertising
+    // an unsupported authoring/filter feature or treating them as image regions.
+    const matches = (type) => F[treeAttachmentKind(type)] === true || (['boundingbox', 'point'].includes(type) && ['region', 'mesh', 'clipping', 'path'].every((key) => F[key]))
+    return { atts: c.atts.filter((a) => matches(a.type)), phs: c.phs.filter((p) => F.placeholder || (p.current && matches(p.current.type))) }
+  }
+
   /** Drag & drop in the tree, Spine-style: onto a new parent node, or up/down in 绘制顺序 and 约束. */
   function dropRules(payload, target) {
     if (!payload || !target) return null
@@ -6129,36 +6145,37 @@
     // the attachment each slot shows right now (the dot on its row)
     const posed = new Map()
     if (rt.skeleton) for (const s of rt.skeleton.slots) posed.set(s.data.name, s.getAttachment() ? s.getAttachment().name : null)
-    // which attachment kinds the filter shows (Spine's viewport filter)
-    const attKind = (t) => (t === 'mesh' || t === 'linkedmesh' ? 'mesh' : t === 'boundingbox' ? 'bbox' : t === 'clipping' ? 'clipping' : t === 'path' ? 'path' : t === 'point' ? 'point' : 'region')
-    const shownContents = (name) => { const c = slotContents(name); return { atts: c.atts.filter((a) => F[attKind(a.type)] !== false), phs: F.placeholder ? c.phs : [] } }
     // a slot row with its attachments and placeholders; under a bone, or in the flat draw-order
     // list when bones are filtered out (same keys, same multi-select, drag = draw order there)
     const pushSlotRows = (s, depth, inOrder) => {
       const sk = 's:' + s.name
-      const content = shownContents(s.name)
-      const sClosed = !m && state.collapsed.has(sk)
+      const content = filteredSlotContents(s.name)
+      const showSlot = F.slots
+      const attDepth = depth + (showSlot ? 1 : 0)
+      const sClosed = showSlot && !m && state.collapsed.has(sk)
       const sVisible = !state.hiddenSlots.has(s.name)
-      const srow = h('div', {
-        class: 'row', 'data-selected': isSel('slot', s.name) ? '1' : null, 'data-key': 'slot:' + s.name,
-        'data-multi': state.multiSlots.includes(s.name) && !isSel('slot', s.name) ? '1' : null,
-        'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-hidden': sVisible ? null : '1',
-        'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth),
-        onclick: (e) => {
-          if (pick) { resolvePick('slot', s.name); return }
-          if (e.shiftKey) { selectSlotRange(s.name); return }
-          select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
+      if (showSlot) {
+        const srow = h('div', {
+          class: 'row', 'data-selected': isSel('slot', s.name) ? '1' : null, 'data-key': 'slot:' + s.name,
+          'data-multi': state.multiSlots.includes(s.name) && !isSel('slot', s.name) ? '1' : null,
+          'data-pickable': pick && pick.want === 'slot' ? '1' : null, 'data-hidden': sVisible ? null : '1',
+          'data-match': m && m.direct.has('s:' + s.name) ? '1' : null, style: pad(depth),
+          onclick: (e) => {
+            if (pick) { resolvePick('slot', s.name); return }
+            if (e.shiftKey) { selectSlotRange(s.name); return }
+            select({ kind: 'slot', name: s.name }, e.ctrlKey || e.metaKey, { noReveal: !state.search })
+          },
+          oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
         },
-        oncontextmenu: (e) => { e.preventDefault(); sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() },
-      },
-      visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
-      caret(content.atts.length + content.phs.length ? !sClosed : null, () => { sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() }),
-      h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, s.name),
-      inOrder ? h('span', { class: 'meta' }, s.bone) : null,
-      animOn() ? h('span', { class: 'lkey' }, keyBtn(SLOT_TRACKS(s.name), () => keySlotNow(s.name), `给 ${s.name} 打关键帧（附件 / 颜色）`)) : null)
-      if (inOrder) wireDrag(srow, { type: 'order', name: s.name }, { type: 'order', name: s.name })
-      else wireDrag(srow, { type: 'slot', name: s.name }, { type: 'slot', name: s.name })
-      rows.push(srow)
+        visDot(sVisible, () => { sVisible ? state.hiddenSlots.add(s.name) : state.hiddenSlots.delete(s.name); refresh() }),
+        caret(content.atts.length + content.phs.length ? !sClosed : null, () => { sClosed ? state.collapsed.delete(sk) : state.collapsed.add(sk); renderTree() }),
+        h('span', { class: 'ico', html: ICON.slotdot }), h('span', { class: 'label' }, s.name),
+        inOrder ? h('span', { class: 'meta' }, s.bone) : null,
+        animOn() ? h('span', { class: 'lkey' }, keyBtn(SLOT_TRACKS(s.name), () => keySlotNow(s.name), `给 ${s.name} 打关键帧（附件 / 颜色）`)) : null)
+        if (inOrder) wireDrag(srow, { type: 'order', name: s.name }, { type: 'order', name: s.name })
+        else wireDrag(srow, { type: 'slot', name: s.name }, { type: 'slot', name: s.name })
+        rows.push(srow)
+      }
       if (sClosed) return
       for (const a of content.atts) {
         if (m && !m.atts.has(s.name + '/' + a.name) && !m.direct.has('s:' + s.name)) continue
@@ -6168,12 +6185,13 @@
           'data-multi': selectedAttachments().some((x) => x.skin === 'default' && x.slot === s.name && x.name === a.name) && !isSel('att', a.name, { slot: s.name, skin: 'default' }) ? '1' : null,
           'data-att-skin': 'default', 'data-att-slot': s.name, 'data-att-name': a.name,
           'data-rename': JSON.stringify({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }),
-          'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(depth + 1),
+          'data-key': `att:default:${s.name}:${a.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + a.name) ? '1' : null, style: pad(attDepth),
           'data-noexport': Ops.isExported(j, 'default', s.name, a.name) ? null : '1', title: Ops.isExported(j, 'default', s.name, a.name) ? null : '不导出',
           onclick: (e) => { if (pick) { resolvePick('slot', s.name); return } selectAttachment({ kind: 'att', name: a.name, slot: s.name, skin: 'default' }, e) },
         },
         visDot(shown, () => showAttachment(s.name, shown ? null : a.name), null, true),
         caret(null), h('span', { class: 'ico', html: ICON[attIcon(a.type)], style: a.type === 'region' ? null : a.type === 'clipping' ? 'color:#e06a6a' : a.type === 'path' ? 'color:#ff8a1f' : 'color:#5fd3e6' }), h('span', { class: 'label' }, a.name),
+        !showSlot ? h('span', { class: 'meta' }, s.name) : null,
         animOn() && (a.type === 'mesh' || a.type === 'linkedmesh' || a.type === 'clipping' || a.type === 'path') ? meshKeyEnd(s.name, a.name, 'lkey') : null)
         wireDrag(arow, { type: 'att', name: a.name, slot: s.name, skin: 'default' }, null)
         rows.push(arow)
@@ -6183,18 +6201,20 @@
         const shown = posed.get(s.name) === ph.name
         rows.push(h('div', {
           class: 'row', 'data-selected': isSel('ph', ph.name, { slot: s.name }) ? '1' : null,
-          'data-key': `ph:${s.name}:${ph.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + ph.name) ? '1' : null, style: pad(depth + 1),
+          'data-key': `ph:${s.name}:${ph.name}`, 'data-match': m && m.direct.has('a:' + s.name + '/' + ph.name) ? '1' : null, style: pad(attDepth),
+          title: ph.current ? `${s.name} / ${ph.current.skin} / ${ph.current.image}` : `${s.name} / 空占位符`,
           'data-rename': JSON.stringify({ kind: 'ph', name: ph.name, slot: s.name }),
           onclick: () => { if (pick) return; select({ kind: 'ph', name: ph.name, slot: s.name }, false, { noReveal: true }) },
         },
         visDot(shown, () => showAttachment(s.name, shown ? null : ph.name), null, true),
-        caret(null), h('span', { class: 'ico', html: ICON.placeholder }), h('span', { class: 'label' }, ph.name),
+        caret(null), h('span', { class: 'ico', html: ICON[F.placeholder || !ph.current ? 'placeholder' : attIcon(ph.current.type)] }), h('span', { class: 'label' }, ph.name),
         h('span', { class: 'meta' }, ph.current ? ph.current.image : '空')))
       }
     }
     // Spine: with bones filtered out, the slots are listed in draw order (drag to reorder)
-    if (!F.bones && F.slots && !m) {
-      if (node('bones', '插槽（绘制顺序）', 'order', j.slots.length, 1)) for (const s of j.slots.slice().reverse()) pushSlotRows(s, 2, true)
+    if (!F.bones) {
+      const slots = j.slots.slice().reverse().filter((s) => !m || m.slots.has(s.name))
+      if (!F.slots || node('bones', '插槽（绘制顺序）', 'order', slots.length, 1)) for (const s of slots) pushSlotRows(s, F.slots ? 2 : 1, true)
     }
 
     // the bones: root sits right under the skeleton, beside 约束 / 皮肤 / 动画 (Spine)
@@ -6213,7 +6233,7 @@
       const walk = (b, depth) => {
         if (m && !m.bones.has(b.name)) return
         const key = 'b:' + b.name
-        const own = F.slots ? (slotsBy.get(b.name) || []).filter((s) => !m || m.slots.has(s.name)) : []
+        const own = (slotsBy.get(b.name) || []).filter((s) => (!m || m.slots.has(s.name)) && (F.slots || Object.values(filteredSlotContents(s.name)).some((a) => a.length)))
         const sub = (kids.get(b.name) || []).filter((x) => !m || m.bones.has(x.name))
         const closed = !m && state.collapsed.has(key)
         const multi = state.multi.includes(b.name) && !isSel('bone', b.name)
@@ -6260,7 +6280,7 @@
     if (!m) {
       // 约束（上下拖动 = 求解顺序）
       const allCons = allConstraints()
-      if (node('cons', '约束', 'cons', allCons.length, 1)) {
+      if (F.cons && node('cons', '约束', 'cons', allCons.length, 1)) {
         allCons.forEach(({ kind, c }) => {
           const row = h('div', {
             class: 'row', 'data-selected': isSel(kind, c.name) ? '1' : null, 'data-multi': !isSel(kind, c.name) && ((state.multiCons || []).some((x) => x.kind === kind && x.name === c.name) || (state.dopeExtra && state.dopeExtra.cons.some((x) => x.kind === kind && x.name === c.name))) ? '1' : null, style: pad(2),
@@ -6301,7 +6321,7 @@
       // 皮肤（双击「皮肤」新建，和 Spine 一样）
       // Spine: the default skin (what shows without a skin) is not listed; the active skin's dot turns it off again
       const named = j.skins.filter((x) => x.name !== 'default')
-      if (node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
+      if (F.skins && node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
         for (const s of named) {
           const active = state.skin === s.name
           rows.push(h('div', {
@@ -6315,7 +6335,7 @@
 
       // 事件 (Spine): double-click creates one; in an animation its key fires it at the current frame
       const evNames = Object.keys(j.events || {})
-      if (node('events', '事件', 'event', evNames.length, 1, newEvent)) {
+      if (F.events && node('events', '事件', 'event', evNames.length, 1, newEvent)) {
         for (const n of evNames) {
           rows.push(h('div', {
             class: 'row', style: pad(2), 'data-selected': isSel('event', n) ? '1' : null, 'data-multi': !isSel('event', n) && state.dopeExtra && state.dopeExtra.events.includes(n) ? '1' : null, 'data-key': 'event:' + n,
@@ -6328,7 +6348,7 @@
       // 动画
       const names = Object.keys(j.animations)
       // Spine: double-click 「动画」 creates an animation; the dot = the animation being played
-      if (node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
+      if (F.anims && node('anims', '动画', 'anim', names.length, 1, newAnimation)) {
         for (const n of names) {
           const active = state.anim === n
           rows.push(h('div', {
@@ -6340,9 +6360,10 @@
       }
 
       // 图片 (Spine's Images node): the project's image folder, pictures drag onto a bone / slot / the stage
-      if (!m) renderImagesNode(rows, pad)
+      if (F.images) renderImagesNode(rows, pad)
     }
 
+    if (rows.length === contentFrom) rows.push(h('div', { class: 'row', style: pad(1) }, h('span', { class: 'meta' }, '当前筛选无匹配节点')))
     if (projects[activeProject] && projects[activeProject].open === false && !m) rows.length = contentFrom
     if (projects[activeProject]) for (let i = activeProject + 1; i < projects.length; i++) rows.push(projectRow(i, pad))
     tree.append(h('div', { class: 'tree-in' }, rows))
@@ -6397,13 +6418,15 @@
 
   function filterMenu(btnEl) {
     const F = state.filter
-    const items = [['bones', '骨骼'], ['slots', '插槽'], ['region', '区域'], ['mesh', '网格'], ['bbox', '边界框'], ['clipping', '剪裁'], ['path', '路径'], ['point', '端点'], ['placeholder', '皮肤占位符']]
+    const items = TREE_FILTERS
     closeMenu()
     const r = btnEl.getBoundingClientRect()
-    const menu = h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(r.right - 160)}px;top:${Math.round(r.bottom + 4)}px` },
+    const menu = h('div', { class: 'menu', id: 'menu', style: `left:${Math.round(Math.max(4, r.right - 160))}px;top:${Math.round(r.bottom + 4)}px;max-height:${Math.max(80, innerHeight - r.bottom - 12)}px;overflow-y:auto` },
       items.map(([k, label]) => h('button', { onclick: (e) => { e.stopPropagation(); F[k] = !F[k]; renderTree(); filterMenu(btnEl) } },
         h('span', { class: 'dot', 'data-on': F[k] ? '1' : null }), label)),
-      h('button', { onclick: () => { for (const [k] of items) F[k] = true; closeMenu(); renderTree() } }, h('span', { style: 'width:16px' }), '全部显示'))
+      h('div', { class: 'msep' }),
+      h('button', { onclick: () => { for (const [k] of items) F[k] = true; closeMenu(); renderTree() } }, h('span', { style: 'width:16px' }), '全部显示'),
+      h('button', { onclick: (e) => { e.stopPropagation(); for (const [k] of items) F[k] = false; renderTree(); filterMenu(btnEl) } }, h('span', { style: 'width:16px' }), '全部隐藏'))
     mountMenu(menu)
   }
 
