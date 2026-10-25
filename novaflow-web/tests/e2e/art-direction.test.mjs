@@ -482,6 +482,24 @@ test('combined references keep independent roles including a role before the ima
   const request=e.api.input(ctx({prompt:'图1人物，用图2姿势，上衣用图3材质，背景用图4，保持原配色'},[ref('base'),ref('pose'),ref('fabric'),ref('desert')]));
   assert.deepEqual(Array.from(request.references,r=>Array.from(r.roles)),[['subject'],['pose'],['material'],['background']]);
 });
+
+test('a sentence after an explicit style reference is an overall edit, not another donor subject role',()=>{
+  const e=env(),prompt='图1人物，用图2画风。保留机场自拍、眨眼表情、条纹上衣和手持咖啡，让人物、头发与鼻子的造型跟随参考的日系动漫绘制，冷暗环境光有层次。';
+  const request=e.api.input(ctx({prompt},[ref('photo'),ref('style')]));
+  assert.deepEqual(Array.from(request.references,r=>Array.from(r.roles)),[['subject'],['style']]);
+  assert.equal(request.prompt,prompt,'the full artistic request still reaches the analyzer unchanged');
+});
+
+test('same-sentence mixed roles and a later explicitly named reference retain their independent assignments',()=>{
+  const e=env();
+  for(const prompt of ['图1人物，用图2画风和人物。','图1人物，用图2画风，参考人物长相。','图1人物，用图2画风。图2人物长相也参考。']){
+    const request=e.api.input(ctx({prompt},[ref('photo'),ref('style')]));
+    assert.deepEqual(Array.from(request.references,r=>Array.from(r.roles)),[['subject'],['style','subject']],prompt);
+  }
+  const excluded=e.api.input(ctx({prompt:'图1人物，用图2画风。不要图2人物长相。'},[ref('photo'),ref('style')]));
+  assert.deepEqual(Array.from(excluded.references,r=>Array.from(r.roles)),[['subject'],['style']]);
+  assert.deepEqual(Array.from(excluded.references[1].excludedRoles),['subject']);
+});
 test('material sampling remains inside the requested surface and never falls back to the whole donor',async()=>{
   const e=env(),region=[200,300,600,650];
   const r=await e.api.renderReference({source:1,...ref('material')},use('material',{box:region}),[],()=>{});

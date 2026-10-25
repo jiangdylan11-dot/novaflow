@@ -91,11 +91,88 @@ function imageInput(image, config) {
   return { dataUrl: image.dataUrl, bytes: bytes.length, ...(image.name === undefined ? {} : { name: text(image.name, '图片名', 240) }) };
 }
 
+function nativeToolCalls(value, toolNames, code = 'strata-invalid-request') {
+  requireValue(Array.isArray(value) && value.length >= 1 && value.length <= 4, code, 'Flash 工具调用列表无效');
+  const seen = new Set();
+  return value.map(call => {
+    requireValue(object(call) && typeof call.id === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(call.id)
+      && !seen.has(call.id) && call.type === 'function' && object(call.function)
+      && toolNames.has(call.function.name) && typeof call.function.arguments === 'string'
+      && call.function.arguments.length <= 24000, code, 'Flash 工具调用名称、编号或参数无效');
+    seen.add(call.id);
+    return { id: call.id, type: 'function', function: { name: call.function.name, arguments: call.function.arguments } };
+  });
+}
+
+function conversationInput(input, config) {
+  requireValue(input.tools === undefined || Array.isArray(input.tools) && input.tools.length <= 12,
+    'strata-invalid-request', 'Flash 对话工具定义无效');
+  const names = new Set(), tools = (input.tools || []).map(tool => {
+    requireValue(object(tool) && tool.type === 'function' && object(tool.function)
+      && typeof tool.function.name === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(tool.function.name)
+      && !names.has(tool.function.name) && object(tool.function.parameters), 'strata-invalid-request', 'Flash 对话工具定义无效');
+    names.add(tool.function.name);
+    const copy = JSON.parse(JSON.stringify(tool));
+    requireValue(JSON.stringify(copy).length <= 16000, 'strata-invalid-request', 'Flash 工具定义超过上限');
+    return copy;
+  });
+  requireValue(Array.isArray(input.messages) && input.messages.length >= 2 && input.messages.length <= 40,
+    'strata-invalid-request', 'Flash 对话消息数量无效');
+  const images = [], pending = new Set(), allCallIds = new Set();
+  let chars = 0, bytes = 0;
+  const messages = input.messages.map((message, index) => {
+    requireValue(object(message) && ['system', 'user', 'assistant', 'tool'].includes(message.role)
+      && ((index === 0) === (message.role === 'system')), 'strata-invalid-request', 'Flash 对话角色无效');
+    requireValue(!pending.size || message.role === 'tool', 'strata-invalid-request', 'Flash 工具结果尚未配对');
+    let content;
+    if (typeof message.content === 'string') {
+      content = text(message.content, '对话内容', config.maxInputChars);
+      chars += content.length;
+    } else if (message.role === 'assistant' && message.content == null) content = null;
+    else {
+      requireValue(message.role === 'user' && Array.isArray(message.content) && message.content.length >= 1
+        && message.content.length <= 64, 'strata-invalid-request', 'Flash 对话内容无效');
+      content = message.content.map(part => {
+        requireValue(object(part), 'strata-invalid-request', 'Flash 对话图片内容无效');
+        if (part.type === 'text') {
+          const value = text(part.text, '对话内容', config.maxInputChars); chars += value.length;
+          return { type: 'text', text: value };
+        }
+        requireValue(part.type === 'image_url' && object(part.image_url), 'strata-invalid-request', 'Flash 对话仅接受完整本机图片');
+        const image = imageInput({ dataUrl: part.image_url.url }, config);
+        bytes += image.bytes; images.push(image);
+        requireValue(images.length <= config.maxImages && bytes <= config.maxTotalImageBytes,
+          'strata-invalid-request', 'Flash 对话图片超过上限');
+        return { type: 'image_url', image_url: { url: image.dataUrl, detail: 'auto' } };
+      });
+    }
+    const result = { role: message.role, content };
+    if (message.role === 'assistant' && message.tool_calls !== undefined) {
+      result.tool_calls = nativeToolCalls(message.tool_calls, names);
+      for (const call of result.tool_calls) {
+        requireValue(!allCallIds.has(call.id), 'strata-invalid-request', 'Flash 对话工具编号重复');
+        pending.add(call.id); allCallIds.add(call.id);
+      }
+    } else requireValue(message.tool_calls === undefined, 'strata-invalid-request', '工具调用只能来自 assistant');
+    if (message.role === 'tool') {
+      requireValue(typeof message.tool_call_id === 'string' && pending.delete(message.tool_call_id)
+        && typeof content === 'string', 'strata-invalid-request', 'Flash 对话工具结果编号无效');
+      result.tool_call_id = message.tool_call_id;
+    }
+    requireValue(message.function_call === undefined, 'strata-invalid-request', '旧版 function_call 不受支持');
+    return result;
+  });
+  requireValue(!pending.size && ['user', 'tool'].includes(messages.at(-1).role) && chars <= config.maxInputChars,
+    'strata-invalid-request', 'Flash 对话未完成或超过上限');
+  return { messages, tools, toolNames: names, images };
+}
+
 /**
  * One owned local model lifecycle, with sequential native inference stages.
  * The caller supplies trusted load/unload hooks; unload must prove text AND
  * vision release. A release fault permanently closes this object's gate.
- * No task schemas, text/JSON parsing, style policy, fallback model, or tools.
+ * Legacy infer stays text-only. inferConversation transports bounded native
+ * tool calls; the caller must own the explicit tool registry and execution.
  */
 export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expectedModel = {}, fetchImpl = globalThis.fetch,
   lifecycle, timeoutMs = 180000, releaseTimeoutMs = 75000, identityTimeoutMs = 10000, apiKey = '', config = {}, onInference } = {}) {
@@ -178,33 +255,43 @@ export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expect
       try { identity = await identify(identityScope.signal); lastIdentity = identity; }
       finally { timing.identityMs = elapsed(identityStart); identityScope.close(); }
       sessionOpen = true;
-      const infer = input => {
+      const runInference = (input, conversationMode = false) => {
         const job = (async () => {
           requireValue(sessionOpen && !operation.signal.aborted, 'strata-session-closed', 'Flash 会话已结束或取消');
           requireValue(!inferBusy, 'strata-busy', '同一 Flash 会话中的推理必须顺序执行');
           requireValue(object(input), 'strata-invalid-request', 'Flash 推理输入无效');
-          const system = text(input.system, '系统提示词', defaults.maxInputChars), user = text(input.user, '用户提示词', defaults.maxInputChars, true);
+          const conversation = conversationMode ? conversationInput(input, defaults) : null;
+          if (!conversationMode) requireValue(input.tools === undefined && input.messages === undefined,
+            'strata-invalid-request', '普通 Flash infer 不接受对话或工具参数');
+          const system = conversationMode ? null : text(input.system, '系统提示词', defaults.maxInputChars);
+          const user = conversationMode ? null : text(input.user, '用户提示词', defaults.maxInputChars, true);
           const stage = input.stage === undefined ? undefined : text(input.stage, '阶段名', 120);
           requireValue(input.images === undefined || Array.isArray(input.images), 'strata-invalid-request', 'Flash 图片列表无效');
           requireValue((input.images?.length || 0) <= defaults.maxImages, 'strata-invalid-request', 'Flash 图片数量超过上限');
           let totalImageBytes = 0;
-          const images = (input.images || []).map(image => {
+          const images = conversation?.images || (input.images || []).map(image => {
             const result = imageInput(image, defaults); totalImageBytes += result.bytes;
             requireValue(totalImageBytes <= defaults.maxTotalImageBytes, 'strata-invalid-request', 'Flash 完整图片合计超过上限');
             return result;
           });
           const maxTokens = input.maxTokens ?? defaults.maxTokens, temperature = input.temperature ?? defaults.temperature;
           requireValue(Number.isInteger(maxTokens) && maxTokens >= 1 && maxTokens <= 131072 && Number.isFinite(temperature) && temperature >= 0 && temperature <= 2, 'strata-invalid-request', 'Flash 生成参数无效');
-          const format = responseFormat(input.responseFormat === undefined ? defaults.responseFormat : input.responseFormat);
+          const reasoningEffort = input.reasoningEffort ?? defaults.reasoningEffort;
+          const reasoningBudgetTokens = input.reasoningBudgetTokens ?? defaults.reasoningBudgetTokens;
+          requireValue(['none', 'minimal', 'low', 'medium', 'high'].includes(reasoningEffort)
+            && Number.isInteger(reasoningBudgetTokens) && reasoningBudgetTokens >= 0 && reasoningBudgetTokens <= 131072,
+          'strata-invalid-request', 'Flash 单次思考设置无效');
+          const format = conversationMode ? undefined : responseFormat(input.responseFormat === undefined ? defaults.responseFormat : input.responseFormat);
           const content = [{ type: 'text', text: user }];
           images.forEach((image, index) => {
             content.push({ type: 'text', text: `<image${index + 1}>${image.name ? `: ${image.name}` : ''}` }, { type: 'image_url', image_url: { url: image.dataUrl, detail: 'auto' } });
           });
-          const body = { model: identity.id, messages: [{ role: 'system', content: system }, { role: 'user', content }], stream: false,
+          const body = { model: identity.id, messages: conversation?.messages || [{ role: 'system', content: system }, { role: 'user', content }], stream: false,
             max_tokens: maxTokens, temperature, top_p: defaults.topP, top_k: defaults.topK, min_p: defaults.minP,
-            seed: defaults.seed, reasoning_effort: defaults.reasoningEffort,
-            reasoning_budget_tokens: defaults.reasoningBudgetTokens, presence_penalty: 0, frequency_penalty: 0, repetition_penalty: defaults.repetitionPenalty,
-            ...(format ? { response_format: format } : {}) };
+            seed: defaults.seed, reasoning_effort: reasoningEffort,
+            reasoning_budget_tokens: reasoningBudgetTokens, presence_penalty: 0, frequency_penalty: 0, repetition_penalty: defaults.repetitionPenalty,
+            ...(format ? { response_format: format } : {}),
+            ...(conversationMode && conversation.tools.length ? { tools: conversation.tools, tool_choice: 'auto', parallel_tool_calls: false } : {}) };
           inferBusy = true;
           const requestStart = performance.now(), requestScope = scope(operation.signal, defaults.requestTimeoutMs), auditRequestId = randomUUID();
           const audit = async outcome => {
@@ -237,15 +324,28 @@ export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expect
             }
             await audit({ response });
             const choice = response?.choices?.[0], message = choice?.message;
-            requireValue(!message?.tool_calls?.length && !message?.function_call && choice?.finish_reason !== 'tool_calls', 'strata-tool-response', 'Flash 返回了未授权的工具调用');
+            if (!conversationMode) requireValue(!message?.tool_calls?.length && !message?.function_call && choice?.finish_reason !== 'tool_calls', 'strata-tool-response', 'Flash 返回了未授权的工具调用');
             requireValue(choice?.finish_reason !== 'length', 'strata-output-truncated', 'Flash 输出被截断');
-            requireValue(choice?.finish_reason === 'stop' && typeof message?.content === 'string' && message.content.trim(), 'strata-invalid-response', 'Flash 未返回完整文本结果');
+            let nativeMessage;
+            if (conversationMode) {
+              requireValue(object(message) && message.role === 'assistant' && !message.function_call,
+                'strata-invalid-response', 'Flash 未返回有效 assistant 消息');
+              if (choice?.finish_reason === 'tool_calls') {
+                requireValue(message.content == null || typeof message.content === 'string', 'strata-invalid-response', 'Flash 工具消息内容无效');
+                nativeMessage = { role: 'assistant', content: message.content ?? null,
+                  tool_calls: nativeToolCalls(message.tool_calls, conversation.toolNames, 'strata-invalid-response') };
+              } else {
+                requireValue(choice?.finish_reason === 'stop' && !message.tool_calls?.length
+                  && typeof message.content === 'string' && message.content.trim(), 'strata-invalid-response', 'Flash 未返回完整对话结果');
+                nativeMessage = { role: 'assistant', content: message.content };
+              }
+            } else requireValue(choice?.finish_reason === 'stop' && typeof message?.content === 'string' && message.content.trim(), 'strata-invalid-response', 'Flash 未返回完整文本结果');
             requireValue(response.model === identity.id, 'strata-identity-mismatch', 'Flash 响应模型与当前核验模型不一致');
             const actualRequestId = typeof response.id === 'string' && response.id.length <= 240 ? response.id : randomUUID();
             const requestMs = elapsed(requestStart);
             const requestTiming = { requestMs, ...(stage === undefined ? {} : { stage }) };
             timing.requests.push({ requestId: actualRequestId, ...requestTiming });
-            return { text: message.content, requestId: actualRequestId, model: response.model,
+            return { text: message.content, ...(conversationMode ? { message: nativeMessage, finishReason: choice.finish_reason } : {}), requestId: actualRequestId, model: response.model,
               usage: object(response.usage) ? response.usage : null, timing: requestTiming };
           } finally { requestScope.close(); timing.requestMs += elapsed(requestStart); inferBusy = false; }
         })();
@@ -254,8 +354,10 @@ export function createFlashBrainSession({ baseUrl = FLASH_BRAIN_BASE_URL, expect
         void job.catch(() => {});
         return job;
       };
+      const infer = input => runInference(input, false);
+      const inferConversation = input => runInference(input, true);
       const callbackStart = performance.now();
-      try { value = await bounded(Promise.resolve().then(() => callback({ infer, identity })), operation.signal); }
+      try { value = await bounded(Promise.resolve().then(() => callback({ infer, inferConversation, identity })), operation.signal); }
       finally { timing.callbackMs = elapsed(callbackStart); }
       requireValue(!inferBusy, 'strata-session-incomplete', 'Flash 回调结束时仍有未等待的推理');
     } catch (caught) { error = operation.signal.aborted ? operation.signal.reason : caught; }

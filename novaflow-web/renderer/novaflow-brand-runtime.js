@@ -86178,8 +86178,16 @@
     return { refs, rolePlan: { ...plan, conditioning: refs } };
   }
 
+  let pendingArtAgentPreparation = null;
   async function runArtGenerate(options = {}) {
     if (ART_GENERATE_STATE.running) return;
+    if (!options.uiPrepared && !options.drawingPrepared && pendingArtAgentPreparation) {
+      const agentPrepared = pendingArtAgentPreparation;
+      pendingArtAgentPreparation = null;
+      try { agentPrepared.assertCurrent(); }
+      catch (error) { setArtGenerateStatus(String(error?.message || '小桃建议已失效，请重新分析'), true); return; }
+      return runArtGenerate({ drawingPrepared: agentPrepared });
+    }
     const ui = window.NovaFlowUiDesignDrawing;
     const getCurrentContext = () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
       generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? ui?.isActive?.() ? 'ui' : 'drawing' : 'other' });
@@ -86352,7 +86360,7 @@
         if (!uploadedNames) return;
       }
       const batchCount = normalizeArtGenerateCount(settingsSnapshot.count);
-      ART_GENERATE_STATE.count = batchCount;
+      if (!prepared?.agentRun) ART_GENERATE_STATE.count = batchCount;
       // A fixed seed still has to give distinct images across the batch: image i runs seed + i.
       const fixedSeed = !settingsSnapshot.randomSeed && Number(settingsSnapshot.seed) >= 0;
       const baseSeed = fixedSeed ? Math.round(Number(settingsSnapshot.seed) || 0) : -1;
@@ -86539,7 +86547,7 @@
       }
       clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
-      if (options.drawingPrepared && !options.drawingPrepared.direct) {
+      if (options.drawingPrepared && !options.drawingPrepared.direct && !options.drawingPrepared.agentRun) {
         ART_GENERATE_STATE.drawingAnalysisEngine = 'direct';
         try { window.localStorage.setItem('novaflow.drawing.analysis.v2', 'direct'); } catch {}
       }
@@ -86684,7 +86692,17 @@
       referenceLimit: artGenerateReferenceLimit,
       setReference: setArtGenerateReference,
       refreshReferences: refreshArtGenerateReferences,
-      capturePrompt: captureArtGeneratePromptSnapshot
+      capturePrompt: captureArtGeneratePromptSnapshot,
+      captureContext: () => ({ state: ART_GENERATE_STATE, references: artGenerateReferences(), referenceLimit: artGenerateReferenceLimit(),
+        generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? window.NovaFlowUiDesignDrawing?.isActive?.() ? 'ui' : 'drawing' : 'other' }),
+      selectedResult: selectedArtGenerateResult,
+      cancel: cancelArtGenerateRun,
+      stageAgentPrepared(prepared) {
+        if (ART_GENERATE_STATE.running || typeof prepared?.assertCurrent !== 'function') throw new Error('当前无法应用绘图建议');
+        prepared.assertCurrent();
+        pendingArtAgentPreparation = prepared;
+      },
+      clearAgentPrepared() { pendingArtAgentPreparation = null; }
     };
     const creditUpdateEvent = window.NovaFlowArtGenerateCreditPricing?.UPDATE_EVENT;
     if (creditUpdateEvent) {

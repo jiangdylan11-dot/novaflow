@@ -106,7 +106,9 @@
       const preservingReference=/(?:保留|保持|不改变|不更换|不要改(?:变)?|别动|不动)\s*$/.test(before);
       const segment=prompt.slice(m.index+m[0].length,matches[i+1]?.index??prompt.length);
       const after=matches[i+1]?segment.replace(negativeTail,''):segment;
-      const clauses=after.replace(/但是|但|而|只要|只用|只参考|仅参考|仅用|仅采用/g,word=>'，'+word).split(/[，,。；;\n]/);
+      // Later sentences describe the overall edit unless they name a reference
+      // again; do not assign their character/scene nouns to this last donor.
+      const clauses=after.split(/[。！？!?]/,1)[0].replace(/但是|但|而|只要|只用|只参考|仅参考|仅用|仅采用/g,word=>'，'+word).split(/[，,；;\n]/);
       const state=states.get(number)||new Map();states.set(number,state);
       // “图5用图2画风” identifies the editing target even when it was not
       // uploaded first. Do not let the first donor become the default subject.

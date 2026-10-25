@@ -8,13 +8,33 @@ import { fileURLToPath } from 'node:url';
 import { createFlashBrainSession } from './flash-brain-session.mjs';
 import { isFlashBrainConfigured } from './flash-brain-configuration.mjs';
 import { audioFlashMessages, cleanAudioCaption } from './comfy/audio-reprompt.mjs';
-import { isFlashArtDirectionRequest, planFlashArtDirection } from './flash-art-direction.mjs';
+import { isFlashArtDirectionRequest, planFlashArtDirection, FLASH_ART_SYSTEM_SHA256 } from './flash-art-direction.mjs';
+import { createFlashArtAgent } from './flash-art-agent.mjs';
+import { createFlashChatResidency } from './flash-chat-residency.mjs';
 
 export function strataConfigPath(runtimeJsonPath) {
   return process.env.NOVAFLOW_STRATA_CONFIG || join(runtimeJsonPath ? dirname(runtimeJsonPath) : join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime'), 'strata-prompt.json');
 }
 export function readStrataConfig(path) {
   try { return JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; }
+}
+// The drawing UI may assign the whole source photograph both subject and
+// background/composition duties. They still belong to that ONE content image;
+// this is not a separate background/pose donor. Keep the frozen v1 producer
+// unchanged and canonicalize only that exact whole-source + style pair.
+function wholeSourceArtPair(payload) {
+  if (isFlashArtDirectionRequest(payload)) return payload;
+  const refs = payload?.artContext?.references;
+  if (!Array.isArray(refs) || refs.length !== 2) return payload;
+  const roles = ref => Array.isArray(ref?.roles) ? ref.roles : [ref?.role];
+  const source = refs.find(ref => roles(ref).includes('subject')
+    && roles(ref).every(role => ['subject', 'background', 'composition'].includes(role))
+    && !ref.excludedRoles?.some(role => roles(ref).includes(role)));
+  const style = refs.find(ref => roles(ref).length === 1 && roles(ref)[0] === 'style');
+  if (!source || !style || source === style) return payload;
+  const normalized = { ...payload, artContext: { ...payload.artContext,
+    references: refs.map(ref => ref === source ? { ...ref, role: 'subject', roles: ['subject'] } : ref) } };
+  return isFlashArtDirectionRequest(normalized) ? normalized : payload;
 }
 function controlCommand(config, configPath, command, { signal, ownerToken } = {}) {
   const helper = fileURLToPath(new URL('./strata-runtime-control.py', import.meta.url));
@@ -36,7 +56,7 @@ function controlCommand(config, configPath, command, { signal, ownerToken } = {}
 
 export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,config:suppliedConfig,
   sessionFactory=createFlashBrainSession,lifecycle:suppliedLifecycle,resourceProbe,
-  fetchImpl=fetch,logger=()=>{},legacyApi=null}={}) {
+  fetchImpl=fetch,logger=()=>{},legacyApi=null,chatIdleTimeoutMs=120000}={}) {
   const path=configPath || strataConfigPath(), config=suppliedConfig || readStrataConfig(path);
   const runtimeLifecycle=suppliedLifecycle || {load:options=>controlCommand(config,path,'load',options),unload:options=>controlCommand(config,path,'unload',options)};
   // A failed/partial load still needs cleanup, but only for its own operation.
@@ -61,17 +81,22 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     await mkdir(config.traceDirectory,{recursive:true});
     await writeFile(join(config.traceDirectory,randomUUID()+'.json'),JSON.stringify(event,null,2)+'\n',{flag:'wx'});
   } : undefined;
-  let lease=null,inFlight=null,activeAbort=null,lastError='',lastTiming=null,cleanupFault=false,stopping=false,stopPromise=null,generationTaskId='';
+  const artAgent=createFlashArtAgent();
+  let lease=null,inFlight=null,activeAbort=null,lastError='',lastTiming=null,cleanupFault=false,stopping=false,stopPromise=null,generationTaskId='',handoffPending=0;
+  let chatResidency;
   const configured=()=>Boolean(config && (suppliedLifecycle || isFlashBrainConfigured(config)));
   const makeSession=()=>sessionFactory({baseUrl:config?.baseUrl || 'http://127.0.0.1:8198',expectedModel:config?.expectedModel,
     fetchImpl,lifecycle,onInference:trace,timeoutMs:config?.workflowTimeoutMs || 900000,releaseTimeoutMs:config?.releaseTimeoutMs || 75000,
     config:{...config,maxTokens:config?.maxTokens || 4096}});
   let session=null;try {if(config)session=makeSession();} catch {lastError='Flash 本地配置无效';}
   const unavailable=()=>({ok:false,error:'Flash 本地模型尚未安装完整',errorCode:'strata-not-configured'});
-  function status(){return {ok:true,enabled:configured() && Boolean(session) && !cleanupFault && !stopping,
+  function status(){const chatSession=chatResidency.getStatus();return {ok:true,enabled:configured() && Boolean(session) && !cleanupFault && !stopping,
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',
-    modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping?'释放中':lease?'推理中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
+    artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
+    artAgent:{version:'xiaotao-art-agent-v1',localOnly:true,maxModelRounds:3},
+    chatSession,modelLoaded:chatSession.modelLoaded,
+    modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || chatSession.state==='releasing'?'释放中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
   const blocked=()=>({ok:false,errorCode:cleanupFault?'strata-release-unconfirmed':'prompt-assistant-stopping',error:cleanupFault?'Flash 资源尚未确认释放，请先释放显存后重试':'本地 AI 正在释放资源'});
   async function releaseRuntimes(ownTaskId='') {
     const state=worker?.getState?.() || {};
@@ -107,12 +132,54 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     },1000);timer.unref?.();
     return ()=>{ended=true;clearInterval(timer);};
   }
+  chatResidency=createFlashChatResidency({idleTimeoutMs:chatIdleTimeoutMs,
+    withSession:(callback,options)=>session.withSession(callback,options),startGuard,
+    beforeOpen:async()=>{const result=await releaseRuntimes();if(!result.ok)throw Object.assign(Error(result.error),{errorCode:result.errorCode});},
+    onSettled:outcome=>{if(outcome?.error)lastError=String(outcome.error.message || outcome.error);
+      if(outcome?.resourcesReleased===false)cleanupFault=true;}
+  });
+  function claimLease(method,payload={},residentChat=false){let resolve;const finished=new Promise(done=>{resolve=done;});
+    const ticket={method,startedAt:Date.now(),requestId:payload.requestId,residentChat,finished,resolve};
+    lease=ticket;inFlight=finished;return ticket;
+  }
+  function finishLease(ticket){if(lease===ticket)lease=null;if(inFlight===ticket.finished)inFlight=null;ticket.resolve();}
+  async function closeChatForHandoff(){handoffPending++;try{return await chatResidency.close();}finally{handoffPending--;}}
+  async function runResidentChat(payload,context={}) {
+    if(stopping || cleanupFault)return blocked();
+    if(!configured() || !session)return unavailable();
+    try{artAgent.preflight(payload);}catch(error){return {ok:false,error:String(error.message || error),errorCode:error.errorCode || error.code || 'flash-agent-invalid-input',analysisBackend:'strata'};}
+    if(lease || generationTaskId || handoffPending || chatResidency.getStatus().state==='releasing')
+      return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 或生成任务正在执行或交接，请等待完成'};
+    const ticket=claimLease('artAgentChat',payload,true);
+    const cancelTimer=setInterval(()=>{if(context.isCancelled?.())void chatResidency.cancel(payload.requestId).catch(()=>{});},150);cancelTimer.unref?.();
+    try{
+      if(context.isCancelled?.())throw Object.assign(Error('任务已取消'),{errorCode:'task-cancelled'});
+      const answer=await chatResidency.run({requestId:payload.requestId,
+        task:(flash,signal)=>artAgent.run({payload,flash,signal})});
+      lastError='';lastTiming={...answer.timing,beforeGenerationMs:Date.now()-ticket.startedAt};
+      const credentials={analysisBackend:'strata',modelIdentity:answer.identity,resourcesReleased:false,generationReady:false};
+      const data={...answer.value,...credentials,chatSession:answer.chatSession,timing:lastTiming};
+      // A warm answer is usable text, never proof of a model/GPU handoff.
+      return {ok:true,...credentials,data,chatSession:answer.chatSession,timing:lastTiming};
+    }catch(error){lastError=String(error.message || error);const code=error.errorCode || error.code || 'strata-analysis-failed';
+      if(['strata-release-unconfirmed','strata-unload-failed'].includes(code))cleanupFault=true;
+      return {ok:false,error:lastError,errorCode:code,analysisBackend:'strata',resourcesReleased:error.resourcesReleased===true,
+        generationReady:false,chatSession:chatResidency.getStatus()};
+    }finally{clearInterval(cancelTimer);finishLease(ticket);}
+  }
   async function run(method,payload={},context={}) {
     if(stopping || cleanupFault)return blocked();
     if(!configured() || !session)return unavailable();
     if(method==='rewriteAudioPrompt' && !String(payload.input || '').trim())return {ok:false,error:'请先输入音频描述',errorCode:'invalid-request'};
+    if((lease && !lease.residentChat) || (generationTaskId && generationTaskId!==context.taskId))return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 或生成任务正在执行，请等待完成'};
+    if(method==='artAgentChat') {
+      try { artAgent.preflight(payload); }
+      catch(error) { return {ok:false,error:String(error.message || error),errorCode:error.errorCode || error.code || 'flash-agent-invalid-input',analysisBackend:'strata'}; }
+    }
+    try{await closeChatForHandoff();}catch(error){lastError=String(error.message || error);cleanupFault=true;return blocked();}
+    if(stopping || cleanupFault)return blocked();
     if(lease || (generationTaskId && generationTaskId!==context.taskId))return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 或生成任务正在执行，请等待完成'};
-    lease={method,startedAt:Date.now()};const abort=new AbortController();activeAbort=abort;
+    const ticket=claimLease(method,payload);const abort=new AbortController();activeAbort=abort;
     const cancelTimer=setInterval(()=>{if(context.isCancelled?.())abort.abort();},150);cancelTimer.unref?.();
     let stopGuard=()=>{};
     // Cancel the CPU client too: an abandoned protocol process must never send
@@ -124,8 +191,13 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       const handoff=await releaseRuntimes(context.taskId);if(!handoff.ok)return handoff;
       stopGuard=startGuard(abort);
       const answer=await session.withSession(async flash=>{
-        if(method==='reverseImagePrompt' && isFlashArtDirectionRequest(payload)) {
-          return {ok:true,data:await planFlashArtDirection({payload,flash})};
+        if(method==='artAgentChat')return {ok:true,data:await artAgent.run({payload,flash,signal:abort.signal})};
+        const nativeArtPayload=method==='reverseImagePrompt' ? wholeSourceArtPair(payload) : payload;
+        if(method==='reverseImagePrompt' && isFlashArtDirectionRequest(nativeArtPayload)) {
+          const data=await planFlashArtDirection({payload:nativeArtPayload,flash});
+          if(nativeArtPayload!==payload)data.nativeAnalysis.inputRoleNormalization={
+            kind:'whole-source-scene-roles',references:payload.artContext.references.map(ref=>({source:ref.source,roles:ref.roles || [ref.role]}))};
+          return {ok:true,data};
         }
         if(method==='rewriteAudioPrompt') {
           const input=String(payload.input || '').trim();if(!input)throw Error('请先输入音频描述');
@@ -140,20 +212,21 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       lastTiming={...answer.timing,
         ...(external?.analysisBackend==='strata' ? {requestMs:external.requestMs,requests:external.requests,
           requestTimingScope:'python-business-request',protocolCpuMs:Math.max(0,answer.timing.callbackMs-external.requestMs)} : {}),
-        beforeGenerationMs:Date.now()-lease.startedAt};lastError=result?.ok===false?result.error || '分析失败':'';
+        beforeGenerationMs:Date.now()-ticket.startedAt};lastError=result?.ok===false?result.error || '分析失败':'';
       logger('flash local brain finished',{method,ms:lastTiming.beforeGenerationMs,resourcesReleased:true});
       // These credentials are attached only after withSession has independently
       // proved the owned model processes exited. The producer cannot grant them.
-      const released={analysisBackend:'strata',modelIdentity:answer.identity,resourcesReleased:true,generationReady:result?.ok===true};
+      const released={analysisBackend:'strata',modelIdentity:answer.identity,resourcesReleased:true,generationReady:result?.ok===true && (method!=='artAgentChat' || Boolean(result.data?.proposal))};
       const data=result?.data ? {...result.data,...released,timing:lastTiming} : undefined;
       if(data?.artDirection?.editEnhancer?.kind==='qwen21-strata-native') {
         data.artDirection={...data.artDirection,editEnhancer:{...data.artDirection.editEnhancer,...released}};
       }
+      if(method==='artAgentChat' && data?.proposal)data.proposal={...data.proposal,...released};
       return {...result,...released,...(data ? {data} : {}),timing:lastTiming};
     }catch(error){lastError=String(error.message || error);const code=error.errorCode || error.code || 'strata-analysis-failed';
       if(['strata-release-unconfirmed','strata-unload-failed'].includes(code))cleanupFault=true;
       return {ok:false,error:lastError,errorCode:code,analysisBackend:'strata'};
-    }finally{clearInterval(cancelTimer);stopGuard();abort.signal.removeEventListener('abort',stopCpu);activeAbort=null;lease=null;}
+    }finally{clearInterval(cancelTimer);stopGuard();abort.signal.removeEventListener('abort',stopCpu);if(activeAbort===abort)activeAbort=null;finishLease(ticket);}
   }
   const uiCpuActions=new Set(['capabilities','grok-vision-job','compile-grok-vision','native-ui-cloud','native-ui-compile']);
   async function runUiCpu(payload,context={}) {
@@ -168,13 +241,21 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     // handshake and CPU job/compile actions. Dispatch before model configuration,
     // the shared lease, or Comfy hand-over; this route never runs inference.
     if(method==='reverseImagePrompt' && payload?.surface==='ui-design' && payload?.uiPlanner==='grok-vision-cpu-v1')return runUiCpu(payload,context);
-    const previous=lease,operation=run(method,payload,context);
-    if(!previous && lease){inFlight=operation;void operation.finally(()=>{if(inFlight===operation)inFlight=null;}).catch(()=>{});}
-    return operation;
+    if(method==='artAgentChat' && payload?.mode==='chat')return runResidentChat(payload,context);
+    return run(method,payload,context);
   }
-  const api={get running(){return Boolean(lease);},get busy(){return Boolean(lease);},status,
+  const api={get running(){return Boolean(lease) || chatResidency.getStatus().state==='releasing';},get busy(){return Boolean(lease) || chatResidency.getStatus().state==='releasing';},status,
     optimizePrompt:payload=>execute('optimizePrompt',payload),reverseImagePrompt:payload=>execute('reverseImagePrompt',payload),
     describeArtStyle:payload=>execute('describeArtStyle',payload),rewriteAudioPrompt:payload=>execute('rewriteAudioPrompt',payload),
+    artAgentChat:payload=>execute('artAgentChat',payload),
+    artAgentStop(payload={}) {
+      if(lease?.residentChat || !lease && chatResidency.getStatus().state!=='cold')return chatResidency.cancel(payload.requestId)
+        .then(async result=>{if(result.released)await inFlight;return {ok:result.ok!==false,...result};});
+      if(!lease)return Promise.resolve({ok:true,released:true,idle:true});
+      if(lease.method!=='artAgentChat' || typeof payload.requestId!=='string' || lease.requestId!==payload.requestId)
+        return Promise.resolve({ok:false,errorCode:'art-agent-not-current',error:'这次小桃对话已经结束，未停止其他任务'});
+      return api.stop().then(result=>({ok:true,...result}));
+    },
     // Pure CPU UI tools require no model or GPU lease.
     uiDesignCpu:payload=>legacyApi?.uiDesignCpu(payload) || Promise.resolve({ok:false,error:'缺少 UI CPU 编译器'}),
     runForTask(taskId,method,payload,context={}) {
@@ -183,16 +264,23 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       return execute(method,payload,{...context,taskId:String(taskId || '')});
     },
     async acquireGeneration(taskId,{isCancelled=()=>false}={}) {
+      handoffPending++;
+      try{
+      if(isCancelled())throw Error('任务已取消');
+      await chatResidency.close();
       while(lease){if(isCancelled())throw Error('任务已取消');await Promise.race([inFlight || new Promise(r=>setTimeout(r,100)),new Promise(r=>setTimeout(r,150))]);}
+      if(isCancelled())throw Error('任务已取消');
       if(stopping || cleanupFault)throw Object.assign(Error(blocked().error),{errorCode:blocked().errorCode});
       if(generationTaskId && generationTaskId!==taskId)throw Error('另一个生成任务正在执行');
       generationTaskId=taskId;return ()=>{if(generationTaskId===taskId)generationTaskId='';};
+      }finally{handoffPending--;}
     },
     async releaseRuntimes(){await api.stop();return releaseRuntimes();},
     stop(){if(stopPromise)return stopPromise;stopping=true;activeAbort?.abort();
-      stopPromise=(async()=>{await Promise.all([inFlight?.catch(()=>{}),Promise.resolve(legacyApi?.stop?.())]);
+      stopPromise=(async()=>{await chatResidency.close({cancel:true}).catch(()=>{});
+        await Promise.all([inFlight?.catch(()=>{}),Promise.resolve(legacyApi?.stop?.())]);
         for(const ownerToken of [...ownedOperations]){const result=await lifecycle.unload({ownerToken});if(result?.released!==true || result?.ok===false)throw Error('Flash 进程退出尚未确认');}
-        cleanupFault=false;lastError='';if(config)session=makeSession();return {released:true};
+        chatResidency.resetAfterRelease();cleanupFault=false;lastError='';if(config)session=makeSession();return {released:true,resourcesReleased:true};
       })().catch(error=>{cleanupFault=true;lastError='Flash 资源尚未确认释放';throw error;}).finally(()=>{stopping=false;stopPromise=null;});return stopPromise;
     }
   };

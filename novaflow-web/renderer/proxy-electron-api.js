@@ -14,6 +14,7 @@
     typeof existingApi.promptAssistantGetStatus === 'function' &&
     typeof existingApi.promptAssistantOptimizePrompt === 'function' &&
     typeof existingApi.promptAssistantReverseImagePrompt === 'function'
+  const hasArtAgent = typeof existingApi.artAgentChat === 'function' && typeof existingApi.artAgentStop === 'function'
   const hasSmartAi =
     typeof existingApi.smartAiPromptOptimize === 'function' &&
     typeof existingApi.smartAiImageReverse === 'function'
@@ -34,6 +35,7 @@
     hasLicenseApi &&
     hasRuntimeShortcuts &&
     hasPromptAssistant &&
+    hasArtAgent &&
     hasSmartAi &&
     hasClientAuth &&
     hasAiSequenceLora &&
@@ -253,6 +255,8 @@
   const promptAssistantReverseImagePrompt = existingApi.promptAssistantReverseImagePrompt || ((payload) => (
     promptAssistantRequest('/reverse-image-prompt', payload)
   ))
+  const artAgentChat = existingApi.artAgentChat || ((payload) => promptAssistantRequest('/art-agent-chat', payload))
+  const artAgentStop = existingApi.artAgentStop || ((payload) => promptAssistantRequest('/art-agent-stop', payload))
   const aiSequenceLoraRequest = async (action, payload) => {
     try {
       const res = await fetch(AI_SEQUENCE_LORA_ENDPOINT, {
@@ -400,6 +404,8 @@
     promptAssistantGetStatus,
     promptAssistantOptimizePrompt,
     promptAssistantReverseImagePrompt,
+    artAgentChat,
+    artAgentStop,
     qwenLoraCatalog,
     minimaxH3LoraCatalog,
     minimaxH3LoraValidate,

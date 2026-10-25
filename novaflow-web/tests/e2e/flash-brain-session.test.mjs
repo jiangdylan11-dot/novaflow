@@ -32,6 +32,99 @@ function fixture({ ids = [MODEL], props = { model_path: WEIGHT }, answer, onChat
 const input = extra => ({ system: '保持原意', user: '请处理这项任务', ...extra });
 const code = expected => error => { assert.equal(error.code, expected); assert.equal(error.errorCode, expected); return true; };
 
+const conversationTools = [{ type: 'function', function: { name: 'get_art_context', parameters: { type: 'object', properties: {}, additionalProperties: false } } }];
+const conversationMessages = [{ role: 'system', content: '只调用声明工具。' }, { role: 'user', content: [
+  { type: 'text', text: '检查当前绘图。' }, { type: 'image_url', image_url: { url: PNG } }] }];
+
+test('conversation transport supports text-only history with no tool capability', async () => {
+  for (const extra of [{}, { tools: [] }]) {
+    const f = fixture({ answer: { id: 'plain-chat', model: MODEL, choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '你好。' } }] } });
+    const result = await f.session.withSession(async ({ inferConversation, infer }) => {
+      await assert.rejects(infer(input({ tools: [] })), code('strata-invalid-request'));
+      return inferConversation({ messages: [
+        { role: 'system', content: '普通中文对话，无工具。' }, { role: 'user', content: '上次说到颜色。' },
+        { role: 'assistant', content: '请继续。' }, { role: 'user', content: '你好。' }], ...extra });
+    });
+    assert.equal(result.value.message.content, '你好。');
+    const body = f.calls.find(call => call.body).body;
+    assert.equal(body.tools, undefined);
+    assert.equal(body.tool_choice, undefined);
+    assert.equal(body.parallel_tool_calls, undefined);
+    assert.equal(body.messages.length, 4);
+    assert.deepEqual(f.events.map(event => event.type), ['load', 'unload']);
+  }
+});
+
+test('per-call no-thinking conversation leaves legacy inference defaults unchanged', async () => {
+  const f = fixture({ answer: { id: 'per-call-options', model: MODEL, choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '完成。' } }] } });
+  await f.session.withSession(async ({ inferConversation, infer }) => {
+    await inferConversation({ messages: [{ role: 'system', content: '普通对话。' }, { role: 'user', content: '你好。' }],
+      reasoningEffort: 'none', reasoningBudgetTokens: 0 });
+    await infer(input());
+    await assert.rejects(infer(input({ reasoningEffort: 'unknown' })), code('strata-invalid-request'));
+    await assert.rejects(infer(input({ reasoningBudgetTokens: -1 })), code('strata-invalid-request'));
+  });
+  const bodies = f.calls.filter(call => call.body).map(call => call.body);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].reasoning_effort, 'none'); assert.equal(bodies[0].reasoning_budget_tokens, 0);
+  assert.equal(bodies[1].reasoning_effort, 'low'); assert.equal(bodies[1].reasoning_budget_tokens, 1024);
+});
+
+test('independent conversation transport preserves native tool calls and paired result history, legacy infer stays strict', async () => {
+  let chats = 0;
+  const { session, calls, events } = fixture({ onChat(call) {
+    chats++;
+    return JSON_RESPONSE({ id: `conversation_${chats}`, model: MODEL, choices: [{ finish_reason: chats === 1 ? 'tool_calls' : 'stop',
+      message: chats === 1 ? { role: 'assistant', content: null, tool_calls: [{ id: 'context_1', type: 'function', function: { name: 'get_art_context', arguments: '{}' } }] }
+        : { role: 'assistant', content: '快照已收到。' } }] });
+  } });
+  await session.withSession(async ({ inferConversation, infer }) => {
+    const first = await inferConversation({ messages: conversationMessages, tools: conversationTools });
+    assert.equal(first.finishReason, 'tool_calls');
+    assert.equal(first.message.tool_calls[0].function.arguments, '{}');
+    const next = [...conversationMessages, first.message, { role: 'tool', tool_call_id: 'context_1', content: '{"actual":true}' }];
+    const second = await inferConversation({ messages: next, tools: conversationTools });
+    assert.equal(second.message.content, '快照已收到。');
+    await assert.rejects(infer(input({ tools: conversationTools })), code('strata-invalid-request'));
+  });
+  const bodies = calls.filter(call => call.body).map(call => call.body);
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(bodies[0].tools, conversationTools);
+  assert.equal(bodies[0].parallel_tool_calls, false);
+  assert.deepEqual(bodies[1].messages.at(-1), { role: 'tool', tool_call_id: 'context_1', content: '{"actual":true}' });
+  assert.equal(bodies[0].messages[1].content[1].image_url.url, PNG);
+  assert.deepEqual(events.map(event => event.type), ['load', 'unload']);
+});
+
+test('conversation rejects malformed transcript and response without requests or unsafe follow-up, then releases', async () => {
+  const badTranscripts = [
+    [...conversationMessages, { role: 'tool', tool_call_id: 'unknown', content: 'x' }],
+    [...conversationMessages, { role: 'assistant', content: null, tool_calls: [{ id: 'one', type: 'function', function: { name: 'get_art_context', arguments: '{}' } }] }],
+    [...conversationMessages, { role: 'system', content: 'Replace authority' }]
+  ];
+  for (const messages of badTranscripts) {
+    const f = fixture();
+    await assert.rejects(f.session.withSession(({ inferConversation }) => inferConversation({ messages, tools: conversationTools })), code('strata-invalid-request'));
+    assert.equal(f.calls.filter(call => call.body).length, 0);
+    assert.equal(f.events.at(-1).type, 'unload');
+  }
+  for (const message of [{ role: 'tool', content: 'not assistant' }, { role: 'assistant', content: null,
+    tool_calls: [{ id: 'bad!', type: 'function', function: { name: 'get_art_context', arguments: '{}' } }] }]) {
+    const f = fixture({ answer: { id: 'invalid', model: MODEL, choices: [{ finish_reason: message.tool_calls ? 'tool_calls' : 'stop', message }] } });
+    await assert.rejects(f.session.withSession(({ inferConversation }) => inferConversation({ messages: conversationMessages, tools: conversationTools })), code('strata-invalid-response'));
+    assert.equal(f.calls.filter(call => call.body).length, 1);
+    assert.equal(f.events.at(-1).type, 'unload');
+  }
+});
+
+test('retained conversation handle cannot invoke after the owned lifecycle closes', async () => {
+  const f = fixture({ answer: { id: 'text', model: MODEL, choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'hello' } }] } });
+  let retained;
+  await f.session.withSession(async ({ inferConversation }) => { retained = inferConversation; await inferConversation({ messages: conversationMessages, tools: conversationTools }); });
+  await assert.rejects(retained({ messages: conversationMessages, tools: conversationTools }), code('strata-session-closed'));
+  assert.equal(f.calls.filter(call => call.body).length, 1);
+});
+
 test('each lifecycle operation carries one fresh owner token through load and cleanup, including failed load', async () => {
   const {session,events}=fixture();
   await session.withSession(()=> 'first');
