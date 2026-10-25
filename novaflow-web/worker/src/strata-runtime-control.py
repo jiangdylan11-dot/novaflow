@@ -363,6 +363,36 @@ def remaining_identities(identities, settings=None):
     return remaining
 
 
+def remaining_released_identities(owner):
+    """Read-only stale-receipt check; never grants ownership of a reused PID."""
+    children = owner.receipt.get("children")
+    if owner.receipt.get("state") != "released" or not isinstance(children, list):
+        raise ControlError("ownership-mismatch", "Released receipt identities are invalid")
+    identities = [owner.receipt["http"], *children]
+    for item in identities:
+        if (not isinstance(item, dict) or type(item.get("pid")) is not int or item["pid"] <= 0
+                or type(item.get("createTime")) not in (int, float)
+                or not math.isfinite(item["createTime"]) or item["createTime"] <= 0
+                or not isinstance(item.get("exe"), str) or not Path(item["exe"]).is_absolute()):
+            raise ControlError("ownership-mismatch", "Released receipt identities are invalid")
+    remaining = []
+    for item in identities:
+        try:
+            actual = process_identity(psutil.Process(item["pid"]), include_cmdline=False)
+        except psutil.NoSuchProcess:
+            continue
+        except (psutil.AccessDenied, OSError) as error:
+            raise ControlError("ownership-unconfirmed", "Cannot inspect a released process identity") from error
+        if not math.isfinite(actual["createTime"]) or actual["createTime"] <= 0:
+            raise ControlError("ownership-unconfirmed", "Cannot confirm a released process creation time")
+        if abs(actual["createTime"] - item["createTime"]) > 0.001:
+            continue  # The old instance ended; do not inspect children or signal the new one.
+        if actual["exe"] != canonical(item["exe"]):
+            raise ControlError("ownership-mismatch", "Released PID executable changed without a new creation time")
+        remaining.append(item)
+    return remaining
+
+
 def wait_dead(identities, seconds, settings=None):
     deadline = time.monotonic() + seconds
     while True:
@@ -511,14 +541,18 @@ def _load_owned(settings, timeout=220):
     settings.preflight_load()
     if Path(settings.receipt).exists():
         owner = Owner.read(settings)
-        if owner.parent() is not None:
-            raise ControlError("runtime-busy", "An owned Strata HTTP instance already exists; unload it first")
-        if foreign_owner_result(settings, owner.receipt) is not None:
-            if (remaining_identities([owner.receipt["http"], *owner.receipt.get("children", [])], settings)
-                    or port_open(settings) or exact_heavy_processes(settings) or Path(settings.ready).exists()):
-                raise ControlError("runtime-busy", "A different operation still owns runtime resources; nothing was changed")
+        if owner.receipt.get("state") == "released":
+            if remaining_released_identities(owner):
+                raise ControlError("runtime-busy", "A released runtime instance is still alive; nothing was changed")
         else:
-            _unload_owned(settings, min(30, timeout))
+            if owner.parent() is not None:
+                raise ControlError("runtime-busy", "An owned Strata HTTP instance already exists; unload it first")
+            if foreign_owner_result(settings, owner.receipt) is not None:
+                if (remaining_identities([owner.receipt["http"], *owner.receipt.get("children", [])], settings)
+                        or port_open(settings) or exact_heavy_processes(settings) or Path(settings.ready).exists()):
+                    raise ControlError("runtime-busy", "A different operation still owns runtime resources; nothing was changed")
+            else:
+                _unload_owned(settings, min(30, timeout))
     if port_open(settings) or exact_heavy_processes(settings):
         raise ControlError("runtime-busy", "The isolated port or engine path is already in use; nothing was killed")
     if Path(settings.ready).exists():

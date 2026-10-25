@@ -446,6 +446,119 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(CONTROL.unload(a, .5)["released"])
         self.assertFalse(any(item.alive for item in self.processes.values()))
 
+    def load_probe_from_receipt(self, state="released"):
+        owner = self.owner()
+        owner.receipt.update(state=state, ownerToken="operation-A-token")
+        owner.save()
+        settings = CONTROL.Settings(self.root / "main.json", owner_token="operation-B-token")
+        self.patch(settings, "preflight_load", lambda: None)
+        self.patch(CONTROL, "port_open", lambda settings: False)
+        self.patch(CONTROL, "exact_heavy_processes", lambda settings: [])
+        launch = mock.Mock(side_effect=RuntimeError("CPU launch boundary reached"))
+        self.patch(CONTROL.subprocess, "Popen", launch)
+        for process in self.processes.values():
+            process.alive = False
+        return owner, settings, launch
+
+    def test_released_reused_http_and_child_can_reach_launch_without_any_signal(self):
+        owner, settings, launch = self.load_probe_from_receipt()
+        before = Path(settings.receipt).read_bytes()
+        replacements = []
+        for identity in [owner.receipt["http"], *owner.receipt["children"]]:
+            reused = FakeProcess(identity["pid"], str(self.root / "unrelated-node.exe"), ["unrelated"], born=identity["createTime"] + 100)
+            self.processes[reused.pid] = reused
+            replacements.append(reused)
+        with self.assertRaisesRegex(RuntimeError, "CPU launch boundary reached"):
+            CONTROL.load(settings, .1)
+        launch.assert_called_once()
+        self.assertEqual(Path(settings.receipt).read_bytes(), before)
+        self.assertTrue(all(process.alive and not process.signals for process in replacements))
+
+    def test_released_same_http_or_child_identity_still_alive_blocks_load(self):
+        owner, settings, launch = self.load_probe_from_receipt()
+        for process in [self.parent, self.child, self.vision]:
+            with self.subTest(pid=process.pid):
+                process.alive = True
+                with self.assertRaises(CONTROL.ControlError) as failure:
+                    CONTROL.load(settings, .1)
+                self.assertEqual(failure.exception.code, "runtime-busy")
+                process.alive = False
+        launch.assert_not_called()
+        self.assertFalse(any(process.signals for process in self.processes.values()))
+
+    def test_released_unreadable_identity_blocks_load_without_signal(self):
+        owner, settings, launch = self.load_probe_from_receipt()
+        for process in [self.parent, self.child]:
+            for query in ["create_time", "exe"]:
+                with self.subTest(pid=process.pid, query=query):
+                    process.alive = True
+                    with mock.patch.object(process, query, side_effect=CONTROL.psutil.AccessDenied(process.pid)):
+                        with self.assertRaises(CONTROL.ControlError) as failure:
+                            CONTROL.load(settings, .1)
+                    self.assertEqual(failure.exception.code, "ownership-unconfirmed")
+                    process.alive = False
+        launch.assert_not_called()
+        self.assertFalse(any(process.signals for process in self.processes.values()))
+
+    def test_released_invalid_identity_or_same_time_changed_exe_blocks_load(self):
+        owner, settings, launch = self.load_probe_from_receipt()
+        original = copy.deepcopy(owner.receipt)
+        for field, value in [("pid", -1), ("createTime", float("nan")), ("exe", "relative.exe")]:
+            with self.subTest(field=field):
+                owner.receipt = copy.deepcopy(original)
+                owner.receipt["children"][0][field] = value
+                owner.save()
+                with self.assertRaises(CONTROL.ControlError) as failure:
+                    CONTROL.load(settings, .1)
+                self.assertEqual(failure.exception.code, "ownership-mismatch")
+        owner.receipt = original
+        owner.save()
+        self.child.alive = True
+        self.child.path = str(self.root / "different.exe")
+        with self.assertRaises(CONTROL.ControlError) as failure:
+            CONTROL.load(settings, .1)
+        self.assertEqual(failure.exception.code, "ownership-mismatch")
+        launch.assert_not_called()
+        self.assertFalse(any(process.signals for process in self.processes.values()))
+
+    def test_active_and_releasing_reused_pids_still_refused_before_launch(self):
+        owner, settings, launch = self.load_probe_from_receipt()
+        for state in ["loaded", "releasing"]:
+            owner.receipt["state"] = state
+            owner.save()
+            for identity in [owner.receipt["http"], owner.receipt["children"][0]]:
+                with self.subTest(state=state, pid=identity["pid"]):
+                    reused = FakeProcess(identity["pid"], str(self.root / "unrelated-node.exe"), ["unrelated"], born=identity["createTime"] + 100)
+                    self.processes[reused.pid] = reused
+                    with self.assertRaises(CONTROL.ControlError) as failure:
+                        CONTROL.load(settings, .1)
+                    self.assertEqual(failure.exception.code, "ownership-mismatch")
+                    self.assertFalse(reused.signals)
+                    reused.alive = False
+        launch.assert_not_called()
+
+    def test_released_receipt_still_respects_config_port_heavy_and_ready_guards(self):
+        owner, settings, launch = self.load_probe_from_receipt()
+        before = copy.deepcopy(owner.receipt)
+        owner.receipt["serverConfigPath"] = str(self.root / "foreign.json")
+        owner.save()
+        with self.assertRaises(CONTROL.ControlError):
+            CONTROL.load(settings, .1)
+        owner.receipt = before
+        owner.save()
+        for guard in ["port_open", "exact_heavy_processes"]:
+            with self.subTest(guard=guard), mock.patch.object(CONTROL, guard, return_value=True):
+                with self.assertRaises(CONTROL.ControlError) as failure:
+                    CONTROL.load(settings, .1)
+                self.assertEqual(failure.exception.code, "runtime-busy")
+        CONTROL.atomic_json(settings.ready, {"pid": 999})
+        with self.assertRaises(CONTROL.ControlError) as failure:
+            CONTROL.load(settings, .1)
+        self.assertEqual(failure.exception.code, "ready-ownership-unconfirmed")
+        self.assertTrue(Path(settings.ready).exists())
+        launch.assert_not_called()
+        self.assertFalse(any(process.signals for process in self.processes.values()))
+
     def test_owner_token_partial_load_failure_still_cleans_own_tree(self):
         self.settings.owner_token = "operation-A-token"
         self.settings.legacy_diagnostic = False
