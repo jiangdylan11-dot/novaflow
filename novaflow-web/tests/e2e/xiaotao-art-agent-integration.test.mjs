@@ -33,7 +33,8 @@ function fixture({releaseError=false,waitForAbort=false}={}){
           if(round===1)return native('get_art_context',{},'call-context');
           const observed=JSON.parse(input.messages.findLast(message=>message.role==='tool').content);
           return native('propose_art_direction',{contextFingerprint:observed.contextFingerprint,
-            prompt:'Redraw <image1> with the drawn form language of <image2>.',explanation:'只调整绘画塑造，保留光影。'},'call-proposal');
+            prompt:'Redraw <image1> with the drawn form language of <image2>.',sourceContent:'A woman holds a coffee in an airport.',
+            renderingClass:'anime',explanation:'只调整绘画塑造，保留光影。'},'call-proposal');
         }});
         assert.equal(value.data.proposal.resourcesReleased,undefined,'model/tool cannot grant handoff credentials');
         if(releaseError)throw Object.assign(Error('release pending'),{errorCode:'strata-release-unconfirmed'});
@@ -53,6 +54,8 @@ test('Agent proposal becomes generation-ready only after release and retains raw
   assert.deepEqual(reply.data.toolTrace.map(call=>call.name),['get_art_context','propose_art_direction']);
   assert.equal(assistant.status().artDirectionProtocol.version,'art-direction-v1');
   assert.equal(assistant.status().artDirectionProtocol.systemSHA256,'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be');
+  assert.equal(reply.data.proposal.styleProtocol.version,'agent-style-director-v1');
+  assert.deepEqual(assistant.status().artAgent.styleProtocol,reply.data.proposal.styleProtocol);
 });
 
 test('unconfirmed release withholds the entire Agent proposal and blocks generation',async()=>{

@@ -63,6 +63,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
           if (req.method === 'GET' && action === 'status') return json(200, promptAssistant.status());
           if (req.method === 'POST' && action === 'optimize-prompt') return json(200, await promptAssistant.optimizePrompt(body));
           if (req.method === 'POST' && action === 'reverse-image-prompt') return json(200, await promptAssistant.reverseImagePrompt(body));
+          if (req.method === 'POST' && action === 'cancel-request') return json(200, await promptAssistant.cancelRequest(body));
           if (req.method === 'POST' && action === 'describe-art-style') return json(200, await promptAssistant.describeArtStyle(body));
           if (req.method === 'POST' && action === 'art-agent-chat') return json(200, await promptAssistant.artAgentChat(body));
           if (req.method === 'POST' && action === 'art-agent-stop') return json(200, await promptAssistant.artAgentStop(body));

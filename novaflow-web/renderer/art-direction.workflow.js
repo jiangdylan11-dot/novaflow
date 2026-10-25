@@ -249,21 +249,31 @@
       if (signal.aborted) throw abortError();
       analysisImages.push({ dataUrl: originalImages?r.dataUrl:await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
-    const payload = { surface: 'art', purpose: 'art-director', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
+    const requestId=analysisRequestId();
+    const payload = { requestId, surface: 'art', purpose: 'art-director', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
       negativePrompt: source.negativePrompt, nsfw: source.nsfw, supportsNegativePrompt: false,
       artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
       images: analysisImages };
     if(originalImages&&new TextEncoder().encode(JSON.stringify(payload)).byteLength>24*1024*1024)throw new Error('完整参考图分析请求超过24MB，请减少图片数量或先缩小图片；本次未压缩或截断提交');
     const fn = source.engine === 'grok' ? api.smartAiImageReverse : api.promptAssistantReverseImagePrompt;
     if (typeof fn !== 'function') throw new Error('所选绘图分析线路未就绪');
-    let cancel;
-    const stopped = new Promise((_, reject) => { cancel = () => reject(abortError()); signal.addEventListener('abort', cancel, { once: true }); });
+    if(signal.aborted)throw abortError();
+    let cancel,dispatched=false;
+    const stopped = new Promise((_, reject) => { cancel = () => {if(dispatched&&source.engine==='local')cancelLocalAnalysis(api,requestId);reject(abortError());}; signal.addEventListener('abort', cancel, { once: true }); });
     try {
+      dispatched=true;
       const result=validate(unwrap(await Promise.race([fn.call(api, payload), stopped])),source);
       return result;
     }
     catch(error){if(error?.name==='SyntaxError')throw new Error(source.engine==='grok'?'当前 Grok 服务未返回绘图参考分析协议；本次未提交生成，请更新服务或切换本地分析':'绘图分析返回格式无效，本次未提交生成，请重试');throw error;}
     finally { signal.removeEventListener('abort', cancel); }
+  }
+
+  function analysisRequestId(){return `art-direction-${root.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`}`;}
+  function cancelLocalAnalysis(api,requestId){
+    // Cancel only this page's exact request. Dropping a Promise.race waiter does
+    // not stop the local model or release its generation handoff lease.
+    try {Promise.resolve(api?.promptAssistantCancelRequest?.({requestId})).catch(()=>{});} catch {}
   }
 
   function image(url) {
@@ -689,13 +699,16 @@
         actualUses.get(ref.sourceNumber).push({role:ref.role,target:ref.target,...(ref.renderingProfile?{renderingProfile:ref.renderingProfile}:{}),...(ref.donorExclusions?.length?{forbiddenDonorContent:ref.donorExclusions}:{}),...(ref.role==='subject'?{retainedContent:retainedContent(planContent(ref,prepared.plan),source,prepared.references),retainedExpression:retainedExpression(ref,source)}:{})});
       }
       const contract={styleBoundary:'主体提供辨识特征与主要内容：主要动作、服饰类别、持有物与场景类型仍可辨认。造型比例、轮廓、衣褶、背景安排和具体细节允许整体重构，成图质量与协调氛围优先，无需逐处对应原照片。五官构建、线条、上色、质感、整体配色、肤色色层和照明都以风格参考为准。必须比较目标参考的色相、饱和度与冷暖层次；原照片的暖棕色不能覆盖目标配色。不能替换成供体人物或供体服饰、场景物件；精灵耳、叶饰、露肤程度不是画风，其缺失绝不能判错或要求补入。用户明确保留要求或独立参考职责优先',task:source.task,rendering:TASK_BRIEFS[source.task]||TASK_BRIEFS.auto,references:[...actualUses].map(([source,uses])=>({source,uses}))};
-      const payload={surface:'art',purpose:'art-director-review',visualSchema:'nf.art.review.v1',currentPrompt:source.prompt,nsfw:source.nsfw,
+      const requestId=analysisRequestId();
+      const payload={requestId,surface:'art',purpose:'art-director-review',visualSchema:'nf.art.review.v1',currentPrompt:source.prompt,nsfw:source.nsfw,
         artContext:{task:source.task,references:originals.map(r=>({source:r.source,role:r.role})),plan:contract},images};
       const fn=source.engine==='grok'?root.electronAPI?.smartAiImageReverse:root.electronAPI?.promptAssistantReverseImagePrompt;
-      const stopped=new Promise((_,reject)=>{stop=()=>reject(abortError());current.signal.addEventListener('abort',stop,{once:true});});
+      let dispatched=false;
+      const stopped=new Promise((_,reject)=>{stop=()=>{if(dispatched&&source.engine==='local')cancelLocalAnalysis(root.electronAPI,requestId);reject(abortError());};current.signal.addEventListener('abort',stop,{once:true});});
       let response;
       for(let attempt=0;attempt<4;attempt++){
         if(current.signal.aborted)throw abortError();prepared.assertCurrent();
+        dispatched=true;
         response=await Promise.race([fn.call(root.electronAPI,payload),stopped]);
         if(source.engine!=='local'||response?.ok!==false||!['runtime-generation-busy','prompt-assistant-busy'].includes(response.errorCode)||attempt===3)break;
         onProgress('正在等待本地生成结束交接，再检查成图…');
@@ -721,12 +734,16 @@
     } finally {if(stop)current.signal.removeEventListener('abort',stop);if(controller===current)controller=null;}
   }
   function cancelPreparation(){if(!controller)return false;controller.abort();return true;}
-  function controls(create,state,refresh) {
-    const row=create('div',{className:'nf-art-direction-controls'});
-    const titles={direct:'不调用提示词分析模型；使用原始提示词和完整参考图直接生图',local:'使用本地 Flash 理解需求与参考，自动整理生图指令',grok:'使用云端 Grok 理解参考并检查成图，会使用现有 Grok 分析次数'};
-    for(const [value,label]of [['direct','无AI'],['local','本地AI'],['grok','云端AI']])row.appendChild(create('button',{type:'button',title:titles[value],'data-active':engine(state)===value?'1':'0','aria-pressed':engine(state)===value?'true':'false',text:label,onclick:()=>{state.drawingAnalysisEngine=value;try{root.localStorage.setItem('novaflow.drawing.analysis.v2',value);}catch{}refresh();}}));
-    return row;
+  async function selectManual(state){
+    cancelPreparation();
+    state.drawingAnalysisEngine='direct';
+    try{root.localStorage.setItem('novaflow.drawing.analysis.v2','direct');}catch{}
+    const cancelled=await root.__NovaFlowArtGenerate?.cancelPromptAnalysis?.();
+    if(cancelled?.ok===false)throw new Error(cancelled.error||'提示词分析尚未确认中止');
   }
+  // AI requests now live in Xiaotao. Preserve the mount point without leaving
+  // hidden local/cloud analysis active behind the ordinary Generate button.
+  function controls(create){return create('div',{className:'nf-art-direction-controls'});}
   function analysisControl(create,state) {
     return null;
   }
@@ -747,5 +764,5 @@
     if(!written||!same({...written.source,engine:source.engine},source))return {};
     return generationOptions({references:written.order,referencePolicy:written.policy,turboGuidance:written.turboGuidance,nativeExecution:written.nativeExecution});
   }
-  root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,controls,analysisControl,referenceControl,generationOptions,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
+  root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,selectManual,controls,analysisControl,referenceControl,generationOptions,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
 })(typeof window!=='undefined'?window:globalThis);

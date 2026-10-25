@@ -9,7 +9,7 @@ import { createFlashBrainSession } from './flash-brain-session.mjs';
 import { isFlashBrainConfigured } from './flash-brain-configuration.mjs';
 import { audioFlashMessages, cleanAudioCaption } from './comfy/audio-reprompt.mjs';
 import { isFlashArtDirectionRequest, planFlashArtDirection, FLASH_ART_SYSTEM_SHA256 } from './flash-art-direction.mjs';
-import { createFlashArtAgent, FLASH_ART_AGENT_TOOLS } from './flash-art-agent.mjs';
+import { createFlashArtAgent, FLASH_ART_AGENT_TOOLS, FLASH_ART_AGENT_STYLE_VERSION, FLASH_ART_AGENT_PARENT_SYSTEM_SHA256, FLASH_ART_AGENT_SYSTEM_SHA256 } from './flash-art-agent.mjs';
 import { createFlashChatResidency } from './flash-chat-residency.mjs';
 
 export function strataConfigPath(runtimeJsonPath) {
@@ -83,6 +83,14 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
   } : undefined;
   const artAgent=createFlashArtAgent();
   let lease=null,inFlight=null,activeAbort=null,lastError='',lastTiming=null,cleanupFault=false,stopping=false,stopPromise=null,generationTaskId='',handoffPending=0;
+  const cancelledPromptRequests=new Map();
+  const cancellablePromptMethods=new Set(['optimizePrompt','reverseImagePrompt','describeArtStyle']);
+  const promptRequestId=payload=>typeof payload?.requestId==='string' && payload.requestId.length<=160 ? payload.requestId : '';
+  function promptRequestCancelled(payload) {
+    const now=Date.now();for(const [id,until] of cancelledPromptRequests)if(until<now)cancelledPromptRequests.delete(id);
+    return cancelledPromptRequests.has(promptRequestId(payload));
+  }
+  const cancelledPromptReply=()=>({ok:false,errorCode:'prompt-assistant-cancelled',error:'本次提示词分析已取消'});
   let chatResidency;
   const configured=()=>Boolean(config && (suppliedLifecycle || isFlashBrainConfigured(config)));
   const makeSession=()=>sessionFactory({baseUrl:config?.baseUrl || 'http://127.0.0.1:8198',expectedModel:config?.expectedModel,
@@ -94,7 +102,8 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',
     artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
-    artAgent:{version:'xiaotao-art-agent-v2',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation'],tools:FLASH_ART_AGENT_TOOLS.map(tool=>tool.function.name),supportsFeedbackImages:true},
+    artAgent:{version:'xiaotao-art-agent-v2',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation'],tools:FLASH_ART_AGENT_TOOLS.map(tool=>tool.function.name),supportsFeedbackImages:true,
+      styleProtocol:{version:FLASH_ART_AGENT_STYLE_VERSION,parentSystemSHA256:FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256}},
     chatSession,modelLoaded:chatSession.modelLoaded,
     modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || chatSession.state==='releasing'?'释放中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
   const blocked=()=>({ok:false,errorCode:cleanupFault?'strata-release-unconfirmed':'prompt-assistant-stopping',error:cleanupFault?'Flash 资源尚未确认释放，请先释放显存后重试':'本地 AI 正在释放资源'});
@@ -168,6 +177,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     }finally{clearInterval(cancelTimer);finishLease(ticket);}
   }
   async function run(method,payload={},context={}) {
+    if(cancellablePromptMethods.has(method) && promptRequestCancelled(payload))return cancelledPromptReply();
     if(stopping || cleanupFault)return blocked();
     if(!configured() || !session)return unavailable();
     if(method==='rewriteAudioPrompt' && !String(payload.input || '').trim())return {ok:false,error:'请先输入音频描述',errorCode:'invalid-request'};
@@ -177,9 +187,11 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
       catch(error) { return {ok:false,error:String(error.message || error),errorCode:error.errorCode || error.code || 'flash-agent-invalid-input',analysisBackend:'strata'}; }
     }
     try{await closeChatForHandoff();}catch(error){lastError=String(error.message || error);cleanupFault=true;return blocked();}
+    if(cancellablePromptMethods.has(method) && promptRequestCancelled(payload))return cancelledPromptReply();
     if(stopping || cleanupFault)return blocked();
     if(lease || (generationTaskId && generationTaskId!==context.taskId))return {ok:false,errorCode:'prompt-assistant-busy',error:'本地 AI 或生成任务正在执行，请等待完成'};
     const ticket=claimLease(method,payload);const abort=new AbortController();activeAbort=abort;
+    logger('flash local brain started',{method,requestId:promptRequestId(payload),surface:payload.surface || '',purpose:payload.purpose || ''});
     const cancelTimer=setInterval(()=>{if(context.isCancelled?.())abort.abort();},150);cancelTimer.unref?.();
     let stopGuard=()=>{};
     // Cancel the CPU client too: an abandoned protocol process must never send
@@ -248,6 +260,17 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     optimizePrompt:payload=>execute('optimizePrompt',payload),reverseImagePrompt:payload=>execute('reverseImagePrompt',payload),
     describeArtStyle:payload=>execute('describeArtStyle',payload),rewriteAudioPrompt:payload=>execute('rewriteAudioPrompt',payload),
     artAgentChat:payload=>execute('artAgentChat',payload),
+    cancelRequest(payload={}) {
+      const requestId=promptRequestId(payload);
+      if(!requestId)return Promise.resolve({ok:false,errorCode:'invalid-request',error:'缺少要取消的提示词分析请求'});
+      if(lease?.requestId===requestId && !cancellablePromptMethods.has(lease.method))return Promise.resolve({ok:false,errorCode:'prompt-request-not-current',error:'未停止其他任务'});
+      // A cancellation may overtake the original HTTP request. Remember this
+      // exact ID so a delayed request cannot load Flash after switching to 无AI.
+      cancelledPromptRequests.set(requestId,Date.now()+16*60*1000);
+      while(cancelledPromptRequests.size>256)cancelledPromptRequests.delete(cancelledPromptRequests.keys().next().value);
+      if(!lease || lease.requestId!==requestId)return Promise.resolve({ok:true,cancelled:true,matched:false});
+      return api.stop().then(result=>({ok:true,cancelled:true,matched:true,...result}));
+    },
     artAgentStop(payload={}) {
       if(lease?.residentChat || !lease && chatResidency.getStatus().state!=='cold')return chatResidency.cancel(payload.requestId)
         .then(async result=>{if(result.released)await inFlight;return {ok:result.ok!==false,...result};});

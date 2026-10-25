@@ -1,0 +1,129 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
+import { createFlashBrainSession } from '../../worker/src/flash-brain-session.mjs';
+import { createFlashArtAgent, computeArtAgentFingerprint, FLASH_ART_AGENT_TOOLS, FLASH_CREATION_AGENT_TOOLS,
+  FLASH_ART_AGENT_SYSTEM, FLASH_ART_AGENT_STYLE_VERSION, FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,
+  FLASH_ART_AGENT_SYSTEM_SHA256 } from '../../worker/src/flash-art-agent.mjs';
+import { FLASH_ART_SYSTEM, FLASH_ART_SYSTEM_SHA256 } from '../../worker/src/flash-art-direction.mjs';
+
+// CPU-only protocol acceptance. These fixtures do not establish visual quality.
+const MODEL = 'swift-style-fixture', WEIGHT = 'E:/models/swift-style-fixture.gguf';
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+const rawPrompt = '  Repaint the source content in <image1> in the illustrated form and lighting language of <image2>.\nKeep the original subject and scene recognizable.  ';
+const sourceContent = 'The source subject remains in the original recognizable scene.';
+const code = expected => error => { assert.equal(error.code, expected); return true; };
+function payload(extra = {}) {
+  const value = { requestId:randomUUID(),mode:'drawing',message:'请按图2画风重绘图1并生成一张',history:[],
+    artContext:{provider:'local',engine:'qwen-2.1',nsfw:false,mode:'img2img',prompt:'original prompt',negativePrompt:'  keep my negative\nexactly  ',
+      width:1280,height:960,cfg:3,steps:8,seed:54792256,referenceRoles:['subject','style']},
+    images:[{role:'subject',dataUrl:PNG},{role:'style',dataUrl:PNG}],...extra };
+  value.contextFingerprint = computeArtAgentFingerprint(value); return value;
+}
+const argsFor = request => ({contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'按参考的造型、光影和材质绘制。',sourceContent,renderingClass:'anime'});
+const tool = (name,args) => ({role:'assistant',content:null,tool_calls:[{id:'final_style_tool',type:'function',function:{name,arguments:JSON.stringify(args)}}]});
+function fixture(message, {unload = async () => ({ok:true,released:true})} = {}) {
+  const calls=[],events=[];
+  const session=createFlashBrainSession({expectedModel:{ids:[MODEL],paths:[WEIGHT]},
+    lifecycle:{async load(){events.push('load');return {ok:true};},async unload(){events.push('unload');return unload();}},
+    fetchImpl:async(url,init)=>{
+      const json=value=>new Response(JSON.stringify(value));
+      if(url.endsWith('/v1/models'))return json({data:[{id:MODEL}]});
+      if(url.endsWith('/props'))return json({model_path:WEIGHT});
+      assert.ok(url.endsWith('/v1/chat/completions'));calls.push(JSON.parse(init.body));
+      assert.equal(calls.length,1,'No context round, duplicate director or implicit retry is allowed');
+      return json({model:MODEL,id:'style_request_1',choices:[{finish_reason:message.tool_calls?'tool_calls':'stop',message}]});
+    }});
+  return {session,calls,events};
+}
+async function invoke(agent,f,request) {
+  const prepared=agent.preflight(request);
+  return f.session.withSession(flash=>agent.run({payload:prepared,flash}));
+}
+
+test('drawing inherits the entire formal director body and records a distinct native-tool contract hash',()=>{
+  const body=FLASH_ART_SYSTEM.slice(0,FLASH_ART_SYSTEM.lastIndexOf('Return ONLY JSON:'));
+  assert.ok(body.length>4000);
+  assert.equal(FLASH_ART_AGENT_SYSTEM.slice(0,body.length),body);
+  assert.equal(FLASH_ART_AGENT_SYSTEM.includes('Return ONLY JSON:'),false);
+  assert.equal(FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,FLASH_ART_SYSTEM_SHA256);
+  assert.equal(FLASH_ART_AGENT_STYLE_VERSION,'agent-style-director-v1');
+  assert.equal(FLASH_ART_AGENT_SYSTEM_SHA256,createHash('sha256').update(FLASH_ART_AGENT_SYSTEM).digest('hex'));
+  assert.notEqual(FLASH_ART_AGENT_SYSTEM_SHA256,FLASH_ART_SYSTEM_SHA256);
+  for(const tool of FLASH_ART_AGENT_TOOLS.filter(t=>t.function.name!=='get_art_context')) {
+    assert.ok(tool.function.parameters.required.includes('sourceContent'));
+    assert.ok(tool.function.parameters.required.includes('renderingClass'));
+    assert.deepEqual(tool.function.parameters.properties.renderingClass.enum,['anime','animated-3d','painterly','other']);
+  }
+  for(const tool of FLASH_CREATION_AGENT_TOOLS.filter(t=>t.function.name!=='get_art_context')) {
+    assert.equal(tool.function.parameters.required.includes('sourceContent'),false);
+    assert.equal(tool.function.parameters.properties.renderingClass,undefined);
+  }
+});
+
+test('verified drawing snapshot permits one direct native final tool without another context or producer round',async()=>{
+  for(const [name,action,message] of [['propose_art_direction','prompt','只给我完整提示词，先不要生成'],
+    ['apply_art_direction','apply','请把提示词写到提示框里'],['generate_art_image','generate','请按图2画风重绘图1并生成一张']]) {
+    const request=payload({message}),f=fixture(tool(name,argsFor(request)));
+    const data=(await invoke(createFlashArtAgent(),f,request)).value;
+    assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);
+    assert.deepEqual(data.toolTrace.map(step=>step.name),[name]);assert.deepEqual(data.promptIds,['style_request_1']);
+    assert.equal(data.proposal.action,action);assert.equal(data.proposal.prompt,rawPrompt);
+    assert.equal(data.proposal.sourceContent,sourceContent);assert.equal(data.proposal.renderingClass,'anime');
+    assert.deepEqual(data.proposal.styleProtocol,data.styleProtocol);
+    assert.deepEqual(data.styleProtocol,{version:'agent-style-director-v1',parentSystemSHA256:FLASH_ART_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256});
+    assert.equal(data.proposal.cfg,3);assert.equal(data.proposal.negativePrompt,request.artContext.negativePrompt);
+    assert.equal(data.proposal.resourcesReleased,undefined);
+    const content=f.calls[0].messages.at(-1).content,observed=JSON.parse(content[0].text);
+    assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,request.artContext);
+    assert.equal(observed.verifiedDrawingSnapshot.contextFingerprint,request.contextFingerprint);
+    assert.deepEqual(observed.verifiedDrawingSnapshot.capabilities,{prompt:true,applyPrompt:true,generateOneImage:true,baseModelUnchanged:true,generationPasses:1,cfg:3});
+    assert.deepEqual(observed.styleProtocol,data.styleProtocol);
+    assert.deepEqual(content.filter(i=>i.type==='image_url').map(i=>i.image_url.url),request.images.map(i=>i.dataUrl));
+  }
+});
+
+test('direct correction reads the complete third result only as diagnosis and keeps two generation inputs',async()=>{
+  const request=payload({message:'这张结果头发太写实，按画风参考重新绘制并生成一张',
+    images:[{role:'subject',dataUrl:PNG},{role:'style',dataUrl:PNG},{role:'result',dataUrl:PNG}]}),f=fixture(tool('generate_art_image',argsFor(request)));
+  const data=(await invoke(createFlashArtAgent(),f,request)).value;
+  assert.equal(f.calls.length,1);
+  const content=f.calls[0].messages.at(-1).content,observed=JSON.parse(content[0].text);
+  assert.deepEqual(content.filter(i=>i.type==='image_url').map(i=>i.image_url.url),[PNG,PNG,PNG]);
+  assert.deepEqual(observed.feedbackImage,{image:'<image3>',role:'diagnostic-result-only',generationInput:false});
+  assert.equal(observed.suppliedImageRoles[2].role,'result');
+  assert.equal(observed.suppliedImageRoles[2].sha256,createHash('sha256').update(Buffer.from(PNG.split(',')[1],'base64')).digest('hex'));
+  assert.deepEqual(data.proposal.sourceOrder,[1,2]);assert.equal(data.proposal.prompt.includes('<image3>'),false);
+  const invalid=fixture(tool('generate_art_image',{...argsFor(request),prompt:'Use <image1> as content, <image2> as style and <image3> as another reference.'}));
+  await assert.rejects(invoke(createFlashArtAgent(),invalid,request),code('flash-agent-invalid-proposal'));
+  assert.equal(invalid.calls.length,1);
+});
+
+test('direct style tools reject missing director evidence, forged snapshot and model identity without retries',async()=>{
+  const request=payload();
+  for(const mutate of [a=>{delete a.sourceContent;},a=>{a.sourceContent=' ';},a=>{a.sourceContent='x'.repeat(3001);},
+    a=>{delete a.renderingClass;},a=>{a.renderingClass='photography';},a=>{a.extra='shell';}]) {
+    const args=argsFor(request);mutate(args);const f=fixture(tool('generate_art_image',args));
+    await assert.rejects(invoke(createFlashArtAgent(),f,request),code('flash-agent-invalid-proposal'));
+    assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);
+  }
+  await assert.rejects(createFlashArtAgent().run({payload:request,flash:{identity:{id:MODEL},async inferConversation(){
+    return {model:'another-model',requestId:'bad-model-response',finishReason:'tool_calls',message:tool('generate_art_image',argsFor(request))};
+  }}}),code('flash-agent-identity-mismatch'));
+  const stale=fixture(tool('generate_art_image',{...argsFor(request),contextFingerprint:'f'.repeat(64)}));
+  await assert.rejects(invoke(createFlashArtAgent(),stale,request),code('flash-agent-stale-context'));assert.equal(stale.calls.length,1);
+});
+
+test('drawing discussion retains shared art direction without inventing execution from reply text',async()=>{
+  const request=payload({message:'先不要生成，解释参考的绘画方法有什么不同？'}),f=fixture({role:'assistant',content:'参考用整束头发和概括的鼻部阴影；这一轮只解释，没有写入或生成。'});
+  const data=(await invoke(createFlashArtAgent(),f,request)).value;
+  assert.equal(data.proposal,undefined);assert.deepEqual(data.toolTrace,[]);assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].messages[0].content,FLASH_ART_AGENT_SYSTEM);
+});
+
+test('one-call style handoff still cannot grant its own release credentials',async()=>{
+  const request=payload(),f=fixture(tool('generate_art_image',argsFor(request)),{unload:async()=>({released:false})});
+  await assert.rejects(invoke(createFlashArtAgent(),f,request),code('strata-release-unconfirmed'));
+  assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);
+  assert.equal(f.session.getStatus().generationReady,false);
+});

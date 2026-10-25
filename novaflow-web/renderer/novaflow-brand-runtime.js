@@ -84719,8 +84719,38 @@
     ART_GENERATE_STATE.status = text;
   }
 
+  let artGeneratePromptAssistantRequest = null;
+  function beginArtGeneratePromptAssistantRequest(token) {
+    const requestId = `art-helper-${window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    artGeneratePromptAssistantRequest = { requestId, token };
+    return requestId;
+  }
+  async function cancelArtGeneratePromptAnalysis() {
+    const owned = artGeneratePromptAssistantRequest;
+    if (!owned) return { ok: true, cancelled: false };
+    if (!owned.invalidated) {
+      owned.invalidated = true;
+      ART_GENERATE_STATE.promptAssistantToken += 1;
+      ART_GENERATE_STATE.promptAssistantRunning = "";
+      ART_GENERATE_STATE.promptAssistantError = "";
+    }
+    if (owned.cancelPromise) return owned.cancelPromise;
+    const cancel = window.electronAPI?.promptAssistantCancelRequest;
+    if (typeof cancel !== "function") return { ok: false, error: "当前启动助手不支持中止这次提示词分析，请更新启动助手" };
+    owned.cancelPromise = (async () => {
+      try {
+        const result = await cancel.call(window.electronAPI, { requestId: owned.requestId });
+        if (result?.ok === true && artGeneratePromptAssistantRequest === owned) artGeneratePromptAssistantRequest = null;
+        return result;
+      } catch (error) { return { ok: false, error: String(error?.message || error) }; }
+      finally { owned.cancelPromise = null; }
+    })();
+    return owned.cancelPromise;
+  }
+
   function finishArtGeneratePromptAssistant(token) {
     if (ART_GENERATE_STATE.promptAssistantToken !== token) return false;
+    if (artGeneratePromptAssistantRequest?.token === token) artGeneratePromptAssistantRequest = null;
     ART_GENERATE_STATE.promptAssistantRunning = "";
     ART_GENERATE_STATE.status = "";
     ART_GENERATE_STATE.error = "";
@@ -84750,6 +84780,7 @@
     const negativeProtection = protectAiAnimationResourceMentions(ART_GENERATE_STATE.negativePrompt || "");
     const token = ART_GENERATE_STATE.promptAssistantToken + 1;
     ART_GENERATE_STATE.promptAssistantToken = token;
+    const requestId = beginArtGeneratePromptAssistantRequest(token);
     ART_GENERATE_STATE.promptAssistantRunning = "optimize";
     ART_GENERATE_STATE.promptAssistantError = "";
     ART_GENERATE_STATE.error = "";
@@ -84763,6 +84794,7 @@
         nsfw: !!ART_GENERATE_STATE.nsfw
       });
       const result = await api.promptAssistantOptimizePrompt({
+        requestId,
         prompt: promptProtection.text,
         negativePrompt: negativeProtection.text,
         requirements: qualityProfile?.directorInstruction || "",
@@ -84802,6 +84834,7 @@
       finishArtGeneratePromptAssistant(token);
     } catch (error) {
       if (ART_GENERATE_STATE.promptAssistantToken !== token) return;
+      if (artGeneratePromptAssistantRequest?.token === token) artGeneratePromptAssistantRequest = null;
       ART_GENERATE_STATE.promptAssistantRunning = "";
       armArtGenerateRouteHold(1600);
       setArtGeneratePromptAssistantError(error && error.message || error || "AI\u4f18\u5316\u5931\u8d25");
@@ -84913,6 +84946,7 @@
     if (!selected.length) throw new Error("\u8bf7\u5148\u6dfb\u52a0\u53c2\u8003\u56fe");
     const token = ART_GENERATE_STATE.promptAssistantToken + 1;
     ART_GENERATE_STATE.promptAssistantToken = token;
+    const requestId = beginArtGeneratePromptAssistantRequest(token);
     ART_GENERATE_STATE.promptAssistantRunning = "reverse";
     ART_GENERATE_STATE.promptAssistantError = "";
     ART_GENERATE_STATE.error = "";
@@ -84922,6 +84956,7 @@
       const requestedVisualV2 = selected.length === 1;
       const analysisNsfw = requestedVisualV2 ? true : !!ART_GENERATE_STATE.nsfw;
       const result = await api.promptAssistantReverseImagePrompt({
+        requestId,
         images: selected,
         purpose: "static-image-reverse",
         ...(requestedVisualV2 ? { visualSchema: "nf.visual.v2", nsfw: analysisNsfw } : {})
@@ -84967,6 +85002,7 @@
       if (warning) showTopbarExportAvailabilityNotice(warning);
     } catch (error) {
       if (ART_GENERATE_STATE.promptAssistantToken !== token) return;
+      if (artGeneratePromptAssistantRequest?.token === token) artGeneratePromptAssistantRequest = null;
       ART_GENERATE_STATE.promptAssistantRunning = "";
       armArtGenerateRouteHold(1600);
       setArtGeneratePromptAssistantError(error && error.message || error || "AI\u53cd\u63a8\u5931\u8d25");
@@ -86208,6 +86244,11 @@
       }
     }
     if (!options.uiPrepared && !options.drawingPrepared && getCurrentContext().generationSurface === 'drawing') {
+      const direction = window.NovaFlowArtDirection;
+      try {
+        if (!direction?.selectManual) throw new Error('绘图组件未加载，请刷新页面');
+        await direction.selectManual(ART_GENERATE_STATE);
+      } catch (error) { setArtGenerateStatus(String(error?.message || error), true); return; }
       captureArtGeneratePromptSnapshot();
       ART_GENERATE_STATE.running = true;
       try {
@@ -86697,6 +86738,7 @@
         generationSurface: document.body?.classList.contains('novaflow-primary-target-art') ? window.NovaFlowUiDesignDrawing?.isActive?.() ? 'ui' : 'drawing' : 'other' }),
       selectedResult: selectedArtGenerateResult,
       cancel: cancelArtGenerateRun,
+      cancelPromptAnalysis: cancelArtGeneratePromptAnalysis,
       stageAgentPrepared(prepared) {
         if (ART_GENERATE_STATE.running || typeof prepared?.assertCurrent !== 'function') throw new Error('当前无法应用绘图建议');
         prepared.assertCurrent();

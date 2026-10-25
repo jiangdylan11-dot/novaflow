@@ -9,6 +9,7 @@ import { createFlashArtAgent, computeArtAgentFingerprint, canonicalArtAgentJSON,
 const MODEL = 'swift-agent-fixture', WEIGHT = 'E:/models/swift-fixture.gguf';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
 const rawPrompt = '  Use <image1> for the airport subject and <image2> for its drawn form language.\nDesign cool environmental light and layered painted shadows.  ';
+const sourceContent = 'The source subject remains in the original recognizable scene.';
 function payload(extra = {}) {
   const value = { requestId: randomUUID(), message: '头发太写实，请按参考的发束和画法重绘', history: [],
     artContext: { provider: 'local', engine: 'qwen-2.1', nsfw: false, mode: 'img2img', prompt: 'original prompt', negativePrompt: '  keep my negative\nexactly  ',
@@ -19,6 +20,10 @@ function payload(extra = {}) {
 }
 const chatPayload = (extra = {}) => ({ requestId: randomUUID(), mode: 'chat', message: '你好，可以帮我讨论一下配色吗？', history: [], ...extra });
 function tool(name, args, id = 'call_1') {
+  // Default valid style evidence for legacy two-round fixtures; creation tools
+  // retain their previous schema and raw strings bypass these fixture defaults.
+  if (typeof args !== 'string' && args?.prompt !== undefined && args.generationMode === undefined)
+    args = {sourceContent,renderingClass:'anime',...args};
   return { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) } }] };
 }
 function fixture(answers, { unload = async () => ({ ok: true, released: true }), audit } = {}) {
@@ -216,10 +221,10 @@ test('general scene proposal keeps its real content and does not inject an airpo
   assert.equal(/airport|机场/i.test(JSON.stringify(f.calls)), false);
 });
 
-test('missing snapshot lookup, malformed or excess arguments and duplicate calls fail and release', async () => {
+test('stale snapshot, malformed or excess arguments and duplicate calls fail and release', async () => {
   const request = payload();
   const cases = [
-    { responses: [tool('propose_art_direction', { contextFingerprint: request.contextFingerprint, prompt: rawPrompt, explanation: 'x' })], code: 'flash-agent-stale-context' },
+    { responses: [tool('propose_art_direction', { contextFingerprint: '0'.repeat(64), prompt: rawPrompt, explanation: 'x' })], code: 'flash-agent-stale-context' },
     { responses: [tool('get_art_context', '{broken')], code: 'flash-agent-invalid-tool-call' },
     { responses: [tool('get_art_context', { command: 'shell' })], code: 'flash-agent-invalid-tool-call' },
     { responses: [tool('get_art_context', {}), tool('get_art_context', {}, 'call_1')], code: 'flash-agent-invalid-tool-call' },
@@ -318,7 +323,7 @@ test('missing conversation ID can restore bounded text history but never restore
   const stale = payload({ conversationId: result.conversationId, history: [] });
   assert.throws(() => agent.preflight(stale), code('flash-agent-stale-history'));
   const fakePriorTool = fixture([tool('propose_art_direction', {
-    contextFingerprint: request.contextFingerprint, prompt: rawPrompt, explanation: 'x' })]);
+    contextFingerprint: '0'.repeat(64), prompt: rawPrompt, explanation: 'x' })]);
   await assert.rejects(invoke(createFlashArtAgent(), fakePriorTool, payload({ history })), code('flash-agent-stale-context'));
 });
 

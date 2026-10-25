@@ -186,6 +186,7 @@
   // and, for H3, look at a dozen frames, hence the long wait.
   const PROMPT_ASSISTANT_REFUSAL = '提示词助手在 Web 版通过智能 AI 提供';
   const PROMPT_ASSISTANT_TIMEOUT_MS = 16 * 60 * 1000;
+  const pooledPromptRequests = new Map();
   async function localPromptAssistant(action, payload) {
     if (computeMode === 'local') {
       try { return await localControl('POST', '/local/prompt-assistant/' + action, payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS); }
@@ -198,7 +199,13 @@
     catch (error) { return { ok: false, error: String(error.message || error) }; }
   }
   async function pooledPromptAssistant(action, payload) {
+    const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
+    const owned = { taskId:'', cancelled:false };
+    if (requestId) pooledPromptRequests.set(requestId, owned);
+    const check = () => { if (owned.cancelled) throw new Error('本次提示词分析已取消'); };
+    try {
     const caps = await control('GET', '/api/web/capabilities');
+    check();
     const type = (caps && caps.taskTypes || []).find((t) => t.task_type === 'prompt_assistant');
     if (!type || !(type.available_workers > 0)) throw new Error(PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
     const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -208,9 +215,12 @@
       references: [{ name: 'request.json', kind: 'json', bytes: bytes.length }]
     });
     if (!created || !created.task) throw new Error((created && created.error) || '提示词任务创建失败');
+    owned.taskId = created.task.id;
     tasks.set(created.task.id, created.task);
     try {
+      check();
       await putTaskInput(created.task.id, 'request.json', bytes);
+      check();
     } catch (error) {
       // The browser has stopped waiting or could not upload; leave no queued
       // request for the worker to claim after the user has gone away.
@@ -219,7 +229,25 @@
     }
     const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS);
     const reply = await fetchTaskOutput(finished, 'result.json');
+    check();
     return JSON.parse(new TextDecoder().decode(reply));
+    } finally { if (requestId && pooledPromptRequests.get(requestId) === owned) pooledPromptRequests.delete(requestId); }
+  }
+  async function cancelPromptAssistantRequest(payload={}) {
+    const requestId=typeof payload.requestId==='string' && payload.requestId.length<=160 ? payload.requestId : '';
+    if (!requestId) return {ok:false,error:'缺少要取消的提示词分析请求'};
+    if (computeMode === 'local') {
+      try { return await localControl('POST','/local/prompt-assistant/cancel-request',{requestId},PROMPT_ASSISTANT_TIMEOUT_MS); }
+      catch(error) { return {ok:false,error:String(error.message || error)}; }
+    }
+    const owned=pooledPromptRequests.get(requestId);
+    if (!owned) return {ok:true,cancelled:true,matched:false};
+    owned.cancelled=true;
+    if (owned.taskId) {
+      try { await control('POST','/api/web/tasks/'+encodeURIComponent(owned.taskId)+'/cancel',{}); }
+      catch(error) { return {ok:false,error:String(error.message || error)}; }
+    }
+    return {ok:true,cancelled:true,matched:true};
   }
   async function waitForTaskEnd(taskId, timeoutMs) {
     const started = Date.now();
@@ -1266,6 +1294,7 @@
       return localPromptAssistant('reverse-image-prompt',{...payload,...scope});
     },
     promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
+    promptAssistantCancelRequest: async (payload) => cancelPromptAssistantRequest(payload),
     artAgentChat: async (payload) => payload?.provider === 'api' ? companionCloudChat(payload) : computeMode === 'local'
       ? localControl('POST', '/local/prompt-assistant/art-agent-chat', payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS)
           .catch(error => ({ ok: false, error: String(error.message || error) }))
