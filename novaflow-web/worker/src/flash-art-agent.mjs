@@ -83,7 +83,7 @@ export function prepareFlashArtAgentPayload(payload) {
   need(plain(payload) && typeof payload.message === 'string' && payload.message.trim()
     && payload.message.length <= 12000, 'flash-agent-invalid-input', '请输入绘图需求');
   need(payload.provider === undefined || payload.provider === 'local', 'flash-agent-unsupported-provider',
-    '本地小桃仅使用 Flash；小猴 API 对话必须通过已授权的云端聊天接口');
+    '本地智能仅使用 Flash；在线智能必须通过已授权的云端聊天接口');
   need(typeof payload.requestId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.requestId),
     'flash-agent-invalid-request-id', '绘图请求编号无效');
   need(payload.mode === undefined || ['chat', 'drawing'].includes(payload.mode), 'flash-agent-invalid-input', '小桃对话模式无效');

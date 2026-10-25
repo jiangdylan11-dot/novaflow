@@ -110,7 +110,7 @@ test('formal UI whole-source subject/background pair enters frozen v1 once inste
   assert.equal(legacyCalls,1,'an independent pose responsibility must keep its existing planner');
 });
 
-test('Small Monkey uses the authenticated existing text gateway without sending images or local credentials',async()=>{
+test('Xiaotao online intelligence uses the authenticated text gateway without sending images or local credentials',async()=>{
   const source=await readFile(new URL('../../renderer/novaflow-web-runtime.js',import.meta.url),'utf8'),requests=[];
   const storage=new Map([['novaflow.client.auth.session.v1',JSON.stringify({session:{token:'fixture-account-token'}})]]);
   const sandbox=createDomSandbox({Response,Request,Blob,FormData,AbortSignal,AbortController,Event,
@@ -118,15 +118,16 @@ test('Small Monkey uses the authenticated existing text gateway without sending 
     localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},
     NOVAFLOW_WEB_CONFIG:{localAssistant:false,authUrl:'https://auth.test',controlUrl:'https://control.test'},
     fetch:async(url,init)=>{requests.push({url:String(url),init});return Response.json({ok:true,quota:{remaining_count:9},
-      grok:{result:{model:'cloud-fixture',choices:[{finish_reason:'stop',message:{role:'assistant',content:'你好，我是小猴。'}}]}}});}});
+      grok:{result:{model:'cloud-fixture',choices:[{finish_reason:'stop',message:{role:'assistant',content:'你好，我是小桃AI。'}}]}}});}});
   runInContext(source,createContext(sandbox));
   const payload={provider:'api',mode:'chat',requestId:'cloud-request-1234',message:'你好',history:[],artContext:{surface:'drawing',prompt:'a painting',unrelatedSecret:'must not send'}};
   const reply=await sandbox.electronAPI.artAgentChat(payload);
-  assert.equal(reply.ok,true);assert.equal(reply.data.reply,'你好，我是小猴。');assert.equal(reply.data.proposal,undefined);
+  assert.equal(reply.ok,true);assert.equal(reply.data.reply,'你好，我是小桃AI。');assert.equal(reply.data.proposal,undefined);
   assert.equal(reply.data.capabilities.textOnly,true);assert.equal(reply.data.quota.remaining_count,9);
   const call=requests.at(-1);assert.equal(call.url,'https://auth.test/api/provider/grok/chat');
   assert.equal(call.init.headers.Authorization,'Bearer fixture-account-token');assert.equal(call.init.headers['x-novaflow-local'],undefined);
   const body=JSON.parse(call.init.body);assert.equal(body.messages.at(-1).content.includes('must not send'),false);
+  assert.match(body.messages[0].content,/你是 NovaFlow 的小桃AI/);assert(!body.messages[0].content.includes('小猴'));
   assert.equal(JSON.stringify(body).includes('data:image'),false);
   const before=requests.length;
   assert.equal((await sandbox.electronAPI.artAgentChat({...payload,requestId:'cloud-images-1234',images:[{dataUrl:PNG}]})).ok,false);

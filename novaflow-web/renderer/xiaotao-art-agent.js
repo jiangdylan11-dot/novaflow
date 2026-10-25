@@ -224,9 +224,11 @@
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
     try {
       const saved = JSON.parse(storage?.getItem(STORAGE_KEY) || 'null');
-      if (saved) {if (saved.sessions) Object.assign(sessions, saved.sessions); else sessions.local = saved; state.provider = saved.provider === 'api' ? 'api' : 'local';}
+      if (saved) {if (saved.sessions) Object.assign(sessions, saved.sessions); else sessions.local = saved;}
       for (const item of Object.values(sessions)) item.messages = (item.messages || []).filter(m => ['user','assistant'].includes(m.role) && typeof m.content === 'string').slice(-40);
-      Object.assign(state, sessions[state.provider]);
+      const previousProvider = saved?.provider === 'api' ? 'api' : 'local';
+      Object.assign(state, sessions[previousProvider]);
+      if (previousProvider !== state.provider) state.conversationId = '';
     } catch {}
     function notify() {
       sessions[state.provider] = {messages:state.messages.slice(-60),history:state.history,conversationId:state.conversationId};
@@ -278,13 +280,16 @@
     async function send(message, {includeResult = false} = {}) {
       if (state.pending || state.generating || state.applying) return false;
       message = String(message || '').trim(); if (!message) return false;
+      if (/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) {reset(); return true;}
+      if (!includeResult && !/(?:不要|不用|别|无需|不必).*(?:评价|评估|点评|分析|检查|看看)/.test(message)) includeResult = /(?:评价|评估|点评|分析|检查|看看|看一下|看下).{0,10}(?:当前|这张|本次|刚生成|最新).{0,6}(?:成图|出图|结果|图片|图)|(?:当前|这张|本次|刚生成|最新).{0,6}(?:成图|出图|结果|图片|图).{0,10}(?:怎么样|如何|问题|不足|评价|评估|点评|分析|检查)/.test(message);
       const operation = ++serial; stopped = false; state.error = ''; bridge.clearPrepared(); state.proposal = null; state.proposalSnapshot = null; state.applied = false;
       try {
         let snapshot, mode = 'chat';
         if (state.provider === 'local') {try {snapshot = bridge.capture({includeResult}); mode = 'drawing';} catch (error) {if (includeResult) throw error;}}
         if (!snapshot) snapshot = bridge.captureChat();
         activeSnapshot = snapshot; activeMode = mode; state.mode = mode; state.pending = true;
-        state.status = includeResult ? '正在查看实际成图…' : state.provider === 'api' ? '小猴正在连接API并回答…' : '正在连接本地助手…';
+        if (includeResult && state.provider === 'api') fail('在线智能当前只支持文字对话；请切换本地智能查看实际成图');
+        state.status = includeResult ? '正在查看实际成图…' : state.provider === 'api' ? '小桃正在连接在线智能…' : '正在连接本地助手…';
         state.messages.push({role:'user', content:message}); notify();
         const contextFingerprint = mode === 'drawing' ? await fingerprint(snapshot) : undefined; if (operation !== serial || stopped) return false;
         activeRequest = root.crypto.randomUUID();
@@ -312,7 +317,7 @@
     async function stop() {
       if (state.generating) {state.status = '正在停止生成…'; notify(); await bridge.cancelGeneration(); return;}
       if (!state.pending || stopped) return;
-      stopped = true; stopStatusPolling(); const requestId = activeRequest; state.localSession = null; state.status = state.provider === 'api' ? '正在停止等待小猴回复…' : '正在停止小桃…'; notify();
+      stopped = true; stopStatusPolling(); const requestId = activeRequest; state.localSession = null; state.status = state.provider === 'api' ? '正在停止等待在线回复…' : '正在停止小桃…'; notify();
       try {if (requestId) {const result = await api()?.artAgentStop?.({requestId,provider:state.provider}); if (!result?.ok) fail(result?.error || '停止尚未确认，请等待当前任务退出');} ++serial; state.pending = false; activeRequest = ''; activeSnapshot = null; state.status = state.provider === 'api' ? '已停止等待本次回复；云端请求和计次可能已发生' : '已停止';}
       catch (error) {state.error = String(error?.message || error); state.status = '停止尚未确认';}
       notify();
@@ -332,11 +337,11 @@
       } catch (error) {state.error = String(error?.message || error); state.status = '未完成生成'; invalidate(); return false;}
       finally {state.generating = false; state.applying = false; notify();}
     }
-    function reset() {if (state.pending || state.generating || state.applying) return; ++serial; bridge.clearPrepared(); Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, error:'', toolTrace:[], status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify();}
+    function reset() {if (state.pending || state.generating || state.applying) return; ++serial; bridge.clearPrepared(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, error:'', toolTrace:[], status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify();}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying) return false;
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
-      Object.assign(state, sessions[provider], {provider,mode:'chat',proposal:null,proposalSnapshot:null,applied:false,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已选择小桃 · 本地 Flash' : '已选择小猴 · API，发送后检查连接'}); notify(); return true;
+      Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能' : '已切换在线智能 · 文字对话，每次计入云AI次数'}); notify(); return true;
     }
     return Object.freeze({state, send, apply, stop, reset, setProvider, refreshContext, calibrateLocalStatus});
   }
@@ -347,12 +352,10 @@
     const fab = el('button', 'nf-xiaotao-launcher nf-xiaotao-robot'); fab.type = 'button'; fab.setAttribute('aria-expanded', 'false'); fab.setAttribute('aria-controls', 'nf-xiaotao-art-panel');
     fab.innerHTML = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6v7M13 32H7v13h7m37-13h6v13h-7M23 54v5m18-5v5" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle class="nf-xiaotao-antenna" cx="32" cy="5" r="3"/><rect x="12" y="14" width="40" height="41" rx="14" fill="#3b3b3b" stroke="currentColor" stroke-width="2"/><rect x="18" y="23" width="28" height="20" rx="8" fill="#202020"/><g class="nf-xiaotao-eyes"><circle cx="25" cy="32" r="3"/><circle cx="39" cy="32" r="3"/></g><path d="M27 47h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
     const robotLabel = el('span', 'nf-xiaotao-robot-label', '小桃AI'), robotState = el('span', 'nf-xiaotao-robot-state', '待机'); fab.append(robotLabel, robotState);
-    const greeting = el('div', 'nf-xiaotao-greeting'), greetingClose = el('button', '', '×'); greeting.hidden = true; greeting.setAttribute('role','status'); greeting.append(el('span','','你好，我是您的智能管家，需要我帮助吗？'),greetingClose); greetingClose.type = 'button'; greetingClose.setAttribute('aria-label','关闭欢迎提示'); greetingClose.onclick = () => {greeting.hidden = true;};
-    const panel = el('aside', 'nf-xiaotao-panel'); panel.id = 'nf-xiaotao-art-panel'; panel.hidden = true; panel.setAttribute('aria-label', '智能管家对话');
-    const header = el('header', 'nf-xiaotao-header'), title = el('div'), titleText = el('strong','','智能管家'), model = el('small', '', '本地 Flash'), close = el('button', 'nf-xiaotao-icon', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭对话');
-    const provider = el('select','nf-xiaotao-provider'); provider.setAttribute('aria-label','选择智能助手');
-    for (const [value, text] of [['local','小桃 · 本地 Flash'],['api','小猴 · API']]) {const option = el('option','',text); option.value = value; provider.append(option);}
-    title.append(titleText, model); header.append(title, provider, close);
+    const greeting = el('div', 'nf-xiaotao-greeting'), greetingClose = el('button', '', '×'); greeting.hidden = true; greeting.setAttribute('role','status'); greeting.append(el('span','','你好，我是小桃AI，需要我帮助吗？'),greetingClose); greetingClose.type = 'button'; greetingClose.setAttribute('aria-label','关闭欢迎提示'); greetingClose.onclick = () => {greeting.hidden = true;};
+    const panel = el('aside', 'nf-xiaotao-panel'); panel.id = 'nf-xiaotao-art-panel'; panel.hidden = true; panel.setAttribute('aria-label', '小桃AI对话');
+    const header = el('header', 'nf-xiaotao-header'), title = el('div'), titleText = el('strong','','小桃AI'), model = el('small', '', '本地智能'), close = el('button', 'nf-xiaotao-icon', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭对话');
+    title.append(titleText, model); header.append(title, close);
     const context = el('div', 'nf-xiaotao-context'), contextLabel = el('span'), thumbs = el('div', 'nf-xiaotao-thumbs'); context.append(contextLabel, thumbs);
     const messages = el('div', 'nf-xiaotao-messages'); messages.setAttribute('role', 'log'); messages.setAttribute('aria-label', '绘图对话');
     const intro = el('p', 'nf-xiaotao-intro', '你好，有什么需要我帮忙的吗？没有参考图也可以聊天。在绘图页添加主体与画风双图后，小桃还能给出可应用的绘图建议。'); messages.append(intro);
@@ -361,7 +364,9 @@
     const tools = el('div', 'nf-xiaotao-tools');
     const status = el('div', 'nf-xiaotao-status'); status.setAttribute('role', 'status'); const error = el('p', 'nf-xiaotao-error'); error.setAttribute('role', 'alert');
     const footer = el('form', 'nf-xiaotao-compose'), input = el('textarea'); input.rows = 3; input.placeholder = '有什么需要我帮助的？'; input.setAttribute('aria-label', '给智能助手的消息');
-    const footerActions = el('div', 'nf-xiaotao-compose-actions'), reset = el('button', '', '新对话'), review = el('button', '', '评价当前成图'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送'); for (const b of [reset, review, stop]) b.type = 'button'; send.type = 'submit'; footerActions.append(reset, review, stop, send); footer.append(input, footerActions);
+    const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), localBrain = el('button', '', '本地智能'), onlineBrain = el('button', '', '在线智能'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送');
+    providers.setAttribute('role','group'); providers.setAttribute('aria-label','切换AI大脑');
+    for (const b of [localBrain, onlineBrain, stop]) b.type = 'button'; send.type = 'submit'; providers.append(localBrain, onlineBrain); footerActions.append(providers, stop, send); footer.append(input, footerActions);
     panel.append(header, context, messages, proposal, tools, status, error, footer); host.append(fab, greeting, panel); doc.body.append(host);
     const drag = bindPanelDrag(panel, header);
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onStart:() => {greeting.hidden = true;},onEnd:() => {if (open) anchorPanel();}});
@@ -370,29 +375,29 @@
     function render(state) {
       if (state.messages.length !== rendered.length || state.messages.some((m, i) => m !== rendered[i])) {rendered = state.messages.slice(); messages.replaceChildren(); if (!state.messages.length) messages.append(intro); for (const m of state.messages) {const bubble = el('div', 'nf-xiaotao-message nf-xiaotao-' + m.role); bubble.append(renderMessageMarkdown(doc, m.content)); if (m.imageUrl && /^data:image\//.test(m.imageUrl)) {const link = el('a'); link.href = m.imageUrl; link.target = '_blank'; link.rel = 'noopener'; const image = el('img'); image.src = m.imageUrl; image.alt = '本次实际成图，待评价'; link.append(image); bubble.append(link);} messages.append(bubble);} messages.scrollTop = messages.scrollHeight;}
       const warm = state.localSession?.state === 'warm' && state.localSession.modelLoaded === true;
-      model.textContent = state.provider === 'api' ? 'API · 文字对话 · 每次计入云AI次数' : warm ? '本地 Flash · 上次已就绪' : '本地 Flash'; provider.value = state.provider;
-      const name = state.provider === 'api' ? '小猴AI' : '小桃AI', activity = state.generating || state.applying ? 'working' : state.pending ? 'thinking' : 'idle';
-      fab.dataset.state = activity; robotLabel.textContent = name; robotState.textContent = activity === 'working' ? '工作中' : state.provider === 'local' && state.pending ? ({loading:'加载中',answering:'回答中',releasing:'释放中',warm:'准备回答'}[state.localSession?.state] || '连接中') : state.pending ? '回答中' : state.provider === 'local' && warm ? '上次已就绪' : '待机'; fab.setAttribute('aria-label',name+'智能管家，'+robotState.textContent+'，点击聊天，可拖动');
+      model.textContent = state.provider === 'api' ? '在线智能 · 文字对话 · 每次计入云AI次数' : warm ? '本地智能 · 上次已就绪' : '本地智能';
+      const activity = state.generating || state.applying ? 'working' : state.pending ? 'thinking' : 'idle';
+      fab.dataset.state = activity; robotState.textContent = activity === 'working' ? '工作中' : state.provider === 'local' && state.pending ? ({loading:'加载中',answering:'回答中',releasing:'释放中',warm:'准备回答'}[state.localSession?.state] || '连接中') : state.pending ? '回答中' : state.provider === 'local' && warm ? '上次已就绪' : '待机'; fab.setAttribute('aria-label','小桃AI，'+robotState.textContent+'，点击聊天，可拖动');
       tools.textContent = [...new Set(state.toolTrace.map(step => step.name === 'get_art_context' ? '已读取当前绘图' : step.name === 'propose_art_direction' ? '已整理绘图建议' : '').filter(Boolean))].join(' · ');
       status.textContent = state.status; error.textContent = state.error; error.hidden = !state.error; proposal.hidden = !state.proposal;
-      proposalText.textContent = state.proposal?.prompt || ''; const busy = state.pending || state.generating || state.applying; applyButton.disabled = busy || state.applied; generateButton.disabled = busy; send.disabled = busy; reset.disabled = busy; review.disabled = busy || state.provider === 'api'; review.title = state.provider === 'api' ? '小猴当前仅文字对话，不读取参考图或成图' : '使用当前实际成图进行按需评价'; stop.hidden = !state.pending && !state.generating; input.disabled = busy; provider.disabled = busy;
+      proposalText.textContent = state.proposal?.prompt || ''; const busy = state.pending || state.generating || state.applying; applyButton.disabled = busy || state.applied; generateButton.disabled = busy; send.disabled = busy; stop.hidden = !state.pending && !state.generating; input.disabled = busy;
+      for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) {button.disabled = busy; button.setAttribute('aria-pressed',String(state.provider === value));}
     }
     function anchorPanel() {
       const robot = fab.getBoundingClientRect(), box = panel.getBoundingClientRect(), size = {width:box.width,height:box.height};
       drag.place(anchoredPanelPosition(robot, size, {width:root.innerWidth,height:root.innerHeight}), size);
     }
     const setOpen = value => {open = value; greeting.hidden = true; panel.hidden = !value; fab.setAttribute('aria-expanded', String(value)); if (value) {anchorPanel(); tick(); void controller.calibrateLocalStatus(); input.focus();}};
-    fab.onclick = event => {if (robotDrag.consumeClick()) {event.preventDefault(); return;} setOpen(!open);}; close.onclick = () => setOpen(false); reset.onclick = () => controller.reset(); stop.onclick = () => void controller.stop(); applyButton.onclick = () => void controller.apply(); generateButton.onclick = () => void controller.apply({generate:true});
-    provider.onchange = () => {controller.setProvider(provider.value); contextStamp = ''; tick();};
+    fab.onclick = event => {if (robotDrag.consumeClick()) {event.preventDefault(); return;} setOpen(!open);}; close.onclick = () => setOpen(false); stop.onclick = () => void controller.stop(); applyButton.onclick = () => void controller.apply(); generateButton.onclick = () => void controller.apply({generate:true});
+    for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) button.onclick = () => {if (controller.setProvider(value)) {contextStamp = ''; tick(); if (value === 'local') void controller.calibrateLocalStatus(); input.focus();}};
     footer.onsubmit = event => {event.preventDefault(); const text = input.value; if (text.trim()) {input.value = ''; void controller.send(text);}};
     input.onkeydown = event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); footer.requestSubmit();}};
-    review.onclick = () => {const text = input.value.trim(); input.value = ''; void controller.send(text || '请根据原参考评价当前实际成图，说明可改善的地方，先不要自动生成。', {includeResult:true});};
     function tick() {
       if (drag.dragging() || robotDrag.dragging()) return;
       controller.refreshContext(); if (!open) return;
-      if (controller.state.provider === 'api') {contextLabel.textContent = '小猴当前仅文字对话，不会上传参考图。'; thumbs.replaceChildren(); previewImages = []; return;}
-      try {const snapshot = bridge.capture(), stamp = JSON.stringify(snapshot.artContext); if (stamp !== contextStamp || snapshot.images.some((img, i) => img.dataUrl !== previewImages[i])) {contextStamp = stamp; previewImages = snapshot.images.map(img => img.dataUrl); contextLabel.textContent = `当前绘图 · ${snapshot.artContext.width} × ${snapshot.artContext.height} · 原负向与手动参数保留`; thumbs.replaceChildren(); for (const ref of snapshot.images) {const item = el('span'), img = el('img'); img.src = ref.dataUrl; img.alt = ref.role === 'subject' ? '当前主体原图' : '当前完整画风参考'; item.append(img, el('small', '', `图${ref.source} · ${ref.role === 'subject' ? '主体' : '画风'}`)); thumbs.append(item);}} review.disabled = controller.state.pending || controller.state.generating || !root.__NovaFlowArtGenerate?.selectedResult?.()?.imageUrl;}
-      catch {const current = bridge.captureChat(); contextLabel.textContent = current.artContext.surface === 'drawing' ? '当前仅对话，尚未形成可生图双图上下文' : '普通对话 · 无需参考图'; if (previewImages.length) {thumbs.replaceChildren(); previewImages = [];} review.disabled = true;}
+      if (controller.state.provider === 'api') {contextLabel.textContent = '在线智能当前仅支持文字对话，不会上传参考图。'; thumbs.replaceChildren(); previewImages = []; return;}
+      try {const snapshot = bridge.capture(), stamp = JSON.stringify(snapshot.artContext); if (stamp !== contextStamp || snapshot.images.some((img, i) => img.dataUrl !== previewImages[i])) {contextStamp = stamp; previewImages = snapshot.images.map(img => img.dataUrl); contextLabel.textContent = `当前绘图 · ${snapshot.artContext.width} × ${snapshot.artContext.height} · 原负向与手动参数保留`; thumbs.replaceChildren(); for (const ref of snapshot.images) {const item = el('span'), img = el('img'); img.src = ref.dataUrl; img.alt = ref.role === 'subject' ? '当前主体原图' : '当前完整画风参考'; item.append(img, el('small', '', `图${ref.source} · ${ref.role === 'subject' ? '主体' : '画风'}`)); thumbs.append(item);}}}
+      catch {const current = bridge.captureChat(); contextLabel.textContent = current.artContext.surface === 'drawing' ? '当前仅对话，尚未形成可生图双图上下文' : '普通对话 · 无需参考图'; if (previewImages.length) {thumbs.replaceChildren(); previewImages = [];}}
     }
     let greetingCount = 0;
     function greet() {

@@ -223,12 +223,30 @@ test('same full source may preserve its airport background without being mistake
   const rejected = env(); rejected.refs[0].drawingRole = 'background'; assert.throws(() => rejected.bridge.capture(),/参考图用途/);
 });
 
-test('local incomplete drawing context is explicitly chat-only, while API sends no images and keeps separate history', async () => {
+test('one companion keeps text across brain switches without reusing provider conversation IDs or sending cloud images', async () => {
   const e = env(), payloads = []; e.refs.splice(0);
-  const controller = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async p => {payloads.push(plain(p)); return {ok:true,data:{mode:'chat',conversationId:p.provider+'-session',reply:'已回复',history:[{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
+  const controller = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async p => {payloads.push(plain(p)); return {ok:true,data:{mode:'chat',conversationId:p.provider+'-session',reply:'已回复',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
   await controller.send('本地聊聊'); assert.match(controller.state.status,/当前仅对话/); assert.equal(controller.state.conversationId,'local-session');
-  controller.setProvider('api'); await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.equal(Object.hasOwn(payloads[1],'images'),false); assert.equal(payloads[1].contextFingerprint,undefined);
-  controller.setProvider('local'); assert.equal(controller.state.conversationId,'local-session'); assert.equal(controller.state.history[0].content,'本地聊聊');
+  const messages = plain(controller.state.messages); controller.setProvider('api'); assert.deepEqual(plain(controller.state.messages),messages);
+  await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.equal(Object.hasOwn(payloads[1],'images'),false); assert.equal(payloads[1].contextFingerprint,undefined); assert.equal(payloads[1].conversationId,undefined); assert.equal(payloads[1].history[0].content,'本地聊聊');
+  controller.setProvider('local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.history[2].content,'API聊聊');
+  await controller.send('继续'); assert.equal(payloads[2].conversationId,undefined); assert.equal(payloads[2].history[2].content,'API聊聊');
+});
+
+test('opening defaults to local and retains latest text from an online archive without its backend identity', () => {
+  const e=env(), saved={provider:'api',sessions:{local:{messages:[],history:[],conversationId:'old-local'},api:{messages:[{role:'assistant',content:'最近的回复'}],history:[{role:'assistant',content:'最近的回复'}],conversationId:'online-session'}}};
+  const controller=e.api.createController({bridge:e.bridge,storage:{getItem:()=>JSON.stringify(saved)}});
+  assert.equal(controller.state.provider,'local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.messages[0].content,'最近的回复'); assert.equal(controller.state.history[0].content,'最近的回复');
+});
+
+test('review and new-conversation requests work through chat, while ordinary chat does not attach a result', async () => {
+  const e=env(), payloads=[]; e.state.results.unshift({id:'actual',imageUrl:png(25),name:'actual.png'});
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p)); return {ok:true,data:{reply:'已回复',conversationId:'local-session',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
+  await controller.send('评价当前成图'); assert.equal(payloads[0].images[2].role,'output'); assert.equal(payloads[0].images[2].dataUrl,png(25));
+  await controller.send('不要评价当前成图，只聊画风'); assert.equal(payloads[1].images.length,2);
+  controller.setProvider('api'); await controller.send('评价当前成图'); assert.equal(payloads.length,2); assert.match(controller.state.error,/在线智能当前只支持文字/);
+  await controller.send('新对话'); assert.equal(payloads.length,2); assert.equal(controller.state.messages.length,0); assert.equal(controller.state.history.length,0); assert.equal(controller.state.conversationId,'');
+  controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);
 });
 
 test('an unconfigured API shows an actual error and cancelling cloud wait does not claim to undo usage', async () => {

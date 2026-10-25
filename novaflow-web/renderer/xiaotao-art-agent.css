@@ -27,7 +27,6 @@
 .nf-xiaotao-panel { position:absolute; right:0; bottom:54px; width:min(390px,calc(100vw - 24px)); height:min(650px,calc(100vh - 110px)); max-height:calc(100dvh - 110px); display:flex; flex-direction:column; overflow:hidden; border:1px solid #555555; border-radius:15px; background:#222222; box-shadow:0 18px 64px #0007; }
 .nf-xiaotao-header { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:13px 12px 10px; border-bottom:1px solid #3e3e3e; cursor:grab; touch-action:none; user-select:none; }
 .nf-xiaotao-header > div { flex:1; min-width:0; }
-.nf-xiaotao-provider { max-width:135px; border:1px solid #5c5551; border-radius:7px; padding:6px 4px; color:#e7dfda; background:#333; font-family:inherit; font-size:11px; cursor:pointer; }
 .nf-xiaotao-header.nf-xiaotao-dragging { cursor:grabbing; }
 .nf-xiaotao-header strong { display:block; font-size:16px; color:#f2c6b9; }
 .nf-xiaotao-header small { color:#aaaaaa; font-size:11px; }
@@ -64,6 +63,9 @@
 .nf-xiaotao-compose textarea { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:64px; max-height:140px; border:1px solid #555555; border-radius:8px; background:#171717; color:#eeeeee; padding:9px 10px; }
 .nf-xiaotao-compose textarea::placeholder { color:#888888; }
 .nf-xiaotao-compose-actions { display:flex; gap:6px; align-items:center; margin-top:8px; }
+.nf-xiaotao-brains { display:flex; gap:3px; padding:3px; border:1px solid #494644; border-radius:8px; background:#1c1c1c; }
+#nf-xiaotao-art-root .nf-xiaotao-brains button { margin:0; border-color:transparent; background:transparent; color:#aaa5a2; }
+#nf-xiaotao-art-root .nf-xiaotao-brains button[aria-pressed="true"] { border-color:#8c6c5e; background:#493b35; color:#f1d0be; }
 #nf-xiaotao-art-root .nf-xiaotao-compose-actions button { font-size:11px; padding:5px 7px; }
 .nf-xiaotao-compose-actions button:last-child { margin-left:auto; }
 @media (max-width:600px) { #nf-xiaotao-art-root { right:12px; bottom:12px; } .nf-xiaotao-panel { width:min(390px,calc(100vw - 24px)); height:calc(100dvh - 95px); bottom:52px; } }
