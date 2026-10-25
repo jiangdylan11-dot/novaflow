@@ -5,15 +5,16 @@
  async function open(){
   if(document.getElementById(id))return;
   const dialog=node('dialog',null,'width:min(900px,92vw);max-height:85vh;background:#212121;color:#ddd;border:1px solid #555;border-radius:10px;padding:20px;font:13px/1.7 "Microsoft YaHei",sans-serif;overflow:auto');dialog.id=id;
-  const top=node('div',null,'display:flex;gap:12px;align-items:center'),title=node('h2','专业经验审核','font-size:17px;flex:1;margin:0'),close=node('button','关闭');top.append(title,close);dialog.append(top);
+  const top=node('div',null,'display:flex;gap:12px;align-items:center'),title=node('h2','专业经验审核','font-size:17px;flex:1;margin:0;color:#eee!important'),close=node('button','关闭');top.append(title,close);dialog.append(top);
   close.onclick=()=>{dialog.close();dialog.remove();};
   const note=node('p','正在读取待审清单…'),content=node('div'),actions=node('div',null,'display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:16px');dialog.append(note,content,actions);document.body.append(dialog);dialog.showModal();
   const button=(text,fn)=>{const e=node('button',text,'background:#333;color:#ddd;border:1px solid #666;border-radius:5px;padding:7px 12px;cursor:pointer');e.onclick=fn;return e;};
-  let report=null,selected=[],candidates=[];
+  let report=null,selected=[],candidates=[],chosenSkill='style-transfer';
   async function showReport(value){
    report=value;content.replaceChildren();actions.replaceChildren();
    if(!report){note.textContent='暂无通过基准的待发布批次。候选需要验证，不会自动发布。';
-    const [listing,history]=await Promise.all([api().artKnowledgeCandidates(),api().artKnowledgeReleases()]);candidates=listing.candidates||[];selected=candidates.filter(c=>c.positive_count>0&&!c.published_before).slice(0,20).map(c=>c.id);
+    const [listing,history]=await Promise.all([api().artKnowledgeCandidates(),api().artKnowledgeReleases()]);candidates=(listing.candidates||[]).filter(c=>c.scope?.skillId===chosenSkill);selected=candidates.filter(c=>c.positive_count>0&&!c.published_before).slice(0,20).map(c=>c.id);
+    const skills=node('select');skills.setAttribute('aria-label','待审核的专业技能');for(const [value,label] of [['style-transfer','画风迁移'],['image-creation','画面创作']]){const option=node('option',label);option.value=value;skills.append(option);}skills.value=chosenSkill;skills.onchange=()=>{chosenSkill=skills.value;void showReport(null);};content.append(skills);
     for(const c of candidates.slice(0,50)){const row=node('label',null,'display:block;border-bottom:1px solid #3c3c3c;padding:10px 0'),check=node('input');check.type='checkbox';check.checked=selected.includes(c.id);check.disabled=c.positive_count<1||c.published_before;
       check.onchange=()=>{selected=check.checked?[...selected,c.id]:selected.filter(id=>id!==c.id);};row.append(check,node('span',' '+c.method),node('small',` ${c.published_before?'历史已发布 · ':''}满意/采用 ${c.positive_count}；不满意/修改 ${c.negative_count}`,'display:block;color:#aaa'));content.append(row);}
     if(history.releases?.length){const versions=node('select');versions.setAttribute('aria-label','正式经验历史版本');for(const release of history.releases){const option=node('option',`${release.skill_id} / ${release.version}（${release.active?'当前':'历史'} · ${release.method_count} 条）`);option.value=release.skill_id+'@'+release.version;option.dataset.active=release.active?'true':'false';versions.append(option);}const rollback=button('回退到所选历史版本',async()=>{try{const [skillId,version]=versions.value.split('@');await api().artKnowledgeRollback({skillId,version});note.textContent='已切换到 '+version;await showReport(null);}catch(error){note.textContent='未回退：'+error.message;}});rollback.disabled=versions.selectedOptions[0]?.dataset.active==='true';versions.onchange=()=>{rollback.disabled=versions.selectedOptions[0]?.dataset.active==='true';};const versionRow=node('div',null,'display:flex;gap:10px;margin:12px 0;flex-wrap:wrap');versionRow.append(versions,rollback);content.prepend(versionRow);}
@@ -24,7 +25,7 @@
       if(benchmark.passed!==true||!Array.isArray(benchmark.cases)||benchmark.cases.length<1)throw Error('固定基准尚未通过，本次不发布');
       if(selected.length<1||selected.length>20)throw Error('每批请选择 1 至 20 条有正面证据的方法');
       const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
-      await showReport(await api().artKnowledgePrepare({skillId:'style-transfer',version:version.value.trim(),candidateIds:selected,validation:{passed:true,cases:benchmark.cases.length,benchmarkSHA256:hash}}));
+      await showReport(await api().artKnowledgePrepare({skillId:chosenSkill,version:version.value.trim(),candidateIds:selected,validation:{passed:true,cases:benchmark.cases.length,benchmarkSHA256:hash}}));
     }catch(error){note.textContent=error.message||'准备失败';}}));return;
    }
    const input=report.publishRequest;note.textContent=`等待本人确认：${report.baseVersion} → ${input.version}，本批 ${report.selected.length} 条；自动过滤 ${report.excluded.length} 条。`;
