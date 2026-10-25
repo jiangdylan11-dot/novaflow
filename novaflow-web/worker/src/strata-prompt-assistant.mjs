@@ -9,7 +9,7 @@ import { createFlashBrainSession } from './flash-brain-session.mjs';
 import { isFlashBrainConfigured } from './flash-brain-configuration.mjs';
 import { audioFlashMessages, cleanAudioCaption } from './comfy/audio-reprompt.mjs';
 import { isFlashArtDirectionRequest, planFlashArtDirection, FLASH_ART_SYSTEM_SHA256 } from './flash-art-direction.mjs';
-import { createFlashArtAgent } from './flash-art-agent.mjs';
+import { createFlashArtAgent, FLASH_ART_AGENT_TOOLS } from './flash-art-agent.mjs';
 import { createFlashChatResidency } from './flash-chat-residency.mjs';
 
 export function strataConfigPath(runtimeJsonPath) {
@@ -94,7 +94,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',
     artDirectionProtocol:{version:'art-direction-v1',systemSHA256:FLASH_ART_SYSTEM_SHA256},
-    artAgent:{version:'xiaotao-art-agent-v1',localOnly:true,maxModelRounds:3},
+    artAgent:{version:'xiaotao-art-agent-v2',localOnly:true,maxModelRounds:3,modes:['chat','drawing','creation'],tools:FLASH_ART_AGENT_TOOLS.map(tool=>tool.function.name),supportsFeedbackImages:true},
     chatSession,modelLoaded:chatSession.modelLoaded,
     modelPath:config?.modelFiles?.[0]?.path || config?.modelFiles?.[0] || '',runtimeStatus:cleanupFault?'模型释放失败':stopping || chatSession.state==='releasing'?'释放中':lease?'推理中':chatSession.state==='warm'?'聊天模型已加载，待机中':configured()?'模型可用':'未配置模型',error:lastError,timing:lastTiming};}
   const blocked=()=>({ok:false,errorCode:cleanupFault?'strata-release-unconfirmed':'prompt-assistant-stopping',error:cleanupFault?'Flash 资源尚未确认释放，请先释放显存后重试':'本地 AI 正在释放资源'});

@@ -36,6 +36,45 @@ async function proposal(e, snapshot = e.bridge.capture()) {
     contextFingerprint:await e.api.fingerprint(snapshot), model:'flash-fixture', promptIds:['actual-native-id'], kind:'qwen21-strata-native', version:'flash-native-v1', sourceOrder:[1,2],
     providerPolicy:{schema:'nf.qwen21-native-provider.v1',cfg:3}, analysisBackend:'strata', modelIdentity:{id:'flash-fixture',verification:'server-model-id'}, resourcesReleased:true, generationReady:true};
 }
+async function creationProposal(e,{action='generate',generationMode='txt2img',includeResult=false,...extra}={}) {
+  const snapshot=e.bridge.captureCreation({includeResult});
+  return {prompt:generationMode==='img2img'?'Improve the lighting in <image1>.':'A refined anime illustration of a sunny garden.',negativePrompt:snapshot.artContext.negativePrompt,
+    action,generationMode,settings:{},kind:'qwen21-agent-direct',version:'agent-direct-v1',contextFingerprint:await e.api.fingerprint(snapshot),promptIds:['actual-native-id'],
+    resourcesReleased:true,generationReady:true,analysisBackend:'strata',modelIdentity:{id:'flash-fixture',verification:'server-model-id'},...extra};
+}
+
+test('native application actions distinguish prompt-only, writing to the field, and a requested visual revision', async () => {
+  const e=env(), payloads=[]; let action='prompt';
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'准备好了',history:[],proposal:{...await proposal(e,e.bridge.capture({includeResult:p.images.length===3})),action}}};}})});
+  const original=e.state.prompt; await controller.send('给我完整提示词'); assert.equal(e.state.prompt,original); assert.equal(e.calls.length,0); assert(controller.state.messages.at(-1).content.includes('完整提示词：'));
+  action='apply'; await controller.send('把它写到提示框里'); assert.match(e.state.prompt,/Redraw/); assert.equal(e.calls.length,0); assert.equal(controller.state.applied,true);
+  action='generate'; await controller.send('按照刚才的想法做一张图'); assert.equal(e.calls.length,1); const result=e.state.results[0].imageUrl;
+  await controller.send('头发还是太真实了，改成参考那种动漫发束'); assert.equal(payloads.at(-1).images[2].dataUrl,result); assert.equal(e.calls.length,2); assert.equal(controller.state.proposal,null);
+});
+
+test('questions and prompt-only requests cannot accidentally execute a model generation action',async()=>{
+  for(const message of ['你现在能生成图片吗？','只给我提示词，不要生成']) {
+    const e=env(), controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{reply:'完整方案',history:[],proposal:{...await proposal(e),action:'generate'}}})})});
+    assert.equal(await controller.send(message),true); assert.equal(e.calls.length,0); assert.equal(e.state.prompt,'图1用图2画风'); assert(controller.state.messages.at(-1).content.includes('完整提示词：'));
+  }
+});
+
+test('text-to-image can execute without references and a feedback revision uses the actual current result as its edit input', async () => {
+  const e=env(), payloads=[]; e.refs.splice(0); e.state.mode='txt2img'; let revision=false;
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'交给绘图执行',history:[],proposal:await creationProposal(e,{generationMode:revision?'img2img':'txt2img',includeResult:revision})}};}})});
+  await controller.send('帮我画一个阳光花园'); assert.equal(payloads[0].mode,'creation'); assert.deepEqual(payloads[0].images,[]); assert.equal(e.calls.length,1); assert.equal(e.calls[0].prepared.references.length,0);
+  const actual=e.state.results[0].imageUrl; revision=true; await controller.send('颜色太黄了，调整得更自然一点');
+  assert.equal(payloads[1].images[0].role,'result'); assert.equal(payloads[1].images[0].dataUrl,actual);
+  assert.equal(e.calls.length,2); assert.equal(e.calls[1].prepared.references[0].dataUrl,actual); assert.equal(e.calls[1].prepared.state.mode,'img2img'); assert.equal(e.calls[1].prepared.state.count,1);
+});
+
+test('an explicit new creation can navigate into drawing while ordinary conversation stays on its page', async () => {
+  const e=env(); e.refs.splice(0); e.state.mode='txt2img'; e.state.active=false; e.setSurface('other'); let navigations=0;
+  e.sandbox.document={querySelector:()=>({click(){navigations++;e.setSurface('drawing');}}),querySelectorAll:()=>[{textContent:'绘图',getAttribute:()=> 'true'}]};
+  e.runtime.activate=mode=>{e.state.active=true;e.state.mode=mode;};
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{reply:'准备制作',history:[],proposal:await creationProposal(e)}})})});
+  assert.equal(await controller.send('帮我画一个阳光花园'),true); assert.equal(navigations,1); assert.equal(e.calls.length,1); assert.equal(e.state.active,true);
+});
 
 test('browser and backend agree on canonical full-byte fingerprints, including same-size pixel and manual setting changes', async () => {
   const e = env(), snapshot = e.bridge.capture();
@@ -101,6 +140,45 @@ test('only explicit generation returns a real image; double clicks cannot submit
   const first = controller.apply({generate:true}), second = controller.apply({generate:true}); assert.equal(await second,false); assert.equal(await first,true); assert.equal(e.calls.length,1); assert.equal(payloads.length,1);
   assert.equal(controller.state.messages.at(-1).imageUrl,png(30));
   const stored = Array.from(e.saved.values()).join(''); assert(!stored.includes('data:image')); assert(!stored.includes('modelIdentity')); assert.deepEqual(plain(controller.state.history),history);
+});
+
+test('explicit chat execution commands are distinguished from questions, refusals and plan-only requests', () => {
+  const {api}=env();
+  for (const text of ['按这个方案生成','请按当前方案生成一张','确认生成','直接生成一张','生成一张']) assert.equal(api.executionIntent(text)?.generate,true,text);
+  assert.equal(api.executionIntent('用图2画风重绘图1，保留机场并生成一张')?.fresh,true);
+  assert.equal(api.executionIntent('应用到绘图')?.generate,false);
+  for (const text of ['现在可以生成吗？','为什么不能生成','不要生成','先不生成，给我方案','帮我分析画风并生成方案','解释“按这个方案生成”是什么意思','如果满意就按这个方案生成','生成的图好看吗']) assert.equal(api.executionIntent(text),null,text);
+});
+
+test('a chat command applies the current proposal and generates once without a second model call or button click', async () => {
+  const e=env(); let analyses=0;
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{analyses++;return {ok:true,data:{reply:'方案已准备',history:[],proposal:await proposal(e)}};}})});
+  await controller.send('按参考调整头发，先给我方案'); assert.equal(analyses,1); assert.equal(e.calls.length,0);
+  const first=controller.send('按这个方案生成'), duplicate=controller.send('按这个方案生成');
+  assert.equal(await duplicate,false); assert.equal(await first,true); assert.equal(analyses,1); assert.equal(e.calls.length,1);
+  assert.equal(e.calls[0].prepared.state.count,1); assert.equal(controller.state.messages.at(-1).imageUrl,png(30)); assert.equal(controller.state.proposal,null);
+  assert.equal(await controller.send('按这个方案生成'),false); assert.equal(e.calls.length,1); assert.match(controller.state.error,/没有有效/);
+});
+
+test('a first explicit redraw-and-generate instruction awaits the validated proposal then uses the original single generation flow', async () => {
+  const e=env(); let analyses=0;
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>{analyses++;assert.equal(e.calls.length,0);return {ok:true,data:{reply:'已准备',history:[],proposal:await proposal(e)}};}})});
+  assert.equal(await controller.send('请用图2画风重绘图1并生成一张'),true);
+  assert.equal(analyses,1); assert.equal(e.calls.length,1); assert.equal(controller.state.status,'已生成，等待你的评价');
+  assert.equal(controller.state.pending,false); assert.equal(controller.state.generating,false); assert.equal(e.state.count,4);
+});
+
+test('chat execution cannot use stale images, missing release credentials, online mode or missing drawing context', async () => {
+  const e=env(), controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{reply:'方案',history:[],proposal:await proposal(e)}})})});
+  await controller.send('先给方案'); e.refs[0].dataUrl=png(17);
+  assert.equal(await controller.send('按这个方案生成'),false); assert.equal(e.calls.length,0); assert.match(controller.state.error,/已变化/);
+  const unverified=env(), bad=await proposal(unverified); delete bad.resourcesReleased;
+  const unsafe=unverified.api.createController({bridge:unverified.bridge,api:()=>({artAgentChat:async()=>({ok:true,data:{reply:'方案',history:[],proposal:bad}})})});
+  assert.equal(await unsafe.send('请重绘并生成'),false); assert.equal(unverified.calls.length,0); assert.match(unsafe.state.error,/交接凭据/);
+  const noContext=env(); noContext.refs.splice(0); noContext.sandbox.NovaFlowArtGenerateModels.capabilityFor=()=>({engine:'unsupported'}); let requests=0;
+  const empty=noContext.api.createController({bridge:noContext.bridge,api:()=>({artAgentChat:async()=>{requests++;throw Error('must not call');}})});
+  assert.equal(await empty.send('请重绘并生成'),false); assert.match(empty.state.error,/Qwen 2.1/); assert.equal(requests,0);
+  empty.setProvider('api'); assert.equal(await empty.send('生成一张'),false); assert.match(empty.state.error,/在线智能/); assert.equal(requests,0);
 });
 
 test('stale chat replies do not yield executable proposals; explicit result review includes only an actual third image', async () => {
@@ -226,7 +304,7 @@ test('same full source may preserve its airport background without being mistake
 test('one companion keeps text across brain switches without reusing provider conversation IDs or sending cloud images', async () => {
   const e = env(), payloads = []; e.refs.splice(0);
   const controller = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async p => {payloads.push(plain(p)); return {ok:true,data:{mode:'chat',conversationId:p.provider+'-session',reply:'已回复',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
-  await controller.send('本地聊聊'); assert.match(controller.state.status,/当前仅对话/); assert.equal(controller.state.conversationId,'local-session');
+  await controller.send('本地聊聊'); assert.equal(payloads[0].mode,'creation'); assert.equal(controller.state.conversationId,'local-session');
   const messages = plain(controller.state.messages); controller.setProvider('api'); assert.deepEqual(plain(controller.state.messages),messages);
   await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.equal(Object.hasOwn(payloads[1],'images'),false); assert.equal(payloads[1].contextFingerprint,undefined); assert.equal(payloads[1].conversationId,undefined); assert.equal(payloads[1].history[0].content,'本地聊聊');
   controller.setProvider('local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.history[2].content,'API聊聊');
@@ -239,11 +317,11 @@ test('opening defaults to local and retains latest text from an online archive w
   assert.equal(controller.state.provider,'local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.messages[0].content,'最近的回复'); assert.equal(controller.state.history[0].content,'最近的回复');
 });
 
-test('review and new-conversation requests work through chat, while ordinary chat does not attach a result', async () => {
+test('current drawing results are attached as actual feedback pixels and new-conversation requests work through chat', async () => {
   const e=env(), payloads=[]; e.state.results.unshift({id:'actual',imageUrl:png(25),name:'actual.png'});
   const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p)); return {ok:true,data:{reply:'已回复',conversationId:'local-session',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
   await controller.send('评价当前成图'); assert.equal(payloads[0].images[2].role,'output'); assert.equal(payloads[0].images[2].dataUrl,png(25));
-  await controller.send('不要评价当前成图，只聊画风'); assert.equal(payloads[1].images.length,2);
+  await controller.send('不要评价当前成图，只聊画风'); assert.equal(payloads[1].images.length,3); assert.equal(payloads[1].images[2].dataUrl,png(25));
   controller.setProvider('api'); await controller.send('评价当前成图'); assert.equal(payloads.length,2); assert.match(controller.state.error,/在线智能当前只支持文字/);
   await controller.send('新对话'); assert.equal(payloads.length,2); assert.equal(controller.state.messages.length,0); assert.equal(controller.state.history.length,0); assert.equal(controller.state.conversationId,'');
   controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);

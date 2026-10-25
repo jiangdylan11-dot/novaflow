@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { createFlashBrainSession } from '../../worker/src/flash-brain-session.mjs';
 import { createFlashArtAgent, computeArtAgentFingerprint, canonicalArtAgentJSON, prepareFlashArtAgentPayload,
-  FLASH_ART_AGENT_TOOLS, FLASH_ART_AGENT_SYSTEM } from '../../worker/src/flash-art-agent.mjs';
+  FLASH_ART_AGENT_TOOLS, FLASH_CREATION_AGENT_TOOLS, FLASH_ART_AGENT_SYSTEM } from '../../worker/src/flash-art-agent.mjs';
 
 // Native transport, model identity and ownership are mocked; no GPU/server starts.
 const MODEL = 'swift-agent-fixture', WEIGHT = 'E:/models/swift-fixture.gguf';
@@ -43,6 +43,23 @@ const invoke = async (agent, f, request) => {
   const prepared = agent.preflight(request);
   return f.session.withSession(flash => agent.run({ payload: prepared, flash }));
 };
+test('native write and generation tools return bounded application actions while prompt-only stays separate',async()=>{
+  for(const [name,action] of [['propose_art_direction','prompt'],['apply_art_direction','apply'],['generate_art_image','generate']]) {
+    const request=payload(), f=fixture([tool('get_art_context',{}),tool(name,{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'交由应用执行'},'call_2')]);
+    const result=await invoke(createFlashArtAgent(),f,request); assert.equal(result.value.proposal.action,action); assert.equal(result.value.proposal.resourcesReleased,undefined); assert.equal(result.resourcesReleased,true); assert.deepEqual(f.events,['load','unload']);
+  }
+});
+
+test('creation without references and correction from current result use native tools and bind actual pixels',async()=>{
+  for(const edit of [false,true]) {
+    const request={requestId:randomUUID(),mode:'creation',message:edit?'改掉成图的黄调':'帮我画个花园',history:[],artContext:{task:'creation',provider:'local',engine:'qwen-2.1',nsfw:false,mode:'txt2img',prompt:'',negativePrompt:'keep negative'},images:edit?[{role:'result',dataUrl:PNG}]:[]};
+    request.contextFingerprint=computeArtAgentFingerprint(request);
+    const f=fixture([tool('get_art_context',{}),tool('generate_art_image',{contextFingerprint:request.contextFingerprint,prompt:edit?'Improve the lighting in <image1>.':'An illustrated sunny garden.',explanation:'准备执行',generationMode:edit?'img2img':'txt2img',width:1280,height:960},'call_2')]);
+    const result=await invoke(createFlashArtAgent(),f,request); assert.equal(result.value.proposal.kind,'qwen21-agent-direct'); assert.equal(result.value.proposal.action,'generate'); assert.equal(result.value.proposal.generationMode,edit?'img2img':'txt2img'); assert.deepEqual(result.value.proposal.settings,{width:1280,height:960}); assert.deepEqual(f.calls[0].tools,FLASH_CREATION_AGENT_TOOLS);
+    assert.equal(f.calls[0].messages[1].content.filter(i=>i.type==='image_url').length,edit?1:0);
+    assert.equal(result.value.proposal.negativePrompt,'keep negative'); assert.deepEqual(f.events,['load','unload']);
+  }
+});
 const code = expected => error => { assert.equal(error.code, expected); return true; };
 
 test('ordinary local chat needs no drawing page, references or fingerprint and exposes no tools', async () => {
