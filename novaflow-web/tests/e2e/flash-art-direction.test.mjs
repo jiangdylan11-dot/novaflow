@@ -39,6 +39,30 @@ test('v12 system hash, one native call, complete images and unique canonical pro
   assert.equal(JSON.stringify(answer.nativeAnalysis).includes('base64,'),false);
 });
 
+
+test('missing rendering class defaults metadata only while native text, exclusions and CFG stay exact',async()=>{
+  const nativeAnswer=native();delete nativeAnswer.renderingClass;
+  const raw=JSON.stringify(nativeAnswer),request=payload(),session=flash(nativeAnswer);
+  const answer=await planFlashArtDirection({payload:request,flash:session});
+  assert.equal(session.calls.length,1);assert.equal(answer.rawOutput,raw);
+  assert.equal(Object.hasOwn(JSON.parse(answer.rawOutput),'renderingClass'),false);
+  assert.equal(answer.artDirection.prompt,canonical);assert.equal(answer.artDirection.editEnhancer.prompt,canonical);
+  assert.equal(answer.artDirection.editEnhancer.renderingClass,'other');
+  assert.deepEqual(answer.nativeAnalysis.renderingClassMetadata,{value:'other',source:'program-default-missing'});
+  const h=await renderer(released(answer)),c=context(),prepared=await h.api.prepare(c);
+  assert.equal(prepared.promptSnapshot.prompt,canonical);
+  assert.equal(prepared.promptSnapshot.negativePrompt,request.negativePrompt);
+  assert.equal(h.api.generationOptions(prepared).qwen21NativeGuidance.cfg,3);
+  assert.equal(answer.artDirection.editEnhancer.resourcesReleased,undefined);
+  for(const renderingClass of [null,'','invented']){
+    const invalid=flash(native({renderingClass}));
+    await assert.rejects(planFlashArtDirection({payload:payload(),flash:invalid}),/完整正文或有效类型/);
+    assert.equal(invalid.calls.length,1);
+  }
+  const explicit=await planFlashArtDirection({payload:payload(),flash:flash(native({renderingClass:'anime'}))});
+  assert.deepEqual(explicit.nativeAnalysis.renderingClassMetadata,{value:'anime',source:'model'});
+});
+
 test('actual subject/style input order and sparse source labels are program-owned',async()=>{
   const request=payload();request.currentPrompt='图5用图2画风，<image5>主体';
   request.images=[{dataUrl:PNG,name:'style.png'},{dataUrl:PNG,name:'content.png'}];

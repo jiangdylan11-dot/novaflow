@@ -94,16 +94,17 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
   let answer;
   try { answer = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*|\s*```$/g,'')); }
   catch { fail('strata-art-invalid-response', 'Flash 原生绘图回答不是有效 JSON；本次未重试'); }
+  const renderingClass = answer?.renderingClass === undefined ? 'other' : answer.renderingClass;
   requireValue(object(answer) && typeof answer.prompt === 'string' && answer.prompt.trim() && answer.prompt.length <= 12000
     && typeof answer.sourceContent === 'string' && answer.sourceContent.trim() && answer.sourceContent.length <= 3000
-    && classes.has(answer.renderingClass), 'strata-art-invalid-response', 'Flash 原生绘图回答缺少完整正文或有效类型');
+    && classes.has(renderingClass), 'strata-art-invalid-response', 'Flash 原生绘图回答缺少完整正文或有效类型');
   const slots = [...answer.prompt.matchAll(/<image(\d+)>/g)].map(match=>Number(match[1]));
   requireValue(slots.includes(1) && slots.includes(2) && slots.every(slot=>slot === 1 || slot === 2),
     'strata-art-invalid-response', '原生正文没有使用本次实际双图编号');
   // sourceContent is retained as native evidence only. No exact-phrase include
   // gate, concatenation, color cleanup, second model call or shortened rewrite.
   const enhancer = { kind:FLASH_ART_KIND,version:FLASH_ART_VERSION,model:result.model,prompt:answer.prompt,
-    renderingClass:answer.renderingClass,sourceOrder:inputSources,promptIds:[result.requestId],
+    renderingClass,sourceOrder:inputSources,promptIds:[result.requestId],
     providerPolicy:{schema:'nf.qwen21-native-provider.v1',cfg:3} };
   return { visualSchema:SCHEMA,rawOutput:result.text,
     artDirection:{schema:SCHEMA,summary:'Flash 单轮完整画风重绘',prompt:answer.prompt,
@@ -112,6 +113,7 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
       preserve:[],exclude:[],clarification:'',editEnhancer:enhancer},
     nativeAnalysis:{schema:'nf.flash.art-native-analysis.v1',systemSHA256:FLASH_ART_SYSTEM_SHA256,requestId:result.requestId,
       model:result.model,sourceContent:answer.sourceContent,inputSources,
+      renderingClassMetadata:{value:renderingClass,source:answer.renderingClass===undefined?'program-default-missing':'model'},
       ...(hasNegativePrompt ? { negativePromptContext:{provided:true,source:'unknown',
         inputSHA256:createHash('sha256').update(negativePrompt,'utf8').digest('hex'),
         modelContextSHA256:createHash('sha256').update(negativeContext,'utf8').digest('hex')} } : {}),
