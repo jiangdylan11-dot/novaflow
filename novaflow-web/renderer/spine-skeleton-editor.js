@@ -2991,6 +2991,7 @@
     const s = state.sel
     if (!s || !state.json) return null
     if (s.kind === 'att') return { skin: s.skin, slot: s.slot, name: s.name }
+    if (s.kind === 'ph') return placeholderAttachment(s)
     if (s.kind === 'slot' && rt.skeleton) {
       const live = rt.skeleton.findSlot(s.name)
       const att = live && live.getAttachment()
@@ -8861,7 +8862,7 @@
     out.push(h('div', { class: 'checks' }, check('导出', Ops.isExported(state.json, sel.skin, sel.slot, sel.name),
       (v) => edit(v ? `「${sel.name}」会导出` : `「${sel.name}」不导出（工程里还在）`, (j) => Ops.setAttachmentExport(j, sel.skin, sel.slot, sel.name, v)),
       { title: '不勾 = 留在工程里，导出时不带它' }),
-      img && !inPlaceholder ? check('网格', !!mesh,
+      img ? check('网格', !!mesh,
         (v) => edit(v ? `「${sel.name}」已转成网格` : `「${sel.name}」已转回图片（网格和变形关键帧去掉）`, (j) => v ? Ops.regionToMesh(j, sel.skin, sel.slot, sel.name) : Ops.meshToRegion(j, sel.skin, sel.slot, sel.name)),
         { title: '勾 = 转成网格；不勾 = 转回普通图片（网格顶点、权重和变形关键帧都去掉）' }) : null))
     // the picture's name only when it differs from the attachment's (the title shows that one)
@@ -9641,23 +9642,31 @@
   }
 
 
-  /** Spine's skin placeholder: one row per skin with what it puts here. */
-  function placeholderPanel(sel) {
+  /** Resolve the current skin's content, with the same default fallback as the runtime. */
+  function placeholderAttachment(sel) {
     const ph = Ops.placeholderList(state.json, sel.slot).find((p) => p.name === sel.name)
-    const skins = state.json.skins.map((s) => s.name).filter((n) => n !== 'default' || ph.skins.default)
+    if (!ph) return null
+    const skin = ph.skins[state.skin] ? state.skin : ph.skins.default ? 'default' : null
+    return skin ? { kind: 'att', skin, slot: sel.slot, name: sel.name } : null
+  }
+
+  /** A placeholder edits the picture the current skin draws; skins switch in the tree. */
+  function placeholderPanel(sel) {
+    const image = placeholderAttachment(sel)
     const kids = []
     kids.push(h('div', { class: 'name-row' },
       textInput(sel.name, (v) => edit(`已改名占位符 → ${v}`, (j) => Ops.renameAttachment(j, sel.slot, sel.name, v), (r) => { state.sel = { ...sel, name: r.attachment } }), { rename: true }),
       ibtn('trash', '删除占位符', deleteSelection)))
-    kids.push(skins.length ? h('div', { class: 'list' }, skins.map((skin) => {
-      const att = ph.skins[skin]
-      const current = state.skin === skin
-      return h('div', { class: 'li', 'data-on': current ? '1' : null, onclick: () => { setSkin(skin); refresh(); status(`当前皮肤：${skin}`) } },
-        h('span', { class: 'n', style: 'flex:0 0 52px' }, skin),
-        h('span', { class: 'm' + (att ? '' : ' empty'), style: 'flex:1;max-width:none' }, att ? (att.path || att.name || sel.name) : '空'),
-        btn(att ? '换图' : '放图', (e) => { e.stopPropagation(); openImagePicker(`「${sel.name}」· 皮肤 ${skin}`, (r) => fillPlaceholder(skin, sel.slot, sel.name, r)) }, { primary: !att }),
-        att ? h('button', { class: 'x', title: '清空', onclick: (e) => { e.stopPropagation(); edit(`已清空皮肤 ${skin} 的「${sel.name}」`, (j) => Ops.clearPlaceholder(j, skin, sel.slot, sel.name)) } }, '×') : null)
-    })) : h('div', { class: 'hint' }, '还没有皮肤：双击工程树里的「皮肤」新建'))
+    kids.push(field('当前皮肤', h('span', {}, state.skin)))
+    if (image) {
+      if (image.skin !== state.skin) kids.push(h('div', { class: 'hint' }, '当前显示 default 皮肤的图片，编辑会作用于这张默认图片。'))
+      // Keep the placeholder's rename/delete header, and reuse the image's mesh/export controls.
+      kids.push(...attPanel(image).slice(1))
+      kids.push(h('div', { class: 'btns' }, btn('清空图片', () => edit(`已清空皮肤 ${image.skin} 的「${sel.name}」`,
+        (j) => Ops.clearPlaceholder(j, image.skin, sel.slot, sel.name)), { full: true })))
+    } else kids.push(h('div', { class: 'hint' }, '当前皮肤的占位符为空。可放入图片，或在工程树中切换皮肤。'))
+    if (!image || image.skin !== state.skin) kids.push(h('div', { class: 'btns' }, btn('放图',
+      () => openImagePicker(`「${sel.name}」· 皮肤 ${state.skin}`, (r) => fillPlaceholder(state.skin, sel.slot, sel.name, r)), { primary: true, full: true })))
     return kids
   }
 
