@@ -2187,16 +2187,22 @@
   }
 
   function deleteSkin(input, name) {
+    return deleteSkins(input, [name])
+  }
+
+  /** Delete a selected skin group atomically; links from surviving skins must stay valid. */
+  function deleteSkins(input, names) {
     const json = prepare(input)
-    if (name === 'default') fail('default 皮肤不能删除')
-    requireSkin(json, name)
+    const gone = new Set(names)
+    if (gone.has('default')) fail('default 皮肤不能删除')
+    for (const name of gone) requireSkin(json, name)
     let linked = null
     forEachAttachment(json, (att, at) => {
-      if (at.skin.name !== name && att && att.type === 'linkedmesh' && att.skin === name) linked = at
+      if (!gone.has(at.skin.name) && att && att.type === 'linkedmesh' && gone.has(att.skin || 'default')) linked = at
     })
     if (linked) fail(`皮肤「${linked.skin.name}」的「${linked.name}」链接着这个皮肤`)
-    json.skins = json.skins.filter((s) => s.name !== name)
-    for (const anim of Object.values(json.animations)) if (anim.deform) delete anim.deform[name]
+    json.skins = json.skins.filter((s) => !gone.has(s.name))
+    for (const anim of Object.values(json.animations)) if (anim.deform) for (const name of gone) delete anim.deform[name]
     return { json: tidy(json) }
   }
 
@@ -2785,7 +2791,7 @@
     // dopesheet
     keyTracks, moveKeys, scaleKeys, adjustKeys, deleteKeys, copyKeys, pasteKeys, setKeyCurve, keyCurve, setKeyBezier, keyBezier, nextKeyTime,
     // skins
-    createSkin, renameSkin, deleteSkin, copyAttachmentToSkin, duplicateAttachment, hasDeformKeys,
+    createSkin, renameSkin, deleteSkin, deleteSkins, copyAttachmentToSkin, duplicateAttachment, hasDeformKeys,
     createEvent, setEventProps, renameEvent, deleteEvent, keyEvent, setSkinMembership,
     // skin placeholders
     isPlaceholder, placeholderList, addPlaceholder, fillPlaceholder, clearPlaceholder, convertToPlaceholder, deletePlaceholder, exportable,

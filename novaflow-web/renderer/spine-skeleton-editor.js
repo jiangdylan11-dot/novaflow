@@ -61,6 +61,8 @@
     multiSlots: [], // slot names (Ctrl / Shift in the tree): edited together
     multiAtts: [], // attachment identities: skin + slot + name
     attachmentAnchor: null,
+    multiSkins: [], // selected skin rows; preview remains a separate single skin
+    skinAnchor: null,
     multiCons: [], // constraints (Ctrl in the tree): { kind, name }, together in the dopesheet
     panel: 'import',
     pick: null,
@@ -340,7 +342,7 @@
     Object.assign(state, {
       imageFolder,
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
-      addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiAtts: [], attachmentAnchor: null, multiCons: [], pick: null,
+      addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiAtts: [], attachmentAnchor: null, multiSkins: [], skinAnchor: null, multiCons: [], pick: null,
       offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
       folderKey: p.folderKey || (p.replace && state.folderKey) || newFolderKey(), pendingFolder: null,
@@ -387,7 +389,7 @@
   // is on the stage and unfolded in the tree, the others are rows that keep their whole editing state
   // (undo included) until they are picked again. They can be renamed, moved and deleted.
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
-    'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
+    'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiSkins', 'skinAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
@@ -1364,6 +1366,12 @@
     state.multiAtts = selectedAttachments().filter(hasAtt)
     if (state.attachmentAnchor && !hasAtt(state.attachmentAnchor)) state.attachmentAnchor = null
     state.multiCons = (state.multiCons || []).filter((c) => has(c.kind, c.name))
+    state.multiSkins = (state.multiSkins || []).filter((n) => has('skin', n))
+    if (s && s.kind === 'skin' && !state.sel && state.multiSkins.length) state.sel = { kind: 'skin', name: state.multiSkins[state.multiSkins.length - 1] }
+    if (state.sel && state.sel.kind === 'skin') {
+      if (!state.multiSkins.includes(state.sel.name)) state.multiSkins = [state.sel.name]
+    } else state.multiSkins = []
+    if (state.skinAnchor && !has('skin', state.skinAnchor)) state.skinAnchor = null
     if (state.multiSlots.length && !(state.sel && state.sel.kind === 'slot')) state.multiSlots = []
     for (const n of [...state.temp.keys()]) if (!has('bone', n)) state.temp.delete(n)
     if (state.anim && !j.animations[state.anim]) state.anim = Object.keys(j.animations)[0] || ''
@@ -1392,7 +1400,19 @@
     state.chainPick = null
     state.chainRoots = null
     if (!sel || sel.kind !== 'att') { state.multiAtts = []; state.attachmentAnchor = null }
-    if (sel && sel.kind === 'att') {
+    if (!sel || sel.kind !== 'skin') { state.multiSkins = []; state.skinAnchor = null }
+    if (sel && sel.kind === 'skin') {
+      const list = additive ? selectedSkins() : []
+      for (const name of (opts && opts.skins) || [sel.name]) {
+        const i = list.indexOf(name)
+        if (i >= 0) { if (!(opts && opts.skins)) list.splice(i, 1) }
+        else list.push(name)
+      }
+      state.multiSkins = list
+      state.sel = list.length ? { kind: 'skin', name: list.includes(sel.name) ? sel.name : list[list.length - 1] } : null
+      if (!(opts && opts.skins)) state.skinAnchor = sel.name
+      state.multi = []; state.multiSlots = []; state.multiCons = []
+    } else if (sel && sel.kind === 'att') {
       const list = additive ? selectedAttachments() : []
       for (const a of (opts && opts.attachments) || [sel]) {
         const i = list.findIndex((x) => sameAttachment(x, a))
@@ -1443,7 +1463,7 @@
 
   /** Spine: Page Up / Page Down walk the selection history. */
   function pushHistory() {
-    const entry = JSON.stringify({ sel: state.sel, multi: state.multi, multiSlots: state.multiSlots, multiAtts: state.multiAtts, attachmentAnchor: state.attachmentAnchor })
+    const entry = JSON.stringify({ sel: state.sel, multi: state.multi, multiSlots: state.multiSlots, multiAtts: state.multiAtts, attachmentAnchor: state.attachmentAnchor, multiSkins: state.multiSkins, skinAnchor: state.skinAnchor })
     const h0 = state.selHistory
     if (h0[state.selIdx] === entry) return
     h0.splice(state.selIdx + 1)
@@ -1459,9 +1479,37 @@
     state.multiSlots = e.multiSlots || []
     state.multiAtts = e.multiAtts || []
     state.attachmentAnchor = e.attachmentAnchor || null
+    state.multiSkins = e.multiSkins || []
+    state.skinAnchor = e.skinAnchor || null
     validateSelection()
     if (state.sel) revealInTree(state.sel)
     refresh()
+  }
+
+  function selectedSkins() {
+    if (!state.sel || state.sel.kind !== 'skin') return []
+    return (state.multiSkins || []).includes(state.sel.name) ? state.multiSkins.slice() : [state.sel.name]
+  }
+
+  const visibleSkinNames = () => [...document.querySelectorAll('#tree .row[data-skin-name]')].map((row) => row.dataset.skinName)
+
+  function selectSkin(name, e) {
+    const additive = !!(e.ctrlKey || e.metaKey)
+    if (e.shiftKey) {
+      const rows = visibleSkinNames(), anchor = state.skinAnchor || (state.sel && state.sel.kind === 'skin' && state.sel.name)
+      const from = rows.indexOf(anchor), to = rows.indexOf(name)
+      if (from >= 0 && to >= 0) { select({ kind: 'skin', name }, additive, { skins: rows.slice(Math.min(from, to), Math.max(from, to) + 1) }); return }
+    }
+    if (!additive) setSkin(name)
+    select({ kind: 'skin', name }, additive)
+  }
+
+  function selectAllSkins() {
+    if (!state.sel || state.sel.kind !== 'skin' || state.pick || state.meshEdit || state.weightEdit || state.clipEdit || state.pathEdit) return false
+    const skins = visibleSkinNames()
+    if (!skins.length) return false
+    select(state.sel, false, { skins })
+    return true
   }
 
   function selectedBones() {
@@ -1638,7 +1686,11 @@
     else if (s.kind === 'ph') edit(`已删除占位符 ${s.name}`, (j) => Ops.deletePlaceholder(j, s.slot, s.name), () => { state.sel = { kind: 'slot', name: s.slot } })
     else if (s.kind === 'ik' || s.kind === 'transform' || s.kind === 'path') edit(`已删除约束 ${s.name}`, (j) => Ops.deleteConstraint(j, s.kind, s.name), () => { state.sel = null })
     else if (s.kind === 'event') edit((r) => `已删除事件 ${s.name}${r.keys ? `（含动画里 ${r.keys} 个关键帧）` : ''}`, (j) => Ops.deleteEvent(j, s.name), () => { state.sel = null })
-    else if (s.kind === 'skin') edit(`已删除皮肤 ${s.name}`, (j) => Ops.deleteSkin(j, s.name), () => { state.sel = null; if (state.skin === s.name) state.skin = 'default' })
+    else if (s.kind === 'skin') {
+      const names = selectedSkins()
+      edit(names.length > 1 ? `已删除 ${names.length} 个皮肤` : `已删除皮肤 ${s.name}`, (j) => Ops.deleteSkins(j, names),
+        () => { state.sel = null; state.multiSkins = []; state.skinAnchor = null; if (names.includes(state.skin)) state.skin = 'default' })
+    }
   }
 
   function newChildBone(parent) {
@@ -5963,7 +6015,11 @@
         state.sel = { kind, name: next, ...(kind === 'att' ? { skin: target.skin, slot: target.slot } : kind === 'ph' ? { slot: target.slot } : {}) }
         if (kind === 'bone') state.multi = [next]
         if (kind === 'anim' && state.anim === name) state.anim = next
-        if (kind === 'skin' && state.skin === name) state.skin = next
+        if (kind === 'skin') {
+          if (state.skin === name) state.skin = next
+          state.multiSkins = (state.multiSkins || []).map((n) => n === name ? next : n)
+          if (state.skinAnchor === name) state.skinAnchor = next
+        }
         if (kind === 'slot') state.multiSlots = (state.multiSlots || []).map((n) => n === name ? next : n)
         if (kind === 'att' || kind === 'ph') {
           const renamed = (a) => a && a.slot === target.slot && a.name === name ? { ...a, name: next } : a
@@ -6249,8 +6305,9 @@
         for (const s of named) {
           const active = state.skin === s.name
           rows.push(h('div', {
-            class: 'row', 'data-selected': isSel('skin', s.name) ? '1' : null, style: pad(2), 'data-key': 'skin:' + s.name,
-            onclick: () => { setSkin(s.name); select({ kind: 'skin', name: s.name }) },
+            class: 'row', 'data-selected': isSel('skin', s.name) ? '1' : null, 'data-multi': !isSel('skin', s.name) && selectedSkins().includes(s.name) ? '1' : null,
+            style: pad(2), 'data-key': 'skin:' + s.name, 'data-skin-name': s.name,
+            onclick: (e) => { if (!pick) selectSkin(s.name, e) },
           }, visDot(active, () => { setSkin(active ? 'default' : s.name); refresh(); status(active ? '不用皮肤' : `当前皮肤：${s.name}`) }, null, true),
           caret(null), h('span', { class: 'ico', html: ICON.skin }), h('span', { class: 'label' }, s.name)))
         }
@@ -6592,6 +6649,7 @@
     if (s.kind === 'att' && selectedAttachments().length > 1) return { title: `附件 · 已选 ${selectedAttachments().length} 个`, body: multiAttachmentBody }
     if (s.kind === 'att') return { title: s.skin === 'default' ? '图片' : `图片 · 皮肤 ${s.skin}`, body: slotBody }
     if (s.kind === 'ph') return { title: '皮肤占位符', body: slotBody }
+    if (s.kind === 'skin' && selectedSkins().length > 1) return { title: `皮肤 · 已选 ${selectedSkins().length} 个`, body: multiSkinBody }
     if (s.kind === 'skin') return { title: '皮肤', body: skinBody }
     if (s.kind === 'anim') return { title: '动画', body: animBody }
     if (s.kind === 'event') return { title: '事件', body: eventBody }
@@ -9772,6 +9830,14 @@
 
   // ---------- 皮肤
 
+  function multiSkinBody() {
+    const names = selectedSkins()
+    return [field('当前显示皮肤', h('span', {}, state.skin)),
+      h('div', { class: 'hint' }, 'Ctrl 点选加选 / 取消，Shift 连选，Ctrl+A 全选。单击皮肤或点左侧圆点切换预览。'),
+      h('div', { class: 'list' }, names.map((name) => h('div', { class: 'li' }, h('span', { class: 'n' }, name)))),
+      h('div', { class: 'btns' }, btn(`删除所选皮肤（${names.length}）`, deleteSelection, { full: true, title: 'Delete：一次删除，可撤销' }))]
+  }
+
   function skinBody() {
     const j = state.json
     const out = []
@@ -11149,7 +11215,7 @@
       // tree shows (the matches and their ancestors)
       // With an attachment picked, Ctrl+A selects its visible slot group instead.
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a') e.preventDefault()
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && selectAllAttachments()) return
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && (selectAllAttachments() || selectAllSkins())) return
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing && e.key.toLowerCase() === 'a' && state.json && state.sel && state.sel.kind === 'bone') {
         const m = searchMatches(), names = [state.sel.name], j = state.json
         const walk = (p) => { for (const b of j.bones) if (b.parent === p && (!m || m.bones.has(b.name))) { names.push(b.name); walk(b.name) } }
