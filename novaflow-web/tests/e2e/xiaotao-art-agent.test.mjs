@@ -8,6 +8,25 @@ import {computeArtAgentFingerprint} from '../../worker/src/flash-art-agent.mjs';
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};};
+
+test('natural result feedback is silent, result-bound and never starts an extra inference or generation',async()=>{
+  const e=env({cfg:3}),commands=[];let inference=0;
+  const api={artAgentChat:async()=>{inference++;return {ok:false};}};
+  e.state.results.push({id:'actual-result',imageUrl:png(30)});
+  // The bridge hashes the same actual image bytes as the task receipt.
+  const bytes=Buffer.from(png(30).split(',')[1],'base64');
+  const resultSHA256=Buffer.from(await webcrypto.subtle.digest('SHA-256',bytes)).toString('hex');
+  api.artLearning=async command=>{commands.push(plain(command));return {ok:true,data:command.action==='list'?{tasks:[{id:'task-result',resultId:'actual-result',resultSHA256,execution:'succeeded'}]}:{feedback:'satisfied'}};};
+  const controller=e.api.createController({bridge:e.bridge,api:()=>api});
+  for(const message of ['这次效果很好。','不太满意']) {
+    await controller.send(message);await new Promise(r=>setTimeout(r,10));
+    const feedback=commands.findLast(c=>c.action==='feedback');assert.equal(feedback.taskId,'task-result');assert.equal(feedback.resultId,'actual-result');assert.equal(feedback.message,message);
+  }
+  assert.equal(inference,0);assert.equal(e.calls.length,0);
+  assert(!controller.state.messages.some(m=>/经验|入库|归档/.test(m.content)));
+  api.artLearning=async()=>{throw Error('journal unavailable');};
+  assert.equal(await controller.send('满意'),true);assert.equal(inference,0);
+});
 function png(red) {
   const chunk = (name, value) => {const type = Buffer.from(name), data = Buffer.concat([type, value]); let crc = 0xffffffff;
     for (const byte of data) {crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);}

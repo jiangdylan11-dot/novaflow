@@ -16,6 +16,26 @@ export function createPgStore(db) {
   }
 
   return {
+    async readArtKnowledge(skillId,knownVersion) {
+      const row=await one('select version,methods,skill from public.art_knowledge_releases where skill_id=$1 and active',[skillId]);
+      if(row && row.version===knownVersion)return {version:row.version,unchanged:true};
+      return row || {version:'0',methods:[]};
+    },
+    async getArtLearningConsent(userId){return Boolean((await one('select allowed from public.art_learning_consents where user_id=$1',[userId]))?.allowed);},
+    async isArtPublisher(userId){return Boolean(await one('select singleton from public.art_knowledge_policy where publisher_user_id=$1',[userId]));},
+    async setArtLearningConsent(userId,allow){await one('insert into public.art_learning_consents(user_id,allowed) values($1,$2) on conflict(user_id) do update set allowed=excluded.allowed,updated_at=now() returning user_id',[userId,allow]);},
+    async submitArtMethod(userId,input) {
+      const row=await one('select public.novaflow_art_submit_method($1,$2::jsonb,$3,$4::jsonb) as result',[userId,JSON.stringify(input.scope),input.method,JSON.stringify(input.evidence)]);return row.result;
+    },
+    async listArtCandidates() {
+      return (await one('select public.novaflow_art_review_candidates() as result',[])).result;
+    },
+    async publishArtKnowledge(userId,input) {
+      const row=await one('select public.novaflow_art_publish_knowledge($1,$2,$3,$4::uuid[],$5::jsonb,$6::jsonb) as result',[userId,input.skillId,input.version,input.candidateIds,JSON.stringify(input.validation),input.skill?JSON.stringify(input.skill):null]);return row.result;
+    },
+    async rollbackArtKnowledge(userId,input) {
+      const row=await one('select public.novaflow_art_rollback_knowledge($1,$2,$3) as result',[userId,input.skillId,input.version]);return row.result;
+    },
     async getUserById(userId) {
       return await one(
         'select id, email, display_name, role, plan, status, expires_at from public.users where id = $1',

@@ -56,7 +56,7 @@ function controlCommand(config, configPath, command, { signal, ownerToken } = {}
 
 export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,config:suppliedConfig,
   sessionFactory=createFlashBrainSession,lifecycle:suppliedLifecycle,resourceProbe,
-  fetchImpl=fetch,logger=()=>{},legacyApi=null,chatIdleTimeoutMs=120000}={}) {
+  fetchImpl=fetch,logger=()=>{},legacyApi=null,chatIdleTimeoutMs=120000,artLearning=null}={}) {
   const path=configPath || strataConfigPath(), config=suppliedConfig || readStrataConfig(path);
   const runtimeLifecycle=suppliedLifecycle || {load:options=>controlCommand(config,path,'load',options),unload:options=>controlCommand(config,path,'unload',options)};
   // A failed/partial load still needs cleanup, but only for its own operation.
@@ -224,7 +224,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
             infer:(...args)=>{setOperationPhase(ticket,'analyzing');return flash.infer(...args);},
             inferConversation:(...args)=>{setOperationPhase(ticket,'analyzing');return flash.inferConversation(...args);}
           }:flash;
-          return {ok:true,data:await artAgent.run({payload,flash:trackedFlash,signal:abort.signal})};
+          return {ok:true,data:await artAgent.run({payload,flash:trackedFlash,signal:abort.signal,knowledge:context.knowledge})};
         }
         const nativeArtPayload=method==='reverseImagePrompt' ? wholeSourceArtPair(payload) : payload;
         if(method==='reverseImagePrompt' && isFlashArtDirectionRequest(nativeArtPayload)) {
@@ -282,7 +282,32 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
   const api={get running(){return Boolean(lease) || chatResidency.getStatus().state==='releasing';},get busy(){return Boolean(lease) || chatResidency.getStatus().state==='releasing';},status,
     optimizePrompt:payload=>execute('optimizePrompt',payload),reverseImagePrompt:payload=>execute('reverseImagePrompt',payload),
     describeArtStyle:payload=>execute('describeArtStyle',payload),rewriteAudioPrompt:payload=>execute('rewriteAudioPrompt',payload),
-    artAgentChat:payload=>execute('artAgentChat',payload),
+    async artAgentChat(payload,{learningAllowed=true}={}) {
+      if (!artLearning || !learningAllowed || !['drawing','creation'].includes(payload?.mode || 'drawing')) return execute('artAgentChat',payload);
+      // Validate on CPU before touching persistence or acquiring model ownership.
+      try { artAgent.preflight(payload); }
+      catch (error) { return {ok:false,error:String(error.message || error),errorCode:error.errorCode || error.code || 'flash-agent-invalid-input'}; }
+      let knowledge, warning;
+      const learningStarted = Date.now();
+      try { knowledge = await artLearning.begin(payload,config?.expectedModel?.ids?.[0] || 'local'); }
+      catch { warning = '任务反馈暂不可用，本次使用原有稳定流程；本地文件已保留'; }
+      const learningReadMs = Date.now() - learningStarted;
+      const response = await execute('artAgentChat',payload,{knowledge});
+      const learningWriteStarted = Date.now();
+      if (knowledge) {
+        try {
+          const learning = await artLearning.planned(knowledge,response);
+          if (response?.data) response.data.learning = learning;
+        } catch { warning = '本次任务记录未完成，生成结果与原有流程不受影响'; }
+      }
+      if (response.timing) {
+        response.timing = {...response.timing,learningReadMs,learningWriteMs:Date.now()-learningWriteStarted,
+          endToEndMs:Date.now()-learningStarted};
+        if (response.data) response.data.timing = response.timing;
+      }
+      if (warning) response.learningWarning = warning;
+      return response;
+    },
     cancelRequest(payload={}) {
       const requestId=promptRequestId(payload);
       if(!requestId)return Promise.resolve({ok:false,errorCode:'invalid-request',error:'缺少要取消的提示词分析请求'});

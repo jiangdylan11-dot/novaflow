@@ -55,6 +55,22 @@ test('native write and generation tools return bounded application actions while
   }
 });
 
+test('an invalid learning method is discarded without failing a valid drawing or retrying inference',async()=>{
+  const request=payload(),f=fixture([tool('get_art_context',{}),tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'完整方案',learningMethod:'https://private.invalid/source'},'call_2')]);
+  const result=await invoke(createFlashArtAgent(),f,request);
+  assert.equal(result.value.proposal.prompt,rawPrompt);assert.equal(result.value.proposal.learningMethod,undefined);
+  assert.equal(f.calls.length,2);assert.deepEqual(f.events,['load','unload']);
+});
+
+test('bundled quality strategy survives unavailable journals or cloud knowledge',async()=>{
+  const request=payload(),agent=createFlashArtAgent();let count=0;
+  const flash={identity:{id:'swift-1.5-qwen38-iq2-xs'},inferConversation:async options=>{
+    count++;assert.equal(options.reasoningEffort,'low');assert.equal(options.reasoningBudgetTokens,1024);
+    return {model:'swift-1.5-qwen38-iq2-xs',requestId:'fallback-base',finishReason:'tool_calls',message:tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:rawPrompt,explanation:'使用稳定的基础技能'})};
+  }};
+  const result=await agent.run({payload:agent.preflight(request),flash});assert.equal(result.proposal.prompt,rawPrompt);assert.equal(count,1);
+});
+
 test('creation without references and correction from current result use native tools and bind actual pixels',async()=>{
   for(const edit of [false,true]) {
     const request={requestId:randomUUID(),mode:'creation',message:edit?'改掉成图的黄调':'帮我画个花园',history:[],artContext:{task:'creation',provider:'local',engine:'qwen-2.1',nsfw:false,mode:'txt2img',prompt:'',negativePrompt:'keep negative'},images:edit?[{role:'result',dataUrl:PNG}]:[]};

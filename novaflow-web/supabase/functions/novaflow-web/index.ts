@@ -72,6 +72,31 @@ function unwrapRpc<T>(data: unknown): T | null {
  * cannot diverge between the two deployments.
  */
 const supabaseStore = {
+  async readArtKnowledge(skillId: string,knownVersion?: string) {
+    const {data,error}=await admin().from('art_knowledge_releases').select('version,methods,skill').eq('skill_id',skillId).eq('active',true).maybeSingle();
+    if(data && data.version===knownVersion)return {version:data.version,unchanged:true};
+    if(error)throw error;return data || {version:'0',methods:[]};
+  },
+  async getArtLearningConsent(userId: string){const {data,error}=await admin().from('art_learning_consents').select('allowed').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.allowed===true;},
+  async isArtPublisher(userId: string){const {data,error}=await admin().from('art_knowledge_policy').select('singleton').eq('publisher_user_id',userId).maybeSingle();if(error)throw error;return Boolean(data);},
+  async setArtLearningConsent(userId: string,allow: boolean){const {error}=await admin().from('art_learning_consents').upsert({user_id:userId,allowed:allow,updated_at:new Date().toISOString()});if(error)throw error;},
+  async submitArtMethod(userId: string,input: any) {
+    const {data,error}=await admin().rpc('novaflow_art_submit_method',{p_user_id:userId,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence});
+    if(error)throw error;return data;
+  },
+  async listArtCandidates() {
+    // Provenance remains server-only. The review API exposes abstract methods.
+    const {data,error}=await admin().rpc('novaflow_art_review_candidates');
+    if(error)throw error;return data || [];
+  },
+  async publishArtKnowledge(userId: string,input: any) {
+    const {data,error}=await admin().rpc('novaflow_art_publish_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version,p_candidate_ids:input.candidateIds,p_validation:input.validation,p_skill:input.skill||null});
+    if(error)throw error;return data;
+  },
+  async rollbackArtKnowledge(userId: string,input: any) {
+    const {data,error}=await admin().rpc('novaflow_art_rollback_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version});
+    if(error)throw error;return data;
+  },
   async getUserById(userId: string) {
     if (!UUID_RE.test(String(userId))) return null;
     const { data, error } = await admin()

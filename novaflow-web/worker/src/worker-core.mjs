@@ -1301,6 +1301,12 @@ export function createWorker(options) {
     startSharing: start,
     stopSharing,
     readLoraCatalog: (kind, input) => loraCatalog.read(kind, input),
+    async readArtKnowledge({skillId,knownVersion}) {
+      if(!controlUrl || !state.workerToken)throw Error('共享知识同步尚未连接控制面');
+      const query=new URLSearchParams({skillId,knownVersion});
+      const response=await fetch(controlUrl+'/api/web/art-knowledge?'+query,{headers:{authorization:'Bearer '+state.workerToken},signal:AbortSignal.timeout(5000)});
+      if(!response.ok)throw Error('共享知识同步暂不可用');return response.json();
+    },
     rewriteAudioPrompt,
     stop,
     heartbeat,

@@ -3,6 +3,7 @@
 // Regenerate with: npm run sync:edge
 import { commonLoraCatalog } from './lora-catalog.mjs';
 import { RELEASE_VERSION } from './release.mjs';
+import { createArtKnowledgeRoutes } from './art-knowledge.mjs';
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -317,6 +318,7 @@ export function createControlPlane({ store, secrets, logger }) {
   const log = logger || (() => {});
   const sessionSecret = secrets?.sessionSecret || '';
   const controlSecret = secrets?.controlSecret || '';
+  const artKnowledge = createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError});
 
   async function requireUser(headers) {
     const token = bearerToken(headers.authorization || headers.Authorization);
@@ -726,7 +728,7 @@ export function createControlPlane({ store, secrets, logger }) {
       // rather than reshaped - but the COST is still derived here, from the
       // dimensions and duration we can read out of them.
       parameters = sanitizeWorkflowOptions(body.parameters);
-      req = { modelId: workflowModelId(moduleName, parameters), minVramMb: entry.minVramMb, kind: entry.kind };
+      req = { modelId: workflowModelId(moduleName, parameters, method), minVramMb: entry.minVramMb, kind: entry.kind };
       pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {
@@ -1158,6 +1160,7 @@ export function createControlPlane({ store, secrets, logger }) {
 
     try {
       if (method === 'OPTIONS') return { status: 204, body: null };
+      if (path.startsWith('/api/web/art-knowledge')) return ok(await artKnowledge.handle({method,path,headers,query,body}));
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }

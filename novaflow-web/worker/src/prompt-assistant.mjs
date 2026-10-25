@@ -364,7 +364,7 @@ async function freeMemory(baseUrl, timeoutMs = 15000) {
   return first.status === 404 ? post('/api/free') : first;
 }
 
-export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath } = {}) {
+export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath, artLearning = null } = {}) {
   const candidateConfigPath = suppliedStrataConfigPath || defaultStrataConfigPath(runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON);
   const candidateConfig = readStrataConfig(candidateConfigPath);
   const selectedBackend = analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND
@@ -759,5 +759,5 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     stop
   };
   return selectedBackend === 'strata' ? createStrataPromptAssistant({ worker, comfyUrls, configPath: candidateConfigPath,
-    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger }) : api;
+    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger, artLearning }) : api;
 }

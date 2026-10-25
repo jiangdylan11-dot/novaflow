@@ -368,13 +368,37 @@
       if (result?.id && result.id !== previous && result.imageUrl) return copy(result);
       fail(rt.state.error || rt.state.status || '未取得新的实际成图');
     }
-    return Object.freeze({capture, captureAny, captureCreation, captureChat, readSampling, setSampling, hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
+    return Object.freeze({capture, captureAny, captureCreation, captureChat, readSampling, setSampling, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
   }
   function createController({bridge, api = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root}) {
     const state = {provider:'local', mode:'chat', messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
     const recapture = snapshot => snapshot.artContext.task === 'creation' ? bridge.captureCreation({includeResult:snapshot.images.some(i=>i.role==='result')}) : bridge.capture({includeResult:snapshot.images.length===3});
     const sessions = {local:{messages:[],history:[],conversationId:''}, api:{messages:[],history:[],conversationId:''}};
+    state.learningTask = null; state.learningWarning = '';
+    async function learningCommand(command) {
+      if (typeof api()?.artLearning !== 'function') throw new Error('请更新本地助手后使用任务反馈');
+      const response = await api().artLearning(command);
+      if (!response?.ok) throw new Error(response?.error || '任务反馈操作失败');
+      return response.data;
+    }
+    async function recordReceipt(execution, result, proposal = state.proposal) {
+      if (!state.learningTask || !proposal?.proposalId) return;
+      try {await learningCommand({action:'receipt',taskId:state.learningTask.taskId,proposalId:proposal.proposalId,execution,
+        ...(result ? {resultId:result.id,resultSHA256:await sha256(imageBytes(result.imageUrl))} : {})});}
+      catch (error) {state.learningWarning = '本次结果未写入任务记录：' + String(error.message || error);}
+    }
+    async function recordFeedback(message, {feedback} = {}) {
+      const current = bridge.currentResult?.();
+      if (!current?.id || !current.imageUrl) {return false;}
+      try {
+        const digest = await sha256(imageBytes(current.imageUrl)), data = await learningCommand({action:'list'});
+        const task = data.tasks.find(item => item.resultId === current.id && item.resultSHA256 === digest && item.execution === 'succeeded');
+        if (!task) throw new Error('当前成图没有关联的小桃执行记录；不会把反馈记到其他图片');
+        const receipt = await learningCommand({action:'feedback',taskId:task.id,resultId:current.id,message,feedback});
+        return Boolean(receipt);
+      } catch {return false;}
+    }
     try {
       const saved = JSON.parse(storage?.getItem(STORAGE_KEY) || 'null');
       if (saved) {if (saved.sessions) Object.assign(sessions, saved.sessions); else sessions.local = saved;}
@@ -468,6 +492,13 @@
     async function send(message, {includeResult = false, confirmed = false, recordMessage = true} = {}) {
       if (state.pending || state.generating || state.applying) return false;
       message = String(message || '').trim(); if (!message) return false;
+      const purePositive = /^(?:这次|这张|这个|效果|结果)?(?:效果)?(?:很好|很满意|满意|很棒|不错)[。！!]*$|^(?:这次|这张|这个)?(?:就用|采用|最终采用|确认采用)(?:这张|这个|本次)?[。！!]*$/.test(message);
+      const pureNegative = /^(?:这次|这张|这个)?(?:不满意|不太满意|效果不好|不行)[。！!]*$/.test(message);
+      if ((purePositive || pureNegative) && !state.confirmation && bridge.hasResult?.()) {
+        state.messages.push({role:'user',content:message});
+        if (typeof api()?.artLearning === 'function') void recordFeedback(message);
+        state.messages.push({role:'assistant',content:purePositive ? '好，这张的效果就按你的评价保留。' : '明白，这张还没达到要求。告诉我主要需要调整哪里，我会针对性修改。'}); notify(); return true;
+      }
       if (/^(?:请)?(?:开始|开启|新建|重新开始)?(?:一个)?新对话[。.!！]?$|^(?:请)?(?:清空|重置)(?:当前)?对话[。.!！]?$/.test(message)) {reset(); return true;}
       if (state.confirmation && !confirmed) {
         const choice = samplingChoice(message); if (choice) return confirmSampling(choice);
@@ -478,6 +509,9 @@
       if (execution && state.provider !== 'local') {state.error = '在线智能当前仅支持文字对话；请切换本地智能执行绘图'; notify(); return false;}
       const requestedGeneration = samplingRequest(message);
       const requestedFeedback = state.provider === 'local' && bridge.hasResult?.() && feedbackRequest(message);
+      if (state.provider === 'local' && bridge.hasResult?.() && typeof api()?.artLearning === 'function'
+        && /不满意|效果不好|画风不对|人物.{0,6}(?:不错|没问题|可以).{0,12}(?:但是|主要|只是)|画风不够|光影不对|上次的画风更准确|调整|修改|改成|太蓝|太黄/.test(message))
+        void recordFeedback(message);
       if (state.provider === 'local' && (requestedGeneration || requestedFeedback) && !confirmed) {
         if (recordMessage) state.messages.push({role:'user',content:message});
         try {
@@ -527,6 +561,7 @@
           fail(response?.error || '小桃暂时未能完成分析，请稍后再试');
         }
         const data = response.data; if (!data || typeof data.reply !== 'string') fail('小桃没有返回完整回复，请重试');
+        state.learningTask = data.learning || null; state.learningWarning = response.learningWarning || '';
         if (state.provider === 'local') {state.localSession = null; updateLocalSession(data.chatSession);}
         const discussionOnly=/[?？]|吗[。！!]?\s*$|解释|讨论|聊聊|什么意思|为什么|如何|怎么|(?:不要|不用|别|先不|暂不).{0,6}(?:生成|生图|出图|执行|应用)|(?:只|仅).{0,8}(?:提示词|方案|讨论|解释)/.test(message)
           || /(?:给我|提供|输出).{0,12}提示词/.test(message) && !/写入|填入|写到|写进|填进|填到|应用|生成一张|直接生成|生图/.test(message);
@@ -568,6 +603,7 @@
       state.error = ''; state.applying = true; notify();
       try {
         if (!state.applied) {const result = await bridge.applyProposal(state.proposal, state.proposalSnapshot,{sampling:state.samplingApproval}); state.proposalSnapshot = result.snapshot; state.applied = true; state.toolTrace.push({name:'apply_prompt_completed'});
+          await recordReceipt('applied');
           if (state.samplingApproval) {const actual = bridge.readSampling(); if (actual.variant === state.samplingApproval.variant && actual.steps === state.samplingApproval.steps && actual.cfg === state.samplingApproval.cfg) state.samplingApproval = actual;}
         }
         state.status = '已应用到绘图，保留原负向和手动参数'; notify();
@@ -575,10 +611,11 @@
           if (!samplingUnchanged(state.samplingApproval)) fail('实际采样或参考内容已变化，请重新确认后生成');
           state.generating = true; state.localSession = null; state.status = '正在通过绘图流程生成一张…'; notify();
           const result = await bridge.generateApplied(); state.messages.push({role:'assistant', content:'这张是本次实际成图，请告诉我哪里还需要修改。', imageUrl:result.imageUrl, name:result.name}); state.toolTrace.push({name:'generate_completed'});
+          await recordReceipt('succeeded',result);
           state.proposal = null; state.proposalSnapshot = null; state.applied = false; state.status = '已生成，等待你的评价';
         }
         return true;
-      } catch (error) {state.error = String(error?.message || error); state.status = '未完成生成'; invalidate(); return false;}
+      } catch (error) {await recordReceipt('failed'); state.error = String(error?.message || error); state.status = '未完成生成'; invalidate(); return false;}
       finally {state.generating = false; state.applying = false; notify();}
     }
     function reset() {if (state.pending || state.generating || state.applying) return false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; bridge.clearPrepared(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify(); return true;}
@@ -587,7 +624,7 @@
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
       Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能' : '已切换在线智能 · 文字对话，每次计入云AI次数'}); notify(); return true;
     }
-    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, calibrateLocalStatus});
+    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, calibrateLocalStatus, recordFeedback});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;

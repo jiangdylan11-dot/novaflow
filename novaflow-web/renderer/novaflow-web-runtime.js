@@ -493,6 +493,42 @@
     if (value && Array.isArray(value.tasks)) value.tasks.forEach(readQueueNote);
     return value;
   }
+  // Background, opt-in, method-only upload. The rollout flag stays false until
+  // cloud acceptance; no feedback or generation call waits for this network work.
+  let artUploadRunning = false;
+  async function flushArtCandidates() {
+    if (CONFIG.artKnowledgeEnabled !== true || computeMode !== 'local' || artUploadRunning) return;
+    const active = currentSession(), token = active?.token, accountId = active?.user?.id;
+    if (!token || !accountId) return;
+    artUploadRunning = true;
+    try {
+      const consent = await control('GET', '/api/web/art-knowledge/consent');
+      if (!consent.allowed || currentSession()?.token !== token) return;
+      const pending = await localControl('POST', '/local/prompt-assistant/art-learning', {action:'pending',accountId}, 10000);
+      for (const candidate of pending?.data?.candidates || []) {
+        if (currentSession()?.token !== token) return;
+        const sent = await control('POST', '/api/web/art-knowledge/candidates', candidate);
+        if (sent.accepted && currentSession()?.token === token) {
+          const bytes = new TextEncoder().encode(JSON.stringify(candidate.evidence));
+          const hash = Array.from(new Uint8Array(await root.crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2,'0')).join('');
+          await localControl('POST', '/local/prompt-assistant/art-learning', {action:'ack',key:candidate.key,evidenceSHA256:hash,accountId}, 10000);
+        }
+      }
+    } catch (_) { /* Keep the outbox for a later retry; never interrupt creation. */ }
+    finally {artUploadRunning = false;}
+  }
+  if (CONFIG.artKnowledgeEnabled === true && computeMode === 'local') {
+    root.setTimeout(() => void flushArtCandidates(), 1000);
+    root.setInterval(() => void flushArtCandidates(), 60000);
+  }
+  async function artLearningCommand(payload) {
+    if (computeMode !== 'local') return {ok:false,error:'请先连接本地助手后记录当前任务反馈'};
+    try {
+      const result = await localControl('POST', '/local/prompt-assistant/art-learning', {...payload,accountId:currentSession()?.user?.id || ''}, 10000);
+      if (payload?.action === 'feedback' && result?.ok) void flushArtCandidates();
+      return result;
+    } catch (error) {return {ok:false,error:String(error.message || error)};}
+  }
   const auth = (method, path, body, timeoutMs) => api(CONFIG.authUrl, method, path, body, timeoutMs);
   // Grok reads reference frames for 反推 and 多参 compiles; the 20 s that suits a credit read is what
   // used to end those with "signal timed out".
@@ -1295,8 +1331,9 @@
     },
     promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
     promptAssistantCancelRequest: async (payload) => cancelPromptAssistantRequest(payload),
+    artLearning: artLearningCommand,
     artAgentChat: async (payload) => payload?.provider === 'api' ? companionCloudChat(payload) : computeMode === 'local'
-      ? localControl('POST', '/local/prompt-assistant/art-agent-chat', payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS)
+      ? localControl('POST', '/local/prompt-assistant/art-agent-chat', {...payload,accountId:currentSession()?.user?.id || ''}, PROMPT_ASSISTANT_TIMEOUT_MS)
           .catch(error => ({ ok: false, error: String(error.message || error) }))
       : ({ ok: false, error: '小桃使用本机 Flash，请先连接本地助手并选择本地算力' }),
     artAgentStop: async (payload) => payload?.provider === 'api' ? stopCompanionCloud(payload) : computeMode === 'local'

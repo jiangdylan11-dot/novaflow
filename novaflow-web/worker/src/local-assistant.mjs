@@ -8,6 +8,8 @@ import { createRuntimeServices, videoRuntimeUrl } from './runtime-services.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
 import { createBorrowedRuntimeServices } from './borrowed-runtime-services.mjs';
 import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
+import { createArtLearning } from './art-learning.mjs';
+import { createArtKnowledgeCache } from './art-knowledge-cache.mjs';
 
 export async function createLocalAssistant(options) {
   if (!options.modelsRoot) {
@@ -24,6 +26,11 @@ export async function createLocalAssistant(options) {
     stateFile: options.dataDir ? join(options.dataDir, 'owned-runtimes.json') : '' });
   let promptAssistant = null;
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
+  const knowledgeCache = createArtKnowledgeCache({directory:join(options.dataDir,'art-knowledge-cache'),
+    fetchPacket:scope=>worker.readArtKnowledge(scope)});
+  const artLearning = createArtLearning({ directory: join(options.dataDir, 'art-learning'),
+    getOwner: () => worker.getState().boundAccount?.id || `local-device:${worker.identity.workerId}`,
+    getKnowledge:scope=>knowledgeCache.read(scope)});
   if((options.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata')==='strata') {
     const prepared = await ensureFlashBrainConfiguration({
       ...(options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON ? {runtimeJsonPath:options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON} : {}),
@@ -35,7 +42,7 @@ export async function createLocalAssistant(options) {
   // to ask for the memory back before it loads its own model.
   const comfyUrls = [...new Set([options.comfyImageUrl || 'http://127.0.0.1:8188', videoRuntimeUrl(options.comfyVideoUrl, options.comfyImageUrl || 'http://127.0.0.1:8188')].map(url => String(url).replace(/\/+$/, '')))];
   promptAssistant = createPromptAssistant({
-    worker, logger: options.logger, comfyUrls,
+    worker, logger: options.logger, comfyUrls, artLearning,
     ...(options.promptAssistant || {})
   });
   // A runtime started on another port (its own was held by somebody else's ComfyUI): the worker
@@ -87,8 +94,11 @@ export async function createLocalAssistant(options) {
         await ensureServices();
         await worker.startLocal({ onProgress: progress });
         progress(90, '正在启动本地网页服务');
-        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant,
+        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant, artLearning, artKnowledgeEnabled: options.artKnowledge?.enabled === true,
           webRoot: options.webRoot, port: options.localPort ?? 4784, controlUrl: options.controlUrl });
+        // Deliberately off until the new cloud service passes deployment gates.
+        // Startup never waits for Supabase and every task reads local files only.
+        if(options.artKnowledge?.enabled===true)knowledgeCache.start();
         emit();
         return snapshot();
       } catch (error) {
@@ -98,6 +108,7 @@ export async function createLocalAssistant(options) {
       }
     }),
     stopLocal: () => serial(async () => {
+      knowledgeCache.stop();
       await worker.stopLocal();
       if (server) await server.close();
       server = null;
@@ -123,6 +134,7 @@ export async function createLocalAssistant(options) {
       return snapshot();
     }),
     stop: () => serial(async () => {
+      knowledgeCache.stop();
       await worker.stop();
       if (server) await server.close();
       server = null;
