@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { UI_CATALOG_MODEL, buildUiCatalogGraph, parseCatalogFields } from './ui-catalog-planner.mjs';
+import { UI_CATALOG_MODEL, buildUiCatalogGraph, parseCatalogFields, inferUiGraph } from './ui-catalog-planner.mjs';
 const sha = value => createHash('sha256').update(value).digest('hex');
 export const NATURAL_DRAFT_METHOD = 'complete-natural-reference-v1';
 
@@ -74,7 +74,8 @@ export function parseRepairFields(raw,keys,prefix='') {
   return parseCatalogFields('{'+prefix+text,keys);
 }
 
-export async function planNaturalUiDraft({baseUrl,payload,cpu,fetchImpl=fetch,pollMs=1000,timeoutMs=180000}) {
+export async function planNaturalUiDraft({baseUrl,payload,cpu,infer,fetchImpl=fetch,pollMs=1000,timeoutMs=180000,isCancelled=()=>false}) {
+  if(infer!==undefined&&typeof infer!=='function')throw new Error('UI 原生推理接口无效');
   const base=String(baseUrl).replace(/\/+$/,''),images=payload.images;
   if(payload.uiCatalogResume||payload.uiDraftResume)throw new Error('快速设计请求不接受旧分析答案');
   if(!Array.isArray(images)||!images.length||images.length>10)throw new Error('请提供有效的布局参考图');
@@ -82,7 +83,9 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,fetchImpl=fetch,po
   if(layouts.length!==1)throw new Error('快速设计需要一张明确的布局参考图');
   const index=layouts[0],request=String(payload.currentPrompt||'').trim();
   if(!request||request.length>18000)throw new Error('请填写有效的主题与设计要求');
-  const ids=[],timings=[];let stage='prepare-reference',dispatchClientId='';
+  const ids=[],timings=[],nativeImages=new Map();let stage='prepare-reference',dispatchClientId='',analysisModel=infer?'':UI_CATALOG_MODEL;
+  const active=()=>{if(isCancelled()||payload.signal?.aborted)throw new Error('任务已中止；未提交后续分析或生图');};
+  const remember=dataUrl=>{const name='native-ui-'+randomUUID();nativeImages.set(name,dataUrl);return name;};
   const json=async(path,init)=>{
     const response=await fetchImpl(base+path,{...init,signal:AbortSignal.timeout(30000)});
     if(!response.ok)throw new Error('PE本地接口请求失败：HTTP '+response.status);
@@ -95,6 +98,14 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,fetchImpl=fetch,po
   };
   const execute=async graph=>{
     if(ids.length>=3)throw new Error('完整设计已达到本次有界分析上限，本次未提交生图');
+    active();
+    if(infer){
+      const result=await inferUiGraph(infer,graph,{resolveImage:name=>nativeImages.get(name),stage,signal:payload.signal,isCancelled});
+      if(analysisModel&&analysisModel!==result.model)throw new Error('UI 分析会话的实际模型发生变化；未提交生图');
+      analysisModel=result.model;ids.push(result.requestId);
+      timings.push({stage,promptId:result.requestId,requestId:result.requestId,model:result.model,wallMs:result.wallMs,budget:result.budget,...(result.syntaxProjection?{syntaxProjection:result.syntaxProjection}:{}),...(result.usage?{usage:result.usage}:{}),...(result.timing?{timing:result.timing}:{})});
+      return result.text;
+    }
     await idle();dispatchClientId='novaflow-ui-draft-'+randomUUID();const started=Date.now();
     const sent=await json('/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({client_id:dispatchClientId,prompt:graph})});
     if(!sent.prompt_id)throw new Error('PE提交状态未确认，请先核对任务；本次不重复提交');
@@ -111,13 +122,17 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,fetchImpl=fetch,po
     throw new Error('PE等待超时，请核对任务 '+sent.prompt_id+'；勿重复提交');
   };
   try{
-    await idle();const available=await json('/object_info/CLIPLoader');
-    if(!available.CLIPLoader?.input?.required?.clip_name?.[0]?.includes(UI_CATALOG_MODEL))throw new Error('缺少已验证PE模型，不会下载或更换模型');
+    active();if(!infer){await idle();const available=await json('/object_info/CLIPLoader');
+      if(!available.CLIPLoader?.input?.required?.clip_name?.[0]?.includes(UI_CATALOG_MODEL))throw new Error('缺少已验证PE模型，不会下载或更换模型');}
     const prepared=await cpu({action:'natural-draft-image',image:images[index]});
+    let name;
+    if(infer)name=remember(prepared.dataUrl);
+    else {
     const bytes=Buffer.from(prepared.dataUrl.split(',')[1],'base64'),form=new FormData();
     form.append('image',new Blob([bytes],{type:'image/png'}),'NF_UI_DRAFT_'+randomUUID()+'.png');form.append('overwrite','false');
     const uploaded=await json('/upload/image',{method:'POST',body:form});if(!uploaded.name)throw new Error('布局图上传状态未确认');
-    const name=(uploaded.subfolder?uploaded.subfolder+'/':'')+uploaded.name;
+    name=(uploaded.subfolder?uploaded.subfolder+'/':'')+uploaded.name;
+    }
     stage='natural-recognition';
     const raw=await execute(buildNaturalDraftGraph({system:RECOGNITION_SYSTEM,user:'观察这张本地原图，仅返回上述五行结构记录。',image:name}));
     stage='neutral-projection';const projection=await cpu({action:'natural-draft-project',raw});
@@ -127,9 +142,12 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,fetchImpl=fetch,po
       if(i===index)continue;
       if(!['style','color','material','content','character_identity','identity'].includes(ref.role))throw new Error('未识别的美术参考职责，本次未丢弃图片或生成');
       const copy=await cpu({action:'natural-draft-image',image:ref});
+      if(infer)artNames.push(remember(copy.dataUrl));
+      else {
       const form=new FormData();form.append('image',new Blob([Buffer.from(copy.dataUrl.split(',')[1],'base64')],{type:'image/png'}),'NF_UI_ART_'+randomUUID()+'.png');form.append('overwrite','false');
       const uploaded=await json('/upload/image',{method:'POST',body:form});if(!uploaded.name)throw new Error('美术参考上传状态未确认');
-      artNames.push((uploaded.subfolder?uploaded.subfolder+'/':'')+uploaded.name);artRoles.push({art_image_index:artNames.length,original_reference_index:i+1,role:ref.role});
+      artNames.push((uploaded.subfolder?uploaded.subfolder+'/':'')+uploaded.name);}
+      artRoles.push({art_image_index:artNames.length,original_reference_index:i+1,role:ref.role});
     }
     job.context.art_reference_roles=artRoles;
     stage='single-catalog-design';
@@ -158,11 +176,11 @@ export async function planNaturalUiDraft({baseUrl,payload,cpu,fetchImpl=fetch,po
       if(!finalAudit.ok)throw new Error('本地分析修正后仍存在组件职责冲突，本次未提交生图；未切换分析来源');
       fieldRepair={attempts:1,keys,promptId:ids.at(-1),sourceErrors:firstAudit.errors,unchangedFieldSha256:unchanged,extraction:repaired.proof};
     }
-    stage='compile-catalog';const bound=await cpu({action:'compile-complete-natural',case:job.case,catalog});
+    active();stage='compile-catalog';const bound=await cpu({action:'compile-complete-natural',case:job.case,catalog});
     const extracted={prompt:bound.prompt,extraction:{...fields.proof,...bound.proof}};
-    return {prompt:extracted.prompt,negativePrompt:'',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:NATURAL_DRAFT_METHOD,analysisProvider:'local',promptIds:ids,providerCallCount:ids.length,timings,projection,fieldRepair,catalogAudit:bound.catalogAudit,compileProof:bound.proof,promptSha256:sha(extracted.prompt)},uiDraft:{method:NATURAL_DRAFT_METHOD,model:UI_CATALOG_MODEL,originalRequirements:request,promptIds:ids,providerCallCount:ids.length,timings,recognitionChars:raw.length,designChars:extracted.prompt.length,projection,source:{index:index+1,role:'layout',...prepared.proof},extraction:extracted.extraction,promptSha256:sha(extracted.prompt)},
+    return {prompt:extracted.prompt,negativePrompt:'',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:NATURAL_DRAFT_METHOD,analysisProvider:'local',...(infer?{analysisBackend:'strata',model:analysisModel}:{}),promptIds:ids,providerCallCount:ids.length,timings,projection,fieldRepair,catalogAudit:bound.catalogAudit,compileProof:bound.proof,promptSha256:sha(extracted.prompt)},uiDraft:{method:NATURAL_DRAFT_METHOD,model:analysisModel,...(infer?{analysisBackend:'strata'}:{}),originalRequirements:request,promptIds:ids,providerCallCount:ids.length,timings,recognitionChars:raw.length,designChars:extracted.prompt.length,projection,source:{index:index+1,role:'layout',...prepared.proof},extraction:extracted.extraction,promptSha256:sha(extracted.prompt)},
       uiPlan:{version:1,layoutMode:'preserve',layoutReference:index+1,visualMode:'theme-redesign',references:images.map((x,i)=>({index:i+1,role:x.role==='layout'?'layout':['style','color','material'].includes(x.role)?'style':'content'})),layoutChanges:[],preserve:[],grids:[]}};
-  }catch(error){error.uiDraftDiagnostics={stage,model:UI_CATALOG_MODEL,promptIds:[...ids],dispatchClientId,samplingSubmitted:false};throw error;}
+  }catch(error){error.uiDraftDiagnostics={stage,model:analysisModel,...(infer?{analysisBackend:'strata'}:{}),promptIds:[...ids],dispatchClientId,samplingSubmitted:false};throw error;}
 }
 export const RECOGNITION_SYSTEM = "只观察输入游戏图的结构，不重新设计，不描述旧人物物件的身份、物种、衣服、颜色、材质或故事。不列普通物件类别和重复关系。只输出以下五行短自然描述，保留行首名称；看不清写“未知”，不能猜补。\n区域关系：从上到下说明真实存在的主要区域及相对位置，区分玩法网格、格外大主角、信息栏和控件区。\n网格：实际几行几列。\n角色关联：按不同身份说明实体数量和各自格外位置、对应头像的第几行第几列，用自然相对位置指代，不编角色编号。确认同一身份时，头像与格外全身是同一角色的两种展示，不是两名角色；两个展示仍占各自区域。没有或无法确认就直说。\n业务文字：逐字抄真实功能标签、金额与数值、按钮字面和调节符号，附其自然位置；相同值在不同宿主出现也分别保留，不把用途解释当成印字。网格中的固定字母数字也附格位保留；不抄旧物装饰题字。\n玩法文字：只抄实际可见特殊玩法标签的原字面及第几行第几列；载体外貌不写，位置不清就写未知。\n不输出区域数字索引、嵌套schema、逐格普通物件名单、思考或候选。全文尽量不超过350字，必需业务字面可以使全文略长。";
 export const DESIGN_SYSTEM_BODY = "你是完整游戏UI的美术设计师。依据本轮已经识别的结构与功能，创作一套完整的新主题成品画面，而不是只给旧按钮换颜色。你不会看到旧外观；context只含去除旧外观后的功能语义、文字、区域关系和明确记录的未知。只设计，不再次识别，不把未知内容宣称为已识别事实。\n整体采用context指定主题和画风。人物、格内头像、普通玩法符号、特殊玩法标签载体、主旋转、调节按钮、购买入口、信息显示、金额数字和辅助功能图标都属于同一套整体设计，完成度要一致。人物与物件的具体身份、轮廓、服饰装备、动作、颜色及材料由你自主创造；不恢复旧身份或原物件。构思有近中远空间的真实主题地点，人物动作自然，图标主轮廓、主次体块、独立构造和细节都完整；通过统一主辅光、受光面、接触阴影与自然反射形成层次，不靠全体描光边或统一压暗。采用手绘厚涂游戏美术，有秩序的色块与笔触，不做低完成度素材陈列。\n保留各功能职责、已识别区域顺序、网格行列与总格数、独立人物展示数及全部业务字面。原普通图标种类和重复不约束新设计。保持格内头像与格外人物各自展示职责；对应关系未知，不填成原图识别结论。你可自主构思新角色及其头像表现，但不能删除头像区域或扩展额外人物区。逐行描述网格中各格的新成品，避免空格、编号占位、厚卡片墙。\n主控必须有完整的旋转视觉主体：具体描述中央主按钮的独立轮廓、足够显著的旋转箭头或环动图案、主题构造和体积层次，让人看得出它是主旋转操作。还要具体设计一对减/加调节组件，保留各自符号及与读数的功能关系。实际识别的辅助按钮仍有各自功能图标和已识别文字，不得用普通文字按钮替代主旋转或±。购买入口和信息显示同样需要完整主题造型，不能缺项或合并读数。\n每类主要文字都必须给出具体的主题字形设计，而非泛称“清晰粗体/无衬线/镶金边”：说明字母或数字的笔画骨架与端部特征、字腔/字宽/间距、所选主题材料如何构成字身，以及字面、侧面与阴影的层次。分别落实到格内字母数字、特殊玩法大字、购买入口、信息标题与中奖数值、金额读数、辅助功能中文标签；让它们属于一个字形家族又有主次。材料和字形由你按主题自主设计，不预置任何固定模板。具体方案必须写进最终完整画面描述，不能只提要求。保留识别原字面及实际重复显示，不新起标题、不新增口号、数值、标签或业务文案，也不把字段名/解释/未知等印进画面。\n最终直接给一个JSON字符串字段rewritten_prompt，约1500至2100字，值为能独立交给绘图模型执行的完整中文成品画面描述。将人物、玩法、文字和全部控制融入连续整体方案，不另附旧功能清单、不写修补附录或追加提示尾句。不输出分析、候选或中间方案。原图只作布局参考，全部新视觉造型按这套完整方案重设计。";

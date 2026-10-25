@@ -44,7 +44,9 @@
         "prompt_assistant/*.py",
         "prompt_assistant/*.json",
         "prompt_assistant/ui_catalog/**/*.py",
-        "prompt_assistant/ui_catalog/**/*.json"
+        "prompt_assistant/ui_catalog/**/*.json",
+        "prompt_assistant/ui_native/**/*.py",
+        "prompt_assistant/ui_native/**/*.json"
       ]
     },
     {

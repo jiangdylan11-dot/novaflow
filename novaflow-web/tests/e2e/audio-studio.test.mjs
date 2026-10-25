@@ -81,7 +81,8 @@ test('both templates bind every parameter to a real node input and end in the WA
     const classes = Object.values(template.graph).map((n) => n.class_type);
     assert.ok(classes.includes('NovaFlowSaveAudioWav'));
     assert.ok(classes.includes('NovaFlowAudioCaption'));
-    assert.ok(classes.includes('TextGenerate'), 'the rewrite runs on the node');
+    assert.ok(!classes.includes('TextGenerate'), 'Flash preprocessing must finish before this generation graph');
+    assert.ok(!Object.values(template.graph).some(n=>n.inputs?.clip_name === 'qwen3.5_2b_bf16.safetensors'), 'generation does not load the retired 2B assistant');
     assert.ok(classes.includes(kind === 'music' ? 'NovaFlowAudioSeamlessLoop' : 'NovaFlowAudioSfxClean'));
     const parameters = validateTaskParameters(type, { prompt: '森林关卡', duration_seconds: 30, bpm: 90 });
     const graph = buildGraph(template, parameters, audioGraphExtras(type, parameters));
@@ -90,10 +91,8 @@ test('both templates bind every parameter to a real node input and end in the WA
     const caption = graph[encode.inputs.text[0]];
     assert.equal(caption.class_type, 'NovaFlowAudioCaption');
     assert.match(caption.inputs.fallback, /森林关卡\. Length: \d+ seconds$/);
-    const rewrite = Object.values(graph).find((n) => n.class_type === 'TextGenerate');
-    assert.match(rewrite.inputs.prompt, /Input: 森林关卡/);
-    const sw = Object.values(graph).find((n) => n.class_type === 'ComfySwitchNode');
-    assert.equal(sw.inputs.switch, true);
+    assert.deepEqual(caption.inputs.text, ['13',0]);
+    assert.equal(graph['13'].inputs.value,'森林关卡');
     if (kind === 'music') {
       const loop = Object.values(graph).find((n) => n.class_type === 'NovaFlowAudioSeamlessLoop');
       assert.equal(loop.inputs.loop_seconds, 30);

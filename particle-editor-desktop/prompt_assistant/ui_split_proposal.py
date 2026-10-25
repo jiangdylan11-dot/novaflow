@@ -1,6 +1,7 @@
 """UI region proposals from the existing vision model; no segmentation claims."""
 import json
 import math
+import os
 import re
 
 SCHEMA = "nf.ui.split.v1"
@@ -35,6 +36,28 @@ def validate_proposal(raw):
 CHILD_QUESTION = '''This image is a crop of one previously identified UI group, with a small margin. Identify the INDEPENDENT visible targets inside that named group. Return the same nf.ui.split.v1 JSON with coordinates normalized to 0..1000 of this exact CROP, not the full screenshot.
 Do not return the entire group, grid, toolbar or all its contents as one panel. Give one tight complete box for each separately editable symbol or button you can actually see, including repeated instances. Do not guess a grid count or fabricate objects. Pictorial letter-shaped game symbols are objects, not text glyphs. Real words, value readouts and labels are text regions. Separate words/labels from icon silhouettes; a label must not be lost to background removal. Keep complete button artwork as kind=button and place an outside caption in a separate text region. Use kind=object or icon only for isolated artwork without words; use panel/button for a complete rectangular pixel block; use text for complete text regions, never individual glyphs. Exclude surrounding scenery and partial objects outside the named group. Mark uncertainty. Return only JSON and do not infer hidden pixels. At most 32 regions.'''
 
+def _generation_identity(assistant):
+    """Read completed-call metadata only; never construct or load an adapter."""
+    def text(value):
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    profile = getattr(assistant, "last_generate_profile", None)
+    profile = profile if isinstance(profile, dict) else {}
+    diagnostics = profile.get("inferenceDiagnostics")
+    diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+    adapter = getattr(assistant, "_qwen3_adapter", None)
+    model = (text(diagnostics.get("modelId")) or text(profile.get("modelId"))
+             or text(getattr(adapter, "model_id", None)))
+    if model is None:
+        path = getattr(adapter, "model_path", None)
+        model = text(os.fspath(path)) if isinstance(path, (str, os.PathLike)) else None
+        if model == ".":
+            model = None
+    provider = (text(profile.get("provider")) or text(diagnostics.get("provider"))
+                or text(diagnostics.get("modelSource")) or text(profile.get("modelSource")))
+    return {"model": model, "provider": provider}
+
+
 def propose(assistant, tensors, context=None):
     if len(tensors) != 1:
         raise ValueError("智能拆图每次只识别一张原图")
@@ -45,7 +68,7 @@ def propose(assistant, tensors, context=None):
     question = QUESTION + ("\nNamed group: " + group_name + "\n" + CHILD_QUESTION if children else "")
     output = assistant.generate("<|vision_start|><|image_pad|><|vision_end|>\n" + question,
         images=tensors, llama_template=template, max_length=4096 if children else 3072, trace_label="uiSplitChildren" if children else "uiSplitProposal", do_sample=False)
-    result = {"rawOutput": output, "visualSchema": SCHEMA, "model": "qwen3-vl-instruct", "maskProduced": False, "scope": "children" if children else "whole"}
+    result = {"rawOutput": output, "visualSchema": SCHEMA, **_generation_identity(assistant), "maskProduced": False, "scope": "children" if children else "whole"}
     try:
         result["proposal"] = validate_proposal(output)
     except (ValueError, TypeError) as error:

@@ -18,7 +18,7 @@ import { createTunnel } from './tunnel.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { videoRuntimeUrl } from './runtime-services.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength, audioGraphExtras } from './comfy/workflow-runner.mjs';
-import { audioRepromptPrompt } from './comfy/audio-reprompt.mjs';
+import { cleanAudioCaption } from './comfy/audio-reprompt.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy, detectQwenImage21 } from './models/model-manager.mjs';
@@ -332,9 +332,9 @@ export function createWorker(options) {
 
   // 音频 AI 助手 (本地): the same text model and the same frame the audio
   // pipeline rewrites with, run on their own so the page can show the caption
-  // before anything is generated. One small graph: text model -> rewrite ->
-  // caption cleanup -> preview, read back from the history.
-  async function rewriteAudioPrompt({ kind, text, requirements, seconds, bpm, loop } = {}) {
+  // before generation. The shared Flash coordinator owns inference and proves
+  // resource release before the audio model can load.
+  async function rewriteAudioPrompt({ kind, text, requirements, seconds, bpm, loop } = {}, context = {}) {
     const which = kind === 'sfx' ? 'sfx' : 'music';
     const tempo = which === 'music' ? Math.round(Number(bpm) || 0) : 0;
     const input = [
@@ -344,24 +344,15 @@ export function createWorker(options) {
       tempo ? 'BPM: ' + tempo : ''
     ].filter(Boolean).join('\n');
     if (!input) return { ok: false, error: '请先输入描述或补充要求' };
-    if (!(await comfyImage.isUp())) return { ok: false, error: '图像服务未就绪，请稍后再试' };
     const length = Math.max(1, Math.round(Number(seconds) || (which === 'music' ? 30 : 2)));
-    const graph = {
-      10: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3.5_2b_bf16.safetensors', type: 'stable_diffusion', device: 'default' } },
-      11: { class_type: 'TextGenerate', inputs: { clip: ['10', 0], prompt: audioRepromptPrompt(which, input, length), max_length: 200, sampling_mode: 'on',
-        'sampling_mode.temperature': 0.7, 'sampling_mode.top_k': 64, 'sampling_mode.top_p': 0.95, 'sampling_mode.min_p': 0.05,
-        'sampling_mode.repetition_penalty': 1.05, 'sampling_mode.seed': Math.floor(Math.random() * 2 ** 31), 'sampling_mode.presence_penalty': 0 } },
-      20: { class_type: 'NovaFlowAudioCaption', inputs: { text: ['11', 0], seconds: length, bpm: 0, fallback: '' } },
-      30: { class_type: 'PreviewAny', inputs: { source: ['20', 0] } }
-    };
     try {
-      const promptId = await comfyImage.queuePrompt(graph);
-      const history = await comfyImage.waitForPrompt(promptId, { pollMs: 500, timeoutMs: 5 * 60 * 1000 });
-      const preview = history?.outputs?.['30']?.text;
-      // The page shows the sentence only; the length is written in again when it generates.
-      const caption = String(Array.isArray(preview) ? preview.join('') : preview || '').replace(/\s*\.?\s*Length:\s*\d+(?:\.\d+)?\s*seconds?\.?\s*$/i, '').trim();
-      if (!caption) return { ok: false, error: '本地模型没有返回结果' };
-      return { ok: true, prompt: caption };
+      const assistant = promptAssistantRef();
+      if (!assistant?.rewriteAudioPrompt) throw new Error('本机 Flash 音频助手尚未配置');
+      const request = {kind:which,input,seconds:length};
+      const reply = context.taskId ? await assistant.runForTask(context.taskId,'rewriteAudioPrompt',request,context) : await assistant.rewriteAudioPrompt(request);
+      if (!reply?.ok) return reply || {ok:false,error:'Flash 没有返回结果'};
+      if (reply.resourcesReleased !== true || reply.generationReady !== true) throw new Error('Flash 资源释放尚未确认，本次未提交音频生成');
+      return {...reply,prompt:cleanAudioCaption(reply.prompt)};
     } catch (error) {
       log('audio rewrite failed', { error: String(error?.message || error) });
       return { ok: false, error: '本地优化失败：' + String(error?.message || error).slice(0, 200) };
@@ -641,6 +632,12 @@ export function createWorker(options) {
   }
 
   async function runTask(task) {
+    if (task.task_type === PROMPT_ASSISTANT_TASK_TYPE) return runTaskUnlocked(task);
+    const release = await promptAssistantRef()?.acquireGeneration?.(task.id,{isCancelled:()=>{try{checkCancelled(task.id);return false;}catch{return true;}}});
+    try { return await runTaskUnlocked(task); } finally { release?.(); }
+  }
+
+  async function runTaskUnlocked(task) {
     checkCancelled(task.id);
 
     // AI 抠图 is the one task that is not a ComfyUI graph: it runs BiRefNet in
@@ -664,7 +661,7 @@ export function createWorker(options) {
       ? (moduleSpec?.runtime || 'image')
       : (template.comfy === 'video' ? 'video' : 'image');
     const comfy = comfyFor(runtime);
-    const parameters = task.parameters || {};
+    let parameters = task.parameters || {};
 
     if (!await comfy.isUp()) {
       state.comfy[runtime] = false;
@@ -738,7 +735,17 @@ export function createWorker(options) {
       if (req?.kind === 'video') {
         extra.length = videoFrameLength(parameters.duration_seconds, parameters.fps);
       }
-      if (req?.kind === 'audio') Object.assign(extra, audioGraphExtras(task.task_type, parameters));
+      if (req?.kind === 'audio') {
+        const audio = audioGraphExtras(task.task_type,parameters);
+        if (parameters.reprompt !== false) {
+          await reportProgress(task.id,TASK_STATE.PROCESSING,6,'Flash 正在整理音频描述');
+          const reply = await rewriteAudioPrompt({kind:task.task_type==='audio_music'?'music':'sfx',text:parameters.prompt,
+            seconds:audio.generate_seconds,bpm:parameters.bpm,loop:parameters.loop},{taskId:task.id,isCancelled:()=>{try{checkCancelled(task.id);return false;}catch{return true;}}});
+          if(!reply?.ok)throw new Error(reply?.error || 'Flash 音频描述分析失败');
+          parameters={...parameters,prompt:reply.prompt,reprompt:false};
+        }
+        Object.assign(extra,audioGraphExtras(task.task_type,parameters));
+      }
       graph = buildGraph(template, parameters, extra);
       seed = resolvedSeed(template, graph);
     }

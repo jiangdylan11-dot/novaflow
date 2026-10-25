@@ -1,0 +1,28 @@
+{
+  "version": "2.0.81",
+  "files": {
+    "art_direction.py": "dd7cbe0d76ee20a0a90595b3d367a8b3b08e06c166726180b4a0a71cf87c4a0a",
+    "business_guard.py": "7a260b401d7f8c88dd0bd06d1d1abc18d1dff589134bb24ee62219aa91b7ca89",
+    "compiler.py": "324c6704fae3cd84a1c3a075cc631acdfa9b322015f9688be4619dc5869ff397",
+    "controls.py": "3c4cf7ed797d122e2b9ff3604cb5ff6932f7f9425fb79fd8dfd262c21621e91e",
+    "design_core.py": "412d616a7d80bae97c373e38524834927fede6b8c5a045c636238fa35659307d",
+    "display_bindings.py": "67f65b7c4ca16159405e704d25e24471051e6f87f3ffbe14a541f27922532dea",
+    "evidence_source.py": "2019653bb382053992f75b4f8c0740520ea65531f427143f40b713970abc7250",
+    "extract_art.py": "5bdfeeaff1454b4d5bc0c5cdbe871af46adb5f42b5830d025709ef55b14e37d9",
+    "natural_core.py": "e06c21bb49e8cf5d1132d13a4b6da2ddf6d02df110df0b6d9ccf875d414f1a42",
+    "OPTIONAL-DESIGN-RULES.json": "d197a14acbe6500eea2300d9c19a26202f349d0d4181a496de2ff01e5ce1ad13",
+    "service.py": "4c0241a4a1e6b5103fd5bc3d537fdfbdd72b122dd62d9120357a1393501735b2",
+    "source_records.py": "886daacaabbd385ca14f451a9e915e7d05a9b5ba8c6904385f9f3438464fe1d5",
+    "speed_profile.py": "9bd10847f2bf754d88ea783ce300710172141c48f18032c0cd07190ff8aa8a0d",
+    "__init__.py": "23e2db0d5df421e80745c30446ec02077fcd3f0bb719f845488c102a59db92f3",
+    "assets/art.json": "15bab1b090a9f6511cd0b759dcd646026659a99b5973d33cfb8301256e873e18",
+    "assets/controls.json": "54d0726068efa5862148b904b80bb305d73941c33a46e82105c7dea6436308ad",
+    "assets/grid.json": "8f86d5ef7371a468c4b3ed2e5cb9c5c88f1335bca3c7741c28da10203e0faf09",
+    "assets/grok-catalog.json": "0d5670b4ba8e584a6a68b870e29f99d27b0d2082f4c275bd5649df7667403be9",
+    "assets/natural.json": "1e4bfb30400fee8f8496b34b43428a9c6fdf239a974bc66a16635d4cbfcd2367"
+  },
+  "historicalImageAnswersIncluded": false,
+  "sourceContract": "observed-rows-v2",
+  "optionalWholeCatalogRetryLimit": 1,
+  "complexCatalogBinding": "inline-source-owned-cell-art"
+}

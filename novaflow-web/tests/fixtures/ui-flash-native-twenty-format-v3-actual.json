@@ -1,0 +1,80 @@
+{
+  "schema": "nf.qa.ui.flash.native-actual.v1",
+  "sourceImageSHA256": "5a7b87e169781e6808aac4fa2b2f6c4d69b641c6670003615971ea641942fcc0",
+  "sourceOriginalSize": [
+    1512,
+    3276
+  ],
+  "originalRunSucceeded": false,
+  "originalFailure": "Explicit top-to-bottom region order was refused by narrow phrase gate; no generation was submitted",
+  "records": [
+    {
+      "stage": "source-controls",
+      "requestId": "chatcmpl-36e90423f1614ec8b6724713",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "区域关系：自上而下为网格区（5列4行卷轴与符号矩阵）、角色装饰区（三只羊角色立于桌案前，带烟花灯笼背景）、中奖条区（左\"BUY FREE GAMES\"红色按钮，右绿色\"WIN 20.00\"显示条）、下注条区（深红色横条含钱包、减号、金额、加号、WIN徽章、金额）、按钮区（菜单、极速、主旋转、自动、声音五控件）。\n网格：4行×5列，共20格。\n角色关联：3位格外展示；第2行第2列写字羊头像、第2行第3列敲鼓羊头像、第2行第4列拿红包羊头像。\n操作组件：左起红色\"BUY FREE GAMES\"购买按钮；绿色\"WIN 20.00\"非交互中奖显示；深红条左钱包图标配非交互\"¥1000\"；黄色\"-\"调节符号；黄色非交互\"¥1000\"下注金额；黄色\"+\"调节符号；WIN徽章配非交互\"¥1000\"；左\"菜单\"按钮、左二\"极速\"辅助按钮、中央红色双弧主旋转按钮、右二\"自动\"辅助按钮、右\"声音\"按钮。同一深红条内钱包-减-金额-加-WIN-金额连续关联。\n显示文字：本界面无独立计数栏，固定业务显示与数值均已在操作组件行覆盖，无额外显示文字。\n玩法文字：\"WILD\"特殊标签位于第4行第4列。",
+      "textSHA256": "fc0b6c8ad4ec7f8cbf3a180435c6f41631c7befcde06e2461150834e5f8a605b",
+      "traceFile": "70393687-9b5f-4ed1-9a59-da5bd1802c06.json",
+      "traceSHA256": "14f5e4614f1095d0088d89e54d3badd4ec18a82ee07316c57e64fc971c8d9716",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-be628f1d-a7bb-47a5-af96-9e539a97fcf1"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1841522,
+          "sha256": "10419b00cbe5465f6b078b23aa87e37b995ae7be170b53e81b1c2e528fd1fbe3",
+          "name": "native-ui-4206c1ff-30a3-45a8-84c0-e9436e400023"
+        }
+      ]
+    },
+    {
+      "stage": "source-grid",
+      "requestId": "chatcmpl-ffa86ab445e540c6bd9415dc",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "{\"shape\":[4,5],\"rows\":[[{\"type\":\"o\",\"text\":\"\",\"group\":1},{\"type\":\"o\",\"text\":\"\",\"group\":2},{\"type\":\"g\",\"text\":\"J\",\"group\":4},{\"type\":\"o\",\"text\":\"\",\"group\":3},{\"type\":\"o\",\"text\":\"\",\"group\":2}],[{\"type\":\"o\",\"text\":\"\",\"group\":3},{\"type\":\"p\",\"text\":\"\",\"group\":9},{\"type\":\"p\",\"text\":\"\",\"group\":10},{\"type\":\"p\",\"text\":\"\",\"group\":11},{\"type\":\"g\",\"text\":\"10\",\"group\":8}],[{\"type\":\"g\",\"text\":\"Q\",\"group\":6},{\"type\":\"o\",\"text\":\"\",\"group\":2},{\"type\":\"g\",\"text\":\"K\",\"group\":5},{\"type\":\"g\",\"text\":\"J\",\"group\":4},{\"type\":\"o\",\"text\":\"\",\"group\":1}],[{\"type\":\"g\",\"text\":\"J\",\"group\":4},{\"type\":\"g\",\"text\":\"A\",\"group\":7},{\"type\":\"o\",\"text\":\"\",\"group\":1},{\"type\":\"s\",\"text\":\"WILD\",\"group\":12},{\"type\":\"g\",\"text\":\"K\",\"group\":5}]],\"uncertain\":[]}",
+      "textSHA256": "4e3899cb47b747074564cd9f22c20bd9870f06aa2ff45655ecb2c110270df626",
+      "traceFile": "0d2bc5da-9704-424b-88ec-ef4e1ea528aa.json",
+      "traceSHA256": "a144d4035dae21573c7b94fe3d19dd6fea1d9bceacdc63d55e8d5105b59a7190",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-be628f1d-a7bb-47a5-af96-9e539a97fcf1"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 2003325,
+          "sha256": "1d73c953d87a6e65fa760f457b12a0ee6277a87a43aadfc8e6384fef16931951",
+          "name": "native-ui-97d4260d-ad72-40fd-90ab-23a5e1acc2e8"
+        }
+      ]
+    },
+    {
+      "stage": "source-natural",
+      "requestId": "chatcmpl-129a3837271b4185999a7a9e",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "区域关系：顶部为玩法网格区；其下为格外大主角区（三个角色立于桌前）；再下为信息栏（左功能横幅＋右 WIN 数值、下接金额调节条）；底部为控件区（左右各两按钮＋中央圆形旋转按钮）。\n\n网格：4行5列。\n\n角色关联：共三个身份，各为头像＋格外全身同一角色。持毛笔羊头像在网格第2行第2列，其全身在格外左侧；举鼓羊头像在第2行第3列，其全身在格外中间；持红包羊头像在第2行第4列，其全身在格外右侧。\n\n业务文字：左横幅“BUY FREE GAMES”，右横幅“WIN 20.00”；调节条左“¥1000”＋钱包图标，中“－”与“¥1000”与“＋”，右“WIN”图标与“¥1000”；控件区自左至右“菜单”“极速”“自动”“声音”。网格固定字母数字：第1行第3列 J、第2行第5列 10、第3行第1列 Q、第3行第3列 K、第3行第4列 J、第4行第1列 J、第4行第2列 A、第4行第5列 K。\n\n玩法文字：“WILD”第4行第4列；“BUY FREE GAMES”在左横幅。",
+      "textSHA256": "7abb0600a8da22957fe2f0b44a61fdcad2de207c7ae3e19d4c5427d25ad9cbb9",
+      "traceFile": "24ef1e00-0dc4-43f0-81f1-70ef7c61ca66.json",
+      "traceSHA256": "ab0f57783feb05e466bf80eb8ea1936af50b303d11bb7ee0a44c6524f72aadd8",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1256069,
+          "sha256": "f6e500a8ff5800a335fb5d2b15714719887615a07ff83d5741317a92fa11b221",
+          "name": "native-ui-6361c2f8-7379-49b5-9110-68e9698e1853"
+        }
+      ]
+    }
+  ]
+}

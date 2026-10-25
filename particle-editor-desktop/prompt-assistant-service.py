@@ -62,7 +62,25 @@ from prompt_assistant.art_prompt_contract import (
     terminal_constraint_text as art_prompt_terminal_constraint_text,
 )
 from prompt_assistant.qwen3_vl_adapter import Qwen3VLProviderError
-from prompt_assistant.pe_adapter import ComfyPEAdapter as Qwen3VLAbliteratedAdapter
+from prompt_assistant.pe_adapter import ComfyPEAdapter
+from prompt_assistant.flash_adapter import (
+    FlashAdapter, flash_backend_enabled, begin_flash_request, end_flash_request, flash_request_summary,
+)
+
+
+def Qwen3VLAbliteratedAdapter(*args, **kwargs):
+    # Keep all legacy business factories (including H3) on the same externally
+    # owned Flash session. There is deliberately no provider fallback here.
+    adapter_type = FlashAdapter if flash_backend_enabled() else ComfyPEAdapter
+    return adapter_type(*args, **kwargs)
+
+
+def local_reverse_provider() -> str:
+    return "strata" if flash_backend_enabled() else "qwen35_pe_i2i"
+
+
+def local_generation_provider() -> str:
+    return "strata" if flash_backend_enabled() else "qwen35-pe-i2i"
 from prompt_assistant.visual_contract import (
     RICH_PLAIN_BACKGROUND_PATTERN,
     RICH_VISUAL_SYSTEM_TEXT,
@@ -96,7 +114,7 @@ if hasattr(sys.stdin, "reconfigure"):
     sys.stdin.reconfigure(encoding="utf-8")
 
 
-MODEL_TYPE = "qwen35_pe_i2i"
+MODEL_TYPE = "swift15_qwen38_flash_next_iq2_xs" if flash_backend_enabled() else "qwen35_pe_i2i"
 DEFAULT_RUNTIME_JSON = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\runtime.json")
 DEFAULT_COMFY_ROOT = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\engine\ComfyUI")
 DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
@@ -1748,6 +1766,13 @@ MINIMAX_H3_WRITER_RULES = (
     "9. 每句写清是谁在做什么（不用“这只手”“它”这样说不清是谁的指代）；只写看得见、听得见的内容，不用比喻（不写“如风铃”“如刀锋”），不写“全程不变”“仍保持原样”“动作未完成”这类说明；只输出规定的标签和内容，不写标题、解释或备注。"
 )
 
+MINIMAX_H3_FLASH_INTENT_RULES = (
+    "\nFlash 意图边界（优先于补充创意和过渡的写法）：用户写明的动作顺序、完成程度和物体状态是边界。"
+    "除用户要求的变化外，维持每一步已经形成的物体状态，不插入新的完成动作、收尾动作或收尾状态。"
+    "自然过渡只补实现用户动作所必需的连续运动，不新增独立行为，不为填满阶段而追加动作。"
+    "用户限定声音时，只保留其允许的声源，不增加其他人物、环境或画外声源；无对白、无配乐等明确限制必须遵守。"
+)
+
 
 # "无声地落下", "她无声流泪" and "悄无声息" describe a motion, not a silent video ("全程无声", "无声视频" is one).
 MINIMAX_H3_SILENCE = re.compile(r"静音|(?<!悄)无声(?=$|[^㐀-鿿]|视频|画面|状态|处理|的)|(?:不要|不需要|没有|去掉|去除|删掉|移除|关掉)(?:任何|所有|全部)?的?(?:声音|音效)"
@@ -1803,6 +1828,51 @@ def minimax_h3_base_audio(view: str, fields, user_requirement: str) -> tuple:
     added = [cue for cue in dict.fromkeys(cues) if cue not in kept]
     sound = (kept + "，" + "、".join(added) if kept and added else kept or "、".join(added)).rstrip("。.")
     return (sound + "。" if sound else None), music, []
+
+
+def minimax_h3_flash_exclusive_sound(view: str, fields, user_requirement: str):
+    """Only an explicit complete sound-source restriction owns this one field.
+
+    Ambiguous temporal/reference audio remains on the existing H3 protocol;
+    dialogue is independently compiled into the narrative, never removed here.
+    """
+    text = user_requirement if fields else view + "\n" + user_requirement
+    text = MINIMAX_H3_DIALOGUE_PATTERN.sub("", re.sub(H3_SPEECH_LINE, "", text))
+    if re.search(r"<Audio\s+[1-9]\d*>|(?:参考音频|音频)\s*[1-9]\d*", text, re.I):
+        return None
+    clauses = [part.strip() for part in re.split(r"[\r\n，,。；;！!？?]+", text) if part.strip()]
+    exclusive = re.compile(r"^(?:请)?(?:声音|音效)?(?:只|仅)(?:保留|允许)(?:出现|听到|有)?(.+)$")
+    additional = re.compile(r"^(?:另(?:外)?|也|并|同时|再)(?:保留|允许|加入|添加)(?:出现|听到|有)?(.+)$")
+
+    def sources(value):
+        value = re.sub(r"(?:即可|就好|就行)$", "", value).strip()
+        parts = [part.strip() for part in re.split(r"、|以及|和|与|及", value)]
+        if not parts or any(not 2 <= len(part) <= 80 or not re.fullmatch(r"[㐀-鿿a-zA-Z0-9\s]+(?:声音|声响|音效|声)", part) for part in parts):
+            return None
+        return parts
+
+    allowed, additions, found = [], [], False
+    for clause in clauses:
+        match = exclusive.fullmatch(clause)
+        if match:
+            value = sources(match[1])
+            if value is None:
+                return None
+            found = True
+            allowed.extend(value)
+            continue
+        match = additional.fullmatch(clause)
+        if match:
+            # Speech/music keep their own H3 fields and existing user controls.
+            if re.search(r"对白|台词|说话|音乐|配乐|BGM", match[1], re.I):
+                continue
+            value = sources(match[1])
+            if value is None:
+                return None
+            additions.extend(value)
+        elif re.search(r"(?:之后|随后|最后|第\s*\d+\s*秒).*(?:加入|添加|允许|保留).*(?:声|音效)", clause):
+            return None
+    return "、".join(dict.fromkeys(allowed + additions)) + "。" if found else None
 
 
 def minimax_h3_writer_frames(mode: str, frames) -> list:
@@ -14543,6 +14613,8 @@ class PromptAssistant:
         return Path(os.environ.get("NOVAFLOW_COMFY_ROOT") or str(DEFAULT_COMFY_ROOT))
 
     def reverse_model_path(self) -> Path:
+        if flash_backend_enabled():
+            return Path(os.environ.get("NOVAFLOW_FLASH_MODEL_ID") or "Flash-Next")
         return Path(
             os.environ.get("NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH")
             or self.read_runtime_config().get("promptAssistantReverseModelPath")
@@ -14550,6 +14622,8 @@ class PromptAssistant:
         )
 
     def reverse_provider_preference(self, payload: dict) -> str:
+        if flash_backend_enabled():
+            return "strata"
         raw = str(
             payload.get("reverseModelProvider")
             or os.environ.get("NOVAFLOW_PROMPT_ASSISTANT_REVERSE_PROVIDER")
@@ -14668,6 +14742,8 @@ class PromptAssistant:
         if adapter is not None:
             adapter.unload()
         gc.collect()
+        if flash_backend_enabled():
+            return
         try:
             import torch
             if torch.cuda.is_available():
@@ -14685,7 +14761,7 @@ class PromptAssistant:
         if configured and runtime_status == "未配置模型":
             runtime_status = "模型可用"
         return {
-            "modelType": MODEL_TYPE,
+            "modelType": "swift15_qwen38_flash_next_iq2_xs" if flash_backend_enabled() else MODEL_TYPE,
             "modelPath": str(model_path),
             "enabled": configured,
             "runtimeStatus": runtime_status,
@@ -14752,15 +14828,17 @@ class PromptAssistant:
                 unload_after=False, max_new_tokens=max_length, do_sample=do_sample,
                 temperature=temperature, top_p=top_p)
             diagnostics = reference_adapter.last_generation_diagnostics
-            profile.update({'provider': 'qwen3-vl-instruct', 'outputChars': len(output),
+            profile.update({'provider': 'strata' if flash_backend_enabled() else 'qwen3-vl-instruct', 'outputChars': len(output),
                             'generatedTokenCount': diagnostics.get('generatedTokens', 0),
                             'hitTokenLimit': diagnostics.get('generationHitTokenLimit', False),
                             'totalMs': round((time.perf_counter() - total_started) * 1000)})
+            if flash_backend_enabled():
+                profile['inferenceDiagnostics'] = dict(diagnostics)
             log_prompt_assistant_event('prompt_assistant_generate_done', command=trace_label, generateProfile=profile)
             return output
         adapter = self.qwen3_adapter()
         system_text, parts = qwen3_chat_parts(prompt, llama_template, images)
-        profile["provider"] = "qwen35-pe-i2i"
+        profile["provider"] = local_generation_provider()
         profile["embeddedImageCount"] = sum(1 for part in parts if not isinstance(part, str))
         generate_started = time.perf_counter()
         if trace_label:
@@ -14785,6 +14863,8 @@ class PromptAssistant:
         profile["generateMs"] = round((time.perf_counter() - generate_started) * 1000)
         profile["generatedTokenCount"] = int(diagnostics.get("generatedTokens", 0) or 0)
         profile["hitTokenLimit"] = bool(diagnostics.get("generationHitTokenLimit", False))
+        if flash_backend_enabled():
+            profile["inferenceDiagnostics"] = diagnostics
         profile["outputChars"] = len(output)
         profile["totalMs"] = round((time.perf_counter() - total_started) * 1000)
         self.last_generate_profile = dict(profile)
@@ -14808,13 +14888,17 @@ class PromptAssistant:
         chats = [qwen3_chat_parts(prompt.replace(QWEN3_CHAT_VISION_TOKEN, ''), llama_template, None) for prompt in prompts]
         started = time.perf_counter()
         profile = {"traceLabel": trace_label, "batch": len(prompts), "promptChars": sum(map(len, prompts)), "maxLength": int(max_length or 0),
-                   "provider": "qwen35-pe-i2i"}
+                   "provider": local_generation_provider()}
         log_prompt_assistant_event("prompt_assistant_generate_start", command=trace_label, batch=len(prompts), promptChars=profile["promptChars"], maxLength=max_length)
         try:
             if not callable(getattr(adapter, "generate_batch", None)) or any(len(parts) != 1 or not isinstance(parts[0], str) for _, parts in chats):
                 raise ValueError("batch unavailable")
             outputs = adapter.generate_batch([parts[0] for _, parts in chats], system_text=chats[0][0], max_new_tokens=max_length, images=images)
         except Exception as error:
+            if flash_backend_enabled():
+                # A partially completed native batch must never be replayed as
+                # individual requests after an inference or validation error.
+                raise
             log_prompt_assistant_event("prompt_assistant_generate_batch_fallback", command=trace_label, batch=len(prompts), error=str(error)[:160])
             return [self.generate(prompt, llama_template=llama_template, max_length=max_length, trace_label=trace_label,
                                   **({"images": [images[index]]} if images and images[index] is not None else {})) for index, prompt in enumerate(prompts)]
@@ -15554,7 +15638,7 @@ class PromptAssistant:
             adapter = None
         try:
             result = self._optimize_h3_reference(source, requirements, duration, media_frames, reverse, check)
-            result['localProvider'] = 'qwen3-vl-instruct'
+            result['localProvider'] = 'strata' if flash_backend_enabled() else 'qwen3-vl-instruct'
             return result
         finally:
             self._h3_reference_adapter = None
@@ -16481,6 +16565,8 @@ class PromptAssistant:
             # A prompt going back to one shot: its later shots are read as the rest of the action.
             view = re.sub(r"\n镜头[1-9]\d*(?:（第[\d.]+秒）)?：(.*)", lambda m: h3_fold_cut(m[1]), view)
         rules = MINIMAX_H3_WRITER_RULES + ("\n按原台词安排说话的过程，不改写台词。" if dialogue_lines else "")
+        if flash_backend_enabled():
+            rules += MINIMAX_H3_FLASH_INTENT_RULES
         template = "<|im_start|>system\n" + rules + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         # 图生视频/首尾帧: the model sees the frames it animates, so it neither
         # invents the scene nor starts from a pose the picture does not show.
@@ -16501,6 +16587,9 @@ class PromptAssistant:
         # Only the user's own words ask for a loop; a first/last-frame video ends on its last frame.
         loop = "loop" in h3_requested_rules(view + "\n" + user_requirement) and clean_text(mode).upper() != "FL2VA"
         audio = minimax_h3_base_audio(view, fields, user_requirement)
+        exclusive_sound = minimax_h3_flash_exclusive_sound(view, fields, user_requirement) if flash_backend_enabled() else None
+        if exclusive_sound is not None:
+            audio = (exclusive_sound, audio[1], [])
         # The user's own actions; one the answer drops ("朋友走到她面前回应") is asked about once. A limit ("不要回头")
         # is no action to write.
         han_pairs = lambda text: {pair for pair in (text[i:i + 2] for i in range(len(text) - 1)) if re.fullmatch(r"[㐀-鿿]{2}", pair)}
@@ -16515,6 +16604,11 @@ class PromptAssistant:
                 compile_h3_action_phases(output, mode, duration, view, requirements, user_requirement, strict_rules=strict_rules,
                                          keep_pose=same_frames, audio=audio, cut=cut)
             )
+            if exclusive_sound is not None:
+                compiled_fields = parse_h3_base_fields(positive)
+                if compiled_fields["overall_soundscape"] != exclusive_sound:
+                    compiled_fields["overall_soundscape"] = exclusive_sound
+                    positive = validate_h3_base_fields(json.dumps(compiled_fields, ensure_ascii=False), mode, duration, "zh", requirements)
             # Every spoken line of the user's words reaches the result verbatim; a result without one is asked again.
             said = [re.sub(r"^\[[A-Za-z ]+\]\s*", "", m.strip()) for m in re.findall(r"<d>([\s\S]*?)</d>", positive)]
             lost = next((m.group(3).strip() for m in re.finditer(H3_SPEECH_LINE, view) if m.group(3).strip() not in said), None)
@@ -17682,7 +17776,7 @@ class PromptAssistant:
                 "contractFailureCode": str(contract_code or "")[:80],
                 "retryAttempted": bool(quality_gate_retried),
                 "retryCount": int(retry_count),
-                "reverseProvider": "qwen35_pe_i2i",
+                "reverseProvider": local_reverse_provider(),
                 "legacyFallbackSuppressed": True,
                 "requestedVisualSchema": requested_schema,
                 "retryable": bool(retryable),
@@ -17758,7 +17852,7 @@ class PromptAssistant:
                 log_prompt_assistant_event(
                     "reverse_local_stage",
                     command="reverseImagePrompt",
-                    provider="qwen35_pe_i2i",
+                    provider=local_reverse_provider(),
                     visualSchema=requested_schema,
                     stage=bounded_stage,
                     **safe_fields,
@@ -17863,7 +17957,7 @@ class PromptAssistant:
                             log_prompt_assistant_event(
                                 "reverse_rich_prompt_skipped",
                                 command="reverseImagePrompt",
-                                provider="qwen35_pe_i2i",
+                                provider=local_reverse_provider(),
                                 visualSchema=requested_schema,
                                 reason="partial-contract-not-safe-to-enrich",
                                 contractElapsedMs=contract_elapsed_ms,
@@ -17887,7 +17981,7 @@ class PromptAssistant:
                         log_prompt_assistant_event(
                             "reverse_rich_prompt_deterministic",
                             command="reverseImagePrompt",
-                            provider="qwen35_pe_i2i",
+                            provider=local_reverse_provider(),
                             visualSchema=requested_schema,
                             reason="validated-contract-primary",
                             contractElapsedMs=contract_elapsed_ms,
@@ -17978,7 +18072,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_visual_contract_syntax_normalized",
                                         command="reverseImagePrompt",
-                                        provider="qwen35_pe_i2i",
+                                        provider=local_reverse_provider(),
                                         visualSchema=requested_schema,
                                         attempt=attempt,
                                         retryReason=retry_reason,
@@ -18054,7 +18148,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
-                                    provider="qwen35_pe_i2i",
+                                    provider=local_reverse_provider(),
                                     visualSchema=requested_schema,
                                     attempt=attempt,
                                     nextAttempt=2,
@@ -18096,7 +18190,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
-                                    provider="qwen35_pe_i2i",
+                                    provider=local_reverse_provider(),
                                     visualSchema=requested_schema,
                                     attempt=attempt,
                                     nextAttempt=2,
@@ -18120,7 +18214,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
-                                    provider="qwen35_pe_i2i",
+                                    provider=local_reverse_provider(),
                                     visualSchema=requested_schema,
                                     attempt=attempt,
                                     nextAttempt=2,
@@ -18330,7 +18424,7 @@ class PromptAssistant:
                                         else "reverse_provider_degraded"
                                     ),
                                     command="reverseImagePrompt",
-                                    provider="qwen35_pe_i2i",
+                                    provider=local_reverse_provider(),
                                     visualSchema=requested_schema,
                                     errorCode=exc.code,
                                     retryCount=retry_count,
@@ -18361,7 +18455,7 @@ class PromptAssistant:
                                     "qualityGateFailed": True,
                                     "qualityGateRetried": quality_gate_retried,
                                     "visualSchema": requested_schema,
-                                    "reverseProvider": "qwen35_pe_i2i",
+                                    "reverseProvider": local_reverse_provider(),
                                     "reverseModelPath": model_name,
                                     "reverseFallbackReason": (
                                         "rich-prompt-fallback"
@@ -18451,7 +18545,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_salient_inventory_applied",
                                         command="reverseImagePrompt",
-                                        provider="qwen35_pe_i2i",
+                                        provider=local_reverse_provider(),
                                         visualSchema=requested_schema,
                                         partialPeopleCount=len(
                                             salient_inventory["partial_people"]
@@ -18464,7 +18558,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_salient_inventory_skipped",
                                         command="reverseImagePrompt",
-                                        provider="qwen35_pe_i2i",
+                                        provider=local_reverse_provider(),
                                         visualSchema=requested_schema,
                                         reason="empty-inventory",
                                         contractElapsedMs=contract_elapsed_ms,
@@ -18493,7 +18587,7 @@ class PromptAssistant:
                                     log_prompt_assistant_event(
                                         "reverse_provider_degraded",
                                         command="reverseImagePrompt",
-                                        provider="qwen35_pe_i2i",
+                                        provider=local_reverse_provider(),
                                         visualSchema=requested_schema,
                                         errorCode=salient_error_code,
                                         retryCount=retry_count,
@@ -18516,7 +18610,7 @@ class PromptAssistant:
                                         "retryAttempted": quality_gate_retried,
                                         "retryCount": retry_count,
                                         "visualSchema": requested_schema,
-                                        "reverseProvider": "qwen35_pe_i2i",
+                                        "reverseProvider": local_reverse_provider(),
                                         "reverseModelPath": model_name,
                                         "reverseFallbackReason": "",
                                         "visualHasOcr": False,
@@ -18538,7 +18632,7 @@ class PromptAssistant:
                                 log_prompt_assistant_event(
                                     "reverse_salient_inventory_skipped",
                                     command="reverseImagePrompt",
-                                    provider="qwen35_pe_i2i",
+                                    provider=local_reverse_provider(),
                                     visualSchema=requested_schema,
                                     reason=salient_error_reason,
                                     contractElapsedMs=contract_elapsed_ms,
@@ -18553,7 +18647,7 @@ class PromptAssistant:
                             "reverse_provider_selected",
                             command="reverseImagePrompt",
                             requestedProvider=requested_provider,
-                            reverseProvider="qwen35_pe_i2i",
+                            reverseProvider=local_reverse_provider(),
                             visualSchema=requested_schema,
                             modelName=model_name,
                             fallbackCode="",
@@ -18575,7 +18669,7 @@ class PromptAssistant:
                             "retryAttempted": quality_gate_retried,
                             "retryCount": retry_count,
                             "visualSchema": requested_schema,
-                            "reverseProvider": "qwen35_pe_i2i",
+                            "reverseProvider": local_reverse_provider(),
                             "reverseModelPath": model_name,
                             "reverseFallbackReason": (
                                 "rich-prompt-fallback"
@@ -18592,6 +18686,8 @@ class PromptAssistant:
                             ),
                         }
                 except (Qwen3VLProviderError, VisualContractError) as exc:
+                    if flash_backend_enabled():
+                        raise
                     fallback_code = (
                         getattr(exc, "code", "qwen3-vl-error")
                         if isinstance(exc, Qwen3VLProviderError)
@@ -18619,7 +18715,7 @@ class PromptAssistant:
                         ),
                         command="reverseImagePrompt",
                         requestedProvider=requested_provider,
-                        fromProvider="qwen35_pe_i2i",
+                        fromProvider=local_reverse_provider(),
                         **(
                             {}
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
@@ -18637,6 +18733,8 @@ class PromptAssistant:
                         ),
                     )
                 except Exception:
+                    if flash_backend_enabled():
+                        raise
                     fallback_code = "qwen3-unexpected-error"
                     provider_failure_code = fallback_code
                     contract_failure_code = ""
@@ -18649,7 +18747,7 @@ class PromptAssistant:
                         ),
                         command="reverseImagePrompt",
                         requestedProvider=requested_provider,
-                        fromProvider="qwen35_pe_i2i",
+                        fromProvider=local_reverse_provider(),
                         **(
                             {}
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
@@ -18675,6 +18773,10 @@ class PromptAssistant:
                                 ),
                             )
             else:
+                if flash_backend_enabled():
+                    raise Qwen3VLProviderError(
+                        "strata-unavailable", str(readiness.get("detail") or readiness.get("code") or "Flash unavailable")
+                    )
                 fallback_code = clean_text(str(readiness.get("code") or "qwen3-unavailable"))[:80]
                 provider_failure_code = fallback_code
                 contract_failure_code = ""
@@ -18687,7 +18789,7 @@ class PromptAssistant:
                     ),
                     command="reverseImagePrompt",
                     requestedProvider=requested_provider,
-                    fromProvider="qwen35_pe_i2i",
+                    fromProvider=local_reverse_provider(),
                     **(
                         {}
                         if requested_schema == VISUAL_SCHEMA_VERSION_V2
@@ -18909,7 +19011,7 @@ class PromptAssistant:
                 visualSchema=visual_policy.get("schema") or "",
                 imageCount=len(image_tensors),
                 sensitiveVisualAnalysis=sensitive_enabled,
-                provider="qwen35_pe_i2i",
+                provider=local_reverse_provider(),
             )
             try:
                 interaction_ir_repair_calls = 0
@@ -19005,7 +19107,7 @@ class PromptAssistant:
                         command="reverseImagePrompt",
                         mode=mode,
                         visualSchema=visual_policy.get("schema") or "",
-                        provider="qwen35_pe_i2i",
+                        provider=local_reverse_provider(),
                         interactionRepairCalls=0,
                         interactionDeactivationFallback=False,
                         visualIrRepairUsed=False,
@@ -19390,7 +19492,7 @@ class PromptAssistant:
                         command="reverseImagePrompt",
                         mode=mode,
                         visualSchema=visual_policy.get("schema") or "",
-                        provider="qwen35_pe_i2i",
+                        provider=local_reverse_provider(),
                         interactionRepairCalls=interaction_repair_calls,
                         interactionDeactivationFallback=interaction_deactivation_fallback,
                         visualIrRepairUsed=ir_repair_used and repair_kind == "visual-ir",
@@ -19403,7 +19505,7 @@ class PromptAssistant:
                     command="reverseImagePrompt",
                     mode=mode,
                     visualSchema=visual_policy.get("schema") or "",
-                    provider="qwen35_pe_i2i",
+                    provider=local_reverse_provider(),
                     errorCode=code,
                     completedStages=len(visual_contracts),
                     imageCount=len(image_tensors),
@@ -19538,7 +19640,11 @@ class PromptAssistant:
                 "rawOutput": description,
                 "qualityGateFailed": False,
                 "visualSchema": visual_policy.get("schema") or "",
-                "reverseProvider": "qwen3_vl_abliterated_nf4+deterministic_h3",
+                "reverseProvider": (
+                    "strata+deterministic_h3"
+                    if flash_backend_enabled()
+                    else "qwen3_vl_abliterated_nf4+deterministic_h3"
+                ),
                 "generationGate": "direct",
                 "contentSafety": safe_visual_metadata,
                 "contentWarnings": [],
@@ -19782,12 +19888,19 @@ class PromptAssistant:
             "qualityGateFailed": False,
             **({
                 "visualSchema": visual_policy.get("schema") or "",
-                "reverseProvider": "qwen3_vl_abliterated_nf4+h3_generic",
+                "reverseProvider": (
+                    "strata+h3_generic"
+                    if flash_backend_enabled()
+                    else "qwen3_vl_abliterated_nf4+h3_generic"
+                ),
                 "generationGate": visual_generation_gate,
                 "contentSafety": safe_visual_metadata,
                 "contentWarnings": [],
                 "sensitivePromptBlocked": False,
-            } if use_h3_visual_contract else {}),
+            } if use_h3_visual_contract else (
+                {"reverseProvider": "strata+h3_generic"}
+                if flash_backend_enabled() else {}
+            )),
         }
 
     def describe_art_style(self, payload: dict) -> dict:
@@ -21787,6 +21900,25 @@ assistant = PromptAssistant()
 
 
 def handle_request(payload: dict) -> dict:
+    if not flash_backend_enabled():
+        return _handle_request(payload)
+    token = begin_flash_request()
+    command = str(payload.get("command") or "")
+    try:
+        result = _handle_request(payload)
+        return {**result, "localInference": flash_request_summary(command)}
+    except Exception as error:
+        # Preserve the business error and existing diagnostics. The worker can
+        # report actual native request time even when a later CPU gate fails.
+        diagnostics = dict(getattr(error, "diagnostics", {}) or {})
+        diagnostics["localInference"] = flash_request_summary(command)
+        error.diagnostics = diagnostics
+        raise
+    finally:
+        end_flash_request(token)
+
+
+def _handle_request(payload: dict) -> dict:
     command = str(payload.get("command") or "")
     if command == "status":
         return assistant.status_payload()

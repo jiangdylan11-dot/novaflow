@@ -2,6 +2,7 @@
 param(
   [string] $SourceComfyRoot,
   [string] $SourcePythonRoot,
+  [string] $SourceStrataRoot,
   [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime")),
   [string] $InstallPath = "C:\ProgramData\NovaFlow\AI-Runtime",
   [string] $AssetsPath,
@@ -160,6 +161,132 @@ function Invoke-RobocopyChecked {
   }
 }
 
+function Get-StrataFileSHA256 {
+  param([Parameter(Mandatory=$true)][string] $Path)
+  $stream = [System.IO.File]::OpenRead($Path)
+  $hash = [System.Security.Cryptography.SHA256]::Create()
+  try { return ([System.BitConverter]::ToString($hash.ComputeHash($stream))).Replace("-", "").ToLowerInvariant() }
+  finally { $hash.Dispose(); $stream.Dispose() }
+}
+
+function Assert-StrataComponentFiles {
+  param(
+    [Parameter(Mandatory=$true)][string] $Root,
+    [Parameter(Mandatory=$true)][object[]] $Files
+  )
+  foreach ($entry in $Files) {
+    $relative = [string]$entry.path
+    if (-not $relative -or [System.IO.Path]::IsPathRooted($relative)) {
+      throw "Strata component has an invalid relative file path."
+    }
+    $file = Join-Path $Root $relative
+    Assert-UnderPath -Child $file -Parent $Root
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+      throw "Strata runtime is incomplete. Missing $relative under $Root"
+    }
+    $info = Get-Item -LiteralPath $file
+    if ($info.Length -le 0 -or ($null -ne $entry.bytes -and $info.Length -ne [long]$entry.bytes)) {
+      throw "Strata runtime file has the wrong byte length: $file"
+    }
+    if ($entry.sha256 -and (Get-StrataFileSHA256 -Path $file) -ne $entry.sha256) {
+      throw "Strata runtime file failed SHA256 verification: $file"
+    }
+  }
+}
+
+function Get-StrataRuntimeLayout {
+  param([Parameter(Mandatory=$true)][string] $SourceRoot)
+  # The Flash bootstrap uses these exact portable components. Models, IQ packs,
+  # tokenizer and MTP assets remain in modelsPath and are never runtime payloads.
+  $controlName = "control-0.1.49.2"
+  $engineName = "engine-0.1.48-windows-cuda13"
+  $control = Join-Path $SourceRoot $controlName
+  $engine = Join-Path $SourceRoot $engineName
+  $manifests = @(
+    @{ path="$controlName/BUNDLE.json"; sha256="db43d3ade30daa9391633e66db58688c0f4a5b2d0791c34847114a03d6565cd4" },
+    @{ path="$engineName/engine-component.json"; sha256="1767034593452895ad32d9aaa66c611ee7bec0fe09194b0ae154df2de96e1a6f" }
+  )
+  Assert-StrataComponentFiles -Root $SourceRoot -Files $manifests
+  $bundle = Get-Content -Raw -LiteralPath (Join-Path $control "BUNDLE.json") | ConvertFrom-Json
+  $component = Get-Content -Raw -LiteralPath (Join-Path $engine "engine-component.json") | ConvertFrom-Json
+  if ($bundle.component -ne "strata-control" -or $bundle.version -ne "0.1.49.2" -or $bundle.target -ne "windows-x86_64" -or
+      $component.id -ne "strata-engine" -or $component.version -ne "0.1.48" -or $component.backend -ne "cuda" -or $component.variant -ne "cuda13") {
+    throw "Strata runtime component versions do not match the Flash bootstrap."
+  }
+  $controlFiles = @(
+    "BUNDLE.json", "VERSION", "serve/server.py", "serve/frontend.py", "serve/runconfig.py",
+    "strata_control/engine_component.py", "strata_control/vision_reader.py", "strata_control/tls.py",
+    "data/expert-profile.bin", "python/python.exe", "python/python3.dll", "python/python312.dll",
+    "python/vcruntime140.dll", "python/vcruntime140_1.dll", "python/Lib/encodings/__init__.py", "python/Lib/site.py",
+    "python/DLLs/_socket.pyd", "python/DLLs/_ssl.pyd", "python/Lib/site-packages/psutil/__init__.py",
+    "python/Lib/site-packages/PIL/Image.py", "python/Lib/site-packages/numpy/__init__.py",
+    "python/Lib/site-packages/requests/__init__.py", "python/Lib/site-packages/jinja2/__init__.py",
+    "python/Lib/site-packages/regex/__init__.py"
+  ) | ForEach-Object { @{path=$_} }
+  $engineFiles = @($component.files)
+  $expected = @("strata.exe", "strata-vision.exe", "strata_kq.dll", "cublas64_13.dll", "cublasLt64_13.dll", "BUILD.json")
+  if ($engineFiles.Count -ne $expected.Count -or @($expected | Where-Object { $_ -notin $engineFiles.path }).Count) {
+    throw "Strata engine manifest does not contain the complete CUDA13 engine and vision dependencies."
+  }
+  Assert-StrataComponentFiles -Root $control -Files $controlFiles
+  Assert-StrataComponentFiles -Root $engine -Files $engineFiles
+  return [pscustomobject]@{
+    ControlName=$controlName; EngineName=$engineName; ControlSource=$control; EngineSource=$engine
+    ControlFiles=$controlFiles; EngineFiles=$engineFiles; Manifests=$manifests
+  }
+}
+
+function Get-StrataNoticeLayout {
+  param([Parameter(Mandatory=$true)][string] $Root)
+  # Original notice bytes are pinned independently of the runtime archives,
+  # which currently omit Strata/ggml/CUDA notices at their component roots.
+  $manifestSHA = "95ead042031aff042d78b4a5814a901dc7cdc3eaf2ccf61e77251b48008b5fed"
+  Assert-StrataComponentFiles -Root $Root -Files @(@{path="manifest.json";sha256=$manifestSHA})
+  $manifest = Get-Content -Raw -LiteralPath (Join-Path $Root "manifest.json") | ConvertFrom-Json
+  $expected = @("STRATA-CONTROL-LICENSE.txt", "STRATA-ENGINE-LICENSE.txt", "GGML-LLAMA-CPP-LICENSE.txt", "NVIDIA-CUDA-13.0.0-EULA.html")
+  if ($manifest.schema -ne "nf.strata.distribution.notices.v1" -or $manifest.controlVersion -ne "0.1.49.2" -or
+      $manifest.engineVersion -ne "0.1.48-windows-cuda13" -or $manifest.files.Count -ne $expected.Count -or
+      @($expected | Where-Object { $_ -notin $manifest.files.path }).Count) {
+    throw "Strata distribution notice manifest does not match the pinned components."
+  }
+  $files = @(@{path="manifest.json";sha256=$manifestSHA}) + @($manifest.files)
+  Assert-StrataComponentFiles -Root $Root -Files $files
+  return [pscustomobject]@{ Root=$Root; Files=$files; ManifestSHA256=$manifestSHA }
+}
+
+function Copy-StrataRuntime {
+  param(
+    [Parameter(Mandatory=$true)] $Layout,
+    [Parameter(Mandatory=$true)][string] $Destination,
+    [Parameter(Mandatory=$true)] $Notices
+  )
+  Assert-StrataComponentFiles -Root $Notices.Root -Files $Notices.Files
+  # Copy the complete bundled Python/control dependencies, without machine state
+  # or model caches accidentally created inside a previously used source tree.
+  $excludeDirs = @(".git", "__pycache__", ".cache", "logs", "state", "sessions", "models", "tokenizer", "strata-pack", "strata-pack-resident", "mtp")
+  $excludeFiles = @("*.pyc", "*.pyo", "*.pdb", "*.log", "*.tmp", "*.temp", "*.gguf", "*.safetensors", "*.ckpt", "*.pt", "*.pth", "*.onnx", "server.json", "strata-prompt.json")
+  $controlDest = Join-Path $Destination $Layout.ControlName
+  $engineDest = Join-Path $Destination $Layout.EngineName
+  Invoke-RobocopyChecked -Source $Layout.ControlSource -Destination $controlDest -ExcludeDirs $excludeDirs -ExcludeFiles $excludeFiles
+  Invoke-RobocopyChecked -Source $Layout.EngineSource -Destination $engineDest -ExcludeDirs $excludeDirs -ExcludeFiles $excludeFiles
+  Assert-StrataComponentFiles -Root $controlDest -Files $Layout.ControlFiles
+  Assert-StrataComponentFiles -Root $engineDest -Files $Layout.EngineFiles
+  $noticeDest = Join-Path $Destination "third-party-notices"
+  New-Item -ItemType Directory -Force -Path $noticeDest | Out-Null
+  foreach ($entry in $Notices.Files) {
+    Copy-Item -LiteralPath (Join-Path $Notices.Root $entry.path) -Destination (Join-Path $noticeDest $entry.path) -Force
+  }
+  Assert-StrataComponentFiles -Root $noticeDest -Files $Notices.Files
+  $receipt = [ordered]@{
+    schema="nf.strata-runtime.bundle.v1"; control=$Layout.ControlName; engine=$Layout.EngineName
+    portable=$true; includesModels=$false; includesModelCaches=$false
+    componentManifests=@($Layout.Manifests)
+    noticeManifest=@{path="third-party-notices/manifest.json";sha256=$Notices.ManifestSHA256}
+    noticeFiles=@($Notices.Files | ForEach-Object { @{path=("third-party-notices/" + $_.path);sha256=$_.sha256} })
+  }
+  $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $Destination "STRATA-RUNTIME.json") -Encoding UTF8
+}
+
 function Copy-Template {
   param(
     [Parameter(Mandatory=$true)][string] $TemplatePath,
@@ -303,6 +430,14 @@ if (-not (Test-Path -LiteralPath (Join-Path $SourcePythonRoot "python.exe"))) {
   throw "SourcePythonRoot does not contain python.exe: $SourcePythonRoot"
 }
 
+if (-not $SourceStrataRoot) {
+  $SourceStrataRoot = Join-Path (Split-Path -Parent $SourceComfyRoot) "strata"
+}
+$SourceStrataRoot = Convert-ToFullPath $SourceStrataRoot
+# Fail before removing an existing package or copying the large ComfyUI tree.
+$strataLayout = Get-StrataRuntimeLayout -SourceRoot $SourceStrataRoot
+$strataNotices = Get-StrataNoticeLayout -Root (Join-Path $PSScriptRoot "notices/strata")
+
 $OutputRoot = Convert-ToFullPath $OutputRoot
 $packageRoot = Join-Path $OutputRoot "package"
 $runtimePackageRoot = Join-Path $packageRoot "AI-Runtime"
@@ -400,6 +535,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $comfyDest "custom_nodes") 
 Write-Host "Copying Python runtime from $SourcePythonRoot"
 Invoke-RobocopyChecked -Source $SourcePythonRoot -Destination $pythonDest -ExcludeDirs $pythonExcludeDirs -ExcludeFiles $excludeFiles
 Remove-TorchStaticLibraries -PythonRoot $pythonDest
+
+Write-Host "Copying verified portable Strata control and CUDA13 engine from $SourceStrataRoot"
+Copy-StrataRuntime -Layout $strataLayout -Destination (Join-Path $engineRoot "strata") -Notices $strataNotices
 
 # The two NovaFlow patches are pinned to ComfyUI 0.24.1 file hashes (and the INT8 one to
 # comfy-kitchen 0.2.11). ComfyUI 0.37 ships INT8 TensorWise itself and no longer has the lines the

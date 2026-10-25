@@ -1,0 +1,121 @@
+{
+  "version": "novaflow-lean-research-2",
+  "stage": "layout-style-identity",
+  "systemInstruction": "你是完整商业游戏UI的主题美术设计师，本轮从中性结构自主设计全新主题，不沿用旧物件。只设计美术，不识别旧外观、不排格位、不新增业务。整体视觉语言、精细材质、具体物件和三位角色均由你按主题创造。场景背景基调、主体固有色、UI功能强调色分别组织，保留皮肤、衣料、道具本体、字面与材料间的区别；用本体色的中间调、亮暗面和接触阴影塑形，局部反射仍保留本体色。\n全局环境段负责地点纵深、风格、光源方向与环境反射；每个局部字段负责其本体配色、形状、材质与细节，各对象不用重复全局光色。三种新主题应有自己的视觉与材料语言，颜色有主次、有节制的强调色，不能把丰富度当成全体高饱和度或整屏主题滤镜。\n只输出紧凑扁平JSON，键恰好等于output_keys，每个值为非空中文字符串。总计约1300至1700字，不嵌套、不加字段、不附解释。字段写法如下：\nENVIRONMENT_ART：完整成品画风、真实主题地点的近中远景和唯一全局照明，约120字，不在背景增加额外角色或格子。\nOBJECT1/2/3：各是不同的可辨识具体主题物件，约80字。格式严格为“名称：简短物件名；造型：包含同一物件名的完整造型、固有色、材料、纹理和体积描述”。\nGLYPH_FAMILY：仅J、10、Q、K、A的独立可读字形设计，字母数字本身为主体，说明主题笔画骨架、端部、字腔、本体配色与材料层次，约80字，不做成贴在新物件上的标签。\nCHARACTER1/2/3：每项是一个不同角色，约120字。格式严格为“名称：简短角色名；头像：包含同一角色名的清晰头肩面部描述；全身：包含同一角色名的服装、装备与完整身体动作”。同一角色头像和全身保持身份一致，不增加随从、第二人物或群像；合计只有三位主角。这是新创作配对，不冒称原图识别。\nSPECIAL_WILD：独立特殊玩法载体与清晰WILD字形约80字，不是主操作，不带主旋转箭头。SHARED_STRIP：一个连续横向载体，购买BUY FREE GAMES嵌入左端，剩余连续栏面是唯一非交互WIN 20.00显示；设计新轮廓、连接、材料、本体色与字体，约130字。\nINFORMATION_TYPE：仅金额字形与小徽标的材料、笔画、颜色、明暗，不新列金额实例。ADJUSTER_ART：成对−和+的主题形状、材料和本体色。ROTATION_ART：独立居中主操作、清楚沿圆周循环的旋转箭头、主题构造与体积。AUXILIARY_ART：同一主控区四个独立按钮，菜单保持三横列表骨架，极速表达速度，自动表达自动循环，声音表达扬声器；四个中文标签菜单、极速、自动、声音逐字保留，分别设计外壳与图标层级。没有多余标题、口号、数值、WILD串入普通物件或额外显示实例。",
+  "context": {
+    "theme": "霓虹都市",
+    "style_request": "自主创造本主题独有、精细而统一的商业游戏美术视觉语言。",
+    "fixed_structure": {
+      "grid_shape": [
+        4,
+        5
+      ],
+      "symbol_groups": {
+        "objects": 3,
+        "portraits": 3,
+        "independent_glyphs": [
+          "J",
+          "10",
+          "Q",
+          "K",
+          "A"
+        ],
+        "special": "WILD"
+      },
+      "main_characters": 3,
+      "region_order": [
+        "grid",
+        "characters",
+        "information",
+        "readouts",
+        "controls"
+      ],
+      "shared_information": "One continuous host, one purchase action, one WIN20 display",
+      "readouts": "Three source ¥1000 displays and two adjusters; compiled by program",
+      "controls": "One central rotation and four auxiliary controls"
+    },
+    "output_keys": [
+      "ENVIRONMENT_ART",
+      "OBJECT1",
+      "OBJECT2",
+      "OBJECT3",
+      "GLYPH_FAMILY",
+      "CHARACTER1",
+      "CHARACTER2",
+      "CHARACTER3",
+      "SPECIAL_WILD",
+      "SHARED_STRIP",
+      "INFORMATION_TYPE",
+      "ADJUSTER_ART",
+      "ROTATION_ART",
+      "AUXILIARY_ART"
+    ]
+  },
+  "images": [],
+  "outputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "ENVIRONMENT_ART",
+      "OBJECT1",
+      "OBJECT2",
+      "OBJECT3",
+      "GLYPH_FAMILY",
+      "CHARACTER1",
+      "CHARACTER2",
+      "CHARACTER3",
+      "SPECIAL_WILD",
+      "SHARED_STRIP",
+      "INFORMATION_TYPE",
+      "ADJUSTER_ART",
+      "ROTATION_ART",
+      "AUXILIARY_ART"
+    ],
+    "properties": {
+      "ENVIRONMENT_ART": {
+        "type": "string"
+      },
+      "OBJECT1": {
+        "type": "string"
+      },
+      "OBJECT2": {
+        "type": "string"
+      },
+      "OBJECT3": {
+        "type": "string"
+      },
+      "GLYPH_FAMILY": {
+        "type": "string"
+      },
+      "CHARACTER1": {
+        "type": "string"
+      },
+      "CHARACTER2": {
+        "type": "string"
+      },
+      "CHARACTER3": {
+        "type": "string"
+      },
+      "SPECIAL_WILD": {
+        "type": "string"
+      },
+      "SHARED_STRIP": {
+        "type": "string"
+      },
+      "INFORMATION_TYPE": {
+        "type": "string"
+      },
+      "ADJUSTER_ART": {
+        "type": "string"
+      },
+      "ROTATION_ART": {
+        "type": "string"
+      },
+      "AUXILIARY_ART": {
+        "type": "string"
+      }
+    }
+  },
+  "maxOutputTokens": 3072,
+  "allowRetry": false
+}

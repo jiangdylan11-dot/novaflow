@@ -3,9 +3,9 @@
 // The desktop client starts prompt-assistant-service.py beside ComfyUI's own
 // Python and talks to it over stdin/stdout, one JSON line per request. The
 // browser and desktop use the same CPU protocol process. Production inference
-// is delegated to the installed PE checkpoint in ComfyUI; no NF4 model is loaded.
+// is delegated to the shared Flash session; the process does not load weights.
 //
-// Production uses the one installed PE checkpoint. Legacy NF4 validators
+// Production uses the shared, owned Flash brain. PE and NF4 entry points
 // remain only for explicit compatibility diagnostics, never automatic fallback.
 //
 // The model shares the GPU with the drawing runtime, so a request follows the
@@ -14,11 +14,13 @@
 import { spawn } from 'node:child_process';
 import { ART_EDIT_MODEL, isArtEditRequest, planArtEdit } from './art-edit-planner.mjs';
 import { planNaturalUiDraft } from './complete-ui-draft.mjs';
+import { planNativeUiDraft } from './native-ui-draft.mjs';
 import { planUiCatalog, cpuCatalog } from './ui-catalog-planner.mjs';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createStrataPromptAssistant, strataConfigPath as defaultStrataConfigPath, readStrataConfig } from './strata-prompt-assistant.mjs';
 
 export const MODEL_TYPE = 'qwen3_vl_8b_abliterated_nf4';
 export const MODEL_DIR = 'Huihui-Qwen3-VL-8B-Instruct-Abliterated';
@@ -128,6 +130,17 @@ function failureMetadata(value) {
     if (typeof source[field] === 'boolean') metadata[field] = source[field];
   }
   if (Number.isFinite(Number(source.retryCount))) metadata.retryCount = Math.max(0, Math.min(2, Math.trunc(Number(source.retryCount))));
+  const inference = source.localInference;
+  if(inference?.analysisBackend==='strata' && Array.isArray(inference.requests) && inference.requests.length<=128) {
+    const requests=inference.requests.filter(item=>item && Number.isFinite(item.requestMs) && item.requestMs>=0).map(item=>({
+      requestId:String(item.requestId || '').slice(0,240),model:String(item.model || '').slice(0,2000),requestMs:item.requestMs,
+      finishReason:String(item.finishReason || '').slice(0,40),status:item.status==='completed'?'completed':'error',
+      imageCount:Math.max(0,Math.min(16,Number(item.imageCount) || 0)),
+      ...(item.usage && typeof item.usage==='object'?{usage:item.usage}:{})
+    }));
+    metadata.localInference={analysisBackend:'strata',scope:'python-business-request',inferencePerformed:requests.length>0,
+      requestCount:requests.length,requestMs:requests.reduce((sum,item)=>sum+item.requestMs,0),requests};
+  }
   return metadata;
 }
 
@@ -351,7 +364,15 @@ async function freeMemory(baseUrl, timeoutMs = 15000) {
   return first.status === 404 ? post('/api/free') : first;
 }
 
-export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend = 'pe' } = {}) {
+export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath } = {}) {
+  const candidateConfigPath = suppliedStrataConfigPath || defaultStrataConfigPath(runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON);
+  const candidateConfig = readStrataConfig(candidateConfigPath);
+  const selectedBackend = analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND
+    || 'strata';
+  // The Python process retains the task protocols and CPU compilers. When
+  // Flash is selected it is a client of the outer, already-owned session.
+  analysisBackend = selectedBackend;
+  let flashSession = null;
   const log = logger || (() => {});
   let proc = null, startPromise = null, stopPromise = null, lease = null;
   let nextId = 1, buffer = '', stderrTail = [], pending = new Map();
@@ -366,6 +387,17 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     const script = serviceScript || serviceScriptPath();
     const python = pythonPath || process.env.NOVAFLOW_PROMPT_ASSISTANT_PYTHON
       || [join(runtime.installPath, 'engine', 'python', 'python.exe')].find(existsSync) || 'python';
+    if (analysisBackend === 'strata') {
+      const files = candidateConfig?.modelFiles || [];
+      const file = typeof files[0] === 'string' ? files[0] : files[0]?.path || '';
+      const modelExists = files.length > 0 && files.every(item => isFile(typeof item === 'string' ? item : item.path));
+      const serviceExists = isFile(script);
+      return { modelType:'swift15_qwen38_flash_next_iq2_xs', modelPath:file, modelFolderReady:modelExists,
+        cachePath:'', cacheReady:false, modelExists, serviceScript:script, serviceExists, pythonPath:python,
+        comfyRoot:process.env.NOVAFLOW_COMFY_ROOT || join(runtime.installPath,'engine','ComfyUI'), runtimeJsonPath:runtimeJson,
+        enabled:modelExists && serviceExists, runtimeStatus:lease?'推理中':modelExists?'模型可用':'未配置模型',
+        error:!serviceExists?'Prompt Assistant 服务脚本不存在':modelExists?lastError:'Flash 本地模型尚未安装完整' };
+    }
     if(analysisBackend==='pe'){
       const file=modelPath||join(runtime.modelsPath||'', 'text_encoders', ART_EDIT_MODEL);
       const modelExists=isFile(file),serviceExists=isFile(script);
@@ -440,7 +472,15 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: cfg.modelPath,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: cfg.modelType,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.cachePath,
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: cfg.modelType==='qwen35_pe_i2i'?'0':'1'
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: ['qwen35_pe_i2i','swift15_qwen38_flash_next_iq2_xs'].includes(cfg.modelType)?'0':'1',
+          ...(analysisBackend === 'strata' ? {
+            NOVAFLOW_PROMPT_ASSISTANT_BACKEND:'strata',
+            NOVAFLOW_FLASH_BASE_URL:candidateConfig.baseUrl || 'http://127.0.0.1:8198',
+            NOVAFLOW_FLASH_MODEL_ID:flashSession?.identity?.id || '',
+            NOVAFLOW_FLASH_MAX_TOKENS:String(candidateConfig.maxTokens || 4096),
+            NOVAFLOW_FLASH_REASONING_EFFORT:candidateConfig.reasoningEffort || 'low',
+            NOVAFLOW_FLASH_REASONING_BUDGET_TOKENS:String(candidateConfig.reasoningBudgetTokens ?? 1024)
+          } : {})
         }
       });
       proc = child; buffer = ''; stderrTail = [];
@@ -555,7 +595,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     lease = { command, startedAt: Date.now() };
     let result, started = false;
     try {
-      const handoff = await releaseRuntimes();
+      const handoff = analysisBackend === 'strata' ? { ok:Boolean(flashSession), error:'Flash 会话尚未取得模型身份和资源租约', errorCode:'flash-session-required' } : await releaseRuntimes();
       if (!handoff.ok) {
         log('prompt-assistant blocked', { command, state: handoff.state });
         return { ...publicConfig(cfg), ok: false, runtimeStatus: handoff.state === 'runtime-generation-busy' ? '绘图生成中' : '显存交接失败', error: handoff.error, errorCode: handoff.errorCode, retryable: true, resourceHandoff: handoff };
@@ -588,7 +628,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   /** A machine with only the raw model folder builds the NF4 copy once on disk, then retries. */
   async function requestWithCache(command, payload, timeoutMs) {
     const result = await request(command, payload, timeoutMs);
-    if (config().modelType==='qwen35_pe_i2i'||!isCachePreparationFailure(result)) return result;
+    if (analysisBackend==='strata'||config().modelType==='qwen35_pe_i2i'||!isCachePreparationFailure(result)) return result;
     const prepared = await request('prepareReverseCache', {}, 900000);
     if (prepared?.ok !== true) return { ...prepared, ok: false, runtimeStatus: '模型准备失败', error: '千问 3 提示词模型的 NF4 磁盘缓存准备失败，请重试', errorCode: String(prepared?.errorCode || 'reverse-cache-prepare-failed'), failureCategory: 'model_preparation', retryable: true };
     return request(command, payload, timeoutMs);
@@ -597,6 +637,14 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   const invalid = error => ({ ok: false, error: String(error?.message || error), errorCode: 'invalid-request' });
 
   const api = {
+    async runWithFlashSession(session, method, payload, context = {}) {
+      if (analysisBackend !== 'strata' || !session?.identity?.id || typeof session.infer !== 'function') return invalid(new Error('缺少已验证的 Flash 会话'));
+      if (flashSession || lease) return {ok:false,error:'本地 AI 正在处理另一项任务',errorCode:'prompt-assistant-busy'};
+      flashSession = session;
+      try {
+        return context.taskId ? await api.runForTask(context.taskId,method,payload,context) : await api[method](payload);
+      } finally { await stop(); flashSession = null; }
+    },
     get running() { return Boolean(proc); },
     get busy() { return Boolean(lease); },
     /** One request on behalf of a prompt_assistant pool task (worker-core). */
@@ -617,14 +665,14 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       return requestWithCache('optimizePrompt', normalized.request, normalized.timeoutMs);
     },
     async uiDesignCpu(payload) {
-      if (payload?.surface !== 'ui-design' || !['grok-vision-job','compile-grok-vision'].includes(payload?.action)) return invalid(new Error('未知的 UI CPU 操作'));
+      if (payload?.surface !== 'ui-design' || !['grok-vision-job','compile-grok-vision','native-ui-cloud','native-ui-compile'].includes(payload?.action)) return invalid(new Error('未知的 UI CPU 操作'));
       try {
         const cfg=config();
         return {ok:true,data:await cpuCatalog({python:cfg.pythonPath,serviceScript:cfg.serviceScript},payload)};
       } catch(error) {return {ok:false,error:String(error?.message||error),errorCode:'ui-design-cpu-failed'};}
     },
     async reverseImagePrompt(payload) {
-      if(payload?.surface==='art'&&payload.purpose==='art-director'&&payload.artContext?.editEnhancer==='qwen21-pe-i2i'){
+      if(analysisBackend!=='strata'&&payload?.surface==='art'&&payload.purpose==='art-director'&&payload.artContext?.editEnhancer==='qwen21-pe-i2i'){
         let normalized;try{normalized=normalizeReverseRequest(payload);}catch(error){return invalid(error);}
         if(isArtEditRequest(normalized.request)){
           if(lease)return {ok:false,error:'本地分析正在执行另一项任务，请等待完成',errorCode:'prompt-assistant-busy'};
@@ -651,21 +699,21 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       }
       if(payload?.uiPlanner==='grok-vision-cpu-v1') {
         if(payload.surface!=='ui-design')return invalid(new Error('UI CPU 请求范围无效'));
-        if(payload.action==='capabilities')return {ok:true,data:{protocol:'nf.ui.grok-cpu.v1',cpuOnly:true,localCompletePlanner:'complete-catalog-v2'}};
+        if(payload.action==='capabilities')return {ok:true,data:{protocol:'nf.ui.grok-cpu.v1',cpuOnly:true,localCompletePlanner:'native-catalog-v3',nativeCatalogProtocol:'flat-native-v3',sourceContract:'observed-rows-v2'}};
         return api.uiDesignCpu(payload);
       }
       // UI PE uses the already-installed runtime model, not the unrelated NF4 assistant.
-      if (['structure-catalog-v1','complete-catalog-v2'].includes(payload?.uiPlanner)) {
+      if (['structure-catalog-v1','complete-catalog-v2','native-catalog-v3'].includes(payload?.uiPlanner)) {
         if (payload.surface !== 'ui-design' || payload.targetEngine !== 'qwen-2.1' || payload.uiDesignIntent !== 'redesign' || payload.uiPreserveLayout !== true) return invalid(new Error('UI 结构编译请求范围无效'));
         if (lease) return { ok:false, error:'AI 助手正在处理另一项任务，请等待完成后重试', errorCode:'prompt-assistant-busy' };
         lease = { command:'uiStructureCatalog', startedAt:Date.now() };
         try {
-          const handoff = await releaseRuntimes();
+          const handoff = analysisBackend === 'strata' ? {ok:Boolean(flashSession),error:'Flash 会话尚未加载'} : await releaseRuntimes();
           if (!handoff.ok) return { ok:false, error:handoff.error, errorCode:handoff.errorCode };
           const cfg = config();
-          const data = await (payload.uiPlanner==='complete-catalog-v2'?planNaturalUiDraft:planUiCatalog)({ baseUrl:comfyUrls[0], payload, cpu: value => cpuCatalog({ python:cfg.pythonPath, serviceScript:cfg.serviceScript }, value) });
+          const data = await (['complete-catalog-v2','native-catalog-v3'].includes(payload.uiPlanner)?planNativeUiDraft:planUiCatalog)({ baseUrl:comfyUrls[0], payload, isCancelled: () => taskIsCancelled(), ...(flashSession ? {infer:flashSession.infer,model:flashSession.identity.id} : {}), cpu: value => cpuCatalog({ python:cfg.pythonPath, serviceScript:cfg.serviceScript }, value) });
           return { ok:true, data };
-        } catch (error) { return { ok:false, error:String(error?.message || error), errorCode:'ui-catalog-failed', ...(error.uiCatalogDiagnostics ? {uiCatalogDiagnostics:error.uiCatalogDiagnostics} : {}) }; }
+        } catch (error) { return { ok:false, error:'UI 识别/设计已失败：'+String(error?.message || error)+(String(error?.message||error).includes('未提交')?'':'；本次未提交生图'), errorCode:'ui-catalog-failed', ...(error.uiCatalogDiagnostics ? {uiCatalogDiagnostics:error.uiCatalogDiagnostics} : {}) }; }
         finally { lease = null; }
       }
       let normalized;
@@ -680,7 +728,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         const supplement = String(payload?.supplement || '').trim().slice(0, 400);
         if (!supplement) return invalid(new Error('没有要翻译的提示词补充'));
         const result = await requestWithCache('describeArtStyle', { purpose: 'aifx-supplement', supplement }, 120000);
-        return result?.ok ? { ok: true, supplement: String(result.data?.supplement || '').slice(0, 600), model: String(result.data?.model || '') } : result;
+        return result?.ok ? { ok: true, supplement: String(result.data?.supplement || '').slice(0, 600), model: String(result.data?.model || ''),localInference:result.data?.localInference } : result;
       }
       const dataUrl = String(payload?.dataUrl || '');
       if (!dataUrl.startsWith('data:image/')) return invalid(new Error('请先选择可分析的图片'));
@@ -701,14 +749,15 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
             colours: String(entry.colours || '').slice(0, 160),
             breakup: String(entry.breakup || '').slice(0, 300)
           },
-          model: String(result.data?.model || '')
+          model: String(result.data?.model || ''),localInference:result.data?.localInference
         };
       }
-      return { ok: true, style: String(result.data?.style || '').slice(0, 400), model: String(result.data?.model || '') };
+      return { ok: true, style: String(result.data?.style || '').slice(0, 400), model: String(result.data?.model || ''),localInference:result.data?.localInference };
     },
     /** The assistant window's 释放显存 button: the same GPU hand-over, with no request behind it. */
     releaseRuntimes,
     stop
   };
-  return api;
+  return selectedBackend === 'strata' ? createStrataPromptAssistant({ worker, comfyUrls, configPath: candidateConfigPath,
+    normalizeOptimizeRequest, normalizeReverseRequest, legacyApi: api, logger }) : api;
 }

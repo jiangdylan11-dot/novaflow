@@ -161,9 +161,15 @@
       && runPolicy.referenceRoles?.length === 2 && runPolicy.referenceRoles[0] === 'subject' && runPolicy.referenceRoles[1] === 'style'
       && runPolicy.qwen21TurboGuidance?.renderingClass === 'anime' && Number(runPolicy.qwen21TurboGuidance.cfg) === 3
       && negative.length > 0
-    const defaultCfg = route === 'qwen-2.1-turbo' && guidedTurbo ? 3 : route === 'qwen-2.1'
+    const native = runPolicy?.qwen21NativeGuidance
+    const nativeCfg = surface === 'drawing' && modeKey === 'img2img' && ['qwen-2.1','qwen-2.1-turbo'].includes(route)
+      && runPolicy?.taskProfile === 'art-direction' && runPolicy.styleReferencePriority === true
+      && runPolicy.referenceRoles?.length === 2 && runPolicy.referenceRoles[0] === 'subject' && runPolicy.referenceRoles[1] === 'style'
+      && native?.kind === 'qwen21-strata-native' && native.version === 'flash-native-v1'
+      && Number.isFinite(native.cfg) && native.cfg >= 1 && native.cfg <= 10 ? native.cfg : null
+    const defaultCfg = nativeCfg ?? (route === 'qwen-2.1-turbo' && guidedTurbo ? 3 : route === 'qwen-2.1'
       ? (negative ? QWEN21_NEGATIVE_CFG : 1)
-      : route === 'standard' && !lightning ? STANDARD_FULL_CFG : 1
+      : route === 'standard' && !lightning ? STANDARD_FULL_CFG : 1)
     return Object.freeze({
       route,
       mode: modeKey,

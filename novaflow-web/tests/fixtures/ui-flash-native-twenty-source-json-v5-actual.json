@@ -1,0 +1,80 @@
+{
+  "schema": "nf.qa.ui.flash.native-actual.v1",
+  "sourceImageSHA256": "5a7b87e169781e6808aac4fa2b2f6c4d69b641c6670003615971ea641942fcc0",
+  "sourceOriginalSize": [
+    1512,
+    3276
+  ],
+  "originalRunSucceeded": false,
+  "originalFailure": "Native JSON observation and region arrays correct, but single-quoted business literals were invisible to a double-quote-only CPU parser; no generation submitted",
+  "records": [
+    {
+      "stage": "source-natural",
+      "requestId": "chatcmpl-c010b5d5f63142c485632120",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "{\"region_order\": [\"grid\", \"characters\", \"information\", \"readouts\", \"controls\"], \"区域关系\": \"网格位于上方为5列4行老虎机玩法区；网格下方是角色展示区含3个格外主体；角色展示下方为信息栏，左侧BUY FREE GAMES按钮与右侧WIN 20.00并占一行；信息栏下方为金额调节条，依次¥1000、-、¥1000、+、¥1000占一行；最下方为按钮行，从左到右菜单、极速、主旋转按钮、自动、声音占一行\", \"网格\": \"4行5列，共20格\", \"角色关联\": \"格外主体3个，位于网格下方角色展示区，从左到右依次排列\", \"业务文字\": \"BUY FREE GAMES在信息栏左侧；WIN 20.00在信息栏右侧；¥1000带钱包图标在金额条左侧；-在金额条左中；¥1000在金额条中部；+在金额条右中；¥1000带WIN图标在金额条右侧；菜单在按钮行最左；极速在按钮行左二；自动在按钮行右二；声音在按钮行最右\", \"玩法文字\": \"Wild在网格第4行第4列\"}",
+      "textSHA256": "9d03ad83b9990f4def6fdb24931876bf93f8a251e27673de84a2ba5141471401",
+      "traceFile": "ba514002-7ccb-4d2d-bc98-05deb7770945.json",
+      "traceSHA256": "a678d1e0c62f8027f7c3a695260f9c68b696c492656006c8bebef1418602998e",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1256069,
+          "sha256": "f6e500a8ff5800a335fb5d2b15714719887615a07ff83d5741317a92fa11b221",
+          "name": "native-ui-4463c35a-9b6e-4e25-a037-15f2e8ab0c1b"
+        }
+      ]
+    },
+    {
+      "stage": "source-grid",
+      "requestId": "chatcmpl-e862081d51d34607af98172a",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "{\"shape\":[4,5],\"rows\":[[{\"type\":\"o\",\"text\":\"\",\"group\":1},{\"type\":\"o\",\"text\":\"\",\"group\":2},{\"type\":\"g\",\"text\":\"J\",\"group\":3},{\"type\":\"o\",\"text\":\"\",\"group\":4},{\"type\":\"o\",\"text\":\"\",\"group\":2}],[{\"type\":\"o\",\"text\":\"\",\"group\":4},{\"type\":\"p\",\"text\":\"\",\"group\":5},{\"type\":\"p\",\"text\":\"\",\"group\":6},{\"type\":\"p\",\"text\":\"\",\"group\":7},{\"type\":\"g\",\"text\":\"10\",\"group\":8}],[{\"type\":\"g\",\"text\":\"Q\",\"group\":9},{\"type\":\"o\",\"text\":\"\",\"group\":2},{\"type\":\"g\",\"text\":\"K\",\"group\":10},{\"type\":\"g\",\"text\":\"J\",\"group\":3},{\"type\":\"o\",\"text\":\"\",\"group\":1}],[{\"type\":\"g\",\"text\":\"J\",\"group\":3},{\"type\":\"g\",\"text\":\"A\",\"group\":11},{\"type\":\"o\",\"text\":\"\",\"group\":1},{\"type\":\"s\",\"text\":\"WILD\",\"group\":12},{\"type\":\"g\",\"text\":\"K\",\"group\":10}]],\"uncertain\":[]}",
+      "textSHA256": "70191072ec88e2eba8e9947d801d61da5a4664b46e3a7a77e333839c926df087",
+      "traceFile": "1f02bc24-0311-4aea-bd37-01b77f50a213.json",
+      "traceSHA256": "eeb1660ffabb8f5fce62ecf598ed4f55aaec809386a21f2b7d98e3ba7ff9fc23",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-e9a0cbac-4b67-4f5f-9e9d-a416a2c6169f"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 2003325,
+          "sha256": "1d73c953d87a6e65fa760f457b12a0ee6277a87a43aadfc8e6384fef16931951",
+          "name": "native-ui-b17b3ad9-9ecd-45f7-b5cd-b574dce8871a"
+        }
+      ]
+    },
+    {
+      "stage": "source-controls",
+      "requestId": "chatcmpl-d8e073e5a1a447cb9aa51ad7",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "{\"region_order\": [\"grid\", \"characters\", \"information\", \"readouts\", \"controls\"], \"区域关系\": \"玩法网格居上；其下为三位格外角色展示区；再下为购买按钮与中奖读数同行信息栏；其下为金额读数与加减调节条；最下为主旋转按钮与四个辅助按钮行。\", \"网格\": \"4行5列，共20格\", \"角色关联\": \"3位格外展示；第2行第2、3、4列的羊头像格位与三位格外角色对应\", \"操作组件\": \"信息栏行左为'BUY FREE GAMES'购买按钮，右为'WIN 20.00'中奖读数；金额条行左为钱包图标'¥1000'，接'－'调节，中间'¥1000'，接'＋'调节，右为WIN图标'¥1000'；按钮行中间为红色主旋转按钮，左依次'菜单''极速'，右依次'自动''声音'\", \"显示文字\": \"无\", \"玩法文字\": \"'Wild'位于第4行第4列\"}",
+      "textSHA256": "a84c23771de4f70f6d7b0dfb613e777ea5b411cf3b097fd36e7924c589f63c9f",
+      "traceFile": "7e4c7691-a7ac-4772-a647-80429a41739a.json",
+      "traceSHA256": "85db676ed0407082612097a2aee21076f12ecb3735c400941a6280528b7ad8fd",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-e9a0cbac-4b67-4f5f-9e9d-a416a2c6169f"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1841522,
+          "sha256": "10419b00cbe5465f6b078b23aa87e37b995ae7be170b53e81b1c2e528fd1fbe3",
+          "name": "native-ui-da360992-d108-4a97-acf5-00098c9657e7"
+        }
+      ]
+    }
+  ]
+}

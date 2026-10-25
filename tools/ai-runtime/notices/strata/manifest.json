@@ -1,0 +1,55 @@
+{
+  "schema": "nf.strata.distribution.notices.v1",
+  "controlVersion": "0.1.49.2",
+  "engineVersion": "0.1.48-windows-cuda13",
+  "files": [
+    {
+      "path": "STRATA-CONTROL-LICENSE.txt",
+      "component": "Strata control 0.1.49.2",
+      "sourceURL": "https://raw.githubusercontent.com/Niko1221/Strata/dfa3f4025c9f1bc4af8cee201b20a2d223061813/LICENSE",
+      "sourceRevision": "dfa3f4025c9f1bc4af8cee201b20a2d223061813",
+      "license": "MIT",
+      "bytes": 1093,
+      "sha256": "949b9b0aada7476006469e58ee4ffb0e0f68c2d9137e90a356757b61a09d37f0",
+      "contentUnmodified": true
+    },
+    {
+      "path": "STRATA-ENGINE-LICENSE.txt",
+      "component": "Strata engine 0.1.48 CUDA13",
+      "sourceURL": "https://raw.githubusercontent.com/Niko1221/Strata/6f8800aefe27/LICENSE",
+      "sourceRevision": "6f8800aefe27 (official BUILD.json commit)",
+      "license": "MIT",
+      "bytes": 1093,
+      "sha256": "949b9b0aada7476006469e58ee4ffb0e0f68c2d9137e90a356757b61a09d37f0",
+      "contentUnmodified": true
+    },
+    {
+      "path": "GGML-LLAMA-CPP-LICENSE.txt",
+      "component": "Static ggml / llama.cpp source pin",
+      "sourceURL": "https://raw.githubusercontent.com/ggml-org/llama.cpp/3cf03257f219afbe7334045ff7c6a06ac68c627d/LICENSE",
+      "sourceRevision": "3cf03257f219afbe7334045ff7c6a06ac68c627d",
+      "license": "MIT",
+      "bytes": 1078,
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+      "contentUnmodified": true
+    },
+    {
+      "path": "NVIDIA-CUDA-13.0.0-EULA.html",
+      "component": "CUDA 13.0 license and included third-party notices",
+      "sourceURL": "https://docs.nvidia.com/cuda/archive/13.0.0/eula/index.html",
+      "sourceRevision": "CUDA Toolkit 13.0.0 official archived document",
+      "license": "NVIDIA CUDA EULA and component notices",
+      "bytes": 104490,
+      "sha256": "f8babe932f92aa7a25dd560b22d13c0d30c48b280b918eccc62ddb836142cabe",
+      "contentUnmodified": true
+    }
+  ],
+  "purpose": "Original component notices supplied beside the portable runtime. Existing bundled Python dependency licenses remain in their original paths.",
+  "cudaScope": "Engine BUILD.json declares CUDA13.0; the archived NVIDIA13.0.0 document includes CUDA license and third-party/cuBLAS notices. This file is retained as original HTML, not an abridged replacement.",
+  "compiledDependencyEvidence": "Strata engine commit6f8800aefe27 CMakeLists.txt uses static ggml with llama.cpp pin3cf03257f219afbe7334045ff7c6a06ac68c627d by default. This is not a full binary transitive SBOM.",
+  "componentManifestHashes": {
+    "controlBUNDLE": "db43d3ade30daa9391633e66db58688c0f4a5b2d0791c34847114a03d6565cd4",
+    "engineComponent": "1767034593452895ad32d9aaa66c611ee7bec0fe09194b0ae154df2de96e1a6f"
+  },
+  "modelsExcluded": true
+}

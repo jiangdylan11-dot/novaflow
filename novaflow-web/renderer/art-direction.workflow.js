@@ -9,9 +9,23 @@
   const CACHE = new Map();
   const previews = new WeakMap();
   const writtenReferencePolicies = new WeakMap();
+  const analysisCapabilities = new WeakMap();
   let controller = null;
   const text = value => String(value ?? '').trim();
   const copy = value => JSON.parse(JSON.stringify(value));
+  const NATIVE_KIND='qwen21-strata-native',NATIVE_VERSION='flash-native-v1';
+  const isNative=e=>e?.kind===NATIVE_KIND&&e.version===NATIVE_VERSION;
+  function nativeMetadata(e) {
+    const identity=e.modelIdentity,policy=e.providerPolicy,provenance=e.sourceCacheProvenance;
+    if(e.analysisBackend!=='strata'||e.resourcesReleased!==true||e.generationReady!==true
+      ||!identity||typeof identity!=='object'||!text(identity.id)
+      ||!['server-model-id','server-weight-path','server-model-id-and-weight-path'].includes(identity.verification)||text(e.model)!==text(identity.id)
+      ||!policy||policy.schema!=='nf.qwen21-native-provider.v1'||!Number.isFinite(policy.cfg)||policy.cfg<1||policy.cfg>10
+      ||provenance!==undefined&&(!provenance||typeof provenance!=='object'||Array.isArray(provenance)))
+      throw new Error('本地AI完整提示词的来源或资源交接凭据无效，未提交生成');
+    return {analysisBackend:'strata',modelIdentity:copy(identity),providerPolicy:copy(policy),
+      ...(provenance!==undefined?{sourceCacheProvenance:copy(provenance)}:{}),resourcesReleased:true,generationReady:true};
+  }
   const abortError = () => Object.assign(new Error('任务已中止'), { name: 'AbortError' });
   const ROLE_WORDS = [['style',/风格|画风|笔触|上色|渲染方式/i],['pose',/姿势|姿态|动作|骨架/i],['background',/背景|环境|场景/i],['material',/材质|质感|纹理|面料/i],['color',/配色|色彩|颜色|色板/i],['composition',/构图|镜头|透视|景别/i],['lighting',/光影|光照|光线|光感|打光|照明/i],['object',/武器|道具|物件|物品|帽子|鞋子|服装款式|衣服款式|衣服造型/i],['subject',/身份|长相|脸部|(?:主体|人物|角色)(?:和|与|、|及)|(?:主体|人物|角色)(?![^，。；]*?(?:风格|画风|笔触|上色|渲染|姿势|姿态|动作|骨架|衣服|服装|材质|质感|纹理|配色|色彩|颜色|背景|环境|构图|光影|光照|镜头))/i]];
   function roleRendering(role,detail) {
@@ -143,12 +157,12 @@
   function input(context) {
     const s = context.state;
     const prompt=text(s.prompt);
-    return { prompt, mode:s.mode||'img2img', negativePrompt: text(s.negativePrompt), task: TASKS[s.drawingTask] ? s.drawingTask : 'auto', engine: engine(s),
+    return { prompt, literalPrompt:String(s.prompt??''), mode:s.mode||'img2img', negativePrompt: text(s.negativePrompt), literalNegativePrompt:String(s.negativePrompt??''), task: TASKS[s.drawingTask] ? s.drawingTask : 'auto', engine: engine(s),
       provider: s.provider || 'local', width: s.width, height: s.height, nsfw: s.nsfw === true,
       references: requestedRoles(prompt,(s.mode==='txt2img'?[]:context.references || []).map((ref, index) => ref?.dataUrl ? { ...ref, source: index + 1, role: Object.hasOwn(ROLES,ref.drawingRole) ? ref.drawingRole : 'auto' } : null).filter(Boolean)) };
   }
   function same(a, b) {
-    return ['prompt', 'mode', 'negativePrompt', 'task', 'engine', 'provider', 'width', 'height', 'nsfw'].every(k => a[k] === b[k])
+    return ['prompt', 'literalPrompt', 'mode', 'negativePrompt', 'literalNegativePrompt', 'task', 'engine', 'provider', 'width', 'height', 'nsfw'].every(k => a[k] === b[k])
       && a.references.length === b.references.length && a.references.every((r, i) => r.source === b.references[i].source && r.dataUrl === b.references[i].dataUrl && r.role === b.references[i].role);
   }
   async function key(value) {
@@ -195,11 +209,13 @@
     let editEnhancer;
     if(raw.editEnhancer){
       const e=raw.editEnhancer,order=e.sourceOrder,slots=[...text(e.prompt).matchAll(/<image(\d+)>/g)].map(m=>Number(m[1]));
-      const supported=e.kind==='qwen21-pe-i2i'&&e.version==='drawing-style-v1'||e.kind==='qwen21-style-observation'&&e.version==='drawing-style-observation-v1';
-      if(source.engine!=='local'||source.provider!=='local'||!supported||!Array.isArray(order)||order.length!==2||new Set(order).size!==2||order.some(n=>!sources.has(n))||text(e.prompt).length>12000||slots.some(n=>n<1||n>2)||new Set(slots).size!==2||references.flatMap(r=>r.uses.map(u=>u.role)).sort().join(',')!=='style,subject')throw new Error('PE 编辑指令或参考编号无效，未提交生成');
-      editEnhancer={kind:e.kind,model:text(e.model),version:e.version,prompt:text(e.prompt),renderingClass:['anime','animated-3d','painterly'].includes(e.renderingClass)?e.renderingClass:'other',sourceOrder:order.slice(),promptIds:Array.isArray(e.promptIds)?e.promptIds.map(text).slice(0,2):[]};
+      const supported=isNative(e)||e.kind==='qwen21-pe-i2i'&&e.version==='drawing-style-v1'||e.kind==='qwen21-style-observation'&&e.version==='drawing-style-observation-v1'||e.kind==='qwen21-scoped-style'&&e.version==='scoped-style-v1';
+      if(source.engine!=='local'||source.provider!=='local'||!supported||!Array.isArray(order)||order.length!==2||new Set(order).size!==2||order.some(n=>!sources.has(n))||text(e.prompt).length>12000||slots.some(n=>n<1||n>2)||new Set(slots).size!==2||references.flatMap(r=>r.uses.map(u=>u.role)).sort().join(',')!=='style,subject')throw new Error('本地AI编辑指令或参考编号无效，未提交生成');
+      if(isNative(e)&&(typeof raw.prompt!=='string'||typeof e.prompt!=='string'||raw.prompt!==e.prompt))throw new Error('本地AI完整提示词存在不一致的正文副本，未提交生成');
+      if(isNative(e)&&(!text(e.prompt)||references.some(r=>r.omit.length||r.uses.some(u=>u.box.join(',')!=='0,0,1000,1000'||u.samples.length||u.omit?.length))))throw new Error('完整提示词线路需要完整主体和风格原图，未提交生成');
+      editEnhancer={kind:e.kind,model:text(e.model),version:e.version,prompt:isNative(e)?raw.prompt:text(e.prompt),renderingClass:['anime','animated-3d','painterly'].includes(e.renderingClass)?e.renderingClass:'other',sourceOrder:order.slice(),promptIds:Array.isArray(e.promptIds)?e.promptIds.map(text).slice(0,2):[],...(isNative(e)?nativeMetadata(e):{})};
     }
-    return { schema: SCHEMA, prompt: source.references.length ? source.prompt || TASKS[source.task] || '' : text(raw.prompt).slice(0, 12000), summary: source.references.length ? references.map(r=>`图${r.source}：${r.uses.map(u=>ROLES[u.role]).join('、')}`).join('；') : text(raw.summary).slice(0, 2000), references,
+    return { schema: SCHEMA, prompt: isNative(editEnhancer)?editEnhancer.prompt:source.references.length ? source.prompt || TASKS[source.task] || '' : text(raw.prompt).slice(0, 12000), summary: source.references.length ? references.map(r=>`图${r.source}：${r.uses.map(u=>ROLES[u.role]).join('、')}`).join('；') : text(raw.summary).slice(0, 2000), references,
       ...(editEnhancer?{editEnhancer}:{}),preserve: (raw.preserve || []).map(text).filter(Boolean).slice(0, 24), exclude: source.references.length ? [] : (raw.exclude || []).map(text).filter(Boolean).slice(0, 24), clarification: text(raw.clarification).slice(0, 500) };
   }
   function unwrap(result) {
@@ -209,18 +225,33 @@
     if (data.validationError || Object.hasOwn(data,'artDirection') && !data.artDirection) throw new Error(`绘图分析未通过检查：${text(data.validationError)||'参考用途或区域不完整'}；请重试或更换分析线路`);
     return data.artDirection || data.art_direction || data.plan || data.rawOutput || data.prompt || data.positivePrompt;
   }
+  async function acceptsOriginalAnalysisImages(api, source) {
+    if(source.engine!=='local'||!source.references.length||typeof api.promptAssistantGetStatus!=='function')return false;
+    let capability=analysisCapabilities.get(api);
+    if(!capability){
+      capability=Promise.resolve().then(()=>api.promptAssistantGetStatus()).then(reply=>{
+        const status=reply?.result||reply?.data||reply;
+        if(reply?.ok===false||status?.ok===false)throw new Error('本地AI能力暂不可用');
+        return status?.analysisBackend==='strata'&&status?.supportsOriginalImages===true;
+      }).catch(()=>{analysisCapabilities.delete(api);return false;});
+      analysisCapabilities.set(api,capability);
+    }
+    return capability;
+  }
   async function analyze(source, signal) {
     const api = root.electronAPI || {};
     const analysisImages = [];
     const usePe=source.engine==='local'&&source.provider==='local'&&!source.nsfw&&source.references.length===2&&source.references.every(r=>r.roles.length===1)&&source.references.map(r=>r.roles[0]).sort().join(',')==='style,subject';
+    const originalImages=await acceptsOriginalAnalysisImages(api,source);
     for (const r of source.references) {
       if (signal.aborted) throw abortError();
-      analysisImages.push({ dataUrl: await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
+      analysisImages.push({ dataUrl: originalImages?r.dataUrl:await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
     const payload = { surface: 'art', purpose: 'art-director', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
       negativePrompt: source.negativePrompt, nsfw: source.nsfw, supportsNegativePrompt: false,
       artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
       images: analysisImages };
+    if(originalImages&&new TextEncoder().encode(JSON.stringify(payload)).byteLength>24*1024*1024)throw new Error('完整参考图分析请求超过24MB，请减少图片数量或先缩小图片；本次未压缩或截断提交');
     const fn = source.engine === 'grok' ? api.smartAiImageReverse : api.promptAssistantReverseImagePrompt;
     if (typeof fn !== 'function') throw new Error('所选绘图分析线路未就绪');
     let cancel;
@@ -388,7 +419,24 @@
       return !original||original.roles.every(role=>allowed.includes(role));
     });
   }
+  function compileNative(plan, source, check, limit) {
+    check();
+    const e=plan.editEnhancer;
+    if(2>limit)throw new Error('完整主体和风格参考超过当前模型上限，未提交生成');
+    const references=plan.references.map(r=>({r,u:r.uses[0]})).sort((a,b)=>Number(b.u.role==='subject')-Number(a.u.role==='subject')).map(({r,u})=>{
+      const original=source.references.find(ref=>ref.source===r.source);
+      const mimeType=original.dataUrl.match(/^data:(image\/(?:png|jpeg|webp));/i)?.[1]?.toLowerCase();
+      if(!mimeType)throw new Error(`图${r.source}的图片格式不受支持，请使用 PNG、JPEG 或 WebP`);
+      const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
+      return {name:`reference_${r.source}_${u.role}.${extension}`,mimeType,dataUrl:original.dataUrl,sourceIndex:r.source-1,sourceNumber:r.source,role:u.role,detail:u.detail,target:'',treatment:u.role==='subject'?'subject-original':'complete-style-reference'};
+    });
+    const prompt=e.prompt.replace(/<image(\d+)>/g,(_,n)=>`<image${references.findIndex(r=>r.sourceNumber===e.sourceOrder[Number(n)-1])+1}>`);
+    check();
+    // No PE templates, image statistics, skin workers or inferred negatives.
+    return {references,promptSnapshot:{prompt,negativePrompt:source.literalNegativePrompt??source.negativePrompt},nativeExecution:copy(e),referencePolicy:{stylePriority:true}};
+  }
   async function compile(plan, source, status, check, limit) {
+    if(isNative(plan.editEnhancer))return compileNative(plan,source,check,limit);
     const refs=[];
     // The base content precedes its controls even if it was uploaded into a later slot.
     const uses=plan.references.flatMap(r => r.uses.filter(u=>u.role!=='none').map(u => ({r,u}))).sort((a,b) => Number(b.u.role==='subject')-Number(a.u.role==='subject'));
@@ -402,7 +450,7 @@
       const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
       const valueProfile=u.role==='style'?await styleValueProfile(rendered.dataUrl):undefined;check();
       let skinProfile,skinWarning;
-      if(u.role==='style'&&(u.renderingProfile?.facialStyle||plan.editEnhancer)&&typeof root.Worker==='function'){
+      if(u.role==='style'&&plan.editEnhancer?.kind!=='qwen21-scoped-style'&&(u.renderingProfile?.facialStyle||plan.editEnhancer)&&typeof root.Worker==='function'){
         status(`正在核对图${r.source}完整风格的脸部色层…`);
         try{const {observeStyleSkin}=await import('./art-style-color.js');skinProfile=await observeStyleSkin(rendered.dataUrl);}catch{skinWarning='脸部色层未能量化，保留完整参考与视觉分析';}
         check();
@@ -526,12 +574,12 @@
       const extension=mimeType==='image/jpeg'?'jpg':mimeType==='image/webp'?'webp':'png';
       return {name:`reference_${ref.source}_direct.${extension}`,mimeType,dataUrl:ref.dataUrl,sourceIndex:ref.source-1,sourceNumber:ref.source,role:ref.roles[0]||'auto',detail:'原始完整参考图',treatment:'direct-original'};
     });
-    const prompt=source.references.length?source.prompt.replace(/(?:@?参考图|图片|图|image)\s*(\d+)/gi,(mention,number)=>{
+    const prompt=written?.nativeExecution?written.nativeExecution.prompt.replace(/<image(\d+)>/g,(_,n)=>`<image${references.findIndex(ref=>ref.sourceNumber===written.nativeExecution.sourceOrder[Number(n)-1])+1}>`):source.references.length?source.prompt.replace(/(?:@?参考图|图片|图|image)\s*(\d+)/gi,(mention,number)=>{
       const index=references.findIndex(ref=>ref.sourceNumber===Number(number));
       if(index<0)throw new Error(`图${number}不存在，请检查参考图编号`);
       return `<image${index+1}>`;
     }):source.prompt;
-    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:source.negativePrompt},...(localStylePair(source,references)?{referencePolicy:{stylePriority:true}}:written?.policy?{referencePolicy:copy(written.policy)}:{}),...(written?.turboGuidance?{turboGuidance:copy(written.turboGuidance)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[]}};
+    return {direct:true,references,promptSnapshot:{prompt,negativePrompt:written?.nativeExecution?source.literalNegativePrompt??source.negativePrompt:source.negativePrompt},...(localStylePair(source,references)?{referencePolicy:{stylePriority:true}}:written?.policy?{referencePolicy:copy(written.policy)}:{}),...(written?.turboGuidance?{turboGuidance:copy(written.turboGuidance)}:{}),...(written?.nativeExecution?{nativeExecution:copy(written.nativeExecution)}:{}),plan:{schema:SCHEMA,summary:'无AI · 未进行提示词分析或优化',prompt:written?.nativeExecution?written.nativeExecution.prompt:source.prompt,preserve:[],exclude:[],clarification:'',references:[],...(written?.nativeExecution?{editEnhancer:copy(written.nativeExecution)}:{})}};
   }
   async function prepare(context) {
     if (controller) throw new Error('请等待当前绘图分析结束');
@@ -592,10 +640,10 @@
           }
           // An automatic style default is run metadata, never a persistent
           // manual override. Preserve any CFG the user typed during analysis.
-          if(state.localDrawEngine==='qwen-2.1'&&state.localQwen21Variant==='turbo')state.samplingOverrides=copy(context.state.samplingOverrides||{});
+          if(state.localDrawEngine==='qwen-2.1'&&(state.localQwen21Variant==='turbo'||isNative(prepared.nativeExecution)))state.samplingOverrides=copy(context.state.samplingOverrides||{});
           expectedSource=input(context.getCurrentContext?context.getCurrentContext():context);
           if(prepared.references.length===2&&prepared.references[0].role==='subject'&&prepared.references[1].role==='style'){
-            writtenReferencePolicies.set(context.state,{source:expectedSource,...(prepared.referencePolicy?{policy:copy(prepared.referencePolicy)}:{}),...(prepared.turboGuidance?{turboGuidance:copy(prepared.turboGuidance)}:{}),uiPreserveLayout:state.uiPreserveLayout,order:prepared.references.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
+            writtenReferencePolicies.set(context.state,{source:expectedSource,...(prepared.referencePolicy?{policy:copy(prepared.referencePolicy)}:{}),...(prepared.turboGuidance?{turboGuidance:copy(prepared.turboGuidance)}:{}),...(prepared.nativeExecution?{nativeExecution:copy(prepared.nativeExecution)}:{}),uiPreserveLayout:state.uiPreserveLayout,order:prepared.references.map(ref=>({sourceNumber:ref.sourceNumber,role:ref.role}))});
           }else writtenReferencePolicies.delete(context.state);
           return true;
         },
@@ -608,9 +656,9 @@
       const result={schema:'nf.art.review.v1',pass:null,skipped:true,issues:[],repair:'',reason:'直接生成未调用分析或复审模型'};
       prepared.recordReview?.(result);return result;
     }
-    if(prepared.analysisInput.engine==='local'&&(!prepared.references.length||prepared.plan.editEnhancer?.kind==='qwen21-pe-i2i')){
+    if(prepared.analysisInput.engine==='local'&&(!prepared.references.length||isNative(prepared.plan.editEnhancer)||['qwen21-pe-i2i','qwen21-scoped-style'].includes(prepared.plan.editEnhancer?.kind))){
       prepared.assertCurrent();
-      const result={schema:'nf.art.review.v1',pass:null,skipped:true,issues:[],repair:'',reason:'PE 单次分析线路不再调用额外模型复审'};
+      const result={schema:'nf.art.review.v1',pass:null,skipped:true,issues:[],repair:'',reason:isNative(prepared.plan.editEnhancer)?'本地AI完整提示词单次分析线路不再调用额外模型复审':'PE 单次分析线路不再调用额外模型复审'};
       prepared.recordReview?.(result);return result;
     }
     if(controller)throw new Error('请等待当前绘图分析结束');
@@ -673,7 +721,7 @@
   function cancelPreparation(){if(!controller)return false;controller.abort();return true;}
   function controls(create,state,refresh) {
     const row=create('div',{className:'nf-art-direction-controls'});
-    const titles={direct:'不调用提示词分析模型；使用原始提示词和完整参考图直接生图',local:'使用本地 PE 理解需求与参考，自动整理生图指令',grok:'使用云端 Grok 理解参考并检查成图，会使用现有 Grok 分析次数'};
+    const titles={direct:'不调用提示词分析模型；使用原始提示词和完整参考图直接生图',local:'使用本地 Flash 理解需求与参考，自动整理生图指令',grok:'使用云端 Grok 理解参考并检查成图，会使用现有 Grok 分析次数'};
     for(const [value,label]of [['direct','无AI'],['local','本地AI'],['grok','云端AI']])row.appendChild(create('button',{type:'button',title:titles[value],'data-active':engine(state)===value?'1':'0','aria-pressed':engine(state)===value?'true':'false',text:label,onclick:()=>{state.drawingAnalysisEngine=value;try{root.localStorage.setItem('novaflow.drawing.analysis.v2',value);}catch{}refresh();}}));
     return row;
   }
@@ -687,14 +735,15 @@
     const referenceRoles=prepared.references.map(r=>r.role),styleReferencePriority=prepared.referencePolicy?.stylePriority===true;
     const guided=styleReferencePriority&&referenceRoles.length===2&&referenceRoles[0]==='subject'&&referenceRoles[1]==='style'
       &&prepared.turboGuidance?.renderingClass==='anime'&&Number(prepared.turboGuidance.cfg)===3;
-    return {taskProfile:'art-direction',referenceRoles,styleReferencePriority,...(guided?{qwen21TurboGuidance:{renderingClass:'anime',cfg:3}}:{})};
+    const native=styleReferencePriority&&referenceRoles.length===2&&referenceRoles[0]==='subject'&&referenceRoles[1]==='style'&&isNative(prepared.nativeExecution)?prepared.nativeExecution:null;
+    return {taskProfile:'art-direction',referenceRoles,styleReferencePriority,...(guided?{qwen21TurboGuidance:{renderingClass:'anime',cfg:3}}:{}),...(native?{qwen21NativeGuidance:{kind:NATIVE_KIND,version:NATIVE_VERSION,cfg:native.providerPolicy.cfg}}:{})};
   }
   // The panel and a reused NoAI run consult the same validated writeback. A
   // changed prompt, negative, image or role cannot inherit a stale style CFG.
   function samplingOptions(context){
     const written=writtenReferencePolicies.get(context.state),source=input(context);
     if(!written||!same({...written.source,engine:source.engine},source))return {};
-    return generationOptions({references:written.order,referencePolicy:written.policy,turboGuidance:written.turboGuidance});
+    return generationOptions({references:written.order,referencePolicy:written.policy,turboGuidance:written.turboGuidance,nativeExecution:written.nativeExecution});
   }
   root.NovaFlowArtDirection=Object.freeze({schema:SCHEMA,roles:ROLES,prepare,review,cancelPreparation,controls,analysisControl,referenceControl,generationOptions,samplingOptions,validate,compile,input,same,renderReference,roleRendering});
 })(typeof window!=='undefined'?window:globalThis);

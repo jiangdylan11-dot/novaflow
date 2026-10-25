@@ -1,0 +1,80 @@
+{
+  "schema": "nf.qa.ui.flash.native-actual.v1",
+  "sourceImageSHA256": "5a7b87e169781e6808aac4fa2b2f6c4d69b641c6670003615971ea641942fcc0",
+  "sourceOriginalSize": [
+    1512,
+    3276
+  ],
+  "originalRunSucceeded": false,
+  "originalFailure": "Valid singleton-array grid object was prefixed with an opening brace by the legacy consumer; no generation submitted",
+  "records": [
+    {
+      "stage": "source-natural",
+      "requestId": "chatcmpl-a8256613524d4dd385312770",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "区域关系：自上而下为玩法网格区、格外大主角区、信息栏区（含按钮与金额调节）、底部控件区；无独立头像区。\n\n网格：4行5列。\n\n角色关联：格外大主角区有3个羊形角色全身展示，自左至右排列；图中无头像区，故无头像与全身配对可确认，仅见3个格外实体。\n\n业务文字：左下按钮“BUY FREE GAMES”，中部绿栏“WIN 20.00”，下方左带图标“¥1000”、减号按钮、中部“¥1000”、加号按钮、右带WIN图标“¥1000”；网格字母数字附格位：J(1,3)、10(2,5)、Q(3,1)、K(3,3)、J(3,4)、J(4,1)、A(4,2)、K(4,5)。\n\n玩法文字：“WILD”标签位于第4行第4列。",
+      "textSHA256": "1f1e58a324d43a078b92a741b9da89ae32542e7ed42ec67b778aaadc6e225c53",
+      "traceFile": "ab2bfc8d-2efa-4e87-b2b7-05eb864f2834.json",
+      "traceSHA256": "627ab0b8e7c6eaf58c9c86f2e53b2b7c2a29eb2f1dbad3396caf06aacf3e254a",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1256069,
+          "sha256": "f6e500a8ff5800a335fb5d2b15714719887615a07ff83d5741317a92fa11b221",
+          "name": "native-ui-2f5067d6-1613-46ad-9c21-333a9599d736"
+        }
+      ]
+    },
+    {
+      "stage": "source-grid",
+      "requestId": "chatcmpl-0e9a43b5a8864c83b9ddf8e7",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "[{\"shape\":[4,5],\"rows\":[[{\"type\":\"o\",\"text\":\"\",\"group\":1},{\"type\":\"o\",\"text\":\"\",\"group\":2},{\"type\":\"g\",\"text\":\"J\",\"group\":3},{\"type\":\"o\",\"text\":\"\",\"group\":4},{\"type\":\"o\",\"text\":\"\",\"group\":2}],[{\"type\":\"o\",\"text\":\"\",\"group\":4},{\"type\":\"p\",\"text\":\"\",\"group\":5},{\"type\":\"p\",\"text\":\"\",\"group\":6},{\"type\":\"p\",\"text\":\"\",\"group\":7},{\"type\":\"g\",\"text\":\"10\",\"group\":8}],[{\"type\":\"g\",\"text\":\"Q\",\"group\":9},{\"type\":\"o\",\"text\":\"\",\"group\":2},{\"type\":\"g\",\"text\":\"K\",\"group\":10},{\"type\":\"g\",\"text\":\"J\",\"group\":3},{\"type\":\"o\",\"text\":\"\",\"group\":1}],[{\"type\":\"g\",\"text\":\"J\",\"group\":3},{\"type\":\"g\",\"text\":\"A\",\"group\":11},{\"type\":\"o\",\"text\":\"\",\"group\":1},{\"type\":\"s\",\"text\":\"WILD\",\"group\":12},{\"type\":\"g\",\"text\":\"K\",\"group\":10}]],\"uncertain\":[]}]",
+      "textSHA256": "4dfa1b18c7cb6990a766d55852f1de73aca99c36a850409dfd85972bacca3475",
+      "traceFile": "924e4e45-4960-4996-9ec5-f1de712c2c8b.json",
+      "traceSHA256": "ff9edae6d330b8d052a20023107bb0878299cf714668b982e92ee339b8ea504b",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-9b4f1261-9bec-470b-9f22-695fabfad16c"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 2003325,
+          "sha256": "1d73c953d87a6e65fa760f457b12a0ee6277a87a43aadfc8e6384fef16931951",
+          "name": "native-ui-230436be-4c32-418f-943d-c313e3b51b38"
+        }
+      ]
+    },
+    {
+      "stage": "source-controls",
+      "requestId": "chatcmpl-d1d29879a13240988c12a5d8",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "区域关系：自上而下依次为网格区、角色展示区（三只站立羊）、操作区（购买与WIN条、余额条、底部按钮行）。\n网格：5列4行，共20格。\n角色关联：3位格外展示，头像位于第2行第2列、第2行第3列、第2行第4列。\n操作组件：从左到右，红底购买按钮\"BUY FREE GAMES\"位于WIN条左侧；其右为绿色WIN条内非交互显示\"WIN 20.00\"；下一行余额条中，钱包图标旁非交互显示\"¥1000\"，接减号按钮\"-\"，中间非交互显示金额\"¥1000\"，接加号按钮\"+\"，最右WIN图标旁非交互显示\"¥1000\"；再下一行居中为主旋转按钮（红色旋转符号，无文字），其左右为辅助按钮\"菜单\"\"极速\"\"自动\"\"声音\"，与主旋转同处底部行。\n显示文字：无。\n玩法文字：\"WILD\"标签位于第4行第4列。",
+      "textSHA256": "ffaf8f8cffeae448b47be9c2df3b188d2113c8839f3f91fcfcb031cf1b54616b",
+      "traceFile": "c35ae49f-246d-47bc-abb4-e783550233db.json",
+      "traceSHA256": "c86805c1ff6a4b1622293c15ddb49af3166586b50b4e8550c2ebf5edef3cb98a",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-9b4f1261-9bec-470b-9f22-695fabfad16c"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1841522,
+          "sha256": "10419b00cbe5465f6b078b23aa87e37b995ae7be170b53e81b1c2e528fd1fbe3",
+          "name": "native-ui-eff78819-75a2-4d3b-9c96-6799cf5e4852"
+        }
+      ]
+    }
+  ]
+}

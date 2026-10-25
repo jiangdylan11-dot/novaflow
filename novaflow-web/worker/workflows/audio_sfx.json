@@ -1,7 +1,7 @@
 {
   "id": "audio_sfx",
   "comfy": "image",
-  "note": "Text to sound effect on the small effects checkpoint; the NovaFlow audio node trims silence and normalizes the peak. Verified against ComfyUI 0.37.0 on 127.0.0.1:8188.",
+  "note": "Text to sound effect on the small effects checkpoint; the NovaFlow audio node trims silence and normalizes the peak. Verified against ComfyUI 0.37.0 on 127.0.0.1:8188. Prompt rewriting is performed by the shared Flash session before this generation graph is queued.",
   "bindings": {
     "negative_prompt": {
       "node": "3",
@@ -14,14 +14,6 @@
     "seed": {
       "node": "5",
       "input": "seed"
-    },
-    "reprompt_prompt": {
-      "node": "11",
-      "input": "prompt"
-    },
-    "reprompt": {
-      "node": "12",
-      "input": "switch"
     },
     "prompt": {
       "node": "13",
@@ -177,56 +169,6 @@
         "title": "save"
       }
     },
-    "10": {
-      "class_type": "CLIPLoader",
-      "inputs": {
-        "clip_name": "qwen3.5_2b_bf16.safetensors",
-        "type": "stable_diffusion",
-        "device": "default"
-      },
-      "_meta": {
-        "title": "rewrite model"
-      }
-    },
-    "11": {
-      "class_type": "TextGenerate",
-      "inputs": {
-        "clip": [
-          "10",
-          0
-        ],
-        "prompt": "",
-        "max_length": 200,
-        "sampling_mode": "on",
-        "sampling_mode.temperature": 0.7,
-        "sampling_mode.top_k": 64,
-        "sampling_mode.top_p": 0.95,
-        "sampling_mode.min_p": 0.05,
-        "sampling_mode.repetition_penalty": 1.05,
-        "sampling_mode.seed": 0,
-        "sampling_mode.presence_penalty": 0
-      },
-      "_meta": {
-        "title": "rewrite"
-      }
-    },
-    "12": {
-      "class_type": "ComfySwitchNode",
-      "inputs": {
-        "switch": true,
-        "on_true": [
-          "11",
-          0
-        ],
-        "on_false": [
-          "13",
-          0
-        ]
-      },
-      "_meta": {
-        "title": "rewrite?"
-      }
-    },
     "13": {
       "class_type": "PrimitiveStringMultiline",
       "inputs": {
@@ -240,7 +182,7 @@
       "class_type": "NovaFlowAudioCaption",
       "inputs": {
         "text": [
-          "12",
+          "13",
           0
         ],
         "seconds": 3,

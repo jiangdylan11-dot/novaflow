@@ -1,0 +1,84 @@
+{
+  "1": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "TextGenerate",
+    "inputs": {
+      "clip": [
+        "1",
+        0
+      ],
+      "prompt": "<|im_start|>system\n两张输入图属于同一个游戏界面：图一是完整视图，图二是同一原图按固定比例裁取的底部放大视图，只辅助辨认，不能当成额外区域或重复计数。灰色留白只是适配画布。只识别可见结构、文字与操作功能，不重新设计，不描述旧人物的物种服饰颜色，不列旧物件、材料、装饰或故事。看不清写“未知”，不得猜补缺失内容。\n只用以下六个行首输出短自然描述，不输出JSON、候选或思考：\n区域关系：自上而下的主要区域及其相对位置。\n网格：根据完整图说明实际行数、列数与总格数，放大图不得重复计入。\n角色关联：区分格外角色展示与格内头像，用相对位置、头像行列及可见相似性说明能确认的对应关系；不同身份数量与展示数量分开，证据不足写未知。\n操作组件：从上到下逐行列出每个独立可操作元素的相对位置、可见图标或原字面及功能。没有文字的控件也应检查；图标功能若仅为推断须注明推断，不确定写未知。重复出现在两张视图中的同一控件只列一次。\n显示文字：逐字抄可见业务标签、显示值、按钮文字及调节符号，说明各自宿主或相对位置；相同字面在不同宿主出现也分别保留。不把用途解释写成印字，不给未证实数值赋业务含义。网格里的固定字母数字附格位。\n玩法文字：仅列可见特殊玩法字面及网格行列，未知就直说。\n保持简洁，同时把实际可见操作组件逐个说全。<|im_end|>\n<|im_start|>user\n图一（完整原图的等比完整视图）：<|vision_start|><|image_pad|><|vision_end|>\n图二（同一原图的自动底部放大视图）：<|vision_start|><|image_pad|><|vision_end|>\n只返回上述六行识别记录。<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "system_prompt": "",
+      "max_length": 2048,
+      "sampling_mode": "on",
+      "thinking": false,
+      "use_default_template": false,
+      "mtp": "off",
+      "image": [
+        "8",
+        0
+      ],
+      "sampling_mode.temperature": 1.0,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.95,
+      "sampling_mode.min_p": 0.0,
+      "sampling_mode.repetition_penalty": 1.0,
+      "sampling_mode.seed": 0,
+      "sampling_mode.presence_penalty": 0.0
+    }
+  },
+  "4": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        0
+      ],
+      "filename_prefix": "NF_PE_FULL_ROI_88497d80_RAW",
+      "format": "txt"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_PE_ROI_full_f5e297a6e9f5f1e49596683c.png"
+    }
+  },
+  "6": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        1
+      ],
+      "filename_prefix": "NF_PE_FULL_ROI_88497d80_THINK",
+      "format": "txt"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_PE_ROI_bottom_10419b00cbe5465f6b078b23.png"
+    }
+  },
+  "8": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "2",
+        0
+      ],
+      "image2": [
+        "7",
+        0
+      ]
+    }
+  }
+}

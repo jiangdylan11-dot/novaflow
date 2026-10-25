@@ -1,0 +1,65 @@
+{
+  "1": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "TextGenerate",
+    "inputs": {
+      "clip": [
+        "1",
+        0
+      ],
+      "prompt": "<|im_start|>system\n只观察输入游戏图的结构，不重新设计，不描述旧人物物件的身份、物种、衣服、颜色、材质或故事。不列普通物件类别和重复关系。只输出以下五行短自然描述，保留行首名称；看不清写“未知”，不能猜补。\n区域关系：从上到下说明真实存在的主要区域及相对位置，区分玩法网格、格外大主角、信息栏和控件区。\n网格：实际几行几列。\n角色关联：按不同身份说明实体数量和各自格外位置、对应头像的第几行第几列，用自然相对位置指代，不编角色编号。确认同一身份时，头像与格外全身是同一角色的两种展示，不是两名角色；两个展示仍占各自区域。没有或无法确认就直说。\n业务文字：逐字抄真实功能标签、金额与数值、按钮字面和调节符号，附其自然位置；相同值在不同宿主出现也分别保留，不把用途解释当成印字。网格中的固定字母数字也附格位保留；不抄旧物装饰题字。\n玩法文字：只抄实际可见特殊玩法标签的原字面及第几行第几列；载体外貌不写，位置不清就写未知。\n不输出区域数字索引、嵌套schema、逐格普通物件名单、思考或候选。全文尽量不超过350字，必需业务字面可以使全文略长。<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>观察这张本地原图，仅返回上述五行结构记录。<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "system_prompt": "",
+      "max_length": 768,
+      "sampling_mode": "on",
+      "thinking": false,
+      "use_default_template": false,
+      "mtp": "off",
+      "image": [
+        "2",
+        0
+      ],
+      "sampling_mode.temperature": 1.0,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.95,
+      "sampling_mode.min_p": 0.0,
+      "sampling_mode.repetition_penalty": 1.0,
+      "sampling_mode.seed": 0,
+      "sampling_mode.presence_penalty": 0.0
+    }
+  },
+  "4": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        0
+      ],
+      "filename_prefix": "NF_PE_FOREST_LAYOUT20_f026c387_STRUCTURE",
+      "format": "txt"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_PE_ASPECT1MP_f6e500a8ff5800a335fb5d2b.png"
+    }
+  },
+  "6": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        1
+      ],
+      "filename_prefix": "NF_PE_FOREST_LAYOUT20_f026c387_EMPTY_THINK",
+      "format": "txt"
+    }
+  }
+}

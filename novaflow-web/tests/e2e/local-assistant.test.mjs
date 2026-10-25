@@ -4,6 +4,9 @@ import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import { mock } from 'node:test';
 import { createLocalAssistant } from '../../worker/src/local-assistant.mjs';
 import { issueGrantToken } from '../../packages/shared/src/tokens.mjs';
 import { MODEL_MANIFEST } from '../../packages/shared/src/model-manifest.mjs';
@@ -50,6 +53,26 @@ const remote = createServer(async (req, res) => {
 });
 const controlUrl = await listen(remote);
 const dataDir = await mkdtemp(join(tmpdir(), 'novaflow-assistant-test-'));
+// This lifecycle fixture never invokes AI. A real machine may be running
+// Flash concurrently, so neither bootstrap nor stop may use its config.
+const runtimeDir = join(dataDir, 'runtime'), modelsRoot = join(dataDir, 'models');
+await mkdir(runtimeDir); await mkdir(modelsRoot);
+const runtimeJsonPath = join(runtimeDir, 'runtime.json');
+const strataConfigPath = join(runtimeDir, 'strata-prompt.json');
+const disabledFlash = JSON.stringify({ enabled: false, analysisBackend: 'strata', modelFiles: [],
+  baseUrl: comfyUrl, expectedModel: { ids: ['fixture-flash-never-load'] } });
+await writeFile(runtimeJsonPath, JSON.stringify({ installPath: runtimeDir, modelsPath: modelsRoot }));
+await writeFile(strataConfigPath, disabledFlash);
+const isolatedAssistantOptions = { modelsRoot, promptAssistant: { analysisBackend: 'strata', runtimeJsonPath, strataConfigPath } };
+const nativeControlCalls = [], realExecFile = childProcess.execFile;
+mock.method(childProcess, 'execFile', (file, args, ...rest) => {
+  if (Array.isArray(args) && args.some(arg => String(arg).includes('strata-runtime-control.py'))) {
+    nativeControlCalls.push({ file, args });
+    throw new Error('Fixture Flash is occupied by another owner; native lifecycle access is forbidden');
+  }
+  return realExecFile(file, args, ...rest);
+});
+syncBuiltinESMExports();
 const webRoot = join(dataDir, 'web'); await mkdir(webRoot); await writeFile(join(webRoot, 'index.html'), '<html><head></head><body>NovaFlow</body></html>');
 const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
 await writeFile(join(workflowDir, 'qwen_t2i.json'), JSON.stringify({ comfy: 'image', bindings: {}, graph: { '1': { class_type: 'Fixture', inputs: {} } } }));
@@ -57,7 +80,7 @@ const license = { state: async () => ({ status: licensed ? 'licensed' : 'locked'
   assertAllowed: async () => { if (!licensed) throw Object.assign(new Error('license rejected'), { status: 403 }); }, importLicense: async () => { throw new Error('fixture'); } };
 let serviceStarts = 0;
 const services = { start: async () => { serviceStarts++; return [{ kind: 'image', running: true, reused: true }]; }, stop: async () => {} };
-const assistant = await createLocalAssistant({ controlUrl, dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot,
+const assistant = await createLocalAssistant({ ...isolatedAssistantOptions, controlUrl, dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot,
   localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, workerName: 'assistant-test',
   comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30 });
 let origin, pairing;
@@ -66,6 +89,7 @@ const call = async (method, path, body, extra = {}) => {
   return { status: r.status, body: await r.json() };
 };
 try {
+  check(assistant.promptAssistant.status().analysisBackend === 'strata' && !assistant.promptAssistant.status().enabled, 'lifecycle fixture uses only its temporary disabled Flash configuration');
   licensed = false;
   await assert.rejects(assistant.start(), /license rejected/);
   check(serviceStarts === 0, 'unbound machine cannot start runtimes');
@@ -193,11 +217,12 @@ try {
   await assistant.stopSharing();
   licensed = false;
   const coldDir = await mkdtemp(join(tmpdir(), 'novaflow-cold-share-test-'));
-  const cold = await createLocalAssistant({ controlUrl, dataDir: coldDir,
+  const cold = await createLocalAssistant({ ...isolatedAssistantOptions, controlUrl, dataDir: coldDir,
     configPath: join(coldDir, 'identity.json'), workflowDir, gatewayPort: 0,
     gatewayHost: '127.0.0.1', tunnel: false, comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl,
     license, services: { start: async () => [], stop: async () => {} }, pollIntervalMs: 30 });
   try {
+    check(!cold.promptAssistant.status().enabled, 'cold-share assistant keeps the isolated disabled Flash configuration');
     await cold.startSharing();
     check(cold.getState().sharing && !cold.getState().localRunning, 'fresh unlicensed assistant starts directly in sharing mode');
     check(!cold.getState().workbenchUrl, 'sharing-only startup creates no local editor endpoint');
@@ -213,10 +238,11 @@ try {
   });
   const foreignUrl = await listen(foreign);
   const movedDir = await mkdtemp(join(tmpdir(), 'novaflow-moved-runtime-test-'));
-  const moved = await createLocalAssistant({ controlUrl, dataDir: movedDir, configPath: join(movedDir, 'identity.json'), workflowDir, webRoot,
+  const moved = await createLocalAssistant({ ...isolatedAssistantOptions, controlUrl, dataDir: movedDir, configPath: join(movedDir, 'identity.json'), workflowDir, webRoot,
     localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, comfyImageUrl: foreignUrl, comfyVideoUrl: '',
     license, services: { start: async () => [{ kind: 'image', url: comfyUrl, running: true, reused: false }], stop: async () => {} }, pollIntervalMs: 30 });
   try {
+    check(!moved.promptAssistant.status().enabled, 'retargeted assistant keeps the isolated disabled Flash configuration');
     await moved.start();
     const movedPairing = new URL(moved.openUrl).hash.split('=')[1];
     const posted = await (await fetch(moved.getState().workbenchUrl + '/api/web/tasks', { method: 'POST',
@@ -238,6 +264,12 @@ try {
 } finally {
   releaseClaim?.();
   for (const id of queued) finished.add(id);
-  await assistant.stop(); comfy.closeAllConnections(); remote.closeAllConnections(); comfy.close(); remote.close();
+  try { await assistant.stop(); }
+  finally {
+    comfy.closeAllConnections(); remote.closeAllConnections(); comfy.close(); remote.close();
+    mock.restoreAll(); syncBuiltinESMExports();
+  }
 }
+check(nativeControlCalls.length === 0, 'start, stop, cold share and restart never call the real Flash controller, even if another owner is active');
+check(await readFile(strataConfigPath, 'utf8') === disabledFlash, 'bootstrap and restart do not rewrite the fixture Flash configuration');
 console.log(checks + ' passed, 0 failed: local assistant private/shared HTTP lifecycle');

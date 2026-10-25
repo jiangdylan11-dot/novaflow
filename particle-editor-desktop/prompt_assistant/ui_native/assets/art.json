@@ -1,0 +1,55 @@
+{
+  "1": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "TextGenerate",
+    "inputs": {
+      "clip": [
+        "1",
+        0
+      ],
+      "prompt": "<|im_start|>system\n你是西部探险手绘厚涂游戏美术设计师。本次只创作给定symbol的美术定义和一个共用信息长栏载体，不识别布局、不排格子、不设计新业务功能。目标键和职责由程序锁定，重复实例由程序复用同一美术定义。你只收到不同symbol，不会收到格位；不得描述行列、重新分配符号、合并类别或安排剩余格位。\n按每个目标的category与literal分别创作：g必须是独立可读的字母或数字字形，主体就是该字面，用具体笔画骨架、端部、字腔、字宽及主题材料的字面/侧面/阴影构成设计；不能变成人物或物件，再把字母贴到其上。p必须是面部清楚、身份可辨的人物头像，不能变成物件或字母。可复用所给现有3位格外人物的身份，自主选择各头像的对应，各头像互不相同；这是本轮新设计选择，原识别并未确认配对，不将创作对应声称为源识别事实。o必须是3种彼此不同、轮廓完整的新西部探险物件，每种有独立造型意图；不替换为人物、文字牌或材质样本。s要有独立的新特殊玩法载体，literal逐字可见，并具体设计其主题字形，不能只有生物/装饰而漏字面。\n每项用一段约50至85字的正面成品美术描述，包含明确主体、构造、本体色与材质层次；手绘厚涂而非表面贴图。不要只重复职责、抽象要求或给备选。具体新物件由你自主决定，没有人工目标名单。不要新增任何标题、口号、金额或功能标签。\nshared_strip描述本轮新设计的单一连续载体，保留给定主要布局、共享关系及字面：一端为购买action，剩余部分为非交互信息display。具体说明新外轮廓、边缘或边框构造及两端连接方式，并明确各自材质、字形骨架和层次；共享同一新载体不表示继承原参考外壳。继承上游已创作的造型与字体属性，并补足缺失的载体设计，不将造型片段误当原图固定外形，不只写“立体、协调、金色数字”。不增加业务或预置任何主题物件。\n逐项核对成品主体、职责和主题联系：每个普通物件有可辨识的具体身份与贴合目标题材的用途或叙事联系；头像只描述同一身份的头肩面部特征，不把整身动作混入；特殊玩法同时有独立载体与固定字面，不能退化为无载体的普通字形。继承上游的角色任务与场景逻辑，不只继承颜色和材料。功能符号表达界面操作语义，主题装饰不取代功能主体；保留原有美术完成度，不硬填任何主题的具体物件答案。所有关系体现在正面成品描述中，不附分析、不增加字段、不改输出格式。\n只输出一个合法、紧凑的扁平JSON对象，键恰好等于context.output_keys，每个值是非空中文美术描述字符串。不要嵌套、不输出数组、说明、候选、思考、角色编号或额外字段。\n功能控件与玩法符号的职责不可互换。以已确认源功能为准，功能标志与主题外壳分别设计；玩法符号不得声明执行主操作，主题装饰不得取代功能标志。\n显示实例只能绑定已有源display id，同一信息字面属于同一实例，不增加读数。\n各字段描述本体色、材质及其体积明暗；共用环境光和氛围色只在全局段说明一次。逐项继承上游已定的主体配色和材质，缺失部分自主设计。<|im_end|>\n<|im_start|>user\n{\"context\":{\"theme\":\"西部探险\",\"style\":\"手绘厚涂游戏美术\",\"targets\":[{\"key\":\"A01\",\"category\":\"o\",\"literal\":\"\",\"role\":\"普通物件符号\"},{\"key\":\"A02\",\"category\":\"o\",\"literal\":\"\",\"role\":\"普通物件符号\"},{\"key\":\"A03\",\"category\":\"g\",\"literal\":\"J\",\"role\":\"独立字母或数字字形\"},{\"key\":\"A04\",\"category\":\"o\",\"literal\":\"\",\"role\":\"普通物件符号\"},{\"key\":\"A05\",\"category\":\"p\",\"literal\":\"\",\"role\":\"人物头像\"},{\"key\":\"A06\",\"category\":\"p\",\"literal\":\"\",\"role\":\"人物头像\"},{\"key\":\"A07\",\"category\":\"p\",\"literal\":\"\",\"role\":\"人物头像\"},{\"key\":\"A08\",\"category\":\"g\",\"literal\":\"10\",\"role\":\"独立字母或数字字形\"},{\"key\":\"A09\",\"category\":\"g\",\"literal\":\"Q\",\"role\":\"独立字母或数字字形\"},{\"key\":\"A10\",\"category\":\"g\",\"literal\":\"K\",\"role\":\"独立字母或数字字形\"},{\"key\":\"A11\",\"category\":\"g\",\"literal\":\"A\",\"role\":\"独立字母或数字字形\"},{\"key\":\"A12\",\"category\":\"s\",\"literal\":\"WILD\",\"role\":\"特殊玩法符号\"}],\"preserved_AI_art_context\":{\"main_character_art\":\"左侧主角为戴牛仔帽的男性牛仔扶缰站立，马匹棕毛白鬃；中间主角为披披肩的女性牛仔牵着灰毛马；右侧主角为戴兜帽的男性牛仔背靠木栅栏站立，马匹站立一旁，人物下方不另加独立区域，三个场景各自独立构图。\",\"purchase_type\":\"按钮为深棕色木底、米白色大写无衬线粗体字、顶部带铜质边框与高光\",\"information_type\":\"信息文字与金额读数为米白色手写体、徽标字母为米白色\",\"adjuster_art\":\"减号按钮−，深棕色圆角方形、米白色减号；加号按钮+，深棕色圆角方形、米白色加号\",\"rotation_art\":\"中央主旋转操作为独立立体圆柱形鼓面按钮，带可辨识的环形旋转箭头与环动图案，箭头沿圆周循环、深棕色鼓身配铜质滚边与厚涂高光\",\"auxiliary_art_and_type\":\"菜单按钮为通用菜单列表图形骨架、极速按钮为马蹄铁图标、自动按钮为齿轮图标、声音按钮为喇叭图标，四个辅助按钮均为独立图标按钮、深棕色底铜边、图标功能由标签确定\"},\"source_identity_mapping\":\"unknown; matching this new cast is a creative choice, not recognition\",\"display_contract\":{\"schema\":\"source_display_bindings_v1\",\"source_instances\":[{\"display_id\":\"D_information\",\"component_id\":\"D_information\",\"container\":\"information_strip\",\"literal_parts\":[\"WIN 20.00\"],\"source_evidence\":{\"source\":\"existing semantic context,traceable to recognition horizontal information bar wording\",\"span\":[165,181],\"quote\":\"信息显示为“WIN 20.00”\"},\"source_order\":0},{\"display_id\":\"D_amount_1\",\"component_id\":\"D_amount_1\",\"container\":\"readout_row\",\"literal_parts\":[\"¥1000\"],\"source_evidence\":{\"slot\":\"left\",\"value\":\"¥1000\",\"source_id\":\"88497d80-0167-4ba7-a309-1334891c2a60\",\"source_sha256\":\"80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a\",\"span\":[353,358],\"quote\":\"¥1000\"},\"source_order\":1},{\"display_id\":\"D_amount_2\",\"component_id\":\"D_amount_2\",\"container\":\"readout_row\",\"literal_parts\":[\"¥1000\"],\"source_evidence\":{\"slot\":\"middle\",\"value\":\"¥1000\",\"source_id\":\"88497d80-0167-4ba7-a309-1334891c2a60\",\"source_sha256\":\"80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a\",\"span\":[386,391],\"quote\":\"¥1000\"},\"source_order\":2},{\"display_id\":\"D_amount_3\",\"component_id\":\"D_amount_3\",\"container\":\"readout_row\",\"literal_parts\":[\"¥1000\"],\"source_evidence\":{\"slot\":\"right\",\"value\":\"¥1000\",\"source_id\":\"88497d80-0167-4ba7-a309-1334891c2a60\",\"source_sha256\":\"80fbfa738afd5dbf053f6ba0d8e5619a7cd7aa80892949be19464864ee43b93a\",\"span\":[425,430],\"quote\":\"¥1000\"},\"source_order\":3}],\"instance_input\":\"display_designs.instances: one record per existing display_id; literal_parts immutable\",\"style_input\":\"display_designs.style_descriptions: references by display_ids; repeated literal mentions are permitted\",\"rule\":\"造型描述可重复提及同一字面；只有源display id定义显示实例。同字面不同id必须分别保留；不得新增或重复绑定显示id。内部id不得印入图片。\",\"automatic_analysis_or_repair\":false},\"output_keys\":[\"A01\",\"A02\",\"A03\",\"A04\",\"A05\",\"A06\",\"A07\",\"A08\",\"A09\",\"A10\",\"A11\",\"A12\",\"shared_strip\"],\"shared_strip_contract\":{\"purchase_literal\":\"BUY FREE GAMES\",\"information_literal\":\"WIN 20.00\",\"action_count\":1,\"display_count\":1,\"shared_continuous_horizontal_host\":true,\"action_embedded_at_end\":true,\"display_fills_remainder_and_is_not_a_button\":true}}}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n{",
+      "system_prompt": "",
+      "max_length": 2560,
+      "sampling_mode": "on",
+      "thinking": false,
+      "use_default_template": false,
+      "mtp": "off",
+      "sampling_mode.temperature": 1.0,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.95,
+      "sampling_mode.min_p": 0.0,
+      "sampling_mode.repetition_penalty": 1.0,
+      "sampling_mode.seed": 0,
+      "sampling_mode.presence_penalty": 0.0
+    }
+  },
+  "4": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        0
+      ],
+      "filename_prefix": "CROSS_NATIVE_01-western20_typed_7ecdfdcf_RAW",
+      "format": "txt"
+    }
+  },
+  "6": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        1
+      ],
+      "filename_prefix": "CROSS_NATIVE_01-western20_typed_7ecdfdcf_THINK",
+      "format": "txt"
+    }
+  }
+}

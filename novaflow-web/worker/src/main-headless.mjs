@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWorker } from './worker-core.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
+import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
 import { videoRuntimeUrl } from './runtime-services.mjs';
 
 import { existsSync } from 'node:fs';
@@ -89,12 +90,21 @@ export async function startHeadlessWorker(overrides = {}) {
   }
   let promptAssistant = null;
   const worker = createWorker({ ...config, logger: overrides.logger, promptAssistant: () => promptAssistant });
+  if((overrides.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata')==='strata') {
+    const prepared=await ensureFlashBrainConfiguration({
+      ...(overrides.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON ? {runtimeJsonPath:overrides.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON} : {}),
+      ...(overrides.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG ? {configPath:overrides.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG} : {})
+    });
+    if(!prepared.ok)overrides.logger?.('Flash local installation incomplete',{reason:prepared.reason});
+  }
   // Every compute node ships the desktop runtime, 提示词助手 included; a node
   // whose runtime.json or service script is missing simply reports it absent.
   promptAssistant = createPromptAssistant({
-    worker, logger: overrides.logger,
+    worker, logger: overrides.logger, ...(overrides.promptAssistant || {}),
     comfyUrls: [...new Set([config.comfyImageUrl, config.comfyVideoUrl].map(url => String(url).replace(/\/+$/, '')))]
   });
+  const stopWorker=worker.stop;
+  worker.stop=async()=>{try {await promptAssistant.stop();}finally {await stopWorker();}};
   await worker.start();
   return worker;
 }

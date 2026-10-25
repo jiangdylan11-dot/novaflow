@@ -11,7 +11,10 @@ if hasattr(sys.stdin, 'reconfigure'):
 def main():
     value = json.load(sys.stdin)
     action = value['action']
-    if action in ['grok-vision-job','compile-grok-vision']:
+    if action.startswith('native-ui-'):
+        from prompt_assistant.ui_native.service import dispatch
+        result=dispatch(value)
+    elif action in ['grok-vision-job','compile-grok-vision']:
         from prompt_assistant.grok_ui_vision import build_job,compile_plan
         result=build_job(value) if action=='grok-vision-job' else compile_plan(value)
     elif action in ['natural-draft-image','natural-draft-project']:

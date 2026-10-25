@@ -117,19 +117,29 @@ export const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
-    // Drawing, UI and the legacy assistant protocols share one PE checkpoint.
+    // Shared local Flash brain; image/video/audio generation encoders stay separate.
     model_id: 'prompt-assistant',
-    display_name: '提示词助手 (Qwen3.5 PE)',
-    version: '3.5',
+    display_name: '本地 AI 大脑 (Flash-Next)',
+    version: 'swift-1.5-flash-next',
     runtime: 'local',
-    min_vram_mb: 8000,
+    min_vram_mb: 16000,
     compatible_workflows: ['prompt_assistant'],
     required_files: [
-      { path: 'text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors', min_bytes: 9_000_000_000, sha256: null }
+      { path: 'LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf', min_bytes: 39_788_473_344, sha256: 'ca3b302d3d1eb6eddce3ea4acc79854e6cc5fdc0583e374a6a8b6bb67327743b' },
+      { path: 'LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf', min_bytes: 28_363_693_824, sha256: 'e4996a6de18fd49c58d9a0040fcfd73787db6407c51973f29884bee7b14c9dbb' },
+      { path: 'LLM/qwen38_swift15_strata/mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf', min_bytes: 907_543_520, sha256: 'cd1140f4abba943ce8d9fa92fed8407e389954d26907efde7b72153c75bd8a60' },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/dense.bin', min_bytes: 100_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/experts.bin', min_bytes: 30_000_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack/tokenizer/vocab.json', min_bytes: 100_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/index.txt', min_bytes: 100, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/dense.bin', min_bytes: 100_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/dense.txt', min_bytes: 100, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/experts.bin', min_bytes: 700_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/draft_vocab.bin', min_bytes: 400_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '导入绘图和 UI 共用的 Qwen3.5 9B PE 模型；不再需要 NF4 缓存。'
+      hint: '导入 Flash-Next 模型目录（含 resident pack、tokenizer、MTP 与视觉投影），并安装环境包中的 Strata 引擎。'
     }
   },
   {
@@ -172,12 +182,11 @@ export const MODEL_MANIFEST = Object.freeze([
     compatible_workflows: ['audio_music.json'],
     required_files: [
       { path: 'checkpoints/stable_audio_3_medium.safetensors', min_bytes: 9_000_000_000, sha256: null },
-      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
-      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors，并安装 novaflow_audio 节点。'
     }
   },
   {
@@ -190,12 +199,11 @@ export const MODEL_MANIFEST = Object.freeze([
     compatible_workflows: ['audio_sfx.json'],
     required_files: [
       { path: 'checkpoints/stable_audio_3_small_sfx.safetensors', min_bytes: 1_300_000_000, sha256: null },
-      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
-      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors，并安装 novaflow_audio 节点。'
     }
   }
 ]);

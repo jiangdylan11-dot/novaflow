@@ -63704,7 +63704,9 @@
       const result = await withAiAnimationPromptAssistantTimeout(
         () => api.promptAssistantOptimizePrompt({
           prompt: promptProtection.text,
-          negativePrompt: negativeProtection.text
+          negativePrompt: negativeProtection.text,
+          surface: "animation",
+          purpose: "animation-prompt-optimize"
         }),
         AI_ANIMATION_PROMPT_ASSISTANT_TIMEOUT_MS,
         "AI优化请求超时，请稍后重试"
@@ -63760,7 +63762,11 @@
       const images = await collectAiAnimationPromptAssistantImages();
       if (!images.length) throw new Error("\u8bf7\u5148\u6dfb\u52a0\u53c2\u8003\u56fe\u3001\u9996\u5e27\u6216\u5c3e\u5e27");
       const result = await withAiAnimationPromptAssistantTimeout(
-        () => api.promptAssistantReverseImagePrompt({ images }),
+        () => api.promptAssistantReverseImagePrompt({
+          images,
+          surface: "animation",
+          purpose: "animation-frame-reverse"
+        }),
         AI_ANIMATION_PROMPT_ASSISTANT_TIMEOUT_MS,
         "AI反推请求超时，请稍后重试"
       );
@@ -85552,7 +85558,7 @@
   function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt, sampling) {
     const guidance = qwen21Guidance(sampling ? state?.negativePrompt : negativePrompt);
     const steps = Math.max(1, Math.round(Number(sampling?.steps) || QWEN21_ART_DEFAULT_STEPS));
-    const cfg = Number(sampling?.cfg) > 0 ? Number(sampling.cfg) : guidance.cfg;
+    let cfg = Number(sampling?.cfg) > 0 ? Number(sampling.cfg) : guidance.cfg;
     if (mode !== "txt2img" && mode !== "img2img") return null;
     if (state?.nsfw === true) return null;
     if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
@@ -85565,7 +85571,12 @@
     const prioritizedStyle = providerOptions?.styleReferencePriority === true && scopedDrawingRoles.length === 2 && scopedDrawingRoles[0] === 'subject' && scopedDrawingRoles[1] === 'style';
     const guidedTurbo = mode === 'img2img' && prioritizedStyle && providerOptions?.qwen21TurboGuidance?.renderingClass === 'anime'
       && Number(providerOptions.qwen21TurboGuidance.cfg) === 3 && guidance.negative.length > 0;
-    const turboCfg = sampling?.cfgManual === true ? cfg : guidedTurbo ? 3 : 1;
+    const nativeGuidance = providerOptions?.qwen21NativeGuidance;
+    const nativeCfg = mode === 'img2img' && prioritizedStyle && providerOptions?.taskProfile === 'art-direction'
+      && nativeGuidance?.kind === 'qwen21-strata-native' && nativeGuidance.version === 'flash-native-v1'
+      && Number.isFinite(nativeGuidance.cfg) && nativeGuidance.cfg >= 1 && nativeGuidance.cfg <= 10 ? nativeGuidance.cfg : null;
+    if (nativeCfg !== null && sampling?.cfgManual !== true) cfg = nativeCfg;
+    const turboCfg = sampling?.cfgManual === true ? cfg : nativeCfg ?? (guidedTurbo ? 3 : 1);
     const runtime = artQwen21Runtime(state);
     if (!runtime) return null;
     const info = runtime.info || {};
@@ -85584,7 +85595,7 @@
     }
     // resolution 0: the encoder takes every reference at the size the graph hands it (rounded to 32),
     // so each one is budgeted here.
-    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: 0 };
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: nativeCfg !== null ? String((sampling ? state?.negativePrompt : negativePrompt) ?? '') : guidance.negative, resolution: 0 };
     workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
     if (mode === "txt2img") {
       const round32 = (value) => Math.max(256, Math.min(2048, Math.round((Number(value) || 1024) / 32) * 32));

@@ -1,0 +1,84 @@
+{
+  "1": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "TextGenerate",
+    "inputs": {
+      "clip": [
+        "1",
+        0
+      ],
+      "prompt": "<|im_start|>system\n只识别可见玩法网格。两图是同一界面：图一完整视图用于判定网格边界，图二是同一原图按上半部规则自动裁取的放大视图，用于读格子，不能重复计数。灰色留白不是界面。不把格外人物、信息栏、金额或按钮计入玩法网格。\n仅返回一个紧凑合法JSON，禁止Markdown、解释、新主题、美术或物件外观描述。键固定为shape、rows、uncertain。\nshape为实际观察到的[行数,列数]。rows为按从上到下、从左到右排列的二维格数组，数组位置就是行列位置；每格只放三个值[type,text,group]。\ntype只能用：g=独立字母或数字符号，p=人物头像，o=普通物件符号，s=特殊玩法符号，u=无法确定。不能把独立字母数字归为头像或普通物件。\ntext只抄该格真实可见的字母数字或玩法标签，无此字面用空字符串；不抄物件装饰印字，不编文案。group为同一图中相同符号的组编号，正整数即可；首次遇到新符号分配新编号，相同符号复用其编号。只比较格内符号，不与格外人物关联；同属一个类别不等于相同符号，不同头像不能因同为头像而合组。组号只用于对应重复，不输出符号名称、物种、材质或外观。\n不确定的type用u，text或group可用null，并在uncertain中用简短的行列说明记录；没有不确定就用空数组。依据可见格子登记，不猜补行列、格位、类别或重复关系。尽量简短。<|im_end|>\n<|im_start|>user\n图一（完整视图）：<|vision_start|><|image_pad|><|vision_end|>\n图二（同一原图自动上半部ROI）：<|vision_start|><|image_pad|><|vision_end|>\n请返回紧凑玩法登记JSON。<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+      "system_prompt": "",
+      "max_length": 768,
+      "sampling_mode": "on",
+      "thinking": false,
+      "use_default_template": false,
+      "mtp": "off",
+      "image": [
+        "8",
+        0
+      ],
+      "sampling_mode.temperature": 1.0,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.95,
+      "sampling_mode.min_p": 0.0,
+      "sampling_mode.repetition_penalty": 1.0,
+      "sampling_mode.seed": 0,
+      "sampling_mode.presence_penalty": 0.0
+    }
+  },
+  "4": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        0
+      ],
+      "filename_prefix": "NF_PE_GAMEPLAY_b833e709_RAW",
+      "format": "txt"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_PE_ROI_full_f5e297a6e9f5f1e49596683c.png"
+    }
+  },
+  "6": {
+    "class_type": "SaveText",
+    "inputs": {
+      "text": [
+        "3",
+        1
+      ],
+      "filename_prefix": "NF_PE_GAMEPLAY_b833e709_THINK",
+      "format": "txt"
+    }
+  },
+  "7": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NF_PE_GAMEPLAY_ROI_1d73c953d87a6e65fa760f45.png"
+    }
+  },
+  "8": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "2",
+        0
+      ],
+      "image2": [
+        "7",
+        0
+      ]
+    }
+  }
+}

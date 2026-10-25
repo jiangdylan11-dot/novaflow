@@ -1,0 +1,105 @@
+{
+  "schema": "nf.qa.ui.flash.native-actual.v1",
+  "sourceImageSHA256": "5a7b87e169781e6808aac4fa2b2f6c4d69b641c6670003615971ea641942fcc0",
+  "sourceOriginalSize": [
+    1512,
+    3276
+  ],
+  "originalRunSucceeded": false,
+  "originalFailure": "CPU expected dictionary cells but actual Flash obeyed tuple schema; no generation was submitted",
+  "records": [
+    {
+      "stage": "source-controls",
+      "requestId": "chatcmpl-91a304d10f8348dc971b5173",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "区域关系：自上而下为顶部灯笼背景区、旋转网格区、角色展示区、购买与中奖金色卷轴条带、金额调节深红条带、底部操作按钮区。\n\n网格：5列4行，总格数20。\n\n角色关联：3位格外展示，头像对应第2行第2列、第2行第3列、第2行第4列。\n\n操作组件：底部区从左到右为“菜单”按钮、其右“极速”按钮、中央主旋转按钮（红金旋转符号，非文字）、其右“自动”按钮、最右“声音”按钮；其上方深红条带从左到右为钱包图标配非交互余额“¥1000”、减号调节符号“－”、当前投注金额非交互显示“¥1000”、加号调节符号“＋”、WIN图标配非交互显示“¥1000”，各控件在同一深红载体上连续排列；再上方金色卷轴条带左侧为购买按钮“BUY FREE GAMES”、右侧为非交互中奖显示“WIN 20.00”，二者在同一卷轴载体上连续。\n\n显示文字：除上述外无独立计数栏，亦无其他固定业务显示与数值。\n\n玩法文字：特殊标签“WILD”位于第4行第4列。",
+      "textSHA256": "58c1c17859e9fc37a95a3046850d2892f148ef698f9d2b72e239c81ed27762c8",
+      "traceFile": "ceba8acd-2746-4073-97c8-fb6cc67ce9c7.json",
+      "traceSHA256": "e2b22c49fbface69d29b59c8e2ef757ba688e82070294172d637ec21958412e1",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-4226aec8-f8ca-4f56-ac9d-1621ac0f0cfc"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1841522,
+          "sha256": "10419b00cbe5465f6b078b23aa87e37b995ae7be170b53e81b1c2e528fd1fbe3",
+          "name": "native-ui-dab8d642-0b40-44c0-ba13-4bf774161915"
+        }
+      ]
+    },
+    {
+      "stage": "source-grid",
+      "requestId": "chatcmpl-db51d479cb7741ff899325ac",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "{\"shape\":[4,5],\"rows\":[[[\"o\",\"\",1],[\"o\",\"\",2],[\"g\",\"J\",4],[\"o\",\"\",3],[\"o\",\"\",2]],[[\"o\",\"\",3],[\"p\",\"\",10],[\"p\",\"\",11],[\"p\",\"\",12],[\"g\",\"10\",5]],[[\"g\",\"Q\",6],[\"o\",\"\",2],[\"g\",\"K\",7],[\"g\",\"J\",4],[\"o\",\"\",1]],[[\"g\",\"J\",4],[\"g\",\"A\",8],[\"o\",\"\",1],[\"s\",\"WILD\",9],[\"g\",\"K\",7]]],\"uncertain\":[]}",
+      "textSHA256": "4304eb62c4867bd4dd914c4c531d8f6974a41be778e3fdd7d929bd4664425af8",
+      "traceFile": "c3aa1b18-1bad-4139-bba0-eca9f10db93d.json",
+      "traceSHA256": "82e0192ef475d1f426fe35c972574ba3cd67c11cb679fa3bf5845ebdb958c765",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1432846,
+          "sha256": "f5e297a6e9f5f1e49596683cc90072bf805297ab81585e6105db5b7a0a83ac1f",
+          "name": "native-ui-4226aec8-f8ca-4f56-ac9d-1621ac0f0cfc"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 2003325,
+          "sha256": "1d73c953d87a6e65fa760f457b12a0ee6277a87a43aadfc8e6384fef16931951",
+          "name": "native-ui-df46ec29-1279-461a-bfd4-0ba0a4a5c012"
+        }
+      ]
+    },
+    {
+      "stage": "source-grid-focus",
+      "requestId": "chatcmpl-0525e0359f2f44ab8768691c",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "{\"shape\":[4,5],\"rows\":[[[\"o\",\"\",1],[\"o\",\"\",2],[\"g\",\"J\",3],[\"o\",\"\",4],[\"o\",\"\",2]],[[\"o\",\"\",4],[\"p\",\"\",5],[\"p\",\"\",6],[\"p\",\"\",7],[\"g\",\"10\",8]],[[\"g\",\"Q\",9],[\"o\",\"\",2],[\"g\",\"K\",10],[\"g\",\"J\",3],[\"o\",\"\",1]],[[\"g\",\"J\",3],[\"g\",\"A\",11],[\"o\",\"\",1],[\"s\",\"WILD\",12],[\"g\",\"K\",10]]],\"uncertain\":[]}",
+      "textSHA256": "a878b510a127949751dbde12f09c208743f4c6b38df180cf4a0c9bd717683942",
+      "traceFile": "850c7021-3e2e-4d34-8a9d-cebb3890cfa2.json",
+      "traceSHA256": "2f70b7fa7ae75c2c29c4aee278e9726576445344b1c191247a2f255b2fbab2cc",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 718628,
+          "sha256": "16ba615b7100bfc5759dfdd0e86ed41734d930e2be4fabaca85674937bb454a8",
+          "name": "native-ui-754ae7c4-077a-4259-981e-239a4b793cc3"
+        },
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1016090,
+          "sha256": "e95c8b0b25c11e80eb031bfe5390ab8def5a601bd341984aeb3d6725f3bafb25",
+          "name": "native-ui-8de35e40-6f68-4e6b-9e83-65de7da02713"
+        }
+      ]
+    },
+    {
+      "stage": "source-natural",
+      "requestId": "chatcmpl-ad711f9a9a214550b199066c",
+      "model": "swift-1.5-qwen38-iq2-xs",
+      "text": "区域关系：最上方为玩法网格；网格下方为横排格外大主角；其下为信息横栏；再下为金额调节控件条；底部为控件区。\n\n网格：4行5列。\n\n角色关联：网格内有3个羊头像，位于第2行第2、3、4列；格外3只羊全身位于网格下方左、中、右，与三头像一一对应，属同一角色两种展示，无独立头像栏。\n\n业务文字：横栏左印“BUY FREE GAMES”，右印“WIN 20.00”；其下条左“¥1000”，接调节符号“－”，中“¥1000”，接“＋”，最右印“WIN ¥1000”；底部控件字面“菜单”“极速”“自动”“声音”，中央为旋转控件；网格字母数字：第1行3列J、第2行5列10、第3行1列Q、第3行3列K、第3行4列J、第4行1列J、第4行2列A、第4行5列K。\n\n玩法文字：WILD 位于第4行4列。",
+      "textSHA256": "7411dd3760932618639f709e3caf7b6093aa81a4807c8e42e7a2a384e311c12b",
+      "traceFile": "86afee52-2c0e-4e5c-a8d3-b9d54793e3ed.json",
+      "traceSHA256": "df2e8314bdd25b19e3e8cd41133162e15cd88fc2daaf2f54fd99f37a9005cc1e",
+      "images": [
+        {
+          "type": "image_audit",
+          "mime": "image/png",
+          "bytes": 1256069,
+          "sha256": "f6e500a8ff5800a335fb5d2b15714719887615a07ff83d5741317a92fa11b221",
+          "name": "native-ui-8118cb65-a6c7-42db-861a-d0de8e4cc9c7"
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,8 @@ import { startLocalServer } from './local-server.mjs';
 import { createLocalLicense } from './local-license.mjs';
 import { createRuntimeServices, videoRuntimeUrl } from './runtime-services.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
+import { createBorrowedRuntimeServices } from './borrowed-runtime-services.mjs';
+import { ensureFlashBrainConfiguration } from './flash-brain-configuration.mjs';
 
 export async function createLocalAssistant(options) {
   if (!options.modelsRoot) {
@@ -17,10 +19,18 @@ export async function createLocalAssistant(options) {
   const tasks = await createLocalTasks(options.dataDir);
   const license = options.license || createLocalLicense(options.licenseDataDir || join(process.env.APPDATA, 'NovaFlow'));
   const progress = options.onProgress || (() => {});
-  const services = options.services || createRuntimeServices({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger,
+  const runtimeFactory = options.runtimePolicy === 'existing-only' ? createBorrowedRuntimeServices : createRuntimeServices;
+  const services = options.services || runtimeFactory({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger,
     stateFile: options.dataDir ? join(options.dataDir, 'owned-runtimes.json') : '' });
   let promptAssistant = null;
   const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
+  if((options.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata')==='strata') {
+    const prepared = await ensureFlashBrainConfiguration({
+      ...(options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON ? {runtimeJsonPath:options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON} : {}),
+      ...(options.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG ? {configPath:options.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG} : {})
+    });
+    if(!prepared.ok)options.logger?.('Flash local installation incomplete',{reason:prepared.reason});
+  }
   // 提示词助手 shares the GPU with these runtimes, so it needs their addresses
   // to ask for the memory back before it loads its own model.
   const comfyUrls = [...new Set([options.comfyImageUrl || 'http://127.0.0.1:8188', videoRuntimeUrl(options.comfyVideoUrl, options.comfyImageUrl || 'http://127.0.0.1:8188')].map(url => String(url).replace(/\/+$/, '')))];
