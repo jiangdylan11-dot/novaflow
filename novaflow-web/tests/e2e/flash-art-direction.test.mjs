@@ -24,9 +24,9 @@ function flash(answer=native()){
 }
 function released(direction){const result=clone(direction);Object.assign(result.artDirection.editEnhancer,{analysisBackend:'strata',modelIdentity:identity,resourcesReleased:true,generationReady:true});return result;}
 
-test('v12 system hash, one native call, complete images and unique canonical prompt are preserved',async()=>{
+test('art-direction-v1 system hash, one native call, complete images and unique canonical prompt are preserved',async()=>{
   assert.equal(createHash('sha256').update(FLASH_ART_SYSTEM).digest('hex'),FLASH_ART_SYSTEM_SHA256);
-  assert.equal(FLASH_ART_SYSTEM_SHA256,'00974bf38e97e4e9168c63f9d448f64b6d5aacfe0499295c6c37a26bff684f64');
+  assert.equal(FLASH_ART_SYSTEM_SHA256,'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be');
   const request=payload(),session=flash(),answer=await planFlashArtDirection({payload:request,flash:session});
   assert.equal(session.calls.length,1);assert.equal(session.calls[0].system,FLASH_ART_SYSTEM);
   assert.deepEqual(session.calls[0].images.map(image=>image.dataUrl),[PNG,PNG]);
