@@ -67,7 +67,8 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
     'strata-art-invalid-input', '参考编号重复或完整图片总大小超过上限');
   const prompt = literalText(payload.currentPrompt ?? payload.prompt, '用户提示词', 20000);
   const requirements = literalText(payload.requirements, '补充要求', 20000);
-  literalText(payload.negativePrompt, '用户反向提示词', 12000);
+  const negativePrompt = literalText(payload.negativePrompt, '用户反向提示词', 12000);
+  const hasNegativePrompt = negativePrompt.trim().length > 0;
   const canvas = {};
   for (const key of ['width','height']) {
     const value = context[key];
@@ -79,9 +80,12 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
   const remap = text => text.replace(/<image(\d+)>|(?:@?参考图|图片|图|image)\s*(\d+)/gi,(all,marker,number)=>{
     const index = inputSources.indexOf(Number(marker || number)); return index < 0 ? all : `<image${index+1}>`;
   });
+  const negativeContext = hasNegativePrompt ? remap(negativePrompt) : '';
   const user = 'Use the two complete images actually supplied in this order: <image1> is the original content source; <image2> is only the artistic rendering reference.\n'
     + JSON.stringify({ userRequest:remap(prompt), requirements:remap(requirements), canvas,
-      actualInputRoles:inputs.map((image,index)=>({image:`<image${index+1}>`,originalSource:image.source,role:image.role})) });
+      actualInputRoles:inputs.map((image,index)=>({image:`<image${index+1}>`,originalSource:image.source,role:image.role})),
+      ...(hasNegativePrompt ? { currentNegativePrompt:negativeContext,negativePromptSource:'unknown',
+        negativePromptUsage:'These are the current image-generation exclusions, not objects to draw. Their origin is unknown; do not claim the user personally wrote them. Do not clear or rewrite them. Use this context to keep the positive execution brief consistent with the current exclusions.' } : {}) });
   const result = await flash.infer({ system:FLASH_ART_SYSTEM,user,images:inputs.map(image=>({dataUrl:image.dataUrl,name:image.name})),
     maxTokens:4096,temperature:.4,stage:'art-style-native-v10' });
   requireValue(result?.model === flash.identity.id && typeof result.requestId === 'string' && result.requestId && result.requestId.length <= 240,
@@ -108,6 +112,9 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
       preserve:[],exclude:[],clarification:'',editEnhancer:enhancer},
     nativeAnalysis:{schema:'nf.flash.art-native-analysis.v1',systemSHA256:FLASH_ART_SYSTEM_SHA256,requestId:result.requestId,
       model:result.model,sourceContent:answer.sourceContent,inputSources,
+      ...(hasNegativePrompt ? { negativePromptContext:{provided:true,source:'unknown',
+        inputSHA256:createHash('sha256').update(negativePrompt,'utf8').digest('hex'),
+        modelContextSHA256:createHash('sha256').update(negativeContext,'utf8').digest('hex')} } : {}),
       images:inputs.map(({dataUrl,name,...evidence})=>({...evidence,name})),
       requestedSampling:{maxTokens:4096,temperature:.4},usage:result.usage || null,timing:result.timing || null} };
 }

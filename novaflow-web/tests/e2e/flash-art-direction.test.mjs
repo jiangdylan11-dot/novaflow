@@ -51,6 +51,41 @@ test('actual subject/style input order and sparse source labels are program-owne
   assert.match(session.calls[0].user,/<image1>用<image2>画风/);
 });
 
+test('nonempty current negative reaches the same native call with remapped image roles and unknown origin',async()=>{
+  const request=payload();request.currentPrompt='图5用图2画风';
+  request.images=[{dataUrl:PNG,name:'style.png'},{dataUrl:PNG,name:'content.png'}];
+  request.artContext.references=[{source:2,roles:['style']},{source:5,roles:['subject']}];
+  request.negativePrompt='  PRIVATE_EXCLUSION 不要图2的道具，不要<image5>多余人物；image 2衣饰\n';
+  request.negativePromptSource='user-explicit'; // Unverified caller claims are not provenance.
+  const session=flash(),answer=await planFlashArtDirection({payload:request,flash:session});
+  assert.equal(session.calls.length,1);assert.equal(session.calls[0].system,FLASH_ART_SYSTEM);
+  const sent=JSON.parse(session.calls[0].user.split('\n').slice(1).join('\n'));
+  const remapped='  PRIVATE_EXCLUSION 不要<image2>的道具，不要<image1>多余人物；<image2>衣饰\n';
+  assert.equal(sent.currentNegativePrompt,remapped);assert.equal(sent.negativePromptSource,'unknown');
+  assert.match(sent.negativePromptUsage,/current image-generation exclusions, not objects to draw/);
+  assert.match(sent.negativePromptUsage,/origin is unknown; do not claim the user personally wrote/);
+  assert.match(sent.negativePromptUsage,/Do not clear or rewrite/);
+  assert.deepEqual(sent.actualInputRoles,[{image:'<image1>',originalSource:5,role:'subject'},{image:'<image2>',originalSource:2,role:'style'}]);
+  assert.equal(request.negativePrompt,'  PRIVATE_EXCLUSION 不要图2的道具，不要<image5>多余人物；image 2衣饰\n');
+  assert.equal(answer.artDirection.prompt,canonical);assert.equal(answer.artDirection.editEnhancer.prompt,canonical);
+  assert.deepEqual(answer.nativeAnalysis.negativePromptContext,{provided:true,source:'unknown',
+    inputSHA256:createHash('sha256').update(request.negativePrompt).digest('hex'),
+    modelContextSHA256:createHash('sha256').update(remapped).digest('hex')});
+  assert.equal(JSON.stringify(answer.nativeAnalysis).includes('PRIVATE_EXCLUSION'),false);
+});
+
+test('empty, missing and whitespace-only negatives retain the exact pre-context native user string',async()=>{
+  const expected='Use the two complete images actually supplied in this order: <image1> is the original content source; <image2> is only the artistic rendering reference.\n'
+    + JSON.stringify({userRequest:'<image1>用<image2>画风',requirements:'',canvas:{width:1280,height:960},
+      actualInputRoles:[{image:'<image1>',originalSource:1,role:'subject'},{image:'<image2>',originalSource:2,role:'style'}]});
+  for(const negative of ['',undefined,'  \n\t']){
+    const request=payload();request.negativePrompt=negative;
+    const session=flash(),answer=await planFlashArtDirection({payload:request,flash:session});
+    assert.equal(session.calls.length,1);assert.equal(session.calls[0].user,expected);
+    assert.equal(session.calls[0].system,FLASH_ART_SYSTEM);assert.equal(answer.nativeAnalysis.negativePromptContext,undefined);
+  }
+});
+
 test('text-only, NSFW, extra roles and other tasks retain their existing Flash business planners',()=>{
   for(const mutate of [r=>r.images=[],r=>r.nsfw=true,r=>r.artContext.references[1].roles=['pose'],r=>r.artContext.references[1].roles=['style','color'],r=>r.artContext.task='preserve',r=>r.purpose='art-director-review']){
     const request=payload();mutate(request);assert.equal(isFlashArtDirectionRequest(request),false);
@@ -58,7 +93,7 @@ test('text-only, NSFW, extra roles and other tasks retain their existing Flash b
 });
 
 test('invalid inputs/native output fail once without repair, short rewrite or model release claims',async()=>{
-  for(const mutate of [r=>r.artContext.references[1].source=1,r=>r.images[0].dataUrl='https://example.com/image.png',r=>r.images[0].dataUrl='data:image/png;base64,YWJjZA==',r=>r.artContext.references[0].excludedRoles=['subject']]){
+  for(const mutate of [r=>r.artContext.references[1].source=1,r=>r.images[0].dataUrl='https://example.com/image.png',r=>r.images[0].dataUrl='data:image/png;base64,YWJjZA==',r=>r.artContext.references[0].excludedRoles=['subject'],r=>r.negativePrompt={},r=>r.negativePrompt='data:image/png;base64,YWJjZA==']){
     const request=payload();mutate(request);const session=flash();await assert.rejects(planFlashArtDirection({payload:request,flash:session}));assert.equal(session.calls.length,0);
   }
   for(const answer of [native({prompt:'short without tags'}),native({prompt:'<image1> <image2> <image3>'}),native({renderingClass:'invented'}),native({prompt:'<image1><image2>'+'x'.repeat(12000)})]){
@@ -89,6 +124,18 @@ test('native renderer preserves exact canonical/negative, no pixel workers, and 
   assert.equal(prepared.references[0].dataUrl,PNG);assert.equal(prepared.references[1].dataUrl,PNG);
   assert.equal(prepared.renderingPolicy,undefined);assert.equal(prepared.turboGuidance,undefined);assert.equal(h.pixels,0);
   assert.equal((await h.api.review(prepared,PNG)).skipped,true);assert.equal(h.calls.length,1);
+});
+
+test('negative analysis context never rewrites the native answer or compiled generation exclusions',async()=>{
+  const request=payload();request.negativePrompt='  禁止图2的服装，do not remove this exclusion\n';
+  const session=flash(),answer=await planFlashArtDirection({payload:request,flash:session});
+  const h=await renderer(released(answer)),c=context();c.state.negativePrompt=request.negativePrompt;
+  const prepared=await h.api.prepare(c);
+  assert.equal(session.calls.length,1);assert.equal(h.calls.length,1);
+  assert.equal(prepared.promptSnapshot.prompt,canonical);assert.equal(prepared.promptSnapshot.negativePrompt,request.negativePrompt);
+  prepared.applyPromptToState();
+  assert.equal(c.state.negativePrompt,request.negativePrompt);assert.equal(prepared.state.negativePrompt,request.negativePrompt);
+  assert.equal(prepared.renderingPolicy,undefined);assert.equal(prepared.turboGuidance,undefined);
 });
 
 test('native renderer rejects mismatched canonical copies, cropped references and unconfirmed handoff',async()=>{
