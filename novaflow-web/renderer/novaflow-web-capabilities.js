@@ -690,6 +690,7 @@
   const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
   const sanitizeVideoName = (name) => String(name || '').replace(/\\/g, '/').split('/').pop().replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/[. ]+$/g, '').trim().slice(0, 120);
   const videoStem = (name, fallback) => (sanitizeVideoName(name).replace(/\.[^/.]+$/, '') || fallback);
+  const mp4OutputFileName = (name) => /\.mp4$/i.test(sanitizeVideoName(name)) ? sanitizeVideoName(name) : videoStem(name, 'video') + '.mp4';
   // main/mp4-compressor.js: the slider shared with PNG / JPG 压缩 rides CRF from 18 to 34.
   function mp4CompressionPlan(strength) {
     const level = clampNumber(Math.round(Number(strength) || 0), 0, 100);
@@ -808,7 +809,7 @@
     try {
       const file = videoInputFile(payload);
       const plan = mp4CompressionPlan(payload && payload.strength !== undefined ? payload.strength : 32);
-      const fileName = videoStem((payload && payload.fileName) || file.name, 'video') + '-compressed.mp4';
+      const fileName = mp4OutputFileName((payload && payload.fileName) || file.name);
       const { token, blob } = await runVideoJob({
         tool: 'mp4-compress', jobId: String((payload && payload.jobId) || 'mp4_' + Date.now()), file,
         buildArgs: (inName, outFile, probeLog) => mp4CompressArgs(inName, outFile, plan.crf, audioModeFromLog(probeLog)),

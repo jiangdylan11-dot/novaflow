@@ -11,8 +11,7 @@
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
   const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
-  const fileStem = (name) => String(name || 'effect.png').replace(/\.png$/i, '')
-  const outputName = (name) => `${fileStem(name)}_alpha.png`
+  const outputName = (name) => String(name || 'effect.png')
   const dataUrlToBlob = async (dataUrl) => await (await fetch(dataUrl)).blob()
   const blobBytes = async (blob) => Array.from(new Uint8Array(await blob.arrayBuffer()))
 

@@ -29,8 +29,10 @@ function mp4CompressionPlan(strength) {
 }
 
 function mp4CompressOutputFileName(name) {
+  const original = sanitizeFileName(name);
+  if (/\.mp4$/i.test(original)) return original;
   const stem = sanitizeFileStem(name, "video") || "video";
-  return `${stem}-compressed.mp4`;
+  return `${stem}.mp4`;
 }
 
 function mp4ProbeArgs(inPath) {

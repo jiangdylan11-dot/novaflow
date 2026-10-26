@@ -14,8 +14,7 @@
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
   const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
-  const fileStem = (name) => String(name || 'video.mp4').replace(/\.[^.]+$/, '') || 'video'
-  const outputName = (name) => `${fileStem(name)}-compressed.mp4`
+  const outputName = (name) => String(name || 'video.mp4')
 
   // Mirrors mp4CompressionPlan() in main/mp4-compressor.js: the slider promise the label makes
   // here is the one the encoder keeps there, so the two curves must not drift apart.
