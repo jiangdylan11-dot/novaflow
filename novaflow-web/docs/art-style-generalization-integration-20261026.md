@@ -43,3 +43,5 @@ Agent 最终系统 SHA-256：`4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2
 源码与开发运行文件已同步。已安装助手、安装包、线上站点和正式共享知识指针没有在本轮更新；应用发布版本未变。后台管理未改，原有本人审核发布机制保留。
 
 详尽核验记录见同目录 `experiments/style-generalization-integration-20261026-receipt.json`。本地回放脚本和任务证据在 `D:/AI_APP/NovaFlow-Web/work/style-generalization-20261026/integration/`。
+
+本人随后要求重新查看接入后的实际画面，现已完成八张全新 Qwen 输出，见 [全新生图验收](art-style-integrated-final-20261026.md)。其中版画首次漏写图号后有一次明确记录的格式补跑；湿润衣料反光和版画参考内容混入仍有问题。此前 CPU 交接回放通过不等于这轮视觉全部通过。

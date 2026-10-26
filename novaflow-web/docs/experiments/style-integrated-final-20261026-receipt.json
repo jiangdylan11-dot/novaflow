@@ -1,0 +1,284 @@
+{
+  "kind": "fresh bundled-default visual acceptance with one explicitly recorded manual marker recovery",
+  "newAnalysisRequests": 9,
+  "successfulAnalysisRequests": 8,
+  "failedInitialAnalysisRequests": 1,
+  "manualMarkerRecoveries": 1,
+  "defaultRuntimeAutomaticRetriesAdded": false,
+  "newGenerationJobs": 8,
+  "sourceFreeze": {
+    "sourceHead": "c04ae232620590c4002daf253e59228f85024e7d",
+    "integrationCommit": "bc8a2af9",
+    "skillVersion": "1.0.13",
+    "skillSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+    "sourceFiles": {
+      "flash-art-agent.mjs": "dbe85720cf771db1641db49eff61a335b764e572c0d6aef08bb52ad4ffa2bf8d",
+      "flash-art-direction.mjs": "9b44408704d2af04bc50934a08fc8938f73e17dab5ce71616b55c760b4648669",
+      "art-skill-service.mjs": "32b97e0968f103bb071b4b7374d18aa713a52c8f84246b641eb6aa274e7e6b49",
+      "art-skills/style-transfer.v1.json": "88736571d0185d7793e098b0ba9e4811da0f8ddfeaff1aad0bd78ad4f1ae569f",
+      "art-skills/style-transfer.1.0.11.json": "a51012d87636671d49270b929d6e10c45086518e67675704d6dd158b8e6879d3",
+      "art-learning.mjs": "a08138e795314d861b2c70328cc4d6f73a888ff6a62275b50de9d6a2659b59fd",
+      "strata-prompt-assistant.mjs": "12041a911dfb855e51dfcca5a3353a4ea678d7fefe1d7587180ca641b460a44c",
+      "flash-brain-session.mjs": "4b8177911fec566b37717b48f1d2e78ef09894ebde65eee7b39f30026aebcd41"
+    },
+    "mode": "current shipped source snapshot, fresh task journal, bundled default, no candidate skill injection",
+    "sourceModifiedForTest": false,
+    "sharedExperiencePublished": false
+  },
+  "cases": [
+    {
+      "id": "bright",
+      "label": "明亮动漫",
+      "heldOut": false,
+      "promptId": "37deb4ef-4f6d-4ac7-993f-732c446d003f",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 141.6191491,
+      "requestSeconds": 99.885882,
+      "generationSeconds": 66.96900000000096,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 198,
+      "outputSHA256": "06a55537f05f2d5d0c101d713d4ce25f765e3b1ce73c37db832ad1b0e2cdf140"
+    },
+    {
+      "id": "dark",
+      "label": "冷调动漫",
+      "heldOut": false,
+      "promptId": "7b5c1905-34fd-44b9-a194-a70b409eb938",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 123.15828599999999,
+      "requestSeconds": 85.802482,
+      "generationSeconds": 70.67200000000048,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 172,
+      "outputSHA256": "d512cd114560816e3693a5befc7a0bf9e9c61600d7fbbb39d19a92290f1a6e4c"
+    },
+    {
+      "id": "cg",
+      "label": "CG 材质",
+      "heldOut": false,
+      "promptId": "ef5cfdbe-3ec5-4f67-95c2-098d2b0039c1",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 107.69538229999999,
+      "requestSeconds": 64.31269400000001,
+      "generationSeconds": 63.42200000000048,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 178,
+      "outputSHA256": "fe26babd32276384b591b64dd9e20d42725c4b1c365513d679632124f6903951"
+    },
+    {
+      "id": "soft",
+      "label": "柔和插画",
+      "heldOut": false,
+      "promptId": "be566088-2f66-4e59-866d-89b45fabcbb9",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 127.00936849999998,
+      "requestSeconds": 98.291136,
+      "generationSeconds": 69.4380000000001,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 153,
+      "outputSHA256": "cefee98747e4b6190295c824a1c425baee8497bed24efed9e36cf7e579666abe"
+    },
+    {
+      "id": "wet",
+      "label": "湿润高光",
+      "heldOut": false,
+      "promptId": "0f554f96-dce8-49d0-9865-e887983faf30",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 120.94577559999999,
+      "requestSeconds": 91.41847299999999,
+      "generationSeconds": 69.125,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 171,
+      "outputSHA256": "42617288a36d0d0a3edf3b111627e32f2ddd454a7f6bdbdd16a88000568927e7"
+    },
+    {
+      "id": "graphic",
+      "label": "红黑平面",
+      "heldOut": false,
+      "promptId": "e7f009f1-0fa9-406c-9e5b-a11b8ca7ca95",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 117.1677281,
+      "requestSeconds": 87.256158,
+      "generationSeconds": 68.46899999999914,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 229,
+      "outputSHA256": "e76ae661443b6b4501d47a15e3b7fbedf354041641155bdeea2bf9f2afd773a2"
+    },
+    {
+      "id": "holdout-print",
+      "label": "留出测试 · 木版画",
+      "heldOut": true,
+      "promptId": "d1d3bda9-a289-465a-8b6f-3cb65f386e87",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 114.1266039,
+      "requestSeconds": 87.723924,
+      "generationSeconds": 71.40599999999904,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 164,
+      "outputSHA256": "05cb0428706e688286554c6c789c9e15101cb708ae05e1699ecb4cd9d039908e",
+      "manualMarkerRecovery": true,
+      "initialFailure": {
+        "ok": false,
+        "error": "绘图提案必须使用当前主体与画风双图编号",
+        "errorCode": "flash-agent-invalid-proposal",
+        "analysisBackend": "strata"
+      },
+      "initialFailedAnalysisSeconds": 132.219265
+    },
+    {
+      "id": "holdout-oil",
+      "label": "留出测试 · 笔触油画",
+      "heldOut": true,
+      "promptId": "fc56c8ce-74ca-4d6a-b8d6-6fc25e56077f",
+      "defaultSkillVersion": "1.0.13",
+      "knowledgeVersion": "bundled-only",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "analysisSeconds": 108.1001172,
+      "requestSeconds": 69.751025,
+      "generationSeconds": 73.45299999999952,
+      "sourceAndReferenceUnchanged": true,
+      "generationGraphExceptPromptAndFilenamesIdentical": true,
+      "promptIdenticalToPreviousNeutralTask": false,
+      "promptWords": 207,
+      "outputSHA256": "c3a778ac9f47b3d7840444c9a550358a54c378776f9636d3f2dc92bc8d79d26a"
+    }
+  ],
+  "lifecycle": [
+    {
+      "kind": "analysis",
+      "cases": [
+        "dark",
+        "graphic"
+      ],
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "kind": "analysis",
+      "cases": [
+        "cg",
+        "wet"
+      ],
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "kind": "analysis",
+      "cases": [
+        "bright",
+        "soft",
+        "holdout-print",
+        "holdout-oil"
+      ],
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "kind": "analysis",
+      "cases": [
+        "holdout-oil"
+      ],
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "kind": "analysis",
+      "cases": [
+        "holdout-print"
+      ],
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "kind": "generation",
+      "cases": [
+        "dark",
+        "graphic"
+      ],
+      "generationPortClosed": true
+    },
+    {
+      "kind": "generation",
+      "cases": [
+        "cg",
+        "wet"
+      ],
+      "generationPortClosed": true
+    },
+    {
+      "kind": "generation",
+      "cases": [
+        "bright",
+        "soft"
+      ],
+      "generationPortClosed": true
+    },
+    {
+      "kind": "generation",
+      "cases": [
+        "holdout-oil"
+      ],
+      "generationPortClosed": true
+    },
+    {
+      "kind": "generation",
+      "cases": [
+        "holdout-print"
+      ],
+      "generationPortClosed": true
+    }
+  ],
+  "currentSourceMatchesFreeze": {
+    "flash-art-agent.mjs": true,
+    "flash-art-direction.mjs": true,
+    "art-skill-service.mjs": true,
+    "art-skills/style-transfer.v1.json": true,
+    "art-skills/style-transfer.1.0.11.json": true,
+    "art-learning.mjs": true,
+    "strata-prompt-assistant.mjs": true,
+    "flash-brain-session.mjs": true
+  },
+  "localOnly": true,
+  "sharedExperiencePublished": false
+}
