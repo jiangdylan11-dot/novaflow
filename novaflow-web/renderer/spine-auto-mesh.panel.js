@@ -293,9 +293,35 @@
   }
 
   /** Match every skin's image reference to its file, retaining subfolder names in the atlas. */
-  function photoshopImagePlan(skeleton, files) {
+  function photoshopImagePlan(skeleton, files, jsonFile) {
     const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/^\.\//, '')
     const key = (p) => norm(p).replace(/\.(png|jpe?g|webp)$/i, '').toLowerCase()
+    const resolve = (p) => {
+      const parts = []
+      for (const part of norm(p).split('/')) {
+        if (!part || part === '.') continue
+        if (part === '..') parts.pop()
+        else parts.push(part)
+      }
+      return parts.join('/').toLowerCase()
+    }
+    const jsonDir = norm(jsonFile && (jsonFile.webkitRelativePath || jsonFile.name)).split('/').slice(0, -1).join('/')
+    const imageDir = norm(skeleton.skeleton && skeleton.skeleton.images).replace(/\/+$/, '')
+    const roots = new Set()
+    if (imageDir) {
+      if (/^(?:[a-z]:\/|\/)/i.test(imageDir)) {
+        roots.add(resolve(imageDir))
+        // Photoshop exports an absolute images directory. The folder picker supplies
+        // paths relative to the selected folder, so anchor it to the JSON's directory.
+        const dirs = resolve(jsonDir).split('/').filter(Boolean), exported = '/' + resolve(imageDir) + '/'
+        for (let i = 0; i < dirs.length; i++) {
+          const anchor = '/' + dirs.slice(i).join('/') + '/', at = exported.lastIndexOf(anchor)
+          if (at < 0) continue
+          roots.add(resolve(jsonDir + '/' + exported.slice(at + anchor.length)))
+          break
+        }
+      } else roots.add(resolve(jsonDir + '/' + imageDir))
+    }
     const wanted = new Set()
     const skins = Array.isArray(skeleton.skins) ? skeleton.skins : Object.values(skeleton.skins || {}).map((attachments) => ({ attachments }))
     for (const skin of skins) for (const map of Object.values(skin.attachments || {})) for (const [name, att] of Object.entries(map || {})) {
@@ -305,7 +331,9 @@
     const plan = []
     for (const name of wanted) {
       const target = key(name)
-      const matches = files.filter((f) => { const rel = key(f.webkitRelativePath || f.name); return rel === target || rel.endsWith('/' + target) })
+      let matches = files.filter((f) => { const rel = key(f.webkitRelativePath || f.name); return rel === target || rel.endsWith('/' + target) })
+      const scoped = matches.filter((f) => [...roots].some((root) => resolve(key(f.webkitRelativePath || f.name)) === resolve(root + '/' + target)))
+      if (scoped.length) matches = scoped
       if (matches.length > 1) throw new Error(`贴图路径不明确：${name}，请保留图片子目录或移走重复文件`)
       if (!matches.length) continue
       const file = matches[0]
@@ -394,7 +422,7 @@
 
     // only keep images an attachment actually refers to, so a stray template.png
     // does not become a page
-    const plan = photoshopImagePlan(skeleton, imageFiles)
+    const plan = photoshopImagePlan(skeleton, imageFiles, jsonFile)
 
     const images = []
     /** image stem -> crop, so the attachments can be moved to match */

@@ -9,10 +9,10 @@ const Attach = globalThis.NovaFlowAutoMeshAttach
 const source = fs.readFileSync(path.join(root, 'spine-auto-mesh.panel.js'), 'utf8')
 const section = (a, b) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)))
 
-async function importFolder(json, paths, crop = null) {
+async function importFolder(json, paths, crop = null, jsonPath = 'project/skeleton.json') {
   const cache = {}, statuses = []
   const file = rel => ({ name: rel.split('/').pop(), webkitRelativePath: rel })
-  const files = [{ ...file('project/skeleton.json'), text: async () => JSON.stringify(json) }, ...paths.map(file)]
+  const files = [{ ...file(jsonPath), text: async () => JSON.stringify(json) }, ...paths.map(file)]
   const ctx = vm.createContext({ window: { NovaFlowAutoMeshAttach: Attach, __NovaFlowSpineImportInlineBridgeCache: cache,
     __NovaFlowSpineImportInlineBridge: { start: async () => true } },
     state: { layers: new Map() }, readFileAsText: f => f.text(), readFileAsDataUrl: async f => f.webkitRelativePath,
@@ -63,6 +63,27 @@ test('cropping named-skin pictures retargets their original attachment identitie
 test('ambiguous image basenames fail visibly instead of selecting a different folder silently', async () => {
   const j = skeleton(); j.skins = { default: { pifu: { card: { path: 'card' } } } }
   await assert.rejects(importFolder(j, ['project/front/card.png', 'project/back/card.png']), /贴图路径不明确/)
+})
+
+test('Photoshop absolute images directory resolves duplicate copies beside the JSON', async () => {
+  const j = skeleton(); j.skeleton.images = 'D:\\art\\高级房\\images\\e\\'
+  j.skins = { default: { chicken: { chicken: { width: 32, height: 48 } } } }
+  const f = await importFolder(j, ['高级房/chicken.png', '高级房/images/e/chicken.png'], null, '高级房/Guandan_Selectroom.json')
+  assert.equal(f.count, 1)
+  assert.equal(f.cache.images[0].dataUrl, '高级房/images/e/chicken.png')
+})
+
+test('relative images directories resolve against the selected JSON including parent paths', async () => {
+  const j = skeleton(); j.skeleton.images = '../images/e/'
+  j.skins = { default: { chicken: { chicken: {} } } }
+  const f = await importFolder(j, ['project/chicken.png', 'project/images/e/chicken.png'], null, 'project/json/skeleton.json')
+  assert.equal(f.cache.images[0].dataUrl, 'project/images/e/chicken.png')
+})
+
+test('declared image directories keep ambiguity errors when duplicate formats remain in that directory', async () => {
+  const j = skeleton(); j.skeleton.images = 'images/e/'
+  j.skins = { default: { chicken: { chicken: {} } } }
+  await assert.rejects(importFolder(j, ['project/chicken.png', 'project/images/e/chicken.png', 'project/images/e/chicken.webp']), /贴图路径不明确/)
 })
 
 test('images with placeholder-key names remain compatible and unused pictures stay excluded', async () => {
