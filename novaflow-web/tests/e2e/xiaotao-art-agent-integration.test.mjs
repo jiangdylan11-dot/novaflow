@@ -53,7 +53,7 @@ test('Agent proposal becomes generation-ready only after release and retains raw
   assert.equal(reply.data.proposal.negativePrompt,payload.artContext.negativePrompt);
   assert.deepEqual(reply.data.toolTrace.map(call=>call.name),['get_art_context','propose_art_direction']);
   assert.equal(assistant.status().artDirectionProtocol.version,'art-direction-v1');
-  assert.equal(assistant.status().artDirectionProtocol.systemSHA256,'9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28');
+  assert.equal(assistant.status().artDirectionProtocol.systemSHA256,'c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e');
   assert.equal(reply.data.proposal.styleProtocol.version,'agent-style-director-v1');
   assert.deepEqual(assistant.status().artAgent.styleProtocol,reply.data.proposal.styleProtocol);
 });
@@ -106,7 +106,7 @@ test('formal UI whole-source subject/background pair enters frozen v1 once inste
       references:[{source:1,role:'auto',roles:['background','subject']},{source:2,role:'auto',roles:['style']}]}};
   const result=await assistant.reverseImagePrompt(payload);
   assert.equal(result.ok,true);assert.equal(nativeCalls,1);assert.equal(legacyCalls,0);
-  assert.equal(result.data.nativeAnalysis.systemSHA256,'9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28');
+  assert.equal(result.data.nativeAnalysis.systemSHA256,'c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e');
   assert.deepEqual(result.data.nativeAnalysis.inputRoleNormalization.references[0].roles,['background','subject']);
   assert.equal(result.data.artDirection.editEnhancer.generationReady,true);
   await assistant.reverseImagePrompt({...payload,artContext:{...payload.artContext,references:[{source:1,roles:['subject','pose']},payload.artContext.references[1]]}});

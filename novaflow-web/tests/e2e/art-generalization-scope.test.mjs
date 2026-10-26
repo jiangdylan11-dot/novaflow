@@ -6,13 +6,11 @@ import {createFlashArtAgent,computeArtAgentFingerprint,FLASH_ART_AGENT_SYSTEM_SH
 import {readArtSkill} from '../../worker/src/art-skill-service.mjs';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 
-test('the rejected candidate remains experimental and the drawing default matches the preserved stable baseline',async()=>{
+test('the drawing default is exactly the candidate used in the eight-style real generation evaluation',async()=>{
   const tested=JSON.parse(await readFile(new URL('../../docs/experiments/style-transfer-1.0.13.json',import.meta.url),'utf8'));
-  const baseline=JSON.parse(await readFile(new URL('../../worker/src/art-skills/style-transfer.1.0.11.json',import.meta.url),'utf8'));
-  assert.deepEqual(await readArtSkill(),baseline);
-  assert.notEqual(baseline.systemSHA256,tested.systemSHA256);
-  assert.equal(FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,'9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28');
-  assert.equal(FLASH_ART_AGENT_SYSTEM_SHA256,'e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161');
+  assert.deepEqual(await readArtSkill(),tested);
+  assert.equal(FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,'c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e');
+  assert.equal(FLASH_ART_AGENT_SYSTEM_SHA256,'4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c');
 });
 
 test('ordinary chat and independent creation retain their prior actual model-facing systems, tool menus and reasoning settings',async()=>{
