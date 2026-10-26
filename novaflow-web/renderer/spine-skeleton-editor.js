@@ -10422,10 +10422,10 @@
       if (!paths.length) { while (rows[i + 1] && rows[i + 1].indent) i++; continue }
       kept.push({ ...r, paths })
     }
-    // Spine's animation row on top: a key wherever any track has one - picking or dragging a
-    // key there takes every key of that column, on every track of the animation
+    // Only multiple object groups need an animation summary; one object's head already
+    // aggregates its tracks. Auxiliary draw-order rows do not count as another selection.
     const all = [...new Set(kept.flatMap((r) => r.paths.map(pathId)))].map((id) => JSON.parse(id))
-    if (kept.length) kept.unshift({ label: an, paths: all, head: true, anim: true })
+    if (kept.filter((r) => r.head && r.sel).length > 1) kept.unshift({ label: an, paths: all, head: true, anim: true })
     d.rows = kept
     // keys that no longer exist drop out of the selection
     d.keySel = d.keySel.filter((k) => { const t = d.tracks.get(pathId(k.path)); return t && t.times.some((x) => Math.abs(x - k.time) < 1e-4) })
