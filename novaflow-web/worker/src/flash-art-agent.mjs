@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { FLASH_ART_SYSTEM, FLASH_ART_SYSTEM_SHA256, FLASH_ART_BASE_SKILL } from './flash-art-direction.mjs';
+import { isArtPromptLanguage, artPromptLanguageSystem, artPromptLanguageTools } from '../../packages/shared/src/art-prompt-language.mjs';
 
 const plain = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -137,11 +138,12 @@ export function prepareFlashArtAgentPayload(payload) {
     'flash-agent-invalid-request-id', '绘图请求编号无效');
   need(payload.mode === undefined || ['chat', 'drawing', 'creation'].includes(payload.mode), 'flash-agent-invalid-input', '小桃对话模式无效');
   const mode = payload.mode || 'drawing';
+  need(isArtPromptLanguage(payload.promptLanguage), 'flash-agent-invalid-input', '提示词语言无效');
   const history = historyValue(payload.history ?? []);
   need(payload.conversationId === undefined || typeof payload.conversationId === 'string'
     && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId), 'flash-agent-invalid-history', '会话编号无效');
   const common = { requestId: payload.requestId, ...(payload.conversationId ? { conversationId: payload.conversationId } : {}),
-    mode, message: payload.message, history };
+    mode, message: payload.message, history, ...(payload.promptLanguage ? {promptLanguage:payload.promptLanguage} : {}) };
   if (mode === 'chat') {
     need(payload.executionApproval === undefined, 'flash-agent-invalid-approval', '普通对话不接受生图确认');
     need(payload.artContext === undefined || plain(payload.artContext), 'flash-agent-invalid-input', '小桃当前页面信息无效');
@@ -227,9 +229,11 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
     // preflight has verified this approval against the request, snapshot and
     // sampling. Confirmed drawing needs only its final execution tool; retain
     // the full tool menus for unconfirmed requests and other modes.
-    const tools = !chat && !creation && payload.executionApproval
+    system = artPromptLanguageSystem(system, payload.promptLanguage, {conversationOnly:chat});
+    if (!chat && !creation) effectiveStyleProtocol = {...effectiveStyleProtocol, systemSHA256:hash(system)};
+    const tools = artPromptLanguageTools(!chat && !creation && payload.executionApproval
       ? FLASH_ART_AGENT_TOOLS.filter(tool => tool.function.name === 'generate_art_image')
-      : creation ? FLASH_CREATION_AGENT_TOOLS : FLASH_ART_AGENT_TOOLS;
+      : creation ? FLASH_CREATION_AGENT_TOOLS : FLASH_ART_AGENT_TOOLS, payload.promptLanguage);
     const images = completeImages(payload.images, chat || creation);
     const history = payload.history;
     const id = payload.conversationId || randomUUID();

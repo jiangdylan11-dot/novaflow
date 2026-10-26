@@ -42,7 +42,7 @@ function env({cfg=5} = {}) {
   const runtime = {state, capturePrompt() {}, captureContext:() => ({state, references:refs, referenceLimit:10, generationSurface:surface}), render() {}, selectedResult:() => state.results[0],
     stageAgentPrepared(p) {p.assertCurrent(); prepared = p;}, clearAgentPrepared() {prepared = null;}, async cancel() {calls.push('cancel-generation');},
     async run() {const p = prepared; prepared = null; assert(p, 'Original generate consumes one staged proposal'); p.assertCurrent(); state.running = true; calls.push({prepared:p}); state.results.unshift({id:'actual-' + calls.length, imageUrl:png(30), name:'actual.png'}); state.running = false;}};
-  const sandbox = {console, TextEncoder, crypto:webcrypto, atob:s => Buffer.from(s, 'base64').toString('binary'), setTimeout, clearTimeout,
+  const sandbox = {console, TextEncoder, AbortController, crypto:webcrypto, atob:s => Buffer.from(s, 'base64').toString('binary'), setTimeout, clearTimeout,
     localStorage:{getItem:k => saved.get(k), setItem:(k, v) => saved.set(k, v)}, __NovaFlowArtGenerate:runtime,
     NovaFlowArtGenerateModels:{capabilityFor:() => ({engine:'qwen-2.1'}), localSamplingFor:() => ({cfg:5, steps:8})}};
   sandbox.window = sandbox; const vm = createContext(sandbox);
@@ -117,6 +117,24 @@ test('a trusted proposal uses existing native compiler, original single-run entr
   const review = await e.sandbox.NovaFlowArtDirection.review(prepared,png(30)); assert.equal(review.skipped,true);
   const result = await e.bridge.generateApplied(); assert.equal(result.imageUrl,png(30)); assert.equal(e.calls.length,1);
   await assert.rejects(e.bridge.generateApplied(),/先应用/); assert.equal(e.calls.length,1);
+});
+
+test('Chinese proposals enter the original editable field and manual Chinese edits use the direct path without another analysis',async()=>{
+  const e=env({cfg:3}),snapshot=e.bridge.capture(),p=await proposal(e,snapshot);
+  p.prompt='以<image1>为内容原图、<image2>为画风参考，保留闭嘴微笑，招牌写 OPEN。';
+  await e.bridge.applyProposal(p,snapshot);
+  assert.equal(e.state.prompt,'以@参考图1为内容原图、@参考图2为画风参考，保留闭嘴微笑，招牌写 OPEN。');
+  e.runtime.clearAgentPrepared();e.state.prompt='以@参考图1为内容原图、@参考图2为画风参考，肤色保留暖调，背景稍暗，招牌写 OPEN。';
+  await e.sandbox.NovaFlowArtDirection.selectManual(e.state);
+  const prepared=await e.sandbox.NovaFlowArtDirection.prepare({state:e.state,references:e.refs,referenceLimit:10,generationSurface:'drawing'});
+  assert.equal(prepared.promptSnapshot.prompt,'以<image1>为内容原图、<image2>为画风参考，肤色保留暖调，背景稍暗，招牌写 OPEN。');
+  assert.equal(prepared.promptSnapshot.negativePrompt,e.state.negativePrompt.trim());assert.equal(prepared.direct,true);assert.equal(e.state.samplingOverrides['qwen-2.1-turbo:img2img'].cfg,3);assert.equal(e.calls.length,0);
+});
+
+test('both local and online Xiaotao request editable Chinese prompts without altering user history or submitting generation',async()=>{
+  const e=env(),payloads=[],controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'中文提示词说明',history:[]}};}})});
+  await controller.send('只给我提示词');controller.setProvider('api');await controller.send('只给我提示词');
+  assert.equal(payloads.length,2);assert(payloads.every(p=>p.promptLanguage==='zh-CN'));assert(payloads.every(p=>p.message==='只给我提示词'));assert.equal(payloads[1].mode,'chat');assert.equal(e.calls.length,0);
 });
 
 test('missing release credentials and changed negative cannot be bypassed by proposal prose', async () => {

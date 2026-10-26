@@ -1,0 +1,24 @@
+{
+  "scope": "Chinese prompt output and manual editing; not art-rule optimization",
+  "artRuleVersion": "1.0.11",
+  "artRuleSHA": "9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28",
+  "localizedSystemSHA": "2e26f362e5c18f66cf7062daad484fa5e6febac943dd459cbd2200ddbb7872b9",
+  "liveAnalysisRequests": 1,
+  "newGeneratedImages": 0,
+  "translationRequests": 0,
+  "analysisSeconds": 119.6812515,
+  "requestSeconds": 82.576679,
+  "resourcesReleased": true,
+  "promptSHA256": "272ebd5b6486781697e96e7cf74193aadf18383149c837f16e6e0eb8440343ff",
+  "editableSHA256": "c67783e7f5b8b36ff01cbdbe4502d98b2a487ce66328bb96ca852318051b2b62",
+  "actualPrompt": "以<image2>为画风参考、以<image1>为内容原图，按图2的精致半写实动漫绘画语言重绘图1：用细腻的发丝线条与光泽高光带塑造红棕色长卷发，皮肤采用柔和的中间调过渡与淡淡腮红，五官线条干净、表情生动，眨眼与微笑用图2的精致动漫眼型和嘴型重构，保留图1的单眼眨眼、微笑和脸颊小痣。蓝白条纹上衣用图2的织物纹理与褶皱方式绘制，手持的冰奶茶杯、吸管与红色指甲用图2的手部结构与透明质感画法表现。光线采用图2温暖的环境光方向，营造柔和明暗层次与背景纵深，机场座椅排、玻璃幕墙与电子显示屏等场景结构保持可识别。整体保持图2的平滑色调过渡、光泽高光与丰富中间调，避免照片质感与平涂。最终画面内容为：一位红棕色长卷发的年轻女子在机场候机区，单眼眨眼、微笑，脸颊有小痣，穿蓝白条纹上衣，举起一杯插吸管的冰奶茶，红色指甲，背景是成排灰色座椅与玻璃窗。",
+  "onlyDisplayMarkerAliasesChanged": true,
+  "lifecycle": {
+    "globalConfigUnchanged": true,
+    "globalServerUnchanged": true,
+    "noAutomaticRetries": true
+  },
+  "artworkQualityRevalidated": false,
+  "deploymentChanged": false,
+  "installedAppChanged": false
+}

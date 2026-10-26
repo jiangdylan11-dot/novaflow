@@ -84561,7 +84561,9 @@
         if (typeof event.stopPropagation === "function") event.stopPropagation();
       },
       oninput: (event) => {
-        ART_GENERATE_STATE[key] = String(event.currentTarget.value || "");
+        const next = String(event.currentTarget.value || "");
+        if (ART_GENERATE_STATE[key] !== next) window.__NovaFlowArtGenerate?.clearAgentPrepared?.();
+        ART_GENERATE_STATE[key] = next;
         if (key === "negativePrompt" || key === "prompt") syncArtGenerateSamplingFields();
       },
       onchange: (event) => {

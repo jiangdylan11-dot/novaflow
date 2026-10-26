@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { validateArtSkill } from './art-skill-service.mjs';
+import { isArtPromptLanguage, artPromptLanguageSystem } from '../../packages/shared/src/art-prompt-language.mjs';
 
 export const FLASH_ART_KIND = 'qwen21-strata-native';
 export const FLASH_ART_VERSION = 'flash-native-v1';
@@ -58,6 +59,7 @@ function literalText(value, label, max) {
  * analysisBackend/modelIdentity/resourcesReleased/generationReady to data and
  * editEnhancer only after its outer owned session has successfully released. */
 export async function planFlashArtDirection({ payload, flash } = {}) {
+  requireValue(isArtPromptLanguage(payload?.promptLanguage), 'strata-art-invalid-input', '提示词语言无效');
   requireValue(isFlashArtDirectionRequest(payload), 'strata-art-unsupported-task', '此原生线路仅接受明确的主体与画风完整双图');
   requireValue(typeof flash?.infer === 'function' && typeof flash?.identity?.id === 'string' && flash.identity.id,
     'strata-art-session-required', '缺少已核验的 Flash 会话');
@@ -89,7 +91,8 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
       actualInputRoles:inputs.map((image,index)=>({image:`<image${index+1}>`,originalSource:image.source,role:image.role})),
       ...(hasNegativePrompt ? { currentNegativePrompt:negativeContext,negativePromptSource:'unknown',
         negativePromptUsage:'These are the current image-generation exclusions, not objects to draw. Their origin is unknown; do not claim the user personally wrote them. Do not clear or rewrite them. Use this context to keep the positive execution brief consistent with the current exclusions.' } : {}) });
-  const result = await flash.infer({ system:FLASH_ART_SYSTEM,user,images:inputs.map(image=>({dataUrl:image.dataUrl,name:image.name})),
+  const system = artPromptLanguageSystem(FLASH_ART_SYSTEM, payload.promptLanguage);
+  const result = await flash.infer({ system,user,images:inputs.map(image=>({dataUrl:image.dataUrl,name:image.name})),
     maxTokens:4096,temperature:.4,stage:'art-style-native-art-direction-v1' });
   requireValue(result?.model === flash.identity.id && typeof result.requestId === 'string' && result.requestId && result.requestId.length <= 240,
     'strata-art-identity-mismatch', '原生绘图回答的模型或请求身份无效');
@@ -114,7 +117,7 @@ export async function planFlashArtDirection({ payload, flash } = {}) {
       references:inputs.map(image=>({source:image.source,uses:[{role:image.role,detail:image.role === 'subject'
         ? '完整内容原图，提供实际主体、主要关系与原场景' : '完整画风原图，仅提供实际绘画技法与光色关系',box:[0,0,1000,1000],samples:[]}],omit:[]})),
       preserve:[],exclude:[],clarification:'',editEnhancer:enhancer},
-    nativeAnalysis:{schema:'nf.flash.art-native-analysis.v1',systemSHA256:FLASH_ART_SYSTEM_SHA256,requestId:result.requestId,
+    nativeAnalysis:{schema:'nf.flash.art-native-analysis.v1',systemSHA256:createHash('sha256').update(system).digest('hex'),requestId:result.requestId,
       model:result.model,sourceContent:answer.sourceContent,inputSources,
       renderingClassMetadata:{value:renderingClass,source:answer.renderingClass===undefined?'program-default-missing':'model'},
       ...(hasNegativePrompt ? { negativePromptContext:{provided:true,source:'unknown',
