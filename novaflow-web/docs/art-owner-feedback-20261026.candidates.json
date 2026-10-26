@@ -70,8 +70,11 @@
           "Local light and shadow atmosphere remains weaker than previous deep-blue depth comparison",
           "Not established as the final desired blend"
         ],
-        "ownerAccepted": false
-      }
+        "ownerAccepted": false,
+        "ownerRejected": true
+      },
+      "ownerRejected": true,
+      "adopted": false
     },
     {
       "style": "cg",
@@ -98,8 +101,11 @@
         "limitations": [
           "Green arm reflection remains stronger than the requested restrained local rim"
         ],
-        "ownerAccepted": false
-      }
+        "ownerAccepted": false,
+        "ownerRejected": true
+      },
+      "ownerRejected": true,
+      "adopted": false
     },
     {
       "style": "wet",
@@ -132,5 +138,6 @@
     }
   ],
   "published": false,
-  "supabaseWritten": false
+  "supabaseWritten": false,
+  "latestOwnerFeedback": "冷调中和比两张基线都差；CG大片绿光不可接受。"
 }

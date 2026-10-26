@@ -1,0 +1,77 @@
+{
+  "status": "two-explicit-local-edits-of-prior-renders-awaiting-owner-review",
+  "userFeedback": "冷调中和结果比两张基线都差；CG大片绿色不可接受。",
+  "mode": "prior-render-as-subject-not-original-photo",
+  "secondPass": true,
+  "frameworkUnchanged": true,
+  "cfg": 3,
+  "steps": 8,
+  "seed": 54792256,
+  "manualPromptRewriting": false,
+  "unchangedStyles": [
+    "bright",
+    "soft",
+    "wet",
+    "graphic"
+  ],
+  "cases": [
+    {
+      "style": "dark",
+      "sourcePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\color-light-pass\\generation\\dark\\output.png",
+      "sourceSHA256": "0817d48a4d165a8fd057460e985c446e7026210d567f80c099542f29a77d9903",
+      "referenceSHA256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+      "diagnosticRole": "desired-palette-baseline",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\local-preserve-pass\\generation\\dark\\output.png",
+      "outputSHA256": "c004749f03f799eaf5f2708f9d7e83efb254da36c1e2d98efb4e4999eeb7ec9e",
+      "prompt": "Treat <image1> as the finished painting to be locally edited, and <image2> only as the current painting language to preserve (grouped shadow masses, directional key light, selective material highlights, crisp-to-soft edges). Do not redraw, redesign the lighting, change the rendering method, rebuild the face, hair, hands, clothing, coffee, composition, the existing key-light position, the light/dark block ratios, the terminator, the deep dark hair masses, the transparent cup highlight positions, shapes and strength, the cheek mole, the single-eye wink, the relaxed closed-lip smile, the red nails, the striped top, the raised cup, the hand pose, the fine brushwork, the layered midtones, the local warm accent on the lit face/neck/hand, or the dark shadows. Apply only a restrained local color correction: reduce the excess blue in the midtones and fill light so the skin returns to a natural warm-ivory tone, the hair returns to a natural red-brown auburn, and the airport reads as a neutral gray-blue with transparent midtones rather than a blue wash; keep the cold environment, the deep shadows, the local warm key, and all existing highlight positions unchanged. No global color grading, no exposure shift, no sharpening, no blur, no averaging of the two images, no flattening of shadows, no warming of the whole picture. Draw the source woman, auburn waves, striped top, raised iced-coffee cup, hand pose and airport setting.",
+      "analysisSeconds": 119.519456,
+      "inferenceSeconds": 75.841211,
+      "generationSeconds": 70.45299999997951,
+      "secondPass": true,
+      "manualPromptRewriting": false,
+      "review": {
+        "summary": "原来的主光、脸侧暖光和暗部结构保留，蓝色有所减轻；减蓝幅度较小，发束亮部加强，仍待判断。",
+        "observedChanges": [
+          "Original localized warm cheek light and grouped shadows retained",
+          "Terminal and skin blue cast reduced modestly",
+          "Hair highlights and strand detail strengthened"
+        ],
+        "limitations": [
+          "Palette remains closer to depth baseline than older natural-color target",
+          "Secondary editing alters hair texture and glints despite preservation request"
+        ],
+        "ownerAccepted": false
+      }
+    },
+    {
+      "style": "cg",
+      "sourcePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\adaptive-finish-pass\\generation\\cg\\output.png",
+      "sourceSHA256": "f721f3fe43614947fe0ba9f8ba140776db5b7e79c6c41d0689b458c1f3f2ff3d",
+      "referenceSHA256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+      "diagnosticRole": "rejected-green-overcorrection",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\local-preserve-pass\\generation\\cg\\output.png",
+      "outputSHA256": "2cdfa380f05653fecbbaf127c6a2ae9fce1c179cb152a2832646bac1457e99b8",
+      "prompt": "Edit <image1> in place, keeping its established anime rendering language from <image2> unchanged: preserve the face construction, wink, closed-mouth smile, cheek mole, hair mass and strand detail, navy-and-white striped top, red nails, transparent iced-coffee cup, airport seating, glass windows and ceiling, the existing warm overhead key, the lit crown/forehead/nose planes, the warm lit shoulder and cup rim, and the current light-shadow hierarchy and volume. Make a restrained local color correction only on the right side: lower the chroma and shrink the coverage of the purple-blue reflection currently tinting the right hair mass, the wrist and the forearm. Replace that violet cast with the figure's intrinsic warm-auburn hair color and low-saturation neutral skin tones, letting the right-side shadows read as soft, desaturated cool-neutral shading that recovers the natural hair and skin hue without lifting them to flat midtones. The teal glass windows are a background surface, not a colored light source: do not add any green, teal, cyan, violet, magenta or blue glow band onto the forearm, wrist, hair, skin, cup, nails, striped fabric, seats or background. Keep the warm lit surfaces, the dark shadow structure, the cup's transparency and refraction, and the airport space exactly as they are; the right side may carry only a faint, low-saturation environmental echo that never competes with the key. No global color grading, exposure shift, sharpening, blur, face rebuild, hair rebuild, lighting redesign, background change, or replacing the purple cast with green or any other hue. A young woman with long wavy auburn hair, winking with one eye closed and a closed-mouth smile, small mole on her left cheek, wearing a navy-and-white horizontal striped top, holding up a clear plastic cup of iced coffee with red-painted nails, seated in an airport terminal with rows of gray seats, glass windows, and ceiling structure behind her.",
+      "analysisSeconds": 143.314463,
+      "inferenceSeconds": 98.653352,
+      "generationSeconds": 69.96900000004098,
+      "secondPass": true,
+      "manualPromptRewriting": false,
+      "review": {
+        "summary": "没有新增大片绿光，前臂异常彩光减弱，暖色主光与体积保留；颈部仍有冷色阴影，待判断。",
+        "observedChanges": [
+          "No green band or large green region on arm",
+          "Forearm purple-blue reflection desaturated toward neutral skin shadow",
+          "Warm hair key, face volume and cup transparency retained"
+        ],
+        "limitations": [
+          "Residual cool shadow remains under chin and in inner hair",
+          "Secondary edit changes some hair strand rendering and fine detail"
+        ],
+        "ownerAccepted": false
+      }
+    }
+  ],
+  "published": false,
+  "supabaseWritten": false
+}
