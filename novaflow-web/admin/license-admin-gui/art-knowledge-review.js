@@ -1,6 +1,7 @@
 (function(root){
  'use strict';
- const api=()=>root.electronAPI||{},id='nf-art-knowledge-review';
+ const request=async(operation,body)=>{const response=await root.adminAPI.artKnowledgeRequest(operation,body);if(!response?.ok||!response.result?.ok)throw Error(response?.error||response?.result?.error||'后台经验服务请求失败');return response.result;};
+ const api=()=>({artKnowledgeCandidates:()=>request('candidates'),artKnowledgeReleases:()=>request('releases'),artKnowledgeReview:()=>request('review'),artKnowledgePrepare:body=>request('prepare',body),artKnowledgePublish:body=>request('publish',body),artKnowledgeRollback:body=>request('rollback',body)}),id='nf-art-knowledge-review';
  const node=(tag,text,style)=>{const e=document.createElement(tag);if(text)e.textContent=text;if(style)e.style.cssText=style;return e;};
  async function open(){
   if(document.getElementById(id))return;
@@ -34,8 +35,9 @@
    const label=node('label'),check=node('input');check.type='checkbox';label.append(check,node('span',' 我已核对本批方法及基准结果，同意发布'));content.append(label);
    const publish=button('确认发布本批经验',async()=>{publish.disabled=true;try{await api().artKnowledgePublish({...input,approval:{approved:true,batchSHA256:report.batchSHA256}});note.textContent='本批已发布，客户端将在后台同步。';actions.replaceChildren();if(report.baseVersion!=='0')actions.append(button('回退到 '+report.baseVersion,async()=>{try{await api().artKnowledgeRollback({skillId:input.skillId,version:report.baseVersion});note.textContent='已回退到 '+report.baseVersion;}catch(error){note.textContent=error.message;}}));}catch(error){note.textContent='未发布：'+(error.message||'清单已变化，请重新筛选');publish.disabled=false;}});publish.disabled=true;check.onchange=()=>{publish.disabled=!check.checked||!report.selected.length;};actions.append(publish,button('重新读取',load),button('重新筛选候选',()=>void showReport(null)));
   }
-  async function load(){try{const state=await api().artKnowledgeState();if(!state.publisher)throw Error('只有项目发布人可以审核发布');const response=await api().artKnowledgeReview();await showReport(response.review);}catch(error){note.textContent=error.message||'读取失败';}}
+  async function load(){try{const response=await api().artKnowledgeReview();await showReport(response.review);}catch(error){note.textContent=error.message||'读取失败';}}
   await load();
  }
  root.NovaFlowArtKnowledgeReview=Object.freeze({open});
+ document.getElementById('artKnowledgeOpen')?.addEventListener('click',()=>void open());
 })(globalThis);

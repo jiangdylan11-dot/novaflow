@@ -53,7 +53,7 @@ test('Agent proposal becomes generation-ready only after release and retains raw
   assert.equal(reply.data.proposal.negativePrompt,payload.artContext.negativePrompt);
   assert.deepEqual(reply.data.toolTrace.map(call=>call.name),['get_art_context','propose_art_direction']);
   assert.equal(assistant.status().artDirectionProtocol.version,'art-direction-v1');
-  assert.equal(assistant.status().artDirectionProtocol.systemSHA256,'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be');
+  assert.equal(assistant.status().artDirectionProtocol.systemSHA256,'9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28');
   assert.equal(reply.data.proposal.styleProtocol.version,'agent-style-director-v1');
   assert.deepEqual(assistant.status().artAgent.styleProtocol,reply.data.proposal.styleProtocol);
 });
@@ -106,21 +106,21 @@ test('formal UI whole-source subject/background pair enters frozen v1 once inste
       references:[{source:1,role:'auto',roles:['background','subject']},{source:2,role:'auto',roles:['style']}]}};
   const result=await assistant.reverseImagePrompt(payload);
   assert.equal(result.ok,true);assert.equal(nativeCalls,1);assert.equal(legacyCalls,0);
-  assert.equal(result.data.nativeAnalysis.systemSHA256,'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be');
+  assert.equal(result.data.nativeAnalysis.systemSHA256,'9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28');
   assert.deepEqual(result.data.nativeAnalysis.inputRoleNormalization.references[0].roles,['background','subject']);
   assert.equal(result.data.artDirection.editEnhancer.generationReady,true);
   await assistant.reverseImagePrompt({...payload,artContext:{...payload.artContext,references:[{source:1,roles:['subject','pose']},payload.artContext.references[1]]}});
   assert.equal(legacyCalls,1,'an independent pose responsibility must keep its existing planner');
 });
 
-test('Xiaotao online intelligence uses the authenticated text gateway without sending images or local credentials',async()=>{
+test('Xiaotao keeps the text gateway and sends actual reference pixels only to authenticated vision analysis',async()=>{
   const source=await readFile(new URL('../../renderer/novaflow-web-runtime.js',import.meta.url),'utf8'),requests=[];
   const storage=new Map([['novaflow.client.auth.session.v1',JSON.stringify({session:{token:'fixture-account-token'}})]]);
   const sandbox=createDomSandbox({Response,Request,Blob,FormData,AbortSignal,AbortController,Event,
     crypto:{randomUUID:()=> 'cloud-conversation-1234'},location:{hash:'',pathname:'/',search:''},history:{replaceState(){}},
     localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},
     NOVAFLOW_WEB_CONFIG:{localAssistant:false,authUrl:'https://auth.test',controlUrl:'https://control.test'},
-    fetch:async(url,init)=>{requests.push({url:String(url),init});return Response.json({ok:true,quota:{remaining_count:9},
+    fetch:async(url,init)=>{requests.push({url:String(url),init});if(String(url).endsWith('/api/web/companion/chat'))return Response.json({ok:true,reply:'看到了主体与画风。',model:'vision-fixture',quota:{remaining_count:8}});return Response.json({ok:true,quota:{remaining_count:9},
       grok:{result:{model:'cloud-fixture',choices:[{finish_reason:'stop',message:{role:'assistant',content:'你好，我是小桃AI。'}}]}}});}});
   runInContext(source,createContext(sandbox));
   const payload={provider:'api',mode:'chat',requestId:'cloud-request-1234',message:'你好',history:[],artContext:{surface:'drawing',prompt:'a painting',unrelatedSecret:'must not send'}};
@@ -133,8 +133,11 @@ test('Xiaotao online intelligence uses the authenticated text gateway without se
   assert.match(body.messages[0].content,/你是 NovaFlow 的小桃AI/);assert(!body.messages[0].content.includes('小猴'));
   assert.equal(JSON.stringify(body).includes('data:image'),false);
   const before=requests.length;
-  assert.equal((await sandbox.electronAPI.artAgentChat({...payload,requestId:'cloud-images-1234',images:[{dataUrl:PNG}]})).ok,false);
-  assert.equal(requests.length,before,'unsupported image chat must fail before a metered cloud call');
+  const vision=await sandbox.electronAPI.artAgentChat({...payload,requestId:'cloud-images-1234',images:[{dataUrl:PNG,role:'subject',source:1}]});
+  assert.equal(vision.ok,true);assert.equal(vision.data.capabilities.vision,true);assert.equal(vision.data.proposal,undefined);
+  assert.equal(requests.length,before+1);assert.equal(requests.at(-1).url,'https://auth.test/api/web/companion/chat');
+  assert.deepEqual(JSON.parse(requests.at(-1).init.body).images,[{dataUrl:PNG,role:'subject',source:1}]);
+  assert.equal(requests.at(-1).init.headers.Authorization,'Bearer fixture-account-token');
   assert.equal((await sandbox.electronAPI.artAgentChat(payload)).ok,false,'a duplicate request must not charge another call');
-  assert.equal(requests.length,before);
+  assert.equal(requests.length,before+1);
 });

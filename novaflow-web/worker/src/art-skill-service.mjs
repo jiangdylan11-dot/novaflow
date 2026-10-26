@@ -1,5 +1,5 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { readFile, mkdir, writeFile, rename, unlink } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 export const BUNDLED_ART_SKILL = new URL('./art-skills/style-transfer.v1.json', import.meta.url);
@@ -26,14 +26,39 @@ export async function readArtSkill(path = BUNDLED_ART_SKILL) {
 // This directory is local application data, never a GPU-node-specific model cache.
 // Publication is an explicit pointer change to an immutable version, not an Agent tool.
 export function createArtSkillService(directory) {
+  let pending = Promise.resolve();
   async function active() {
+    const result = pending.catch(() => {}).then(loadActive);
+    pending = result;
+    return result;
+  }
+  async function loadActive() {
     await mkdir(directory, { recursive: true });
     const seed = await readArtSkill();
     try { await writeFile(join(directory, `style-transfer.${seed.version}.json`), JSON.stringify(seed, null, 2), { flag: 'wx' }); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
     try { await writeFile(join(directory, 'active.json'), JSON.stringify({ version: seed.version, sha256: seed.systemSHA256 }), { flag: 'wx' }); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
-    const pointer = JSON.parse(await readFile(join(directory, 'active.json'), 'utf8'));
+    let pointer = JSON.parse(await readFile(join(directory, 'active.json'), 'utf8'));
+    // Upgrade only the shipped legacy baseline once. A later owner rollback or
+    // a separately published skill remains authoritative, including after restart.
+    const receipt = join(directory, `bundled-baseline.${seed.version}.json`);
+    try { await readFile(receipt, 'utf8'); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      if (seed.version === '1.0.11' && pointer.version === '1.0.1'
+        && pointer.sha256 === 'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be') {
+        const previous = await readArtSkill(join(directory, 'style-transfer.1.0.1.json'));
+        check(previous.systemSHA256 === pointer.sha256, '旧美术技能版本指针与内容不符');
+        const installed = await readArtSkill(join(directory, `style-transfer.${seed.version}.json`));
+        check(installed.systemSHA256 === seed.systemSHA256, '内置美术技能与本地同名版本冲突');
+        pointer = { version: seed.version, sha256: seed.systemSHA256 };
+        const temporary = join(directory, `active.${randomUUID()}.tmp`);
+        try { await writeFile(temporary, JSON.stringify(pointer), { flag: 'wx' }); await rename(temporary, join(directory, 'active.json')); }
+        finally { await unlink(temporary).catch(() => {}); }
+      }
+      await writeFile(receipt, JSON.stringify({ version: seed.version, active: pointer.version }));
+    }
     check(/^[0-9]+\.[0-9]+\.[0-9]+$/.test(pointer.version), '美术技能版本指针无效');
     const skill = await readArtSkill(join(directory, `style-transfer.${pointer.version}.json`));
     check(skill.version === pointer.version && skill.systemSHA256 === pointer.sha256, '美术技能版本指针与内容不符');

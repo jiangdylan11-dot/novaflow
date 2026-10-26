@@ -4,7 +4,7 @@ import { validateArtSkill } from './art-skill-service.mjs';
 
 export const FLASH_ART_KIND = 'qwen21-strata-native';
 export const FLASH_ART_VERSION = 'flash-native-v1';
-export const FLASH_ART_SYSTEM_SHA256 = 'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be';
+export const FLASH_ART_SYSTEM_SHA256 = '9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28';
 export const FLASH_ART_BASE_SKILL = validateArtSkill(JSON.parse(readFileSync(new URL('./art-skills/style-transfer.v1.json', import.meta.url), 'utf8')));
 export const FLASH_ART_SYSTEM = FLASH_ART_BASE_SKILL.systemPrompt;
 const SCHEMA = 'nf.art.direction.v1';

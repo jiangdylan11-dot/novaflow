@@ -6,8 +6,8 @@ import {pathToFileURL} from 'node:url';
 export async function artKnowledgeRelease(args,{fetchImpl=fetch,env=process.env}={}) {
   const option=name=>{const i=args.indexOf(name);return i>=0?args[i+1]:null;};
   const mode=args.includes('--prepare')?'prepare':args.includes('--publish')?'publish':null;
-  const base=option('--control'),reportPath=option('--report'),token=env.NOVAFLOW_ART_OWNER_TOKEN;
-  if(!mode||!base||!reportPath||!token)throw Error('需要 --prepare 或 --publish、--control、--report，以及本机 NOVAFLOW_ART_OWNER_TOKEN；令牌不会写入报告');
+  const base=option('--control'),reportPath=option('--report'),token=env.NOVAFLOW_ADMIN_API_TOKEN;
+  if(!mode||!base||!reportPath||!token)throw Error('需要 --prepare 或 --publish、--control、--report，以及本机 NOVAFLOW_ADMIN_API_TOKEN；令牌不会写入报告');
   const url=new URL(base);if(url.protocol!=='https:'&&!(url.protocol==='http:'&&['127.0.0.1','localhost'].includes(url.hostname)))throw Error('控制面必须使用 HTTPS 或本机地址');
   let body;
   if(mode==='prepare') {
@@ -21,7 +21,7 @@ export async function artKnowledgeRelease(args,{fetchImpl=fetch,env=process.env}
     if(!report.publishRequest||!report.batchSHA256||option('--approve-batch')!==report.batchSHA256)throw Error('必须审核报告后显式提供 --approve-batch <报告摘要>；不会自动同意');
     body={...report.publishRequest,approval:{approved:true,batchSHA256:report.batchSHA256}};
   }
-  const res=await fetchImpl(base.replace(/\/+$/,'')+'/api/web/art-knowledge/'+mode,{method:'POST',
+  const res=await fetchImpl(base.replace(/\/+$/,'')+'/api/admin/art-knowledge/'+mode,{method:'POST',
     headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
   const result=await res.json();if(!res.ok||!result.ok)throw Error(result.error||'经验审核请求失败');
   if(mode==='prepare') {

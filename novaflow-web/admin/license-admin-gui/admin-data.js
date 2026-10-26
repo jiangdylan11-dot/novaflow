@@ -3862,6 +3862,7 @@ async function getAdminGrokProviderStatus() {
 }
 
 module.exports = {
+  artKnowledgeRequest: (operation, payload) => require('./art-knowledge-manager.cjs').createArtKnowledgeManager({getClient:()=>getAdminClient().client}).request(operation,payload),
   ENV_SUPABASE_URL,
   ENV_SERVICE_ROLE_KEY,
   ENV_SUPABASE_PUBLISHABLE_KEY,

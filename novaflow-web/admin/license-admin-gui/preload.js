@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("adminAPI", {
+  artKnowledgeRequest: (operation, payload) => {
+    if(!['candidates','releases','review','prepare','publish','rollback'].includes(operation))throw Error('不支持的经验管理操作');
+    return ipcRenderer.invoke('admin:art-knowledge:'+operation,payload);
+  },
   getDefaultPaths: () => ipcRenderer.invoke("admin-default-paths"),
   refocusWindow: () => ipcRenderer.send("admin-window-refocus"),
   readPublicKey: (payload) => ipcRenderer.invoke("admin-read-public-key", payload),

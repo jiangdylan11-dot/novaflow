@@ -6,12 +6,19 @@ import {tmpdir} from 'node:os';
 import {startLocalControlPlane} from '../../control-local/src/server.mjs';
 import {createArtKnowledgeCache} from '../../worker/src/art-knowledge-cache.mjs';
 import {artKnowledgeRelease} from '../../tools/art-knowledge-release.mjs';
+import {createArtKnowledgeRoutes} from '../../packages/shared/src/art-knowledge.mjs';
 
 // Throwaway PostgreSQL + real HTTP. This never contacts Supabase.
-test('shared methods require consent, exact owner review, immutable releases and rollback',async t=>{
+test('shared methods require consent, separate admin capability, exact review and immutable releases',async t=>{
   const ctx=await startLocalControlPlane({port:0});
   t.after(async()=>{await new Promise(r=>ctx.server.close(r));await ctx.db.close();});
   await ctx.db.exec(await readFile(new URL('../../supabase/optional-migrations/20261026010000_art_knowledge.sql',import.meta.url),'utf8'));
+  await ctx.db.exec(await readFile(new URL('../../supabase/optional-migrations/20261026020000_art_management_authority.sql',import.meta.url),'utf8'));
+  const manager=createArtKnowledgeRoutes({store:ctx.store,management:true,HttpError:class extends Error{constructor(status,code,message){super(message);this.status=status;}}});
+  async function manage(path,body,method=body?'POST':'GET'){
+    try{return {status:200,body:await manager.handle({method,path,headers:{},query:{},body:body||{}})};}
+    catch(error){return {status:error.status||500,body:{ok:false,error:error.message}};}
+  }
   async function call(who,path,body,method=body?'POST':'GET'){
     const res=await fetch(ctx.url+path,{method,headers:{'content-type':'application/json',...(who?{authorization:'Bearer '+who.session.token}:{})},...(body?{body:JSON.stringify(body)}:{})});
     return {status:res.status,body:await res.json()};
@@ -32,9 +39,11 @@ test('shared methods require consent, exact owner review, immutable releases and
     assert.equal((await call(user,root+'/candidates',candidate('data:image/png;base64,pixels'))).status,400);
     assert.equal((await call(user,root+'/prepare',release)).status,403);
     assert.equal((await call(other,root+'/prepare',release)).status,403,'another admin is not the configured publisher');
-    assert.equal((await call(owner,root+'/prepare',release)).status,403,'unset owner is deny-by-default');
+    assert.equal((await call(owner,root+'/prepare',release)).status,403,'creative account has no management capability');
   });
   await ctx.db.query('update public.art_knowledge_policy set publisher_user_id=$1',[owner.user.id]);
+  assert.equal((await call(owner,root+'/publisher')).body.publisher,false,'legacy owner binding grants no authority');
+  assert.equal((await call(owner,root+'/prepare',release)).status,403,'legacy owner account cannot review');
   let first;
   await t.test('normalized duplicates merge evidence; negatives do not enter the release',async()=>{
     first=(await call(user,root+'/candidates',candidate())).body;
@@ -43,7 +52,7 @@ test('shared methods require consent, exact owner review, immutable releases and
     assert.equal(duplicate.candidateId,first.candidateId);
     assert.equal((await ctx.store.listArtCandidates())[0].evidence_count,1);
     await call(user,root+'/candidates',candidate('避免局部过曝。','unsatisfied','negative-task'));
-    const report=await call(owner,root+'/prepare',release);
+    const report=await manage(root+'/prepare',release);
     assert.equal(report.status,200,JSON.stringify(report.body));
     assert.equal(report.body.selected.length,1);assert.equal(report.body.excluded[0].reason,'no-positive-evidence');
     assert(report.body.selected[0].reviewNotes.includes('single-user-evidence'));
@@ -52,45 +61,45 @@ test('shared methods require consent, exact owner review, immutable releases and
   });
   let approved;
   await t.test('only this owner may approve an exact unchanged review batch',async()=>{
-    approved=(await call(owner,root+'/prepare',release)).body;
+    approved=(await manage(root+'/prepare',release)).body;
     const publish={...approved.publishRequest,approval:{approved:true,batchSHA256:approved.batchSHA256}};
     assert.equal((await call(user,root+'/publish',publish)).status,403);
     assert.equal((await call(other,root+'/publish',publish)).status,403);
-    assert.equal((await call(owner,root+'/publish',{...publish,approval:{approved:true,batchSHA256:'0'.repeat(64)}})).status,409);
-    assert.equal((await call(owner,root+'/publish',{...publish,validation:{...publish.validation,cases:2}})).status,409,'benchmark change invalidates approval');
+    assert.equal((await manage(root+'/publish',{...publish,approval:{approved:true,batchSHA256:'0'.repeat(64)}})).status,409);
+    assert.equal((await manage(root+'/publish',{...publish,validation:{...publish.validation,cases:2}})).status,409,'benchmark change invalidates approval');
     await call(user,root+'/candidates',candidate('分别分析暗面 高光','satisfied','task-2'));
-    assert.equal((await call(owner,root+'/publish',publish)).status,409,'feedback evidence change invalidates approval');
-    approved=(await call(owner,root+'/prepare',release)).body;
-    const result=await call(owner,root+'/publish',{...approved.publishRequest,approval:{approved:true,batchSHA256:approved.batchSHA256}});
+    assert.equal((await manage(root+'/publish',publish)).status,409,'feedback evidence change invalidates approval');
+    approved=(await manage(root+'/prepare',release)).body;
+    const result=await manage(root+'/publish',{...approved.publishRequest,approval:{approved:true,batchSHA256:approved.batchSHA256}});
     assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.methods.length,1);
     assert(!JSON.stringify(result.body).includes('task-1'));
   });
   await t.test('published methods survive the next release, dedupe and owner rollback',async()=>{
-    const report=(await call(owner,root+'/prepare',{...release,version:'1.0.2'})).body;
+    const report=(await manage(root+'/prepare',{...release,version:'1.0.2'})).body;
     assert.equal(report.selected.length,0);assert(report.excluded.some(c=>c.reason==='already-published'));
     await call(user,root+'/candidates',candidate('将肤色明暗与背景冷暖分别组织。','adopted','new-method'));
-    const next=(await call(owner,root+'/prepare',{...release,version:'1.0.2'})).body;
-    const result=await call(owner,root+'/publish',{...next.publishRequest,approval:{approved:true,batchSHA256:next.batchSHA256}});
+    const next=(await manage(root+'/prepare',{...release,version:'1.0.2'})).body;
+    const result=await manage(root+'/publish',{...next.publishRequest,approval:{approved:true,batchSHA256:next.batchSHA256}});
     assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.methods.length,2);
     const same=(await call(user,root+'?skillId=style-transfer&knownVersion=1.0.2')).body;
     assert.equal(same.unchanged,true);assert.equal(same.methods,undefined);
     assert.equal((await call(other,root+'/rollback',{skillId:'style-transfer',version:'1.0.1'})).status,403);
-    assert.equal((await call(owner,root+'/rollback',{skillId:'style-transfer',version:'1.0.1'})).status,200);
+    assert.equal((await manage(root+'/rollback',{skillId:'style-transfer',version:'1.0.1'})).status,200);
     assert.equal((await call(user,root+'?skillId=style-transfer')).body.methods.length,1);
   });
   await t.test('published method outcomes remain evidence, are idempotent and flag regression without automatic rule changes',async()=>{
     const outcome={schema:'nf.art.method-outcome.v1',key:'outcome-fixture',status:'candidate',appliedMethodIds:[first.candidateId],evidence:{taskId:'published-outcome',resultSHA256:'c'.repeat(64),feedback:'unsatisfied',improvement:false}};
     assert.equal((await call(user,root+'/outcomes',outcome)).status,200);assert.equal((await call(user,root+'/outcomes',outcome)).status,200);
     assert.equal((await call(user,root+'/outcomes',{...outcome,evidence:{...outcome.evidence,resultSHA256:'d'.repeat(64)}})).status,409);
-    const report=(await call(owner,root+'/prepare',{...release,version:'1.0.3'})).body;
+    const report=(await manage(root+'/prepare',{...release,version:'1.0.3'})).body;
     assert.equal(report.selected.length,0);assert.equal(report.monitor.length,1);assert.equal(report.monitor[0].negative_count,1);
     assert(report.excluded.some(c=>c.reason==='previously-withdrawn'),'A rolled-back method never becomes an automatic new candidate');
     assert.equal((await call(user,root+'?skillId=style-transfer')).body.version,'1.0.1');
-    assert((await call(owner,root+'/releases')).body.releases.length>=2);assert.equal((await call(user,root+'/releases')).status,403);
+    assert((await manage(root+'/releases')).body.releases.length>=2);assert.equal((await call(user,root+'/releases')).status,403);
   });
   await t.test('SQL enforces owner and unchanged evidence even without the HTTP wrapper',async()=>{
-    await assert.rejects(ctx.store.publishArtKnowledge(other.user.id,{...release,candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:other.user.id}}),/publisher owner/);
-    await assert.rejects(ctx.store.publishArtKnowledge(owner.user.id,{...release,version:'9.0.0',candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:owner.user.id}}),/pending owner review required|reviewed evidence changed/);
+    await assert.rejects(ctx.store.publishArtKnowledge(other.user.id,{...release,candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:other.user.id}}),/backend management tool/);
+    await assert.rejects(ctx.store.publishArtKnowledge(owner.user.id,{...release,version:'9.0.0',candidateIds:[first.candidateId],validation:{...release.validation,ownerApproved:true,approvedBy:owner.user.id}}),/backend management tool/);
     await ctx.db.exec('set role authenticated');
     try{await assert.rejects(ctx.db.query('select * from public.art_method_candidates'),/permission denied/);
       await assert.rejects(ctx.db.query('select public.novaflow_art_review_candidates()'),/permission denied/);}
@@ -122,7 +131,7 @@ test('release preparation writes a readable report and cannot publish without ex
   const directory=await mkdtemp(join(tmpdir(),'nf-art-review-'));t.after(()=>rm(directory,{recursive:true,force:true}));
   const {writeFile}=await import('node:fs/promises'),benchmark=join(directory,'benchmark.json'),report=join(directory,'review.json');
   await writeFile(benchmark,JSON.stringify({passed:true,cases:[{visualAcceptance:'owner-approved-fixture'}]}));
-  const calls=[],options={env:{NOVAFLOW_ART_OWNER_TOKEN:'fixture-token'},fetchImpl:async(url,init)=>{
+  const calls=[],options={env:{NOVAFLOW_ADMIN_API_TOKEN:'fixture-token'},fetchImpl:async(url,init)=>{
     calls.push({url,body:JSON.parse(init.body)});
     return Response.json({ok:true,status:'awaiting-owner-approval',baseVersion:'0',batchSHA256:'c'.repeat(64),selected:[],excluded:[],remaining:0,publishRequest:{skillId:'style-transfer',version:'1.0.1',candidateIds:[],validation:{passed:true}}});
   }};

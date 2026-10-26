@@ -540,9 +540,8 @@
   // used to end those with "signal timed out".
   const SMART_AI_TIMEOUT_MS = 180000;
 
-  // Xiaotao online intelligence uses the authenticated, metered text-chat gateway.
-  // Never send reference pixels to a gateway which only supports text, and
-  // never turn a cloud reply into a trusted local drawing proposal.
+  // Text retains its existing gateway; reference pixels use the independently
+  // authenticated, metered companion service. Neither grants execution tools.
   const companionCloudRequests = new Map();
   const companionCloudUsed = new Set();
   async function companionCloudChat(payload = {}) {
@@ -553,7 +552,7 @@
     if (companionCloudRequests.size) return { ok: false, error: '小桃AI正在回复，请等待当前对话完成' };
     if (companionCloudUsed.has(id) || companionCloudUsed.size >= 1024)
       return { ok: false, error: '这次对话已发送，请刷新后使用新的请求编号' };
-    if (payload.images?.length) return { ok: false, error: '小桃AI当前只支持文字对话，未发送参考图片' };
+    if(payload.images!==undefined&&(!Array.isArray(payload.images)||payload.images.length>3))return {ok:false,error:'一次最多分析三张完整图片'};
     const history = payload.history || [];
     if (!Array.isArray(history) || history.length > 12 || history.some(item => !item
       || !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string' || item.content.length > 12000))
@@ -574,15 +573,23 @@
     const timer = setTimeout(() => controller.abort(), 60000);
     companionCloudUsed.add(id); companionCloudRequests.set(id, controller);
     try {
-      const result = await api(CONFIG.authUrl, 'POST', '/api/provider/grok/chat', { messages, temperature: .4, maxTokens: 2048 }, 60000, controller.signal);
-      const choice = result?.grok?.result?.choices?.[0], message = choice?.message;
-      if (result?.ok !== true || choice?.finish_reason !== 'stop' || message?.tool_calls?.length
-        || typeof message?.content !== 'string' || !message.content.trim()) throw new Error('小桃AI未返回完整文字回复，本次未自动重试');
-      const reply = message.content;
+      let reply,model,quota;
+      if(payload.images?.length){
+        const base=CONFIG.companionUrl||CONFIG.authUrl.replace(/\/novaflow-backend\/?$/,'/novaflow-companion');
+        const result=await api(base,'POST','/api/web/companion/chat',{requestId:id,mode:'chat',message:payload.message,history,images:payload.images,artContext:context},65000,controller.signal);
+        if(result?.ok!==true||typeof result.reply!=='string'||!result.reply.trim())throw Error('在线图片分析未返回完整回复，本次未自动重试');
+        reply=result.reply;model=result.model;quota=result.quota;
+      }else{
+        const result = await api(CONFIG.authUrl, 'POST', '/api/provider/grok/chat', { messages, temperature: .4, maxTokens: 2048 }, 60000, controller.signal);
+        const choice = result?.grok?.result?.choices?.[0], message = choice?.message;
+        if (result?.ok !== true || choice?.finish_reason !== 'stop' || message?.tool_calls?.length
+          || typeof message?.content !== 'string' || !message.content.trim()) throw new Error('小桃AI未返回完整文字回复，本次未自动重试');
+        reply=message.content;model=result.grok.result.model;quota=result.quota;
+      }
       return { ok: true, data: { mode: 'chat', provider: 'api', reply,
         conversationId: typeof payload.conversationId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId) ? payload.conversationId : root.crypto.randomUUID(),
         history: [...history, { role: 'user', content: payload.message }, { role: 'assistant', content: reply }].slice(-12),
-        model: result.grok.result.model || '云端API', toolTrace: [], capabilities: { textOnly: true, tools: false }, quota: result.quota } };
+        model: model || '云端API', toolTrace: [], capabilities: { textOnly: !payload.images?.length, vision: Boolean(payload.images?.length), tools: false }, quota } };
     } catch (error) { return { ok: false, error: controller.signal.aborted ? '已停止等待本次云端回复；已发出的请求仍可能计入云AI次数' : String(error.message || error) }; }
     finally { clearTimeout(timer); companionCloudRequests.delete(id); }
   }
@@ -1338,14 +1345,8 @@
     },
     promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
     promptAssistantCancelRequest: async (payload) => cancelPromptAssistantRequest(payload),
-    async artKnowledgeState(){if(CONFIG.artKnowledgeEnabled!==true)return {ok:true,enabled:false};try{const [consent,publisher]=await Promise.all([artKnowledgeRequest('GET','/consent'),artKnowledgeRequest('GET','/publisher')]);return {ok:true,enabled:true,allowed:consent.allowed,publisher:publisher.publisher};}catch(error){return {ok:false,enabled:true,error:String(error.message||error)};}},
+    async artKnowledgeState(){if(CONFIG.artKnowledgeEnabled!==true)return {ok:true,enabled:false};try{const consent=await artKnowledgeRequest('GET','/consent');return {ok:true,enabled:true,allowed:consent.allowed,publisher:false};}catch(error){return {ok:false,enabled:true,error:String(error.message||error)};}},
     artKnowledgeConsent:allow=>artKnowledgeRequest('POST','/consent',{allow}),
-    artKnowledgeCandidates:()=>artKnowledgeRequest('GET','/candidates'),
-    artKnowledgeReview:()=>artKnowledgeRequest('GET','/review'),
-    artKnowledgeReleases:()=>artKnowledgeRequest('GET','/releases'),
-    artKnowledgePrepare:body=>artKnowledgeRequest('POST','/prepare',body),
-    artKnowledgePublish:body=>artKnowledgeRequest('POST','/publish',body),
-    artKnowledgeRollback:body=>artKnowledgeRequest('POST','/rollback',body),
     artLearning: artLearningCommand,
     artAgentChat: async (payload) => payload?.provider === 'api' ? companionCloudChat(payload) : computeMode === 'local'
       ? localControl('POST', '/local/prompt-assistant/art-agent-chat', {...payload,accountId:currentSession()?.user?.id || '',accountToken:currentSession()?.token || ''}, PROMPT_ASSISTANT_TIMEOUT_MS)

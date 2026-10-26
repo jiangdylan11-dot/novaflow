@@ -15,7 +15,7 @@ export function filterArtCandidates({rows,active,skillId}) {
 }
 // Brain-independent, method-only shared knowledge API. Source task records and
 // personal preferences are deliberately outside this protocol.
-export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError}) {
+export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError,management=false}) {
   const fail=(status,message)=>{throw new HttpError(status,'art-knowledge-invalid',message);};
   const shape=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) && Object.keys(value).every(k=>keys.includes(k));
   const scalar=value=>typeof value==='string' && /^[A-Za-z0-9*_.:-]{1,100}$/.test(value);
@@ -40,10 +40,12 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
     if(!path.startsWith('/api/web/art-knowledge'))return null;
     const isRead=method==='GET' && path==='/api/web/art-knowledge';
     const token=String(headers.authorization||headers.Authorization||'').replace(/^Bearer\s+/i,'');
-    const principal=isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
+    // management is a trusted constructor capability used only inside the
+    // separately packaged admin tool. No user/session/header can enable it.
+    const principal=management?{id:null,role:'art-management'}:isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
     if(typeof store.readArtKnowledge!=='function')fail(503,'shared art knowledge is not enabled');
     if(isRead){if(!skill(query.skillId))fail(400,'invalid art skill');return {ok:true,...await store.readArtKnowledge(query.skillId,query.knownVersion)};}
-    if(method==='GET'&&path==='/api/web/art-knowledge/publisher')return {ok:true,publisher:await store.isArtPublisher(principal.id)};
+    if(method==='GET'&&path==='/api/web/art-knowledge/publisher')return {ok:true,publisher:management};
     if(path==='/api/web/art-knowledge/consent') {
       if(method==='GET')return {ok:true,allowed:await store.getArtLearningConsent(principal.id)};
       if(method==='POST'&&shape(body,['allow'])&&typeof body.allow==='boolean'){await store.setArtLearningConsent(principal.id,body.allow);return {ok:true,allowed:body.allow};}
@@ -62,13 +64,10 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
       const input=candidate(body);if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
       return {ok:true,...await store.submitArtMethod(principal.id,input)};
     }
-    const publisher=await store.isArtPublisher(principal.id);
-    if(principal.role!=='admin'&&!publisher)fail(403,'owner or administrator review is required');
-    if(method==='GET'&&path==='/api/web/art-knowledge/releases'){if(!publisher)fail(403,'publisher owner required');return {ok:true,releases:await store.listArtReleases()};}
-    if(method==='GET'&&path==='/api/web/art-knowledge/review'){if(!publisher)fail(403,'publisher owner required');return {ok:true,review:await store.getArtReview()};}
+    if(!management)fail(403,'review and publication require the backend management tool');
+    if(method==='GET'&&path==='/api/web/art-knowledge/releases')return {ok:true,releases:await store.listArtReleases()};
+    if(method==='GET'&&path==='/api/web/art-knowledge/review')return {ok:true,review:await store.getArtReview()};
     if(method==='GET' && path==='/api/web/art-knowledge/candidates')return {ok:true,candidates:await store.listArtCandidates()};
-    if(['/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback','/api/web/art-knowledge/prepare'].includes(path)
-      && !publisher)fail(403,'only the configured publisher owner may approve a release');
     if(method==='POST' && ['/api/web/art-knowledge/prepare','/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback'].includes(path)) {
       const rollback=path.endsWith('/rollback'),prepare=path.endsWith('/prepare');
       if(!shape(body,rollback?['skillId','version']:['skillId','version','candidateIds','validation','skill',...(prepare?[]:['approval'])]) || !skill(body.skillId)
@@ -98,7 +97,7 @@ export function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpEr
       if(!shape(body.approval,['approved','batchSHA256'])||body.approval.approved!==true||body.approval.batchSHA256!==batchSHA256)fail(409,'explicit owner approval for this exact unchanged batch is required');
       return {ok:true,...await store.publishArtKnowledge(principal.id,{...body,candidateIds:ids,validation:{...body.validation,
         baseVersion:active.version,evidenceFingerprints:Object.fromEntries(ordered.map(c=>[c.id,c.evidence_fingerprint])),
-        ownerApproved:true,approvedBy:principal.id,approvalSHA256:batchSHA256}})};
+        ownerApproved:true,approvedBy:'admin-tool',approvalSHA256:batchSHA256}})};
     }
     fail(404,'unknown shared art knowledge route');
   }};

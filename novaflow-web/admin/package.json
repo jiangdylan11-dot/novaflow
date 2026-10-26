@@ -1,11 +1,13 @@
 {
   "name": "novaflow-license-manager",
   "productName": "NovaFlow 后台管理",
-  "version": "3.0.11",
+  "version": "3.0.13",
   "private": true,
   "description": "NovaFlow Web administration application",
   "main": "admin-main.js",
   "scripts": {
+    "prebuild:win": "node ../tools/sync-art-admin.mjs",
+    "pretest": "node ../tools/sync-art-admin.mjs --check",
     "start": "electron .",
     "server": "node admin-server/server.js",
     "test": "node tests/dashboard-contract.cjs && node --test tests/runninghub-provider.test.cjs",

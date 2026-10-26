@@ -323,12 +323,12 @@ test('same full source may preserve its airport background without being mistake
   const rejected = env(); rejected.refs[0].drawingRole = 'background'; assert.throws(() => rejected.bridge.capture(),/参考图用途/);
 });
 
-test('one companion keeps text across brain switches without reusing provider conversation IDs or sending cloud images', async () => {
+test('one companion keeps text across brain switches without reusing provider conversation IDs', async () => {
   const e = env(), payloads = []; e.refs.splice(0);
   const controller = e.api.createController({bridge:e.bridge,api:() => ({artAgentChat:async p => {payloads.push(plain(p)); return {ok:true,data:{mode:'chat',conversationId:p.provider+'-session',reply:'已回复',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
   await controller.send('本地聊聊'); assert.equal(payloads[0].mode,'creation'); assert.equal(controller.state.conversationId,'local-session');
   const messages = plain(controller.state.messages); controller.setProvider('api'); assert.deepEqual(plain(controller.state.messages),messages);
-  await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.equal(Object.hasOwn(payloads[1],'images'),false); assert.equal(payloads[1].contextFingerprint,undefined); assert.equal(payloads[1].conversationId,undefined); assert.equal(payloads[1].history[0].content,'本地聊聊');
+  await controller.send('API聊聊'); assert.equal(payloads[1].mode,'chat'); assert.equal(payloads[1].provider,'api'); assert.deepEqual(payloads[1].images,[]); assert.equal(payloads[1].contextFingerprint,undefined); assert.equal(payloads[1].conversationId,undefined); assert.equal(payloads[1].history[0].content,'本地聊聊');
   controller.setProvider('local'); assert.equal(controller.state.conversationId,''); assert.equal(controller.state.history[2].content,'API聊聊');
   await controller.send('继续'); assert.equal(payloads[2].conversationId,undefined); assert.equal(payloads[2].history[2].content,'API聊聊');
 });
@@ -344,8 +344,8 @@ test('current drawing results are attached as actual feedback pixels and new-con
   const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p)); return {ok:true,data:{reply:'已回复',conversationId:'local-session',history:[...p.history,{role:'user',content:p.message},{role:'assistant',content:'已回复'}]}};}})});
   await controller.send('评价当前成图'); assert.equal(payloads[0].images[2].role,'output'); assert.equal(payloads[0].images[2].dataUrl,png(25));
   await controller.send('不要评价当前成图，只聊画风'); assert.equal(payloads[1].images.length,3); assert.equal(payloads[1].images[2].dataUrl,png(25));
-  controller.setProvider('api'); await controller.send('评价当前成图'); assert.equal(payloads.length,2); assert.match(controller.state.error,/在线智能当前只支持文字/);
-  await controller.send('新对话'); assert.equal(payloads.length,2); assert.equal(controller.state.messages.length,0); assert.equal(controller.state.history.length,0); assert.equal(controller.state.conversationId,'');
+  controller.setProvider('api'); await controller.send('评价当前成图'); assert.equal(payloads.length,3); assert.equal(payloads[2].images[2].role,'result'); assert.equal(payloads[2].images[2].dataUrl,png(25));assert.equal(payloads[2].mode,'chat');assert.equal(payloads[2].executionApproval,undefined);
+  await controller.send('新对话'); assert.equal(payloads.length,3); assert.equal(controller.state.messages.length,0); assert.equal(controller.state.history.length,0); assert.equal(controller.state.conversationId,'');
   controller.setProvider('local'); assert.equal(controller.state.messages.length,0); assert.equal(e.calls.length,0);
 });
 

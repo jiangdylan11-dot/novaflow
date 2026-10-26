@@ -34,7 +34,7 @@ export function createPgStore(db) {
     },
     async saveArtReview(userId,report){
       await many("update public.art_knowledge_reviews set state='outdated' where state='pending' and report->'publishRequest'->>'skillId'=$1 and batch_sha256<>$2",[report.publishRequest.skillId,report.batchSHA256]);
-      await one("insert into public.art_knowledge_reviews(batch_sha256,report,prepared_by) values($1,$2::jsonb,$3) on conflict(batch_sha256) do update set report=excluded.report returning batch_sha256",[report.batchSHA256,JSON.stringify(report),userId]);
+      await one("insert into public.art_knowledge_reviews(batch_sha256,report,prepared_by,prepared_via) values($1,$2::jsonb,$3,$4) on conflict(batch_sha256) do update set report=excluded.report returning batch_sha256",[report.batchSHA256,JSON.stringify(report),userId,userId===null?'admin-tool':'legacy-account']);
     },
     async getArtReview(){return (await one("select report from public.art_knowledge_reviews where state='pending' order by created_at desc limit 1",[]))?.report||null;},
     async publishArtKnowledge(userId,input) {

@@ -11239,6 +11239,14 @@ async function handleGrokChatRequest(req, res) {
 
 async function handleAdminRoute(req, res, pathName) {
   if (!requireAdminToken(req, res)) return;
+  if (pathName.startsWith('/api/admin/art-knowledge/')) {
+    const operation=pathName.slice('/api/admin/art-knowledge/'.length);
+    const expected=['candidates','releases','review'].includes(operation)?'GET':'POST';
+    if(req.method!==expected){sendJson(res,405,{ok:false,error:'method not allowed'});return;}
+    try {sendJson(res,200,await adminData.artKnowledgeRequest(operation,req.method==='POST'?await parseBody(req,{maxBytes:128*1024}):{}));}
+    catch(error){sendJson(res,error.status||400,{ok:false,error:sanitizeError(error)});}
+    return;
+  }
   if (req.method === "GET" && pathName === "/api/admin/providers/runninghub/status") {
     sendJson(res, 200, normalizeResult(await adminData.getAdminRunningHubProviderStatus()));
     return;

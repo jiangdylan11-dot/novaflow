@@ -99,6 +99,9 @@ function registerLicenseAdminIpc() {
       }
     });
   };
+  for(const operation of ['candidates','releases','review','prepare','publish','rollback']) {
+    registerAdminDataWrite('admin:art-knowledge:'+operation,payload=>adminData.artKnowledgeRequest(operation,payload));
+  }
   registerAdminDataWrite("admin:data:gpu_workers:set-tier", adminData.setAdminGpuWorkerTier);
   registerAdminDataWrite("admin:data:gpu_workers:delete", adminData.deleteAdminGpuWorker);
   registerAdminDataWrite("admin:data:worker_codes:delete", adminData.deleteAdminWorkerRegistrationCode);
