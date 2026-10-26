@@ -1218,6 +1218,7 @@
 
   function applyJson(json) {
     const data = readData(json)
+    rt.animationPreview = null
     state.json = json
     rt.data = data
     rt.skeleton = new spine.Skeleton(data)
@@ -1248,7 +1249,27 @@
   }
 
   function currentAnimation() {
-    return state.mode === 'animate' && state.anim ? rt.data.findAnimation(state.anim) : null
+    if (state.mode !== 'animate' || !state.anim) return null
+    const preview = rt.animationPreview
+    return preview && preview.json === state.json && preview.name === state.anim ? preview.animation : rt.data.findAnimation(state.anim)
+  }
+
+  /** A tool's live pose, separate from authored JSON, the dopesheet and undo history. */
+  function previewAnimation(name, animation) {
+    if (!state.json || name !== state.anim || !animation) return false
+    const data = readData({ ...state.json, animations: { [name]: animation } })
+    const next = data.findAnimation(name)
+    if (!next) return false
+    rt.animationPreview = { json: state.json, name, animation: next }
+    refresh()
+    return true
+  }
+
+  function clearAnimationPreview() {
+    if (!rt.animationPreview) return false
+    rt.animationPreview = null
+    refresh()
+    return true
   }
 
   function duration() {
@@ -3142,7 +3163,6 @@
     weCache = null
     let ctx
     try { ctx = meshModelOf(state.json, we.skin, we.slot, we.name) } catch { return null }
-    ctx.model = ME().toWeighted(ctx.model, ctx.slotBone)
     weCache = { ...ctx, json: state.json, key }
     return weCache
   }
@@ -3204,7 +3224,7 @@
     const we = state.weightEdit, ctx = weightContext()
     if (!we || !ctx) return
     // every vertex lists its bones in the list's order: that is the order the file keeps
-    const m = ME().orderInfluences(model, weightBones(ctx))
+    const m = ME().orderInfluences(model, we.order || weightBones(ctx))
     edit(label, (j) => Ops.setMesh(j, we.skin, we.slot, we.name, ME().toAttachment(m, ctx.mats, ctx.slotBone), ME().remapOf(m)))
   }
 
@@ -3255,6 +3275,11 @@
     we.order = next
     we.extra = next.filter((b) => !had.includes(b))
     if (we.bone == null || !next.includes(we.bone)) we.bone = next[0]
+    if (!ctx.model.weighted && next.length === 1) {
+      we.extra = []
+      commitWeights(ME().toWeighted(ctx.model, next[0]), '已绑定 1 根骨骼')
+      return
+    }
     if (!added.length && !removed.length) { renderWeightPanel(); return }
     const L = { skin: we.skin, slot: we.slot, name: we.name }
     if (had.length <= 1 && next.length > 1) {
@@ -3424,6 +3449,7 @@
       renderWeightPanel()
       return
     }
+    if (!ctx.model.weighted) { status('先点「绑定」选择骨骼，再编辑权重'); return }
     if (kind === 'delete') {
       if (we.bone == null) return
       const rest = weightBones(ctx).filter((b) => b !== we.bone)
@@ -3452,7 +3478,7 @@
     const order = weightBones(ctx)
     const rank = new Map(order.map((b, i) => [b, i]))
     const rk = (b) => (rank.has(b) ? rank.get(b) : 1e6 + b)
-    const wOf = (p) => { const e = p.w.find(([b]) => b === we.bone); return e ? e[1] : 0 }
+    const wOf = (p) => { const e = (p.w || []).find(([b]) => b === we.bone); return e ? e[1] : 0 }
     const pts = model.points.map((p) => weScreen(ctx, p))
     const T = model.tris
     const sel = we.bone != null ? boneColor(we.bone) : '#1EA672'
@@ -3499,7 +3525,7 @@
       const o = toScreen(bn.worldX, bn.worldY)
       g.beginPath(); g.arc(o[0], o[1], on ? 3.4 : 2.6, 0, Math.PI * 2); g.fillStyle = on ? '#fff' : 'rgba(0,0,0,.55)'; g.fill()
     }
-    if (we.binding) {
+    if (we.binding || !model.weighted) {
       // binding: no pies, only the mesh's vertices
       g.fillStyle = '#2fd5e8'
       for (const [x, y] of pts) { g.beginPath(); g.arc(x, y, 2.4, 0, Math.PI * 2); g.fill() }
@@ -3559,7 +3585,7 @@
       return h('label', { class: 'wsl' + brushOff, title }, h('span', {}, label), h('input', { type: 'range', min, max, step: 1, value: we[key], oninput: (e) => { we[key] = Number(e.target.value); v.textContent = String(we[key]) } }), v)
     }
     const tg = (key, label, title) => h('label', { class: 'mc' + (binding ? ' off' : ''), title }, h('input', { type: 'checkbox', checked: !!we[key], onchange: (e) => { we[key] = e.target.checked; renderWeightPanel() } }), label)
-    const act = (id, label, title) => h('button', { class: 'mt', title, disabled: binding, onclick: () => weightAction(id) }, label)
+    const act = (id, label, title) => h('button', { class: 'mt', title, disabled: binding || !model.weighted, onclick: () => weightAction(id) }, label)
     const right = (i) => {
       if (binding) return null
       if (!picked.length) return h('span', { class: 'c' }, String(counts.get(i) || 0))
@@ -3584,6 +3610,7 @@
         tg('isolate', '隔离', '只显示这张图')),
       h('div', { class: 'wcap' }, binding ? `绑定（${bones.length}）` : `骨骼（${bones.length}）`,
         h('span', { class: 'wv' }, binding ? '点骨骼加入 / 移出' : picked.length ? `已选 ${picked.length} / ${model.points.length} 顶点` : `顶点 ${model.points.length}`)),
+      ...(!binding && !model.weighted ? [h('div', { class: 'hint' }, '尚未绑定骨骼，点击「绑定」选择')] : []),
       h('div', { class: 'wl' }, bones.map((i) => h('div', { class: 'wrow', 'data-bone': i, 'aria-pressed': String(!binding && we.bone === i),
         title: binding ? `点一下把「${name(i)}」移出绑定` : `「${name(i)}」：点一下选中刷它的权重，上下拖动调整顺序`, onpointerdown: (e) => weightRowDown(e, i) },
         h('i', { style: `background:${boneColor(i)}` }), h('span', { class: 'n' }, name(i)), right(i)))),
@@ -11434,11 +11461,11 @@
 
   // an outside change (the 动画工具 previews) — consecutive ones with the same label share one undo step
   let extStep = null
-  function applyExternal(json, label) {
+  function applyExternal(json, label, options = {}) {
     if (!state.json || !json) return
     const next = Ops.tidy(Ops.prepare(json))
     const top = state.history[state.history.length - 1]
-    if (!(extStep && extStep.label === label && top === extStep.snap)) {
+    if (!(options.coalesce !== false && extStep && extStep.label === label && top === extStep.snap)) {
       const before = snapshot()
       state.history.push(before)
       if (state.history.length > 200) state.history.shift()
@@ -11614,6 +11641,9 @@
     setTime: (sec) => { if (!animOn()) return; const f = Math.max(0, Math.round((Number(sec) || 0) * FPS)); if (f !== state.frame || state.playing) gotoFrame(f) },
     playing: () => !!state.playing,
     applyExternal,
+    previewAnimation,
+    clearAnimationPreview,
+    hasAnimationPreview: () => !!(rt.animationPreview && rt.animationPreview.json === state.json && rt.animationPreview.name === state.anim),
     setPanel,
     /** which left panel / layer-card tool is open (null = none) */
     panel: () => state.leftOpen,

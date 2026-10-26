@@ -4,7 +4,7 @@
  * 骨骼架设 / 蒙皮 / 权重 drive it (spine-auto-mesh.panel.js asks `enabled()` and routes its
  * buttons here), 动画工具 keeps working on the app's own project, which this file keeps in step
  * with the editor while that panel is open: the editor's project goes into the app before the
- * tools read it, and what the tools write (their previews, 保存动画, 飘带) comes back as an edit.
+ * tools read it. Explicit writes come back as edits; ribbon previews only change the live pose.
  *
  * The editor runs in a same-origin iframe: its styles and DOM stay out of the app's layout
  * passes, and the app's never reach into it.
@@ -362,6 +362,21 @@
     api.applyExternal({ ...json, animations: next }, '动画工具')
   }
 
+  /** Ribbon calculations are a runtime-only preview until the explicit write action. */
+  function applyRibbonAnimation(name, animation, reason) {
+    if (!api || !api.loaded() || api.anim() !== name) return false
+    const next = normalizeAnimations({ [name]: animation })[name]
+    if (reason !== 'write' && reason !== 'restore') {
+      if (!motionOpen || !motionPanelOpen()) return false
+      return api.previewAnimation(name, next)
+    }
+    const json = api.json()
+    if (signature(next) === signature(json.animations[name])) { api.clearAnimationPreview(); return true }
+    api.applyExternal({ ...json, animations: { ...json.animations, [name]: next } }, '飘带计算', { coalesce: false })
+    pushToReact(api.json())
+    return true
+  }
+
   // ---------------------------------------------------------------- 动画工具
 
   function motionPanelOpen() {
@@ -380,6 +395,7 @@
       pushToReact(api.json())
       pushSelection()
     } else {
+      if (api.clearAnimationPreview) api.clearAnimationPreview()
       api.reserveBottom(0)
       // the group folded: 序列K帧 / 序列扫光's layer cards go too
       api.setPanel('motion', false)
@@ -402,12 +418,12 @@
     if (!api || !api.loaded() || !api.selectChain) return
     const ribbonOn = document.querySelector('[data-panel-id="bone-motion"] [data-motion-mode="ribbon"][aria-pressed="true"]')
     const toggle = document.querySelector('[data-novaflow-ribbon-chain-toggle-card] input[type=checkbox]')
-    const bone = api.selectedBone(), ctx = ribbonOn && toggle && toggle.checked && bone ? projectProps() : null
+    const bone = api.selectedBone(), project = ribbonOn && toggle && toggle.checked && bone ? api.json() : null
     // one chain per picked root (Ctrl+click picks several), merged
     const names = []
     try {
-      if (ctx && typeof window.NovaFlowRibbonChain === 'function') {
-        for (const root of pickedBones()) for (const n of window.NovaFlowRibbonChain(ctx.project, root) || []) if (!names.includes(n)) names.push(n)
+      if (project && typeof window.NovaFlowRibbonChain === 'function') {
+        for (const root of pickedBones()) for (const n of window.NovaFlowRibbonChain(project, root) || []) if (!names.includes(n)) names.push(n)
       }
     } catch { /* the runtime moved on */ }
     api.selectChain(names)
@@ -787,6 +803,7 @@
     ready,
     call,
     api: () => api,
+    applyRibbonAnimation,
     exportVersion,
     convertExportVersion: (json, version) => {
       const converter = frame && frame.contentWindow && frame.contentWindow.NovaFlowSpineVersion

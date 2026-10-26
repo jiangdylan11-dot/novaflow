@@ -47170,12 +47170,15 @@
     const fiber = findRibbonReactFiber(options);
     const props = fiber?.memoizedProps || fiber?.pendingProps;
     if (!props || typeof props !== "object") return null;
-    const project = props.project;
+    const editorApi = getRibbonSkeletonPreviewHost()?.api();
+    const editorJson = editorApi?.json?.();
+    const project = editorJson ? { ...props.project, ...editorJson } : props.project;
     if (!project || typeof project !== "object" || !project.animations || typeof project.animations !== "object") return null;
-    const animationName = String(props.activeAnimationName || "").trim() || Object.keys(project.animations).find(Boolean) || "";
-    const selectedBoneName = String(props.selectedBoneName || "").trim();
-    const selectedBoneNames = Array.isArray(props.selectedBoneNames)
-      ? props.selectedBoneNames.map((name) => String(name || "").trim()).filter(Boolean)
+    const animationName = String((editorApi ? editorApi.anim() : props.activeAnimationName) || "").trim() || Object.keys(project.animations).find(Boolean) || "";
+    const selectedBoneName = String((editorApi ? editorApi.selectedBone() : props.selectedBoneName) || "").trim();
+    const selectedNames = editorApi ? editorApi.selectedBones() : props.selectedBoneNames;
+    const selectedBoneNames = Array.isArray(selectedNames)
+      ? selectedNames.map((name) => String(name || "").trim()).filter(Boolean)
       : [];
     guardRibbonProjectSetProjectCallback(props);
     if (options?.skipRemember !== true) rememberRibbonProjectIdentity(project, animationName, "react-context");
@@ -48327,6 +48330,8 @@
   }
 
   function getRibbonManualSelectedBoneNames(context) {
+    const editor = getRibbonSkeletonPreviewHost()?.api?.();
+    if (editor?.selectedBones) return normalizeRibbonSelectedBoneNames(editor.selectedBones());
     const domSelected = getRibbonDirectSelectedBoneNamesFromDom(context?.project);
     if (domSelected.length) return domSelected;
     const reactSelected = normalizeRibbonSelectedBoneNames(context?.selectedBoneNames);
@@ -48347,6 +48352,8 @@
 
   function getRibbonPrimarySelectedBoneName(context) {
     const normalizeName = createRibbonBoneNameNormalizer(context?.project);
+    const editor = getRibbonSkeletonPreviewHost()?.api?.();
+    if (editor) return normalizeName(editor.selectedBone()) || normalizeRibbonSelectedBoneNames(editor.selectedBones()).map(normalizeName).find(Boolean) || "";
     const domSelected = getRibbonDirectSelectedBoneNamesFromDom(context?.project)
       .map(normalizeName)
       .filter(Boolean);
@@ -49132,7 +49139,7 @@
   }
 
   function restoreRibbonUnarmedNativeLiveWrite(reason = "native-live-rollback") {
-    const context = getRibbonReactProjectContext();
+    const context = getRibbonCalculationContext();
     const animation = context?.animationName ? context.project.animations?.[context.animationName] : null;
     if (!animation || typeof animation !== "object") return false;
     if (isRibbonNativeRealtimePreviewAllowed(context.animationName)) {
@@ -49896,6 +49903,7 @@
     ribbonParameterPresetTargetScope = {
       animationName,
       autoChain,
+      rootSignature: getRibbonSelectedRootBoneNames(context).join("|"),
       reason: String(reason || ""),
       createdAt: Date.now(),
       projectSignature: getRibbonProjectContextSignature(context),
@@ -49931,7 +49939,9 @@
     const autoChain = autoChainEnabled !== false;
     if (shouldUseRibbonParameterPresetTargetScope(reasonKey, animationName)) {
       const scope = ribbonParameterPresetTargetScope;
-      if (scope && scope.animationName === animationName && scope.autoChain === autoChain) {
+      if (scope && scope.animationName === animationName && scope.autoChain === autoChain &&
+          scope.rootSignature === getRibbonSelectedRootBoneNames(context).join("|") &&
+          scope.projectSignature === getRibbonProjectContextSignature(context)) {
         return scope.targetEntries.map(cloneRibbonParameterPresetTargetEntry).filter(Boolean);
       }
       const nextScope = captureRibbonParameterPresetTargetScope(context, animation, autoChain, reasonKey);
@@ -50779,7 +50789,8 @@
   }
 
   function restoreRibbonElasticityInitialStateForCurrentAnimation(options = {}) {
-    const context = getRibbonReactProjectContext();
+    const context = getRibbonCalculationContext();
+    getRibbonSkeletonPreviewHost()?.api()?.clearAnimationPreview?.();
     const animation = context?.animationName ? context.project.animations?.[context.animationName] : null;
     if (!animation || typeof animation !== "object") return false;
     const animationName = String(context.animationName || "").trim();
@@ -51200,6 +51211,13 @@
   }
 
   function commitOrScheduleRibbonElasticityProjectPreview(context, animation, reason = "preview") {
+    const editor = getRibbonSkeletonPreviewHost();
+    if (editor) {
+      cancelPendingRibbonPreviewProjectCommit();
+      const applied = editor.applyRibbonAnimation(context.animationName, animation, normalizeRibbonElasticityApplyReason(reason));
+      if (applied) scheduleFullLayoutRefresh([0]);
+      return applied;
+    }
     if (shouldCommitRibbonElasticityProjectPreviewImmediately(reason)) {
       cancelPendingRibbonPreviewProjectCommit();
       if (commitRibbonElasticityProjectPreview(context, animation)) {
@@ -51703,7 +51721,8 @@
   }
 
   function restoreRibbonElasticityPreviewLayerForCurrentAnimation(options = {}) {
-    const context = getRibbonReactProjectContext();
+    const context = getRibbonCalculationContext();
+    const previewCleared = getRibbonSkeletonPreviewHost()?.api()?.clearAnimationPreview?.() || false;
     const animation = context?.animationName ? context.project.animations?.[context.animationName] : null;
     if (!animation || typeof animation !== "object") return false;
     const wasCommittedPresetSession = isRibbonParameterPresetSessionState("committed", context.animationName);
@@ -51751,7 +51770,7 @@
         void 0;
       }
     }
-    return restored > 0 || shapeRestored > 0 || signatureChanged || uiChanged;
+    return restored > 0 || shapeRestored > 0 || signatureChanged || uiChanged || previewCleared;
   }
 
   function sampleRibbonCatmullLoop(frames, time, duration) {
@@ -52435,8 +52454,23 @@
     return result;
   }
 
-  function applyRibbonElasticityResponse(reason = "manual") {
+  function getRibbonSkeletonPreviewHost() {
+    const editor = window.NovaFlowSkeletonEditor;
+    return editor?.active?.() && typeof editor.applyRibbonAnimation === "function" ? editor : null;
+  }
+
+  function getRibbonCalculationContext() {
     const context = getRibbonReactProjectContext();
+    const animation = context?.project.animations?.[context.animationName];
+    if (!context || !animation || !getRibbonSkeletonPreviewHost()) return context;
+    // The solver edits timelines in place. Keep those edits off the React project as well.
+    return { ...context, project: { ...context.project, animations: {
+      ...context.project.animations, [context.animationName]: cloneRibbonAnimationForProjectCommit(animation)
+    } } };
+  }
+
+  function applyRibbonElasticityResponse(reason = "manual") {
+    const context = getRibbonCalculationContext();
     const animation = context?.animationName ? context.project.animations?.[context.animationName] : null;
     if (!animation || typeof animation !== "object") return false;
     const identityValidation = getRibbonProjectIdentityValidation(context, reason);
@@ -53798,6 +53832,7 @@
       button.setAttribute("title", nextText);
       button.setAttribute("data-novaflow-ribbon-action-button", "1");
       button.setAttribute("data-novaflow-ribbon-action-kind", isRestoreAction ? "restore" : "write");
+      if (isWriteAction && getRibbonSkeletonPreviewHost()?.api()?.hasAnimationPreview?.()) button.disabled = false;
       setImportantStyles(button, {
         width: "100%",
         "min-width": "0",
@@ -71897,6 +71932,7 @@
   function prepareSkeletonSpineProjectForExport() {
     const context = getSkeletonSpineExportContext();
     if (!context) throw new Error("\u5f53\u524d\u4e0d\u662f\u9aa8\u9abc\u52a8\u753b\u5bfc\u51fa\u4e0a\u4e0b\u6587");
+    if (getRibbonSkeletonPreviewHost()) return context;
     try {
       applyRibbonElasticityResponse("write");
     } catch (_) {
