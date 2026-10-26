@@ -1,0 +1,147 @@
+{
+  "mode": "selected English execution-brief replay, not new Agent analysis",
+  "newAnalysisCalls": 0,
+  "newTranslationCalls": 0,
+  "newGenerationJobs": 5,
+  "cases": [
+    {
+      "id": "soft",
+      "promptId": "5205413a-a07c-4c83-bac0-2f72adc4869b",
+      "generationSeconds": 62,
+      "outputSHA256": "44b3528761c8d1262a95b783d8e053cb09fe90c287c5c8dbfc9d199680c9e2eb",
+      "selectedPromptSHA256": "30829b76d8c370aebb95e4d70d5ce3eb1d04d95ddcf69e0903c622f0b1ec67d1",
+      "promptUnchanged": true,
+      "cfg": 3,
+      "steps": 8,
+      "seed": 54792256,
+      "newAnalysisCalls": 0,
+      "manualPromptRewriting": false,
+      "graphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image"
+      ],
+      "testKind": "selected English brief replay, not fresh Agent analysis",
+      "sameGeometryAndPrompt": true,
+      "sameRGBPixels": true,
+      "meanAbsoluteChannelDifference0to255": 0,
+      "baselineImageSHA256": "2b81ba15abfbcae862090ffe11e0eb0102eaa64270e14cc3c985fc895a895fd4",
+      "visualReview": "本次英文原文复跑与上轮认可图 RGB 逐像素一致；没有新分析。"
+    },
+    {
+      "id": "dark",
+      "promptId": "5ac4f591-79a3-4a85-89db-20377f435f0e",
+      "generationSeconds": 63.76600000000326,
+      "outputSHA256": "2e92ecffc18ca9f433d31889fe29e3a22e95df99be123d1c66d6deb3269e708b",
+      "selectedPromptSHA256": "d1bca43bbdbff3bc35a6f463642bc332ffd86c89ff3d1fad771039ac58421d86",
+      "promptUnchanged": true,
+      "cfg": 3,
+      "steps": 8,
+      "seed": 54792256,
+      "newAnalysisCalls": 0,
+      "manualPromptRewriting": false,
+      "graphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image"
+      ],
+      "testKind": "selected English brief replay, not fresh Agent analysis",
+      "sameGeometryAndPrompt": true,
+      "sameRGBPixels": true,
+      "meanAbsoluteChannelDifference0to255": 0,
+      "baselineImageSHA256": "d829e75d26fb87fcbb0d43fa4185635e8d5c6b2048f0b6c6cad593753c544535",
+      "visualReview": "本次英文原文复跑与上轮认可图 RGB 逐像素一致；没有新分析。"
+    },
+    {
+      "id": "cg",
+      "promptId": "a5f3b724-833e-497a-886b-041d35fd485f",
+      "generationSeconds": 63.61000000000058,
+      "outputSHA256": "5664288fc96a3313aeefb8bbf6c9042525a2c92013407141b60ca2d8d0741df2",
+      "selectedPromptSHA256": "619d6d9d8788ee9e7d9180ba80666e9a5850897c52156757b1a1fa9658824732",
+      "promptUnchanged": true,
+      "cfg": 3,
+      "steps": 8,
+      "seed": 54792256,
+      "newAnalysisCalls": 0,
+      "manualPromptRewriting": false,
+      "graphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image"
+      ],
+      "testKind": "selected English brief replay, not fresh Agent analysis",
+      "sameGeometryAndPrompt": true,
+      "sameRGBPixels": true,
+      "meanAbsoluteChannelDifference0to255": 0,
+      "baselineImageSHA256": "9e5d09cd4ab4f653f2146699484b8cdb1ced8c4d179c7f098031e6acaa38b2c1",
+      "visualReview": "本次英文原文复跑与上轮认可图 RGB 逐像素一致；没有新分析。"
+    },
+    {
+      "id": "bright",
+      "promptId": "bfe18901-537a-461f-add8-88648fd82b12",
+      "generationSeconds": 62.23500000000058,
+      "outputSHA256": "02c108650bc3bf94b4efebaab3ef9255f73ada68b91936e55630c80ffef44d47",
+      "selectedPromptSHA256": "bef66a751e36851bf2ab9f14f3d5b9a8c9db81740632c013ea8798f0625ba5b0",
+      "promptUnchanged": true,
+      "cfg": 3,
+      "steps": 8,
+      "seed": 54792256,
+      "newAnalysisCalls": 0,
+      "manualPromptRewriting": false,
+      "graphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image"
+      ],
+      "testKind": "selected English brief replay, not fresh Agent analysis",
+      "sameGeometryAndPrompt": true,
+      "sameRGBPixels": true,
+      "meanAbsoluteChannelDifference0to255": 0,
+      "baselineImageSHA256": "1c8a4c29869b866ee4a97afbf2d2884fb10050346d932e378897b64ef27440ff",
+      "visualReview": "本次英文原文复跑与上轮认可图 RGB 逐像素一致；没有新分析。"
+    },
+    {
+      "id": "wet",
+      "promptId": "5b9fbf30-04c6-4567-9052-8d109dfce19c",
+      "generationSeconds": 59.60900000000038,
+      "outputSHA256": "df30ff46f1e48053e12db64655c22ab84eab3a09c6be47bce0da176936ed7d4c",
+      "selectedPromptSHA256": "114ba75376ae70b1b13829a88a3bdd9fe94c31177d8e8c47b51b5f31b864d94b",
+      "promptUnchanged": true,
+      "cfg": 3,
+      "steps": 8,
+      "seed": 54792256,
+      "newAnalysisCalls": 0,
+      "manualPromptRewriting": false,
+      "graphDifferences": [
+        "10.inputs.filename_prefix",
+        "100.inputs.image",
+        "101.inputs.image"
+      ],
+      "testKind": "selected English brief replay, not fresh Agent analysis",
+      "sameGeometryAndPrompt": true,
+      "sameRGBPixels": true,
+      "meanAbsoluteChannelDifference0to255": 0,
+      "baselineImageSHA256": "7ab56de02eb817031baaad5b305711e5f1c223c34efa4c537094fb9272f460e5",
+      "visualReview": "本次英文原文复跑与上轮认可图 RGB 逐像素一致；没有新分析。"
+    }
+  ],
+  "skipped": [
+    {
+      "id": "graphic",
+      "newTests": 0,
+      "priorChineseOutputUnchanged": true
+    },
+    {
+      "id": "holdout-print",
+      "newTests": 0,
+      "priorChineseOutputUnchanged": true
+    },
+    {
+      "id": "holdout-oil",
+      "newTests": 0,
+      "priorChineseOutputUnchanged": true
+    }
+  ],
+  "ownedServiceReleased": true,
+  "qualityOfFreshAgentAnalysisNotProven": true
+}

@@ -131,10 +131,10 @@ test('Chinese proposals enter the original editable field and manual Chinese edi
   assert.equal(prepared.promptSnapshot.negativePrompt,e.state.negativePrompt.trim());assert.equal(prepared.direct,true);assert.equal(e.state.samplingOverrides['qwen-2.1-turbo:img2img'].cfg,3);assert.equal(e.calls.length,0);
 });
 
-test('both local and online Xiaotao request editable Chinese prompts without altering user history or submitting generation',async()=>{
+test('both local and online Xiaotao default to English execution prompts while retaining Chinese user messages and no generation',async()=>{
   const e=env(),payloads=[],controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async p=>{payloads.push(plain(p));return {ok:true,data:{reply:'中文提示词说明',history:[]}};}})});
   await controller.send('只给我提示词');controller.setProvider('api');await controller.send('只给我提示词');
-  assert.equal(payloads.length,2);assert(payloads.every(p=>p.promptLanguage==='zh-CN'));assert(payloads.every(p=>p.message==='只给我提示词'));assert.equal(payloads[1].mode,'chat');assert.equal(e.calls.length,0);
+  assert.equal(payloads.length,2);assert(payloads.every(p=>p.promptLanguage==='en'));assert(payloads.every(p=>p.message==='只给我提示词'));assert.equal(payloads[1].mode,'chat');assert.equal(e.calls.length,0);
 });
 
 test('missing release credentials and changed negative cannot be bypassed by proposal prose', async () => {

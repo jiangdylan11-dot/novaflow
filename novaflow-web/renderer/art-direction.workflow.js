@@ -250,7 +250,7 @@
       analysisImages.push({ dataUrl: originalImages?r.dataUrl:await analysisImage(r.dataUrl, Math.min(450000, Math.floor(6000000 / source.references.length)),usePe?1024:r.roles.includes('style')?1536:1024,usePe), name: r.name || `reference_${r.source}.png`, label: `图${r.source}`, role: r.role });
     }
     const requestId=analysisRequestId();
-    const payload = { requestId, surface: 'art', purpose: 'art-director', promptLanguage:'zh-CN', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
+    const payload = { requestId, surface: 'art', purpose: 'art-director', promptLanguage:'en', visualSchema: SCHEMA, currentPrompt: source.prompt, requirements: source.prompt,
       negativePrompt: source.negativePrompt, nsfw: source.nsfw, supportsNegativePrompt: false,
       artContext: { task: source.task, width: source.width, height: source.height,...(usePe?{editEnhancer:'qwen21-pe-i2i'}:{}),references: source.references.map(r => ({ source: r.source, role: r.role, roles:r.roles,...(r.excludedRoles?{excludedRoles:r.excludedRoles}:{}) })) },
       images: analysisImages };

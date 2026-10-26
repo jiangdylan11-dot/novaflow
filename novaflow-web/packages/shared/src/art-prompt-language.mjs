@@ -2,6 +2,7 @@
 // in their existing contracts. Callers that omit it retain their prior behavior.
 export const isArtPromptLanguage = value => value === undefined || value === 'zh-CN' || value === 'en';
 export function artPromptLanguageSystem(system, language, {conversationOnly = false} = {}) {
+  if (language === 'en' && conversationOnly) return system + '\n\nConverse and explain your choices in Simplified Chinese. When providing a drawing execution prompt, write the prompt itself in English by default; honor an explicit request for another prompt language. Preserve requested visible lettering, proper names and reference identifiers literally. This language preference grants no tools or execution authority.';
   if (language !== 'zh-CN') return system;
   const instruction = conversationOnly
     ? 'When providing a drawing prompt for the user to edit, write its instructional prose in Simplified Chinese by default; honor an explicit request for another language. Keep requested visible lettering, proper names and reference identifiers literal. This language preference grants no application tools or execution authority.'

@@ -1,0 +1,408 @@
+{
+  "kind": "eight fresh Chinese end-to-end code-path evaluations",
+  "newAnalysisRequests": 8,
+  "newGenerationJobs": 8,
+  "extraTranslationCalls": 0,
+  "extraManualEditAnalysisCalls": 0,
+  "freeze": {
+    "sourceHead": "cb8a23e7c59026c38869352c8055c75e76451c45",
+    "sourceHashes": {
+      "renderer/art-generate-model.resource.js": "b9c39685e77ba28c7cd5d9b31b7474514368cbc17eb66cdfda8b2949ab0f07c8",
+      "renderer/art-direction.workflow.js": "14c2b0193ce35e19fb537d620e0cc575038718102be79b7248b41641a18251b1",
+      "renderer/xiaotao-art-agent.js": "ec9b3b2ab1599d633714d4bb3f946d519e68495f6dc877741ee85b9d45e0d14f",
+      "worker/src/flash-art-agent.mjs": "1690bb5a34ce891c03aca265ad89832e044404bb15bea0feeec1a1440108ea84",
+      "worker/src/flash-art-direction.mjs": "931ff9ff9037cf8c51eb9db44ef9cef6d7efc6529f883791c172e9a41dbab9e0",
+      "worker/src/art-skills/style-transfer.v1.json": "a51012d87636671d49270b929d6e10c45086518e67675704d6dd158b8e6879d3",
+      "worker/src/strata-prompt-assistant.mjs": "12041a911dfb855e51dfcca5a3353a4ea678d7fefe1d7587180ca641b460a44c",
+      "worker/src/flash-brain-session.mjs": "4b8177911fec566b37717b48f1d2e78ef09894ebde65eee7b39f30026aebcd41",
+      "packages/shared/src/art-prompt-language.mjs": "0d74e396b7563d769bc83c96b3b2f9d9348866467e7a538d857f08b1ba81e36d"
+    },
+    "artRuleVersion": "1.0.11",
+    "promptLanguage": "zh-CN",
+    "compareTo": "owner-selected-baseline",
+    "baselineArtRule": "1.0.13 with local feedback in dark/graphic",
+    "sameArtRulesAsSelectedEnglishBatch": false,
+    "languageAloneNotIsolated": true,
+    "changesToTaskMessages": "English-output requirement becomes Chinese; wet includes direct owner clarification",
+    "noNewArtRuleOrSchedulingChanges": true
+  },
+  "cases": [
+    {
+      "id": "bright",
+      "label": "明亮动漫",
+      "taskScope": "neutral reference transfer",
+      "promptId": "fbc767a8-6496-44b9-8639-8ce1919efa2e",
+      "analysisSeconds": 131.32058740000002,
+      "requestSeconds": 85.611076,
+      "generationSeconds": 75.5,
+      "promptCharacters": 409,
+      "outputSHA": "2aba0626aa59afc76913f23fb4c8de450b413d64e579b2df24894f3d93d69c96",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "e7d7174d-1bb5-4545-8f03-88761cb927f5",
+        "resultId": "qa-native-fbc767a8-6496-44b9-8639-8ce1919efa2e",
+        "resultSHA256": "2aba0626aa59afc76913f23fb4c8de450b413d64e579b2df24894f3d93d69c96",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "fbc767a8-6496-44b9-8639-8ce1919efa2e"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "dark",
+      "label": "冷调动漫",
+      "taskScope": "explicit local feedback correction",
+      "promptId": "45742575-a1d0-4ca4-8a9c-b08b99c2cc70",
+      "analysisSeconds": 139.8519902,
+      "requestSeconds": 109.272945,
+      "generationSeconds": 76.5630000000001,
+      "promptCharacters": 382,
+      "outputSHA": "1c62ef429cfd3c90bd93cd1b7031afb160921f699ca9712a812e4aadc5abe956",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "c9b32a28-3069-419b-99ed-e53617a12014",
+        "resultId": "qa-native-45742575-a1d0-4ca4-8a9c-b08b99c2cc70",
+        "resultSHA256": "1c62ef429cfd3c90bd93cd1b7031afb160921f699ca9712a812e4aadc5abe956",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "45742575-a1d0-4ca4-8a9c-b08b99c2cc70"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "cg",
+      "label": "CG 材质",
+      "taskScope": "neutral reference transfer",
+      "promptId": "496612c0-031b-428b-b201-9fd883fe8ae4",
+      "analysisSeconds": 121.76875260000001,
+      "requestSeconds": 78.780571,
+      "generationSeconds": 67.46799999999712,
+      "promptCharacters": 392,
+      "outputSHA": "8bb1ca6c51e049935539c4771b3b894f29ed8284c2fac9f9c22150e86c51eee0",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "42f1971e-b9d1-4762-8a39-5245ede2d57a",
+        "resultId": "qa-native-496612c0-031b-428b-b201-9fd883fe8ae4",
+        "resultSHA256": "8bb1ca6c51e049935539c4771b3b894f29ed8284c2fac9f9c22150e86c51eee0",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "496612c0-031b-428b-b201-9fd883fe8ae4"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "soft",
+      "label": "柔和插画",
+      "taskScope": "neutral reference transfer",
+      "promptId": "64bc128a-3391-4e49-b64f-c3993e09516d",
+      "analysisSeconds": 107.3348961,
+      "requestSeconds": 74.84571700000001,
+      "generationSeconds": 77.21900000000096,
+      "promptCharacters": 401,
+      "outputSHA": "20e419b100dea6238847e8b1d53b44c48a11ca317e6bfbbdbbe66286ff9b08ea",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "3edc8a17-f79a-476f-a20b-87d35ac564e0",
+        "resultId": "qa-native-64bc128a-3391-4e49-b64f-c3993e09516d",
+        "resultSHA256": "20e419b100dea6238847e8b1d53b44c48a11ca317e6bfbbdbbe66286ff9b08ea",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "64bc128a-3391-4e49-b64f-c3993e09516d"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "wet",
+      "label": "湿润高光",
+      "taskScope": "neutral reference transfer",
+      "promptId": "e242008e-949d-4a23-96c0-6c508ee0ab07",
+      "analysisSeconds": 137.1416701,
+      "requestSeconds": 105.871281,
+      "generationSeconds": 71.5,
+      "promptCharacters": 383,
+      "outputSHA": "6304569645567c089ec194d03184273877f9cba48329f8f8a7ce53a470c61884",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "f77be85c-ca15-4246-867d-0335ca119217",
+        "resultId": "qa-native-e242008e-949d-4a23-96c0-6c508ee0ab07",
+        "resultSHA256": "6304569645567c089ec194d03184273877f9cba48329f8f8a7ce53a470c61884",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "e242008e-949d-4a23-96c0-6c508ee0ab07"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "graphic",
+      "label": "红黑平面",
+      "taskScope": "explicit local feedback correction",
+      "promptId": "e5f55ed2-df96-49e3-8d38-07f30315bc8e",
+      "analysisSeconds": 153.4113289,
+      "requestSeconds": 121.907054,
+      "generationSeconds": 82.35900000000038,
+      "promptCharacters": 446,
+      "outputSHA": "e4640a0b983952d9ee3f446a421918015693adf64e99e526dcc5c776a9c4d35b",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "45a5ba82-bd3a-44d6-9d47-7c74d7cf29c3",
+        "resultId": "qa-native-e5f55ed2-df96-49e3-8d38-07f30315bc8e",
+        "resultSHA256": "e4640a0b983952d9ee3f446a421918015693adf64e99e526dcc5c776a9c4d35b",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "e5f55ed2-df96-49e3-8d38-07f30315bc8e"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "holdout-print",
+      "label": "留出测试 · 木版画",
+      "taskScope": "neutral reference transfer",
+      "promptId": "0b66a782-1837-4ae7-a677-dc83deb07e53",
+      "analysisSeconds": 115.0357024,
+      "requestSeconds": 86.287853,
+      "generationSeconds": 77.29699999999866,
+      "promptCharacters": 395,
+      "outputSHA": "50be1491b0d6e73df506acc5a54725828ba874cccbbfd4f19a3c117a6780ee75",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "1b4753c7-cc91-4574-8f7d-df2a8a91d127",
+        "resultId": "qa-native-0b66a782-1837-4ae7-a677-dc83deb07e53",
+        "resultSHA256": "50be1491b0d6e73df506acc5a54725828ba874cccbbfd4f19a3c117a6780ee75",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "0b66a782-1837-4ae7-a677-dc83deb07e53"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "holdout-oil",
+      "label": "留出测试 · 笔触油画",
+      "taskScope": "neutral reference transfer",
+      "promptId": "107e076f-9a63-4b4e-829a-0bdc58f5dd1d",
+      "analysisSeconds": 141.57261210000001,
+      "requestSeconds": 112.38699199999999,
+      "generationSeconds": 76.73400000000038,
+      "promptCharacters": 419,
+      "outputSHA": "1b0c3c49b9927999b343a5f8df2464d8046286d4868dfab22b8cc69aa751a4da",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "5ab9bc4a-e940-46c7-8c02-5b02ef313dfa",
+        "resultId": "qa-native-107e076f-9a63-4b4e-829a-0bdc58f5dd1d",
+        "resultSHA256": "1b0c3c49b9927999b343a5f8df2464d8046286d4868dfab22b8cc69aa751a4da",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "107e076f-9a63-4b4e-829a-0bdc58f5dd1d"
+      },
+      "flow": {
+        "nativeChinesePromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    }
+  ],
+  "lifecycles": [
+    {
+      "name": "analysis-bright-graphic-holdout-print-holdout-oil-Liegf0",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-cg-wet-8wvIUu",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-soft-dark",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-soft-dark-TsDfPU",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "generation": [
+        "soft",
+        "dark"
+      ],
+      "portClosed": true
+    },
+    {
+      "generation": [
+        "cg",
+        "wet"
+      ],
+      "portClosed": true
+    },
+    {
+      "generation": [
+        "bright",
+        "graphic",
+        "holdout-print",
+        "holdout-oil"
+      ],
+      "portClosed": true
+    }
+  ],
+  "currentSourceMatches": {
+    "renderer/art-generate-model.resource.js": true,
+    "renderer/art-direction.workflow.js": true,
+    "renderer/xiaotao-art-agent.js": true,
+    "worker/src/flash-art-agent.mjs": true,
+    "worker/src/flash-art-direction.mjs": true,
+    "worker/src/art-skills/style-transfer.v1.json": true,
+    "worker/src/strata-prompt-assistant.mjs": true,
+    "worker/src/flash-brain-session.mjs": true,
+    "packages/shared/src/art-prompt-language.mjs": true
+  },
+  "installedUIAutomated": false,
+  "frontendTestIsCPUCodeExecution": true,
+  "languageOnlyQualityCausalityNotEstablished": true,
+  "deploymentChanged": false,
+  "sharedExperiencePublished": false
+}

@@ -24,6 +24,20 @@ test('an explicit Chinese preference changes only a per-request language suffix 
   assert.equal(sha(FLASH_ART_AGENT_SYSTEM),FLASH_ART_AGENT_SYSTEM_SHA256);
 });
 
+test('English drawing restores the exact existing director/tool contract, while chat and creation keep Chinese explanations',async()=>{
+  const payload=request({promptLanguage:'en',message:'只给我提示词，说明用中文'});let observed;
+  const result=await createFlashArtAgent().run({payload,flash:{identity:{id:'fixture'},inferConversation:async input=>{
+    observed=input;return {model:'fixture',requestId:'english-default-response',finishReason:'tool_calls',message:{role:'assistant',tool_calls:[{id:'english-tool',type:'function',function:{name:'propose_art_direction',arguments:JSON.stringify({contextFingerprint:payload.contextFingerprint,prompt:'Redraw <image1> using the painting language of <image2>.',sourceContent:'A woman holds a cup.',renderingClass:'anime',explanation:'保留人物与道具，按参考重绘。'})}}]}};
+  }}});
+  assert.equal(observed.messages[0].content,FLASH_ART_AGENT_SYSTEM);assert.deepEqual(observed.tools,FLASH_ART_AGENT_TOOLS);assert.equal(result.proposal.styleProtocol.systemSHA256,FLASH_ART_AGENT_SYSTEM_SHA256);assert.match(result.reply,/按参考重绘/);
+  const online=companionInput({...request({promptLanguage:'en'}),mode:'chat'});assert.match(online.input[0].content[0].text,/Converse and explain your choices in Simplified Chinese/);assert.match(online.input[0].content[0].text,/prompt itself in English by default/);
+  const creation=request({requestId:'english-creation-default',mode:'creation',promptLanguage:'en',images:[],artContext:{task:'creation',provider:'local',engine:'qwen-2.1',mode:'txt2img',nsfw:false,prompt:'花园插画',negativePrompt:'',cfg:3,steps:8}});
+  await createFlashArtAgent().run({payload:creation,flash:{identity:{id:'fixture'},inferConversation:async input=>{
+    assert.match(input.messages[0].content,/Converse and explain your choices in Simplified Chinese/);assert.match(input.messages[0].content,/prompt itself in English by default/);
+    return {model:'fixture',requestId:'creation-language-response',finishReason:'stop',message:{role:'assistant',content:'会用英文整理绘图提示词，说明继续用中文。'}};
+  }}});
+});
+
 test('one native Chinese proposal keeps exact Unicode, lettering, slots, negative and CFG without translation calls',async()=>{
   const payload=request();let calls=0;
   const result=await createFlashArtAgent().run({payload,flash:{identity:{id:'fixture'},inferConversation:async input=>{

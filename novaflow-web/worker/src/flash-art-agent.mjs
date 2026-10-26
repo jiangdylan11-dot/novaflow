@@ -229,7 +229,7 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
     // preflight has verified this approval against the request, snapshot and
     // sampling. Confirmed drawing needs only its final execution tool; retain
     // the full tool menus for unconfirmed requests and other modes.
-    system = artPromptLanguageSystem(system, payload.promptLanguage, {conversationOnly:chat});
+    system = artPromptLanguageSystem(system, payload.promptLanguage, {conversationOnly:chat || creation && payload.promptLanguage === 'en'});
     if (!chat && !creation) effectiveStyleProtocol = {...effectiveStyleProtocol, systemSHA256:hash(system)};
     const tools = artPromptLanguageTools(!chat && !creation && payload.executionApproval
       ? FLASH_ART_AGENT_TOOLS.filter(tool => tool.function.name === 'generate_art_image')
