@@ -1,0 +1,156 @@
+{
+  "ownerFeedback": "退化了。没一个比上轮好",
+  "rejectedBatch": "integrated-final",
+  "selectedColumn": "4803 previous column",
+  "cases": [
+    {
+      "id": "bright",
+      "label": "明亮动漫",
+      "sourceGroup": "paired-final",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "bef66a751e36851bf2ab9f14f3d5b9a8c9db81740632c013ea8798f0625ba5b0",
+      "files": {
+        "output": "1c8a4c29869b866ee4a97afbf2d2884fb10050346d932e378897b64ef27440ff",
+        "graph": "90710c0ddac034923d84b4902657d375a70eec67e4dbf980f06f371b7e1ae780",
+        "proof": "39e7aa00cdb5902d747336e544231ae09619cc92494adb017297fa56fa498138",
+        "agent": "47fdd9cb408d734b1b27791988ede26ce91ea866be9184bdb56d77d0e6ee4103",
+        "inputs": "065b7111226de6fbfb2baaf83b661c56a230100470f221f43325dea2ecd6986a",
+        "analysis": "eb9bde7273706075285feebead26b4de58a4e5bf8ad5c7ba4472b43201a89eed",
+        "reference": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f"
+      },
+      "taskScope": "neutral reference transfer"
+    },
+    {
+      "id": "dark",
+      "label": "冷调动漫",
+      "sourceGroup": "owner-followup",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "d1bca43bbdbff3bc35a6f463642bc332ffd86c89ff3d1fad771039ac58421d86",
+      "files": {
+        "output": "d829e75d26fb87fcbb0d43fa4185635e8d5c6b2048f0b6c6cad593753c544535",
+        "graph": "7dad0df4856d6f8a60d7b675c579f3000544c8a954ee8042be2d2b3218aa3dfd",
+        "proof": "df52103ebb93930aead9503c76390622fd96eababdaeddae8598a137d48ea4d3",
+        "agent": "9ecb3bb5418efecd35d78772004fd1f7042b7cdab4f84974e7a696b36ffa1561",
+        "inputs": "81d9dc5e6acffce198d30e5ea5386806a1851f6632dc6fc3eeda062f3cb4d4a8",
+        "analysis": "d35fca1fe1cbafcd37df454531336bef76e2b437b20fbb65106fd1726cbda22f",
+        "reference": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6"
+      },
+      "taskScope": "explicit local feedback correction"
+    },
+    {
+      "id": "cg",
+      "label": "CG 材质",
+      "sourceGroup": "paired-final",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "619d6d9d8788ee9e7d9180ba80666e9a5850897c52156757b1a1fa9658824732",
+      "files": {
+        "output": "9e5d09cd4ab4f653f2146699484b8cdb1ced8c4d179c7f098031e6acaa38b2c1",
+        "graph": "23136e76a2e9d6c73bd417b265d3c7f96beccc8a288e08c6244257e705e3818f",
+        "proof": "9d308ad170c53287d0caa0b7c09ba8e49c4e179dc15e011204e907021abd0922",
+        "agent": "907359512be56deededfb685e205fc05b83ce2925bf76da251451943e1d30826",
+        "inputs": "6a402665a2c671cafbc4b8543be7cba088e91c0b2ff87eacc78cc4d5fc39d786",
+        "analysis": "98e476336c323679b45dd3f1f561ceb43ebc4b6a68fbdfffa053273f8195e67b",
+        "reference": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c"
+      },
+      "taskScope": "neutral reference transfer"
+    },
+    {
+      "id": "soft",
+      "label": "柔和插画",
+      "sourceGroup": "paired-final",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "30829b76d8c370aebb95e4d70d5ce3eb1d04d95ddcf69e0903c622f0b1ec67d1",
+      "files": {
+        "output": "2b81ba15abfbcae862090ffe11e0eb0102eaa64270e14cc3c985fc895a895fd4",
+        "graph": "cac7545b863b3a971547d3c8b921772af1b8cf909890967445a693cca3198ced",
+        "proof": "8c089ea58f0f86e2c0b58bbe0596b8f5cd49d5ea60660600c87b559d4eac7967",
+        "agent": "9ef914e2cce0a6c5be33c9953b1c902cfa55d6ead2d663be2d01c66fbc3789bc",
+        "inputs": "aedb32572f81912edd11705901420d8b79955dfc3771947a9686ee4845f5dd9c",
+        "analysis": "5055791081ad39a3e8dde2eb98b0709d5e0e4e8aed550021e31e08f13e8da372",
+        "reference": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4"
+      },
+      "taskScope": "neutral reference transfer"
+    },
+    {
+      "id": "wet",
+      "label": "湿润高光",
+      "sourceGroup": "paired-final",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "114ba75376ae70b1b13829a88a3bdd9fe94c31177d8e8c47b51b5f31b864d94b",
+      "files": {
+        "output": "7ab56de02eb817031baaad5b305711e5f1c223c34efa4c537094fb9272f460e5",
+        "graph": "26dcac436499a4311d6afae9eb40f25edc171fb263cef652ad574813571ce956",
+        "proof": "6347cdf1f425bb057a680656fa187c3b6afcac98958018ef5541d94e8c582a38",
+        "agent": "1c9df412e61fd260c1fce95609909266f8b037b1ca264b4d9f3ec742684c365c",
+        "inputs": "2e93f51b1ac8e6c6e2760abc1e92f044f8034a9b1d6c25fb0db37b9c425ad0aa",
+        "analysis": "37475a414e453995ca09cfbb934a7abeb520c55853e27d8f253b0fe74f8e9314",
+        "reference": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13"
+      },
+      "taskScope": "neutral reference transfer"
+    },
+    {
+      "id": "graphic",
+      "label": "红黑平面",
+      "sourceGroup": "owner-followup",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "b9d5bce9edce4939182bf17ef3a999425262045ddecb2e4781037591eace648d",
+      "files": {
+        "output": "40005923080f3b83f4b2d8936d3599f57c6983a5d17ba572864a5e09a310fe8b",
+        "graph": "2e03723e6d4ba2d15f9d8c26b2a4d8127aff18001d5c1e75b21b85423d0ef621",
+        "proof": "463c491e17ab35492003698844685eb5e455ae8dda16b2a9fede4554bf047c6e",
+        "agent": "5404cbf761029cf8ee5124677f06eb532214f8ac2fb8982ff49c9f64c7b8e95b",
+        "inputs": "886fa853e6456701501547abd0e36bec09d9c90e74aecddf9ba36f6bec606aae",
+        "analysis": "d69d96f9e7328119fd589d4c10c9e891916353ac2654e0171215ca8f0fb08c3a",
+        "reference": "92f36730461cfe4122f7bf913f0c7db3af660eaebf7bf20dbf0467ed2015f053"
+      },
+      "taskScope": "explicit local feedback correction"
+    },
+    {
+      "id": "holdout-print",
+      "label": "留出测试 · 木版画",
+      "sourceGroup": "paired-final",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "8273defaf1ee51c260984e6bd7b8cc75a4156c139d333047c660b1460fea5338",
+      "files": {
+        "output": "2c420ea6663db39bd4c43410b3a5a65ab8187a7dd91e6a307b16476b77f550c8",
+        "graph": "1c7dd9ef2bba2f34c7d94a12c832fcdab73ec78b56372db8cc2a23bb4dd5fd35",
+        "proof": "520a0395c5651c74ad58a9981053b5aa0d80cdc3ea771cecb40218ea92c55b15",
+        "agent": "c1a060e0f4a638317988b09864bbe170bf47e63243cef0ba991c9928ac8700a1",
+        "inputs": "2a2efbb3a199abf65916bb5ebbf9d6510ad7a0c02d9eb29e85f14455de1bbb7e",
+        "analysis": "190b01bc90d6e6dfe388d51f1f240795eec96a0ddd77b532bdc9fa61f59d78a7",
+        "reference": "b76ccf0710b8e4b32e778a45e5398a0cf4777994523116f994a0430f4ee6a841"
+      },
+      "taskScope": "neutral reference transfer"
+    },
+    {
+      "id": "holdout-oil",
+      "label": "留出测试 · 笔触油画",
+      "sourceGroup": "paired-final",
+      "parentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+      "agentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+      "promptSHA": "47516c165006dc6ab389c4cc41b8336c265f9276ccd15348fad22bcc2f58df1c",
+      "files": {
+        "output": "5b65afbf2175b5acc168189851861fee5f1cb3fa5e977e858048cc79db499d16",
+        "graph": "50b07146ae5e287424e3be3520b05619412a17eb9edb3bbcf49d2ebb1a6a404b",
+        "proof": "af8d03ce98ab488ca8934f3241f0b80454c6884fa09dbf621b6093f146cc4ed0",
+        "agent": "040361f0c745f2be4dea81aa9e58c53d8fe0d34ebbf72a3b1954bbb57ac3bdcb",
+        "inputs": "1dabe732dad6b5700499b0ae87fa16f4d3ff32ac0f06133488d43397b959b844",
+        "analysis": "1b056592e326d03cc08fc585724f5bbdb658c15f9aef69fec955567d545a12d8",
+        "reference": "03e6bb58feb2e091dbd56adb601b3fccba17386402d5676c994b806058a797da"
+      },
+      "taskScope": "neutral reference transfer"
+    }
+  ],
+  "sourceSHA": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+  "formalBundledDefaultRestoredTo": "1.0.11",
+  "selectedArtworkNotClaimedToBeReproducedByDefaultRollback": true,
+  "noNewInferenceOrGeneration": true,
+  "published": false
+}

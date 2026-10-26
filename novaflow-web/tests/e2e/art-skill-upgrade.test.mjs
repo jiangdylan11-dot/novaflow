@@ -18,7 +18,7 @@ test('legacy baseline upgrades to the frozen framework and an explicit rollback 
   const {directory,legacy,service}=await fixture(t);
   const before=await readFile(join(directory,'style-transfer.1.0.1.json'),'utf8');
   const approved=await readArtSkill();
-  assert.equal(approved.version,'1.0.13');
+  assert.equal(approved.version,'1.0.11');
   assert.deepEqual(await service.active(),approved);
   assert.equal(await readFile(join(directory,'style-transfer.1.0.1.json'),'utf8'),before);
   await writeFile(join(directory,'active.json'),JSON.stringify({version:legacy.version,sha256:legacy.systemSHA256}));
@@ -30,34 +30,6 @@ test('a separately selected skill is preserved and fresh installations use the f
   const directory=await mkdtemp(join(tmpdir(),'nf-skill-fresh-'));
   t.after(()=>rm(directory,{recursive:true,force:true}));
   const fresh=createArtSkillService(directory);
-  assert.equal((await fresh.active()).version,'1.0.13');
-  assert.equal((await fresh.active()).version,'1.0.13');
-});
-
-test('the shipped 1.0.11 baseline upgrades once; its bytes and later owner rollback are preserved',async t=>{
-  const directory=await mkdtemp(join(tmpdir(),'nf-skill-approved-upgrade-'));
-  t.after(()=>rm(directory,{recursive:true,force:true}));
-  const bytes=await readFile(new URL('../../worker/src/art-skills/style-transfer.1.0.11.json',import.meta.url),'utf8'),previous=JSON.parse(bytes);
-  await writeFile(join(directory,'style-transfer.1.0.11.json'),bytes);
-  const pointer={version:previous.version,sha256:previous.systemSHA256};
-  await writeFile(join(directory,'active.json'),JSON.stringify(pointer));
-  assert.equal((await createArtSkillService(directory).active()).version,'1.0.13');
-  assert.equal(await readFile(join(directory,'style-transfer.1.0.11.json'),'utf8'),bytes);
-  await writeFile(join(directory,'active.json'),JSON.stringify(pointer));
-  assert.deepEqual(await createArtSkillService(directory).active(),previous);
-});
-
-test('fresh installations include a usable previous version for explicit rollback',async t=>{
-  const directory=await mkdtemp(join(tmpdir(),'nf-skill-bundled-rollback-'));
-  t.after(()=>rm(directory,{recursive:true,force:true}));
-  await createArtSkillService(directory).active();
-  const previous=JSON.parse(await readFile(join(directory,'style-transfer.1.0.11.json'),'utf8'));
-  await writeFile(join(directory,'active.json'),JSON.stringify({version:previous.version,sha256:previous.systemSHA256}));
-  assert.deepEqual(await createArtSkillService(directory).active(),previous);
-});
-
-test('matching a baseline version number alone never overwrites a separately selected skill',async t=>{
-  const {service}=await fixture(t,'1.0.11');
-  assert.equal((await service.active()).version,'1.0.11');
-  assert.equal((await service.active()).systemSHA256,'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be');
+  assert.equal((await fresh.active()).version,'1.0.11');
+  assert.equal((await fresh.active()).version,'1.0.11');
 });
