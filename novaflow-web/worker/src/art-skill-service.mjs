@@ -35,8 +35,11 @@ export function createArtSkillService(directory) {
   async function loadActive() {
     await mkdir(directory, { recursive: true });
     const seed = await readArtSkill();
-    try { await writeFile(join(directory, `style-transfer.${seed.version}.json`), JSON.stringify(seed, null, 2), { flag: 'wx' }); }
-    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    const rollback = await readArtSkill(new URL('./art-skills/style-transfer.1.0.11.json', import.meta.url));
+    for (const bundled of [rollback, seed]) {
+      try { await writeFile(join(directory, `style-transfer.${bundled.version}.json`), JSON.stringify(bundled, null, 2), { flag: 'wx' }); }
+      catch (error) { if (error.code !== 'EEXIST') throw error; }
+    }
     try { await writeFile(join(directory, 'active.json'), JSON.stringify({ version: seed.version, sha256: seed.systemSHA256 }), { flag: 'wx' }); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
     let pointer = JSON.parse(await readFile(join(directory, 'active.json'), 'utf8'));
@@ -46,9 +49,13 @@ export function createArtSkillService(directory) {
     try { await readFile(receipt, 'utf8'); }
     catch (error) {
       if (error.code !== 'ENOENT') throw error;
-      if (seed.version === '1.0.11' && pointer.version === '1.0.1'
-        && pointer.sha256 === 'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be') {
-        const previous = await readArtSkill(join(directory, 'style-transfer.1.0.1.json'));
+      const shippedBaselines = {
+        '1.0.1': 'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be',
+        '1.0.11': '9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28'
+      };
+      if (seed.version === '1.0.13' && Object.hasOwn(shippedBaselines, pointer.version)
+        && pointer.sha256 === shippedBaselines[pointer.version]) {
+        const previous = await readArtSkill(join(directory, `style-transfer.${pointer.version}.json`));
         check(previous.systemSHA256 === pointer.sha256, '旧美术技能版本指针与内容不符');
         const installed = await readArtSkill(join(directory, `style-transfer.${seed.version}.json`));
         check(installed.systemSHA256 === seed.systemSHA256, '内置美术技能与本地同名版本冲突');

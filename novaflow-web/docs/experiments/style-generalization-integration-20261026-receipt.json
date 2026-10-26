@@ -1,0 +1,207 @@
+{
+  "kind": "CPU replay of saved actual provider responses; not new model inference or new generated images",
+  "actualNewModelCalls": 0,
+  "actualNewGenerationCalls": 0,
+  "cases": [
+    {
+      "group": "paired-final",
+      "id": "bright",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "dark",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "cg",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "soft",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "wet",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "graphic",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "holdout-print",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "paired-final",
+      "id": "holdout-oil",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "owner-followup",
+      "id": "dark",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    },
+    {
+      "group": "owner-followup",
+      "id": "graphic",
+      "bundledVersion": "1.0.13",
+      "savedResponseCount": 1,
+      "promptIdentical": true,
+      "negativeIdentical": true,
+      "cfg3": true,
+      "generationInputs": [
+        1,
+        2
+      ]
+    }
+  ],
+  "unrelatedModelFacingModesIdentical": true,
+  "unrelatedRuntimeSourceHashesIdentical": true,
+  "candidateParentSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+  "candidateAgentSHA": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c",
+  "scopeBefore": {
+    "modes": {
+      "chat": {
+        "systemSHA256": "ccea2d19d45b5defcf050adb3b419f2efd411c0cff3fe9cea9a42cd6525ae024",
+        "toolsSHA256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "reasoningEffort": "none",
+        "reasoningBudgetTokens": 0
+      },
+      "creation": {
+        "systemSHA256": "9cbf60adf4de03a3528e478c302fae2b25ef61062caedb93bfea63d9299d229d",
+        "toolsSHA256": "98f6663156a62a9409be4426366a6c1c55616490750efbf3ede94e58cf8bdaa6",
+        "reasoningEffort": "none",
+        "reasoningBudgetTokens": 0
+      }
+    },
+    "creationToolsSHA256": "98f6663156a62a9409be4426366a6c1c55616490750efbf3ede94e58cf8bdaa6",
+    "files": {
+      "art-learning.mjs": "a08138e795314d861b2c70328cc4d6f73a888ff6a62275b50de9d6a2659b59fd",
+      "art-knowledge-cache.mjs": "692304354e2f4e404ba45638d2e8cde09332ba358becddf34672395891dff1c2",
+      "strata-prompt-assistant.mjs": "12041a911dfb855e51dfcca5a3353a4ea678d7fefe1d7587180ca641b460a44c",
+      "flash-brain-session.mjs": "4b8177911fec566b37717b48f1d2e78ef09894ebde65eee7b39f30026aebcd41",
+      "prompt-assistant.mjs": "356f215e3becbb75676f953ad7bdb580f3155f48bdd1676e121b942c784509a7",
+      "art-edit-planner.mjs": "d0865bdc5849480b8c96121faf528394d4edf25b4687a30e4cbb8f5eee4c9f6d",
+      "worker-core.mjs": "fb89ba6ec4b03f23a01f8b2c863ee12d923e95319e2712c3c7b389294f700943"
+    },
+    "drawingParent": "9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28",
+    "drawingAgent": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161"
+  },
+  "scopeAfter": {
+    "modes": {
+      "chat": {
+        "systemSHA256": "ccea2d19d45b5defcf050adb3b419f2efd411c0cff3fe9cea9a42cd6525ae024",
+        "toolsSHA256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "reasoningEffort": "none",
+        "reasoningBudgetTokens": 0
+      },
+      "creation": {
+        "systemSHA256": "9cbf60adf4de03a3528e478c302fae2b25ef61062caedb93bfea63d9299d229d",
+        "toolsSHA256": "98f6663156a62a9409be4426366a6c1c55616490750efbf3ede94e58cf8bdaa6",
+        "reasoningEffort": "none",
+        "reasoningBudgetTokens": 0
+      }
+    },
+    "creationToolsSHA256": "98f6663156a62a9409be4426366a6c1c55616490750efbf3ede94e58cf8bdaa6",
+    "files": {
+      "art-learning.mjs": "a08138e795314d861b2c70328cc4d6f73a888ff6a62275b50de9d6a2659b59fd",
+      "art-knowledge-cache.mjs": "692304354e2f4e404ba45638d2e8cde09332ba358becddf34672395891dff1c2",
+      "strata-prompt-assistant.mjs": "12041a911dfb855e51dfcca5a3353a4ea678d7fefe1d7587180ca641b460a44c",
+      "flash-brain-session.mjs": "4b8177911fec566b37717b48f1d2e78ef09894ebde65eee7b39f30026aebcd41",
+      "prompt-assistant.mjs": "356f215e3becbb75676f953ad7bdb580f3155f48bdd1676e121b942c784509a7",
+      "art-edit-planner.mjs": "d0865bdc5849480b8c96121faf528394d4edf25b4687a30e4cbb8f5eee4c9f6d",
+      "worker-core.mjs": "fb89ba6ec4b03f23a01f8b2c863ee12d923e95319e2712c3c7b389294f700943"
+    },
+    "drawingParent": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+    "drawingAgent": "4d646e8f69e8a82086ec759883497ec7fc51c70021a505dec2dc7b94a11ec44c"
+  },
+  "checks": {
+    "focusedTests": 76,
+    "knowledgeTests": 10,
+    "entryFiles": 4,
+    "entryAssertions": 286,
+    "runtimeSyncPassed": true,
+    "runtimeCheckPassed": true
+  },
+  "deploymentChanged": false,
+  "sharedExperiencePublished": false
+}

@@ -244,6 +244,10 @@ Repaint <image1> using the actual painting language of <image2>: a post-impressi
 
 本人随后明确反馈：整体氛围、美感与光感有进步，红黑偏离主题，冷调偏写实。这一评价优先作为后续质量选择依据；上文对候选的美术结论保留为此前初步判断，不代替本人选择。已基于同一候选技能，仅对这两项进行反馈指令收敛，详情见 [两项反馈修正](art-style-owner-feedback-20261026.md)。正式发布状态保持不变。
 
+### 通用规则接入状态
+
+在本人进一步确认选择通用方法、要求继续推进后，1.0.13 已接入源码中的本地画风迁移默认技能，保留 1.0.11 回退。普通创作、聊天、共享缓存及 GPU 调度保持原样。此项变更晚于上文冻结决定；安装包、线上和共享库指针尚未改变。见 [通用规则接入与范围核验](art-style-generalization-integration-20261026.md)。
+
 ## 10. 证据与来源
 
 机器核验：D:\AI_APP\NovaFlow-Web\work\style-generalization-20261026\verification.json，8 组 / 16 张，实际图节点、输入/输出摘要、唯一 prompt_id、单次请求和完整图签名比对通过。
