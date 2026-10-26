@@ -1,0 +1,519 @@
+{
+  "kind": "five fresh English visual analyses and native Qwen generations; no prior prompt supplied",
+  "newAnalysisRequests": 5,
+  "newGenerationJobs": 5,
+  "extraTranslationCalls": 0,
+  "extraManualEditAnalysisCalls": 0,
+  "freeze": {
+    "sourceHead": "3be360a6f60d855884484cd934e6b13cfcfaa544",
+    "sourceHashes": {
+      "renderer/art-generate-model.resource.js": "b9c39685e77ba28c7cd5d9b31b7474514368cbc17eb66cdfda8b2949ab0f07c8",
+      "renderer/art-direction.workflow.js": "5f96dd4814d95995273a809512d3350d388883a6066b2a83bcbc9a95f9fb13a7",
+      "renderer/xiaotao-art-agent.js": "f0c879d2678bc35f3830b95a4b59248c216e58b3c1ee9402776b845f856b403f",
+      "worker/src/flash-art-agent.mjs": "7379d6a59ca23ed5e1c0c1f0d8332cf9ceea5d97125cc19df74896a5e0c3a993",
+      "worker/src/flash-art-direction.mjs": "931ff9ff9037cf8c51eb9db44ef9cef6d7efc6529f883791c172e9a41dbab9e0",
+      "worker/src/art-skills/style-transfer.v1.json": "a51012d87636671d49270b929d6e10c45086518e67675704d6dd158b8e6879d3",
+      "worker/src/strata-prompt-assistant.mjs": "12041a911dfb855e51dfcca5a3353a4ea678d7fefe1d7587180ca641b460a44c",
+      "worker/src/flash-brain-session.mjs": "4b8177911fec566b37717b48f1d2e78ef09894ebde65eee7b39f30026aebcd41",
+      "packages/shared/src/art-prompt-language.mjs": "3ce97592a2db7183cbaa3a93624777cd588030b7ee905362026cbb5f7bf1dac8"
+    },
+    "artRuleVersion": "1.0.11",
+    "promptLanguage": "en",
+    "compareTo": "owner-selected-baseline",
+    "baselineArtRule": "1.0.13 with local feedback in dark/graphic",
+    "sameArtRulesAsSelectedEnglishBatch": false,
+    "languageAloneNotIsolated": true,
+    "changesToTaskMessages": "Original accepted neutral task wording; prior prompt cleared; no diagnostic image; original negative retained; wet includes direct owner clarification",
+    "noNewArtRuleOrSchedulingChanges": true
+  },
+  "cases": [
+    {
+      "id": "bright",
+      "label": "明亮动漫",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "87ad64e4-a158-48a1-8e99-52f297988f4d",
+      "analysisRequestId": "chatcmpl-f05759cc79f941fe969dbdc7",
+      "analysisSeconds": 113.4976486,
+      "loadSeconds": 31.654818,
+      "unloadSeconds": 3.513854,
+      "requestSeconds": 78.236677,
+      "generationSeconds": 59.17099999999846,
+      "promptCharacters": 1383,
+      "previousPromptSHA": "bef66a751e36851bf2ab9f14f3d5b9a8c9db81740632c013ea8798f0625ba5b0",
+      "newPromptSHA": "8290441016788319bca11a4be6c1634ed961a302f7f65d81a754b26f943559ff",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "440a4e16ae7dbb6de553324f4eb917a90be34322cd7586ecebce95dfc2eaa243",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "003235ff-575a-4e1b-b332-dec98b507bb0",
+        "resultId": "qa-native-87ad64e4-a158-48a1-8e99-52f297988f4d",
+        "resultSHA256": "440a4e16ae7dbb6de553324f4eb917a90be34322cd7586ecebce95dfc2eaa243",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "87ad64e4-a158-48a1-8e99-52f297988f4d"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "dark",
+      "label": "冷调动漫",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "a0da0c6e-95f5-48f2-9689-1e59f5cd6146",
+      "analysisRequestId": "chatcmpl-df9a1ce94d4b4ab8908bb0d9",
+      "analysisSeconds": 81.64376399999999,
+      "loadSeconds": 23.977179,
+      "unloadSeconds": 2.836853,
+      "requestSeconds": 54.695739,
+      "generationSeconds": 60.34399999999732,
+      "promptCharacters": 1085,
+      "previousPromptSHA": "d1bca43bbdbff3bc35a6f463642bc332ffd86c89ff3d1fad771039ac58421d86",
+      "newPromptSHA": "a62d359fc7720ad21539eeac6457b4ac17b17e40e2bd485be4a122e0a6febbf1",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "b9843fa9e83f69b94e99bca5a09b33baa8358a56adf3c2d75880c46f2153359c",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "0e8de997-a33b-42b4-82c7-6e1d6c824574",
+        "resultId": "qa-native-a0da0c6e-95f5-48f2-9689-1e59f5cd6146",
+        "resultSHA256": "b9843fa9e83f69b94e99bca5a09b33baa8358a56adf3c2d75880c46f2153359c",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "a0da0c6e-95f5-48f2-9689-1e59f5cd6146"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "cg",
+      "label": "CG 材质",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "ea2c8a1c-dbc8-468e-8774-cc8658c7e148",
+      "analysisRequestId": "chatcmpl-15965733ced94364aed0bbbe",
+      "analysisSeconds": 100.1458218,
+      "loadSeconds": 31.500187,
+      "unloadSeconds": 3.427761,
+      "requestSeconds": 65.141862,
+      "generationSeconds": 58.68700000000172,
+      "promptCharacters": 1653,
+      "previousPromptSHA": "619d6d9d8788ee9e7d9180ba80666e9a5850897c52156757b1a1fa9658824732",
+      "newPromptSHA": "9f3b779c05bba45fcb3f98283168185a08bef728da804c80126f7cffdf53d48d",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "958433efb8299f65269570e9d72e2a59085593aa3f56e11b8b80c9f0892f080f",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "b2cdd64f-d664-4a4d-b5a8-45194d2c2b50",
+        "resultId": "qa-native-ea2c8a1c-dbc8-468e-8774-cc8658c7e148",
+        "resultSHA256": "958433efb8299f65269570e9d72e2a59085593aa3f56e11b8b80c9f0892f080f",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "ea2c8a1c-dbc8-468e-8774-cc8658c7e148"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "soft",
+      "label": "柔和插画",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "65c9be51-a886-45bc-a51f-fcb611504d43",
+      "analysisRequestId": "chatcmpl-4d04fccdbfd8422b92f3404a",
+      "analysisSeconds": 101.57377000000001,
+      "loadSeconds": 22.591634,
+      "unloadSeconds": 2.6959920000000004,
+      "requestSeconds": 76.176478,
+      "generationSeconds": 60.875,
+      "promptCharacters": 1642,
+      "previousPromptSHA": "30829b76d8c370aebb95e4d70d5ce3eb1d04d95ddcf69e0903c622f0b1ec67d1",
+      "newPromptSHA": "d5c316665b99a732f4c2c87d6550f394513344f4b6f36e55f4eb2de50b68ea55",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "0c58efb65e566b6aa28d6347434d197667392cef93ea3852a78e6e4e9d91a0ed",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "aca34401-ef6f-40f4-9e36-a63c3a8055c2",
+        "resultId": "qa-native-65c9be51-a886-45bc-a51f-fcb611504d43",
+        "resultSHA256": "0c58efb65e566b6aa28d6347434d197667392cef93ea3852a78e6e4e9d91a0ed",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "65c9be51-a886-45bc-a51f-fcb611504d43"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    },
+    {
+      "id": "wet",
+      "label": "湿润高光",
+      "taskScope": "fresh source and style analysis; no previous prompt or result supplied",
+      "promptId": "9bd2d03b-3c38-40bd-b78c-bec28ae5f9a0",
+      "analysisRequestId": "chatcmpl-ebf7396867b4406e85474caf",
+      "analysisSeconds": 81.40731930000001,
+      "loadSeconds": 24.022194,
+      "unloadSeconds": 2.814681,
+      "requestSeconds": 54.433275,
+      "generationSeconds": 59.81299999999828,
+      "promptCharacters": 1583,
+      "previousPromptSHA": "114ba75376ae70b1b13829a88a3bdd9fe94c31177d8e8c47b51b5f31b864d94b",
+      "newPromptSHA": "ee71b33c4bda5e1a36409e677f574182d30b8dd06c976425ed4b98ed234f8a3d",
+      "promptsDiffer": true,
+      "explanationChinese": true,
+      "outputSHA": "7174507e1644c8569029b99a8207974d7852da30a63944afd1e6304fa0938e52",
+      "sourceAndReferenceIdentical": true,
+      "samplingAndGeometryIdentical": true,
+      "originalSelectedImageUnchanged": true,
+      "resultRecord": {
+        "taskId": "c4f7e070-483e-406b-a057-f63d4e0e4518",
+        "resultId": "qa-native-9bd2d03b-3c38-40bd-b78c-bec28ae5f9a0",
+        "resultSHA256": "7174507e1644c8569029b99a8207974d7852da30a63944afd1e6304fa0938e52",
+        "execution": "succeeded",
+        "feedback": "unrated",
+        "published": false,
+        "isolatedTaskJournal": true,
+        "realQwenPromptId": "9bd2d03b-3c38-40bd-b78c-bec28ae5f9a0"
+      },
+      "flow": {
+        "nativeExecutionPromptPreserved": true,
+        "referenceAliasOnlyForDisplay": true,
+        "manualChineseEditPreserved": true,
+        "manualEditExtraModelCalls": 0,
+        "manualProbeExcludedFromQualityImage": true,
+        "generationInputs": [
+          "subject",
+          "style"
+        ],
+        "cfg": 3,
+        "steps": 8,
+        "seed": 54792256,
+        "frontendValidation": "actual frozen renderer modules in CPU sandbox; not installed UI automation"
+      }
+    }
+  ],
+  "lifecycles": [
+    {
+      "name": "analysis-bright-FpLZCn",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-cg-wet-hoFZxC",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "name": "analysis-soft-dark-zMu5w2",
+      "globalConfigUnchanged": true,
+      "globalServerUnchanged": true,
+      "noAutomaticRetries": true
+    },
+    {
+      "generation": [
+        "soft",
+        "dark"
+      ],
+      "portClosed": true
+    },
+    {
+      "generation": [
+        "cg",
+        "wet"
+      ],
+      "portClosed": true
+    },
+    {
+      "generation": [
+        "bright"
+      ],
+      "portClosed": true
+    }
+  ],
+  "currentSourceMatches": {
+    "renderer/art-generate-model.resource.js": true,
+    "renderer/art-direction.workflow.js": true,
+    "renderer/xiaotao-art-agent.js": true,
+    "worker/src/flash-art-agent.mjs": true,
+    "worker/src/flash-art-direction.mjs": true,
+    "worker/src/art-skills/style-transfer.v1.json": true,
+    "worker/src/strata-prompt-assistant.mjs": true,
+    "worker/src/flash-brain-session.mjs": true,
+    "packages/shared/src/art-prompt-language.mjs": true
+  },
+  "installedUIAutomated": false,
+  "frontendTestIsCPUCodeExecution": true,
+  "languageOnlyQualityCausalityNotEstablished": true,
+  "deploymentChanged": false,
+  "sharedExperiencePublished": false,
+  "nativeRequestEvidence": {
+    "preliminaryDirectory": "D:\\AI_APP\\NovaFlow-Web\\work\\english-style-fresh-20261026\\run",
+    "preliminaryNativeCalls": 5,
+    "preliminaryGenerationJobs": 0,
+    "preliminaryFailures": "soft first and one diagnosed repeat: stale fingerprint; dark/cg/wet: missing final image markers",
+    "preliminaryTaskWordingDifferent": true,
+    "correction": "Restore explicit image marker output requirement from original accepted task wording; retain original negative; fresh analysis without old prompt or result",
+    "productCodeOrArtRulesModified": false,
+    "currentNativeCalls": 5,
+    "currentGenerationJobs": 5,
+    "automaticRetry": false,
+    "accepted": [
+      {
+        "session": "analysis-bright-FpLZCn",
+        "trace": "ea20acf2-fba2-4c9a-af4f-b64118c84ff5.json",
+        "requestId": "chatcmpl-f05759cc79f941fe969dbdc7",
+        "requestBodySHA": "6e92d82d977128dc17ec485fc4f8e7973d258169e47be6c31e1f73e4855ef1b5",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "3f0bb35460553c9c045baeef942cfb0a280b5d5e3b22d903c4a203f80a6c21f9",
+        "returnedFingerprint": "3f0bb35460553c9c045baeef942cfb0a280b5d5e3b22d903c4a203f80a6c21f9",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "8290441016788319bca11a4be6c1634ed961a302f7f65d81a754b26f943559ff",
+        "hasExplicitImageRoles": true
+      },
+      {
+        "session": "analysis-cg-wet-hoFZxC",
+        "trace": "b21fdf5e-1e96-4590-8cf6-37957a666fc9.json",
+        "requestId": "chatcmpl-15965733ced94364aed0bbbe",
+        "requestBodySHA": "548281e4802a9c19ea57ae67d6ba4ad7feb6d082a8d310dcf14d01f7c6d9cff9",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "ae6bb1ec16e9f89322fd765f16acf2744f2d36ebecdf4f56991d90da848cb248",
+        "returnedFingerprint": "ae6bb1ec16e9f89322fd765f16acf2744f2d36ebecdf4f56991d90da848cb248",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "9f3b779c05bba45fcb3f98283168185a08bef728da804c80126f7cffdf53d48d",
+        "hasExplicitImageRoles": true
+      },
+      {
+        "session": "analysis-cg-wet-hoFZxC",
+        "trace": "dc32c8d7-6732-44cc-bc6f-b4231ae3f734.json",
+        "requestId": "chatcmpl-ebf7396867b4406e85474caf",
+        "requestBodySHA": "5522584a9d5862a5be7f82f960952da79cb1aeb832fd7569b2ce4349554a127a",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "595f3a049be2465248cee595d77ede962a67ae8d6448773096265b047d614fb0",
+        "returnedFingerprint": "595f3a049be2465248cee595d77ede962a67ae8d6448773096265b047d614fb0",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "ee71b33c4bda5e1a36409e677f574182d30b8dd06c976425ed4b98ed234f8a3d",
+        "hasExplicitImageRoles": true
+      },
+      {
+        "session": "analysis-soft-dark-zMu5w2",
+        "trace": "1422d258-207a-465b-a752-e77d8849e05b.json",
+        "requestId": "chatcmpl-df9a1ce94d4b4ab8908bb0d9",
+        "requestBodySHA": "3612f433231ac646ebdf1f84804ecc76fdea2ac073d17a500d57f7c6e2ef04ee",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "80ab8f324edc15e51f1322f341acde42843f7a3b0340c9019c95bd9de34dc8d3",
+        "returnedFingerprint": "80ab8f324edc15e51f1322f341acde42843f7a3b0340c9019c95bd9de34dc8d3",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "a62d359fc7720ad21539eeac6457b4ac17b17e40e2bd485be4a122e0a6febbf1",
+        "hasExplicitImageRoles": true
+      },
+      {
+        "session": "analysis-soft-dark-zMu5w2",
+        "trace": "4438c232-fced-4a41-820d-e0a988d10194.json",
+        "requestId": "chatcmpl-4d04fccdbfd8422b92f3404a",
+        "requestBodySHA": "cec68966f2bf75a353ec9a02701e153be25c444118b72f57c4838a322863295b",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "483476711a3a125ae966e50f88127883e581bd5b52ffb866339db4775f1b245b",
+        "returnedFingerprint": "483476711a3a125ae966e50f88127883e581bd5b52ffb866339db4775f1b245b",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "d5c316665b99a732f4c2c87d6550f394513344f4b6f36e55f4eb2de50b68ea55",
+        "hasExplicitImageRoles": true
+      }
+    ],
+    "preliminary": [
+      {
+        "session": "analysis-cg-HQBEAS",
+        "trace": "48690069-ed40-418b-80f2-7f0f6c3375f4.json",
+        "requestId": "chatcmpl-e9aaf467df1c45eeb9a072da",
+        "requestBodySHA": "21fb4f285b42c76442674bb18b8fd9fe8e105689cc9f24b92d54f93052aace2f",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "aa796b41236a77300c142b552adaead9ea45d08a3b805f27db86eb8e7482f114",
+        "returnedFingerprint": "aa796b41236a77300c142b552adaead9ea45d08a3b805f27db86eb8e7482f114",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "fb27200c03b03da98685fab1655181ff1734c97b11222fd06220542ef4666539",
+        "hasExplicitImageRoles": false
+      },
+      {
+        "session": "analysis-dark-d1PGxz",
+        "trace": "247a55e2-aca5-4ca0-a5cc-1c4a2c06a408.json",
+        "requestId": "chatcmpl-695e5f42648749df97da3041",
+        "requestBodySHA": "21d26119dccbdfc894288ed5f1fbbcfe87fa46c89b102e3fc6811a9e54388a9d",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "3c777f3ad13d8a18e0dbd089f7968d00335c138b0c913bd35271ba6ecb7ac1d3",
+        "returnedFingerprint": "3c777f3ad13d8a18e0dbd089f7968d00335c138b0c913bd35271ba6ecb7ac1d3",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "c263ee12848a8091af86305abb011b594ce33f3103e734cbfd4f2ef443182487",
+        "hasExplicitImageRoles": false
+      },
+      {
+        "session": "analysis-soft-dark-acFaNp",
+        "trace": "5195d534-929f-4fc5-9f85-3b1d838ff57b.json",
+        "requestId": "chatcmpl-146029ffac6a401ebbe637d0",
+        "requestBodySHA": "f2e53481021faa0c40878f6095dc1e0a419d169b282a69bf0f1deb9c0911150d",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "91060e42cbbc04599e291bda502d94d2338ae6f40d3c91ad25928b9b8365ec70",
+        "returnedFingerprint": "91060e42cbbc04599e291bda502d94d2338ae6f40b495cb1be6d98df27c269473de35df40b495cb1be6d98df",
+        "validFingerprint": false,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "4d96154ea7942fe7442d403a7c1c2da75ff299903e5946d36d0fefeacf198a5a",
+        "hasExplicitImageRoles": false
+      },
+      {
+        "session": "analysis-soft-dark-r8AI9l",
+        "trace": "b0add422-1bcf-4e1f-a7f8-0f26bf54532d.json",
+        "requestId": "chatcmpl-cc131466c60e402495a724b8",
+        "requestBodySHA": "f2e53481021faa0c40878f6095dc1e0a419d169b282a69bf0f1deb9c0911150d",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "91060e42cbbc04599e291bda502d94d2338ae6f40d3c91ad25928b9b8365ec70",
+        "returnedFingerprint": "91060e42cbbc04599e291bda502d94d2338ae6f40b495cb1be6d98df27c269473de35df40b495cb1be6d98df",
+        "validFingerprint": false,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "c80b0e39d0499e22f823b51f8851efd5012055665775015831c45eac70f811e2",
+        "hasExplicitImageRoles": false
+      },
+      {
+        "session": "analysis-wet-nb6J6b",
+        "trace": "857e4835-5cd3-448a-8419-630901e7487e.json",
+        "requestId": "chatcmpl-93fb607dae21477eb5b135cc",
+        "requestBodySHA": "6fb742cdf6c3efed6f1add973be351994e90e2bb2862624a8f78d3a8cb9f0562",
+        "systemSHA": "e0fc4616df55369b2f948a0d86309bd1d079dc21f1195e20aa2e026bcedca161",
+        "suppliedSnapshotFingerprint": "a27efc790b7761c8961e789d4d3f13743de9465f7be9b655038857e82f75bc97",
+        "returnedFingerprint": "a27efc790b7761c8961e789d4d3f13743de9465f7be9b655038857e82f75bc97",
+        "validFingerprint": true,
+        "priorPromptSupplied": false,
+        "actualImageCount": 2,
+        "historyMessages": 0,
+        "returnedPromptSHA": "be31690e8914a6a381dd39220b75f3e81e96c43a265900d658e6e2e2b5d9911d",
+        "hasExplicitImageRoles": false
+      }
+    ]
+  },
+  "visualReview": {
+    "conclusion": "五项均完成全新视觉分析和真实 Qwen 生图，但不能判定重新分析后全部达到上轮认可质量：明亮、冷调、柔和的完成度接近，调子/画法仍有差别；湿润更冷、更硬；CG 明暗组织与材质主导判断减弱并引入雀斑。本轮没有替换已选图或发布经验，质量采用仍由用户看对照决定。",
+    "reviewMethod": "Assistant inspected raw full-size generated images and reference/baseline contact sheets; no automated review or image regeneration",
+    "cases": [
+      {
+        "id": "soft",
+        "summary": "暖色氛围、背景虚实与完成度接近上轮，脸颊痣、眨眼、服装与道具保留；本轮腮红更重、暖色更强，不能视为完全相同。",
+        "contentRetention": "脸颊痣、眨眼、无明显露牙、条纹服装、杯与吸管、红指甲、机场结构保留。",
+        "attribution": "新提示词明确强调粉色腮红和暖光，输出对应执行；偏色差异不能只归因于生图模型。"
+      },
+      {
+        "id": "dark",
+        "summary": "冷背景与暖肤色分开，主体、机场层次和精细度接近上轮；本轮人物更暖、线条与发丝更明确，冷调动漫的造型概括仍偏弱。",
+        "contentRetention": "脸颊痣、眨眼、微笑、条纹服装、饮料杯与吸管、手势和机场主要结构保留。",
+        "attribution": "新提示词偏向 smooth line work、soft specular highlights、rich tonal gradients，未充分明确参考的块面/造型概括，因此分析决策仍有改进空间，不能归为模型不执行。"
+      },
+      {
+        "id": "cg",
+        "summary": "主体细节和暖侧光成立，但没有达到上轮较鲜明的明暗组织，依然偏精致动漫而非更强的 CG 材质；额外增加了参考图式雀斑。本项不能判为相同质量。",
+        "contentRetention": "姿态、眨眼、脸颊痣、服装、杯与机场结构保留；出现原图没有的雀斑，属于内容污染。",
+        "attribution": "新提示词明确写 polished anime form language 和 freckle-like skin texture，模型执行了这些要求；风格归类与雀斑引入首先是分析/决策问题，不能简单归因于 Qwen 不执行。没有用固定条纹投影模板补救。"
+      },
+      {
+        "id": "wet",
+        "summary": "动漫造型、发丝亮带与杯体反射成立，衣服保持干燥；本轮更冷、更饱和、边缘更硬，上轮较柔和的光泽与氛围未完全复现，不能直接视为同一效果。",
+        "contentRetention": "脸颊痣、眨眼、微笑、干燥条纹服装、饮料杯、红指甲与机场结构保留；没有增加雨、水滴或湿衣。",
+        "attribution": "新提示词主动选择 saturated cool-leaning palette 与 strong edge definition，输出对应执行；肤面局部反射的具体形态描述仍弱，不能仅认定为 Qwen 无法表现。"
+      },
+      {
+        "id": "bright",
+        "summary": "亮度、动漫块面、构图和完成度接近上轮，人物特征保留；本轮背景更蓝，面部过渡更柔，线条与唇部仍带统一精致动漫倾向，风格效果并非完全一致。",
+        "contentRetention": "脸颊痣、眨眼、微笑、条纹服装、红指甲、杯与吸管、机场主要结构保留，没有复制参考的花丛或室外场景。",
+        "attribution": "新提示词同时选择 cel-shading 和 polished semi-real anime face，并强化 cool palette；输出冷色和五官的变化有提示词依据，不能仅归为模型随机不执行。"
+      }
+    ]
+  }
+}
