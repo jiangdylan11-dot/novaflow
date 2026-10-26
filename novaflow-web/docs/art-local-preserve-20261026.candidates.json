@@ -1,5 +1,5 @@
 {
-  "status": "two-explicit-local-edits-of-prior-renders-awaiting-owner-review",
+  "status": "secondary-edit-route-withdrawn",
   "userFeedback": "冷调中和结果比两张基线都差；CG大片绿色不可接受。",
   "mode": "prior-render-as-subject-not-original-photo",
   "secondPass": true,
@@ -41,7 +41,10 @@
           "Secondary editing alters hair texture and glints despite preservation request"
         ],
         "ownerAccepted": false
-      }
+      },
+      "adopted": false,
+      "agentWithdrawn": true,
+      "withdrawalReason": "Withdrawn with same secondary-edit route; not an explicit separate owner verdict on cold image."
     },
     {
       "style": "cg",
@@ -68,10 +71,15 @@
           "Residual cool shadow remains under chin and in inner hair",
           "Secondary edit changes some hair strand rendering and fine detail"
         ],
-        "ownerAccepted": false
-      }
+        "ownerAccepted": false,
+        "ownerRejected": true
+      },
+      "adopted": false,
+      "ownerRejected": true
     }
   ],
   "published": false,
-  "supabaseWritten": false
+  "supabaseWritten": false,
+  "latestUserFeedback": "锐化过度的感觉",
+  "routeAdopted": false
 }
