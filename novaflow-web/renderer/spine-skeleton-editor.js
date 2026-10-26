@@ -1941,7 +1941,23 @@
     return best
   }
 
-  /** The project's image folder inside the picked folder: the JSON's folder + skeleton.images. */
+  const folderPictureName = (file) => file.imageName || file.rel.replace(/\.[^.]+$/, '')
+
+  /** Keep the visible directory intact; only referenced pictures use the export's shorter names. */
+  function folderWithPictureNames(folder, pictureRoot, names) {
+    if (!pictureRoot) return folder
+    const prefix = pictureRoot + '/'
+    const wrap = (node) => ({ ...node, async list() {
+      const list = await node.list()
+      return { dirs: list.dirs.map(wrap), files: list.files.map((file) => {
+        const short = file.rel.startsWith(prefix) ? file.rel.slice(prefix.length).replace(/\.[^.]+$/, '') : null
+        return short && names.has(short) ? { ...file, imageName: short } : file
+      }) }
+    } })
+    return wrap(folder)
+  }
+
+  /** The project's picture directory, retaining sibling folders beside referenced images. */
   async function folderForProject(dirHandle, json, jsonFileName) {
     const base = String(jsonFileName || '').split('/').pop().toLowerCase()
     const find = async (h, depth) => {
@@ -1953,23 +1969,11 @@
     }
     const jsonDir = await find(dirHandle, 0)
     if (!jsonDir) return null
-    // skeleton.images (./images/): that folder; not there (or pointing above the JSON) → the JSON's folder
+    // Keep sibling picture directories visible instead of selecting only the attachment directory.
     let dir = jsonDir
-    try {
-      for (const seg of String((json.skeleton && json.skeleton.images) || '').split('/').filter((x) => x && x !== '.')) {
-        if (seg === '..') { dir = null; break }
-        dir = await dir.getDirectoryHandle(seg)
-      }
-    } catch { dir = null }
-    if (!dir) {
-      // the JSON's folder — or its one picture subfolder (img/ beside skeleton.json): the PS import
-      // names attachments by file name, so the folder must be rooted where the pictures are
-      dir = jsonDir
-      const subs = []; let pics = 0
-      for await (const [n, c] of jsonDir.entries()) { if (c.kind === 'directory') subs.push(c); else if (IMG_RX.test(n)) pics++ }
-      if (!pics && subs.length === 1) dir = subs[0]
-    }
-    // root it where the pictures' names match the attachments (their folder may be further down)
+    const subs = []; let pics = 0
+    for await (const [n, c] of jsonDir.entries()) { if (c.kind === 'directory') subs.push(c); else if (IMG_RX.test(n)) pics++ }
+    if (!pics && subs.length === 1) dir = subs[0]
     const rels = []
     const collect = async (h, prefix, depth) => {
       for await (const [n, c] of h.entries()) {
@@ -1978,12 +1982,11 @@
       }
     }
     await collect(dir, '', 0)
-    const best = bestPictureRoot(rels, attachmentPictureNames(json))
-    if (best) for (const seg of best.split('/')) dir = await dir.getDirectoryHandle(seg)
-    return folderFromHandle(dir, dir.name || '图片')
+    const names = attachmentPictureNames(json), best = bestPictureRoot(rels, names)
+    return folderWithPictureNames(folderFromHandle(dir, dir.name || '图片'), best, names)
   }
 
-  /** The same from a folder's files (no handle: a snapshot), rooted at skeleton.images, else the JSON's folder. */
+  /** The same from a folder's files (no handle: a snapshot), retaining their directory hierarchy. */
   function folderFromProjectFiles(files, json, jsonFileName) {
     const list = Array.from(files || [])
     const norm = (p) => String(p || '').split('/').filter((x) => x && x !== '.').join('/')
@@ -1991,19 +1994,16 @@
     const jsonFile = list.find((f) => f.name.toLowerCase() === base) || list.find((f) => /\.json$/i.test(f.name))
     if (!jsonFile) return null
     const jsonDir = norm(jsonFile.webkitRelativePath || '').split('/').slice(0, -1).join('/')
-    const imgRoot = norm(jsonDir + '/' + String((json.skeleton && json.skeleton.images) || ''))
     const under = (root) => list.filter((f) => IMG_RX.test(f.name) && (root ? norm(f.webkitRelativePath || '').startsWith(root + '/') : true))
-    let root = imgRoot, imgs = imgRoot ? under(imgRoot) : []
-    if (!imgs.length) { root = jsonDir; imgs = under(jsonDir) }
+    let root = jsonDir, imgs = under(jsonDir)
     if (!imgs.length) return null
     // every picture in one subfolder of the JSON's folder (img/): root there, so names match the attachments
     const firsts = new Set(imgs.map((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0).split('/')[0]))
     if (firsts.size === 1 && imgs.every((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0).includes('/'))) root = (root ? root + '/' : '') + [...firsts][0]
     imgs = under(root)
-    // root it where the pictures' names match the attachments (their folder may be further down)
-    const best = bestPictureRoot(imgs.map((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0)), attachmentPictureNames(json))
-    if (best) { root = (root ? root + '/' : '') + best; imgs = under(root) }
-    return folderFromFiles((root || jsonDir).split('/').pop() || '图片', imgs.map((f) => ({ rel: norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0), file: f })))
+    const names = attachmentPictureNames(json)
+    const best = bestPictureRoot(imgs.map((f) => norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0)), names)
+    return folderWithPictureNames(folderFromFiles((root || jsonDir).split('/').pop() || '图片', imgs.map((f) => ({ rel: norm(f.webkitRelativePath || f.name).slice(root ? root.length + 1 : 0), file: f }))), best, names)
   }
 
   /** `items` = [{ rel: path inside the folder, file }]. */
@@ -2187,9 +2187,8 @@
   }
 
   /**
-   * A folder the user picked as the project's image folder: rooted where its pictures' names match
-   * the project's (a parent folder picked by mistake still lines up), the atlas unpacked into it, and
-   * from then on listed live.
+   * Keep the directory the user selected visible. Match existing pictures in its subdirectory,
+   * unpack the atlas there, and list the selected directory live.
    */
   async function useFolderHandle(handle) {
     if (!state.json) return
@@ -2204,9 +2203,9 @@
       status(`正在把图集解包到「${where}」…`)
       r = await unpackAtlasInto(dir)
     }
-    state.imageFolder = folderFromHandle(dir, dir.name || '图片')
+    state.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
     state.pendingFolder = null
-    rememberFolder(dir)
+    rememberFolder(handle)
     state.imageFolderGen = (state.imageFolderGen || 0) + 1
     imgTree = { key: '', nodes: new Map(), pending: new Set() }
     state.sections.delete('images')
@@ -2249,8 +2248,11 @@
   }
   /** The project (picked, or one in the tree) that `fill` writes to, wherever it now sits. */
   function projectState(proj) { return projects[activeProject] === proj ? state : proj && proj.snap }
-  function useRememberedFolder(target, handle) {
-    target.imageFolder = folderFromHandle(handle, handle.name || '图片')
+  async function useRememberedFolder(target, handle) {
+    const json = target.json, names = attachmentPictureNames(json)
+    const best = bestPictureRoot(await pictureRels(handle), names)
+    if (target.json !== json) return
+    target.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
     target.pendingFolder = null
     if (target === state) {
       state.imageFolderGen = (state.imageFolderGen || 0) + 1
@@ -2267,7 +2269,7 @@
     let perm = 'prompt'
     try { perm = await rec.handle.queryPermission({ mode: 'readwrite' }) } catch { perm = 'prompt' }
     if (perm === 'granted') {
-      useRememberedFolder(target, rec.handle)
+      await useRememberedFolder(target, rec.handle)
       if (target === state) status(`已接上上次的图片文件夹「${rec.handle.name}」`, 'ok')
       return
     }
@@ -2278,9 +2280,9 @@
   function restorePendingFolder() {
     const handle = state.pendingFolder
     if (!handle) { chooseImageFolder(); return }
-    handle.requestPermission({ mode: 'readwrite' }).then((perm) => {
+    handle.requestPermission({ mode: 'readwrite' }).then(async (perm) => {
       if (perm !== 'granted') { status('浏览器没有允许访问上次的图片文件夹：可以点「指定文件夹…」重新选', 'error'); return }
-      useRememberedFolder(state, handle)
+      await useRememberedFolder(state, handle)
       status(`已接上上次的图片文件夹「${handle.name}」`, 'ok')
     }, () => status('浏览器没有允许访问上次的图片文件夹：可以点「指定文件夹…」重新选', 'error'))
   }
@@ -2359,7 +2361,7 @@
       let added = false
       try {
         for (const f of list) {
-          const name = f.rel.replace(/\.[^.]+$/, '')
+          const name = folderPictureName(f)
           if (!(rt.atlas && rt.atlas.findRegion(name))) { await addImageFile(await f.file(), name); added = true }
           names.push(name)
         }
@@ -2630,7 +2632,7 @@
     const out = []
     const walk = async (node) => {
       const l = await node.list()
-      for (const f of l.files) out.push({ name: f.rel.replace(/\.[^.]+$/, ''), file: f.file })
+      for (const f of l.files) out.push({ name: folderPictureName(f), file: f.file })
       for (const d of l.dirs) await walk(d)
     }
     await walk(imageFolder())
@@ -7081,12 +7083,7 @@
 
   /** every picture an attachment shows (its path, else its name): the rest show dimmed */
   function imagesInUse() {
-    const used = new Set()
-    for (const sk of state.json.skins) for (const slot of Object.keys(sk.attachments)) for (const [name, a] of Object.entries(sk.attachments[slot])) {
-      if (!a || a.type === 'boundingbox' || a.type === 'clipping' || a.type === 'path' || a.type === 'point') continue
-      used.add(a.path || name)
-    }
-    return used
+    return attachmentPictureNames(state.json)
   }
 
 
@@ -7154,7 +7151,7 @@
         if (open) walk(d.path, depth + 1)
       }
       for (const f of l.files) {
-        const name = f.rel.replace(/\.[^.]+$/, '')
+        const name = folderPictureName(f)
         const row = h('div', { class: 'row', style: pad(depth), 'data-unused': used.has(name) ? null : '1', 'data-used': used.has(name) ? '1' : null, title: used.has(name) ? `${name}（工程里已用）` : `${name}（工程里还没用到：拖到骨骼 / 插槽 / 画板上）` },
           caret(null), h('span', { class: 'ico', html: ICON.region }), h('span', { class: 'label' }, f.name.replace(/\.[^.]+$/, '')))
         wireDrag(row, { type: 'image', name, rel: f.rel, file: f.file, region: f.region }, null)
@@ -7231,7 +7228,7 @@
       imageFolder().list().then((l) => l.files, () => []).then((files) => {
         if (frameRootPending !== p) return
         frameRootPending = null
-        frameRoot = { key, files: files.map((f) => ({ name: f.rel.replace(/\.[^.]+$/, ''), rel: f.rel, file: f.file, region: f.region })) }
+        frameRoot = { key, files: files.map((f) => ({ name: folderPictureName(f), rel: f.rel, file: f.file, region: f.region })) }
         renderLayerDock()
       })
     }
