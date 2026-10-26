@@ -1,0 +1,136 @@
+{
+  "status": "three-owner-feedback-corrections-complete-awaiting-visual-acceptance",
+  "userFeedback": "明亮有提升，层次更强。冷调旧基线颜色更好，新图层次更好，需结合。CG右侧紫光与偏绿环境不一致。柔和选择上一轮，新图偏冷。湿润氛围正确，但变写实。红黑选择上一版本。",
+  "formalPublicationAuthorized": false,
+  "frameworkVersion": "1.0.11",
+  "formalVersion": "1.0.1",
+  "cfg": 3,
+  "steps": 8,
+  "seed": 54792256,
+  "manualPromptRewriting": false,
+  "imagesPostprocessed": false,
+  "runtimeNodeCache": "none for final correction renders; owned QA process only",
+  "abortedSessions": [
+    "session-dark-cg-wet",
+    "session-cg"
+  ],
+  "selected": [
+    {
+      "style": "bright",
+      "status": "user-selects-new",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\adaptive-finish-pass\\generation\\bright\\output.png",
+      "imageSHA256": "bf7f7fe790b30f89e46e336428ef766530b3a10a33e7ec1e72b4d7d40f6ee904",
+      "graphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\adaptive-finish-pass\\generation\\bright\\graph.json",
+      "proofPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\adaptive-finish-pass\\generation\\bright\\proof.json",
+      "regenerate": false
+    },
+    {
+      "style": "soft",
+      "status": "user-selects-previous",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\continuity-framework\\generation\\soft\\output.png",
+      "imageSHA256": "5ad0120e0c3d176bbd1d2befbcc34020ce0a520220a3bf2a4a67ef4076e3310b",
+      "graphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\continuity-framework\\generation\\soft\\graph.json",
+      "proofPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\continuity-framework\\generation\\soft\\proof.json",
+      "regenerate": false
+    },
+    {
+      "style": "graphic",
+      "status": "user-selects-previous",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\continuity-graphic-anchor\\generation\\graphic\\output.png",
+      "imageSHA256": "f25d20929b73336cfe1c0382c97d1e0048a2b7e09f31b4c379322efee69b8484",
+      "graphPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\continuity-graphic-anchor\\generation\\graphic\\graph.json",
+      "proofPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\continuity-graphic-anchor\\generation\\graphic\\proof.json",
+      "regenerate": false
+    }
+  ],
+  "cases": [
+    {
+      "style": "dark",
+      "analysisPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\owner-feedback-pass\\dark\\agent.json",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\owner-feedback-pass\\generation\\dark\\output.png",
+      "imageSHA256": "125ad796b2448aa559f4dd65b0d353f8a74f9da3fa347644dd1a1c5e4f65c1aa",
+      "analysisSeconds": 142.82127,
+      "inferenceSeconds": 88.37189,
+      "generationSeconds": 70.21900000004098,
+      "originalFullInputs": true,
+      "manualPromptRewriting": false,
+      "postprocessed": false,
+      "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+      "referenceSHA256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+      "feedback": "先只给完整英文单次执行提示词，不执行生图。继续按完整原图和真实画风参考做局部美术修正，第三张仅是当前结果用于诊断。框架和基本质量已经成立，不能退回只改颜色的滤镜处理；保留身份、眨眼、闭嘴微笑、脸颊标记、红棕波浪长发、条纹上衣、红指甲、咖啡杯与机场布局。在各自参考的造型、五官脸型、线条、明暗形状和材质画法中优化。光照安排由AI按当前场景判断，给出具体协调的主次关系，不能无依据添加彩色光或到处提亮。只修正用户指出的问题，保住已经有效的层次和质感，输出完整的一次执行提示词。 用户认为当前冷调的空间与材质层次更好，但整体调子太蓝。希望结合旧基线更自然的颜色与当前图更丰富的层次。旧颜色基线的视觉特征：脸部是自然暖粉而非灰蓝，头发是低饱和红棕而非蓝染，机场以中性深灰和克制的蓝灰为主，局部冷色有呼应但没有覆盖皮肤和中间调。请保留当前图的成组暗部、细腻发束亮暗、局部高光、透明杯反射及近中远空间，同时使主体固有色与中间调恢复这种平衡；减少全图蓝色笼罩，不能把全图改成黄暖滤镜或重新统一曝光。画法和脸型跟随当前完整冷调动漫参考，光位不固定。 上一份减蓝方案实际生成后显得平了，虽然肤色更自然，但没有保住用户认可的层次。不能只要求rebalance palette、preserve layering和choose key by scene judgment这种让生图模型再决定的泛泛说法。请你在这次执行提示词里亲自选定适合这张构图的具体主光方向、光的软硬、主体受光面与阴影区的相对关系；保持发束内部有连成大组的深暗块、头发的局部细亮边、面部与颈部有自然但明确的转折、杯沿与液体有精细透光，背景的近中远明暗有组织。光位由你自主决定，不需要照搬上一张，但这些层次要确实落实到这张图。主体皮肤保留暖粉固有色，红棕头发与中性灰机场保留各自颜色，阴影可有克制冷暖色变化但不能给全图加蓝幕或暖黄滤镜。不要为了色彩自然把面部、头发、手和衣服统一补成平光。画法仍像完整冷调动漫参考，保持克制细腻的动漫五官，不增加写实鼻孔、厚嘴唇或白色鼻尖。",
+      "prompt": "Draw <image1> in <image2>'s cool anime language, keeping the current approved face construction and the approved spatial/material layering; only correct the global blue cast. Key light: a soft diffuse upper-left terminal ceiling light, moderately soft, forming one broad lit zone on the upper-left crown, lit cheek, left shoulder, hand and cup, with a connected darker shadow group on the right side of the face, under the jaw and neck, the inner hair mass and the right side of the striped top; keep clear midtone separation between lit and shaded areas, not flat light. Hair: keep grouped deep red-brown masses in the inner and under waves, with fine narrow warm bright edges along the lit crown and outer locks, no blue dye. Face and neck: a natural but clear turn from lit cheek to shadowed jaw, skin keeps a warm-pink local color with a soft rosy cheek, no blue on skin. Cup: transparent plastic with fine transmission, warm tan liquid, a thin bright rim, a bright straw, red nails with a soft sheen. Background: near seats as darker neutral gray, mid rows as mid-gray, far signage and glass as quieter lower-contrast masses with restrained cool blue-gray accents that echo, not a blue wash; keep the seat rows, glass wall and signage as recognizable spatial structures. Palette: warm-pink skin, low-saturation red-brown hair, neutral dark-gray airport, shadows with restrained cool-neutral variation, no global blue curtain, no warm-yellow filter, no unified re-exposure. Preserve the face, wink, closed-lip smile, cheek mole, striped top, raised cup, hand pose and red nails. Draw the source woman, auburn waves, striped top, raised iced-coffee cup, hand pose and airport setting.",
+      "review": {
+        "summary": "蓝色笼罩减轻，肤色与发色更自然，发束暗部比首张减蓝版更明确；局部光感仍弱于深蓝层次图，融合程度待判断。",
+        "observedChanges": [
+          "Warm-pink skin, red-brown hair and neutral terminal replace overall blue cast",
+          "Grouped dark inner hair and lit hair edges are clearer than first palette-only attempt",
+          "Original wink, closed lips, cheek mole and source scene retained"
+        ],
+        "limitations": [
+          "Local light and shadow atmosphere remains weaker than previous deep-blue depth comparison",
+          "Not established as the final desired blend"
+        ],
+        "ownerAccepted": false
+      }
+    },
+    {
+      "style": "cg",
+      "analysisPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\owner-feedback-pass\\cg\\agent.json",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\owner-feedback-pass\\generation\\cg\\output.png",
+      "imageSHA256": "cb4947746ab45a625e2ba64942cb9ad796200a04487c95fbfe546ff4deae3d07",
+      "analysisSeconds": 154.28383300000002,
+      "inferenceSeconds": 105.948142,
+      "generationSeconds": 69.17200000002049,
+      "originalFullInputs": true,
+      "manualPromptRewriting": false,
+      "postprocessed": false,
+      "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+      "referenceSHA256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+      "feedback": "先只给完整英文单次执行提示词，不执行生图。继续按完整原图和真实画风参考做局部美术修正，第三张仅是当前结果用于诊断。框架和基本质量已经成立，不能退回只改颜色的滤镜处理；保留身份、眨眼、闭嘴微笑、脸颊标记、红棕波浪长发、条纹上衣、红指甲、咖啡杯与机场布局。在各自参考的造型、五官脸型、线条、明暗形状和材质画法中优化。光照安排由AI按当前场景判断，给出具体协调的主次关系，不能无依据添加彩色光或到处提亮。只修正用户指出的问题，保住已经有效的层次和质感，输出完整的一次执行提示词。 用户指出当前图右侧手臂和头发的紫蓝环境光很突兀，右侧实际玻璃环境明显偏青绿。请按真实环境的色相、受光面方向和材质反射建立联系，去掉无来源的紫色条带或大块紫光；让来自玻璃的青绿反光局部、克制且与主体固有色融合，不要用整条青绿手臂替代整条紫色手臂。保留目前发束明暗、面部体积、布料结构与杯子透光层次，以及参考自身的CG形体语言；调整反射色而不是削弱所有暗部或补成平光。",
+      "prompt": "Redraw <image1> in the anime rendering language of <image2>, preserving the current result's effective face construction, wink, closed-mouth smile, cheek mole, hair mass, striped top, red nails, coffee cup and airport layout, and keeping the established hair-strand light/dark separation, facial volume, fabric fold structure and cup translucency.\n\nLight source: overhead ceiling panels act as the primary warm key, casting downward illumination that creates bright crown highlights on the hair, a lit band across the forehead and nose bridge, and warm top-lit surfaces on the shoulders and the upper rim of the cup. Warm bounce from the iced coffee liquid reflects a soft amber glow onto the fingertips and the palm side of the gripping hand.\n\nRight-side reflection: the large glass windows on the right are teal-green. Replace the current purple/violet cast on the raised forearm and the right-side hair with a restrained, local teal-green reflection that appears only on surfaces facing the windows — the outer edge of the forearm, the right-facing hair strands and the cup's right rim — fused into the intrinsic red-brown hair and warm skin tone, not a full teal wash over the whole arm. Keep the arm's warm-lit planes and rich shadowed core intact; the reflection is a thin, controlled rim, not a blanket.\n\nShadow shapes: define a clear shadow shape under the chin, a cool-toned shadow pocket beneath the raised arm, and a deep shadow band inside the hair mass where strands overlap. Keep these shadows rich and cool, not lifted to flat midtones.\n\nHighlight scale: hair receives narrow warm edge highlights along outer strands; skin receives broad soft gradient highlights on lit planes; the striped fabric shows crisp fold shadows with a subtle sheen on the white stripes; the transparent cup shows sharp specular glints on its rim and lid, a soft refraction distortion of the coffee liquid through the plastic wall, and a thin cool reflection line along the straw.\n\nSpatial depth: foreground seats keep defined edges and full contrast; midground seat rows soften progressively with reduced contrast and a slight cool haze; the far glass wall, ceiling trusses and flight signs recede with lower saturation and softer detail, pushing the subject forward. The background retains its existing structures without adding new objects.\n\nA young woman with long wavy auburn hair, winking with one eye closed and a closed-mouth smile, small mole on her left cheek, wearing a navy-and-white horizontal striped top, holding up a clear plastic cup of iced coffee with red-painted nails, seated in an airport terminal with rows of gray seats, glass windows, and ceiling structure behind her.",
+      "review": {
+        "summary": "紫色反光已替换为与玻璃呼应的青绿；体积层次保留，但手臂绿色仍偏强，待判断。",
+        "observedChanges": [
+          "Purple reflection removed",
+          "Window-facing reflection now teal-green",
+          "Warm hair lighting, face volume and coffee translucency retained"
+        ],
+        "limitations": [
+          "Green arm reflection remains stronger than the requested restrained local rim"
+        ],
+        "ownerAccepted": false
+      }
+    },
+    {
+      "style": "wet",
+      "analysisPath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\owner-feedback-pass\\wet\\agent.json",
+      "imagePath": "D:\\AI_APP\\NovaFlow-Web\\work\\art-fidelity-speed-20261026\\owner-feedback-pass\\generation\\wet\\output.png",
+      "imageSHA256": "66e638bb3cecb5fa457646cc7b5da48ffcd06d34a49b2f0d99800d5192843780",
+      "analysisSeconds": 149.196933,
+      "inferenceSeconds": 101.125084,
+      "generationSeconds": 67.04700000002049,
+      "originalFullInputs": true,
+      "manualPromptRewriting": false,
+      "postprocessed": false,
+      "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+      "referenceSHA256": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13",
+      "feedback": "先只给完整英文单次执行提示词，不执行生图。继续按完整原图和真实画风参考做局部美术修正，第三张仅是当前结果用于诊断。框架和基本质量已经成立，不能退回只改颜色的滤镜处理；保留身份、眨眼、闭嘴微笑、脸颊标记、红棕波浪长发、条纹上衣、红指甲、咖啡杯与机场布局。在各自参考的造型、五官脸型、线条、明暗形状和材质画法中优化。光照安排由AI按当前场景判断，给出具体协调的主次关系，不能无依据添加彩色光或到处提亮。只修正用户指出的问题，保住已经有效的层次和质感，输出完整的一次执行提示词。 用户认可当前的风味感与氛围方向，但指出人物变得写实。保留这轮已经成立的冷暖层次、有色反射、空间气氛和湿润材质区分，重新按完整湿润参考的真正动漫形体与画法塑造：五官比例、眼鼻嘴形、面部与脸型阴影、皮肤和衣料的明暗组织都要像参考中的绘画，而不是在写实精修脸上加湿润亮点。鼻子与嘴用克制的动漫形状和细线，不塑造真实鼻孔与写实厚唇；保留原图闭嘴微笑，不移植参考脸。衣料湿润反光遵循褶皱的成组形状和干净的绘画边缘，避免满身粗糙斑驳、颗粒、亮片或磨损布料感。发束留有宽窄变化、干净的主高光和深浅色块，不用过量照片细发丝来表现高级。保持原图红棕发、上衣与咖啡类别，不复制绿发、制服、售货机。",
+      "prompt": "Redraw <image1> in the anime form and wet-material painting language of <image2>, keeping its saturated hue-organized shading, glossy reflective surfaces and painted midtone structure, while preserving the source identity, winking expression, closed-mouth smile, cheek mole, auburn wavy hair, navy-and-white striped top, red nails, coffee cup and airport setting. Do not copy the reference's green hair, uniform, twin-tails, vending machine or scene; transfer only how it is drawn.\n\nRebuild the face in true anime form language, not a photorealistic refined face: anime proportions, a large expressive open eye with a clean iris and lash line, the winking eye as a simple curved line, nose as a minimal fine line with no realistic nostrils, mouth as a closed smile with a thin line and no thick realistic lips; face-shape shading as clean painted planes with soft pink blush and the cheek mole as a small dot. Skin reads as painted midtone shading, not photographic modeling.\n\nHair as grouped masses with width variation, one clean main highlight band and clear light/dark color blocks, no excessive fine photo strands. The striped top's wet sheen follows grouped fold shapes with clean painted edges; navy and white stripes as clean bands, no speckled grainy sequin or worn-cloth texture.\n\nLighting: cool neutral daylight from the glass facade as key, bright cool-lit rims on upper-right hair, cheek, shoulder and cup; shadows lean to cool blue-violet bounce from the glass; yellow flight signs and warm coffee cast warm amber reflected light into the shadow side (chin, neck, inner hair, palm) for a clear warm/cool contrast. Cup shows a refracted warm coffee gradient, cool specular rim, small warm caustic on red-nailed fingers; red nails glossy lacquer with one highlight each.\n\nHierarchy: sharp high-contrast subject in front, midground gray seats softer and lower contrast, background glass wall, slatted ceiling and yellow signs receding with atmospheric depth and selective focus. Keep delicate midtone variation and material separation; do not bleach skin, flatten to photo, uniformly tint cyan, brighten everything, add messy colored lights, or add speckled grain.\n\nA young woman with long auburn wavy hair winks with one eye closed and smiles with closed lips, a small mole on her cheek, wearing a navy-and-white striped top, raising a clear plastic cup of iced coffee with a straw in red-nailed fingers, seated in an airport terminal with rows of gray seats, a glass facade and yellow flight-information signs.",
+      "review": {
+        "summary": "五官与鼻嘴更动漫化，衣料反光变成干净色块；冷暖与透光保留，面部明暗较简化，待判断。",
+        "observedChanges": [
+          "Anime eye, minimal nose mark and thin closed-mouth smile replace more representational features",
+          "Clean fold-shaped cloth reflections replace coarse speckled texture",
+          "Warm hair versus cool reflected edges and coffee transmission retained"
+        ],
+        "limitations": [
+          "Face value modeling is simpler than previous atmospheric version",
+          "Overall reference fidelity still requires owner visual review"
+        ],
+        "ownerAccepted": false
+      }
+    }
+  ],
+  "published": false,
+  "supabaseWritten": false
+}
