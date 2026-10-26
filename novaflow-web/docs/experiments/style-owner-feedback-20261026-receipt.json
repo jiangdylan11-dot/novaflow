@@ -1,0 +1,84 @@
+{
+  "scope": "two owner-feedback corrections; unchanged global skill and unchanged six other styles",
+  "sameCandidateSkill": "1.0.13",
+  "candidateSHA": "c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e",
+  "cases": [
+    {
+      "id": "dark",
+      "label": "冷调动漫",
+      "checks": {
+        "sourceUnchanged": true,
+        "referenceUnchanged": true,
+        "previousOutputUnchanged": true,
+        "outputMatchesReceipt": true,
+        "sameGenerationGraph": true,
+        "singleAnalysis": true,
+        "onlySourceAndReferenceForGeneration": true,
+        "cfg3": true,
+        "steps8": true,
+        "seedUnchanged": true
+      },
+      "promptId": "4b5fb26b-5d74-4f34-9fe2-ed0376152cc9",
+      "analysisSeconds": 116.70219809999999,
+      "generationSeconds": 61.71900000000005,
+      "outputSHA256": "d829e75d26fb87fcbb0d43fa4185635e8d5c6b2048f0b6c6cad593753c544535",
+      "visualReview": "鼻口、眼型更动漫，光感和空间层次保留；脸部体积较上轮平整。"
+    },
+    {
+      "id": "graphic",
+      "label": "红黑平面",
+      "checks": {
+        "sourceUnchanged": true,
+        "referenceUnchanged": true,
+        "previousOutputUnchanged": true,
+        "outputMatchesReceipt": true,
+        "sameGenerationGraph": true,
+        "singleAnalysis": true,
+        "onlySourceAndReferenceForGeneration": true,
+        "cfg3": true,
+        "steps8": true,
+        "seedUnchanged": true
+      },
+      "promptId": "47095495-5c68-4f6b-8502-be30b4594562",
+      "analysisSeconds": 99.33953740000001,
+      "generationSeconds": 64.23399999999947,
+      "outputSHA256": "40005923080f3b83f4b2d8936d3599f57c6983a5d17ba572864a5e09a310fe8b",
+      "visualReview": "恢复红色主场、黑色剪影及平面色块；原内容保留，金边与头发纹理仍较强。"
+    }
+  ],
+  "otherSix": [
+    {
+      "id": "bright",
+      "unchanged": true
+    },
+    {
+      "id": "cg",
+      "unchanged": true
+    },
+    {
+      "id": "soft",
+      "unchanged": true
+    },
+    {
+      "id": "wet",
+      "unchanged": true
+    },
+    {
+      "id": "holdout-print",
+      "unchanged": true
+    },
+    {
+      "id": "holdout-oil",
+      "unchanged": true
+    }
+  ],
+  "lifecycle": {
+    "globalConfigUnchanged": true,
+    "globalServerUnchanged": true,
+    "noAutomaticRetries": true
+  },
+  "portClosed": true,
+  "noAutomaticRetries": true,
+  "sharedExperiencePublished": false,
+  "formalDeploymentUnchanged": true
+}
