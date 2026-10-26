@@ -312,7 +312,8 @@ export function sanitizeReferences(raw) {
 //   sessionSecret - the SAME NOVAFLOW_SESSION_SECRET novaflow-backend uses
 //   controlSecret - Web-line only; signs worker tokens and derives grant keys
 // ---------------------------------------------------------------------------
-export function createControlPlane({ store, secrets, logger }) {
+/** @param {{store:any,secrets:any,logger?:(...args:any[])=>void,companion?:{reply:(input:any)=>Promise<any>}|null}} options */
+export function createControlPlane({ store, secrets, logger=()=>{}, companion=null }) {
   const log = logger || (() => {});
   const sessionSecret = secrets?.sessionSecret || '';
   const controlSecret = secrets?.controlSecret || '';
@@ -1158,6 +1159,12 @@ export function createControlPlane({ store, secrets, logger }) {
 
     try {
       if (method === 'OPTIONS') return { status: 204, body: null };
+      if(method==='POST'&&path==='/api/web/companion/chat'){
+        const user=await requireUser(headers);
+        if(!companion)throw new HttpError(503,'companion-unavailable','在线参考分析服务尚未启用');
+        try{return ok({ok:true,...await companion.reply({user,payload:body})});}
+        catch(error){if(error.status)throw new HttpError(error.status,'companion-failed',error.message);throw error;}
+      }
       if (path.startsWith('/api/web/art-knowledge')) return ok(await artKnowledge.handle({method,path,headers,query,body}));
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });

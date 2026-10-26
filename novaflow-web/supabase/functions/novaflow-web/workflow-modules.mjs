@@ -37,7 +37,7 @@ export const WORKFLOW_MODULES = Object.freeze({
       'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
       'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
       'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow',
-      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
+      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow', 'buildGenerativeSplitWorkflow'
     ]
   },
   // ---- 美工 -------------------------------------------------------------
@@ -132,17 +132,22 @@ export function isAllowedWorkflowCall(name, method) {
 // in its run state (__args[8]); the node builds the 2.1 graph under exactly these conditions (see
 // buildArtGenerateRunWorkflow), so such a run is queued for the 2.1 model and a node without it
 // never claims it.
-export function workflowModelId(name, options) {
+export function workflowModelId(name, options, method='') {
   const entry = workflowModule(name);
   if (!entry) return null;
+  if (name === 'spine-split-runtime' && (method === 'buildGenerativeSplitWorkflow' || options?.__args?.[1]?.taskProfile === 'generative-split')) {
+    return options?.__args?.[1]?.profile === 'standard' ? 'qwen-image-2.1' : 'qwen-image-2.1-turbo';
+  }
   const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
   if (args && args[0] === 'local') {
     const state = args[8] && typeof args[8] === 'object' ? args[8] : {};
     const profile = String(args[10]?.taskProfile || '');
     const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
-    if (ui || draw) return 'qwen-image-2.1';
+    if (ui || draw) return draw&&state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
   }
+  if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
+  if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && String(options?.profile || options?.params?.profile) === 'beta6_int8') return 'minimax-h3-beta6';
   return entry.modelId;
 }
 

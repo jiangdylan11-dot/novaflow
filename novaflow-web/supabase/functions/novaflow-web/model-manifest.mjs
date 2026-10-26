@@ -67,6 +67,35 @@ export const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
+    model_id: 'minimax-h3-beta6',
+    display_name: 'MiniMax H3 beta6 (reference)' ,
+    version: '0.31.1',
+    runtime: 'video',
+    // The shipped H3 weights are int8/nvfp4 quantised; the reference runtime
+    // serves them on a 16 GB card, so the floor is set from what actually
+    // runs rather than from the bf16 model's footprint.
+    min_vram_mb: 15000,
+    compatible_workflows: ['h3_i2v.json'],
+    required_files: [
+      {
+        path: 'diffusion_models/Minimax_H3/10Eros_Max_h3_8stepTURBO_beta6_int8.safetensors',
+        min_bytes: 21_709_633_539,
+        sha256: 'e2c5493e5997726ab12f17caecd6fe88c7e64b135bd3435c0f158c8f1b632a5f'
+      },
+      {
+        path: 'text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+        min_bytes: 4_000_000_000,
+        sha256: null
+      },
+      { path: 'vae/minimax_h3_video_vae_fp16.safetensors', min_bytes: 50_000_000, sha256: null },
+      { path: 'vae/minimax_h3_audio_vae_fp32.safetensors', min_bytes: 10_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: 'Import from an existing NovaFlow H3 runtime (e.g. E:/NovaFlow/models) or configure a URL.'
+    }
+  },
+  {
     model_id: 'birefnet-matting',
     display_name: 'BiRefNet (AI 抠图)',
     version: '2.0.0',
@@ -91,25 +120,29 @@ export const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
-    // 提示词助手's own model, Qwen3-VL 8B in NF4. 'local' like BiRefNet: ComfyUI
-    // never loads it. Either folder is enough ('any'): the NF4 cache the
-    // assistant loads, or the raw model it builds that cache from on first use.
-    // worker-core then asks the assistant itself (reportModels), which checks
-    // the whole folder and its Python service, before advertising it.
+    // Shared local Flash brain; image/video/audio generation encoders stay separate.
     model_id: 'prompt-assistant',
-    display_name: '提示词助手 (Qwen3-VL 8B)',
-    version: '2.0.0',
+    display_name: '本地 AI 大脑 (Flash-Next)',
+    version: 'swift-1.5-flash-next',
     runtime: 'local',
-    min_vram_mb: 8000,
+    min_vram_mb: 16000,
     compatible_workflows: ['prompt_assistant'],
-    required_match: 'any',
     required_files: [
-      { path: 'prompt_assistant/cache/Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-v1/novaflow_nf4_cache.json', min_bytes: 100, sha256: null },
-      { path: 'prompt_assistant/Huihui-Qwen3-VL-8B-Instruct-Abliterated/model.safetensors.index.json', min_bytes: 10_000, sha256: null }
+      { path: 'LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf', min_bytes: 39_788_473_344, sha256: 'ca3b302d3d1eb6eddce3ea4acc79854e6cc5fdc0583e374a6a8b6bb67327743b' },
+      { path: 'LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf', min_bytes: 28_363_693_824, sha256: 'e4996a6de18fd49c58d9a0040fcfd73787db6407c51973f29884bee7b14c9dbb' },
+      { path: 'LLM/qwen38_swift15_strata/mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf', min_bytes: 907_543_520, sha256: 'cd1140f4abba943ce8d9fa92fed8407e389954d26907efde7b72153c75bd8a60' },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/dense.bin', min_bytes: 100_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/experts.bin', min_bytes: 30_000_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack/tokenizer/vocab.json', min_bytes: 100_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/index.txt', min_bytes: 100, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/dense.bin', min_bytes: 100_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/dense.txt', min_bytes: 100, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/experts.bin', min_bytes: 700_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/draft_vocab.bin', min_bytes: 400_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 prompt_assistant/cache 下的 NF4 缓存文件夹（例如 E:/NovaFlow/models/prompt_assistant）。'
+      hint: '导入 Flash-Next 模型目录（含 resident pack、tokenizer、MTP 与视觉投影），并安装环境包中的 Strata 引擎。'
     }
   },
   {
@@ -123,14 +156,23 @@ export const MODEL_MANIFEST = Object.freeze([
     min_vram_mb: 16000,
     compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
     required_files: [
-      { path: 'diffusion_models/qwen-image-2.1-UC-Q8_0.gguf', min_bytes: 7_000_000_000, sha256: null },
-      { path: 'text_encoders/qwen3vl_8b_w4a8_heretic.safetensors', min_bytes: 6_000_000_000, sha256: null },
+      { path: 'diffusion_models/qwen-image-2.1-UC-BF16.gguf', min_bytes: 14_000_000_000, sha256: null },
+      { path: 'text_encoders/qwen3vl_8b_bf16_heretic.safetensors', min_bytes: 17_000_000_000, sha256: null },
       { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装支持 Qwen 2.1 BF16 的 ComfyUI 节点。'
     }
+  },
+  {
+    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo GGUF BF16', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
+    compatible_workflows:['novaflow-brand-runtime.buildArtGenerateRunWorkflow','spine-split-runtime'],
+    required_files:[
+      {path:'diffusion_models/Qwen-Image-2.1-Turbo-BF16.gguf',min_bytes:14_000_000_000,sha256:null},
+      {path:'text_encoders/qwen3vl_8b_bf16_heretic.safetensors',min_bytes:17_000_000_000,sha256:null},
+      {path:'vae/qwen_image_2.1_vae_bf16.safetensors',min_bytes:600_000_000,sha256:null}
+    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-BF16.gguf、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
   },
   {
     // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.
@@ -143,12 +185,11 @@ export const MODEL_MANIFEST = Object.freeze([
     compatible_workflows: ['audio_music.json'],
     required_files: [
       { path: 'checkpoints/stable_audio_3_medium.safetensors', min_bytes: 9_000_000_000, sha256: null },
-      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
-      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors，并安装 novaflow_audio 节点。'
     }
   },
   {
@@ -161,12 +202,11 @@ export const MODEL_MANIFEST = Object.freeze([
     compatible_workflows: ['audio_sfx.json'],
     required_files: [
       { path: 'checkpoints/stable_audio_3_small_sfx.safetensors', min_bytes: 1_300_000_000, sha256: null },
-      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
-      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors，并安装 novaflow_audio 节点。'
     }
   }
 ]);

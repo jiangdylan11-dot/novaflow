@@ -1,10 +1,350 @@
 // GENERATED - do not edit. Built by tools/bundle-edge-function.mjs.
-// Source: supabase/functions/novaflow-web/ (8 modules + index.ts)
+// Source: supabase/functions/novaflow-web/ (9 modules + index.ts)
 // Rebuild with: npm run bundle:edge
 //
 // One file on purpose: a multi-file deploy can lose a module, and a lost
 // module only shows up as a cold-start failure in production.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+
+// ===== tokens.mjs ====================================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/tokens.mjs
+// Regenerate with: npm run sync:edge
+// NovaFlow Web - token minting and verification.
+//
+// Three token families, each in its own namespace so one can never be replayed
+// as another (spec 8, 11):
+//
+//   nfs_  user session   - minted by the EXISTING novaflow-backend. We only
+//                          verify it here, with the same HMAC secret. We never
+//                          mint one, so the Web line cannot forge a user.
+//   nfw_  worker identity- minted by the control plane after a worker proves
+//                          it knows its worker_secret.
+//   nfg_  file grant     - short lived, binds {user, task, worker, op} for one
+//                          browser<->worker transfer.
+//
+// The grant is signed with a PER-WORKER key derived from the control-plane
+// secret. A worker is handed only its own derived key, so it can verify grants
+// addressed to itself and cannot forge a grant for any other worker.
+
+const enc = new TextEncoder();
+
+function toBase64Url(bytes) {
+  let binary = '';
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  for (let i = 0; i < view.length; i += 1) binary += String.fromCharCode(view[i]);
+  const b64 = typeof btoa === 'function'
+    ? btoa(binary)
+    : Buffer.from(view).toString('base64');
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  if (typeof atob === 'function') {
+    const binary = atob(padded);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+    return out;
+  }
+  return new Uint8Array(Buffer.from(padded, 'base64'));
+}
+
+function base64UrlJson(payload) {
+  return toBase64Url(enc.encode(JSON.stringify(payload)));
+}
+
+function decodeBase64UrlJson(value) {
+  return JSON.parse(new TextDecoder().decode(fromBase64Url(value)));
+}
+
+async function subtle() {
+  if (typeof globalThis.crypto?.subtle?.importKey === 'function') return globalThis.crypto.subtle;
+  const { webcrypto } = await import('node:crypto');
+  return webcrypto.subtle;
+}
+
+async function hmacSha256(message, secret) {
+  const api = await subtle();
+  const key = await api.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await api.sign('HMAC', key, enc.encode(message));
+  return toBase64Url(new Uint8Array(signature));
+}
+
+async function sha256Hex(message) {
+  const api = await subtle();
+  const digest = await api.digest('SHA-256', enc.encode(message));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Constant-time-ish compare. Both sides are base64url of a fixed-length MAC, so
+// length equality is not itself a secret.
+function safeCompare(a, b) {
+  const left = String(a || '');
+  const right = String(b || '');
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return diff === 0;
+}
+
+function nowSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function randomId(prefix) {
+  const uuid = (globalThis.crypto?.randomUUID?.() || String(Math.random()).slice(2) + Date.now().toString(36));
+  return prefix ? prefix + '_' + uuid.replace(/-/g, '') : uuid;
+}
+
+// ---------------------------------------------------------------------------
+// Generic signed envelope: <prefix><base64url(payload)>.<mac>
+// ---------------------------------------------------------------------------
+async function signEnvelope(prefix, payload, secret) {
+  const encoded = base64UrlJson(payload);
+  const mac = await hmacSha256(encoded, secret);
+  return prefix + encoded + '.' + mac;
+}
+
+async function verifyEnvelope(prefix, token, secret) {
+  const raw = String(token || '').trim();
+  if (!raw.startsWith(prefix)) throw new Error('invalid token');
+  const parts = raw.slice(prefix.length).split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('invalid token');
+  const expected = await hmacSha256(parts[0], secret);
+  if (!safeCompare(parts[1], expected)) throw new Error('invalid token');
+  let payload;
+  try {
+    payload = decodeBase64UrlJson(parts[0]);
+  } catch {
+    throw new Error('invalid token');
+  }
+  if (!payload || typeof payload !== 'object') throw new Error('invalid token');
+  if (!payload.exp || Number(payload.exp) <= nowSeconds()) throw new Error('token expired');
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// nfs_ - user session, verify only. Byte-compatible with novaflow-backend's
+// issueSessionToken(), which is what lets the Web line reuse the existing
+// login without touching the Desktop backend.
+// ---------------------------------------------------------------------------
+async function verifySessionToken(token, sessionSecret) {
+  if (!sessionSecret) throw new Error('session secret is not configured');
+  const payload = await verifyEnvelope('nfs_', token, sessionSecret);
+  if (!payload.sub) throw new Error('invalid token');
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// nfw_ - worker identity.
+// ---------------------------------------------------------------------------
+async function issueWorkerToken(worker, controlSecret, ttlSeconds = 3600) {
+  const iat = nowSeconds();
+  return await signEnvelope('nfw_', {
+    kind: 'worker',
+    wid: String(worker.id),
+    owner: String(worker.owner_id || ''),
+    name: String(worker.worker_name || ''),
+    iat,
+    exp: iat + ttlSeconds,
+    nonce: randomId()
+  }, controlSecret);
+}
+
+async function verifyWorkerToken(token, controlSecret) {
+  const payload = await verifyEnvelope('nfw_', token, controlSecret);
+  if (payload.kind !== 'worker' || !payload.wid) throw new Error('invalid token');
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// The control secret, which signs worker tokens and derives grant keys.
+//
+// It does not have to be a secret anyone configures. Deriving it from the
+// session secret - which every deployment already has, because that is what
+// verifies logins - removes a setup step without weakening anything: the
+// derivation is domain-separated, so holding a worker token tells you nothing
+// about the session secret and vice versa.
+//
+// An explicit NOVAFLOW_WEB_CONTROL_SECRET still wins, for a deployment that
+// wants the two rotated independently.
+// ---------------------------------------------------------------------------
+async function resolveControlSecret({ controlSecret, sessionSecret } = {}) {
+  const explicit = String(controlSecret || '').trim();
+  if (explicit) return explicit;
+  const session = String(sessionSecret || '').trim();
+  if (!session) return '';
+  return await hmacSha256('novaflow-web-control-secret:v1', session);
+}
+
+// ---------------------------------------------------------------------------
+// Per-worker grant key. Derived, never stored: the control plane can always
+// recompute it, and a worker only ever learns its own.
+// ---------------------------------------------------------------------------
+async function deriveWorkerGrantKey(workerId, controlSecret) {
+  return await hmacSha256('novaflow-web-grant-key:v1:' + String(workerId), controlSecret);
+}
+
+// ---------------------------------------------------------------------------
+// nfg_ - short-lived file grant. Bound to user + task + worker + op, so it is
+// useless anywhere else (spec 11).
+// ---------------------------------------------------------------------------
+async function issueGrantToken(input, grantKey) {
+  const iat = nowSeconds();
+  const ttl = Number(input.ttlSeconds) > 0 ? Number(input.ttlSeconds) : 900;
+  return await signEnvelope('nfg_', {
+    kind: 'grant',
+    sub: String(input.userId),
+    task: String(input.taskId),
+    wid: String(input.workerId),
+    op: String(input.op),
+    iat,
+    exp: iat + ttl,
+    nonce: randomId()
+  }, grantKey);
+}
+
+async function verifyGrantToken(token, grantKey, expect = {}) {
+  const payload = await verifyEnvelope('nfg_', token, grantKey);
+  if (payload.kind !== 'grant') throw new Error('invalid token');
+  if (expect.taskId && String(payload.task) !== String(expect.taskId)) throw new Error('grant task mismatch');
+  if (expect.workerId && String(payload.wid) !== String(expect.workerId)) throw new Error('grant worker mismatch');
+  if (expect.op && String(payload.op) !== String(expect.op)) throw new Error('grant op mismatch');
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// Worker secret hashing. The control plane stores only the hash, so a database
+// read never yields a usable worker credential.
+// ---------------------------------------------------------------------------
+async function hashWorkerSecret(workerId, secret) {
+  return await sha256Hex('novaflow-worker-secret:v1:' + String(workerId) + ':' + String(secret));
+}
+
+function generateWorkerSecret() {
+  const bytes = new Uint8Array(32);
+  (globalThis.crypto || {}).getRandomValues?.(bytes);
+  if (!bytes.some(Boolean)) {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return toBase64Url(bytes);
+}
+
+function bearerToken(headerValue) {
+  const auth = String(headerValue || '');
+  return /^bearer\s+/i.test(auth) ? auth.replace(/^bearer\s+/i, '').trim() : '';
+}
+
+// ===== art-knowledge.mjs =============================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/art-knowledge.mjs
+// Regenerate with: npm run sync:edge
+
+// Shared by the owner API and the read-only deployment report. Filtering does
+// not publish, infer quality from silence, or discard conflicting evidence.
+function filterArtCandidates({rows,active,skillId}) {
+  const normalized=v=>v.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,'');
+  const scopeKey=scope=>JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>scope[k]));
+  const known=new Set(active.methods.map(m=>scopeKey(m.scope)+'\n'+normalized(m.text))),excluded=[],eligible=[],monitor=[];
+  for(const row of rows.filter(c=>c.scope.skillId===skillId)) {
+    const reason=known.has(scopeKey(row.scope)+'\n'+normalized(row.method))?'already-published':row.published_before?'previously-withdrawn':Number(row.positive_count)<1?'no-positive-evidence':null;
+    if(reason==='already-published'&&Number(row.negative_count)>0)monitor.push(row);
+    if(reason)excluded.push({id:row.id,reason});
+    else eligible.push({...row,reviewNotes:[...(row.negative_count?['conflicting-feedback']:[]),...(row.positive_users<2?['single-user-evidence']:[]),'fixed-benchmark-and-owner-review-required']});
+  }
+  return {eligible,excluded,monitor};
+}
+// Brain-independent, method-only shared knowledge API. Source task records and
+// personal preferences are deliberately outside this protocol.
+function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError,management=false}) {
+  const fail=(status,message)=>{throw new HttpError(status,'art-knowledge-invalid',message);};
+  const shape=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) && Object.keys(value).every(k=>keys.includes(k));
+  const scalar=value=>typeof value==='string' && /^[A-Za-z0-9*_.:-]{1,100}$/.test(value);
+  const skill=value=>['style-transfer','image-creation'].includes(value);
+  function candidate(value) {
+    if(!shape(value,['schema','key','scope','method','status','evidence']) || value.schema!=='nf.art.method-candidate.v1' || value.status!=='candidate'
+      || !shape(value.scope,['skillId','generationModel','variant','brain']) || Object.keys(value.scope).length!==4
+      || !skill(value.scope.skillId) || !Object.values(value.scope).every(scalar)
+      || typeof value.method!=='string' || !value.method.trim() || value.method.length>600
+      || /data:image\/|https?:\/\/|Bearer\s|我(?:个人)?(?:喜欢|偏好)|我的(?:照片|名字|账号)/i.test(value.method)
+      || !Array.isArray(value.evidence) || value.evidence.length<1 || value.evidence.length>20)fail(400,'only abstract professional methods and bounded evidence are accepted');
+    const evidence=value.evidence.map(item=>{
+      if(!shape(item,['taskId','parentTaskId','resultSHA256','previousResultSHA256','feedback','skillVersion','improvement'])
+        || typeof item.taskId!=='string' || !/^[A-Za-z0-9_-]{1,128}$/.test(item.taskId)
+        || !/^[a-f0-9]{64}$/.test(item.resultSHA256||'') || !['satisfied','adopted','unsatisfied','revision'].includes(item.feedback)
+        || typeof item.improvement!=='boolean')fail(400,'invalid task-result evidence');
+      return {taskId:item.taskId,resultSHA256:item.resultSHA256,feedback:item.feedback,improvement:item.improvement};
+    });
+    return {scope:value.scope,method:value.method.trim(),evidence};
+  }
+  return {async handle({method,path,headers,query,body}) {
+    if(!path.startsWith('/api/web/art-knowledge'))return null;
+    const isRead=method==='GET' && path==='/api/web/art-knowledge';
+    const token=String(headers.authorization||headers.Authorization||'').replace(/^Bearer\s+/i,'');
+    // management is a trusted constructor capability used only inside the
+    // separately packaged admin tool. No user/session/header can enable it.
+    const principal=management?{id:null,role:'art-management'}:isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
+    if(typeof store.readArtKnowledge!=='function')fail(503,'shared art knowledge is not enabled');
+    if(isRead){if(!skill(query.skillId))fail(400,'invalid art skill');return {ok:true,...await store.readArtKnowledge(query.skillId,query.knownVersion)};}
+    if(method==='GET'&&path==='/api/web/art-knowledge/publisher')return {ok:true,publisher:management};
+    if(path==='/api/web/art-knowledge/consent') {
+      if(method==='GET')return {ok:true,allowed:await store.getArtLearningConsent(principal.id)};
+      if(method==='POST'&&shape(body,['allow'])&&typeof body.allow==='boolean'){await store.setArtLearningConsent(principal.id,body.allow);return {ok:true,allowed:body.allow};}
+      fail(400,'invalid sharing consent');
+    }
+    if(method==='POST'&&path==='/api/web/art-knowledge/outcomes'){
+      if(!shape(body,['schema','key','status','appliedMethodIds','evidence'])||body.schema!=='nf.art.method-outcome.v1'||body.status!=='candidate'
+        ||!Array.isArray(body.appliedMethodIds)||body.appliedMethodIds.length<1||body.appliedMethodIds.length>5||body.appliedMethodIds.some(id=>!/^[a-f0-9-]{36}$/i.test(id))
+        ||!shape(body.evidence,['taskId','resultSHA256','feedback','improvement'])||!/^[A-Za-z0-9_-]{1,128}$/.test(body.evidence.taskId||'')
+        ||!/^[a-f0-9]{64}$/.test(body.evidence.resultSHA256||'')||!['satisfied','adopted','unsatisfied','revision'].includes(body.evidence.feedback)||typeof body.evidence.improvement!=='boolean')fail(400,'invalid method outcome');
+      if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
+      try{return {ok:true,...await store.submitArtOutcome(principal.id,body)};}
+      catch(error){const message=String(error?.message||error);if(message.includes('method was never published'))fail(400,'only published method outcomes are accepted');if(message.includes('result identity changed'))fail(409,'task result identity cannot change');throw error;}
+    }
+    if(method==='POST' && path==='/api/web/art-knowledge/candidates') {
+      const input=candidate(body);if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
+      return {ok:true,...await store.submitArtMethod(principal.id,input)};
+    }
+    if(!management)fail(403,'review and publication require the backend management tool');
+    if(method==='GET'&&path==='/api/web/art-knowledge/releases')return {ok:true,releases:await store.listArtReleases()};
+    if(method==='GET'&&path==='/api/web/art-knowledge/review')return {ok:true,review:await store.getArtReview()};
+    if(method==='GET' && path==='/api/web/art-knowledge/candidates')return {ok:true,candidates:await store.listArtCandidates()};
+    if(method==='POST' && ['/api/web/art-knowledge/prepare','/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback'].includes(path)) {
+      const rollback=path.endsWith('/rollback'),prepare=path.endsWith('/prepare');
+      if(!shape(body,rollback?['skillId','version']:['skillId','version','candidateIds','validation','skill',...(prepare?[]:['approval'])]) || !skill(body.skillId)
+        || typeof body.version!=='string' || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(body.version))fail(400,'invalid skill release');
+      if(rollback)return {ok:true,...await store.rollbackArtKnowledge(principal.id,body)};
+      if(!shape(body.validation,['passed','benchmarkSHA256','cases']) || body.validation.passed!==true
+        || !/^[a-f0-9]{64}$/.test(body.validation.benchmarkSHA256||'') || !Number.isInteger(body.validation.cases)||body.validation.cases<1)fail(400,'fixed benchmark acceptance is required');
+      if(body.skill && (body.skill.schema!=='nf.art.skill.v1'||body.skill.status!=='stable'||body.skill.id!==body.skillId||body.skill.version!==body.version
+        ||body.skillId!=='style-transfer'||body.skill.applicability?.task!=='drawing'||body.skill.applicability?.generationModels?.join(',')!=='qwen-2.1'
+        ||!Array.isArray(body.skill.brainStrategies)||body.skill.brainStrategies.length>16||body.skill.brainStrategies.some(s=>typeof s.brain!=='string'||s.brain.length>240||!['none','low'].includes(s.reasoningEffort)||!Number.isInteger(s.reasoningBudgetTokens)||s.reasoningBudgetTokens<0||s.reasoningBudgetTokens>1024||s.reasoningEffort==='none'&&s.reasoningBudgetTokens!==0)
+        || typeof body.skill.systemPrompt!=='string'||body.skill.systemPrompt.length>=24000||!body.skill.systemPrompt.includes('Return ONLY JSON:')||await sha256Hex(body.skill.systemPrompt)!==body.skill.systemSHA256))fail(400,'invalid professional skill version');
+      const active=await store.readArtKnowledge(body.skillId),rows=(await store.listArtCandidates()).filter(c=>c.scope.skillId===body.skillId);
+      const {eligible,excluded,monitor}=filterArtCandidates({rows,active,skillId:body.skillId});
+      const ids=body.candidateIds??(prepare?eligible.slice(0,20).map(c=>c.id):null);
+      if(!Array.isArray(ids)||ids.length>20||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id))||new Set(ids).size!==ids.length)fail(400,'invalid candidate selection');
+      const selected=ids.map(id=>eligible.find(c=>c.id===id));
+      if(selected.some(c=>!c))fail(409,'selected candidates are no longer eligible; prepare a fresh review');
+      if(!prepare&&selected.length<1)fail(400,'nothing approved for publication');
+      const ordered=[...selected].sort((a,b)=>a.id.localeCompare(b.id));
+      const batch={skillId:body.skillId,version:body.version,baseVersion:active.version,
+        candidates:ordered.map(c=>({id:c.id,method:c.method,scope:c.scope,evidenceFingerprint:c.evidence_fingerprint})),
+        validation:body.validation,skill:body.skill||null};
+      const batchSHA256=await sha256Hex(JSON.stringify(batch));
+      if(prepare){const report={ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
+        selected:ordered,excluded,monitor,remaining:eligible.length-selected.length,
+        publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};await store.saveArtReview(principal.id,report);return report;}
+      if(!shape(body.approval,['approved','batchSHA256'])||body.approval.approved!==true||body.approval.batchSHA256!==batchSHA256)fail(409,'explicit owner approval for this exact unchanged batch is required');
+      return {ok:true,...await store.publishArtKnowledge(principal.id,{...body,candidateIds:ids,validation:{...body.validation,
+        baseVersion:active.version,evidenceFingerprints:Object.fromEntries(ordered.map(c=>[c.id,c.evidence_fingerprint])),
+        ownerApproved:true,approvedBy:'admin-tool',approvalSHA256:batchSHA256}})};
+    }
+    fail(404,'unknown shared art knowledge route');
+  }};
+}
 
 // ===== lora-catalog.mjs ==============================================
 // GENERATED COPY - do not edit here.
@@ -44,7 +384,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.57";
+const RELEASE_VERSION = "2.0.117";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -386,237 +726,6 @@ function isSafeFilename(name) {
   return !value.includes('..');
 }
 
-// ===== tokens.mjs ====================================================
-// GENERATED COPY - do not edit here.
-// Source: packages/shared/src/tokens.mjs
-// Regenerate with: npm run sync:edge
-// NovaFlow Web - token minting and verification.
-//
-// Three token families, each in its own namespace so one can never be replayed
-// as another (spec 8, 11):
-//
-//   nfs_  user session   - minted by the EXISTING novaflow-backend. We only
-//                          verify it here, with the same HMAC secret. We never
-//                          mint one, so the Web line cannot forge a user.
-//   nfw_  worker identity- minted by the control plane after a worker proves
-//                          it knows its worker_secret.
-//   nfg_  file grant     - short lived, binds {user, task, worker, op} for one
-//                          browser<->worker transfer.
-//
-// The grant is signed with a PER-WORKER key derived from the control-plane
-// secret. A worker is handed only its own derived key, so it can verify grants
-// addressed to itself and cannot forge a grant for any other worker.
-
-const enc = new TextEncoder();
-
-function toBase64Url(bytes) {
-  let binary = '';
-  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  for (let i = 0; i < view.length; i += 1) binary += String.fromCharCode(view[i]);
-  const b64 = typeof btoa === 'function'
-    ? btoa(binary)
-    : Buffer.from(view).toString('base64');
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function fromBase64Url(value) {
-  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
-  if (typeof atob === 'function') {
-    const binary = atob(padded);
-    const out = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
-    return out;
-  }
-  return new Uint8Array(Buffer.from(padded, 'base64'));
-}
-
-function base64UrlJson(payload) {
-  return toBase64Url(enc.encode(JSON.stringify(payload)));
-}
-
-function decodeBase64UrlJson(value) {
-  return JSON.parse(new TextDecoder().decode(fromBase64Url(value)));
-}
-
-async function subtle() {
-  if (typeof globalThis.crypto?.subtle?.importKey === 'function') return globalThis.crypto.subtle;
-  const { webcrypto } = await import('node:crypto');
-  return webcrypto.subtle;
-}
-
-async function hmacSha256(message, secret) {
-  const api = await subtle();
-  const key = await api.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = await api.sign('HMAC', key, enc.encode(message));
-  return toBase64Url(new Uint8Array(signature));
-}
-
-async function sha256Hex(message) {
-  const api = await subtle();
-  const digest = await api.digest('SHA-256', enc.encode(message));
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Constant-time-ish compare. Both sides are base64url of a fixed-length MAC, so
-// length equality is not itself a secret.
-function safeCompare(a, b) {
-  const left = String(a || '');
-  const right = String(b || '');
-  if (left.length !== right.length) return false;
-  let diff = 0;
-  for (let i = 0; i < left.length; i += 1) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
-  return diff === 0;
-}
-
-function nowSeconds() {
-  return Math.floor(Date.now() / 1000);
-}
-
-function randomId(prefix) {
-  const uuid = (globalThis.crypto?.randomUUID?.() || String(Math.random()).slice(2) + Date.now().toString(36));
-  return prefix ? prefix + '_' + uuid.replace(/-/g, '') : uuid;
-}
-
-// ---------------------------------------------------------------------------
-// Generic signed envelope: <prefix><base64url(payload)>.<mac>
-// ---------------------------------------------------------------------------
-async function signEnvelope(prefix, payload, secret) {
-  const encoded = base64UrlJson(payload);
-  const mac = await hmacSha256(encoded, secret);
-  return prefix + encoded + '.' + mac;
-}
-
-async function verifyEnvelope(prefix, token, secret) {
-  const raw = String(token || '').trim();
-  if (!raw.startsWith(prefix)) throw new Error('invalid token');
-  const parts = raw.slice(prefix.length).split('.');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('invalid token');
-  const expected = await hmacSha256(parts[0], secret);
-  if (!safeCompare(parts[1], expected)) throw new Error('invalid token');
-  let payload;
-  try {
-    payload = decodeBase64UrlJson(parts[0]);
-  } catch {
-    throw new Error('invalid token');
-  }
-  if (!payload || typeof payload !== 'object') throw new Error('invalid token');
-  if (!payload.exp || Number(payload.exp) <= nowSeconds()) throw new Error('token expired');
-  return payload;
-}
-
-// ---------------------------------------------------------------------------
-// nfs_ - user session, verify only. Byte-compatible with novaflow-backend's
-// issueSessionToken(), which is what lets the Web line reuse the existing
-// login without touching the Desktop backend.
-// ---------------------------------------------------------------------------
-async function verifySessionToken(token, sessionSecret) {
-  if (!sessionSecret) throw new Error('session secret is not configured');
-  const payload = await verifyEnvelope('nfs_', token, sessionSecret);
-  if (!payload.sub) throw new Error('invalid token');
-  return payload;
-}
-
-// ---------------------------------------------------------------------------
-// nfw_ - worker identity.
-// ---------------------------------------------------------------------------
-async function issueWorkerToken(worker, controlSecret, ttlSeconds = 3600) {
-  const iat = nowSeconds();
-  return await signEnvelope('nfw_', {
-    kind: 'worker',
-    wid: String(worker.id),
-    owner: String(worker.owner_id || ''),
-    name: String(worker.worker_name || ''),
-    iat,
-    exp: iat + ttlSeconds,
-    nonce: randomId()
-  }, controlSecret);
-}
-
-async function verifyWorkerToken(token, controlSecret) {
-  const payload = await verifyEnvelope('nfw_', token, controlSecret);
-  if (payload.kind !== 'worker' || !payload.wid) throw new Error('invalid token');
-  return payload;
-}
-
-// ---------------------------------------------------------------------------
-// The control secret, which signs worker tokens and derives grant keys.
-//
-// It does not have to be a secret anyone configures. Deriving it from the
-// session secret - which every deployment already has, because that is what
-// verifies logins - removes a setup step without weakening anything: the
-// derivation is domain-separated, so holding a worker token tells you nothing
-// about the session secret and vice versa.
-//
-// An explicit NOVAFLOW_WEB_CONTROL_SECRET still wins, for a deployment that
-// wants the two rotated independently.
-// ---------------------------------------------------------------------------
-async function resolveControlSecret({ controlSecret, sessionSecret } = {}) {
-  const explicit = String(controlSecret || '').trim();
-  if (explicit) return explicit;
-  const session = String(sessionSecret || '').trim();
-  if (!session) return '';
-  return await hmacSha256('novaflow-web-control-secret:v1', session);
-}
-
-// ---------------------------------------------------------------------------
-// Per-worker grant key. Derived, never stored: the control plane can always
-// recompute it, and a worker only ever learns its own.
-// ---------------------------------------------------------------------------
-async function deriveWorkerGrantKey(workerId, controlSecret) {
-  return await hmacSha256('novaflow-web-grant-key:v1:' + String(workerId), controlSecret);
-}
-
-// ---------------------------------------------------------------------------
-// nfg_ - short-lived file grant. Bound to user + task + worker + op, so it is
-// useless anywhere else (spec 11).
-// ---------------------------------------------------------------------------
-async function issueGrantToken(input, grantKey) {
-  const iat = nowSeconds();
-  const ttl = Number(input.ttlSeconds) > 0 ? Number(input.ttlSeconds) : 900;
-  return await signEnvelope('nfg_', {
-    kind: 'grant',
-    sub: String(input.userId),
-    task: String(input.taskId),
-    wid: String(input.workerId),
-    op: String(input.op),
-    iat,
-    exp: iat + ttl,
-    nonce: randomId()
-  }, grantKey);
-}
-
-async function verifyGrantToken(token, grantKey, expect = {}) {
-  const payload = await verifyEnvelope('nfg_', token, grantKey);
-  if (payload.kind !== 'grant') throw new Error('invalid token');
-  if (expect.taskId && String(payload.task) !== String(expect.taskId)) throw new Error('grant task mismatch');
-  if (expect.workerId && String(payload.wid) !== String(expect.workerId)) throw new Error('grant worker mismatch');
-  if (expect.op && String(payload.op) !== String(expect.op)) throw new Error('grant op mismatch');
-  return payload;
-}
-
-// ---------------------------------------------------------------------------
-// Worker secret hashing. The control plane stores only the hash, so a database
-// read never yields a usable worker credential.
-// ---------------------------------------------------------------------------
-async function hashWorkerSecret(workerId, secret) {
-  return await sha256Hex('novaflow-worker-secret:v1:' + String(workerId) + ':' + String(secret));
-}
-
-function generateWorkerSecret() {
-  const bytes = new Uint8Array(32);
-  (globalThis.crypto || {}).getRandomValues?.(bytes);
-  if (!bytes.some(Boolean)) {
-    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-  }
-  return toBase64Url(bytes);
-}
-
-function bearerToken(headerValue) {
-  const auth = String(headerValue || '');
-  return /^bearer\s+/i.test(auth) ? auth.replace(/^bearer\s+/i, '').trim() : '';
-}
-
 // ===== pricing.mjs ===================================================
 // GENERATED COPY - do not edit here.
 // Source: packages/shared/src/pricing.mjs
@@ -787,7 +896,7 @@ const WORKFLOW_MODULES = Object.freeze({
       'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
       'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
       'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow',
-      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
+      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow', 'buildGenerativeSplitWorkflow'
     ]
   },
   // ---- 美工 -------------------------------------------------------------
@@ -882,17 +991,22 @@ function isAllowedWorkflowCall(name, method) {
 // in its run state (__args[8]); the node builds the 2.1 graph under exactly these conditions (see
 // buildArtGenerateRunWorkflow), so such a run is queued for the 2.1 model and a node without it
 // never claims it.
-function workflowModelId(name, options) {
+function workflowModelId(name, options, method='') {
   const entry = workflowModule(name);
   if (!entry) return null;
+  if (name === 'spine-split-runtime' && (method === 'buildGenerativeSplitWorkflow' || options?.__args?.[1]?.taskProfile === 'generative-split')) {
+    return options?.__args?.[1]?.profile === 'standard' ? 'qwen-image-2.1' : 'qwen-image-2.1-turbo';
+  }
   const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
   if (args && args[0] === 'local') {
     const state = args[8] && typeof args[8] === 'object' ? args[8] : {};
     const profile = String(args[10]?.taskProfile || '');
     const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
-    if (ui || draw) return 'qwen-image-2.1';
+    if (ui || draw) return draw&&state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
   }
+  if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
+  if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && String(options?.profile || options?.params?.profile) === 'beta6_int8') return 'minimax-h3-beta6';
   return entry.modelId;
 }
 
@@ -984,6 +1098,35 @@ const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
+    model_id: 'minimax-h3-beta6',
+    display_name: 'MiniMax H3 beta6 (reference)' ,
+    version: '0.31.1',
+    runtime: 'video',
+    // The shipped H3 weights are int8/nvfp4 quantised; the reference runtime
+    // serves them on a 16 GB card, so the floor is set from what actually
+    // runs rather than from the bf16 model's footprint.
+    min_vram_mb: 15000,
+    compatible_workflows: ['h3_i2v.json'],
+    required_files: [
+      {
+        path: 'diffusion_models/Minimax_H3/10Eros_Max_h3_8stepTURBO_beta6_int8.safetensors',
+        min_bytes: 21_709_633_539,
+        sha256: 'e2c5493e5997726ab12f17caecd6fe88c7e64b135bd3435c0f158c8f1b632a5f'
+      },
+      {
+        path: 'text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
+        min_bytes: 4_000_000_000,
+        sha256: null
+      },
+      { path: 'vae/minimax_h3_video_vae_fp16.safetensors', min_bytes: 50_000_000, sha256: null },
+      { path: 'vae/minimax_h3_audio_vae_fp32.safetensors', min_bytes: 10_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: 'Import from an existing NovaFlow H3 runtime (e.g. E:/NovaFlow/models) or configure a URL.'
+    }
+  },
+  {
     model_id: 'birefnet-matting',
     display_name: 'BiRefNet (AI 抠图)',
     version: '2.0.0',
@@ -1008,25 +1151,29 @@ const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
-    // 提示词助手's own model, Qwen3-VL 8B in NF4. 'local' like BiRefNet: ComfyUI
-    // never loads it. Either folder is enough ('any'): the NF4 cache the
-    // assistant loads, or the raw model it builds that cache from on first use.
-    // worker-core then asks the assistant itself (reportModels), which checks
-    // the whole folder and its Python service, before advertising it.
+    // Shared local Flash brain; image/video/audio generation encoders stay separate.
     model_id: 'prompt-assistant',
-    display_name: '提示词助手 (Qwen3-VL 8B)',
-    version: '2.0.0',
+    display_name: '本地 AI 大脑 (Flash-Next)',
+    version: 'swift-1.5-flash-next',
     runtime: 'local',
-    min_vram_mb: 8000,
+    min_vram_mb: 16000,
     compatible_workflows: ['prompt_assistant'],
-    required_match: 'any',
     required_files: [
-      { path: 'prompt_assistant/cache/Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-v1/novaflow_nf4_cache.json', min_bytes: 100, sha256: null },
-      { path: 'prompt_assistant/Huihui-Qwen3-VL-8B-Instruct-Abliterated/model.safetensors.index.json', min_bytes: 10_000, sha256: null }
+      { path: 'LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf', min_bytes: 39_788_473_344, sha256: 'ca3b302d3d1eb6eddce3ea4acc79854e6cc5fdc0583e374a6a8b6bb67327743b' },
+      { path: 'LLM/qwen38_swift15_strata/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf', min_bytes: 28_363_693_824, sha256: 'e4996a6de18fd49c58d9a0040fcfd73787db6407c51973f29884bee7b14c9dbb' },
+      { path: 'LLM/qwen38_swift15_strata/mmproj-Swift-Qwen3.8-Flash-Next-BF16.gguf', min_bytes: 907_543_520, sha256: 'cd1140f4abba943ce8d9fa92fed8407e389954d26907efde7b72153c75bd8a60' },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/dense.bin', min_bytes: 100_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/experts.bin', min_bytes: 30_000_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack/tokenizer/vocab.json', min_bytes: 100_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/strata-pack-resident/index.txt', min_bytes: 100, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/dense.bin', min_bytes: 100_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/dense.txt', min_bytes: 100, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/experts.bin', min_bytes: 700_000_000, sha256: null },
+      { path: 'LLM/qwen38_swift15_strata/mtp/rt/draft_vocab.bin', min_bytes: 400_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 prompt_assistant/cache 下的 NF4 缓存文件夹（例如 E:/NovaFlow/models/prompt_assistant）。'
+      hint: '导入 Flash-Next 模型目录（含 resident pack、tokenizer、MTP 与视觉投影），并安装环境包中的 Strata 引擎。'
     }
   },
   {
@@ -1040,14 +1187,23 @@ const MODEL_MANIFEST = Object.freeze([
     min_vram_mb: 16000,
     compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
     required_files: [
-      { path: 'diffusion_models/qwen-image-2.1-UC-Q8_0.gguf', min_bytes: 7_000_000_000, sha256: null },
-      { path: 'text_encoders/qwen3vl_8b_w4a8_heretic.safetensors', min_bytes: 6_000_000_000, sha256: null },
+      { path: 'diffusion_models/qwen-image-2.1-UC-BF16.gguf', min_bytes: 14_000_000_000, sha256: null },
+      { path: 'text_encoders/qwen3vl_8b_bf16_heretic.safetensors', min_bytes: 17_000_000_000, sha256: null },
       { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装支持 Qwen 2.1 BF16 的 ComfyUI 节点。'
     }
+  },
+  {
+    model_id:'qwen-image-2.1-turbo', display_name:'Qwen-Image-2.1 Turbo GGUF BF16', version:'2.1-turbo', runtime:'image', min_vram_mb:16000,
+    compatible_workflows:['novaflow-brand-runtime.buildArtGenerateRunWorkflow','spine-split-runtime'],
+    required_files:[
+      {path:'diffusion_models/Qwen-Image-2.1-Turbo-BF16.gguf',min_bytes:14_000_000_000,sha256:null},
+      {path:'text_encoders/qwen3vl_8b_bf16_heretic.safetensors',min_bytes:17_000_000_000,sha256:null},
+      {path:'vae/qwen_image_2.1_vae_bf16.safetensors',min_bytes:600_000_000,sha256:null}
+    ],download:{mode:'import_or_configured_url',hint:'导入 Qwen-Image-2.1-Turbo-BF16.gguf、BF16 编码器和 VAE；需要 ManualSigmas 与 SamplerCustom 节点。'}
   },
   {
     // 音频 · 音乐. The medium text-to-audio checkpoint plus its text encoder.
@@ -1060,12 +1216,11 @@ const MODEL_MANIFEST = Object.freeze([
     compatible_workflows: ['audio_music.json'],
     required_files: [
       { path: 'checkpoints/stable_audio_3_medium.safetensors', min_bytes: 9_000_000_000, sha256: null },
-      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
-      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_medium.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors，并安装 novaflow_audio 节点。'
     }
   },
   {
@@ -1078,12 +1233,11 @@ const MODEL_MANIFEST = Object.freeze([
     compatible_workflows: ['audio_sfx.json'],
     required_files: [
       { path: 'checkpoints/stable_audio_3_small_sfx.safetensors', min_bytes: 1_300_000_000, sha256: null },
-      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null },
-      { path: 'text_encoders/qwen3.5_2b_bf16.safetensors', min_bytes: 4_000_000_000, sha256: null }
+      { path: 'text_encoders/t5gemma_b_b_ul2.safetensors', min_bytes: 1_100_000_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors 和 text_encoders/qwen3.5_2b_bf16.safetensors，并安装 novaflow_audio 节点。'
+      hint: '从已有的 NovaFlow 模型目录导入 checkpoints/stable_audio_3_small_sfx.safetensors 、text_encoders/t5gemma_b_b_ul2.safetensors，并安装 novaflow_audio 节点。'
     }
   }
 ]);
@@ -1108,6 +1262,8 @@ function runtimeFor(modelId) {
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
 
+
+
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1128,6 +1284,14 @@ function runtimeFor(modelId) {
 //     task currently assigned to it.
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
+
+
+
+
+
+
+
+
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -1157,6 +1321,8 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1164,6 +1330,8 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
+
+
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1291,6 +1459,7 @@ function validateTaskParameters(taskType, raw) {
   };
 }
 
+
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
 //
@@ -1364,10 +1533,12 @@ function sanitizeReferences(raw) {
 //   sessionSecret - the SAME NOVAFLOW_SESSION_SECRET novaflow-backend uses
 //   controlSecret - Web-line only; signs worker tokens and derives grant keys
 // ---------------------------------------------------------------------------
-function createControlPlane({ store, secrets, logger }) {
+/** @param {{store:any,secrets:any,logger?:(...args:any[])=>void,companion?:{reply:(input:any)=>Promise<any>}|null}} options */
+function createControlPlane({ store, secrets, logger=()=>{}, companion=null }) {
   const log = logger || (() => {});
   const sessionSecret = secrets?.sessionSecret || '';
   const controlSecret = secrets?.controlSecret || '';
+  const artKnowledge = createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError});
 
   async function requireUser(headers) {
     const token = bearerToken(headers.authorization || headers.Authorization);
@@ -1777,7 +1948,7 @@ function createControlPlane({ store, secrets, logger }) {
       // rather than reshaped - but the COST is still derived here, from the
       // dimensions and duration we can read out of them.
       parameters = sanitizeWorkflowOptions(body.parameters);
-      req = { modelId: workflowModelId(moduleName, parameters), minVramMb: entry.minVramMb, kind: entry.kind };
+      req = { modelId: workflowModelId(moduleName, parameters, method), minVramMb: entry.minVramMb, kind: entry.kind };
       pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {
@@ -2209,6 +2380,13 @@ function createControlPlane({ store, secrets, logger }) {
 
     try {
       if (method === 'OPTIONS') return { status: 204, body: null };
+      if(method==='POST'&&path==='/api/web/companion/chat'){
+        const user=await requireUser(headers);
+        if(!companion)throw new HttpError(503,'companion-unavailable','在线参考分析服务尚未启用');
+        try{return ok({ok:true,...await companion.reply({user,payload:body})});}
+        catch(error){if(error.status)throw new HttpError(error.status,'companion-failed',error.message);throw error;}
+      }
+      if (path.startsWith('/api/web/art-knowledge')) return ok(await artKnowledge.handle({method,path,headers,query,body}));
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
       }
@@ -2390,7 +2568,12 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
+
+
+
+
 const FUNCTION_NAME = 'novaflow-web';
+
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -2426,6 +2609,8 @@ function admin() {
   return cachedAdmin;
 }
 
+
+
 function unwrapRpc<T>(data: unknown): T | null {
   // A plpgsql function returning a table type comes back as an array of one.
   if (Array.isArray(data)) return (data[0] ?? null) as T | null;
@@ -2438,6 +2623,38 @@ function unwrapRpc<T>(data: unknown): T | null {
  * cannot diverge between the two deployments.
  */
 const supabaseStore = {
+  async readArtKnowledge(skillId: string,knownVersion?: string) {
+    const {data,error}=await admin().from('art_knowledge_releases').select('version,methods,skill').eq('skill_id',skillId).eq('active',true).maybeSingle();
+    if(data && data.version===knownVersion)return {version:data.version,unchanged:true};
+    if(error)throw error;return data || {version:'0',methods:[]};
+  },
+  async getArtLearningConsent(userId: string){const {data,error}=await admin().from('art_learning_consents').select('allowed').eq('user_id',userId).maybeSingle();if(error)throw error;return data?.allowed===true;},
+  async isArtPublisher(userId: string){const {data,error}=await admin().from('art_knowledge_policy').select('singleton').eq('publisher_user_id',userId).maybeSingle();if(error)throw error;return Boolean(data);},
+  async setArtLearningConsent(userId: string,allow: boolean){const {error}=await admin().from('art_learning_consents').upsert({user_id:userId,allowed:allow,updated_at:new Date().toISOString()});if(error)throw error;},
+  async submitArtMethod(userId: string,input: any) {
+    const {data,error}=await admin().rpc('novaflow_art_submit_method',{p_user_id:userId,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence});
+    if(error)throw error;return data;
+  },
+  async submitArtOutcome(userId:string,input:any){const {data,error}=await admin().rpc('novaflow_art_submit_outcome',{p_user_id:userId,p_method_ids:input.appliedMethodIds,p_evidence:input.evidence});if(error)throw error;return data;},
+  async listArtReleases(){const {data,error}=await admin().rpc('novaflow_art_release_history');if(error)throw error;return data||[];},
+  async listArtCandidates() {
+    // Provenance remains server-only. The review API exposes abstract methods.
+    const {data,error}=await admin().rpc('novaflow_art_review_candidates');
+    if(error)throw error;return data || [];
+  },
+  async saveArtReview(userId: string,report: any){
+    const {error:oldError}=await admin().from('art_knowledge_reviews').update({state:'outdated'}).eq('state','pending').eq('report->publishRequest->>skillId',report.publishRequest.skillId).neq('batch_sha256',report.batchSHA256);if(oldError)throw oldError;
+    const {error}=await admin().from('art_knowledge_reviews').upsert({batch_sha256:report.batchSHA256,report,prepared_by:userId},{onConflict:'batch_sha256'});if(error)throw error;
+  },
+  async getArtReview(){const {data,error}=await admin().from('art_knowledge_reviews').select('report').eq('state','pending').order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data?.report||null;},
+  async publishArtKnowledge(userId: string,input: any) {
+    const {data,error}=await admin().rpc('novaflow_art_publish_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version,p_candidate_ids:input.candidateIds,p_validation:input.validation,p_skill:input.skill||null});
+    if(error)throw error;return data;
+  },
+  async rollbackArtKnowledge(userId: string,input: any) {
+    const {data,error}=await admin().rpc('novaflow_art_rollback_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version});
+    if(error)throw error;return data;
+  },
   async getUserById(userId: string) {
     if (!UUID_RE.test(String(userId))) return null;
     const { data, error } = await admin()
