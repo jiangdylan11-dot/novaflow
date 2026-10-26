@@ -213,9 +213,21 @@ test('exact UI reference aliases keep all visual words and native audit without 
   });
 });
 
+test('explicit HTML-escaped image slots normalize once while unrelated entities and all wording stay exact',async()=>{
+  const request=payload(),original='  Redraw &lt;image1&gt; using &lt;image2&gt;.\nKeep specular &amp; diffuse layers, not &lt;script&gt;.  ';
+  const expected=original.replace('&lt;image1&gt;','<image1>').replace('&lt;image2&gt;','<image2>');
+  const f=fixture([tool('propose_art_direction',{contextFingerprint:request.contextFingerprint,prompt:original,explanation:'完整画法。'})]);
+  const result=(await invoke(createFlashArtAgent(),f,request)).value;
+  assert.equal(f.calls.length,1);assert.equal(result.proposal.prompt,expected);
+  assert.equal(result.proposal.negativePrompt,request.artContext.negativePrompt);
+  assert.equal(JSON.parse(result.toolTrace[0].arguments).prompt,original);
+  assert.equal(result.proposal.sourceCacheProvenance.agentPromptNormalization.originalSHA256,createHash('sha256').update(original).digest('hex'));
+  assert.deepEqual(f.events,['load','unload']);
+});
+
 test('unknown, ambiguous or missing reference markers still reject instead of guessing or retrying', async () => {
   for (const prompt of ['Use @参考图1 and @参考图3.', 'Use @参考图01 and @参考图2.',
-    'Use @参考图1 and @参考图二.', 'Use <image1> and <image3>.', 'Redraw the source in that style.']) {
+    'Use @参考图1 and @参考图二.', 'Use <image1> and <image3>.', 'Use &lt;image1&gt; and &lt;image3&gt;.', 'Use &lt;image01&gt; and &lt;image2&gt;.', 'Redraw the source in that style.']) {
     const request = payload(), f = fixture([tool('get_art_context', {}), tool('propose_art_direction', {
       contextFingerprint: request.contextFingerprint, prompt, explanation: 'test' }, 'call_2')]);
     await assert.rejects(invoke(createFlashArtAgent(), f, request), code('flash-agent-invalid-proposal'));

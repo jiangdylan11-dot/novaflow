@@ -324,7 +324,8 @@ export function createFlashArtAgent({ maxConversations = 32 } = {}) {
           // valid drawing proposal or cause another inference/generation.
           const learningMethod = typeof args.learningMethod === 'string' && args.learningMethod.length <= 600
             && !/data:image\/|https?:\/\/|Bearer\s/i.test(args.learningMethod) ? args.learningMethod.trim() : '';
-          const prompt = args.prompt.replace(/@参考图\s*(\d+)/g, (_, number) => `<image${number}>`);
+          const prompt = args.prompt.replace(/@参考图\s*(\d+)/g, (_, number) => `<image${number}>`)
+            .replace(/&lt;image(\d+)&gt;/g, (_, number) => `<image${number}>`);
           const slots = [...prompt.matchAll(/<image(\d+)>/g)].map(match => match[1]);
           const generationMode=creation ? args.generationMode || context.mode : 'img2img';
           const inputCount=creation ? generationMode==='txt2img' ? 0 : images.filter(i=>i.role==='subject').length || images.filter(i=>i.role==='result').length : 2;

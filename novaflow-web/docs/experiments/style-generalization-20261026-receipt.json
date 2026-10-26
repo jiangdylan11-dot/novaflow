@@ -1,0 +1,367 @@
+{
+  "decision": "retain-stable-1.0.11",
+  "candidate": "1.0.13",
+  "stableReplacement": false,
+  "ownerAcceptedCandidate": false,
+  "review": {
+    "version": "1.0.13",
+    "status": "complete-manual-visual-review",
+    "ownerAccepted": false,
+    "stableReplacementRecommended": false,
+    "reason": "存在红黑调色回退、明亮感减弱及六组精修趋同；单次分析均值亦变慢。保留 1.0.11 稳定基线。",
+    "ownerClarificationApplied": true,
+    "cases": [
+      {
+        "id": "bright",
+        "label": "明亮动漫",
+        "summary": "内容和基本动漫画法保留；候选加重体积与暗部，明亮轻快感减弱。没有稳定优于基线。",
+        "verdict": "不作为稳定替换",
+        "cause": "主导特征决策仍偏向体积精修，明亮参考的轻快色阶被次要目标挤占。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "dark",
+        "label": "冷调动漫",
+        "summary": "候选发束、皮肤和明暗更细腻，但仍趋向精致体积插画，与参考的概括动漫造型并非同一件事。",
+        "verdict": "局部改善，风格差异仍不足",
+        "cause": "提示词把连续体积、细发丝等通用完成度特征放得较重。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "cg",
+        "label": "CG 材质",
+        "summary": "候选恢复连续曲面与柔和明暗，但最终指令仍写 polished anime，并把较多篇幅用于条带投影。人工明确 CG 指令对照可产生显著不同的三维体积与材质区分。",
+        "verdict": "部分改善，未证明自动泛化达标",
+        "cause": "主要证据指向上游特征判断/编辑指令不充分；不能笼统归咎 Qwen 缺乏 CG 能力。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "soft",
+        "label": "柔和插画",
+        "summary": "暖调、闭嘴、眨眼、痣和主要场景保留，候选的动漫面部与暖色完成度较好；无虎牙移植。仍需与其他风格区分。",
+        "verdict": "较好的回归表现",
+        "cause": "与参考相符的动漫造型、暖调和柔和过渡更容易被当前分析模型准确概括。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "wet",
+        "label": "湿润高光",
+        "summary": "按本人澄清，不要求湿衣料或淋湿状态。候选的头发、皮肤、杯子高光与细腻度有所变化，普通机场和正常衣料保持合理；仍有与柔和/CG 精修趋同的问题。",
+        "verdict": "按高光画法与美感评估，非湿衣料指标",
+        "cause": "需区分参考的高光绘画约定与对象物理状态。已取消强制湿布料诊断，不能据此声称生图模型不支持湿润材质。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "graphic",
+        "label": "红黑平面",
+        "summary": "候选确实改变平面明暗和色块概括，且去掉了试验版复制的装饰环；但其 cooler saturated field 指令把参考红黑组织带偏为蓝灰。",
+        "verdict": "未通过：调色回退",
+        "cause": "实际提示词存在色域判断偏差，生成结果跟随偏差执行；这不是“Qwen 只能改背景红色”的证据。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "holdout-print",
+        "label": "留出测试 · 木版画",
+        "summary": "两侧都形成明显的黑色轮廓、有限色块与纸面版画语言，没有把机场变成海浪场景。候选减少了一些装饰性卷纹，但旧框架原本就具备这类媒介迁移能力。",
+        "verdict": "留出媒介迁移成立，非候选独有能力",
+        "cause": "参考的媒介特征清晰，分析和生成两端均能执行。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      },
+      {
+        "id": "holdout-oil",
+        "label": "留出测试 · 笔触油画",
+        "summary": "两侧都出现覆盖人物、衣料与环境的可见笔触；候选更强调分离色笔触与露底，且没有移植草帽、胡须或男士服装。",
+        "verdict": "留出媒介迁移成立，候选笔触更明确",
+        "cause": "明确的笔触构造指令能被当前 Qwen 配置执行；不能把它笼统认定为只能生成动漫。",
+        "contentObserved": "眨眼、脸颊辨识点、条纹上衣、举杯手势、吸管和机场主要结构仍可识别；不将其等同于严格人脸识别或像素轮廓不变。"
+      }
+    ]
+  },
+  "phaseTimings": {
+    "baseline": {
+      "loadMs": {
+        "seconds": 23.6432935,
+        "n": 8
+      },
+      "requestMs": {
+        "seconds": 70.264858125,
+        "n": 8
+      },
+      "unloadMs": {
+        "seconds": 2.778884,
+        "n": 8
+      },
+      "totalMs": {
+        "seconds": 96.7586735,
+        "n": 8
+      }
+    },
+    "candidate": {
+      "loadMs": {
+        "seconds": 24.73137157142857,
+        "n": 7
+      },
+      "requestMs": {
+        "seconds": 80.43198662500001,
+        "n": 8
+      },
+      "unloadMs": {
+        "seconds": 3.141233857142857,
+        "n": 7
+      },
+      "totalMs": {
+        "seconds": 108.25705951249999,
+        "n": 8
+      }
+    }
+  },
+  "stats": {
+    "baseline": {
+      "cases": 8,
+      "meanAnalysisSeconds": 96.8134603,
+      "meanRequestSeconds": 70.264858125,
+      "meanPromptWords": 227.75,
+      "allSingleCall": true
+    },
+    "candidate": {
+      "cases": 8,
+      "meanAnalysisSeconds": 108.29620013749998,
+      "meanRequestSeconds": 80.431986625,
+      "meanPromptWords": 199.5,
+      "allSingleCall": true
+    }
+  },
+  "verification": {
+    "ok": true,
+    "matchedCases": 8,
+    "matchedOutputs": 16,
+    "sourceAndReferenceBytesVerified": true,
+    "allGraphHandoffsVerified": true,
+    "allSingleVisionCalls": true,
+    "allSingleGenerationJobs": true,
+    "exactCFG3Turbo8SeedPreserved": true,
+    "defaultFrameworkUnchanged": true,
+    "formalSkillVersion": "1.0.11",
+    "experiencePublished": false,
+    "forcedWetControlCancelled": true,
+    "completions": [
+      {
+        "session": "session-paired-graphic-cg-wet",
+        "portClosed": true,
+        "jobs": 6
+      },
+      {
+        "session": "session-candidate-graphic-cg-wet",
+        "portClosed": true,
+        "jobs": 3
+      },
+      {
+        "session": "session-paired-bright-dark-soft-holdout-print-holdout-oil",
+        "portClosed": true,
+        "jobs": 10
+      },
+      {
+        "session": "session-fixed-material-probes",
+        "portClosed": true,
+        "jobs": 1
+      }
+    ],
+    "rows": [
+      {
+        "id": "bright",
+        "variant": "baseline",
+        "promptId": "4657d431-f2d3-4003-864a-ff76fe810768",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+        "promptSHA256": "215706033e7fc69fa3b88dc49e6607c0d97d6bc1841723b8c76622e94aeda264",
+        "outputSHA256": "896e5c1a704734188f86cb6020423f8adbc9855fcc7413afc32ea71c3c943d31",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "bright",
+        "variant": "candidate",
+        "promptId": "9c5f4f06-5e92-4ac8-afe9-2ee9b87537f5",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "b791a49be60cbe56c72b9270cfc62da08f3c3079fd812512fe8e642e7853588f",
+        "promptSHA256": "bef66a751e36851bf2ab9f14f3d5b9a8c9db81740632c013ea8798f0625ba5b0",
+        "outputSHA256": "1c8a4c29869b866ee4a97afbf2d2884fb10050346d932e378897b64ef27440ff",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "dark",
+        "variant": "baseline",
+        "promptId": "24c324dc-be0f-4070-a3c5-1fe1554cff6d",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+        "promptSHA256": "34de825cadfffc268247690ba274fd9a73446983434be67b6309591680ab7929",
+        "outputSHA256": "c9db3a6e8fe27f4859d5d33f562d676b9bfa8bf4aef32baaf12c420a03cf243d",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "dark",
+        "variant": "candidate",
+        "promptId": "1d1a1fa7-13ef-41f8-ac3f-a88914f0f284",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "929e6cce4d0acd7afd389c38c44a0b7baacc5539e69c81a249414e29fa649ac6",
+        "promptSHA256": "628795f3ba38cc76d77cbde532a098b062a6f7d2d750e53f5c4115f72a431c6b",
+        "outputSHA256": "019b9107a4b6706bf28ccead0f8627c3ef4234a01f11ecd9b39f6ac771798567",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "cg",
+        "variant": "baseline",
+        "promptId": "bcc0a0dc-8a88-4955-b053-be479f2de257",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+        "promptSHA256": "6f0e402cfe24d07b9a9eb005bc8ac681dfbf9c9d0f7b72cd45da8a7ace587af1",
+        "outputSHA256": "33ba8df06305cce1b1e2cef68ac5e89a972403ab8db9da9a0fae61270db14f0b",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "cg",
+        "variant": "candidate",
+        "promptId": "47a47d73-fc5a-470c-8ac7-9639d34075c0",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "34abd780a145fe0ade34f1165afaaafab0934fd68c8cf3f2ec5d21d485c0358c",
+        "promptSHA256": "619d6d9d8788ee9e7d9180ba80666e9a5850897c52156757b1a1fa9658824732",
+        "outputSHA256": "9e5d09cd4ab4f653f2146699484b8cdb1ced8c4d179c7f098031e6acaa38b2c1",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "soft",
+        "variant": "baseline",
+        "promptId": "c82d93e0-6adc-42f1-b19b-8e4025ba9504",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4",
+        "promptSHA256": "cae8ea82713784d40d50c6642e85079e0c130b14e1ff8dd200cd75a42eb13dc2",
+        "outputSHA256": "7b86fea47e839cdb6643d5ed321248afd7ab388776321c957069001bb2f7e3ce",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "soft",
+        "variant": "candidate",
+        "promptId": "9a92f72a-f4c1-49da-af3c-cef91795f047",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "95f8b2af105b98da6b6fceb6fc9b41ac690d1c69fac16d16748dedc67b3533f4",
+        "promptSHA256": "30829b76d8c370aebb95e4d70d5ce3eb1d04d95ddcf69e0903c622f0b1ec67d1",
+        "outputSHA256": "2b81ba15abfbcae862090ffe11e0eb0102eaa64270e14cc3c985fc895a895fd4",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "wet",
+        "variant": "baseline",
+        "promptId": "3712adbe-e05c-4cf6-b09d-8183fc6b57d0",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13",
+        "promptSHA256": "17f2fc458df6ca7c20b4f37753ff7257546b7cc6c9d7669a7a1d3937c46541fc",
+        "outputSHA256": "e701bde46775a0f4136460dff7ffb8899c05a749ccd72e0a315a81f6573d7e44",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "wet",
+        "variant": "candidate",
+        "promptId": "3a654a21-946d-45b0-991c-37e84f224a35",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "f3784778775b5ba030a9640fa2a65a85f3e775986ba98b12e22b9d9f23378b13",
+        "promptSHA256": "114ba75376ae70b1b13829a88a3bdd9fe94c31177d8e8c47b51b5f31b864d94b",
+        "outputSHA256": "7ab56de02eb817031baaad5b305711e5f1c223c34efa4c537094fb9272f460e5",
+        "replayedProviderResponse": true,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "graphic",
+        "variant": "baseline",
+        "promptId": "a0ba900f-31f1-42db-bdb7-038f1db2ab00",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "92f36730461cfe4122f7bf913f0c7db3af660eaebf7bf20dbf0467ed2015f053",
+        "promptSHA256": "24739c9bd169e805cf3373b0251656edfd123f9b4a96f968bc08ea096ede4bbe",
+        "outputSHA256": "105682e225fc807b00a4c070d352c4439b6044ff5748e078ce3ec8ff98b9804e",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "graphic",
+        "variant": "candidate",
+        "promptId": "d6d6f366-c21d-407c-8a73-1fe53d63471a",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "92f36730461cfe4122f7bf913f0c7db3af660eaebf7bf20dbf0467ed2015f053",
+        "promptSHA256": "08767c69af41d2f28977d267d33dff8e293427b1f5c1bd103d358ca0c200e4cc",
+        "outputSHA256": "d32c9b8058561e793ff5c906004b51aa47238adc66fe86dc2369b6491d7f3d78",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "holdout-print",
+        "variant": "baseline",
+        "promptId": "10122a50-fb38-401f-93fe-8f5401cd394f",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "b76ccf0710b8e4b32e778a45e5398a0cf4777994523116f994a0430f4ee6a841",
+        "promptSHA256": "c01c10dda427abfe03ed526c6a6d40aa48ad16dab819d8623204e643120fe9ca",
+        "outputSHA256": "41648c39bfbd7c1ede47f7723302613fe68f0d2a6c97ca11154daab3ba9f9af0",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "holdout-print",
+        "variant": "candidate",
+        "promptId": "bba8794d-f397-4d62-9726-d3e14a59f5ac",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "b76ccf0710b8e4b32e778a45e5398a0cf4777994523116f994a0430f4ee6a841",
+        "promptSHA256": "8273defaf1ee51c260984e6bd7b8cc75a4156c139d333047c660b1460fea5338",
+        "outputSHA256": "2c420ea6663db39bd4c43410b3a5a65ab8187a7dd91e6a307b16476b77f550c8",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "holdout-oil",
+        "variant": "baseline",
+        "promptId": "267083bd-407a-4107-b0bb-185054f1033b",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "03e6bb58feb2e091dbd56adb601b3fccba17386402d5676c994b806058a797da",
+        "promptSHA256": "fbc23eca44877256ff7012f5e0f87df5a8d9d0b7c5051f9c825e534f5417a0f8",
+        "outputSHA256": "f5d8baf8cbbd316bab3c0ea65cccd86fa85326b7dd3d2ccee8d149a8cff73dbc",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      },
+      {
+        "id": "holdout-oil",
+        "variant": "candidate",
+        "promptId": "c3c4492b-b14d-4ae5-85e0-7e285052eb86",
+        "sourceSHA256": "2a3a4e310458f19fa849d525ac8598df27c269473de35df40b495cb1be6d98df",
+        "referenceSHA256": "03e6bb58feb2e091dbd56adb601b3fccba17386402d5676c994b806058a797da",
+        "promptSHA256": "47516c165006dc6ab389c4cc41b8336c265f9276ccd15348fad22bcc2f58df1c",
+        "outputSHA256": "5b65afbf2175b5acc168189851861fee5f1cb3fa5e977e858048cc79db499d16",
+        "replayedProviderResponse": false,
+        "actualVisionCalls": 1,
+        "actualGenerationJobs": 1
+      }
+    ]
+  },
+  "methodCandidatesPublished": false,
+  "forcedWetControlCancelled": true,
+  "productionUpdated": false
+}
