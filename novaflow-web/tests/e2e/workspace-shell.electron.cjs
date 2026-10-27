@@ -7,7 +7,7 @@ const output = path.resolve(process.env.NF_SHELL_OUTPUT || path.join(project, '.
 fs.mkdirSync(output, { recursive: true });
 app.disableHardwareAcceleration();
 app.setPath('userData', path.join(output, 'profile'));
-const changed = ['index.html', 'novaflow-brand-runtime.js', 'spine-split-runtime.js', 'novaflow-ui-theme.css', 'xiaotao-art-agent.js', 'xiaotao-art-agent.css'];
+const changed = ['index.html', 'novaflow-brand-runtime.js', 'art-generate-lora.js', 'spine-split-runtime.js', 'novaflow-ui-theme.css', 'xiaotao-art-agent.js', 'xiaotao-art-agent.css'];
 const server = http.createServer((request, response) => {
   const name = decodeURIComponent(new URL(request.url, 'http://local').pathname).slice(1) || 'index.html';
   const base = process.env.NF_SHELL_OVERLAY && changed.includes(name) ? path.resolve(process.env.NF_SHELL_OVERLAY) : renderer;
@@ -52,7 +52,8 @@ app.whenReady().then(async () => {
         const tools=[...document.querySelectorAll('[data-novaflow-tools-entry]')].filter(visible).map(button=>({label:button.textContent,shadow:getComputedStyle(button).boxShadow,divider:getComputedStyle(button,'::after').content}));
         const models=[...document.querySelectorAll('select')].filter(select=>visible(select)&&[...select.options].some(option=>option.value==='beta5_int8')).map(select=>({value:select.value,label:select.selectedOptions[0]?.textContent}));
         const lora=[...document.querySelectorAll('[data-novaflow-ai-lora-empty]')].map(node=>({text:node.textContent,visible:visible(node)}));
-        return {body:document.body.className,box:rect(bot),style:styles(bot),hit:bot.contains(hit),surfaces,tools,models,lora};
+        const artLora=[...document.querySelectorAll('[data-novaflow-art-lora]')].filter(visible).map(node=>node.textContent);
+        return {body:document.body.className,box:rect(bot),style:styles(bot),hit:bot.contains(hit),surfaces,tools,models,lora,artLora};
       })()`);
       fs.writeFileSync(path.join(output, 'current.json'), JSON.stringify({name,...state}, null, 2));
       assert(state.hit, name + ': the mascot is covered by another surface');
@@ -62,6 +63,9 @@ app.whenReady().then(async () => {
       if (name === '音视') {
         assert(state.models.length > 0 && state.models.every(model=>model.label==='本地模型' && model.value==='beta5_int8'), 'Local model label changes without changing the selected profile');
         assert(state.lora.every(row=>!row.visible), 'LoRA catalogue errors must not occupy the sidebar');
+      }
+      if (name === '美工') {
+        assert(state.artLora.length>0 && state.artLora.every(text=>!/列表读取失败|重试/.test(text)), 'Art LoRA sidebar must have no error/retry row');
       }
       if (results.length) assert.deepEqual(state.style, results[0].style, name + ': mascot appearance must be stable across navigation');
       const x = Math.round(state.box.x + state.box.width / 2), y = Math.round(state.box.y + state.box.height / 2);

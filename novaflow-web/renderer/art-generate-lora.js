@@ -10,8 +10,28 @@
   // and showing "正在读取兼容 LoRA…" again each time shifted the panel; a known list renders at
   // once and only refreshes quietly.
   const catalogCache = new Map()
-  const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
-  const CATALOG_ERROR_RETRY_MS = 15000
+  const activeMounts = new Set()
+  const requests = new Map()
+  let connected = false
+  let connectionSource = ''
+  let connectionEpoch = 0
+
+  // Use the existing runtime health probe. Repainting a panel is not a reason
+  // to query compute, and a failed catalogue waits for the next connection.
+  function setConnection(online, source = '') {
+    online = Boolean(online)
+    source = String(source)
+    if (online === connected && source === connectionSource) return
+    connected = online
+    connectionSource = source
+    connectionEpoch += 1
+    requests.clear()
+    for (const record of activeMounts) {
+      if (!record.slot.isConnected) activeMounts.delete(record)
+      else mount(record.options)
+    }
+  }
+  globalThis.addEventListener?.('novaflow:compute-node', () => setConnection(false))
   // ...and across page loads: the successful names are what set the
   // block's height, and on a fresh page it arrived after the panel's first frame
   const STORAGE_KEY = 'nf_art_lora_catalog_v1'
@@ -132,17 +152,16 @@
       // The brand spec's final spacing, so a rebuilt slot does not move the rows below it.
       slot.style.cssText = 'display:grid;gap:5px;min-width:0;margin:0;text-align:left;'
       host.appendChild(slot)
-      record = { slot, options, names: [], loaded: false, loading: false, fetching: false, failedAt: 0, error: '', signature: '' }
+      record = { slot, options, names: [], loading: false, fetching: false, loadedKey: '', signature: '' }
       mounts.set(host, record)
     }
     record.options = options
+    activeMounts.add(record)
     const context = `${modelState.provider}:${modelState.mode}:${!!modelState.nsfw}:${qwen21Route(modelState)}`
     if (record.context !== context) {
-      record.context = context; record.loaded = false; record.signature = ''
+      record.context = context; record.loadedKey = ''; record.signature = ''
       const cached = catalogCache.get(context) || readStore()[context]
       record.names = cached && Array.isArray(cached.names) ? cached.names.slice() : []
-      record.error = cached?.error && Date.now() - Number(cached.at || 0) < CATALOG_ERROR_RETRY_MS ? String(cached.error) : ''
-      record.failedAt = record.error ? Number(cached.at || 0) : 0
       record.quiet = Boolean(cached)
     }
     const supported = supports(modelState)
@@ -150,47 +169,42 @@
     const display = supported ? 'grid' : 'none'
     if (record.slot.style.display !== display) record.slot.style.display = display
     if (!supported) return
-    const signature = JSON.stringify([state.loras, state.running, record.names, record.loading, record.error])
+    const signature = JSON.stringify([state.loras, state.running, record.names, record.loading])
     if (signature !== record.signature) {
       record.signature = signature
       render(record)
     }
-    if (record.error && !state.running && Date.now() - record.failedAt >= CATALOG_ERROR_RETRY_MS) record.loaded = false
-    if (!record.loaded && !record.fetching && !state.running) {
-      const cached = catalogCache.get(context)
-      if (cached && !record.error && Date.now() - cached.at < CATALOG_CACHE_TTL_MS) { record.loaded = true; record.quiet = false }
-      else void refresh(record)
-    }
+    if (connected && record.loadedKey !== `${connectionEpoch}:${context}` && !record.fetching && !state.running) void refresh(record)
   }
 
   async function refresh(record) {
     if (record.fetching) return
     record.fetching = true
     const context = record.context
+    const epoch = connectionEpoch
     const modelState = record.options.modelState || record.options.state
     const request = qwen21Route(modelState) ? { nsfw: false, engine: 'qwen-2.1' } : { nsfw: !!modelState.nsfw }
     let dropped = false
     // A quiet refresh keeps the cached names on screen instead of the loading placeholder.
     record.loading = !record.quiet
-    record.loaded = true
-    if (!record.quiet) record.error = ''
+    record.loadedKey = `${epoch}:${context}`
     mount(record.options)
     try {
-      const names = catalogFromInfo(await record.options.loadCatalog(request))
+      // Share both success and failure across rebuilt hosts in this connection.
+      if (!requests.has(context)) requests.set(context, Promise.resolve().then(() => record.options.loadCatalog(request)).then(catalogFromInfo))
+      const names = await requests.get(context)
+      if (!connected || epoch !== connectionEpoch || context !== record.context) return
       catalogCache.set(context, { names: names.slice(), at: Date.now() })
       remember(context, { names: names.slice(), at: Date.now() })
-      if (context === record.context) { record.error = ''; record.failedAt = 0 }
       if (context === record.context) {
         record.names = names
         const before = (record.options.state.loras || []).length
         record.options.state.loras = (record.options.state.loras || []).filter(item => names.includes(item.name))
         dropped = record.options.state.loras.length !== before
       }
-    } catch (error) {
-      if (context === record.context) { record.error = String(error?.message || error); record.failedAt = Date.now() }
-      // Connection failures describe this list fetch, not the runtime's current
-      // health. Keep successful names, never persist a stale connection error.
-      remember(context, { names: record.names.slice(), at: Date.now() })
+    } catch (_) {
+      // Keep the last successful list and selected LoRAs. Connection failures
+      // belong to compute status, not an error/retry row in this sidebar.
     } finally {
       record.fetching = false
       record.loading = false
@@ -234,13 +248,6 @@
       change()
     })
     children.push(select)
-    if (record.error) {
-      const retry = element('button', `LoRA 列表读取失败：${(globalThis.NovaFlowNeutralText || String)(record.error)} · 重试`, 'color:#fca5a5;font-size:11px;background:transparent;border:0;padding:0;text-align:left;overflow-wrap:anywhere;cursor:pointer;')
-      retry.type = 'button'
-      retry.disabled = Boolean(state.running) || record.loading
-      retry.addEventListener('click', () => { if (!state.running) void refresh(record) })
-      children.push(retry)
-    }
     items.forEach((item, index) => {
       const card = element('div', '', 'box-sizing:border-box;display:grid;gap:2px;min-width:0;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.10);border-radius:8px;')
       card.setAttribute('data-novaflow-art-lora-card', '1')
@@ -260,7 +267,7 @@
         if (!Number.isFinite(value)) return
         item.strength = Math.max(-2, Math.min(2, value))
         label.textContent = `强度: ${item.strength.toFixed(2)}`
-        record.signature = JSON.stringify([state.loras, state.running, record.names, record.loading, record.error])
+        record.signature = JSON.stringify([state.loras, state.running, record.names, record.loading])
       })
       control.append(label, range)
       const remove = element('button', '×', 'flex:none;width:28px;height:28px;padding:0;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;cursor:pointer;font-weight:600;font-size:14px;line-height:26px;')
@@ -275,5 +282,5 @@
     slot.replaceChildren(...children)
   }
 
-  return Object.freeze({ supports, qwen21Route, isQwen21Graph, catalogFromInfo, selection, apply, validate, mount, displayName })
+  return Object.freeze({ supports, qwen21Route, isQwen21Graph, catalogFromInfo, selection, apply, validate, mount, setConnection, displayName })
 })

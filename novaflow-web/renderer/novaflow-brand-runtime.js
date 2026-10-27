@@ -30143,6 +30143,8 @@
   }
 
   function updateTopbarAiRuntimeStatus(status) {
+    const runtime = window.NovaFlowWebRuntime;
+    window.NovaFlowArtGenerateLora?.setConnection?.(isTopbarAiRuntimeConnected(status), runtime?.computeNode?.id || runtime?.computeMode || "local");
     const host = document.getElementById(TOPBAR_AI_RUNTIME_STATUS_ID);
     if (!(host instanceof HTMLElement)) return;
     const label = host.querySelector('[data-novaflow-topbar-ai-runtime-state="1"]');
