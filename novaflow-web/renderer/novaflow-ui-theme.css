@@ -787,24 +787,17 @@ html body #novaflow-aifx-mvp .aifx-section-header:hover {
 }
 
 
-/* 2.0u 工具's rows: the line under each, and the group rows' hover. */
+/* Tool navigation uses fills; no divider or outline around each entry. */
 html body :is([data-novaflow-tools-entry], #nf-lift)::after {
-  content: "" !important;
-  position: absolute !important;
-  /* Clear of the button press overlay's own ::after (inset 0, opacity 0). */
-  top: auto !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: -8px !important;
-  width: auto !important;
-  height: 1px !important;
-  opacity: 1 !important;
-  transform: none !important;
-  background: #272727 !important;
-  pointer-events: none !important;
+  content: none !important;
 }
 html body [data-novaflow-tools-entry][data-novaflow-canvas-bar-button="tool-row"]:hover {
   --nf-cb-hover-bg: #222222;
+}
+
+/* An idle LoRA catalogue has no sidebar error/empty-status paragraph. */
+html body.novaflow-ai-animation-section-layers [data-novaflow-ai-lora-empty="1"] {
+  display: none !important;
 }
 
 /* 2.0v The pair switch's knob, on the side of the state that is on. */
@@ -1627,7 +1620,7 @@ html body #novaflow-png-remove-black-root .nf-prb-main {
 }
 html body #novaflow-png-remove-black-root .nf-prb-panel {
   background: #1d1d1d !important;
-  border: 1px solid #353535 !important;
+  border: 1px solid transparent !important;
   border-radius: 12px !important;
   padding: 12px !important;
   box-sizing: border-box !important;
@@ -1641,7 +1634,7 @@ html body #novaflow-png-remove-black-root .nf-prb-panel-head {
 }
 html body #novaflow-png-remove-black-root .nf-prb-preview {
   background: #242424 !important;
-  border: 1px solid #3c3c3c !important;
+  border: 1px solid transparent !important;
   border-radius: 8px !important;
 }
 html body #novaflow-png-remove-black-root .nf-prb-top-actions {
@@ -1795,7 +1788,7 @@ html body #novaflow-video-format-convert-root .nf-vfc-main {
 }
 html body #novaflow-video-format-convert-root .nf-vfc-panel {
   background: #1d1d1d !important;
-  border: 1px solid #353535 !important;
+  border: 1px solid transparent !important;
   border-radius: 12px !important;
   padding: 12px !important;
   box-sizing: border-box !important;
@@ -1809,7 +1802,7 @@ html body #novaflow-video-format-convert-root .nf-vfc-panel-head {
 }
 html body #novaflow-video-format-convert-root .nf-vfc-preview {
   background: #242424 !important;
-  border: 1px solid #3c3c3c !important;
+  border: 1px solid transparent !important;
   border-radius: 8px !important;
 }
 html body #novaflow-video-format-convert-root .nf-vfc-top-actions {
@@ -1966,7 +1959,7 @@ html body #novaflow-spine-atlas-webp-root .nf-saw-main {
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-panel {
   background: #1d1d1d !important;
-  border: 1px solid #353535 !important;
+  border: 1px solid transparent !important;
   border-radius: 12px !important;
   padding: 12px !important;
   box-sizing: border-box !important;
@@ -1980,7 +1973,7 @@ html body #novaflow-spine-atlas-webp-root .nf-saw-panel-head {
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-preview {
   background: #242424 !important;
-  border: 1px solid #3c3c3c !important;
+  border: 1px solid transparent !important;
   border-radius: 8px !important;
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-top-actions {
@@ -2134,7 +2127,7 @@ html body #novaflow-mp4-compress-root .nf-mp4-main {
 }
 html body #novaflow-mp4-compress-root .nf-mp4-panel {
   background: #1d1d1d !important;
-  border: 1px solid #353535 !important;
+  border: 1px solid transparent !important;
   border-radius: 12px !important;
   padding: 12px !important;
   box-sizing: border-box !important;
@@ -2148,7 +2141,7 @@ html body #novaflow-mp4-compress-root .nf-mp4-panel-head {
 }
 html body #novaflow-mp4-compress-root .nf-mp4-preview {
   background: #242424 !important;
-  border: 1px solid #3c3c3c !important;
+  border: 1px solid transparent !important;
   border-radius: 8px !important;
 }
 html body #novaflow-mp4-compress-root .nf-mp4-top-actions {

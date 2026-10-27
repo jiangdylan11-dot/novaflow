@@ -11350,9 +11350,19 @@
     return false;
   }
 
+  function normalizeAiAnimationModelMethodLabels(root) {
+    if (!(root instanceof Document) && !(root instanceof HTMLElement)) return;
+    Array.from(root.querySelectorAll('select')).filter(isAiAnimationModelMethodSelect).forEach((select) => {
+      Array.from(select.options || []).forEach((option) => {
+        if (["minimax_h3_local", "beta5_int8", "beta6_int8"].includes(option.value) && option.textContent !== "本地模型") option.textContent = "本地模型";
+      });
+    });
+  }
+
   function commitAiAnimationModelMethodLayoutState(reason = "model-method-layout", root = document) {
     const body = document.body;
     if (!(body instanceof HTMLElement) || !body.classList.contains("novaflow-primary-target-animation")) return false;
+    normalizeAiAnimationModelMethodLabels(root);
     const modelMethod = getAiAnimationSelectedModelMethod(root);
     const cloudModelMethod = false;
     const localModelMethod = modelMethod === "local_a" || modelMethod === "minimax_h3_local";
@@ -33857,8 +33867,7 @@
       },
       {
         // 工具: the tool list is a navigation column - 198x40 entries on the
-        // card's own inset, bare until selected, and then the rail's dark
-        // green with its hairline edge rather than a solid accent block.
+        // card's own inset, bare until selected, with a dark green fill.
         when: "body.novaflow-primary-target-tools",
         selector: "[data-novaflow-tools-entry]",
         style: (node) => {
@@ -33866,16 +33875,13 @@
           // Idle entries take the canvas bar's hover (#373737, white), as the
           // reference's tool list does.
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
-          // Rows with a #272727 line under each (drawn by the theme sheet's
-          // 2.0u, outside the row so the row keeps its corners), as asked; the
-          // hover fill is the group rows' #222222 on the same 7 corners.
+          // Navigation uses fills for hover and selection, without row dividers.
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "tool-row");
           const iconRow = {
             position: "relative", "text-align": "left", "justify-content": "flex-start", overflow: "visible",
-            border: active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "1px solid transparent",
+            border: "1px solid transparent",
             "border-radius": NOVAFLOW_RECT_RADIUS_PX,
-            // A 40 block in a 54 pitch: the fill (hover, selected) stays
-            // clear of the lines between the tools.
+            // Retain the 40px block and 54px pitch when removing the outlines.
             height: "40px", "min-height": "40px", "max-height": "40px", "box-shadow": "none", "margin-top": "7px", "margin-bottom": "7px"
           };
           return {
@@ -33893,7 +33899,7 @@
             background: active ? UI_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
             "background-color": active ? UI_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
             "background-image": "none",
-            "box-shadow": active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none",
+            "box-shadow": "none",
             color: active ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_SEGMENT_IDLE_TEXT})`,
             "font-size": "12px",
             "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
@@ -61868,6 +61874,7 @@
 
   function markAiAnimationMainModelControls(root) {
     if (!(root instanceof HTMLElement)) return false;
+    normalizeAiAnimationModelMethodLabels(root);
     const readRect = createScopedClientRectReader();
     const sections = Array.from(root.querySelectorAll("div"))
       .filter((node) => {
