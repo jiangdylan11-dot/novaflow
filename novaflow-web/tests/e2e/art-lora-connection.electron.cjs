@@ -7,7 +7,7 @@ app.whenReady().then(async () => {
   try {
     const win = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
     await win.loadURL('data:text/html,<main id="host"></main>');
-    await win.webContents.executeJavaScript(fs.readFileSync(path.join(renderer, 'art-generate-lora.js'), 'utf8'));
+    await win.webContents.executeJavaScript(fs.readFileSync(process.env.NF_LORA_MODULE || path.join(renderer, 'art-generate-lora.js'), 'utf8'));
     const brand=fs.readFileSync(path.join(renderer,'novaflow-brand-runtime.js'),'utf8');
     const bridge=brand.slice(brand.indexOf('  function isTopbarAiRuntimeConnected(status)'),brand.indexOf('  function topbarAiRuntimeEnsureBackoffMs('));
     // Run the actual topbar-to-catalogue connection bridge. Its DOM is absent,
