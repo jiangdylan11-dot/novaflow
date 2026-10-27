@@ -552,7 +552,7 @@
   function syncNativeProjectExport(root) {
     if (!api || !api.projectExportInfo || !api.exportSelectedProjects) return false
     const info = api.projectExportInfo().filter((p) => p.exported)
-    const run = Array.from(root.querySelectorAll('button')).find(isExportRun)
+    const run = Array.from(root.querySelectorAll('button')).filter(isExportRun).at(-1)
     if (!run) return true
     const spine = isSpineExportRun(run), mode = mediaMode()
     root.setAttribute('data-nf-project-media-mode', mode)
@@ -568,11 +568,16 @@
     if (spine) { if (row) row.remove() }
     else {
       if (!row) {
-        row = document.createElement('div'); row.setAttribute('data-nf-project-media', '1'); row.className = 'nf-atlas-controls'
-        row.innerHTML = '<div class="nf-atlas-row"><span style="font-size:12px">工程输出</span><button type="button" class="nf-atlas-button" data-media-mode="independent">独立导出</button><button type="button" class="nf-atlas-button" data-media-mode="merged">合并导出</button></div><p class="nf-atlas-hint" data-media-hint></p>'
+        row = document.createElement('div'); row.setAttribute('data-nf-project-media', '1'); row.setAttribute('data-novaflow-runtime-ignore', '1'); row.className = 'nf-atlas-controls'
+        row.style.cssText = 'margin:0 0 12px'
+        row.innerHTML = '<div class="nf-atlas-row" style="justify-content:flex-start;gap:6px"><span style="font-size:12px;margin-right:6px">工程输出</span><button type="button" class="nf-atlas-button" data-media-mode="independent">独立导出</button><button type="button" class="nf-atlas-button" data-media-mode="merged">合并导出</button></div><p class="nf-atlas-hint" data-media-hint style="margin:6px 0 0"></p>'
         row.querySelectorAll('[data-media-mode]').forEach((b) => b.addEventListener('click', () => { localStorage.setItem('nf-skel-media-export', b.getAttribute('data-media-mode')); syncNativeProjectExport(root) }))
-        run.before(row)
       }
+      // Anchor to the persistent tabs, not a tab's conditional export/toggle button.
+      const tab = Array.from(root.querySelectorAll('button')).find((b) => (b.textContent || '').trim() === '序列帧')
+      const tabs = tab && tab.parentElement
+      if (tabs) { if (tabs.nextElementSibling !== row) tabs.after(row) }
+      else if (run.previousElementSibling !== row) run.before(row)
       row.querySelectorAll('[data-media-mode]').forEach((b) => b.classList.toggle('primary', b.getAttribute('data-media-mode') === mode))
       const text = `已勾选 ${info.length} 个工程，` + (mode === 'independent' ? '各自导出，文件名使用工程名。' : '合并为一个结果，只包含勾选的工程。')
       const hint = row.querySelector('[data-media-hint]'); if (hint.textContent !== text) hint.textContent = text
@@ -656,7 +661,8 @@
   const exportRunLabel = (b) => (b.getAttribute('data-nf-skeleton-label') || b.textContent || '').trim()
   function isExportRun(b) {
     if (!(b instanceof HTMLButtonElement) || !exportRoot(b) || b.closest('[data-nf-skeleton-pack]')) return false
-    return /^导出/.test(exportRunLabel(b))
+    const label = exportRunLabel(b)
+    return /^导出/.test(label) && !/^导出\s*(?:SPINE\s*序列工程|序列动画工程)\s*(?:已开启|未开启)$/i.test(label)
   }
   const isSpineExportRun = (b) => isExportRun(b) && (b.getAttribute('data-novaflow-skeleton-spine-export') === '1' || /Spine\s*工程|^导出动画工程$/i.test(exportRunLabel(b)))
   const inSync = () => !!(api && appJson === api.json() && appMode === packMode() && appVersion === (wantVersion === 'spine' ? exportVersion() : '3.8') && appImages === imageRevision() && appSettings === settingsKey())
@@ -892,6 +898,7 @@
     ready,
     call,
     api: () => api,
+    syncExportDialog: (root) => { if (window.NovaFlowSkeletonEditor.active() && exportRoot(root)) syncNativeProjectExport(root) },
     prepareImport: (operation) => { pendingImportOperation = operation; pendingImportDirectory = operation && operation !== 'refresh' ? window.__NovaFlowLastProjectDirectory || null : null },
     applyRibbonAnimation,
     exportVersion,

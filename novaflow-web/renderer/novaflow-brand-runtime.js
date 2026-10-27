@@ -6921,6 +6921,8 @@
     const text = normalizeText(button.textContent || "");
     const upper = text.toUpperCase();
     if (!text.includes("\u5bfc\u51fa")) return "";
+    // Sequence-project switches are settings, not the final export action.
+    if (/^导出\s*(?:SPINE\s*序列工程|序列动画工程)\s*(?:已开启|未开启)$/i.test(text)) return "";
     if (text === "导出动画工程" || button.getAttribute("data-novaflow-skeleton-spine-export") === "1") return "spine";
     if (upper.includes("SPINE") && (upper.includes("JSON") || upper.includes("ATLAS") || text.includes("\u5de5\u7a0b"))) return "spine";
     if (text.includes("\u89c6\u9891")) return "video";
@@ -7517,6 +7519,7 @@
     removeNovaflowExportTimestampNote(root);
     pruneNovaflowExportModalContextControls(root);
     ensureNovaflowExportBackgroundRow(root);
+    window.NovaFlowSkeletonEditor?.syncExportDialog?.(root);
     syncNovaflowExportModalActionButtons(root);
     if (getNovaflowExportPendingTabMode(root) && getNovaflowExportModalActualTab(root) === getNovaflowExportPendingTabMode(root)) {
       root.__novaflowExportPendingTabMode = "";
@@ -7539,6 +7542,7 @@
     normalizeNovaflowExportScaleUnitSpacing(root);
     pruneNovaflowExportModalContextControls(root);
     ensureNovaflowExportBackgroundRow(root);
+    window.NovaFlowSkeletonEditor?.syncExportDialog?.(root);
     syncNovaflowExportModalActionButtons(root);
     if (getNovaflowExportPendingTabMode(root) && getNovaflowExportModalActualTab(root) === getNovaflowExportPendingTabMode(root)) {
       root.__novaflowExportPendingTabMode = "";
