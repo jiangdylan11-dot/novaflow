@@ -14,7 +14,8 @@ function fixture(own = '3.8') {
   const project = { skeleton: { spine: '3.8.99' }, bones: [{ name: 'root' }], slots: [{ name: 'slot', bone: 'root', attachment: 'picture' }],
     skins: [{ name: 'default', attachments: { slot: { picture: { width: 16, height: 16 } } } }], animations: { animation: {} } }
   const initial = JSON.stringify(project), versions = [], bridges = []
-  const root = { closest: () => root, getAttribute: () => 'skeleton', querySelector: s => s === '[data-nf-skeleton-pack]' ? {} : null, querySelectorAll: () => [button] }
+  let hint = null
+  const root = { closest: () => root, getAttribute: () => 'skeleton', querySelector: s => s === '[data-nf-skeleton-pack]' ? {} : s === '[data-nf-skeleton-prepare-error]' ? hint : null, querySelectorAll: () => [button] }
   class Button {
     constructor() { this.textContent = '导出动画工程'; this.disabled = false; this.attrs = new Map([['data-novaflow-skeleton-spine-export', '1']]) }
     closest(s) { return s === '[data-nf-skeleton-pack]' ? null : root }
@@ -22,12 +23,13 @@ function fixture(own = '3.8') {
     hasAttribute(k) { return this.attrs.has(k) }
     setAttribute(k, v) { this.attrs.set(k, v) }
     removeAttribute(k) { this.attrs.delete(k) }
+    before(node) { hint = node }
   }
   const button = new Button(), cache = {}
   const api = { loaded: () => true, json: () => project, ownVersion: () => own,
     packForApp: async ({ version }) => { versions.push(version); return { source: { json: { text: JSON.stringify(V.fromSpine38(project, version)) }, atlas: {}, images: [] } } } }
   const ctx = vm.createContext({ console, api, ready: async () => api, HTMLButtonElement: Button,
-    localStorage: { getItem: () => '{}' }, document: { querySelector: () => root },
+    localStorage: { getItem: () => '{}' }, document: { querySelector: () => root, createElement: () => ({ style: {}, setAttribute() {}, remove() { hint = null } }) },
     window: { NovaFlowSkeletonEditor: { active: () => true }, __NovaFlowSpineImportInlineBridgeCache: cache,
       __NovaFlowSpineImportInlineBridge: { start: async () => { const j = JSON.parse(cache.json.text); j.skins.map(s => s.name); bridges.push(j); return true } } },
   })
@@ -36,7 +38,7 @@ function fixture(own = '3.8') {
     select: v => vm.runInContext(`wantVersion='spine';setExportVersion(${JSON.stringify(v)})`, ctx),
     sync: () => vm.runInContext('syncApp()', ctx),
     isSpineRun: () => vm.runInContext('isSpineExportRun(document.querySelector().querySelectorAll()[0])', ctx),
-    pending: () => vm.runInContext('syncPromise', ctx),
+    pending: () => vm.runInContext('syncPromise', ctx), hint: () => hint,
   }
 }
 
@@ -52,6 +54,40 @@ for (const own of ['3.8', '4.2']) test(`${own} project: selecting 3.7 never feed
   assert.equal(f.bridges.length, 1, 'version-only toggles reuse the compatible preview project')
   f.select('4.1'); await f.sync()
   assert.equal(f.bridges[1].skeleton.spine, '4.1.24')
+})
+
+test('oversized image failure restores the export button and stops automatic retry until settings change', async () => {
+  const f = fixture()
+  let attempts = 0
+  const pack = f.api.packForApp
+  f.api.packForApp = async () => { attempts++; throw Error('图片「bkg」需要 2564×1444，超出图集尺寸 2048×2048') }
+  vm.runInContext('presync()', f.ctx)
+  await assert.rejects(f.pending(), /bkg/)
+  await new Promise(setImmediate)
+  for (let i = 0; i < 4; i++) vm.runInContext('presync()', f.ctx)
+  assert.equal(attempts, 1)
+  assert.equal(f.button.disabled, false)
+  assert.equal(f.button.textContent, '导出动画工程')
+  assert.match(f.hint().textContent, /bkg.*2564×1444.*2048×2048/)
+  f.ctx.localStorage.getItem = key => key.includes('sequenceAtlas') ? '{"maxWidth":4096}' : '{}'
+  f.api.packForApp = pack
+  vm.runInContext('presync()', f.ctx)
+  await f.pending(); await new Promise(setImmediate)
+  vm.runInContext('presync()', f.ctx)
+  assert.equal(f.button.disabled, false)
+  assert.equal(f.hint(), null)
+  assert.equal(f.bridges.length, 1)
+})
+
+test('replacing pixels without changing the skeleton invalidates the export preparation', async () => {
+  const f = fixture()
+  let revision = 0
+  f.api.imageRevision = () => revision
+  await f.sync()
+  revision++
+  assert.equal(vm.runInContext('inSync()', f.ctx), false)
+  await f.sync()
+  assert.equal(f.bridges.length, 2)
 })
 
 test('a new project recovers from preparation without losing its export controls', async () => {

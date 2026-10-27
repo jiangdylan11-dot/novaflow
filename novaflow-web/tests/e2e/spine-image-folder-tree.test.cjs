@@ -3,6 +3,8 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+require('../../renderer/spine-auto-mesh-attach.js')
+const Attach = globalThis.NovaFlowAutoMeshAttach
 const source = fs.readFileSync(path.resolve(__dirname, '../../renderer/spine-skeleton-editor.js'), 'utf8').replace(/\r\n/g, '\n')
 const section = (a, b) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)))
 const json = () => ({ skeleton: { images: 'D:/art/project/images/e/' }, skins: [{ name: 'default', attachments: { chicken: { chicken: {} } } }] })
@@ -18,7 +20,8 @@ function handles(name, tree) {
 
 function harness() {
   const remembered = [], unpacked = []
-  const context = vm.createContext({ state: { json: json(), sections: new Set() }, imgTree: null,
+  const context = vm.createContext({ state: { json: json(), sections: new Set(), images: new Map() }, imgTree: null,
+    Attach, lower: s => String(s).toLowerCase(), rt: {}, pagePixels: new Map(), frameThumbs: new Map(), applyJson() {}, imageFromBlob: async () => ({ naturalWidth: 1, naturalHeight: 1 }),
     regionList: () => [{ name: 'chicken' }], status() {}, refresh() {},
     rememberFolder: handle => remembered.push(handle),
     unpackAtlasInto: async handle => { unpacked.push(handle); return { written: 0, skipped: 1, unpremultiplied: 0 } },
@@ -73,4 +76,40 @@ test('restoring a remembered root also restores image aliases without losing sib
   const root = handles('images', tree().images)
   await context.useRememberedFolder(context.state, root)
   await checkFolder(context.state.imageFolder)
+})
+
+test('folder replacements update the rendered and saved images while keeping skeleton and animation unchanged', async () => {
+  const { context: c } = harness()
+  const original = c.state.json
+  c.state.atlasText = Attach.synthesizeAtlas([{ fileName: 'chicken.png', width: 12, height: 8 }])
+  c.state.images.set('chicken.png', { blob: { old: true } })
+  let file = { size: 21, lastModified: 1 }
+  const folder = { list: async () => ({ dirs: [], files: [{ rel: 'chicken.png', file: async () => file }] }) }
+  c.state.imageFolder = folder
+  assert.equal(await c.refreshFolderPictures(c.state, folder), 1)
+  assert.equal(c.state.json, original)
+  assert.equal(c.state.images.get('chicken.png').blob, file)
+  assert.equal(Attach.parseAtlas(c.state.atlasText).size, 1)
+  const revision = c.state.imageFolderGen
+  assert.equal(await c.refreshFolderPictures(c.state, folder), 0, 'unchanged files are not decoded again')
+  file = { size: 21, lastModified: 2 }
+  assert.equal(await c.refreshFolderPictures(c.state, folder), 1, 'a same-size overwrite refreshes pixels')
+  assert.equal(c.state.images.get('chicken.png').blob, file)
+  assert.equal(c.state.imageFolderGen, revision + 1)
+  assert.equal(c.state.atlasText.split('\n').filter(l => l === 'chicken.png').length, 1, 'old standalone pages do not accumulate')
+})
+
+test('replacing one packed region keeps other regions on its page and does not duplicate its old region', async () => {
+  const { context: c } = harness()
+  c.state.atlasText = 'page.png\nsize: 20,10\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\nchicken\n  xy: 0,0\n  size: 10,10\n  orig: 10,10\nother\n  xy: 10,0\n  size: 10,10\n  orig: 10,10\n'
+  c.state.images.set('page.png', { blob: 'packed' })
+  const folder = { list: async () => ({ dirs: [], files: [{ rel: 'chicken.png', file: async () => ({ size: 21, lastModified: 1 }) }] }) }
+  c.state.imageFolder = folder
+  await c.refreshFolderPictures(c.state, folder)
+  const regions = Attach.parseAtlas(c.state.atlasText)
+  assert.equal(regions.size, 2)
+  assert.equal(regions.get('other').page, 'page.png')
+  assert.notEqual(regions.get('chicken').page, 'page.png')
+  assert.equal(c.state.atlasText.split('\n').filter(l => l === 'chicken').length, 1)
+  assert.equal(c.state.images.get('page.png').blob, 'packed')
 })

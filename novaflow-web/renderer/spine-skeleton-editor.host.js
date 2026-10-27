@@ -555,6 +555,27 @@
   const exportSkel = () => packSkel()
 
   let appVersion = null
+  let appImages = null
+  let appSettings = null
+  let prepareFailure = null
+  const imageRevision = () => api && api.imageRevision ? api.imageRevision() : 0
+  const settingsKey = () => localStorage.getItem(ATLAS_KEY) || ''
+  const prepareKey = () => ({ json: api && api.json(), mode: packMode(), version: wantVersion === 'spine' ? exportVersion() : '3.8', images: imageRevision(), settings: settingsKey() })
+  const samePreparation = (a, b) => !!(a && b && Object.keys(a).every((k) => a[k] === b[k]))
+  function preparationError(root, error) {
+    let hint = root && root.querySelector('[data-nf-skeleton-prepare-error]')
+    if (!error) { if (hint) hint.remove(); return }
+    if (!root) return
+    if (!hint) {
+      hint = document.createElement('div')
+      hint.setAttribute('data-nf-skeleton-prepare-error', '1')
+      hint.style.cssText = 'color:#ffb4a8;font-size:12px;line-height:1.6;margin:8px 0;white-space:pre-wrap'
+      const run = Array.from(root.querySelectorAll('button')).find(isExportRun)
+      if (run) run.before(hint); else root.append(hint)
+    }
+    const message = '准备工程失败：' + (error.message || String(error)) + '。调整打包设置后重试。'
+    if (hint.textContent !== message) hint.textContent = message
+  }
   async function syncApp() {
     const a = await ready()
     if (!a.loaded()) throw new Error('先在「工程管理」里新建或导入工程')
@@ -564,7 +585,8 @@
     // buildSkeletonSpineExportJson converts the final file after the preview has been read.
     const bridgeVersion = version === '3.7' ? '3.8' : version
     const previousBridgeVersion = appVersion === '3.7' ? '3.8' : appVersion
-    if (appJson === a.json() && appMode === mode && previousBridgeVersion === bridgeVersion) { appVersion = version; return }
+    const images = imageRevision(), settings = settingsKey()
+    if (appJson === a.json() && appMode === mode && previousBridgeVersion === bridgeVersion && appImages === images && appSettings === settings) { appVersion = version; return }
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
     const bridge = window.__NovaFlowSpineImportInlineBridge
     if (!cache || !bridge || typeof bridge.start !== 'function') throw new Error('导入通道不可用')
@@ -578,6 +600,7 @@
     try { ok = await bridge.start() } finally { bridgeImporting = false }
     if (ok === false) throw new Error('工程没能交给导出')
     appJson = json; appMode = mode; appVersion = version
+    appImages = images; appSettings = settings; prepareFailure = null
   }
 
   const exportRoot = (el) => {
@@ -593,7 +616,7 @@
     return /^导出/.test(exportRunLabel(b))
   }
   const isSpineExportRun = (b) => isExportRun(b) && (b.getAttribute('data-novaflow-skeleton-spine-export') === '1' || /Spine\s*工程|^导出动画工程$/i.test(exportRunLabel(b)))
-  const inSync = () => !!(api && appJson === api.json() && appMode === packMode() && appVersion === (wantVersion === 'spine' ? exportVersion() : '3.8'))
+  const inSync = () => !!(api && appJson === api.json() && appMode === packMode() && appVersion === (wantVersion === 'spine' ? exportVersion() : '3.8') && appImages === imageRevision() && appSettings === settingsKey())
   const exportName = (root) => { const i = root && root.querySelector('input[type=text], input:not([type])'); return i ? i.value : '' }
   const setExportName = (root, v) => {
     const i = root && root.querySelector('input[type=text], input:not([type])')
@@ -612,6 +635,9 @@
     // the app rebuilds its project (and with it this dialog): run the button that is there then
     const label = exportRunLabel(b)
     const name = exportName(exportRoot(b))
+    const key = prepareKey()
+    prepareFailure = null
+    preparationError(exportRoot(b), null)
     b.textContent = '准备工程…'
     // a click while the dialog's own sync still runs waits for it instead of being lost
     const pending = syncing && syncPromise ? syncPromise.catch(() => {}) : Promise.resolve()
@@ -626,7 +652,10 @@
       bypass = true
       try { again.click() } finally { bypass = false }
     }).catch((error) => {
+      prepareFailure = { key, error }
       b.textContent = label
+      b.disabled = false
+      preparationError(document.querySelector('[data-novaflow-export-modal-root="1"]'), error)
       window.alert('导出前准备工程失败：' + (error && error.message ? error.message : String(error)))
     }).finally(() => { syncing = false })
   }
@@ -640,16 +669,19 @@
     wantVersion = root.querySelector('[data-nf-skeleton-pack]') ? 'spine' : '3.8'
     // the dialog's run buttons wait until the app holds the project as it will go out
     const ready = inSync() && !syncing
+    const key = prepareKey()
+    const failed = prepareFailure && samePreparation(prepareFailure.key, key)
+    preparationError(root, failed ? prepareFailure.error : null)
     for (const b of root.querySelectorAll('button')) {
       if (!isExportRun(b)) continue
-      if (ready) { if (b.hasAttribute('data-nf-skeleton-wait')) { b.removeAttribute('data-nf-skeleton-wait'); b.disabled = false; b.textContent = b.getAttribute('data-nf-skeleton-label') || b.textContent } }
+      if (ready || failed) { if (b.hasAttribute('data-nf-skeleton-wait')) { b.removeAttribute('data-nf-skeleton-wait'); b.disabled = false; b.textContent = b.getAttribute('data-nf-skeleton-label') || b.textContent } }
       else if (!b.hasAttribute('data-nf-skeleton-wait')) { b.setAttribute('data-nf-skeleton-wait', '1'); b.setAttribute('data-nf-skeleton-label', b.textContent); b.disabled = true; b.textContent = '准备工程…' }
     }
-    if (syncing || ready) return
+    if (syncing || ready || failed) return
     const name = exportName(root)
     syncing = true
     syncPromise = syncApp()
-    syncPromise.then(() => setExportName(document.querySelector('[data-novaflow-export-modal-root="1"]'), name), () => {}).finally(() => { syncing = false })
+    syncPromise.then(() => setExportName(document.querySelector('[data-novaflow-export-modal-root="1"]'), name), (error) => { prepareFailure = { key, error } }).finally(() => { syncing = false })
   }
 
   /** The Spine tab gets the editor's 打包 choice and the shared 图集打包设置. */

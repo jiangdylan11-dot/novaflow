@@ -392,7 +392,7 @@
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiSkins', 'skinAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
-    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel']
+    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
 
@@ -1964,6 +1964,74 @@
 
   const folderPictureName = (file) => file.imageName || file.rel.replace(/\.[^.]+$/, '')
 
+  // A selected/restored folder supplies current pixels, including replacements with the same name.
+  // Keep the skeleton (attachment sizes, meshes and animation) intact.
+  const folderImageVersions = new WeakMap()
+  function withoutAtlasPictures(text, names) {
+    return String(text).trim().split(/\r?\n\s*\r?\n/).map((block) => {
+      let skip = false, kept = false
+      const lines = block.split(/\r?\n/).filter((raw, i) => {
+        if (!i) return true
+        const line = raw.trim()
+        if (!line.includes(':')) { skip = names.has(line); if (!skip) kept = true }
+        return !skip
+      })
+      return kept ? lines.join('\n') : ''
+    }).filter(Boolean).join('\n\n')
+  }
+  async function refreshFolderPictures(target, folder) {
+    const json = target.json
+    if (!json || !folder) return 0
+    const regions = Attach.parseAtlas(target.atlasText), wanted = attachmentPictureNames(json)
+    for (const name of regions.keys()) wanted.add(name)
+    let record = folderImageVersions.get(folder)
+    if (!record || record.atlasText !== target.atlasText) { record = { atlasText: target.atlasText, versions: new Map() }; folderImageVersions.set(folder, record) }
+    const versions = record.versions
+    const updates = []
+    const walk = async (node) => {
+      const list = await node.list()
+      for (const f of list.files) {
+        const name = folderPictureName(f)
+        if (!wanted.has(name)) continue
+        const file = await f.file(), stamp = `${file.size}|${file.lastModified}`
+        if (versions.get(f.rel) === stamp) continue
+        let blob = file, img = await imageFromBlob(blob)
+        if (target.pma) {
+          const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight
+          const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0)
+          blob = new Blob([await window.NovaFlowSequenceAtlas.encodePng(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height, true)], { type: 'image/png' })
+          img = await imageFromBlob(blob)
+        }
+        const old = regions.get(name)
+        let fileName = old && [...regions.values()].filter((r) => r.page === old.page).length === 1 ? old.page : `__nf_folder/${name}.png`
+        while ((!old || fileName !== old.page) && target.images.has(lower(fileName))) fileName = '_' + fileName
+        updates.push({ name, rel: f.rel, stamp, fileName, blob, img })
+      }
+      for (const child of list.dirs) await walk(child)
+    }
+    await walk(folder)
+    if (target.json !== json || target.imageFolder !== folder) return 0
+    if (!updates.length) return 0
+    target.atlasText = withoutAtlasPictures(target.atlasText, new Set(updates.map((u) => u.name))).replace(/\s+$/, '') + '\n\n' +
+      Attach.synthesizeAtlas(updates.map((u) => ({ name: u.name, fileName: u.fileName, width: u.img.naturalWidth, height: u.img.naturalHeight }))) + '\n'
+    target.images = new Map(target.images)
+    for (const u of updates) {
+      const previous = target.images.get(lower(u.fileName))
+      if (previous) pagePixels.delete(previous.img)
+      target.images.set(lower(u.fileName), { fileName: u.fileName, img: u.img, blob: u.blob }); versions.set(u.rel, u.stamp)
+    }
+    record.atlasText = target.atlasText
+    target.atlasChanged = true
+    target.imageFolderGen = (target.imageFolderGen || 0) + 1
+    if (target === state) {
+      frameThumbs.clear()
+      rt.atlasKey = null
+      applyJson(json)
+      refresh()
+    }
+    return updates.length
+  }
+
   /** Keep the visible directory intact; only referenced pictures use the export's shorter names. */
   function folderWithPictureNames(folder, pictureRoot, names) {
     if (!pictureRoot) return folder
@@ -2102,13 +2170,16 @@
    * A picked folder (files with their relative paths) as the project's image folder: its pictures
    * list in the 图片 node (subfolders kept); dragged onto a bone / slot / the stage they come in.
    */
-  function useImageFolder(files) {
+  async function useImageFolder(files) {
     if (!state.json) throw new Error('先新建或导入工程')
     const list = [...files].filter((f) => IMG_RX.test(f.name))
     if (!list.length) { status('文件夹里没有图片（PNG / JPG / WebP）', 'error'); return 0 }
     const top = String(list[0].webkitRelativePath || '').split('/')[0] || state.name || '图片'
     const items = list.map((f) => { const parts = String(f.webkitRelativePath || f.name).split('/').filter(Boolean); return { rel: (parts.length > 1 ? parts.slice(1) : parts).join('/'), file: f } })
-    state.imageFolder = folderFromFiles(top, items)
+    const names = attachmentPictureNames(state.json)
+    const best = bestPictureRoot(items.map((i) => i.rel), names)
+    state.imageFolder = folderWithPictureNames(folderFromFiles(top, items), best, names)
+    await refreshFolderPictures(state, state.imageFolder)
     state.imageFolderGen = (state.imageFolderGen || 0) + 1
     imgTree = { key: '', nodes: new Map(), pending: new Set() }
     state.sections.delete('images')
@@ -2225,6 +2296,7 @@
       r = await unpackAtlasInto(dir)
     }
     state.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
+    await refreshFolderPictures(state, state.imageFolder)
     state.pendingFolder = null
     rememberFolder(handle)
     state.imageFolderGen = (state.imageFolderGen || 0) + 1
@@ -2274,6 +2346,7 @@
     const best = bestPictureRoot(await pictureRels(handle), names)
     if (target.json !== json) return
     target.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
+    await refreshFolderPictures(target, target.imageFolder)
     target.pendingFolder = null
     if (target === state) {
       state.imageFolderGen = (state.imageFolderGen || 0) + 1
@@ -7118,16 +7191,20 @@
   // node folded too, so the frame cards follow it as well; a change (a picture copied in or deleted,
   // a folder made) refreshes the tree and the cards
   let imgWatch = 0
+  let imgWatchBusy = false
   const imgSeen = { folder: null, names: new Map() }   // path → names the watch listed last
   function watchImageFolder(on) {
     if (!on || !(state.imageFolder && state.imageFolder.live)) { if (imgWatch) { clearInterval(imgWatch); imgWatch = 0 } return }
     if (imgWatch) return
     const names = (l) => l.dirs.map((d) => 'd:' + d.name).concat(l.files.map((f) => 'f:' + f.name)).join('\n')
     imgWatch = setInterval(async () => {
+      if (imgWatchBusy) return
       const folder = state.imageFolder
       if (!state.json || !(folder && folder.live)) { watchImageFolder(false); return }
+      imgWatchBusy = true
       if (imgSeen.folder !== folder) { imgSeen.folder = folder; imgSeen.names.clear() }
       try {
+        await refreshFolderPictures(state, folder)
         for (const path of new Set(['', ...imgTree.nodes.keys()])) {
           let node = folder
           for (const seg of path.split('/').filter(Boolean)) { const l = await node.list(); node = l.dirs.find((d) => d.name === seg); if (!node) break }
@@ -7144,7 +7221,8 @@
             return
           }
         }
-      } catch { /* the folder went away: keep what is shown */ }
+      } catch (error) { status('图片文件夹刷新失败：' + (error.message || error), 'error') }
+      finally { imgWatchBusy = false }
     }, 2500)
   }
 
@@ -11680,6 +11758,7 @@
     openAtlasSettings: () => openAtlasSettings(),
     /** how many pictures each 打包 choice takes: 附件 (used) / 图片文件夹 */
     packCounts: async () => ({ atts: exportImageNames(Ops.exportable(state.json)).length, folder: (await folderImages()).length }),
+    imageRevision: () => state.imageFolderGen || 0,
     /**
      * The project packed for the app (its player renders 序列帧 / 视频, its 导出 writes the Spine
      * package): JSON + a fresh atlas + page PNGs, as `__NovaFlowSpineImportInlineBridgeCache` takes them.

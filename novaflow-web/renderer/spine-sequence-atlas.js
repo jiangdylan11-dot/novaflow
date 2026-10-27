@@ -274,7 +274,7 @@
         await options.write(`images/${frame.region}.png`, await encodePng(rgba, width, height));
       } else {
         const paddedWidth = bounds.width + px * 2, paddedHeight = bounds.height + py * 2;
-        if (paddedWidth > settings.maxWidth || paddedHeight > settings.maxHeight) throw new Error(`第 ${frames.length + 1} 帧超出图集尺寸 ${settings.maxWidth}×${settings.maxHeight}，请增大图集或减小导出缩放`);
+        if (paddedWidth > settings.maxWidth || paddedHeight > settings.maxHeight) throw new Error(`图片「${name}」需要 ${paddedWidth}×${paddedHeight}（含间距），超出图集尺寸 ${settings.maxWidth}×${settings.maxHeight}，请增大图集或减小导出缩放`);
         if (!pixels) newPage();
         let placement = place(free, paddedWidth, paddedHeight);
         if (!placement) { await flush(); newPage(); placement = place(free, paddedWidth, paddedHeight); }

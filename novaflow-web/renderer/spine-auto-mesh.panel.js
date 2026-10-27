@@ -3397,7 +3397,7 @@
         const ed = window.NovaFlowSkeletonEditor
         const a = await (creating || (ed && ed.ready ? ed.ready() : Promise.reject(new Error('骨骼动画编辑器还没准备好'))))
         creating = null
-        const n = a.useImageFolder(files)
+        const n = await a.useImageFolder(files)
         if (n) sayHere(`已导入图片文件夹（${n} 张图片）：把图片拖到骨骼或画面上`, 'ok')
       })
     })
