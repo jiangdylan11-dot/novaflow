@@ -935,22 +935,19 @@
     for (const i of boxes) if (document.activeElement !== i) i.value = String(Math.round(state.offset[i.dataset.offset] * 100) / 100)
   }
 
-  /** 工程 属性: name, its place on the stage (X / Y, view only), shown or not. */
+  /** 工程 属性: name and its place on the stage (X / Y, view only). */
   function projectBody() {
     const num = (k) => {
       const i = numInput(Math.round(state.offset[k] * 100) / 100, (v) => { setProjectOffset(k === 'x' ? v : state.offset.x, k === 'y' ? v : state.offset.y); renderProps() })
       i.dataset.offset = k
       return field(k.toUpperCase(), i)
     }
-    const shown = projects[activeProject] ? projects[activeProject].visible !== false : true
     return [
       h('div', { class: 'name-row' },
         textInput(state.name, (v) => renameProject(activeProject, v), { rename: true }),
         ibtn('copy', '复制工程（Ctrl+D）', () => duplicateProject(activeProject)),
         ibtn('trash', '删除工程（Delete）', () => deleteProject(activeProject))),
       h('div', { class: 'grid2' }, num('x'), num('y')),
-      field('显示', h('div', { class: 'inline' }, h('label', { class: 'checks', style: 'margin:0' }, check('', shown, (v) => setProjectVisible(activeProject, v))))),
-      field('导出', h('div', { class: 'inline' }, check('导出此工程', projects[activeProject].exported !== false, (v) => setProjectExport(activeProject, v)))),
       ...(boneClipboard ? [btn('粘贴骨骼', () => pasteBones(boneClipboard, activeProject, state.json.bones.find((b) => !b.parent).name), { title: 'Ctrl+V：粘贴到此工程，不带动画' })] : []),
       h('div', { class: 'hint' }, '位置只影响编辑器里的摆放，不写进导出的骨架；选中工程后在画面上拖动也能移动它。'),
     ]
