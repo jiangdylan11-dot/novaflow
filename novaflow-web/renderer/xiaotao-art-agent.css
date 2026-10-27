@@ -1,4 +1,4 @@
-#nf-xiaotao-art-root { position:fixed; right:22px; bottom:22px; z-index:2147483300; color:#eeeeee; font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
+#nf-xiaotao-art-root { position:fixed; right:22px; bottom:22px; z-index:2147483615; color:#eeeeee; font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
 #nf-xiaotao-art-root[hidden], #nf-xiaotao-art-root [hidden] { display:none !important; }
 #nf-xiaotao-art-root button, #nf-xiaotao-art-root textarea { font:inherit; }
 #nf-xiaotao-art-root button { border:1px solid #555555; border-radius:8px; color:#eeeeee; background:#343434; padding:7px 11px; cursor:pointer; }
@@ -7,7 +7,7 @@
 #nf-xiaotao-art-root button:focus-visible, #nf-xiaotao-art-root textarea:focus-visible, #nf-xiaotao-art-root summary:focus-visible { outline:2px solid #f0b5a5; outline-offset:3px; }
 #nf-xiaotao-art-root .nf-xiaotao-launcher { border-color:#b18476; background:#d7a392; color:#221c19; font-weight:700; padding:10px 17px; border-radius:24px; box-shadow:0 5px 22px #0005; }
 #nf-xiaotao-art-root .nf-xiaotao-launcher:hover { background:#e7b9a9; }
-#nf-xiaotao-art-root .nf-xiaotao-robot { width:68px; height:88px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; padding:3px; color:#dfbcac; background:#2b2b2b; border:1px solid #626262; border-radius:18px; cursor:grab; touch-action:none; user-select:none; box-shadow:0 5px 18px #0005; }
+#nf-xiaotao-art-root .nf-xiaotao-robot { width:68px; height:88px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; padding:3px; color:#dfbcac; background:#2b2b2b; border:1px solid #626262; border-radius:7px; cursor:grab; touch-action:none; user-select:none; box-shadow:0 5px 18px #0005; }
 #nf-xiaotao-art-root .nf-xiaotao-robot:hover { background:#363232; border-color:#aa8b7e; }
 #nf-xiaotao-art-root .nf-xiaotao-robot.nf-xiaotao-dragging { cursor:grabbing; }
 .nf-xiaotao-robot svg { display:block; width:52px; height:52px; flex-shrink:0; }

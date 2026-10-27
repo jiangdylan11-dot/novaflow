@@ -153,7 +153,7 @@
   function splitRightPanelWidth() { const tier = splitLayoutTier(); return tier === 'wide' ? 236 : tier === 'narrow' ? 210 : 172 }
   function splitRightWorkspaceWidth() { return splitRightPanelWidth() + splitRightWorkspaceInset() * 2 }
   const SPLIT_PANEL_SURFACE = '#161616'
-  const SPLIT_PANEL_BORDER_COLOR = '#2e2e2e'
+  const SPLIT_PANEL_BORDER_COLOR = 'transparent'
   const SPLIT_PANEL_RADIUS = '12px' 
   // The reference lists these one per line, 184x32, bare until you touch
   // them: 12/500 #b4b4b4 with no plate. They had been a two-column grid of

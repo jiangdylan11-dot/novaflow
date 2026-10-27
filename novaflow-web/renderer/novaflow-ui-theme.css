@@ -346,6 +346,12 @@ html body #novaflow-web-login-gate :is(h1, h2, p, label, input, button, span, .n
   background-image: none !important;
 }
 
+/* Audio owns these panel surfaces outside the React workspace. Keep controls
+   and timeline grid lines distinct while removing only the outer panel stroke. */
+html body #novaflow-audio-studio :is(.nf-as-left, .nf-as-sidebar, .nf-as-dock, .nf-as-transport, .nf-as-timeline, .nf-as-ref) {
+  border-color: transparent !important;
+}
+
 /* 2.0b Segment pills: 5px corners. The renderer writes 7px from the shared
    radius token through more than one path, so this pins it at the one place
    the reference differs. */

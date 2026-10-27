@@ -2529,18 +2529,18 @@
   const UI_ICON_BUTTON_DISABLED_TEXT = "#969aa2";
   const UI_CONTROL_LABEL_TEXT = "#a9a9a9";
   const DOCK_SURFACE = "#161616";
-  const DOCK_BORDER_COLOR = "#363636";
+  const DOCK_BORDER_COLOR = "transparent";
   const DOCK_RADIUS_PX = "12px";
   const DOCK_PADDING = "13px 14px";
   const DOCK_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.13)";
-  // The reference floats each panel off the chrome: 8px below the topbar,
-  // 10px above the bottom, with a hairline edge on a slightly lighter fill.
+  // Panels retain their spacing (8px below the topbar, 10px above the bottom)
+  // and use their fills to separate them from the workspace, without outlines.
   const PRIMARY_PANEL_TOP_GAP = 8;
   // The rail panel pads its entries in by 10, like the reference.
   const PRIMARY_RAIL_INNER_PAD = 10;
   let PRIMARY_PANEL_BOTTOM_GAP = 10;
   const PRIMARY_PANEL_SURFACE = "#161616";
-  const PRIMARY_PANEL_BORDER_COLOR = "#2e2e2e";
+  const PRIMARY_PANEL_BORDER_COLOR = "transparent";
   const PRIMARY_RAIL_SURFACE_ID = "novaflow-primary-rail-surface";
   const PRIMARY_LEFT_SURFACE_ID = "novaflow-primary-left-surface";
   let PRIMARY_SIDEBAR_WIDTH = 56;
@@ -2600,9 +2600,9 @@
   const NOVAFLOW_TOOLS_ENTRY_GAP = 5;
   const NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT = "#98e3cb";
   const NOVAFLOW_TOOLS_VIEW_SURFACE = "#1d1d1d";
-  const NOVAFLOW_TOOLS_VIEW_BORDER_COLOR = "#353535";
+  const NOVAFLOW_TOOLS_VIEW_BORDER_COLOR = "transparent";
   const NOVAFLOW_TOOLS_BLANK_SURFACE = "#242424";
-  const NOVAFLOW_TOOLS_BLANK_BORDER_COLOR = "#3c3c3c";
+  const NOVAFLOW_TOOLS_BLANK_BORDER_COLOR = "transparent";
   const NOVAFLOW_TOOLS_BLANK_RADIUS_PX = "8px";
   let AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 206;
   let AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
@@ -2867,7 +2867,7 @@
   // list (218 wide; 194 at or below 1400, 174 at or below 1100) and two
   // preview panels, all on 10 gutters.
   const TOOLS_PARAMS_SURFACE = "#161616";
-  const TOOLS_PARAMS_BORDER = "#2e2e2e";
+  const TOOLS_PARAMS_BORDER = "transparent";
   const TOOLS_TABS_SURFACE = "#101010";
   const TOOLS_TABS_BORDER = "#262626";
   const TOOLS_DROP_SURFACE = "#212121";
@@ -2966,10 +2966,10 @@
   const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 206;
   const AI_ANIMATION_GENERATION_INNER_GAP = 8;
   // The reference stacks a 206-tall generation dock and a 97-tall playback
-  // bar 9 apart, both on the panel surface with their own edge.
+  // bar 9 apart, both with the same borderless panel fill.
   const AI_ANIMATION_PANEL_TIMELINE_GAP = 9;
   const AI_ANIMATION_STACK_SURFACE = "#161616";
-  const AI_ANIMATION_TIMELINE_BORDER_COLOR = "#343434";
+  const AI_ANIMATION_TIMELINE_BORDER_COLOR = "transparent";
   const AI_ANIMATION_TIMELINE_RADIUS = 10;
   // 多参视频's reference tiles, measured off animation-spline.html at 1580:
   // a left-aligned row of 87x59 dashed wells, 8 apart, 11 above the parameter
@@ -3173,9 +3173,9 @@
   // Reference: an unselected rail entry has NO plate - the rail surface
   // behind it is the background.
   const PRIMARY_INACTIVE_BACKGROUND = "var(--nf-rail-entry-bg, transparent)";
-  // Near-black topbar, separated from the workspace by a hairline rule.
+  // Near-black topbar; workspace surfaces use their fills without an outline.
   const UI_TOPBAR_BACKGROUND = "#101113";
-  const UI_TOPBAR_BORDER_COLOR = "#303135";
+  const UI_TOPBAR_BORDER_COLOR = "transparent";
   const UI_TOPBAR_PAD_X = 20;
   const UI_TOPBAR_LOGO_WIDTH = 167;
   const UI_TOPBAR_LOGO_HEIGHT = 31;
@@ -22910,7 +22910,7 @@
       }
       body.novaflow-blackgray-preview-with-bottom-controls .nf-topbar {
         background: ${UI_TOPBAR_BACKGROUND} !important;
-        /* same stroke as every other section (2026-10-16 user: 特效版块顶栏没描边) */
+        /* same borderless header as every other section */
         border-bottom: 1px solid ${UI_TOPBAR_BORDER_COLOR} !important;
         box-shadow: none !important;
       }
@@ -24657,8 +24657,8 @@
         opacity: 0 !important;
         pointer-events: none !important;
       }
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active button:not(.nf-win-btn),
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [role="button"] {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active button:not(.nf-win-btn):not(:where(#nf-xiaotao-art-root *)),
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [role="button"]:not(:where(#nf-xiaotao-art-root *)) {
         border: 0 !important;
         border-color: transparent !important;
         box-shadow: none !important;
@@ -28063,14 +28063,14 @@
         box-shadow: ${DOCK_SHADOW} !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls .nf-panel-header:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
-      body.novaflow-blackgray-preview-with-bottom-controls button:not(.nf-win-btn):not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
-      body.novaflow-blackgray-preview-with-bottom-controls [role="button"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
+      body.novaflow-blackgray-preview-with-bottom-controls button:not(.nf-win-btn):not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(:where(#nf-xiaotao-art-root *)),
+      body.novaflow-blackgray-preview-with-bottom-controls [role="button"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(:where(#nf-xiaotao-art-root *)) {
         box-shadow: none !important;
         text-shadow: none !important;
         backdrop-filter: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls button:not(.nf-win-btn):not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
-      body.novaflow-blackgray-preview-with-bottom-controls [role="button"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
+      body.novaflow-blackgray-preview-with-bottom-controls button:not(.nf-win-btn):not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(:where(#nf-xiaotao-art-root *)),
+      body.novaflow-blackgray-preview-with-bottom-controls [role="button"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(:where(#nf-xiaotao-art-root *)),
       body.novaflow-blackgray-preview-with-bottom-controls .nf-menu:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
       body.novaflow-blackgray-preview-with-bottom-controls .nf-dropdown:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
       body.novaflow-blackgray-preview-with-bottom-controls [style*="border: 1px solid"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
@@ -64597,6 +64597,7 @@
     nfAnimationPerfMeasureSince("querySelectorAllStar", "applyAiAnimationBorderlessFrames.bodyStar", __nfPerfQueryStartedAt);
     bodyNodes.forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
+      if (node.closest('#nf-xiaotao-art-root')) return;
       if (isInsideSourceOwnedLayout(node)) return;
       if (isNovaflowTopbarOverlayElement(node) || isNovaflowModalOverlayElement(node)) return;
       if (node.getAttribute("data-novaflow-ai-prompt-frame") === "1" || isInsidePromptFrame(node)) return;
