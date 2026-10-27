@@ -779,15 +779,16 @@
       const done = (choice) => { mask.remove(); window.removeEventListener('keydown', key, true); projectChoice = null; resolve(choice) }
       const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(null) } }
       mask = h('div', { class: 'mask', 'data-nf-project-choice': '1', onclick: (e) => { if (e.target === mask) done(null) } },
-        h('div', { class: 'dialog ask' },
+        h('div', { class: 'dialog ask project-choice' },
           h('div', { class: 'hd' }, h('b', {}, kind === 'new' ? '新建工程' : '导入资源'), h('button', { class: 'xx', onclick: () => done(null) }, '×')),
           h('div', { class: 'msg' },
             h('div', {}, `当前工程：${state.name}`),
             h('div', {}, '新增独立工程：保留已打开的工程，新增一个工程。'),
             h('div', {}, '替换当前工程：选中工程未保存的修改会丢失，其他工程保留。'),
             h('div', {}, '完成后首次保存将重新选择 .nfproj 位置。')),
-          h('div', { class: 'ft' }, btn('取消', () => done(null)),
-            btn('替换当前工程', () => done('replace')), btn('新增独立工程', () => done('append'), { primary: true }))))
+          h('div', { class: 'ft' },
+            h('button', { class: 'btn', type: 'button', onclick: () => done('replace') }, '替换当前工程'),
+            h('button', { class: 'btn primary', type: 'button', onclick: () => done('append') }, '新增独立工程'))))
       document.body.append(mask)
       window.addEventListener('keydown', key, true)
     })
