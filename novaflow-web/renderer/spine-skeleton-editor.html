@@ -721,7 +721,7 @@
 // build stamps every local file with a content hash (?v=...): a changed file always loads fresh.
 (function () {
   var need = ['vendor/spine/spine-webgl-3.8.js', 'spine-auto-mesh-attach.js', 'spine-bones.editor.js', 'spine-auto-mesh-core.js',
-    'spine-auto-mesh.js', 'spine-auto-weights.js', 'spine-mesh-edit.js', 'spine-sequence-atlas.js', 'spine-binary-write.js', 'motion-calculation.animation.js', 'spine-structure.ops.js', 'spine-export-optimizer.js', 'spine-version-convert.js', 'sweep-light.core.js', 'aifx-template-maker.core.js', 'aifx-template-maker.fx.js', 'aifx-template-maker.mp4.js', 'aifx-template-maker.ui.js', 'assets/particle-fx.js', 'particle-fx.ui.js', 'spine-skeleton-editor.js']
+    'spine-auto-mesh.js', 'spine-auto-weights.js', 'spine-mesh-edit.js', 'spine-sequence-atlas.js', 'spine-binary-write.js', 'motion-calculation.animation.js', 'spine-structure.ops.js', 'spine-project-transfer.js', 'spine-export-optimizer.js', 'spine-version-convert.js', 'sweep-light.core.js', 'aifx-template-maker.core.js', 'aifx-template-maker.fx.js', 'aifx-template-maker.mp4.js', 'aifx-template-maker.ui.js', 'assets/particle-fx.js', 'particle-fx.ui.js', 'spine-skeleton-editor.js']
   var host = null
   try { host = window.parent && window.parent !== window ? window.parent.document : null } catch (e) { host = null }
   function bare(u) { return String(u || '').split('#')[0].split('?')[0].replace(/^\.\//, '') }

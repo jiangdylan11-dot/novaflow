@@ -8444,6 +8444,12 @@
   }
 
   async function exportSkeletonSequenceFromModal(root, state) {
+    const editor = window.NovaFlowSkeletonEditor
+    if (editor?.active?.() && editor.api()?.exportMedia) {
+      const result = await editor.api().exportMedia({ ...state, kind: 'seq', mode: root.getAttribute('data-nf-project-media-mode') || 'independent', encoder: window.electronAPI })
+      if (!result.canceled) showTopbarExportAvailabilityNotice(`已导出 ${result.count} 个序列帧结果`)
+      return result
+    }
     const api = window.electronAPI;
     if (!api?.pickDirectory || !api?.writeBinaryFile) throw new Error("\u5f53\u524d\u73af\u5883\u4ec5\u652f\u6301\u684c\u9762\u7aef\u5bfc\u51fa\u5e8f\u5217\u5e27");
     const pick = await api.pickDirectory();
@@ -8467,6 +8473,12 @@
   }
 
   async function exportSkeletonVideoFromModal(root, state) {
+    const editor = window.NovaFlowSkeletonEditor
+    if (editor?.active?.() && editor.api()?.exportMedia) {
+      const result = await editor.api().exportMedia({ ...state, kind: 'video', mode: root.getAttribute('data-nf-project-media-mode') || 'independent', encoder: window.electronAPI })
+      if (!result.canceled) showTopbarExportAvailabilityNotice(`已导出 ${result.count} 个视频`)
+      return result
+    }
     const api = window.electronAPI;
     if (!api?.exportPickSaveFile || !api?.exportCreateTempDir || !api?.exportEncodeFramesToVideo || !api?.exportCleanupDir) {
       throw new Error("\u5f53\u524d\u73af\u5883\u4ec5\u652f\u6301\u684c\u9762\u7aef\u5bfc\u51fa\u89c6\u9891");

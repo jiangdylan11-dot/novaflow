@@ -1193,7 +1193,7 @@
   })();
 
   // The saved frames (PNG in a web-temp dir) as RGBA at width x height, flat background cleared.
-  async function encodeFramesAlphaWebm(files, names, width, height, fps, onProgress) {
+  async function encodeFramesAlphaWebm(files, names, width, height, fps, onProgress, preservePixels = false) {
     const canvas = root.document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -1208,7 +1208,7 @@
           ctx.drawImage(bitmap, 0, 0, width, height);
         } finally { bitmap.close?.(); }
         const frame = ctx.getImageData(0, 0, width, height);
-        clearFlatCutoutPixels(frame.data, width, height);
+        if (!preservePixels) clearFlatCutoutPixels(frame.data, width, height);
         return frame.data;
       }
     });
@@ -1245,10 +1245,11 @@
           const bytes = await encodeFramesAlphaWebm(files, names, width, height, fps, (done, total) => {
             busy.update(jobId, label, done / total);
             videoToolProgress.emit({ jobId, progress01: done / total });
-          });
+          }, options.preservePixels === true);
           const mimeType = 'video/webm';
           const out = { ok: true, format: 'webm', mimeType, fps, width, height, frames: names.length, bytes: bytes.length, encoder: 'webcodecs' };
           if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
+          if (options.returnBytesOnly) { out.base64 = base64FromBytes(bytes); return out; }
           const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
           const fileName = sanitizeVideoName(outPathName) || 'cutout_' + Date.now() + '.webm';
           // A failed write is not an encoder failure: report it instead of re-encoding with ffmpeg.
@@ -1276,7 +1277,7 @@
       for (let index = 0; index < names.length; index += 1) {
         const name = tag + pattern.replace(/%0?(\d*)d/, (m, width) => String(index).padStart(Number(width) || 1, '0'));
         const frameBytes = files.get(names[index]).slice();
-        await ffmpeg.writeFile(name, keepAlpha ? await clearFlatCutoutBackground(frameBytes) : frameBytes);
+        await ffmpeg.writeFile(name, keepAlpha && !options.preservePixels ? await clearFlatCutoutBackground(frameBytes) : frameBytes);
         written.push(name);
       }
       busy.update(jobId, label, 0);
@@ -1317,6 +1318,7 @@
       const mimeType = target === 'gif' ? 'image/gif' : 'video/' + target;
       const out = { ok: true, format: target, mimeType, fps, width, height, frames: names.length, bytes: bytes.length };
       if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
+      if (options.returnBytesOnly) { out.base64 = base64FromBytes(bytes); return out; }
       const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
       const fileName = sanitizeVideoName(outPathName) || 'cutout_' + Date.now() + '.' + target;
       Object.assign(out, await deliverVideoExport(new Blob([bytes.slice()], { type: mimeType }), videoStem(fileName, 'video') + '.' + target, options.outPath, String(options.outPath || '').startsWith('web-export://')));

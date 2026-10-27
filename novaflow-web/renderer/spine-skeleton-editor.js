@@ -211,7 +211,7 @@
     const url = URL.createObjectURL(blob)
     const img = new Image()
     img.src = url
-    await img.decode()
+    try { await img.decode() } finally { URL.revokeObjectURL(url) }
     return img
   }
 
@@ -243,6 +243,8 @@
   async function loadSource(src, opts) {
     if (!src || !src.skeleton || !src.skeleton.text) throw new Error('没有工程')
     const json = JSON.parse(src.skeleton.text)
+    const operation = await chooseProjectOperation('import', opts && opts.operation)
+    if (!operation) return false
     const raw = Array.isArray(src.images) ? src.images
       : Object.entries(src.images || {}).map(([fileName, v]) => ({ fileName, dataUrl: typeof v === 'string' ? v : v && (v.dataUrl || v.url) }))
     const files = []
@@ -263,11 +265,15 @@
     const dir = opts && opts.directory
     if (dir && dir.handle) { try { imageFolder = await folderForProject(dir.handle, json, name) } catch { imageFolder = null } }
     if (!imageFolder && dir && Array.isArray(dir.files) && dir.files.length) { try { imageFolder = folderFromProjectFiles(dir.files, json, name) } catch { imageFolder = null } }
-    // the same skeleton file again (a write-back, a re-import of that file) replaces the picked project; another one is added
-    const replace = !!(state.json && projects[activeProject] && lower(state.fileName) === lower(name))
+    if (imageFolder && imageFolder.handle && operation !== 'refresh') {
+      const current = await referencedProjectImages(files.map((f) => ({ fileName: f.fileName })), imageFolder, src.atlas && src.atlas.text)
+      files.splice(0, files.length, ...current)
+    }
+    const replace = !!(state.json && projects[activeProject] && operation !== 'append')
     // JSON + 图集 + 贴图 with no folder: right after loading, a dialog asks for one (纹理解包, see askImageFolder)
     await loadParts({ json, jsonName: name, atlasText: (src.atlas && src.atlas.text) || '', atlasName: src.atlas && src.atlas.fileName, images: files, imageFolder, label: stem(name), replace,
-      askFolder: !imageFolder && !replace && !!(src.atlas && src.atlas.text) })
+      operation, askFolder: !imageFolder && !replace && !!(src.atlas && src.atlas.text) })
+    return true
   }
 
   async function loadFiles(files, label, opts) {
@@ -284,6 +290,8 @@
       } catch {}
     }
     if (!json) throw new Error('JSON 不是有效的动画骨架')
+    const operation = await chooseProjectOperation('import', opts && opts.operation)
+    if (!operation) return false
     // images keep their folders: relative to the skeleton's image folder (or the JSON's folder)
     const dirOf = (p) => String(p || '').split('/').slice(0, -1).join('/')
     const norm = (p) => p.split('/').filter((x) => x && x !== '.').join('/')
@@ -306,7 +314,8 @@
     // (only loose images: with an atlas the PNGs next to it are atlas pages, not the pictures)
     const imageFolder = rooted.length && !atlases.length ? folderFromFiles((imgRoot || jsonDir).split('/').pop() || '图片', rooted.map((f) => ({ rel: relName(f), file: f }))) : null
     await loadParts({ json, jsonName: jsonFile.name, atlasText, atlasName, images: imgs.map((f) => ({ fileName: relName(f), blob: f })), imageFolder, label,
-      askFolder: !!(opts && opts.askFolder) && !imageFolder && !!atlasText })
+      operation, replace: operation === 'replace' && !!state.json, askFolder: !!(opts && opts.askFolder) && !imageFolder && !!atlasText })
+    return true
   }
 
   /** One project from its parts: the JSON, the atlas text (none = one page per picture), the images. */
@@ -320,9 +329,17 @@
     const jsonFile = { name: p.jsonName || 'skeleton.json' }
     const label = p.label
     // the same project loaded again (a write-back) keeps the folder it was given
-    const imageFolder = p.imageFolder || (p.replace && state.imageFolder) || null
+    const imageFolder = p.imageFolder || (p.operation === 'refresh' && state.imageFolder) || null
     const images = new Map()
-    for (const f of p.images || []) images.set(lower(f.fileName), { img: await imageFromBlob(f.blob), fileName: f.fileName, blob: f.blob })
+    const files = p.images || [], decoded = new Array(files.length)
+    let nextImage = 0
+    await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
+      while (nextImage < files.length) {
+        const k = nextImage++, f = files[k]
+        decoded[k] = { img: await imageFromBlob(f.blob), fileName: f.fileName, blob: f.blob, sourceFolder: f.sourceFolder || null, sourcePath: f.sourcePath || null, pma: f.pma }
+      }
+    }))
+    for (const im of decoded) images.set(lower(im.fileName), im)
     let atlasText = p.atlasText || ''
     let atlasName = p.atlasName || stem(jsonFile.name) + '.atlas'
     let atlasChanged = false
@@ -339,24 +356,29 @@
     }
     // several projects side by side (Spine's hierarchy): the one open so far keeps its whole state
     if (state.json && projects[activeProject] && !p.replace) projects[activeProject].snap = snapProject()
+    const previous = state.json ? snapProject() : null
     leaveProjectEdits()
     Object.assign(state, {
-      imageFolder,
+      imageFolder, projectDirectory: p.projectDirectory || (p.operation === 'refresh' && state.projectDirectory) || null,
+      projectAccessRoot: p.projectAccessRoot || (p.operation === 'refresh' && state.projectAccessRoot) || null,
+      projectImageRefs: p.imageRefs || (p.operation === 'refresh' && state.projectImageRefs) || [], imagePath: p.imagePath || (p.operation === 'refresh' && state.imagePath) || '.',
       name: label || stem(jsonFile.name), fileName: jsonFile.name, atlasName, atlasChanged, images,
       addedImages: [], atlasText, history: [], future: [], sel: null, multi: [], multiSlots: [], multiAtts: [], attachmentAnchor: null, multiSkins: [], skinAnchor: null, multiCons: [], pick: null,
       offset: p.offset && Number.isFinite(p.offset.x) && Number.isFinite(p.offset.y) ? { x: p.offset.x, y: p.offset.y } : { x: 0, y: 0 },
       skin: 'default', frame: 0, playing: false, mode: 'setup', panel: 'bone',
-      folderKey: p.folderKey || (p.replace && state.folderKey) || newFolderKey(), pendingFolder: null,
+      folderKey: p.folderKey || (p.operation === 'refresh' && state.folderKey) || newFolderKey(), pendingFolder: null,
     })
     state.temp.clear()
     state.collapsed.clear()
     const first = [...images.values()][0]
-    state.pma = atlasPma != null && atlasPma ? true : first ? looksPremultiplied(first.img) : false
+    state.pma = typeof p.pma === 'boolean' ? p.pma : atlasPma != null && atlasPma ? true : first ? looksPremultiplied(first.img) : false
     state.atlasPma = atlasPma === true
     rt.atlasKey = null
     rt.missingPages = new Set()
     rt.missingRegions = new Set()
-    applyJson(Ops.tidy(Ops.prepare(json)))
+    try { applyJson(Ops.tidy(Ops.prepare(json))) } catch (error) { if (previous) restoreProject(previous); throw error }
+    if (p.operation === 'append' || p.operation === 'replace' || p.operation === 'new') detachProjectFile()
+    if (p.replace && projects[activeProject]) dropProjectRuntime(projects[activeProject].id)
     state.initialJson = state.json
     state.unticked = new Set()
     state.frameSet = null; state.frameUnticked = { sequence: new Set(), sweep: new Set() }; state.sweepTicked = new Set(); state.sweepStart = 0; state.sweepEnd = 0; state.sweepGen = null
@@ -370,9 +392,10 @@
     // every import is a project of its own, after the ones already open; it is the one picked
     if (!(p.replace && projects[activeProject])) {
       if (projects[activeProject]) projects[activeProject].open = false
-      projects.push({ id: ++projectSerial, snap: null, visible: p.visible !== false, open: true })
+      projects.push({ id: ++projectSerial, snap: null, visible: p.visible !== false, exported: p.exported !== false, open: true })
       activeProject = projects.length - 1
     }
+    if (p.replace && p.operation !== 'refresh') { projects[activeProject].exported = p.exported !== false; projects[activeProject].visible = p.visible !== false }
     fit()
     $('#dropHint').hidden = true
     $('#tree').scrollTop = 0
@@ -392,7 +415,7 @@
   const PROJECT_KEYS = ['name', 'fileName', 'json', 'atlasText', 'atlasName', 'atlasChanged', 'images', 'addedImages', 'history', 'future', 'offset',
     'mode', 'anim', 'frame', 'skin', 'sel', 'multi', 'multiSlots', 'multiAtts', 'attachmentAnchor', 'multiSkins', 'skinAnchor', 'multiCons', 'hiddenBones', 'hiddenSlots', 'collapsed', 'sections',
     'initialJson', 'unticked', 'frameSet', 'frameUnticked', 'sweepTicked', 'imgOpen', 'imageFolder', 'folderKey', 'pendingFolder', 'pma', 'atlasPma', 'frameBone', 'sweepStart', 'sweepEnd',
-    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen']
+    'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen', 'projectDirectory', 'projectAccessRoot', 'projectImageRefs', 'imagePath']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
 
@@ -435,12 +458,14 @@
   // its own atlas and skeleton, rebuilt when its data changed, posed as it was left (setup, or its frame)
   const otherRt = new Map() // project id -> { json, atlasText, atlas, data, skeleton }
   function pageImageFrom(images, name) {
-    const hit = images.get(lower(name)) || images.get(lower(baseName(name))) || [...images.values()].find((i) => lower(stem(i.fileName)) === lower(stem(name)))
+    const hit = pageEntry(images, name)
     if (hit) return hit.img
     const c = document.createElement('canvas')
     c.width = 1; c.height = 1
     return c
   }
+  const pageEntry = (images, name) => images.get(lower(name)) || images.get(lower(baseName(name))) || [...images.values()].find((i) => lower(stem(i.fileName)) === lower(stem(name)))
+  const pagePma = (images, name, fallback) => typeof pageEntry(images, name)?.pma === 'boolean' ? pageEntry(images, name).pma : !!fallback
   function readProjectData(json, atlas, gl) {
     const copy = Ops.editorData(json)
     const v = String(copy.skeleton && copy.skeleton.spine || '')
@@ -450,12 +475,12 @@
   function projectRuntime(p) {
     const s = p.snap
     let r = otherRt.get(p.id)
-    if (r && r.json === s.json && r.atlasText === s.atlasText) return r
+    if (r && r.json === s.json && r.atlasText === s.atlasText && r.images === s.images && r.pma === !!s.pma) return r
     dropProjectRuntime(p.id)
     const gl = rt.renderer.context || rt.gl
-    const atlas = new spine.TextureAtlas(s.atlasText, (path) => pageTexture(gl, pageImageFrom(s.images, path), !!s.pma))
+    const atlas = new spine.TextureAtlas(s.atlasText, (path) => pageTexture(gl, pageImageFrom(s.images, path), pagePma(s.images, path, s.pma)))
     const data = readProjectData(s.json, atlas, gl)
-    r = { json: s.json, atlasText: s.atlasText, atlas, data, skeleton: new spine.Skeleton(data) }
+    r = { json: s.json, atlasText: s.atlasText, images: s.images, pma: !!s.pma, atlas, data, skeleton: new spine.Skeleton(data) }
     otherRt.set(p.id, r)
     return r
   }
@@ -537,7 +562,7 @@
     copy.name = name
     copy.history = []; copy.future = []
     copy.sel = { kind: 'project', name }
-    projects.splice(i + 1, 0, { id: ++projectSerial, snap: copy, visible: projects[i].visible !== false, open: true })
+    projects.splice(i + 1, 0, { id: ++projectSerial, snap: copy, visible: projects[i].visible !== false, exported: projects[i].exported !== false, open: true })
     if (activeProject > i) activeProject++
     switchProject(i + 1)
     projects[i + 1].open = true
@@ -580,6 +605,7 @@
       projects[next].snap = null
       restoreProject(snap)
     } else {
+      detachProjectFile()
       leaveProjectEdits()
       activeProject = -1
       state.json = null; state.history = []; state.future = []; state.sel = null
@@ -590,42 +616,149 @@
     status(`已删除工程 ${name}`, 'ok')
   }
 
-  // NovaFlow's own project file (.nfproj): every open project in one file - skeleton (the editor's
-  // data, the original Spine version kept inside), atlas, pictures, names, order and the picked one.
-  // gzip-compressed JSON; 导入工程 opens it, 保存工程 writes it.
+  // .nfproj v2 contains data and external image references only. The image directory defaults
+  // to the project file's own directory; v1 embedded images remain readable for migration.
   const PROJECT_FILE_FORMAT = 'novaflow-spine-projects'
-  const blobToDataUrl = (b) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(r.error); r.readAsDataURL(b) })
 
   /**
-   * A picture's bytes for the project file. Its blob is the file it was loaded from; once that file
+   * A picture's bytes when a session-created image needs an external file. Once its source file
    * changed or went away on disk (edited, replaced or deleted in the image folder) the browser will
    * not read it any more (NotReadableError - user 2026-10-16: 保存工程 showed "The requested file
    * could not be read…"). Then the picture as the editor holds and shows it is written instead, and
-   * kept for the next save.
+   * kept in memory for the next save. These bytes never go into .nfproj.
    */
-  async function imageDataUrl(im) {
-    try { return await blobToDataUrl(im.blob) } catch {
+  async function projectImageBlob(im) {
+    try { await im.blob.arrayBuffer(); return im.blob } catch {
       const img = im.img, w = img && (img.naturalWidth || img.width), hh = img && (img.naturalHeight || img.height)
       if (!w || !hh) throw new Error(`图片「${im.fileName}」读不到了：它在磁盘上被改动或删除，请重新导入这张图后再保存`)
       const c = document.createElement('canvas')
       c.width = w; c.height = hh
       c.getContext('2d').drawImage(img, 0, 0)
       im.blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
-      return blobToDataUrl(im.blob)
+      return im.blob
     }
   }
 
-  async function projectFileBytes() {
+  function projectPath(value, base = []) {
+    const text = String(value || '').replace(/\\/g, '/')
+    if (/^(?:\/|[a-z][a-z0-9+.-]*:)/i.test(text) || /\x00/.test(text)) throw new Error('图片引用必须是相对路径：' + text)
+    const parts = base.slice()
+    for (const part of text.split('/')) {
+      if (!part || part === '.') continue
+      if (part === '..') { if (!parts.length) throw new Error('图片路径超出所选文件夹，请选择包含工程和图片的上级目录'); parts.pop() }
+      else parts.push(part)
+    }
+    return parts
+  }
+  async function projectSubdir(root, parts) {
+    let dir = root
+    for (const part of parts) dir = await dir.getDirectoryHandle(part)
+    return dir
+  }
+  async function projectDirectoryFor(handle, start) {
+    for (const dir of [projectSaveDirectory, state.projectDirectory, state.imageFolder && state.imageFolder.handle]) {
+      if (!dir || !dir.resolve || !handle) continue
+      const parts = await dir.resolve(handle).catch(() => null)
+      if (parts && parts.length) return projectSubdir(dir, parts.slice(0, -1))
+    }
+    const dir = await pickDirectory({ startIn: handle || start })
+    if (!dir) return null
+    if (handle && dir.resolve) {
+      const parts = await dir.resolve(handle)
+      if (!parts || !parts.length) throw new Error('请选择 .nfproj 所在目录，或包含它的上级目录')
+      return projectSubdir(dir, parts.slice(0, -1))
+    }
+    return dir
+  }
+  async function listProjectImages(folder) {
+    const files = []
+    const walk = async (node) => { const l = await node.list(); files.push(...l.files); for (const d of l.dirs) await walk(d) }
+    await walk(folder)
+    return files
+  }
+  async function referencedProjectImages(refs, folder, legacyAtlas) {
+    if (!folder) return []
+    const files = await listProjectImages(folder), out = []
+    for (const ref of refs || []) {
+      const path = projectPath(ref.path || ref.fileName).join('/')
+      let file = files.find((f) => lower(f.rel) === lower(path))
+      if (!file && legacyAtlas && !ref.path) {
+        const regions = [...Attach.parseAtlas(legacyAtlas).values()].filter((r) => r.page === ref.fileName)
+        if (regions.length === 1) { const r = regions[0]; if (!r.rotate && !r.x && !r.y && r.w === r.origW && r.h === r.origH) file = files.find((f) => folderPictureName(f) === r.name) }
+      }
+      if (file) out.push({ fileName: ref.fileName, blob: await file.file(), sourceFolder: folder, sourcePath: file.rel, pma: ref.pma })
+    }
+    return out
+  }
+  async function connectProjectImages(target, folder) {
+    const json = target.json
+    const images = await referencedProjectImages(target.projectImageRefs, folder)
+    const decoded = await Promise.all(images.map(async (im) => ({ ...im, img: await imageFromBlob(im.blob) })))
+    if (target.json !== json || target.imageFolder !== folder || !decoded.length) return
+    target.images = new Map(target.images)
+    for (const im of decoded) target.images.set(lower(im.fileName), im)
+    if (target === state) { rt.atlasKey = null; applyJson(json) }
+  }
+  async function projectReferences(s, directory) {
+    let folder = s.imageFolder
+    if (!folder || !folder.handle) {
+      const names = attachmentPictureNames(s.json), rels = await pictureRels(directory)
+      for (const name of Attach.parseAtlas(s.atlasText).keys()) names.add(name)
+      folder = folderWithPictureNames(folderFromHandle(directory, directory.name), bestPictureRoot(rels, names), names)
+      s.imageFolder = folder
+      await connectProjectImages(s, folder)
+    }
+    await refreshFolderPictures(s, folder)
+    let prefix = await directory.resolve(folder.handle)
+    let imagePath, externalFolder = false
+    if (prefix) imagePath = prefix.join('/') || '.'
+    else {
+      const inside = await folder.handle.resolve(directory)
+      if (inside) imagePath = inside.map(() => '..').join('/') || '.'
+      else {
+        const root = s.projectAccessRoot
+        const a = root && await root.resolve(directory), b = root && await root.resolve(folder.handle)
+        if (a && b) {
+          let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++
+          imagePath = [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/') || '.'
+        } else { imagePath = folder.name || '.'; externalFolder = true }
+      }
+    }
+    const files = await listProjectImages(folder), regions = Attach.parseAtlas(s.atlasText), pages = new Map()
+    for (const r of regions.values()) { if (!pages.has(r.page)) pages.set(r.page, []); pages.get(r.page).push(r) }
+    const images = []
+    for (const [fileName, regionsOnPage] of pages) {
+      const current = s.images.get(lower(fileName))
+      let source = current && current.sourceFolder === folder && current.sourcePath ? files.find((f) => f.rel === current.sourcePath) : null
+      source = source || files.find((f) => lower(f.rel) === lower(fileName))
+      if (!source && regionsOnPage.length === 1) {
+        const r = regionsOnPage[0]
+        if (!r.rotate && !r.x && !r.y && r.w === r.origW && r.h === r.origH) source = files.find((f) => folderPictureName(f) === r.name)
+      }
+      const path = source ? source.rel : projectPath(fileName).join('/')
+      let exists = false
+      try { const parts = projectPath(path); const d = await projectSubdir(folder.handle, parts.slice(0, -1)); await d.getFileHandle(parts.at(-1)); exists = true } catch { /* new/session image: write beside the project */ }
+      if (!exists) {
+        const im = s.images.get(lower(fileName))
+        if (!im || im.sourceFolder && im.sourcePath) throw new Error(`缺少图片「${fileName}」，请先指定图片文件夹`)
+        if (!await folder.write(path, await projectImageBlob(im))) throw new Error('图片文件夹不可写，请重新指定图片文件夹后保存')
+      }
+      images.push({ fileName, path, pma: pagePma(s.images, fileName, s.pma) })
+    }
+    s.projectImageRefs = images; s.imagePath = imagePath; s.projectDirectory = directory
+    await folderDbDo('readwrite', (store) => store.put({ handle: folder.handle, projectDirectory: directory, projectAccessRoot: s.projectAccessRoot, name: folder.name, at: Date.now() }, s.folderKey)).catch(() => {})
+    return { images, imagePath, externalFolder }
+  }
+  async function projectFileBytes(directory) {
     const list = []
     for (let i = 0; i < projects.length; i++) {
       const s = i === activeProject ? state : projects[i].snap
       if (!s || !s.json) continue
-      const images = []
-      for (const im of s.images.values()) if (im.blob) images.push({ fileName: im.fileName, dataUrl: await imageDataUrl(im) })
-      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, folderKey: s.folderKey || '' })
+      const { images, imagePath, externalFolder } = await projectReferences(s, directory)
+      list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
     }
     if (!list.length) throw new Error('没有可保存的工程')
-    const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 1, active: Math.max(0, activeProject), projects: list })
+    const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 2, active: Math.max(0, activeProject), projects: list })
     const gz = new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')))
     return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length }
   }
@@ -634,6 +767,32 @@
   // Ctrl+S write over it without a dialog; Ctrl+Shift+S (另存为) picks a new one (user 2026-10-16:
   // 保存了工程后 CTRL+S 快捷覆盖保存，否则每次都弹框). Kept for the page's session.
   let projectFile = null
+  let projectSaveDirectory = null
+  function detachProjectFile() { projectFile = null; projectSaveDirectory = null }
+  let projectChoice = null
+  function chooseProjectOperation(kind, operation) {
+    if (['append', 'replace', 'refresh'].includes(operation)) return Promise.resolve(operation)
+    if (!state.json || !projects.length) return Promise.resolve('append')
+    if (projectChoice) return projectChoice
+    projectChoice = new Promise((resolve) => {
+      let mask
+      const done = (choice) => { mask.remove(); window.removeEventListener('keydown', key, true); projectChoice = null; resolve(choice) }
+      const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); done(null) } }
+      mask = h('div', { class: 'mask', 'data-nf-project-choice': '1', onclick: (e) => { if (e.target === mask) done(null) } },
+        h('div', { class: 'dialog ask' },
+          h('div', { class: 'hd' }, h('b', {}, kind === 'new' ? '新建工程' : '导入资源'), h('button', { class: 'xx', onclick: () => done(null) }, '×')),
+          h('div', { class: 'msg' },
+            h('div', {}, `当前工程：${state.name}`),
+            h('div', {}, '新增独立工程：保留已打开的工程，新增一个工程。'),
+            h('div', {}, '替换当前工程：选中工程未保存的修改会丢失，其他工程保留。'),
+            h('div', {}, '完成后首次保存将重新选择 .nfproj 位置。')),
+          h('div', { class: 'ft' }, btn('取消', () => done(null)),
+            btn('替换当前工程', () => done('replace')), btn('新增独立工程', () => done('append'), { primary: true }))))
+      document.body.append(mask)
+      window.addEventListener('keydown', key, true)
+    })
+    return projectChoice
+  }
   const NFPROJ_TYPES = [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }]
 
   /**
@@ -644,12 +803,15 @@
   async function saveProjectFileNow(opts) {
     const as = !!(opts && opts.as)
     const A = window.NovaFlowSequenceAtlas
-    const name = (A && A.safeName ? A.safeName(state.name) : String(state.name || '').replace(/[\\/:*?"<>|]+/g, '_')) || 'project'
+    const chosenName = opts && opts.name || state.name
+    const name = (A && A.safeName ? A.safeName(chosenName) : String(chosenName || '').replace(/[\\/:*?"<>|]+/g, '_')) || 'project'
     if (!window.showSaveFilePicker) {
-      const { bytes, count } = await projectFileBytes()
+      const directory = await projectDirectoryFor(null, state.imageFolder && state.imageFolder.handle)
+      if (!directory) return null
+      const { bytes, count } = await projectFileBytes(directory)
       const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + '.nfproj' })
       document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
-      status(`已保存 NovaFlow 工程 ${name}.nfproj：${count} 个工程`, 'ok')
+      status(`已保存 ${name}.nfproj：请将工程文件放在「${directory.name}」，图片保留在外部文件夹`, 'ok')
       return { name: name + '.nfproj', count }
     }
     let handle = !as && projectFile ? projectFile : null
@@ -660,13 +822,16 @@
     }
     const over = !!handle
     if (!handle) {
-      try { handle = await window.showSaveFilePicker({ suggestedName: (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES }) } catch { return null }
+      try { handle = await window.showSaveFilePicker({ suggestedName: opts && opts.name ? name + '.nfproj' : (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch { return null }
     }
-    const { bytes, count } = await projectFileBytes()
+    const directory = await projectDirectoryFor(handle)
+    if (!directory) return null
+    const { bytes, count } = await projectFileBytes(directory)
     const w = await handle.createWritable()
     await w.write(new Blob([bytes], { type: 'application/octet-stream' }))
     await w.close()
     projectFile = handle
+    projectSaveDirectory = directory
     status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）`, 'ok')
     return { name: handle.name, count, overwritten: over }
   }
@@ -678,22 +843,88 @@
   }
 
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
-  async function openProjectFile(data, handle) {
+  async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
     const wasEmpty = !projects.length
     let d
     try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 NovaFlow 工程文件') }
-    if (!d || d.format !== PROJECT_FILE_FORMAT || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是 NovaFlow 工程文件')
-    const first = projects.length
-    for (const p of d.projects) {
-      const images = await Promise.all((p.images || []).map(async (im) => ({ fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() })))
-      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, label: p.name, offset: p.offset, visible: p.visible, folderKey: p.folderKey || '', restoreFolder: true })
+    if (!d || d.format !== PROJECT_FILE_FORMAT || ![1, 2].includes(d.version) || !Array.isArray(d.projects) || !d.projects.length) throw new Error('不是受支持的 NovaFlow 工程文件')
+    const operation = await chooseProjectOperation('import', options.operation)
+    if (!operation) return 0
+    let directory = options.directory && options.directory.handle
+    const cachedImageFolders = new Map()
+    let parentParts = []
+    const supplied = options.directory && options.directory.files
+    const rel = String(data.webkitRelativePath || data.name || '').replace(/\\/g, '/')
+    if (directory && handle && directory.resolve) {
+      const parts = await directory.resolve(handle)
+      if (parts) parentParts = parts.slice(0, -1)
+    } else if (supplied && rel.includes('/')) parentParts = rel.split('/').slice(1, -1)
+    // A cached folder is usable only when it belongs to this actual project file, so a moved
+    // project never silently reconnects to another copy's old images.
+    if (!directory && handle) for (const p of d.projects) {
+      const rec = await folderDbDo('readonly', (store) => store.get(p.folderKey)).catch(() => null)
+      const root = rec && rec.projectDirectory
+      if (!root || typeof root.queryPermission !== 'function' || typeof root.resolve !== 'function' || await root.queryPermission({ mode: 'read' }).catch(() => 'denied') !== 'granted') continue
+      const parts = await root.resolve(handle).catch(() => null)
+      if (parts && parts.length === 1) {
+        const access = rec.projectAccessRoot || root, relative = await access.resolve(handle).catch(() => null)
+        if (relative) { directory = access; parentParts = relative.slice(0, -1); cachedImageFolders.set(p.folderKey, rec.handle) }
+      }
     }
-    switchProject(first + Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0)))
+    if (!directory && !supplied && d.projects.some((p) => (p.images || []).length)) {
+      status('请指定图片文件夹，默认选择 .nfproj 所在目录')
+      directory = await pickDirectory({ startIn: handle })
+      if (directory && handle && directory.resolve) {
+        const parts = await directory.resolve(handle).catch(() => null)
+        if (parts) parentParts = parts.slice(0, -1)
+      }
+    }
+    let projectDirectory = directory ? await projectSubdir(directory, parentParts) : null
+    const imported = []
+    let missing = 0
+    for (const p of d.projects) {
+      let folder = null
+      const imagePath = typeof p.imagePath === 'string' ? p.imagePath : '.'
+      const cached = p.externalFolder && cachedImageFolders.get(p.folderKey)
+      if (cached && typeof cached.queryPermission === 'function' && await cached.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted') {
+        folder = folderFromHandle(cached, cached.name)
+      } else if (directory) {
+        try { const imageDir = await projectSubdir(directory, projectPath(imagePath, parentParts)); folder = folderFromHandle(imageDir, imageDir.name) }
+        catch { folder = folderFromHandle(directory, directory.name) } // a manually relocated image folder
+      } else if (supplied) {
+        const prefix = projectPath(imagePath, parentParts).join('/')
+        const items = supplied.map((f) => ({ rel: String(f.webkitRelativePath || f.name).split('/').slice(1).join('/'), file: f }))
+          .filter((f) => !prefix || f.rel.startsWith(prefix + '/')).map((f) => ({ ...f, rel: prefix ? f.rel.slice(prefix.length + 1) : f.rel }))
+        folder = folderFromFiles(prefix.split('/').pop() || '图片', items)
+      }
+      if (folder) {
+        const names = attachmentPictureNames(p.json)
+        for (const name of Attach.parseAtlas(p.atlasText).keys()) names.add(name)
+        const best = bestPictureRoot((await listProjectImages(folder)).map((f) => f.rel), names)
+        folder = folderWithPictureNames(folder, best, names)
+      }
+      let images = await referencedProjectImages(p.images, folder, d.version === 1 ? p.atlasText : null)
+      // Legacy files may have loose PNGs under a subdirectory and a stale absolute Spine path.
+      // Keep their old embedded data readable, then let the selected folder override its pixels.
+      if (d.version === 1) {
+        const external = new Map(images.map((im) => [lower(im.fileName), im]))
+        images = await Promise.all((p.images || []).map(async (im) => external.get(lower(im.fileName)) || { fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() }))
+      }
+      missing += Math.max(0, (p.images || []).length - images.length)
+      await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
+        imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
+        label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey: p.folderKey || '', operation,
+        replace: operation === 'replace' && imported.length === 0 && !!state.json })
+      imported.push(activeProject)
+      if (folder) await refreshFolderPictures(state, folder)
+    }
+    switchProject(imported[Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0))])
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
     // (added to projects already open, the next save still asks - it would hold them all)
-    if (handle && wasEmpty) projectFile = handle
-    status(`已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`, 'ok')
+    if (handle && wasEmpty) { projectFile = handle; projectSaveDirectory = projectDirectory }
+    status(missing ? `已打开工程，缺少 ${missing} 张外部图片：请在「图片」中指定图片文件夹（默认 .nfproj 同目录）`
+      : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`, missing ? 'error' : 'ok')
     return d.projects.length
   }
 
@@ -718,6 +949,8 @@
         ibtn('trash', '删除工程（Delete）', () => deleteProject(activeProject))),
       h('div', { class: 'grid2' }, num('x'), num('y')),
       field('显示', h('div', { class: 'inline' }, h('label', { class: 'checks', style: 'margin:0' }, check('', shown, (v) => setProjectVisible(activeProject, v))))),
+      field('导出', h('div', { class: 'inline' }, check('导出此工程', projects[activeProject].exported !== false, (v) => setProjectExport(activeProject, v)))),
+      ...(boneClipboard ? [btn('粘贴骨骼', () => pasteBones(boneClipboard, activeProject, state.json.bones.find((b) => !b.parent).name), { title: 'Ctrl+V：粘贴到此工程，不带动画' })] : []),
       h('div', { class: 'hint' }, '位置只影响编辑器里的摆放，不写进导出的骨架；选中工程后在画面上拖动也能移动它。'),
     ]
   }
@@ -732,6 +965,7 @@
       title: `${name}（双击改名，拖动排序，左边箭头展开 / 收起）`,
       onclick: () => { if (!active) switchProject(i); select({ kind: 'project', name: projectName(i) }) } },
       visDot(projects[i].visible !== false, () => setProjectVisible(i, projects[i].visible === false), null, true),
+      h('input', { type: 'checkbox', checked: projects[i].exported !== false, title: '导出此工程', 'data-project-export': String(i), style: 'accent-color:#1ea672;margin:0 4px;width:13px;height:13px', onclick: (e) => e.stopPropagation(), onchange: (e) => setProjectExport(i, e.target.checked) }),
       caret(active && projects[i].open !== false, () => {
         if (active) { projects[i].open = projects[i].open === false; renderTree(); return }
         switchProject(i)
@@ -744,6 +978,7 @@
     row.addEventListener('dragstart', (e) => { state.drag = { type: 'project', index: i }; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', name) })
     row.addEventListener('dragend', () => { state.drag = null; for (const r of document.querySelectorAll('.row[data-drop]')) r.removeAttribute('data-drop') })
     row.addEventListener('dragover', (e) => {
+      if (state.drag && state.drag.type === 'bone' && state.drag.projectId !== projects[i].id) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; row.dataset.drop = 'in'; return }
       if (!state.drag || state.drag.type !== 'project' || state.drag.index === i) return
       e.preventDefault()
       const r = row.getBoundingClientRect()
@@ -754,6 +989,12 @@
       const d = state.drag, below = row.dataset.drop === 'below'
       row.removeAttribute('data-drop')
       state.drag = null
+      if (d && d.type === 'bone' && d.projectId !== projects[i].id) {
+        e.preventDefault(); e.stopPropagation()
+        const target = i === activeProject ? state : projects[i].snap
+        pasteBones(d.packet, i, target.json.bones.find((b) => !b.parent).name)
+        return
+      }
       if (!d || d.type !== 'project') return
       e.preventDefault()
       moveProject(d.index, i + (below ? 1 : 0))
@@ -911,11 +1152,12 @@
     const src = e.src
     let it = pv.items.get(e.id)
     if (!it) { it = { atlasText: null, atlas: null, data: null, json: null, skinName: null, skeleton: null, anim: null }; pv.items.set(e.id, it) }
-    if (it.atlasText !== src.atlasText || it.pma !== !!src.pma) {
+    if (it.atlasText !== src.atlasText || it.pma !== !!src.pma || it.images !== src.images) {
       if (it.atlas) try { it.atlas.dispose() } catch {}
-      it.atlas = new spine.TextureAtlas(src.atlasText, (path) => pageTexture(pv.gl, pageImageFrom(src.images, path), !!src.pma))
+      it.atlas = new spine.TextureAtlas(src.atlasText, (path) => pageTexture(pv.gl, pageImageFrom(src.images, path), pagePma(src.images, path, src.pma)))
       it.atlasText = src.atlasText
       it.pma = !!src.pma
+      it.images = src.images
       it.json = null
     }
     if (it.json === src.json && it.skinName === src.skin && it.skeleton) return it
@@ -1201,7 +1443,7 @@
     const key = state.atlasText + (state.pma ? '\u0000pma' : '')
     if (rt.atlasKey === key && rt.atlas) return
     if (rt.atlas) try { rt.atlas.dispose() } catch {}
-    rt.atlas = new spine.TextureAtlas(state.atlasText, (path) => pageTexture(rt.renderer.context || rt.gl, imageForPage(path), state.pma))
+    rt.atlas = new spine.TextureAtlas(state.atlasText, (path) => pageTexture(rt.renderer.context || rt.gl, imageForPage(path), pagePma(state.images, path, state.pma)))
     rt.atlasKey = key
   }
 
@@ -1539,6 +1781,52 @@
     return state.sel && state.sel.kind === 'bone' ? [state.sel.name] : []
   }
 
+  let boneClipboard = null
+  function bonePacket(names = selectedBones()) {
+    if (!state.json || !names.length) throw new Error('先选择要复制的骨骼')
+    return { json: Ops.prepare(state.json), names: names.slice(), images: new Map(state.images), atlasText: state.atlasText,
+      pma: !!state.pma, matrices: setupMatrices(), projectId: projects[activeProject].id }
+  }
+  function copyBonesToClipboard() {
+    try { boneClipboard = bonePacket(); renderProps(); status(`已复制 ${boneClipboard.names.length} 根骨骼及其子骨骼、挂载资源；切换工程后 Ctrl+V 粘贴（不带动画）`, 'ok') }
+    catch (error) { status(error.message, 'error') }
+  }
+  async function pasteBonePacket(packet = boneClipboard, index = activeProject, parent) {
+    if (!packet || !projects[index]) return false
+    if (index !== activeProject) switchProject(index)
+    const project = projects[activeProject], original = state.json
+    parent = parent || (state.sel && state.sel.kind === 'bone' ? state.sel.name : (state.json.bones.find((b) => !b.parent) || {}).name)
+    const names = (await folderImages()).map((f) => f.name).concat(regionList().map((r) => r.name))
+    const result = window.NovaFlowSpineProjectTransfer.transfer(packet.json, original, packet.names,
+      { parent, imageNames: names, sourceMatrices: packet.matrices, parentMatrix: setupMatrices()[parent] })
+    const regions = Attach.parseAtlas(packet.atlasText), images = [], taken = new Set(state.images.keys())
+    for (const path of result.images) {
+      const r = regions.get(path.from), im = r && (packet.images.get(lower(r.page)) || packet.images.get(lower(baseName(r.page))))
+      if (!r || !im) throw new Error(`源工程缺少图片「${path.from}」`)
+      const region = { x: r.x, y: r.y, width: r.w, height: r.h, originalWidth: r.origW, originalHeight: r.origH,
+        offsetX: r.offX, offsetY: r.offY, rotate: r.rotate, texture: { getImage: () => im.img } }
+      const rgba = regionPixelsCanvas(region, r.origW, r.origH)
+      if (typeof im.pma === 'boolean' ? im.pma : packet.pma) unpremultiply(rgba)
+      let fileName = path.to + '.png', k = 2
+      while (taken.has(lower(fileName))) fileName = `__nf_transfer_${k++}/${path.to}.png`
+      taken.add(lower(fileName))
+      const blob = new Blob([await window.NovaFlowSequenceAtlas.encodePng(rgba, r.origW, r.origH, state.pma)], { type: 'image/png' })
+      images.push({ fileName, name: path.to, width: r.origW, height: r.origH, blob, img: await imageFromBlob(blob), pma: !!state.pma })
+    }
+    if (projects[activeProject] !== project || state.json !== original) throw new Error('工程已切换或修改，请重新粘贴')
+    if (state.mode !== 'setup') setMode('setup')
+    const applied = edit(`已粘贴 ${result.bones.length} 根骨骼（不带动画）`, () => {
+      state.images = new Map(state.images)
+      for (const im of images) state.images.set(lower(im.fileName), im)
+      if (images.length) state.atlasText = state.atlasText.replace(/\s+$/, '') + '\n\n' + Attach.synthesizeAtlas(images) + '\n'
+      state.atlasChanged = true; rt.atlasKey = null
+      return { json: result.json }
+    }, () => { state.sel = { kind: 'bone', name: result.roots[0] }; state.multi = result.roots.slice(); revealInTree(state.sel) })
+    if (applied && result.skippedConstraints) status(`已粘贴骨骼；${result.skippedConstraints} 个引用分支外对象的约束未复制`, 'ok')
+    return !!applied
+  }
+  const pasteBones = (...args) => pasteBonePacket(...args).catch((error) => { status('粘贴骨骼失败：' + error.message, 'error'); return false })
+
   // ------------------------------------------------------------------ pick mode
 
   function startPick(pick) { state.pick = pick; state.pickHover = null; refresh() }
@@ -1843,7 +2131,7 @@
   async function addImageFile(file, name) {
     const img = await imageFromBlob(file)
     const fileName = name + '.png'
-    state.images.set(lower(fileName), { img, fileName, blob: file })
+    state.images.set(lower(fileName), { img, fileName, blob: file, pma: false })
     state.addedImages.push({ fileName, blob: file })
     state.atlasText = state.atlasText.replace(/\s+$/, '') + '\n\n' + Attach.synthesizeAtlas([{ fileName, width: img.naturalWidth, height: img.naturalHeight }]) + '\n'
     state.atlasChanged = true
@@ -1967,6 +2255,7 @@
   // A selected/restored folder supplies current pixels, including replacements with the same name.
   // Keep the skeleton (attachment sizes, meshes and animation) intact.
   const folderImageVersions = new WeakMap()
+  const folderRefreshes = new WeakMap()
   function withoutAtlasPictures(text, names) {
     return String(text).trim().split(/\r?\n\s*\r?\n/).map((block) => {
       let skip = false, kept = false
@@ -1980,45 +2269,65 @@
     }).filter(Boolean).join('\n\n')
   }
   async function refreshFolderPictures(target, folder) {
+    const running = folderRefreshes.get(target)
+    if (running && running.folder === folder) return running.promise
+    const job = { folder, promise: refreshFolderPicturesNow(target, folder) }
+    folderRefreshes.set(target, job)
+    try { return await job.promise } finally { if (folderRefreshes.get(target) === job) folderRefreshes.delete(target) }
+  }
+  async function refreshFolderPicturesNow(target, folder) {
     const json = target.json
+    const atlasText = target.atlasText
     if (!json || !folder) return 0
     const regions = Attach.parseAtlas(target.atlasText), wanted = attachmentPictureNames(json)
     for (const name of regions.keys()) wanted.add(name)
     let record = folderImageVersions.get(folder)
     if (!record || record.atlasText !== target.atlasText) { record = { atlasText: target.atlasText, versions: new Map() }; folderImageVersions.set(folder, record) }
     const versions = record.versions
-    const updates = []
+    const updates = [], pageUpdates = [], present = new Set(), aliases = new Map()
+    const pageRegions = new Map()
+    for (const r of regions.values()) { if (!pageRegions.has(r.page)) pageRegions.set(r.page, []); pageRegions.get(r.page).push(r) }
+    for (const im of target.images.values()) if (im.sourceFolder === folder && im.sourcePath) {
+      const group = pageRegions.get(im.fileName) || []
+      if (group.length === 1 && !group[0].rotate && !group[0].x && !group[0].y && group[0].w === group[0].origW && group[0].h === group[0].origH) aliases.set(im.sourcePath, group[0].name)
+    }
     const walk = async (node) => {
       const list = await node.list()
       for (const f of list.files) {
-        const name = folderPictureName(f)
+        present.add(f.rel)
+        const name = aliases.get(f.rel) || folderPictureName(f)
+        const packed = [...target.images.values()].filter((im) => im.sourceFolder === folder && im.sourcePath === f.rel && !aliases.has(f.rel))
+        if (packed.length) {
+          const file = await f.file(), stamp = `${file.size}|${file.lastModified}`
+          if (versions.get(f.rel) !== stamp) { const img = await imageFromBlob(file); for (const im of packed) pageUpdates.push({ ...im, img, blob: file, stamp }) }
+          continue
+        }
         if (!wanted.has(name)) continue
+        const old = regions.get(name), loaded = old && target.images.get(lower(old.page))
+        if (loaded && loaded.sourceFolder === folder && loaded.sourcePath && loaded.sourcePath !== f.rel) continue
         const file = await f.file(), stamp = `${file.size}|${file.lastModified}`
         if (versions.get(f.rel) === stamp) continue
-        let blob = file, img = await imageFromBlob(blob)
-        if (target.pma) {
-          const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight
-          const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0)
-          blob = new Blob([await window.NovaFlowSequenceAtlas.encodePng(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height, true)], { type: 'image/png' })
-          img = await imageFromBlob(blob)
-        }
-        const old = regions.get(name)
+        const reuse = loaded && loaded.sourceFolder === folder && loaded.blob.size === file.size && loaded.blob.lastModified === file.lastModified
+        let blob = file, img = reuse ? loaded.img : await imageFromBlob(blob)
         let fileName = old && [...regions.values()].filter((r) => r.page === old.page).length === 1 ? old.page : `__nf_folder/${name}.png`
         while ((!old || fileName !== old.page) && target.images.has(lower(fileName))) fileName = '_' + fileName
-        updates.push({ name, rel: f.rel, stamp, fileName, blob, img })
+        updates.push({ name, rel: f.rel, stamp, fileName, blob, img, pma: loaded && loaded.sourceFolder === folder && loaded.sourcePath === f.rel ? pagePma(target.images, old.page, target.pma) : false })
       }
       for (const child of list.dirs) await walk(child)
     }
     await walk(folder)
-    if (target.json !== json || target.imageFolder !== folder) return 0
-    if (!updates.length) return 0
-    target.atlasText = withoutAtlasPictures(target.atlasText, new Set(updates.map((u) => u.name))).replace(/\s+$/, '') + '\n\n' +
+    if (target.json !== json || target.imageFolder !== folder || target.atlasText !== atlasText) return 0
+    const removed = [...target.images.entries()].filter(([, im]) => im.sourceFolder === folder && im.sourcePath && !present.has(im.sourcePath))
+    if (!updates.length && !removed.length && !pageUpdates.length) return 0
+    if (updates.length) target.atlasText = withoutAtlasPictures(target.atlasText, new Set(updates.map((u) => u.name))).replace(/\s+$/, '') + '\n\n' +
       Attach.synthesizeAtlas(updates.map((u) => ({ name: u.name, fileName: u.fileName, width: u.img.naturalWidth, height: u.img.naturalHeight }))) + '\n'
     target.images = new Map(target.images)
+    for (const [key, im] of removed) { target.images.delete(key); pagePixels.delete(im.img); versions.delete(im.sourcePath) }
+    for (const im of pageUpdates) { pagePixels.delete(target.images.get(lower(im.fileName))?.img); target.images.set(lower(im.fileName), im); versions.set(im.sourcePath, im.stamp) }
     for (const u of updates) {
       const previous = target.images.get(lower(u.fileName))
       if (previous) pagePixels.delete(previous.img)
-      target.images.set(lower(u.fileName), { fileName: u.fileName, img: u.img, blob: u.blob }); versions.set(u.rel, u.stamp)
+      target.images.set(lower(u.fileName), { fileName: u.fileName, img: u.img, blob: u.blob, sourceFolder: folder, sourcePath: u.rel, pma: u.pma }); versions.set(u.rel, u.stamp)
     }
     record.atlasText = target.atlasText
     target.atlasChanged = true
@@ -2026,10 +2335,12 @@
     if (target === state) {
       frameThumbs.clear()
       rt.atlasKey = null
+      rt.missingPages = new Set()
       applyJson(json)
       refresh()
+      if (removed.length) status(`图片文件已移除：${removed.map(([, im]) => im.sourcePath).join('、')}，请恢复文件或重新指定图片文件夹`, 'error')
     }
-    return updates.length
+    return updates.length + removed.length + pageUpdates.length
   }
 
   /** Keep the visible directory intact; only referenced pictures use the export's shorter names. */
@@ -2152,14 +2463,16 @@
    * root only, the default skin, no slots - as a new project in the tree. Its pictures come from
    * a folder the user picks next (useImageFolder), like Spine's images folder.
    */
-  async function newProject(name) {
+  async function newProject(name, options = {}) {
+    const operation = await chooseProjectOperation('new', options.operation)
+    if (!operation) return null
     const base = String(name || '').trim() || '新工程'
     const taken = new Set(projects.map((_, i) => projectName(i)))
     let n = base
     for (let k = 2; taken.has(n); k++) n = `${base} ${k}`
     // like Spine's new project: a root bone and one empty animation named "animation"
     const json = { skeleton: { spine: '3.8.99', images: './images/' }, bones: [{ name: 'root' }], slots: [], skins: [{ name: 'default', attachments: {} }], animations: { animation: {} } }
-    await loadParts({ json, jsonName: n + '.json', atlasText: '', atlasName: n + '.atlas', images: [], label: n })
+    await loadParts({ json, jsonName: n + '.json', atlasText: '', atlasName: n + '.atlas', images: [], label: n, operation, replace: operation === 'replace' && !!state.json })
     state.sections.delete('images')
     status(`已新建工程 ${n}：导入一个图片文件夹，再把图片拖到骨骼或画面上`, 'ok')
     refresh()
@@ -2177,6 +2490,7 @@
     const top = String(list[0].webkitRelativePath || '').split('/')[0] || state.name || '图片'
     const items = list.map((f) => { const parts = String(f.webkitRelativePath || f.name).split('/').filter(Boolean); return { rel: (parts.length > 1 ? parts.slice(1) : parts).join('/'), file: f } })
     const names = attachmentPictureNames(state.json)
+    for (const name of Attach.parseAtlas(state.atlasText).keys()) names.add(name)
     const best = bestPictureRoot(items.map((i) => i.rel), names)
     state.imageFolder = folderWithPictureNames(folderFromFiles(top, items), best, names)
     await refreshFolderPictures(state, state.imageFolder)
@@ -2203,11 +2517,11 @@
   // added or deleted there shows. The 图片 node's 指定文件夹… does the same for any project.
 
   /** The browser's folder picker (read + write): this frame's, else the app's around it. null = cancelled. */
-  async function pickDirectory() {
+  async function pickDirectory(options = {}) {
     const pickers = [window, window.parent].filter((w, i, a) => w && a.indexOf(w) === i && typeof w.showDirectoryPicker === 'function')
     if (!pickers.length) throw new Error('这个浏览器不能选择文件夹，请用 Chrome 或 Edge')
     for (let i = 0; i < pickers.length; i++) {
-      try { return await pickers[i].showDirectoryPicker({ mode: 'readwrite' }) } catch (e) {
+      try { return await pickers[i].showDirectoryPicker({ mode: 'readwrite', ...(options.startIn ? { startIn: options.startIn } : {}) }) } catch (e) {
         if (e && e.name === 'AbortError') return null
         // a frame that may not show it: the app's window may
         if (!(e && e.name === 'SecurityError') || i === pickers.length - 1) throw e
@@ -2257,6 +2571,7 @@
       for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true })
       const file = parts[parts.length - 1] + '.png'
       if (await d.getFileHandle(file).then(() => true, () => false)) { skipped++; return }
+      if (!state.images.has(lower(region.page.name)) && !state.images.has(lower(baseName(region.page.name)))) return
       const w = region.originalWidth || region.width, hh = region.originalHeight || region.height
       const px = regionPixels(region, w, hh)
       if (!px) return
@@ -2296,6 +2611,7 @@
       r = await unpackAtlasInto(dir)
     }
     state.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
+    await connectProjectImages(state, state.imageFolder)
     await refreshFolderPictures(state, state.imageFolder)
     state.pendingFolder = null
     rememberFolder(handle)
@@ -2343,9 +2659,11 @@
   function projectState(proj) { return projects[activeProject] === proj ? state : proj && proj.snap }
   async function useRememberedFolder(target, handle) {
     const json = target.json, names = attachmentPictureNames(json)
+    for (const name of Attach.parseAtlas(target.atlasText).keys()) names.add(name)
     const best = bestPictureRoot(await pictureRels(handle), names)
     if (target.json !== json) return
     target.imageFolder = folderWithPictureNames(folderFromHandle(handle, handle.name || '图片'), best, names)
+    await connectProjectImages(target, target.imageFolder)
     await refreshFolderPictures(target, target.imageFolder)
     target.pendingFolder = null
     if (target === state) {
@@ -2404,7 +2722,7 @@
 
   /** 指定文件夹… (the 图片 node, and the dialog after a JSON + 图集 + 贴图 import). */
   function chooseImageFolder() {
-    pickDirectory().then((handle) => handle && useFolderHandle(handle))
+    pickDirectory({ startIn: state.imageFolder && state.imageFolder.handle || state.projectDirectory || projectFile }).then((handle) => handle && useFolderHandle(handle))
       .catch((e) => status('指定图片文件夹失败：' + ((e && e.message) || e), 'error'))
   }
 
@@ -2722,14 +3040,15 @@
   }
 
   /** Every image of the project's image folder (subfolders included): [{ name, file }]. */
-  async function folderImages() {
+  async function folderImages(source = state) {
     const out = []
     const walk = async (node) => {
       const l = await node.list()
       for (const f of l.files) out.push({ name: folderPictureName(f), file: f.file })
       for (const d of l.dirs) await walk(d)
     }
-    await walk(imageFolder())
+    if (source.imageFolder) await walk(source.imageFolder)
+    else for (const name of Attach.parseAtlas(source.atlasText).keys()) out.push({ name })
     return out
   }
 
@@ -2746,8 +3065,16 @@
   }
 
   /** One image's pixels at its original size, straight alpha (from the atlas, or a folder file not used yet). */
-  async function imageRgba(name, file) {
-    const r = rt.atlas && rt.atlas.findRegion(name)
+  async function imageRgba(name, file, source = state) {
+    let r
+    if (source === state) r = rt.atlas && rt.atlas.findRegion(name)
+    else {
+      const p = Attach.parseAtlas(source.atlasText).get(name)
+      const im = p && (source.images.get(lower(p.page)) || source.images.get(lower(baseName(p.page))))
+      if (p && im) r = { x: p.x, y: p.y, width: p.w, height: p.h, originalWidth: p.origW, originalHeight: p.origH,
+        offsetX: p.offX, offsetY: p.offY, rotate: p.rotate, page: { name: p.page }, texture: { getImage: () => im.img } }
+    }
+    if (r && r.page && !source.images.has(lower(r.page.name)) && !source.images.has(lower(baseName(r.page.name)))) return null
     if (!r && file) {
       try {
         const bm = await createImageBitmap(await file())
@@ -2761,9 +3088,9 @@
     }
     if (!r) return null
     const w = r.originalWidth || r.width, hh = r.originalHeight || r.height
-    const px = regionPixels(r, w, hh)
+    const px = source === state ? regionPixels(r, w, hh) : regionPixelsCanvas(r, w, hh)
     if (!px) return null
-    if (state.pma) for (let i = 0; i < px.length; i += 4) { const a = px[i + 3]; if (a && a < 255) { px[i] = Math.min(255, px[i] * 255 / a); px[i + 1] = Math.min(255, px[i + 1] * 255 / a); px[i + 2] = Math.min(255, px[i + 2] * 255 / a) } }
+    if (pagePma(source.images, r.page.name, source.pma)) unpremultiply(px)
     return { rgba: px, width: w, height: hh }
   }
 
@@ -2771,12 +3098,13 @@
   async function exportProject(opts, write) {
     const A = window.NovaFlowSequenceAtlas
     const SV = window.NovaFlowSpineVersion
-    const edited = Ops.exportable(state.json)
+    const source = opts.project || state
+    const edited = Ops.exportable(source.json)
     const stash = SV && edited[SV.STASH]
     // out as the version asked for (none = the one the project came in as; 3.8 for a 3.8 file)
-    const version = SV ? SV.short(opts.version || ownVersion()) : '3.8'
+    const version = SV ? SV.short(opts.version || ownVersion(source)) : '3.8'
     const json = SV ? SV.fromSpine38(edited, version) : edited
-    const items = opts.mode === 'folder' ? await folderImages() : exportImageNames(json).map((name) => ({ name }))
+    const items = opts.mode === 'folder' ? await folderImages(source) : exportImageNames(json).map((name) => ({ name }))
     if (stash && opts.mode !== 'folder' && (version === '4.1' || version === '4.2')) {
       // 4.1 sequences: every frame, not only the one the editor shows
       const have = new Set(items.map((i) => i.name))
@@ -2792,15 +3120,137 @@
     }
     // SKEL: the skeleton as Spine binary of the chosen version (renderer/spine-binary-write.js)
     const skel = !!opts.skel
-    const writer = A.createWriter({ baseName: opts.name, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write })
+    const writer = A.createWriter({ baseName: opts.name, exactBaseName: !!opts.exactBaseName, packed: !!opts.packed, skel, settings: { ...opts.settings, dedupe: false }, version, write })
     const missing = []
     for (const it of items) {
-      const img = await imageRgba(it.name, it.file)
+      const img = await imageRgba(it.name, it.file, source)
       if (!img) { missing.push(it.name); continue }
       await writer.addRgba(img.rgba, img.width, img.height, it.name)
     }
     const out = await writer.finish(json)
     return { ...out, skel, images: items.length - missing.length, missing }
+  }
+
+  function setProjectExport(index, value) { if (projects[index]) { projects[index].exported = !!value; renderTree(); renderProps() } }
+  const projectExportInfo = () => projects.map((p, i) => ({ id: p.id, name: projectName(i), exported: p.exported !== false }))
+  function exportProjectName(name) {
+    if (!name || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('工程名不能用于文件名，请先在工程树改名：' + name)
+    return name
+  }
+  function selectedProjectEntries() {
+    return projects.flatMap((p, i) => {
+      const s = i === activeProject ? state : p.snap
+      return p.exported === false || !s || !s.json ? [] : [{ id: p.id, name: projectName(i), src: { ...s, json: Ops.exportable(s.json), images: new Map(s.images) } }]
+    })
+  }
+  function mediaExportPlans(mode = 'independent', mergedName) {
+    const entries = selectedProjectEntries()
+    if (!entries.length) throw new Error('请先在工程树勾选需要导出的工程')
+    if (mode === 'merged') return [{ name: exportProjectName(mergedName || entries[0].name + '_合并'), entries }]
+    const names = new Set()
+    return entries.map((entry) => {
+      const name = exportProjectName(entry.name)
+      if (names.has(name.toLowerCase())) throw new Error('勾选的工程同名，请先在工程树改名：' + name)
+      names.add(name.toLowerCase())
+      return { name, entries: [{ ...entry, src: { ...entry.src, offset: { x: 0, y: 0 } } }] }
+    })
+  }
+  async function exportSelectedProjects(options = {}) {
+    const plans = mediaExportPlans()
+    const directory = options.directory || await pickDirectory()
+    if (!directory) return { canceled: true }
+    const write = window.NovaFlowSequenceAtlas.createFileWriter({ handle: directory }), results = []
+    for (const plan of plans) {
+      const prefix = plans.length > 1 ? plan.name + '/' : ''
+      const r = await exportProject({ ...options, project: plan.entries[0].src, name: plan.name, exactBaseName: true,
+        packed: options.packed !== false, settings: options.settings || atlasSettings() }, (name, bytes) => write(prefix + name, bytes))
+      if (r.missing.length) throw new Error(`${plan.name} 缺少图片：${r.missing.join('、')}`)
+      results.push({ name: plan.name, ...r })
+    }
+    status(`已分别导出 ${results.length} 个工程，文件名和图集名使用工程名`, 'ok')
+    return { canceled: false, projects: results }
+  }
+  function createMediaRenderer(entries) {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true })
+    if (!gl) throw new Error('无法创建导出画布')
+    const renderer = new spine.webgl.SceneRenderer(canvas, gl, true)
+    keepAlphaUnderAdditive(renderer, gl)
+    const actors = []
+    const dispose = () => { for (const a of actors) a.atlas.dispose(); renderer.dispose(); gl.getExtension('WEBGL_lose_context')?.loseContext() }
+    try {
+      for (const entry of entries) {
+        const src = entry.src
+        const atlas = new spine.TextureAtlas(src.atlasText, (name) => {
+          if (!src.images.has(lower(name)) && !src.images.has(lower(baseName(name)))) throw new Error(`${entry.name} 缺少图片：${name}`)
+          return pageTexture(gl, pageImageFrom(src.images, name), pagePma(src.images, name, src.pma))
+        })
+        const data = readProjectData(src.json, atlas, gl), skeleton = new spine.Skeleton(data)
+        if (src.skin && src.skin !== 'default' && data.findSkin(src.skin)) skeleton.setSkinByName(src.skin)
+        const animation = data.findAnimation(src.anim) || data.animations[0]
+        actors.push({ atlas, skeleton, animation, offset: src.offset || { x: 0, y: 0 } })
+      }
+      const duration = Math.max(1 / FPS, ...actors.map((a) => a.animation ? a.animation.duration : 0)), count = Math.max(1, Math.round(duration * FPS))
+      const poseAt = (time) => { for (const a of actors) { a.skeleton.setToSetupPose(); if (a.animation) a.animation.apply(a.skeleton, 0, Math.min(time, a.animation.duration), false, null, 1, spine.MixBlend.setup, spine.MixDirection.mixIn); a.skeleton.updateWorldTransform() } }
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+      for (let f = 0; f <= count; f++) {
+        poseAt(f / FPS)
+        for (const a of actors) {
+          const p = new spine.Vector2(), size = new spine.Vector2(); a.skeleton.getBounds(p, size, [])
+          if (!Number.isFinite(p.x) || !Number.isFinite(size.x) || size.x <= 0 || size.y <= 0) continue
+          x0 = Math.min(x0, p.x + a.offset.x); y0 = Math.min(y0, p.y + a.offset.y)
+          x1 = Math.max(x1, p.x + size.x + a.offset.x); y1 = Math.max(y1, p.y + size.y + a.offset.y)
+        }
+      }
+      if (!Number.isFinite(x0)) throw new Error('勾选的工程没有可导出的可见图片')
+      canvas.width = Math.max(2, Math.ceil((x1 - x0 + 2) / 2) * 2); canvas.height = Math.max(2, Math.ceil((y1 - y0 + 2) / 2) * 2)
+      if (canvas.width > gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || canvas.height > gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)) throw new Error('导出画布超出显卡支持的尺寸')
+      return { canvas, count, duration, dispose, render(time) {
+        poseAt(time); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT)
+        renderer.camera.setViewport(canvas.width, canvas.height); renderer.camera.zoom = 1
+        for (const a of actors) { renderer.camera.position.x = (x0 + x1) / 2 - a.offset.x; renderer.camera.position.y = (y0 + y1) / 2 - a.offset.y; renderer.begin(); renderer.drawSkeleton(a.skeleton, true); renderer.end() }
+        return canvas
+      } }
+    } catch (error) { dispose(); throw error }
+  }
+  async function exportMedia(options) {
+    const plans = mediaExportPlans(options.mode, options.mode === 'merged' ? options.name : undefined)
+    const directory = options.directory || await pickDirectory()
+    if (!directory) return { canceled: true }
+    const A = window.NovaFlowSequenceAtlas, write = A.createFileWriter({ handle: directory }), encoder = options.encoder
+    const progress = window.parent && window.parent.NovaFlowExportProgressDialog
+    const token = progress && progress.begin({ title: options.kind === 'video' ? '导出视频' : '导出序列帧', detail: '准备勾选的工程…' })
+    try {
+      for (const plan of plans) {
+        const scene = createMediaRenderer(plan.entries), output = document.createElement('canvas')
+        output.width = scene.canvas.width; output.height = scene.canvas.height
+        const g = output.getContext('2d', { willReadFrequently: true })
+        let temp
+        try {
+          if (options.kind === 'video') {
+            if (!encoder || !encoder.exportEncodeFramesToVideo) throw new Error('视频编码器尚未就绪')
+            const r = await encoder.exportCreateTempDir({ prefix: 'novaflow_project_' }); if (!r.dir || r.ok === false) throw new Error(r.error || '无法创建编码临时目录'); temp = r.dir
+          }
+          for (let f = 0; f < scene.count; f++) {
+            g.clearRect(0, 0, output.width, output.height)
+            if (!options.transparent) { g.fillStyle = options.backgroundColor || '#ffffff'; g.fillRect(0, 0, output.width, output.height) }
+            g.drawImage(scene.render(f / FPS), 0, 0)
+            const rgba = g.getImageData(0, 0, output.width, output.height).data, bytes = await A.encodePng(rgba, output.width, output.height)
+            if (temp) { const r = await encoder.writeBinaryFile({ dir: temp, fileName: `f_${String(f).padStart(6, '0')}.png`, bytes }); if (r.ok === false) throw new Error(r.error || '写入编码帧失败') }
+            else await write(`${plan.name}/${plan.name}_${String(f).padStart(4, '0')}.png`, bytes)
+            if (progress) progress.update(token, { detail: `${plan.name}：${f + 1}/${scene.count} 帧` })
+          }
+          if (temp) {
+            const format = ['webm', 'gif'].includes(options.format) ? options.format : 'mp4'
+            const r = await encoder.exportEncodeFramesToVideo({ dir: temp, pattern: 'f_%06d.png', fps: FPS, width: output.width, height: output.height, format, keepAlpha: format === 'webm' && !!options.transparent, returnBytesOnly: true, preservePixels: true })
+            if (r.ok === false || !r.base64) throw new Error(r.error || '视频编码未返回文件')
+            await write(`${plan.name}.${format}`, Uint8Array.from(atob(r.base64), (c) => c.charCodeAt(0)))
+          }
+        } finally { if (temp) await encoder.exportCleanupDir({ dir: temp }).catch(() => {}); scene.dispose() }
+      }
+    } finally { if (progress) progress.end(token) }
+    status(`已${options.mode === 'merged' ? '合并' : '独立'}导出 ${plans.length} 个${options.kind === 'video' ? '视频' : '序列帧结果'}`, 'ok')
+    return { canceled: false, count: plans.length }
   }
 
   function openExportDialog(opts) {
@@ -2829,12 +3279,12 @@
         body.append(
           h('label', { class: 'fl' }, '工程名称'), nameIn,
           h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'NovaFlow 工程'))),
-          h('div', { class: 'hint' }, `工程树里的 ${projects.length} 个工程（骨架、图集、图片、名字和顺序）存成一个 .nfproj 文件，下次用 导入工程 打开。`),
+          h('div', { class: 'hint' }, `${projects.length} 个工程的骨架、动画和图片路径存成 .nfproj；图片保留在外部文件夹，默认与工程同目录，传给别人时一起复制。`),
           h('button', { class: 'btn primary big', onclick: runNovaflow }, `保存 NovaFlow 工程（${o.name || '工程'}.nfproj）`))
         return
       }
       body.append(
-        h('label', { class: 'fl' }, saving ? '工程名称' : '导出名称'), nameIn,
+        h('div', { class: 'hint' }, '分别导出勾选的工程，文件名和图集名直接使用工程名。'),
         saving ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '保存为'), h('div', { class: 'seg' }, kseg('spine', '动画工程'), kseg('novaflow', 'NovaFlow 工程'))) : null,
         SV ? h('div', { class: 'pk' }, h('span', { class: 'fl' }, '版本'), h('div', { class: 'seg' }, SV.TARGETS.map(vseg))) : null,
         // SKEL = Spine's binary skeleton (the version chosen above); JSON = text
@@ -2854,41 +3304,14 @@
       o.name = A.safeName(o.name) || 'project'
       try { localStorage.setItem('nf-skel-export', JSON.stringify(o)) } catch {}
       try {
-        const { bytes, count } = await projectFileBytes()
-        const file = new Blob([bytes], { type: 'application/octet-stream' })
-        if (window.showSaveFilePicker) {
-          let handle
-          try { handle = await window.showSaveFilePicker({ suggestedName: o.name + '.nfproj', types: [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }] }) } catch { return }
-          const w = await handle.createWritable(); await w.write(file); await w.close()
-        } else {
-          const a = h('a', { href: URL.createObjectURL(file), download: o.name + '.nfproj' })
-          document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
-        }
+        const result = await saveProjectFileNow({ as: true, name: o.name })
+        if (!result) return
         close()
-        status(`已保存 NovaFlow 工程 ${o.name}.nfproj：${count} 个工程`, 'ok')
       } catch (e) { status('保存失败：' + e.message, 'error') }
     }
     const run = async () => {
-      const A = window.NovaFlowSequenceAtlas
-      o.name = A.safeName(o.name)
-      try { localStorage.setItem('nf-skel-export', JSON.stringify(o)) } catch {}
-      let write
-      if (window.showDirectoryPicker) {
-        let handle
-        try { handle = await window.showDirectoryPicker({ mode: 'readwrite' }) } catch { return }
-        write = A.createFileWriter({ handle })
-      } else {
-        // no folder access: each file downloads on its own
-        write = async (rel, data) => {
-          const a = h('a', { href: URL.createObjectURL(data instanceof Blob ? data : new Blob([data])), download: rel.replace(/\//g, '_') })
-          document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
-        }
-      }
-      try {
-        const r = await exportProject({ ...o, settings: atlasSettings() }, write)
-        close()
-        status(`已${saving ? '保存' : '导出'} ${o.name}：${r.images} 张图片${r.packed ? `，${r.pages} 张图集` : ''}${r.missing.length ? `（缺 ${r.missing.length} 张：${r.missing.slice(0, 3).join('、')}）` : ''}`, r.missing.length ? 'error' : 'ok')
-      } catch (e) { status((saving ? '保存' : '导出') + '失败：' + e.message, 'error') }
+      try { const result = await exportSelectedProjects({ packed: o.packed, mode: o.mode, version: o.version, skel: o.skel }); if (!result.canceled) close() }
+      catch (error) { status('导出失败：' + error.message, 'error') }
     }
     const mask = h('div', { class: 'mask', onclick: (e) => { if (e.target === mask) close() } },
       h('div', { class: 'dialog export' }, h('div', { class: 'hd' }, h('b', {}, saving ? opts.title : '导出'), h('button', { class: 'xx', onclick: close }, '×')), body))
@@ -2897,10 +3320,10 @@
   }
 
   /** The version the project came in as, as the export dialogs show it ('3.8', '4.0' …). */
-  function ownVersion() {
+  function ownVersion(source = state) {
     const SV = window.NovaFlowSpineVersion
-    const st = state.json && SV && state.json[SV.STASH]
-    return SV ? SV.short(state.json?.nfSpine3 || (st ? st.version : '3.8')) || '3.8' : '3.8'
+    const st = source.json && SV && source.json[SV.STASH]
+    return SV ? SV.short(source.json?.nfSpine3 || (st ? st.version : '3.8')) || '3.8' : '3.8'
   }
 
   /** The production 图集打包设置 (same fields, same saved values). */
@@ -5197,11 +5620,12 @@
         return
       }
       // an X / Y handle of the picked item: drag limited to that axis
-      const hh = !state.pick && hitHandle(sx, sy)
+      const hh = !state.pick && !e.ctrlKey && !e.metaKey && hitHandle(sx, sy)
       if (hh) {
         const t = xformTarget()
         drag = t.kind === 'bone' ? boneDrag(t.name, sx, sy, { axis: hh.axis }) : attDrag(state.sel, sx, sy)
         if (drag) {
+          if (t.kind === 'bone' && state.multi.length > 1 && !e.ctrlKey && !e.metaKey && !e.shiftKey) drag.clickSingle = hitBone(sx, sy)
           drag.axis = hh.axis
           drag.axisDir = hh.hd.ax[hh.axis]
           c.setPointerCapture(e.pointerId)
@@ -5326,8 +5750,10 @@
       if (onPicked && attDrag(state.sel, sx, sy)) {
         drag = attDrag(state.sel, sx, sy)
       } else if (bh) {
+        const singleOnClick = state.multi.length > 1 && state.multi.includes(bh) && !e.shiftKey
         if (!state.multi.includes(bh)) select({ kind: 'bone', name: bh }, false, { quiet: true })
         drag = boneDrag(bh, sx, sy)
+        if (drag && singleOnClick) drag.clickSingle = bh
       } else if (oh) {
         select({ kind: 'att', name: oh.name, slot: oh.slot, skin: oh.skin })
       } else if (ih) {
@@ -5413,7 +5839,7 @@
       else if (drag.kind === 'joint') applyJointDrag(drag, sx, sy)
       else if (drag.kind === 'meshMove') applyMeshMove(drag, sx, sy)
     })
-    const up = () => {
+    const up = (event) => {
       if (state.creating) {
         const cr = state.creating
         state.creating = null
@@ -5499,7 +5925,7 @@
         if (st && st.changed) commitWeights(st.model, `已刷「${rt.skeleton.bones[state.weightEdit.bone].data.name}」的权重`)
         return
       }
-      if (!d.moved) { refresh(); return }
+      if (!d.moved) { if (d.kind === 'bones' && d.clickSingle && event.type === 'pointerup') select({ kind: 'bone', name: d.clickSingle }); else refresh(); return }
       if (d.kind === 'verts') { finishVertexDrag(d); return }
       if (d.kind === 'joint') { finishJointDrag(d); return }
       if (d.kind === 'bones') finishBoneDrag(d)
@@ -5996,7 +6422,8 @@
       row.draggable = true
       row.addEventListener('dragstart', (e) => {
         if (payload.type === 'att' && selectedAttachments().length > 1) { e.preventDefault(); status('拖动附件：请先选择一个附件'); return }
-        state.drag = payload
+        try { state.drag = payload.type === 'bone' ? { ...payload, projectId: projects[activeProject].id, packet: bonePacket(selectedBones().includes(payload.name) ? selectedBones() : [payload.name]) } : payload }
+        catch (error) { e.preventDefault(); status(error.message, 'error'); return }
         e.dataTransfer.effectAllowed = 'copyMove'
         e.dataTransfer.setData('text/plain', payload.name)
       })
@@ -8967,6 +9394,8 @@
       out.push(h('div', { class: 'btns' }, btn(inSkin ? `从皮肤「${state.skin}」移除` : `加入皮肤「${state.skin}」`,
         () => edit(`已${inSkin ? '移出' : '加入'}皮肤 ${state.skin}`, (j) => Ops.setSkinMembership(j, state.skin, 'bones', name, !inSkin)), { full: true, title: 'Spine「加入皮肤」：只在这个皮肤里生效' })))
     }
+    out.push(h('div', { class: 'btns g2' }, btn('复制骨骼', copyBonesToClipboard, { title: 'Ctrl+C：带子骨骼和挂载资源，不带动画' }),
+      btn('粘贴骨骼', () => pasteBones(), { disabled: !boneClipboard, title: 'Ctrl+V：粘贴到当前骨骼下面' })))
     return out
   }
 
@@ -11400,6 +11829,8 @@
         const clip = state.dope.clip
         edit(`已在第 ${state.frame} 帧粘贴 ${clip.length} 个关键帧`, (j) => Ops.pasteKeys(j, state.anim, clip, timeSec()), (r) => { state.dope.keySel = r.keys })
       }
+      else if (mod && k === 'c' && state.sel && state.sel.kind === 'bone') { e.preventDefault(); copyBonesToClipboard() }
+      else if (mod && k === 'v' && boneClipboard) { e.preventDefault(); pasteBones() }
       else if (mod && k === 'd') { e.preventDefault(); duplicateSelection() }
       else if (mod && k === 'h') { e.preventDefault(); state.hiddenBones.clear(); state.hiddenSlots.clear(); refresh(); status('已显示全部骨骼和插槽') }
       else if (mod && /^[0-9]$/.test(e.key)) { e.preventDefault(); state.groups[e.key] = JSON.stringify({ sel: state.sel, multi: state.multi }); status(`选择已存到 ${e.key}`) }
@@ -11747,8 +12178,14 @@
     restoreProject: () => { if (state.initialJson && state.initialJson !== state.json) edit('已还原为导入时的工程', () => ({ json: state.initialJson })) },
     openExport: (opts) => openExportDialog(opts),
     /** NovaFlow's own project file (.nfproj): every project in it comes in after the open ones. */
-    openProjectFile: (data, handle) => openProjectFile(data, handle),
-    newProject: (name) => newProject(name),
+    openProjectFile: (data, handle, options) => openProjectFile(data, handle, options),
+    newProject: (name, options) => newProject(name, options),
+    chooseProjectOperation,
+    projectExportInfo,
+    setProjectExport,
+    exportSelectedProjects,
+    exportMedia,
+    mediaExportPlans,
     useImageFolder: (files) => useImageFolder(files),
     /** A folder picked on disk (showDirectoryPicker) as the project's live image folder; the atlas, if any, unpacked into it. */
     useFolderHandle: (handle) => useFolderHandle(handle),
@@ -11757,7 +12194,10 @@
     projectCount: () => projects.length,
     openAtlasSettings: () => openAtlasSettings(),
     /** how many pictures each 打包 choice takes: 附件 (used) / 图片文件夹 */
-    packCounts: async () => ({ atts: exportImageNames(Ops.exportable(state.json)).length, folder: (await folderImages()).length }),
+    packCounts: async () => {
+      const counts = await Promise.all(selectedProjectEntries().map(async (entry) => ({ atts: exportImageNames(entry.src.json).length, folder: (await folderImages(entry.src)).length })))
+      return counts.reduce((sum, c) => ({ atts: sum.atts + c.atts, folder: sum.folder + c.folder }), { atts: 0, folder: 0 })
+    },
     imageRevision: () => state.imageFolderGen || 0,
     /**
      * The project packed for the app (its player renders 序列帧 / 视频, its 导出 writes the Spine
@@ -11770,6 +12210,7 @@
       const name = A.safeName(stem(state.fileName) || 'skeleton')
       const files = new Map()
       const r = await exportProject({ name, packed: true, mode: opts && opts.mode === 'folder' ? 'folder' : 'atts', version: opts && opts.version, settings: atlasSettings() }, async (rel, data) => { files.set(rel, data) })
+      if (r.missing.length) throw new Error('缺少图片：' + r.missing.join('、') + '，请先指定图片文件夹')
       const text = async (d) => (typeof d === 'string' ? d : d instanceof Blob ? d.text() : new TextDecoder().decode(d))
       const dataUrl = (d) => new Promise((resolve, reject) => {
         const fr = new FileReader()

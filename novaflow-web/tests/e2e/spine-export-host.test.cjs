@@ -107,9 +107,10 @@ test('a new project recovers from preparation without losing its export controls
 test('an export bridge refresh preserves the version selected while preparation runs', () => {
   const start = source.indexOf('  function syncSource()'), end = source.indexOf('\n  /**', start)
   let loads = 0, dialogOpen = true
+  const options = []
   const src = { skeleton: { text: 'normalized preview' } }
-  const ctx = vm.createContext({ window: { __NOVA_SPINE_LAST_SOURCE: src }, api: { loadSource: () => { loads++; return Promise.resolve() } },
-    lastSource: null, lastKey: null, ownText: 'original preview', bridgeImporting: true, chosenVersion: '3.7', appJson: {},
+  const ctx = vm.createContext({ window: { __NOVA_SPINE_LAST_SOURCE: src, __NovaFlowLastProjectDirectory: { handle: 'stale directory' } }, api: { loadSource: (_src, opts) => { loads++; options.push(opts); return Promise.resolve() } },
+    lastSource: null, lastKey: null, pendingImportOperation: null, pendingImportDirectory: null, ownText: 'original preview', bridgeImporting: true, chosenVersion: '3.7', appJson: {},
     document: { querySelector: () => dialogOpen ? {} : null }, sourceKey: s => s.skeleton.text, forgetReact() {}, durations: new Map(), console })
   vm.runInContext(source.slice(start, end), ctx)
   vm.runInContext('syncSource()', ctx)
@@ -120,9 +121,17 @@ test('an export bridge refresh preserves the version selected while preparation 
   vm.runInContext('syncSource()', ctx)
   assert.equal(ctx.chosenVersion, '3.7')
   assert.equal(loads, 1)
+  assert.equal(options[0].directory, null, 'a new unassociated source must not inherit the previous import directory')
   dialogOpen = false
   ctx.window.__NOVA_SPINE_LAST_SOURCE = { skeleton: { text: 'user imported another project' } }
   vm.runInContext('syncSource()', ctx)
   assert.equal(ctx.chosenVersion, '3.7')
   assert.equal(loads, 2)
+  ctx.pendingImportOperation = 'append'
+  ctx.pendingImportDirectory = { handle: 'this import only' }
+  ctx.window.__NOVA_SPINE_LAST_SOURCE = { skeleton: { text: 'user imported another project' } }
+  vm.runInContext('syncSource()', ctx)
+  assert.equal(loads, 3, 'explicit append works even when imported data has the same signature')
+  assert.equal(options[2].directory.handle, 'this import only')
+  assert.equal(options[2].operation, 'append')
 })

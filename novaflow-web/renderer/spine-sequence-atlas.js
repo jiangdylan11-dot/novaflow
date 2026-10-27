@@ -231,7 +231,7 @@
     };
   }
   function createWriter(options) {
-    const settings = normalizeSettings(options.settings), baseName = safeName(options.baseName), packed = options.packed === true;
+    const settings = normalizeSettings(options.settings), baseName = options.exactBaseName ? String(options.baseName) : safeName(options.baseName), packed = options.packed === true;
     const frames = [], pages = [], names = new Set(), seen = new Map(), counters = new Map();
     let pixels = null, free = [], regions = [], usedWidth = 0, usedHeight = 0, finished = false, previous = null;
     // Unique frames are numbered consecutively per name prefix so native Sequences stay contiguous after duplicates drop out.

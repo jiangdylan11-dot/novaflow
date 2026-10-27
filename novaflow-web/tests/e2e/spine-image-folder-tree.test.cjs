@@ -22,7 +22,7 @@ function harness() {
   const remembered = [], unpacked = []
   const context = vm.createContext({ state: { json: json(), sections: new Set(), images: new Map() }, imgTree: null,
     Attach, lower: s => String(s).toLowerCase(), rt: {}, pagePixels: new Map(), frameThumbs: new Map(), applyJson() {}, imageFromBlob: async () => ({ naturalWidth: 1, naturalHeight: 1 }),
-    regionList: () => [{ name: 'chicken' }], status() {}, refresh() {},
+    regionList: () => [{ name: 'chicken' }], status() {}, refresh() {}, connectProjectImages: async () => {},
     rememberFolder: handle => remembered.push(handle),
     unpackAtlasInto: async handle => { unpacked.push(handle); return { written: 0, skipped: 1, unpremultiplied: 0 } },
     pictureRels: async root => { const rels = []; const walk = async (dir, prefix) => { for await (const [name, item] of dir.entries()) {
@@ -30,6 +30,7 @@ function harness() {
     } }; await walk(root, ''); return rels },
   })
   vm.runInContext(section('  const IMG_RX =', '  /**\n   * New material into the image folder:') +
+    section('  const pageEntry =', '  function readProjectData(') +
     section('  async function useFolderHandle(', '  // The image folder survives') +
     section('  async function useRememberedFolder(', '  async function restoreImageFolder('), context)
   return { context, remembered, unpacked }
@@ -112,4 +113,32 @@ test('replacing one packed region keeps other regions on its page and does not d
   assert.notEqual(regions.get('chicken').page, 'page.png')
   assert.equal(c.state.atlasText.split('\n').filter(l => l === 'chicken').length, 1)
   assert.equal(c.state.images.get('page.png').blob, 'packed')
+})
+
+test('explicit external references win over similarly named files in another folder and retain PMA bytes', async () => {
+  const { context: c } = harness(), png = { size: 2, lastModified: 2 }, jpg = { size: 3, lastModified: 3 }
+  const folder = { list: async () => ({ dirs: [], files: [
+    { rel: 'JPG/chicken.png', imageName: 'chicken', file: async () => jpg },
+    { rel: 'PNG/chicken.png', imageName: 'chicken', file: async () => png },
+  ] }) }
+  c.state.imageFolder = folder
+  c.state.atlasText = Attach.synthesizeAtlas([{ fileName: 'chicken.png', width: 1, height: 1 }])
+  c.state.images.set('chicken.png', { fileName: 'chicken.png', blob: { size: 1, lastModified: 1 }, sourceFolder: folder, sourcePath: 'PNG/chicken.png', pma: true })
+  await c.refreshFolderPictures(c.state, folder)
+  assert.equal(c.state.images.get('chicken.png').blob, png)
+  assert.equal(c.state.images.get('chicken.png').pma, true)
+})
+
+test('overwriting an external packed atlas page updates its pixels without changing region coordinates', async () => {
+  const { context: c } = harness(), file = { size: 20, lastModified: 2 }
+  const folder = { list: async () => ({ dirs: [], files: [{ rel: 'page.png', file: async () => file }] }) }
+  c.state.imageFolder = folder
+  c.state.atlasText = 'page.png\nsize: 20,10\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\nchicken\n  xy: 0,0\n  size: 10,10\nother\n  xy: 10,0\n  size: 10,10\n'
+  const original = c.state.atlasText
+  c.state.images.set('page.png', { fileName: 'page.png', blob: { size: 10, lastModified: 1 }, sourceFolder: folder, sourcePath: 'page.png', pma: true })
+  assert.equal(await c.refreshFolderPictures(c.state, folder), 1)
+  assert.equal(c.state.atlasText, original)
+  assert.equal(c.state.images.get('page.png').blob, file)
+  assert.equal(c.state.images.get('page.png').pma, true)
+  assert.equal(await c.refreshFolderPictures(c.state, folder), 0)
 })

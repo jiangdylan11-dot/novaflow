@@ -167,23 +167,29 @@
     return [src.skeleton && src.skeleton.text, src.atlas && src.atlas.text, imgs].join('\u0000')
   }
   let lastKey = null
+  let pendingImportOperation = null
+  let pendingImportDirectory = null
 
   function syncSource() {
     const src = window.__NOVA_SPINE_LAST_SOURCE
     if (!api || !src || src === lastSource) return
+    const operation = pendingImportOperation
+    const directory = pendingImportDirectory
+    pendingImportOperation = null
+    pendingImportDirectory = null
     lastSource = src
     // the project the editor itself handed the app for 导出: nothing new to load
-    if (bridgeImporting || (ownText && src.skeleton && src.skeleton.text === ownText)) { forgetReact(); return }
+    if (bridgeImporting || (!operation && ownText && src.skeleton && src.skeleton.text === ownText)) { forgetReact(); return }
     // the same import in a new object (the app's 保存动画 and write-backs do that): keep the editor's work
     const key = sourceKey(src)
-    if (key === lastKey) { forgetReact(); return }
+    if (key === lastKey && !operation) { forgetReact(); return }
     lastKey = key
     forgetReact()
     durations.clear()
     appJson = null
     // Keep the user's explicit export target across project/preview refreshes.
     // Until a version is selected, exportVersion still follows the project's own version.
-    api.loadSource(src, { directory: window.__NovaFlowLastProjectDirectory || null }).catch((error) => console.warn('[skeleton editor] load', error))
+    api.loadSource(src, { directory, operation }).catch((error) => console.warn('[skeleton editor] load', error))
   }
 
   /** The app's project was rebuilt: nothing in it is ours any more. */
@@ -541,6 +547,43 @@
   let syncing = false
   let syncPromise = null
   let bypass = false
+  let nativeProjectExporting = false
+  const mediaMode = () => { try { return localStorage.getItem('nf-skel-media-export') === 'merged' ? 'merged' : 'independent' } catch { return 'independent' } }
+  function syncNativeProjectExport(root) {
+    if (!api || !api.projectExportInfo || !api.exportSelectedProjects) return false
+    const info = api.projectExportInfo().filter((p) => p.exported)
+    const run = Array.from(root.querySelectorAll('button')).find(isExportRun)
+    if (!run) return true
+    const spine = isSpineExportRun(run), mode = mediaMode()
+    root.setAttribute('data-nf-project-media-mode', mode)
+    const input = root.querySelector('input[type=text], input:not([type])'), box = input && input.parentElement
+    if (box) {
+      if (spine || mode === 'independent') { box.setAttribute('data-nf-project-name-hidden', '1'); box.style.setProperty('display', 'none', 'important') }
+      else if (box.hasAttribute('data-nf-project-name-hidden')) { box.removeAttribute('data-nf-project-name-hidden'); box.style.removeProperty('display') }
+      const automatic = info[0] ? info[0].name + (!spine && mode === 'merged' ? '_合并' : '') : ''
+      if (automatic && (spine || mode === 'independent' || !input.value || input.value === root.getAttribute('data-nf-project-auto-name'))) setExportName(root, automatic)
+      root.setAttribute('data-nf-project-auto-name', automatic)
+    }
+    let row = root.querySelector('[data-nf-project-media]')
+    if (spine) { if (row) row.remove() }
+    else {
+      if (!row) {
+        row = document.createElement('div'); row.setAttribute('data-nf-project-media', '1'); row.className = 'nf-atlas-controls'
+        row.innerHTML = '<div class="nf-atlas-row"><span style="font-size:12px">工程输出</span><button type="button" class="nf-atlas-button" data-media-mode="independent">独立导出</button><button type="button" class="nf-atlas-button" data-media-mode="merged">合并导出</button></div><p class="nf-atlas-hint" data-media-hint></p>'
+        row.querySelectorAll('[data-media-mode]').forEach((b) => b.addEventListener('click', () => { localStorage.setItem('nf-skel-media-export', b.getAttribute('data-media-mode')); syncNativeProjectExport(root) }))
+        run.before(row)
+      }
+      row.querySelectorAll('[data-media-mode]').forEach((b) => b.classList.toggle('primary', b.getAttribute('data-media-mode') === mode))
+      const text = `已勾选 ${info.length} 个工程，` + (mode === 'independent' ? '各自导出，文件名使用工程名。' : '合并为一个结果，只包含勾选的工程。')
+      const hint = row.querySelector('[data-media-hint]'); if (hint.textContent !== text) hint.textContent = text
+    }
+    run.removeAttribute('data-nf-skeleton-wait')
+    run.disabled = nativeProjectExporting || !info.length
+    if (nativeProjectExporting) { if (run.textContent !== '导出中…') run.textContent = '导出中…' }
+    else if ((run.textContent || '').trim() === '准备工程…' || (run.textContent || '').trim() === '导出中…') run.textContent = run.getAttribute('data-nf-skeleton-label') || (spine ? '导出动画工程' : '导出')
+    preparationError(root, null)
+    return true
+  }
   const packMode = () => { try { return JSON.parse(localStorage.getItem(PACK_KEY) || '{}').mode === 'folder' ? 'folder' : 'atts' } catch { return 'atts' } }
   // the Spine version to export as: the project's own until the user picks another (per project)
   let chosenVersion = null
@@ -629,6 +672,17 @@
     if (bypass || !window.NovaFlowSkeletonEditor.active()) return
     const b = e.target instanceof Element ? e.target.closest('button') : null
     if (!b || !isExportRun(b)) return
+    if (api && api.exportSelectedProjects) {
+      if (!isSpineExportRun(b)) return
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
+      if (nativeProjectExporting) return
+      nativeProjectExporting = true
+      const label = exportRunLabel(b); b.setAttribute('data-nf-skeleton-label', label); b.textContent = '导出中…'; b.disabled = true
+      api.exportSelectedProjects({ mode: packMode(), version: chosenVersion || undefined, skel: exportSkel() })
+        .catch((error) => window.alert('导出失败：' + error.message))
+        .finally(() => { nativeProjectExporting = false; b.textContent = label; b.disabled = false })
+      return
+    }
     wantVersion = isSpineExportRun(b) ? 'spine' : '3.8'
     if (inSync() && !syncing) return
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
@@ -665,6 +719,7 @@
     if (!window.NovaFlowSkeletonEditor.active() || !api || !api.loaded()) return
     const root = document.querySelector('[data-novaflow-export-modal-root="1"]')
     if (!root || !exportRoot(root)) return
+    if (syncNativeProjectExport(root)) return
     // on the Spine tab the package version is what counts, elsewhere the exact 3.8 data renders
     wantVersion = root.querySelector('[data-nf-skeleton-pack]') ? 'spine' : '3.8'
     // the dialog's run buttons wait until the app holds the project as it will go out
@@ -690,6 +745,7 @@
     const root = document.querySelector('[data-novaflow-export-modal-root="1"]')
     const scope = root ? exportRoot(root) : null
     if (!scope || !window.NovaFlowSkeletonEditor.active() || !api || !api.loaded()) { window.__NovaFlowSpineExportSkel = false; return }
+    syncNativeProjectExport(scope)
     for (const b of scope.querySelectorAll('button')) if (/^Spine$/i.test((b.textContent || '').trim()) || b.hasAttribute('data-nf-animation-project-tab')) {
       b.setAttribute('data-nf-animation-project-tab', '1')
       if (b.textContent !== '动画工程') b.textContent = '动画工程'
@@ -743,7 +799,7 @@
     if (run) {
       const wanted = '导出动画工程'
       if (run.hasAttribute('data-nf-skeleton-wait')) { if (run.getAttribute('data-nf-skeleton-label') !== wanted) run.setAttribute('data-nf-skeleton-label', wanted) }
-      else if (run.textContent !== wanted) run.textContent = wanted
+      else if (!nativeProjectExporting && run.textContent !== wanted) run.textContent = wanted
     }
     row.querySelectorAll('[data-mode]').forEach((b) => {
       const m = b.getAttribute('data-mode')
@@ -754,7 +810,8 @@
     })
     const hint = row.querySelector('[data-pack-hint]')
     const target = ver
-    const t = (ver === own ? `按工程原版本 ${own} 导出` : `从 ${own} 转成 ${target}`) + `，${fmt}＋atlas＋图集 PNG` + (mode === 'atts' ? '，只打包附件用到的图片。' : '，文件夹里的图片全部打包。')
+    const count = api.projectExportInfo ? api.projectExportInfo().filter((p) => p.exported).length : 1
+    const t = `分别导出勾选的 ${count} 个工程，文件名和图集名使用工程名；` + (chosenVersion ? `目标版本 ${target}` : '各工程保留原版本') + `，${fmt}＋atlas＋图集 PNG。`
     if (hint.textContent !== t) hint.textContent = t
   }
 
@@ -835,6 +892,7 @@
     ready,
     call,
     api: () => api,
+    prepareImport: (operation) => { pendingImportOperation = operation; pendingImportDirectory = operation && operation !== 'refresh' ? window.__NovaFlowLastProjectDirectory || null : null },
     applyRibbonAnimation,
     exportVersion,
     convertExportVersion: (json, version) => {

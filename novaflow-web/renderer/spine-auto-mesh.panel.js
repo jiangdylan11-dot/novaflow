@@ -286,9 +286,9 @@
    * The 骨骼动画 editor lists the project's whole image folder (unused pictures too, live from disk
    * when the picker kept a handle): the folder's files go beside the handle capabilities stashed.
    */
-  function rememberProjectFolder(files) {
+  function rememberProjectFolder(files, keepHandle = false) {
     const prev = window.__NovaFlowLastProjectDirectory
-    const handle = prev && prev.handle && Date.now() - (prev.at || 0) < 120000 ? prev.handle : null
+    const handle = keepHandle && prev && prev.handle && Date.now() - (prev.at || 0) < 120000 ? prev.handle : null
     window.__NovaFlowLastProjectDirectory = { handle, name: prev && handle ? prev.name : '', files: Array.from(files || []), at: Date.now() }
   }
 
@@ -343,12 +343,25 @@
     return plan
   }
 
+  async function startProjectImport(bridge, operation = 'refresh') {
+    const editor = window.NovaFlowSkeletonEditor
+    if (editor && editor.prepareImport) editor.prepareImport(operation)
+    try {
+      const ok = await bridge.start()
+      if (!ok && editor && editor.prepareImport) editor.prepareImport(null)
+      return ok
+    } catch (error) { if (editor && editor.prepareImport) editor.prepareImport(null); throw error }
+  }
   async function importPhotoshopProject(files, setStatus) {
     const Attach = window.NovaFlowAutoMeshAttach
     const bridge = window.__NovaFlowSpineImportInlineBridge
     const cache = window.__NovaFlowSpineImportInlineBridgeCache
     if (!Attach || !bridge || !cache) throw new Error('导入桥接不可用')
     const list = Array.from(files || [])
+    const host = window.NovaFlowSkeletonEditor
+    const editor = host && host.ready ? await host.ready() : null
+    const operation = editor && editor.chooseProjectOperation ? await editor.chooseProjectOperation('import') : 'append'
+    if (!operation) { setStatus('已取消'); return { canceled: true } }
     const depth = (f) => (f.webkitRelativePath || f.name).split('/').length
     // NovaFlow's own project file (保存工程 → NovaFlow 工程): every project in it opens in the editor
     const nfproj = list.filter((f) => /\.nfproj$/i.test(f.name)).sort((x, y) => depth(x) - depth(y))[0]
@@ -357,7 +370,7 @@
       if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
       setStatus('打开 NovaFlow 工程…')
       const api = await ed.ready()
-      const n = await api.openProjectFile(nfproj)
+      const n = await api.openProjectFile(nfproj, null, { directory: window.__NovaFlowLastProjectDirectory || { files: list }, operation })
       return { projects: n }
     }
     // 导入工程 takes any Spine project folder: with an .atlas (or a binary .skel) it is an exported
@@ -396,7 +409,7 @@
       cache.json = { fileName: jsonName, text: jsonText }
       cache.atlas = { fileName: atlasFile.name, text: atlasText }
       cache.images = images
-      const ok = await bridge.start()
+      const ok = await startProjectImport(bridge, operation)
       if (!ok) throw new Error('载入工程失败')
       state.baseSkeleton = null
       state.autoRig = null
@@ -425,28 +438,18 @@
     const plan = photoshopImagePlan(skeleton, imageFiles, jsonFile)
 
     const images = []
-    /** image stem -> crop, so the attachments can be moved to match */
-    const trims = new Map()
     const total = plan.length
     let done = 0
     for (const { file: f, name, fileName } of plan) {
       done++
-      setStatus(`读取并裁切贴图 ${done}/${total}…`)
+      setStatus(`读取贴图 ${done}/${total}…`)
       await nextFrame()
       const dataUrl = await readFileAsDataUrl(f)
       const size = await imageSize(dataUrl)
-      let trimmed = null
-      try { trimmed = await trimToArtwork(dataUrl, size.width, size.height) } catch { trimmed = null }
-      if (trimmed) {
-        trims.set(name.toLowerCase(), trimmed)
-        images.push({ name, fileName, dataUrl: trimmed.dataUrl, width: trimmed.width, height: trimmed.height })
-      } else {
-        images.push({ name, fileName, dataUrl, width: size.width, height: size.height })
-      }
+      images.push({ name, fileName, dataUrl, width: size.width, height: size.height })
     }
-    const moved = trims.size ? Attach.retargetTrimmed(skeleton, trims) : 0
     const upgraded = Attach.normalizeToSpine38(skeleton)
-    if (moved || upgraded) text = JSON.stringify(skeleton)
+    if (upgraded) text = JSON.stringify(skeleton)
     if (!images.length) throw new Error('贴图名和附件名对不上')
 
     setStatus('合成图集…')
@@ -455,7 +458,7 @@
     cache.json = { fileName: jsonFile.name, text }
     cache.atlas = { fileName: jsonFile.name.replace(/\.json$/i, '') + '.atlas', text: atlasText }
     cache.images = images.map((i) => ({ fileName: i.fileName, dataUrl: i.dataUrl }))
-    const ok = await bridge.start()
+    const ok = await startProjectImport(bridge, operation)
     if (!ok) throw new Error('载入工程失败')
     // a fresh project invalidates anything we had meshed
     state.baseSkeleton = null
@@ -579,7 +582,7 @@
     state.sentText = skeletonText
     if (source.atlas) cache.atlas = { fileName: source.atlas.fileName, text: source.atlas.text }
     cache.images = Array.isArray(source.images) ? source.images.slice() : cache.images
-    const ok = await bridge.start()
+    const ok = await startProjectImport(bridge)
     if (!ok) throw new Error('重新载入工程失败')
     await nextFrame()
     try { window.dispatchEvent(new Event('resize')) } catch { /* not fatal */ }
@@ -1304,7 +1307,7 @@
     cache.atlas = { fileName: source.atlas.fileName || 'skeleton.atlas', text: Attach.synthesizeAtlas(images) }
     state.sentText = text
     cache.images = images.map((i) => ({ fileName: i.fileName, dataUrl: i.dataUrl }))
-    const ok = await bridge.start()
+    const ok = await startProjectImport(bridge)
     if (!ok) throw new Error('重新载入工程失败')
     // a fresh project invalidates anything we had meshed
     state.baseSkeleton = null
@@ -3271,10 +3274,9 @@
             return file
           }).filter(Boolean)
           if (!files.length) throw new Error('这个文件夹里没有 JSON 和贴图')
-          rememberProjectFolder(files)
-          rememberProjectFolder(files)
+          rememberProjectFolder(files, true)
         const n = await importPhotoshopProject(files, (t) => say(t))
-          say((n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+          say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
         })
         return
       }
@@ -3335,8 +3337,9 @@
         sayHere('读取拖进来的文件夹…')
         const files = roots.length ? await entryFiles(roots) : plain
         if (!files.length) throw new Error('这里面没有 JSON 和贴图')
+        rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => sayHere(t))
-        sayHere((n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        sayHere((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     picker.addEventListener('change', () => {
@@ -3350,7 +3353,7 @@
       guardWith(say)(async () => {
         rememberProjectFolder(files)
         const n = await importPhotoshopProject(files, (t) => say(t))
-        say((n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
+        say((n && n.canceled ? '已取消' : n && n.projects != null ? `已打开 NovaFlow 工程（${n.projects} 个工程）` : n && n.pages != null ? `已载入工程（${n.pages} 张图集页面）` : `已载入 ${n} 张贴图,勾选图层后生成`), 'ok')
       })
     })
     document.body.appendChild(picker)
@@ -3378,7 +3381,7 @@
         const ed = window.NovaFlowSkeletonEditor
         if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
         const n = await (await ed.ready()).openProjectFile(f)
-        sayHere(`已打开 NovaFlow 工程（${n} 个工程）`, 'ok')
+        sayHere(n ? `已打开 NovaFlow 工程（${n} 个工程）` : '已取消', 'ok')
       })
     })
     document.body.appendChild(nfPicker)
@@ -3395,8 +3398,10 @@
       if (!files.length) return
       guardWith(sayHere)(async () => {
         const ed = window.NovaFlowSkeletonEditor
-        const a = await (creating || (ed && ed.ready ? ed.ready() : Promise.reject(new Error('骨骼动画编辑器还没准备好'))))
+        const pending = creating
         creating = null
+        const a = pending ? pending.api : await (ed && ed.ready ? ed.ready() : Promise.reject(new Error('骨骼动画编辑器还没准备好')))
+        if (pending) await a.newProject(undefined, { operation: pending.operation })
         const n = await a.useImageFolder(files)
         if (n) sayHere(`已导入图片文件夹（${n} 张图片）：把图片拖到骨骼或画面上`, 'ok')
       })
@@ -3411,24 +3416,17 @@
       if (state.busy) return
       const ed = window.NovaFlowSkeletonEditor
       if (!ed || !ed.ready) { sayHere('骨骼动画编辑器还没准备好', 'warn'); return }
-      creating = ed.ready().then(async (a) => { const r = await a.newProject(); sayHere(`已新建工程 ${r.name}：选它的图片文件夹`, 'ok'); return a })
-      creating.catch((e) => sayHere(e.message || String(e), 'error'))
-      // the folder dialog opens on this click (a later one would need another click). The folder is
-      // picked, not uploaded (user 2026-10-15: 怎么是上传不是指定文件夹 - the upload was a copy, so the
-      // folder had to be picked again in the 图片 node): the project lists it live, pictures added or
-      // deleted there show. A browser without the picker uploads a copy as before.
-      if (typeof window.showDirectoryPicker !== 'function') { dirPicker.click(); return }
-      const picking = window.showDirectoryPicker({ mode: 'readwrite' })
       guardWith(sayHere)(async () => {
+        const a = await ed.ready()
+        const operation = await a.chooseProjectOperation('new')
+        if (!operation) { sayHere('已取消'); return }
+        if (typeof window.showDirectoryPicker !== 'function') { creating = { api: a, operation }; dirPicker.click(); return }
         let handle
-        try { handle = await picking } catch (e) {
-          if (e && e.name === 'AbortError') { creating = null; return }   // no folder yet: 图片 → 指定文件夹… later
-          if (e && e.name === 'NotAllowedError') { creating = null; sayHere('没有得到编辑这个文件夹的权限：在「图片」里点「指定文件夹…」再选一次，并允许编辑', 'warn'); return }
+        try { handle = await window.showDirectoryPicker({ mode: 'readwrite' }) } catch (e) {
+          if (e && e.name === 'AbortError') return
           throw e
         }
-        const a = await creating
-        creating = null
-        if (!a.useFolderHandle) { sayHere('骨骼动画编辑器版本太旧：在「图片」里点「指定文件夹…」', 'warn'); return }
+        await a.newProject(undefined, { operation })
         await a.useFolderHandle(handle)
         sayHere(`图片文件夹「${handle.name}」：图片拖到骨骼或画面上就能用，文件夹里加图、删图会实时显示`, 'ok')
       })
@@ -3453,14 +3451,14 @@
         const ed = window.NovaFlowSkeletonEditor
         if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
         const n = await (await ed.ready()).openProjectFile(await handle.getFile(), handle)
-        sayHere(`已打开 NovaFlow 工程（${n} 个工程）`, 'ok')
+        sayHere(n ? `已打开 NovaFlow 工程（${n} 个工程）` : '已取消', 'ok')
       })
     })
     const save = el('button', null, '保存工程')
     save.type = 'button'
     styleButton(save, false)
     save.setAttribute('data-nf-project-save', '1')
-    save.title = '把工程树里的所有工程保存成一个 NovaFlow 工程文件（.nfproj）；存过一次后直接覆盖同一个文件。快捷键 Ctrl+S，另存为 Ctrl+Shift+S'
+    save.title = '保存骨架、动画和外部图片路径（.nfproj），图片默认在工程同目录；Ctrl+S 保存，Ctrl+Shift+S 另存为'
     const saveProject = (as) => {
       const a = editorApi()
       if (!a || !a.loaded || !a.loaded()) { sayHere('先导入工程', 'warn'); return }

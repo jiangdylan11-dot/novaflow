@@ -52,11 +52,12 @@ test('3.8 skin arrays and linked meshes honor explicit paths over legacy names',
   assert.deepEqual([...f.regions.keys()].sort(), ['linkedImage', 'real'])
 })
 
-test('cropping named-skin pictures retargets their original attachment identities', async () => {
+test('folder imports keep original pixels and attachment frames; only export packing may trim them', async () => {
   const j = skeleton(); delete j.skins.default; delete j.skins.heitao1
   const f = await importFolder(j, ['project/img/fangpian8.png'], { dataUrl: 'cropped', x0: 4, y0: 6, width: 20, height: 30, origW: 32, origH: 48 })
   const a = f.json.skins.find(s => s.name === 'fangpian8').attachments.pifu.pifu
-  assert.equal(a.name, 'fangpian8'); assert.equal(a.width, 20); assert.equal(a.height, 30)
+  assert.equal(a.name, 'fangpian8'); assert.equal(a.width, 32); assert.equal(a.height, 48)
+  assert.equal(f.cache.images[0].dataUrl, 'project/img/fangpian8.png')
   assert(f.regions.has('fangpian8'))
 })
 
