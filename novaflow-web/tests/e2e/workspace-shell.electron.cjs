@@ -58,7 +58,7 @@ app.whenReady().then(async () => {
       assert(state.hit, name + ': the mascot is covered by another surface');
       assert.equal(state.box.width, 68); assert.equal(state.box.height, 88);
       assert.deepEqual(state.surfaces.filter(surface => surface.visibleBorder), [], name + ': panel outlines must be absent');
-      assert(state.tools.every(tool=>tool.shadow==='none'&&['none','normal'].includes(tool.divider)), name + ': tool navigation must not draw outlines or dividers');
+      assert(state.tools.every(tool=>tool.shadow==='none'&&tool.divider==='""'), name + ': tool navigation keeps its row separators without an outer outline');
       if (name === '音视') {
         assert(state.models.length > 0 && state.models.every(model=>model.label==='本地模型' && model.value==='beta5_int8'), 'Local model label changes without changing the selected profile');
         assert(state.lora.every(row=>!row.visible), 'LoRA catalogue errors must not occupy the sidebar');

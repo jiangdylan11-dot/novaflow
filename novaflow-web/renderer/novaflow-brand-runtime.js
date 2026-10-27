@@ -33875,7 +33875,7 @@
           // Idle entries take the canvas bar's hover (#373737, white), as the
           // reference's tool list does.
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
-          // Navigation uses fills for hover and selection, without row dividers.
+          // Navigation uses fills for hover and selection; the theme retains row dividers.
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "tool-row");
           const iconRow = {
             position: "relative", "text-align": "left", "justify-content": "flex-start", overflow: "visible",
