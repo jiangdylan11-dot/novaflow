@@ -588,6 +588,23 @@
 
   // ---------------------------------------------------------------- slots
 
+  /** New point bone at the image centre, in the slot parent's local space.
+   * Append it to keep weighted indices stable; rebase the complete slot across
+   * skins so the picture stays put. Existing mesh weights remain untouched.
+   */
+  function addBoneForSlot(input, slotName, center, matrices) {
+    const slot = requireSlot(input, slotName)
+    const parent = matrices && matrices[slot.bone]
+    if (!parent || Math.abs(parent.a * parent.d - parent.b * parent.c) < 1e-12) fail('父骨骼缩放为 0，无法保持图片位置')
+    if (!center || !Number.isFinite(center.x) || !Number.isFinite(center.y)) fail('当前插槽没有可用的图片中心')
+    const name = uniqueName(new Set(input.bones.map((b) => b.name)), slotName, true)
+    const added = addBone(input, { name, parent: slot.bone, x: center.x, y: center.y })
+    const bone = requireBone(added.json, name)
+    const world = worldFromLocal(parent, bone)
+    const result = setSlotProps(added.json, slotName, { bone: name }, { ...matrices, [name]: world })
+    return { ...result, bone: name, slot: slotName }
+  }
+
   /** Spine "New Slot": an empty slot on a bone, drawn on top of everything. */
   function addSlot(input, bone, name) {
     const json = prepare(input)
@@ -2782,7 +2799,7 @@
     // animations
     createAnimation, renameAnimation, deleteAnimation, duplicateAnimation,
     // slots + attachments
-    addSlot, duplicateSlot, renameSlot, compensateImages, deleteSlot, setSlotProps, moveSlot,
+    addSlot, addBoneForSlot, duplicateSlot, renameSlot, compensateImages, deleteSlot, setSlotProps, moveSlot,
     addRegionAttachment, setAttachmentProps, renameAttachment, deleteAttachment, transferAttachment,
     // keys
     keyAttachment, keyColor, keyConstraint, keyBone, keyDeform, moveMeshVertices, setMesh, regionToMesh, meshToRegion, boneKeys, removeKeyAt, slotKeys,

@@ -2014,6 +2014,16 @@
       (r) => { state.sel = { kind: 'slot', name: r.slot }; revealInTree(state.sel) })
   }
 
+  function newBoneForSlot(slotName) {
+    if (state.mode !== 'setup') return
+    const center = baseAttachmentPlacement(state.json, slotName)
+    if (!center) { status('请先让当前插槽显示一张图片', 'error'); return }
+    const matrices = setupMatrices()
+    edit((r) => `已在图片中心新建骨骼 ${r.bone}，插槽 ${slotName} 已挂到其下`,
+      (j) => Ops.addBoneForSlot(j, slotName, center, matrices),
+      (r) => select({ kind: 'bone', name: r.bone }))
+  }
+
   /** 自动排序: every constraint after the ones that move its target or its bones' parents. */
   function autoOrder() {
     const r = Ops.autoOrderConstraints(state.json)
@@ -9447,6 +9457,7 @@
     out.push(h('div', { class: 'btns g2' },
       menuButton('新建…', [
         { label: '图片…', icon: 'region', run: () => openImagePicker(`添加到插槽「${name}」`, (r) => addImageToSlot(name, r)) },
+        { label: '骨骼', icon: 'bone', run: () => newBoneForSlot(name), disabled: state.mode !== 'setup' || !baseAttachmentPlacement(state.json, name), title: '在当前图片中心新建骨骼点，并把插槽挂到其下，保持图片位置' },
         { label: '皮肤占位符', icon: 'placeholder', run: () => edit((r) => `已新建皮肤占位符 ${r.placeholder}`, (j) => Ops.addPlaceholder(j, name),
           (r) => { state.sel = { kind: 'ph', name: r.placeholder, slot: name }; state.collapsed.delete('s:' + name); revealInTree(state.sel) }) },
         { label: '剪裁', icon: 'clip', run: () => newClipping(name), disabled: state.mode !== 'setup', title: '遮罩：画一个多边形，剪掉它后面绘制的插槽（到「结束插槽」为止）' },
