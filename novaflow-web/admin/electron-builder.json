@@ -52,5 +52,14 @@
     "installerIcon": "build/icon.ico",
     "uninstallerIcon": "build/icon.ico",
     "installerHeaderIcon": "build/icon.ico"
-  }
+  },
+  "extraResources": [
+    {
+      "from": "../packages/shared/src",
+      "to": "packages/shared/src",
+      "filter": [
+        "**/*.mjs"
+      ]
+    }
+  ]
 }
