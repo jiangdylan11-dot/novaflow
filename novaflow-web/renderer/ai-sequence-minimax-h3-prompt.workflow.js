@@ -1210,7 +1210,9 @@
       assertExplicitReferences(options, result.modelText)
       return result
     } catch (error) {
-      if (error?.novaflowStopped || error?.h3ReferenceBinding) throw error
+      // A missing local H3 compiler is shown to the user and is not rewritten
+      // into the prompt. Other translate failures still go out as written.
+      if (error?.novaflowStopped || error?.h3ReferenceBinding || error?.h3LocalUnavailable) throw error
       const source = stringValue(options?.prompt).trim()
       let modelText = source
       try {

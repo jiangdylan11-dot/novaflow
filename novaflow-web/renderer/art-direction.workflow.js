@@ -240,7 +240,17 @@
     }
     return capability;
   }
-  async function analyze(source, signal) {
+  function onlineQuota(result) {
+    const quota = result?.quota || result?.result?.quota || result?.data?.quota;
+    return quota && typeof quota === 'object' ? quota : null;
+  }
+  function creditPreview(feature, units) {
+    return root.NovaFlowFeatureCreditPrices?.previewText?.(feature, units) || '本次将扣积分';
+  }
+  function creditSettlement(result) {
+    return root.NovaFlowFeatureCreditPrices?.settlementText?.(onlineQuota(result)) || '';
+  }
+  async function analyze(source, signal, onStatus = () => {}) {
     const api = root.electronAPI || {};
     const analysisImages = [];
     const usePe=source.engine==='local'&&source.provider==='local'&&!source.nsfw&&source.references.length===2&&source.references.every(r=>r.roles.length===1)&&source.references.map(r=>r.roles[0]).sort().join(',')==='style,subject';
@@ -257,12 +267,18 @@
     if(originalImages&&new TextEncoder().encode(JSON.stringify(payload)).byteLength>24*1024*1024)throw new Error('完整参考图分析请求超过24MB，请减少图片数量或先缩小图片；本次未压缩或截断提交');
     const fn = source.engine === 'grok' ? api.smartAiImageReverse : api.promptAssistantReverseImagePrompt;
     if (typeof fn !== 'function') throw new Error('所选绘图分析线路未就绪');
+    if (source.engine === 'grok') onStatus(creditPreview('image_reverse', Math.max(1, source.references.length || 1)));
     if(signal.aborted)throw abortError();
     let cancel,dispatched=false;
     const stopped = new Promise((_, reject) => { cancel = () => {if(dispatched&&source.engine==='local')cancelLocalAnalysis(api,requestId);reject(abortError());}; signal.addEventListener('abort', cancel, { once: true }); });
     try {
       dispatched=true;
-      const result=validate(unwrap(await Promise.race([fn.call(api, payload), stopped])),source);
+      const raw = await Promise.race([fn.call(api, payload), stopped]);
+      if (raw?.ok !== false) {
+        const settled = creditSettlement(raw);
+        if (settled) onStatus(settled);
+      }
+      const result=validate(unwrap(raw),source);
       return result;
     }
     catch(error){if(error?.name==='SyntaxError')throw new Error(source.engine==='grok'?'当前 Grok 服务未返回绘图参考分析协议；本次未提交生成，请更新服务或切换本地分析':'绘图分析返回格式无效，本次未提交生成，请重试');throw error;}
@@ -615,7 +631,7 @@
           status('正在准备直接生成…');prepared=directPreparation(source);check();
         }else{
           status(source.references.length?'正在理解需求与参考图片…':'正在完善画面表现…');
-          const plan=await analyze(source,current.signal);check();
+          const plan=await analyze(source,current.signal,status);check();
           if(plan.clarification)throw new Error(`需要补充一句：${plan.clarification}`);
           prepared={...(await compile(plan,source,status,check,context.referenceLimit||10)),plan};check();
         }
@@ -703,6 +719,7 @@
       const payload={requestId,surface:'art',purpose:'art-director-review',visualSchema:'nf.art.review.v1',currentPrompt:source.prompt,nsfw:source.nsfw,
         artContext:{task:source.task,references:originals.map(r=>({source:r.source,role:r.role})),plan:contract},images};
       const fn=source.engine==='grok'?root.electronAPI?.smartAiImageReverse:root.electronAPI?.promptAssistantReverseImagePrompt;
+      if(source.engine==='grok')onProgress(creditPreview('image_reverse', Math.max(1, images.length || 1)));
       let dispatched=false;
       const stopped=new Promise((_,reject)=>{stop=()=>{if(dispatched&&source.engine==='local')cancelLocalAnalysis(root.electronAPI,requestId);reject(abortError());};current.signal.addEventListener('abort',stop,{once:true});});
       let response;
@@ -715,6 +732,10 @@
         await Promise.race([new Promise(resolve=>setTimeout(resolve,1000*2**attempt)),stopped]);
       }
       prepared.assertCurrent();
+      if(response?.ok!==false){
+        const settled=creditSettlement(response);
+        if(settled)onProgress(settled);
+      }
       if(response?.ok===false)throw new Error(response.error||'成图检查失败');
       const data=response?.data||response?.result||response;
       const checked=data?.artReview||data?.art_review;

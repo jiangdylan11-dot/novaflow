@@ -573,10 +573,11 @@ const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider'
 // isKnownTaskType() reads THIS table, which is what admits it to the queue.
 const MATTING_TASK_TYPE = 'video_matting';
 
-// 提示词助手 (优化 / 反推 / 画风描述) is the desktop's Python service, which every
-// compute node ships. On the shared pool it runs as this task: the request
-// travels as one uploaded JSON file, the reply comes back as one output file.
-// Like matting it names no ComfyUI graph, so it lives only in this table.
+// Local Flash assistant (optimize / reverse / art-style description). The task
+// type string stays prompt_assistant so workers already in the field keep
+// dispatching it. Production inference is Flash/Strata; the Python service is
+// not an automatic fallback. On the shared pool the request still travels as
+// one uploaded JSON file and the reply comes back as one output file.
 const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
 const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
 const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style']);
@@ -594,8 +595,8 @@ const TASK_TYPE_REQUIREMENTS = Object.freeze({
   // 1024x1024 whatever the clip is, so the VRAM floor is far below the
   // generation types and a machine that cannot draw can still cut out.
   [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED },
-  // A 7B VL model in fp8; the node frees its drawing runtime's memory first.
-  [PROMPT_ASSISTANT_TASK_TYPE]: { modelId: PROMPT_ASSISTANT_MODEL_ID, minVramMb: 8000, kind: 'text', label: '提示词助手', billing: BILLING.SELF_HOSTED }
+  // Local Flash. The node frees its drawing runtime's memory first.
+  [PROMPT_ASSISTANT_TASK_TYPE]: { modelId: PROMPT_ASSISTANT_MODEL_ID, minVramMb: 8000, kind: 'text', label: '本地 Flash 助手', billing: BILLING.SELF_HOSTED }
 });
 
 /** Does this task type cost the user credits? */

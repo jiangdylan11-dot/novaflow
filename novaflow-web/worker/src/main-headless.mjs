@@ -90,7 +90,12 @@ export async function startHeadlessWorker(overrides = {}) {
   }
   let promptAssistant = null;
   const worker = createWorker({ ...config, logger: overrides.logger, promptAssistant: () => promptAssistant });
-  if((overrides.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata')==='strata') {
+  const requestedBackend = String(overrides.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata').trim().toLowerCase() || 'strata';
+  const legacyDiagnostics = process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT === '1' && requestedBackend !== 'strata';
+  if (requestedBackend !== 'strata' && !legacyDiagnostics) {
+    overrides.logger?.('ignored non-strata prompt assistant backend; production stays on Flash', { requested: requestedBackend });
+  }
+  if (!legacyDiagnostics) {
     const prepared=await ensureFlashBrainConfiguration({
       ...(overrides.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON ? {runtimeJsonPath:overrides.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON} : {}),
       ...(overrides.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG ? {configPath:overrides.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG} : {})

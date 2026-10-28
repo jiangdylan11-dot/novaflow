@@ -3499,10 +3499,30 @@
   function smartAiCreditNote() {
     if (state.engine === "local") return "本地处理不扣积分";
     const feature = state.mode === "reverse" ? "image_reverse" : "prompt_optimize";
+    const units = state.mode === "reverse" ? Math.max(1, state.images.length || 1) : 1;
     const api = globalThis.NovaFlowFeatureCreditPrices;
-    const quoted = api && typeof api.quoteFeature === "function" ? api.quoteFeature({ feature, units: 1 }) : null;
-    const credits = quoted && quoted.credits != null ? quoted.credits : 4;
-    return `本次将扣 ${credits} 积分`;
+    if (api && typeof api.previewText === "function") return api.previewText(feature, units);
+    const quoted = api && typeof api.quoteFeature === "function" ? api.quoteFeature({ feature, units }) : null;
+    if (!quoted || quoted.credits == null) return "本次将扣积分";
+    return `本次将扣 ${quoted.credits} 积分`;
+  }
+
+  function smartAiQuota(result) {
+    const nested = result?.result && typeof result.result === "object" ? result.result : {};
+    const data = result?.data && typeof result.data === "object" ? result.data : {};
+    const quota = result?.quota || nested.quota || data.quota;
+    return quota && typeof quota === "object" ? quota : null;
+  }
+
+  function smartAiSettlementNote(result) {
+    const api = globalThis.NovaFlowFeatureCreditPrices;
+    if (api && typeof api.settlementText === "function") return api.settlementText(smartAiQuota(result));
+    const quota = smartAiQuota(result);
+    if (!quota || quota.local) return "";
+    const charged = quota.charged_credits ?? quota.settled_credits;
+    if (charged == null || charged === "" || Number(charged) <= 0) return "";
+    const remain = quota.balance_after;
+    return `实扣 ${charged} 积分${remain == null || remain === "" ? "" : `，剩余 ${remain}`}`;
   }
 
   function renderAnimationProcessingNote() {
@@ -4941,12 +4961,24 @@
       if (!useGrok && usesStaticImageReverse) {
         showLocalStaticReverseWarning(result?.warning);
       }
-      if (isVisualV2Result) {
-        state.loading = false;
+      const finishOnlineOrClose = () => {
+        if (useGrok) {
+          const note = smartAiSettlementNote(result);
+          if (note) {
+            state.loading = false;
+            state.message = note;
+            state.messageTone = "";
+            renderDialog();
+            return;
+          }
+        }
         closeDialog();
+      };
+      if (isVisualV2Result) {
+        finishOnlineOrClose();
         return;
       }
-      closeDialog();
+      finishOnlineOrClose();
     } catch (caughtError) {
       const err = caughtError;
       if (err?.novaflowStopped || state.runStopped) {
@@ -5142,23 +5174,30 @@
   }
 
   // Generation turns the editor's H3 prompt into the official English text (文生 / 图生 /
-  // 首尾帧 / 多参). Compilation is local and does not silently spend cloud credits - where
-  // there is a local machine to ask. The hosted site has none (the Web runtime answers that
-  // it is provided through 智能 AI), and there the compile goes the same way the dialog's
-  // Grok choice does. A translate-only compile needs no reference frames.
+  // 首尾帧 / 多参). Compilation is local and never spends cloud credits. If this
+  // machine has no Flash compiler, the user sees that it is unavailable.
+  // A translate-only compile needs no reference frames. H3 text optimize and
+  // reverse in the dialog still go online only when the user picked 云端模型.
   async function compileH3ForGeneration(options) {
     const workflow = getMiniMaxH3PromptWorkflow();
+    const unavailable = () => {
+      const error = new Error("本机 H3 提示词编译不可用，请打开本地算力节点后重试");
+      error.h3LocalUnavailable = true;
+      return error;
+    };
+    const machineMissing = (response) => {
+      if (!response || response.ok !== false) return !response;
+      const code = String(response.errorCode || "");
+      if (code === "flash-model-missing" || code === "strata-not-configured" || code === "flash-session-required") return true;
+      return /Web 版通过智能 AI|本地 Flash 模型不可用|Flash 本地模型尚未安装|本机没有提示词助手/.test(String(response.error || ""));
+    };
     return workflow.compileForGeneration(options, async (payload) => {
       const api = window.electronAPI || {};
+      if (typeof api.promptAssistantOptimizePrompt !== "function") throw unavailable();
       const translateOnly = /^H3 compile: translate-only$/m.test(String(payload?.requirements || ""));
       const h3ReferenceFrames = translateOnly ? [] : await captureH3ReferenceFrames({ ...options, mode: "multi_reference" });
-      let response = await api.promptAssistantOptimizePrompt?.({ ...payload, h3ReferenceFrames });
-      const noLocalMachine = !response || (response.ok === false && /Web 版通过智能 AI/.test(String(response.error || "")));
-      if (noLocalMachine && typeof api.smartAiPromptOptimize === "function") {
-        const token = readSessionToken();
-        if (!token) throw new Error("提示词编译需要先登录 NovaFlow 账号");
-        response = await api.smartAiPromptOptimize({ ...payload, h3ReferenceFrames, token });
-      }
+      const response = await api.promptAssistantOptimizePrompt({ ...payload, h3ReferenceFrames });
+      if (machineMissing(response)) throw unavailable();
       if (!response || response.ok === false) throw new Error(response?.error || "提示词编译失败");
       return readSmartAiResult(response).prompt;
     });

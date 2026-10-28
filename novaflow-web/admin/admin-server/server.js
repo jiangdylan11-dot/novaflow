@@ -10971,6 +10971,8 @@ async function handleGrokPromptOptimizeRequest(req, res) {
   try {
     const charged = await chargeOnlineAi(session, {
       feature: "prompt-optimize",
+      // Call budget only. H3 may retry once. quoteFeature clamps this feature
+      // to one unit, so the credit charge stays the prompt_optimize price.
       amount: isH3Prompt ? 2 : 1,
       run: async ({ amount: providerCallBudget }) => {
         resultOptions = { ...request.resultOptions, visualRetryAllowed: isH3Prompt && providerCallBudget >= 2, providerCallBudget };
@@ -11076,6 +11078,8 @@ async function handleGrokImageReverseRequest(req, res) {
   try {
     const charged = await chargeOnlineAi(session, {
       feature: mode === "video_reverse" ? "video-reverse" : "image-reverse",
+      // Call budget only. image_reverse is not a per-image price, so extra
+      // provider calls do not multiply the credit charge.
       amount: isH3ReverseRequest ? requiredProviderCalls : Math.max(requiredProviderCalls, 2),
       run: async ({ amount: providerCallBudget }) => {
         if (providerCallBudget < requiredProviderCalls) {
@@ -11337,14 +11341,14 @@ async function handleRunningHubUiCatalogRequest(req, res) {
         }
       }
     });
-    sendJson(res, 200, { ok: true, model: charged.value.model, providerCallCount: 1, retryCount: 0, clientRequestId: requestId, requestId: charged.value.requestId || requestId, finishReason: "completed", rawOutputText: charged.value.rawOutputText });
+    sendJson(res, 200, { ok: true, model: charged.value.model, providerCallCount: 1, retryCount: 0, clientRequestId: requestId, requestId: charged.value.requestId || requestId, finishReason: "completed", rawOutputText: charged.value.rawOutputText, quota: grokQuotaPayload(charged.quota) });
   } catch (err) {
     if (err?.quotaFailed) {
       sendJson(res, 500, { ok: false, error: "在线计量没有完成" });
       return;
     }
     const statusCode = Number(err?.statusCode || 502);
-    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: statusCode === 402 ? creditClientMessage(err) : /在线/.test(String(err?.message || "")) ? sanitizeError(err) : "在线目录分析未完成" });
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: statusCode === 402 ? creditClientMessage(err) : /在线/.test(String(err?.message || "")) ? sanitizeError(err) : "在线目录分析未完成", quota: grokQuotaPayload(err?.quota?.record || err?.quota) });
   }
 }
 
@@ -11704,6 +11708,7 @@ function createAdminServer() {
       }
 
 
+      // Historical path names. The handler calls RunningHub; this phase does not rename them.
       if (req.method === "POST" && pathName === "/api/client/grok/prompt-optimize") {
         await handleGrokPromptOptimizeRequest(req, res);
         return;

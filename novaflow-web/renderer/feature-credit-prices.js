@@ -77,8 +77,25 @@
     return { feature: key, units: count, unitPrice: unit, credits: unit * count, local: unit === 0, perImage: perImage };
   }
 
+  function previewText(feature, units) {
+    var quoted = quoteFeature({ feature: feature, units: units });
+    if (!quoted || quoted.local || quoted.credits === 0) return '本地处理不扣积分';
+    if (quoted.credits == null) return '本次将扣积分';
+    return '本次将扣 ' + quoted.credits + ' 积分';
+  }
+
+  function settlementText(quota) {
+    if (!quota || quota.local) return '';
+    var charged = quota.charged_credits != null ? quota.charged_credits : quota.settled_credits;
+    if (charged == null || charged === '' || Number(charged) <= 0) return '';
+    var remain = quota.balance_after;
+    return '实扣 ' + charged + ' 积分' + (remain == null || remain === '' ? '' : '，剩余 ' + remain);
+  }
+
   root.NovaFlowFeatureCreditPrices = {
     quoteFeature: quoteFeature,
+    previewText: previewText,
+    settlementText: settlementText,
     applyConfig: function (next) { config = next && typeof next === 'object' ? next : null; },
     defaults: DEFAULT_PRICES
   };

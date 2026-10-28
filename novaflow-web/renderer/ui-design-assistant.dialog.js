@@ -224,6 +224,11 @@
           record.options.negativePromptTextarea.value = payload.negativePrompt
         }
       }
+      const charged = root.NovaFlowFeatureCreditPrices?.settlementText?.(result.quota) || ''
+      if (record.engine !== 'local' && charged) {
+        setStatus(record, charged)
+        return true
+      }
       close('applied')
       return true
     } catch (error) {
@@ -240,6 +245,14 @@
     }
   }
 
+  function refreshCreditNote(record) {
+    if (!record.creditNote) return
+    const api = root.NovaFlowFeatureCreditPrices
+    record.creditNote.textContent = record.engine === 'local'
+      ? '本地处理不扣积分'
+      : (api?.previewText?.('lean_research', 1) || '本次将扣积分')
+  }
+
   function createEngineChoice(record, value, title, meta) {
     const input = element(record.documentRef, 'input', {
       type: 'radio', name: 'novaflow-ui-design-assistant-engine', value,
@@ -250,6 +263,7 @@
     input.addEventListener('change', () => {
       if (!input.checked) return
       record.engine = value
+      refreshCreditNote(record)
       updateReferenceRows(record)
     })
     return element(record.documentRef, 'label', {
@@ -346,8 +360,14 @@
     ;[['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 快速处理']].forEach(([value, title, meta]) => {
       engineGrid.appendChild(createEngineChoice(record, value, title, meta))
     })
+    record.creditNote = element(documentRef, 'div', {
+      'data-novaflow-ui-design-assistant-credit': '1',
+      style: { color: 'rgba(232,237,242,0.62)', fontSize: '11px', lineHeight: '1.5' },
+    })
+    refreshCreditNote(record)
     body.append(
       section('处理方式', engineGrid),
+      record.creditNote,
       section('参考图', record.referencesHost),
       section('补充要求', record.requirements),
       record.notice,

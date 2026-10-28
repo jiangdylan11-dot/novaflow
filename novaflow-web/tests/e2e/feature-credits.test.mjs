@@ -53,6 +53,7 @@ test('recommended prices, empty renminbi rate, and low-balance threshold', async
   assert.equal(quoteFeature({ feature: 'xiaotao-vision' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'prompt-optimize', units: 2 }).credits, 4);
   assert.equal(quoteFeature({ feature: 'image-reverse' }).credits, 4);
+  assert.equal(quoteFeature({ feature: 'image-reverse', units: 3 }).credits, 4);
   assert.equal(quoteFeature({ feature: 'video-reverse' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'ui-catalog' }).credits, 14);
   assert.equal(quoteFeature({ feature: 'gpt_image_2_5_economy', units: 3 }).credits, 66);
@@ -103,6 +104,17 @@ test('browser price card matches the charge card', async () => {
   api.applyConfig({ prices: { gpt_image_2_5_economy: 30 }, low_balance_usd: 2, credits_to_cny: null });
   assert.equal(api.quoteFeature({ feature: 'gpt_image_2_5_economy', units: 2 }).credits, 60);
   assert.equal(api.quoteFeature({ feature: 'local' }).credits, 0);
+  api.applyConfig({ prices: { prompt_optimize: 9 } });
+  assert.equal(api.previewText('prompt_optimize', 1), '本次将扣 9 积分');
+  api.applyConfig(null);
+  assert.equal(api.previewText('prompt_optimize', 1), '本次将扣 4 积分');
+  assert.equal(api.previewText('lean_research', 1), '本次将扣 14 积分');
+  assert.equal(api.previewText('image_reverse', 3), '本次将扣 4 积分');
+  assert.equal(api.previewText('local'), '本地处理不扣积分');
+  assert.equal(api.settlementText({ charged_credits: 4, balance_after: 96 }), '实扣 4 积分，剩余 96');
+  assert.equal(api.settlementText({ settled_credits: 14, balance_after: 0 }), '实扣 14 积分，剩余 0');
+  assert.equal(api.settlementText({ settled_credits: 0, balance_after: 100 }), '');
+  assert.equal(api.settlementText({ local: true, charged_credits: 0 }), '');
 });
 
 test('charge releases on failure and moderation, skips local work, and blocks a low pool before reserve', async () => {
