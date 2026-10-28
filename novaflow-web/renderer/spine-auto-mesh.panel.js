@@ -116,7 +116,9 @@
     if (!forRigging && rigDirty) { setStatus('骨骼架设 里还有未保存的修改:先 应用到工程 或 放弃修改', 'error'); return }
     setBusy(true)
     try { await fn() } catch (err) {
-      setStatus(String((err && err.message) || err || '操作失败'), 'error')
+      const message = String((err && err.message) || err || '操作失败')
+      setStatus(message, 'error')
+      if (/工程文件|NovaFlow 工程/.test(message)) showImportFailure(message)
     } finally { setBusy(false) }
   }
   let setStatusFn = () => {}
@@ -352,6 +354,42 @@
       return ok
     } catch (error) { if (editor && editor.prepareImport) editor.prepareImport(null); throw error }
   }
+  function showImportFailure(message) {
+    try {
+      if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message)
+        return
+      }
+      const prev = typeof document.querySelector === 'function' ? document.querySelector('[data-nf-import-error]') : null
+      if (prev && prev.getAttribute && prev.getAttribute('data-nf-import-message') === message) return
+      if (prev && prev.remove) prev.remove()
+      const mask = document.createElement('div')
+      mask.setAttribute('data-nf-import-error', '1')
+      mask.setAttribute('data-nf-import-message', message)
+      mask.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;'
+      const box = document.createElement('div')
+      box.style.cssText = 'max-width:440px;margin:24px;padding:16px 18px;background:#2b2b2b;color:#ffd0d0;border-radius:10px;font-size:14px;line-height:1.55;box-shadow:0 16px 48px rgba(0,0,0,.5);'
+      const title = document.createElement('div')
+      title.textContent = '无法打开工程'
+      title.style.cssText = 'font-weight:700;color:#fff;margin-bottom:8px;'
+      const body = document.createElement('div')
+      body.textContent = message
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = '知道了'
+      button.style.cssText = 'margin-top:14px;padding:6px 16px;background:#1EA672;color:#fff;border:0;border-radius:6px;cursor:pointer;'
+      button.addEventListener('click', () => mask.remove())
+      if (box.append) box.append(title, body, button)
+      else { box.appendChild(title); box.appendChild(body); box.appendChild(button) }
+      if (mask.append) mask.append(box)
+      else mask.appendChild(box)
+      mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove() })
+      if (document.body.append) document.body.append(mask)
+      else document.body.appendChild(mask)
+    } catch {
+      try { if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message) } catch { /* the thrown error still reaches the caller */ }
+    }
+  }
   async function importPhotoshopProject(files, setStatus) {
     const Attach = window.NovaFlowAutoMeshAttach
     const bridge = window.__NovaFlowSpineImportInlineBridge
@@ -366,6 +404,12 @@
     // NovaFlow's own project file (保存工程 → NovaFlow 工程): every project in it opens in the editor
     const nfproj = list.filter((f) => /\.nfproj$/i.test(f.name)).sort((x, y) => depth(x) - depth(y))[0]
     if (nfproj) {
+      if (!nfproj.size) {
+        const message = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
+        setStatus(message, 'error')
+        showImportFailure(message)
+        throw new Error(message)
+      }
       const ed = window.NovaFlowSkeletonEditor
       if (!ed || !ed.ready) throw new Error('骨骼动画编辑器还没准备好')
       setStatus('打开 NovaFlow 工程…')
@@ -3215,7 +3259,7 @@
       if (!text) { psStatus.style.display = 'none'; psStatus.textContent = ''; return }
       psStatus.style.display = 'block'
       psStatus.textContent = text
-      psStatus.style.color = tone === 'err' ? '#ff8f8f' : tone === 'ok' ? '#7ee787' : 'rgba(255,255,255,0.72)'
+      psStatus.style.color = tone === 'err' || tone === 'error' ? '#ff8f8f' : tone === 'ok' ? '#7ee787' : 'rgba(255,255,255,0.72)'
     }
     const sayHere = (text, tone) => { setStatusFn(text, tone); showHere(text, tone) }
     // parked off-screen rather than display:none: a hidden input still opens the dialog,

@@ -12,20 +12,70 @@ const fn = name => source.match(new RegExp('^  (?:async )?function ' + name + '\
 function disk(name = 'project') {
   let clock = 100
   const root = dir(name)
+  const bytesOf = async (b) => {
+    if (typeof b === 'string') return new TextEncoder().encode(b)
+    if (b instanceof Blob) return new Uint8Array(await b.arrayBuffer())
+    if (b instanceof ArrayBuffer) return new Uint8Array(b)
+    if (ArrayBuffer.isView(b)) return new Uint8Array(b.buffer, b.byteOffset, b.byteLength)
+    return new Uint8Array(b)
+  }
   function dir(name, parent) {
     const nodes = new Map()
     return { kind: 'directory', name, parent, nodes, queryPermission: async () => 'granted', requestPermission: async () => 'granted',
       async *entries() { yield* nodes },
       async resolve(other) { const parts = []; for (let n = other; n; n = n.parent) { if (n === this) return parts.reverse(); parts.push(n.name) } return null },
+      async removeEntry(name) { nodes.delete(name) },
       async getDirectoryHandle(name, opts = {}) { if (!nodes.has(name) && opts.create) nodes.set(name, dir(name, this)); const n = nodes.get(name); if (!n || n.kind !== 'directory') throw Error('NotFound'); return n },
       async getFileHandle(name, opts = {}) {
         if (!nodes.has(name) && opts.create) nodes.set(name, { kind: 'file', name, parent: this, data: new File([], name),
-          async getFile() { return this.data }, async createWritable() { const n = this; return { write: async b => { n.data = new File([b], name, { lastModified: clock++ }) }, close: async () => {} } } })
+          async getFile() { return this.data },
+          async remove() { if (this.parent) this.parent.nodes.delete(this.name) },
+          async move(dest, newName) {
+            const dir = typeof dest === 'string' ? this.parent : dest
+            const next = typeof dest === 'string' ? dest : (newName || this.name)
+            if (dir.nodes.has(next) && dir.nodes.get(next) !== this) { const err = new Error('exists'); err.name = 'InvalidModificationError'; throw err }
+            this.parent.nodes.delete(this.name)
+            this.name = next
+            this.parent = dir
+            dir.nodes.set(next, this)
+          },
+          // createWritable() without keepExistingData drops the bytes immediately, which is the
+          // failure mode a project save has to avoid. keepExistingData holds them until close.
+          async createWritable(opts = {}) {
+            const n = this
+            const keep = !!(opts && opts.keepExistingData)
+            const original = n.data
+            if (!keep) n.data = new File([], n.name, { lastModified: clock++ })
+            let buf = keep ? new Uint8Array(await original.arrayBuffer()) : new Uint8Array(0)
+            let pos = 0
+            const publish = () => { n.data = new File([buf], n.name, { lastModified: clock++ }) }
+            return {
+              async write(b) {
+                const chunk = await bytesOf(b)
+                const next = new Uint8Array(Math.max(buf.length, pos + chunk.length))
+                next.set(buf)
+                next.set(chunk, pos)
+                buf = next
+                pos += chunk.length
+                publish()
+              },
+              async truncate(size) {
+                const next = new Uint8Array(size)
+                next.set(buf.subarray(0, Math.min(size, buf.length)))
+                buf = next
+                pos = Math.min(pos, size)
+                publish()
+              },
+              async close() { publish() },
+              async abort() { n.data = original },
+            }
+          },
+        })
         const n = nodes.get(name); if (!n || n.kind !== 'file') throw Error('NotFound'); return n
       },
     }
   }
-  return { root, async put(rel, data) { const parts = rel.split('/'); let d = root; for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true }); const f = await d.getFileHandle(parts.at(-1), { create: true }); const w = await f.createWritable(); await w.write(data); return f } }
+  return { root, async put(rel, data) { const parts = rel.split('/'); let d = root; for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true }); const f = await d.getFileHandle(parts.at(-1), { create: true }); const w = await f.createWritable(); await w.write(data); await w.close(); return f } }
 }
 const json = () => ({ skeleton: { spine: '3.8.99' }, bones: [{ name: 'root' }], slots: [{ name: 'pic', bone: 'root', attachment: 'pic' }],
   skins: [{ name: 'default', attachments: { pic: { pic: { width: 1, height: 1 } } } }], animations: { idle: { bones: { root: { rotate: [{ angle: 5 }] } } } } })
@@ -163,14 +213,19 @@ test('Ctrl+S retains its file and reads modified external pixels without another
   f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
   let saves = 0
   f.window.showSaveFilePicker = async opts => { saves++; assert.equal(opts.startIn, d.root); return handle }
+  const read = async (rel) => new Uint8Array(await (await (await d.root.getFileHandle(rel)).getFile()).arrayBuffer())
   await vm.runInContext('saveProjectFileNow()', f.c)
+  const first = await read('scene.nfproj')
+  assert.equal((await unpack(first)).version, 2)
   await d.put('pic.png', 'second')
   const r = await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(r.overwritten, true)
   assert.equal(saves, 1)
   assert.equal(f.picker.length, 0)
   assert.equal(await f.state.images.get('pic.png').blob.text(), 'second')
-  assert.equal((await unpack(await (await handle.getFile()).arrayBuffer())).version, 2)
+  assert.equal((await unpack(await read('scene.nfproj'))).version, 2)
+  assert.deepEqual(await read('scene.nfproj.bak'), first)
+  assert.equal([...d.root.nodes.keys()].some((n) => String(n).endsWith('.tmp')), false)
 })
 
 test('deleting an external picture does not resurrect a runtime copy when saving', async () => {
@@ -245,4 +300,44 @@ test('explicit append honours identical source filenames; replace affects only t
   assert.equal(f.projects.length, 2)
   await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(picks, 3, 'replacement detaches the previous save file')
+})
+
+test('a save that throws while serializing leaves the previous project file unchanged', async () => {
+  const d = disk(), f = fixture(), handle = await d.put('scene.nfproj', 'good-project-bytes')
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  f.window.directory = d.root
+  f.window.showSaveFilePicker = async () => handle
+  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /缺少图片/)
+  assert.equal(await (await handle.getFile()).text(), 'good-project-bytes')
+  assert.equal(d.root.nodes.has('scene.nfproj.bak'), false)
+  assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp')), false)
+})
+
+test('a serialization failure after the picker created an empty file removes that file', async () => {
+  const d = disk(), f = fixture()
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  f.window.showSaveFilePicker = async () => d.root.getFileHandle('scene.nfproj', { create: true })
+  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /缺少图片/)
+  assert.equal(d.root.nodes.has('scene.nfproj'), false)
+  assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp') || String(n).endsWith('.bak')), false)
+})
+
+test('cancelling the directory picker removes the empty file the save picker created', async () => {
+  const d = disk(), f = fixture()
+  f.window.showSaveFilePicker = async () => d.root.getFileHandle('scene.nfproj', { create: true })
+  const result = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(result, null)
+  assert.equal(d.root.nodes.has('scene.nfproj'), false)
+  assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp')), false)
+})
+
+test('an empty project file shows the empty-file message and does not import', async () => {
+  const f = fixture()
+  const alerts = []
+  f.window.alert = (m) => { alerts.push(String(m)) }
+  const message = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
+  await assert.rejects(f.open(new File([], 'blank.nfproj')), new RegExp(message.replace(/[()]/g, '\\$&')))
+  assert.equal(alerts[0], message)
+  assert.equal(f.status.at(-1)[0], message)
+  assert.equal(f.state.json, null)
 })
