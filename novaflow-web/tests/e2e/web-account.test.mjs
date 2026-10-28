@@ -441,6 +441,55 @@ function loadAccount(sandbox) {
 }
 
 {
+  const timers = new Map();
+  let nextTimer = 1;
+  let refreshes = 0;
+  const { doc, version } = headerDocument();
+  const listeners = {};
+  doc.hidden = false;
+  doc.addEventListener = (type, fn) => { (listeners[type] ||= []).push(fn); };
+  doc.removeEventListener = () => {};
+  doc.dispatch = (type) => { for (const fn of listeners[type] || []) fn(); };
+  const sandbox = {
+    document: doc,
+    Intl, Promise, Number, String, Object,
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    location: { reload() {} },
+    setTimeout: () => 0,
+    setInterval(fn, ms) { const id = nextTimer++; timers.set(id, { fn, ms }); return id; },
+    clearInterval(id) { timers.delete(id); },
+    addEventListener(type, fn) { (sandbox.listeners[type] ||= []).push(fn); },
+    removeEventListener() {},
+    dispatchEvent() { return true; },
+    listeners: {},
+    electronAPI: {
+      clientAuthStatus: async () => { refreshes += 1; return { ok: true, result: { authenticated: true, user: { display_name: 'dylan' }, credits: { balance: 10 } } }; },
+      clientAuthAccountDetails: async () => ({ ok: true, result: { user: { display_name: 'dylan' }, credits: { balance: 10 } } }),
+      clientAuthLogout: async () => ({ ok: true })
+    }
+  };
+  loadAccount(sandbox);
+  check(sandbox.NovaFlowWebAccount.seat(), true);
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(version.nextElementSibling.id, 'novaflow-web-account-header');
+  const balanceTimers = () => [...timers.values()].filter((timer) => timer.ms === 15000);
+  check(balanceTimers().length, 1);
+  const beforeHide = refreshes;
+  doc.hidden = true;
+  doc.dispatch('visibilitychange');
+  check(balanceTimers().length, 0);
+  check(refreshes, beforeHide);
+  doc.hidden = false;
+  doc.dispatch('visibilitychange');
+  check(balanceTimers().length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  check(refreshes > beforeHide, true);
+  sandbox.NovaFlowWebAccount.teardown();
+  check(balanceTimers().length, 0);
+  check([...timers.values()].some((timer) => timer.ms === 500), false);
+}
+
+{
   check(/showModal|NovaFlow 账户|novaflow-web-account-title/.test(accountSource), false);
   check(typeof accountSource === 'string' && accountSource.includes('novaflow-web-account-header'), true);
   const brand = await readFile(new URL('../../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8');
@@ -459,6 +508,8 @@ function loadAccount(sandbox) {
     }
   }
   check(leftovers, []);
+  const adminAccountTest = await readFile(new URL('../../admin/tests/art-knowledge-ui.cjs', import.meta.url), 'utf8');
+  check(/NovaFlowWebAccount\.open\(/.test(adminAccountTest), false);
 }
 
 console.log(checks + ' passed, 0 failed: Web account quota source, header strip, logout and live balance');

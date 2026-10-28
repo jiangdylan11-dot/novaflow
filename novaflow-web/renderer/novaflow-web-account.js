@@ -21,6 +21,9 @@
   let refreshAgain = false;
   let liveBound = false;
   let lastAccount = null;
+  let balanceTimer = 0;
+  let seatTimer = 0;
+  let pollBound = false;
 
   const styles = el('style', '', `
 #novaflow-web-account-header{display:inline-flex!important;align-items:center;gap:8px;height:28px;margin-left:10px;color:#d7dbe2;font:400 12px/1 "Segoe UI","Microsoft YaHei",sans-serif;white-space:nowrap;-webkit-app-region:no-drag}
@@ -225,10 +228,52 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     return refreshing;
   }
 
+  function stopBalancePoll() {
+    if (!balanceTimer) return;
+    if (typeof root.clearInterval === 'function') root.clearInterval(balanceTimer);
+    balanceTimer = 0;
+  }
+
+  function documentHidden() {
+    return Boolean(root.document && root.document.hidden);
+  }
+
+  function startBalancePoll() {
+    stopBalancePoll();
+    if (!refreshStarted || documentHidden() || typeof root.setInterval !== 'function') return;
+    balanceTimer = root.setInterval(() => { void refresh(); }, 15000) || 0;
+  }
+
+  function onVisibilityChange() {
+    if (!refreshStarted) return;
+    if (documentHidden()) {
+      stopBalancePoll();
+      return;
+    }
+    startBalancePoll();
+    void refresh();
+  }
+
+  function teardown() {
+    refreshStarted = false;
+    stopBalancePoll();
+    if (seatTimer && typeof root.clearInterval === 'function') root.clearInterval(seatTimer);
+    seatTimer = 0;
+  }
+
+  function bindPollLifecycle() {
+    if (pollBound) return;
+    pollBound = true;
+    const doc = root.document;
+    if (doc && typeof doc.addEventListener === 'function') doc.addEventListener('visibilitychange', onVisibilityChange);
+    if (typeof root.addEventListener === 'function') root.addEventListener('pagehide', teardown);
+  }
+
   function startRefresh() {
     if (refreshStarted) return;
     refreshStarted = true;
-    if (typeof root.setInterval === 'function') root.setInterval(() => { void refresh(); }, 15000);
+    bindPollLifecycle();
+    startBalancePoll();
     void refresh();
   }
 
@@ -501,12 +546,17 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   bindLiveRefresh();
 
   let attempts = 0;
-  const timer = root.setInterval(() => {
-    attempts += 1;
-    if (seat() || attempts > 120) root.clearInterval(timer);
-  }, 500);
+  if (typeof root.setInterval === 'function') {
+    seatTimer = root.setInterval(() => {
+      attempts += 1;
+      if (seat() || attempts > 120) {
+        if (typeof root.clearInterval === 'function') root.clearInterval(seatTimer);
+        seatTimer = 0;
+      }
+    }, 500) || 0;
+  }
 
   guard();
 
-  root.NovaFlowWebAccount = { seat: seat, refresh: refresh, logout: logoutAccount, mount: seat, guard: guard, removeGate: removeGate };
+  root.NovaFlowWebAccount = { seat: seat, refresh: refresh, logout: logoutAccount, teardown: teardown, mount: seat, guard: guard, removeGate: removeGate };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

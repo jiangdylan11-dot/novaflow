@@ -133,7 +133,7 @@ export function workflowModelId(name, options, method='') {
     const profile = String(args[10]?.taskProfile || '');
     const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
-    if (ui || draw) return draw&&state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
+    if (ui || draw) return state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
   }
   if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
   if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && [

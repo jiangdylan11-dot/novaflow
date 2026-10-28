@@ -20,7 +20,7 @@ const assert = new Proxy(strictAssert, { get(target, key) {
 const io = (...names) => Object.fromEntries(names.map((name) => [name, ['*']]));
 const qwen21Info = {
   LoadImage: { input: { required: { image: [['x.png']] } } },
-  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf']] } } },
+  NovaFlowGGUFBF16Loader: { input: { required: { unet_name: [['qwen-image-2.1-UC-BF16.gguf', 'Qwen-Image-2.1-Turbo-BF16.gguf']] } } },
   CLIPLoader: { input: { required: { clip_name: [['qwen3vl_8b_bf16_heretic.safetensors']], type: [['stable_diffusion', 'qwen_image']] }, optional: { device: [['default', 'cpu']] } } },
   VAELoader: { input: { required: { vae_name: [['qwen_image_2.1_vae_bf16.safetensors']] } } },
   TextEncodeQwenImage21: { input: { required: { ...io('clip', 'prompt', 'negative_prompt'), resolution: ['INT', { default: 1024 }], images: ['COMFY_AUTOGROW_V3', {}] }, optional: io('vae') } },
@@ -69,6 +69,23 @@ const nativeGraph = await host21.buildGraph({module:'novaflow-brand-runtime',met
 ]}});
 assert.equal(nativeGraph['5'].inputs.prompt,nativePrompt,'native UI directive is not decorated with drawing rules or duplicate preservation clauses');
 assert.ok(nativeGraph['5'].inputs['images.image_2']);
+{
+  const uiArgs = (variant) => ({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+    'local', 'img2img', ['screen.png'], 'UI_accel', '按新主题重新设计完整界面', '', 'test',
+    [{ width: 758, height: 1640 }],
+    { provider: 'local', mode: 'img2img', width: 758, height: 1640, seed: 7, localUiEngine: 'qwen-2.1', localQwen21Variant: variant, uiPreserveLayout: true, uiRunIntent: 'style-transfer' },
+    10,
+    { taskProfile: 'ui-design', referenceRoles: [{ index: 0, role: 'layout' }] }
+  ] } });
+  const standardUi = await host21.buildGraph(uiArgs('standard'));
+  assert.equal(standardUi['1'].inputs.unet_name, 'qwen-image-2.1-UC-BF16.gguf');
+  assert.equal(standardUi['7'].class_type, 'KSampler');
+  const turboUi = await host21.buildGraph(uiArgs('turbo'));
+  assert.equal(turboUi['1'].inputs.unet_name, 'Qwen-Image-2.1-Turbo-BF16.gguf');
+  assert.equal(turboUi['7'].class_type, 'SamplerCustom');
+  assert.equal(turboUi['7'].inputs.cfg, 1);
+  assert.ok(Object.values(turboUi).some((node) => node.class_type === 'ManualSigmas'));
+}
 // Verify final model prompt through the actual UI worker builder, not just the editor preview.
 {
  const {readFileSync}=await import('node:fs'); const vm=await import('node:vm');
