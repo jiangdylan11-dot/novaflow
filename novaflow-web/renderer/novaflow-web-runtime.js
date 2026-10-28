@@ -167,7 +167,50 @@
       error.code = parsed.code;
       throw error;
     }
+    noteChargeBalance(path, parsed);
     return parsed;
+  }
+
+  // A charge or a refund answers with the balance it left behind. Profile
+  // reads are the header's own refresh, so they must not schedule another one.
+  function balanceFromPayload(parsed) {
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const nested = parsed.result && typeof parsed.result === 'object' ? parsed.result
+      : (parsed.data && typeof parsed.data === 'object' ? parsed.data : null);
+    const spots = [parsed, nested];
+    for (const spot of spots) {
+      if (!spot) continue;
+      const quota = spot.quota && typeof spot.quota === 'object' ? spot.quota : null;
+      const billing = spot.billing && typeof spot.billing === 'object' ? spot.billing : null;
+      const candidates = [
+        quota && quota.balance_after,
+        billing && (billing.balanceAfter ?? billing.balance_after)
+      ];
+      for (const value of candidates) {
+        if (value != null && value !== '') return value;
+      }
+    }
+    return undefined;
+  }
+
+  function notifyAccountBalance(balance, source) {
+    if (typeof root.dispatchEvent !== 'function') return;
+    const detail = { source: source || 'charge' };
+    if (balance != null && balance !== '') detail.balance = balance;
+    try {
+      const event = typeof root.CustomEvent === 'function'
+        ? new root.CustomEvent('novaflow:account-balance', { detail: detail })
+        : { type: 'novaflow:account-balance', detail: detail };
+      root.dispatchEvent(event);
+    } catch (_) {}
+  }
+
+  function noteChargeBalance(path, parsed) {
+    const clean = String(path || '').split('?')[0];
+    if (/\/api\/client\/bootstrap$|\/api\/web\/me$/.test(clean)) return;
+    const balance = balanceFromPayload(parsed);
+    if (balance == null || balance === '') return;
+    notifyAccountBalance(balance, 'charge');
   }
 
   async function localControl(method, path, body, timeoutMs = 30000) {
@@ -313,8 +356,20 @@
     return task;
   }
 
+  const taskCreditSeen = new Map();
+  function noteTaskCreditChange(task) {
+    if (!task || !task.id) return;
+    const signature = (task.credit_settled ? '1' : '0') + ':' + String(Number(task.charged_credit_cost || 0));
+    const previous = taskCreditSeen.get(task.id);
+    taskCreditSeen.set(task.id, signature);
+    // The first sight of a task is not a charge. A later change is a charge or a refund.
+    if (previous == null || previous === signature) return;
+    notifyAccountBalance(null, 'task');
+  }
+
   function observeTask(task) {
     if (!task || !task.id) return;
+    noteTaskCreditChange(task);
     readQueueNote(task);
     const key = 'task:' + task.id;
     const waiting = !QUEUE_TERMINAL.includes(task.status)
@@ -1267,8 +1322,8 @@
       return { ok: true, result: { authenticated: false } };
     },
 
-    // Web account dialog: read the real credit/quota snapshot from the account
-    // service, rather than the compute control plane's capability snapshot.
+    // Header balance: the account service's credit snapshot, not the compute
+    // control plane's capability snapshot. The header re-reads this after charges.
     async clientAuthAccountDetails() {
       if (!currentSession()) return { ok: false, httpStatus: 401, error: '请先登录账号' };
       try {

@@ -2277,7 +2277,7 @@
   const NOVAFLOW_RECT_RADIUS_PX = "7px";
   // Dialog titles and the small green 导入 buttons of 骨骼's import rows are 600
   // (theme 2.1 / 2.9), whatever the weight pass or the blanket 400 would give them.
-  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2, [data-novaflow-spine-inline-import-action="1"]';
+  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, .nf-node-header h2, [data-novaflow-spine-inline-import-action="1"]';
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -30369,6 +30369,13 @@
       }
       if (versionBadge.textContent !== "v" + releaseVersion) versionBadge.textContent = "v" + releaseVersion;
     }
+    // The web account strip sits after the version. Layout passes rebuild the
+    // brand; seat() puts the strip back. A failure here must not block the
+    // module switch that triggered this pass.
+    try {
+      const accountHeader = window.NovaFlowWebAccount;
+      if (accountHeader && typeof accountHeader.seat === "function") accountHeader.seat(brand);
+    } catch {}
 
     const img = brand.querySelector('img[alt="logo"]');
     if (img && img.getAttribute("src") !== LOGO_SRC) {
@@ -32867,7 +32874,6 @@
       "[data-nf-dialog='panel']",
       "[data-novaflow-export-modal-dialog='1']",
       ".nf-wh-card",
-      ".nf-account-card",
       ".novaflow-art-export-dialog",
       ".novaflow-smart-ai-dialog",
       "[data-novaflow-preview-workspace='1']",
