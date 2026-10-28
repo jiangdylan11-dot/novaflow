@@ -661,18 +661,20 @@ const GATEWAY_ROUTES = Object.freeze({
 
 // Account tiers. `users.plan` is what the administrator sets:
 //
-//   trial      普通账户  only the machine 启动NovaFlow opened; no pool node
-//   standard   中级账户  pool nodes marked 普通 (standard), not 高级 ones
-//   pro / team 高级账户  every pool node, 普通 and 高级 alike
+//   trial     普通账户  only the machine 启动NovaFlow opened; no pool node
+//   standard  中级账户  pool nodes marked 普通 (standard), not 高级 ones
+//   pro       高级账户  every pool node, 普通 and 高级 alike
+//   team      legacy alias, normalized to pro (same node access)
 //
 // Anything else reads as trial, so a typo in the database can only take
 // access away, never grant it.
-const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro', 'team']);
-const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro', 'team']);
-const PREMIUM_NODE_PLANS = Object.freeze(['pro', 'team']);
+const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro']);
+const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro']);
+const PREMIUM_NODE_PLANS = Object.freeze(['pro']);
 
 function normalizePlan(plan) {
   const key = String(plan || 'trial').trim().toLowerCase();
+  if (key === 'team') return 'pro';
   return PLAN_TIERS.includes(key) ? key : 'trial';
 }
 
@@ -1227,8 +1229,6 @@ function runtimeFor(modelId) {
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
 
-
-
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1249,14 +1249,6 @@ function runtimeFor(modelId) {
 //     task currently assigned to it.
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
-
-
-
-
-
-
-
-
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -1286,8 +1278,6 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1295,8 +1285,6 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
-
-
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1423,7 +1411,6 @@ function validateTaskParameters(taskType, raw) {
     references: cleanRefs
   };
 }
-
 
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
@@ -2533,12 +2520,7 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
-
-
-
-
 const FUNCTION_NAME = 'novaflow-web';
-
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -2573,8 +2555,6 @@ function admin() {
   }
   return cachedAdmin;
 }
-
-
 
 function unwrapRpc<T>(data: unknown): T | null {
   // A plpgsql function returning a table type comes back as an array of one.
