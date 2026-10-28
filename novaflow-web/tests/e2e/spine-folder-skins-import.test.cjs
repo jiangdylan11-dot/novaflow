@@ -92,3 +92,22 @@ test('images with placeholder-key names remain compatible and unused pictures st
   const f = await importFolder(j, ['project/img/card.png', 'project/img/unused.png'])
   assert.deepEqual([...f.regions.keys()], ['card'])
 })
+
+test('dropping an empty .nfproj shows a dialog with the empty-file message', async () => {
+  const message = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
+  const statuses = []
+  const el = () => ({ style: {}, children: [], attrs: {}, setAttribute(k, v) { this.attrs[k] = v }, getAttribute(k) { return this.attrs[k] }, append(...kids) { this.children.push(...kids) }, appendChild(n) { this.children.push(n) }, addEventListener() {}, remove() {} })
+  const body = el()
+  const ctx = vm.createContext({
+    window: { NovaFlowAutoMeshAttach: {}, __NovaFlowSpineImportInlineBridge: {}, __NovaFlowSpineImportInlineBridgeCache: {} },
+    document: { createElement: el, body, querySelector: () => null },
+    state: { layers: new Map() },
+  })
+  const helper = source.includes('  function photoshopImagePlan(') ? section('  function photoshopImagePlan(', '  async function importPhotoshopProject(') : ''
+  vm.runInContext(helper + section('  async function importPhotoshopProject(', '  const nextFrame ='), ctx)
+  await assert.rejects(ctx.importPhotoshopProject([new File([], 'empty.nfproj')], (text, tone) => statuses.push([text, tone])), new RegExp(message.replace(/[()]/g, '\\$&')))
+  assert.deepEqual(statuses[0], [message, 'error'])
+  assert.equal(body.children[0] && body.children[0].attrs['data-nf-import-error'], '1')
+  assert.equal(body.children[0].attrs['data-nf-import-message'], message)
+  assert.equal(body.children[0].children[0].children.some((n) => n.textContent === message), true)
+})

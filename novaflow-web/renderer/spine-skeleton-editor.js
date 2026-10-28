@@ -796,10 +796,124 @@
   }
   const NFPROJ_TYPES = [{ description: 'NovaFlow 工程', accept: { 'application/octet-stream': ['.nfproj'] } }]
 
+  const EMPTY_PROJECT_MESSAGE = '工程文件为空（0 字节），无法打开，请让对方重新保存后再发送'
+
+  function assertProjectBytes(bytes) {
+    if (!bytes || bytes.byteLength <= 0 || bytes[0] !== 0x1f || bytes[1] !== 0x8b) throw new Error('工程数据无效，已取消保存')
+  }
+
+  /** Write without truncating the target first. truncate() runs only after write() resolves. */
+  async function writeBytesSafely(handle, data) {
+    const blob = data instanceof Blob ? data : new Blob([data])
+    const writable = await handle.createWritable({ keepExistingData: true })
+    try {
+      await writable.write(blob)
+      if (typeof writable.truncate === 'function') await writable.truncate(blob.size)
+      await writable.close()
+    } catch (err) {
+      try { if (typeof writable.abort === 'function') await writable.abort() } catch { /* the previous bytes stay */ }
+      throw err
+    }
+  }
+
+  async function locateProject(directory, handle) {
+    if (!directory || typeof directory.resolve !== 'function') return null
+    const parts = await directory.resolve(handle).catch(() => null)
+    if (!parts || !parts.length) return null
+    try {
+      const parent = await projectSubdir(directory, parts.slice(0, -1))
+      if (!parent || typeof parent.getFileHandle !== 'function' || typeof parent.removeEntry !== 'function') return null
+      return { parent, name: parts[parts.length - 1] }
+    } catch { return null }
+  }
+
+  async function discardEmptyCreated(directory, handle) {
+    if (!handle) return
+    try {
+      const current = await handle.getFile()
+      if (current && current.size > 0) return
+    } catch { return }
+    if (typeof handle.remove === 'function') {
+      try { await handle.remove(); return } catch { /* the directory may still name it */ }
+    }
+    const located = directory && await locateProject(directory, handle).catch(() => null)
+    if (located) await located.parent.removeEntry(located.name).catch(() => {})
+  }
+
   /**
-   * 保存工程: every open project into one .nfproj. The file is settled first - the remembered one
-   * (write permission asked again only if the browser dropped it), else the save dialog - and the
-   * bytes are made after, so a big tree does not outlast the click or key press the dialog needs.
+   * Temp file plus rename when move() can take the target name. A target that already exists
+   * is never removed to make room: move() on Windows refuses to replace it, and deleting it
+   * first would leave no file if the rename then failed. null means the caller must write
+   * through the existing handle instead.
+   */
+  async function replaceProjectWithTemp(located, bytes, blob) {
+    const tempName = `.${located.name}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.tmp`
+    let temp = null
+    try { temp = await located.parent.getFileHandle(tempName, { create: true }) } catch { return null }
+    if (!temp || typeof temp.move !== 'function') {
+      if (temp) await located.parent.removeEntry(tempName).catch(() => {})
+      return null
+    }
+    try {
+      await writeBytesSafely(temp, blob)
+      const written = await temp.getFile()
+      if (!written || written.size !== bytes.byteLength) throw new Error('工程写入不完整，已取消保存')
+      const head = new Uint8Array(await written.slice(0, 2).arrayBuffer())
+      if (head[0] !== 0x1f || head[1] !== 0x8b) throw new Error('工程写入不完整，已取消保存')
+      try {
+        await temp.move(located.name)
+      } catch {
+        await located.parent.removeEntry(tempName).catch(() => {})
+        return null
+      }
+      return temp
+    } catch (err) {
+      await located.parent.removeEntry(tempName).catch(() => {})
+      if (err && err.message === '工程写入不完整，已取消保存') throw err
+      return null
+    }
+  }
+
+  async function commitProjectFile(directory, handle, bytes) {
+    assertProjectBytes(bytes)
+    const blob = new Blob([bytes], { type: 'application/octet-stream' })
+    const located = await locateProject(directory, handle)
+    const swapped = located && await replaceProjectWithTemp(located, bytes, blob)
+    if (swapped) return swapped
+    // move() could not replace the existing file. Write into it without truncating first.
+    await writeBytesSafely(handle, blob)
+    return handle
+  }
+
+  function showProjectOpenError(message) {
+    try { status(message, 'error') } catch { /* the thrown error still names the failure */ }
+    let shown = false
+    try {
+      if (typeof document !== 'undefined' && document.body) {
+        const mask = h('div', { class: 'mask', 'data-nf-import-error': '1' },
+          h('div', { class: 'dialog ask' },
+            h('div', { class: 'hd' }, h('b', {}, '无法打开工程')),
+            h('div', { class: 'msg' }, h('div', {}, message)),
+            h('div', { class: 'ft' }, h('button', { class: 'btn primary', type: 'button', onclick: () => mask.remove() }, '知道了'))))
+        document.body.append(mask)
+        shown = true
+      }
+    } catch { shown = false }
+    if (!shown) {
+      try { if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message) } catch { /* status already holds the text */ }
+    }
+  }
+
+  /**
+   * 保存工程: every open project into one .nfproj. The dialog stays inside the user gesture
+   * (a big tree must not be serialized first, or the browser drops the click). showSaveFilePicker
+   * still creates an empty file immediately, and createWritable() without keepExistingData
+   * truncates before write — so the bytes are checked first (non-empty gzip, 1f 8b) and only
+   * then written. A temp file is renamed over the target when move() can replace that name.
+   * When the target already exists, move() is not preceded by a delete: the bytes are written
+   * with keepExistingData and the file is truncated to the new length only after write() resolves,
+   * so a failure before that leaves the previous contents in place. A picker-created empty file
+   * is removed if a later step fails, and a temp file is not left behind.
    */
   async function saveProjectFileNow(opts) {
     const as = !!(opts && opts.as)
@@ -810,6 +924,7 @@
       const directory = await projectDirectoryFor(null, state.imageFolder && state.imageFolder.handle)
       if (!directory) return null
       const { bytes, count } = await projectFileBytes(directory)
+      assertProjectBytes(bytes)
       const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + '.nfproj' })
       document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
       status(`已保存 ${name}.nfproj：请将工程文件放在「${directory.name}」，图片保留在外部文件夹`, 'ok')
@@ -822,19 +937,30 @@
       if (perm !== 'granted') handle = null
     }
     const over = !!handle
+    let createdEmpty = false
+    let directory = null
     if (!handle) {
       try { handle = await window.showSaveFilePicker({ suggestedName: opts && opts.name ? name + '.nfproj' : (projectFile && projectFile.name) || name + '.nfproj', types: NFPROJ_TYPES, ...(state.imageFolder && state.imageFolder.handle ? { startIn: state.imageFolder.handle } : {}) }) } catch { return null }
+      const created = await handle.getFile().catch(() => null)
+      createdEmpty = !created || created.size === 0
     }
-    const directory = await projectDirectoryFor(handle)
-    if (!directory) return null
-    const { bytes, count } = await projectFileBytes(directory)
-    const w = await handle.createWritable()
-    await w.write(new Blob([bytes], { type: 'application/octet-stream' }))
-    await w.close()
-    projectFile = handle
-    projectSaveDirectory = directory
-    status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）`, 'ok')
-    return { name: handle.name, count, overwritten: over }
+    try {
+      directory = await projectDirectoryFor(handle)
+      if (!directory) {
+        if (createdEmpty) await discardEmptyCreated(null, handle)
+        return null
+      }
+      const { bytes, count } = await projectFileBytes(directory)
+      assertProjectBytes(bytes)
+      handle = await commitProjectFile(directory, handle, bytes)
+      projectFile = handle
+      projectSaveDirectory = directory
+      status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）`, 'ok')
+      return { name: handle.name, count, overwritten: over }
+    } catch (err) {
+      if (createdEmpty) await discardEmptyCreated(directory, handle).catch(() => {})
+      throw err
+    }
   }
 
   /** Ctrl+S / Ctrl+Shift+S: the same save, its failure said in the status line. */
@@ -846,6 +972,10 @@
   /** Opens a .nfproj: its projects come in after the ones already open; its picked one is picked. */
   async function openProjectFile(data, handle, options = {}) {
     const blob = data instanceof Blob ? data : new Blob([data])
+    if (!blob.size) {
+      showProjectOpenError(EMPTY_PROJECT_MESSAGE)
+      throw new Error(EMPTY_PROJECT_MESSAGE)
+    }
     const wasEmpty = !projects.length
     let d
     try { d = JSON.parse(await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text()) } catch { throw new Error('不是 NovaFlow 工程文件') }
@@ -2214,9 +2344,7 @@
         let dir = handle
         for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p, { create: true })
         const fh = await dir.getFileHandle(parts[parts.length - 1], { create: true })
-        const w = await fh.createWritable()
-        await w.write(file)
-        await w.close()
+        await writeBytesSafely(fh, file)
         return true
       },
     }
@@ -2590,9 +2718,7 @@
       c.width = w; c.height = hh
       c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, w * hh * 4), w, hh), 0, 0)
       const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG 编码失败'))), 'image/png'))
-      const out = await (await d.getFileHandle(file, { create: true })).createWritable()
-      await out.write(blob)
-      await out.close()
+      await writeBytesSafely(await d.getFileHandle(file, { create: true }), blob)
       written++
     }
     // the PNG encoding (about a second for a big picture) runs off the page's thread: four at a time
