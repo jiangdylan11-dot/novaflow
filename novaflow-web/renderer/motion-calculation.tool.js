@@ -143,6 +143,13 @@
     s.pendingSignatures??=new Set();
     s.pendingSignatures.add(signature(existing,s));
     s.pendingSignatures.add(signature(s.expected,s));
+    const editor=window.NovaFlowSkeletonEditor;
+    if(editor?.applyCalculationAnimation){
+      const committed=editor.applyCalculationAnimation(s.animation,patch(existing,animation,s),'write');
+      if(!committed)throw Error('动画已切换，请重新选择计算工具。');
+      s.expected=typeof committed==='object'?committed:animation;
+      return;
+    }
     s.expected=animation;
     p.setProject(previous=>{
       if(previous.bones!==s.identity||!previous.animations[s.animation])return previous;
@@ -161,16 +168,15 @@
     const s={identity,animation,bone,slots,pickedSlot:(picked||{}).name||'',base:current,committed:current,expected:current,channels:new Set(),alpha:false,dirty:false,config:null,group,key,setProject:p.setProject};
     group.set(key,s);return s;
   }
-  // An unsaved preview lives in the real project; leaving without 保存动画 must put
-  // the bone back. Leaving the section unmounts the bone editor first, so the
-  // revert goes through the project setter captured when the session opened.
+  // Unwritten calculations only affect the live pose; closing never writes a compensating edit.
   function revert(s){
-    const setProject=getContext()?.setProject||s.setProject;
-    setProject?.(previous=>{
-      if(previous.bones!==s.identity||!previous.animations[s.animation])return previous;
-      return {...previous,animations:{...previous.animations,[s.animation]:patch(previous.animations[s.animation],s.committed,s)}};
-    });
+    window.NovaFlowSkeletonEditor?.api?.()?.clearAnimationPreview?.();
+    s.pendingAnimation=null;s.pending=null;
     s.expected=s.committed;s.pendingSignatures?.clear();
+  }
+  function previewCalculation(s,animation){
+    if(!window.NovaFlowSkeletonEditor?.applyCalculationAnimation?.(s.animation,animation,'preview'))throw Error('动画已切换，请重新选择计算工具。');
+    s.pendingAnimation=animation;s.dirty=true;
   }
   let rebind=null;
   function close(){
@@ -209,7 +215,7 @@
       const project={...p.project,animations:{...p.project.animations,[s.animation]:baseline}};
       const result=A.calculate(project,s.animation,[s.bone],stack,t,E,window.NovaFlowBonesEditor,{slots:s.slots});
       for(const key of ['translate','scale','rotate'])if(result.animation.bones[s.bone]?.[key]!==baseline.bones?.[s.bone]?.[key])s.channels.add(key);
-      write(s,result.animation);s.dirty=true;s.pending=copy({stack,timing:t});
+      previewCalculation(s,result.animation);s.pending=copy({stack,timing:t});
       panel.dataset.motionState='preview';panel.dataset.motionInterval=`${result.start},${result.end}`;
     };
     view=window.NovaFlowMotionPanel.mount(shadow,{
@@ -222,13 +228,13 @@
       seek:time=>{const p=getContext();if(sameScope(p,s)){p.onRibbonEventPreviewFocus?.(time);requestAnimationFrame(()=>{if(session===s)seek(time);});}},
       preview,
       save(stack,t){
-        // The most recent preview has already been baked into the real project.
-        if(!s.pending)preview(stack,t);
+        if(!s.pendingAnimation||!s.dirty)preview(stack,t);
+        write(s,s.pendingAnimation);
         s.config=copy({stack,timing:t});s.committed=s.expected;s.dirty=false;
         panel.dataset.motionState='saved';
       },
-      restore(){write(s,s.base);s.committed=s.expected;s.config=null;s.pending=null;s.dirty=false;panel.dataset.motionState='restored';},
-      // switching tools drops what was not written (保存动画/写入动画)
+      restore(){const p=getContext();if(!sameScope(p,s))return;previewCalculation(s,patch(p.project.animations[s.animation],s.base,s));s.config=null;s.pending=null;panel.dataset.motionState='preview';},
+      // switching tools drops anything not explicitly written
       dirty:()=>s.dirty,
       discard(){if(s.dirty)revert(s);s.pending=null;s.dirty=false;panel.dataset.motionState='discarded';}
     });

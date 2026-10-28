@@ -1768,7 +1768,9 @@
   }
 
   function duration() {
-    const a = rt.data && state.anim ? rt.data.findAnimation(state.anim) : null
+    const preview = rt.animationPreview
+    const a = preview && preview.json === state.json && preview.name === state.anim ? preview.animation
+      : rt.data && state.anim ? rt.data.findAnimation(state.anim) : null
     return a ? a.duration : 0
   }
 

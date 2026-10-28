@@ -47233,6 +47233,8 @@
   }
 
   function protectRibbonCurrentAnimationDuration() {
+    // The visible editor owns authored data; preview timing must not add saved metadata.
+    if (getRibbonSkeletonPreviewHost()) return false;
     const duration = getRibbonTimelineDuration();
     if (!Number.isFinite(duration) || duration <= 0.001) return false;
     const context = getRibbonReactProjectContext();

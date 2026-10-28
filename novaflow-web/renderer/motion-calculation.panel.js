@@ -54,7 +54,7 @@
         </section>
       </div>
       <div id="ribbonDock"></div>
-      <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="curveHint" class="dim">点击曲线加点 · 双击节点删点 · 拖动手柄调弧度</p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button><button id="ribbonRestore">还原动画</button><button id="ribbonWrite" class="primary">写入动画</button></div></footer>
+      <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="curveHint" class="dim">点击曲线加点 · 双击节点删点 · 拖动手柄调弧度</p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">写入动画</button><button id="ribbonRestore">还原动画</button><button id="ribbonWrite" class="primary">写入动画</button></div></footer>
     </div>
     <div id="ribbonPreviewCard" hidden><span id="ribbonPreviewHost"></span><span id="ribbonPreviewLabel"></span></div>`;
   curveRoot.append(style,body);
@@ -544,8 +544,7 @@
     $('curve').dataset.knotCount=String(knots.length);
     ctx.restore();
   }
-  // the preview writes the animation into the project and the whole app renders it: once per
-  // frame with the latest values (every slider input did it, a drag ran at ~16 fps)
+  // Preview the current parameters once per frame; only 写入动画 commits project keys.
   let previewFrame=0;
   function runPreview(){
     previewFrame=0;
@@ -767,7 +766,7 @@
     const leavingRibbon=ribbonShown||ribbonPrepared;
     ribbonShown=false;ribbonPrepared=false;ribbonFitHeight=0;ribbonSettled=false;ribbonStable=0;body.classList.remove('ribbon-mode','ribbon-layout');hideRibbonPreview();
     if(leavingRibbon)bridge.dock?.(null);
-    setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('未保存的调整在切换功能时丢弃 · 仅操作当前骨骼');}
+    setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();status('仅预览，点击「写入动画」后生效；切换功能丢弃未写入的调整');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');

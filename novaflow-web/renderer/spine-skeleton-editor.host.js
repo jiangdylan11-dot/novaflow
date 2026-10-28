@@ -223,7 +223,8 @@
     }
     return null
   }
-  const projectProps = () => reactProps((p) => p.spineSubEditor === 'bone' && p.project && p.project.animations && typeof p.setProject === 'function' && 'activeAnimationName' in p && 'selectedBoneName' in p)
+  // A .nfproj opens directly in the editor; the native tool host can still have a null project.
+  const projectProps = () => reactProps((p) => p.spineSubEditor === 'bone' && typeof p.setProject === 'function' && 'activeAnimationName' in p && 'selectedBoneName' in p)
   const isWorkspaceProps = (p) => typeof p.onSelectedBoneNameChange === 'function' && typeof p.onActiveAnimationNameChange === 'function'
   const workspaceProps = () => reactProps(isWorkspaceProps)
 
@@ -299,18 +300,25 @@
   function pushToReact(json) {
     const ctx = projectProps()
     if (!ctx || !json) return false
+    const current = ctx.project || {}
     const patch = {}
+    if (!ctx.project) { patch.atlas = { pages: {}, regionToPage: {} }; patch.images = {} }
     const empty = { ik: [], transform: [], path: [] }
     for (const key of ['skeleton', 'bones', 'slots', 'skins', 'ik', 'transform', 'path', 'events']) {
       const sig = signature(json[key] === undefined ? empty[key] : json[key])
       // first time round, against what the app has now: only real differences go in
-      if (pushedSig[key] === undefined) pushedSig[key] = signature(ctx.project[key] === undefined ? empty[key] : ctx.project[key])
-      if (pushedSig[key] !== sig) { patch[key] = json[key] === undefined ? empty[key] : json[key]; pushedSig[key] = sig }
+      if (pushedSig[key] === undefined) pushedSig[key] = signature(current[key] === undefined ? empty[key] : current[key])
+      if (pushedSig[key] !== sig) {
+        const value = json[key] === undefined ? empty[key] : json[key]
+        patch[key] = value === undefined ? value : JSON.parse(JSON.stringify(value))
+        pushedSig[key] = sig
+      }
     }
     const sig = signature(json.animations)
-    if (pushedSig.animations === undefined) pushedSig.animations = signature(normalizeAnimations(ctx.project.animations))
+    if (pushedSig.animations === undefined) pushedSig.animations = signature(normalizeAnimations(current.animations))
     if (pushedSig.animations !== sig) {
-      const anims = withDurations(json.animations || {})
+      // Native preview solvers may mutate their working timelines: never share authored objects.
+      const anims = withDurations(JSON.parse(JSON.stringify(json.animations || {})))
       patch.animations = anims; pushedSig.animations = sig; pushedAnimations = anims
     }
     if (!Object.keys(patch).length) return false
@@ -357,7 +365,7 @@
   function pullFromReact() {
     if (!api || !api.loaded()) return
     const ctx = projectProps()
-    if (!ctx || ctx.project === lastReact) return
+    if (!ctx || !ctx.project || ctx.project === lastReact) return
     lastReact = ctx.project
     const anims = ctx.project.animations
     if (!anims || anims === pushedAnimations) return
@@ -370,7 +378,7 @@
   }
 
   /** Ribbon calculations are a runtime-only preview until the explicit write action. */
-  function applyRibbonAnimation(name, animation, reason) {
+  function applyRibbonAnimation(name, animation, reason, label = '飘带计算') {
     if (!api || !api.loaded() || api.anim() !== name) return false
     const next = normalizeAnimations({ [name]: animation })[name]
     if (reason !== 'write' && reason !== 'restore') {
@@ -379,7 +387,7 @@
     }
     const json = api.json()
     if (signature(next) === signature(json.animations[name])) { api.clearAnimationPreview(); return true }
-    api.applyExternal({ ...json, animations: { ...json.animations, [name]: next } }, '飘带计算', { coalesce: false })
+    api.applyExternal({ ...json, animations: { ...json.animations, [name]: next } }, label, { coalesce: false })
     pushToReact(api.json())
     return true
   }
@@ -412,7 +420,8 @@
   function motionTick() {
     setMotionOpen(motionPanelOpen())
     if (!motionOpen) return
-    pullFromReact()
+    // Calculations and ribbon tools commit through their explicit write action only.
+    // A hidden workspace refresh or draft must never write authored editor keys.
     // the app sometimes puts its selection back (root) right after the open-time push: while
     // the tools are open the editor's picked bone / animation is the one they work on
     const ctx = api && api.loaded() ? projectProps() : null
@@ -442,6 +451,8 @@
    */
   function beforeMotion() {
     if (!api || !api.loaded()) return false
+    motionOpen = true
+    if (api.setTimelineCompact) api.setTimelineCompact(true)
     api.setPanel('motion', true)
     const a = pushToReact(api.json())
     const b = pushSelection()
@@ -917,6 +928,10 @@
     syncExportDialog: (root) => { if (window.NovaFlowSkeletonEditor.active() && exportRoot(root)) syncNativeProjectExport(root) },
     prepareImport: (operation) => { pendingImportOperation = operation; pendingImportDirectory = operation && operation !== 'refresh' ? window.__NovaFlowLastProjectDirectory || null : null },
     applyRibbonAnimation,
+    applyCalculationAnimation: (name, animation, reason) => {
+      if (!applyRibbonAnimation(name, animation, reason, '写入动画')) return false
+      return reason === 'write' ? api.json().animations[name] : true
+    },
     exportVersion,
     convertExportVersion: (json, version) => {
       const converter = frame && frame.contentWindow && frame.contentWindow.NovaFlowSpineVersion
