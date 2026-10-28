@@ -22967,9 +22967,11 @@
         z-index: ${DROPDOWN_UNDERLAY_Z_INDEX} !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-content-root="1"]:not([data-novaflow-source-layout="1"]) {
-        width: ${PRIMARY_VISIBLE_CONTENT_WIDTH}px !important;
-        min-width: ${PRIMARY_VISIBLE_CONTENT_WIDTH}px !important;
-        max-width: ${PRIMARY_VISIBLE_CONTENT_WIDTH}px !important;
+        /* The root starts inside the panel; its scrollbar must still end at
+           the shell's right edge, before the preview / timeline begins. */
+        width: ${PRIMARY_VISIBLE_CONTENT_WIDTH - SECONDARY_GROUP_LEFT_INSET}px !important;
+        min-width: ${PRIMARY_VISIBLE_CONTENT_WIDTH - SECONDARY_GROUP_LEFT_INSET}px !important;
+        max-width: ${PRIMARY_VISIBLE_CONTENT_WIDTH - SECONDARY_GROUP_LEFT_INSET}px !important;
         height: var(--novaflow-left-content-height, auto) !important;
         max-height: var(--novaflow-left-content-height, none) !important;
         box-sizing: border-box !important;
@@ -58496,7 +58498,7 @@
     // Reference: the segment sits INSIDE the left panel's padding, so it is
     // measured off the panel box rather than off whatever rail is above it.
     const left = (upperRail ? Math.round(upperRail.left) : 0) + SECONDARY_GROUP_LEFT_INSET;
-    const rootWidth = upperRail ? Math.round(upperRail.width) : Math.round(groupRect.width || PRIMARY_VISIBLE_CONTENT_WIDTH);
+    const rootWidth = Math.max(1, (upperRail ? Math.round(upperRail.width) : Math.round(groupRect.width || PRIMARY_VISIBLE_CONTENT_WIDTH)) - SECONDARY_GROUP_LEFT_INSET);
     const secondaryWidth = Math.min(PRIMARY_LEFT_CARD_WIDTH, rootWidth);
     const panelTop = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
     const top = upperRail
