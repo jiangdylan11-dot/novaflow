@@ -383,6 +383,6 @@ This phase adds admin-only configuration and read-only account checks, without m
 
 - `GET /api/admin/providers/runninghub/status`: redacted configuration and last check, no external request.
 - `POST /api/admin/providers/runninghub/check`: read-only `POST /uc/openapi/accountStatus` check; no generation/LLM call.
-- `POST /api/admin/providers/runninghub/config`: the only persisted secret is `apiKey` (`NOVAFLOW_RUNNINGHUB_API_KEY`). A blank `apiKey` preserves the saved key; `clearApiKey: true` clears it. Address and model fields are read-only and are not written. Requests that name ComfyUI, Grok, Google, or their env vars are rejected. The key is never returned.
+- `POST /api/admin/providers/runninghub/config`: `providerKey` must be `runninghub`. Any other provider key is rejected and is not stored as the RunningHub key. The only persisted secret is `apiKey` (`NOVAFLOW_RUNNINGHUB_API_KEY`). A blank `apiKey` preserves the saved key; `clearApiKey: true` clears it. Address and model fields are read-only and are not written. Requests that name ComfyUI, Grok, Google, or their env vars are rejected. The key is never returned. Manual ComfyUI balance writes are refused.
 
 See `deploy.env.example` for the RunningHub placeholders. The real API key stays in the admin/server environment and is not a Supabase Edge secret in this phase. Defaults target the domestic `.cn` service. Saving the key does not switch existing Grok, GPT, Google, or cloud ComfyUI call paths.

@@ -720,17 +720,6 @@ function parseAuthProfilePayload(payload) {
   return { authUserId, email, displayName };
 }
 
-function parseProviderBudgetPayload(payload) {
-  const providerKey = String(payload?.providerKey || "comfyui").trim().toLowerCase();
-  const balance = Number(payload?.balance);
-  const unit = String(payload?.unit || "credits").trim().slice(0, 32) || "credits";
-  const note = String(payload?.note || "").trim().slice(0, 500);
-  if (!providerKey) throw new Error("Provider 不能为空");
-  if (!Number.isFinite(balance)) throw new Error("手动总余额必须是数字");
-  if (balance < 0) throw new Error("手动总余额不能小于 0");
-  return { providerKey, balance, unit, note };
-}
-
 function parseProviderBudgetAdjustmentPayload(payload) {
   const providerKey = String(payload?.providerKey || "comfyui").trim().toLowerCase();
   const mode = String(payload?.mode || "deduct").trim().toLowerCase();
@@ -2321,95 +2310,14 @@ async function resetAdminUserPassword(payload) {
   }
 }
 
-async function setAdminProviderBudget(payload) {
-  const startedAt = Date.now();
+async function setAdminProviderBudget() {
   const operation = "provider_budget.set";
-  const clientState = getAdminClient();
-  if (!clientState.client) {
-    const durationMs = Date.now() - startedAt;
-    if (clientState.status === "mock") {
-      const result = adminWriteMockResult(operation, durationMs);
-      logAdminData("info", "set provider budget skipped", {
-        source: result.source,
-        status: result.status,
-        durationMs,
-        reason: "supabase_env_missing"
-      });
-      return result;
-    }
-    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
-    logAdminData("error", "set provider budget failed", {
-      source: result.source,
-      status: result.status,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
-
-  let parsed;
-  try {
-    parsed = parseProviderBudgetPayload(payload);
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const result = adminWriteErrorResult(operation, err, durationMs);
-    logAdminData("error", "set provider budget rejected", {
-      source: result.source,
-      status: result.status,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
-
-  try {
-    const now = new Date().toISOString();
-    const key = `provider_budget_${parsed.providerKey}`;
-    const value = {
-      label: `${parsed.providerKey === "comfyui" ? "ComfyUI" : parsed.providerKey} 手动总余额`,
-      provider_key: parsed.providerKey,
-      balance: parsed.balance,
-      unit: parsed.unit,
-      source: "manual",
-      note: parsed.note,
-      updated_at: now
-    };
-    const { data, error } = await clientState.client
-      .from("system_settings")
-      .upsert({ key, value, updated_at: now }, { onConflict: "key" })
-      .select("key,value,updated_at")
-      .maybeSingle();
-    if (error) throw error;
-    const durationMs = Date.now() - startedAt;
-    const result = {
-      source: "supabase",
-      status: "connected",
-      configured: true,
-      operation,
-      ok: true,
-      durationMs,
-      record: data
-    };
-    logAdminData("info", "set provider budget", {
-      source: result.source,
-      status: result.status,
-      providerKey: parsed.providerKey,
-      balance: parsed.balance,
-      durationMs
-    });
-    return result;
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const result = adminWriteErrorResult(operation, err, durationMs);
-    logAdminData("error", "set provider budget failed", {
-      source: result.source,
-      status: result.status,
-      providerKey: parsed.providerKey,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
+  const result = localWriteErrorResult(operation, new Error("ComfyUI 手动总余额已退出后台配置，不再录入"), 0);
+  logAdminData("info", "set provider budget refused", {
+    source: result.source,
+    status: result.status
+  });
+  return result;
 }
 
 async function settleAdminComfyUsage(payload) {

@@ -953,16 +953,6 @@ async function submitMemberAdjust() {
   }
 }
 
-function isComfyUiProvider(provider) {
-  const key = String(provider?.provider_key || provider?.name || "").trim().toLowerCase();
-  return key === "comfyui" || key === "comfy" || key.includes("comfyui");
-}
-
-function isGrokProvider(provider) {
-  const key = String(provider?.provider_key || provider?.name || "").trim().toLowerCase();
-  return key === "grok" || key === "xai" || key.includes("grok");
-}
-
 function isRunningHubProvider(provider) {
   return String(provider?.provider_key || "").toLowerCase() === "runninghub";
 }
@@ -973,66 +963,6 @@ function ensureCoreAiProviders(providers) {
     list.push({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
   }
   return list;
-}
-
-function providerStatusValue(provider, grokStatus) {
-  if (isRunningHubProvider(provider)) return "待迁移";
-  if (isGrokProvider(provider)) {
-    return provider.status === "enabled" || grokStatus?.configured ? "enabled" : provider.status || "disabled";
-  }
-  return provider.status || "disabled";
-}
-
-function providerConnectionBadge(comfyStatus) {
-  if (!comfyStatus?.configured) {
-    const badge = statusBadge("Not Configured");
-    badge.title = "未配置 NOVAFLOW_COMFYUI_API_KEY";
-    return badge;
-  }
-  if (comfyStatus.status === "connected") {
-    const badge = statusBadge("Connected");
-    badge.title = `GET /api/user · ${durationText(comfyStatus.durationMs)}`;
-    return badge;
-  }
-  const badge = statusBadge("Error");
-  badge.title = comfyStatus?.error || "ComfyUI 连接检测失败";
-  return badge;
-}
-
-function grokConnectionBadge(grokStatus) {
-  if (grokStatus?.configured) {
-    const badge = statusBadge("Configured");
-    badge.title = `POST /chat/completions · ${grokStatus.model || "grok-4.3"}`;
-    return badge;
-  }
-  const badge = statusBadge("Not Configured");
-  badge.title = "未配置 NOVAFLOW_GROK_API_KEY";
-  return badge;
-}
-
-function providerKeyPlaceholder(provider, comfyStatus, grokStatus) {
-  if (isComfyUiProvider(provider) && comfyStatus?.configured) return "已从后台管理环境变量读取";
-  if (isGrokProvider(provider) && grokStatus?.configured) return "已从后台服务环境变量读取";
-  if (provider.api_key_secret_ref) return "已配置服务端密钥引用";
-  return "由后台服务保存，前端不写真实 Key";
-}
-
-function providerConnectionCell(provider, comfyStatus, grokStatus) {
-  if (isComfyUiProvider(provider)) return nodeCell(providerConnectionBadge(comfyStatus));
-  if (isGrokProvider(provider)) return nodeCell(grokConnectionBadge(grokStatus));
-  return textCell("-");
-}
-
-function providerAccountCellText(provider, comfyStatus, grokStatus) {
-  if (isComfyUiProvider(provider)) return providerAccountText(comfyStatus);
-  if (isGrokProvider(provider)) return grokStatus?.configured ? `model: ${grokStatus.model || "grok-4.3"}` : "未配置";
-  return "-";
-}
-
-function providerBalanceCellText(provider, comfyStatus) {
-  if (isComfyUiProvider(provider)) return providerBalanceText(comfyStatus);
-  if (isGrokProvider(provider)) return "按用户分配提示词服务次数";
-  return "-";
 }
 
 function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runninghubStatus) {
@@ -1054,69 +984,6 @@ function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runningh
   if (status) status.textContent = "写入本机后台环境变量";
 }
 
-function providerAccountText(comfyStatus) {
-  if (!comfyStatus?.configured) return "未配置";
-  if (comfyStatus.status === "connected") return comfyStatus.accountStatus || "unknown";
-  return "unknown";
-}
-
-function providerBalanceText(comfyStatus) {
-  if (!comfyStatus?.configured) return "未配置";
-  const balance = comfyStatus.balance || {};
-  return balance.text || (comfyStatus.status === "connected" ? "官方余额 API 未开放" : "读取失败");
-}
-
-let providerBudgetState = { writable: false };
-let providerBudgetDirty = false;
-
-function renderProviderBudgetControls(settingsResult) {
-  const input = $("comfyProviderBudgetBalance");
-  const note = $("comfyProviderBudgetNote");
-  const button = $("saveComfyProviderBudget");
-  const status = $("providerBudgetStatus");
-  const display = $("comfyProviderBudgetDisplay");
-  if (!input || !note || !button || !status || !display) return;
-
-  // Third panel with the same two faults. A reload overwrote whatever was
-  // being typed - and a reload runs after any write anywhere in the tool - and
-  // a failed load disabled all three controls with nothing left that could
-  // trigger a retry.
-  const failed = isErrorResult(settingsResult);
-  const setting = findSettingRecord(settingsResult, "provider_budget_comfyui");
-  const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
-  const balance = Number(value.balance ?? value.value);
-  const hasBalance = Number.isFinite(balance);
-  const writable = failed
-    ? providerBudgetState.writable
-    : settingsResult?.source === "supabase" && settingsResult?.status !== "error";
-  providerBudgetState = { writable };
-
-  input.disabled = !writable;
-  note.disabled = !writable;
-  button.disabled = !writable;
-
-  // Never take the field away from whoever is using it, and do not wipe it
-  // just because the server could not be reached.
-  const editing = providerBudgetDirty
-    || document.activeElement === input
-    || document.activeElement === note;
-  if (!editing && !failed) {
-    input.value = hasBalance ? formatProviderBalanceInput(balance) : "";
-    note.value = String(value.note || "");
-  }
-  status.textContent = failed
-    ? writable
-      ? "读取失败，显示的是上次的数据；保存会重试"
-      : "读取失败，请稍后重试"
-    : writable
-      ? hasBalance ? "已保存，生成成功后自动扣减" : "可写入 Supabase"
-      : settingsResult?.source === "mock" ? "mock 数据不可写入" : "数据异常，暂停写入";
-  const updatedAt = value.updated_at || setting?.updated_at || "";
-  display.textContent = hasBalance
-    ? `${formatProviderBalance(balance)} ${value.unit || "credits"}${updatedAt ? " · " + formatDateTime(updatedAt) : ""}`
-    : "未保存";
-}
-
 function providerHealthStatusText(comfyStatus, hasSecretRef) {
   if (!comfyStatus?.configured) {
     return comfyStatus?.secretConfigured || hasSecretRef ? "已配置密钥引用，等待后台 secret resolver" : "未配置";
@@ -1124,31 +991,6 @@ function providerHealthStatusText(comfyStatus, hasSecretRef) {
   if (comfyStatus.status === "connected") return "连接正常";
   if (comfyStatus.status === "error") return "连接失败";
   return comfyStatus.status || "未知";
-}
-
-function providerManagedBalanceText(settingsResult) {
-  const setting = findSettingRecord(settingsResult, "provider_budget_comfyui");
-  const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
-  const balance = Number(value.balance ?? value.value);
-  if (!Number.isFinite(balance)) return "未保存";
-  const updatedAt = value.updated_at || setting?.updated_at || "";
-  return `${formatProviderBalance(balance)} ${value.unit || "credits"}${updatedAt ? " · " + formatDateTime(updatedAt) : ""}`;
-}
-
-function renderComfyProviderHealth(comfyStatus, settingsResult, providers) {
-  const comfyProvider = (providers || []).find(isComfyUiProvider);
-  const hasSecretRef = Boolean(String(comfyProvider?.api_key_secret_ref || "").trim() || comfyStatus?.hasApiKeySecretRef);
-  const officialBalance = providerBalanceText(comfyStatus);
-  const entries = [
-    { label: "Base URL", value: comfyStatus?.baseUrl || "https://cloud.comfy.org" },
-    { label: "API Key", value: comfyStatus?.configured ? "环境变量已配置" : hasSecretRef ? "仅配置 secret ref" : "未配置" },
-    { label: "连接状态", value: providerHealthStatusText(comfyStatus, hasSecretRef) },
-    { label: "官方余额", value: officialBalance },
-    { label: "手动总余额", value: providerManagedBalanceText(settingsResult) },
-    { label: "检测耗时", value: durationText(comfyStatus?.durationMs) },
-    { label: "错误提示", value: comfyStatus?.error || "-" }
-  ];
-  renderSettingRows("comfyProviderHealthRows", entries, "暂无 ComfyUI 检测数据");
 }
 
 function renderRunningHubProviderHealth(status) {
@@ -1179,45 +1021,14 @@ function runningHubProviderRow(provider, status) {
   return tr;
 }
 
-function renderAiServices(providersResult, settingsResult, comfyStatus, grokStatus, runninghubStatus) {
+function renderAiServices(providersResult, _settingsResult, _comfyStatus, _grokStatus, runninghubStatus) {
   renderRunningHubProviderHealth(runninghubStatus);
-  const providers = ensureCoreAiProviders(providersResult.records || []);
   if (isErrorResult(providersResult)) {
     replaceRows("aiProvidersTableBody", [], 7, resultErrorText(providersResult));
-  } else {
-    const providerRows = providers.map((provider) => {
-      if (isRunningHubProvider(provider)) return runningHubProviderRow(provider, runninghubStatus);
-      const isComfyUi = isComfyUiProvider(provider);
-      const tr = document.createElement("tr");
-      const input = document.createElement("input");
-      input.className = "mockKey";
-      input.type = "password";
-      input.value = "";
-      input.placeholder = isComfyUi && comfyStatus?.configured
-        ? "已从后台管理环境变量读取"
-        : provider.api_key_secret_ref ? "已配置服务端密钥引用" : "由后台服务保存，前端不写真实 Key";
-      if (isGrokProvider(provider)) input.placeholder = providerKeyPlaceholder(provider, comfyStatus, grokStatus);
-      input.disabled = true;
-      tr.appendChild(textCell(provider.name || provider.provider_key || "-"));
-      tr.appendChild(nodeCell(input));
-      tr.appendChild(nodeCell(statusBadge(providerStatusValue(provider, grokStatus), "disabled")));
-      tr.appendChild(textCell(`${provider.billing_multiplier ?? 1}x`));
-      tr.appendChild(isComfyUi ? nodeCell(providerConnectionBadge(comfyStatus)) : providerConnectionCell(provider, comfyStatus, grokStatus));
-      tr.appendChild(textCell(isComfyUi ? providerAccountText(comfyStatus) : providerAccountCellText(provider, comfyStatus, grokStatus)));
-      tr.appendChild(textCell(isComfyUi ? providerBalanceText(comfyStatus) : providerBalanceCellText(provider, comfyStatus)));
-      return tr;
-    });
-    replaceRows("aiProvidersTableBody", providerRows, 7, "暂无 Provider 数据");
-  }
-
-  if (isErrorResult(settingsResult)) {
-    renderProviderBudgetControls(settingsResult);
-    renderComfyProviderHealth(comfyStatus, settingsResult, providers);
     return;
   }
-
-  renderProviderBudgetControls(settingsResult);
-  renderComfyProviderHealth(comfyStatus, settingsResult, providers);
+  const providerRows = ensureCoreAiProviders(providersResult.records || []).map((provider) => runningHubProviderRow(provider, runninghubStatus));
+  replaceRows("aiProvidersTableBody", providerRows, 7, "暂无 Provider 数据");
 }
 
 function renderSettings(settingsResult) {
@@ -1957,7 +1768,6 @@ async function loadAdminData() {
     renderSettingRows("systemSettingsRows", [], message);
     replaceRows("membersTableBody", [], 7, message);
     renderDashboardRecentActivity({ usage: { source: "supabase", status: "error", records: [], error: message } });
-    renderProviderBudgetControls({ source: "supabase", status: "error", records: [] });
   }
 }
 
@@ -2357,15 +2167,6 @@ async function submitPasswordEditDialog() {
   }
 }
 
-function providerBudgetPayload() {
-  return {
-    providerKey: "comfyui",
-    balance: Number($("comfyProviderBudgetBalance")?.value || 0),
-    unit: "credits",
-    note: $("comfyProviderBudgetNote")?.value.trim() || ""
-  };
-}
-
 function providerRuntimeConfigPayload(providerKey) {
   const key = String(providerKey || "").toLowerCase();
   if (key !== "runninghub") throw new Error("Unsupported Provider");
@@ -2434,34 +2235,6 @@ async function checkRunningHubProvider() {
     if (hint) hint.textContent = String(err?.message || err);
   } finally {
     if (button) button.disabled = false;
-  }
-}
-
-async function saveComfyProviderBudget() {
-  const status = $("providerBudgetStatus");
-  const payload = providerBudgetPayload();
-  if (!Number.isFinite(payload.balance) || payload.balance < 0) {
-    alert("ComfyUI 手动总余额必须是大于或等于 0 的数字。");
-    return;
-  }
-  const confirmed = confirm(`确定保存 ComfyUI 手动总余额？\n余额：${formatProviderBalance(payload.balance)} credits\n这不是官方实时读取值；用户 ComfyUI 生成成功后会自动扣减。`);
-  if (!confirmed) return;
-  try {
-    status.textContent = "保存中...";
-    const res = await window.adminAPI.setAdminProviderBudget(payload);
-    const result = res?.result || {};
-    if (!res?.ok || result.status === "error" || result.ok === false) {
-      status.textContent = "保存失败";
-      alert(result.error || res?.error || "保存 ComfyUI 手动总余额失败");
-      return;
-    }
-    status.textContent = "已保存";
-    providerBudgetDirty = false;
-    toast("ComfyUI 手动总余额已保存");
-    await loadAdminData();
-  } catch (err) {
-    status.textContent = "保存失败";
-    alert(`保存 ComfyUI 手动总余额失败：${String(err?.message || err)}`);
   }
 }
 

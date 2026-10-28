@@ -10,10 +10,14 @@ const config = () => ({ ...rh.readConfig(() => ""), apiKey: fakeKey });
 
 test("admin page no longer offers ComfyUI, Grok, or Google provider fields", () => {
   const html = fs.readFileSync(path.resolve(__dirname, "../license-admin-gui/index.html"), "utf8");
+  const renderer = fs.readFileSync(path.resolve(__dirname, "../license-admin-gui/renderer.js"), "utf8");
   for (const id of ["runninghubRuntimeGoogleImageEndpoint", "comfyRuntimeApiKey", "grokRuntimeApiKey", "saveComfyRuntimeConfig", "saveGrokRuntimeConfig", "saveComfyProviderBudget"]) {
     assert.equal(html.includes(id), false, id);
   }
   assert.equal(html.includes("runninghubRuntimeApiKey"), true);
+  assert.equal(renderer.includes("function saveComfyProviderBudget"), false);
+  assert.equal(renderer.includes("function isGrokProvider"), false);
+  assert.equal(renderer.includes("function providerConnectionBadge"), false);
 });
 
 test("domestic defaults and model configuration remain independent of existing providers", () => {
@@ -174,4 +178,104 @@ test("rejected config makes no environment writes; status reads make no provider
   const cleared = await f.api.getAdminRunningHubProviderStatus();
   assert.equal(cleared.connected, false);
   assert.equal(cleared.checked, false);
+});
+
+test("manual Comfy balance writes are refused by the data API and the IPC handler", async () => {
+  const f = adminFixture();
+  const result = await f.api.setAdminProviderBudget({ providerKey: "comfyui", balance: 10550, unit: "credits", note: "manual calibration" });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "error");
+  assert.match(result.error, /不再录入/);
+  assert.equal(f.writes.length, 0);
+
+  const handlers = new Map();
+  const Module = require("node:module");
+  const realLoad = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (request === "electron") {
+      return {
+        ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on: () => {} },
+        dialog: {},
+        shell: {},
+        app: { getPath: () => "/tmp" },
+        BrowserWindow: { getFocusedWindow: () => null, fromWebContents: () => null }
+      };
+    }
+    return realLoad.call(this, request, parent, isMain);
+  };
+  try {
+    const ipcPath = require.resolve("../license-admin-gui/ipc.js");
+    delete require.cache[ipcPath];
+    const ipc = require("../license-admin-gui/ipc.js");
+    ipc.registerLicenseAdminIpc();
+  } finally {
+    Module._load = realLoad;
+  }
+  const response = await handlers.get("admin:data:provider_budget:set")({}, { providerKey: "comfyui", balance: 20 });
+  assert.equal(response.ok, false);
+  assert.match(String(response.error || ""), /不再录入/);
+});
+
+test("runninghub config route rejects a mislabeled provider key and does not store it", async () => {
+  const http = require("node:http");
+  const previous = {
+    token: process.env.NOVAFLOW_ADMIN_API_TOKEN,
+    runninghub: process.env.NOVAFLOW_RUNNINGHUB_API_KEY,
+    grok: process.env.NOVAFLOW_GROK_API_KEY
+  };
+  process.env.NOVAFLOW_ADMIN_API_TOKEN = "test-admin-token-not-a-provider-key";
+  delete process.env.NOVAFLOW_RUNNINGHUB_API_KEY;
+  process.env.NOVAFLOW_GROK_API_KEY = "existing-grok-key";
+  const { createAdminServer } = require("../admin-server/server.js");
+  const server = createAdminServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const post = (body) => new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: "127.0.0.1",
+      port,
+      method: "POST",
+      path: "/api/admin/providers/runninghub/config",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer test-admin-token-not-a-provider-key"
+      }
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => {
+        const text = Buffer.concat(chunks).toString();
+        resolve({ status: res.statusCode, body: text ? JSON.parse(text) : {} });
+      });
+    });
+    req.on("error", reject);
+    req.end(JSON.stringify(body));
+  });
+  try {
+    const mislabeled = await post({ providerKey: "grok", apiKey: "mislabeled-secret-not-runninghub" });
+    assert.equal(mislabeled.status, 400);
+    assert.equal(mislabeled.body.ok, false);
+    assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, undefined);
+    assert.equal(process.env.NOVAFLOW_GROK_API_KEY, "existing-grok-key");
+    assert.equal(JSON.stringify(mislabeled.body).includes("mislabeled-secret-not-runninghub"), false);
+    const alias = await post({ provider_key: "comfyui", apiKey: "mislabeled-comfy-secret" });
+    assert.equal(alias.status, 400);
+    assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, undefined);
+    const missing = await post({ apiKey: "unlabeled-secret" });
+    assert.equal(missing.status, 400);
+    assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, undefined);
+    const accepted = await post({ providerKey: "runninghub", apiKey: "rh-fixture-key-not-real" });
+    assert.equal(accepted.body.ok, true);
+    assert.equal(process.env.NOVAFLOW_RUNNINGHUB_API_KEY, "rh-fixture-key-not-real");
+    assert.equal(process.env.NOVAFLOW_GROK_API_KEY, "existing-grok-key");
+    assert.equal(JSON.stringify(accepted.body).includes("rh-fixture-key-not-real"), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (previous.token === undefined) delete process.env.NOVAFLOW_ADMIN_API_TOKEN;
+    else process.env.NOVAFLOW_ADMIN_API_TOKEN = previous.token;
+    if (previous.runninghub === undefined) delete process.env.NOVAFLOW_RUNNINGHUB_API_KEY;
+    else process.env.NOVAFLOW_RUNNINGHUB_API_KEY = previous.runninghub;
+    if (previous.grok === undefined) delete process.env.NOVAFLOW_GROK_API_KEY;
+    else process.env.NOVAFLOW_GROK_API_KEY = previous.grok;
+  }
 });
