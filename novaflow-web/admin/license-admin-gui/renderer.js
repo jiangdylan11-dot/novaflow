@@ -116,7 +116,7 @@ function setGlobalStatus(text, tone, options = {}) {
 
 function showTab(tabName) {
   const name = String(tabName || "online");
-  document.querySelectorAll(".tab").forEach((el) => {
+  document.querySelectorAll(".tab[data-tab]").forEach((el) => {
     el.classList.toggle("active", el.getAttribute("data-tab") === name);
   });
   document.querySelectorAll(".tabPanel").forEach((el) => {
@@ -1748,16 +1748,18 @@ async function loadDashboardLedger() {
 async function loadAdminData() {
   try {
     renderDashboardRhCard({ state: "loading" });
-    const users = await loadAdminDataset("getAdminUsers", "usersDataBadge");
-    const credits = await loadAdminDataset("getAdminCredits");
-    const providers = await loadAdminDataset("getAdminAiProviders", "aiServicesDataBadge");
-    const settings = await loadAdminDataset("getAdminSystemSettings", "settingsDataBadge");
-    const runninghubStatus = await loadAdminProviderStatus("getAdminRunningHubProviderStatus");
-    const usage = typeof window.adminAPI?.getAdminWebTaskUsage === "function"
-      ? (await window.adminAPI.getAdminWebTaskUsage({ limit: 100 }))?.result || { records: [] }
-      : { records: [] };
-    const workers = await loadAdminDataset("getAdminGpuWorkers");
-    const ledger = await loadDashboardLedger();
+    const [users, credits, providers, settings, runninghubStatus, usage, workers, ledger] = await Promise.all([
+      loadAdminDataset("getAdminUsers", "usersDataBadge"),
+      loadAdminDataset("getAdminCredits"),
+      loadAdminDataset("getAdminAiProviders", "aiServicesDataBadge"),
+      loadAdminDataset("getAdminSystemSettings", "settingsDataBadge"),
+      loadAdminProviderStatus("getAdminRunningHubProviderStatus"),
+      typeof window.adminAPI?.getAdminWebTaskUsage === "function"
+        ? window.adminAPI.getAdminWebTaskUsage({ limit: 100 }).then((response) => response?.result || { records: [] })
+        : { records: [] },
+      loadAdminDataset("getAdminGpuWorkers"),
+      loadDashboardLedger()
+    ]);
     const results = [users, credits, providers, settings];
 
     setAdminDataSourceStatus(results);
@@ -1765,10 +1767,10 @@ async function loadAdminData() {
 
     renderUsers(users, credits);
     renderAiServices(providers, settings, null, null, runninghubStatus);
-    await renderFeatureCreditAdmin();
     renderProviderRuntimeConfigControls(null, null, runninghubStatus);
     syncCreditAdjustment(users, credits);
     renderDashboard({ users, credits, providers, settings, runninghubStatus, usage, workers, ledger });
+    await renderFeatureCreditAdmin();
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
@@ -2751,7 +2753,6 @@ async function init() {
   await refresh();
   const onlineConfig = await loadOnlineConfig();
   if (onlineConfig?.hasSecretKey) await refreshOnlineList({ silent: true });
-  await loadAdminData();
   const bundledKeyMode = def.mode === "bundled";
   if (bundledKeyMode) {
     $("generate").disabled = true;
@@ -3018,7 +3019,7 @@ async function init() {
     }
   });
 
-  document.querySelectorAll(".tab").forEach((el) => {
+  document.querySelectorAll(".tab[data-tab]").forEach((el) => {
     el.addEventListener("click", () => showTab(el.getAttribute("data-tab") || "online"));
   });
 
@@ -3053,6 +3054,7 @@ async function init() {
       await verifyLicense();
     }
   });
+  await loadAdminData();
 }
 
 const FEATURE_PRICE_FIELDS = [

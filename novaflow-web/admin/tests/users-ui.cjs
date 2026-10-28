@@ -13,11 +13,15 @@ const credits = [{ user_id: "user-one", balance: 20000 }, { user_id: "user-two",
 const adjustments = [], updates = [], errors = [], queries = [];
 const result = (records) => ({ ok: true, result: { source: "supabase", status: "ok", records } });
 let failLedger = false;
+let releaseFeatureConfig;
+const featureConfigReady = new Promise((resolve) => { releaseFeatureConfig = resolve; });
+let featureConfigReads = 0;
 for (const channel of new Set([...fs.readFileSync(path.join(root, "preload.js"), "utf8").matchAll(/ipcRenderer\.invoke\("([^"]+)"/g)].map((m) => m[1]))) {
   ipcMain.handle(channel, async (_event, payload) => {
     if (channel === "admin-default-paths") return {};
     if (channel === "admin-status") return { ok: true, status: {} };
     if (channel === "admin-online-config") return { ok: true, config: {} };
+    if (channel === "admin:data:feature_credits:get") { featureConfigReads++; await featureConfigReady; return result([]); }
     if (channel === "admin:data:users:list") return result(users);
     if (channel === "admin:data:credits:list") return result(credits);
     if (channel === "admin:data:users:update") { updates.push(payload); return { ok: true, result: { status: "ok" } }; }
@@ -51,6 +55,32 @@ app.whenReady().then(async () => {
     }, 30);
   })`);
   await wait(`document.querySelector('#usersTableBody tr td')?.textContent === 'kingyo'`);
+  assert.equal(featureConfigReads, 1);
+  assert.equal(await run(`$('dashboardUsersCount').textContent`), "2", "dashboard must render while AI pricing is still loading");
+  await run(`document.querySelector('[data-activity-tab="tasks"]').click()`);
+  assert.equal(await run(`document.querySelector('[data-activity-tab="tasks"]').classList.contains('active')`), true, "navigation must work before pricing finishes");
+  await run(`document.querySelector('[data-activity-tab="ledger"]').click()`);
+  for (const [width, height] of [[1440, 880], [1080, 680]]) {
+    win.setSize(width, height);
+    const layout = await run(`new Promise(resolve => requestAnimationFrame(() => {
+      const metric = document.querySelector('.metricGrid').getBoundingClientRect();
+      const activity = document.querySelector('.dashboardActivityPanel').getBoundingClientRect();
+      const support = document.querySelector('.dashboardSupportGrid').getBoundingClientRect();
+      const table = document.querySelector('#dashboardRecentActivity table').getBoundingClientRect();
+      resolve({ fullWidth: Math.abs(activity.width - metric.width) < 2, supportBelow: support.top >= activity.bottom,
+        tableWidth: table.width, overflow: document.documentElement.scrollWidth > innerWidth });
+    }))`);
+    assert.equal(layout.fullWidth, true);
+    assert.equal(layout.supportBelow, true);
+    assert(layout.tableWidth >= 900);
+    assert.equal(layout.overflow, false);
+  }
+  win.setSize(1440, 880);
+  if (process.env.NOVAFLOW_TEST_SCREENSHOT_DIR) {
+    await run(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
+    fs.writeFileSync(path.join(process.env.NOVAFLOW_TEST_SCREENSHOT_DIR, "dashboard-wide.png"), (await win.webContents.capturePage()).toPNG());
+  }
+  releaseFeatureConfig();
   assert.equal(queries[0].status, "settled", "dashboard must request settled records before applying the recent-record limit");
   assert.equal(await run(`document.querySelector('[data-ledger-filter]')`), null);
   await run(`dashboardSnapshot.ledger.records = [
