@@ -665,10 +665,10 @@ html[data-novaflow-transitions="off"] *::after {
   transition: none !important;
 }
 
-/* 2.0l The account chip's first answer.
-   See novaflow-web-account.js: the topbar status box waits for it rather
-   than showing a green 登录 that turns into the account name. */
-#novaflow-topbar-ai-runtime-status[data-novaflow-account-pending="1"] {
+/* 2.0l The header account strip's first answer.
+   See novaflow-web-account.js: the strip waits rather than flashing a green
+   登录 that then becomes the account name. The AI status box stays visible. */
+#novaflow-web-account-header[data-novaflow-account-pending="1"] {
   visibility: hidden !important;
 }
 
@@ -2227,17 +2227,17 @@ html body :is(.novaflow-art-generate-switch, #nf-lift)::before {
    Every dialog marks its panel, title and close button with data-nf-dialog;
    the look lives here so they cannot drift apart again (five backgrounds,
    radii 8-12, titles 13-15px and 20-22px close glyphs before). */
-html body :is([data-nf-dialog="panel"], .novaflow-art-export-dialog, .novaflow-smart-ai-dialog, .nf-wh-card, .nf-account-card, .nf-node-card, [data-novaflow-export-modal-dialog="1"]) {
+html body :is([data-nf-dialog="panel"], .novaflow-art-export-dialog, .novaflow-smart-ai-dialog, .nf-wh-card, .nf-node-card, [data-novaflow-export-modal-dialog="1"]) {
   background: #1F1F1F !important;
   border: 1px solid #2E2E2E !important;
   border-radius: 8px !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
 }
-html body :is([data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2) {
+html body :is([data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, .nf-node-header h2) {
   font-size: 14px !important;
   font-weight: 600 !important;
 }
-html body :is([data-nf-dialog="close"], .novaflow-art-export-close, .novaflow-smart-ai-close, .nf-wh-close, .nf-account-close, .nf-node-close) {
+html body :is([data-nf-dialog="close"], .novaflow-art-export-close, .novaflow-smart-ai-close, .nf-wh-close, .nf-node-close) {
   font-size: 16px !important;
 }
 
@@ -2254,7 +2254,6 @@ html body [data-novaflow-ui-design-toolbar] :is(button, [role="button"]):not(:di
 html body [data-novaflow-ui-design-toolbar-action]:not(:disabled):hover,
 html body :is([data-novaflow-ui-design-resource-card], [data-novaflow-ui-design-result-card]):hover,
 html body :is(.novaflow-smart-ai-mode-card, .novaflow-smart-ai-engine-option, .novaflow-smart-ai-target, .novaflow-smart-ai-radio):hover,
-html body #novaflow-web-account-dialog button:not(:disabled):hover,
 html body #novaflow-aifx-mvp .aifx-icon-button:not(:disabled):hover {
   filter: brightness(1.18);
 }
