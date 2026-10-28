@@ -74,8 +74,9 @@
     return SL.SWEEP_SCHEMES.filter((s) => s.edge).map((s) => {
       const params = EDGE_COMMON.slice()
       // 「外扩」在编辑器里是轮廓的参数：充能满圈自带的那个改叫「闪光扩散」，免得两个同名
-      const xmax = GROW[s.id] ? 6 : s.extra && s.extra.label === '拖尾' ? 5 : s.extra && s.extra.max
+      const xmax = GROW[s.id] ? 6 : s.extra && s.extra.max
       if (s.extra) params.push(P('extra', s.extra.label === '外扩' ? '闪光扩散' : s.extra.label, s.extra.min, xmax, s.extra.step, s.extra.def))
+      if (s.trail) params.push(P('trail', '拖尾长度', 0, 5, 0.05, 1))
       if (s.fixedColor) params.push(P('hue', '色相', -180, 180, 1, 0))
       const inert = {}
       if (s.fixedColor) inert.colour = '这个效果自带配色，用「色相」调'
@@ -121,6 +122,14 @@
     for (const p of e.params) out[p.key] = p.def
     if (e.emit) out.emit = 'edge'
     return out
+  }
+
+  function resourceOutputName(project, fallback) {
+    const name = String(project.resourceName || '').trim() || String(fallback || '').trim()
+    if (!name || name.length > 120 || /[<>:"/\\|?*\x00-\x1f]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) {
+      throw new Error('资源名称请使用 1–120 个字符，不含路径或文件名禁用字符')
+    }
+    return name
   }
 
   // ------------------------------------------------------------------ 形状 → 控制点
@@ -719,7 +728,7 @@
       ...SL.DEFAULT_PARAMS, scheme: fx.scheme, frames: frameCount(project), blend: 'add',
       colorMode: colour ? 'custom' : 'white', color: colour ? project.colour.value : '#ffffff',
       width: params.width, glow: params.glow, intensity: params.intensity, laps: params.laps,
-      extra: params.extra, hue: params.hue || 0, start, scale: geo.scale, pad: 8,
+      extra: params.extra, trail: params.trail, hue: params.hue || 0, start, scale: geo.scale, pad: 8,
     }
     const cap = GROW[fx.scheme]
     if (cap && Number(params.extra) > cap) { P.width = (Number(params.width) || 1) * (Number(params.extra) / cap); P.extra = cap }
@@ -912,7 +921,7 @@
 
   root.NovaFlowFxMaker = {
     FPS, DURATIONS, CANVASES, CANVAS_CHOICES, SHAPES, MOTIONS, registerLibrary,
-    effects, effectOf, effectDefaults,
+    effects, effectOf, effectDefaults, resourceOutputName,
     shapeOutline, outlineCurve, outlinePolylines, traceImage, canvasSize, basePlacement, defaultProject,
     geometry, contoursOf, fillPoly, signedDistance, frameCount, timeOf,
     prepare, renderFrame, aiDescriptor, pointOnOutline,

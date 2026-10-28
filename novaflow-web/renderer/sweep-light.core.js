@@ -35,17 +35,17 @@ const SWEEP_SCHEMES = [
 // 每种的专属参数 extra = { label, min, max, step, def }；noStart = 起点不适用（火焰 / 烟雾 / 光剑整圈同时动）。
 // 通用：起点（光从轮廓哪里出发，斜向扫光是方向）、粗细（整体放大缩小）、次数（时长内重复几次，整数才首尾相接）、
 // 色相（自带配色的才有）；光晕 / 强度 同其他方案。
-const TRAIL = { label: '拖尾', min: 0.3, max: 2.5, step: 0.05, def: 1 }
+const TRAIL = { label: '拖尾长度', min: 0, max: 5, step: 0.05, def: 1 }
 const EDGE_SCHEMES = [
   { id: 'edge-meteor', label: '流星环绕', group: '边缘环绕', hint: '一颗拖长尾的流星沿轮廓绕圈', extra: TRAIL },
   { id: 'edge-twin', label: '双星追逐', group: '边缘环绕', hint: '青、粉两颗流星一前一后沿边追', fixedColor: true, extra: TRAIL },
   { id: 'edge-meet', label: '分流汇合', group: '边缘环绕', hint: '两道光从起点分头沿边跑，在对面汇合炸开', extra: TRAIL },
-  { id: 'edge-stardust', label: '星尘拖尾', group: '边缘环绕', hint: '流星走过的边缘留下闪烁的星尘', extra: { label: '星尘', min: 0.3, max: 3, step: 0.05, def: 1 } },
-  { id: 'edge-firecomet', label: '火焰流星', group: '边缘环绕', hint: '拖着火焰尾巴的流星沿边绕圈', fixedColor: true, extra: { label: '火苗', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
-  { id: 'edge-bolt', label: '闪电环绕', group: '边缘环绕', hint: '一道电弧沿边绕圈，噼啪抖动', fixedColor: true, extra: { label: '抖动', min: 0, max: 2.5, step: 0.05, def: 1 } },
-  { id: 'edge-wideband', label: '宽光带环绕', group: '边缘环绕', hint: '一大段柔光沿边转，中间一道亮线', extra: { label: '光带', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-stardust', label: '星尘拖尾', group: '边缘环绕', hint: '流星走过的边缘留下闪烁的星尘', trail: true, extra: { label: '星尘', min: 0.3, max: 3, step: 0.05, def: 1 } },
+  { id: 'edge-firecomet', label: '火焰流星', group: '边缘环绕', hint: '拖着火焰尾巴的流星沿边绕圈', trail: true, fixedColor: true, extra: { label: '火苗', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-bolt', label: '闪电环绕', group: '边缘环绕', hint: '一道电弧沿边绕圈，噼啪抖动', trail: true, fixedColor: true, extra: { label: '抖动', min: 0, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-wideband', label: '宽光带环绕', group: '边缘环绕', hint: '一大段柔光沿边转，中间一道亮线', trail: true, extra: { label: '光带', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-counter', label: '双色对绕', group: '边缘环绕', hint: '底图色和补色两颗流星反向绕，交汇处闪光', extra: TRAIL },
-  { id: 'edge-innerflow', label: '内光流转', group: '边缘环绕', hint: '两团光沿边框内侧反向流动', extra: { label: '光团', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
+  { id: 'edge-innerflow', label: '内光流转', group: '边缘环绕', hint: '两团光沿边框内侧反向流动', trail: true, extra: { label: '光团', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-fire', label: '火焰描边', group: '边缘描边', hint: '整圈轮廓燃烧，朝上的边火苗更高', fixedColor: true, noStart: true, extra: { label: '火苗', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-chrome', label: '镀铬环光', group: '边缘描边', hint: '光绕物体转，朝光一侧的边缘亮起金属高光', extra: { label: '锐度', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-aurora', label: '炫彩光晕', group: '边缘描边', hint: '彩色光晕绕着轮廓旋转', fixedColor: true, extra: { label: '范围', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
@@ -53,7 +53,7 @@ const EDGE_SCHEMES = [
   { id: 'edge-goldfoil', label: '金箔闪耀', group: '边缘描边', hint: '金色描边，高光转动，边上星点闪', fixedColor: true, extra: { label: '星点', min: 0.3, max: 3, step: 0.05, def: 1 } },
   { id: 'edge-wisps', label: '魔法烟雾', group: '边缘描边', hint: '轮廓上冒出流动的彩色烟雾', fixedColor: true, noStart: true, extra: { label: '烟雾', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-neon', label: '霓虹流彩', group: '边缘描边', hint: '彩虹色沿整圈描边流动', fixedColor: true, extra: { label: '彩带', min: 1, max: 4, step: 1, def: 1 } },
-  { id: 'edge-diagonal', label: '斜向扫光', group: '边缘律动', hint: '一道斜线扫过，只点亮经过的轮廓', extra: { label: '光带', min: 0.3, max: 3, step: 0.05, def: 1 } },
+  { id: 'edge-diagonal', label: '斜向扫光', group: '边缘律动', hint: '一道斜线扫过，只点亮经过的轮廓', trail: true, extra: { label: '光带', min: 0.3, max: 3, step: 0.05, def: 1 } },
   { id: 'edge-ripple', label: '边缘涟漪', group: '边缘律动', hint: '轮廓一圈圈向外扩，亮段沿边流动', extra: { label: '光环', min: 1, max: 5, step: 1, def: 3 } },
   { id: 'edge-charge', label: '充能满圈', group: '边缘律动', hint: '光沿边填满一圈，满了整圈一闪', extra: { label: '外扩', min: 0.3, max: 2.5, step: 0.05, def: 1 } },
   { id: 'edge-hop', label: '星光跳跃', group: '边缘律动', hint: '星芒在边上跳着亮，亮处沿边晕开', extra: { label: '星点', min: 2, max: 10, step: 1, def: 6 } },
@@ -1071,7 +1071,7 @@ function cometInto(E, L, head, length, o = {}) {
     const bi0 = base && (Math.exp(-((din[i] / (1.2 * S)) ** 2)) * base) * E.wIn[i]
     const d = circ((T[i] - head) * dir)
     const core = Math.exp(-((d / hw) ** 2))
-    let tail = d <= 0 ? Math.exp(d / length) : 0
+    let tail = length > 0 ? (d <= 0 ? Math.exp(d / length) : 0) : core
     if (d > 0 && core > tail) tail = core
     if (tail < 1e-4 && core < 1e-4) { if (bi0) { L[0][i] += mid[0] * bi0; L[1][i] += mid[1] * bi0; L[2][i] += mid[2] * bi0 } continue }
     const f = clamp01(tail + core * 0.6)
@@ -1194,13 +1194,14 @@ const EDGE_FN = {
 
   'edge-stardust'(ctx, p, K) {
     const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), S = E.S
-    cometInto(E, L, p, 0.12, { gain: 1.1 })
+    cometInto(E, L, p, 0.12 * K.trail, { gain: 1.1 })
+    const lifetime = Math.min(0.95, 0.45 * K.trail)
     const pts = []
     for (const d of edgeRandomPoints(E, 'dust' + K.x, 77, 7 / K.x, 60)) {
-      const age = circ(p - d.t)                  // > 0：流星头经过这一点多久了
-      if (age < 0 || age > 0.45) continue
+      const age = K.trail === 1 ? circ(p - d.t) : ((p - d.t) % 1 + 1) % 1
+      if (!lifetime || age < 0 || age > lifetime) continue
       const tw = Math.sin(2 * Math.PI * (age * 9 + d.r)) ** 2
-      pts.push([d.x + d.ox * 3 * S, d.y + d.oy * 3 * S - age * 14 * S, Math.pow(1 - age / 0.45, 1.5) * tw * 0.9])
+      pts.push([d.x + d.ox * 3 * S, d.y + d.oy * 3 * S - age * 14 * S, Math.pow(1 - age / lifetime, 1.5) * tw * 0.9])
     }
     starInto(E, L, E.mid.map((v) => v * 0.4 + 0.6), pts, 0.55, 0.785, 1)
     return edgeFinish(ctx, E, L, 4, 0.55, K)
@@ -1210,7 +1211,7 @@ const EDGE_FN = {
     const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, a, din, sd, W, S } = E, col = [0, 0, 0]
     for (let j = 0; j < near.length; j++) {
       const i = near[j], d = circ(T[i] - p), core = Math.exp(-((d / 0.012) ** 2))
-      let tail = d <= 0 ? Math.exp(d / 0.22) : 0
+      let tail = K.trail > 0 ? (d <= 0 ? Math.exp(d / (0.22 * K.trail)) : 0) : core
       if (d > 0 && core > tail) tail = core
       if (tail < 1e-4 && core < 1e-4) continue
       const x = i % W, y = (i - x) / W, xs = (x * 0.11) / S, ys = (y * 0.11) / S
@@ -1233,7 +1234,7 @@ const EDGE_FN = {
     const n1 = loopNoiseTable(p, 70, 2.2), n2 = loopNoiseTable((p * 3) % 1, 160, 6.6), n3 = loopNoiseTable((p * 2) % 1, 40, 8.1)
     for (let j = 0; j < near.length; j++) {
       const i = near[j], d = circ(T[i] - p), core = Math.exp(-((d / 0.01) ** 2))
-      let tail = d <= 0 ? Math.exp(d / 0.18) : 0
+      let tail = K.trail > 0 ? (d <= 0 ? Math.exp(d / (0.18 * K.trail)) : 0) : core
       if (d > 0 && core > tail) tail = core
       if (tail < 1e-4 && core < 1e-4) continue
       const disp = (n1(T[i]) * 5 * tail + n2(T[i]) * 2 * tail) * S * K.x
@@ -1252,7 +1253,8 @@ const EDGE_FN = {
     const E = edgeGeoK(ctx, K), L = rgbPlanes(E.N), { near, T, a, din, mid, hot, S } = E
     const col = mid.map((v) => v * 0.75 + 0.25)
     for (let j = 0; j < near.length; j++) {
-      const i = near[j], d = circ(T[i] - p), arc = Math.exp(-((d / (0.11 * K.x)) ** 2)), shine = Math.exp(-((d / 0.025) ** 2))
+      const i = near[j], d = circ(T[i] - p), shine = Math.exp(-((d / 0.025) ** 2))
+      const arc = d < 0 && K.trail === 0 ? shine : Math.exp(-((d / (0.11 * K.x * (d < 0 ? K.trail : 1))) ** 2))
       const [bi, bo] = bandIO(E, i, clamp01(arc), 1.6, 5.5, 3, 16)
       const bi0 = (Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.18) * E.wIn[i]
       const v1 = (bi * 1.3 + bo * 0.9) * arc, v2 = (bi * 1.4 + bo * 0.5) * shine
@@ -1289,7 +1291,8 @@ const EDGE_FN = {
     baseRimInto(E, L, mid, 0.12)
     for (const [head, col] of [[p, mid], [(p + 0.5) % 1, c2]]) {
       for (let j = 0; j < near.length; j++) {
-        const i = near[j], d = circ(T[i] - head), body = Math.exp(-((d / (0.12 * K.x)) ** 2)), core = Math.exp(-((d / 0.035) ** 2))
+        const i = near[j], d = circ(T[i] - head), core = Math.exp(-((d / 0.035) ** 2))
+        const body = d < 0 && K.trail === 0 ? core : Math.exp(-((d / (0.12 * K.x * (d < 0 ? K.trail : 1))) ** 2))
         if (body < 1e-4) continue
         const inner = (Math.exp(-Math.pow(din[i] / (depth * (0.45 + 0.55 * body)), 1.5))) * E.wIn[i]
         const rim = Math.exp(-(((sd[i] + 0.8 * S) / (1.6 * S)) ** 2))
@@ -1437,7 +1440,7 @@ const EDGE_FN = {
     for (let j = 0; j < near.length; j++) {
       const i = near[j], x = i % W, y = (i - x) / W
       const dd = (((x - x0) / Math.max(1, x1 - x0)) * dx + ((y - y0) / Math.max(1, y1 - y0)) * dy - umin) / uspan * 1.35 - pos
-      const front = Math.exp(-((dd / (0.035 * K.x)) ** 2)), wake = dd < 0 ? Math.exp(dd / 0.25) * wakeK : 0
+      const front = Math.exp(-((dd / (0.035 * K.x)) ** 2)), wake = dd < 0 && K.trail > 0 ? Math.exp(dd / (0.25 * K.trail)) * wakeK : 0
       const edge = Math.exp(-(((sd[i] + S) / (3 * S)) ** 2)), halo = Math.exp(-((Math.abs(sd[i]) / (11 * S)) ** 2))
       const v = edge * (front * 3 + wake * 0.9) + halo * front * 1.1, w = clamp01(edge * front * 1.3 - 0.5)
       const bi0 = (Math.exp(-((din[i] / (1.3 * S)) ** 2)) * 0.15) * E.wIn[i]
@@ -1549,6 +1552,7 @@ function renderSweepFrame(ctx, p, params = ctx.params) {
     k.start = es.noStart ? 0 : k.startDeg / 360
     k.laps = Math.max(1, Math.min(8, Math.round(Number(P.laps) || 1)))
     k.x = P.extra != null && P.extra !== '' && Number.isFinite(Number(P.extra)) ? Number(P.extra) : (es.extra ? es.extra.def : 1)
+    k.trail = es.trail && P.trail != null && P.trail !== '' && Number.isFinite(Number(P.trail)) ? Math.max(0, Math.min(5, Number(P.trail))) : 1
     k.hue = es.fixedColor ? Number(P.hue) || 0 : 0
     p = (p * k.laps) % 1                                  // 次数：整数圈，p=1 仍回到 p=0，首尾相接
   }

@@ -813,6 +813,7 @@ self.postMessage({ type: 'ready' })`
       const p = S.project, f = fx(), inert = f.inert || {}, controls = []
       const sec = (title, items) => `<div class="fxm-sec"><div class="fxm-sec-title">${esc(title)}</div>${items.map((c) => c.html).join('')}</div>`
       const html = []
+      html.push(sec('资源', [{ html: `<div class="fxm-line"><label for="fxm-resource-name">名称</label><input id="fxm-resource-name" class="fxm-select" type="text" maxlength="120" data-resource-name aria-label="生成资源名称" value="${esc(p.resourceName || '')}" placeholder="${esc(defaultResourceName())}"></div>` }]))
       // 画板（特效扫光：帧数 / 时长 / 边距）
       const canvasItems = SW ? sweepCanvasItems() : [
         seg('canvas', '尺寸', FX().CANVAS_CHOICES.map((id) => { const c = FX().CANVASES.find((x) => x.id === id); return { id, label: c.label, disabled: id === 'base' && !S.base ? '先上传底图' : '' } }), FX().CANVAS_CHOICES.includes(p.canvas.preset) ? p.canvas.preset : '', (v) => setCanvas(v)),
@@ -866,6 +867,7 @@ self.postMessage({ type: 'ready' })`
       controls.push(...moItems); html.push(sec('整体动画', moItems))
       if (SW && SW.extra) html.push('<div class="fxm-sec"><div class="fxm-sec-title">写入动画</div><div data-sweep-extra></div></div>')
       E.params.innerHTML = html.join('')
+      E.params.querySelector('[data-resource-name]').oninput = (event) => { p.resourceName = event.target.value }
       if (SW && SW.extra) SW.extra(E.params.querySelector('[data-sweep-extra]'), { hasBase: !!S.base })
       for (const c of controls) if (c.bind) c.bind(E.params)
       // 存模板：有的效果不做模板（按底图本身扫的）
@@ -979,6 +981,10 @@ self.postMessage({ type: 'ready' })`
       const f = fx(), shape = FX().SHAPES.find((x) => x.id === S.project.shape.kind)
       return f.label + (shape && f.kind !== 'particle' && !f.centered && !f.baseOnly ? ' · ' + shape.label : '')
     }
+    function defaultResourceName() {
+      return SW ? `${String(options.name || '特效').split(/[\\/]/).pop().replace(/\.(png|jpe?g|webp)$/i, '')} · ${fx().label}` : options.name || defaultName()
+    }
+    function outputName() { return FX().resourceOutputName(S.project, defaultResourceName()) }
 
     function busy(text, ratio) {
       let b = E.window.querySelector('.fxm-busy')
@@ -1000,9 +1006,10 @@ self.postMessage({ type: 'ready' })`
       S.busy = true
       const playing = S.playing; S.playing = false
       try {
+        const name = outputName()
         const { blob } = await renderMp4()
         const s = size()
-        const info = { name: options.name || defaultName(), project: clone(S.project), ai: FX().aiDescriptor(S.project), width: s.w, height: s.h, frames: n(), fps: FX().FPS }
+        const info = { name, project: clone(S.project), ai: FX().aiDescriptor(S.project), width: s.w, height: s.h, frames: n(), fps: FX().FPS }
         busy(null)
         // 2026-10-15 用户：保存到仓库、存入模板库都没什么用，去掉——只留「用作素材」，点了同时进仓库
         if (options.onSaveWarehouse) await options.onSaveWarehouse(blob, info)
@@ -1019,9 +1026,10 @@ self.postMessage({ type: 'ready' })`
       S.busy = true
       const playing = S.playing; S.playing = false
       try {
+        const name = outputName()
         // 特效扫光：工程交给骨骼编辑器（它按模板的画板 / 时长重新出视频）
         if (options.saveTemplateRaw) {
-          const info = { name: options.name || defaultName(), project: clone(S.project), base: S.base ? S.base.rgba : null, setInfo: (t) => setInfo(t), busy }
+          const info = { name, project: clone(S.project), base: S.base ? S.base.rgba : null, setInfo: (t) => setInfo(t), busy }
           await options.onSaveTemplate(null, info)
           busy(null)
           return
@@ -1029,7 +1037,7 @@ self.postMessage({ type: 'ready' })`
         const { blob } = await renderMp4()
         const s = size()
         busy('正在存入模板库', 0.99)
-        const info = { name: options.name || defaultName(), project: clone(S.project), ai: FX().aiDescriptor(S.project), width: s.w, height: s.h, frames: n(), fps: FX().FPS }
+        const info = { name, project: clone(S.project), ai: FX().aiDescriptor(S.project), width: s.w, height: s.h, frames: n(), fps: FX().FPS }
         await options.onSaveTemplate(blob, info)
         busy(null); setInfo('已存入模板库：' + info.name)
       } catch (error) {
@@ -1107,7 +1115,7 @@ self.postMessage({ type: 'ready' })`
       S.busy = true
       const playing = S.playing; S.playing = false
       try {
-        await SW.onGenerate({ project: clone(S.project), base: S.base ? S.base.rgba : null, setInfo: (t) => setInfo(t), busy })
+        await SW.onGenerate({ name: outputName(), project: clone(S.project), base: S.base ? S.base.rgba : null, setInfo: (t) => setInfo(t), busy })
       } catch (error) {
         busy(null); setInfo('生成失败：' + error.message); console.error(error)
       } finally { S.busy = false; S.playing = playing; S.lastTick = 0 }

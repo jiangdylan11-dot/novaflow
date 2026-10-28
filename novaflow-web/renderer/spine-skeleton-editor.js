@@ -2434,8 +2434,8 @@
    * New material into the image folder: images (or a folder, which keeps its name and
    * subfolders) under `folder`, into the project right away. Returns the new image names.
    */
-  async function importIntoFolder(files, folder) {
-    const clean = (x) => x.replace(/\s+/g, '_').replace(/[<>:"\\|?*\x00-\x1f]/g, '_')
+  async function importIntoFolder(files, folder, options = {}) {
+    const clean = (x) => options.preserveNames ? x : x.replace(/\s+/g, '_').replace(/[<>:"\\|?*\x00-\x1f]/g, '_')
     const added = []
     const taken = (n) => (rt.atlas && rt.atlas.findRegion(n)) || added.includes(n)
     for (const f of [...files].filter((x) => IMG_RX.test(x.name))) {
@@ -8381,15 +8381,21 @@
    * Where the slices go: folder sweep/<底图名>/<方案>, files <底图名>_<方案>_01.png … (the slot names);
    * a second run of the same scheme gets a number on the scheme.
    */
-  function sweepFolderFor(image, scheme) {
+  function sweepFolderFor(image, scheme, resourceName = '') {
     const stem = image.split('/').pop()
     // beside the base picture (a project keeping its pictures in img/ gets img/sweep/…, not a second root)
     const dir = image.includes('/') ? image.slice(0, image.lastIndexOf('/') + 1) : ''
     const taken = (n) => !!(rt.atlas && rt.atlas.findRegion(n))
-    let k = 1
-    while (taken(`${dir}sweep/${stem}/${scheme}${k > 1 ? k : ''}/${stem}_${scheme}${k > 1 ? k : ''}_01`)) k++
-    const tag = scheme + (k > 1 ? k : '')
-    return { folder: `${dir}sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
+    const name = resourceName ? window.NovaFlowFxMaker.resourceOutputName({ resourceName }, '') : ''
+    const paths = (k) => {
+      const suffix = k > 1 ? `_${k}` : ''
+      if (name) return { folder: `${dir}sweep/${name}${suffix}`, prefix: `${name}${suffix}` }
+      const tag = scheme + (k > 1 ? k : '')
+      return { folder: `${dir}sweep/${stem}/${tag}`, prefix: `${stem}_${tag.replace(/-/g, '')}` }
+    }
+    let k = 1, result = paths(k)
+    while (taken(`${result.folder}/${result.prefix}_01`)) result = paths(++k)
+    return result
   }
 
   const sweepDataUrl = (px) => { const c = h('canvas', { width: px.w, height: px.h }); c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.rgba), px.w, px.h), 0, 0); return c.toDataURL('image/png') }
@@ -8434,6 +8440,7 @@
     // 工程：上次的效果 / 参数接着用；有底图 = 底图的图片轮廓，画板 = 底图 + 边距
     const last = state.sweepLast || {}
     const pj = FX.defaultProject()
+    pj.resourceName = last.resourceName || ''
     let want = last.effect && FX.effects().some((e) => e.id === last.effect && sweepEffectOk(e)) ? last.effect : cur.px ? 'base-base' : 'edge-meteor'
     if (!cur.px && FX.effectOf(want).needsBase) want = 'edge-meteor'
     const wfx = FX.effectOf(want), same = last.effect === want
@@ -8506,12 +8513,12 @@
             + (imgFx ? '；切片带底图画面，从「起」开始藏起原底图（一次性的播完不再出现）。' : '。')))
         },
         // 确定生成：切片（黑底 → 亮度当透明度的叠加切片）进图片文件夹，卡片换成它们
-        onGenerate: async ({ project, base, setInfo: say, busy }) => {
+        onGenerate: async ({ name, project, base, setInfo: say, busy }) => {
           const t0 = performance.now()
           const imgFx = sweepImageFx(project, !!base)
           if (imgFx) project.sliceAlpha = true
           const out = await UI.renderFrames({ project, base, scale: 1, onProgress: (stage, i, n) => { say(`生成中 ${i}/${n}`); if (busy) busy(`生成中 ${i}/${n}`, i / n) } })
-          const { folder, prefix } = sweepFolderFor(cur.image || 'fx', project.effect)
+          const { folder, prefix } = sweepFolderFor(cur.image || 'fx', project.effect, name)
           const files = []
           for (let i = 0; i < out.frames.length; i++) {
             const f = new Uint8ClampedArray(out.frames[i].buffer)
@@ -8526,7 +8533,7 @@
           const before = snapshot()
           let names
           try {
-            names = await importIntoFolder(files, folder)
+            names = await importIntoFolder(files, folder, { preserveNames: true })
             ensureAtlas()
             applyJson(state.json)
             state.history.push(before)
@@ -8565,7 +8572,7 @@
         else tp.outlines = tp.outlines.map((o) => ({ ...o, points: o.points.map(mapPt) }))
         if (tp.start) tp.start = mapPt(tp.start)
         tp.offset = (Number(src0.offset) || 0) * k
-        const label = `${stemOf()} · ${FX.effectOf(tp.effect).label}`
+        const label = info.name || `${stemOf()} · ${FX.effectOf(tp.effect).label}`
         const blob = await UI.renderProject({ project: tp, base: basePx(), onProgress: (stage, i, n) => { info.setInfo(stage === 'render' ? `渲染模板 ${i}/${n}` : '编码 MP4…'); if (info.busy) info.busy(stage === 'render' ? `渲染模板 ${i}/${n}` : '编码 MP4…', stage === 'render' ? (i / n) * 0.85 : 0.9) } })
         await mvp.addTemplate({ blob, label, width: dst.w, height: dst.h, ai: FX.aiDescriptor(tp), project: tp })
         if (info.busy) info.busy(null)
@@ -8573,7 +8580,7 @@
       },
       onClose: () => {
         const p = api && api.project
-        if (p) state.sweepLast = { effect: p.effect, params: { ...p.params }, colour: { ...p.colour }, motion: { ...p.motion }, lifecycle: p.lifecycle, offset: p.offset, traceDetail: p.traceDetail, outerOnly: p.outerOnly, direction: p.direction }
+        if (p) state.sweepLast = { resourceName: p.resourceName || '', effect: p.effect, params: { ...p.params }, colour: { ...p.colour }, motion: { ...p.motion }, lifecycle: p.lifecycle, offset: p.offset, traceDetail: p.traceDetail, outerOnly: p.outerOnly, direction: p.direction }
       },
     })
   }
