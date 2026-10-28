@@ -566,7 +566,7 @@ function renderUsers(usersResult, creditsResult) {
 
   if (isErrorResult(usersResult) || isUnconfiguredResult(usersResult)) {
     ["usersStatTotal", "usersStatActive", "usersStatDisabled", "usersStatStandard", "usersStatPro", "usersStatCredits"].forEach((id) => setText(id, "—"));
-    replaceRows("usersTableBody", [], 9, isErrorResult(usersResult) ? resultErrorText(usersResult) : UNCONFIGURED_TEXT);
+    replaceRows("usersTableBody", [], 8, isErrorResult(usersResult) ? resultErrorText(usersResult) : UNCONFIGURED_TEXT);
     return;
   }
   const creditMap = new Map((creditsResult?.records || []).map((item) => [String(item.user_id || ""), item]));
@@ -602,13 +602,22 @@ function renderUsers(usersResult, creditsResult) {
     const credit = creditMap.get(String(user.id || ""));
     const tr = document.createElement("tr");
     const accountLabel = userAccountLabel(user);
-    tr.appendChild(textCell(userDisplayName(user), "monoCell"));
-    tr.appendChild(textCell(accountLabel || "-"));
+    tr.appendChild(textCell(accountLabel || userDisplayName(user), "monoCell"));
     tr.appendChild(textCell(formatDateTime(user.created_at)));
 
     const balance = Number(user.current_credits ?? credit?.balance ?? 0) || 0;
     const creditCell = textCell(formatCreditAmount(balance));
     creditCell.classList.toggle("creditZero", balance === 0);
+    const creditActions = document.createElement("div");
+    creditActions.className = "userCreditActions";
+    const adjustButton = document.createElement("button");
+    adjustButton.type = "button";
+    adjustButton.className = "btn secondary";
+    adjustButton.textContent = "调整";
+    adjustButton.disabled = !userManagementState.createWritable;
+    adjustButton.addEventListener("click", () => selectMemberForAdjust(user.id));
+    creditActions.append(...creditCell.childNodes, adjustButton);
+    creditCell.appendChild(creditActions);
     tr.appendChild(creditCell);
 
     const planSelect = createTableSelect(
@@ -670,7 +679,6 @@ function renderUsers(usersResult, creditsResult) {
     saveButton.addEventListener("click", async () => {
       await saveUserRow(saveButton);
     });
-    actionWrap.appendChild(saveButton);
 
     const resetButton = document.createElement("button");
     resetButton.type = "button";
@@ -692,80 +700,24 @@ function renderUsers(usersResult, creditsResult) {
     deleteButton.addEventListener("click", async () => {
       await deleteUserRow(deleteButton);
     });
-    actionWrap.appendChild(deleteButton);
+    actionWrap.append(saveButton, deleteButton);
 
     tr.appendChild(nodeCell(actionWrap));
     return tr;
   });
-    replaceRows("usersTableBody", rows, 9, filter ? "没有匹配的用户" : "暂无用户数据");
+    replaceRows("usersTableBody", rows, 8, filter ? "没有匹配的用户" : "暂无用户数据");
 }
 
-function renderCreditStats(creditsResult) {
-  const credits = creditsResult?.records || [];
-  const total = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
-  const funded = credits.filter((item) => Number(item.balance || 0) > 0).length;
-  setText("creditStatTotal", formatCreditAmount(total));
-  setText("creditStatFunded", formatNumber(funded));
-  setText("creditStatEmpty", formatNumber(Math.max(0, credits.length - funded)));
-}
-
-let memberState = { users: [], credits: [], usersResult: null, creditsResult: null, writable: false };
+let memberState = { users: [], credits: [], writable: false };
 let memberAdjust = { userId: "", mode: "set" };
 
-function renderMembers(usersResult, creditsResult) {
-  const body = $("membersTableBody");
-  if (!body) return;
-  const live = (result) => result?.source === "supabase" && result?.status !== "error";
+function syncCreditAdjustment(usersResult, creditsResult) {
   memberState = {
-    usersResult,
-    creditsResult,
     users: usersResult?.records || [],
     credits: creditsResult?.records || [],
-    writable: live(usersResult) && live(creditsResult)
+    writable: userManagementWritable(usersResult) && userManagementWritable(creditsResult)
   };
-  if (isErrorResult(usersResult) || isUnconfiguredResult(usersResult)) {
-    ["creditStatTotal", "creditStatFunded", "creditStatEmpty"].forEach((id) => setText(id, "—"));
-    replaceRows("membersTableBody", [], 4, isErrorResult(usersResult) ? resultErrorText(usersResult) : UNCONFIGURED_TEXT);
-    return;
-  }
-  const creditByUser = new Map(memberState.credits.map((item) => [String(item.user_id || ""), item]));
-  const filter = String($("memberSearchInput")?.value || "").trim().toLowerCase();
-  const users = memberState.users.filter((user) => !filter || searchableUserText(user).includes(filter));
-
-  const rows = users.map((user) => {
-    const userId = String(user.id || "");
-    const credit = creditByUser.get(userId);
-    const balance = Number(user.current_credits ?? credit?.balance ?? 0) || 0;
-    const tr = document.createElement("tr");
-    tr.dataset.userId = userId;
-    if (userId && userId === memberAdjust.userId) tr.classList.add("active");
-    tr.appendChild(textCell(userAccountLabel(user) || userDisplayName(user)));
-    tr.appendChild(nodeCell(planBadge(user.plan)));
-    const creditCell = textCell(formatCreditAmount(balance));
-    creditCell.classList.toggle("creditZero", balance === 0);
-    tr.appendChild(creditCell);
-
-    const actions = document.createElement("div");
-    actions.className = "tableActions";
-    const adjust = document.createElement("button");
-    adjust.type = "button";
-    adjust.className = "btn primary";
-    adjust.textContent = "调整";
-    adjust.title = "在右侧改这个会员的积分";
-    adjust.addEventListener("click", () => selectMemberForAdjust(userId));
-    const ledger = document.createElement("button");
-    ledger.type = "button";
-    ledger.className = "btn secondary";
-    ledger.textContent = "流水";
-    ledger.title = "在 AI 服务中查看该用户的积分流水";
-    ledger.addEventListener("click", () => openUserLedger(user));
-    actions.append(adjust, ledger);
-    tr.appendChild(nodeCell(actions));
-    return tr;
-  });
-  setText("membersCount", filter ? `匹配 ${rows.length} / ${memberState.users.length}` : `共 ${memberState.users.length} 个`);
-  replaceRows("membersTableBody", rows, 4, filter ? "没有匹配的用户" : "暂无用户数据");
-  renderMemberAdjust({ prefill: true });
+  renderMemberAdjust();
 }
 
 function memberAdjustUser() {
@@ -781,9 +733,11 @@ function memberAdjustBalance() {
 
 function selectMemberForAdjust(userId) {
   memberAdjust.userId = String(userId || "");
-  document.querySelectorAll("#membersTableBody tr").forEach((row) => {
-    row.classList.toggle("active", Boolean(memberAdjust.userId) && row.dataset.userId === memberAdjust.userId);
-  });
+  $("memberAdjustReason").value = "";
+  $("memberAdjustNote").value = "";
+  $("memberAdjustValue").value = "";
+  setText("memberAdjustStatus", "");
+  openDataDialog("memberAdjustDialog");
   renderMemberAdjust({ prefill: true });
   const input = $("memberAdjustValue");
   if (input && !input.disabled) {
@@ -814,13 +768,13 @@ function renderMemberAdjust({ prefill = false } = {}) {
   if (mode) mode.disabled = !enabled;
   submit.disabled = !enabled;
   if (!user || balance == null) {
-    target.textContent = "在左侧列表点「调整」选择会员";
+    target.textContent = "请在用户列表点「调整」选择用户";
     hint.textContent = "";
     input.value = "";
     setText("memberAdjustStatus", "");
     return;
   }
-  target.textContent = `会员：${userAccountLabel(user) || userDisplayName(user)}`;
+  target.textContent = `用户：${userAccountLabel(user) || userDisplayName(user)}`;
   hint.textContent = `当前积分 ${formatCreditAmount(balance)}`;
   if (prefill && kind === "set") input.value = String(balance);
   setText("memberAdjustStatus", memberState.writable ? "" : "Supabase 未配置，不能写入");
@@ -832,7 +786,7 @@ async function submitMemberAdjust() {
   const user = memberAdjustUser();
   const balance = memberAdjustBalance();
   if (!user || balance == null) {
-    alert("请先在列表里点「调整」选择会员");
+    alert("请先在列表里点「调整」选择用户");
     return;
   }
   if (!memberState.writable) {
@@ -1116,14 +1070,14 @@ function renderDashboardRecentActivity() {
     return;
   }
   if (ledger?.error) {
-    empty("积分流水读取失败", "去 AI 服务查询或调整筛选");
+    empty("积分流水读取失败", "打开积分流水或调整筛选");
     setCountPill("dashboardLedgerCount", 0);
     return;
   }
   const rows = (Array.isArray(ledger?.records) ? ledger.records : []).slice(0, 20);
   setCountPill("dashboardLedgerCount", rows.length);
   if (!rows.length) {
-    empty("暂无积分流水", "去 AI 服务查询或调整筛选");
+    empty("暂无积分流水", "打开积分流水或调整筛选");
     return;
   }
   const table = document.createElement("table");
@@ -1264,19 +1218,24 @@ function renderDashboard(data) {
   ], "暂无状态数据");
 }
 
+let dataDialogTrigger = null;
+function openDataDialog(id) {
+  dataDialogTrigger = document.activeElement;
+  $(id).hidden = false;
+  $(id).querySelector('[role="dialog"]').focus();
+}
+
+function closeDataDialog(id) {
+  $(id).hidden = true;
+  if (dataDialogTrigger?.isConnected) dataDialogTrigger.focus();
+  else $("userSearchInput").focus();
+}
+
 function openUserLedger(user) {
-  const account = userAccountLabel(user) || user?.display_name || "";
-  showModule("ai-services");
-  const input = $("ledgerUser");
-  if (input) input.value = account;
-  const feature = $("ledgerFeature");
-  if (feature && !feature.value) feature.value = "";
-  const panel = input?.closest("section.panel");
-  if (panel) {
-    panel.classList.add("ledgerFocus");
-    panel.scrollIntoView({ block: "start" });
-    setTimeout(() => panel.classList.remove("ledgerFocus"), 1600);
-  }
+  $("ledgerUser").value = user ? userAccountLabel(user) || user.id || "" : "";
+  for (const id of ["ledgerFeature", "ledgerStatus", "ledgerFrom", "ledgerTo"]) $(id).value = "";
+  setText("creditLedgerTarget", user ? `用户：${userAccountLabel(user) || userDisplayName(user)}` : "全部用户");
+  openDataDialog("creditLedgerDialog");
   void queryLedger(false);
 }
 
@@ -1285,11 +1244,7 @@ function openActivityDestination() {
     showModule("compute");
     return;
   }
-  showModule("ai-services");
-  const panel = $("ledgerUser")?.closest("section.panel");
-  panel?.scrollIntoView({ block: "start" });
-  panel?.classList.add("ledgerFocus");
-  setTimeout(() => panel?.classList.remove("ledgerFocus"), 1600);
+  openUserLedger();
 }
 
 async function refreshDomesticBalance() {
@@ -1802,7 +1757,7 @@ async function loadAdminData() {
   try {
     renderDashboardRhCard({ state: "loading" });
     const users = await loadAdminDataset("getAdminUsers", "usersDataBadge");
-    const credits = await loadAdminDataset("getAdminCredits", "creditsDataBadge");
+    const credits = await loadAdminDataset("getAdminCredits");
     const providers = await loadAdminDataset("getAdminAiProviders", "aiServicesDataBadge");
     const settings = await loadAdminDataset("getAdminSystemSettings", "settingsDataBadge");
     const runninghubStatus = await loadAdminProviderStatus("getAdminRunningHubProviderStatus");
@@ -1814,23 +1769,20 @@ async function loadAdminData() {
     const results = [users, credits, providers, settings];
 
     setAdminDataSourceStatus(results);
-    setDataBadge("creditsDataBadge", hasErrorResult([credits]) ? { status: "error" } : hasSupabaseResult([credits]) ? { source: "supabase" } : { source: "mock" });
     setDataBadge("aiServicesDataBadge", hasErrorResult([providers, settings]) ? { status: "error" } : hasSupabaseResult([providers, settings]) ? { source: "supabase" } : { source: "mock" });
 
     renderUsers(users, credits);
     renderAiServices(providers, settings, null, null, runninghubStatus);
     await renderFeatureCreditAdmin();
     renderProviderRuntimeConfigControls(null, null, runninghubStatus);
-    renderCreditStats(credits);
-    renderMembers(users, credits);
+    syncCreditAdjustment(users, credits);
     renderDashboard({ users, credits, providers, settings, runninghubStatus, usage, workers, ledger });
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
-    ["dashboardDataBadge", "usersDataBadge", "creditsDataBadge", "aiServicesDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
-    replaceRows("usersTableBody", [], 9, message);
+    ["dashboardDataBadge", "usersDataBadge", "aiServicesDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
+    replaceRows("usersTableBody", [], 8, message);
     replaceRows("aiProvidersTableBody", [], 5, message);
-    replaceRows("membersTableBody", [], 4, message);
     dashboardSnapshot = { usage: { source: "supabase", status: "error", records: [], error: message }, ledger: { records: [], error: message } };
     renderDashboardRecentActivity();
     renderDashboardRhCard({ state: "error", message: "余额读取失败" });
@@ -2825,12 +2777,6 @@ async function init() {
   $("createAdminUser").addEventListener("click", async () => {
     await createAdminUser();
   });
-  $("memberSearchInput")?.addEventListener("input", () => {
-    renderMembers(
-      memberState.usersResult || { records: [] },
-      memberState.creditsResult || { records: [] }
-    );
-  });
   $("memberAdjustMode")?.addEventListener("change", () => renderMemberAdjust({ prefill: false }));
   document.querySelectorAll("[data-activity-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3030,8 +2976,28 @@ async function init() {
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!$("passwordEditDialog").hidden) closePasswordEditDialog();
+    else if (!$("creditLedgerDialog").hidden) closeDataDialog("creditLedgerDialog");
+    else if (!$("memberAdjustDialog").hidden) closeDataDialog("memberAdjustDialog");
     else closeOpenDrawers();
   });
+
+  $("openCreditLedger").addEventListener("click", () => openUserLedger());
+  document.querySelectorAll("[data-dialog-close]").forEach((button) => {
+    button.addEventListener("click", () => closeDataDialog(button.dataset.dialogClose));
+  });
+  for (const id of ["creditLedgerDialog", "memberAdjustDialog"]) {
+    $(id).addEventListener("click", (event) => { if (event.target === $(id)) closeDataDialog(id); });
+    $(id).addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      const fields = [...$(id).querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')];
+      const first = fields[0], last = fields[fields.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement.getAttribute("role") === "dialog")) {
+        event.preventDefault(); last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first?.focus();
+      }
+    });
+  }
 
   document.querySelectorAll("[data-drawer-open]").forEach((el) => {
     el.addEventListener("click", () => openDrawer(el.getAttribute("data-drawer-open") || ""));
@@ -3249,10 +3215,25 @@ function ledgerQueryPayload() {
   };
 }
 
+let ledgerQuerySequence = 0;
+function showLedgerMessage(message) {
+  const row = document.createElement("tr");
+  const cell = textCell(message);
+  cell.colSpan = 7;
+  row.appendChild(cell);
+  $("creditLedgerBody").replaceChildren(row);
+}
+
 async function queryLedger(download) {
+  const sequence = ++ledgerQuerySequence;
+  const payload = ledgerQueryPayload();
+  setText("creditLedgerTarget", payload.user ? `用户：${payload.user}` : "全部用户");
+  showLedgerMessage("读取中...");
   const status = $("ledgerStatusText");
+  if (status) status.textContent = "读取中...";
   try {
-    const response = await window.adminAPI.queryCreditLedger(ledgerQueryPayload());
+    const response = await window.adminAPI.queryCreditLedger(payload);
+    if (sequence !== ledgerQuerySequence) return;
     if (!response?.ok) throw new Error(response?.error || "查询失败");
     const result = response.result || {};
     const records = result.records || [];
@@ -3303,6 +3284,8 @@ async function queryLedger(download) {
       URL.revokeObjectURL(url);
     }
   } catch (err) {
+    if (sequence !== ledgerQuerySequence) return;
+    showLedgerMessage("流水读取失败，请重试");
     if (status) status.textContent = String(err?.message || err);
   }
 }

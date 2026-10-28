@@ -12,6 +12,7 @@
     "server": "node admin-server/server.js",
     "test": "node tests/dashboard-contract.cjs && node tests/retired-terms.cjs && node --test tests/runninghub-provider.test.cjs",
     "test:runninghub-ui": "electron tests/runninghub-ui.cjs",
+    "test:users-ui": "electron tests/users-ui.cjs",
     "build:win": "electron-builder --config electron-builder.json --win nsis --x64"
   },
   "dependencies": {
