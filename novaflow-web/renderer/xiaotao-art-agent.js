@@ -448,11 +448,22 @@
         if (!verdict.ok) {state.staged = state.staged.filter(entry => entry !== item); note(verdict.message); notify(); continue;}
         item.kind = verdict.kind; item.mimeType = verdict.mimeType; item.ext = verdict.ext;
         if (verdict.kind === 'image') {try {item.previewUrl = await readPreview(file);} catch {state.staged = state.staged.filter(entry => entry !== item); note(`${item.name} 读取失败`); notify(); continue;}}
+        else if (typeof root.URL?.createObjectURL === 'function') {try {item.previewUrl = root.URL.createObjectURL(file);} catch {}}
         item.status = 'ready'; notify();
       }
       return true;
     }
+    function releasePreview(item) {
+      const url = item?.previewUrl;
+      if (url && String(url).startsWith('blob:') && typeof root.URL?.revokeObjectURL === 'function') {
+        try { root.URL.revokeObjectURL(url); } catch {}
+        item.previewUrl = '';
+      }
+    }
+    function releasePreviews(items) { for (const item of items || []) releasePreview(item); }
     function removeStaged(id) {
+      const gone = state.staged.filter(item => item.id === id);
+      releasePreviews(gone);
       state.staged = state.staged.filter(item => item.id !== id); notify(); return true;
     }
     async function consumeStaged(message) {
@@ -469,6 +480,7 @@
       }
       for (const item of plan.reject) notes.push(item.message);
       carryAttachments = ready.map(item => ({name:item.name, kind:item.kind, dataUrl:item.kind === 'image' ? item.previewUrl : '', mimeType:item.mimeType}));
+      releasePreviews(ready.filter(item => !plan.ask.includes(item)));
       if (plan.ask.length) {
         const pendingId = 'pend-' + (++stagedSeq);
         state.pendingUploads = plan.ask.map(item => ({name:item.name, kind:item.kind, mimeType:item.mimeType, previewUrl:item.previewUrl || '', file:item.file, pendingId}));
@@ -490,6 +502,7 @@
         try {await host().place({...item, destination}); done.push(item); notes.push(`已放入${destination.label}：${item.name}`);}
         catch (error) {notes.push(String(error?.message || error));}
       }
+      releasePreviews(done);
       state.pendingUploads = state.pendingUploads.filter(item => !done.includes(item));
       if (!state.pendingUploads.length) state.pendingUploadId = '';
       note(notes.join('\n') || '没有放入文件'); notify(); return done.length > 0;
@@ -715,13 +728,14 @@
       } catch (error) {await recordReceipt('failed'); state.error = String(error?.message || error); state.status = '未完成生成'; invalidate(); return false;}
       finally {state.generating = false; state.applying = false; notify();}
     }
-    function reset() {if (state.pending || state.generating || state.applying || state.uploading) return false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; bridge.clearPrepared(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify(); return true;}
+    function releaseStagedMedia() { releasePreviews(state.staged); releasePreviews(state.pendingUploads); }
+    function reset() {if (state.pending || state.generating || state.applying || state.uploading) return false; ++serial; stopStatusPolling(); activeRequest = ''; activeSnapshot = null; activeMode = 'chat'; lastRequestMessage = ''; carryAttachments = null; carryAsk = null; bridge.clearPrepared(); releaseStagedMedia(); for (const provider of ['local','api']) sessions[provider] = {messages:[],history:[],conversationId:''}; Object.assign(state, {messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, confirmation:null,samplingApproval:null,operation:null,error:'', toolTrace:[], staged:[], pendingUploads:[], pendingUploadId:'', status:state.mode === 'drawing' ? '新对话，将使用当前绘图内容' : '新对话，可以直接聊天'}); notify(); return true;}
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
       Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能 · 不扣积分' : '已切换在线智能 · 按实际用量计费'}); notify(); return true;
     }
-    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination});
+    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;
@@ -792,6 +806,8 @@
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onStart:() => {greeting.hidden = true;},onEnd:() => {if (open) anchorPanel();}});
     const bridge = createBridge(); let rendered = [], renderedProposal = null, contextStamp = '', previewImages = [], open = false;
     const controller = createController({bridge, storage:createTabScopedStorage(root.localStorage, root.sessionStorage), onChange:render});
+    const releasePanel = () => controller.releaseStagedMedia();
+    if (typeof root.addEventListener === 'function') root.addEventListener('pagehide', releasePanel);
     async function copyText(text, button) {
       try {
         if (root.navigator?.clipboard?.writeText) await root.navigator.clipboard.writeText(text);

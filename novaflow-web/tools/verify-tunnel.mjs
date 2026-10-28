@@ -99,7 +99,10 @@ if (url) {
     const upToken = await issueGrantToken(
       { userId: 'u1', taskId: TASK, workerId, op: GRANT_OP.UPLOAD, ttlSeconds: 600 }, grantKey
     );
-    const REF = Buffer.from('reference-bytes-' + Date.now());
+    const REF = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('reference-bytes-' + Date.now())
+    ]);
     const placed = await req('/gw/tasks/' + TASK + '/input/ref.png?grant=' + upToken,
       { method: 'PUT', headers: { 'content-type': 'image/png' }, body: REF }, { tries: 3 });
     check('with the right grant, a reference image lands on the disk',

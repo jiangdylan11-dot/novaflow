@@ -6552,6 +6552,23 @@ ipcMain.handle("runtime-request-binary", async (_evt, payload) => {
   }
 });
 
+handleNovaFlowTempIpc("runtime-upload-file", async (_evt, payload) => {
+  const slots = {
+    image_video: ["image"],
+    first_frame: ["image"],
+    last_frame: ["image"],
+    multi_reference: ["image", "video", "audio"],
+    img2img: ["image"]
+  };
+  const slot = String(payload?.slot || "");
+  const kind = String(payload?.kind || "");
+  const fileName = String(payload?.fileName || "文件");
+  const accepted = slots[slot];
+  if (!accepted) return { ok: false, error: `${fileName} 没有目标位置` };
+  if (!accepted.includes(kind)) return { ok: false, error: `${fileName} 不能放到该位置` };
+  return { ok: true, result: { name: fileName, kind, slot } };
+});
+
 handleNovaFlowTempIpc("runtime-upload-image", async (_evt, payload) => {
   const baseUrl = resolveRuntimeBaseUrl(payload?.baseUrl || "");
   if (!baseUrl) return { ok: false, error: "invalid baseUrl" };

@@ -828,9 +828,11 @@
         const grant = await grantFor(task, 'upload');
         const base = String(grant.endpoint || '').replace(/\/+$/, '');
         if (!base) throw new Error('算力节点没有可用地址');
+        const headers = { 'content-type': mimeFor(name), 'x-novaflow-grant': grant.token };
+        if (options.slot) headers['x-novaflow-upload-slot'] = String(options.slot);
         const res = await fetch(base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(name), {
           method: 'PUT',
-          headers: { 'content-type': mimeFor(name), 'x-novaflow-grant': grant.token },
+          headers,
           body: bytes
         });
         if (!res.ok) throw Object.assign(new Error(name + ' 上传返回 ' + res.status), { status: res.status });
@@ -1210,8 +1212,9 @@
       // the task, every upload of the file came back 400, the node waited two minutes for it, and the
       // panel said only 下发失败. Give such a name an ASCII head instead.
       if (!/^[A-Za-z0-9]/.test(safe)) safe = 'ref-' + safe.replace(/^[._-]+/, '');
+      const slot = String(payload.slot || '');
       pendingUploads.push({ name: safe, bytes: (bytes && bytes.byteLength) || 0, kind: 'image' });
-      uploads.set(safe, { bytes: bytes, kind: 'image', mimeType: mimeFor(safe) });
+      uploads.set(safe, { bytes: bytes, kind: 'image', mimeType: payload.mimeType || mimeFor(safe), slot });
       return { ok: true, status: 200, result: { name: safe, subfolder: '', type: 'input', kind: 'image' } };
     },
 

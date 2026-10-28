@@ -9,6 +9,7 @@ const FORMATS = Object.freeze([
   spec('jpg', 'image', ['image/jpeg'], IMAGE_MAX_BYTES, '24MB'),
   spec('jpeg', 'image', ['image/jpeg'], IMAGE_MAX_BYTES, '24MB'),
   spec('webp', 'image', ['image/webp'], IMAGE_MAX_BYTES, '24MB'),
+  spec('gif', 'image', ['image/gif'], IMAGE_MAX_BYTES, '24MB'),
   spec('mp4', 'video', ['video/mp4'], MEDIA_MAX_BYTES, '64MB'),
   spec('mov', 'video', ['video/quicktime', 'video/mp4'], MEDIA_MAX_BYTES, '64MB'),
   spec('webm', 'video', ['video/webm'], MEDIA_MAX_BYTES, '64MB'),
@@ -59,6 +60,7 @@ function ftypBrand(bytes) {
 function magicMatches(ext, bytes) {
   const brand = ftypBrand(bytes).toLowerCase();
   if (ext === 'png') return ascii(bytes, 0, 8) === '\x89PNG\r\n\x1a\n';
+  if (ext === 'gif') return ascii(bytes, 0, 6) === 'GIF87a' || ascii(bytes, 0, 6) === 'GIF89a';
   if (ext === 'jpg' || ext === 'jpeg') return byteAt(bytes, 0) === 0xff && byteAt(bytes, 1) === 0xd8 && byteAt(bytes, 2) === 0xff;
   if (ext === 'webp') return ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WEBP';
   if (ext === 'mp4') return Boolean(brand) && MP4_BRANDS.has(brand) && !M4A_BRANDS.has(brand);
@@ -73,19 +75,31 @@ function magicMatches(ext, bytes) {
   return false;
 }
 
-export function inspectWorkerUpload({ name, mimeType, bytes, slot } = {}) {
+export function uploadByteCap(name) {
+  const ext = (String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
+  const known = FORMATS.find(item => item.ext === ext);
+  return known ? known.maxBytes : MEDIA_MAX_BYTES;
+}
+
+// Slot is optional. A missing slot does not skip the check: a known media
+// extension still has to match its magic bytes and its size cap. Anything
+// else (json, bin, atlas, psd, models) stays allowed under the global cap.
+export function inspectWorkerUpload({ name, mimeType, bytes, size, slot } = {}) {
   const fileName = String(name || '未命名文件');
   const ext = (fileName.toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
   const known = FORMATS.find(item => item.ext === ext);
-  if (!known) return { ok: false, message: `不支持 ${fileName}：只能上传 PNG、JPG、JPEG、WEBP、MP4、MOV、WEBM、MP3、WAV、M4A、AAC、OGG、FLAC` };
-  const slotInfo = SLOTS[String(slot || '')];
-  if (!slotInfo) return { ok: false, message: `${fileName} 没有目标位置` };
-  if (!slotInfo.kinds.includes(known.kind)) return { ok: false, message: `${fileName} 不能放到${slotInfo.label}` };
+  const slotInfo = SLOTS[String(slot || '')] || null;
+  const length = Number(size ?? bytes?.byteLength ?? bytes?.length);
+  if (!known) {
+    if (slotInfo) return { ok: false, message: `${fileName} 不能放到${slotInfo.label}` };
+    if (Number.isFinite(length) && length > MEDIA_MAX_BYTES) return { ok: false, message: `${fileName} 超过 64MB` };
+    return { ok: true, name: fileName, ext, kind: 'file', size: length };
+  }
+  if (slotInfo && !slotInfo.kinds.includes(known.kind)) return { ok: false, message: `${fileName} 不能放到${slotInfo.label}` };
   const mime = String(mimeType || '').split(';', 1)[0].trim().toLowerCase();
-  if (!mime || !known.mimes.includes(mime)) return { ok: false, message: `${fileName} 的扩展名和文件类型不一致` };
-  const length = Number(bytes?.byteLength ?? bytes?.length);
+  if (mime && mime !== 'application/octet-stream' && !known.mimes.includes(mime)) return { ok: false, message: `${fileName} 的扩展名和文件类型不一致` };
   if (!Number.isFinite(length) || length <= 0) return { ok: false, message: `${fileName} 是空文件` };
   if (length > known.maxBytes) return { ok: false, message: `${fileName} 超过 ${known.maxLabel}` };
   if (!magicMatches(ext, bytes)) return { ok: false, message: `${fileName} 的文件内容与 ${ext.toUpperCase()} 不符` };
-  return { ok: true, name: fileName, ext, kind: known.kind, mimeType: mime, size: length, slot, maxBytes: known.maxBytes };
+  return { ok: true, name: fileName, ext, kind: known.kind, mimeType: mime, size: length, slot: slotInfo ? String(slot) : '', maxBytes: known.maxBytes };
 }

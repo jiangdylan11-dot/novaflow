@@ -57,7 +57,8 @@
     const restorePreview=item=>{if(item?.blob&&(!item.dataUrl||String(item.dataUrl).startsWith('blob:'))&&typeof root.URL?.createObjectURL==='function')item.dataUrl=root.URL.createObjectURL(item.blob);return item;};
     const ensureLoaded=id=>{id=String(id||'b1');if(!loads.has(id)){const key=id;loads.set(key,storage.get(key).then(saved=>{const items=(saved?.version===1?saved.items:[]).map(restorePreview);validate(items);if(saved?.version===1)savedBoards.add(key);boards.set(key,items);emit();}).catch(e=>{error='H3 素材恢复失败：'+e.message;emit();throw e;}));}return loads.get(id);};
     const load=id=>{active=String(id||'b1');return ensureLoaded(active);};
-    const set=async(id,items)=>{validate(items);await storage.put(id,{version:1,items:clone(items)});savedBoards.add(id);boards.set(id,clone(items));error='';emit();};
+    const releaseBlobUrl=item=>{const url=item?.dataUrl;if(url&&String(url).startsWith('blob:')&&typeof root.URL?.revokeObjectURL==='function'){try{root.URL.revokeObjectURL(url);}catch{}}};
+    const set=async(id,items)=>{const previous=get(id);const keep=new Set(items.map(item=>item?.sourceId));for(const item of previous)if(!keep.has(item?.sourceId))releaseBlobUrl(item);validate(items);await storage.put(id,{version:1,items:clone(items)});savedBoards.add(id);boards.set(id,clone(items));error='';emit();};
     const mutate=(fn,id=active)=>{pending=pending.catch(()=>{}).then(()=>ensureLoaded(id)).then(()=>fn(id));return pending.catch(e=>{error=e.message;emit();throw e;});};
     return {
       load,get,hasSaved:(id=active)=>savedBoards.has(id),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},getError:()=>error,
@@ -105,7 +106,7 @@
         const operation=async()=>{
           for(const {file,actual,key}of accepted)try {
             if(target.get(id).filter(x=>x.kind===kind).length>=LIMITS[kind])throw new Error(CN[kind]+'已满，最多 '+LIMITS[kind]+' 个');
-            let blob=file,name=file.name,derived=false;
+            let blob=file,name=file.name,derived=false,dropPreview=()=>{};
             if(kind==='audio'&&actual==='video'){
               const result=await extract(file);
               if(!result?.ok||!result.blob)throw new Error(result?.error||'视频音轨提取失败');
@@ -117,6 +118,7 @@
             const objectUrl=representation==='object-url';
             const preview=objectUrl?(typeof root.URL?.createObjectURL==='function'?root.URL.createObjectURL(blob):'blob:xiaotao-upload/'+root.crypto.randomUUID()):await read(blob);
             const item={sourceId:root.crypto.randomUUID(),kind,fileName:name,type:blob.type,size:blob.size,lastModified:file.lastModified,dataUrl:preview,...(objectUrl?{blob}:{}),...(derived?{originalFileName:file.name,derivedFromVideo:true}: {})};
+            dropPreview=()=>{if(objectUrl&&String(preview).startsWith('blob:')&&typeof root.URL?.revokeObjectURL==='function'){try{root.URL.revokeObjectURL(preview);}catch{}}};
             if(kind==='audio'){
               const durationSec=await probe(item);item.durationSec=durationSec;
               const policy=root.NovaFlowAiSequenceMiniMaxH3Resource;
@@ -126,7 +128,7 @@
               else if(durationSec<2||durationSec>15||durations.reduce((n,x)=>n+x.durationSec,0)+durationSec>15.0005)throw new Error('参考音频需为 2–15 秒，全部音频合计不超过 15 秒');
             }
             await target.add([item],id);imported.push(item);
-          }catch(error){errors.push({fileName:file.name,message:String(error?.message||error)});target.clearError?.();}
+          }catch(error){if(typeof dropPreview==='function')dropPreview();errors.push({fileName:file.name,message:String(error?.message||error)});target.clearError?.();}
           finally{inFlight.delete(key);reserve(id,kind,-1);}
           publish(id,kind,errors,focus);return {boardId:id,imported,errors};
         };

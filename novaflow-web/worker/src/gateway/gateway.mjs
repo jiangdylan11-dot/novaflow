@@ -15,12 +15,13 @@
 // downloads (spec 12).
 
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
-import { stat, mkdir, writeFile, readdir, rm } from 'node:fs/promises';
-import { join, resolve, extname, sep } from 'node:path';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { stat, mkdir, readdir, rm } from 'node:fs/promises';
+import { once } from 'node:events';
+import { join, resolve, extname, sep, dirname } from 'node:path';
 import { verifyGrantToken } from '../../../packages/shared/src/tokens.mjs';
 import { GRANT_OP, isSafeFilename } from '../../../packages/shared/src/protocol.mjs';
-import { inspectWorkerUpload } from '../../../packages/shared/src/xiaotao-upload-guard.mjs';
+import { inspectWorkerUpload, uploadByteCap } from '../../../packages/shared/src/xiaotao-upload-guard.mjs';
 
 const CONTENT_TYPES = {
   '.png': 'image/png',
@@ -141,24 +142,52 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
     createReadStream(filePath).pipe(res);
   }
 
-  async function readUpload(req) {
-    const chunks = [];
+  // Count bytes as they arrive and stop at the cap. The file is removed unless
+  // the whole body lands under the cap, so a rejected upload leaves nothing behind.
+  async function streamUpload(req, filePath, maxBytes, tooBigMessage) {
+    await mkdir(dirname(filePath), { recursive: true });
+    const out = createWriteStream(filePath);
+    const head = Buffer.alloc(64);
+    let headLen = 0;
     let total = 0;
-    for await (const chunk of req) {
-      total += chunk.length;
-      if (total > MAX_UPLOAD_BYTES) {
-        throw Object.assign(new Error('upload exceeds ' + MAX_UPLOAD_BYTES + ' bytes'), { status: 413 });
+    let oversize = false;
+    const drop = async () => {
+      out.destroy();
+      await rm(filePath, { force: true });
+    };
+    try {
+      for await (const chunk of req) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        total += buf.length;
+        if (total > maxBytes) {
+          oversize = true;
+          break;
+        }
+        if (headLen < head.length) {
+          const n = Math.min(head.length - headLen, buf.length);
+          buf.copy(head, headLen, 0, n);
+          headLen += n;
+        }
+        if (!out.write(buf)) await once(out, 'drain');
       }
-      chunks.push(chunk);
+    } catch (error) {
+      await drop();
+      throw error;
     }
-    return Buffer.concat(chunks);
+    await new Promise((resolve) => out.end(resolve));
+    if (oversize || total <= 0) {
+      await drop();
+      const message = oversize ? tooBigMessage : '是空文件';
+      throw Object.assign(new Error(message), { status: oversize ? 413 : 400, close: oversize });
+    }
+    return { total, head: head.subarray(0, headLen) };
   }
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
-    const fail = (status, message) => {
-      res.writeHead(status, { 'content-type': 'application/json', ...corsHeaders(req.headers.origin) });
-      res.end(JSON.stringify({ ok: false, error: message }));
+    const fail = (status, message, close) => {
+      res.writeHead(status, { 'content-type': 'application/json', connection: close ? 'close' : 'keep-alive', ...corsHeaders(req.headers.origin) });
+      res.end(JSON.stringify({ ok: false, error: message }), () => { if (close) res.destroy(); });
     };
 
     try {
@@ -229,23 +258,25 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
 
       if ((req.method === 'PUT' || req.method === 'POST') && kind === 'input') {
         const grant = await readGrant(req, url, { taskId, op: GRANT_OP.UPLOAD });
-        const bytes = await readUpload(req);
+        const cap = Math.min(uploadByteCap(name), MAX_UPLOAD_BYTES);
+        const capLabel = cap <= 24 * 1024 * 1024 ? '24MB' : '64MB';
+        const streamed = await streamUpload(req, filePath, cap, `${name} 超过 ${capLabel}`);
         const slot = String(req.headers['x-novaflow-upload-slot'] || '').trim();
-        if (slot) {
-          const verdict = inspectWorkerUpload({
-            name,
-            mimeType: req.headers['content-type'],
-            bytes,
-            slot
-          });
-          if (!verdict.ok) throw Object.assign(new Error(verdict.message), { status: 400 });
+        const verdict = inspectWorkerUpload({
+          name,
+          mimeType: req.headers['content-type'],
+          bytes: streamed.head,
+          size: streamed.total,
+          slot
+        });
+        if (!verdict.ok) {
+          await rm(filePath, { force: true });
+          throw Object.assign(new Error(verdict.message), { status: 400 });
         }
-        await mkdir(dir, { recursive: true });
-        await writeFile(filePath, bytes);
-        log('input received', { taskId, name, bytes: bytes.length });
-        if (onUpload) await onUpload({ taskId, name, bytes: bytes.length, userId: grant.sub });
+        log('input received', { taskId, name, bytes: streamed.total });
+        if (onUpload) await onUpload({ taskId, name, bytes: streamed.total, userId: grant.sub });
         res.writeHead(200, { 'content-type': 'application/json', ...corsHeaders(req.headers.origin) });
-        res.end(JSON.stringify({ ok: true, name, bytes: bytes.length }));
+        res.end(JSON.stringify({ ok: true, name, bytes: streamed.total }));
         return;
       }
 
@@ -259,7 +290,7 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
     } catch (error) {
       const status = Number(error?.status) || 500;
       if (status >= 500) log('gateway error', { path: url.pathname, error: String(error?.stack || error) });
-      fail(status, String(error?.message || 'gateway error'));
+      fail(status, String(error?.message || 'gateway error'), error?.close);
     }
   });
 

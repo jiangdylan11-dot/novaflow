@@ -297,7 +297,7 @@
   }
   async function stageWorkerUpload(scope, file, destination) {
     const api = scope.electronAPI;
-    if (typeof api?.pickXiaotaoUploads === 'function' || typeof api?.runtimeUploadFile !== 'function') return null;
+    if (typeof api?.runtimeUploadFile !== 'function') return null;
     const bytes = typeof file.arrayBuffer === 'function' ? new Uint8Array(await file.arrayBuffer()) : file;
     const verdict = inspectWorkerUpload({name:file?.name, mimeType:file?.type, bytes, slot:destination?.id});
     if (!verdict.ok) throw new Error(verdict.message);

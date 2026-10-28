@@ -397,8 +397,10 @@ await test('the web page opens a file input, stages until send, then uses the wo
   env.sandbox.document = documentFor();
   env.sandbox.electronAPI.pickXiaotaoUploads = async () => ({ canceled: true });
   const desktop = env.api.createUploadHost(env.sandbox);
-  await desktop.place({ destination: env.api.destinationById('multi_reference'), file: file('desk.mp4', 'video/mp4'), kind: 'video', name: 'desk.mp4', mimeType: 'video/mp4' });
-  assert.equal(uploads.length, 0);
+  await desktop.place({ destination: env.api.destinationById('multi_reference'), file: new File([magic('mp4')], 'desk.mp4', { type: 'video/mp4' }), kind: 'video', name: 'desk.mp4', mimeType: 'video/mp4' });
+  assert.equal(uploads[0].kind, 'video');
+  assert.equal(uploads[0].slot, 'multi_reference');
+  uploads.length = 0;
   delete env.sandbox.electronAPI.pickXiaotaoUploads;
 
   const doc = documentFor();
@@ -473,7 +475,8 @@ await test('the worker rejects a file the client extension check would allow, an
 });
 
 await test('多参 import keeps the file as a blob url instead of a base64 copy', async () => {
-  const sandbox = { console, crypto: webcrypto, URL: { createObjectURL(blob) { return 'blob:test/' + blob.size; } }, indexedDB: null };
+  const revoked = [];
+  const sandbox = { console, crypto: webcrypto, URL: { createObjectURL(blob) { return 'blob:test/' + blob.size; }, revokeObjectURL(url) { revoked.push(url); } }, indexedDB: null };
   sandbox.window = sandbox;
   const vm = createContext(sandbox);
   runInContext(read('renderer/ai-sequence-h3-media.js'), vm);
@@ -486,6 +489,8 @@ await test('多参 import keeps the file as a blob url instead of a base64 copy'
   assert.equal(readAsDataURL, 0);
   assert.equal(result.imported[0].dataUrl, 'blob:test/' + blob.size);
   assert.equal(result.imported[0].blob, blob);
+  await store.remove(result.imported[0].sourceId);
+  assert.equal(revoked.at(-1), result.imported[0].dataUrl);
 });
 
 await test('the worker gateway rejects a slot upload whose bytes do not match', async () => {
@@ -511,6 +516,46 @@ await test('the worker gateway rejects a slot upload whose bytes do not match', 
       body: magic('png')
     });
     assert.equal(accepted.status, 200);
+
+    const headerless = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/fake.png`, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'x-novaflow-grant': token },
+      body: magic('gif')
+    });
+    const headerlessBody = await headerless.json();
+    assert.equal(headerless.status, 400);
+    assert.match(headerlessBody.error, /文件内容与 PNG 不符/);
+    const { access } = await import('node:fs/promises');
+    await assert.rejects(access(join(dir, 'tasks', taskId, 'input', 'fake.png')));
+
+    let sent = 0;
+    const total = 25 * 1024 * 1024;
+    const chunk = new Uint8Array(1024 * 1024);
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (sent >= total) { controller.close(); return; }
+        const n = Math.min(chunk.byteLength, total - sent);
+        controller.enqueue(chunk.subarray(0, n));
+        sent += n;
+      }
+    });
+    const oversized = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/big.png`, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'x-novaflow-grant': token },
+      duplex: 'half',
+      body: stream
+    });
+    assert.equal(oversized.status, 413);
+    await assert.rejects(access(join(dir, 'tasks', taskId, 'input', 'big.png')));
+
+    for (const name of ['request.json', 'frames-0.bin', 'pack.atlas', 'layer.psd']) {
+      const kept = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/${name}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/octet-stream', 'x-novaflow-grant': token },
+        body: 'ok'
+      });
+      assert.equal(kept.status, 200, name);
+    }
   } finally {
     await gateway.close();
     await rm(dir, { recursive: true, force: true });
