@@ -54,6 +54,8 @@ test('recommended prices, empty renminbi rate, and low-balance threshold', async
   assert.equal(quoteFeature({ feature: 'prompt-optimize', units: 2 }).credits, 4);
   assert.equal(quoteFeature({ feature: 'image-reverse' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'image-reverse', units: 3 }).credits, 4);
+  assert.equal(quoteFeature({ feature: 'aifx-material' }).feature, 'image_reverse');
+  assert.equal(quoteFeature({ feature: 'aifx-material' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'video-reverse' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'ui-catalog' }).credits, 14);
   assert.equal(quoteFeature({ feature: 'gpt_image_2_5_economy', units: 3 }).credits, 66);
@@ -98,7 +100,7 @@ test('browser price card matches the charge card', async () => {
   sandbox.globalThis = sandbox;
   runInContext(source, createContext(sandbox));
   const api = sandbox.NovaFlowFeatureCreditPrices;
-  for (const [feature, units] of [['prompt-optimize', 2], ['gpt_image_2_5_economy', 3], ['g-4.2', 2], ['local-flash', 1], ['image_reverse', 1]]) {
+  for (const [feature, units] of [['prompt-optimize', 2], ['gpt_image_2_5_economy', 3], ['g-4.2', 2], ['local-flash', 1], ['image_reverse', 1], ['aifx-material', 1]]) {
     assert.equal(api.quoteFeature({ feature, units }).credits, quoteFeature({ feature, units }).credits, feature);
   }
   api.applyConfig({ prices: { gpt_image_2_5_economy: 30 }, low_balance_usd: 2, credits_to_cny: null });

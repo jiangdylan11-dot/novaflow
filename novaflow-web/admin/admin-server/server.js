@@ -1,19 +1,19 @@
 const http = require("http");
 const fs = require("fs");
 const crypto = require("crypto");
-const { URL, pathToFileURL } = require("url");
-const path = require("path");
+const { URL } = require("url");
 const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
 const h3PromptEnhance = require("./h3-prompt-enhance");
 const artDirection = require("./art-direction");
-const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../load-shared-esm.cjs");
-let runningHubLlmPromise;
-function loadRunningHubLlm() {
-  runningHubLlmPromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/runninghub-llm.mjs")).href);
-  return runningHubLlmPromise;
-}
+const aifxMaterial = require("./aifx-material");
+const {
+  DEFAULT_RUNNINGHUB_LLM_MODEL,
+  importShared,
+  loadRunningHubLlm,
+  loadFeatureCredits
+} = require("../load-shared-esm.cjs");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -10072,6 +10072,8 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LL
 }
 
 function buildGrokImageReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
+  const purpose = normalizeSmartAiText(payload?.purpose || "", 80).toLowerCase();
+  if (purpose === "aifx-material") return aifxMaterial.buildAifxMaterialReverseRequest(payload, String(model || DEFAULT_RUNNINGHUB_LLM_MODEL));
   if (payload?.surface === 'art' && payload?.purpose === 'art-director') return artDirection.build(payload, model);
   if (payload?.surface === 'art' && payload?.purpose === 'art-director-review') return artDirection.buildReview(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
@@ -10084,7 +10086,6 @@ function buildGrokImageReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MO
   const negativePrompt = normalizeSmartAiText(payload?.negative_prompt || payload?.negativePrompt || "", 12000);
   const scenario = selectGrokSmartAiImageScenario(payload);
   const scenarioRoles = scenario.images.map((item) => String(item?.role || item?.slotType || "").toLowerCase());
-  const purpose = normalizeSmartAiText(payload?.purpose || "", 80).toLowerCase();
   const requestedVisualSchema = normalizeSmartAiText(payload?.visualSchema || payload?.visual_schema || "", 80).toLowerCase();
   const isStyleTransfer = purpose === "styletransfer" || (
     scenario.scenario === "role_reference" && scenario.images.length === 2 && scenarioRoles.includes("subject") && scenarioRoles.includes("style")
@@ -11071,6 +11072,7 @@ async function handleGrokImageReverseRequest(req, res) {
 
   const requiredProviderCalls = Math.max(1, Math.round(Number(request.resultOptions?.requiredProviderCalls || 1)));
   const isH3ReverseRequest = request.resultOptions?.minimaxH3Reverse === true;
+  const isAifxMaterial = request.resultOptions?.aifxMaterial === true;
   const mode = request.inputMeta.scenario === "video_frames" ? "video_reverse" : "image_reverse";
   let grok;
   let usage;
@@ -11079,8 +11081,8 @@ async function handleGrokImageReverseRequest(req, res) {
     const charged = await chargeOnlineAi(session, {
       feature: mode === "video_reverse" ? "video-reverse" : "image-reverse",
       // Call budget only. image_reverse is not a per-image price, so extra
-      // provider calls do not multiply the credit charge.
-      amount: isH3ReverseRequest ? requiredProviderCalls : Math.max(requiredProviderCalls, 2),
+      // provider calls do not multiply the credit charge. AIFX material is one call.
+      amount: isAifxMaterial ? 1 : (isH3ReverseRequest ? requiredProviderCalls : Math.max(requiredProviderCalls, 2)),
       run: async ({ amount: providerCallBudget }) => {
         if (providerCallBudget < requiredProviderCalls) {
           const error = new Error("积分不足或暂时不可用");
@@ -11091,6 +11093,16 @@ async function handleGrokImageReverseRequest(req, res) {
         resultOptions = { ...request.resultOptions, visualRetryAllowed: providerCallBudget >= 2, providerCallBudget, h3RepairAllowed: false };
         try {
           const value = await callGrokResponse(request.body, request.inputMeta, resultOptions);
+          if (isAifxMaterial) {
+            const material = aifxMaterial.parseAifxMaterialText(value?.data?.output_text);
+            if (!material) {
+              const error = new Error("云端材质识别失败，返回的材质不完整");
+              error.statusCode = 502;
+              error.chargedAmount = 0;
+              throw error;
+            }
+            value.material = material;
+          }
           const providerCallCount = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
           return { amount: providerCallCount, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, success: true } };
         } catch (error) {
@@ -11111,9 +11123,10 @@ async function handleGrokImageReverseRequest(req, res) {
     const isVisualV2 = String(resultOptions.visualIrSchema || "") === "nf.visual.v2";
     const h3Failure = resultOptions.minimaxH3Reverse === true ? miniMaxH3FailureEnvelope(err) : null;
     const contentPolicyFailure = !h3Failure && err?.errorCode === "provider_content_policy";
+    const aifxFailure = resultOptions.aifxMaterial === true;
     sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? creditClientMessage(err) : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
+      error: statusCode === 402 ? creditClientMessage(err) : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : (aifxFailure ? "云端材质识别失败，请稍后重试" : "生成失败，请稍后重试")),
       provider: "grok",
       ...(contentPolicyFailure ? { errorCode: "provider_content_policy", retryable: false } : {}),
       ...(h3Failure || {}),
@@ -11162,6 +11175,7 @@ async function handleGrokImageReverseRequest(req, res) {
     } : {}),
     user: userPublicProfile(session.user),
     quota: grokQuotaPayload(usage),
+    ...(grok.material ? { material: grok.material, model: grok.model } : {}),
     grok: {
       statusCode: grok.statusCode,
       durationMs: grok.durationMs,
@@ -11175,22 +11189,12 @@ async function handleGrokImageReverseRequest(req, res) {
   });
 }
 
-let runningHubImagePromise;
 function loadRunningHubImage() {
-  runningHubImagePromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/runninghub-gpt-image.mjs")).href);
-  return runningHubImagePromise;
+  return importShared("runninghub-gpt-image.mjs");
 }
 
-let onlineChargePromise;
 function loadOnlineCharge() {
-  onlineChargePromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/online-ai-charge.mjs")).href);
-  return onlineChargePromise;
-}
-
-let featureCreditPromise;
-function loadFeatureCredits() {
-  featureCreditPromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/feature-credits.mjs")).href);
-  return featureCreditPromise;
+  return importShared("online-ai-charge.mjs");
 }
 
 function creditClientMessage(error) {

@@ -26,6 +26,8 @@
     'prompt-optimize': 'prompt_optimize',
     'image-reverse': 'image_reverse',
     'video-reverse': 'image_reverse',
+    'aifx-material': 'image_reverse',
+    aifx_material: 'image_reverse',
     'ui-catalog': 'lean_research',
     'lean-research': 'lean_research',
     'gpt-image-2.5': 'gpt_image_2_5_economy',

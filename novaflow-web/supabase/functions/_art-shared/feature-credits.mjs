@@ -70,6 +70,10 @@ const ALIASES = Object.freeze({
   'image-reverse': 'image_reverse',
   image_reverse: 'image_reverse',
   'video-reverse': 'image_reverse',
+  // Same price as image reverse. The charge call still sends image-reverse;
+  // this alias lets a quote name the AIFX material job without a new price key.
+  'aifx-material': 'image_reverse',
+  aifx_material: 'image_reverse',
   'ui-catalog': 'lean_research',
   'lean-research': 'lean_research',
   lean_research: 'lean_research',
