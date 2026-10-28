@@ -91,5 +91,7 @@
 #nf-xiaotao-art-root .nf-xiaotao-brains button[aria-pressed="true"] { border-color:#8c6c5e; background:#493b35; color:#f1d0be; }
 #nf-xiaotao-art-root .nf-xiaotao-compose-actions button { font-size:11px; padding:5px 7px; }
 .nf-xiaotao-compose-actions button:last-child { margin-left:auto; }
+.nf-xiaotao-estimate { margin-left:auto; color:#e7c2b4; font-size:11px; white-space:nowrap; }
+.nf-xiaotao-compose-actions .nf-xiaotao-estimate + .nf-xiaotao-primary { margin-left:8px; }
 @media (max-width:600px) { #nf-xiaotao-art-root { right:12px; bottom:12px; } .nf-xiaotao-panel { width:min(390px,calc(100vw - 24px)); height:calc(100dvh - 95px); bottom:52px; } }
 @media (prefers-reduced-motion:reduce) { .nf-xiaotao-robot svg, .nf-xiaotao-eyes, .nf-xiaotao-antenna, .nf-xiaotao-staged-spinner::after { animation:none !important; } }

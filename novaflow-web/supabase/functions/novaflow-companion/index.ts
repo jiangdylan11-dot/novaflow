@@ -11,7 +11,8 @@ const unwrap=({data,error}:any)=>{if(error)throw error;return Array.isArray(data
 const rpc=async(name:string,args:any)=>unwrap(await client.rpc(name,args));
 const llm=(()=>{try{return readRunningHubLlmConfig(env);}catch{return {apiKey:'',baseUrl:DEFAULT_RUNNINGHUB_LLM_BASE_URL,model:DEFAULT_RUNNINGHUB_LLM_MODEL,configured:false};}})();
 const charge=createOnlineAiCharge(createFeatureCreditPorts(rpc));
-const companion=createCompanionChat({provider:{apiKey:llm.apiKey,baseUrl:llm.baseUrl,model:llm.model},charge});
+const creditConfig=(()=>{try{const raw=JSON.parse(env('NOVAFLOW_XIAOTAO_ONLINE')||'');return raw&&typeof raw==='object'?{xiaotao_online:raw}:undefined;}catch{return undefined;}})();
+const companion=createCompanionChat({provider:{apiKey:llm.apiKey,baseUrl:llm.baseUrl,model:llm.model,creditConfig},charge});
 const store={getUserById:async(id:string)=>unwrap(await client.from('users').select('id,status,role,expires_at').eq('id',id).maybeSingle()),getUserSession:async(id:string)=>unwrap(await client.from('user_sessions').select('id,user_id,revoked_at').eq('id',id).maybeSingle())};
 const plane=createControlPlane({store,secrets:{sessionSecret:env('NOVAFLOW_SESSION_SECRET')},companion});
 const cors={'access-control-allow-origin':'*','access-control-allow-headers':'authorization,content-type','access-control-allow-methods':'POST,GET,OPTIONS','cache-control':'no-store'};

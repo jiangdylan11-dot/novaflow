@@ -374,17 +374,13 @@
     }
     return Object.freeze({capture, captureAny, captureCreation, captureChat, readSampling, setSampling, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
   }
-  function onlineCreditCost() {
-    const api = root.NovaFlowFeatureCreditPrices;
-    const quoted = api && typeof api.quoteFeature === 'function' ? api.quoteFeature({ feature: 'xiaotao_vision', units: 1 }) : null;
-    return quoted && quoted.credits != null ? quoted.credits : 4;
-  }
   function creditStatus(base, quota) {
     if (!quota || quota.local) return base;
     const settled = quota.settled_credits ?? quota.charged_credits;
     if (settled == null) return base;
     const remain = quota.balance_after;
-    return `${base} · 实扣 ${settled} 积分${remain == null ? '' : `，剩余 ${remain}`}`;
+    const unit = quota.billing_mode === 'token' ? '分' : '积分';
+    return `${base} · 实扣 ${settled} ${unit}${remain == null ? '' : `，剩余 ${remain}`}`;
   }
   function createController({bridge, api = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root, uploadHost = null} = {}) {
     const state = {provider:'local', mode:'chat', messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
@@ -424,7 +420,7 @@
       if (previousProvider !== state.provider) state.conversationId = '';
     } catch {}
     state.staged = []; state.pendingUploads = []; state.pendingUploadId = '';
-    let stagedSeq = 0, carryAttachments = null, carryAsk = null;
+    let stagedSeq = 0, carryAttachments = null, carryAsk = null, lastUploads = [];
     const uploadApi = () => root.NovaFlowXiaotaoUpload;
     let cachedHost = null;
     const host = () => uploadHost || (cachedHost ||= uploadApi()?.createUploadHost?.(root));
@@ -462,6 +458,7 @@
     async function consumeStaged(message) {
       if (state.staged.some(item => item.status === 'reading')) {state.error = '文件还在读取，请稍后再发送'; notify(); return false;}
       const ready = state.staged.filter(item => item.status === 'ready');
+      lastUploads = ready.map(item => ({kind:item.kind, name:item.name, ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
       if (!ready.length) return true;
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
       const plan = uploads.planRoutes(message, ready);
@@ -649,7 +646,9 @@
           executionApproval = {schema:'nf.art.execution-approval.v1',requestId:activeRequest,contextFingerprint,action:'generate',imageCount:1,
             sampling:{variant:sampling.variant,steps:sampling.steps,cfg:sampling.cfg},basis:confirmed ? 'sampling-confirmation' : 'approved-feedback'};
         }
-        const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:'en', conversationId:state.conversationId || undefined, message, history:copy(state.history), artContext:copy(snapshot.artContext), images:copy(snapshot.images), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
+        const images = copy(snapshot.images);
+        if (state.provider === 'api') for (const file of lastUploads) if (file.kind === 'image' && file.dataUrl && images.length < 3 && !images.some(image => image.dataUrl === file.dataUrl)) images.push({dataUrl:file.dataUrl, role:'attachment', source:images.length + 1, name:file.name});
+        const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:'en', conversationId:state.conversationId || undefined, message, history:copy(state.history), artContext:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:lastUploads.map(({kind, name}) => ({kind, name}))} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新页面或启动本地助手');
         const responsePromise = api().artAgentChat(payload); startStatusPolling(operation, activeRequest);
         const response = await responsePromise;
@@ -720,7 +719,7 @@
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
-      Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能 · 不扣积分' : `已切换在线智能 · 本次将扣 ${onlineCreditCost()} 积分`}); notify(); return true;
+      Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能 · 不扣积分' : '已切换在线智能 · 按实际用量计费'}); notify(); return true;
     }
     return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination});
   }
@@ -763,7 +762,7 @@
     listen(footer,'dragover',event=>{if(event?.dataTransfer)event.preventDefault?.();});
     listen(footer,'drop',event=>{event?.preventDefault?.();takeFiles(Array.from(event?.dataTransfer?.files||[]));});
     listen(input,'paste',event=>{const files=Array.from(event?.clipboardData?.files||[]);if(files.length){event.preventDefault?.();takeFiles(files);}});
-    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); onlineBrain.title=`在线分析参考图片，本次将扣 ${onlineCreditCost()} 积分`;send.type = 'submit'; providers.append(localBrain, onlineBrain);title.append(providers);footerActions.append(upload,newConversation, stop, send); footer.append(stagedRow,input,footerActions);
+    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); onlineBrain.title='在线智能按实际用量计费，发送前显示约计积分';send.type = 'submit'; const estimateLabel=el('span','nf-xiaotao-estimate',''); estimateLabel.hidden=true; providers.append(localBrain, onlineBrain);title.append(providers);footerActions.append(upload,newConversation, stop, estimateLabel, send); footer.append(stagedRow,input,footerActions);
     panel.append(header, context, messages, confirmation, proposal, tools, status, error, footer); host.append(fab, greeting, panel); doc.body.append(host);
     const drag = bindPanelDrag(panel, header);
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onStart:() => {greeting.hidden = true;},onEnd:() => {if (open) anchorPanel();}});
@@ -789,6 +788,18 @@
       if(state.proposal!==renderedProposal) {renderedProposal=state.proposal; proposal.open=Boolean(state.proposal); copyPrompt.textContent='复制完整提示词';}
       proposalText.textContent = state.proposal?.prompt || ''; const busy = state.pending || state.generating || state.applying || state.uploading; applyButton.disabled = busy || state.applied; generateButton.disabled = busy; newConversation.disabled = busy; upload.disabled=busy; send.disabled = busy; stop.hidden = !state.pending && !state.generating; input.disabled = busy;
       for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) {button.disabled = busy; button.setAttribute('aria-pressed',String(state.provider === value));}
+      paintEstimate();
+    }
+    function paintEstimate() {
+      const prices = root.NovaFlowFeatureCreditPrices;
+      if (controller.state.provider !== 'api' || typeof prices?.estimateXiaotaoOnline !== 'function') {estimateLabel.hidden = true; return;}
+      const history = (controller.state.history || []).map(item => item?.content || '').join('\n');
+      const staged = (controller.state.staged || []).filter(item => item.status === 'ready');
+      let drawing = 0; try {drawing = bridge.captureChat().images.length;} catch {}
+      const files = [...Array.from({length:Math.max(drawing, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio')];
+      const quote = prices.estimateXiaotaoOnline({text:input.value, history, files});
+      estimateLabel.hidden = !quote?.credits;
+      estimateLabel.textContent = quote?.credits ? `约${quote.credits}分` : '';
     }
     function anchorPanel() {
       const robot = fab.getBoundingClientRect(), box = panel.getBoundingClientRect(), size = {width:box.width,height:box.height};
@@ -815,6 +826,7 @@
     for (const [button, value] of [[localBrain,'local'],[onlineBrain,'api']]) button.onclick = () => {if (controller.setProvider(value)) {contextStamp = ''; tick(); if (value === 'local') void controller.calibrateLocalStatus(); input.focus();}};
     footer.onsubmit = event => {event.preventDefault(); const text = input.value; if (text.trim()) {input.value = ''; void controller.send(text);}};
     input.onkeydown = event => {if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {event.preventDefault(); footer.requestSubmit();}};
+    input.oninput = () => paintEstimate();
     function tick() {
       if (drag.dragging() || robotDrag.dragging()) return;
       closeOnNavigation();

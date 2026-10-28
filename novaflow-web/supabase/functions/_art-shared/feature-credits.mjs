@@ -15,6 +15,18 @@ export const DEFAULT_STALE_BALANCE_POLICY = 'allow';
 export const DEFAULT_CREDITS_PER_USD = 211;
 export const DEFAULT_TOKEN_MARKUP = 2;
 export const DEFAULT_SETTLE_CAP_CREDITS = 40;
+// Hold for one 小桃 online message. The charge is still ceil(USD × 211 × markup),
+// not this table. Text is about one token per two characters, plus a reply
+// allowance. Each staged file adds the tokens that kind usually costs the
+// model. usd_per_million_tokens turns that into a USD hold. The per-message
+// cap is xiaotao_online.message_cap_credits.
+export const DEFAULT_XIAOTAO_ONLINE_ESTIMATE = Object.freeze({
+  message_cap_credits: 80,
+  chars_per_token: 2,
+  output_tokens: 512,
+  usd_per_million_tokens: 10,
+  file_tokens: Object.freeze({ image: 2500, video: 12000, audio: 4000 })
+});
 // Measured stable-token charges at 211 credits/USD and markup 2, then the
 // per-image settle cap. 2k/high raw is 46 and settles at the cap (40).
 // 1k/low 3, 1k/medium 6 and 2k/medium 12 stay under the cap.
@@ -263,8 +275,78 @@ export function normalizeCreditConfig(value) {
     stale_balance_policy: policy === 'block' ? 'block' : DEFAULT_STALE_BALANCE_POLICY,
     credits_per_usd: Number.isFinite(perUsd) && perUsd > 0 ? perUsd : DEFAULT_CREDITS_PER_USD,
     token_billing: normalizeTokenBilling(input.token_billing, settleCap),
-    gpt_image: normalizeGptImageRoutes(input.gpt_image)
+    gpt_image: normalizeGptImageRoutes(input.gpt_image),
+    xiaotao_online: normalizeXiaotaoOnline(input.xiaotao_online || input.token_billing?.xiaotao_online)
   };
+}
+
+function clampOnlineInt(value, min, max, fallback) {
+  const amount = Math.round(Number(value));
+  return Number.isInteger(amount) && amount >= min && amount <= max ? amount : fallback;
+}
+
+export function xiaotaoOnlinePolicy(config) {
+  return normalizeCreditConfig(config).xiaotao_online;
+}
+
+function normalizeXiaotaoOnline(input) {
+  const stored = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const files = stored.file_tokens && typeof stored.file_tokens === 'object' ? stored.file_tokens : {};
+  const defaults = DEFAULT_XIAOTAO_ONLINE_ESTIMATE;
+  const usd = Number(stored.usd_per_million_tokens);
+  return {
+    message_cap_credits: clampOnlineInt(stored.message_cap_credits, 1, 1000000, defaults.message_cap_credits),
+    chars_per_token: clampOnlineInt(stored.chars_per_token, 1, 100, defaults.chars_per_token),
+    output_tokens: clampOnlineInt(stored.output_tokens, 0, 100000, defaults.output_tokens),
+    usd_per_million_tokens: Number.isFinite(usd) && usd >= 0 && usd <= 1000 ? usd : defaults.usd_per_million_tokens,
+    file_tokens: {
+      image: clampOnlineInt(files.image, 0, 1000000, defaults.file_tokens.image),
+      video: clampOnlineInt(files.video, 0, 1000000, defaults.file_tokens.video),
+      audio: clampOnlineInt(files.audio, 0, 1000000, defaults.file_tokens.audio)
+    }
+  };
+}
+
+export function xiaotaoFileKind(file) {
+  const kind = String(file?.kind || '').toLowerCase();
+  if (kind === 'video' || kind === 'audio' || kind === 'image') return kind;
+  const name = String(file?.name || '').toLowerCase();
+  if (/\.(mp4|mov|webm)$/.test(name)) return 'video';
+  if (/\.(mp3|wav|m4a|aac|ogg|flac)$/.test(name)) return 'audio';
+  return file ? 'image' : '';
+}
+
+// Reservation only. A longer message or a heavier file raises the hold because
+// it is expected to use more tokens. Nothing here is a flat per-file fee.
+export function estimateXiaotaoOnlineCredits({ text = '', history = '', files = [], config } = {}) {
+  const policy = xiaotaoOnlinePolicy(config);
+  const chars = String(text || '').length + String(history || '').length;
+  let tokens = Math.ceil(chars / policy.chars_per_token) + policy.output_tokens;
+  const counts = { image: 0, video: 0, audio: 0 };
+  for (const file of Array.isArray(files) ? files : []) {
+    const kind = xiaotaoFileKind(file);
+    if (!kind) continue;
+    counts[kind] += 1;
+    tokens += policy.file_tokens[kind];
+  }
+  const usd = tokens / 1000000 * policy.usd_per_million_tokens;
+  const raw = creditsFromUsd(usd, config);
+  const active = chars > 0 || counts.image + counts.video + counts.audio > 0;
+  const credits = active ? Math.max(1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0;
+  return { tokens, usd, rawCredits: raw, credits, counts, cap: policy.message_cap_credits };
+}
+
+export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = {}) {
+  const policy = xiaotaoOnlinePolicy(config);
+  const normalized = normalizeCreditConfig(config);
+  return settleTokenImageCredits({
+    usage,
+    reservedCredits,
+    config: {
+      ...normalized,
+      token_billing: { ...normalized.token_billing, settle_cap_credits: policy.message_cap_credits }
+    }
+  });
 }
 
 export function creditsFromUsd(usd, config) {

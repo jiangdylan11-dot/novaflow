@@ -184,6 +184,65 @@
     };
   }
 
+  var XIAOTAO_ONLINE = {
+    message_cap_credits: 80,
+    chars_per_token: 2,
+    output_tokens: 512,
+    usd_per_million_tokens: 10,
+    file_tokens: { image: 2500, video: 12000, audio: 4000 }
+  };
+
+  function xiaotaoKind(file) {
+    var kind = String(file && file.kind || '').toLowerCase();
+    if (kind === 'video' || kind === 'audio' || kind === 'image') return kind;
+    var name = String(file && file.name || '').toLowerCase();
+    if (/\.(mp4|mov|webm)$/.test(name)) return 'video';
+    if (/\.(mp3|wav|m4a|aac|ogg|flac)$/.test(name)) return 'audio';
+    return file ? 'image' : '';
+  }
+
+  function estimateXiaotaoOnline(input) {
+    var spec = input || {};
+    var stored = config && config.xiaotao_online && typeof config.xiaotao_online === 'object' ? config.xiaotao_online : {};
+    var files = stored.file_tokens && typeof stored.file_tokens === 'object' ? stored.file_tokens : {};
+    var cap = Math.round(Number(stored.message_cap_credits));
+    var charsPer = Math.round(Number(stored.chars_per_token));
+    var output = Math.round(Number(stored.output_tokens));
+    var usdPerMillion = Number(stored.usd_per_million_tokens);
+    var policy = {
+      message_cap_credits: isFinite(cap) && cap >= 1 ? cap : XIAOTAO_ONLINE.message_cap_credits,
+      chars_per_token: isFinite(charsPer) && charsPer >= 1 ? charsPer : XIAOTAO_ONLINE.chars_per_token,
+      output_tokens: isFinite(output) && output >= 0 ? output : XIAOTAO_ONLINE.output_tokens,
+      usd_per_million_tokens: isFinite(usdPerMillion) && usdPerMillion >= 0 ? usdPerMillion : XIAOTAO_ONLINE.usd_per_million_tokens,
+      file_tokens: {
+        image: isFinite(Math.round(Number(files.image))) && Math.round(Number(files.image)) >= 0 ? Math.round(Number(files.image)) : XIAOTAO_ONLINE.file_tokens.image,
+        video: isFinite(Math.round(Number(files.video))) && Math.round(Number(files.video)) >= 0 ? Math.round(Number(files.video)) : XIAOTAO_ONLINE.file_tokens.video,
+        audio: isFinite(Math.round(Number(files.audio))) && Math.round(Number(files.audio)) >= 0 ? Math.round(Number(files.audio)) : XIAOTAO_ONLINE.file_tokens.audio
+      }
+    };
+    var billing = billingConfig();
+    var chars = String(spec.text || '').length + String(spec.history || '').length;
+    var tokens = Math.ceil(chars / policy.chars_per_token) + policy.output_tokens;
+    var counts = { image: 0, video: 0, audio: 0 };
+    var list = Array.isArray(spec.files) ? spec.files : [];
+    for (var i = 0; i < list.length; i++) {
+      var kind = xiaotaoKind(list[i]);
+      if (!kind) continue;
+      counts[kind] += 1;
+      tokens += policy.file_tokens[kind];
+    }
+    var usd = tokens / 1000000 * policy.usd_per_million_tokens;
+    var raw = Math.ceil(usd * billing.perUsd * billing.markup - 1e-9);
+    if (usd > 0) raw = Math.max(1, raw);
+    var active = chars > 0 || counts.image + counts.video + counts.audio > 0;
+    return {
+      tokens: tokens,
+      credits: active ? Math.max(1, Math.min(policy.message_cap_credits, Math.max(0, raw || 0))) : 0,
+      counts: counts,
+      cap: policy.message_cap_credits
+    };
+  }
+
   function settlementText(quota) {
     if (!quota || quota.local) return '';
     var charged = quota.charged_credits != null ? quota.charged_credits : quota.settled_credits;
@@ -195,6 +254,7 @@
   root.NovaFlowFeatureCreditPrices = {
     quoteFeature: quoteFeature,
     quoteGptImage: quoteGptImage,
+    estimateXiaotaoOnline: estimateXiaotaoOnline,
     previewText: previewText,
     settlementText: settlementText,
     applyConfig: function (next) { config = next && typeof next === 'object' ? next : null; },

@@ -120,17 +120,15 @@ test('Xiaotao keeps the text gateway and sends actual reference pixels only to a
     crypto:{randomUUID:()=> 'cloud-conversation-1234'},location:{hash:'',pathname:'/',search:''},history:{replaceState(){}},
     localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value)},
     NOVAFLOW_WEB_CONFIG:{localAssistant:false,authUrl:'https://auth.test',controlUrl:'https://control.test'},
-    fetch:async(url,init)=>{requests.push({url:String(url),init});if(String(url).endsWith('/api/web/companion/chat'))return Response.json({ok:true,reply:'看到了主体与画风。',model:'vision-fixture',quota:{remaining_count:8}});return Response.json({ok:true,quota:{remaining_count:9},
-      grok:{result:{model:'cloud-fixture',choices:[{finish_reason:'stop',message:{role:'assistant',content:'你好，我是小桃AI。'}}]}}});}});
+    fetch:async(url,init)=>{requests.push({url:String(url),init});const body=JSON.parse(init.body||'{}');const vision=Array.isArray(body.images)&&body.images.length;return Response.json({ok:true,reply:vision?'看到了主体与画风。':'你好，我是小桃AI。',model:vision?'vision-fixture':'cloud-fixture',quota:vision?{remaining_count:8,billing_mode:'token',settled_credits:5}:{remaining_count:9,billing_mode:'token',settled_credits:2}});}});
   runInContext(source,createContext(sandbox));
   const payload={provider:'api',mode:'chat',requestId:'cloud-request-1234',message:'你好',history:[],artContext:{surface:'drawing',prompt:'a painting',unrelatedSecret:'must not send'}};
   const reply=await sandbox.electronAPI.artAgentChat(payload);
   assert.equal(reply.ok,true);assert.equal(reply.data.reply,'你好，我是小桃AI。');assert.equal(reply.data.proposal,undefined);
-  assert.equal(reply.data.capabilities.textOnly,true);assert.equal(reply.data.quota.remaining_count,9);
-  const call=requests.at(-1);assert.equal(call.url,'https://auth.test/api/provider/grok/chat');
+  assert.equal(reply.data.capabilities.textOnly,true);assert.equal(reply.data.quota.settled_credits,2);
+  const call=requests.at(-1);assert.equal(call.url,'https://auth.test/api/web/companion/chat');
   assert.equal(call.init.headers.Authorization,'Bearer fixture-account-token');assert.equal(call.init.headers['x-novaflow-local'],undefined);
-  const body=JSON.parse(call.init.body);assert.equal(body.messages.at(-1).content.includes('must not send'),false);
-  assert.match(body.messages[0].content,/你是 NovaFlow 的小桃AI/);assert(!body.messages[0].content.includes('小猴'));
+  const body=JSON.parse(call.init.body);assert.equal(body.message,'你好');assert.equal(JSON.stringify(body).includes('must not send'),false);
   assert.equal(JSON.stringify(body).includes('data:image'),false);
   const before=requests.length;
   const vision=await sandbox.electronAPI.artAgentChat({...payload,requestId:'cloud-images-1234',images:[{dataUrl:PNG,role:'subject',source:1}]});
