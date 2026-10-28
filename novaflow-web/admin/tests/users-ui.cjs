@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 app.commandLine.appendSwitch("disable-gpu");
-const root = path.resolve(__dirname, "../license-admin-gui");
+const root = process.env.NOVAFLOW_ADMIN_UI_ROOT || path.resolve(__dirname, "../license-admin-gui");
 const users = [
   { id: "user-one", account: "kingyo", display_name: "Kingyo display", plan: "pro", status: "active", created_at: "2026-10-01T10:00:00Z" },
   { id: "user-two", account: "weyne", display_name: "Weyne display", plan: "trial", status: "disabled", created_at: "2026-10-02T10:00:00Z" }
