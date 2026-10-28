@@ -379,15 +379,20 @@ test('admin credit adjustment writes the ledger in one transaction and team plan
   const authed = (await db.query("select has_function_privilege('authenticated', 'public.admin_adjust_feature_credits(uuid,text,numeric,text,text,text,text)', 'execute') as ok")).rows[0];
   assert.equal(authed.ok, false);
 
-  await db.query('alter table public.users drop constraint if exists users_plan_valid');
+  const planSql = await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8');
+  assert.doesNotMatch(planSql, /users_plan_valid/i);
   await db.query("update public.users set plan = 'team' where id = $1", [user.id]);
   const balanceBefore = num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance);
-  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
+  await db.exec(planSql);
   assert.equal((await db.query('select plan from public.users where id = $1', [user.id])).rows[0].plan, 'pro');
   assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), balanceBefore);
   assert.equal((await db.query("select count(*)::int as n from public.users where plan = 'team'")).rows[0].n, 0);
-  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
+  await db.exec(planSql);
   assert.equal((await db.query("select count(*)::int as n from public.users where plan = 'team'")).rows[0].n, 0);
-  await assert.rejects(db.query("update public.users set plan = 'team' where id = $1", [user.id]), /users_plan_valid|check constraint/i);
+  const constraint = (await db.query("select count(*)::int as n from pg_constraint where conname = 'users_plan_valid'")).rows[0];
+  assert.equal(constraint.n, 0);
+  await db.query("update public.users set plan = 'team' where id = $1", [user.id]);
+  await db.exec(planSql);
+  assert.equal((await db.query('select plan from public.users where id = $1', [user.id])).rows[0].plan, 'pro');
   await db.close();
 });

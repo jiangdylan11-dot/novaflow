@@ -52,10 +52,6 @@ update public.users
    set plan = 'pro'
  where plan = 'team';
 
-alter table public.users drop constraint if exists users_plan_valid;
-alter table public.users add constraint users_plan_valid
-  check (plan in ('trial', 'standard', 'pro'));
-
 comment on column public.users.plan is
   '账户类型：trial=普通（仅本机），standard=中级（普通节点），pro=高级（所有节点）；历史 team 已并入 pro';
 
