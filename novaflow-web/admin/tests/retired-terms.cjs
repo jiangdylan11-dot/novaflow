@@ -54,6 +54,14 @@ for (const [file, text] of Object.entries(files)) {
   }
 }
 assert.deepEqual(hits, [], `retired admin copy still visible:\n${hits.join("\n")}`);
+const adminData = fs.readFileSync("license-admin-gui/admin-data.js", "utf8");
+for (const phrase of ["artist@demo.com", "mock-4090", "mock placeholder", "demo.com"]) {
+  assert(!adminData.includes(phrase), `admin-data still contains fake row ${phrase}`);
+}
+assert(!adminData.includes("const mockData"), "mockData fixture must not be rendered");
+assert(!files["license-admin-gui/renderer.js"].includes("mock 数据"), "renderer must not label fake rows as data");
+assert(!files["license-admin-gui/renderer.js"].includes("getAdminCreditLogs"), "dashboard must not read credit_logs");
+assert(!files["license-admin-gui/renderer.js"].includes("getAdminComfyUiProviderStatus"), "dashboard must not probe cloud Comfy");
 assert(files["license-admin-gui/index.html"].includes("积分流水"), "member page should point at the credit ledger");
 assert(files["license-admin-gui/index.html"].includes("RunningHub 余额"), "dashboard should show the domestic balance");
 assert(!files["license-admin-gui/art-knowledge-review.js"].includes("showModal"));

@@ -173,8 +173,8 @@ function setDataBadge(id, result, fallbackText) {
     el.textContent = "Supabase";
     el.classList.add("sourceSupabase");
   } else {
-    el.textContent = result.source === "disabled" ? "暂无日志" : "mock 数据";
-    el.classList.add(result.source === "disabled" ? "sourceMock" : "sourceMock");
+    el.textContent = result.source === "disabled" ? "暂无日志" : "未配置";
+    el.classList.add("sourceMock");
   }
 }
 
@@ -291,6 +291,12 @@ function isErrorResult(result) {
   return result?.status === "error";
 }
 
+function isUnconfiguredResult(result) {
+  return Boolean(result) && result.configured === false && result.status !== "error" && result.source !== "supabase";
+}
+
+const UNCONFIGURED_TEXT = "Supabase 未配置。请设置 NOVAFLOW_SUPABASE_URL 与 Service Role 后刷新。";
+
 function resultErrorText(result) {
   return result?.error || "Supabase Error";
 }
@@ -311,7 +317,7 @@ function setAdminDataSourceStatus(results) {
   } else if (hasSupabaseResult(list)) {
     setGlobalStatus("● Supabase Connected", "sourceSupabase", { force: true });
   } else {
-    setGlobalStatus("● Mock", "sourceMock", { force: true });
+    setGlobalStatus("● 未配置", "sourceMock", { force: true });
   }
 }
 
@@ -555,11 +561,12 @@ function renderUsers(usersResult, creditsResult) {
     createStatus.textContent = userManagementState.createWritable
       ? "Supabase 可写"
       : updateWritable ? "开户需积分表正常"
-      : usersResult?.status === "error" ? "Supabase Error" : "mock 只读";
+      : usersResult?.status === "error" ? "Supabase Error" : "未配置，不能写入";
   }
 
-  if (isErrorResult(usersResult)) {
-    replaceRows("usersTableBody", [], 9, resultErrorText(usersResult));
+  if (isErrorResult(usersResult) || isUnconfiguredResult(usersResult)) {
+    ["usersStatTotal", "usersStatActive", "usersStatDisabled", "usersStatStandard", "usersStatPro", "usersStatCredits"].forEach((id) => setText(id, "—"));
+    replaceRows("usersTableBody", [], 9, isErrorResult(usersResult) ? resultErrorText(usersResult) : UNCONFIGURED_TEXT);
     return;
   }
   const creditMap = new Map((creditsResult?.records || []).map((item) => [String(item.user_id || ""), item]));
@@ -716,8 +723,9 @@ function renderMembers(usersResult, creditsResult) {
     credits: creditsResult?.records || [],
     writable: live(usersResult) && live(creditsResult)
   };
-  if (isErrorResult(usersResult)) {
-    replaceRows("membersTableBody", [], 4, resultErrorText(usersResult));
+  if (isErrorResult(usersResult) || isUnconfiguredResult(usersResult)) {
+    ["creditStatTotal", "creditStatFunded", "creditStatEmpty"].forEach((id) => setText(id, "—"));
+    replaceRows("membersTableBody", [], 4, isErrorResult(usersResult) ? resultErrorText(usersResult) : UNCONFIGURED_TEXT);
     return;
   }
   const creditByUser = new Map(memberState.credits.map((item) => [String(item.user_id || ""), item]));
@@ -815,7 +823,7 @@ function renderMemberAdjust({ prefill = false } = {}) {
   target.textContent = `会员：${userAccountLabel(user) || userDisplayName(user)}`;
   hint.textContent = `当前积分 ${formatCreditAmount(balance)}`;
   if (prefill && kind === "set") input.value = String(balance);
-  setText("memberAdjustStatus", memberState.writable ? "" : "mock 数据不可写入");
+  setText("memberAdjustStatus", memberState.writable ? "" : "Supabase 未配置，不能写入");
 }
 
 async function submitMemberAdjust() {
@@ -1057,6 +1065,11 @@ function renderDashboardRecentActivity() {
 
   if (dashboardActivityTab === "tasks") {
     const usageResult = data.usage;
+    if (isUnconfiguredResult(usageResult)) {
+      empty("Supabase 未配置", UNCONFIGURED_TEXT);
+      setCountPill("dashboardTaskCount", 0);
+      return;
+    }
     if (isErrorResult(usageResult)) {
       empty("算力任务读取失败", "请检查 Supabase 配置或刷新列表");
       setCountPill("dashboardTaskCount", 0);
@@ -1097,6 +1110,11 @@ function renderDashboardRecentActivity() {
   }
 
   const ledger = data.ledger;
+  if (isUnconfiguredResult(ledger)) {
+    empty("Supabase 未配置", UNCONFIGURED_TEXT);
+    setCountPill("dashboardLedgerCount", 0);
+    return;
+  }
   if (ledger?.error) {
     empty("积分流水读取失败", "去 AI 服务查询或调整筛选");
     setCountPill("dashboardLedgerCount", 0);
@@ -1225,11 +1243,13 @@ function renderDashboard(data) {
   const users = data.users?.records || [];
   const credits = data.credits?.records || [];
   const totalCredits = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
-  const sourceLabel = hasErrorResult(results) ? "Supabase Error" : hasSupabaseResult(results) ? "Supabase" : "Mock";
+  const sourceLabel = hasErrorResult(results) ? "Supabase Error" : hasSupabaseResult(results) ? "Supabase" : "未配置";
+  const usersUnconfigured = isUnconfiguredResult(data.users);
+  const creditsUnconfigured = isUnconfiguredResult(data.credits);
   const usersEl = $("dashboardUsersCount");
-  if (usersEl) usersEl.textContent = formatNumber(users.length);
+  if (usersEl) usersEl.textContent = usersUnconfigured ? "—" : formatNumber(users.length);
   const creditEl = $("dashboardCreditCost");
-  if (creditEl) creditEl.textContent = formatCreditAmount(totalCredits);
+  if (creditEl) creditEl.textContent = creditsUnconfigured ? "—" : formatCreditAmount(totalCredits);
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
   renderDashboardRecentActivity();
   const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
@@ -1240,7 +1260,7 @@ function renderDashboard(data) {
     { label: "RunningHub 连接", value: connection },
     { label: "在线语言模型", value: rh.configured ? `已配置 · ${rh.llmModel || "xai/grok-4.7"}` : "未配置" },
     { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
-    { label: "启用用户", value: `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
+    { label: "启用用户", value: usersUnconfigured ? "—" : `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
   ], "暂无状态数据");
 }
 
@@ -1349,9 +1369,14 @@ function renderComputeWorkers(workersResult) {
   if (status) {
     status.textContent = isErrorResult(workersResult)
       ? computeErrorText(workersResult)
-      : (writable ? (workersResult.records || []).length + " 台" : "mock 数据不可写入");
+      : (isUnconfiguredResult(workersResult) ? "未配置" : (writable ? (workersResult.records || []).length + " 台" : "Supabase 未配置，不能写入"));
   }
 
+  if (isUnconfiguredResult(workersResult)) {
+    ["computeStatTotal", "computeStatIdle", "computeStatBusy", "computeStatOffline", "computeStatCompleted"].forEach((id) => setText(id, "—"));
+    replaceRows("computeWorkersTableBody", [], 9, UNCONFIGURED_TEXT);
+    return;
+  }
   const workers = workersResult.records || [];
   const countByStatus = (value) => workers.filter((item) => String(item.status || "") === value).length;
   const sumOf = (field) => workers.reduce((sum, item) => sum + (Number(item[field] || 0) || 0), 0);
@@ -1497,7 +1522,7 @@ function renderComputeCodes(codesResult) {
   if (status) {
     status.textContent = isErrorResult(codesResult)
       ? computeErrorText(codesResult)
-      : (writable ? "" : "mock 数据不可写入");
+      : (writable ? "" : "Supabase 未配置，不能写入");
   }
 
   const rows = (codesResult.records || []).map((item) => {
@@ -1560,7 +1585,7 @@ function renderComputeCodes(codesResult) {
     "computeCodesTableBody",
     rows,
     5,
-    isErrorResult(codesResult) ? computeErrorText(codesResult) : "还没有发出过注册码"
+    isUnconfiguredResult(codesResult) ? UNCONFIGURED_TEXT : isErrorResult(codesResult) ? computeErrorText(codesResult) : "还没有发出过注册码"
   );
 }
 
@@ -1579,7 +1604,7 @@ function renderComputeMintControls(usersResult) {
   if (!users.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = writable ? "暂无用户，请先在用户管理里创建" : "mock 数据不可写入";
+    option.textContent = writable ? "暂无用户，请先在用户管理里创建" : "Supabase 未配置，不能写入";
     select.appendChild(option);
   } else {
     users.forEach((user) => {
@@ -1592,7 +1617,7 @@ function renderComputeMintControls(usersResult) {
   }
 
   button.disabled = !writable || !users.length;
-  status.textContent = writable ? (users.length ? "-" : "先创建一个用户") : "mock 数据不可写入";
+  status.textContent = writable ? (users.length ? "-" : "先创建一个用户") : "Supabase 未配置，不能写入";
 }
 
 async function mintComputeCode() {
@@ -1703,7 +1728,7 @@ function renderComputeUsage(usageResult, usersResult, workersResult) {
     "computeUsageTableBody",
     rows,
     4,
-    isErrorResult(usageResult) ? computeErrorText(usageResult) : "还没有生成记录"
+    isUnconfiguredResult(usageResult) ? UNCONFIGURED_TEXT : isErrorResult(usageResult) ? computeErrorText(usageResult) : "还没有生成记录"
   );
 }
 

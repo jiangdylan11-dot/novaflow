@@ -121,129 +121,6 @@ function disabledTableResult(tableName, message) {
   };
 }
 
-const mockData = {
-  users: [
-    {
-      id: "U-1001",
-      email: "artist@demo.com",
-      display_name: "Artist",
-      role: "user",
-      plan: "Pro",
-      status: "active",
-      current_credits: 12800,
-      created_at: "2026-06-18T10:21:00.000Z",
-      updated_at: "2026-07-02T09:10:00.000Z"
-    },
-    {
-      id: "U-1002",
-      email: "ops@demo.com",
-      display_name: "Ops",
-      role: "user",
-      plan: "Team",
-      status: "active",
-      current_credits: 3420,
-      created_at: "2026-06-21T14:08:00.000Z",
-      updated_at: "2026-07-02T09:30:00.000Z"
-    },
-    {
-      id: "U-1003",
-      email: "trial@demo.com",
-      display_name: "Trial",
-      role: "user",
-      plan: "Trial",
-      status: "disabled",
-      current_credits: 0,
-      created_at: "2026-06-29T19:42:00.000Z",
-      updated_at: "2026-07-01T16:00:00.000Z"
-    }
-  ],
-  credits: [
-    { id: "C-1001", user_id: "U-1001", email: "artist@demo.com", balance: 12800, updated_at: "2026-07-02T09:10:00.000Z" },
-    { id: "C-1002", user_id: "U-1002", email: "ops@demo.com", balance: 3420, updated_at: "2026-07-02T09:30:00.000Z" },
-    { id: "C-1003", user_id: "U-1003", email: "trial@demo.com", balance: 0, updated_at: "2026-07-01T16:00:00.000Z" }
-  ],
-  ai_providers: [
-    {
-      id: "P-1001",
-      name: "Grok",
-      provider_key: "grok",
-      status: "disabled",
-      billing_multiplier: 0.1,
-      api_key_secret_ref: "",
-      created_at: "2026-07-01T08:00:00.000Z",
-      updated_at: "2026-07-01T08:00:00.000Z"
-    },
-    {
-      id: "P-1002",
-      name: "Qwen",
-      provider_key: "qwen",
-      status: "disabled",
-      billing_multiplier: 0.8,
-      api_key_secret_ref: "",
-      created_at: "2026-07-01T08:00:00.000Z",
-      updated_at: "2026-07-01T08:00:00.000Z"
-    },
-    {
-      id: "P-1003",
-      name: "ComfyUI",
-      provider_key: "comfyui",
-      status: "disabled",
-      billing_multiplier: 1.25,
-      api_key_secret_ref: "",
-      created_at: "2026-07-01T08:00:00.000Z",
-      updated_at: "2026-07-01T08:00:00.000Z"
-    }
-  ],
-  system_settings: [
-    { key: "default_billing_multiplier", value: { label: "默认积分倍率", value: "1.00x" }, updated_at: "2026-07-01T08:00:00.000Z" },
-    { key: "new_user_initial_credits", value: { label: "新用户初始积分", value: 0 }, updated_at: "2026-07-01T08:00:00.000Z" },
-    {
-      key: "provider_budget_comfyui",
-      value: {
-        label: "ComfyUI 手动总余额",
-        provider_key: "comfyui",
-        balance: 0,
-        unit: "credits",
-        source: "manual",
-        note: "mock placeholder"
-      },
-      updated_at: "2026-07-01T08:00:00.000Z"
-    }
-  ],
-  gpu_workers: [
-    {
-      id: "W-1001",
-      owner_id: "U-1001",
-      worker_name: "mock-4090",
-      status: "idle",
-      tier: "standard",
-      gpu_name: "NVIDIA GeForce RTX 4090",
-      vram_mb: 24564,
-      ram_mb: 65536,
-      comfy_version: "0.31.1",
-      worker_version: "0.1.0",
-      endpoint_url: "http://127.0.0.1:8790",
-      transport: "direct",
-      last_heartbeat: "2026-07-01T08:00:00.000Z",
-      total_completed: 12,
-      total_failed: 0,
-      created_at: "2026-07-01T08:00:00.000Z"
-    }
-  ],
-  web_worker_registration_codes: [
-    {
-      code_hash: "0000000000000000000000000000000000000000000000000000000000000000",
-      owner_id: "U-1001",
-      label: "mock placeholder",
-      tier: "standard",
-      max_uses: 1,
-      used_count: 0,
-      expires_at: "2026-07-08T08:00:00.000Z",
-      created_at: "2026-07-01T08:00:00.000Z"
-    }
-  ]
-};
-
 function readAdminSupabaseEnv() {
   const supabaseUrl = readAdminEnvValue(ENV_SUPABASE_URL).replace(/\/+$/, "");
   const serviceRoleKey = readAdminEnvValue(ENV_SERVICE_ROLE_KEY);
@@ -476,11 +353,12 @@ function logAdminData(level, message, details = {}) {
 
 function mockResult(tableName, selectFields = "*", options = {}, durationMs = 0) {
   return {
-    source: "mock",
-    status: "mock",
+    source: "unconfigured",
+    status: "unconfigured",
     configured: false,
     table: tableName,
-    records: mockData[tableName] || [],
+    records: [],
+    message: "Supabase 未配置",
     reason: "supabase_env_missing",
     durationMs,
     query: queryMeta(tableName, selectFields, options)
@@ -579,7 +457,7 @@ function adminWriteMockResult(operation, durationMs) {
     configured: false,
     operation,
     ok: false,
-    error: "Supabase 未配置，mock 数据不可写入。",
+    error: "Supabase 未配置，不能写入。",
     durationMs
   };
 }
@@ -1161,8 +1039,8 @@ async function readSingleBy(tableName, selectFields, columnName, value, options 
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") {
-      const record = (mockData[tableName] || []).find((item) => String(item?.[columnName] || "") === String(value || "")) || null;
-      const result = singleRecordResult("mock", "mock", tableName, record, selectFields, safeOptions, durationMs);
+      const record = null;
+      const result = singleRecordResult("unconfigured", "unconfigured", tableName, record, selectFields, safeOptions, durationMs);
       logAdminData("info", `read ${tableName} single`, {
         source: result.source,
         status: result.status,
@@ -2696,31 +2574,15 @@ async function setAdminProviderRuntimeConfig(payload) {
 }
 
 function mockProviderQuotaResult(providerKey, durationMs = 0) {
-  const records = (mockData.users || []).map((user, index) => {
-    const allocatedCount = index === 0 ? 20 : index === 1 ? 8 : 0;
-    const usedCount = index === 0 ? 3 : 0;
-    return normalizeProviderQuotaRecord({
-      key: providerQuotaSettingKey(providerKey, user.id),
-      value: {
-        provider_key: providerKey,
-        user_id: user.id,
-        email: user.email,
-        display_name: user.display_name,
-        allocated_count: allocatedCount,
-        used_count: usedCount,
-        note: "mock"
-      },
-      updated_at: user.updated_at
-    }, user, providerKey);
-  });
   return {
-    source: "mock",
-    status: "mock",
+    source: "unconfigured",
+    status: "unconfigured",
     configured: false,
     table: "system_settings",
     virtualTable: "provider_call_quotas",
     providerKey,
-    records,
+    records: [],
+    message: "Supabase 未配置",
     reason: "supabase_env_missing",
     durationMs,
     query: queryMeta("system_settings", adminQueries.system_settings.select, { providerQuota: true })
@@ -2815,12 +2677,12 @@ async function getAdminProviderCallQuotaByUserId(userId, providerKey = "grok") {
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") {
-      const user = (mockData.users || []).find((item) => String(item.id || "") === String(userId || "")) || null;
       return {
-        source: "mock",
-        status: "mock",
+        source: "unconfigured",
+        status: "unconfigured",
         configured: false,
-        record: user ? normalizeProviderQuotaRecord(null, user, normalizedProviderKey) : null,
+        record: null,
+        message: "Supabase 未配置",
         durationMs
       };
     }
@@ -3559,13 +3421,13 @@ async function readClientRowsForUser(tableName, selectFields, userId, options = 
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") {
-      const records = (mockData[tableName] || []).filter((item) => String(item.user_id || "") === String(userId || ""));
       return {
-        source: "mock",
-        status: "mock",
+        source: "unconfigured",
+        status: "unconfigured",
         configured: false,
         table: tableName,
-        records,
+        records: [],
+        message: "Supabase 未配置",
         reason: "supabase_env_missing",
         durationMs,
         query: queryMeta(tableName, selectFields, safeOptions)
@@ -3668,7 +3530,7 @@ async function recordClientAiTaskUsage(payload, user) {
     configured: false,
     operation,
     ok: false,
-    error: "recordUsage 已关闭；轻量后台不写任务记录或消费记录。",
+    error: "recordUsage 已关闭，不写任务记录或消费记录。",
     durationMs: Date.now() - startedAt
   };
 }
@@ -3939,7 +3801,7 @@ async function queryCreditLedger(payload) {
     ? null
     : Math.max(1, Math.min(200, Math.round(Number(payload.limit)) || 20));
   const clientState = getAdminClient();
-  if (!clientState.client) return { records: [], csv: ledgerCsv([]) };
+  if (!clientState.client) return { records: [], csv: ledgerCsv([]), configured: false, status: "unconfigured", message: "Supabase 未配置" };
   const client = clientState.client;
   let userIds = null;
   let knownUsers = [];

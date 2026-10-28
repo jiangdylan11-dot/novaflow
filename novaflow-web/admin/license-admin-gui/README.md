@@ -33,7 +33,7 @@ npm run server
 ## 当前范围
 
 - 授权管理沿用现有功能，可查询、创建/更新、启用、停用、删除授权，并可签发和校验 `license.nfl`。
-- 后台管理数据层已接入 Supabase 查询；未配置环境变量时自动回退 mock 数据。
+- 后台管理数据层已接入 Supabase 查询；未配置环境变量时列表为空并提示未配置，不展示假数据。
 - 用户管理支持管理员手动创建登录账号、设置初始密码、修改密码和维护用户状态；NovaFlow 主程序登录走后台服务账号+密码链路，不直连 Supabase Service Role。
 - 会员管理通过 `admin_adjust_feature_credits` 在同一事务里更新 `credits.balance` 并写入 `credit_ledger`。
 - AI 服务页只配置 RunningHub API Key，并做免费的 accountStatus 检测。在线图像和语言模型只走 RunningHub。本地 Comfy 不在此配置。
@@ -48,7 +48,7 @@ npm run server
 - `NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY`
 - `NOVAFLOW_SUPABASE_PUBLISHABLE_KEY` 或 `NOVAFLOW_SUPABASE_ANON_KEY`
 
-未配置时，用户、积分、AI 服务和基础设置页面使用 mock 数据。配置正确时，右上角显示 `● Supabase Connected`；缺少配置时显示 `● Mock`；连接或查询失败时显示 `● Supabase Error`。
+未配置时，用户、积分、AI 服务和算力页面是空态，右上角显示 `● 未配置`，写入会被拒绝。配置正确时显示 `● Supabase Connected`；连接或查询失败时显示 `● Supabase Error`。
 
 `service role key` 只允许后台管理端或后续后台服务使用，不要写入 renderer，不要打包进公开客户端，也不要用于 NovaFlow 主程序客户端直连。Renderer 只能通过 IPC 调用 `admin-data.js`，不能直接 import Supabase。
 
@@ -80,7 +80,7 @@ Windows 下后台工具和后台服务都会先读取进程环境变量；如果
 写入要求：
 
 - 必须配置 `NOVAFLOW_SUPABASE_URL` 和 `NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY`。
-- mock 数据只读，不允许假写入。
+- 未配置 Supabase 时拒绝写入，并说明原因。
 - 用户必须已存在于 `users` 表。
 - 每个用户在 `credits` 表只应有一条余额记录，schema 草案通过 `credits_user_id_unique_idx` 约束这一点。
 - 调整必须填写原因。成功后可在 AI 服务的积分流水里按用户查看。`credit_logs` 不再作为运营入口。
