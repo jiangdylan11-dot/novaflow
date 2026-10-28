@@ -1,7 +1,8 @@
 // Verify the Web account dialog reads quota data from the account service.
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { createContext, runInContext } from 'node:vm';
+import { fileURLToPath } from 'node:url';
 import { createDomSandbox } from '../../worker/src/comfy/dom-shim.mjs';
 
 const source = await readFile(new URL('../../renderer/novaflow-web-runtime.js', import.meta.url), 'utf8');
@@ -97,4 +98,367 @@ for (const computeMode of ['local', 'shared']) {
   await gateSandbox.NovaFlowWebAccount.guard();
   check(!!gateSandbox.document.getElementById('novaflow-web-login-gate'), false);
 }
-console.log(checks + ' passed, 0 failed: Web account quota source, errors and session preservation');
+// Header strip: name, live balance and 退出 sit after the version. The modal is gone.
+function headerDocument() {
+  const ids = new Map();
+  function relink(parent) {
+    const kids = parent.children || [];
+    kids.forEach((child, index) => {
+      child.parentNode = parent;
+      child.parentElement = parent;
+      child.previousSibling = kids[index - 1] || null;
+      child.nextSibling = kids[index + 1] || null;
+      child.previousElementSibling = kids[index - 1] || null;
+      child.nextElementSibling = kids[index + 1] || null;
+    });
+  }
+  function register(node) {
+    if (node && node.id) ids.set(node.id, node);
+    for (const child of node.children || []) register(child);
+  }
+  function matches(node, selector) {
+    if (selector.startsWith('.')) return String(node.className || '').split(/\s+/).includes(selector.slice(1));
+    if (selector.startsWith('#')) return node.id === selector.slice(1);
+    const attr = /^\[([^\]=]+)(?:="([^"]*)")?\]$/.exec(selector);
+    if (!attr) return false;
+    const value = node.attrs && node.attrs[attr[1]];
+    if (value == null) return false;
+    return attr[2] == null || value === attr[2];
+  }
+  function query(node, selector) {
+    const found = [];
+    (function walk(current) {
+      for (const child of current.children || []) {
+        if (matches(child, selector)) found.push(child);
+        walk(child);
+      }
+    })(node);
+    return found[0] || null;
+  }
+  function make(tag) {
+    let idValue = '';
+    const node = {
+      tagName: String(tag).toUpperCase(),
+      className: '',
+      textContent: '',
+      hidden: false,
+      disabled: false,
+      type: '',
+      title: '',
+      value: '',
+      placeholder: '',
+      autocomplete: '',
+      open: false,
+      children: [],
+      parentNode: null,
+      parentElement: null,
+      nextSibling: null,
+      nextElementSibling: null,
+      attrs: {},
+      style: { color: '', setProperty() {}, removeProperty() {} },
+      nodeListeners: {},
+      setAttribute(name, value) { node.attrs[String(name)] = String(value); },
+      getAttribute(name) { return Object.prototype.hasOwnProperty.call(node.attrs, String(name)) ? node.attrs[String(name)] : null; },
+      removeAttribute(name) { delete node.attrs[String(name)]; },
+      hasAttribute(name) { return Object.prototype.hasOwnProperty.call(node.attrs, String(name)); },
+      addEventListener(type, fn) { (node.nodeListeners[type] ||= []).push(fn); },
+      removeEventListener() {},
+      appendChild(child) {
+        if (child.parentNode && child.parentNode.children) {
+          const index = child.parentNode.children.indexOf(child);
+          if (index >= 0) child.parentNode.children.splice(index, 1);
+          relink(child.parentNode);
+        }
+        node.children.push(child);
+        relink(node);
+        register(child);
+        return child;
+      },
+      insertBefore(child, before) {
+        const index = before ? node.children.indexOf(before) : -1;
+        node.children.splice(index < 0 ? node.children.length : index, 0, child);
+        relink(node);
+        register(child);
+        return child;
+      },
+      removeChild(child) {
+        const index = node.children.indexOf(child);
+        if (index >= 0) node.children.splice(index, 1);
+        child.parentNode = null;
+        child.parentElement = null;
+        relink(node);
+        return child;
+      },
+      after(child) {
+        const parent = node.parentNode;
+        if (!parent) return;
+        const index = parent.children.indexOf(node);
+        parent.children.splice(index + 1, 0, child);
+        relink(parent);
+        register(child);
+      },
+      remove() {
+        if (node.id) ids.delete(node.id);
+        if (node.parentNode && typeof node.parentNode.removeChild === 'function') node.parentNode.removeChild(node);
+      },
+      close() { node.open = false; },
+      focus() {},
+      click() {
+        for (const fn of node.nodeListeners.click || []) fn({ preventDefault() {}, stopPropagation() {}, target: node });
+      },
+      querySelector(selector) { return query(node, selector); },
+      contains(other) {
+        let current = other;
+        while (current) {
+          if (current === node) return true;
+          current = current.parentNode;
+        }
+        return false;
+      }
+    };
+    Object.defineProperty(node, 'id', {
+      get() { return idValue; },
+      set(value) {
+        if (idValue) ids.delete(idValue);
+        idValue = String(value || '');
+        if (idValue) ids.set(idValue, node);
+      }
+    });
+    return node;
+  }
+  const body = make('body');
+  const head = make('head');
+  const doc = make('#document');
+  doc.body = body;
+  doc.head = head;
+  doc.children = [head, body];
+  relink(doc);
+  doc.createElement = (tag) => make(tag);
+  doc.createTextNode = (text) => Object.assign(make('#text'), { textContent: String(text) });
+  doc.getElementById = (id) => ids.get(String(id)) || null;
+  doc.querySelector = (selector) => query(doc, selector);
+  const brand = make('div');
+  brand.className = 'nf-brand';
+  const version = make('span');
+  version.className = 'nf-brand-version';
+  version.textContent = 'v2.0.135';
+  brand.appendChild(version);
+  const legacyButton = make('button');
+  legacyButton.id = 'novaflow-web-account-button';
+  legacyButton.textContent = 'dylan';
+  const legacyDialog = make('dialog');
+  legacyDialog.id = 'novaflow-web-account-dialog';
+  legacyDialog.open = true;
+  body.appendChild(brand);
+  body.appendChild(legacyButton);
+  body.appendChild(legacyDialog);
+  return { doc, brand, version };
+}
+
+function loadAccount(sandbox) {
+  runInContext(accountSource, createContext(sandbox));
+}
+
+{
+
+  let balance = 44128;
+  let logoutCalls = 0;
+  let reloaded = 0;
+  const appliedPrices = [];
+  const { doc, version } = headerDocument();
+  const sandbox = {
+    document: doc,
+    Intl, Promise, Number, String, Object,
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    location: { reload() { reloaded += 1; } },
+    setTimeout: () => 0,
+    setInterval: () => 0,
+    clearInterval() {},
+    addEventListener(type, fn) { (sandbox.listeners[type] ||= []).push(fn); },
+    removeEventListener() {},
+    dispatchEvent(event) {
+      for (const fn of sandbox.listeners[event.type] || []) fn(event);
+      return true;
+    },
+    listeners: {},
+    CustomEvent: class CustomEvent {
+      constructor(type, init) { this.type = type; Object.assign(this, init || {}); }
+    },
+    NovaFlowFeatureCreditPrices: { applyConfig(next) { appliedPrices.push(next); } },
+    electronAPI: {
+      clientAuthStatus: async () => ({ ok: true, result: { authenticated: true, user: { display_name: 'dylan' }, credits: { balance } } }),
+      clientAuthAccountDetails: async () => ({
+        ok: true,
+        result: { user: { display_name: 'dylan' }, credits: { balance }, featureCreditPrices: { prices: { online_chat_turn: 4 } } }
+      }),
+      clientAuthLogout: async () => { logoutCalls += 1; return { ok: true }; }
+    }
+  };
+  sandbox.window = sandbox;
+  const context = createContext(sandbox);
+  runInContext(accountSource, context);
+  runInContext('globalThis.__nfRoot = globalThis;', context);
+  check(sandbox.NovaFlowWebAccount.seat(doc.querySelector('.nf-brand')), true);
+  await sandbox.NovaFlowWebAccount.refresh();
+  const strip = version.nextElementSibling;
+  check(strip && strip.id, 'novaflow-web-account-header');
+  check(strip.querySelector('[data-novaflow-account-name]').textContent, 'dylan');
+  check(strip.querySelector('[data-novaflow-account-credits]').textContent, '44,128 积分');
+  check(strip.querySelector('[data-novaflow-account-logout]').textContent, '退出');
+  check(strip.querySelector('[data-novaflow-account-logout]').hidden, false);
+  check(strip.querySelector('[data-novaflow-account-login]').hidden, true);
+  check(strip.hasAttribute('data-novaflow-account-pending'), false);
+  check(doc.getElementById('novaflow-web-account-dialog'), null);
+  check(doc.getElementById('novaflow-web-account-button'), null);
+  check(appliedPrices.length > 0, true);
+  strip.querySelector('[data-novaflow-account-name]').click();
+  strip.querySelector('[data-novaflow-account-credits]').click();
+  check(doc.getElementById('novaflow-web-account-dialog'), null);
+  check(typeof sandbox.NovaFlowWebAccount.open, 'undefined');
+  // A layout pass (module switch) drops the strip. seat() puts it back and does not throw.
+  strip.remove();
+  check(sandbox.NovaFlowWebAccount.seat(), true);
+  const restored = version.nextElementSibling;
+  check(restored.id, 'novaflow-web-account-header');
+  check(restored.querySelector('[data-novaflow-account-name]').textContent, 'dylan');
+  check(restored.querySelector('[data-novaflow-account-credits]').textContent, '44,128 积分');
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(restored.querySelector('[data-novaflow-account-name]').textContent, 'dylan');
+  // Charges and refunds reuse the account-details read.
+  balance = 40000;
+  sandbox.dispatchEvent(new sandbox.CustomEvent('novaflow:account-balance', { detail: { source: 'charge', balance: 40000 } }));
+  check(restored.querySelector('[data-novaflow-account-credits]').textContent, '40,000 积分');
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(restored.querySelector('[data-novaflow-account-credits]').textContent, '40,000 积分');
+  balance = 44128;
+  sandbox.dispatchEvent(new sandbox.CustomEvent('novaflow:art-generate-credit-updated', { detail: { kind: 'settlement', promptId: 'prompt-1' } }));
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(restored.querySelector('[data-novaflow-account-credits]').textContent, '44,128 积分');
+  balance = 43000;
+  for (const fn of sandbox.listeners.message || []) {
+    fn({ source: sandbox.__nfRoot, data: { type: 'novaflow-provider-usage-settled', payload: { credits: { balance: 43000 } } } });
+  }
+  check(restored.querySelector('[data-novaflow-account-credits]').textContent, '43,000 积分');
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(restored.querySelector('[data-novaflow-account-credits]').textContent, '43,000 积分');
+  restored.querySelector('[data-novaflow-account-logout]').click();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  check(logoutCalls, 1);
+  check(reloaded, 1);
+  check(doc.getElementById('novaflow-web-account-dialog'), null);
+}
+
+{
+
+  const { doc, version } = headerDocument();
+  const sandbox = {
+    document: doc,
+    Intl, Promise, Number, String, Object,
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    location: { reload() {} },
+    setTimeout: () => 0,
+    setInterval: () => 0,
+    clearInterval() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() { return true; },
+    electronAPI: {
+      clientAuthStatus: async () => ({ ok: true, result: { authenticated: false } }),
+      clientAuthAccountDetails: async () => ({ ok: false, httpStatus: 401, error: '请先登录账号' }),
+      clientAuthLogout: async () => ({ ok: true })
+    }
+  };
+  loadAccount(sandbox);
+  await sandbox.NovaFlowWebAccount.guard();
+  check(sandbox.NovaFlowWebAccount.seat(), true);
+  await sandbox.NovaFlowWebAccount.refresh();
+  const strip = version.nextElementSibling;
+  check(strip.querySelector('[data-novaflow-account-login]').hidden, false);
+  check(strip.querySelector('[data-novaflow-account-login]').textContent, '登录');
+  check(strip.querySelector('[data-novaflow-account-name]').hidden, true);
+  check(strip.querySelector('[data-novaflow-account-credits]').hidden, true);
+  check(strip.querySelector('[data-novaflow-account-logout]').hidden, true);
+  strip.querySelector('[data-novaflow-account-login]').click();
+  await sandbox.NovaFlowWebAccount.guard();
+  check(!!doc.getElementById('novaflow-web-login-gate'), true);
+  check(doc.getElementById('novaflow-web-account-dialog'), null);
+  const gates = doc.body.children.filter((node) => node.id === 'novaflow-web-login-gate');
+  check(gates.length, 1);
+}
+
+{
+
+  const events = [];
+  let taskCost = 0;
+  let taskSettled = false;
+  const chargeSandbox = createDomSandbox({
+    Response, Request, Blob, FormData,
+    NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test', authUrl: 'https://account.test' },
+    dispatchEvent(event) { events.push(event); return true; },
+    fetch: async (url) => {
+      const target = String(url);
+      if (target.endsWith('/api/client/bootstrap')) {
+        return new Response(JSON.stringify({ ok: true, user: { display_name: 'dylan' }, credits: { balance: 10 } }), { status: 200 });
+      }
+      if (target.includes('/api/client/grok/prompt-optimize')) {
+        return new Response(JSON.stringify({ quota: { balance_after: 6 } }), { status: 200 });
+      }
+      if (target.includes('/api/web/tasks/')) {
+        return new Response(JSON.stringify({ task: { id: 'task-1', status: 'processing', charged_credit_cost: taskCost, credit_settled: taskSettled } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+  });
+  chargeSandbox.localStorage.setItem('novaflow_web_session_v1', JSON.stringify({ token: 'test-token' }));
+  runInContext(source, createContext(chargeSandbox));
+  events.length = 0;
+  await chargeSandbox.electronAPI.clientAuthAccountDetails();
+  check(events.filter((event) => event.type === 'novaflow:account-balance').length, 0);
+  await chargeSandbox.electronAPI.smartAiPromptOptimize({});
+  const charged = events.filter((event) => event.type === 'novaflow:account-balance');
+  check(charged.length, 1);
+  check(charged[0].detail.balance, 6);
+  check(charged[0].detail.source, 'charge');
+  events.length = 0;
+  await chargeSandbox.NovaFlowWebRuntime.control('GET', '/api/web/tasks/task-1');
+  check(events.filter((event) => event.type === 'novaflow:account-balance').length, 0);
+  taskCost = 12;
+  taskSettled = true;
+  await chargeSandbox.NovaFlowWebRuntime.control('GET', '/api/web/tasks/task-1');
+  const settled = events.filter((event) => event.type === 'novaflow:account-balance');
+  check(settled.length, 1);
+  check(settled[0].detail.source, 'task');
+  check(settled[0].detail.balance, undefined);
+  events.length = 0;
+  await chargeSandbox.NovaFlowWebRuntime.control('GET', '/api/web/tasks/task-1');
+  check(events.filter((event) => event.type === 'novaflow:account-balance').length, 0);
+  taskCost = 0;
+  taskSettled = false;
+  await chargeSandbox.NovaFlowWebRuntime.control('GET', '/api/web/tasks/task-1');
+  const refunded = events.filter((event) => event.type === 'novaflow:account-balance');
+  check(refunded.length, 1);
+  check(refunded[0].detail.source, 'task');
+}
+
+{
+  check(/showModal|NovaFlow 账户|novaflow-web-account-title/.test(accountSource), false);
+  check(typeof accountSource === 'string' && accountSource.includes('novaflow-web-account-header'), true);
+  const brand = await readFile(new URL('../../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8');
+  check(/accountHeader\.seat\(brand\)/.test(brand), true);
+  check(/novaflow-web-account-dialog|novaflow-web-account-title|NovaFlowWebAccount\.open|nf-account-card/.test(brand), false);
+  const theme = await readFile(new URL('../../renderer/novaflow-ui-theme.css', import.meta.url), 'utf8');
+  check(/novaflow-web-account-dialog|novaflow-web-account-title|nf-account-card|nf-account-close/.test(theme), false);
+  const rendererDir = fileURLToPath(new URL('../../renderer/', import.meta.url));
+  const names = await readdir(rendererDir);
+  const leftovers = [];
+  for (const name of names) {
+    if (!/\.(js|css)$/.test(name) || name === 'novaflow-web-account.js') continue;
+    const text = await readFile(new URL('../../renderer/' + name, import.meta.url), 'utf8');
+    if (/novaflow-web-account-dialog|novaflow-web-account-button|novaflow-web-account-title|NovaFlowWebAccount\.open|NovaFlowWebAccount\.close|nf-account-card|nf-account-close/.test(text)) {
+      leftovers.push(name);
+    }
+  }
+  check(leftovers, []);
+}
+
+console.log(checks + ' passed, 0 failed: Web account quota source, header strip, logout and live balance');
