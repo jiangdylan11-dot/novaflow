@@ -200,13 +200,16 @@ export function chatCompletionToResponses(data) {
     const described = describeRunningHubFailure(0, data);
     throw Object.assign(new Error(described.message), { statusCode: described.statusCode, retryable: described.retryable, moderation: described.moderation });
   }
+  const finish = String(choice?.finish_reason || '');
+  if (finish === 'content_filter') {
+    throw Object.assign(new Error('内容未通过在线审核，请修改后再试'), { statusCode: 400, retryable: false, moderation: true });
+  }
   const message = choice?.message || {};
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   const text = choiceText(message.content).trim();
   const output = [];
   for (const call of toolCalls) output.push({ type: 'function_call', name: String(call?.function?.name || ''), arguments: String(call?.function?.arguments || '') });
   if (text) output.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] });
-  const finish = String(choice?.finish_reason || '');
   const completed = output.length > 0 && (finish === 'stop' || finish === 'length' || toolCalls.length > 0);
   const usage = data.usage && typeof data.usage === 'object' ? data.usage : {};
   const inputTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;

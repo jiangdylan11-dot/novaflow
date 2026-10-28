@@ -680,7 +680,7 @@ begin
   if p_actual_calls > v_row.reserved_calls then raise exception using errcode = '22023', message = 'settle_grok_quota: actual calls exceed reservation'; end if;
 
   v_allocated := greatest(coalesce((v_value->>'allocated_count')::integer, 0), 0);
-  v_used := greatest(coalesce((v_value->>'used_count')::integer, 0), 0) + p_actual_calls;
+  v_used := greatest(coalesce((v_value->>'used_count')::integer, 0), 0) + case when p_success then p_actual_calls else 0 end;
   v_reserved := greatest(coalesce((v_value->>'reserved_count')::integer, 0) - v_row.reserved_calls, 0);
   v_recent := case when jsonb_typeof(v_value->'recent_calls') = 'array' then v_value->'recent_calls' else '[]'::jsonb end;
   select coalesce(jsonb_agg(item order by ord), '[]'::jsonb) into v_recent

@@ -1,7 +1,7 @@
 "use strict";
 import * as h3PromptEnhance from './h3-prompt-enhance.mjs';
 import * as artDirection from './art-direction.mjs';
-import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../../../novaflow-web/packages/shared/src/runninghub-llm.mjs';
+import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../_art-shared/runninghub-llm.mjs';
 
 const MINIMAX_H3_I2V_REVERSE_PURPOSE = "minimax-h3-i2v-reverse";
 const MINIMAX_H3_FL2V_REVERSE_PURPOSE = "minimax-h3-fl2v-reverse";

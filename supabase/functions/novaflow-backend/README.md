@@ -23,12 +23,35 @@ Required secrets:
 
 ```text
 NOVAFLOW_SESSION_SECRET
-NOVAFLOW_GROK_BASE_URL
-NOVAFLOW_GROK_MODEL
-NOVAFLOW_GROK_API_KEY
+NOVAFLOW_RUNNINGHUB_API_KEY
 ```
 
+Online text and vision use `NOVAFLOW_RUNNINGHUB_LLM_BASE_URL` (default
+`https://llm.runninghub.ai/v1`) and `NOVAFLOW_RUNNINGHUB_LLM_MODEL` (default
+`xai/grok-4.7`). Set those two as function secrets only when the defaults are
+not the ones you want. This function does not read `NOVAFLOW_GROK_*`.
+
 Supabase provides `SUPABASE_URL`, Service Role, and publishable/anon keys to Edge Functions. Service Role and Provider API keys must never be exposed to the renderer or public client.
+
+Shared modules:
+
+Supabase bundles this function from `supabase/functions`. `index.ts`,
+`smart-ai-grok.workflow.mjs`, and `art-direction.mjs` import `../_art-shared/`.
+That directory is a generated copy of `novaflow-web/packages/shared/src`, not a
+second implementation, and it is not deployed as its own function. An import of
+`novaflow-web/packages/shared` is outside the bundle and the deploy fails.
+After editing a shared source, and before `supabase functions deploy`, regenerate
+and check the copies:
+
+```bash
+node novaflow-web/tools/sync-novaflow-backend-shared.mjs
+node novaflow-web/tools/sync-novaflow-backend-shared.mjs --check
+```
+
+From `novaflow-web` the same commands are `npm run sync:backend-shared` and
+`npm run check:backend-shared`. `--check` exits non-zero when a copy is missing
+or differs from its source. `edge-shared-sync.test.mjs` runs that check and
+rejects any deployable import that leaves `supabase/functions`.
 
 Client Grok routes:
 
@@ -111,7 +134,8 @@ keeps deployment independent of a local Docker daemon.
 Local contract tests (Node 20+):
 
 ```bash
-node --test supabase/functions/novaflow-backend/backend-contract.test.mjs
+node novaflow-web/tools/sync-novaflow-backend-shared.mjs --check
+node --test supabase/functions/novaflow-backend/edge-shared-sync.test.mjs supabase/functions/novaflow-backend/backend-contract.test.mjs
 ```
 
 Readiness:

@@ -187,6 +187,32 @@ test('provider errors stay in Chinese and only busy, server and timeout failures
   assert.match(moderated.error.message, /未通过在线审核/);
   assert.equal(moderated.error.moderation, true);
   assert.doesNotMatch(moderated.error.message, /upstream-secret/);
+  const filtered = await once({ id: 'cmpl-filter', choices: [{ finish_reason: 'content_filter', message: { role: 'assistant', content: secret } }] }, 200);
+  assert.equal(filtered.calls, 1);
+  assert.match(filtered.error.message, /未通过在线审核/);
+  assert.equal(filtered.error.moderation, true);
+  assert.equal(filtered.error.retryable, false);
+  assert.equal(filtered.error.statusCode, 400);
+  assert.doesNotMatch(filtered.error.message, /upstream-secret/);
+  const events = [];
+  const charge = createOnlineAiCharge({
+    reserve: async (input) => { events.push(['reserve', input.feature, input.amount]); return { status: 'reserved', idempotent: false, amount: input.amount }; },
+    settle: async (input) => { events.push(['settle', input.feature, input.amount, input.success]); return { remaining: 3 }; },
+    release: async (input) => { events.push(['release', input.feature, input.amount, input.reason]); return { remaining: 4 }; }
+  });
+  await assert.rejects(charge({
+    userId: 'user',
+    feature: 'image-reverse',
+    amount: 1,
+    usageKey: 'filter-1',
+    run: () => postRunningHubResponses({
+      body,
+      config,
+      delay: noWait,
+      fetchImpl: async () => new Response(JSON.stringify({ choices: [{ finish_reason: 'content_filter', message: { content: secret } }] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+  }), error => error.moderation === true && /未通过在线审核/.test(error.message) && !error.message.includes(secret));
+  assert.deepEqual(events, [['reserve', 'image-reverse', 1], ['release', 'image-reverse', 1, 'moderation']]);
   let timeouts = 0;
   await assert.rejects(postRunningHubResponses({ body, config, delay: noWait, fetchImpl: async () => { timeouts++; throw Object.assign(new Error(secret), { name: 'TimeoutError' }); } }), error => error.message === '在线模型响应超时' && !error.message.includes(secret));
   assert.equal(timeouts, 3);

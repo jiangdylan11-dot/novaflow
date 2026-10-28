@@ -30,6 +30,8 @@
     "verify:stable": "npm run verify:independent",
     "sync:edge": "node tools/sync-edge-function.mjs",
     "check:edge": "node tools/sync-edge-function.mjs --check",
+    "sync:backend-shared": "node tools/sync-novaflow-backend-shared.mjs",
+    "check:backend-shared": "node tools/sync-novaflow-backend-shared.mjs --check",
     "test:redaction": "node tests/e2e/workflow-redaction.test.mjs",
     "build:renderer": "node tools/build-web-renderer.mjs",
     "serve:renderer": "python tools/serve-web-dist.py --port 4892 --root web-dist",
