@@ -32,6 +32,8 @@ async function database() {
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028150000_admin_adjust_feature_credits.sql'), 'utf8'));
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028170000_token_settle_credits.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028170000_token_settle_credits.sql'), 'utf8'));
   return db;
 }
 
@@ -61,7 +63,7 @@ test('recommended prices, empty renminbi rate, and low-balance threshold', async
   assert.equal(quoteFeature({ feature: 'aifx-material' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'video-reverse' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'ui-catalog' }).credits, 14);
-  assert.equal(quoteFeature({ feature: 'gpt_image_2_5_economy', units: 3 }).credits, 66);
+  assert.equal(quoteFeature({ feature: 'gpt_image_2_5_economy', units: 3 }).credits, 60);
   assert.equal(quoteFeature({ feature: 'gpt-image-2' }).credits, 4);
   assert.equal(quoteFeature({ feature: 'g-4.2', units: 2 }).credits, 12);
   assert.equal(quoteFeature({ feature: 'local_qwen', units: 4 }).credits, 0);
@@ -173,28 +175,28 @@ test('feature credit RPCs hold the balance, release on failure, and mirror the o
     'select public.reserve_feature_credits($1, $2, $3, $4, null, $5::jsonb) as row',
     [user.id, 'use-images', 'gpt_image_2_5_economy', 2, '{}']
   )).rows[0].row;
-  assert.equal(num(images.estimated_credits), 44);
-  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 52);
+  assert.equal(num(images.estimated_credits), 40);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 56);
 
   const replay = (await db.query(
     'select public.reserve_feature_credits($1, $2, $3, $4, null, $5::jsonb) as row',
     [user.id, 'use-vision', 'xiaotao-vision', 1, '{}']
   )).rows[0].row;
   assert.equal(replay.idempotent, true);
-  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 52);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 56);
 
   await assert.rejects(
     db.query('select public.reserve_feature_credits($1, $2, $3, 3, null, $4::jsonb)', [user.id, 'use-broke', 'gpt_image_2_5_economy', '{}']),
     /积分不足/
   );
-  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 52);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 56);
 
   const settled = (await db.query(
     'select public.settle_feature_credits($1, $2, $3, 1, $4, $5::jsonb) as row',
     [user.id, 'use-vision', 'xiaotao-vision', 'xai/grok-4.7', '{}']
   )).rows[0].row;
   assert.equal(num(settled.settled_credits), 4);
-  assert.equal(num(settled.balance_after), 52);
+  assert.equal(num(settled.balance_after), 56);
   const settledMirror = (await db.query("select status, success from public.grok_quota_reservations where usage_key = 'use-vision'")).rows[0];
   assert.equal(settledMirror.status, 'settled');
   assert.equal(settledMirror.success, true);

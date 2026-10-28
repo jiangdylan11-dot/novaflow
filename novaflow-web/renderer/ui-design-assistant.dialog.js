@@ -249,8 +249,9 @@
     if (!record.creditNote) return
     const api = root.NovaFlowFeatureCreditPrices
     record.creditNote.textContent = record.engine === 'local'
-      ? '本地处理不扣积分'
+      ? ''
       : (api?.previewText?.('lean_research', 1) || '本次将扣积分')
+    record.creditNote.style.display = record.creditNote.textContent ? '' : 'none'
   }
 
   function createEngineChoice(record, value, title, meta) {
@@ -268,17 +269,13 @@
     })
     return element(record.documentRef, 'label', {
       'data-novaflow-ui-design-assistant-engine-card': value,
+      title: meta,
       style: {
         display: 'flex', alignItems: 'center', gap: '8px', minHeight: '48px', padding: '7px 10px',
         border: '1px solid rgba(255,255,255,0.08)', borderRadius: '7px', background: 'rgba(255,255,255,0.035)',
         color: 'rgba(232,237,242,0.88)', fontSize: '11px', cursor: 'pointer', boxSizing: 'border-box',
       },
-    }, [input, element(record.documentRef, 'span', { text: title }, [
-      element(record.documentRef, 'span', {
-        text: meta,
-        style: { display: 'block', marginTop: '2px', color: 'rgba(232,237,242,0.46)', fontSize: '9px' },
-      }),
-    ])])
+    }, [input, element(record.documentRef, 'span', { text: title })])
   }
 
   function open(options = {}) {
@@ -357,7 +354,7 @@
       content,
     ])
     const engineGrid = element(documentRef, 'div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '6px' } })
-    ;[['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 快速处理']].forEach(([value, title, meta]) => {
+    ;[['grok', '云端', '云端 · 深度处理'], ['local', '本地', '本地 · 快速处理']].forEach(([value, title, meta]) => {
       engineGrid.appendChild(createEngineChoice(record, value, title, meta))
     })
     record.creditNote = element(documentRef, 'div', {

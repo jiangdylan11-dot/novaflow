@@ -7,8 +7,8 @@
 
   const AUTH_SURFACE_KEY = 'ui-design'
   const FALLBACK_PROVIDER_OPTIONS = Object.freeze([
-    Object.freeze({ value: 'local', label: '本地模型' }),
-    Object.freeze({ value: 'gpt', label: 'GPT（云）' }),
+    Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
+    Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
   ])
   const mountedControls = new WeakMap()
 

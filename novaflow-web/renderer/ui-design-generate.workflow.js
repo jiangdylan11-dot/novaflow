@@ -230,8 +230,8 @@
 
   function providerTitle(provider) {
     const normalized = normalizeProvider(provider)
-    if (normalized === 'gpt') return 'GPT（云）'
-    return '本地模型'
+    if (normalized === 'gpt') return 'GPT Image 2.5'
+    return 'Qwen（本地）'
   }
 
   function normalizeReferenceRole(value) {
@@ -2260,11 +2260,14 @@
       const imageUrl = cleanText(image?.imageDataUrl || payload?.imageDataUrl)
       if (!imageUrl) throw new Error('云端出图没有返回图片')
       const promptId = cleanText(image?.taskId || payload?.promptId) || `rh_${Date.now()}`
-      if (root?.NovaFlowArtGenerateCreditPricing?.recordSettlement && payload?.quote) {
+      const chargedCredits = payload?.billing?.chargedCredits ?? payload?.charged
+      const balanceAfter = payload?.billing?.balanceAfter ?? payload?.remaining
+      if (root?.NovaFlowArtGenerateCreditPricing?.recordSettlement && (payload?.quote || payload?.billing)) {
         root.NovaFlowArtGenerateCreditPricing.recordSettlement({
           promptId,
-          settlement: { status: 'settled', charge_amount: payload.charged },
-          credits: { deducted: payload.charged, balance: payload.remaining },
+          settlement: { status: 'settled', charge_amount: chargedCredits },
+          credits: { deducted: chargedCredits, balance: balanceAfter },
+          pricing: payload.billing || null,
         })
       }
       return {
@@ -2284,8 +2287,9 @@
         referenceRoles: referenceRoles.map((reference) => reference.role),
         layoutGuideSource: cleanText(layoutGuide.source) || 'semantic-layout-compiler',
         layoutGuideEncoding,
-        charged: Number(payload.charged) || 0,
-        remaining: payload.remaining,
+        charged: Number(chargedCredits) || 0,
+        remaining: balanceAfter,
+        billing: payload.billing || null,
       }
     }
 

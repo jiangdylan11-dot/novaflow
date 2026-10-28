@@ -1351,13 +1351,13 @@
                 <div class="aifx-material-engine" data-aifx-material-engine>
                   <div class="aifx-material-engine-label">材质识别</div>
                   <div class="aifx-material-engine-row">
-                    <label class="aifx-material-engine-option">
+                    <label class="aifx-material-engine-option" title="本地 · 不扣积分">
                       <input type="radio" name="aifx-material-engine" value="local" data-aifx-material-engine-value="local" checked>
-                      <span>本地<span class="aifx-material-engine-meta">本地 · 不扣积分</span></span>
+                      <span>本地</span>
                     </label>
-                    <label class="aifx-material-engine-option">
+                    <label class="aifx-material-engine-option" title="云端 · 深度识别">
                       <input type="radio" name="aifx-material-engine" value="grok" data-aifx-material-engine-value="grok">
-                      <span>云端<span class="aifx-material-engine-meta">云端 · 深度识别</span></span>
+                      <span>云端</span>
                     </label>
                   </div>
                   <div class="aifx-material-engine-note" data-aifx-material-credit></div>
@@ -1818,7 +1818,7 @@
     try { return localStorage.getItem(MATERIAL_ENGINE_KEY) === 'grok' ? 'grok' : 'local' } catch { return 'local' }
   }
   const materialCreditText = () => {
-    if (materialEngine() !== 'grok') return '本地处理不扣积分'
+    if (materialEngine() !== 'grok') return ''
     const api = window.NovaFlowFeatureCreditPrices
     const quoted = api && typeof api.quoteFeature === 'function' ? api.quoteFeature({ feature: 'image_reverse', units: 1 }) : null
     const credits = quoted && quoted.credits != null ? quoted.credits : 4
@@ -3467,7 +3467,9 @@
     for (const input of refs.root.querySelectorAll('[data-aifx-material-engine-value]')) {
       put(input, 'checked', input.value === materialEngineNow)
     }
-    put(refs.materialCredit, 'textContent', materialCreditText())
+    const materialCreditLine = materialCreditText()
+    put(refs.materialCredit, 'textContent', materialCreditLine)
+    put(refs.materialCredit, 'hidden', !materialCreditLine)
     const settledQuota = state.reference?.materialState === 'ready' && materialEngineNow === 'grok' ? state.reference.materialQuota : null
     put(refs.materialSettlement, 'textContent', window.NovaFlowFeatureCreditPrices?.settlementText?.(settledQuota) || '')
     if (refs.previewStatus) {

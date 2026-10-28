@@ -169,11 +169,12 @@ test('the cloud prompt optimizer has an audio branch: music and effect frames, o
   assert.throws(() => buildGrokPromptOptimizeRequest({ surface: 'audio', purpose: 'audio-sfx', prompt: '' }, 'grok-test'), /描述或补充要求/);
 });
 
-test('the overlay carries the AI 助手 dialog and the stack-tier layout', async () => {
+test('the audio prompt has no AI 助手 button and keeps the stack-tier layout', async () => {
   const source = await readFile(new URL('../../renderer/audio-studio.tool.js', import.meta.url), 'utf8');
   assert.match(source, /nf-as-prompt:focus-within \.nf-as-prompt-head\{border-bottom-color:#1ea672\}/);
-  assert.match(source, /'\/local\/audio\/optimize-prompt'/);
-  assert.match(source, /surface: 'audio', purpose: isMusic \? 'audio-music' : 'audio-sfx'/);
+  assert.doesNotMatch(source, /el\('button', 'nf-as-prompt-ai'\)/);
+  assert.doesNotMatch(source, /['"]AI 助手['"]/);
+  assert.doesNotMatch(source, /\/local\/audio\/optimize-prompt/);
   assert.match(source, /data-novaflow-layout-tier/);
   assert.doesNotMatch(source, /AI 润色/);
 });

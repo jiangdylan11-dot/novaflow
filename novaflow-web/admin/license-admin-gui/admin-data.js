@@ -3456,6 +3456,17 @@ async function readSettingValue(client, key) {
   return data?.value && typeof data.value === "object" ? data.value : {};
 }
 
+async function readFeatureCreditConfig() {
+  const { normalizeCreditConfig } = await loadFeatureCredits();
+  const clientState = getAdminClient();
+  if (!clientState.client) return normalizeCreditConfig(undefined);
+  try {
+    return normalizeCreditConfig(await readSettingValue(clientState.client, "feature_credit_config"));
+  } catch {
+    return normalizeCreditConfig(undefined);
+  }
+}
+
 async function getFeatureCreditAdmin() {
   const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
 
@@ -3527,7 +3538,17 @@ async function saveFeatureCreditAdmin(payload) {
     low_balance_cny: thresholdCnyRaw === "" || thresholdCnyRaw == null ? current.config?.low_balance_cny : thresholdCnyRaw,
     balance_ttl_seconds: ttlRaw === "" || ttlRaw == null ? current.config?.balance_ttl_seconds : ttlRaw,
     stale_balance_policy: payload?.stale_balance_policy || current.config?.stale_balance_policy,
-    credits_per_usd: current.config?.credits_per_usd
+    credits_per_usd: payload?.credits_per_usd === "" || payload?.credits_per_usd == null
+      ? current.config?.credits_per_usd
+      : payload.credits_per_usd,
+    token_billing: {
+      ...(current.config?.token_billing || {}),
+      ...(payload?.token_billing && typeof payload.token_billing === "object" ? payload.token_billing : {})
+    },
+    gpt_image: {
+      ...(current.config?.gpt_image || {}),
+      ...(payload?.gpt_image && typeof payload.gpt_image === "object" ? payload.gpt_image : {})
+    }
   });
   const saved = await upsertAdminSystemSetting({ key: "feature_credit_config", value: config });
   if (saved?.status === "error" || saved?.ok === false) throw new Error(saved.error || "保存积分配置失败");
@@ -3546,7 +3567,7 @@ function ledgerFilters(payload) {
   return { user, feature, status, from, to };
 }
 
-const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_before,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code,pricing_details";
+const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_before,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code,pricing_source,pricing_details";
 
 async function lookupLedgerUsers(client, userText) {
   const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
@@ -3707,6 +3728,7 @@ module.exports = {
   deleteAdminGpuWorker,
   hashWorkerRegistrationCode,
   getFeatureCreditAdmin,
+  readFeatureCreditConfig,
   saveFeatureCreditAdmin,
   queryCreditLedger,
   callFeatureCreditRpc,

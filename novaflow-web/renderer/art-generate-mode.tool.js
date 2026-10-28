@@ -6,8 +6,8 @@
   'use strict'
 
   const PROVIDER_OPTIONS = Object.freeze([
-    Object.freeze({ value: 'local', label: '本地模型' }),
-    Object.freeze({ value: 'gpt', label: 'GPT（云）' }),
+    Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
+    Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
   ])
   const PROVIDER_KEYS = new Set(PROVIDER_OPTIONS.map((option) => option.value))
   const mountedControls = new WeakMap()
@@ -157,8 +157,7 @@
         background:#070707!important;color:#fff!important;font-size:12px!important;line-height:18px!important;
         box-sizing:border-box!important;outline:0!important;cursor:pointer!important;
       }
-      #${workspaceId}.novaflow-app .novaflow-art-generate-edit-grid[data-negative-prompt="0"][data-mode="img2img"] {grid-template-columns:416px minmax(0,1fr)!important;}
-      #${workspaceId}.novaflow-app .novaflow-art-generate-edit-grid[data-negative-prompt="0"][data-mode="txt2img"] {grid-template-columns:minmax(0,1fr)!important;}
+      #${workspaceId}.novaflow-app .novaflow-art-generate-prompt-row {display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))!important;width:100%!important;min-width:0!important;max-width:none!important;}
       [data-novaflow-art-generate-account-slot="1"][data-novaflow-client-auth-panel="1"] {
         margin-bottom:5px!important;
       }

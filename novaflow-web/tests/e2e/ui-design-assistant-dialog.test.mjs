@@ -75,7 +75,7 @@ function openDialog({ prompt = '', run, references = [] } = {}) {
 test('with no 设计要求 and no 补充要求 the notice shows and the request is refused', async () => {
   const d = openDialog();
   await tick();
-  assert.equal(d.credit.textContent, '本地处理不扣积分');
+  assert.equal(d.credit.textContent, '');
   assert.equal(d.notice.textContent, NOTICE);
   assert.equal(d.notice.style.display, 'block');
   assert.equal(d.submit.disabled, true);

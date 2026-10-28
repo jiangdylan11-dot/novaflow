@@ -116,22 +116,8 @@
   function syncAnalysisSelectors() {
     for (const group of root.document?.querySelectorAll?.('[data-novaflow-ui-analysis-source="1"]') || []) syncAnalysisSelector(group)
   }
-  function renderAnalysisSelector(doc = root.document) {
-    const group = element(doc, 'span', { role: 'radiogroup', 'aria-label': '设计需求分析来源', 'data-novaflow-ui-analysis-source': '1', style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } })
-    for (const [engine, label] of [['local', '本地分析'], ['grok', '在线分析']]) {
-      const button = element(doc, 'button', { type: 'button', role: 'radio', text: label, 'data-novaflow-ui-analysis-engine': engine,
-        title: analysisCreditTitle(engine, false),
-        style: { height: '24px', padding: '2px 6px', border: '1px solid #424242', borderRadius: '5px', fontSize: '10px', lineHeight: '1', cursor: 'pointer' } })
-      button.addEventListener('click', event => {
-        event.preventDefault(); event.stopPropagation()
-        if (!mounted || preparation || drawing()?.state.running) return
-        mounted.store.patchSettings({ assistantEngine: engine })
-        syncAnalysisSelectors()
-      })
-      group.appendChild(button)
-    }
-    syncAnalysisSelector(group)
-    return group
+  function renderAnalysisSelector() {
+    return null
   }
 
   function mount({ leftHost, store, getSessionToken }) {
