@@ -34,6 +34,8 @@ async function database() {
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028170000_token_settle_credits.sql'), 'utf8'));
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028170000_token_settle_credits.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028180000_xiaotao_online_token_credits.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028180000_xiaotao_online_token_credits.sql'), 'utf8'));
   return db;
 }
 

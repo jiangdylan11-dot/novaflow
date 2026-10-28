@@ -336,17 +336,64 @@ export function estimateXiaotaoOnlineCredits({ text = '', history = '', files = 
   return { tokens, usd, rawCredits: raw, credits, counts, cap: policy.message_cap_credits };
 }
 
+// 多退少补: the desired charge is the actual USD amount, bounded by the
+// per-message cap, and is allowed to exceed the reservation. The SQL settlement
+// refunds the surplus or tops up the shortfall without taking the balance negative.
+// A missing usage record still charges the reserved estimate.
 export function settleXiaotaoOnlineCredits({ usage, reservedCredits, config } = {}) {
   const policy = xiaotaoOnlinePolicy(config);
   const normalized = normalizeCreditConfig(config);
-  return settleTokenImageCredits({
-    usage,
-    reservedCredits,
-    config: {
-      ...normalized,
-      token_billing: { ...normalized.token_billing, settle_cap_credits: policy.message_cap_credits }
-    }
-  });
+  const cap = policy.message_cap_credits;
+  const reserved = Math.max(0, Math.round(Number(reservedCredits) || 0));
+  const parsed = parseUsageUsd(usage);
+  const usd = parsed.usd;
+  const base = {
+    tokens: tokenUsageRecord(usage),
+    money: usage && typeof usage === 'object' ? (usage.thirdPartyConsumeMoney ?? null) : null,
+    consumeMoney: usage && typeof usage === 'object' ? (usage.consumeMoney ?? null) : null,
+    moneySource: parsed.source || null,
+    usdCost: usd,
+    creditsPerUsd: normalized.credits_per_usd,
+    markup: normalized.token_billing.markup,
+    settleCap: cap,
+    reservedCredits: reserved
+  };
+  if (usd == null) {
+    const credits = Math.min(reserved, cap);
+    return {
+      ...base,
+      rawCredits: null,
+      credits,
+      capped: reserved > cap,
+      settleCapped: reserved > cap,
+      reserveCapped: false,
+      toppedUp: false,
+      shortfall: 0,
+      refund: Math.max(0, reserved - credits),
+      pricingSource: 'estimate_cap',
+      usageMissing: true,
+      warning: reserved > cap
+        ? `thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate capped at ${credits}`
+        : 'thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate'
+    };
+  }
+  const raw = creditsFromUsd(usd, normalized);
+  const credits = Math.min(raw, cap);
+  const toppedUp = credits > reserved;
+  return {
+    ...base,
+    rawCredits: raw,
+    credits,
+    capped: credits < raw,
+    settleCapped: raw > cap,
+    reserveCapped: false,
+    toppedUp,
+    shortfall: toppedUp ? credits - reserved : 0,
+    refund: credits < reserved ? reserved - credits : 0,
+    pricingSource: 'rh_consume_money',
+    usageMissing: false,
+    warning: raw > cap ? `token charge capped at ${cap}: raw ${raw}, charging ${credits}` : ''
+  };
 }
 
 export function creditsFromUsd(usd, config) {
