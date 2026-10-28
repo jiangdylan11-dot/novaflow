@@ -18,6 +18,10 @@
 -- A 小桃 hold expires after xiaotao_online.hold_ttl_minutes (default 20).
 -- release_stale_feature_credits returns those holds. reserve_feature_credits
 -- runs that sweep first, so a cancel or a closed page does not keep the hold.
+-- If that sweep already released the hold and the provider call still finishes,
+-- settle_feature_credits charges the actual amount directly. The charge is
+-- bounded by the cap and the live balance, and a shortfall is logged. It is
+-- not rejected.
 -- Re-applying this file is safe. The application does not apply it.
 
 alter table public.credit_ledger add column if not exists expires_at timestamptz;
@@ -259,6 +263,7 @@ declare
   v_shortfall numeric(20, 6) := 0;
   v_topup numeric(20, 6) := 0;
   v_uncollected numeric(20, 6) := 0;
+  v_stale boolean := false;
 begin
   if p_user_id is null or p_usage_key is null then
     raise exception using errcode = '22023', message = 'settle_feature_credits: identity is required';
@@ -279,14 +284,21 @@ begin
       'feature', v_row.feature, 'estimated_credits', v_row.estimated_credits,
       'settled_credits', v_row.settled_credits, 'balance_after', v_row.balance_after,
       'refunded_credits', 0, 'reserve_capped', false,
-      'topup_credits', 0, 'uncollected_credits', 0, 'balance_short', false
+      'topup_credits', 0, 'uncollected_credits', 0, 'balance_short', false,
+      'direct_charge', false
     );
-  end if;
-  if v_row.status <> 'reserved' then
-    raise exception using errcode = '22023', message = 'settle_feature_credits: reservation is not open';
   end if;
 
   v_xiaotao := v_row.feature in ('xiaotao_vision', 'online_chat_turn');
+  -- The 20-minute sweep already returned this hold. The provider call still
+  -- finished, so charge from the live balance instead of rejecting the settle.
+  v_stale := v_row.status = 'released' and v_xiaotao and (
+    v_row.error_code = 'expired' or coalesce(v_row.pricing_details->>'release_reason', '') = 'expired'
+  );
+  if v_row.status <> 'reserved' and not v_stale then
+    raise exception using errcode = '22023', message = 'settle_feature_credits: reservation is not open';
+  end if;
+
   v_config := coalesce((select value from public.system_settings where key = 'feature_credit_config'), '{}'::jsonb);
   if (v_config #>> '{xiaotao_online,message_cap_credits}') ~ '^[0-9]+(\.[0-9]+)?$' then
     v_cap := (v_config #>> '{xiaotao_online,message_cap_credits}')::numeric;
@@ -295,7 +307,14 @@ begin
 
   select balance into v_balance from public.credits where user_id = p_user_id for update;
   v_balance := coalesce(v_balance, 0);
-  if p_settled_credits is null then
+  if v_stale then
+    v_requested := least(ceil(coalesce(p_settled_credits, v_row.estimated_credits)), v_cap);
+    v_shortfall := v_requested;
+    v_topup := least(v_shortfall, greatest(v_balance, 0));
+    v_uncollected := v_shortfall - v_topup;
+    v_actual := v_topup;
+    v_balance := greatest(v_balance, 0) - v_topup;
+  elsif p_settled_credits is null then
     v_actual := v_row.estimated_credits;
   elsif v_xiaotao then
     v_requested := least(ceil(p_settled_credits), v_cap);
@@ -336,8 +355,10 @@ begin
            when p_pricing_source ~ '^[a-z0-9_]{1,40}$' then p_pricing_source
            else pricing_source
          end,
+         error_code = case when v_stale then null else error_code end,
+         error_message = case when v_stale then null else error_message end,
          pricing_details = pricing_details || coalesce(p_metadata, '{}'::jsonb) || case
-           when p_settled_credits is null then '{}'::jsonb
+           when p_settled_credits is null and not v_stale then '{}'::jsonb
            else jsonb_build_object(
              'refunded_credits', v_refund,
              'settled_credits', v_actual,
@@ -348,6 +369,8 @@ begin
              'shortfall_credits', v_shortfall,
              'uncollected_credits', v_uncollected,
              'balance_short', v_uncollected > 0,
+             'direct_charge', v_stale,
+             'stale_hold', v_stale,
              'message_cap_credits', case when v_xiaotao then v_cap else null end
            )
          end,
@@ -363,6 +386,7 @@ begin
     'refunded_credits', v_refund, 'reserve_capped', v_reserve_capped,
     'topup_credits', v_topup, 'shortfall_credits', v_shortfall,
     'uncollected_credits', v_uncollected, 'balance_short', v_uncollected > 0,
+    'direct_charge', v_stale,
     'rh_cost_usd', v_row.rh_cost_usd, 'pricing_source', v_row.pricing_source
   );
 end;

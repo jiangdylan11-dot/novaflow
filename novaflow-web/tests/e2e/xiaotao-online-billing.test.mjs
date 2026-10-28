@@ -13,7 +13,8 @@ import {
   estimateXiaotaoOnlineCredits,
   settleTokenImageCredits,
   settleXiaotaoOnlineCredits,
-  xiaotaoOnlinePolicy
+  xiaotaoOnlinePolicy,
+  xiaotaoOnlineSystemPrompt
 } from '../../packages/shared/src/feature-credits.mjs';
 import { companionInput, createCompanionChat } from '../../packages/shared/src/companion-chat.mjs';
 import { createOnlineAiCharge } from '../../packages/shared/src/online-ai-charge.mjs';
@@ -44,6 +45,19 @@ await test('the estimate grows with text and with image, video and audio, and is
   assert.equal(text.credits - 0, text.credits);
   assert.notEqual(image.credits - text.credits, video.credits - text.credits);
   assert.equal(estimateXiaotaoOnlineCredits({ text: '', files: [] }).credits, 0);
+});
+
+await test('the estimate includes the system prompt and the 2048-token output budget', () => {
+  assert.equal(xiaotaoOnlinePolicy().output_tokens, 2048);
+  const system = xiaotaoOnlineSystemPrompt({ vision: false, promptLanguage: 'en' });
+  const text = estimateXiaotaoOnlineCredits({ text: '你好' });
+  assert.equal(text.tokens, Math.ceil(('你好'.length + system.length) / 2) + 2048);
+  const visionSystem = xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' });
+  const image = estimateXiaotaoOnlineCredits({ text: '你好', files: [{ kind: 'image' }] });
+  assert.equal(image.tokens, Math.ceil(('你好'.length + visionSystem.length) / 2) + 2048 + 2500);
+  assert.ok(visionSystem.length > system.length);
+  const explicit = estimateXiaotaoOnlineCredits({ text: '你好', system, outputTokens: 2048 });
+  assert.equal(explicit.credits, text.credits);
 });
 
 await test('settlement is ceil(USD × 211 × 2), prefers thirdPartyConsumeMoney, and caps', () => {
@@ -106,7 +120,7 @@ await test('companion reserves the estimate, settles the RH amount, and releases
   });
   const result = await service.reply({
     user: { id: 'user' },
-    payload: { requestId: 'vision-fixture-123', mode: 'chat', message: '看一下', history: [], images: [{ role: 'attachment', dataUrl: PNG }], uploads: [{ kind: 'video', name: 'clip.mp4' }] }
+    payload: { requestId: 'vision-fixture-123', mode: 'chat', promptLanguage: 'en', message: '看一下', history: [], images: [{ role: 'attachment', dataUrl: PNG }], uploads: [{ kind: 'video', name: 'clip.mp4' }] }
   });
   assert.equal(events[0][0], 'reserve');
   assert.equal(events[0][1], 'xiaotao-vision');
@@ -332,6 +346,88 @@ await test('a stale 小桃 hold is released after the ttl, including on the next
   assert.equal(num(next.estimated_credits), 10);
   assert.equal((await db.query("select status from public.credit_ledger where usage_key = 'left-open'")).rows[0].status, 'released');
   assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 90);
+  await db.close();
+});
+
+await test('a stale hold that later finishes is charged directly and is not rejected', async () => {
+  const db = await database();
+  const user = await addUser(db, 100);
+  const held = (await db.query(
+    'select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5) as row',
+    [user.id, 'late-reply', 'xiaotao-text', '{}', 30]
+  )).rows[0].row;
+  assert.equal(num(held.estimated_credits), 30);
+  await db.query("update public.credit_ledger set expires_at = clock_timestamp() - interval '1 minute' where usage_key = 'late-reply'");
+  const swept = (await db.query('select public.release_stale_feature_credits(20) as row')).rows[0].row;
+  assert.equal(num(swept.count), 1);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 100);
+
+  const charged = (await db.query(
+    'select public.settle_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5, $6, $7) as row',
+    [user.id, 'late-reply', 'xiaotao-text', '{}', 12, 0.028, 'rh_consume_money']
+  )).rows[0].row;
+  assert.equal(charged.status, 'settled');
+  assert.equal(charged.direct_charge, true);
+  assert.equal(num(charged.settled_credits), 12);
+  assert.equal(num(charged.uncollected_credits), 0);
+  assert.equal(charged.balance_short, false);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 88);
+  const ledger = (await db.query("select status, error_code, pricing_details from public.credit_ledger where usage_key = 'late-reply'")).rows[0];
+  assert.equal(ledger.status, 'settled');
+  assert.equal(ledger.error_code, null);
+  assert.equal(ledger.pricing_details.stale_hold, true);
+  assert.equal(ledger.pricing_details.direct_charge, true);
+  const replay = (await db.query(
+    'select public.settle_feature_credits($1, $2, $3, 1, null, $4::jsonb, 99, null, null) as row',
+    [user.id, 'late-reply', 'xiaotao-text', '{}']
+  )).rows[0].row;
+  assert.equal(replay.idempotent, true);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 88);
+
+  await db.query('update public.credits set balance = 4 where user_id = $1', [user.id]);
+  await db.query(
+    'select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5)',
+    [user.id, 'late-short', 'online_chat_turn', '{}', 4]
+  );
+  await db.query("update public.credit_ledger set expires_at = clock_timestamp() - interval '1 minute' where usage_key = 'late-short'");
+  await db.query('select public.release_stale_feature_credits(20)');
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 4);
+  const short = (await db.query(
+    'select public.settle_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5, null, null) as row',
+    [user.id, 'late-short', 'xiaotao-text', '{}', 70]
+  )).rows[0].row;
+  assert.equal(short.status, 'settled');
+  assert.equal(num(short.settled_credits), 4);
+  assert.equal(num(short.uncollected_credits), 66);
+  assert.equal(short.balance_short, true);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 0);
+  const shortLog = (await db.query("select pricing_details from public.credit_ledger where usage_key = 'late-short'")).rows[0].pricing_details;
+  assert.equal(shortLog.balance_short, true);
+  assert.equal(num(shortLog.uncollected_credits), 66);
+
+  await db.query('update public.credits set balance = 200 where user_id = $1', [user.id]);
+  await db.query(
+    'select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5)',
+    [user.id, 'late-cap', 'xiaotao-vision', '{}', 20]
+  );
+  await db.query("update public.credit_ledger set expires_at = clock_timestamp() - interval '1 minute' where usage_key = 'late-cap'");
+  await db.query('select public.release_stale_feature_credits(20)');
+  const capped = (await db.query(
+    'select public.settle_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5, null, null) as row',
+    [user.id, 'late-cap', 'xiaotao-vision', '{}', 500]
+  )).rows[0].row;
+  assert.equal(num(capped.settled_credits), 80);
+  assert.equal(num(capped.uncollected_credits), 0);
+
+  await db.query(
+    'select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb, $5)',
+    [user.id, 'cancelled', 'xiaotao-text', '{}', 10]
+  );
+  await db.query("select public.release_feature_credits($1, 'cancelled', 'xiaotao-text', 'incomplete', '{}'::jsonb)", [user.id]);
+  await assert.rejects(
+    db.query('select public.settle_feature_credits($1, $2, $3, 1, null, $4::jsonb, 8, null, null)', [user.id, 'cancelled', 'xiaotao-text', '{}']),
+    /reservation is not open/
+  );
   await db.close();
 });
 
