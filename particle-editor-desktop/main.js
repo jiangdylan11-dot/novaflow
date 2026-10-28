@@ -10284,6 +10284,48 @@ ipcMain.handle("open-spine-atlas", async () => {
   return { canceled: false, fileName, text };
 });
 
+ipcMain.handle("xiaotao-pick-uploads", async () => {
+  const XIAOTAO_UPLOAD_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "webm", "mp3", "wav", "m4a", "aac", "ogg", "flac"];
+  const MAX_BYTES = {
+    png: 24 * 1024 * 1024, jpg: 24 * 1024 * 1024, jpeg: 24 * 1024 * 1024, webp: 24 * 1024 * 1024,
+    mp4: 64 * 1024 * 1024, mov: 64 * 1024 * 1024, webm: 64 * 1024 * 1024,
+    mp3: 64 * 1024 * 1024, wav: 64 * 1024 * 1024, m4a: 64 * 1024 * 1024,
+    aac: 64 * 1024 * 1024, ogg: 64 * 1024 * 1024, flac: 64 * 1024 * 1024
+  };
+  const MIME = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+    mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", aac: "audio/aac", ogg: "audio/ogg", flac: "audio/flac"
+  };
+  const pick = await dialog.showOpenDialog({
+    title: "打开",
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      { name: "参考资源", extensions: XIAOTAO_UPLOAD_EXTENSIONS },
+      { name: "图片", extensions: ["png", "jpg", "jpeg", "webp"] },
+      { name: "视频", extensions: ["mp4", "mov", "webm"] },
+      { name: "音频", extensions: ["mp3", "wav", "m4a", "aac", "ogg", "flac"] }
+    ]
+  });
+  if (pick.canceled || !pick.filePaths?.length) return { canceled: true, files: [] };
+  const files = [];
+  if (pick.filePaths.length > 16) files.push({ name: "", error: "一次最多选择 16 个文件" });
+  for (const filePath of pick.filePaths.slice(0, 16)) {
+    const name = sanitizeFileName(filePath) || path.basename(filePath);
+    const ext = (name.toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || "";
+    if (!XIAOTAO_UPLOAD_EXTENSIONS.includes(ext)) {
+      files.push({ name, error: `不支持 ${name}` });
+      continue;
+    }
+    let size = 0;
+    try { size = fs.statSync(filePath).size; } catch { files.push({ name, error: `${name} 读取失败` }); continue; }
+    if (size > MAX_BYTES[ext]) { files.push({ name, size, error: `${name} 超过大小限制` }); continue; }
+    const buf = fs.readFileSync(filePath);
+    files.push({ name, mimeType: MIME[ext], size: buf.length, base64: buf.toString("base64") });
+  }
+  return { canceled: false, files };
+});
+
 ipcMain.handle("open-spine-image", async () => {
   const pick = await dialog.showOpenDialog({
     properties: ["openFile"],

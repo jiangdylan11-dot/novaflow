@@ -306,7 +306,6 @@
       const root = document.getElementById(ROOT_ID);
       if (root) root.hidden = true;
       closeDropdown();
-      closeAssistant();
       if (editor) editor.pause();
       stopPreview();
       ensureAnimationSection();
@@ -358,7 +357,6 @@
     const cell = document.getElementById(CELL_ID);
     if (cell) { cell.setAttribute('data-novaflow-primary-cell-active', '0'); cell.querySelector('button')?.setAttribute('aria-pressed', 'false'); }
     closeDropdown();
-    closeAssistant();
     if (editor) editor.pause();
     stopPreview();
     syncMask();
@@ -861,7 +859,6 @@
   }
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
-    if (assistant) { closeAssistant(); event.stopPropagation(); return; }
     if (openDropdown) { closeDropdown(); event.stopPropagation(); }
   }, true);
   function selectField(parent, label, options, value, onChange) {

@@ -855,6 +855,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openSpineJson: () => ipcRenderer.invoke("open-spine-json"),
   openSpineAtlas: () => ipcRenderer.invoke("open-spine-atlas"),
   openSpineImage: () => ipcRenderer.invoke("open-spine-image"),
+  pickXiaotaoUploads: () => ipcRenderer.invoke("xiaotao-pick-uploads"),
   openSequenceFolder: () => ipcRenderer.invoke("open-sequence-folder"),
   openPhotoshopProject: () => ipcRenderer.invoke("open-photoshop-project"),
   pickDirectory: () => ipcRenderer.invoke("pick-directory"),
