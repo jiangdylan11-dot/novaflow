@@ -192,6 +192,53 @@ test('resource paths cannot write outside the selected image directory', () => {
   assert.deepEqual(Array.from(c.projectPath('../PNG', ['sub'])), ['PNG'])
 })
 
+test('copied project reconnects complete references below an extra images folder and preserves visibility', async () => {
+  const d = disk(), f = fixture()
+  await d.put('images/JPG/pic.png', 'correct JPG pixels')
+  await d.put('images/PNG/pic.png', 'different PNG pixels')
+  const p = { json: json(), atlasText: atlas(), fileName: 'spin.json', name: 'spin', imagePath: '.', visible: false,
+    images: [{ fileName: 'pic.png', path: 'JPG/pic.png', pma: true }] }
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'spin.nfproj'), null, { directory: { handle: d.root } })
+  const im = f.state.images.get('pic.png')
+  assert.equal(await im.blob.text(), 'correct JPG pixels')
+  assert.equal(im.sourcePath, 'images/JPG/pic.png')
+  assert.equal(im.pma, true)
+  assert.equal(f.projects[0].visible, false)
+  assert.match(f.status.at(-1)[0], /当前工程「spin」已隐藏/)
+  assert.doesNotMatch(f.status.at(-1)[0], /缺少/)
+  const saved = await f.save(d.root)
+  assert.equal(saved.projects[0].images[0].path, 'images/JPG/pic.png')
+})
+
+test('exact project references win and ambiguous relocated copies are left missing', async () => {
+  const d = disk(), f = fixture()
+  await d.put('JPG/exact.png', 'exact')
+  await d.put('images/JPG/exact.png', 'relocated')
+  await d.put('first/JPG/ambiguous.png', 'first')
+  await d.put('second/JPG/ambiguous.png', 'second')
+  await d.put('PNG/missing.png', 'wrong directory')
+  const folder = f.c.folderFromHandle(d.root, d.root.name)
+  const images = await f.c.referencedProjectImages([
+    { fileName: 'exact.png', path: 'JPG/exact.png' },
+    { fileName: 'ambiguous.png', path: 'JPG/ambiguous.png' },
+    { fileName: 'missing.png', path: 'JPG/missing.png' },
+  ], folder)
+  assert.equal(images.length, 1)
+  assert.equal(await images[0].blob.text(), 'exact')
+})
+
+test('empty setup pose suggests an attachment animation instead of the first empty animation', async () => {
+  const d = disk(), f = fixture(), j = json()
+  delete j.slots[0].attachment
+  j.animations = { auto: {}, idle: { slots: { pic: { attachment: [{ name: 'pic' }] } } } }
+  const before = JSON.stringify(j)
+  const p = { json: j, atlasText: atlas(), fileName: 'spin.json', name: 'spin', images: [] }
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'spin.nfproj'), null, { directory: { handle: d.root } })
+  assert.match(f.status.at(-1)[0], /设置姿势没有显示附件.*选择动画「idle」/)
+  assert.equal(JSON.stringify(f.state.json), before, 'opening never rewrites authored setup attachments or animation')
+  assert.equal(f.projects[0].visible, true)
+})
+
 test('an explicitly assigned folder outside the project directory stays external without copying or embedding', async () => {
   const d = disk('project'), images = disk('chosen-images'), f = fixture()
   await images.put('pic.png', 'current external bytes')

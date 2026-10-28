@@ -682,6 +682,12 @@
     for (const ref of refs || []) {
       const path = projectPath(ref.path || ref.fileName).join('/')
       let file = files.find((f) => lower(f.rel) === lower(path))
+      // A copied project may gain an extra images/ directory. Keep the complete relative
+      // reference (including JPG/PNG), and reconnect only when that suffix is unambiguous.
+      if (!file) {
+        const matches = files.filter((f) => lower(f.rel).endsWith('/' + lower(path)))
+        if (matches.length === 1) file = matches[0]
+      }
       if (!file && legacyAtlas && !ref.path) {
         const regions = [...Attach.parseAtlas(legacyAtlas).values()].filter((r) => r.page === ref.fileName)
         if (regions.length === 1) { const r = regions[0]; if (!r.rotate && !r.x && !r.y && r.w === r.origW && r.h === r.origH) file = files.find((f) => folderPictureName(f) === r.name) }
@@ -1054,8 +1060,14 @@
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
     // (added to projects already open, the next save still asks - it would hold them all)
     if (handle && wasEmpty) { projectFile = handle; projectSaveDirectory = projectDirectory }
-    status(missing ? `已打开工程，缺少 ${missing} 张外部图片：请在「图片」中指定图片文件夹（默认 .nfproj 同目录）`
-      : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`, missing ? 'error' : 'ok')
+    const hidden = projects[activeProject].visible === false
+      ? `；当前工程「${state.name}」已隐藏，请点击工程树左侧的显示圆点恢复` : ''
+    const attachmentAnimations = Object.entries(state.json.animations || {}).filter(([, a]) =>
+      Object.values(a.slots || {}).some((s) => (s.attachment || []).some((key) => key.name)))
+    const emptySetup = !(state.json.slots || []).some((s) => s.attachment) && attachmentAnimations.length
+      ? `；设置姿势没有显示附件，请在工程树选择动画「${attachmentAnimations[0][0]}」查看` : ''
+    status((missing ? `已打开工程，缺少 ${missing} 张外部图片：请在「图片」中指定图片文件夹（默认 .nfproj 同目录）`
+      : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing || hidden || emptySetup ? 'error' : 'ok')
     return d.projects.length
   }
 
@@ -1100,6 +1112,7 @@
         projects[i].open = true
         renderTree()
       }), h('span', { class: 'ico', html: ICON.project }), h('span', { class: 'label' }, name),
+      ...(projects[i].visible === false ? [h('span', { class: 'hint', style: 'margin-left:4px', title: '点击此工程左侧的显示圆点恢复显示' }, '已隐藏')] : []),
       h('span', { class: 'end' }, h('button', { class: 'act', title: `删除工程 ${name}`, onclick: (e) => { e.stopPropagation(); deleteProject(i) } }, '删除')))
     // drag a project row onto another one to move it there (above / below)
     row.draggable = true
