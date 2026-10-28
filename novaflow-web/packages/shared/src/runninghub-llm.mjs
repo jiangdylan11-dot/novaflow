@@ -61,6 +61,7 @@ function failureTokens(data) {
   };
   if (!data || typeof data !== 'object') return out;
   push(data.code);
+  push(data.errorCode);
   push(data.type);
   const error = data.error;
   if (error && typeof error === 'object') {
@@ -114,7 +115,7 @@ export function describeRunningHubFailure(httpStatus, data) {
     statusCode = http >= 500 ? http : 502;
     retryable = true;
   }
-  return { message, statusCode, retryable, moderation };
+  return { message, statusCode, retryable, moderation: moderation || invalidPrompt };
 }
 
 function partText(part) {

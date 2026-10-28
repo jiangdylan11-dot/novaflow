@@ -65,7 +65,7 @@ app.whenReady().then(async () => {
   assert((await run(`document.getElementById('aiProvidersTableBody').textContent`)).includes("Connected"));
   assert(!(await run(`document.getElementById('aiProvidersTableBody').textContent`)).includes("Grok"));
   assert(!(await run(`document.getElementById('module-ai-services').innerText`)).includes("保存 ComfyUI"));
-  assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("尚未切换"));
+  assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("RunningHub"));
   assert(!(await run(`document.body.innerText`)).includes("fixture-only-key"));
   for (const width of [1440, 1080]) {
     win.setSize(width, 1080);

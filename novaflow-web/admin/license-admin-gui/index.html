@@ -671,8 +671,16 @@
                       <div class="field"><input id="runninghubRuntimeLlmModel" type="text" spellcheck="false" readonly placeholder="按 RunningHub 模型列表填写，可暂留空" /></div>
                     </div>
                     <div class="row full">
-                      <div class="label">GPT 图片模型 API 路径（预留）</div>
-                      <div class="field"><input id="runninghubRuntimeGptImageEndpoint" type="text" spellcheck="false" readonly placeholder="从模型文档复制 /openapi/v2/...，可暂留空" /></div>
+                      <div class="label">GPT 图片模型 API 路径</div>
+                      <div class="field"><input id="runninghubRuntimeGptImageEndpoint" type="text" spellcheck="false" readonly placeholder="/openapi/v2/rhart-image-g-2.5-official-token/sunburst/text-to-image" /></div>
+                    </div>
+                    <div class="row">
+                      <div class="label">GPT Image 2.5 单价（积分/张）</div>
+                      <div class="field"><input id="runninghubGptImage25Price" type="number" min="0" max="100" step="1" value="22" /></div>
+                    </div>
+                    <div class="row">
+                      <div class="label">GPT Image 2 官方回退单价（积分/张）</div>
+                      <div class="field"><input id="runninghubGptImageOfficialPrice" type="number" min="0" max="100" step="1" value="4" /></div>
                     </div>
                   </div>
                   <div class="actions">

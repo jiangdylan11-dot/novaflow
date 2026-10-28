@@ -11171,6 +11171,12 @@ async function handleGrokImageReverseRequest(req, res) {
   });
 }
 
+let runningHubImagePromise;
+function loadRunningHubImage() {
+  runningHubImagePromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/runninghub-gpt-image.mjs")).href);
+  return runningHubImagePromise;
+}
+
 let onlineChargePromise;
 function loadOnlineCharge() {
   onlineChargePromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/online-ai-charge.mjs")).href);
@@ -11198,6 +11204,113 @@ async function chargeOnlineAi(session, input) {
   const { createFeatureCreditPorts } = await loadFeatureCredits();
   const charge = createOnlineAiCharge(createFeatureCreditPorts((name, args) => adminData.callFeatureCreditRpc(name, args)));
   return charge({ userId: session.user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run });
+}
+
+const featureCreditHolds = new Map();
+
+function featureCreditCharge(session) {
+  return loadOnlineCharge().then(({ createOnlineAiCharge }) => createOnlineAiCharge({
+    reserve: async ({ userId, feature, amount, usageKey }) => {
+      if (featureCreditHolds.has(usageKey)) return { status: "reserved", idempotent: true, amount };
+      const adjusted = await adminData.adjustAdminUserCredits({ userId, mode: "deduct", amount, feature, note: feature });
+      if (!adjusted?.ok || adjusted.status === "error") {
+        throw Object.assign(new Error(/不能小于 0|不足/.test(adjusted?.error || "") ? "积分不足，本次未生成" : "积分暂时不可用"), { statusCode: 402 });
+      }
+      featureCreditHolds.set(usageKey, { userId, amount, status: "reserved" });
+      return { status: "reserved", idempotent: false, amount, balance: adjusted.adjustment?.afterBalance };
+    },
+    settle: async ({ usageKey, amount }) => {
+      const hold = featureCreditHolds.get(usageKey);
+      if (!hold || hold.status !== "reserved") throw new Error("在线计量没有完成");
+      hold.status = "settled";
+      const credit = await creditBalanceForUser(hold.userId);
+      return { remaining: credit.balance, balance: credit.balance, charged: amount };
+    },
+    release: async ({ usageKey }) => {
+      const hold = featureCreditHolds.get(usageKey);
+      if (!hold || hold.status !== "reserved") return { remaining: null, charged: 0 };
+      const refund = await adminData.adjustAdminUserCredits({ userId: hold.userId, mode: "add", amount: hold.amount, feature: "release", note: "release" });
+      hold.status = "released";
+      if (!refund?.ok || refund.status === "error") throw new Error("在线计量没有完成");
+      const credit = await creditBalanceForUser(hold.userId);
+      return { remaining: credit.balance, balance: credit.balance, charged: 0 };
+    }
+  }));
+}
+
+async function handleRunningHubGptImageQuote(req, res) {
+  const session = await requireClientSession(req, res);
+  if (!session) return;
+  let payload = {};
+  try { payload = await parseBody(req); }
+  catch (err) { sendJson(res, 400, { ok: false, error: sanitizeError(err) }); return; }
+  try {
+    const image = await loadRunningHubImage();
+    const config = image.readRunningHubImageConfig(process.env);
+    const quote = image.quoteGptImage({ endpoint: config.gptImageEndpoint, count: payload.count || payload.settings?.count || 1, prices: config.prices });
+    sendJson(res, 200, { ok: true, ...quote, buttonLabel: image.formatCreditButtonLabel(quote.credits) });
+  } catch (err) {
+    sendJson(res, Number(err?.statusCode) || 400, { ok: false, error: sanitizeError(err) });
+  }
+}
+
+async function handleRunningHubGptImage(req, res) {
+  const session = await requireClientSession(req, res);
+  if (!session) return;
+  let payload;
+  try { payload = await parseBody(req, { maxBytes: 24 * 1024 * 1024 }); }
+  catch (err) { sendJson(res, 400, { ok: false, error: sanitizeError(err) }); return; }
+  try {
+    const image = await loadRunningHubImage();
+    const config = image.readRunningHubImageConfig(process.env);
+    if (!config.configured) {
+      sendJson(res, 503, { ok: false, error: "RunningHub 出图尚未配置" });
+      return;
+    }
+    const pool = await adminData.getAdminRunningHubProviderStatus({ checkAccount: true });
+    if (image.poolBlocksNewTask(pool, config.balanceBlockUsd)) {
+      sendJson(res, 402, { ok: false, error: "云服务余额不足，请联系管理员。本次未扣积分。", charged: 0 });
+      return;
+    }
+    const charge = await featureCreditCharge(session);
+    const outcome = await image.runChargedGptImage({
+      charge,
+      config,
+      poolAccount: pool,
+      request: {
+        userId: session.user.id,
+        usageKey: `gptimg_${session.user.id}_${crypto.randomUUID()}`,
+        mode: payload.mode,
+        prompt: payload.prompt,
+        settings: payload.settings,
+        images: payload.images,
+        count: payload.count || 1,
+        width: payload.width,
+        height: payload.height
+      }
+    });
+    const rejected = (outcome.results || []).find((item) => item?.success === false);
+    if (rejected) {
+      sendJson(res, 400, { ok: false, moderation: true, error: rejected.message || "提示内容未通过审核，请修改后再试", charged: outcome.charged || 0, remaining: outcome.remaining, quote: outcome.quote });
+      return;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      charged: outcome.charged,
+      remaining: outcome.remaining,
+      quote: outcome.quote,
+      buttonLabel: image.formatCreditButtonLabel(outcome.quote.credits),
+      images: (outcome.results || []).map((item) => item.image).filter(Boolean)
+    });
+  } catch (err) {
+    if (err?.quotaFailed) {
+      sendJson(res, 500, { ok: false, error: "在线计量没有完成" });
+      return;
+    }
+    const statusCode = Number(err?.statusCode) || 502;
+    const message = err?.noCharge ? err.message : statusCode === 402 ? "积分不足，本次未生成" : (/出图|审核|参考图|提示词|积分|RunningHub|云服务/.test(String(err?.message || "")) ? sanitizeError(err) : "云端出图未完成");
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: message, charged: 0 });
+  }
 }
 
 async function handleRunningHubUiCatalogRequest(req, res) {
@@ -11619,6 +11732,16 @@ function createAdminServer() {
 
       if (req.method === "POST" && pathName === "/api/client/runninghub/ui-catalog") {
         await handleRunningHubUiCatalogRequest(req, res);
+        return;
+      }
+
+      if (req.method === "POST" && pathName === "/api/client/runninghub/gpt-image/quote") {
+        await handleRunningHubGptImageQuote(req, res);
+        return;
+      }
+
+      if (req.method === "POST" && pathName === "/api/client/runninghub/gpt-image") {
+        await handleRunningHubGptImage(req, res);
         return;
       }
 

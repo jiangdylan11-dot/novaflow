@@ -593,9 +593,12 @@ test('real generation entry limits correction to one and stages inputs for each 
 test('a failed review cannot silently submit a second paid cloud generation',async()=>{
   const failed={schema:'nf.art.review.v1',pass:false,issues:['画风不足'],repair:'改为水彩笔触'};
   const d=drawingRun(plan([{source:1,uses:[use('subject')],omit:[]}]),[failed]);
-  d.state.provider='gpt';d.e.sandbox.NovaFlowArtGenerateModels.normalizeProvider=value=>value;d.e.sandbox.electronAPI.runtimeProviderUsageSettlement='web-control-plane-v1';
+  d.state.provider='gpt';d.e.sandbox.NovaFlowArtGenerateModels.normalizeProvider=value=>value;const cloud=[];
+  d.e.sandbox.electronAPI=d.e.sandbox.electronAPI||{};
+  d.e.sandbox.electronAPI.runtimeProviderUsageSettlement='web-control-plane-v1';
+  d.e.sandbox.electronAPI.runningHubGptImage=async()=>{cloud.push(1);return {ok:true,result:{ok:true,charged:22,remaining:8,images:[{imageDataUrl:'data:image/png;base64,result',taskId:'rh'}]}};};
   const prepared=await d.e.api.prepare(ctx(d.state,d.refs));prepared.applyPromptToState();
-  await d.run({drawingPrepared:prepared});assert.equal(d.builds.length,1);assert.equal(d.state.results.length,1);
+  await d.run({drawingPrepared:prepared});assert.equal(d.builds.length,0);assert.deepEqual(cloud,[1]);assert.equal(d.state.results.length,1);
   assert.equal(d.state.results[0].artDirection.corrections,0);assert.equal(d.state.results[0].artDirection.review.pass,false);
 });
 

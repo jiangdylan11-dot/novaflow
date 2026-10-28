@@ -40,7 +40,8 @@ const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
 // The only operator-writable online provider secret. Other RunningHub fields
 // stay readable. Grok, cloud ComfyUI, and the removed Google endpoint are not
 // writable; unmigrated call paths may still read their existing env values.
-const WRITABLE_PROVIDER_ENV_NAMES = new Set([runningHub.ENV.apiKey]);
+const FEATURE_CREDIT_PRICE_ENV = "NOVAFLOW_FEATURE_CREDIT_PRICES";
+const WRITABLE_PROVIDER_ENV_NAMES = new Set([runningHub.ENV.apiKey, FEATURE_CREDIT_PRICE_ENV]);
 const RETIRED_PROVIDER_ENV_NAMES = new Set([
   ENV_COMFYUI_BASE_URL,
   ENV_COMFYUI_API_KEY,
@@ -2600,6 +2601,19 @@ async function setAdminProviderRuntimeConfig(payload) {
     const written = [];
     if (parsed.clearApiKey || parsed.updateApiKey) {
       written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
+    }
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "imagePrices")) {
+      const price = (raw, fallback) => {
+        if (raw === undefined || raw === null || raw === "") return fallback;
+        const amount = Number(raw);
+        if (!Number.isInteger(amount) || amount < 0 || amount > 100) throw new Error("出图积分单价须为 0 到 100 的整数");
+        return amount;
+      };
+      const prices = {
+        gpt_image_2_5: price(payload.imagePrices?.gpt_image_2_5, 22),
+        gpt_image_2_official: price(payload.imagePrices?.gpt_image_2_official, 4)
+      };
+      written.push(writeAdminEnvValue(FEATURE_CREDIT_PRICE_ENV, JSON.stringify(prices)));
     }
     runningHubCheck = null;
 

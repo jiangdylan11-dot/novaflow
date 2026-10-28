@@ -22,10 +22,6 @@
       txt2img: capability(0, ['quality', 'size'], false),
       img2img: capability(16, ['quality', 'size'], false),
     }),
-    google: Object.freeze({
-      txt2img: capability(0, ['aspectRatio'], false),
-      img2img: capability(14, ['aspectRatio', 'resolution'], false),
-    }),
   })
 
   // Non-NSFW local drawing runs on Qwen-Image-2.1, on the local assistant and on the shared pool
@@ -45,8 +41,7 @@
 
   const providerOptions = Object.freeze([
     Object.freeze({ value: 'local', label: '本地模型' }),
-    Object.freeze({ value: 'gpt', label: 'GPT' }),
-    Object.freeze({ value: 'google', label: 'Google' }),
+    Object.freeze({ value: 'gpt', label: 'GPT（云）' }),
   ])
 
   function preset(steps, cfg, samplerName, scheduler, lightning) {
@@ -216,7 +211,8 @@
 
   function normalizeProvider(value) {
     const provider = String(value || '').trim().toLowerCase()
-    return provider === 'gpt' || provider === 'google' ? provider : 'local'
+    if (provider === 'google' || provider === 'gemini') return 'local'
+    return provider === 'gpt' ? 'gpt' : 'local'
   }
 
   function normalizeMode(value) {
@@ -225,8 +221,7 @@
 
   function providerTitle(value) {
     const provider = normalizeProvider(value)
-    if (provider === 'gpt') return 'GPT'
-    if (provider === 'google') return 'Google'
+    if (provider === 'gpt') return 'GPT（云）'
     return '\u672c\u5730\u6a21\u578b'
   }
 
@@ -318,12 +313,6 @@
         customWidth: state.gptCustomWidth,
         customHeight: state.gptCustomHeight,
         background: 'auto',
-      }
-    }
-    if (providerKey === 'google') {
-      return {
-        aspectRatio: modeKey === 'img2img' ? state.googleAspectRatioImg2img : state.googleAspectRatioTxt2img,
-        resolution: state.googleResolution,
       }
     }
     if (modeKey === 'txt2img' && state?.nsfw !== true) return { textQuality: 'instant' }

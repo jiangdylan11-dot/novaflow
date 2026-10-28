@@ -58,7 +58,7 @@ test('model choices contain only providers and leave acceleration under the para
  const c=createContext({document:doc});runInContext(readFileSync(new URL('../../renderer/art-generate-mode.tool.js',import.meta.url),'utf8'),c);
  const host=doc.createElement('div'),state={provider:'local'};let changes=0;
  const refresh=()=>c.NovaFlowArtGenerateModeTool.syncControlPanel({host,state,showAccount:false,showTurboRoute:true,onChange:()=>changes++});
- refresh();const select=host.children[0].children[1];assert.deepEqual(Array.from(select.children,x=>x.value),['local','gpt','google']);
+ refresh();const select=host.children[0].children[1];assert.deepEqual(Array.from(select.children,x=>x.value),['local','gpt']);
  state.localQwen21Variant='turbo';refresh();assert.equal(select.value,'local');
  select.value='gpt';select.events.change();assert.equal(state.provider,'gpt');assert.equal(state.localQwen21Variant,'turbo');assert.equal(changes,1);
  select.value='local';select.events.change();assert.equal(state.provider,'local');assert.equal(state.localQwen21Variant,'turbo');

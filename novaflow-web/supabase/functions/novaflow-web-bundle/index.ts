@@ -242,9 +242,23 @@ function bearerToken(headerValue) {
 // Source: packages/shared/src/art-knowledge.mjs
 // Regenerate with: npm run sync:edge
 
+// Shared by the owner API and the read-only deployment report. Filtering does
+// not publish, infer quality from silence, or discard conflicting evidence.
+function filterArtCandidates({rows,active,skillId}) {
+  const normalized=v=>v.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,'');
+  const scopeKey=scope=>JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>scope[k]));
+  const known=new Set(active.methods.map(m=>scopeKey(m.scope)+'\n'+normalized(m.text))),excluded=[],eligible=[],monitor=[];
+  for(const row of rows.filter(c=>c.scope.skillId===skillId)) {
+    const reason=known.has(scopeKey(row.scope)+'\n'+normalized(row.method))?'already-published':row.published_before?'previously-withdrawn':Number(row.positive_count)<1?'no-positive-evidence':null;
+    if(reason==='already-published'&&Number(row.negative_count)>0)monitor.push(row);
+    if(reason)excluded.push({id:row.id,reason});
+    else eligible.push({...row,reviewNotes:[...(row.negative_count?['conflicting-feedback']:[]),...(row.positive_users<2?['single-user-evidence']:[]),'fixed-benchmark-and-owner-review-required']});
+  }
+  return {eligible,excluded,monitor};
+}
 // Brain-independent, method-only shared knowledge API. Source task records and
 // personal preferences are deliberately outside this protocol.
-function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError}) {
+function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError,management=false}) {
   const fail=(status,message)=>{throw new HttpError(status,'art-knowledge-invalid',message);};
   const shape=(value,keys)=>value && typeof value==='object' && !Array.isArray(value) && Object.keys(value).every(k=>keys.includes(k));
   const scalar=value=>typeof value==='string' && /^[A-Za-z0-9*_.:-]{1,100}$/.test(value);
@@ -269,22 +283,34 @@ function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError}) {
     if(!path.startsWith('/api/web/art-knowledge'))return null;
     const isRead=method==='GET' && path==='/api/web/art-knowledge';
     const token=String(headers.authorization||headers.Authorization||'').replace(/^Bearer\s+/i,'');
-    const principal=isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
+    // management is a trusted constructor capability used only inside the
+    // separately packaged admin tool. No user/session/header can enable it.
+    const principal=management?{id:null,role:'art-management'}:isRead && token.startsWith('nfw_')?await requireWorker(headers):await requireUser(headers);
     if(typeof store.readArtKnowledge!=='function')fail(503,'shared art knowledge is not enabled');
     if(isRead){if(!skill(query.skillId))fail(400,'invalid art skill');return {ok:true,...await store.readArtKnowledge(query.skillId,query.knownVersion)};}
+    if(method==='GET'&&path==='/api/web/art-knowledge/publisher')return {ok:true,publisher:management};
     if(path==='/api/web/art-knowledge/consent') {
       if(method==='GET')return {ok:true,allowed:await store.getArtLearningConsent(principal.id)};
       if(method==='POST'&&shape(body,['allow'])&&typeof body.allow==='boolean'){await store.setArtLearningConsent(principal.id,body.allow);return {ok:true,allowed:body.allow};}
       fail(400,'invalid sharing consent');
     }
+    if(method==='POST'&&path==='/api/web/art-knowledge/outcomes'){
+      if(!shape(body,['schema','key','status','appliedMethodIds','evidence'])||body.schema!=='nf.art.method-outcome.v1'||body.status!=='candidate'
+        ||!Array.isArray(body.appliedMethodIds)||body.appliedMethodIds.length<1||body.appliedMethodIds.length>5||body.appliedMethodIds.some(id=>!/^[a-f0-9-]{36}$/i.test(id))
+        ||!shape(body.evidence,['taskId','resultSHA256','feedback','improvement'])||!/^[A-Za-z0-9_-]{1,128}$/.test(body.evidence.taskId||'')
+        ||!/^[a-f0-9]{64}$/.test(body.evidence.resultSHA256||'')||!['satisfied','adopted','unsatisfied','revision'].includes(body.evidence.feedback)||typeof body.evidence.improvement!=='boolean')fail(400,'invalid method outcome');
+      if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
+      try{return {ok:true,...await store.submitArtOutcome(principal.id,body)};}
+      catch(error){const message=String(error?.message||error);if(message.includes('method was never published'))fail(400,'only published method outcomes are accepted');if(message.includes('result identity changed'))fail(409,'task result identity cannot change');throw error;}
+    }
     if(method==='POST' && path==='/api/web/art-knowledge/candidates') {
       const input=candidate(body);if(!await store.getArtLearningConsent(principal.id))fail(403,'shared learning consent is required');
       return {ok:true,...await store.submitArtMethod(principal.id,input)};
     }
-    if(principal.role!=='admin')fail(403,'administrator review is required');
+    if(!management)fail(403,'review and publication require the backend management tool');
+    if(method==='GET'&&path==='/api/web/art-knowledge/releases')return {ok:true,releases:await store.listArtReleases()};
+    if(method==='GET'&&path==='/api/web/art-knowledge/review')return {ok:true,review:await store.getArtReview()};
     if(method==='GET' && path==='/api/web/art-knowledge/candidates')return {ok:true,candidates:await store.listArtCandidates()};
-    if(['/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback','/api/web/art-knowledge/prepare'].includes(path)
-      && !await store.isArtPublisher(principal.id))fail(403,'only the configured publisher owner may approve a release');
     if(method==='POST' && ['/api/web/art-knowledge/prepare','/api/web/art-knowledge/publish','/api/web/art-knowledge/rollback'].includes(path)) {
       const rollback=path.endsWith('/rollback'),prepare=path.endsWith('/prepare');
       if(!shape(body,rollback?['skillId','version']:['skillId','version','candidateIds','validation','skill',...(prepare?[]:['approval'])]) || !skill(body.skillId)
@@ -293,17 +319,11 @@ function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError}) {
       if(!shape(body.validation,['passed','benchmarkSHA256','cases']) || body.validation.passed!==true
         || !/^[a-f0-9]{64}$/.test(body.validation.benchmarkSHA256||'') || !Number.isInteger(body.validation.cases)||body.validation.cases<1)fail(400,'fixed benchmark acceptance is required');
       if(body.skill && (body.skill.schema!=='nf.art.skill.v1'||body.skill.status!=='stable'||body.skill.id!==body.skillId||body.skill.version!==body.version
-        || typeof body.skill.systemPrompt!=='string'||body.skill.systemPrompt.length>24000||await sha256Hex(body.skill.systemPrompt)!==body.skill.systemSHA256))fail(400,'invalid professional skill version');
+        ||body.skillId!=='style-transfer'||body.skill.applicability?.task!=='drawing'||body.skill.applicability?.generationModels?.join(',')!=='qwen-2.1'
+        ||!Array.isArray(body.skill.brainStrategies)||body.skill.brainStrategies.length>16||body.skill.brainStrategies.some(s=>typeof s.brain!=='string'||s.brain.length>240||!['none','low'].includes(s.reasoningEffort)||!Number.isInteger(s.reasoningBudgetTokens)||s.reasoningBudgetTokens<0||s.reasoningBudgetTokens>1024||s.reasoningEffort==='none'&&s.reasoningBudgetTokens!==0)
+        || typeof body.skill.systemPrompt!=='string'||body.skill.systemPrompt.length>=24000||!body.skill.systemPrompt.includes('Return ONLY JSON:')||await sha256Hex(body.skill.systemPrompt)!==body.skill.systemSHA256))fail(400,'invalid professional skill version');
       const active=await store.readArtKnowledge(body.skillId),rows=(await store.listArtCandidates()).filter(c=>c.scope.skillId===body.skillId);
-      const normalized=v=>v.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,'');
-      const scopeKey=s=>JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>s[k]));
-      const known=new Set(active.methods.map(m=>scopeKey(m.scope)+'\n'+normalized(m.text)));
-      const excluded=[],eligible=[];
-      for(const row of rows) {
-        const reason=known.has(scopeKey(row.scope)+'\n'+normalized(row.method))?'already-published':Number(row.positive_count)<1?'no-positive-evidence':null;
-        if(reason)excluded.push({id:row.id,reason});
-        else eligible.push({...row,reviewNotes:[...(row.negative_count?['conflicting-feedback']:[]),...(row.positive_users<2?['single-user-evidence']:[]),'fixed-benchmark-and-owner-review-required']});
-      }
+      const {eligible,excluded,monitor}=filterArtCandidates({rows,active,skillId:body.skillId});
       const ids=body.candidateIds??(prepare?eligible.slice(0,20).map(c=>c.id):null);
       if(!Array.isArray(ids)||ids.length>20||ids.some(id=>!/^[a-f0-9-]{36}$/i.test(id))||new Set(ids).size!==ids.length)fail(400,'invalid candidate selection');
       const selected=ids.map(id=>eligible.find(c=>c.id===id));
@@ -314,13 +334,13 @@ function createArtKnowledgeRoutes({store,requireUser,requireWorker,HttpError}) {
         candidates:ordered.map(c=>({id:c.id,method:c.method,scope:c.scope,evidenceFingerprint:c.evidence_fingerprint})),
         validation:body.validation,skill:body.skill||null};
       const batchSHA256=await sha256Hex(JSON.stringify(batch));
-      if(prepare)return {ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
-        selected:ordered,excluded,remaining:eligible.length-selected.length,
-        publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};
+      if(prepare){const report={ok:true,status:'awaiting-owner-approval',batchSHA256,baseVersion:active.version,
+        selected:ordered,excluded,monitor,remaining:eligible.length-selected.length,
+        publishRequest:{skillId:body.skillId,version:body.version,candidateIds:ids,validation:body.validation,...(body.skill?{skill:body.skill}:{})}};await store.saveArtReview(principal.id,report);return report;}
       if(!shape(body.approval,['approved','batchSHA256'])||body.approval.approved!==true||body.approval.batchSHA256!==batchSHA256)fail(409,'explicit owner approval for this exact unchanged batch is required');
       return {ok:true,...await store.publishArtKnowledge(principal.id,{...body,candidateIds:ids,validation:{...body.validation,
         baseVersion:active.version,evidenceFingerprints:Object.fromEntries(ordered.map(c=>[c.id,c.evidence_fingerprint])),
-        ownerApproved:true,approvedBy:principal.id,approvalSHA256:batchSHA256}})};
+        ownerApproved:true,approvedBy:'admin-tool',approvalSHA256:batchSHA256}})};
     }
     fail(404,'unknown shared art knowledge route');
   }};
@@ -364,7 +384,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.114";
+const RELEASE_VERSION = "2.0.126";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -889,16 +909,6 @@ const WORKFLOW_MODULES = Object.freeze({
     price: 'image',
     methods: ['buildWorkflow', 'buildRunWorkflow']
   },
-  NovaFlowArtGenerateIdeogramWorkflow: {
-    label: '绘图 · Ideogram',
-    modelId: 'ideogram-4',
-    minVramMb: 16000,
-    runtime: 'image',
-    kind: 'image',
-    price: 'image',
-    methods: ['build', 'buildWorkflow']
-  },
-
   // UI 设计 runs through the 绘图 builders on Qwen-Image-2.1; it has no builder of its own.
 
   // ---- AI 序列动画 ------------------------------------------------------
@@ -948,7 +958,6 @@ const WORKFLOW_MODULES = Object.freeze({
 // the control plane. Private runtimes retain their file name.
 const WORKFLOW_SOURCE_MODULES = Object.freeze({
   'art-generate-provider.workflow': 'NovaFlowArtGenerateProviderWorkflow',
-  'art-generate-ideogram.workflow': 'NovaFlowArtGenerateIdeogramWorkflow',
   'ai-sequence-minimax-h3.workflow': 'NovaFlowAiSequenceMiniMaxH3Workflow',
   'ai-sequence-video-merge-export.workflow': 'NovaFlowAiSequenceVideoMergeExportWorkflow',
   'aifx-restyle.workflow': 'NovaFlowAifxRestyleWorkflow',
@@ -1217,8 +1226,6 @@ function runtimeFor(modelId) {
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
 
-
-
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1239,14 +1246,6 @@ function runtimeFor(modelId) {
 //     task currently assigned to it.
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
-
-
-
-
-
-
-
-
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -1276,8 +1275,6 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1285,8 +1282,6 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
-
-
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1414,7 +1409,6 @@ function validateTaskParameters(taskType, raw) {
   };
 }
 
-
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
 //
@@ -1488,7 +1482,8 @@ function sanitizeReferences(raw) {
 //   sessionSecret - the SAME NOVAFLOW_SESSION_SECRET novaflow-backend uses
 //   controlSecret - Web-line only; signs worker tokens and derives grant keys
 // ---------------------------------------------------------------------------
-function createControlPlane({ store, secrets, logger }) {
+/** @param {{store:any,secrets:any,logger?:(...args:any[])=>void,companion?:{reply:(input:any)=>Promise<any>}|null}} options */
+function createControlPlane({ store, secrets, logger=()=>{}, companion=null }) {
   const log = logger || (() => {});
   const sessionSecret = secrets?.sessionSecret || '';
   const controlSecret = secrets?.controlSecret || '';
@@ -2334,6 +2329,12 @@ function createControlPlane({ store, secrets, logger }) {
 
     try {
       if (method === 'OPTIONS') return { status: 204, body: null };
+      if(method==='POST'&&path==='/api/web/companion/chat'){
+        const user=await requireUser(headers);
+        if(!companion)throw new HttpError(503,'companion-unavailable','在线参考分析服务尚未启用');
+        try{return ok({ok:true,...await companion.reply({user,payload:body})});}
+        catch(error){if(error.status)throw new HttpError(error.status,'companion-failed',error.message);throw error;}
+      }
       if (path.startsWith('/api/web/art-knowledge')) return ok(await artKnowledge.handle({method,path,headers,query,body}));
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running', releaseVersion: RELEASE_VERSION });
@@ -2516,12 +2517,7 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
-
-
-
-
 const FUNCTION_NAME = 'novaflow-web';
-
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -2557,8 +2553,6 @@ function admin() {
   return cachedAdmin;
 }
 
-
-
 function unwrapRpc<T>(data: unknown): T | null {
   // A plpgsql function returning a table type comes back as an array of one.
   if (Array.isArray(data)) return (data[0] ?? null) as T | null;
@@ -2583,11 +2577,18 @@ const supabaseStore = {
     const {data,error}=await admin().rpc('novaflow_art_submit_method',{p_user_id:userId,p_scope:input.scope,p_method:input.method,p_evidence:input.evidence});
     if(error)throw error;return data;
   },
+  async submitArtOutcome(userId:string,input:any){const {data,error}=await admin().rpc('novaflow_art_submit_outcome',{p_user_id:userId,p_method_ids:input.appliedMethodIds,p_evidence:input.evidence});if(error)throw error;return data;},
+  async listArtReleases(){const {data,error}=await admin().rpc('novaflow_art_release_history');if(error)throw error;return data||[];},
   async listArtCandidates() {
     // Provenance remains server-only. The review API exposes abstract methods.
     const {data,error}=await admin().rpc('novaflow_art_review_candidates');
     if(error)throw error;return data || [];
   },
+  async saveArtReview(userId: string,report: any){
+    const {error:oldError}=await admin().from('art_knowledge_reviews').update({state:'outdated'}).eq('state','pending').eq('report->publishRequest->>skillId',report.publishRequest.skillId).neq('batch_sha256',report.batchSHA256);if(oldError)throw oldError;
+    const {error}=await admin().from('art_knowledge_reviews').upsert({batch_sha256:report.batchSHA256,report,prepared_by:userId},{onConflict:'batch_sha256'});if(error)throw error;
+  },
+  async getArtReview(){const {data,error}=await admin().from('art_knowledge_reviews').select('report').eq('state','pending').order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data?.report||null;},
   async publishArtKnowledge(userId: string,input: any) {
     const {data,error}=await admin().rpc('novaflow_art_publish_knowledge',{p_admin_id:userId,p_skill_id:input.skillId,p_version:input.version,p_candidate_ids:input.candidateIds,p_validation:input.validation,p_skill:input.skill||null});
     if(error)throw error;return data;
