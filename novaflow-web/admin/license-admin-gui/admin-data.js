@@ -29,13 +29,18 @@ const COMFYUI_TIMEOUT_MS = 10000;
 const PROVIDER_QUOTA_PREFIX = "provider_quota_";
 const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
 const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
-const WRITABLE_PROVIDER_ENV_NAMES = new Set([
-  ...Object.values(runningHub.ENV),
+// The only operator-writable online provider secret. Other RunningHub fields
+// stay readable. Grok, cloud ComfyUI, and the removed Google endpoint are not
+// writable; unmigrated call paths may still read their existing env values.
+const WRITABLE_PROVIDER_ENV_NAMES = new Set([runningHub.ENV.apiKey]);
+const RETIRED_PROVIDER_ENV_NAMES = new Set([
   ENV_COMFYUI_BASE_URL,
   ENV_COMFYUI_API_KEY,
+  ENV_COMFYUI_API_KEY_SECRET_REF,
   ENV_GROK_BASE_URL,
   ENV_GROK_API_KEY,
-  ENV_GROK_MODEL
+  ENV_GROK_MODEL,
+  "NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT"
 ]);
 
 let cachedClient = null;
@@ -871,9 +876,12 @@ function parseBillingMultiplier(value, fallback = 1) {
 
 function parseAdminAiProviderPayload(payload) {
   if (payload?.apiKey || payload?.api_key || payload?.secret || payload?.secretKey) {
-    throw new Error("不要提交真实 API Key；这里只允许保存服务端密钥引用 api_key_secret_ref");
+    throw new Error("不要提交真实 API Key；RunningHub Key 只写入后台环境变量");
   }
   const providerKey = normalizeProviderKey(payload?.providerKey || payload?.provider_key);
+  if (providerKey !== "runninghub") {
+    throw new Error("在线供应商记录只允许 RunningHub；ComfyUI、Grok 与 Google 不再写入");
+  }
   const name = String(payload?.name || providerKey).trim().slice(0, 120);
   const status = normalizeProviderStatus(payload?.status);
   const billingMultiplier = parseBillingMultiplier(payload?.billingMultiplier ?? payload?.billing_multiplier, 1);
@@ -2607,16 +2615,14 @@ async function adjustAdminProviderBudget(payload) {
 }
 
 function parseProviderRuntimeConfigPayload(payload) {
+  if (payload && typeof payload === "object") {
+    for (const name of Object.keys(payload)) {
+      if (RETIRED_PROVIDER_ENV_NAMES.has(name)) throw new Error("Unsupported provider env name");
+    }
+  }
   const providerKey = String(payload?.providerKey || payload?.provider_key || "").trim().toLowerCase();
-  const baseUrl = normalizeBaseUrl(payload?.baseUrl ?? payload?.base_url ?? "");
-  const apiKey = String(payload?.apiKey ?? payload?.api_key ?? "").trim();
-  const model = String(payload?.model || "").trim();
-  const updateApiKey = Boolean(payload?.updateApiKey || payload?.update_api_key || apiKey);
-  const clearApiKey = Boolean(payload?.clearApiKey || payload?.clear_api_key);
-  if (providerKey === "runninghub") return { providerKey, ...runningHub.parseConfig(payload) };
-  if (!["comfyui", "grok"].includes(providerKey)) throw new Error("Unsupported Provider");
-  if (updateApiKey && !apiKey && !clearApiKey) throw new Error("API Key 不能为空；留空表示不修改，或勾选清空");
-  return { providerKey, baseUrl, apiKey, model, updateApiKey, clearApiKey };
+  if (providerKey !== "runninghub") throw new Error("Unsupported Provider");
+  return { providerKey, ...runningHub.parseConfig(payload) };
 }
 
 async function setAdminProviderRuntimeConfig(payload) {
@@ -2639,34 +2645,12 @@ async function setAdminProviderRuntimeConfig(payload) {
 
   try {
     const written = [];
-    if (parsed.providerKey === "runninghub") {
-      for (const [field, name] of Object.entries(runningHub.ENV)) {
-        if (field !== "apiKey") written.push(writeAdminEnvValue(name, parsed[field]));
-      }
-      if (parsed.clearApiKey || parsed.updateApiKey) {
-        written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
-      }
-      runningHubCheck = null;
-    } else if (parsed.providerKey === "comfyui") {
-      written.push(writeAdminEnvValue(ENV_COMFYUI_BASE_URL, parsed.baseUrl || DEFAULT_COMFYUI_BASE_URL));
-      if (parsed.clearApiKey) {
-        written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, ""));
-      } else if (parsed.updateApiKey) {
-        written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, parsed.apiKey));
-      }
-    } else if (parsed.providerKey === "grok") {
-      written.push(writeAdminEnvValue(ENV_GROK_BASE_URL, parsed.baseUrl || DEFAULT_GROK_BASE_URL));
-      written.push(writeAdminEnvValue(ENV_GROK_MODEL, parsed.model || DEFAULT_GROK_MODEL));
-      if (parsed.clearApiKey) {
-        written.push(writeAdminEnvValue(ENV_GROK_API_KEY, ""));
-      } else if (parsed.updateApiKey) {
-        written.push(writeAdminEnvValue(ENV_GROK_API_KEY, parsed.apiKey));
-      }
+    if (parsed.clearApiKey || parsed.updateApiKey) {
+      written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
     }
+    runningHubCheck = null;
 
-    const env = parsed.providerKey === "runninghub"
-      ? runningHub.publicStatus(readAdminRunningHubEnv())
-      : parsed.providerKey === "grok" ? readAdminGrokEnv() : readAdminComfyUiEnv();
+    const env = runningHub.publicStatus(readAdminRunningHubEnv());
     const durationMs = Date.now() - startedAt;
     const result = {
       source: "local",
@@ -2679,11 +2663,9 @@ async function setAdminProviderRuntimeConfig(payload) {
       env: {
         provider_key: parsed.providerKey,
         baseUrl: env.baseUrl,
-        model: env.model || "",
-        ...(parsed.providerKey === "runninghub" ? {
-          llmBaseUrl: env.llmBaseUrl, llmModel: env.llmModel,
-          gptImageEndpoint: env.gptImageEndpoint, googleImageEndpoint: env.googleImageEndpoint
-        } : {}),
+        llmBaseUrl: env.llmBaseUrl,
+        llmModel: env.llmModel,
+        gptImageEndpoint: env.gptImageEndpoint,
         hasApiKey: Boolean(env.hasApiKey),
         configured: Boolean(env.configured)
       },
@@ -2698,7 +2680,7 @@ async function setAdminProviderRuntimeConfig(payload) {
       status: result.status,
       providerKey: parsed.providerKey,
       baseUrl: result.env.baseUrl,
-      model: result.env.model || undefined,
+      llmModel: result.env.llmModel || undefined,
       hasApiKey: result.env.hasApiKey,
       durationMs
     });

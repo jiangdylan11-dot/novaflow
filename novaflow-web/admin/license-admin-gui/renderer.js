@@ -968,29 +968,9 @@ function isRunningHubProvider(provider) {
 }
 
 function ensureCoreAiProviders(providers) {
-  const list = Array.isArray(providers) ? [...providers] : [];
-  if (!list.some(isRunningHubProvider)) {
-    list.unshift({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
-  }
-  if (!list.some(isGrokProvider)) {
-    list.push({
-      id: "provider-grok-ui",
-      name: "Grok",
-      provider_key: "grok",
-      status: "disabled",
-      billing_multiplier: 0.1,
-      api_key_secret_ref: ""
-    });
-  }
-  if (!list.some(isComfyUiProvider)) {
-    list.push({
-      id: "provider-comfyui-ui",
-      name: "ComfyUI",
-      provider_key: "comfyui",
-      status: "disabled",
-      billing_multiplier: 1.25,
-      api_key_secret_ref: ""
-    });
+  const list = (Array.isArray(providers) ? providers : []).filter(isRunningHubProvider);
+  if (!list.length) {
+    list.push({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
   }
   return list;
 }
@@ -1055,35 +1035,14 @@ function providerBalanceCellText(provider, comfyStatus) {
   return "-";
 }
 
-function renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus) {
-  const comfyBase = $("comfyRuntimeBaseUrl");
-  const comfyKey = $("comfyRuntimeApiKey");
-  const comfyClear = $("comfyRuntimeClearKey");
-  const comfyHint = $("comfyRuntimeConfigHint");
-  const grokBase = $("grokRuntimeBaseUrl");
-  const grokModel = $("grokRuntimeModel");
-  const grokKey = $("grokRuntimeApiKey");
-  const grokClear = $("grokRuntimeClearKey");
-  const grokHint = $("grokRuntimeConfigHint");
+function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runninghubStatus) {
   const status = $("providerRuntimeConfigStatus");
-
-  if (comfyBase) comfyBase.value = comfyStatus?.baseUrl || "https://cloud.comfy.org";
-  if (comfyKey) comfyKey.value = "";
-  if (comfyClear) comfyClear.checked = false;
-  if (comfyHint) comfyHint.textContent = comfyStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
-
-  if (grokBase) grokBase.value = grokStatus?.baseUrl || "https://api.x.ai/v1";
-  if (grokModel) grokModel.value = grokStatus?.model || "grok-4.3";
-  if (grokKey) grokKey.value = "";
-  if (grokClear) grokClear.checked = false;
-  if (grokHint) grokHint.textContent = grokStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
 
   const runninghubFields = {
     BaseUrl: runninghubStatus?.baseUrl || "https://www.runninghub.cn",
     LlmBaseUrl: runninghubStatus?.llmBaseUrl || "https://llm.runninghub.cn/v1",
     LlmModel: runninghubStatus?.llmModel || "",
-    GptImageEndpoint: runninghubStatus?.gptImageEndpoint || "",
-    GoogleImageEndpoint: runninghubStatus?.googleImageEndpoint || ""
+    GptImageEndpoint: runninghubStatus?.gptImageEndpoint || ""
   };
   for (const [field, value] of Object.entries(runninghubFields)) {
     if ($(`runninghubRuntime${field}`)) $(`runninghubRuntime${field}`).value = value;
@@ -1200,7 +1159,7 @@ function renderRunningHubProviderHealth(status) {
     { label: "官方余额", value: status?.balance?.text || "未检测" },
     { label: "当前运行任务数", value: status?.currentTaskCounts == null ? "-" : String(status.currentTaskCounts) },
     { label: "上次检测时间", value: status?.checkedAt ? formatDateTime(status.checkedAt) : "尚未检测" },
-    { label: "功能迁移", value: "仅配置服务商；GPT / Google 生成与 Grok 提示词尚未切换" },
+    { label: "功能迁移", value: "仅保存 RunningHub Key 与账户检测；现有生成与提示词调用尚未切换" },
     { label: "检测耗时", value: durationText(status?.durationMs) },
     { label: "错误提示", value: status?.error || "-" }
   ], "尚未检测");
@@ -2409,38 +2368,17 @@ function providerBudgetPayload() {
 
 function providerRuntimeConfigPayload(providerKey) {
   const key = String(providerKey || "").toLowerCase();
-  if (key === "runninghub") {
-    const apiKey = $("runninghubRuntimeApiKey")?.value.trim() || "";
-    return {
-      providerKey: key, apiKey, updateApiKey: Boolean(apiKey),
-      clearApiKey: Boolean($("runninghubRuntimeClearKey")?.checked),
-      baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
-      llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
-      llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
-      gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || "",
-      googleImageEndpoint: $("runninghubRuntimeGoogleImageEndpoint")?.value.trim() || ""
-    };
-  }
-  if (key === "comfyui") {
-    const apiKey = $("comfyRuntimeApiKey")?.value.trim() || "";
-    const clearApiKey = Boolean($("comfyRuntimeClearKey")?.checked);
-    return {
-      providerKey: "comfyui",
-      baseUrl: $("comfyRuntimeBaseUrl")?.value.trim() || "https://cloud.comfy.org",
-      apiKey,
-      updateApiKey: Boolean(apiKey),
-      clearApiKey
-    };
-  }
-  const apiKey = $("grokRuntimeApiKey")?.value.trim() || "";
-  const clearApiKey = Boolean($("grokRuntimeClearKey")?.checked);
+  if (key !== "runninghub") throw new Error("Unsupported Provider");
+  const apiKey = $("runninghubRuntimeApiKey")?.value.trim() || "";
   return {
-    providerKey: "grok",
-    baseUrl: $("grokRuntimeBaseUrl")?.value.trim() || "https://api.x.ai/v1",
-    model: $("grokRuntimeModel")?.value.trim() || "grok-4.3",
+    providerKey: "runninghub",
     apiKey,
     updateApiKey: Boolean(apiKey),
-    clearApiKey
+    clearApiKey: Boolean($("runninghubRuntimeClearKey")?.checked),
+    baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
+    llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
+    llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
+    gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || ""
   };
 }
 
@@ -2452,7 +2390,7 @@ async function saveProviderRuntimeConfig(providerKey) {
     alert("清空 Key 和填写新 Key 不能同时操作。");
     return;
   }
-  const providerName = key === "runninghub" ? "RunningHub" : key === "grok" ? "Grok" : "ComfyUI";
+  const providerName = "RunningHub";
   const willChangeKey = payload.clearApiKey ? "清空当前 API Key" : payload.updateApiKey ? "覆盖当前 API Key" : "不修改当前 API Key";
   const confirmed = confirm(`确定保存 ${providerName} 配置？\n${willChangeKey}\n真实 Key 只写入本机后台环境变量，不会回显。`);
   if (!confirmed) return;
@@ -2466,16 +2404,8 @@ async function saveProviderRuntimeConfig(providerKey) {
       alert(result.error || res?.error || `保存 ${providerName} 配置失败`);
       return;
     }
-    if (key === "runninghub") {
-      if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
-      if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
-    } else if (key === "grok") {
-      if ($("grokRuntimeApiKey")) $("grokRuntimeApiKey").value = "";
-      if ($("grokRuntimeClearKey")) $("grokRuntimeClearKey").checked = false;
-    } else {
-      if ($("comfyRuntimeApiKey")) $("comfyRuntimeApiKey").value = "";
-      if ($("comfyRuntimeClearKey")) $("comfyRuntimeClearKey").checked = false;
-    }
+    if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
+    if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
     if (status) status.textContent = "已保存";
     toast(`${providerName} 配置已保存`);
     await loadAdminData();
@@ -3077,17 +3007,6 @@ async function init() {
   $("computeMintCode")?.addEventListener("click", () => { void mintComputeCode(); });
   $("computePurgeCodes")?.addEventListener("click", () => { void purgeComputeCodes(); });
   $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
-  $("comfyProviderBudgetBalance").addEventListener("input", () => { providerBudgetDirty = true; });
-  $("comfyProviderBudgetNote").addEventListener("input", () => { providerBudgetDirty = true; });
-  $("saveComfyProviderBudget").addEventListener("click", async () => {
-    await saveComfyProviderBudget();
-  });
-  $("saveComfyRuntimeConfig").addEventListener("click", async () => {
-    await saveProviderRuntimeConfig("comfyui");
-  });
-  $("saveGrokRuntimeConfig").addEventListener("click", async () => {
-    await saveProviderRuntimeConfig("grok");
-  });
   $("saveRunninghubRuntimeConfig").addEventListener("click", async () => {
     await saveProviderRuntimeConfig("runninghub");
   });

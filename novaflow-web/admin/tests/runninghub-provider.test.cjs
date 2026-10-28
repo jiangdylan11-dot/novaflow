@@ -8,13 +8,23 @@ const rh = require("../license-admin-gui/runninghub-provider.cjs");
 const fakeKey = "test-runninghub-secret-never-return";
 const config = () => ({ ...rh.readConfig(() => ""), apiKey: fakeKey });
 
+test("admin page no longer offers ComfyUI, Grok, or Google provider fields", () => {
+  const html = fs.readFileSync(path.resolve(__dirname, "../license-admin-gui/index.html"), "utf8");
+  for (const id of ["runninghubRuntimeGoogleImageEndpoint", "comfyRuntimeApiKey", "grokRuntimeApiKey", "saveComfyRuntimeConfig", "saveGrokRuntimeConfig", "saveComfyProviderBudget"]) {
+    assert.equal(html.includes(id), false, id);
+  }
+  assert.equal(html.includes("runninghubRuntimeApiKey"), true);
+});
+
 test("domestic defaults and model configuration remain independent of existing providers", () => {
   const parsed = rh.parseConfig({ apiKey: fakeKey, llmModel: "model-from-provider-list", gptImageEndpoint: "/openapi/v2/example/text-to-image" });
   assert.equal(parsed.baseUrl, "https://www.runninghub.cn");
   assert.equal(parsed.llmBaseUrl, "https://llm.runninghub.cn/v1");
-  assert.equal(parsed.googleImageEndpoint, "");
+  assert.equal(Object.hasOwn(parsed, "googleImageEndpoint"), false);
+  assert.equal(Object.values(rh.ENV).includes("NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT"), false);
   assert.equal(parsed.updateApiKey, true);
   assert.equal(rh.publicStatus(config()).integrationStatus, "configuration_only");
+  assert.equal(Object.hasOwn(rh.publicStatus(config()), "googleImageEndpoint"), false);
   assert(!JSON.stringify(rh.publicStatus(config())).includes(fakeKey));
 });
 
@@ -27,7 +37,9 @@ test("configuration rejects invalid addresses, paths and conflicting key changes
   assert.throws(() => rh.parseConfig({ updateApiKey: true }));
   assert.throws(() => rh.parseConfig({ apiKey: "secret\nother" }));
   assert.throws(() => rh.parseConfig({ gptImageEndpoint: "https://example.com/path" }));
-  assert.throws(() => rh.parseConfig({ googleImageEndpoint: "/openapi/v2/../query" }));
+  const ignoredGoogle = rh.parseConfig({ apiKey: fakeKey, googleImageEndpoint: "/openapi/v2/../query" });
+  assert.equal(Object.hasOwn(ignoredGoogle, "googleImageEndpoint"), false);
+  assert.equal(ignoredGoogle.apiKey, fakeKey);
 });
 
 test("missing key never contacts provider", async () => {
@@ -107,8 +119,11 @@ test("save persists RunningHub config, preserves blank key, clears explicitly, a
   assert.equal(result.ok, true);
   assert.equal(result.env.hasApiKey, true);
   assert.equal(f.registry.get(rh.ENV.apiKey), fakeKey);
-  assert.equal(f.registry.get(rh.ENV.llmModel), "chosen-model");
+  assert.equal(f.registry.has(rh.ENV.llmModel), false);
+  assert.equal(f.registry.has("NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT"), false);
+  assert.deepEqual(f.writes.filter((name) => name !== rh.ENV.apiKey), []);
   assert(!JSON.stringify(result).includes(fakeKey));
+  assert.equal(Object.hasOwn(result.env, "googleImageEndpoint"), false);
   result = await f.api.setAdminProviderRuntimeConfig({ providerKey: "runninghub", apiKey: "" });
   assert.equal(result.ok, true);
   assert.equal(f.registry.get(rh.ENV.apiKey), fakeKey);
@@ -116,6 +131,30 @@ test("save persists RunningHub config, preserves blank key, clears explicitly, a
   result = await f.api.setAdminProviderRuntimeConfig({ providerKey: "runninghub", clearApiKey: true });
   assert.equal(result.env.hasApiKey, false);
   assert.equal(f.registry.has(rh.ENV.apiKey), false);
+  assert(!f.logs.join("\n").includes(fakeKey));
+});
+
+test("old provider env writes are rejected and do not touch stored secrets", async () => {
+  const f = adminFixture();
+  f.env.NOVAFLOW_GROK_API_KEY = "unrelated-grok-key";
+  f.env.NOVAFLOW_COMFYUI_API_KEY = "unrelated-comfy-key";
+  for (const payload of [
+    { providerKey: "grok", apiKey: "new-grok-secret" },
+    { providerKey: "comfyui", apiKey: "new-comfy-secret" },
+    { providerKey: "runninghub", NOVAFLOW_GROK_API_KEY: "new-grok-secret", apiKey: fakeKey },
+    { providerKey: "runninghub", NOVAFLOW_COMFYUI_API_KEY: "new-comfy-secret", apiKey: fakeKey },
+    { providerKey: "runninghub", NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT: "/openapi/v2/google/image", apiKey: fakeKey }
+  ]) {
+    const result = await f.api.setAdminProviderRuntimeConfig(payload);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /Unsupported/);
+  }
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.env.NOVAFLOW_GROK_API_KEY, "unrelated-grok-key");
+  assert.equal(f.env.NOVAFLOW_COMFYUI_API_KEY, "unrelated-comfy-key");
+  assert.equal(f.registry.has(rh.ENV.apiKey), false);
+  assert(!f.logs.join("\n").includes("new-grok-secret"));
+  assert(!f.logs.join("\n").includes("new-comfy-secret"));
   assert(!f.logs.join("\n").includes(fakeKey));
 });
 

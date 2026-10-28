@@ -15,8 +15,8 @@ Current scope:
 - Runs as a local Node HTTP service.
 - Uses `NOVAFLOW_SUPABASE_URL` and `NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY` only on the server side.
 - Uses `NOVAFLOW_SUPABASE_PUBLISHABLE_KEY` or `NOVAFLOW_SUPABASE_ANON_KEY` only on the server side for Supabase Auth password login.
-- Uses `NOVAFLOW_COMFYUI_BASE_URL`, `NOVAFLOW_COMFYUI_API_KEY`, and optional `NOVAFLOW_COMFYUI_API_KEY_SECRET_REF` only on the server/admin side for read-only ComfyUI Provider checks.
-- Uses `NOVAFLOW_GROK_BASE_URL`, `NOVAFLOW_GROK_MODEL`, and `NOVAFLOW_GROK_API_KEY` only on the server side for Grok Provider calls.
+- The only operator-writable online provider secret is `NOVAFLOW_RUNNINGHUB_API_KEY`, stored in the admin/server environment. It is not a Supabase Edge secret in this phase.
+- Existing call paths may still read `NOVAFLOW_COMFYUI_*` and `NOVAFLOW_GROK_*` when those values are already present. The admin UI no longer writes them.
 - Provides admin-issued account/password login through Supabase Auth. Self-registration is disabled.
 - Issues signed stateless session tokens.
 - Checks user status before AI task requests. ComfyUI generation is not blocked by either balance.
@@ -53,12 +53,9 @@ NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY=...
 NOVAFLOW_SUPABASE_PUBLISHABLE_KEY=...
 # or:
 NOVAFLOW_SUPABASE_ANON_KEY=...
-NOVAFLOW_COMFYUI_BASE_URL=https://cloud.comfy.org
-NOVAFLOW_COMFYUI_API_KEY=
-NOVAFLOW_COMFYUI_API_KEY_SECRET_REF=
-NOVAFLOW_GROK_BASE_URL=https://api.x.ai/v1
-NOVAFLOW_GROK_MODEL=grok-4.3
-NOVAFLOW_GROK_API_KEY=
+# Only this key is writable from the admin UI. Leave it empty in git.
+# Do not put it in Supabase Edge secrets in this phase.
+NOVAFLOW_RUNNINGHUB_API_KEY=
 ```
 
 The default host is `127.0.0.1`. Do not bind to `0.0.0.0` unless there is a real deployment firewall, HTTPS, and token management plan.
@@ -77,7 +74,7 @@ For deployment, copy `admin-server/deploy.env.example` to the target environment
 
 The cloud function is deployed as `novaflow-backend`.
 
-Required Edge Function secrets:
+Edge Function secrets still read by the unmigrated Grok call path. Do not add `NOVAFLOW_RUNNINGHUB_API_KEY` here in this phase:
 
 ```text
 NOVAFLOW_SESSION_SECRET
@@ -386,6 +383,6 @@ This phase adds admin-only configuration and read-only account checks, without m
 
 - `GET /api/admin/providers/runninghub/status`: redacted configuration and last check, no external request.
 - `POST /api/admin/providers/runninghub/check`: read-only `POST /uc/openapi/accountStatus` check; no generation/LLM call.
-- `POST /api/admin/providers/runninghub/config`: save `baseUrl`, `apiKey`, `clearApiKey`, `llmBaseUrl`, `llmModel`, `gptImageEndpoint`, `googleImageEndpoint`. Blank `apiKey` preserves the saved key; `clearApiKey: true` clears it. Other fields replace current configuration. Keys are never returned.
+- `POST /api/admin/providers/runninghub/config`: the only persisted secret is `apiKey` (`NOVAFLOW_RUNNINGHUB_API_KEY`). A blank `apiKey` preserves the saved key; `clearApiKey: true` clears it. Address and model fields are read-only and are not written. Requests that name ComfyUI, Grok, Google, or their env vars are rejected. The key is never returned.
 
-See `deploy.env.example` for `NOVAFLOW_RUNNINGHUB_*` settings. Defaults target the domestic `.cn` service only. Local admin settings do not automatically deploy secrets to an online server or Edge Function. The model endpoint and LLM model fields are reserved configuration; they do not change existing routing in this phase.
+See `deploy.env.example` for the RunningHub placeholders. The real API key stays in the admin/server environment and is not a Supabase Edge secret in this phase. Defaults target the domestic `.cn` service. Saving the key does not switch existing Grok, GPT, Google, or cloud ComfyUI call paths.
