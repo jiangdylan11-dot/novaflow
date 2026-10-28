@@ -13,6 +13,9 @@ alter table public.credits
   alter column balance type numeric(20, 6) using balance::numeric(20, 6),
   alter column balance set default 0;
 
+alter table public.credits drop constraint if exists credits_balance_nonnegative;
+alter table public.credits add constraint credits_balance_nonnegative check (balance >= 0);
+
 create table if not exists public.credit_ledger (
   id uuid primary key default gen_random_uuid(),
   usage_key text not null,
@@ -41,7 +44,11 @@ create table if not exists public.credit_ledger (
   constraint credit_ledger_feature_valid check (
     btrim(feature) = feature and char_length(feature) between 1 and 80
   ),
-  constraint credit_ledger_status_valid check (status in ('reserved', 'settled', 'released', 'failed')),
+  -- reserved: hold open, balance already reduced.
+  -- settled: success; settled_credits stays charged.
+  -- released: failure, moderation, or cancel; settled_credits is 0 and the hold was returned.
+  -- A failed call is released. There is no separate failed status.
+  constraint credit_ledger_status_valid check (status in ('reserved', 'settled', 'released')),
   constraint credit_ledger_amounts_valid check (
     estimated_credits >= 0
     and (settled_credits is null or settled_credits >= 0)
@@ -62,6 +69,9 @@ alter table public.credit_ledger enable row level security;
 alter table public.credit_ledger force row level security;
 revoke all on table public.credit_ledger from public, anon, authenticated;
 grant select, insert, update, delete on table public.credit_ledger to service_role;
+
+comment on column public.credit_ledger.status is
+  'reserved: hold open and balance reduced. settled: success, settled_credits is the charge. released: failure, moderation, or cancel; settled_credits is 0 and the hold was returned. A failed call is released; there is no separate failed status.';
 
 create table if not exists public.quota_migration_batches (
   batch_id text primary key,
@@ -126,6 +136,9 @@ values (
     ),
     'credits_to_cny', null,
     'low_balance_usd', 2,
+    'low_balance_cny', 15,
+    'balance_ttl_seconds', 600,
+    'stale_balance_policy', 'allow',
     'credits_per_usd', 211
   ),
   clock_timestamp()
@@ -229,14 +242,38 @@ declare
   v_config jsonb := coalesce((select value from public.system_settings where key = 'feature_credit_config'), '{}'::jsonb);
   v_money numeric;
   v_currency text;
+  v_checked timestamptz;
+  v_ttl integer;
+  v_policy text;
   v_threshold numeric;
 begin
-  if coalesce(v_balance->>'remainMoney', '') = '' then return false; end if;
+  -- Stored domestic snapshot. Missing or older than the TTL follows
+  -- stale_balance_policy (default allow). A fresh snapshot compares USD or CNY.
+  v_ttl := coalesce((v_config->>'balance_ttl_seconds')::integer, 600);
+  if v_ttl < 30 then v_ttl := 600; end if;
+  v_policy := case when lower(coalesce(v_config->>'stale_balance_policy', 'allow')) = 'block' then 'block' else 'allow' end;
+  begin
+    v_checked := nullif(v_balance->>'checkedAt', '')::timestamptz;
+  exception when others then
+    v_checked := null;
+  end;
+  if v_checked is null or v_checked < clock_timestamp() - make_interval(secs => v_ttl) then
+    return v_policy = 'block';
+  end if;
+  if coalesce(v_balance->>'remainMoney', '') = '' then
+    return v_policy = 'block';
+  end if;
   v_money := (v_balance->>'remainMoney')::numeric;
   v_currency := upper(coalesce(v_balance->>'currency', ''));
-  v_threshold := coalesce((v_config->>'low_balance_usd')::numeric, 2);
   if v_money <= 0 then return true; end if;
-  if v_currency in ('', 'USD') and v_money < v_threshold then return true; end if;
+  if v_currency in ('', 'USD') then
+    v_threshold := coalesce((v_config->>'low_balance_usd')::numeric, 2);
+    return v_money < v_threshold;
+  end if;
+  if v_currency = 'CNY' then
+    v_threshold := coalesce((v_config->>'low_balance_cny')::numeric, 15);
+    return v_money < v_threshold;
+  end if;
   return false;
 end;
 $$;
@@ -697,9 +734,27 @@ declare
   v_open record;
   v_snap record;
   v_check numeric;
+  v_lock jsonb;
 begin
   if p_batch_id is null or p_batch_id !~ '^[A-Za-z0-9_-]{1,80}$' then
     raise exception using errcode = '22023', message = 'migrate_grok_quota_to_credits: invalid batch id';
+  end if;
+  -- One migration transaction at a time. A second connection is rejected
+  -- instead of waiting and then crediting the same remaining counts.
+  if not pg_try_advisory_xact_lock(81402128) then
+    raise exception using errcode = 'P0001', message = 'migrate_grok_quota_to_credits: another batch holds the lock';
+  end if;
+  insert into public.system_settings(key, value, updated_at)
+  values ('quota_migration_lock', jsonb_build_object('locked', false, 'status', 'idle', 'batch_id', ''), v_now)
+  on conflict (key) do nothing;
+  select value into v_lock from public.system_settings where key = 'quota_migration_lock' for update;
+  if coalesce(v_lock->>'batch_id', '') <> ''
+     and v_lock->>'batch_id' is distinct from p_batch_id
+     and (
+       coalesce(v_lock->>'locked', 'false') = 'true'
+       or coalesce(v_lock->>'status', '') = 'held'
+     ) then
+    raise exception using errcode = 'P0001', message = 'migrate_grok_quota_to_credits: another batch holds the lock';
   end if;
   select * into v_batch from public.quota_migration_batches where batch_id = p_batch_id;
   if found and v_batch.status = 'completed' then
@@ -721,9 +776,10 @@ begin
     raise exception using errcode = '22023', message = 'migrate_grok_quota_to_credits: invalid price';
   end if;
 
-  insert into public.system_settings(key, value, updated_at)
-  values ('quota_migration_lock', jsonb_build_object('locked', true, 'batch_id', p_batch_id, 'updated_at', v_now), v_now)
-  on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at;
+  update public.system_settings
+     set value = jsonb_build_object('locked', true, 'status', 'held', 'batch_id', p_batch_id, 'updated_at', v_now),
+         updated_at = v_now
+   where key = 'quota_migration_lock';
 
   insert into public.quota_migration_batches(batch_id, status, price, user_count, credits_added, created_at, updated_at)
   values (p_batch_id, 'completed', v_price, 0, 0, v_now, v_now);
@@ -807,7 +863,7 @@ begin
         credits_added = excluded.credits_added, updated_at = excluded.updated_at;
 
   update public.system_settings
-     set value = jsonb_build_object('locked', false, 'batch_id', p_batch_id, 'updated_at', v_now),
+     set value = jsonb_build_object('locked', false, 'status', 'completed', 'batch_id', p_batch_id, 'updated_at', v_now),
          updated_at = v_now
    where key = 'quota_migration_lock';
 
@@ -830,6 +886,9 @@ declare
 begin
   if p_batch_id is null or p_batch_id !~ '^[A-Za-z0-9_-]{1,80}$' then
     raise exception using errcode = '22023', message = 'rollback_grok_quota_migration: invalid batch id';
+  end if;
+  if not pg_try_advisory_xact_lock(81402128) then
+    raise exception using errcode = 'P0001', message = 'rollback_grok_quota_migration: another batch holds the lock';
   end if;
   select * into v_batch from public.quota_migration_batches where batch_id = p_batch_id for update;
   if not found then

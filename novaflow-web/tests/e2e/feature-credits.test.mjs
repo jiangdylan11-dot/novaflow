@@ -8,8 +8,11 @@ import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { createOnlineAiCharge } from '../../packages/shared/src/online-ai-charge.mjs';
 import {
+  collectPages,
   creditsFromRemainingCount,
+  LEDGER_STATUSES,
   ledgerCsv,
+  ledgerUserLookup,
   lowBalanceState,
   normalizeCreditConfig,
   quoteFeature
@@ -42,7 +45,7 @@ function num(value) {
   return Number(value);
 }
 
-test('recommended prices, empty renminbi rate, and low-balance threshold', () => {
+test('recommended prices, empty renminbi rate, and low-balance threshold', async () => {
   const config = normalizeCreditConfig(undefined);
   assert.equal(config.credits_to_cny, null);
   assert.equal(config.low_balance_usd, 2);
@@ -63,8 +66,26 @@ test('recommended prices, empty renminbi rate, and low-balance threshold', () =>
   assert.equal(creditsFromRemainingCount(100, 4), 400);
   assert.equal(lowBalanceState({ remainMoney: 1.5, currency: 'USD' }).blocked, true);
   assert.equal(lowBalanceState({ remainMoney: 2, currency: 'USD' }).blocked, false);
-  assert.equal(lowBalanceState({ remainMoney: 10, currency: 'CNY', thresholdUsd: 2 }).blocked, false);
+  assert.equal(lowBalanceState({ remainMoney: 10, currency: 'CNY' }).blocked, true);
+  assert.equal(lowBalanceState({ remainMoney: 15, currency: 'CNY' }).blocked, false);
+  assert.equal(lowBalanceState({ remainMoney: 10, currency: 'CNY', thresholdCny: 5 }).blocked, false);
   assert.equal(lowBalanceState({ remainMoney: 0, currency: 'CNY' }).blocked, true);
+  const fresh = new Date().toISOString();
+  assert.equal(lowBalanceState({ cache: true, remainMoney: 1.5, currency: 'USD', checkedAt: fresh }).blocked, true);
+  const staleCache = lowBalanceState({ cache: true, remainMoney: 0, currency: 'CNY', checkedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString() });
+  assert.equal(staleCache.blocked, false);
+  assert.equal(staleCache.warn, true);
+  assert.equal(staleCache.stale, true);
+  assert.equal(lowBalanceState({ cache: true, remainMoney: 0, currency: 'USD', stalePolicy: 'block' }).blocked, true);
+  assert.equal(normalizeCreditConfig(undefined).low_balance_cny, 15);
+  assert.equal(normalizeCreditConfig(undefined).balance_ttl_seconds, 600);
+  assert.equal(normalizeCreditConfig(undefined).stale_balance_policy, 'allow');
+  assert.deepEqual(Object.keys(LEDGER_STATUSES), ['reserved', 'settled', 'released']);
+  assert.match(LEDGER_STATUSES.released, /hold was returned/);
+  assert.equal(ledgerUserLookup('ada').email, 'ada@accounts.novaflow.local');
+  assert.equal(ledgerUserLookup('ada').displayName, 'ada');
+  const pages = await collectPages(async ({ offset }) => (offset >= 1000 ? [{ id: offset }] : Array.from({ length: 500 }, (_, index) => ({ id: offset + index }))));
+  assert.equal(pages.length, 1001);
   const overridden = quoteFeature({ feature: 'prompt_optimize', prices: { prices: { prompt_optimize: 9 } } });
   assert.equal(overridden.credits, 9);
   assert.equal(normalizeCreditConfig({ prices: { local: 12 } }).prices.local, 0);
@@ -180,12 +201,34 @@ test('feature credit RPCs hold the balance, release on failure, and mirror the o
   assert.equal(again.idempotent, true);
   assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 96);
 
-  await db.query("insert into public.system_settings (key, value) values ('rh_domestic_balance', '{\"remainMoney\":1.5,\"currency\":\"USD\",\"site\":\"domestic\"}'::jsonb)");
+  const freshBalance = new Date().toISOString();
+  await db.query(
+    "insert into public.system_settings (key, value) values ('rh_domestic_balance', jsonb_build_object('remainMoney', 1.5, 'currency', 'USD', 'site', 'domestic', 'checkedAt', $1::text))",
+    [freshBalance]
+  );
   await assert.rejects(
     db.query('select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb)', [user.id, 'use-blocked', 'prompt-optimize', '{}']),
     /云服务余额不足/
   );
   assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 96);
+  await db.query(
+    "update public.system_settings set value = jsonb_build_object('remainMoney', 1.5, 'currency', 'USD', 'checkedAt', $1::text) where key = 'rh_domestic_balance'",
+    [new Date(Date.now() - 11 * 60 * 1000).toISOString()]
+  );
+  const staleAllowed = (await db.query(
+    'select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb) as row',
+    [user.id, 'use-stale', 'prompt-optimize', '{}']
+  )).rows[0].row;
+  assert.equal(staleAllowed.status, 'reserved');
+  await db.query("select public.release_feature_credits($1, 'use-stale', 'prompt-optimize', 'incomplete', '{}'::jsonb)", [user.id]);
+  await db.query(
+    "update public.system_settings set value = jsonb_build_object('remainMoney', 10, 'currency', 'CNY', 'checkedAt', $1::text) where key = 'rh_domestic_balance'",
+    [new Date().toISOString()]
+  );
+  await assert.rejects(
+    db.query('select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb)', [user.id, 'use-cny', 'prompt-optimize', '{}']),
+    /云服务余额不足/
+  );
   assert.equal(num((await db.query('select public.credit_ledger_estimated_rh_cost() as cost')).rows[0].cost), 0.0073);
 
   const csv = ledgerCsv([{
@@ -196,6 +239,11 @@ test('feature credit RPCs hold the balance, release on failure, and mirror the o
   assert.match(csv, /created_at,settled_at,user_id/);
   assert.match(csv, /^\uFEFF/);
   assert.match(csv, /xiaotao_vision/);
+  const adminData = await readFile(join(webRoot, 'admin/license-admin-gui/admin-data.js'), 'utf8');
+  const ledgerFn = adminData.slice(adminData.indexOf('async function lookupLedgerUsers'), adminData.indexOf('async function callFeatureCreditRpc'));
+  assert.doesNotMatch(ledgerFn, /\.or\(/);
+  assert.match(ledgerFn, /collectPages/);
+  assert.match(ledgerFn, /\.eq\("email", lookup\.email\)/);
   await db.close();
 });
 
@@ -257,6 +305,12 @@ test('quota migration rounds remaining counts up, is idempotent, and rolls the b
   assert.equal(second.status, 'already_rolled_back');
   assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [whole.id])).rows[0].balance), 10);
 
+  await db.query("update public.system_settings set value = '{\"locked\":true,\"status\":\"held\",\"batch_id\":\"other-batch\"}'::jsonb where key = 'quota_migration_lock'");
+  await assert.rejects(
+    db.query('select public.migrate_grok_quota_to_credits($1, 4, false)', ['batch-while-held']),
+    /another batch holds the lock/
+  );
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [whole.id])).rows[0].balance), 10);
   await db.query("insert into public.system_settings (key, value) values ('quota_migration_lock', '{\"locked\":true}'::jsonb) on conflict (key) do update set value = excluded.value");
   await assert.rejects(
     db.query('select public.reserve_feature_credits($1, $2, $3, 1, null, $4::jsonb)', [whole.id, 'during-lock', 'prompt-optimize', '{}']),

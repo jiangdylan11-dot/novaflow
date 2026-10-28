@@ -11652,6 +11652,7 @@ function startServer() {
   const port = Number.isInteger(rawPort) && rawPort >= 0 ? rawPort : DEFAULT_PORT;
   const server = createAdminServer();
   server.listen(port, host, () => {
+    adminData.startDomesticBalanceRefresh();
     const address = server.address();
     logServer("info", "listening", {
       host,

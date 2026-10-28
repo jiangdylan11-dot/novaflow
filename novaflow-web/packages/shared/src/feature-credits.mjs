@@ -8,8 +8,21 @@
 // CREDITS_PER_USD stays an internal cost coefficient, not a user-facing formula.
 
 export const DEFAULT_LOW_BALANCE_USD = 2;
+export const DEFAULT_LOW_BALANCE_CNY = 15;
+export const DEFAULT_BALANCE_TTL_SECONDS = 600;
+export const DEFAULT_STALE_BALANCE_POLICY = 'allow';
 export const DEFAULT_CREDITS_PER_USD = 211;
 export const RH_LOW_BALANCE_MESSAGE = '云服务余额不足，请联系管理员';
+
+// credit_ledger.status. A failed or moderated call is released, not a second status.
+// reserved: the hold is open and credits.balance is already reduced by estimated_credits.
+// settled: the call succeeded; settled_credits is the charge that stays on the balance.
+// released: failure, moderation, or cancel. settled_credits is 0 and the hold was returned.
+export const LEDGER_STATUSES = Object.freeze({
+  reserved: 'hold open; balance reduced by estimated_credits',
+  settled: 'success; settled_credits is the charge',
+  released: 'failure, moderation, or cancel; settled_credits is 0 and the hold was returned'
+});
 
 export const DEFAULT_FEATURE_PRICES = Object.freeze({
   xiaotao_vision: 4,
@@ -125,12 +138,18 @@ export function normalizeCreditConfig(value) {
   const cnyRaw = input.credits_to_cny;
   const cny = cnyRaw === '' || cnyRaw == null ? null : Number(cnyRaw);
   const threshold = Number(input.low_balance_usd);
+  const thresholdCny = Number(input.low_balance_cny);
+  const ttl = Number(input.balance_ttl_seconds);
   const perUsd = Number(input.credits_per_usd);
+  const policy = String(input.stale_balance_policy || '').trim().toLowerCase();
   return {
     prices,
     rh_cost_usd: costs,
     credits_to_cny: Number.isFinite(cny) && cny > 0 ? cny : null,
     low_balance_usd: Number.isFinite(threshold) && threshold >= 0 ? threshold : DEFAULT_LOW_BALANCE_USD,
+    low_balance_cny: Number.isFinite(thresholdCny) && thresholdCny >= 0 ? thresholdCny : DEFAULT_LOW_BALANCE_CNY,
+    balance_ttl_seconds: Number.isFinite(ttl) && ttl >= 30 ? Math.round(ttl) : DEFAULT_BALANCE_TTL_SECONDS,
+    stale_balance_policy: policy === 'block' ? 'block' : DEFAULT_STALE_BALANCE_POLICY,
     credits_per_usd: Number.isFinite(perUsd) && perUsd > 0 ? perUsd : DEFAULT_CREDITS_PER_USD
   };
 }
@@ -168,15 +187,75 @@ export function creditsFromRemainingCount(remaining, price = DEFAULT_FEATURE_PRI
   return Math.ceil(count * unit - 1e-9);
 }
 
-export function lowBalanceState({ remainMoney, currency, thresholdUsd = DEFAULT_LOW_BALANCE_USD } = {}) {
-  const money = remainMoney == null || remainMoney === '' ? null : Number(remainMoney);
-  const threshold = Number.isFinite(Number(thresholdUsd)) ? Number(thresholdUsd) : DEFAULT_LOW_BALANCE_USD;
+export function balanceCacheFresh({ checkedAt, ttlSeconds = DEFAULT_BALANCE_TTL_SECONDS, now = Date.now() } = {}) {
+  const ttl = Number.isFinite(Number(ttlSeconds)) && Number(ttlSeconds) >= 30 ? Number(ttlSeconds) : DEFAULT_BALANCE_TTL_SECONDS;
+  if (checkedAt == null || checkedAt === '') return { fresh: false, stale: true, missing: true, ttlSeconds: ttl };
+  const at = Date.parse(checkedAt);
+  if (!Number.isFinite(at)) return { fresh: false, stale: true, missing: true, ttlSeconds: ttl };
+  const ageMs = now - at;
+  const fresh = ageMs >= 0 && ageMs <= ttl * 1000;
+  return { fresh, stale: !fresh, missing: false, ageMs, ttlSeconds: ttl };
+}
+
+// A direct reading (cache omitted) compares the money now. A stored domestic
+// snapshot (cache: true) blocks only while checkedAt is inside the TTL.
+// Missing or stale cache follows stalePolicy: allow (default, warn) or block.
+export function lowBalanceState({
+  remainMoney,
+  currency,
+  thresholdUsd = DEFAULT_LOW_BALANCE_USD,
+  thresholdCny = DEFAULT_LOW_BALANCE_CNY,
+  checkedAt,
+  ttlSeconds = DEFAULT_BALANCE_TTL_SECONDS,
+  stalePolicy = DEFAULT_STALE_BALANCE_POLICY,
+  cache = false,
+  now
+} = {}) {
+  const usd = Number.isFinite(Number(thresholdUsd)) && Number(thresholdUsd) >= 0 ? Number(thresholdUsd) : DEFAULT_LOW_BALANCE_USD;
+  const cny = Number.isFinite(Number(thresholdCny)) && Number(thresholdCny) >= 0 ? Number(thresholdCny) : DEFAULT_LOW_BALANCE_CNY;
+  const policy = String(stalePolicy || '').toLowerCase() === 'block' ? 'block' : 'allow';
   const cur = String(currency || '').trim().toUpperCase();
-  if (!Number.isFinite(money)) return { known: false, blocked: false, warn: false, currency: cur || 'USD', thresholdUsd: threshold };
-  const comparable = cur === '' || cur === 'USD';
-  const empty = money <= 0;
-  const below = empty || (comparable && money < threshold);
-  return { known: true, blocked: below, warn: below, currency: cur || 'USD', remainMoney: money, thresholdUsd: threshold, comparable };
+  const freshness = balanceCacheFresh({ checkedAt, ttlSeconds, now });
+  if (cache && !freshness.fresh) {
+    return {
+      known: false, blocked: policy === 'block', warn: true, stale: true, missing: freshness.missing,
+      stalePolicy: policy, currency: cur || 'USD', thresholdUsd: usd, thresholdCny: cny, remainMoney: null
+    };
+  }
+  const money = remainMoney == null || remainMoney === '' ? null : Number(remainMoney);
+  if (!Number.isFinite(money)) {
+    return { known: false, blocked: false, warn: Boolean(cache), stale: false, currency: cur || 'USD', thresholdUsd: usd, thresholdCny: cny };
+  }
+  const threshold = cur === 'CNY' ? cny : usd;
+  const comparable = cur === '' || cur === 'USD' || cur === 'CNY';
+  const below = money <= 0 || (comparable && money < threshold);
+  return {
+    known: true, blocked: below, warn: below || !comparable, stale: false, missing: false,
+    currency: cur || 'USD', remainMoney: money, thresholdUsd: usd, thresholdCny: cny, threshold, comparable
+  };
+}
+
+export async function collectPages(fetchPage, pageSize = 500) {
+  const size = Math.max(1, Math.min(1000, Math.round(Number(pageSize)) || 500));
+  const rows = [];
+  let offset = 0;
+  for (;;) {
+    const batch = await fetchPage({ offset, limit: size });
+    const list = Array.isArray(batch) ? batch : [];
+    rows.push(...list);
+    if (list.length < size) return rows;
+    offset += list.length;
+  }
+}
+
+export function ledgerUserLookup(userText) {
+  const user = String(userText || '').trim();
+  if (!user) return null;
+  if (/^[0-9a-f-]{36}$/i.test(user)) return { id: user };
+  return {
+    email: user.includes('@') ? user : `${user}@accounts.novaflow.local`,
+    displayName: user
+  };
 }
 
 export function publicCreditError(message) {

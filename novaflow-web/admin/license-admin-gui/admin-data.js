@@ -8,7 +8,9 @@ const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runn
 const {
   normalizeCreditConfig,
   ledgerCsv,
-  lowBalanceState
+  lowBalanceState,
+  collectPages,
+  ledgerUserLookup
 } = require("../../packages/shared/src/feature-credits.mjs");
 
 if (typeof globalThis.WebSocket !== "function") {
@@ -340,6 +342,26 @@ async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
   }
   const cached = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey ? runningHubCheck.result : null;
   return { ...runningHub.publicStatus(env), ...(cached || {}) };
+}
+
+const DOMESTIC_BALANCE_REFRESH_MS = 10 * 60 * 1000;
+let domesticBalanceTimer = null;
+
+// Server-side refresh of the domestic balance cache. The admin button is a
+// manual refresh; this interval keeps checkedAt inside the default 10 minute TTL.
+function startDomesticBalanceRefresh({ intervalMs = DOMESTIC_BALANCE_REFRESH_MS, check } = {}) {
+  if (domesticBalanceTimer) clearInterval(domesticBalanceTimer);
+  const run = () => Promise.resolve()
+    .then(() => (check || (() => getAdminRunningHubProviderStatus({ checkAccount: true })))())
+    .catch(() => {});
+  void run();
+  const timer = setInterval(() => { void run(); }, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  domesticBalanceTimer = timer;
+  return () => {
+    clearInterval(timer);
+    if (domesticBalanceTimer === timer) domesticBalanceTimer = null;
+  };
 }
 
 function normalizeBaseUrl(value) {
@@ -3809,9 +3831,14 @@ async function getFeatureCreditAdmin() {
       domesticBalance,
       estimatedRhCostUsd,
       lowBalance: lowBalanceState({
+        cache: true,
         remainMoney: domesticBalance.remainMoney,
         currency: domesticBalance.currency,
-        thresholdUsd: stored.low_balance_usd
+        checkedAt: domesticBalance.checkedAt,
+        thresholdUsd: stored.low_balance_usd,
+        thresholdCny: stored.low_balance_cny,
+        ttlSeconds: stored.balance_ttl_seconds,
+        stalePolicy: stored.stale_balance_policy
       })
     };
   } catch (err) {
@@ -3832,11 +3859,16 @@ async function saveFeatureCreditAdmin(payload) {
   prices.local = 0;
   const cnyRaw = payload?.credits_to_cny;
   const thresholdRaw = payload?.low_balance_usd;
+  const thresholdCnyRaw = payload?.low_balance_cny;
+  const ttlRaw = payload?.balance_ttl_seconds;
   const config = normalizeCreditConfig({
     prices,
     rh_cost_usd: current.config?.rh_cost_usd,
     credits_to_cny: cnyRaw === "" || cnyRaw == null ? null : cnyRaw,
     low_balance_usd: thresholdRaw === "" || thresholdRaw == null ? current.config?.low_balance_usd : thresholdRaw,
+    low_balance_cny: thresholdCnyRaw === "" || thresholdCnyRaw == null ? current.config?.low_balance_cny : thresholdCnyRaw,
+    balance_ttl_seconds: ttlRaw === "" || ttlRaw == null ? current.config?.balance_ttl_seconds : ttlRaw,
+    stale_balance_policy: payload?.stale_balance_policy || current.config?.stale_balance_policy,
     credits_per_usd: current.config?.credits_per_usd
   });
   const saved = await upsertAdminSystemSetting({ key: "feature_credit_config", value: config });
@@ -3852,38 +3884,65 @@ function ledgerFilters(payload) {
   const to = String(payload?.to || "").trim();
   if (user && !/^[0-9a-f-]{36}$/i.test(user) && !/^[A-Za-z0-9._@\u4e00-\u9fff-]{1,120}$/.test(user)) throw new Error("用户筛选无效");
   if (feature && !/^[a-z0-9_-]{1,80}$/.test(feature)) throw new Error("功能筛选无效");
-  if (status && !["reserved", "settled", "released", "failed"].includes(status)) throw new Error("状态筛选无效");
+  if (status && !["reserved", "settled", "released"].includes(status)) throw new Error("状态筛选无效");
   return { user, feature, status, from, to };
+}
+
+const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code";
+
+async function lookupLedgerUsers(client, userText) {
+  const lookup = ledgerUserLookup(userText);
+  if (!lookup) return null;
+  if (lookup.id) {
+    const { data, error } = await client.from("users").select("id,email,display_name").eq("id", lookup.id).limit(5);
+    if (error) throw error;
+    return data || [];
+  }
+  const byEmail = await client.from("users").select("id,email,display_name").eq("email", lookup.email).limit(20);
+  if (byEmail.error) throw byEmail.error;
+  const byName = await client.from("users").select("id,email,display_name").eq("display_name", lookup.displayName).limit(20);
+  if (byName.error) throw byName.error;
+  const users = new Map();
+  for (const user of [...(byEmail.data || []), ...(byName.data || [])]) users.set(user.id, user);
+  return [...users.values()];
 }
 
 async function queryCreditLedger(payload) {
   const filters = ledgerFilters(payload || {});
   const clientState = getAdminClient();
   if (!clientState.client) return { records: [], csv: ledgerCsv([]) };
-  let query = clientState.client.from("credit_ledger").select("created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code").order("created_at", { ascending: false }).limit(1000);
-  if (/^[0-9a-f-]{36}$/i.test(filters.user)) query = query.eq("user_id", filters.user);
-  if (filters.feature) query = query.eq("feature", filters.feature);
-  if (filters.status) query = query.eq("status", filters.status);
-  if (filters.from) query = query.gte("created_at", filters.from);
-  if (filters.to) query = query.lte("created_at", filters.to);
-  const { data, error } = await query;
-  if (error) throw error;
-  let records = Array.isArray(data) ? data : [];
-  if (filters.user && !/^[0-9a-f-]{36}$/i.test(filters.user)) {
-    const email = filters.user.includes("@") ? filters.user : `${filters.user}@accounts.novaflow.local`;
-    const { data: users, error: userError } = await clientState.client.from("users").select("id,email,display_name").or(`email.eq.${email},display_name.eq.${filters.user}`).limit(20);
-    if (userError) throw userError;
-    const ids = new Set((users || []).map((user) => user.id));
-    records = records.filter((row) => ids.has(row.user_id));
+  const client = clientState.client;
+  let userIds = null;
+  let knownUsers = [];
+  if (filters.user) {
+    knownUsers = await lookupLedgerUsers(client, filters.user);
+    userIds = knownUsers.map((user) => user.id);
+    if (!userIds.length) return { records: [], csv: ledgerCsv([]) };
   }
+  const records = await collectPages(async ({ offset, limit }) => {
+    let query = client.from("credit_ledger").select(LEDGER_COLUMNS)
+      .order("created_at", { ascending: false })
+      .order("usage_key", { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (userIds) query = query.in("user_id", userIds);
+    if (filters.feature) query = query.eq("feature", filters.feature);
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.from) query = query.gte("created_at", filters.from);
+    if (filters.to) query = query.lte("created_at", filters.to);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  });
   const ids = [...new Set(records.map((row) => row.user_id).filter(Boolean))];
-  let accounts = new Map();
-  if (ids.length) {
-    const { data: users } = await clientState.client.from("users").select("id,email,display_name").in("id", ids);
-    accounts = new Map((users || []).map((user) => [user.id, user.display_name || user.email || user.id]));
+  let accounts = new Map(knownUsers.map((user) => [user.id, user.display_name || user.email || user.id]));
+  const missing = ids.filter((id) => !accounts.has(id));
+  if (missing.length) {
+    const { data: users, error } = await client.from("users").select("id,email,display_name").in("id", missing);
+    if (error) throw error;
+    for (const user of users || []) accounts.set(user.id, user.display_name || user.email || user.id);
   }
-  records = records.map((row) => ({ ...row, user_email_or_account: accounts.get(row.user_id) || row.user_id || "" }));
-  return { records, csv: ledgerCsv(records) };
+  const labeled = records.map((row) => ({ ...row, user_email_or_account: accounts.get(row.user_id) || row.user_id || "" }));
+  return { records: labeled, csv: ledgerCsv(labeled) };
 }
 
 async function callFeatureCreditRpc(name, args) {
@@ -3930,6 +3989,7 @@ module.exports = {
   readAdminGrokEnv,
   readAdminRunningHubEnv,
   getAdminRunningHubProviderStatus,
+  startDomesticBalanceRefresh,
   getAdminUsers,
   getAdminCredits,
   getAdminCreditLogs,

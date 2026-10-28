@@ -696,41 +696,6 @@ async function readProviderQuota(user: PublicUser, providerKey: string): Promise
   return normalizeProviderQuota((data || null) as AnyRecord | null, user, providerKey);
 }
 
-function normalizeGrokUsageDetail(user: PublicUser, input: AnyRecord, now: string): AnyRecord {
-  const tokenUsage = input.tokenUsage && typeof input.tokenUsage === "object" && !Array.isArray(input.tokenUsage)
-    ? input.tokenUsage as AnyRecord
-    : {};
-  const inputTokens = Math.max(0, Math.round(Number(tokenUsage.inputTokens ?? tokenUsage.input_tokens ?? 0) || 0));
-  const outputTokens = Math.max(0, Math.round(Number(tokenUsage.outputTokens ?? tokenUsage.output_tokens ?? 0) || 0));
-  const totalTokens = Math.max(
-    inputTokens + outputTokens,
-    Math.round(Number(tokenUsage.totalTokens ?? tokenUsage.total_tokens ?? 0) || 0)
-  );
-  const rawStatus = String(input.status || "success").trim().toLowerCase();
-  const status = ["success", "failed", "rejected"].includes(rawStatus) ? rawStatus : "failed";
-  const mode = String(input.mode || "prompt_optimize")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, "_")
-    .slice(0, 64) || "prompt_optimize";
-  return {
-    id: String(input.id || `grok_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).slice(0, 80),
-    user_id: user.id,
-    at: now,
-    provider: "grok",
-    mode,
-    token_usage: {
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      total_tokens: totalTokens
-    },
-    duration_ms: Math.max(0, Math.round(Number(input.durationMs ?? input.duration_ms ?? 0) || 0)),
-    model: String(input.model || "").trim().slice(0, 120),
-    status,
-    error: String(input.error || "").trim().slice(0, 240)
-  };
-}
-
 function providerQuotaPayload(quota: ProviderQuotaRecord): AnyRecord {
   return {
     status: quota.remaining_count > 0 ? "available" : "empty",
@@ -1285,45 +1250,6 @@ async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, re
 
 function createGrokUsageKey(feature: string): string {
   return `grok:${String(feature || "call").replace(/[^a-z0-9_-]/gi, "_").slice(0, 60)}:${Date.now()}:${crypto.randomUUID()}`;
-}
-
-async function reserveGrokQuota(user: PublicUser, feature: string, minCalls: number, maxCalls: number): Promise<AnyRecord> {
-  const usageKey = createGrokUsageKey(feature);
-  const { data, error } = await adminClient().rpc("reserve_grok_quota", {
-    p_user_id: user.id, p_usage_key: usageKey, p_feature: feature,
-    p_min_calls: minCalls, p_max_calls: maxCalls,
-    p_metadata: { request_owner: "novaflow_backend" }
-  });
-  if (error) throw error;
-  return { ...(data as AnyRecord), usageKey };
-}
-
-function atomicGrokCallRecord(user: PublicUser, input: AnyRecord): AnyRecord {
-  return normalizeGrokUsageDetail(user, {
-    ...input,
-    id: `grok_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
-    status: input.success === true ? "success" : "failed"
-  }, new Date().toISOString());
-}
-
-async function settleGrokQuota(user: PublicUser, reservation: AnyRecord, actualCalls: number, success: boolean, detail: AnyRecord): Promise<ProviderQuotaRecord> {
-  const { error } = await adminClient().rpc("settle_grok_quota", {
-    p_user_id: user.id, p_usage_key: String(reservation.usageKey || ""),
-    p_actual_calls: actualCalls, p_success: success,
-    p_call_records: [atomicGrokCallRecord(user, { ...detail, success })],
-    p_metadata: { request_owner: "novaflow_backend" }
-  });
-  if (error) throw error;
-  return await readProviderQuota(user, "grok");
-}
-
-async function releaseGrokQuota(user: PublicUser, reservation: AnyRecord, reason: string): Promise<ProviderQuotaRecord> {
-  const { error } = await adminClient().rpc("release_grok_quota", {
-    p_user_id: user.id, p_usage_key: String(reservation.usageKey || ""),
-    p_reason: reason.slice(0, 240), p_metadata: { request_owner: "novaflow_backend" }
-  });
-  if (error) throw error;
-  return await readProviderQuota(user, "grok");
 }
 
 async function creditRpc(name: string, args: AnyRecord): Promise<AnyRecord> {

@@ -3080,6 +3080,15 @@ async function renderFeatureCreditAdmin() {
     if ($("featureCreditLowBalance") && document.activeElement !== $("featureCreditLowBalance")) {
       $("featureCreditLowBalance").value = config.low_balance_usd ?? 2;
     }
+    if ($("featureCreditLowBalanceCny") && document.activeElement !== $("featureCreditLowBalanceCny")) {
+      $("featureCreditLowBalanceCny").value = config.low_balance_cny ?? 15;
+    }
+    if ($("featureCreditBalanceTtl") && document.activeElement !== $("featureCreditBalanceTtl")) {
+      $("featureCreditBalanceTtl").value = String(Math.max(1, Math.round(Number(config.balance_ttl_seconds || 600) / 60)));
+    }
+    if ($("featureCreditStalePolicy") && document.activeElement !== $("featureCreditStalePolicy")) {
+      $("featureCreditStalePolicy").value = config.stale_balance_policy === "block" ? "block" : "allow";
+    }
     if ($("featureCreditCny") && document.activeElement !== $("featureCreditCny")) {
       $("featureCreditCny").value = config.credits_to_cny == null ? "" : String(config.credits_to_cny);
     }
@@ -3089,11 +3098,21 @@ async function renderFeatureCreditAdmin() {
     renderSettingRows("featureCreditOpsRows", [
       { label: "国内站余额", value: money },
       { label: "流水估算 RH 成本", value: cost },
-      { label: "低余额阈值", value: `${config.low_balance_usd ?? 2} USD` },
-      { label: "上次检测", value: balance.checkedAt ? formatDateTime(balance.checkedAt) : "尚未检测" }
+      { label: "低余额阈值", value: `${config.low_balance_usd ?? 2} USD / ${config.low_balance_cny ?? 15} CNY` },
+      { label: "上次检测", value: balance.checkedAt ? formatDateTime(balance.checkedAt) : "尚未检测" },
+      { label: "缓存", value: result?.lowBalance?.stale ? "已过期或缺失" : "有效" }
     ], "尚未检测");
     const warning = $("rhLowBalanceWarning");
-    if (warning) warning.hidden = !(result?.lowBalance?.warn || result?.lowBalance?.blocked);
+    const warningText = $("rhLowBalanceWarningText");
+    const low = result?.lowBalance || {};
+    if (warning) warning.hidden = !(low.warn || low.blocked);
+    if (warningText) {
+      warningText.textContent = low.stale
+        ? (low.blocked
+          ? "国内站余额未检测或已过期，当前策略是阻断新的云任务，且不扣积分。"
+          : "国内站余额未检测或已过期。当前策略是放行并告警，不阻断新的云任务。")
+        : "云服务余额不足。新的云任务会拒绝，用户看到中文提示且不扣积分。本地任务不受影响。";
+    }
     if (status) status.textContent = result?.error ? String(result.error) : "已读取";
   } catch (err) {
     if (status) status.textContent = String(err?.message || err);
@@ -3110,7 +3129,10 @@ async function saveFeatureCreditForm() {
     const response = await window.adminAPI.saveFeatureCreditAdmin({
       prices,
       credits_to_cny: $("featureCreditCny")?.value ?? "",
-      low_balance_usd: $("featureCreditLowBalance")?.value ?? ""
+      low_balance_usd: $("featureCreditLowBalance")?.value ?? "",
+      low_balance_cny: $("featureCreditLowBalanceCny")?.value ?? "",
+      balance_ttl_seconds: Math.round(Number($("featureCreditBalanceTtl")?.value || 10) * 60),
+      stale_balance_policy: $("featureCreditStalePolicy")?.value || "allow"
     });
     if (!response?.ok) throw new Error(response?.error || "保存失败");
     if (status) status.textContent = "已保存";
