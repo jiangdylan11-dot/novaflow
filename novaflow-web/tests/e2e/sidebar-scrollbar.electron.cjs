@@ -3,12 +3,15 @@
 const {app,BrowserWindow}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
 const renderer=path.resolve(process.env.NF_SCROLL_RENDERER||path.join(__dirname,'../../renderer'));
+const runtime=process.env.NF_SCROLL_RUNTIME&&path.resolve(process.env.NF_SCROLL_RUNTIME);
 const output=path.resolve(process.env.NF_SCROLL_OUTPUT||path.join(__dirname,'../../../work/sidebar-scroll-20261028/acceptance'));
 fs.mkdirSync(output,{recursive:true});app.disableHardwareAcceleration();app.setPath('userData',path.join(output,'profile'));
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const server=http.createServer((request,response)=>{
- const file=path.resolve(renderer,'.'+decodeURIComponent(new URL(request.url,'http://local').pathname));
- if(!file.startsWith(renderer+path.sep)||!fs.existsSync(file)){response.writeHead(404);return response.end();}
+ const name=decodeURIComponent(new URL(request.url,'http://local').pathname);
+ const base=runtime&&['/novaflow-brand-runtime.js','/novaflow-ui-theme.css'].includes(name)?runtime:renderer;
+ const file=path.resolve(base,'.'+name);
+ if(!file.startsWith(base+path.sep)||!fs.existsSync(file)){response.writeHead(404);return response.end();}
  response.setHeader('Content-Type',({'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css'})[path.extname(file)]||'application/octet-stream');fs.createReadStream(file).pipe(response);
 });
 app.whenReady().then(async()=>{try{
