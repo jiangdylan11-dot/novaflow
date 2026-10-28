@@ -748,14 +748,38 @@
     const footerActions = el('div', 'nf-xiaotao-compose-actions'), providers = el('div', 'nf-xiaotao-brains'), localBrain = el('button', '', '本地智能'), onlineBrain = el('button', '', '在线智能'), newConversation = el('button', '', '新对话'), stop = el('button', '', '停止'), send = el('button', 'nf-xiaotao-primary', '发送');
     providers.setAttribute('role','group'); providers.setAttribute('aria-label','切换AI大脑');
     const upload=el('button','nf-xiaotao-upload','上传'),stagedRow=el('div','nf-xiaotao-staged');upload.type='button';upload.setAttribute('aria-label','上传参考资源');stagedRow.hidden=true;
+    function pickBrowserFiles() {
+      const accept = root.NovaFlowXiaotaoUpload?.fileAccept?.() || '';
+      return new Promise(resolve => {
+        const picker = doc.createElement('input');
+        picker.type = 'file';
+        picker.multiple = true;
+        picker.accept = accept;
+        picker.setAttribute('accept', accept);
+        picker.setAttribute('multiple', 'multiple');
+        picker.setAttribute('aria-hidden', 'true');
+        picker.style.display = 'none';
+        let settled = false;
+        const finish = files => { if (settled) return; settled = true; picker.remove?.(); resolve(Array.from(files || [])); };
+        picker.onchange = () => finish(picker.files);
+        if (typeof picker.addEventListener === 'function') picker.addEventListener('cancel', () => finish([]));
+        doc.body.append(picker);
+        picker.click();
+      });
+    }
     upload.onclick=async()=>{
       const pick=root.electronAPI?.pickXiaotaoUploads;
-      if(typeof pick!=='function'){controller.state.error='请使用本地客户端上传文件';controller.state.messages.push({role:'assistant',content:'请使用本地客户端上传文件'});render(controller.state);return;}
-      let result; try{result=await pick();}catch(error){controller.state.error=String(error?.message||error);render(controller.state);return;}
-      if(!result||result.canceled)return;
-      const converted=root.NovaFlowXiaotaoUpload?.filesFromIpc?.(result)||{files:[],notes:[]};
-      for(const note of converted.notes)controller.state.messages.push({role:'assistant',content:note});
-      if(await controller.stageUploads(converted.files)){navigation=navigationSelection();contextStamp='';setOpen(true);}
+      if(typeof pick==='function'){
+        let result; try{result=await pick();}catch(error){controller.state.error=String(error?.message||error);render(controller.state);return;}
+        if(!result||result.canceled)return;
+        const converted=root.NovaFlowXiaotaoUpload?.filesFromIpc?.(result)||{files:[],notes:[]};
+        for(const note of converted.notes)controller.state.messages.push({role:'assistant',content:note});
+        if(await controller.stageUploads(converted.files)){navigation=navigationSelection();contextStamp='';setOpen(true);}
+        return;
+      }
+      let chosen=[]; try{chosen=await pickBrowserFiles();}catch(error){controller.state.error=String(error?.message||error);render(controller.state);return;}
+      if(!chosen.length)return;
+      if(await controller.stageUploads(chosen)){navigation=navigationSelection();contextStamp='';setOpen(true);}
     };
     const listen=(node,type,fn)=>{if(typeof node.addEventListener==='function')node.addEventListener(type,fn);else node['on'+type]=fn;};
     const takeFiles=list=>{if(list?.length)void controller.stageUploads(list);};

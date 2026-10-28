@@ -52,6 +52,11 @@
   function formatByExtension(ext) {
     return FORMATS.find(item => item.ext === ext) || null;
   }
+  function fileAccept() {
+    const extensions = FORMATS.map(item => '.' + item.ext);
+    const mimes = [...new Set(FORMATS.flatMap(item => [...item.mimes]))];
+    return extensions.concat(mimes).join(',');
+  }
   function dialogFilters() {
     const images = FORMATS.filter(item => item.kind === 'image').map(item => item.ext);
     const videos = FORMATS.filter(item => item.kind === 'video').map(item => item.ext);
@@ -208,6 +213,7 @@
         const file = item?.file;
         if (!destination || !file) throw new Error('没有可放入的文件');
         if (!acceptsKind(destination, item.kind)) throw new Error(`${item.name} 不能放到${destination.label}`);
+        const uploadedName = await stageWorkerUpload(scope, file);
         const doc = scope.document;
         switchPrimary(doc, destination.module);
         if (destination.id === 'img2img') {
@@ -244,15 +250,24 @@
           node.setAttribute?.('data-novaflow-resource-occupied', '1');
         }
         addResource(doc, file);
-        placed.push({id:destination.id, kind:item.kind, name:item.name, module:destination.module, mode:destination.mode});
+        placed.push({id:destination.id, kind:item.kind, name:item.name, module:destination.module, mode:destination.mode, uploadedName});
         return placed[placed.length - 1];
       }
     };
   }
+  async function stageWorkerUpload(scope, file) {
+    const api = scope.electronAPI;
+    if (typeof api?.pickXiaotaoUploads === 'function' || typeof api?.runtimeUploadImage !== 'function') return null;
+    if (Number(file?.size) > MEDIA_MAX_BYTES) throw new Error(`${file?.name || '文件'} 超过 64MB`);
+    const bytes = typeof file.arrayBuffer === 'function' ? await file.arrayBuffer() : file;
+    const result = await api.runtimeUploadImage(file.name, bytes);
+    if (!result?.ok) throw new Error(result?.error || `${file.name} 上传失败`);
+    return result.result?.name || file.name;
+  }
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    dialogFilters, inspectUpload, planRoutes, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    dialogFilters, fileAccept, inspectUpload, planRoutes, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

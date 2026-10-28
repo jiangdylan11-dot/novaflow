@@ -348,5 +348,84 @@ function mount(env) {
 }
 function flush() { return new Promise(resolve => setTimeout(resolve, 0)); }
 
+await test('the web page opens a file input, stages until send, then uses the worker upload', async () => {
+  const env = load();
+  const uploads = [];
+  const chats = [];
+  env.sandbox.electronAPI = {
+    async runtimeUploadImage(name, bytes) {
+      uploads.push({ name, size: bytes.byteLength });
+      return { ok: true, result: { name } };
+    },
+    async artAgentChat(payload) {
+      chats.push(payload);
+      return { ok: true, data: { reply: '好', history: [], provider: 'api', quota: { billing_mode: 'token', settled_credits: 3 } } };
+    }
+  };
+  const ui = mount(env);
+  const created = [];
+  const original = env.sandbox.document.createElement.bind(env.sandbox.document);
+  env.sandbox.document.createElement = (tag) => {
+    const node = original(tag);
+    if (tag === 'input') {
+      created.push(node);
+      node.click = () => {
+        node.files = [file('web.png', 'image/png'), file('clip.mp4', 'video/mp4')];
+        node.onchange();
+      };
+    }
+    return node;
+  };
+  await ui.click('上传');
+  assert.equal(created.length, 1);
+  assert.equal(created[0].multiple, true);
+  assert.equal(created[0].getAttribute('accept'), env.api.fileAccept());
+  for (const token of ['.png', '.jpg', '.mp4', '.mp3', 'image/webp', 'video/webm', 'audio/mpeg']) assert.match(created[0].accept, new RegExp(token.replace('.', '\\.')));
+  assert.equal(ui.controller.state.messages.some(item => item.role === 'user'), false);
+  assert.equal(ui.controller.state.messages.some(item => /本地客户端/.test(String(item.content || ''))), false);
+  assert.equal(JSON.stringify(ui.controller.state.staged.map(item => item.name)), JSON.stringify(['web.png', 'clip.mp4']));
+  assert.equal(uploads.length, 0);
+  assert.doesNotMatch(read('renderer/xiaotao-art-agent.js'), /请使用本地客户端上传文件/);
+
+  env.sandbox.document = documentFor();
+  env.sandbox.electronAPI.pickXiaotaoUploads = async () => ({ canceled: true });
+  const desktop = env.api.createUploadHost(env.sandbox);
+  await desktop.place({ destination: env.api.destinationById('multi_reference'), file: file('desk.mp4', 'video/mp4'), kind: 'video', name: 'desk.mp4', mimeType: 'video/mp4' });
+  assert.equal(uploads.length, 0);
+  delete env.sandbox.electronAPI.pickXiaotaoUploads;
+
+  const doc = documentFor();
+  env.sandbox.document = doc;
+  const host = env.api.createUploadHost(env.sandbox);
+  const controller = env.agent.createController({
+    bridge: env.agent.createBridge(),
+    api: () => env.sandbox.electronAPI,
+    uploadHost: host
+  });
+  await controller.stageUploads([file('web.png', 'image/png'), file('clip.mp4', 'video/mp4')]);
+  assert.equal(controller.setProvider('api'), true);
+  assert.equal(await controller.send('放进多参视频'), true);
+  assert.equal(JSON.stringify(uploads.map(item => item.name)), JSON.stringify(['web.png', 'clip.mp4']));
+  assert.equal(uploads.every(item => item.size === 8), true);
+  assert.equal(JSON.stringify(host.placed.map(item => item.id)), JSON.stringify(['multi_reference', 'multi_reference']));
+  assert.equal(doc.resource.__novaflowFiles.map(item => item.name).join(), 'web.png,clip.mp4');
+  assert.equal(JSON.stringify(chats[0].uploads), JSON.stringify([{ kind: 'image', name: 'web.png' }, { kind: 'video', name: 'clip.mp4' }]));
+  assert.equal(chats[0].provider, 'api');
+
+  await controller.stageUploads([file('draw.png', 'image/png')]);
+  assert.equal(await controller.send('放到图生图'), true);
+  assert.equal(uploads.at(-1).name, 'draw.png');
+  assert.equal(host.placed.at(-1).id, 'img2img');
+  assert.equal(env.sandbox.__NovaFlowArtGenerate.references()[0].name, 'draw.png');
+
+  await controller.stageUploads([file('maybe.png', 'image/png')]);
+  assert.equal(await controller.send('这张怎么用'), true);
+  const ask = controller.state.messages.findLast(item => item.choices);
+  assert.equal(ask.choices.length, 5);
+  assert.equal(await controller.chooseUploadDestination('image_video', ask.pendingId), true);
+  assert.equal(uploads.at(-1).name, 'maybe.png');
+  assert.equal(host.placed.at(-1).id, 'image_video');
+});
+
 console.log(`${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);
