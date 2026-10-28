@@ -13,6 +13,7 @@ import { createServer } from 'node:http';
 import { createDatabase, seedUser, seedProviderBudget } from './db.mjs';
 import { createPgStore } from './pg-store.mjs';
 import { createControlPlane } from '../../packages/shared/src/control-plane.mjs';
+import { normalizePlan } from '../../packages/shared/src/protocol.mjs';
 import { base64UrlJson, hmacSha256, sha256Hex, resolveControlSecret } from '../../packages/shared/src/tokens.mjs';
 
 const DEFAULT_PORT = Number(process.env.NOVAFLOW_WEB_CONTROL_PORT || 4890);
@@ -152,7 +153,7 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
           email,
           balance: Number.isFinite(Number(body.balance)) ? Number(body.balance) : 1000,
           displayName: String(body.display_name || 'NovaFlow Demo'),
-          plan: ['trial', 'standard', 'pro', 'team'].includes(String(body.plan || '')) ? String(body.plan) : 'pro'
+          plan: body.plan ? normalizePlan(body.plan) : 'pro'
         });
         const token = await mintLocalSessionToken(user);
         const balance = await ctx.store.getCreditBalance(user.id);

@@ -270,18 +270,20 @@ export const GATEWAY_ROUTES = Object.freeze({
 
 // Account tiers. `users.plan` is what the administrator sets:
 //
-//   trial      普通账户  only the machine 启动NovaFlow opened; no pool node
-//   standard   中级账户  pool nodes marked 普通 (standard), not 高级 ones
-//   pro / team 高级账户  every pool node, 普通 and 高级 alike
+//   trial     普通账户  only the machine 启动NovaFlow opened; no pool node
+//   standard  中级账户  pool nodes marked 普通 (standard), not 高级 ones
+//   pro       高级账户  every pool node, 普通 and 高级 alike
+//   team      legacy alias, normalized to pro (same node access)
 //
 // Anything else reads as trial, so a typo in the database can only take
 // access away, never grant it.
-export const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro', 'team']);
-export const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro', 'team']);
-export const PREMIUM_NODE_PLANS = Object.freeze(['pro', 'team']);
+export const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro']);
+export const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro']);
+export const PREMIUM_NODE_PLANS = Object.freeze(['pro']);
 
 export function normalizePlan(plan) {
   const key = String(plan || 'trial').trim().toLowerCase();
+  if (key === 'team') return 'pro';
   return PLAN_TIERS.includes(key) ? key : 'trial';
 }
 

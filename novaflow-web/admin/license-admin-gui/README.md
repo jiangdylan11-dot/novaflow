@@ -1,15 +1,16 @@
 # NovaFlow 后台管理
 
-这是 NovaFlow 的独立后台管理端。当前按轻量后台执行：只保留授权、用户、积分和 AI Provider 必要配置，不保存任务记录、消费流水或完整 Workflow。
+这是 NovaFlow 的独立后台管理端。积分流水在 `credit_ledger`，算力任务在 `web_ai_tasks`。后台不保存完整 Workflow 与生成产物。
 
 ## 当前模块
 
-- 仪表盘（含算力节点上的最近生成记录）
-- 用户管理（账户类型：普通 / 中级 / 高级 / 团队）
+- 仪表盘（RunningHub 国内站余额、最近积分扣费与算力任务）
+- 用户管理（账户类型：普通 / 中级 / 高级；同时在线与有效期）
 - 授权管理
-- 会员管理（积分与提示词次数同一张表；提示词次数可增加 / 扣减 / 设置）
-- AI 服务
+- 会员管理（单一积分余额：充值、扣减、设为；原因写入 `credit_ledger`）
+- AI 服务（RunningHub、功能单价、积分流水）
 - 算力节点与注册码（节点分普通 / 高级；可删除离线节点、清理失效注册码和旧使用记录）
+- 专业经验（主内容区审核，不使用弹层）
 
 内部目录、IPC 和脚本名保持兼容，`license-admin-gui` 不重命名。
 
@@ -32,11 +33,10 @@ npm run server
 ## 当前范围
 
 - 授权管理沿用现有功能，可查询、创建/更新、启用、停用、删除授权，并可签发和校验 `license.nfl`。
-- 后台管理数据层已接入 Supabase 查询；未配置环境变量时自动回退 mock 数据。
+- 后台管理数据层已接入 Supabase 查询；未配置环境变量时列表为空并提示未配置，不展示假数据。
 - 用户管理支持管理员手动创建登录账号、设置初始密码、修改密码和维护用户状态；NovaFlow 主程序登录走后台服务账号+密码链路，不直连 Supabase Service Role。
-- 积分管理支持管理员手动增加积分、扣减积分或设置余额；轻量版只更新 `credits.balance`，不写 `credit_logs`。
-- 积分管理支持管理员手动分配提示词服务次数；轻量版只在 `system_settings` 中记录 `allocated_count` 和 `used_count`。
-- AI 服务页只配置 RunningHub API Key，并做账户检测。ComfyUI / Grok / Google 的 Key 配置和 ComfyUI 手动总余额录入已从本页移除。
+- 会员管理通过 `admin_adjust_feature_credits` 在同一事务里更新 `credits.balance` 并写入 `credit_ledger`。
+- AI 服务页只配置 RunningHub API Key，并做免费的 accountStatus 检测。在线图像和语言模型只走 RunningHub。本地 Comfy 不在此配置。
 - 客户端后续可用 `GET /api/client/bootstrap` 一次读取 session 用户、当前积分、客户端安全 AI 配置和 Gateway Lite 合同，减少免费后端请求量。
 - `/api/ai/tasks` 当前只做 Gateway Lite 前置检查：验证 session、用户状态和积分余额，后台计算 `credit_cost`；不调用 AI、不扣积分、不写任务记录、不保存 workflow。
 
@@ -48,7 +48,7 @@ npm run server
 - `NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY`
 - `NOVAFLOW_SUPABASE_PUBLISHABLE_KEY` 或 `NOVAFLOW_SUPABASE_ANON_KEY`
 
-未配置时，用户、积分、AI 服务和基础设置页面使用 mock 数据。配置正确时，右上角显示 `● Supabase Connected`；缺少配置时显示 `● Mock`；连接或查询失败时显示 `● Supabase Error`。
+未配置时，用户、积分、AI 服务和算力页面是空态，右上角显示 `● 未配置`，写入会被拒绝。配置正确时显示 `● Supabase Connected`；连接或查询失败时显示 `● Supabase Error`。
 
 `service role key` 只允许后台管理端或后续后台服务使用，不要写入 renderer，不要打包进公开客户端，也不要用于 NovaFlow 主程序客户端直连。Renderer 只能通过 IPC 调用 `admin-data.js`，不能直接 import Supabase。
 
@@ -80,27 +80,24 @@ Windows 下后台工具和后台服务都会先读取进程环境变量；如果
 写入要求：
 
 - 必须配置 `NOVAFLOW_SUPABASE_URL` 和 `NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY`。
-- mock 数据只读，不允许假写入。
+- 未配置 Supabase 时拒绝写入，并说明原因。
 - 用户必须已存在于 `users` 表。
 - 每个用户在 `credits` 表只应有一条余额记录，schema 草案通过 `credits_user_id_unique_idx` 约束这一点。
-- 轻量版不保存 `credit_logs`。这会降低免费数据库写入量，但也意味着后台不提供消费审计。
+- 调整必须填写原因。成功后可在 AI 服务的积分流水里按用户查看。`credit_logs` 不再作为运营入口。
 
 NovaFlow 客户端不能直接判断或修改积分。真正 AI 调用前，未来后台服务必须检查 `credits.balance`，余额不足时拒绝任务。
 
-## 提示词服务次数分配
+## 单一积分
 
-在线文本和视觉理解只走 RunningHub，使用 `NOVAFLOW_RUNNINGHUB_API_KEY`。默认 LLM 地址是 `https://llm.runninghub.ai/v1`，默认模型是 `xai/grok-4.7`，模型 ID 可改。计量先走统一的 `charge({ feature, amount })`，底下仍扣现有云 AI 次数；不要新增按次的 Grok 配额表或录入界面。本地 Flash 不计这次数。
+在线文本、视觉和出图只走 RunningHub，使用 `NOVAFLOW_RUNNINGHUB_API_KEY`。默认 LLM 地址是 `https://llm.runninghub.ai/v1`，默认模型是 `xai/grok-4.7`。计量走 `credit_ledger`。失败或审核不扣积分。本地功能单价为 0。
 
-- 每个用户的次数仍存为 `system_settings.provider_quota_grok_<user_id>`。
-- 只记录 `allocated_count`、`used_count` 和 `remaining_count`。
-- 在线调用成功后按实际 amount 增加 `used_count`。
-- 不保存 prompt、messages、任务记录、消费记录或 workflow。
-- 不要把 Key 写入 renderer 或仓库。Edge 上的 companion 和 backend 使用同一把 RunningHub Key。
-- ComfyUI 云出图本阶段仍走原路径。AI 服务页不再录入 ComfyUI 手动总余额；历史余额仍由原结算路径扣减。
+- 不要把 Key 写入页面、renderer 或仓库。
+- 不保存完整 Workflow 与生成产物。
+- 旧配额迁移只留在 AI 服务的维护区，会员页不再分配。
 
-## 已退出后台配置的供应商
+## 已退出的在线供应商
 
-AI 服务页不再提供 ComfyUI、Grok、Google 的 Key 表单，也不再录入 ComfyUI 手动总余额。`NOVAFLOW_COMFYUI_*` 与 `NOVAFLOW_GROK_*` 不能通过后台写入，在线文本和视觉理解也不再读取它们。`NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT` 已从配置项删除。
+在线供应商只有 RunningHub。`NOVAFLOW_COMFYUI_*` 与 `NOVAFLOW_GROK_*` 不能通过后台写入。本地 Comfy 仍由算力节点自己上报版本。
 
 ## Supabase 初始化顺序
 
@@ -145,11 +142,11 @@ AI 服务页不再提供 ComfyUI、Grok、Google 的 Key 表单，也不再录�
 - 更换签名密钥会导致旧授权文件失效。
 ## RunningHub 国内站服务商
 
-AI 服务页只把 RunningHub API Key 写入本机后台环境变量 `NOVAFLOW_RUNNINGHUB_API_KEY`。页面用密码框，保存后清空输入，响应和日志都不回显 Key。留空表示不修改，清空必须显式勾选。地址、LLM 和 GPT 路径只读：未单独配置时使用国内站默认地址。普通刷新只读取配置或上次检测结果；保存成功或点击「检测账户」才调用 `POST /uc/openapi/accountStatus`，不提交生成或 LLM 请求。
+AI 服务页只把 RunningHub API Key 写入本机后台环境变量 `NOVAFLOW_RUNNINGHUB_API_KEY`。页面用密码框，保存后清空输入，响应和日志都不回显 Key。留空表示不修改，清空必须显式勾选。地址、LLM 和 GPT 路径只读：图像默认国内站，语言模型默认国际站 `https://llm.runninghub.ai/v1`。普通刷新只读取配置或上次检测结果；保存成功、点击「检测账户」或「刷新国内站余额」才调用 `POST /uc/openapi/accountStatus`，不出图、不调用语言模型。
 
-真实 Key 放在后台进程环境，或 Windows 上由后台写入的当前用户环境变量。不要写入仓库，不要写入公开网页，不要在本阶段写入 Supabase Edge 密钥。示例文件里的该变量保持为空。
+真实 Key 只留在后台进程。不要写入仓库，不要写入公开网页，不要回显。示例文件里的该变量保持为空。
 
-本阶段不切换 GPT、Google、Grok 或在线 ComfyUI 的现有调用。账户检测成功只说明 Key 能读到账户状态。
+账户检测成功只说明 Key 能读到账户状态。
 
 官方账户接口：https://www.runninghub.cn/runninghub-api-doc-cn/api-425748943
 

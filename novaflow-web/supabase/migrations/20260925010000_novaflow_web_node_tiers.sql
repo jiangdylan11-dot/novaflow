@@ -1,7 +1,7 @@
 -- NovaFlow Web: 普通 / 高级 compute nodes.
 --
 -- Accounts come in three tiers (users.plan): trial 普通账户 runs only on its
--- own machine, standard 中级账户 may use 普通 pool nodes, pro/team 高级账户 may
+-- own machine, standard 中级账户 may use 普通 pool nodes, pro 高级账户 may
 -- use every node. This migration gives the pool the matching split:
 --
 --   * gpu_workers.tier                     'standard' | 'premium'

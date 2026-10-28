@@ -183,40 +183,21 @@ test("rejected config makes no environment writes; status reads make no provider
   assert.equal(cleared.checked, false);
 });
 
-test("manual Comfy balance writes are refused by the data API and the IPC handler", async () => {
-  const f = adminFixture();
-  const result = await f.api.setAdminProviderBudget({ providerKey: "comfyui", balance: 10550, unit: "credits", note: "manual calibration" });
-  assert.equal(result.ok, false);
-  assert.equal(result.status, "error");
-  assert.match(result.error, /不再录入/);
-  assert.equal(f.writes.length, 0);
-
-  const handlers = new Map();
-  const Module = require("node:module");
-  const realLoad = Module._load;
-  Module._load = function (request, parent, isMain) {
-    if (request === "electron") {
-      return {
-        ipcMain: { handle: (channel, fn) => handlers.set(channel, fn), on: () => {} },
-        dialog: {},
-        shell: {},
-        app: { getPath: () => "/tmp" },
-        BrowserWindow: { getFocusedWindow: () => null, fromWebContents: () => null }
-      };
-    }
-    return realLoad.call(this, request, parent, isMain);
-  };
-  try {
-    const ipcPath = require.resolve("../license-admin-gui/ipc.js");
-    delete require.cache[ipcPath];
-    const ipc = require("../license-admin-gui/ipc.js");
-    ipc.registerLicenseAdminIpc();
-  } finally {
-    Module._load = realLoad;
+test("manual Comfy balance and credit log IPC are not exported", () => {
+  const adminData = fs.readFileSync(path.resolve(__dirname, "../license-admin-gui/admin-data.js"), "utf8");
+  const preload = fs.readFileSync(path.resolve(__dirname, "../license-admin-gui/preload.js"), "utf8");
+  const ipc = fs.readFileSync(path.resolve(__dirname, "../license-admin-gui/ipc.js"), "utf8");
+  for (const symbol of ["setAdminProviderBudget", "getAdminCreditLogs", "getAdminComfyUiProviderStatus", "getClientCreditLogs"]) {
+    assert.equal(adminData.includes(`function ${symbol}`), false, symbol);
+    assert.equal(adminData.includes(`${symbol},`), false, symbol);
   }
-  const response = await handlers.get("admin:data:provider_budget:set")({}, { providerKey: "comfyui", balance: 20 });
-  assert.equal(response.ok, false);
-  assert.match(String(response.error || ""), /不再录入/);
+  for (const channel of ["admin:data:credit_logs:list", "admin:provider:comfyui:status", "admin:data:provider_budget:set"]) {
+    assert.equal(ipc.includes(channel), false, channel);
+    assert.equal(preload.includes(channel), false, channel);
+  }
+  for (const bridge of ["getAdminCreditLogs", "getAdminComfyUiProviderStatus", "setAdminProviderBudget"]) {
+    assert.equal(preload.includes(bridge), false, bridge);
+  }
 });
 
 test("runninghub config route rejects a mislabeled provider key and does not store it", async () => {

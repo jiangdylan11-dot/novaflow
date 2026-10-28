@@ -1,6 +1,7 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
 const { registerLicenseAdminIpc } = require("./ipc");
+const adminData = require("./admin-data");
 
 // Keep the installed admin's account configuration across the repository move.
 app.setPath("userData", path.join(app.getPath("appData"), "novaflow-license-manager"));
@@ -25,6 +26,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerLicenseAdminIpc();
+  adminData.startDomesticBalanceRefresh();
   createWindow();
 });
 
