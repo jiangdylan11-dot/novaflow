@@ -94,6 +94,7 @@
       settings: settings && typeof settings === 'object' ? settings : {},
       quoteGptImage,
       gptImageEndpoint: String(options.gptImageEndpoint || ''),
+      gptImageI2iEndpoint: String(options.gptImageI2iEndpoint || ''),
       prices: options.prices && typeof options.prices === 'object' ? options.prices : null,
       baseUrl,
       requestJson: typeof options.requestJson === 'function' ? options.requestJson : null,
@@ -371,6 +372,7 @@
       try {
         const quoted = snapshot.quoteGptImage({
           endpoint: snapshot.gptImageEndpoint || '',
+          imageEndpoint: snapshot.gptImageI2iEndpoint || '',
           count,
           prices: snapshot.prices,
           mode,
@@ -381,15 +383,15 @@
         return null
       }
     }
-    const feature = mode === 'img2img' ? 'gpt_image_2_official' : 'gpt_image_2_5_economy'
+    const feature = 'gpt_image_2_5_economy'
     const api = root && root.NovaFlowFeatureCreditPrices
     const quoted = api && typeof api.quoteFeature === 'function'
       ? api.quoteFeature({ feature, units: count })
-      : { credits: (feature === 'gpt_image_2_official' ? 4 : 22) * count, feature }
+      : { credits: 22 * count, feature }
     return creditEstimate(snapshot, {
       ...quoted,
-      perImage: Math.round(Number(quoted.unitPrice) || (feature === 'gpt_image_2_official' ? 4 : 22)),
-      mayFallback: mode !== 'img2img',
+      perImage: Math.round(Number(quoted.unitPrice) || 22),
+      mayFallback: true,
     })
   }
 

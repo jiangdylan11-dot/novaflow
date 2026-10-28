@@ -29,7 +29,6 @@ const ENV_GROK_API_KEY = "NOVAFLOW_GROK_API_KEY";
 const ENV_GROK_MODEL = "NOVAFLOW_GROK_MODEL";
 const DEFAULT_LIMIT = 100;
 const ERROR_PREFIX = "Supabase Error";
-const DEFAULT_COMFYUI_BASE_URL = "https://cloud.comfy.org";
 const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
 const DEFAULT_GROK_MODEL = DEFAULT_RUNNINGHUB_LLM_MODEL;
 const COMFYUI_USER_PATH = "/api/user";
@@ -284,12 +283,12 @@ function readBundledSupabasePublishableKey() {
 }
 
 function readAdminComfyUiEnv() {
-  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL) || DEFAULT_COMFYUI_BASE_URL);
+  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL));
   const apiKey = readAdminEnvValue(ENV_COMFYUI_API_KEY);
   const apiKeySecretRef = readAdminEnvValue(ENV_COMFYUI_API_KEY_SECRET_REF);
   return {
     baseUrl,
-    configured: Boolean(apiKey),
+    configured: Boolean(apiKey && baseUrl),
     secretConfigured: Boolean(apiKey || apiKeySecretRef),
     hasBaseUrl: Boolean(baseUrl),
     hasApiKey: Boolean(apiKey),
@@ -3672,7 +3671,7 @@ async function recordClientAiTaskUsage(payload, user) {
 async function getAdminComfyUiProviderStatus() {
   const startedAt = Date.now();
   const env = readAdminComfyUiEnv();
-  const endpoint = `GET ${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`;
+  const endpoint = `GET ${env.baseUrl}${COMFYUI_USER_PATH}`;
   if (!env.configured) {
     const durationMs = Date.now() - startedAt;
     const result = {
@@ -3681,7 +3680,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "mock",
       configured: false,
       secretConfigured: env.secretConfigured,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: false,
       accountStatus: "not_configured",
@@ -3707,7 +3706,7 @@ async function getAdminComfyUiProviderStatus() {
   }
 
   try {
-    const response = await requestJson(`${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`, {
+    const response = await requestJson(`${env.baseUrl}${COMFYUI_USER_PATH}`, {
       "X-API-Key": env.apiKey,
       Accept: "application/json",
       "User-Agent": "NovaFlow-Admin/1.0"
@@ -3720,7 +3719,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "connected",
       configured: true,
       secretConfigured: true,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: true,
       accountStatus: String(body.status || "unknown"),
@@ -3748,7 +3747,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "error",
       configured: true,
       secretConfigured: true,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: false,
       accountStatus: "unknown",

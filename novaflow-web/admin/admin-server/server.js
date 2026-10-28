@@ -11206,36 +11206,13 @@ async function chargeOnlineAi(session, input) {
   return charge({ userId: session.user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run });
 }
 
-const featureCreditHolds = new Map();
-
-function featureCreditCharge(session) {
-  return loadOnlineCharge().then(({ createOnlineAiCharge }) => createOnlineAiCharge({
-    reserve: async ({ userId, feature, amount, usageKey }) => {
-      if (featureCreditHolds.has(usageKey)) return { status: "reserved", idempotent: true, amount };
-      const adjusted = await adminData.adjustAdminUserCredits({ userId, mode: "deduct", amount, feature, note: feature });
-      if (!adjusted?.ok || adjusted.status === "error") {
-        throw Object.assign(new Error(/不能小于 0|不足/.test(adjusted?.error || "") ? "积分不足，本次未生成" : "积分暂时不可用"), { statusCode: 402 });
-      }
-      featureCreditHolds.set(usageKey, { userId, amount, status: "reserved" });
-      return { status: "reserved", idempotent: false, amount, balance: adjusted.adjustment?.afterBalance };
-    },
-    settle: async ({ usageKey, amount }) => {
-      const hold = featureCreditHolds.get(usageKey);
-      if (!hold || hold.status !== "reserved") throw new Error("在线计量没有完成");
-      hold.status = "settled";
-      const credit = await creditBalanceForUser(hold.userId);
-      return { remaining: credit.balance, balance: credit.balance, charged: amount };
-    },
-    release: async ({ usageKey }) => {
-      const hold = featureCreditHolds.get(usageKey);
-      if (!hold || hold.status !== "reserved") return { remaining: null, charged: 0 };
-      const refund = await adminData.adjustAdminUserCredits({ userId: hold.userId, mode: "add", amount: hold.amount, feature: "release", note: "release" });
-      hold.status = "released";
-      if (!refund?.ok || refund.status === "error") throw new Error("在线计量没有完成");
-      const credit = await creditBalanceForUser(hold.userId);
-      return { remaining: credit.balance, balance: credit.balance, charged: 0 };
-    }
-  }));
+async function featureCreditCharge(prices) {
+  const { createOnlineAiCharge } = await loadOnlineCharge();
+  const { createFeatureCreditPorts } = await loadFeatureCredits();
+  return createOnlineAiCharge({
+    ...createFeatureCreditPorts((name, args) => adminData.callFeatureCreditRpc(name, args)),
+    prices: prices ? { prices } : undefined
+  });
 }
 
 async function handleRunningHubGptImageQuote(req, res) {
@@ -11247,8 +11224,15 @@ async function handleRunningHubGptImageQuote(req, res) {
   try {
     const image = await loadRunningHubImage();
     const config = image.readRunningHubImageConfig(process.env);
-    const quote = image.quoteGptImage({ endpoint: config.gptImageEndpoint, count: payload.count || payload.settings?.count || 1, prices: config.prices });
-    sendJson(res, 200, { ok: true, ...quote, buttonLabel: image.formatCreditButtonLabel(quote.credits) });
+    const quote = image.quoteGptImage({
+      endpoint: config.gptImageEndpoint,
+      imageEndpoint: config.gptImageI2iEndpoint,
+      mode: payload.mode || payload.settings?.mode,
+      count: payload.count || payload.settings?.count || 1,
+      prices: config.prices
+    });
+    const note = quote.mayFallback ? "（若回退官方通道，实扣可能更低）" : "";
+    sendJson(res, 200, { ok: true, ...quote, buttonLabel: image.formatCreditButtonLabel(quote.credits) + note });
   } catch (err) {
     sendJson(res, Number(err?.statusCode) || 400, { ok: false, error: sanitizeError(err) });
   }
@@ -11272,7 +11256,7 @@ async function handleRunningHubGptImage(req, res) {
       sendJson(res, 402, { ok: false, error: "云服务余额不足，请联系管理员。本次未扣积分。", charged: 0 });
       return;
     }
-    const charge = await featureCreditCharge(session);
+    const charge = await featureCreditCharge(config.prices);
     const outcome = await image.runChargedGptImage({
       charge,
       config,

@@ -15,7 +15,7 @@
     reason: 'legacy_aifx_runtime_prompt_disabled',
   })
   const COMFYUI_PROVIDER_KEY = 'comfyui'
-  const COMFYUI_USAGE_BASE_HOSTS = new Set(['cloud.comfy.org'])
+  const COMFYUI_USAGE_BASE_HOSTS = new Set()
   const workflowCreditCostApi = window.NovaFlowComfyWorkflowCreditCost
   const PROVIDER_WORKFLOW_NODE_TYPE_FALLBACK = Object.freeze([
     'KlingVideoNode',

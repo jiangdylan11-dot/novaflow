@@ -295,8 +295,12 @@ export function createDomSandbox(extra = {}) {
     Node: class {},
     Element: class {},
     HTMLElement: class {},
-    HTMLCanvasElement: class {},
+    HTMLButtonElement: class {},
+    HTMLInputElement: class {},
+    HTMLTextAreaElement: class {},
+    HTMLSelectElement: class {},
     HTMLImageElement: class {},
+    HTMLCanvasElement: class {},
     HTMLVideoElement: class {},
     CanvasRenderingContext2D: class {},
     OffscreenCanvas: class {

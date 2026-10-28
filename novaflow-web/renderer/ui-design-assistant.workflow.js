@@ -82,7 +82,7 @@
 
   function normalizeProvider(value) {
     const provider = text(value).toLowerCase()
-    return provider === 'gpt' || provider === 'google' ? provider : 'local'
+    return provider === 'gpt' ? 'gpt' : 'local'
   }
 
   function normalizeEngine(value) {

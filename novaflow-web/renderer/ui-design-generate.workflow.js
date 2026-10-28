@@ -823,7 +823,7 @@
       semantic?.requirement,
       ...blocks.flatMap((block) => [block?.purpose, block?.description, block?.requirements, block?.requirement, block?.prompt]),
     )
-    const softLayout = ['local', 'google'].includes(normalizeProvider(options.provider))
+    const softLayout = normalizeProvider(options.provider) === 'local'
       && cleanText(options.layoutGuideEncoding) === SOFT_LAYOUT_GUIDE_ENCODING
     const semanticScaffold = normalizeProvider(options.provider) === 'local'
       && cleanText(options.layoutGuideEncoding) === SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING

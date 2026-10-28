@@ -683,7 +683,7 @@ test('independent style fields preserve source expression without forcing source
 test('invalid PE slots cannot bypass reference-role validation',async()=>{
   const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
   p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image1>按<image3>重绘',sourceOrder:[1,2]};
-  const e=env(p);await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('a'),ref('b')])),/PE 编辑指令或参考编号无效/);
+  const e=env(p);await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('a'),ref('b')])),/本地AI编辑指令或参考编号无效/);
 });
 
 test('PE retains distinct drawing methods within anime and does not force ink or CG into anime',async()=>{
