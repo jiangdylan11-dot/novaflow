@@ -418,8 +418,13 @@
     const compiled=await callCpu({action:'native-ui-compile',bundle:source.bundle,raw:reply.rawOutputText});
     checkActive();
     const layoutReference=references.findIndex(r=>r.role==='layout')+1;
-    return {prompt:compiled.prompt,negativePrompt:'',uiCatalog:{...source.uiCatalog,recognitionMethod:'native-grok-catalog-v3',analysisProvider:'grok',layoutAnalysisProvider:'local',model:reply.model,providerCallCount:1,providerRequestId:reply.requestId,proof:compiled.proof},
+    return {prompt:compiled.prompt,negativePrompt:'',quota:reply.quota||null,uiCatalog:{...source.uiCatalog,recognitionMethod:'native-grok-catalog-v3',analysisProvider:'grok',layoutAnalysisProvider:'local',model:reply.model,providerCallCount:1,providerRequestId:reply.requestId,proof:compiled.proof},
       uiPlan:{version:1,layoutMode:'preserve',layoutReference,visualMode:'theme-redesign',references:references.map((r,i)=>({index:i+1,role:r.role==='layout'?'layout':r.role==='style'?'style':'content'})),layoutChanges:[],preserve:[],grids:[]}};
+  }
+
+  function chargeQuota(result) {
+    const quota = result?.quota || result?.result?.quota || result?.data?.quota
+    return quota && typeof quota === 'object' ? quota : null
   }
 
   async function run(options = {}) {
@@ -465,7 +470,7 @@
       if (result?.ok === false || !data?.prompt || data?.uiCatalog?.schema !== 'nf.ui.structure-catalog.v1') throw new Error(result?.error || '结构编译未返回有效结果，本次未提交生成')
       if (data.uiCatalog.recognitionMethod !== (engine==='grok'?'native-grok-catalog-v3':'native-source-catalog-v3')) throw new Error('算力节点的 UI 分析组件需要更新，请安装最新本地助手后重试；本次未提交生图')
       return Object.freeze({ ...data, provider, engine, targetStyle:'auto', purpose:'ui-design-reference', referenceCount:references.length,
-        references, structure, scene, hasNegativePrompt:false, negativePrompt:'' })
+        references, structure, scene, hasNegativePrompt:false, negativePrompt:'', quota: chargeQuota(result) })
     }
     const requirements = buildRequirements(options, structure, references)
     const currentPrompt = stripTargetStyleContract(options.prompt)
@@ -579,6 +584,7 @@
     }
 
     return Object.freeze({
+      quota: chargeQuota(result),
       prompt: finalPrompt,
       uiPlan: options.targetEngine === 'qwen-2.1' ? root.NovaFlowUiDesignPromptPipeline.resolveQwenPlan(parsed.uiPlan, { references, prompt: currentPrompt, preserveLayout: options.preserveLayout, generationIntent: options.generationIntent }) : null,
       negativePrompt: supportsNegativePrompt ? restoredNegative.text : '',

@@ -106,7 +106,7 @@ export function createStrataPromptAssistant({worker,comfyUrls=[],configPath,conf
     fetchImpl,lifecycle,onInference:trace,timeoutMs:config?.workflowTimeoutMs || 900000,releaseTimeoutMs:config?.releaseTimeoutMs || 75000,
     config:{...config,maxTokens:config?.maxTokens || 4096}});
   let session=null;try {if(config)session=makeSession();} catch {lastError='Flash 本地配置无效';}
-  const unavailable=()=>({ok:false,error:'Flash 本地模型尚未安装完整',errorCode:'strata-not-configured'});
+  const unavailable=()=>({ok:false,error:'本地 Flash 模型不可用，请安装本地 Flash 模型后重试',errorCode:'flash-model-missing'});
   function status(){const chatSession=chatResidency.getStatus();return {ok:true,enabled:configured() && Boolean(session) && !cleanupFault && !stopping,
     analysisBackend:'strata',drawingBackend:'strata',otherBackend:'strata',supportsOriginalImages:true,supportsStructuredPromptIR:true,
     supportedSurfaces:['art','animation','video','ui-design','audio','aifx'],modelType:'swift15_qwen38_flash_next_iq2_xs',

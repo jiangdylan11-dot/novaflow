@@ -1228,7 +1228,8 @@ async function verifySubmitRouting() {
 }
 
 // Generation compile hook: every H3 mode goes through compileH3ForGeneration (the 多参 name
-// stays as an alias). A translate-only compile needs no frames; the hosted site falls back to Grok.
+// stays as an alias). A translate-only compile needs no frames. A missing local
+// compiler is reported and does not call the cloud.
 async function verifyGenerationCompile() {
   const startSource = extractNamedFunction(source, "start");
   assert.match(startSource, /compileH3ForGeneration,\s*compileH3ReferenceForGeneration\(options\) \{\s*return compileH3ForGeneration\(\{ \.\.\.options, mode: "multi_reference" \}\);/);
@@ -1250,14 +1251,18 @@ async function verifyGenerationCompile() {
       readSmartAiResult: (result) => ({ prompt: result.prompt })
     });
     const compile = vm.runInContext(`(${compileSource})`, context);
-    const result = await compile({
-      mode: "image_video",
-      durationSeconds: 5,
-      // Each run has its own text: a base translation is cached on the text alone.
-      prompt: `【参考帧对齐】\n@参考图 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 中的女孩转身挥手（${local.name || "本机"}）。镜头保持固定。\n\n【环境声音】\n站台环境声。\n\n【背景音乐】\n无`,
-      resources: [{ key: "first_frame", occupied: true, kind: "image", previewUrl: "data:image/png;base64,Zmlyc3Q=" }]
-    });
-    return { calls, result };
+    try {
+      const result = await compile({
+        mode: "image_video",
+        durationSeconds: 5,
+        // Each run has its own text: a base translation is cached on the text alone.
+        prompt: `【参考帧对齐】\n@参考图 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】@参考图 中的女孩转身挥手（${local.name || "本机"}）。镜头保持固定。\n\n【环境声音】\n站台环境声。\n\n【背景音乐】\n无`,
+        resources: [{ key: "first_frame", occupied: true, kind: "image", previewUrl: "data:image/png;base64,Zmlyc3Q=" }]
+      });
+      return { calls, result };
+    } catch (error) {
+      return { calls, error };
+    }
   };
   const local = await run((payload) => ({ ok: true, prompt: JSON.stringify({ ...translation, displayPrompt: payload.prompt }) }));
   assert.equal(local.calls.frames, 0, "a translate-only compile sends no frames");
@@ -1267,9 +1272,10 @@ async function verifyGenerationCompile() {
   assert.deepEqual(Array.from(local.calls.local[0].h3ReferenceFrames), []);
   assert.match(local.result.modelText, /^For the target video, at 0\.00 seconds into the target video, <Picture 1> \(from \[Shot 1\]\) is fully referenced\.\n\nintegrated_multimodal_description: \[Shot 1\] The girl shown in <Picture 1> turns and waves\./);
   const web = await run(function webRuntime() { return { ok: false, error: "提示词助手在 Web 版通过智能 AI 提供" }; });
-  assert.equal(web.calls.grok.length, 1, "the hosted site translates through Grok");
-  assert.equal(web.calls.grok[0].token, "session-token");
-  assert.match(web.result.modelText, /turns and waves/);
+  assert.equal(web.calls.local.length, 1);
+  assert.equal(web.calls.grok.length, 0, "a missing local H3 compiler does not call the cloud");
+  assert.equal(web.error?.h3LocalUnavailable, true);
+  assert.match(web.error.message, /本机 H3 提示词编译不可用/);
   // Generation never fails because of the prompt: an engine without the translate step leaves it as written.
   const old = await run(function oldEngine() { return { ok: true, prompt: "【任务定位】\n图生视频" }; });
   assert.equal(old.result.asWritten, true);

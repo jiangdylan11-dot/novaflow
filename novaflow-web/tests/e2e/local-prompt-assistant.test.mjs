@@ -72,6 +72,17 @@ const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
 const license = { state: async () => ({ status: 'licensed', machineId: 'fixture' }), assertAllowed: async () => {}, importLicense: async () => { throw new Error('fixture'); } };
 const services = { start: async () => [{ kind: 'image', running: true, reused: true }], stop: async () => {} };
 const promptAssistantOptions = { analysisBackend: 'legacy-nf4', pythonPath: process.execPath, serviceScript: fixture, runtimeJsonPath };
+{
+  const blocked = createPromptAssistant(promptAssistantOptions);
+  equal(blocked.status().analysisBackend, 'strata', 'production ignores an explicit legacy backend');
+  const missed = await blocked.optimizePrompt({ prompt: 'hello', surface: 'art' });
+  equal(missed.ok, false);
+  equal(missed.errorCode, 'flash-model-missing', 'a missing Flash model does not start the Python service');
+  check(blocked.running !== true, 'prompt-assistant-service.py stays down');
+  await blocked.stop();
+}
+const previousLegacyFlag = process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;
+process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT = '1';
 const assistant = await createLocalAssistant({ dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot, modelsRoot: modelsDir,
   localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, workerName: 'prompt-assistant-test',
   comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30, promptAssistant: promptAssistantOptions });
@@ -337,6 +348,7 @@ try {
   await pool.electronAPI.promptAssistantReverseImagePrompt({ images: [{ name: 'a.png', dataUrl: 'data:image/png;base64,QQ==' }] });
   equal(JSON.parse(poolRequests.filter(r => r.url.endsWith('/api/web/tasks') && r.init.method === 'POST').at(-1).init.body).parameters.action, 'reverse-image-prompt');
 } finally {
+  if (previousLegacyFlag === undefined) delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT; else process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT = previousLegacyFlag;
   await assistant.stop(); comfy.closeAllConnections(); comfy.close();
 }
 console.log(checks + ' passed, 0 failed: 提示词助手 runs the desktop service on the paired local machine');

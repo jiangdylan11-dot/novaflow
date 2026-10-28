@@ -35,7 +35,12 @@ export async function createLocalAssistant(options) {
   const artLearning = createArtLearning({ directory: join(options.dataDir, 'art-learning'),
     getOwner: artActor.owner,
     getKnowledge:scope=>knowledgeCache.read(scope)});
-  if((options.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata')==='strata') {
+  const requestedBackend = String(options.promptAssistant?.analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata').trim().toLowerCase() || 'strata';
+  const legacyDiagnostics = process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT === '1' && requestedBackend !== 'strata';
+  if (requestedBackend !== 'strata' && !legacyDiagnostics) {
+    options.logger?.('ignored non-strata prompt assistant backend; production stays on Flash', { requested: requestedBackend });
+  }
+  if (!legacyDiagnostics) {
     const prepared = await ensureFlashBrainConfiguration({
       ...(options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON ? {runtimeJsonPath:options.promptAssistant?.runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON} : {}),
       ...(options.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG ? {configPath:options.promptAssistant?.strataConfigPath || process.env.NOVAFLOW_STRATA_CONFIG} : {})

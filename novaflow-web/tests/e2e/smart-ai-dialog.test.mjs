@@ -331,6 +331,18 @@ test('H3 image modes run the explicit minor + sensitive pre-check before any req
   }
 });
 
+test('an online success keeps the dialog open with the settled charge and remaining balance', async () => {
+  const narrative = 'The woman shown in <Picture 1> turns toward the camera and slowly raises her hand to wave. The camera holds a static shot.';
+  const p = page({ respond: () => ({ ok: true, prompt: `integrated_multimodal_description: [Shot 1] ${narrative}\noverall_soundscape: Street ambience and the rustle of her sleeve.\nnon_diegetic_music: N/A`, quota: { charged_credits: 4, balance_after: 96 } }) });
+  const surface = h3Surface(p, 'image_video', '她转身挥手', H3_SURFACES.image_video);
+  await open(p, surface);
+  await p.api.runSmartAi();
+  assert.equal(p.calls.grok.length, 1);
+  assert.equal(p.api.state.open, true);
+  assert.equal(p.api.state.message, '实扣 4 积分，剩余 96');
+  assert.match(surface.positive.value, /raises her hand to wave/);
+});
+
 test('H3 图生: a valid answer is written to the prompt box and the dialog closes', async () => {
   const narrative = 'The woman shown in <Picture 1> turns toward the camera and slowly raises her hand to wave. The camera holds a static shot.';
   const p = page({ respond: () => ({ ok: true, prompt: `integrated_multimodal_description: [Shot 1] ${narrative}\noverall_soundscape: Street ambience and the rustle of her sleeve.\nnon_diegetic_music: N/A` }) });

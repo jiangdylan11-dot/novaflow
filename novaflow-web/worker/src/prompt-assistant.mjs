@@ -5,8 +5,10 @@
 // browser and desktop use the same CPU protocol process. Production inference
 // is delegated to the shared Flash session; the process does not load weights.
 //
-// Production uses the shared, owned Flash brain. PE and NF4 entry points
-// remain only for explicit compatibility diagnostics, never automatic fallback.
+// Production uses the shared, owned Flash brain. PE and the old NF4 path stay
+// in this file until phase E, but they start only when
+// NOVAFLOW_LEGACY_PROMPT_ASSISTANT=1 is set for diagnostics. A missing Flash
+// model returns flash-model-missing and does not spawn prompt-assistant-service.py.
 //
 // The model shares the GPU with the drawing runtime, so a request follows the
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
@@ -367,13 +369,20 @@ async function freeMemory(baseUrl, timeoutMs = 15000) {
 export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env, analysisBackend, strataConfigPath: suppliedStrataConfigPath, artLearning = null } = {}) {
   const candidateConfigPath = suppliedStrataConfigPath || defaultStrataConfigPath(runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON);
   const candidateConfig = readStrataConfig(candidateConfigPath);
-  const selectedBackend = analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND
-    || 'strata';
+  const log = logger || (() => {});
+  const requestedBackend = String(analysisBackend || process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND || 'strata').trim().toLowerCase() || 'strata';
+  const legacyDiagnostics = process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT === '1';
+  // Product calls are Flash/Strata even if a caller or the environment still
+  // says pe or the old VLM. The diagnostic flag is the only way to start PE.
+  const selectedBackend = requestedBackend !== 'strata' && legacyDiagnostics ? requestedBackend : 'strata';
+  if (requestedBackend !== 'strata' && !legacyDiagnostics) {
+    log('ignored non-strata prompt assistant backend; production stays on Flash', { requested: requestedBackend });
+  }
   // The Python process retains the task protocols and CPU compilers. When
-  // Flash is selected it is a client of the outer, already-owned session.
+  // Flash is selected it is a client of an already-owned session, never a
+  // fallback that loads PE weights on its own.
   analysisBackend = selectedBackend;
   let flashSession = null;
-  const log = logger || (() => {});
   let proc = null, startPromise = null, stopPromise = null, lease = null;
   let nextId = 1, buffer = '', stderrTail = [], pending = new Map();
   let lastError = '', lastWarning = '';
@@ -590,6 +599,11 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
    */
   async function request(command, payload, timeoutMs) {
     const cfg = config();
+    // Strata inference without an owned Flash session must not start the
+    // Python service. UI CPU compilers do not come through this function.
+    if (analysisBackend === 'strata' && !flashSession && ['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle'].includes(command)) {
+      return { ...publicConfig(cfg), ok: false, error: '本地 Flash 模型不可用，请安装本地 Flash 模型后重试', errorCode: 'flash-model-missing' };
+    }
     if (!cfg.enabled) return { ...publicConfig(cfg), ok: false, error: cfg.error };
     if (lease) return { ...publicConfig(cfg), ok: false, runtimeStatus: '推理中', error: 'Prompt Assistant 正在处理另一项任务，请等待完成后重试', errorCode: 'prompt-assistant-busy', failureCategory: 'resource_busy', retryable: true };
     lease = { command, startedAt: Date.now() };

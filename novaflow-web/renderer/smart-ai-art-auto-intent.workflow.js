@@ -5,6 +5,7 @@
 
   const VERSION = "20260811-art-auto-intent-1";
   const PROVIDER_STORAGE_KEY = "novaflow.smart-ai.art.provider.v1";
+  // Stored engine values stay local / grok. grok means the online RunningHub line.
   const PROVIDERS = new Set(["local", "grok"]);
   const REFERENCE_ROLES = new Set([
     "subject",

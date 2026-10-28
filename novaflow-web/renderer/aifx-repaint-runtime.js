@@ -756,6 +756,14 @@
       .aifx-row { display: flex; align-items: center; gap: 8px; }
       .aifx-row[hidden] { display: none; }
       .aifx-row > label { min-width: 74px; font-size: 12px; color: rgba(230, 230, 230, 0.72); }
+      .aifx-material-engine { display: grid; gap: 8px; margin-top: 10px; }
+      .aifx-material-engine-label { font-size: 12px; color: rgba(230, 230, 230, 0.72); }
+      .aifx-material-engine-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .aifx-material-engine-option { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 6px; background: rgba(255,255,255,.035); color: rgba(232,237,242,.88); font-size: 12px; cursor: pointer; }
+      .aifx-material-engine-option input { accent-color: #23c489; margin: 0; }
+      .aifx-material-engine-meta { display: block; margin-top: 2px; color: rgba(232,237,242,.46); font-size: 11px; }
+      .aifx-material-engine-note, .aifx-material-engine-settlement { color: rgba(232,237,242,.62); font-size: 11px; line-height: 17px; }
+      .aifx-material-engine-settlement:empty { display: none; }
       .aifx-slider,
       .aifx-timeline input {
         flex: 1;
@@ -1340,6 +1348,21 @@
                   <div class="nf-upload-dropzone__hint">可选。材质改从图里来，风格让位</div>
                   <div class="nf-upload-dropzone__meta" data-style-meta></div>
                 </div>
+                <div class="aifx-material-engine" data-aifx-material-engine>
+                  <div class="aifx-material-engine-label">材质识别</div>
+                  <div class="aifx-material-engine-row">
+                    <label class="aifx-material-engine-option">
+                      <input type="radio" name="aifx-material-engine" value="local" data-aifx-material-engine-value="local" checked>
+                      <span>本地<span class="aifx-material-engine-meta">本地 · 不扣积分</span></span>
+                    </label>
+                    <label class="aifx-material-engine-option">
+                      <input type="radio" name="aifx-material-engine" value="grok" data-aifx-material-engine-value="grok">
+                      <span>云端<span class="aifx-material-engine-meta">云端 · 深度识别</span></span>
+                    </label>
+                  </div>
+                  <div class="aifx-material-engine-note" data-aifx-material-credit></div>
+                  <div class="aifx-material-engine-settlement" data-aifx-material-settlement></div>
+                </div>
                 <div class="aifx-row" data-style-clear-row hidden>
                   <button class="aifx-button" data-action="clear-style" type="button" style="flex:1">移除参考图</button>
                 </div>
@@ -1771,15 +1794,15 @@
     }
   }
 
-  // The video model follows words and barely the picture. Measured 2026-10-14 on 边框流光 at three
-  // seeds: a sunflower handed over as a reference came back as thin yellow lines, the same sunflower
-  // written out as a style-library entry came back as petals running along the light. So the local
-  // AI 助手 reads a reference as {name, material, breakup} first and the run goes through the style
-  // path; the paid engine is not used for this. Best effort: no assistant, a node that predates
-  // this or a failed read leaves the picture path exactly as it was. One read per picture - a
-  // candidate's recipe brings the same blob back and reuses it.
+  // The video model follows words and barely the picture. The reference is read as a
+  // material entry first. The user picks the channel: local Flash (0 credits) or
+  // cloud image reverse (image_reverse). A failure stays on the chosen channel.
+  // 提示词补充 translation stays local and does not follow this switch.
   const REFERENCE_MATERIAL_TIMEOUT_MS = 180000
+  const MATERIAL_ENGINE_KEY = 'novaflow.aifx.material.engine.v1'
   const referenceMaterials = new WeakMap()
+  const materialMeta = new WeakMap()
+  const materialBlobs = new Set()
   // The AI 助手 hands the GPU over only when the image runtime's queue is empty, and refuses while
   // anything is drawing or while it is busy with another request. 2026-10-15: a 2-minute picture job
   // from elsewhere on the same runtime made the leaf read fail at once and the run fell back to the
@@ -1791,6 +1814,33 @@
   // While it waits, the page's queue notice says so (how many prompts the runtime still has) and
   // can stop it - the run too, when one is waiting on it.
   const ASSISTANT_WAIT_LABEL = { 'aifx-material': '识别参考图材质', 'aifx-supplement': '翻译提示词补充' }
+  const materialEngine = () => {
+    try { return localStorage.getItem(MATERIAL_ENGINE_KEY) === 'grok' ? 'grok' : 'local' } catch { return 'local' }
+  }
+  const materialCreditText = () => {
+    if (materialEngine() !== 'grok') return '本地处理不扣积分'
+    const api = window.NovaFlowFeatureCreditPrices
+    const quoted = api && typeof api.quoteFeature === 'function' ? api.quoteFeature({ feature: 'image_reverse', units: 1 }) : null
+    const credits = quoted && quoted.credits != null ? quoted.credits : 4
+    return '本次将扣 ' + credits + ' 积分'
+  }
+  const readAifxSessionToken = () => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('novaflow_web_session_v1') || 'null')
+      return String(parsed?.session?.token || parsed?.token || '').trim()
+    } catch { return '' }
+  }
+  const clearMaterialCache = () => {
+    for (const blob of materialBlobs) referenceMaterials.delete(blob)
+    materialBlobs.clear()
+  }
+  const nestedResult = (result) => result?.result && typeof result.result === 'object' ? result.result : {}
+  const cloudFailureMessage = (result) => {
+    const text = String(result?.error || nestedResult(result).error || '')
+    if (/登录|积分/.test(text)) return text
+    return '云端材质识别失败，请稍后重试'
+  }
+  // Local only. Cloud material recognition must not enter this function.
   const askAssistant = async (payload, timeoutMs) => {
     const api = window.electronAPI
     if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return null
@@ -1817,8 +1867,64 @@
       window.NovaFlowQueueNotice?.done(key)
     }
   }
+  // Cloud only. A failure here does not call the local describer.
+  const askCloudMaterial = async (payload, timeoutMs) => {
+    const api = window.electronAPI
+    if (!api || typeof api.smartAiImageReverse !== 'function') return { ok: false, error: '云端材质识别失败，请刷新网页后重试' }
+    const token = readAifxSessionToken()
+    if (!token) return { ok: false, error: '请先登录 NovaFlow 账号' }
+    let timer = 0
+    const timeout = new Promise(resolve => { timer = setTimeout(() => resolve({ ok: false, error: '云端材质识别失败，请稍后重试' }), timeoutMs) })
+    try {
+      const result = await Promise.race([
+        api.smartAiImageReverse({
+          token,
+          surface: 'aifx',
+          purpose: 'aifx-material',
+          supportsNegativePrompt: false,
+          images: [{ name: payload.name || 'reference.jpg', imageUrl: payload.dataUrl, dataUrl: payload.dataUrl, label: '参考图', role: 'reference' }],
+        }),
+        timeout,
+      ])
+      return result || { ok: false, error: '云端材质识别失败，请稍后重试' }
+    } catch {
+      return { ok: false, error: '云端材质识别失败，请稍后重试' }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  // No automatic channel switch: local never calls image-reverse, cloud never calls describe-art-style.
+  const askMaterial = (payload, timeoutMs) => materialEngine() === 'grok'
+    ? askCloudMaterial(payload, timeoutMs)
+    : askAssistant(payload, timeoutMs)
+  const materialFromResult = (result, engine, image) => {
+    const nested = nestedResult(result)
+    const entry = result?.material || nested.material
+    const material = String(entry && entry.material || '').trim()
+    if (!result || result.ok === false || nested.ok === false || !material) {
+      return {
+        read: null,
+        quota: null,
+        error: engine === 'grok' ? cloudFailureMessage(result) : '本地材质识别不可用，请打开本地算力节点后重试',
+      }
+    }
+    const read = {
+      name: String(entry.name || '').trim() || 'REFERENCE',
+      material,
+      elements: String(entry.elements || '').trim(),
+      colours: String(entry.colours || '').trim(),
+      breakup: String(entry.breakup || '').trim(),
+    }
+    const restyle = RESTYLE()
+    return {
+      read: restyle && restyle.pictureRead ? restyle.pictureRead(read, referenceColour(image).hues) : read,
+      quota: result.quota || nested.quota || null,
+      error: '',
+    }
+  }
   const readReferenceMaterial = (blob, image) => {
     if (!referenceMaterials.has(blob)) {
+      const engineAtStart = materialEngine()
       const job = (async () => {
         // On the black plate the effect will sit on, and no bigger than the model looks at.
         const scale = Math.min(1, 768 / Math.max(1, image.naturalWidth, image.naturalHeight))
@@ -1829,28 +1935,59 @@
         context.fillStyle = '#000'
         context.fillRect(0, 0, canvas.width, canvas.height)
         context.drawImage(image, 0, 0, canvas.width, canvas.height)
-        const result = await askAssistant({ name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }, REFERENCE_MATERIAL_TIMEOUT_MS)
-        const entry = result && result.ok !== false && result.material
-        const material = String(entry && entry.material || '').trim()
-        if (!material) return null
-        // `elements` / `colours` let 提示词补充 overrule the arrangement and the colour (see
-        // referenceMaterial); a node that predates them sends the finished sentence alone.
-        // Colours the picture does not have are dropped (the green leaf read as "green, yellow").
-        const read = {
-          name: String(entry.name || '').trim() || 'REFERENCE',
-          material,
-          elements: String(entry.elements || '').trim(),
-          colours: String(entry.colours || '').trim(),
-          breakup: String(entry.breakup || '').trim(),
+        const result = await askMaterial({ name: 'reference.jpg', dataUrl: canvas.toDataURL('image/jpeg', 0.92), purpose: 'aifx-material' }, REFERENCE_MATERIAL_TIMEOUT_MS)
+        const outcome = materialFromResult(result, engineAtStart, image)
+        if (materialEngine() === engineAtStart) materialMeta.set(blob, { engine: engineAtStart, quota: outcome.quota, error: outcome.error || '' })
+        return outcome
+      })().catch((error) => {
+        const outcome = {
+          read: null,
+          quota: null,
+          error: engineAtStart === 'grok' ? '云端材质识别失败，请稍后重试' : (String(error?.message || '') || '本地材质识别不可用，请打开本地算力节点后重试'),
         }
-        const restyle = RESTYLE()
-        return restyle && restyle.pictureRead ? restyle.pictureRead(read, referenceColour(image).hues) : read
-      })().catch(() => null)
+        if (materialEngine() === engineAtStart) materialMeta.set(blob, { engine: engineAtStart, quota: null, error: outcome.error })
+        return outcome
+      })
       referenceMaterials.set(blob, job)
-      // A failure is not remembered: the run asks again.
-      job.then((read) => { if (!read && referenceMaterials.get(blob) === job) referenceMaterials.delete(blob) })
+      materialBlobs.add(blob)
+      job.then((outcome) => {
+        if (materialEngine() !== engineAtStart || referenceMaterials.get(blob) !== job) return
+        if (!outcome.read) referenceMaterials.delete(blob)
+      })
     }
-    return referenceMaterials.get(blob)
+    return referenceMaterials.get(blob).then((outcome) => outcome && outcome.read)
+  }
+  const applyMaterialOutcome = (entry, read) => {
+    const meta = materialMeta.get(entry.blob) || {}
+    entry.material = read
+    entry.materialQuota = read ? meta.quota || null : null
+    entry.materialError = read ? '' : (meta.error || (materialEngine() === 'grok' ? '云端材质识别失败，请稍后重试' : '本地材质识别不可用，请打开本地算力节点后重试'))
+    entry.materialState = read ? 'ready' : 'failed'
+  }
+  const setMaterialEngine = (value) => {
+    const next = value === 'grok' ? 'grok' : 'local'
+    const previous = materialEngine()
+    try { localStorage.setItem(MATERIAL_ENGINE_KEY, next) } catch { /* storage unavailable */ }
+    if (previous === next) {
+      refreshUi()
+      return
+    }
+    clearMaterialCache()
+    const reference = state.reference
+    if (reference?.blob && reference.image) {
+      reference.material = null
+      reference.materialQuota = null
+      reference.materialError = ''
+      reference.materialState = 'reading'
+      refreshUi()
+      readReferenceMaterial(reference.blob, reference.image).then((read) => {
+        if (state.reference !== reference || materialEngine() !== next) return
+        applyMaterialOutcome(reference, read)
+        if (state.reference === reference) refreshUi()
+      })
+      return
+    }
+    refreshUi()
   }
 
   // 提示词补充 typed in Chinese is followed far less than the same words in English, so the local AI
@@ -1888,8 +2025,7 @@
       }
       state.reference = entry
       readReferenceMaterial(blob, image).then((material) => {
-        entry.material = material
-        entry.materialState = material ? 'ready' : 'failed'
+        applyMaterialOutcome(entry, material)
         if (state.reference === entry) refreshUi()
       })
       refreshUi()
@@ -2014,9 +2150,9 @@
         if (reference.materialState === 'failed') { reference.materialState = 'reading'; refreshUi() }
         const read = readReferenceMaterial(reference.blob, reference.image)
         read.then((material) => {
-          reference.material = material
-          reference.materialState = material ? 'ready' : 'failed'
-          if (state.reference === reference) refreshUi()
+          if (state.reference !== reference) return
+          applyMaterialOutcome(reference, material)
+          refreshUi()
         })
         referenceMaterial = await stoppable(read)
       }
@@ -2952,7 +3088,7 @@
       empty.className = 'aifx-current-empty'
       empty.textContent = !state.reference ? '未选风格'
         : state.reference.materialState === 'reading' ? '正在识别参考图材质…'
-          : state.reference.materialState === 'failed' ? '材质未识别，按参考图直接生成'
+          : state.reference.materialState === 'failed' ? (state.reference.materialError || '材质未识别，按参考图直接生成')
             : '材质来自参考图'
       card.appendChild(empty)
     }
@@ -3133,6 +3269,14 @@
     refs.templateClearX.setAttribute('aria-label', '清空')
     refs.templateClearX.setAttribute('data-template-clear-x', '')
     refs.styleZone = root.querySelector('[data-style-zone]')
+    refs.materialCredit = root.querySelector('[data-aifx-material-credit]')
+    refs.materialSettlement = root.querySelector('[data-aifx-material-settlement]')
+    for (const input of root.querySelectorAll('[data-aifx-material-engine-value]')) {
+      input.addEventListener('change', () => {
+        if (!input.checked) return
+        setMaterialEngine(input.value)
+      })
+    }
     refs.stylePreview = root.querySelector('[data-style-preview]')
     refs.templateEmpty = root.querySelector('[data-template-empty]')
     refs.styleEmpty = root.querySelector('[data-style-empty]')
@@ -3319,6 +3463,13 @@
     const detailText = String(state.detail || '').trim()
     put(refs.previewStatusTitle, 'textContent', statusText)
     put(refs.previewStatusDetail, 'textContent', detailText)
+    const materialEngineNow = materialEngine()
+    for (const input of refs.root.querySelectorAll('[data-aifx-material-engine-value]')) {
+      put(input, 'checked', input.value === materialEngineNow)
+    }
+    put(refs.materialCredit, 'textContent', materialCreditText())
+    const settledQuota = state.reference?.materialState === 'ready' && materialEngineNow === 'grok' ? state.reference.materialQuota : null
+    put(refs.materialSettlement, 'textContent', window.NovaFlowFeatureCreditPrices?.settlementText?.(settledQuota) || '')
     if (refs.previewStatus) {
       // Centred only while there is nothing on the canvas to cover.
       putAttr(refs.previewStatus, 'data-placement', state.source ? 'top' : 'center')
@@ -3938,6 +4089,16 @@
     loadSourceFiles: (files) => adoptTemplateFiles(files),
     sequenceToBlackClip,
     loadStyleBlob: (blob, fileName) => adoptReference(blob, fileName),
+    materialEngine,
+    setMaterialEngine,
+    materialCreditText,
+    recognizeMaterial: (blob, image) => readReferenceMaterial(blob, image).then((read) => ({
+      read,
+      engine: materialMeta.get(blob)?.engine || materialEngine(),
+      quota: materialMeta.get(blob)?.quota || null,
+      error: materialMeta.get(blob)?.error || '',
+    })),
+    translateSupplement,
     clearTemplate,
     clearReference,
     openLibrary,

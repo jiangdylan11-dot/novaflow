@@ -9,10 +9,12 @@ test('Flash is the default local brain; legacy diagnostics require an explicit s
   const dir = await mkdtemp(join(tmpdir(), 'nf-strata-selection-'));
   const runtimeJsonPath = join(dir, 'runtime.json'), configPath = join(dir, 'strata-prompt.json');
   const originalBackend = process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND;
+  const originalLegacy = process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;
   const originalConfig = process.env.NOVAFLOW_STRATA_CONFIG;
   const create = extra => createPromptAssistant({ runtimeJsonPath, strataConfigPath: configPath, ...extra });
   try {
     delete process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND;
+    delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;
     delete process.env.NOVAFLOW_STRATA_CONFIG;
     await writeFile(runtimeJsonPath, JSON.stringify({ installPath: dir, modelsPath: join(dir, 'models') }));
     assert.equal(create().status().analysisBackend, 'strata');
@@ -23,13 +25,16 @@ test('Flash is the default local brain; legacy diagnostics require an explicit s
     assert.equal(automatic.analysisBackend, 'strata');
     assert.equal(automatic.supportsOriginalImages, true);
     assert.equal(automatic.enabled, false, 'a selection cannot claim the absent candidate weights are installed');
-    assert.equal(create({ analysisBackend: 'pe' }).status().modelType, 'qwen35_pe_i2i');
+    assert.equal(create({ analysisBackend: 'pe' }).status().analysisBackend, 'strata', 'an explicit pe request is not a product path');
     process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND = 'pe';
-    assert.equal(create().status().modelType, 'qwen35_pe_i2i');
+    assert.equal(create().status().analysisBackend, 'strata', 'the environment cannot switch production to pe');
     assert.equal(create({ analysisBackend: 'strata' }).status().analysisBackend, 'strata');
     process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND = 'strata';
-    assert.equal(create({ analysisBackend: 'pe' }).status().modelType, 'qwen35_pe_i2i');
-    assert.equal(create({ analysisBackend: 'legacy-nf4' }).status().modelType, 'qwen3_vl_8b_abliterated_nf4', 'legacy diagnostics remain an explicit choice');
+    assert.equal(create({ analysisBackend: 'pe' }).status().analysisBackend, 'strata');
+    assert.equal(create({ analysisBackend: 'legacy-nf4' }).status().analysisBackend, 'strata', 'the old VLM is not an automatic choice');
+    process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT = '1';
+    assert.equal(create({ analysisBackend: 'pe' }).status().modelType, 'qwen35_pe_i2i', 'diagnostics can still name pe');
+    delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;
     await writeFile(configPath, JSON.stringify({ enabled: false, analysisBackend: 'strata' }));
     assert.equal(create().status().analysisBackend, 'strata', 'an explicit environment choice wins over the local enable flag');
     delete process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND;
@@ -37,6 +42,7 @@ test('Flash is the default local brain; legacy diagnostics require an explicit s
     assert.equal(createPromptAssistant({ runtimeJsonPath }).status().analysisBackend, 'strata', 'runtime-adjacent config is discovered without modifying the caller');
   } finally {
     if (originalBackend === undefined) delete process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND; else process.env.NOVAFLOW_PROMPT_ASSISTANT_BACKEND = originalBackend;
+    if (originalLegacy === undefined) delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT; else process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT = originalLegacy;
     if (originalConfig === undefined) delete process.env.NOVAFLOW_STRATA_CONFIG; else process.env.NOVAFLOW_STRATA_CONFIG = originalConfig;
     await rm(dir, { recursive: true, force: true });
   }

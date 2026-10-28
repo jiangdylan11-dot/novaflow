@@ -65,9 +65,15 @@ const ALIASES = Object.freeze({
   online_chat_turn: 'online_chat_turn',
   'prompt-optimize': 'prompt_optimize',
   prompt_optimize: 'prompt_optimize',
+  // One charge per call. A caller's amount is a provider retry budget, not a
+  // per-image multiplier, until this key is listed in PER_IMAGE_FEATURES.
   'image-reverse': 'image_reverse',
   image_reverse: 'image_reverse',
   'video-reverse': 'image_reverse',
+  // Same price as image reverse. The charge call still sends image-reverse;
+  // this alias lets a quote name the AIFX material job without a new price key.
+  'aifx-material': 'image_reverse',
+  aifx_material: 'image_reverse',
   'ui-catalog': 'lean_research',
   'lean-research': 'lean_research',
   lean_research: 'lean_research',

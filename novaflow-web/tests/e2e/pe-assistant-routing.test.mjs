@@ -21,16 +21,22 @@ test('ordinary drawing defaults to 25, preserves explicit 40, and keeps UI and T
  state.localQwen21Variant='turbo';
  assert.equal(models.localSamplingFor(state,'img2img','','qwen-2.1').steps,8);
 });
-test('production assistant is available from PE alone and reports no NF4 cache dependency',async()=>{
+test('production stays on Flash when a PE weight is present and does not start the Python service',async()=>{
  const root=await mkdtemp(join(tmpdir(),'nf-single-pe-'));let assistant;
+ const previous=process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;
+ delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;
  try{
   const modelPath=join(root,'models','text_encoders',ART_EDIT_MODEL);await mkdir(join(root,'models','text_encoders'),{recursive:true});await writeFile(modelPath,'fixture');
   const runtimeJsonPath=join(root,'runtime.json');await writeFile(runtimeJsonPath,JSON.stringify({installPath:root,modelsPath:join(root,'models')}));
   assistant=createPromptAssistant({analysisBackend:'pe',runtimeJsonPath,pythonPath:process.execPath,serviceScript:fileURLToPath(new URL('../fixtures/prompt-assistant-fake-service.mjs',import.meta.url)),comfyUrls:[]});
-  const status=assistant.status();assert.equal(status.modelType,'qwen35_pe_i2i');assert.equal(status.enabled,true);assert.equal(status.cachePath,'');assert.equal(status.cacheReady,false);
-  const result=await assistant.optimizePrompt({prompt:'a cat'});assert.equal(result.ok,true);assert.equal(result.data.echo.modelPath,modelPath);assert.equal(result.data.echo.cachePath,'');
+  const status=assistant.status();assert.equal(status.analysisBackend,'strata');assert.equal(status.modelType,'swift15_qwen38_flash_next_iq2_xs');
+  const result=await assistant.optimizePrompt({prompt:'a cat'});assert.equal(result.ok,false);assert.equal(result.errorCode,'flash-model-missing');
+  assert.equal(assistant.running,false);
   await assert.rejects(access(join(root,'models','prompt_assistant')));
- }finally{await assistant?.stop();await rm(root,{recursive:true,force:true});}
+ }finally{
+  if(previous===undefined)delete process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT;else process.env.NOVAFLOW_LEGACY_PROMPT_ASSISTANT=previous;
+  await assistant?.stop();await rm(root,{recursive:true,force:true});
+ }
 });
 test('Turbo selection has isolated sampling settings and does not inherit ordinary 40-step guidance',()=>{
  const state={provider:'local',localQwen21Variant:'turbo',samplingOverrides:{'qwen-2.1:img2img':{steps:40,cfg:3}}};

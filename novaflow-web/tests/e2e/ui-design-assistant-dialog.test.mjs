@@ -68,12 +68,14 @@ function openDialog({ prompt = '', run, references = [] } = {}) {
     submit: find((node) => node.tagName === 'BUTTON' && node.textContent === '生成并写入设计要求'),
     requirements: find((node) => node.tagName === 'TEXTAREA'),
     status: find((node) => node.getAttribute('aria-live') === 'polite'),
+    credit: find((node) => node.getAttribute('data-novaflow-ui-design-assistant-credit') === '1'),
   };
 }
 
 test('with no 设计要求 and no 补充要求 the notice shows and the request is refused', async () => {
   const d = openDialog();
   await tick();
+  assert.equal(d.credit.textContent, '本地处理不扣积分');
   assert.equal(d.notice.textContent, NOTICE);
   assert.equal(d.notice.style.display, 'block');
   assert.equal(d.submit.disabled, true);
@@ -103,6 +105,30 @@ test('sixteen selected references do not disable the UI assistant action', async
   assert.equal(await d.handle.submit(),true);
   assert.equal(count,16);
   d.handle.close();
+});
+
+test('online analysis previews the catalog price and shows the settled balance', async () => {
+  sandbox.NovaFlowFeatureCreditPrices = {
+    previewText: (feature) => feature === 'lean_research' ? '本次将扣 14 积分' : '本次将扣积分',
+    settlementText: (quota) => quota && quota.charged_credits ? `实扣 ${quota.charged_credits} 积分，剩余 ${quota.balance_after}` : '',
+  };
+  const documentRef = fakeDocument();
+  const applied = [];
+  const workflow = {
+    analysisReferenceLimit: () => Infinity,
+    createSession: () => ({ cancel() {}, run: async () => ({ prompt: '写入的设计要求', engine: 'grok', provider: 'grok', quota: { charged_credits: 14, balance_after: 86 } }) }),
+  };
+  const handle = dialogApi.open({ documentRef, workflow, engine: 'grok', getPrompt: () => '做一个登录页', references: [], structure: {}, apply: (payload) => applied.push(payload) });
+  const host = documentRef.body.children[0];
+  const credit = host.find((node) => node.getAttribute('data-novaflow-ui-design-assistant-credit') === '1');
+  assert.equal(credit.textContent, '本次将扣 14 积分');
+  assert.equal(await handle.submit(), true);
+  assert.equal(applied[0].prompt, '写入的设计要求');
+  assert.equal(handle.snapshot().open, true);
+  const status = host.find((node) => node.getAttribute('aria-live') === 'polite');
+  assert.equal(status.textContent, '实扣 14 积分，剩余 86');
+  handle.close();
+  delete sandbox.NovaFlowFeatureCreditPrices;
 });
 
 test('任务中止 shows while running, ends the wait at once and never writes a late answer', async () => {

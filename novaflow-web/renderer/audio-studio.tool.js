@@ -933,11 +933,18 @@
     for (const [key, name, meta] of [['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 耗时取决于模型与显卡']]) {
       const option = el('label', 'nf-as-ai-engine-option');
       const radio = el('input'); radio.type = 'radio'; radio.name = 'nf-as-ai-engine'; radio.value = key; radio.checked = engine === key;
-      radio.addEventListener('change', () => { if (!radio.checked) return; engine = key; try { localStorage.setItem(AI_ENGINE_KEY, key); } catch (_) { /* no storage */ } });
+      radio.addEventListener('change', () => { if (!radio.checked) return; engine = key; try { localStorage.setItem(AI_ENGINE_KEY, key); } catch (_) { /* no storage */ } refreshCredit(); });
       const text = el('span', null, name); text.appendChild(el('span', 'nf-as-ai-engine-meta', meta));
       option.appendChild(radio); option.appendChild(text); engineRow.appendChild(option);
     }
-    engineSection.appendChild(engineRow); body.appendChild(engineSection);
+    const creditNote = el('div', 'nf-as-ai-note');
+    creditNote.setAttribute('data-novaflow-audio-ai-credit', '1');
+    const refreshCredit = () => {
+      const api = window.NovaFlowFeatureCreditPrices;
+      creditNote.textContent = engine === 'local' ? '本地处理不扣积分' : (api?.previewText?.('prompt_optimize', 1) || '本次将扣积分');
+    };
+    refreshCredit();
+    engineSection.appendChild(engineRow); engineSection.appendChild(creditNote); body.appendChild(engineSection);
     const requirementSection = el('div', 'nf-as-ai-section');
     requirementSection.appendChild(el('div', 'nf-as-ai-label', '补充要求'));
     const requirements = el('textarea', 'nf-as-ai-textarea');
@@ -992,6 +999,13 @@
       }
       m.text = text; m.optimized = text;
       if (state.mode === mode) ui.textarea.value = text;
+      const quota = result?.quota || result?.result?.quota;
+      const charged = window.NovaFlowFeatureCreditPrices?.settlementText?.(quota) || '';
+      if (engine !== 'local' && charged) {
+        setMessage(charged, '');
+        idle();
+        return;
+      }
       closeAssistant();
     });
     stop.addEventListener('click', () => { if (!assistant || !assistant.run) return; assistant.run.stopped = true; setMessage('已中止', ''); idle(); });

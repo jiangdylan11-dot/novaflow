@@ -92,14 +92,24 @@
   function analysisEngine() {
     return mounted?.store.getState().settings?.assistantEngine === 'grok' ? 'grok' : 'local'
   }
+  function analysisCreditTitle(engine, selected) {
+    const base = engine === 'local' ? '由当前算力源的本地模型分析需求与参考图' : '手动选择在线模型分析需求与参考图'
+    if (!selected) return base
+    const api = root.NovaFlowFeatureCreditPrices
+    const note = engine === 'local' ? '本地处理不扣积分' : (api?.previewText?.('lean_research', 1) || '本次将扣积分')
+    return base + '。' + note
+  }
   function syncAnalysisSelector(group) {
     const engine = analysisEngine(), busy = Boolean(preparation || drawing()?.state.running)
     for (const button of group.querySelectorAll('[data-novaflow-ui-analysis-engine]')) {
       const selected = button.getAttribute('data-novaflow-ui-analysis-engine') === engine
+      const choice = button.getAttribute('data-novaflow-ui-analysis-engine')
       if (button.getAttribute('aria-checked') !== String(selected)) {
         button.setAttribute('aria-checked', String(selected))
         Object.assign(button.style, { background: selected ? '#174e42' : '#262626', color: selected ? '#a5e8d4' : '#aaa', borderColor: selected ? '#328871' : '#424242' })
       }
+      const title = analysisCreditTitle(choice, selected)
+      if (button.getAttribute('title') !== title) button.setAttribute('title', title)
       button.disabled = busy
     }
   }
@@ -110,7 +120,7 @@
     const group = element(doc, 'span', { role: 'radiogroup', 'aria-label': '设计需求分析来源', 'data-novaflow-ui-analysis-source': '1', style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } })
     for (const [engine, label] of [['local', '本地分析'], ['grok', '在线分析']]) {
       const button = element(doc, 'button', { type: 'button', role: 'radio', text: label, 'data-novaflow-ui-analysis-engine': engine,
-        title: engine === 'local' ? '由当前算力源的本地模型分析需求与参考图' : '手动选择在线模型分析需求与参考图',
+        title: analysisCreditTitle(engine, false),
         style: { height: '24px', padding: '2px 6px', border: '1px solid #424242', borderRadius: '5px', fontSize: '10px', lineHeight: '1', cursor: 'pointer' } })
       button.addEventListener('click', event => {
         event.preventDefault(); event.stopPropagation()
