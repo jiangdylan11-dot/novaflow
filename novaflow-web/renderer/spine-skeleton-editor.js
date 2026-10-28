@@ -41,7 +41,7 @@
     return n
   }
 
-  const state = {
+  function createEditorState() { return {
     name: '',
     fileName: 'skeleton.json',
     json: null,
@@ -130,7 +130,8 @@
     roles: new Map(),
     drag: null,
     creating: null,
-  }
+  } }
+  const state = createEditorState()
 
   const rt = { gl: null, renderer: null, atlas: null, atlasKey: null, data: null, skeleton: null, cam: { x: 0, y: 0, zoom: 1 }, w: 1, h: 1, dpr: 1, missingPages: new Set(), missingRegions: new Set() }
 
@@ -357,7 +358,14 @@
     // several projects side by side (Spine's hierarchy): the one open so far keeps its whole state
     if (state.json && projects[activeProject] && !p.replace) projects[activeProject].snap = snapProject()
     const previous = state.json ? snapProject() : null
+    const replaceAll = p.operation === 'replace'
+    const previousState = replaceAll ? { ...state } : null
+    const previousCamera = { ...rt.cam }
     leaveProjectEdits()
+    if (replaceAll) {
+      for (const key of Object.keys(state)) delete state[key]
+      Object.assign(state, createEditorState())
+    }
     Object.assign(state, {
       imageFolder, projectDirectory: p.projectDirectory || (p.operation === 'refresh' && state.projectDirectory) || null,
       projectAccessRoot: p.projectAccessRoot || (p.operation === 'refresh' && state.projectAccessRoot) || null,
@@ -376,7 +384,16 @@
     rt.atlasKey = null
     rt.missingPages = new Set()
     rt.missingRegions = new Set()
-    try { applyJson(Ops.tidy(Ops.prepare(json))) } catch (error) { if (previous) restoreProject(previous); throw error }
+    try { applyJson(Ops.tidy(Ops.prepare(json))) } catch (error) {
+      if (previousState) {
+        for (const key of Object.keys(state)) delete state[key]
+        Object.assign(state, previousState)
+        rt.cam = previousCamera
+      }
+      if (previous) restoreProject(previous)
+      throw error
+    }
+    if (replaceAll) clearReplacedWorkspace()
     if (p.operation === 'append' || p.operation === 'replace' || p.operation === 'new') detachProjectFile()
     if (p.replace && projects[activeProject]) dropProjectRuntime(projects[activeProject].id)
     state.initialJson = state.json
@@ -418,6 +435,28 @@
     'sweepGen', 'seqGap', 'selHistory', 'selIdx', 'groups', 'alwaysName', 'unselectable', 'dopeExtra', 'vsel', 'imageFolderGen', 'projectDirectory', 'projectAccessRoot', 'projectImageRefs', 'imagePath']
   const projects = [] // { id, snap }: the picked project's snap is null (state holds it)
   let activeProject = -1, projectSerial = 0
+
+  /** Replace means opening a fresh workspace; nothing from the previous project set survives. */
+  function clearReplacedWorkspace() {
+    for (const project of projects) dropProjectRuntime(project.id)
+    projects.length = 0; activeProject = -1
+    detachProjectFile()
+    watchImageFolder(false)
+    imgSeen.folder = null; imgSeen.names.clear()
+    for (const item of pv.items.values()) if (item.atlas) try { item.atlas.dispose() } catch {}
+    pv.items.clear()
+    Object.assign(pv, { open: false, track: 0, speed: 100, mix: 0.25, loop: true,
+      cam: { x: 0, y: 0, zoom: 1 }, fitted: false, drag: null, projectId: null })
+    if (pfx && pfx.ui) pfx.ui.close()
+    pfx = null
+    boneClipboard = null; extStep = null; meCache = null; weCache = null; weSetupInv = null; keyBtnsOn = null
+    pagePixels.clear(); frameThumbs.clear()
+    rt.cam = { x: 0, y: 0, zoom: 1 }
+    const search = $('#search')
+    if (search) search.value = ''
+    for (const mask of document.querySelectorAll('body > .mask, body > .pfx-lib, body > .nf-dd-mask')) mask.remove()
+    for (const fn of hostListeners) { try { fn('workspace-reset', {}) } catch (error) { console.warn('[skeleton editor] host reset', error) } }
+  }
 
   function snapProject() {
     const snap = {}
@@ -753,41 +792,57 @@
     }
     const files = await listProjectImages(folder), regions = Attach.parseAtlas(s.atlasText), pages = new Map()
     for (const r of regions.values()) { if (!pages.has(r.page)) pages.set(r.page, []); pages.get(r.page).push(r) }
-    const images = []
+    const images = [], missing = []
     for (const [fileName, regionsOnPage] of pages) {
       const current = s.images.get(lower(fileName))
+      const generated = current && (current.sessionGenerated || /^__nf_swap_\d+\.png$/i.test(fileName) && !current.sourceFolder)
       let source = current && current.sourceFolder === folder && current.sourcePath ? files.find((f) => f.rel === current.sourcePath) : null
-      source = source || files.find((f) => lower(f.rel) === lower(fileName))
-      if (!source && regionsOnPage.length === 1) {
+      if (!generated) source = source || files.find((f) => lower(f.rel) === lower(fileName))
+      if (!source && !generated && regionsOnPage.length === 1) {
         const r = regionsOnPage[0]
         if (!r.rotate && !r.x && !r.y && r.w === r.origW && r.h === r.origH) source = files.find((f) => folderPictureName(f) === r.name)
       }
-      const path = source ? source.rel : projectPath(fileName).join('/')
-      let exists = false
-      try { const parts = projectPath(path); const d = await projectSubdir(folder.handle, parts.slice(0, -1)); await d.getFileHandle(parts.at(-1)); exists = true } catch { /* new/session image: write beside the project */ }
+      const ref = (s.projectImageRefs || []).find((r) => lower(r.fileName) === lower(fileName))
+      const single = regionsOnPage.length === 1 && !regionsOnPage[0].rotate && !regionsOnPage[0].x && !regionsOnPage[0].y
+      const expectedPath = !folder.recordedPaths && single && /^__nf_(?:swap|folder)[/_]/.test(fileName)
+        ? regionsOnPage[0].name + ((ref && ref.path && ref.path.match(/\.[^.\/]+$/)) || ['.png'])[0] : ref && ref.path || fileName
+      let path = source ? source.rel : projectPath(generated ? fileName : expectedPath).join('/')
+      const existsAt = async (rel) => {
+        try { const parts = projectPath(rel); const d = await projectSubdir(folder.handle, parts.slice(0, -1)); await d.getFileHandle(parts.at(-1)); return true } catch { return false }
+      }
+      let exists = await existsAt(path)
+      if (generated) {
+        const original = path, dot = original.lastIndexOf('.')
+        for (let n = 2; exists; n++) { path = original.slice(0, dot) + '_' + n + original.slice(dot); exists = await existsAt(path) }
+      }
       if (!exists) {
         const im = s.images.get(lower(fileName))
-        if (!im || im.sourceFolder && im.sourcePath) throw new Error(`缺少图片「${fileName}」，请先指定图片文件夹`)
-        if (!await folder.write(path, await projectImageBlob(im))) throw new Error('图片文件夹不可写，请重新指定图片文件夹后保存')
+        if (!im || im.sourceFolder && im.sourcePath && !generated) missing.push({ project: s.name, fileName, path })
+        else {
+          if (!await folder.write(path, await projectImageBlob(im))) throw new Error(`图片目录「${folder.name}」没有写入权限，无法保存新图片「${path}」`)
+          s.images = new Map(s.images)
+          s.images.set(lower(fileName), { ...im, sourceFolder: folder, sourcePath: path, sessionGenerated: false })
+        }
       }
       images.push({ fileName, path, pma: pagePma(s.images, fileName, s.pma) })
     }
     s.projectImageRefs = images; s.imagePath = imagePath; s.projectDirectory = directory
     await folderDbDo('readwrite', (store) => store.put({ handle: folder.handle, projectDirectory: directory, projectAccessRoot: s.projectAccessRoot, name: folder.name, at: Date.now() }, s.folderKey)).catch(() => {})
-    return { images, imagePath, externalFolder }
+    return { images, imagePath, externalFolder, missing }
   }
   async function projectFileBytes(directory) {
-    const list = []
+    const list = [], missing = []
     for (let i = 0; i < projects.length; i++) {
       const s = i === activeProject ? state : projects[i].snap
       if (!s || !s.json) continue
-      const { images, imagePath, externalFolder } = await projectReferences(s, directory)
+      const { images, imagePath, externalFolder, missing: unavailable } = await projectReferences(s, directory)
+      missing.push(...unavailable)
       list.push({ name: s.name, fileName: s.fileName, atlasName: s.atlasName, atlasText: s.atlasText, json: s.json, images, imagePath, ...(externalFolder ? { externalFolder: true } : {}), pma: !!s.pma, offset: s.offset || { x: 0, y: 0 }, visible: projects[i].visible !== false, exported: projects[i].exported !== false, folderKey: s.folderKey || '' })
     }
     if (!list.length) throw new Error('没有可保存的工程')
     const text = JSON.stringify({ format: PROJECT_FILE_FORMAT, version: 2, active: Math.max(0, activeProject), projects: list })
     const gz = new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip')))
-    return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length }
+    return { bytes: new Uint8Array(await gz.arrayBuffer()), count: list.length, missing }
   }
 
   // The .nfproj this tree was saved to (or opened from, when nothing else was open): 保存工程 and
@@ -809,12 +864,12 @@
         h('div', { class: 'dialog ask project-choice' },
           h('div', { class: 'hd' }, h('b', {}, kind === 'new' ? '新建工程' : '导入资源'), h('button', { class: 'xx', onclick: () => done(null) }, '×')),
           h('div', { class: 'msg' },
-            h('div', {}, `当前工程：${state.name}`),
+            h('div', {}, `当前已打开 ${projects.length} 个工程，选中：${state.name}`),
             h('div', {}, '新增独立工程：保留已打开的工程，新增一个工程。'),
-            h('div', {}, '替换当前工程：选中工程未保存的修改会丢失，其他工程保留。'),
-            h('div', {}, '完成后首次保存将重新选择 .nfproj 位置。')),
+            h('div', {}, '替换全部工程：关闭当前所有工程，清空编辑状态，再打开新内容；全部未保存的修改会丢失。'),
+            h('div', {}, '打开 .nfproj 后保存回新文件；其他导入首次保存时重新选择位置。')),
           h('div', { class: 'ft' },
-            h('button', { class: 'btn', type: 'button', onclick: () => done('replace') }, '替换当前工程'),
+            h('button', { class: 'btn', type: 'button', onclick: () => done('replace') }, '替换全部工程'),
             h('button', { class: 'btn primary', type: 'button', onclick: () => done('append') }, '新增独立工程'))))
       document.body.append(mask)
       window.addEventListener('keydown', key, true)
@@ -950,12 +1005,12 @@
     if (!window.showSaveFilePicker) {
       const directory = await projectDirectoryFor(null, state.imageFolder && state.imageFolder.handle)
       if (!directory) return null
-      const { bytes, count } = await projectFileBytes(directory)
+      const { bytes, count, missing } = await projectFileBytes(directory)
       assertProjectBytes(bytes)
       const a = h('a', { href: URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' })), download: name + '.nfproj' })
       document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
-      status(`已保存 ${name}.nfproj：请将工程文件放在「${directory.name}」，图片保留在外部文件夹`, 'ok')
-      return { name: name + '.nfproj', count }
+      status(`已保存 ${name}.nfproj：请将工程文件放在「${directory.name}」，图片保留在外部文件夹${missing.length ? `；缺少 ${missing.length} 张图片，已保留引用和全部编辑内容` : ''}`, 'ok')
+      return { name: name + '.nfproj', count, missing }
     }
     let handle = !as && projectFile ? projectFile : null
     if (handle) {
@@ -977,13 +1032,13 @@
         if (createdEmpty) await discardEmptyCreated(null, handle)
         return null
       }
-      const { bytes, count } = await projectFileBytes(directory)
+      const { bytes, count, missing } = await projectFileBytes(directory)
       assertProjectBytes(bytes)
       handle = await commitProjectFile(directory, handle, bytes)
       projectFile = handle
       projectSaveDirectory = directory
-      status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）`, 'ok')
-      return { name: handle.name, count, overwritten: over }
+      status(`${over ? '已覆盖保存' : '已保存 NovaFlow 工程'} ${handle.name}：${count} 个工程${missing.length ? `；缺少 ${missing.length} 张图片，已保留引用和全部编辑内容` : '（之后 Ctrl+S 直接保存，Ctrl+Shift+S 另存为）'}`, 'ok')
+      return { name: handle.name, count, overwritten: over, missing }
     } catch (err) {
       if (createdEmpty) await discardEmptyCreated(directory, handle).catch(() => {})
       throw err
@@ -1077,7 +1132,7 @@
       missing += Math.max(0, (p.images || []).length - images.length)
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
         imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
-        label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey: p.folderKey || '', operation,
+        label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey: p.folderKey || '', operation: imported.length ? 'append' : operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
       imported.push(activeProject)
       // The saved references already supply the pages. Do not guess replacement pixels
@@ -1086,7 +1141,7 @@
     switchProject(imported[Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0))])
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
     // (added to projects already open, the next save still asks - it would hold them all)
-    if (handle && wasEmpty) { projectFile = handle; projectSaveDirectory = projectDirectory }
+    if (handle && (wasEmpty || operation === 'replace')) { projectFile = handle; projectSaveDirectory = projectDirectory }
     const hidden = projects[activeProject].visible === false
       ? `；当前工程「${state.name}」已隐藏，请点击工程树左侧的显示圆点恢复` : ''
     const attachmentAnimations = Object.entries(state.json.animations || {}).filter(([, a]) =>
@@ -2490,6 +2545,7 @@
         }
         if (!wanted.has(name)) continue
         const old = regions.get(name), loaded = old && target.images.get(lower(old.page))
+        if (loaded && loaded.sessionGenerated) continue
         const ref = folder.recordedPaths && (target.projectImageRefs || []).find((r) => old && lower(r.fileName) === lower(old.page))
         if (ref && lower(f.rel) !== lower(ref.path || ref.fileName)) continue
         if (loaded && loaded.sourceFolder === folder && loaded.sourcePath && loaded.sourcePath !== f.rel) continue
@@ -3131,7 +3187,7 @@
       }).join('\n')
     }
     atlasText = atlasText.replace(/\s+$/, '') + '\n\n' + Attach.synthesizeAtlas([{ fileName, name: path, width, height }]) + '\n'
-    return { path, atlasText, width, height, image: { fileName, img, blob } }
+    return { path, atlasText, width, height, image: { fileName, img, blob, pma: false, sessionGenerated: true } }
   }
 
   /**
@@ -7775,6 +7831,7 @@
   function imagesListing(path) {
     const key = frameRootKey()
     if (imgTree.key !== key) imgTree = { key, nodes: new Map(), pending: new Set() }
+    const tree = imgTree
     if (imgTree.nodes.has(path)) return imgTree.nodes.get(path)
     if (!imgTree.pending.has(path)) {
       imgTree.pending.add(path)
@@ -7787,7 +7844,7 @@
         }
         return node.list()
       })().then((l) => l, () => ({ dirs: [], files: [] })).then((l) => {
-        if (imgTree.key !== key) return
+        if (imgTree !== tree || imgTree.key !== key) return
         imgTree.nodes.set(path, l)
         imgTree.pending.delete(path)
         renderTree()
@@ -7986,6 +8043,7 @@
   const frameFiles = (kind) => (framePictures() || []).filter((f) => isTicked(kind, f.name))
 
   function frameThumb(f) {
+    const json = state.json, folder = state.imageFolder
     const c = h('canvas', { width: 32, height: 32 })
     const region = f.region || (rt.atlas && rt.atlas.findRegion(f.name)) || null
     if (region) { drawRegionThumb(c, region); return c }
@@ -7993,6 +8051,7 @@
     if (done) { c.getContext('2d').drawImage(done, 0, 0); return c }
     if (typeof f.file !== 'function') return c
     f.file().then((file) => createImageBitmap(file)).then((bm) => {
+      if (state.json !== json || state.imageFolder !== folder) { bm.close(); return }
       const k = Math.min(32 / bm.width, 32 / bm.height, 1)
       const keep = h('canvas', { width: 32, height: 32 })
       keep.getContext('2d').drawImage(bm, (32 - bm.width * k) / 2, (32 - bm.height * k) / 2, bm.width * k, bm.height * k)

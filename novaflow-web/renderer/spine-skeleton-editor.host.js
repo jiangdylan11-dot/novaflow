@@ -22,6 +22,7 @@
   const waiting = []
   let workspace = null
   let lastSource = null
+  let workspaceRevision = 0
   let anchor = null
   // 动画工具 sync
   let motionOpen = false
@@ -472,6 +473,18 @@
 
   function onEditorEvent(type, data) {
     if (type === 'modal') { setModalBackdrop(!!data.open, data.dim); return }
+    if (type === 'workspace-reset') {
+      // An explicit replacement opens a fresh workspace, including the host's tool/export caches.
+      lastSource = window.__NOVA_SPINE_LAST_SOURCE
+      workspaceRevision++
+      lastKey = null; ownText = null; appJson = null; appMode = null
+      appVersion = null; appImages = null; appSettings = null; chosenVersion = null; prepareFailure = null
+      pendingImportOperation = null; pendingImportDirectory = null
+      durations.clear(); forgetReact(); closeLeftPanels()
+      try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch {}
+      motionOpen = false
+      return
+    }
     // 设置 has no animation to work on: the 动画工具 group folds when the editor goes there
     if (type === 'mode' && data.mode === 'setup' && motionPanelOpen()) {
       try { if (window.NovaFlowMotionEditing) window.NovaFlowMotionEditing.collapse() } catch { /* not loaded */ }
@@ -625,6 +638,7 @@
     if (hint.textContent !== message) hint.textContent = message
   }
   async function syncApp() {
+    const revision = workspaceRevision
     const a = await ready()
     if (!a.loaded()) throw new Error('先在「工程管理」里新建或导入工程')
     const mode = packMode()
@@ -640,12 +654,14 @@
     if (!cache || !bridge || typeof bridge.start !== 'function') throw new Error('导入通道不可用')
     const json = a.json()
     const { source } = await a.packForApp({ mode, version: bridgeVersion })
+    if (revision !== workspaceRevision) throw new Error('工程已替换，请重新执行导出')
     ownText = source.json.text
     // fill the bridge's own object field by field (the bundle holds on to that object)
     cache.json = source.json; cache.atlas = source.atlas; cache.images = source.images
     let ok
     bridgeImporting = true
     try { ok = await bridge.start() } finally { bridgeImporting = false }
+    if (revision !== workspaceRevision) throw new Error('工程已替换，请重新执行导出')
     if (ok === false) throw new Error('工程没能交给导出')
     appJson = json; appMode = mode; appVersion = version
     appImages = images; appSettings = settings; prepareFailure = null
