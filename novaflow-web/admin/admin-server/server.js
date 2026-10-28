@@ -11076,6 +11076,10 @@ async function handleGrokImageReverseRequest(req, res) {
   const mode = request.inputMeta.scenario === "video_frames" ? "video_reverse" : "image_reverse";
   let grok;
   let usage;
+  // Count is computed inside the charge callback. The success body is outside
+  // that scope; leaving it undeclared throws after settle and the user is charged
+  // for a response they never receive.
+  let providerCallCount = 1;
   let resultOptions = request.resultOptions;
   try {
     const charged = await chargeOnlineAi(session, {
@@ -11103,8 +11107,8 @@ async function handleGrokImageReverseRequest(req, res) {
             }
             value.material = material;
           }
-          const providerCallCount = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
-          return { amount: providerCallCount, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, success: true } };
+          const countedCalls = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
+          return { amount: countedCalls, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount: countedCalls, success: true } };
         } catch (error) {
           error.chargedAmount = 0;
           error.chargeMetadata = { mode, error: sanitizeError(error), tokenUsage: error?.grokUsage || null, durationMs: error?.grokDurationMs || 0, grokProviderCallCount: Math.max(0, Math.round(Number(error?.grokProviderCallCount || 0))), success: false };
@@ -11114,6 +11118,7 @@ async function handleGrokImageReverseRequest(req, res) {
     });
     grok = charged.value;
     usage = charged.quota;
+    providerCallCount = Math.max(1, Math.round(Number(grok?.providerCallCount || charged?.metadata?.providerCallCount || 1)));
   } catch (err) {
     if (err?.quotaFailed) {
       sendJson(res, 500, { ok: false, error: "在线计量没有完成", provider: "grok" });
