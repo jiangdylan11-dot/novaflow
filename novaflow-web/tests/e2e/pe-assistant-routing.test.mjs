@@ -26,7 +26,7 @@ test('production assistant is available from PE alone and reports no NF4 cache d
  try{
   const modelPath=join(root,'models','text_encoders',ART_EDIT_MODEL);await mkdir(join(root,'models','text_encoders'),{recursive:true});await writeFile(modelPath,'fixture');
   const runtimeJsonPath=join(root,'runtime.json');await writeFile(runtimeJsonPath,JSON.stringify({installPath:root,modelsPath:join(root,'models')}));
-  assistant=createPromptAssistant({runtimeJsonPath,pythonPath:process.execPath,serviceScript:fileURLToPath(new URL('../fixtures/prompt-assistant-fake-service.mjs',import.meta.url)),comfyUrls:[]});
+  assistant=createPromptAssistant({analysisBackend:'pe',runtimeJsonPath,pythonPath:process.execPath,serviceScript:fileURLToPath(new URL('../fixtures/prompt-assistant-fake-service.mjs',import.meta.url)),comfyUrls:[]});
   const status=assistant.status();assert.equal(status.modelType,'qwen35_pe_i2i');assert.equal(status.enabled,true);assert.equal(status.cachePath,'');assert.equal(status.cacheReady,false);
   const result=await assistant.optimizePrompt({prompt:'a cat'});assert.equal(result.ok,true);assert.equal(result.data.echo.modelPath,modelPath);assert.equal(result.data.echo.cachePath,'');
   await assert.rejects(access(join(root,'models','prompt_assistant')));
@@ -58,7 +58,7 @@ test('model choices contain only providers and leave acceleration under the para
  const c=createContext({document:doc});runInContext(readFileSync(new URL('../../renderer/art-generate-mode.tool.js',import.meta.url),'utf8'),c);
  const host=doc.createElement('div'),state={provider:'local'};let changes=0;
  const refresh=()=>c.NovaFlowArtGenerateModeTool.syncControlPanel({host,state,showAccount:false,showTurboRoute:true,onChange:()=>changes++});
- refresh();const select=host.children[0].children[1];assert.deepEqual(Array.from(select.children,x=>x.value),['local','gpt','google']);
+ refresh();const select=host.children[0].children[1];assert.deepEqual(Array.from(select.children,x=>x.value),['local','gpt']);
  state.localQwen21Variant='turbo';refresh();assert.equal(select.value,'local');
  select.value='gpt';select.events.change();assert.equal(state.provider,'gpt');assert.equal(state.localQwen21Variant,'turbo');assert.equal(changes,1);
  select.value='local';select.events.change();assert.equal(state.provider,'local');assert.equal(state.localQwen21Variant,'turbo');

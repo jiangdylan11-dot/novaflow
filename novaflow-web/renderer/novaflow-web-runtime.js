@@ -1370,6 +1370,14 @@
       try { return { ok: true, result: await auth('POST', '/api/client/grok/image-reverse', payload, SMART_AI_TIMEOUT_MS) }; }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     },
+    async runningHubGptImageQuote(payload) {
+      try { return { ok: true, result: await auth('POST', '/api/client/runninghub/gpt-image/quote', payload || {}, 20000) }; }
+      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    },
+    async runningHubGptImage(payload) {
+      try { return { ok: true, result: await auth('POST', '/api/client/runninghub/gpt-image', payload || {}, 180000) }; }
+      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    },
 
     async qwenLoraCatalog(payload = {}) {
       try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true) + (payload.engine === 'qwen-2.1' ? '&engine=qwen-2.1' : '')); }

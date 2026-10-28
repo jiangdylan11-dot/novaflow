@@ -103,8 +103,8 @@ test('pressing a button keeps 设计要求 focused, so its save cannot rebuild t
 // GPT, Google and 本地 (2026-09-29): 输出尺寸, then W / H edge to edge when custom, then each generation
 // setting as a row at 输出尺寸's level — no 生成参数 heading or box.
 test('every provider lays the settings out as rows at the level of 输出尺寸', () => {
-  const expected = { gpt: ['gptQualityImg2img'], google: ['googleResolution'], local: ['randomSeed'] };
-  for (const provider of ['gpt', 'google', 'local']) {
+  const expected = { gpt: ['gptQualityImg2img'], local: ['randomSeed'] };
+  for (const provider of ['gpt', 'local']) {
     const { host } = mountTool(provider, { width: 1536, height: 1024 });
     assert.equal(byAttr(host, 'data-novaflow-ui-design-output-size-label', '1').textContent, '输出尺寸');
     assert.equal(byAttr(host, 'data-novaflow-ui-design-output-contract', provider), null);

@@ -48,16 +48,6 @@ export const WORKFLOW_MODULES = Object.freeze({
     price: 'image',
     methods: ['buildWorkflow', 'buildRunWorkflow']
   },
-  NovaFlowArtGenerateIdeogramWorkflow: {
-    label: '绘图 · Ideogram',
-    modelId: 'ideogram-4',
-    minVramMb: 16000,
-    runtime: 'image',
-    kind: 'image',
-    price: 'image',
-    methods: ['build', 'buildWorkflow']
-  },
-
   // UI 设计 runs through the 绘图 builders on Qwen-Image-2.1; it has no builder of its own.
 
   // ---- AI 序列动画 ------------------------------------------------------
@@ -107,7 +97,6 @@ export const WORKFLOW_MODULES = Object.freeze({
 // the control plane. Private runtimes retain their file name.
 export const WORKFLOW_SOURCE_MODULES = Object.freeze({
   'art-generate-provider.workflow': 'NovaFlowArtGenerateProviderWorkflow',
-  'art-generate-ideogram.workflow': 'NovaFlowArtGenerateIdeogramWorkflow',
   'ai-sequence-minimax-h3.workflow': 'NovaFlowAiSequenceMiniMaxH3Workflow',
   'ai-sequence-video-merge-export.workflow': 'NovaFlowAiSequenceVideoMergeExportWorkflow',
   'aifx-restyle.workflow': 'NovaFlowAifxRestyleWorkflow',

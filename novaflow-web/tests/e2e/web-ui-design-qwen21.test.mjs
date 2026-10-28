@@ -531,9 +531,11 @@ assert.ok(artCompiled.text.includes('5') && !artCompiled.text.includes('@参考�
 
 // Every provider requires a real layout image. Its only image is the layout,
 // including an old style label; multiple explicit assets need a layout source.
-globalThis.electronAPI = {runtimeFeaturesSync:()=>({qwenImage21:true}),runtimeFeatures:async()=>({qwenImage21:true}),runtimeProviderUsageSettlement:'preload-price-v1'};
+const cloudCalls = [];
+globalThis.electronAPI = {runtimeFeaturesSync:()=>({qwenImage21:true}),runtimeFeatures:async()=>({qwenImage21:true}),runtimeProviderUsageSettlement:'preload-price-v1',
+  runningHubGptImage: async (payload) => { cloudCalls.push(payload); return { ok: true, result: { ok: true, imageDataUrl: pixel, images: [{ imageDataUrl: pixel, taskId: 'rh-ui' }], charged: 22, remaining: 78, quote: { credits: 22, perImage: 22 } } }; }};
 globalThis.NovaFlowClientAuth = {createAuthorizationContext:()=>({release(){}})};
-for (const provider of ['local','gpt','google']) {
+for (const provider of ['local','gpt']) {
   for (const count of [0,2]) {
     uploads.length=0;
     await assert.rejects(generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:runRefs.slice(0,count),state:{provider,width:1024,height:1024},prompt:'简洁背包界面',pollIntervalMs:0}),count?/缺少布局图/:/必须有布局图/);
@@ -542,29 +544,36 @@ for (const provider of ['local','gpt','google']) {
   for (const count of [1,2]) {
     uploads.length=0;
     const sourceRefs=runRefs.slice(0,count).map((ref,index)=>index===0&&count>1?{...ref,role:'layout'}:ref);
-    const output=await generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:sourceRefs,state:{provider,width:1024,height:1024,gptQualityImg2img:'high',googleAspectRatioImg2img:'1:1',promptMentionBindings:{'@参考图1':'s'}},prompt:'按@参考图1设计背包界面',pollIntervalMs:0});
-    assert.equal(uploads.length,count,provider+' must not upload a phantom layout');
-    assert.equal(built.mode,'img2img');
-    assert.equal(built.referenceRoles[0].role,'layout');
+    const output=await generate.run({bridge,project:{width:1024,height:1024,blocks:[]},refs:sourceRefs,state:{provider,width:1024,height:1024,gptQualityImg2img:'high',promptMentionBindings:{'@参考图1':'s'}},prompt:'按@参考图1设计背包界面',pollIntervalMs:0});
+    const plan = provider === 'gpt' ? cloudCalls.at(-1) : built;
+    if (provider === 'gpt') assert.equal(uploads.length, 0, 'GPT 出图不上传到 Comfy');
+    else assert.equal(uploads.length,count,provider+' must not upload a phantom layout');
+    assert.equal(plan.mode || output.mode,'img2img');
+    assert.equal(plan.referenceRoles[0].role,'layout');
     assert.equal(output.layoutGuideSource,'none');
-    assert.ok(built.referenceRoles.every(role=>role.role!=='ui_layout'));
-    assert.ok(!built.systemPrompt?.includes('image 1 is a non-visual'));
-    if(provider==='gpt') assert.equal(built.settings.quality,'high');
-    if(provider==='google') assert.equal(built.settings.aspectRatio,'1:1');
-    if(count) assert.ok(built.prompt.includes(provider==='local'?'<image1>':'图1'));
+    assert.ok(plan.referenceRoles.every(role=>role.role!=='ui_layout'));
+    assert.ok(!plan.systemPrompt?.includes('image 1 is a non-visual'));
+    if(provider==='gpt') assert.equal(plan.settings.quality,'high');
+    if(count) assert.ok(plan.prompt.includes(provider==='local'?'<image1>':'图1'));
   }
   uploads.length=0;uploadedPixels.length=0;
   const output=await generate.run({bridge,project,refs:[],state:{provider,width:756,height:1638},prompt:'按自建布局设计新主题组件',pollIntervalMs:0});
-  assert.equal(uploads.length,1,provider+' must upload the materialized layout guide');
-  assert.ok(uploadedPixels[0].startsWith('data:image/png;base64,')&&uploadedPixels[0].length>100);
-  assert.equal(built.mode,'img2img');assert.equal(built.referenceRoles[0].role,'ui_layout');
+  const laidOut = provider === 'gpt' ? cloudCalls.at(-1) : built;
+  if (provider === 'gpt') assert.equal(laidOut.images.length, 1);
+  else {
+    assert.equal(uploads.length,1,provider+' must upload the materialized layout guide');
+    assert.ok(uploadedPixels[0].startsWith('data:image/png;base64,')&&uploadedPixels[0].length>100);
+  }
+  assert.equal(laidOut.mode || output.mode,'img2img');assert.equal(laidOut.referenceRoles[0].role,'ui_layout');
   assert.equal(output.layoutGuideSource,'semantic-layout-compiler');
-  const currentGuide=globalThis.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide(project,{width:756,height:1638,visualEncoding:provider==='local'?'soft-ui-semantic-scaffold-v2':provider==='google'?'soft-occupancy-heatmap-v1':''});
+  const currentGuide=globalThis.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide(project,{width:756,height:1638,visualEncoding:provider==='local'?'soft-ui-semantic-scaffold-v2':''});
   uploads.length=0;
   await generate.run({bridge,project,refs:[{...currentGuide,role:'layout',uiLayoutId:'connected-guide',sourceId:'g0'},runRefs[0]],layoutGuide:currentGuide,state:{provider,width:756,height:1638,promptMentionBindings:{'@参考图2':'s'}},prompt:'按布局重设组件，@参考图2只提供风格',pollIntervalMs:0});
-  assert.equal(uploads.length,2,provider+' must upload an already connected guide only once');
-  assert.equal(built.referenceRoles[0].role,'ui_layout');
-  assert.ok(built.prompt.includes(provider==='local'?'<image2>':'图2'),provider+' must retain source numbering after guide deduplication');
+  const connected = provider === 'gpt' ? cloudCalls.at(-1) : built;
+  if (provider === 'gpt') assert.equal(connected.images.length, 2);
+  else assert.equal(uploads.length,2,provider+' must upload an already connected guide only once');
+  assert.equal(connected.referenceRoles[0].role,'ui_layout');
+  assert.ok(connected.prompt.includes(provider==='local'?'<image2>':'图2'),provider+' must retain source numbering after guide deduplication');
 }
 
 const nativeCompilerPrompt='按<image1>的主要布局位置重设计组件构造。\n<image2>只提供材质，人物身份和金额保持。';
@@ -575,18 +584,18 @@ assert.equal(uploads.length,2);assert.equal(built.prompt,nativeCompilerPrompt,'n
 // An already connected cloud guide fills the reserved layout slot. It must
 // leave the complete external asset capacity available, without renumbering
 // or silently discarding the last image.
-for (const [provider,total] of [['gpt',16],['google',14]]) {
-  const guide=globalThis.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide(project,{width:756,height:1638,visualEncoding:provider==='google'?'soft-occupancy-heatmap-v1':''});
+for (const [provider,total] of [['gpt',16]]) {
+  const guide=globalThis.NovaFlowUiDesignLayoutGuide.createCleanLayoutGuide(project,{width:756,height:1638,visualEncoding:''});
   const fullReferences=[{...guide,role:'layout',uiLayoutId:'capacity-guide',sourceId:'capacity-layout',name:'capacity-layout.png'},
     ...Array.from({length:total-1},(_,index)=>({...runRefs[0],name:`capacity-asset-${index+1}.png`,sourceId:`capacity-asset-${index+1}`}))];
   uploads.length=0;
   await generate.run({bridge,project,refs:fullReferences,layoutGuide:guide,state:{provider,width:756,height:1638,promptMentionBindings:{[`@参考图${total}`]:`capacity-asset-${total-1}`}},prompt:`按布局设计完整界面，@参考图${total}只提供风格`,pollIntervalMs:0});
-  assert.equal(uploads.length,total,provider+' must accept one connected guide plus its full external capacity');
-  assert.deepEqual(uploads,fullReferences.map(ref=>ref.name));
-  assert.equal(built.referenceRoles.length,total);
-  assert.equal(built.referenceRoles.filter(ref=>ref.role==='ui_layout').length,1);
-  assert.equal(built.referenceRoles[total-1].sourceId,`capacity-asset-${total-1}`);
-  assert.ok(built.prompt.includes(`图${total}`),provider+' must retain the last source image number');
+  const capacity = cloudCalls.at(-1);
+  assert.equal(capacity.images.length,total,provider+' must accept one connected guide plus its full external capacity');
+  assert.equal(capacity.referenceRoles.length,total);
+  assert.equal(capacity.referenceRoles.filter(ref=>ref.role==='ui_layout').length,1);
+  assert.equal(capacity.referenceRoles[total-1].sourceId,`capacity-asset-${total-1}`);
+  assert.ok(capacity.prompt.includes(`图${total}`),provider+' must retain the last source image number');
   uploads.length=0;
   await assert.rejects(generate.run({bridge,project,refs:[...fullReferences,{...runRefs[0],sourceId:'overflow',name:'overflow.png'}],layoutGuide:guide,state:{provider,width:756,height:1638},prompt:'按布局设计完整界面',pollIntervalMs:0}),new RegExp(`最多支持 ${total-1} 张外部参考图`));
   assert.equal(uploads.length,0,provider+' must reject an extra external asset before upload');

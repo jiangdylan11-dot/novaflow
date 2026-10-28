@@ -1001,7 +1001,7 @@ function renderRunningHubProviderHealth(status) {
     { label: "国内站余额", value: status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测" },
     { label: "当前运行任务数", value: status?.currentTaskCounts == null ? "-" : String(status.currentTaskCounts) },
     { label: "上次检测时间", value: status?.checkedAt ? formatDateTime(status.checkedAt) : "尚未检测" },
-    { label: "功能迁移", value: "仅保存 RunningHub Key 与账户检测；现有生成与提示词调用尚未切换" },
+    { label: "功能迁移", value: "云端 GPT 出图走 RunningHub；本地 Comfy 与本地模型保持可用" },
     { label: "检测耗时", value: durationText(status?.durationMs) },
     { label: "错误提示", value: status?.error || "-" }
   ], "尚未检测");
@@ -2180,7 +2180,11 @@ function providerRuntimeConfigPayload(providerKey) {
     baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
     llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
     llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
-    gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || ""
+    gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || "",
+    imagePrices: {
+      gpt_image_2_5: Number($("runninghubGptImage25Price")?.value),
+      gpt_image_2_official: Number($("runninghubGptImageOfficialPrice")?.value)
+    }
   };
 }
 

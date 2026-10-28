@@ -9,8 +9,7 @@
   const AUTH_SURFACE_KEY = 'ui-design'
   const PROVIDER_OPTIONS = Object.freeze([
     Object.freeze({ value: 'local', label: '本地模型' }),
-    Object.freeze({ value: 'gpt', label: 'GPT' }),
-    Object.freeze({ value: 'google', label: 'Google' }),
+    Object.freeze({ value: 'gpt', label: 'GPT（云）' }),
   ])
   const GPT_EXACT_SIZES = new Set([
     '1024x1024', '1024x1536', '1536x1024', '2048x2048',
@@ -76,7 +75,8 @@
     const models = root && root.NovaFlowArtGenerateModels
     if (models && typeof models.normalizeProvider === 'function') return models.normalizeProvider(value)
     const provider = String(value || '').trim().toLowerCase()
-    return provider === 'gpt' || provider === 'google' ? provider : 'local'
+    if (provider === 'google' || provider === 'gemini') return 'local'
+    return provider === 'gpt' ? 'gpt' : 'local'
   }
 
   function ensureState(value) {
@@ -295,24 +295,6 @@
         note: '按设置尺寸生成',
       })
     }
-    if (normalizedProvider === 'google') {
-      const aspect = closestGoogleAspect(
-        Number.isFinite(width) && width > 0 ? width : 1,
-        Number.isFinite(height) && height > 0 ? height : 1,
-      )
-      const resolution = ['1K', '2K', '4K'].includes(state?.googleResolution)
-        ? state.googleResolution
-        : '1K'
-      return Object.freeze({
-        ...base,
-        exact: false,
-        aspect,
-        resolution,
-        specification: `画幅 ${aspect} · 分辨率 ${resolution}`,
-        note: '实际像素由 Google 返回',
-      })
-    }
-
     const errors = []
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
       errors.push('GPT 输出尺寸必须是正整数')
@@ -480,10 +462,7 @@
         { value: 'high', label: 'High' },
       ], state.gptQualityImg2img)]
     }
-    // The aspect follows 输出尺寸 (the closest Google ratio); GPT and Google show one setting each here.
-    const resolution = selectControl(record, 'googleResolution', '分辨率', ['1K', '2K', '4K'], state.googleResolution)
-    resolution.setAttribute('title', '画幅 ' + state.googleAspectRatioImg2img + '，按输出尺寸自动匹配；实际像素由 Google 返回')
-    return [resolution]
+    return []
   }
 
   function compactSelectControl(record, key, label, values, value, attributeName, onChange) {
@@ -576,7 +555,6 @@
   function compactParameterSummary(record) {
     const state = record.state
     if (state.provider === 'gpt') return `质量 ${String(state.gptQualityImg2img || 'low').toUpperCase()}`
-    if (state.provider === 'google') return `分辨率 ${state.googleResolution || '1K'} · 画幅 ${state.googleAspectRatioImg2img}`
     const seed = state.randomSeed ? '随机种子' : `Seed ${Math.max(0, Number(state.seed) || 0)}`
     if (localQwen21Engine()) return seed
     const strength = state.localEditStrength === 'enhanced' ? '增强' : '保真'
@@ -749,11 +727,6 @@
         { value: 'medium', label: 'Medium' },
         { value: 'high', label: 'High' },
       ], state.gptQualityImg2img))]
-    }
-    if (state.provider === 'google') {
-      const resolution = compactSelectControl(record, 'googleResolution', '分辨率', ['1K', '2K', '4K'], state.googleResolution)
-      resolution.setAttribute('title', '画幅 ' + state.googleAspectRatioImg2img + '，按输出尺寸自动匹配；实际像素由 Google 返回')
-      return [compactParamRow(record, 'googleResolution', '分辨率', resolution)]
     }
     const rows = []
     if (!localQwen21Engine()) {

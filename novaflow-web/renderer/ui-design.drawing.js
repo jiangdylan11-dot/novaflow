@@ -66,22 +66,6 @@
 
     }
 
-    if (state.provider === 'google') {
-
-      const ratio = /^(\d+):(\d+)$/.exec(state.googleAspectRatioImg2img || '')
-
-      if (ratio) {
-
-        const edge = ({ '1K': 1024, '2K': 2048, '4K': 4096 })[state.googleResolution] || 1024
-
-        const a = Number(ratio[1]), b = Number(ratio[2])
-
-        return { width: Math.round(edge * a / Math.max(a,b)), height: Math.round(edge * b / Math.max(a,b)) }
-
-      }
-
-    }
-
     return { width: state.width || 1024, height: state.height || 1024 }
 
   }

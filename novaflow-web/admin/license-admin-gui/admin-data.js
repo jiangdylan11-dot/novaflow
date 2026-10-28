@@ -29,7 +29,6 @@ const ENV_GROK_API_KEY = "NOVAFLOW_GROK_API_KEY";
 const ENV_GROK_MODEL = "NOVAFLOW_GROK_MODEL";
 const DEFAULT_LIMIT = 100;
 const ERROR_PREFIX = "Supabase Error";
-const DEFAULT_COMFYUI_BASE_URL = "https://cloud.comfy.org";
 const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
 const DEFAULT_GROK_MODEL = DEFAULT_RUNNINGHUB_LLM_MODEL;
 const COMFYUI_USER_PATH = "/api/user";
@@ -40,7 +39,8 @@ const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
 // The only operator-writable online provider secret. Other RunningHub fields
 // stay readable. Grok, cloud ComfyUI, and the removed Google endpoint are not
 // writable; unmigrated call paths may still read their existing env values.
-const WRITABLE_PROVIDER_ENV_NAMES = new Set([runningHub.ENV.apiKey]);
+const FEATURE_CREDIT_PRICE_ENV = "NOVAFLOW_FEATURE_CREDIT_PRICES";
+const WRITABLE_PROVIDER_ENV_NAMES = new Set([runningHub.ENV.apiKey, FEATURE_CREDIT_PRICE_ENV]);
 const RETIRED_PROVIDER_ENV_NAMES = new Set([
   ENV_COMFYUI_BASE_URL,
   ENV_COMFYUI_API_KEY,
@@ -283,12 +283,12 @@ function readBundledSupabasePublishableKey() {
 }
 
 function readAdminComfyUiEnv() {
-  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL) || DEFAULT_COMFYUI_BASE_URL);
+  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL));
   const apiKey = readAdminEnvValue(ENV_COMFYUI_API_KEY);
   const apiKeySecretRef = readAdminEnvValue(ENV_COMFYUI_API_KEY_SECRET_REF);
   return {
     baseUrl,
-    configured: Boolean(apiKey),
+    configured: Boolean(apiKey && baseUrl),
     secretConfigured: Boolean(apiKey || apiKeySecretRef),
     hasBaseUrl: Boolean(baseUrl),
     hasApiKey: Boolean(apiKey),
@@ -2601,6 +2601,19 @@ async function setAdminProviderRuntimeConfig(payload) {
     if (parsed.clearApiKey || parsed.updateApiKey) {
       written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
     }
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "imagePrices")) {
+      const price = (raw, fallback) => {
+        if (raw === undefined || raw === null || raw === "") return fallback;
+        const amount = Number(raw);
+        if (!Number.isInteger(amount) || amount < 0 || amount > 100) throw new Error("出图积分单价须为 0 到 100 的整数");
+        return amount;
+      };
+      const prices = {
+        gpt_image_2_5: price(payload.imagePrices?.gpt_image_2_5, 22),
+        gpt_image_2_official: price(payload.imagePrices?.gpt_image_2_official, 4)
+      };
+      written.push(writeAdminEnvValue(FEATURE_CREDIT_PRICE_ENV, JSON.stringify(prices)));
+    }
     runningHubCheck = null;
 
     const env = runningHub.publicStatus(readAdminRunningHubEnv());
@@ -3658,7 +3671,7 @@ async function recordClientAiTaskUsage(payload, user) {
 async function getAdminComfyUiProviderStatus() {
   const startedAt = Date.now();
   const env = readAdminComfyUiEnv();
-  const endpoint = `GET ${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`;
+  const endpoint = `GET ${env.baseUrl}${COMFYUI_USER_PATH}`;
   if (!env.configured) {
     const durationMs = Date.now() - startedAt;
     const result = {
@@ -3667,7 +3680,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "mock",
       configured: false,
       secretConfigured: env.secretConfigured,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: false,
       accountStatus: "not_configured",
@@ -3693,7 +3706,7 @@ async function getAdminComfyUiProviderStatus() {
   }
 
   try {
-    const response = await requestJson(`${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`, {
+    const response = await requestJson(`${env.baseUrl}${COMFYUI_USER_PATH}`, {
       "X-API-Key": env.apiKey,
       Accept: "application/json",
       "User-Agent": "NovaFlow-Admin/1.0"
@@ -3706,7 +3719,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "connected",
       configured: true,
       secretConfigured: true,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: true,
       accountStatus: String(body.status || "unknown"),
@@ -3734,7 +3747,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "error",
       configured: true,
       secretConfigured: true,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: false,
       accountStatus: "unknown",

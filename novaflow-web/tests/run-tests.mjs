@@ -40,6 +40,7 @@ const SUITES = [
   { name: 'web-compute-node', file: 'e2e/web-compute-node.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'worker-account-binding', file: 'e2e/worker-account-binding.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'protocol', file: 'e2e/protocol.test.mjs', needs: [], timeoutMs: 180000 },
+  { name: 'runninghub-gpt-image', file: 'e2e/runninghub-gpt-image.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'workflow-redaction', file: 'e2e/workflow-redaction.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'web-renderer-build', file: 'e2e/web-renderer-build.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'pages-gate', file: 'e2e/pages-gate.test.mjs', needs: [], timeoutMs: 60000 },

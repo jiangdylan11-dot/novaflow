@@ -85299,12 +85299,6 @@
     return cloneArtWorkflowForState(ART_GENERATE_STATE);
   }
 
-  function shouldUseArtGenerateIdeogramWorkflow(provider, mode, state) {
-    return provider === "local"
-      && mode === "txt2img"
-      && state?.nsfw !== true;
-  }
-
   function artPromptLikeNegative(title) {
     return /negative|leave blank|\u53cd\u5411|\u8d1f\u5411/i.test(String(title || ""));
   }
@@ -86107,25 +86101,6 @@
         localWorkflow = loraApi.apply(localWorkflow, { ...state, provider, mode });
       }
     } else if (provider === "local") {
-      if (shouldUseArtGenerateIdeogramWorkflow(provider, mode, state, providerOptions)) {
-        const ideogramApi = window.NovaFlowArtGenerateIdeogramWorkflow;
-        if (typeof ideogramApi?.build !== "function") {
-          throw new Error("\u7ed8\u56fe\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
-        }
-        const ideogramSeed = state.randomSeed || Number(state.seed) < 0
-          ? Math.floor(Math.random() * 1000000000)
-          : Math.round(Number(state.seed) || 0);
-        const ideogramBuild = ideogramApi.build({
-          prompt: positivePrompt,
-          width: state.width,
-          height: state.height,
-          seed: ideogramSeed,
-          outputPrefix,
-          state
-        });
-        localWorkflow = ideogramBuild?.workflow || null;
-        localModelKey = String(ideogramBuild?.modelKey || ideogramBuild?.metadata?.modelKey || "ideogram4-instant");
-      } else {
         const modelApi = window.NovaFlowArtGenerateModels;
         const sampling = samplingFor(state?.nsfw === true ? "rapid" : "standard");
         if (typeof modelApi?.applyLocalWorkflowPreset !== "function") {
@@ -86143,7 +86118,6 @@
           if (!loraApi) throw new Error("LoRA 模块未就绪，请刷新后重试");
           localWorkflow = loraApi.apply(localWorkflow, { ...state, provider, mode });
         }
-      }
       if (!localWorkflow || typeof localWorkflow !== "object") {
         throw new Error("NovaFlow \u672c\u5730\u751f\u6210\u9884\u8bbe\u5e94\u7528\u5931\u8d25");
       }
@@ -86429,6 +86403,32 @@
       }
     }
     const runToken = beginArtGenerateRun();
+    if (runProvider === "gpt") {
+      try {
+        await runArtGenerateOnRunningHub({
+          runToken,
+          refs,
+          runMode,
+          prompt: compiledPrompt.text,
+          settingsSnapshot,
+          batchCount: normalizeArtGenerateCount(settingsSnapshot.count),
+          providerLabel,
+          prepared,
+          options
+        });
+      } catch (error) {
+        if (!isArtGenerateRunCurrent(runToken)) return;
+        ART_GENERATE_STATE.running = false;
+        const failure = artGenerateBatchProgress(String(error && error.message || error || "生成失败"), 0);
+        clearArtGenerateBatch();
+        setArtGenerateProgress(failure.label, failure.pct);
+        setArtGenerateStatus(failure.label, true);
+        clearArtGenerateRunIfCurrent(runToken);
+      } finally {
+        try { authorizationContext?.release?.(); } catch {}
+      }
+      return;
+    }
     // 生成用时 on the source card: the first image counts from the click, each next one from the last result.
     let artImageStartedAt = Date.now();
     ART_GENERATE_STATE.running = true;
@@ -86697,6 +86697,89 @@
         authorizationContext?.release?.();
       } catch {}
     }
+  }
+
+  async function runArtGenerateOnRunningHub(ctx) {
+    const api = window.electronAPI;
+    if (!api || typeof api.runningHubGptImage !== "function") throw new Error("云端出图接口未就绪，请刷新页面后重试");
+    const batchCount = Math.max(1, Math.round(Number(ctx.batchCount) || 1));
+    ART_GENERATE_STATE.running = true;
+    ART_GENERATE_STATE.error = "";
+    ART_GENERATE_STATE.batchIndex = 0;
+    ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
+    if (!ctx.prepared?.agentRun) ART_GENERATE_STATE.count = batchCount;
+    setArtGenerateProgress("正在连接 GPT（云）...", 0.08);
+    setArtGenerateStatus("正在连接 GPT（云）...");
+    const settings = window.NovaFlowArtGenerateModels?.workflowSettings?.(ctx.settingsSnapshot, "gpt", ctx.runMode) || {};
+    const images = ctx.runMode === "img2img"
+      ? ctx.refs.map((item) => ({ dataUrl: item.dataUrl, filename: item.name, mime: item.mimeType }))
+      : [];
+    let artImageStartedAt = Date.now();
+    let lastPromptId = "";
+    for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+      if (!isArtGenerateRunCurrent(ctx.runToken)) return;
+      ctx.prepared?.assertCurrent?.();
+      ART_GENERATE_STATE.batchIndex = batchIndex;
+      setArtGenerateProgress("正在生成...", 0.35);
+      setArtGenerateStatus("正在生成...");
+      const sent = await api.runningHubGptImage({
+        mode: ctx.runMode,
+        prompt: ctx.prompt,
+        settings,
+        images,
+        count: 1,
+        width: ctx.settingsSnapshot.width,
+        height: ctx.settingsSnapshot.height
+      });
+      const payload = sent?.result && typeof sent.result === "object" ? sent.result : sent;
+      if (!sent || sent.ok === false || payload?.ok === false) throw new Error(String(payload?.error || sent?.error || "云端出图失败"));
+      const image = Array.isArray(payload.images) ? payload.images[0] : null;
+      const imageUrl = String(image?.imageDataUrl || payload?.imageDataUrl || "");
+      if (!imageUrl) throw new Error(String(payload?.error || "云端出图没有返回图片"));
+      const promptId = String(image?.taskId || payload?.promptId || `rh_${Date.now()}`);
+      lastPromptId = promptId;
+      window.NovaFlowArtGenerateCreditPricing?.recordSettlement?.({
+        promptId,
+        settlement: { status: Number(payload.charged) > 0 ? "settled" : "not_charged", charge_amount: payload.charged },
+        credits: { deducted: payload.charged, balance: payload.remaining }
+      });
+      const result = {
+        id: `artgen_${Date.now().toString(36)}`,
+        kind: "original",
+        source: "generate",
+        mode: ctx.runMode,
+        provider: "gpt",
+        nsfw: !!ctx.settingsSnapshot.nsfw,
+        name: `${promptId}.png`,
+        imageUrl,
+        createdAt: new Date().toISOString(),
+        generationElapsedSec: Math.max(1, Math.round((Date.now() - artImageStartedAt) / 1000)),
+        workflow: "runninghub-gpt-image",
+        charged: Number(payload.charged) || 0,
+        remaining: payload.remaining
+      };
+      if (ctx.options?.drawingPrepared && window.NovaFlowArtDirection?.review) {
+        const review = await window.NovaFlowArtDirection.review(ctx.options.drawingPrepared, imageUrl, () => {});
+        result.artDirection = {
+          schema: ctx.options.drawingPrepared.plan?.schema,
+          originalPrompt: ctx.options.drawingPrepared.originalPrompt,
+          plan: ctx.options.drawingPrepared.plan,
+          review,
+          corrections: 0,
+          references: (ctx.options.drawingPrepared.references || []).map((ref) => ({ sourceNumber: ref.sourceNumber, role: ref.role, treatment: ref.treatment, target: ref.target }))
+        };
+      }
+      artImageStartedAt = Date.now();
+      ART_GENERATE_STATE.results.unshift(result);
+      ART_GENERATE_STATE.selectedResultId = result.id;
+      if (ctx.options?.uiPrepared) window.NovaFlowUiDesignDrawing?.recordResult?.(result, ctx.options.uiPrepared);
+    }
+    clearArtGenerateBatch();
+    ART_GENERATE_STATE.running = false;
+    const done = batchCount > 1 ? `已生成 ${batchCount} 张` : "生成完成";
+    setArtGenerateProgress(done, 1, { promptId: lastPromptId });
+    setArtGenerateStatus(done);
+    clearArtGenerateRunIfCurrent(ctx.runToken);
   }
 
   function createArtGenerateExecutionBridge() {
