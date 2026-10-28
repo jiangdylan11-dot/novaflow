@@ -57,7 +57,6 @@ function registerLicenseAdminIpc() {
 
   registerAdminDataList("admin:data:users:list", adminData.getAdminUsers);
   registerAdminDataList("admin:data:credits:list", adminData.getAdminCredits);
-  registerAdminDataList("admin:data:credit_logs:list", adminData.getAdminCreditLogs);
   registerAdminDataList("admin:data:ai_providers:list", adminData.getAdminAiProviders);
   registerAdminDataList("admin:data:ai_models:list", adminData.getAdminAiModels);
   registerAdminDataList("admin:data:ai_tasks:list", adminData.getAdminAiTasks);
@@ -123,7 +122,6 @@ function registerLicenseAdminIpc() {
       return { ok: false, error: String(err?.message || err) };
     }
   });
-  registerAdminDataList("admin:provider:comfyui:status", adminData.getAdminComfyUiProviderStatus);
   registerAdminDataList("admin:provider:grok:status", adminData.getAdminGrokProviderStatus);
   registerAdminDataList("admin:provider:runninghub:status", adminData.getAdminRunningHubProviderStatus);
   registerAdminDataList("admin:provider:runninghub:check", () => adminData.getAdminRunningHubProviderStatus({ checkAccount: true }));
@@ -172,15 +170,6 @@ function registerLicenseAdminIpc() {
     try {
       const result = await adminData.adjustAdminUserCredits(payload);
       return { ok: result?.ok !== false && result?.status !== "error", result };
-    } catch (err) {
-      return { ok: false, error: String(err?.message || err) };
-    }
-  });
-
-  ipcMain.handle("admin:data:provider_budget:set", async () => {
-    try {
-      const result = await adminData.setAdminProviderBudget();
-      return { ok: false, result, error: result?.error || "ComfyUI 手动总余额已退出后台配置，不再录入" };
     } catch (err) {
       return { ok: false, error: String(err?.message || err) };
     }

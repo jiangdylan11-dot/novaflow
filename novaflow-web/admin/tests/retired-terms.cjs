@@ -62,6 +62,22 @@ assert(!adminData.includes("const mockData"), "mockData fixture must not be rend
 assert(!files["license-admin-gui/renderer.js"].includes("mock 数据"), "renderer must not label fake rows as data");
 assert(!files["license-admin-gui/renderer.js"].includes("getAdminCreditLogs"), "dashboard must not read credit_logs");
 assert(!files["license-admin-gui/renderer.js"].includes("getAdminComfyUiProviderStatus"), "dashboard must not probe cloud Comfy");
+
+const preload = fs.readFileSync("license-admin-gui/preload.js", "utf8");
+const ipc = fs.readFileSync("license-admin-gui/ipc.js", "utf8");
+const retiredIpc = [
+  ["getAdminCreditLogs", "admin:data:credit_logs:list"],
+  ["getAdminComfyUiProviderStatus", "admin:provider:comfyui:status"],
+  ["setAdminProviderBudget", "admin:data:provider_budget:set"]
+];
+for (const [bridge, channel] of retiredIpc) {
+  assert(!preload.includes(bridge), `preload still exports ${bridge}`);
+  assert(!preload.includes(channel), `preload still invokes ${channel}`);
+  assert(!ipc.includes(channel), `ipc still registers ${channel}`);
+}
+for (const symbol of ["function getAdminCreditLogs", "function getAdminComfyUiProviderStatus", "function setAdminProviderBudget", "function getClientCreditLogs"]) {
+  assert(!adminData.includes(symbol), `admin-data still defines ${symbol}`);
+}
 assert(files["license-admin-gui/index.html"].includes("积分流水"), "member page should point at the credit ledger");
 assert(files["license-admin-gui/index.html"].includes("RunningHub 余额"), "dashboard should show the domestic balance");
 assert(!files["license-admin-gui/art-knowledge-review.js"].includes("showModal"));

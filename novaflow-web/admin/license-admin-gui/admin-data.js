@@ -1,7 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
 const childProcess = require("child_process");
-const http = require("http");
-const https = require("https");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
 const {
@@ -27,8 +25,6 @@ const DEFAULT_LIMIT = 100;
 const ERROR_PREFIX = "Supabase Error";
 const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
 const DEFAULT_GROK_MODEL = DEFAULT_RUNNINGHUB_LLM_MODEL;
-const COMFYUI_USER_PATH = "/api/user";
-const COMFYUI_TIMEOUT_MS = 10000;
 const PROVIDER_QUOTA_PREFIX = "provider_quota_";
 const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
 const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
@@ -823,102 +819,6 @@ function parseSystemSettingPayload(payload) {
   return { key, value };
 }
 
-function requestJson(urlString, headers = {}, timeoutMs = COMFYUI_TIMEOUT_MS) {
-  return new Promise((resolve, reject) => {
-    let url;
-    try {
-      url = new URL(urlString);
-    } catch {
-      reject(new Error("invalid provider base URL"));
-      return;
-    }
-    const transport = url.protocol === "http:" ? http : url.protocol === "https:" ? https : null;
-    if (!transport) {
-      reject(new Error("provider base URL must use http or https"));
-      return;
-    }
-    const req = transport.request(
-      url,
-      {
-        method: "GET",
-        headers,
-        timeout: timeoutMs
-      },
-      (res) => {
-        const chunks = [];
-        let size = 0;
-        res.on("data", (chunk) => {
-          size += chunk.length;
-          if (size > 1024 * 1024) {
-            req.destroy(new Error("response too large"));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        res.on("end", () => {
-          const text = Buffer.concat(chunks).toString("utf8");
-          let body = null;
-          if (text) {
-            try {
-              body = JSON.parse(text);
-            } catch {
-              body = { raw: text };
-            }
-          }
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            const msg = body?.error || body?.message || res.statusMessage || "request failed";
-            const err = new Error(`HTTP ${res.statusCode}: ${msg}`);
-            err.statusCode = res.statusCode;
-            reject(err);
-            return;
-          }
-          resolve({ statusCode: res.statusCode, body });
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy(new Error("request timeout")));
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-function readNestedValue(source, paths) {
-  for (const path of paths) {
-    const value = path.split(".").reduce((cursor, key) => {
-      if (cursor && Object.prototype.hasOwnProperty.call(cursor, key)) return cursor[key];
-      return undefined;
-    }, source);
-    if (value !== undefined && value !== null && value !== "") return value;
-  }
-  return undefined;
-}
-
-function extractComfyUiBalance(userInfo) {
-  const value = readNestedValue(userInfo || {}, [
-    "credits",
-    "credit_balance",
-    "balance",
-    "remaining_credits",
-    "billing.credits",
-    "billing.balance"
-  ]);
-  if (value === undefined) {
-    return {
-      supported: false,
-      value: null,
-      unit: "credits",
-      text: "官方余额 API 未开放"
-    };
-  }
-  const numeric = Number(value);
-  return {
-    supported: true,
-    value,
-    unit: "credits",
-    text: Number.isFinite(numeric) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(numeric) : String(value)
-  };
-}
-
 function getAdminClient() {
   const env = readAdminSupabaseEnv();
   if (!env.configured) return { client: null, env, status: "mock" };
@@ -1496,10 +1396,6 @@ async function purgeAdminWebTasks(payload) {
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
-}
-
-function getAdminCreditLogs() {
-  return disabledTableResult("credit_logs", "积分流水在 credit_ledger，请到 AI 服务查询");
 }
 
 function getAdminAiProviders() {
@@ -2261,16 +2157,6 @@ async function resetAdminUserPassword(payload) {
     });
     return result;
   }
-}
-
-async function setAdminProviderBudget() {
-  const operation = "provider_budget.set";
-  const result = localWriteErrorResult(operation, new Error("ComfyUI 手动总余额已退出后台配置，不再录入"), 0);
-  logAdminData("info", "set provider budget refused", {
-    source: result.source,
-    status: result.status
-  });
-  return result;
 }
 
 async function settleAdminComfyUsage(payload) {
@@ -3497,10 +3383,6 @@ async function getClientAiConfig() {
   };
 }
 
-function getClientCreditLogs(userId) {
-  return disabledTableResult("credit_logs", "客户端消费记录已在轻量后台模式中关闭");
-}
-
 function getClientAiTasks(userId) {
   return disabledTableResult("ai_tasks", "客户端任务记录已在轻量后台模式中关闭");
 }
@@ -3533,114 +3415,6 @@ async function recordClientAiTaskUsage(payload, user) {
     error: "recordUsage 已关闭，不写任务记录或消费记录。",
     durationMs: Date.now() - startedAt
   };
-}
-
-async function getAdminComfyUiProviderStatus() {
-  const startedAt = Date.now();
-  const env = readAdminComfyUiEnv();
-  const endpoint = `GET ${env.baseUrl}${COMFYUI_USER_PATH}`;
-  if (!env.configured) {
-    const durationMs = Date.now() - startedAt;
-    const result = {
-      source: "provider",
-      provider_key: "comfyui",
-      status: "mock",
-      configured: false,
-      secretConfigured: env.secretConfigured,
-      baseUrl: env.baseUrl,
-      hasApiKeySecretRef: env.hasApiKeySecretRef,
-      connected: false,
-      accountStatus: "not_configured",
-      balance: extractComfyUiBalance(null),
-      models: {
-        supported: false,
-        records: [],
-        text: "模型列表检测未启用；模型选择由 NovaFlow 客户端负责"
-      },
-      endpoint,
-      durationMs,
-      reason: env.hasApiKeySecretRef ? "comfyui_secret_ref_without_secret_resolver" : "comfyui_env_missing"
-    };
-    logAdminData("info", "check comfyui provider", {
-      source: result.source,
-      status: result.status,
-      configured: result.configured,
-      secretConfigured: result.secretConfigured,
-      durationMs,
-      reason: result.reason
-    });
-    return result;
-  }
-
-  try {
-    const response = await requestJson(`${env.baseUrl}${COMFYUI_USER_PATH}`, {
-      "X-API-Key": env.apiKey,
-      Accept: "application/json",
-      "User-Agent": "NovaFlow-Admin/1.0"
-    });
-    const durationMs = Date.now() - startedAt;
-    const body = response.body || {};
-    const result = {
-      source: "provider",
-      provider_key: "comfyui",
-      status: "connected",
-      configured: true,
-      secretConfigured: true,
-      baseUrl: env.baseUrl,
-      hasApiKeySecretRef: env.hasApiKeySecretRef,
-      connected: true,
-      accountStatus: String(body.status || "unknown"),
-      balance: extractComfyUiBalance(body),
-      models: {
-        supported: false,
-        records: [],
-        text: "模型列表检测未启用；模型选择由 NovaFlow 客户端负责"
-      },
-      endpoint,
-      durationMs
-    };
-    logAdminData("info", "check comfyui provider", {
-      source: result.source,
-      status: result.status,
-      accountStatus: result.accountStatus,
-      durationMs
-    });
-    return result;
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const result = {
-      source: "provider",
-      provider_key: "comfyui",
-      status: "error",
-      configured: true,
-      secretConfigured: true,
-      baseUrl: env.baseUrl,
-      hasApiKeySecretRef: env.hasApiKeySecretRef,
-      connected: false,
-      accountStatus: "unknown",
-      balance: {
-        supported: false,
-        value: null,
-        unit: "credits",
-        text: "读取失败"
-      },
-      models: {
-        supported: false,
-        records: [],
-        text: "读取失败"
-      },
-      endpoint,
-      durationMs,
-      error: `ComfyUI Error: ${sanitizeError(err)}`
-    };
-    logAdminData("error", "check comfyui provider failed", {
-      source: result.source,
-      status: result.status,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
 }
 
 async function getAdminGrokProviderStatus() {
@@ -3885,7 +3659,6 @@ module.exports = {
   startDomesticBalanceRefresh,
   getAdminUsers,
   getAdminCredits,
-  getAdminCreditLogs,
   getAdminAiProviders,
   getAdminAiModels,
   getAdminAiTasks,
@@ -3904,7 +3677,6 @@ module.exports = {
   upsertAdminAiProvider,
   upsertAdminAiModel,
   upsertAdminSystemSetting,
-  setAdminProviderBudget,
   settleAdminComfyUsage,
   adjustAdminProviderBudget,
   setAdminProviderRuntimeConfig,
@@ -3918,11 +3690,9 @@ module.exports = {
   recordAdminProviderCallUsage,
   adjustAdminUserCredits,
   getClientAiConfig,
-  getClientCreditLogs,
   getClientAiTasks,
   recordClientGatewayTaskDraft,
   recordClientAiTaskUsage,
-  getAdminComfyUiProviderStatus,
   getAdminGrokProviderStatus,
   getAdminGpuWorkers,
   getAdminWebTaskUsage,

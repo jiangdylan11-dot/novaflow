@@ -10502,19 +10502,6 @@ async function handleClientBootstrap(req, res, url) {
     return;
   }
 
-  const includeProviderStatus = readBoolSearchParam(url, [
-    "includeProviderStatus",
-    "include_provider_status",
-    "providerStatus",
-    "provider_status"
-  ]);
-  let providerStatus = null;
-  if (includeProviderStatus) {
-    providerStatus = {
-      comfyui: normalizeResult(await adminData.getAdminComfyUiProviderStatus())
-    };
-  }
-
   sendJson(res, 200, {
     ok: true,
     mode: "lite",
@@ -10538,7 +10525,7 @@ async function handleClientBootstrap(req, res, url) {
       return acc;
     }, {}),
     ai: normalizeResult(aiConfig),
-    providerStatus,
+    providerStatus: null,
     gateway: {
       endpoint: "POST /api/ai/tasks",
       usageEndpoint: "POST /api/ai/tasks/usage",
@@ -11467,19 +11454,8 @@ async function handleAdminRoute(req, res, pathName) {
     sendJson(res, 200, await listHandler(adminData.getAdminCredits));
     return;
   }
-  if (req.method === "GET" && pathName === "/api/admin/credit-logs") {
-    sendJson(res, 200, await listHandler(adminData.getAdminCreditLogs));
-    return;
-  }
   if (req.method === "GET" && pathName === "/api/admin/ai-providers") {
     sendJson(res, 200, await listHandler(adminData.getAdminAiProviders));
-    return;
-  }
-  if (
-    req.method === "GET" &&
-    (pathName === "/api/admin/providers/comfyui/status" || pathName === "/api/admin/ai-providers/comfyui/status")
-  ) {
-    sendJson(res, 200, normalizeResult(await adminData.getAdminComfyUiProviderStatus()));
     return;
   }
   if (req.method === "GET" && pathName === "/api/admin/ai-models") {
