@@ -794,11 +794,19 @@
         base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(ref.name),
         {
           method: 'PUT',
-          headers: { 'content-type': mimeFor(ref.name), 'x-novaflow-grant': grant.token },
+          headers: {
+            'content-type': held.mimeType || mimeFor(ref.name),
+            'x-novaflow-grant': grant.token,
+            ...(held.slot ? { 'x-novaflow-upload-slot': held.slot } : {})
+          },
           body: held.bytes
         }
       );
-      if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);
+      if (!res.ok) {
+        let message = ref.name + ' 上传返回 ' + res.status;
+        try { const body = await res.json(); if (body && body.error) message = String(body.error); } catch (_) {}
+        throw new Error(message);
+      }
       uploads.delete(ref.name);
     }
   }
@@ -1203,8 +1211,33 @@
       // panel said only 下发失败. Give such a name an ASCII head instead.
       if (!/^[A-Za-z0-9]/.test(safe)) safe = 'ref-' + safe.replace(/^[._-]+/, '');
       pendingUploads.push({ name: safe, bytes: (bytes && bytes.byteLength) || 0, kind: 'image' });
-      uploads.set(safe, { bytes: bytes });
-      return { ok: true, status: 200, result: { name: safe, subfolder: '', type: 'input' } };
+      uploads.set(safe, { bytes: bytes, kind: 'image', mimeType: mimeFor(safe) });
+      return { ok: true, status: 200, result: { name: safe, subfolder: '', type: 'input', kind: 'image' } };
+    },
+
+    // Video and audio use this path. runtimeUploadImage stays an image upload
+    // and must not be given those files.
+    async runtimeUploadFile(payload = {}) {
+      const name = payload.fileName || payload.name;
+      const kind = String(payload.kind || '');
+      if (!['image', 'video', 'audio'].includes(kind)) return { ok: false, error: '不支持的文件类型' };
+      const bytes = payload.bytes;
+      const raw = String(name || 'reference.bin');
+      const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+      let safe = cleaned;
+      if (cleaned !== raw) {
+        let h = 0;
+        for (let i = 0; i < raw.length; i += 1) h = (h * 31 + raw.charCodeAt(i)) >>> 0;
+        const tag = h.toString(36).slice(0, 6);
+        const dot = cleaned.lastIndexOf('.');
+        safe = dot > 0 ? cleaned.slice(0, dot) + '_' + tag + cleaned.slice(dot) : cleaned + '_' + tag;
+      }
+      if (!/^[A-Za-z0-9]/.test(safe)) safe = 'ref-' + safe.replace(/^[._-]+/, '');
+      const mimeType = String(payload.mimeType || mimeFor(safe));
+      const slot = String(payload.slot || '');
+      pendingUploads.push({ name: safe, bytes: (bytes && bytes.byteLength) || 0, kind });
+      uploads.set(safe, { bytes, kind, mimeType, slot });
+      return { ok: true, status: 200, result: { name: safe, kind, slot } };
     },
 
     // ---- account ----------------------------------------------------------

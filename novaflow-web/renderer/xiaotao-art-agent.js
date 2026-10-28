@@ -820,8 +820,9 @@
       const history = (controller.state.history || []).map(item => item?.content || '').join('\n');
       const staged = (controller.state.staged || []).filter(item => item.status === 'ready');
       let drawing = 0; try {drawing = bridge.captureChat().images.length;} catch {}
-      const files = [...Array.from({length:Math.max(drawing, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio')];
-      const quote = prices.estimateXiaotaoOnline({text:input.value, history, files});
+      const captions = staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => `参考${item.kind === 'video' ? '视频' : '音频'}：${item.name}`);
+      const files = Array.from({length:Math.max(drawing, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'}));
+      const quote = prices.estimateXiaotaoOnline({text:[input.value, ...captions].filter(Boolean).join('\n'), history, files});
       estimateLabel.hidden = !quote?.credits;
       estimateLabel.textContent = quote?.credits ? `约${quote.credits}分` : '';
     }

@@ -37,13 +37,13 @@ await test('the estimate grows with text and with image, video and audio, and is
   const video = estimateXiaotaoOnlineCredits({ text: '你好', files: [{ kind: 'video' }] });
   const audio = estimateXiaotaoOnlineCredits({ text: '你好', files: [{ kind: 'audio' }] });
   const both = estimateXiaotaoOnlineCredits({ text: '你好', files: [{ kind: 'image' }, { kind: 'video' }] });
+  const namedOnly = estimateXiaotaoOnlineCredits({ text: '你好', system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }) });
   assert.ok(longer.credits >= text.credits);
   assert.ok(image.credits > text.credits);
-  assert.ok(video.credits > image.credits);
-  assert.ok(audio.credits > text.credits);
-  assert.equal(both.credits, estimateXiaotaoOnlineCredits({ text: '你好', files: [{ kind: 'video' }, { kind: 'image' }] }).credits);
-  assert.equal(text.credits - 0, text.credits);
-  assert.notEqual(image.credits - text.credits, video.credits - text.credits);
+  assert.equal(video.tokens, namedOnly.tokens);
+  assert.equal(audio.tokens, namedOnly.tokens);
+  assert.equal(both.tokens, image.tokens);
+  assert.ok(image.tokens - namedOnly.tokens === 2500);
   assert.equal(estimateXiaotaoOnlineCredits({ text: '', files: [] }).credits, 0);
 });
 
@@ -124,10 +124,24 @@ await test('companion reserves the estimate, settles the RH amount, and releases
   });
   assert.equal(events[0][0], 'reserve');
   assert.equal(events[0][1], 'xiaotao-vision');
-  assert.equal(events[0][2], estimateXiaotaoOnlineCredits({ text: '看一下', files: [{ kind: 'image' }, { kind: 'video' }] }).credits);
+  assert.equal(events[0][2], estimateXiaotaoOnlineCredits({ text: '看一下\n参考视频：clip.mp4', files: [{ kind: 'image' }], system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }), outputTokens: 2048 }).credits);
   assert.deepEqual(events[1], ['settle', 'xiaotao-vision', Math.ceil(0.01 * 211 * 2), 0.01, 'rh_consume_money']);
   assert.equal(result.quota.settled_credits, Math.ceil(0.01 * 211 * 2));
   assert.equal(result.quota.billing_mode, 'token');
+  const videoOnly = [];
+  const videoService = createCompanionChat({
+    provider: { baseUrl: 'https://provider.test/v1', model: 'chat-fixture', apiKey: 'fixture-private' },
+    charge: createOnlineAiCharge({
+      reserve: async (input) => { videoOnly.push(input); return { status: 'reserved', idempotent: false, amount: 1, credits: input.estimatedCredits }; },
+      settle: async (input) => ({ settled_credits: input.settledCredits }),
+      release: async () => ({ status: 'released' })
+    }),
+    fetchImpl: async () => Response.json({ id: 'cmpl-video', model: 'chat-fixture', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: '已记下视频。' } }], usage: { thirdPartyConsumeMoney: '0.0100' } })
+  });
+  await videoService.reply({ user: { id: 'user' }, payload: { requestId: 'video-only-1234', mode: 'chat', promptLanguage: 'en', message: '看一下', history: [], uploads: [{ kind: 'video', name: 'clip.mp4' }] } });
+  assert.equal(videoOnly[0].feature, 'xiaotao-text');
+  assert.equal(videoOnly[0].estimatedCredits, estimateXiaotaoOnlineCredits({ text: '看一下\n参考视频：clip.mp4', files: [], system: xiaotaoOnlineSystemPrompt({ vision: true, promptLanguage: 'en' }), outputTokens: 2048 }).credits);
+  assert.ok(videoOnly[0].estimatedCredits < estimateXiaotaoOnlineCredits({ text: '看一下', files: [{ kind: 'image' }] }).credits);
   let released = 0;
   const failing = createCompanionChat({
     provider: { baseUrl: 'https://provider.test/v1', model: 'fixture', apiKey: 'secret' },

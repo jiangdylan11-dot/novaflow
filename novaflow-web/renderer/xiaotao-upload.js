@@ -80,6 +80,43 @@
     if (size > known.maxBytes) return {ok:false, message:`${name} 超过 ${known.maxLabel}`};
     return {ok:true, name, ext, kind:known.kind, mimeType:mime, size, maxBytes:known.maxBytes};
   }
+  // Same rules as packages/shared/src/xiaotao-upload-guard.mjs. The worker gateway
+  // repeats them when the bytes arrive, so this check is not the only gate.
+  function inspectWorkerUpload(input) {
+    const fileName = String(input?.name || '未命名文件');
+    const ext = extensionOf(fileName);
+    const known = formatByExtension(ext);
+    if (!known) return {ok:false, message:`不支持 ${fileName}：只能上传 PNG、JPG、JPEG、WEBP、MP4、MOV、WEBM、MP3、WAV、M4A、AAC、OGG、FLAC`};
+    const slot = DESTINATIONS.find(item => item.id === input?.slot);
+    if (!slot) return {ok:false, message:`${fileName} 没有目标位置`};
+    if (!slot.accepts.includes(known.kind)) return {ok:false, message:`${fileName} 不能放到${slot.label}`};
+    const mime = mimeOf(input?.mimeType);
+    if (!mime || !known.mimes.includes(mime)) return {ok:false, message:`${fileName} 的扩展名和文件类型不一致`};
+    const bytes = input?.bytes;
+    const length = Number(bytes?.byteLength ?? bytes?.length);
+    if (!Number.isFinite(length) || length <= 0) return {ok:false, message:`${fileName} 是空文件`};
+    if (length > known.maxBytes) return {ok:false, message:`${fileName} 超过 ${known.maxLabel}`};
+    if (!magicMatches(ext, bytes)) return {ok:false, message:`${fileName} 的文件内容与 ${ext.toUpperCase()} 不符`};
+    return {ok:true, name:fileName, ext, kind:known.kind, mimeType:mime, size:length, slot:slot.id};
+  }
+  function byteAt(bytes, index) { const value = bytes?.[index]; return Number.isInteger(value) ? value : 0; }
+  function ascii(bytes, start, length) { let text = ''; for (let i = 0; i < length; i += 1) text += String.fromCharCode(byteAt(bytes, start + i)); return text; }
+  function magicMatches(ext, bytes) {
+    const brand = ascii(bytes, 4, 4) === 'ftyp' ? ascii(bytes, 8, 4).toLowerCase() : '';
+    if (ext === 'png') return ascii(bytes, 0, 8) === '\x89PNG\r\n\x1a\n';
+    if (ext === 'jpg' || ext === 'jpeg') return byteAt(bytes, 0) === 0xff && byteAt(bytes, 1) === 0xd8 && byteAt(bytes, 2) === 0xff;
+    if (ext === 'webp') return ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WEBP';
+    if (ext === 'mp4') return ['isom', 'iso2', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'dash', 'msnv', 'mmp4'].includes(brand);
+    if (ext === 'mov') return brand === 'qt  ' || ['moov', 'mdat', 'wide', 'free'].includes(ascii(bytes, 4, 4));
+    if (ext === 'webm') return byteAt(bytes, 0) === 0x1a && byteAt(bytes, 1) === 0x45 && byteAt(bytes, 2) === 0xdf && byteAt(bytes, 3) === 0xa3 && ascii(bytes, 0, 64).toLowerCase().includes('webm');
+    if (ext === 'mp3') return ascii(bytes, 0, 3) === 'ID3' || (byteAt(bytes, 0) === 0xff && (byteAt(bytes, 1) & 0xe0) === 0xe0);
+    if (ext === 'wav') return ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WAVE';
+    if (ext === 'm4a') return ['m4a ', 'm4b ', 'm4p ', 'mp4a'].includes(brand);
+    if (ext === 'aac') return byteAt(bytes, 0) === 0xff && (byteAt(bytes, 1) === 0xf1 || byteAt(bytes, 1) === 0xf9);
+    if (ext === 'ogg') return ascii(bytes, 0, 4) === 'OggS';
+    if (ext === 'flac') return ascii(bytes, 0, 4) === 'fLaC';
+    return false;
+  }
   function acceptsKind(destination, kind) {
     return Boolean(destination && destination.accepts.includes(kind));
   }
@@ -213,7 +250,7 @@
         const file = item?.file;
         if (!destination || !file) throw new Error('没有可放入的文件');
         if (!acceptsKind(destination, item.kind)) throw new Error(`${item.name} 不能放到${destination.label}`);
-        const uploadedName = await stageWorkerUpload(scope, file);
+        const uploadedName = await stageWorkerUpload(scope, file, destination);
         const doc = scope.document;
         switchPrimary(doc, destination.module);
         if (destination.id === 'img2img') {
@@ -233,7 +270,10 @@
           const limit = MULTI_LIMITS[item.kind] || 1;
           if (placed.filter(entry => entry.id === destination.id && entry.kind === item.kind).length >= limit) throw new Error(`${item.kind === 'video' ? '参考视频' : item.kind === 'audio' ? '参考音频' : '参考图'}已满`);
           const media = scope.NovaFlowH3Media;
-          if (typeof media?.importFiles === 'function') await media.importFiles(item.kind, [file]);
+          if (typeof media?.importFiles === 'function') {
+            const imported = await media.importFiles(item.kind, [file], {representation:'object-url'});
+            if (imported?.errors?.length) throw new Error(imported.errors.map(entry => entry.message).filter(Boolean).join('；') || `${item.name} 导入失败`);
+          }
           else {
             const fallback = item.kind === 'video' ? ['视频参考'] : item.kind === 'audio' ? ['声音参考'] : ['参考图1', '参考图'];
             const node = slotNode(doc, fallback);
@@ -255,19 +295,21 @@
       }
     };
   }
-  async function stageWorkerUpload(scope, file) {
+  async function stageWorkerUpload(scope, file, destination) {
     const api = scope.electronAPI;
-    if (typeof api?.pickXiaotaoUploads === 'function' || typeof api?.runtimeUploadImage !== 'function') return null;
-    if (Number(file?.size) > MEDIA_MAX_BYTES) throw new Error(`${file?.name || '文件'} 超过 64MB`);
-    const bytes = typeof file.arrayBuffer === 'function' ? await file.arrayBuffer() : file;
-    const result = await api.runtimeUploadImage(file.name, bytes);
+    if (typeof api?.pickXiaotaoUploads === 'function' || typeof api?.runtimeUploadFile !== 'function') return null;
+    const bytes = typeof file.arrayBuffer === 'function' ? new Uint8Array(await file.arrayBuffer()) : file;
+    const verdict = inspectWorkerUpload({name:file?.name, mimeType:file?.type, bytes, slot:destination?.id});
+    if (!verdict.ok) throw new Error(verdict.message);
+    const result = await api.runtimeUploadFile({fileName:file.name, bytes, kind:verdict.kind, mimeType:verdict.mimeType, slot:destination.id});
     if (!result?.ok) throw new Error(result?.error || `${file.name} 上传失败`);
+    if (result.result?.kind && result.result.kind !== verdict.kind) throw new Error(`${file.name} 不能按图片上传`);
     return result.result?.name || file.name;
   }
 
   const api = Object.freeze({
     FORMATS, DESTINATIONS, EXTENSIONS, MULTI_LIMITS, IMAGE_MAX_BYTES, MEDIA_MAX_BYTES,
-    dialogFilters, fileAccept, inspectUpload, planRoutes, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
+    dialogFilters, fileAccept, inspectUpload, inspectWorkerUpload, planRoutes, destinationById, choiceList, askText, acceptsKind, filesFromIpc, createUploadHost
   });
   root.NovaFlowXiaotaoUpload = api;
   if (typeof module === 'object' && module.exports) module.exports = api;

@@ -1,8 +1,15 @@
 // 小桃上传：对话框走 IPC，文件先停在输入框，发送时才按意图放进参考位。
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createContext, runInContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
+import { createGateway } from '../../worker/src/gateway/gateway.mjs';
+import { inspectWorkerUpload } from '../../packages/shared/src/xiaotao-upload-guard.mjs';
+import { issueGrantToken } from '../../packages/shared/src/tokens.mjs';
+import { GRANT_OP } from '../../packages/shared/src/protocol.mjs';
 
 const root = new URL('../../', import.meta.url);
 const workspace = new URL('../../../', import.meta.url);
@@ -40,7 +47,7 @@ function load() {
     File, Blob, Uint8Array,
     localStorage: { getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) },
     __NovaFlowArtGenerate: runtime,
-    NovaFlowH3Media: { async importFiles(kind, files) { imports.push({ kind, names: files.map(item => item.name) }); } }
+    NovaFlowH3Media: { async importFiles(kind, files, options) { imports.push({ kind, names: files.map(item => item.name), representation: options?.representation }); const dataUrl = await files[0]?.text?.(); return { errors: [], imported: files.map(item => ({ kind, dataUrl: String(dataUrl || '') })) }; } }
   };
   sandbox.window = sandbox;
   const vm = createContext(sandbox);
@@ -353,9 +360,9 @@ await test('the web page opens a file input, stages until send, then uses the wo
   const uploads = [];
   const chats = [];
   env.sandbox.electronAPI = {
-    async runtimeUploadImage(name, bytes) {
-      uploads.push({ name, size: bytes.byteLength });
-      return { ok: true, result: { name } };
+    async runtimeUploadFile(payload) {
+      uploads.push({ name: payload.fileName, size: payload.bytes.byteLength, kind: payload.kind, slot: payload.slot });
+      return { ok: true, result: { name: payload.fileName, kind: payload.kind, slot: payload.slot } };
     },
     async artAgentChat(payload) {
       chats.push(payload);
@@ -402,29 +409,112 @@ await test('the web page opens a file input, stages until send, then uses the wo
     api: () => env.sandbox.electronAPI,
     uploadHost: host
   });
-  await controller.stageUploads([file('web.png', 'image/png'), file('clip.mp4', 'video/mp4')]);
+  await controller.stageUploads([new File([magic('png')], 'web.png', { type: 'image/png' }), new File([magic('mp4')], 'clip.mp4', { type: 'video/mp4' })]);
   assert.equal(controller.setProvider('api'), true);
   assert.equal(await controller.send('放进多参视频'), true);
   assert.equal(JSON.stringify(uploads.map(item => item.name)), JSON.stringify(['web.png', 'clip.mp4']));
-  assert.equal(uploads.every(item => item.size === 8), true);
+  assert.equal(JSON.stringify(uploads.map(item => item.kind)), JSON.stringify(['image', 'video']));
+  assert.equal(uploads.every(item => item.slot === 'multi_reference'), true);
+  assert.equal(env.imports.every(item => item.representation === 'object-url'), true);
+  assert.equal(uploads[0].size, magic('png').byteLength);
+  assert.equal(uploads[1].size, magic('mp4').byteLength);
   assert.equal(JSON.stringify(host.placed.map(item => item.id)), JSON.stringify(['multi_reference', 'multi_reference']));
   assert.equal(doc.resource.__novaflowFiles.map(item => item.name).join(), 'web.png,clip.mp4');
   assert.equal(JSON.stringify(chats[0].uploads), JSON.stringify([{ kind: 'image', name: 'web.png' }, { kind: 'video', name: 'clip.mp4' }]));
   assert.equal(chats[0].provider, 'api');
 
-  await controller.stageUploads([file('draw.png', 'image/png')]);
+  await controller.stageUploads([new File([magic('png')], 'draw.png', { type: 'image/png' })]);
   assert.equal(await controller.send('放到图生图'), true);
   assert.equal(uploads.at(-1).name, 'draw.png');
   assert.equal(host.placed.at(-1).id, 'img2img');
   assert.equal(env.sandbox.__NovaFlowArtGenerate.references()[0].name, 'draw.png');
 
-  await controller.stageUploads([file('maybe.png', 'image/png')]);
+  await controller.stageUploads([new File([magic('png')], 'maybe.png', { type: 'image/png' })]);
   assert.equal(await controller.send('这张怎么用'), true);
   const ask = controller.state.messages.findLast(item => item.choices);
   assert.equal(ask.choices.length, 5);
   assert.equal(await controller.chooseUploadDestination('image_video', ask.pendingId), true);
   assert.equal(uploads.at(-1).name, 'maybe.png');
   assert.equal(host.placed.at(-1).id, 'image_video');
+});
+
+function magic(kind) {
+  if (kind === 'png') return Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+  if (kind === 'gif') return Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0]);
+  if (kind === 'mp4') return Uint8Array.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+  return Uint8Array.from([1, 2, 3, 4]);
+}
+
+await test('the worker rejects a file the client extension check would allow, and 小桃 shows that error', async () => {
+  const env = load();
+  const uploads = [];
+  env.sandbox.electronAPI = {
+    async runtimeUploadFile(payload) { uploads.push(payload.fileName); return { ok: true, result: { name: payload.fileName, kind: payload.kind } }; },
+    async artAgentChat() { return { ok: true, data: { reply: '好', history: [] } }; }
+  };
+  env.sandbox.document = documentFor();
+  const host = env.api.createUploadHost(env.sandbox);
+  const controller = env.agent.createController({ bridge: env.agent.createBridge(), api: () => env.sandbox.electronAPI, uploadHost: host });
+  assert.equal(controller.setProvider('api'), true);
+  const fake = new File([magic('gif')], 'fake.png', { type: 'image/png' });
+  await controller.stageUploads([fake]);
+  assert.equal(await controller.send('放到图生图'), true);
+  assert.equal(uploads.length, 0);
+  assert.equal(host.placed.length, 0);
+  assert.match(controller.state.messages.map(item => item.content).join('\n'), /fake.png 的文件内容与 PNG 不符/);
+  const shared = inspectWorkerUpload({ name: 'fake.png', mimeType: 'image/png', bytes: magic('gif'), slot: 'img2img' });
+  assert.equal(shared.ok, false);
+  assert.equal(shared.message, env.api.inspectWorkerUpload({ name: 'fake.png', mimeType: 'image/png', bytes: magic('gif'), slot: 'img2img' }).message);
+  const videoOnImageSlot = inspectWorkerUpload({ name: 'clip.mp4', mimeType: 'video/mp4', bytes: magic('mp4'), slot: 'img2img' });
+  assert.equal(videoOnImageSlot.ok, false);
+  assert.match(videoOnImageSlot.message, /不能放到图生图参考图/);
+  assert.equal(inspectWorkerUpload({ name: 'clip.mp4', mimeType: 'video/mp4', bytes: magic('mp4'), slot: 'multi_reference' }).ok, true);
+  assert.equal(inspectWorkerUpload({ name: 'still.png', mimeType: 'image/png', bytes: magic('png'), slot: 'img2img' }).kind, 'image');
+});
+
+await test('多参 import keeps the file as a blob url instead of a base64 copy', async () => {
+  const sandbox = { console, crypto: webcrypto, URL: { createObjectURL(blob) { return 'blob:test/' + blob.size; } }, indexedDB: null };
+  sandbox.window = sandbox;
+  const vm = createContext(sandbox);
+  runInContext(read('renderer/ai-sequence-h3-media.js'), vm);
+  let readAsDataURL = 0;
+  const store = sandbox.NovaFlowH3Media.createStore({ async get() { return null; }, async put() {} });
+  const importer = sandbox.NovaFlowH3Media.createImporter(store, { readFile() { readAsDataURL += 1; throw new Error('should not base64'); } });
+  const blob = new File([magic('png')], 'still.png', { type: 'image/png' });
+  const result = await importer.importFiles('image', [blob], { representation: 'object-url' });
+  assert.equal(result.errors.length, 0);
+  assert.equal(readAsDataURL, 0);
+  assert.equal(result.imported[0].dataUrl, 'blob:test/' + blob.size);
+  assert.equal(result.imported[0].blob, blob);
+});
+
+await test('the worker gateway rejects a slot upload whose bytes do not match', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xiaotao-guard-'));
+  const workerId = '11111111-1111-4111-8111-111111111111';
+  const taskId = '22222222-2222-4222-8222-222222222222';
+  const grantKey = '0123456789abcdef0123456789abcdef';
+  const gateway = createGateway({ workerId, dataDir: dir, getGrantKey: async () => grantKey, logger: () => {} });
+  const port = await gateway.listen(0, '127.0.0.1');
+  try {
+    const token = await issueGrantToken({ userId: 'user', taskId, workerId, op: GRANT_OP.UPLOAD, ttlSeconds: 60 }, grantKey);
+    const rejected = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/fake.png`, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'x-novaflow-grant': token, 'x-novaflow-upload-slot': 'img2img' },
+      body: magic('gif')
+    });
+    const body = await rejected.json();
+    assert.equal(rejected.status, 400);
+    assert.match(body.error, /文件内容与 PNG 不符/);
+    const accepted = await fetch(`http://127.0.0.1:${port}/gw/tasks/${taskId}/input/still.png`, {
+      method: 'PUT',
+      headers: { 'content-type': 'image/png', 'x-novaflow-grant': token, 'x-novaflow-upload-slot': 'img2img' },
+      body: magic('png')
+    });
+    assert.equal(accepted.status, 200);
+  } finally {
+    await gateway.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 console.log(`${passed} passed, ${failed} failed`);

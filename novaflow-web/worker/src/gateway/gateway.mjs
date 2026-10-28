@@ -20,6 +20,7 @@ import { stat, mkdir, writeFile, readdir, rm } from 'node:fs/promises';
 import { join, resolve, extname, sep } from 'node:path';
 import { verifyGrantToken } from '../../../packages/shared/src/tokens.mjs';
 import { GRANT_OP, isSafeFilename } from '../../../packages/shared/src/protocol.mjs';
+import { inspectWorkerUpload } from '../../../packages/shared/src/xiaotao-upload-guard.mjs';
 
 const CONTENT_TYPES = {
   '.png': 'image/png',
@@ -229,6 +230,16 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
       if ((req.method === 'PUT' || req.method === 'POST') && kind === 'input') {
         const grant = await readGrant(req, url, { taskId, op: GRANT_OP.UPLOAD });
         const bytes = await readUpload(req);
+        const slot = String(req.headers['x-novaflow-upload-slot'] || '').trim();
+        if (slot) {
+          const verdict = inspectWorkerUpload({
+            name,
+            mimeType: req.headers['content-type'],
+            bytes,
+            slot
+          });
+          if (!verdict.ok) throw Object.assign(new Error(verdict.message), { status: 400 });
+        }
         await mkdir(dir, { recursive: true });
         await writeFile(filePath, bytes);
         log('input received', { taskId, name, bytes: bytes.length });

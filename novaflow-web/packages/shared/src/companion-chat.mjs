@@ -43,9 +43,10 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   const historyText=(payload.history||[]).map(item=>item?.content||'').join('\n');
   const uploads=Array.isArray(payload.uploads)?payload.uploads:[];
   const imageCountForBill=Math.max(imageCount,uploads.filter(file=>xiaotaoFileKind(file)==='image').length);
-  const files=[...Array.from({length:imageCountForBill},()=>({kind:'image'})),...uploads.filter(file=>['video','audio'].includes(xiaotaoFileKind(file)))];
-  const estimate=estimateXiaotaoOnlineCredits({text:payload.message,history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,promptLanguage:payload.promptLanguage});
-  const feature=files.length?'xiaotao-vision':'xiaotao-text';
+  const captions=uploads.filter(file=>['video','audio'].includes(xiaotaoFileKind(file))).map(file=>`参考${xiaotaoFileKind(file)==='video'?'视频':'音频'}：${String(file.name||'未命名').slice(0,180)}`);
+  const files=Array.from({length:imageCountForBill},()=>({kind:'image'}));
+  const estimate=estimateXiaotaoOnlineCredits({text:payload.message+(captions.length?'\n'+captions.join('\n'):''),history:historyText,system:systemText,files,outputTokens:MAX_OUTPUT_TOKENS,config:provider.creditConfig,promptLanguage:payload.promptLanguage});
+  const feature=imageCountForBill?'xiaotao-vision':'xiaotao-text';
   try{
    const charged=await charge({userId:user.id,feature,amount:1,usageKey:'xiaotao:'+payload.requestId,estimatedCredits:estimate.credits,metadata:{imageAnalysis:imageCount>0,estimate:estimate.credits},run:async()=>{
     let posted;
