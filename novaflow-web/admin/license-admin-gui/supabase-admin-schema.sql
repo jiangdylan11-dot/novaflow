@@ -45,7 +45,7 @@ create index if not exists idx_credits_user_id on public.credits(user_id);
 
 comment on table public.credits is 'NovaFlow 用户当前积分余额表';
 comment on column public.credits.user_id is '对应 public.users.id';
-comment on column public.credits.balance is '当前可用积分余额，由后台管理端手动分配或后续后台服务扣减';
+comment on column public.credits.balance is '当前可用积分余额。在线功能经 reserve/settle/release_feature_credits 扣减；流水在 credit_ledger。';
 comment on index public.credits_user_id_unique_idx is '确保每个用户只有一条当前积分余额记录';
 
 -- ai_providers：云端 AI 服务商配置表。

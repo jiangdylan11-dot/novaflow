@@ -998,7 +998,7 @@ function renderRunningHubProviderHealth(status) {
   renderSettingRows("runninghubProviderHealthRows", [
     { label: "生成 API 地址", value: status?.baseUrl || "https://www.runninghub.cn" },
     { label: "连接状态", value: connection },
-    { label: "官方余额", value: status?.balance?.text || "未检测" },
+    { label: "国内站余额", value: status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测" },
     { label: "当前运行任务数", value: status?.currentTaskCounts == null ? "-" : String(status.currentTaskCounts) },
     { label: "上次检测时间", value: status?.checkedAt ? formatDateTime(status.checkedAt) : "尚未检测" },
     { label: "功能迁移", value: "仅保存 RunningHub Key 与账户检测；现有生成与提示词调用尚未切换" },
@@ -1017,7 +1017,7 @@ function runningHubProviderRow(provider, status) {
   badge.title = status?.error || (status?.checked ? "只读账户检测；模型调用未验证" : "尚未检测账户");
   tr.appendChild(nodeCell(badge));
   tr.appendChild(textCell(status?.connected ? "账户可用" : status?.checked ? "检测失败" : "尚未检测"));
-  tr.appendChild(textCell(status?.balance?.text || "未检测"));
+  tr.appendChild(textCell(status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测"));
   return tr;
 }
 
@@ -1751,6 +1751,7 @@ async function loadAdminData() {
 
     renderUsers(users, credits, providerQuotasByKey);
     renderAiServices(providers, settings, comfyStatus, grokStatus, runninghubStatus);
+    await renderFeatureCreditAdmin();
     renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus);
     renderSettings(settings);
     renderCreditStats(credits, providerQuotasByKey.grok);
@@ -2784,6 +2785,15 @@ async function init() {
     await saveProviderRuntimeConfig("runninghub");
   });
   $("checkRunninghubProvider").addEventListener("click", checkRunningHubProvider);
+  $("refreshDomesticBalance")?.addEventListener("click", checkRunningHubProvider);
+  $("saveFeatureCredits")?.addEventListener("click", () => { void saveFeatureCreditForm(); });
+  $("queryCreditLedger")?.addEventListener("click", () => { void queryLedger(false); });
+  $("exportCreditLedger")?.addEventListener("click", () => { void queryLedger(true); });
+  $("runQuotaMigration")?.addEventListener("click", () => { void runQuotaMigration(); });
+  setInterval(() => {
+    if (!document.getElementById("module-ai-services")?.classList.contains("active")) return;
+    void checkRunningHubProvider();
+  }, 5 * 60 * 1000);
 
   $("pickPub").addEventListener("click", async () => {
     const res = await window.adminAPI.pickPublicPath({ defaultPath: $("pubPath").value });
@@ -3016,6 +3026,173 @@ async function init() {
       await verifyLicense();
     }
   });
+}
+
+const FEATURE_PRICE_FIELDS = [
+  ["xiaotao_vision", "小桃在线理解"],
+  ["online_chat_turn", "在线对话"],
+  ["prompt_optimize", "提示词优化"],
+  ["image_reverse", "图像反推"],
+  ["lean_research", "UI 目录分析"],
+  ["gpt_image_2_5_economy", "GPT Image 2.5 / 张"],
+  ["gpt_image_2_official", "GPT Image 2 官方 / 张"],
+  ["grok_image_g42", "g-4.2 / 张"],
+  ["local", "本地"]
+];
+
+function renderFeaturePriceFields(prices) {
+  const host = $("featureCreditPrices");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const [key, label] of FEATURE_PRICE_FIELDS) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const name = document.createElement("div");
+    name.className = "label";
+    name.textContent = label;
+    const field = document.createElement("div");
+    field.className = "field";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.step = "1";
+    input.dataset.featurePrice = key;
+    input.value = prices && prices[key] != null ? String(prices[key]) : "";
+    if (key === "local") input.readOnly = true;
+    field.appendChild(input);
+    row.append(name, field);
+    host.appendChild(row);
+  }
+}
+
+async function renderFeatureCreditAdmin() {
+  const status = $("featureCreditStatus");
+  if (!$("featureCreditPanel") || typeof window.adminAPI?.getFeatureCreditAdmin !== "function") return;
+  try {
+    const response = await window.adminAPI.getFeatureCreditAdmin();
+    const result = response?.ok === false ? null : (response?.result || response);
+    const config = result?.config || {};
+    const prices = config.prices || {
+      xiaotao_vision: 4, online_chat_turn: 4, prompt_optimize: 4, image_reverse: 4,
+      lean_research: 14, gpt_image_2_5_economy: 22, gpt_image_2_official: 4, grok_image_g42: 6, local: 0
+    };
+    renderFeaturePriceFields(prices);
+    if ($("featureCreditLowBalance") && document.activeElement !== $("featureCreditLowBalance")) {
+      $("featureCreditLowBalance").value = config.low_balance_usd ?? 2;
+    }
+    if ($("featureCreditCny") && document.activeElement !== $("featureCreditCny")) {
+      $("featureCreditCny").value = config.credits_to_cny == null ? "" : String(config.credits_to_cny);
+    }
+    const balance = result?.domesticBalance || {};
+    const money = balance.remainMoney == null || balance.remainMoney === "" ? "未检测" : `${balance.remainMoney} ${balance.currency || ""}`.trim();
+    const cost = result?.estimatedRhCostUsd == null ? "暂无" : `${result.estimatedRhCostUsd} USD`;
+    renderSettingRows("featureCreditOpsRows", [
+      { label: "国内站余额", value: money },
+      { label: "流水估算 RH 成本", value: cost },
+      { label: "低余额阈值", value: `${config.low_balance_usd ?? 2} USD` },
+      { label: "上次检测", value: balance.checkedAt ? formatDateTime(balance.checkedAt) : "尚未检测" }
+    ], "尚未检测");
+    const warning = $("rhLowBalanceWarning");
+    if (warning) warning.hidden = !(result?.lowBalance?.warn || result?.lowBalance?.blocked);
+    if (status) status.textContent = result?.error ? String(result.error) : "已读取";
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
+}
+
+async function saveFeatureCreditForm() {
+  const status = $("featureCreditStatus");
+  const prices = {};
+  document.querySelectorAll("[data-feature-price]").forEach((input) => {
+    prices[input.dataset.featurePrice] = input.value;
+  });
+  try {
+    const response = await window.adminAPI.saveFeatureCreditAdmin({
+      prices,
+      credits_to_cny: $("featureCreditCny")?.value ?? "",
+      low_balance_usd: $("featureCreditLowBalance")?.value ?? ""
+    });
+    if (!response?.ok) throw new Error(response?.error || "保存失败");
+    if (status) status.textContent = "已保存";
+    await renderFeatureCreditAdmin();
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
+}
+
+function ledgerQueryPayload() {
+  return {
+    user: $("ledgerUser")?.value || "",
+    feature: $("ledgerFeature")?.value || "",
+    status: $("ledgerStatus")?.value || "",
+    from: $("ledgerFrom")?.value || "",
+    to: $("ledgerTo")?.value || ""
+  };
+}
+
+async function queryLedger(download) {
+  const status = $("ledgerStatusText");
+  try {
+    const response = await window.adminAPI.queryCreditLedger(ledgerQueryPayload());
+    if (!response?.ok) throw new Error(response?.error || "查询失败");
+    const result = response.result || {};
+    const records = result.records || [];
+    const body = $("creditLedgerBody");
+    if (body) {
+      body.innerHTML = "";
+      if (!records.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7;
+        td.textContent = "没有匹配的流水";
+        tr.appendChild(td);
+        body.appendChild(tr);
+      } else {
+        for (const row of records) {
+          const tr = document.createElement("tr");
+          for (const value of [row.created_at, row.user_email_or_account, row.feature, row.model, row.status, row.settled_credits ?? row.estimated_credits, row.rh_cost_usd]) {
+            const td = document.createElement("td");
+            td.textContent = value == null ? "" : String(value);
+            tr.appendChild(td);
+          }
+          body.appendChild(tr);
+        }
+      }
+    }
+    if (status) status.textContent = `${records.length} 条`;
+    if (download && result.csv) {
+      const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "credit-ledger.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
+}
+
+async function runQuotaMigration() {
+  const status = $("quotaMigrationStatus");
+  const batchId = String($("quotaMigrationBatch")?.value || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(batchId)) {
+    if (status) status.textContent = "批次号只能包含字母、数字、下划线和短横线";
+    return;
+  }
+  if (!confirm(`把旧的剩余次数按理解单价向上取整迁入积分？\n批次 ${batchId}。失败会整批回滚。`)) return;
+  try {
+    const response = await window.adminAPI.migrateGrokQuotaToCredits({
+      batchId,
+      price: $("quotaMigrationPrice")?.value || null
+    });
+    if (!response?.ok) throw new Error(response?.error || "迁移失败");
+    const result = response.result || {};
+    if (status) status.textContent = `${result.status || "完成"} · 入账 ${result.credits_added ?? ""}`;
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
 }
 
 window.addEventListener("DOMContentLoaded", () => {

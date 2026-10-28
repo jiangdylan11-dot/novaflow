@@ -587,14 +587,9 @@
     const loggedIn = Boolean(state.session && state.session.token && state.user);
     const defaultMessage = state.backendBaseUrl
       ? (isLocalBackendBaseUrl(state.backendBaseUrl) ? "本机测试验证已就绪" : "账号验证已就绪")
-      : "登录后读取积分和提示词服务次数";
+      : "登录后读取剩余积分";
     const message = state.message || defaultMessage;
-    const providerMetrics = PROVIDERS.map((item) => `
-      <div class="nf-client-auth-metric">
-        <div class="nf-client-auth-metric-label">${escapeHtml(item.label)} 次数</div>
-        <div class="nf-client-auth-metric-value">${escapeHtml(quotaText(item.key))}</div>
-      </div>
-    `).join("");
+    const providerMetrics = "";
     const content = `
       <div class="nf-client-auth-head">
         <div class="nf-client-auth-title">NovaFlow 账号</div>

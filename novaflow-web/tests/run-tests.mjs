@@ -57,6 +57,7 @@ const SUITES = [
   { name: 'web-split-source-cards', file: 'e2e/web-split-source-cards.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-templates', file: 'e2e/web-templates.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-account', file: 'e2e/web-account.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'feature-credits', file: 'e2e/feature-credits.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-png-compress', file: 'e2e/web-png-compress.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-spine-atlas-webp', file: 'e2e/web-spine-atlas-webp.test.mjs', needs: [], timeoutMs: 120000 },
   { name: 'web-spine-skel-import', file: 'e2e/web-spine-skel-import.test.mjs', needs: [], timeoutMs: 120000 },

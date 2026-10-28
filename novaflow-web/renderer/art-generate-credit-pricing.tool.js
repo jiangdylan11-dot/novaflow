@@ -337,7 +337,34 @@
     estimateRequests.set(snapshot.signature, request)
   }
 
+  function cloudFeatureEstimate(snapshot) {
+    if (!snapshot || snapshot.provider !== 'gpt') return null
+    const count = Math.max(1, Math.min(MAX_COUNT, Math.round(Number(snapshot.count)) || 1))
+    const api = root && root.NovaFlowFeatureCreditPrices
+    const quoted = api && typeof api.quoteFeature === 'function'
+      ? api.quoteFeature({ feature: 'gpt_image_2_5_economy', units: count })
+      : { credits: 22 * count }
+    const credits = quoted && quoted.credits != null ? quoted.credits : 22 * count
+    const formatted = String(credits)
+    return Object.freeze({
+      signature: snapshot.signature,
+      status: 'ready',
+      nodeType: snapshot.nodeType || 'gpt_image_2_5_economy',
+      approximate: false,
+      minCredits: credits,
+      maxCredits: credits,
+      formattedCredits: formatted,
+      buttonLabel: `${START_LABEL} · ${formatted}积分`,
+      feature: quoted && quoted.feature || 'gpt_image_2_5_economy',
+    })
+  }
+
   function getEstimate(snapshot) {
+    const cloud = cloudFeatureEstimate(snapshot)
+    if (cloud) {
+      latestSignature = snapshot.signature || ''
+      return cloud
+    }
     if (!snapshot || !snapshot.signature || !snapshot.nodeType) {
       latestSignature = ''
       return Object.freeze({ status: 'not_applicable', buttonLabel: START_LABEL, formattedCredits: '' })
@@ -433,7 +460,7 @@
       const amount = settlementAmount(record)
       if (status === 'settled' && amount) {
         const balance = formatCanonicalAmount(record.credits.balance_text ?? record.credits.balance)
-        return Object.freeze({ status: 'settled', text: `本次扣 ${amount}积分`, chargedCredits: amount, balance })
+        return Object.freeze({ status: 'settled', text: balance ? `本次扣 ${amount}积分，剩余 ${balance}` : `本次扣 ${amount}积分`, chargedCredits: amount, balance })
       }
       return Object.freeze({ status: 'pending_pricing', text: '积分待官方结算', chargedCredits: '', balance: '' })
     }

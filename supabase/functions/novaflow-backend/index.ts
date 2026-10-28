@@ -11,6 +11,7 @@ import {
 } from "./smart-ai-grok.workflow.mjs";
 import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/runninghub-llm.mjs";
 import { createOnlineAiCharge } from "../_art-shared/online-ai-charge.mjs";
+import { createFeatureCreditPorts, normalizeCreditConfig, publicCreditError } from "../_art-shared/feature-credits.mjs";
 import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
@@ -740,6 +741,21 @@ function providerQuotaPayload(quota: ProviderQuotaRecord): AnyRecord {
   };
 }
 
+function creditQuotaPayload(quota: AnyRecord | null | undefined): AnyRecord {
+  const row = quota || {};
+  if (row.local === true || row.settled_credits != null || row.balance_after != null || row.estimated_credits != null) {
+    return {
+      status: row.local === true ? "local" : String(row.status || "settled"),
+      charged_credits: Number(row.settled_credits ?? row.charged_credits ?? 0),
+      estimated_credits: row.estimated_credits ?? null,
+      balance_after: row.balance_after ?? null,
+      feature: row.feature || "",
+      local: row.local === true
+    };
+  }
+  return providerQuotaPayload(row as ProviderQuotaRecord);
+}
+
 async function enabledProviders(): Promise<AnyRecord[]> {
   const { data, error } = await adminClient()
     .from("ai_providers")
@@ -748,6 +764,17 @@ async function enabledProviders(): Promise<AnyRecord[]> {
     .limit(100);
   if (error) return [];
   return Array.isArray(data) ? data as AnyRecord[] : [];
+}
+
+async function readFeatureCreditConfig(): Promise<AnyRecord> {
+  const { data, error } = await adminClient()
+    .from("system_settings")
+    .select("value")
+    .eq("key", "feature_credit_config")
+    .maybeSingle();
+  if (error || !data) return {};
+  const value = (data as AnyRecord).value;
+  return value && typeof value === "object" ? value as AnyRecord : {};
 }
 
 async function clientSettings(): Promise<AnyRecord[]> {
@@ -787,6 +814,7 @@ async function handleBootstrap(req: Request, session: { user: PublicUser }): Pro
       source: "supabase",
       status: "connected"
     },
+    featureCreditPrices: normalizeCreditConfig(await readFeatureCreditConfig()),
     providerQuotas: quotas,
     ai: {
       ok: true,
@@ -1298,21 +1326,14 @@ async function releaseGrokQuota(user: PublicUser, reservation: AnyRecord, reason
   return await readProviderQuota(user, "grok");
 }
 
+async function creditRpc(name: string, args: AnyRecord): Promise<AnyRecord> {
+  const { data, error } = await adminClient().rpc(name, args);
+  if (error) throw error;
+  return (Array.isArray(data) ? data[0] : data) as AnyRecord;
+}
+
 async function chargeOnlineAi(user: PublicUser, input: { feature: string; amount: number; metadata?: AnyRecord; run: (granted: { amount: number }) => Promise<AnyRecord> }): Promise<AnyRecord> {
-  const charge = createOnlineAiCharge({
-    reserve: async ({ userId, feature, amount, usageKey, metadata }) => {
-      const { data, error } = await adminClient().rpc("reserve_grok_quota", {
-        p_user_id: userId, p_usage_key: usageKey, p_feature: feature,
-        p_min_calls: 1, p_max_calls: amount,
-        p_metadata: { ...(metadata || {}), request_owner: "novaflow_backend" }
-      });
-      if (error) throw error;
-      const row = data as AnyRecord;
-      return { status: row?.status, idempotent: row?.idempotent === true, amount: Number(row?.provider_call_budget ?? row?.reserved_calls ?? 0) || 0 };
-    },
-    settle: ({ amount, usageKey, success, metadata }) => settleGrokQuota(user, { usageKey }, amount, success !== false, (metadata || {}) as AnyRecord),
-    release: ({ usageKey, reason }) => releaseGrokQuota(user, { usageKey }, String(reason || "incomplete"))
-  });
+  const charge = createOnlineAiCharge(createFeatureCreditPorts(creditRpc));
   return await charge({ userId: user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run }) as AnyRecord;
 }
 
@@ -1361,7 +1382,7 @@ async function handleGrokPromptOptimize(
       amount: Math.max(requiredProviderCalls, isH3Prompt ? 2 : requiredProviderCalls),
       run: async ({ amount: providerCallBudget }) => {
         if (providerCallBudget < requiredProviderCalls) {
-          const error = new Error("在线AI次数不足或暂时不可用") as Error & { statusCode?: number; chargedAmount?: number };
+          const error = new Error("积分不足或暂时不可用") as Error & { statusCode?: number; chargedAmount?: number };
           error.statusCode = 402;
           error.chargedAmount = 0;
           throw error;
@@ -1396,13 +1417,13 @@ async function handleGrokPromptOptimize(
     const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true || resultOptions.ordinaryArtStructuredPrompt === true) && /^Grok ordinary Art\b/.test(sanitizeError(error));
     return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (ordinaryArtPatchFailure
+      error: statusCode === 402 ? publicCreditError(tracked.message) : h3Failure?.message || (ordinaryArtPatchFailure
         ? "提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体"
         : "生成失败，请稍后重试"),
       provider: "grok",
       ...(h3Failure || {}),
       ...(ordinaryArtPatchFailure ? { errorCode: "art-prompt-edit-not-applied", failureClass: "application" } : {}),
-      quota: providerQuotaPayload(failureQuota)
+      quota: creditQuotaPayload(failureQuota)
     });
   }
   const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
@@ -1425,7 +1446,7 @@ async function handleGrokPromptOptimize(
         ? { editContract: "deterministic-merge-v1" }
         : {})),
     user: publicUser(session.user),
-    quota: providerQuotaPayload(usage),
+    quota: creditQuotaPayload(usage),
     grok: {
       statusCode: grok.statusCode,
       durationMs: grok.durationMs,
@@ -1479,7 +1500,7 @@ async function handleGrokImageReverse(
       amount: isH3Reverse ? requiredProviderCalls : Math.max(requiredProviderCalls, 2),
       run: async ({ amount: providerCallBudget }) => {
         if (providerCallBudget < requiredProviderCalls) {
-          const error = new Error("在线AI次数不足或暂时不可用") as Error & { statusCode?: number; chargedAmount?: number };
+          const error = new Error("积分不足或暂时不可用") as Error & { statusCode?: number; chargedAmount?: number };
           error.statusCode = 402;
           error.chargedAmount = 0;
           throw error;
@@ -1509,12 +1530,12 @@ async function handleGrokImageReverse(
     const contentPolicyFailure = !h3Failure && (error as AnyRecord)?.errorCode === "provider_content_policy";
     return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
+      error: statusCode === 402 ? publicCreditError(tracked.message) : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
       provider: "grok",
       ...(contentPolicyFailure ? { errorCode: "provider_content_policy", retryable: false } : {}),
       ...(h3Failure || {}),
       ...(isVisualV2 ? grokVisualFailureEnvelope(error) : {}),
-      quota: providerQuotaPayload(failureQuota)
+      quota: creditQuotaPayload(failureQuota)
     });
   }
   const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
@@ -1555,7 +1576,7 @@ async function handleGrokImageReverse(
       reverseFallbackReason: ""
     } : {}),
     user: publicUser(session.user),
-    quota: providerQuotaPayload(usage),
+    quota: creditQuotaPayload(usage),
     grok: {
       statusCode: grok.statusCode,
       durationMs: grok.durationMs,
@@ -1618,7 +1639,7 @@ async function handleRunningHubUiCatalog(req: Request, session: { user: PublicUs
     if (tracked.quotaFailed) return jsonResponse(req, 500, { ok: false, error: "在线计量没有完成" });
     const statusCode = Number(tracked.statusCode || 502);
     return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
-      ok: false, error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线/.test(String(tracked.message || "")) ? tracked.message : "在线目录分析未完成"
+      ok: false, error: statusCode === 402 ? publicCreditError(tracked.message) : /在线/.test(String(tracked.message || "")) ? tracked.message : "在线目录分析未完成"
     });
   }
 }
@@ -1650,9 +1671,9 @@ async function handleGrokChat(req: Request, session: { user: PublicUser }): Prom
     const statusCode = Number(tracked.statusCode || 502);
     return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线模型/.test(String(tracked.message || "")) ? tracked.message : "在线模型暂时不可用",
+      error: statusCode === 402 ? publicCreditError(tracked.message) : /在线模型/.test(String(tracked.message || "")) ? tracked.message : "在线模型暂时不可用",
       provider: "grok",
-      quota: providerQuotaPayload(tracked.quota || await readProviderQuota(session.user, "grok"))
+      quota: creditQuotaPayload(tracked.quota || await readProviderQuota(session.user, "grok"))
     });
   }
 

@@ -10692,6 +10692,16 @@ async function handleAiTaskRequest(req, res) {
 }
 
 function grokQuotaPayload(record, remainingOverride) {
+  if (record && (record.settled_credits != null || record.balance_after != null || record.local === true || record.estimated_credits != null)) {
+    return {
+      status: record.local ? "local" : String(record.status || "settled"),
+      charged_credits: Number(record.settled_credits ?? record.charged_credits ?? 0),
+      estimated_credits: record.estimated_credits ?? null,
+      balance_after: record.balance_after ?? null,
+      feature: record.feature || "",
+      local: record.local === true
+    };
+  }
   return {
     allocated_count: Number(record?.allocated_count || 0),
     used_count: Number(record?.used_count || 0),
@@ -10987,13 +10997,13 @@ async function handleGrokPromptOptimizeRequest(req, res) {
     const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true || resultOptions.ordinaryArtStructuredPrompt === true) && /^Grok ordinary Art\b/.test(sanitizeError(err));
     sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (ordinaryArtPatchFailure
+      error: statusCode === 402 ? creditClientMessage(err) : h3Failure?.message || (ordinaryArtPatchFailure
         ? "提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体"
         : "生成失败，请稍后重试"),
       provider: "grok",
       ...(h3Failure || {}),
       ...(ordinaryArtPatchFailure ? { errorCode: "art-prompt-edit-not-applied", failureClass: "application" } : {}),
-      quota: grokQuotaPayload(err?.quota?.record)
+      quota: grokQuotaPayload(err?.quota?.record || err?.quota)
     });
     return;
   }
@@ -11016,7 +11026,7 @@ async function handleGrokPromptOptimizeRequest(req, res) {
         ? { editContract: ORDINARY_ART_PROMPT_EDIT_CONTRACT }
         : {})),
     user: userPublicProfile(session.user),
-    quota: grokQuotaPayload(usage.record),
+    quota: grokQuotaPayload(usage),
     grok: {
       statusCode: grok.statusCode,
       durationMs: grok.durationMs,
@@ -11069,7 +11079,7 @@ async function handleGrokImageReverseRequest(req, res) {
       amount: isH3ReverseRequest ? requiredProviderCalls : Math.max(requiredProviderCalls, 2),
       run: async ({ amount: providerCallBudget }) => {
         if (providerCallBudget < requiredProviderCalls) {
-          const error = new Error("在线AI次数不足或暂时不可用");
+          const error = new Error("积分不足或暂时不可用");
           error.statusCode = 402;
           error.chargedAmount = 0;
           throw error;
@@ -11099,12 +11109,12 @@ async function handleGrokImageReverseRequest(req, res) {
     const contentPolicyFailure = !h3Failure && err?.errorCode === "provider_content_policy";
     sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
+      error: statusCode === 402 ? creditClientMessage(err) : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
       provider: "grok",
       ...(contentPolicyFailure ? { errorCode: "provider_content_policy", retryable: false } : {}),
       ...(h3Failure || {}),
       ...(isVisualV2 ? grokVisualFailureEnvelope(err) : {}),
-      quota: grokQuotaPayload(err?.quota?.record)
+      quota: grokQuotaPayload(err?.quota?.record || err?.quota)
     });
     return;
   }
@@ -11147,7 +11157,7 @@ async function handleGrokImageReverseRequest(req, res) {
       reverseFallbackReason: ""
     } : {}),
     user: userPublicProfile(session.user),
-    quota: grokQuotaPayload(usage.record),
+    quota: grokQuotaPayload(usage),
     grok: {
       statusCode: grok.statusCode,
       durationMs: grok.durationMs,
@@ -11167,26 +11177,26 @@ function loadOnlineCharge() {
   return onlineChargePromise;
 }
 
+let featureCreditPromise;
+function loadFeatureCredits() {
+  featureCreditPromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/feature-credits.mjs")).href);
+  return featureCreditPromise;
+}
+
+function creditClientMessage(error) {
+  const text = String(error?.message || error || "");
+  if (text.includes("云服务余额不足")) return "云服务余额不足，请联系管理员";
+  if (text.includes("积分迁移维护中")) return "积分迁移维护中，请稍后再试";
+  if (text.includes("单价未配置")) return "该功能积分单价未配置";
+  if (text.includes("积分不足或暂时不可用")) return "积分不足或暂时不可用";
+  if (text.includes("积分不足")) return "积分不足";
+  return "积分不足或暂时不可用";
+}
+
 async function chargeOnlineAi(session, input) {
   const { createOnlineAiCharge } = await loadOnlineCharge();
-  const charge = createOnlineAiCharge({
-    reserve: async ({ userId, feature, amount, usageKey, metadata }) => {
-      const result = await adminData.reserveAdminGrokQuota({ userId, usageKey, feature, minCalls: 1, maxCalls: amount, metadata: metadata || {} });
-      if (!result?.ok || result.status === "error") throw new Error(result?.error || "在线AI次数不足或暂时不可用");
-      const row = result.reservation || {};
-      return { status: row.status || "reserved", idempotent: row.idempotent === true, amount: Number(row.provider_call_budget ?? row.reserved_calls ?? 0) || 0 };
-    },
-    settle: async ({ amount, usageKey, success, metadata }) => {
-      const result = await settleGrokCalls(session, { usageKey }, amount, success !== false, metadata || {});
-      if (!result?.ok || result.status === "error") throw new Error("在线计量没有完成");
-      return result;
-    },
-    release: async ({ usageKey, reason }) => {
-      const result = await releaseGrokCalls(session, { usageKey }, String(reason || "incomplete"));
-      if (!result?.ok || result.status === "error") throw new Error("在线计量没有完成");
-      return result;
-    }
-  });
+  const { createFeatureCreditPorts } = await loadFeatureCredits();
+  const charge = createOnlineAiCharge(createFeatureCreditPorts((name, args) => adminData.callFeatureCreditRpc(name, args)));
   return charge({ userId: session.user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run });
 }
 
@@ -11237,7 +11247,7 @@ async function handleRunningHubUiCatalogRequest(req, res) {
       return;
     }
     const statusCode = Number(err?.statusCode || 502);
-    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线/.test(String(err?.message || "")) ? sanitizeError(err) : "在线目录分析未完成" });
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: statusCode === 402 ? creditClientMessage(err) : /在线/.test(String(err?.message || "")) ? sanitizeError(err) : "在线目录分析未完成" });
   }
 }
 
@@ -11279,9 +11289,9 @@ async function handleGrokChatRequest(req, res) {
     const statusCode = Number(err?.statusCode || 502);
     sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线模型/.test(String(err?.message || "")) ? sanitizeError(err) : "在线模型暂时不可用",
+      error: statusCode === 402 ? creditClientMessage(err) : /在线模型/.test(String(err?.message || "")) ? sanitizeError(err) : "在线模型暂时不可用",
       provider: "grok",
-      quota: grokQuotaPayload(err?.quota?.record)
+      quota: grokQuotaPayload(err?.quota?.record || err?.quota)
     });
     return;
   }
