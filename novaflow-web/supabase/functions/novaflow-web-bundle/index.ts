@@ -384,7 +384,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.126";
+const RELEASE_VERSION = "2.0.132";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -1227,6 +1227,8 @@ function runtimeFor(modelId) {
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
 
+
+
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -1247,6 +1249,14 @@ function runtimeFor(modelId) {
 //     task currently assigned to it.
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
+
+
+
+
+
+
+
+
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -1276,6 +1286,8 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -1283,6 +1295,8 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
+
+
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -1409,6 +1423,7 @@ function validateTaskParameters(taskType, raw) {
     references: cleanRefs
   };
 }
+
 
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
@@ -2518,7 +2533,12 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
+
+
+
+
 const FUNCTION_NAME = 'novaflow-web';
+
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -2553,6 +2573,8 @@ function admin() {
   }
   return cachedAdmin;
 }
+
+
 
 function unwrapRpc<T>(data: unknown): T | null {
   // A plpgsql function returning a table type comes back as an array of one.
