@@ -385,7 +385,8 @@ section('account tiers: other people\'s nodes need a 高级账户');
   check('the plan is read from the user row, not the old token', stale.status === 200, stale.body);
   const team = await call(BASE, 'POST', '/dev/login', { body: { email: 'team@novaflow.local', balance: 5000, plan: 'team' } });
   const teamMe = await call(BASE, 'GET', '/api/web/me', { token: team.body.session.token });
-  check('a team account counts as 高级账户', teamMe.body.compute.shared === true && teamMe.body.user.plan === 'team', teamMe.body);
+  check('a legacy team plan is stored as pro and keeps 高级节点 access',
+    teamMe.body.compute.shared === true && teamMe.body.compute.premium === true && teamMe.body.user.plan === 'pro', teamMe.body);
   const pro = await call(BASE, 'GET', '/api/web/me', { token: alice.token });
   check('the default dev login is a 高级账户', pro.body.compute.shared === true && pro.body.user.plan === 'pro', pro.body);
 }

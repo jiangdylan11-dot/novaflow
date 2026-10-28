@@ -1,7 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
 const childProcess = require("child_process");
-const http = require("http");
-const https = require("https");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
 const {
@@ -27,8 +25,6 @@ const DEFAULT_LIMIT = 100;
 const ERROR_PREFIX = "Supabase Error";
 const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
 const DEFAULT_GROK_MODEL = DEFAULT_RUNNINGHUB_LLM_MODEL;
-const COMFYUI_USER_PATH = "/api/user";
-const COMFYUI_TIMEOUT_MS = 10000;
 const PROVIDER_QUOTA_PREFIX = "provider_quota_";
 const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
 const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
@@ -120,129 +116,6 @@ function disabledTableResult(tableName, message) {
     query: queryMeta(tableName, "-", { disabled: true })
   };
 }
-
-const mockData = {
-  users: [
-    {
-      id: "U-1001",
-      email: "artist@demo.com",
-      display_name: "Artist",
-      role: "user",
-      plan: "Pro",
-      status: "active",
-      current_credits: 12800,
-      created_at: "2026-06-18T10:21:00.000Z",
-      updated_at: "2026-07-02T09:10:00.000Z"
-    },
-    {
-      id: "U-1002",
-      email: "ops@demo.com",
-      display_name: "Ops",
-      role: "user",
-      plan: "Team",
-      status: "active",
-      current_credits: 3420,
-      created_at: "2026-06-21T14:08:00.000Z",
-      updated_at: "2026-07-02T09:30:00.000Z"
-    },
-    {
-      id: "U-1003",
-      email: "trial@demo.com",
-      display_name: "Trial",
-      role: "user",
-      plan: "Trial",
-      status: "disabled",
-      current_credits: 0,
-      created_at: "2026-06-29T19:42:00.000Z",
-      updated_at: "2026-07-01T16:00:00.000Z"
-    }
-  ],
-  credits: [
-    { id: "C-1001", user_id: "U-1001", email: "artist@demo.com", balance: 12800, updated_at: "2026-07-02T09:10:00.000Z" },
-    { id: "C-1002", user_id: "U-1002", email: "ops@demo.com", balance: 3420, updated_at: "2026-07-02T09:30:00.000Z" },
-    { id: "C-1003", user_id: "U-1003", email: "trial@demo.com", balance: 0, updated_at: "2026-07-01T16:00:00.000Z" }
-  ],
-  ai_providers: [
-    {
-      id: "P-1001",
-      name: "Grok",
-      provider_key: "grok",
-      status: "disabled",
-      billing_multiplier: 0.1,
-      api_key_secret_ref: "",
-      created_at: "2026-07-01T08:00:00.000Z",
-      updated_at: "2026-07-01T08:00:00.000Z"
-    },
-    {
-      id: "P-1002",
-      name: "Qwen",
-      provider_key: "qwen",
-      status: "disabled",
-      billing_multiplier: 0.8,
-      api_key_secret_ref: "",
-      created_at: "2026-07-01T08:00:00.000Z",
-      updated_at: "2026-07-01T08:00:00.000Z"
-    },
-    {
-      id: "P-1003",
-      name: "ComfyUI",
-      provider_key: "comfyui",
-      status: "disabled",
-      billing_multiplier: 1.25,
-      api_key_secret_ref: "",
-      created_at: "2026-07-01T08:00:00.000Z",
-      updated_at: "2026-07-01T08:00:00.000Z"
-    }
-  ],
-  system_settings: [
-    { key: "default_billing_multiplier", value: { label: "默认积分倍率", value: "1.00x" }, updated_at: "2026-07-01T08:00:00.000Z" },
-    { key: "new_user_initial_credits", value: { label: "新用户初始积分", value: 0 }, updated_at: "2026-07-01T08:00:00.000Z" },
-    {
-      key: "provider_budget_comfyui",
-      value: {
-        label: "ComfyUI 手动总余额",
-        provider_key: "comfyui",
-        balance: 0,
-        unit: "credits",
-        source: "manual",
-        note: "mock placeholder"
-      },
-      updated_at: "2026-07-01T08:00:00.000Z"
-    }
-  ],
-  gpu_workers: [
-    {
-      id: "W-1001",
-      owner_id: "U-1001",
-      worker_name: "mock-4090",
-      status: "idle",
-      tier: "standard",
-      gpu_name: "NVIDIA GeForce RTX 4090",
-      vram_mb: 24564,
-      ram_mb: 65536,
-      comfy_version: "0.31.1",
-      worker_version: "0.1.0",
-      endpoint_url: "http://127.0.0.1:8790",
-      transport: "direct",
-      last_heartbeat: "2026-07-01T08:00:00.000Z",
-      total_completed: 12,
-      total_failed: 0,
-      created_at: "2026-07-01T08:00:00.000Z"
-    }
-  ],
-  web_worker_registration_codes: [
-    {
-      code_hash: "0000000000000000000000000000000000000000000000000000000000000000",
-      owner_id: "U-1001",
-      label: "mock placeholder",
-      tier: "standard",
-      max_uses: 1,
-      used_count: 0,
-      expires_at: "2026-07-08T08:00:00.000Z",
-      created_at: "2026-07-01T08:00:00.000Z"
-    }
-  ]
-};
 
 function readAdminSupabaseEnv() {
   const supabaseUrl = readAdminEnvValue(ENV_SUPABASE_URL).replace(/\/+$/, "");
@@ -476,11 +349,12 @@ function logAdminData(level, message, details = {}) {
 
 function mockResult(tableName, selectFields = "*", options = {}, durationMs = 0) {
   return {
-    source: "mock",
-    status: "mock",
+    source: "unconfigured",
+    status: "unconfigured",
     configured: false,
     table: tableName,
-    records: mockData[tableName] || [],
+    records: [],
+    message: "Supabase 未配置",
     reason: "supabase_env_missing",
     durationMs,
     query: queryMeta(tableName, selectFields, options)
@@ -579,7 +453,7 @@ function adminWriteMockResult(operation, durationMs) {
     configured: false,
     operation,
     ok: false,
-    error: "Supabase 未配置，mock 数据不可写入。",
+    error: "Supabase 未配置，不能写入。",
     durationMs
   };
 }
@@ -588,17 +462,18 @@ function parseCreditAdjustmentPayload(payload) {
   const userId = String(payload?.userId || "").trim();
   const mode = String(payload?.mode || "add").trim();
   const amount = Number(payload?.amount);
-  const feature = String(payload?.feature || "后台积分分配").trim().slice(0, 120);
+  const feature = String(payload?.reason || payload?.feature || "").trim().slice(0, 200);
   const note = String(payload?.note || "").trim().slice(0, 500);
   if (!userId) throw new Error("请选择用户");
   if (!["add", "deduct", "set"].includes(mode)) throw new Error("不支持的积分操作");
+  if (!feature) throw new Error("请填写不超过 200 字的调整原因");
   if (!Number.isInteger(amount)) throw new Error("积分必须是整数");
   if (mode === "set") {
     if (amount < 0) throw new Error("设置余额不能小于 0");
   } else if (amount <= 0) {
     throw new Error("充值或扣减积分必须大于 0");
   }
-  return { userId, mode, amount, feature, note };
+  return { userId, mode, amount, feature, reason: feature, note };
 }
 
 function creditAdjustmentSource(mode) {
@@ -609,7 +484,8 @@ function creditAdjustmentSource(mode) {
 
 function normalizeUserPlan(value) {
   const plan = String(value || "trial").trim().toLowerCase();
-  if (!["trial", "standard", "pro", "team"].includes(plan)) throw new Error("不支持的用户方案");
+  if (plan === "team") return "pro";
+  if (!["trial", "standard", "pro"].includes(plan)) throw new Error("不支持的用户方案");
   return plan;
 }
 
@@ -943,102 +819,6 @@ function parseSystemSettingPayload(payload) {
   return { key, value };
 }
 
-function requestJson(urlString, headers = {}, timeoutMs = COMFYUI_TIMEOUT_MS) {
-  return new Promise((resolve, reject) => {
-    let url;
-    try {
-      url = new URL(urlString);
-    } catch {
-      reject(new Error("invalid provider base URL"));
-      return;
-    }
-    const transport = url.protocol === "http:" ? http : url.protocol === "https:" ? https : null;
-    if (!transport) {
-      reject(new Error("provider base URL must use http or https"));
-      return;
-    }
-    const req = transport.request(
-      url,
-      {
-        method: "GET",
-        headers,
-        timeout: timeoutMs
-      },
-      (res) => {
-        const chunks = [];
-        let size = 0;
-        res.on("data", (chunk) => {
-          size += chunk.length;
-          if (size > 1024 * 1024) {
-            req.destroy(new Error("response too large"));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        res.on("end", () => {
-          const text = Buffer.concat(chunks).toString("utf8");
-          let body = null;
-          if (text) {
-            try {
-              body = JSON.parse(text);
-            } catch {
-              body = { raw: text };
-            }
-          }
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            const msg = body?.error || body?.message || res.statusMessage || "request failed";
-            const err = new Error(`HTTP ${res.statusCode}: ${msg}`);
-            err.statusCode = res.statusCode;
-            reject(err);
-            return;
-          }
-          resolve({ statusCode: res.statusCode, body });
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy(new Error("request timeout")));
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-function readNestedValue(source, paths) {
-  for (const path of paths) {
-    const value = path.split(".").reduce((cursor, key) => {
-      if (cursor && Object.prototype.hasOwnProperty.call(cursor, key)) return cursor[key];
-      return undefined;
-    }, source);
-    if (value !== undefined && value !== null && value !== "") return value;
-  }
-  return undefined;
-}
-
-function extractComfyUiBalance(userInfo) {
-  const value = readNestedValue(userInfo || {}, [
-    "credits",
-    "credit_balance",
-    "balance",
-    "remaining_credits",
-    "billing.credits",
-    "billing.balance"
-  ]);
-  if (value === undefined) {
-    return {
-      supported: false,
-      value: null,
-      unit: "credits",
-      text: "官方余额 API 未开放"
-    };
-  }
-  const numeric = Number(value);
-  return {
-    supported: true,
-    value,
-    unit: "credits",
-    text: Number.isFinite(numeric) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(numeric) : String(value)
-  };
-}
-
 function getAdminClient() {
   const env = readAdminSupabaseEnv();
   if (!env.configured) return { client: null, env, status: "mock" };
@@ -1159,8 +939,8 @@ async function readSingleBy(tableName, selectFields, columnName, value, options 
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") {
-      const record = (mockData[tableName] || []).find((item) => String(item?.[columnName] || "") === String(value || "")) || null;
-      const result = singleRecordResult("mock", "mock", tableName, record, selectFields, safeOptions, durationMs);
+      const record = null;
+      const result = singleRecordResult("unconfigured", "unconfigured", tableName, record, selectFields, safeOptions, durationMs);
       logAdminData("info", `read ${tableName} single`, {
         source: result.source,
         status: result.status,
@@ -1255,8 +1035,33 @@ function getAdminGpuWorkers() {
   return readTable("gpu_workers", adminQueries.gpu_workers.select, adminQueries.gpu_workers);
 }
 
-function getAdminWebTaskUsage() {
-  return readTable("web_ai_tasks", adminQueries.web_ai_tasks.select, adminQueries.web_ai_tasks);
+async function getAdminWebTaskUsage(options = {}) {
+  const cap = options?.limit == null || options.limit === ""
+    ? null
+    : Math.max(1, Math.min(200, Math.round(Number(options.limit)) || 100));
+  const selectFields = adminQueries.web_ai_tasks.select;
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    return readTable("web_ai_tasks", selectFields, { ...adminQueries.web_ai_tasks, limit: cap || adminQueries.web_ai_tasks.limit });
+  }
+  const startedAt = Date.now();
+  try {
+    const { collectPages: readPages } = await loadFeatureCredits();
+    const records = await readPages(async ({ offset, limit }) => {
+      const take = cap == null ? limit : Math.min(limit, cap - offset);
+      if (take <= 0) return [];
+      const { data, error } = await clientState.client
+        .from("web_ai_tasks")
+        .select(selectFields)
+        .order(adminQueries.web_ai_tasks.orderBy, { ascending: Boolean(adminQueries.web_ai_tasks.ascending) })
+        .range(offset, offset + take - 1);
+      if (error) throw error;
+      return data || [];
+    });
+    return supabaseResult("web_ai_tasks", records, selectFields, { ...adminQueries.web_ai_tasks, limit: cap || records.length }, Date.now() - startedAt);
+  } catch (err) {
+    return supabaseErrorResult("web_ai_tasks", err, selectFields, adminQueries.web_ai_tasks, Date.now() - startedAt);
+  }
 }
 
 function getAdminWorkerRegistrationCodes() {
@@ -1535,10 +1340,17 @@ async function purgeAdminWorkerRegistrationCodes() {
   if (!client) return result;
 
   try {
-    const { data: rows, error: readError } = await client
-      .from("web_worker_registration_codes")
-      .select("code_hash,max_uses,used_count,expires_at")
-      .limit(1000);
+    const { collectPages: readPages } = await loadFeatureCredits();
+    const rows = await readPages(async ({ offset, limit }) => {
+      const { data, error } = await client
+        .from("web_worker_registration_codes")
+        .select("code_hash,max_uses,used_count,expires_at")
+        .order("created_at", { ascending: true })
+        .range(offset, offset + limit - 1);
+      if (error) throw error;
+      return data || [];
+    });
+    const readError = null;
     if (readError) throw readError;
     const now = Date.now();
     const spent = (rows || [])
@@ -1584,10 +1396,6 @@ async function purgeAdminWebTasks(payload) {
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
-}
-
-function getAdminCreditLogs() {
-  return disabledTableResult("credit_logs", "消费/积分流水已在轻量后台模式中关闭");
 }
 
 function getAdminAiProviders() {
@@ -2351,16 +2159,6 @@ async function resetAdminUserPassword(payload) {
   }
 }
 
-async function setAdminProviderBudget() {
-  const operation = "provider_budget.set";
-  const result = localWriteErrorResult(operation, new Error("ComfyUI 手动总余额已退出后台配置，不再录入"), 0);
-  logAdminData("info", "set provider budget refused", {
-    source: result.source,
-    status: result.status
-  });
-  return result;
-}
-
 async function settleAdminComfyUsage(payload) {
   const startedAt = Date.now();
   const operation = "comfy_usage.settle";
@@ -2662,31 +2460,15 @@ async function setAdminProviderRuntimeConfig(payload) {
 }
 
 function mockProviderQuotaResult(providerKey, durationMs = 0) {
-  const records = (mockData.users || []).map((user, index) => {
-    const allocatedCount = index === 0 ? 20 : index === 1 ? 8 : 0;
-    const usedCount = index === 0 ? 3 : 0;
-    return normalizeProviderQuotaRecord({
-      key: providerQuotaSettingKey(providerKey, user.id),
-      value: {
-        provider_key: providerKey,
-        user_id: user.id,
-        email: user.email,
-        display_name: user.display_name,
-        allocated_count: allocatedCount,
-        used_count: usedCount,
-        note: "mock"
-      },
-      updated_at: user.updated_at
-    }, user, providerKey);
-  });
   return {
-    source: "mock",
-    status: "mock",
+    source: "unconfigured",
+    status: "unconfigured",
     configured: false,
     table: "system_settings",
     virtualTable: "provider_call_quotas",
     providerKey,
-    records,
+    records: [],
+    message: "Supabase 未配置",
     reason: "supabase_env_missing",
     durationMs,
     query: queryMeta("system_settings", adminQueries.system_settings.select, { providerQuota: true })
@@ -2715,20 +2497,28 @@ async function getAdminProviderCallQuotas(input = {}) {
   }
 
   try {
-    const [{ data: users, error: usersError }, { data: settings, error: settingsError }] = await Promise.all([
-      clientState.client
-        .from("users")
-        .select(adminQueries.users.select)
-        .order(adminQueries.users.orderBy, { ascending: adminQueries.users.ascending })
-        .limit(DEFAULT_LIMIT),
-      clientState.client
-        .from("system_settings")
-        .select(adminQueries.system_settings.select)
-        .like("key", `${PROVIDER_QUOTA_PREFIX}${providerKey}_%`)
-        .limit(1000)
+    const { collectPages: readPages } = await loadFeatureCredits();
+    const [users, settings] = await Promise.all([
+      readPages(async ({ offset, limit }) => {
+        const { data, error } = await clientState.client
+          .from("users")
+          .select(adminQueries.users.select)
+          .order(adminQueries.users.orderBy, { ascending: adminQueries.users.ascending })
+          .range(offset, offset + limit - 1);
+        if (error) throw error;
+        return data || [];
+      }),
+      readPages(async ({ offset, limit }) => {
+        const { data, error } = await clientState.client
+          .from("system_settings")
+          .select(adminQueries.system_settings.select)
+          .like("key", `${PROVIDER_QUOTA_PREFIX}${providerKey}_%`)
+          .order("key", { ascending: true })
+          .range(offset, offset + limit - 1);
+        if (error) throw error;
+        return data || [];
+      })
     ]);
-    if (usersError) throw usersError;
-    if (settingsError) throw settingsError;
     const settingsByUserId = new Map((settings || []).map((setting) => {
       const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
       return [String(value.user_id || setting.key.replace(`${PROVIDER_QUOTA_PREFIX}${providerKey}_`, "")), setting];
@@ -2773,12 +2563,12 @@ async function getAdminProviderCallQuotaByUserId(userId, providerKey = "grok") {
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") {
-      const user = (mockData.users || []).find((item) => String(item.id || "") === String(userId || "")) || null;
       return {
-        source: "mock",
-        status: "mock",
+        source: "unconfigured",
+        status: "unconfigured",
         configured: false,
-        record: user ? normalizeProviderQuotaRecord(null, user, normalizedProviderKey) : null,
+        record: null,
+        message: "Supabase 未配置",
         durationMs
       };
     }
@@ -3318,52 +3108,22 @@ async function adjustAdminUserCredits(payload) {
   }
 
   try {
-    const { data: user, error: userError } = await clientState.client
-      .from("users")
-      .select("id,email,status")
-      .eq("id", parsed.userId)
-      .maybeSingle();
-    if (userError) throw userError;
-    if (!user) throw new Error("用户不存在，无法分配积分");
-
-    const { data: creditRows, error: creditReadError } = await clientState.client
-      .from("credits")
-      .select("id,user_id,balance,updated_at")
-      .eq("user_id", parsed.userId)
-      .limit(2);
-    if (creditReadError) throw creditReadError;
-    if ((creditRows || []).length > 1) {
-      throw new Error("该用户存在多条积分余额记录，请先清理重复 credits 数据");
-    }
-
-    const currentCredit = (creditRows || [])[0] || null;
-    const beforeBalance = Number(currentCredit?.balance || 0);
-    const delta = parsed.mode === "set"
-      ? parsed.amount - beforeBalance
-      : parsed.mode === "deduct" ? -parsed.amount : parsed.amount;
-    const afterBalance = beforeBalance + delta;
-    if (afterBalance < 0) throw new Error("扣减后积分不能小于 0");
-
-    let creditRecord;
-    if (currentCredit?.id) {
-      const { data: updatedCredit, error: updateError } = await clientState.client
-        .from("credits")
-        .update({ balance: afterBalance, updated_at: new Date().toISOString() })
-        .eq("id", currentCredit.id)
-        .select("id,user_id,balance,updated_at")
-        .maybeSingle();
-      if (updateError) throw updateError;
-      creditRecord = updatedCredit;
-    } else {
-      const { data: insertedCredit, error: insertError } = await clientState.client
-        .from("credits")
-        .insert({ user_id: parsed.userId, balance: afterBalance })
-        .select("id,user_id,balance,updated_at")
-        .maybeSingle();
-      if (insertError) throw insertError;
-      creditRecord = insertedCredit;
-    }
-
+    const usageKey = String(payload?.usageKey || payload?.usage_key || "").trim() || `admin_adjust_${require("node:crypto").randomUUID()}`;
+    const adminLabel = String(require("os").hostname() || "admin").slice(0, 80);
+    const { data, error } = await clientState.client.rpc("admin_adjust_feature_credits", {
+      p_user_id: parsed.userId,
+      p_mode: parsed.mode,
+      p_amount: parsed.amount,
+      p_reason: parsed.reason,
+      p_note: parsed.note,
+      p_admin_label: adminLabel,
+      p_usage_key: usageKey
+    });
+    if (error) throw error;
+    const row = data && typeof data === "object" ? data : {};
+    const beforeBalance = Number(row.before_balance);
+    const afterBalance = Number(row.after_balance);
+    const delta = Number(row.delta);
     const durationMs = Date.now() - startedAt;
     const result = {
       source: "supabase",
@@ -3372,19 +3132,16 @@ async function adjustAdminUserCredits(payload) {
       operation,
       ok: true,
       durationMs,
-      user: {
-        id: user.id,
-        email: user.email,
-        status: user.status
-      },
       adjustment: {
         mode: parsed.mode,
         amount: parsed.amount,
         delta,
         beforeBalance,
-        afterBalance
+        afterBalance,
+        usageKey: row.usage_key || usageKey,
+        idempotent: row.idempotent === true
       },
-      credit: creditRecord
+      credit: { user_id: parsed.userId, balance: afterBalance }
     };
     logAdminData("info", "adjust credits", {
       source: result.source,
@@ -3550,13 +3307,13 @@ async function readClientRowsForUser(tableName, selectFields, userId, options = 
   if (!clientState.client) {
     const durationMs = Date.now() - startedAt;
     if (clientState.status === "mock") {
-      const records = (mockData[tableName] || []).filter((item) => String(item.user_id || "") === String(userId || ""));
       return {
-        source: "mock",
-        status: "mock",
+        source: "unconfigured",
+        status: "unconfigured",
         configured: false,
         table: tableName,
-        records,
+        records: [],
+        message: "Supabase 未配置",
         reason: "supabase_env_missing",
         durationMs,
         query: queryMeta(tableName, selectFields, safeOptions)
@@ -3626,10 +3383,6 @@ async function getClientAiConfig() {
   };
 }
 
-function getClientCreditLogs(userId) {
-  return disabledTableResult("credit_logs", "客户端消费记录已在轻量后台模式中关闭");
-}
-
 function getClientAiTasks(userId) {
   return disabledTableResult("ai_tasks", "客户端任务记录已在轻量后台模式中关闭");
 }
@@ -3659,117 +3412,9 @@ async function recordClientAiTaskUsage(payload, user) {
     configured: false,
     operation,
     ok: false,
-    error: "recordUsage 已关闭；轻量后台不写任务记录或消费记录。",
+    error: "recordUsage 已关闭，不写任务记录或消费记录。",
     durationMs: Date.now() - startedAt
   };
-}
-
-async function getAdminComfyUiProviderStatus() {
-  const startedAt = Date.now();
-  const env = readAdminComfyUiEnv();
-  const endpoint = `GET ${env.baseUrl}${COMFYUI_USER_PATH}`;
-  if (!env.configured) {
-    const durationMs = Date.now() - startedAt;
-    const result = {
-      source: "provider",
-      provider_key: "comfyui",
-      status: "mock",
-      configured: false,
-      secretConfigured: env.secretConfigured,
-      baseUrl: env.baseUrl,
-      hasApiKeySecretRef: env.hasApiKeySecretRef,
-      connected: false,
-      accountStatus: "not_configured",
-      balance: extractComfyUiBalance(null),
-      models: {
-        supported: false,
-        records: [],
-        text: "模型列表检测未启用；模型选择由 NovaFlow 客户端负责"
-      },
-      endpoint,
-      durationMs,
-      reason: env.hasApiKeySecretRef ? "comfyui_secret_ref_without_secret_resolver" : "comfyui_env_missing"
-    };
-    logAdminData("info", "check comfyui provider", {
-      source: result.source,
-      status: result.status,
-      configured: result.configured,
-      secretConfigured: result.secretConfigured,
-      durationMs,
-      reason: result.reason
-    });
-    return result;
-  }
-
-  try {
-    const response = await requestJson(`${env.baseUrl}${COMFYUI_USER_PATH}`, {
-      "X-API-Key": env.apiKey,
-      Accept: "application/json",
-      "User-Agent": "NovaFlow-Admin/1.0"
-    });
-    const durationMs = Date.now() - startedAt;
-    const body = response.body || {};
-    const result = {
-      source: "provider",
-      provider_key: "comfyui",
-      status: "connected",
-      configured: true,
-      secretConfigured: true,
-      baseUrl: env.baseUrl,
-      hasApiKeySecretRef: env.hasApiKeySecretRef,
-      connected: true,
-      accountStatus: String(body.status || "unknown"),
-      balance: extractComfyUiBalance(body),
-      models: {
-        supported: false,
-        records: [],
-        text: "模型列表检测未启用；模型选择由 NovaFlow 客户端负责"
-      },
-      endpoint,
-      durationMs
-    };
-    logAdminData("info", "check comfyui provider", {
-      source: result.source,
-      status: result.status,
-      accountStatus: result.accountStatus,
-      durationMs
-    });
-    return result;
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const result = {
-      source: "provider",
-      provider_key: "comfyui",
-      status: "error",
-      configured: true,
-      secretConfigured: true,
-      baseUrl: env.baseUrl,
-      hasApiKeySecretRef: env.hasApiKeySecretRef,
-      connected: false,
-      accountStatus: "unknown",
-      balance: {
-        supported: false,
-        value: null,
-        unit: "credits",
-        text: "读取失败"
-      },
-      models: {
-        supported: false,
-        records: [],
-        text: "读取失败"
-      },
-      endpoint,
-      durationMs,
-      error: `ComfyUI Error: ${sanitizeError(err)}`
-    };
-    logAdminData("error", "check comfyui provider failed", {
-      source: result.source,
-      status: result.status,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
 }
 
 async function getAdminGrokProviderStatus() {
@@ -3901,7 +3546,7 @@ function ledgerFilters(payload) {
   return { user, feature, status, from, to };
 }
 
-const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code";
+const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_before,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code,pricing_details";
 
 async function lookupLedgerUsers(client, userText) {
   const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
@@ -3926,8 +3571,11 @@ async function queryCreditLedger(payload) {
   const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
 
   const filters = ledgerFilters(payload || {});
+  const cap = payload?.limit == null || payload.limit === ""
+    ? null
+    : Math.max(1, Math.min(200, Math.round(Number(payload.limit)) || 20));
   const clientState = getAdminClient();
-  if (!clientState.client) return { records: [], csv: ledgerCsv([]) };
+  if (!clientState.client) return { records: [], csv: ledgerCsv([]), configured: false, status: "unconfigured", message: "Supabase 未配置" };
   const client = clientState.client;
   let userIds = null;
   let knownUsers = [];
@@ -3937,10 +3585,12 @@ async function queryCreditLedger(payload) {
     if (!userIds.length) return { records: [], csv: ledgerCsv([]) };
   }
   const records = await collectPages(async ({ offset, limit }) => {
+    const take = cap == null ? limit : Math.min(limit, cap - offset);
+    if (take <= 0) return [];
     let query = client.from("credit_ledger").select(LEDGER_COLUMNS)
       .order("created_at", { ascending: false })
       .order("usage_key", { ascending: true })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + take - 1);
     if (userIds) query = query.in("user_id", userIds);
     if (filters.feature) query = query.eq("feature", filters.feature);
     if (filters.status) query = query.eq("status", filters.status);
@@ -4009,7 +3659,6 @@ module.exports = {
   startDomesticBalanceRefresh,
   getAdminUsers,
   getAdminCredits,
-  getAdminCreditLogs,
   getAdminAiProviders,
   getAdminAiModels,
   getAdminAiTasks,
@@ -4028,7 +3677,6 @@ module.exports = {
   upsertAdminAiProvider,
   upsertAdminAiModel,
   upsertAdminSystemSetting,
-  setAdminProviderBudget,
   settleAdminComfyUsage,
   adjustAdminProviderBudget,
   setAdminProviderRuntimeConfig,
@@ -4042,11 +3690,9 @@ module.exports = {
   recordAdminProviderCallUsage,
   adjustAdminUserCredits,
   getClientAiConfig,
-  getClientCreditLogs,
   getClientAiTasks,
   recordClientGatewayTaskDraft,
   recordClientAiTaskUsage,
-  getAdminComfyUiProviderStatus,
   getAdminGrokProviderStatus,
   getAdminGpuWorkers,
   getAdminWebTaskUsage,

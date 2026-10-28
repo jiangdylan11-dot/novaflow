@@ -15,7 +15,7 @@ import { check, checkEqual, section, finish } from '../helpers.mjs';
 import {
   TASK_STATE, TASK_TRANSITIONS, TASK_TYPE, TASK_TYPE_WORKFLOW,
   TASK_TYPE_REQUIREMENTS, canTransition, isTerminalState, isSafeFilename,
-  TOKEN_PREFIX, requirementsFor
+  TOKEN_PREFIX, requirementsFor, normalizePlan, planAllowsNode, canUsePremiumNodes, canUseSharedCompute
 } from '../../packages/shared/src/protocol.mjs';
 import { priceTask, priceFromRateCard } from '../../packages/shared/src/pricing.mjs';
 import { MODEL_MANIFEST, findModel } from '../../packages/shared/src/model-manifest.mjs';
@@ -284,6 +284,16 @@ section('only third-party work costs credits');
   // has to be able to use it without this all being rebuilt.
   check('the rate card is still there for provider-backed work',
     Object.keys((await import('../../packages/shared/src/pricing.mjs')).PRICE_TABLE).length >= 3, null);
+}
+
+section('account plan aliases');
+{
+  checkEqual('legacy team is pro', normalizePlan('team'), 'pro');
+  checkEqual('unknown plan is trial', normalizePlan('nope'), 'trial');
+  checkEqual('blank plan is trial', normalizePlan(''), 'trial');
+  check('pro and legacy team may use a premium node', planAllowsNode('pro', 'premium') && planAllowsNode('team', 'premium'));
+  check('trial cannot use the pool', !canUseSharedCompute('trial') && !planAllowsNode('trial', 'standard'));
+  check('standard cannot use a premium node', canUseSharedCompute('standard') && !canUsePremiumNodes('standard') && !planAllowsNode('standard', 'premium'));
 }
 
 finish('protocol');
