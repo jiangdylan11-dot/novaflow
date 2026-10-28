@@ -62,7 +62,7 @@ create table if not exists public.ai_providers (
 );
 
 comment on table public.ai_providers is 'NovaFlow AI Provider 配置表';
-comment on column public.ai_providers.name is '服务商显示名，例如 ComfyUI、Grok';
+comment on column public.ai_providers.name is '服务商显示名。在线密钥只配置 RunningHub API Key，不写在本表';
 comment on column public.ai_providers.provider_key is '服务商唯一 key，用于后续 Gateway 转发';
 comment on column public.ai_providers.status is '启用状态，例如 enabled/disabled';
 comment on column public.ai_providers.billing_multiplier is 'Provider 默认计费倍率';

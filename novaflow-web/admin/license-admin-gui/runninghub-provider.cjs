@@ -6,8 +6,7 @@ const ENV = Object.freeze({
   apiKey: "NOVAFLOW_RUNNINGHUB_API_KEY",
   llmBaseUrl: "NOVAFLOW_RUNNINGHUB_LLM_BASE_URL",
   llmModel: "NOVAFLOW_RUNNINGHUB_LLM_MODEL",
-  gptImageEndpoint: "NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT",
-  googleImageEndpoint: "NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT"
+  gptImageEndpoint: "NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT"
 });
 
 function officialUrl(value, fallback, llm = false) {
@@ -50,7 +49,6 @@ function parseConfig(payload) {
     llmBaseUrl: officialUrl(payload?.llmBaseUrl, DEFAULT_LLM_BASE_URL, true),
     llmModel,
     gptImageEndpoint: endpoint(payload?.gptImageEndpoint),
-    googleImageEndpoint: endpoint(payload?.googleImageEndpoint),
     apiKey, clearApiKey,
     updateApiKey: Boolean(apiKey || payload?.updateApiKey || payload?.update_api_key)
   };
@@ -62,7 +60,7 @@ function publicStatus(config) {
     hasApiKey: Boolean(config.apiKey), status: config.apiKey ? "configured" : "not_configured",
     connected: false, checked: false, baseUrl: config.baseUrl,
     llmBaseUrl: config.llmBaseUrl, llmModel: config.llmModel,
-    gptImageEndpoint: config.gptImageEndpoint, googleImageEndpoint: config.googleImageEndpoint,
+    gptImageEndpoint: config.gptImageEndpoint,
     accountStatus: "not_checked", integrationStatus: "configuration_only",
     endpoint: `POST ${config.baseUrl}/uc/openapi/accountStatus`,
     balance: { supported: false, text: "未检测" }

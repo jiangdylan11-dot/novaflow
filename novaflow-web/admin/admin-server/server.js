@@ -11257,7 +11257,12 @@ async function handleAdminRoute(req, res, pathName) {
   }
   if (req.method === "POST" && pathName === "/api/admin/providers/runninghub/config") {
     const payload = await parseBody(req);
-    sendJson(res, 200, normalizeResult(await adminData.setAdminProviderRuntimeConfig({ ...payload, providerKey: "runninghub" })));
+    const declared = String(payload?.providerKey ?? payload?.provider_key ?? "").trim().toLowerCase();
+    if (declared !== "runninghub") {
+      sendJson(res, 400, { ok: false, error: "Unsupported Provider" });
+      return;
+    }
+    sendJson(res, 200, normalizeResult(await adminData.setAdminProviderRuntimeConfig(payload)));
     return;
   }
 
