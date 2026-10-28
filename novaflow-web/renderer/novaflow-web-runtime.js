@@ -1339,7 +1339,7 @@
       // Reuse the supported task action, without adding a control-plane permission.
       const scope={surface:'ui-design',uiPlanner:'grok-vision-cpu-v1'};
       const hello=await localPromptAssistant('reverse-image-prompt',{...scope,action:'capabilities',images:[{dataUrl:''}]});
-      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新本地助手后使用完整 Grok 分析；本次未调用云模型或本地推理'};
+      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新本地助手后使用完整在线分析；本次未调用云模型或本地推理'};
       if(payload?.action==='capabilities')return hello;
       return localPromptAssistant('reverse-image-prompt',{...payload,...scope});
     },

@@ -60,14 +60,14 @@ test('failed analysis cannot fall back to an identity-preserving prompt or submi
 test('real renderer Grok selection routes source locally then one original flat cloud request, with no fallback',async()=>{
  const record=fixture('twenty'),wire=transport(record),calls=[];
  const root={setTimeout,clearTimeout,crypto:{randomUUID},NovaFlowWebRuntime:{auth:async(method,path,body)=>{
-   calls.push({method,path,body});return {ok:true,model:'grok-4.3',providerCallCount:1,retryCount:0,clientRequestId:body.requestId,requestId:'mock-cloud',finishReason:'completed',rawOutputText:record.artRaw};
+   calls.push({method,path,body});return {ok:true,model:'xai/grok-4.7',providerCallCount:1,retryCount:0,clientRequestId:body.requestId,requestId:'mock-cloud',finishReason:'completed',rawOutputText:record.artRaw};
  }}};
  root.electronAPI={promptAssistantUiDesignCpu:async body=>({ok:true,data:body.action==='capabilities'?{localCompletePlanner:'native-catalog-v3',sourceContract:'observed-rows-v2'}:await cpu(body)}),
  promptAssistantReverseImagePrompt:async payload=>({ok:true,data:await planNativeUiDraft({baseUrl:'http://runtime.test',payload,cpu,fetchImpl:wire.fetch,pollMs:0})})};
  vm.createContext(root);for(const name of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+name,import.meta.url),'utf8'),root,{filename:name});
  const input={uiCatalogEnabled:true,engine:'grok',provider:'local',targetEngine:'qwen-2.1',prompt:'参考图1布局，霓虹都市主题老虎机',preserveLayout:true,generationIntent:'redesign',references:[{...image,id:'ref1'}],structure:{}};
  const result=await root.NovaFlowUiDesignAssistantWorkflow.run(input);
- assert.equal(wire.count,3);assert.equal(calls.length,1);assert.equal(calls[0].path,'/../novaflow-grok-lean-research/analyze-v2');assert.equal(calls[0].body.outputSchema.required.length,14);
+ assert.equal(wire.count,3);assert.equal(calls.length,1);assert.equal(calls[0].path,'/api/client/runninghub/ui-catalog');assert.equal(calls[0].body.outputSchema.required.length,14);assert.equal(result.uiCatalog.model,'xai/grok-4.7');
  assert.equal(result.uiCatalog.analysisProvider,'grok');assert.equal(result.uiCatalog.layoutAnalysisProvider,'local');assert.equal(result.uiCatalog.recognitionMethod,'native-grok-catalog-v3');
  const second=transport(record);root.electronAPI.promptAssistantReverseImagePrompt=async payload=>({ok:true,data:await planNativeUiDraft({baseUrl:'http://runtime.test',payload,cpu,fetchImpl:second.fetch,pollMs:0})});
  root.NovaFlowWebRuntime.auth=async()=>{throw Error('provider denied');};

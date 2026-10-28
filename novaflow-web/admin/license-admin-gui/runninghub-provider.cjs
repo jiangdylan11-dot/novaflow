@@ -1,6 +1,8 @@
 // Server/admin only. Never return this module's config (which contains apiKey) to a renderer.
 const DEFAULT_BASE_URL = "https://www.runninghub.cn";
-const DEFAULT_LLM_BASE_URL = "https://llm.runninghub.cn/v1";
+const DEFAULT_LLM_BASE_URL = "https://llm.runninghub.ai/v1";
+const DEFAULT_LLM_MODEL = "xai/grok-4.7";
+const LLM_HOSTS = ["llm.runninghub.ai", "llm.runninghub.cn"];
 const ENV = Object.freeze({
   baseUrl: "NOVAFLOW_RUNNINGHUB_BASE_URL",
   apiKey: "NOVAFLOW_RUNNINGHUB_API_KEY",
@@ -13,11 +15,11 @@ function officialUrl(value, fallback, llm = false) {
   const raw = String(value || fallback).trim().replace(/\/+$/, "");
   let url;
   try { url = new URL(raw); } catch { throw new Error("RunningHub 地址格式不正确"); }
-  const hosts = llm ? ["llm.runninghub.cn"] : ["www.runninghub.cn", "runninghub.cn"];
+  const hosts = llm ? LLM_HOSTS : ["www.runninghub.cn", "runninghub.cn"];
   const path = llm ? "/v1" : "";
   if (url.protocol !== "https:" || !hosts.includes(url.hostname) || url.port ||
       url.username || url.password || url.search || url.hash || url.pathname.replace(/\/+$/, "") !== path) {
-    throw new Error(llm ? "请使用国内站 LLM 地址 https://llm.runninghub.cn/v1" : "请使用国内站地址 https://www.runninghub.cn，不要附加接口路径");
+    throw new Error(llm ? "RunningHub LLM 地址须为 https://llm.runninghub.ai/v1 或 https://llm.runninghub.cn/v1" : "请使用国内站地址 https://www.runninghub.cn，不要附加接口路径");
   }
   return raw;
 }
@@ -33,7 +35,7 @@ function endpoint(value) {
 
 function readConfig(read) {
   return Object.fromEntries(Object.entries(ENV).map(([field, name]) => [field, String(read(name) || "").trim() ||
-    (field === "baseUrl" ? DEFAULT_BASE_URL : field === "llmBaseUrl" ? DEFAULT_LLM_BASE_URL : "")]));
+    (field === "baseUrl" ? DEFAULT_BASE_URL : field === "llmBaseUrl" ? DEFAULT_LLM_BASE_URL : field === "llmModel" ? DEFAULT_LLM_MODEL : "")]));
 }
 
 function parseConfig(payload) {

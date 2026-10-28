@@ -6280,7 +6280,7 @@ test("nf.visual.v2 structural and provider failures keep a redacted structured f
   const provider = grokVisualFailureEnvelope(providerError);
   assert.deepEqual(provider, {
     errorCode: "grok-provider-unavailable",
-    message: "Grok 分析服务暂不可用",
+    message: "在线模型暂不可用",
     retryable: true,
     retryAttempted: false,
     retryCount: 0,
@@ -6427,11 +6427,11 @@ test("desktop and Edge keep the visual IR validator, compiler, and routing guard
 
   const edgeImageHandler = edgeIndexSource.slice(
     edgeIndexSource.indexOf("async function handleGrokImageReverse("),
-    edgeIndexSource.indexOf("async function handleGrokChat(", edgeIndexSource.indexOf("async function handleGrokImageReverse("))
+    edgeIndexSource.indexOf("async function handleRunningHubUiCatalog(", edgeIndexSource.indexOf("async function handleGrokImageReverse("))
   );
   const desktopImageHandler = desktopSource.slice(
     desktopSource.indexOf("async function handleGrokImageReverseRequest("),
-    desktopSource.indexOf("async function handleGrokChatRequest(", desktopSource.indexOf("async function handleGrokImageReverseRequest("))
+    desktopSource.indexOf("async function chargeOnlineAi(", desktopSource.indexOf("async function handleGrokImageReverseRequest("))
   );
   for (const handlerSource of [edgeImageHandler, desktopImageHandler]) {
     assert.match(handlerSource, /visualRetryAllowed:\s*(?:providerCallBudget|reservation\.budget)\s*>=\s*2/);
@@ -6460,12 +6460,12 @@ test("desktop and Edge keep the visual IR validator, compiler, and routing guard
     assert.doesNotMatch(handlerSource, /sensitive_visible_facts/);
     assert.doesNotMatch(handlerSource, /rawOutput/);
   }
-  assert.match(edgeImageHandler, /failureQuota = actualCalls > 0[\s\S]*settleGrokQuota\(/);
-  assert.match(edgeImageHandler, /providerQuotaPayload\(failureQuota\)/);
-  assert.match(edgeImageHandler, /settleGrokQuota\(session\.user, reservation, providerCallCount/);
-  assert.match(desktopImageHandler, /const failureUsage = failedProviderCallCount > 0[\s\S]*settleGrokCalls\(/);
-  assert.match(desktopImageHandler, /grokQuotaPayload\(failureUsage\.record\)/);
-  assert.match(desktopImageHandler, /settleGrokCalls\(session, reservation, providerCallCount/);
+  assert.match(edgeImageHandler, /chargeOnlineAi\(session\.user/);
+  assert.match(edgeImageHandler, /feature: videoFrames \? "video-reverse" : "image-reverse"/);
+  assert.doesNotMatch(edgeImageHandler, /settleGrokQuota\(/);
+  assert.match(desktopImageHandler, /chargeOnlineAi\(session,/);
+  assert.match(desktopImageHandler, /feature: mode === "video_reverse" \? "video-reverse" : "image-reverse"/);
+  assert.doesNotMatch(desktopImageHandler, /settleGrokCalls\(/);
 });
 
 
@@ -6484,8 +6484,13 @@ test("Edge router accepts desktop Supabase JWTs and exposes all product Grok rou
   ]) {
     assert.ok(indexSource.includes(route), `${route} must be registered`);
   }
-  assert.match(indexSource, /const timer = setTimeout\(\(\) => controller\.abort\(\), 45000\)/);
-  assert.match(indexSource, /const timer = setTimeout\(\(\) => controller\.abort\(\), 50000\)/);
+  assert.match(indexSource, /postRunningHubResponses\(/);
+  assert.match(indexSource, /chargeOnlineAi\(/);
+  assert.match(indexSource, /feature: "prompt-optimize"/);
+  assert.match(indexSource, /feature: "xiaotao-text"/);
+  assert.match(indexSource, /\/api\/client\/runninghub\/ui-catalog/);
+  assert.doesNotMatch(indexSource, /api\.x\.ai/);
+  assert.doesNotMatch(indexSource, /NOVAFLOW_GROK_/);
   assert.match(indexSource, /\.rpc\("reserve_grok_quota"/);
   assert.match(indexSource, /\.rpc\("settle_grok_quota"/);
   assert.match(indexSource, /\.rpc\("release_grok_quota"/);

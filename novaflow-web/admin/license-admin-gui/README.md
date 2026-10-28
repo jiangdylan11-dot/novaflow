@@ -89,19 +89,18 @@ NovaFlow 客户端不能直接判断或修改积分。真正 AI 调用前，未�
 
 ## 提示词服务次数分配
 
-提示词服务次数按用户手动分配，当前底层 Provider 为 Grok，用于提示词优化和反推：
+在线文本和视觉理解只走 RunningHub，使用 `NOVAFLOW_RUNNINGHUB_API_KEY`。默认 LLM 地址是 `https://llm.runninghub.ai/v1`，默认模型是 `xai/grok-4.7`，模型 ID 可改。计量先走统一的 `charge({ feature, amount })`，底下仍扣现有云 AI 次数；不要新增按次的 Grok 配额表或录入界面。本地 Flash 不计这次数。
 
-- 每个用户的次数存为 `system_settings.provider_quota_grok_<user_id>`。
+- 每个用户的次数仍存为 `system_settings.provider_quota_grok_<user_id>`。
 - 只记录 `allocated_count`、`used_count` 和 `remaining_count`。
-- 后台服务提示词服务调用成功后只把对应用户的 `used_count + 1`。
+- 在线调用成功后按实际 amount 增加 `used_count`。
 - 不保存 prompt、messages、任务记录、消费记录或 workflow。
-- 后台页面不再写入 `NOVAFLOW_GROK_API_KEY`。已有调用仍可读服务器上原来的值。不要把 Key 写入 renderer 或仓库。
-- 在线供应商密钥只配置 `NOVAFLOW_RUNNINGHUB_API_KEY`，保存在后台环境，不写入 NovaFlow 客户端，也不写入 Supabase Edge 密钥。
-- ComfyUI 云调用本阶段仍走原路径。AI 服务页不再录入 ComfyUI 手动总余额；历史余额仍由原结算路径扣减。
+- 不要把 Key 写入 renderer 或仓库。Edge 上的 companion 和 backend 使用同一把 RunningHub Key。
+- ComfyUI 云出图本阶段仍走原路径。AI 服务页不再录入 ComfyUI 手动总余额；历史余额仍由原结算路径扣减。
 
 ## 已退出后台配置的供应商
 
-AI 服务页不再提供 ComfyUI、Grok、Google 的 Key 表单，也不再录入 ComfyUI 手动总余额。`NOVAFLOW_COMFYUI_*` 与 `NOVAFLOW_GROK_*` 不能通过后台写入。已有生成和提示词调用仍可读服务器上原来的环境变量。`NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT` 已从配置项删除。
+AI 服务页不再提供 ComfyUI、Grok、Google 的 Key 表单，也不再录入 ComfyUI 手动总余额。`NOVAFLOW_COMFYUI_*` 与 `NOVAFLOW_GROK_*` 不能通过后台写入，在线文本和视觉理解也不再读取它们。`NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT` 已从配置项删除。
 
 ## Supabase 初始化顺序
 

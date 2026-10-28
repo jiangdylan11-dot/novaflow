@@ -9,6 +9,8 @@ import {
   miniMaxH3ReversePreflightFailure,
   normalizeGrokResponseUsage
 } from "./smart-ai-grok.workflow.mjs";
+import { readRunningHubLlmConfig, postRunningHubResponses, uiCatalogResponsesRequest, responsesOutputText, DEFAULT_RUNNINGHUB_LLM_MODEL } from "../_art-shared/runninghub-llm.mjs";
+import { createOnlineAiCharge } from "../_art-shared/online-ai-charge.mjs";
 import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
@@ -24,10 +26,6 @@ const MAX_LICENSE_VERIFY_BODY_BYTES = 2 * 1024;
 const LICENSE_VERIFY_RATE_LIMIT_RPC = "check_novaflow_license_verify_rate_limit";
 const LICENSE_VERIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
 const LICENSE_VERIFY_RATE_LIMIT_MAX_ATTEMPTS = 10;
-const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
-const DEFAULT_GROK_MODEL = "grok-4.3";
-const GROK_CHAT_COMPLETIONS_PATH = "/chat/completions";
-const GROK_RESPONSES_PATH = "/responses";
 const PROVIDER_QUOTA_PREFIX = "provider_quota_";
 const PROVIDER_QUOTA_KEYS = ["grok"];
 const LOCAL_WORKFLOW_PROVIDER_KEYS = new Set(["comfyui"]);
@@ -124,16 +122,20 @@ function sessionTtlSeconds(): number {
   return Number.isInteger(value) && value > 0 ? value : DEFAULT_SESSION_TTL_SECONDS;
 }
 
-function grokBaseUrl(): string {
-  return (env("NOVAFLOW_GROK_BASE_URL") || DEFAULT_GROK_BASE_URL).replace(/\/+$/, "");
+function runningHubLlm() {
+  try {
+    return readRunningHubLlmConfig(env);
+  } catch {
+    return { apiKey: "", baseUrl: "", model: DEFAULT_RUNNINGHUB_LLM_MODEL, configured: false };
+  }
 }
 
 function grokModel(): string {
-  return env("NOVAFLOW_GROK_MODEL") || DEFAULT_GROK_MODEL;
+  return runningHubLlm().model;
 }
 
 function grokApiKey(): string {
-  return env("NOVAFLOW_GROK_API_KEY") || env("XAI_API_KEY");
+  return runningHubLlm().apiKey;
 }
 
 function corsHeaders(req: Request): Record<string, string> {
@@ -1178,58 +1180,28 @@ function grokPublicResult(data: AnyRecord): AnyRecord {
 }
 
 async function callGrok(payload: AnyRecord): Promise<AnyRecord> {
-  const key = grokApiKey();
-  if (!key) {
-    const error = new Error("NOVAFLOW_GROK_API_KEY is not configured") as Error & { statusCode?: number };
-    error.statusCode = 503;
-    throw error;
-  }
+  const config = runningHubLlm();
   const { body, inputMeta } = normalizeGrokPayload(payload);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
   const startedAt = Date.now();
-  let providerCallStarted = false;
   try {
-    providerCallStarted = true;
-    const response = await fetch(`${grokBaseUrl()}${GROK_CHAT_COMPLETIONS_PATH}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    const text = await response.text();
-    let data: AnyRecord = {};
-    try {
-      data = text ? JSON.parse(text) as AnyRecord : {};
-    } catch {
-      data = { raw: text.slice(0, 1000) };
-    }
-    if (!response.ok) {
-      const message = String((data.error as AnyRecord)?.message || data.message || text || `xAI request failed with status ${response.status}`);
-      const error = new Error(message) as Error & { statusCode?: number };
-      error.statusCode = response.status;
-      throw error;
-    }
+    const posted = await postRunningHubResponses({ body, config, timeoutMs: 45000 });
     return {
       ok: true,
-      statusCode: response.status,
+      statusCode: posted.status,
       durationMs: Date.now() - startedAt,
-      model: body.model,
+      model: posted.data.model || config.model,
       inputMeta,
-      data: grokPublicResult(data)
+      data: grokPublicResult({
+        id: posted.data.id,
+        model: posted.data.model || config.model,
+        choices: [{ finish_reason: "stop", message: { role: "assistant", content: posted.data.output_text } }],
+        usage: posted.data.usage
+      })
     };
   } catch (error) {
-    const trackedError = error as Error & { grokProviderCallCount?: number };
-    trackedError.grokProviderCallCount = Math.max(
-      Number(trackedError.grokProviderCallCount || 0),
-      providerCallStarted ? 1 : 0
-    );
+    const trackedError = error as Error & { grokProviderCallCount?: number; providerCallStarted?: boolean };
+    trackedError.grokProviderCallCount = trackedError.providerCallStarted ? 1 : 0;
     throw trackedError;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1241,57 +1213,29 @@ function isGrokResponseAttemptResultUsable(result: AnyRecord, resultOptions: Any
 }
 
 async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}): Promise<AnyRecord> {
-  const key = grokApiKey();
-  if (!key) {
-    const error = new Error("NOVAFLOW_GROK_API_KEY is not configured") as Error & { statusCode?: number };
-    error.statusCode = 503;
-    throw error;
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 50000);
+  const config = runningHubLlm();
   const startedAt = Date.now();
-  let providerCallStarted = false;
   let attemptUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   try {
-    providerCallStarted = true;
-    const response = await fetch(`${grokBaseUrl()}${GROK_RESPONSES_PATH}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    const text = await response.text();
-    let data: AnyRecord = {};
-    try {
-      data = text ? JSON.parse(text) as AnyRecord : {};
-    } catch {
-      data = { raw: text.slice(0, 1000) };
-    }
+    const posted = await postRunningHubResponses({ body, config, timeoutMs: 60000 });
+    const data = posted.data;
     attemptUsage = normalizeGrokResponseUsage(data);
-    if (!response.ok) {
-      const message = String((data.error as AnyRecord)?.message || data.message || text || `xAI request failed with status ${response.status}`);
-      const error = new Error(message) as Error & { statusCode?: number };
-      error.statusCode = response.status;
-      throw error;
-    }
     const result = grokResponsesPublicResult(data, {
       ...resultOptions,
       supportsNegativePrompt: inputMeta?.supportsNegativePrompt !== false
     }) as AnyRecord;
     if (!isGrokResponseAttemptResultUsable(result, resultOptions)) {
-      const error = new Error("Grok response did not include prompt text") as Error & { statusCode?: number };
+      const error = new Error("在线模型未返回提示词") as Error & { statusCode?: number; providerCallStarted?: boolean };
       error.statusCode = 502;
+      error.providerCallStarted = true;
       throw error;
     }
     return {
       ok: true,
-      statusCode: response.status,
+      statusCode: posted.status,
       durationMs: Date.now() - startedAt,
-      model: body.model,
-      requestId: String(data.id || response.headers.get("x-request-id") || "").trim(),
+      model: data.model || config.model,
+      requestId: posted.requestId,
       inputMeta,
       usage: attemptUsage,
       providerCallCount: 1,
@@ -1302,13 +1246,12 @@ async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, re
       grokUsage?: AnyRecord;
       grokDurationMs?: number;
       grokProviderCallCount?: number;
+      providerCallStarted?: boolean;
     };
     trackedError.grokUsage = attemptUsage;
     trackedError.grokDurationMs = Date.now() - startedAt;
-    trackedError.grokProviderCallCount = providerCallStarted ? 1 : 0;
+    trackedError.grokProviderCallCount = trackedError.providerCallStarted ? 1 : 0;
     throw trackedError;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1355,6 +1298,24 @@ async function releaseGrokQuota(user: PublicUser, reservation: AnyRecord, reason
   return await readProviderQuota(user, "grok");
 }
 
+async function chargeOnlineAi(user: PublicUser, input: { feature: string; amount: number; metadata?: AnyRecord; run: (granted: { amount: number }) => Promise<AnyRecord> }): Promise<AnyRecord> {
+  const charge = createOnlineAiCharge({
+    reserve: async ({ userId, feature, amount, usageKey, metadata }) => {
+      const { data, error } = await adminClient().rpc("reserve_grok_quota", {
+        p_user_id: userId, p_usage_key: usageKey, p_feature: feature,
+        p_min_calls: 1, p_max_calls: amount,
+        p_metadata: { ...(metadata || {}), request_owner: "novaflow_backend" }
+      });
+      if (error) throw error;
+      const row = data as AnyRecord;
+      return { status: row?.status, idempotent: row?.idempotent === true, amount: Number(row?.provider_call_budget ?? row?.reserved_calls ?? 0) || 0 };
+    },
+    settle: ({ amount, usageKey, success, metadata }) => settleGrokQuota(user, { usageKey }, amount, success !== false, (metadata || {}) as AnyRecord),
+    release: ({ usageKey, reason }) => releaseGrokQuota(user, { usageKey }, String(reason || "incomplete"))
+  });
+  return await charge({ userId: user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run }) as AnyRecord;
+}
+
 async function callGrokResponse(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}): Promise<AnyRecord> {
   return await callGrokResponseWithVisualRetry(
     body,
@@ -1391,73 +1352,60 @@ async function handleGrokPromptOptimize(
     Math.round(Number((request.resultOptions as AnyRecord)?.requiredProviderCalls || 1))
   );
   const isH3Prompt = (request.resultOptions as AnyRecord)?.minimaxH3Prompt === true;
-  let reservation: AnyRecord;
+  let grok: AnyRecord = {};
+  let usage: ProviderQuotaRecord;
+  let resultOptions: AnyRecord = request.resultOptions as AnyRecord;
   try {
-    reservation = await reserveGrokQuota(session.user, "prompt_optimize", requiredProviderCalls, isH3Prompt ? 2 : requiredProviderCalls);
-  } catch (error) {
-    return jsonResponse(req, 402, {
-      ok: false,
-      error: sanitizeError(error),
-      provider: "grok",
-      required_count: requiredProviderCalls,
-      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
+    const charged = await chargeOnlineAi(session.user, {
+      feature: "prompt-optimize",
+      amount: Math.max(requiredProviderCalls, isH3Prompt ? 2 : requiredProviderCalls),
+      run: async ({ amount: providerCallBudget }) => {
+        if (providerCallBudget < requiredProviderCalls) {
+          const error = new Error("在线AI次数不足或暂时不可用") as Error & { statusCode?: number; chargedAmount?: number };
+          error.statusCode = 402;
+          error.chargedAmount = 0;
+          throw error;
+        }
+        resultOptions = {
+          ...(request.resultOptions as AnyRecord),
+          visualRetryAllowed: isH3Prompt && providerCallBudget >= 2,
+          providerCallBudget,
+          h3RepairAllowed: (request.resultOptions as AnyRecord)?.minimaxH3Reverse === true
+            && providerCallBudget >= requiredProviderCalls + 1
+        };
+        try {
+          const value = await callGrokResponse(request.body as AnyRecord, request.inputMeta as AnyRecord, resultOptions);
+          const providerCallCount = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
+          return { amount: providerCallCount, value, metadata: { mode: String((request.inputMeta as AnyRecord).mode || "prompt_optimize"), tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, h3ContractRepairUsed: Boolean(value.h3ContractRepairUsed), success: true } };
+        } catch (error) {
+          const tracked = error as Error & { grokProviderCallCount?: number; chargedAmount?: number; chargeMetadata?: AnyRecord; grokUsage?: AnyRecord; grokDurationMs?: number };
+          tracked.chargedAmount = 0;
+          tracked.chargeMetadata = { mode: "prompt_optimize", error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0, success: false };
+          throw error;
+        }
+      }
     });
-  }
-  const providerCallBudget = Math.max(0, Number(reservation.provider_call_budget || reservation.reserved_calls || 0));
-  const resultOptions = {
-    ...(request.resultOptions as AnyRecord),
-    visualRetryAllowed: isH3Prompt && providerCallBudget >= 2,
-    providerCallBudget,
-    h3RepairAllowed: (request.resultOptions as AnyRecord)?.minimaxH3Reverse === true
-      && providerCallBudget >= requiredProviderCalls + 1
-  };
-  let grok: AnyRecord;
-  try {
-    grok = await callGrokResponse(
-      request.body as AnyRecord,
-      request.inputMeta as AnyRecord,
-      resultOptions
-    );
+    grok = charged.value as AnyRecord;
+    usage = charged.quota as ProviderQuotaRecord;
   } catch (error) {
-    const isMiniMaxH3 = resultOptions.minimaxH3Prompt === true;
-    const tracked = error as Error & { grokProviderCallCount?: number; grokUsage?: AnyRecord; grokDurationMs?: number };
-    const actualCalls = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
-    let failureQuota: ProviderQuotaRecord;
-    try {
-      failureQuota = actualCalls > 0
-        ? await settleGrokQuota(session.user, reservation, actualCalls, false, { mode: "prompt_optimize", error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0 })
-        : await releaseGrokQuota(session.user, reservation, sanitizeError(error));
-    } catch (settleError) {
-      return jsonResponse(req, 500, { ok: false, provider: "grok", error: `Grok quota settlement failed: ${sanitizeError(settleError)}` });
-    }
-    const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
-    const h3Failure = isMiniMaxH3 ? miniMaxH3FailureEnvelope(error) : null;
-    const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true
-      || resultOptions.ordinaryArtStructuredPrompt === true)
-      && /^Grok ordinary Art\b/.test(sanitizeError(error));
-    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+    const tracked = error as Error & { statusCode?: number; quota?: ProviderQuotaRecord; quotaFailed?: boolean };
+    if (tracked.quotaFailed) return jsonResponse(req, 500, { ok: false, provider: "grok", error: "在线计量没有完成" });
+    const failureQuota = tracked.quota || await readProviderQuota(session.user, "grok");
+    const statusCode = Number(tracked.statusCode || 502);
+    const h3Failure = resultOptions.minimaxH3Prompt === true ? miniMaxH3FailureEnvelope(error) : null;
+    const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true || resultOptions.ordinaryArtStructuredPrompt === true) && /^Grok ordinary Art\b/.test(sanitizeError(error));
+    return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: h3Failure?.message || (ordinaryArtPatchFailure
+      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (ordinaryArtPatchFailure
         ? "提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体"
         : "生成失败，请稍后重试"),
       provider: "grok",
       ...(h3Failure || {}),
-      ...(ordinaryArtPatchFailure ? {
-        errorCode: "art-prompt-edit-not-applied",
-        failureClass: "application"
-      } : {}),
+      ...(ordinaryArtPatchFailure ? { errorCode: "art-prompt-edit-not-applied", failureClass: "application" } : {}),
       quota: providerQuotaPayload(failureQuota)
     });
   }
   const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
-  const usage = await settleGrokQuota(session.user, reservation, providerCallCount, true, {
-      mode: String((request.inputMeta as AnyRecord).mode || "prompt_optimize"),
-      tokenUsage: grok.usage,
-      durationMs: grok.durationMs,
-      model: grok.model,
-      providerCallCount,
-      h3ContractRepairUsed: Boolean(grok.h3ContractRepairUsed)
-  });
   const data = grok.data as AnyRecord;
   return jsonResponse(req, 200, {
     ok: true,
@@ -1520,58 +1468,48 @@ async function handleGrokImageReverse(
     Math.round(Number((request.resultOptions as AnyRecord)?.requiredProviderCalls || 1))
   );
   const isH3Reverse = (request.resultOptions as AnyRecord)?.minimaxH3Reverse === true;
-  let reservation: AnyRecord;
+  const videoFrames = String((request.inputMeta as AnyRecord).scenario || "") === "video_frames";
+  const mode = videoFrames ? "video_reverse" : "image_reverse";
+  let grok: AnyRecord = {};
+  let usage: ProviderQuotaRecord;
+  let resultOptions: AnyRecord = request.resultOptions as AnyRecord;
   try {
-    reservation = await reserveGrokQuota(session.user,
-      String((request.inputMeta as AnyRecord).scenario || "") === "video_frames" ? "video_reverse" : "image_reverse",
-      requiredProviderCalls,
-      isH3Reverse ? requiredProviderCalls : Math.max(requiredProviderCalls, 2));
-  } catch (error) {
-    return jsonResponse(req, 402, {
-      ok: false,
-      error: sanitizeError(error),
-      provider: "grok",
-      required_count: requiredProviderCalls,
-      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
+    const charged = await chargeOnlineAi(session.user, {
+      feature: videoFrames ? "video-reverse" : "image-reverse",
+      amount: isH3Reverse ? requiredProviderCalls : Math.max(requiredProviderCalls, 2),
+      run: async ({ amount: providerCallBudget }) => {
+        if (providerCallBudget < requiredProviderCalls) {
+          const error = new Error("在线AI次数不足或暂时不可用") as Error & { statusCode?: number; chargedAmount?: number };
+          error.statusCode = 402;
+          error.chargedAmount = 0;
+          throw error;
+        }
+        resultOptions = { ...(request.resultOptions as AnyRecord), visualRetryAllowed: providerCallBudget >= 2, providerCallBudget, h3RepairAllowed: false };
+        try {
+          const value = await callGrokResponse(request.body as AnyRecord, request.inputMeta as AnyRecord, resultOptions);
+          const providerCallCount = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
+          return { amount: providerCallCount, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, visualContractRetryUsed: Boolean(value.visualContractRetryUsed), success: true } };
+        } catch (error) {
+          const tracked = error as Error & { grokProviderCallCount?: number; chargedAmount?: number; chargeMetadata?: AnyRecord; grokUsage?: AnyRecord; grokDurationMs?: number };
+          tracked.chargedAmount = 0;
+          tracked.chargeMetadata = { mode, error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0, success: false };
+          throw error;
+        }
+      }
     });
-  }
-  const providerCallBudget = Math.max(0, Number(reservation.provider_call_budget || reservation.reserved_calls || 0));
-  const resultOptions = {
-    ...(request.resultOptions as AnyRecord),
-    visualRetryAllowed: providerCallBudget >= 2,
-    providerCallBudget,
-    h3RepairAllowed: false
-  };
-  let grok: AnyRecord;
-  try {
-    grok = await callGrokResponse(
-      request.body as AnyRecord,
-      request.inputMeta as AnyRecord,
-      resultOptions
-    );
+    grok = charged.value as AnyRecord;
+    usage = charged.quota as ProviderQuotaRecord;
   } catch (error) {
+    const tracked = error as Error & { statusCode?: number; quota?: ProviderQuotaRecord; quotaFailed?: boolean };
+    if (tracked.quotaFailed) return jsonResponse(req, 500, { ok: false, provider: "grok", error: "在线计量没有完成" });
+    const failureQuota = tracked.quota || await readProviderQuota(session.user, "grok");
+    const statusCode = Number(tracked.statusCode || 502);
     const isVisualV2 = String(resultOptions.visualIrSchema || "") === "nf.visual.v2";
-    const isMiniMaxH3 = resultOptions.minimaxH3Prompt === true;
-    const failureMode = String((request.inputMeta as AnyRecord).scenario || "") === "video_frames"
-      ? "video_reverse"
-      : "image_reverse";
-    const tracked = error as Error & { grokProviderCallCount?: number; grokUsage?: AnyRecord; grokDurationMs?: number };
-    const actualCalls = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
-    let failureQuota: ProviderQuotaRecord;
-    try {
-      failureQuota = actualCalls > 0
-        ? await settleGrokQuota(session.user, reservation, actualCalls, false, { mode: failureMode, error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0 })
-        : await releaseGrokQuota(session.user, reservation, sanitizeError(error));
-    } catch (settleError) {
-      return jsonResponse(req, 500, { ok: false, provider: "grok", error: `Grok quota settlement failed: ${sanitizeError(settleError)}` });
-    }
-    const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
-    const h3Failure = isMiniMaxH3 ? miniMaxH3FailureEnvelope(error) : null;
-    // The 美工 role reference refuses a child with sensitive content for good; a retry would give the same answer.
+    const h3Failure = resultOptions.minimaxH3Prompt === true ? miniMaxH3FailureEnvelope(error) : null;
     const contentPolicyFailure = !h3Failure && (error as AnyRecord)?.errorCode === "provider_content_policy";
-    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+    return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: h3Failure?.message || (contentPolicyFailure ? "Grok 未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
+      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
       provider: "grok",
       ...(contentPolicyFailure ? { errorCode: "provider_content_policy", retryable: false } : {}),
       ...(h3Failure || {}),
@@ -1579,18 +1517,7 @@ async function handleGrokImageReverse(
       quota: providerQuotaPayload(failureQuota)
     });
   }
-  const mode = String((request.inputMeta as AnyRecord).scenario || "") === "video_frames"
-    ? "video_reverse"
-    : "image_reverse";
   const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
-  const usage = await settleGrokQuota(session.user, reservation, providerCallCount, true, {
-      mode,
-      tokenUsage: grok.usage,
-      durationMs: grok.durationMs,
-      model: grok.model,
-      providerCallCount,
-      visualContractRetryUsed: Boolean(grok.visualContractRetryUsed)
-  });
   const data = grok.data as AnyRecord;
   return jsonResponse(req, 200, {
     ok: true,
@@ -1646,55 +1573,89 @@ async function handleGrokImageReverse(
 
 
 
+async function handleRunningHubUiCatalog(req: Request, session: { user: PublicUser }): Promise<Response> {
+  let payload: AnyRecord;
+  try {
+    payload = await parseJsonBody(req, MAX_GROK_IMAGE_BODY_BYTES);
+  } catch (error) {
+    return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
+  }
+  const requestId = String(payload.requestId || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) return jsonResponse(req, 400, { ok: false, error: "分析请求标识无效" });
+  let responsesBody: AnyRecord;
+  try {
+    responsesBody = uiCatalogResponsesRequest(payload) as AnyRecord;
+  } catch (error) {
+    return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
+  }
+  try {
+    const charged = await chargeOnlineAi(session.user, {
+      feature: "ui-catalog",
+      amount: 1,
+      run: async () => {
+        try {
+          const posted = await postRunningHubResponses({ body: responsesBody, config: runningHubLlm(), timeoutMs: 180000 });
+          const rawOutputText = responsesOutputText(posted.data);
+          if (!rawOutputText || posted.data.status !== "completed" || posted.data.output?.some((item: AnyRecord) => item.type === "function_call")) {
+            throw Object.assign(new Error("在线目录分析未返回完整结果"), { statusCode: 502, chargedAmount: 0 });
+          }
+          return { amount: 1, value: { rawOutputText, model: posted.data.model || runningHubLlm().model, requestId: posted.requestId }, metadata: { mode: "ui-catalog", model: posted.data.model, success: true } };
+        } catch (error) {
+          const tracked = error as Error & { chargedAmount?: number; providerCallStarted?: boolean };
+          tracked.chargedAmount = 0;
+          throw error;
+        }
+      }
+    });
+    const value = charged.value as AnyRecord;
+    return jsonResponse(req, 200, {
+      ok: true, model: value.model, providerCallCount: 1, retryCount: 0,
+      clientRequestId: requestId, requestId: value.requestId || requestId,
+      finishReason: "completed", rawOutputText: value.rawOutputText
+    });
+  } catch (error) {
+    const tracked = error as Error & { statusCode?: number; quotaFailed?: boolean };
+    if (tracked.quotaFailed) return jsonResponse(req, 500, { ok: false, error: "在线计量没有完成" });
+    const statusCode = Number(tracked.statusCode || 502);
+    return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+      ok: false, error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线/.test(String(tracked.message || "")) ? tracked.message : "在线目录分析未完成"
+    });
+  }
+}
+
 async function handleGrokChat(req: Request, session: { user: PublicUser }): Promise<Response> {
   const payload = await parseJsonBody(req, MAX_GROK_BODY_BYTES);
-  let reservation: AnyRecord;
-  try {
-    reservation = await reserveGrokQuota(session.user, "provider_gateway", 1, 1);
-  } catch (error) {
-    return jsonResponse(req, 402, {
-      ok: false,
-      error: sanitizeError(error),
-      provider: "grok",
-      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
-    });
-  }
-
   let grok: AnyRecord;
+  let usage: ProviderQuotaRecord;
   try {
-    grok = await callGrok(payload);
+    const charged = await chargeOnlineAi(session.user, {
+      feature: "xiaotao-text",
+      amount: 1,
+      run: async () => {
+        try {
+          const value = await callGrok(payload);
+          return { amount: 1, value, metadata: { mode: "provider_gateway", tokenUsage: (value.data as AnyRecord)?.usage || null, durationMs: value.durationMs, model: value.model, success: true } };
+        } catch (error) {
+          const tracked = error as Error & { chargedAmount?: number; grokProviderCallCount?: number };
+          tracked.chargedAmount = 0;
+          throw error;
+        }
+      }
+    });
+    grok = charged.value as AnyRecord;
+    usage = charged.quota as ProviderQuotaRecord;
   } catch (error) {
-    const actualCalls = Math.max(
-      0,
-      Math.round(Number((error as Error & { grokProviderCallCount?: number }).grokProviderCallCount || 0))
-    );
-    let failureQuota: ProviderQuotaRecord;
-    try {
-      failureQuota = actualCalls > 0
-        ? await settleGrokQuota(session.user, reservation, actualCalls, false, {
-          mode: "provider_gateway", error: sanitizeError(error)
-        })
-        : await releaseGrokQuota(session.user, reservation, sanitizeError(error));
-    } catch (settleError) {
-      return jsonResponse(req, 500, {
-        ok: false,
-        provider: "grok",
-        error: `Grok quota finalization failed: ${sanitizeError(settleError)}`
-      });
-    }
-    const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
-    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+    const tracked = error as Error & { statusCode?: number; quota?: ProviderQuotaRecord; quotaFailed?: boolean };
+    if (tracked.quotaFailed) return jsonResponse(req, 500, { ok: false, error: "在线计量没有完成" });
+    const statusCode = Number(tracked.statusCode || 502);
+    return jsonResponse(req, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: `Grok API Error: ${sanitizeError(error)}`,
+      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线模型/.test(String(tracked.message || "")) ? tracked.message : "在线模型暂时不可用",
       provider: "grok",
-      quota: providerQuotaPayload(failureQuota)
+      quota: providerQuotaPayload(tracked.quota || await readProviderQuota(session.user, "grok"))
     });
   }
 
-  const usage = await settleGrokQuota(session.user, reservation, 1, true, {
-    mode: "provider_gateway", tokenUsage: (grok.data as AnyRecord)?.usage || null,
-    durationMs: grok.durationMs, model: grok.model
-  });
   return jsonResponse(req, 200, {
     ok: true,
     provider: "grok",
@@ -1755,8 +1716,9 @@ function readiness(): AnyRecord {
     { key: "service_role", ok: Boolean(serviceRoleKey()), required: true },
     { key: "auth_key", ok: Boolean(publishableKey()), required: true },
     { key: "session_secret", ok: Boolean(sessionSecret()) && sessionSecret().length >= 32, required: true },
-    { key: "grok_api_key", ok: Boolean(grokApiKey()), required: false }
+    { key: "runninghub_api_key", ok: Boolean(grokApiKey()), required: false }
   ];
+  const llm = runningHubLlm();
   return {
     ok: checks.every((item) => !item.required || item.ok),
     service: "NovaFlow Backend",
@@ -1768,9 +1730,9 @@ function readiness(): AnyRecord {
       authKeyConfigured: Boolean(publishableKey()),
       sessionSecretConfigured: Boolean(sessionSecret()),
       sessionTtlSeconds: sessionTtlSeconds(),
-      grokBaseUrl: grokBaseUrl(),
-      grokModel: grokModel(),
-      grokApiKeyConfigured: Boolean(grokApiKey())
+      runningHubLlmBaseUrl: llm.baseUrl,
+      runningHubLlmModel: llm.model,
+      runningHubLlmConfigured: Boolean(grokApiKey())
     }
   };
 }
@@ -1817,6 +1779,7 @@ Deno.serve(async (req: Request) => {
       "/api/ai/tasks/usage",
       "/api/client/grok/prompt-optimize",
       "/api/client/grok/image-reverse",
+      "/api/client/runninghub/ui-catalog",
       "/api/provider/grok/chat"
     ]);
     if (sessionRoutes.has(path)) {
@@ -1847,6 +1810,7 @@ Deno.serve(async (req: Request) => {
       if (req.method === "POST" && path === "/api/client/grok/prompt-optimize") return await handleGrokPromptOptimize(req, session);
       if (req.method === "POST" && path === "/api/client/grok/image-reverse") return await handleGrokImageReverse(req, session);
       if (req.method === "POST" && path === "/api/provider/grok/chat") return await handleGrokChat(req, session);
+      if (req.method === "POST" && path === "/api/client/runninghub/ui-catalog") return await handleRunningHubUiCatalog(req, session);
     }
 
     return jsonResponse(req, 404, { ok: false, error: "route not found", path });

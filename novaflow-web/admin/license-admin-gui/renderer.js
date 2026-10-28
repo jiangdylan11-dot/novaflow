@@ -1253,8 +1253,8 @@ function renderDashboard(data) {
     { label: "数据源", value: sourceLabel },
     { label: "ComfyUI 连接", value: providerHealthStatusText(data.comfyStatus, false) },
     {
-      label: "Grok 提示词服务",
-      value: data.grokStatus?.configured ? `已配置 · ${data.grokStatus.model || "grok-4.3"}` : "未配置"
+      label: "在线语言模型",
+      value: data.runninghubStatus?.configured ? `已配置 · ${data.runninghubStatus.llmModel || "xai/grok-4.7"}` : "未配置"
     },
     { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
     { label: "启用用户", value: `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
@@ -1755,7 +1755,7 @@ async function loadAdminData() {
     renderSettings(settings);
     renderCreditStats(credits, providerQuotasByKey.grok);
     renderMembers(users, credits, providerQuotasByKey.grok);
-    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus, usage, workers });
+    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus, runninghubStatus, usage, workers });
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
