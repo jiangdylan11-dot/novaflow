@@ -175,6 +175,44 @@ test('the audio prompt has no AI 助手 button and keeps the stack-tier layout',
   assert.doesNotMatch(source, /el\('button', 'nf-as-prompt-ai'\)/);
   assert.doesNotMatch(source, /['"]AI 助手['"]/);
   assert.doesNotMatch(source, /\/local\/audio\/optimize-prompt/);
+  assert.doesNotMatch(source, /\bcloseAssistant\b/);
+  assert.doesNotMatch(source, /\bopenAssistant\b/);
   assert.match(source, /data-novaflow-layout-tier/);
   assert.doesNotMatch(source, /AI 润色/);
+});
+
+
+test('audio-studio never references the retired closeAssistant/assistant symbols', async () => {
+  const source = await readFile(new URL('../../renderer/audio-studio.tool.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /\bcloseAssistant\b/);
+  assert.doesNotMatch(source, /\bopenAssistant\b/);
+  const stripped = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+  assert.doesNotMatch(stripped, /(?<!\.)\bassistant\b/);
+});
+
+test('entering 音视 from another module activates without throw; reload does not duplicate the API', async () => {
+  const editorSource = await readFile(ROOT + 'renderer/audio-timeline.editor.js', 'utf8');
+  const source = await readFile(ROOT + 'renderer/audio-studio.tool.js', 'utf8');
+  const sandbox = createDomSandbox({});
+  // Simulate leaving 美工/特效: body has neither audio nor av-video class.
+  sandbox.document.body.classList.remove('novaflow-primary-target-audio');
+  sandbox.document.body.classList.remove('novaflow-primary-target-av-video');
+  const context = createContext(sandbox);
+  runInContext(editorSource, context, { filename: 'audio-timeline.editor.js' });
+  runInContext(source, context, { filename: 'audio-studio.tool.js' });
+  const first = sandbox.NovaFlowAudioStudio;
+  assert.ok(first && typeof first.open === 'function');
+  // Rail entry into 音视 always lands on 视频 (the path that used to call the removed closeAssistant).
+  assert.doesNotThrow(() => first.open('video'));
+  assert.equal(first.isOpen(), true);
+  assert.equal(first.sub(), 'video');
+  assert.equal(sandbox.document.body.classList.contains('novaflow-primary-target-av-video'), true);
+  assert.doesNotThrow(() => first.close());
+  assert.equal(first.isOpen(), false);
+  // Re-running the overlay script must keep the same singleton (no duplicated listeners/API).
+  runInContext(source, context, { filename: 'audio-studio.tool.js#reload' });
+  assert.equal(sandbox.NovaFlowAudioStudio, first);
+  assert.doesNotThrow(() => first.open('video'));
+  assert.equal(first.sub(), 'video');
+  assert.doesNotThrow(() => first.close());
 });
