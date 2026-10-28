@@ -733,7 +733,7 @@
       .nf-as-status .nf-as-err{color:#f09595;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
       .nf-as-cancel{margin-left:auto;height:18px;border:0;border-radius:7px;background:rgba(239,68,68,.18);color:#ffb4b4;font-size:11px;padding:0 8px}
       .nf-as-cancel[hidden]{display:none}
-      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0;margin-top:-3px}
+      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0;margin-top:-3px;width:100%;min-width:0;max-width:none;box-sizing:border-box}
       .nf-as-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:4px 7px;border-bottom:1px solid rgba(255,255,255,.22)}
       .nf-as-prompt:focus-within .nf-as-prompt-head{border-bottom-color:#1ea672}
       .nf-as-prompt-ai{height:24px;min-height:24px;max-height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;line-height:1;padding:3px 7px;display:inline-flex;align-items:center;justify-content:center;gap:7px}

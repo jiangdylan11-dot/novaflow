@@ -1049,15 +1049,28 @@ html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-b
 }
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-edit-grid,
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-edit-grid[data-mode] {
-  display: grid !important;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
   flex: 0 0 auto !important;
   height: auto !important;
   min-height: 0 !important;
   max-height: none !important;
   margin-top: 8px !important;
   gap: 10px !important;
-  grid-template-columns: none !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-prompt-row {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
 }
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref-grid {
   display: flex !important;
@@ -1153,9 +1166,10 @@ html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-r
   grid-column: 1 / -1 !important;
 }
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-prompt {
-  width: auto !important;
+  width: 100% !important;
   min-width: 0 !important;
-  flex: none !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
   height: 108px !important;
   min-height: 108px !important;
   max-height: 108px !important;

@@ -35865,24 +35865,34 @@
         // Tiles on their own row; the two prompts side by side under them
         // (as asked: not one above the other).
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid",
-        style: (node) => ({
-          display: "grid", "grid-template-columns": node.querySelector('[data-novaflow-art-generate-prompt-surface="drawing"]') ? "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" : "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "auto",
+        style: {
+          display: "flex", "flex-direction": "column", "align-items": "stretch",
+          width: "100%", "min-width": "0", "max-width": "none", "box-sizing": "border-box",
+          "grid-template-columns": "none",
           gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
-        })
+        }
+      },
+      {
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-prompt-row",
+        style: {
+          display: "grid",
+          "grid-template-columns": "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+          gap: "10px", width: "100%", "min-width": "0", "max-width": "none", "box-sizing": "border-box"
+        }
       },
       {
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-ref-grid",
         style: { "grid-column": "1 / -1" }
       },
       {
-        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-prompt",
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-prompt-row > .novaflow-art-generate-prompt",
         // A model without a negative prompt leaves the positive one alone: it
         // takes the whole row, not half of it.
-        style: (node) => ({
-          width: "auto", "min-width": "0", flex: "none",
-          "grid-column": node.parentElement && node.parentElement.getAttribute("data-negative-prompt") === "0" ? "1 / -1" : "auto",
+        style: {
+          width: "100%", "min-width": "0", "max-width": "none", flex: "1 1 auto",
+          "grid-column": "auto",
           height: "108px", "min-height": "108px", "max-height": "108px"
-        })
+        }
       },
       {
         // AI 特效 → 特效模板: the loaded preview's × (in place of 清空), small
@@ -80371,14 +80381,24 @@
       }
       .novaflow-art-generate-edit-grid {
         min-height: 0;
-        display: grid;
-        grid-template-columns: 416px minmax(0, 1fr) minmax(0, 1fr);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
         gap: 10px;
         padding: 2px 14px 12px;
         box-sizing: border-box;
       }
-      .novaflow-art-generate-edit-grid[data-mode="txt2img"] {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      .novaflow-art-generate-prompt-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+        gap: 10px;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        box-sizing: border-box;
       }
       .novaflow-art-generate-ref-grid {
         min-height: 0;
@@ -81205,22 +81225,34 @@
         background: ${UI_RANGE_ACCENT} !important;
         background-color: ${UI_RANGE_ACCENT} !important;
       }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid {
-        flex: 0 0 132px !important;
-        height: 132px !important;
-        min-height: 132px !important;
-        max-height: 132px !important;
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid,
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="img2img"],
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="txt2img"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex: 0 0 auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
         margin-top: 6px !important;
         padding: 0 !important;
         gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
         overflow: visible !important;
-        align-items: stretch !important;
+        box-sizing: border-box !important;
+        grid-template-columns: none !important;
       }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="img2img"] {
-        grid-template-columns: 416px minmax(0, 1fr) minmax(0, 1fr) !important;
-      }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="txt2img"] {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-row {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)) !important;
+        gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-ref-grid {
         display: grid !important;
@@ -81300,6 +81332,10 @@
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt {
         position: relative !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex: 1 1 auto !important;
         height: 132px !important;
         min-height: 132px !important;
         max-height: 132px !important;
@@ -83455,10 +83491,15 @@
     if (ART_GENERATE_STATE.mode === "img2img" && Number(capability.referenceLimit || 0) > 0) {
       children.push(renderArtGenerateReferenceGrid());
     }
-    children.push(renderArtGeneratePromptBox("prompt", "\u63d0\u793a\u8bcd", "\u8f93\u5165\u6b63\u5411\u63d0\u793a\u8bcd"));
+    const prompts = [renderArtGeneratePromptBox("prompt", "\u63d0\u793a\u8bcd", "\u8f93\u5165\u6b63\u5411\u63d0\u793a\u8bcd")];
     if (capability.negativePrompt !== false) {
-      children.push(renderArtGeneratePromptBox("negativePrompt", "\u53cd\u5411\u63d0\u793a\u8bcd", "\u8f93\u5165\u53cd\u5411\u63d0\u793a\u8bcd\uff08\u53ef\u4e0d\u586b\u5199\uff09"));
+      prompts.push(renderArtGeneratePromptBox("negativePrompt", "\u53cd\u5411\u63d0\u793a\u8bcd", "\u8f93\u5165\u53cd\u5411\u63d0\u793a\u8bcd\uff08\u53ef\u4e0d\u586b\u5199\uff09"));
     }
+    children.push(createArtEl("div", {
+      className: "novaflow-art-generate-prompt-row",
+      "data-novaflow-art-generate-prompt-row": "1",
+      "data-prompt-count": String(prompts.length)
+    }, prompts));
     return createArtEl("div", {
       className: "novaflow-art-generate-edit-grid",
       "data-mode": ART_GENERATE_STATE.mode,
