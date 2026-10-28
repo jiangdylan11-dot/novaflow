@@ -7093,7 +7093,7 @@
 
       // 皮肤（双击「皮肤」新建，和 Spine 一样）
       // Spine: the default skin (what shows without a skin) is not listed; the active skin's dot turns it off again
-      const named = j.skins.filter((x) => x.name !== 'default')
+      const named = j.skins.filter((x) => x.name !== 'default').sort(byName)
       if (node('skins', '皮肤', 'skin', named.length, 1, newSkin)) {
         for (const s of named) {
           const active = state.skin === s.name
