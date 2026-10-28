@@ -1,6 +1,6 @@
 (function (root, factory) {
   const profiles = Object.freeze([
-    Object.freeze({ id: 'beta5_int8', label: '本地 beta5', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
+    Object.freeze({ id: 'beta5_int8', label: 'MiniMaxH3(本地)', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'

@@ -1,7 +1,7 @@
 (function (global) {
   "use strict";
 
-  const START_LABEL = "开始生成";
+  const START_LABEL = "生成";
   const CREDITS_PER_USD = 211;
   const KLING_MAX_TOTAL_SECONDS = 15;
   const DEFAULT_RUNTIME_BASE_URL = "http://127.0.0.1:8188";
@@ -184,7 +184,7 @@
 
   function formatButtonLabel(result) {
     const value = formatPricingResult(result);
-    return value ? `${START_LABEL} · ${value}积分` : START_LABEL;
+    return value ? `${START_LABEL} · ${value}分` : START_LABEL;
   }
 
   async function evaluateButtonLabel(snapshot, priceBadge) {

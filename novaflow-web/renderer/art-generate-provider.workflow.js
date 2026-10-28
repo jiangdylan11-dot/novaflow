@@ -90,7 +90,7 @@
     if (provider !== 'local') {
       throw new Error(provider === 'gpt'
         ? 'GPT 出图请走 RunningHub，不再提交 Comfy 云节点'
-        : 'Google 出图已删除，请改用本地模型或 GPT（云）')
+        : 'Google 出图已删除，请改用 Qwen（本地）或 GPT Image 2.5')
     }
     if (!options.localWorkflow || typeof options.localWorkflow !== 'object') throw new Error('Local Art Generate workflow is required')
     const taskProfile = normalizeOptionalText(options.taskProfile).toLowerCase()

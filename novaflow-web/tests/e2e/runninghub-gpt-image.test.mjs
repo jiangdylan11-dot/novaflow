@@ -13,6 +13,7 @@ import {
   UPLOAD_PATH,
   formatChargedRemaining,
   formatCreditButtonLabel,
+  formatCreditButtonTitle,
   mapGptImageParams,
   quoteGptImage,
   readRunningHubImageConfig,
@@ -62,7 +63,7 @@ test('empty text endpoint defaults to stable-token and estimates 1k medium', () 
   assert.equal(quote.perImage, 6);
   assert.equal(quote.credits, 12);
   assert.equal(quote.credits <= quote.settleCap * quote.count, true);
-  assert.equal(formatCreditButtonLabel(quote.credits, quote), '开始生成 · 预估上限 12积分');
+  assert.equal(formatCreditButtonLabel(quote.credits, quote), '生成 · 约12分');
 });
 
 test('official fallback endpoint is priced at 4 and admin prices override both', () => {
@@ -70,7 +71,7 @@ test('official fallback endpoint is priced at 4 and admin prices override both',
   assert.equal(quote.feature, 'gpt_image_2_official');
   assert.equal(quote.perImage, 9);
   assert.equal(quote.credits, 27);
-  assert.equal(formatCreditButtonLabel(quote.credits), '开始生成 · 27积分');
+  assert.equal(formatCreditButtonLabel(quote.credits), '生成 · 27分');
 });
 
 test('ratio, resolution and reference images map onto RunningHub fields', () => {
@@ -129,7 +130,7 @@ test('pre-display equals the sum of per-image charges', async () => {
     sleep: async () => {},
     request: { userId: 'user-1', usageKey: 'img-batch', count: 2, mode: 'txt2img', prompt: '海', settings: { size: '1024x1024', quality: 'medium' } }
   });
-  assert.equal(formatCreditButtonLabel(quote.credits, quote), '开始生成 · 预估上限 12积分');
+  assert.equal(formatCreditButtonLabel(quote.credits, quote), '生成 · 约12分');
   assert.equal(outcome.charged, quote.credits);
   assert.equal(outcome.quote.credits, quote.credits);
   assert.equal(outcome.quote.feature, 'gpt_image_2_5_token');
@@ -223,8 +224,11 @@ test('the image button label is the same quote the charge uses', () => {
     quoteGptImage: () => quote
   });
   const label = pricing.getButtonLabel(snapshot);
-  assert.equal(label, `${formatCreditButtonLabel(quote.credits, quote)}（若回退官方通道，实扣可能更低）`);
-  assert.equal(label, '开始生成 · 预估上限 6积分（若回退官方通道，实扣可能更低）');
+  assert.equal(label, formatCreditButtonLabel(quote.credits, quote));
+  assert.equal(label, '生成 · 约6分');
+  assert.match(pricing.getButtonTitle(snapshot), /预估上限 6 积分/);
+  assert.match(pricing.getButtonTitle(snapshot), /若回退官方通道，实扣可能更低/);
+  assert.equal(formatCreditButtonTitle(quote.credits, quote), pricing.getButtonTitle(snapshot));
   pricing.recordSettlement({
     promptId: 'rh-task-1',
     settlement: { status: 'settled', charge_amount: quote.perImage },
@@ -234,7 +238,7 @@ test('the image button label is the same quote the charge uses', () => {
   assert.equal(view.text, formatChargedRemaining(quote.perImage, 78));
   const storedGoogle = pricing.createSnapshot({ provider: 'google', mode: 'txt2img' });
   assert.equal(storedGoogle.provider, 'local');
-  assert.equal(pricing.getButtonLabel(storedGoogle), '开始生成');
+  assert.equal(pricing.getButtonLabel(storedGoogle), '生成');
 });
 
 test('image-to-image uses its own 2.5 endpoint and falls back to official on an empty taskId', async () => {

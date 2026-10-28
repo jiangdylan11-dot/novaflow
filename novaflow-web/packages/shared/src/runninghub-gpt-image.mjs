@@ -270,12 +270,25 @@ export function quoteGptImage({ endpoint, imageEndpoint, mode = 'txt2img', count
   };
 }
 
+function creditLabelIsEstimate(options) {
+  return options === true || options?.billingMode === 'token' || options?.cap === true || options?.estimatedCreditsIsCap === true;
+}
+
 export function formatCreditButtonLabel(credits, options = {}) {
   const amount = Math.round(Number(credits));
-  if (!Number.isInteger(amount) || amount < 0) return '开始生成 · 积分待确认';
-  if (amount === 0) return '开始生成';
-  const cap = options === true || options?.billingMode === 'token' || options?.cap === true || options?.estimatedCreditsIsCap === true;
-  return cap ? `开始生成 · 预估上限 ${amount}积分` : `开始生成 · ${amount}积分`;
+  if (!Number.isInteger(amount) || amount < 0) return '生成 · 积分待确认';
+  if (amount === 0) return '生成';
+  return creditLabelIsEstimate(options) ? `生成 · 约${amount}分` : `生成 · ${amount}分`;
+}
+
+export function formatCreditButtonTitle(credits, options = {}) {
+  const amount = Math.round(Number(credits));
+  if (!Number.isInteger(amount) || amount <= 0) return '';
+  const parts = [];
+  if (creditLabelIsEstimate(options)) parts.push(`预估上限 ${amount} 积分，按实际用量结算，不超过该上限`);
+  else parts.push(`本次将扣 ${amount} 积分`);
+  if (options?.mayFallback) parts.push('若回退官方通道，实扣可能更低');
+  return parts.join('。');
 }
 
 export function formatChargedRemaining(charged, remaining) {

@@ -85,7 +85,27 @@ test('credit formula uses ceil(USD × 211 × 2) and the settle cap', () => {
   assert.equal(missing.credits, 12);
   assert.equal(missing.pricingSource, 'estimate_cap');
   assert.equal(missing.usageMissing, true);
-  assert.match(missing.warning, /missing/);
+  assert.match(missing.warning, /thirdPartyConsumeMoney and consumeMoney missing/);
+  const fromConsume = settleTokenImageCredits({
+    usage: { thirdPartyConsumeMoney: null, consumeMoney: '0.0133' },
+    reservedCredits: 12
+  });
+  assert.equal(fromConsume.credits, 6);
+  assert.equal(fromConsume.usdCost, 0.0133);
+  assert.equal(fromConsume.moneySource, 'consumeMoney');
+  assert.equal(fromConsume.usageMissing, false);
+  assert.equal(fromConsume.pricingSource, 'rh_consume_money');
+  assert.equal(fromConsume.warning, '');
+  const preferThird = settleTokenImageCredits({
+    usage: { thirdPartyConsumeMoney: '0.006', consumeMoney: '0.0133' },
+    reservedCredits: 12
+  });
+  assert.equal(preferThird.credits, 3);
+  assert.equal(preferThird.moneySource, 'thirdPartyConsumeMoney');
+  const overCap = settleTokenImageCredits({ usage: {}, reservedCredits: 80 });
+  assert.equal(overCap.credits, 40);
+  assert.equal(overCap.settleCapped, true);
+  assert.match(overCap.warning, /capped at 40/);
 });
 
 test('reserve estimates match measured tiers and never exceed the settle cap', () => {
@@ -318,7 +338,29 @@ test('missing money charges the reserve, and failure or moderation releases it',
     assert.equal(outcome.billing.pricingSource, 'estimate_cap');
     assert.equal(outcome.results[0].billing.usage_missing, true);
     assert.equal(held.rows.get('missing').pricingSource, 'estimate_cap');
-    assert.equal(warnings.some((line) => line.includes('thirdPartyConsumeMoney missing')), true);
+    assert.equal(warnings.some((line) => line.includes('thirdPartyConsumeMoney') && line.includes('consumeMoney missing')), true);
+  } finally {
+    console.warn = original;
+  }
+
+  const consumeWarnings = [];
+  console.warn = (...args) => consumeWarnings.push(args.join(' '));
+  const consumeHeld = ledgerCharge();
+  try {
+    const outcome = await runChargedGptImage({
+      charge: consumeHeld.charge,
+      config: imageConfig,
+      fetchImpl: successFetch({ thirdPartyConsumeMoney: null, consumeMoney: '0.0133', tokenUsage: { total_tokens: '400' } }),
+      sleep: async () => {},
+      request: { userId: 'user-1', usageKey: 'consume', mode: 'txt2img', prompt: '海', settings: { resolution: '2k', quality: 'medium' } }
+    });
+    assert.equal(outcome.quote.perImage, 12);
+    assert.equal(outcome.charged, 6);
+    assert.equal(outcome.billing.pricingSource, 'rh_consume_money');
+    assert.equal(outcome.results[0].billing.money_source, 'consumeMoney');
+    assert.equal(outcome.results[0].billing.usage_missing, false);
+    assert.equal(consumeWarnings.some((line) => line.includes('missing')), false);
+    assert.equal(consumeHeld.balance(), 1000 - 6);
   } finally {
     console.warn = original;
   }

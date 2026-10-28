@@ -98,7 +98,7 @@ const image = { naturalWidth: 320, naturalHeight: 180 };
 test('a missing engine preference stays local and does not call the cloud', async () => {
   const p = page();
   assert.equal(p.api.materialEngine(), 'local');
-  assert.equal(p.api.materialCreditText(), '本地处理不扣积分');
+  assert.equal(p.api.materialCreditText(), '');
   const blob = {};
   const first = await p.api.recognizeMaterial(blob, image);
   const second = await p.api.recognizeMaterial(blob, image);

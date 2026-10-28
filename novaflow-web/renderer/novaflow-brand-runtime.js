@@ -11354,7 +11354,7 @@
     if (!(root instanceof Document) && !(root instanceof HTMLElement)) return;
     Array.from(root.querySelectorAll('select')).filter(isAiAnimationModelMethodSelect).forEach((select) => {
       Array.from(select.options || []).forEach((option) => {
-        if (["minimax_h3_local", "beta5_int8", "beta6_int8"].includes(option.value) && option.textContent !== "本地模型") option.textContent = "本地模型";
+        if (["minimax_h3_local", "beta5_int8", "beta6_int8"].includes(option.value) && option.textContent !== "MiniMaxH3(本地)") option.textContent = "MiniMaxH3(本地)";
       });
     });
   }
@@ -83131,6 +83131,7 @@
       ART_GENERATE_STATE[key] = value;
       input.value = formatArtGenerateNumberValue(value, options);
       if (isOutputSize) window.NovaFlowUiDesignDrawing?.syncOutputSize?.();
+      if (key === "count" || key === "gptCustomWidth" || key === "gptCustomHeight") refreshArtGenerateCreditPresentation();
     };
     const input = createArtEl("input", {
       type: "text",
@@ -83321,8 +83322,11 @@
     if (detail.kind === "estimate" && detail.signature && detail.signature !== snapshot?.signature) return;
     if (!ART_GENERATE_STATE.running && typeof pricing.getButtonLabel === "function") {
       const label = pricing.getButtonLabel(snapshot);
+      const title = typeof pricing.getButtonTitle === "function" ? pricing.getButtonTitle(snapshot) : "";
       document.querySelectorAll("[data-novaflow-art-generate-submit=\"1\"]").forEach((button) => {
-        button.textContent = label || "\u5f00\u59cb\u751f\u6210";
+        button.textContent = label || "\u751f\u6210";
+        if (title) button.title = title;
+        else button.removeAttribute("title");
       });
     }
     const view = typeof pricing.getProgressView === "function"
@@ -83373,11 +83377,15 @@
     const creditPricing = window.NovaFlowArtGenerateCreditPricing;
     const idleSubmitLabel = creditPricing && typeof creditPricing.getButtonLabel === "function"
       ? creditPricing.getButtonLabel(creditSnapshot)
-      : "\u5f00\u59cb\u751f\u6210";
+      : "\u751f\u6210";
+    const idleSubmitTitle = creditPricing && typeof creditPricing.getButtonTitle === "function"
+      ? creditPricing.getButtonTitle(creditSnapshot)
+      : "";
     const submit = createArtEl("button", {
       type: "button",
       className: "novaflow-art-generate-submit",
       "data-novaflow-art-generate-submit": "1",
+      title: idleSubmitTitle || null,
       disabled: ART_GENERATE_STATE.running ? "disabled" : null,
       onclick: () => runArtGenerate().catch((error) => {
         ART_GENERATE_STATE.running = false;
@@ -86751,8 +86759,8 @@
     ART_GENERATE_STATE.batchIndex = 0;
     ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
     if (!ctx.prepared?.agentRun) ART_GENERATE_STATE.count = batchCount;
-    setArtGenerateProgress("正在连接 GPT（云）...", 0.08);
-    setArtGenerateStatus("正在连接 GPT（云）...");
+    setArtGenerateProgress("正在连接 GPT Image 2.5...", 0.08);
+    setArtGenerateStatus("正在连接 GPT Image 2.5...");
     const settings = window.NovaFlowArtGenerateModels?.workflowSettings?.(ctx.settingsSnapshot, "gpt", ctx.runMode) || {};
     const images = ctx.runMode === "img2img"
       ? ctx.refs.map((item) => ({ dataUrl: item.dataUrl, filename: item.name, mime: item.mimeType }))

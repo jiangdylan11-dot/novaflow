@@ -11255,11 +11255,11 @@ async function handleRunningHubGptImageQuote(req, res) {
       width: payload.width,
       height: payload.height
     });
-    const note = quote.mayFallback ? "（若回退官方通道，实扣可能更低）" : "";
     sendJson(res, 200, {
       ok: true,
       ...quote,
-      buttonLabel: image.formatCreditButtonLabel(quote.credits, quote) + note,
+      buttonLabel: image.formatCreditButtonLabel(quote.credits, quote),
+      buttonTitle: typeof image.formatCreditButtonTitle === "function" ? image.formatCreditButtonTitle(quote.credits, quote) : "",
       message: quote.message || undefined
     });
   } catch (err) {
@@ -11316,6 +11316,7 @@ async function handleRunningHubGptImage(req, res) {
       billing: outcome.billing,
       message: outcome.billing?.message || image.formatChargedRemaining(outcome.charged, outcome.remaining),
       buttonLabel: image.formatCreditButtonLabel(outcome.quote.credits, outcome.quote),
+      buttonTitle: typeof image.formatCreditButtonTitle === "function" ? image.formatCreditButtonTitle(outcome.quote.credits, outcome.quote) : "",
       images: (outcome.results || []).map((item) => item.image).filter(Boolean)
     });
   } catch (err) {

@@ -230,8 +230,8 @@
 
   function providerTitle(provider) {
     const normalized = normalizeProvider(provider)
-    if (normalized === 'gpt') return 'GPT（云）'
-    return '本地模型'
+    if (normalized === 'gpt') return 'GPT Image 2.5'
+    return 'Qwen（本地）'
   }
 
   function normalizeReferenceRole(value) {

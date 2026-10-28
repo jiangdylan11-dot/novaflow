@@ -285,14 +285,27 @@ export function creditsFromUsd(usd, config) {
   return Math.max(normalized.token_billing.min_credits_per_image, credits);
 }
 
-export function parseThirdPartyUsd(usage) {
-  if (!usage || typeof usage !== 'object') return null;
-  const raw = usage.thirdPartyConsumeMoney;
+function parseUsdField(raw) {
   if (raw == null || typeof raw === 'object') return null;
   const text = String(raw).trim();
   if (!text || text.toLowerCase() === 'null' || !/^\d+(\.\d+)?$/.test(text)) return null;
   const value = Number(text);
   return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function parseThirdPartyUsd(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  return parseUsdField(usage.thirdPartyConsumeMoney);
+}
+
+// Prefer the provider's third-party USD, then the channel's own consumeMoney.
+export function parseUsageUsd(usage) {
+  if (!usage || typeof usage !== 'object') return { usd: null, source: '' };
+  const thirdParty = parseUsdField(usage.thirdPartyConsumeMoney);
+  if (thirdParty != null) return { usd: thirdParty, source: 'thirdPartyConsumeMoney' };
+  const consume = parseUsdField(usage.consumeMoney);
+  if (consume != null) return { usd: consume, source: 'consumeMoney' };
+  return { usd: null, source: '' };
 }
 
 export function tokenUsageRecord(usage) {
@@ -343,16 +356,19 @@ export function estimateTokenImageCredits({ resolution, quality, count = 1, prev
 }
 
 // Final charge is min(ceil(USD × credits_per_usd × markup), settle cap, reserved).
-// A missing thirdPartyConsumeMoney keeps the reserved estimate and sets a warning.
+// Money is thirdPartyConsumeMoney, then consumeMoney. If both are missing, charge
+// the reserved estimate (never above the settle cap) and set a warning.
 export function settleTokenImageCredits({ usage, reservedCredits, config } = {}) {
   const normalized = normalizeCreditConfig(config);
   const cap = normalized.token_billing.settle_cap_credits;
   const reserved = Math.max(0, Math.round(Number(reservedCredits) || 0));
-  const usd = parseThirdPartyUsd(usage);
+  const parsed = parseUsageUsd(usage);
+  const usd = parsed.usd;
   const base = {
     tokens: tokenUsageRecord(usage),
     money: usage && typeof usage === 'object' ? (usage.thirdPartyConsumeMoney ?? null) : null,
     consumeMoney: usage && typeof usage === 'object' ? (usage.consumeMoney ?? null) : null,
+    moneySource: parsed.source || null,
     usdCost: usd,
     creditsPerUsd: normalized.credits_per_usd,
     markup: normalized.token_billing.markup,
@@ -360,16 +376,20 @@ export function settleTokenImageCredits({ usage, reservedCredits, config } = {})
     reservedCredits: reserved
   };
   if (usd == null) {
+    const credits = Math.min(reserved, cap);
+    const settleCapped = reserved > cap;
     return {
       ...base,
       rawCredits: null,
-      credits: reserved,
-      capped: false,
-      settleCapped: false,
+      credits,
+      capped: settleCapped,
+      settleCapped,
       reserveCapped: false,
       pricingSource: 'estimate_cap',
       usageMissing: true,
-      warning: 'thirdPartyConsumeMoney missing; charging reserved estimate'
+      warning: settleCapped
+        ? `thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate capped at ${credits}`
+        : 'thirdPartyConsumeMoney and consumeMoney missing; charging reserved estimate'
     };
   }
   const raw = creditsFromUsd(usd, normalized);
@@ -403,6 +423,7 @@ export function tokenPricingDetails({ decision, endpoint, taskId, resolution, qu
     token_usage: decision?.tokens || null,
     third_party_consume_money: decision?.money ?? null,
     consume_money: decision?.consumeMoney ?? null,
+    money_source: decision?.moneySource || null,
     usd_cost: decision?.usdCost ?? null,
     credits_per_usd: decision?.creditsPerUsd ?? null,
     markup: decision?.markup ?? null,

@@ -8,8 +8,8 @@
   const MODE = 'img2img'
   const AUTH_SURFACE_KEY = 'ui-design'
   const PROVIDER_OPTIONS = Object.freeze([
-    Object.freeze({ value: 'local', label: '本地模型' }),
-    Object.freeze({ value: 'gpt', label: 'GPT（云）' }),
+    Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
+    Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
   ])
   const GPT_EXACT_SIZES = new Set([
     '1024x1024', '1024x1536', '1536x1024', '2048x2048',
@@ -902,82 +902,7 @@
     }
   }
 
-  function openDesignAssistant(record, promptTextarea) {
-    if (!record.active) return false
-    const callback = record.options.onOpenDesignAssistant
-    if (typeof callback !== 'function') {
-      record.assistantError = 'AI 助手暂不可用'
-      record.assistantMessage = ''
-      renderFields(record)
-      return false
-    }
-    const generatorKey = record.generatorKey
-    const promptRevision = record.promptRevision
-    const negativePromptRevision = record.negativePromptRevision
-    const provider = record.state.provider
-    const apply = (result) => {
-      if (!record.active || record.generatorKey !== generatorKey || !result || typeof result !== 'object') return false
-      const applied = {}
-      if (Object.prototype.hasOwnProperty.call(result, 'prompt') && record.promptRevision === promptRevision) {
-        record.state.prompt = String(result.prompt == null ? '' : result.prompt)
-        record.promptRevision += 1
-        applied.prompt = record.state.prompt
-      }
-      if (
-        provider === 'local' && record.state.provider === 'local' && record.state.negativePromptSource !== 'user' &&
-        Object.prototype.hasOwnProperty.call(result, 'negativePrompt') &&
-        record.negativePromptRevision === negativePromptRevision
-      ) {
-        record.state.negativePrompt = String(result.negativePrompt == null ? '' : result.negativePrompt)
-        record.state.negativePromptSource = NEGATIVE_PROMPT_SOURCES.has(result.negativePromptSource)
-          ? result.negativePromptSource
-          : 'assistant'
-        record.negativePromptRevision += 1
-        applied.negativePrompt = record.state.negativePrompt
-        applied.negativePromptSource = record.state.negativePromptSource
-      }
-      if (!Object.keys(applied).length) return false
-      record.assistantError = ''
-      record.assistantMessage = 'AI 助手已应用'
-      notifyChange(record, 'designAssistant', applied)
-      renderFields(record)
-      return true
-    }
-    const payload = {
-      state: record.state,
-      snapshot: { ...record.state },
-      provider,
-      prompt: String(record.state.prompt || ''),
-      negativePrompt: provider === 'local' ? String(record.state.negativePrompt || '') : '',
-      promptTextarea,
-      generatorKey,
-      apply,
-    }
-    try {
-      const result = callback(payload)
-      if (result && typeof result.then === 'function') {
-        Promise.resolve(result).then((value) => {
-          if (value && typeof value === 'object') apply(value)
-        }).catch((error) => {
-          if (!record.active || record.generatorKey !== generatorKey) return
-          record.assistantError = String(error?.message || error || 'AI 助手打开失败')
-          record.assistantMessage = ''
-          renderFields(record)
-        })
-      } else if (result && typeof result === 'object') {
-        apply(result)
-      }
-      return true
-    } catch (error) {
-      if (!record.active || record.generatorKey !== generatorKey) return false
-      record.assistantError = String(error?.message || error || 'AI 助手打开失败')
-      record.assistantMessage = ''
-      renderFields(record)
-      return false
-    }
-  }
-
-  // The same two buttons as 绘图's prompt bar (AI 助手 / 编辑): 24 high, a 16 outline icon drawn by the
+  // 编辑 matches 绘图's prompt bar: 24 high, a 16 outline icon drawn by the
   // brand sheet from data-novaflow-prompt-action-kind, 11/500 grey, bare until the pointer lifts it.
   function promptActionButton(record, label, kind, attributes) {
     return createElement(record.documentRef, 'button', {
@@ -998,7 +923,6 @@
   }
 
   function promptEditorSection(record) {
-    const assistant = promptActionButton(record, 'AI 助手', 'assistant', { 'data-novaflow-ui-design-design-assistant': '1' })
     const edit = promptActionButton(record, '编辑', 'edit', { 'data-novaflow-ui-design-prompt-edit': '1', title: '编辑完整设计要求' })
 
     const positive = promptTextarea(
@@ -1009,14 +933,9 @@
       3,
     )
     record.nextPromptTextarea = positive
-    assistant.addEventListener('click', (event) => {
-      event?.preventDefault?.()
-      event?.stopPropagation?.()
-      openDesignAssistant(record, positive)
-    })
-    // Pressing either button keeps the text box focused: its blur would save 设计要求 and rebuild the
+    // Pressing 编辑 keeps the text box focused: its blur would save 设计要求 and rebuild the
     // node under the pointer, so the click that follows would land on nothing.
-    for (const button of [assistant, edit]) button.addEventListener('mousedown', (event) => event?.preventDefault?.())
+    edit.addEventListener('mousedown', (event) => event?.preventDefault?.())
     // 编辑 opens the same full-prompt editor as 绘图; its 确认编辑 writes back through input/change, into
     // the 设计要求 field that replaced this one if the node was rebuilt meanwhile.
     edit.addEventListener('click', (event) => {
@@ -1039,7 +958,7 @@
         createElement(record.documentRef, 'span', { text: '设计要求', style: { color: 'rgba(255,255,255,0.78)', fontSize: '11px', fontWeight: '850' } }),
         createElement(record.documentRef, 'div', {
           style: { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: '0 0 auto' },
-        }, [assistant, edit]),
+        }, [edit]),
       ]),
       positive,
     ]
