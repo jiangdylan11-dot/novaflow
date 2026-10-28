@@ -66,22 +66,6 @@
 
     }
 
-    if (state.provider === 'google') {
-
-      const ratio = /^(\d+):(\d+)$/.exec(state.googleAspectRatioImg2img || '')
-
-      if (ratio) {
-
-        const edge = ({ '1K': 1024, '2K': 2048, '4K': 4096 })[state.googleResolution] || 1024
-
-        const a = Number(ratio[1]), b = Number(ratio[2])
-
-        return { width: Math.round(edge * a / Math.max(a,b)), height: Math.round(edge * b / Math.max(a,b)) }
-
-      }
-
-    }
-
     return { width: state.width || 1024, height: state.height || 1024 }
 
   }
@@ -124,9 +108,9 @@
   }
   function renderAnalysisSelector(doc = root.document) {
     const group = element(doc, 'span', { role: 'radiogroup', 'aria-label': '设计需求分析来源', 'data-novaflow-ui-analysis-source': '1', style: { display: 'inline-flex', gap: '4px', alignItems: 'center' } })
-    for (const [engine, label] of [['local', '本地分析'], ['grok', 'Grok 分析']]) {
+    for (const [engine, label] of [['local', '本地分析'], ['grok', '在线分析']]) {
       const button = element(doc, 'button', { type: 'button', role: 'radio', text: label, 'data-novaflow-ui-analysis-engine': engine,
-        title: engine === 'local' ? '由当前算力源的本地模型分析需求与参考图' : '手动选择 Grok 分析需求与参考图',
+        title: engine === 'local' ? '由当前算力源的本地模型分析需求与参考图' : '手动选择在线模型分析需求与参考图',
         style: { height: '24px', padding: '2px 6px', border: '1px solid #424242', borderRadius: '5px', fontSize: '10px', lineHeight: '1', cursor: 'pointer' } })
       button.addEventListener('click', event => {
         event.preventDefault(); event.stopPropagation()

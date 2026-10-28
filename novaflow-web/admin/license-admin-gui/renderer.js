@@ -953,137 +953,26 @@ async function submitMemberAdjust() {
   }
 }
 
-function isComfyUiProvider(provider) {
-  const key = String(provider?.provider_key || provider?.name || "").trim().toLowerCase();
-  return key === "comfyui" || key === "comfy" || key.includes("comfyui");
-}
-
-function isGrokProvider(provider) {
-  const key = String(provider?.provider_key || provider?.name || "").trim().toLowerCase();
-  return key === "grok" || key === "xai" || key.includes("grok");
-}
-
 function isRunningHubProvider(provider) {
   return String(provider?.provider_key || "").toLowerCase() === "runninghub";
 }
 
 function ensureCoreAiProviders(providers) {
-  const list = Array.isArray(providers) ? [...providers] : [];
-  if (!list.some(isRunningHubProvider)) {
-    list.unshift({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
-  }
-  if (!list.some(isGrokProvider)) {
-    list.push({
-      id: "provider-grok-ui",
-      name: "Grok",
-      provider_key: "grok",
-      status: "disabled",
-      billing_multiplier: 0.1,
-      api_key_secret_ref: ""
-    });
-  }
-  if (!list.some(isComfyUiProvider)) {
-    list.push({
-      id: "provider-comfyui-ui",
-      name: "ComfyUI",
-      provider_key: "comfyui",
-      status: "disabled",
-      billing_multiplier: 1.25,
-      api_key_secret_ref: ""
-    });
+  const list = (Array.isArray(providers) ? providers : []).filter(isRunningHubProvider);
+  if (!list.length) {
+    list.push({ id: "provider-runninghub-ui", name: "RunningHub（国内站）", provider_key: "runninghub", status: "disabled", billing_multiplier: null });
   }
   return list;
 }
 
-function providerStatusValue(provider, grokStatus) {
-  if (isRunningHubProvider(provider)) return "待迁移";
-  if (isGrokProvider(provider)) {
-    return provider.status === "enabled" || grokStatus?.configured ? "enabled" : provider.status || "disabled";
-  }
-  return provider.status || "disabled";
-}
-
-function providerConnectionBadge(comfyStatus) {
-  if (!comfyStatus?.configured) {
-    const badge = statusBadge("Not Configured");
-    badge.title = "未配置 NOVAFLOW_COMFYUI_API_KEY";
-    return badge;
-  }
-  if (comfyStatus.status === "connected") {
-    const badge = statusBadge("Connected");
-    badge.title = `GET /api/user · ${durationText(comfyStatus.durationMs)}`;
-    return badge;
-  }
-  const badge = statusBadge("Error");
-  badge.title = comfyStatus?.error || "ComfyUI 连接检测失败";
-  return badge;
-}
-
-function grokConnectionBadge(grokStatus) {
-  if (grokStatus?.configured) {
-    const badge = statusBadge("Configured");
-    badge.title = `POST /chat/completions · ${grokStatus.model || "grok-4.3"}`;
-    return badge;
-  }
-  const badge = statusBadge("Not Configured");
-  badge.title = "未配置 NOVAFLOW_GROK_API_KEY";
-  return badge;
-}
-
-function providerKeyPlaceholder(provider, comfyStatus, grokStatus) {
-  if (isComfyUiProvider(provider) && comfyStatus?.configured) return "已从后台管理环境变量读取";
-  if (isGrokProvider(provider) && grokStatus?.configured) return "已从后台服务环境变量读取";
-  if (provider.api_key_secret_ref) return "已配置服务端密钥引用";
-  return "由后台服务保存，前端不写真实 Key";
-}
-
-function providerConnectionCell(provider, comfyStatus, grokStatus) {
-  if (isComfyUiProvider(provider)) return nodeCell(providerConnectionBadge(comfyStatus));
-  if (isGrokProvider(provider)) return nodeCell(grokConnectionBadge(grokStatus));
-  return textCell("-");
-}
-
-function providerAccountCellText(provider, comfyStatus, grokStatus) {
-  if (isComfyUiProvider(provider)) return providerAccountText(comfyStatus);
-  if (isGrokProvider(provider)) return grokStatus?.configured ? `model: ${grokStatus.model || "grok-4.3"}` : "未配置";
-  return "-";
-}
-
-function providerBalanceCellText(provider, comfyStatus) {
-  if (isComfyUiProvider(provider)) return providerBalanceText(comfyStatus);
-  if (isGrokProvider(provider)) return "按用户分配提示词服务次数";
-  return "-";
-}
-
-function renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus) {
-  const comfyBase = $("comfyRuntimeBaseUrl");
-  const comfyKey = $("comfyRuntimeApiKey");
-  const comfyClear = $("comfyRuntimeClearKey");
-  const comfyHint = $("comfyRuntimeConfigHint");
-  const grokBase = $("grokRuntimeBaseUrl");
-  const grokModel = $("grokRuntimeModel");
-  const grokKey = $("grokRuntimeApiKey");
-  const grokClear = $("grokRuntimeClearKey");
-  const grokHint = $("grokRuntimeConfigHint");
+function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runninghubStatus) {
   const status = $("providerRuntimeConfigStatus");
-
-  if (comfyBase) comfyBase.value = comfyStatus?.baseUrl || "https://cloud.comfy.org";
-  if (comfyKey) comfyKey.value = "";
-  if (comfyClear) comfyClear.checked = false;
-  if (comfyHint) comfyHint.textContent = comfyStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
-
-  if (grokBase) grokBase.value = grokStatus?.baseUrl || "https://api.x.ai/v1";
-  if (grokModel) grokModel.value = grokStatus?.model || "grok-4.3";
-  if (grokKey) grokKey.value = "";
-  if (grokClear) grokClear.checked = false;
-  if (grokHint) grokHint.textContent = grokStatus?.configured ? "当前 Key 已配置" : "当前 Key 未配置";
 
   const runninghubFields = {
     BaseUrl: runninghubStatus?.baseUrl || "https://www.runninghub.cn",
     LlmBaseUrl: runninghubStatus?.llmBaseUrl || "https://llm.runninghub.cn/v1",
     LlmModel: runninghubStatus?.llmModel || "",
-    GptImageEndpoint: runninghubStatus?.gptImageEndpoint || "",
-    GoogleImageEndpoint: runninghubStatus?.googleImageEndpoint || ""
+    GptImageEndpoint: runninghubStatus?.gptImageEndpoint || ""
   };
   for (const [field, value] of Object.entries(runninghubFields)) {
     if ($(`runninghubRuntime${field}`)) $(`runninghubRuntime${field}`).value = value;
@@ -1095,69 +984,6 @@ function renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghub
   if (status) status.textContent = "写入本机后台环境变量";
 }
 
-function providerAccountText(comfyStatus) {
-  if (!comfyStatus?.configured) return "未配置";
-  if (comfyStatus.status === "connected") return comfyStatus.accountStatus || "unknown";
-  return "unknown";
-}
-
-function providerBalanceText(comfyStatus) {
-  if (!comfyStatus?.configured) return "未配置";
-  const balance = comfyStatus.balance || {};
-  return balance.text || (comfyStatus.status === "connected" ? "官方余额 API 未开放" : "读取失败");
-}
-
-let providerBudgetState = { writable: false };
-let providerBudgetDirty = false;
-
-function renderProviderBudgetControls(settingsResult) {
-  const input = $("comfyProviderBudgetBalance");
-  const note = $("comfyProviderBudgetNote");
-  const button = $("saveComfyProviderBudget");
-  const status = $("providerBudgetStatus");
-  const display = $("comfyProviderBudgetDisplay");
-  if (!input || !note || !button || !status || !display) return;
-
-  // Third panel with the same two faults. A reload overwrote whatever was
-  // being typed - and a reload runs after any write anywhere in the tool - and
-  // a failed load disabled all three controls with nothing left that could
-  // trigger a retry.
-  const failed = isErrorResult(settingsResult);
-  const setting = findSettingRecord(settingsResult, "provider_budget_comfyui");
-  const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
-  const balance = Number(value.balance ?? value.value);
-  const hasBalance = Number.isFinite(balance);
-  const writable = failed
-    ? providerBudgetState.writable
-    : settingsResult?.source === "supabase" && settingsResult?.status !== "error";
-  providerBudgetState = { writable };
-
-  input.disabled = !writable;
-  note.disabled = !writable;
-  button.disabled = !writable;
-
-  // Never take the field away from whoever is using it, and do not wipe it
-  // just because the server could not be reached.
-  const editing = providerBudgetDirty
-    || document.activeElement === input
-    || document.activeElement === note;
-  if (!editing && !failed) {
-    input.value = hasBalance ? formatProviderBalanceInput(balance) : "";
-    note.value = String(value.note || "");
-  }
-  status.textContent = failed
-    ? writable
-      ? "读取失败，显示的是上次的数据；保存会重试"
-      : "读取失败，请稍后重试"
-    : writable
-      ? hasBalance ? "已保存，生成成功后自动扣减" : "可写入 Supabase"
-      : settingsResult?.source === "mock" ? "mock 数据不可写入" : "数据异常，暂停写入";
-  const updatedAt = value.updated_at || setting?.updated_at || "";
-  display.textContent = hasBalance
-    ? `${formatProviderBalance(balance)} ${value.unit || "credits"}${updatedAt ? " · " + formatDateTime(updatedAt) : ""}`
-    : "未保存";
-}
-
 function providerHealthStatusText(comfyStatus, hasSecretRef) {
   if (!comfyStatus?.configured) {
     return comfyStatus?.secretConfigured || hasSecretRef ? "已配置密钥引用，等待后台 secret resolver" : "未配置";
@@ -1167,40 +993,15 @@ function providerHealthStatusText(comfyStatus, hasSecretRef) {
   return comfyStatus.status || "未知";
 }
 
-function providerManagedBalanceText(settingsResult) {
-  const setting = findSettingRecord(settingsResult, "provider_budget_comfyui");
-  const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
-  const balance = Number(value.balance ?? value.value);
-  if (!Number.isFinite(balance)) return "未保存";
-  const updatedAt = value.updated_at || setting?.updated_at || "";
-  return `${formatProviderBalance(balance)} ${value.unit || "credits"}${updatedAt ? " · " + formatDateTime(updatedAt) : ""}`;
-}
-
-function renderComfyProviderHealth(comfyStatus, settingsResult, providers) {
-  const comfyProvider = (providers || []).find(isComfyUiProvider);
-  const hasSecretRef = Boolean(String(comfyProvider?.api_key_secret_ref || "").trim() || comfyStatus?.hasApiKeySecretRef);
-  const officialBalance = providerBalanceText(comfyStatus);
-  const entries = [
-    { label: "Base URL", value: comfyStatus?.baseUrl || "https://cloud.comfy.org" },
-    { label: "API Key", value: comfyStatus?.configured ? "环境变量已配置" : hasSecretRef ? "仅配置 secret ref" : "未配置" },
-    { label: "连接状态", value: providerHealthStatusText(comfyStatus, hasSecretRef) },
-    { label: "官方余额", value: officialBalance },
-    { label: "手动总余额", value: providerManagedBalanceText(settingsResult) },
-    { label: "检测耗时", value: durationText(comfyStatus?.durationMs) },
-    { label: "错误提示", value: comfyStatus?.error || "-" }
-  ];
-  renderSettingRows("comfyProviderHealthRows", entries, "暂无 ComfyUI 检测数据");
-}
-
 function renderRunningHubProviderHealth(status) {
   const connection = !status?.configured ? "未配置 Key" : status?.connected ? "账户连接正常" : status?.checked ? "检测失败" : "已配置，尚未检测";
   renderSettingRows("runninghubProviderHealthRows", [
     { label: "生成 API 地址", value: status?.baseUrl || "https://www.runninghub.cn" },
     { label: "连接状态", value: connection },
-    { label: "官方余额", value: status?.balance?.text || "未检测" },
+    { label: "国内站余额", value: status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测" },
     { label: "当前运行任务数", value: status?.currentTaskCounts == null ? "-" : String(status.currentTaskCounts) },
     { label: "上次检测时间", value: status?.checkedAt ? formatDateTime(status.checkedAt) : "尚未检测" },
-    { label: "功能迁移", value: "仅配置服务商；GPT / Google 生成与 Grok 提示词尚未切换" },
+    { label: "功能迁移", value: "云端 GPT 出图走 RunningHub；本地 Comfy 与本地模型保持可用" },
     { label: "检测耗时", value: durationText(status?.durationMs) },
     { label: "错误提示", value: status?.error || "-" }
   ], "尚未检测");
@@ -1216,49 +1017,18 @@ function runningHubProviderRow(provider, status) {
   badge.title = status?.error || (status?.checked ? "只读账户检测；模型调用未验证" : "尚未检测账户");
   tr.appendChild(nodeCell(badge));
   tr.appendChild(textCell(status?.connected ? "账户可用" : status?.checked ? "检测失败" : "尚未检测"));
-  tr.appendChild(textCell(status?.balance?.text || "未检测"));
+  tr.appendChild(textCell(status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测"));
   return tr;
 }
 
-function renderAiServices(providersResult, settingsResult, comfyStatus, grokStatus, runninghubStatus) {
+function renderAiServices(providersResult, _settingsResult, _comfyStatus, _grokStatus, runninghubStatus) {
   renderRunningHubProviderHealth(runninghubStatus);
-  const providers = ensureCoreAiProviders(providersResult.records || []);
   if (isErrorResult(providersResult)) {
     replaceRows("aiProvidersTableBody", [], 7, resultErrorText(providersResult));
-  } else {
-    const providerRows = providers.map((provider) => {
-      if (isRunningHubProvider(provider)) return runningHubProviderRow(provider, runninghubStatus);
-      const isComfyUi = isComfyUiProvider(provider);
-      const tr = document.createElement("tr");
-      const input = document.createElement("input");
-      input.className = "mockKey";
-      input.type = "password";
-      input.value = "";
-      input.placeholder = isComfyUi && comfyStatus?.configured
-        ? "已从后台管理环境变量读取"
-        : provider.api_key_secret_ref ? "已配置服务端密钥引用" : "由后台服务保存，前端不写真实 Key";
-      if (isGrokProvider(provider)) input.placeholder = providerKeyPlaceholder(provider, comfyStatus, grokStatus);
-      input.disabled = true;
-      tr.appendChild(textCell(provider.name || provider.provider_key || "-"));
-      tr.appendChild(nodeCell(input));
-      tr.appendChild(nodeCell(statusBadge(providerStatusValue(provider, grokStatus), "disabled")));
-      tr.appendChild(textCell(`${provider.billing_multiplier ?? 1}x`));
-      tr.appendChild(isComfyUi ? nodeCell(providerConnectionBadge(comfyStatus)) : providerConnectionCell(provider, comfyStatus, grokStatus));
-      tr.appendChild(textCell(isComfyUi ? providerAccountText(comfyStatus) : providerAccountCellText(provider, comfyStatus, grokStatus)));
-      tr.appendChild(textCell(isComfyUi ? providerBalanceText(comfyStatus) : providerBalanceCellText(provider, comfyStatus)));
-      return tr;
-    });
-    replaceRows("aiProvidersTableBody", providerRows, 7, "暂无 Provider 数据");
-  }
-
-  if (isErrorResult(settingsResult)) {
-    renderProviderBudgetControls(settingsResult);
-    renderComfyProviderHealth(comfyStatus, settingsResult, providers);
     return;
   }
-
-  renderProviderBudgetControls(settingsResult);
-  renderComfyProviderHealth(comfyStatus, settingsResult, providers);
+  const providerRows = ensureCoreAiProviders(providersResult.records || []).map((provider) => runningHubProviderRow(provider, runninghubStatus));
+  replaceRows("aiProvidersTableBody", providerRows, 7, "暂无 Provider 数据");
 }
 
 function renderSettings(settingsResult) {
@@ -1483,8 +1253,8 @@ function renderDashboard(data) {
     { label: "数据源", value: sourceLabel },
     { label: "ComfyUI 连接", value: providerHealthStatusText(data.comfyStatus, false) },
     {
-      label: "Grok 提示词服务",
-      value: data.grokStatus?.configured ? `已配置 · ${data.grokStatus.model || "grok-4.3"}` : "未配置"
+      label: "在线语言模型",
+      value: data.runninghubStatus?.configured ? `已配置 · ${data.runninghubStatus.llmModel || "xai/grok-4.7"}` : "未配置"
     },
     { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
     { label: "启用用户", value: `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
@@ -1981,11 +1751,12 @@ async function loadAdminData() {
 
     renderUsers(users, credits, providerQuotasByKey);
     renderAiServices(providers, settings, comfyStatus, grokStatus, runninghubStatus);
+    await renderFeatureCreditAdmin();
     renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus);
     renderSettings(settings);
     renderCreditStats(credits, providerQuotasByKey.grok);
     renderMembers(users, credits, providerQuotasByKey.grok);
-    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus, usage, workers });
+    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus, runninghubStatus, usage, workers });
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
@@ -1998,7 +1769,6 @@ async function loadAdminData() {
     renderSettingRows("systemSettingsRows", [], message);
     replaceRows("membersTableBody", [], 7, message);
     renderDashboardRecentActivity({ usage: { source: "supabase", status: "error", records: [], error: message } });
-    renderProviderBudgetControls({ source: "supabase", status: "error", records: [] });
   }
 }
 
@@ -2398,49 +2168,23 @@ async function submitPasswordEditDialog() {
   }
 }
 
-function providerBudgetPayload() {
-  return {
-    providerKey: "comfyui",
-    balance: Number($("comfyProviderBudgetBalance")?.value || 0),
-    unit: "credits",
-    note: $("comfyProviderBudgetNote")?.value.trim() || ""
-  };
-}
-
 function providerRuntimeConfigPayload(providerKey) {
   const key = String(providerKey || "").toLowerCase();
-  if (key === "runninghub") {
-    const apiKey = $("runninghubRuntimeApiKey")?.value.trim() || "";
-    return {
-      providerKey: key, apiKey, updateApiKey: Boolean(apiKey),
-      clearApiKey: Boolean($("runninghubRuntimeClearKey")?.checked),
-      baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
-      llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
-      llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
-      gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || "",
-      googleImageEndpoint: $("runninghubRuntimeGoogleImageEndpoint")?.value.trim() || ""
-    };
-  }
-  if (key === "comfyui") {
-    const apiKey = $("comfyRuntimeApiKey")?.value.trim() || "";
-    const clearApiKey = Boolean($("comfyRuntimeClearKey")?.checked);
-    return {
-      providerKey: "comfyui",
-      baseUrl: $("comfyRuntimeBaseUrl")?.value.trim() || "https://cloud.comfy.org",
-      apiKey,
-      updateApiKey: Boolean(apiKey),
-      clearApiKey
-    };
-  }
-  const apiKey = $("grokRuntimeApiKey")?.value.trim() || "";
-  const clearApiKey = Boolean($("grokRuntimeClearKey")?.checked);
+  if (key !== "runninghub") throw new Error("Unsupported Provider");
+  const apiKey = $("runninghubRuntimeApiKey")?.value.trim() || "";
   return {
-    providerKey: "grok",
-    baseUrl: $("grokRuntimeBaseUrl")?.value.trim() || "https://api.x.ai/v1",
-    model: $("grokRuntimeModel")?.value.trim() || "grok-4.3",
+    providerKey: "runninghub",
     apiKey,
     updateApiKey: Boolean(apiKey),
-    clearApiKey
+    clearApiKey: Boolean($("runninghubRuntimeClearKey")?.checked),
+    baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
+    llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
+    llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
+    gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || "",
+    imagePrices: {
+      gpt_image_2_5: Number($("runninghubGptImage25Price")?.value),
+      gpt_image_2_official: Number($("runninghubGptImageOfficialPrice")?.value)
+    }
   };
 }
 
@@ -2452,7 +2196,7 @@ async function saveProviderRuntimeConfig(providerKey) {
     alert("清空 Key 和填写新 Key 不能同时操作。");
     return;
   }
-  const providerName = key === "runninghub" ? "RunningHub" : key === "grok" ? "Grok" : "ComfyUI";
+  const providerName = "RunningHub";
   const willChangeKey = payload.clearApiKey ? "清空当前 API Key" : payload.updateApiKey ? "覆盖当前 API Key" : "不修改当前 API Key";
   const confirmed = confirm(`确定保存 ${providerName} 配置？\n${willChangeKey}\n真实 Key 只写入本机后台环境变量，不会回显。`);
   if (!confirmed) return;
@@ -2466,16 +2210,8 @@ async function saveProviderRuntimeConfig(providerKey) {
       alert(result.error || res?.error || `保存 ${providerName} 配置失败`);
       return;
     }
-    if (key === "runninghub") {
-      if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
-      if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
-    } else if (key === "grok") {
-      if ($("grokRuntimeApiKey")) $("grokRuntimeApiKey").value = "";
-      if ($("grokRuntimeClearKey")) $("grokRuntimeClearKey").checked = false;
-    } else {
-      if ($("comfyRuntimeApiKey")) $("comfyRuntimeApiKey").value = "";
-      if ($("comfyRuntimeClearKey")) $("comfyRuntimeClearKey").checked = false;
-    }
+    if ($("runninghubRuntimeApiKey")) $("runninghubRuntimeApiKey").value = "";
+    if ($("runninghubRuntimeClearKey")) $("runninghubRuntimeClearKey").checked = false;
     if (status) status.textContent = "已保存";
     toast(`${providerName} 配置已保存`);
     await loadAdminData();
@@ -2504,34 +2240,6 @@ async function checkRunningHubProvider() {
     if (hint) hint.textContent = String(err?.message || err);
   } finally {
     if (button) button.disabled = false;
-  }
-}
-
-async function saveComfyProviderBudget() {
-  const status = $("providerBudgetStatus");
-  const payload = providerBudgetPayload();
-  if (!Number.isFinite(payload.balance) || payload.balance < 0) {
-    alert("ComfyUI 手动总余额必须是大于或等于 0 的数字。");
-    return;
-  }
-  const confirmed = confirm(`确定保存 ComfyUI 手动总余额？\n余额：${formatProviderBalance(payload.balance)} credits\n这不是官方实时读取值；用户 ComfyUI 生成成功后会自动扣减。`);
-  if (!confirmed) return;
-  try {
-    status.textContent = "保存中...";
-    const res = await window.adminAPI.setAdminProviderBudget(payload);
-    const result = res?.result || {};
-    if (!res?.ok || result.status === "error" || result.ok === false) {
-      status.textContent = "保存失败";
-      alert(result.error || res?.error || "保存 ComfyUI 手动总余额失败");
-      return;
-    }
-    status.textContent = "已保存";
-    providerBudgetDirty = false;
-    toast("ComfyUI 手动总余额已保存");
-    await loadAdminData();
-  } catch (err) {
-    status.textContent = "保存失败";
-    alert(`保存 ComfyUI 手动总余额失败：${String(err?.message || err)}`);
   }
 }
 
@@ -3077,21 +2785,19 @@ async function init() {
   $("computeMintCode")?.addEventListener("click", () => { void mintComputeCode(); });
   $("computePurgeCodes")?.addEventListener("click", () => { void purgeComputeCodes(); });
   $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
-  $("comfyProviderBudgetBalance").addEventListener("input", () => { providerBudgetDirty = true; });
-  $("comfyProviderBudgetNote").addEventListener("input", () => { providerBudgetDirty = true; });
-  $("saveComfyProviderBudget").addEventListener("click", async () => {
-    await saveComfyProviderBudget();
-  });
-  $("saveComfyRuntimeConfig").addEventListener("click", async () => {
-    await saveProviderRuntimeConfig("comfyui");
-  });
-  $("saveGrokRuntimeConfig").addEventListener("click", async () => {
-    await saveProviderRuntimeConfig("grok");
-  });
   $("saveRunninghubRuntimeConfig").addEventListener("click", async () => {
     await saveProviderRuntimeConfig("runninghub");
   });
   $("checkRunninghubProvider").addEventListener("click", checkRunningHubProvider);
+  $("refreshDomesticBalance")?.addEventListener("click", checkRunningHubProvider);
+  $("saveFeatureCredits")?.addEventListener("click", () => { void saveFeatureCreditForm(); });
+  $("queryCreditLedger")?.addEventListener("click", () => { void queryLedger(false); });
+  $("exportCreditLedger")?.addEventListener("click", () => { void queryLedger(true); });
+  $("runQuotaMigration")?.addEventListener("click", () => { void runQuotaMigration(); });
+  setInterval(() => {
+    if (!document.getElementById("module-ai-services")?.classList.contains("active")) return;
+    void checkRunningHubProvider();
+  }, 5 * 60 * 1000);
 
   $("pickPub").addEventListener("click", async () => {
     const res = await window.adminAPI.pickPublicPath({ defaultPath: $("pubPath").value });
@@ -3324,6 +3030,195 @@ async function init() {
       await verifyLicense();
     }
   });
+}
+
+const FEATURE_PRICE_FIELDS = [
+  ["xiaotao_vision", "小桃在线理解"],
+  ["online_chat_turn", "在线对话"],
+  ["prompt_optimize", "提示词优化"],
+  ["image_reverse", "图像反推"],
+  ["lean_research", "UI 目录分析"],
+  ["gpt_image_2_5_economy", "GPT Image 2.5 / 张"],
+  ["gpt_image_2_official", "GPT Image 2 官方 / 张"],
+  ["grok_image_g42", "g-4.2 / 张"],
+  ["local", "本地"]
+];
+
+function renderFeaturePriceFields(prices) {
+  const host = $("featureCreditPrices");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const [key, label] of FEATURE_PRICE_FIELDS) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const name = document.createElement("div");
+    name.className = "label";
+    name.textContent = label;
+    const field = document.createElement("div");
+    field.className = "field";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.step = "1";
+    input.dataset.featurePrice = key;
+    input.value = prices && prices[key] != null ? String(prices[key]) : "";
+    if (key === "local") input.readOnly = true;
+    field.appendChild(input);
+    row.append(name, field);
+    host.appendChild(row);
+  }
+}
+
+async function renderFeatureCreditAdmin() {
+  const status = $("featureCreditStatus");
+  if (!$("featureCreditPanel") || typeof window.adminAPI?.getFeatureCreditAdmin !== "function") return;
+  try {
+    const response = await window.adminAPI.getFeatureCreditAdmin();
+    const result = response?.ok === false ? null : (response?.result || response);
+    const config = result?.config || {};
+    const prices = config.prices || {
+      xiaotao_vision: 4, online_chat_turn: 4, prompt_optimize: 4, image_reverse: 4,
+      lean_research: 14, gpt_image_2_5_economy: 22, gpt_image_2_official: 4, grok_image_g42: 6, local: 0
+    };
+    renderFeaturePriceFields(prices);
+    if ($("featureCreditLowBalance") && document.activeElement !== $("featureCreditLowBalance")) {
+      $("featureCreditLowBalance").value = config.low_balance_usd ?? 2;
+    }
+    if ($("featureCreditLowBalanceCny") && document.activeElement !== $("featureCreditLowBalanceCny")) {
+      $("featureCreditLowBalanceCny").value = config.low_balance_cny ?? 15;
+    }
+    if ($("featureCreditBalanceTtl") && document.activeElement !== $("featureCreditBalanceTtl")) {
+      $("featureCreditBalanceTtl").value = String(Math.max(1, Math.round(Number(config.balance_ttl_seconds || 600) / 60)));
+    }
+    if ($("featureCreditStalePolicy") && document.activeElement !== $("featureCreditStalePolicy")) {
+      $("featureCreditStalePolicy").value = config.stale_balance_policy === "block" ? "block" : "allow";
+    }
+    if ($("featureCreditCny") && document.activeElement !== $("featureCreditCny")) {
+      $("featureCreditCny").value = config.credits_to_cny == null ? "" : String(config.credits_to_cny);
+    }
+    const balance = result?.domesticBalance || {};
+    const money = balance.remainMoney == null || balance.remainMoney === "" ? "未检测" : `${balance.remainMoney} ${balance.currency || ""}`.trim();
+    const cost = result?.estimatedRhCostUsd == null ? "暂无" : `${result.estimatedRhCostUsd} USD`;
+    renderSettingRows("featureCreditOpsRows", [
+      { label: "国内站余额", value: money },
+      { label: "流水估算 RH 成本", value: cost },
+      { label: "低余额阈值", value: `${config.low_balance_usd ?? 2} USD / ${config.low_balance_cny ?? 15} CNY` },
+      { label: "上次检测", value: balance.checkedAt ? formatDateTime(balance.checkedAt) : "尚未检测" },
+      { label: "缓存", value: result?.lowBalance?.stale ? "已过期或缺失" : "有效" }
+    ], "尚未检测");
+    const warning = $("rhLowBalanceWarning");
+    const warningText = $("rhLowBalanceWarningText");
+    const low = result?.lowBalance || {};
+    if (warning) warning.hidden = !(low.warn || low.blocked);
+    if (warningText) {
+      warningText.textContent = low.stale
+        ? (low.blocked
+          ? "国内站余额未检测或已过期，当前策略是阻断新的云任务，且不扣积分。"
+          : "国内站余额未检测或已过期。当前策略是放行并告警，不阻断新的云任务。")
+        : "云服务余额不足。新的云任务会拒绝，用户看到中文提示且不扣积分。本地任务不受影响。";
+    }
+    if (status) status.textContent = result?.error ? String(result.error) : "已读取";
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
+}
+
+async function saveFeatureCreditForm() {
+  const status = $("featureCreditStatus");
+  const prices = {};
+  document.querySelectorAll("[data-feature-price]").forEach((input) => {
+    prices[input.dataset.featurePrice] = input.value;
+  });
+  try {
+    const response = await window.adminAPI.saveFeatureCreditAdmin({
+      prices,
+      credits_to_cny: $("featureCreditCny")?.value ?? "",
+      low_balance_usd: $("featureCreditLowBalance")?.value ?? "",
+      low_balance_cny: $("featureCreditLowBalanceCny")?.value ?? "",
+      balance_ttl_seconds: Math.round(Number($("featureCreditBalanceTtl")?.value || 10) * 60),
+      stale_balance_policy: $("featureCreditStalePolicy")?.value || "allow"
+    });
+    if (!response?.ok) throw new Error(response?.error || "保存失败");
+    if (status) status.textContent = "已保存";
+    await renderFeatureCreditAdmin();
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
+}
+
+function ledgerQueryPayload() {
+  return {
+    user: $("ledgerUser")?.value || "",
+    feature: $("ledgerFeature")?.value || "",
+    status: $("ledgerStatus")?.value || "",
+    from: $("ledgerFrom")?.value || "",
+    to: $("ledgerTo")?.value || ""
+  };
+}
+
+async function queryLedger(download) {
+  const status = $("ledgerStatusText");
+  try {
+    const response = await window.adminAPI.queryCreditLedger(ledgerQueryPayload());
+    if (!response?.ok) throw new Error(response?.error || "查询失败");
+    const result = response.result || {};
+    const records = result.records || [];
+    const body = $("creditLedgerBody");
+    if (body) {
+      body.innerHTML = "";
+      if (!records.length) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 7;
+        td.textContent = "没有匹配的流水";
+        tr.appendChild(td);
+        body.appendChild(tr);
+      } else {
+        for (const row of records) {
+          const tr = document.createElement("tr");
+          for (const value of [row.created_at, row.user_email_or_account, row.feature, row.model, row.status, row.settled_credits ?? row.estimated_credits, row.rh_cost_usd]) {
+            const td = document.createElement("td");
+            td.textContent = value == null ? "" : String(value);
+            tr.appendChild(td);
+          }
+          body.appendChild(tr);
+        }
+      }
+    }
+    if (status) status.textContent = `${records.length} 条`;
+    if (download && result.csv) {
+      const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "credit-ledger.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
+}
+
+async function runQuotaMigration() {
+  const status = $("quotaMigrationStatus");
+  const batchId = String($("quotaMigrationBatch")?.value || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(batchId)) {
+    if (status) status.textContent = "批次号只能包含字母、数字、下划线和短横线";
+    return;
+  }
+  if (!confirm(`把旧的剩余次数按理解单价向上取整迁入积分？\n批次 ${batchId}。失败会整批回滚。`)) return;
+  try {
+    const response = await window.adminAPI.migrateGrokQuotaToCredits({
+      batchId,
+      price: $("quotaMigrationPrice")?.value || null
+    });
+    if (!response?.ok) throw new Error(response?.error || "迁移失败");
+    const result = response.result || {};
+    if (status) status.textContent = `${result.status || "完成"} · 入账 ${result.credits_added ?? ""}`;
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+  }
 }
 
 window.addEventListener("DOMContentLoaded", () => {

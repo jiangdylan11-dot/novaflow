@@ -48,7 +48,7 @@ try {
   // -------------------------------------------------------------------------
   section('the allow-list is the gate');
   {
-    check('modules are declared', Object.keys(WORKFLOW_MODULES).length >= 8, Object.keys(WORKFLOW_MODULES).length);
+    check('modules are declared', Object.keys(WORKFLOW_MODULES).length >= 7, Object.keys(WORKFLOW_MODULES).length);
     check('a declared call is allowed',
       isAllowedWorkflowCall('NovaFlowAiSequenceMiniMaxH3Workflow', 'getWorkflowJson'));
     check('an undeclared module is refused',

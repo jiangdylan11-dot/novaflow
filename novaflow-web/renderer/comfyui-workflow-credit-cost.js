@@ -13,12 +13,7 @@
     'ByteDance2ReferenceNode',
     'ByteDance2FirstLastFrameNode',
   ])
-  const IMAGE_NODE_TYPES = Object.freeze([
-    'OpenAIGPTImage1',
-    'OpenAIGPTImageNodeV2',
-    'GeminiImageNode',
-    'GeminiImage2Node',
-  ])
+  const IMAGE_NODE_TYPES = Object.freeze([])
   const SUPPORTED_NODE_TYPES = Object.freeze([...VIDEO_NODE_TYPES, ...IMAGE_NODE_TYPES])
   const SUPPORTED_NODE_TYPE_SET = new Set(SUPPORTED_NODE_TYPES)
   const IMAGE_NODE_TYPE_SET = new Set(IMAGE_NODE_TYPES)

@@ -95,13 +95,6 @@
       reservedLayoutReferences: 1,
       negativePrompt: false,
     }),
-    google: Object.freeze({
-      provider: 'google',
-      totalReferenceLimit: 14,
-      externalReferenceLimit: 13,
-      reservedLayoutReferences: 1,
-      negativePrompt: false,
-    }),
   })
   const MAX_EXTERNAL_REFERENCES = referenceLimits.local.externalReferenceLimit
   const CONNECT_TIMEOUT_MS = 8000
@@ -213,7 +206,8 @@
     const models = root && root.NovaFlowArtGenerateModels
     if (models && typeof models.normalizeProvider === 'function') return models.normalizeProvider(value)
     const provider = cleanText(value).toLowerCase()
-    return provider === 'gpt' || provider === 'google' ? provider : 'local'
+    if (provider === 'google' || provider === 'gemini') return 'local'
+    return provider === 'gpt' ? 'gpt' : 'local'
   }
 
   // Local UI design runs on Qwen-Image-2.1 everywhere, on the local assistant and on the shared
@@ -236,8 +230,7 @@
 
   function providerTitle(provider) {
     const normalized = normalizeProvider(provider)
-    if (normalized === 'gpt') return 'GPT'
-    if (normalized === 'google') return 'Google'
+    if (normalized === 'gpt') return 'GPT（云）'
     return '本地模型'
   }
 
@@ -830,7 +823,7 @@
       semantic?.requirement,
       ...blocks.flatMap((block) => [block?.purpose, block?.description, block?.requirements, block?.requirement, block?.prompt]),
     )
-    const softLayout = ['local', 'google'].includes(normalizeProvider(options.provider))
+    const softLayout = normalizeProvider(options.provider) === 'local'
       && cleanText(options.layoutGuideEncoding) === SOFT_LAYOUT_GUIDE_ENCODING
     const semanticScaffold = normalizeProvider(options.provider) === 'local'
       && cleanText(options.layoutGuideEncoding) === SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING
@@ -1888,11 +1881,7 @@
     // upload order and workflow reference metadata.
     const externalRefs = externalReferenceSnapshot(options.refs || options.references)
     const semanticLayout = resolveSemanticLayout(project, options, state)
-    const requestedLayoutGuideEncoding = provider === 'local'
-      ? SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING
-      : provider === 'google'
-        ? SOFT_LAYOUT_GUIDE_ENCODING
-        : ''
+    const requestedLayoutGuideEncoding = provider === 'local' ? SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING : ''
     const hasRegions = Array.isArray(semanticLayout.regions) && semanticLayout.regions.length > 0
     const layoutGuide = hasRegions
       ? resolveCleanLayoutGuide(project, options, state, semanticLayout, requestedLayoutGuideEncoding)
@@ -2249,12 +2238,55 @@
     let authorizationContext = null
 
     throwIfAborted(signal)
-    if (provider !== 'local') {
-      if (root?.electronAPI?.runtimeProviderUsageSettlement !== 'preload-price-v1') {
-        throw new Error('GPT/Google 生成请在 NovaFlow 桌面端使用')
+    if (provider === 'gpt') {
+      const cloud = root?.electronAPI
+      if (typeof cloud?.runningHubGptImage !== 'function') throw new Error('云端出图接口未就绪，请刷新页面后重试')
+      emitProgress(onProgress, 'submit', '正在提交 RunningHub 出图', 0.3)
+      const sent = await cloud.runningHubGptImage({
+        mode: executionMode,
+        prompt,
+        referenceRoles,
+        settings: workflowSettings(state, 'gpt', executionMode),
+        images: references.map((reference) => ({ dataUrl: reference.dataUrl, filename: reference.name })),
+        count: 1,
+        width: state.width,
+        height: state.height,
+      })
+      const payload = sent?.result && typeof sent.result === 'object' ? sent.result : sent
+      if (!sent || sent.ok === false || payload?.ok === false || payload?.moderation) {
+        throw new Error(cleanText(payload?.error || sent?.error) || '云端出图失败')
       }
-      authorizationContext = root?.NovaFlowClientAuth?.createAuthorizationContext?.() || null
-      if (!authorizationContext) throw new Error('请先登录 NovaFlow 账号')
+      const image = Array.isArray(payload?.images) ? payload.images[0] : null
+      const imageUrl = cleanText(image?.imageDataUrl || payload?.imageDataUrl)
+      if (!imageUrl) throw new Error('云端出图没有返回图片')
+      const promptId = cleanText(image?.taskId || payload?.promptId) || `rh_${Date.now()}`
+      if (root?.NovaFlowArtGenerateCreditPricing?.recordSettlement && payload?.quote) {
+        root.NovaFlowArtGenerateCreditPricing.recordSettlement({
+          promptId,
+          settlement: { status: 'settled', charge_amount: payload.charged },
+          credits: { deducted: payload.charged, balance: payload.remaining },
+        })
+      }
+      return {
+        id: `ui_design_${Date.now().toString(36)}`,
+        kind: 'ui-design',
+        source: 'ui-design-generate',
+        mode: executionMode,
+        provider,
+        promptId,
+        generationPrompt: prompt,
+        name: `${outputPrefix}.png`,
+        imageUrl,
+        dataUrl: imageUrl,
+        createdAt: new Date().toISOString(),
+        workflow: 'runninghub-gpt-image',
+        referenceCount: references.length,
+        referenceRoles: referenceRoles.map((reference) => reference.role),
+        layoutGuideSource: cleanText(layoutGuide.source) || 'semantic-layout-compiler',
+        layoutGuideEncoding,
+        charged: Number(payload.charged) || 0,
+        remaining: payload.remaining,
+      }
     }
 
     emitProgress(onProgress, 'start', '准备生成 UI', 0, { provider, mode: executionMode })
@@ -2313,7 +2345,7 @@
         negativePrompt,
         taskProfile: UI_TASK_PROFILE,
         layoutGuideEncoding,
-        systemPrompt: provider === 'google' ? (hasLayout ? GOOGLE_UI_SYSTEM_PROMPT : 'Create one finished UI design. Follow the user requirements and the assigned roles of all supplied images. No generated layout guide is supplied.') : '',
+        systemPrompt: '',
         semanticLayout,
         layoutGuide: {
           kind: layoutGuide.kind,

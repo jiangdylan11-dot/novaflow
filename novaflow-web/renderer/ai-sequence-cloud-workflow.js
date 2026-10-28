@@ -110,23 +110,12 @@
     return frameMode.resolveRoute(normalizedSnapshot(snapshot))
   }
 
-  function handlesRoute(snapshot) {
-    const route = resolveRoute(snapshot)
-    return route.nodeType === 'KlingOmniProImageToVideoNode' || (
-      route.provider === 'jimeng' &&
-      route.genType === 'image_video' &&
-      route.strictFirstFrame &&
-      route.nodeType === 'ByteDance2FirstLastFrameNode'
-    )
+  function handlesRoute() {
+    return false
   }
 
-  function getWorkflowJson(snapshot) {
-    const route = resolveRoute(snapshot)
-    if (route.nodeType === 'KlingOmniProImageToVideoNode') {
-      return JSON.stringify(KLING_OMNI_IMAGE_TO_VIDEO)
-    }
-    if (handlesRoute(snapshot)) return JSON.stringify(SEEDANCE_STRICT_IMAGE_TO_VIDEO)
-    throw new TypeError(`Unsupported modular cloud route: ${route.nodeType || 'unknown'}`)
+  function getWorkflowJson() {
+    throw new Error('云端 Kling / ByteDance 视频已下线，请使用本地 H3')
   }
 
   function effectiveStoryboardDurations(params, count) {

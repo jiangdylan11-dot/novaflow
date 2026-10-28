@@ -3491,8 +3491,18 @@
             <span>本地模型<span class="novaflow-smart-ai-engine-meta">本地 · 耗时取决于模型与显卡</span></span>
           </label>
         </div>
+        <div class="novaflow-smart-ai-context-note">${escapeSmartAiHtml(smartAiCreditNote())}</div>
       </div>
     `;
+  }
+
+  function smartAiCreditNote() {
+    if (state.engine === "local") return "本地处理不扣积分";
+    const feature = state.mode === "reverse" ? "image_reverse" : "prompt_optimize";
+    const api = globalThis.NovaFlowFeatureCreditPrices;
+    const quoted = api && typeof api.quoteFeature === "function" ? api.quoteFeature({ feature, units: 1 }) : null;
+    const credits = quoted && quoted.credits != null ? quoted.credits : 4;
+    return `本次将扣 ${credits} 积分`;
   }
 
   function renderAnimationProcessingNote() {

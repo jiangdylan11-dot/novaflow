@@ -128,9 +128,18 @@ test('formal Qwen builders retain reference budgets and sampling geometry after 
       assert.equal(graphs[0]['7'].inputs.steps,25);assert.equal(graphs[1]['7'].inputs.steps,25);
     }
     assert.deepEqual(comparable[1],comparable[0],localQwen21Variant+' '+preserve+' must retain effective guidance and reference geometry');
-    assert.equal(graphs[1]['200'].inputs.width,800);assert.equal(graphs[1]['200'].inputs.height,608);
+    // Already true on feature/novaflow-web: a style transfer whose content photo
+    // matches the requested aspect (alignStyleContent) samples that photo in place.
+    // It does not insert the 0.5 MP ImageScale (node 200, 800x608) or a fresh
+    // EmptyLatent (node 6). Those nodes are for a different aspect. The style
+    // image still has to fit the 1 MP budget, and the photographic framing lock
+    // stays off. This PR does not change that local path.
+    assert.equal(graphs[1]['200'],undefined,'matching aspect keeps the content photo at the sampling size');
     assert.equal(graphs[1]['201'],undefined,'the complete CG reference fits its 1 MP budget even when original light/color/framing is requested');
-    assert.deepEqual(graphs[1]['7'].inputs.latent_image,['6',0]);assert.equal(graphs[1]['6'].inputs.width,1280);assert.equal(graphs[1]['6'].inputs.height,960);
+    assert.deepEqual(graphs[1]['5'].inputs['images.image_1'],['100',0]);
+    assert.deepEqual(graphs[1]['5'].inputs['images.image_2'],['101',0]);
+    assert.deepEqual(graphs[1]['7'].inputs.latent_image,['5',2]);
+    assert.equal(graphs[1]['6'],undefined);
     assert.doesNotMatch(graphs[1]['5'].inputs.prompt,/未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变/);
     assert.equal(e.calls.length,1);
   }
@@ -593,9 +602,12 @@ test('real generation entry limits correction to one and stages inputs for each 
 test('a failed review cannot silently submit a second paid cloud generation',async()=>{
   const failed={schema:'nf.art.review.v1',pass:false,issues:['画风不足'],repair:'改为水彩笔触'};
   const d=drawingRun(plan([{source:1,uses:[use('subject')],omit:[]}]),[failed]);
-  d.state.provider='gpt';d.e.sandbox.NovaFlowArtGenerateModels.normalizeProvider=value=>value;d.e.sandbox.electronAPI.runtimeProviderUsageSettlement='web-control-plane-v1';
+  d.state.provider='gpt';d.e.sandbox.NovaFlowArtGenerateModels.normalizeProvider=value=>value;const cloud=[];
+  d.e.sandbox.electronAPI=d.e.sandbox.electronAPI||{};
+  d.e.sandbox.electronAPI.runtimeProviderUsageSettlement='web-control-plane-v1';
+  d.e.sandbox.electronAPI.runningHubGptImage=async()=>{cloud.push(1);return {ok:true,result:{ok:true,charged:22,remaining:8,images:[{imageDataUrl:'data:image/png;base64,result',taskId:'rh'}]}};};
   const prepared=await d.e.api.prepare(ctx(d.state,d.refs));prepared.applyPromptToState();
-  await d.run({drawingPrepared:prepared});assert.equal(d.builds.length,1);assert.equal(d.state.results.length,1);
+  await d.run({drawingPrepared:prepared});assert.equal(d.builds.length,0);assert.deepEqual(cloud,[1]);assert.equal(d.state.results.length,1);
   assert.equal(d.state.results[0].artDirection.corrections,0);assert.equal(d.state.results[0].artDirection.review.pass,false);
 });
 
@@ -680,7 +692,7 @@ test('independent style fields preserve source expression without forcing source
 test('invalid PE slots cannot bypass reference-role validation',async()=>{
   const p=plan([{source:1,uses:[use('subject')],omit:[]},{source:2,uses:[use('style')],omit:[]}]);
   p.editEnhancer={kind:'qwen21-pe-i2i',model:'qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors',version:'drawing-style-v1',prompt:'将<image1>按<image3>重绘',sourceOrder:[1,2]};
-  const e=env(p);await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('a'),ref('b')])),/PE 编辑指令或参考编号无效/);
+  const e=env(p);await assert.rejects(e.api.prepare(ctx({prompt:'图1用图2画风'},[ref('a'),ref('b')])),/本地AI编辑指令或参考编号无效/);
 });
 
 test('PE retains distinct drawing methods within anime and does not force ink or CG into anime',async()=>{
@@ -848,10 +860,12 @@ test('formal normal and Turbo graphs keep the same complete style geometry after
       assert.equal(e.api.generationOptions(prepared).styleReferencePriority,true);
       assert.deepEqual(Array.from(prepared.references,r=>[r.sourceNumber,r.role]),[[5,'subject'],[2,'style']]);
       const graph=JSON.parse(JSON.stringify(await host.buildGraph({module:'novaflow-brand-runtime',method:'buildArtGenerateRunWorkflow',options:{__args:['local','img2img',['photo.jpg','cg.jpg'],'NF_contract',prepared.promptSnapshot.prompt,prepared.promptSnapshot.negativePrompt,'test',[{width:1280,height:960},{width:768,height:1344}],prepared.state,10,e.api.generationOptions(prepared)]}})));
-      geometry.push({source:graph['200'],style:graph['201'],image1:graph['5'].inputs['images.image_1'],image2:graph['5'].inputs['images.image_2'],latent:graph['7'].inputs.latent_image,canvas:graph['6'].inputs});
-      assert.deepEqual(graph['5'].inputs['images.image_1'],['200',0]);assert.deepEqual(graph['5'].inputs['images.image_2'],['101',0]);
-      assert.equal(graph['200'].inputs.width,800);assert.equal(graph['200'].inputs.height,608);assert.equal(graph['201'],undefined);
-      assert.deepEqual(graph['7'].inputs.latent_image,['6',0]);assert.equal(graph['6'].inputs.width,1280);assert.equal(graph['6'].inputs.height,960);
+      // Same matching-aspect contract as the budget test above: content stays on
+      // LoadImage 100, style on 101, and sampling uses the encoder latent.
+      geometry.push({image1:graph['5'].inputs['images.image_1'],image2:graph['5'].inputs['images.image_2'],latent:graph['7'].inputs.latent_image,contentScale:graph['200']||null,styleScale:graph['201']||null});
+      assert.deepEqual(graph['5'].inputs['images.image_1'],['100',0]);assert.deepEqual(graph['5'].inputs['images.image_2'],['101',0]);
+      assert.equal(graph['200'],undefined);assert.equal(graph['201'],undefined);
+      assert.deepEqual(graph['7'].inputs.latent_image,['5',2]);assert.equal(graph['6'],undefined);
       assert.doesNotMatch(graph['5'].inputs.prompt,/主体的位置、大小和画面取景不变|必须避免/);
       assert.equal(graph['5'].inputs.negative_prompt,prepared.promptSnapshot.negativePrompt);
       assert.equal(graph['7'].inputs.cfg,variant==='turbo'?1:2.5);

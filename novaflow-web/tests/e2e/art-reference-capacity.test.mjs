@@ -10,20 +10,16 @@ for (const file of ['art-generate-model.resource.js','art-generate-provider.work
 const models=e.NovaFlowArtGenerateModels, workflow=e.NovaFlowArtGenerateProviderWorkflow;
 const refs=count=>Array.from({length:count},(_,i)=>({name:`ref${i+1}.png`,label:`图${i+1}`,dataUrl:`data:image/png;base64,${Buffer.from(String(i+1)).toString('base64')}`}));
 
-for (const [provider,limit] of [['gpt',16],['google',14]]) {
-  test(`${provider} default workflow accepts its full node capacity and rejects one extra`,()=>{
-    assert.equal(models.capabilityFor(provider,'img2img',{}).referenceLimit,limit);
-    const options={provider,mode:'img2img',uploadedNames:refs(limit).map(r=>r.name),prompt:'设计 UI'};
-    const built=workflow.buildRunWorkflow(options);
-    const loads=Object.values(built.workflow).filter(n=>n.class_type==='LoadImage');
-    assert.equal(loads.length,limit);
-    assert.deepEqual(Array.from(loads,n=>n.inputs.image),options.uploadedNames);
-    const node=Object.values(built.workflow).find(n=>n.class_type===(provider==='gpt'?'OpenAIGPTImageNodeV2':'BatchImagesNode'));
-    const keys=Object.keys(node.inputs).filter(k=>k.startsWith(provider==='gpt'?'model.images.':'images.image'));
-    assert.equal(keys.length,limit);
-    assert.throws(()=>workflow.buildRunWorkflow({...options,uploadedNames:refs(limit+1).map(r=>r.name)}),new RegExp(`maximum is ${limit}`));
-  });
-}
+test('gpt image capacity is sixteen RunningHub references and a stored google choice is local', async () => {
+  assert.equal(models.capabilityFor('gpt','img2img',{}).referenceLimit,16);
+  assert.equal(models.normalizeProvider('google'),'local');
+  const { mapGptImageParams } = await import('../../packages/shared/src/runninghub-gpt-image.mjs');
+  const images = refs(16).map(item => `https://cdn.example/${item.name}`);
+  const mapped = mapGptImageParams({ mode:'img2img', prompt:'设计 UI', settings:{ size:'1024x1024', quality:'high' }, images, endpoint:'' });
+  assert.equal(mapped.body.imageUrls.length,16);
+  assert.throws(() => mapGptImageParams({ mode:'img2img', prompt:'设计 UI', settings:{ size:'1024x1024' }, images: [...images, 'https://cdn.example/extra.png'], endpoint:'' }), /最多 16/);
+  assert.throws(() => workflow.buildRunWorkflow({ provider:'gpt', mode:'img2img', prompt:'设计 UI', localWorkflow:{} }), /RunningHub/);
+});
 
 test('local generation capacity follows the actual local route',()=>{
   assert.equal(models.capabilityFor('local','img2img',{nsfw:false}).referenceLimit,10);
@@ -61,7 +57,7 @@ test('model switches retain and display overflow so it can be removed',()=>{
   vm.runInNewContext(brand.slice(brand.indexOf('  const ART_GENERATE_MAX_REFERENCES ='),brand.indexOf('  function artGenerateResourceMentionSnapshot()')),context);
   assert.equal(context.artGenerateReferenceLimit(),16);
   state.provider='google';
-  assert.equal(context.artGenerateReferenceLimit(),14);
+  assert.equal(context.artGenerateReferenceLimit(),10);
   assert.equal(context.artGenerateVisibleReferenceCount(),16);
   context.setArtGenerateReference(15,null);context.setArtGenerateReference(14,null);
   assert.equal(context.artGenerateVisibleReferenceCount(),14);

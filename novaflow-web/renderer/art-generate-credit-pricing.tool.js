@@ -33,16 +33,15 @@
     const api = root && root.NovaFlowArtGenerateModels
     if (api && typeof api.normalizeProvider === 'function') return api.normalizeProvider(value)
     const provider = String(value || '').trim().toLowerCase()
-    return ['local', 'gpt', 'google'].includes(provider) ? provider : 'local'
+    if (provider === 'google' || provider === 'gemini') return 'local'
+    return provider === 'gpt' ? 'gpt' : 'local'
   }
 
   function normalizeMode(value) {
     return String(value || '').trim().toLowerCase() === 'img2img' ? 'img2img' : 'txt2img'
   }
 
-  function nodeTypeFor(provider, mode) {
-    if (provider === 'gpt') return 'OpenAIGPTImageNodeV2'
-    if (provider === 'google') return mode === 'img2img' ? 'GeminiImage2Node' : 'GeminiImageNode'
+  function nodeTypeFor() {
     return ''
   }
 
@@ -74,6 +73,11 @@
       ? models.workflowSettings({ ...(state || {}), ...values }, provider, mode)
       : {}
     const baseUrl = String(options.baseUrl || options.runtimeBaseUrl || '').trim().replace(/\/+$/, '')
+    const quoteGptImage = typeof options.quoteGptImage === 'function'
+      ? options.quoteGptImage
+      : (root && root.electronAPI && typeof root.electronAPI.runningHubGptImageQuote === 'function'
+        ? (input) => Promise.resolve(root.electronAPI.runningHubGptImageQuote(input)).then((res) => (res && res.result) || res)
+        : null)
     const signature = JSON.stringify([
       baseUrl,
       provider,
@@ -86,8 +90,12 @@
       ...values,
       provider,
       mode,
-      nodeType: nodeTypeFor(provider, mode),
+      nodeType: nodeTypeFor(),
       settings: settings && typeof settings === 'object' ? settings : {},
+      quoteGptImage,
+      gptImageEndpoint: String(options.gptImageEndpoint || ''),
+      gptImageI2iEndpoint: String(options.gptImageI2iEndpoint || ''),
+      prices: options.prices && typeof options.prices === 'object' ? options.prices : null,
       baseUrl,
       requestJson: typeof options.requestJson === 'function' ? options.requestJson : null,
       signature,
@@ -337,7 +345,62 @@
     estimateRequests.set(snapshot.signature, request)
   }
 
+  function creditEstimate(snapshot, quote) {
+    const credits = Math.round(Number(quote && quote.credits))
+    if (!Number.isInteger(credits) || credits < 0) return unavailableEstimate(snapshot)
+    const formattedCredits = String(credits)
+    const note = quote && quote.mayFallback ? '（若回退官方通道，实扣可能更低）' : ''
+    return Object.freeze({
+      signature: snapshot.signature,
+      status: 'ready',
+      nodeType: 'runninghub-gpt-image',
+      approximate: false,
+      minCredits: credits,
+      maxCredits: credits,
+      formattedCredits: credits === 0 ? '' : formattedCredits,
+      perImage: Math.round(Number(quote.perImage) || 0),
+      feature: String(quote.feature || ''),
+      buttonLabel: credits === 0 ? START_LABEL : `${START_LABEL} · ${formattedCredits}积分${note}`,
+    })
+  }
+
+  function cloudFeatureEstimate(snapshot) {
+    if (!snapshot || snapshot.provider !== 'gpt') return null
+    const count = Math.max(1, Math.min(MAX_COUNT, Math.round(Number(snapshot.count)) || 1))
+    const mode = snapshot.mode === 'img2img' ? 'img2img' : 'txt2img'
+    if (typeof snapshot.quoteGptImage === 'function') {
+      try {
+        const quoted = snapshot.quoteGptImage({
+          endpoint: snapshot.gptImageEndpoint || '',
+          imageEndpoint: snapshot.gptImageI2iEndpoint || '',
+          count,
+          prices: snapshot.prices,
+          mode,
+          settings: snapshot.settings,
+        })
+        if (quoted && typeof quoted.then !== 'function') return creditEstimate(snapshot, quoted)
+      } catch {
+        return null
+      }
+    }
+    const feature = 'gpt_image_2_5_economy'
+    const api = root && root.NovaFlowFeatureCreditPrices
+    const quoted = api && typeof api.quoteFeature === 'function'
+      ? api.quoteFeature({ feature, units: count })
+      : { credits: 22 * count, feature }
+    return creditEstimate(snapshot, {
+      ...quoted,
+      perImage: Math.round(Number(quoted.unitPrice) || 22),
+      mayFallback: true,
+    })
+  }
+
   function getEstimate(snapshot) {
+    const cloud = cloudFeatureEstimate(snapshot)
+    if (cloud) {
+      latestSignature = snapshot.signature || ''
+      return cloud
+    }
     if (!snapshot || !snapshot.signature || !snapshot.nodeType) {
       latestSignature = ''
       return Object.freeze({ status: 'not_applicable', buttonLabel: START_LABEL, formattedCredits: '' })
@@ -433,7 +496,8 @@
       const amount = settlementAmount(record)
       if (status === 'settled' && amount) {
         const balance = formatCanonicalAmount(record.credits.balance_text ?? record.credits.balance)
-        return Object.freeze({ status: 'settled', text: `本次扣 ${amount}积分`, chargedCredits: amount, balance })
+        const text = balance ? `本次扣 ${amount}积分，剩余 ${balance}` : `本次扣 ${amount}积分`
+        return Object.freeze({ status: 'settled', text, chargedCredits: amount, balance })
       }
       return Object.freeze({ status: 'pending_pricing', text: '积分待官方结算', chargedCredits: '', balance: '' })
     }

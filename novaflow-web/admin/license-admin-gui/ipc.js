@@ -120,6 +120,10 @@ function registerLicenseAdminIpc() {
   registerAdminDataList("admin:provider:grok:status", adminData.getAdminGrokProviderStatus);
   registerAdminDataList("admin:provider:runninghub:status", adminData.getAdminRunningHubProviderStatus);
   registerAdminDataList("admin:provider:runninghub:check", () => adminData.getAdminRunningHubProviderStatus({ checkAccount: true }));
+  registerAdminDataList("admin:data:feature_credits:get", adminData.getFeatureCreditAdmin);
+  registerAdminDataWrite("admin:data:feature_credits:save", adminData.saveFeatureCreditAdmin);
+  registerAdminDataWrite("admin:data:credit_ledger:query", adminData.queryCreditLedger);
+  registerAdminDataWrite("admin:data:quota_migration:run", adminData.migrateGrokQuotaToCredits);
 
   ipcMain.handle("admin:data:users:create", async (_evt, payload) => {
     try {
@@ -166,10 +170,10 @@ function registerLicenseAdminIpc() {
     }
   });
 
-  ipcMain.handle("admin:data:provider_budget:set", async (_evt, payload) => {
+  ipcMain.handle("admin:data:provider_budget:set", async () => {
     try {
-      const result = await adminData.setAdminProviderBudget(payload);
-      return { ok: result?.ok !== false && result?.status !== "error", result };
+      const result = await adminData.setAdminProviderBudget();
+      return { ok: false, result, error: result?.error || "ComfyUI 手动总余额已退出后台配置，不再录入" };
     } catch (err) {
       return { ok: false, error: String(err?.message || err) };
     }

@@ -15,7 +15,7 @@
     reason: 'legacy_aifx_runtime_prompt_disabled',
   })
   const COMFYUI_PROVIDER_KEY = 'comfyui'
-  const COMFYUI_USAGE_BASE_HOSTS = new Set(['cloud.comfy.org'])
+  const COMFYUI_USAGE_BASE_HOSTS = new Set()
   const workflowCreditCostApi = window.NovaFlowComfyWorkflowCreditCost
   const PROVIDER_WORKFLOW_NODE_TYPE_FALLBACK = Object.freeze([
     'KlingVideoNode',
@@ -324,7 +324,16 @@
     }
   }
 
+  const removedCloudNode = (bodyText) => /OpenAIGPTImage|GeminiImage|KlingVideoNode|KlingFirstLastFrameNode|KlingOmniProImageToVideoNode|ByteDance2(?:Reference|FirstLastFrame)Node/.test(String(bodyText || ''))
+
   const authorizeProviderWorkflowBody = async (bodyText, baseUrl) => {
+    if (removedCloudNode(bodyText)) {
+      return {
+        blocked: true,
+        workflow: { providerKey: 'runninghub' },
+        error: providerErrorResult(null, { providerKey: 'runninghub' }, '云端 Comfy 图像和视频已下线。图像请使用 GPT（云），视频请使用本地 H3。'),
+      }
+    }
     const workflow = detectProviderWorkflow(bodyText, baseUrl)
     if (!workflow) return null
     const auth = clientAuthApi()

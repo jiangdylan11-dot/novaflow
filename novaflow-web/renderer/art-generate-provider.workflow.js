@@ -6,15 +6,10 @@
   'use strict'
 
   const TASK_TYPE = 'local_workflow_image'
-  const GPT_TEXT_MODEL = 'gpt-image-2.5-flare'
-  const GPT_EDIT_MODEL = 'gpt-image-2.5-sunburst'
-  const GOOGLE_TEXT_MODEL = 'gemini-2.5-flash-image'
-  const GOOGLE_EDIT_MODEL = 'gemini-3-pro-image-preview'
   const TEXT_EVENT_TYPE = 3
   const MAX_REFERENCES = 3
   const PROVIDER_REFERENCE_LIMITS = Object.freeze({
     gpt: 16,
-    google: 14,
   })
   let workflowNonce = 0
 
@@ -85,224 +80,34 @@
     return normalizeOptionalText(source).toLowerCase()
   }
 
-  function validateGoogleEditTaskProfile(options) {
-    const taskProfile = normalizeOptionalText(options?.taskProfile).toLowerCase()
-    if (taskProfile !== 'ui-design') return
-
-    const referenceRoles = Array.isArray(options?.referenceRoles) ? options.referenceRoles : []
-    if (normalizeReferenceRole(referenceRoles[0]) !== 'ui_layout') {
-      throw new Error('Google UI design requires referenceRoles[0] to be ui_layout')
-    }
-    if (normalizeOptionalText(options?.layoutGuideEncoding).toLowerCase() !== 'soft-occupancy-heatmap-v1') {
-      throw new Error('Google UI design requires layoutGuideEncoding=soft-occupancy-heatmap-v1')
-    }
-    if (!normalizeOptionalText(options?.systemPrompt)) {
-      throw new Error('Google UI design requires a non-empty systemPrompt')
-    }
-  }
-
-  function normalizeNodeIdPrefix(value) {
-    const requested = String(value || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '')
-    if (requested) return `${requested}_`
-    workflowNonce += 1
-    return `nf_art_${Date.now().toString(36)}_${workflowNonce.toString(36)}_${Math.random().toString(16).slice(2, 10)}_`
-  }
-
-  function namespacedNodeId(nodeIdPrefix, index) {
-    return `${nodeIdPrefix}${index}`
-  }
-
-  function addLoadImageNodes(workflow, uploadedNames, firstNodeId, nodeIdPrefix) {
-    return uploadedNames.map((name, index) => {
-      const nodeId = namespacedNodeId(nodeIdPrefix, firstNodeId + index)
-      workflow[nodeId] = {
-        inputs: { image: name },
-        class_type: 'LoadImage',
-      }
-      return [nodeId, 0]
-    })
-  }
-
-  function addSaveImageNode(workflow, nodeId, imageSource, outputPrefix) {
-    workflow[String(nodeId)] = {
-      inputs: {
-        filename_prefix: outputPrefix,
-        images: imageSource,
-      },
-      class_type: 'SaveImage',
-    }
-  }
-
-  function buildGptWorkflow(options, mode, uploadedNames, outputPrefix, nodeIdPrefix) {
-    const model = mode === 'img2img' ? GPT_EDIT_MODEL : GPT_TEXT_MODEL
-    const workflow = {}
-    const references = addLoadImageNodes(workflow, uploadedNames, 1, nodeIdPrefix)
-    const providerNodeId = namespacedNodeId(nodeIdPrefix, references.length + 1)
-    const settings = options.settings && typeof options.settings === 'object' ? options.settings : {}
-    const size = normalizeChoice(settings.size, [
-      'auto',
-      '1024x1024',
-      '1024x1536',
-      '1536x1024',
-      '2048x2048',
-      '2048x1152',
-      '1152x2048',
-      '3840x2160',
-      '2160x3840',
-      'Custom',
-    ], '1024x1024')
-    const customWidth = normalizeDimension(settings.customWidth)
-    const customHeight = normalizeDimension(settings.customHeight)
-    if (size === 'Custom') {
-      const aspectRatio = Math.max(customWidth, customHeight) / Math.min(customWidth, customHeight)
-      if (aspectRatio > 3) throw new Error('GPT custom image aspect ratio cannot exceed 3:1')
-      if (customWidth * customHeight < 655360) {
-        throw new Error('GPT custom image size must be at least 655,360 pixels')
-      }
-      if (customWidth * customHeight > 8294400) {
-        throw new Error('GPT custom image size cannot exceed 8,294,400 pixels')
-      }
-    }
-    const inputs = {
-      prompt: String(options.prompt || ''),
-      model,
-      'model.size': size,
-      'model.custom_width': customWidth,
-      'model.custom_height': customHeight,
-      'model.background': normalizeChoice(settings.background, ['auto', 'opaque', 'transparent'], 'auto'),
-      'model.quality': normalizeChoice(settings.quality, ['low', 'medium', 'high'], 'low'),
-      n: 1,
-      seed: normalizeInteger(settings.seed, 0, 0, 2147483647),
-    }
-    references.forEach((source, index) => {
-      inputs[`model.images.image_${index + 1}`] = source
-    })
-
-    workflow[providerNodeId] = {
-      inputs,
-      class_type: 'OpenAIGPTImageNodeV2',
-    }
-
-    addSaveImageNode(workflow, namespacedNodeId(nodeIdPrefix, references.length + 2), [providerNodeId, 0], outputPrefix)
-    return {
-      workflow,
-      providerNodeIds: [providerNodeId],
-      providerNodeType: 'OpenAIGPTImageNodeV2',
-      modelKey: model,
-      taskType: TASK_TYPE,
-    }
-  }
-
-  function buildGoogleTextWorkflow(options, outputPrefix, nodeIdPrefix) {
-    const settings = options.settings && typeof options.settings === 'object' ? options.settings : {}
-    const providerNodeId = namespacedNodeId(nodeIdPrefix, 1)
-    const workflow = {
-      [providerNodeId]: {
-        inputs: {
-          prompt: String(options.prompt || ''),
-          model: GOOGLE_TEXT_MODEL,
-          seed: normalizeInteger(settings.seed, 42, 0, Number.MAX_SAFE_INTEGER),
-          aspect_ratio: normalizeChoice(settings.aspectRatio, [
-            'auto', '1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9',
-          ], 'auto'),
-          response_modalities: 'IMAGE',
-        },
-        class_type: 'GeminiImageNode',
-      },
-    }
-    addSaveImageNode(workflow, namespacedNodeId(nodeIdPrefix, 2), [providerNodeId, 0], outputPrefix)
-    return {
-      workflow,
-      providerNodeIds: [providerNodeId],
-      providerNodeType: 'GeminiImageNode',
-      modelKey: GOOGLE_TEXT_MODEL,
-      taskType: TASK_TYPE,
-    }
-  }
-
-  function buildGoogleEditWorkflow(options, uploadedNames, outputPrefix, nodeIdPrefix) {
-    const settings = options.settings && typeof options.settings === 'object' ? options.settings : {}
-    validateGoogleEditTaskProfile(options)
-    const workflow = {}
-    const references = addLoadImageNodes(workflow, uploadedNames, 1, nodeIdPrefix)
-    const batchNodeId = namespacedNodeId(nodeIdPrefix, references.length + 1)
-    const providerNodeId = namespacedNodeId(nodeIdPrefix, references.length + 2)
-    const batchInputs = {}
-    references.forEach((source, index) => {
-      batchInputs[`images.image${index}`] = source
-    })
-    workflow[batchNodeId] = {
-      inputs: batchInputs,
-      class_type: 'BatchImagesNode',
-    }
-    const providerInputs = {
-      prompt: String(options.prompt || ''),
-      model: GOOGLE_EDIT_MODEL,
-      seed: normalizeInteger(settings.seed, 42, 0, Number.MAX_SAFE_INTEGER),
-      aspect_ratio: normalizeChoice(settings.aspectRatio, [
-        'auto', '1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9',
-      ], 'auto'),
-      resolution: normalizeChoice(settings.resolution, ['1K', '2K', '4K'], '1K'),
-      response_modalities: 'IMAGE',
-      images: [batchNodeId, 0],
-    }
-    const systemPrompt = normalizeOptionalText(options.systemPrompt)
-    if (systemPrompt) providerInputs.system_prompt = systemPrompt
-    workflow[providerNodeId] = {
-      inputs: providerInputs,
-      class_type: 'GeminiImage2Node',
-    }
-    addSaveImageNode(workflow, namespacedNodeId(nodeIdPrefix, references.length + 3), [providerNodeId, 0], outputPrefix)
-    return {
-      workflow,
-      providerNodeIds: [providerNodeId],
-      providerNodeType: 'GeminiImage2Node',
-      modelKey: GOOGLE_EDIT_MODEL,
-      taskType: TASK_TYPE,
-    }
-  }
-
-  function buildWorkflow(options = {}) {
-    const provider = normalizeProvider(options.provider)
-    const mode = normalizeMode(options.mode)
-    const uploadedNames = normalizeUploadedNames(options.uploadedNames, mode, options, provider)
-    const outputPrefix = normalizeOutputPrefix(options.outputPrefix)
-    const nodeIdPrefix = normalizeNodeIdPrefix(options.nodeIdPrefix)
-    if (provider === 'gpt') return buildGptWorkflow(options, mode, uploadedNames, outputPrefix, nodeIdPrefix)
-    if (provider === 'google' && mode === 'txt2img') return buildGoogleTextWorkflow(options, outputPrefix, nodeIdPrefix)
-    if (provider === 'google' && mode === 'img2img') return buildGoogleEditWorkflow(options, uploadedNames, outputPrefix, nodeIdPrefix)
-    throw new Error(`Unsupported Art Generate provider: ${provider || '(empty)'}`)
+  function buildWorkflow() {
+    throw new Error('云端出图已改为 RunningHub，不再构建 Comfy 工作流')
   }
 
   function buildRunWorkflow(options = {}) {
     const provider = normalizeProvider(options.provider)
     const mode = normalizeMode(options.mode)
-    if (provider === 'local') {
-      if (!options.localWorkflow || typeof options.localWorkflow !== 'object') throw new Error('Local Art Generate workflow is required')
-      const taskProfile = normalizeOptionalText(options.taskProfile).toLowerCase()
-      const localWorkflow = options.localWorkflow
-      let uiLocal = null
-      if (taskProfile === 'ui-design') {
-        // Local UI runs only on Qwen-Image-2.1.
-        if (String(options.localModelKey || '') !== 'qwen-image-2.1-ui') throw new Error('本地 UI 设计工作流不可用，请刷新页面后重试')
-        uiLocal = Object.freeze({ taskProfile, engine: 'qwen-2.1', mode })
-      }
-      return {
-        workflow: localWorkflow,
-        providerNodeIds: [],
-        providerNodeType: '',
-        modelKey: String(options.localModelKey || 'local'),
-        taskType: TASK_TYPE,
-        uiLocal,
-      }
+    if (provider !== 'local') {
+      throw new Error(provider === 'gpt'
+        ? 'GPT 出图请走 RunningHub，不再提交 Comfy 云节点'
+        : 'Google 出图已删除，请改用本地模型或 GPT（云）')
     }
-    const built = buildWorkflow(options)
+    if (!options.localWorkflow || typeof options.localWorkflow !== 'object') throw new Error('Local Art Generate workflow is required')
+    const taskProfile = normalizeOptionalText(options.taskProfile).toLowerCase()
+    const localWorkflow = options.localWorkflow
+    let uiLocal = null
+    if (taskProfile === 'ui-design') {
+      // Local UI runs only on Qwen-Image-2.1.
+      if (String(options.localModelKey || '') !== 'qwen-image-2.1-ui') throw new Error('本地 UI 设计工作流不可用，请刷新页面后重试')
+      uiLocal = Object.freeze({ taskProfile, engine: 'qwen-2.1', mode })
+    }
     return {
-      ...built,
-      providerNodeIds: Array.isArray(built.providerNodeIds) ? built.providerNodeIds.map((item) => String(item)) : [],
-      providerNodeType: String(built.providerNodeType || ''),
-      modelKey: String(built.modelKey || provider),
+      workflow: localWorkflow,
+      providerNodeIds: [],
+      providerNodeType: '',
+      modelKey: String(options.localModelKey || 'local'),
       taskType: TASK_TYPE,
+      uiLocal,
     }
   }
 

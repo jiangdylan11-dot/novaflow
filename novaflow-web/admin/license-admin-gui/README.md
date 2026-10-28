@@ -36,7 +36,7 @@ npm run server
 - 用户管理支持管理员手动创建登录账号、设置初始密码、修改密码和维护用户状态；NovaFlow 主程序登录走后台服务账号+密码链路，不直连 Supabase Service Role。
 - 积分管理支持管理员手动增加积分、扣减积分或设置余额；轻量版只更新 `credits.balance`，不写 `credit_logs`。
 - 积分管理支持管理员手动分配提示词服务次数；轻量版只在 `system_settings` 中记录 `allocated_count` 和 `used_count`。
-- AI 服务页只保留 Provider 配置、ComfyUI 只读连接检测和 ComfyUI 手动总余额。
+- AI 服务页只配置 RunningHub API Key，并做账户检测。ComfyUI / Grok / Google 的 Key 配置和 ComfyUI 手动总余额录入已从本页移除。
 - 客户端后续可用 `GET /api/client/bootstrap` 一次读取 session 用户、当前积分、客户端安全 AI 配置和 Gateway Lite 合同，减少免费后端请求量。
 - `/api/ai/tasks` 当前只做 Gateway Lite 前置检查：验证 session、用户状态和积分余额，后台计算 `credit_cost`；不调用 AI、不扣积分、不写任务记录、不保存 workflow。
 
@@ -89,38 +89,18 @@ NovaFlow 客户端不能直接判断或修改积分。真正 AI 调用前，未�
 
 ## 提示词服务次数分配
 
-提示词服务次数按用户手动分配，当前底层 Provider 为 Grok，用于提示词优化和反推：
+在线文本和视觉理解只走 RunningHub，使用 `NOVAFLOW_RUNNINGHUB_API_KEY`。默认 LLM 地址是 `https://llm.runninghub.ai/v1`，默认模型是 `xai/grok-4.7`，模型 ID 可改。计量先走统一的 `charge({ feature, amount })`，底下仍扣现有云 AI 次数；不要新增按次的 Grok 配额表或录入界面。本地 Flash 不计这次数。
 
-- 每个用户的次数存为 `system_settings.provider_quota_grok_<user_id>`。
+- 每个用户的次数仍存为 `system_settings.provider_quota_grok_<user_id>`。
 - 只记录 `allocated_count`、`used_count` 和 `remaining_count`。
-- 后台服务提示词服务调用成功后只把对应用户的 `used_count + 1`。
+- 在线调用成功后按实际 amount 增加 `used_count`。
 - 不保存 prompt、messages、任务记录、消费记录或 workflow。
-- `NOVAFLOW_GROK_API_KEY` 只允许配置在后台服务/后台管理运行环境中，不写入 renderer，不提交仓库。
-- 后续新增 Provider 时同样只允许把 API Key 配置在后台服务/后台管理运行环境中，不能写入 NovaFlow 客户端。
-- ComfyUI 不做次数限制，真实生成成功后按用户积分扣费；AI 服务页的 ComfyUI 手动总余额会同步扣减，用于人工维护平台剩余总积分。
+- 不要把 Key 写入 renderer 或仓库。Edge 上的 companion 和 backend 使用同一把 RunningHub Key。
+- ComfyUI 云出图本阶段仍走原路径。AI 服务页不再录入 ComfyUI 手动总余额；历史余额仍由原结算路径扣减。
 
-## ComfyUI Provider 检测
+## 已退出后台配置的供应商
 
-后台管理端可读取以下本机环境变量，用于 AI 服务页 ComfyUI Provider 连接检测：
-
-- `NOVAFLOW_COMFYUI_BASE_URL`，未配置时默认 `https://cloud.comfy.org`
-- `NOVAFLOW_COMFYUI_API_KEY`
-- `NOVAFLOW_COMFYUI_API_KEY_SECRET_REF`，仅用于显示/记录服务端密钥引用，当前没有 secret resolver 时不能替代真实环境变量
-
-检测只在 Electron 后台管理侧执行，通过 IPC 返回状态给 renderer；后台服务也提供只读 HTTP 检测路由：
-
-```text
-GET /api/admin/providers/comfyui/status
-```
-
-Renderer 不直接持有 Key，也不直接请求 ComfyUI。当前只调用官方只读用户接口：
-
-```text
-GET https://cloud.comfy.org/api/user
-Header: X-API-Key
-```
-
-余额字段只从官方返回体中的 `credits`、`credit_balance`、`balance` 等字段读取；如果官方接口未返回余额字段，则显示 `官方余额 API 未开放`。后台管理页另提供 `ComfyUI 手动总余额` 输入框，把平台页面看到的余额人工录入到 `system_settings.provider_budget_comfyui`；后续用户 ComfyUI 生成成功后，后台会同步扣减用户 `credits.balance` 和该手动总余额。
+AI 服务页不再提供 ComfyUI、Grok、Google 的 Key 表单，也不再录入 ComfyUI 手动总余额。`NOVAFLOW_COMFYUI_*` 与 `NOVAFLOW_GROK_*` 不能通过后台写入，在线文本和视觉理解也不再读取它们。`NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT` 已从配置项删除。
 
 ## Supabase 初始化顺序
 
@@ -165,11 +145,11 @@ Header: X-API-Key
 - 更换签名密钥会导致旧授权文件失效。
 ## RunningHub 国内站服务商
 
-AI 服务页新增 RunningHub 国内站配置与只读账户检测。保存到本机后台环境变量，API Key 不回显；Key 留空保留原值，清空必须显式勾选。普通刷新只读取配置或上次检测结果，保存成功或点击“检测账户”才调用 `POST /uc/openapi/accountStatus`，不提交生成或 LLM 请求。余额与运行任务数为上次检测快照。
+AI 服务页只把 RunningHub API Key 写入本机后台环境变量 `NOVAFLOW_RUNNINGHUB_API_KEY`。页面用密码框，保存后清空输入，响应和日志都不回显 Key。留空表示不修改，清空必须显式勾选。地址、LLM 和 GPT 路径只读：未单独配置时使用国内站默认地址。普通刷新只读取配置或上次检测结果；保存成功或点击「检测账户」才调用 `POST /uc/openapi/accountStatus`，不提交生成或 LLM 请求。
 
-配置变量：`NOVAFLOW_RUNNINGHUB_BASE_URL`（默认 `https://www.runninghub.cn`）、`NOVAFLOW_RUNNINGHUB_API_KEY`、`NOVAFLOW_RUNNINGHUB_LLM_BASE_URL`（默认 `https://llm.runninghub.cn/v1`）、`NOVAFLOW_RUNNINGHUB_LLM_MODEL`、`NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT`、`NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT`。后三项可留空；图片模型路径从国内站模型文档复制，以 `/openapi/v2/` 开头。
+真实 Key 放在后台进程环境，或 Windows 上由后台写入的当前用户环境变量。不要写入仓库，不要写入公开网页，不要在本阶段写入 Supabase Edge 密钥。示例文件里的该变量保持为空。
 
-本阶段仅新增服务商配置，尚未迁移 GPT / Google 的 ComfyUI 生成链路与 Grok 提示词服务，也未启用 RunningHub 积分计费。模型 API / LLM 需企业级－共享 Key，账户检测成功不能证明某个模型已获授权或调用成功。配置不自动同步到线上后端，线上使用时需在对应后端单独配置密钥。
+本阶段不切换 GPT、Google、Grok 或在线 ComfyUI 的现有调用。账户检测成功只说明 Key 能读到账户状态。
 
 官方账户接口：https://www.runninghub.cn/runninghub-api-doc-cn/api-425748943
 

@@ -86,9 +86,10 @@
     const resolver = dependencies().generateWorkflow?.providerCapability
     if (typeof resolver === 'function') return resolver(provider)
     const normalized = String(provider || '').trim().toLowerCase()
-    const totalReferenceLimit = normalized === 'gpt' ? 16 : (normalized === 'google' ? 14 : 3)
+    const providerName = normalized === 'gpt' ? 'gpt' : 'local'
+    const totalReferenceLimit = providerName === 'gpt' ? 16 : 3
     return {
-      provider: normalized === 'gpt' || normalized === 'google' ? normalized : 'local',
+      provider: providerName,
       totalReferenceLimit,
       reservedLayoutReferences: 1,
       externalReferenceLimit: totalReferenceLimit - 1,
@@ -697,7 +698,7 @@
 
   function generationOutputContract(provider, output, settings) {
     const resolver = root?.NovaFlowUiDesignGenerateTool?.resolveOutputContract
-    if (typeof resolver !== 'function') return { valid: true, exact: provider !== 'google', error: '' }
+    if (typeof resolver !== 'function') return { valid: true, exact: true, error: '' }
     return resolver(provider, output, settings)
   }
 
@@ -936,7 +937,7 @@
     const ordinaryLimit = Math.max(0, capability.externalReferenceLimit - 1)
     if (ordinaryReferenceCount > ordinaryLimit) {
       const removeCount = ordinaryReferenceCount - ordinaryLimit
-      const error = `当前${capability.provider === 'gpt' ? ' GPT' : (capability.provider === 'google' ? ' Google' : '本地')}模型设为修改底图后最多保留 ${ordinaryLimit} 张普通参考图，请先移除 ${removeCount} 张`
+      const error = `当前${capability.provider === 'gpt' ? ' GPT' : '本地'}模型设为修改底图后最多保留 ${ordinaryLimit} 张普通参考图，请先移除 ${removeCount} 张`
       mounted?.workspaceHandle?.showStatus?.(error, true)
       return { ok: false, error }
     }
@@ -1043,14 +1044,13 @@
       graph: { ...context.graph, nodes: context.layout ? [scopedLayout] : [], edges: [], lineage: [] },
       blocks: scaledBlocks,
     }
+    const layoutProvider = context.provider === 'gpt' ? 'gpt' : 'local'
     const layoutGuide = context.layout ? modules.layoutGuide?.createCleanLayoutGuide?.(project, {
-      visualEncoding: context.provider === 'local'
+      visualEncoding: layoutProvider === 'local'
         ? 'soft-ui-semantic-scaffold-v2'
-        : context.provider === 'google'
-          ? 'soft-occupancy-heatmap-v1'
-          : 'filled-regions-only',
-      semanticSubgrid: context.provider === 'local',
-      semanticText: context.provider === 'local' ? String(runState.prompt || '') : '',
+        : 'filled-regions-only',
+      semanticSubgrid: layoutProvider === 'local',
+      semanticText: layoutProvider === 'local' ? String(runState.prompt || '') : '',
     }) : null
     if (context.layout && (!layoutGuide || layoutGuide.clean !== true || layoutGuide.editorSnapshot !== false)) {
       const error = new Error('无法编译当前页面结构的干净布局控制图')

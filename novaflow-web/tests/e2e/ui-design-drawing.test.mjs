@@ -442,14 +442,15 @@ test('style changes preserve the layout and content instead of becoming a theme 
   assert.match(e.builds[0][4],/手绘水彩纸纹/);
 });
 
-for(const provider of ['gpt','google']) test(`${provider} UI submits through the registered Web settlement bridge`,async()=>{
+test('gpt UI submits through RunningHub and does not post a Comfy prompt',async()=>{
   const e=environment({references:[{dataUrl:'data:image/png;base64,ref'}]});
-  e.state.provider=provider;
-  e.sandbox.electronAPI={runtimeProviderUsageSettlement:'web-control-plane-v1'};
+  e.state.provider='gpt';
+  e.sandbox.electronAPI={runtimeProviderUsageSettlement:'web-control-plane-v1',runningHubGptImage:async()=>({ok:true,result:{ok:true,charged:22,remaining:8,images:[{imageDataUrl:'data:image/png;base64,result',taskId:'rh-ui'}]}})};
   await e.run();
   assert.deepEqual(e.failures,[]);
-  assert.equal(e.builds[0][0],provider);
-  assert.equal(e.calls.filter(value=>value==='/prompt').length,2);
+  assert.equal(e.builds.length,0);
+  assert.equal(e.calls.filter(value=>value==='/prompt').length,0);
+  assert.equal(e.state.results.length,2);
 });
 
 test('cloud UI still refuses an unknown settlement bridge before submitting a generation',async()=>{

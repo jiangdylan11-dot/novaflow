@@ -57,8 +57,15 @@ app.whenReady().then(async () => {
   assert.equal(checks, 1, "save must perform exactly one read-only check");
   assert.equal(config.llmModel, "fixture-model");
   assert.equal(await run(`document.getElementById('runninghubRuntimeApiKey').value`), "");
+  assert.equal(await run(`document.getElementById('runninghubRuntimeGoogleImageEndpoint')`), null);
+  assert.equal(await run(`document.getElementById('comfyRuntimeApiKey')`), null);
+  assert.equal(await run(`document.getElementById('grokRuntimeApiKey')`), null);
+  assert.equal(await run(`document.getElementById('saveComfyProviderBudget')`), null);
+  assert.equal(await run(`document.getElementById('saveGrokRuntimeConfig')`), null);
   assert((await run(`document.getElementById('aiProvidersTableBody').textContent`)).includes("Connected"));
-  assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("尚未切换"));
+  assert(!(await run(`document.getElementById('aiProvidersTableBody').textContent`)).includes("Grok"));
+  assert(!(await run(`document.getElementById('module-ai-services').innerText`)).includes("保存 ComfyUI"));
+  assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("RunningHub"));
   assert(!(await run(`document.body.innerText`)).includes("fixture-only-key"));
   for (const width of [1440, 1080]) {
     win.setSize(width, 1080);

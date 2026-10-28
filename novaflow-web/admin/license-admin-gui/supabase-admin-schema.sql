@@ -45,7 +45,7 @@ create index if not exists idx_credits_user_id on public.credits(user_id);
 
 comment on table public.credits is 'NovaFlow 用户当前积分余额表';
 comment on column public.credits.user_id is '对应 public.users.id';
-comment on column public.credits.balance is '当前可用积分余额，由后台管理端手动分配或后续后台服务扣减';
+comment on column public.credits.balance is '当前可用积分余额。在线功能经 reserve/settle/release_feature_credits 扣减；流水在 credit_ledger。';
 comment on index public.credits_user_id_unique_idx is '确保每个用户只有一条当前积分余额记录';
 
 -- ai_providers：云端 AI 服务商配置表。
@@ -62,7 +62,7 @@ create table if not exists public.ai_providers (
 );
 
 comment on table public.ai_providers is 'NovaFlow AI Provider 配置表';
-comment on column public.ai_providers.name is '服务商显示名，例如 ComfyUI、Grok';
+comment on column public.ai_providers.name is '服务商显示名。在线密钥只配置 RunningHub API Key，不写在本表';
 comment on column public.ai_providers.provider_key is '服务商唯一 key，用于后续 Gateway 转发';
 comment on column public.ai_providers.status is '启用状态，例如 enabled/disabled';
 comment on column public.ai_providers.billing_multiplier is 'Provider 默认计费倍率';
@@ -680,7 +680,7 @@ begin
   if p_actual_calls > v_row.reserved_calls then raise exception using errcode = '22023', message = 'settle_grok_quota: actual calls exceed reservation'; end if;
 
   v_allocated := greatest(coalesce((v_value->>'allocated_count')::integer, 0), 0);
-  v_used := greatest(coalesce((v_value->>'used_count')::integer, 0), 0) + p_actual_calls;
+  v_used := greatest(coalesce((v_value->>'used_count')::integer, 0), 0) + case when p_success then p_actual_calls else 0 end;
   v_reserved := greatest(coalesce((v_value->>'reserved_count')::integer, 0) - v_row.reserved_calls, 0);
   v_recent := case when jsonb_typeof(v_value->'recent_calls') = 'array' then v_value->'recent_calls' else '[]'::jsonb end;
   select coalesce(jsonb_agg(item order by ord), '[]'::jsonb) into v_recent

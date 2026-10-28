@@ -22,7 +22,7 @@
   const GENERATOR_PROMPT_EDITOR_HEIGHT = 250
   const LOCAL_NEGATIVE_PROMPT_EXTRA_HEIGHT = 40
   const GENERATOR_NODE_HEIGHT = 260 + GENERATOR_PROMPT_EDITOR_HEIGHT
-  const PROVIDER_REFERENCE_LIMIT_FALLBACKS = Object.freeze({ local: 2, gpt: 15, google: 13 })
+  const PROVIDER_REFERENCE_LIMIT_FALLBACKS = Object.freeze({ local: 2, gpt: 15 })
   const BLOCK_COLORS = ['#22c58b', '#38bdf8', '#a78bfa', '#f59e0b', '#fb7185', '#84cc16']
   const GENERATOR_SETTING_KEYS = Object.freeze([
     'provider', 'localEditStrength', 'randomSeed', 'seed',
@@ -183,7 +183,7 @@
     const provider = String(settings.provider || 'local')
     const generatorHeight = provider === 'local'
       ? 396 + GENERATOR_PROMPT_EDITOR_HEIGHT + LOCAL_NEGATIVE_PROMPT_EXTRA_HEIGHT
-      : (provider === 'google' ? 336 : 328) + GENERATOR_PROMPT_EDITOR_HEIGHT
+      : 328 + GENERATOR_PROMPT_EDITOR_HEIGHT
     return {
       width: Math.max(type === 'generator' ? GENERATOR_NODE_WIDTH : 120, finite(node && node.width, type === 'generator' ? GENERATOR_NODE_WIDTH : 280)),
       height: Math.max(type === 'generator' ? generatorHeight : 80, finite(node && node.height, type === 'generator' ? generatorHeight : 220)),
@@ -457,12 +457,12 @@
     function generatorExpandedHeight(node, settings) {
       const provider = String(settings && settings.provider || 'local')
       if (provider === 'local') return 396 + GENERATOR_PROMPT_EDITOR_HEIGHT + LOCAL_NEGATIVE_PROMPT_EXTRA_HEIGHT
-      return (provider === 'google' ? 336 : 328) + GENERATOR_PROMPT_EDITOR_HEIGHT
+      return 328 + GENERATOR_PROMPT_EDITOR_HEIGHT
     }
 
     function normalizedGeneratorProvider(value) {
       const provider = String(value || '').trim().toLowerCase()
-      return provider === 'gpt' || provider === 'google' ? provider : 'local'
+      return provider === 'gpt' ? 'gpt' : 'local'
     }
 
     function generatorExternalReferenceLimit(node) {

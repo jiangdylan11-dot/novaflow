@@ -395,6 +395,18 @@
     }
     return Object.freeze({capture, captureAny, captureCreation, captureChat, attachImages, readSampling, setSampling, currentResult:()=>runtime()?.selectedResult?.(), hasResult:()=>Boolean(runtime()?.selectedResult?.()?.imageUrl), applyProposal, generateApplied, clearPrepared, cancelGeneration:() => runtime()?.cancel?.()});
   }
+  function onlineCreditCost() {
+    const api = root.NovaFlowFeatureCreditPrices;
+    const quoted = api && typeof api.quoteFeature === 'function' ? api.quoteFeature({ feature: 'xiaotao_vision', units: 1 }) : null;
+    return quoted && quoted.credits != null ? quoted.credits : 4;
+  }
+  function creditStatus(base, quota) {
+    if (!quota || quota.local) return base;
+    const settled = quota.settled_credits ?? quota.charged_credits;
+    if (settled == null) return base;
+    const remain = quota.balance_after;
+    return `${base} · 实扣 ${settled} 积分${remain == null ? '' : `，剩余 ${remain}`}`;
+  }
   function createController({bridge, api = () => root.electronAPI, storage = root.localStorage, onChange = () => {}, timers = root}) {
     const state = {provider:'local', mode:'chat', messages:[], history:[], conversationId:'', proposal:null, proposalSnapshot:null, applied:false, applying:false, pending:false, generating:false, uploading:false, confirmation:null, samplingApproval:null, operation:null, status:'', error:'', model:'本地 Flash', toolTrace:[], localSession:null};
     let serial = 0, activeRequest = '', activeSnapshot = null, activeMode = 'chat', stopped = false, statusTimer = null, activeStartedAt = 0, lastRequestMessage = '';
@@ -599,7 +611,7 @@
         state.toolTrace = Array.isArray(data.toolTrace) ? copy(data.toolTrace) : []; state.model = String(data.proposal?.model || data.model || '本地 Flash');
         const unchanged = mode === 'chat' || sameSnapshot(snapshot, recapture(snapshot));
         if (mode !== 'chat' && data.proposal && unchanged && data.proposal.contextFingerprint === contextFingerprint) {state.proposal = copy(data.proposal); state.proposalSnapshot = snapshot; state.status = '方案已准备，可直接说“按这个方案生成”';}
-        else state.status = !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : '已回复';
+        else state.status = !unchanged ? '当前绘图已变化，这次回复中的建议未应用' : mode === 'chat' && state.provider === 'local' && snapshot.artContext.surface === 'drawing' ? '已回复 · 当前仅对话，尚未形成可生图双图上下文' : creditStatus('已回复', data.quota);
         const action=execution || (!discussionOnly && ['apply','generate'].includes(data.proposal?.action) ? {generate:data.proposal.action==='generate'} : null);
         if (action) {
           if (!state.proposal) {state.error = unchanged ? '本次未取得可执行的绘图方案，尚未生成。' : '绘图内容已变化，本次未生成。'; return false;}
@@ -617,7 +629,7 @@
       if (state.generating) {state.status = '正在停止生成…'; notify(); await bridge.cancelGeneration(); return;}
       if (!state.pending || stopped) return;
       stopped = true; stopStatusPolling(); const requestId = activeRequest; state.localSession = null; state.status = state.provider === 'api' ? '正在停止等待在线回复…' : '正在停止小桃…'; notify();
-      try {if (requestId) {const result = await api()?.artAgentStop?.({requestId,provider:state.provider}); if (!result?.ok) fail(result?.error || '停止尚未确认，请等待当前任务退出');} ++serial; state.pending = false; activeRequest = ''; activeSnapshot = null; state.status = state.provider === 'api' ? '已停止等待本次回复；云端请求和计次可能已发生' : '已停止';}
+      try {if (requestId) {const result = await api()?.artAgentStop?.({requestId,provider:state.provider}); if (!result?.ok) fail(result?.error || '停止尚未确认，请等待当前任务退出');} ++serial; state.pending = false; activeRequest = ''; activeSnapshot = null; state.status = state.provider === 'api' ? '已停止等待本次回复；未完成的在线请求不扣积分' : '已停止';}
       catch (error) {state.error = String(error?.message || error); state.status = '停止尚未确认';}
       notify();
     }
@@ -649,7 +661,7 @@
     function setProvider(provider) {
       if (!['local','api'].includes(provider) || provider === state.provider || state.pending || state.generating || state.applying || state.uploading) return false;
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
-      Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能' : '已切换在线智能 · 每次计入云AI次数'}); notify(); return true;
+      Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能 · 不扣积分' : `已切换在线智能 · 本次将扣 ${onlineCreditCost()} 积分`}); notify(); return true;
     }
     async function attachResources(files,options){
       if(state.pending||state.generating||state.applying||state.uploading)return false;
@@ -687,7 +699,7 @@
     let attachmentRole='reference';for(const [role,label] of [['reference','上传参考图片'],['subject','替换主体图'],['style','替换画风图']]){const button=el('button','',label);button.type='button';button.onclick=()=>{attachmentRole=role;fileInput.multiple=role==='reference';attachmentMenu.hidden=true;attach.setAttribute('aria-expanded','false');fileInput.click();};attachmentMenu.append(button);}
     attach.onclick=()=>{attachmentMenu.hidden=!attachmentMenu.hidden;attach.setAttribute('aria-expanded',String(!attachmentMenu.hidden));};
     fileInput.onchange=async()=>{if(await controller.attachResources(fileInput.files,{role:attachmentRole})){navigation=navigationSelection();contextStamp='';setOpen(true);}fileInput.value='';};
-    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); onlineBrain.title='在线分析参考图片，每次计入云AI次数';send.type = 'submit'; providers.append(localBrain, onlineBrain);title.append(providers);footerActions.append(attach,newConversation, stop, send); footer.append(input,attachmentMenu,fileInput,footerActions);
+    for (const b of [localBrain, onlineBrain, newConversation, stop]) b.type = 'button'; newConversation.title = '清空聊天记录并开始新会话'; newConversation.setAttribute('aria-label','清空聊天记录并开启新对话'); onlineBrain.title=`在线分析参考图片，本次将扣 ${onlineCreditCost()} 积分`;send.type = 'submit'; providers.append(localBrain, onlineBrain);title.append(providers);footerActions.append(attach,newConversation, stop, send); footer.append(input,attachmentMenu,fileInput,footerActions);
     panel.append(header, context, messages, confirmation, proposal, tools, status, error, footer); host.append(fab, greeting, panel); doc.body.append(host);
     const drag = bindPanelDrag(panel, header);
     const robotDrag = bindPanelDrag(fab, fab, {threshold:5,ignoreInteractive:false,onStart:() => {greeting.hidden = true;},onEnd:() => {if (open) anchorPanel();}});

@@ -590,7 +590,7 @@
         conversationId: typeof payload.conversationId === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(payload.conversationId) ? payload.conversationId : root.crypto.randomUUID(),
         history: [...history, { role: 'user', content: payload.message }, { role: 'assistant', content: reply }].slice(-12),
         model: model || '云端API', toolTrace: [], capabilities: { textOnly: !payload.images?.length, vision: Boolean(payload.images?.length), tools: false }, quota } };
-    } catch (error) { return { ok: false, error: controller.signal.aborted ? '已停止等待本次云端回复；已发出的请求仍可能计入云AI次数' : String(error.message || error) }; }
+    } catch (error) { return { ok: false, error: controller.signal.aborted ? '已停止等待本次云端回复；未完成的在线请求不扣积分' : String(error.message || error) }; }
     finally { clearTimeout(timer); companionCloudRequests.delete(id); }
   }
   function stopCompanionCloud(payload = {}) {
@@ -1274,7 +1274,10 @@
       try {
         const profile = await auth('GET', '/api/client/bootstrap');
         if (profile.ok === false) return { ok: false, error: profile.error || '账户信息读取失败' };
-        return { ok: true, result: { user: profile.user, credits: profile.credits, providerQuotas: profile.providerQuotas } };
+        if (profile.featureCreditPrices && root.NovaFlowFeatureCreditPrices && typeof root.NovaFlowFeatureCreditPrices.applyConfig === 'function') {
+          root.NovaFlowFeatureCreditPrices.applyConfig(profile.featureCreditPrices);
+        }
+        return { ok: true, result: { user: profile.user, credits: profile.credits, providerQuotas: profile.providerQuotas, featureCreditPrices: profile.featureCreditPrices || null } };
       } catch (error) {
         return { ok: false, httpStatus: error.status, error: String(error.message || error) };
       }
@@ -1339,7 +1342,7 @@
       // Reuse the supported task action, without adding a control-plane permission.
       const scope={surface:'ui-design',uiPlanner:'grok-vision-cpu-v1'};
       const hello=await localPromptAssistant('reverse-image-prompt',{...scope,action:'capabilities',images:[{dataUrl:''}]});
-      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新本地助手后使用完整 Grok 分析；本次未调用云模型或本地推理'};
+      if(hello?.data?.protocol!=='nf.ui.grok-cpu.v1')return {ok:false,error:'请更新本地助手后使用完整在线分析；本次未调用云模型或本地推理'};
       if(payload?.action==='capabilities')return hello;
       return localPromptAssistant('reverse-image-prompt',{...payload,...scope});
     },
@@ -1365,6 +1368,14 @@
     },
     async smartAiImageReverse(payload) {
       try { return { ok: true, result: await auth('POST', '/api/client/grok/image-reverse', payload, SMART_AI_TIMEOUT_MS) }; }
+      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    },
+    async runningHubGptImageQuote(payload) {
+      try { return { ok: true, result: await auth('POST', '/api/client/runninghub/gpt-image/quote', payload || {}, 20000) }; }
+      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    },
+    async runningHubGptImage(payload) {
+      try { return { ok: true, result: await auth('POST', '/api/client/runninghub/gpt-image', payload || {}, 180000) }; }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     },
 

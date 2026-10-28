@@ -4,6 +4,14 @@ const http = require("http");
 const https = require("https");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
+const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runninghub-llm.mjs");
+const {
+  normalizeCreditConfig,
+  ledgerCsv,
+  lowBalanceState,
+  collectPages,
+  ledgerUserLookup
+} = require("../../packages/shared/src/feature-credits.mjs");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -21,21 +29,26 @@ const ENV_GROK_API_KEY = "NOVAFLOW_GROK_API_KEY";
 const ENV_GROK_MODEL = "NOVAFLOW_GROK_MODEL";
 const DEFAULT_LIMIT = 100;
 const ERROR_PREFIX = "Supabase Error";
-const DEFAULT_COMFYUI_BASE_URL = "https://cloud.comfy.org";
 const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
-const DEFAULT_GROK_MODEL = "grok-4.3";
+const DEFAULT_GROK_MODEL = DEFAULT_RUNNINGHUB_LLM_MODEL;
 const COMFYUI_USER_PATH = "/api/user";
 const COMFYUI_TIMEOUT_MS = 10000;
 const PROVIDER_QUOTA_PREFIX = "provider_quota_";
 const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
 const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
-const WRITABLE_PROVIDER_ENV_NAMES = new Set([
-  ...Object.values(runningHub.ENV),
+// The only operator-writable online provider secret. Other RunningHub fields
+// stay readable. Grok, cloud ComfyUI, and the removed Google endpoint are not
+// writable; unmigrated call paths may still read their existing env values.
+const FEATURE_CREDIT_PRICE_ENV = "NOVAFLOW_FEATURE_CREDIT_PRICES";
+const WRITABLE_PROVIDER_ENV_NAMES = new Set([runningHub.ENV.apiKey, FEATURE_CREDIT_PRICE_ENV]);
+const RETIRED_PROVIDER_ENV_NAMES = new Set([
   ENV_COMFYUI_BASE_URL,
   ENV_COMFYUI_API_KEY,
+  ENV_COMFYUI_API_KEY_SECRET_REF,
   ENV_GROK_BASE_URL,
   ENV_GROK_API_KEY,
-  ENV_GROK_MODEL
+  ENV_GROK_MODEL,
+  "NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT"
 ]);
 
 let cachedClient = null;
@@ -270,12 +283,12 @@ function readBundledSupabasePublishableKey() {
 }
 
 function readAdminComfyUiEnv() {
-  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL) || DEFAULT_COMFYUI_BASE_URL);
+  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL));
   const apiKey = readAdminEnvValue(ENV_COMFYUI_API_KEY);
   const apiKeySecretRef = readAdminEnvValue(ENV_COMFYUI_API_KEY_SECRET_REF);
   return {
     baseUrl,
-    configured: Boolean(apiKey),
+    configured: Boolean(apiKey && baseUrl),
     secretConfigured: Boolean(apiKey || apiKeySecretRef),
     hasBaseUrl: Boolean(baseUrl),
     hasApiKey: Boolean(apiKey),
@@ -309,9 +322,46 @@ async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
   if (checkAccount) {
     const result = await runningHub.checkAccount(env);
     runningHubCheck = { baseUrl: env.baseUrl, apiKey: env.apiKey, result };
+    if (result?.connected) {
+      try {
+        await upsertAdminSystemSetting({
+          key: "rh_domestic_balance",
+          value: {
+            site: "domestic",
+            label: "国内站余额",
+            remainMoney: result.balance?.money ?? null,
+            remainCoins: result.balance?.coins ?? null,
+            currency: result.balance?.currency || "",
+            checkedAt: result.checkedAt || new Date().toISOString()
+          }
+        });
+      } catch (_err) {
+        // The balance read still returns. A missing settings table must not hide it.
+      }
+    }
   }
   const cached = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey ? runningHubCheck.result : null;
   return { ...runningHub.publicStatus(env), ...(cached || {}) };
+}
+
+const DOMESTIC_BALANCE_REFRESH_MS = 10 * 60 * 1000;
+let domesticBalanceTimer = null;
+
+// Server-side refresh of the domestic balance cache. The admin button is a
+// manual refresh; this interval keeps checkedAt inside the default 10 minute TTL.
+function startDomesticBalanceRefresh({ intervalMs = DOMESTIC_BALANCE_REFRESH_MS, check } = {}) {
+  if (domesticBalanceTimer) clearInterval(domesticBalanceTimer);
+  const run = () => Promise.resolve()
+    .then(() => (check || (() => getAdminRunningHubProviderStatus({ checkAccount: true })))())
+    .catch(() => {});
+  void run();
+  const timer = setInterval(() => { void run(); }, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  domesticBalanceTimer = timer;
+  return () => {
+    clearInterval(timer);
+    if (domesticBalanceTimer === timer) domesticBalanceTimer = null;
+  };
 }
 
 function normalizeBaseUrl(value) {
@@ -715,17 +765,6 @@ function parseAuthProfilePayload(payload) {
   return { authUserId, email, displayName };
 }
 
-function parseProviderBudgetPayload(payload) {
-  const providerKey = String(payload?.providerKey || "comfyui").trim().toLowerCase();
-  const balance = Number(payload?.balance);
-  const unit = String(payload?.unit || "credits").trim().slice(0, 32) || "credits";
-  const note = String(payload?.note || "").trim().slice(0, 500);
-  if (!providerKey) throw new Error("Provider 不能为空");
-  if (!Number.isFinite(balance)) throw new Error("手动总余额必须是数字");
-  if (balance < 0) throw new Error("手动总余额不能小于 0");
-  return { providerKey, balance, unit, note };
-}
-
 function parseProviderBudgetAdjustmentPayload(payload) {
   const providerKey = String(payload?.providerKey || "comfyui").trim().toLowerCase();
   const mode = String(payload?.mode || "deduct").trim().toLowerCase();
@@ -871,9 +910,12 @@ function parseBillingMultiplier(value, fallback = 1) {
 
 function parseAdminAiProviderPayload(payload) {
   if (payload?.apiKey || payload?.api_key || payload?.secret || payload?.secretKey) {
-    throw new Error("不要提交真实 API Key；这里只允许保存服务端密钥引用 api_key_secret_ref");
+    throw new Error("不要提交真实 API Key；RunningHub Key 只写入后台环境变量");
   }
   const providerKey = normalizeProviderKey(payload?.providerKey || payload?.provider_key);
+  if (providerKey !== "runninghub") {
+    throw new Error("在线供应商记录只允许 RunningHub；ComfyUI、Grok 与 Google 不再写入");
+  }
   const name = String(payload?.name || providerKey).trim().slice(0, 120);
   const status = normalizeProviderStatus(payload?.status);
   const billingMultiplier = parseBillingMultiplier(payload?.billingMultiplier ?? payload?.billing_multiplier, 1);
@@ -2313,95 +2355,14 @@ async function resetAdminUserPassword(payload) {
   }
 }
 
-async function setAdminProviderBudget(payload) {
-  const startedAt = Date.now();
+async function setAdminProviderBudget() {
   const operation = "provider_budget.set";
-  const clientState = getAdminClient();
-  if (!clientState.client) {
-    const durationMs = Date.now() - startedAt;
-    if (clientState.status === "mock") {
-      const result = adminWriteMockResult(operation, durationMs);
-      logAdminData("info", "set provider budget skipped", {
-        source: result.source,
-        status: result.status,
-        durationMs,
-        reason: "supabase_env_missing"
-      });
-      return result;
-    }
-    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
-    logAdminData("error", "set provider budget failed", {
-      source: result.source,
-      status: result.status,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
-
-  let parsed;
-  try {
-    parsed = parseProviderBudgetPayload(payload);
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const result = adminWriteErrorResult(operation, err, durationMs);
-    logAdminData("error", "set provider budget rejected", {
-      source: result.source,
-      status: result.status,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
-
-  try {
-    const now = new Date().toISOString();
-    const key = `provider_budget_${parsed.providerKey}`;
-    const value = {
-      label: `${parsed.providerKey === "comfyui" ? "ComfyUI" : parsed.providerKey} 手动总余额`,
-      provider_key: parsed.providerKey,
-      balance: parsed.balance,
-      unit: parsed.unit,
-      source: "manual",
-      note: parsed.note,
-      updated_at: now
-    };
-    const { data, error } = await clientState.client
-      .from("system_settings")
-      .upsert({ key, value, updated_at: now }, { onConflict: "key" })
-      .select("key,value,updated_at")
-      .maybeSingle();
-    if (error) throw error;
-    const durationMs = Date.now() - startedAt;
-    const result = {
-      source: "supabase",
-      status: "connected",
-      configured: true,
-      operation,
-      ok: true,
-      durationMs,
-      record: data
-    };
-    logAdminData("info", "set provider budget", {
-      source: result.source,
-      status: result.status,
-      providerKey: parsed.providerKey,
-      balance: parsed.balance,
-      durationMs
-    });
-    return result;
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    const result = adminWriteErrorResult(operation, err, durationMs);
-    logAdminData("error", "set provider budget failed", {
-      source: result.source,
-      status: result.status,
-      providerKey: parsed.providerKey,
-      durationMs,
-      error: result.error
-    });
-    return result;
-  }
+  const result = localWriteErrorResult(operation, new Error("ComfyUI 手动总余额已退出后台配置，不再录入"), 0);
+  logAdminData("info", "set provider budget refused", {
+    source: result.source,
+    status: result.status
+  });
+  return result;
 }
 
 async function settleAdminComfyUsage(payload) {
@@ -2607,16 +2568,14 @@ async function adjustAdminProviderBudget(payload) {
 }
 
 function parseProviderRuntimeConfigPayload(payload) {
+  if (payload && typeof payload === "object") {
+    for (const name of Object.keys(payload)) {
+      if (RETIRED_PROVIDER_ENV_NAMES.has(name)) throw new Error("Unsupported provider env name");
+    }
+  }
   const providerKey = String(payload?.providerKey || payload?.provider_key || "").trim().toLowerCase();
-  const baseUrl = normalizeBaseUrl(payload?.baseUrl ?? payload?.base_url ?? "");
-  const apiKey = String(payload?.apiKey ?? payload?.api_key ?? "").trim();
-  const model = String(payload?.model || "").trim();
-  const updateApiKey = Boolean(payload?.updateApiKey || payload?.update_api_key || apiKey);
-  const clearApiKey = Boolean(payload?.clearApiKey || payload?.clear_api_key);
-  if (providerKey === "runninghub") return { providerKey, ...runningHub.parseConfig(payload) };
-  if (!["comfyui", "grok"].includes(providerKey)) throw new Error("Unsupported Provider");
-  if (updateApiKey && !apiKey && !clearApiKey) throw new Error("API Key 不能为空；留空表示不修改，或勾选清空");
-  return { providerKey, baseUrl, apiKey, model, updateApiKey, clearApiKey };
+  if (providerKey !== "runninghub") throw new Error("Unsupported Provider");
+  return { providerKey, ...runningHub.parseConfig(payload) };
 }
 
 async function setAdminProviderRuntimeConfig(payload) {
@@ -2639,34 +2598,25 @@ async function setAdminProviderRuntimeConfig(payload) {
 
   try {
     const written = [];
-    if (parsed.providerKey === "runninghub") {
-      for (const [field, name] of Object.entries(runningHub.ENV)) {
-        if (field !== "apiKey") written.push(writeAdminEnvValue(name, parsed[field]));
-      }
-      if (parsed.clearApiKey || parsed.updateApiKey) {
-        written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
-      }
-      runningHubCheck = null;
-    } else if (parsed.providerKey === "comfyui") {
-      written.push(writeAdminEnvValue(ENV_COMFYUI_BASE_URL, parsed.baseUrl || DEFAULT_COMFYUI_BASE_URL));
-      if (parsed.clearApiKey) {
-        written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, ""));
-      } else if (parsed.updateApiKey) {
-        written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, parsed.apiKey));
-      }
-    } else if (parsed.providerKey === "grok") {
-      written.push(writeAdminEnvValue(ENV_GROK_BASE_URL, parsed.baseUrl || DEFAULT_GROK_BASE_URL));
-      written.push(writeAdminEnvValue(ENV_GROK_MODEL, parsed.model || DEFAULT_GROK_MODEL));
-      if (parsed.clearApiKey) {
-        written.push(writeAdminEnvValue(ENV_GROK_API_KEY, ""));
-      } else if (parsed.updateApiKey) {
-        written.push(writeAdminEnvValue(ENV_GROK_API_KEY, parsed.apiKey));
-      }
+    if (parsed.clearApiKey || parsed.updateApiKey) {
+      written.push(writeAdminEnvValue(runningHub.ENV.apiKey, parsed.clearApiKey ? "" : parsed.apiKey));
     }
+    if (payload && Object.prototype.hasOwnProperty.call(payload, "imagePrices")) {
+      const price = (raw, fallback) => {
+        if (raw === undefined || raw === null || raw === "") return fallback;
+        const amount = Number(raw);
+        if (!Number.isInteger(amount) || amount < 0 || amount > 100) throw new Error("出图积分单价须为 0 到 100 的整数");
+        return amount;
+      };
+      const prices = {
+        gpt_image_2_5: price(payload.imagePrices?.gpt_image_2_5, 22),
+        gpt_image_2_official: price(payload.imagePrices?.gpt_image_2_official, 4)
+      };
+      written.push(writeAdminEnvValue(FEATURE_CREDIT_PRICE_ENV, JSON.stringify(prices)));
+    }
+    runningHubCheck = null;
 
-    const env = parsed.providerKey === "runninghub"
-      ? runningHub.publicStatus(readAdminRunningHubEnv())
-      : parsed.providerKey === "grok" ? readAdminGrokEnv() : readAdminComfyUiEnv();
+    const env = runningHub.publicStatus(readAdminRunningHubEnv());
     const durationMs = Date.now() - startedAt;
     const result = {
       source: "local",
@@ -2679,11 +2629,9 @@ async function setAdminProviderRuntimeConfig(payload) {
       env: {
         provider_key: parsed.providerKey,
         baseUrl: env.baseUrl,
-        model: env.model || "",
-        ...(parsed.providerKey === "runninghub" ? {
-          llmBaseUrl: env.llmBaseUrl, llmModel: env.llmModel,
-          gptImageEndpoint: env.gptImageEndpoint, googleImageEndpoint: env.googleImageEndpoint
-        } : {}),
+        llmBaseUrl: env.llmBaseUrl,
+        llmModel: env.llmModel,
+        gptImageEndpoint: env.gptImageEndpoint,
         hasApiKey: Boolean(env.hasApiKey),
         configured: Boolean(env.configured)
       },
@@ -2698,7 +2646,7 @@ async function setAdminProviderRuntimeConfig(payload) {
       status: result.status,
       providerKey: parsed.providerKey,
       baseUrl: result.env.baseUrl,
-      model: result.env.model || undefined,
+      llmModel: result.env.llmModel || undefined,
       hasApiKey: result.env.hasApiKey,
       durationMs
     });
@@ -3723,7 +3671,7 @@ async function recordClientAiTaskUsage(payload, user) {
 async function getAdminComfyUiProviderStatus() {
   const startedAt = Date.now();
   const env = readAdminComfyUiEnv();
-  const endpoint = `GET ${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`;
+  const endpoint = `GET ${env.baseUrl}${COMFYUI_USER_PATH}`;
   if (!env.configured) {
     const durationMs = Date.now() - startedAt;
     const result = {
@@ -3732,7 +3680,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "mock",
       configured: false,
       secretConfigured: env.secretConfigured,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: false,
       accountStatus: "not_configured",
@@ -3758,7 +3706,7 @@ async function getAdminComfyUiProviderStatus() {
   }
 
   try {
-    const response = await requestJson(`${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`, {
+    const response = await requestJson(`${env.baseUrl}${COMFYUI_USER_PATH}`, {
       "X-API-Key": env.apiKey,
       Accept: "application/json",
       "User-Agent": "NovaFlow-Admin/1.0"
@@ -3771,7 +3719,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "connected",
       configured: true,
       secretConfigured: true,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: true,
       accountStatus: String(body.status || "unknown"),
@@ -3799,7 +3747,7 @@ async function getAdminComfyUiProviderStatus() {
       status: "error",
       configured: true,
       secretConfigured: true,
-      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      baseUrl: env.baseUrl,
       hasApiKeySecretRef: env.hasApiKeySecretRef,
       connected: false,
       accountStatus: "unknown",
@@ -3861,6 +3809,179 @@ async function getAdminGrokProviderStatus() {
   return result;
 }
 
+async function readSettingValue(client, key) {
+  const { data, error } = await client.from("system_settings").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return data?.value && typeof data.value === "object" ? data.value : {};
+}
+
+async function getFeatureCreditAdmin() {
+  const clientState = getAdminClient();
+  const config = normalizeCreditConfig(undefined);
+  const empty = {
+    config,
+    domesticBalance: { site: "domestic", label: "国内站余额", remainMoney: null, currency: "", checkedAt: null },
+    estimatedRhCostUsd: null,
+    lowBalance: { known: false, blocked: false, warn: false, thresholdUsd: config.low_balance_usd }
+  };
+  if (!clientState.client) return empty;
+  try {
+    const stored = normalizeCreditConfig(await readSettingValue(clientState.client, "feature_credit_config"));
+    const balance = await readSettingValue(clientState.client, "rh_domestic_balance");
+    let estimatedRhCostUsd = null;
+    const summed = await clientState.client.rpc("credit_ledger_estimated_rh_cost");
+    if (!summed.error && summed.data != null) estimatedRhCostUsd = Number(summed.data);
+    const domesticBalance = {
+      site: "domestic",
+      label: "国内站余额",
+      remainMoney: balance.remainMoney ?? null,
+      remainCoins: balance.remainCoins ?? null,
+      currency: balance.currency || "",
+      checkedAt: balance.checkedAt || null
+    };
+    return {
+      config: stored,
+      domesticBalance,
+      estimatedRhCostUsd,
+      lowBalance: lowBalanceState({
+        cache: true,
+        remainMoney: domesticBalance.remainMoney,
+        currency: domesticBalance.currency,
+        checkedAt: domesticBalance.checkedAt,
+        thresholdUsd: stored.low_balance_usd,
+        thresholdCny: stored.low_balance_cny,
+        ttlSeconds: stored.balance_ttl_seconds,
+        stalePolicy: stored.stale_balance_policy
+      })
+    };
+  } catch (err) {
+    return { ...empty, error: String(err?.message || err) };
+  }
+}
+
+async function saveFeatureCreditAdmin(payload) {
+  const current = await getFeatureCreditAdmin();
+  const prices = { ...(current.config?.prices || {}) };
+  const incoming = payload?.prices && typeof payload.prices === "object" ? payload.prices : {};
+  for (const [key, amount] of Object.entries(incoming)) {
+    if (amount === "" || amount == null) continue;
+    const n = Math.round(Number(amount));
+    if (!Number.isInteger(n) || n < 0 || n > 1000000) throw new Error("积分单价必须是 0 到 1000000 的整数");
+    prices[key] = n;
+  }
+  prices.local = 0;
+  const cnyRaw = payload?.credits_to_cny;
+  const thresholdRaw = payload?.low_balance_usd;
+  const thresholdCnyRaw = payload?.low_balance_cny;
+  const ttlRaw = payload?.balance_ttl_seconds;
+  const config = normalizeCreditConfig({
+    prices,
+    rh_cost_usd: current.config?.rh_cost_usd,
+    credits_to_cny: cnyRaw === "" || cnyRaw == null ? null : cnyRaw,
+    low_balance_usd: thresholdRaw === "" || thresholdRaw == null ? current.config?.low_balance_usd : thresholdRaw,
+    low_balance_cny: thresholdCnyRaw === "" || thresholdCnyRaw == null ? current.config?.low_balance_cny : thresholdCnyRaw,
+    balance_ttl_seconds: ttlRaw === "" || ttlRaw == null ? current.config?.balance_ttl_seconds : ttlRaw,
+    stale_balance_policy: payload?.stale_balance_policy || current.config?.stale_balance_policy,
+    credits_per_usd: current.config?.credits_per_usd
+  });
+  const saved = await upsertAdminSystemSetting({ key: "feature_credit_config", value: config });
+  if (saved?.status === "error" || saved?.ok === false) throw new Error(saved.error || "保存积分配置失败");
+  return getFeatureCreditAdmin();
+}
+
+function ledgerFilters(payload) {
+  const user = String(payload?.user || payload?.userId || payload?.account || "").trim();
+  const feature = String(payload?.feature || "").trim();
+  const status = String(payload?.status || "").trim();
+  const from = String(payload?.from || "").trim();
+  const to = String(payload?.to || "").trim();
+  if (user && !/^[0-9a-f-]{36}$/i.test(user) && !/^[A-Za-z0-9._@\u4e00-\u9fff-]{1,120}$/.test(user)) throw new Error("用户筛选无效");
+  if (feature && !/^[a-z0-9_-]{1,80}$/.test(feature)) throw new Error("功能筛选无效");
+  if (status && !["reserved", "settled", "released"].includes(status)) throw new Error("状态筛选无效");
+  return { user, feature, status, from, to };
+}
+
+const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code";
+
+async function lookupLedgerUsers(client, userText) {
+  const lookup = ledgerUserLookup(userText);
+  if (!lookup) return null;
+  if (lookup.id) {
+    const { data, error } = await client.from("users").select("id,email,display_name").eq("id", lookup.id).limit(5);
+    if (error) throw error;
+    return data || [];
+  }
+  const byEmail = await client.from("users").select("id,email,display_name").eq("email", lookup.email).limit(20);
+  if (byEmail.error) throw byEmail.error;
+  const byName = await client.from("users").select("id,email,display_name").eq("display_name", lookup.displayName).limit(20);
+  if (byName.error) throw byName.error;
+  const users = new Map();
+  for (const user of [...(byEmail.data || []), ...(byName.data || [])]) users.set(user.id, user);
+  return [...users.values()];
+}
+
+async function queryCreditLedger(payload) {
+  const filters = ledgerFilters(payload || {});
+  const clientState = getAdminClient();
+  if (!clientState.client) return { records: [], csv: ledgerCsv([]) };
+  const client = clientState.client;
+  let userIds = null;
+  let knownUsers = [];
+  if (filters.user) {
+    knownUsers = await lookupLedgerUsers(client, filters.user);
+    userIds = knownUsers.map((user) => user.id);
+    if (!userIds.length) return { records: [], csv: ledgerCsv([]) };
+  }
+  const records = await collectPages(async ({ offset, limit }) => {
+    let query = client.from("credit_ledger").select(LEDGER_COLUMNS)
+      .order("created_at", { ascending: false })
+      .order("usage_key", { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (userIds) query = query.in("user_id", userIds);
+    if (filters.feature) query = query.eq("feature", filters.feature);
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.from) query = query.gte("created_at", filters.from);
+    if (filters.to) query = query.lte("created_at", filters.to);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  });
+  const ids = [...new Set(records.map((row) => row.user_id).filter(Boolean))];
+  let accounts = new Map(knownUsers.map((user) => [user.id, user.display_name || user.email || user.id]));
+  const missing = ids.filter((id) => !accounts.has(id));
+  if (missing.length) {
+    const { data: users, error } = await client.from("users").select("id,email,display_name").in("id", missing);
+    if (error) throw error;
+    for (const user of users || []) accounts.set(user.id, user.display_name || user.email || user.id);
+  }
+  const labeled = records.map((row) => ({ ...row, user_email_or_account: accounts.get(row.user_id) || row.user_id || "" }));
+  return { records: labeled, csv: ledgerCsv(labeled) };
+}
+
+async function callFeatureCreditRpc(name, args) {
+  const allowed = new Set(["reserve_feature_credits", "settle_feature_credits", "release_feature_credits", "migrate_grok_quota_to_credits", "rollback_grok_quota_migration"]);
+  if (!allowed.has(name)) throw new Error("不支持的积分操作");
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const error = new Error(clientState.error || "在线计量未配置");
+    error.statusCode = 503;
+    throw error;
+  }
+  const { data, error } = await clientState.client.rpc(name, args || {});
+  if (error) throw error;
+  return data;
+}
+
+async function migrateGrokQuotaToCredits(payload) {
+  const batchId = String(payload?.batchId || payload?.batch_id || "").trim();
+  const price = payload?.price == null || payload?.price === "" ? null : Number(payload.price);
+  return callFeatureCreditRpc("migrate_grok_quota_to_credits", {
+    p_batch_id: batchId,
+    p_price: Number.isFinite(price) ? price : null,
+    p_force_fail: false
+  });
+}
+
 module.exports = {
   artKnowledgeRequest: (operation, payload) => require('./art-knowledge-manager.cjs').createArtKnowledgeManager({getClient:()=>getAdminClient().client}).request(operation,payload),
   ENV_SUPABASE_URL,
@@ -3881,6 +4002,7 @@ module.exports = {
   readAdminGrokEnv,
   readAdminRunningHubEnv,
   getAdminRunningHubProviderStatus,
+  startDomesticBalanceRefresh,
   getAdminUsers,
   getAdminCredits,
   getAdminCreditLogs,
@@ -3933,5 +4055,10 @@ module.exports = {
   setAdminGpuWorkerStatus,
   setAdminGpuWorkerTier,
   deleteAdminGpuWorker,
-  hashWorkerRegistrationCode
+  hashWorkerRegistrationCode,
+  getFeatureCreditAdmin,
+  saveFeatureCreditAdmin,
+  queryCreditLedger,
+  callFeatureCreditRpc,
+  migrateGrokQuotaToCredits
 };

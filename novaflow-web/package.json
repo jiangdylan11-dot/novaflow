@@ -22,6 +22,7 @@
     "worker:build": "node tools/build-web-renderer.mjs --minify && node tools/fetch-cloudflared.mjs && npm --prefix worker run build:win",
     "test": "node tests/run-tests.mjs",
     "test:sql": "node tests/e2e/sql-contract.test.mjs",
+    "test:migration-concurrency": "node tools/test-quota-migration-concurrency.mjs",
     "test:protocol": "node tests/e2e/protocol.test.mjs",
     "test:control": "node tests/e2e/control-plane.test.mjs",
     "test:security": "node tests/e2e/security.test.mjs",
@@ -30,6 +31,8 @@
     "verify:stable": "npm run verify:independent",
     "sync:edge": "node tools/sync-edge-function.mjs",
     "check:edge": "node tools/sync-edge-function.mjs --check",
+    "sync:backend-shared": "node tools/sync-novaflow-backend-shared.mjs",
+    "check:backend-shared": "node tools/sync-novaflow-backend-shared.mjs --check",
     "test:redaction": "node tests/e2e/workflow-redaction.test.mjs",
     "build:renderer": "node tools/build-web-renderer.mjs",
     "serve:renderer": "python tools/serve-web-dist.py --port 4892 --root web-dist",
@@ -47,6 +50,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "deno": "^2.9.6",
+    "pg": "^8.16.3",
     "terser": "^5.51.2"
   }
 }
