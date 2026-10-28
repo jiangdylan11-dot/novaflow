@@ -63,7 +63,14 @@ function registerLicenseAdminIpc() {
   registerAdminDataList("admin:data:ai_tasks:list", adminData.getAdminAiTasks);
   registerAdminDataList("admin:data:system_settings:list", adminData.getAdminSystemSettings);
   registerAdminDataList("admin:data:gpu_workers:list", adminData.getAdminGpuWorkers);
-  registerAdminDataList("admin:data:web_task_usage:list", adminData.getAdminWebTaskUsage);
+  ipcMain.handle("admin:data:web_task_usage:list", async (_evt, payload) => {
+    try {
+      const result = await adminData.getAdminWebTaskUsage(payload || {});
+      return { ok: true, result };
+    } catch (err) {
+      return { ok: false, error: String(err?.message || err) };
+    }
+  });
   registerAdminDataList("admin:data:worker_codes:list", adminData.getAdminWorkerRegistrationCodes);
   registerAdminDataList("admin:data:provider_quotas:grok:list", () => adminData.getAdminProviderCallQuotas({ providerKey: "grok" }));
   ipcMain.handle("admin:data:worker_codes:create", async (_evt, payload) => {

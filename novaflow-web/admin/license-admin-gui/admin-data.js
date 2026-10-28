@@ -588,17 +588,18 @@ function parseCreditAdjustmentPayload(payload) {
   const userId = String(payload?.userId || "").trim();
   const mode = String(payload?.mode || "add").trim();
   const amount = Number(payload?.amount);
-  const feature = String(payload?.feature || "后台积分分配").trim().slice(0, 120);
+  const feature = String(payload?.reason || payload?.feature || "").trim().slice(0, 200);
   const note = String(payload?.note || "").trim().slice(0, 500);
   if (!userId) throw new Error("请选择用户");
   if (!["add", "deduct", "set"].includes(mode)) throw new Error("不支持的积分操作");
+  if (!feature) throw new Error("请填写不超过 200 字的调整原因");
   if (!Number.isInteger(amount)) throw new Error("积分必须是整数");
   if (mode === "set") {
     if (amount < 0) throw new Error("设置余额不能小于 0");
   } else if (amount <= 0) {
     throw new Error("充值或扣减积分必须大于 0");
   }
-  return { userId, mode, amount, feature, note };
+  return { userId, mode, amount, feature, reason: feature, note };
 }
 
 function creditAdjustmentSource(mode) {
@@ -609,7 +610,8 @@ function creditAdjustmentSource(mode) {
 
 function normalizeUserPlan(value) {
   const plan = String(value || "trial").trim().toLowerCase();
-  if (!["trial", "standard", "pro", "team"].includes(plan)) throw new Error("不支持的用户方案");
+  if (plan === "team") return "pro";
+  if (!["trial", "standard", "pro"].includes(plan)) throw new Error("不支持的用户方案");
   return plan;
 }
 
@@ -1255,8 +1257,33 @@ function getAdminGpuWorkers() {
   return readTable("gpu_workers", adminQueries.gpu_workers.select, adminQueries.gpu_workers);
 }
 
-function getAdminWebTaskUsage() {
-  return readTable("web_ai_tasks", adminQueries.web_ai_tasks.select, adminQueries.web_ai_tasks);
+async function getAdminWebTaskUsage(options = {}) {
+  const cap = options?.limit == null || options.limit === ""
+    ? null
+    : Math.max(1, Math.min(200, Math.round(Number(options.limit)) || 100));
+  const selectFields = adminQueries.web_ai_tasks.select;
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    return readTable("web_ai_tasks", selectFields, { ...adminQueries.web_ai_tasks, limit: cap || adminQueries.web_ai_tasks.limit });
+  }
+  const startedAt = Date.now();
+  try {
+    const { collectPages: readPages } = await loadFeatureCredits();
+    const records = await readPages(async ({ offset, limit }) => {
+      const take = cap == null ? limit : Math.min(limit, cap - offset);
+      if (take <= 0) return [];
+      const { data, error } = await clientState.client
+        .from("web_ai_tasks")
+        .select(selectFields)
+        .order(adminQueries.web_ai_tasks.orderBy, { ascending: Boolean(adminQueries.web_ai_tasks.ascending) })
+        .range(offset, offset + take - 1);
+      if (error) throw error;
+      return data || [];
+    });
+    return supabaseResult("web_ai_tasks", records, selectFields, { ...adminQueries.web_ai_tasks, limit: cap || records.length }, Date.now() - startedAt);
+  } catch (err) {
+    return supabaseErrorResult("web_ai_tasks", err, selectFields, adminQueries.web_ai_tasks, Date.now() - startedAt);
+  }
 }
 
 function getAdminWorkerRegistrationCodes() {
@@ -1535,10 +1562,17 @@ async function purgeAdminWorkerRegistrationCodes() {
   if (!client) return result;
 
   try {
-    const { data: rows, error: readError } = await client
-      .from("web_worker_registration_codes")
-      .select("code_hash,max_uses,used_count,expires_at")
-      .limit(1000);
+    const { collectPages: readPages } = await loadFeatureCredits();
+    const rows = await readPages(async ({ offset, limit }) => {
+      const { data, error } = await client
+        .from("web_worker_registration_codes")
+        .select("code_hash,max_uses,used_count,expires_at")
+        .order("created_at", { ascending: true })
+        .range(offset, offset + limit - 1);
+      if (error) throw error;
+      return data || [];
+    });
+    const readError = null;
     if (readError) throw readError;
     const now = Date.now();
     const spent = (rows || [])
@@ -1587,7 +1621,7 @@ async function purgeAdminWebTasks(payload) {
 }
 
 function getAdminCreditLogs() {
-  return disabledTableResult("credit_logs", "消费/积分流水已在轻量后台模式中关闭");
+  return disabledTableResult("credit_logs", "积分流水在 credit_ledger，请到 AI 服务查询");
 }
 
 function getAdminAiProviders() {
@@ -2715,20 +2749,28 @@ async function getAdminProviderCallQuotas(input = {}) {
   }
 
   try {
-    const [{ data: users, error: usersError }, { data: settings, error: settingsError }] = await Promise.all([
-      clientState.client
-        .from("users")
-        .select(adminQueries.users.select)
-        .order(adminQueries.users.orderBy, { ascending: adminQueries.users.ascending })
-        .limit(DEFAULT_LIMIT),
-      clientState.client
-        .from("system_settings")
-        .select(adminQueries.system_settings.select)
-        .like("key", `${PROVIDER_QUOTA_PREFIX}${providerKey}_%`)
-        .limit(1000)
+    const { collectPages: readPages } = await loadFeatureCredits();
+    const [users, settings] = await Promise.all([
+      readPages(async ({ offset, limit }) => {
+        const { data, error } = await clientState.client
+          .from("users")
+          .select(adminQueries.users.select)
+          .order(adminQueries.users.orderBy, { ascending: adminQueries.users.ascending })
+          .range(offset, offset + limit - 1);
+        if (error) throw error;
+        return data || [];
+      }),
+      readPages(async ({ offset, limit }) => {
+        const { data, error } = await clientState.client
+          .from("system_settings")
+          .select(adminQueries.system_settings.select)
+          .like("key", `${PROVIDER_QUOTA_PREFIX}${providerKey}_%`)
+          .order("key", { ascending: true })
+          .range(offset, offset + limit - 1);
+        if (error) throw error;
+        return data || [];
+      })
     ]);
-    if (usersError) throw usersError;
-    if (settingsError) throw settingsError;
     const settingsByUserId = new Map((settings || []).map((setting) => {
       const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
       return [String(value.user_id || setting.key.replace(`${PROVIDER_QUOTA_PREFIX}${providerKey}_`, "")), setting];
@@ -3318,52 +3360,22 @@ async function adjustAdminUserCredits(payload) {
   }
 
   try {
-    const { data: user, error: userError } = await clientState.client
-      .from("users")
-      .select("id,email,status")
-      .eq("id", parsed.userId)
-      .maybeSingle();
-    if (userError) throw userError;
-    if (!user) throw new Error("用户不存在，无法分配积分");
-
-    const { data: creditRows, error: creditReadError } = await clientState.client
-      .from("credits")
-      .select("id,user_id,balance,updated_at")
-      .eq("user_id", parsed.userId)
-      .limit(2);
-    if (creditReadError) throw creditReadError;
-    if ((creditRows || []).length > 1) {
-      throw new Error("该用户存在多条积分余额记录，请先清理重复 credits 数据");
-    }
-
-    const currentCredit = (creditRows || [])[0] || null;
-    const beforeBalance = Number(currentCredit?.balance || 0);
-    const delta = parsed.mode === "set"
-      ? parsed.amount - beforeBalance
-      : parsed.mode === "deduct" ? -parsed.amount : parsed.amount;
-    const afterBalance = beforeBalance + delta;
-    if (afterBalance < 0) throw new Error("扣减后积分不能小于 0");
-
-    let creditRecord;
-    if (currentCredit?.id) {
-      const { data: updatedCredit, error: updateError } = await clientState.client
-        .from("credits")
-        .update({ balance: afterBalance, updated_at: new Date().toISOString() })
-        .eq("id", currentCredit.id)
-        .select("id,user_id,balance,updated_at")
-        .maybeSingle();
-      if (updateError) throw updateError;
-      creditRecord = updatedCredit;
-    } else {
-      const { data: insertedCredit, error: insertError } = await clientState.client
-        .from("credits")
-        .insert({ user_id: parsed.userId, balance: afterBalance })
-        .select("id,user_id,balance,updated_at")
-        .maybeSingle();
-      if (insertError) throw insertError;
-      creditRecord = insertedCredit;
-    }
-
+    const usageKey = String(payload?.usageKey || payload?.usage_key || "").trim() || `admin_adjust_${require("node:crypto").randomUUID()}`;
+    const adminLabel = String(require("os").hostname() || "admin").slice(0, 80);
+    const { data, error } = await clientState.client.rpc("admin_adjust_feature_credits", {
+      p_user_id: parsed.userId,
+      p_mode: parsed.mode,
+      p_amount: parsed.amount,
+      p_reason: parsed.reason,
+      p_note: parsed.note,
+      p_admin_label: adminLabel,
+      p_usage_key: usageKey
+    });
+    if (error) throw error;
+    const row = data && typeof data === "object" ? data : {};
+    const beforeBalance = Number(row.before_balance);
+    const afterBalance = Number(row.after_balance);
+    const delta = Number(row.delta);
     const durationMs = Date.now() - startedAt;
     const result = {
       source: "supabase",
@@ -3372,19 +3384,16 @@ async function adjustAdminUserCredits(payload) {
       operation,
       ok: true,
       durationMs,
-      user: {
-        id: user.id,
-        email: user.email,
-        status: user.status
-      },
       adjustment: {
         mode: parsed.mode,
         amount: parsed.amount,
         delta,
         beforeBalance,
-        afterBalance
+        afterBalance,
+        usageKey: row.usage_key || usageKey,
+        idempotent: row.idempotent === true
       },
-      credit: creditRecord
+      credit: { user_id: parsed.userId, balance: afterBalance }
     };
     logAdminData("info", "adjust credits", {
       source: result.source,
@@ -3901,7 +3910,7 @@ function ledgerFilters(payload) {
   return { user, feature, status, from, to };
 }
 
-const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code";
+const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_before,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code,pricing_details";
 
 async function lookupLedgerUsers(client, userText) {
   const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
@@ -3926,6 +3935,9 @@ async function queryCreditLedger(payload) {
   const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
 
   const filters = ledgerFilters(payload || {});
+  const cap = payload?.limit == null || payload.limit === ""
+    ? null
+    : Math.max(1, Math.min(200, Math.round(Number(payload.limit)) || 20));
   const clientState = getAdminClient();
   if (!clientState.client) return { records: [], csv: ledgerCsv([]) };
   const client = clientState.client;
@@ -3937,10 +3949,12 @@ async function queryCreditLedger(payload) {
     if (!userIds.length) return { records: [], csv: ledgerCsv([]) };
   }
   const records = await collectPages(async ({ offset, limit }) => {
+    const take = cap == null ? limit : Math.min(limit, cap - offset);
+    if (take <= 0) return [];
     let query = client.from("credit_ledger").select(LEDGER_COLUMNS)
       .order("created_at", { ascending: false })
       .order("usage_key", { ascending: true })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + take - 1);
     if (userIds) query = query.in("user_id", userIds);
     if (filters.feature) query = query.eq("feature", filters.feature);
     if (filters.status) query = query.eq("status", filters.status);

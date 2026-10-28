@@ -29,6 +29,9 @@ async function database() {
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028010000_settle_grok_quota_failure_does_not_charge.sql'), 'utf8'));
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028140000_feature_credits.sql'), 'utf8'));
   await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028140000_feature_credits.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028150000_admin_adjust_feature_credits.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
   return db;
 }
 
@@ -334,5 +337,57 @@ test('quota migration rounds remaining counts up, is idempotent, and rolls the b
     db.query('select public.reserve_grok_quota($1, $2, $3, 1, 1, $4::jsonb)', [whole.id, 'during-lock-calls', 'image-reverse', '{}']),
     /维护中/
   );
+  await db.close();
+});
+
+test('admin credit adjustment writes the ledger in one transaction and team plans fold into pro', async () => {
+  const db = await database();
+  const user = await addUser(db, 'adjust@novaflow.local', 10);
+  const added = (await db.query(
+    'select public.admin_adjust_feature_credits($1, $2, $3, $4, $5, $6, $7) as row',
+    [user.id, 'add', 5, '补偿', 'note', 'admin-host', 'admin_adjust_test_1']
+  )).rows[0].row;
+  assert.equal(added.idempotent, false);
+  assert.equal(num(added.before_balance), 10);
+  assert.equal(num(added.after_balance), 15);
+  assert.equal(num(added.delta), 5);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 15);
+  const ledger = (await db.query("select feature, status, settled_credits, balance_after, pricing_details from public.credit_ledger where usage_key = 'admin_adjust_test_1'")).rows[0];
+  assert.equal(ledger.feature, 'admin_adjust');
+  assert.equal(ledger.status, 'settled');
+  assert.equal(num(ledger.settled_credits), 5);
+  assert.equal(ledger.pricing_details.reason, '补偿');
+  assert.equal(ledger.pricing_details.source, 'admin_gui');
+  const again = (await db.query(
+    'select public.admin_adjust_feature_credits($1, $2, $3, $4, $5, $6, $7) as row',
+    [user.id, 'add', 5, '补偿', 'note', 'admin-host', 'admin_adjust_test_1']
+  )).rows[0].row;
+  assert.equal(again.idempotent, true);
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 15);
+  await assert.rejects(
+    db.query('select public.admin_adjust_feature_credits($1, $2, $3, $4, $5, $6, $7)', [user.id, 'deduct', 1, '其他', '', 'admin-host', 'admin_adjust_test_1']),
+    /内容不一致/
+  );
+  await assert.rejects(
+    db.query('select public.admin_adjust_feature_credits($1, $2, $3, $4, $5, $6, $7)', [user.id, 'deduct', 100, '扣太多', '', 'admin-host', 'admin_adjust_test_2']),
+    /不能小于 0/
+  );
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), 15);
+  assert.equal((await db.query("select count(*)::int as n from public.credit_ledger where usage_key = 'admin_adjust_test_2'")).rows[0].n, 0);
+  const anon = (await db.query("select has_function_privilege('anon', 'public.admin_adjust_feature_credits(uuid,text,numeric,text,text,text,text)', 'execute') as ok")).rows[0];
+  assert.equal(anon.ok, false);
+  const authed = (await db.query("select has_function_privilege('authenticated', 'public.admin_adjust_feature_credits(uuid,text,numeric,text,text,text,text)', 'execute') as ok")).rows[0];
+  assert.equal(authed.ok, false);
+
+  await db.query('alter table public.users drop constraint if exists users_plan_valid');
+  await db.query("update public.users set plan = 'team' where id = $1", [user.id]);
+  const balanceBefore = num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance);
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
+  assert.equal((await db.query('select plan from public.users where id = $1', [user.id])).rows[0].plan, 'pro');
+  assert.equal(num((await db.query('select balance from public.credits where user_id = $1', [user.id])).rows[0].balance), balanceBefore);
+  assert.equal((await db.query("select count(*)::int as n from public.users where plan = 'team'")).rows[0].n, 0);
+  await db.exec(await readFile(join(repoRoot, 'supabase/migrations/20261028160000_users_plan_team_to_pro.sql'), 'utf8'));
+  assert.equal((await db.query("select count(*)::int as n from public.users where plan = 'team'")).rows[0].n, 0);
+  await assert.rejects(db.query("update public.users set plan = 'team' where id = $1", [user.id]), /users_plan_valid|check constraint/i);
   await db.close();
 });
