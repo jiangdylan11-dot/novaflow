@@ -2277,7 +2277,7 @@
   const NOVAFLOW_RECT_RADIUS_PX = "7px";
   // Dialog titles and the small green 导入 buttons of 骨骼's import rows are 600
   // (theme 2.1 / 2.9), whatever the weight pass or the blanket 400 would give them.
-  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2, [data-novaflow-spine-inline-import-action="1"]';
+  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, .nf-node-header h2, [data-novaflow-spine-inline-import-action="1"]';
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -30380,6 +30380,13 @@
       }
       if (versionBadge.textContent !== "v" + releaseVersion) versionBadge.textContent = "v" + releaseVersion;
     }
+    // The web account strip sits after the version. Layout passes rebuild the
+    // brand; seat() puts the strip back. A failure here must not block the
+    // module switch that triggered this pass.
+    try {
+      const accountHeader = window.NovaFlowWebAccount;
+      if (accountHeader && typeof accountHeader.seat === "function") accountHeader.seat(brand);
+    } catch {}
 
     const img = brand.querySelector('img[alt="logo"]');
     if (img && img.getAttribute("src") !== LOGO_SRC) {
@@ -32878,7 +32885,6 @@
       "[data-nf-dialog='panel']",
       "[data-novaflow-export-modal-dialog='1']",
       ".nf-wh-card",
-      ".nf-account-card",
       ".novaflow-art-export-dialog",
       ".novaflow-smart-ai-dialog",
       "[data-novaflow-preview-workspace='1']",
@@ -83375,15 +83381,18 @@
         setArtGenerateNsfwEnabled(!ART_GENERATE_STATE.nsfw);
       })
     ]);
-    const accelerationToggle = renderArtGenerateToggleButton(ART_GENERATE_STATE.localQwen21Variant === 'turbo' && !ART_GENERATE_STATE.nsfw, '加速', () => {
-      if (ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfw) return;
+    // UI has no NSFW control; a flag left on from 绘图 must not hide or lock 加速 there.
+    const uiSurface = Boolean(window.NovaFlowUiDesignDrawing?.isActive?.());
+    const nsfwBlocksAcceleration = !uiSurface && ART_GENERATE_STATE.nsfw === true;
+    const accelerationToggle = renderArtGenerateToggleButton(ART_GENERATE_STATE.localQwen21Variant === 'turbo' && !nsfwBlocksAcceleration, '加速', () => {
+      if (ART_GENERATE_STATE.running || nsfwBlocksAcceleration) return;
       ART_GENERATE_STATE.localQwen21Variant = ART_GENERATE_STATE.localQwen21Variant === 'turbo' ? 'standard' : 'turbo';
       saveArtGenerateDrawingSamplingPreferences(ART_GENERATE_STATE);
       renderArtGenerateSurfaces({ forceBottom: true });
     });
-    accelerationToggle.disabled = !!(ART_GENERATE_STATE.running || ART_GENERATE_STATE.nsfw);
-    accelerationToggle.title = ART_GENERATE_STATE.nsfw ? '关闭 NSFW 后可用' : '开启使用 Turbo 8 步，关闭使用普通版 25 步';
-    const accelerationSwitch = window.NovaFlowUiDesignDrawing?.isActive?.() ? null : createArtEl('div', {
+    accelerationToggle.disabled = !!(ART_GENERATE_STATE.running || nsfwBlocksAcceleration);
+    accelerationToggle.title = nsfwBlocksAcceleration ? '关闭 NSFW 后可用' : '开启使用 Turbo 8 步，关闭使用普通版 25 步';
+    const accelerationSwitch = createArtEl('div', {
       className: 'novaflow-art-generate-param', 'data-novaflow-art-generate-acceleration': '1'
     }, [createArtEl('span', {text:'加速'}), accelerationToggle]);
     const creditSnapshot = artGenerateCreditSnapshot();
@@ -85921,13 +85930,21 @@
   function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
     const guidance = qwen21Guidance(negativePrompt);
     const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, negativePrompt, "qwen-2.1", "ui");
+    const uiTurbo = state?.localQwen21Variant === 'turbo';
+    const finishUiQwen21 = (workflow) => {
+      if (!uiTurbo) return { workflow, modelKey: 'qwen-image-2.1-ui' };
+      const turboApi = window.NovaFlowQwen21Turbo;
+      if (!turboApi || typeof turboApi.apply !== 'function') throw new Error('加速线路未加载，请刷新后重试');
+      const cfg = sampling?.cfgManual === true ? sampling.cfg : 1;
+      return { workflow: turboApi.apply(workflow, { cfg }), modelKey: 'qwen-image-2.1-ui' };
+    };
     const preserveNativeLayout = state?.uiPreserveLayout === true && state?.uiLayoutMode !== "reflow" && state?.uiLayoutMode !== "create";
     const nativeEdit = providerOptions?.uiNativeEdit || null;
     const editRegions = nativeEdit?.regions;
     if (!nativeEdit && String(providerOptions?.taskProfile || '').toLowerCase() === 'ui-design' && state?.uiLayoutMode === 'partial') throw new Error('局部UI任务缺少原生选区，禁止退为全图编辑');
     if (nativeEdit && [state?.width,state?.height].some(n => !Number.isInteger(Number(n)) || Number(n) < 64 || Number(n) > QWEN21_UI_MAX_OUTPUT_EDGE || Number(n) % 8)) throw new Error('局部输出尺寸无效；禁止自动取整或改尺寸');
     if (nativeEdit && (mode !== "img2img" || !preserveNativeLayout || state?.uiRunIntent !== "iteration" || !Array.isArray(editRegions) || !editRegions.length || editRegions.length > 8 || editRegions.some(r => !r || [r.x,r.y,r.width,r.height].some(n => !Number.isFinite(n)) || r.x < 0 || r.y < 0 || r.x >= 1 || r.y >= 1 || r.width <= 0 || r.height <= 0 || r.x + r.width > 1.000001 || r.y + r.height > 1.000001 || r.width * r.height >= .999))) throw new Error("局部修改范围无效，任务未提交");
-    const runtime = artQwen21Runtime();
+    const runtime = artQwen21Runtime(uiTurbo ? { localQwen21Variant: 'turbo' } : undefined);
     const info = runtime?.info || {};
     const required = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha", ...(nativeEdit ? ["VAEEncode", "SetLatentNoiseMask", "SolidMask", "MaskComposite", ...(nativeEdit.neutralizeConditioning ? ["EmptyImage", "ImageCompositeMasked"] : [])] : [])];
     const missing = required.filter((type) => !info[type]);
@@ -85979,7 +85996,9 @@
     const clampEdge = (value) => Math.max(64, Math.min(QWEN21_UI_MAX_OUTPUT_EDGE, Math.round(Number(value) || 1024)));
     const requested = { width: clampEdge(state?.width), height: clampEdge(state?.height) };
     // The approved local and Grok versions share this exact sampling graph.
-    if(providerOptions?.uiApprovedCatalog===true){
+    // The locked catalog graph is the standard BF16 model. 加速 uses the same
+    // Turbo unet and eight-step sampler as 绘图, so it takes the normal UI graph.
+    if(providerOptions?.uiApprovedCatalog===true && !uiTurbo){
       if(names.length!==1||mode!=="img2img"||nativeEdit||!preserveNativeLayout||roleAt(0)!=="layout"||!info.LatentUpscale||!info.SaveLatent)throw new Error('认可版本生图条件不完整，本次未提交');
       if(!ART_QWEN21_BF16.includes(runtime.unet)||!ART_QWEN21_CLIPS.includes(runtime.clip)||runtime.vae!=='qwen_image_2.1_vae_bf16.safetensors')throw new Error('认可版本的模型配置不匹配，本次未替换模型');
       encode.resolution=1024;encode['images.image_1']=['100',0];
@@ -85991,10 +86010,10 @@
       workflow['8']={class_type:'VAEDecode',inputs:{samples:['7',0],vae:['3',0]}};
       workflow['9']={class_type:'SplitImageWithAlpha',inputs:{image:['8',0]}};
       workflow['11']={class_type:'SaveImage',inputs:{images:['9',0],filename_prefix:String(outputPrefix||'NovaFlow_UI')}};
-      return {workflow,modelKey:'qwen-image-2.1-ui'};
+      return finishUiQwen21(workflow);
     }
 
-    const highNativeRequested = requested.width === 864 && requested.height === 1536;
+    const highNativeRequested = !uiTurbo && requested.width === 864 && requested.height === 1536;
     // The only >1MP exception is the measured three-reference, 40/1 model
     // combination. Count encoded auxiliary pixels, including rounding small assets.
     const auxiliaryEncodedPixels = sizes.reduce((sum, size, index) => {
@@ -86092,7 +86111,7 @@
     workflow["10"] = { class_type: "ImageScale", inputs: { image: ["9", 0], upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
     workflow["11"] = { class_type: "SaveImage", inputs: { images: ["10", 0], filename_prefix: String(outputPrefix || "NovaFlow_UI") } };
     if (nativeEdit) { workflow["11"].inputs.images = ["9",0]; delete workflow["10"]; }
-    return { workflow, modelKey: "qwen-image-2.1-ui" };
+    return finishUiQwen21(workflow);
   }
 
   // The engine the drawing panel shows for this run ("qwen-2.1" or ""). The page decides it from the
@@ -86875,6 +86894,7 @@
         samplingOverrides: source.samplingOverrides,
         loras: source.loras,
         localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
+        ...(source.localQwen21Variant === 'turbo' || source.localQwen21Variant === 'standard' ? { localQwen21Variant: source.localQwen21Variant } : {}),
         localDrawEngine: options.taskProfile === "ui-layer" && source.localDrawEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",

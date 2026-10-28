@@ -334,8 +334,11 @@ section('a logged-out visitor is told to log in, and can');
   check('the account control ships', account.length > 1000, account.length);
   check('and is loaded by the page',
     (html.match(/novaflow-web-account\.js/g) || []).length === 1, null);
-  check('it puts a control in the topbar',
-    /novaflow-topbar-ai-runtime-status/.test(account), null);
+  check('it puts the account in the header after the version',
+    /nf-brand-version/.test(account) && /novaflow-web-account-header/.test(account), null);
+  // The old dialog id is only looked up so a leftover node can be removed.
+  check('the account modal is not built',
+    !/showModal/.test(account) && !/NovaFlow 账户/.test(account) && !/createElement\('dialog'\)/.test(account), null);
   check("and signs in through the renderer's own login",
     /clientAuthLogin/.test(account), null);
 

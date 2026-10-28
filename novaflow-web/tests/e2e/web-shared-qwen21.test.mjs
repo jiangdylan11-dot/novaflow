@@ -24,6 +24,8 @@ const run = (state, options = {}, provider = 'local') =>
 // ---- the model a run is queued for: the conditions the node builds 2.1 under -------------------
 equal(workflowModelId(M, run({ localDrawEngine: 'qwen-2.1' })), 'qwen-image-2.1');
 equal(workflowModelId(M, run({ localUiEngine: 'qwen-2.1' }, { taskProfile: 'ui-design' })), 'qwen-image-2.1');
+equal(workflowModelId(M, run({ localUiEngine: 'qwen-2.1', localQwen21Variant: 'turbo' }, { taskProfile: 'ui-design' })), 'qwen-image-2.1-turbo');
+equal(workflowModelId(M, run({ localDrawEngine: 'qwen-2.1', localQwen21Variant: 'turbo' })), 'qwen-image-2.1-turbo');
 equal(workflowModelId(M, run({})), 'qwen-image-2511');
 equal(workflowModelId(M, run({ nsfw: true })), 'qwen-image-2511');
 equal(workflowModelId(M, run({ localDrawEngine: 'qwen-2.1' }, { taskProfile: 'ui-design' })), 'qwen-image-2511');

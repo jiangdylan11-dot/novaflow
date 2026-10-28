@@ -30,7 +30,7 @@ app.whenReady().then(async()=>{
  await account.loadURL('data:text/html,<html><body style="background:%23101010"></body></html>');
  await exec(`window.electronAPI={clientAuthStatus:async()=>({ok:true,result:{authenticated:true,user:{display_name:'普通用户',plan:'trial'},credits:{balance:500}}}),clientAuthAccountDetails:async()=>({ok:true,result:{user:{plan:'trial'},credits:{balance:500},providerQuotas:{grok:{remaining_count:100,allocated_count:100}}}}),artKnowledgeState:async()=>({ok:true,enabled:true,allowed:false,publisher:true}),artKnowledgeConsent:async()=>({ok:true})}; void 0;`);
  await exec(fs.readFileSync(path.resolve(__dirname,'../../renderer/novaflow-web-account.js'),'utf8'));
- await exec(`NovaFlowWebAccount.open(); new Promise(resolve=>setTimeout(resolve,300))`);
+ await exec(`const brand=document.createElement('div'); brand.className='nf-brand'; const version=document.createElement('span'); version.className='nf-brand-version'; brand.appendChild(version); document.body.appendChild(brand); NovaFlowWebAccount.seat(); NovaFlowWebAccount.refresh()`);
  const state=await exec(`({text:document.body.innerText,hasReview:[...document.querySelectorAll('button')].some(b=>b.textContent==='审核专业经验')})`);
  assert.equal(state.hasReview,false);assert(!state.text.includes('隐私设置'));assert(!state.text.includes('允许贡献通用美术方法'));
  fs.writeFileSync(path.join(output,'ordinary-account.png'),(await account.webContents.capturePage()).toPNG());
