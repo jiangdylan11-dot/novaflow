@@ -8,7 +8,7 @@ const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
 const h3PromptEnhance = require("./h3-prompt-enhance");
 const artDirection = require("./art-direction");
-const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runninghub-llm.mjs");
+const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../load-shared-esm.cjs");
 let runningHubLlmPromise;
 function loadRunningHubLlm() {
   runningHubLlmPromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/runninghub-llm.mjs")).href);

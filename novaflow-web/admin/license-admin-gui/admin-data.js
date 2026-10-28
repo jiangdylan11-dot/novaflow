@@ -4,14 +4,10 @@ const http = require("http");
 const https = require("https");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
-const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runninghub-llm.mjs");
 const {
-  normalizeCreditConfig,
-  ledgerCsv,
-  lowBalanceState,
-  collectPages,
-  ledgerUserLookup
-} = require("../../packages/shared/src/feature-credits.mjs");
+  DEFAULT_RUNNINGHUB_LLM_MODEL,
+  loadFeatureCredits
+} = require("../load-shared-esm.cjs");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -3816,6 +3812,8 @@ async function readSettingValue(client, key) {
 }
 
 async function getFeatureCreditAdmin() {
+  const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
+
   const clientState = getAdminClient();
   const config = normalizeCreditConfig(undefined);
   const empty = {
@@ -3860,6 +3858,8 @@ async function getFeatureCreditAdmin() {
 }
 
 async function saveFeatureCreditAdmin(payload) {
+  const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
+
   const current = await getFeatureCreditAdmin();
   const prices = { ...(current.config?.prices || {}) };
   const incoming = payload?.prices && typeof payload.prices === "object" ? payload.prices : {};
@@ -3904,6 +3904,8 @@ function ledgerFilters(payload) {
 const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code";
 
 async function lookupLedgerUsers(client, userText) {
+  const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
+
   const lookup = ledgerUserLookup(userText);
   if (!lookup) return null;
   if (lookup.id) {
@@ -3921,6 +3923,8 @@ async function lookupLedgerUsers(client, userText) {
 }
 
 async function queryCreditLedger(payload) {
+  const { normalizeCreditConfig, ledgerCsv, lowBalanceState, collectPages, ledgerUserLookup } = await loadFeatureCredits();
+
   const filters = ledgerFilters(payload || {});
   const clientState = getAdminClient();
   if (!clientState.client) return { records: [], csv: ledgerCsv([]) };

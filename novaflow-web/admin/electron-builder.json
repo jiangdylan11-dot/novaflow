@@ -9,6 +9,7 @@
   },
   "files": [
     "admin-main.js",
+    "load-shared-esm.cjs",
     "build/icon.ico",
     "build/icon.png",
     "admin-server/**/*",
