@@ -82,6 +82,16 @@ test('calculation drafts cannot mutate the source project and preview commits ne
   assert.equal(f.state.history.length, 0)
 })
 
+test('opening ribbon timing cannot add a duration field to the authored animation', () => {
+  const f = fixture(), before = JSON.stringify(f.state.json)
+  f.ctx.getRibbonTimelineDuration = () => 2
+  f.ctx.parseRibbonEventNumber = value => value == null ? null : Number(value)
+  vm.runInContext(fn(brand, 'protectRibbonCurrentAnimationDuration'), f.ctx)
+  assert.equal(f.run('protectRibbonCurrentAnimationDuration()'), false)
+  assert.equal(JSON.stringify(f.state.json), before)
+  assert.equal(f.state.history.length, 0)
+})
+
 test('repeated write callbacks do not duplicate history, while distinct explicit writes undo separately', () => {
   const f = fixture()
   f.ctx.preview = f.preview

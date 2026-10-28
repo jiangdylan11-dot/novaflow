@@ -62,10 +62,10 @@ app.whenReady().then(async () => {
   assert.equal(await run(`document.getElementById('grokRuntimeApiKey')`), null);
   assert.equal(await run(`document.getElementById('saveComfyProviderBudget')`), null);
   assert.equal(await run(`document.getElementById('saveGrokRuntimeConfig')`), null);
-  assert((await run(`document.getElementById('aiProvidersTableBody').textContent`)).includes("Connected"));
+  assert.equal(await run(`document.querySelector('#aiProvidersTableBody .badge').textContent`), "已连接");
   assert(!(await run(`document.getElementById('aiProvidersTableBody').textContent`)).includes("Grok"));
   assert(!(await run(`document.getElementById('module-ai-services').innerText`)).includes("保存 ComfyUI"));
-  assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("RunningHub"));
+  assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("账户连接正常"));
   assert(!(await run(`document.body.innerText`)).includes("fixture-only-key"));
   for (const width of [1440, 1080]) {
     win.setSize(width, 1080);

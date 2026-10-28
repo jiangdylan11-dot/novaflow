@@ -29,10 +29,6 @@
             <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2M17 6l3 3M14 9l2 2"/></svg>
             <span>授权管理</span>
           </button>
-          <button class="moduleNavButton" data-module="credits" type="button" title="会员管理">
-            <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
-            <span>会员管理</span>
-          </button>
           <button class="moduleNavButton" data-module="ai-services" type="button" title="AI 服务">
             <svg class="navIcon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>
             <span>AI 服务</span>
@@ -47,7 +43,7 @@
           </button>
         </nav>
         <div class="sidebarFooter">
-          <div class="sidebarNote">不保存完整 Workflow 与生成产物。任务记录在算力节点，积分流水在 AI 服务。</div>
+          <div class="sidebarNote">不保存完整 Workflow 与生成产物。任务记录在算力节点，积分流水在用户管理中查看。</div>
         </div>
       </aside>
 
@@ -154,8 +150,8 @@
                       <span class="quickTitle">新建登录账号</span>
                       <span class="quickHint">手动开户并设置初始积分</span>
                     </button>
-                    <button class="quickLink" type="button" data-module-link="credits">
-                      <span class="quickTitle">会员管理</span>
+                    <button class="quickLink" type="button" data-module-link="users">
+                      <span class="quickTitle">用户积分</span>
                       <span class="quickHint">积分余额与充值</span>
                     </button>
                     <button class="quickLink" type="button" data-module-link="licenses" data-tab-after="issue">
@@ -177,10 +173,11 @@
             <div class="pageHead">
               <div>
                 <h1 class="pageTitle">用户管理</h1>
-                <div class="pageHint">手动开户、修改密码、账户类型与状态维护；主程序不开放自助注册。</div>
+                <div class="pageHint">统一管理用户、积分、账户类型与登录状态。</div>
               </div>
               <div class="pageTools">
                 <span id="usersDataBadge" class="pill skeletonPill"></span>
+                <button id="openCreditLedger" class="btn secondary" type="button">积分流水</button>
                 <button class="btn primary" type="button" data-drawer-open="userCreateDrawer">+ 新建账号</button>
               </div>
             </div>
@@ -206,7 +203,6 @@
                   <thead>
                     <tr>
                       <th>用户</th>
-                      <th>账号</th>
                       <th>注册时间</th>
                       <th class="num">当前积分</th>
                       <th>账户类型</th>
@@ -218,12 +214,12 @@
                   </thead>
                   <tbody id="usersTableBody">
                     <tr>
-                      <td colspan="9"><div class="skeletonLine"></div></td>
+                      <td colspan="8"><div class="skeletonLine"></div></td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div class="tableFootnote">普通账户只能用本机算力；中级账户可用普通算力节点；高级账户可用所有算力节点。删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。流水在 AI 服务。</div>
+              <div class="tableFootnote">普通账户只能用本机算力；中级账户可用普通算力节点；高级账户可用所有算力节点。删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。点「流水」查看该用户记录。</div>
             </section>
           </section>
 
@@ -527,98 +523,6 @@
             </section>
           </section>
 
-          <!-- ============================ 会员管理 ============================ -->
-          <section id="module-credits" class="modulePanel">
-            <div class="pageHead">
-              <div>
-                <h1 class="pageTitle">会员管理</h1>
-                <div class="pageHint">查看积分余额，充值、扣减或设为指定余额。流水在 AI 服务 · 积分流水。</div>
-              </div>
-              <div class="pageTools">
-                <span id="creditsDataBadge" class="pill skeletonPill"></span>
-              </div>
-            </div>
-
-            <div class="statStrip three">
-              <div class="stat"><div class="statLabel">积分合计</div><div id="creditStatTotal" class="statValue">-</div></div>
-              <div class="stat"><div class="statLabel">有积分用户</div><div id="creditStatFunded" class="statValue ok">-</div></div>
-              <div class="stat"><div class="statLabel">零积分用户</div><div id="creditStatEmpty" class="statValue warn">-</div></div>
-            </div>
-
-            <div class="splitGrid">
-              <section class="panel tableCard">
-                <div class="tableToolbar">
-                  <div class="cardTitle">会员列表</div>
-                  <span id="membersCount" class="countPill">-</span>
-                  <div class="spacer"></div>
-                  <input id="memberSearchInput" class="tableSearch" type="search" spellcheck="false" placeholder="搜索账号或显示名" />
-                </div>
-                <div class="tableViewport tall">
-                  <table class="dataTable memberTable">
-                    <thead>
-                      <tr>
-                        <th>用户</th>
-                        <th>账户类型</th>
-                        <th class="num">当前积分</th>
-                        <th class="actionsCol">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody id="membersTableBody">
-                      <tr>
-                        <td colspan="4"><div class="skeletonLine"></div></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div class="tableFootnote">余额不足时云端任务会被拒绝。账户类型在「用户管理」修改。每次调整写入 credit_ledger。</div>
-              </section>
-
-              <section class="panel editPanel stickyPanel">
-                <div class="panelHeader">
-                  <div>
-                    <div class="cardTitle">调整</div>
-                    <div id="memberAdjustTarget" class="cardHint">在左侧列表点「调整」选择会员</div>
-                  </div>
-                  <div id="memberAdjustStatus" class="hint"></div>
-                </div>
-                <div class="formGrid one topGap">
-                  <div class="row">
-                    <div class="label">方式</div>
-                    <div class="field">
-                      <select id="memberAdjustMode">
-                        <option value="add">充值</option>
-                        <option value="deduct">扣减</option>
-                        <option value="set" selected>设为余额</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div id="memberAdjustLabel" class="label">积分</div>
-                    <div class="field">
-                      <input id="memberAdjustValue" type="number" min="0" step="1" placeholder="输入整数" disabled />
-                      <div id="memberAdjustHint" class="hint"></div>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="label">原因</div>
-                    <div class="field">
-                      <input id="memberAdjustReason" type="text" maxlength="200" placeholder="必填，写入积分流水" disabled />
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="label">备注</div>
-                    <div class="field">
-                      <input id="memberAdjustNote" type="text" maxlength="500" placeholder="可选" disabled />
-                    </div>
-                  </div>
-                </div>
-                <div class="actions center">
-                  <button id="memberAdjustSubmit" class="btn primary wide" type="button" disabled>确认</button>
-                </div>
-              </section>
-            </div>
-          </section>
-
           <!-- ============================ AI 服务 ============================ -->
           <section id="module-ai-services" class="modulePanel">
             <div class="pageHead">
@@ -782,37 +686,6 @@
               <div class="actions">
                 <button id="saveFeatureCredits" class="btn primary" type="button">保存积分单价</button>
                 <button id="refreshDomesticBalance" class="btn" type="button">刷新国内站余额</button>
-              </div>
-            </section>
-
-            <section class="panel">
-              <div class="panelHeader">
-                <div>
-                  <div class="cardTitle">积分流水</div>
-                  <div class="cardHint">按用户、功能、状态和时间查看每次扣分。导出当前筛选的 CSV。</div>
-                </div>
-              </div>
-              <div class="formGrid">
-                <div class="row"><div class="label">用户</div><div class="field"><input id="ledgerUser" type="search" placeholder="账号、邮箱或用户 ID" /></div></div>
-                <div class="row"><div class="label">功能</div><div class="field"><input id="ledgerFeature" type="text" placeholder="如 prompt_optimize" /></div></div>
-                <div class="row"><div class="label">状态</div><div class="field"><input id="ledgerStatus" type="text" placeholder="reserved / settled / released。失败与审核都是 released，不扣分" /></div></div>
-                <div class="row"><div class="label">开始</div><div class="field"><input id="ledgerFrom" type="datetime-local" /></div></div>
-                <div class="row"><div class="label">结束</div><div class="field"><input id="ledgerTo" type="datetime-local" /></div></div>
-              </div>
-              <div class="actions">
-                <button id="queryCreditLedger" class="btn" type="button">查询</button>
-                <button id="exportCreditLedger" class="btn" type="button">导出 CSV</button>
-                <span id="ledgerStatusText" class="hint">-</span>
-              </div>
-              <div class="tableViewport">
-                <table class="dataTable">
-                  <thead>
-                    <tr>
-                      <th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class="num">积分</th><th class="num">估算 RH 成本</th>
-                    </tr>
-                  </thead>
-                  <tbody id="creditLedgerBody"><tr><td colspan="7">尚未查询</td></tr></tbody>
-                </table>
               </div>
             </section>
 
@@ -1126,6 +999,86 @@
           </aside>
         </div>
 
+        <!-- 用户积分调整与流水分别显示，保留用户列表上下文。 -->
+        <div id="memberAdjustDialog" class="modalOverlay" hidden>
+          <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="memberAdjustTitle" tabindex="-1">
+            <div class="modalHeader">
+              <div><div id="memberAdjustTitle" class="modalTitle">调整积分</div><div id="memberAdjustTarget" class="modalHint"></div></div>
+              <button class="iconButton" type="button" data-dialog-close="memberAdjustDialog" aria-label="关闭">×</button>
+            </div>
+            <div class="modalBody">
+              <div id="memberAdjustStatus" class="hint"></div>
+              <div class="formGrid one topGap">
+                <div class="row">
+                  <div class="label">方式</div>
+                  <div class="field">
+                    <select id="memberAdjustMode">
+                      <option value="add">充值</option>
+                      <option value="deduct">扣减</option>
+                      <option value="set" selected>设为余额</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div id="memberAdjustLabel" class="label">积分</div>
+                  <div class="field">
+                    <input id="memberAdjustValue" type="number" min="0" step="1" placeholder="输入整数" disabled />
+                    <div id="memberAdjustHint" class="hint"></div>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">原因</div>
+                  <div class="field">
+                    <input id="memberAdjustReason" type="text" maxlength="200" placeholder="必填，写入积分流水" disabled />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">备注</div>
+                  <div class="field">
+                    <input id="memberAdjustNote" type="text" maxlength="500" placeholder="可选" disabled />
+                  </div>
+                </div>
+              </div>
+              <div class="actions center">
+                <button id="memberAdjustSubmit" class="btn primary wide" type="button" disabled>确认</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="creditLedgerDialog" class="modalOverlay" hidden>
+          <div class="modalPanel ledgerDialogPanel" role="dialog" aria-modal="true" aria-labelledby="creditLedgerTitle" tabindex="-1">
+            <div class="modalHeader">
+              <div><div id="creditLedgerTitle" class="modalTitle">积分流水</div><div id="creditLedgerTarget" class="modalHint">全部用户</div></div>
+              <button class="iconButton" type="button" data-dialog-close="creditLedgerDialog" aria-label="关闭">×</button>
+            </div>
+            <div class="modalBody">
+              <div class="formGrid">
+                <div class="row"><div class="label">用户</div><div class="field"><input id="ledgerUser" type="search" placeholder="账号、邮箱或用户 ID" /></div></div>
+                <div class="row"><div class="label">功能</div><div class="field"><input id="ledgerFeature" type="text" placeholder="如 prompt_optimize" /></div></div>
+                <div class="row"><div class="label">状态</div><div class="field"><input id="ledgerStatus" type="text" placeholder="reserved / settled / released。失败与审核都是 released，不扣分" /></div></div>
+                <div class="row"><div class="label">开始</div><div class="field"><input id="ledgerFrom" type="datetime-local" /></div></div>
+                <div class="row"><div class="label">结束</div><div class="field"><input id="ledgerTo" type="datetime-local" /></div></div>
+              </div>
+              <div class="actions">
+                <button id="queryCreditLedger" class="btn" type="button">查询</button>
+                <button id="exportCreditLedger" class="btn" type="button">导出 CSV</button>
+                <span id="ledgerStatusText" class="hint">-</span>
+              </div>
+              <div class="tableViewport">
+                <table class="dataTable">
+                  <thead>
+                    <tr>
+                      <th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class="num">积分</th><th class="num">估算 RH 成本</th>
+                    </tr>
+                  </thead>
+                  <tbody id="creditLedgerBody"><tr><td colspan="7">尚未查询</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- ============================ 对话框：修改密码 ============================ -->
         <div id="passwordEditDialog" class="modalOverlay" hidden>
           <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="passwordEditTitle">
@@ -1347,7 +1300,6 @@
       .notice.warning { background: var(--warning-soft); border-color: rgba(227,194,90,0.45); }
       .notice .tipTitle { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
       .linkButton { border: 0; background: transparent; color: var(--info); font: inherit; cursor: pointer; padding: 0; text-decoration: underline; }
-      .ledgerFocus { box-shadow: 0 0 0 2px var(--primary-line); }
       .creditPlus { color: #7ce8b5; }
       .creditMinus { color: #fca5a5; }
       .creditMuted { color: var(--muted); }
@@ -1417,9 +1369,6 @@
       .badge.expired { background: #3a2f12; color: #facc15; }
       .badge.error { background: var(--danger-soft); color: #fca5a5; }
       .badge.info { background: rgba(147,197,253,0.16); color: #93c5fd; }
-      .badge.plan-trial { background: #2a2a2a; color: #a0a0a0; }
-      .badge.plan-standard { background: rgba(147,197,253,0.16); color: #93c5fd; }
-      .badge.plan-pro { background: var(--primary-soft); color: #7ce8b5; }
       .btn:focus-visible, .tab:focus-visible, .moduleNavButton:focus-visible, .linkButton:focus-visible, .segment:focus-visible {
         outline: 2px solid var(--primary);
         outline-offset: 2px;
@@ -1508,10 +1457,10 @@
       .dataTable td > .btn { height: 28px; min-width: 0; padding: 0 10px; font-size: 12px; }
       .userTable { min-width: 960px; }
       .userTable td:nth-child(1) { font-weight: 600; position: sticky; left: 0; background: var(--surface); z-index: 1; }
-      .userTable td:nth-child(2), .userTable td:nth-child(3) { color: var(--muted); white-space: nowrap; }
-      .userTable td:nth-child(4) { text-align: right; font-weight: 600; min-width: 96px; }
-      .userTable td:nth-child(4).creditZero { color: var(--muted); font-weight: 500; }
-      .userTable th:last-child, .userTable td:last-child { width: 196px; min-width: 196px; text-align: right; }
+      .userTable td:nth-child(2) { color: var(--muted); white-space: nowrap; }
+      .userTable td:nth-child(3) { text-align: right; font-weight: 600; min-width: 96px; }
+      .userTable td:nth-child(3).creditZero { color: var(--muted); font-weight: 500; }
+      .userTable th:last-child, .userTable td:last-child { width: 232px; min-width: 232px; text-align: right; }
       /* 同时在线 / 有效期 made the row two columns longer; tighter cells keep it inside a 1440 window. */
       .userTable th, .userTable td { padding-left: 10px; padding-right: 10px; }
       .userTable .tableSelect[data-field="status"] { min-width: 0; width: 88px; }
@@ -1541,6 +1490,11 @@
       .recordActions { display: inline-flex; align-items: center; gap: 6px; }
       .recordCopyButton, .recordDeleteButton { height: 28px; min-width: 0; padding: 0 10px; font-size: 12px; }
       .tableSelect { min-width: 96px; max-width: 150px; height: 30px; font-size: 12px; padding: 0 8px; }
+      .tableSelect[data-field="plan"][data-plan="trial"], .tableSelect option.plan-trial { color: #b4bac3; }
+      .tableSelect[data-field="plan"][data-plan="standard"], .tableSelect option.plan-standard { color: #93c5fd; }
+      .tableSelect[data-field="plan"][data-plan="pro"], .tableSelect option.plan-pro { color: #7ce8b5; }
+      .tableSelect[data-field="plan"] { font-weight: 600; }
+      .tableSelect option[class^="plan-"] { background: var(--surface); }
       .tableInput { flex: 0 0 auto; height: 30px; font-size: 12px; padding: 0 8px; }
       .tableInput.sessions { width: 64px; }
       .tableInput.expiry { width: 132px; }
@@ -1694,12 +1648,6 @@
       .activityMeta { margin-top: 2px; font-size: 12px; color: var(--caption); }
       .activitySide { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
       .activityTime { flex: 0 0 auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-      #membersTableBody tr.active td { background: var(--primary-soft); }
-      #membersTableBody tr.active td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
-      .memberTable td:nth-child(1) { font-weight: 600; }
-      .memberTable td:nth-child(3) { text-align: right; font-weight: 600; min-width: 96px; }
-      .memberTable td:nth-child(3).creditZero { color: var(--muted); font-weight: 500; }
-      .memberTable th:last-child, .memberTable td:last-child { text-align: right; width: 148px; }
       .segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--input-bg); }
       .segment { height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: background var(--transition), color var(--transition); }
       .segment:hover { color: var(--text); }
@@ -1738,6 +1686,15 @@
       .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
       /* ---------- Modal ---------- */
+      .userCreditActions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; white-space: nowrap; }
+      .userCreditActions .btn { height: 26px; padding: 0 8px; font-size: 12px; }
+      .modalPanel.ledgerDialogPanel { width: min(1180px, 100%); }
+      #creditLedgerDialog .modalBody { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+      #creditLedgerDialog .tableViewport { max-height: 48vh; flex-shrink: 0; }
+      #creditLedgerDialog .dataTable { min-width: 760px; }
+      #memberAdjustDialog .formGrid { grid-template-columns: 1fr; }
+      #memberAdjustDialog .actions { margin-bottom: 0; }
+      #memberAdjustDialog .modalPanel, #creditLedgerDialog .modalPanel { max-height: calc(100vh - 48px); overflow: auto; }
       .modalOverlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: rgba(4,6,10,0.6); backdrop-filter: blur(2px); }
       .modalOverlay[hidden] { display: none; }
       .modalPanel { width: min(440px, 100%); border-radius: var(--radius); border: 1px solid var(--line-strong); background: var(--surface); box-shadow: 0 24px 90px rgba(0,0,0,0.5); }

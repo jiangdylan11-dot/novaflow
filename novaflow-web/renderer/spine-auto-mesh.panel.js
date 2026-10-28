@@ -3508,7 +3508,7 @@
       if (!a || !a.loaded || !a.loaded()) { sayHere('先导入工程', 'warn'); return }
       guardWith(sayHere)(async () => {
         const r = await a.saveProjectFile({ as })
-        if (r) sayHere(`${r.overwritten ? '已覆盖保存' : '已保存'} ${r.name}（${r.count} 个工程）`, 'ok')
+        if (r) sayHere(`${r.overwritten ? '已覆盖保存' : '已保存'} ${r.name}（${r.count} 个工程）${r.missing && r.missing.length ? `；缺少 ${r.missing.length} 张图片，已保留引用和编辑内容` : ''}`, 'ok')
       })
     }
     // Ctrl+S / Ctrl+Shift+S are the editor's own keys (the host forwards page keys into it)

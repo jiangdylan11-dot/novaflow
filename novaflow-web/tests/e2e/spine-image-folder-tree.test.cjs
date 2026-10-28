@@ -100,6 +100,17 @@ test('folder replacements update the rendered and saved images while keeping ske
   assert.equal(c.state.atlasText.split('\n').filter(l => l === 'chicken.png').length, 1, 'old standalone pages do not accumulate')
 })
 
+test('live folder refresh cannot overwrite a newly generated padded swap frame with the original source', async () => {
+  const { context: c } = harness(), pixels = { generated: true }
+  c.state.json = { skins: [{ name: 'default', attachments: { chicken: { chicken: {} } } }] }
+  c.state.atlasText = Attach.synthesizeAtlas([{ name: 'chicken', fileName: '__nf_swap_13.png', width: 12, height: 8 }])
+  const folder = { list: async () => ({ dirs: [], files: [{ rel: 'chicken.png', file: async () => ({ size: 1, lastModified: 1 }) }] }) }
+  c.state.imageFolder = folder
+  c.state.images.set('__nf_swap_13.png', { fileName: '__nf_swap_13.png', blob: pixels, sessionGenerated: true })
+  assert.equal(await c.refreshFolderPictures(c.state, folder), 0)
+  assert.equal(c.state.images.get('__nf_swap_13.png').blob, pixels)
+})
+
 test('replacing one packed region keeps other regions on its page and does not duplicate its old region', async () => {
   const { context: c } = harness()
   c.state.atlasText = 'page.png\nsize: 20,10\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\nchicken\n  xy: 0,0\n  size: 10,10\n  orig: 10,10\nother\n  xy: 10,0\n  size: 10,10\n  orig: 10,10\n'

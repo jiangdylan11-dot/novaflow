@@ -29,6 +29,7 @@ function fixture() {
     closeMenu() {}, mountMenu: n => { ctx.menu = n }, innerHeight: 800,
   })
   vm.runInContext(section('  const TREE_FILTERS =', '\n\n  const $')
+    + src.match(/^  const byName = .+$/m)[0] + '\n'
     + section('  function slotContents(', '  /** Drag & drop in the tree')
     + section('  function searchMatches(', '  function focusRename(')
     + section('  function renderTree(', '  /** Enter in the search box:')

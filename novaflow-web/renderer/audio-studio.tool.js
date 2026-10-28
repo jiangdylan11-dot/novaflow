@@ -298,7 +298,7 @@
       layout();
       syncMask();
       refreshCapabilities();
-      editor.layout();
+      if (editor) editor.layout();
     } else {
       // 视频: the React AI sequence section shows through; only the rail cell and the sub toggle are ours
       document.body.classList.remove(BODY_CLASS);

@@ -4,8 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const renderer = new URL('../../renderer/', import.meta.url);
+const renderer = fileURLToPath(new URL('../../renderer/', import.meta.url));
 
 function filesIn(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -27,7 +28,7 @@ const BUTTON_LABEL = /(?:setSmartAiTextIfChanged\s*\(\s*[^,]+,\s*|promptActionBu
 
 test('no client button is labeled AI 助手', () => {
   const hits = [];
-  for (const path of filesIn(renderer.pathname)) {
+  for (const path of filesIn(renderer)) {
     const source = stripComments(readFileSync(path, 'utf8'));
     if (BUTTON_LABEL.test(source) || /<button\b[^>]*>\s*AI 助手\s*<\/button>/.test(source)) hits.push(path);
   }
@@ -35,7 +36,7 @@ test('no client button is labeled AI 助手', () => {
 });
 
 test('the design-demand header has no 本地分析 or 在线分析 toggle', () => {
-  const source = stripComments(readFileSync(new URL('ui-design.drawing.js', renderer), 'utf8'));
+  const source = stripComments(readFileSync(join(renderer, 'ui-design.drawing.js'), 'utf8'));
   assert.equal(source.includes('本地分析'), false);
   assert.equal(source.includes('在线分析'), false);
   assert.match(source, /function renderAnalysisSelector\(\) \{\s*return null\s*\}/);

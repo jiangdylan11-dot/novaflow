@@ -6467,6 +6467,7 @@
 
   function clearNovaflowExportNameInputValue(root, input) {
     if (!(root instanceof HTMLElement) || !(input instanceof HTMLInputElement)) return;
+    if (getNovaflowProjectExportName(root) !== null) return;
     if (root.__novaflowExportManualNameUserEdited) return;
     input.setAttribute("value", "");
     if (input.value) setNovaflowInputValue(input, "");
@@ -6480,6 +6481,7 @@
       window.setTimeout(() => {
         if (
           root.__novaflowExportNameClearLoopToken !== token ||
+          getNovaflowProjectExportName(root) !== null ||
           root.__novaflowExportManualNameUserEdited ||
           !root.isConnected ||
           !input.isConnected
@@ -6527,6 +6529,7 @@
         if (modal instanceof HTMLElement) syncNovaflowExportModalActionButtons(modal);
       });
     }
+    if (getNovaflowProjectExportName(root) !== null) return;
     if (root.__novaflowExportManualNameUserEdited) {
       const remembered = typeof root.__novaflowExportManualNameValue === "string" ? root.__novaflowExportManualNameValue : "";
       if (input.value !== remembered) {
@@ -6542,7 +6545,15 @@
     }
   }
 
+  function getNovaflowProjectExportName(root) {
+    if (!(root instanceof HTMLElement) || !root.hasAttribute('data-nf-project-auto-name')) return null;
+    const input = findNovaflowExportNameInput(root);
+    return sanitizeNovaflowManualExportName(input instanceof HTMLInputElement ? input.value : root.getAttribute('data-nf-project-auto-name'), '');
+  }
+
   function getNovaflowExportDialogManualName(root) {
+    const projectName = getNovaflowProjectExportName(root);
+    if (projectName !== null) return projectName;
     if (!(root instanceof HTMLElement) || root.__novaflowExportManualNameUserEdited !== true) return "";
     const input = findNovaflowExportNameInput(root);
     return sanitizeNovaflowManualExportName(input instanceof HTMLInputElement ? input.value : "", "");
@@ -47232,6 +47243,8 @@
   }
 
   function protectRibbonCurrentAnimationDuration() {
+    // The visible editor owns authored data; preview timing must not add saved metadata.
+    if (getRibbonSkeletonPreviewHost()) return false;
     const duration = getRibbonTimelineDuration();
     if (!Number.isFinite(duration) || duration <= 0.001) return false;
     const context = getRibbonReactProjectContext();

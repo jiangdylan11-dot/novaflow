@@ -110,13 +110,16 @@ function fixture() {
     realLifecycle() {
       Object.assign(state, { temp: new Map(), collapsed: new Set() })
       Object.assign(c, { projectSerial: 0, newFolderKey: () => 'new-key', fit() {}, depthOf: () => 0, rememberFolder() {},
+        TREE_FILTERS: [['bones'], ['slots'], ['images']], document: { querySelectorAll: () => [] },
+        pv: { items: new Map() }, pfx: null, imgSeen: { folder: null, names: new Map() }, hostListeners: new Set(), watchImageFolder() {},
         $: () => ({}), Ops: { tidy: j => j, prepare: j => j }, leaveProjectEdits() {}, dropProjectRuntime() {}, renderTree() {},
         snapProject: () => ({ ...state, temp: new Map(state.temp), collapsed: new Set(state.collapsed) }),
         restoreProject: snap => Object.assign(state, snap),
         projectName: i => i === c.activeProject ? state.name : projects[i].snap.name,
       })
       w.confirm = () => true
-      vm.runInContext([fn('loadParts'), fn('loadSource'), fn('newProject'), fn('deleteProject')].join('\n'), c)
+      vm.runInContext(section('  function createEditorState()', '  const state =') +
+        [fn('clearReplacedWorkspace'), fn('loadParts'), fn('loadSource'), fn('newProject'), fn('deleteProject')].join('\n'), c)
     },
     save: async dir => { c.dir = dir; return unpack((await vm.runInContext('projectFileBytes(dir)', c)).bytes) },
     open: async (data, handle, options) => { if (!opened) { projects.length = 0; state.json = null; c.activeProject = -1; opened = true } c.input = data; c.handle = handle; c.options = options; return vm.runInContext('openProjectFile(input, handle, options)', c) },
@@ -176,13 +179,15 @@ test('legacy embedded projects migrate to external files on save, preserving the
   assert(!JSON.stringify(out).includes('dataUrl'))
 })
 
-test('missing external pictures do not fall back to embedded v2 bytes or overwrite a valid project', async () => {
+test('a project with missing external pictures saves its references and edits without inventing pixels', async () => {
   const d = disk(), f = fixture()
   const p = { json: json(), atlasText: atlas(), fileName: 'scene.json', name: 'scene', images: [{ fileName: 'pic.png', path: 'pic.png', dataUrl: 'data:image/png;base64,eA==' }] }
   await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'scene.nfproj'), null, { directory: { handle: d.root } })
   assert.equal(f.state.images.size, 0)
   assert.match(f.status.at(-1)[0], /缺少 1 张外部图片/)
-  await assert.rejects(f.save(d.root), /缺少图片/)
+  const saved = await f.save(d.root)
+  assert.equal(saved.projects[0].images[0].path, 'pic.png')
+  assert.deepEqual(saved.projects[0].json, p.json)
   assert.equal(d.root.nodes.size, 0)
 })
 
@@ -280,8 +285,75 @@ test('deleting an external picture does not resurrect a runtime copy when saving
   d.root.nodes.delete('pic.png')
   await f.c.refreshFolderPictures(f.state, f.state.imageFolder)
   assert.equal(f.state.images.has('pic.png'), false)
-  await assert.rejects(f.save(d.root), /缺少图片/)
+  const saved = await f.save(d.root)
+  assert.equal(saved.projects[0].images[0].path, 'pic.png')
   assert.equal(d.root.nodes.has('pic.png'), false)
+})
+
+test('a generated swap frame is persisted separately from the picked source and reopens with its exact bytes', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'unmodified replacement source')
+  await d.put('__nf_swap_13.png', 'another existing file')
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  f.state.atlasText = Attach.synthesizeAtlas([{ fileName: '__nf_swap_13.png', name: 'pic', width: 1, height: 1 }])
+  const blob = new Blob(['padded swap pixels'])
+  f.state.images.set('__nf_swap_13.png', { fileName: '__nf_swap_13.png', blob, img: { naturalWidth: 1, naturalHeight: 1 }, pma: false, sessionGenerated: true })
+  const saved = await f.save(d.root), ref = saved.projects[0].images[0]
+  assert.equal(ref.fileName, '__nf_swap_13.png')
+  assert.equal(ref.path, '__nf_swap_13_2.png', 'never overwrite an unrelated existing disk file')
+  assert.equal(await (await (await d.root.getFileHandle(ref.path)).getFile()).text(), 'padded swap pixels')
+  assert.equal(await (await (await d.root.getFileHandle('pic.png')).getFile()).text(), 'unmodified replacement source')
+  assert.equal(await (await (await d.root.getFileHandle('__nf_swap_13.png')).getFile()).text(), 'another existing file')
+  const g = fixture()
+  await g.open(new File([await gzip(saved)], 'saved.nfproj'), null, { directory: { handle: d.root } })
+  assert.equal(await g.state.images.get('__nf_swap_13.png').blob.text(), 'padded swap pixels')
+  const savedAgain = await f.save(d.root)
+  assert.equal(savedAgain.projects[0].images[0].path, ref.path, 'repeated saves reuse the persisted generated frame')
+})
+
+test('missing private swap pages do not block saving and report the unresolved pictures clearly', async () => {
+  const d = disk(), f = fixture(), handle = await d.put('cards.nfproj', '')
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  f.state.atlasText = Attach.synthesizeAtlas([{ fileName: '__nf_swap_13.png', name: 'star_1', width: 1, height: 1 }])
+  f.state.json.skins[0].attachments.pic.pic.path = 'star_1'
+  f.state.projectImageRefs = [{ fileName: '__nf_swap_13.png', path: 'old-folder/img/star_1.png' }]
+  f.window.directory = d.root; f.window.showSaveFilePicker = async () => handle
+  const result = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(result.missing.length, 1)
+  assert.match(f.status.at(-1)[0], /已保存.*缺少 1 张图片.*保留引用/)
+  const saved = await unpack(await (await handle.getFile()).arrayBuffer())
+  assert.equal(saved.projects[0].images[0].path, 'star_1.png', 'a manually assigned folder becomes the reference root')
+  assert.deepEqual(saved.projects[0].json, f.state.json)
+})
+
+test('unused old swap pages do not produce missing-image warnings on open or save', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'current pixels')
+  const stale = { fileName: '__nf_swap_13.png', path: 'star_1.png' }
+  const p = { name: 'cards', json: json(), atlasText: atlas() + '\n\n' + Attach.synthesizeAtlas([{ fileName: stale.fileName, name: 'star_1', width: 1, height: 1 }]),
+    images: [{ fileName: 'pic.png', path: 'pic.png' }, stale], imagePath: '.', folderKey: 'cards' }
+  const handle = await d.put('cards.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  await f.open(await handle.getFile(), handle, { directory: { handle: d.root } })
+  assert(!f.status.at(-1)[0].includes('缺少'))
+  const result = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(result.missing.length, 0)
+  const saved = await unpack(await (await handle.getFile()).arrayBuffer())
+  assert.deepEqual(saved.projects[0].json, p.json)
+  assert(saved.projects[0].images.some(ref => ref.fileName === stale.fileName), 'diagnostics do not delete historical project data')
+  f.state.json.skins[0].attachments.pic.pic.path = 'star_1'
+  const missing = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(missing.missing.length, 1, 'a picture used by any skin must still be reported')
+})
+
+test('missing reports include live picture paths and sequence frames', async () => {
+  const f = fixture(), j = json()
+  j.skins[0].attachments.pic.pic = { path: 'run', sequence: { start: 1, digits: 2, count: 2 } }
+  const atlasText = Attach.synthesizeAtlas([{ name: 'run01', fileName: 'a.png', width: 1, height: 1 }, { name: 'run02', fileName: 'b.png', width: 1, height: 1 }, { name: 'unused', fileName: 'c.png', width: 1, height: 1 }])
+  const refs = ['a', 'b', 'c'].map(name => ({ fileName: name + '.png', path: 'images/' + name + '.png' }))
+  assert.deepEqual(Array.from(f.c.missingProjectImageRefs(j, atlasText, refs, []), ref => ref.path), ['images/a.png', 'images/b.png'])
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [{ name: 'cards', json: j, atlasText, images: refs }] })], 'cards.nfproj'))
+  assert.match(f.status.at(-1)[0], /缺少 2 张.*images\/a.png.*images\/b.png/)
+  assert(!f.status.at(-1)[0].includes('images/c.png'))
 })
 
 test('relative sibling image directories survive folder import and saving', async () => {
@@ -389,7 +461,7 @@ test('deleting the last project then creating a new one never lets Ctrl+S write 
   assert.deepEqual(new Uint8Array(await (await original.getFile()).arrayBuffer()), bytes)
 })
 
-test('explicit append honours identical source filenames; replace affects only the current project and refresh keeps saving', async () => {
+test('append keeps independent projects, refresh keeps saving, and replace discards every old project', async () => {
   const d = disk(), f = fixture(); f.realLifecycle()
   await d.put('pic.png', 'current pixels')
   const original = await d.put('scene.nfproj', '')
@@ -405,9 +477,121 @@ test('explicit append honours identical source filenames; replace affects only t
   await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(picks, 2, 'internal write-backs keep the explicit save file')
   await f.c.loadSource(src, { operation: 'replace' })
-  assert.equal(f.projects.length, 2)
+  assert.equal(f.projects.length, 1)
   await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(picks, 3, 'replacement detaches the previous save file')
+})
+
+test('workspace replacement clears old selection, filtering, hidden layers, undo, previews and clipboard', async () => {
+  const f = fixture(); f.realLifecycle()
+  const src = name => ({ skeleton: { fileName: name + '.json', text: JSON.stringify(json()) }, images: [] })
+  await f.c.loadSource(src('old-a'), { operation: 'append' })
+  await f.c.loadSource(src('old-b'), { operation: 'append' })
+  const disposed = [], events = []
+  f.c.dropProjectRuntime = id => disposed.push(id)
+  f.c.hostListeners.add(type => events.push(type))
+  f.c.pv.items.set(1, { atlas: { dispose: () => disposed.push('preview') } })
+  Object.assign(f.c.pv, { open: true, track: 3, projectId: 1 })
+  f.c.boneClipboard = { names: ['old-bone'] }
+  Object.assign(f.state, { search: 'old-query', hiddenBones: new Set(['root']), hiddenSlots: new Set(['pic']),
+    opt: { imgVis: false }, history: ['old-undo'], future: ['old-redo'], groups: { old: ['root'] },
+    staleEditorSession: { from: 'old-a' } })
+  await f.c.loadSource(src('fresh'), { operation: 'replace' })
+  assert.equal(f.projects.length, 1)
+  assert.equal(f.state.name, 'fresh')
+  assert.equal(f.state.search, '')
+  assert.equal(f.state.hiddenBones.size + f.state.hiddenSlots.size, 0)
+  assert.equal(f.state.opt.imgVis, true)
+  assert.equal(f.state.history.length + f.state.future.length, 0)
+  assert.equal(Object.keys(f.state.groups).length, 0)
+  assert.equal(f.state.staleEditorSession, undefined)
+  assert.equal(f.c.pv.items.size, 0)
+  assert.equal(f.c.pv.open, false)
+  assert.equal(f.c.boneClipboard, null)
+  assert(disposed.includes('preview'))
+  assert.deepEqual(events, ['workspace-reset'])
+})
+
+test('an old folder listing cannot refill a fresh workspace cache with the same cache key', async () => {
+  let finish
+  const pending = new Promise(resolve => { finish = resolve })
+  const c = vm.createContext({ imgTree: { key: 'same', nodes: new Map(), pending: new Set() },
+    frameRootKey: () => 'same', imageFolder: () => ({ list: () => pending }), renderTree() {} })
+  vm.runInContext(fn('imagesListing'), c)
+  c.imagesListing('')
+  c.imgTree = { key: 'same', nodes: new Map(), pending: new Set() }
+  finish({ files: [{ name: 'old.png' }], dirs: [] })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(c.imgTree.nodes.size, 0)
+})
+
+test('replacing with a multi-project file resets once, loads all new projects and saves to the newly opened file', async () => {
+  const d = disk(), f = fixture(); f.realLifecycle()
+  const part = name => ({ name, fileName: name + '.json', json: json(), images: [] })
+  const oldBytes = await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [part('old-a'), part('old-b'), part('old-c')] })
+  const oldFile = await d.put('old.nfproj', oldBytes)
+  await f.open(await oldFile.getFile(), oldFile, { directory: { handle: d.root } })
+  const freshFile = await d.put('fresh.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, active: 1, projects: [part('new-a'), part('new-b')] }))
+  const events = []
+  f.c.hostListeners.add(type => events.push(type))
+  await f.open(await freshFile.getFile(), freshFile, { operation: 'replace', directory: { handle: d.root } })
+  assert.equal(f.projects.length, 2)
+  assert.equal(f.state.name, 'new-b')
+  assert.equal(f.projects[0].snap.name, 'new-a')
+  assert.deepEqual(events, ['workspace-reset'])
+  await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(f.picker.length, 0, 'Ctrl+S uses the newly opened file')
+  assert.deepEqual(new Uint8Array(await (await oldFile.getFile()).arrayBuffer()), oldBytes)
+  const saved = await unpack(await (await freshFile.getFile()).arrayBuffer())
+  assert.deepEqual(saved.projects.map(p => p.name), ['new-a', 'new-b'])
+})
+
+test('a failed replacement keeps the old workspace and its save target', async () => {
+  const d = disk(), f = fixture(); f.realLifecycle()
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  await d.put('pic.png', 'pixels')
+  const original = await d.put('original.nfproj', '')
+  f.window.directory = d.root
+  f.window.showSaveFilePicker = async () => original
+  await vm.runInContext('saveProjectFileNow()', f.c)
+  const before = f.state.json, beforeCount = f.projects.length, apply = f.c.applyJson
+  f.state.search = 'keep filter'
+  f.c.applyJson = j => { if (j.bad) throw Error('invalid rig'); apply(j) }
+  await assert.rejects(f.c.loadSource({ skeleton: { fileName: 'bad.json', text: JSON.stringify({ ...json(), bad: true }) }, images: [] }, { operation: 'replace' }), /invalid rig/)
+  assert.equal(f.state.json, before)
+  assert.equal(f.state.search, 'keep filter')
+  assert.equal(f.projects.length, beforeCount)
+  const saved = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(saved.overwritten, true)
+})
+
+test('the host discards old tool/export state and rejects an export prepared before workspace replacement', async () => {
+  const host = fs.readFileSync(path.resolve(__dirname, '../../renderer/spine-skeleton-editor.host.js'), 'utf8')
+  const hostFn = name => host.match(new RegExp('^  (?:async )?function ' + name + '\\([^]*?^  \\}', 'm'))[0]
+  const cache = {}, calls = [], current = {}, source = { json: { text: 'stale export' }, atlas: {}, images: [] }
+  let resolvePack
+  const packing = new Promise(resolve => { resolvePack = resolve })
+  const a = { loaded: () => true, json: () => current, packForApp: () => packing }
+  const ctx = vm.createContext({ workspaceRevision: 0, ready: async () => a, packMode: () => 'atts', exportVersion: () => '3.8',
+    wantVersion: 'spine', imageRevision: () => 1, settingsKey: () => '', appJson: null, appVersion: null,
+    appMode: null, appImages: null, appSettings: null, chosenVersion: '4.2', ownText: 'old text',
+    window: { __NOVA_SPINE_LAST_SOURCE: { old: true }, __NovaFlowSpineImportInlineBridgeCache: cache,
+      __NovaFlowSpineImportInlineBridge: { start: async () => calls.push('import-old-export') },
+      NovaFlowMotionEditing: { collapse: () => calls.push('collapse') } },
+    durations: new Map([['old', 1]]), forgetReact: () => calls.push('forget'), closeLeftPanels: () => calls.push('close'),
+  })
+  vm.runInContext(hostFn('onEditorEvent') + '\n' + hostFn('syncApp'), ctx)
+  const pending = ctx.syncApp()
+  await Promise.resolve()
+  ctx.onEditorEvent('workspace-reset', {})
+  resolvePack({ source })
+  await assert.rejects(pending, /工程已替换/)
+  assert.equal(ctx.chosenVersion, null)
+  assert.equal(ctx.ownText, null)
+  assert.equal(ctx.durations.size, 0)
+  assert.equal(Object.keys(cache).length, 0, 'stale packing cannot refill the import bridge')
+  assert(!calls.includes('import-old-export'))
+  assert(calls.includes('collapse'))
 })
 
 test('when move cannot replace an existing file, a failed in-place write leaves that file', async () => {
@@ -435,7 +619,8 @@ test('a save that throws while serializing leaves the previous project file unch
   f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
   f.window.directory = d.root
   f.window.showSaveFilePicker = async () => handle
-  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /缺少图片/)
+  f.c.projectFileBytes = async () => { throw Error('serialization failed') }
+  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /serialization failed/)
   assert.equal(await (await handle.getFile()).text(), 'good-project-bytes')
   assert.equal(d.root.nodes.has('scene.nfproj.bak'), false)
   assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp')), false)
@@ -445,7 +630,8 @@ test('a serialization failure after the picker created an empty file removes tha
   const d = disk(), f = fixture()
   f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
   f.window.showSaveFilePicker = async () => d.root.getFileHandle('scene.nfproj', { create: true })
-  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /缺少图片/)
+  f.c.projectFileBytes = async () => { throw Error('serialization failed') }
+  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /serialization failed/)
   assert.equal(d.root.nodes.has('scene.nfproj'), false)
   assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp') || String(n).endsWith('.bak')), false)
 })

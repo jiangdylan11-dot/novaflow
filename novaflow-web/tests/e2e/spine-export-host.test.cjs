@@ -28,7 +28,7 @@ function fixture(own = '3.8') {
   const button = new Button(), cache = {}
   const api = { loaded: () => true, json: () => project, ownVersion: () => own,
     packForApp: async ({ version }) => { versions.push(version); return { source: { json: { text: JSON.stringify(V.fromSpine38(project, version)) }, atlas: {}, images: [] } } } }
-  const ctx = vm.createContext({ console, api, ready: async () => api, HTMLButtonElement: Button,
+  const ctx = vm.createContext({ console, api, ready: async () => api, HTMLButtonElement: Button, workspaceRevision: 0,
     localStorage: { getItem: () => '{}' }, document: { querySelector: () => root, createElement: () => ({ style: {}, setAttribute() {}, remove() { hint = null } }) },
     window: { NovaFlowSkeletonEditor: { active: () => true }, __NovaFlowSpineImportInlineBridgeCache: cache,
       __NovaFlowSpineImportInlineBridge: { start: async () => { const j = JSON.parse(cache.json.text); j.skins.map(s => s.name); bridges.push(j); return true } } },
