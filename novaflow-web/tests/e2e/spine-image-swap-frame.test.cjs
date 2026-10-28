@@ -83,7 +83,9 @@ test('preparing the frame keeps a used replacement intact and allocates a separa
   f.state.json.skins.push({ name: 'unrelated', attachments: { other: { new: { path: 'new' } } } })
   const old = { originalWidth: 80, originalHeight: 120 }, next = { originalWidth: 40, originalHeight: 60 }
   const regions = new Map([['old', old], ['new', next]])
-  const state = { ...f.state, images: new Map([['__nf_swap_1.png', {}]]), atlasText: Attach.synthesizeAtlas([{ fileName: 'new.png', width: 40, height: 60 }]) }
+  const state = { ...f.state, images: new Map([['__nf_swap_1.png', {}]]),
+    projectImageRefs: [{ fileName: '__nf_swap_3.png', path: 'missing-old.png' }],
+    atlasText: Attach.synthesizeAtlas([{ fileName: 'new.png', width: 40, height: 60 }, { fileName: '__nf_swap_2.png', name: 'unused-old', width: 1, height: 1 }]) }
   const canvas = () => ({ getContext: () => ({ putImageData() {}, drawImage() {} }), toBlob: cb => cb({}) })
   const ctx = vm.createContext({ state, Attach, rt: { atlas: { findRegion: name => regions.get(name) } }, document: { createElement: canvas },
     ImageData: class {}, imageFromBlob: async () => ({}), lower: s => s.toLowerCase(),
@@ -92,7 +94,7 @@ test('preparing the frame keeps a used replacement intact and allocates a separa
     + section('  async function prepareSwapImage(', '  /**\n   * 换图:'), ctx)
   const before = state.atlasText
   const prepared = await ctx.prepareSwapImage(state.json, f.sel, 'new')
-  assert.equal(prepared.path, 'new_2'); assert.equal(prepared.image.fileName, '__nf_swap_2.png')
+  assert.equal(prepared.path, 'new_2'); assert.equal(prepared.image.fileName, '__nf_swap_4.png', 'reserve historical pages even when their pixels are missing')
   assert.equal(state.atlasText, before, 'async preparation does not modify the project')
   const result = Attach.parseAtlas(prepared.atlasText)
   assert.equal(result.get('new').page, 'new.png'); assert.equal(result.get('new').origW, 40)

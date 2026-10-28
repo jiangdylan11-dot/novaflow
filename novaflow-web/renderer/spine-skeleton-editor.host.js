@@ -567,14 +567,14 @@
     const info = api.projectExportInfo().filter((p) => p.exported)
     const run = Array.from(root.querySelectorAll('button')).filter(isExportRun).at(-1)
     if (!run) return true
-    const spine = isSpineExportRun(run), mode = mediaMode()
+    const spine = isSpineExportRun(run), mode = mediaMode(), previousMode = root.getAttribute('data-nf-project-media-mode')
     root.setAttribute('data-nf-project-media-mode', mode)
     const input = root.querySelector('input[type=text], input:not([type])'), box = input && input.parentElement
     if (box) {
       if (spine || mode === 'independent') { box.setAttribute('data-nf-project-name-hidden', '1'); box.style.setProperty('display', 'none', 'important') }
       else if (box.hasAttribute('data-nf-project-name-hidden')) { box.removeAttribute('data-nf-project-name-hidden'); box.style.removeProperty('display') }
       const automatic = info[0] ? info[0].name + (!spine && mode === 'merged' ? '_合并' : '') : ''
-      if (automatic && (spine || mode === 'independent' || !input.value || input.value === root.getAttribute('data-nf-project-auto-name'))) setExportName(root, automatic)
+      if (automatic && (spine || mode === 'independent' || previousMode !== mode || !root.hasAttribute('data-nf-project-auto-name') || input.value === root.getAttribute('data-nf-project-auto-name'))) setExportName(root, automatic)
       root.setAttribute('data-nf-project-auto-name', automatic)
     }
     let row = root.querySelector('[data-nf-project-media]')

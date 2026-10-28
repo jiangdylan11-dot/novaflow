@@ -315,6 +315,7 @@ test('missing private swap pages do not block saving and report the unresolved p
   const d = disk(), f = fixture(), handle = await d.put('cards.nfproj', '')
   f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
   f.state.atlasText = Attach.synthesizeAtlas([{ fileName: '__nf_swap_13.png', name: 'star_1', width: 1, height: 1 }])
+  f.state.json.skins[0].attachments.pic.pic.path = 'star_1'
   f.state.projectImageRefs = [{ fileName: '__nf_swap_13.png', path: 'old-folder/img/star_1.png' }]
   f.window.directory = d.root; f.window.showSaveFilePicker = async () => handle
   const result = await vm.runInContext('saveProjectFileNow()', f.c)
@@ -323,6 +324,36 @@ test('missing private swap pages do not block saving and report the unresolved p
   const saved = await unpack(await (await handle.getFile()).arrayBuffer())
   assert.equal(saved.projects[0].images[0].path, 'star_1.png', 'a manually assigned folder becomes the reference root')
   assert.deepEqual(saved.projects[0].json, f.state.json)
+})
+
+test('unused old swap pages do not produce missing-image warnings on open or save', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'current pixels')
+  const stale = { fileName: '__nf_swap_13.png', path: 'star_1.png' }
+  const p = { name: 'cards', json: json(), atlasText: atlas() + '\n\n' + Attach.synthesizeAtlas([{ fileName: stale.fileName, name: 'star_1', width: 1, height: 1 }]),
+    images: [{ fileName: 'pic.png', path: 'pic.png' }, stale], imagePath: '.', folderKey: 'cards' }
+  const handle = await d.put('cards.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] }))
+  await f.open(await handle.getFile(), handle, { directory: { handle: d.root } })
+  assert(!f.status.at(-1)[0].includes('缺少'))
+  const result = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(result.missing.length, 0)
+  const saved = await unpack(await (await handle.getFile()).arrayBuffer())
+  assert.deepEqual(saved.projects[0].json, p.json)
+  assert(saved.projects[0].images.some(ref => ref.fileName === stale.fileName), 'diagnostics do not delete historical project data')
+  f.state.json.skins[0].attachments.pic.pic.path = 'star_1'
+  const missing = await vm.runInContext('saveProjectFileNow()', f.c)
+  assert.equal(missing.missing.length, 1, 'a picture used by any skin must still be reported')
+})
+
+test('missing reports include live picture paths and sequence frames', async () => {
+  const f = fixture(), j = json()
+  j.skins[0].attachments.pic.pic = { path: 'run', sequence: { start: 1, digits: 2, count: 2 } }
+  const atlasText = Attach.synthesizeAtlas([{ name: 'run01', fileName: 'a.png', width: 1, height: 1 }, { name: 'run02', fileName: 'b.png', width: 1, height: 1 }, { name: 'unused', fileName: 'c.png', width: 1, height: 1 }])
+  const refs = ['a', 'b', 'c'].map(name => ({ fileName: name + '.png', path: 'images/' + name + '.png' }))
+  assert.deepEqual(Array.from(f.c.missingProjectImageRefs(j, atlasText, refs, []), ref => ref.path), ['images/a.png', 'images/b.png'])
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [{ name: 'cards', json: j, atlasText, images: refs }] })], 'cards.nfproj'))
+  assert.match(f.status.at(-1)[0], /缺少 2 张.*images\/a.png.*images\/b.png/)
+  assert(!f.status.at(-1)[0].includes('images/c.png'))
 })
 
 test('relative sibling image directories survive folder import and saving', async () => {

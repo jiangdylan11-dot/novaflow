@@ -756,6 +756,24 @@
     }
     return out
   }
+  /** Only pages still referenced by a picture attachment can be missing project assets. */
+  function usedProjectImagePages(json, atlasText, refs) {
+    const regions = Attach.parseAtlas(atlasText)
+    if (!regions.size) return new Set((refs || []).map((ref) => lower(ref.fileName)))
+    const names = attachmentPictureNames(json), pages = new Set()
+    const skins = Array.isArray(json && json.skins) ? json.skins : Object.values((json && json.skins) || {}).map((attachments) => ({ attachments }))
+    for (const skin of skins) for (const slot of Object.values(skin.attachments || {})) for (const [key, att] of Object.entries(slot || {})) {
+      if (!att || !att.sequence) continue
+      const prefix = att.path || att.name || key, sequence = att.sequence
+      for (let i = 0; i < sequence.count; i++) names.add(prefix + String((sequence.start || 0) + i).padStart(sequence.digits || 0, '0'))
+    }
+    for (const name of names) { const region = regions.get(name); if (region) pages.add(lower(region.page)) }
+    return pages
+  }
+  function missingProjectImageRefs(json, atlasText, refs, images) {
+    const used = usedProjectImagePages(json, atlasText, refs), loaded = new Set(images.map((image) => lower(image.fileName)))
+    return (refs || []).filter((ref) => used.has(lower(ref.fileName)) && !loaded.has(lower(ref.fileName)))
+  }
   async function connectProjectImages(target, folder) {
     const json = target.json
     const images = await referencedProjectImages(target.projectImageRefs, folder)
@@ -792,7 +810,7 @@
     }
     const files = await listProjectImages(folder), regions = Attach.parseAtlas(s.atlasText), pages = new Map()
     for (const r of regions.values()) { if (!pages.has(r.page)) pages.set(r.page, []); pages.get(r.page).push(r) }
-    const images = [], missing = []
+    const images = [], missing = [], usedPages = usedProjectImagePages(s.json, s.atlasText, s.projectImageRefs)
     for (const [fileName, regionsOnPage] of pages) {
       const current = s.images.get(lower(fileName))
       const generated = current && (current.sessionGenerated || /^__nf_swap_\d+\.png$/i.test(fileName) && !current.sourceFolder)
@@ -817,7 +835,9 @@
       }
       if (!exists) {
         const im = s.images.get(lower(fileName))
-        if (!im || im.sourceFolder && im.sourcePath && !generated) missing.push({ project: s.name, fileName, path })
+        if (!im || im.sourceFolder && im.sourcePath && !generated) {
+          if (usedPages.has(lower(fileName))) missing.push({ project: s.name, fileName, path })
+        }
         else {
           if (!await folder.write(path, await projectImageBlob(im))) throw new Error(`图片目录「${folder.name}」没有写入权限，无法保存新图片「${path}」`)
           s.images = new Map(s.images)
@@ -1099,7 +1119,7 @@
     }
     let projectDirectory = directory ? await projectSubdir(directory, parentParts) : null
     const imported = []
-    let missing = 0
+    const missing = []
     for (const p of d.projects) {
       let folder = null
       const imagePath = typeof p.imagePath === 'string' ? p.imagePath : '.'
@@ -1129,7 +1149,7 @@
         const external = new Map(images.map((im) => [lower(im.fileName), im]))
         images = await Promise.all((p.images || []).map(async (im) => external.get(lower(im.fileName)) || { fileName: im.fileName, blob: await (await fetch(im.dataUrl)).blob() }))
       }
-      missing += Math.max(0, (p.images || []).length - images.length)
+      missing.push(...missingProjectImageRefs(p.json, p.atlasText, p.images, images).map((ref) => `${p.name}：${ref.path || ref.fileName}`))
       await loadParts({ json: p.json, jsonName: p.fileName, atlasText: p.atlasText, atlasName: p.atlasName, images, imageFolder: folder, projectDirectory, projectAccessRoot: directory,
         imageRefs: (p.images || []).map((im) => ({ fileName: im.fileName, path: im.path || im.fileName, pma: im.pma })), imagePath, pma: p.pma,
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey: p.folderKey || '', operation: imported.length ? 'append' : operation,
@@ -1148,8 +1168,8 @@
       Object.values(a.slots || {}).some((s) => (s.attachment || []).some((key) => key.name)))
     const emptySetup = !(state.json.slots || []).some((s) => s.attachment) && attachmentAnimations.length
       ? `；设置姿势没有显示附件，请在工程树选择动画「${attachmentAnimations[0][0]}」查看` : ''
-    status((missing ? `已打开 ${d.projects.length} 个工程，缺少 ${missing} 张外部图片，已显示 MISSING 占位；可在对应工程的「图片」节点重新定位目录`
-      : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing || hidden || emptySetup ? 'error' : 'ok')
+    status((missing.length ? `已打开 ${d.projects.length} 个工程，缺少 ${missing.length} 张外部图片：${missing.join('、')}；已显示 MISSING 占位，可在对应工程的「图片」节点重新定位目录`
+      : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing.length || hidden || emptySetup ? 'error' : 'ok')
     return d.projects.length
   }
 
@@ -3174,7 +3194,9 @@
     let path = name
     if (attachmentsShowing(json, name).length) for (let k = 2; rt.atlas.findRegion(path); k++) path = `${name}_${k}`
     let fileName = '__nf_swap_1.png'
-    for (let k = 2; state.images.has(lower(fileName)); k++) fileName = `__nf_swap_${k}.png`
+    const reservedPages = new Set([...Attach.parseAtlas(state.atlasText).values()].map((region) => lower(region.page)))
+    for (const ref of state.projectImageRefs || []) reservedPages.add(lower(ref.fileName))
+    for (let k = 2; state.images.has(lower(fileName)) || reservedPages.has(lower(fileName)); k++) fileName = `__nf_swap_${k}.png`
     let atlasText = state.atlasText
     if (path === name) {
       // Only this region's declaration is replaced; its old page and all other regions stay intact.
