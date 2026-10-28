@@ -86740,10 +86740,13 @@
       if (!imageUrl) throw new Error(String(payload?.error || "云端出图没有返回图片"));
       const promptId = String(image?.taskId || payload?.promptId || `rh_${Date.now()}`);
       lastPromptId = promptId;
+      const chargedCredits = payload.billing?.chargedCredits ?? payload.charged;
+      const balanceAfter = payload.billing?.balanceAfter ?? payload.remaining;
       window.NovaFlowArtGenerateCreditPricing?.recordSettlement?.({
         promptId,
-        settlement: { status: Number(payload.charged) > 0 ? "settled" : "not_charged", charge_amount: payload.charged },
-        credits: { deducted: payload.charged, balance: payload.remaining }
+        settlement: { status: Number(chargedCredits) > 0 ? "settled" : "not_charged", charge_amount: chargedCredits },
+        credits: { deducted: chargedCredits, balance: balanceAfter },
+        pricing: payload.billing || null
       });
       const result = {
         id: `artgen_${Date.now().toString(36)}`,
@@ -86757,8 +86760,9 @@
         createdAt: new Date().toISOString(),
         generationElapsedSec: Math.max(1, Math.round((Date.now() - artImageStartedAt) / 1000)),
         workflow: "runninghub-gpt-image",
-        charged: Number(payload.charged) || 0,
-        remaining: payload.remaining
+        charged: Number(chargedCredits) || 0,
+        remaining: balanceAfter,
+        billing: payload.billing || null
       };
       if (ctx.options?.drawingPrepared && window.NovaFlowArtDirection?.review) {
         const review = await window.NovaFlowArtDirection.review(ctx.options.drawingPrepared, imageUrl, () => {});

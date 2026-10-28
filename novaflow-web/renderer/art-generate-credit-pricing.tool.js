@@ -349,7 +349,9 @@
     const credits = Math.round(Number(quote && quote.credits))
     if (!Number.isInteger(credits) || credits < 0) return unavailableEstimate(snapshot)
     const formattedCredits = String(credits)
+    const cap = Boolean(quote && (quote.billingMode === 'token' || quote.estimatedCreditsIsCap))
     const note = quote && quote.mayFallback ? '（若回退官方通道，实扣可能更低）' : ''
+    const amountLabel = cap ? `${START_LABEL} · 预估上限 ${formattedCredits}积分` : `${START_LABEL} · ${formattedCredits}积分`
     return Object.freeze({
       signature: snapshot.signature,
       status: 'ready',
@@ -358,9 +360,10 @@
       minCredits: credits,
       maxCredits: credits,
       formattedCredits: credits === 0 ? '' : formattedCredits,
+      estimatedCreditsIsCap: cap,
       perImage: Math.round(Number(quote.perImage) || 0),
       feature: String(quote.feature || ''),
-      buttonLabel: credits === 0 ? START_LABEL : `${START_LABEL} · ${formattedCredits}积分${note}`,
+      buttonLabel: credits === 0 ? START_LABEL : `${amountLabel}${note}`,
     })
   }
 
@@ -383,15 +386,33 @@
         return null
       }
     }
-    const feature = 'gpt_image_2_5_economy'
     const api = root && root.NovaFlowFeatureCreditPrices
+    if (api && typeof api.quoteGptImage === 'function') {
+      try {
+        const quoted = api.quoteGptImage({
+          endpoint: snapshot.gptImageEndpoint || '',
+          imageEndpoint: snapshot.gptImageI2iEndpoint || '',
+          count,
+          mode,
+          settings: snapshot.settings,
+          width: snapshot.gptCustomWidth,
+          height: snapshot.gptCustomHeight,
+        })
+        if (quoted && quoted.credits != null) return creditEstimate(snapshot, quoted)
+      } catch {
+        return null
+      }
+    }
+    const feature = mode === 'img2img' ? 'gpt_image_2_5_economy' : 'gpt_image_2_5_token'
     const quoted = api && typeof api.quoteFeature === 'function'
       ? api.quoteFeature({ feature, units: count })
-      : { credits: 22 * count, feature }
+      : { credits: (mode === 'img2img' ? 20 : 6) * count, feature, billingMode: mode === 'img2img' ? 'fixed' : 'token' }
     return creditEstimate(snapshot, {
       ...quoted,
-      perImage: Math.round(Number(quoted.unitPrice) || 22),
+      perImage: Math.round(Number(quoted.unitPrice) || (mode === 'img2img' ? 20 : 6)),
       mayFallback: true,
+      billingMode: quoted.billingMode || (mode === 'img2img' ? 'fixed' : 'token'),
+      estimatedCreditsIsCap: mode !== 'img2img',
     })
   }
 
@@ -504,7 +525,10 @@
     if (options.running && options.snapshot) {
       const estimate = getEstimate(options.snapshot)
       if (estimate.status === 'ready' && estimate.formattedCredits) {
-        return Object.freeze({ status: 'estimated', text: `预计 ${estimate.formattedCredits}积分`, chargedCredits: '', balance: '' })
+        const text = estimate.estimatedCreditsIsCap
+          ? `预估上限 ${estimate.formattedCredits}积分`
+          : `预计 ${estimate.formattedCredits}积分`
+        return Object.freeze({ status: 'estimated', text, chargedCredits: '', balance: '' })
       }
     }
     if (promptId && !options.running && options.snapshot && options.snapshot.provider !== 'local') {

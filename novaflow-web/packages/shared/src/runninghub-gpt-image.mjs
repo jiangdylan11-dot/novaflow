@@ -12,12 +12,19 @@
 // taskId become Chinese errors and the hold is released.
 
 import { describeRunningHubFailure } from './runninghub-llm.mjs';
-import { quoteFeature } from './feature-credits.mjs';
+import {
+  DEFAULT_GPT_IMAGE_ROUTES,
+  estimateTokenImageCredits,
+  normalizeCreditConfig,
+  quoteFeature,
+  settleTokenImageCredits,
+  tokenPricingDetails
+} from './feature-credits.mjs';
 
-export const DEFAULT_GPT_IMAGE_ENDPOINT = '/openapi/v2/rhart-image-g-2.5-official-token/sunburst/text-to-image';
-export const DEFAULT_GPT_IMAGE_I2I_ENDPOINT = '/openapi/v2/rhart-image-g-2.5/sunburst/image-to-image';
-export const FALLBACK_GPT_IMAGE_ENDPOINT = '/openapi/v2/rhart-image-g-2-official/text-to-image';
-export const FALLBACK_GPT_IMAGE_I2I_ENDPOINT = '/openapi/v2/rhart-image-g-2-official/image-to-image';
+export const DEFAULT_GPT_IMAGE_ENDPOINT = DEFAULT_GPT_IMAGE_ROUTES.text_endpoint;
+export const DEFAULT_GPT_IMAGE_I2I_ENDPOINT = DEFAULT_GPT_IMAGE_ROUTES.image_endpoint;
+export const FALLBACK_GPT_IMAGE_ENDPOINT = DEFAULT_GPT_IMAGE_ROUTES.fallback_text_endpoint;
+export const FALLBACK_GPT_IMAGE_I2I_ENDPOINT = DEFAULT_GPT_IMAGE_ROUTES.fallback_image_endpoint;
 export const DEFAULT_IMAGE_BASE_URL = 'https://www.runninghub.ai';
 export const QUERY_PATH = '/openapi/v2/query';
 export const UPLOAD_PATH = '/openapi/v2/media/upload/binary';
@@ -25,8 +32,8 @@ export const DEFAULT_BALANCE_BLOCK_USD = 2;
 export const MAX_IMAGE_COUNT = 10;
 
 export const DEFAULT_IMAGE_PRICES = Object.freeze({
-  gpt_image_2_5_economy: 22,
-  gpt_image_2_5: 22,
+  gpt_image_2_5_economy: 20,
+  gpt_image_2_5: 20,
   gpt_image_2_official: 4
 });
 
@@ -73,15 +80,26 @@ export function resolveImageEndpoint(value) {
   return assertEndpoint(value, DEFAULT_GPT_IMAGE_I2I_ENDPOINT);
 }
 
-export function fallbackFor(endpoint) {
-  const path = assertEndpoint(endpoint, DEFAULT_GPT_IMAGE_ENDPOINT);
+export function fallbackFor(endpoint, routes = DEFAULT_GPT_IMAGE_ROUTES) {
+  const textFallback = routes?.fallback_text_endpoint || FALLBACK_GPT_IMAGE_ENDPOINT;
+  const imageFallback = routes?.fallback_image_endpoint || FALLBACK_GPT_IMAGE_I2I_ENDPOINT;
+  const path = assertEndpoint(endpoint, routes?.text_endpoint || DEFAULT_GPT_IMAGE_ENDPOINT);
   if (!path.includes('2.5')) return '';
-  if (path === FALLBACK_GPT_IMAGE_ENDPOINT || path === FALLBACK_GPT_IMAGE_I2I_ENDPOINT) return '';
-  return path.includes('image-to-image') ? FALLBACK_GPT_IMAGE_I2I_ENDPOINT : FALLBACK_GPT_IMAGE_ENDPOINT;
+  if (path === textFallback || path === imageFallback) return '';
+  return path.includes('image-to-image') ? imageFallback : textFallback;
 }
 
-export function featureForEndpoint(endpoint) {
-  return String(endpoint || '').includes('2.5') ? 'gpt_image_2_5_economy' : 'gpt_image_2_official';
+export function featureForEndpoint(endpoint, options = {}) {
+  const path = String(endpoint || '');
+  const routes = options.routes || DEFAULT_GPT_IMAGE_ROUTES;
+  const img2img = options.mode === 'img2img' || path.includes('image-to-image');
+  if (img2img) return path.includes('2.5') ? 'gpt_image_2_5_economy' : 'gpt_image_2_official';
+  const markers = Array.isArray(routes.token_markers) && routes.token_markers.length
+    ? routes.token_markers
+    : DEFAULT_GPT_IMAGE_ROUTES.token_markers;
+  if (markers.some((marker) => marker && path.includes(marker))) return 'gpt_image_2_5_token';
+  if (path.includes('2.5')) return 'gpt_image_2_5_economy';
+  return 'gpt_image_2_official';
 }
 
 export function referenceLimitForEndpoint(endpoint) {
@@ -107,7 +125,7 @@ export function resolveImagePrices(overrides) {
 
 function pricesFromEnv(source) {
   const raw = readEnv(source, 'NOVAFLOW_FEATURE_CREDIT_PRICES');
-  if (!raw) return resolveImagePrices(null);
+  if (!raw) return null;
   let parsed;
   try { parsed = JSON.parse(raw); }
   catch { throw Object.assign(new Error('出图积分单价配置不是合法 JSON'), { statusCode: 503 }); }
@@ -125,23 +143,63 @@ function resolveImageHost(value) {
   return baseUrl.origin;
 }
 
-export function readRunningHubImageConfig(source = {}) {
+export function readRunningHubImageConfig(source = {}, creditConfig) {
   const apiKey = readEnv(source, 'NOVAFLOW_RUNNINGHUB_API_KEY');
   if (/[\r\n\0]/.test(apiKey)) throw Object.assign(new Error('RunningHub API Key 格式不正确'), { statusCode: 503 });
+  const routes = normalizeCreditConfig(creditConfig).gpt_image;
   const baseUrl = resolveImageHost(readEnv(source, 'NOVAFLOW_RUNNINGHUB_BASE_URL') || DEFAULT_IMAGE_BASE_URL);
   const uploadRaw = readEnv(source, 'NOVAFLOW_RUNNINGHUB_UPLOAD_BASE_URL');
   const uploadBaseUrl = uploadRaw ? resolveImageHost(uploadRaw) : baseUrl;
   const threshold = Number(readEnv(source, 'NOVAFLOW_RUNNINGHUB_BALANCE_BLOCK_USD') || DEFAULT_BALANCE_BLOCK_USD);
+  const envText = readEnv(source, 'NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT');
+  const envImage = readEnv(source, 'NOVAFLOW_RUNNINGHUB_GPT_IMAGE_I2I_ENDPOINT');
   return {
     apiKey,
     baseUrl,
     uploadBaseUrl,
-    gptImageEndpoint: resolveTextEndpoint(readEnv(source, 'NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT')),
-    gptImageI2iEndpoint: resolveImageEndpoint(readEnv(source, 'NOVAFLOW_RUNNINGHUB_GPT_IMAGE_I2I_ENDPOINT')),
+    gptImageEndpoint: assertEndpoint(envText || routes.text_endpoint, routes.text_endpoint),
+    gptImageI2iEndpoint: assertEndpoint(envImage || routes.image_endpoint, routes.image_endpoint),
     prices: pricesFromEnv(source),
+    routes,
     balanceBlockUsd: Number.isFinite(threshold) && threshold >= 0 ? threshold : DEFAULT_BALANCE_BLOCK_USD,
     configured: Boolean(apiKey)
   };
+}
+
+function creditConfigForQuote({ prices, creditConfig } = {}) {
+  const stored = creditConfig && typeof creditConfig === 'object' ? creditConfig : {};
+  const override = prices && typeof prices === 'object' ? (prices.prices && typeof prices.prices === 'object' ? prices : { prices }) : {};
+  return normalizeCreditConfig({
+    ...stored,
+    ...override,
+    prices: { ...(stored.prices || {}), ...(override.prices || {}) },
+    token_billing: override.token_billing || stored.token_billing,
+    gpt_image: override.gpt_image || stored.gpt_image,
+    credits_per_usd: override.credits_per_usd ?? stored.credits_per_usd
+  });
+}
+
+export function resolveBillingShape(settings, width, height) {
+  const source = settings && typeof settings === 'object' ? settings : {};
+  const quality = ['low', 'medium', 'high'].includes(String(source.quality || '')) ? String(source.quality) : 'medium';
+  const direct = String(source.resolution || '').trim().toLowerCase();
+  if (direct === '1k' || direct === '2k' || direct === '4k') {
+    return { resolution: direct, quality, aspectRatio: source.aspectRatio || '1:1' };
+  }
+  const size = String(source.size || source.gptSize || '').trim();
+  let mapped = SIZE_PRESETS[size];
+  if (!mapped) {
+    const customWidth = positiveDimension(source.customWidth ?? source.gptCustomWidth ?? width, 1024);
+    const customHeight = positiveDimension(source.customHeight ?? source.gptCustomHeight ?? height, 1024);
+    mapped = { aspectRatio: closestAspect(customWidth, customHeight), resolution: resolutionTier(customWidth, customHeight) };
+  }
+  return { resolution: mapped.resolution, quality, aspectRatio: mapped.aspectRatio };
+}
+
+function modelIdFor(feature, routes) {
+  if (feature === 'gpt_image_2_5_token') return routes.text_model;
+  if (feature === 'gpt_image_2_5_economy') return routes.image_model;
+  return routes.official_model;
 }
 
 function clampCount(value) {
@@ -152,28 +210,72 @@ function clampCount(value) {
   return count;
 }
 
-export function quoteGptImage({ endpoint, imageEndpoint, mode = 'txt2img', count = 1, prices } = {}) {
-  const path = String(mode || 'txt2img') === 'img2img' ? resolveImageEndpoint(imageEndpoint) : resolveTextEndpoint(endpoint);
-  const feature = featureForEndpoint(path);
-  const table = resolveImagePrices(prices);
+export function quoteGptImage({ endpoint, imageEndpoint, mode = 'txt2img', count = 1, prices, creditConfig, settings, width, height, previewUsd } = {}) {
+  const config = creditConfigForQuote({ prices, creditConfig });
+  const routes = config.gpt_image;
+  const normalizedMode = String(mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
+  const path = normalizedMode === 'img2img'
+    ? assertEndpoint(imageEndpoint || routes.image_endpoint, routes.image_endpoint)
+    : assertEndpoint(endpoint || routes.text_endpoint, routes.text_endpoint);
+  const feature = featureForEndpoint(path, { mode: normalizedMode, routes });
   const images = clampCount(count);
-  const quoted = quoteFeature({ feature, units: images, prices: { prices: table } });
+  const shape = resolveBillingShape(settings, width, height);
+  const mayFallback = Boolean(fallbackFor(path, routes));
+  const model = modelIdFor(feature, routes);
+  if (feature === 'gpt_image_2_5_token') {
+    const estimated = estimateTokenImageCredits({
+      resolution: shape.resolution,
+      quality: shape.quality,
+      count: images,
+      previewUsd,
+      config
+    });
+    return {
+      feature,
+      billingMode: 'token',
+      perImage: estimated.perImage,
+      count: images,
+      credits: estimated.credits,
+      estimatedCredits: estimated.credits,
+      estimatedCreditsIsCap: true,
+      settleCap: estimated.settleCap,
+      endpoint: path,
+      model,
+      mayFallback,
+      fallbackFeature: mayFallback ? 'gpt_image_2_official' : null,
+      fallbackCredits: mayFallback ? config.prices.gpt_image_2_official : null,
+      resolution: estimated.resolution,
+      quality: estimated.quality,
+      message: `预估上限 ${estimated.credits} 积分；成功后按实际用量结算，不会超过该上限`
+    };
+  }
+  const quoted = quoteFeature({ feature, units: images, prices: config });
   return {
     feature: quoted.feature,
+    billingMode: 'fixed',
     perImage: quoted.unitPrice,
     count: images,
     credits: quoted.credits,
+    estimatedCredits: quoted.credits,
+    estimatedCreditsIsCap: false,
+    settleCap: null,
     endpoint: path,
-    model: quoted.feature,
-    mayFallback: Boolean(fallbackFor(path))
+    model,
+    mayFallback,
+    fallbackFeature: mayFallback ? 'gpt_image_2_official' : null,
+    fallbackCredits: mayFallback && feature !== 'gpt_image_2_official' ? config.prices.gpt_image_2_official : null,
+    resolution: shape.resolution,
+    quality: shape.quality,
+    message: null
   };
 }
 
-export function formatCreditButtonLabel(credits) {
+export function formatCreditButtonLabel(credits, options = {}) {
   const amount = Math.round(Number(credits));
   if (!Number.isInteger(amount) || amount < 0) return '开始生成 · 积分待确认';
   if (amount === 0) return '开始生成';
-  return `开始生成 · ${amount}积分`;
+  const cap = options === true || options?.billingMode === 'token' || options?.cap === true || options?.estimatedCreditsIsCap === true;
+  return cap ? `开始生成 · 预估上限 ${amount}积分` : `开始生成 · ${amount}积分`;
 }
 
 export function formatChargedRemaining(charged, remaining) {
@@ -218,15 +320,7 @@ export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, ima
     throw Object.assign(new Error(text ? '提示词过长，请缩短到 20000 字以内' : '请先输入提示词'), { statusCode: 400 });
   }
   const normalizedMode = String(mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
-  const source = settings && typeof settings === 'object' ? settings : {};
-  const size = String(source.size || source.gptSize || '').trim();
-  let mapped = SIZE_PRESETS[size];
-  if (!mapped) {
-    const customWidth = positiveDimension(source.customWidth ?? source.gptCustomWidth ?? width, 1024);
-    const customHeight = positiveDimension(source.customHeight ?? source.gptCustomHeight ?? height, 1024);
-    mapped = { aspectRatio: closestAspect(customWidth, customHeight), resolution: resolutionTier(customWidth, customHeight) };
-  }
-  const quality = ['low', 'medium', 'high'].includes(String(source.quality || '')) ? String(source.quality) : 'medium';
+  const mapped = resolveBillingShape(settings, width, height);
   const path = normalizedMode === 'img2img' ? resolveImageEndpoint(imageEndpoint) : resolveTextEndpoint(endpoint);
   const refs = Array.isArray(images) ? images.filter(Boolean) : [];
   if (normalizedMode === 'img2img' && refs.length < 1) {
@@ -240,7 +334,7 @@ export function mapGptImageParams({ mode = 'txt2img', prompt, settings = {}, ima
     prompt: text,
     aspectRatio: mapped.aspectRatio,
     resolution: mapped.resolution,
-    quality
+    quality: mapped.quality
   };
   if (normalizedMode === 'img2img') body.imageUrls = refs.map((item) => (typeof item === 'string' ? item : item.url)).filter(Boolean);
   return { mode: normalizedMode, endpoint: path, body, referenceCount: refs.length };
@@ -369,12 +463,42 @@ function endpointGiveUp(posted) {
   return Object.assign(new Error(EMPTY_TASK_MESSAGE), { statusCode: 502, moderation: false });
 }
 
-export async function submitAndPoll({ fetchImpl = fetch, config, endpoint, body, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), maxAttempts = 90, intervalMs = 1000 } = {}) {
+export function pricePreviewEndpoint(endpoint) {
+  const path = String(endpoint || '');
+  if (!path.startsWith('/openapi/v2/')) return '';
+  return `/openapi/v2/price-preview/${path.slice('/openapi/v2/'.length)}`;
+}
+
+export async function readPricePreviewUsd({ fetchImpl = fetch, config, endpoint, body } = {}) {
+  if (!config?.apiKey || config.pricePreview !== true) return null;
+  const path = pricePreviewEndpoint(endpoint);
+  if (!path || typeof fetchImpl !== 'function') return null;
+  try {
+    const response = await fetchImpl(`${config.baseUrl}${path}`, {
+      method: 'POST',
+      headers: authHeaders(config.apiKey, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body || {})
+    });
+    const payload = await readJson(response);
+    const data = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+    const raw = data?.estimatedPrice;
+    if (raw == null || raw === '' || typeof raw === 'object') return null;
+    const text = String(raw).trim();
+    if (!/^\d+(\.\d+)?$/.test(text)) return null;
+    const value = Number(text);
+    if (!response?.ok || !Number.isFinite(value) || value < 0) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export async function submitAndPoll({ fetchImpl = fetch, config, endpoint, body, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), maxAttempts = 90, intervalMs = 1000, routes } = {}) {
   if (!config?.apiKey) throw Object.assign(new Error('RunningHub 出图尚未配置'), { statusCode: 503, moderation: false });
   let currentEndpoint = endpoint;
   let posted = await postTask({ fetchImpl, config, endpoint: currentEndpoint, body });
   let fellBack = false;
-  const next = fallbackFor(currentEndpoint);
+  const next = fallbackFor(currentEndpoint, routes);
   if (submitShouldFallback(posted) && next) {
     currentEndpoint = next;
     fellBack = true;
@@ -460,15 +584,31 @@ async function settleFallback({ charge, request, usageKey, image, prices }) {
   return { ...settled, charged: official.perImage, quote: official, fellBack: true, image };
 }
 
+function spentCredits(charged, quote) {
+  if (charged?.success === false) return 0;
+  const reserved = Number(quote.perImage) || 0;
+  const fromQuota = Number(charged?.quota?.settled_credits);
+  const requested = Number(charged?.settledCredits);
+  if (Number.isFinite(fromQuota)) return fromQuota;
+  if (Number.isFinite(requested)) return Math.min(requested, reserved);
+  return reserved;
+}
+
 export async function runChargedGptImage({ charge, config, request = {}, fetchImpl = fetch, sleep, poolAccount } = {}) {
   const mode = String(request.mode || 'txt2img') === 'img2img' ? 'img2img' : 'txt2img';
   const count = clampCount(request.count || 1);
-  const quote = quoteGptImage({
+  const creditConfig = normalizeCreditConfig(config?.creditConfig || { prices: config?.prices || undefined });
+  const routes = creditConfig.gpt_image;
+  let quote = quoteGptImage({
     endpoint: config?.gptImageEndpoint,
     imageEndpoint: config?.gptImageI2iEndpoint,
     mode,
     count,
-    prices: config?.prices
+    prices: config?.prices,
+    creditConfig,
+    settings: request.settings,
+    width: request.width,
+    height: request.height
   });
   if (poolBlocksNewTask(poolAccount, config?.balanceBlockUsd)) {
     throw Object.assign(new Error('云服务余额不足，请联系管理员。本次未扣积分。'), { statusCode: 402, moderation: false, noCharge: true });
@@ -484,12 +624,57 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
     endpoint: config?.gptImageEndpoint,
     imageEndpoint: config?.gptImageI2iEndpoint
   });
+  if (quote.billingMode === 'token' && config?.pricePreview === true) {
+    const previewUsd = await readPricePreviewUsd({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body });
+    if (previewUsd != null) {
+      const boosted = quoteGptImage({
+        endpoint: config?.gptImageEndpoint,
+        imageEndpoint: config?.gptImageI2iEndpoint,
+        mode,
+        count,
+        prices: config?.prices,
+        creditConfig,
+        settings: request.settings,
+        width: request.width,
+        height: request.height,
+        previewUsd
+      });
+      if (boosted.perImage >= quote.perImage) quote = boosted;
+    }
+  }
   const runOne = async (usageKey) => {
     const run = async () => {
       try {
-        const image = await submitAndPoll({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body, sleep });
+        const image = await submitAndPoll({ fetchImpl, config, endpoint: mapped.endpoint, body: mapped.body, sleep, routes });
         if (image.fellBack) return { success: false, fallback: true, image };
-        return { success: true, amount: 1, image, metadata: { feature: quote.feature, endpoint: image.endpoint } };
+        if (quote.billingMode !== 'token') {
+          return { success: true, amount: 1, image, metadata: { feature: quote.feature, endpoint: image.endpoint, billing_mode: 'fixed', model: quote.model } };
+        }
+        const decision = settleTokenImageCredits({ usage: image.usage, reservedCredits: quote.perImage, config: creditConfig });
+        if (decision.warning) console.warn(`[novaflow-token-billing] ${decision.warning}`);
+        const details = tokenPricingDetails({
+          decision,
+          endpoint: image.endpoint,
+          taskId: image.taskId,
+          resolution: mapped.body.resolution,
+          quality: mapped.body.quality,
+          model: quote.model
+        });
+        return {
+          success: true,
+          amount: 1,
+          image,
+          settledCredits: decision.credits,
+          rhCostUsd: decision.usdCost,
+          pricingSource: decision.pricingSource,
+          billing: {
+            ...details,
+            chargedCredits: decision.credits,
+            estimatedCredits: quote.perImage,
+            refundedCredits: Math.max(0, quote.perImage - decision.credits)
+          },
+          metadata: details
+        };
       } catch (error) {
         if (error?.moderation) return { success: false, moderation: true, message: error.message };
         throw error;
@@ -497,10 +682,14 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
     };
     const finish = async (charged) => {
       if (charged?.fallback && charged.image) {
-        return settleFallback({ charge, request, usageKey, image: charged.image, prices: config?.prices });
+        const settled = await settleFallback({ charge, request, usageKey, image: charged.image, prices: creditConfig });
+        return { ...settled, billing: { billingMode: 'fixed', feature: 'gpt_image_2_official', fellBack: true, chargedCredits: settled.charged, estimatedCredits: quote.perImage } };
       }
-      const spent = charged?.success === false ? 0 : quote.perImage;
-      return { ...charged, charged: spent, quote };
+      const spent = spentCredits(charged, quote);
+      const billing = charged?.billing
+        ? { ...charged.billing, chargedCredits: spent, balanceAfter: charged?.quota?.balance_after ?? charged?.quota?.remaining ?? null }
+        : { billingMode: quote.billingMode, feature: quote.feature, chargedCredits: spent, estimatedCredits: quote.perImage, fellBack: false };
+      return { ...charged, charged: spent, quote, billing };
     };
     if (quote.perImage < 1) return finish(await run());
     if (typeof charge !== 'function') throw Object.assign(new Error('在线计量未配置'), { statusCode: 503 });
@@ -509,7 +698,8 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
       feature: quote.feature,
       amount: 1,
       usageKey,
-      metadata: { model: quote.feature, endpoint: mapped.endpoint },
+      estimatedCredits: quote.billingMode === 'token' ? quote.perImage : undefined,
+      metadata: { model: quote.model, endpoint: mapped.endpoint, billing_mode: quote.billingMode },
       run
     });
     return finish(charged);
@@ -522,10 +712,25 @@ export async function runChargedGptImage({ charge, config, request = {}, fetchIm
   }
   const spent = results.reduce((sum, item) => sum + (Number(item?.charged) || 0), 0);
   const last = results[results.length - 1] || {};
+  const balanceAfter = last.quota?.balance_after ?? last.quota?.remaining ?? last.quota?.balance ?? last.remaining;
   return {
     quote,
     charged: spent,
-    remaining: last.quota?.remaining ?? last.quota?.balance ?? last.remaining,
+    remaining: balanceAfter,
+    billing: {
+      feature: quote.feature,
+      billingMode: quote.billingMode,
+      estimatedCredits: quote.credits,
+      chargedCredits: spent,
+      refundedCredits: results.reduce((sum, item) => sum + (Number(item?.billing?.refundedCredits) || 0), 0),
+      capped: results.some((item) => item?.billing?.capped === true),
+      pricingSource: results.map((item) => item?.billing?.pricing_source).find(Boolean) || (quote.billingMode === 'fixed' ? 'admin_unit_price' : null),
+      balanceAfter,
+      fellBack: results.some((item) => item?.fellBack),
+      settleCapCredits: quote.settleCap,
+      perImageEstimatedCredits: quote.perImage,
+      message: formatChargedRemaining(spent, balanceAfter)
+    },
     results,
     mapped
   };

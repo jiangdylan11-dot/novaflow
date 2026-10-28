@@ -50,17 +50,19 @@ function config(endpoint = '') {
   });
 }
 
-test('empty endpoint defaults to GPT Image 2.5 and prices that model at 22', () => {
+test('empty text endpoint defaults to stable-token and estimates 1k medium', () => {
   const cfg = config('');
   assert.equal(cfg.gptImageEndpoint, DEFAULT_GPT_IMAGE_ENDPOINT);
   assert.equal(cfg.gptImageI2iEndpoint, DEFAULT_GPT_IMAGE_I2I_ENDPOINT);
   assert.equal(cfg.apiKey, 'rh-fixture-key-not-real');
   const quote = quoteGptImage({ endpoint: cfg.gptImageEndpoint, count: 2, prices: cfg.prices });
-  assert.equal(quote.feature, 'gpt_image_2_5_economy');
+  assert.equal(quote.feature, 'gpt_image_2_5_token');
+  assert.equal(quote.billingMode, 'token');
   assert.equal(quote.mayFallback, true);
-  assert.equal(quote.perImage, DEFAULT_IMAGE_PRICES.gpt_image_2_5_economy);
-  assert.equal(quote.credits, 44);
-  assert.equal(formatCreditButtonLabel(quote.credits), '开始生成 · 44积分');
+  assert.equal(quote.perImage, 6);
+  assert.equal(quote.credits, 12);
+  assert.equal(quote.credits <= quote.settleCap * quote.count, true);
+  assert.equal(formatCreditButtonLabel(quote.credits, quote), '开始生成 · 预估上限 12积分');
 });
 
 test('official fallback endpoint is priced at 4 and admin prices override both', () => {
@@ -127,12 +129,13 @@ test('pre-display equals the sum of per-image charges', async () => {
     sleep: async () => {},
     request: { userId: 'user-1', usageKey: 'img-batch', count: 2, mode: 'txt2img', prompt: '海', settings: { size: '1024x1024', quality: 'medium' } }
   });
-  assert.equal(formatCreditButtonLabel(quote.credits), '开始生成 · 44积分');
+  assert.equal(formatCreditButtonLabel(quote.credits, quote), '开始生成 · 预估上限 12积分');
   assert.equal(outcome.charged, quote.credits);
   assert.equal(outcome.quote.credits, quote.credits);
-  assert.deepEqual(events.filter((item) => item[0] === 'settle').map((item) => item.slice(0, 3)), [['settle', 'gpt_image_2_5_economy', 1], ['settle', 'gpt_image_2_5_economy', 1]]);
+  assert.equal(outcome.quote.feature, 'gpt_image_2_5_token');
+  assert.deepEqual(events.filter((item) => item[0] === 'settle').map((item) => item.slice(0, 3)), [['settle', 'gpt_image_2_5_token', 1], ['settle', 'gpt_image_2_5_token', 1]]);
   assert.equal(events.some((item) => item[0] === 'release'), false);
-  assert.equal(formatChargedRemaining(outcome.charged, outcome.remaining), '本次扣 44积分，剩余 80');
+  assert.equal(formatChargedRemaining(outcome.charged, outcome.remaining), '本次扣 12积分，剩余 80');
   assert.ok(posts >= 2);
   assert.equal(JSON.stringify(outcome).includes('rh-fixture-key-not-real'), false);
 });
@@ -183,12 +186,13 @@ test('a 2.5 endpoint 404 falls back to official GPT Image 2 and settles at the o
   });
   assert.ok(seen.some((href) => href.includes('rhart-image-g-2.5')));
   assert.ok(seen.some((href) => href.includes(FALLBACK_GPT_IMAGE_ENDPOINT)));
-  assert.equal(quote.credits, 22);
-  assert.equal(outcome.quote.credits, 22);
+  assert.equal(quote.feature, 'gpt_image_2_5_token');
+  assert.equal(outcome.quote.credits, 12);
+  assert.equal(outcome.quote.credits <= outcome.quote.settleCap, true);
   assert.equal(outcome.charged, 4);
   assert.deepEqual(events.map((item) => item.slice(0, 3)), [
-    ['reserve', 'gpt_image_2_5_economy', 1],
-    ['release', 'gpt_image_2_5_economy', 1],
+    ['reserve', 'gpt_image_2_5_token', 1],
+    ['release', 'gpt_image_2_5_token', 1],
     ['reserve', 'gpt_image_2_official', 1],
     ['settle', 'gpt_image_2_official', 1]
   ]);
@@ -219,8 +223,8 @@ test('the image button label is the same quote the charge uses', () => {
     quoteGptImage: () => quote
   });
   const label = pricing.getButtonLabel(snapshot);
-  assert.equal(label, `${formatCreditButtonLabel(quote.credits)}（若回退官方通道，实扣可能更低）`);
-  assert.equal(label, '开始生成 · 22积分（若回退官方通道，实扣可能更低）');
+  assert.equal(label, `${formatCreditButtonLabel(quote.credits, quote)}（若回退官方通道，实扣可能更低）`);
+  assert.equal(label, '开始生成 · 预估上限 6积分（若回退官方通道，实扣可能更低）');
   pricing.recordSettlement({
     promptId: 'rh-task-1',
     settlement: { status: 'settled', charge_amount: quote.perImage },
@@ -238,7 +242,9 @@ test('image-to-image uses its own 2.5 endpoint and falls back to official on an 
   const quote = quoteGptImage({ mode: 'img2img', imageEndpoint: cfg.gptImageI2iEndpoint, count: 1, prices: cfg.prices });
   assert.equal(quote.endpoint, DEFAULT_GPT_IMAGE_I2I_ENDPOINT);
   assert.equal(quote.feature, 'gpt_image_2_5_economy');
-  assert.equal(quote.credits, 22);
+  assert.equal(quote.billingMode, 'fixed');
+  assert.equal(quote.credits, 20);
+  assert.equal(quote.perImage, DEFAULT_IMAGE_PRICES.gpt_image_2_5_economy);
   const seen = [];
   const fetchImpl = async (url) => {
     const href = String(url);
@@ -315,8 +321,8 @@ test('HTTP 200 errorCode 1001 falls back once, and a second 1001 releases the ho
   }), (error) => error.moderation !== true && /出图接口不存在（1001）/.test(error.message) && !/secret/.test(error.message));
   assert.equal(posts, 2);
   assert.deepEqual(events.map((item) => item.slice(0, 3)), [
-    ['reserve', 'gpt_image_2_5_economy', 1],
-    ['release', 'gpt_image_2_5_economy', 1]
+    ['reserve', 'gpt_image_2_5_token', 1],
+    ['release', 'gpt_image_2_5_token', 1]
   ]);
 });
 

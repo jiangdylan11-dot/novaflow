@@ -13,6 +13,27 @@ export const DEFAULT_LOW_BALANCE_CNY = 15;
 export const DEFAULT_BALANCE_TTL_SECONDS = 600;
 export const DEFAULT_STALE_BALANCE_POLICY = 'allow';
 export const DEFAULT_CREDITS_PER_USD = 211;
+export const DEFAULT_TOKEN_MARKUP = 2;
+export const DEFAULT_SETTLE_CAP_CREDITS = 40;
+// Measured stable-token charges at 211 credits/USD and markup 2, then the
+// per-image settle cap. 2k/high raw is 46 and settles at the cap (40).
+// 1k/low 3, 1k/medium 6 and 2k/medium 12 stay under the cap.
+// Unmeasured cells follow the measured 1k↔2k and medium↔high ratios, then the cap.
+export const DEFAULT_ESTIMATE_CREDITS = Object.freeze({
+  '1k': Object.freeze({ low: 3, medium: 6, high: 23 }),
+  '2k': Object.freeze({ low: 6, medium: 12, high: 40 }),
+  '4k': Object.freeze({ low: 12, medium: 24, high: 40 })
+});
+export const DEFAULT_GPT_IMAGE_ROUTES = Object.freeze({
+  text_endpoint: '/openapi/v2/rhart-image-g-2.5-official-token/sunburst/text-to-image',
+  image_endpoint: '/openapi/v2/rhart-image-g-2.5/sunburst/image-to-image',
+  fallback_text_endpoint: '/openapi/v2/rhart-image-g-2-official/text-to-image',
+  fallback_image_endpoint: '/openapi/v2/rhart-image-g-2-official/image-to-image',
+  token_markers: Object.freeze(['official-token']),
+  text_model: 'rhart-image-g-2.5-official-token',
+  image_model: 'rhart-image-g-2.5',
+  official_model: 'rhart-image-g-2-official'
+});
 export const RH_LOW_BALANCE_MESSAGE = '云服务余额不足，请联系管理员';
 
 // credit_ledger.status. A failed or moderated call is released, not a second status.
@@ -31,7 +52,7 @@ export const DEFAULT_FEATURE_PRICES = Object.freeze({
   prompt_optimize: 4,
   image_reverse: 4,
   lean_research: 14,
-  gpt_image_2_5_economy: 22,
+  gpt_image_2_5_economy: 20,
   gpt_image_2_official: 4,
   grok_image_g42: 6,
   local: 0
@@ -81,6 +102,8 @@ const ALIASES = Object.freeze({
   'gpt-image-2.5-economy': 'gpt_image_2_5_economy',
   gpt_image_2_5: 'gpt_image_2_5_economy',
   gpt_image_2_5_economy: 'gpt_image_2_5_economy',
+  'gpt-image-2.5-token': 'gpt_image_2_5_token',
+  gpt_image_2_5_token: 'gpt_image_2_5_token',
   'gpt-image-2': 'gpt_image_2_official',
   gpt_image_2: 'gpt_image_2_official',
   gpt_image_2_official: 'gpt_image_2_official',
@@ -96,7 +119,7 @@ export const FEATURE_PRICE_FIELDS = Object.freeze([
   ['prompt_optimize', '提示词优化', '每次'],
   ['image_reverse', '图像反推', '每图'],
   ['lean_research', 'UI 目录分析', '每轮'],
-  ['gpt_image_2_5_economy', 'GPT Image 2.5', '每张'],
+  ['gpt_image_2_5_economy', 'GPT Image 2.5 图生图', '每张'],
   ['gpt_image_2_official', 'GPT Image 2 官方', '每张'],
   ['grok_image_g42', 'g-4.2 出图', '每张'],
   ['local', '本地', '不扣']
@@ -122,6 +145,85 @@ export function isLocalFeature(feature) {
   return canonicalFeature(feature) === 'local';
 }
 
+const ESTIMATE_RESOLUTIONS = ['1k', '2k', '4k'];
+const ESTIMATE_QUALITIES = ['low', 'medium', 'high'];
+const GPT_ENDPOINT_PATH = /^\/openapi\/v2\/[a-zA-Z0-9_./-]+$/;
+
+function normalizeSettleCap(value) {
+  const amount = Math.round(Number(value));
+  if (!Number.isInteger(amount) || amount < 1 || amount > 1000000) return DEFAULT_SETTLE_CAP_CREDITS;
+  return amount;
+}
+
+function normalizeEstimateCredits(value, cap) {
+  const stored = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const out = {};
+  for (const resolution of ESTIMATE_RESOLUTIONS) {
+    const row = stored[resolution] && typeof stored[resolution] === 'object' ? stored[resolution] : {};
+    const next = {};
+    for (const quality of ESTIMATE_QUALITIES) {
+      const amount = Math.round(Number(row[quality]));
+      const fallback = DEFAULT_ESTIMATE_CREDITS[resolution][quality];
+      const chosen = Number.isInteger(amount) && amount >= 0 && amount <= 1000000 ? amount : fallback;
+      next[quality] = Math.min(cap, chosen);
+    }
+    out[resolution] = next;
+  }
+  return out;
+}
+
+function normalizeRoute(value, fallback) {
+  const text = String(value || '').trim();
+  if (!text || !GPT_ENDPOINT_PATH.test(text) || text.split('/').includes('..')) return fallback;
+  return text;
+}
+
+function normalizeModelId(value, fallback) {
+  const text = String(value || '').trim();
+  if (!text || text.length > 200 || /[\r\n\0]/.test(text)) return fallback;
+  return text;
+}
+
+function normalizeTokenMarkers(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  const markers = [];
+  for (const item of list) {
+    const text = String(item || '').trim();
+    if (!text || text.length > 80 || !/^[a-zA-Z0-9_.-]+$/.test(text)) continue;
+    markers.push(text);
+  }
+  return markers.length ? markers : [...DEFAULT_GPT_IMAGE_ROUTES.token_markers];
+}
+
+function normalizeTokenBilling(input, cap) {
+  const stored = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const markup = Number(stored.markup);
+  const round = String(stored.round || '').trim().toLowerCase();
+  const minRaw = Math.round(Number(stored.min_credits_per_image));
+  const minCredits = Number.isInteger(minRaw) && minRaw >= 0 && minRaw <= cap ? minRaw : 1;
+  return {
+    markup: Number.isFinite(markup) && markup > 0 && markup <= 1000 ? markup : DEFAULT_TOKEN_MARKUP,
+    round: round === 'round' || round === 'floor' ? round : 'ceil',
+    min_credits_per_image: minCredits,
+    settle_cap_credits: cap,
+    estimate_credits: normalizeEstimateCredits(stored.estimate_credits, cap)
+  };
+}
+
+function normalizeGptImageRoutes(input) {
+  const stored = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  return {
+    text_endpoint: normalizeRoute(stored.text_endpoint, DEFAULT_GPT_IMAGE_ROUTES.text_endpoint),
+    image_endpoint: normalizeRoute(stored.image_endpoint, DEFAULT_GPT_IMAGE_ROUTES.image_endpoint),
+    fallback_text_endpoint: normalizeRoute(stored.fallback_text_endpoint, DEFAULT_GPT_IMAGE_ROUTES.fallback_text_endpoint),
+    fallback_image_endpoint: normalizeRoute(stored.fallback_image_endpoint, DEFAULT_GPT_IMAGE_ROUTES.fallback_image_endpoint),
+    token_markers: normalizeTokenMarkers(stored.token_markers),
+    text_model: normalizeModelId(stored.text_model, DEFAULT_GPT_IMAGE_ROUTES.text_model),
+    image_model: normalizeModelId(stored.image_model, DEFAULT_GPT_IMAGE_ROUTES.image_model),
+    official_model: normalizeModelId(stored.official_model, DEFAULT_GPT_IMAGE_ROUTES.official_model)
+  };
+}
+
 export function normalizeCreditConfig(value) {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const stored = input.prices && typeof input.prices === 'object' && !Array.isArray(input.prices) ? input.prices : {};
@@ -134,6 +236,7 @@ export function normalizeCreditConfig(value) {
     if (Number.isInteger(n) && n >= 0 && n <= 1000000) prices[canonical] = n;
   }
   prices.local = 0;
+  delete prices.gpt_image_2_5_token;
   const costs = { ...DEFAULT_RH_COST_USD };
   const storedCosts = input.rh_cost_usd && typeof input.rh_cost_usd === 'object' ? input.rh_cost_usd : {};
   for (const [key, amount] of Object.entries(storedCosts)) {
@@ -149,6 +252,7 @@ export function normalizeCreditConfig(value) {
   const ttl = Number(input.balance_ttl_seconds);
   const perUsd = Number(input.credits_per_usd);
   const policy = String(input.stale_balance_policy || '').trim().toLowerCase();
+  const settleCap = normalizeSettleCap(input.token_billing?.settle_cap_credits ?? input.settle_cap_credits);
   return {
     prices,
     rh_cost_usd: costs,
@@ -157,7 +261,161 @@ export function normalizeCreditConfig(value) {
     low_balance_cny: Number.isFinite(thresholdCny) && thresholdCny >= 0 ? thresholdCny : DEFAULT_LOW_BALANCE_CNY,
     balance_ttl_seconds: Number.isFinite(ttl) && ttl >= 30 ? Math.round(ttl) : DEFAULT_BALANCE_TTL_SECONDS,
     stale_balance_policy: policy === 'block' ? 'block' : DEFAULT_STALE_BALANCE_POLICY,
-    credits_per_usd: Number.isFinite(perUsd) && perUsd > 0 ? perUsd : DEFAULT_CREDITS_PER_USD
+    credits_per_usd: Number.isFinite(perUsd) && perUsd > 0 ? perUsd : DEFAULT_CREDITS_PER_USD,
+    token_billing: normalizeTokenBilling(input.token_billing, settleCap),
+    gpt_image: normalizeGptImageRoutes(input.gpt_image)
+  };
+}
+
+export function creditsFromUsd(usd, config) {
+  let money = usd;
+  if (typeof money === 'string') {
+    const text = money.trim();
+    if (!text || !/^\d+(\.\d+)?$/.test(text)) return null;
+    money = Number(text);
+  }
+  money = Number(money);
+  if (!Number.isFinite(money) || money < 0) return null;
+  const normalized = normalizeCreditConfig(config);
+  if (money === 0) return 0;
+  const raw = money * normalized.credits_per_usd * normalized.token_billing.markup;
+  const mode = normalized.token_billing.round;
+  let credits = mode === 'floor' ? Math.floor(raw + 1e-9) : mode === 'round' ? Math.round(raw) : Math.ceil(raw - 1e-9);
+  if (!Number.isFinite(credits)) return null;
+  return Math.max(normalized.token_billing.min_credits_per_image, credits);
+}
+
+export function parseThirdPartyUsd(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+  const raw = usage.thirdPartyConsumeMoney;
+  if (raw == null || typeof raw === 'object') return null;
+  const text = String(raw).trim();
+  if (!text || text.toLowerCase() === 'null' || !/^\d+(\.\d+)?$/.test(text)) return null;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function tokenUsageRecord(usage) {
+  const raw = usage && typeof usage === 'object' ? (usage.tokenUsage || usage.token_usage) : null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const pick = {};
+  for (const key of ['input_tokens', 'output_tokens', 'total_tokens', 'input_tokens_details', 'output_tokens_details']) {
+    if (raw[key] != null) pick[key] = raw[key];
+  }
+  if (!Object.keys(pick).length) return null;
+  try {
+    if (JSON.stringify(pick).length > 4000) return null;
+  } catch {
+    return null;
+  }
+  return pick;
+}
+
+function estimateResolution(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return ESTIMATE_RESOLUTIONS.includes(key) ? key : '2k';
+}
+
+function estimateQuality(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return ESTIMATE_QUALITIES.includes(key) ? key : 'medium';
+}
+
+export function estimateTokenImageCredits({ resolution, quality, count = 1, previewUsd, config } = {}) {
+  const normalized = normalizeCreditConfig(config);
+  const cap = normalized.token_billing.settle_cap_credits;
+  const tier = estimateResolution(resolution);
+  const level = estimateQuality(quality);
+  let perImage = Math.min(cap, Math.max(0, Math.round(Number(normalized.token_billing.estimate_credits[tier][level]) || 0)));
+  if (previewUsd != null && previewUsd !== '') {
+    const previewCredits = creditsFromUsd(previewUsd, normalized);
+    if (previewCredits != null) perImage = Math.min(cap, Math.max(perImage, previewCredits));
+  }
+  const images = Math.max(1, Math.min(100, Math.round(Number(count)) || 1));
+  return {
+    resolution: tier,
+    quality: level,
+    perImage,
+    count: images,
+    credits: perImage * images,
+    settleCap: cap
+  };
+}
+
+// Final charge is min(ceil(USD × credits_per_usd × markup), settle cap, reserved).
+// A missing thirdPartyConsumeMoney keeps the reserved estimate and sets a warning.
+export function settleTokenImageCredits({ usage, reservedCredits, config } = {}) {
+  const normalized = normalizeCreditConfig(config);
+  const cap = normalized.token_billing.settle_cap_credits;
+  const reserved = Math.max(0, Math.round(Number(reservedCredits) || 0));
+  const usd = parseThirdPartyUsd(usage);
+  const base = {
+    tokens: tokenUsageRecord(usage),
+    money: usage && typeof usage === 'object' ? (usage.thirdPartyConsumeMoney ?? null) : null,
+    consumeMoney: usage && typeof usage === 'object' ? (usage.consumeMoney ?? null) : null,
+    usdCost: usd,
+    creditsPerUsd: normalized.credits_per_usd,
+    markup: normalized.token_billing.markup,
+    settleCap: cap,
+    reservedCredits: reserved
+  };
+  if (usd == null) {
+    return {
+      ...base,
+      rawCredits: null,
+      credits: reserved,
+      capped: false,
+      settleCapped: false,
+      reserveCapped: false,
+      pricingSource: 'estimate_cap',
+      usageMissing: true,
+      warning: 'thirdPartyConsumeMoney missing; charging reserved estimate'
+    };
+  }
+  const raw = creditsFromUsd(usd, normalized);
+  const settleCapped = raw > cap;
+  const reserveCapped = raw > reserved;
+  const credits = Math.min(raw, cap, reserved);
+  return {
+    ...base,
+    rawCredits: raw,
+    credits,
+    capped: credits < raw,
+    settleCapped,
+    reserveCapped,
+    pricingSource: 'rh_consume_money',
+    usageMissing: false,
+    warning: settleCapped || reserveCapped
+      ? `token charge capped: raw ${raw}, settle cap ${cap}, reserved ${reserved}, charging ${credits}`
+      : ''
+  };
+}
+
+export function tokenPricingDetails({ decision, endpoint, taskId, resolution, quality, model, count = 1 } = {}) {
+  return {
+    billing_mode: 'token',
+    resolution: resolution || null,
+    quality: quality || null,
+    count,
+    endpoint: endpoint || null,
+    task_id: taskId || null,
+    model: model || null,
+    token_usage: decision?.tokens || null,
+    third_party_consume_money: decision?.money ?? null,
+    consume_money: decision?.consumeMoney ?? null,
+    usd_cost: decision?.usdCost ?? null,
+    credits_per_usd: decision?.creditsPerUsd ?? null,
+    markup: decision?.markup ?? null,
+    settle_cap_credits: decision?.settleCap ?? null,
+    raw_credits: decision?.rawCredits ?? null,
+    estimated_credits: decision?.reservedCredits ?? null,
+    settled_credits: decision?.credits ?? null,
+    capped: decision?.capped === true,
+    settle_capped: decision?.settleCapped === true,
+    reserve_capped: decision?.reserveCapped === true,
+    usage_missing: decision?.usageMissing === true,
+    pricing_source: decision?.pricingSource || null,
+    fallback: false
   };
 }
 
@@ -298,30 +556,42 @@ export function createFeatureCreditPorts(rpc) {
     }
   };
   return {
-    reserve: async ({ userId, feature, amount, usageKey, metadata }) => {
-      const row = await call('reserve_feature_credits', {
+    reserve: async ({ userId, feature, amount, usageKey, metadata, estimatedCredits }) => {
+      const args = {
         p_user_id: userId,
         p_usage_key: usageKey,
         p_feature: feature,
         p_units: amount,
         p_model: metadata?.model || null,
         p_metadata: metadata || {}
-      });
+      };
+      if (estimatedCredits != null && estimatedCredits !== '') args.p_estimated_credits = estimatedCredits;
+      const row = await call('reserve_feature_credits', args);
       return {
         status: row?.status,
         idempotent: row?.idempotent === true,
         amount: Number(row?.units ?? amount) || Number(amount) || 0,
-        credits: Number(row?.estimated_credits ?? 0)
+        credits: Number(row?.estimated_credits ?? estimatedCredits ?? 0)
       };
     },
-    settle: async ({ userId, feature, amount, usageKey, metadata }) => call('settle_feature_credits', {
-      p_user_id: userId,
-      p_usage_key: usageKey,
-      p_feature: feature,
-      p_actual_units: amount,
-      p_model: metadata?.model || null,
-      p_metadata: metadata || {}
-    }),
+    settle: async ({ userId, feature, amount, usageKey, metadata, settledCredits, rhCostUsd, pricingSource }) => {
+      const args = {
+        p_user_id: userId,
+        p_usage_key: usageKey,
+        p_feature: feature,
+        p_actual_units: amount,
+        p_model: metadata?.model || null,
+        p_metadata: metadata || {}
+      };
+      if (settledCredits != null && settledCredits !== '' && Number.isFinite(Number(settledCredits))) {
+        args.p_settled_credits = Number(settledCredits);
+      }
+      if (rhCostUsd != null && rhCostUsd !== '' && Number.isFinite(Number(rhCostUsd)) && Number(rhCostUsd) >= 0) {
+        args.p_rh_cost_usd = Number(rhCostUsd);
+      }
+      if (pricingSource) args.p_pricing_source = String(pricingSource).slice(0, 40);
+      return call('settle_feature_credits', args);
+    },
     release: async ({ userId, feature, usageKey, reason }) => call('release_feature_credits', {
       p_user_id: userId,
       p_usage_key: usageKey,
