@@ -294,7 +294,7 @@ export class WebRuntime {
   // Direct browser <-> worker transfer (spec 11, 12). Big files never pass
   // through Supabase; they go straight to the machine that will use them.
   // -------------------------------------------------------------------------
-  async uploadInput(taskId: string, file: File, name: string, onProgress?: (pct: number) => void) {
+  async uploadInput(taskId: string, file: File, name: string, onProgress?: (pct: number) => void, slot?: string) {
     const g = await this.grant(taskId, 'upload');
     const url = g.endpoint.replace(/\/+$/, '') + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(name);
 
@@ -304,6 +304,7 @@ export class WebRuntime {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', url, true);
       xhr.setRequestHeader('x-novaflow-grant', g.token);
+      if (slot) xhr.setRequestHeader('x-novaflow-upload-slot', slot);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
       };

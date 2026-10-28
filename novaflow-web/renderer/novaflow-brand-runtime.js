@@ -85314,7 +85314,8 @@
         dataBase64: artDataUrlToBase64(dataUrl),
         mimeType: artDataUrlMime(dataUrl),
         type: "input",
-        subfolder: ""
+        subfolder: "",
+        slot: "img2img"
       });
       if (!result || !result.ok) throw new Error(result && result.error || "\u53c2\u8003\u56fe\u4e0a\u4f20\u5931\u8d25");
       return String(result.data && (result.data.name || result.data.filename) || safeName);

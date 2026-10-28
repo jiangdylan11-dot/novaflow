@@ -855,6 +855,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openSpineJson: () => ipcRenderer.invoke("open-spine-json"),
   openSpineAtlas: () => ipcRenderer.invoke("open-spine-atlas"),
   openSpineImage: () => ipcRenderer.invoke("open-spine-image"),
+  pickXiaotaoUploads: () => ipcRenderer.invoke("xiaotao-pick-uploads"),
   openSequenceFolder: () => ipcRenderer.invoke("open-sequence-folder"),
   openPhotoshopProject: () => ipcRenderer.invoke("open-photoshop-project"),
   pickDirectory: () => ipcRenderer.invoke("pick-directory"),
@@ -968,6 +969,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   runtimeProviderUsageSettlement: "preload-price-v1",
   runtimeRequestBinary: (payload) => ipcRenderer.invoke("runtime-request-binary", payload),
   runtimeUploadImage: (payload) => ipcRenderer.invoke("runtime-upload-image", payload),
+  runtimeUploadFile: (payload) => ipcRenderer.invoke("runtime-upload-file", {
+    fileName: payload && payload.fileName,
+    kind: payload && payload.kind,
+    mimeType: payload && payload.mimeType,
+    slot: payload && payload.slot
+  }),
   promptAssistantGetStatus: () => ipcRenderer.invoke("prompt-assistant-get-status"),
   promptAssistantOptimizePrompt: (payload) => ipcRenderer.invoke("prompt-assistant-optimize-prompt", payload),
   promptAssistantDescribeArtStyle: (payload) => ipcRenderer.invoke("prompt-assistant-describe-art-style", payload),

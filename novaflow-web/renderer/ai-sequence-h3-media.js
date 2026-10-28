@@ -4,7 +4,10 @@
   const CN = {image:'参考图',video:'参考视频',audio:'参考音频'};
   const OLD_CN = {image:'参考图',video:'视频参考',audio:'声音参考'};
   const TOKEN = {image:'Picture',video:'Video',audio:'Audio'};
-  const clone = value => JSON.parse(JSON.stringify(value));
+  const clone = value => {
+    if (Array.isArray(value) && value.some(item => item && item.blob)) return value.map(item => item?.blob ? {...item} : JSON.parse(JSON.stringify(item)));
+    return JSON.parse(JSON.stringify(value));
+  };
   function database() {
     let opened;
     const open = () => opened || (opened = new Promise((resolve,reject) => {
@@ -24,7 +27,10 @@
       if(!LIMITS[x.kind] || ++counts[x.kind]>LIMITS[x.kind])throw new Error('H3 最多 9 图、3 视频、3 独立音频');
       if(!x.sourceId || ids.has(x.sourceId))throw new Error('H3 素材标识重复');
       ids.add(x.sourceId);
-      if(!String(x.dataUrl||'').startsWith('data:'+x.kind+'/'))throw new Error('H3 素材数据与类型不匹配：'+x.fileName);
+      const url=String(x.dataUrl||'');
+      const dataUrl=url.startsWith('data:'+x.kind+'/');
+      const objectUrl=Boolean(x.blob)&&String(x.type||'').startsWith(x.kind+'/')&&(!url||url.startsWith('blob:'));
+      if(!dataUrl&&!objectUrl)throw new Error('H3 素材数据与类型不匹配：'+x.fileName);
     }
     return counts;
   }
@@ -48,9 +54,11 @@
     const boards=new Map(),loads=new Map(),listeners=new Set(),reports=new Map(),savedBoards=new Set();let active='b1',pending=Promise.resolve(),error='';
     const emit=()=>listeners.forEach(fn=>fn());
     const get=(id=active)=>boards.get(id)||[];
-    const ensureLoaded=id=>{id=String(id||'b1');if(!loads.has(id)){const key=id;loads.set(key,storage.get(key).then(saved=>{const items=saved?.version===1?saved.items:[];validate(items);if(saved?.version===1)savedBoards.add(key);boards.set(key,items);emit();}).catch(e=>{error='H3 素材恢复失败：'+e.message;emit();throw e;}));}return loads.get(id);};
+    const restorePreview=item=>{if(item?.blob&&(!item.dataUrl||String(item.dataUrl).startsWith('blob:'))&&typeof root.URL?.createObjectURL==='function')item.dataUrl=root.URL.createObjectURL(item.blob);return item;};
+    const ensureLoaded=id=>{id=String(id||'b1');if(!loads.has(id)){const key=id;loads.set(key,storage.get(key).then(saved=>{const items=(saved?.version===1?saved.items:[]).map(restorePreview);validate(items);if(saved?.version===1)savedBoards.add(key);boards.set(key,items);emit();}).catch(e=>{error='H3 素材恢复失败：'+e.message;emit();throw e;}));}return loads.get(id);};
     const load=id=>{active=String(id||'b1');return ensureLoaded(active);};
-    const set=async(id,items)=>{validate(items);await storage.put(id,{version:1,items:clone(items)});savedBoards.add(id);boards.set(id,clone(items));error='';emit();};
+    const releaseBlobUrl=item=>{const url=item?.dataUrl;if(url&&String(url).startsWith('blob:')&&typeof root.URL?.revokeObjectURL==='function'){try{root.URL.revokeObjectURL(url);}catch{}}};
+    const set=async(id,items)=>{const previous=get(id);const keep=new Set(items.map(item=>item?.sourceId));for(const item of previous)if(!keep.has(item?.sourceId))releaseBlobUrl(item);validate(items);await storage.put(id,{version:1,items:clone(items)});savedBoards.add(id);boards.set(id,clone(items));error='';emit();};
     const mutate=(fn,id=active)=>{pending=pending.catch(()=>{}).then(()=>ensureLoaded(id)).then(()=>fn(id));return pending.catch(e=>{error=e.message;emit();throw e;});};
     return {
       load,get,hasSaved:(id=active)=>savedBoards.has(id),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn);},getError:()=>error,
@@ -84,7 +92,7 @@
       pending:(id,kind)=>kind?count(id,kind):Object.values(reservations.get(id)||{}).reduce((a,b)=>a+b,0),
       async whenIdle(id){if(!Object.values(reservations.get(id)||{}).some(Boolean))return;await queue;return this.whenIdle(id);},
       takeNotices(id){if(Object.values(reservations.get(id)||{}).some(Boolean))return [];const value=notices.get(id)||[];notices.delete(id);return value;},
-      async importFiles(kind,files,{boardId=target.activeBoard(),focus}={}) {
+      async importFiles(kind,files,{boardId=target.activeBoard(),focus,representation}={}) {
         const id=String(boardId);await target.snapshot(id);
         const errors=[],accepted=[],imported=[];
         const canQueue=target.get(id).filter(x=>x.kind===kind).length+count(id,kind)<LIMITS[kind];
@@ -98,7 +106,7 @@
         const operation=async()=>{
           for(const {file,actual,key}of accepted)try {
             if(target.get(id).filter(x=>x.kind===kind).length>=LIMITS[kind])throw new Error(CN[kind]+'已满，最多 '+LIMITS[kind]+' 个');
-            let blob=file,name=file.name,derived=false;
+            let blob=file,name=file.name,derived=false,dropPreview=()=>{};
             if(kind==='audio'&&actual==='video'){
               const result=await extract(file);
               if(!result?.ok||!result.blob)throw new Error(result?.error||'视频音轨提取失败');
@@ -107,7 +115,10 @@
               if(blob.size<=44||String.fromCharCode(...header.slice(0,4))!=='RIFF'||String.fromCharCode(...header.slice(8,12))!=='WAVE')throw new Error('音轨提取结果不是有效 WAV');
             }
             if(!String(blob.type||'').startsWith(kind+'/'))blob=new Blob([blob],{type:kind==='audio'?'audio/'+(/\.mp3$/i.test(name)?'mpeg':/\.m4a$/i.test(name)?'mp4':name.split('.').pop()):file.type});
-            const item={sourceId:root.crypto.randomUUID(),kind,fileName:name,type:blob.type,size:blob.size,lastModified:file.lastModified,dataUrl:await read(blob),...(derived?{originalFileName:file.name,derivedFromVideo:true}: {})};
+            const objectUrl=representation==='object-url';
+            const preview=objectUrl?(typeof root.URL?.createObjectURL==='function'?root.URL.createObjectURL(blob):'blob:xiaotao-upload/'+root.crypto.randomUUID()):await read(blob);
+            const item={sourceId:root.crypto.randomUUID(),kind,fileName:name,type:blob.type,size:blob.size,lastModified:file.lastModified,dataUrl:preview,...(objectUrl?{blob}:{}),...(derived?{originalFileName:file.name,derivedFromVideo:true}: {})};
+            dropPreview=()=>{if(objectUrl&&String(preview).startsWith('blob:')&&typeof root.URL?.revokeObjectURL==='function'){try{root.URL.revokeObjectURL(preview);}catch{}}};
             if(kind==='audio'){
               const durationSec=await probe(item);item.durationSec=durationSec;
               const policy=root.NovaFlowAiSequenceMiniMaxH3Resource;
@@ -117,7 +128,7 @@
               else if(durationSec<2||durationSec>15||durations.reduce((n,x)=>n+x.durationSec,0)+durationSec>15.0005)throw new Error('参考音频需为 2–15 秒，全部音频合计不超过 15 秒');
             }
             await target.add([item],id);imported.push(item);
-          }catch(error){errors.push({fileName:file.name,message:String(error?.message||error)});target.clearError?.();}
+          }catch(error){if(typeof dropPreview==='function')dropPreview();errors.push({fileName:file.name,message:String(error?.message||error)});target.clearError?.();}
           finally{inFlight.delete(key);reserve(id,kind,-1);}
           publish(id,kind,errors,focus);return {boardId:id,imported,errors};
         };

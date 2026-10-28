@@ -226,7 +226,9 @@ export function chatCompletionToResponses(data) {
       output_tokens: outputTokens,
       total_tokens: Number(usage.total_tokens ?? inputTokens + outputTokens) || 0,
       prompt_tokens: inputTokens,
-      completion_tokens: outputTokens
+      completion_tokens: outputTokens,
+      thirdPartyConsumeMoney: usage.thirdPartyConsumeMoney ?? null,
+      consumeMoney: usage.consumeMoney ?? null
     }
   };
 }
