@@ -2155,14 +2155,14 @@ function grokVisualFailureEnvelope(error) {
     : structuralContract
       ? "视觉分析结果未通过 nf.visual.v2 结构校验"
       : providerAuth
-        ? "Grok 分析服务未授权"
+        ? "在线模型未授权"
         : providerRateLimit
-          ? "Grok 分析服务请求过于频繁"
+          ? "在线模型请求过于频繁"
           : providerTimeout
-            ? "Grok 分析服务响应超时"
+            ? "在线模型响应超时"
             : providerUnavailable
-              ? "Grok 分析服务暂不可用"
-              : "Grok 分析服务调用失败";
+              ? "在线模型暂不可用"
+              : "在线模型调用失败";
   const retryable = semanticContract || structuralContract || providerRateLimit || providerTimeout || providerUnavailable;
   return {
     errorCode,

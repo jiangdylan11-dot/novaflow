@@ -1,5 +1,6 @@
 // One metered multimodal conversation, without application execution tools.
 import {isArtPromptLanguage,artPromptLanguageSystem} from './art-prompt-language.mjs';
+import {postRunningHubResponses} from './runninghub-llm.mjs';
 export class CompanionError extends Error {constructor(status,message){super(message);this.status=status;}}
 const need=(ok,message)=>{if(!ok)throw new CompanionError(400,message);};
 export function companionInput(payload){
@@ -25,23 +26,27 @@ export function companionInput(payload){
  need(input.reduce((n,m)=>n+m.content.reduce((s,p)=>s+(p.text?.length||0),0),0)<=26000,'文字上下文过长，请开始新对话');
  return {input,imageCount:images.length};
 }
-export function createCompanionChat({provider,fetchImpl=fetch,reserve,settle,release}){
+export function createCompanionChat({provider,fetchImpl=fetch,charge}){
  return {async reply({user,payload}){
   const {input,imageCount}=companionInput(payload);
   if(!provider.apiKey)throw new CompanionError(503,'在线图片分析服务尚未配置');
-  const usageKey='xiaotao:'+payload.requestId;
-  const reservation=await reserve(user.id,usageKey);
-  if(reservation?.status!=='reserved'||reservation.idempotent)throw new CompanionError(409,'这次对话已提交，请使用新的消息编号');
-  let result;
+  if(typeof charge!=='function')throw new CompanionError(503,'在线计量未配置');
   try{
-   const response=await fetchImpl(provider.baseUrl.replace(/\/$/,'')+'/responses',{method:'POST',headers:{authorization:'Bearer '+provider.apiKey,'content-type':'application/json'},body:JSON.stringify({model:provider.model,store:false,input,temperature:.4,max_output_tokens:2048}),signal:AbortSignal.timeout(60000)});
-   if(!response.ok)throw new CompanionError(502,'在线图片分析服务返回 HTTP '+response.status);
-   result=await response.json();
-   if(result.status!=='completed'||!Array.isArray(result.output)||result.output.some(m=>m.type==='function_call'))throw new CompanionError(502,'在线图片分析未返回完整回答，本次未自动重试');
-  }catch(error){await release(user.id,usageKey);throw error instanceof CompanionError?error:new CompanionError(502,'在线图片分析暂未完成，本次未自动重试');}
-  const reply=result.output.flatMap(m=>m.type==='message'&&m.role==='assistant'?(m.content||[]).filter(p=>p.type==='output_text'&&typeof p.text==='string').map(p=>p.text):[]).join('\n').trim();
-  if(!reply){await release(user.id,usageKey);throw new CompanionError(502,'在线图片分析未返回文字');}
-  const quota=await settle(user.id,usageKey,{model:result.model,imageCount,usage:result.usage});
-  return {reply,model:result.model||provider.model,quota,imageCount};
+   const charged=await charge({userId:user.id,feature:'xiaotao-vision',amount:1,usageKey:'xiaotao:'+payload.requestId,metadata:{imageAnalysis:true},run:async()=>{
+    let posted;
+    try{posted=await postRunningHubResponses({body:{model:provider.model,input,temperature:.4,max_output_tokens:2048},config:{apiKey:provider.apiKey,baseUrl:provider.baseUrl,model:provider.model},fetchImpl,timeoutMs:60000});}
+    catch(error){error.chargedAmount=0;throw error;}
+    const result=posted.data;
+    if(result.status!=='completed'||!Array.isArray(result.output)||result.output.some(m=>m.type==='function_call'))throw Object.assign(new CompanionError(502,'在线图片分析未返回完整回答，本次未自动重试'),{chargedAmount:0});
+    const reply=result.output.flatMap(m=>m.type==='message'&&m.role==='assistant'?(m.content||[]).filter(p=>p.type==='output_text'&&typeof p.text==='string').map(p=>p.text):[]).join('\n').trim();
+    if(!reply)throw Object.assign(new CompanionError(502,'在线图片分析未返回文字'),{chargedAmount:0});
+    return {amount:1,reply,model:result.model||provider.model,imageCount,metadata:{model:result.model,imageCount,usage:result.usage}};
+   }});
+   return {reply:charged.reply,model:charged.model,quota:charged.quota,imageCount:charged.imageCount};
+  }catch(error){
+   if(error instanceof CompanionError)throw error;
+   const status=Number(error?.statusCode)||502;
+   throw new CompanionError(status===409?409:status===402?402:502,status===409?'这次对话已提交，请使用新的消息编号':status===402?'在线AI次数不足或暂时不可用':error instanceof Error&&/在线/.test(error.message)?error.message:'在线图片分析暂未完成，本次未自动重试');
+  }
  }};
 }

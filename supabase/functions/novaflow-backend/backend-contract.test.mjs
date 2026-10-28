@@ -6280,7 +6280,7 @@ test("nf.visual.v2 structural and provider failures keep a redacted structured f
   const provider = grokVisualFailureEnvelope(providerError);
   assert.deepEqual(provider, {
     errorCode: "grok-provider-unavailable",
-    message: "Grok 分析服务暂不可用",
+    message: "在线模型暂不可用",
     retryable: true,
     retryAttempted: false,
     retryCount: 0,
@@ -6484,8 +6484,13 @@ test("Edge router accepts desktop Supabase JWTs and exposes all product Grok rou
   ]) {
     assert.ok(indexSource.includes(route), `${route} must be registered`);
   }
-  assert.match(indexSource, /const timer = setTimeout\(\(\) => controller\.abort\(\), 45000\)/);
-  assert.match(indexSource, /const timer = setTimeout\(\(\) => controller\.abort\(\), 50000\)/);
+  assert.match(indexSource, /postRunningHubResponses\(/);
+  assert.match(indexSource, /chargeOnlineAi\(/);
+  assert.match(indexSource, /feature: "prompt-optimize"/);
+  assert.match(indexSource, /feature: "xiaotao-text"/);
+  assert.match(indexSource, /\/api\/client\/runninghub\/ui-catalog/);
+  assert.doesNotMatch(indexSource, /api\.x\.ai/);
+  assert.doesNotMatch(indexSource, /NOVAFLOW_GROK_/);
   assert.match(indexSource, /\.rpc\("reserve_grok_quota"/);
   assert.match(indexSource, /\.rpc\("settle_grok_quota"/);
   assert.match(indexSource, /\.rpc\("release_grok_quota"/);

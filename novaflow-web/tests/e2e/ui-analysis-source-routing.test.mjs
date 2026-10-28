@@ -61,7 +61,7 @@ test('visible source buttons default local, preserve an explicit project choice 
   for(const saved of [undefined,'local','grok']) {
     const e=environment(saved?{assistantEngine:saved}:{});
     assert.equal(e.input().engine,saved||'local');assert.equal(e.group.children.length,2);
-    assert.deepEqual(Array.from(e.group.children,b=>b.textContent),['本地分析','Grok 分析']);
+    assert.deepEqual(Array.from(e.group.children,b=>b.textContent),['本地分析','在线分析']);
     e.click('grok');assert.equal(e.input().engine,'grok');assert.equal(e.state.provider,'local');
     e.state.provider='gpt';assert.equal(e.input().engine,'grok');e.click('local');assert.equal(e.input().engine,'local');assert.equal(e.state.provider,'gpt');
     assert.equal(e.group.children.filter(b=>b.getAttribute('aria-checked')==='true').length,1);

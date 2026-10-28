@@ -15,8 +15,8 @@ Current scope:
 - Runs as a local Node HTTP service.
 - Uses `NOVAFLOW_SUPABASE_URL` and `NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY` only on the server side.
 - Uses `NOVAFLOW_SUPABASE_PUBLISHABLE_KEY` or `NOVAFLOW_SUPABASE_ANON_KEY` only on the server side for Supabase Auth password login.
-- The only operator-writable online provider secret is `NOVAFLOW_RUNNINGHUB_API_KEY`, stored in the admin/server environment. It is not a Supabase Edge secret in this phase.
-- Existing call paths may still read `NOVAFLOW_COMFYUI_*` and `NOVAFLOW_GROK_*` when those values are already present. The admin UI no longer writes them.
+- The only operator-writable online provider secret is `NOVAFLOW_RUNNINGHUB_API_KEY`. Online text and vision read that key with `NOVAFLOW_RUNNINGHUB_LLM_BASE_URL` (default `https://llm.runninghub.ai/v1`) and `NOVAFLOW_RUNNINGHUB_LLM_MODEL` (default `xai/grok-4.7`). Set the same key on novaflow-companion and novaflow-backend. Never commit it.
+- `NOVAFLOW_GROK_*` and direct `api.x.ai` calls are retired. The admin UI does not write them.
 - Provides admin-issued account/password login through Supabase Auth. Self-registration is disabled.
 - Issues signed stateless session tokens.
 - Checks user status before AI task requests. ComfyUI generation is not blocked by either balance.

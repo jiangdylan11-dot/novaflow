@@ -1,12 +1,18 @@
 const http = require("http");
 const fs = require("fs");
 const crypto = require("crypto");
-const { URL } = require("url");
+const { URL, pathToFileURL } = require("url");
+const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
 const h3PromptEnhance = require("./h3-prompt-enhance");
 const artDirection = require("./art-direction");
+let runningHubLlmPromise;
+function loadRunningHubLlm() {
+  runningHubLlmPromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/runninghub-llm.mjs")).href);
+  return runningHubLlmPromise;
+}
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -31,8 +37,6 @@ const MAX_GROK_IMAGE_BODY_BYTES = 10 * 1024 * 1024;
 const DEFAULT_SESSION_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_CORS_METHODS = "GET,POST,PATCH,OPTIONS";
 const DEFAULT_CORS_HEADERS = "authorization,content-type,x-novaflow-admin-token,x-request-id";
-const GROK_CHAT_COMPLETIONS_PATH = "/chat/completions";
-const GROK_RESPONSES_PATH = "/responses";
 const DEFAULT_SMART_AI_NEGATIVE_PROMPT = "画面模糊，低清晰度，人物变形，比例错误，五官扭曲，手指畸形，多余手指，肢体错位，穿模，重复人物，背景杂乱，过曝，欠曝，噪点，水印，文字，标志，低质量";
 const ORDINARY_ART_PROMPT_EDIT_CONTRACT = "deterministic-merge-v1";
 const ORDINARY_ART_STRUCTURED_PROMPT_SCHEMA = "nf.art.prompt.v1";
@@ -342,10 +346,10 @@ function readinessChecks() {
       message: `${ENV_ENABLE_DEV_LOGIN} should stay disabled in production`
     },
     {
-      key: "grok_api_key",
-      ok: Boolean(config.grokApiKeyConfigured),
+      key: "runninghub_api_key",
+      ok: Boolean(config.runningHubApiKeyConfigured),
       required: false,
-      message: `${adminData.ENV_GROK_API_KEY} is required only when Grok API forwarding is enabled`
+      message: "NOVAFLOW_RUNNINGHUB_API_KEY is required for online text and vision"
     }
   ];
   return {
@@ -1056,51 +1060,31 @@ function grokPublicResult(data) {
 }
 
 async function callGrokChat(payload) {
-  const env = adminData.readAdminGrokEnv();
-  if (!env.hasApiKey) {
-    const err = new Error(`${adminData.ENV_GROK_API_KEY} is not configured`);
+  const { readRunningHubLlmConfig, postRunningHubResponses } = await loadRunningHubLlm();
+  let config;
+  try {
+    config = readRunningHubLlmConfig(process.env);
+  } catch {
+    const err = new Error("在线模型配置无效");
     err.statusCode = 503;
     throw err;
   }
   const { body, inputMeta } = normalizeGrokChatPayload(payload);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
-  const url = `${env.baseUrl}${GROK_CHAT_COMPLETIONS_PATH}`;
   const startedAt = Date.now();
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    const text = await response.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text.slice(0, 1000) };
-    }
-    if (!response.ok) {
-      const message = data?.error?.message || data?.message || text || `xAI request failed with status ${response.status}`;
-      const err = new Error(message);
-      err.statusCode = response.status;
-      throw err;
-    }
-    return {
-      ok: true,
-      statusCode: response.status,
-      durationMs: Date.now() - startedAt,
-      model: body.model,
-      inputMeta,
-      data: grokPublicResult(data)
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+  const posted = await postRunningHubResponses({ body, config, timeoutMs: 45000 });
+  return {
+    ok: true,
+    statusCode: posted.status,
+    durationMs: Date.now() - startedAt,
+    model: posted.data.model || config.model,
+    inputMeta,
+    data: grokPublicResult({
+      id: posted.data.id,
+      model: posted.data.model || config.model,
+      choices: [{ finish_reason: "stop", message: { role: "assistant", content: posted.data.output_text } }],
+      usage: posted.data.usage
+    })
+  };
 }
 
 function normalizeSmartAiText(value, limit = 20000) {
@@ -1936,14 +1920,14 @@ function grokVisualFailureEnvelope(error) {
     : structuralContract
       ? "视觉分析结果未通过 nf.visual.v2 结构校验"
       : providerAuth
-        ? "Grok 分析服务未授权"
+        ? "在线模型未授权"
         : providerRateLimit
-          ? "Grok 分析服务请求过于频繁"
+          ? "在线模型请求过于频繁"
           : providerTimeout
-            ? "Grok 分析服务响应超时"
+            ? "在线模型响应超时"
             : providerUnavailable
-              ? "Grok 分析服务暂不可用"
-              : "Grok 分析服务调用失败";
+              ? "在线模型暂不可用"
+              : "在线模型调用失败";
   const retryable = semanticContract || structuralContract || providerRateLimit || providerTimeout || providerUnavailable;
   return {
     errorCode,
@@ -10156,58 +10140,40 @@ function isGrokResponseAttemptResultUsable(result, resultOptions) {
 }
 
 async function callGrokResponseAttempt(body, inputMeta, resultOptions = {}) {
-  const env = adminData.readAdminGrokEnv();
-  if (!env.hasApiKey) {
-    const err = new Error(`${adminData.ENV_GROK_API_KEY} is not configured`);
+  const { readRunningHubLlmConfig, postRunningHubResponses } = await loadRunningHubLlm();
+  let config;
+  try {
+    config = readRunningHubLlmConfig(process.env);
+  } catch {
+    const err = new Error("在线模型配置无效");
     err.statusCode = 503;
+    err.providerCallStarted = false;
     throw err;
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
-  const url = `${env.baseUrl}${GROK_RESPONSES_PATH}`;
   const startedAt = Date.now();
   let providerCallStarted = false;
   let attemptUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   try {
-    providerCallStarted = true;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    const text = await response.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text.slice(0, 1000) };
-    }
+    const posted = await postRunningHubResponses({ body, config, timeoutMs: 60000 });
+    providerCallStarted = posted.providerCallStarted === true;
+    const data = posted.data;
     attemptUsage = normalizeGrokResponseUsage(data);
-    if (!response.ok) {
-      const message = data?.error?.message || data?.message || text || `xAI request failed with status ${response.status}`;
-      const err = new Error(message);
-      err.statusCode = response.status;
-      throw err;
-    }
     const result = grokResponsesPublicResult(data, {
       ...resultOptions,
       supportsNegativePrompt: inputMeta?.supportsNegativePrompt !== false
     });
     if (!isGrokResponseAttemptResultUsable(result, resultOptions)) {
-      const err = new Error("Grok response did not include prompt text");
+      const err = new Error("在线模型未返回提示词");
       err.statusCode = 502;
+      err.providerCallStarted = true;
       throw err;
     }
     return {
       ok: true,
-      statusCode: response.status,
+      statusCode: posted.status,
       durationMs: Date.now() - startedAt,
-      model: body.model,
-      requestId: String(data?.id || response.headers.get("x-request-id") || "").trim(),
+      model: data.model || config.model,
+      requestId: posted.requestId,
       inputMeta,
       usage: attemptUsage,
       providerCallCount: 1,
@@ -10217,11 +10183,9 @@ async function callGrokResponseAttempt(body, inputMeta, resultOptions = {}) {
     try {
       error.grokUsage = attemptUsage;
       error.grokDurationMs = Date.now() - startedAt;
-      error.grokProviderCallCount = providerCallStarted ? 1 : 0;
+      error.grokProviderCallCount = error.providerCallStarted === true || providerCallStarted ? 1 : 0;
     } catch {}
     throw error;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -10899,73 +10863,45 @@ async function handleGrokPromptOptimizeRequest(req, res) {
   }
 
   const isH3Prompt = request.resultOptions?.minimaxH3Prompt === true;
-  const reservation = await reserveGrokCalls(session, "prompt_optimize", 1, isH3Prompt ? 2 : 1);
-  if (!reservation.result?.ok || reservation.result.status === "error") {
-    sendJson(res, /insufficient grok calls/i.test(String(reservation.result?.error || "")) ? 402 : 500, {
-      ok: false, error: reservation.result?.error || "Grok quota reservation failed", provider: "grok",
-      quota: grokQuotaPayload(reservation.result?.record)
-    });
-    return;
-  }
-  const resultOptions = {
-    ...request.resultOptions,
-    visualRetryAllowed: isH3Prompt && reservation.budget >= 2,
-    providerCallBudget: reservation.budget
-  };
   let grok;
+  let usage;
+  let resultOptions = request.resultOptions;
   try {
-    grok = await callGrokResponse(request.body, request.inputMeta, resultOptions);
+    const charged = await chargeOnlineAi(session, {
+      feature: "prompt-optimize",
+      amount: isH3Prompt ? 2 : 1,
+      run: async ({ amount: providerCallBudget }) => {
+        resultOptions = { ...request.resultOptions, visualRetryAllowed: isH3Prompt && providerCallBudget >= 2, providerCallBudget };
+        try {
+          const value = await callGrokResponse(request.body, request.inputMeta, resultOptions);
+          const providerCallCount = resultOptions.minimaxH3Prompt === true ? Math.max(1, Math.round(Number(value.providerCallCount || 1))) : 1;
+          return { amount: providerCallCount, value, metadata: { mode: request.inputMeta.mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, success: true } };
+        } catch (error) {
+          error.chargedAmount = Math.max(0, Math.round(Number(error?.grokProviderCallCount || 0)));
+          error.chargeMetadata = { mode: request.inputMeta.mode, error: sanitizeError(error), tokenUsage: error?.grokUsage || null, durationMs: error?.grokDurationMs || 0, success: false };
+          throw error;
+        }
+      }
+    });
+    grok = charged.value;
+    usage = charged.quota;
   } catch (err) {
-    const statusCode = Number(err?.statusCode || 502);
-    const failedProviderCallCount = Math.max(0, Math.round(Number(err?.grokProviderCallCount || 0)));
-    const failureUsage = failedProviderCallCount > 0
-      ? await settleGrokCalls(session, reservation, failedProviderCallCount, false, {
-      mode: request.inputMeta.mode,
-      error: sanitizeError(err),
-      tokenUsage: err?.grokUsage || null,
-      durationMs: err?.grokDurationMs || 0
-      })
-      : await releaseGrokCalls(session, reservation, sanitizeError(err));
-    if (!failureUsage?.ok || failureUsage.status === "error") {
-      sendJson(res, 500, { ok: false, error: failureUsage?.error || "Grok quota settlement failed", provider: "grok" });
+    if (err?.quotaFailed) {
+      sendJson(res, 500, { ok: false, error: "在线计量没有完成", provider: "grok" });
       return;
     }
-    const h3Failure = resultOptions.minimaxH3Prompt === true
-      ? miniMaxH3FailureEnvelope(err)
-      : null;
-    const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true
-      || resultOptions.ordinaryArtStructuredPrompt === true)
-      && /^Grok ordinary Art\b/.test(sanitizeError(err));
-    sendJson(res, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+    const statusCode = Number(err?.statusCode || 502);
+    const h3Failure = resultOptions.minimaxH3Prompt === true ? miniMaxH3FailureEnvelope(err) : null;
+    const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true || resultOptions.ordinaryArtStructuredPrompt === true) && /^Grok ordinary Art\b/.test(sanitizeError(err));
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: h3Failure?.message || (ordinaryArtPatchFailure
+      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (ordinaryArtPatchFailure
         ? "提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体"
         : "生成失败，请稍后重试"),
       provider: "grok",
       ...(h3Failure || {}),
-      ...(ordinaryArtPatchFailure ? {
-        errorCode: "art-prompt-edit-not-applied",
-        failureClass: "application"
-      } : {}),
-      quota: grokQuotaPayload(failureUsage.record)
-    });
-    return;
-  }
-
-  const providerCallCount = resultOptions.minimaxH3Prompt === true
-    ? Math.max(1, Math.round(Number(grok.providerCallCount || 1)))
-    : 1;
-  const usage = await settleGrokCalls(session, reservation, providerCallCount, true, {
-    mode: request.inputMeta.mode,
-    tokenUsage: grok.usage,
-    durationMs: grok.durationMs,
-    model: grok.model
-  });
-  if (!usage?.ok || usage.status === "error") {
-    sendJson(res, 500, {
-      ok: false,
-      error: usage?.error || "Smart AI usage record failed after provider call",
-      provider: "grok"
+      ...(ordinaryArtPatchFailure ? { errorCode: "art-prompt-edit-not-applied", failureClass: "application" } : {}),
+      quota: grokQuotaPayload(err?.quota?.record)
     });
     return;
   }
@@ -11031,81 +10967,52 @@ async function handleGrokImageReverseRequest(req, res) {
 
   const requiredProviderCalls = Math.max(1, Math.round(Number(request.resultOptions?.requiredProviderCalls || 1)));
   const isH3ReverseRequest = request.resultOptions?.minimaxH3Reverse === true;
-  const reservation = await reserveGrokCalls(
-    session,
-    request.inputMeta.scenario === "video_frames" ? "video_reverse" : "image_reverse",
-    requiredProviderCalls,
-    isH3ReverseRequest ? requiredProviderCalls : Math.max(requiredProviderCalls, 2)
-  );
-  if (!reservation.result?.ok || reservation.result.status === "error") {
-    sendJson(res, 402, {
-      ok: false,
-      error: reservation.result?.error || "insufficient grok calls for the required H3 analysis stages",
-      provider: "grok",
-      requiredProviderCalls,
-      quota: grokQuotaPayload(reservation.result?.record)
-    });
-    return;
-  }
-  const resultOptions = {
-    ...request.resultOptions,
-    visualRetryAllowed: reservation.budget >= 2,
-    providerCallBudget: reservation.budget,
-    h3RepairAllowed: false
-  };
-
+  const mode = request.inputMeta.scenario === "video_frames" ? "video_reverse" : "image_reverse";
   let grok;
+  let usage;
+  let resultOptions = request.resultOptions;
   try {
-    grok = await callGrokResponse(request.body, request.inputMeta, resultOptions);
+    const charged = await chargeOnlineAi(session, {
+      feature: mode === "video_reverse" ? "video-reverse" : "image-reverse",
+      amount: isH3ReverseRequest ? requiredProviderCalls : Math.max(requiredProviderCalls, 2),
+      run: async ({ amount: providerCallBudget }) => {
+        if (providerCallBudget < requiredProviderCalls) {
+          const error = new Error("在线AI次数不足或暂时不可用");
+          error.statusCode = 402;
+          error.chargedAmount = 0;
+          throw error;
+        }
+        resultOptions = { ...request.resultOptions, visualRetryAllowed: providerCallBudget >= 2, providerCallBudget, h3RepairAllowed: false };
+        try {
+          const value = await callGrokResponse(request.body, request.inputMeta, resultOptions);
+          const providerCallCount = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
+          return { amount: providerCallCount, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, success: true } };
+        } catch (error) {
+          error.chargedAmount = Math.max(0, Math.round(Number(error?.grokProviderCallCount || 0)));
+          error.chargeMetadata = { mode, error: sanitizeError(error), tokenUsage: error?.grokUsage || null, durationMs: error?.grokDurationMs || 0, success: false };
+          throw error;
+        }
+      }
+    });
+    grok = charged.value;
+    usage = charged.quota;
   } catch (err) {
-    const statusCode = Number(err?.statusCode || 502);
-    const isVisualV2 = String(resultOptions.visualIrSchema || "") === "nf.visual.v2";
-    const isMiniMaxH3 = resultOptions.minimaxH3Reverse === true;
-    const failedProviderCallCount = Math.max(0, Math.round(Number(err?.grokProviderCallCount || 0)));
-    const failureUsage = failedProviderCallCount > 0
-      ? await settleGrokCalls(session, reservation, failedProviderCallCount, false, {
-      mode: request.inputMeta.scenario === "video_frames" ? "video_reverse" : "image_reverse",
-      error: sanitizeError(err),
-      tokenUsage: err?.grokUsage || null,
-      durationMs: err?.grokDurationMs || 0
-      })
-      : await releaseGrokCalls(session, reservation, sanitizeError(err));
-    if (!failureUsage?.ok || failureUsage.status === "error") {
-      sendJson(res, 500, { ok: false, error: failureUsage?.error || "Grok quota settlement failed", provider: "grok" });
+    if (err?.quotaFailed) {
+      sendJson(res, 500, { ok: false, error: "在线计量没有完成", provider: "grok" });
       return;
     }
-    const h3Failure = isMiniMaxH3
-      ? miniMaxH3FailureEnvelope(err)
-      : null;
-    // The 美工 role reference refuses a child with sensitive content for good; a retry would give the same answer.
+    const statusCode = Number(err?.statusCode || 502);
+    const isVisualV2 = String(resultOptions.visualIrSchema || "") === "nf.visual.v2";
+    const h3Failure = resultOptions.minimaxH3Reverse === true ? miniMaxH3FailureEnvelope(err) : null;
     const contentPolicyFailure = !h3Failure && err?.errorCode === "provider_content_policy";
-    sendJson(res, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: h3Failure?.message || (contentPolicyFailure ? "Grok 未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
+      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : h3Failure?.message || (contentPolicyFailure ? "未通过未成年人敏感内容安全校验" : "生成失败，请稍后重试"),
       provider: "grok",
       ...(contentPolicyFailure ? { errorCode: "provider_content_policy", retryable: false } : {}),
       ...(h3Failure || {}),
       ...(isVisualV2 ? grokVisualFailureEnvelope(err) : {}),
-      quota: failureUsage?.ok && failureUsage.status !== "error"
-        ? grokQuotaPayload(failureUsage.record)
-        : grokQuotaPayload(reservation.result?.record)
-    });
-    return;
-  }
-
-  const mode = request.inputMeta.scenario === "video_frames" ? "video_reverse" : "image_reverse";
-  const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
-  const usage = await settleGrokCalls(session, reservation, providerCallCount, true, {
-    mode,
-    tokenUsage: grok.usage,
-    durationMs: grok.durationMs,
-    model: grok.model
-  });
-  if (!usage?.ok || usage.status === "error") {
-    sendJson(res, 500, {
-      ok: false,
-      error: usage?.error || "Smart AI usage record failed after provider call",
-      provider: "grok"
+      quota: grokQuotaPayload(err?.quota?.record)
     });
     return;
   }
@@ -11162,6 +11069,86 @@ async function handleGrokImageReverseRequest(req, res) {
   });
 }
 
+let onlineChargePromise;
+function loadOnlineCharge() {
+  onlineChargePromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/online-ai-charge.mjs")).href);
+  return onlineChargePromise;
+}
+
+async function chargeOnlineAi(session, input) {
+  const { createOnlineAiCharge } = await loadOnlineCharge();
+  const charge = createOnlineAiCharge({
+    reserve: async ({ userId, feature, amount, usageKey, metadata }) => {
+      const result = await adminData.reserveAdminGrokQuota({ userId, usageKey, feature, minCalls: 1, maxCalls: amount, metadata: metadata || {} });
+      if (!result?.ok || result.status === "error") throw new Error(result?.error || "在线AI次数不足或暂时不可用");
+      const row = result.reservation || {};
+      return { status: row.status || "reserved", idempotent: row.idempotent === true, amount: Number(row.provider_call_budget ?? row.reserved_calls ?? 0) || 0 };
+    },
+    settle: async ({ amount, usageKey, success, metadata }) => {
+      const result = await settleGrokCalls(session, { usageKey }, amount, success !== false, metadata || {});
+      if (!result?.ok || result.status === "error") throw new Error("在线计量没有完成");
+      return result;
+    },
+    release: async ({ usageKey, reason }) => {
+      const result = await releaseGrokCalls(session, { usageKey }, String(reason || "incomplete"));
+      if (!result?.ok || result.status === "error") throw new Error("在线计量没有完成");
+      return result;
+    }
+  });
+  return charge({ userId: session.user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run });
+}
+
+async function handleRunningHubUiCatalogRequest(req, res) {
+  const session = await requireClientSession(req, res);
+  if (!session) return;
+  let payload;
+  try {
+    payload = await parseBody(req, { maxBytes: MAX_GROK_IMAGE_BODY_BYTES });
+  } catch (err) {
+    sendErrorJson(res, err, 400);
+    return;
+  }
+  const requestId = String(payload?.requestId || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) {
+    sendJson(res, 400, { ok: false, error: "分析请求标识无效" });
+    return;
+  }
+  const { uiCatalogResponsesRequest, postRunningHubResponses, responsesOutputText, readRunningHubLlmConfig } = await loadRunningHubLlm();
+  let responsesBody;
+  try {
+    responsesBody = uiCatalogResponsesRequest(payload);
+  } catch (err) {
+    sendJson(res, Number(err?.statusCode) || 400, { ok: false, error: sanitizeError(err) });
+    return;
+  }
+  try {
+    const config = readRunningHubLlmConfig(process.env);
+    const charged = await chargeOnlineAi(session, {
+      feature: "ui-catalog",
+      amount: 1,
+      run: async () => {
+        try {
+          const posted = await postRunningHubResponses({ body: responsesBody, config, timeoutMs: 180000 });
+          const rawOutputText = responsesOutputText(posted.data);
+          if (!rawOutputText || posted.data.status !== "completed") throw Object.assign(new Error("在线目录分析未返回完整结果"), { statusCode: 502, chargedAmount: 0 });
+          return { amount: 1, value: { rawOutputText, model: posted.data.model || config.model, requestId: posted.requestId } };
+        } catch (error) {
+          if (error.chargedAmount === undefined) error.chargedAmount = error.providerCallStarted ? 1 : 0;
+          throw error;
+        }
+      }
+    });
+    sendJson(res, 200, { ok: true, model: charged.value.model, providerCallCount: 1, retryCount: 0, clientRequestId: requestId, requestId: charged.value.requestId || requestId, finishReason: "completed", rawOutputText: charged.value.rawOutputText });
+  } catch (err) {
+    if (err?.quotaFailed) {
+      sendJson(res, 500, { ok: false, error: "在线计量没有完成" });
+      return;
+    }
+    const statusCode = Number(err?.statusCode || 502);
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, { ok: false, error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线/.test(String(err?.message || "")) ? sanitizeError(err) : "在线目录分析未完成" });
+  }
+}
+
 async function handleGrokChatRequest(req, res) {
   const session = await requireClientSession(req, res);
   if (!session) return;
@@ -11174,41 +11161,35 @@ async function handleGrokChatRequest(req, res) {
     return;
   }
 
-  const reservation = await reserveGrokCalls(session, "provider_gateway", 1, 1);
-  if (!reservation.result?.ok || reservation.result.status === "error") {
-    sendJson(res, /insufficient grok calls/i.test(String(reservation.result?.error || "")) ? 402 : 500,
-      { ok: false, error: reservation.result?.error || "Grok quota reservation failed", provider: "grok" });
-    return;
-  }
-
   let grok;
+  let usage;
   try {
-    grok = await callGrokChat(payload);
+    const charged = await chargeOnlineAi(session, {
+      feature: "xiaotao-text",
+      amount: 1,
+      run: async () => {
+        try {
+          const value = await callGrokChat(payload);
+          return { amount: 1, value, metadata: { mode: "provider_gateway", tokenUsage: value.data?.usage || null, durationMs: value.durationMs, model: value.model, success: true } };
+        } catch (error) {
+          error.chargedAmount = error.providerCallStarted ? 1 : 0;
+          throw error;
+        }
+      }
+    });
+    grok = charged.value;
+    usage = charged.quota;
   } catch (err) {
-    const release = await releaseGrokCalls(session, reservation, sanitizeError(err));
-    if (!release?.ok || release.status === "error") {
-      sendJson(res, 500, { ok: false, error: release?.error || "Grok quota release failed", provider: "grok" });
+    if (err?.quotaFailed) {
+      sendJson(res, 500, { ok: false, error: "在线计量没有完成", provider: "grok" });
       return;
     }
     const statusCode = Number(err?.statusCode || 502);
-    sendJson(res, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+    sendJson(res, statusCode === 402 ? 402 : statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
       ok: false,
-      error: `Grok API Error: ${sanitizeError(err)}`,
+      error: statusCode === 402 ? "在线AI次数不足或暂时不可用" : /在线模型/.test(String(err?.message || "")) ? sanitizeError(err) : "在线模型暂时不可用",
       provider: "grok",
-      quota: grokQuotaPayload(release.record)
-    });
-    return;
-  }
-
-  const usage = await settleGrokCalls(session, reservation, 1, true, {
-    mode: "provider_gateway", tokenUsage: grok.data?.usage || null,
-    durationMs: grok.durationMs, model: grok.model
-  });
-  if (!usage?.ok || usage.status === "error") {
-    sendJson(res, 500, {
-      ok: false,
-      error: usage?.error || "Prompt service usage count update failed after provider call",
-      provider: "grok"
+      quota: grokQuotaPayload(err?.quota?.record)
     });
     return;
   }
@@ -11531,6 +11512,11 @@ function createAdminServer() {
 
       if (req.method === "POST" && pathName === "/api/client/grok/image-reverse") {
         await handleGrokImageReverseRequest(req, res);
+        return;
+      }
+
+      if (req.method === "POST" && pathName === "/api/client/runninghub/ui-catalog") {
+        await handleRunningHubUiCatalogRequest(req, res);
         return;
       }
 

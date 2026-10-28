@@ -398,22 +398,23 @@
 
   async function runGrokComplete(options,references,checkActive) {
     const api=options.electronAPI||root.electronAPI||{},cpu=api.promptAssistantUiDesignCpu;
-    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整 Grok 看图分析需要更新本地助手并登录 NovaFlow；本次未调用付费分析');
+    if(typeof cpu!=='function'||typeof root.NovaFlowWebRuntime?.auth!=='function') throw new Error('完整在线看图分析需要更新本地助手并登录 NovaFlow；本次未调用付费分析');
     const request=[stripTargetStyleContract(options.prompt),options.requirements||''].filter(Boolean).join('\n');
     const callCpu=async payload=>{const r=await cpu({surface:'ui-design',...payload});if(r?.ok===false||!r?.data)throw new Error(r?.error||'UI CPU 组件未返回有效结果');return r.data;};
     const reverse=localApi(options,references);
-    if(typeof reverse!=='function')throw new Error('Grok 目录设计需要本地助手先识别布局；未切换分析来源');
+    if(typeof reverse!=='function')throw new Error('在线目录设计需要本地助手先识别布局；未切换分析来源');
     const capability=await cpu({surface:'ui-design',action:'capabilities'});
-    if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('请更新 2.0.81 本地助手后使用完整 Grok 目录设计；本次未调用付费分析');
+    if((capability?.data?.localCompletePlanner!=='native-catalog-v3'||capability?.data?.sourceContract!=='observed-rows-v2'))throw new Error('请更新 2.0.81 本地助手后使用完整在线目录设计；本次未调用付费分析');
     const sourceResult=await reverse({uiPlanner:'native-catalog-v3',surface:'ui-design',targetEngine:'qwen-2.1',uiDesignIntent:'redesign',uiPreserveLayout:true,uiAnalysisStage:'source-only',currentPrompt:request,images:references.map(r=>({dataUrl:r.dataUrl,role:r.role}))});
     checkActive();const source=sourceResult?.data||sourceResult;
-    if(sourceResult?.ok===false||!source?.bundle||source.uiCatalog?.recognitionMethod!=='native-source-catalog-v3')throw new Error(sourceResult?.error||'Grok 前置布局识别未完成；未提交云端分析或生图');
+    if(sourceResult?.ok===false||!source?.bundle||source.uiCatalog?.recognitionMethod!=='native-source-catalog-v3')throw new Error(sourceResult?.error||'在线分析的前置布局识别未完成；未提交云端分析或生图');
     const job=await callCpu({action:'native-ui-cloud',bundle:source.bundle,images:references.map(r=>({dataUrl:r.dataUrl,role:r.role}))});
     checkActive();
     const requestId=root.crypto?.randomUUID?.();if(!requestId)throw new Error('浏览器不能创建分析请求标识');
-    const reply=await root.NovaFlowWebRuntime.auth('POST','/../novaflow-grok-lean-research/analyze-v2',{...job,requestId},180000);
+    const reply=await root.NovaFlowWebRuntime.auth('POST','/api/client/runninghub/ui-catalog',{...job,requestId},180000);
     checkActive();
-    if(!reply?.ok||reply.model!=='grok-4.3'||reply.providerCallCount!==1||reply.retryCount!==0||reply.clientRequestId!==requestId||reply.finishReason!=='completed')throw new Error(reply?.error||'Grok 目录分析未完成；未切换分析来源或提交生图');
+    const model=typeof reply?.model==='string'?reply.model.trim():'';
+    if(!reply?.ok||!model||reply.providerCallCount!==1||reply.retryCount!==0||reply.clientRequestId!==requestId||reply.finishReason!=='completed'||typeof reply.rawOutputText!=='string'||!reply.rawOutputText.trim())throw new Error(reply?.error||'在线目录分析未完成；未切换分析来源或提交生图');
     const compiled=await callCpu({action:'native-ui-compile',bundle:source.bundle,raw:reply.rawOutputText});
     checkActive();
     const layoutReference=references.findIndex(r=>r.role==='layout')+1;

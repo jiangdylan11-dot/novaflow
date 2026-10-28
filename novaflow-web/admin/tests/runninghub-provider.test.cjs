@@ -20,10 +20,13 @@ test("admin page no longer offers ComfyUI, Grok, or Google provider fields", () 
   assert.equal(renderer.includes("function providerConnectionBadge"), false);
 });
 
-test("domestic defaults and model configuration remain independent of existing providers", () => {
+test("image host stays domestic and the LLM host defaults to the international site", () => {
   const parsed = rh.parseConfig({ apiKey: fakeKey, llmModel: "model-from-provider-list", gptImageEndpoint: "/openapi/v2/example/text-to-image" });
   assert.equal(parsed.baseUrl, "https://www.runninghub.cn");
-  assert.equal(parsed.llmBaseUrl, "https://llm.runninghub.cn/v1");
+  assert.equal(parsed.llmBaseUrl, "https://llm.runninghub.ai/v1");
+  assert.equal(rh.parseConfig({ llmBaseUrl: "https://llm.runninghub.cn/v1" }).llmBaseUrl, "https://llm.runninghub.cn/v1");
+  assert.equal(rh.parseConfig({ llmBaseUrl: "https://llm.runninghub.ai/v1" }).llmBaseUrl, "https://llm.runninghub.ai/v1");
+  assert.equal(rh.readConfig(() => "").llmModel, "xai/grok-4.7");
   assert.equal(Object.hasOwn(parsed, "googleImageEndpoint"), false);
   assert.equal(Object.values(rh.ENV).includes("NOVAFLOW_RUNNINGHUB_GOOGLE_IMAGE_ENDPOINT"), false);
   assert.equal(parsed.updateApiKey, true);
