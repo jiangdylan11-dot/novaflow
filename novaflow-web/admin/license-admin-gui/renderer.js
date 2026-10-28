@@ -3,7 +3,7 @@ function $(id) {
 }
 
 // Every native alert()/confirm() left the page unable to take typing on
-// Windows (the 积分/次数 field after 新建用户 stayed dead until a restart).
+// Windows (an input after 新建用户 stayed dead until a restart).
 // Ask the main process to hand keyboard focus back as each one closes.
 for (const name of ["alert", "confirm"]) {
   const nativeDialog = window[name].bind(window);
@@ -66,11 +66,8 @@ let adminDataStatusLocked = false;
 let userManagementState = {
   usersResult: null,
   creditsResult: null,
-  grokQuotasResult: null,
-  providerQuotaResultsByKey: {},
   users: [],
   credits: [],
-  grokQuotas: [],
   writable: false,
   createWritable: false,
   deleteWritable: false
@@ -82,10 +79,6 @@ let passwordEditState = {
 // Last signing-key status from refresh(); the dashboard's system panel shows it.
 let signingKeyStatusText = "";
 
-const PROVIDER_QUOTA_OPTIONS = [
-  { key: "grok", label: "提示词服务", shortLabel: "提示词服务" }
-];
-
 const USER_STATUS_OPTIONS = [
   ["active", "active"],
   ["disabled", "disabled"]
@@ -93,14 +86,13 @@ const USER_STATUS_OPTIONS = [
 
 // users.plan decides where a user's work may run: 普通 (trial) only on the
 // machine the local assistant opened, 中级 (standard) also on 普通 pool
-// nodes, 高级 (pro / team) on every pool node.
+// nodes, 高级 (pro) on every pool node. Legacy team is the same as pro.
 const USER_PLAN_OPTIONS = [
   ["trial", "普通（仅本机）"],
   ["standard", "中级（普通节点）"],
-  ["pro", "高级（所有节点）"],
-  ["team", "团队（所有节点）"]
+  ["pro", "高级（所有节点）"]
 ];
-const USER_PLAN_SHORT = { trial: "普通", standard: "中级", pro: "高级", team: "团队" };
+const USER_PLAN_SHORT = { trial: "普通", standard: "中级", pro: "高级" };
 
 // gpu_workers.tier: 普通 nodes serve 中级 and 高级 accounts, 高级 nodes serve
 // 高级 accounts only.
@@ -148,6 +140,9 @@ function showModule(moduleName) {
   }
   if (name === "compute") {
     void loadComputeData();
+  }
+  if (name === "art-knowledge") {
+    void window.NovaFlowArtKnowledgeReview?.open();
   }
 }
 
@@ -367,22 +362,6 @@ function displayNameByUserId(userMap, userId, fallback) {
   return fallback || userAccountLabel(user) || user?.display_name || String(userId || "-");
 }
 
-function grokQuotaTextByUserId(quotas, userId) {
-  const record = (quotas || []).find((item) => String(item.user_id || "") === String(userId || ""));
-  if (!record) return "0 / 0";
-  return `${formatNumber(record.remaining_count || 0)} / ${formatNumber(record.allocated_count || 0)}`;
-}
-
-function normalizeProviderQuotaKey(value) {
-  const key = String(value || "grok").trim().toLowerCase();
-  return PROVIDER_QUOTA_OPTIONS.some((item) => item.key === key) ? key : "grok";
-}
-
-function providerQuotaLabel(providerKey) {
-  const key = normalizeProviderQuotaKey(providerKey);
-  return PROVIDER_QUOTA_OPTIONS.find((item) => item.key === key)?.label || key;
-}
-
 function normalizeUserStatusValue(value) {
   const s = String(value || "active").trim().toLowerCase();
   return USER_STATUS_OPTIONS.some(([key]) => key === s) ? s : "active";
@@ -390,7 +369,18 @@ function normalizeUserStatusValue(value) {
 
 function normalizeUserPlanValue(value) {
   const s = String(value || "trial").trim().toLowerCase();
+  if (s === "team") return "pro";
   return USER_PLAN_OPTIONS.some(([key]) => key === s) ? s : "trial";
+}
+
+function planBadge(plan) {
+  const raw = String(plan || "trial").trim().toLowerCase();
+  const key = raw === "team" ? "pro" : (USER_PLAN_OPTIONS.some(([item]) => item === raw) ? raw : "trial");
+  const badge = document.createElement("span");
+  badge.className = `badge plan-${key === "standard" ? "standard" : key === "pro" ? "pro" : "trial"}`;
+  badge.textContent = USER_PLAN_SHORT[key] || "普通";
+  badge.title = raw === "team" ? "pro" : key;
+  return badge;
 }
 
 function userDisplayName(user) {
@@ -508,30 +498,6 @@ function verifyPasswordResetResult(result) {
   }
 }
 
-async function loadAdminProviderQuotaDataset(providerKey) {
-  const key = normalizeProviderQuotaKey(providerKey);
-  const api = window.adminAPI?.getAdminProviderQuotas;
-  const legacyApi = window.adminAPI?.getAdminGrokProviderQuotas;
-  const res = typeof api === "function"
-    ? await api(key)
-    : key === "grok" && typeof legacyApi === "function" ? await legacyApi() : null;
-  if (!res?.ok) {
-    return {
-      providerKey: key,
-      source: "supabase",
-      status: "error",
-      configured: true,
-      records: [],
-      error: `Supabase Error: ${String(res?.error || "admin_provider_quota_api_missing")}`,
-      durationMs: 0
-    };
-  }
-  return {
-    providerKey: key,
-    ...(res.result || { source: "mock", records: [] })
-  };
-}
-
 async function loadAdminProviderStatus(apiName) {
   const api = window.adminAPI?.[apiName];
   if (typeof api !== "function") {
@@ -551,7 +517,7 @@ async function loadAdminProviderStatus(apiName) {
       connected: false,
       accountStatus: "unknown",
       balance: { text: "读取失败", supported: false },
-      error: `ComfyUI Error: ${String(res?.error || "unknown")}`
+      error: String(res?.error || "读取失败")
     };
   }
   return res.result || { source: "provider", status: "mock", configured: false };
@@ -570,27 +536,14 @@ function findSettingRecord(settingsResult, key) {
   return (settingsResult?.records || []).find((record) => String(record?.key || "") === key) || null;
 }
 
-function providerBudgetBalanceFromSettings(settingsResult, providerKey = "comfyui") {
-  const setting = findSettingRecord(settingsResult, `provider_budget_${String(providerKey || "").toLowerCase()}`);
-  const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
-  const balance = Number(value.balance ?? value.value);
-  return Number.isFinite(balance) ? balance : null;
-}
-
-function renderUsers(usersResult, creditsResult, grokQuotasResult) {
+function renderUsers(usersResult, creditsResult) {
   const updateWritable = userManagementWritable(usersResult);
   const createWritable = updateWritable && userManagementWritable(creditsResult);
-  const providerQuotaResultsByKey = grokQuotasResult?.records
-    ? { grok: grokQuotasResult }
-    : (grokQuotasResult || {});
   userManagementState = {
     usersResult,
     creditsResult,
-    grokQuotasResult: providerQuotaResultsByKey.grok || { records: [] },
-    providerQuotaResultsByKey,
     users: usersResult?.records || [],
     credits: creditsResult?.records || [],
-    grokQuotas: providerQuotaResultsByKey.grok?.records || [],
     writable: updateWritable,
     createWritable,
     deleteWritable: updateWritable
@@ -606,14 +559,10 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
   }
 
   if (isErrorResult(usersResult)) {
-    replaceRows("usersTableBody", [], 10, resultErrorText(usersResult));
+    replaceRows("usersTableBody", [], 9, resultErrorText(usersResult));
     return;
   }
   const creditMap = new Map((creditsResult?.records || []).map((item) => [String(item.user_id || ""), item]));
-  const providerQuotaMaps = Object.fromEntries(PROVIDER_QUOTA_OPTIONS.map((provider) => [
-    provider.key,
-    new Map(((providerQuotaResultsByKey[provider.key]?.records) || []).map((item) => [String(item.user_id || ""), item]))
-  ]));
   const filter = String($("userSearchInput")?.value || "").trim().toLowerCase();
   const sourceRows = (usersResult.records || []).filter((user) => {
     if (!filter) return true;
@@ -628,7 +577,7 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
 
   const allUsers = usersResult.records || [];
   const activeCount = allUsers.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
-  const proCount = allUsers.filter((user) => ["pro", "team"].includes(normalizeUserPlanValue(user.plan))).length;
+  const proCount = allUsers.filter((user) => normalizeUserPlanValue(user.plan) === "pro").length;
   const standardCount = allUsers.filter((user) => normalizeUserPlanValue(user.plan) === "standard").length;
   const creditTotal = allUsers.reduce((sum, user) => {
     const credit = creditMap.get(String(user.id || ""));
@@ -650,18 +599,10 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
     tr.appendChild(textCell(accountLabel || "-"));
     tr.appendChild(textCell(formatDateTime(user.created_at)));
 
-    tr.appendChild(textCell(formatCreditAmount(user.current_credits ?? credit?.balance ?? 0)));
-    const providerQuotaText = PROVIDER_QUOTA_OPTIONS.map((provider) => {
-      const quota = providerQuotaMaps[provider.key].get(String(user.id || ""));
-      return `${provider.shortLabel} ${grokQuotaTextByUserId([quota].filter(Boolean), user.id)}`;
-    }).join(" / ");
-    const providerQuotaTitle = PROVIDER_QUOTA_OPTIONS.map((provider) => {
-      const quota = providerQuotaMaps[provider.key].get(String(user.id || ""));
-      return `${provider.label} 已用：${formatNumber(quota?.used_count || 0)}`;
-    }).join("\n");
-    const providerQuotaCell = textCell(providerQuotaText);
-    providerQuotaCell.title = providerQuotaTitle || "未分配提示词服务次数";
-    tr.appendChild(providerQuotaCell);
+    const balance = Number(user.current_credits ?? credit?.balance ?? 0) || 0;
+    const creditCell = textCell(formatCreditAmount(balance));
+    creditCell.classList.toggle("creditZero", balance === 0);
+    tr.appendChild(creditCell);
 
     const planSelect = createTableSelect(
       USER_PLAN_OPTIONS,
@@ -669,7 +610,9 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
       !userManagementState.writable,
       "plan"
     );
-    tr.appendChild(nodeCell(planSelect));
+    const planCell = document.createElement("td");
+    planCell.append(planBadge(user.plan), planSelect);
+    tr.appendChild(planCell);
 
     const statusSelect = createTableSelect(
       USER_STATUS_OPTIONS,
@@ -704,6 +647,13 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
 
     const actionWrap = document.createElement("div");
     actionWrap.className = "tableActions";
+    const ledgerButton = document.createElement("button");
+    ledgerButton.type = "button";
+    ledgerButton.className = "btn secondary";
+    ledgerButton.textContent = "流水";
+    ledgerButton.title = "查看该用户的积分流水";
+    ledgerButton.addEventListener("click", () => openUserLedger(user));
+    actionWrap.appendChild(ledgerButton);
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "btn secondary";
@@ -740,110 +690,85 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
     tr.appendChild(nodeCell(actionWrap));
     return tr;
   });
-  replaceRows("usersTableBody", rows, 10, filter ? "没有匹配的用户" : "暂无用户数据");
+    replaceRows("usersTableBody", rows, 9, filter ? "没有匹配的用户" : "暂无用户数据");
 }
 
-function renderCreditStats(creditsResult, quotaResult) {
+function renderCreditStats(creditsResult) {
   const credits = creditsResult?.records || [];
-  const quotas = quotaResult?.records || [];
   const total = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
   const funded = credits.filter((item) => Number(item.balance || 0) > 0).length;
-  const allocated = quotas.reduce((sum, item) => sum + (Number(item.allocated_count || 0) || 0), 0);
-  const used = quotas.reduce((sum, item) => sum + (Number(item.used_count || 0) || 0), 0);
   setText("creditStatTotal", formatCreditAmount(total));
   setText("creditStatFunded", formatNumber(funded));
-  setText("creditStatEmpty", formatNumber(credits.length - funded));
-  setText("quotaStatAllocated", formatNumber(allocated));
-  setText("quotaStatUsed", formatNumber(used));
+  setText("creditStatEmpty", formatNumber(Math.max(0, credits.length - funded)));
 }
 
-// 会员管理: one row per user with the account tier, the credit balance and the
-// prompt-service quota side by side. 「调整」 picks that user for the one edit
-// panel on the right.
-let memberState = { users: [], credits: [], quotas: [], usersResult: null, creditsResult: null, quotaResult: null, writable: false };
+let memberState = { users: [], credits: [], usersResult: null, creditsResult: null, writable: false };
+let memberAdjust = { userId: "", mode: "set" };
 
-function renderMembers(usersResult, creditsResult, quotaResult) {
+function renderMembers(usersResult, creditsResult) {
   const body = $("membersTableBody");
   if (!body) return;
   const live = (result) => result?.source === "supabase" && result?.status !== "error";
   memberState = {
     usersResult,
     creditsResult,
-    quotaResult,
     users: usersResult?.records || [],
     credits: creditsResult?.records || [],
-    quotas: quotaResult?.records || [],
-    writable: live(usersResult) && live(creditsResult) && live(quotaResult)
+    writable: live(usersResult) && live(creditsResult)
   };
   if (isErrorResult(usersResult)) {
-    replaceRows("membersTableBody", [], 7, resultErrorText(usersResult));
+    replaceRows("membersTableBody", [], 4, resultErrorText(usersResult));
     return;
   }
   const creditByUser = new Map(memberState.credits.map((item) => [String(item.user_id || ""), item]));
-  const quotaByUser = new Map(memberState.quotas.map((item) => [String(item.user_id || ""), item]));
   const filter = String($("memberSearchInput")?.value || "").trim().toLowerCase();
   const users = memberState.users.filter((user) => !filter || searchableUserText(user).includes(filter));
 
   const rows = users.map((user) => {
     const userId = String(user.id || "");
     const credit = creditByUser.get(userId);
-    const quota = quotaByUser.get(userId);
-    const plan = normalizeUserPlanValue(user.plan);
+    const balance = Number(user.current_credits ?? credit?.balance ?? 0) || 0;
     const tr = document.createElement("tr");
     tr.dataset.userId = userId;
     if (userId && userId === memberAdjust.userId) tr.classList.add("active");
     tr.appendChild(textCell(userAccountLabel(user) || userDisplayName(user)));
-    const planBadge = document.createElement("span");
-    planBadge.className = "badge " + (plan === "trial" ? "disabled" : plan === "standard" ? "expired" : "active");
-    planBadge.textContent = USER_PLAN_SHORT[plan] || plan;
-    tr.appendChild(nodeCell(planBadge));
-    tr.appendChild(textCell(formatCreditAmount(user.current_credits ?? credit?.balance ?? 0)));
-    tr.appendChild(textCell(formatNumber(quota?.allocated_count || 0)));
-    tr.appendChild(textCell(formatNumber(quota?.used_count || 0)));
-    tr.appendChild(textCell(formatNumber(quota?.remaining_count || 0)));
+    tr.appendChild(nodeCell(planBadge(user.plan)));
+    const creditCell = textCell(formatCreditAmount(balance));
+    creditCell.classList.toggle("creditZero", balance === 0);
+    tr.appendChild(creditCell);
 
     const actions = document.createElement("div");
     actions.className = "tableActions";
     const adjust = document.createElement("button");
     adjust.type = "button";
-    adjust.className = "btn secondary";
+    adjust.className = "btn primary";
     adjust.textContent = "调整";
-    adjust.title = "在右侧改这个会员的积分或 Grok 次数";
+    adjust.title = "在右侧改这个会员的积分";
     adjust.addEventListener("click", () => selectMemberForAdjust(userId));
-    actions.appendChild(adjust);
+    const ledger = document.createElement("button");
+    ledger.type = "button";
+    ledger.className = "btn secondary";
+    ledger.textContent = "流水";
+    ledger.title = "在 AI 服务中查看该用户的积分流水";
+    ledger.addEventListener("click", () => openUserLedger(user));
+    actions.append(adjust, ledger);
     tr.appendChild(nodeCell(actions));
     return tr;
   });
   setText("membersCount", filter ? `匹配 ${rows.length} / ${memberState.users.length}` : `共 ${memberState.users.length} 个`);
-  replaceRows("membersTableBody", rows, 7, filter ? "没有匹配的用户" : "暂无用户数据");
+  replaceRows("membersTableBody", rows, 4, filter ? "没有匹配的用户" : "暂无用户数据");
   renderMemberAdjust({ prefill: true });
 }
-
-// The one edit panel: two kinds, one number, one button. 积分调整 writes the
-// balance the number says; Grok 次数分配 writes the total the number says.
-// The row's 调整 button picks the member.
-let memberAdjust = { kind: "credits", userId: "" };
 
 function memberAdjustUser() {
   return memberState.users.find((user) => String(user.id || "") === memberAdjust.userId) || null;
 }
 
-function memberAdjustCurrent() {
+function memberAdjustBalance() {
   const user = memberAdjustUser();
   if (!user) return null;
   const credit = memberState.credits.find((item) => String(item.user_id || "") === memberAdjust.userId);
-  const quota = memberState.quotas.find((item) => String(item.user_id || "") === memberAdjust.userId);
-  const allocated = Number(quota?.allocated_count || 0);
-  const used = Number(quota?.used_count || 0);
-  const reserved = Number(quota?.reserved_count || 0);
-  return {
-    balance: Number(user.current_credits ?? credit?.balance ?? 0) || 0,
-    allocated,
-    used,
-    reserved,
-    remaining: Math.max(0, allocated - used - reserved),
-    note: String(quota?.note || "")
-  };
+  return Number(user.current_credits ?? credit?.balance ?? 0) || 0;
 }
 
 function selectMemberForAdjust(userId) {
@@ -859,45 +784,37 @@ function selectMemberForAdjust(userId) {
   }
 }
 
-function setMemberAdjustKind(kind) {
-  memberAdjust.kind = kind === "quota" ? "quota" : "credits";
-  renderMemberAdjust({ prefill: true });
-  const input = $("memberAdjustValue");
-  if (input && !input.disabled) {
-    input.focus();
-    input.select();
-  }
-}
-
 function renderMemberAdjust({ prefill = false } = {}) {
   const target = $("memberAdjustTarget");
   const label = $("memberAdjustLabel");
   const hint = $("memberAdjustHint");
   const input = $("memberAdjustValue");
+  const reason = $("memberAdjustReason");
+  const note = $("memberAdjustNote");
+  const mode = $("memberAdjustMode");
   const submit = $("memberAdjustSubmit");
   if (!target || !label || !hint || !input || !submit) return;
-  const isQuota = memberAdjust.kind === "quota";
-  document.querySelectorAll("[data-adjust-kind]").forEach((button) => {
-    button.classList.toggle("active", button.getAttribute("data-adjust-kind") === memberAdjust.kind);
-  });
-  label.textContent = isQuota ? "新的 Grok 总次数" : "新的积分余额";
+  const kind = mode?.value === "add" || mode?.value === "deduct" ? mode.value : "set";
+  memberAdjust.mode = kind;
+  label.textContent = kind === "add" ? "充值积分" : kind === "deduct" ? "扣减积分" : "新的积分余额";
   const user = memberAdjustUser();
-  const current = memberAdjustCurrent();
-  if (!user || !current) {
+  const balance = memberAdjustBalance();
+  const enabled = Boolean(user) && memberState.writable && balance != null;
+  input.disabled = !enabled;
+  if (reason) reason.disabled = !enabled;
+  if (note) note.disabled = !enabled;
+  if (mode) mode.disabled = !enabled;
+  submit.disabled = !enabled;
+  if (!user || balance == null) {
     target.textContent = "在左侧列表点「调整」选择会员";
     hint.textContent = "";
     input.value = "";
-    input.disabled = true;
-    submit.disabled = true;
+    setText("memberAdjustStatus", "");
     return;
   }
   target.textContent = `会员：${userAccountLabel(user) || userDisplayName(user)}`;
-  hint.textContent = isQuota
-    ? `当前总次数 ${formatNumber(current.allocated)} · 已用 ${formatNumber(current.used)} · 剩余 ${formatNumber(current.remaining)}`
-    : `当前积分 ${formatCreditAmount(current.balance)}`;
-  input.disabled = !memberState.writable;
-  submit.disabled = !memberState.writable;
-  if (prefill) input.value = String(isQuota ? current.allocated : current.balance);
+  hint.textContent = `当前积分 ${formatCreditAmount(balance)}`;
+  if (prefill && kind === "set") input.value = String(balance);
   setText("memberAdjustStatus", memberState.writable ? "" : "mock 数据不可写入");
 }
 
@@ -905,8 +822,8 @@ async function submitMemberAdjust() {
   const status = $("memberAdjustStatus");
   const input = $("memberAdjustValue");
   const user = memberAdjustUser();
-  const current = memberAdjustCurrent();
-  if (!user || !current) {
+  const balance = memberAdjustBalance();
+  if (!user || balance == null) {
     alert("请先在列表里点「调整」选择会员");
     return;
   }
@@ -914,39 +831,53 @@ async function submitMemberAdjust() {
     alert("当前不是 Supabase 可写数据，不能写入。");
     return;
   }
+  const mode = $("memberAdjustMode")?.value === "add" || $("memberAdjustMode")?.value === "deduct" ? $("memberAdjustMode").value : "set";
   const value = Number(input?.value);
-  if (input?.value === "" || !Number.isInteger(value) || value < 0) {
-    alert("请输入大于等于 0 的整数");
+  const reason = String($("memberAdjustReason")?.value || "").trim();
+  const note = String($("memberAdjustNote")?.value || "").trim();
+  if (input?.value === "" || !Number.isInteger(value) || value < 0 || (mode !== "set" && value <= 0)) {
+    alert(mode === "set" ? "请输入大于等于 0 的整数" : "请输入大于 0 的整数");
     return;
   }
-  const isQuota = memberAdjust.kind === "quota";
+  if (!reason || reason.length > 200) {
+    alert("请填写不超过 200 字的调整原因");
+    return;
+  }
   const who = userAccountLabel(user) || userDisplayName(user);
-  const before = isQuota ? current.allocated : current.balance;
-  const fmt = isQuota ? formatNumber : formatCreditAmount;
-  if (value === before) {
+  const delta = mode === "set" ? value - balance : mode === "deduct" ? -value : value;
+  const after = balance + delta;
+  if (after < 0) {
+    alert("扣减后积分不能小于 0");
+    return;
+  }
+  if (delta === 0) {
     toast("数值没有变化");
     return;
   }
-  const confirmed = confirm(isQuota
-    ? `确定把 ${who} 的 Grok 次数从 ${fmt(before)} 改成 ${fmt(value)}？\n已用 ${formatNumber(current.used)} 不变，剩余将为 ${formatNumber(Math.max(0, value - current.used - current.reserved))}。`
-    : `确定把 ${who} 的积分余额从 ${fmt(before)} 改成 ${fmt(value)}？`);
+  const confirmed = confirm(`确定${mode === "add" ? "充值" : mode === "deduct" ? "扣减" : "把余额设为"} ${formatCreditAmount(mode === "set" ? value : value)}？\n${who}：${formatCreditAmount(balance)} → ${formatCreditAmount(after)}\n原因：${reason}`);
   if (!confirmed) return;
 
   if (status) status.textContent = "写入中...";
   try {
-    const res = isQuota
-      ? await window.adminAPI.setAdminProviderQuota({ providerKey: "grok", userId: user.id, allocatedCount: value, note: current.note })
-      : await window.adminAPI.adjustAdminUserCredits({ userId: user.id, mode: "set", amount: value, feature: "后台积分分配", note: "" });
+    const res = await window.adminAPI.adjustAdminUserCredits({
+      userId: user.id,
+      mode,
+      amount: value,
+      feature: reason,
+      reason,
+      note
+    });
     const result = res?.result || {};
     if (!res?.ok || result.status === "error" || result.ok === false) {
       if (status) status.textContent = "写入失败";
       alert(result.error || res?.error || "写入失败");
       return;
     }
-    if (status) status.textContent = `已写入：${fmt(before)} → ${fmt(value)}`;
-    toast(isQuota ? `${who} 的 Grok 次数已改为 ${fmt(value)}` : `${who} 的积分已改为 ${fmt(value)}`);
+    const afterBalance = result.adjustment?.afterBalance ?? result.adjustment?.after_balance ?? after;
+    if (status) status.textContent = `已写入：${formatCreditAmount(balance)} → ${formatCreditAmount(afterBalance)}`;
+    toast(`${who} 的积分已更新`);
     await loadAdminData();
-    if (status) status.textContent = `已写入：${fmt(before)} → ${fmt(value)}`;
+    if (status) status.textContent = `已写入：${formatCreditAmount(balance)} → ${formatCreditAmount(afterBalance)}`;
   } catch (err) {
     if (status) status.textContent = "写入失败";
     alert(`写入失败：${String(err?.message || err)}`);
@@ -970,8 +901,8 @@ function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runningh
 
   const runninghubFields = {
     BaseUrl: runninghubStatus?.baseUrl || "https://www.runninghub.cn",
-    LlmBaseUrl: runninghubStatus?.llmBaseUrl || "https://llm.runninghub.cn/v1",
-    LlmModel: runninghubStatus?.llmModel || "",
+    LlmBaseUrl: runninghubStatus?.llmBaseUrl || "https://llm.runninghub.ai/v1",
+    LlmModel: runninghubStatus?.llmModel || "xai/grok-4.7",
     GptImageEndpoint: runninghubStatus?.gptImageEndpoint || ""
   };
   for (const [field, value] of Object.entries(runninghubFields)) {
@@ -984,15 +915,6 @@ function renderProviderRuntimeConfigControls(_comfyStatus, _grokStatus, runningh
   if (status) status.textContent = "写入本机后台环境变量";
 }
 
-function providerHealthStatusText(comfyStatus, hasSecretRef) {
-  if (!comfyStatus?.configured) {
-    return comfyStatus?.secretConfigured || hasSecretRef ? "已配置密钥引用，等待后台 secret resolver" : "未配置";
-  }
-  if (comfyStatus.status === "connected") return "连接正常";
-  if (comfyStatus.status === "error") return "连接失败";
-  return comfyStatus.status || "未知";
-}
-
 function renderRunningHubProviderHealth(status) {
   const connection = !status?.configured ? "未配置 Key" : status?.connected ? "账户连接正常" : status?.checked ? "检测失败" : "已配置，尚未检测";
   renderSettingRows("runninghubProviderHealthRows", [
@@ -1001,7 +923,7 @@ function renderRunningHubProviderHealth(status) {
     { label: "国内站余额", value: status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测" },
     { label: "当前运行任务数", value: status?.currentTaskCounts == null ? "-" : String(status.currentTaskCounts) },
     { label: "上次检测时间", value: status?.checkedAt ? formatDateTime(status.checkedAt) : "尚未检测" },
-    { label: "功能迁移", value: "云端 GPT 出图走 RunningHub；本地 Comfy 与本地模型保持可用" },
+    { label: "在线语言模型", value: status?.llmModel || "xai/grok-4.7" },
     { label: "检测耗时", value: durationText(status?.durationMs) },
     { label: "错误提示", value: status?.error || "-" }
   ], "尚未检测");
@@ -1011,39 +933,26 @@ function runningHubProviderRow(provider, status) {
   const tr = document.createElement("tr");
   tr.appendChild(textCell(provider.name || "RunningHub（国内站）"));
   tr.appendChild(textCell(status?.configured ? "已配置（不回显）" : "未配置"));
-  tr.appendChild(textCell("待迁移"));
-  tr.appendChild(textCell("尚未启用计费"));
-  const badge = statusBadge(status?.connected ? "Connected" : status?.checked ? "Error" : status?.configured ? "Configured" : "Not Configured");
+  const badge = document.createElement("span");
+  badge.className = "badge " + (status?.connected ? "active" : status?.checked ? "error" : "disabled");
+  badge.textContent = status?.connected ? "已连接" : status?.checked ? "检测失败" : status?.configured ? "已配置" : "未配置";
   badge.title = status?.error || (status?.checked ? "只读账户检测；模型调用未验证" : "尚未检测账户");
   tr.appendChild(nodeCell(badge));
   tr.appendChild(textCell(status?.connected ? "账户可用" : status?.checked ? "检测失败" : "尚未检测"));
-  tr.appendChild(textCell(status?.balance?.text ? `国内站 ${status.balance.text}` : "未检测"));
+  const usd = status?.balance?.money == null ? null : formatUsdAmount(status.balance.money);
+  const currency = String(status?.balance?.currency || "").toUpperCase();
+  tr.appendChild(textCell(!status?.checked ? "未检测" : usd && (currency === "" || currency === "USD") ? `${usd} USD` : "未检测"));
   return tr;
 }
 
 function renderAiServices(providersResult, _settingsResult, _comfyStatus, _grokStatus, runninghubStatus) {
   renderRunningHubProviderHealth(runninghubStatus);
   if (isErrorResult(providersResult)) {
-    replaceRows("aiProvidersTableBody", [], 7, resultErrorText(providersResult));
+    replaceRows("aiProvidersTableBody", [], 5, resultErrorText(providersResult));
     return;
   }
   const providerRows = ensureCoreAiProviders(providersResult.records || []).map((provider) => runningHubProviderRow(provider, runninghubStatus));
-  replaceRows("aiProvidersTableBody", providerRows, 7, "暂无 Provider 数据");
-}
-
-function renderSettings(settingsResult) {
-  if (isErrorResult(settingsResult)) {
-    renderSettingRows("systemSettingsRows", [], resultErrorText(settingsResult));
-    return;
-  }
-  const settings = (settingsResult.records || []).map(systemSettingEntry);
-  const rows = [
-    { key: "default_billing_multiplier", label: "默认积分倍率", value: "1.00x" },
-    { key: "new_user_initial_credits", label: "新用户初始积分", value: 0 },
-    { key: "provider_budget_comfyui", label: "ComfyUI 手动总余额", value: "生成成功后自动扣减" },
-    { key: "provider_quota_grok_<user_id>", label: "提示词服务次数", value: "管理员按用户手动分配" }
-  ].map((fallback) => settings.find((item) => item.key === fallback.key) || fallback);
-  renderSettingRows("systemSettingsRows", rows, "暂无系统设置");
+  replaceRows("aiProvidersTableBody", providerRows, 5, "暂无 Provider 数据");
 }
 
 const WEB_TASK_STATUS_TEXT = {
@@ -1058,207 +967,338 @@ const WEB_TASK_STATUS_TEXT = {
   expired: "已过期"
 };
 
-// The dashboard's 最近活动: who generated what on which node, newest first,
-// plus any credit log rows the backend still writes. The lightweight backend
-// writes no credit logs, so in practice this is the compute usage feed.
-function renderDashboardRecentActivity(data) {
+let dashboardActivityTab = "ledger";
+let dashboardLedgerFilter = "all";
+let dashboardSnapshot = null;
+let rhRefreshLockedUntil = 0;
+
+function formatUsdAmount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+}
+
+function activityStamp(value) {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return { text: "-", title: "" };
+  const pad = (n) => String(n).padStart(2, "0");
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const text = sameYear
+    ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock}`
+    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock}`;
+  return { text, title: `${formatDateTime(value)}:${pad(d.getSeconds())}` };
+}
+
+function ledgerStatusBadge(status) {
+  const badge = document.createElement("span");
+  const key = String(status || "");
+  if (key === "settled") {
+    badge.className = "badge active";
+    badge.textContent = "已扣费";
+  } else if (key === "released") {
+    badge.className = "badge";
+    badge.textContent = "已释放";
+  } else if (key === "reserved") {
+    badge.className = "badge info";
+    badge.textContent = "预留";
+  } else {
+    badge.className = "badge";
+    badge.textContent = key || "-";
+  }
+  return badge;
+}
+
+function ledgerCreditNode(row) {
+  const span = document.createElement("span");
+  const status = String(row?.status || "");
+  const details = row?.pricing_details && typeof row.pricing_details === "object" ? row.pricing_details : {};
+  const delta = Number(details.delta);
+  if (status === "released") {
+    span.className = "creditMuted";
+    span.textContent = "0";
+    return span;
+  }
+  if (status === "reserved") {
+    span.className = "creditMuted";
+    span.textContent = formatCreditAmount(row.estimated_credits ?? 0);
+    return span;
+  }
+  const amount = Number(row.settled_credits ?? row.estimated_credits ?? 0) || 0;
+  const signed = Number.isFinite(delta) && details.mode ? delta : -Math.abs(amount);
+  span.className = signed > 0 ? "creditPlus" : signed < 0 ? "creditMinus" : "creditMuted";
+  span.textContent = signed > 0 ? `+${formatCreditAmount(signed)}` : signed < 0 ? `−${formatCreditAmount(Math.abs(signed))}` : "0";
+  return span;
+}
+
+function setCountPill(id, count) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = count > 0 ? String(count) : "";
+}
+
+function renderDashboardRecentActivity() {
   const container = $("dashboardRecentActivity");
   if (!container) return;
   container.replaceChildren();
-
+  const data = dashboardSnapshot || {};
   const empty = (title, hint) => {
     const wrap = document.createElement("div");
     wrap.className = "emptyState";
-    const titleEl = document.createElement("div");
-    titleEl.className = "emptyTitle";
-    titleEl.textContent = title || "暂无数据";
-    const hintEl = document.createElement("div");
-    hintEl.className = "emptyText";
-    hintEl.textContent = hint || "有用户在算力节点上生成后会显示在这里";
-    wrap.appendChild(titleEl);
-    wrap.appendChild(hintEl);
+    wrap.appendChild(Object.assign(document.createElement("div"), { className: "emptyTitle", textContent: title }));
+    wrap.appendChild(Object.assign(document.createElement("div"), { className: "emptyText", textContent: hint }));
     container.appendChild(wrap);
   };
+  document.querySelectorAll("[data-activity-tab]").forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-activity-tab") === dashboardActivityTab);
+  });
+  const filter = $("dashboardLedgerFilter");
+  if (filter) filter.hidden = dashboardActivityTab !== "ledger";
 
-  const logsResult = data?.creditLogs;
-  const usageResult = data?.usage;
-  if (isErrorResult(usageResult)) {
-    empty(computeErrorText(usageResult), "请检查 Supabase 配置或刷新列表");
+  if (dashboardActivityTab === "tasks") {
+    const usageResult = data.usage;
+    if (isErrorResult(usageResult)) {
+      empty("算力任务读取失败", "请检查 Supabase 配置或刷新列表");
+      setCountPill("dashboardTaskCount", 0);
+      return;
+    }
+    const userById = new Map((data.users?.records || []).map((user) => [String(user.id || ""), user]));
+    const workerById = new Map((data.workers?.records || []).map((worker) => [String(worker.id || ""), worker]));
+    const tasks = (Array.isArray(usageResult?.records) ? usageResult.records : []).slice(0, 20);
+    setCountPill("dashboardTaskCount", tasks.length);
+    if (!tasks.length) {
+      empty("暂无算力任务", "有用户在算力节点上生成后会显示在这里");
+      return;
+    }
+    const table = document.createElement("table");
+    table.className = "dataTable activityTable";
+    table.innerHTML = "<thead><tr><th>时间</th><th>用户</th><th>节点</th><th>状态</th></tr></thead>";
+    const body = document.createElement("tbody");
+    tasks.forEach((task) => {
+      const user = userById.get(String(task.user_id || ""));
+      const worker = workerById.get(String(task.assigned_worker_id || ""));
+      const stamp = activityStamp(task.completed_at || task.created_at || "");
+      const tr = document.createElement("tr");
+      const time = textCell(stamp.text);
+      time.title = stamp.title;
+      tr.appendChild(time);
+      tr.appendChild(textCell(userAccountLabel(user) || user?.display_name || "-"));
+      tr.appendChild(textCell(worker?.worker_name || "尚未分配"));
+      const badge = document.createElement("span");
+      const status = String(task.status || "");
+      badge.className = "badge " + (status === "completed" ? "active" : status === "failed" ? "error" : "info");
+      badge.textContent = WEB_TASK_STATUS_TEXT[status] || status || "-";
+      tr.appendChild(nodeCell(badge));
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    container.appendChild(table);
     return;
   }
 
-  const userById = new Map((data?.users?.records || []).map((user) => [String(user.id || ""), user]));
-  const workerById = new Map((data?.workers?.records || []).map((worker) => [String(worker.id || ""), worker]));
-  const items = [];
-
-  (Array.isArray(usageResult?.records) ? usageResult.records : []).forEach((task) => {
-    const user = userById.get(String(task.user_id || ""));
-    const worker = workerById.get(String(task.assigned_worker_id || ""));
-    const account = userAccountLabel(user) || user?.display_name || String(task.user_id || "").slice(0, 8) || "(未知用户)";
-    const node = worker?.worker_name || (task.assigned_worker_id ? String(task.assigned_worker_id).slice(0, 8) : "");
-    items.push({
-      account,
-      at: task.completed_at || task.created_at || "",
-      title: node ? `在 ${node} 生成` : "尚未分配到节点",
-      meta: String(task.task_type || "任务"),
-      status: String(task.status || ""),
-      statusText: WEB_TASK_STATUS_TEXT[task.status] || String(task.status || "-")
-    });
-  });
-
-  (Array.isArray(logsResult?.records) && !isErrorResult(logsResult) ? logsResult.records : []).forEach((record) => {
-    const account = String(record.email || record.user_id || record.userId || "-");
-    const amount = record.amount ?? record.balance ?? record.delta ?? "-";
-    items.push({
-      account,
-      at: record.created_at || record.updated_at || record.at || "",
-      title: String(record.feature || record.source || record.mode || "后台记录"),
-      meta: formatCreditAmount(amount),
-      status: "",
-      statusText: ""
-    });
-  });
-
-  if (!items.length) {
-    empty("暂无活动", usageResult?.message || logsResult?.message || "有用户在算力节点上生成后会显示在这里");
+  const ledger = data.ledger;
+  if (ledger?.error) {
+    empty("积分流水读取失败", "去 AI 服务查询或调整筛选");
+    setCountPill("dashboardLedgerCount", 0);
     return;
   }
-
-  // One line per person, newest person first; the line folds that person's
-  // generations away until it is clicked.
-  items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const groups = new Map();
-  items.forEach((item) => {
-    if (!groups.has(item.account)) {
-      groups.set(item.account, { account: item.account, items: [], completed: 0, failed: 0, running: 0 });
-    }
-    const group = groups.get(item.account);
-    group.items.push(item);
-    if (item.status === "completed") group.completed += 1;
-    else if (item.status === "failed") group.failed += 1;
-    else if (["queued", "assigned", "uploading", "processing", "created"].includes(item.status)) group.running += 1;
+  const rows = (Array.isArray(ledger?.records) ? ledger.records : []).slice(0, 20);
+  setCountPill("dashboardLedgerCount", rows.length);
+  if (!rows.length) {
+    empty("暂无积分流水", "去 AI 服务查询或调整筛选");
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "dataTable activityTable";
+  table.innerHTML = "<thead><tr><th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class=\"num\">积分</th><th class=\"num\">估算 RH 成本</th></tr></thead>";
+  const body = document.createElement("tbody");
+  rows.forEach((row) => {
+    const stamp = activityStamp(row.created_at);
+    const tr = document.createElement("tr");
+    const time = textCell(stamp.text);
+    time.title = stamp.title;
+    tr.appendChild(time);
+    tr.appendChild(textCell(row.user_email_or_account || "-"));
+    tr.appendChild(textCell(row.feature || "-"));
+    tr.appendChild(textCell(row.model || "-"));
+    tr.appendChild(nodeCell(ledgerStatusBadge(row.status)));
+    const credit = document.createElement("td");
+    credit.className = "num";
+    credit.appendChild(ledgerCreditNode(row));
+    tr.appendChild(credit);
+    const cost = textCell(row.rh_cost_usd == null || row.rh_cost_usd === "" ? "-" : formatUsdAmount(row.rh_cost_usd) || "-");
+    cost.classList.add("num");
+    tr.appendChild(cost);
+    body.appendChild(tr);
   });
+  table.appendChild(body);
+  container.appendChild(table);
+}
 
-  const badgeFor = (item) => {
-    const badge = document.createElement("span");
-    const tone = item.status === "completed" ? "active"
-      : item.status === "failed" ? "error"
-      : ["cancelled", "expired"].includes(item.status) ? "disabled"
-      : "expired";
-    badge.className = `badge ${tone}`;
-    badge.textContent = item.statusText;
-    return badge;
-  };
-
-  [...groups.values()].slice(0, 10).forEach((group) => {
-    const latest = group.items[0];
-    const details = document.createElement("details");
-    details.className = "activityGroup";
-
-    const summary = document.createElement("summary");
-    summary.className = "activityItem activitySummary";
-    const main = document.createElement("div");
-    main.className = "activityMain";
-    const title = document.createElement("div");
-    title.className = "activityTitle";
-    title.textContent = group.account;
-    const meta = document.createElement("div");
-    meta.className = "activityMeta";
-    const parts = [`${formatNumber(group.items.length)} 次`];
-    if (group.completed) parts.push(`已完成 ${formatNumber(group.completed)}`);
-    if (group.failed) parts.push(`失败 ${formatNumber(group.failed)}`);
-    if (group.running) parts.push(`进行中 ${formatNumber(group.running)}`);
-    parts.push(`最近 ${latest.title}`);
-    meta.textContent = parts.join(" · ");
-    main.appendChild(title);
-    main.appendChild(meta);
-    const side = document.createElement("div");
-    side.className = "activitySide";
-    if (latest.statusText) side.appendChild(badgeFor(latest));
-    const time = document.createElement("div");
-    time.className = "activityTime";
-    time.textContent = formatDateTime(latest.at);
-    side.appendChild(time);
-    const chevron = document.createElement("span");
-    chevron.className = "activityChevron";
-    chevron.setAttribute("aria-hidden", "true");
-    side.appendChild(chevron);
-    summary.appendChild(main);
-    summary.appendChild(side);
-    details.appendChild(summary);
-
-    const list = document.createElement("div");
-    list.className = "activitySubList";
-    group.items.slice(0, 30).forEach((item) => {
-      const row = document.createElement("div");
-      row.className = "activityItem activitySub";
-      const subMain = document.createElement("div");
-      subMain.className = "activityMain";
-      const subTitle = document.createElement("div");
-      subTitle.className = "activityTitle";
-      subTitle.textContent = item.title;
-      const subMeta = document.createElement("div");
-      subMeta.className = "activityMeta";
-      subMeta.textContent = item.meta;
-      subMain.appendChild(subTitle);
-      subMain.appendChild(subMeta);
-      const subSide = document.createElement("div");
-      subSide.className = "activitySide";
-      if (item.statusText) subSide.appendChild(badgeFor(item));
-      const subTime = document.createElement("div");
-      subTime.className = "activityTime";
-      subTime.textContent = formatDateTime(item.at);
-      subSide.appendChild(subTime);
-      row.appendChild(subMain);
-      row.appendChild(subSide);
-      list.appendChild(row);
-    });
-    if (group.items.length > 30) {
-      const more = document.createElement("div");
-      more.className = "activityMore";
-      more.textContent = `还有 ${formatNumber(group.items.length - 30)} 条，见「算力节点」的使用记录`;
-      list.appendChild(more);
-    }
-    details.appendChild(list);
-    container.appendChild(details);
-  });
+function renderDashboardRhCard(view) {
+  const card = $("dashboardRhCard");
+  const value = $("dashboardRhDomesticBalance");
+  const meta = $("dashboardRhDomesticMeta");
+  const notice = $("dashboardRhNotice");
+  const refresh = $("dashboardRhRefresh");
+  if (!card || !value || !meta) return;
+  card.classList.remove("rh-warning", "rh-danger", "rh-error", "rh-stale");
+  if (refresh) refresh.disabled = view?.state === "loading" || Date.now() < rhRefreshLockedUntil;
+  if (view?.state === "loading") {
+    value.replaceChildren(Object.assign(document.createElement("span"), { className: "skeletonLine" }));
+    value.removeAttribute("title");
+    meta.textContent = "读取国内站余额…";
+    if (notice) notice.hidden = true;
+    return;
+  }
+  if (view?.state === "error") {
+    card.classList.add("rh-error");
+    value.textContent = "—";
+    value.title = "";
+    meta.textContent = String(view.message || "余额读取失败").slice(0, 40);
+    if (notice) notice.hidden = true;
+    return;
+  }
+  const balance = view?.domesticBalance || {};
+  const low = view?.lowBalance || {};
+  const currency = String(balance.currency || "").toUpperCase();
+  const usd = currency === "" || currency === "USD" ? formatUsdAmount(balance.remainMoney) : null;
+  if (!usd) {
+    card.classList.add("rh-error");
+    value.textContent = "—";
+    meta.textContent = balance.remainMoney == null ? "尚未检测" : "余额读取失败";
+    if (notice) notice.hidden = true;
+    return;
+  }
+  const money = Number(balance.remainMoney);
+  const tone = low.stale ? "stale" : money < 2 ? "danger" : money < 5 ? "warning" : "ok";
+  if (tone === "danger") card.classList.add("rh-danger");
+  if (tone === "warning") card.classList.add("rh-warning");
+  if (tone === "stale") card.classList.add("rh-stale");
+  value.replaceChildren(document.createTextNode(usd), Object.assign(document.createElement("span"), { className: "unit", textContent: "USD" }));
+  value.title = usd + " USD";
+  const checked = balance.checkedAt ? `更新于 ${formatDateTime(balance.checkedAt)}` : "尚未检测";
+  const bits = ["国内站", checked];
+  if (tone === "danger") bits.push("低于阈值");
+  if (tone === "warning") bits.push("接近阈值");
+  if (tone === "stale") bits.push("缓存已过期");
+  meta.textContent = bits.join(" · ");
+  if (!notice) return;
+  notice.classList.remove("danger", "warning");
+  if (tone === "danger") {
+    notice.hidden = false;
+    notice.classList.add("danger");
+    notice.replaceChildren(
+      Object.assign(document.createElement("div"), { className: "tipTitle", textContent: "国内站余额低于阈值" }),
+      Object.assign(document.createElement("div"), { textContent: `当前 ${usd} USD，低于 2 USD。新的云任务会拒绝，不扣积分，本地任务不受影响。` })
+    );
+  } else if (tone === "warning") {
+    notice.hidden = false;
+    notice.classList.add("warning");
+    notice.replaceChildren(
+      Object.assign(document.createElement("div"), { className: "tipTitle", textContent: "国内站余额接近阈值" }),
+      Object.assign(document.createElement("div"), { textContent: `当前 ${usd} USD，低于 5 USD 警告线，暂不阻断新的云任务。` })
+    );
+  } else if (tone === "stale" && low.blocked) {
+    notice.hidden = false;
+    notice.classList.add("warning");
+    notice.replaceChildren(
+      Object.assign(document.createElement("div"), { className: "tipTitle", textContent: "国内站余额缓存已过期" }),
+      Object.assign(document.createElement("div"), { textContent: "缓存已过期，已阻断新云任务。不扣积分，本地任务不受影响。" })
+    );
+  } else if (tone === "stale") {
+    notice.hidden = false;
+    notice.classList.add("warning");
+    notice.replaceChildren(
+      Object.assign(document.createElement("div"), { className: "tipTitle", textContent: "国内站余额缓存已过期" }),
+      Object.assign(document.createElement("div"), { textContent: "缓存已过期。当前策略是放行并告警，不阻断新的云任务。" })
+    );
+  } else {
+    notice.hidden = true;
+    notice.replaceChildren();
+  }
 }
 
 function renderDashboard(data) {
-  const results = [data.users, data.credits, data.providers, data.settings];
-  const users = data.users.records || [];
-  const providers = data.providers.records || [];
-  const credits = data.credits.records || [];
+  dashboardSnapshot = data;
+  const results = [data.users, data.credits, data.providers, data.settings].filter(Boolean);
+  const users = data.users?.records || [];
+  const credits = data.credits?.records || [];
   const totalCredits = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
-  const comfyBudgetBalance = providerBudgetBalanceFromSettings(data.settings, "comfyui");
   const sourceLabel = hasErrorResult(results) ? "Supabase Error" : hasSupabaseResult(results) ? "Supabase" : "Mock";
-
-  $("dashboardUsersCount").textContent = formatNumber(users.length);
-  $("dashboardAiStatusValue").textContent = formatNumber(providers.length);
-  $("dashboardAiStatusMeta").textContent = `Provider 数量：${formatNumber(providers.length)} · ${sourceLabel}`;
-  $("dashboardCreditCost").textContent = formatCreditAmount(totalCredits);
-  const comfyBudgetEl = $("dashboardComfyBudgetBalance");
-  if (comfyBudgetEl) comfyBudgetEl.textContent = comfyBudgetBalance == null ? "-" : formatProviderBalance(comfyBudgetBalance);
-  const comfyBudgetMeta = $("dashboardComfyBudgetMeta");
-  if (comfyBudgetMeta) {
-    comfyBudgetMeta.textContent = comfyBudgetBalance == null
-      ? "未保存 ComfyUI 手动总余额"
-      : `生成成功后自动扣减 · ${sourceLabel}`;
-  }
+  const usersEl = $("dashboardUsersCount");
+  if (usersEl) usersEl.textContent = formatNumber(users.length);
+  const creditEl = $("dashboardCreditCost");
+  if (creditEl) creditEl.textContent = formatCreditAmount(totalCredits);
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
-  renderDashboardRecentActivity(data);
-
+  renderDashboardRecentActivity();
   const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
+  const rh = data.runninghubStatus || {};
+  const connection = !rh.configured ? "未配置 Key" : rh.connected ? "账户连接正常" : rh.checked ? "检测失败" : "已配置，尚未检测";
   renderSettingRows("dashboardSystemRows", [
     { label: "数据源", value: sourceLabel },
-    { label: "ComfyUI 连接", value: providerHealthStatusText(data.comfyStatus, false) },
-    {
-      label: "在线语言模型",
-      value: data.runninghubStatus?.configured ? `已配置 · ${data.runninghubStatus.llmModel || "xai/grok-4.7"}` : "未配置"
-    },
+    { label: "RunningHub 连接", value: connection },
+    { label: "在线语言模型", value: rh.configured ? `已配置 · ${rh.llmModel || "xai/grok-4.7"}` : "未配置" },
     { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
     { label: "启用用户", value: `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
   ], "暂无状态数据");
+}
+
+function openUserLedger(user) {
+  const account = userAccountLabel(user) || user?.display_name || "";
+  showModule("ai-services");
+  const input = $("ledgerUser");
+  if (input) input.value = account;
+  const feature = $("ledgerFeature");
+  if (feature && !feature.value) feature.value = "";
+  const panel = input?.closest("section.panel");
+  if (panel) {
+    panel.classList.add("ledgerFocus");
+    panel.scrollIntoView({ block: "start" });
+    setTimeout(() => panel.classList.remove("ledgerFocus"), 1600);
+  }
+  void queryLedger(false);
+}
+
+function openActivityDestination() {
+  if (dashboardActivityTab === "tasks") {
+    showModule("compute");
+    return;
+  }
+  showModule("ai-services");
+  const panel = $("ledgerUser")?.closest("section.panel");
+  panel?.scrollIntoView({ block: "start" });
+  panel?.classList.add("ledgerFocus");
+  setTimeout(() => panel?.classList.remove("ledgerFocus"), 1600);
+}
+
+async function refreshDomesticBalance() {
+  const now = Date.now();
+  if (now < rhRefreshLockedUntil) return;
+  rhRefreshLockedUntil = now + 30000;
+  const refresh = $("dashboardRhRefresh");
+  const other = $("refreshDomesticBalance");
+  if (refresh) {
+    refresh.disabled = true;
+    refresh.textContent = "刷新中";
+  }
+  if (other) other.disabled = true;
+  try {
+    const response = await window.adminAPI.checkAdminRunningHubProviderStatus();
+    if (!response?.ok) throw new Error(response?.error || "余额读取失败");
+    await renderFeatureCreditAdmin();
+    toast("已更新国内站余额");
+  } catch (err) {
+    renderDashboardRhCard({ state: "error", message: "余额读取失败" });
+    toast("余额读取失败");
+  } finally {
+    if (refresh) refresh.textContent = "刷新国内站余额";
+    if (other) other.disabled = false;
+    const wait = Math.max(0, rhRefreshLockedUntil - Date.now());
+    setTimeout(() => {
+      if (refresh) refresh.disabled = false;
+    }, wait);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1616,7 +1656,7 @@ function renderComputeUsage(usageResult, usersResult, workersResult) {
     status.textContent = isErrorResult(usageResult)
       ? computeErrorText(usageResult)
       : tasks.length
-        ? tasks.length + " 次生成"
+        ? tasks.length + " 条任务"
         : "";
   }
   const purgeButton = $("computePurgeUsage");
@@ -1723,52 +1763,52 @@ async function loadComputeData() {
   }
 }
 
+async function loadDashboardLedger() {
+  if (typeof window.adminAPI?.queryCreditLedger !== "function") return { records: [], error: "余额读取失败" };
+  const response = await window.adminAPI.queryCreditLedger({
+    status: dashboardLedgerFilter === "all" ? "" : dashboardLedgerFilter,
+    limit: 20
+  });
+  if (!response?.ok) return { records: [], error: "积分流水读取失败" };
+  return response.result || { records: [] };
+}
+
 async function loadAdminData() {
   try {
+    renderDashboardRhCard({ state: "loading" });
     const users = await loadAdminDataset("getAdminUsers", "usersDataBadge");
     const credits = await loadAdminDataset("getAdminCredits", "creditsDataBadge");
-    const creditLogs = await loadAdminDataset("getAdminCreditLogs");
     const providers = await loadAdminDataset("getAdminAiProviders", "aiServicesDataBadge");
     const settings = await loadAdminDataset("getAdminSystemSettings", "settingsDataBadge");
-    const quotaEntries = await Promise.all(PROVIDER_QUOTA_OPTIONS.map(async (provider) => {
-      const result = await loadAdminProviderQuotaDataset(provider.key);
-      return [provider.key, result];
-    }));
-    const providerQuotasByKey = Object.fromEntries(quotaEntries);
-    const comfyStatus = await loadAdminProviderStatus("getAdminComfyUiProviderStatus");
-    const grokStatus = await loadAdminProviderStatus("getAdminGrokProviderStatus");
     const runninghubStatus = await loadAdminProviderStatus("getAdminRunningHubProviderStatus");
-    // For the dashboard's activity feed; the 算力节点 page loads its own copy.
-    const usage = await loadAdminDataset("getAdminWebTaskUsage");
+    const usage = typeof window.adminAPI?.getAdminWebTaskUsage === "function"
+      ? (await window.adminAPI.getAdminWebTaskUsage({ limit: 100 }))?.result || { records: [] }
+      : { records: [] };
     const workers = await loadAdminDataset("getAdminGpuWorkers");
-    const userMap = new Map((users.records || []).map((user) => [String(user.id || ""), user]));
-    const quotaResults = Object.values(providerQuotasByKey);
-    const results = [users, credits, providers, settings, ...quotaResults];
+    const ledger = await loadDashboardLedger();
+    const results = [users, credits, providers, settings];
 
     setAdminDataSourceStatus(results);
-    setDataBadge("creditsDataBadge", hasErrorResult([credits, ...quotaResults]) ? { status: "error" } : hasSupabaseResult([credits, ...quotaResults]) ? { source: "supabase" } : { source: "mock" });
+    setDataBadge("creditsDataBadge", hasErrorResult([credits]) ? { status: "error" } : hasSupabaseResult([credits]) ? { source: "supabase" } : { source: "mock" });
     setDataBadge("aiServicesDataBadge", hasErrorResult([providers, settings]) ? { status: "error" } : hasSupabaseResult([providers, settings]) ? { source: "supabase" } : { source: "mock" });
 
-    renderUsers(users, credits, providerQuotasByKey);
-    renderAiServices(providers, settings, comfyStatus, grokStatus, runninghubStatus);
+    renderUsers(users, credits);
+    renderAiServices(providers, settings, null, null, runninghubStatus);
     await renderFeatureCreditAdmin();
-    renderProviderRuntimeConfigControls(comfyStatus, grokStatus, runninghubStatus);
-    renderSettings(settings);
-    renderCreditStats(credits, providerQuotasByKey.grok);
-    renderMembers(users, credits, providerQuotasByKey.grok);
-    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus, runninghubStatus, usage, workers });
+    renderProviderRuntimeConfigControls(null, null, runninghubStatus);
+    renderCreditStats(credits);
+    renderMembers(users, credits);
+    renderDashboard({ users, credits, providers, settings, runninghubStatus, usage, workers, ledger });
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
-    ["dashboardDataBadge", "usersDataBadge", "creditsDataBadge", "aiServicesDataBadge", "tasksDataBadge", "consumptionDataBadge", "settingsDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
-    replaceRows("usersTableBody", [], 10, message);
-    replaceRows("aiProvidersTableBody", [], 7, message);
-    replaceRows("aiModelsTableBody", [], 5, message);
-    replaceRows("tasksTableBody", [], 6, message);
-    replaceRows("consumptionTableBody", [], 5, message);
-    renderSettingRows("systemSettingsRows", [], message);
-    replaceRows("membersTableBody", [], 7, message);
-    renderDashboardRecentActivity({ usage: { source: "supabase", status: "error", records: [], error: message } });
+    ["dashboardDataBadge", "usersDataBadge", "creditsDataBadge", "aiServicesDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
+    replaceRows("usersTableBody", [], 9, message);
+    replaceRows("aiProvidersTableBody", [], 5, message);
+    replaceRows("membersTableBody", [], 4, message);
+    dashboardSnapshot = { usage: { source: "supabase", status: "error", records: [], error: message }, ledger: { records: [], error: message } };
+    renderDashboardRecentActivity();
+    renderDashboardRhCard({ state: "error", message: "余额读取失败" });
   }
 }
 
@@ -2046,7 +2086,7 @@ async function deleteUserRow(button) {
   const confirmed = await confirmByTyping({
     title: "删除用户",
     hint: accountLabel,
-    warning: "会删除后台用户资料、积分余额、提示词服务次数和可匹配的 Auth 登录身份。不可恢复。",
+    warning: "会删除后台用户资料、积分余额和可匹配的 Auth 登录身份。不可恢复。",
     label: "输入账号确认",
     expected: accountLabel
   });
@@ -2180,11 +2220,7 @@ function providerRuntimeConfigPayload(providerKey) {
     baseUrl: $("runninghubRuntimeBaseUrl")?.value.trim() || "https://www.runninghub.cn",
     llmBaseUrl: $("runninghubRuntimeLlmBaseUrl")?.value.trim() || "https://llm.runninghub.cn/v1",
     llmModel: $("runninghubRuntimeLlmModel")?.value.trim() || "",
-    gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || "",
-    imagePrices: {
-      gpt_image_2_5: Number($("runninghubGptImage25Price")?.value),
-      gpt_image_2_official: Number($("runninghubGptImageOfficialPrice")?.value)
-    }
+    gptImageEndpoint: $("runninghubRuntimeGptImageEndpoint")?.value.trim() || ""
   };
 }
 
@@ -2758,8 +2794,7 @@ async function init() {
   $("userSearchInput").addEventListener("input", () => {
     renderUsers(
       userManagementState.usersResult || { records: [] },
-      userManagementState.creditsResult || { records: [] },
-      userManagementState.providerQuotaResultsByKey || {}
+      userManagementState.creditsResult || { records: [] }
     );
   });
   $("createAdminUser").addEventListener("click", async () => {
@@ -2768,13 +2803,28 @@ async function init() {
   $("memberSearchInput")?.addEventListener("input", () => {
     renderMembers(
       memberState.usersResult || { records: [] },
-      memberState.creditsResult || { records: [] },
-      memberState.quotaResult || { records: [] }
+      memberState.creditsResult || { records: [] }
     );
   });
-  document.querySelectorAll("[data-adjust-kind]").forEach((button) => {
-    button.addEventListener("click", () => setMemberAdjustKind(button.getAttribute("data-adjust-kind") || "credits"));
+  $("memberAdjustMode")?.addEventListener("change", () => renderMemberAdjust({ prefill: false }));
+  document.querySelectorAll("[data-activity-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      dashboardActivityTab = button.getAttribute("data-activity-tab") === "tasks" ? "tasks" : "ledger";
+      renderDashboardRecentActivity();
+    });
   });
+  document.querySelectorAll("[data-ledger-filter]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      dashboardLedgerFilter = button.getAttribute("data-ledger-filter") || "all";
+      document.querySelectorAll("[data-ledger-filter]").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      if (dashboardSnapshot) dashboardSnapshot.ledger = await loadDashboardLedger();
+      renderDashboardRecentActivity();
+    });
+  });
+  $("dashboardActivityViewAll")?.addEventListener("click", () => openActivityDestination());
+  $("dashboardRhRefresh")?.addEventListener("click", () => { void refreshDomesticBalance(); });
   $("memberAdjustSubmit")?.addEventListener("click", () => { void submitMemberAdjust(); });
   $("memberAdjustValue")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -2789,7 +2839,7 @@ async function init() {
     await saveProviderRuntimeConfig("runninghub");
   });
   $("checkRunninghubProvider").addEventListener("click", checkRunningHubProvider);
-  $("refreshDomesticBalance")?.addEventListener("click", checkRunningHubProvider);
+  $("refreshDomesticBalance")?.addEventListener("click", () => { void refreshDomesticBalance(); });
   $("saveFeatureCredits")?.addEventListener("click", () => { void saveFeatureCreditForm(); });
   $("queryCreditLedger")?.addEventListener("click", () => { void queryLedger(false); });
   $("exportCreditLedger")?.addEventListener("click", () => { void queryLedger(true); });
@@ -3097,29 +3147,47 @@ async function renderFeatureCreditAdmin() {
       $("featureCreditCny").value = config.credits_to_cny == null ? "" : String(config.credits_to_cny);
     }
     const balance = result?.domesticBalance || {};
-    const money = balance.remainMoney == null || balance.remainMoney === "" ? "未检测" : `${balance.remainMoney} ${balance.currency || ""}`.trim();
-    const cost = result?.estimatedRhCostUsd == null ? "暂无" : `${result.estimatedRhCostUsd} USD`;
+    const low = result?.lowBalance || {};
+    const currency = String(balance.currency || "").toUpperCase();
+    const usd = balance.remainMoney == null || balance.remainMoney === "" || (currency && currency !== "USD")
+      ? null
+      : formatUsdAmount(balance.remainMoney);
+    const money = usd ? `${usd} USD` : (balance.remainMoney == null || balance.remainMoney === "" ? "未检测" : "—");
+    const cost = result?.estimatedRhCostUsd == null ? "暂无" : `${formatUsdAmount(result.estimatedRhCostUsd) || result.estimatedRhCostUsd} USD`;
     renderSettingRows("featureCreditOpsRows", [
       { label: "国内站余额", value: money },
       { label: "流水估算 RH 成本", value: cost },
-      { label: "低余额阈值", value: `${config.low_balance_usd ?? 2} USD / ${config.low_balance_cny ?? 15} CNY` },
+      { label: "低余额阈值", value: `${config.low_balance_usd ?? 2} USD` },
       { label: "上次检测", value: balance.checkedAt ? formatDateTime(balance.checkedAt) : "尚未检测" },
-      { label: "缓存", value: result?.lowBalance?.stale ? "已过期或缺失" : "有效" }
+      { label: "缓存", value: low.stale ? "缓存已过期" : "有效" }
     ], "尚未检测");
     const warning = $("rhLowBalanceWarning");
     const warningText = $("rhLowBalanceWarningText");
-    const low = result?.lowBalance || {};
-    if (warning) warning.hidden = !(low.warn || low.blocked);
-    if (warningText) {
-      warningText.textContent = low.stale
-        ? (low.blocked
-          ? "国内站余额未检测或已过期，当前策略是阻断新的云任务，且不扣积分。"
-          : "国内站余额未检测或已过期。当前策略是放行并告警，不阻断新的云任务。")
-        : "云服务余额不足。新的云任务会拒绝，用户看到中文提示且不扣积分。本地任务不受影响。";
+    const warningTitle = warning?.querySelector(".tipTitle");
+    const moneyNumber = usd ? Number(balance.remainMoney) : null;
+    const tone = low.stale ? "stale" : moneyNumber != null && moneyNumber < 2 ? "danger" : moneyNumber != null && moneyNumber < 5 ? "warning" : (low.blocked ? "danger" : "ok");
+    if (warning) {
+      warning.hidden = tone === "ok";
+      warning.classList.toggle("danger", tone === "danger");
+      warning.classList.toggle("warning", tone === "warning" || tone === "stale");
     }
-    if (status) status.textContent = result?.error ? String(result.error) : "已读取";
+    if (warningTitle) {
+      warningTitle.textContent = tone === "warning" ? "国内站余额接近阈值" : tone === "stale" ? "国内站余额缓存已过期" : "国内站余额低于阈值";
+    }
+    if (warningText) {
+      warningText.textContent = tone === "warning"
+        ? `当前 ${usd} USD，低于 5 USD 警告线，暂不阻断新的云任务。`
+        : tone === "stale"
+          ? (low.blocked
+            ? "缓存已过期，已阻断新云任务。不扣积分，本地任务不受影响。"
+            : "缓存已过期。当前策略是放行并告警，不阻断新的云任务。")
+          : `当前 ${usd || "—"} USD，低于 2 USD。新的云任务会拒绝，不扣积分，本地任务不受影响。`;
+    }
+    renderDashboardRhCard(result?.error ? { state: "error", message: "余额读取失败" } : { state: "ready", domesticBalance: balance, lowBalance: low });
+    if (status) status.textContent = result?.error ? "余额读取失败" : "已读取";
   } catch (err) {
-    if (status) status.textContent = String(err?.message || err);
+    if (status) status.textContent = "余额读取失败";
+    renderDashboardRhCard({ state: "error", message: "余额读取失败" });
   }
 }
 
@@ -3176,16 +3244,30 @@ async function queryLedger(download) {
       } else {
         for (const row of records) {
           const tr = document.createElement("tr");
-          for (const value of [row.created_at, row.user_email_or_account, row.feature, row.model, row.status, row.settled_credits ?? row.estimated_credits, row.rh_cost_usd]) {
-            const td = document.createElement("td");
-            td.textContent = value == null ? "" : String(value);
-            tr.appendChild(td);
-          }
+          const stamp = activityStamp(row.created_at);
+          const time = document.createElement("td");
+          time.textContent = stamp.text;
+          time.title = stamp.title;
+          tr.appendChild(time);
+          tr.appendChild(Object.assign(document.createElement("td"), { textContent: row.user_email_or_account || "" }));
+          tr.appendChild(Object.assign(document.createElement("td"), { textContent: row.feature || "" }));
+          tr.appendChild(Object.assign(document.createElement("td"), { textContent: row.model || "" }));
+          const statusCell = document.createElement("td");
+          statusCell.appendChild(ledgerStatusBadge(row.status));
+          tr.appendChild(statusCell);
+          const credit = document.createElement("td");
+          credit.className = "num";
+          credit.appendChild(ledgerCreditNode(row));
+          tr.appendChild(credit);
+          const cost = document.createElement("td");
+          cost.className = "num";
+          cost.textContent = row.rh_cost_usd == null || row.rh_cost_usd === "" ? "" : (formatUsdAmount(row.rh_cost_usd) || "");
+          tr.appendChild(cost);
           body.appendChild(tr);
         }
       }
     }
-    if (status) status.textContent = `${records.length} 条`;
+    if (status) status.textContent = download ? `已导出 ${records.length} 笔` : `${records.length} 笔`;
     if (download && result.csv) {
       const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
