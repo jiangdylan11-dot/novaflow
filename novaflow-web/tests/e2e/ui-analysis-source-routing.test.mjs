@@ -44,7 +44,7 @@ function environment(settings={}) {
     NovaFlowLeftPanelAccordion:{...Object.fromEntries(['headerStyle','titleStyle','iconStyle','labelStyle','chevronStyle','panelStyle','bodyStyle'].map(k=>[k,()=>({})])),chevronClass:()=>'',syncExpanded(){}},
     NovaFlowUiDesignWorkbench:{mount:()=>({getSelection:()=>null,getLayout:()=>null,destroy(){}})},NovaFlowUiDesignInspectorTool:{mount:()=>({update(){},destroy(){}})},
     __NovaFlowArtGenerate:{state,references:()=>refs,activate(){},referenceLimit:()=>10},electronAPI:{}};
-  context.electronAPI.promptAssistantUiDesignCpu=async()=>({ok:true,data:{localCompletePlanner:'complete-catalog-v2'}});context.window=context;vm.createContext(context);
+    context.electronAPI.promptAssistantUiDesignCpu=async()=>({ok:true,data:{localCompletePlanner:'native-catalog-v3',sourceContract:'observed-rows-v2'}});context.window=context;vm.createContext(context);
   for(const n of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js','ui-design.drawing.js'])vm.runInContext(source(n),context,{filename:n});
   const adapter=context.NovaFlowUiDesignDrawing,mounted=adapter.mount({leftHost:left,store,getSessionToken:()=> 'CPU_ONLY_TEST'});
   const group=adapter.renderAnalysisSelector(doc);left.appendChild(group);
@@ -82,9 +82,9 @@ test('the actual design-demand header renders the source selector beside its tit
 for(const prompt of ['@参考图1参考布局。换成迪士尼风格，白雪公主主题的老虎机','参考布局，改成水彩画风；森林精灵主题的游戏界面','参考布局。换成卡通风格\n海盗主题的老虎机','参考布局，白雪公主主题的老虎机，迪士尼画风','参考布局，目标主题：白雪公主','参考布局，完整重做为霓虹都市主题，保留玩法金额']) {
   test('explicit target theme enters the accepted catalog route: '+prompt,async()=>{
     const e=environment();e.state.prompt=prompt;
-    installAnalysis(e,()=>({ok:true,prompt:'按新主题重设计人物背景与符号',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'complete-natural-reference-v1'},uiPlan:{...plan(),visualMode:'theme-redesign'}}));
+    installAnalysis(e,()=>({ok:true,prompt:'按新主题重设计人物背景与符号',uiCatalog:{schema:'nf.ui.structure-catalog.v1',recognitionMethod:'native-source-catalog-v3'},uiPlan:{...plan(),visualMode:'theme-redesign'}}));
     const i=e.input();assert.equal(i.generationIntent,'redesign');const r=await e.context.NovaFlowUiDesignAssistantWorkflow.run(i);
-    assert.equal(e.calls.length,1);assert.equal(e.calls[0].payload.uiPlanner,'complete-catalog-v2');assert.equal(e.calls[0].payload.uiDesignIntent,'redesign');assert.equal(e.calls[0].payload.images[0].role,'layout');
+    assert.equal(e.calls.length,1);assert.equal(e.calls[0].payload.uiPlanner,'native-catalog-v3');assert.equal(e.calls[0].payload.uiDesignIntent,'redesign');assert.equal(e.calls[0].payload.images[0].role,'layout');
     assert.ok(r.uiCatalog);e.mounted.destroy();
   });
 }
@@ -116,7 +116,8 @@ test('analysis failure exits loading; duplicate clicks and cancellation cannot s
   const e=environment();e.state.prompt='参考布局，换成水彩风格';let release;
   installAnalysis(e,()=>new Promise(r=>{release=r;}));
   Object.assign(e.context,{ART_GENERATE_STATE:e.state,artGenerateReferences:()=>e.refs,artGenerateReferenceLimit:()=>10,captureArtGeneratePromptSnapshot(){},setArtGenerateProgress(){},setArtGenerateStatus:(text,error)=>{e.state.status=text;e.state.error=error?text:'';},resetArtGenerateProgress:(text,pct)=>{e.state.progressLabel=text;e.state.progressPct=pct;},artRequestJson:()=>{throw new Error('sampling must not be submitted');}});
-  const s=source('novaflow-brand-runtime.js'),a=s.indexOf('  async function runArtGenerate(options'),z=s.indexOf('  function createArtGenerateExecutionBridge()',a);vm.runInContext(s.slice(a,z),e.context);
+  const s=source('novaflow-brand-runtime.js'),a=s.indexOf('  async function runArtGenerate(options'),z=s.indexOf('  function createArtGenerateExecutionBridge()',a);
+  e.context.pendingArtAgentPreparation=null;vm.runInContext(s.slice(a,z),e.context);
   const first=e.context.runArtGenerate();await tick();await e.context.runArtGenerate();assert.equal(e.calls.length,1);
   e.click('grok');assert.equal(e.input().engine,'local');release({ok:false,error:'Qwen 2.1 UI 设计规划JSON无效，本次未提交生成'});await first;
   assert.equal(e.state.running,false);assert.equal(e.state.progressLabel,'分析失败，未提交生成');assert.match(e.state.error,/JSON无效/);
@@ -124,13 +125,23 @@ test('analysis failure exits loading; duplicate clicks and cancellation cannot s
   release({ok:true,prompt:'late response',uiPlan:plan()});await tick();assert.equal(e.state.running,false);assert.equal(e.state.progressLabel,'任务已中止');assert.equal(e.calls.length,2);e.mounted.destroy();
 });
 
-test('LoRA errors identify the list, expire and clear after a successful read without altering runtime health',async()=>{
-  const e=environment();let now=100000,reads=0;
-  e.context.Date=class extends Date{static now(){return now;}};vm.runInContext(source('art-generate-lora.js'),e.context);
-  const host=new Node(e.doc),options={host,state:{provider:'local',mode:'img2img',loras:[],running:false},loadCatalog:async()=>{reads++;if(reads===1)throw new Error('暂时无生图节点');return{ok:true,items:[{name:'qwen/example.safetensors'}]};}};
-  e.context.NovaFlowArtGenerateLora.mount(options);await tick();assert.ok(host.children[0].children.some(n=>String(n.textContent).startsWith('LoRA 列表读取失败：')));
-  assert.doesNotMatch(e.storage.get('nf_art_lora_catalog_v1'),/error|暂时无/);
-  now+=16000;e.context.NovaFlowArtGenerateLora.mount(options);await tick();assert.equal(reads,2);assert.ok(!host.children[0].children.some(n=>String(n.textContent).includes('失败')));e.mounted.destroy();
+test('LoRA catalogue failures stay off the sidebar, are not stored, and clear after the next connection',async()=>{
+  const e=environment();let reads=0;
+  vm.runInContext(source('art-generate-lora.js'),e.context);
+  const host=new Node(e.doc);host.connected=true;const options={host,state:{provider:'local',mode:'img2img',loras:[],running:false},loadCatalog:async()=>{reads++;if(reads===1)throw new Error('暂时无生图节点');return{ok:true,items:[{name:'qwen/example.safetensors'}]};}};
+  e.context.NovaFlowArtGenerateLora.setConnection(true,'node-a');
+  e.context.NovaFlowArtGenerateLora.mount(options);await tick();await tick();
+  assert.equal(reads,1);
+  assert.ok(!host.children[0].children.some(n=>String(n.textContent).includes('失败')));
+  assert.doesNotMatch(e.storage.get('nf_art_lora_catalog_v1')||'',/error|暂时无/);
+  e.context.NovaFlowArtGenerateLora.setConnection(false);
+  e.context.NovaFlowArtGenerateLora.setConnection(true,'node-b');
+  await tick();await tick();
+  assert.equal(reads,2);
+  const texts=node=>{const own=[String(node.textContent||'')];return own.concat((node.children||[]).flatMap(texts));};
+  assert.ok(texts(host).some(text=>text.includes('example')));
+  assert.ok(!texts(host).some(text=>text.includes('失败')));
+  e.mounted.destroy();
 });
 
 test('pool connection and image-node availability report different facts without a false image green light',async()=>{

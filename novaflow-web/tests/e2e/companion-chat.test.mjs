@@ -18,7 +18,7 @@ test('online vision receives full original bytes and role positions, uses one re
 test('bad images and replay are rejected before provider access; provider failure releases reservation once',async()=>{
  for(const images of [[{dataUrl:'https://private.test/image.png'}],Array(4).fill({dataUrl:PNG}),[{dataUrl:PNG,role:'system'}]])assert.throws(()=>companionInput({...payload(),images}));
  let count=0,released=0;const service=createCompanionChat({provider:{baseUrl:'https://provider.test',model:'fixture',apiKey:'secret'},charge:createOnlineAiCharge({reserve:async()=>({status:'reserved',idempotent:false,amount:1}),settle:async()=>assert.fail('failed vision is not charged'),release:async()=>released++}),fetchImpl:async()=>{count++;return new Response('secret upstream detail',{status:502});}});
- await assert.rejects(service.reply({user:{id:'user'},payload:payload()}),error=>error.status===502&&!error.message.includes('secret'));assert.equal(count,1);assert.equal(released,1);
+ await assert.rejects(service.reply({user:{id:'user'},payload:payload()}),error=>error.status===502&&!error.message.includes('secret'));assert.equal(count,3);assert.equal(released,1);
  const replay=createCompanionChat({provider:{apiKey:'configured',baseUrl:'https://provider.test',model:'fixture'},charge:createOnlineAiCharge({reserve:async()=>({status:'reserved',idempotent:true,amount:1}),settle:async()=>assert.fail('replay must not settle'),release:async()=>assert.fail('replay must not release')}),fetchImpl:async()=>assert.fail('replay must not infer')});
  await assert.rejects(replay.reply({user:{id:'user'},payload:payload()}),error=>error.status===409);
 });

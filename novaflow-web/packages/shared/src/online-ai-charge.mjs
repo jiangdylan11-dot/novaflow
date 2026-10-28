@@ -34,17 +34,20 @@ export function createOnlineAiCharge({ reserve, settle, release } = {}) {
     }
     try {
       const outcome = await run({ amount: granted });
+      // A rejected or incomplete result is not a charge, even if the provider answered.
+      if (outcome?.success === false) {
+        const quota = await release({ userId, feature: featureId, amount: granted, usageKey, reason: outcome?.moderation ? 'moderation' : 'rejected' });
+        return { ...outcome, quota };
+      }
       const used = units(outcome?.amount ?? requested);
       const quota = used > 0
-        ? await settle({ userId, feature: featureId, amount: used, usageKey, success: outcome?.success !== false, metadata: outcome?.metadata || {} })
+        ? await settle({ userId, feature: featureId, amount: used, usageKey, success: true, metadata: outcome?.metadata || {} })
         : await release({ userId, feature: featureId, amount: granted, usageKey, reason: 'no charge' });
       return { ...outcome, quota };
     } catch (error) {
-      const used = units(error?.chargedAmount || 0);
+      // Failure always releases the hold. Call sites cannot settle a failed or moderated request.
       try {
-        error.quota = used > 0
-          ? await settle({ userId, feature: featureId, amount: used, usageKey, success: false, metadata: error.chargeMetadata || { failed: true } })
-          : await release({ userId, feature: featureId, amount: granted, usageKey, reason: 'incomplete' });
+        error.quota = await release({ userId, feature: featureId, amount: granted, usageKey, reason: error?.moderation ? 'moderation' : 'incomplete' });
       } catch {
         error.quotaFailed = true;
       }

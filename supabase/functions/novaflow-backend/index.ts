@@ -1379,7 +1379,7 @@ async function handleGrokPromptOptimize(
           return { amount: providerCallCount, value, metadata: { mode: String((request.inputMeta as AnyRecord).mode || "prompt_optimize"), tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, h3ContractRepairUsed: Boolean(value.h3ContractRepairUsed), success: true } };
         } catch (error) {
           const tracked = error as Error & { grokProviderCallCount?: number; chargedAmount?: number; chargeMetadata?: AnyRecord; grokUsage?: AnyRecord; grokDurationMs?: number };
-          tracked.chargedAmount = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
+          tracked.chargedAmount = 0;
           tracked.chargeMetadata = { mode: "prompt_optimize", error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0, success: false };
           throw error;
         }
@@ -1491,7 +1491,7 @@ async function handleGrokImageReverse(
           return { amount: providerCallCount, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, visualContractRetryUsed: Boolean(value.visualContractRetryUsed), success: true } };
         } catch (error) {
           const tracked = error as Error & { grokProviderCallCount?: number; chargedAmount?: number; chargeMetadata?: AnyRecord; grokUsage?: AnyRecord; grokDurationMs?: number };
-          tracked.chargedAmount = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
+          tracked.chargedAmount = 0;
           tracked.chargeMetadata = { mode, error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0, success: false };
           throw error;
         }
@@ -1602,7 +1602,7 @@ async function handleRunningHubUiCatalog(req: Request, session: { user: PublicUs
           return { amount: 1, value: { rawOutputText, model: posted.data.model || runningHubLlm().model, requestId: posted.requestId }, metadata: { mode: "ui-catalog", model: posted.data.model, success: true } };
         } catch (error) {
           const tracked = error as Error & { chargedAmount?: number; providerCallStarted?: boolean };
-          if (tracked.chargedAmount === undefined) tracked.chargedAmount = tracked.providerCallStarted ? 1 : 0;
+          tracked.chargedAmount = 0;
           throw error;
         }
       }
@@ -1637,7 +1637,7 @@ async function handleGrokChat(req: Request, session: { user: PublicUser }): Prom
           return { amount: 1, value, metadata: { mode: "provider_gateway", tokenUsage: (value.data as AnyRecord)?.usage || null, durationMs: value.durationMs, model: value.model, success: true } };
         } catch (error) {
           const tracked = error as Error & { chargedAmount?: number; grokProviderCallCount?: number };
-          tracked.chargedAmount = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
+          tracked.chargedAmount = 0;
           throw error;
         }
       }

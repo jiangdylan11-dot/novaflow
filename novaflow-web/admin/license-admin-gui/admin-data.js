@@ -4,6 +4,7 @@ const http = require("http");
 const https = require("https");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
+const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runninghub-llm.mjs");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -23,7 +24,7 @@ const DEFAULT_LIMIT = 100;
 const ERROR_PREFIX = "Supabase Error";
 const DEFAULT_COMFYUI_BASE_URL = "https://cloud.comfy.org";
 const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
-const DEFAULT_GROK_MODEL = "grok-4.3";
+const DEFAULT_GROK_MODEL = DEFAULT_RUNNINGHUB_LLM_MODEL;
 const COMFYUI_USER_PATH = "/api/user";
 const COMFYUI_TIMEOUT_MS = 10000;
 const PROVIDER_QUOTA_PREFIX = "provider_quota_";

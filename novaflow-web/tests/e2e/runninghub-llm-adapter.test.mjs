@@ -103,11 +103,14 @@ test('chat completion maps back to a completed Responses answer and hides upstre
   assert.equal(request.authorization, 'Bearer ' + KEY);
   assert.equal(posted.data.output_text, '好');
   assert.doesNotMatch(JSON.stringify(request.body), new RegExp(KEY));
+  let failures = 0;
   await assert.rejects(postRunningHubResponses({
     body: { input: [{ role: 'user', content: [{ type: 'input_text', text: '你好' }] }] },
     config: readRunningHubLlmConfig({ NOVAFLOW_RUNNINGHUB_API_KEY: KEY }),
-    fetchImpl: async () => new Response(KEY, { status: 502 })
-  }), error => error.statusCode === 502 && error.providerCallStarted === true && !error.message.includes(KEY));
+    delay: async () => {},
+    fetchImpl: async () => { failures++; return new Response(JSON.stringify({ error: { message: KEY, code: 'upstream' } }), { status: 502, headers: { 'content-type': 'application/json' } }); }
+  }), error => error.statusCode === 502 && error.retryable === true && error.providerCallStarted === true && !error.message.includes(KEY));
+  assert.equal(failures, 3);
   await assert.rejects(postRunningHubResponses({ body: {}, config: { apiKey: '', baseUrl: DEFAULT_RUNNINGHUB_LLM_BASE_URL, model: DEFAULT_RUNNINGHUB_LLM_MODEL }, fetchImpl: async () => assert.fail('missing key must not fetch') }), error => error.statusCode === 503 && error.providerCallStarted === false);
 });
 
@@ -141,6 +144,50 @@ test('online metering is one charge of a feature id and an amount', async () => 
   calls.length = 0;
   await assert.rejects(charge({ userId: 'user', feature: 'image-reverse', amount: 1, usageKey: 'use-2', run: async () => { const error = new Error('在线模型暂时不可用'); error.chargedAmount = 0; throw error; } }));
   assert.deepEqual(calls, [['reserve', 'image-reverse', 1], ['release', 'image-reverse', 1]]);
-  await assert.rejects(charge({ userId: 'user', feature: 'ui-catalog', amount: 1, usageKey: 'use-3', run: async () => { const error = new Error('failed'); error.chargedAmount = 1; throw error; } }));
-  assert.deepEqual(calls.filter(call => call[0] === 'settle').at(-1), ['settle', 'ui-catalog', 1, false]);
+  await assert.rejects(charge({ userId: 'user', feature: 'ui-catalog', amount: 1, usageKey: 'use-3', run: async () => { const error = new Error('secret upstream moderation text'); error.chargedAmount = 1; error.moderation = true; throw error; } }));
+  assert.equal(calls.some(call => call[0] === 'settle'), false);
+  assert.deepEqual(calls.filter(call => call[0] === 'release').at(-1), ['release', 'ui-catalog', 1]);
+  const rejected = await charge({ userId: 'user', feature: 'prompt-optimize', amount: 1, usageKey: 'use-4', run: async () => ({ success: false, moderation: true, amount: 1 }) });
+  assert.equal(rejected.quota.remaining, 4);
+  assert.equal(calls.filter(call => call[0] === 'settle').length, 0);
+});
+
+test('provider errors stay in Chinese and only busy, server and timeout failures retry', async () => {
+  const secret = 'upstream-secret-must-not-leak';
+  const noWait = async () => {};
+  const config = readRunningHubLlmConfig({ NOVAFLOW_RUNNINGHUB_API_KEY: KEY });
+  const body = { input: [{ role: 'user', content: [{ type: 'input_text', text: '你好' }] }] };
+  const once = async (payload, status, count = { n: 0 }) => {
+    let calls = 0;
+    try {
+      await postRunningHubResponses({ body, config, delay: noWait, fetchImpl: async () => { calls++; count.n++; return new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } }); } });
+    } catch (error) {
+      return { error, calls };
+    }
+    return { calls };
+  };
+  const queued = await once({ code: 421, msg: secret }, 200);
+  assert.equal(queued.calls, 3);
+  assert.match(queued.error.message, /排队/);
+  assert.equal(queued.error.retryable, true);
+  assert.doesNotMatch(queued.error.message, /upstream-secret/);
+  const busy = await once({ code: 1003, message: secret }, 503);
+  assert.equal(busy.calls, 3);
+  assert.match(busy.error.message, /繁忙/);
+  const auth = await once({ code: 1014, msg: secret }, 403);
+  assert.equal(auth.calls, 1);
+  assert.match(auth.error.message, /1014/);
+  assert.equal(auth.error.retryable, false);
+  const invalid = await once({ error: { message: secret, type: 'invalid_request_error', code: 'invalid_prompt' } }, 400);
+  assert.equal(invalid.calls, 1);
+  assert.match(invalid.error.message, /提示内容无法提交/);
+  assert.equal(invalid.error.retryable, false);
+  const moderated = await once({ error: { message: secret, code: 'content_policy_violation' } }, 400);
+  assert.equal(moderated.calls, 1);
+  assert.match(moderated.error.message, /未通过在线审核/);
+  assert.equal(moderated.error.moderation, true);
+  assert.doesNotMatch(moderated.error.message, /upstream-secret/);
+  let timeouts = 0;
+  await assert.rejects(postRunningHubResponses({ body, config, delay: noWait, fetchImpl: async () => { timeouts++; throw Object.assign(new Error(secret), { name: 'TimeoutError' }); } }), error => error.message === '在线模型响应超时' && !error.message.includes(secret));
+  assert.equal(timeouts, 3);
 });

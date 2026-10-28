@@ -1,5 +1,7 @@
 "use strict";
 import * as h3PromptEnhance from './h3-prompt-enhance.mjs';
+import * as artDirection from './art-direction.mjs';
+import { DEFAULT_RUNNINGHUB_LLM_MODEL } from '../../../novaflow-web/packages/shared/src/runninghub-llm.mjs';
 
 const MINIMAX_H3_I2V_REVERSE_PURPOSE = "minimax-h3-i2v-reverse";
 const MINIMAX_H3_FL2V_REVERSE_PURPOSE = "minimax-h3-fl2v-reverse";
@@ -2379,7 +2381,7 @@ function buildMiniMaxH3CompileBody(body, visualIr, options = {}) {
     : [];
   const trustedIr = JSON.stringify(visualIr);
   return {
-    model: String(body?.model || "grok-4.3"),
+    model: String(body?.model || DEFAULT_RUNNINGHUB_LLM_MODEL),
     store: false,
     input: [
       {
@@ -8312,7 +8314,7 @@ function grokResponsesPublicResult(data, options = {}) {
   return result;
 }
 
-function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
+function buildMiniMaxH3GrokOptimizeRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   const prompt = smartAiCurrentPrompt(payload, 20000);
   const requirements = normalizeSmartAiText(
     payload?.requirements || payload?.requirement || payload?.instructions || "",
@@ -8362,7 +8364,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   ].join("\n");
   return {
     body: {
-      model: String(model || "grok-4.3"),
+      model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
       store: false,
       input: [
         {
@@ -8415,7 +8417,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   };
 }
 
-function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
+function buildMiniMaxH3GrokReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   const mode = miniMaxH3ReverseMode(payload);
   if (!mode) throw new Error("unsupported MiniMax H3 reverse purpose");
   const purpose = smartAiPayloadPurpose(payload);
@@ -8480,7 +8482,7 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
       ].join("\n"))
     ];
     return {
-      model: String(model || "grok-4.3"),
+      model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
       store: false,
       input: [{ role: "user", content }],
       temperature: 0.2,
@@ -8771,7 +8773,7 @@ function buildUiQwen21PromptRequest(payload, model, context) {
     `布局、尺寸和参考职责：${requirements}`,
     supportsNegativePrompt ? `用户避免内容：${negative || "无"}；negative_prompt只写具体不希望出现的内容，不强加写实或卡通等画风。` : "不输出负面提示字段。",
   ].join("\n")));
-  return {body:{model:String(model || "grok-4.3"),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,referenceRoles:scenario.images.map(image=>image.role || image.slotType || "reference"),uiPreserveLayout:payload?.uiPreserveLayout===true,uiDesignIntent:payload?.uiDesignIntent,originalPrompt:prompt,purpose:payload?.purpose,supportsNegativePrompt}};
+  return {body:{model:String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,referenceRoles:scenario.images.map(image=>image.role || image.slotType || "reference"),uiPreserveLayout:payload?.uiPreserveLayout===true,uiDesignIntent:payload?.uiDesignIntent,originalPrompt:prompt,purpose:payload?.purpose,supportsNegativePrompt}};
 }
 
 function buildUiQwen21LayoutRequest(model, context) {
@@ -8847,7 +8849,7 @@ function buildUiDesignPromptRequest(payload, model) {
   ].join("\n")));
   return {
     body: {
-      model: String(model || "grok-4.3"), store: false,
+      model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL), store: false,
       input: [{ role: "system", content: [smartAiInputText("你是 NovaFlow UI 视觉设计师。设计完整可用的界面，而不是反推照片或只修改主角。只输出符合 schema 的最终中文 UI 设计方案 JSON。")] }, { role: "user", content }],
       temperature: 0.4, max_output_tokens: 3072,
       text: { format: { type: "json_schema", name: "novaflow_ui_design_v1", strict: true,
@@ -8915,7 +8917,7 @@ function isAudioPromptPayload(payload) {
   return surface === "audio" || purpose === "audio-music" || purpose === "audio-sfx";
 }
 
-function buildAudioPromptRequest(payload, model = "grok-4.3") {
+function buildAudioPromptRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   const isSfx = smartAiPayloadPurpose(payload) === "audio-sfx";
   const prompt = smartAiCurrentPrompt(payload, 1500).replace(/\s+/g, " ").trim();
   const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || "", 1000).replace(/\s+/g, " ").trim();
@@ -8931,7 +8933,7 @@ function buildAudioPromptRequest(payload, model = "grok-4.3") {
   ].join("\n");
   return {
     body: {
-      model: String(model || "grok-4.3"),
+      model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
       store: false,
       input: [
         { role: "system", content: [smartAiInputText(isSfx ? AUDIO_SFX_FRAME : AUDIO_MUSIC_FRAME)] },
@@ -8952,7 +8954,7 @@ function buildAudioPromptRequest(payload, model = "grok-4.3") {
   };
 }
 
-function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
+function buildGrokPromptOptimizeRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   if (isAudioPromptPayload(payload)) return buildAudioPromptRequest(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
   if (isMiniMaxH3PromptEnhancePayload(payload)) return buildMiniMaxH3GrokOptimizeRequest(payload, model);
@@ -9056,7 +9058,7 @@ function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
         })
       ].join("\n");
   const body = {
-    model: String(model || "grok-4.3"),
+    model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
     store: false,
     input: [
       {
@@ -9117,9 +9119,11 @@ function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
   };
 }
 
-function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
+function buildGrokImageReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
+  if (payload?.surface === 'art' && payload?.purpose === 'art-director') return artDirection.build(payload, model);
+  if (payload?.surface === 'art' && payload?.purpose === 'art-director-review') return artDirection.buildReview(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
-  if (miniMaxH3ReverseMode(payload)) return buildMiniMaxH3GrokReverseRequest(payload, String(model || "grok-4.3"));
+  if (miniMaxH3ReverseMode(payload)) return buildMiniMaxH3GrokReverseRequest(payload, String(model || DEFAULT_RUNNINGHUB_LLM_MODEL));
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
   const nsfw = payload?.nsfw === true;
   const isAnimation = isSmartAiAnimationPayload(payload);
@@ -9230,7 +9234,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
         : scenarioRoles.includes("background") ? "\n背景参考图：[环境背景]就是这张图里的场景。主光和辅光（用户点名的光除外）从图里看得见的灯具和光中选，方向按它在图中的位置写。[环境背景]写成三句以上：先逐一清点看得见的结构、陈设、灯具和材质，按从前景到后景、从地面到上层的顺序都写进去，每样写出它在图中的形状、颜色、材质和位置（哪一侧、哪一层），灯具按形态写（如成排射灯、灯架、吊灯、壁灯）并写明装在哪里，不另补图中没有的东西（陈设、灯具、窗户都算）。" : "") : "")
   ].join("\n")));
   const body = {
-    model: String(model || "grok-4.3"),
+    model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
     store: false,
     input: [
       {

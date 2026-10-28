@@ -47,12 +47,74 @@ export function runningHubHttpError(status) {
   if (code === 401 || code === 403) return '在线模型拒绝了当前密钥，请核对 RunningHub Key';
   if (code === 402 || code === 429) return '在线模型额度或请求频率不足，请稍后重试';
   if (code === 404) return '在线模型地址或模型 ID 不可用';
+  if (code === 400) return '在线模型没有接受这次请求';
   return '在线模型暂时不可用（HTTP ' + (code || '未知') + '）';
 }
 
-function businessError(code) {
-  if (Number(code) === 1014) return '在线模型拒绝了当前密钥类型（1014），请核对 RunningHub Key 与站点';
-  return '在线模型未完成请求';
+const MODERATION_CODES = new Set(['content_policy', 'content_policy_violation', 'content_filter', 'moderation', 'moderation_rejected', 'sensitive', 'sensitive_content']);
+
+function failureTokens(data) {
+  const out = [];
+  const push = (value) => {
+    if (value === undefined || value === null || value === '' || value === 0 || value === '0') return;
+    out.push(String(value).toLowerCase());
+  };
+  if (!data || typeof data !== 'object') return out;
+  push(data.code);
+  push(data.type);
+  const error = data.error;
+  if (error && typeof error === 'object') {
+    push(error.code);
+    push(error.type);
+  }
+  return out;
+}
+
+/** Classify a provider failure from status and code fields only. Upstream message text is never copied. */
+export function describeRunningHubFailure(httpStatus, data) {
+  const http = Number(httpStatus) || 0;
+  const tokens = failureTokens(data);
+  const business = tokens.map(Number).find((value) => Number.isInteger(value) && value > 0);
+  const moderation = tokens.some((token) => MODERATION_CODES.has(token));
+  const invalidPrompt = tokens.includes('invalid_prompt');
+  let message = '在线模型未完成请求';
+  let statusCode = http >= 400 && http < 600 ? http : 502;
+  let retryable = false;
+  if (business === 1014) {
+    message = '在线模型拒绝了当前密钥类型（1014），请核对 RunningHub Key 与站点';
+    statusCode = 403;
+  } else if (business === 421) {
+    message = '在线模型正在排队，请稍后重试';
+    statusCode = 503;
+    retryable = true;
+  } else if (business === 1003) {
+    message = '在线模型暂时繁忙，请稍后重试';
+    statusCode = 503;
+    retryable = true;
+  } else if (moderation) {
+    message = '内容未通过在线审核，请修改后再试';
+    statusCode = http === 400 || http === 422 ? http : 400;
+  } else if (invalidPrompt) {
+    message = '提示内容无法提交，请修改后再试';
+    statusCode = 400;
+  } else if (http === 401 || http === 403) {
+    message = runningHubHttpError(http);
+    statusCode = http;
+  } else if (http === 402 || http === 429) {
+    message = runningHubHttpError(http);
+    statusCode = http;
+  } else if (http === 404) {
+    message = runningHubHttpError(http);
+    statusCode = 404;
+  } else if (http === 400) {
+    message = runningHubHttpError(http);
+    statusCode = 400;
+  } else if (http >= 500 || http === 0) {
+    message = runningHubHttpError(http || 502);
+    statusCode = http >= 500 ? http : 502;
+    retryable = true;
+  }
+  return { message, statusCode, retryable, moderation };
 }
 
 function partText(part) {
@@ -134,7 +196,8 @@ export function chatCompletionToResponses(data) {
   }
   const choice = Array.isArray(data.choices) ? data.choices[0] : null;
   if ((data.code !== undefined && data.code !== 0 && data.code !== '0' && !choice) || (data.error && !choice)) {
-    throw Object.assign(new Error(businessError(data.code)), { statusCode: 502 });
+    const described = describeRunningHubFailure(0, data);
+    throw Object.assign(new Error(described.message), { statusCode: described.statusCode, retryable: described.retryable, moderation: described.moderation });
   }
   const message = choice?.message || {};
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -174,35 +237,63 @@ export function responsesOutputText(data) {
   return chunks.join('\n').trim();
 }
 
-export async function postRunningHubResponses({ body, config, fetchImpl = fetch, timeoutMs = 60000, signal } = {}) {
-  if (!config?.apiKey) throw Object.assign(new Error('在线模型尚未配置'), { statusCode: 503, providerCallStarted: false });
-  if (!config.baseUrl || !config.model) throw Object.assign(new Error('在线模型配置无效'), { statusCode: 503, providerCallStarted: false });
+function providerFailure(httpStatus, data, extra = {}) {
+  const described = describeRunningHubFailure(httpStatus, data);
+  return Object.assign(new Error(described.message), { statusCode: described.statusCode, retryable: described.retryable, moderation: described.moderation === true, providerCallStarted: true, ...extra });
+}
+
+function defaultRetryDelay(attempt) {
+  return new Promise((resolve) => setTimeout(resolve, 200 * (2 ** attempt)));
+}
+
+export async function postRunningHubResponses({ body, config, fetchImpl = fetch, timeoutMs = 60000, signal, maxRetries = 2, delay = defaultRetryDelay } = {}) {
+  if (!config?.apiKey) throw Object.assign(new Error('在线模型尚未配置'), { statusCode: 503, providerCallStarted: false, retryable: false });
+  if (!config.baseUrl || !config.model) throw Object.assign(new Error('在线模型配置无效'), { statusCode: 503, providerCallStarted: false, retryable: false });
   const wire = responsesToChatCompletions(body, config.model);
-  let response;
-  try {
-    response = await fetchImpl(String(config.baseUrl).replace(/\/$/, '') + '/chat/completions', {
-      method: 'POST',
-      headers: { authorization: 'Bearer ' + config.apiKey, 'content-type': 'application/json' },
-      body: JSON.stringify(wire),
-      signal: signal || AbortSignal.timeout(timeoutMs)
-    });
-  } catch (error) {
-    if (error?.statusCode) throw error;
-    throw Object.assign(new Error(error?.name === 'TimeoutError' || error?.name === 'AbortError' ? '在线模型响应超时' : '在线模型暂时不可用'), { statusCode: 502, providerCallStarted: true });
+  const url = String(config.baseUrl).replace(/\/$/, '') + '/chat/completions';
+  let started = false;
+  let lastError;
+  const attempts = Math.max(0, Math.round(Number(maxRetries))) + 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + config.apiKey, 'content-type': 'application/json' },
+        body: JSON.stringify(wire),
+        signal: signal || AbortSignal.timeout(timeoutMs)
+      });
+      started = true;
+    } catch (error) {
+      if (error?.statusCode) throw error;
+      const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+      lastError = Object.assign(new Error(timedOut ? '在线模型响应超时' : '在线模型暂时不可用'), { statusCode: 502, retryable: timedOut && !signal?.aborted, providerCallStarted: true });
+      if (!lastError.retryable || attempt + 1 >= attempts) throw lastError;
+      await delay(attempt);
+      continue;
+    }
+    let raw = null;
+    try {
+      const text = await response.text();
+      raw = text ? JSON.parse(text) : null;
+    } catch { raw = null; }
+    const businessFailure = raw && typeof raw === 'object' && ((raw.code !== undefined && raw.code !== 0 && raw.code !== '0' && !raw.choices) || (raw.error && !raw.choices));
+    if (!response.ok || !raw || typeof raw !== 'object' || businessFailure) {
+      lastError = providerFailure(response.status, raw);
+      if (!lastError.retryable || attempt + 1 >= attempts) throw lastError;
+      await delay(attempt);
+      continue;
+    }
+    try {
+      return { wire, data: chatCompletionToResponses(raw), status: response.status, providerCallStarted: true, requestId: String(raw.id || response.headers?.get?.('x-request-id') || '').trim() };
+    } catch (error) {
+      lastError = Object.assign(error instanceof Error ? error : new Error('在线模型未完成请求'), { statusCode: error?.statusCode || 502, retryable: error?.retryable === true, moderation: error?.moderation === true, providerCallStarted: true });
+      if (!lastError.retryable || attempt + 1 >= attempts) throw lastError;
+      await delay(attempt);
+    }
   }
-  let raw = null;
-  try {
-    const text = await response.text();
-    raw = text ? JSON.parse(text) : null;
-  } catch { raw = null; }
-  if (!response.ok || !raw || typeof raw !== 'object') {
-    throw Object.assign(new Error(runningHubHttpError(response.status)), { statusCode: response.status >= 400 && response.status < 600 ? response.status : 502, providerCallStarted: true });
-  }
-  try {
-    return { wire, data: chatCompletionToResponses(raw), status: response.status, providerCallStarted: true, requestId: String(raw.id || response.headers?.get?.('x-request-id') || '').trim() };
-  } catch (error) {
-    throw Object.assign(new Error(error?.message || '在线模型未完成请求'), { statusCode: error?.statusCode || 502, providerCallStarted: true });
-  }
+  lastError.providerCallStarted = started || lastError.providerCallStarted === true;
+  throw lastError;
 }
 
 const CATALOG_ROLES = new Set(['layout', 'style', 'color', 'material', 'content', 'identity', 'character_identity']);

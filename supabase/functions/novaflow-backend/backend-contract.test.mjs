@@ -6427,11 +6427,11 @@ test("desktop and Edge keep the visual IR validator, compiler, and routing guard
 
   const edgeImageHandler = edgeIndexSource.slice(
     edgeIndexSource.indexOf("async function handleGrokImageReverse("),
-    edgeIndexSource.indexOf("async function handleGrokChat(", edgeIndexSource.indexOf("async function handleGrokImageReverse("))
+    edgeIndexSource.indexOf("async function handleRunningHubUiCatalog(", edgeIndexSource.indexOf("async function handleGrokImageReverse("))
   );
   const desktopImageHandler = desktopSource.slice(
     desktopSource.indexOf("async function handleGrokImageReverseRequest("),
-    desktopSource.indexOf("async function handleGrokChatRequest(", desktopSource.indexOf("async function handleGrokImageReverseRequest("))
+    desktopSource.indexOf("async function chargeOnlineAi(", desktopSource.indexOf("async function handleGrokImageReverseRequest("))
   );
   for (const handlerSource of [edgeImageHandler, desktopImageHandler]) {
     assert.match(handlerSource, /visualRetryAllowed:\s*(?:providerCallBudget|reservation\.budget)\s*>=\s*2/);
@@ -6460,12 +6460,12 @@ test("desktop and Edge keep the visual IR validator, compiler, and routing guard
     assert.doesNotMatch(handlerSource, /sensitive_visible_facts/);
     assert.doesNotMatch(handlerSource, /rawOutput/);
   }
-  assert.match(edgeImageHandler, /failureQuota = actualCalls > 0[\s\S]*settleGrokQuota\(/);
-  assert.match(edgeImageHandler, /providerQuotaPayload\(failureQuota\)/);
-  assert.match(edgeImageHandler, /settleGrokQuota\(session\.user, reservation, providerCallCount/);
-  assert.match(desktopImageHandler, /const failureUsage = failedProviderCallCount > 0[\s\S]*settleGrokCalls\(/);
-  assert.match(desktopImageHandler, /grokQuotaPayload\(failureUsage\.record\)/);
-  assert.match(desktopImageHandler, /settleGrokCalls\(session, reservation, providerCallCount/);
+  assert.match(edgeImageHandler, /chargeOnlineAi\(session\.user/);
+  assert.match(edgeImageHandler, /feature: videoFrames \? "video-reverse" : "image-reverse"/);
+  assert.doesNotMatch(edgeImageHandler, /settleGrokQuota\(/);
+  assert.match(desktopImageHandler, /chargeOnlineAi\(session,/);
+  assert.match(desktopImageHandler, /feature: mode === "video_reverse" \? "video-reverse" : "image-reverse"/);
+  assert.doesNotMatch(desktopImageHandler, /settleGrokCalls\(/);
 });
 
 

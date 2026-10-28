@@ -8,6 +8,7 @@ const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
 const h3PromptEnhance = require("./h3-prompt-enhance");
 const artDirection = require("./art-direction");
+const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runninghub-llm.mjs");
 let runningHubLlmPromise;
 function loadRunningHubLlm() {
   runningHubLlmPromise ||= import(pathToFileURL(path.join(__dirname, "../../packages/shared/src/runninghub-llm.mjs")).href);
@@ -1032,7 +1033,7 @@ function normalizeGrokChatPayload(payload) {
   if (charCount > 24000) throw new Error("grok text input is too large");
 
   const body = {
-    model: adminData.readAdminGrokEnv().model || "grok-4.3",
+    model: adminData.readAdminGrokEnv().model || DEFAULT_RUNNINGHUB_LLM_MODEL,
     messages
   };
   const temperature = Number(payload?.temperature);
@@ -2144,7 +2145,7 @@ function buildMiniMaxH3CompileBody(body, visualIr, options = {}) {
     : [];
   const trustedIr = JSON.stringify(visualIr);
   return {
-    model: String(body?.model || "grok-4.3"),
+    model: String(body?.model || DEFAULT_RUNNINGHUB_LLM_MODEL),
     store: false,
     input: [
       {
@@ -9519,7 +9520,7 @@ function buildUiQwen21PromptRequest(payload, model, context) {
     `布局、尺寸和参考职责：${requirements}`,
     supportsNegativePrompt ? `用户避免内容：${negative || "无"}；negative_prompt只写具体不希望出现的内容，不强加写实或卡通等画风。` : "不输出负面提示字段。",
   ].join("\n")));
-  return {body:{model:String(model || "grok-4.3"),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,referenceRoles:scenario.images.map(image=>image.role || image.slotType || "reference"),uiPreserveLayout:payload?.uiPreserveLayout===true,uiDesignIntent:payload?.uiDesignIntent,originalPrompt:prompt,purpose:payload?.purpose,supportsNegativePrompt}};
+  return {body:{model:String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),store:false,input:[{role:"system",content:[smartAiInputText("你是 NovaFlow 的 UI 美术设计与编辑规划师。只输出 schema 规定的 JSON，精确遵循用户修改范围，设计语言随需求变化。")]},{role:"user",content}],temperature:0.3,max_output_tokens:3072,text:{format:{type:"json_schema",name:"novaflow_ui_qwen21_v1",strict:true,schema:{type:"object",additionalProperties:false,properties:{prompt:{type:"string"},ui_plan:planSchema,...(supportsNegativePrompt?{negative_prompt:{type:"string"}}:{})},required:["prompt","ui_plan",...(supportsNegativePrompt?["negative_prompt"]:[])]}}}},inputMeta:{mode:"ui_qwen21",supportsNegativePrompt,imageCount:scenario.images.length,sourceImageCount:scenario.sourceCount},resultOptions:{uiQwen21Plan:true,referenceCount:scenario.images.length,referenceRoles:scenario.images.map(image=>image.role || image.slotType || "reference"),uiPreserveLayout:payload?.uiPreserveLayout===true,uiDesignIntent:payload?.uiDesignIntent,originalPrompt:prompt,purpose:payload?.purpose,supportsNegativePrompt}};
 }
 
 function buildUiQwen21LayoutRequest(model, context) {
@@ -9595,7 +9596,7 @@ function buildUiDesignPromptRequest(payload, model) {
   ].join("\n")));
   return {
     body: {
-      model: String(model || "grok-4.3"), store: false,
+      model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL), store: false,
       input: [{ role: "system", content: [smartAiInputText("你是 NovaFlow UI 视觉设计师。设计完整可用的界面，而不是反推照片或只修改主角。只输出符合 schema 的最终中文 UI 设计方案 JSON。")] }, { role: "user", content }],
       temperature: 0.4, max_output_tokens: 3072,
       text: { format: { type: "json_schema", name: "novaflow_ui_design_v1", strict: true,
@@ -9610,8 +9611,99 @@ function buildUiDesignPromptRequest(payload, model) {
   };
 }
 
+// 音频 AI 助手: music and sound-effect captions for the audio model. The frames
+// are the audio pipeline's own rewrite frames (worker/src/comfy/audio-reprompt.mjs),
+// kept in step by hand; the output is one English caption line, no JSON.
+const AUDIO_MUSIC_FRAME = `You are an expert musician, musicologist and prompt engineer. Transform the user's input into a detailed, vivid music prompt for a full instrumental game background track. Write in English whatever language the input is in.
+
+1. Start with the genre or style and optional adjectives (e.g., upbeat, dreamy, aggressive).
+2. List the main instruments that define the track.
+3. Add supporting elements or layers such as pads, harmonics, effects, or field recordings.
+4. Include rhythm or percussion elements like drums, hi-hats, congas, brushes, or polyrhythms.
+5. Integrate mood and energy naturally in the sentence (e.g., "creating suspenseful tension" or "bright and uplifting").
+6. Keep every instrument, style, place and mood the input names, and do not invent places, instruments or styles the input does not imply; never add singing or vocals.
+7. If the input says loop, keep "steady tempo, consistent groove, no intro, no outro, seamless loop".
+8. Specify the BPM given in the input, or a fitting one.
+9. The additional request, when there is one, changes or extends the description; apply it faithfully.
+10. Combine all elements into one natural, fluid sentence. Avoid semicolons. Output ONLY that sentence, no explanations, no quotes, no Markdown.
+
+Template:
+Genre/Style with main instruments, supporting instruments/layers, and rhythm/percussion creating mood/energy. BPM: X
+
+Examples:
+- Chiptune adventure game loop with bright square-wave lead melody, arpeggiated pulse chords, triangle bass and crisp 8-bit drums, steady tempo, consistent groove, no intro, no outro, seamless loop, upbeat and heroic. BPM: 140
+- Mysterious forest exploration track with soft harp arpeggios, warm flute melody, gentle string pads, soft marimba and light hand percussion creating a calm, magical atmosphere. BPM: 88
+- Epic orchestral battle score with soaring strings, bold brass, french horns, taiko drums and timpani creating intense heroic energy. BPM: 110
+- Chinese traditional style track with guzheng, dizi bamboo flute, erhu, pipa and soft hand drums creating a serene, elegant mood. BPM: 84`;
+
+const AUDIO_SFX_FRAME = `You are a professional sound design expert. Convert the user's input into a precise, vivid sound effects description suitable for generative audio models. Write in English whatever language the input is in.
+
+Describe clearly:
+- Sound source
+- Physical character (texture, timbre, material: metal, wood, glass, concrete, etc.)
+- Spatial qualities (indoor/outdoor, dry/reverberant, close-up/distant)
+- Temporal evolution (attack, decay, movement, transitions over time)
+
+Output constraints:
+- 1-2 dense sentences maximum, one line
+- Output ONLY the final rewritten prompt, no explanations, no formatting, no quotes, no Markdown
+- Keep every detail the input names and do not invent materials, places or sounds the input does not imply; it is a game sound effect, so no music unless the input asks for a jingle or chime
+- The additional request, when there is one, changes or extends the description; apply it faithfully
+- Never add speech or singing
+
+Examples:
+- Wooden door creaking open slowly in an old house, echoing interior, eerie tone.
+- Glass bottle shattering on concrete, sharp impact, scattered fragments.
+- Sword swing whooshing through air, fast motion, clean metallic tone.
+- Level up chime, bright, rewarding, fantasy RPG style.
+- Menu navigation clicks, soft futuristic interface sounds.`;
+
+function isAudioPromptPayload(payload) {
+  const surface = normalizeSmartAiText(payload?.surface || "", 80).toLowerCase();
+  const purpose = smartAiPayloadPurpose(payload);
+  return surface === "audio" || purpose === "audio-music" || purpose === "audio-sfx";
+}
+
+function buildAudioPromptRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
+  const isSfx = smartAiPayloadPurpose(payload) === "audio-sfx";
+  const prompt = smartAiCurrentPrompt(payload, 1500).replace(/\s+/g, " ").trim();
+  const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || "", 1000).replace(/\s+/g, " ").trim();
+  if (!prompt && !requirements) throw new Error("请输入描述或补充要求");
+  const seconds = Math.max(1, Math.round(Number(payload?.durationSeconds ?? payload?.duration_seconds) || (isSfx ? 2 : 30)));
+  const bpm = isSfx ? 0 : Math.round(Number(payload?.bpm) || 0);
+  const userText = [
+    "Input: " + (prompt || "(none)"),
+    ...(requirements ? ["Additional request: " + requirements] : []),
+    "Target audio length: " + seconds + " seconds.",
+    ...(bpm ? ["BPM: " + bpm] : []),
+    "Output:"
+  ].join("\n");
+  return {
+    body: {
+      model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
+      store: false,
+      input: [
+        { role: "system", content: [smartAiInputText(isSfx ? AUDIO_SFX_FRAME : AUDIO_MUSIC_FRAME)] },
+        { role: "user", content: [smartAiInputText(userText)] }
+      ],
+      temperature: 0.5,
+      max_output_tokens: 400
+    },
+    inputMeta: {
+      mode: "prompt_optimize",
+      charCount: prompt.length + requirements.length,
+      imageCount: 0,
+      scenario: isSfx ? "audio_sfx" : "audio_music",
+      hasNegativePrompt: false,
+      supportsNegativePrompt: false
+    },
+    resultOptions: { supportsNegativePrompt: false }
+  };
+}
+
 function buildGrokPromptOptimizeRequest(payload) {
-  if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, adminData.readAdminGrokEnv().model || "grok-4.3");
+  if (isAudioPromptPayload(payload)) return buildAudioPromptRequest(payload, adminData.readAdminGrokEnv().model || DEFAULT_RUNNINGHUB_LLM_MODEL);
+  if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, adminData.readAdminGrokEnv().model || DEFAULT_RUNNINGHUB_LLM_MODEL);
   const isMiniMaxH3 = isMiniMaxH3PromptEnhancePayload(payload);
   const supportsNegativePrompt = isMiniMaxH3 ? false : smartAiSupportsNegativePrompt(payload);
   const isAnimation = isMiniMaxH3 || isSmartAiAnimationPayload(payload);
@@ -9669,7 +9761,7 @@ function buildGrokPromptOptimizeRequest(payload) {
   if ((isCreate || isOrdinaryArtOptimize) && miniMaxH3ChildSensitiveRequest(`${prompt}\n${requirements}`)) {
     throw miniMaxH3ContractError("provider_content_policy", "Grok art prompt blocked explicit minor sensitive content", 422, "provider_content_policy");
   }
-  if (isOrdinaryArtOptimize && !usesStructuredArtPrompt) return buildArtSemanticFusionRequest(payload, adminData.readAdminGrokEnv().model || "grok-4.3");
+  if (isOrdinaryArtOptimize && !usesStructuredArtPrompt) return buildArtSemanticFusionRequest(payload, adminData.readAdminGrokEnv().model || DEFAULT_RUNNINGHUB_LLM_MODEL);
   const ordinaryArtLayout = isOrdinaryArtOptimize && !usesStructuredArtPrompt
     ? ordinaryArtPromptPatchBlocks(prompt)
     : null;
@@ -9761,7 +9853,7 @@ function buildGrokPromptOptimizeRequest(payload) {
         })
       ].join("\n"));
   const body = {
-    model: adminData.readAdminGrokEnv().model || "grok-4.3",
+    model: adminData.readAdminGrokEnv().model || DEFAULT_RUNNINGHUB_LLM_MODEL,
     store: false,
     input: [
       {
@@ -9862,7 +9954,7 @@ function buildGrokPromptOptimizeRequest(payload) {
   };
 }
 
-function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
+function buildMiniMaxH3GrokReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   const mode = miniMaxH3ReverseMode(payload);
   if (!mode) throw new Error("unsupported MiniMax H3 reverse purpose");
   const purpose = smartAiPayloadPurpose(payload);
@@ -9913,7 +10005,7 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
   const languageInstruction = requestedLanguage === "en"
     ? "Write all descriptive fact values in English."
     : "Write all descriptive fact values in Simplified Chinese.";
-  const resolvedModel = String(model || adminData.readAdminGrokEnv().model || "grok-4.3");
+  const resolvedModel = String(model || adminData.readAdminGrokEnv().model || DEFAULT_RUNNINGHUB_LLM_MODEL);
   const visualBodies = orderedImages.map((image, index) => {
     const picture = `<Picture ${index + 1}>`;
     const content = [
@@ -9979,11 +10071,11 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
   };
 }
 
-function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
+function buildGrokImageReverseRequest(payload, model = DEFAULT_RUNNINGHUB_LLM_MODEL) {
   if (payload?.surface === 'art' && payload?.purpose === 'art-director') return artDirection.build(payload, model);
   if (payload?.surface === 'art' && payload?.purpose === 'art-director-review') return artDirection.buildReview(payload, model);
   if (isUiDesignPromptPayload(payload)) return buildUiDesignPromptRequest(payload, model);
-  if (miniMaxH3ReverseMode(payload)) return buildMiniMaxH3GrokReverseRequest(payload, String(model || "grok-4.3"));
+  if (miniMaxH3ReverseMode(payload)) return buildMiniMaxH3GrokReverseRequest(payload, String(model || DEFAULT_RUNNINGHUB_LLM_MODEL));
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
   const nsfw = payload?.nsfw === true;
   const isAnimation = isSmartAiAnimationPayload(payload);
@@ -10094,7 +10186,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
         : scenarioRoles.includes("background") ? "\n背景参考图：[环境背景]就是这张图里的场景。主光和辅光（用户点名的光除外）从图里看得见的灯具和光中选，方向按它在图中的位置写。[环境背景]写成三句以上：先逐一清点看得见的结构、陈设、灯具和材质，按从前景到后景、从地面到上层的顺序都写进去，每样写出它在图中的形状、颜色、材质和位置（哪一侧、哪一层），灯具按形态写（如成排射灯、灯架、吊灯、壁灯）并写明装在哪里，不另补图中没有的东西（陈设、灯具、窗户都算）。" : "") : "")
   ].join("\n")));
   const body = {
-    model: adminData.readAdminGrokEnv().model || "grok-4.3",
+    model: String(model || DEFAULT_RUNNINGHUB_LLM_MODEL),
     store: false,
     input: [
       {
@@ -10877,7 +10969,7 @@ async function handleGrokPromptOptimizeRequest(req, res) {
           const providerCallCount = resultOptions.minimaxH3Prompt === true ? Math.max(1, Math.round(Number(value.providerCallCount || 1))) : 1;
           return { amount: providerCallCount, value, metadata: { mode: request.inputMeta.mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, success: true } };
         } catch (error) {
-          error.chargedAmount = Math.max(0, Math.round(Number(error?.grokProviderCallCount || 0)));
+          error.chargedAmount = 0;
           error.chargeMetadata = { mode: request.inputMeta.mode, error: sanitizeError(error), tokenUsage: error?.grokUsage || null, durationMs: error?.grokDurationMs || 0, success: false };
           throw error;
         }
@@ -10988,8 +11080,8 @@ async function handleGrokImageReverseRequest(req, res) {
           const providerCallCount = Math.max(1, Math.round(Number(value.providerCallCount || 1)));
           return { amount: providerCallCount, value, metadata: { mode, tokenUsage: value.usage, durationMs: value.durationMs, model: value.model, providerCallCount, success: true } };
         } catch (error) {
-          error.chargedAmount = Math.max(0, Math.round(Number(error?.grokProviderCallCount || 0)));
-          error.chargeMetadata = { mode, error: sanitizeError(error), tokenUsage: error?.grokUsage || null, durationMs: error?.grokDurationMs || 0, success: false };
+          error.chargedAmount = 0;
+          error.chargeMetadata = { mode, error: sanitizeError(error), tokenUsage: error?.grokUsage || null, durationMs: error?.grokDurationMs || 0, grokProviderCallCount: Math.max(0, Math.round(Number(error?.grokProviderCallCount || 0))), success: false };
           throw error;
         }
       }
@@ -11133,7 +11225,7 @@ async function handleRunningHubUiCatalogRequest(req, res) {
           if (!rawOutputText || posted.data.status !== "completed") throw Object.assign(new Error("在线目录分析未返回完整结果"), { statusCode: 502, chargedAmount: 0 });
           return { amount: 1, value: { rawOutputText, model: posted.data.model || config.model, requestId: posted.requestId } };
         } catch (error) {
-          if (error.chargedAmount === undefined) error.chargedAmount = error.providerCallStarted ? 1 : 0;
+          error.chargedAmount = 0;
           throw error;
         }
       }
@@ -11172,7 +11264,7 @@ async function handleGrokChatRequest(req, res) {
           const value = await callGrokChat(payload);
           return { amount: 1, value, metadata: { mode: "provider_gateway", tokenUsage: value.data?.usage || null, durationMs: value.durationMs, model: value.model, success: true } };
         } catch (error) {
-          error.chargedAmount = error.providerCallStarted ? 1 : 0;
+          error.chargedAmount = 0;
           throw error;
         }
       }
