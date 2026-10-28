@@ -925,7 +925,6 @@ const WEB_TASK_STATUS_TEXT = {
 };
 
 let dashboardActivityTab = "ledger";
-let dashboardLedgerFilter = "all";
 let dashboardSnapshot = null;
 let rhRefreshLockedUntil = 0;
 
@@ -981,7 +980,7 @@ function ledgerCreditNode(row) {
     span.textContent = formatCreditAmount(row.estimated_credits ?? 0);
     return span;
   }
-  const amount = Number(row.settled_credits ?? row.estimated_credits ?? 0) || 0;
+  const amount = Number(row.settled_credits ?? 0) || 0;
   const signed = Number.isFinite(delta) && details.mode ? delta : -Math.abs(amount);
   span.className = signed > 0 ? "creditPlus" : signed < 0 ? "creditMinus" : "creditMuted";
   span.textContent = signed > 0 ? `+${formatCreditAmount(signed)}` : signed < 0 ? `−${formatCreditAmount(Math.abs(signed))}` : "0";
@@ -1009,8 +1008,6 @@ function renderDashboardRecentActivity() {
   document.querySelectorAll("[data-activity-tab]").forEach((button) => {
     button.classList.toggle("active", button.getAttribute("data-activity-tab") === dashboardActivityTab);
   });
-  const filter = $("dashboardLedgerFilter");
-  if (filter) filter.hidden = dashboardActivityTab !== "ledger";
 
   if (dashboardActivityTab === "tasks") {
     const usageResult = data.usage;
@@ -1065,14 +1062,14 @@ function renderDashboardRecentActivity() {
     return;
   }
   if (ledger?.error) {
-    empty("积分流水读取失败", "打开积分流水或调整筛选");
+    empty("积分流水读取失败", "请刷新数据或打开完整流水");
     setCountPill("dashboardLedgerCount", 0);
     return;
   }
-  const rows = (Array.isArray(ledger?.records) ? ledger.records : []).slice(0, 20);
+  const rows = (Array.isArray(ledger?.records) ? ledger.records : []).filter((row) => row.status === "settled").slice(0, 20);
   setCountPill("dashboardLedgerCount", rows.length);
   if (!rows.length) {
-    empty("暂无积分流水", "打开积分流水或调整筛选");
+    empty("暂无已结算积分记录", "实际发生积分变动后显示在这里");
     return;
   }
   const table = document.createElement("table");
@@ -1741,7 +1738,7 @@ async function loadComputeData() {
 async function loadDashboardLedger() {
   if (typeof window.adminAPI?.queryCreditLedger !== "function") return { records: [], error: "余额读取失败" };
   const response = await window.adminAPI.queryCreditLedger({
-    status: dashboardLedgerFilter === "all" ? "" : dashboardLedgerFilter,
+    status: "settled",
     limit: 20
   });
   if (!response?.ok) return { records: [], error: "积分流水读取失败" };
@@ -2776,16 +2773,6 @@ async function init() {
   document.querySelectorAll("[data-activity-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       dashboardActivityTab = button.getAttribute("data-activity-tab") === "tasks" ? "tasks" : "ledger";
-      renderDashboardRecentActivity();
-    });
-  });
-  document.querySelectorAll("[data-ledger-filter]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      dashboardLedgerFilter = button.getAttribute("data-ledger-filter") || "all";
-      document.querySelectorAll("[data-ledger-filter]").forEach((item) => {
-        item.classList.toggle("active", item === button);
-      });
-      if (dashboardSnapshot) dashboardSnapshot.ledger = await loadDashboardLedger();
       renderDashboardRecentActivity();
     });
   });

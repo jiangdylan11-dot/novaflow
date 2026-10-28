@@ -51,6 +51,18 @@ app.whenReady().then(async () => {
     }, 30);
   })`);
   await wait(`document.querySelector('#usersTableBody tr td')?.textContent === 'kingyo'`);
+  assert.equal(queries[0].status, "settled", "dashboard must request settled records before applying the recent-record limit");
+  assert.equal(await run(`document.querySelector('[data-ledger-filter]')`), null);
+  await run(`dashboardSnapshot.ledger.records = [
+    ...Array.from({length:21}, () => ({status:'released', user_email_or_account:'not-charged'})),
+    {status:'reserved', user_email_or_account:'pending'},
+    {status:'settled', user_email_or_account:'charged', estimated_credits:100, settled_credits:7}
+  ]; renderDashboardRecentActivity()`);
+  assert.equal(await run(`$('dashboardRecentActivity').querySelectorAll('tbody tr').length`), 1);
+  assert.equal(await run(`$('dashboardRecentActivity').querySelector('td.num').textContent`), "−7");
+  assert.equal(await run(`$('dashboardRecentActivity').textContent.includes('not-charged')`), false);
+  const tabPositions = await run(`[...document.querySelectorAll('[data-activity-tab]')].map(el => el.getBoundingClientRect().top)`);
+  assert.equal(tabPositions[0], tabPositions[1]);
   await run(`window.confirm = () => true; window.alert = (msg) => { throw new Error(msg); }; showModule('users')`);
   assert.equal(await run(`document.querySelector('[data-module="credits"]')`), null);
   assert.equal(await run(`document.querySelector('#module-ai-services #creditLedgerBody')`), null);

@@ -106,18 +106,13 @@
                 <div class="panelHeader">
                   <div>
                     <div class="cardTitle">最近活动</div>
-                    <div class="cardHint">积分扣费读 credit_ledger，算力任务读 web_ai_tasks。只显示最近 20 条。</div>
+                    <div class="cardHint">积分只显示已结算的实际变动；算力任务显示运行记录。最近 20 条。</div>
                   </div>
                 </div>
                 <nav class="tabs" aria-label="最近活动">
                   <button class="tab" type="button" data-activity-tab="tasks">算力任务<span id="dashboardTaskCount" class="countPill"></span></button>
                   <button class="tab active" type="button" data-activity-tab="ledger">积分扣费<span id="dashboardLedgerCount" class="countPill"></span></button>
                 </nav>
-                <div id="dashboardLedgerFilter" class="segmented compact">
-                  <button class="segment active" type="button" data-ledger-filter="all">全部</button>
-                  <button class="segment" type="button" data-ledger-filter="settled">已扣费</button>
-                  <button class="segment" type="button" data-ledger-filter="released">已释放</button>
-                </div>
                 <div id="dashboardRecentActivity" class="activityList">
                   <div class="skeletonBlock"></div>
                   <div class="skeletonLine"></div>
@@ -1303,7 +1298,6 @@
       .creditPlus { color: #7ce8b5; }
       .creditMinus { color: #fca5a5; }
       .creditMuted { color: var(--muted); }
-      .segmented.compact { margin: 0 16px; }
       .activityTable { width: 100%; }
       .artCandidate { display: flex; gap: 8px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
       .artReviewCard { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; margin: 10px 0; background: var(--surface-2); }
@@ -1648,10 +1642,6 @@
       .activityMeta { margin-top: 2px; font-size: 12px; color: var(--caption); }
       .activitySide { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
       .activityTime { flex: 0 0 auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-      .segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--input-bg); }
-      .segment { height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: background var(--transition), color var(--transition); }
-      .segment:hover { color: var(--text); }
-      .segment.active { background: var(--primary-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--primary-line); }
       .workerTable td:nth-child(7) .tableSelect { min-width: 96px; }
 
       /* ---------- Notice / drop zone ---------- */
