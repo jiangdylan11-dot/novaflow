@@ -3482,13 +3482,13 @@
       <div class="novaflow-smart-ai-section">
         <div class="novaflow-smart-ai-label">处理方式</div>
         <div class="novaflow-smart-ai-engine-row">
-          <label class="novaflow-smart-ai-engine-option">
+          <label class="novaflow-smart-ai-engine-option" title="云端 · 深度处理">
             <input type="radio" name="novaflow-smart-ai-engine" value="grok" ${state.engine === "grok" ? "checked" : ""}>
-            <span>云端模型<span class="novaflow-smart-ai-engine-meta">云端 · 深度处理</span></span>
+            <span>云端</span>
           </label>
-          <label class="novaflow-smart-ai-engine-option">
+          <label class="novaflow-smart-ai-engine-option" title="本地 · 耗时取决于模型与显卡">
             <input type="radio" name="novaflow-smart-ai-engine" value="local" ${state.engine === "local" ? "checked" : ""}>
-            <span>本地模型<span class="novaflow-smart-ai-engine-meta">本地 · 耗时取决于模型与显卡</span></span>
+            <span>本地</span>
           </label>
         </div>
         <div class="novaflow-smart-ai-context-note">${escapeSmartAiHtml(smartAiCreditNote())}</div>
@@ -3497,7 +3497,7 @@
   }
 
   function smartAiCreditNote() {
-    if (state.engine === "local") return "本地处理不扣积分";
+    if (state.engine === "local") return "";
     const feature = state.mode === "reverse" ? "image_reverse" : "prompt_optimize";
     const units = state.mode === "reverse" ? Math.max(1, state.images.length || 1) : 1;
     const api = globalThis.NovaFlowFeatureCreditPrices;
@@ -5106,53 +5106,10 @@
 
   function mountButton(actions, surface) {
     if (!(actions instanceof HTMLElement)) return;
-    if (surface === "art" && (window.NovaFlowUiDesignDrawing?.isActive?.() || window.NovaFlowArtDirection && actions.closest('[data-novaflow-art-generate-prompt-surface="drawing"]'))) {
-      actions.querySelectorAll(`[${SMART_BUTTON_ATTR}="1"]`).forEach((button) => {
-        if (button.getAttribute("data-novaflow-ai-prompt-expand-button") !== "1") button.remove();
-      });
-      mountPromptEditButton(actions, surface);
-      return;
-    }
-    let button = actions.querySelector(`[${SMART_BUTTON_ATTR}="1"]`);
-    let created = false;
-    if (!(button instanceof HTMLButtonElement)) {
-      button = document.createElement("button");
-      created = true;
-    }
-    setSmartAiButtonTypeIfChanged(button);
-    setSmartAiTextIfChanged(button, "AI 助手");
-    copyButtonLook(button, actions.querySelector("button"));
-    if (button.getAttribute("data-novaflow-smart-ai-bound") !== "1") {
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (surface === "art" && window.NovaFlowUiDesignDrawing?.isActive?.()) {
-          window.NovaFlowUiDesignDrawing.openAssistant();
-          return;
-        }
-        const promptTarget = surface === "animation" ? captureAnimationPromptTarget(button) : null;
-        const miniMaxH3 = surface === "animation"
-          ? captureMiniMaxH3PromptContext(button, promptTarget)
-          : null;
-        openDialog({
-          surface,
-          button,
-          artGenerateMode: surface === "art" ? readArtGenerateMode(button) : "",
-          nsfw: surface === "art" ? readArtGenerateNsfw(button) : false,
-          promptTarget,
-          ...(miniMaxH3 ? { miniMaxH3 } : {})
-        });
-      });
-      button.setAttribute("data-novaflow-smart-ai-bound", "1");
-    }
-    if (created) actions.insertBefore(button, actions.firstChild || null);
-    if (surface === "animation" && actions.getAttribute("data-novaflow-ai-storyboard-actions") !== "1") {
-      const frame = actions.closest('[data-novaflow-ai-prompt-kind="positive"], [data-novaflow-ai-prompt-frame="1"]');
-      const topRow = frame?.firstElementChild;
-      // The brand runtime lays out a row it has marked as the prompt's
-      // history row; writing its padding here only fought that.
-      if (topRow instanceof HTMLElement && !topRow.hasAttribute("data-novaflow-ai-prompt-history-row")) topRow.style.setProperty("padding-right", "176px", "important");
-    }
+    actions.querySelectorAll(`[${SMART_BUTTON_ATTR}="1"]`).forEach((button) => {
+      if (button.getAttribute("data-novaflow-ai-prompt-expand-button") === "1") return;
+      button.remove();
+    });
     mountPromptEditButton(actions, surface);
   }
 

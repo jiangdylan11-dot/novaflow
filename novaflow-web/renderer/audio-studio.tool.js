@@ -733,12 +733,9 @@
       .nf-as-status .nf-as-err{color:#f09595;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
       .nf-as-cancel{margin-left:auto;height:18px;border:0;border-radius:7px;background:rgba(239,68,68,.18);color:#ffb4b4;font-size:11px;padding:0 8px}
       .nf-as-cancel[hidden]{display:none}
-      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0;margin-top:-3px}
+      .nf-as-prompt{display:grid;grid-template-rows:33px minmax(0,1fr);background:#202020;border:1px solid #353535;border-radius:8px;overflow:hidden;min-height:0;margin-top:-3px;width:100%;min-width:0;max-width:none;box-sizing:border-box}
       .nf-as-prompt-head{display:flex;align-items:center;justify-content:space-between;padding:4px 7px;border-bottom:1px solid rgba(255,255,255,.22)}
       .nf-as-prompt:focus-within .nf-as-prompt-head{border-bottom-color:#1ea672}
-      .nf-as-prompt-ai{height:24px;min-height:24px;max-height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;line-height:1;padding:3px 7px;display:inline-flex;align-items:center;justify-content:center;gap:7px}
-      .nf-as-prompt-ai::before{content:"";display:block;flex:0 0 auto;width:16px;height:16px;background-color:currentColor;-webkit-mask:var(--nf-as-sparkles) center/contain no-repeat;mask:var(--nf-as-sparkles) center/contain no-repeat}
-      .nf-as-prompt-ai:hover{background:#373737;color:#fff}
       .nf-as-prompt-head .nf-as-chip{height:24px;border:1px solid transparent;border-radius:7px;background:transparent;color:#9f9f9f;font-size:11px;font-weight:500;padding:3px 7px;display:flex;align-items:center;gap:7px}
       .nf-as-prompt-head button.nf-as-chip:hover{background:#373737;color:#fff}
       .nf-as-prompt-head button.nf-as-chip[aria-pressed="true"]{color:#9be4cd}
@@ -891,127 +888,6 @@
   function svgIcon(icon) { return icon; }
   // the sparkle on the React 开始生成 button (its ::before mask)
   const GO_ICON = "url(\"data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22black%22%3E%3Cpath d=%22M11 2.5l1.8 5.2 5.2 1.8-5.2 1.8L11 16.5l-1.8-5.2L4 9.5l5.2-1.8z%22/%3E%3Cpath d=%22M18.5 14l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z%22/%3E%3C/svg%3E\")";
-  const SPARKLES_ICON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/%3E%3Cpath d='M20 3v4'/%3E%3Cpath d='M22 5h-4'/%3E%3Cpath d='M4 17v2'/%3E%3Cpath d='M5 18H3'/%3E%3C/svg%3E")`;
-
-  // ---- AI 助手 ------------------------------------------------------------------------
-  // The same dialog as the other sections (engine choice, 补充要求), with the
-  // audio frames behind it: 云端 goes through the account's prompt optimizer
-  // with the audio surface, 本地 through the assistant's own text model.
-  const AI_ENGINE_KEY = 'novaflow_audio_ai_engine';
-  let assistant = null;
-  function readToken() {
-    try { const parsed = JSON.parse(localStorage.getItem('novaflow_web_session_v1') || 'null'); return String(parsed?.session?.token || parsed?.token || '').trim(); } catch (_) { return ''; }
-  }
-  function assistantResultText(result) {
-    const nested = result && typeof result.result === 'object' && result.result ? result.result : {};
-    return String(result?.prompt || nested.prompt || nested.output_text || '').replace(/\s+/g, ' ').trim();
-  }
-  function closeAssistant() {
-    if (!assistant) return;
-    assistant.root.remove();
-    assistant = null;
-  }
-  function openAssistant() {
-    closeAssistant();
-    const mode = state.mode;
-    const m = state[mode];
-    const isMusic = mode === 'music';
-    let engine = 'grok';
-    try { engine = localStorage.getItem(AI_ENGINE_KEY) === 'local' ? 'local' : 'grok'; } catch (_) { /* no storage */ }
-    const root = el('div', 'nf-as-ai-root');
-    const dialog = el('div', 'nf-as-ai-dialog');
-    dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-label', 'AI 助手');
-    const header = el('div', 'nf-as-ai-header');
-    header.appendChild(el('div', 'nf-as-ai-title', 'AI 助手'));
-    const close = el('button', 'nf-as-ai-close', '×'); close.type = 'button'; close.setAttribute('aria-label', '关闭');
-    close.addEventListener('click', closeAssistant);
-    header.appendChild(close);
-    const body = el('div', 'nf-as-ai-body');
-    const engineSection = el('div', 'nf-as-ai-section');
-    engineSection.appendChild(el('div', 'nf-as-ai-label', '处理方式'));
-    const engineRow = el('div', 'nf-as-ai-engine-row');
-    for (const [key, name, meta] of [['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 耗时取决于模型与显卡']]) {
-      const option = el('label', 'nf-as-ai-engine-option');
-      const radio = el('input'); radio.type = 'radio'; radio.name = 'nf-as-ai-engine'; radio.value = key; radio.checked = engine === key;
-      radio.addEventListener('change', () => { if (!radio.checked) return; engine = key; try { localStorage.setItem(AI_ENGINE_KEY, key); } catch (_) { /* no storage */ } refreshCredit(); });
-      const text = el('span', null, name); text.appendChild(el('span', 'nf-as-ai-engine-meta', meta));
-      option.appendChild(radio); option.appendChild(text); engineRow.appendChild(option);
-    }
-    const creditNote = el('div', 'nf-as-ai-note');
-    creditNote.setAttribute('data-novaflow-audio-ai-credit', '1');
-    const refreshCredit = () => {
-      const api = window.NovaFlowFeatureCreditPrices;
-      creditNote.textContent = engine === 'local' ? '本地处理不扣积分' : (api?.previewText?.('prompt_optimize', 1) || '本次将扣积分');
-    };
-    refreshCredit();
-    engineSection.appendChild(engineRow); engineSection.appendChild(creditNote); body.appendChild(engineSection);
-    const requirementSection = el('div', 'nf-as-ai-section');
-    requirementSection.appendChild(el('div', 'nf-as-ai-label', '补充要求'));
-    const requirements = el('textarea', 'nf-as-ai-textarea');
-    requirements.placeholder = isMusic ? '可选。例如：更紧张一点，加入鼓点；换成管弦乐；节奏再慢些' : '可选。例如：更厚重的低频；加一点回声；更短促';
-    requirementSection.appendChild(requirements);
-    requirementSection.appendChild(el('div', 'nf-as-ai-note', isMusic ? '按背景音乐的写法润色当前描述并写回输入框，不会直接生成音乐' : '按游戏音效的写法润色当前描述并写回输入框，不会直接生成音效'));
-    body.appendChild(requirementSection);
-    const message = el('div', 'nf-as-ai-message'); message.setAttribute('role', 'status'); message.setAttribute('aria-live', 'polite');
-    const footer = el('div', 'nf-as-ai-footer');
-    const submit = label(el('button', 'nf-as-ai-submit'), '开始优化'); submit.type = 'button';
-    const stop = label(el('button', 'nf-as-ai-stop'), '任务中止'); stop.type = 'button'; stop.hidden = true;
-    footer.appendChild(submit); footer.appendChild(stop);
-    dialog.appendChild(header); dialog.appendChild(body); dialog.appendChild(message); dialog.appendChild(footer);
-    root.appendChild(dialog);
-    root.addEventListener('click', (event) => { if (event.target === root) closeAssistant(); });
-    ui.root.appendChild(root);
-    assistant = { root, run: null };
-    const setMessage = (text, tone) => { message.textContent = text; message.setAttribute('data-visible', text ? '1' : '0'); message.setAttribute('data-tone', tone || ''); };
-    const refreshSubmit = () => { if (!assistant || assistant.run) return; submit.disabled = !String(m.text || '').trim() && !requirements.value.trim(); };
-    requirements.addEventListener('input', refreshSubmit);
-    refreshSubmit();
-    const idle = () => { if (!assistant) return; assistant.run = null; stop.hidden = true; footer.removeAttribute('data-busy'); refreshSubmit(); };
-    submit.addEventListener('click', async () => {
-      if (!assistant || assistant.run) return;
-      const promptText = String(m.text || '').trim();
-      const extra = requirements.value.trim();
-      if (!promptText && !extra) return;
-      const run = { stopped: false };
-      assistant.run = run;
-      submit.disabled = true; stop.hidden = false; footer.setAttribute('data-busy', '1');
-      setMessage(engine === 'local' ? '本地模型正在润色…' : '云端模型正在润色…', '');
-      let result;
-      try {
-        if (engine === 'local') {
-          const runtime = window.NovaFlowWebRuntime;
-          if (!runtime || runtime.computeMode !== 'local') throw new Error('本地模型需要从启动助手打开的本机模式使用');
-          result = await runtime.localControl('POST', '/local/audio/optimize-prompt', { kind: mode, text: promptText, requirements: extra, seconds: m.seconds, bpm: isMusic ? m.bpm : 0, loop: isMusic && m.loop }, 5 * 60 * 1000);
-        } else {
-          const api = window.electronAPI;
-          if (!api || typeof api.smartAiPromptOptimize !== 'function') throw new Error('云端模型不可用，请刷新网页后重试');
-          result = await api.smartAiPromptOptimize({ token: readToken(), surface: 'audio', purpose: isMusic ? 'audio-music' : 'audio-sfx', prompt: promptText, requirements: extra, durationSeconds: m.seconds, bpm: isMusic ? m.bpm : 0, loop: isMusic && m.loop, supportsNegativePrompt: false });
-        }
-      } catch (error) {
-        result = { ok: false, error: String(error?.message || error) };
-      }
-      if (run.stopped || !assistant || assistant.run !== run) return;
-      const text = assistantResultText(result);
-      if (!result || result.ok === false || !text) {
-        setMessage(String(result?.error || (result?.result && result.result.error) || '优化失败，请重试'), 'error');
-        idle();
-        return;
-      }
-      m.text = text; m.optimized = text;
-      if (state.mode === mode) ui.textarea.value = text;
-      const quota = result?.quota || result?.result?.quota;
-      const charged = window.NovaFlowFeatureCreditPrices?.settlementText?.(quota) || '';
-      if (engine !== 'local' && charged) {
-        setMessage(charged, '');
-        idle();
-        return;
-      }
-      closeAssistant();
-    });
-    stop.addEventListener('click', () => { if (!assistant || !assistant.run) return; assistant.run.stopped = true; setMessage('已中止', ''); idle(); });
-    requirements.focus();
-  }
-
   // ---- mount --------------------------------------------------------------------------
   function mount() {
     installStyle();
@@ -1195,10 +1071,7 @@
     const prompt = el('div', 'nf-as-prompt');
     const head = el('div', 'nf-as-prompt-head');
     ui.promptLabel = el('span', 'nf-as-chip', '音乐描述');
-    const assistantButton = label(el('button', 'nf-as-prompt-ai'), 'AI 助手'); assistantButton.type = 'button';
-    assistantButton.style.setProperty('--nf-as-sparkles', SPARKLES_ICON);
-    assistantButton.addEventListener('click', openAssistant);
-    head.appendChild(ui.promptLabel); head.appendChild(assistantButton);
+    head.appendChild(ui.promptLabel);
     ui.textarea = el('textarea');
     ui.textarea.addEventListener('input', () => { state[state.mode].text = ui.textarea.value; });
     prompt.appendChild(head); prompt.appendChild(ui.textarea);

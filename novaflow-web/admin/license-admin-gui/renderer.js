@@ -3079,11 +3079,47 @@ const FEATURE_PRICE_FIELDS = [
   ["prompt_optimize", "提示词优化"],
   ["image_reverse", "图像反推"],
   ["lean_research", "UI 目录分析"],
-  ["gpt_image_2_5_economy", "GPT Image 2.5 / 张"],
+  ["gpt_image_2_5_economy", "GPT Image 2.5 图生图 / 张"],
   ["gpt_image_2_official", "GPT Image 2 官方 / 张"],
   ["grok_image_g42", "g-4.2 / 张"],
   ["local", "本地"]
 ];
+
+const TOKEN_ESTIMATE_RESOLUTIONS = ["1k", "2k", "4k"];
+const TOKEN_ESTIMATE_QUALITIES = ["low", "medium", "high"];
+
+function renderTokenEstimateFields(table) {
+  const host = $("tokenEstimateCredits");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const resolution of TOKEN_ESTIMATE_RESOLUTIONS) {
+    for (const quality of TOKEN_ESTIMATE_QUALITIES) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const name = document.createElement("div");
+      name.className = "label";
+      name.textContent = `文生图预估 ${resolution} / ${quality}`;
+      const field = document.createElement("div");
+      field.className = "field";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "1";
+      input.dataset.tokenEstimate = `${resolution}:${quality}`;
+      const value = table && table[resolution] ? table[resolution][quality] : "";
+      input.value = value == null ? "" : String(value);
+      field.appendChild(input);
+      row.append(name, field);
+      host.appendChild(row);
+    }
+  }
+}
+
+function setIfIdle(id, value) {
+  const node = $(id);
+  if (!node || document.activeElement === node) return;
+  node.value = value == null ? "" : String(value);
+}
 
 function renderFeaturePriceFields(prices) {
   const host = $("featureCreditPrices");
@@ -3119,9 +3155,23 @@ async function renderFeatureCreditAdmin() {
     const config = result?.config || {};
     const prices = config.prices || {
       xiaotao_vision: 4, online_chat_turn: 4, prompt_optimize: 4, image_reverse: 4,
-      lean_research: 14, gpt_image_2_5_economy: 22, gpt_image_2_official: 4, grok_image_g42: 6, local: 0
+      lean_research: 14, gpt_image_2_5_economy: 20, gpt_image_2_official: 4, grok_image_g42: 6, local: 0
     };
     renderFeaturePriceFields(prices);
+    const token = config.token_billing || {};
+    const routes = config.gpt_image || {};
+    renderTokenEstimateFields(token.estimate_credits || {});
+    setIfIdle("featureCreditPerUsd", config.credits_per_usd ?? 211);
+    setIfIdle("featureCreditMarkup", token.markup ?? 2);
+    setIfIdle("featureCreditSettleCap", token.settle_cap_credits ?? 40);
+    setIfIdle("featureCreditTextEndpoint", routes.text_endpoint || "");
+    setIfIdle("featureCreditImageEndpoint", routes.image_endpoint || "");
+    setIfIdle("featureCreditFallbackTextEndpoint", routes.fallback_text_endpoint || "");
+    setIfIdle("featureCreditFallbackImageEndpoint", routes.fallback_image_endpoint || "");
+    setIfIdle("featureCreditTextModel", routes.text_model || "");
+    setIfIdle("featureCreditImageModel", routes.image_model || "");
+    setIfIdle("featureCreditOfficialModel", routes.official_model || "");
+    setIfIdle("featureCreditTokenMarkers", Array.isArray(routes.token_markers) ? routes.token_markers.join(",") : "");
     if ($("featureCreditLowBalance") && document.activeElement !== $("featureCreditLowBalance")) {
       $("featureCreditLowBalance").value = config.low_balance_usd ?? 2;
     }
@@ -3188,6 +3238,13 @@ async function saveFeatureCreditForm() {
   document.querySelectorAll("[data-feature-price]").forEach((input) => {
     prices[input.dataset.featurePrice] = input.value;
   });
+  const estimate = {};
+  document.querySelectorAll("[data-token-estimate]").forEach((input) => {
+    const [resolution, quality] = String(input.dataset.tokenEstimate || "").split(":");
+    if (!resolution || !quality) return;
+    estimate[resolution] = estimate[resolution] || {};
+    estimate[resolution][quality] = input.value;
+  });
   try {
     const response = await window.adminAPI.saveFeatureCreditAdmin({
       prices,
@@ -3195,7 +3252,23 @@ async function saveFeatureCreditForm() {
       low_balance_usd: $("featureCreditLowBalance")?.value ?? "",
       low_balance_cny: $("featureCreditLowBalanceCny")?.value ?? "",
       balance_ttl_seconds: Math.round(Number($("featureCreditBalanceTtl")?.value || 10) * 60),
-      stale_balance_policy: $("featureCreditStalePolicy")?.value || "allow"
+      stale_balance_policy: $("featureCreditStalePolicy")?.value || "allow",
+      credits_per_usd: $("featureCreditPerUsd")?.value ?? "",
+      token_billing: {
+        markup: $("featureCreditMarkup")?.value ?? "",
+        settle_cap_credits: $("featureCreditSettleCap")?.value ?? "",
+        estimate_credits: estimate
+      },
+      gpt_image: {
+        text_endpoint: $("featureCreditTextEndpoint")?.value ?? "",
+        image_endpoint: $("featureCreditImageEndpoint")?.value ?? "",
+        fallback_text_endpoint: $("featureCreditFallbackTextEndpoint")?.value ?? "",
+        fallback_image_endpoint: $("featureCreditFallbackImageEndpoint")?.value ?? "",
+        text_model: $("featureCreditTextModel")?.value ?? "",
+        image_model: $("featureCreditImageModel")?.value ?? "",
+        official_model: $("featureCreditOfficialModel")?.value ?? "",
+        token_markers: String($("featureCreditTokenMarkers")?.value || "").split(",").map((item) => item.trim()).filter(Boolean)
+      }
     });
     if (!response?.ok) throw new Error(response?.error || "保存失败");
     if (status) status.textContent = "已保存";
@@ -3256,7 +3329,19 @@ async function queryLedger(download) {
           time.title = stamp.title;
           tr.appendChild(time);
           tr.appendChild(Object.assign(document.createElement("td"), { textContent: row.user_email_or_account || "" }));
-          tr.appendChild(Object.assign(document.createElement("td"), { textContent: row.feature || "" }));
+          const featureCell = document.createElement("td");
+          featureCell.textContent = row.feature || "";
+          const details = row.pricing_details && typeof row.pricing_details === "object" ? row.pricing_details : {};
+          const tokens = details.token_usage && typeof details.token_usage === "object" ? details.token_usage : null;
+          const hint = [
+            row.pricing_source || details.pricing_source || "",
+            details.third_party_consume_money != null && details.third_party_consume_money !== "" ? `USD ${details.third_party_consume_money}` : "",
+            tokens && tokens.total_tokens != null ? `tokens ${tokens.total_tokens}` : "",
+            details.capped || details.settle_capped ? "已封顶" : "",
+            details.usage_missing ? "缺少费用，按预估扣" : ""
+          ].filter(Boolean).join(" · ");
+          if (hint) featureCell.title = hint;
+          tr.appendChild(featureCell);
           tr.appendChild(Object.assign(document.createElement("td"), { textContent: row.model || "" }));
           const statusCell = document.createElement("td");
           statusCell.appendChild(ledgerStatusBadge(row.status));

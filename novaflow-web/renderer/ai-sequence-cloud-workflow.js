@@ -115,7 +115,7 @@
   }
 
   function getWorkflowJson() {
-    throw new Error('云端 Kling / ByteDance 视频已下线，请使用本地 H3')
+    throw new Error('云端 Kling / ByteDance 视频已下线，请使用 MiniMaxH3(本地)')
   }
 
   function effectiveStoryboardDurations(params, count) {

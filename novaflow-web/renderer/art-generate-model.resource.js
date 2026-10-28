@@ -40,8 +40,8 @@
   }
 
   const providerOptions = Object.freeze([
-    Object.freeze({ value: 'local', label: '本地模型' }),
-    Object.freeze({ value: 'gpt', label: 'GPT（云）' }),
+    Object.freeze({ value: 'local', label: 'Qwen（本地）' }),
+    Object.freeze({ value: 'gpt', label: 'GPT Image 2.5' }),
   ])
 
   function preset(steps, cfg, samplerName, scheduler, lightning) {
@@ -221,8 +221,8 @@
 
   function providerTitle(value) {
     const provider = normalizeProvider(value)
-    if (provider === 'gpt') return 'GPT（云）'
-    return '\u672c\u5730\u6a21\u578b'
+    if (provider === 'gpt') return 'GPT Image 2.5'
+    return 'Qwen（本地）'
   }
 
   function renderKey(state) {

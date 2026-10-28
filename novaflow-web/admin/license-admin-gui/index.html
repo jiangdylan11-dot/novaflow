@@ -656,6 +656,33 @@
                 </div>
               </div>
               <div class="formGrid topGap" id="featureCreditPrices"></div>
+              <div class="formGrid topGap">
+                <div class="row">
+                  <div class="label">每美元积分</div>
+                  <div class="field"><input id="featureCreditPerUsd" type="number" min="1" step="1" value="211" /></div>
+                </div>
+                <div class="row">
+                  <div class="label">文生图加价倍数</div>
+                  <div class="field"><input id="featureCreditMarkup" type="number" min="0.01" step="0.01" value="2" /></div>
+                </div>
+                <div class="row">
+                  <div class="label">文生图单张封顶</div>
+                  <div class="field"><input id="featureCreditSettleCap" type="number" min="1" step="1" value="40" /></div>
+                </div>
+              </div>
+              <div class="cardHint">文生图按第三方美元费用结算：向上取整(美元 × 每美元积分 × 加价倍数)，再不超过单张封顶。预估积分不会高于封顶。图生图仍按上面的固定单价。</div>
+              <div class="formGrid topGap" id="tokenEstimateCredits"></div>
+              <div class="cardHint">模型与路径留空时使用内置默认。环境变量 NOVAFLOW_RUNNINGHUB_GPT_IMAGE_ENDPOINT 与 NOVAFLOW_RUNNINGHUB_GPT_IMAGE_I2I_ENDPOINT 优先于这里。</div>
+              <div class="formGrid topGap">
+                <div class="row full"><div class="label">文生图路径</div><div class="field"><input id="featureCreditTextEndpoint" type="text" spellcheck="false" /></div></div>
+                <div class="row full"><div class="label">图生图路径</div><div class="field"><input id="featureCreditImageEndpoint" type="text" spellcheck="false" /></div></div>
+                <div class="row full"><div class="label">文生图回退路径</div><div class="field"><input id="featureCreditFallbackTextEndpoint" type="text" spellcheck="false" /></div></div>
+                <div class="row full"><div class="label">图生图回退路径</div><div class="field"><input id="featureCreditFallbackImageEndpoint" type="text" spellcheck="false" /></div></div>
+                <div class="row"><div class="label">文生图模型 ID</div><div class="field"><input id="featureCreditTextModel" type="text" spellcheck="false" /></div></div>
+                <div class="row"><div class="label">图生图模型 ID</div><div class="field"><input id="featureCreditImageModel" type="text" spellcheck="false" /></div></div>
+                <div class="row"><div class="label">官方回退模型 ID</div><div class="field"><input id="featureCreditOfficialModel" type="text" spellcheck="false" /></div></div>
+                <div class="row"><div class="label">按量路径标记</div><div class="field"><input id="featureCreditTokenMarkers" type="text" spellcheck="false" placeholder="official-token" /></div></div>
+              </div>
               <div class="actions">
                 <button id="saveFeatureCredits" class="btn primary" type="button">保存积分单价</button>
                 <button id="refreshDomesticBalance" class="btn" type="button">刷新国内站余额</button>

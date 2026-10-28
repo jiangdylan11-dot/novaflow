@@ -10524,6 +10524,7 @@ async function handleClientBootstrap(req, res, url) {
       };
       return acc;
     }, {}),
+    featureCreditPrices: await clientFeatureCreditPrices(),
     ai: normalizeResult(aiConfig),
     providerStatus: null,
     gateway: {
@@ -11206,12 +11207,31 @@ async function chargeOnlineAi(session, input) {
   return charge({ userId: session.user.id, feature: input.feature, amount: input.amount, usageKey: createGrokUsageKey(input.feature), metadata: input.metadata, run: input.run });
 }
 
-async function featureCreditCharge(prices) {
+async function clientFeatureCreditPrices() {
+  try {
+    return await adminData.readFeatureCreditConfig();
+  } catch {
+    const { normalizeCreditConfig } = await loadFeatureCredits();
+    return normalizeCreditConfig(undefined);
+  }
+}
+
+async function imageBillingContext(image) {
+  const { normalizeCreditConfig } = await loadFeatureCredits();
+  const stored = await clientFeatureCreditPrices();
+  const envConfig = image.readRunningHubImageConfig(process.env, stored);
+  const creditConfig = envConfig.prices
+    ? normalizeCreditConfig({ ...stored, prices: { ...stored.prices, ...envConfig.prices } })
+    : stored;
+  return { envConfig, creditConfig };
+}
+
+async function featureCreditCharge(creditConfig) {
   const { createOnlineAiCharge } = await loadOnlineCharge();
   const { createFeatureCreditPorts } = await loadFeatureCredits();
   return createOnlineAiCharge({
     ...createFeatureCreditPorts((name, args) => adminData.callFeatureCreditRpc(name, args)),
-    prices: prices ? { prices } : undefined
+    prices: creditConfig || undefined
   });
 }
 
@@ -11223,16 +11243,25 @@ async function handleRunningHubGptImageQuote(req, res) {
   catch (err) { sendJson(res, 400, { ok: false, error: sanitizeError(err) }); return; }
   try {
     const image = await loadRunningHubImage();
-    const config = image.readRunningHubImageConfig(process.env);
+    const { envConfig, creditConfig } = await imageBillingContext(image);
     const quote = image.quoteGptImage({
-      endpoint: config.gptImageEndpoint,
-      imageEndpoint: config.gptImageI2iEndpoint,
+      endpoint: envConfig.gptImageEndpoint,
+      imageEndpoint: envConfig.gptImageI2iEndpoint,
       mode: payload.mode || payload.settings?.mode,
       count: payload.count || payload.settings?.count || 1,
-      prices: config.prices
+      prices: envConfig.prices,
+      creditConfig,
+      settings: payload.settings,
+      width: payload.width,
+      height: payload.height
     });
-    const note = quote.mayFallback ? "（若回退官方通道，实扣可能更低）" : "";
-    sendJson(res, 200, { ok: true, ...quote, buttonLabel: image.formatCreditButtonLabel(quote.credits) + note });
+    sendJson(res, 200, {
+      ok: true,
+      ...quote,
+      buttonLabel: image.formatCreditButtonLabel(quote.credits, quote),
+      buttonTitle: typeof image.formatCreditButtonTitle === "function" ? image.formatCreditButtonTitle(quote.credits, quote) : "",
+      message: quote.message || undefined
+    });
   } catch (err) {
     sendJson(res, Number(err?.statusCode) || 400, { ok: false, error: sanitizeError(err) });
   }
@@ -11246,7 +11275,8 @@ async function handleRunningHubGptImage(req, res) {
   catch (err) { sendJson(res, 400, { ok: false, error: sanitizeError(err) }); return; }
   try {
     const image = await loadRunningHubImage();
-    const config = image.readRunningHubImageConfig(process.env);
+    const { envConfig, creditConfig } = await imageBillingContext(image);
+    const config = { ...envConfig, creditConfig, pricePreview: true };
     if (!config.configured) {
       sendJson(res, 503, { ok: false, error: "RunningHub 出图尚未配置" });
       return;
@@ -11256,7 +11286,7 @@ async function handleRunningHubGptImage(req, res) {
       sendJson(res, 402, { ok: false, error: "云服务余额不足，请联系管理员。本次未扣积分。", charged: 0 });
       return;
     }
-    const charge = await featureCreditCharge(config.prices);
+    const charge = await featureCreditCharge(creditConfig);
     const outcome = await image.runChargedGptImage({
       charge,
       config,
@@ -11275,7 +11305,7 @@ async function handleRunningHubGptImage(req, res) {
     });
     const rejected = (outcome.results || []).find((item) => item?.success === false);
     if (rejected) {
-      sendJson(res, 400, { ok: false, moderation: true, error: rejected.message || "提示内容未通过审核，请修改后再试", charged: outcome.charged || 0, remaining: outcome.remaining, quote: outcome.quote });
+      sendJson(res, 400, { ok: false, moderation: true, error: rejected.message || "提示内容未通过审核，请修改后再试", charged: outcome.charged || 0, remaining: outcome.remaining, quote: outcome.quote, billing: outcome.billing });
       return;
     }
     sendJson(res, 200, {
@@ -11283,7 +11313,10 @@ async function handleRunningHubGptImage(req, res) {
       charged: outcome.charged,
       remaining: outcome.remaining,
       quote: outcome.quote,
-      buttonLabel: image.formatCreditButtonLabel(outcome.quote.credits),
+      billing: outcome.billing,
+      message: outcome.billing?.message || image.formatChargedRemaining(outcome.charged, outcome.remaining),
+      buttonLabel: image.formatCreditButtonLabel(outcome.quote.credits, outcome.quote),
+      buttonTitle: typeof image.formatCreditButtonTitle === "function" ? image.formatCreditButtonTitle(outcome.quote.credits, outcome.quote) : "",
       images: (outcome.results || []).map((item) => item.image).filter(Boolean)
     });
   } catch (err) {

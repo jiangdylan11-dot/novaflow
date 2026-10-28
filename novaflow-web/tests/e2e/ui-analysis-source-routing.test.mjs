@@ -47,35 +47,33 @@ function environment(settings={}) {
     context.electronAPI.promptAssistantUiDesignCpu=async()=>({ok:true,data:{localCompletePlanner:'native-catalog-v3',sourceContract:'observed-rows-v2'}});context.window=context;vm.createContext(context);
   for(const n of ['ui-design-prompt.pipeline.js','ui-design-assistant.workflow.js','ui-design.drawing.js'])vm.runInContext(source(n),context,{filename:n});
   const adapter=context.NovaFlowUiDesignDrawing,mounted=adapter.mount({leftHost:left,store,getSessionToken:()=> 'CPU_ONLY_TEST'});
-  const group=adapter.renderAnalysisSelector(doc);left.appendChild(group);
-  const click=e=>group.querySelector(`[data-novaflow-ui-analysis-engine="${e}"]`).listeners.click({preventDefault(){},stopPropagation(){}});
+  const group=adapter.renderAnalysisSelector(doc);
   const input=()=>adapter.inputFor({state,references:refs,referenceLimit:10});
-  return {context,doc,state,refs,store,project,storage,patches,calls,adapter,mounted,group,click,input};
+  return {context,doc,state,refs,store,project,storage,patches,calls,adapter,mounted,group,input};
 }
 const plan=()=>({version:1,layoutMode:'preserve',layoutReference:1,visualMode:'style-transfer',references:[{index:1,role:'layout'}],layoutChanges:[],preserve:[]});
 function installAnalysis(e, result) {
   for(const [method,provider] of [['promptAssistantReverseImagePrompt','local'],['smartAiImageReverse','grok']]) e.context.electronAPI[method]=async payload=>{e.calls.push({provider,payload});return typeof result==='function'?result(payload):result;};
 }
 
-test('visible source buttons default local, preserve an explicit project choice and never alter the generation provider',()=>{
+test('design analysis has no local/online toggle and still follows the stored engine',()=>{
   for(const saved of [undefined,'local','grok']) {
     const e=environment(saved?{assistantEngine:saved}:{});
-    assert.equal(e.input().engine,saved||'local');assert.equal(e.group.children.length,2);
-    assert.deepEqual(Array.from(e.group.children,b=>b.textContent),['本地分析','在线分析']);
-    e.click('grok');assert.equal(e.input().engine,'grok');assert.equal(e.state.provider,'local');
-    e.state.provider='gpt';assert.equal(e.input().engine,'grok');e.click('local');assert.equal(e.input().engine,'local');assert.equal(e.state.provider,'gpt');
-    assert.equal(e.group.children.filter(b=>b.getAttribute('aria-checked')==='true').length,1);
-    assert.equal(JSON.parse(e.storage.get('novaflow-ui-design-project-v1')).settings.assistantEngine,'local');
-    assert.equal(e.calls.length,0);e.mounted.destroy();
+    assert.equal(e.group,null);
+    assert.equal(e.input().engine,saved||'local');
+    assert.equal(e.doc.body.querySelector('[data-novaflow-ui-analysis-source="1"]'),null);
+    assert.equal(e.state.provider,'local');
+    e.mounted.destroy();
   }
 });
 
-test('the actual design-demand header renders the source selector beside its title, only on UI positive input',()=>{
+test('the design-demand header keeps its title and does not render an analysis toggle',()=>{
   const e=environment();e.context.ART_GENERATE_STATE={promptHistoryOpenKey:''};e.context.NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR='data-prompt-action';
   e.context.createArtEl=(tag,attrs,children=[])=>{const n=e.doc.createElement(tag);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,v);if(typeof children==='string')n.textContent=children;else n.append(...children);return n;};
   e.context.renderArtGeneratePromptAssistantActions=()=>new Node(e.doc);
   const s=source('novaflow-brand-runtime.js'),a=s.indexOf('  function renderArtGeneratePromptHistory(key)'),z=s.indexOf('  function renderArtGeneratePromptHistoryPopoverRow',a);vm.runInContext(s.slice(a,z),e.context);
-  const header=e.context.renderArtGeneratePromptHistory('prompt');assert.equal(header.children[0].children[0].textContent,'设计需求');assert.equal(header.children[0].children[1].getAttribute('role'),'radiogroup');
+  const header=e.context.renderArtGeneratePromptHistory('prompt');assert.equal(header.children[0].children[0].textContent,'设计需求');assert.equal(header.children[0].children.length,1);
+  assert.equal(header.querySelector('[role="radiogroup"]'),null);
   const negative=e.context.renderArtGeneratePromptHistory('negativePrompt');assert.equal(negative.children[0].children.length,1);e.mounted.destroy();
 });
 
@@ -119,7 +117,7 @@ test('analysis failure exits loading; duplicate clicks and cancellation cannot s
   const s=source('novaflow-brand-runtime.js'),a=s.indexOf('  async function runArtGenerate(options'),z=s.indexOf('  function createArtGenerateExecutionBridge()',a);
   e.context.pendingArtAgentPreparation=null;vm.runInContext(s.slice(a,z),e.context);
   const first=e.context.runArtGenerate();await tick();await e.context.runArtGenerate();assert.equal(e.calls.length,1);
-  e.click('grok');assert.equal(e.input().engine,'local');release({ok:false,error:'Qwen 2.1 UI 设计规划JSON无效，本次未提交生成'});await first;
+  assert.equal(e.input().engine,'local');release({ok:false,error:'Qwen 2.1 UI 设计规划JSON无效，本次未提交生成'});await first;
   assert.equal(e.state.running,false);assert.equal(e.state.progressLabel,'分析失败，未提交生成');assert.match(e.state.error,/JSON无效/);
   const second=e.context.runArtGenerate();await tick();assert.equal(e.adapter.cancelPreparation(),true);await second;
   release({ok:true,prompt:'late response',uiPlan:plan()});await tick();assert.equal(e.state.running,false);assert.equal(e.state.progressLabel,'任务已中止');assert.equal(e.calls.length,2);e.mounted.destroy();

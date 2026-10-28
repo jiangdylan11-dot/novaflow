@@ -331,7 +331,7 @@
       return {
         blocked: true,
         workflow: { providerKey: 'runninghub' },
-        error: providerErrorResult(null, { providerKey: 'runninghub' }, '云端 Comfy 图像和视频已下线。图像请使用 GPT（云），视频请使用本地 H3。'),
+        error: providerErrorResult(null, { providerKey: 'runninghub' }, '云端 Comfy 图像和视频已下线。图像请使用 GPT Image 2.5，视频请使用 MiniMaxH3(本地)。'),
       }
     }
     const workflow = detectProviderWorkflow(bodyText, baseUrl)

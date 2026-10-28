@@ -11365,7 +11365,7 @@
     if (!(root instanceof Document) && !(root instanceof HTMLElement)) return;
     Array.from(root.querySelectorAll('select')).filter(isAiAnimationModelMethodSelect).forEach((select) => {
       Array.from(select.options || []).forEach((option) => {
-        if (["minimax_h3_local", "beta5_int8", "beta6_int8"].includes(option.value) && option.textContent !== "本地模型") option.textContent = "本地模型";
+        if (["minimax_h3_local", "beta5_int8", "beta6_int8"].includes(option.value) && option.textContent !== "MiniMaxH3(本地)") option.textContent = "MiniMaxH3(本地)";
       });
     });
   }
@@ -35876,24 +35876,34 @@
         // Tiles on their own row; the two prompts side by side under them
         // (as asked: not one above the other).
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid",
-        style: (node) => ({
-          display: "grid", "grid-template-columns": node.querySelector('[data-novaflow-art-generate-prompt-surface="drawing"]') ? "repeat(auto-fit, minmax(min(100%, 380px), 1fr))" : "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "auto",
+        style: {
+          display: "flex", "flex-direction": "column", "align-items": "stretch",
+          width: "100%", "min-width": "0", "max-width": "none", "box-sizing": "border-box",
+          "grid-template-columns": "none",
           gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
-        })
+        }
+      },
+      {
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-prompt-row",
+        style: {
+          display: "grid",
+          "grid-template-columns": "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
+          gap: "10px", width: "100%", "min-width": "0", "max-width": "none", "box-sizing": "border-box"
+        }
       },
       {
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-ref-grid",
         style: { "grid-column": "1 / -1" }
       },
       {
-        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-prompt",
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-prompt-row > .novaflow-art-generate-prompt",
         // A model without a negative prompt leaves the positive one alone: it
         // takes the whole row, not half of it.
-        style: (node) => ({
-          width: "auto", "min-width": "0", flex: "none",
-          "grid-column": node.parentElement && node.parentElement.getAttribute("data-negative-prompt") === "0" ? "1 / -1" : "auto",
+        style: {
+          width: "100%", "min-width": "0", "max-width": "none", flex: "1 1 auto",
+          "grid-column": "auto",
           height: "108px", "min-height": "108px", "max-height": "108px"
-        })
+        }
       },
       {
         // AI 特效 → 特效模板: the loaded preview's × (in place of 清空), small
@@ -80384,14 +80394,24 @@
       }
       .novaflow-art-generate-edit-grid {
         min-height: 0;
-        display: grid;
-        grid-template-columns: 416px minmax(0, 1fr) minmax(0, 1fr);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
         gap: 10px;
         padding: 2px 14px 12px;
         box-sizing: border-box;
       }
-      .novaflow-art-generate-edit-grid[data-mode="txt2img"] {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      .novaflow-art-generate-prompt-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+        gap: 10px;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        box-sizing: border-box;
       }
       .novaflow-art-generate-ref-grid {
         min-height: 0;
@@ -81218,22 +81238,34 @@
         background: ${UI_RANGE_ACCENT} !important;
         background-color: ${UI_RANGE_ACCENT} !important;
       }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid {
-        flex: 0 0 132px !important;
-        height: 132px !important;
-        min-height: 132px !important;
-        max-height: 132px !important;
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid,
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="img2img"],
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="txt2img"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex: 0 0 auto !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
         margin-top: 6px !important;
         padding: 0 !important;
         gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
         overflow: visible !important;
-        align-items: stretch !important;
+        box-sizing: border-box !important;
+        grid-template-columns: none !important;
       }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="img2img"] {
-        grid-template-columns: 416px minmax(0, 1fr) minmax(0, 1fr) !important;
-      }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-edit-grid[data-mode="txt2img"] {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-row {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)) !important;
+        gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-ref-grid {
         display: grid !important;
@@ -81313,6 +81345,10 @@
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt {
         position: relative !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex: 1 1 auto !important;
         height: 132px !important;
         min-height: 132px !important;
         max-height: 132px !important;
@@ -83108,6 +83144,7 @@
       ART_GENERATE_STATE[key] = value;
       input.value = formatArtGenerateNumberValue(value, options);
       if (isOutputSize) window.NovaFlowUiDesignDrawing?.syncOutputSize?.();
+      if (key === "count" || key === "gptCustomWidth" || key === "gptCustomHeight") refreshArtGenerateCreditPresentation();
     };
     const input = createArtEl("input", {
       type: "text",
@@ -83298,8 +83335,11 @@
     if (detail.kind === "estimate" && detail.signature && detail.signature !== snapshot?.signature) return;
     if (!ART_GENERATE_STATE.running && typeof pricing.getButtonLabel === "function") {
       const label = pricing.getButtonLabel(snapshot);
+      const title = typeof pricing.getButtonTitle === "function" ? pricing.getButtonTitle(snapshot) : "";
       document.querySelectorAll("[data-novaflow-art-generate-submit=\"1\"]").forEach((button) => {
-        button.textContent = label || "\u5f00\u59cb\u751f\u6210";
+        button.textContent = label || "\u751f\u6210";
+        if (title) button.title = title;
+        else button.removeAttribute("title");
       });
     }
     const view = typeof pricing.getProgressView === "function"
@@ -83350,11 +83390,15 @@
     const creditPricing = window.NovaFlowArtGenerateCreditPricing;
     const idleSubmitLabel = creditPricing && typeof creditPricing.getButtonLabel === "function"
       ? creditPricing.getButtonLabel(creditSnapshot)
-      : "\u5f00\u59cb\u751f\u6210";
+      : "\u751f\u6210";
+    const idleSubmitTitle = creditPricing && typeof creditPricing.getButtonTitle === "function"
+      ? creditPricing.getButtonTitle(creditSnapshot)
+      : "";
     const submit = createArtEl("button", {
       type: "button",
       className: "novaflow-art-generate-submit",
       "data-novaflow-art-generate-submit": "1",
+      title: idleSubmitTitle || null,
       disabled: ART_GENERATE_STATE.running ? "disabled" : null,
       onclick: () => runArtGenerate().catch((error) => {
         ART_GENERATE_STATE.running = false;
@@ -83468,10 +83512,15 @@
     if (ART_GENERATE_STATE.mode === "img2img" && Number(capability.referenceLimit || 0) > 0) {
       children.push(renderArtGenerateReferenceGrid());
     }
-    children.push(renderArtGeneratePromptBox("prompt", "\u63d0\u793a\u8bcd", "\u8f93\u5165\u6b63\u5411\u63d0\u793a\u8bcd"));
+    const prompts = [renderArtGeneratePromptBox("prompt", "\u63d0\u793a\u8bcd", "\u8f93\u5165\u6b63\u5411\u63d0\u793a\u8bcd")];
     if (capability.negativePrompt !== false) {
-      children.push(renderArtGeneratePromptBox("negativePrompt", "\u53cd\u5411\u63d0\u793a\u8bcd", "\u8f93\u5165\u53cd\u5411\u63d0\u793a\u8bcd\uff08\u53ef\u4e0d\u586b\u5199\uff09"));
+      prompts.push(renderArtGeneratePromptBox("negativePrompt", "\u53cd\u5411\u63d0\u793a\u8bcd", "\u8f93\u5165\u53cd\u5411\u63d0\u793a\u8bcd\uff08\u53ef\u4e0d\u586b\u5199\uff09"));
     }
+    children.push(createArtEl("div", {
+      className: "novaflow-art-generate-prompt-row",
+      "data-novaflow-art-generate-prompt-row": "1",
+      "data-prompt-count": String(prompts.length)
+    }, prompts));
     return createArtEl("div", {
       className: "novaflow-art-generate-edit-grid",
       "data-mode": ART_GENERATE_STATE.mode,
@@ -86723,8 +86772,8 @@
     ART_GENERATE_STATE.batchIndex = 0;
     ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
     if (!ctx.prepared?.agentRun) ART_GENERATE_STATE.count = batchCount;
-    setArtGenerateProgress("正在连接 GPT（云）...", 0.08);
-    setArtGenerateStatus("正在连接 GPT（云）...");
+    setArtGenerateProgress("正在连接 GPT Image 2.5...", 0.08);
+    setArtGenerateStatus("正在连接 GPT Image 2.5...");
     const settings = window.NovaFlowArtGenerateModels?.workflowSettings?.(ctx.settingsSnapshot, "gpt", ctx.runMode) || {};
     const images = ctx.runMode === "img2img"
       ? ctx.refs.map((item) => ({ dataUrl: item.dataUrl, filename: item.name, mime: item.mimeType }))
@@ -86753,10 +86802,13 @@
       if (!imageUrl) throw new Error(String(payload?.error || "云端出图没有返回图片"));
       const promptId = String(image?.taskId || payload?.promptId || `rh_${Date.now()}`);
       lastPromptId = promptId;
+      const chargedCredits = payload.billing?.chargedCredits ?? payload.charged;
+      const balanceAfter = payload.billing?.balanceAfter ?? payload.remaining;
       window.NovaFlowArtGenerateCreditPricing?.recordSettlement?.({
         promptId,
-        settlement: { status: Number(payload.charged) > 0 ? "settled" : "not_charged", charge_amount: payload.charged },
-        credits: { deducted: payload.charged, balance: payload.remaining }
+        settlement: { status: Number(chargedCredits) > 0 ? "settled" : "not_charged", charge_amount: chargedCredits },
+        credits: { deducted: chargedCredits, balance: balanceAfter },
+        pricing: payload.billing || null
       });
       const result = {
         id: `artgen_${Date.now().toString(36)}`,
@@ -86770,8 +86822,9 @@
         createdAt: new Date().toISOString(),
         generationElapsedSec: Math.max(1, Math.round((Date.now() - artImageStartedAt) / 1000)),
         workflow: "runninghub-gpt-image",
-        charged: Number(payload.charged) || 0,
-        remaining: payload.remaining
+        charged: Number(chargedCredits) || 0,
+        remaining: balanceAfter,
+        billing: payload.billing || null
       };
       if (ctx.options?.drawingPrepared && window.NovaFlowArtDirection?.review) {
         const review = await window.NovaFlowArtDirection.review(ctx.options.drawingPrepared, imageUrl, () => {});

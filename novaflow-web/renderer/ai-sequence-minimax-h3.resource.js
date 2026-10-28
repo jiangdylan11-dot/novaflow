@@ -447,7 +447,7 @@
 
   const MODEL = Object.freeze({
     id: MODEL_ID,
-    label: '本地模型',
+    label: 'MiniMaxH3(本地)',
     modeOrder: MODE_ORDER,
   })
 

@@ -1,6 +1,5 @@
-// The UI 生成器's 设计要求 has the same two buttons as 绘图's prompt bar (2026-09-28): 「AI 助手」 and
-// 「编辑」, marked for the brand sheet's icons (sparkles / pencil) and the prompt-action look; 编辑 opens
-// the same full-prompt editor 绘图 uses.
+// The UI 生成器's 设计要求 keeps 编辑, marked for the brand sheet's pencil icon and the prompt-action
+// look. 编辑 opens the same full-prompt editor 绘图 uses. AI is under 小桃AI, so there is no AI 助手 button.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -51,24 +50,20 @@ function mountTool(provider = 'local', canvas = { width: 1280, height: 720 }, va
   return { host, opened, assistantOpenings };
 }
 
-test('设计要求 shows 「AI 助手」 and 「编辑」 with the prompt-bar look and icons', () => {
+test('设计要求 shows 「编辑」 and no 「AI 助手」 button', () => {
   const { host } = mountTool();
-  const assistant = byAttr(host, 'data-novaflow-ui-design-design-assistant', '1');
   const edit = byAttr(host, 'data-novaflow-ui-design-prompt-edit', '1');
-  assert.equal(assistant.textContent, 'AI 助手');
+  assert.equal(byAttr(host, 'data-novaflow-ui-design-design-assistant', '1'), null);
   assert.equal(edit.textContent, '编辑');
-  for (const [button, kind] of [[assistant, 'assistant'], [edit, 'edit']]) {
-    assert.equal(button.getAttribute('data-novaflow-prompt-action-button'), '1');
-    assert.equal(button.getAttribute('data-novaflow-prompt-action-kind'), kind);
-    assert.equal(button.style.height, '24px');
-    assert.equal(button.style.fontSize, '11px');
-    assert.equal(button.style.fontWeight, '500');
-  }
-  assert.equal(assistant.parentElement, edit.parentElement, 'the two buttons sit together');
-  assert.equal(walk(host).some((node) => node.textContent === '设计助手'), false);
+  assert.equal(edit.getAttribute('data-novaflow-prompt-action-button'), '1');
+  assert.equal(edit.getAttribute('data-novaflow-prompt-action-kind'), 'edit');
+  assert.equal(edit.style.height, '24px');
+  assert.equal(edit.style.fontSize, '11px');
+  assert.equal(edit.style.fontWeight, '500');
+  assert.equal(walk(host).some((node) => node.textContent === 'AI 助手' || node.textContent === '设计助手'), false);
 });
 
-test('「编辑」 opens the shared full-prompt editor on 设计要求; 「AI 助手」 still opens the assistant', () => {
+test('「编辑」 opens the shared full-prompt editor on 设计要求', () => {
   const { host, opened, assistantOpenings } = mountTool();
   const prompt = byAttr(host, 'data-novaflow-ui-design-prompt-field', 'prompt');
   byAttr(host, 'data-novaflow-ui-design-prompt-edit', '1').dispatchEvent({ type: 'click' });
@@ -76,9 +71,7 @@ test('「编辑」 opens the shared full-prompt editor on 设计要求; 「AI �
   assert.equal(opened[0].control, prompt);
   assert.equal(opened[0].title, '设计要求');
   assert.equal(typeof opened[0].options.resolveTarget, 'function');
-  byAttr(host, 'data-novaflow-ui-design-design-assistant', '1').dispatchEvent({ type: 'click' });
-  assert.equal(assistantOpenings.length, 1);
-  assert.equal(assistantOpenings[0].promptTextarea, prompt);
+  assert.equal(assistantOpenings.length, 0);
 });
 
 test('the overlay exposes the editor, and the dialog is titled 「AI 助手」', () => {
@@ -91,13 +84,11 @@ test('the overlay exposes the editor, and the dialog is titled 「AI 助手」',
   assert.doesNotMatch(dialog, /'设计助手'/);
 });
 
-test('pressing a button keeps 设计要求 focused, so its save cannot rebuild the node under the click', () => {
+test('pressing 编辑 keeps 设计要求 focused, so its save cannot rebuild the node under the click', () => {
   const { host } = mountTool();
-  for (const attr of ['data-novaflow-ui-design-design-assistant', 'data-novaflow-ui-design-prompt-edit']) {
-    let prevented = false;
-    byAttr(host, attr, '1').dispatchEvent({ type: 'mousedown', preventDefault() { prevented = true; } });
-    assert.equal(prevented, true, attr);
-  }
+  let prevented = false;
+  byAttr(host, 'data-novaflow-ui-design-prompt-edit', '1').dispatchEvent({ type: 'mousedown', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
 });
 
 // GPT, Google and 本地 (2026-09-29): 输出尺寸, then W / H edge to edge when custom, then each generation
