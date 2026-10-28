@@ -66,8 +66,8 @@
   }
 
   function normalizeDimension(value) {
-    const bounded = normalizeInteger(value, 1024, 1024, 3840)
-    return Math.max(1024, Math.min(3840, Math.round(bounded / 16) * 16))
+    const bounded = normalizeInteger(value, 1024, 480, 3840)
+    return Math.max(480, Math.min(3840, Math.round(bounded / 16) * 16))
   }
 
   function normalizeOutputPrefix(value) {
@@ -156,6 +156,9 @@
     if (size === 'Custom') {
       const aspectRatio = Math.max(customWidth, customHeight) / Math.min(customWidth, customHeight)
       if (aspectRatio > 3) throw new Error('GPT custom image aspect ratio cannot exceed 3:1')
+      if (customWidth * customHeight < 655360) {
+        throw new Error('GPT custom image size must be at least 655,360 pixels')
+      }
       if (customWidth * customHeight > 8294400) {
         throw new Error('GPT custom image size cannot exceed 8,294,400 pixels')
       }

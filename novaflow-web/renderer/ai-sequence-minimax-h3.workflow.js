@@ -1,15 +1,16 @@
 (function (root, factory) {
   const profiles = Object.freeze([
     Object.freeze({ id: 'beta5_int8', label: '本地 beta5', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
-    Object.freeze({ id: 'beta6_int8', label: '本地 beta6', steps: 8, referenceOnly: true, checkpoint: 'Minimax_H3\\10Eros_Max_h3_8stepTURBO_beta6_int8.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'
+  const isRetiredProfile = id => ['beta6_int8', 'minimax-h3-beta6'].includes(String(id || ''))
+  const retiredProfileError = () => Object.assign(new Error('beta6 已下线，请在模型方式中选择本地 beta5 后重新生成；未自动替换模型。'), { code: 'H3_PROFILE_RETIRED' })
   let selected = 'beta5_int8'
   const settings = {}
   try {
     const saved = JSON.parse(root.localStorage.getItem(storageKey) || '{}')
-    if (profiles.some(p => p.id === saved.selected)) selected = saved.selected
+    if (profiles.some(p => p.id === saved.selected) || isRetiredProfile(saved.selected)) selected = saved.selected
     if (saved.settings && typeof saved.settings === 'object') {
       for (const profile of profiles) {
         if (saved.settings[profile.id]) settings[profile.id] = saved.settings[profile.id]
@@ -28,6 +29,7 @@
     }
   } catch (_) {}
   const profileFor = id => {
+    if (isRetiredProfile(id)) throw retiredProfileError()
     // Old saved requests may still carry this ID; never load the deleted model.
     const resolvedId = !id || id === 'beta5_fp8' ? 'beta5_int8' : id
     const profile = profiles.find(profile => profile.id === resolvedId)
@@ -38,7 +40,8 @@
     try { root.localStorage.setItem(storageKey, JSON.stringify({ selected, settings, defaultsVersion: 2, uiVersion: 4 })) } catch (_) {}
   }
   const getProfileSettings = (id = selected) => {
-    const profile = profileFor(id)
+    // Restore retired selections for display only; generation still rejects them.
+    const profile = profileFor(isRetiredProfile(id) ? "beta5_int8" : id)
     const core = instances.get(profile.id)
     const defaults = { aspectRatio: '9:16', megapixels: 0.4, durationSeconds: 5, fps: 24, steps: profile.steps, acceleration: 'sage' }
     const value = { ...defaults, ...settings[profile.id] }
@@ -93,9 +96,11 @@
     ...instances.get('beta5_int8'),
     PROFILES: profiles,
     getSelectedProfile: () => selected,
+    assertProfileActive: (id = selected) => profileFor(id).id,
     setSelectedProfile: id => { selected = profileFor(id).id; persist(); return selected },
     getProfileSettings,
     saveProfileSettings: (id, value) => {
+      if (isRetiredProfile(id)) return getProfileSettings(id)
       const key = profileFor(id).id
       settings[key] = { ...getProfileSettings(key), ...value }
       settings[key] = getProfileSettings(key)
@@ -103,6 +108,7 @@
       return { ...settings[key] }
     },
     supportsMode: (id, mode) => {
+      if (isRetiredProfile(id)) return false
       const core = instances.get(profileFor(id).id)
       try { core.normalizeSteps(4, mode); return true } catch (_) { return false }
     },

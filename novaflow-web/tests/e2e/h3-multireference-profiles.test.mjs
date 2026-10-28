@@ -4,7 +4,7 @@ const read=f=>fs.readFileSync(new URL(f,root),'utf8');
 const memory=new Map();const c=vm.createContext({console,localStorage:{getItem:k=>memory.get(k),setItem:(k,v)=>memory.set(k,v)}});c.globalThis=c;c.window=c;
 for(const f of ['h3-prompt-format.js','ai-sequence-minimax-h3.resource.js','ai-sequence-minimax-h3-prompt.workflow.js','ai-sequence-minimax-h3.workflow.js','ai-sequence-h3-media.js'])vm.runInContext(read(f),c,{filename:f});
 const api=c.NovaFlowAiSequenceMiniMaxH3Workflow;
-for(const profile of ['beta5_int8','beta6_int8'])for(const mode of ['t2v','i2v','fl2v','r2v'])for(const n of mode==='r2v'?[1,9]:[0]){
+for(const profile of ['beta5_int8'])for(const mode of ['t2v','i2v','fl2v','r2v'])for(const n of mode==='r2v'?[1,9]:[0]){
 const opts={profile,mode,steps:profile==='beta6_int8'?8:4,prompt:'A small robot waves in a garden.',width:256,height:256,durationSeconds:1,fps:24,seed:123};
 if(mode==='i2v')opts.images=['first.png'];if(mode==='fl2v')opts.images=['first.png','last.png'];
 if(mode==='r2v')Object.assign(opts,{referenceImages:Array.from({length:n},(_,i)=>`image${i}.png`),referenceVideos:Array.from({length:n===9?3:1},(_,i)=>`video${i}.mp4`),referenceAudios:Array.from({length:n===9?3:1},(_,i)=>`audio${i}.wav`)});

@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 
-export async function createLauncherFixture() {
+export async function createLauncherFixture(options = {}) {
   const handlers = new Map(), instances = [], windows = [], opened = [], events = [];
   const app = new EventEmitter();
   Object.assign(app, { getPath: () => tmpdir(), getVersion: () => '0.4.11', setPath(name, value) { this[name] = value; }, whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true,
@@ -54,6 +54,7 @@ export async function createLauncherFixture() {
     __dirname: fileURLToPath(new URL('../../worker/electron/', import.meta.url)),
     process: { resourcesPath: '/test-resources' }, console, license,
     require(name) {
+      if (name === '../package.json') return { localUiTrial: Boolean(options.localUiTrial) };
       if (name === 'node:path') return path;
       if (name === 'node:fs') return fakeFs;
       if (name === 'electron') return {
@@ -67,7 +68,7 @@ export async function createLauncherFixture() {
     },
     factory(opts) {
       let localRunning = false, sharing = false;
-      const instance = { stopped: false, onChange() {},
+      const instance = { stopped: false, options: opts, onChange() {},
         getState: () => ({ localRunning, sharing, version: '0.4.4', status: localRunning || sharing ? 'idle' : 'offline' }),
         openUrl: 'http://127.0.0.1:4784/#local-pair=test-only',
         promptAssistant: { releaseRuntimes: async () => fixture.releaseResult || { ok: true, released: true } },

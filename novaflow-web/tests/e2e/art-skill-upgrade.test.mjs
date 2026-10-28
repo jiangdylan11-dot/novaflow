@@ -18,7 +18,7 @@ test('legacy baseline upgrades to the frozen framework and an explicit rollback 
   const {directory,legacy,service}=await fixture(t);
   const before=await readFile(join(directory,'style-transfer.1.0.1.json'),'utf8');
   const approved=await readArtSkill();
-  assert.equal(approved.version,'1.0.13');
+  assert.equal(approved.version,'1.0.14');
   assert.deepEqual(await service.active(),approved);
   assert.equal(await readFile(join(directory,'style-transfer.1.0.1.json'),'utf8'),before);
   await writeFile(join(directory,'active.json'),JSON.stringify({version:legacy.version,sha256:legacy.systemSHA256}));
@@ -30,8 +30,8 @@ test('a separately selected skill is preserved and fresh installations use the f
   const directory=await mkdtemp(join(tmpdir(),'nf-skill-fresh-'));
   t.after(()=>rm(directory,{recursive:true,force:true}));
   const fresh=createArtSkillService(directory);
-  assert.equal((await fresh.active()).version,'1.0.13');
-  assert.equal((await fresh.active()).version,'1.0.13');
+  assert.equal((await fresh.active()).version,'1.0.14');
+  assert.equal((await fresh.active()).version,'1.0.14');
 });
 
 test('the shipped 1.0.11 baseline upgrades once; its bytes and later owner rollback are preserved',async t=>{
@@ -41,7 +41,7 @@ test('the shipped 1.0.11 baseline upgrades once; its bytes and later owner rollb
   await writeFile(join(directory,'style-transfer.1.0.11.json'),bytes);
   const pointer={version:previous.version,sha256:previous.systemSHA256};
   await writeFile(join(directory,'active.json'),JSON.stringify(pointer));
-  assert.equal((await createArtSkillService(directory).active()).version,'1.0.13');
+  assert.equal((await createArtSkillService(directory).active()).version,'1.0.14');
   assert.equal(await readFile(join(directory,'style-transfer.1.0.11.json'),'utf8'),bytes);
   await writeFile(join(directory,'active.json'),JSON.stringify(pointer));
   assert.deepEqual(await createArtSkillService(directory).active(),previous);

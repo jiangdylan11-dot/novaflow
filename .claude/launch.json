@@ -32,6 +32,54 @@
         "novaflow-web/web-dist"
       ],
       "port": 4899
+    },
+    {
+      "name": "video-editor-lab",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "novaflow-web/tools/serve-web-dist.py",
+        "--port",
+        "4905",
+        "--root",
+        "."
+      ],
+      "port": 4905
+    },
+    {
+      "name": "novaflow-web-dev",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "novaflow-web/tools/serve-web-dist.py",
+        "--port",
+        "4906",
+        "--root",
+        "novaflow-web/web-dist"
+      ],
+      "port": 4906
+    },
+    {
+      "name": "sweep-light-lab",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "novaflow-web/tools/serve-web-dist.py",
+        "--port",
+        "4907",
+        "--root",
+        "."
+      ],
+      "port": 4907
+    },
+    {
+      "name": "aifx-template-maker-lab",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "novaflow-web/tools/serve-web-dist.py",
+        "--port",
+        "4908",
+        "--root",
+        "."
+      ],
+      "port": 4908
     }
   ]
 }

@@ -145,7 +145,11 @@ export function workflowModelId(name, options, method='') {
     if (ui || draw) return draw&&state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
   }
   if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
-  if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && String(options?.profile || options?.params?.profile) === 'beta6_int8') return 'minimax-h3-beta6';
+  if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && [
+    options?.profile, options?.params?.profile
+  ].some(profile => ['beta6_int8', 'minimax-h3-beta6'].includes(String(profile || '')))) {
+    throw Object.assign(new Error('beta6 已下线，请选择本地 beta5 后重新提交；未自动替换模型。'), { code: 'H3_PROFILE_RETIRED' });
+  }
   return entry.modelId;
 }
 

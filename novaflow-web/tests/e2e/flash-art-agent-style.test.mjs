@@ -46,7 +46,8 @@ async function invoke(agent,f,request) {
 
 test('drawing inherits the entire formal director body and records a distinct native-tool contract hash',()=>{
   const body=FLASH_ART_SYSTEM.slice(0,FLASH_ART_SYSTEM.lastIndexOf('Return ONLY JSON:'));
-  assert.ok(body.length>4000);
+  assert.ok(body.length>1000 && body.length<2500);
+  assert.ok(body.includes('one coherent design')); 
   assert.equal(FLASH_ART_AGENT_SYSTEM.slice(0,body.length),body);
   assert.equal(FLASH_ART_AGENT_SYSTEM.includes('Return ONLY JSON:'),false);
   assert.equal(FLASH_ART_AGENT_PARENT_SYSTEM_SHA256,FLASH_ART_SYSTEM_SHA256);
@@ -71,8 +72,8 @@ test('real execution confirmation is validated separately without altering the s
   assert.deepEqual(f.calls[0].tools,FLASH_ART_AGENT_TOOLS.filter(t=>t.function.name==='generate_art_image'));
   assert.equal(f.calls[0].messages[0].content,FLASH_ART_AGENT_SYSTEM,'Tool narrowing must not rewrite the formal director or Agent wrapper');
   assert.equal(data.proposal.action,'generate');assert.equal(data.proposal.prompt,rawPrompt);
-  assert.deepEqual(observed.applicationExecutionApproval,request.executionApproval);
-  assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,request.artContext);
+  assert.deepEqual(observed.applicationExecutionApproval,{action:'generate',imageCount:1});
+  assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,{prompt:request.artContext.prompt,negativePrompt:request.artContext.negativePrompt,canvas:{width:1280,height:960}});
   assert.equal(observed.userMessage,request.message);assert.equal(data.history[0].content,request.message);
   assert.equal(data.contextFingerprint,request.contextFingerprint);assert.equal(f.calls.length,1);
   for(const mutate of [a=>{a.requestId='other-request';},a=>{a.contextFingerprint='0'.repeat(64);},a=>{a.imageCount=2;},
@@ -126,10 +127,13 @@ test('verified drawing snapshot permits one direct native final tool without ano
     assert.equal(data.proposal.cfg,3);assert.equal(data.proposal.negativePrompt,request.artContext.negativePrompt);
     assert.equal(data.proposal.resourcesReleased,undefined);
     const content=f.calls[0].messages.at(-1).content,observed=JSON.parse(content[0].text);
-    assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,request.artContext);
-    assert.equal(observed.verifiedDrawingSnapshot.contextFingerprint,request.contextFingerprint);
-    assert.deepEqual(observed.verifiedDrawingSnapshot.capabilities,{prompt:true,applyPrompt:true,generateOneImage:true,baseModelUnchanged:true,generationPasses:1,cfg:3});
-    assert.deepEqual(observed.styleProtocol,data.styleProtocol);
+    assert.deepEqual(observed.verifiedDrawingSnapshot.artContext,{prompt:request.artContext.prompt,negativePrompt:request.artContext.negativePrompt,canvas:{width:1280,height:960}});
+    assert.equal(observed.contextFingerprint,'current-art-task');
+    assert.equal(data.proposal.contextFingerprint,request.contextFingerprint);
+    assert.equal(observed.verifiedDrawingSnapshot.capabilities,undefined);
+    assert.equal(observed.verifiedDrawingSnapshot.artContext.cfg,undefined);
+    assert.equal(observed.styleProtocol,undefined);
+    assert.deepEqual(data.styleProtocol,{version:FLASH_ART_AGENT_STYLE_VERSION,parentSystemSHA256:FLASH_ART_SYSTEM_SHA256,systemSHA256:FLASH_ART_AGENT_SYSTEM_SHA256});
     assert.deepEqual(content.filter(i=>i.type==='image_url').map(i=>i.image_url.url),request.images.map(i=>i.dataUrl));
   }
 });
@@ -143,7 +147,7 @@ test('direct correction reads the complete third result only as diagnosis and ke
   assert.deepEqual(content.filter(i=>i.type==='image_url').map(i=>i.image_url.url),[PNG,PNG,PNG]);
   assert.deepEqual(observed.feedbackImage,{image:'<image3>',role:'diagnostic-result-only',generationInput:false});
   assert.equal(observed.suppliedImageRoles[2].role,'result');
-  assert.equal(observed.suppliedImageRoles[2].sha256,createHash('sha256').update(Buffer.from(PNG.split(',')[1],'base64')).digest('hex'));
+  assert.equal(observed.suppliedImageRoles[2].sha256,undefined,'Hashes remain application-side; full pixels still reach the model');
   assert.deepEqual(data.proposal.sourceOrder,[1,2]);assert.equal(data.proposal.prompt.includes('<image3>'),false);
   const invalid=fixture(tool('generate_art_image',{...argsFor(request),prompt:'Use <image1> as content, <image2> as style and <image3> as another reference.'}));
   await assert.rejects(invoke(createFlashArtAgent(),invalid,request),code('flash-agent-invalid-proposal'));
@@ -208,7 +212,7 @@ test('same-reference feedback keeps the current draft once without repeating old
   const body=f.calls[0],observed=JSON.parse(body.messages.at(-1).content[0].text),wire=JSON.stringify(body.messages);
   assert.equal(observed.referencesChanged,false);assert.equal(observed.referencesUnverified,false);
   assert.equal(observed.verifiedDrawingSnapshot.artContext.prompt,oldPrompt,'The current application prompt remains available for revision');
-  assert.equal(observed.previousProposal.prompt,undefined);assert.equal(observed.previousProposal.promptSHA256,createHash('sha256').update(oldPrompt).digest('hex'));
+  assert.equal(observed.previousProposal,undefined,'Prior proposal metadata is omitted; current draft remains once');
   assert.equal(wire.split(oldPrompt).length-1,1,'Do not send the same complete execution prompt in both snapshot and previousProposal');
   assert.equal(wire.includes(oldExplanation),false,'Prior assistant prose is not reintroduced as visual evidence');
   assert.deepEqual(body.messages.slice(1,-1),[{role:'user',content:first.message}],'Keep the recent user constraint without assistant echo');
@@ -247,4 +251,20 @@ test('restored text without a live conversation marks reference history unverifi
   assert.equal(body.messages.length,2);assert.equal(JSON.stringify(body.messages).includes('恢复的旧助手描述不应再次发送'),false);
   assert.equal(observed.verifiedDrawingSnapshot.artContext.prompt,manualPrompt);assert.equal(observed.userMessage,restored.message);
   assert.equal(data.historyRestored,'text-only');assert.ok(data.history.some(item=>item.content===previous.reply),'Text can remain visible in the conversation without being treated as verified image history');
+});
+
+
+test('native final-tool contract requires both numbered roles in the prompt field',()=>{
+  assert.ok(FLASH_ART_AGENT_SYSTEM.includes('The prompt field itself must explicitly name <image1> as the content source and <image2> as the artistic reference'));
+  assert.ok(FLASH_ART_AGENT_SYSTEM.includes('a mention only in the explanation or in the supplied snapshot does not satisfy this output contract'));
+  assert.ok(FLASH_ART_AGENT_SYSTEM.includes('Do not use <image3> as a generation input.'));
+});
+
+test('generation rejects missing prompt markers even when other fields name the supplied images',async()=>{
+  for(const prompt of ['Redraw the source in the reference style.','Use <image1> as the subject.','Use <image2> for style.']) {
+    const request=payload(),f=fixture(tool('generate_art_image',{...argsFor(request),prompt,
+      sourceContent:'The subject from <image1>, painted using <image2>.',explanation:'图1是内容，图2是画风；等待应用执行。'}));
+    await assert.rejects(invoke(createFlashArtAgent(),f,request),code('flash-agent-invalid-proposal'));
+    assert.equal(f.calls.length,1);assert.deepEqual(f.events,['load','unload']);assert.equal(f.session.getStatus().generationReady,false);
+  }
 });

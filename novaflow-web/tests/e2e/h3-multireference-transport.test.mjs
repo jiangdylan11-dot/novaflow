@@ -21,7 +21,7 @@ const host=await createWorkflowHost({rendererDir:process.env.NOVAFLOW_H3_PACKAGE
 const temp=await mkdtemp(join(tmpdir(),'novaflow-h3-transport-'));
 try {
  let tasks=await createLocalTasks(temp);
- for(const profile of ['beta5_int8','beta6_int8']) {
+ for(const profile of ['beta5_int8']) {
   const options={profile,mode:'r2v',prompt:allPrompt,steps:profile==='beta6_int8'?8:4,width:256,height:256,durationSeconds:1,fps:24,seed:55,resourceBindings:bindings,
    referenceImages:bindings.filter(x=>x.kind==='image').map(x=>x.uploadedName),referenceVideos:bindings.filter(x=>x.kind==='video').map(x=>x.uploadedName),referenceAudios:bindings.filter(x=>x.kind==='audio').map(x=>x.uploadedName)};
   const references=bindings.map(x=>({name:x.uploadedName,kind:x.kind,bytes:100}));

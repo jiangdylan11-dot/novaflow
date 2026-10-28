@@ -5,7 +5,7 @@ import { isArtPromptLanguage, artPromptLanguageSystem } from '../../packages/sha
 
 export const FLASH_ART_KIND = 'qwen21-strata-native';
 export const FLASH_ART_VERSION = 'flash-native-v1';
-export const FLASH_ART_SYSTEM_SHA256 = 'c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e';
+export const FLASH_ART_SYSTEM_SHA256 = '6ff5b7b561d9ad04be9c1b6676653b3b021527c22e0f1b9e98b915e957ffaa55';
 export const FLASH_ART_BASE_SKILL = validateArtSkill(JSON.parse(readFileSync(new URL('./art-skills/style-transfer.v1.json', import.meta.url), 'utf8')));
 export const FLASH_ART_SYSTEM = FLASH_ART_BASE_SKILL.systemPrompt;
 const SCHEMA = 'nf.art.direction.v1';

@@ -1,7 +1,7 @@
 import {mkdir,readFile,writeFile,rename,open,unlink,stat} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {createArtSkillService,artDigest} from './art-skill-service.mjs';
+import {createArtSkillService,artDigest,readArtSkill,sharedSkillForRelease} from './art-skill-service.mjs';
 const need=(ok,message)=>{if(!ok)throw Object.assign(Error(message),{errorCode:'art-learning-invalid'});};
 const text=(v,max=12000)=>{need(typeof v==='string' && v.length<=max && !/data:image\/|Bearer\s+[A-Za-z0-9]/i.test(v),'任务文字无效或包含内嵌素材/认证信息');return v;};
 const keyFor=(scope,method)=>artDigest(JSON.stringify(['skillId','generationModel','variant','brain'].map(k=>scope[k]||'*'))+'\n'+method.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,''));
@@ -36,21 +36,25 @@ export function createArtLearning({directory,getOwner,skillService=createArtSkil
     return {version:packet.version,...(packet.skill?{skill:packet.skill}:{}),methods:packet.methods.filter(m=>m.status==='stable'&&typeof m.id==='string'&&typeof m.text==='string'&&m.text.length<=600
       && !/data:image\//i.test(m.text)&&['skillId','generationModel','variant'].every(k=>m.scope?.[k]==='*'||m.scope?.[k]===scope[k])&&(m.scope.brain==='*'||m.scope.brain===brain)).slice(0,5)};}
   async function begin(payload,brain){const id=owner(),context=payload.artContext||{},scope={skillId:payload.mode==='drawing'?'style-transfer':'image-creation',generationModel:context.engine||'',variant:context.localQwen21Variant||'standard'};
-    const packet=await knowledge(scope,brain),skill=payload.mode==='drawing'?(packet.skill||await skillService.active()):null;
+    const packet=await knowledge(scope,brain),bundled=payload.mode==='drawing'?await readArtSkill():null;
+    const shared=packet.skill&&bundled?sharedSkillForRelease(packet.skill,bundled):null;
+    const skill=payload.mode==='drawing'?(shared||await skillService.active()):null;
+    const skillSource=skill?{kind:shared?'reviewed-shared':'local-active',version:skill.version,systemSHA256:skill.systemSHA256,
+      ...(packet.skill&&!shared?{ignoredSharedSkill:{version:packet.skill.version,reason:'older-or-conflicting-with-bundled-release'}}:{})}:null;
     const task=await mutate(id,db=>{need(!db.tasks.some(t=>t.requestId===payload.requestId),'任务请求已记录');
       while(db.tasks.length>=200){const index=db.tasks.findIndex(t=>['succeeded','failed','proposed'].includes(t.execution));need(index>=0,'任务记录过多');db.tasks.splice(index,1);}
       const result=payload.images?.find(i=>['result','output'].includes(i.role)),parent=result&&db.tasks.findLast(t=>t.resultSHA256===artDigest(Buffer.from(result.dataUrl.split(',')[1],'base64')));
       const t={id:randomUUID(),ownerId:id,requestId:payload.requestId,conversationId:payload.conversationId||'',parentTaskId:parent?.id||'',userRequest:text(payload.message),contextFingerprint:payload.contextFingerprint,scope,brain,
-        skillVersion:skill?.version||'agent-direct-v1',skillSHA256:skill?.systemSHA256||'',inputReferences:(payload.images||[]).map(i=>({role:i.role,sha256:artDigest(Buffer.from(i.dataUrl.split(',')[1],'base64'))})),
+        skillVersion:skill?.version||'agent-direct-v1',skillSHA256:skill?.systemSHA256||'',skillSource,inputReferences:(payload.images||[]).map(i=>({role:i.role,sha256:artDigest(Buffer.from(i.dataUrl.split(',')[1],'base64'))})),
         parameters:Object.fromEntries(['width','height','cfg','steps','seed','localQwen21Variant'].filter(k=>context[k]!==undefined).map(k=>[k,context[k]])),execution:'planning',feedback:'unrated',events:[],
         knowledgeVersion:packet.version,appliedExperienceIds:packet.methods.map(m=>m.id),createdAt:new Date().toISOString()};db.tasks.push(t);return t;});
-    return {ownerId:id,taskId:task.id,skill,scope,experiences:packet.methods,knowledgeVersion:packet.version};}
+    return {ownerId:id,taskId:task.id,skill,skillSource,scope,experiences:packet.methods,knowledgeVersion:packet.version};}
   async function planned(session,response){return mutate(session.ownerId,db=>{const t=db.tasks.find(t=>t.id===session.taskId);need(t,'任务记录不存在');const d=response?.data,p=d?.proposal;
     Object.assign(t,{execution:response?.ok?p?'proposed':'succeeded':'failed',conversationId:d?.conversationId||t.conversationId,error:response?.ok?'':String(response?.errorCode||'agent-failed').slice(0,160),
       proposalId:p?.proposalId||'',requestedAction:p?.action||'discussion',prompt:p?text(p.prompt):'',tools:(d?.toolTrace||[]).map(x=>x.name),brain:d?.model||t.brain});
     if(d?.inferenceStrategy)t.inferenceStrategy=d.inferenceStrategy;
     if(p?.learningMethod)t.methodCandidate=text(p.learningMethod,600);
-    return {taskId:t.id,skillVersion:t.skillVersion,knowledgeVersion:t.knowledgeVersion,appliedExperienceIds:t.appliedExperienceIds};});}
+    return {taskId:t.id,skillVersion:t.skillVersion,skillSource:t.skillSource,knowledgeVersion:t.knowledgeVersion,appliedExperienceIds:t.appliedExperienceIds};});}
   async function command(p={}){need(!['ownerId','userId','visibility','public'].some(k=>k in p),'不能在请求中指定任务所属用户或公共发布权限');const id=owner();
     if(p.action==='list')return {tasks:(await load(id)).tasks.slice(-200).reverse()};
     if(p.action==='pending')return {candidates:(await load(id)).outbox.filter(c=>c.status==='candidate').slice(0,10)};

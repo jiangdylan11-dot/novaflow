@@ -5,9 +5,11 @@ const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu } = require('elec
 const path = require('node:path');
 const fs = require('node:fs');
 
+const IS_UI_TRIAL = require('../package.json').localUiTrial === true;
+const PRODUCT_NAME = IS_UI_TRIAL ? 'NovaFlow UI 本地试用版' : 'NovaFlow';
 const customDataDir = process.env?.NOVAFLOW_ASSISTANT_DATA_DIR;
 // Keep the existing assistant identity when the visible product is renamed.
-app.setPath('userData', customDataDir ? path.resolve(customDataDir, '..') : path.join(app.getPath('appData'), 'NovaFlow Worker'));
+app.setPath('userData', customDataDir ? path.resolve(customDataDir, '..') : path.join(app.getPath('appData'), IS_UI_TRIAL ? 'NovaFlow UI Trial' : 'NovaFlow Worker'));
 const DATA_DIR = customDataDir || path.join(app.getPath('userData'), 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'worker.config.json');
 const LOG_FILE = path.join(DATA_DIR, 'worker.log');
@@ -89,7 +91,7 @@ function readConfig() {
       workerName: 'novaflow-' + require('node:os').hostname().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40),
       registrationCode: '',
       comfyImageUrl: 'http://127.0.0.1:8188',
-      gatewayPort: 8790,
+      gatewayPort: IS_UI_TRIAL ? 8897 : 8790,
       publicEndpoint: '',
       modelsRoot: ''
     };
@@ -131,7 +133,8 @@ async function ensureWorker() {
     dataDir: DATA_DIR,
     workflowDir: path.join(__dirname, '../workflows'),
     webRoot: firstExisting([path.join(process.resourcesPath || '', 'web-dist'), path.join(__dirname, '../../web-dist')]),
-    localPort: Number(config.localPort) || 4784,
+    localPort: Number(config.localPort) || (IS_UI_TRIAL ? 4785 : 4784),
+    runtimePolicy: IS_UI_TRIAL ? 'existing-only' : undefined,
     licenseDataDir: path.join(app.getPath('appData'), 'NovaFlow'),
     // NovaFlow's own graph builders, shipped beside the app. A compute node
     // builds graphs with the product's real code, not an approximation.
@@ -145,7 +148,7 @@ async function ensureWorker() {
     // Empty (and the retired 8189 older configs still hold) means the image runtime; see videoRuntimeUrl.
     comfyVideoUrl: config.comfyVideoUrl || '',
     modelsRoot: config.modelsRoot || '',
-    gatewayPort: Number(config.gatewayPort) || 8790,
+    gatewayPort: Number(config.gatewayPort) || (IS_UI_TRIAL ? 8897 : 8790),
     gatewayHost: '0.0.0.0',
     publicEndpoint: config.publicEndpoint || '',
     workerName: config.workerName,
@@ -205,6 +208,8 @@ function showWindow() {
 // fetches into the user's warehouse, and a folder that holds or sits inside a
 // known warehouse folder is never touched.
 function clearRunFiles() {
+  // Trial tasks are isolated; shared runtime outputs belong to the stable assistant.
+  if (IS_UI_TRIAL) return;
   const comfy = process.env?.NOVAFLOW_AI_RUNTIME_GENERATED_DIR || path.join(app.getPath('temp'), 'NovaFlow', 'AI-Runtime', 'runtime-generated');
   const warehouses = (readConfig().warehouseFolders || []).map(folder => path.resolve(folder));
   const within = (inner, outer) => { const rel = path.relative(outer, inner); return !rel.startsWith('..') && !path.isAbsolute(rel); };
@@ -228,7 +233,7 @@ async function quitAssistant() {
 
 function createTray() {
   tray = new Tray(path.join(__dirname, 'assets/favicon.ico'));
-  tray.setToolTip('NovaFlow');
+  tray.setToolTip(PRODUCT_NAME);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开本地助手', click: showWindow },
     { type: 'separator' },
@@ -244,7 +249,7 @@ function createWindow() {
     minWidth: 620,
     minHeight: 500,
     backgroundColor: '#0b0b0b',
-    title: 'NovaFlow',
+    title: PRODUCT_NAME,
     icon: path.join(__dirname, 'assets/favicon.ico'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
@@ -386,7 +391,7 @@ async function handleWarehouseLink(argv = []) {
   } catch (error) { dialog.showErrorBox('打开仓库文件夹失败', String(error.message || error)); }
 }
 app.whenReady().then(() => {
-  if (app.isPackaged) app.setAsDefaultProtocolClient('novaflow');
+  if (app.isPackaged && !IS_UI_TRIAL) app.setAsDefaultProtocolClient('novaflow');
   createWindow(); createTray();
   void handleWarehouseLink(process.argv);
 });

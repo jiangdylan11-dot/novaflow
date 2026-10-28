@@ -222,8 +222,8 @@
           'auto', '1024x1024', '1024x1536', '1536x1024', '2048x2048', '2048x1152', '1152x2048', '3840x2160', '2160x3840', 'Custom',
         ], onChange: (value) => { state.gptSize = value }, rerender }))
         if (state.gptSize === 'Custom') {
-          nodes.push(options.renderNumber('W', 'gptCustomWidth', 1024, 3840))
-          nodes.push(options.renderNumber('H', 'gptCustomHeight', 1024, 3840))
+          nodes.push(options.renderNumber('W', 'gptCustomWidth', 480, 3840))
+          nodes.push(options.renderNumber('H', 'gptCustomHeight', 480, 3840))
         }
       }
       return nodes

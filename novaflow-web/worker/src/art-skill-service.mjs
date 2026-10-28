@@ -19,6 +19,16 @@ export function validateArtSkill(value) {
       && (item.reasoningEffort !== 'none' || item.reasoningBudgetTokens === 0)), '美术技能版本或内容摘要无效');
   return value;
 }
+// A bundled software release is the minimum shared-skill version for this client.
+// Older shared packets stay cached for rollback but cannot silently replace it.
+const canonicalSkill = value => JSON.stringify((function visit(v){return Array.isArray(v)?v.map(visit):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,visit(v[k])])):v;})(value));
+export function sharedSkillForRelease(candidate, bundled) {
+  validateArtSkill(candidate);validateArtSkill(bundled);
+  const a=candidate.version.split('.').map(Number),b=bundled.version.split('.').map(Number);
+  const index=a.findIndex((n,i)=>n!==b[i]);
+  if(index>=0)return a[index]>b[index]?candidate:null;
+  return canonicalSkill(candidate)===canonicalSkill(bundled)?candidate:null;
+}
 export async function readArtSkill(path = BUNDLED_ART_SKILL) {
   return validateArtSkill(JSON.parse(await readFile(path, 'utf8')));
 }
@@ -36,7 +46,8 @@ export function createArtSkillService(directory) {
     await mkdir(directory, { recursive: true });
     const seed = await readArtSkill();
     const rollback = await readArtSkill(new URL('./art-skills/style-transfer.1.0.11.json', import.meta.url));
-    for (const bundled of [rollback, seed]) {
+    const previous = await readArtSkill(new URL('./art-skills/style-transfer.1.0.13.json', import.meta.url));
+    for (const bundled of [rollback, previous, seed]) {
       try { await writeFile(join(directory, `style-transfer.${bundled.version}.json`), JSON.stringify(bundled, null, 2), { flag: 'wx' }); }
       catch (error) { if (error.code !== 'EEXIST') throw error; }
     }
@@ -51,9 +62,10 @@ export function createArtSkillService(directory) {
       if (error.code !== 'ENOENT') throw error;
       const shippedBaselines = {
         '1.0.1': 'fac8d2aad6988ed1feffa0234ceef61a6269402c68b52f614098e894901ea4be',
-        '1.0.11': '9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28'
+        '1.0.11': '9ee27938e8cba9864728f84540e22deb5ad7c1727677cb92396ef3a00e846c28',
+        '1.0.13': 'c74b48b7ec8b15d26e2a4eaf0148c153ffa8a743b84ea1fb4df00146750ff21e'
       };
-      if (seed.version === '1.0.13' && Object.hasOwn(shippedBaselines, pointer.version)
+      if (seed.version === '1.0.14' && Object.hasOwn(shippedBaselines, pointer.version)
         && pointer.sha256 === shippedBaselines[pointer.version]) {
         const previous = await readArtSkill(join(directory, `style-transfer.${pointer.version}.json`));
         check(previous.systemSHA256 === pointer.sha256, '旧美术技能版本指针与内容不符');

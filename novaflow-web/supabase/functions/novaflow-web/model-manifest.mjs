@@ -67,35 +67,6 @@ export const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
-    model_id: 'minimax-h3-beta6',
-    display_name: 'MiniMax H3 beta6 (reference)' ,
-    version: '0.31.1',
-    runtime: 'video',
-    // The shipped H3 weights are int8/nvfp4 quantised; the reference runtime
-    // serves them on a 16 GB card, so the floor is set from what actually
-    // runs rather than from the bf16 model's footprint.
-    min_vram_mb: 15000,
-    compatible_workflows: ['h3_i2v.json'],
-    required_files: [
-      {
-        path: 'diffusion_models/Minimax_H3/10Eros_Max_h3_8stepTURBO_beta6_int8.safetensors',
-        min_bytes: 21_709_633_539,
-        sha256: 'e2c5493e5997726ab12f17caecd6fe88c7e64b135bd3435c0f158c8f1b632a5f'
-      },
-      {
-        path: 'text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
-        min_bytes: 4_000_000_000,
-        sha256: null
-      },
-      { path: 'vae/minimax_h3_video_vae_fp16.safetensors', min_bytes: 50_000_000, sha256: null },
-      { path: 'vae/minimax_h3_audio_vae_fp32.safetensors', min_bytes: 10_000_000, sha256: null }
-    ],
-    download: {
-      mode: 'import_or_configured_url',
-      hint: 'Import from an existing NovaFlow H3 runtime (e.g. E:/NovaFlow/models) or configure a URL.'
-    }
-  },
-  {
     model_id: 'birefnet-matting',
     display_name: 'BiRefNet (AI 抠图)',
     version: '2.0.0',

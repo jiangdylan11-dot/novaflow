@@ -79,7 +79,7 @@ window.fixtureRuntime=runtimeScope;runtimeScope.ensureStyle();const fixturePlace
 
  if(process.env.NOVAFLOW_H3_AUDIO_TEST){await require(path.join(__dirname,'h3-audio-runtime-cases.cjs'))({win,evaluate,restore,upload,pause,fixtures,output,renderer,project});win.destroy();await new Promise(ok=>fixtureServer.close(ok));app.quit();return;}
  await evaluate('fixtureRuntime.bindAiSequenceDocumentUploadClickFallback()');
- for(const profile of ['beta5_int8','beta6_int8']){
+ for(const profile of ['beta5_int8']){
   await evaluate('setProfile('+JSON.stringify(profile)+')');await pause(80);await restore([]);
   await layoutCase(profile+'-empty',1280,['image','video','audio'],0);
   assert.equal(await evaluate(`(()=>{const input=document.querySelector('[data-novaflow-h3-upload=image]');let clicks=0;input.click=()=>clicks++;document.querySelector('[data-novaflow-h3-add=image]').click();return clicks})()`),1,'Native card must invoke the H3 input despite the real document upload fallback');

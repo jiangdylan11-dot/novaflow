@@ -181,7 +181,8 @@ test('native tool loop reads actual snapshot then preserves transparent proposal
   assert.equal(data.proposal.resourcesReleased, undefined);
   assert.equal(data.proposal.generationReady, undefined);
   assert.deepEqual(f.calls[1].messages.map(item => item.role), ['system', 'user', 'assistant', 'tool']);
-  assert.equal(JSON.parse(f.calls[1].messages.at(-1).content).contextFingerprint, request.contextFingerprint);
+  assert.equal(JSON.parse(f.calls[1].messages.at(-1).content).contextFingerprint, 'current-art-task');
+  assert.equal(data.proposal.contextFingerprint,request.contextFingerprint);
   assert.deepEqual(f.calls[0].tools, FLASH_ART_AGENT_TOOLS);
   assert.deepEqual(f.calls[0].messages[1].content.filter(item => item.type === 'image_url').map(item => item.image_url.url), [PNG, PNG]);
   assert.equal(f.calls[0].response_format, undefined);
