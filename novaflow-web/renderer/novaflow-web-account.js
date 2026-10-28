@@ -138,9 +138,8 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
         const hint = el('div', '', caption); hint.className = 'nf-account-caption'; box.appendChild(hint);
         metrics.appendChild(box); return value;
       }
-      const credits = metric('可用积分', '账户当前余额');
+      const credits = metric('剩余积分', '账户当前余额');
       credits.textContent = displayNumber(who.credits && who.credits.balance);
-      const quota = metric('提示词服务', '剩余次数 / 总次数');
       const note = el('div', '', '正在读取账户信息…'); note.className = 'nf-account-error'; note.setAttribute('role', 'status'); body.appendChild(note);
       const actions = el('div'); actions.className = 'nf-account-actions'; body.appendChild(actions);
       const retry = el('button', '', '重新读取'); retry.type = 'button'; retry.hidden = true; actions.appendChild(retry);
@@ -160,13 +159,13 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
           const profile = reply.result || {};
           if (profile.user && profile.user.plan) tier.textContent = tierText(profile.user.plan);
           credits.textContent = displayNumber(profile.credits && (profile.credits.balance_text ?? profile.credits.balance));
-          const promptQuota = profile.providerQuotas && profile.providerQuotas.grok;
-          if (!promptQuota || promptQuota.status === 'error') throw new Error('提示词服务次数暂不可用');
-          quota.textContent = displayNumber(promptQuota.remaining_count) + ' / ' + displayNumber(promptQuota.allocated_count);
+          if (profile.featureCreditPrices && globalThis.NovaFlowFeatureCreditPrices && typeof globalThis.NovaFlowFeatureCreditPrices.applyConfig === 'function') {
+            globalThis.NovaFlowFeatureCreditPrices.applyConfig(profile.featureCreditPrices);
+          }
           note.hidden = true;
         } catch (_) {
           if (!backdrop.isConnected) return;
-          quota.textContent = '—'; note.hidden = false; note.textContent = '账户信息暂未完整读取，请重试'; retry.hidden = false;
+          note.hidden = false; note.textContent = '账户信息暂未完整读取，请重试'; retry.hidden = false;
         } finally { retry.disabled = false; }
       }
       retry.addEventListener('click', loadDetails);

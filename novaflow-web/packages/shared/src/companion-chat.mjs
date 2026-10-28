@@ -46,7 +46,7 @@ export function createCompanionChat({provider,fetchImpl=fetch,charge}){
   }catch(error){
    if(error instanceof CompanionError)throw error;
    const status=Number(error?.statusCode)||502;
-   throw new CompanionError(status===409?409:status===402?402:502,status===409?'这次对话已提交，请使用新的消息编号':status===402?'在线AI次数不足或暂时不可用':error instanceof Error&&/在线/.test(error.message)?error.message:'在线图片分析暂未完成，本次未自动重试');
+   throw new CompanionError(status===409?409:status===402?402:502,status===409?'这次对话已提交，请使用新的消息编号':status===402?(error instanceof Error&&/云服务余额不足|积分不足|维护中|单价未配置/.test(error.message)?error.message:'积分不足或暂时不可用'):error instanceof Error&&/在线/.test(error.message)?error.message:'在线图片分析暂未完成，本次未自动重试');
   }
  }};
 }

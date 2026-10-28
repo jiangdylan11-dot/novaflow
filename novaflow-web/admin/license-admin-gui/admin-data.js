@@ -5,6 +5,13 @@ const https = require("https");
 const WebSocket = require("ws");
 const runningHub = require("./runninghub-provider.cjs");
 const { DEFAULT_RUNNINGHUB_LLM_MODEL } = require("../../packages/shared/src/runninghub-llm.mjs");
+const {
+  normalizeCreditConfig,
+  ledgerCsv,
+  lowBalanceState,
+  collectPages,
+  ledgerUserLookup
+} = require("../../packages/shared/src/feature-credits.mjs");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -315,9 +322,46 @@ async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
   if (checkAccount) {
     const result = await runningHub.checkAccount(env);
     runningHubCheck = { baseUrl: env.baseUrl, apiKey: env.apiKey, result };
+    if (result?.connected) {
+      try {
+        await upsertAdminSystemSetting({
+          key: "rh_domestic_balance",
+          value: {
+            site: "domestic",
+            label: "国内站余额",
+            remainMoney: result.balance?.money ?? null,
+            remainCoins: result.balance?.coins ?? null,
+            currency: result.balance?.currency || "",
+            checkedAt: result.checkedAt || new Date().toISOString()
+          }
+        });
+      } catch (_err) {
+        // The balance read still returns. A missing settings table must not hide it.
+      }
+    }
   }
   const cached = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey ? runningHubCheck.result : null;
   return { ...runningHub.publicStatus(env), ...(cached || {}) };
+}
+
+const DOMESTIC_BALANCE_REFRESH_MS = 10 * 60 * 1000;
+let domesticBalanceTimer = null;
+
+// Server-side refresh of the domestic balance cache. The admin button is a
+// manual refresh; this interval keeps checkedAt inside the default 10 minute TTL.
+function startDomesticBalanceRefresh({ intervalMs = DOMESTIC_BALANCE_REFRESH_MS, check } = {}) {
+  if (domesticBalanceTimer) clearInterval(domesticBalanceTimer);
+  const run = () => Promise.resolve()
+    .then(() => (check || (() => getAdminRunningHubProviderStatus({ checkAccount: true })))())
+    .catch(() => {});
+  void run();
+  const timer = setInterval(() => { void run(); }, intervalMs);
+  if (typeof timer.unref === "function") timer.unref();
+  domesticBalanceTimer = timer;
+  return () => {
+    clearInterval(timer);
+    if (domesticBalanceTimer === timer) domesticBalanceTimer = null;
+  };
 }
 
 function normalizeBaseUrl(value) {
@@ -3752,6 +3796,179 @@ async function getAdminGrokProviderStatus() {
   return result;
 }
 
+async function readSettingValue(client, key) {
+  const { data, error } = await client.from("system_settings").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return data?.value && typeof data.value === "object" ? data.value : {};
+}
+
+async function getFeatureCreditAdmin() {
+  const clientState = getAdminClient();
+  const config = normalizeCreditConfig(undefined);
+  const empty = {
+    config,
+    domesticBalance: { site: "domestic", label: "国内站余额", remainMoney: null, currency: "", checkedAt: null },
+    estimatedRhCostUsd: null,
+    lowBalance: { known: false, blocked: false, warn: false, thresholdUsd: config.low_balance_usd }
+  };
+  if (!clientState.client) return empty;
+  try {
+    const stored = normalizeCreditConfig(await readSettingValue(clientState.client, "feature_credit_config"));
+    const balance = await readSettingValue(clientState.client, "rh_domestic_balance");
+    let estimatedRhCostUsd = null;
+    const summed = await clientState.client.rpc("credit_ledger_estimated_rh_cost");
+    if (!summed.error && summed.data != null) estimatedRhCostUsd = Number(summed.data);
+    const domesticBalance = {
+      site: "domestic",
+      label: "国内站余额",
+      remainMoney: balance.remainMoney ?? null,
+      remainCoins: balance.remainCoins ?? null,
+      currency: balance.currency || "",
+      checkedAt: balance.checkedAt || null
+    };
+    return {
+      config: stored,
+      domesticBalance,
+      estimatedRhCostUsd,
+      lowBalance: lowBalanceState({
+        cache: true,
+        remainMoney: domesticBalance.remainMoney,
+        currency: domesticBalance.currency,
+        checkedAt: domesticBalance.checkedAt,
+        thresholdUsd: stored.low_balance_usd,
+        thresholdCny: stored.low_balance_cny,
+        ttlSeconds: stored.balance_ttl_seconds,
+        stalePolicy: stored.stale_balance_policy
+      })
+    };
+  } catch (err) {
+    return { ...empty, error: String(err?.message || err) };
+  }
+}
+
+async function saveFeatureCreditAdmin(payload) {
+  const current = await getFeatureCreditAdmin();
+  const prices = { ...(current.config?.prices || {}) };
+  const incoming = payload?.prices && typeof payload.prices === "object" ? payload.prices : {};
+  for (const [key, amount] of Object.entries(incoming)) {
+    if (amount === "" || amount == null) continue;
+    const n = Math.round(Number(amount));
+    if (!Number.isInteger(n) || n < 0 || n > 1000000) throw new Error("积分单价必须是 0 到 1000000 的整数");
+    prices[key] = n;
+  }
+  prices.local = 0;
+  const cnyRaw = payload?.credits_to_cny;
+  const thresholdRaw = payload?.low_balance_usd;
+  const thresholdCnyRaw = payload?.low_balance_cny;
+  const ttlRaw = payload?.balance_ttl_seconds;
+  const config = normalizeCreditConfig({
+    prices,
+    rh_cost_usd: current.config?.rh_cost_usd,
+    credits_to_cny: cnyRaw === "" || cnyRaw == null ? null : cnyRaw,
+    low_balance_usd: thresholdRaw === "" || thresholdRaw == null ? current.config?.low_balance_usd : thresholdRaw,
+    low_balance_cny: thresholdCnyRaw === "" || thresholdCnyRaw == null ? current.config?.low_balance_cny : thresholdCnyRaw,
+    balance_ttl_seconds: ttlRaw === "" || ttlRaw == null ? current.config?.balance_ttl_seconds : ttlRaw,
+    stale_balance_policy: payload?.stale_balance_policy || current.config?.stale_balance_policy,
+    credits_per_usd: current.config?.credits_per_usd
+  });
+  const saved = await upsertAdminSystemSetting({ key: "feature_credit_config", value: config });
+  if (saved?.status === "error" || saved?.ok === false) throw new Error(saved.error || "保存积分配置失败");
+  return getFeatureCreditAdmin();
+}
+
+function ledgerFilters(payload) {
+  const user = String(payload?.user || payload?.userId || payload?.account || "").trim();
+  const feature = String(payload?.feature || "").trim();
+  const status = String(payload?.status || "").trim();
+  const from = String(payload?.from || "").trim();
+  const to = String(payload?.to || "").trim();
+  if (user && !/^[0-9a-f-]{36}$/i.test(user) && !/^[A-Za-z0-9._@\u4e00-\u9fff-]{1,120}$/.test(user)) throw new Error("用户筛选无效");
+  if (feature && !/^[a-z0-9_-]{1,80}$/.test(feature)) throw new Error("功能筛选无效");
+  if (status && !["reserved", "settled", "released"].includes(status)) throw new Error("状态筛选无效");
+  return { user, feature, status, from, to };
+}
+
+const LEDGER_COLUMNS = "created_at,settled_at,user_id,feature,model,status,estimated_credits,settled_credits,balance_after,rh_cost_usd,rh_cost_currency,usage_key,error_code";
+
+async function lookupLedgerUsers(client, userText) {
+  const lookup = ledgerUserLookup(userText);
+  if (!lookup) return null;
+  if (lookup.id) {
+    const { data, error } = await client.from("users").select("id,email,display_name").eq("id", lookup.id).limit(5);
+    if (error) throw error;
+    return data || [];
+  }
+  const byEmail = await client.from("users").select("id,email,display_name").eq("email", lookup.email).limit(20);
+  if (byEmail.error) throw byEmail.error;
+  const byName = await client.from("users").select("id,email,display_name").eq("display_name", lookup.displayName).limit(20);
+  if (byName.error) throw byName.error;
+  const users = new Map();
+  for (const user of [...(byEmail.data || []), ...(byName.data || [])]) users.set(user.id, user);
+  return [...users.values()];
+}
+
+async function queryCreditLedger(payload) {
+  const filters = ledgerFilters(payload || {});
+  const clientState = getAdminClient();
+  if (!clientState.client) return { records: [], csv: ledgerCsv([]) };
+  const client = clientState.client;
+  let userIds = null;
+  let knownUsers = [];
+  if (filters.user) {
+    knownUsers = await lookupLedgerUsers(client, filters.user);
+    userIds = knownUsers.map((user) => user.id);
+    if (!userIds.length) return { records: [], csv: ledgerCsv([]) };
+  }
+  const records = await collectPages(async ({ offset, limit }) => {
+    let query = client.from("credit_ledger").select(LEDGER_COLUMNS)
+      .order("created_at", { ascending: false })
+      .order("usage_key", { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (userIds) query = query.in("user_id", userIds);
+    if (filters.feature) query = query.eq("feature", filters.feature);
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.from) query = query.gte("created_at", filters.from);
+    if (filters.to) query = query.lte("created_at", filters.to);
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  });
+  const ids = [...new Set(records.map((row) => row.user_id).filter(Boolean))];
+  let accounts = new Map(knownUsers.map((user) => [user.id, user.display_name || user.email || user.id]));
+  const missing = ids.filter((id) => !accounts.has(id));
+  if (missing.length) {
+    const { data: users, error } = await client.from("users").select("id,email,display_name").in("id", missing);
+    if (error) throw error;
+    for (const user of users || []) accounts.set(user.id, user.display_name || user.email || user.id);
+  }
+  const labeled = records.map((row) => ({ ...row, user_email_or_account: accounts.get(row.user_id) || row.user_id || "" }));
+  return { records: labeled, csv: ledgerCsv(labeled) };
+}
+
+async function callFeatureCreditRpc(name, args) {
+  const allowed = new Set(["reserve_feature_credits", "settle_feature_credits", "release_feature_credits", "migrate_grok_quota_to_credits", "rollback_grok_quota_migration"]);
+  if (!allowed.has(name)) throw new Error("不支持的积分操作");
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const error = new Error(clientState.error || "在线计量未配置");
+    error.statusCode = 503;
+    throw error;
+  }
+  const { data, error } = await clientState.client.rpc(name, args || {});
+  if (error) throw error;
+  return data;
+}
+
+async function migrateGrokQuotaToCredits(payload) {
+  const batchId = String(payload?.batchId || payload?.batch_id || "").trim();
+  const price = payload?.price == null || payload?.price === "" ? null : Number(payload.price);
+  return callFeatureCreditRpc("migrate_grok_quota_to_credits", {
+    p_batch_id: batchId,
+    p_price: Number.isFinite(price) ? price : null,
+    p_force_fail: false
+  });
+}
+
 module.exports = {
   artKnowledgeRequest: (operation, payload) => require('./art-knowledge-manager.cjs').createArtKnowledgeManager({getClient:()=>getAdminClient().client}).request(operation,payload),
   ENV_SUPABASE_URL,
@@ -3772,6 +3989,7 @@ module.exports = {
   readAdminGrokEnv,
   readAdminRunningHubEnv,
   getAdminRunningHubProviderStatus,
+  startDomesticBalanceRefresh,
   getAdminUsers,
   getAdminCredits,
   getAdminCreditLogs,
@@ -3824,5 +4042,10 @@ module.exports = {
   setAdminGpuWorkerStatus,
   setAdminGpuWorkerTier,
   deleteAdminGpuWorker,
-  hashWorkerRegistrationCode
+  hashWorkerRegistrationCode,
+  getFeatureCreditAdmin,
+  saveFeatureCreditAdmin,
+  queryCreditLedger,
+  callFeatureCreditRpc,
+  migrateGrokQuotaToCredits
 };

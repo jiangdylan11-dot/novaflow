@@ -694,6 +694,101 @@
               <div id="runninghubProviderHealthRows" class="kvList"></div>
             </section>
 
+            <section class="panel" id="featureCreditPanel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">国内站余额与积分</div>
+                  <div class="cardHint">余额只读 RunningHub 国内站 accountStatus，并标明国内站。流水成本是 credit_ledger 里估算的 RH 费用，不是第二路余额。</div>
+                </div>
+                <div id="featureCreditStatus" class="hint">-</div>
+              </div>
+              <div id="rhLowBalanceWarning" class="notice" hidden>
+                <div class="tipTitle">国内站余额低于阈值</div>
+                <div id="rhLowBalanceWarningText">云服务余额不足。新的云任务会拒绝，用户看到中文提示且不扣积分。本地任务不受影响。</div>
+              </div>
+              <div id="featureCreditOpsRows" class="kvList"></div>
+              <div class="formGrid topGap">
+                <div class="row">
+                  <div class="label">低余额阈值（美元）</div>
+                  <div class="field"><input id="featureCreditLowBalance" type="number" min="0" step="0.01" value="2" /></div>
+                </div>
+                <div class="row">
+                  <div class="label">低余额阈值（人民币）</div>
+                  <div class="field"><input id="featureCreditLowBalanceCny" type="number" min="0" step="0.01" value="15" /></div>
+                </div>
+                <div class="row">
+                  <div class="label">余额缓存（分钟）</div>
+                  <div class="field"><input id="featureCreditBalanceTtl" type="number" min="1" step="1" value="10" /></div>
+                </div>
+                <div class="row">
+                  <div class="label">缓存过期</div>
+                  <div class="field">
+                    <select id="featureCreditStalePolicy">
+                      <option value="allow">放行并告警</option>
+                      <option value="block">阻断新云任务</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">积分对人民币</div>
+                  <div class="field"><input id="featureCreditCny" type="number" min="0" step="0.0001" placeholder="上线前填写，默认为空" /></div>
+                </div>
+              </div>
+              <div class="formGrid topGap" id="featureCreditPrices"></div>
+              <div class="actions">
+                <button id="saveFeatureCredits" class="btn primary" type="button">保存积分单价</button>
+                <button id="refreshDomesticBalance" class="btn" type="button">刷新国内站余额</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">积分流水</div>
+                  <div class="cardHint">按用户、功能、状态和时间查看每次扣分。导出当前筛选的 CSV。</div>
+                </div>
+              </div>
+              <div class="formGrid">
+                <div class="row"><div class="label">用户</div><div class="field"><input id="ledgerUser" type="search" placeholder="账号、邮箱或用户 ID" /></div></div>
+                <div class="row"><div class="label">功能</div><div class="field"><input id="ledgerFeature" type="text" placeholder="如 prompt_optimize" /></div></div>
+                <div class="row"><div class="label">状态</div><div class="field"><input id="ledgerStatus" type="text" placeholder="reserved / settled / released。失败与审核都是 released，不扣分" /></div></div>
+                <div class="row"><div class="label">开始</div><div class="field"><input id="ledgerFrom" type="datetime-local" /></div></div>
+                <div class="row"><div class="label">结束</div><div class="field"><input id="ledgerTo" type="datetime-local" /></div></div>
+              </div>
+              <div class="actions">
+                <button id="queryCreditLedger" class="btn" type="button">查询</button>
+                <button id="exportCreditLedger" class="btn" type="button">导出 CSV</button>
+                <span id="ledgerStatusText" class="hint">-</span>
+              </div>
+              <div class="tableViewport">
+                <table class="dataTable">
+                  <thead>
+                    <tr>
+                      <th>时间</th><th>用户</th><th>功能</th><th>模型</th><th>状态</th><th class="num">积分</th><th class="num">估算 RH 成本</th>
+                    </tr>
+                  </thead>
+                  <tbody id="creditLedgerBody"><tr><td colspan="7">尚未查询</td></tr></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">旧次数迁移</div>
+                  <div class="cardHint">维护窗执行：锁定、释放未结算预留、按剩余次数 × 理解单价向上取整入账、冻结旧次数。失败则整批回滚。不要对正在服务的生产库随手执行。</div>
+                </div>
+              </div>
+              <div class="formGrid">
+                <div class="row"><div class="label">批次号</div><div class="field"><input id="quotaMigrationBatch" type="text" placeholder="例如 20261028-maint" /></div></div>
+                <div class="row"><div class="label">理解单价</div><div class="field"><input id="quotaMigrationPrice" type="number" min="0" step="0.1" placeholder="空则用小桃理解单价" /></div></div>
+              </div>
+              <div class="actions">
+                <button id="runQuotaMigration" class="btn" type="button">迁移旧次数到积分</button>
+                <span id="quotaMigrationStatus" class="hint">未执行</span>
+              </div>
+            </section>
+
             <section class="notice">
               <div class="tipTitle">已退出本页的配置</div>
               <div class="tipGrid">

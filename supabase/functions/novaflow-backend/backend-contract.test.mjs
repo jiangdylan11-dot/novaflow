@@ -6491,9 +6491,10 @@ test("Edge router accepts desktop Supabase JWTs and exposes all product Grok rou
   assert.match(indexSource, /\/api\/client\/runninghub\/ui-catalog/);
   assert.doesNotMatch(indexSource, /api\.x\.ai/);
   assert.doesNotMatch(indexSource, /NOVAFLOW_GROK_/);
-  assert.match(indexSource, /\.rpc\("reserve_grok_quota"/);
-  assert.match(indexSource, /\.rpc\("settle_grok_quota"/);
-  assert.match(indexSource, /\.rpc\("release_grok_quota"/);
+  assert.match(indexSource, /createFeatureCreditPorts\(creditRpc\)/);
+  assert.doesNotMatch(indexSource, /function reserveGrokQuota/);
+  assert.doesNotMatch(indexSource, /function settleGrokQuota/);
+  assert.doesNotMatch(indexSource, /function releaseGrokQuota/);
   assert.match(indexSource, /error\.statusCode = 413/);
   assert.match(
     optimizeHandler,

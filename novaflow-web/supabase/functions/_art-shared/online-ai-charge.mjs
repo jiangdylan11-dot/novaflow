@@ -1,8 +1,11 @@
 // GENERATED COPY - source: packages/shared/src/online-ai-charge.mjs
 // One metering seam for online text and vision.
-// Callers pass a feature id and an amount. Today's adapter holds that amount
-// on the existing provider balance; a later single credit balance replaces
-// this adapter, not the call sites. This module does not create quota tables.
+// Callers pass a feature id and an amount. Amount stays the call budget (or
+// image count). The credit card in feature-credits.mjs turns that into a
+// credit hold. Reserve/settle/release are the credit RPCs. Local features run
+// and never reserve. A low RunningHub pool rejects before any hold.
+import { isLocalFeature, lowBalanceState, publicCreditError, quoteFeature, RH_LOW_BALANCE_MESSAGE } from './feature-credits.mjs';
+
 const FEATURE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 function units(value, label) {
@@ -13,21 +16,39 @@ function units(value, label) {
   return amount;
 }
 
-export function createOnlineAiCharge({ reserve, settle, release } = {}) {
+export function createOnlineAiCharge({ reserve, settle, release, prices, pool } = {}) {
   if (typeof reserve !== 'function' || typeof settle !== 'function' || typeof release !== 'function') {
     throw new Error('在线计量未配置');
   }
-  return async function chargeOnlineAi({ userId, feature, amount = 1, usageKey, metadata, run } = {}) {
+  return async function chargeOnlineAi({ userId, feature, amount = 1, usageKey, metadata, run, pool: callPool } = {}) {
     const featureId = String(feature || '').trim();
     const requested = units(amount, '在线计量数量无效');
     if (!FEATURE_ID.test(featureId) || requested < 1 || typeof run !== 'function' || !userId || !usageKey) {
       throw Object.assign(new Error('在线计量参数无效'), { statusCode: 400 });
     }
+    const quoted = quoteFeature({ feature: featureId, units: requested, prices });
+    if (isLocalFeature(featureId) || quoted.local || quoted.credits === 0) {
+      const outcome = await run({ amount: 0, credits: 0, local: true });
+      return { ...outcome, quota: { status: 'local', charged_credits: 0, local: true, feature: quoted.feature } };
+    }
+    if (quoted.unpriced) {
+      throw Object.assign(new Error('该功能积分单价未配置'), { statusCode: 402 });
+    }
+    const activePool = callPool === undefined ? pool : callPool;
+    const poolState = typeof activePool === 'function' ? await activePool() : activePool;
+    if (poolState && (poolState.blocked === true || lowBalanceState(poolState).blocked)) {
+      throw Object.assign(new Error(RH_LOW_BALANCE_MESSAGE), { statusCode: 402, code: 'rh_low_balance' });
+    }
     let reservation;
     try {
-      reservation = await reserve({ userId, feature: featureId, amount: requested, usageKey, metadata: metadata || {} });
-    } catch {
-      throw Object.assign(new Error('在线AI次数不足或暂时不可用'), { statusCode: 402 });
+      reservation = await reserve({
+        userId, feature: featureId, amount: requested, credits: quoted.credits,
+        usageKey, metadata: metadata || {}
+      });
+    } catch (error) {
+      const failure = Object.assign(new Error(publicCreditError(error?.message || error)), { statusCode: 402 });
+      if (error?.code) failure.code = error.code;
+      throw failure;
     }
     const granted = units(reservation?.amount ?? requested);
     if (reservation?.status !== 'reserved' || reservation?.idempotent || granted < 1) {
