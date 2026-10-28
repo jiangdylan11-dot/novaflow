@@ -336,7 +336,7 @@
     await Promise.all(Array.from({ length: Math.min(4, files.length) }, async () => {
       while (nextImage < files.length) {
         const k = nextImage++, f = files[k]
-        decoded[k] = { img: await imageFromBlob(f.blob), fileName: f.fileName, blob: f.blob, sourceFolder: f.sourceFolder || null, sourcePath: f.sourcePath || null, pma: f.pma }
+        decoded[k] = prepareExternalPage({ img: await imageFromBlob(f.blob), fileName: f.fileName, blob: f.blob, sourceFolder: f.sourceFolder || null, sourcePath: f.sourcePath || null, pma: f.pma }, p.atlasText)
       }
     }))
     for (const im of decoded) images.set(lower(im.fileName), im)
@@ -401,7 +401,7 @@
     $('#tree').scrollTop = 0
     refresh()
     const lost = [...rt.missingPages, ...rt.missingRegions]
-    if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（这些附件先显示为空）`, 'error')
+    if (lost.length) status(`已载入 ${state.name}，缺少图片：${lost.slice(0, 4).join('、')}${lost.length > 4 ? ` 等 ${lost.length} 张` : ''}（已显示 MISSING 占位）`, 'error')
     else status(`已载入 ${state.name}：${state.json.bones.length} 骨骼，${state.json.slots.length} 插槽${fromVersion ? `（工程版本 ${fromVersion}，导出时保持 ${fromVersion}）` : ''}`, 'ok')
     if (p.askFolder && !state.imageFolder && regionList().length) setTimeout(askImageFolder, 0)
     if (state.imageFolder && state.imageFolder.handle) rememberFolder(state.imageFolder.handle)
@@ -466,11 +466,11 @@
   }
   const pageEntry = (images, name) => images.get(lower(name)) || images.get(lower(baseName(name))) || [...images.values()].find((i) => lower(stem(i.fileName)) === lower(stem(name)))
   const pagePma = (images, name, fallback) => typeof pageEntry(images, name)?.pma === 'boolean' ? pageEntry(images, name).pma : !!fallback
-  function readProjectData(json, atlas, gl) {
+  function readProjectData(json, atlas, gl, images) {
     const copy = Ops.editorData(json)
     const v = String(copy.skeleton && copy.skeleton.spine || '')
     if (!v.startsWith('3.8') || v === '3.8.75') copy.skeleton = { ...(copy.skeleton || {}), spine: '3.8.99' }
-    return new spine.SkeletonJson(tolerantLoader(atlas, gl)).readSkeletonData(copy)
+    return new spine.SkeletonJson(tolerantLoader(atlas, gl, images)).readSkeletonData(copy)
   }
   function projectRuntime(p) {
     const s = p.snap
@@ -479,7 +479,7 @@
     dropProjectRuntime(p.id)
     const gl = rt.renderer.context || rt.gl
     const atlas = new spine.TextureAtlas(s.atlasText, (path) => pageTexture(gl, pageImageFrom(s.images, path), pagePma(s.images, path, s.pma)))
-    const data = readProjectData(s.json, atlas, gl)
+    const data = readProjectData(s.json, atlas, gl, s.images)
     r = { json: s.json, atlasText: s.atlasText, images: s.images, pma: !!s.pma, atlas, data, skeleton: new spine.Skeleton(data) }
     otherRt.set(p.id, r)
     return r
@@ -619,6 +619,33 @@
   // .nfproj v2 contains data and external image references only. The image directory defaults
   // to the project file's own directory; v1 embedded images remain readable for migration.
   const PROJECT_FILE_FORMAT = 'novaflow-spine-projects'
+  const externalPageUploads = new WeakMap()
+
+  // Old project references may call an ordinary PNG "PMA". Validate its soft pixels,
+  // and clear invisible RGB through canvas before uploading a retained PMA page.
+  // This changes only the preview source; the external file is never rewritten.
+  function prepareExternalPage(im, atlasText) {
+    if (!im.sourceFolder || im.pma !== true) return im
+    // Explicit atlas PMA and packed pages retain their authored pixel contract.
+    const regions = [...Attach.parseAtlas(atlasText).values()].filter((r) => lower(r.page) === lower(im.fileName))
+    const r = regions[0]
+    if (regions.length !== 1 || r.rotate || r.x || r.y || r.w !== r.origW || r.h !== r.origH || /(?:^|\n)\s*pma:\s*true/i.test(atlasText)) return im
+    const img = im.img, c = document.createElement('canvas')
+    c.width = img.naturalWidth; c.height = img.naturalHeight
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(img, 0, 0)
+    const pixels = ctx.getImageData(0, 0, c.width, c.height).data
+    let soft = 0, over = 0
+    for (let i = 0; i < pixels.length; i += 4) {
+      const a = pixels[i + 3]
+      if (!a || a === 255) continue
+      soft++
+      if (Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) > a + 6) over++
+    }
+    if (over > 0 && over / soft > 0.02) return { ...im, pma: false }
+    externalPageUploads.set(img, c)
+    return im
+  }
 
   /**
    * A picture's bytes when a session-created image needs an external file. Once its source file
@@ -682,12 +709,6 @@
     for (const ref of refs || []) {
       const path = projectPath(ref.path || ref.fileName).join('/')
       let file = files.find((f) => lower(f.rel) === lower(path))
-      // A copied project may gain an extra images/ directory. Keep the complete relative
-      // reference (including JPG/PNG), and reconnect only when that suffix is unambiguous.
-      if (!file) {
-        const matches = files.filter((f) => lower(f.rel).endsWith('/' + lower(path)))
-        if (matches.length === 1) file = matches[0]
-      }
       if (!file && legacyAtlas && !ref.path) {
         const regions = [...Attach.parseAtlas(legacyAtlas).values()].filter((r) => r.page === ref.fileName)
         if (regions.length === 1) { const r = regions[0]; if (!r.rotate && !r.x && !r.y && r.w === r.origW && r.h === r.origH) file = files.find((f) => folderPictureName(f) === r.name) }
@@ -699,7 +720,7 @@
   async function connectProjectImages(target, folder) {
     const json = target.json
     const images = await referencedProjectImages(target.projectImageRefs, folder)
-    const decoded = await Promise.all(images.map(async (im) => ({ ...im, img: await imageFromBlob(im.blob) })))
+    const decoded = await Promise.all(images.map(async (im) => prepareExternalPage({ ...im, img: await imageFromBlob(im.blob) }, target.atlasText)))
     if (target.json !== json || target.imageFolder !== folder || !decoded.length) return
     target.images = new Map(target.images)
     for (const im of decoded) target.images.set(lower(im.fileName), im)
@@ -997,24 +1018,28 @@
       const parts = await directory.resolve(handle)
       if (parts) parentParts = parts.slice(0, -1)
     } else if (supplied && rel.includes('/')) parentParts = rel.split('/').slice(1, -1)
-    // A cached folder is usable only when it belongs to this actual project file, so a moved
-    // project never silently reconnects to another copy's old images.
-    if (!directory && handle) for (const p of d.projects) {
+    if (!directory && handle) {
+      const known = [projectSaveDirectory, state.projectDirectory, state.projectAccessRoot,
+        ...projects.flatMap((p) => p.snap ? [p.snap.projectDirectory, p.snap.projectAccessRoot] : [])]
+      for (const root of new Set(known.filter(Boolean))) {
+        if (typeof root.resolve !== 'function' || typeof root.queryPermission !== 'function' || await root.queryPermission({ mode: 'read' }).catch(() => 'denied') !== 'granted') continue
+        const parts = await root.resolve(handle).catch(() => null)
+        if (parts && parts.length) { directory = root; parentParts = parts.slice(0, -1); break }
+      }
+    }
+    // Resolve every subproject's own folder. A saved folder is usable only when its
+    // recorded project directory contains this actual file, never a moved namesake.
+    if (handle) for (const p of d.projects) {
       const rec = await folderDbDo('readonly', (store) => store.get(p.folderKey)).catch(() => null)
       const root = rec && rec.projectDirectory
       if (!root || typeof root.queryPermission !== 'function' || typeof root.resolve !== 'function' || await root.queryPermission({ mode: 'read' }).catch(() => 'denied') !== 'granted') continue
       const parts = await root.resolve(handle).catch(() => null)
       if (parts && parts.length === 1) {
         const access = rec.projectAccessRoot || root, relative = await access.resolve(handle).catch(() => null)
-        if (relative) { directory = access; parentParts = relative.slice(0, -1); cachedImageFolders.set(p.folderKey, rec.handle) }
-      }
-    }
-    if (!directory && !supplied && d.projects.some((p) => (p.images || []).length)) {
-      status('请指定图片文件夹，默认选择 .nfproj 所在目录')
-      directory = await pickDirectory({ startIn: handle })
-      if (directory && handle && directory.resolve) {
-        const parts = await directory.resolve(handle).catch(() => null)
-        if (parts) parentParts = parts.slice(0, -1)
+        if (relative) {
+          if (!directory) { directory = access; parentParts = relative.slice(0, -1) }
+          if (rec.handle && typeof rec.handle.queryPermission === 'function' && await rec.handle.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted') cachedImageFolders.set(p.folderKey, rec.handle)
+        }
       }
     }
     let projectDirectory = directory ? await projectSubdir(directory, parentParts) : null
@@ -1023,12 +1048,12 @@
     for (const p of d.projects) {
       let folder = null
       const imagePath = typeof p.imagePath === 'string' ? p.imagePath : '.'
-      const cached = p.externalFolder && cachedImageFolders.get(p.folderKey)
+      const cached = cachedImageFolders.get(p.folderKey)
       if (cached && typeof cached.queryPermission === 'function' && await cached.queryPermission({ mode: 'read' }).catch(() => 'denied') === 'granted') {
         folder = folderFromHandle(cached, cached.name)
       } else if (directory) {
         try { const imageDir = await projectSubdir(directory, projectPath(imagePath, parentParts)); folder = folderFromHandle(imageDir, imageDir.name) }
-        catch { folder = folderFromHandle(directory, directory.name) } // a manually relocated image folder
+        catch { /* recorded path is missing: keep the rig and show MISSING attachments */ }
       } else if (supplied) {
         const prefix = projectPath(imagePath, parentParts).join('/')
         const items = supplied.map((f) => ({ rel: String(f.webkitRelativePath || f.name).split('/').slice(1).join('/'), file: f }))
@@ -1040,6 +1065,7 @@
         for (const name of Attach.parseAtlas(p.atlasText).keys()) names.add(name)
         const best = bestPictureRoot((await listProjectImages(folder)).map((f) => f.rel), names)
         folder = folderWithPictureNames(folder, best, names)
+        folder.recordedPaths = true
       }
       let images = await referencedProjectImages(p.images, folder, d.version === 1 ? p.atlasText : null)
       // Legacy files may have loose PNGs under a subdirectory and a stale absolute Spine path.
@@ -1054,7 +1080,8 @@
         label: p.name, offset: p.offset, visible: p.visible, exported: p.exported, folderKey: p.folderKey || '', operation,
         replace: operation === 'replace' && imported.length === 0 && !!state.json })
       imported.push(activeProject)
-      if (folder) await refreshFolderPictures(state, folder)
+      // The saved references already supply the pages. Do not guess replacement pixels
+      // from another subtree merely because an attachment has the same short name.
     }
     switchProject(imported[Math.max(0, Math.min(d.projects.length - 1, Number(d.active) || 0))])
     // opened into an empty tree, the tree is that file: 保存工程 / Ctrl+S write back to it
@@ -1066,7 +1093,7 @@
       Object.values(a.slots || {}).some((s) => (s.attachment || []).some((key) => key.name)))
     const emptySetup = !(state.json.slots || []).some((s) => s.attachment) && attachmentAnimations.length
       ? `；设置姿势没有显示附件，请在工程树选择动画「${attachmentAnimations[0][0]}」查看` : ''
-    status((missing ? `已打开工程，缺少 ${missing} 张外部图片：请在「图片」中指定图片文件夹（默认 .nfproj 同目录）`
+    status((missing ? `已打开 ${d.projects.length} 个工程，缺少 ${missing} 张外部图片，已显示 MISSING 占位；可在对应工程的「图片」节点重新定位目录`
       : `已打开 NovaFlow 工程：${d.projects.length} 个工程${handle && wasEmpty ? `（Ctrl+S 直接保存回 ${handle.name}）` : ''}`) + hidden + emptySetup, missing || hidden || emptySetup ? 'error' : 'ok')
     return d.projects.length
   }
@@ -1304,7 +1331,7 @@
     if (it.json === src.json && it.skinName === src.skin && it.skeleton) return it
     // what plays now, to play again on the rebuilt skeleton
     const playing = it.anim ? it.anim.tracks.map((t) => t && { name: t.animation.name, loop: t.loop }) : []
-    it.data = readProjectData(src.json, it.atlas, pv.gl)
+    it.data = readProjectData(src.json, it.atlas, pv.gl, src.images)
     it.skeleton = new spine.Skeleton(it.data)
     if (src.skin !== 'default' && it.data.findSkin(src.skin)) it.skeleton.setSkinByName(src.skin)
     it.skeleton.setToSetupPose()
@@ -1528,36 +1555,45 @@
    * The atlas loader, except that a picture the atlas lacks does not stop the project from
    * opening: its attachment loads with an empty picture (and is reported once).
    */
-  function tolerantLoader(atlas, gl) {
+  function tolerantLoader(atlas, gl, images = state.images) {
     const base = new spine.AtlasAttachmentLoader(atlas)
-    let blank = null
-    const blankRegion = () => {
-      if (!blank) {
+    const missingRegion = (original) => {
+      if (!atlas.nfMissingTexture) {
         const c = document.createElement('canvas')
-        c.width = 1; c.height = 1
-        const r = new spine.TextureAtlasRegion()
-        r.renderObject = r
-        r.texture = new spine.webgl.GLTexture(gl, c)
-        r.u = 0; r.v = 0; r.u2 = 1; r.v2 = 1
-        r.width = r.height = r.originalWidth = r.originalHeight = 1
-        r.offsetX = r.offsetY = 0; r.rotate = false; r.degrees = 0; r.name = ''
-        blank = r
+        c.width = c.height = 256
+        const ctx = c.getContext('2d')
+        ctx.fillStyle = '#624331'; ctx.fillRect(0, 0, 256, 256)
+        ctx.strokeStyle = '#ff7900'; ctx.lineWidth = 5
+        for (let n = -256; n <= 256; n += 64) { ctx.beginPath(); ctx.moveTo(n, 0); ctx.lineTo(n + 256, 256); ctx.stroke() }
+        ctx.fillStyle = '#ff7900'; ctx.font = 'bold 39px sans-serif'; ctx.textAlign = 'center'
+        for (const y of [64, 144, 224]) ctx.fillText('MISSING', 128, y)
+        atlas.nfMissingTexture = pageTexture(gl, c, false)
+        const dispose = atlas.dispose.bind(atlas)
+        atlas.dispose = () => { atlas.nfMissingTexture.dispose(); dispose() }
       }
-      return blank
+      const r = new spine.TextureAtlasRegion()
+      if (original) Object.assign(r, original)
+      else { r.width = r.height = r.originalWidth = r.originalHeight = 1; r.offsetX = r.offsetY = 0 }
+      r.renderObject = r; r.texture = atlas.nfMissingTexture
+      r.u = r.v = 0; r.u2 = r.v2 = 1; r.rotate = false; r.degrees = 0
+      return r
     }
+    const available = (region) => region && pageEntry(images, region.page.name)
     return {
       newRegionAttachment(skin, name, path) {
-        if (atlas.findRegion(path)) return base.newRegionAttachment(skin, name, path)
+        const region = atlas.findRegion(path)
+        if (available(region)) return base.newRegionAttachment(skin, name, path)
         rt.missingRegions.add(path)
         const a = new spine.RegionAttachment(name)
-        a.setRegion(blankRegion())
+        a.setRegion(missingRegion(region))
         return a
       },
       newMeshAttachment(skin, name, path) {
-        if (atlas.findRegion(path)) return base.newMeshAttachment(skin, name, path)
+        const region = atlas.findRegion(path)
+        if (available(region)) return base.newMeshAttachment(skin, name, path)
         rt.missingRegions.add(path)
         const a = new spine.MeshAttachment(name)
-        a.region = blankRegion()
+        a.region = missingRegion(region)
         return a
       },
       newBoundingBoxAttachment: (skin, name) => base.newBoundingBoxAttachment(skin, name),
@@ -1574,6 +1610,7 @@
    * (user 2026-10-13: 序列扫光 叠加没问题，滤色和正常会一直闪).
    */
   function pageTexture(ctx, img, pagePma) {
+    img = externalPageUploads.get(img) || img
     if (pagePma) return new spine.webgl.GLTexture(ctx, img)
     const gl = ctx.gl || ctx
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true)
@@ -2448,11 +2485,13 @@
         const packed = [...target.images.values()].filter((im) => im.sourceFolder === folder && im.sourcePath === f.rel && !aliases.has(f.rel))
         if (packed.length) {
           const file = await f.file(), stamp = `${file.size}|${file.lastModified}`
-          if (versions.get(f.rel) !== stamp) { const img = await imageFromBlob(file); for (const im of packed) pageUpdates.push({ ...im, img, blob: file, stamp }) }
+          if (versions.get(f.rel) !== stamp) { const img = await imageFromBlob(file); for (const im of packed) pageUpdates.push(prepareExternalPage({ ...im, img, blob: file, stamp }, atlasText)) }
           continue
         }
         if (!wanted.has(name)) continue
         const old = regions.get(name), loaded = old && target.images.get(lower(old.page))
+        const ref = folder.recordedPaths && (target.projectImageRefs || []).find((r) => old && lower(r.fileName) === lower(old.page))
+        if (ref && lower(f.rel) !== lower(ref.path || ref.fileName)) continue
         if (loaded && loaded.sourceFolder === folder && loaded.sourcePath && loaded.sourcePath !== f.rel) continue
         const file = await f.file(), stamp = `${file.size}|${file.lastModified}`
         if (versions.get(f.rel) === stamp) continue
@@ -2476,7 +2515,7 @@
     for (const u of updates) {
       const previous = target.images.get(lower(u.fileName))
       if (previous) pagePixels.delete(previous.img)
-      target.images.set(lower(u.fileName), { fileName: u.fileName, img: u.img, blob: u.blob, sourceFolder: folder, sourcePath: u.rel, pma: u.pma }); versions.set(u.rel, u.stamp)
+      target.images.set(lower(u.fileName), prepareExternalPage({ fileName: u.fileName, img: u.img, blob: u.blob, sourceFolder: folder, sourcePath: u.rel, pma: u.pma }, target.atlasText)); versions.set(u.rel, u.stamp)
     }
     record.atlasText = target.atlasText
     target.atlasChanged = true
@@ -2800,7 +2839,9 @@
   function rememberFolder(handle) {
     const key = state.folderKey
     if (!key || !handle) return
-    folderDbDo('readwrite', (store) => store.put({ handle, name: handle.name, at: Date.now() }, key)).catch(() => {})
+    const record = { handle, projectDirectory: state.projectDirectory,
+      projectAccessRoot: state.projectAccessRoot, name: handle.name, at: Date.now() }
+    folderDbDo('readwrite', (store) => store.put(record, key)).catch(() => {})
   }
   /** The project (picked, or one in the tree) that `fill` writes to, wherever it now sits. */
   function projectState(proj) { return projects[activeProject] === proj ? state : proj && proj.snap }
@@ -3332,7 +3373,7 @@
           if (!src.images.has(lower(name)) && !src.images.has(lower(baseName(name)))) throw new Error(`${entry.name} 缺少图片：${name}`)
           return pageTexture(gl, pageImageFrom(src.images, name), pagePma(src.images, name, src.pma))
         })
-        const data = readProjectData(src.json, atlas, gl), skeleton = new spine.Skeleton(data)
+        const data = readProjectData(src.json, atlas, gl, src.images), skeleton = new spine.Skeleton(data)
         if (src.skin && src.skin !== 'default' && data.findSkin(src.skin)) skeleton.setSkinByName(src.skin)
         const animation = data.findAnimation(src.anim) || data.animations[0]
         actors.push({ atlas, skeleton, animation, offset: src.offset || { x: 0, y: 0 } })
@@ -7806,8 +7847,8 @@
     const toggle = () => { state.sections.has('images') ? state.sections.delete('images') : state.sections.add('images'); renderTree() }
     const root = imagesListing('')
     const count = root ? root.files.length + (root.dirs.length ? ` + ${root.dirs.length} 夹` : '') : '…'
-    const folder = state.imageFolder && state.imageFolder.live ? state.imageFolder.name : ''
-    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: (folder ? `图片文件夹：${folder}（文件夹里加图、删图会实时显示）\n` : '还没指定图片文件夹：现在列的是图集里的图\n') + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
+    const folder = state.imageFolder ? state.imageFolder.name : ''
+    rows.push(h('div', { class: 'row node', style: pad(1), onclick: toggle, title: (folder ? `图片文件夹：${folder}${state.imageFolder.live ? '（文件夹里加图、删图会实时显示）' : '（已载入）'}\n` : `记录的图片目录：${state.imagePath || '.'}（未连接，缺图显示 MISSING）\n`) + '把图片拖到骨骼（新建插槽）、插槽（新建附件）或画板上（挂在 root，放在落点）' },
       caret(!closed, toggle), h('span', { class: 'ico', html: ICON.folder }), h('span', { class: 'label' }, '图片'),
       h('span', { class: 'end' },
         // Spine's images path, no import (user 2026-10-15: 这里不需要有什么导入按钮): pictures are what the folder holds
@@ -7817,6 +7858,8 @@
           : h('button', { class: 'ld-btn tiny', title: folder ? `换一个图片文件夹（现在是「${folder}」）` : '指定工程的图片文件夹：图集会解包进去，之后文件夹里的变化实时显示',
             onclick: (e) => { e.stopPropagation(); chooseImageFolder() } }, folder ? '换文件夹…' : '指定文件夹…'),
         h('span', { class: 'cnt' }, String(count)))))
+    if ((state.projectImageRefs || []).length) rows.push(h('div', { class: 'row', style: pad(2), 'data-image-directory': state.imagePath || '.', title: '当前工程记录的图片目录；重新定位只影响此工程' },
+      h('span', { class: 'meta' }, `目录：${state.imagePath || '.'}${folder ? '' : '（未连接）'}`)))
     if (closed) return
     const used = imagesInUse()
     const walk = (path, depth) => {

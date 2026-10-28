@@ -88,7 +88,7 @@ function fixture() {
   const w = { NovaFlowSequenceAtlas: { safeName: s => s }, showSaveFilePicker: async () => { throw Error('not configured') }, showDirectoryPicker: async opts => { picker.push(opts); if (!w.directory) return null; return w.directory } }; w.parent = w
   const c = vm.createContext({ console, window: w, state, projects, activeProject: 0, Blob, File, Response, CompressionStream, DecompressionStream, Uint8Array, fetch,
     Attach, lower: s => String(s).toLowerCase(), stem: s => s.replace(/\.[^.]+$/, ''), baseName: s => s.split('/').pop(),
-    rt: {}, pagePixels: new Map(), frameThumbs: new Map(), imgTree: null, refresh() {}, applyJson(j) { state.json = j },
+    rt: {}, pagePixels: new Map(), frameThumbs: new Map(), imgTree: null, refresh() {}, applyJson(j) { state.json = j }, prepareExternalPage: im => im,
     imageFromBlob: async blob => ({ naturalWidth: 1, naturalHeight: 1, blob }),
     folderDbDo: async (_mode, run) => run({ get: k => records.get(k), put: (v, k) => records.set(k, v) }),
     status: (...a) => status.push(a),
@@ -160,8 +160,8 @@ test('a project and its image subdirectory move together without old cached fold
   await moved.put('PNG/pic.png', 'moved current pixels')
   const g = fixture(); g.records.set('key', { handle: imageDir, projectDirectory: d.root })
   g.window.directory = moved.root
-  await g.open(await project.getFile(), project)
-  assert.equal(g.picker[0].startIn, project)
+  await g.open(await project.getFile(), project, { directory: { handle: moved.root } })
+  assert.equal(g.picker.length, 0)
   assert.equal(await g.state.images.get('pic.png').blob.text(), 'moved current pixels')
 })
 
@@ -192,22 +192,19 @@ test('resource paths cannot write outside the selected image directory', () => {
   assert.deepEqual(Array.from(c.projectPath('../PNG', ['sub'])), ['PNG'])
 })
 
-test('copied project reconnects complete references below an extra images folder and preserves visibility', async () => {
+test('a changed recorded image path stays missing without guessing a similarly named subtree', async () => {
   const d = disk(), f = fixture()
   await d.put('images/JPG/pic.png', 'correct JPG pixels')
   await d.put('images/PNG/pic.png', 'different PNG pixels')
   const p = { json: json(), atlasText: atlas(), fileName: 'spin.json', name: 'spin', imagePath: '.', visible: false,
     images: [{ fileName: 'pic.png', path: 'JPG/pic.png', pma: true }] }
   await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'spin.nfproj'), null, { directory: { handle: d.root } })
-  const im = f.state.images.get('pic.png')
-  assert.equal(await im.blob.text(), 'correct JPG pixels')
-  assert.equal(im.sourcePath, 'images/JPG/pic.png')
-  assert.equal(im.pma, true)
+  assert.equal(f.state.images.size, 0)
   assert.equal(f.projects[0].visible, false)
   assert.match(f.status.at(-1)[0], /当前工程「spin」已隐藏/)
-  assert.doesNotMatch(f.status.at(-1)[0], /缺少/)
-  const saved = await f.save(d.root)
-  assert.equal(saved.projects[0].images[0].path, 'images/JPG/pic.png')
+  assert.match(f.status.at(-1)[0], /MISSING/)
+  await f.c.refreshFolderPictures(f.state, f.state.imageFolder)
+  assert.equal(f.state.images.size, 0, 'live folder refresh also respects the recorded path')
 })
 
 test('exact project references win and ambiguous relocated copies are left missing', async () => {
@@ -300,7 +297,7 @@ test('relative sibling image directories survive folder import and saving', asyn
   assert.equal(saved.projects[0].externalFolder, undefined)
 })
 
-test('invalid cached folder records fall back to the current project directory', async () => {
+test('invalid cached folder records leave missing pictures without opening a directory picker', async () => {
   const d = disk(), f = fixture()
   await d.put('pic.png', 'current')
   const p = { json: json(), atlasText: atlas(), fileName: 'scene.json', name: 'scene', folderKey: 'invalid', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
@@ -308,8 +305,72 @@ test('invalid cached folder records fall back to the current project directory',
   f.records.set('invalid', { projectDirectory: { name: 'stale handle' } })
   f.window.directory = d.root
   await f.open(await file.getFile(), file)
-  assert.equal(f.picker.length, 1)
-  assert.equal(await f.state.images.get('pic.png').blob.text(), 'current')
+  assert.equal(f.picker.length, 0)
+  assert.equal(f.state.images.size, 0)
+  assert.equal(f.state.json.bones[0].name, 'root')
+  assert.match(f.status.at(-1)[0], /MISSING/)
+})
+
+test('every subproject restores its own external folder without prompting or mixing identical file names', async () => {
+  const d = disk(), left = disk('left-images'), right = disk('right-images'), f = fixture()
+  await left.put('pic.png', 'left pixels'); await right.put('pic.png', 'right pixels')
+  const part = (name) => ({ json: json(), atlasText: atlas(), fileName: name + '.json', name, folderKey: name,
+    externalFolder: true, imagePath: name + '-images', images: [{ fileName: 'pic.png', path: 'pic.png', pma: false }] })
+  const file = await d.put('both.nfproj', await gzip({ format: 'novaflow-spine-projects', version: 2, active: 1, projects: [part('left'), part('right')] }))
+  f.records.set('left', { handle: left.root, projectDirectory: d.root })
+  f.records.set('right', { handle: right.root, projectDirectory: d.root })
+  await f.open(await file.getFile(), file)
+  assert.equal(f.picker.length, 0)
+  assert.equal(f.projects.length, 2)
+  assert.equal(await f.projects[0].snap.images.get('pic.png').blob.text(), 'left pixels')
+  assert.equal(await f.state.images.get('pic.png').blob.text(), 'right pixels')
+  assert.equal(f.projects[0].snap.imageFolder.handle, left.root)
+  assert.equal(f.state.imageFolder.handle, right.root)
+})
+
+test('saving and reopening multiple projects retains separate relative directories and current disk pixels', async () => {
+  const d = disk(), f = fixture()
+  await d.put('left/pic.png', 'left original'); await d.put('right/pic.png', 'right original')
+  const left = await d.root.getDirectoryHandle('left'), right = await d.root.getDirectoryHandle('right')
+  Object.assign(f.state, { name: 'left', folderKey: 'left', imageFolder: f.c.folderFromHandle(left, 'left') })
+  await f.c.loadParts({ json: json(), label: 'right', jsonName: 'right.json', atlasText: atlas(), folderKey: 'right',
+    imageFolder: f.c.folderFromHandle(right, 'right'), images: [], imageRefs: [] })
+  const saved = await f.save(d.root)
+  assert.deepEqual(saved.projects.map(p => p.imagePath), ['left', 'right'])
+  assert.deepEqual(saved.projects.map(p => p.images[0].path), ['pic.png', 'pic.png'])
+  const file = await d.put('both.nfproj', await gzip(saved))
+  await d.put('left/pic.png', 'left changed'); await d.put('right/pic.png', 'right changed')
+  const g = fixture()
+  for (const [key, rec] of f.records) g.records.set(key, rec)
+  await g.open(await file.getFile(), file)
+  assert.equal(g.picker.length, 0)
+  assert.equal(await g.projects[0].snap.images.get('pic.png').blob.text(), 'left changed')
+  assert.equal(await g.state.images.get('pic.png').blob.text(), 'right changed')
+})
+
+test('a missing recorded subdirectory does not borrow same-name images from its parent', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'unrelated parent image')
+  const p = { json: json(), atlasText: atlas(), fileName: 'scene.json', name: 'scene', imagePath: 'deleted', images: [{ fileName: 'pic.png', path: 'pic.png' }] }
+  await f.open(new File([await gzip({ format: 'novaflow-spine-projects', version: 2, projects: [p] })], 'scene.nfproj'), null, { directory: { handle: d.root } })
+  assert.equal(f.state.imageFolder, null)
+  assert.equal(f.state.images.size, 0)
+  assert.match(f.status.at(-1)[0], /MISSING/)
+  assert.equal(f.picker.length, 0)
+})
+
+test('remembering folders keeps project-location records captured before another project is selected', async () => {
+  const f = fixture(), d = disk(), left = disk('left'), right = disk('right'), writes = []
+  f.c.folderDbDo = async (_mode, run) => { writes.push(run) }
+  vm.runInContext(fn('rememberFolder'), f.c)
+  Object.assign(f.state, { folderKey: 'left', projectDirectory: d.root, projectAccessRoot: left.root })
+  f.c.rememberFolder(left.root)
+  Object.assign(f.state, { folderKey: 'right', projectDirectory: right.root, projectAccessRoot: right.root })
+  f.c.rememberFolder(right.root)
+  for (const run of writes) run({ put: (rec, key) => f.records.set(key, rec) })
+  assert.equal(f.records.get('left').projectDirectory, d.root)
+  assert.equal(f.records.get('left').projectAccessRoot, left.root)
+  assert.equal(f.records.get('right').handle, right.root)
 })
 
 test('deleting the last project then creating a new one never lets Ctrl+S write to the deleted project file', async () => {

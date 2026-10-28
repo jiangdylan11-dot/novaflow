@@ -21,7 +21,7 @@ function handles(name, tree) {
 function harness() {
   const remembered = [], unpacked = []
   const context = vm.createContext({ state: { json: json(), sections: new Set(), images: new Map() }, imgTree: null,
-    Attach, lower: s => String(s).toLowerCase(), rt: {}, pagePixels: new Map(), frameThumbs: new Map(), applyJson() {}, imageFromBlob: async () => ({ naturalWidth: 1, naturalHeight: 1 }),
+    Attach, lower: s => String(s).toLowerCase(), rt: {}, pagePixels: new Map(), frameThumbs: new Map(), applyJson() {}, imageFromBlob: async () => ({ naturalWidth: 1, naturalHeight: 1 }), prepareExternalPage: im => im,
     regionList: () => [{ name: 'chicken' }], status() {}, refresh() {}, connectProjectImages: async () => {},
     rememberFolder: handle => remembered.push(handle),
     unpackAtlasInto: async handle => { unpacked.push(handle); return { written: 0, skipped: 1, unpremultiplied: 0 } },
