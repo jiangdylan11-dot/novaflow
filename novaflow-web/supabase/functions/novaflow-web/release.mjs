@@ -1,5 +1,5 @@
-// GENERATED COPY - do not edit here.
+﻿// GENERATED COPY - do not edit here.
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-export const RELEASE_VERSION = "2.0.129";
+export const RELEASE_VERSION = "2.0.130";
