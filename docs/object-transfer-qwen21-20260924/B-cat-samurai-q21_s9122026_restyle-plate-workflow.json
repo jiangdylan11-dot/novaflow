@@ -1,0 +1,128 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NovaFlow_object_transfer_ot_B-cat-samurai_q21_s9122026_restyle_object.png"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NovaFlow_object_transfer_ot_B-cat-samurai_q21_s9122026_restyle_scene.png"
+    }
+  },
+  "4": {
+    "class_type": "UnetLoaderGGUF",
+    "inputs": {
+      "unet_name": "qwen-image-2.1-UC-Q8_0.gguf"
+    }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_w4a8_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "7": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "8": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "5",
+        0
+      ],
+      "prompt": "Redraw the object from image 1 as if the artist of image 2 had drawn it. Keep the object own colours, materials, markings and proportions exactly the same; do not recolour it and do not redesign it. Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit. Do not add any new lamp, light or glowing panel anywhere on it. Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail. Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections. Same object, same shape, same parts, same pose. Plain flat grey background, no shadow.",
+      "negative_prompt": "",
+      "resolution": 0,
+      "vae": [
+        "6",
+        0
+      ],
+      "images.image_1": [
+        "1",
+        0
+      ],
+      "images.image_2": [
+        "2",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "seed": 9122026,
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "latent_image": [
+        "8",
+        2
+      ],
+      "denoise": 1
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "SplitImageWithAlpha",
+    "inputs": {
+      "image": [
+        "10",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "11",
+        0
+      ],
+      "filename_prefix": "NovaFlow_object_transfer_ot_B-cat-samurai_q21_s9122026_restyle"
+    }
+  }
+}

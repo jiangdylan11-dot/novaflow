@@ -1,0 +1,12 @@
+saved ot-out/A-cat-goddess/bf16_s9122026_restyle-plate.png NovaFlow_object_transfer_ot_A-cat-goddess_bf16_s9122026_restyle_00001_.png 23s waited
+09:19:51 case A-cat-goddess scene { width: 756, height: 1137 } object { width: 1024, height: 1024 } bounds { x: 60, y: 819, width: 212, height: 212 }
+09:19:51 cached bf16_s9122026_restyle-plate.png
+09:21:51 done bf16_s9122026_raw.png 107.56s
+09:21:54 {"engine":"bf16","seed":9122026,"plate":{"width":832,"height":1256,"aspectError":0},"restyleSeconds":null,"finalSeconds":107.56,"outsideMeanAbsDiff":9.22,"insideMeanAbsDiff":32.78,"rbOriginal":-24.84,"rbResult":-26.55}
+09:24:11 done fp8mixed_s9122026_restyle-plate.png 135.61s
+09:26:12 done fp8mixed_s9122026_raw.png 102.68s
+09:26:19 {"engine":"fp8mixed","seed":9122026,"plate":{"width":832,"height":1256,"aspectError":0},"restyleSeconds":135.61,"finalSeconds":102.68,"outsideMeanAbsDiff":17,"insideMeanAbsDiff":40.86,"rbOriginal":-24.84,"rbResult":-28.82}
+09:28:20 done q21_s9122026_restyle-plate.png 118.57s
+09:30:28 done q21_s9122026_raw.png 107.49s
+09:30:36 {"engine":"q21","seed":9122026,"plate":{"width":832,"height":1280,"aspectError":0},"restyleSeconds":118.57,"finalSeconds":107.49,"outsideMeanAbsDiff":3.59,"insideMeanAbsDiff":20.08,"rbOriginal":-24.84,"rbResult":-20.34}
+09:30:41 sheet C:\Users\jiang\AppData\Local\Temp\claude\D--AI-APP-NovaFlow-Web\ede526e1-f3ad-4b51-afe6-e1b3d2280b18\scratchpad\ot-out\A-cat-goddess\sheet.png

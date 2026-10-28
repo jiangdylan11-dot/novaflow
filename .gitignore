@@ -45,3 +45,13 @@ novaflow-web/supabase/.temp/
 # Local build outputs and temporary validation logs.
 /.artifacts/
 /.tmp-*
+
+# Local experiments and agent worktrees (large, keep out of git; already-tracked files stay tracked)
+/work/
+/.claude/worktrees/
+
+# Cloudflare Wrangler local state (account cache; never commit)
+.wrangler/
+
+# Accidental root Deno lock (no deno.json for supabase functions here)
+deno.lock

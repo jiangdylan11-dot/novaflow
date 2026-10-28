@@ -1,0 +1,128 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NovaFlow_object_transfer_ot_B-cat-samurai_q21_s9122026_placement.png"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NovaFlow_object_transfer_ot_B-cat-samurai_q21_s9122026_scene.png"
+    }
+  },
+  "4": {
+    "class_type": "UnetLoaderGGUF",
+    "inputs": {
+      "unet_name": "qwen-image-2.1-UC-Q8_0.gguf"
+    }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_w4a8_heretic.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    }
+  },
+  "7": {
+    "class_type": "QwenImage21Cache",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "device": "auto",
+      "dtype": "default"
+    }
+  },
+  "8": {
+    "class_type": "TextEncodeQwenImage21",
+    "inputs": {
+      "clip": [
+        "5",
+        0
+      ],
+      "prompt": "把图1中的物体按图1里的位置和大小放进图2的画面里。重新绘制物体底部周围的地面，画出它压在地面上的一小片浅淡接触暗部，投影短而柔和、紧贴底部边缘。地面原有的纹理和亮度保持不变。画面其余部分保持不变。",
+      "negative_prompt": "",
+      "resolution": 0,
+      "vae": [
+        "6",
+        0
+      ],
+      "images.image_1": [
+        "1",
+        0
+      ],
+      "images.image_2": [
+        "2",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "seed": 9122026,
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "8",
+        0
+      ],
+      "negative": [
+        "8",
+        1
+      ],
+      "latent_image": [
+        "8",
+        2
+      ],
+      "denoise": 1
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "9",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "SplitImageWithAlpha",
+    "inputs": {
+      "image": [
+        "10",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "11",
+        0
+      ],
+      "filename_prefix": "NovaFlow_object_transfer_ot_B-cat-samurai_q21_s9122026"
+    }
+  }
+}

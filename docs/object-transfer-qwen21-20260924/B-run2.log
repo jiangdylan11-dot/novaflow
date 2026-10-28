@@ -1,0 +1,8 @@
+09:30:51 case B-cat-samurai scene { width: 626, height: 1360 } object { width: 1024, height: 1024 } bounds { x: 344, y: 1088, width: 188, height: 188 }
+09:33:15 done fp8mixed_s9122026_restyle-plate.png 143.58s
+09:35:14 done fp8mixed_s9122026_raw.png 103.31s
+09:35:20 {"engine":"fp8mixed","seed":9122026,"plate":{"width":696,"height":1512,"aspectError":0},"restyleSeconds":143.58,"finalSeconds":103.31,"outsideMeanAbsDiff":11.43,"insideMeanAbsDiff":11.28,"rbOriginal":-7.93,"rbResult":-9.97}
+09:37:30 done q21_s9122026_restyle-plate.png 126.11s
+09:39:39 done q21_s9122026_raw.png 106s
+09:39:45 {"engine":"q21","seed":9122026,"plate":{"width":704,"height":1536,"aspectError":0},"restyleSeconds":126.11,"finalSeconds":106,"outsideMeanAbsDiff":9.74,"insideMeanAbsDiff":34.02,"rbOriginal":-7.93,"rbResult":-4.85}
+09:39:47 sheet C:\Users\jiang\AppData\Local\Temp\claude\D--AI-APP-NovaFlow-Web\ede526e1-f3ad-4b51-afe6-e1b3d2280b18\scratchpad\ot-out\B-cat-samurai\sheet.png

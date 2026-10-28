@@ -1,0 +1,162 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NovaFlow_object_transfer_ot_A-cat-goddess_bf16_s9122026_restyle_object.png"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "NovaFlow_object_transfer_ot_A-cat-goddess_bf16_s9122026_restyle_scene.png"
+    }
+  },
+  "4": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "qwen_image_edit_2511_bf16.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    }
+  },
+  "7": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors",
+      "strength_model": 1
+    }
+  },
+  "8": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "model": [
+        "7",
+        0
+      ],
+      "shift": 1.5,
+      "sampling": "flow"
+    }
+  },
+  "9": {
+    "class_type": "CFGNorm",
+    "inputs": {
+      "model": [
+        "8",
+        0
+      ],
+      "strength": 1,
+      "pre_cfg": false
+    }
+  },
+  "10": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "1",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": [
+        "5",
+        0
+      ],
+      "prompt": "Redraw the object from image 1 as if the artist of image 2 had drawn it. Keep the object own colours, materials, markings and proportions exactly the same; do not recolour it and do not redesign it. Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit. Do not add any new lamp, light or glowing panel anywhere on it. Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail. Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections. Same object, same shape, same parts, same pose. Plain flat grey background, no shadow.",
+      "vae": [
+        "6",
+        0
+      ],
+      "image1": [
+        "1",
+        0
+      ],
+      "image2": [
+        "2",
+        0
+      ]
+    }
+  },
+  "12": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "11",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "9",
+        0
+      ],
+      "seed": 9122026,
+      "steps": 6,
+      "cfg": 1.4,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "11",
+        0
+      ],
+      "negative": [
+        "12",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ],
+      "denoise": 1
+    }
+  },
+  "14": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "6",
+        0
+      ]
+    }
+  },
+  "15": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "14",
+        0
+      ],
+      "filename_prefix": "NovaFlow_object_transfer_ot_A-cat-goddess_bf16_s9122026_restyle"
+    }
+  }
+}

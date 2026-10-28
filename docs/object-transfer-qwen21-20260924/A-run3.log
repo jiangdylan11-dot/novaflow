@@ -1,0 +1,8 @@
+09:39:56 case A-cat-goddess scene { width: 756, height: 1137 } object { width: 1024, height: 1024 } bounds { x: 60, y: 819, width: 212, height: 212 }
+09:42:35 done fp8mixed_s424242_restyle-plate.png 158.15s
+09:44:24 done fp8mixed_s424242_raw.png 96.93s
+09:44:31 {"engine":"fp8mixed","seed":424242,"plate":{"width":832,"height":1256,"aspectError":0},"restyleSeconds":158.15,"finalSeconds":96.93,"outsideMeanAbsDiff":10.99,"insideMeanAbsDiff":32.57,"rbOriginal":-24.84,"rbResult":-25.58}
+09:46:32 done q21_s424242_restyle-plate.png 118.3s
+09:48:47 done q21_s424242_raw.png 112.97s
+09:48:54 {"engine":"q21","seed":424242,"plate":{"width":832,"height":1280,"aspectError":0},"restyleSeconds":118.3,"finalSeconds":112.97,"outsideMeanAbsDiff":9.82,"insideMeanAbsDiff":23.46,"rbOriginal":-24.84,"rbResult":-20.62}
+09:48:57 sheet C:\Users\jiang\AppData\Local\Temp\claude\D--AI-APP-NovaFlow-Web\ede526e1-f3ad-4b51-afe6-e1b3d2280b18\scratchpad\ot-out\A-cat-goddess\sheet.png
