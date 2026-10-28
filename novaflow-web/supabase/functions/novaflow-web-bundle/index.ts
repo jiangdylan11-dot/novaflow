@@ -384,7 +384,7 @@ function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, 
 // Source: packages/shared/src/release.mjs
 // Regenerate with: npm run sync:edge
 // Application release identifier; protocol and model versions remain independent.
-const RELEASE_VERSION = "2.0.139";
+const RELEASE_VERSION = "2.0.143";
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -995,7 +995,7 @@ function workflowModelId(name, options, method='') {
     const profile = String(args[10]?.taskProfile || '');
     const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
     const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
-    if (ui || draw) return draw&&state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
+    if (ui || draw) return state.localQwen21Variant==='turbo'?'qwen-image-2.1-turbo':'qwen-image-2.1';
   }
   if(name==='spine-split-runtime'&&['buildQwenImageOutpaintWorkflow','buildImageAngleAdjustWorkflow','buildObjectTransferQwen21Workflow','buildEffectExtractQwenWorkflow','buildEffectDeeffectQwenWorkflow'].includes(method))return 'qwen-image-2.1-turbo';
   if (name === 'NovaFlowAiSequenceMiniMaxH3Workflow' && [
