@@ -840,8 +840,13 @@
     if (located) await located.parent.removeEntry(located.name).catch(() => {})
   }
 
-  /** Temp file plus rename when the platform can move(); otherwise the caller writes in place. */
-  async function replaceProjectWithTemp(located, handle, bytes, blob, hadData) {
+  /**
+   * Temp file plus rename when move() can take the target name. A target that already exists
+   * is never removed to make room: move() on Windows refuses to replace it, and deleting it
+   * first would leave no file if the rename then failed. null means the caller must write
+   * through the existing handle instead.
+   */
+  async function replaceProjectWithTemp(located, bytes, blob) {
     const tempName = `.${located.name}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.tmp`
     let temp = null
     try { temp = await located.parent.getFileHandle(tempName, { create: true }) } catch { return null }
@@ -849,7 +854,6 @@
       if (temp) await located.parent.removeEntry(tempName).catch(() => {})
       return null
     }
-    let removed = false
     try {
       await writeBytesSafely(temp, blob)
       const written = await temp.getFile()
@@ -858,29 +862,14 @@
       if (head[0] !== 0x1f || head[1] !== 0x8b) throw new Error('工程写入不完整，已取消保存')
       try {
         await temp.move(located.name)
-      } catch (moveErr) {
-        const blocked = moveErr && (moveErr.name === 'InvalidModificationError' || /exist/i.test(String(moveErr.message || '')))
-        if (!blocked) {
-          await located.parent.removeEntry(tempName).catch(() => {})
-          return null
-        }
-        if (typeof handle.remove === 'function') await handle.remove()
-        else await located.parent.removeEntry(located.name)
-        removed = true
-        await temp.move(located.name)
+      } catch {
+        await located.parent.removeEntry(tempName).catch(() => {})
+        return null
       }
       return temp
     } catch (err) {
       await located.parent.removeEntry(tempName).catch(() => {})
-      if (removed && hadData) {
-        try {
-          const bak = await located.parent.getFileHandle(located.name + '.bak')
-          const bakFile = await bak.getFile()
-          await writeBytesSafely(await located.parent.getFileHandle(located.name, { create: true }), bakFile)
-        } catch { /* name.nfproj.bak still holds the previous project */ }
-      }
       if (err && err.message === '工程写入不完整，已取消保存') throw err
-      if (removed) throw err
       return null
     }
   }
@@ -889,21 +878,9 @@
     assertProjectBytes(bytes)
     const blob = new Blob([bytes], { type: 'application/octet-stream' })
     const located = await locateProject(directory, handle)
-    const existing = await handle.getFile().catch(() => null)
-    const hadData = !!(existing && existing.size > 0)
-    if (hadData && located) {
-      const bak = await located.parent.getFileHandle(located.name + '.bak', { create: true })
-      try { await writeBytesSafely(bak, existing) } catch (err) {
-        const now = await bak.getFile().catch(() => null)
-        if (!now || !now.size) {
-          if (typeof bak.remove === 'function') await bak.remove().catch(() => {})
-          else await located.parent.removeEntry(located.name + '.bak').catch(() => {})
-        }
-        throw err
-      }
-    }
-    const swapped = located && await replaceProjectWithTemp(located, handle, bytes, blob, hadData)
+    const swapped = located && await replaceProjectWithTemp(located, bytes, blob)
     if (swapped) return swapped
+    // move() could not replace the existing file. Write into it without truncating first.
     await writeBytesSafely(handle, blob)
     return handle
   }
@@ -932,10 +909,11 @@
    * (a big tree must not be serialized first, or the browser drops the click). showSaveFilePicker
    * still creates an empty file immediately, and createWritable() without keepExistingData
    * truncates before write — so the bytes are checked first (non-empty gzip, 1f 8b) and only
-   * then written. A temp file is renamed over the target when move() can; otherwise the write
-   * uses keepExistingData and truncates to the new length only after write() resolves.
-   * Failure leaves the previous file in place and deletes a picker-created empty file.
-   * Overwrite keeps name.nfproj.bak first.
+   * then written. A temp file is renamed over the target when move() can replace that name.
+   * When the target already exists, move() is not preceded by a delete: the bytes are written
+   * with keepExistingData and the file is truncated to the new length only after write() resolves,
+   * so a failure before that leaves the previous contents in place. A picker-created empty file
+   * is removed if a later step fails, and a temp file is not left behind.
    */
   async function saveProjectFileNow(opts) {
     const as = !!(opts && opts.as)

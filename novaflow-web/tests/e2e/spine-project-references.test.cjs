@@ -224,7 +224,7 @@ test('Ctrl+S retains its file and reads modified external pixels without another
   assert.equal(f.picker.length, 0)
   assert.equal(await f.state.images.get('pic.png').blob.text(), 'second')
   assert.equal((await unpack(await read('scene.nfproj'))).version, 2)
-  assert.deepEqual(await read('scene.nfproj.bak'), first)
+  assert.equal(d.root.nodes.has('scene.nfproj.bak'), false)
   assert.equal([...d.root.nodes.keys()].some((n) => String(n).endsWith('.tmp')), false)
 })
 
@@ -300,6 +300,26 @@ test('explicit append honours identical source filenames; replace affects only t
   assert.equal(f.projects.length, 2)
   await vm.runInContext('saveProjectFileNow()', f.c)
   assert.equal(picks, 3, 'replacement detaches the previous save file')
+})
+
+test('when move cannot replace an existing file, a failed in-place write leaves that file', async () => {
+  const d = disk(), f = fixture()
+  await d.put('pic.png', 'pixels')
+  const handle = await d.put('scene.nfproj', 'previous-project')
+  f.state.imageFolder = f.c.folderFromHandle(d.root, d.root.name)
+  f.window.showSaveFilePicker = async () => handle
+  const real = handle.createWritable.bind(handle)
+  handle.createWritable = async (opts) => {
+    assert.equal(!!(opts && opts.keepExistingData), true)
+    const w = await real(opts)
+    w.write = async () => { throw new Error('disk full') }
+    return w
+  }
+  await assert.rejects(vm.runInContext('saveProjectFileNow()', f.c), /disk full/)
+  assert.equal(d.root.nodes.has('scene.nfproj'), true)
+  assert.equal(await (await handle.getFile()).text(), 'previous-project')
+  assert.equal(d.root.nodes.has('scene.nfproj.bak'), false)
+  assert.equal([...d.root.nodes.keys()].some((n) => String(n).includes('.tmp')), false)
 })
 
 test('a save that throws while serializing leaves the previous project file unchanged', async () => {
