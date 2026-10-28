@@ -1,7 +1,7 @@
 {
   "name": "novaflow-license-manager",
   "productName": "NovaFlow 后台管理",
-  "version": "3.0.19",
+  "version": "3.0.20",
   "private": true,
   "description": "NovaFlow Web administration application",
   "main": "admin-main.js",
@@ -10,7 +10,7 @@
     "pretest": "node ../tools/sync-art-admin.mjs --check",
     "start": "electron .",
     "server": "node admin-server/server.js",
-    "test": "node tests/dashboard-contract.cjs && node tests/retired-terms.cjs && node --test tests/runninghub-provider.test.cjs",
+    "test": "node tests/dashboard-contract.cjs && node tests/retired-terms.cjs && node --test tests/runninghub-provider.test.cjs tests/user-deletion.test.cjs",
     "test:runninghub-ui": "electron tests/runninghub-ui.cjs",
     "test:users-ui": "electron tests/users-ui.cjs",
     "build:win": "electron-builder --config electron-builder.json --win nsis --x64"

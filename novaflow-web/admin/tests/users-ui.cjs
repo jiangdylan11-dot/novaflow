@@ -56,6 +56,17 @@ app.whenReady().then(async () => {
   assert.equal(await run(`document.querySelector('#module-ai-services #creditLedgerBody')`), null);
   assert.deepEqual(await run(`[...document.querySelectorAll('.userTable th')].map(el => el.textContent)`), ["用户", "注册时间", "当前积分", "账户类型", "状态", "同时在线", "有效期", "操作"]);
   assert.deepEqual(await run(`[...document.querySelectorAll('#usersTableBody tr:first-child .tableActions button')].map(el => el.textContent)`), ["流水", "修改密码", "保存", "删除"]);
+  assert.equal(await run(`document.querySelectorAll('#usersTableBody .badge').length`), 0);
+  const planColors = await run(`(() => {
+    const select = document.querySelector('#usersTableBody select[data-field="plan"]');
+    const colors = ['trial', 'standard', 'pro'].map(value => {
+      select.value = value; select.dispatchEvent(new Event('change'));
+      return getComputedStyle(select).color;
+    });
+    return { colors, options: [...select.options].map(option => getComputedStyle(option).color) };
+  })()`);
+  assert.equal(new Set(planColors.colors).size, 3);
+  assert.deepEqual(planColors.colors, planColors.options);
   await run(`$('userSearchInput').value = 'Weyne display'; $('userSearchInput').dispatchEvent(new Event('input'))`);
   assert.equal(await run(`$('usersTableBody').rows.length`), 1);
   assert.equal(await run(`$('usersTableBody').rows[0].cells[0].textContent`), "weyne");

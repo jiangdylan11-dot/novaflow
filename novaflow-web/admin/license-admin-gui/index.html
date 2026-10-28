@@ -1369,9 +1369,6 @@
       .badge.expired { background: #3a2f12; color: #facc15; }
       .badge.error { background: var(--danger-soft); color: #fca5a5; }
       .badge.info { background: rgba(147,197,253,0.16); color: #93c5fd; }
-      .badge.plan-trial { background: #2a2a2a; color: #a0a0a0; }
-      .badge.plan-standard { background: rgba(147,197,253,0.16); color: #93c5fd; }
-      .badge.plan-pro { background: var(--primary-soft); color: #7ce8b5; }
       .btn:focus-visible, .tab:focus-visible, .moduleNavButton:focus-visible, .linkButton:focus-visible, .segment:focus-visible {
         outline: 2px solid var(--primary);
         outline-offset: 2px;
@@ -1493,6 +1490,11 @@
       .recordActions { display: inline-flex; align-items: center; gap: 6px; }
       .recordCopyButton, .recordDeleteButton { height: 28px; min-width: 0; padding: 0 10px; font-size: 12px; }
       .tableSelect { min-width: 96px; max-width: 150px; height: 30px; font-size: 12px; padding: 0 8px; }
+      .tableSelect[data-field="plan"][data-plan="trial"], .tableSelect option.plan-trial { color: #b4bac3; }
+      .tableSelect[data-field="plan"][data-plan="standard"], .tableSelect option.plan-standard { color: #93c5fd; }
+      .tableSelect[data-field="plan"][data-plan="pro"], .tableSelect option.plan-pro { color: #7ce8b5; }
+      .tableSelect[data-field="plan"] { font-weight: 600; }
+      .tableSelect option[class^="plan-"] { background: var(--surface); }
       .tableInput { flex: 0 0 auto; height: 30px; font-size: 12px; padding: 0 8px; }
       .tableInput.sessions { width: 64px; }
       .tableInput.expiry { width: 132px; }

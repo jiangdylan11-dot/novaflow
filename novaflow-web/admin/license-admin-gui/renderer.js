@@ -92,7 +92,6 @@ const USER_PLAN_OPTIONS = [
   ["standard", "中级（普通节点）"],
   ["pro", "高级（所有节点）"]
 ];
-const USER_PLAN_SHORT = { trial: "普通", standard: "中级", pro: "高级" };
 
 // gpu_workers.tier: 普通 nodes serve 中级 and 高级 accounts, 高级 nodes serve
 // 高级 accounts only.
@@ -379,16 +378,6 @@ function normalizeUserPlanValue(value) {
   return USER_PLAN_OPTIONS.some(([key]) => key === s) ? s : "trial";
 }
 
-function planBadge(plan) {
-  const raw = String(plan || "trial").trim().toLowerCase();
-  const key = raw === "team" ? "pro" : (USER_PLAN_OPTIONS.some(([item]) => item === raw) ? raw : "trial");
-  const badge = document.createElement("span");
-  badge.className = `badge plan-${key === "standard" ? "standard" : key === "pro" ? "pro" : "trial"}`;
-  badge.textContent = USER_PLAN_SHORT[key] || "普通";
-  badge.title = raw === "team" ? "pro" : key;
-  return badge;
-}
-
 function userDisplayName(user) {
   return user?.display_name || userAccountLabel(user) || user?.id || "-";
 }
@@ -429,9 +418,15 @@ function createTableSelect(options, value, disabled, fieldName) {
     const option = document.createElement("option");
     option.value = key;
     option.textContent = label;
+    if (fieldName === "plan") option.className = `plan-${key}`;
     select.appendChild(option);
   });
   select.value = value;
+  if (fieldName === "plan") {
+    const updateTone = () => { select.dataset.plan = normalizeUserPlanValue(select.value); };
+    updateTone();
+    select.addEventListener("change", updateTone);
+  }
   return select;
 }
 
@@ -627,7 +622,7 @@ function renderUsers(usersResult, creditsResult) {
       "plan"
     );
     const planCell = document.createElement("td");
-    planCell.append(planBadge(user.plan), planSelect);
+    planCell.appendChild(planSelect);
     tr.appendChild(planCell);
 
     const statusSelect = createTableSelect(

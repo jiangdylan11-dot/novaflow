@@ -1993,26 +1993,13 @@ async function deleteAdminUser(payload) {
     }
 
     const authUser = await findAdminAuthUserForDelete(clientState.client, user);
-    let authDeleted = false;
-    if (authUser?.id) {
-      const { error: authDeleteError } = await clientState.client.auth.admin.deleteUser(authUser.id);
-      if (authDeleteError && !isAuthUserNotFoundError(authDeleteError)) throw authDeleteError;
-      authDeleted = true;
-    }
-
+    // Snapshot the balance for the response. Deleting users cascades credits
+    // in the database; a blocked user delete must leave both login and balance.
     const { data: deletedCredits, error: creditsError } = await clientState.client
       .from("credits")
-      .delete()
-      .eq("user_id", user.id)
-      .select("id,user_id,balance,updated_at");
+      .select("id,user_id,balance,updated_at")
+      .eq("user_id", user.id);
     if (creditsError) throw creditsError;
-
-    const { data: deletedProviderQuotas, error: providerQuotaError } = await clientState.client
-      .from("system_settings")
-      .delete()
-      .like("key", `${PROVIDER_QUOTA_PREFIX}%_${user.id}`)
-      .select("key,value,updated_at");
-    if (providerQuotaError) throw providerQuotaError;
 
     const { data: deletedUser, error: deleteError } = await clientState.client
       .from("users")
@@ -2022,6 +2009,20 @@ async function deleteAdminUser(payload) {
       .maybeSingle();
     if (deleteError) throw deleteError;
     if (!deletedUser) throw new Error("用户删除未返回记录，请刷新确认");
+
+    const { data: deletedProviderQuotas, error: providerQuotaError } = await clientState.client
+      .from("system_settings")
+      .delete()
+      .like("key", `${PROVIDER_QUOTA_PREFIX}%_${user.id}`)
+      .select("key,value,updated_at");
+    if (providerQuotaError) throw providerQuotaError;
+
+    let authDeleted = false;
+    if (authUser?.id) {
+      const { error: authDeleteError } = await clientState.client.auth.admin.deleteUser(authUser.id);
+      if (authDeleteError && !isAuthUserNotFoundError(authDeleteError)) throw authDeleteError;
+      authDeleted = true;
+    }
     await verifyAdminUserDeleted(clientState.client, user.id, authUser?.id || "");
 
     const durationMs = Date.now() - startedAt;
