@@ -2,14 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
 <title>Foart</title>
+<link rel="stylesheet" href="./foart-button-theme.css" />
+<script src="./foart-button-theme.js"></script>
 <style>
   :root {
     --bg: #141414; --panel: #202020; --surface: #1b1b1b; --field: #161616;
     --text: #ededed; --muted: #aaaaaa; --dim: #8b8b8b;
     --accent: #1ea672; --accent-hover: #25bc84; --danger: #ef4444; --warn: #f59e0b;
-    --button: #333333;
+    --button: #272727;
   }
   * { box-sizing: border-box; }
   body {
@@ -68,7 +70,7 @@
     border: 0; border-radius: 8px; background: var(--button); color: var(--text);
     padding: 0 14px; height: 34px; cursor: pointer; font: inherit;
   }
-  button:hover:not(:disabled) { background: #3d3d3d; }
+  button:hover:not(:disabled) { background: #373737; }
   button:disabled { background: #2b2b2b; color: #666; cursor: not-allowed; }
   button.primary { background: var(--accent); color: #fff; font-weight: 600; box-shadow: none; }
   button.primary:hover:not(:disabled) { background: var(--accent-hover); }
@@ -112,6 +114,7 @@
   .tab { min-width: 78px; height: 44px; background: transparent; border-radius: 0; font-size: 13px; color: #a7a7a7; border-bottom: 2px solid transparent; }
   .tab.active { background: transparent; border-bottom-color: #1EA672; color: #f1f1f1; }
   .tab:hover:not(:disabled) { background: #ffffff05; color: #fff; }
+
   .hidden { display: none !important; }
   .website { display: block; text-align: center; margin-top: 12px; color: #6FD9B8; font-size: 12px; text-decoration: none; }
   #websiteLink { color: #dfc46f; }

@@ -33,6 +33,8 @@ const PUBLIC_FILES = new Set([
   '/novaflow-web-runtime.js',
   '/novaflow-web-account.js',
   '/novaflow-ui-theme.css',
+  '/foart-button-theme.css',
+  '/foart-button-theme.js',
   '/release.json',
   '/robots.txt',
   '/favicon.ico'

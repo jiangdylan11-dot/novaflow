@@ -654,7 +654,7 @@
       .nf-as-tools button:hover,.nf-as-btn:hover{background:#373737;color:#fff}
       .nf-as-tools button:disabled,.nf-as-btn:disabled{opacity:.45;cursor:default}
       .nf-as-tools button[aria-pressed="true"]{background:#1c4136;border-color:#29594a;color:#9be4cd}
-      .nf-as-note{font-size:11px;line-height:1.6;color:#8b8b8b}
+      .nf-as-note:empty{display:none}.nf-as-note{font-size:11px;line-height:1.6;color:#8b8b8b}
       .nf-as-inspector{display:flex;flex-direction:column;gap:7px;padding-top:4px;border-top:1px solid #272727;margin-top:2px}
       .nf-as-slider{display:grid;grid-template-columns:30px minmax(0,1fr) 42px;align-items:center;gap:6px;font-size:11px;color:#a9a9a9;height:24px}
       .nf-as-slider-value{text-align:right;color:#cfcfcf;font-variant-numeric:tabular-nums}
@@ -939,7 +939,8 @@
     previewRow.addEventListener('click', () => setReferencePreview(!state.refPreview.enabled));
     previewSec.appendChild(previewRow);
     ui.previewSwitch = previewRow;
-    ui.previewName = el('div', 'nf-as-note', '打开后把资源列表里的视频拖到舞台上方置入');
+    ui.previewName = el('div', 'nf-as-note', '');
+    previewSec.title = '把资源列表里的视频拖到舞台上方置入';
     previewSec.appendChild(ui.previewName);
     tools.body.appendChild(previewSec);
     // selected clip: volume and fades
@@ -979,9 +980,10 @@
     save.addEventListener('click', () => saveMix());
     saveGrid.appendChild(save);
     saveSec.appendChild(saveGrid);
-    ui.saveNote = el('div', 'nf-as-note', '混音存入资源列表和仓库；置入视频后同时再存一份带混音的视频。');
+    ui.saveNote = el('div', 'nf-as-note', '');
+    save.title = '混音存入资源列表和仓库；置入视频后同时再存一份带混音的视频。';
     saveSec.appendChild(ui.saveNote);
-    saveSec.appendChild(el('div', 'nf-as-note', '快捷键：空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放 · Home 回到开头'));
+    saveSec.title = '快捷键：空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放 · Home 回到开头';
     tools.body.appendChild(saveSec);
     const closeSec = el('div', 'nf-as-edit-sec');
     const closeGrid = el('div', 'nf-as-tools');
@@ -1181,11 +1183,11 @@
     if (mode === 'music') {
       selectField(ui.genBody, '风格', MUSIC_STYLES.map((s) => [s[0], s[1]]), m.style, (v) => { m.style = v; const s = MUSIC_STYLES.find((x) => x[0] === v); if (s && v !== 'auto') { m.bpm = s[3]; syncDockValues(); } });
       selectField(ui.genBody, '情绪', MOODS.map((s) => [s[0], s[1]]), m.mood, (v) => { m.mood = v; });
-      ui.genBody.appendChild(el('div', 'nf-as-note', '循环版会按小节裁齐并做无缝接缝，生成后自动放到「音乐」音轨。'));
+      ui.genBody.title = '循环版会按小节裁齐并做无缝接缝，生成后自动放到「音乐」音轨。';
     } else {
       selectField(ui.genBody, '类别', SFX_CATEGORIES.map((s) => [s[0], s[1]]), m.category, (v) => { m.category = v; const c = SFX_CATEGORIES.find((x) => x[0] === v); if (c && v !== 'auto') { m.seconds = c[3]; syncDockValues(); } });
       selectField(ui.genBody, '风格', SFX_STYLES.map((s) => [s[0], s[1]]), m.style, (v) => { m.style = v; });
-      ui.genBody.appendChild(el('div', 'nf-as-note', '多个会生成不同变体，都进资源列表，挑一个拖到音轨。'));
+      ui.genBody.title = '多个会生成不同变体，都进资源列表，挑一个拖到音轨。';
     }
     // dock row
     ui.dockRow.replaceChildren();
@@ -1213,7 +1215,7 @@
       const count = dropdown([1, 2, 3, 4].map((n) => [String(n), n + ' 个']), String(m.count), (v) => { m.count = Number(v); }, 'nf-as-select-inline');
       ui.dockRow.appendChild(count.trigger);
     }
-    const go = label(el('button', 'nf-as-go'), '开始生成'); go.type = 'button'; go.setAttribute('data-novaflow-source-layout', '1'); go.style.setProperty('border', '1px solid #24b693', 'important'); go.style.setProperty('--nf-as-go-icon', GO_ICON);
+    const go = label(el('button', 'nf-as-go'), '开始生成'); go.type = 'button'; go.setAttribute('data-novaflow-source-layout', '1'); go.style.setProperty('border', '0', 'important'); go.style.setProperty('--nf-as-go-icon', GO_ICON);
     go.addEventListener('click', () => (mode === 'music' ? submitMusic() : submitSfx()));
     ui.dockRow.appendChild(go);
     ui.go = go;

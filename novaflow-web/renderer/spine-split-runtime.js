@@ -2779,11 +2779,13 @@
 
   function setImportantStyle(node, name, value) {
     if (!node || !node.style) return
+    value = window.FoartButtonTheme?.normalize(node, name, value) ?? value
     node.style.setProperty(name, value, 'important')
   }
 
   function setImportantStyleIfChanged(node, name, value) {
     if (!node || !node.style) return
+    value = window.FoartButtonTheme?.normalize(node, name, value) ?? value
     if (node.style.getPropertyValue(name) === value && node.style.getPropertyPriority(name) === 'important') return
     node.style.setProperty(name, value, 'important')
   }
@@ -14922,7 +14924,7 @@
 
   function setSplitImportantStyles(node, styles) {
     Object.keys(styles).forEach((name) => {
-      const value = String(styles[name])
+      const value = String(window.FoartButtonTheme?.normalize(node, name, styles[name]) ?? styles[name])
       if (node.style.getPropertyValue(name) === value && node.style.getPropertyPriority(name) === 'important') return
       node.style.setProperty(name, value, 'important')
     })

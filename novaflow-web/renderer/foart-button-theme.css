@@ -1,0 +1,37 @@
+/* Keep each control's original transparent/painted role. No universal fill. */
+@layer foart-buttons {
+  :root {
+    --foart-action-grey: #272727;
+    --foart-action-grey-hover: #373737;
+    --foart-action-green: #1ea672;
+    --foart-action-green-hover: #20b490;
+  }
+  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
+    border: 0 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  /* These classes are existing filled action controls, not navigation,
+     section headers, toolbar glyphs or text links. */
+  :is(button, [role="button"]):where(.btn, .aifx-button, .quickLink, [data-novaflow-account-logout], .nf-ve-btn, .nf-ve-dd-trigger, .nf-ve-anchor-grid button:not([aria-pressed="true"]), .nf-tl-track-btns button:not([aria-pressed="true"]), .nf-atlas-button, .nf-prb-btn.alt, .nf-mp4-btn.alt, .nf-vfc-btn.alt, .nf-saw-btn.alt, .nf-prb-top-actions button, .nf-mp4-top-actions button, .nf-vfc-top-actions button, .nf-saw-top-actions button) {
+    background: var(--foart-action-grey) !important;
+    color: #eaeaea !important;
+  }
+  :is(button, [role="button"]):where(.primary, .btn-primary, .aifx-primary, .nf-login-submit, .nf-as-tool-primary, .nf-as-go, .nf-prb-btn:not(.alt), .nf-mp4-btn:not(.alt), .nf-vfc-btn:not(.alt), .nf-saw-btn:not(.alt), [data-novaflow-generate-icon="1"]) {
+    background: var(--foart-action-green) !important;
+    color: #fff !important;
+  }
+  :is(button, [role="button"]):where(.primary, .btn-primary, .aifx-primary, .nf-login-submit, .nf-as-tool-primary, .nf-as-go, .nf-prb-btn:not(.alt), .nf-mp4-btn:not(.alt), .nf-vfc-btn:not(.alt), .nf-saw-btn:not(.alt), [data-novaflow-generate-icon="1"]):hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--foart-action-green-hover) !important;
+  }
+  :is(button, [role="button"])[data-novaflow-spine-inline-import-action="1"] {
+    background: var(--foart-action-grey) !important;
+    color: #eaeaea !important;
+  }
+  :is(button, [role="button"])[data-novaflow-spine-inline-import-action="1"]:hover {
+    background: var(--foart-action-grey-hover) !important;
+  }
+  .btn.danger { background: #e5484d !important; }
+}
+[data-foart-usage-note="1"] { display: none !important; }

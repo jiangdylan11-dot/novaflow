@@ -22,6 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { RELEASE_VERSION } from '../packages/shared/src/release.mjs';
 import { syncBrandAssets } from './sync-brand-assets.mjs';
+import { syncButtonTheme } from './sync-button-theme.mjs';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
@@ -154,6 +155,7 @@ async function emptyDir(dir) {
 export async function buildWebRenderer({ logger, clean = true, minify = false } = {}) {
   const log = logger || (() => {});
   await syncBrandAssets();
+  await syncButtonTheme();
 
   if (clean) {
     await emptyDir(WEB_OUT);

@@ -282,6 +282,7 @@
       <button class="nf-ve-btn" data-act="del" title="删除选中片段（Delete）">删除</button>
       <label class="check"><input type="checkbox" data-act="snap" checked> 吸附</label>
       <div class="zoom">缩放 <input type="range" class="nf-ve-range" data-act="zoom" min="6" max="400" step="1" value="40"></div>`
+    timelineCard.title = '快捷键：Shift+画板拖动 锁定水平/垂直 · 方向键 移动 1 像素（Shift 加速至 10 像素） · 空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放时间轴'
     center.append(stageHost, timelineCard, transport)
     body.appendChild(center)
     // the zoom HUD plate the board shows beside 自动适配
@@ -304,11 +305,10 @@
           <input type="number" id="ve-canvas-h" min="2" max="8192" step="2" value="720" title="高">
         </div>
         <div class="nf-ve-anchor-row"><span>锚点</span><div class="nf-ve-anchor-grid" role="group" aria-label="修改画布尺寸时固定的位置">${CANVAS_ANCHORS.map(([id, label]) => `<button type="button" data-ve-canvas-anchor="${id}" aria-label="固定${label}" title="固定${label}，向其他方向扩展或裁减画布" aria-pressed="${id === 'center'}">${id === 'center' ? '●' : '↗'}</button>`).join('')}</div><span id="ve-canvas-anchor-label">居中</span></div>
-        <div class="nf-ve-hint">固定所选锚点，改宽高向其余方向扩展 / 裁减画布。</div>
         <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-canvas-from-clip" title="按选中片段的原始尺寸">取片段尺寸</button></div>
       </div>
       <div class="nf-ve-sec"><h4>片段</h4>
-        <div id="ve-clip-empty" class="nf-ve-hint">把资源拖到轨道或画板；选中片段后在这里调整。</div>
+        <div id="ve-clip-empty" class="nf-ve-hint">未选择片段</div>
         <div id="ve-clip-box" hidden>
           <input class="nf-ve-name" id="ve-clip-name" title="片段名称">
           <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>缩放</label><input type="range" class="nf-ve-range" id="ve-clip-scale-range" min="5" max="300" step="1" value="100"><input type="number" id="ve-clip-scale" min="5" max="1000" step="1" title="缩放 %"></div>
@@ -325,14 +325,12 @@
             <div class="nf-ve-line" style="grid-template-columns:var(--nf-ve-cols)"><label>羽化</label><input type="range" class="nf-ve-range" id="ve-mask-feather-range" min="0" max="300" step="1" value="0"><input type="number" id="ve-mask-feather" min="0" max="300" step="1" value="0"></div>
             <div class="nf-ve-btns"><button class="nf-ve-btn" id="ve-mask-undo">撤销</button><button class="nf-ve-btn" id="ve-mask-clear">清除</button></div>
             <div class="nf-ve-btns"><button class="nf-ve-btn primary" id="ve-mask-ok" title="确定（Enter）">确定</button><button class="nf-ve-btn" id="ve-mask-cancel" title="取消（Esc）">取消</button></div>
-            <div class="nf-ve-hint">快捷键：[ ] 笔刷大小 · ; ' 羽化 · E 擦除 · R 修复 · Enter 确定 · Esc 取消</div>
           </div>
         </div>
       </div>
       <div class="nf-ve-sec"><h4>保存</h4>
-        <div class="nf-ve-btns"><button class="nf-ve-btn primary wide" id="ve-save">保存到资源列表</button></div>
-        <div class="nf-ve-status" id="ve-status">合成后存入资源列表和仓库。</div>
-        <div class="nf-ve-hint">快捷键：Shift+画板拖动 锁定水平/垂直 · 方向键 移动 1 像素（Shift 加速至 10 像素） · 空格 播放/暂停 · S 分割 · Delete 删除 · Ctrl+C / Ctrl+V 复制粘贴 · Ctrl+A 全选 · Ctrl/Shift 点选多选 · 空白处拖动框选 · Ctrl+滚轮 缩放时间轴</div>
+        <div class="nf-ve-btns"><button class="nf-ve-btn primary wide" id="ve-save" title="合成后存入资源列表和仓库">保存到资源列表</button></div>
+        <div class="nf-ve-status" id="ve-status"></div>
       </div>
       <div class="nf-ve-sec"><div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-close-row">关闭</button></div></div>`
 

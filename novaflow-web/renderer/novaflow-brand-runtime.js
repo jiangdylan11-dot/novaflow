@@ -2522,7 +2522,7 @@
   ].join(", ");
   const UI_SELECT_MODAL_SCOPE = '[data-novaflow-export-modal-root="1"], [data-novaflow-export-modal-dialog="1"], [role="dialog"]';
   const UI_ICON_BUTTON_SIZE = 30;
-  const UI_ICON_BUTTON_BACKGROUND = "#282828";
+  const UI_ICON_BUTTON_BACKGROUND = "#272727";
   const UI_ICON_BUTTON_RADIUS_PX = "7px";
   const UI_ICON_BUTTON_TEXT = "#eaeaea";
   const UI_ICON_BUTTON_DISABLED_BACKGROUND = "#252629";
@@ -3189,7 +3189,7 @@
   const UI_BUTTON_BACKGROUND = "#272727";
   const UI_DISABLED_NEUTRAL_BUTTON_BACKGROUND = "#222222";
   const UI_TOGGLE_OFF_BACKGROUND = "#343434";
-  const UI_SYSTEM_ACTION_BACKGROUND = "#282828";
+  const UI_SYSTEM_ACTION_BACKGROUND = "#272727";
   const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#252629";
   const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#272727";
   const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#1d1d1d";
@@ -3775,7 +3775,7 @@
     if (!(element instanceof HTMLElement)) return;
     if (isInsideNovaflowRuntimeIgnore(element)) return;
     const __nfPerfStartedAt = nfAnimationPerfVisualRhythmMark();
-    const nextValue = String(value);
+    const nextValue = String(window.FoartButtonTheme?.normalize(element, property, value) ?? value);
     const nextPriority = priority || "";
     if (nfInlineStylePropertyMatches(element, property, nextValue, nextPriority)) {
       nfAnimationPerfMeasureVisualRhythmStep("skipExisting", __nfPerfStartedAt);
@@ -3789,7 +3789,7 @@
   // 与 setStylePropertyIfChanged 的区别：不做 runtime-ignore 早退，纯粹消除空写，语义与裸写入等价。
   function nfSetStyleIfChanged(element, property, value, priority = "") {
     if (!(element instanceof Element) || !element.style) return;
-    const nextValue = String(value);
+    const nextValue = String(window.FoartButtonTheme?.normalize(element, property, value) ?? value);
     const nextPriority = priority || "";
     // Compared in the browser's normal form: "0" reads back "0px", and a raw
     // compare rewrote it on every pass, each rewrite waking every observer.
@@ -25665,7 +25665,6 @@
         line-height: 28px !important;
         align-self: end !important;
       }
-      body.novaflow-skeleton-animation-layout [data-novaflow-spine-inline-import-action="1"],
       body.novaflow-skeleton-animation-layout [data-novaflow-spine-inline-import-start="1"]:not(:disabled):not([aria-disabled="true"]) {
         background: ${UI_ACCENT} !important;
         background-color: ${UI_ACCENT} !important;
@@ -37527,6 +37526,7 @@
   }
 
   function writeNovaflowSpecDeclarations(node, declarations, desiredMap, ownedStyles) {
+    if (window.FoartButtonTheme) declarations = declarations.map(([property, value]) => [property, window.FoartButtonTheme.normalize(node, property, value)]);
     const { key, resolved } = resolveNovaflowSpecDeclarations(declarations);
     const last = NOVAFLOW_SPEC_LAST.get(node);
     let desired;
@@ -37629,6 +37629,7 @@
   }
 
   function applyNovaflowReferenceSpecPass(root, body) {
+    window.FoartButtonTheme?.compactUsageNotes(root);
     installNovaflowReferenceSpecObserver();
     try { syncParticleTemplateManager(); } catch (_) { void 0; }
     // 美工 / UI zoom cells are put in with the pill, not a poll later.

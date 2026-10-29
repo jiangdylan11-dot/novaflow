@@ -36,7 +36,7 @@ section('token verification matches the backend format');
 
 section('public allow-list is exactly the login shell');
 {
-  for (const p of ['/', '/index.html', '/novaflow-web-runtime.js', '/novaflow-web-account.js', '/novaflow-ui-theme.css', '/assets/logo.png', '/assets/index-abc.css', '/release.json']) {
+  for (const p of ['/', '/index.html', '/novaflow-web-runtime.js', '/novaflow-web-account.js', '/novaflow-ui-theme.css', '/foart-button-theme.css', '/foart-button-theme.js', '/assets/logo.png', '/assets/index-abc.css', '/release.json']) {
     check('public: ' + p, isPublicPath(p) === true);
   }
   for (const p of ['/novaflow-brand-runtime.js', '/spine-auto-bones.js', '/sweep-light.core.js', '/assets/index-abc.js', '/assets/particle-spine-export.js', '/templates/particle-bundled.json', '/vendor/ffmpeg/index.js', '/video-frame-edit.core.js']) {
