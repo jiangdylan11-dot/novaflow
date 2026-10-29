@@ -5,6 +5,7 @@ import {createContext, runInContext} from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
 import {computeArtAgentFingerprint} from '../../worker/src/flash-art-agent.mjs';
+import {estimateXiaotaoOnlineCredits} from '../../packages/shared/src/feature-credits.mjs';
 
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => {let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve};};
@@ -466,6 +467,75 @@ test('a failed reference read is surfaced on send and can be retried', async () 
   const retry = await e.bridge.captureChat();
   assert.equal(reads, 2);
   assert.equal(retry.images[0].dataUrl, 'data:image/png;base64,iVBO');
+});
+
+test('online estimates count the actual reference and attachment union before send without reading files', async () => {
+  for (const [message, duplicate, destination, expected] of [
+    ['附件放进图生图，只说明主色，不生图。', false, 'img2img', 2],
+    ['看这张参考图，只说明主色，不生图？', true, null, 1],
+    ['附件放进多参视频，只说明主色，不生图。', false, 'multi_reference', 1],
+  ]) {
+    const e = env(), payloads = [];
+    e.refs.splice(1);
+    e.sandbox.btoa = value => Buffer.from(value, 'binary').toString('base64');
+    runInContext(readFileSync(new URL('../../renderer/xiaotao-upload.js',import.meta.url),'utf8'),createContext(e.sandbox));
+    runInContext(readFileSync(new URL('../../renderer/feature-credit-prices.js',import.meta.url),'utf8'),createContext(e.sandbox));
+    const dataUrl = duplicate ? e.refs[0].dataUrl : png(12);
+    const file = {name:'attached.png', type:'image/png', size:80, async arrayBuffer() {throw Error('the estimate must not read image bytes');}};
+    const controller = e.api.createController({bridge:e.bridge, uploadHost:{async place(item) {
+      assert.equal(item.destination.id, destination);
+      if (destination === 'img2img') e.refs.push({dataUrl, file, drawingRole:'subject'});
+      else e.setSurface('other');
+      return {};
+    }}, api:() => ({artAgentChat:async payload => {
+      payloads.push(payload);
+      return {ok:true,data:{reply:'看到了。',history:[]}};
+    }})});
+    controller.setProvider('api');
+    controller.state.staged.push({id:'test',kind:'image',name:file.name,status:'ready',previewUrl:dataUrl,file,mimeType:'image/png'});
+    const before = controller.onlineEstimateInput(message);
+    assert.equal(before.files.length, expected, message);
+    const shown = e.sandbox.NovaFlowFeatureCreditPrices.estimateXiaotaoOnline(before);
+    assert.equal(await controller.send(message), true, controller.state.error);
+    const payload = payloads[0];
+    assert.equal(payload.images.length, expected, message);
+    const chargedEstimate = estimateXiaotaoOnlineCredits({text:payload.message,history:'',files:Array.from({length:Math.max(payload.images.length,payload.uploads.filter(file => file.kind==='image').length)},()=>({kind:'image'}))});
+    assert.equal(shown.credits, chargedEstimate.credits, message);
+    assert.equal(shown.credits, expected === 1 ? 21 : 31);
+  }
+});
+
+test('online estimates share send intent for including or excluding the actual current result', async () => {
+  for (const [message, expected] of [['评价当前成图的颜色',2],['不要评价当前成图，只聊参考图',1]]) {
+    const e=env(),payloads=[];
+    e.refs.splice(1);
+    e.state.results.unshift({id:'actual',imageUrl:png(23),name:'actual.png'});
+    const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{payloads.push(payload);return {ok:true,data:{reply:'看到了。',history:[]}};}})});
+    controller.setProvider('api');
+    const estimate=controller.onlineEstimateInput(message);
+    assert.equal(estimate.files.length,expected);
+    assert.equal(await controller.send(message),true,controller.state.error);
+    assert.equal(payloads[0].images.length,expected);
+  }
+});
+
+test('a staged file already shown as a blob reference is counted once and its existing preview is reused', async () => {
+  const e=env(),payloads=[];
+  e.refs.splice(0);
+  e.sandbox.btoa=value=>Buffer.from(value,'binary').toString('base64');
+  runInContext(readFileSync(new URL('../../renderer/xiaotao-upload.js',import.meta.url),'utf8'),createContext(e.sandbox));
+  let reads=0;
+  const bytes=Buffer.from(png(25).split(',')[1],'base64');
+  const file={name:'same.png',type:'image/png',size:bytes.length,async arrayBuffer(){if(++reads>1)throw Error('must reuse the staged full-byte preview');return bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);}};
+  const controller=e.api.createController({bridge:e.bridge,api:()=>({artAgentChat:async payload=>{payloads.push(payload);return {ok:true,data:{reply:'看到了。',history:[]}};}})});
+  controller.setProvider('api');
+  await controller.stageUploads([file]);
+  e.refs.push({dataUrl:'blob:preview/same',file,drawingRole:'subject'});
+  for(let i=0;i<10;i++)assert.equal(controller.onlineEstimateInput('请说明参考图主色？').files.length,1);
+  assert.equal(reads,1);
+  assert.equal(await controller.send('请说明参考图主色？'),true,controller.state.error);
+  assert.equal(payloads[0].images.length,1);
+  assert.equal(reads,1);
 });
 
 test('an online reply shows the settled credits and writes a transcript receipt', async () => {

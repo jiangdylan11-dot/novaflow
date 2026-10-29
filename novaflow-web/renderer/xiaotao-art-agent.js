@@ -26,13 +26,18 @@
     return out;
   }
   const resolvedFiles = new WeakMap();
+  const referencePreviews = new WeakMap();
   // One resolver for every path that serializes or sends a reference. The slot
   // may keep a blob: URL for display; File does not survive JSON.stringify.
   async function resolveReferenceDataUrl(ref) {
     const current = String(ref?.dataUrl || '');
-    if (/^data:[^;,]+;base64,/i.test(current)) return current;
+    if (/^data:[^;,]+;base64,/i.test(current)) {
+      if (ref?.file) referencePreviews.set(ref.file, current);
+      return current;
+    }
     const file = ref?.file;
     const mimeOf = (blob) => String(blob?.type || ref?.mimeType || 'image/png').split(';')[0] || 'image/png';
+    if (file && referencePreviews.has(file)) return referencePreviews.get(file);
     if (file && resolvedFiles.has(file)) return resolvedFiles.get(file);
     let dataUrl = '';
     if (file && typeof file.arrayBuffer === 'function') {
@@ -49,7 +54,7 @@
         return `data:${mimeOf(file)};base64,${encodeReferenceBase64(new Uint8Array(await file.arrayBuffer()))}`;
       })();
       resolvedFiles.set(file, pending);
-      try { return await pending; }
+      try { const resolved = await pending; referencePreviews.set(file, resolved); return resolved; }
       catch (error) { if (resolvedFiles.get(file) === pending) resolvedFiles.delete(file); throw error; }
     }
     if (current.startsWith('blob:') && typeof root.fetch === 'function') {
@@ -76,6 +81,27 @@
     return ref.referenceIdentity;
   }
   function imageIdentity(img) { return img?.referenceIdentity || img?.sourceUrl || img?.dataUrl; }
+  function chatReferenceIdentity(image) {
+    return (image?.file && referencePreviews.get(image.file)) || image?.previewUrl
+      || (/^data:/i.test(image?.dataUrl || '') ? image.dataUrl : image?.file || image?.dataUrl);
+  }
+  // Current reference slots retain their roles, even when they use the same
+  // image. Only attachment copies already present in those slots are omitted.
+  function chatImagesWithUploads(current, uploads) {
+    const images = current.slice();
+    for (const file of uploads) {
+      const dataUrl = file.previewUrl || file.dataUrl;
+      if (file.kind !== 'image' || !dataUrl || images.length >= 3) continue;
+      const image = {dataUrl, file:file.file, mimeType:file.mimeType, role:'attachment', source:images.length + 1, name:file.name};
+      if (!images.some(existing => chatReferenceIdentity(existing) === chatReferenceIdentity(image))) images.push(image);
+    }
+    return images;
+  }
+  function chatRequestsCurrentResult(message, includeResult = false) {
+    if (includeResult) return true;
+    return !/(?:不要|不用|别|无需|不必).*(?:评价|评估|点评|分析|检查|看看)/.test(message)
+      && /(?:评价|评估|点评|分析|检查|看看|看一下|看下).{0,10}(?:当前|这张|本次|刚生成|最新).{0,6}(?:成图|出图|结果|图片|图)|(?:当前|这张|本次|刚生成|最新).{0,6}(?:成图|出图|结果|图片|图).{0,10}(?:怎么样|如何|问题|不足|评价|评估|点评|分析|检查)/.test(message);
+  }
   function sameSnapshot(a, b) {
     return !!a && !!b && JSON.stringify(canonical(a.artContext)) === JSON.stringify(canonical(b.artContext))
       && a.images.length === b.images.length && a.images.every((img, i) => imageIdentity(img) === imageIdentity(b.images[i]) && img.source === b.images[i].source && img.role === b.images[i].role);
@@ -308,14 +334,14 @@
       for(let i=0;i<40;i++) {const ctx=runtime()?.captureContext?.(); if(ctx?.generationSurface==='drawing') {if(ctx.state.active) return ctx; runtime()?.activate?.(mode);} await new Promise(resolve=>root.setTimeout(resolve,50));}
       fail('绘图页面未就绪，未写入或生成');
     }
-    function captureChat({includeResult=false}={}) {
+    function captureChat({includeResult=false, drawingPreview=false}={}) {
       let ctx; try {ctx = runtime()?.captureContext?.();} catch {}
       const artContext = {surface:ctx?.generationSurface || 'other'};
       if (ctx?.generationSurface === 'drawing') {
         runtime()?.capturePrompt?.();
         Object.assign(artContext, copy(Object.fromEntries(SETTINGS.filter(k => ctx.state[k] !== undefined).map(k => [k, ctx.state[k]]))));
       }
-      const images=ctx?.generationSurface==='drawing'?(ctx.references||[]).map((ref,i)=>ref?.dataUrl?{source:i+1,role:ref.drawingRole&&ref.drawingRole!=='auto'?ref.drawingRole:'attachment',dataUrl:ref.dataUrl,referenceIdentity:referenceIdentity(ref),file:ref.file,mimeType:ref.mimeType,name:ref.name||'参考图'}:null).filter(Boolean):[];
+      const images=ctx&&(ctx.generationSurface==='drawing'||drawingPreview)?(ctx.references||[]).map((ref,i)=>ref?.dataUrl?{source:i+1,role:ref.drawingRole&&ref.drawingRole!=='auto'?ref.drawingRole:'attachment',dataUrl:ref.dataUrl,referenceIdentity:referenceIdentity(ref),file:ref.file,mimeType:ref.mimeType,name:ref.name||'参考图'}:null).filter(Boolean):[];
       if(includeResult){const result=rtResult();if(result?.imageUrl)images.push({source:0,role:'result',dataUrl:result.imageUrl,referenceIdentity:referenceIdentity(result),name:'当前成图'});}
       if(images.length>3)fail('小桃一次可分析三张完整图片，请移除多余参考后发送');
       return publish({artContext, images});
@@ -543,7 +569,7 @@
         const verdict = uploads.inspectUpload(file);
         if (!verdict.ok) {state.staged = state.staged.filter(entry => entry !== item); note(verdict.message); notify(); continue;}
         item.kind = verdict.kind; item.mimeType = verdict.mimeType; item.ext = verdict.ext;
-        if (verdict.kind === 'image') {try {item.previewUrl = await readPreview(file);} catch {state.staged = state.staged.filter(entry => entry !== item); note(`${item.name} 读取失败`); notify(); continue;}}
+        if (verdict.kind === 'image') {try {item.previewUrl = await readPreview(file); referencePreviews.set(file, item.previewUrl);} catch {state.staged = state.staged.filter(entry => entry !== item); note(`${item.name} 读取失败`); notify(); continue;}}
         else if (typeof root.URL?.createObjectURL === 'function') {try {item.previewUrl = root.URL.createObjectURL(file);} catch {}}
         item.status = 'ready'; notify();
       }
@@ -565,7 +591,7 @@
     async function consumeStaged(message) {
       if (state.staged.some(item => item.status === 'reading')) {state.error = '文件还在读取，请稍后再发送'; notify(); return false;}
       const ready = state.staged.filter(item => item.status === 'ready');
-      lastUploads = ready.map(item => ({kind:item.kind, name:item.name, ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
+      lastUploads = ready.map(item => ({kind:item.kind, name:item.name, file:item.file, mimeType:item.mimeType, ...(item.kind === 'image' && item.previewUrl ? {dataUrl:item.previewUrl} : {})}));
       if (!ready.length) return true;
       const uploads = uploadApi(); if (!uploads) {state.error = '上传模块未加载'; notify(); return false;}
       const plan = uploads.planRoutes(message, ready);
@@ -685,6 +711,24 @@
       try {const old = state.proposalSnapshot || (activeMode !== 'chat' ? activeSnapshot : null); if (old && !sameSnapshot(old, recapture(old))) {invalidate(); if (state.pending && !stopped) void stop();}}
       catch {invalidate('页面已切换，原建议已失效'); if (state.pending && !stopped) void stop();}
     }
+    function onlineEstimateInput(message) {
+      const staged = state.staged.filter(item => item.status === 'ready');
+      const placements = uploadApi()?.planRoutes?.(message, staged)?.place || [];
+      const destination = placements.at(-1)?.destination;
+      const drawingPlacement = destination?.id === 'img2img';
+      const includeResult = chatRequestsCurrentResult(message);
+      let snapshot; try {snapshot = bridge.captureChat({includeResult, drawingPreview:drawingPlacement});} catch {snapshot = {images:[]};}
+      let images = snapshot.images || [];
+      if (destination && destination.module !== '美工') images = images.filter(image => image.source === 0);
+      else if (drawingPlacement) {
+        const result = images.filter(image => image.source === 0);
+        images = [...images.filter(image => image.source !== 0), ...placements.filter(item => item.destination.id === 'img2img' && item.kind === 'image').map(item => ({dataUrl:item.previewUrl, file:item.file})), ...result];
+      }
+      images = chatImagesWithUploads(images, staged);
+      const captions = staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => `参考${item.kind === 'video' ? '视频' : '音频'}：${item.name}`);
+      return {text:[message, ...captions].filter(Boolean).join('\n'), history:(state.history || []).map(item => item?.content || '').join('\n'),
+        files:[...Array.from({length:Math.max(images.length, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'})), ...staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => ({kind:item.kind}))]};
+    }
     async function send(message, {includeResult = false, confirmed = false, recordMessage = true} = {}) {
       if(state.uploading)return false;
       if (state.pending || state.generating || state.applying) return false;
@@ -731,7 +775,7 @@
       if (execution?.existingOnly) {state.error = '当前没有有效的绘图方案。请提供主体与画风双图，再告诉小桃怎样重绘并生成。'; notify(); return false;}
       const page=await bridge.captureChat(), artRequest=/提示词|提示框|绘图|生图|出图|重绘|画图|画一|画个|画张|生成|做图|操作软件|控制软件|调用软件|(?:制作|做|画|设计|修改|给我|来).{0,12}(?:图|海报|插画|画面)/.test(message);
       if(state.provider==='local' && page.artContext.surface==='drawing' && bridge.hasResult?.()) includeResult=true;
-      if (!includeResult && !/(?:不要|不用|别|无需|不必).*(?:评价|评估|点评|分析|检查|看看)/.test(message)) includeResult = /(?:评价|评估|点评|分析|检查|看看|看一下|看下).{0,10}(?:当前|这张|本次|刚生成|最新).{0,6}(?:成图|出图|结果|图片|图)|(?:当前|这张|本次|刚生成|最新).{0,6}(?:成图|出图|结果|图片|图).{0,10}(?:怎么样|如何|问题|不足|评价|评估|点评|分析|检查)/.test(message);
+      includeResult = chatRequestsCurrentResult(message, includeResult);
       const operation = ++serial; stopped = false; state.error = ''; state.operation = null; state.toolTrace = []; bridge.clearPrepared(); state.proposal = null; state.proposalSnapshot = null; state.applied = false;
       try {
         let snapshot, mode = 'chat';
@@ -760,10 +804,9 @@
           const dataUrl = await resolveReferenceDataUrl(img);
           images.push({ dataUrl, referenceIdentity: img.referenceIdentity, name: img.name, role: img.role, source: img.source });
         }
-        if (state.provider === 'api') for (const file of lastUploads) {
-          if (file.kind !== 'image' || !file.dataUrl || images.length >= 3 || images.some(image => image.dataUrl === file.dataUrl)) continue;
-          const dataUrl = await resolveReferenceDataUrl(file.file ? { dataUrl: file.dataUrl, file: file.file, mimeType: file.mimeType } : { dataUrl: file.dataUrl, mimeType: file.mimeType });
-          images.push({dataUrl, role:'attachment', source:images.length + 1, name:file.name});
+        if (state.provider === 'api') for (const image of chatImagesWithUploads(images, lastUploads).slice(images.length)) {
+          const dataUrl = await resolveReferenceDataUrl(image);
+          images.push({dataUrl, role:image.role, source:image.source, name:image.name});
         }
         const payload = {requestId:activeRequest, provider:state.provider, mode, promptLanguage:'en', conversationId:state.conversationId || undefined, message, history:copy(state.history), artContext:copy(snapshot.artContext), images, ...(state.provider === 'api' ? {uploads:lastUploads.map(({kind, name}) => ({kind, name}))} : {}), ...(contextFingerprint ? {contextFingerprint} : {}), ...(executionApproval ? {executionApproval} : {})};
         if (typeof api()?.artAgentChat !== 'function') fail('小桃AI接口尚未就绪，请刷新页面或启动本地助手');
@@ -842,7 +885,7 @@
       ++serial; notify(); bridge.clearPrepared(); activeSnapshot = null;
       Object.assign(state, {provider,conversationId:'',mode:'chat',proposal:null,proposalSnapshot:null,applied:false,confirmation:null,samplingApproval:null,operation:null,error:'',toolTrace:[],model:provider === 'local' ? '本地 Flash' : 'API',status:provider === 'local' ? '已切换本地智能 · 不扣积分' : '已切换在线智能 · 按实际用量计费'}); notify(); return true;
     }
-    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia});
+    return Object.freeze({state, send, apply, confirmSampling, cancelConfirmation, stop, reset, setProvider, refreshContext, onlineEstimateInput, calibrateLocalStatus, recordFeedback, stageUploads, removeStaged, chooseUploadDestination, releaseStagedMedia});
   }
   function mount() {
     if (!root.document?.body || root.document.getElementById('nf-xiaotao-art-root')) return;
@@ -941,12 +984,7 @@
       const prices = root.NovaFlowFeatureCreditPrices;
       let text = '';
       if (controller.state.provider === 'api' && typeof prices?.estimateXiaotaoOnline === 'function') {
-        const history = (controller.state.history || []).map(item => item?.content || '').join('\n');
-        const staged = (controller.state.staged || []).filter(item => item.status === 'ready');
-        let drawing = 0; try {drawing = bridge.captureChat().images.length;} catch {}
-        const captions = staged.filter(item => item.kind === 'video' || item.kind === 'audio').map(item => `参考${item.kind === 'video' ? '视频' : '音频'}：${item.name}`);
-        const files = Array.from({length:Math.max(drawing, staged.filter(item => item.kind === 'image').length)}, () => ({kind:'image'}));
-        const quote = prices.estimateXiaotaoOnline({text:[input.value, ...captions].filter(Boolean).join('\n'), history, files});
+        const quote = prices.estimateXiaotaoOnline(controller.onlineEstimateInput(input.value));
         text = quote?.credits ? `约${quote.credits}分` : '';
       }
       estimateLabel.hidden = false;

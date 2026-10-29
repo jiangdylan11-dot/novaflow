@@ -45,10 +45,11 @@ test('Turbo selection has isolated sampling settings and does not inherit ordina
  assert.notEqual(models.renderKey(state),models.renderKey({...state,localQwen21Variant:'standard'}));
  state.localQwen21Variant='standard';assert.equal(models.localSamplingFor(state,'img2img').cfg,3);
 });
-test('pool queues Turbo drawing and explicit editing tools for the Turbo checkpoint',()=>{
+test('pool queues drawing and UI for the selected acceleration checkpoint, and editing tools use Turbo',()=>{
  const args=['local','img2img',[],null,null,null,null,null,{localDrawEngine:'qwen-2.1',localQwen21Variant:'turbo'},10,{}];
  assert.equal(workflowModelId('novaflow-brand-runtime',{__args:args}),'qwen-image-2.1-turbo');
- args[10]={taskProfile:'ui-design'};args[8].localUiEngine='qwen-2.1';assert.equal(workflowModelId('novaflow-brand-runtime',{__args:args}),'qwen-image-2.1');
+ args[10]={taskProfile:'ui-design'};args[8].localUiEngine='qwen-2.1';assert.equal(workflowModelId('novaflow-brand-runtime',{__args:args}),'qwen-image-2.1-turbo');
+ args[8].localQwen21Variant='standard';assert.equal(workflowModelId('novaflow-brand-runtime',{__args:args}),'qwen-image-2.1');
  assert.equal(workflowModelId('spine-split-runtime',{},'buildImageAngleAdjustWorkflow'),'qwen-image-2.1-turbo');
  assert.equal(workflowModelId('spine-split-runtime',{},'defaultRmbgWorkflow'),'qwen-image-2511');
 });
@@ -69,7 +70,7 @@ test('model choices contain only providers and leave acceleration under the para
  select.value='gpt';select.events.change();assert.equal(state.provider,'gpt');assert.equal(state.localQwen21Variant,'turbo');assert.equal(changes,1);
  select.value='local';select.events.change();assert.equal(state.provider,'local');assert.equal(state.localQwen21Variant,'turbo');
  c.NovaFlowArtGenerateModeTool.syncControlPanel({host,state,showAccount:false,showTurboRoute:false});
- assert.ok(select.children.every(x=>x.value!=='local-turbo'),'UI gets ordinary BF16 only');
+ assert.ok(select.children.every(x=>x.value!=='local-turbo'),'UI acceleration is a separate switch, not a second local provider');
 });
 
 test('the local acceleration control follows NSFW and is absent from cloud parameter fields',()=>{

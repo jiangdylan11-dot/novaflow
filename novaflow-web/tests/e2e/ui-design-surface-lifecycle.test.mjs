@@ -212,7 +212,7 @@ test('right-column discovery rejects generated overlays and their descendants', 
     closest(selector) { return this.generated && selector.includes('novaflow-art-generate') ? {} : null; }
     getBoundingClientRect() { return { width: 226, height: 900, left: 1400, right: 1626 }; }
   }
-  const e = functionsBetween(split, 'isRightPanelRootCandidate', 'rightPanelRootCandidateScore', {
+  const e = functionsBetween(split, 'isXiaotaoArtRuntimeElement', 'rightPanelRootCandidateScore', {
     HTMLElement: Node, mountedCard: null, RIGHT_WORKSPACE_ID: 'split-right', WORKSPACE_OVERLAY_ID: 'split-overlay',
     window: { innerWidth: 1627, getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
   });

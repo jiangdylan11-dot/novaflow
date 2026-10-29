@@ -262,6 +262,7 @@ function loadAccount(sandbox) {
 {
 
   let balance = 44128;
+  let displayName = 'dylan';
   let logoutCalls = 0;
   let reloaded = 0;
   const appliedPrices = [];
@@ -286,10 +287,10 @@ function loadAccount(sandbox) {
     },
     NovaFlowFeatureCreditPrices: { applyConfig(next) { appliedPrices.push(next); } },
     electronAPI: {
-      clientAuthStatus: async () => ({ ok: true, result: { authenticated: true, user: { display_name: 'dylan' }, credits: { balance } } }),
+      clientAuthStatus: async () => ({ ok: true, result: { authenticated: true, user: { display_name: displayName }, credits: { balance } } }),
       clientAuthAccountDetails: async () => ({
         ok: true,
-        result: { user: { display_name: 'dylan' }, credits: { balance }, featureCreditPrices: { prices: { online_chat_turn: 4 } } }
+        result: { user: { display_name: displayName }, credits: { balance }, featureCreditPrices: { prices: { online_chat_turn: 4 } } }
       }),
       clientAuthLogout: async () => { logoutCalls += 1; return { ok: true }; }
     }
@@ -311,6 +312,38 @@ function loadAccount(sandbox) {
   check(doc.getElementById('novaflow-web-account-dialog'), null);
   check(doc.getElementById('novaflow-web-account-button'), null);
   check(appliedPrices.length > 0, true);
+  // A layout pass calls seat() again. Even assigning the same textContent
+  // creates a browser childList mutation, so count writes rather than only
+  // checking that the rendered string still looks right.
+  const namePart = strip.querySelector('[data-novaflow-account-name]');
+  const creditsPart = strip.querySelector('[data-novaflow-account-credits]');
+  const headerWrites = { name: 0, title: 0, credits: 0 };
+  for (const [node, property, counter] of [[namePart, 'textContent', 'name'], [namePart, 'title', 'title'], [creditsPart, 'textContent', 'credits']]) {
+    let current = node[property];
+    Object.defineProperty(node, property, {
+      configurable: true, enumerable: true,
+      get() { return current; },
+      set(value) { headerWrites[counter]++; current = value; }
+    });
+  }
+  for (let pass = 0; pass < 100; pass++) sandbox.NovaFlowWebAccount.seat(doc.querySelector('.nf-brand'));
+  check(headerWrites, { name: 0, title: 0, credits: 0 });
+  check(version.nextElementSibling, strip);
+  balance = 44056;
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(creditsPart.textContent, '44,056 积分');
+  check(headerWrites, { name: 0, title: 0, credits: 1 });
+  displayName = 'new-dylan';
+  await sandbox.NovaFlowWebAccount.refresh();
+  check(namePart.textContent, 'new-dylan');
+  check(namePart.title, 'new-dylan');
+  check(headerWrites, { name: 1, title: 1, credits: 1 });
+  for (let pass = 0; pass < 100; pass++) sandbox.NovaFlowWebAccount.seat(doc.querySelector('.nf-brand'));
+  check(headerWrites, { name: 1, title: 1, credits: 1 });
+  // Restore the starting account for the charge/refund and remount checks.
+  balance = 44128;
+  displayName = 'dylan';
+  await sandbox.NovaFlowWebAccount.refresh();
   strip.querySelector('[data-novaflow-account-name]').click();
   strip.querySelector('[data-novaflow-account-credits]').click();
   check(doc.getElementById('novaflow-web-account-dialog'), null);

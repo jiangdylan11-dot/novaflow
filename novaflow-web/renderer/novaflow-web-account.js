@@ -159,12 +159,14 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     }
     if (name) {
       name.hidden = false;
-      name.textContent = account.name || '已登录';
-      name.title = account.name || '已登录';
+      const text = account.name || '已登录';
+      if (name.textContent !== text) name.textContent = text;
+      if (name.title !== text) name.title = text;
     }
     if (credits) {
       credits.hidden = false;
-      credits.textContent = creditText(account.credits);
+      const text = creditText(account.credits);
+      if (credits.textContent !== text) credits.textContent = text;
     }
     if (logout) logout.hidden = false;
     if (login) login.hidden = true;

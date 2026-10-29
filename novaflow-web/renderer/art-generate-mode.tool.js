@@ -25,8 +25,10 @@
   }
 
   function syncDisabled(select, disabled) {
-    if (disabled) select.setAttribute('disabled', 'disabled')
-    else if (typeof select.removeAttribute === 'function') select.removeAttribute('disabled')
+    const wasDisabled = typeof select.getAttribute === 'function' ? select.getAttribute('disabled') != null : select.disabled === true
+    if (disabled) {
+      if (!wasDisabled) select.setAttribute('disabled', 'disabled')
+    } else if (wasDisabled && typeof select.removeAttribute === 'function') select.removeAttribute('disabled')
   }
 
   function syncControlLayout(host) {
@@ -62,12 +64,19 @@
   }
 
   function syncModelChoices(select, documentRef, options) {
-    const choices=[]
-    for(const item of PROVIDER_OPTIONS){
-      const option=documentRef.createElement('option');option.value=item.value;option.textContent=item.label;choices.push(option)
+    const current = Array.from(select.options || select.children || [])
+    // Layout observers call mount again. Replacing identical OPTION nodes here
+    // retriggered those observers indefinitely when entering image-to-image.
+    if (current.length !== PROVIDER_OPTIONS.length || current.some((option, index) =>
+      option.value !== PROVIDER_OPTIONS[index].value || option.textContent !== PROVIDER_OPTIONS[index].label)) {
+      const choices=[]
+      for(const item of PROVIDER_OPTIONS){
+        const option=documentRef.createElement('option');option.value=item.value;option.textContent=item.label;choices.push(option)
+      }
+      select.replaceChildren(...choices)
     }
-    select.replaceChildren(...choices)
-    select.value=normalizeProvider(options.provider)
+    const selected = normalizeProvider(options.provider)
+    if (select.value !== selected) select.value = selected
   }
 
   function mount(options = {}) {
