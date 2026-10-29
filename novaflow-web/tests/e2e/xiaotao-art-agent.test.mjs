@@ -418,6 +418,56 @@ test('capture, captureChat, fingerprint and companion chat send data urls for an
   assert.equal(JSON.stringify(calls[0]).includes('blob:'), false);
 });
 
+test('passive context inspection never reads image bytes, and concurrent sends share one read', async () => {
+  const e = env();
+  let reads = 0;
+  const gate = deferred();
+  const file = { type:'image/png', async arrayBuffer() { reads++; await gate.promise; return Uint8Array.from([137,80,78]).buffer; } };
+  e.refs[0] = { name:'large.png', drawingRole:'subject', dataUrl:'blob:preview/large', mimeType:'image/png', file };
+  const snapshots = [];
+  for (let i=0; i<20; i++) {
+    const snapshot = e.bridge.captureChat();
+    assert.equal(snapshot.images.length, 2);
+    assert.equal(snapshot.artContext.surface, 'drawing');
+    snapshots.push(snapshot);
+  }
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(reads, 0, 'UI polling must keep only lightweight previews');
+  const pending = Promise.all([snapshots[0], snapshots[1], snapshots[0]]);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(reads, 1, 'in-flight file reads must be shared');
+  gate.resolve();
+  const [first, second, repeated] = await pending;
+  assert.equal(first, repeated);
+  assert.equal(first.images[0].dataUrl, 'data:image/png;base64,iVBO');
+  assert.equal(second.images[0].dataUrl, first.images[0].dataUrl);
+  assert.equal(JSON.stringify(first).includes('blob:'), false);
+});
+
+test('browser reference encoding uses FileReader instead of a JavaScript base64 loop', async () => {
+  const e = env();
+  let nativeReads = 0;
+  const file = { type:'image/png', async arrayBuffer() { throw new Error('must use the native reader'); } };
+  e.sandbox.FileReader = class {
+    readAsDataURL(value) { assert.equal(value, file); nativeReads++; this.result='data:image/png;base64,iVBO'; queueMicrotask(() => this.onload()); }
+  };
+  e.refs[0] = { name:'native.png', drawingRole:'subject', dataUrl:'blob:preview/native', mimeType:'image/png', file };
+  const captured = await e.bridge.captureChat();
+  assert.equal(nativeReads, 1);
+  assert.equal(captured.images[0].dataUrl, 'data:image/png;base64,iVBO');
+});
+
+test('a failed reference read is surfaced on send and can be retried', async () => {
+  const e = env();
+  let reads = 0;
+  const file = { type:'image/png', async arrayBuffer() { if (++reads === 1) throw new Error('read failed'); return Uint8Array.from([137,80,78]).buffer; } };
+  e.refs[0] = { name:'retry.png', drawingRole:'subject', dataUrl:'blob:preview/retry', mimeType:'image/png', file };
+  await assert.rejects(Promise.resolve(e.bridge.captureChat()), /read failed/);
+  const retry = await e.bridge.captureChat();
+  assert.equal(reads, 2);
+  assert.equal(retry.images[0].dataUrl, 'data:image/png;base64,iVBO');
+});
+
 test('an online reply shows the settled credits and writes a transcript receipt', async () => {
   const e = env();
   const controller = e.api.createController({bridge:e.bridge, api:() => ({

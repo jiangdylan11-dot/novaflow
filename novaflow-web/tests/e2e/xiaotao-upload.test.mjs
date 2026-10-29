@@ -609,6 +609,10 @@ await test('the worker gateway rejects a slot upload whose bytes do not match', 
       body: stream
     });
     assert.equal(oversized.status, 413);
+    assert.equal(oversized.headers.get('connection'), 'close');
+    const oversizedBody = await oversized.json();
+    assert.equal(oversizedBody.ok, false);
+    assert.ok(oversizedBody.error, 'an oversized upload must return its error before the socket closes');
     await assert.rejects(access(join(dir, 'tasks', taskId, 'input', 'big.png')));
 
     for (const name of ['request.json', 'frames-0.bin', 'pack.atlas', 'layer.psd']) {

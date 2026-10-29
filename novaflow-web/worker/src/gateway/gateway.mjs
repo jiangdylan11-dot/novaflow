@@ -156,7 +156,9 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
       await rm(filePath, { force: true });
     };
     try {
-      for await (const chunk of req) {
+      // Breaking a request's default async iterator destroys its socket. Keep
+      // it alive until the 413 response has been written to the client.
+      for await (const chunk of req.iterator({ destroyOnReturn: false })) {
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         total += buf.length;
         if (total > maxBytes) {
@@ -186,8 +188,20 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const fail = (status, message, close) => {
-      res.writeHead(status, { 'content-type': 'application/json', connection: close ? 'close' : 'keep-alive', ...corsHeaders(req.headers.origin) });
-      res.end(JSON.stringify({ ok: false, error: message }), () => { if (close) res.destroy(); });
+      const payload = Buffer.from(JSON.stringify({ ok: false, error: message }));
+      res.writeHead(status, { 'content-type': 'application/json', 'content-length': payload.length, connection: close ? 'close' : 'keep-alive', ...corsHeaders(req.headers.origin) });
+      if (close && !req.readableEnded) {
+        // Deliver the complete error now, then drain only long enough to close
+        // gracefully. Closing a Windows socket with unread upload bytes resets
+        // it and hides the 413 from fetch. No more bytes are written to disk.
+        res.write(payload);
+        const finish = () => { clearTimeout(timeout); res.end(); };
+        const timeout = setTimeout(finish, 3000);
+        timeout.unref();
+        req.once('end', finish);
+        req.once('error', finish);
+        req.resume();
+      } else res.end(payload);
     };
 
     try {

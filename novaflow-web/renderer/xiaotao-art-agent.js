@@ -36,9 +36,21 @@
     if (file && resolvedFiles.has(file)) return resolvedFiles.get(file);
     let dataUrl = '';
     if (file && typeof file.arrayBuffer === 'function') {
-      dataUrl = `data:${mimeOf(file)};base64,${encodeReferenceBase64(new Uint8Array(await file.arrayBuffer()))}`;
-      resolvedFiles.set(file, dataUrl);
-      return dataUrl;
+      // Cache the in-flight read too: chat, analysis and fingerprint can request
+      // the same file together. A failed read must remain retryable.
+      const pending = (async () => {
+        if (typeof root.FileReader === 'function') return new Promise((resolve, reject) => {
+          const reader = new root.FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('参考图读取失败'));
+          reader.onabort = () => reject(new Error('参考图读取已取消'));
+          reader.readAsDataURL(file);
+        });
+        return `data:${mimeOf(file)};base64,${encodeReferenceBase64(new Uint8Array(await file.arrayBuffer()))}`;
+      })();
+      resolvedFiles.set(file, pending);
+      try { return await pending; }
+      catch (error) { if (resolvedFiles.get(file) === pending) resolvedFiles.delete(file); throw error; }
     }
     if (current.startsWith('blob:') && typeof root.fetch === 'function') {
       const response = await root.fetch(current);
@@ -309,13 +321,19 @@
       return publish({artContext, images});
     }
     function publish(snapshot) {
-      const pending = materializeSnapshot(snapshot).then(resolved => {
-        const owner = snapshotOwners.get(snapshot);
-        if (owner) snapshotOwners.set(resolved, owner);
-        if (creationSettings.has(snapshot)) creationSettings.set(resolved, creationSettings.get(snapshot));
-        return resolved;
-      });
-      return Object.assign(pending, snapshot);
+      // The 500ms UI tick and credit estimate only inspect metadata. Reading
+      // bytes here made those passive checks start full image conversions.
+      let pending;
+      Object.defineProperty(snapshot, 'then', { value(resolve, reject) {
+        if (!pending) pending = materializeSnapshot(snapshot).then(resolved => {
+          const owner = snapshotOwners.get(snapshot);
+          if (owner) snapshotOwners.set(resolved, owner);
+          if (creationSettings.has(snapshot)) creationSettings.set(resolved, creationSettings.get(snapshot));
+          return resolved;
+        });
+        return pending.then(resolve, reject);
+      } });
+      return snapshot;
     }
     async function materializeSnapshot(snapshot) {
       const images = [];
