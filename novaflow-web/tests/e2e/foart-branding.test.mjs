@@ -30,7 +30,8 @@ test('all application surfaces receive the approved foart artwork', async () => 
   assert(primaryIcon.includes(`base64,${brushF.toString('base64')}`), 'app icon uses only the standalone brush F');
   const adminIcon = await read('branding/foart-admin-icon.svg');
   assert(adminIcon.includes(`base64,${brushF.toString('base64')}`), 'admin keeps the exact same F shape');
-  assert.match(adminIcon, /values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/);
+  assert.match(primaryIcon, /values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0"/);
+  assert.doesNotMatch(adminIcon, /filter="url\(#white-ink\)"/);
   const adminLogo = await read('branding/foart-admin-logo.svg');
   assert(adminLogo.includes(`base64,${wordmark.toString('base64')}`));
   assert.match(adminLogo, /filter="url\(#white-ink\)"/);

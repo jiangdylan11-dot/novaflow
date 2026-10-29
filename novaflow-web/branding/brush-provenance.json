@@ -5,7 +5,16 @@
   "colors": {
     "Fo": "#f4f4f2",
     "art": "#ff5c35",
-    "mainIcon": "#ff5c35",
-    "admin": "#ffffff"
+    "mainIcon": "#ffffff",
+    "admin": "#ff5c35"
+  },
+  "iconPadding": {
+    "canvas": 512,
+    "shapeBox": {
+      "x": 88,
+      "y": 84,
+      "width": 336,
+      "height": 336
+    }
   }
 }

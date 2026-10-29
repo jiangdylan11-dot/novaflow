@@ -21468,7 +21468,7 @@
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] {
         gap: 6px !important;
         /* Keep the brush wordmark close to the rail without moving right-side controls. */
-        margin-left: -12px !important;
+        margin-left: -4px !important;
         padding-left: 0 !important;
       }
       #${DROPDOWN_OVERLAY_ID} {
@@ -21968,6 +21968,7 @@
         height: ${UI_TOPBAR_LOGO_HEIGHT}px !important;
         object-fit: contain !important;
         object-position: left center !important;
+        margin-right: 6px !important;
         /* Flat: the reference has no glow on the mark. */
         filter: none !important;
       }
