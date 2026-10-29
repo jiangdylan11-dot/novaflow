@@ -929,6 +929,7 @@ let dashboardSnapshot = null;
 let rhRefreshLockedUntil = 0;
 
 function formatUsdAmount(value) {
+  if (value == null || value === "") return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -1107,6 +1108,7 @@ function renderDashboardRhCard(view) {
   const refresh = $("dashboardRhRefresh");
   if (!card || !value || !meta) return;
   card.classList.remove("rh-warning", "rh-danger", "rh-error", "rh-stale");
+  meta.removeAttribute("title");
   if (refresh) refresh.disabled = view?.state === "loading" || Date.now() < rhRefreshLockedUntil;
   if (view?.state === "loading") {
     value.replaceChildren(Object.assign(document.createElement("span"), { className: "skeletonLine" }));
@@ -1119,7 +1121,8 @@ function renderDashboardRhCard(view) {
     card.classList.add("rh-error");
     value.textContent = "—";
     value.title = "";
-    meta.textContent = String(view.message || "余额读取失败").slice(0, 40);
+    meta.textContent = String(view.message || "余额读取失败");
+    meta.title = meta.textContent;
     if (notice) notice.hidden = true;
     return;
   }
@@ -1253,11 +1256,18 @@ async function refreshDomesticBalance() {
   try {
     const response = await window.adminAPI.checkAdminRunningHubProviderStatus();
     if (!response?.ok) throw new Error(response?.error || "余额读取失败");
-    await renderFeatureCreditAdmin();
-    toast("已更新国内站余额");
+    const result = response.result;
+    renderRunningHubProviderHealth(result);
+    if (!result?.connected || !result.balance?.supported || result.balance.money == null) {
+      throw new Error(result?.error || "RunningHub 未返回可用余额，请在 AI 服务中检测账户");
+    }
+    if (!(await renderFeatureCreditAdmin())) throw new Error("余额读取失败");
+    toast(result.balanceCacheSaved === false ? "已读取最新余额，但共享缓存保存失败" : "已更新国内站余额");
   } catch (err) {
-    renderDashboardRhCard({ state: "error", message: "余额读取失败" });
-    toast("余额读取失败");
+    const message = String(err?.message || "余额读取失败");
+    renderDashboardRhCard({ state: "error", message });
+    setText("featureCreditStatus", message);
+    toast(message);
   } finally {
     if (refresh) refresh.textContent = "刷新国内站余额";
     if (other) other.disabled = false;
@@ -3135,7 +3145,8 @@ async function renderFeatureCreditAdmin() {
   if (!$("featureCreditPanel") || typeof window.adminAPI?.getFeatureCreditAdmin !== "function") return;
   try {
     const response = await window.adminAPI.getFeatureCreditAdmin();
-    const result = response?.ok === false ? null : (response?.result || response);
+    if (response?.ok === false) throw new Error("余额读取失败");
+    const result = response?.result || response;
     const config = result?.config || {};
     const prices = config.prices || {
       xiaotao_vision: 4, online_chat_turn: 4, prompt_optimize: 4, image_reverse: 4,
@@ -3177,7 +3188,8 @@ async function renderFeatureCreditAdmin() {
     const usd = balance.remainMoney == null || balance.remainMoney === "" || (currency && currency !== "USD")
       ? null
       : formatUsdAmount(balance.remainMoney);
-    const money = usd ? `${usd} USD` : (balance.remainMoney == null || balance.remainMoney === "" ? "未检测" : "—");
+    const balanceError = result?.error || result?.balanceError;
+    const money = balanceError ? "读取失败" : usd ? `${usd} USD` : (balance.remainMoney == null || balance.remainMoney === "" ? "未检测" : "—");
     const cost = result?.estimatedRhCostUsd == null ? "暂无" : `${formatUsdAmount(result.estimatedRhCostUsd) || result.estimatedRhCostUsd} USD`;
     renderSettingRows("featureCreditOpsRows", [
       { label: "国内站余额", value: money },
@@ -3208,11 +3220,14 @@ async function renderFeatureCreditAdmin() {
             : "缓存已过期。当前策略是放行并告警，不阻断新的云任务。")
           : `当前 ${usd || "—"} USD，低于 2 USD。新的云任务会拒绝，不扣积分，本地任务不受影响。`;
     }
-    renderDashboardRhCard(result?.error ? { state: "error", message: "余额读取失败" } : { state: "ready", domesticBalance: balance, lowBalance: low });
-    if (status) status.textContent = result?.error ? "余额读取失败" : "已读取";
+    if (balanceError && warning) warning.hidden = true;
+    renderDashboardRhCard(balanceError ? { state: "error", message: balanceError } : { state: "ready", domesticBalance: balance, lowBalance: low });
+    if (status) status.textContent = balanceError || "已读取";
+    return !balanceError;
   } catch (err) {
     if (status) status.textContent = "余额读取失败";
     renderDashboardRhCard({ state: "error", message: "余额读取失败" });
+    return false;
   }
 }
 

@@ -82,6 +82,11 @@ async function checkAccount(config, { fetchImpl = globalThis.fetch, timeoutMs = 
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const body = await response.json();
+    if (body?.code === 806) {
+      return { ...result, status: "error", checked: true, accountStatus: "invalid_key",
+        error: "RunningHub：当前 Key 未找到对应账户（APIKEY_USER_NOT_FOUND），请在 AI 服务中更新有效的国内站 Key",
+        durationMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
+    }
     if (body?.code !== 0 || !body?.data || typeof body.data !== "object" || Array.isArray(body.data)) {
       // Do not echo provider messages: they may contain request credentials.
       throw new Error("账户检测未通过，请核对 Key、账户权限和余额页面");

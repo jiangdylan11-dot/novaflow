@@ -94,7 +94,16 @@ test("HTTP, business, malformed and network failures never report connected or l
   }
 });
 
-function adminFixture() {
+test("invalid account Key reports the actionable provider error without echoing provider content", async () => {
+  const result = await rh.checkAccount(config(), { fetchImpl: async () => ({ ok: true,
+    json: async () => ({ code: 806, msg: fakeKey }) }) });
+  assert.equal(result.connected, false);
+  assert.equal(result.accountStatus, "invalid_key");
+  assert.match(result.error, /APIKEY_USER_NOT_FOUND/);
+  assert(!JSON.stringify(result).includes(fakeKey));
+});
+
+function adminFixture({ accountBody = { code: 0, data: { remainMoney: "12.5", currency: "CNY" } }, cacheWriteFails = false } = {}) {
   const filename = path.resolve(__dirname, "../license-admin-gui/admin-data.js");
   const realRequire = createRequire(filename);
   const registry = new Map();
@@ -103,6 +112,23 @@ function adminFixture() {
   const logs = [];
   let checks = 0;
   const module = { exports: {} };
+  const settings = new Map([["rh_domestic_balance", { remainMoney: 9.5773, currency: "USD", checkedAt: "2026-10-28T10:34:10.400Z" }]]);
+  const client = {
+    from: () => {
+      let key, record;
+      const query = {
+        select: () => query, eq: (_field, value) => { key = value; return query; },
+        upsert: (value) => { record = value; return query; },
+        maybeSingle: async () => {
+          if (record && cacheWriteFails) return { error: new Error("fixture cache save failed") };
+          if (record) settings.set(record.key, record.value);
+          return { data: record || { value: settings.get(key) || {} } };
+        }
+      };
+      return query;
+    },
+    rpc: async () => ({ data: 0 })
+  };
   const context = {
     module, exports: module.exports, process: { env, platform: "win32" },
     console: { log: (s) => logs.push(s), warn: (s) => logs.push(s) },
@@ -113,11 +139,33 @@ function adminFixture() {
       if (args[0] === "add") registry.set(key, args[args.indexOf("/d") + 1]);
       else registry.delete(key);
       return { status: 0 };
-    } } : name === "./runninghub-provider.cjs" ? { ...rh, checkAccount: async (c) => { checks++; return rh.checkAccount(c, { fetchImpl: async () => ({ ok: true, json: async () => ({ code: 0, data: { remainMoney: "12.5", currency: "CNY" } }) }) }); } } : realRequire(name)
+    } } : name === "@supabase/supabase-js" ? { createClient: () => client }
+      : name === "./runninghub-provider.cjs" ? { ...rh, checkAccount: async (c) => { checks++; return rh.checkAccount(c, { fetchImpl: async () => ({ ok: true, json: async () => accountBody }) }); } } : realRequire(name)
   };
   vm.runInNewContext(fs.readFileSync(filename, "utf8"), context, { filename });
-  return { api: module.exports, registry, writes, env, logs, checks: () => checks };
+  return { api: module.exports, registry, writes, env, logs, settings, checks: () => checks };
 }
+
+test("failed live check stays visible over the old shared balance on subsequent reads", async () => {
+  const f = adminFixture({ accountBody: { code: 806 } });
+  Object.assign(f.env, { NOVAFLOW_SUPABASE_URL: "https://fixture.invalid", NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: "fixture-role", NOVAFLOW_RUNNINGHUB_API_KEY: fakeKey });
+  await f.api.getAdminRunningHubProviderStatus({ checkAccount: true });
+  const result = await f.api.getFeatureCreditAdmin();
+  assert.match(result.balanceError, /APIKEY_USER_NOT_FOUND/);
+  assert.equal(f.settings.get("rh_domestic_balance").remainMoney, 9.5773);
+  assert(!JSON.stringify(result).includes(fakeKey));
+});
+
+test("latest live balance wins when saving the shared cache fails", async () => {
+  const f = adminFixture({ accountBody: { code: 0, data: { remainMoney: "0", currency: "USD" } }, cacheWriteFails: true });
+  Object.assign(f.env, { NOVAFLOW_SUPABASE_URL: "https://fixture.invalid", NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY: "fixture-role", NOVAFLOW_RUNNINGHUB_API_KEY: fakeKey });
+  const checked = await f.api.getAdminRunningHubProviderStatus({ checkAccount: true });
+  assert.equal(checked.balanceCacheSaved, false);
+  const result = await f.api.getFeatureCreditAdmin();
+  assert.equal(result.domesticBalance.remainMoney, 0);
+  assert.equal(result.balanceError, null);
+  assert.equal(f.settings.get("rh_domestic_balance").remainMoney, 9.5773);
+});
 
 test("save persists RunningHub config, preserves blank key, clears explicitly, and returns no secret", async () => {
   const f = adminFixture();

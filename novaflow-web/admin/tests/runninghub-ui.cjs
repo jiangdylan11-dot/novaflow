@@ -9,6 +9,7 @@ let config = rh.readConfig(() => "");
 let status = rh.publicStatus(config);
 let checks = 0;
 let saves = 0;
+let failCheck = false;
 const errors = [];
 const uiRoot = process.env.NOVAFLOW_ADMIN_UI_ROOT || path.resolve(__dirname, "../license-admin-gui");
 const preload = path.join(uiRoot, "preload.js");
@@ -18,9 +19,15 @@ for (const channel of new Set([...fs.readFileSync(preload, "utf8").matchAll(/ipc
     if (channel === "admin-status") return { ok: true, status: {} };
     if (channel === "admin-online-config") return { ok: true, config: {} };
     if (channel === "admin:provider:runninghub:status") return { ok: true, result: status };
+    if (channel === "admin:data:feature_credits:get") return { ok: true, result: {
+      config: {}, domesticBalance: { remainMoney: status.connected ? 0 : 9.5773, currency: "USD", checkedAt: "2026-10-28T10:34:10.400Z" },
+      balanceError: status.status === "error" ? status.error : null, lowBalance: { stale: !status.connected }
+    } };
     if (channel === "admin:provider:runninghub:check") {
       checks++;
-      status = { ...rh.publicStatus(config), connected: true, checked: true, status: "connected", balance: { text: "25 CNY · 100 RH币" }, currentTaskCounts: 0 };
+      status = failCheck
+        ? { ...rh.publicStatus(config), checked: true, status: "error", error: "RunningHub：当前 Key 未找到对应账户（APIKEY_USER_NOT_FOUND）" }
+        : { ...rh.publicStatus(config), connected: true, checked: true, status: "connected", balance: { supported: true, money: 0, currency: "USD", text: "0 USD · 100 RH币" }, currentTaskCounts: 0 };
       return { ok: true, result: status };
     }
     if (channel === "admin:provider:runtime-config:set") {
@@ -67,6 +74,20 @@ app.whenReady().then(async () => {
   assert(!(await run(`document.getElementById('module-ai-services').innerText`)).includes("保存 ComfyUI"));
   assert((await run(`document.getElementById('runninghubProviderHealthRows').textContent`)).includes("账户连接正常"));
   assert(!(await run(`document.body.innerText`)).includes("fixture-only-key"));
+  failCheck = true;
+  await run(`showModule('dashboard'); refreshDomesticBalance()`);
+  assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "—");
+  assert.match(await run(`$('dashboardRhDomesticMeta').textContent`), /APIKEY_USER_NOT_FOUND/);
+  assert.match(await run(`$('toast').textContent`), /APIKEY_USER_NOT_FOUND/);
+  await run(`loadAdminData()`);
+  assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "—", "ordinary refresh must not restore the stale balance after a failed check");
+  failCheck = false;
+  await run(`rhRefreshLockedUntil = 0; refreshDomesticBalance()`);
+  assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "0.00USD");
+  assert.equal(await run(`$('toast').textContent`), "已更新国内站余额");
+  await run(`renderDashboardRhCard({state:'ready', domesticBalance:{remainMoney:null}})`);
+  assert.equal(await run(`$('dashboardRhDomesticBalance').textContent`), "—", "missing balance must never become zero dollars");
+  await run(`showModule('ai-services')`);
   for (const width of [1440, 1080]) {
     win.setSize(width, 1080);
     const layout = await run(`new Promise(resolve => requestAnimationFrame(() => resolve({

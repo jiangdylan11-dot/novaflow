@@ -193,7 +193,7 @@ async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
     runningHubCheck = { baseUrl: env.baseUrl, apiKey: env.apiKey, result };
     if (result?.connected) {
       try {
-        await upsertAdminSystemSetting({
+        const saved = await upsertAdminSystemSetting({
           key: "rh_domestic_balance",
           value: {
             site: "domestic",
@@ -204,8 +204,10 @@ async function getAdminRunningHubProviderStatus({ checkAccount = false } = {}) {
             checkedAt: result.checkedAt || new Date().toISOString()
           }
         });
+        result.balanceCacheSaved = saved?.ok === true && saved?.source === "supabase";
       } catch (_err) {
         // The balance read still returns. A missing settings table must not hide it.
+        result.balanceCacheSaved = false;
       }
     }
   }
@@ -3482,7 +3484,15 @@ async function getFeatureCreditAdmin() {
   if (!clientState.client) return empty;
   try {
     const stored = normalizeCreditConfig(await readSettingValue(clientState.client, "feature_credit_config"));
-    const balance = await readSettingValue(clientState.client, "rh_domestic_balance");
+    const storedBalance = await readSettingValue(clientState.client, "rh_domestic_balance");
+    const env = readAdminRunningHubEnv();
+    const latest = runningHubCheck?.baseUrl === env.baseUrl && runningHubCheck?.apiKey === env.apiKey
+      ? runningHubCheck.result : null;
+    // The live check is authoritative even if saving the shared cache failed.
+    const balance = latest?.connected ? {
+      remainMoney: latest.balance?.money, remainCoins: latest.balance?.coins,
+      currency: latest.balance?.currency, checkedAt: latest.checkedAt
+    } : storedBalance;
     let estimatedRhCostUsd = null;
     const summed = await clientState.client.rpc("credit_ledger_estimated_rh_cost");
     if (!summed.error && summed.data != null) estimatedRhCostUsd = Number(summed.data);
@@ -3497,6 +3507,8 @@ async function getFeatureCreditAdmin() {
     return {
       config: stored,
       domesticBalance,
+      balanceError: latest && !latest.connected ? latest.error || "RunningHub：未配置有效 Key" : null,
+      balanceCacheSaved: latest?.balanceCacheSaved,
       estimatedRhCostUsd,
       lowBalance: lowBalanceState({
         cache: true,
