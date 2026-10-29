@@ -674,7 +674,7 @@
       addStudioGrid(viewer, floor);
       characters = createCharacters(viewer, changed, bodyModels);
       characters.restore({ pose: { bones: { upperarm_l: [0, 0, -15], upperarm_r: [0, 0, 15] } } });
-      libraryButton = button('打开姿势库', () => run(showLibrary), { 'data-novaflow-pose-library-open': '1', class: 'nf-pose-primary' });
+      libraryButton = button('打开姿势库', () => run(showLibrary), { 'data-novaflow-pose-library-open': '1', 'data-foart-action': 'neutral' });
       side.append(libraryButton, element('h3', { text: '场景人物' }));
       peopleList = element('div', { class: 'nf-pose-people', role: 'group', 'aria-label': '场景人物' });
       const addPerson = button('添加人物', () => run(() => { characters.add(); fitView(); changed(); }), { class: 'nf-pose-primary' });

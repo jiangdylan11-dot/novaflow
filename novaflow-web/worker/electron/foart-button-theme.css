@@ -45,13 +45,16 @@
   }
   .novaflow-art-export-action { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
   .novaflow-art-export-action:hover { background: var(--foart-action-grey-hover) !important; }
-  :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]) { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
-  :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]):hover:not(:disabled) { background: var(--foart-action-grey-hover) !important; }
+  :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-nf-cutout-panel-action], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]) { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
+  :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-nf-cutout-panel-action], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]):hover:not(:disabled) { background: var(--foart-action-grey-hover) !important; }
   .nf-tl-track-name { font-size:11px !important; font-weight:400 !important; line-height:16px !important; }
   .nf-tl-add-track { display:inline-flex !important; align-items:center !important; justify-content:center !important; line-height:1 !important; }
   :is([data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply) { background: var(--foart-generation-green) !important; color:#fff !important; }
   :is([data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply):hover:not(:disabled):not([aria-disabled="true"]) { background:var(--foart-generation-green-hover) !important; }
   .aifx-button:not(.aifx-primary):hover:not(:disabled), .aifx-library-btn:not(.aifx-library-close):hover:not(:disabled), .fxm-btn:not(.fxm-primary):not([data-on="1"]):hover:not(:disabled) { background:var(--foart-action-grey-hover) !important; }
+  [data-foart-selection="0"] { background:var(--foart-action-grey) !important; color:#eaeaea !important; }
+  [data-foart-selection="1"] { background:#1c4136 !important; color:#9be4cd !important; }
+  [data-foart-selection="0"]:hover:not(:disabled) { background:var(--foart-action-grey-hover) !important; }
   .btn.danger { background: #e5484d !important; }
 }
 [data-foart-usage-note="1"] { display: none !important; }

@@ -13,7 +13,7 @@
     if (/border.*color$/.test(property)) return 'transparent';
     if (property === 'box-shadow') return node.matches('.nf-xiaotao-robot') ? value : 'none';
     if (property !== 'background' && property !== 'background-color') return value;
-    if (node.matches('[data-novaflow-ai-cutout-save-bound], [data-novaflow-ai-sequence-save-button], #ve-save')) return '#272727';
+    if (node.matches('[data-nf-cutout-panel-action], [data-novaflow-ai-cutout-save-bound], [data-novaflow-ai-sequence-save-button], #ve-save')) return '#272727';
     if (generation) return 'var(--foart-generation-green, #1ea672)';
     const text = String(value).trim().toLowerCase();
     // Variables and transparent/none are intentional: never add a plate to them.

@@ -93,7 +93,7 @@
 .nf-xiaotao-message .nf-xiaotao-message-attachments img, .nf-xiaotao-message-file { width:72px;height:72px;object-fit:cover;margin:0;border-radius:12px; }
 @keyframes nf-xiaotao-spin { to { transform:rotate(360deg); } }
 #nf-xiaotao-art-root .nf-xiaotao-brains button { margin:0; border-color:transparent; background:transparent; color:#aaaaaa; }
-#nf-xiaotao-art-root .nf-xiaotao-brains button[aria-pressed="true"] { border-color:#555555; background:#373737; color:#eaeaea; }
+#nf-xiaotao-art-root .nf-xiaotao-brains button[aria-pressed="true"] { border-color:transparent; background:#1c4136; color:#9be4cd; }
 #nf-xiaotao-art-root .nf-xiaotao-compose-actions button { font-size:11px; padding:5px 7px; flex:0 1 auto; min-width:0; }
 /* Send stays on the right. The estimate is a fixed slot immediately to its left,
    reserved in both modes so 约11分 and 约80分 cannot move the button. */

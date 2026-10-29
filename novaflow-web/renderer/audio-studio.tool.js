@@ -1175,7 +1175,7 @@
     ui.modeSfx.setAttribute('aria-pressed', String(mode === 'sfx'));
     for (const b of [ui.modeMusic, ui.modeSfx]) {
       const on = b.getAttribute('aria-pressed') === 'true';
-      imp(b, { 'font-weight': '500', 'font-size': '12px', 'box-shadow': 'none', background: on ? 'var(--foart-action-green,rgba(30,166,114,.24))' : 'var(--nf-mode-bg, transparent)', color: on ? '#9be4cd' : 'var(--nf-mode-c, #eaeaea)' });
+      imp(b, { 'font-weight': '500', 'font-size': '12px', 'box-shadow': 'none', background: on ? '#1c4136' : 'var(--nf-mode-bg, transparent)', color: on ? '#9be4cd' : 'var(--nf-mode-c, #eaeaea)' });
     }
     const m = state[mode];
     // left row body

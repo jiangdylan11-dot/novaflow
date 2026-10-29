@@ -1938,6 +1938,8 @@
         }
         scaleButtons.forEach((button) => {
           const active = Number(button.__novaflowImageUpscaleScale || 0) === Number(selectedScale)
+          button.setAttribute('data-foart-selection', active ? '1' : '0')
+          button.setAttribute('aria-pressed', String(active))
           button.style.background = active ? '#21ad78' : 'rgba(255,255,255,0.08)'
           button.style.backgroundColor = active ? '#21ad78' : 'rgba(255,255,255,0.08)'
           button.style.color = '#fff'

@@ -24009,7 +24009,7 @@
         background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         color: ${UI_SEGMENT_SELECTED_TEXT} !important;
-        box-shadow: inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER} !important;
+        box-shadow: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][aria-disabled="true"],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"]:disabled {
@@ -60113,7 +60113,7 @@
   });
   const AI_ANIMATION_BRUSH_PILL_ACTIVE_STYLE = Object.freeze({
     "border-radius": "5px", background: SECONDARY_ENTRY_ACTIVE_BACKGROUND, "background-color": SECONDARY_ENTRY_ACTIVE_BACKGROUND,
-    color: UI_SEGMENT_SELECTED_TEXT, "box-shadow": `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}`
+    color: UI_SEGMENT_SELECTED_TEXT, "box-shadow": "none"
   });
   function writeAiAnimationBrushPill(node, active, disabled) {
     if (!(node instanceof HTMLElement)) return;
