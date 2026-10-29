@@ -240,6 +240,7 @@ self.postMessage({ type: 'ready' })`
 
     // ---------------------------------------------------------------- 工程辅助
     const size = () => FX().canvasSize(S.project)
+    const canvasSnapshot = () => { const s = size(); return { ...s, basePlacement: FX().basePlacement(S.project, s) } }
     const fx = () => FX().effectOf(S.project.effect)
     const n = () => FX().frameCount(S.project)
     // 每秒放几帧：特效扫光里 N 张切片铺满「时长」（骨骼动画的帧）；模板制作按 24 帧
@@ -652,7 +653,7 @@ self.postMessage({ type: 'ready' })`
       S.hidePath = false   // 点形状 = 要改形状：路径显示出来
       if (cancelDrawing() && kind === 'free') { renderShapes(); drawOverlay(); return }
       if (kind === 'free') { startDrawing(); return }
-      if (kind === 'trace') { if (!S.base) { E.file.click(); S.afterBase = 'trace'; return } snapshot(); traceBase(); return }
+      if (kind === 'trace') { if (!S.base) { chooseBase('trace'); return } snapshot(); traceBase(); return }
       snapshot()
       let b = bbox()
       if (kind === 'circle' || kind === 'star' || kind === 'heart') { const m = Math.min(b.w, b.h), cx = b.x + b.w / 2, cy = b.y + b.h / 2; b = { x: cx - m / 2, y: cy - m / 2, w: m, h: m } }
@@ -742,11 +743,11 @@ self.postMessage({ type: 'ready' })`
         + (has ? '<button class="fxm-btn" type="button" data-base="clear">移除底图</button>' : '')
         + `<span class="fxm-sep"></span><button class="fxm-btn" type="button" data-base="path" data-on="${S.hidePath ? 1 : 0}" ${baseOnly() ? 'disabled title="这类效果按底图本身扫，没有路径"' : 'title="隐藏 / 显示画板上的轮廓线和控制点，只看效果"'}>${S.hidePath ? '显示路径' : '隐藏路径'}</button>`
 
-      E.basetools.querySelector('[data-base="pick"]').onclick = () => { S.afterBase = ''; if (SW) pickSweepBase(); else E.file.click() }
+      E.basetools.querySelector('[data-base="pick"]').onclick = () => chooseBase()
       E.basetools.querySelector('[data-base="fit"]').onclick = fitToBase
       E.basetools.querySelector('[data-base="path"]').onclick = () => { S.hidePath = !S.hidePath; if (S.hidePath) S.selected = null; renderShapes(); drawOverlay() }
       const clr = E.basetools.querySelector('[data-base="clear"]')
-      if (clr) clr.onclick = () => { if (SW) { removeSweepBase(); return } S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1; for (const w of pool) if (w.ready) w.postMessage(baseMsg()); if (S.project.canvas.preset === 'base') S.project.canvas.preset = '1:1'; if (fx().needsBase) pickEffect(FX().effects()[0].id); drawBase(); renderShapes(); renderParams(); renderEffects(); layout(); changed() }
+      if (clr) clr.onclick = () => { if (SW) { removeSweepBase(); return } beginBaseRequest(); S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1; for (const w of pool) if (w.ready) w.postMessage(baseMsg()); if (S.project.canvas.preset === 'base') S.project.canvas.preset = '1:1'; if (fx().needsBase) pickEffect(FX().effects()[0].id); drawBase(); renderShapes(); renderParams(); renderEffects(); layout(); changed() }
       if (!S.drawing) setHint()
     }
     function setHint(text) {
@@ -757,34 +758,57 @@ self.postMessage({ type: 'ready' })`
     }
 
     // ---------------------------------------------------------------- 底图
+    function beginBaseRequest() { S.baseRequest = (S.baseRequest || 0) + 1; return S.baseRequest }
+    function baseRequestCurrent(request) { return !S.closed && request === S.baseRequest }
+    async function chooseBase(afterBase = '') {
+      if (afterBase.startsWith('effect:')) S.effectRevision = (S.effectRevision || 0) + 1
+      const effectRevision = S.effectRevision || 0
+      if (SW) {
+        const loaded = await pickSweepBase()
+        if (!loaded || !baseRequestCurrent(loaded)) return false
+        if (afterBase.startsWith('effect:') && effectRevision === (S.effectRevision || 0)) pickEffect(afterBase.slice(7))
+        return true
+      }
+      S.afterBase = afterBase
+      S.afterBaseRevision = effectRevision
+      E.file.click()
+    }
     E.file.onchange = async () => {
       const f = E.file.files && E.file.files[0]
       E.file.value = ''
-      if (!f) return
+      const afterBase = S.afterBase || '', effectRevision = S.afterBaseRevision ?? (S.effectRevision || 0)
+      S.afterBase = ''; S.afterBaseRevision = null
+      if (!f || S.closed) return
+      const request = beginBaseRequest()
       try {
         const bmp = await createImageBitmap(f)
+        if (!baseRequestCurrent(request)) { if (bmp.close) bmp.close(); return }
         const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height))
         const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k))
         const c = document.createElement('canvas'); c.width = w; c.height = h
         const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(bmp, 0, 0, w, h)
         const data = c.toDataURL('image/png')
-        await loadBase({ name: f.name, w, h, data, scale: S.project.base ? S.project.base.scale : 0.7, opacity: S.project.base ? S.project.base.opacity : 1 })
-        if (S.afterBase === 'trace') { snapshot(); traceBase() }
-        if (S.afterBase && S.afterBase.startsWith('effect:')) pickEffect(S.afterBase.slice(7))
-        S.afterBase = ''
-      } catch (error) { setInfo('底图读取失败：' + error.message) }
+        if (bmp.close) bmp.close()
+        const loaded = await loadBase({ name: f.name, w, h, data, scale: S.project.base ? S.project.base.scale : 0.7, opacity: S.project.base ? S.project.base.opacity : 1 }, request)
+        if (!loaded || !baseRequestCurrent(request)) return
+        if (afterBase === 'trace') { snapshot(); traceBase() }
+        if (afterBase.startsWith('effect:') && effectRevision === (S.effectRevision || 0)) pickEffect(afterBase.slice(7))
+      } catch (error) { if (baseRequestCurrent(request)) setInfo('底图读取失败：' + error.message) }
     }
-    async function loadBase(base) {
+    async function loadBase(base, request = beginBaseRequest()) {
       const img = new Image()
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('图片解码失败')); img.src = base.data })
+      try { await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('图片解码失败')); img.src = base.data }) }
+      catch (error) { if (!baseRequestCurrent(request)) return false; throw error }
+      if (!baseRequestCurrent(request)) return false
       const c = document.createElement('canvas'); c.width = base.w; c.height = base.h
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, base.w, base.h)
       S.base = { img, rgba: { data: g.getImageData(0, 0, base.w, base.h).data, w: base.w, h: base.h } }
       S.baseId = (S.baseId || 0) + 1
+      S.project.base = base
       for (const w of pool) if (w.ready) w.postMessage(baseMsg())
       changed()
-      S.project.base = base
       drawBase(); renderShapes(); renderParams(); renderEffects()
+      return request
     }
 
     // ---------------------------------------------------------------- 右侧参数
@@ -893,7 +917,7 @@ self.postMessage({ type: 'ready' })`
         }
       }
       const cw = E.params.querySelector('[data-cw]'), ch = E.params.querySelector('[data-ch]')
-      if (cw && ch) { const apply = () => { const before = size(); p.canvas.w = Number(cw.value); p.canvas.h = Number(ch.value); keepOutlineIn(before); cw.value = size().w; ch.value = size().h }; cw.onchange = apply; ch.onchange = apply }
+      if (cw && ch) { const apply = () => { const before = canvasSnapshot(); p.canvas.w = Number(cw.value); p.canvas.h = Number(ch.value); keepOutlineIn(before); cw.value = size().w; ch.value = size().h }; cw.onchange = apply; ch.onchange = apply }
       const colourRow = E.params.querySelector('[data-seg="colour"]')
       colourRow.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => { p.colour.mode = b.dataset.v; colourRow.querySelectorAll('[data-v]').forEach((x) => x.setAttribute('data-on', x === b ? 1 : 0)); changed() } })
       const picker = colourRow.querySelector('input[type=color]')
@@ -913,22 +937,14 @@ self.postMessage({ type: 'ready' })`
       S.project.outlines = [{ points: out, hole: false }]
     }
     function setCanvas(id) {
-      const before = size()
+      const before = canvasSnapshot()
       if (id === 'custom' && !S.project.canvas.w) { S.project.canvas.w = before.w; S.project.canvas.h = before.h }
       S.project.canvas.preset = id
       keepOutlineIn(before)
       renderParams()
     }
     function keepOutlineIn(before) {
-      const after = size()
-      const dx = (after.w - before.w) / 2, dy = (after.h - before.h) / 2
-      moveAll(dx, dy)
-      const b = bbox()
-      if (b.w > after.w * 0.95 || b.h > after.h * 0.95) {
-        const k = Math.min((after.w * 0.85) / b.w, (after.h * 0.85) / b.h), cx = after.w / 2, cy = after.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2
-        for (const p of allPoints()) { p.x = cx + (p.x - bx) * k; p.y = cy + (p.y - by) * k }
-        if (S.project.start) { S.project.start.x = cx + (S.project.start.x - bx) * k; S.project.start.y = cy + (S.project.start.y - by) * k }
-      }
+      FX().reframeProject(S.project, before, size())
       S.playhead = 0
       layout(); changed()
     }
@@ -953,9 +969,10 @@ self.postMessage({ type: 'ready' })`
           + '</div>'
       }).join('')
       E.effects.querySelectorAll('[data-group]').forEach((b) => { b.onclick = () => { const g = b.dataset.group; if (S.openGroups.has(g)) S.openGroups.delete(g); else S.openGroups.add(g); renderEffects() } })
-      E.effects.querySelectorAll('[data-fx]').forEach((b) => { b.onclick = () => { if (FX().effectOf(b.dataset.fx).needsBase && !S.base) { S.afterBase = 'effect:' + b.dataset.fx; E.file.click(); return } pickEffect(b.dataset.fx) } })
+      E.effects.querySelectorAll('[data-fx]').forEach((b) => { b.onclick = () => { if (FX().effectOf(b.dataset.fx).needsBase && !S.base) { chooseBase('effect:' + b.dataset.fx); return } pickEffect(b.dataset.fx) } })
     }
     function pickEffect(id) {
+      S.effectRevision = (S.effectRevision || 0) + 1
       const e = FX().effectOf(id)
       const centeredBefore = !!fx().centered
       S.project.effect = id
@@ -1058,10 +1075,9 @@ self.postMessage({ type: 'ready' })`
       p.frames = st.frames
       p.effectDuration = st.duration / SW.fps
     }
-    // 画板变了：图片轮廓重新描（保住起点角度），别的形状按比例搬过去
+    // Padding changes translate the existing path with its picture, preserving edits.
     function sweepCanvasChanged(before) {
-      if (S.project.shape.kind === 'trace' && S.base) { const a = usesStart() ? startAngle() : null; traceBase(); if (a != null) setStartAngle(a) }
-      else keepOutlineIn(before)
+      keepOutlineIn(before)
       drawBase(); layout(); changed(); renderParams()
     }
     function sweepCanvasItems() {
@@ -1082,24 +1098,35 @@ self.postMessage({ type: 'ready' })`
       return items
     }
     function setSweep(key, v) {
-      const before = size()
+      const before = canvasSnapshot()
+      const oldCount = n(), phase = S.project.lifecycle === 'loop' ? (S.playhead % oldCount) / oldCount : Math.min(1, S.playhead / Math.max(1, oldCount - 1))
       SW.setSettings({ [key]: v })
-      if (key === 'frames') { applySweepCanvas(); S.playhead = 0; changed(); renderParams(); return }
-      if (key === 'duration') { S.lastTick = 0; renderParams(); syncTime(); return }
+      if (key === 'frames' || key === 'duration') {
+        const st = SW.settings()
+        S.project.framesFree = true; S.project.frames = st.frames; S.project.effectDuration = st.duration / SW.fps
+        if (key === 'frames') S.playhead = phase * (S.project.lifecycle === 'loop' ? n() : Math.max(1, n() - 1))
+        changed(); renderParams(); return
+      }
       applySweepCanvas(); sweepCanvasChanged(before)
     }
     async function pickSweepBase() {
       const b = await SW.pickBase()
-      if (!b) return
-      const before = size(), hadBase = !!S.base
-      await loadBase({ name: b.name, w: b.w, h: b.h, data: b.data, scale: 1, opacity: S.project.base ? S.project.base.opacity : 1 })
+      if (!b || S.closed) return false
+      const request = beginBaseRequest()
+      const before = canvasSnapshot(), hadBase = !!S.base
+      try {
+        const loaded = await loadBase({ name: b.name, w: b.w, h: b.h, data: b.data, scale: 1, opacity: S.project.base ? S.project.base.opacity : 1 }, request)
+        if (!loaded || !baseRequestCurrent(request)) return false
+      } catch (error) { if (baseRequestCurrent(request)) setInfo('底图读取失败：' + error.message); return false }
       applySweepCanvas()
       // 换上的底图：没底图时的形状 / 原来就是图片轮廓的，都描这张图的轮廓
       if (!hadBase || S.project.shape.kind === 'trace') { S.project.shape.kind = 'trace'; traceBase() } else keepOutlineIn(before)
       drawBase(); layout(); changed(); renderShapes(); renderParams(); renderEffects()
+      return request
     }
     function removeSweepBase() {
-      const before = size()
+      beginBaseRequest()
+      const before = canvasSnapshot()
       S.base = null; S.project.base = null; S.baseId = (S.baseId || 0) + 1
       for (const w of pool) if (w.ready) w.postMessage(baseMsg())
       if (SW.onBase) SW.onBase(null)
@@ -1139,6 +1166,7 @@ self.postMessage({ type: 'ready' })`
     function close() {
       if (S.closed) return
       S.closed = true
+      beginBaseRequest()
       cancelAnimationFrame(S.raf)
       cancelAnimationFrame(overlayRaf); clearTimeout(S.geoTimer)
       clearTimeout(preview.timer)
@@ -1159,14 +1187,18 @@ self.postMessage({ type: 'ready' })`
     // ---------------------------------------------------------------- 起步
     renderEffects(); renderShapes(); renderParams(); setHint()
     if (SW && !(S.project.base && S.project.base.data)) applySweepCanvas()
-    if (S.project.base && S.project.base.data) loadBase(S.project.base).then(() => {
-      if (SW) {
-        applySweepCanvas()
-        if (S.project.shape.kind === 'trace') { const a = S.project.start && usesStart() ? startAngle() : null; traceBase(); if (a != null) setStartAngle(a) }
-        drawBase(); renderParams(); changed()
-      }
-      layout()
-    }).catch((error) => setInfo('底图读取失败：' + error.message))
+    if (S.project.base && S.project.base.data) {
+      const request = beginBaseRequest()
+      loadBase(S.project.base, request).then((loaded) => {
+        if (!loaded || !baseRequestCurrent(request)) return
+        if (SW) {
+          applySweepCanvas()
+          if (S.project.shape.kind === 'trace') { const a = S.project.start && usesStart() ? startAngle() : null; traceBase(); if (a != null) setStartAngle(a) }
+          drawBase(); renderParams(); changed()
+        }
+        layout()
+      }).catch((error) => { if (baseRequestCurrent(request)) setInfo('底图读取失败：' + error.message) })
+    }
     layout(); changed()
     const api = { close, state: S, get project() { return S.project }, previewStats: () => ({ version: S.version, frontVersion: preview.frontVersion, waiting: preview.waiting, ready: preview.next.size, cacheBytes: preview.cacheBytes, cacheHits: preview.cacheHits }), renderMp4: () => renderMp4().then((r) => r.blob), setShape, pickEffect, fitToBase, loadBase, setCanvas, deliver, rerender: () => renderParams(), refreshPreview: () => changed(true, false) }
     root.__NovaFlowFxMakerOpen = api

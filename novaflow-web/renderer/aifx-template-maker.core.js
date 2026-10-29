@@ -520,6 +520,33 @@
     return { x: (size.w - w) / 2 + (Number(b.dx) || 0), y: (size.h - h) / 2 + (Number(b.dy) || 0), w, h }
   }
 
+  // Canvas changes must apply the picture's own transform to edited paths.
+  // Re-tracing here would discard moved points, holes and the chosen start.
+  function reframeProject(project, before, after = canvasSize(project), previousBasePlacement = basePlacement(project, before)) {
+    const points = (project.outlines || []).flatMap((o) => o.points || [])
+    const map = (fn) => { for (const p of points) Object.assign(p, fn(p)); if (project.start) Object.assign(project.start, fn(project.start)) }
+    const from = Object.prototype.hasOwnProperty.call(before, 'basePlacement') ? before.basePlacement : previousBasePlacement
+    const to = basePlacement(project, after)
+    if (from && to && from.w > 0 && from.h > 0) {
+      const k = Math.min(to.w / from.w, to.h / from.h)
+      const fx = from.x + from.w / 2, fy = from.y + from.h / 2, tx = to.x + to.w / 2, ty = to.y + to.h / 2
+      map((p) => ({ x: tx + (p.x - fx) * k, y: ty + (p.y - fy) * k }))
+      for (const key of ['corner', 'offset']) if (project[key] != null && Number.isFinite(Number(project[key]))) project[key] = Number(project[key]) * k
+      return
+    }
+    // With no picture, retain the established centering and fit-to-board rule.
+    const dx = (after.w - before.w) / 2, dy = (after.h - before.h) / 2
+    map((p) => ({ x: p.x + dx, y: p.y + dy }))
+    if (!points.length) return
+    let x = Infinity, y = Infinity, right = -Infinity, bottom = -Infinity
+    for (const p of points) { x = Math.min(x, p.x); y = Math.min(y, p.y); right = Math.max(right, p.x); bottom = Math.max(bottom, p.y) }
+    const w = Math.max(1, right - x), h = Math.max(1, bottom - y)
+    if (w > after.w * 0.95 || h > after.h * 0.95) {
+      const k = Math.min(after.w * 0.85 / w, after.h * 0.85 / h), bx = x + w / 2, by = y + h / 2
+      map((p) => ({ x: after.w / 2 + (p.x - bx) * k, y: after.h / 2 + (p.y - by) * k }))
+    }
+  }
+
   function defaultProject() {
     const size = { w: 640, h: 640 }
     const box = { x: 140, y: 140, w: 360, h: 360 }
@@ -922,7 +949,7 @@
   root.NovaFlowFxMaker = {
     FPS, DURATIONS, CANVASES, CANVAS_CHOICES, SHAPES, MOTIONS, registerLibrary,
     effects, effectOf, effectDefaults, resourceOutputName,
-    shapeOutline, outlineCurve, outlinePolylines, traceImage, canvasSize, basePlacement, defaultProject,
+    shapeOutline, outlineCurve, outlinePolylines, traceImage, canvasSize, basePlacement, reframeProject, defaultProject,
     geometry, contoursOf, fillPoly, signedDistance, frameCount, timeOf,
     prepare, renderFrame, aiDescriptor, pointOnOutline,
   }
