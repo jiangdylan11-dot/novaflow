@@ -22,11 +22,11 @@ app.whenReady().then(async () => {
   for(const id of ['nav','heading','tab'])assert.equal((await read(id)).bg,'rgba(0, 0, 0, 0)',id+' must not acquire a background');
   assert.equal((await read('grey')).bg,'rgb(39, 39, 39)');
   assert.equal((await read('import')).bg,'rgb(39, 39, 39)');
-  assert.equal((await read('primary')).bg,'rgb(30, 166, 114)');
+  assert.equal((await read('primary')).bg,'rgba(30, 166, 114, 0.24)');
   assert.equal((await read('selected')).bg,'rgb(28, 65, 54)');
   for(const id of ['nav','heading','tab','grey','primary','selected','import']){assert.equal((await read(id)).border,'0px',id);assert.equal((await read(id)).shadow,'none',id);}
   const legacy=await win.webContents.executeJavaScript(`['transparent','rgba(0,0,0,0)','#333333','#1c4136','#1ea672'].map(v=>FoartButtonTheme.normalize(document.getElementById('grey'),'background',v))`);
-  assert.deepEqual(legacy,['transparent','rgba(0,0,0,0)','#272727','#1c4136','#1ea672']);
+  assert.deepEqual(legacy,['transparent','rgba(0,0,0,0)','#272727','#1c4136','var(--foart-action-green, rgba(30,166,114,.24))']);
   assert.equal((await read('swatch')).bg,'rgb(255, 0, 0)');assert.equal((await read('field')).bg,'rgb(52, 52, 52)');
   const notes=await win.webContents.executeJavaScript(`(()=>{FoartButtonTheme.compactUsageNotes();return ['usage','status','price'].map(id=>getComputedStyle(document.getElementById(id)).display)})()`);
   assert.equal(notes[0],'none');assert.notEqual(notes[1],'none');assert.notEqual(notes[2],'none');

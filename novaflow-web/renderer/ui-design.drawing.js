@@ -142,7 +142,7 @@
 
     const button = (label, onClick, primary = false) => {
 
-      const node = element(doc, 'button', { type: 'button', text: label, style: { padding: '6px 8px', minHeight: '28px', border: '1px solid ' + (primary ? '#17a582' : '#343434'), borderRadius: '6px', background: primary ? '#17a582' : '#262626', color: '#e9e9e9', fontSize: '11px', cursor: 'pointer' } })
+      const node = element(doc, 'button', { type: 'button', text: label, 'data-foart-action': primary ? 'primary' : 'neutral', style: { padding: '6px 8px', minHeight: '28px', border: '1px solid ' + (primary ? '#17a582' : '#343434'), borderRadius: '6px', background: primary ? '#17a582' : '#262626', color: '#e9e9e9', fontSize: '11px', cursor: 'pointer' } })
 
       node.addEventListener('click', onClick)
 

@@ -11,7 +11,7 @@
   const PFX = () => root.NovaFlowParticleFx
   const STYLE_ID = 'pfx-dock-style'
   const STYLE = `
-.pfx-dock{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;background:#1F1F1F;color:#d6d6d6;font-size:12px;font-family:"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif}
+.pfx-dock{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;background:#161616;color:#d6d6d6;font-size:12px;font-family:"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif}
 .pfx-dock *{box-sizing:border-box}
 .pfx-hd{flex:none;height:46px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid #2A2A2A}
 .pfx-title{font-size:13px;font-weight:600;color:#f0f0f0}
@@ -62,8 +62,9 @@
 .pfx-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:6px 0}
 .pfx-tile{position:relative;border:0;border-radius:6px;background:#2B2B2B;cursor:pointer;padding:3px;display:flex;flex-direction:column;align-items:center;gap:2px;color:#9a9ea3;font:inherit;font-size:10px;min-width:0}
 .pfx-tile:hover{background:#373737}
-.pfx-tile[data-on="1"]{background:#17223a;color:#e6e6e6}
+.pfx-tile[data-on="1"]{background:var(--foart-action-green,rgba(30,166,114,.24));color:#9be4cd}
 .pfx-tile img{width:100%;aspect-ratio:1;object-fit:contain}
+.pfx-builtin-tiles .pfx-tile img{width:24px;height:24px}
 .pfx-tile span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pfx-tile .del{position:absolute;right:1px;top:1px;width:15px;height:15px;border:0;border-radius:4px;background:rgba(0,0,0,.6);color:#ddd;font-size:10px;line-height:15px;padding:0;cursor:pointer;display:none}
 .pfx-tile:hover .del{display:block}
@@ -71,8 +72,8 @@
 .pfx-drop:hover{border-color:${GREEN}}
 .pfx-drop small{color:#7d8186;font-size:11px}
 .pfx-card{border-radius:8px;overflow:hidden;margin:6px 0;border:1px solid #2A2A2A}
-.pfx-card-hd{display:flex;align-items:center;gap:6px;padding:5px 6px;background:#0b0f14}
-.pfx-card:first-child .pfx-card-hd,.pfx-card[data-first="1"] .pfx-card-hd{background:#17223a}
+.pfx-card-hd{display:flex;align-items:center;gap:6px;padding:5px 6px;background:#272727}
+.pfx-card:first-child .pfx-card-hd,.pfx-card[data-first="1"] .pfx-card-hd{background:#272727}
 .pfx-card-hd img{width:34px;height:34px;object-fit:contain;background:#000;border-radius:4px}
 .pfx-card-hd .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pfx-card-bd{padding:6px 8px 8px;background:#1d1d1d}
@@ -94,7 +95,7 @@
 .pfx-info{font-size:11px;color:#7d8186;padding:8px 12px 0;line-height:1.5}
 .pfx-dock :focus,.pfx-dock :focus-visible,.pfx-lib :focus,.pfx-lib :focus-visible{outline:none}
 .pfx-lib{position:fixed;inset:0;z-index:2147483600;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font-family:"Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;font-size:12px;color:#d6d6d6}
-.pfx-lib-win{width:min(1080px,94vw);max-height:90vh;display:flex;flex-direction:column;background:#1F1F1F;border:1px solid #2E2E2E;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+.pfx-lib-win{width:min(1080px,94vw);max-height:90vh;display:flex;flex-direction:column;background:#161616;border:1px solid #2E2E2E;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.45)}
 .pfx-lib-hd{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #2A2A2A}
 .pfx-lib-hd b{font-size:14px;color:#f0f0f0;margin-right:auto}
 .pfx-lib-hd .fxm-btn{min-width:72px}
@@ -161,7 +162,7 @@
         h('button', { class: 'fxm-btn fxm-primary', type: 'button', title: '渲染成切片进图片文件夹，一个插槽逐帧换图写进动画', onclick: () => run('sequence') }, '生成序列')))
     ;(options.host || document.body).appendChild(dock)
     const body = dock.querySelector('[data-body]')
-    let infoText = '拖画布上的绿点移动发射位置；动画够长就跟着播放，空动画时粒子自己循环播。'
+    let infoText = '拖动绿点调整发射位置。'
     let infoEl = null
     const setInfo = (t) => { infoText = t; if (infoEl) infoEl.textContent = t }
     let busyEl = null
@@ -311,7 +312,7 @@
         h('button', { class: 'fxm-btn', type: 'button', title: '读一个粒子项目 JSON 文件，加成列表里的一个新粒子系统', onclick: () => importProject() }, '导入'),
         h('button', { class: 'fxm-btn', type: 'button', title: '把当前选中的粒子系统存成 JSON 文件下载到电脑（贴图一起存进去）', onclick: () => saveProject() }, '保存')),
         // 2026-10-16 用户：保存 / 导入要解释一下
-        help('模板库：挑模板，或用「点击存储」把当前效果存进模板库（下次在这里直接选）。导入：读一个粒子项目 JSON 文件（「保存」存的、或粒子页「保存粒子项目」存的），加成一个新粒子系统。保存：把当前选中的粒子系统存成「Foart项目_名字.json」下载到电脑，贴图一起存进去，可以备份或发给别人，用「导入」读回来。')]
+        help('选用模板，或导入、保存粒子系统。')]
     }
     async function importProject() {
       const f = await new Promise((res) => { const i = h('input', { type: 'file', accept: '.json,application/json' }); i.onchange = () => res(i.files && i.files[0]); i.click() })
@@ -440,7 +441,7 @@
           h('button', { class: 'pfx-ib', type: 'button', title: n <= 1 ? '至少保留 1 个系统' : '删除', disabled: n <= 1, onclick: (e) => { e.stopPropagation(); S.systems.splice(i, 1); if (S.active >= S.systems.length) S.active = S.systems.length - 1; else if (S.active > i) S.active--; render(); changed(true) } }, '×')))
       })
       // 系统 X / Y、旋转偏移不放滑条（2026-10-16 用户：可以精简掉）：画布上拖绿点改位置、拖方向手柄改旋转
-      box.append(help('位置：画布上拖绿点；旋转：拖绿点伸出的方向手柄。'))
+      box.append(help('拖动绿点调整位置，拖动手柄调整方向。'))
       return box
     }
 
@@ -450,14 +451,14 @@
       if (!stream) out.push(fs('单次粒子数量', 'burstCount', 1, 500, 1, ''), fs('循环周期', 'loopIntervalSec', 0.1, 10, 0.1, 's'))
       else {
         out.push(fs('每秒发射速率', 'rate', 1, 300, 1, '/s'), fs('发射持续时间', 'streamDurationSec', 0, 30, 0.1, 's'))
-        out.push(toggle('预热 (Warm-up)', !!c.warmupEnabled, (on) => update({ warmupEnabled: on }), [help('预热会在显示第一帧前先模拟一段时间，让流式特效直接进入稳定态。'), fs('预热秒数（0=自动）', 'warmupSeconds', 0, 10, 0.1, 's', 0)]))
+        out.push(toggle('预热 (Warm-up)', !!c.warmupEnabled, (on) => update({ warmupEnabled: on }), [help('预先模拟，让第一帧进入稳定状态。'), fs('预热秒数（0=自动）', 'warmupSeconds', 0, 10, 0.1, 's', 0)]))
         out.push(toggle('首尾循环 (Loop)', !!c.loopAnimation, (on) => {
           if (!on) { update({ loopAnimation: false }); return }
           const maxLife = Math.max(0, Number(c.lifetimeMin) || 0, Number(c.lifetimeMax) || 0)
           const L = Math.max(0.01, maxLife > 0 ? maxLife : settings().duration / (settings().fps || 30))
           update({ loopAnimation: true, loopDurationSec: L, streamLoopEnabled: true, spriteSequenceLoop: true })
         }, []))
-        out.push(help('写进骨骼动画时，循环长度和不循环时的时长都按下面「播放」里的时长。'))
+        out.push(help('写入时长取下方「播放」设置。'))
       }
       return out
     }
@@ -479,7 +480,7 @@
       if (sh.type === 'cone') out.push(toggle('向内收缩', !!sh.emitInward, (on) => updateShape({ emitInward: on }), []), shapeSlider('锥角', 'coneAngleDeg', 1, 180, 1, '°', 45), shapeSlider('发射半径', 'coneRadius', 10, 800, 1, 'px', 150))
       if (sh.type === 'custom_path') {
         out.push(toggle('画布编辑（锁定坐标）', S.pathEdit, (on) => { S.pathEdit = on; render(); changed(true) }, []))
-        out.push(help(PATH_HELP))
+        out.push(h('div', { class: 'pfx-help', title: PATH_HELP }, '点击加点，拖动调整；Alt 调曲线，双击删点。'))
         out.push(buildContour('shape'))
         out.push(toggle('闭环', c.pathClosed !== false, (on) => update({ pathClosed: on }), []), toggle('反向', !!c.pathReverse, (on) => update({ pathReverse: on }), []))
         out.push(toggle('喷发朝向', !!c.pathEmitFacingEnabled, (on) => update({ pathEmitFacingEnabled: on }), [slider('朝向角度', c.pathEmitFacingDeg ?? 0, 0, 360, 1, '°', (x) => { c.pathEmitFacingDeg = clamp(Math.round(x), 0, 360); changed() })]))
@@ -509,7 +510,7 @@
         pathKids.push(toggle('随机起点', c.pathRandomStartAngle !== false, (on) => update({ pathRandomStartAngle: on }), [], 2))
         if (c.pathRandomStartAngle === false) pathKids.push(fs('起点', 'pathStartT', 0, 1, 0.001, '', 0))
         pathKids.push(toggle('反向', !!c.pathReverse, (on) => update({ pathReverse: on }), [], 2))
-        pathKids.push(help(PATH_HELP))
+        pathKids.push(h('div', { class: 'pfx-help', title: PATH_HELP }, '点击加点，拖动调整；Alt 调曲线，双击删点。'))
         pathKids.push(buildContour('motion'))
       }
       // 发射器形状是「路径」时这里不能开：开了会盖掉发射器的路径（2026-10-16 用户：会误导）
@@ -743,7 +744,7 @@
       // 内置贴图（羽化圆形不列）
       const ids = (c.sprites || []).map((s) => String(s.id || ''))
       out.push(h('span', { class: 'pfx-lbl' }, '内置贴图'))
-      out.push(h('div', { class: 'pfx-tiles' }, P.builtinSpriteList().filter((d) => d.key !== 'feather_circle').map((d) => {
+      out.push(h('div', { class: 'pfx-tiles pfx-builtin-tiles' }, P.builtinSpriteList().filter((d) => d.key !== 'feather_circle').map((d) => {
         const re = new RegExp(`^builtin_${d.key}_\\d+$`), on = randomLike() ? ids.some((x) => re.test(x)) : re.test(ids[0] || '')
         return h('button', { class: 'pfx-tile', type: 'button', 'data-on': on ? '1' : '0', title: d.label, onclick: () => addBuiltin(d.key) }, h('img', { alt: '', src: d.dataUrl }), h('span', {}, d.label))
       })))
@@ -842,12 +843,12 @@
         placeEl,
         num('从第几帧开始', 'start', st.start, 0, 18000, '帧'),
         num('写入长度', 'duration', st.duration, 2, 18000, `帧（${(st.duration / fps).toFixed(2)} 秒）`),
-        help('写入长度 = 这段粒子在动画时间轴上占多长；和粒子「寿命」不是一回事（寿命是每颗粒子活多久）。开了「首尾循环」的系统按这个长度首尾相接。'),
+        help('设置粒子在时间轴上的持续长度。'),
         h('div', { 'data-write-hint': '', style: 'display:none;margin:4px 0 6px;padding:6px 8px;border-radius:6px;background:rgba(224,180,90,.12);color:#e0b45a;font-size:11px;line-height:1.5' },
           h('span', {}), h('button', { class: 'fxm-btn', type: 'button', style: 'display:block;margin-top:6px;height:24px', onclick: () => { setSettings({ duration: Math.max(2, Math.ceil(maxOnceLife() * (settings().fps || 30))) }); render() } }, '按寿命补足')),
         h('span', { class: 'pfx-lbl' }, '序列图（只影响「生成序列」）'),
         seg([['1', '每帧一张'], ['2', '每 2 帧一张'], ['3', '每 3 帧一张']], String(step), (v) => { setSettings({ seqStep: Number(v) }); render() }),
-        help(`共 ${st.frames} 张。张数越少图集越小，但看起来没那么顺。「生成 Spine 动画」不切图，不看这项。`),
+        help(`共 ${st.frames} 帧，仅影响序列图。`),
         h('span', { class: 'pfx-lbl' }, '插槽混合'), seg([['add', '相加'], ['normal', '正常'], ['screen', '滤色'], ['multiply', '相乘']], S.blend, (v) => { S.blend = v; render(); changed(true) }),
         S.blend === 'multiply' ? help('相乘：只会把下面的画面压暗，放在深色背景或透明处几乎看不见；发光的粒子用「相加」。') : null,
         num('切片宽', 'width', st.width, 64, 4096, '像素'), num('切片高', 'height', st.height, 64, 4096, '像素（画布上虚线框）'),

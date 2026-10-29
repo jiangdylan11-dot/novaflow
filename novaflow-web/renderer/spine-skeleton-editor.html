@@ -4,12 +4,19 @@
 <meta charset="utf-8">
 <title>骨骼动画编辑</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="./foart-button-theme.css?v=20261029-control-fixes-1">
 <style>
   :root{--green:#1EA672;--bg:#121212;--panel:#181818;--card:#1F1F1F;--line:#262626;--line2:#2e2e2e;--field:#262626;--text:#e9e9e9;--dim:#9a9a9a;
         --c-normal:#4fb3e8;--c-cons:#a78bfa;--c-ctrl:#f0a63a;color-scheme:dark}
   *{box-sizing:border-box}
   [hidden]{display:none!important}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:12px/1.4 Inter,"Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+  /* Same thin neutral scrollbars as the surrounding app, including horizontal overflow. */
+  :where(html body *){scrollbar-width:thin;scrollbar-color:#3a3a3a transparent}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-thumb{background:#3a3a3a;border-radius:3px}
+  ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+  ::-webkit-scrollbar-button{display:none;width:0;height:0}
   button,input,select{font:inherit;color:inherit}
   button{cursor:pointer}
   button:disabled{cursor:not-allowed;opacity:.45}
@@ -110,6 +117,7 @@
   .btn.primary:hover:not(:disabled){background:#22b57c}
   .btn.small{height:24px;padding:0 8px;font-size:11px}
   .btn.full{width:100%}
+  .props .btns .btn.small{height:24px;min-height:24px;border-radius:6px;font-weight:500}
   .btns{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
   .btns.g2{display:grid;grid-template-columns:1fr 1fr}
   .btns.g3{display:grid;grid-template-columns:1fr 1fr 1fr}
@@ -186,6 +194,7 @@
   .dmodes button svg{width:13px;height:13px}
   .dmodes button:hover{background:#373737;color:#fff}
   .dmodes button[aria-pressed="true"]{background:#1c4136;color:#9be4cd}
+  #dopeFilter, #dopeFilter[aria-pressed="true"]{background:var(--foart-action-grey);color:#d6d6d6}
   .menu .mh{padding:6px 10px 2px;color:#7d7d7d;font-size:11px}
   .menu .msep{height:1px;margin:4px 6px;background:#2a2a2a}
   .tl-body{position:relative;flex:1;min-height:0;display:flex;border-top:1px solid var(--line)}
@@ -237,7 +246,7 @@
   .xg{display:flex;flex-direction:column;gap:4px}
   .xg .cap{color:#7d7d7d;font-size:10px;line-height:12px;margin:0 0 1px 2px}
   .xr{display:flex;align-items:center;gap:4px;height:26px}
-  .xt{width:26px;height:26px;border:0;border-radius:6px;background:#262626;color:#d6d6d6;display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px}
+  .xt{width:26px;height:26px;border:0;border-radius:6px;background:var(--foart-action-grey);color:#d6d6d6;display:inline-flex;align-items:center;justify-content:center;flex:0 0 26px}
   .xt svg{width:13px;height:13px}
   /* a tool with its name (Spine): icon + label, one width per column */
   .xt.xtl{width:58px;flex:0 0 58px;justify-content:flex-start;gap:5px;padding:0 0 0 8px;font-size:12px;font-weight:500;white-space:nowrap}
@@ -248,8 +257,8 @@
   .xt.xtl[aria-pressed="true"] svg{color:#fff}
   .xt.xtl:disabled svg{opacity:.4}
   .xt:hover:not(:disabled){background:#373737;color:#fff}
-  .xt[aria-pressed="true"]{background:var(--green);color:#fff}
-  .xt[aria-pressed="true"]:hover:not(:disabled){background:#22b980}   /* a picked tool stays green under the mouse (the plain hover above turned it grey) */
+  .xt[aria-pressed="true"]{background:var(--foart-action-green);color:#9be4cd}
+  .xt[aria-pressed="true"]:hover:not(:disabled){background:var(--foart-action-green-hover)}   /* a picked tool stays green under the mouse (the plain hover above turned it grey) */
   .xr input{width:66px;height:26px;border:0;border-radius:6px;background:#262626;color:#fff;font-size:12px;padding:0 6px;font-variant-numeric:tabular-nums}
   .xr input:disabled{color:#666}
   .xr .wide{width:136px}
@@ -304,11 +313,11 @@
   .timeline .t{min-width:92px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums;font-size:11px}
   /* the 动画 section's transport: 34×32, #333, loop green when on */
   .transport{display:inline-flex;gap:8px;align-items:center}
-  .tp{width:34px;height:32px;border-radius:8px;background:#333;border:1px solid rgba(255,255,255,.12);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0}
+  .tp{width:34px;height:32px;border-radius:8px;background:var(--foart-action-grey);border:0;color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0}
   .tp svg{width:14px;height:14px}
   .tp:hover:not(:disabled){background:#3d3d3d}
   .tp:disabled{opacity:.45}
-  .tp#tLoop[aria-pressed="true"]{background:#1ea672;border-color:transparent}
+  .tp#tLoop[aria-pressed="true"]{background:var(--foart-action-green);border-color:transparent;color:#9be4cd}
   .seg{display:inline-flex;padding:2px;border:1px solid #262626;border-radius:8px;background:#101010}
   .seg button{height:26px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#d8d8d8;font-size:12px;font-weight:500}
   .seg button:hover{background:#373737;color:#fff}

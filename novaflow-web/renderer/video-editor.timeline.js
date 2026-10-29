@@ -37,7 +37,7 @@
   const COLORS = {
     bg: '#1d1d1d', lane: '#202020', laneAlt: '#1f1f1f', grid: '#2a2a2a',
     ruler: '#161616', rulerText: '#8d8d8d', tick: '#3a3a3a', playhead: '#ef4444',
-    clip: ['#1e7a58', '#2fcf92', '#133f2e'], clipMuted: ['#4a4a4a', '#777', '#2a2a2a'], audio: ['#6b5a1e', '#e0b84a', '#3f3612'], laneAudio: '#1c1b17',
+    clip: ['#1e7a58', '#2fcf92', '#133f2e'], clipMuted: ['#4a4a4a', '#777', '#2a2a2a'], audio: ['#6b5a1e', '#e0b84a', '#3f3612'], laneAudio: '#1f1f1f',
     selected: '#ffffff', text: '#f1f1f1', snapLine: 'rgba(255,255,255,0.55)', fade: '#d9d9d9'
   };
 

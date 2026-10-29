@@ -42,7 +42,7 @@
     const bridge = () => root.NovaFlowSpineSplitBridge
     const message = (text, error = false) => { note.textContent = text; note.style.color = error ? '#fca5a5' : '#aaa' }
     function button(text, action, allowBusy = false, host = actions, primary = false) {
-      const b = make('button', text, { type: 'button' }); Object.assign(b.style, { width: '100%', minWidth: '0', height: '30px', minHeight: '30px', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid ' + (primary ? '#17a582' : '#343434'), borderRadius: '6px', color: '#e9e9e9', background: primary ? '#17a582' : '#262626', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' })
+      const b = make('button', text, { type: 'button', 'data-foart-action': primary ? 'primary' : 'neutral' }); Object.assign(b.style, { width: '100%', minWidth: '0', height: '30px', minHeight: '30px', boxSizing: 'border-box', padding: '6px 8px', border: '1px solid ' + (primary ? '#17a582' : '#343434'), borderRadius: '6px', color: '#e9e9e9', background: primary ? '#17a582' : '#262626', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' })
       b.addEventListener('click', () => { if (busy && !allowBusy) return; try { Promise.resolve(action()).catch(error => message(error.message, true)) } catch (error) { message(error.message, true) } }); host.append(b); return b
     }
     const recognizeButton = button('对象识别', recognize, false, actions, true)

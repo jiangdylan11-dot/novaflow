@@ -1,12 +1,14 @@
 /* Keep each control's original transparent/painted role. No universal fill. */
 @layer foart-buttons {
   :root {
+    --foart-generation-green: #1ea672;
+    --foart-generation-green-hover: #24b682;
     --foart-action-grey: #272727;
     --foart-action-grey-hover: #373737;
-    --foart-action-green: #1ea672;
-    --foart-action-green-hover: #20b490;
+    --foart-action-green: rgba(30,166,114,.24);
+    --foart-action-green-hover: rgba(30,166,114,.32);
   }
-  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
+  :where(button, [role="button"]):not(:where([role="switch"], [aria-checked], [data-novaflow-ai-state-toggle], [data-novaflow-art-generate-state-toggle], [data-novaflow-toggle-switch], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-color], [data-color-value], [class*="swatch"], [class*="Swatch"])) {
     border: 0 !important;
     outline: none !important;
     box-shadow: none !important;
@@ -14,15 +16,15 @@
   }
   /* These classes are existing filled action controls, not navigation,
      section headers, toolbar glyphs or text links. */
-  :is(button, [role="button"]):where(.btn, .aifx-button, .quickLink, [data-novaflow-account-logout], .nf-ve-btn, .nf-ve-dd-trigger, .nf-ve-anchor-grid button:not([aria-pressed="true"]), .nf-tl-track-btns button:not([aria-pressed="true"]), .nf-atlas-button, .nf-prb-btn.alt, .nf-mp4-btn.alt, .nf-vfc-btn.alt, .nf-saw-btn.alt, .nf-prb-top-actions button, .nf-mp4-top-actions button, .nf-vfc-top-actions button, .nf-saw-top-actions button) {
+  :is(button, [role="button"]):where(.btn, .fxm-btn, [data-foart-action="neutral"], [data-novaflow-export-modal-root="1"] button[style*="background: rgb(51, 51, 51)"], .aifx-button, .quickLink, [data-novaflow-account-logout], .nf-ve-btn, .nf-ve-dd-trigger, .nf-ve-anchor-grid button:not([aria-pressed="true"]), .nf-tl-track-btns button:not([aria-pressed="true"]), .nf-atlas-button, .nf-prb-btn.alt, .nf-mp4-btn.alt, .nf-vfc-btn.alt, .nf-saw-btn.alt, .nf-prb-top-actions button, .nf-mp4-top-actions button, .nf-vfc-top-actions button, .nf-saw-top-actions button) {
     background: var(--foart-action-grey) !important;
     color: #eaeaea !important;
   }
-  :is(button, [role="button"]):where(.primary, .btn-primary, .aifx-primary, .nf-login-submit, .nf-as-tool-primary, .nf-as-go, .nf-prb-btn:not(.alt), .nf-mp4-btn:not(.alt), .nf-vfc-btn:not(.alt), .nf-saw-btn:not(.alt), [data-novaflow-generate-icon="1"]) {
+  :is(button, [role="button"]):where(.primary, .fxm-primary, .fxm-btn[data-on="1"], .btn-primary, .aifx-primary, .nf-login-submit, .nf-as-tool-primary, .nf-as-go, .nf-prb-btn:not(.alt), .nf-mp4-btn:not(.alt), .nf-vfc-btn:not(.alt), .nf-saw-btn:not(.alt), [data-novaflow-generate-icon="1"], [data-foart-action="primary"], [data-novaflow-solid-green="1"], [data-novaflow-art-generate-submit="1"], [data-novaflow-export-modal-root="1"] button[style*="background: rgb(30, 166, 114)"], [data-novaflow-export-modal-root="1"] button[style*="background: #1EA672"]) {
     background: var(--foart-action-green) !important;
-    color: #fff !important;
+    color: #9be4cd !important;
   }
-  :is(button, [role="button"]):where(.primary, .btn-primary, .aifx-primary, .nf-login-submit, .nf-as-tool-primary, .nf-as-go, .nf-prb-btn:not(.alt), .nf-mp4-btn:not(.alt), .nf-vfc-btn:not(.alt), .nf-saw-btn:not(.alt), [data-novaflow-generate-icon="1"]):hover:not(:disabled):not([aria-disabled="true"]) {
+  :is(button, [role="button"]):where(.primary, .fxm-primary, .fxm-btn[data-on="1"], .btn-primary, .aifx-primary, .nf-login-submit, .nf-as-tool-primary, .nf-as-go, .nf-prb-btn:not(.alt), .nf-mp4-btn:not(.alt), .nf-vfc-btn:not(.alt), .nf-saw-btn:not(.alt), [data-novaflow-generate-icon="1"], [data-foart-action="primary"], [data-novaflow-solid-green="1"], [data-novaflow-art-generate-submit="1"], [data-novaflow-export-modal-root="1"] button[style*="background: rgb(30, 166, 114)"], [data-novaflow-export-modal-root="1"] button[style*="background: #1EA672"]):hover:not(:disabled):not([aria-disabled="true"]) {
     background: var(--foart-action-green-hover) !important;
   }
   :is(button, [role="button"])[data-novaflow-spine-inline-import-action="1"] {
@@ -32,6 +34,24 @@
   :is(button, [role="button"])[data-novaflow-spine-inline-import-action="1"]:hover {
     background: var(--foart-action-grey-hover) !important;
   }
+  #nf-xiaotao-art-root .nf-xiaotao-robot { box-shadow: 0 5px 16px rgba(0,0,0,.35) !important; }
+  #novaflow-aifx-mvp .aifx-section-body { background: transparent !important; background-color: transparent !important; box-shadow: none !important; }
+  /* Tool execution is neutral; selected formats/navigation keep their own state. */
+  body.novaflow-primary-target-tools :is(.nf-prb-btn, .nf-mp4-btn, .nf-vfc-btn, .nf-saw-btn, [data-novaflow-tools-start-button], [data-novaflow-tools-run], [data-foart-tool-action]) {
+    background: var(--foart-action-grey) !important; color: #eaeaea !important;
+  }
+  body.novaflow-primary-target-tools :is(.nf-prb-btn, .nf-mp4-btn, .nf-vfc-btn, .nf-saw-btn, [data-novaflow-tools-start-button], [data-novaflow-tools-run], [data-foart-tool-action]):hover:not(:disabled) {
+    background: var(--foart-action-grey-hover) !important;
+  }
+  .novaflow-art-export-action { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
+  .novaflow-art-export-action:hover { background: var(--foart-action-grey-hover) !important; }
+  :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]) { background: var(--foart-action-grey) !important; color: #eaeaea !important; }
+  :is(#ve-save, [data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-cutout-save-button="1"], [data-novaflow-ai-cutout-save-bound="1"]):hover:not(:disabled) { background: var(--foart-action-grey-hover) !important; }
+  .nf-tl-track-name { font-size:11px !important; font-weight:400 !important; line-height:16px !important; }
+  .nf-tl-add-track { display:inline-flex !important; align-items:center !important; justify-content:center !important; line-height:1 !important; }
+  :is([data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply) { background: var(--foart-generation-green) !important; color:#fff !important; }
+  :is([data-novaflow-ai-generate-button="1"], [data-novaflow-art-generate-submit="1"], .nf-as-go, .aifx-primary, .nf-vfe-apply):hover:not(:disabled):not([aria-disabled="true"]) { background:var(--foart-generation-green-hover) !important; }
+  .aifx-button:not(.aifx-primary):hover:not(:disabled), .aifx-library-btn:not(.aifx-library-close):hover:not(:disabled), .fxm-btn:not(.fxm-primary):not([data-on="1"]):hover:not(:disabled) { background:var(--foart-action-grey-hover) !important; }
   .btn.danger { background: #e5484d !important; }
 }
 [data-foart-usage-note="1"] { display: none !important; }

@@ -559,7 +559,7 @@
       #${ROOT_ID} .nf-as-mode button,#${SUB_TOGGLE_ID} button{height:29px!important;min-height:29px!important;max-height:29px!important;min-width:0!important;width:auto!important;margin:0!important;border:0!important;border-radius:5px!important;background:transparent!important;color:#eaeaea!important;font-size:12px!important;font-weight:500!important;line-height:normal!important;padding:0 6px!important;box-shadow:none!important;letter-spacing:normal!important;outline:0!important}
       .nf-as-mode-kind button:hover{--nf-mode-bg:#373737;--nf-mode-c:#fff}
       #${ROOT_ID} .nf-as-mode button:hover,#${SUB_TOGGLE_ID} button:hover{background:#373737!important;color:#fff!important}
-      #${ROOT_ID} .nf-as-mode button[aria-pressed="true"],#${SUB_TOGGLE_ID} button[aria-pressed="true"]{background:#1c4136!important;color:#9be4cd!important;box-shadow:inset 0 0 0 1px #2c604f!important}
+      #${ROOT_ID} .nf-as-mode button[aria-pressed="true"],#${SUB_TOGGLE_ID} button[aria-pressed="true"]{background:#1c4136!important;color:#9be4cd!important;box-shadow:none!important}
       .nf-as-mode.nf-as-mode-kind{margin:0 0 4px}
       /* the React AI序列动画 / 骨骼动画 toggle never shows: 动画 is 骨骼 only, 音视 / 视频 floats its own */
       #${SUB_TOGGLE_ID}{position:fixed;z-index:2147483000;margin:0;box-sizing:border-box}
@@ -616,7 +616,7 @@
       .nf-as-dd-panel::-webkit-scrollbar{width:6px}.nf-as-dd-panel::-webkit-scrollbar-thumb{background:#3a3a3a}
       .nf-as-dd-item{height:26px;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
       .nf-as-dd-item:hover{background:rgba(255,255,255,.08)}
-      .nf-as-dd-item[aria-selected="true"]{background:#1ea672;color:#fff}
+      .nf-as-dd-item[aria-selected="true"]{background:var(--foart-action-green,rgba(30,166,114,.24));color:#9be4cd}
       .nf-as-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
       .nf-as-tools .nf-as-tool-primary{background:linear-gradient(135deg,#1ea672,#188f64)!important;border-color:rgba(84,234,178,.3)!important;color:#effcf6!important;font-weight:600}
       .nf-as-tools .nf-as-tool-primary:hover:not(:disabled){background:linear-gradient(135deg,#22b980,#1ea672)!important;color:#fff!important}
@@ -976,7 +976,7 @@
     const saveSec = el('div', 'nf-as-edit-sec');
     saveSec.appendChild(el('div', 'nf-as-label', '保存'));
     const saveGrid = el('div', 'nf-as-tools');
-    const save = el('button', null, '保存到资源列表'); save.type = 'button'; save.classList.add('nf-as-tool-wide', 'nf-as-tool-primary');
+    const save = el('button', null, '保存到资源列表'); save.type = 'button'; save.classList.add('nf-as-tool-wide'); save.setAttribute('data-foart-action', 'neutral');
     save.addEventListener('click', () => saveMix());
     saveGrid.appendChild(save);
     saveSec.appendChild(saveGrid);
@@ -1175,7 +1175,7 @@
     ui.modeSfx.setAttribute('aria-pressed', String(mode === 'sfx'));
     for (const b of [ui.modeMusic, ui.modeSfx]) {
       const on = b.getAttribute('aria-pressed') === 'true';
-      imp(b, { 'font-weight': '500', 'font-size': '12px', 'box-shadow': on ? 'inset 0 0 0 1px #2c604f' : 'none', background: on ? '#1c4136' : 'var(--nf-mode-bg, transparent)', color: on ? '#9be4cd' : 'var(--nf-mode-c, #eaeaea)' });
+      imp(b, { 'font-weight': '500', 'font-size': '12px', 'box-shadow': 'none', background: on ? 'var(--foart-action-green,rgba(30,166,114,.24))' : 'var(--nf-mode-bg, transparent)', color: on ? '#9be4cd' : 'var(--nf-mode-c, #eaeaea)' });
     }
     const m = state[mode];
     // left row body

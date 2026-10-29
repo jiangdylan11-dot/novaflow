@@ -36,7 +36,7 @@ app.whenReady().then(async () => {
     const html = path.join(output, 'dialog.html');
     const index = fs.readFileSync(path.join(renderer, 'index.html'), 'utf8');
     const styles = [...index.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="(\.\/[^"?]+)[^"]*"[^>]*>/gi)].map(match => '<link rel="stylesheet" href="file:///' + path.resolve(renderer, match[1]).replaceAll('\\', '/') + '">').join('');
-    fs.writeFileSync(html, '<!doctype html><meta charset="utf-8">' + styles + '<style>html,body{display:block!important;margin:0;background:#252525;color:#ddd;font:12px Arial}*{box-sizing:border-box}</style><div id="fixture"></div>');
+    fs.writeFileSync(html, '<!doctype html><meta charset="utf-8">' + styles + '<script src="file:///' + path.join(renderer, 'foart-button-theme.js').replaceAll('\\', '/') + '"></script><style>html,body{display:block!important;margin:0;background:#252525;color:#ddd;font:12px Arial}*{box-sizing:border-box}</style><div id="fixture"></div>');
     await win.loadFile(html);
     await win.webContents.executeJavaScript(`(() => {
       const React = require(${JSON.stringify(path.join(project, 'node_modules/react'))});
@@ -74,6 +74,7 @@ app.whenReady().then(async () => {
       const api = { projectExportInfo: () => [{ name: 'room', exported: true }], exportSelectedProjects: noop };
       const projectControls = new Function('api', ${JSON.stringify(section + '\nreturn syncNativeProjectExport;')})(api);
       window.NovaFlowSkeletonEditor = { syncExportDialog: projectControls };
+      window.syncContext = context => scope.syncNovaflowAifxExportModalControls(document.querySelector('[data-preview-ui="1"]'), context);
       window.syncLayout = (order = 'host-first') => {
         const root = document.querySelector('[data-preview-ui="1"]');
         root.setAttribute('data-novaflow-export-modal-root', '1'); root.setAttribute('data-novaflow-export-context-kind', 'skeleton');
@@ -98,6 +99,10 @@ app.whenReady().then(async () => {
       await pause(30);
       await win.webContents.executeJavaScript(`void syncLayout(${JSON.stringify(order)})`);
       states[name] = await win.webContents.executeJavaScript('layoutSnapshot()');
+      const appearance = await win.webContents.executeJavaScript(`(()=>{const root=document.querySelector('[data-preview-ui="1"]');return [...root.querySelectorAll('button')].filter(n=>n.getBoundingClientRect().height>0).map(n=>({text:n.textContent.trim(),bg:getComputedStyle(n).backgroundColor,border:getComputedStyle(n).borderTopWidth}))})()`);
+      fs.writeFileSync(path.join(output, name + '-appearance.json'), JSON.stringify(appearance,null,2));
+      assert(appearance.every(n=>n.border==='0px'), 'export buttons must have no outlines');
+      assert(!appearance.some(n=>n.bg==='rgb(30, 166, 114)'), 'export actions must not retain solid green');
       await win.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
       fs.writeFileSync(path.join(output, name + '.png'), (await win.webContents.capturePage()).toPNG());
     }
@@ -110,6 +115,12 @@ app.whenReady().then(async () => {
     }
     assert.equal(states.first.row.y, states['sequence-return'].row.y, 'First-open and return layout must match');
     assert.equal(states.video.row.y, states['video-return'].row.y, 'Video layout must not depend on preceding tab');
+    await win.webContents.executeJavaScript(`window.setTab('spine')`);await pause(50);
+    await win.webContents.executeJavaScript(`window.syncContext('aifx')`);await pause(70);await win.webContents.executeJavaScript(`window.syncContext('aifx')`);await pause(20);
+    const fxTabs=await win.webContents.executeJavaScript(`[...document.querySelectorAll('button')].filter(n=>n.getBoundingClientRect().height&&['序列帧','视频','Spine','动画工程'].includes(n.textContent.trim())).map(n=>n.textContent.trim())`);
+    assert.deepEqual(fxTabs,['序列帧','视频']);
+    await win.webContents.executeJavaScript(`window.syncContext('skeleton')`);await pause(20);
+    const restored=await win.webContents.executeJavaScript(`[...document.querySelectorAll('button')].some(n=>n.getBoundingClientRect().height&&['Spine','动画工程'].includes(n.textContent.trim()))`);assert(restored,'animation project export must remain available outside FX');
     console.log(JSON.stringify(states)); app.exit(0);
   } catch (error) { console.error(error); app.exit(1); }
 });

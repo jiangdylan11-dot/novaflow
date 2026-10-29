@@ -204,6 +204,8 @@
     const nodes = [document.documentElement, document.body, ...Array.from(document.querySelectorAll('body *'))].filter((element) => {
       if (!(element instanceof HTMLElement)) return false
       if (element.id === APP_ID || element.closest(`#${APP_ID}`)) return false
+      // The version divider extends beyond its button; it is not a scroll container.
+      if (element.matches('.nf-brand-version')) return false
       return element.scrollHeight > element.clientHeight + 2 || element.scrollWidth > element.clientWidth + 2
     })
     nodes.forEach((element) => {
@@ -952,6 +954,8 @@
         cursor: pointer; font-weight: 600; font-size: 12px;
       }
       .aifx-library-btn:hover { background: #333333; }
+      .aifx-library-btn.aifx-library-close { width:24px;min-width:24px;height:24px;padding:0;background:transparent;border:0;font-size:18px;font-weight:400;line-height:24px; }
+      .aifx-library-btn.aifx-library-close:hover { background:#373737; }
       .aifx-library-btn[hidden] { display: none; }
       .aifx-library-btn.is-primary { background: ${AIFX_ACCENT}; border-color: transparent; }
       .aifx-library-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
@@ -1414,7 +1418,7 @@
             <div class="aifx-library-head">
               <div class="aifx-library-title" data-library-title>模板库</div>
               <div class="aifx-library-actions">
-                <button class="aifx-library-btn" data-action="close-library" type="button">关闭</button>
+                <button class="aifx-library-btn aifx-library-close" data-action="close-library" type="button" title="关闭" aria-label="关闭">×</button>
               </div>
             </div>
             <div class="aifx-library-body" data-library-body></div>

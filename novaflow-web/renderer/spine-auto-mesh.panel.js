@@ -1675,11 +1675,12 @@
   }
 
   function styleButton(btn, primary) {
+    btn.setAttribute('data-foart-action', primary ? 'primary' : 'neutral')
     Object.assign(btn.style, {
       width: '100%', height: '30px', borderRadius: '6px', border: '0',
       cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-      color: primary ? '#ffffff' : 'rgba(255,255,255,0.86)',
-      background: primary ? '#1EA672' : '#3a3a3a'
+      color: primary ? '#9be4cd' : '#eaeaea',
+      background: primary ? 'var(--foart-action-green, rgba(30,166,114,.24))' : 'var(--foart-action-grey, #272727)'
     })
     if (primary) btn.setAttribute('data-novaflow-solid-green', '1')
   }

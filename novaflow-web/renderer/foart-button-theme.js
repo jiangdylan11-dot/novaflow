@@ -1,16 +1,20 @@
 /* Preserve transparent controls. Normalize only existing painted button fills. */
 (function () {
   'use strict';
-  const excluded = '[role="switch"], [aria-checked], [data-color], [data-color-value], [data-foart-button-theme="off"], [class*="swatch"], [class*="Swatch"]';
+  const excluded = '[role="switch"], [aria-checked], [data-novaflow-toggle-switch], [data-novaflow-ai-state-toggle], .novaflow-art-generate-ref, [data-nf-upload-dropzone], .nf-upload-dropzone, [data-novaflow-art-generate-state-toggle], [data-color], [data-color-value], [data-foart-button-theme="off"], [class*="swatch"], [class*="Swatch"]';
   function isButton(node) {
     return node instanceof HTMLElement && node.matches('button, [role="button"], input[type="button"], input[type="submit"]') && !node.matches(excluded);
   }
   function normalize(node, property, value) {
     if (!isButton(node)) return value;
+    const generation = node.matches('[data-novaflow-ai-generate-button], [data-novaflow-art-generate-submit], .nf-as-go, .aifx-primary, .nf-vfe-apply');
+    if (generation && property === 'color') return '#fff';
     if (property === 'border' || property === 'outline' || /border.*width$/.test(property)) return '0';
     if (/border.*color$/.test(property)) return 'transparent';
-    if (property === 'box-shadow') return 'none';
+    if (property === 'box-shadow') return node.matches('.nf-xiaotao-robot') ? value : 'none';
     if (property !== 'background' && property !== 'background-color') return value;
+    if (node.matches('[data-novaflow-ai-cutout-save-bound], [data-novaflow-ai-sequence-save-button], #ve-save')) return '#272727';
+    if (generation) return 'var(--foart-generation-green, #1ea672)';
     const text = String(value).trim().toLowerCase();
     // Variables and transparent/none are intentional: never add a plate to them.
     if (text.includes('var(') || /^(transparent|none)$/.test(text)) return value;
@@ -27,7 +31,7 @@
     }
     if (!rgb || alpha===0) return value;
     const [r,g,b]=rgb;
-    if (g>r*1.2 && g>b*1.12) return Math.max(r,g,b)<100 || alpha<.5 ? '#1c4136' : '#1ea672';
+    if (g>r*1.2 && g>b*1.12) return Math.max(r,g,b)<100 || alpha<.5 ? '#1c4136' : 'var(--foart-action-green, rgba(30,166,114,.24))';
     if (Math.max(...rgb)-Math.min(...rgb)<=18) return '#272727';
     return value;
   }

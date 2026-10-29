@@ -2645,7 +2645,7 @@
     '[data-novaflow-autofit-button="1"]',
     '[data-novaflow-ui-design-toolbar-action="fit"]'
   ].join(", ");
-  const CANVAS_BAR_PILL_SHADOW = "0 3px 7px rgba(0, 0, 0, 0.133)";
+  const CANVAS_BAR_PILL_SHADOW = "none";
   const CANVAS_BAR_PILL_TEXT = "#eaeaea";
   const CANVAS_BAR_DISABLED_BACKGROUND = "#252629";
   const CANVAS_BAR_DISABLED_TEXT = "#969aa2";
@@ -7070,10 +7070,11 @@
     const dialog = getNovaflowExportDialog(root);
     if (!(dialog instanceof HTMLElement)) return;
     const aifx = context === "aifx" || context === "ai-sequence";
+    const wasSpine = getNovaflowExportModalActualTab(root) === "spine" || Array.from(dialog.querySelectorAll("button")).some(button => !isNovaflowExportTabButton(button) && getNovaflowExportActionModeFromButton(button) === "spine" && button.getBoundingClientRect().height > 0);
     Array.from(dialog.querySelectorAll("button")).forEach((button) => {
       if (!(button instanceof HTMLButtonElement)) return;
       const text = String(button.textContent || "").trim();
-      const spineTab = /^spine$/i.test(text);
+      const spineTab = getNovaflowExportTabModeFromButton(button) === "spine";
       if (/SPINE\s*\u5e8f\u5217\u5de5\u7a0b/i.test(text)) {
         // the row is the box around the toggle button
         const row = button.parentElement instanceof HTMLElement && button.parentElement !== dialog &&
@@ -7089,6 +7090,7 @@
         setNovaflowAifxExportControlUnavailable(button, false);
       }
     });
+    if (aifx && wasSpine) restoreNovaflowExportModalTab(root, "seq");
   }
 
   // The dialog's scale control, when the context shows one; 100 means the
@@ -21980,6 +21982,7 @@
         position: relative !important;
         margin-right: 10px !important;
         margin-left: 0 !important;
+        overflow: visible !important;
         color: rgba(230, 239, 255, 0.74) !important;
         font-size: 11px !important;
         font-weight: 400 !important;
@@ -34177,6 +34180,25 @@
             "box-shadow": "none"
           };
         }
+      },
+      {
+        selector: '[data-novaflow-spine-inline-import-status]',
+        style: (node) => ({ "font-size": normalizeText(node.textContent || "") === "未选择" ? "11px" : "12px" })
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-model-field="1"]',
+        style: { gap: "8px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-lora="1"]',
+        style: { "margin-top": "10px", gap: "8px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-lora="1"] > div:first-child',
+        style: { "line-height": "16.5px" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -83425,6 +83447,7 @@
       type: "button",
       className: "novaflow-art-generate-submit",
       "data-novaflow-art-generate-submit": "1",
+      "data-novaflow-generate-icon": "1",
       title: idleSubmitTitle || null,
       disabled: ART_GENERATE_STATE.running ? "disabled" : null,
       onclick: () => runArtGenerate().catch((error) => {

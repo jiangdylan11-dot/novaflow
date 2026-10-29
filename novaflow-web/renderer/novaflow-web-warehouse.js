@@ -637,5 +637,13 @@
     await ready; await enqueue(async () => { await flushNow(); await refreshList(); }); tell();
     return { ok: true, result: { opened: true, mapped: !!directory } };
   }
+  // A pending-save reminder belongs to the current work context. Switching
+  // modules dismisses the reminder, while pending files remain in the queue.
+  root.document?.addEventListener?.('click', event => {
+    const entry = event.target?.closest?.('[data-novaflow-primary-entry], [data-novaflow-audio-entry]');
+    if (!entry) return;
+    const tip = root.document.getElementById('novaflow-warehouse-notice');
+    if (tip) tip.hidden = true;
+  }, true);
   root.NovaFlowWebWarehouse = { open, save, connect, authorize, disconnect, openFolder, removeAsset, ready };
 })(typeof window !== 'undefined' ? window : globalThis);

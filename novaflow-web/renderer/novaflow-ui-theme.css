@@ -1338,7 +1338,7 @@ html body :is([data-novaflow-zoom-controls="1"], #novaflow-spine-split-zoom-hud,
   background-color: #161616 !important;
   border: 1px solid #333333 !important;
   border-radius: 9px !important;
-  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.133) !important;
+  box-shadow: none !important;
   transition: none !important;
 }
 html body #novaflow-spine-split-zoom-hud {

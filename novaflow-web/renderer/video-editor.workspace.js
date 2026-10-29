@@ -130,11 +130,11 @@
     .nf-tl{position:absolute;inset:0;display:grid;grid-template-columns:132px minmax(0,1fr)}
     .nf-tl-headers{position:relative;background:#161616;border-right:1px solid #2a2a2a;overflow:hidden}
     .nf-tl-headers-top{height:24px;line-height:24px;padding:0 6px 0 8px;font-size:11px;color:#8d8d8d;background:#161616;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;gap:4px;white-space:nowrap}
-    .nf-tl-add-track{margin-left:auto;height:18px;padding:0 4px;border:1px solid #343434;border-radius:4px;background:#262626;color:#bdbdbd;font-size:11px;line-height:16px;white-space:nowrap;flex:none;cursor:pointer}
+    .nf-tl-add-track{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;margin-left:auto;height:18px;padding:0 4px;border:1px solid #343434;border-radius:4px;background:#262626;color:#bdbdbd;font-size:11px;line-height:16px;white-space:nowrap;flex:none;cursor:pointer}
     .nf-tl-add-track + .nf-tl-add-track{margin-left:0}.nf-tl-add-track:hover{border-color:#1EA672;color:#9be4cd}
     .nf-tl-header-list{will-change:transform}
     .nf-tl-header{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 8px;margin-bottom:4px;border-bottom:1px solid #222;cursor:grab}
-    .nf-tl-header[data-kind="audio"]{background:#1a1915}
+    .nf-tl-header[data-kind="audio"]{background:#1b1b1b}
     /* the picked track: a thin green line on its left edge, nothing else */
     .nf-tl-header[data-active="1"]{box-shadow:inset 2px 0 0 #1EA672}.nf-tl-header.nf-tl-header-dragging{opacity:.5}.nf-tl-header.nf-tl-header-over{box-shadow:inset 0 2px 0 #1EA672}
     .nf-tl-track-name{height:22px;border:1px solid transparent;border-radius:5px;background:transparent;color:#e9e9e9;font-size:11px;font-weight:500;padding:0 5px;width:100%}
@@ -329,7 +329,7 @@
         </div>
       </div>
       <div class="nf-ve-sec"><h4>保存</h4>
-        <div class="nf-ve-btns"><button class="nf-ve-btn primary wide" id="ve-save" title="合成后存入资源列表和仓库">保存到资源列表</button></div>
+        <div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-save" title="合成后存入资源列表和仓库">保存到资源列表</button></div>
         <div class="nf-ve-status" id="ve-status"></div>
       </div>
       <div class="nf-ve-sec"><div class="nf-ve-btns"><button class="nf-ve-btn wide" id="ve-close-row">关闭</button></div></div>`

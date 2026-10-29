@@ -81,7 +81,7 @@
       .nf-vfe-cell{flex:0 0 auto;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px;border-radius:6px;border:0;background:transparent;color:#9a9a9a;font-size:11px;line-height:1;cursor:pointer}
       .nf-vfe-cell canvas{display:block;height:var(--nf-vfe-thumb, ${THUMB_HEIGHT}px);border-radius:3px;background:#000;pointer-events:none;outline:1px solid transparent;outline-offset:-1px}
       .nf-vfe-cell[data-dup="1"] canvas{outline:1px dashed rgba(30,166,114,.85)}
-      .nf-vfe-cell[data-dup="1"]::before{content:"复";position:absolute;top:2px;right:2px;z-index:1;padding:1px 3px;border-radius:3px;background:${ACCENT};color:#effcf5;font-size:9px;line-height:1;font-weight:500;pointer-events:none}
+      .nf-vfe-cell[data-dup="1"]::before{content:"复";position:absolute;top:2px;right:2px;z-index:1;padding:1px 3px;border-radius:3px;background:var(--foart-generation-green,#1ea672);color:#9be4cd;font-size:9px;line-height:1;font-weight:500;pointer-events:none}
       .nf-vfe-cell:hover{background:rgba(255,255,255,.06)}
       .nf-vfe-cell::after{content:"";position:absolute;inset:0;border-radius:6px;border:2px solid transparent;pointer-events:none}
       .nf-vfe-cell span{display:inline-flex;align-items:baseline;gap:3px;white-space:nowrap}
@@ -100,8 +100,9 @@
       [${PANEL_ATTR}="1"] button:hover{background:#333333}
       [${PANEL_ATTR}="1"] button:disabled{opacity:.4;cursor:default;background:#2a2a2a}
       [${PANEL_ATTR}="1"] button:focus,[${PANEL_ATTR}="1"] button:focus-visible{outline:none;box-shadow:none}
-      [${PANEL_ATTR}="1"] .nf-vfe-apply{height:34px;background:${ACCENT};color:#effcf5;font-weight:500}
-      [${PANEL_ATTR}="1"] .nf-vfe-apply:hover{background:#23b57d}
+      [${PANEL_ATTR}="1"] .nf-vfe-apply{height:34px;background:var(--foart-generation-green,#1ea672);color:#9be4cd;font-weight:500}
+      [${PANEL_ATTR}="1"] button.nf-vfe-apply:disabled{background:var(--foart-generation-green,#1ea672);color:#9be4cd;opacity:.4}
+      [${PANEL_ATTR}="1"] .nf-vfe-apply:hover:not(:disabled){background:var(--foart-generation-green-hover,#24b682)}
       [${PANEL_ATTR}="1"] .nf-vfe-status{min-height:14px;font-size:11px;color:#8d8d8d;line-height:1.4;padding:0 2px}
       [${PANEL_ATTR}="1"] .nf-vfe-status[data-tone="error"]{color:#e07a7a}
     `

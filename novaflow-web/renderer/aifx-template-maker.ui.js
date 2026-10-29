@@ -34,10 +34,10 @@
 .fxm-tools .fxm-sep{width:1px;height:18px;background:#333;margin:0 4px}
 .fxm-btn{height:26px;padding:0 10px;border:0;border-radius:6px;background:#2B2B2B;color:#d6d6d6;font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap}
 .fxm-btn:hover{background:#373737;color:#fff}
-.fxm-btn[data-on="1"]{background:${GREEN};color:#fff}
+.fxm-btn[data-on="1"]{background:var(--foart-action-green,rgba(30,166,114,.24));color:#9be4cd}
 .fxm-btn:disabled{opacity:.4;cursor:default;background:#2B2B2B;color:#d6d6d6}
-.fxm-btn.fxm-primary{background:${GREEN};color:#fff;font-weight:600}
-.fxm-btn.fxm-primary:hover{background:#22b97f}
+.fxm-btn.fxm-primary{background:var(--foart-action-green,rgba(30,166,114,.24));color:#9be4cd;font-weight:600}
+.fxm-btn.fxm-primary:hover{background:var(--foart-action-green-hover,rgba(30,166,114,.32))}
 .fxm-hint{flex:none;font-size:11px;color:#7d8186;padding:6px 12px 0;min-height:16px}
 .fxm-stage{flex:1;min-height:0;position:relative;margin:8px 12px 0;background:#141414;border-radius:6px;overflow:hidden}
 .fxm-board{position:absolute;background:#000;box-shadow:0 0 0 1px #2E2E2E}
