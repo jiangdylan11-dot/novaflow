@@ -1,6 +1,6 @@
-# Foart 笔刷品牌素材
+# Foart 几何品牌素材
 
-以用户最终选定的扁平笔刷 Foart 为当前品牌：Fo 白色、art 珊瑚红 `#ff5c35`。主程序 Icon 只取 F 并使用珊瑚红；后台 Icon 和字标均为白色。软件显示名称为 **Foart / Foart 后台管理**。
+以用户最终选定的较细圆润几何 Foart 为当前品牌：Fo 白色、art 珊瑚红 `#ff5c35`，F 由两条弧面与负形组成。主程序 Icon 只取 F 并使用珊瑚红；后台 Icon 和字标均为白色。统一应用，不区分地区版本。软件显示名称为 **Foart / Foart 后台管理**。
 
 - `foart-brush-reference.png`：用户提供的原始设计参考，原样保留。
 - `foart-flat-wordmark-master.svg` / `foart-flat-f-master.svg`：从用户批准的设计稿转换的轮廓母版，保留字形并统一平面色。

@@ -208,7 +208,7 @@ export default function App() {
     <div className="nf-app">
       <header className="nf-topbar">
         <div className="nf-brand">
-          <img className="nf-brand-logo" src="/assets/foart-logo-dark.svg?brand=flat-v2" alt="Foart" />
+          <img className="nf-brand-logo" src="/assets/foart-logo-dark.svg?brand=geo-v3" alt="Foart" />
         </div>
 
         <div className="nf-topbar-spacer" />

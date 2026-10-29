@@ -32,7 +32,7 @@ export function LoginDialog({ runtime, onSignedIn }: {
     <div className="nf-backdrop">
       <form className="nf-dialog" onSubmit={submit}>
         <div className="nf-brand" style={{ justifyContent: 'center', marginBottom: 2 }}>
-          <img className="nf-brand-logo" src="/assets/foart-logo-dark.svg?brand=flat-v2" alt="Foart" />
+          <img className="nf-brand-logo" src="/assets/foart-logo-dark.svg?brand=geo-v3" alt="Foart" />
         </div>
         <p style={{ textAlign: 'center' }}>
           使用你的 Foart 账号登录。无需安装任何软件，生成在远程 GPU 算力节点上完成。

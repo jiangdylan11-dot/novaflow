@@ -1,6 +1,6 @@
 (function () {
   const HTMLElement = window.HTMLElement || window.Element;
-  const LOGO_SRC = "./assets/foart-logo-dark.svg?brand=flat-v2";
+  const LOGO_SRC = "./assets/foart-logo-dark.svg?brand=geo-v3";
   const ICON_SRC = "./assets/foart-brush.ico";
   const STYLE_ID = "novaflow-brand-runtime-style";
   const PRE_BRAND_STYLE_ID = "novaflow-brand-prepaint-style";
@@ -3177,8 +3177,8 @@
   const UI_TOPBAR_BACKGROUND = "#101113";
   const UI_TOPBAR_BORDER_COLOR = "transparent";
   const UI_TOPBAR_PAD_X = 20;
-  const UI_TOPBAR_LOGO_WIDTH = 88;
-  const UI_TOPBAR_LOGO_HEIGHT = 44;
+  const UI_TOPBAR_LOGO_WIDTH = 72;
+  const UI_TOPBAR_LOGO_HEIGHT = 34;
   const UI_TOPBAR_RIGHT_GAP = 18;
   const UI_TOPBAR_STATUS_TEXT = "#979797";
   const UI_TOPBAR_STATUS_DOT = "#a3a3a3";
@@ -21466,7 +21466,7 @@
     style.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
     style.textContent = `
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] {
-        gap: 4px !important;
+        gap: 6px !important;
         /* Keep the brush wordmark close to the rail without moving right-side controls. */
         margin-left: -12px !important;
         padding-left: 0 !important;
@@ -21976,10 +21976,24 @@
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] .nf-brand-version {
         display: inline-block !important;
+        position: relative !important;
+        margin-right: 10px !important;
         margin-left: 0 !important;
         color: rgba(230, 239, 255, 0.74) !important;
         font-size: 11px !important;
         font-weight: 400 !important;
+      }
+      .nf-brand[data-novaflow-brand="20260516-chain-unified"] .nf-brand-version::before {
+        content: "" !important;
+        position: absolute !important;
+        right: -10px !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+        width: 1px !important;
+        height: 16px !important;
+        background: #454545 !important;
+        opacity: 1 !important;
+        pointer-events: none !important;
       }
       #${PRIMARY_SIDEBAR_ID} {
         position: fixed !important;
